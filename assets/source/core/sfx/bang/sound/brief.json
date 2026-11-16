@@ -1,0 +1,310 @@
+{
+  "asset": "core/sfx/bang",
+  "review": "../ref/sound",
+  "about": "Things struck and knocked over: metal, a kicked door, a pipe, wood, a lid slammed, a bin knocked over, sheet metal, a gate, a crate smashed, barrels, pots and pans, a bottle smashed, wood cracking and a chain.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "metal": {
+      "kind": "impact",
+      "range": 60,
+      "level": -12,
+      "vary": 0.04,
+      "want": "metal struck",
+      "prompts": [
+        {
+          "id": "v4-25000",
+          "models": [
+            "moss"
+          ],
+          "seed": 25000,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A heavy metal object is struck hard with a loud clang, five separate bangs with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "kick": {
+      "kind": "impact",
+      "range": 60,
+      "level": -10,
+      "vary": 0.04,
+      "want": "a door kicked in",
+      "prompts": [
+        {
+          "id": "v4-25010",
+          "models": [
+            "moss"
+          ],
+          "seed": 25010,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A wooden door is kicked in: a heavy bang and the splintering crack of the frame, three separate kicks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "pipe": {
+      "kind": "impact",
+      "range": 40,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a pipe struck",
+      "prompts": [
+        {
+          "id": "v4-25020",
+          "models": [
+            "moss"
+          ],
+          "seed": 25020,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A metal pipe is hit with a hammer, a hollow ringing bong, five separate hits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "wood": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.04,
+      "want": "wood struck",
+      "prompts": [
+        {
+          "id": "v4-25030",
+          "models": [
+            "moss"
+          ],
+          "seed": 25030,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A heavy wooden plank is banged against a wall, solid thuds, five separate bangs with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "lid": {
+      "kind": "impact",
+      "range": 40,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a lid slammed",
+      "prompts": [
+        {
+          "id": "v4-25040",
+          "models": [
+            "moss"
+          ],
+          "seed": 25040,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A heavy metal bin lid is slammed shut with a crash, four separate slams with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "bin": {
+      "kind": "impact",
+      "range": 40,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a bin knocked over",
+      "prompts": [
+        {
+          "id": "v4-25050",
+          "models": [
+            "moss"
+          ],
+          "seed": 25050,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A metal trash can is knocked over and rolls clattering across the ground, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "sheet": {
+      "kind": "impact",
+      "range": 40,
+      "level": -14,
+      "vary": 0.04,
+      "want": "sheet metal wobbling",
+      "prompts": [
+        {
+          "id": "v4-25060",
+          "models": [
+            "moss"
+          ],
+          "seed": 25060,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A large sheet of metal is shaken and wobbles with a booming rumbling warble, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "gate": {
+      "kind": "impact",
+      "range": 60,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a gate slammed",
+      "prompts": [
+        {
+          "id": "v4-25070",
+          "models": [
+            "moss"
+          ],
+          "seed": 25070,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A heavy iron gate swings and slams shut with a loud clang, three separate slams with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "crate": {
+      "kind": "impact",
+      "range": 50,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a crate smashed",
+      "prompts": [
+        {
+          "id": "v4-25080",
+          "models": [
+            "moss"
+          ],
+          "seed": 25080,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A wooden crate is smashed apart with a crashing splinter of planks, three separate smashes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "barrel/roll": {
+      "kind": "impact",
+      "range": 30,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a barrel rolling",
+      "prompts": [
+        {
+          "id": "v4-25090",
+          "models": [
+            "moss"
+          ],
+          "seed": 25090,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "An empty metal barrel rolls along concrete with a hollow rumbling clatter, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "barrel/hit": {
+      "kind": "impact",
+      "range": 40,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a barrel struck",
+      "prompts": [
+        {
+          "id": "v4-25100",
+          "models": [
+            "moss"
+          ],
+          "seed": 25100,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "An empty oil drum is hit and booms hollowly, five separate hits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "pots": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.04,
+      "want": "pots and pans clattering",
+      "prompts": [
+        {
+          "id": "v4-25110",
+          "models": [
+            "moss"
+          ],
+          "seed": 25110,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A pile of pots and pans falls and clatters across a floor, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "bottle": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a bottle smashed",
+      "prompts": [
+        {
+          "id": "v4-25120",
+          "models": [
+            "moss"
+          ],
+          "seed": 25120,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A glass bottle smashes on the ground, four separate smashes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "crack": {
+      "kind": "impact",
+      "range": 40,
+      "level": -14,
+      "vary": 0.04,
+      "want": "wood cracking",
+      "prompts": [
+        {
+          "id": "v4-25130",
+          "models": [
+            "moss"
+          ],
+          "seed": 25130,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A thick wooden beam cracks and splits with a loud splintering snap, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "chain": {
+      "kind": "impact",
+      "range": 30,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a chain rattled",
+      "prompts": [
+        {
+          "id": "v4-25140",
+          "models": [
+            "moss"
+          ],
+          "seed": 25140,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A heavy chain is yanked and rattles loudly against metal, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

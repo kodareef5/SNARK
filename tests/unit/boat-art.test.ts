@@ -1,10 +1,10 @@
-// Native production packs, actual moving hardware and clear first-person apertures at every level.
+// Native production packs, actual moving hardware and clear first-person apertures at every level. The fit of real
+// survivors at the seats is boat-fit.slow.test.ts.
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { BOAT_ART as B } from "../../content/vehicles/boat-art.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { bothWays, measureSurface } from "../../tools/art/check.ts";
-import { auditBoatFit } from "../../tools/art/boat-fit.ts";
 import { unpackMeshes, type SourceLod } from "../../tools/pack/write.ts";
 
 const assets = ["boat", "boat_rescue", "boat_police", "boat_wreck"].map(id => {
@@ -155,13 +155,3 @@ test("the actual stern landing corridor contains no locker, fitting or hull tria
   }
   expect(blocked).toBe(0);
 });
-
-test("actual survivors and gear clear all other seats, console and hull across proportions and head look", () => {
-  const report = auditBoatFit();
-  expect(report.pointsTested).toBeGreaterThan(3_000_000);
-  expect(report.failures).toEqual([]);
-  expect(report.pilotProfiles).toBe(474);
-  expect(report.gripResidual).toBeLessThan(.001);
-  expect(report.worst.margin).toBeGreaterThan(.04);
-  expect(report.headWorst.margin - report.headMotionAllowance).toBeGreaterThan(.04);
-}, 15_000);

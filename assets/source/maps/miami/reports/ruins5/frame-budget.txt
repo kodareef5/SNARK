@@ -1,0 +1,9 @@
+bun test v1.4.3 (c6da4a4d3)
+
+tests/unit/casters.test.ts:
+siege caster entries, medium, high, ultra: 3779, 3961, 4074
+
+ 7 pass
+ 0 fail
+ 229 expect() calls
+Ran 7 tests across 1 file. [1097.00ms]

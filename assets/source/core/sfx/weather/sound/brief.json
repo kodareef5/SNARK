@@ -1,0 +1,355 @@
+{
+  "asset": "core/sfx/weather",
+  "review": "../ref/sound",
+  "about": "Thunder near and far, lightning, rain on leaves, roofs, canvas and water, drizzle to downpour, hail, gusts, a howling gale, a blizzard and a sandstorm.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "thunder/near": {
+      "kind": "impact",
+      "range": 3000,
+      "level": -6,
+      "vary": 0.04,
+      "want": "a close lightning strike and its thunder",
+      "prompts": [
+        {
+          "id": "v4-20200",
+          "models": [
+            "moss"
+          ],
+          "seed": 20200,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 10,
+          "text": "A close lightning strike: a deafening sharp crack of thunder that splits into a heavy rolling rumble, one strike. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "whole": true
+    },
+    "thunder/far": {
+      "kind": "impact",
+      "range": 5000,
+      "level": -14,
+      "vary": 0.04,
+      "want": "thunder rolling in the distance",
+      "prompts": [
+        {
+          "id": "v4-20210",
+          "models": [
+            "moss"
+          ],
+          "seed": 20210,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 10,
+          "text": "Distant thunder: a long low rolling rumble far away across the sky, one roll of thunder. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "whole": true
+    },
+    "thunder/roll": {
+      "kind": "impact",
+      "range": 4000,
+      "level": -10,
+      "vary": 0.04,
+      "want": "a long rolling thunderclap",
+      "prompts": [
+        {
+          "id": "v4-20220",
+          "models": [
+            "moss"
+          ],
+          "seed": 20220,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 12,
+          "text": "A loud thunderclap that booms and rolls on and on, rumbling across the sky, one thunderclap. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "whole": true
+    },
+    "lightning": {
+      "kind": "impact",
+      "range": 1500,
+      "level": -8,
+      "vary": 0.04,
+      "want": "the sizzling crack of a strike",
+      "prompts": [
+        {
+          "id": "v4-20230",
+          "models": [
+            "moss"
+          ],
+          "seed": 20230,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "Lightning strikes the ground nearby: a violent electric sizzle and an explosive crack, two separate strikes with long pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "rain/drizzle": {
+      "kind": "impact",
+      "range": 1,
+      "level": -26,
+      "vary": 0.04,
+      "want": "a light drizzle",
+      "prompts": [
+        {
+          "id": "v4-20240",
+          "models": [
+            "moss"
+          ],
+          "seed": 20240,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Light drizzle falling softly on leaves and grass, gentle steady patter. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "rain/leaves": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.04,
+      "want": "rain on jungle leaves",
+      "prompts": [
+        {
+          "id": "v4-20250",
+          "models": [
+            "moss"
+          ],
+          "seed": 20250,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "Steady rain pattering on big jungle leaves, dripping and splashing, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "rain/roof": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.04,
+      "want": "rain on a tin roof",
+      "prompts": [
+        {
+          "id": "v4-20260",
+          "models": [
+            "moss"
+          ],
+          "seed": 20260,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "Rain drumming on a corrugated tin roof, a steady metallic rattle and patter, heard from inside."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "rain/canvas": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.04,
+      "want": "rain on canvas and thatch",
+      "prompts": [
+        {
+          "id": "v4-20270",
+          "models": [
+            "moss"
+          ],
+          "seed": 20270,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Rain pattering on a canvas tent and a thatched roof, soft dull drumming, heard from inside, steady."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "rain/water": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.04,
+      "want": "rain on a lake",
+      "prompts": [
+        {
+          "id": "v4-20280",
+          "models": [
+            "moss"
+          ],
+          "seed": 20280,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Rain falling on the surface of a lake: a steady hiss of countless tiny splashes. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "rain/storm": {
+      "kind": "impact",
+      "range": 1,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a heavy storm",
+      "prompts": [
+        {
+          "id": "v4-20290",
+          "models": [
+            "moss"
+          ],
+          "seed": 20290,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A heavy downpour in a storm: roaring rain, gusting wind and water gushing, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "rain/drips": {
+      "kind": "impact",
+      "range": 1,
+      "level": -28,
+      "vary": 0.04,
+      "want": "drips after the rain",
+      "prompts": [
+        {
+          "id": "v4-20300",
+          "models": [
+            "moss"
+          ],
+          "seed": 20300,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Water dripping from leaves and roofs after rain: slow irregular drips and plinks into puddles, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "hail": {
+      "kind": "impact",
+      "range": 1,
+      "level": -22,
+      "vary": 0.04,
+      "want": "hail",
+      "prompts": [
+        {
+          "id": "v4-20310",
+          "models": [
+            "moss"
+          ],
+          "seed": 20310,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Hailstones pelting the ground and a roof: hard rattling clattering ice, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "wind/gust": {
+      "kind": "impact",
+      "range": 1,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a gust of wind",
+      "prompts": [
+        {
+          "id": "v4-20320",
+          "models": [
+            "moss"
+          ],
+          "seed": 20320,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 12,
+          "text": "A strong gust of wind rushes through trees and past, rising and falling away, three separate gusts with pauses. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "space": "ear"
+    },
+    "wind/gale": {
+      "kind": "impact",
+      "range": 1,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a howling gale",
+      "prompts": [
+        {
+          "id": "v4-20330",
+          "models": [
+            "moss"
+          ],
+          "seed": 20330,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A howling gale: wind moaning and whistling around rocks and buildings, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "blizzard": {
+      "kind": "impact",
+      "range": 1,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a blizzard",
+      "prompts": [
+        {
+          "id": "v4-20340",
+          "models": [
+            "moss"
+          ],
+          "seed": 20340,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A blizzard: roaring freezing wind driving snow and ice, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "sandstorm": {
+      "kind": "impact",
+      "range": 1,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a sandstorm",
+      "prompts": [
+        {
+          "id": "v4-20350",
+          "models": [
+            "moss"
+          ],
+          "seed": 20350,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A desert sandstorm: roaring wind with sand hissing and scouring over rocks, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    }
+  }
+}

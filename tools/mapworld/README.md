@@ -178,38 +178,51 @@ required city streets and interiors.
 
 ## Cars: wrecks and parked ones
 
-Today the street pass (`makeStreetPieces` in `ruins.ts`) puts a box assembly
-from `street.assemblies` on an 8 m grid, kept by a hash at `street.chance`, at a
-street's edge, in a yard or on a verge, turned 0 or 90 degrees. Its `car` is a
-`zcar` and a `zcab` box; San Francisco had 16,422 of them and 4,568 buses.
+A street's cars are the compact's own meshes: statics of the kinds
+`content/vehicles/wrecks.ts` makes, one piece each, standing on the ground with
+their yaw. A kind is a look and a paint. The looks are posed meshes, since a
+piece has only a yaw: abandoned (dusty, faded, a few knocks, on soft tyres),
+stripped (no wheels, steering wheel or driver's door, down on its sills), on its
+roof, burnt out, and burnt out on its side
+(`assets/source/core/vehicles/compact_abandoned/` and `compact_wreck/`). A
+painted look comes in the car's twelve paints, the static's colour dyeing its
+paint as the species' colour dyes the drivable car's. A kind's `shape` is its
+collider in the car's frame (origin on the ground under its middle, nose along
++z), so the far city draws its boxes and the prop checks take its size from it
+(`ruin-obstacles.ts`).
 
-Wrecks should be the car's own mesh: statics of wreck kinds such as
-`core:compact_wreck`, one piece each, set at the ground with yaw along the
-street. A wreck kind is a static whose `mesh` names the wreck's mesh and whose
-`shape` is its collider in the car's frame (origin on the ground under its
-middle, length along +z), so the piece's `y` is the ground and the far city
-draws its boxes. Tipped wrecks are kinds of their own, each its own posed mesh,
-since a piece has only a yaw. An assembly part would name a content id in place
-of a box shape, and the prop checks would take its size from the content.
+An assembly part `["car", u, 0, v, family, yaw]` is one car. Which kind it is
+comes from a hash of where it stands (`street-cars.ts`): a look by the weights of
+`street.cars.looks[family]` and a paint by `street.cars.paints`; in a cell where
+a fire went through, the family is `fire`. The street pass (`makeStreetPieces` in
+`ruins.ts`) keeps its 8 m grid and its hashes. Along a street an assembly faces
+the way traffic on its side runs, by the nearest centreline of
+`base/roads.geojson`, and a car or a bus is set in from the kerb, a few cars
+slewed out of line. On a verge a car has run off the road; in a yard it is parked
+in a row or left at any angle. A pile-up turns along its street, its cars nosed
+into each other either side of the gap left through it. Every piece stands clear
+of the pieces already set down, and a car on its own ground, level enough under
+every corner. Buses and trucks stay boxes until they have models.
 
 Cars a survivor can drive away go in `vehicles.json`
 (`[{ "kind": "core:compact", "x": 240, "z": 270, "yaw": 90 }]`, through the
 layers folder into the file's `VHCL`). The server parks each, owned by nobody,
-once in a new world; the save keeps it from then on. The rule for a point:
+once in a new world; the save keeps it from then on. `parkCars` in
+`street-cars.ts` chooses them by `street.cars.parked`:
 
-- On a street's lane: a local or secondary centreline of `base/roads.geojson`,
-  not a highway, ramp, path, bridge deck or tunnel, set in from the centreline to
-  the kerb on the right of travel and turned along it.
+- At the kerb on the right of travel of a centreline of the listed classes (local
+  and secondary streets and car parks' roads), turned along it, on street ground,
+  its room inside the map.
 - At least 15 m from a junction (a point two lines share, or a line's end).
-- Clear of every static's boxes and of the wrecks by the car's envelope, X ±0.9,
-  Y 0 to 1.5, Z ±2.0, plus 1 m, and plus the door room its seats need (entries at
-  X ±1.25); the plants are cleared round it as round a spawn point.
-- On dry street ground, its four wheels' heights giving a ground normal no
-  steeper than the kind's `minGroundNormal` (0.85 for the compact), with margin
-  enough to drive off.
+- Clear of every static's boxes, the wrecks' too, and of every reserved route, by
+  the car's envelope, X ±0.9, Y 0 to 1.5, Z ±2.0, plus 1 m, and plus the door room
+  its seats need (entries at X ±1.25); nothing grows on it.
+- On dry ground, its four wheels' heights giving a ground normal no steeper than
+  the kind's `minGroundNormal` (0.85 for the compact), with margin enough to
+  drive off.
 - A density per kilometre of such street in each district, clamped to a few per
-  district, the points chosen by a hash of the map's seed so every build is the
-  same, and spread apart.
+  district, the quietest streets first and then by a hash of the map's seed, and
+  spread apart. The build drops one within 40 m of a spawn point or an obelisk.
 
 The kinds and their sizes come from the compiled content: a vehicle's
 `spec` (half width, half length, height, wheelbase, track, ground limit) and its

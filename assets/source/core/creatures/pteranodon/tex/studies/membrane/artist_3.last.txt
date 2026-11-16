@@ -1,0 +1,3 @@
+Tidied the membrane study: archived unused files, added explicit ignore paths, and documented the 6.64 MiB repository contents in `REPORT.md`.
+
+Clean rebuild verified: all 15 delivered pictures are byte-for-byte identical. Existing checks remain unchanged.

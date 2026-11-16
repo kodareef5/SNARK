@@ -41,7 +41,8 @@
 | `round5.test.ts` | Round 5's exit condition as four stories: operator, live, client, catalogue |
 | `listen.test.ts` | The address a server listens on: a development server on this machine only, unless asked |
 | `contracts.test.ts` | The creature packages' places in a host: carrying, taking an egg and the new orders refused until built; a held creature left where its holder puts it |
-| `agent.test.ts`, `agent-play.test.ts` | An agent that plays, its tools called over the protocol: the protocol itself, the key file, observe, the tools that need no walking; then walking round the wall, a crate set down in the way, gathering, opening, and stopping for danger |
+| `agent.test.ts`, `agent-play.test.ts` | An agent that plays, its tools called over the protocol: both eras of the protocol, progress and cancellation, resources, the key file, observe, the tools that need no walking; then walking round the wall, a crate set down in the way, up stairs, gathering, opening, and stopping for danger |
+| `agent-ride.test.ts`, `agent-base.test.ts`, `agent-fight.test.ts`, `agent-tools.test.ts` | The agent's loop through its tools: a raptor tamed, saddled and ridden, a pteranodon flown and landed, a car driven; a hut built and a campfire, a mortar and a forge worked; a bow and a crossbow from range, armour, drinking, swimming and a stair flight; and the smaller tools' refusals |
 
 `fixtures/net.ts` runs a real server and real client sessions in one process on
 virtual time. Nothing is mocked. The determinism test is skipped with a message

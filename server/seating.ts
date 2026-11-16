@@ -55,7 +55,7 @@ export class Seating {
       const vehicle = world.reg.vehicle[ents.kind[e]!];
       const dx = p.x - ents.x[e]!, dz = p.z - ents.z[e]!;
       if (vehicle) {
-        const a = ents.vehicleYaw[e]!, co = Math.cos(a), sn = Math.sin(a);
+        const a = ents.vehicleYaw[ents.vrow[e]!]!, co = Math.cos(a), sn = Math.sin(a);
         const x = Math.max(0, Math.abs(co * dx - sn * dz) - vehicle.spec.halfWidth);
         const z = Math.max(0, Math.abs(sn * dx + co * dz) - vehicle.spec.halfLength);
         if (x * x + z * z < move.radius * move.radius) return false;

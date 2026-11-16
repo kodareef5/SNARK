@@ -1,7 +1,7 @@
 // What the client draws, held still while the way it finds its meshes changes underneath.
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
-import type { FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_PLAIN, type FramePacket } from "../../client/core/render/packet.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_SELF, CMD_MOVE, CMD_SELECT } from "../../shared/net/protocol.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -9,7 +9,7 @@ import { frozenPack } from "../fixtures/pack.ts";
 import { SADDLE, WORN, saddledFrozenPack } from "../fixtures/saddles.ts";
 
 /** Everything of a frame packet that names a mesh, a level, an instance or a bone. */
-function fold(hash: number, p: FramePacket): number {
+function fold(hash: number, p: FramePacket, plainMesh = -1): number {
   const mix = (v: number): void => {
     hash = Math.imul(hash ^ (v >>> 0), 16777619) >>> 0;
   };
@@ -20,7 +20,7 @@ function fold(hash: number, p: FramePacket): number {
     mix(p.drawBuffer[i]!);
     mix(p.drawFirst[i]!);
     mix(p.drawInstances[i]!);
-    mix(p.drawFlags[i]!);
+    mix(p.drawFlags[i]! & (p.drawMesh[i] === plainMesh ? ~DRAW_PLAIN : -1));
   }
   mix(p.transientCount);
   for (let i = 0; i < p.transientCount * 20; i++) mix(p.transient[i]!);
@@ -66,22 +66,28 @@ function scene(saddled = false) {
 /** Three hundred frames of the scene, hashed, and the meshes they drew by id. */
 function frames(saddled = false) {
   const { h, app, pack } = scene(saddled);
-  let hash = 2166136261;
+  let hash = 2166136261, beforePlain = 2166136261;
+  const grazer = pack.header.meshes.findIndex((m) => m.id === "core:grazer");
   let most = 0;
+  const counts = [0, 0, 0];
   const meshes = new Set<number>();
   for (let f = 0; f < 300; f++) {
     h.run(1000 / 60, (now) => {
       const p = app.frame(now, 1280, 720)!;
       hash = fold(hash, p);
+      beforePlain = fold(beforePlain, p, grazer);
       most = Math.max(most, p.drawCount);
+      counts[0]! += p.drawCount;
+      counts[1]! += p.triangles;
+      for (const u of [...p.uploads, ...p.assetUploads, ...p.texUploads]) counts[2]! += u.data.length;
       for (let i = 0; i < p.drawCount; i++) meshes.add(p.drawMesh[i]!);
     });
   }
-  return { hash: hash.toString(16), most, drawn: new Set([...meshes].map((m) => pack.header.meshes[m]!.id)) };
+  return { hash: hash.toString(16), beforePlain: beforePlain.toString(16), most, counts, drawn: new Set([...meshes].map((m) => pack.header.meshes[m]!.id)) };
 }
 
 test("three hundred frames of a busy scene draw what they drew before", () => {
-  const { hash, most, drawn } = frames();
+  const { hash, beforePlain, most, counts, drawn } = frames();
   // Bodies in parts, armor, a held weapon, creatures, a dummy, structures and nodes: a scene that uses the pack widely.
   const missing = ["core:human_m/head", "core:human_m/armor/hide/torso", "core:rifle", "core:mannequin/torso", "core:raptor", "core:parasaur", "core:grazer", "core:wall_metal", "core:storage_box", "core:campfire", "core:tree"].filter((id) => !drawn.has(id));
   expect(missing).toEqual([]);
@@ -133,9 +139,21 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // without the bin, its lit kind, its piece and its engram it is that again.
   // It was 52c8cbd9 until the refining forge's grey boxes (content/items/stations.ts, S1) numbered the meshes after them on;
   // without the forge, its item and engram and the two recipes fired at it it is that again.
-  // Koru's bounded static meshes renumber the pack. Removing only those meshes restores e73ea001 exactly.
-  // The sail control adds one grey-box mesh; removing only core:koru_sail_control restores d802fd91.
-  expect(hash).toBe("71fd49c1");
+  // It was e73ea001 until the street wrecks' kinds (content/vehicles/wrecks.ts) numbered the meshes after them on; without them it is that again.
+  // Rigid species on lit tiers now carry DRAW_PLAIN, keeping the world atlas off their palette draws. Only the
+  // grazer's flag changes in these medium-tier frames: clearing it reproduces the previous entire 300-frame pin.
+  // It was b8ace535, and 49a5944d, until the pteranodon's mesh became its own (content/creatures/pteranodon.ts) and no longer
+  // a grey box, which numbers the meshes after it anew; with its mesh a box again they are those again.
+  // They were aca29c81 and 291b6419, with 37,800 draws and 34,572,000 triangles, until chunks were drawn and cast by 16 m
+  // cell: a chunk's instances go up in the order of their cells, pieces and nodes in cells out of view are not drawn,
+  // and each casts at what the shadow filter blurs into the cascades its cells reach. Each of the 300 frames draws the
+  // picture it did (the rasterizer, which draws no shadows).
+  // They were 48ed7779 and 2d1c4611 until Koru's meshes numbered the pack's anew; without them they are those again.
+  expect(beforePlain).toBe("af5c7d01");
+  expect(hash).toBe("a6959c59");
+  // What the hash cannot say: the 300 frames' draws, triangles and bytes put on the card. A change that moves the hash
+  // and leaves the frames as they were leaves these.
+  expect(counts).toEqual([32700, 33985200, 0]);
 
   // The same scene with the raptor's box saddle in the pack and on the raptor (FL5), drawn on its bones wherever it is
   // seen. The saddle's mesh numbers the meshes after it on, so the pack that holds it is the frozen one with it added:
@@ -147,7 +165,11 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // It was 7d2d1185 until the vehicles' three road pieces' grey boxes (content/vehicles/roads.ts) numbered the meshes after them on; without the roads it is that again.
   // It was e48a2ec9 until the preserving bin's grey box (S3), as above; without the bin it is that again.
   // It was 32d21d3d until the refining forge's grey boxes (S1), as above; without the forge it is that again.
-  // The same Koru mesh-number change; excluding those meshes restores c7cb77a9.
-  // Removing only the new sail-control mesh also restores the saddled scene's d4e844a9 exactly.
-  expect(saddled.hash).toBe("f8aeaf69");
+  // It was c7cb77a9 until the street wrecks' kinds, as above; without them it is that again.
+  // They were d122e6e1 and c0721ce1 until the pteranodon's mesh became its own, as above, and a49f75cd and 40c252f5, with
+  // 38,100 draws and 34,590,000 triangles, until chunks were drawn by cell, as above.
+  // They were 9343af55 and 6a13306d until Koru's meshes, as above.
+  expect(saddled.beforePlain).toBe("60f5b9ed");
+  expect(saddled.hash).toBe("9b0c24f5");
+  expect(saddled.counts).toEqual([33000, 34003200, 0]);
 });

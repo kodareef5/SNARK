@@ -2,13 +2,16 @@
 // come back hard, each one's texts, the defines put before them, and the texture unit each of its samplers reads. A
 // WebGL2 shell compiles what is listed here, as given.
 
+import type { PackMaterial } from "../../../shared/pack/pack.ts";
 import type { TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "./atmosphere.ts";
 import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_VERTEX } from "./detailtext.ts";
 import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_FRAGMENT, LIT_SPLIT_FRAGMENT, PULLED_VERTEX } from "./glsl.ts";
+import { DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, type FramePacket } from "./packet.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
-import { SURFACE_VERTEX, surfaceFragment } from "./surface.ts";
+import { SURFACE_ANY, surfaceFragment, surfaceVertex, type SurfaceVariant } from "./surface.ts";
+import { worldVertex } from "./world-surfaces.ts";
 import { WATER_FRAGMENT } from "./water.ts";
 
 /**
@@ -41,44 +44,45 @@ const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };
  * A program of FLAT's vertex text: FLAT's fragment on low poly, and on a lit tier `lit`, which reads the sky table for
  * the haze and looks the sun's shadow up.
  */
-function flatOr(tier: Tier, hard: boolean, vertex: string, flat: string, lit: string, samplers: Record<string, number>): ProgramText {
+function flatOr(tier: Tier, format: TextureFormat, hard: boolean, vertex: string, flat: string, lit: string, samplers: Record<string, number>): ProgramText {
   if (!tier.lit) return { vertex, fragment: flat, defines: "", samplers };
-  return { vertex, fragment: lit, defines: shadowDefines(tier.shadows, hard), samplers: { ...samplers, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } };
+  return { vertex: worldVertex(vertex, "uHeight" in samplers), fragment: lit.replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), defines: shadowDefines(tier.shadows, hard), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } };
 }
 
-/**
- * The programs by name. A lit tier draws flat with LIT where low poly has FLAT, and draws the dome, "sky", where low
- * poly clears to its sky colour. The surface programs are made the first time a frame draws with materials, which low
- * poly never does, so they are lit alone, and the see-through one the first time a frame with a split draws something
- * see-through, which low poly does not either. The depth programs draw the sun's shadow maps.
- */
-export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureFormat, hard?: boolean) => ProgramText>> = {
-  flat: (tier, _, hard = false) => flatOr(tier, hard, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_FRAGMENT, MESH),
-  terrain: (tier, _, hard = false) => flatOr(tier, hard, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_FRAGMENT, GROUND),
+/** A SURFACE program of a variant: a material's maps on their units, and the masks and palette only where it is dyed. */
+function surface(tier: Tier, format: TextureFormat, hard: boolean, variant: SurfaceVariant): ProgramText {
+  const samplers: Record<string, number> = { uBones: UNIT.bones, uBase: UNIT.maps, uNormal: UNIT.maps + 1, uMro: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow };
+  if (variant.dyed) Object.assign(samplers, { uPalette: UNIT.palette, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4 });
+  if (variant.layered) samplers.uLayer = UNIT.layer;
+  return { vertex: surfaceVertex(variant), fragment: surfaceFragment(format, AIR, variant), defines: shadowDefines(tier.shadows, hard), samplers };
+}
+
+type Make = (tier: Tier, format: TextureFormat, hard?: boolean) => ProgramText;
+
+const MAKE = {
+  flat: (tier, format, hard = false) => flatOr(tier, format, hard, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_FRAGMENT, MESH),
+  terrain: (tier, format, hard = false) => flatOr(tier, format, hard, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_FRAGMENT, GROUND),
   // The same, for the tiles that read the window round the camera (terrain.ts).
-  terrainWindow: (tier, format, hard) => {
-    const t = PROGRAMS.terrain!(tier, format, hard);
+  terrainWindow: (tier, format, hard): ProgramText => {
+    const t = MAKE.terrain(tier, format, hard);
     return { ...t, samplers: { ...t.samplers, ...WINDOW } };
   },
   // See-through flat draws where the view is split in two depth ranges. A program of their own keeps the discard out of
   // the opaque draws, which some GPUs would then test for depth only after shading.
-  seeThrough: (tier, _, hard = false) => flatOr(tier, hard, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, LIT_SPLIT_FRAGMENT, MESH),
+  seeThrough: (tier, format, hard = false) => flatOr(tier, format, hard, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, LIT_SPLIT_FRAGMENT, MESH),
   // Far blocks (far.ts), which fade out over the last of their reach, and nodes in the hand-over between the near store
   // and the far one (hand.ts). A program of their own keeps the discard out of the rest.
-  far: (tier, _, hard = false) => flatOr(tier, hard, FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, MESH),
+  far: (tier, format, hard = false) => flatOr(tier, format, hard, FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, MESH),
   // Far nodes of every mesh in one draw (packet.ts DRAW_PULLED), their vertices read from the atlas.
-  pulled: (tier, _, hard = false) => flatOr(tier, hard, PULLED_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, { uPalette: UNIT.palette, uAtlas: UNIT.atlas }),
-  surface: (tier, format, hard = false) => ({
-    vertex: SURFACE_VERTEX,
-    fragment: surfaceFragment(format, AIR),
-    defines: shadowDefines(tier.shadows, hard),
-    samplers: { ...MESH, uBase: UNIT.maps, uNormal: UNIT.maps + 1, uMro: UNIT.maps + 2, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4, uSkyTable: UNIT.sky, uShadow: UNIT.shadow },
-  }),
+  pulled: (tier, format, hard = false) => flatOr(tier, format, hard, PULLED_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, { uPalette: UNIT.palette, uAtlas: UNIT.atlas }),
+  // A textured draw (surface.ts), dyed and able to drop fragments; and the same undyed, never dropping, or both, which
+  // `drawProgram` takes where a draw allows (SurfaceVariant).
+  surface: (tier, format, hard = false) => surface(tier, format, hard, SURFACE_ANY),
+  surfaceWhole: (tier, format, hard = false) => surface(tier, format, hard, { ...SURFACE_ANY, drops: false }),
+  surfaceUndyed: (tier, format, hard = false) => surface(tier, format, hard, { ...SURFACE_ANY, dyed: false }),
+  surfaceUndyedWhole: (tier, format, hard = false) => surface(tier, format, hard, { ...SURFACE_ANY, dyed: false, drops: false }),
   // The same for a body that is hurt or a corpse, which reads its layer too (packet.ts `drawLayer`). Only such a body is drawn with it.
-  surfaceLayer: (tier, format, hard = false) => {
-    const s = PROGRAMS.surface!(tier, format, hard);
-    return { ...s, fragment: surfaceFragment(format, AIR, true), samplers: { ...s.samplers, uLayer: UNIT.layer } };
-  },
+  surfaceLayer: (tier, format, hard = false) => surface(tier, format, hard, { ...SURFACE_ANY, layered: true }),
   // The dome, and over it the sky material's pictures on its units as a material's: the moon as its base colour and the cloud layers as its two masks.
   sky: () => ({ vertex: SKY_VERTEX, fragment: SKY_FRAGMENT, defines: "", samplers: { uSkyTable: UNIT.sky, uMoon: UNIT.maps, uLow: UNIT.maps + 3, uHigh: UNIT.maps + 4 } }),
   // The sea seen from above on a lit tier: the flat mesh's tiles, the waves as a material's two masks, the ground's heights to know how deep it is, and the sun's shadow.
@@ -98,4 +102,43 @@ export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureForma
   depthCutout: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_CUTOUT_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones, uBase: UNIT.maps } }),
   depthTerrain: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: GROUND }),
   depthTerrainWindow: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: { ...GROUND, ...WINDOW } }),
-};
+} satisfies Record<string, Make>;
+
+/**
+ * The programs by name. A lit tier draws flat with LIT where low poly has FLAT, and draws the dome, "sky", where low
+ * poly clears to its sky colour. Low poly never draws with materials, so the surface programs are lit alone, nor
+ * see-through with a split (`tierPrograms`). The depth programs draw the sun's shadow maps.
+ */
+export const PROGRAMS: Readonly<Record<string, Make>> = MAKE;
+/** Each program's number, its place in PROGRAMS: how a frame's draws name the one they are drawn with, and how a shell keeps them. */
+export const PROGRAM = Object.fromEntries(Object.keys(MAKE).map((name, n) => [name, n])) as Readonly<Record<keyof typeof MAKE, number>>;
+
+/** The programs low poly draws with: no materials, dome, sea or shadows. */
+const UNLIT = ["flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "details"];
+
+/** The programs a frame of `tier` may ask for, by number, which a shell may begin making before one does. */
+export function tierPrograms(tier: Tier): number[] {
+  return Object.keys(MAKE).flatMap((name, n) => ((tier.lit || UNLIT.includes(name)) && (name !== "seeThrough" || tier.split > 0) && (!name.startsWith("depth") || tier.shadows.size > 0) ? [n] : []));
+}
+
+/** The SURFACE programs by whether a draw is dyed, twice, and may drop fragments, once. */
+const SURFACES = [PROGRAM.surfaceUndyedWhole, PROGRAM.surfaceUndyed, PROGRAM.surfaceWhole, PROGRAM.surface] as const;
+
+/**
+ * The program draw `d` of a frame is drawn with, `material` its material where it has one. A textured draw is drawn
+ * undyed where its material has no masks, and by a program that never drops a fragment unless it is cut out or in a
+ * node's hand-over; a body with its layer by `surfaceLayer`.
+ */
+export function drawProgram(p: FramePacket, d: number, material: PackMaterial | undefined): number {
+  const flags = p.drawFlags[d]!;
+  const hand = p.drawHand[d]!;
+  if ((flags & DRAW_TEXTURED) !== 0) {
+    if (p.drawLayer[d]! > 0) return PROGRAM.surfaceLayer;
+    const dyed = !material || material.mask >= 0 || material.mask2 >= 0;
+    return SURFACES[(dyed ? 2 : 0) + (hand !== 0 || (flags & DRAW_CUTOUT) !== 0 ? 1 : 0)]!;
+  }
+  if ((flags & DRAW_PULLED) !== 0) return PROGRAM.pulled;
+  if (p.drawFade[d] !== 0 || hand !== 0) return PROGRAM.far;
+  if ((flags & DRAW_WATER) !== 0) return PROGRAM.water;
+  return (flags & DRAW_BLEND) !== 0 && p.split > 0 ? PROGRAM.seeThrough : PROGRAM.flat;
+}

@@ -1,0 +1,1054 @@
+{
+  "takes": {
+    "takes/call/moss-pt-8271-04125.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8270",
+      "prompt": "A giant crocodile gives deep guttural rumbling bellows, low and vibrating, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8271,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8271.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant crocodile gives deep guttural rumbling bellows, low and vibrating, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "6546fb3f499f34f6271b8f38d791d969c9990092b00246aedb0c6300741be132",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.0,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "da35c2a69962eb2f4c187377b9a6faa0d13b74b59c4b25336d769362c6ce51e1",
+      "cut": {
+        "source_file": "moss-pt-8271.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          195600,
+          255360
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-8270-00580.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8270",
+      "prompt": "A giant crocodile gives deep guttural rumbling bellows, low and vibrating, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8270,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8270.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant crocodile gives deep guttural rumbling bellows, low and vibrating, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 40.6,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "673b06962caf550ad08f6465bcf2fec1933ff0c8b846e9cae0e40ae219bef1b7",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.0,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "03309004c2f6ad5863dab76da0ec649e04f36a1d6f1e77db9aef319008a7c8ac",
+      "cut": {
+        "source_file": "moss-pt-8270.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          25439,
+          127680
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-8271-06265.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8270",
+      "prompt": "A giant crocodile gives deep guttural rumbling bellows, low and vibrating, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8271,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8271.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant crocodile gives deep guttural rumbling bellows, low and vibrating, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "0221c70c018f633aad730316d373d3ce9f3995ec341ee7b0015c657d029bb065",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.0,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "da35c2a69962eb2f4c187377b9a6faa0d13b74b59c4b25336d769362c6ce51e1",
+      "cut": {
+        "source_file": "moss-pt-8271.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          298320,
+          359040
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-8270-06055.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8270",
+      "prompt": "A giant crocodile gives deep guttural rumbling bellows, low and vibrating, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8270,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8270.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant crocodile gives deep guttural rumbling bellows, low and vibrating, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 40.6,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "984c1067aee3c7f5fa98b2ddf5913608c0bc70e8a3fafecba751db8714ae22e2",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.0,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "03309004c2f6ad5863dab76da0ec649e04f36a1d6f1e77db9aef319008a7c8ac",
+      "cut": {
+        "source_file": "moss-pt-8270.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          288240,
+          371040
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-8271-02040.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8270",
+      "prompt": "A giant crocodile gives deep guttural rumbling bellows, low and vibrating, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8271,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8271.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant crocodile gives deep guttural rumbling bellows, low and vibrating, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "36763b341f8538d745829c36849d6d84363453af557e7d466ad0525e1275bf67",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.0,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "da35c2a69962eb2f4c187377b9a6faa0d13b74b59c4b25336d769362c6ce51e1",
+      "cut": {
+        "source_file": "moss-pt-8271.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          95520,
+          154560
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-8270-03745.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8270",
+      "prompt": "A giant crocodile gives deep guttural rumbling bellows, low and vibrating, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8270,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8270.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant crocodile gives deep guttural rumbling bellows, low and vibrating, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 40.6,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "b430764ac22e863187402b7302cb33c37dbe7cc408c2202c4c9fd5aad76bf430",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.0,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "03309004c2f6ad5863dab76da0ec649e04f36a1d6f1e77db9aef319008a7c8ac",
+      "cut": {
+        "source_file": "moss-pt-8270.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          177360,
+          249840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-8280-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-8280",
+      "prompt": "A giant crocodile lets out a loud hissing roar, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8280,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8280.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant crocodile lets out a loud hissing roar, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "9de26e8a9701d826e2ef2d3a91348a808da670e1242fa4c23d08f0abe6255857",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.0,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "79825ab939773e56edbf95f97ec5f8978abd9c92738ae3cf94f017167923214c",
+      "cut": {
+        "source_file": "moss-pt-8280.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          84960
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-8280-06045.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-8280",
+      "prompt": "A giant crocodile lets out a loud hissing roar, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8280,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8280.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant crocodile lets out a loud hissing roar, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "83df4199ad560f1e118b8d0deed93a58cdc1bf48b214f04fed72b095571e5bbc",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.0,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "79825ab939773e56edbf95f97ec5f8978abd9c92738ae3cf94f017167923214c",
+      "cut": {
+        "source_file": "moss-pt-8280.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          287760,
+          379200
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-8290-05380.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-8290",
+      "prompt": "A giant crocodile hisses and grunts in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8290,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8290.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant crocodile hisses and grunts in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "cd5a6c4c415bf09621f4ee7f2069851b192d8eb092e81c529642f5301b4a5158",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.0,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "ac9c296cef3826ab2395ca72b2773458aeb7f31bb0397d288b7af91a58163443",
+      "cut": {
+        "source_file": "moss-pt-8290.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          255840,
+          332400
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-8290-00220.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-8290",
+      "prompt": "A giant crocodile hisses and grunts in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8290,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8290.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant crocodile hisses and grunts in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "af9d1690525f3dffe29e4f25261be9c78b0f224cf68beae8f5dd57f03ebcfed9",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.0,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "ac9c296cef3826ab2395ca72b2773458aeb7f31bb0397d288b7af91a58163443",
+      "cut": {
+        "source_file": "moss-pt-8290.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          8159,
+          69600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/death/moss-pt-8300-05030.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "death",
+      "prompt_id": "v2-8300",
+      "prompt": "A giant crocodile gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8300,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8300.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant crocodile gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "3793c789cd3ce8e784d8f2a02261262cdd7034b72b38f96efe9f6f7275e8861a",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.0,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "7f5a5a9d46ed693553c0710118bec2466837b3211dffb9416440313f5e49498f",
+      "cut": {
+        "source_file": "moss-pt-8300.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          239040,
+          347520
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/death/moss-pt-8300-00575.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "death",
+      "prompt_id": "v2-8300",
+      "prompt": "A giant crocodile gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8300,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8300.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant crocodile gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "966ef23c3806a07af92388dc837327686d31d5a696585115f35ab5e257725b8c",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.0,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "7f5a5a9d46ed693553c0710118bec2466837b3211dffb9416440313f5e49498f",
+      "cut": {
+        "source_file": "moss-pt-8300.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          25199,
+          135360
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-8310-02220.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-8310",
+      "prompt": "A giant crocodile: a giant crocodile snaps its jaws shut with a huge clap and a splash, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8310,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8310.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant crocodile: a giant crocodile snaps its jaws shut with a huge clap and a splash, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f105c5720da0bb2fff302109c5da39867d0aceee38cf57e82d310b8c9817e470",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.0,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b1e6cfc3e573d6f0486e23acbdf9f5cc107edb50d4c7bebd728445ec706e499f",
+      "cut": {
+        "source_file": "moss-pt-8310.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          104160,
+          153840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-8310-00010.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-8310",
+      "prompt": "A giant crocodile: a giant crocodile snaps its jaws shut with a huge clap and a splash, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8310,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8310.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant crocodile: a giant crocodile snaps its jaws shut with a huge clap and a splash, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "4879cf78d6c81d4919ef3c57cb8176f8c64d28ff1a812207884cc02838d33860",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.0,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b1e6cfc3e573d6f0486e23acbdf9f5cc107edb50d4c7bebd728445ec706e499f",
+      "cut": {
+        "source_file": "moss-pt-8310.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          49680
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    }
+  }
+}

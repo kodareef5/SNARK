@@ -1,10 +1,10 @@
-// Native helicopter packs must preserve the measured mechanical contract and every independent moving part.
+// Native helicopter packs must preserve the measured mechanical contract and every independent moving part. The fit of
+// real survivors in the cabin is helicopter-fit.slow.test.ts.
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { HELICOPTER_ART as H } from "../../content/vehicles/helicopter-art.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { bothWays, measureSurface } from "../../tools/art/check.ts";
-import { auditHelicopterFit } from "../../tools/art/helicopter-fit.ts";
 import { unpackMeshes } from "../../tools/pack/write.ts";
 
 const ids = ["helicopter", "helicopter_rescue", "helicopter_police", "helicopter_wreck"];
@@ -91,15 +91,3 @@ test("liveries share geometry and cabin/trim materials; the bent wreck has its o
   };
   expect(mainHeight(wreck)).toBeLessThan(mainHeight(intact) - .25);
 });
-
-test("real survivor bodies, every armor set and hair fit across proportion extremes and continuous body/look bounds", () => {
-  const report = auditHelicopterFit();
-  expect(report.pointsTested).toBeGreaterThan(3_000_000);
-  expect(report.failures).toEqual([]);
-  expect(report.pilotProfiles).toBe(158);
-  expect(report.gripResidual).toBeLessThan(.001);
-  expect(report.controlsWorst.margin).toBeGreaterThan(.04);
-  expect(report.worst.margin).toBeGreaterThan(.04);
-  // Angle-times-radius covers the unsampled looks between sweep grid points, so corner poses alone cannot hide a breach.
-  expect(report.headWorst.margin - report.headMotionAllowance).toBeGreaterThan(.04);
-}, 15_000);

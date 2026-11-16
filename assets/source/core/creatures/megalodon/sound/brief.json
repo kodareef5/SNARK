@@ -21,8 +21,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Underwater: a giant shark swims past, a deep surging whoosh of water and a low rumble, three separate passes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6710",
+          "models": [
+            "moss"
+          ],
+          "seed": 6710,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Underwater: a giant shark swims past, a deep surging whoosh of water and a low rumble, three separate passes with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "startled": {
       "kind": "voice",
@@ -41,8 +53,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "Underwater: a giant shark thrashes suddenly, a violent churning surge of water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6720",
+          "models": [
+            "moss"
+          ],
+          "seed": 6720,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Underwater: a giant shark thrashes suddenly, a violent churning surge of water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "hurt": {
       "kind": "voice",
@@ -61,8 +85,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "Underwater: a giant shark is struck and thrashes, muffled churning water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6740",
+          "models": [
+            "moss"
+          ],
+          "seed": 6740,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Underwater: a giant shark is struck and thrashes, muffled churning water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "death": {
       "kind": "voice",
@@ -101,8 +137,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A giant shark bites: a huge crunching snap of jaws and churning splash, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6730",
+          "models": [
+            "moss"
+          ],
+          "seed": 6730,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A giant shark bites: a huge crunching snap of jaws and churning splash, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "step": {
       "kind": "step",
@@ -121,8 +169,62 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "Underwater: a large fish tail sweeps the water, soft deep swooshes, several separate strokes. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6750",
+          "models": [
+            "moss"
+          ],
+          "seed": 6750,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Underwater: a large fish tail sweeps the water, soft deep swooshes, several separate strokes. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
+    },
+    "chase": {
+      "kind": "voice",
+      "range": 80,
+      "level": -18,
+      "vary": 0.6,
+      "want": "barks, calls and hisses while chasing",
+      "prompts": [
+        {
+          "id": "v2-6760",
+          "models": [
+            "moss"
+          ],
+          "seed": 6760,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Underwater: a giant shark surges after prey, rushing churning water and a deep thrum, four separate surges with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 8
+    },
+    "growl": {
+      "kind": "voice",
+      "range": 48,
+      "level": -20,
+      "vary": 0.5,
+      "want": "a warning growl, aggressive and near",
+      "prompts": [
+        {
+          "id": "v2-6770",
+          "models": [
+            "moss"
+          ],
+          "seed": 6770,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Underwater: a deep low thrumming pulse of a giant shark circling, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
     }
   }
 }

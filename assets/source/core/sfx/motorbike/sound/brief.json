@@ -1,0 +1,192 @@
+{
+  "asset": "core/sfx/motorbike",
+  "review": "../ref/sound",
+  "about": "Motorbikes: a twin by revs, the start, stop, revs, gear clicks and the horn.",
+  "notes": "v3 (vehicle round). Engine layers are 20 s beds cut to loop, played faster or slower by rpm; slot names match core:vehicle's, so a vehicle of this family is heard by them first and by core:vehicle for the rest.",
+  "slots": {
+    "engine/idle": {
+      "kind": "impact",
+      "range": 60,
+      "level": -20,
+      "vary": 0.0,
+      "want": "the motorbike engine idling",
+      "prompts": [
+        {
+          "id": "v3-10200",
+          "models": [
+            "moss"
+          ],
+          "seed": 10200,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A motorcycle's twin-cylinder engine idles: a lumpy uneven burble from the exhaust, constant. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/low": {
+      "kind": "impact",
+      "range": 90,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the motorbike engine at low revs",
+      "prompts": [
+        {
+          "id": "v3-10210",
+          "models": [
+            "moss"
+          ],
+          "seed": 10210,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A motorcycle rides at low revs: a steady deep thrumming exhaust note, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/mid": {
+      "kind": "impact",
+      "range": 120,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the motorbike engine at middle revs",
+      "prompts": [
+        {
+          "id": "v3-10220",
+          "models": [
+            "moss"
+          ],
+          "seed": 10220,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A motorcycle rides at middle revs: a strong steady snarling exhaust drone, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/high": {
+      "kind": "impact",
+      "range": 150,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the motorbike engine at full power",
+      "prompts": [
+        {
+          "id": "v3-10230",
+          "models": [
+            "moss"
+          ],
+          "seed": 10230,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A motorcycle rides near its redline: a loud screaming high-pitched howl, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/start": {
+      "kind": "impact",
+      "range": 60,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the starter and the engine barking into life",
+      "prompts": [
+        {
+          "id": "v3-10240",
+          "models": [
+            "moss"
+          ],
+          "seed": 10240,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A motorcycle is started: the electric starter whirs briefly and the engine barks into life with a blip of the throttle, three separate starts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "engine/stop": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the engine switched off",
+      "prompts": [
+        {
+          "id": "v3-10250",
+          "models": [
+            "moss"
+          ],
+          "seed": 10250,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A motorcycle's engine is switched off: it cuts out with a last pop from the exhaust, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "engine/rev": {
+      "kind": "impact",
+      "range": 120,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the engine revved standing",
+      "prompts": [
+        {
+          "id": "v3-10260",
+          "models": [
+            "moss"
+          ],
+          "seed": 10260,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A motorcycle's engine is revved hard while standing: a sharp rising snarl and a crackling fall, four separate revs with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "shift": {
+      "kind": "impact",
+      "range": 15,
+      "level": -22,
+      "vary": 0.0,
+      "want": "a gear change",
+      "prompts": [
+        {
+          "id": "v3-10270",
+          "models": [
+            "moss"
+          ],
+          "seed": 10270,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A motorcycle's gearbox clicks into gear with a solid mechanical clunk, six separate shifts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "horn": {
+      "kind": "impact",
+      "range": 100,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the motorbike's horn",
+      "prompts": [
+        {
+          "id": "v3-10280",
+          "models": [
+            "moss"
+          ],
+          "seed": 10280,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A motorcycle's small electric horn beeps, short and long beeps, four separate beeps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

@@ -1,6 +1,6 @@
 // An id that was renamed: a save, a ledger and a settings file that still use it read as if they used the new one.
 import { afterAll, expect, test } from "bun:test";
-import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CORE_CONTENT, CORE_PACK } from "../../content/core.ts";
@@ -8,7 +8,6 @@ import { Lists } from "../../server/settings/lists.ts";
 import { Rules } from "../../server/settings/rules.ts";
 import { compilePacks, type DefPatch } from "../../shared/content/packs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
-import { RESULT_DENIED, RESULT_OK } from "../../shared/net/protocol.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-renames-"));
@@ -93,39 +92,4 @@ test("a rename must lead somewhere that exists, once, and to one kind of thing",
   expect(bad({ id: "t:old", type: "rename", to: [] })).toEqual([]);
   expect(bad({ id: "t:old", type: "rename" })).toEqual(['t:old: class rename must declare "to"']);
   expect(bad({ id: "t:old", type: "rename", to: "t:new" })).toEqual(['t:old: "to" must be a list']);
-});
-
-/**
- * A save made by the code as it was before content was realigned (commit ea95969): a survivor at level 100 who has learned
- * the spear, the pick, hide armor, cloth armor and the wooden wall, with three spears and a hide hat being made. Then a
- * recipe was a definition of its own, "core:make-spear", and the job names it.
- */
-const BEFORE_REALIGNMENT = join(import.meta.dir, "../fixtures/saves/before-realignment.db");
-const ADA = 1099511627777;
-
-test("a save from before recipes became part of their items goes on making what it was making", () => {
-  const db = join(dir, "before.db");
-  copyFileSync(BEFORE_REALIGNMENT, db);
-  const h = new Harness({}, 1, 60, { dbPath: db });
-  const id = (name: string): number => h.reg.index.get(`core:${name}`)!;
-  const rec = h.host.records.byPid.get(ADA)!;
-  // Only the ingot's engram, which the stations wave took out (planning/reference/stations-plan.md, Decided 2), is gone,
-  // and nothing in the save uses it: ada never learned it.
-  expect(h.host.persistence!.store.missingContent).toEqual(["core:engram-ingot"]);
-  expect(rec.jobs.map((j) => [h.reg.ids[j.item], j.left])).toEqual([["core:spear", 3], ["core:hide_hat", 1]]);
-  expect(h.host.items.audit()).toEqual([]);
-  // It knew hide armor and cloth armor as a set each. Each is now five engrams, and it knows all ten.
-  const known = rec.engrams.map((e) => h.reg.ids[e]!);
-  expect(known.filter((e) => e === "core:engram-spear" || e === "core:engram-piece_wall_wood")).toEqual(["core:engram-spear", "core:engram-piece_wall_wood"]);
-  for (const tier of ["hide", "cloth"]) for (const piece of ["hat", "shirt", "gloves", "pants", "boots"]) expect([`${tier}_${piece}`, known.includes(`core:engram-${tier}_${piece}`)]).toEqual([`${tier}_${piece}`, true]);
-  expect(known.length).toBe(13);
-  h.run(60000);
-  expect(h.host.progression.craft(rec, id("hide_shirt"), 1)).toBe(RESULT_OK);
-  // Flak it never knew (flak is made at the smithy since S6, so the hand refuses it whatever is known).
-  expect([h.host.progression.knows(rec, id("engram-flak_shirt")), h.host.progression.craft(rec, id("flak_shirt"), 1)]).toEqual([false, RESULT_DENIED]);
-  h.run(10000);
-  expect(rec.inv!.total(id("hide_shirt"))).toBe(1);
-  expect([rec.inv!.total(id("spear")), rec.inv!.total(id("hide_hat")), rec.jobs.length]).toEqual([3, 1, 0]);
-  expect(h.host.items.audit()).toEqual([]);
-  h.host.shutdown();
 });

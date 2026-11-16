@@ -21,8 +21,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "A giant spider clicks its mandibles and chitters softly, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6430",
+          "models": [
+            "moss"
+          ],
+          "seed": 6430,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A giant spider clicks its mandibles and chitters softly, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "startled": {
       "kind": "voice",
@@ -41,8 +53,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A giant spider hisses loudly and screeches, three separate hisses with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6440",
+          "models": [
+            "moss"
+          ],
+          "seed": 6440,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A giant spider hisses loudly and screeches, three separate hisses with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "hurt": {
       "kind": "voice",
@@ -61,8 +85,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A giant insect screeches and hisses in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6460",
+          "models": [
+            "moss"
+          ],
+          "seed": 6460,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A giant insect screeches and hisses in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "death": {
       "kind": "voice",
@@ -101,8 +137,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A giant spider lunges and bites: a wet crunching snap and a hiss, five separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6450",
+          "models": [
+            "moss"
+          ],
+          "seed": 6450,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A giant spider lunges and bites: a wet crunching snap and a hiss, five separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "step": {
       "kind": "step",
@@ -121,8 +169,62 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "Many hard insect legs patter and skitter across stone: fast clicking scuttling, separate bursts. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6470",
+          "models": [
+            "moss"
+          ],
+          "seed": 6470,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Many hard insect legs patter and skitter across stone: fast clicking scuttling, separate bursts. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
+    },
+    "chase": {
+      "kind": "voice",
+      "range": 50,
+      "level": -20,
+      "vary": 0.6,
+      "want": "barks, calls and hisses while chasing",
+      "prompts": [
+        {
+          "id": "v2-6480",
+          "models": [
+            "moss"
+          ],
+          "seed": 6480,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A giant spider rushes forward: fast clicking mandibles and sharp hisses, five separate bursts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 8
+    },
+    "growl": {
+      "kind": "voice",
+      "range": 30,
+      "level": -22,
+      "vary": 0.5,
+      "want": "a warning growl, aggressive and near",
+      "prompts": [
+        {
+          "id": "v2-6490",
+          "models": [
+            "moss"
+          ],
+          "seed": 6490,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A giant spider hisses slowly and clicks its fangs, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
     }
   }
 }

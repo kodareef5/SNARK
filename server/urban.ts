@@ -54,17 +54,16 @@ const MAX_HOSTS = 1 << 16;
 const MAX_ACTORS = 1 << 16;
 /** Namespaced extension, preserved by the normal record codec even in builds without vehicles. */
 const VEHICLE_COMPONENT = 0x757262;
-/** One preserved unreadable component, bounded by the record codec's ordinary part limit. */
-const VEHICLE_QUARANTINE = 0x757263;
 /**
- * The saved component, little-endian: version u8 (4), these fields as f32 in this order, then whether it stands on its
- * wheels u8. Versions 1 to 3 held the first 6, 13 and 16 and are read. A field added goes at the end, after the wheels
- * byte, as version 5, and restoreSaved gives an older component that field's parked default.
+ * The saved component, little-endian: a version u8 (4 wheeled, 5 rotor, 6 boat), these fields as f32 in this order and
+ * whether it stands on its wheels u8, then for a rotor or a boat its own fields as f32 and whether its engine runs u8.
  */
 const VEHICLE_FIELDS = ["vehicleYaw", "vehiclePitch", "vehicleRoll", "steering", "wheelAngle", "fuel", "vehicleYawRate", "vehiclePitchRate", "vehicleRollRate", "vehicleGroundPitch", "vehicleGroundRoll", "vehicleRideOffset", "vehicleRideVelocity", "vx", "vy", "vz", "vehicleGear", "vehicleRpm", "vehicleShiftTime", "vehiclePayloadMass"] as const;
 const ROTOR_FIELDS = ["vehicleRotorRpm", "vehicleRotorPhase", "vehicleEngineCondition", "vehicleRotorCondition", "vehicleQx", "vehicleQy", "vehicleQz", "vehicleQw", "vehicleCollective"] as const;
 const BOAT_FIELDS = ["vehicleEngineCondition", "vehicleQx", "vehicleQy", "vehicleQz", "vehicleQw", "vehicleFlooding"] as const;
 const V4_BYTES = 2 + VEHICLE_FIELDS.length * 4;
+const formOf = (movement: VehicleDefinition['movement']): { version: number; extra: readonly (typeof ROTOR_FIELDS[number] | typeof BOAT_FIELDS[number])[] } =>
+  movement === 'rotor' ? { version: 5, extra: ROTOR_FIELDS } : movement === 'boat' ? { version: 6, extra: BOAT_FIELDS } : { version: 4, extra: [] };
 const PLAIN = defaultLook();
 /** How often a car at rest that nobody drives is stepped, to find the ground gone from under it. */
 const REST_TICKS = 30;
@@ -77,7 +76,6 @@ export class Urban {
   private readonly ctx: UrbanContext;
   private readonly hosts = new Map<number, HostSeat>();
   private readonly scopes = new Map<number, Scope>();
-  private readonly preserveComponent = new Set<number>();
   /** The entities sessions drive this tick. */
   private readonly drivers = new Set<number>();
   /** The bytes a car's mechanical component would be saved as, made again each tick without allocating. */
@@ -87,6 +85,8 @@ export class Urban {
   private readonly opening = new Map<number, number>();
   private epochs = 0;
   private readonly body = new Body();
+  /** A vehicle's state as `save` reads it. */
+  private readonly saved = new Body();
   private readonly pose = new Pose(HUMAN_BONES);
   private readonly solved = new Solved(HUMAN_BONES);
   private readonly motion = createMountMotion();
@@ -156,10 +156,10 @@ export class Urban {
       if (saved) this.restoreSaved(pid, saved, definition);
       ents.storeBody(e, this.body);
     }
-    ents.vehiclePayloadMass[e] = Math.fround(this.payloadMass(e));
+    ents.vehiclePayloadMass[ents.vrow[e]!] = Math.fround(this.payloadMass(e));
     if (isBoatVehicle(definition)) {
       const rec = this.ctx.records.byPid.get(pid);
-      ents.vehicleHullCondition[e] = Math.fround(rec?.vitals ? Math.max(0, Math.min(1, rec.vitals.at(V_HEALTH, world.tick) / Math.max(1, rec.vitals.max[V_HEALTH]!))) : 1);
+      ents.vehicleHullCondition[ents.vrow[e]!] = Math.fround(rec?.vitals ? Math.max(0, Math.min(1, rec.vitals.at(V_HEALTH, world.tick) / Math.max(1, rec.vitals.max[V_HEALTH]!))) : 1);
     }
     this.note(this.hosts.get(pid)!);
     world.history.track(e);
@@ -167,31 +167,16 @@ export class Urban {
     return true;
   }
 
-  /** Reads a saved component into `this.body`. A save from another build or a retuned
-   * definition must never stop the world loading: unreadable components keep the parked
-   * defaults, and readable ones are clamped to the current definition.
-   */
+  /** Reads a saved component into `this.body`, clamped to the current definition, which settings may have retuned. */
   private restoreSaved(pid: number, saved: Uint8Array, definition: VehicleDefinition): void {
-    const b = this.body, version = saved[0]!;
-    const count = version === 1 ? 6 : version === 2 ? 13 : version === 3 ? 16 : version === 4 || version === 5 || version === 6 ? VEHICLE_FIELDS.length : 0;
-    const extraFields = version === 5 ? ROTOR_FIELDS : version === 6 ? BOAT_FIELDS : [];
-    const size = 1 + count * 4 + (version >= 3 ? 1 : 0) + (extraFields.length ? extraFields.length * 4 + 1 : 0);
-    if (!count || saved.length !== size) {
-      this.quarantine(pid, saved, `version ${version} (${saved.length} bytes)`);
-      return;
-    }
+    const b = this.body, { version, extra } = formOf(definition.movement), size = V4_BYTES + (extra.length ? extra.length * 4 + 1 : 0);
+    if (saved[0] !== version || saved.length !== size) throw new Error(`vehicle ${pid}: its saved state is version ${saved[0]} in ${saved.length} bytes, and this build reads version ${version} in ${size}`);
     const view = new DataView(saved.buffer, saved.byteOffset, saved.byteLength);
-    const values = Array.from({ length: count }, (_, i) => view.getFloat32(1 + i * 4, true));
-    const rotor = extraFields.map((_, i) => view.getFloat32(V4_BYTES + i * 4, true));
-    if (!values.every(Number.isFinite) || !rotor.every(Number.isFinite) || (version >= 3 && saved[1 + count * 4]! > 1) || (version >= 5 && saved[saved.length - 1]! > 1)) {
-      this.quarantine(pid, saved, 'invalid numeric or contact state');
-      return;
-    }
-    for (let i = 0; i < count; i++) b[VEHICLE_FIELDS[i]!] = values[i]!;
-    if (version === 1) { b.vehicleGroundPitch = b.vehiclePitch; b.vehicleGroundRoll = b.vehicleRoll; }
-    if (version >= 3) b.grounded = saved[1 + count * 4]! !== 0;
-    // Earlier components stored a parked pose without translational velocity.
-    else b.vehicleYawRate = b.vehiclePitchRate = b.vehicleRollRate = b.vehicleRideVelocity = 0;
+    const values = VEHICLE_FIELDS.map((_, i) => view.getFloat32(1 + i * 4, true));
+    const rotor = extra.map((_, i) => view.getFloat32(V4_BYTES + i * 4, true));
+    if (!values.every(Number.isFinite) || !rotor.every(Number.isFinite) || saved[V4_BYTES - 1]! > 1 || saved[size - 1]! > 1) throw new Error(`vehicle ${pid}: its saved state is unreadable`);
+    for (let i = 0; i < VEHICLE_FIELDS.length; i++) b[VEHICLE_FIELDS[i]!] = values[i]!;
+    b.grounded = saved[V4_BYTES - 1]! !== 0;
     const clampTo = (v: number, lo: number, hi: number): number => Math.fround(Math.min(hi, Math.max(lo, v)));
     const train = isWheelVehicle(definition) ? definition.spec.drivetrain : undefined;
     const spec = definition.spec, travel = isWheelVehicle(definition) ? definition.spec.suspensionTravel ?? .18 : 0;
@@ -219,19 +204,17 @@ export class Urban {
       b.vy = clampTo(b.vy, -60, 60);
     }
     b.fuel = clampTo(b.fuel, 0, definition.spec.fuelCapacity);
-    if (version >= 4) {
-      b.vehicleGear = Math.round(clampTo(b.vehicleGear, -1, isBoatVehicle(definition) ? 1 : train?.forwardRatios.length ?? 12));
-      b.vehicleRpm = clampTo(b.vehicleRpm, 0, isBoatVehicle(definition) ? definition.spec.maxRpm : train?.redlineRpm ?? 32767);
-      b.vehicleShiftTime = clampTo(b.vehicleShiftTime, 0, isBoatVehicle(definition) ? definition.spec.shiftDelay : train?.shiftCooldown ?? 1);
-      // Payload is recomputed from records right after loading.
-      b.vehiclePayloadMass = 0;
-    }
-    if (version === 5) {
-      b.vehicleRotorRpm = clampTo(rotor[0]!, 0, isRotorVehicle(definition) ? definition.spec.rotorRpm : 0);
+    b.vehicleGear = Math.round(clampTo(b.vehicleGear, -1, isBoatVehicle(definition) ? 1 : train?.forwardRatios.length ?? 12));
+    b.vehicleRpm = clampTo(b.vehicleRpm, 0, isBoatVehicle(definition) ? definition.spec.maxRpm : train?.redlineRpm ?? 32767);
+    b.vehicleShiftTime = clampTo(b.vehicleShiftTime, 0, isBoatVehicle(definition) ? definition.spec.shiftDelay : train?.shiftCooldown ?? 1);
+    // Payload is recomputed from records right after loading.
+    b.vehiclePayloadMass = 0;
+    if (isRotorVehicle(definition)) {
+      b.vehicleRotorRpm = clampTo(rotor[0]!, 0, definition.spec.rotorRpm);
       b.vehicleRotorPhase = wrapped(rotor[1]!);
       b.vehicleEngineCondition = clampTo(rotor[2]!, 0, 1);
       b.vehicleRotorCondition = clampTo(rotor[3]!, 0, 1);
-      b.vehicleEngineOn = isRotorVehicle(definition) && saved[saved.length - 1] === 1;
+      b.vehicleEngineOn = saved[size - 1] === 1;
       const norm = Math.hypot(rotor[4]!, rotor[5]!, rotor[6]!, rotor[7]!);
       if (norm > 1e-6) {
         b.vehicleQx = Math.fround(rotor[4]! / norm); b.vehicleQy = Math.fround(rotor[5]! / norm);
@@ -239,33 +222,20 @@ export class Urban {
       } else { b.vehicleQx = b.vehicleQz = 0; b.vehicleQy = Math.fround(Math.sin(b.vehicleYaw / 2)); b.vehicleQw = Math.fround(Math.cos(b.vehicleYaw / 2)); }
       b.vehicleCollective = clampTo(rotor[8]!, 0, 1);
     }
-    if (version === 6) {
+    if (isBoatVehicle(definition)) {
       b.vehicleEngineCondition = clampTo(rotor[0]!, 0, 1);
       b.vehicleFlooding = clampTo(rotor[5]!, 0, 1);
-      b.vehicleEngineOn = isBoatVehicle(definition) && saved[saved.length - 1] === 1;
+      b.vehicleEngineOn = saved[size - 1] === 1;
       const norm = Math.hypot(rotor[1]!, rotor[2]!, rotor[3]!, rotor[4]!);
       if (norm > 1e-6) { b.vehicleQx = Math.fround(rotor[1]! / norm); b.vehicleQy = Math.fround(rotor[2]! / norm); b.vehicleQz = Math.fround(rotor[3]! / norm); b.vehicleQw = Math.fround(rotor[4]! / norm); }
     }
-    if (version < 5 && !isWheelVehicle(definition)) { b.vehicleQx = b.vehicleQz = 0; b.vehicleQy = Math.fround(Math.sin(b.vehicleYaw / 2)); b.vehicleQw = Math.fround(Math.cos(b.vehicleYaw / 2)); }
     b.yaw = Math.round(b.vehicleYaw * 65536 / TAU) & 65535;
-  }
-
-  private quarantine(pid: number, saved: Uint8Array, reason: string): void {
-    const rec = this.ctx.records.byPid.get(pid);
-    if (!rec) return;
-    const old = rec.extra.get(VEHICLE_QUARANTINE);
-    if (!old) rec.extra.set(VEHICLE_QUARANTINE, saved);
-    else if (old.length !== saved.length || !old.every((n, i) => saved[i] === n)) this.preserveComponent.add(pid);
-    // If a second different unreadable component arrives, keep both existing blobs;
-    // this incarnation runs parked defaults without replacing the current component.
-    console.warn(`vehicle ${pid}: preserved unreadable ${reason}; using parked defaults${this.preserveComponent.has(pid) ? ' without saving mechanical updates' : ''}`);
-    this.ctx.records.dirty.add(pid);
   }
 
   private note(host: HostSeat): void {
     const ents = this.ctx.world.ents, e = host.entity;
     host.last.x = ents.x[e]!; host.last.z = ents.z[e]!;
-    host.last.y = ents.y[e]! - ((ents.flags[e]! & F_GROUNDED) !== 0 ? ents.vehicleRideOffset[e]! : 0);
+    host.last.y = ents.y[e]! - ((ents.flags[e]! & F_GROUNDED) !== 0 ? ents.vehicleRideOffset[ents.vrow[e]!]! : 0);
     host.last.vx = ents.vx[e]!; host.last.vy = ents.vy[e]!; host.last.vz = ents.vz[e]!;
   }
 
@@ -291,7 +261,6 @@ export class Urban {
       if (c) c.ownDirty = true;
     }
     this.hosts.delete(pid);
-    this.preserveComponent.delete(pid);
     this.impacts.delete(pid); this.hurtAt.delete(pid); this.health.delete(pid);
   }
 
@@ -395,7 +364,7 @@ export class Urban {
     for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) for (let car = ents.chunkHead[cz * world.dims.chunksX + cx]!; car >= 0; car = ents.next[car]!) {
       const host = this.hosts.get(ents.pid[car]!);
       if (!host || host.entity !== car || car === e) continue;
-      const spec = host.definition.spec, a = ents.vehicleYaw[car]!, dx = ents.x[e]! - ents.x[car]!, dz = ents.z[e]! - ents.z[car]!;
+      const spec = host.definition.spec, a = ents.vehicleYaw[ents.vrow[car]!]!, dx = ents.x[e]! - ents.x[car]!, dz = ents.z[e]! - ents.z[car]!;
       const x = Math.abs(Math.cos(a) * dx - Math.sin(a) * dz) - spec.halfWidth, z = Math.abs(Math.sin(a) * dx + Math.cos(a) * dz) - spec.halfLength;
       const outside = Math.max(0, x) ** 2 + Math.max(0, z) ** 2 >= p.radius * p.radius;
       if (outside || ents.y[e]! >= ents.y[car]! + spec.height || ents.y[e]! + p.height <= ents.y[car]! - spec.height) continue;
@@ -455,7 +424,7 @@ export class Urban {
   }
 
   private applyImpact(host: HostSeat): boolean {
-    const { world, records } = this.ctx, ents = world.ents, e = host.entity, pid = ents.pid[e]!;
+    const { world, records } = this.ctx, ents = world.ents, e = host.entity, pid = ents.pid[e]!, v = ents.vrow[e]!;
     const report = this.impacts.get(pid);
     this.impacts.delete(pid);
     if (!report || isWheelVehicle(host.definition)) return true;
@@ -465,22 +434,22 @@ export class Urban {
     const speed = Math.max(0, report.speed - (boat ? 3 : 5), report.landing - 6);
     const fresh = world.tick - (this.hurtAt.get(pid) ?? -1000) >= 12;
     let damage = fresh ? speed * speed * 7 : 0;
-    if (!boat && report.rotor && fresh && ents.vehicleRotorRpm[e]! > 30) {
-      ents.vehicleRotorCondition[e] = Math.fround(Math.max(0, ents.vehicleRotorCondition[e]! - .2 - speed * .025));
+    if (!boat && report.rotor && fresh && ents.vehicleRotorRpm[v]! > 30) {
+      ents.vehicleRotorCondition[v] = Math.fround(Math.max(0, ents.vehicleRotorCondition[v]! - .2 - speed * .025));
       damage += 45 + speed * 8;
     }
     if (boat && report.prop && fresh) {
-      ents.vehicleEngineCondition[e] = Math.fround(Math.max(0, ents.vehicleEngineCondition[e]! - .12 - speed * .025));
+      ents.vehicleEngineCondition[v] = Math.fround(Math.max(0, ents.vehicleEngineCondition[v]! - .12 - speed * .025));
       damage += 20 + speed * 6;
     }
     if (!boat && report.water) {
-      ents.vehicleEngineOn[e] = 0;
-      ents.vehicleEngineCondition[e] = 0;
+      ents.vehicleEngineOn[v] = 0;
+      ents.vehicleEngineCondition[v] = 0;
       if (fresh) damage += 110;
     }
     if (damage > 0) {
       this.hurtAt.set(pid, world.tick);
-      ents.vehicleEngineCondition[e] = Math.fround(Math.max(0, ents.vehicleEngineCondition[e]! - damage / 7000));
+      ents.vehicleEngineCondition[v] = Math.fround(Math.max(0, ents.vehicleEngineCondition[v]! - damage / 7000));
       this.note(host);
       this.ctx.damage?.(rec, damage, this.riderOf(e)?.pid ?? 0);
       if (this.entity(pid) !== e) { this.evict(pid); return false; }
@@ -559,14 +528,15 @@ export class Urban {
       // Destroyed, removed or recycled: nobody may stay seated in a slot that is no longer this car.
       if (this.entity(pid) !== host.entity || makeHandle(host.entity, ents.gen[host.entity]!) !== host.handle) { this.evict(pid); continue; }
       if (!isWheelVehicle(host.definition)) {
+        const v = ents.vrow[host.entity]!;
         const rec = this.ctx.records.byPid.get(pid), hp = rec?.vitals?.at(V_HEALTH, world.tick) ?? 0;
         const before = this.health.get(pid), maximum = rec?.vitals?.max[V_HEALTH] ?? 1;
         if (before !== undefined && hp < before) {
           const lost = (before - hp) / Math.max(1, maximum);
-          ents.vehicleEngineCondition[host.entity] = Math.fround(Math.max(0, ents.vehicleEngineCondition[host.entity]! - lost * .45));
-          if (isRotorVehicle(host.definition)) ents.vehicleRotorCondition[host.entity] = Math.fround(Math.max(0, ents.vehicleRotorCondition[host.entity]! - lost * .2));
+          ents.vehicleEngineCondition[v] = Math.fround(Math.max(0, ents.vehicleEngineCondition[v]! - lost * .45));
+          if (isRotorVehicle(host.definition)) ents.vehicleRotorCondition[v] = Math.fround(Math.max(0, ents.vehicleRotorCondition[v]! - lost * .2));
         }
-        if (isBoatVehicle(host.definition)) ents.vehicleHullCondition[host.entity] = Math.fround(Math.max(0, Math.min(1, hp / Math.max(1, maximum))));
+        if (isBoatVehicle(host.definition)) ents.vehicleHullCondition[v] = Math.fround(Math.max(0, Math.min(1, hp / Math.max(1, maximum))));
         this.health.set(pid, hp);
       }
     }
@@ -649,18 +619,18 @@ export class Urban {
         ents.storeBody(e, this.body);
         this.impact(e);
         ents.pose(e, world.tick);
-      } else if (!driven && ents.vehicleDoors[e] === 0 && !this.opening.has(pid) && !this.occupied(pid, host) && !this.impacts.has(pid)) continue;
+      } else if (!driven && ents.vehicleDoors[ents.vrow[e]!] === 0 && !this.opening.has(pid) && !this.occupied(pid, host) && !this.impacts.has(pid)) continue;
       if (!this.applyImpact(host)) continue;
       this.note(host);
       this.save(e);
       // A seat's door swings open while someone is getting in or out by it, and shut after.
       const opening = this.opening.get(pid) ?? 0;
-      let doors = ents.vehicleDoors[e]!;
+      let doors = ents.vehicleDoors[ents.vrow[e]!]!;
       host.definition.doors.forEach((door, d) => {
         const was = vehicleDoor(doors, d);
         doors = withVehicleDoor(doors, d, (opening & (1 << d)) !== 0 ? Math.min(1, was + 1 / door.openTicks) : Math.max(0, was - 1 / door.closeTicks));
       });
-      ents.vehicleDoors[e] = doors;
+      ents.vehicleDoors[ents.vrow[e]!] = doors;
       for (let slot = 0; slot < host.definition.seats.length; slot++) {
         const seat = host.definition.seats[slot]!, actor = this.occupancy.occupant(pid, seat.id);
         const ae = this.entity(actor);
@@ -700,10 +670,10 @@ export class Urban {
     return RESULT_DENIED;
   }
   private state(e: number): VehicleState & { qx?: number; qy?: number; qz?: number; qw?: number } {
-    const ents = this.ctx.world.ents;
+    const ents = this.ctx.world.ents, v = ents.vrow[e]!;
     const rotor = !isWheelVehicle(this.ctx.world.reg.vehicle[ents.kind[e]!]!);
-    return { ...(rotor ? { qx: ents.vehicleQx[e]!, qy: ents.vehicleQy[e]!, qz: ents.vehicleQz[e]!, qw: ents.vehicleQw[e]! } : {}), x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[e]!, pitch: ents.vehiclePitch[e]!, roll: ents.vehicleRoll[e]!,
-      vx: ents.vx[e]!, vy: ents.vy[e]!, vz: ents.vz[e]!, grounded: (ents.flags[e]! & F_GROUNDED) !== 0, yawRate: ents.vehicleYawRate[e]!, pitchRate: ents.vehiclePitchRate[e]!, rollRate: ents.vehicleRollRate[e]!, groundPitch: ents.vehicleGroundPitch[e]!, groundRoll: ents.vehicleGroundRoll[e]!, rideOffset: ents.vehicleRideOffset[e]!, rideVelocity: ents.vehicleRideVelocity[e]!, steering: ents.steering[e]!, wheelAngle: ents.wheelAngle[e]!, fuel: ents.fuel[e]!, gear: ents.vehicleGear[e]!, engineRpm: ents.vehicleRpm[e]!, shiftTime: ents.vehicleShiftTime[e]!, payloadMass: ents.vehiclePayloadMass[e]! };
+    return { ...(rotor ? { qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]! } : {}), x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[v]!, pitch: ents.vehiclePitch[v]!, roll: ents.vehicleRoll[v]!,
+      vx: ents.vx[e]!, vy: ents.vy[e]!, vz: ents.vz[e]!, grounded: (ents.flags[e]! & F_GROUNDED) !== 0, yawRate: ents.vehicleYawRate[v]!, pitchRate: ents.vehiclePitchRate[v]!, rollRate: ents.vehicleRollRate[v]!, groundPitch: ents.vehicleGroundPitch[v]!, groundRoll: ents.vehicleGroundRoll[v]!, rideOffset: ents.vehicleRideOffset[v]!, rideVelocity: ents.vehicleRideVelocity[v]!, steering: ents.steering[v]!, wheelAngle: ents.wheelAngle[v]!, fuel: ents.fuel[v]!, gear: ents.vehicleGear[v]!, engineRpm: ents.vehicleRpm[v]!, shiftTime: ents.vehicleShiftTime[v]!, payloadMass: ents.vehiclePayloadMass[v]! };
   }
   private check(action: Readonly<OccupancyAction>): OccupancyApproval {
     const { world, game } = this.ctx, ents = world.ents;
@@ -761,7 +731,7 @@ export class Urban {
     const { world } = this.ctx, ents = world.ents, state = this.state(host.entity);
     const tilted = Math.abs(state.pitch) > .35 || Math.abs(state.roll) > .45 ||
       1 - 2 * ((state.qx ?? 0) ** 2 + (state.qz ?? 0) ** 2) < .7;
-    const flooded = ents.vehicleFlooding[host.entity]! >= .5;
+    const flooded = ents.vehicleFlooding[ents.vrow[host.entity]!]! >= .5;
     // An overturned or sinking open boat must not hold its crew underwater until the hull dies.
     // The ordinary action still commits against a fresh, bounded route and a clear exterior landing.
     if (action.kind === 'exit' && (tilted || flooded)) return this.boatEscape(action, host, ae);
@@ -887,16 +857,17 @@ export class Urban {
   private save(e: number): void {
     const { world, records } = this.ctx, ents = world.ents;
     const rec = records.byPid.get(ents.pid[e]!);
-    if (!rec || this.preserveComponent.has(rec.pid)) return;
-    const movement = world.reg.vehicle[rec.kind]?.movement;
-    const extra = movement === 'rotor' ? ROTOR_FIELDS : movement === 'boat' ? BOAT_FIELDS : [];
+    if (!rec) return;
+    const { version, extra } = formOf(world.reg.vehicle[rec.kind]?.movement);
     const bytes = this.saving.subarray(0, V4_BYTES + (extra.length ? extra.length * 4 + 1 : 0)), view = this.savingView;
-    bytes[0] = movement === 'rotor' ? 5 : movement === 'boat' ? 6 : 4;
-    for (let i = 0; i < VEHICLE_FIELDS.length; i++) view.setFloat32(1 + i * 4, ents[VEHICLE_FIELDS[i]!][e]!, true);
-    bytes[V4_BYTES - 1] = (ents.flags[e]! & F_GROUNDED) !== 0 ? 1 : 0;
+    bytes[0] = version;
+    const b = this.saved;
+    ents.loadBody(e, b);
+    for (let i = 0; i < VEHICLE_FIELDS.length; i++) view.setFloat32(1 + i * 4, b[VEHICLE_FIELDS[i]!], true);
+    bytes[V4_BYTES - 1] = b.grounded ? 1 : 0;
     if (extra.length) {
-      for (let i = 0; i < extra.length; i++) view.setFloat32(V4_BYTES + i * 4, ents[extra[i]!][e]!, true);
-      bytes[bytes.length - 1] = ents.vehicleEngineOn[e]!;
+      for (let i = 0; i < extra.length; i++) view.setFloat32(V4_BYTES + i * 4, b[extra[i]!], true);
+      bytes[bytes.length - 1] = b.vehicleEngineOn ? 1 : 0;
     }
     const old = rec.extra.get(VEHICLE_COMPONENT);
     if (old?.length === bytes.length && bytes.every((v, i) => old[i] === v)) return;
@@ -905,10 +876,10 @@ export class Urban {
 
   /** A car on its wheels that has stopped: no speed, and its springs and turn as good as settled. */
   private resting(e: number): boolean {
-    const ents = this.ctx.world.ents, still = (n: number): boolean => Math.abs(n) < 1e-3;
-    if (this.ctx.world.reg.vehicle[ents.kind[e]!]?.movement === 'rotor' && (ents.vehicleEngineOn[e] !== 0 || ents.vehicleRotorRpm[e]! > 0)) return false;
+    const ents = this.ctx.world.ents, v = ents.vrow[e]!, still = (n: number): boolean => Math.abs(n) < 1e-3;
+    if (this.ctx.world.reg.vehicle[ents.kind[e]!]?.movement === 'rotor' && (ents.vehicleEngineOn[v] !== 0 || ents.vehicleRotorRpm[v]! > 0)) return false;
     return (ents.flags[e]! & F_GROUNDED) !== 0 && ents.vx[e] === 0 && ents.vz[e] === 0 && still(ents.vy[e]!) &&
-      still(ents.vehicleYawRate[e]!) && still(ents.vehiclePitchRate[e]!) && still(ents.vehicleRollRate[e]!) && still(ents.vehicleRideVelocity[e]!);
+      still(ents.vehicleYawRate[v]!) && still(ents.vehiclePitchRate[v]!) && still(ents.vehicleRollRate[v]!) && still(ents.vehicleRideVelocity[v]!);
   }
 
   /** Whether anyone sits in the vehicle: an asleep car with nobody in it and its doors shut has nothing to do this tick. */
@@ -923,7 +894,7 @@ export class Urban {
     vehiclePoint(state, anchor, seat); vehicleRotation(state, rotation);
     const def = world.reg.vehicle[ents.kind[vehicle]!]!, seatDefinition = def.seats.find(s => s.anchor === anchor), profile = seatDefinition?.pose;
     mountPose(this.motion, { role: profile ?? (driver ? 'drive' : 'passenger'), tick: world.tick, startTick: 0, durationTicks: 1, steering: isRotorVehicle(def) ? 0 : state.steering / def.spec.maxSteer }, this.pose);
-    const look = ents.look[actor] ?? this.ctx.records.byPid.get(ents.pid[actor]!)?.look ?? PLAIN;
+    const look = ents.looks.get(actor) ?? this.ctx.records.byPid.get(ents.pid[actor]!)?.look ?? PLAIN;
     const definition = world.reg.defs[ents.kind[actor]!];
     const mesh = definition?.type === 'species' ? definition.mesh.replace(/^[^:]*:/, '') : 'human';
     const rest = this.rests.get(mesh + '_' + SEX_IDS[look[LOOK_SEX]!]) ?? HUMAN.rest;

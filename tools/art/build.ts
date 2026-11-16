@@ -11,7 +11,7 @@ import { convertCreature, planOf, withMotion } from "../pack/creature.ts";
 import { importGlb } from "../pack/glb.ts";
 import { readGltf } from "../pack/gltf.ts";
 import { lying } from "../pack/lying.ts";
-import { withLevels, withSurfaceLevels } from "../pack/simplify.ts";
+import { simplifySurface, withLevels, withSurfaceLevels } from "../pack/simplify.ts";
 import { spanOf, tangentsOf } from "../pack/surface.ts";
 import type { MaterialMaps } from "../pack/texture.ts";
 import { buildDetails } from "../pack/details.ts";
@@ -206,8 +206,11 @@ export function convertPieces(asset: Asset & { spec: PiecesAsset }, files: Reado
     const errors = pieces.find((p) => p.id === mesh.id)?.errors;
     if (spec.flat === undefined || !maps.has(mesh.id)) return withStated(mesh, errors, out.faults);
     const own = mesh.lods.slice(1, 1 + brought.get(mesh.id)!);
-    const budgets = spec.budgets.triangles.slice(1, spec.budgets.triangles.length - own.length);
-    const made = withSurfaceLevels({ ...mesh, lods: [mesh.lods[0]!] }, { budgets, flat: spec.flat, maps: maps.get(mesh.id)!, palette });
+    const plan = pieces.find((p) => p.id === mesh.id)?.triangles ?? spec.budgets.triangles;
+    // A model finer than the first budget is not itself a level: the finest is made from it, and the rest from that.
+    const model = mesh.lods[0]!;
+    const fine = model.indices.length / 3 > plan[0]! ? simplifySurface(model, [plan[0]!])[0]!.lod : model;
+    const made = withSurfaceLevels({ ...mesh, lods: [fine] }, { budgets: plan.slice(1, plan.length - own.length), flat: spec.flat, maps: maps.get(mesh.id)!, palette });
     return withStated({ ...made, lods: [...made.lods, ...own] }, errors, out.faults);
   });
   // The lying piece is made from the held one as it is drawn, every level, before it goes on the hand.

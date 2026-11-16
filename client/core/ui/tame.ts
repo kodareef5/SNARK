@@ -7,7 +7,7 @@ import { MATING_STEPS } from "../../../shared/anim/pose.ts";
 import { CMD_NAME, MAX_NAME_BYTES } from "../../../shared/net/protocol.ts";
 import { BAR_FOOD, BAR_HEALTH, BAR_TAMING, BAR_TORPOR, MAX_HEARTS, OVER_RANGE, OWNER_OTHER, OWNER_TRIBE, OWNER_WILD, type OverheadModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
-import { K_BAR, K_IMAGE, K_INPUT, K_PANEL, columns, lineHeight, textWidth, type UiFrame, type UiImage } from "./nodes.ts";
+import { K_BAR, K_IMAGE, K_INPUT, K_PANEL, fitText, lineHeight, textWidth, type UiFrame, type UiImage } from "./nodes.ts";
 import { S_FOOD, S_HEALTH, S_INPUT, S_LABEL, S_OVER_OTHER, S_OVER_PANEL, S_OVER_TAMING, S_OVER_TEXT, S_OVER_TRIBE, S_OVER_WILD, S_PANEL, S_TITLE, S_TORPOR } from "./style.ts";
 
 export const KEY_NAME_PANEL = 2460;
@@ -96,7 +96,7 @@ export function heartImage(fill: number, version: number): UiImage {
 
 /** Text centred on `cx`, no wider than `most`. */
 function centred(f: UiFrame, key: number, cx: number, y: number, most: number, style: number, text: string): void {
-  const shown = text.slice(0, columns(most, style));
+  const shown = fitText(text, most, style);
   const w = Math.max(1, textWidth(shown, style));
   f.text(key, cx - w / 2, y, w, style, shown);
 }
@@ -128,7 +128,7 @@ export function buildOverhead(f: UiFrame, m: OverheadModel): void {
   const tribeH = m.tribe !== "" ? lineHeight(tribeStyle) : 0;
   const rowH = lineH;
   const height = titleH + lineH + tribeH + m.barCount * rowH + (m.note !== "" ? lineH : 0);
-  const fits = (text: string, style: number): number => (text === "" ? 0 : textWidth(text.slice(0, columns(markW, style)), style));
+  const fits = (text: string, style: number): number => (text === "" ? 0 : textWidth(fitText(text, markW, style), style));
   const wide = Math.max(fits(m.title, titleStyle), fits(m.line, S_OVER_TEXT), fits(m.tribe, tribeStyle), m.barCount > 0 ? barW : 0, fits(m.note, S_OVER_TEXT)) + PAD * 2;
   const lift = m.heart >= 0 && m.heart < count ? heartSize(m.hearts[m.heart]!.far) + 4 : 4;
   const bottom = Math.min(m.v * H - lift, H / 2 - 12) - PAD;

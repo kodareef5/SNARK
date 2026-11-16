@@ -5,8 +5,9 @@ import { FIRST, OVERFLOW } from "../../client/core/assets/residency.ts";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { MANIFEST_VERSION, parseManifest, type Manifest, type ManifestLevel, type ManifestMesh } from "../../shared/pack/manifest.ts";
 import { SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, parsePack, type PackHeader, type PackMaterial } from "../../shared/pack/pack.ts";
-import { TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_MAGIC, TEXTURE_VERSION, pictureBytes, stepBytes, stepOf, textureBytes, topIn, type TextureFormat, type TextureRole } from "../../shared/pack/texture.ts";
+import { TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_MAGIC, TEXTURE_VERSION, blockOf, pictureBytes, stepBytes, stepOf, textureBytes, topIn, type TextureFormat, type TextureRole } from "../../shared/pack/texture.ts";
 import { Rng } from "../../shared/rng.ts";
+import { astcBlock } from "../../tools/pack/encode.ts";
 import { partHash } from "../../tools/pack/manifest.ts";
 import { splitPack, type SplitFile } from "../../tools/pack/split.ts";
 import { writeTextureFile } from "../../tools/pack/texture.ts";
@@ -77,13 +78,15 @@ function texturedSet(bodies: number, top: number, formats: readonly TextureForma
     const runs: Uint8Array[] = [head];
     let at = head.length;
     for (const tex of manifest.textures!) {
+      // ASTC in the blocks the build gives each role.
+      const block = format === "astc" ? astcBlock(tex.role, false) : blockOf(format, {});
       const hash: string[] = [];
       for (let k = 0; k <= stepOf(topIn(format, tex.top)); k++) {
-        runs.push(noise(stepBytes(format, tex.role, k), rng));
+        runs.push(noise(stepBytes(format, tex.role, k, block), rng));
         hash.push(partHash(runs[runs.length - 1]!));
       }
-      tex.in[format] = { file: files.length, at, hash };
-      at += textureBytes(format, tex.role, topIn(format, tex.top));
+      tex.in[format] = { file: files.length, at, hash, ...(format === "astc" && block !== 4 ? { block } : {}) };
+      at += textureBytes(format, tex.role, topIn(format, tex.top), block);
     }
     files.push({ name: `t.tex.${format}.sntx`, role: "tex", bytes: Buffer.concat(runs) });
   }
@@ -142,6 +145,49 @@ test("on a slow, lossy link a body turns from flat to its materials when the car
   const { requests } = w.r.stats;
   w.run(3, end);
   expect([w.r.stats.requests - requests, w.r.flying, w.dropped]).toEqual([0, 0, { levels: 0, textures: 0 }]);
+});
+
+test("a level and its surface that would pass a frame's bytes together go up in two frames, and the level is drawn once its surface is there", () => {
+  const [level, surface, skin] = SET.manifest.meshes[0]!.levels[0]!.parts.map((p) => p.bytes);
+  const upload = level! + surface! + skin! - 1;
+  const w = world([0, 1, 2].map((i) => ({ mesh: i, x: (i - 1) * 3, z: 0 })), { bytesPerSecond: 50e6 }, { uploadBytes: upload });
+  const went = new Map<string, number>();
+  for (let f = 0; f < 180; f++) {
+    w.frame(-3.5);
+    let bytes = 0;
+    for (const u of w.packet.assetUploads) {
+      if (u.level < LEVELS - 1) bytes += u.data.length;
+      went.set(`${u.of === undefined ? "level" : "surface"} ${u.of ?? u.slot}`, f);
+    }
+    for (const u of w.packet.texUploads) bytes += u.data.length;
+    expect(bytes).toBeLessThanOrEqual(upload);
+    // A body drawn at a level of the mesh file has that level's surface on the card: it is never drawn flat on its way to it.
+    for (let i = 0; i < 3; i++) if (w.drawn[i]! < LEVELS - 1) expect(w.card.surfaces.has(w.r.slot(i, w.drawn[i]!))).toBe(true);
+  }
+  const slots = [0, 1, 2].map((i) => w.r.slot(i, 0));
+  expect(slots.map((s) => went.get(`surface ${s}`)! > went.get(`level ${s}`)!)).toEqual([true, true, true]);
+  expect([w.settled(), [...w.shown], [...w.lapsed], [...w.drawn]]).toEqual([true, [1, 1, 1], [0, 0, 0], [0, 0, 0]]);
+});
+
+test("a level and a surface each larger than a frame's bytes go up in pieces of them, and are drawn once the last piece is there", () => {
+  const [level, surface] = SET.manifest.meshes[0]!.levels[0]!.parts.map((p) => p.bytes);
+  const upload = Math.floor(Math.min(level!, surface!) / 3);
+  const w = world([0, 1, 2].map((i) => ({ mesh: i, x: (i - 1) * 3, z: 0 })), { bytesPerSecond: 50e6 }, { uploadBytes: upload });
+  const pieces = { level: 0, surface: 0 };
+  for (let f = 0; f < 600; f++) {
+    w.frame(-3.5);
+    let bytes = 0;
+    for (const u of w.packet.assetUploads) {
+      if (u.level < LEVELS - 1) bytes += u.data.length;
+      if (u.whole !== undefined) pieces[u.of === undefined ? "level" : "surface"]++;
+    }
+    for (const u of w.packet.texUploads) bytes += u.data.length;
+    expect(bytes).toBeLessThanOrEqual(upload);
+    // The card draws only what it holds whole (assetWorld), and a body of the mesh file only with its surface.
+    for (let i = 0; i < 3; i++) if (w.drawn[i]! < LEVELS - 1) expect(w.card.surfaces.has(w.r.slot(i, w.drawn[i]!))).toBe(true);
+  }
+  expect([pieces.level >= 3 * 3, pieces.surface >= 3 * 3, w.card.coming.size]).toEqual([true, true, 0]);
+  expect([w.settled(), [...w.shown], [...w.lapsed], [...w.drawn]]).toEqual([true, [1, 1, 1], [0, 0, 0], [0, 0, 0]]);
 });
 
 test("the same seed gives the same requests and the same rows in the same frames", () => {
@@ -293,7 +339,7 @@ test("low poly asks for no surface and no texture: its requests and uploads are 
 });
 
 test("the variant is the one the device takes, the tier caps how wide, and a card that loses or refuses a texture is sent it again", () => {
-  const set = texturedSet(1, 256, ["bc", "rgba"], 400);
+  const set = texturedSet(1, 256, ["bc", "astc", "rgba"], 400);
   const wide = WIDE.map((top) => top >> 1);
   const w = world([{ mesh: 0, z: 0 }], {}, { uploadBytes: 8 * 1024 }, set, "rgba");
   w.run(3, -1);
@@ -306,6 +352,18 @@ test("the variant is the one the device takes, the tier caps how wide, and a car
   expect([w.packet.texDrops.length, w.shown[0], w.card.texBytes]).toEqual([MAPS, 0, 0]);
   w.run(3, -1);
   expect([tops(w, 0), formats(), w.shown[0]]).toEqual([wide, ["bc"], 1]);
+  const held = w.card.texBytes;
+
+  // And again to astc, whose blocks are larger for all but the masks: the same textures in fewer bytes, sent in rows of
+  // whole blocks that the card checks against the file.
+  w.assets.format = "astc";
+  w.frame(-1);
+  w.run(3, -1);
+  const astc = set.manifest.textures!.reduce((sum, tex, t) => sum + textureBytes("astc", tex.role, tops(w, 0)[t]!, astcBlock(tex.role, false)), 0);
+  expect([tops(w, 0), formats(), w.shown[0], w.card.texBytes, astc < held]).toEqual([wide, ["astc"], 1, astc, true]);
+  w.assets.format = "bc";
+  w.frame(-1);
+  w.run(3, -1);
 
   // The card refuses a texture. Its body is flat for the frames it takes to send again, from what the port kept.
   const fetched = w.r.stats.fetched;
@@ -334,7 +392,7 @@ test("the variant is the one the device takes, the tier caps how wide, and a car
   // Asked to keep everything, the library asks for each streamed level with its surface and skin, and each texture as far as the tier takes it.
   const parts = (cap: number): number[] => [
     ...set.manifest.meshes[0]!.levels.slice(0, 2).flatMap((level) => level.parts.map((p) => p.bytes)),
-    ...set.manifest.textures!.flatMap((tex, t) => Array.from({ length: Math.min(stepOf(tex.top), cap - (t === MRO || t === MASK || t === MASK2 ? 1 : 0)) + 1 }, (_, k) => stepBytes("bc", tex.role, k))),
+    ...set.manifest.textures!.flatMap((tex, t) => Array.from({ length: Math.min(stepOf(tex.top), cap - (t === MRO || t === MASK || t === MASK2 ? 1 : 0)) + 1 }, (_, k) => stepBytes("bc", tex.role, k, 4))),
   ];
   expect([narrow.r.download(), narrow.port.filled]).toEqual([parts(1).reduce((a, b) => a + b, 0), parts(1)]);
   lost.r.download();
@@ -348,7 +406,7 @@ test("the variant is the one the device takes, the tier caps how wide, and a car
 test("the tube as the splitter lays it out: a level in the boot file takes its surface from the mesh file, and a level in the mesh file comes with its own", () => {
   const set = splitPack(tubePack(), "tube");
   const rng = new Rng(8);
-  const { bytes, placed } = writeTextureFile("rgba", set.manifest.textures!.map((tex) => ({ role: tex.role, pictures: Array.from({ length: 7 }, (_, k) => noise(pictureBytes("rgba", tex.role, 1 << k), rng)) })));
+  const { bytes, placed } = writeTextureFile("rgba", set.manifest.textures!.map((tex) => ({ role: tex.role, block: 1, pictures: Array.from({ length: 7 }, (_, k) => noise(pictureBytes("rgba", tex.role, 1 << k, 1), rng)) })));
   set.files.push({ name: "tube.tex.rgba.sntx", role: "tex", bytes });
   set.manifest.files.push({ name: "tube.tex.rgba.sntx", bytes: bytes.length, role: "tex", format: "rgba" });
   set.manifest.textures!.forEach((tex, t) => (tex.in.rgba = { file: 2, ...placed[t]! }));
@@ -371,5 +429,5 @@ test("the tube as the splitter lays it out: a level in the boot file takes its s
   // Asked to keep everything: the finest level whole, the surface and skin of the middle one, whose first part the boot file has, and the textures.
   const [fine, middle] = set.manifest.meshes[0]!.levels;
   w.r.download();
-  expect(w.port.filled).toEqual([...fine!.parts, ...middle!.parts.slice(1)].map((p) => p.bytes).concat(set.manifest.textures!.map((tex) => stepBytes("rgba", tex.role, 0))));
+  expect(w.port.filled).toEqual([...fine!.parts, ...middle!.parts.slice(1)].map((p) => p.bytes).concat(set.manifest.textures!.map((tex) => stepBytes("rgba", tex.role, 0, 1))));
 });

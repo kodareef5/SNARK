@@ -1,7 +1,9 @@
 # Tests
 
-Run with `bun run check` (or `bun test` alone). All of them run in Bun; none
-opens a browser. See the [testing policy](../planning/quality/testing.md).
+Run with `bun run check`, which leaves out the slow tier (files named
+`*.slow.test.ts`); `bun run slow` runs those, and `bun test` alone runs both.
+All of them run in Bun; none opens a browser. See the
+[testing policy](../planning/quality/testing.md).
 
 | Directory | Purpose |
 | --- | --- |

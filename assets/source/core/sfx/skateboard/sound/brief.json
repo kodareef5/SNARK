@@ -1,0 +1,153 @@
+{
+  "asset": "core/sfx/skateboard",
+  "review": "../ref/sound",
+  "about": "Skateboards: rolling on rough and smooth ground, pushing, the ollie's pop, landing, grinding a rail and the board clattering away.",
+  "notes": "v3 (vehicle round). Engine layers are 20 s beds cut to loop, played faster or slower by rpm; slot names match core:vehicle's, so a vehicle of this family is heard by them first and by core:vehicle for the rest.",
+  "slots": {
+    "roll/rough": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 0.0,
+      "want": "rolling on rough ground",
+      "prompts": [
+        {
+          "id": "v3-10600",
+          "models": [
+            "moss"
+          ],
+          "seed": 10600,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A skateboard rolls along rough asphalt: a steady gritty rumbling of hard urethane wheels, constant. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "roll/smooth": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 0.0,
+      "want": "rolling on smooth ground",
+      "prompts": [
+        {
+          "id": "v3-10610",
+          "models": [
+            "moss"
+          ],
+          "seed": 10610,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A skateboard rolls along smooth concrete: a steady clean hum of the wheels with a soft click over each joint, constant. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "push": {
+      "kind": "impact",
+      "range": 15,
+      "level": -20,
+      "vary": 0.0,
+      "want": "a push with the foot",
+      "prompts": [
+        {
+          "id": "v3-10620",
+          "models": [
+            "moss"
+          ],
+          "seed": 10620,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A skateboarder pushes off: a foot scuffs the ground and the board rolls on, six separate pushes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 6
+    },
+    "ollie": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the tail popping",
+      "prompts": [
+        {
+          "id": "v3-10630",
+          "models": [
+            "moss"
+          ],
+          "seed": 10630,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A skateboarder does an ollie: the sharp crack of the tail popping on the ground and the wheels landing with a clack, five separate ollies with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 6
+    },
+    "land": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.0,
+      "want": "landing after a jump",
+      "prompts": [
+        {
+          "id": "v3-10640",
+          "models": [
+            "moss"
+          ],
+          "seed": 10640,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A skateboard lands hard on concrete after a jump: a loud wooden clack and the wheels' slap, five separate landings with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 5
+    },
+    "grind": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.0,
+      "want": "grinding a rail",
+      "prompts": [
+        {
+          "id": "v3-10650",
+          "models": [
+            "moss"
+          ],
+          "seed": 10650,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A skateboard grinds along a metal rail: a harsh scraping metallic screech, three separate grinds with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "crash/light": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the board clattering away",
+      "prompts": [
+        {
+          "id": "v3-10660",
+          "models": [
+            "moss"
+          ],
+          "seed": 10660,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A skateboard flies away from its rider and clatters across concrete, tumbling and banging, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

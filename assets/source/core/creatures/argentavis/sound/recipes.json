@@ -1,0 +1,1129 @@
+{
+  "takes": {
+    "takes/call/moss-pt-8090-06040.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8090",
+      "prompt": "A giant bird of prey gives a harsh piercing cry like a huge eagle, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8090,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8090.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant bird of prey gives a harsh piercing cry like a huge eagle, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "fe7089c191c34cca7a63f3852db455dc46bb9ed68a3c9164c5b9e001ce53d905",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "06fc0c35da722b058820c48bb5156dc2b00b4ea333dbb9cbde20bff166d1173c",
+      "cut": {
+        "source_file": "moss-pt-8090.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          287520,
+          356160
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-8091-00020.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8090",
+      "prompt": "A giant bird of prey gives a harsh piercing cry like a huge eagle, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8091,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8091.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant bird of prey gives a harsh piercing cry like a huge eagle, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "88d7470706a66308bf4f2580aca5bc97a5125748164794013dc9bc4758ac7d90",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "29f6ef88d80bbeeea86dffa429668947cec68b6f542c77a5d11dce43e1029de9",
+      "cut": {
+        "source_file": "moss-pt-8091.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          60960
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-8090-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8090",
+      "prompt": "A giant bird of prey gives a harsh piercing cry like a huge eagle, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8090,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8090.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant bird of prey gives a harsh piercing cry like a huge eagle, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "bb1737e598d5e869590bfa14e684631467bab8b78045ffabc7720b2a3374e096",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "06fc0c35da722b058820c48bb5156dc2b00b4ea333dbb9cbde20bff166d1173c",
+      "cut": {
+        "source_file": "moss-pt-8090.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          54000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-8091-03580.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8090",
+      "prompt": "A giant bird of prey gives a harsh piercing cry like a huge eagle, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8091,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8091.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant bird of prey gives a harsh piercing cry like a huge eagle, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2546bcb9e319db02454bfc70cf011d71af6e1309b9f1d8f07d423f6c4ff469c5",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "29f6ef88d80bbeeea86dffa429668947cec68b6f542c77a5d11dce43e1029de9",
+      "cut": {
+        "source_file": "moss-pt-8091.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          169440,
+          233760
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-8090-02070.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8090",
+      "prompt": "A giant bird of prey gives a harsh piercing cry like a huge eagle, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8090,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8090.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant bird of prey gives a harsh piercing cry like a huge eagle, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "379ae54a1c179a5f8237e9a2db8f350fcce4d12bf7d89d9bdd0d1a871f6f05bf",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "06fc0c35da722b058820c48bb5156dc2b00b4ea333dbb9cbde20bff166d1173c",
+      "cut": {
+        "source_file": "moss-pt-8090.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          96960,
+          157680
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-8091-01680.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8090",
+      "prompt": "A giant bird of prey gives a harsh piercing cry like a huge eagle, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8091,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8091.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant bird of prey gives a harsh piercing cry like a huge eagle, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "3af18bc3137173ff9d1d6c3d912565db824ef66f170665692e0b2279662ad2c5",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "29f6ef88d80bbeeea86dffa429668947cec68b6f542c77a5d11dce43e1029de9",
+      "cut": {
+        "source_file": "moss-pt-8091.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          78240,
+          149280
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-8100-06190.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-8100",
+      "prompt": "A giant bird of prey lets out a screaming alarm cry, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8100,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8100.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant bird of prey lets out a screaming alarm cry, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "76bd25804a6a63293e12f036aebdb4b3fb5aba7ac4d1c9a605456dd373cab1d9",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "e1b3a49fdb18af7c1d779826771af4deb0e7dde9051f4937f1eec0d8d8462629",
+      "cut": {
+        "source_file": "moss-pt-8100.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          294720,
+          380640
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-8100-04035.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-8100",
+      "prompt": "A giant bird of prey lets out a screaming alarm cry, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8100,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8100.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant bird of prey lets out a screaming alarm cry, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "287a37d1a4c0adb3460ac009789650a69996e676ede84b4660b024cae8fd1eae",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "e1b3a49fdb18af7c1d779826771af4deb0e7dde9051f4937f1eec0d8d8462629",
+      "cut": {
+        "source_file": "moss-pt-8100.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          191280,
+          256320
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-8110-05475.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-8110",
+      "prompt": "A giant bird of prey screeches in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8110,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8110.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant bird of prey screeches in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "b614810e0a61a0fe389e06f17dfbbfde44bd700cbf7c69d7a81601e7e26873cd",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a9e4a7c4b9523524d48122230af233fdb957383c1ca3a70205a7ffb2db7ade62",
+      "cut": {
+        "source_file": "moss-pt-8110.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          260400,
+          327600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-8110-02720.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-8110",
+      "prompt": "A giant bird of prey screeches in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8110,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8110.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant bird of prey screeches in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "37c19e9287503dce79ffc8bfae2f060764beb730afae4b3a569a505c065c5bed",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a9e4a7c4b9523524d48122230af233fdb957383c1ca3a70205a7ffb2db7ade62",
+      "cut": {
+        "source_file": "moss-pt-8110.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          128160,
+          198240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/death/moss-pt-8120-04530.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "death",
+      "prompt_id": "v2-8120",
+      "prompt": "A giant bird of prey gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8120,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8120.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant bird of prey gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "0f1e79c6c2712693ea2b977120bbbc2b6c0d1dbb3a9440cb69080e28e37e8f12",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "27dc3fd1ffb456841bfa44eedd119be3f3e4db7ed46301310451f717f1c6d82f",
+      "cut": {
+        "source_file": "moss-pt-8120.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          215040,
+          319440
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/death/moss-pt-8120-00545.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "death",
+      "prompt_id": "v2-8120",
+      "prompt": "A giant bird of prey gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8120,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8120.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant bird of prey gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "3006ac45f80c18f720b4ffce03c6cb6975d4469370d650924712c96da38e2aec",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "27dc3fd1ffb456841bfa44eedd119be3f3e4db7ed46301310451f717f1c6d82f",
+      "cut": {
+        "source_file": "moss-pt-8120.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          23760,
+          131760
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-8130-00075.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-8130",
+      "prompt": "A giant bird of prey: a giant bird strikes with its beak and talons, a shriek and a ripping thump, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8130,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8130.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant bird of prey: a giant bird strikes with its beak and talons, a shriek and a ripping thump, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "c898b2716af5e6347fec81906c6b7606c198625c6ea66932c6ed4e0d2961ba20",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a9d2c24624c00fc8d291b68b00f65aad729ef40c7d53333e56123a0b8dae6021",
+      "cut": {
+        "source_file": "moss-pt-8130.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          1199,
+          45600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-8130-01045.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-8130",
+      "prompt": "A giant bird of prey: a giant bird strikes with its beak and talons, a shriek and a ripping thump, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8130,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8130.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant bird of prey: a giant bird strikes with its beak and talons, a shriek and a ripping thump, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f041ca9a725a81c6cf87d7c78e30a8140ebf4ced3a8ec292778e1681b702fd6a",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a9d2c24624c00fc8d291b68b00f65aad729ef40c7d53333e56123a0b8dae6021",
+      "cut": {
+        "source_file": "moss-pt-8130.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          47759,
+          96000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-8140-00107.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-8140",
+      "prompt": "Huge feathered wings beating slowly, deep whooshing flaps, well spaced and distinct. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8140,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8140.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Huge feathered wings beating slowly, deep whooshing flaps, well spaced and distinct. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "40c8da18eb91b81cd1115de0d37ceef1786843ac6c201ecd1b599754b639606d",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1025.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "5cb4ddddf2cecdf42567ab19dbff0ec0ab7f7e23f3a5b1913423b95f6f2347ab",
+      "cut": {
+        "source_file": "moss-pt-8140.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          2735,
+          23520
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    }
+  }
+}

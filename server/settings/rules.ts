@@ -158,29 +158,17 @@ export class Rules {
   }
 }
 
-/** The values a save's timers were computed under. An older save has three old rules in place of the snapshot. Null if it has neither. */
-export function timersOf(snapshot: string | number | null, oldRules: string | number | null): Record<string, number> | null {
-  const read = (text: string | number | null): Record<string, unknown> | null => {
-    if (typeof text !== "string") return null;
-    try {
-      const parsed: unknown = JSON.parse(text);
-      return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
-    } catch {
-      return null;
-    }
-  };
+/** The values a save's timers were computed under, from its snapshot. Null if the snapshot does not read. */
+export function timersOf(snapshot: string | number | null): Record<string, number> | null {
+  let snap: unknown;
+  try {
+    snap = typeof snapshot === "string" ? JSON.parse(snapshot) : null;
+  } catch {
+    return null;
+  }
+  const timers = typeof snap === "object" && snap !== null ? (snap as { timers?: unknown }).timers : null;
+  if (typeof timers !== "object" || timers === null) return null;
   const out: Record<string, number> = {};
-  const snap = read(snapshot);
-  const timers = snap && typeof snap.timers === "object" && snap.timers !== null ? (snap.timers as Record<string, unknown>) : null;
-  if (timers) {
-    for (const [name, v] of Object.entries(timers)) if (typeof v === "number" && v > 0) out[name] = v;
-    return out;
-  }
-  const old = read(oldRules);
-  if (!old) return null;
-  for (const [was, name] of [["hatchSpeed", "EggHatchSpeedMultiplier"], ["matureSpeed", "BabyMatureSpeedMultiplier"], ["matingInterval", "MatingIntervalMultiplier"]] as const) {
-    const v = old[was];
-    if (typeof v === "number" && v > 0) out[name] = v;
-  }
+  for (const [name, v] of Object.entries(timers)) if (typeof v === "number" && v > 0) out[name] = v;
   return out;
 }

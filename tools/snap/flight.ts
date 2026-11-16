@@ -1,4 +1,4 @@
-// A ridden flight on the block-out pteranodon (tests/fixtures/flyer), flown on a server and drawn by the game's renderer
+// A ridden flight on the pteranodon, flown on a server and drawn by the game's renderer
 // as a client draws what it is sent, tick by tick, so each body's gait is carried from frame to frame. A picture is
 // taken at each moment of MOMENTS, the camera beside the flyer. `bun tools/snap.ts --flight` writes the sheet.
 
@@ -10,7 +10,7 @@ import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { LOOK_BYTES } from "../../shared/anim/look.ts";
 import { MODE_FLYER } from "../../shared/sim/character.ts";
 import { flyCourse, mounted } from "../../tests/fixtures/flyer/course.ts";
-import ASSET from "../../tests/fixtures/flyer/asset.ts";
+import { PTERANODON_DYES } from "../../content/creatures/pteranodon.ts";
 
 /** One tick of the flyer and its rider as the server had them. */
 interface Tick {
@@ -38,7 +38,7 @@ export function recordFlight(): Flight {
     ticks.push({
       tick: h.world.tick,
       part,
-      bodies: [e, rider].map((i) => ({ id: i, kind: ents.kind[i]!, x: ents.x[i]!, y: ents.y[i]!, z: ents.z[i]!, yaw: ((ents.yaw[i]! >>> 6) * TAU) / 1024, flags: (ents.flags[i]! >>> 1) & 0xf, anim: ents.anim[i]!, cue: ents.cue[i]!, seat: ents.seat[i]!, look: ents.look[i] ?? null })),
+      bodies: [e, rider].map((i) => ({ id: i, kind: ents.kind[i]!, x: ents.x[i]!, y: ents.y[i]!, z: ents.z[i]!, yaw: ((ents.yaw[i]! >>> 6) * TAU) / 1024, flags: (ents.flags[i]! >>> 1) & 0xf, anim: ents.anim[i]!, cue: ents.cue[i]!, seat: ents.seat[i]!, look: ents.looks.get(i) ?? null })),
     });
   };
   h.run(1000);
@@ -105,7 +105,7 @@ export function moments(f: Flight): Moment[] {
   return out;
 }
 
-/** Puts tick `i` of the flight in `r`, the flyer in the colours its block-out is reviewed in. */
+/** Puts tick `i` of the flight in `r`, the flyer in the concept's colours. */
 export function stage(f: Flight, i: number, r: RemoteSample): void {
   const t = f.ticks[i]!;
   r.count = 0;
@@ -113,7 +113,7 @@ export function stage(f: Flight, i: number, r: RemoteSample): void {
   for (const b of t.bodies) {
     const n = r.count++;
     [r.id[n], r.gen[n], r.kind[n], r.x[n], r.y[n], r.z[n], r.yaw[n], r.flags[n], r.anim[n], r.cue[n]] = [b.id, 0, b.kind, b.x, b.y, b.z, b.yaw, b.flags, b.anim, b.cue];
-    for (let q = 0; q < 6; q++) r.colors[n * 6 + q] = n === 0 ? ASSET.regions[q]!.sample : 0;
+    for (let q = 0; q < 6; q++) r.colors[n * 6 + q] = n === 0 ? PTERANODON_DYES[q]! : 0;
     r.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
     [r.span[n], r.grown[n], r.seat[n], r.seatSlot[n], r.seatGen[n]] = [0, 0, b.seat, 0, 0];
     r.hasLook[n] = b.look ? 1 : 0;

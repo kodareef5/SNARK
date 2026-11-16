@@ -83,7 +83,7 @@ function capture(shot: KoruShot, map: MapData, pack: Pack, files: GameFiles, wid
   const built = compileContent(CORE_CONTENT); if (!built.registry) throw new Error(built.errors.join("\n"));
   const reg = built.registry, h = new Harness({}, 629, 60, { dev: true, map: writeMap(map), clips: pack.clips, rigs: pack.header.rigs }, reg);
   const boot = parsePack(files.files[0]!), port = new FakeNet(files.files, { keep: true });
-  const session = h.join("Koru visitor", {}, { manual: true, city: true, look: defaultLook() });
+  const session = h.join("Koru visitor", {}, { manual: true, look: defaultLook() });
   const app = new App(session, reg, boot, { manifest: files.manifest, port });
   app.ui.settings.tier = shot.tier; app.ui.settings.steady = false;
   let raster: Rasterizer | null = null, packet: FramePacket | null = null;

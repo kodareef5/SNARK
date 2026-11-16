@@ -8,8 +8,9 @@
 import type { CreatureAnim } from "../../../shared/anim/creature.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import type { Manifest } from "../../../shared/pack/manifest.ts";
+import type { DetailSheet } from "../../../shared/pack/details.ts";
 import { Rng } from "../../../shared/rng.ts";
-import { KEYS, type CueKind } from "../../../shared/sound/cues.ts";
+import { KEYS, vehicleFamilies, type CueKind } from "../../../shared/sound/cues.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { AssetPort } from "../assets/port.ts";
 import type { RemoteSample } from "../session.ts";
@@ -17,11 +18,15 @@ import { ActionSounds, type OwnState } from "./actions.ts";
 import { BodySounds, type OwnBody } from "./bodies.ts";
 import { BuildSounds, type Lit } from "./build.ts";
 import { CreatureSounds } from "./creatures.ts";
-import { InlineDecoder, SOUND_BUDGET, SOUND_BUDGET_TOUCH, SoundLibrary, type SoundDecoder } from "./library.ts";
-import { FLAT, KIND_NAMES, KIND_VOCAL, LOOP, Mixer, spread, type Ear } from "./mixer.ts";
+import { InlineDecoder, SoundLibrary, type SoundDecoder } from "./library.ts";
+import { FLAT, KIND_NAMES, KIND_STEP, KIND_VOCAL, LOOP, Mixer, spread, type Ear } from "./mixer.ts";
 import { SoundPacket, type SoundSink } from "./packet.ts";
 import { earAxes, semitones } from "./place.ts";
+import { MusicDirector, type MusicState, type MusicTrack } from "./music.ts";
+import { paved } from "./ground.ts";
+import { V_HEALTH } from "../../../shared/sim/vitals.ts";
 import { Resolver } from "./resolve.ts";
+import { VehicleSounds } from "./vehicles.ts";
 import { WorldSounds } from "./world.ts";
 
 interface Pending {
@@ -71,6 +76,8 @@ export interface SoundView {
   trees: (x: number, z: number, r: number) => number;
   /** The structures that burn near (x, z), for their crackle. */
   lit?: Lit;
+  /** The vehicle the player sits in, or -1. */
+  vehicle?: number;
 }
 
 /** What became of an occasion asked for: the sound board and the in-game log read these. */
@@ -82,9 +89,19 @@ const HEARD_WORDS = ["played", "dropped", "not held yet", "no sound"];
 const LOG_LINES = 20;
 
 /** How much each kind of occasion weighs when voices are short, where its producer does not say. */
-const KIND_WEIGHT: Readonly<Record<CueKind, number>> = { vocal: 0.8, step: 0.25, hit: 0.6, weapon: 0.85, build: 0.6, item: 0.4, ui: 1, bed: 1, music: 1 };
+const KIND_WEIGHT: Readonly<Record<CueKind, number>> = { vocal: 0.8, step: 0.25, hit: 0.6, weapon: 0.85, build: 0.6, item: 0.4, ui: 1, bed: 1, music: 1, vehicle: 0.75 };
+/** Semitones a body's own voice sits above or below its kind's, by its id, at most; its steps and blows a third of that. */
+const VOICE_SPREAD = 1.2;
+/** dB a play may be louder or quieter than its sound, at random. */
+const LEVEL_JITTER = 1.5;
+/** Of one sound, at most this many start within CROWD_MS; more are dropped (steps more, being many and short). */
+const CROWD_STARTS = 3;
+const CROWD_STEP_STARTS = 6;
+const CROWD_MS = 250;
 /** Milliseconds a looping sound takes to fade in or out. */
 const FADE_MS = 1500;
+/** What is wanted ahead of time (the start set, the music, what the hand and a near vehicle may make) waits until the asset library has nothing coming, or this long after the first frame. */
+const AHEAD_MS = 5000;
 
 interface Looping {
   owner: number;
@@ -109,6 +126,10 @@ export class Sounds {
   readonly actions: ActionSounds;
   readonly build: BuildSounds;
   readonly world = new WorldSounds();
+  readonly vehicles: VehicleSounds;
+  /** The music director, once the build's music.json has come (setMusic); null for none. */
+  music: MusicDirector | null = null;
+  private readonly musicState: MusicState = { alive: false, place: "grass", night: false, hunters: 0, chasers: 0, apex: false, sinceHurt: Infinity, sinceFight: Infinity, health: 1, home: false };
   /** Plays only the takes made by this (a take's `from`, as "moss"), where a sound has any, or "" for every take. */
   from = "";
   /** The last occasions asked for, newest last: key, owner, sound (-1 for none) and what became of it. */
@@ -118,17 +139,33 @@ export class Sounds {
   private readonly isSurvivor: (kind: number) => boolean;
   private readonly ear: Ear = { x: 0, y: 0, z: 0 };
   private readonly rng = new Rng(11);
-  /** The take of each sound played last, so the next is another. */
-  private readonly last: Int32Array;
+  /** The last two takes of each sound played, so the next is another. */
+  private readonly lastTakes = new Map<number, number[]>();
+  /** When each sound last started, for the crowd's limit. */
+  private readonly started = new Map<number, number[]>();
   private readonly pending: Pending[] = [];
   private readonly crowd = new Map<number, number>();
   private readonly loops = new Map<number, Looping>();
   private readonly asked: { sound: number; x: number; y: number; z: number; untilMs: number }[] = [];
   private lastMs = -1;
+  private firstMs = -1;
+  /** Whether the asset library has nothing coming, as the app sets it each frame; without one, nothing is. */
+  assetsIdle = true;
+  private early = true;
+  /** The start set: the interface, the player's own body but its voice, and the shared steps. */
+  private readonly startSet: number[] = [];
+  private pinnedSex = "";
+  private yaw = NaN;
+  private pitch = NaN;
   private readonly emit = (sound: number, kind: number, weight: number, entity: number, x: number, y: number, z: number, lift: number, level: number, rate: number, delay: number): void => {
     this.push({ sound, key: -1, owner: -1, kind, weight, entity, x, y, z, lift, level, rate, delay, flags: 0 });
   };
   private readonly want = (sound: number, metres: number): void => this.library.want(sound, this.library.sounds[sound]!.range / Math.max(1, metres));
+  /** Wants what `owner` makes for `key` before it is heard, once nothing else waits for the network; from afar, least urgently. */
+  private readonly ahead = (owner: number, key: number, metres = Infinity): void => {
+    const s = this.early ? -1 : this.resolver.peek(owner, key);
+    if (s >= 0) this.want(s, metres);
+  };
   private readonly locate = (entity: number, out: number[]): boolean => {
     const b = this.creatures.bodies.get(entity) ?? this.bodies.walkers.get(entity);
     if (!b) return false;
@@ -151,26 +188,40 @@ export class Sounds {
   };
 
   /**
-   * `animOf` gives what a kind of creature plays, as it is drawn. A touch-first device keeps less sound. `decoder`
-   * decodes away from the frame: in the browser, client/sound's worker.
+   * `animOf` gives what a kind of creature plays, as it is drawn. `decoder` decodes away from the frame: in the browser,
+   * client/sound's worker.
    */
-  constructor(manifest: Pick<Manifest, "sounds">, port: AssetPort | null, reg: Registry, animOf: (kind: number) => CreatureAnim | null, touch = false, decoder: SoundDecoder = new InlineDecoder()) {
+  constructor(manifest: Pick<Manifest, "sounds">, port: AssetPort | null, reg: Registry, animOf: (kind: number) => CreatureAnim | null, decoder: SoundDecoder = new InlineDecoder(), sheets: readonly DetailSheet[] = []) {
     this.library = new SoundLibrary(manifest, port, decoder);
-    this.library.budget = touch ? SOUND_BUDGET_TOUCH : SOUND_BUDGET;
-    this.resolver = new Resolver(this.library.index);
-    this.creatures = new CreatureSounds(reg, this.library, this.resolver, animOf);
-    this.actions = new ActionSounds(reg);
+    // A vehicle falls back to its family's sounds (a helicopter's, a boat's) before the shared car's, whoever asks first.
+    this.resolver = new Resolver(this.library.index, (id) => {
+      const kind = reg.index.get(id);
+      const d = kind !== undefined && reg.vehicle[kind] ? reg.defs[kind] : null;
+      return d ? vehicleFamilies(id, "aliases" in d ? (d.aliases ?? []) : []) : [];
+    });
+    this.creatures = new CreatureSounds(reg, this.library, this.resolver, animOf, sheets);
+    this.actions = new ActionSounds(reg, (id) => this.resolver.owner(id));
     this.build = new BuildSounds(reg, (id) => this.resolver.owner(id));
-    this.last = new Int32Array(this.library.sounds.length).fill(-1);
+    this.vehicles = new VehicleSounds(reg, (id) => this.resolver.owner(id));
     this.ui = this.resolver.owner("core:ui");
     const survivor = reg.defs.find((d) => d?.type === "species" && (d as { class?: string }).class === "survivor");
     this.survivor = this.resolver.owner(survivor?.id ?? "core:survivor");
     this.isSurvivor = (kind) => (reg.defs[kind] as { class?: string } | null)?.class === "survivor" && reg.defs[kind]?.type === "species";
-    // The start set: the interface and the player's own body, held from the start so that they are never late.
+    // Held so that they are never late, with the voice of the player's own sex (pinVoice).
+    const own = `${this.resolver.owners[this.survivor]}/sound/`;
     for (let s = 0; s < this.library.sounds.length; s++) {
       const id = this.library.sounds[s]!.id;
-      if (id.startsWith("core:ui/") || id.startsWith(`${this.resolver.owners[this.survivor]}/`) || id.startsWith("core:surface/sound/step/")) this.library.pin(s);
+      if (!id.startsWith(`${own}voice/`) && (id.startsWith("core:ui/") || id.startsWith(own) || id.startsWith("core:surface/sound/step/"))) this.startSet.push(s);
     }
+  }
+
+  /** Holds the voice of the player's own sex once it is known. */
+  private pinVoice(female: boolean): void {
+    const sex = female ? "female" : "male";
+    if (sex === this.pinnedSex) return;
+    this.pinnedSex = sex;
+    const voice = `${this.resolver.owners[this.survivor]}/sound/voice/${sex}/`;
+    for (let s = 0; s < this.library.sounds.length; s++) if (this.library.sounds[s]!.id.startsWith(voice)) this.library.pin(s);
   }
 
   /** Copies what the session queued since the last frame, before the hit marks and tracers take it. */
@@ -184,13 +235,24 @@ export class Sounds {
     p.clear();
     const dt = this.lastMs < 0 ? 0 : Math.min(0.25, (nowMs - this.lastMs) / 1000);
     this.lastMs = nowMs;
+    if (this.firstMs < 0) this.firstMs = nowMs;
     const lib = this.library;
+    if (this.early && (this.assetsIdle || nowMs - this.firstMs >= AHEAD_MS)) {
+      this.early = false;
+      for (const s of this.startSet) lib.pin(s);
+    }
     lib.begin(nowMs, p);
+    // What was heard between frames (a click) is wanted again: begin forgets the last frame's wants.
+    for (const e of this.pending) lib.want(e.sound, 10);
     this.mixer.expire(nowMs);
     this.ear.x = ear.x;
     this.ear.y = ear.y;
     this.ear.z = ear.z;
+    p.turned = ear.yaw !== this.yaw || ear.pitch !== this.pitch;
+    this.yaw = ear.yaw;
+    this.pitch = ear.pitch;
     earAxes(ear.yaw, ear.pitch, p.ear);
+    p.mixed = p.volume !== volumes.master || p.buses[0] !== volumes.effects || p.buses[1] !== volumes.ambience || p.buses[2] !== volumes.music || p.buses[3] !== volumes.interface;
     p.volume = volumes.master;
     p.buses[0] = volumes.effects;
     p.buses[1] = volumes.ambience;
@@ -199,11 +261,15 @@ export class Sounds {
     // What was heard since the last frame (the interface hears between frames) is kept until it is played below.
     for (const l of this.loops.values()) l.target = 0;
     this.creatures.update(remote, hf, ear.x, ear.y, ear.z, this.emit, this.want);
+    this.vehicles.update(remote, hf, ear.x, ear.y, ear.z, view?.vehicle ?? -1, this.hear, (id, owner, key, x, y, z, level, on, flat) => this.loop(id, owner, key, x, y, z, level, on, flat), this.ahead);
     if (view) {
+      if (!this.early) this.pinVoice(view.own.female);
+      if (view.own.alive) this.actions.ahead(view.own, this.ui, this.survivor, this.ahead);
       this.bodies.update(dt, remote, hf, ear.x, ear.y, ear.z, view.ownId, view.body, view.own.female, this.survivor, this.isSurvivor, this.hear);
       this.actions.update(remote, ear.x, ear.y, ear.z, view.own, view.ownId, this.ui, this.survivor, this.isSurvivor, this.hear, (id, owner, key, level, on) => this.loop(id, owner, key, 0, 0, 0, level, on, true));
       this.world.update(nowMs, hf, ear.x, ear.y, ear.z, view.hour, view.trees, (id, key, level, on) => this.loop(id, this.resolver.owner("core:world"), key, 0, 0, 0, level, on, true), (key) => this.hear(this.resolver.owner("core:world"), key, -1, 0, 0, 0, 0, 1, true));
     }
+    this.actions.nowMs = nowMs;
     this.build.update(ear.x, ear.y, ear.z, this.hear, (id, owner, key, x, y, z, on) => this.loop(1000 + id, owner < 0 ? this.ui : owner, key, x, y, z, 1, on, false), view?.lit ?? null);
     for (const a of this.asked) {
       lib.want(a.sound, Infinity);
@@ -219,6 +285,7 @@ export class Sounds {
     this.pending.length = 0;
     this.crowd.clear();
     this.fade(dt, running, nowMs);
+    p.music = this.music && view && !this.early ? this.music.update(nowMs, this.hearing(view, hf, ear, nowMs)) : null;
     this.mixer.follow(p, this.ear, this.locate);
     lib.end(p);
     sink.apply(p);
@@ -236,7 +303,13 @@ export class Sounds {
     }
     const s = this.resolver.peek(owner, key);
     if (s < 0) return;
-    this.library.want(s, flat ? 5 : this.library.sounds[s]!.range / Math.max(1, Math.hypot(x - this.ear.x, y - this.ear.y, z - this.ear.z)));
+    const d = flat ? 0 : Math.hypot(x - this.ear.x, y - this.ear.y, z - this.ear.z);
+    // Past its range it is not heard, so it is not held either.
+    if (d >= this.library.sounds[s]!.range) {
+      if (l) l.target = 0;
+      return;
+    }
+    this.library.want(s, flat ? 5 : this.library.sounds[s]!.range / Math.max(1, d));
     if (!l || l.sound !== s) {
       if (l && l.serial !== 0) this.mixer.end(l.serial, this.packet);
       this.loops.set(id, (l = { owner, key, sound: s, serial: 0, level: 0, target: level, x, y, z, flat }));
@@ -253,7 +326,7 @@ export class Sounds {
       l.level += Math.max(-step, Math.min(step, l.target - l.level));
       if (l.serial === 0 && l.target > 0 && running && this.library.ready(l.sound)) {
         const sound = this.library.sounds[l.sound]!;
-        const take = this.library.first[l.sound]! + this.rng.int(sound.takes.length);
+        const take = this.library.first[l.sound]! + this.rng.int(this.library.takes(l.sound));
         const kind = KIND_NAMES.indexOf(KEYS[l.key]!.cue.kind);
         l.serial = this.mixer.play(this.packet, this.ear, nowMs, l.sound, take, this.library.seconds[take]!, sound.range, kind, 1, -1, l.x, l.y, l.z, 0, Math.max(0.001, l.level), 1, 0, LOOP | (l.flat ? FLAT : 0));
         if (l.serial !== 0) this.library.played(l.sound);
@@ -279,6 +352,29 @@ export class Sounds {
     sink.apply(p);
   }
 
+  /** Starts the music director on the tracks the build lists. */
+  setMusic(tracks: readonly MusicTrack[]): void {
+    this.music = new MusicDirector(tracks, new Rng(23));
+  }
+
+  /** What the player is going through, for the music, from what the producers saw this frame. */
+  private hearing(view: SoundView, hf: Heightfield, ear: Listener, nowMs: number): MusicState {
+    const m = this.musicState;
+    const w = this.world;
+    m.alive = view.own.alive;
+    m.place = w.under ? "under" : w.openSea ? "sea" : paved(hf, ear.x, ear.z) ? "ruins" : (["beach", "jungle", "grass"] as const)[w.biome] ?? "grass";
+    m.night = w.night;
+    m.hunters = this.creatures.hunters;
+    m.chasers = this.creatures.chasers;
+    m.apex = this.creatures.apex;
+    m.sinceHurt = (nowMs - this.actions.hurtAtMs) / 1000;
+    m.sinceFight = (nowMs - this.actions.fightAtMs) / 1000;
+    const v = view.own.vitals;
+    m.health = v ? v.at(V_HEALTH, view.own.tick) / (v.max[V_HEALTH] || 1) : 1;
+    m.home = this.build.fireNear;
+    return m;
+  }
+
   /** Plays a sound at (x, y, z) as soon as it is held, or not at all if that takes more than five seconds. */
   ask(sound: number, x: number, y: number, z: number, nowMs: number): void {
     this.asked.push({ sound, x, y, z, untilMs: nowMs + 5000 });
@@ -290,6 +386,8 @@ export class Sounds {
   }
 
   private push(e: Pending): void {
+    // Each body has a voice of its own: two raptors calling together are two raptors, not one twice.
+    if (e.entity >= 0) e.rate *= semitones(voiceOf(e.entity) * (e.kind === KIND_VOCAL ? VOICE_SPREAD : VOICE_SPREAD / 3));
     this.pending.push(e);
     this.crowd.set(e.sound, (this.crowd.get(e.sound) ?? 0) + 1);
   }
@@ -301,20 +399,40 @@ export class Sounds {
 
   private start(e: Pending, nowMs: number): number {
     const lib = this.library;
-    if (!lib.ready(e.sound)) return HEARD_WAITING;
+    const held = lib.takes(e.sound);
+    if (held === 0) return HEARD_WAITING;
     const sound = lib.sounds[e.sound]!;
-    // Another take than last time, of those made by `from` if it has any.
-    const takes = sound.takes.map((_, k) => k).filter((k) => this.from === "" || sound.takes[k]!.from === this.from);
-    const pool = takes.length > 0 ? takes : sound.takes.map((_, k) => k);
-    const others = pool.length > 1 ? pool.filter((k) => k !== this.last[e.sound]) : pool;
+    // A crowd is not a chorus: of one sound, only a few start together.
+    const recent = (this.started.get(e.sound) ?? []).filter((ms) => nowMs - ms < CROWD_MS);
+    if (recent.length >= (e.kind === KIND_STEP ? CROWD_STEP_STARTS : CROWD_STARTS)) return HEARD_DROPPED;
+    // A take neither playing now nor among the last two, of those held and made by `from` if it has any.
+    const all = Array.from({ length: held }, (_, k) => k);
+    const takes = all.filter((k) => this.from === "" || sound.takes[k]!.from === this.from);
+    const pool = takes.length > 0 ? takes : all;
+    const first = lib.first[e.sound]!;
+    const last = this.lastTakes.get(e.sound) ?? [];
+    const free = pool.filter((k) => !this.mixer.playingTake(first + k));
+    const unheld = this.from !== "" && takes.length === 0 && sound.takes.some((t) => t.from === this.from);
+    // No take plays twice at once, and no other maker's stands in for `from`'s, while the sound has more to hold.
+    if ((free.length === 0 || unheld) && held < sound.takes.length) {
+      lib.grow(e.sound);
+      return HEARD_WAITING;
+    }
+    let others = free.filter((k) => !last.includes(k));
+    if (others.length === 0) others = pool.filter((k) => k !== last[0]);
+    if (others.length === 0) others = pool;
     const take = others[this.rng.int(others.length)]!;
-    this.last[e.sound] = take;
-    const buffer = lib.first[e.sound]! + take;
+    this.lastTakes.set(e.sound, [take, last[0] ?? -1]);
+    const buffer = first + take;
     const rate = e.rate * semitones(sound.vary * this.rng.range(-1, 1));
+    const level = e.level * 10 ** (this.rng.range(-LEVEL_JITTER, LEVEL_JITTER) / 20);
     const delay = e.delay + spread(this.rng, this.crowd.get(e.sound) ?? 1);
-    const serial = this.mixer.play(this.packet, this.ear, nowMs, e.sound, buffer, lib.seconds[buffer]!, sound.range, e.kind, e.weight, e.entity, e.x, e.y, e.z, e.lift, e.level, rate, delay, e.flags);
+    const serial = this.mixer.play(this.packet, this.ear, nowMs, e.sound, buffer, lib.seconds[buffer]!, sound.range, e.kind, e.weight, e.entity, e.x, e.y, e.z, e.lift, level, rate, delay, e.flags);
     if (serial === 0) return HEARD_DROPPED;
+    recent.push(nowMs);
+    this.started.set(e.sound, recent);
     lib.played(e.sound);
+    lib.grow(e.sound);
     return HEARD_PLAYED;
   }
 
@@ -333,4 +451,12 @@ export class Sounds {
       .reverse()
       .map((l) => `${KEYS[l.key]!.key} of ${this.resolver.owners[l.owner] ?? "?"}: ${l.sound >= 0 ? this.library.sounds[l.sound]!.id : "-"} (${HEARD_WORDS[l.heard]})`);
   }
+}
+
+/** A body's own voice, from its id: a fixed number from -1 to 1 that stays with it. */
+export function voiceOf(entity: number): number {
+  let h = (entity + 0x9e3779b9) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 0x80000000 - 1;
 }

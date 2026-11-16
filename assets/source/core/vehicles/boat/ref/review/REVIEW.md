@@ -41,3 +41,11 @@ bun test tests/unit/boat-art.test.ts tests/unit/mount-controls.test.ts
 The focused native art and helm gate passes 11 tests with 7,404 assertions. The all-livery border regression was first observed failing the mismatched rescue stripe, then passed after the correction.
 
 The generic art check's “no hit capsules” note is expected for a vehicle: its runtime hull and moving engine shapes are defined by the measured vehicle contract, rather than creature hit capsules.
+
+## On main
+
+`main/` holds four of the thirteen views `bun tools/boat/review.ts` made on
+`r9/helicopter-land` (2026-11-16), after the merge onto main: the civilian launch
+with four seated, the helm with main's glass instruments, the wake at speed, and the
+sunken wreck. All thirteen kept four seated where seated, with no dropped or skipped
+draws. The preview course's bed is drawn in main's world surfaces' paving.

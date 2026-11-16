@@ -15,7 +15,7 @@ import { corePackBytes } from "../fixtures/pack.ts";
 test("the untouched marina arrival faces and frames the full hull, bowsprit and three mast tips", () => {
   const h = new Harness({}, 629, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(koruCourse()) });
   try {
-    const app = new App(h.join("arrival-view", {}, { manual: true, city: true }), h.reg, parsePack(corePackBytes()));
+    const app = new App(h.join("arrival-view", {}, { manual: true }), h.reg, parsePack(corePackBytes()));
     h.run(1200, now => app.frame(now, 1200, 800));
     expect(app.session.own.x).toBeCloseTo(KORU_COURSE.spawn.x, 2);
     expect(app.session.own.z).toBeCloseTo(KORU_COURSE.spawn.z, 2);
@@ -42,7 +42,7 @@ test("the untouched marina arrival faces and frames the full hull, bowsprit and 
 test("normal first-person and shoulder cameras remain dry and outside geometry on every authored interior review route", () => {
   const h = new Harness({}, 629, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(koruCourse()) });
   try {
-    const app = new App(h.join("interior-view", {}, { manual: true, city: true }), h.reg, parsePack(corePackBytes()));
+    const app = new App(h.join("interior-view", {}, { manual: true }), h.reg, parsePack(corePackBytes()));
     let width = 1200, height = 800;
     const run = (ms: number) => h.run(ms, now => app.frame(now, width, height));
     run(800);

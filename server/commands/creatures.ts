@@ -1,4 +1,5 @@
-import type { Console, ConsoleCommand } from "../console.ts";
+import { parseNumber } from "../../shared/console.ts";
+import { named, type Console, type ConsoleCommand } from "../console.ts";
 
 const needsBody = "this needs a body; you have none right now";
 
@@ -20,6 +21,38 @@ export function addCreatureCommands(con: Console): void {
         if (rec.team === me.team) return "it is yours already";
         if (!host.taming.give(rec, me, 0, "forced")) return "a module refused it";
         return `tamed ${host.world.reg.ids[rec.kind]} level ${rec.genome ? rec.genome.level : 1}`;
+      },
+    },
+    {
+      name: "gmsummon",
+      usage: "<species> [level]",
+      help: "Put a creature four metres in front of you, your tribe's already and wearing its saddle where one is made for it. It may be named without its pack: pteranodon for core:pteranodon.",
+      admin: true,
+      run(ctx, args) {
+        const c = ctx.client;
+        const host = ctx.host;
+        const me = c ? host.records.byPid.get(c.pid) : undefined;
+        if (!c || c.ent < 0 || !me) return needsBody;
+        const reg = host.world.reg;
+        const kind = named(reg, args[0], "species");
+        if (typeof kind === "string") return kind;
+        const id = reg.ids[kind]!;
+        if (reg.vehicle[kind]) return `${id} is a vehicle: spawn it`;
+        const level = args[1] === undefined ? 1 : parseNumber(args[1]);
+        if (!Number.isInteger(level) || level < 1 || level > 1000) return "level must be a whole number from 1 to 1000";
+        const a = (c.heldYaw / 65536) * 2 * Math.PI;
+        const e = host.spawnCreature(id, c.body.x + Math.sin(a) * 4, c.body.z + Math.cos(a) * 4, level, "admin");
+        if (e < 0) return "no room for it there";
+        const rec = host.records.byPid.get(host.world.ents.pid[e]!);
+        if (!rec || !host.taming.give(rec, me, 0, "forced")) return "a module refused it";
+        const saddle = reg.saddleFits.indexOf(kind);
+        const tamed = `summoned ${id} level ${rec.genome ? rec.genome.level : level}, tamed`;
+        if (saddle <= 0 || rec.grown !== 0) return tamed;
+        // Worn as a saddle put on through its inventory is: out of the ledger until it is taken off.
+        rec.saddle = saddle;
+        host.records.dirty.add(rec.pid);
+        host.refreshBody(rec);
+        return `${tamed} and saddled`;
       },
     },
     {

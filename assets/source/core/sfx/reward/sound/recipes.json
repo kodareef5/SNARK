@@ -1,0 +1,1054 @@
+{
+  "takes": {
+    "takes/notice/moss-pt-27002-03975.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "notice",
+      "prompt_id": "v4-27000",
+      "prompt": "A gentle soft two-note notification chime, pleasant and warm, five separate chimes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27002,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-27002.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A gentle soft two-note notification chime, pleasant and warm, five separate chimes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 41.2,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "fb3b74e9e94b9cffebed7d226719e58281917d1ee35ac701d977540b5bd0a312",
+      "worker": {
+        "takes": 12,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 403.3,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 9.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "5e046a1e0e24d30aaffdd174b48e97cecdd68f347a7cbc3f3afd5ad9d52d7833",
+      "cut": {
+        "source_file": "moss-pt-27002.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          188400,
+          274320
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/notice/moss-pt-27001-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "notice",
+      "prompt_id": "v4-27000",
+      "prompt": "A gentle soft two-note notification chime, pleasant and warm, five separate chimes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27001,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-27001.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A gentle soft two-note notification chime, pleasant and warm, five separate chimes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "51a1bd6ddc299b2eb50a0080c202de6eb0d8a7ec49c651860a2f3e73e01f341b",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.27
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1059.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.3,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "0e25770038b1651cbf78c5dddaa51dc938b4afbfc119cc7e61f11f222afbf3d7",
+      "cut": {
+        "source_file": "moss-pt-27001.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          109680
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/fanfare/moss-pt-27010-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "fanfare",
+      "prompt_id": "v4-27010",
+      "prompt": "A short bright triumphant fanfare of brass and bells, two separate fanfares with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27010,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-27010.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A short bright triumphant fanfare of brass and bells, two separate fanfares with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "011e0b01cd839eece11d606e745fc8348418b3ea54ab145d6ef37c066cb09262",
+      "worker": {
+        "takes": 12,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 403.3,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 9.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "7de67db3c6a83f523c935faef0d96985aafd1f651d47c5ee5b8a5050e33687ba",
+      "cut": {
+        "source_file": "moss-pt-27010.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          189840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/fanfare/moss-pt-27011-00345.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "fanfare",
+      "prompt_id": "v4-27010",
+      "prompt": "A short bright triumphant fanfare of brass and bells, two separate fanfares with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27011,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-27011.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A short bright triumphant fanfare of brass and bells, two separate fanfares with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "be550a05aba7c11b717f1544257020bf915f40f9ec7fd35e3dad6930eb58b903",
+      "worker": {
+        "takes": 12,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 403.3,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 9.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "ac4aed19816085714c7f5581f111fd6c8d50f6f3c27a9229c740f0377f1b25fc",
+      "cut": {
+        "source_file": "moss-pt-27011.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          14160,
+          306480
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/coin/moss-pt-27021-04445.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "coin",
+      "prompt_id": "v4-27020",
+      "prompt": "A bright sparkly coin pickup sound, a quick rising ding, six separate dings with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27021,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-27021.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A bright sparkly coin pickup sound, a quick rising ding, six separate dings with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "d258cec881b578a2cbce2d4e2c7c8c78a30868e28610578809f11ae033a69b16",
+      "worker": {
+        "takes": 12,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 403.3,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 9.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a4f0c184b0f69f0a4dd9818c61f48ba30736b34cdaedf5ca2e8c76ab8645f55a",
+      "cut": {
+        "source_file": "moss-pt-27021.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          210960,
+          267840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/unlock/moss-pt-27030-00245.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "unlock",
+      "prompt_id": "v4-27030",
+      "prompt": "A satisfying mechanical unlock click followed by a bright shimmer, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27030,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-27030.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A satisfying mechanical unlock click followed by a bright shimmer, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "c9026d1e7f989c243b0532d992aa037b748797f95b2a84f835cd8a52087c915e",
+      "worker": {
+        "takes": 12,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 403.3,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 9.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "cbe5cbc7a946de09afdc11e95c78d91e7534efa22560b923df1de1802a710ac4",
+      "cut": {
+        "source_file": "moss-pt-27030.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          9360,
+          21600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/unlock/moss-pt-27031-03155.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "unlock",
+      "prompt_id": "v4-27030",
+      "prompt": "A satisfying mechanical unlock click followed by a bright shimmer, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27031,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-27031.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A satisfying mechanical unlock click followed by a bright shimmer, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "16f34795b80d7b91c9096b50fc19f66e82d4af05735ecc79969cc66478d2a00a",
+      "worker": {
+        "takes": 12,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 403.3,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 9.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "e023386e30d884be5394896b36ab2c3f5ba8f86f70f944e02ca41b733e7342d9",
+      "cut": {
+        "source_file": "moss-pt-27031.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          149040,
+          167280
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/unlock/moss-pt-27030-04520.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "unlock",
+      "prompt_id": "v4-27030",
+      "prompt": "A satisfying mechanical unlock click followed by a bright shimmer, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27030,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-27030.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A satisfying mechanical unlock click followed by a bright shimmer, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "d64926e227aa88c3bfb99db014fda420cca9437c00991e24df4307289bbdf91c",
+      "worker": {
+        "takes": 12,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 403.3,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 9.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "cbe5cbc7a946de09afdc11e95c78d91e7534efa22560b923df1de1802a710ac4",
+      "cut": {
+        "source_file": "moss-pt-27030.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          214560,
+          226800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/unlock/moss-pt-27031-00500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "unlock",
+      "prompt_id": "v4-27030",
+      "prompt": "A satisfying mechanical unlock click followed by a bright shimmer, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27031,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-27031.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A satisfying mechanical unlock click followed by a bright shimmer, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e73007dd1b2aace1ab0deb3203da8d8f9ff40ed2fb8a3d9e039f916157a07a65",
+      "worker": {
+        "takes": 12,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 403.3,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 9.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "e023386e30d884be5394896b36ab2c3f5ba8f86f70f944e02ca41b733e7342d9",
+      "cut": {
+        "source_file": "moss-pt-27031.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          21600,
+          40080
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/achievement/moss-pt-27041-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "achievement",
+      "prompt_id": "v4-27040",
+      "prompt": "A rewarding magical achievement sound, a rising sparkle and a warm chord, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27041,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-27041.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A rewarding magical achievement sound, a rising sparkle and a warm chord, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "196692cc467e185ebf75d9c7b8741dacfec5f8df2e5f7d9ae8c71eda0abd5dd5",
+      "worker": {
+        "takes": 12,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 403.3,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 9.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "7036d5081d5ef3a0e41402bed603842a48b37390c594258ff6c3df05228b583d",
+      "cut": {
+        "source_file": "moss-pt-27041.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          109920
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/achievement/moss-pt-27041-03975.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "achievement",
+      "prompt_id": "v4-27040",
+      "prompt": "A rewarding magical achievement sound, a rising sparkle and a warm chord, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27041,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-27041.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A rewarding magical achievement sound, a rising sparkle and a warm chord, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "9f8d7084761a7f7351ffe6fd781ce5d5340a5b1b5bb03741762bb043bd25bb8b",
+      "worker": {
+        "takes": 12,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 403.3,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 9.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "7036d5081d5ef3a0e41402bed603842a48b37390c594258ff6c3df05228b583d",
+      "cut": {
+        "source_file": "moss-pt-27041.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          188400,
+          318480
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/warning/moss-pt-27051-02595.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "warning",
+      "prompt_id": "v4-27050",
+      "prompt": "An urgent electronic warning beep, a short double beep, five separate warnings with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27051,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-27051.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "An urgent electronic warning beep, a short double beep, five separate warnings with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "32e3bc4dcded6b15ea21614705527b31514eb7ede09f4b056db4b5641442586c",
+      "worker": {
+        "takes": 12,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 403.3,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 9.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "445d526225a50e18e9d1fb42d410dd67383a3e25f845a3eb495190c12876fa2c",
+      "cut": {
+        "source_file": "moss-pt-27051.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          122160,
+          134400
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/warning/moss-pt-27051-01470.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "warning",
+      "prompt_id": "v4-27050",
+      "prompt": "An urgent electronic warning beep, a short double beep, five separate warnings with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27051,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-27051.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "An urgent electronic warning beep, a short double beep, five separate warnings with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "28a72a5e37160d3ce6de8c1567d99a0840e9f0c05b822eea95510bd12a381ab2",
+      "worker": {
+        "takes": 12,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 403.3,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 9.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "445d526225a50e18e9d1fb42d410dd67383a3e25f845a3eb495190c12876fa2c",
+      "cut": {
+        "source_file": "moss-pt-27051.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          68160,
+          86400
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/countdown/moss-pt-27060-00200.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "countdown",
+      "prompt_id": "v4-27060",
+      "prompt": "A countdown timer ticks with sharp beeps, getting faster, one countdown. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27060,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-27060.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A countdown timer ticks with sharp beeps, getting faster, one countdown. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "58d5c9a1d41c737cc87b0cc00fb734efdd83460e04f7bfb65db931f351bef248",
+      "worker": {
+        "takes": 12,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 403.3,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 9.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "8b718271e78e3bcc9b95e326b8b6f2f7d46b1a662a7130ec7f8f30848dfedcc4",
+      "cut": {
+        "source_file": "moss-pt-27060.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          7200,
+          381600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    }
+  }
+}

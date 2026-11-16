@@ -1,0 +1,1054 @@
+{
+  "takes": {
+    "takes/call/moss-pt-7791-05790.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-7790",
+      "prompt": "A horned meat-eating dinosaur gives short guttural barking grunts, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7791,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7791.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A horned meat-eating dinosaur gives short guttural barking grunts, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "c8b40712c81dfaa24b4f81b182f8a151cbc3e7964e163f765afbea080b9540d8",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1027.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "8ab8a91c7ae417f9935e811765166ba6db7d19dd464cbbf643d9ca9b114cedd8",
+      "cut": {
+        "source_file": "moss-pt-7791.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          275520,
+          340560
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-7790-05815.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-7790",
+      "prompt": "A horned meat-eating dinosaur gives short guttural barking grunts, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7790,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7790.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A horned meat-eating dinosaur gives short guttural barking grunts, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e5c18d86fbf06cdb72f893202aa70bb5ccd187742ddd92e362ff71ad1517a16a",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1027.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "48682db9882e1d8f2a4dbbd79ff5880cfac208cb1fc51d6c7a5b2288c64f7109",
+      "cut": {
+        "source_file": "moss-pt-7790.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          276720,
+          369120
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-7791-01835.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-7790",
+      "prompt": "A horned meat-eating dinosaur gives short guttural barking grunts, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7791,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7791.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A horned meat-eating dinosaur gives short guttural barking grunts, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "4c8bca788b0a4490ff2f1f3e6ebf6e478ab49098705003f84a0b7f4e56823f41",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1027.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "8ab8a91c7ae417f9935e811765166ba6db7d19dd464cbbf643d9ca9b114cedd8",
+      "cut": {
+        "source_file": "moss-pt-7791.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          85680,
+          152880
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-7790-04075.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-7790",
+      "prompt": "A horned meat-eating dinosaur gives short guttural barking grunts, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7790,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7790.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A horned meat-eating dinosaur gives short guttural barking grunts, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "775f959bf11326c7e499508ec6636a4b4ee5aba003bd2de13815f134f0f05f4a",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1027.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "48682db9882e1d8f2a4dbbd79ff5880cfac208cb1fc51d6c7a5b2288c64f7109",
+      "cut": {
+        "source_file": "moss-pt-7790.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          193200,
+          239520
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-7790-02185.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-7790",
+      "prompt": "A horned meat-eating dinosaur gives short guttural barking grunts, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7790,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7790.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A horned meat-eating dinosaur gives short guttural barking grunts, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "6dfdfa2dd02a842ab5b1d9ec59a1192abea2bbd26bc67ffef78a50af24ec4cb0",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1027.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "48682db9882e1d8f2a4dbbd79ff5880cfac208cb1fc51d6c7a5b2288c64f7109",
+      "cut": {
+        "source_file": "moss-pt-7790.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          102480,
+          142800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-7800-04480.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-7800",
+      "prompt": "A horned meat-eating dinosaur lets out a harsh rasping roar, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7800,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7800.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A horned meat-eating dinosaur lets out a harsh rasping roar, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "26c1018bc6734a00faf40e06fac9766a8994a5aea0a7b46d16a317a543ece1f9",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1027.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "10fdf5382897cd869f2a4864ec11ed935972b27ccd90ed41d56e4bbdccb0c4ba",
+      "cut": {
+        "source_file": "moss-pt-7800.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          212640,
+          264000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-7800-02440.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-7800",
+      "prompt": "A horned meat-eating dinosaur lets out a harsh rasping roar, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7800,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7800.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A horned meat-eating dinosaur lets out a harsh rasping roar, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "4b64f0e0adbe1f9172f0cd175ccba010e479e7eb1b9b572d5b894f8a62a3d25f",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1027.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "10fdf5382897cd869f2a4864ec11ed935972b27ccd90ed41d56e4bbdccb0c4ba",
+      "cut": {
+        "source_file": "moss-pt-7800.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          114720,
+          168240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-7810-06025.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-7810",
+      "prompt": "A horned meat-eating dinosaur roars in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7810,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7810.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A horned meat-eating dinosaur roars in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e05401e0cc56b6bde5bd1d82b2822631a7a5fcce0ceaec86e6dc56c8c8bd9e42",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1027.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "99799747e7415d680bd5804ec3f4ae64f2840f8e451eb03bd799cf1024eadc58",
+      "cut": {
+        "source_file": "moss-pt-7810.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          286800,
+          363840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-7810-04205.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-7810",
+      "prompt": "A horned meat-eating dinosaur roars in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7810,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7810.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A horned meat-eating dinosaur roars in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "01342d598e3e6be7281cd68583330a2fd161e626a43fa5217b5bf86124741a5f",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1027.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "99799747e7415d680bd5804ec3f4ae64f2840f8e451eb03bd799cf1024eadc58",
+      "cut": {
+        "source_file": "moss-pt-7810.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          199440,
+          258960
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/death/moss-pt-7820-05990.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "death",
+      "prompt_id": "v2-7820",
+      "prompt": "A horned meat-eating dinosaur gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7820,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7820.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A horned meat-eating dinosaur gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "7821e42ae05f870436a6c2a4f5fcfd916e7a0c73c662ecbdc5bc8570fa8f82f5",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1027.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "97122b3ca919af9b800ea461430e2a7d1f63abb9c5539417457be2faea52638f",
+      "cut": {
+        "source_file": "moss-pt-7820.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          285120,
+          381840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/death/moss-pt-7820-04030.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "death",
+      "prompt_id": "v2-7820",
+      "prompt": "A horned meat-eating dinosaur gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7820,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7820.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A horned meat-eating dinosaur gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "336f751353ea568159b4716aa96f9658ab55221e6fe83718cf541b87a3b76dda",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1027.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "97122b3ca919af9b800ea461430e2a7d1f63abb9c5539417457be2faea52638f",
+      "cut": {
+        "source_file": "moss-pt-7820.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          191040,
+          264240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-7830-01965.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-7830",
+      "prompt": "A horned meat-eating dinosaur: snaps its jaws with a vicious snarl, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7830,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7830.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A horned meat-eating dinosaur: snaps its jaws with a vicious snarl, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "1d727c5fc092625388b4dd7ed414e94e2c8ff7cbafd4d965652bb027d246e411",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1027.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6fc4399de89fd16a9ddafdfdcfb041c190c9c6545830fc18490d14d1b64648da",
+      "cut": {
+        "source_file": "moss-pt-7830.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          91920,
+          144720
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-7830-03990.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-7830",
+      "prompt": "A horned meat-eating dinosaur: snaps its jaws with a vicious snarl, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7830,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7830.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A horned meat-eating dinosaur: snaps its jaws with a vicious snarl, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "5cc2f7613ea4a14daf8264481d9c36393bf1389fc3e3429ebfee3b5aba6391f4",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1027.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6fc4399de89fd16a9ddafdfdcfb041c190c9c6545830fc18490d14d1b64648da",
+      "cut": {
+        "source_file": "moss-pt-7830.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          189120,
+          233280
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-7840-01087.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-7840",
+      "prompt": "Heavy fast footsteps of a large two-legged predator, well spaced and distinct. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7840,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7840.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Heavy fast footsteps of a large two-legged predator, well spaced and distinct. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "702712a14bb3067af50aa1b54f9c4b5b2295f9620245aa7033bf8a8c64974e1f",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.8,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1027.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "3b29ea0643d918843d344d4579cb37cda305e6a210eec83844c5ecf4097674ea",
+      "cut": {
+        "source_file": "moss-pt-7840.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          49775,
+          76080
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    }
+  }
+}

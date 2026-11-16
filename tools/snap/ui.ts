@@ -1,7 +1,7 @@
 // Draws an interface frame over a picture with the browser binder's rectangles and colours, and a bitmap font in place of a real one.
 
-import { K_BAR, K_IMAGE, K_INPUT, type UiFrame } from "../../client/core/ui/nodes.ts";
-import { CHAR_ADVANCE, STYLES } from "../../client/core/ui/style.ts";
+import { K_BAR, K_IMAGE, K_INPUT, K_SLIDER, glyphAdvance, textWidth, type UiFrame } from "../../client/core/ui/nodes.ts";
+import { STYLES } from "../../client/core/ui/style.ts";
 import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "./font.ts";
 
 /** `color` is RGBA, `width` by `height`. */
@@ -24,6 +24,7 @@ export function drawUi(color: Uint8ClampedArray, width: number, height: number, 
   };
   for (let i = 0; i < f.count; i++) {
     const n = f.nodes[i]!;
+    if (n.kind === K_SLIDER) continue;
     const st = STYLES[n.style]!;
     const fa = (st.fill & 255) / 255;
     const ir = (st.ink >> 16) & 255;
@@ -59,7 +60,7 @@ export function drawUi(color: Uint8ClampedArray, width: number, height: number, 
           }
           if (a === 0) continue;
           const o = (dy * width + dx) * 4;
-          const cover = a / ((u1 - u0) * (v1 - v0));
+          const cover = a / ((u1 - u0) * (v1 - v0)) * n.alpha;
           color[o] = color[o]! + (r / a - color[o]!) * cover;
           color[o + 1] = color[o + 1]! + (g / a - color[o + 1]!) * cover;
           color[o + 2] = color[o + 2]! + (b / a - color[o + 2]!) * cover;
@@ -76,25 +77,26 @@ export function drawUi(color: Uint8ClampedArray, width: number, height: number, 
     }
     if (n.text === "") continue;
     // Each glyph sits in its character cell, so text takes the width core laid it out with.
-    const cell = st.font * CHAR_ADVANCE;
-    const dot = Math.max(1 / scale, cell / (GLYPH_WIDTH + 1));
-    const textW = n.text.length * cell;
+    const dot = Math.max(1 / scale, st.font * .6 / (GLYPH_WIDTH + 1));
+    const textW = textWidth(n.text, n.style);
     const pad = n.kind === K_INPUT ? 6 : 0;
     const tx = st.align === 1 ? n.x + (n.w - textW) / 2 : st.align === 2 ? n.x + n.w - textW : n.x + pad;
     const ty = n.y + (n.h - dot * GLYPH_HEIGHT) / 2;
-    for (let c = 0; c < n.text.length; c++) {
-      const code = n.text.charCodeAt(c);
-      if (code === 32) continue;
+    let advance = 0;
+    for (const character of n.text) {
+      const code = character.codePointAt(0)!;
+      const cell = glyphAdvance(code, n.style), dx = Math.min(dot, cell / (GLYPH_WIDTH + 1));
       for (let col = 0; col < GLYPH_WIDTH; col++) {
         for (let row = 0; row < GLYPH_HEIGHT; row++) {
           if (!glyphPixel(code, col, row)) continue;
-          const gx = tx + c * cell + col * dot;
+          const gx = tx + advance + col * dx;
           const gy = ty + row * dot;
           if (gx < n.x || gx + dot > n.x + n.w + 0.5) continue;
-          if (st.shadow) rect(gx + dot, gy + dot, dot, dot, 0, 0, 0, 0.7 * n.alpha);
-          rect(gx, gy, dot, dot, ir, ig, ib, n.alpha);
+          if (st.shadow) rect(gx + dx, gy + dot, dx, dot, 0, 0, 0, 0.7 * n.alpha);
+          rect(gx, gy, dx, dot, ir, ig, ib, n.alpha);
         }
       }
+      advance += cell;
     }
   }
 }

@@ -1,11 +1,15 @@
 // Software rasterizer that executes a frame packet on the CPU, so rendering can be looked at and tested without a browser.
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
+import { decodeTexture, sample, sampleWorldTexture, type Texture } from "../../client/core/render/cpu-texture.ts";
+import { SURFACE_MATERIAL, surfaceIndex } from "../../content/surfaces.ts";
+import { worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
-import { FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
+import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
+import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { nearKeeps } from "../../client/core/render/hand.ts";
 import { MOST_LOD, detailKeeps, rotorOf, shapeOf } from "../../client/core/render/detailtext.ts";
-import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
+import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { LAYER_LEVELS, NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyFrom, srgbToLinear, wounded } from "../../client/core/render/surface.ts";
@@ -48,12 +52,6 @@ function surfaceOf(entries: Uint8Array, skin: Uint8Array | null, range: readonly
   return skin && skin.length > 0 ? { ...decodeSurface(entries, range), skin: decodeSkin(skin) } : decodeSurface(entries, range);
 }
 
-/** A texture on the card: its pictures as numbers from 0 to 1, smallest first, picture k being 1 << k pixels across. A base colour is held as light. */
-interface Texture {
-  channels: number;
-  pictures: Float32Array[];
-}
-
 /**
  * What a textured draw reads besides its vertices' places: its material's maps in the order of MAP_ROLES, what its
  * flags say, and its layer with the level it is drawn at, 0 for none.
@@ -70,50 +68,8 @@ interface Surfaced {
   tangents: Float32Array;
 }
 
-const TO_LINEAR = Float32Array.from({ length: 256 }, (_, i) => srgbToLinear(i / 255));
-
-/** Pictures of the rgba variant as a texture: two channels for a normal map and four for the rest. */
-function decodeTexture(role: TextureRole, pictures: readonly ArrayLike<number>[]): Texture {
-  return {
-    channels: role === "normal" ? 2 : 4,
-    pictures: pictures.map((bytes) => Float32Array.from(bytes, (b, i) => ((role === "base" || role === "layer") && (i & 3) !== 3 ? TO_LINEAR[b]! : b / 255))),
-  };
-}
-
 /** What a draw reads where its material has no texture: one pixel of NEUTRAL. */
 const NEUTRALS = MAP_ROLES.map((role) => decodeTexture(role, [NEUTRAL[role].slice(0, role === "normal" ? 2 : 4)]));
-
-function bilinear(t: Texture, k: number, u: number, v: number, weight: number, out: Float64Array): void {
-  const size = 1 << k;
-  const p = t.pictures[k]!;
-  const x = u * size - 0.5;
-  const y = v * size - 0.5;
-  const fx = x - Math.floor(x);
-  const fy = y - Math.floor(y);
-  // The picture repeats: past one edge is the other.
-  const x0 = Math.floor(x) & (size - 1);
-  const x1 = (Math.floor(x) + 1) & (size - 1);
-  const y0 = Math.floor(y) & (size - 1);
-  const y1 = (Math.floor(y) + 1) & (size - 1);
-  const a = (y0 * size + x0) * t.channels, b = (y0 * size + x1) * t.channels, c = (y1 * size + x0) * t.channels, d = (y1 * size + x1) * t.channels;
-  const wa = weight * (1 - fx) * (1 - fy), wb = weight * fx * (1 - fy), wc = weight * (1 - fx) * fy, wd = weight * fx * fy;
-  for (let i = 0; i < t.channels; i++) out[i]! += p[a + i]! * wa + p[b + i]! * wb + p[c + i]! * wc + p[d + i]! * wd;
-}
-
-/**
- * Samples a texture as a graphics card does when it filters between pixels and between pictures, repeats the texture
- * both ways and takes no account of slant. `spread` is the base-two logarithm of how much of the texture's width one
- * step between screen pixels crosses.
- */
-function sample(t: Texture, u: number, v: number, spread: number, out: Float64Array): void {
-  const top = t.pictures.length - 1;
-  // How many halvings below the top picture a pixel of the texture is as large as a pixel of the screen.
-  const level = top + spread > 0 ? Math.min(top + spread, top) : 0;
-  const whole = Math.floor(level);
-  out.fill(0);
-  bilinear(t, top - whole, u, v, 1 - (level - whole), out);
-  if (level > whole) bilinear(t, top - whole - 1, u, v, level - whole, out);
-}
 
 const beside = new Float64Array(4);
 
@@ -148,6 +104,7 @@ const carriedNormal = carried.subarray(5, 8);
 const carriedTangent = carried.subarray(8, 12);
 const texel = TEXTURE_ROLES.map(() => new Float64Array(4));
 const albedo = new Float64Array(3);
+const worldOrm = new Float64Array(3);
 const normal = new Float64Array(3);
 const eye = new Float64Array(3);
 const light = new Float64Array(3);
@@ -159,19 +116,24 @@ const ROUGH = [1, 1, 0];
 const NOTHING = [0, 0, 0];
 
 /**
- * A pixel of a flat draw on a lit frame into `rgb`, as LIT has it: the checker's `shade` darkens the palette colour,
- * which is lit as SURFACE lights a fully rough surface. (rx, ry, rz) is where it is from the camera, and (nx, ny, nz) its face's normal.
+ * A palette draw on a lit frame into `rgb`, with world-projected finishes and SURFACE lighting. (rx, ry, rz) is where it is from the camera, and (nx, ny, nz) its face's normal.
  */
-function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number): void {
+function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void): void {
   const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
-  for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear((pal[colorIndex * 4 + c]! / 255) * shade);
+  for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear(pal[colorIndex * 4 + c]! / 255);
   normal[0] = nx;
   normal[1] = ny;
   normal[2] = nz;
   eye[0] = -rx / dist;
   eye[1] = -ry / dist;
   eye[2] = -rz / dist;
-  lit(light, albedo, ROUGH, normal, eye, p.frame, NOTHING);
+  if (sample) {
+    worldSurface(albedo, worldOrm, normal, albedo, surfaceIndex(colorIndex, ground, p.surfaceCity[7] ? "las-vegas" : "default"), rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample);
+    const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
+    for (let c = 0; c < 3; c++) reflected[c] = twice * normal[c]! - eye[c]!;
+    if (look) skyFrom(mirrored, p.frame, reflected, look);
+    lit(light, albedo, worldOrm, normal, eye, p.frame, look ? mirrored : NOTHING);
+  } else lit(light, albedo, ROUGH, normal, eye, p.frame, NOTHING);
   shown(rgb, light, dist, p);
 }
 
@@ -233,6 +195,8 @@ export class Rasterizer {
   private readonly manifest: Manifest | null;
   /** Given a manifest: the surfaces uploaded, by the slot of their level, each with its own slot. */
   private readonly surfaces = new Map<number, { slot: number; surface: DecodedSurface }>();
+  /** Levels and surfaces going up in pieces, as far as they have come. */
+  private readonly coming = new Map<number, Uint8Array>();
   private packet!: FramePacket;
   /**
    * The step being drawn (packet.ts): its matrix, the view depths it clips to, how its depth goes into the buffer, and
@@ -267,6 +231,8 @@ export class Rasterizer {
   private readonly cutScratch = new Float64Array(5 * (CARRIED + 4));
   private readonly textures = new Map<number, Texture>();
   /** Textures being made: their pictures as bytes, and how many bytes are still to come. */
+  private worldMaps: Texture[] | null = null;
+  private readonly worldSample: WorldSample = (role, u, v, spread, out) => sampleWorldTexture(this.worldMaps![role]!, u, v, spread, out);
   private readonly making = new Map<number, { role: TextureRole; top: number; pictures: Uint8Array[]; left: number }>();
   /** For a textured draw: each vertex's normal and tangent after its bones, a vertex's bones blended, and the instance's dyes. */
   private frames = new Float32Array(6 * 1024);
@@ -278,7 +244,7 @@ export class Rasterizer {
   private domeTable: Uint8Array | null = null;
   private readonly domeKey = new Float64Array(16 + FRAME.ends + 5);
   private readonly domeInverse = new Float64Array(9);
-  /** Per pixel, a lit flat draw's palette colour and one, 0 for none, the checker's shade, and where it is and which way it faces. */
+  /** Per pixel, a lit palette draw's colour and flags, projection footprint, position and geometric normal. */
   private readonly deferred: Uint16Array;
   private readonly deferredShade: Float64Array;
   private readonly deferredAt: Float64Array;
@@ -312,8 +278,21 @@ export class Rasterizer {
     for (const u of packet.uploads) this.buffers.set(u.buffer, { data: u.data.slice(), slots: u.slots.slice() });
     for (const id of packet.drops) this.buffers.delete(id);
     // Far blocks come as levels of their own (far.ts), with a manifest or without.
-    for (const u of packet.assetUploads) {
-      if (!this.manifest && u.slot < FAR_SLOTS) continue;
+    for (const piece of packet.assetUploads) {
+      if (!this.manifest && piece.slot < FAR_SLOTS) continue;
+      // A level or a surface in pieces is taken once its last is in.
+      let u = piece;
+      if (piece.whole !== undefined) {
+        const whole = piece.at === 0 ? new Uint8Array(piece.whole) : this.coming.get(piece.slot);
+        if (!whole) continue;
+        whole.set(piece.data, piece.at);
+        if (piece.at! + piece.data.length < piece.whole) {
+          this.coming.set(piece.slot, whole);
+          continue;
+        }
+        this.coming.delete(piece.slot);
+        u = { ...piece, data: whole };
+      }
       if (u.of === undefined) this.lods.set(u.slot, this.decodeUpload(u));
       else this.surfaces.set(u.of, { slot: u.slot, surface: surfaceOf(u.data.subarray(0, u.skinAt), u.data.subarray(u.skinAt ?? u.data.length), this.manifest!.meshes[u.mesh]!.uv) });
     }
@@ -328,6 +307,8 @@ export class Rasterizer {
       this.making.delete(slot);
     }
     for (const u of packet.texUploads) this.texture(u);
+    const world = (this.manifest ?? this.pack.header)?.materials?.find((m) => m.id === SURFACE_MATERIAL);
+    this.worldMaps = packet.lit && world && this.textures.has(world.base) ? [this.textures.get(world.base)!, this.textures.get(world.normal) ?? NEUTRALS[1]!, this.textures.get(world.mro) ?? NEUTRALS[2]!] : null;
     if (packet.atlasRows > 0) {
       const rows = packet.atlas.subarray(0, packet.atlasRows * ATLAS_WIDTH * 4);
       if (this.atlas.length < rows.length) this.atlas = new Float32Array(rows.length);
@@ -369,7 +350,7 @@ export class Rasterizer {
     for (let at = 0; at < this.width * this.height; at++) {
       if (this.deferred[at] === 0) continue;
       const g6 = at * 6;
-      litFlat(p, this.pack.palette, this.deferred[at]! - 1, this.deferredShade[at]!, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!);
+      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && this.worldMaps ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look);
       for (let c = 0; c < 3; c++) this.color[at * 4 + c] = rgb[c]! * 255;
       this.deferred[at] = 0;
     }
@@ -550,9 +531,11 @@ export class Rasterizer {
     const skinned = (p.drawFlags[d]! & DRAW_SKINNED) !== 0;
     const one = (p.drawFlags[d]! & DRAW_ONE_BONE) !== 0;
     const sized = (p.drawFlags[d]! & DRAW_SIZED) !== 0;
-    this.plain = (p.drawFlags[d]! & DRAW_PLAIN) !== 0;
+    this.plain = (p.drawFlags[d]! & DRAW_PLAIN) !== 0 || (p.lit && (p.drawFlags[d]! & (DRAW_SIZED | DRAW_PULLED)) !== 0);
     this.fade = p.drawFade[d]!;
     this.fadeShare = p.frame[FRAME.fade]!;
+    // Far blocks and the far city short of where their reach fades draw with no fade, and are far all the same.
+    const far = this.fade !== 0 || p.drawBuffer[d] === FAR_BUFFER || p.drawBuffer[d] === CITY_BUFFER;
     const bones = p.bones;
     for (let k = 0; k < p.drawInstances[d]!; k++) {
       const inst = p.drawFirst[d]! + k;
@@ -585,8 +568,8 @@ export class Rasterizer {
           out[v * 3 + 2] = -s * lx + c * lz + iz;
         }
       }
-      const kind = this.fade !== 0 ? PICK_FAR : transient ? PICK_ENTITY : PICK_STRUCTURE;
-      const id = this.fade !== 0 ? p.drawSlot[d]! : transient ? p.transientIds[inst]! : p.drawBuffer[d]! * 65536 + buffer!.slots[inst]!;
+      const kind = far ? PICK_FAR : transient ? PICK_ENTITY : PICK_STRUCTURE;
+      const id = far ? p.drawSlot[d]! : transient ? p.transientIds[inst]! : p.drawBuffer[d]! * 65536 + buffer!.slots[inst]!;
       const ranged = (p.drawFlags[d]! & DRAW_RANGED) !== 0;
       const [from, end] = ranged ? [p.drawFirstIndex[d]!, p.drawFirstIndex[d]! + p.drawIndexCount[d]!] : [0, lod.indices.length];
       if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
@@ -767,7 +750,7 @@ export class Rasterizer {
     const { data } = buffer;
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
     const [ox, oy, oz] = [p.drawOffset[d * 3]!, p.drawOffset[d * 3 + 1]!, p.drawOffset[d * 3 + 2]!];
-    this.plain = (p.drawFlags[d]! & DRAW_PLAIN) !== 0;
+    this.plain = (p.drawFlags[d]! & DRAW_PLAIN) !== 0 || (p.lit && (p.drawFlags[d]! & (DRAW_SIZED | DRAW_PULLED)) !== 0);
     this.fadeShare = p.frame[FRAME.fade]!;
     const out = this.scratch.length >= ATLAS_WIDTH * 3 ? this.scratch : (this.scratch = new Float32Array(ATLAS_WIDTH * 3));
     const atlas = this.atlas;
@@ -816,13 +799,13 @@ export class Rasterizer {
     return lod;
   }
 
-  /** A level from the bytes a packet uploads: its indices, padded to a multiple of 4, and then its vertices. */
+  /** A level from the bytes a packet uploads: its indices, padded to a multiple of 4, and then its vertices; or of quads, its vertices alone. */
   private decodeUpload(u: AssetUpload): DecodedLod {
     const view = new DataView(u.data.buffer, u.data.byteOffset, u.data.byteLength);
-    const indices = new Uint32Array(u.indexCount);
-    for (let i = 0; i < indices.length; i++) indices[i] = u.indexBytes === 4 ? view.getUint32(i * 4, true) : view.getUint16(i * 2, true);
-    const verts = u.data.subarray((u.indexCount * u.indexBytes + 3) & ~3);
-    return { ...vertices(verts, verts.length / VERTEX_BYTES, (this.manifest ?? this.pack.header).meshes[u.mesh]!), indices };
+    const indices = u.quads ? Uint32Array.from(quadIndices(u.indexCount, 4).subarray(0, u.indexCount)) : new Uint32Array(u.indexCount);
+    for (let i = 0; !u.quads && i < indices.length; i++) indices[i] = u.indexBytes === 4 ? view.getUint32(i * 4, true) : view.getUint16(i * 2, true);
+    const verts = u.data.subarray(u.quads ? 0 : (u.indexCount * u.indexBytes + 3) & ~3);
+    return { ...vertices(verts, verts.length / VERTEX_BYTES, u.bounds ?? (this.manifest ?? this.pack.header).meshes[u.mesh]!), indices };
   }
 
   /**
@@ -833,7 +816,7 @@ export class Rasterizer {
     if (u.format !== "rgba") throw new Error(`texture ${u.slot} comes as ${u.format}, and only the rgba variant is read here`);
     if (u.size === 1 && u.row === 0) {
       const pictures: Uint8Array[] = [];
-      for (let size = 1; size <= u.top; size <<= 1) pictures.push(new Uint8Array(pictureBytes("rgba", u.role, size)));
+      for (let size = 1; size <= u.top; size <<= 1) pictures.push(new Uint8Array(pictureBytes("rgba", u.role, size, 1)));
       this.making.set(u.slot, { role: u.role, top: u.top, pictures, left: pictures.reduce((sum, p) => sum + p.length, 0) });
     }
     const t = this.making.get(u.slot);
@@ -997,6 +980,8 @@ export class Rasterizer {
     const sy = p.camY - ny * CHECK_INSET;
     const sz = p.camZ - nz * CHECK_INSET;
     const fogSpan = p.fogEnd - p.fogStart;
+    const axis = Math.abs(ny) >= Math.max(Math.abs(nx), Math.abs(nz)) ? 1 : Math.abs(nx) > Math.abs(nz) ? 0 : 2;
+    const uc = axis === 0 ? 2 : 0, vc = axis === 1 ? 2 : 1;
 
     for (let k = 1; k + 1 < count; k++) {
       const v0 = 0, v1 = k * 7, v2 = (k + 1) * 7;
@@ -1012,6 +997,7 @@ export class Rasterizer {
       if (minX > maxX || minY > maxY) continue;
       this.trianglesDrawn++;
       const inv = 1 / area;
+      const e0x = (y1 - y2) * inv, e1x = (y2 - y0) * inv, e0y = (x2 - x1) * inv, e1y = (x0 - x2) * inv;
       for (let py = minY; py <= maxY; py++) {
         const fy = py + 0.5;
         for (let px = minX; px <= maxX; px++) {
@@ -1046,17 +1032,28 @@ export class Rasterizer {
           const wx = rx + sx, wy = solid ? ry + sy : 0, wz = rz + sz;
           let shade = 1;
           const cs = CHECK_COARSE_SIZE;
-          if (this.plain) shade = 1;
+          if (this.plain || p.lit) shade = 1;
           else {
             if (((Math.floor(wx) + Math.floor(wy) + Math.floor(wz)) & 1) !== 0) shade -= (1 - CHECK_FINE) * Math.max(0, 1 - dist / CHECK_FINE_FADE);
             if (((Math.floor(wx / cs) + Math.floor(wy / cs) + Math.floor(wz / cs)) & 1) !== 0) shade -= (1 - CHECK_COARSE) * Math.max(0, 1 - dist / CHECK_COARSE_FADE);
+          }
+          let footprint = 0;
+          if (p.lit && this.worldMaps && !this.plain) {
+            const r0 = (e0 + e0x) * poly[v0 + 5]!, r1 = (e1 + e1x) * poly[v1 + 5]!, r2 = (e2 - e0x - e1x) * poly[v2 + 5]!;
+            const d0 = (e0 + e0y) * poly[v0 + 5]!, d1 = (e1 + e1y) * poly[v1 + 5]!, d2 = (e2 - e0y - e1y) * poly[v2 + 5]!;
+            const u = axis === 0 ? rz : rx, v = axis === 1 ? rz : ry;
+            const ux = (r0 * poly[v0 + uc]! + r1 * poly[v1 + uc]! + r2 * poly[v2 + uc]!) / (r0 + r1 + r2) - u;
+            const vx = (r0 * poly[v0 + vc]! + r1 * poly[v1 + vc]! + r2 * poly[v2 + vc]!) / (r0 + r1 + r2) - v;
+            const uy = (d0 * poly[v0 + uc]! + d1 * poly[v1 + uc]! + d2 * poly[v2 + uc]!) / (d0 + d1 + d2) - u;
+            const vy = (d0 * poly[v0 + vc]! + d1 * poly[v1 + vc]! + d2 * poly[v2 + vc]!) / (d0 + d1 + d2) - v;
+            footprint = Math.max(Math.hypot(ux, vx), Math.hypot(uy, vy));
           }
           if (p.lit && !blend) {
             // Only what ends in front is shaded, once the opaque draws are done (`resolve`).
             const s = this.deferredAt;
             const g6 = at * 6;
-            this.deferred[at] = colorIndex + 1;
-            this.deferredShade[at] = shade;
+            this.deferred[at] = (colorIndex + 1) | (solid ? 512 : 0) | (this.plain ? 1024 : 0);
+            this.deferredShade[at] = footprint;
             s[g6] = rx;
             s[g6 + 1] = ry;
             s[g6 + 2] = rz;
@@ -1072,7 +1069,7 @@ export class Rasterizer {
           let cg = g * shade * (1 - fog) + p.sky[1]! * 255 * fog;
           let cb = b * shade * (1 - fog) + p.sky[2]! * 255 * fog;
           if (p.lit) {
-            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz);
+            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz, !this.plain && this.worldMaps ? this.worldSample : null, !solid, footprint, this.look);
             cr = rgb[0]! * 255;
             cg = rgb[1]! * 255;
             cb = rgb[2]! * 255;

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SNARK music lab</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; padding: 20px 16px 48px; background: #121417; color: #dde2e8; font: 15px/1.5 system-ui, sans-serif; }
+      main { max-width: 820px; margin: 0 auto; }
+      h1 { font-size: 22px; margin: 0 0 4px; }
+      h2 { font-size: 16px; margin: 26px 0 8px; color: #b8c2cc; }
+      p { color: #97a1ab; margin: 0 0 12px; }
+      .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+      button { font: inherit; padding: 9px 14px; border-radius: 8px; border: 1px solid #39424c; background: #1f252c; color: #dde2e8; cursor: pointer; }
+      button:hover { background: #28303a; }
+      button.on { border-color: #c45a3c; background: #3a2018; color: #ffd8c8; }
+      button.next { border-color: #c4a03c; }
+      .tracks button { min-width: 110px; text-transform: capitalize; }
+      .meters { display: grid; grid-template-columns: 90px 1fr 48px; gap: 6px 10px; align-items: center; margin-top: 14px; }
+      .bar { height: 10px; background: #1f252c; border-radius: 5px; overflow: hidden; }
+      .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #6b3a2a, #e0703c); }
+      .clock { font-variant-numeric: tabular-nums; color: #97a1ab; margin-top: 10px; min-height: 1.5em; }
+      .about { color: #c8b8a8; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Music lab</h1>
+      <p>The game's music: tracks in layers by intensity, one dark symphonic metal voice, made with Stable Audio 3 Medium. Each track's layers keep its bars, so the game moves between them on a bar line as danger rises and passes. Pick a track, press Play, then pick an intensity, or let "Encounter" walk it through a fight.</p>
+      <h2>Track</h2>
+      <div class="row tracks" id="tracks"></div>
+      <p class="about" id="about"></p>
+      <h2>Intensity</h2>
+      <div class="row"><button id="play">Play</button><span class="row" id="layers"></span><button id="walk">Encounter</button></div>
+      <div class="meters" id="meters"></div>
+      <div class="clock" id="clock">stopped</div>
+    </main>
+    <script src="music.js"></script>
+    <script>
+      // Each layer a stream, all playing together and all but one silent; a change waits for the next bar and fades
+      // over two. "Encounter" asks for calm, tense, combat, climax and back, as the director would for a fight.
+      const ABOUT = {
+        dawn: "The main theme, heard once as the player first comes to life.",
+        dread: "Lurking danger anywhere: hunters about, a fight, a wound.",
+        primeval: "Calm days in the jungle and on the plains.",
+        nightfall: "Night, made from the main theme.",
+        hunted: "Being chased by a pack.",
+        apex: "A giant predator hunting near.",
+        shoreline: "Beaches and the sea.",
+        ruins: "The ruined cities.",
+        deep: "Under water.",
+        hearth: "At the camp fire, made from the main theme.",
+        last_breath: "The player dies: a lament on the main theme, once.",
+      };
+      let tracks = [], track = null, streams = [], active = 0, pending = -1, fadeFrom = -1, fadeStart = 0, playing = false, walk = null;
+      const $ = (id) => document.getElementById(id);
+      const bar = () => (4 * 60) / track.bpm;
+      function stop() {
+        streams.forEach((s) => s.pause());
+        playing = false;
+        walk = null;
+        $("play").textContent = "Play";
+      }
+      function choose(t) {
+        stop();
+        track = t;
+        streams = t.layers.map((l) => Object.assign(new Audio(`${t.id}/${l}.opus`), { loop: !t.once, preload: "auto", volume: 0 }));
+        active = 0; pending = -1; fadeFrom = -1;
+        $("about").textContent = `${ABOUT[t.id] ?? ""} ${t.bpm} BPM, ${t.seconds} s, ${t.layers.length} layer${t.layers.length > 1 ? "s" : ""}.`;
+        $("layers").innerHTML = t.layers.map((l, i) => `<button data-i="${i}">${l}</button>`).join("");
+        $("layers").querySelectorAll("button").forEach((b) => (b.onclick = () => ask(+b.dataset.i)));
+        $("meters").innerHTML = t.layers.map((l) => `<span>${l}</span><div class="bar"><i></i></div><span>0%</span>`).join("");
+        document.querySelectorAll("#tracks button").forEach((b) => b.classList.toggle("on", b.textContent === t.id.replace("_", " ")));
+        show();
+      }
+      function ask(i) { pending = i === active ? -1 : i; show(); }
+      function show() { $("layers").querySelectorAll("button").forEach((b, i) => { b.classList.toggle("on", i === active); b.classList.toggle("next", i === pending); }); }
+      async function play() {
+        if (playing) return stop();
+        streams.forEach((s, i) => { s.currentTime = streams[active].currentTime; s.volume = i === active ? 1 : 0; });
+        await Promise.all(streams.map((s) => s.play()));
+        playing = true;
+        $("play").textContent = "Stop";
+      }
+      $("play").onclick = play;
+      $("walk").onclick = async () => {
+        if (!playing) await play();
+        const top = track.layers.length - 1;
+        const plan = [0, 1, 2, top, Math.max(1, top - 1), 0].map((k) => Math.min(top, k));
+        walk = { plan, step: 0, at: streams[active].currentTime };
+        ask(plan[0]);
+      };
+      function tick() {
+        if (track && streams.length) {
+          const lead = streams[active];
+          const t = lead.currentTime;
+          if (playing) {
+            for (const s of streams) if (s !== lead && Math.abs(s.currentTime - t) > 0.08) s.currentTime = t;
+            if (walk && t - walk.at > 6 * bar() && walk.step < walk.plan.length - 1) { walk.step++; walk.at = t; ask(walk.plan[walk.step]); }
+            if (pending >= 0 && fadeFrom < 0 && t % bar() < 0.06) { fadeFrom = active; active = pending; pending = -1; fadeStart = t; show(); }
+            if (fadeFrom >= 0) {
+              const k = Math.min(1, (t - fadeStart + track.seconds) % track.seconds / (2 * bar()));
+              streams[active].volume = Math.sin((k * Math.PI) / 2);
+              streams[fadeFrom].volume = Math.cos((k * Math.PI) / 2);
+              if (k >= 1) { streams[fadeFrom].volume = 0; fadeFrom = -1; }
+            }
+          }
+          const bars = $("meters").querySelectorAll(".bar i"), pct = $("meters").querySelectorAll("span:nth-child(3n)");
+          streams.forEach((s, i) => { bars[i].style.width = `${Math.round(s.volume * 100)}%`; pct[i].textContent = `${Math.round(s.volume * 100)}%`; });
+          $("clock").textContent = playing ? `${t.toFixed(1)} s, bar ${Math.floor(t / bar()) + 1}, playing ${track.layers[active]}${pending >= 0 ? `, ${track.layers[pending]} at the next bar` : ""}${walk ? ` (encounter step ${walk.step + 1} of ${walk.plan.length})` : ""}` : "stopped";
+        }
+        requestAnimationFrame(tick);
+      }
+      // music.js beside this page lists the tracks (music_export.py): it loads from a folder on disk as well as a server.
+      tracks = window.MUSIC?.tracks ?? [];
+      $("tracks").innerHTML = tracks.map((t) => `<button>${t.id.replace("_", " ")}</button>`).join("");
+      $("tracks").querySelectorAll("button").forEach((b, i) => (b.onclick = () => choose(tracks[i])));
+      if (tracks.length) choose(tracks.find((t) => t.id === "dread") ?? tracks[0]);
+      else $("about").textContent = "No music.js beside this page: run tools/sound/music_export.py.";
+      tick();
+    </script>
+  </body>
+</html>

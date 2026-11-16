@@ -10,7 +10,8 @@ import { Worker } from "node:worker_threads";
 import { inflateRawSync } from "node:zlib";
 import { MANIFEST_VERSION, type Manifest } from "../../shared/pack/manifest.ts";
 import { FILTER_LEVEL, FILTER_NONE, FILTER_PIXELS, FILTER_PLANES, FILTER_SURFACE, PARTS_HEADER_BYTES, PARTS_MAGIC, PARTS_VERSION, STORED_TEXTURE_VERSION, filterPart, unfilterPart } from "../../shared/pack/stored.ts";
-import { STEP0_SIZE, TEXTURE_HEADER_BYTES, stepBytes, stepOffset, type TextureFormat, type TextureRole } from "../../shared/pack/texture.ts";
+import { STEP0_SIZE, TEXTURE_HEADER_BYTES, blockOf, stepBytes, stepOffset, type TextureFormat, type TextureRole } from "../../shared/pack/texture.ts";
+import { partHash } from "./manifest.ts";
 import type { SplitFile } from "./split.ts";
 
 /** Where a build keeps the parts it has deflated. */
@@ -28,6 +29,8 @@ interface Part {
   filters: readonly Filter[];
   /** Says where the part now starts and how many bytes it is stored in. */
   put(at: number, stored: number): void;
+  /** A surface: its one filter gives back nearly what it was given, and the part is that, hashed again. */
+  hashed?: (hash: string) => void;
 }
 
 /**
@@ -54,8 +57,9 @@ function partsOf(files: readonly SplitFile[], manifest: Manifest): Part[][] {
       let at = level.surface ? level.surface.at : level.at + level.parts[0]!.bytes;
       level.parts.forEach((p, k) => {
         if (k === 0) return;
-        const filters: Filter[] = [k === 1 ? [FILTER_SURFACE, []] : [FILTER_PLANES, [8]], [FILTER_NONE, []]];
-        parts[rest.file]!.push({ at, bytes: p.bytes, filters, put: (to, stored) => void (k === 1 && level.surface && (level.surface.at = to), stored < p.bytes && (p.stored = stored)) });
+        const put = (to: number, stored: number): void => void (k === 1 && level.surface && (level.surface.at = to), stored < p.bytes && (p.stored = stored));
+        if (k === 1) parts[rest.file]!.push({ at, bytes: p.bytes, filters: [[FILTER_SURFACE, []]], put, hashed: (hash) => (p.hash = hash) });
+        else parts[rest.file]!.push({ at, bytes: p.bytes, filters: [[FILTER_PLANES, [8]], [FILTER_NONE, []]], put });
         at += p.bytes;
       });
     }
@@ -64,9 +68,9 @@ function partsOf(files: readonly SplitFile[], manifest: Manifest): Part[][] {
     for (const [format, v] of Object.entries(tex.in) as [TextureFormat, NonNullable<(typeof tex.in)[TextureFormat]>][]) {
       const stored: number[] = [];
       v.hash.forEach((_, step) => {
-        const bytes = stepBytes(format, tex.role, step);
+        const bytes = stepBytes(format, tex.role, step, blockOf(format, v));
         parts[v.file]!.push({
-          at: v.at + stepOffset(format, tex.role, step),
+          at: v.at + stepOffset(format, tex.role, step, blockOf(format, v)),
           bytes,
           filters: textureFilters(format, tex.role, step),
           put: (to, size) => {
@@ -141,9 +145,9 @@ const sha = (data: string | Uint8Array): string => createHash("sha256").update(d
 /**
  * The files with every ranged one remade of its parts, stored, one after another behind a header of its own, and the
  * manifest changed to say where each part now is and how many bytes it is stored in. Each part is tried with the
- * filters that suit it and kept as the smallest of those deflated, or as it is if none is smaller. What is deflated
- * is kept under .cache/ by the hash of what went in and of the compressor's source, and every part is inflated again
- * before it is written, to be sure it comes back.
+ * filters that suit it and kept as the smallest of those deflated, or as it is if none is smaller; a surface is first
+ * made what its filter gives back, and hashed again. What is deflated is kept under .cache/ by the hash of what went in
+ * and of the compressor's source, and every part is inflated again before it is written, to be sure it comes back.
  */
 export async function storeParts(files: readonly SplitFile[], manifest: Manifest, opts: StoreOptions = {}): Promise<{ files: SplitFile[]; report: StoreReport }> {
   const cache = opts.cache === undefined ? PART_CACHE : opts.cache;
@@ -180,11 +184,14 @@ export async function storeParts(files: readonly SplitFile[], manifest: Manifest
       const p = lists[f]![k]!;
       const raw = files[f]!.bytes.subarray(p.at, p.at + p.bytes);
       if (raw.length !== p.bytes) throw new Error(`store: a part of ${files[f]!.name} lies outside it`);
-      let best: Uint8Array = raw;
-      for (const [filter, numbers] of p.filters) {
-        const out = await deflated(filterPart(raw, filter, numbers));
+      const filtered = p.filters.map(([filter, numbers]) => filterPart(raw, filter, numbers));
+      const kept = p.hashed ? unfilterPart(filtered[0]!, p.bytes)! : raw;
+      p.hashed?.(partHash(kept));
+      let best: Uint8Array = kept;
+      for (const [k, data] of filtered.entries()) {
+        const out = await deflated(data);
         const back = unfilterPart(new Uint8Array(inflateRawSync(out)), p.bytes);
-        if (!back || Buffer.compare(back, raw) !== 0) throw new Error(`store: a part of ${files[f]!.name} does not come back from filter ${filter}`);
+        if (!back || Buffer.compare(back, kept) !== 0) throw new Error(`store: a part of ${files[f]!.name} does not come back from filter ${p.filters[k]![0]}`);
         if (out.length < best.length) best = out;
       }
       stored[f]![k] = best;

@@ -66,7 +66,7 @@ test("a native visitor walks aboard and uses the public sail winch, sees progres
     expect(h.host.sails.states()[0]!.from).toBe(1); expect(h.host.sails.states()[0]!.target).toBe(1);
     expect(app.hud.prompt).toBe("E lower sails");
   } finally { h.host.shutdown(); }
-}, 15000);
+});
 
 const controls = [
   { kind: KORU_SAILS.control.id, x: 64, y: 0, z: 64, yaw: 11776 },

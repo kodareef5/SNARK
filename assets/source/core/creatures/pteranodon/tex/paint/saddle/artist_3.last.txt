@@ -1,0 +1,3 @@
+Tidied the saddle folder: archived surplus files, added `.gitignore`, preserved the review helper as `.ts.txt`, and added the report’s “Files” section. No `.ts` files remain.
+
+Both clean builds reproduced all six accepted files byte for byte. `check.py` passed. Painting scripts, study files, and shared inputs are unchanged.

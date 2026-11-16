@@ -1,0 +1,319 @@
+{
+  "seconds": 34.716262,
+  "encode": {
+    "pictures": 70,
+    "encoded": 70,
+    "megapixels": 25.165822
+  },
+  "variants": [
+    {
+      "format": "bc",
+      "bytes": 12583008,
+      "sha256": "24364a0b8377949e5e440b12e0e3c0024e4a65afb264a80a200132ce24b35070",
+      "tiers": [
+        {
+          "tier": "lowpoly",
+          "maps": [
+            {
+              "role": "base",
+              "side": 0,
+              "bytes": 0
+            },
+            {
+              "role": "normal",
+              "side": 0,
+              "bytes": 0
+            },
+            {
+              "role": "mro",
+              "side": 0,
+              "bytes": 0
+            }
+          ],
+          "bytes": 0,
+          "firstStepBytes": 0,
+          "addedDraws": 0,
+          "addedTriangles": 0
+        },
+        {
+          "tier": "medium",
+          "maps": [
+            {
+              "role": "base",
+              "side": 1024,
+              "bytes": 1398128
+            },
+            {
+              "role": "normal",
+              "side": 1024,
+              "bytes": 1398128
+            },
+            {
+              "role": "mro",
+              "side": 512,
+              "bytes": 349552
+            }
+          ],
+          "bytes": 3145808,
+          "firstStepBytes": 16464,
+          "addedDraws": 0,
+          "addedTriangles": 0
+        },
+        {
+          "tier": "high",
+          "maps": [
+            {
+              "role": "base",
+              "side": 2048,
+              "bytes": 5592432
+            },
+            {
+              "role": "normal",
+              "side": 2048,
+              "bytes": 5592432
+            },
+            {
+              "role": "mro",
+              "side": 1024,
+              "bytes": 1398128
+            }
+          ],
+          "bytes": 12582992,
+          "firstStepBytes": 16464,
+          "addedDraws": 0,
+          "addedTriangles": 0
+        },
+        {
+          "tier": "ultra",
+          "maps": [
+            {
+              "role": "base",
+              "side": 2048,
+              "bytes": 5592432
+            },
+            {
+              "role": "normal",
+              "side": 2048,
+              "bytes": 5592432
+            },
+            {
+              "role": "mro",
+              "side": 1024,
+              "bytes": 1398128
+            }
+          ],
+          "bytes": 12582992,
+          "firstStepBytes": 16464,
+          "addedDraws": 0,
+          "addedTriangles": 0
+        }
+      ]
+    },
+    {
+      "format": "astc",
+      "bytes": 12583008,
+      "sha256": "646954b2aaa1c2539392d41272dc1313b08321f8cf1f47efd9046a4c4c2666d6",
+      "tiers": [
+        {
+          "tier": "lowpoly",
+          "maps": [
+            {
+              "role": "base",
+              "side": 0,
+              "bytes": 0
+            },
+            {
+              "role": "normal",
+              "side": 0,
+              "bytes": 0
+            },
+            {
+              "role": "mro",
+              "side": 0,
+              "bytes": 0
+            }
+          ],
+          "bytes": 0,
+          "firstStepBytes": 0,
+          "addedDraws": 0,
+          "addedTriangles": 0
+        },
+        {
+          "tier": "medium",
+          "maps": [
+            {
+              "role": "base",
+              "side": 1024,
+              "bytes": 1398128
+            },
+            {
+              "role": "normal",
+              "side": 1024,
+              "bytes": 1398128
+            },
+            {
+              "role": "mro",
+              "side": 512,
+              "bytes": 349552
+            }
+          ],
+          "bytes": 3145808,
+          "firstStepBytes": 16464,
+          "addedDraws": 0,
+          "addedTriangles": 0
+        },
+        {
+          "tier": "high",
+          "maps": [
+            {
+              "role": "base",
+              "side": 2048,
+              "bytes": 5592432
+            },
+            {
+              "role": "normal",
+              "side": 2048,
+              "bytes": 5592432
+            },
+            {
+              "role": "mro",
+              "side": 1024,
+              "bytes": 1398128
+            }
+          ],
+          "bytes": 12582992,
+          "firstStepBytes": 16464,
+          "addedDraws": 0,
+          "addedTriangles": 0
+        },
+        {
+          "tier": "ultra",
+          "maps": [
+            {
+              "role": "base",
+              "side": 2048,
+              "bytes": 5592432
+            },
+            {
+              "role": "normal",
+              "side": 2048,
+              "bytes": 5592432
+            },
+            {
+              "role": "mro",
+              "side": 1024,
+              "bytes": 1398128
+            }
+          ],
+          "bytes": 12582992,
+          "firstStepBytes": 16464,
+          "addedDraws": 0,
+          "addedTriangles": 0
+        }
+      ]
+    },
+    {
+      "format": "rgba",
+      "bytes": 13981026,
+      "sha256": "f8f807e18bd5523da6451cb6352df41f7c120960ef4a4779260b63c6dc2f6d58",
+      "tiers": [
+        {
+          "tier": "lowpoly",
+          "maps": [
+            {
+              "role": "base",
+              "side": 0,
+              "bytes": 0
+            },
+            {
+              "role": "normal",
+              "side": 0,
+              "bytes": 0
+            },
+            {
+              "role": "mro",
+              "side": 0,
+              "bytes": 0
+            }
+          ],
+          "bytes": 0,
+          "firstStepBytes": 0,
+          "addedDraws": 0,
+          "addedTriangles": 0
+        },
+        {
+          "tier": "medium",
+          "maps": [
+            {
+              "role": "base",
+              "side": 1024,
+              "bytes": 5592404
+            },
+            {
+              "role": "normal",
+              "side": 1024,
+              "bytes": 2796202
+            },
+            {
+              "role": "mro",
+              "side": 1024,
+              "bytes": 5592404
+            }
+          ],
+          "bytes": 13981010,
+          "firstStepBytes": 54610,
+          "addedDraws": 0,
+          "addedTriangles": 0
+        },
+        {
+          "tier": "high",
+          "maps": [
+            {
+              "role": "base",
+              "side": 1024,
+              "bytes": 5592404
+            },
+            {
+              "role": "normal",
+              "side": 1024,
+              "bytes": 2796202
+            },
+            {
+              "role": "mro",
+              "side": 1024,
+              "bytes": 5592404
+            }
+          ],
+          "bytes": 13981010,
+          "firstStepBytes": 54610,
+          "addedDraws": 0,
+          "addedTriangles": 0
+        },
+        {
+          "tier": "ultra",
+          "maps": [
+            {
+              "role": "base",
+              "side": 1024,
+              "bytes": 5592404
+            },
+            {
+              "role": "normal",
+              "side": 1024,
+              "bytes": 2796202
+            },
+            {
+              "role": "mro",
+              "side": 1024,
+              "bytes": 5592404
+            }
+          ],
+          "bytes": 13981010,
+          "firstStepBytes": 54610,
+          "addedDraws": 0,
+          "addedTriangles": 0
+        }
+      ]
+    }
+  ]
+}

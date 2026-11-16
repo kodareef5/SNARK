@@ -1,0 +1,317 @@
+{
+  "asset": "core/sfx/ruins",
+  "review": "../ref/sound",
+  "about": "The ruined cities: a generator, sirens, a dying fluorescent light, groaning buildings, glass underfoot, electric arcs, steam, dripping pipes, a fan, power failing and returning, a computer booting and a sliding door.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "generator": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a generator running",
+      "prompts": [
+        {
+          "id": "v4-26600",
+          "models": [
+            "moss"
+          ],
+          "seed": 26600,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A diesel generator runs steadily with a chugging rumble. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "generator/start": {
+      "kind": "impact",
+      "range": 40,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a generator starting",
+      "prompts": [
+        {
+          "id": "v4-26610",
+          "models": [
+            "moss"
+          ],
+          "seed": 26610,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A generator's pull cord is yanked, it coughs, sputters and chugs into life, two separate starts with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "siren": {
+      "kind": "impact",
+      "range": 1,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a siren far off",
+      "prompts": [
+        {
+          "id": "v4-26620",
+          "models": [
+            "moss"
+          ],
+          "seed": 26620,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A wailing emergency siren rising and falling in the distance, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "raid": {
+      "kind": "impact",
+      "range": 2000,
+      "level": -10,
+      "vary": 0.04,
+      "want": "an air-raid siren",
+      "prompts": [
+        {
+          "id": "v4-26630",
+          "models": [
+            "moss"
+          ],
+          "seed": 26630,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 12,
+          "text": "An air-raid siren winds up to a long wail and slowly winds down, one wail. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "whole": true
+    },
+    "fluorescent": {
+      "kind": "impact",
+      "range": 8,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a dying fluorescent light",
+      "prompts": [
+        {
+          "id": "v4-26640",
+          "models": [
+            "moss"
+          ],
+          "seed": 26640,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A failing fluorescent tube light buzzes, flickers and ticks, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "groan": {
+      "kind": "impact",
+      "range": 80,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a ruined building groaning",
+      "prompts": [
+        {
+          "id": "v4-26650",
+          "models": [
+            "moss"
+          ],
+          "seed": 26650,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A ruined steel building groans and creaks under strain, metal moaning, three separate groans with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "glass": {
+      "kind": "impact",
+      "range": 10,
+      "level": -18,
+      "vary": 0.04,
+      "want": "broken glass underfoot",
+      "prompts": [
+        {
+          "id": "v4-26660",
+          "models": [
+            "moss"
+          ],
+          "seed": 26660,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Boots crunch on broken glass, five separate steps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "arc": {
+      "kind": "impact",
+      "range": 40,
+      "level": -12,
+      "vary": 0.04,
+      "want": "an electric arc",
+      "prompts": [
+        {
+          "id": "v4-26670",
+          "models": [
+            "moss"
+          ],
+          "seed": 26670,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A downed power line arcs with a violent buzzing crackle and snap, three separate arcs with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "steam": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.04,
+      "want": "steam escaping",
+      "prompts": [
+        {
+          "id": "v4-26680",
+          "models": [
+            "moss"
+          ],
+          "seed": 26680,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Steam hisses loudly from a burst pipe, three separate bursts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "drip": {
+      "kind": "impact",
+      "range": 10,
+      "level": -24,
+      "vary": 0.04,
+      "want": "a dripping pipe",
+      "prompts": [
+        {
+          "id": "v4-26690",
+          "models": [
+            "moss"
+          ],
+          "seed": 26690,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Water drips steadily from a rusty pipe into a puddle, echoing."
+        }
+      ],
+      "loop": true
+    },
+    "fan": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a big fan",
+      "prompts": [
+        {
+          "id": "v4-26700",
+          "models": [
+            "moss"
+          ],
+          "seed": 26700,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A big ventilation fan spins with a whooshing hum and a slight rattle, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "power/down": {
+      "kind": "impact",
+      "range": 40,
+      "level": -14,
+      "vary": 0.04,
+      "want": "power failing",
+      "prompts": [
+        {
+          "id": "v4-26710",
+          "models": [
+            "moss"
+          ],
+          "seed": 26710,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Power fails: machines wind down with a falling hum and a final clunk, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "power/up": {
+      "kind": "impact",
+      "range": 40,
+      "level": -14,
+      "vary": 0.04,
+      "want": "power coming on",
+      "prompts": [
+        {
+          "id": "v4-26720",
+          "models": [
+            "moss"
+          ],
+          "seed": 26720,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Power comes on: a rising electrical hum, clunking relays and lights buzzing on, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "boot": {
+      "kind": "impact",
+      "range": 10,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a computer booting",
+      "prompts": [
+        {
+          "id": "v4-26730",
+          "models": [
+            "moss"
+          ],
+          "seed": 26730,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "An old computer boots up: a fan spins, a hard drive whirs and clicks and it beeps, one boot. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "door": {
+      "kind": "impact",
+      "range": 15,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a sliding door",
+      "prompts": [
+        {
+          "id": "v4-26740",
+          "models": [
+            "moss"
+          ],
+          "seed": 26740,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "An automatic sliding door opens with a pneumatic hiss and a smooth whoosh, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

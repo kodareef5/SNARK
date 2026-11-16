@@ -59,7 +59,7 @@ test("the new codes are each one of their kind, and deadlines have kinds of thei
   expect(new Set(ops).size).toBe(ops.length);
   // 14 is the cluster's, 15 the beds', 16 the flyers' (below), 17 the stations wave's (tests/unit/stations-contracts.test.ts),
   // 18 the vehicles' (tests/integration/vehicle-contracts.test.ts).
-  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 20]);
+  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 23]);
   const orders = [P.ORDER_STAY, P.ORDER_FOLLOW, P.ORDER_STANCE, P.ORDER_STANCE + 1, P.ORDER_STANCE + 2, P.ORDER_UNSADDLE, P.ORDER_MATE, P.ORDER_UNMATE, P.ORDER_WANDER, P.ORDER_ATTACK, P.ORDER_YOURS, P.ORDER_LAND];
   expect(new Set(orders).size).toBe(orders.length);
   expect(Math.max(...orders)).toBeLessThan(P.ORDER_LEVEL);
@@ -75,8 +75,9 @@ test("the new columns change nothing for content that does not use them", () => 
     // the ground and in the air.
     const sprints = d.type === "species" ? { ...(d.tamedSprintMul === undefined ? {} : { sprintMul: d.tamedSprintMul }), ...(d.fly?.tamedSprintMul === undefined ? {} : { flySprintMul: d.fly.tamedSprintMul }) } : {};
     if (d.type === "species") expect({ ...reg.tamedMove[i]!, slopeCos: 0 }).toEqual({ ...reg.move[i]!, slopeCos: 0, ...sprints });
-    // The pteranodon is carried as 149 of drag weight by what can lift it, and its mass is 190. The car's mass is its curb mass.
-    const dragged = ({ "core:pteranodon": [0, 149, 190, 0, 0], "core:compact": [0, 0, 1100, 0, 0], "core:helicopter": [0, 0, 1050, 0, 0], "core:helicopter_rescue": [0, 0, 1050, 0, 0], "core:helicopter_police": [0, 0, 1050, 0, 0], "core:boat": [0, 0, 1400, 0, 0], "core:boat_rescue": [0, 0, 1400, 0, 0], "core:boat_police": [0, 0, 1400, 0, 0] } as Record<string, number[]>)[d.id];
+    // The pteranodon is carried as 149 of drag weight by what can lift it, its mass is 190, and its kind takes fright with
+    // it within 15 m. A vehicle's mass is its curb mass.
+    const dragged = ({ "core:pteranodon": [15, 149, 190, 0, 0], "core:compact": [0, 0, 1100, 0, 0], "core:helicopter": [0, 0, 1050, 0, 0], "core:helicopter_rescue": [0, 0, 1050, 0, 0], "core:helicopter_police": [0, 0, 1050, 0, 0], "core:boat": [0, 0, 1400, 0, 0], "core:boat_rescue": [0, 0, 1400, 0, 0], "core:boat_police": [0, 0, 1400, 0, 0] } as Record<string, number[]>)[d.id];
     if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual(dragged ?? [0, 0, 0, 0, 0]);
     expect(reg.drawSize[i]).toBe(1);
     if (!["core:survivor", "core:club", "core:pick"].includes(d.id)) expect(reg.meleeTorpor[i]).toBe(0);
@@ -270,7 +271,7 @@ test("a flyer's clips are named among a rig's, each once, and asked for of a spe
   const uses = slotsOf(CORE_CONTENT);
   expect(uses.filter((u) => u.slot === "flight").map((u) => u.owner).every((o) => o === "core:pteranodon")).toBe(true);
   expect(uses.filter((u) => u.slot === "flight").length).toBe(flight.length);
-  expect(uses.filter((u) => u.slot === "saddled").map((u) => [u.owner, u.id]).sort()).toEqual([["core:dodo", "core:dodo/saddled"], ["core:parasaur", "core:parasaur/saddled"], ["core:raptor", "core:raptor/saddled"]]);
+  expect(uses.filter((u) => u.slot === "saddled").map((u) => [u.owner, u.id]).sort()).toEqual([["core:dodo", "core:dodo/saddled"], ["core:parasaur", "core:parasaur/saddled"], ["core:pteranodon", "core:pteranodon/saddled"], ["core:raptor", "core:raptor/saddled"]]);
   expect(classRow("item/saddle")!.slots.worn!.from).toBe("{id}/worn");
 });
 

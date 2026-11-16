@@ -11,9 +11,9 @@ const isPlayer = (id: number): boolean => id < PLAYERS * 8 && id % 8 === 0;
 const looks: Looks = {
   level: new Uint16Array(N),
   colors: new Uint8Array(N * 6),
-  name: new Array<string>(N).fill(""),
-  look: new Array<Uint8Array | null>(N).fill(null),
-  gear: new Array<Uint16Array | null>(N).fill(null),
+  names: new Map(),
+  looks: new Map(),
+  gears: new Map(),
   team: new Uint32Array(N),
   seat: new Uint32Array(N),
   span: new Uint32Array(N),

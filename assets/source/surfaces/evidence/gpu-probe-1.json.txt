@@ -1,0 +1,96 @@
+      "rgba"
+    ],
+    "errors": 0
+  },
+  "canvas": [
+    1280,
+    577
+  ],
+  "probes": [
+    {
+      "name": "sky",
+      "expected": [
+        90,
+        146,
+        211
+      ],
+      "got": [
+        90,
+        146,
+        211
+      ],
+      "ok": true
+    },
+    {
+      "name": "plaza",
+      "expected": [
+        177,
+        179,
+        177
+      ],
+      "got": [
+        126,
+        126,
+        122
+      ],
+      "ok": true
+    },
+    {
+      "name": "block",
+      "expected": [
+        74,
+        84,
+        97
+      ],
+      "got": [
+        50,
+        55,
+        59
+      ],
+      "ok": false
+    },
+    {
+      "name": "slope",
+      "expected": [
+        149,
+        93,
+        61
+      ],
+      "got": [
+        66,
+        77,
+        45
+      ],
+      "ok": false
+    },
+    {
+      "name": "creature",
+      "expected": [
+        118,
+        120,
+        60
+      ],
+      "got": [
+        98,
+        95,
+        65
+      ],
+      "ok": false
+    },
+    {
+      "name": "body",
+      "expected": [
+        108,
+        92,
+        79
+      ],
+      "got": [
+        108,
+        92,
+        79
+      ],
+      "ok": true
+    }
+  ],
+  "interface": {
+    "nodes": 140,

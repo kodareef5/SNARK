@@ -10,6 +10,7 @@ import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE
 import { AIR } from "./atmosphere.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { LIGHT } from "./surface.ts";
+import { WORLD_GLSL } from "./world-surfaces.ts";
 
 const f = (n: number): string => n.toFixed(4);
 
@@ -38,33 +39,23 @@ void main() {
   o = vec4(mix(vColor * light * shade, uSky, fog * fog), uAlpha);
 }`;
 
-/**
- * LIT, what the lit tiers draw flat with in FLAT's place, from FLAT's vertex texts: its normal and checker, the checker
- * darkening the palette colour as FLAT's does, then lit as SURFACE lights a fully rough surface that is not metal, in
- * the sun's shadow where it falls.
- */
+/** Palette geometry on textured tiers: world-projected finishes share SURFACE's lighting. Its vertex text gives the colour as light (world-surfaces.ts `worldVertex`). */
 export const LIT_FRAGMENT = `#version 300 es
 precision highp float;
+precision highp int;
 in vec3 vRel;
 flat in vec3 vColor;
-uniform vec3 uCamMod;
 uniform float uSolid, uAlpha;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${AIR}void main() {
-  vec3 n = normalize(cross(dFdx(vRel), dFdy(vRel)));
-  vec3 w = vRel + uCamMod - n * ${f(CHECK_INSET)};
-  if (uSolid < 0.5) w.y = 0.0;
-  float d = length(vRel);
-  float shade = 1.0;
-  vec3 a = floor(w);
-  vec3 b = floor(w / ${f(CHECK_COARSE_SIZE)});
-  if (uSolid < 1.5) {
-    if (mod(a.x + a.y + a.z, 2.0) > 0.5) shade -= ${f(1 - CHECK_FINE)} * max(0.0, 1.0 - d / ${f(CHECK_FINE_FADE)});
-    if (mod(b.x + b.y + b.z, 2.0) > 0.5) shade -= ${f(1 - CHECK_COARSE)} * max(0.0, 1.0 - d / ${f(CHECK_COARSE_FADE)});
-  }
-  vec3 c = vColor * shade;
-  vec3 albedo = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
-  o = vec4(shown(lit(albedo, vec3(1.0, 1.0, 0.0), n, -vRel / d, vec3(0.0), sunShadow(vRel, n)), vRel), uAlpha);
+${LIGHT}${SHADOW_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}void main() {
+  vec3 geometric = normalize(cross(dFdx(vRel), dFdy(vRel)));
+  vec3 n = geometric;
+  vec3 albedo = vColor;
+  vec3 orm = vec3(1.0, 1.0, 0.0);
+  if (uSolid < 1.5 && uWorldReady > 0.5) worldSurface(albedo, orm, n);
+  vec3 v = -normalize(vRel);
+  vec3 mirrored = orm.y < 1.0 ? skyFrom(reflect(-v,n)) : vec3(0.0);
+  o = vec4(shown(lit(albedo, orm, n, v, mirrored, sunShadow(vRel, geometric)), vRel), uAlpha);
 }`;
 
 export const FLAT_MESH_VERTEX = `#version 300 es

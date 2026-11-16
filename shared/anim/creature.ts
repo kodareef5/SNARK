@@ -110,7 +110,7 @@ export class CreatureAnim {
   readonly biteBones: Uint8Array;
   /** Radians a second at which its turn plays at its own rate. */
   readonly spinAt: number;
-  /** Its flight's: taking off, hovering, flying, flying fast, gliding, diving, the barrel roll, and limp in the air when knocked out. */
+  /** Its flight's: taking off, hovering, flying, flying fast, gliding, diving, the barrel roll, limp in the air when knocked out, and dying in the air. */
   readonly takeOff: Clip | null;
   readonly hover: Clip | null;
   readonly fly: Clip | null;
@@ -119,6 +119,7 @@ export class CreatureAnim {
   readonly dive: Clip | null;
   readonly roll: Clip | null;
   readonly torporFall: Clip | null;
+  readonly deathAir: Clip | null;
   /** Layers: the bite in the air on its neck and head; its feet taking hold, holding and letting go. */
   readonly attackAir: Clip | null;
   readonly grab: Clip | null;
@@ -203,6 +204,7 @@ export class CreatureAnim {
     this.dive = loop(named("dive"));
     this.roll = named("barrel_roll");
     this.torporFall = named("torpor_fall");
+    this.deathAir = named("death_air");
     this.attackAir = named("attack_air");
     this.grab = named("grab");
     this.carry = loop(named("carry"));
@@ -661,7 +663,13 @@ export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: 
   else steady(a, st, tick, out, gait, st.out);
   if (st.out) {
     const s = since(tick, st.cueStart);
-    if (st.cue !== CUE_TORPOR) {
+    if (st.cue === CUE_LAND) {
+      // Come down from its limp fall, it lies down from that.
+      if (s < FADE && a.torporFall && st.grounded) {
+        sampleClip(a.torporFall, tick + st.seed, rig.e);
+        blendPose(out, rig.e, out, smooth(s / FADE));
+      }
+    } else if (st.cue !== CUE_TORPOR) {
       // Out cold.
     } else if (a.torporFall && !st.grounded && st.mode !== MODE_SWIM) {
       // Knocked out off the ground it goes limp from what it was doing there.
@@ -762,14 +770,22 @@ function talons(a: CreatureAnim, st: AnimState, tick: number, out: Pose): void {
   const s = equip ? since(tick, st.actionStart) : Infinity;
   if (st.action >>> 3 === HOLD_CARRY) {
     const taking = a.grab !== null && s < a.grab.frames - 1;
-    if (a.carry) layer(out, a.carry, tick + st.seed, a.carryBones, taking ? s / (a.grab!.frames - 1) : 1);
+    if (a.carry) holding(a, tick + st.seed, out, taking ? s / (a.grab!.frames - 1) : 1);
     if (taking) layer(out, a.grab!, s, a.grabBones);
   } else if (equip) {
     const end = a.release ? a.release.frames - 1 : FADE;
     if (s >= end) return;
-    if (a.carry) layer(out, a.carry, tick + st.seed, a.carryBones, 1 - s / end);
+    if (a.carry) holding(a, tick + st.seed, out, 1 - s / end);
     if (a.release) layer(out, a.release, s, a.releaseBones);
   }
+}
+
+/** The carry laid in place of the legs' own turns by the share `w`, so the stroke's leg swing does not carry the grip off the load. */
+function holding(a: CreatureAnim, t: number, out: Pose, w: number): void {
+  const f = a.rig.f;
+  sampleClip(a.carry!, t, f);
+  const bones = a.carryBones;
+  for (let i = 0; i < bones.length; i++) quatNlerp(out.rot, bones[i]! * 4, out.rot, bones[i]! * 4, f.rot, bones[i]! * 4, w);
 }
 
 /** Getting up, from lying into what it does now. Without its own clip it rises over GET_UP ticks. */

@@ -9,7 +9,8 @@ import { join } from "node:path";
 import { Corpses as Drawn } from "../../client/core/ragdoll.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { CORPSE_TICKS, type Body } from "../../server/corpses.ts";
-import { FALLING } from "../../shared/anim/corpse.ts";
+import { FALLING, deathOf, diedAloft, limpPose } from "../../shared/anim/corpse.ts";
+import { Solved } from "../../shared/anim/skeleton.ts";
 import { createHost, type HostOptions } from "../../server/host.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { loadConfig } from "../../server/settings/config.ts";
@@ -595,8 +596,8 @@ test("killing the process at any moment of a harvest loses nothing: each body's 
   }
 });
 
-// Bodies from the sky (planning/reference/flyers-plan.md, FL7): the pteranodon stand-in and a body with bones, killed,
-// knocked out or bola'd 100 m up. Each is put there, the pteranodon in its own flight, and let go.
+// Bodies from the sky (planning/reference/flyers-plan.md, FL7): the pteranodon and the raptor, killed, knocked out or
+// bola'd 100 m up. Each is put there, the pteranodon in its own flight, and let go.
 
 /**
  * Puts entity `e` `high` metres over the ground under it, or over the water, still and off the ground: a flyer flying, any
@@ -645,7 +646,7 @@ function sameEverywhere(h: Harness, drawn: Map<ClientSession, Drawn>, b: Body, j
   }
 }
 
-test("a stand-in killed 100 m up falls to the ground in 3.2 s and lies there the same for the server, two clients that watched and one that joined after, and is harvested there", () => {
+test("a pteranodon killed in its flight 100 m up dies as it does in the air, falls to the ground in 3.2 s and lies there the same for the server, two clients that watched and one that joined after, and is harvested there", () => {
   const { h, ada, at, me, id, have } = camp();
   const bob = h.join("bob");
   h.run(500);
@@ -654,7 +655,7 @@ test("a stand-in killed 100 m up falls to the ground in 3.2 s and lies there the
   const w = watchers(h, at);
   w.run(500);
   const ents = h.world.ents;
-  // The pteranodon is a box; the raptor has bones and a ragdoll, which shows the pose too lies the same.
+  // Both have bones and a ragdoll; the pteranodon dies in its own flight, the raptor falling.
   const recs = ["core:pteranodon", "core:raptor"].map((kind, k) => {
     const e = h.host.spawnCreature(kind, at.x - 3 + k * 6, at.z + 6, 1);
     h.host.creatures.mind.stay(e, 0xffffffff);
@@ -667,6 +668,10 @@ test("a stand-in killed 100 m up falls to the ground in 3.2 s and lies there the
   const [ptero, raptor] = since(h, before);
   expect([ptero!.kind, raptor!.kind]).toEqual([id("core:pteranodon"), id("core:raptor")]);
   for (const [k, b] of [ptero!, raptor!].entries()) expect([b.drop !== null, ents.anim[b.e], b.y - ground[k]!, b.fall]).toEqual([true, FALLING, 100, null]);
+  // The pteranodon's body is sent as one that died in its flight, and goes limp from its death in the air.
+  expect([ptero!.air, diedAloft(ents.cue[ptero!.e]!), raptor!.air, diedAloft(ents.cue[raptor!.e]!)]).toEqual([true, true, false, false]);
+  const anim = h.world.anims[ptero!.kind]!;
+  expect([deathOf(anim, true)?.id, deathOf(anim, false)?.id]).toEqual(["core:pteranodon/death_air", "core:pteranodon/death"]);
   // Bob sees each fall through the air, not appear on the ground.
   const heights: number[][] = [[], []];
   const t0 = h.world.tick;
@@ -687,6 +692,14 @@ test("a stand-in killed 100 m up falls to the ground in 3.2 s and lies there the
     for (const s of h.sessions) expect(w.sampled(s, b.e)).toEqual([b.x, b.y, b.z]);
   }
   sameEverywhere(h, w.drawn, raptor!, cat);
+  sameEverywhere(h, w.drawn, ptero!, cat);
+  // Its pose as it went limp is its death in the air's, not its death on the ground's.
+  const [inAir, onGround] = [true, false].map((air) => {
+    const now = new Solved(anim.rig.bones);
+    limpPose(anim, false, air, now, new Solved(anim.rig.bones));
+    return Array.from(now.rot);
+  });
+  expect(inAir).not.toEqual(onGround);
   // Harvested where it lies, with a swing of a hatchet.
   h.say(ada, "give core:hatchet 1");
   takeInHand(h, ada, id("core:hatchet"));
@@ -880,13 +893,13 @@ test("a ridden stand-in bola'd 100 m up comes down where it was caught with its 
   expect([rider.length, sv.value(me, V_HEALTH) >= hers]).toEqual([0, true]);
 });
 
-test("a body saved while it fell falls on after a restart, from where it was saved, and lies on the ground; one saved lying stays as it lay", () => {
+test("a body saved while it fell falls on after a restart, from where it was saved, as one that died in its flight, and lies on the ground; one saved lying stays as it lay", () => {
   const db = join(dir, "falling.db");
   const { h, at, me } = camp({ dbPath: db });
   const ents = h.world.ents;
   const lying = killed(h, "core:raptor", at.x + 4, at.z + 4, me);
   const pose = Array.from(lying.pose!.pos);
-  const e = h.host.spawnCreature("core:raptor", at.x - 4, at.z + 4, 1);
+  const e = h.host.spawnCreature("core:pteranodon", at.x - 4, at.z + 4, 1);
   h.host.creatures.mind.stay(e, 0xffffffff);
   const rec = h.host.records.byPid.get(ents.pid[e]!)!;
   h.run(500);
@@ -901,8 +914,9 @@ test("a body saved while it fell falls on after a restart, from where it was sav
   const b2 = h2.host.corpses.bodies.get(b!.rec.pid)!;
   const l2 = h2.host.corpses.bodies.get(lying.rec.pid)!;
   // The store keeps where its entity was when the record was last written, in the air.
-  expect([b2.y > ground + 50, b2.drop]).toEqual([true, null]);
+  expect([b2.y > ground + 50, b2.drop, b!.air, b2.air]).toEqual([true, null, true, true]);
   h2.run(100);
+  expect(diedAloft(h2.world.ents.cue[b2.e]!)).toBe(true);
   expect([h2.host.corpses.falling, b2.drop !== null, b2.fall, h2.world.ents.anim[b2.e], l2.drop]).toEqual([1, true, null, FALLING, null]);
   h2.run(8000);
   expect([h2.host.corpses.falling, Math.abs(b2.y - ground) < 0.01, b2.fall!.still, h2.world.ents.anim[b2.e]]).toEqual([0, true, true, 0]);

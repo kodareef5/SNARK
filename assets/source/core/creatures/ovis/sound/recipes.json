@@ -1,0 +1,1054 @@
+{
+  "takes": {
+    "takes/call/moss-pt-8750-04870.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8750",
+      "prompt": "A sheep gives a sheep bleats, a few baa calls, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8750,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8750.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A sheep gives a sheep bleats, a few baa calls, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "d05831ce641a970454e139e62245bd2fab23a5e21a5c9c7080669d9a906f47a2",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a7a86b53cbde17ab3f4279d8863f409c4937eb982b65f3070cb3f7e868b3680e",
+      "cut": {
+        "source_file": "moss-pt-8750.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          231360,
+          321600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-8751-04795.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8750",
+      "prompt": "A sheep gives a sheep bleats, a few baa calls, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8751,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8751.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A sheep gives a sheep bleats, a few baa calls, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e21da85705b1028f404f7bb6acdc54cce2c065199d13f3d84187bdbb52ff727c",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c9688679ae4c0704348ae71e9b9d2ec662879354ea82ca5b7fe43edfa22ca189",
+      "cut": {
+        "source_file": "moss-pt-8751.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          227760,
+          368880
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-8750-00050.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8750",
+      "prompt": "A sheep gives a sheep bleats, a few baa calls, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8750,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8750.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A sheep gives a sheep bleats, a few baa calls, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "38740edc70ed648822d75abd3f855137f88c69b94d33da8ab3e8f0bfd2bc0bda",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a7a86b53cbde17ab3f4279d8863f409c4937eb982b65f3070cb3f7e868b3680e",
+      "cut": {
+        "source_file": "moss-pt-8750.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          75696
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-8751-02150.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8750",
+      "prompt": "A sheep gives a sheep bleats, a few baa calls, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8751,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8751.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A sheep gives a sheep bleats, a few baa calls, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ceabccc1fc5abd605541c150a30c728f43d4e4ac1643ea258942f7665779b2f0",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c9688679ae4c0704348ae71e9b9d2ec662879354ea82ca5b7fe43edfa22ca189",
+      "cut": {
+        "source_file": "moss-pt-8751.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          100800,
+          180720
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-8750-02310.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8750",
+      "prompt": "A sheep gives a sheep bleats, a few baa calls, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8750,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8750.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A sheep gives a sheep bleats, a few baa calls, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "61a3e5b668e798db95ebcfa9090434fc1b8257b1ca7c07162002263b9c23caae",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a7a86b53cbde17ab3f4279d8863f409c4937eb982b65f3070cb3f7e868b3680e",
+      "cut": {
+        "source_file": "moss-pt-8750.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          108480,
+          207120
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-8751-00075.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8750",
+      "prompt": "A sheep gives a sheep bleats, a few baa calls, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8751,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8751.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A sheep gives a sheep bleats, a few baa calls, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "9cb26c00ed23911cf20dc2c510dbbfdedb58110b832a7e00c69f3fe1cf97e193",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c9688679ae4c0704348ae71e9b9d2ec662879354ea82ca5b7fe43edfa22ca189",
+      "cut": {
+        "source_file": "moss-pt-8751.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          1199,
+          84960
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-8760-04220.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-8760",
+      "prompt": "A sheep lets out a startled loud bleat, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8760,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8760.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A sheep lets out a startled loud bleat, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "136c8964cd4eba351350fcf604a2e98af5c9ed6871eae2be9ffddb420011e0ba",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f7d51759c71dabfbb508e56e53ac0c503a59171339b3cf43808d93178bf71df8",
+      "cut": {
+        "source_file": "moss-pt-8760.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          200160,
+          252960
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-8760-00160.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-8760",
+      "prompt": "A sheep lets out a startled loud bleat, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8760,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8760.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A sheep lets out a startled loud bleat, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "66c778b501f86592922d80d6f8995191ce0ffc69750cd4a3587af200402134e5",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f7d51759c71dabfbb508e56e53ac0c503a59171339b3cf43808d93178bf71df8",
+      "cut": {
+        "source_file": "moss-pt-8760.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          5280,
+          56640
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-8770-00540.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-8770",
+      "prompt": "A sheep bleats in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8770,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8770.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A sheep bleats in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2bb0177b7dc458eee0fdf9b49dbbd5bed5a8a516a3a38171ece923ca49662d82",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f11f59d97009ee5089364ef8d975265d733d464d12b864552663ef99962eab4e",
+      "cut": {
+        "source_file": "moss-pt-8770.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          23520,
+          78240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-8770-06445.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-8770",
+      "prompt": "A sheep bleats in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8770,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8770.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A sheep bleats in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "5bd57580d8452c03e15c2c13a20bd736ececa90b668a34a0af413bcf52a5eae6",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f11f59d97009ee5089364ef8d975265d733d464d12b864552663ef99962eab4e",
+      "cut": {
+        "source_file": "moss-pt-8770.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          306960,
+          358080
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/death/moss-pt-8780-00895.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "death",
+      "prompt_id": "v2-8780",
+      "prompt": "A sheep gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8780,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8780.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A sheep gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2ae150ce237b76d89a9c21955efc2b44a4bdcde872546ab8f43062c45b6e2444",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "1aed5971d96f40515e1bfea8291e5816ceb0d570f75caeb5ccc8d7118c6fc862",
+      "cut": {
+        "source_file": "moss-pt-8780.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          40560,
+          151440
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/death/moss-pt-8780-04670.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "death",
+      "prompt_id": "v2-8780",
+      "prompt": "A sheep gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8780,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8780.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A sheep gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f3f57a94a6a13fcefa4833e6ba030fdf8fc59a5eb13b9608613e6ea41e54088b",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "1aed5971d96f40515e1bfea8291e5816ceb0d570f75caeb5ccc8d7118c6fc862",
+      "cut": {
+        "source_file": "moss-pt-8780.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          221760,
+          354480
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-8790-04015.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-8790",
+      "prompt": "A sheep: a sheep headbutts with a thud and a grunt, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8790,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8790.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A sheep: a sheep headbutts with a thud and a grunt, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2936a08076fe1c885cb0ff680c4e6f20b55bbc51eaea80a03c353d0362494459",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "96ea91e46d939625cd403cad60c84de34143cbc80c126b7298234924d7651803",
+      "cut": {
+        "source_file": "moss-pt-8790.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          190320,
+          240240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-8790-00275.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-8790",
+      "prompt": "A sheep: a sheep headbutts with a thud and a grunt, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8790,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8790.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A sheep: a sheep headbutts with a thud and a grunt, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "d76467c745d6b59c671347158c09ce3ac7d6277f4f56286c9cbadf289d35ca4f",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "96ea91e46d939625cd403cad60c84de34143cbc80c126b7298234924d7651803",
+      "cut": {
+        "source_file": "moss-pt-8790.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          10800,
+          44640
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    }
+  }
+}

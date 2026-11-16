@@ -50,12 +50,28 @@ export class Pool {
     this.room = room;
     const f64 = (): Float64Array => new Float64Array(room);
     const f32 = (): Float32Array => new Float32Array(room);
-    [this.x, this.y, this.z, this.plane] = [f64(), f64(), f64(), f64()];
-    [this.vx, this.vy, this.vz, this.age, this.end, this.landed, this.size, this.heading, this.pitch, this.phase, this.swayTo] = [f32(), f32(), f32(), f32(), f32(), f32(), f32(), f32(), f32(), f32(), f32()];
+    this.x = f64();
+    this.y = f64();
+    this.z = f64();
+    this.plane = f64();
+    this.vx = f32();
+    this.vy = f32();
+    this.vz = f32();
+    this.age = f32();
+    this.end = f32();
+    this.landed = f32();
+    this.size = f32();
+    this.heading = f32();
+    this.pitch = f32();
+    this.phase = f32();
+    this.swayTo = f32();
     this.lying = new Float32Array(room * 6);
     this.effect = new Uint16Array(room);
-    [this.cell, this.flags, this.grey] = [new Uint8Array(room), new Uint8Array(room), new Uint8Array(room)];
-    [this.colourA, this.colourB] = [new Uint32Array(room), new Uint32Array(room)];
+    this.cell = new Uint8Array(room);
+    this.flags = new Uint8Array(room);
+    this.grey = new Uint8Array(room);
+    this.colourA = new Uint32Array(room);
+    this.colourB = new Uint32Array(room);
     this.columns = [this.x, this.y, this.z, this.plane, this.vx, this.vy, this.vz, this.age, this.end, this.landed, this.size, this.heading, this.pitch, this.phase, this.swayTo, this.effect, this.cell, this.flags, this.grey, this.colourA, this.colourB];
   }
 
@@ -102,7 +118,9 @@ export class Pool {
       vz += (wz * e.wind - vz) * k;
       vy += -vy * k - G * e.gravity * dt;
       if (e.fall > 0 && vy < -e.fall) vy = -e.fall;
-      [this.vx[i], this.vy[i], this.vz[i]] = [vx, vy, vz];
+      this.vx[i] = vx;
+      this.vy[i] = vy;
+      this.vz[i] = vz;
       // A falling feather sways as it falls, more the nearer it is to falling at its fastest.
       let sx = 0;
       let sz = 0;
@@ -137,24 +155,36 @@ export class Pool {
   /** Lays particle `i` on the floor at (x, z), its length along its heading, its card on the ground's slope. */
   private lie(i: number, x: number, z: number, hf: Heightfield): void {
     const p = this.plane[i]!;
-    let [nx, ny, nz] = [0, 1, 0];
+    let nx = 0, ny = 1, nz = 0;
     if (p !== p && hf.heightAt(x, z) > hf.waterAt(x, z)) {
       const d = 0.25;
       nx = hf.heightAt(x - d, z) - hf.heightAt(x + d, z);
       nz = hf.heightAt(x, z - d) - hf.heightAt(x, z + d);
       ny = 2 * d;
       const l = Math.hypot(nx, ny, nz);
-      [nx, ny, nz] = [nx / l, ny / l, nz / l];
+      nx = nx / l;
+      ny = ny / l;
+      nz = nz / l;
     }
     const h = this.heading[i]!;
-    let [ax, ay, az] = [Math.cos(h), 0, Math.sin(h)];
+    let ax = Math.cos(h), ay = 0, az = Math.sin(h);
     // Along the slope: the heading less its part along the normal.
     const dot = ax * nx + ay * ny + az * nz;
-    [ax, ay, az] = [ax - nx * dot, ay - ny * dot, az - nz * dot];
+    ax = ax - nx * dot;
+    ay = ay - ny * dot;
+    az = az - nz * dot;
     const l = Math.hypot(ax, ay, az) || 1;
-    [ax, ay, az] = [ax / l, ay / l, az / l];
+    ax = ax / l;
+    ay = ay / l;
+    az = az / l;
     const o = i * 6;
-    this.lying.set([ax, ay, az, ny * az - nz * ay, nz * ax - nx * az, nx * ay - ny * ax], o);
+    const lying = this.lying;
+    lying[o] = ax;
+    lying[o + 1] = ay;
+    lying[o + 2] = az;
+    lying[o + 3] = ny * az - nz * ay;
+    lying[o + 4] = nz * ax - nx * az;
+    lying[o + 5] = nx * ay - ny * ax;
   }
 
   /** How much of particle `i` shows, 0 to 1: coming in when it is see-through, and going over its effect's fade. */

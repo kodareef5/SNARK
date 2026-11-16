@@ -1,0 +1,38 @@
+[
+  {
+    "name": "downtown-street",
+    "x": 3120,
+    "z": 4290,
+    "look": [
+      3235,
+      4370,
+      40
+    ],
+    "size": [
+      960,
+      540
+    ],
+    "fov": 45
+  },
+  {
+    "name": "spawn-ybor-city",
+    "spawn": "Ybor City",
+    "size": [
+      960,
+      540
+    ],
+    "fov": 45
+  },
+  {
+    "name": "flyer-150m",
+    "x": 3120,
+    "z": 4290,
+    "size": [
+      960,
+      540
+    ],
+    "up": 150,
+    "pitch": -35,
+    "fov": 45
+  }
+]

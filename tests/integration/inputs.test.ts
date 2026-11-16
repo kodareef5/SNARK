@@ -5,6 +5,7 @@ import { defaultLook } from "../../shared/anim/look.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { InputBuffer, OWN_HELD, PROTOCOL_VERSION, RESULT_BUSY, RESULT_OK, S_OWN, S_SNAPSHOT, writeHello, writeInputs } from "../../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../../shared/net/transport.ts";
+import { VIEW_RING } from "../../shared/net/view.ts";
 import { BTN_PRIMARY, BTN_PRONE, BTN_SPRINT, BTN_USE, STANCE_PRONE } from "../../shared/sim/character.ts";
 import { Harness, testKey } from "../fixtures/net.ts";
 
@@ -113,6 +114,19 @@ test("a client that acknowledges 0 is sent a whole snapshot next", () => {
   end.send(CH_UNRELIABLE, w.bytes());
   h.run(1000 / 30);
   expect(age).toBeGreaterThan(0);
+});
+
+test("a page that draws no frames still acknowledges, so the server goes on writing its snapshots against a view it has", () => {
+  const h = new Harness();
+  const s = h.join("ada", { latencyMs: 20 }, { manual: true });
+  h.run(1000, (now) => s.update(now, 0, 0, 0, 0, 0));
+  const c = h.client(s)!;
+  const sent = s.simTick;
+  let oldest = 0;
+  h.run(3000, () => (oldest = Math.max(oldest, h.world.tick - c.ackTick)));
+  expect(oldest).toBeLessThan(VIEW_RING);
+  // What it sent again were inputs the server had.
+  expect([c.newestInput, s.state]).toEqual([sent, "active"]);
 });
 
 test("a server message's type has a byte to itself, so one past the fifteenth is not taken for another", () => {

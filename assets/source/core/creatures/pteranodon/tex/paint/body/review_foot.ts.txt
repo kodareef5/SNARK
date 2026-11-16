@@ -1,0 +1,64 @@
+// Round 4: game-renderer review of the foot and the untouched whole animal.
+// Copy to checks/review_foot.ts with the imports below expanded to the repo root.
+// bun checks/review_foot.ts --source TEMP_TREE --out OUT [--full]
+// Default: normal game's rgba preview, 1024 maps. --full is a diagnostic using
+// the same material importer/shader with uncompressed source-resolution mips.
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { buildRig } from '../../../../../../../../shared/anim/rigs.ts';
+import { parsePack } from '../../../../../../../../shared/pack/pack.ts';
+import { nearestColour } from '../../../../../../../../shared/pack/palette.ts';
+import { findAssets } from '../../../../../../../../tools/art/assets.ts';
+import { repack } from '../../../../../../../../tools/art/build.ts';
+import { Poser } from '../../../../../../../../tools/art/check.ts';
+import { materialsOf, mipsOf } from '../../../../../../../../tools/art/materials.ts';
+import { rgbaPicture } from '../../../../../../../../tools/pack/texture.ts';
+import { ModelView } from '../../../../../../../../tools/snap.ts';
+import { rgbaOf } from '../../../../../../../../tools/snap/files.ts';
+import { encodePng } from '../../../../../../../../tools/snap/png.ts';
+const args=process.argv.slice(2);
+const arg=(k:string)=>args[args.indexOf('--'+k)+1];
+const out=arg('out');
+if(!args.includes('--source')||!args.includes('--out'))throw new Error('--source TREE --out DIR required');
+mkdirSync(out,{recursive:true});
+const asset=(await findAssets(arg('source'))).find(a=>a.id==='core:pteranodon')!;
+const pack=parsePack(repack(new Uint8Array(readFileSync(asset.file)),false,asset));
+const mesh=pack.meshIndex.get('core:pteranodon')!;
+const rig=buildRig(pack.header.rigs[pack.header.meshes[mesh]!.rig!]!,pack.clips)!;
+new Poser(rig).set(null,0);
+const materials=materialsOf(asset);
+const textures=(pack.header.textures??[]).map(t=>{
+  const m=materials.find(m=>t.id===`${m.id}/${t.role}`)!;
+  return args.includes('--full')
+    ? {role:t.role,pictures:mipsOf(m,t.role,t.top).map(p=>rgbaPicture(t.role,p))}
+    : rgbaOf(m,t.role,t.top,null);
+});
+const shots=[
+  {name:'feet',centre:[0,.45,-1.05],radius:.35,around:60,above:-20,sky:false},
+  {name:'three_quarter',centre:[0,.85,0],radius:2.2,around:35,above:-12,sky:true},
+  {name:'foot_dorsal',centre:[.205,.455,-1.105],radius:.16,around:70,above:-65,sky:false},
+  {name:'foot_back',centre:[.205,.455,-1.105],radius:.16,around:70,above:65,sky:false},
+];
+const dyes={
+  design:['2E3134','9C8B78','C8662E','2A2C2F','56677A','E9E4D8'],
+  loud:['2030C0','FFE020','9FE01F','FF3EA5','FF3EA5','9FE01F'],
+  dark:['E6E3DC','4A3A2E','E0C07E','6E2E2A','24282A','3C3A38'],
+};
+const W=1200,H=900,SS=2;
+for(const [dye,hexes] of Object.entries(dyes)){
+  if(args.includes('--full')&&dye!=='design')continue;
+  const colors=hexes.map(h=>nearestColour(pack.palette,parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)));
+  for(const shot of shots){
+    const view=new ModelView(pack,W*SS,H*SS,shot.sky?[.74,.82,.92]:[.84,.83,.81]);
+    textures.forEach((t,k)=>view.texture(k,t.role,t.pictures));
+    view.draw({mesh,level:0,rig,colors,textured:true,centre:shot.centre as [number,number,number],radius:shot.radius,around:shot.around,above:shot.above});
+    const src=view.raster.color,img=new Uint8Array(W*H*4);
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++)for(let c=0;c<4;c++){
+      let sum=0;
+      for(let dy=0;dy<SS;dy++)for(let dx=0;dx<SS;dx++)sum+=src[((y*SS+dy)*W*SS+x*SS+dx)*4+c]!;
+      img[(y*W+x)*4+c]=Math.round(sum/(SS*SS));
+    }
+    const file=join(out,`${shot.name}_${dye}.png`);
+    writeFileSync(file,encodePng(W,H,img));console.log(file);
+  }
+}

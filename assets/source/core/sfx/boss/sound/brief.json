@@ -1,0 +1,458 @@
+{
+  "asset": "core/sfx/boss",
+  "review": "../ref/sound",
+  "about": "What any boss may need: roars, an enraged scream, a low growl, stomps, a ground slam, charging up, an energy beam and blast, portals, summoning, a huge death, giant wings, fire breath, acid spit, a thrown rock, arena gates, a shield, teleports, tentacles, crystal shattering and armour clanking.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "roar": {
+      "kind": "impact",
+      "range": 600,
+      "level": -6,
+      "vary": 0.04,
+      "want": "a monstrous roar",
+      "prompts": [
+        {
+          "id": "v4-21000",
+          "models": [
+            "moss"
+          ],
+          "seed": 21000,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 12,
+          "text": "A gigantic monster roars: a deep, earth-shaking, guttural bellow that echoes, two separate roars with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "enrage": {
+      "kind": "impact",
+      "range": 600,
+      "level": -6,
+      "vary": 0.04,
+      "want": "an enraged scream",
+      "prompts": [
+        {
+          "id": "v4-21010",
+          "models": [
+            "moss"
+          ],
+          "seed": 21010,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A giant beast screams in rage: a shrieking, distorted, furious howl, two separate screams with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "growl": {
+      "kind": "impact",
+      "range": 80,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a low growl",
+      "prompts": [
+        {
+          "id": "v4-21020",
+          "models": [
+            "moss"
+          ],
+          "seed": 21020,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A huge creature growls low and menacingly, a deep rumbling snarl, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "stomp": {
+      "kind": "impact",
+      "range": 300,
+      "level": -8,
+      "vary": 0.04,
+      "want": "a giant footstep",
+      "prompts": [
+        {
+          "id": "v4-21030",
+          "models": [
+            "moss"
+          ],
+          "seed": 21030,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A colossal footstep: a deep booming thud that shakes the ground and rattles stones, four separate stomps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "slam": {
+      "kind": "impact",
+      "range": 400,
+      "level": -6,
+      "vary": 0.04,
+      "want": "a slam that shakes the ground",
+      "prompts": [
+        {
+          "id": "v4-21040",
+          "models": [
+            "moss"
+          ],
+          "seed": 21040,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 10,
+          "text": "A giant fist slams the ground: a massive crunching boom and a rumbling shockwave of rocks, two separate slams with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "charge": {
+      "kind": "impact",
+      "range": 120,
+      "level": -12,
+      "vary": 0.04,
+      "want": "power charging up",
+      "prompts": [
+        {
+          "id": "v4-21050",
+          "models": [
+            "moss"
+          ],
+          "seed": 21050,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 6,
+          "text": "A powerful energy weapon charges up: a rising electric hum and whine building to a peak, one charge. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "beam": {
+      "kind": "impact",
+      "range": 150,
+      "level": -12,
+      "vary": 0.04,
+      "want": "an energy beam",
+      "prompts": [
+        {
+          "id": "v4-21060",
+          "models": [
+            "moss"
+          ],
+          "seed": 21060,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A roaring sustained energy beam: a crackling buzzing laser hum, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "blast": {
+      "kind": "impact",
+      "range": 300,
+      "level": -8,
+      "vary": 0.04,
+      "want": "an energy blast",
+      "prompts": [
+        {
+          "id": "v4-21070",
+          "models": [
+            "moss"
+          ],
+          "seed": 21070,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A blast of magical energy fires and explodes: a deep whoosh and a crackling boom, three separate blasts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "portal/open": {
+      "kind": "impact",
+      "range": 150,
+      "level": -10,
+      "vary": 0.04,
+      "want": "a portal opening",
+      "prompts": [
+        {
+          "id": "v4-21080",
+          "models": [
+            "moss"
+          ],
+          "seed": 21080,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A swirling magical portal tears open: a deep rising whoosh and a crackling hum settling into a pulse, one portal. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "portal/close": {
+      "kind": "impact",
+      "range": 150,
+      "level": -10,
+      "vary": 0.04,
+      "want": "a portal closing",
+      "prompts": [
+        {
+          "id": "v4-21090",
+          "models": [
+            "moss"
+          ],
+          "seed": 21090,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 6,
+          "text": "A magical portal collapses: a sucking implosion and a fading crackle, one closing. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "summon": {
+      "kind": "impact",
+      "range": 200,
+      "level": -10,
+      "vary": 0.04,
+      "want": "a summoning",
+      "prompts": [
+        {
+          "id": "v4-21100",
+          "models": [
+            "moss"
+          ],
+          "seed": 21100,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A dark summoning spell: a low ominous swell of rumbling energy ending in a burst, one summoning. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "death": {
+      "kind": "impact",
+      "range": 600,
+      "level": -6,
+      "vary": 0.04,
+      "want": "a huge beast's death",
+      "prompts": [
+        {
+          "id": "v4-21110",
+          "models": [
+            "moss"
+          ],
+          "seed": 21110,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 12,
+          "text": "A giant beast dies: a long failing groaning roar and its enormous body crashing down with a ground-shaking thud, one death. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "wings": {
+      "kind": "impact",
+      "range": 200,
+      "level": -10,
+      "vary": 0.04,
+      "want": "giant wingbeats",
+      "prompts": [
+        {
+          "id": "v4-21120",
+          "models": [
+            "moss"
+          ],
+          "seed": 21120,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Enormous leathery wings beat slowly: deep whooshing gusts of air, four separate beats with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "breath/fire": {
+      "kind": "impact",
+      "range": 200,
+      "level": -8,
+      "vary": 0.04,
+      "want": "fire breath",
+      "prompts": [
+        {
+          "id": "v4-21130",
+          "models": [
+            "moss"
+          ],
+          "seed": 21130,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A dragon breathes fire: a roaring blast of flame like a giant blowtorch, two separate breaths with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "spit": {
+      "kind": "impact",
+      "range": 60,
+      "level": -14,
+      "vary": 0.04,
+      "want": "acid spit",
+      "prompts": [
+        {
+          "id": "v4-21140",
+          "models": [
+            "moss"
+          ],
+          "seed": 21140,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A creature spits acid: a wet hissing gob that splatters and sizzles, four separate spits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "throw": {
+      "kind": "impact",
+      "range": 300,
+      "level": -8,
+      "vary": 0.04,
+      "want": "a hurled boulder",
+      "prompts": [
+        {
+          "id": "v4-21150",
+          "models": [
+            "moss"
+          ],
+          "seed": 21150,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A giant hurls a boulder: a heavy grunt of rock tearing free, a whoosh, and a crashing impact, two separate throws with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "gate": {
+      "kind": "impact",
+      "range": 200,
+      "level": -10,
+      "vary": 0.04,
+      "want": "stone arena gates",
+      "prompts": [
+        {
+          "id": "v4-21160",
+          "models": [
+            "moss"
+          ],
+          "seed": 21160,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "Massive stone gates grind open: a deep scraping rumble and the clank of heavy chains, one opening. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "shield": {
+      "kind": "impact",
+      "range": 60,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a magic shield",
+      "prompts": [
+        {
+          "id": "v4-21170",
+          "models": [
+            "moss"
+          ],
+          "seed": 21170,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A shimmering magical force shield hums and warbles with a resonant drone, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "teleport": {
+      "kind": "impact",
+      "range": 80,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a teleport",
+      "prompts": [
+        {
+          "id": "v4-21180",
+          "models": [
+            "moss"
+          ],
+          "seed": 21180,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A teleport: a quick rising shimmer and a sharp whooshing pop, five separate teleports with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "tentacle": {
+      "kind": "impact",
+      "range": 120,
+      "level": -10,
+      "vary": 0.04,
+      "want": "a tentacle slam",
+      "prompts": [
+        {
+          "id": "v4-21190",
+          "models": [
+            "moss"
+          ],
+          "seed": 21190,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A giant wet tentacle slaps down and drags: a heavy slimy smack and a squelching slither, four separate slams with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "crystal": {
+      "kind": "impact",
+      "range": 120,
+      "level": -10,
+      "vary": 0.04,
+      "want": "crystal shattering",
+      "prompts": [
+        {
+          "id": "v4-21200",
+          "models": [
+            "moss"
+          ],
+          "seed": 21200,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A huge crystal cracks and shatters into ringing shards, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "clank": {
+      "kind": "impact",
+      "range": 120,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a giant's armour",
+      "prompts": [
+        {
+          "id": "v4-21210",
+          "models": [
+            "moss"
+          ],
+          "seed": 21210,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A giant in heavy plate armour moves: deep grinding metal clanks and rattles, four separate movements with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

@@ -21,8 +21,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "A gigantic predator dinosaur gives a deep rumbling growling call, low and menacing, two separate calls with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6290",
+          "models": [
+            "moss"
+          ],
+          "seed": 6290,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A gigantic predator dinosaur gives a deep rumbling growling call, low and menacing, two separate calls with long pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "startled": {
       "kind": "voice",
@@ -41,8 +53,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A gigantic predator dinosaur roars an enormous deep thunderous roar, two separate roars with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6300",
+          "models": [
+            "moss"
+          ],
+          "seed": 6300,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A gigantic predator dinosaur roars an enormous deep thunderous roar, two separate roars with long pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "hurt": {
       "kind": "voice",
@@ -61,8 +85,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A gigantic predator dinosaur bellows in pain with a deep angry roar, three separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6320",
+          "models": [
+            "moss"
+          ],
+          "seed": 6320,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A gigantic predator dinosaur bellows in pain with a deep angry roar, three separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "death": {
       "kind": "voice",
@@ -101,8 +137,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A gigantic predator snaps its huge jaws shut with a deep snarl, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6310",
+          "models": [
+            "moss"
+          ],
+          "seed": 6310,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A gigantic predator snaps its huge jaws shut with a deep snarl, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "step": {
       "kind": "step",
@@ -121,8 +169,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "Enormous footsteps of a giant animal: deep booming ground-shaking thuds, slow and well spaced. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6330",
+          "models": [
+            "moss"
+          ],
+          "seed": 6330,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Enormous footsteps of a giant animal: deep booming ground-shaking thuds, slow and well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "roar": {
       "kind": "voice",
@@ -143,6 +203,48 @@
           "text": "A gigantic predator dinosaur bellows a huge long challenging roar that echoes, two separate roars with long pauses. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
+    },
+    "chase": {
+      "kind": "voice",
+      "range": 150,
+      "level": -16,
+      "vary": 0.6,
+      "want": "barks, calls and hisses while chasing",
+      "prompts": [
+        {
+          "id": "v2-6340",
+          "models": [
+            "moss"
+          ],
+          "seed": 6340,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A gigantic predator dinosaur charges: deep huffing snorts and short guttural roars while running, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 8
+    },
+    "growl": {
+      "kind": "voice",
+      "range": 90,
+      "level": -18,
+      "vary": 0.5,
+      "want": "a warning growl, aggressive and near",
+      "prompts": [
+        {
+          "id": "v2-6350",
+          "models": [
+            "moss"
+          ],
+          "seed": 6350,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A gigantic predator dinosaur growls a deep rumbling growl that shakes the air, three separate growls with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
     }
   }
 }

@@ -1,0 +1,413 @@
+{
+  "asset": "core/sfx/crafting",
+  "review": "../ref/sound",
+  "about": "Making things: hammering, sawing, chiselling, grinding in a mortar, bellows, the anvil, quenching, sewing leather, weaving thatch, sanding, drilling, welding, the fabricator, knapping flint, tying rope, carving, a grindstone, scraping hide and a finished piece set down.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "hammer": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.04,
+      "want": "hammering nails",
+      "prompts": [
+        {
+          "id": "v4-24000",
+          "models": [
+            "moss"
+          ],
+          "seed": 24000,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A hammer drives nails into wood, quick hard knocks, four separate bursts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "saw": {
+      "kind": "impact",
+      "range": 20,
+      "level": -16,
+      "vary": 0.04,
+      "want": "sawing wood",
+      "prompts": [
+        {
+          "id": "v4-24010",
+          "models": [
+            "moss"
+          ],
+          "seed": 24010,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A hand saw cuts through a wooden plank, rhythmic rasping strokes, three separate cuts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "chisel": {
+      "kind": "impact",
+      "range": 20,
+      "level": -16,
+      "vary": 0.04,
+      "want": "chiselling stone",
+      "prompts": [
+        {
+          "id": "v4-24020",
+          "models": [
+            "moss"
+          ],
+          "seed": 24020,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A hammer and chisel chip at stone, sharp ringing taps, four separate bursts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "mortar": {
+      "kind": "impact",
+      "range": 10,
+      "level": -18,
+      "vary": 0.04,
+      "want": "grinding in a mortar",
+      "prompts": [
+        {
+          "id": "v4-24030",
+          "models": [
+            "moss"
+          ],
+          "seed": 24030,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A stone pestle grinds and crushes seeds in a mortar, gritty circular scraping, four separate grinds with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "bellows": {
+      "kind": "impact",
+      "range": 20,
+      "level": -16,
+      "vary": 0.04,
+      "want": "working the bellows",
+      "prompts": [
+        {
+          "id": "v4-24040",
+          "models": [
+            "moss"
+          ],
+          "seed": 24040,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Leather bellows pump air into a forge fire, deep whooshing puffs and the fire roaring up, four separate pumps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "anvil": {
+      "kind": "impact",
+      "range": 60,
+      "level": -12,
+      "vary": 0.04,
+      "want": "hammering on the anvil",
+      "prompts": [
+        {
+          "id": "v4-24050",
+          "models": [
+            "moss"
+          ],
+          "seed": 24050,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A blacksmith hammers hot metal on an anvil, loud ringing clangs, four separate bursts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "quench": {
+      "kind": "impact",
+      "range": 20,
+      "level": -14,
+      "vary": 0.04,
+      "want": "quenching hot metal",
+      "prompts": [
+        {
+          "id": "v4-24060",
+          "models": [
+            "moss"
+          ],
+          "seed": 24060,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Red-hot metal is plunged into water: a violent hiss and bubbling sizzle of steam, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "sew": {
+      "kind": "impact",
+      "range": 5,
+      "level": -22,
+      "vary": 0.04,
+      "want": "sewing leather",
+      "prompts": [
+        {
+          "id": "v4-24070",
+          "models": [
+            "moss"
+          ],
+          "seed": 24070,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A needle and thread pull through thick leather, small tugs and creaks, five separate stitches with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "weave": {
+      "kind": "impact",
+      "range": 8,
+      "level": -20,
+      "vary": 0.04,
+      "want": "weaving thatch",
+      "prompts": [
+        {
+          "id": "v4-24080",
+          "models": [
+            "moss"
+          ],
+          "seed": 24080,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Dry straw and reeds are bent, twisted and woven together, crisp crackling rustles, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "sand": {
+      "kind": "impact",
+      "range": 8,
+      "level": -22,
+      "vary": 0.04,
+      "want": "sanding wood",
+      "prompts": [
+        {
+          "id": "v4-24090",
+          "models": [
+            "moss"
+          ],
+          "seed": 24090,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Sandpaper rubs over wood in long smooth strokes, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "drill": {
+      "kind": "impact",
+      "range": 15,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a hand drill",
+      "prompts": [
+        {
+          "id": "v4-24100",
+          "models": [
+            "moss"
+          ],
+          "seed": 24100,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A hand drill bores into wood, a grinding whirring crank, three separate holes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "weld": {
+      "kind": "impact",
+      "range": 20,
+      "level": -18,
+      "vary": 0.04,
+      "want": "welding",
+      "prompts": [
+        {
+          "id": "v4-24110",
+          "models": [
+            "moss"
+          ],
+          "seed": 24110,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "An electric welder arcs and crackles, a harsh buzzing spitting sizzle, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "fabricator": {
+      "kind": "impact",
+      "range": 20,
+      "level": -16,
+      "vary": 0.04,
+      "want": "the fabricator at work",
+      "prompts": [
+        {
+          "id": "v4-24120",
+          "models": [
+            "moss"
+          ],
+          "seed": 24120,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A machine fabricator works: whirring motors, servo whines, clicks and a mechanical stamp, three separate cycles with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "fabricator/hum": {
+      "kind": "impact",
+      "range": 15,
+      "level": -22,
+      "vary": 0.04,
+      "want": "the fabricator running",
+      "prompts": [
+        {
+          "id": "v4-24130",
+          "models": [
+            "moss"
+          ],
+          "seed": 24130,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A powered workshop machine hums steadily with a faint electrical buzz and fan. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "knap": {
+      "kind": "impact",
+      "range": 10,
+      "level": -18,
+      "vary": 0.04,
+      "want": "knapping flint",
+      "prompts": [
+        {
+          "id": "v4-24140",
+          "models": [
+            "moss"
+          ],
+          "seed": 24140,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A stone strikes flint, chipping flakes off with sharp clicky cracks, five separate strikes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "rope": {
+      "kind": "impact",
+      "range": 5,
+      "level": -22,
+      "vary": 0.04,
+      "want": "tying rope",
+      "prompts": [
+        {
+          "id": "v4-24150",
+          "models": [
+            "moss"
+          ],
+          "seed": 24150,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A rough rope is pulled tight and knotted, creaking fibres and a firm tug, four separate knots with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "carve": {
+      "kind": "impact",
+      "range": 5,
+      "level": -22,
+      "vary": 0.04,
+      "want": "carving wood",
+      "prompts": [
+        {
+          "id": "v4-24160",
+          "models": [
+            "moss"
+          ],
+          "seed": 24160,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A knife whittles and carves wood, short shaving scrapes, five separate cuts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "grindstone": {
+      "kind": "impact",
+      "range": 20,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a grindstone",
+      "prompts": [
+        {
+          "id": "v4-24170",
+          "models": [
+            "moss"
+          ],
+          "seed": 24170,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A blade is sharpened on a spinning grindstone, a steady scraping metallic hiss. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "scrape": {
+      "kind": "impact",
+      "range": 5,
+      "level": -22,
+      "vary": 0.04,
+      "want": "scraping a hide",
+      "prompts": [
+        {
+          "id": "v4-24180",
+          "models": [
+            "moss"
+          ],
+          "seed": 24180,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A stone scraper drags along an animal hide, rough leathery scraping, four separate strokes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "done": {
+      "kind": "impact",
+      "range": 10,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a finished piece set down",
+      "prompts": [
+        {
+          "id": "v4-24190",
+          "models": [
+            "moss"
+          ],
+          "seed": 24190,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A freshly made wooden tool is set down on a workbench with a solid knock, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

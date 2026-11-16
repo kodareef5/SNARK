@@ -84,6 +84,31 @@ export const DETAIL_PUFF = 16;
 export const DETAIL_ROTOR = 32;
 /** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
 export const DRAW_RANGED = 4096;
+/** Faces of four corners that 16-bit indices reach. */
+export const QUAD_FACES = 16384;
+
+/** The bytes of an index of a level of quads (quadIndices) with `faces` faces. */
+export function quadBytes(faces: number): 2 | 4 {
+  return faces > QUAD_FACES ? 4 : 2;
+}
+
+/**
+ * The indices of every level of quads, far blocks, far city tiles and lakes: face f is the triangles 4f, 4f+1, 4f+2 and
+ * 4f, 4f+2, 4f+3. The card holds them once for all such levels, which send their vertices alone (AssetUpload `quads`):
+ * at least `count`, `bytes` each, as many as 16-bit indices reach, or 32-bit ones in steps of 4,096 faces (96 KB).
+ */
+export function quadIndices(count: number, bytes: 2 | 4): Uint16Array | Uint32Array {
+  const step = (QUAD_FACES / 4) * 6;
+  const n = bytes === 2 ? QUAD_FACES * 6 : Math.ceil(count / step) * step;
+  const out = bytes === 2 ? new Uint16Array(n) : new Uint32Array(n);
+  for (let i = 0, v = 0; i < n; i += 6, v += 4) {
+    out[i] = out[i + 3] = v;
+    out[i + 1] = v + 1;
+    out[i + 2] = out[i + 4] = v + 2;
+    out[i + 5] = v + 3;
+  }
+  return out;
+}
 export const ATLAS_REGION = 4;
 /**
  * The far nodes' meshes as a float texture ATLAS_WIDTH texels wide, a row a mesh: in its first texel its reach and its
@@ -204,14 +229,16 @@ export const FRAME = {
   /** fHandFrom and fHandTo, in the fourth lanes of fSkySide and fSkySun: the tier's band over which near nodes hand over to far ones (hand.ts). */
   handFrom: 139,
   handTo: 143,
+  /** fLook: what every lookup of the sky table shares this frame (sky.ts SKY_GLSL): fTrueSun's way on the ground, x and z of length 1, and its slice of the table as a texture coordinate. */
+  look: 148,
 } as const;
-export const FRAME_FLOATS = FRAME.skyAlong + 4;
+export const FRAME_FLOATS = FRAME.look + 4;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
   highp vec4 fSpheres[${MAX_CASCADES}];
   highp mat4 fCascades[${MAX_CASCADES}];
-  highp vec4 fSkySide, fSkySun, fSkyAlong;
+  highp vec4 fSkySide, fSkySun, fSkyAlong, fLook;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -238,10 +265,12 @@ export interface TextureUpload {
   slot: number;
   role: TextureRole;
   format: TextureFormat;
+  /** Pixels a block holds on a side in bc and astc: 4 in bc, and in astc the texture's own (shared/pack/texture.ts). */
+  block?: number;
   /** The side of the texture being made, and of the picture these rows belong to. */
   top: number;
   size: number;
-  /** The first row and how many: pixels in the rgba variant, blocks of four in the others. */
+  /** The first row of pixels and how many, whole rows of blocks, the last of them cut at the picture's edge. */
   row: number;
   rows: number;
   /** The scene owns it, so upload it before the next build. */
@@ -255,6 +284,8 @@ export class FramePacket {
   camX = 0;
   camY = 0;
   camZ = 0;
+  /** World-surface city dials: tint/scale, weather/wetness/growth/desert. */
+  readonly surfaceCity = Float32Array.from([1, 1, 1, 1, 1, 0, 0.08, 0, 1, 0, 0, 0]);
   /** Linear 0..1 RGB. */
   readonly sky = new Float32Array(3);
   /** Unit vector toward the sun. */
@@ -375,6 +406,9 @@ export class FramePacket {
   readonly casterFirstIndex = new Uint32Array(MAX_CASTERS);
   readonly casterIndexCount = new Uint32Array(MAX_CASTERS);
   readonly casterCascades = new Uint8Array(MAX_CASTERS);
+  /** What the sun's maps take this frame, the ground's tiles among it, and which `triangles` leaves out: a caster's triangles once for each cascade it is drawn into, and its draws. */
+  castTriangles = 0;
+  castDraws = 0;
 
   triangles = 0;
 
@@ -420,6 +454,8 @@ export class FramePacket {
     this.boneCount = 0;
     this.casterCount = 0;
     this.casterDropped = 0;
+    this.castTriangles = 0;
+    this.castDraws = 0;
     this.cascadeCount = 0;
     this.cascadesDrawn = 0;
     this.triangles = 0;

@@ -18,6 +18,13 @@ const BEACH = 1.5;
 /** The cosine of the slope beyond which ground is bare rock: about 40 degrees. */
 const ROCK_SLOPE = 0.77;
 
+/** Whether the map paves (x, z): a street or a plaza, as in a ruined city. */
+export function paved(hf: Heightfield, x: number, z: number): boolean {
+  const i = Math.max(0, Math.min(hf.nx - 1, Math.round(x / hf.cell)));
+  const j = Math.max(0, Math.min(hf.nz - 1, Math.round(z / hf.cell)));
+  return PAVED.has(hf.tint[j * hf.nx + i]!);
+}
+
 /** The kind of ground at (x, z), for a body whose feet are at height `y`. */
 export function groundAt(hf: Heightfield, x: number, y: number, z: number): number {
   if (y < hf.waterAt(x, z) - 0.1) return GROUND_WATER;

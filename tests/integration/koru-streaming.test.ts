@@ -7,7 +7,7 @@ import { chunkAt } from "../../shared/coords.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { MODE_GHOST } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
-import { writeMap } from "../../shared/world/mapfile.ts";
+import { MapStatics, writeMap } from "../../shared/world/mapfile.ts";
 import { KORU_COURSE, koruCourse } from "../../tools/koru/course.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
@@ -16,11 +16,11 @@ test("native Koru rows hand over to map geometry and return without a missing or
   const map = koruCourse(), chunks = [...new Set(map.statics.filter(s => s.kind.startsWith("core:koru")).map(s => chunkAt(map.dims, s.x, s.z)))];
   const h = new Harness({}, 629, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(map) });
   try {
-    const pack = parsePack(corePackBytes()), s = h.join("streaming-observer", {}, { manual: true, city: true });
+    const pack = parsePack(corePackBytes()), s = h.join("streaming-observer", {}, { manual: true });
     const app = new App(s, h.reg, pack); app.ui.settings.tier = "high"; app.ui.settings.steady = false;
     let packet: FramePacket | null = null;
     const run = (ms: number) => h.run(ms, now => { packet = app.frame(now, 800, 500); });
-    run(1000); s.text("enablecheats"); run(100); s.text("fly"); run(100);
+    run(1000); s.staticsArrived(MapStatics.of(map.dims, map.statics)); s.text("enablecheats"); run(100); s.text("fly"); run(100);
     const c = h.client(s)!, ents = h.world.ents, origin = KORU_COURSE.vessel;
     for (const distance of [115, 280, 650, 900, 115]) {
       ents.setPosition(c.ent, origin.x - distance, 33.38, origin.z - 10);

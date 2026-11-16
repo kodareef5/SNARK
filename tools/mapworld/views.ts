@@ -7,6 +7,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { DRAW_SIZED, DRAW_PULLED, DRAW_RANGED, DRAW_SKINNED } from "../../client/core/render/packet.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { chunkAt, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { FarStore } from "../../client/core/farcells.ts";
@@ -90,7 +91,7 @@ for (const v of views) {
     });
   }
   const complete = (chunk: number): boolean => Math.abs(chunkCx(map.dims, chunk) - Math.floor(view.cam.x / 64)) <= 3 && Math.abs(chunkCz(map.dims, chunk) - Math.floor(view.cam.z / 64)) <= 3;
-  const scene = new Scene({ dims: map.dims, hf: view.hf, structs: view.structs, nodes: view.nodes.store,
+  const scene = new Scene({ mapId: map.id, dims: map.dims, hf: view.hf, structs: view.structs, nodes: view.nodes.store,
     far: { cells: farCells, complete },
     city: { statics: city, complete },
     farNodes: { nodes: view.nodes.source, held: (c) => view.nodes.isLoaded(c), gone: () => undefined, changes: new NodeChanges(map.dims) }
@@ -122,6 +123,13 @@ for (const v of views) {
   // What the frame spends against the tier's budget, and how long core takes to build it, the picture drawn as it stands.
   const packet = scene.packet;
   const [triangles, draws] = [packet.triangles, packet.drawCount];
+  const drawKinds: Record<string, number> = {};
+  for (let d = 0; d < draws; d++) {
+    const f = packet.drawFlags[d]!;
+    const group = f & DRAW_PULLED ? "far nodes" : f & DRAW_SIZED ? "near nodes" : f & DRAW_SKINNED ? "bodies" : f & DRAW_RANGED ? "far city" : "built";
+    drawKinds[group] = (drawKinds[group] ?? 0) + 1;
+  }
+  console.log(JSON.stringify({ name: v.name, drawKinds, squeeze: scene.budget.squeeze }));
   const builds: number[] = [];
   for (let k = 0; k < 15; k++) {
     const t = performance.now();
@@ -147,22 +155,29 @@ for (const v of views) {
   console.log(`${out}  ${frames} frames, ${(performance.now() - t0).toFixed(0)} ms, eye ${cam.x.toFixed(0)}, ${cam.y.toFixed(1)}, ${cam.z.toFixed(0)}, ${draws} of ${budget.draws} draws, ${(triangles / 1000).toFixed(0)} k of ${(budget.triangles / 1000).toFixed(0)} k triangles, built in ${buildMs} ms, dropped ${packet.dropped}`);
 }
 // Every view at half size, three across, in the order listed.
-if (small.length > 1 && !only) {
-  const cw = Math.max(...small.map((s) => s.w));
+function sheet(rowsOfViews: typeof small, name: string): void {
+  const cw = Math.max(...rowsOfViews.map((s) => s.w));
   const across = 3;
-  const rows = Math.ceil(small.length / across);
+  const rows = Math.ceil(rowsOfViews.length / across);
   // Each row as tall as its tallest view.
   const top = [0];
-  for (let r = 0; r < rows; r++) top.push(top[r]! + Math.max(...small.slice(r * across, (r + 1) * across).map((s) => s.h)));
+  for (let r = 0; r < rows; r++) top.push(top[r]! + Math.max(...rowsOfViews.slice(r * across, (r + 1) * across).map((s) => s.h)));
   const W = cw * across;
   const H = top[rows]!;
   const sheet = new Uint8Array(W * H * 4);
-  small.forEach((s, k) => {
+  rowsOfViews.forEach((s, k) => {
     const [ox, oy] = [(k % across) * cw, top[Math.floor(k / across)]!];
     for (let y = 0; y < s.h; y++) sheet.set(s.rgba.subarray(y * s.w * 4, (y + 1) * s.w * 4), ((oy + y) * W + ox) * 4);
   });
-  writeFileSync(join(folder, "sheet.png"), encodePng(W, H, sheet));
-  console.log(join(folder, "sheet.png"));
+  writeFileSync(join(folder, name), encodePng(W, H, sheet));
+}
+if (small.length > 1 && !only) {
+  sheet(small, "sheet.png");
+  for (const family of ["kind-", "fall-"]) {
+    const rows = small.filter((_, i) => views[i]!.name.startsWith(family));
+    if (rows.length) sheet(rows, `lineup-${family.slice(0, -1)}.png`);
+  }
+  for (let i = 0; i < small.length; i += 9) sheet(small.slice(i, i + 9), `review-${i / 9 + 1}.png`);
 }
 
 writeFileSync(join(folder, only ? `rendering-${only}.json` : "rendering.json"), `${JSON.stringify({ map: map.id, mapHash: map.hash, tier: tierName, seconds: Number(((performance.now() - started) / 1000).toFixed(2)), peakResidentMiB: Number((process.resourceUsage().maxRSS / 1024).toFixed(1)), views: rendered }, null, 2)}\n`);

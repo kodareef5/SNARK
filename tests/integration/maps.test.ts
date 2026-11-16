@@ -1,8 +1,8 @@
-import { Database } from "bun:sqlite";
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 import { CORE_PACK } from "../../content/core.ts";
 import { createHost, type Host } from "../../server/host.ts";
 import { mapRoutes } from "../../server/main.ts";
@@ -37,6 +37,13 @@ test("a new map is a file: a flat one made here runs a server, is served as a br
   expect(parseMap(Bun.gunzipSync(await packed.arrayBuffer())).hash).toBe(h.world.mapHash);
   expect(new Uint8Array(await route(`/${named.file}`, "")!.arrayBuffer())).toEqual(file);
   expect(route("/index.html", "gzip")).toBeNull();
+  // The page is sent with a header that has it ask for the file while it is read.
+  expect(route.link).toBe(`</${named.file}>; rel=preload; as=fetch; crossorigin`);
+  // With the copies its build wrote, the file goes out as Brotli to whoever takes it, and as their gzip to the rest.
+  const copied = mapRoutes(h.host.mapFile!, h.world.mapId, h.world.mapHash, { br: new Blob([brotliCompressSync(file)]), gz: new Blob([Bun.gzipSync(file)]) });
+  const br = copied(`/${named.file}`, "gzip, deflate, br")!;
+  expect([br.headers.get("content-encoding"), new Uint8Array(brotliDecompressSync(await br.arrayBuffer()))]).toEqual(["br", file]);
+  expect(copied(`/${named.file}`, "gzip, deflate")!.headers.get("content-encoding")).toBe("gzip");
 
   const ada = h.join("ada");
   h.run(500);
@@ -124,30 +131,20 @@ test("a map's parked vehicles are set down once, in a new world, owned by nobody
   }
 });
 
-test("a save records the map it was made on, and loads onto another only when the server is told to", () => {
+test("a save records the map it was made on, and loads onto no other", () => {
   const db = join(dir, "map.db");
   const reg = coreRegistry();
   const flat = writeMap(flatMap(2));
   const edited = writeMap(flatMap(2, { statics: [{ kind: "core:crate", x: 40, y: 0.5, z: 40, yaw: 0 }] }));
   const other = writeMap(flatMap(2, { id: "test:other" }));
-  const restart = (map: Uint8Array<ArrayBuffer>, allowMapMismatch = false): boolean => {
-    const host = createHost(reg, { dbPath: db, map, allowMapMismatch });
+  const restart = (map: Uint8Array<ArrayBuffer>): boolean => {
+    const host = createHost(reg, { dbPath: db, map });
     host.shutdown();
     return host.loaded!.fresh;
   };
   expect([restart(flat), restart(flat)]).toEqual([true, false]);
-  expect(() => restart(edited)).toThrow(`save is for other bytes of map "test:flat" (hash ${parseMap(flat).hash.toString(16).padStart(8, "0")}, and this file's is ${parseMap(edited).hash.toString(16).padStart(8, "0")}): start with the map file it was made on, or with --allow-map-mismatch`);
-  expect(() => restart(other)).toThrow('save is for map "test:flat", not "test:other"');
-  // Told to, it loads, and the save is that map's from then on.
-  expect([restart(other, true), restart(other)]).toEqual([false, false]);
-  expect(() => restart(flat)).toThrow('save is for map "test:other", not "test:flat"');
-  // A save from before maps were files has no hash. It loads onto the map of its id and takes that map's hash.
-  const save = new Database(db);
-  save.run("DELETE FROM meta WHERE key = 'map_hash'");
-  save.close();
-  const renamed = writeMap(flatMap(2, { id: "test:other", tint: flatMap(2).tint.fill(7) }));
-  expect(restart(renamed)).toBe(false);
-  expect(() => restart(other)).toThrow('save is for other bytes of map "test:other"');
+  expect(() => restart(edited)).toThrow(`save is for other bytes of map "test:flat" (hash ${parseMap(flat).hash.toString(16).padStart(8, "0")}, and this file's is ${parseMap(edited).hash.toString(16).padStart(8, "0")}): start with the map file it was made on`);
+  expect(() => restart(other)).toThrow('save is for map "test:flat", not "test:other": start with the map file it was made on');
 });
 
 test("the proving ground loaded from its file is the one its functions build: every height, piece and node slot, and the same simulation", () => {

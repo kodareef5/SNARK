@@ -300,6 +300,306 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/call/moss-pt-6641-04280.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6640",
+      "prompt": "A large crested dinosaur gives deep resonant honking calls through a hollow crest, like a low foghorn trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6641,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6641.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large crested dinosaur gives deep resonant honking calls through a hollow crest, like a low foghorn trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "7cfe8fff33e072222d11cd8a3369a45d7d964a0d17b0acc5d0e73db81ba63123",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.8,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 46.9,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "714e21ec9211111f0fba62c1adf21b6dab84cc3e6935572c19eb46f9eec4eb50",
+      "cut": {
+        "source_file": "moss-pt-6641.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          203040,
+          326160
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6640-00190.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6640",
+      "prompt": "A large crested dinosaur gives deep resonant honking calls through a hollow crest, like a low foghorn trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6640,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6640.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large crested dinosaur gives deep resonant honking calls through a hollow crest, like a low foghorn trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.3,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "638a6dd7ecf3dd73e6768bba1209adf331f9b86d5695ad860f8ca84e224158c4",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.8,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 46.9,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "ca26cd9603df096b8c70e0ad3ecb93ea648ef631d692a1971c87b41d0ea729af",
+      "cut": {
+        "source_file": "moss-pt-6640.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          6720,
+          131520
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6640-05100.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6640",
+      "prompt": "A large crested dinosaur gives deep resonant honking calls through a hollow crest, like a low foghorn trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6640,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6640.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large crested dinosaur gives deep resonant honking calls through a hollow crest, like a low foghorn trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.3,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "627b6b574131b40563b77c573e2ae9b42a295032ae0dbc9d638f461d3f0a522a",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.8,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 46.9,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "ca26cd9603df096b8c70e0ad3ecb93ea648ef631d692a1971c87b41d0ea729af",
+      "cut": {
+        "source_file": "moss-pt-6640.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          242400,
+          384000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6640-03400.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6640",
+      "prompt": "A large crested dinosaur gives deep resonant honking calls through a hollow crest, like a low foghorn trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6640,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6640.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large crested dinosaur gives deep resonant honking calls through a hollow crest, like a low foghorn trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.3,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "3d040f8050f37b176ad9d84ff8a0301d85f450dc71097ee6e0fff1b232583f4d",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.8,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 46.9,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "ca26cd9603df096b8c70e0ad3ecb93ea648ef631d692a1971c87b41d0ea729af",
+      "cut": {
+        "source_file": "moss-pt-6640.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          160800,
+          245376
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/startled/moss-pt-2770-02465.wav": {
       "model": "moss",
       "backend": "torch",
@@ -450,6 +750,381 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/startled/moss-pt-6650-00210.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6650",
+      "prompt": "A large crested dinosaur blares a loud alarmed trumpeting honk, three separate alarms with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6650,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6650.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large crested dinosaur blares a loud alarmed trumpeting honk, three separate alarms with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "374c442726a7b02f85dca688d0980c63524d8de7b7ab327e288420f36a1ff603",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.8,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 46.9,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "49f5c860842473c8b8812cf6f3106418b62660ade64708e8706862ca9ca588ed",
+      "cut": {
+        "source_file": "moss-pt-6650.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          7679,
+          76800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6651-06055.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6650",
+      "prompt": "A large crested dinosaur blares a loud alarmed trumpeting honk, three separate alarms with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6651,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6651.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large crested dinosaur blares a loud alarmed trumpeting honk, three separate alarms with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.0,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "0ca492b61189022062ee9df0558418e341a7b8a6e90b98dc51ee4018501a5b22",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.8,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 46.9,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c569547222feccecf37a8c925aecd81b5b9dadd0904aa7f47238a8a61ee781a8",
+      "cut": {
+        "source_file": "moss-pt-6651.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          288240,
+          381120
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6650-01655.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6650",
+      "prompt": "A large crested dinosaur blares a loud alarmed trumpeting honk, three separate alarms with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6650,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6650.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large crested dinosaur blares a loud alarmed trumpeting honk, three separate alarms with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "3b322c38828dafd699834ad38d376d9205bcf975e20afeb7917ed5dd6ea20642",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.8,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 46.9,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "49f5c860842473c8b8812cf6f3106418b62660ade64708e8706862ca9ca588ed",
+      "cut": {
+        "source_file": "moss-pt-6650.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          77040,
+          170640
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6651-01935.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6650",
+      "prompt": "A large crested dinosaur blares a loud alarmed trumpeting honk, three separate alarms with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6651,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6651.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large crested dinosaur blares a loud alarmed trumpeting honk, three separate alarms with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.0,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "8b03839e37230b1a5dc251481311bfbf47452c54e7bf0a45ae4c4d03f22c2d8d",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.8,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 46.9,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c569547222feccecf37a8c925aecd81b5b9dadd0904aa7f47238a8a61ee781a8",
+      "cut": {
+        "source_file": "moss-pt-6651.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          90480,
+          184800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6651-00140.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6650",
+      "prompt": "A large crested dinosaur blares a loud alarmed trumpeting honk, three separate alarms with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6651,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6651.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large crested dinosaur blares a loud alarmed trumpeting honk, three separate alarms with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.0,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "8a68ea6e404564fe91db4beaaf2ece6ab250f0bf157c0c72cf2cc8b0572efb9b",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.8,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 46.9,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c569547222feccecf37a8c925aecd81b5b9dadd0904aa7f47238a8a61ee781a8",
+      "cut": {
+        "source_file": "moss-pt-6651.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          4320,
+          57360
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/hurt/moss-pt-2780-00215.wav": {
       "model": "moss",
       "backend": "torch",
@@ -594,6 +1269,231 @@
         "frames": [
           239520,
           285840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6670-05605.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6670",
+      "prompt": "A large herbivore dinosaur bellows in pain, short hurt honks, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6670,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6670.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large herbivore dinosaur bellows in pain, short hurt honks, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 41.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2993a7d0970e51f3e6f3ca37419aa23c7b15ca3a339de4d02a39d1e0b0ca2ecc",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "18988a03f07b4c71814571f6e95562bd8f0650cc10bd61c0de24e31a782d9106",
+      "cut": {
+        "source_file": "moss-pt-6670.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          266640,
+          368880
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6670-02975.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6670",
+      "prompt": "A large herbivore dinosaur bellows in pain, short hurt honks, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6670,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6670.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large herbivore dinosaur bellows in pain, short hurt honks, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 41.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "1d68f12ab22d2578cc9a3d115b7ed135c40a624e940aa7dac0f945470462c182",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "18988a03f07b4c71814571f6e95562bd8f0650cc10bd61c0de24e31a782d9106",
+      "cut": {
+        "source_file": "moss-pt-6670.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          140400,
+          215760
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6670-00045.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6670",
+      "prompt": "A large herbivore dinosaur bellows in pain, short hurt honks, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6670,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6670.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large herbivore dinosaur bellows in pain, short hurt honks, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 41.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "bb31e2d2b653374dbe77f80be75cc68bedef0d9cc2446889b2135d22f0063d83",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "18988a03f07b4c71814571f6e95562bd8f0650cc10bd61c0de24e31a782d9106",
+      "cut": {
+        "source_file": "moss-pt-6670.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          75360
         ],
         "rate": 48000,
         "stored_as": "mono PCM_24",
@@ -825,6 +1725,456 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/attack/moss-pt-6660-04605.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6660",
+      "prompt": "A large herbivore dinosaur snorts and lunges with a heavy grunt, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6660,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6660.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large herbivore dinosaur snorts and lunges with a heavy grunt, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "984c97d2a51ff8a27a1f18413f1d13a47145c90c518dfacf576713b5706caa6d",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "dfa31e05256a1a5c2c2a34b978c9eebc133b1dd62492f92ab5ce2e744df92f60",
+      "cut": {
+        "source_file": "moss-pt-6660.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          218640,
+          293760
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6661-02860.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6660",
+      "prompt": "A large herbivore dinosaur snorts and lunges with a heavy grunt, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6661,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6661.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large herbivore dinosaur snorts and lunges with a heavy grunt, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "9a4e96f73f74d5426d0cc62cd3c12cbc6a5351377b2740d1c82c019373a8efe5",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "0880bb834d9ebd4f69539e8b4f082fb774849eaa9966395445c2c28b65c53c4e",
+      "cut": {
+        "source_file": "moss-pt-6661.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          134880,
+          183120
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6660-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6660",
+      "prompt": "A large herbivore dinosaur snorts and lunges with a heavy grunt, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6660,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6660.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large herbivore dinosaur snorts and lunges with a heavy grunt, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "644c70510a3093923169d45f2f72ae4d80a3cd9eef20019164a5705657e34a4f",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "dfa31e05256a1a5c2c2a34b978c9eebc133b1dd62492f92ab5ce2e744df92f60",
+      "cut": {
+        "source_file": "moss-pt-6660.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          101760
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6661-04525.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6660",
+      "prompt": "A large herbivore dinosaur snorts and lunges with a heavy grunt, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6661,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6661.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large herbivore dinosaur snorts and lunges with a heavy grunt, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "fff3398a235e7fbd834cd523bbb4e4e03e4f6aaefcb1841f87e1dcf2a80c9814",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "0880bb834d9ebd4f69539e8b4f082fb774849eaa9966395445c2c28b65c53c4e",
+      "cut": {
+        "source_file": "moss-pt-6661.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          214800,
+          265200
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6661-06640.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6660",
+      "prompt": "A large herbivore dinosaur snorts and lunges with a heavy grunt, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6661,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6661.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large herbivore dinosaur snorts and lunges with a heavy grunt, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ac1bc5d6a83427ae4ce46c83cfee454004b3321d87ebd4653db0407a1236b739",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "0880bb834d9ebd4f69539e8b4f082fb774849eaa9966395445c2c28b65c53c4e",
+      "cut": {
+        "source_file": "moss-pt-6661.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          316320,
+          376800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6660-06265.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6660",
+      "prompt": "A large herbivore dinosaur snorts and lunges with a heavy grunt, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6660,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6660.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large herbivore dinosaur snorts and lunges with a heavy grunt, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "fba0dd1c6d127b7fc4dafe677ec0dd823bdd834988becefb2ffad1d56a3710e0",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "dfa31e05256a1a5c2c2a34b978c9eebc133b1dd62492f92ab5ce2e744df92f60",
+      "cut": {
+        "source_file": "moss-pt-6660.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          298320,
+          365040
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/step/moss-pt-2810-02962.wav": {
       "model": "moss",
       "backend": "torch",
@@ -969,6 +2319,831 @@
         "frames": [
           323856,
           342240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-6681-01687.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-6680",
+      "prompt": "Heavy footsteps of a large two-ton animal walking slowly on earth: deep padded thuds, well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6681,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6681.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Heavy footsteps of a large two-ton animal walking slowly on earth: deep padded thuds, well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "8cb51c48684555ddef96161edb8d67534c86b67f67f6599f755e1f8b7d714f85",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "0fdc424eb7ccb106ce0f135d7cbcbaeb0688eb7f0f1aace1de3e463074a7c3cf",
+      "cut": {
+        "source_file": "moss-pt-6681.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          78576,
+          105600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-6680-05807.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-6680",
+      "prompt": "Heavy footsteps of a large two-ton animal walking slowly on earth: deep padded thuds, well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6680,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6680.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Heavy footsteps of a large two-ton animal walking slowly on earth: deep padded thuds, well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "56af99ffdaa3ad3780ee12f97c120eac1bd2425f2d719c664e6ff705772307e8",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b169ed72d6366887a007e95d981e9be7329ba98f75c67a815f8d8a6027f71eaa",
+      "cut": {
+        "source_file": "moss-pt-6680.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          276336,
+          309360
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-6681-05702.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-6680",
+      "prompt": "Heavy footsteps of a large two-ton animal walking slowly on earth: deep padded thuds, well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6681,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6681.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Heavy footsteps of a large two-ton animal walking slowly on earth: deep padded thuds, well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "8d6f9fdb0b3d70c45142791d9e9c770719fa798493b9087b619d445be068ff3f",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "0fdc424eb7ccb106ce0f135d7cbcbaeb0688eb7f0f1aace1de3e463074a7c3cf",
+      "cut": {
+        "source_file": "moss-pt-6681.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          271296,
+          296640
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-6680-07102.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-6680",
+      "prompt": "Heavy footsteps of a large two-ton animal walking slowly on earth: deep padded thuds, well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6680,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6680.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Heavy footsteps of a large two-ton animal walking slowly on earth: deep padded thuds, well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "be93714ba4d51b1dd0b37d80d66146e21896f65bbd5ced43aa50b5b8ef632a98",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b169ed72d6366887a007e95d981e9be7329ba98f75c67a815f8d8a6027f71eaa",
+      "cut": {
+        "source_file": "moss-pt-6680.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          338496,
+          372240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-6681-04377.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-6680",
+      "prompt": "Heavy footsteps of a large two-ton animal walking slowly on earth: deep padded thuds, well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6681,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6681.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Heavy footsteps of a large two-ton animal walking slowly on earth: deep padded thuds, well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "37598213209a9bc594d99ae814a39262b281d771523de87f5048b854afafa303",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "0fdc424eb7ccb106ce0f135d7cbcbaeb0688eb7f0f1aace1de3e463074a7c3cf",
+      "cut": {
+        "source_file": "moss-pt-6681.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          207696,
+          232560
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-6680-04342.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-6680",
+      "prompt": "Heavy footsteps of a large two-ton animal walking slowly on earth: deep padded thuds, well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6680,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6680.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Heavy footsteps of a large two-ton animal walking slowly on earth: deep padded thuds, well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "efd44541460bf469f1f0855c812366035ffec1c080cf8db3ef49359302e56b11",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b169ed72d6366887a007e95d981e9be7329ba98f75c67a815f8d8a6027f71eaa",
+      "cut": {
+        "source_file": "moss-pt-6680.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          206016,
+          237840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6691-03575.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6690",
+      "prompt": "A large crested dinosaur runs in panic: short honking blasts while running, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6691,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6691.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large crested dinosaur runs in panic: short honking blasts while running, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "a645568cbecd909f1dc4a3d2027ffeb5fe177f1759b93af94aa3f82952060fef",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "eca7e14c7dac4194c8aa4834a407968a4bd994f612e1b5047e21fe4fab3f52ce",
+      "cut": {
+        "source_file": "moss-pt-6691.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          169200,
+          237840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6691-06270.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6690",
+      "prompt": "A large crested dinosaur runs in panic: short honking blasts while running, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6691,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6691.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large crested dinosaur runs in panic: short honking blasts while running, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "8b4fe8bb12dffecf0bff077d5cc5ecadcb3ff3928a953d7c2bb96ab6d41b6c1c",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "eca7e14c7dac4194c8aa4834a407968a4bd994f612e1b5047e21fe4fab3f52ce",
+      "cut": {
+        "source_file": "moss-pt-6691.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          298560,
+          384000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6691-05840.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6690",
+      "prompt": "A large crested dinosaur runs in panic: short honking blasts while running, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6691,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6691.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large crested dinosaur runs in panic: short honking blasts while running, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "237ef28bcbaa63dc5d564b312b2297b5e7bca8c01a054a3f6c00e76f483ab94a",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "eca7e14c7dac4194c8aa4834a407968a4bd994f612e1b5047e21fe4fab3f52ce",
+      "cut": {
+        "source_file": "moss-pt-6691.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          277920,
+          301296
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/growl/moss-pt-6700-01655.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "growl",
+      "prompt_id": "v2-6700",
+      "prompt": "A large crested dinosaur snorts and grunts nervously, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6700,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6700.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large crested dinosaur snorts and grunts nervously, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "a08842c5fa5b20f4c263e81d47bdf657a3a397676ce3fbb068c9c01872df7e85",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "004c549fce9a05182af6fd3fa4d1c98d0fe5ef8250eceec56a77d13f4542b635",
+      "cut": {
+        "source_file": "moss-pt-6700.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          77040,
+          133920
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/growl/moss-pt-6700-06250.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "growl",
+      "prompt_id": "v2-6700",
+      "prompt": "A large crested dinosaur snorts and grunts nervously, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6700,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6700.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large crested dinosaur snorts and grunts nervously, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ab5eeb8f93ad503c7749a476c02aaf255c62deb95b858489f5ff034325342b1e",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1028.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "004c549fce9a05182af6fd3fa4d1c98d0fe5ef8250eceec56a77d13f4542b635",
+      "cut": {
+        "source_file": "moss-pt-6700.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          297600,
+          354960
         ],
         "rate": 48000,
         "stored_as": "mono PCM_24",

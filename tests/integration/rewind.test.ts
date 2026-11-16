@@ -25,7 +25,9 @@ test("a shot is judged no further back than the round trip the server measured, 
   expect(back(far)).toBeGreaterThan(12);
 
   // A client made for the purpose now sends ada's inputs: each tick it acknowledges `ack` and says it draws `behind` ticks behind that.
+  // Her own session, which would acknowledge for a page that draws no frames, hears nothing more.
   const end = h.ends[0]!;
+  end.onMessage = null;
   const buf = new InputBuffer(INPUT_WINDOW);
   const w = new BitWriter(256);
   const tick = (ack: number, behind: number): void => {

@@ -1,0 +1,157 @@
+{
+  "asset": "core/sfx/reward",
+  "review": "../ref/sound",
+  "about": "Small rewards and notices for the interface: a gentle notice chime, a small fanfare, a coin collected, an unlock, an achievement, a warning beep and a countdown.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "notice": {
+      "kind": "impact",
+      "range": 1,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a gentle notice",
+      "prompts": [
+        {
+          "id": "v4-27000",
+          "models": [
+            "moss"
+          ],
+          "seed": 27000,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A gentle soft two-note notification chime, pleasant and warm, five separate chimes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "fanfare": {
+      "kind": "impact",
+      "range": 1,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a small fanfare",
+      "prompts": [
+        {
+          "id": "v4-27010",
+          "models": [
+            "moss"
+          ],
+          "seed": 27010,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A short bright triumphant fanfare of brass and bells, two separate fanfares with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "coin": {
+      "kind": "impact",
+      "range": 1,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a coin collected",
+      "prompts": [
+        {
+          "id": "v4-27020",
+          "models": [
+            "moss"
+          ],
+          "seed": 27020,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A bright sparkly coin pickup sound, a quick rising ding, six separate dings with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "unlock": {
+      "kind": "impact",
+      "range": 1,
+      "level": -18,
+      "vary": 0.04,
+      "want": "an unlock",
+      "prompts": [
+        {
+          "id": "v4-27030",
+          "models": [
+            "moss"
+          ],
+          "seed": 27030,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A satisfying mechanical unlock click followed by a bright shimmer, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "achievement": {
+      "kind": "impact",
+      "range": 1,
+      "level": -16,
+      "vary": 0.04,
+      "want": "an achievement",
+      "prompts": [
+        {
+          "id": "v4-27040",
+          "models": [
+            "moss"
+          ],
+          "seed": 27040,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A rewarding magical achievement sound, a rising sparkle and a warm chord, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "warning": {
+      "kind": "impact",
+      "range": 1,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a warning",
+      "prompts": [
+        {
+          "id": "v4-27050",
+          "models": [
+            "moss"
+          ],
+          "seed": 27050,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "An urgent electronic warning beep, a short double beep, five separate warnings with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "countdown": {
+      "kind": "impact",
+      "range": 1,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a countdown",
+      "prompts": [
+        {
+          "id": "v4-27060",
+          "models": [
+            "moss"
+          ],
+          "seed": 27060,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A countdown timer ticks with sharp beeps, getting faster, one countdown. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true,
+      "space": "ear"
+    }
+  }
+}

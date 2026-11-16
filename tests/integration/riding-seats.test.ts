@@ -323,13 +323,13 @@ test("in the whole client the riding camera is behind the look, on a boom as lon
   expect(seen[1]!.back).toBeGreaterThan(seen[0]!.back * 1.5);
 });
 
-test("on the block-out pteranodon in a hard bank, its rider is pinned in her seat's whole frame and a shot at her head as it is drawn there finds her head", () => {
+test("on the pteranodon in a hard bank, its rider is pinned in her seat's whole frame and a shot at her head as it is drawn there finds her head", () => {
   const m = mounted(60, ["bob"]);
   const { h, e } = m;
   const ents = h.world.ents, pilot = h.pilots[0]!;
   const rider = h.ent(m.ada), shooter = h.ent(m.others[0]!);
   const anim = h.world.anims[ents.kind[e]!]!;
-  const seat = h.reg.saddleSeats[ents.gear[e]![GEAR_WORN]!]![0]!;
+  const seat = h.reg.saddleSeats[ents.gears.get(e)![GEAR_WORN]!]![0]!;
   const frame = new Float64Array(SEAT_FLOATS), st = new AnimState();
   const seatNow = (): void => {
     st.unpack(ents.anim[e]!, ents.cue[e]!);

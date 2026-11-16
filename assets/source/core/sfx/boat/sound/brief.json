@@ -1,0 +1,234 @@
+{
+  "asset": "core/sfx/boat",
+  "review": "../ref/sound",
+  "about": "Small motorboats: an outboard motor by throttle, the pull-cord start, water along the hull slow and fast, a wave slam, running aground and the horn. Speedboats and rafts fall back here.",
+  "notes": "v3 (vehicle round). Engine layers are 20 s beds cut to loop, played faster or slower by rpm; slot names match core:vehicle's, so a vehicle of this family is heard by them first and by core:vehicle for the rest.",
+  "slots": {
+    "engine/idle": {
+      "kind": "impact",
+      "range": 60,
+      "level": -22,
+      "vary": 0.0,
+      "want": "the outboard motor idling",
+      "prompts": [
+        {
+          "id": "v3-9400",
+          "models": [
+            "moss"
+          ],
+          "seed": 9400,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A small outboard motor on a boat idles in the water: a steady burbling two-stroke putter with water gurgling at the exhaust, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/low": {
+      "kind": "impact",
+      "range": 80,
+      "level": -20,
+      "vary": 0.0,
+      "want": "the outboard motor at low revs",
+      "prompts": [
+        {
+          "id": "v3-9410",
+          "models": [
+            "moss"
+          ],
+          "seed": 9410,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A small outboard motor at low throttle pushes a boat slowly: a steady buzzing drone with water lapping, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/mid": {
+      "kind": "impact",
+      "range": 100,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the outboard motor at middle revs",
+      "prompts": [
+        {
+          "id": "v3-9420",
+          "models": [
+            "moss"
+          ],
+          "seed": 9420,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A small outboard motor at half throttle: a steady loud buzzing whine with water rushing past the hull, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/high": {
+      "kind": "impact",
+      "range": 120,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the outboard motor at full power",
+      "prompts": [
+        {
+          "id": "v3-9430",
+          "models": [
+            "moss"
+          ],
+          "seed": 9430,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A small outboard motor at full throttle: a loud high-pitched screaming whine with water rushing, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/start": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the pull cord and the motor catching",
+      "prompts": [
+        {
+          "id": "v3-9440",
+          "models": [
+            "moss"
+          ],
+          "seed": 9440,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "An outboard boat motor is started with a pull cord: a quick rope pull, the motor sputters and catches, two separate starts with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "engine/stop": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the motor switched off",
+      "prompts": [
+        {
+          "id": "v3-9450",
+          "models": [
+            "moss"
+          ],
+          "seed": 9450,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "An outboard boat motor is switched off: it sputters and dies with a gurgle, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hull/slow": {
+      "kind": "impact",
+      "range": 25,
+      "level": -24,
+      "vary": 0.0,
+      "want": "water lapping at the hull going slowly",
+      "prompts": [
+        {
+          "id": "v3-9460",
+          "models": [
+            "moss"
+          ],
+          "seed": 9460,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A small boat moves slowly through calm water: gentle water lapping and gurgling against the hull, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "hull/fast": {
+      "kind": "impact",
+      "range": 50,
+      "level": -20,
+      "vary": 0.0,
+      "want": "water rushing past the hull at speed",
+      "prompts": [
+        {
+          "id": "v3-9470",
+          "models": [
+            "moss"
+          ],
+          "seed": 9470,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A small motorboat speeds across choppy water: water rushing and hissing past the hull with regular slaps of small waves, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "slam": {
+      "kind": "impact",
+      "range": 60,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the hull slamming onto a wave",
+      "prompts": [
+        {
+          "id": "v3-9480",
+          "models": [
+            "moss"
+          ],
+          "seed": 9480,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A small boat's hull slams down onto a wave: a hollow heavy smack and a burst of spray, five separate slams with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "beach": {
+      "kind": "impact",
+      "range": 40,
+      "level": -16,
+      "vary": 0.0,
+      "want": "running aground on a beach",
+      "prompts": [
+        {
+          "id": "v3-9490",
+          "models": [
+            "moss"
+          ],
+          "seed": 9490,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A small fibreglass boat runs aground onto a sandy beach: a grinding scrape of the hull on sand and pebbles, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "horn": {
+      "kind": "impact",
+      "range": 150,
+      "level": -12,
+      "vary": 0.0,
+      "want": "the boat's horn",
+      "prompts": [
+        {
+          "id": "v3-9500",
+          "models": [
+            "moss"
+          ],
+          "seed": 9500,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A small boat's electric horn honks, short and long honks, four separate honks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

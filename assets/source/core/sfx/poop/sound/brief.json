@@ -1,0 +1,150 @@
+{
+  "asset": "core/sfx/poop",
+  "review": "../ref/sound",
+  "about": "Dung and its makers: straining, plops, splats, farts, a huge dinosaur dropping, flies on dung and a stream on the ground.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "strain": {
+      "kind": "impact",
+      "range": 6,
+      "level": -20,
+      "vary": 0.04,
+      "want": "straining",
+      "prompts": [
+        {
+          "id": "v4-23000",
+          "models": [
+            "moss"
+          ],
+          "seed": 23000,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Someone strains and grunts on the toilet, a long effortful groan, three separate times with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "plop": {
+      "kind": "impact",
+      "range": 10,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a dropping plopping down",
+      "prompts": [
+        {
+          "id": "v4-23010",
+          "models": [
+            "moss"
+          ],
+          "seed": 23010,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A soft wet dropping plops onto the ground, five separate plops with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "splat": {
+      "kind": "impact",
+      "range": 12,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a wet splat",
+      "prompts": [
+        {
+          "id": "v4-23020",
+          "models": [
+            "moss"
+          ],
+          "seed": 23020,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A big wet sloppy splat of dung on the ground, four separate splats with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "fart": {
+      "kind": "impact",
+      "range": 10,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a fart",
+      "prompts": [
+        {
+          "id": "v4-23030",
+          "models": [
+            "moss"
+          ],
+          "seed": 23030,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A loud rude fart, five separate farts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "dino": {
+      "kind": "impact",
+      "range": 30,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a huge dinosaur dropping",
+      "prompts": [
+        {
+          "id": "v4-23040",
+          "models": [
+            "moss"
+          ],
+          "seed": 23040,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A huge animal drops an enormous heap of dung: a heavy squelching thud, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "flies": {
+      "kind": "impact",
+      "range": 6,
+      "level": -24,
+      "vary": 0.04,
+      "want": "flies on dung",
+      "prompts": [
+        {
+          "id": "v4-23050",
+          "models": [
+            "moss"
+          ],
+          "seed": 23050,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Flies buzzing busily over a pile of dung, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "pee": {
+      "kind": "impact",
+      "range": 6,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a stream on the ground",
+      "prompts": [
+        {
+          "id": "v4-23060",
+          "models": [
+            "moss"
+          ],
+          "seed": 23060,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A stream of liquid splashing onto dirt and leaves, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

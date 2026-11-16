@@ -159,6 +159,9 @@ export const EMPTY_PART: CityPart = { pos: new Float32Array(0), color: new Uint8
 /** Which pieces of a chunk are gone: a byte a piece in the chunk's order, 1 for gone. Null for none. */
 export type Gone = Uint8Array | null;
 
+/** The ground the forms are made on: a heightfield, or the part of one a worker is sent (heightfield.ts HeightWindow). */
+export type Ground = Pick<Heightfield, "heightAt">;
+
 /** Faces being made, and the box that holds them. */
 class Out {
   pos = new Float32Array(12 * 1024);
@@ -452,7 +455,7 @@ function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone,
  * The faces of the standing pieces of `chunk`, less those another standing piece holds whole (this chunk's or a
  * neighbour's) and those under the ground: its near drawing as one mesh. `gone(c)` says which pieces of chunk `c` are gone.
  */
-export function boxPart(city: CityStatics, chunk: number, hf: Heightfield, gone: (chunk: number) => Gone): CityPart {
+export function boxPart(city: CityStatics, chunk: number, hf: Ground, gone: (chunk: number) => Gone): CityPart {
   return mergedPart(city, chunk, hf, gone, -1, 0);
 }
 
@@ -471,7 +474,7 @@ function holds(q: number, wx: number, wy: number, wz: number): boolean {
  * The faces of `boxes` and `hulls` marked own, less those another box or part holds whole and those under the ground. In
  * the grid, entries from boxes.n on are parts.
  */
-function faces(dims: MapDims, chunk: number, hf: Heightfield): CityPart {
+function faces(dims: MapDims, chunk: number, hf: Ground): CityPart {
   const x0 = chunkCx(dims, chunk) * CHUNK_SIZE;
   const z0 = chunkCz(dims, chunk) * CHUNK_SIZE;
   out.reset(x0, z0);
@@ -687,7 +690,7 @@ function frameBox(nb: number, fx: number, fy: number, fz: number, hx: number, hy
  * another box or part or under the ground go, the neighbouring chunks' pieces holding faces as they stand. A gap below 0
  * merges nothing. With nothing left out pieces are as the near store draws them (a flight's treads), else as walked.
  */
-export function mergedPart(city: CityStatics, chunk: number, hf: Heightfield, gone: (chunk: number) => Gone, gap: number, least: number): CityPart {
+export function mergedPart(city: CityStatics, chunk: number, hf: Ground, gone: (chunk: number) => Gone, gap: number, least: number): CityPart {
   if (city.in(chunk) === 0) return EMPTY_PART;
   const form = least > 0 ? city.walked : city.look;
   boxes.n = 0;
@@ -1075,7 +1078,7 @@ function clipSpan(h: number): boolean {
  * The standing pieces of `chunk` in cells `size` metres wide and `tall` tall in each frame, with only the faces between a
  * filled cell and the air outside, merged into rectangles of one colour. A face looking down onto the ground goes.
  */
-export function cellPart(city: CityStatics, chunk: number, hf: Heightfield, gone: Gone, size: number, tall: number): CityPart {
+export function cellPart(city: CityStatics, chunk: number, hf: Ground, gone: Gone, size: number, tall: number): CityPart {
   const x0 = chunkCx(city.dims, chunk) * CHUNK_SIZE;
   const z0 = chunkCz(city.dims, chunk) * CHUNK_SIZE;
   out.reset(x0, z0);
@@ -1125,9 +1128,10 @@ export function cellPart(city: CityStatics, chunk: number, hf: Heightfield, gone
         const cover = (i: number): number => Math.min(h, i + 1) - Math.max(l, i);
         let i0 = Math.floor(l);
         let i1 = Math.ceil(h) - 1;
-        while (i0 < i1 && cover(i0) < TAKES) i0++;
-        while (i1 > i0 && cover(i1) < TAKES) i1--;
-        if (i0 === i1 && cover(i0) < TAKES && cover(i0 + 1) > cover(i0)) i0 = i1 = i0 + 1;
+        const best = cover(i0) >= cover(i1) ? i0 : i1;
+        while (i0 <= i1 && cover(i0) < TAKES) i0++;
+        while (i1 >= i0 && cover(i1) < TAKES) i1--;
+        if (i0 > i1) i0 = i1 = best;
         spans[b * 6 + ax] = i0;
         spans[b * 6 + ax + 3] = i1;
       }

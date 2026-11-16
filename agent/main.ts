@@ -13,9 +13,12 @@ import { compileContent } from "../shared/content/registry.ts";
 import type { ClusterList } from "../client/core/travel.ts";
 import { CMD_RESPAWN, CMD_TRAVEL, KEY_BYTES, SESSION_ALIVE, REJECT_CONTENT, REJECT_DENIED, REJECT_FULL, REJECT_KICKED, REJECT_NAME, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION } from "../shared/net/protocol.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
+import { CityStatics } from "../shared/world/city.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../shared/world/mapfile.ts";
 import { Mcp, type Answer, type ToolHost } from "./mcp.ts";
 import { connect } from "./socket.ts";
+import { GUIDE } from "./guide.ts";
+import { RESOURCES } from "./lookup.ts";
 import { Agent, INSTRUCTIONS, toolDefs } from "./tools.ts";
 import { TRAVEL_DEFS, nearestTerminal, riseAt, serverNamed, socketOf } from "./travel.ts";
 
@@ -128,6 +131,9 @@ async function main(): Promise<void> {
         ...(ticket ? { ticket } : {}),
         resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),
         nodes: (ground, content) => mapNodes(map, ground, content),
+        // The map's own pieces everywhere, as a browser has them for its far city: the skyline a flight keeps over.
+        city: (content) => new CityStatics(map.dims, map.statics, content),
+        statics: map.statics,
       });
       agent = new Agent(session, { console: args.console });
       console.error(`joining ${url} as ${args.name}${ticket ? " with a travel ticket" : ""}`);
@@ -193,6 +199,7 @@ async function main(): Promise<void> {
    * chose, or to be given back where it left from.
    */
   const travel = async (a: Record<string, unknown>): Promise<Answer> => {
+    if (a.to === undefined) return servers();
     const leaving = agent;
     if (!leaving || leaving.session.state !== "active") return refused(down);
     const list = await listed();
@@ -204,7 +211,7 @@ async function main(): Promise<void> {
     const at = me.world ? nearestTerminal(me.world.structs, me.registry, me.own.x, me.own.z) : null;
     if (!at) return refused("no obelisk's terminal is in sight: walk toward an obelisk, which stands taller than anything near it");
     // A walk answers within 50 s at most and goes on after, so a longer one is waited for here.
-    if (Math.hypot(me.own.x - at.x, me.own.z - at.z) > 1.5) await leaving.call("walk_to", { x: at.x, z: at.z, wait_s: 50 });
+    if (Math.hypot(me.own.x - at.x, me.own.z - at.z) > 1.5) await leaving.call("go_to", { x: at.x, z: at.z, wait_s: 50 });
     for (let i = 0; i < 200 && Math.hypot(me.own.x - at.x, me.own.z - at.z) > 1.5 && agent === leaving; i++) await Bun.sleep(500);
     if (Math.hypot(me.own.x - at.x, me.own.z - at.z) > 3) return { ...((await leaving.call("status", {})) ?? {}), state: "blocked", reason: "could not reach the obelisk's terminal" };
     cluster = list;
@@ -253,13 +260,17 @@ async function main(): Promise<void> {
   };
   const host: ToolHost = {
     list: () => [...toolDefs(args.console), ...TRAVEL_DEFS],
-    call: (name, a) => (name === "servers" ? servers() : name === "travel" ? travel(a) : agent ? agent.call(name, a) : toolDefs(args.console).some((d) => d.name === name) ? Promise.resolve(refused(down)) : null),
+    call: (name, a, ctx) => (name === "travel" ? travel(a) : agent ? agent.call(name, a, ctx) : toolDefs(args.console).some((d) => d.name === name) ? Promise.resolve(refused(down)) : null),
+    resources: () => RESOURCES,
+    // The guide needs no survivor; the rest are read from the content the server tuned, once joined.
+    read: (uri) => (agent ? agent.read(uri) : uri === "snark://guide" ? GUIDE : null),
   };
-  const mcp = new Mcp(host, "snark", INSTRUCTIONS);
+  const write = (line: string): void => void process.stdout.write(line + "\n");
+  const mcp = new Mcp(host, "snark", INSTRUCTIONS, write);
   const lines = createInterface({ input: process.stdin });
   lines.on("line", (line) => {
     void mcp.handle(line).then((out) => {
-      if (out !== null) process.stdout.write(out + "\n");
+      if (out !== null) write(out);
     });
   });
   const leave = (): void => {

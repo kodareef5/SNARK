@@ -9,7 +9,12 @@ import type { Camera } from "./camera.ts";
 import { BONE_FLOATS } from "./packet.ts";
 import type { CastTest } from "./terrain.ts";
 
-const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0] as const;
+const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]);
+
+function put(out: Float32Array, at: number, a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number): void {
+  out[at] = a; out[at + 1] = b; out[at + 2] = c; out[at + 3] = d; out[at + 4] = e; out[at + 5] = f;
+  out[at + 6] = g; out[at + 7] = h; out[at + 8] = i; out[at + 9] = j; out[at + 10] = k; out[at + 11] = l;
+}
 
 /** Rest-space skin matrices: rigid connected folds and a uniformly retracting head spar aligned to their height. */
 export function sailPose(out: Float32Array, sail: SailVisual, progress: number): void {
@@ -24,8 +29,8 @@ export function sailPose(out: Float32Array, sail: SailVisual, progress: number):
     const angle = (i & 1 ? -1 : 1) * sail.foldSign * (1 - phase) * Math.acos(sail.stackStep / length);
     const c = Math.cos(angle), s = Math.sin(angle), at = band.index * BONE_FLOATS;
     // Both kinds fold first toward local -X. Their hinge is the untouched third dimension.
-    if (sail.bandAxis === "y") out.set([c, -s, 0, across + s * band.lower, s, c, 0, along - c * band.lower, 0, 0, 1, 0], at);
-    else out.set([c, 0, -s, across + s * band.lower, 0, 1, 0, 0, s, 0, c, along - c * band.lower], at);
+    if (sail.bandAxis === "y") put(out, at, c, -s, 0, across + s * band.lower, s, c, 0, along - c * band.lower, 0, 0, 1, 0);
+    else put(out, at, c, 0, -s, across + s * band.lower, 0, 1, 0, 0, s, 0, c, along - c * band.lower);
     across -= s * length; along += c * length;
   }
   const gaff = sail.gaff;
@@ -36,8 +41,8 @@ export function sailPose(out: Float32Array, sail: SailVisual, progress: number):
     // Uniform scale preserves native transformed normals; the raised endpoint above remains exact rest geometry.
     const scale = Math.hypot(fraction * dy, dz) / Math.hypot(dy, dz);
     const angle = gaff.lowerAngle - Math.atan2(fraction * dy, dz), c = Math.cos(angle) * scale, s = Math.sin(angle) * scale;
-    const [, y, z] = gaff.throat, targetY = gaff.lowerThroatY + (y - gaff.lowerThroatY) * fraction;
-    out.set([scale, 0, 0, gaff.throat[0] * (1 - scale), 0, c, -s, targetY - c * y + s * z, 0, s, c, z - s * y - c * z], sail.bones.indexOf(gaff.bone) * BONE_FLOATS);
+    const y = gaff.throat[1], z = gaff.throat[2], targetY = gaff.lowerThroatY + (y - gaff.lowerThroatY) * fraction;
+    put(out, sail.bones.indexOf(gaff.bone) * BONE_FLOATS, scale, 0, 0, gaff.throat[0] * (1 - scale), 0, c, -s, targetY - c * y + s * z, 0, s, c, z - s * y - c * z);
   }
 }
 
@@ -119,7 +124,7 @@ export class SailVisuals {
 
   prepare(source: SailSource, cam: Camera, reach: number, caster: CastTest | null): readonly SailGroupDraw[] {
     const states = source.states(), tick = source.tick(), stats = this.stats;
-    [stats.groups, stats.sails, stats.bones, stats.missing, stats.limited] = [0, 0, 0, 0, 0];
+    stats.groups = 0; stats.sails = 0; stats.bones = 0; stats.missing = 0; stats.limited = 0;
     if (states !== this.states) {
       const old = new Map(this.groups.map(group => [group.state.ref, group]));
       this.groups = states.flatMap(state => {
@@ -141,7 +146,7 @@ export class SailVisuals {
         const x = state.x - cam.x + xx * center[0] + zx * center[2], y = state.y - cam.y + center[1], z = state.z - cam.z + xz * center[0] + zz * center[2];
         entry.seen = false; entry.casts = 0;
         if (Math.hypot(x, y, z) - radius > reach) continue;
-        box.set([x - radius, y - radius, z - radius, x + radius, y + radius, z + radius]);
+        box[0] = x - radius; box[1] = y - radius; box[2] = z - radius; box[3] = x + radius; box[4] = y + radius; box[5] = z + radius;
         if (!cam.boxVisible(...box as unknown as [number, number, number, number, number, number]) && (!caster || !caster(...box as unknown as [number, number, number, number, number, number]))) continue;
         sailPose(pose, visual, group.progress); sailWorldPose(pose, visual, state, cam); sailPoseBounds(box, visual, pose);
         entry.distance = Math.hypot(Math.max(box[0]!, -box[3]!, 0), Math.max(box[1]!, -box[4]!, 0), Math.max(box[2]!, -box[5]!, 0));

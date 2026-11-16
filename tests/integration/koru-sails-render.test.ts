@@ -23,7 +23,7 @@ import { corePack } from "../fixtures/pack.ts";
 test("native dynamic sails keep one owner and advancing poses through city handovers, then use five rest bones", () => {
   const map = koruSailsCourse(), pack = corePack(), h = new Harness({}, 629, 60, { dev: true, map: writeMap(map), clips: pack.clips, rigs: pack.header.rigs });
   try {
-    const operator = h.join("winch", {}, { manual: true, city: true }), observer = h.join("offshore", {}, { manual: true, city: true });
+    const operator = h.join("winch", {}, { manual: true }), observer = h.join("offshore", {}, { manual: true });
     const helm = new App(operator, h.reg, pack), app = new App(observer, h.reg, pack);
     helm.ui.settings.tier = "lowpoly"; app.ui.settings.tier = "high"; helm.ui.settings.steady = app.ui.settings.steady = false;
     let packet: FramePacket | null = null;
@@ -68,7 +68,7 @@ test("native dynamic sails keep one owner and advancing poses through city hando
     scene.assets.tier = { ...tier, reach: { ...tier.reach, city: 0 } }; scene.build(app.cam, null);
     expect(scene.sails.stats.groups).toBe(0); expect(scene.sails.stats.sails).toBe(0);
   } finally { h.host.shutdown(); }
-}, 10000);
+});
 
 
 test("native sail casters produce changing cascade depth at folded and raised endpoints", () => {

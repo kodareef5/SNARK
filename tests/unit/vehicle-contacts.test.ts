@@ -23,7 +23,7 @@ function setup() {
   const health = (e: number) => h.host.survival.value(h.host.records.byPid.get(ents.pid[e]!)!, V_HEALTH);
   const placeCar = (atX = x, atZ = z, speed = 10) => {
     ents.setPosition(car, atX, ground.y, atZ);
-    ents.vehicleYaw[car] = ents.vehicleYawRate[car] = ents.yaw[car] = 0;
+    ents.vehicleYaw[ents.vrow[car]!] = ents.vehicleYawRate[ents.vrow[car]!] = ents.yaw[car] = 0;
     ents.vx[car] = ents.vy[car] = 0; ents.vz[car] = speed;
     ents.flags[car] = ents.flags[car]! | F_GROUNDED;
   };
@@ -165,7 +165,7 @@ test('a driverless car blocks but cannot harm, so an unowned car never carries d
     expect(empty).toBeGreaterThanOrEqual(0);
     const target = s.victim('core:dummy', x - 8, z + 2.6), before = health(target), hits = h.host.combat.hits;
     ents.setPosition(empty, x - 8, s.ground.y, z);
-    ents.vehicleYaw[empty] = ents.vehicleYawRate[empty] = ents.yaw[empty] = 0;
+    ents.vehicleYaw[ents.vrow[empty]!] = ents.vehicleYawRate[ents.vrow[empty]!] = ents.yaw[empty] = 0;
     ents.vx[empty] = ents.vy[empty] = 0; ents.vz[empty] = 10;
     ents.flags[empty] = ents.flags[empty]! | F_GROUNDED;
     tick();

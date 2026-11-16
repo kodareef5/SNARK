@@ -4,7 +4,8 @@
 // --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise.
 // --saddles worn|saddled|both|own (--species ID, --close MOMENT, --levels) draws a creature in its saddle (tools/snap/saddles.ts).
 // --ride SPECIES (--moment ground|run|air|bank|dive, --watch, --passenger) draws riding it in the whole client (tools/snap/ride.ts).
-// --flight draws the block-out pteranodon ridden through a flight, a picture at each moment (tools/snap/flight.ts), with --each DIR each on its own too.
+// --flight draws the pteranodon ridden through a flight, a picture at each moment (tools/snap/flight.ts), with --each DIR each on its own too.
+// --hud MODE draws the HUD or one of its screens in the whole client (tools/snap/hud.ts).
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
@@ -65,8 +66,8 @@ import { DETAIL_SEQUENCES, MOMENTS, playDetails } from "./snap/details.ts";
 import { slopesScene } from "./snap/slopes.ts";
 import { atLevel, saddlesScene } from "./snap/saddles.ts";
 import { RIDE_MOMENTS, rideGame, rideScene, type Game, type RideMoment } from "./snap/ride.ts";
+import { HUD_MODES, hudScene, type HudMode } from "./snap/hud.ts";
 import { saddleMeshes, type Ways } from "../tests/fixtures/saddles.ts";
-import { flyerPackBytes, flyerRegistry } from "../tests/fixtures/flyer/flyer.ts";
 import { frame as frameFlight, moments, recordFlight, stage } from "./snap/flight.ts";
 import { frozenPack } from "../tests/fixtures/pack.ts";
 
@@ -292,7 +293,7 @@ export function provingView(width = 640, height = 360, net?: NetOptions, files?:
   const nodes = new NodeField(dims, reg, map ? (mapNodes(map, hf, reg) ?? { perChunk: 0, at: (_c, _i, out) => void (out.kind = 0) }) : provingNodes(hf, reg));
   if (!map) nodes.retain(0, 64, 1, () => false);
   const farNodes = map ? { farNodes: { nodes: nodes.source, held: (c: number) => nodes.isLoaded(c), gone: () => undefined, changes: new NodeChanges(dims) } } : {};
-  const scene = new Scene({ dims, hf, structs, nodes: nodes.store, ...farNodes }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
+  const scene = new Scene({ mapId: map?.id, dims, hf, structs, nodes: nodes.store, ...farNodes }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
   const cam = new Camera();
   cam.x = map?.spawns[0]!.x ?? PROVING_SPAWN.x;
   cam.z = map?.spawns[0]!.z ?? PROVING_SPAWN.z;
@@ -927,7 +928,7 @@ if (import.meta.main) {
     process.exit(0);
   }
   if (args.includes("--flight")) {
-    // The block-out pteranodon ridden through a flight (tools/snap/flight.ts), a picture at each moment, four across.
+    // The pteranodon ridden through a flight (tools/snap/flight.ts), a picture at each moment, four across.
     const t0 = performance.now();
     const f = recordFlight();
     const shots = moments(f);
@@ -935,7 +936,7 @@ if (import.meta.main) {
     const across = 4;
     const [W, H] = [across * fw, Math.ceil(shots.length / across) * fh];
     const pixels = new Uint8ClampedArray(W * H * 4);
-    const view = provingView(fw, fh, undefined, undefined, undefined, { reg: flyerRegistry(), pack: flyerPackBytes() });
+    const view = provingView(fw, fh);
     let next = 0;
     for (let i = 0; i < f.ticks.length && next < shots.length; i++) {
       stage(f, i, view.remote);
@@ -964,7 +965,7 @@ if (import.meta.main) {
         next++;
       }
     }
-    label(pixels, W, "the block-out pteranodon ridden, as a client draws it from what the server sends", 6, H - 22);
+    label(pixels, W, "the pteranodon ridden, as a client draws it from what the server sends", 6, H - 22);
     const out = resolve(arg("out") ?? "artifacts/flight.png");
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, encodePng(W, H, pixels));
@@ -1024,6 +1025,16 @@ if (import.meta.main) {
       }
     });
     const out = resolve(arg("out") ?? `artifacts/fight-${what}.png`);
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, encodePng(w!, h!, pixels));
+    console.log(out);
+    process.exit(0);
+  }
+  if (args.includes("--hud")) {
+    const mode = (arg("hud") ?? "play") as HudMode;
+    if (!HUD_MODES.includes(mode)) throw new Error(`--hud takes ${HUD_MODES.join(", ")}, not "${mode}"`);
+    const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => hudScene(app, run, hh, mode));
+    const out = resolve(arg("out") ?? `artifacts/hud-${mode}.png`);
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, encodePng(w!, h!, pixels));
     console.log(out);

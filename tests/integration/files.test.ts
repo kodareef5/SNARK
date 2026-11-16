@@ -49,7 +49,9 @@ test("a whole file goes out compressed where a copy was built for it and the bro
   const packed = await get("/manifest.json", { "accept-encoding": "gzip, br" });
   expect([packed.status, packed.headers.get("content-encoding"), packed.headers.get("vary")]).toEqual([200, "br", "accept-encoding"]);
   expect(new TextDecoder().decode(brotliDecompressSync(await body(packed)))).toBe('{"version":1}');
-  expect((await get("/manifest.json", { "accept-encoding": "gzip" })).headers.get("content-encoding")).toBeNull();
+  // Sent as it is to a browser that takes no Brotli, it still says it varies, so no shared cache hands it to one that does.
+  const plain = await get("/manifest.json", { "accept-encoding": "gzip" });
+  expect([plain.headers.get("content-encoding"), plain.headers.get("vary")]).toEqual([null, "accept-encoding"]);
   const part = await get("/manifest.json", { "accept-encoding": "br", range: "bytes=0-3" });
   expect([part.status, part.headers.get("content-encoding"), await part.text()]).toEqual([206, null, '{"ve']);
   expect((await get("/index.html", { "accept-encoding": "br" })).headers.get("content-encoding")).toBeNull();
@@ -59,4 +61,19 @@ test("nothing outside the folder is served, and nothing that is not there", asyn
   expect((await get("/nothing.js")).status).toBe(404);
   expect((await get("/..%2f..%2fetc/passwd")).status).toBe(404);
   expect((await serveFile(dir, new Request("http://localhost/../../etc/passwd"))).status).toBe(404);
+});
+
+test("HUD images and the locally hosted font use typed immutable responses and compressed font delivery",async()=>{
+  for (const [suffix,type] of [["png","image/png"],["ttf","font/ttf"],["txt","text/plain"]]) {
+    const name=`hud.0123456789abcdef.${suffix}`;
+    writeFileSync(join(dir,name),bytes);
+    const response=await get(`/${name}`);
+    expect(response.headers.get("content-type")).toContain(type!);
+    expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+  }
+  const name="hud.0123456789abcdef.ttf";
+  writeFileSync(join(dir,`${name}.br`),brotliCompressSync(bytes));
+  const response=await get(`/${name}`,{"accept-encoding":"br"});
+  expect(response.headers.get("content-encoding")).toBe("br");
+  expect(brotliDecompressSync(await body(response))).toEqual(Buffer.from(bytes));
 });

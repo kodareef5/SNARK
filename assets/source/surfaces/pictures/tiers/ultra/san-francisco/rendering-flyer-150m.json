@@ -1,0 +1,28 @@
+{
+  "map": "core:san-francisco",
+  "mapHash": 3644417512,
+  "tier": "ultra",
+  "seconds": 48.07,
+  "peakResidentMiB": 5837.6,
+  "views": [
+    {
+      "name": "flyer-150m",
+      "frames": 105,
+      "milliseconds": 38730,
+      "eye": [
+        3842,
+        219.265625,
+        1596
+      ],
+      "draws": 2233,
+      "triangles": 4354998,
+      "budget": {
+        "draws": 4096,
+        "triangles": 8000000
+      },
+      "buildMs": 3.87,
+      "dropped": 0,
+      "casterDropped": 0
+    }
+  ]
+}

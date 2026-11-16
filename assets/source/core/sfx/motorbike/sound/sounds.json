@@ -1,0 +1,63 @@
+{
+  "sounds": {
+    "engine/idle": {
+      "range": 60, "level": -20, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/idle/moss-pt-10200-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
+      ]
+    },
+    "engine/low": {
+      "range": 90, "level": -18, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/low/moss-pt-10212-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
+      ]
+    },
+    "engine/mid": {
+      "range": 120, "level": -16, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/mid/moss-pt-10220-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
+      ]
+    },
+    "engine/high": {
+      "range": 150, "level": -14, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/high/moss-pt-10232-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
+      ]
+    },
+    "engine/start": {
+      "range": 60, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/engine/start/moss-pt-10241-04805.wav", "from": "moss", "start": 0.05, "end": 5.245},
+        {"file": "takes/engine/start/moss-pt-10241-00075.wav", "from": "moss", "start": 0.05, "end": 0.24}
+      ]
+    },
+    "engine/stop": {
+      "range": 40, "level": -18, "vary": 0.0,
+      "takes": [
+        {"file": "takes/engine/stop/moss-pt-10250-05465.wav", "from": "moss", "start": 0.05, "end": 1.04},
+        {"file": "takes/engine/stop/moss-pt-10250-00580.wav", "from": "moss", "start": 0.05, "end": 0.745}
+      ]
+    },
+    "engine/rev": {
+      "range": 120, "level": -14, "vary": 0.0,
+      "takes": [
+        {"file": "takes/engine/rev/moss-pt-10260-00000.wav", "from": "moss", "start": 0.0, "end": 6.312},
+        {"file": "takes/engine/rev/moss-pt-10261-00080.wav", "from": "moss", "start": 0.05, "end": 3.76}
+      ]
+    },
+    "shift": {
+      "range": 15, "level": -22, "vary": 0.0,
+      "takes": [
+        {"file": "takes/shift/moss-pt-10270-00065.wav", "from": "moss", "start": 0.05, "end": 0.465},
+        {"file": "takes/shift/moss-pt-10270-01135.wav", "from": "moss", "start": 0.05, "end": 0.508}
+      ]
+    },
+    "horn": {
+      "range": 100, "level": -14, "vary": 0.0,
+      "takes": [
+        {"file": "takes/horn/moss-pt-10280-05450.wav", "from": "moss", "start": 0.05, "end": 0.37},
+        {"file": "takes/horn/moss-pt-10280-00820.wav", "from": "moss", "start": 0.05, "end": 0.42}
+      ]
+    }
+  }
+}

@@ -1,0 +1,249 @@
+{
+  "asset": "core/sfx/combat",
+  "review": "../ref/sound",
+  "about": "Fights hand to hand and blade to blade: clashes, blocks on wood and metal shields, punches, kicks, fast swipes, falls, cracks, armour hit, a parry and a club to the head.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "clash": {
+      "kind": "impact",
+      "range": 40,
+      "level": -12,
+      "vary": 0.04,
+      "want": "blades clashing",
+      "prompts": [
+        {
+          "id": "v4-20800",
+          "models": [
+            "moss"
+          ],
+          "seed": 20800,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "Two steel swords clash: a bright ringing clang, five separate clashes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "block/wood": {
+      "kind": "impact",
+      "range": 40,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a blow on a wooden shield",
+      "prompts": [
+        {
+          "id": "v4-20810",
+          "models": [
+            "moss"
+          ],
+          "seed": 20810,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A heavy blow lands on a wooden shield: a hollow solid thud, five separate blocks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "block/metal": {
+      "kind": "impact",
+      "range": 40,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a blow on a metal shield",
+      "prompts": [
+        {
+          "id": "v4-20820",
+          "models": [
+            "moss"
+          ],
+          "seed": 20820,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A sword strikes a metal shield: a loud resonant clang, five separate blocks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "punch": {
+      "kind": "impact",
+      "range": 25,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a punch landing",
+      "prompts": [
+        {
+          "id": "v4-20830",
+          "models": [
+            "moss"
+          ],
+          "seed": 20830,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A hard punch lands on a body: a meaty slapping thud, six separate punches with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "kick": {
+      "kind": "impact",
+      "range": 25,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a kick landing",
+      "prompts": [
+        {
+          "id": "v4-20840",
+          "models": [
+            "moss"
+          ],
+          "seed": 20840,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A hard kick lands on a body: a heavy thump, five separate kicks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "swipe": {
+      "kind": "impact",
+      "range": 15,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a fast swipe through the air",
+      "prompts": [
+        {
+          "id": "v4-20850",
+          "models": [
+            "moss"
+          ],
+          "seed": 20850,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A fast swipe through the air: a sharp short whoosh, six separate swipes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "fall": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a body hitting the ground",
+      "prompts": [
+        {
+          "id": "v4-20860",
+          "models": [
+            "moss"
+          ],
+          "seed": 20860,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A person falls hard onto the ground: a heavy body thud and a scuff of dirt, four separate falls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "crack": {
+      "kind": "impact",
+      "range": 15,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a bone cracking",
+      "prompts": [
+        {
+          "id": "v4-20870",
+          "models": [
+            "moss"
+          ],
+          "seed": 20870,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A bone cracks: a sharp dry snap with a crunch, four separate cracks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "armor": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a blow on armour",
+      "prompts": [
+        {
+          "id": "v4-20880",
+          "models": [
+            "moss"
+          ],
+          "seed": 20880,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A blow lands on plate armour: a dull heavy metallic clank and rattle, five separate hits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "parry": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a parry",
+      "prompts": [
+        {
+          "id": "v4-20890",
+          "models": [
+            "moss"
+          ],
+          "seed": 20890,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A sword parries a blow with a quick scraping ring of steel sliding on steel, five separate parries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "bonk": {
+      "kind": "impact",
+      "range": 25,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a club to the head",
+      "prompts": [
+        {
+          "id": "v4-20900",
+          "models": [
+            "moss"
+          ],
+          "seed": 20900,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A wooden club bonks someone on the head: a hollow knocking thunk, five separate bonks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "thud": {
+      "kind": "impact",
+      "range": 40,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a heavy knockback",
+      "prompts": [
+        {
+          "id": "v4-20910",
+          "models": [
+            "moss"
+          ],
+          "seed": 20910,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A heavy blow sends a body flying: a deep whumping thud and a tumbling scrape, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

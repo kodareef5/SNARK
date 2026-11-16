@@ -1,0 +1,5 @@
+Tidied `tex/layers/`: extras moved into ignored `superseded/`, required scripts and inputs retained, and no TypeScript remains.
+
+Both clean runs of `paint.py` reproduced all four accepted PNGs byte for byte. The three retained review sheets were verified current.
+
+Added the Files section and rebuild hashes to [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/layers/REPORT.md).

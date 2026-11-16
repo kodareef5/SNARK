@@ -1,0 +1,303 @@
+{
+  "study": "saddle",
+  "round": 2,
+  "description": "Undyed supple hide, burnished edges with waxed stitches, four-strand plait, three-strand cord, wrapped grips, honey wood and layered ivory chitin.",
+  "source_tool": "built-in image_gen",
+  "source_native_size": [
+    1254,
+    1254
+  ],
+  "build": "python3 tex/studies/saddle/build.py",
+  "check": "python3 tex/studies/saddle/check.py",
+  "sets": {
+    "hide": {
+      "span_m": 0.5,
+      "height_mm": 1.0,
+      "form": "ball",
+      "radii": [
+        0.25,
+        0.06,
+        0.2
+      ],
+      "tiles": true,
+      "cutout": false,
+      "regions": [],
+      "dyed": false,
+      "size": 2048,
+      "quarter_turns": 0,
+      "feature_scale": 1,
+      "seed": 4117,
+      "construction": {
+        "grain_mm": [
+          0.2,
+          0.55
+        ],
+        "relief": "quiet fine pores and grain, soft bend wrinkles; no cracked cells",
+        "source": "hide_supple_original.png; broad pigment only from hide_original.png"
+      },
+      "actual_relief_mm": 0.12129,
+      "height_encoding": "white high; full 0..65535 range equals height_mm; middle grey is zero",
+      "channels": {
+        "base": "sRGB RGB",
+        "height": "linear uint16",
+        "normal": "OpenGL RGB8 +Y up",
+        "packed": "linear RGB8: AO, roughness, zero metal",
+        "regions": "RGB black only"
+      }
+    },
+    "hide_edge": {
+      "span_m": 0.25,
+      "height_mm": 1.6,
+      "form": "tube",
+      "radius": 0.04,
+      "flat": 0.15,
+      "length": 1.2,
+      "tiles": true,
+      "cutout": false,
+      "regions": [],
+      "dyed": false,
+      "size": 2048,
+      "quarter_turns": 0,
+      "feature_scale": 1,
+      "seed": 4117,
+      "construction": {
+        "stitch_count": 36,
+        "stitch_pitch_mm": 6.944444444444445,
+        "stitch_length_mm": [
+          4.7,
+          5.25
+        ],
+        "thread_ply": 2,
+        "thread_twist_pitch_mm": 0.68,
+        "thread_crown_mm": 0.45,
+        "edge_mm": 7,
+        "crease_mm": 9.8,
+        "stitch_row_mm": 14,
+        "source": "hide_supple_original.png; computed burnished roll, sewing channel, two-ply thread and awl holes",
+        "other_edge": "mirror this edge into the final strap UV; no bottom border is painted",
+        "reusable_element": {
+          "name": "stitch",
+          "parent_box_px": [
+            647,
+            49,
+            775,
+            177
+          ],
+          "span_mm": 15.625,
+          "layers": "source/elements/stitch_*.png",
+          "tiles": false
+        }
+      },
+      "actual_relief_mm": 0.94255,
+      "height_encoding": "white high; full 0..65535 range equals height_mm; middle grey is zero",
+      "channels": {
+        "base": "sRGB RGB",
+        "height": "linear uint16",
+        "normal": "OpenGL RGB8 +Y up",
+        "packed": "linear RGB8: AO, roughness, zero metal",
+        "regions": "RGB black only"
+      }
+    },
+    "rope_plait": {
+      "span_m": 0.0754,
+      "height_mm": 2.4,
+      "form": "tube",
+      "radius": 0.006,
+      "length": 0.6,
+      "turn": false,
+      "tiles": true,
+      "cutout": false,
+      "regions": [],
+      "dyed": false,
+      "size": 2048,
+      "quarter_turns": 0,
+      "feature_scale": 1,
+      "seed": 4117,
+      "construction": {
+        "construction": "round four-strand plait exterior; opposed chains of offset chevrons, quarter-girth runs with rounded crowns and recessed crossing ends",
+        "rope_diameter_mm": 12,
+        "strand_count": 4,
+        "circumferences_per_tile": 2,
+        "chevron_pitch_mm": 9.425,
+        "strand_angle_degrees": 45,
+        "strand_diameter_mm": 5,
+        "bundle_ply": 3,
+        "fiber_relief_mm": 0.03,
+        "source": "fibre_original.png; four-strand exterior computed at physical scale",
+        "reusable_element": {
+          "name": "plait_crossing",
+          "parent_box_px": [
+            768,
+            768,
+            1280,
+            1280
+          ],
+          "span_mm": 18.849999999999998,
+          "layers": "source/elements/plait_crossing_*.png",
+          "tiles": false
+        }
+      },
+      "actual_relief_mm": 1.68957,
+      "height_encoding": "white high; full 0..65535 range equals height_mm; middle grey is zero",
+      "channels": {
+        "base": "sRGB RGB",
+        "height": "linear uint16",
+        "normal": "OpenGL RGB8 +Y up",
+        "packed": "linear RGB8: AO, roughness, zero metal",
+        "regions": "RGB black only"
+      }
+    },
+    "rope_twist": {
+      "span_m": 0.0377,
+      "height_mm": 1.6,
+      "form": "tube",
+      "radius": 0.003,
+      "length": 0.6,
+      "tiles": true,
+      "cutout": false,
+      "regions": [],
+      "dyed": false,
+      "size": 2048,
+      "quarter_turns": 0,
+      "feature_scale": 1,
+      "seed": 4117,
+      "construction": {
+        "construction": "three-strand laid cord; three equal-handed continuous helices, fine twisted plant fibres",
+        "rope_diameter_mm": 6,
+        "strand_count": 3,
+        "circumferences_per_tile": 2,
+        "lay_pitch_mm": 18.85,
+        "strand_spacing_axial_mm": 6.283333333333334,
+        "source": "fibre_original.png; helical strand relief computed at physical scale",
+        "reusable_element": {
+          "name": "twisted_cord",
+          "parent_box_px": [
+            768,
+            768,
+            1280,
+            1280
+          ],
+          "span_mm": 9.424999999999999,
+          "layers": "source/elements/twisted_cord_*.png",
+          "tiles": false
+        }
+      },
+      "actual_relief_mm": 1.02014,
+      "height_encoding": "white high; full 0..65535 range equals height_mm; middle grey is zero",
+      "channels": {
+        "base": "sRGB RGB",
+        "height": "linear uint16",
+        "normal": "OpenGL RGB8 +Y up",
+        "packed": "linear RGB8: AO, roughness, zero metal",
+        "regions": "RGB black only"
+      }
+    },
+    "rope_wrap": {
+      "span_m": 0.1,
+      "height_mm": 2.8,
+      "form": "tube",
+      "radius": 0.016,
+      "length": 0.4,
+      "tiles": true,
+      "cutout": false,
+      "regions": [],
+      "dyed": false,
+      "size": 2048,
+      "quarter_turns": 0,
+      "feature_scale": 1,
+      "seed": 4117,
+      "construction": {
+        "construction": "close helical cord turns with fine three-ply twist",
+        "cord_diameter_mm": 4.0,
+        "turns_per_tile": 25,
+        "helix_advance_per_circumference_mm": 4.0,
+        "reusable_element": {
+          "name": "cord_turn",
+          "parent_box_px": [
+            960,
+            960,
+            1088,
+            1088
+          ],
+          "span_mm": 6.25,
+          "layers": "source/elements/cord_turn_*.png",
+          "tiles": false
+        }
+      },
+      "actual_relief_mm": 1.59905,
+      "height_encoding": "white high; full 0..65535 range equals height_mm; middle grey is zero",
+      "channels": {
+        "base": "sRGB RGB",
+        "height": "linear uint16",
+        "normal": "OpenGL RGB8 +Y up",
+        "packed": "linear RGB8: AO, roughness, zero metal",
+        "regions": "RGB black only"
+      }
+    },
+    "wood": {
+      "span_m": 0.4,
+      "height_mm": 0.6,
+      "form": "tube",
+      "radius": 0.02,
+      "flat": 0.6,
+      "length": 0.8,
+      "tiles": true,
+      "cutout": false,
+      "regions": [],
+      "dyed": false,
+      "size": 2048,
+      "quarter_turns": 0,
+      "feature_scale": 1,
+      "seed": 4117,
+      "construction": {
+        "grain_direction": "left to right; bend the mesh along its grain",
+        "pores_mm": [
+          0.1,
+          0.35
+        ],
+        "micro_relief_mm": 0.12
+      },
+      "actual_relief_mm": 0.33221,
+      "height_encoding": "white high; full 0..65535 range equals height_mm; middle grey is zero",
+      "channels": {
+        "base": "sRGB RGB",
+        "height": "linear uint16",
+        "normal": "OpenGL RGB8 +Y up",
+        "packed": "linear RGB8: AO, roughness, zero metal",
+        "regions": "RGB black only"
+      }
+    },
+    "chitin": {
+      "span_m": 0.25,
+      "height_mm": 0.35,
+      "form": "tube",
+      "radius": 0.06,
+      "flat": 0.25,
+      "length": 0.6,
+      "tiles": true,
+      "cutout": false,
+      "regions": [],
+      "dyed": false,
+      "size": 2048,
+      "quarter_turns": 0,
+      "feature_scale": 1,
+      "seed": 4117,
+      "construction": {
+        "growth_direction": "near-parallel left-to-right lamellae, coherent shallow curvature",
+        "micro_relief_mm": 0.04,
+        "worn_edge_mm": 8,
+        "source": "chitin_layers_original.png",
+        "transmission": "opaque game material; warmer deeper pigment suggests the thinner edge, no real transmission channel"
+      },
+      "actual_relief_mm": 0.11503,
+      "height_encoding": "white high; full 0..65535 range equals height_mm; middle grey is zero",
+      "channels": {
+        "base": "sRGB RGB",
+        "height": "linear uint16",
+        "normal": "OpenGL RGB8 +Y up",
+        "packed": "linear RGB8: AO, roughness, zero metal",
+        "regions": "RGB black only"
+      }
+    }
+  }
+}

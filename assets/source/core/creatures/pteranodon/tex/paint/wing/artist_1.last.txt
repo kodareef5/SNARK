@@ -1,0 +1,5 @@
+Painted all four wing pieces in `tex/paint/wing/`, with aligned veins, soft dye masks, fuzz and bare skin.
+
+Full coverage, grey means, mask checks and byte-identical rebuild passed. Reviewed in the game renderer; the underside remains darker than the concept.
+
+[Report](tex/paint/wing/REPORT.md) · [Wing preview](tex/paint/wing/checks/look/inner_wing_design.png)

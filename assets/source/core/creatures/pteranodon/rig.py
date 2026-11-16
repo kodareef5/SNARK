@@ -210,9 +210,12 @@ RIDER_CAPSULES = [  # (from, to, radius), a name with _l mirrored for the right
 
 # The clips, who makes them, and what `finish` checks. Frames are a suggestion within [min, max].
 #   owner   move = clips_move.py, act = clips_act.py, life = clips_life.py
-#   start   "ground": frame 0 should be STANCE; "air": the rest pose; "gait": the left hand farthest forward
-#   end     "ground" or "air", the same for the last frame (warned if not)
+#   start   "ground": frame 0 should be STANCE; "air": the rest pose; "beat": the top of the flight's stroke, frame 0
+#           of fly, which fly_fast and hover share; "gait": the left hand farthest forward
+#   end     "ground", "air" or "beat", the same for the last frame (warned if not)
 #   layer   an additive clip may turn only these bones and must start and end unturned
+#   held    a looping layer held while it lasts, which the engine fades in and out by weight (the carrying legs, D550):
+#           its frames are its bones' turns from rest, so it need not start or end unturned
 #   ridden  the rider may be on it: the block-out must keep out of RIDER_CAPSULES
 #   lifted  the engine lifts the body from its first frame (take_off_lift), so the ground it left falls away under it
 #   optional  made only if needed; asset.ts lists it once it is made
@@ -239,13 +242,18 @@ CLIPS = {
     "swim":         {"owner": "move", "loop": True,  "frames": 30, "min": 20, "max": 45, "optional": True},
     "fall":         {"owner": "move", "loop": True,  "frames": 18, "min": 12, "max": 30},
     "call":         {"owner": "act",  "loop": False, "frames": 50, "min": 30, "max": 75, "start": "ground", "end": "ground", "ridden": True},
-    "attack":       {"owner": "act",  "loop": False, "frames": 18, "min": 10, "max": 20, "start": "ground", "end": "ground", "hit_by": 10, "ridden": True},
-    "attack_air":   {"owner": "act",  "loop": False, "frames": 18, "min": 10, "max": 20, "layer": _NECK_HEAD, "hit_by": 10, "ridden": True},
-    "barrel_roll":  {"owner": "act",  "loop": False, "frames": 30, "min": 20, "max": 45, "start": "air", "end": "air", "ridden": True},
+    # A wild one taking fright on the ground stands through it before it takes off (server/behavior.ts: flee).
+    "startled":     {"owner": "act",  "loop": False, "frames": 27, "min": 9, "max": 30, "start": "ground", "end": "ground"},
+    # The bite's 20 ticks, ARK's 0.67 s (content/creatures/pteranodon.ts: bite).
+    "attack":       {"owner": "act",  "loop": False, "frames": 20, "min": 10, "max": 20, "start": "ground", "end": "ground", "hit_by": 10, "ridden": True},
+    "attack_air":   {"owner": "act",  "loop": False, "frames": 20, "min": 10, "max": 20, "layer": _NECK_HEAD, "hit_by": 10, "ridden": True},
+    # The roll's second of burst (D496).
+    "barrel_roll":  {"owner": "act",  "loop": False, "frames": 30, "min": 20, "max": 45, "start": "beat", "end": "beat", "ridden": True},
     "grab":         {"owner": "act",  "loop": False, "frames": 12, "min": 8, "max": 20, "layer": _LEGS, "ridden": True},
-    "carry":        {"owner": "act",  "loop": True,  "frames": 30, "min": 20, "max": 60, "layer": _LEGS, "ridden": True},
+    # One stroke of fly, so the load's swing keeps time with the wings.
+    "carry":        {"owner": "act",  "loop": True,  "frames": 30, "min": 20, "max": 60, "layer": _LEGS, "held": True, "ridden": True},
     "release":      {"owner": "act",  "loop": False, "frames": 12, "min": 8, "max": 20, "layer": _LEGS, "ridden": True},
-    "flinch":       {"owner": "act",  "loop": False, "frames": 9, "min": 6, "max": 15, "layer": _FLINCH, "ridden": True},
+    "flinch":       {"owner": "act",  "loop": False, "frames": 12, "min": 6, "max": 15, "layer": _FLINCH, "ridden": True},
     "carried":      {"owner": "act",  "loop": True,  "frames": 60, "min": 30, "max": 120, "optional": True},
     "torpor_in":    {"owner": "life", "loop": False, "frames": 40, "min": 24, "max": 60, "start": "ground"},
     "torpor_fall":  {"owner": "life", "loop": True,  "frames": 24, "min": 12, "max": 45},
@@ -278,8 +286,12 @@ STANCE = {
 # solved from these into turns of each bone relative to its parent, so it rides with the chest in any pose. The elbow
 # lies back by the flank; the forearm leans forward and the long hand bone down to the hand on the ground; the wing
 # finger folds back up along the outside of that strut, past the elbow, to a tip that points up and back behind the
-# hips. The battens are aimed so the skin gathers between the arm, the finger and the leg without entering the body
-# (searched; ref/blockout/checks.json).
+# hips. The battens point where the skin should go: the first back from the elbow toward the hip, the second down and
+# back from the wrist, high enough that they and the skin's rear edge stay above the ground through every ground clip
+# (check_clip); the inner skin hangs in layers between the arm's strut and the leg, hidden behind the outer wing, which
+# hangs from the finger (FINGER_ROLL). They and model.py's membrane weights were searched together (ref/wing/fold.py)
+# so the folded skin keeps out of itself, the body and the other wing in STANCE and through the animators' clips
+# (ref/wing/checks.json, ref/wing/clips.json).
 FOLD = {
     "elbow":    (0.300, 0.580, -0.170),
     "wrist":    (0.340, 0.360, 0.300),
@@ -290,9 +302,9 @@ FOLD = {
     "wing_2":   (0.420, 0.700, -0.360),
     "wing_3":   (0.420, 0.950, -0.790),
     "wing_4":   (0.410, 1.076, -1.128),
-    "web_1":    (0.420, 0.700, -0.600),
-    "web_2":    (0.360, 0.360, -0.100),
-    "web_3":    (0.430, 0.750, -0.400),
+    "web_1":    (0.519, 0.353, -1.163),
+    "web_2":    (0.817, 0.279, -0.153),
+    "web_3":    (0.498, 0.316, 0.429),
 }
 # The wing tucked in the air, halfway to FOLD: where each joint lies with the body at rest (level). The elbow goes back
 # by the flank, the wrist forward under the shoulder, the long hand bone and the finger fold back along the body to a
@@ -307,10 +319,17 @@ TUCK = {
     "wing_2":   (0.440, 0.660, -1.580),
     "wing_3":   (0.420, 0.640, -2.080),
     "wing_4":   (0.390, 0.630, -2.440),
-    "web_1":    (0.280, 0.400, -0.600),
-    "web_2":    (0.400, 0.450, -0.300),
-    "web_3":    (0.420, 0.620, -1.300),
+    "web_1":    (0.577, 0.709, -1.030),
+    "web_2":    (0.926, 0.464, -1.772),
+    "web_3":    (0.770, 0.193, -1.564),
 }
+
+# How far the wing finger's four bones roll about their own length in TUCK and in FOLD, in degrees: the joints do not
+# move, but the membrane on the finger turns with it, so folded on the ground the outer wing hangs from the finger as
+# one panel toward the ground and the rear edge, as the concept's folded views have it, standing a little out from the
+# inner layers so they stay apart as the arms move. The third batten rides on the finger and rolls with it; its
+# targets above are where it points before the roll.
+FINGER_ROLL = {"tuck": 7.2, "fold": 36.9}
 
 # =====================================================================================================================
 # Block-out masses. Fitted to the concept views (ref/blockout_vs_concept.png).
@@ -509,16 +528,18 @@ def _bird(q):
     return b.inverted() @ m @ b
 
 
-def solve_fold(targets_at=None, standing=True):
+def solve_fold(targets_at=None, standing=True, roll=0.0):
     """Turns of each left wing bone, relative to its parent in the animal's axes, that put the wing's joints where
-    `targets_at` (FOLD by default) has them, with the body in STANCE or, not standing, at rest. Returns ({bone: turn
-    relative to its parent}, {bone: turn relative to rest}), as Blender-axes quaternions, the form Clip._rotate takes,
-    and where the knuckle lands, where STANCE plants the hand."""
+    `targets_at` (FOLD by default) has them, with the body in STANCE or, not standing, at rest. Each bone takes the
+    least turn that points it there; then the wing finger's four bones are each rolled `roll` degrees about their own
+    length (FINGER_ROLL), which moves no joint, and the third batten, riding on the finger, rolls with it. Returns
+    ({bone: turn relative to its parent}, {bone: turn relative to rest}), as Blender-axes quaternions, the form
+    Clip._rotate takes, and where the knuckle lands, where STANCE plants the hand."""
     targets_at = targets_at or FOLD
     b = Matrix(((1, 0, 0), (0, 0, -1), (0, 1, 0)))
     world = {"chest": stance_delta("chest") if standing else Quaternion()}
     joint = {"chest": _stance_joint("chest") if standing else Vector(_JOINT["chest"])}
-    out = {}
+    axis = {}
     targets = {"upper_arm_l": "elbow", "forearm_l": "wrist", "hand_l": "knuckle", "fingers_l": "fingers",
                "pteroid_l": "pteroid", "wing_1_l": "wing_1", "wing_2_l": "wing_2", "wing_3_l": "wing_3",
                "wing_4_l": "wing_4", "web_1_l": "web_1", "web_2_l": "web_2", "web_3_l": "web_3"}
@@ -533,10 +554,14 @@ def solve_fold(targets_at=None, standing=True):
         # animal's axes, then expressed in Blender's.
         turn_animal = now.rotation_difference(want)
         turn = (b @ turn_animal.to_matrix() @ b.inverted()).to_quaternion()
-        d = turn @ d_parent
-        world[name] = d
+        world[name] = turn @ d_parent
         joint[name] = head
-        out[name] = d_parent.inverted() @ d
+        axis[name] = b @ want
+    if roll:
+        for name in ("wing_1_l", "wing_2_l", "wing_3_l", "wing_4_l", "web_3_l"):
+            about = axis["wing_2_l" if name == "web_3_l" else name]
+            world[name] = Quaternion(about, roll * DEG) @ world[name]
+    out = {name: world[_PARENT[name]].inverted() @ world[name] for name in _WING_L}
     return out, world, tuple(joint["fingers_l"])
 
 
@@ -550,8 +575,8 @@ class Rig:
     def __init__(self, obj):
         self.obj = obj
         self.clips = {}
-        self.fold, self.fold_world, self.knuckle = solve_fold()
-        self.tuck = solve_fold(TUCK, standing=False)[0]
+        self.fold, self.fold_world, self.knuckle = solve_fold(roll=FINGER_ROLL["fold"])
+        self.tuck = solve_fold(TUCK, standing=False, roll=FINGER_ROLL["tuck"])[0]
 
     @property
     def blockout(self):
@@ -1623,16 +1648,19 @@ def check_clip(rig, clip):
             if stray or (poses[f]["pelvis"][1] - rest_pose["pelvis"][1]).length > 0.001:
                 errors.append(f"{name}: an additive clip may turn only its layer; frame {f} moves {', '.join(stray) or 'the body'}")
                 break
-        for f in (frames[0], frames[-1]):
+        for f in (frames[0], frames[-1]) if not spec.get("held") else ():
             bad, deg, _ = differs(poses[f], rest_pose)
             if bad:
                 errors.append(f"{name}: an additive clip must start and end unturned; frame {f} is {deg:.1f} deg off")
     for key, f in (("start", frames[0]), ("end", frames[-1])):
         want = spec.get(key)
-        if want in ("ground", "air"):
-            base = stance_pose if want == "ground" else rest_pose
-            if differs(poses[f], base, 3.0, 0.01)[0]:
-                warnings.append(f"{name}: frame {f} is not the {'stance' if want == 'ground' else 'rest pose'}, so it blends "
+        if want in ("ground", "air", "beat"):
+            base = {"ground": stance_pose, "air": rest_pose}.get(want) or _action_pose(rig, "fly", 0)
+            if base is None:
+                warnings.append(f"{name}: fly is not made, so its {key} is not checked against the beat")
+            elif differs(poses[f], base, 3.0, 0.01)[0]:
+                what = {"ground": "stance", "air": "rest pose", "beat": "top of the beat (fly's frame 0)"}[want]
+                warnings.append(f"{name}: frame {f} is not the {what}, so it blends "
                                 f"{'in from' if key == 'start' else 'out to'} its neighbour with a visible move")
     if "hit_by" in spec:
         if clip.hit is None:
@@ -1669,6 +1697,25 @@ def check_clip(rig, clip):
             warnings.append(f"{name}: the {part} reaches {worst * 100:.0f} cm into the seated rider on frame {at}")
     rig.rest()
     return errors, warnings
+
+
+def _action_pose(rig, name, frame):
+    """A frame of the action `name` as deltas, or None where it is not made, for comparing a clip's ends with it."""
+    action = bpy.data.actions.get(name)
+    if action is None:
+        return None
+    obj = rig.obj
+    saved, slot = obj.animation_data.action, obj.animation_data.action_slot if obj.animation_data.action else None
+    rig.rest()
+    obj.animation_data.action = action
+    if action.slots:
+        obj.animation_data.action_slot = action.slots[0]
+    bpy.context.scene.frame_set(frame)
+    out = deltas(rig)
+    obj.animation_data.action = saved
+    if saved is not None and slot is not None:
+        obj.animation_data.action_slot = slot
+    return out
 
 
 def _stance_pose(rig):

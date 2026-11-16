@@ -21,8 +21,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "A tiny dinosaur chirps and chatters in quick high squeaky peeps, four separate chatters with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6150",
+          "models": [
+            "moss"
+          ],
+          "seed": 6150,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A tiny dinosaur chirps and chatters in quick high squeaky peeps, four separate chatters with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "startled": {
       "kind": "voice",
@@ -41,8 +53,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A tiny dinosaur gives a shrill startled squeal, four separate squeals with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6160",
+          "models": [
+            "moss"
+          ],
+          "seed": 6160,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A tiny dinosaur gives a shrill startled squeal, four separate squeals with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "hurt": {
       "kind": "voice",
@@ -61,8 +85,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A tiny dinosaur squeaks in pain, five separate squeaks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6180",
+          "models": [
+            "moss"
+          ],
+          "seed": 6180,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A tiny dinosaur squeaks in pain, five separate squeaks with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "death": {
       "kind": "voice",
@@ -101,8 +137,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A tiny animal nips with a quick hissing snap, six separate nips with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6170",
+          "models": [
+            "moss"
+          ],
+          "seed": 6170,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A tiny animal nips with a quick hissing snap, six separate nips with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "step": {
       "kind": "step",
@@ -121,8 +169,62 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "Tiny quick scurrying footsteps of a small animal on dry leaves, separate bursts. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6190",
+          "models": [
+            "moss"
+          ],
+          "seed": 6190,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Tiny quick scurrying footsteps of a small animal on dry leaves, separate bursts. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
+    },
+    "chase": {
+      "kind": "voice",
+      "range": 30,
+      "level": -22,
+      "vary": 0.6,
+      "want": "barks, calls and hisses while chasing",
+      "prompts": [
+        {
+          "id": "v2-6200",
+          "models": [
+            "moss"
+          ],
+          "seed": 6200,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A tiny dinosaur scurries after prey: rapid excited squeaks and chitters, six separate bursts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 8
+    },
+    "growl": {
+      "kind": "voice",
+      "range": 18,
+      "level": -24,
+      "vary": 0.5,
+      "want": "a warning growl, aggressive and near",
+      "prompts": [
+        {
+          "id": "v2-6210",
+          "models": [
+            "moss"
+          ],
+          "seed": 6210,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A tiny dinosaur hisses and chatters aggressively, five separate hisses with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
     }
   }
 }

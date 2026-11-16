@@ -1,0 +1,134 @@
+{
+  "asset": "core/creatures/spino",
+  "review": "../ref/sound",
+  "about": "A huge sail-backed river predator.",
+  "notes": "v2 brief: a creature still to come; its sounds are found by id the day its definition exists.",
+  "slots": {
+    "call": {
+      "kind": "voice",
+      "range": 60,
+      "level": -20,
+      "vary": 0.6,
+      "want": "calm call",
+      "prompts": [
+        {
+          "id": "v2-7850",
+          "models": [
+            "moss"
+          ],
+          "seed": 7850,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A huge sail-backed river predator gives deep throaty gurgling croaks, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 8
+    },
+    "startled": {
+      "kind": "voice",
+      "range": 80,
+      "level": -16,
+      "vary": 0.5,
+      "want": "alarm",
+      "prompts": [
+        {
+          "id": "v2-7860",
+          "models": [
+            "moss"
+          ],
+          "seed": 7860,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A huge sail-backed river predator lets out a screeching bellowing roar, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
+    },
+    "hurt": {
+      "kind": "voice",
+      "range": 50,
+      "level": -18,
+      "vary": 0.5,
+      "want": "pain",
+      "prompts": [
+        {
+          "id": "v2-7870",
+          "models": [
+            "moss"
+          ],
+          "seed": 7870,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A huge sail-backed river predator shrieks in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
+    },
+    "death": {
+      "kind": "voice",
+      "range": 50,
+      "level": -18,
+      "vary": 0.3,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "v2-7880",
+          "models": [
+            "moss"
+          ],
+          "seed": 7880,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A huge sail-backed river predator gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 2
+    },
+    "attack": {
+      "kind": "voice",
+      "range": 40,
+      "level": -16,
+      "vary": 0.5,
+      "want": "attack",
+      "prompts": [
+        {
+          "id": "v2-7890",
+          "models": [
+            "moss"
+          ],
+          "seed": 7890,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A huge sail-backed river predator: snaps its long crocodile jaws with a splash and a hiss, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
+    },
+    "step": {
+      "kind": "step",
+      "range": 30,
+      "level": -24,
+      "vary": 0.6,
+      "want": "footfalls or movement",
+      "prompts": [
+        {
+          "id": "v2-7900",
+          "models": [
+            "moss"
+          ],
+          "seed": 7900,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Heavy wet footsteps of a giant beast wading in shallow water, well spaced and distinct. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 6
+    }
+  }
+}

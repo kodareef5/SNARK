@@ -8,6 +8,7 @@ import { GL, GpuQuestions, PROBE_UNITS, compareKind, filterKind, fitLine, lookFr
 import { AIR, SKY_VERTEX } from "../../client/core/render/atmosphere.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { FLAT_MESH_VERTEX, LIT_FRAGMENT } from "../../client/core/render/glsl.ts";
+import { worldVertex } from "../../client/core/render/world-surfaces.ts";
 import { PROGRAMS, withDefines } from "../../client/core/render/programs.ts";
 import { shadowDefines } from "../../client/core/render/shadowtext.ts";
 import { SKY_GLSL } from "../../client/core/render/sky.ts";
@@ -41,7 +42,7 @@ test("the memory step's blocks decode to the colour it reads back for, by the re
   expect(Array.from(decodeBc7(bc.bytes, 4, 4))).toEqual(Array.from({ length: 64 }, (_, i) => bc.rgba[i % 4]!));
   const astc = solidBlock("astc");
   const out = new Uint8Array(64);
-  expect(decodeAstcBlock(astc.bytes, 0, false, out)).toBe(true);
+  expect(decodeAstcBlock(astc.bytes, 0, 4, false, out)).toBe(true);
   expect(Array.from(out)).toEqual(Array.from({ length: 64 }, (_, i) => astc.rgba[i % 4]!));
   expect(solidBlock("rgba").bytes.length).toBe(64);
 });
@@ -129,12 +130,12 @@ test("the fake context refuses the probe's SURFACE pass as the dome left it, and
   expect(link(SURFACE_VERTEX, sized)).toMatch(/^ERROR: 0:\d+: 'SHADOW_SIZE' : undeclared identifier$/);
   // A name the frame block does not have, a call with an argument too many, and a line before the version.
   expect(link(SKY_VERTEX.replace("fCloudSun.rgb", "fCloudLight.rgb"), LIT_FRAGMENT)).toMatch(/^ERROR: 0:\d+: 'fCloudLight' : undeclared identifier$/);
-  expect(link(FLAT_MESH_VERTEX, LIT_FRAGMENT.replace("sunShadow(vRel, n)), vRel)", "sunShadow(vRel, n), 1.0), vRel)"))).toMatch(/'lit' : no matching overloaded function found$/);
-  expect(link(FLAT_MESH_VERTEX, withDefines(LIT_FRAGMENT, "#define SHADOWS 1\n"))).toBe("");
+  expect(link(worldVertex(FLAT_MESH_VERTEX, false), LIT_FRAGMENT.replace("sunShadow(vRel, geometric)), vRel)", "sunShadow(vRel, geometric), 1.0), vRel)"))).toMatch(/'lit' : no matching overloaded function found$/);
+  expect(link(worldVertex(FLAT_MESH_VERTEX, false), withDefines(LIT_FRAGMENT, "#define SHADOWS 1\n"))).toBe("");
   expect(link(FLAT_MESH_VERTEX, "#define SHADOWS 1\n" + LIT_FRAGMENT)).toMatch(/'#version' : must be the text's first line/);
   // Linking: SURFACE's fragment behind FLAT's vertex text, which writes vRel but not the rest, and vColor flat where LIT reads it smooth.
   expect(link(FLAT_MESH_VERTEX, surfaceFragment("rgba", AIR)).split("\n")[0]).toBe("ERROR: 'vNormal' : the fragment reads it as vec3, and the vertex text does not write it");
-  expect(link(FLAT_MESH_VERTEX, LIT_FRAGMENT.replace("flat in vec3 vColor;", "in vec3 vColor;"))).toBe("ERROR: 'vColor' : the fragment reads it as vec3, and the vertex text writes it as flat vec3");
+  expect(link(worldVertex(FLAT_MESH_VERTEX, false), LIT_FRAGMENT.replace("flat in vec3 vColor;", "in vec3 vColor;"))).toBe("ERROR: 'vColor' : the fragment reads it as vec3, and the vertex text writes it as flat vec3");
 });
 
 test("every program of the game's table compiles and links on the fake context, on every tier and texture variant, compared lookups hard or not", () => {
@@ -183,7 +184,7 @@ test("every question is answered, a pass's cost is the slope of time against pas
   const before = new Map(card.gl.state);
   const q = new GpuQuestions(card.gl, () => card.gl.createTexture(), card.now, "astc", [390, 844], PLAN);
   const frames = ask(q, () => expect(card.gl.state).toEqual(before));
-  expect(frames).toBeLessThan(400);
+  expect(frames).toBeLessThan(500);
   const r = q.report;
   expect([r.timers, r.lostDuring]).toEqual([true, null]);
   // The fake reads every pixel back as grey: no answer is a yes, and none is left unasked.
@@ -200,10 +201,10 @@ test("every question is answered, a pass's cost is the slope of time against pas
   expect(per("flat")).toMatchObject({ slope: 0.03, timer: 0.03, k: 512 });
   expect(per("9 taps").slope).toBe(0.03);
   // The game's lit programs read noon's frame block: every draw of theirs had its buffer, or the fake would have drawn nothing.
-  expect(["lit", "lit haze 3.5 km", "far", "surface", "surface layered", "sky table", "sky 2 layers", "water waves", "lit on the sea", "lit shadowed"].map((n) => per(n).slope)).toEqual(Array(10).fill(0.03));
+  expect(["lit", "lit world near", "lit world fade", "lit haze 3.5 km", "far", "surface undyed whole", "surface undyed", "surface whole", "surface", "surface layered", "sky table", "sky 2 layers", "water waves", "lit on the sea", "lit shadowed"].map((n) => per(n).slope)).toEqual(Array(15).fill(0.03));
   expect(card.gl.invalid).toEqual([]);
-  // A draw's 0.01 ms on the clock: 1,000 of them are enough to time.
-  expect(per("draw")).toMatchObject({ slope: 10, error: 0, k: 1000 });
+  // A draw's cost is timed only through a renderer's executor, which this context has none of.
+  expect(r.passes.some((p) => p.per === "draw")).toBe(false);
   // Only the probe's own units were bound on.
   expect([...card.gl.boundOn].every((u) => PROBE_UNITS.includes(u))).toBe(true);
 });
@@ -213,7 +214,7 @@ test("a question past its deadline says it did not finish, and a lost context na
   const late = new GpuQuestions(slow.gl, () => slow.gl.createTexture(), slow.now, "bc", [390, 844], PLAN);
   ask(late, () => slow.tick(4000));
   expect([late.report.depthRange, late.report.seam]).toEqual(["neither (read 128,128,128)", "did not finish"]);
-  expect(late.report.passes.map((p) => p.note)).toEqual(Array(23).fill("did not finish"));
+  expect(late.report.passes.map((p) => p.note)).toEqual(Array(27).fill("did not finish"));
 
   const card = timedCard();
   const q = new GpuQuestions(card.gl, () => card.gl.createTexture(), card.now, "rgba", [390, 844], PLAN);
@@ -226,7 +227,7 @@ test("a question past its deadline says it did not finish, and a lost context na
   const r = q.report;
   expect(r.lostDuring).toBe("flat");
   expect(r.passes[0]!.note).toBe("lost the context");
-  expect(r.passes.slice(1).map((p) => p.note)).toEqual(Array(22).fill("not asked: the context was lost during flat"));
+  expect(r.passes.slice(1).map((p) => p.note)).toEqual(Array(26).fill("not asked: the context was lost during flat"));
 
   // Lost in the middle of a question's step: what it read is not its answer.
   const dying: ReturnType<typeof fakeGl> = fakeGl({ read: () => dying.lose() });

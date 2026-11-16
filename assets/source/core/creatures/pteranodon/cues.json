@@ -1,0 +1,23 @@
+{
+  "cues": {
+    "take_off": {
+      "effects": [
+        { "effect": "dust_ring", "from": "ground", "count": [14, 18], "on": ["grass", "sand", "stone", "built"] },
+        { "effect": "scuff", "from": "ground", "count": [4, 6], "on": ["grass", "sand", "stone", "built"] },
+        { "effect": "splash_drops", "from": "ground", "count": [8, 12], "on": ["water"] },
+        { "effect": "splash_ring", "from": "ground", "on": ["water"] }
+      ]
+    },
+    "land": {
+      "effects": [
+        { "effect": "dust_ring", "from": "ground", "count": [12, 16], "on": ["grass", "sand", "stone", "built"] },
+        { "effect": "scuff", "from": "ground", "count": [3, 5], "on": ["grass", "sand", "stone", "built"] }
+      ]
+    },
+    "down": { "effects": [{ "effect": "dust_ring", "from": "ground", "at": "down" }] },
+    "death": { "effects": [{ "effect": "dust_ring", "from": "ground", "at": "down" }] },
+    "up": { "effects": [{ "effect": "scuff", "from": "ground", "at": "down", "count": [2, 3] }] },
+    "splash": { "effects": [{ "effect": "splash_drops", "from": "body" }, { "effect": "splash_ring", "from": "ground" }] },
+    "step": { "effects": [{ "effect": "sand_kick", "from": "foot", "on": ["sand"] }] }
+  }
+}

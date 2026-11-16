@@ -99,7 +99,7 @@ export async function reviewKoruSails(args = process.argv.slice(2)): Promise<voi
     const shotWidth = shot.portrait ? 540 : width, shotHeight = shot.portrait ? 960 : height;
     const h = new Harness({}, 629, 60, { dev: true, map: mapBytes, clips: pack.clips, rigs: pack.header.rigs }, reg);
     try {
-      const operator = h.join("Sail operator", {}, { manual: true, city: true }), observer = h.join("Sail observer", {}, { manual: true, city: true });
+      const operator = h.join("Sail operator", {}, { manual: true }), observer = h.join("Sail observer", {}, { manual: true });
       const helm = new App(operator, reg, pack), port = new FakeNet(files.files, { keep: true }), app = new App(observer, reg, boot, { manifest: files.manifest, port });
       helm.ui.settings.tier = "lowpoly"; helm.ui.settings.steady = false;
       app.ui.settings.tier = shot.tier ?? "high"; app.ui.settings.steady = false;

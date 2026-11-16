@@ -71,7 +71,7 @@ export function familyOf(def: NodeDef): number {
 export function farReach(tier: Tier, family: number, triangles: number): number {
   const most = FAMILY_TRIANGLES[family]!;
   const reach = tier.reach[FAMILIES[family]!] * (triangles <= most ? 1 : Math.sqrt(most / triangles));
-  const [edge, from] = [((2 * tier.nodes.chunks + 1) * CHUNK_SIZE) / Math.sqrt(Math.PI), tier.nodes.band[0]];
+  const edge = ((2 * tier.nodes.chunks + 1) * CHUNK_SIZE) / Math.sqrt(Math.PI), from = tier.nodes.band[0];
   return reach > edge && from < edge ? Math.sqrt(reach * reach - edge * edge + from * from) : reach;
 }
 
@@ -225,7 +225,7 @@ export class FarNodes {
       if (d?.type !== "node") continue;
       this.family[k] = familyOf(d);
       const sums = f.sums[k]!;
-      let [sum, weights] = [0, 0];
+      let sum = 0, weights = 0;
       for (let v = 0; v < sums.length; v++) {
         const mesh = looks.meshOfForm[f.first[k]! + v * f.steps[k]!]!;
         const weight = sums[v]! - (v > 0 ? sums[v - 1]! : 0);
@@ -250,7 +250,13 @@ export class FarNodes {
       this.meshSize[mesh] = level.indices.length <= PULL_VERTICES ? 0 : level.indices.length <= PULL_VERTICES * 2 ? 1 : 2;
       const at = row * ATLAS_WIDTH * 4;
       this.atlas[at + 1] = level.indices.length;
-      level.indices.forEach((v, i) => this.atlas.set([level.positions[v * 3]!, level.positions[v * 3 + 1]!, level.positions[v * 3 + 2]!, level.colors[v]!], at + (i + 1) * 4));
+      level.indices.forEach((v, i) => {
+        const o = at + (i + 1) * 4;
+        this.atlas[o] = level.positions[v * 3]!;
+        this.atlas[o + 1] = level.positions[v * 3 + 1]!;
+        this.atlas[o + 2] = level.positions[v * 3 + 2]!;
+        this.atlas[o + 3] = level.colors[v]!;
+      });
     }
     this.formGroup = Uint8Array.from({ length: f.count }, (_, form) => {
       const mesh = looks.meshOfForm[form]!;
@@ -324,8 +330,8 @@ export class FarNodes {
     const most = this.most;
     if (most > 0) {
       const span = most + MARGIN;
-      const [t0x, t1x] = [Math.max(0, Math.floor((x - span) / FAR_TILE_METRES)), Math.min(this.tilesX - 1, Math.floor((x + span) / FAR_TILE_METRES))];
-      const [t0z, t1z] = [Math.max(0, Math.floor((z - span) / FAR_TILE_METRES)), Math.min(this.tilesZ - 1, Math.floor((z + span) / FAR_TILE_METRES))];
+      const t0x = Math.max(0, Math.floor((x - span) / FAR_TILE_METRES)), t1x = Math.min(this.tilesX - 1, Math.floor((x + span) / FAR_TILE_METRES));
+      const t0z = Math.max(0, Math.floor((z - span) / FAR_TILE_METRES)), t1z = Math.min(this.tilesZ - 1, Math.floor((z + span) / FAR_TILE_METRES));
       for (let tz = t0z; tz <= t1z; tz++) {
         for (let tx = t0x; tx <= t1x; tx++) {
           const t = tz * this.tilesX + tx;
@@ -335,7 +341,8 @@ export class FarNodes {
     }
     const waiting = this.waiting;
     waiting.length = 0;
-    for (const [t, tile] of this.tiles) {
+    for (const t of this.tiles.keys()) {
+      const tile = this.tiles.get(t)!;
       const off = this.off(t, x, z);
       if (most <= 0 || off > most + FAR_TILE_METRES) {
         if (tile.uploaded) p.drops.push(FAR_NODE_BUFFERS + t);
@@ -351,7 +358,8 @@ export class FarNodes {
     waiting.sort((a, b) => this.off(a, x, z) - this.off(b, x, z));
     for (let k = 0; k < Math.min(this.makes, waiting.length); k++) this.remake(p, waiting[k]!, this.tiles.get(waiting[k]!)!, this.off(waiting[k]!, x, z));
     let bytes = 0;
-    for (const [t, tile] of this.tiles) {
+    for (const t of this.tiles.keys()) {
+      const tile = this.tiles.get(t)!;
       if (!tile.data) continue;
       if (!tile.uploaded) {
         p.uploads.push({ buffer: FAR_NODE_BUFFERS + t, data: tile.data, slots: tile.slots! });
@@ -375,12 +383,13 @@ export class FarNodes {
    */
   draw(cam: Camera, put: PutDraw): void {
     const [from, to] = this.band;
-    for (const [t, tile] of this.tiles) {
+    for (const t of this.tiles.keys()) {
+      const tile = this.tiles.get(t)!;
       if (!tile.data || !tile.uploaded) continue;
       const w = tile.whole;
       if (near(w, 0, cam) >= this.most || !visible(w, 0, cam)) continue;
       const whole = inside(w, 0, cam);
-      const [ox, oy, oz] = [(t % this.tilesX) * FAR_TILE_METRES - cam.x, -cam.y, Math.floor(t / this.tilesX) * FAR_TILE_METRES - cam.z];
+      const ox = (t % this.tilesX) * FAR_TILE_METRES - cam.x, oy = -cam.y, oz = Math.floor(t / this.tilesX) * FAR_TILE_METRES - cam.z;
       const buffer = FAR_NODE_BUFFERS + t;
       const b = tile.box;
       for (let r = 0, q = 0; r < tile.ranges.length; r += 3, q++) {
@@ -429,11 +438,12 @@ export class FarNodes {
     this.tier = tier;
     this.band = tier.nodes.band;
     this.most = 0;
-    let [changed, grew] = [false, false];
+    let changed = false, grew = false;
     for (let k = 0; k < this.family.length; k++) {
       if (this.family[k]! < 0) continue;
       const reach = Math.fround(farReach(tier, this.family[k]!, this.triangles[k]!));
-      [changed, grew] = [changed || reach !== this.reach[k]!, grew || reach > this.reach[k]!];
+      changed = changed || reach !== this.reach[k]!;
+      grew = grew || reach > this.reach[k]!;
       this.reach[k] = reach;
       this.most = Math.max(this.most, reach);
     }
@@ -511,7 +521,7 @@ export class FarNodes {
     const counts = this.counts.fill(0);
     const keep = this.keep.fill(0);
     const gone = this.gone;
-    const [ox, oz] = [(t % this.tilesX) * FAR_TILE_METRES, Math.floor(t / this.tilesX) * FAR_TILE_METRES];
+    const ox = (t % this.tilesX) * FAR_TILE_METRES, oz = Math.floor(t / this.tilesX) * FAR_TILE_METRES;
     let next = -1;
     let total = 0;
     // A tile near enough to be told of nodes used up keeps its nodes; any other works them out in shared room.
@@ -526,7 +536,7 @@ export class FarNodes {
       if (told) for (const i of told) gone[i] = 1;
       // Building in the far feed's 4 m cells, counted from the chunk's corner.
       const built = this.cells?.chunks.get(chunk)?.top;
-      const [x0, z0] = [chunkCx(this.dims, chunk) * CHUNK_SIZE, chunkCz(this.dims, chunk) * CHUNK_SIZE];
+      const x0 = chunkCx(this.dims, chunk) * CHUNK_SIZE, z0 = chunkCz(this.dims, chunk) * CHUNK_SIZE;
       for (let i = 0; i < n; i++) {
         const at = c * n + i;
         const form = s.form[at]!;
@@ -546,7 +556,9 @@ export class FarNodes {
     }
     tile.next = next;
     if (total === 0 || !spots) {
-      [tile.data, tile.slots, tile.ranges] = [null, null, []];
+      tile.data = null;
+      tile.slots = null;
+      tile.ranges = [];
       return;
     }
     // The instances of each group together, a cell after another, and where each begins.
@@ -622,7 +634,12 @@ export class FarNodes {
       }
       grow(whole, 0, box, q * (CELLS + 1) * 6);
     }
-    [tile.data, tile.slots, tile.ranges, tile.cellFirst, tile.box, tile.farthest] = [data, slots, ranges, cellFirst, box, farthest];
+    tile.data = data;
+    tile.slots = slots;
+    tile.ranges = ranges;
+    tile.cellFirst = cellFirst;
+    tile.box = box;
+    tile.farthest = farthest;
   }
 }
 
@@ -682,9 +699,9 @@ function visible(b: Float32Array | Float64Array, o: number, cam: Camera): boolea
 /** Whether the world box at `o` of `b` is wholly inside the view's planes. */
 function inside(b: Float32Array | Float64Array, o: number, cam: Camera): boolean {
   const p = cam.planes;
-  const [ax, ay, az, bx, by, bz] = [b[o]! - cam.x, b[o + 1]! - cam.y, b[o + 2]! - cam.z, b[o + 3]! - cam.x, b[o + 4]! - cam.y, b[o + 5]! - cam.z];
+  const ax = b[o]! - cam.x, ay = b[o + 1]! - cam.y, az = b[o + 2]! - cam.z, bx = b[o + 3]! - cam.x, by = b[o + 4]! - cam.y, bz = b[o + 5]! - cam.z;
   for (let i = 0; i < 24; i += 4) {
-    const [x, y, z] = [p[i]!, p[i + 1]!, p[i + 2]!];
+    const x = p[i]!, y = p[i + 1]!, z = p[i + 2]!;
     if (x * (x >= 0 ? ax : bx) + y * (y >= 0 ? ay : by) + z * (z >= 0 ? az : bz) + p[i + 3]! < 0) return false;
   }
   return true;

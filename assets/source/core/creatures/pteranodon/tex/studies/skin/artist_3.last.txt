@@ -1,0 +1,1 @@
+Tidied as instructed. All 25 delivered pictures rebuilt byte for byte; `checks/` is unchanged. Superseded files are archived, `REPORT.md` includes the “Files” section, and `study.json` remains included and unignored.

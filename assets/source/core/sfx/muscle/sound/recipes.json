@@ -1,0 +1,529 @@
+{
+  "takes": {
+    "takes/engine/idle/moss-pt-11002-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/idle",
+      "prompt_id": "v3-11000",
+      "prompt": "A classic V8 muscle car idles: a deep lumpy loping rumble from the big exhaust, constant. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 11002,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-11002.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A classic V8 muscle car idles: a deep lumpy loping rumble from the big exhaust, constant. Recorded from just outside, steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "c8a969118b15ae93e7dcc0dfdcb47e0949c6351574e524a6fcf37e18f799de8f",
+      "worker": {
+        "takes": 26,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 865.2,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 15.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c64029ccd3d36d1fc106cc289e82605d79d3c625f8d33090692811d6dec38bea",
+      "cut": {
+        "source_file": "moss-pt-11002.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/low/moss-pt-11010-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/low",
+      "prompt_id": "v3-11010",
+      "prompt": "A V8 muscle car at low revs under load: a deep steady throaty burble, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 11010,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-11010.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A V8 muscle car at low revs under load: a deep steady throaty burble, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "46ddfc87e2e22402af0f7579cb229576ff321b9a8b6fc55ff70016cd2b51b73c",
+      "worker": {
+        "takes": 26,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 865.2,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 15.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "5268a00932fad0b5caccbe951e3b044d13b9e3262f03d22f087c71ccd209612e",
+      "cut": {
+        "source_file": "moss-pt-11010.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/mid/moss-pt-11022-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/mid",
+      "prompt_id": "v3-11020",
+      "prompt": "A V8 muscle car at middle revs: a loud steady growling roar, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 11022,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-11022.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A V8 muscle car at middle revs: a loud steady growling roar, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ee96ed364eeec3ba0aade8bc47e1e82ac31b661221383b9b472043de17e54b2e",
+      "worker": {
+        "takes": 26,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 865.2,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 15.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6676b1b8d468ebc7bba2e7e4a7b28c5a7ce0fbe18066e8c9788dd287f7aa5e2b",
+      "cut": {
+        "source_file": "moss-pt-11022.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/high/moss-pt-11031-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/high",
+      "prompt_id": "v3-11030",
+      "prompt": "A V8 muscle car near its redline: a loud howling V8 roar, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 11031,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-11031.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A V8 muscle car near its redline: a loud howling V8 roar, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "03b05d77a2f23eb66fabc241af0381a6317ada51540eebfafce4f7cdf031f0cb",
+      "worker": {
+        "takes": 26,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 865.2,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 15.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c56239a44d6b975a3d45cdc333e5e0db280a831659c5e94302a15bc657ac0ee6",
+      "cut": {
+        "source_file": "moss-pt-11031.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/start/moss-pt-11040-01610.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/start",
+      "prompt_id": "v3-11040",
+      "prompt": "A V8 muscle car is started: the starter cranks and the big engine fires with a loud bark and settles into a lumpy rumbling idle, two separate starts with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 11040,
+      "seconds": 10,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-11040.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A V8 muscle car is started: the starter cranks and the big engine fires with a loud bark and settles into a lumpy rumbling idle, two separate starts with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 10.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "64b40c04f662a3ef4c214c8ceb80ccb22952b51f0d6de4fb26922897937ca48d",
+      "worker": {
+        "takes": 26,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 865.2,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 15.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "539fb5b2ed95497f059d20a92d2b473cbeaaa4a871f76df989a9fae05ce1e02f",
+      "cut": {
+        "source_file": "moss-pt-11040.wav",
+        "source_frames": 480000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          74880,
+          480000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/engine/start/moss-pt-11041-00420.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/start",
+      "prompt_id": "v3-11040",
+      "prompt": "A V8 muscle car is started: the starter cranks and the big engine fires with a loud bark and settles into a lumpy rumbling idle, two separate starts with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 11041,
+      "seconds": 10,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-11041.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A V8 muscle car is started: the starter cranks and the big engine fires with a loud bark and settles into a lumpy rumbling idle, two separate starts with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 10.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ef0c48967f824cc205b429a7fbbf61d78ce0ff3356d413adf4ad2095ef73bb3f",
+      "worker": {
+        "takes": 26,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 865.2,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 15.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a661657ec7ca1d7894623743fe2df1b3ad0204a3dcf64337e028e708857e1757",
+      "cut": {
+        "source_file": "moss-pt-11041.wav",
+        "source_frames": 480000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          17760,
+          480000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/engine/stop/moss-pt-11050-01910.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/stop",
+      "prompt_id": "v3-11050",
+      "prompt": "A V8 muscle car's engine is switched off: it shudders and dies with a last burble, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 11050,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-11050.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A V8 muscle car's engine is switched off: it shudders and dies with a last burble, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "afd2ba4f786e5b51fe8c1afbe2666880967c2d016b10e0b4b819b427d285e3d2",
+      "worker": {
+        "takes": 26,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 865.2,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 15.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "06eae7137679beb1cbe1f42831a4fd9508995ef2dfcb88beb1df0fd72271b2e2",
+      "cut": {
+        "source_file": "moss-pt-11050.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          89280,
+          363264
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    }
+  }
+}

@@ -58,10 +58,17 @@ raptors that will come for you.
 | T, Y, J, U | Whistle the creature looked at to follow, to stay; all of them to follow, to stay |
 | Building piece in hand | Left button sets it down where it is shown. E turns it, Q takes the next nearest place (held: open ground), R changes a wall to a doorframe or a windowframe, arrow keys raise and lower a foundation |
 | I, P, M, O | Inventory, character (stats, engrams, crafting), map, settings (among them voice volume, and whether B is held or switches the microphone) |
+| H (hold), L, Minus / Equal | Inspect HUD values and map controls; toggle minimap; zoom minimap (or the full map when open) |
 | B | Hold to talk to those near; with Alt a whisper, with Shift a yell. The first press asks for the microphone |
 | Enter, Insert, / | Chat: to everyone, to those within 60 m, to your tribe. Tab changes channel, Enter says the line |
 | Backquote or Tab | Console. `help` lists commands; `tribe` founds and runs a tribe; `mute <name>` stops you hearing someone |
-| Escape | Close a screen |
+| Escape | Close one screen, or open the glass menu; Settings, Controls, connection ping and Leave are here |
+
+Interface preferences are kept in this browser. The play HUD hides diagnostic
+text by default; enable it under Settings → Interface. Controls shows keyboard
+and controller diagrams. Standard-mapped gamepads have basic movement, combat
+and menu navigation; touch gameplay and broader controller contexts remain
+planned. See the [HUD review](planning/reference/ui-hud-review.md).
 
 Under `bun run dev` cheats need no password, so the server answers this machine
 only (`bun run dev -- --host 0.0.0.0` lets the network in): type `enablecheats`, then try
@@ -101,7 +108,7 @@ a page served over TLS: start the server with `--cert cert.pem --key key.pem`.
 
 | Command | What it does |
 | --- | --- |
-| `bun run check` | Policy rules, type checks for every zone, and all tests. About 22 seconds on a quiet 32-thread machine; fails above 45 s |
+| `bun run check` | Policy rules, type checks for every zone, and the fast tier of tests, held to a budget in CPU-seconds. `-- --slow` adds the slow tier (`*.slow.test.ts`), as every merge to main does; `bun run slow` runs it alone |
 | `bun run bench` | Builds the sizing target (8 km, 500,000 structures, 2.6 million resource nodes, 30,000 creatures, 100 players) and holds each measurement to a budget. `-- --config config/boosted-50x` holds a boosted server to the same budgets |
 | `bun run settings` | Writes the settings reference from the catalogue. The check fails if it is stale |
 | `bun run snap` | Draws the proving ground to `artifacts/snap.png` with a software rasterizer. No browser. `-- --ui` draws the interface over it; `-- --poses N` a line-up of bodies in motion; `-- --fight bow` a survivor mid-fight as its own client shows it; `-- --creatures` the modelled creatures, with `--young` each at four ages beside its egg |

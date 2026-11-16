@@ -7,6 +7,7 @@
   },
   "scripts": {
     "check": "bun tools/check.ts",
+    "slow": "bun tools/check.ts --slow-only",
     "ci": "bun tools/ci.ts",
     "test": "bun test",
     "bench": "bun tools/bench.ts",
@@ -22,6 +23,7 @@
     "catalogue": "bun tools/catalogue.ts",
     "cluster-trip": "bun tools/cluster-trip.ts",
     "bed-trip": "bun tools/bed-trip.ts",
+    "agent-trip": "bun tools/agent-trip.ts",
     "events": "bun tools/events.ts",
     "sounds": "bun tools/sounds.ts"
   },

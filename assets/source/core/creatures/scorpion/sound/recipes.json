@@ -1,0 +1,904 @@
+{
+  "takes": {
+    "takes/call/moss-pt-8630-03965.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8630",
+      "prompt": "A giant scorpion gives clicking pincers and a dry chittering hiss, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8630,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8630.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant scorpion gives clicking pincers and a dry chittering hiss, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "a1deb3f7faa90e32e621d7cafbc9de7135546ca044288fad7ce48453b2fd6930",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "d97dd0582c5d81fd940f9e03057709e7554c6c279ddd2d8851d6cde0e8610903",
+      "cut": {
+        "source_file": "moss-pt-8630.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          187920,
+          233040
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-8630-07115.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8630",
+      "prompt": "A giant scorpion gives clicking pincers and a dry chittering hiss, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8630,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8630.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant scorpion gives clicking pincers and a dry chittering hiss, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "13c3487f7f4c6746c6d287192b7b1f02f7e62c6cbb8fe97df3e82d56a861cc53",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "d97dd0582c5d81fd940f9e03057709e7554c6c279ddd2d8851d6cde0e8610903",
+      "cut": {
+        "source_file": "moss-pt-8630.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          339120,
+          380160
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-8630-00340.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-8630",
+      "prompt": "A giant scorpion gives clicking pincers and a dry chittering hiss, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8630,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8630.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant scorpion gives clicking pincers and a dry chittering hiss, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "19a33e3ab56e5a22ac6e55ed4226268652429121cb68de5599872c3d423d42db",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "d97dd0582c5d81fd940f9e03057709e7554c6c279ddd2d8851d6cde0e8610903",
+      "cut": {
+        "source_file": "moss-pt-8630.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          13920,
+          59281
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-8640-01100.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-8640",
+      "prompt": "A giant scorpion lets out a sharp rattling hiss, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8640,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8640.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant scorpion lets out a sharp rattling hiss, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "a9ac78743f02f0ff4cc018a5d0b6909aa58b38dc16ec6811ccd0c3e5726d252d",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c6cbaf8f5bea83ffc785c00c3862b2e53c6617954629762a0d18c17cc505e2a4",
+      "cut": {
+        "source_file": "moss-pt-8640.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          50400,
+          169920
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-8640-05295.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-8640",
+      "prompt": "A giant scorpion lets out a sharp rattling hiss, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8640,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8640.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant scorpion lets out a sharp rattling hiss, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "22deaf002420f287d35734b343f20f5dfe9c0fca10a1996907ebbbfefa25dfb4",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c6cbaf8f5bea83ffc785c00c3862b2e53c6617954629762a0d18c17cc505e2a4",
+      "cut": {
+        "source_file": "moss-pt-8640.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          251760,
+          360960
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-8650-05935.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-8650",
+      "prompt": "A giant scorpion screeches and clicks in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8650,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8650.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant scorpion screeches and clicks in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "021cacdebfe692f93b1347298776de7f1cb38295ab47396637b412ea28f0f930",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "7aefe962941cbfb0828531b7ed83e4dc72e4778e874777be99cb15efdd23cd04",
+      "cut": {
+        "source_file": "moss-pt-8650.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          282480,
+          352800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-8650-03485.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-8650",
+      "prompt": "A giant scorpion screeches and clicks in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8650,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8650.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant scorpion screeches and clicks in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "d1a4bb143383967845061bf194731de046e1cfb231a63f45f677fe9a1cda9f44",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "7aefe962941cbfb0828531b7ed83e4dc72e4778e874777be99cb15efdd23cd04",
+      "cut": {
+        "source_file": "moss-pt-8650.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          164880,
+          222480
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/death/moss-pt-8660-04925.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "death",
+      "prompt_id": "v2-8660",
+      "prompt": "A giant scorpion gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8660,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8660.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant scorpion gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "6201737c723d0cbebd3b388f0ed62d06e779068807c4ade65e5416e00c0c19ec",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "50a5b3a96ce41eb221bf612b530d23d8aa79d043709522e39212e73ad9180a19",
+      "cut": {
+        "source_file": "moss-pt-8660.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          234000,
+          343680
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/death/moss-pt-8660-00495.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "death",
+      "prompt_id": "v2-8660",
+      "prompt": "A giant scorpion gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8660,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8660.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant scorpion gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "1631b11d6b15c064b5f96f1cdce00dc67d05c963aa1158cd3ef82a8600a6d5b4",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "50a5b3a96ce41eb221bf612b530d23d8aa79d043709522e39212e73ad9180a19",
+      "cut": {
+        "source_file": "moss-pt-8660.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          21360,
+          126720
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-8670-05275.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-8670",
+      "prompt": "A giant scorpion: a stinger strikes with a whipping stab and a pincer snap, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8670,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8670.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant scorpion: a stinger strikes with a whipping stab and a pincer snap, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "c9f0ffb13d0fb40a3a8c5c0ba7bd01e2afe45241c42e75be980c9e1f3188d6be",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b2afc94b0a8f142e81bb86de6f94e2617935076d33ac642ce888107e0dca7b4c",
+      "cut": {
+        "source_file": "moss-pt-8670.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          250800,
+          278160
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-8670-03105.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-8670",
+      "prompt": "A giant scorpion: a stinger strikes with a whipping stab and a pincer snap, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8670,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8670.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant scorpion: a stinger strikes with a whipping stab and a pincer snap, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e06e3696b07032fdccdfc0da84398201dd9f9ef3e406ff961d6212bf8d3e4fde",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b2afc94b0a8f142e81bb86de6f94e2617935076d33ac642ce888107e0dca7b4c",
+      "cut": {
+        "source_file": "moss-pt-8670.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          146640,
+          171600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-8680-00922.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-8680",
+      "prompt": "Many hard legs scuttling fast over rock, well spaced and distinct. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 8680,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-8680.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Many hard legs scuttling fast over rock, well spaced and distinct. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "5ccefd4af5e79bb373016e32aa6a89c54e355ef694ca78f63c7c50bed3fdc25a",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.31
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1023.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "939ae1f50bd918c3566fb31259e390935e574b7f1778d3b79bd6a2cd75585b80",
+      "cut": {
+        "source_file": "moss-pt-8680.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          41856,
+          71136
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    }
+  }
+}

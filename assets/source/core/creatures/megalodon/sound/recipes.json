@@ -225,6 +225,456 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/call/moss-pt-6710-04565.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6710",
+      "prompt": "Underwater: a giant shark swims past, a deep surging whoosh of water and a low rumble, three separate passes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6710,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6710.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark swims past, a deep surging whoosh of water and a low rumble, three separate passes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2482fa841be33468225cf63dc80767965f1a223050755633396f078861f7969f",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "77014390105c2e9ecd9be7adafc775d2909bc24ec2789b1793a24094a03da6c3",
+      "cut": {
+        "source_file": "moss-pt-6710.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          216720,
+          351840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6711-05815.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6710",
+      "prompt": "Underwater: a giant shark swims past, a deep surging whoosh of water and a low rumble, three separate passes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6711,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6711.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark swims past, a deep surging whoosh of water and a low rumble, three separate passes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ab084dc785b82221384e93c95e0e02abd6b8299d34e4941552a139d46bc10aaf",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "92a07b5093ee508822678ff69ac8e7d61a7d42f292180648d3fba141206c822d",
+      "cut": {
+        "source_file": "moss-pt-6711.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          276720,
+          384000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6711-02770.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6710",
+      "prompt": "Underwater: a giant shark swims past, a deep surging whoosh of water and a low rumble, three separate passes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6711,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6711.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark swims past, a deep surging whoosh of water and a low rumble, three separate passes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "635edbb319e7dc8ac121a052810b813d039d6e7010243814569552c1a01af898",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "92a07b5093ee508822678ff69ac8e7d61a7d42f292180648d3fba141206c822d",
+      "cut": {
+        "source_file": "moss-pt-6711.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          130560,
+          229920
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6710-00050.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6710",
+      "prompt": "Underwater: a giant shark swims past, a deep surging whoosh of water and a low rumble, three separate passes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6710,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6710.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark swims past, a deep surging whoosh of water and a low rumble, three separate passes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "486726581bee2e9d4bf267c8e54964f91408e0af4f241ccca22e7291af78aba3",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "77014390105c2e9ecd9be7adafc775d2909bc24ec2789b1793a24094a03da6c3",
+      "cut": {
+        "source_file": "moss-pt-6710.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          148800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6711-00090.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6710",
+      "prompt": "Underwater: a giant shark swims past, a deep surging whoosh of water and a low rumble, three separate passes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6711,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6711.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark swims past, a deep surging whoosh of water and a low rumble, three separate passes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "0623895a5286da1ba08360142989d28f15ea6420e2ae3d927b188238b0bba7b5",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "92a07b5093ee508822678ff69ac8e7d61a7d42f292180648d3fba141206c822d",
+      "cut": {
+        "source_file": "moss-pt-6711.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          1919,
+          96000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6710-07355.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6710",
+      "prompt": "Underwater: a giant shark swims past, a deep surging whoosh of water and a low rumble, three separate passes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6710,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6710.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark swims past, a deep surging whoosh of water and a low rumble, three separate passes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "89212dbbf60af27ceddfc7299fbc92b8511ce3bfe6b0422d23150874402fdedd",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "77014390105c2e9ecd9be7adafc775d2909bc24ec2789b1793a24094a03da6c3",
+      "cut": {
+        "source_file": "moss-pt-6710.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          350640,
+          384000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/startled/moss-pt-3150-03970.wav": {
       "model": "moss",
       "backend": "torch",
@@ -375,6 +825,456 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/startled/moss-pt-6721-04060.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6720",
+      "prompt": "Underwater: a giant shark thrashes suddenly, a violent churning surge of water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6721,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6721.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark thrashes suddenly, a violent churning surge of water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "b2ee7ec7a6122005b4981058d85332b9469a620fa7d2a3b165218932efda91f1",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "e628271a3bc06d3c93f4e6f4dc0f224ec95a3e84d968a3754ddec9e85cc5f83c",
+      "cut": {
+        "source_file": "moss-pt-6721.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          192480,
+          275760
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6720-00100.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6720",
+      "prompt": "Underwater: a giant shark thrashes suddenly, a violent churning surge of water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6720,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6720.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark thrashes suddenly, a violent churning surge of water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ebb687cf82e85438c27e1433b550a0b1939e448fc18fa2dfbc89e1c5bf4c8c37",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a01f6804c49632520a454fdb1c10a2c09c5fe1f937892f802b476904076b0c92",
+      "cut": {
+        "source_file": "moss-pt-6720.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          2400,
+          67680
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6721-05985.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6720",
+      "prompt": "Underwater: a giant shark thrashes suddenly, a violent churning surge of water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6721,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6721.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark thrashes suddenly, a violent churning surge of water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "b1a863ded3c2540209b1684c450a1c891dc967bdc7ccd047d5bbc3a7e37b7e7c",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "e628271a3bc06d3c93f4e6f4dc0f224ec95a3e84d968a3754ddec9e85cc5f83c",
+      "cut": {
+        "source_file": "moss-pt-6721.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          284880,
+          373200
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6720-04965.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6720",
+      "prompt": "Underwater: a giant shark thrashes suddenly, a violent churning surge of water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6720,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6720.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark thrashes suddenly, a violent churning surge of water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "dfb2234d371ff0780b35bba8c9aae2736b75b0f26a4a992d0584ff01a3317f61",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a01f6804c49632520a454fdb1c10a2c09c5fe1f937892f802b476904076b0c92",
+      "cut": {
+        "source_file": "moss-pt-6720.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          235920,
+          355200
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6721-01985.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6720",
+      "prompt": "Underwater: a giant shark thrashes suddenly, a violent churning surge of water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6721,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6721.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark thrashes suddenly, a violent churning surge of water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "cce801be6fe99c800e0bcc88e06139180be40e3c199e02f78045889d384a2e41",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "e628271a3bc06d3c93f4e6f4dc0f224ec95a3e84d968a3754ddec9e85cc5f83c",
+      "cut": {
+        "source_file": "moss-pt-6721.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          92880,
+          170640
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6720-02460.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6720",
+      "prompt": "Underwater: a giant shark thrashes suddenly, a violent churning surge of water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6720,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6720.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark thrashes suddenly, a violent churning surge of water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2372795caf65aecb63617f24083324c93a6ee0e7fbd290c2e187b4a01a9cc79a",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a01f6804c49632520a454fdb1c10a2c09c5fe1f937892f802b476904076b0c92",
+      "cut": {
+        "source_file": "moss-pt-6720.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          115680,
+          183840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/hurt/moss-pt-3160-04375.wav": {
       "model": "moss",
       "backend": "torch",
@@ -519,6 +1419,231 @@
         "frames": [
           10320,
           151920
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6740-01915.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6740",
+      "prompt": "Underwater: a giant shark is struck and thrashes, muffled churning water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6740,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6740.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark is struck and thrashes, muffled churning water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.2,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ad9075d76a8de06246574eaa781e49f3f0d25c1f35b1bda772515003734483fb",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "5ca7209af445ba3e106b8ee5cf50e490c2c3650bf49119f524806788c3c02d4d",
+      "cut": {
+        "source_file": "moss-pt-6740.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          89520,
+          155280
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6740-03505.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6740",
+      "prompt": "Underwater: a giant shark is struck and thrashes, muffled churning water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6740,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6740.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark is struck and thrashes, muffled churning water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.2,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "c7c5a821deefaef9fe13737e76fe9bf1e91963085d5776782f6eff3af6174b6b",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "5ca7209af445ba3e106b8ee5cf50e490c2c3650bf49119f524806788c3c02d4d",
+      "cut": {
+        "source_file": "moss-pt-6740.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          165840,
+          221280
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6740-04995.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6740",
+      "prompt": "Underwater: a giant shark is struck and thrashes, muffled churning water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6740,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6740.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark is struck and thrashes, muffled churning water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.2,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "11b1db76bc2e5831bef867f59807aa5f28f189c1c6254cb5a7b08921c52018a4",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "5ca7209af445ba3e106b8ee5cf50e490c2c3650bf49119f524806788c3c02d4d",
+      "cut": {
+        "source_file": "moss-pt-6740.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          237360,
+          280080
         ],
         "rate": 48000,
         "stored_as": "mono PCM_24",
@@ -750,6 +1875,456 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/attack/moss-pt-6731-06515.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6730",
+      "prompt": "A giant shark bites: a huge crunching snap of jaws and churning splash, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6731,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6731.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant shark bites: a huge crunching snap of jaws and churning splash, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "b0d4cd634d1b798856be0f7a1b66da94cc389a830f6523a7aab6b8c33b9f27ed",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c1f9648c60e7842491235d52ad00457e494d8ffd1a2f63753c75f9d74916ec5d",
+      "cut": {
+        "source_file": "moss-pt-6731.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          310320,
+          353040
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6730-00480.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6730",
+      "prompt": "A giant shark bites: a huge crunching snap of jaws and churning splash, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6730,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6730.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant shark bites: a huge crunching snap of jaws and churning splash, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "52cc1f89a6bb25cd7c33ca9ac518eeea550a5bdd20afbb8bd516db2a7469183d",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "be57a5af69025a698d393fb5659b7f13df6669f2f27d67f848f746698e1cd867",
+      "cut": {
+        "source_file": "moss-pt-6730.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          20640,
+          65760
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6731-02520.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6730",
+      "prompt": "A giant shark bites: a huge crunching snap of jaws and churning splash, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6731,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6731.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant shark bites: a huge crunching snap of jaws and churning splash, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "c205cc9efa93bd381c77df10faae1e10286b13dbbd2948f3b6c037d2dd4a41bc",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c1f9648c60e7842491235d52ad00457e494d8ffd1a2f63753c75f9d74916ec5d",
+      "cut": {
+        "source_file": "moss-pt-6731.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          118560,
+          165600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6730-02570.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6730",
+      "prompt": "A giant shark bites: a huge crunching snap of jaws and churning splash, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6730,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6730.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant shark bites: a huge crunching snap of jaws and churning splash, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "0aeda6525a0f560adc3f199eec30cc5a1800753483a3a2a417280fb891e96aba",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "be57a5af69025a698d393fb5659b7f13df6669f2f27d67f848f746698e1cd867",
+      "cut": {
+        "source_file": "moss-pt-6730.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          120960,
+          171600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6731-00480.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6730",
+      "prompt": "A giant shark bites: a huge crunching snap of jaws and churning splash, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6731,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6731.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant shark bites: a huge crunching snap of jaws and churning splash, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ec4069d8e992409e3aae9d27a4b6132d7fd90f64a8fb3a535abed45e1b5cf2cc",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c1f9648c60e7842491235d52ad00457e494d8ffd1a2f63753c75f9d74916ec5d",
+      "cut": {
+        "source_file": "moss-pt-6731.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          20640,
+          59281
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6730-05030.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6730",
+      "prompt": "A giant shark bites: a huge crunching snap of jaws and churning splash, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6730,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6730.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant shark bites: a huge crunching snap of jaws and churning splash, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "553c989e75a244cffb31d0b2acb3ef58766de44f036ba98d7d6cbccee0e6a16f",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "be57a5af69025a698d393fb5659b7f13df6669f2f27d67f848f746698e1cd867",
+      "cut": {
+        "source_file": "moss-pt-6730.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          239040,
+          305040
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/step/moss-pt-3190-00437.wav": {
       "model": "moss",
       "backend": "torch",
@@ -819,6 +2394,756 @@
         "frames": [
           18576,
           59761
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-6751-02327.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-6750",
+      "prompt": "Underwater: a large fish tail sweeps the water, soft deep swooshes, several separate strokes. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6751,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6751.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a large fish tail sweeps the water, soft deep swooshes, several separate strokes. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e43a358b6e4a401106671eee67b8808eec1f00c436c5619c2c1e95f4708c4073",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6ee646fb00770735d6e8da66c17c4d95dd6f13ef129bdb71985e0305bc489f27",
+      "cut": {
+        "source_file": "moss-pt-6751.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          109296,
+          135840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-6751-04152.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-6750",
+      "prompt": "Underwater: a large fish tail sweeps the water, soft deep swooshes, several separate strokes. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6751,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6751.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a large fish tail sweeps the water, soft deep swooshes, several separate strokes. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "bff1820eed454a07ad5c2167a32e9b649dd1416a6ae1a62a6f1b55d8ed9a55c8",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6ee646fb00770735d6e8da66c17c4d95dd6f13ef129bdb71985e0305bc489f27",
+      "cut": {
+        "source_file": "moss-pt-6751.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          196896,
+          224304
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-6751-00027.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-6750",
+      "prompt": "Underwater: a large fish tail sweeps the water, soft deep swooshes, several separate strokes. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6751,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6751.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a large fish tail sweeps the water, soft deep swooshes, several separate strokes. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "0637b9c358fc4127667edd4cc68d91c0fe5076861ba88a50b1d15767804132cb",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6ee646fb00770735d6e8da66c17c4d95dd6f13ef129bdb71985e0305bc489f27",
+      "cut": {
+        "source_file": "moss-pt-6751.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          31680
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6761-04030.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6760",
+      "prompt": "Underwater: a giant shark surges after prey, rushing churning water and a deep thrum, four separate surges with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6761,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6761.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark surges after prey, rushing churning water and a deep thrum, four separate surges with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "dfdfca329ed5198cde6a71f7d8b9d22236da3ec7e581d55a8476266b788753f0",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "1db404f8371ea0990978fbea3548105f70721b65aba028aed49b8d1d715e2e95",
+      "cut": {
+        "source_file": "moss-pt-6761.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          191040,
+          252720
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6760-06025.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6760",
+      "prompt": "Underwater: a giant shark surges after prey, rushing churning water and a deep thrum, four separate surges with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6760,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6760.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark surges after prey, rushing churning water and a deep thrum, four separate surges with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "5d9e36123ff389335f0470ad655039ff110578f5d6ad98928268f9649d76f554",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "9e4412b4302a992955539360c987104afc849e347ebeb873d9e29221dff0c445",
+      "cut": {
+        "source_file": "moss-pt-6760.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          286800,
+          374880
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6761-05475.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6760",
+      "prompt": "Underwater: a giant shark surges after prey, rushing churning water and a deep thrum, four separate surges with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6761,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6761.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark surges after prey, rushing churning water and a deep thrum, four separate surges with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "dd1b022fa1db076fb96cb609b1e7035e8520ee166866f666a7e15af4bcea6f1f",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "1db404f8371ea0990978fbea3548105f70721b65aba028aed49b8d1d715e2e95",
+      "cut": {
+        "source_file": "moss-pt-6761.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          260400,
+          347760
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6760-04010.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6760",
+      "prompt": "Underwater: a giant shark surges after prey, rushing churning water and a deep thrum, four separate surges with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6760,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6760.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark surges after prey, rushing churning water and a deep thrum, four separate surges with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "afe74db1204254c64f2c7789bdbe5059be4a7ff7335075197beea5d1a6ac4e56",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "9e4412b4302a992955539360c987104afc849e347ebeb873d9e29221dff0c445",
+      "cut": {
+        "source_file": "moss-pt-6760.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          190080,
+          267840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6761-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6760",
+      "prompt": "Underwater: a giant shark surges after prey, rushing churning water and a deep thrum, four separate surges with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6761,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6761.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark surges after prey, rushing churning water and a deep thrum, four separate surges with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "a9705f83f9abcf9a654b9b30fd916cd213d3019a7c09c87731a8380d2fb212c9",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "1db404f8371ea0990978fbea3548105f70721b65aba028aed49b8d1d715e2e95",
+      "cut": {
+        "source_file": "moss-pt-6761.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          64080
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6760-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6760",
+      "prompt": "Underwater: a giant shark surges after prey, rushing churning water and a deep thrum, four separate surges with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6760,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6760.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a giant shark surges after prey, rushing churning water and a deep thrum, four separate surges with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "9e40bb640b43dc23f7523bf66332b9d3b6229f46770ad4577ba5601c95204e85",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "9e4412b4302a992955539360c987104afc849e347ebeb873d9e29221dff0c445",
+      "cut": {
+        "source_file": "moss-pt-6760.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          49920
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/growl/moss-pt-6770-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "growl",
+      "prompt_id": "v2-6770",
+      "prompt": "Underwater: a deep low thrumming pulse of a giant shark circling, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6770,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6770.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Underwater: a deep low thrumming pulse of a giant shark circling, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "cb109986c354015fe6fc030a1f86029344a662964fcccd94246ab27faad65e5c",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "537cccced38fb7efeabd7eea12b495601caeb755032b00f07a8cf17201686067",
+      "cut": {
+        "source_file": "moss-pt-6770.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          133440
         ],
         "rate": 48000,
         "stored_as": "mono PCM_24",

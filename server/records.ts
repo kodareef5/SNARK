@@ -131,10 +131,10 @@ export class EntityRecord {
   egg: { species: number; span: number; hatchAt: number; carrier: number } | null = null;
   /**
    * For a creature's body (server/corpses.ts): the species it was (a content index), the harvest damage it takes in all and
-   * what is left of that, its size as its entity's span, whether it was young and whether it died knocked out, and the ticks
-   * its whole time lasts.
+   * what is left of that, its size as its entity's span, whether it was young, died knocked out or died in its own flight,
+   * and the ticks its whole time lasts.
    */
-  corpse: { species: number; max: number; left: number; span: number; young: boolean; out: boolean; life: number } | null = null;
+  corpse: { species: number; max: number; left: number; span: number; young: boolean; out: boolean; air: boolean; life: number } | null = null;
   /** For a bed, the tick from which a survivor may next respawn at it. */
   readyAt = 0;
   /** For a burning fire: its state as of tick `at` (shared/sim/station.ts), and the tick of its deadline. Null when it is out. */
@@ -158,8 +158,7 @@ export function hashKey(key: Uint8Array): Uint8Array {
 
 /**
  * Team numbers each world makes. A world's are its id times this plus a count of its own, so a team means the same on every
- * server of a cluster and a survivor keeps its team as it travels. Saves from before held teams below it, numbered with
- * their records, which no world's range reaches while no world is 0.
+ * server of a cluster and a survivor keeps its team as it travels.
  */
 export const TEAM_RANGE = 1 << 20;
 /** A team number is 32 bits, so this is the highest world id that can make teams. */

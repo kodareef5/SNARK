@@ -35,10 +35,8 @@ test("every authored yacht section has six delivered native levels within the sh
   for (let level = 1; level < 6; level++) expect(triangles[level]!).toBeLessThanOrEqual(triangles[level - 1]!);
   expect(triangles[5]!).toBeLessThan(triangles[0]! / 3);
   // The native card holds RGBA mip chains. Count shared textures once, as the built pack does.
-  const bytes = (pack.header.textures ?? []).reduce((sum, texture) => {
-    let pixels = 0; for (let side = texture.top; side >= 1; side = Math.floor(side / 2)) pixels += side * side;
-    return sum + pixels * 4;
-  }, 0);
+  let bytes = 0;
+  for (const texture of pack.header.textures ?? []) for (let side = texture.top; side >= 1; side = Math.floor(side / 2)) bytes += side * side * 4;
   expect(bytes).toBeGreaterThan(0);
   expect(bytes / 1024 ** 2).toBeLessThanOrEqual(96);
 });

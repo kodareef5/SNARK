@@ -1,0 +1,128 @@
+{
+ "glide": {
+  "self": 0,
+  "body": 0,
+  "wings": 0,
+  "inverted": 0
+ },
+ "upstroke": {
+  "self": 0,
+  "body": 8,
+  "wings": 0,
+  "inverted": 0
+ },
+ "upstroke_40_elbow_25": {
+  "self": 0,
+  "body": 0,
+  "wings": 0,
+  "inverted": 0
+ },
+ "downstroke": {
+  "self": 0,
+  "body": 0,
+  "wings": 0,
+  "inverted": 0
+ },
+ "sweep_forward": {
+  "self": 0,
+  "body": 0,
+  "wings": 0,
+  "inverted": 0
+ },
+ "bank": {
+  "self": 0,
+  "body": 0,
+  "wings": 0,
+  "inverted": 0
+ },
+ "hover": {
+  "self": 0,
+  "body": 0,
+  "wings": 0,
+  "inverted": 0
+ },
+ "dive": {
+  "self": 0,
+  "body": 15,
+  "wings": 0,
+  "inverted": 1
+ },
+ "air_0.25": {
+  "self": 0,
+  "body": 0,
+  "wings": 0,
+  "inverted": 0
+ },
+ "air_0.4": {
+  "self": 0,
+  "body": 0,
+  "wings": 0,
+  "inverted": 1
+ },
+ "tuck": {
+  "self": 169,
+  "body": 4,
+  "wings": 0,
+  "inverted": 3
+ },
+ "air_0.7": {
+  "self": 30,
+  "body": 0,
+  "wings": 0,
+  "inverted": 0
+ },
+ "air_0.9": {
+  "self": 0,
+  "body": 0,
+  "wings": 0,
+  "inverted": 0
+ },
+ "land_0.6": {
+  "self": 14,
+  "body": 4,
+  "wings": 0,
+  "inverted": 1
+ },
+ "land_0.75": {
+  "self": 73,
+  "body": 0,
+  "wings": 0,
+  "inverted": 0
+ },
+ "land_0.9": {
+  "self": 0,
+  "body": 0,
+  "wings": 0,
+  "inverted": 0
+ },
+ "ground_0.6": {
+  "self": 13,
+  "body": 2,
+  "wings": 0,
+  "inverted": 0
+ },
+ "ground_0.8": {
+  "self": 2,
+  "body": 0,
+  "wings": 0,
+  "inverted": 0
+ },
+ "ground_open": {
+  "self": 3,
+  "body": 8,
+  "wings": 0,
+  "inverted": 4
+ },
+ "stance": {
+  "self": 2,
+  "body": 0,
+  "wings": 0,
+  "inverted": 0
+ },
+ "stance_call": {
+  "self": 2,
+  "body": 0,
+  "wings": 0,
+  "inverted": 0
+ }
+}

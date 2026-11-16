@@ -119,7 +119,7 @@ def tiger(m, name):
     widths = m.city['roads']['widths_m']
     features, seen = [], set()
     # A frame may span counties; a line on a county boundary is in both files under one id.
-    for county in t.get('counties') or [t['county']]:
+    for county in t['counties']:
         path = m.raw / f"tl_{t['year']}_{county}_{name}.zip"
         out = m.raw / 'tiger'
         with zipfile.ZipFile(path) as z:

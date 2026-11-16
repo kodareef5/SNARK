@@ -44,7 +44,7 @@ test("boat assembly requires real depth and exact waterline, spends once, and re
     expect(h.host.vehicles.deploy(c, slot, 64, y, 64, 0)).toBe(RESULT_OK);
     expect(inv.total(kit)).toBe(0);
     const boat = [...h.host.records.byPid.values()].find(r => h.reg.ids[r.kind] === "core:boat")!, e = h.host.records.entOf.get(boat.pid)!;
-    expect(boat.team).toBe(actor.team); expect(h.world.ents.fuel[e]).toBe(0); expect(h.world.ents.vehicleHullCondition[e]).toBe(1);
+    expect(boat.team).toBe(actor.team); expect(h.world.ents.fuel[h.world.ents.vrow[e]!]).toBe(0); expect(h.world.ents.vehicleHullCondition[h.world.ents.vrow[e]!]).toBe(1);
     h.host.items.mint(actor, kit, 1);
     expect(h.host.vehicles.deploy(c, slot, 65, y, 64, 0)).toBe(RESULT_NO_SUPPORT);
     expect(inv.total(kit)).toBe(1); expect(h.host.items.audit()).toEqual([]);
@@ -61,20 +61,20 @@ test("a swimmer services a stable floating boat without ground contact; motion, 
     expect(ents.flags[e]! & F_GROUNDED).toBe(0);
     h.host.items.mint(actor, fuel, 2);
     expect(h.host.vehicles.refuel(c, handle, 1)).toBe(RESULT_OK);
-    expect(ents.fuel[e]).toBeCloseTo(def.spec.fuelCapacity * .1 + 5, 5);
-    ents.vehicleEngineOn[e] = 1;
+    expect(ents.fuel[ents.vrow[e]!]).toBeCloseTo(def.spec.fuelCapacity * .1 + 5, 5);
+    ents.vehicleEngineOn[ents.vrow[e]!] = 1;
     expect(h.host.vehicles.refuel(c, handle, 1)).toBe(RESULT_BUSY);
-    ents.vehicleEngineOn[e] = 0; ents.vz[e] = .4;
+    ents.vehicleEngineOn[ents.vrow[e]!] = 0; ents.vz[e] = .4;
     expect(h.host.vehicles.repair(c, handle)).toBe(RESULT_BUSY);
-    ents.vz[e] = 0; ents.vehicleFlooding[e] = .2;
+    ents.vz[e] = 0; ents.vehicleFlooding[ents.vrow[e]!] = .2;
     h.host.items.mint(actor, ingot, 40);
     expect(h.host.vehicles.repair(c, handle)).toBe(RESULT_SHORT);
     expect(h.host.items.inv(actor).total(ingot)).toBe(40);
     h.host.items.mint(actor, h.reg.index.get("core:polymer")!, 10);
     h.host.items.mint(actor, h.reg.index.get("core:electronics")!, 8);
     expect(h.host.vehicles.repair(c, handle)).toBe(RESULT_OK);
-    expect(ents.vehicleEngineCondition[e]).toBeCloseTo(.65, 5);
-    expect(ents.vehicleHullCondition[e]).toBeCloseTo(.75, 5); expect(ents.vehicleFlooding[e]).toBe(0);
+    expect(ents.vehicleEngineCondition[ents.vrow[e]!]).toBeCloseTo(.65, 5);
+    expect(ents.vehicleHullCondition[ents.vrow[e]!]).toBeCloseTo(.75, 5); expect(ents.vehicleFlooding[ents.vrow[e]!]).toBe(0);
     expect(h.host.vehicles.refuel(c, makeHandle(e, ents.gen[e]! + 1))).toBe(RESULT_INVALID);
     h.host.setSetting("serverPVE", "True"); rec.team = actor.team + 20;
     expect(h.host.vehicles.refuel(c, handle)).toBe(RESULT_NOT_YOURS);
@@ -121,8 +121,8 @@ for (const inverted of [true, false]) test(`crew can escape a moving ${inverted 
     const e = h.host.spawnVehicle("core:boat", 62, 64, actor.team), anchor = BOAT_ART.anchors.boarding_water;
     ents.setPosition(c.ent, 62 + anchor[0], 1.65, 64 + anchor[2]);
     expect(h.host.urban.mount(c, e)).toBe(RESULT_OK); h.run(1400); expect(c.drive).toBe(e);
-    ents.vehicleQz[e] = inverted ? 1 : 0; ents.vehicleQw[e] = inverted ? 0 : 1;
-    ents.vehicleRoll[e] = inverted ? Math.PI : 0; ents.vehicleFlooding[e] = inverted ? 0 : .65;
+    ents.vehicleQz[ents.vrow[e]!] = inverted ? 1 : 0; ents.vehicleQw[ents.vrow[e]!] = inverted ? 0 : 1;
+    ents.vehicleRoll[ents.vrow[e]!] = inverted ? Math.PI : 0; ents.vehicleFlooding[ents.vrow[e]!] = inverted ? 0 : .65;
     h.host.urban.syncAfterContact(e);
     ents.setPosition(guest.ent, 62 + anchor[0], 1.65, 64 + anchor[2]);
     expect(h.host.urban.mount(guest, e)).not.toBe(RESULT_OK);
@@ -133,8 +133,8 @@ for (const inverted of [true, false]) test(`crew can escape a moving ${inverted 
     expect([ents.vx[c.ent], ents.vy[c.ent], ents.vz[c.ent]]).toEqual([2, Math.fround(-.1), 0]);
     expect(ents.y[c.ent]!).toBeGreaterThan(1); expect(ents.y[c.ent]!).toBeLessThan(2);
     const move = h.reg.move[ents.kind[c.ent]!]!;
-    expect(boatMeetsCapsule(def, { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: 0, pitch: 0, roll: ents.vehicleRoll[e]!,
-      qx: 0, qy: 0, qz: ents.vehicleQz[e]!, qw: ents.vehicleQw[e]! }, ents.x[c.ent]!, ents.y[c.ent]!, ents.z[c.ent]!, move.radius, move.height)).toBeNull();
+    expect(boatMeetsCapsule(def, { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: 0, pitch: 0, roll: ents.vehicleRoll[ents.vrow[e]!]!,
+      qx: 0, qy: 0, qz: ents.vehicleQz[ents.vrow[e]!]!, qw: ents.vehicleQw[ents.vrow[e]!]! }, ents.x[c.ent]!, ents.y[c.ent]!, ents.z[c.ent]!, move.radius, move.height)).toBeNull();
     expect(ents.seat[guest.ent]).toBe(0);
     h.run(1200); expect(c.drive).toBe(-1); expect(ents.seat[c.ent]).toBe(0);
   } finally { h.host.shutdown(); }
@@ -146,7 +146,7 @@ test("an emergency boat exit rechecks its path at commit and cannot place the sw
     const ents = h.world.ents, e = h.host.spawnVehicle("core:boat", 62, 64, actor.team), anchor = BOAT_ART.anchors.boarding_water;
     ents.setPosition(c.ent, 62 + anchor[0], 1.65, 64 + anchor[2]);
     expect(h.host.urban.mount(c, e)).toBe(RESULT_OK); h.run(1400);
-    ents.vehicleQz[e] = 1; ents.vehicleQw[e] = 0; ents.vehicleRoll[e] = Math.PI;
+    ents.vehicleQz[ents.vrow[e]!] = 1; ents.vehicleQw[ents.vrow[e]!] = 0; ents.vehicleRoll[ents.vrow[e]!] = Math.PI;
     h.host.urban.syncAfterContact(e); h.host.urban.dismount(c);
     const before = [ents.x[c.ent], ents.y[c.ent], ents.z[c.ent]], ceiling = h.reg.index.get("core:ceiling")!;
     for (let x = -6; x <= 6; x += 3) for (let z = -6; z <= 6; z += 3) h.world.structs.add(ceiling, 62 + x, 3, 64 + z, 0, 0, 100);
@@ -165,19 +165,19 @@ test("found boats keep condition, flooding, cargo and origin across SQLite reloa
     h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], dbPath, map });
     const record = [...h.host.records.byPid.values()].find(r => h!.reg.ids[r.kind] === placement.kind)!, pid = record.pid;
     const e = h.host.records.entOf.get(pid)!, ents = h.world.ents, rolled = foundVehicle("test:flat", placement, 1);
-    expect(ents.vehicleEngineCondition[e]).toBeCloseTo(rolled.engine!, 6);
+    expect(ents.vehicleEngineCondition[ents.vrow[e]!]).toBeCloseTo(rolled.engine!, 6);
     const stone = h.reg.index.get("core:stone")!; h.host.items.mint(record, stone, 17);
-    ents.vehicleFlooding[e] = .17; ents.vehicleEngineOn[e] = 1; ents.vehicleGear[e] = -1; ents.vehicleRpm[e] = 1800;
+    ents.vehicleFlooding[ents.vrow[e]!] = .17; ents.vehicleEngineOn[ents.vrow[e]!] = 1; ents.vehicleGear[ents.vrow[e]!] = -1; ents.vehicleRpm[ents.vrow[e]!] = 1800;
     ents.vx[e] = 2; ents.vz[e] = -1; h.host.urban.changed(e);
-    const fuel = ents.fuel[e]!, engine = ents.vehicleEngineCondition[e]!, health = h.host.survival.value(record, V_HEALTH);
+    const fuel = ents.fuel[ents.vrow[e]!]!, engine = ents.vehicleEngineCondition[ents.vrow[e]!]!, health = h.host.survival.value(record, V_HEALTH);
     h.host.shutdown(); h = null;
     h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], dbPath, map });
     const saved = h.host.records.byPid.get(pid)!, restored = h.host.records.entOf.get(pid)!, out = h.world.ents;
     expect([...h.host.records.byPid.values()].filter(r => h!.reg.ids[r.kind] === placement.kind)).toHaveLength(1);
     expect(new TextDecoder().decode(saved.extra.get(VEHICLE_ORIGIN))).toBe("test:flat/police-berth");
-    expect(out.vehicleFlooding[restored]).toBeCloseTo(.17, 6); expect(out.vehicleGear[restored]).toBe(-1);
-    expect(out.vehicleEngineOn[restored]).toBe(1); expect(out.vehicleRpm[restored]).toBe(1800);
-    expect([out.vx[restored], out.vz[restored], out.fuel[restored], out.vehicleEngineCondition[restored]]).toEqual([2, -1, fuel, engine]);
+    expect(out.vehicleFlooding[out.vrow[restored]!]).toBeCloseTo(.17, 6); expect(out.vehicleGear[out.vrow[restored]!]).toBe(-1);
+    expect(out.vehicleEngineOn[out.vrow[restored]!]).toBe(1); expect(out.vehicleRpm[out.vrow[restored]!]).toBe(1800);
+    expect([out.vx[restored], out.vz[restored], out.fuel[out.vrow[restored]!], out.vehicleEngineCondition[out.vrow[restored]!]]).toEqual([2, -1, fuel, engine]);
     expect(h.host.survival.value(saved, V_HEALTH)).toBe(health); expect(h.host.items.inv(saved).total(stone)).toBe(17);
     expect(h.host.items.audit()).toEqual([]);
   } finally { h?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
@@ -212,13 +212,13 @@ test("destroying a loaded boat releases its swimmer crew and preserves cargo in 
     const anchor = BOAT_ART.anchors.boarding_water;
     ents.setPosition(c.ent, 62 + anchor[0], 1.65, 64 + anchor[2]);
     expect(h.host.urban.mount(c, e)).toBe(RESULT_OK); h.run(1400); expect(c.drive).toBe(e);
-    const y = ents.y[e]!; ents.vehicleFlooding[e] = .17;
+    const y = ents.y[e]!; ents.vehicleFlooding[ents.vrow[e]!] = .17;
     h.host.survival.hurt(rec, 1e6, 0); h.run(100);
     expect(c.drive).toBe(-1); expect(ents.seat[c.ent]).toBe(0);
     expect(ents.mode[c.ent]).toBe(MODE_SWIM); expect(ents.z[c.ent]!).toBeLessThan(60.5);
     const wreck = [...h.host.corpses.bodies.values()].find(b => h.reg.ids[b.kind] === "core:boat")!;
     expect(wreck.wreck).toBeDefined(); expect(h.host.items.inv(wreck.rec).total(cargo)).toBe(13);
-    expect(ents.vehicleFlooding[wreck.e]!).toBeGreaterThanOrEqual(.17); expect(ents.vehicleFlooding[wreck.e]!).toBeLessThan(.2);
+    expect(ents.vehicleFlooding[ents.vrow[wreck.e]!]!).toBeGreaterThanOrEqual(.17); expect(ents.vehicleFlooding[ents.vrow[wreck.e]!]!).toBeLessThan(.2);
     h.run(3000); expect(wreck.y).toBeLessThan(y);
     const handle = makeHandle(wreck.e, ents.gen[wreck.e]!);
     ents.setPosition(c.ent, wreck.x + 3, 1.65, wreck.z);

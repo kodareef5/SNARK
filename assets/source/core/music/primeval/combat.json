@@ -1,0 +1,47 @@
+{
+  "track": "primeval",
+  "layer": "combat",
+  "candidate": 1,
+  "model": "Stable Audio 3 medium",
+  "repo": "stabilityai/stable-audio-3-medium",
+  "revision": "d4d3579395a8ac0df4ab13b5b1d7138ce7290f81",
+  "code": {
+    "repo": "github.com/Stability-AI/stable-audio-3",
+    "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57"
+  },
+  "licence": {
+    "name": "Stability AI Community License",
+    "terms": "free under US$1M annual revenue, commercial users register with Stability AI; outputs are ours; not for training other foundation models"
+  },
+  "prompt": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, exploring a primeval jungle by day, a fight in the jungle: pounding tribal war drums with metal guitars and double kick, fierce strings and horns. 90 BPM, E minor.",
+  "negative_prompt": "fade out, ending, silence, gaps, dropouts, lo-fi, pop, happy, major key, vocals with lyrics, singing words",
+  "seconds": 120,
+  "bpm": 90,
+  "key": "E minor",
+  "seed": 12201,
+  "steps": 8,
+  "cfg": 1.0,
+  "init_from": "primeval/calm.wav",
+  "init_noise_level": 0.72,
+  "rate": 44100,
+  "channels": 2,
+  "seconds_to_make": 3.8,
+  "gpu_peak_gb": 5.47,
+  "torch": "2.7.1+cu128",
+  "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "date": "2026-11-15",
+  "sha256": "bd541ef3b3cb89fd6bc52df93194dd184eff0d93705c1c7cc7df7b0b100c5c57",
+  "chosen": "combat@1.wav",
+  "measures": {
+    "loudness_db": -22.6,
+    "dropouts": 0.054,
+    "stray_db": 5.06,
+    "clipped": 84,
+    "brightness": 0.019,
+    "beat_with_base": 0.123,
+    "louder_db": 2.4,
+    "brighter": 0.009,
+    "score": -3.742
+  },
+  "stored_as": "Opus 96 kb/s stereo (ffmpeg libopus); the master is made again from this recipe"
+}

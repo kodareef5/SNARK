@@ -8,7 +8,7 @@ import type { EncodeJob } from "./encode.ts";
 
 parentPort!.on("message", ({ rgba, size, how, from, to, out }: EncodeJob) => {
   const blocks = out.subarray(from * 16, to * 16);
-  if (how.with === "astc") encodeAstcBlocks(rgba, size, size, how.kind, from, to - from, blocks);
+  if (how.with === "astc") encodeAstcBlocks(rgba, size, size, how.kind, how.block, from, to - from, blocks);
   else blocks.set(how.with === "bc5" ? encodeBc5(rgba, size, size, from, to) : encodeBc7(rgba, size, size, how.channels, from, to));
   parentPort!.postMessage(null);
 });

@@ -3,23 +3,26 @@
 
 import { expect, test } from "bun:test";
 import { CreatureAnim } from "../../shared/anim/creature.ts";
-import { AnimState, CUE_DEAD, CUE_HELD, CUE_LAND, CUE_STARTLE, CUE_TORPOR, LAYER_FLINCH, bodySeed } from "../../shared/anim/pose.ts";
+import { AnimState, CUE_DEAD, CUE_HELD, CUE_LAND, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, LAYER_FLINCH, bodySeed } from "../../shared/anim/pose.ts";
+import { MODE_FLYER } from "../../shared/sim/character.ts";
+import { flyerAnim } from "../fixtures/flyer/flyer.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { parseManifest } from "../../shared/pack/manifest.ts";
-import { CODE_LOSSLESS, decodeTake, encodeTake, takeFits, type ManifestSound } from "../../shared/pack/sound.ts";
+import { MANIFEST_VERSION, parseManifest } from "../../shared/pack/manifest.ts";
+import { decodeTake, decodeTakes, takeFits, type ManifestSound } from "../../shared/pack/sound.ts";
 import { ACT_SWING } from "../../shared/sim/weapon.ts";
 import { buildProvingHeightfield, PROVING_POOL } from "../../shared/world/proving.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { GROUND_GRASS, GROUND_SAND, GROUND_STONE, groundAt } from "../../client/core/sound/ground.ts";
 import { SoundLibrary } from "../../client/core/sound/library.ts";
-import { KIND_STEP, KIND_VOCAL, Mixer, VOICES } from "../../client/core/sound/mixer.ts";
-import { START_FIELDS, SoundPacket, type SoundSink } from "../../client/core/sound/packet.ts";
+import { KIND_STEP, KIND_VOCAL, LOOP, Mixer, VOICES } from "../../client/core/sound/mixer.ts";
+import { MOVE_FIELDS, START_FIELDS, SoundPacket, type SoundSink } from "../../client/core/sound/packet.ts";
 import { distanceGain, earAxes, lowpassAt } from "../../client/core/sound/place.ts";
 import { Sounds } from "../../client/core/sound/sounds.ts";
 import { SOUND_SLOT, SplitPort } from "../../client/core/sound/split.ts";
 import { bodyDown, groundPecks, mouthOpens, strikeAt } from "../../client/core/sound/timing.ts";
-import { buildSounds, loudness, prepareTake, readWav, toPcm16, writeWav } from "../../tools/pack/sound.ts";
+import { bandwidth, buildSounds, loudness, prepareTake, rateFor, readWav, writeWav } from "../../tools/pack/sound.ts";
+import { codeTake } from "../../tools/pack/transform.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -33,39 +36,89 @@ const DODO = reg.index.get("core:dodo")!;
 const rig = buildRigs(corePack().header.rigs, corePack().clips).get("core:dodo")!;
 const anim = new CreatureAnim(rig, reg.runAt[DODO]!, reg.move[DODO]?.swimSpeed ?? 0);
 
-/** Takes hard and easy for a coder: a chirp, bursts of noise, silence, a full-scale square, and the shortest there are. */
-function hardTakes(): Int16Array[] {
+/** Takes hard and easy for a coder: a chirp, bursts of noise, silence, clicks, a full-scale square, and the shortest there are. */
+function hardTakes(): Float32Array[] {
   let seed = 3;
   const noise = new Float32Array(9001);
   for (let i = 0; i < noise.length; i++) {
     seed = (seed * 1103515245 + 12345) >>> 0;
     noise[i] = 0.9 * (seed / 2 ** 31 - 1) * Math.exp(-((i % 4000) / 600));
   }
-  const square = Int16Array.from({ length: 5000 }, (_, i) => ((i >> 5) & 1 ? 32767 : -32768));
-  return [toPcm16(chirp(0.5, 32000)), toPcm16(noise), new Int16Array(4097), square, Int16Array.from([5]), Int16Array.from([-3, 7]), Int16Array.from([1, -1, 300, -32768, 32767])];
+  const clicks = Float32Array.from({ length: 8000 }, (_, i) => (i % 2000 === 1000 ? 0.9 : 0));
+  const square = Float32Array.from({ length: 5000 }, (_, i) => ((i >> 5) & 1 ? 0.99 : -0.99));
+  return [chirp(0.5, 32000), noise, new Float32Array(4097), clicks, square, Float32Array.from([0.2]), Float32Array.from([-0.1, 0.3]), Float32Array.from([0.01, -0.01, 0.3, -1, 0.99])];
 }
 
-test("the lossless code gives back every sample of hard and easy takes alike, and refuses a stream cut short or of another code", () => {
-  for (const pcm of hardTakes()) {
-    const coded = encodeTake(pcm);
-    expect(coded[0]).toBe(CODE_LOSSLESS);
-    expect(takeFits(pcm.length, coded.length)).toBe(true);
-    const out = new Float32Array(pcm.length);
-    expect(decodeTake(coded, pcm.length, out)).toBe(true);
-    expect(Array.from(out, (v) => Math.round(v * 32768))).toEqual(Array.from(pcm));
-    if (pcm.length > 100) expect(decodeTake(coded.subarray(0, coded.length >> 1), pcm.length, out)).toBe(false);
-    const other = coded.slice();
-    other[0] = 1;
-    expect(decodeTake(other, pcm.length, out)).toBe(false);
+const energy = (x: Float32Array, from = 0, to = x.length): number => x.subarray(from, to).reduce((e, v) => e + v * v, 0);
+const db = (a: number, b: number): number => 10 * Math.log10(a / b);
+
+test("the take code gives back each take as it is heard: a tone close, noise as loud, silence silent, a click with nothing before it", () => {
+  const takes = hardTakes();
+  const [chirped, noise, silence, clicks] = takes as [Float32Array, Float32Array, Float32Array, Float32Array];
+  for (const x of takes) {
+    const { bytes } = codeTake(x, 32000, { looser: 0, loop: false, noise: true });
+    expect(takeFits(x.length, bytes.length)).toBe(true);
+    const out = new Float32Array(x.length);
+    expect(decodeTake(bytes, x.length, out)).toBe(true);
+    if (x === chirped) {
+      expect(db(energy(x), energy(x.map((v, i) => v - out[i]!)))).toBeGreaterThan(15);
+      expect(bytes.length).toBeLessThan(x.length / 4);
+    }
+    if (x === noise) expect(Math.abs(db(energy(out), energy(x)))).toBeLessThan(1.5);
+    if (x === silence) {
+      expect(out.every((v) => v === 0)).toBe(true);
+      expect(bytes.length).toBeLessThan(40);
+    }
+    // Before each click there is next to nothing: under 40 dB below the click, 4 ms before it.
+    if (x === clicks) for (let c = 1000; c < x.length; c += 2000) expect(db(energy(out, c - 192, c - 128), energy(x, c, c + 1))).toBeLessThan(-40);
   }
-  // A clean tone takes under a third of the bytes of its 16-bit samples, and silence next to none.
-  const [chirped, , silence] = hardTakes() as [Int16Array, Int16Array, Int16Array];
-  const hum = Int16Array.from({ length: 16000 }, (_, i) => Math.round(9000 * Math.sin((2 * Math.PI * 220 * i) / 32000)));
-  expect(encodeTake(hum).length).toBeLessThan(hum.length * 2 * 0.33);
-  expect(encodeTake(silence).length).toBeLessThan(silence.length / 6);
-  // Low bits every sample leaves zero are not stored: the same take two bits coarser is smaller.
-  const coarse = chirped.map((v) => v & ~3);
-  expect(encodeTake(coarse).length).toBeLessThan(encodeTake(chirped).length - chirped.length / 5);
+});
+
+test("a take cut short, spoiled or of a frame there is not is refused, and decoding it ends", () => {
+  const x = hardTakes()[1]!;
+  const { bytes } = codeTake(x, 32000, { looser: 0, loop: false, noise: true });
+  const out = new Float32Array(x.length);
+  expect(decodeTake(bytes.subarray(0, bytes.length >> 1), x.length, out)).toBe(false);
+  for (const log of [0, 5, 12, 255]) expect(decodeTake(Uint8Array.from([log, ...bytes.subarray(1)]), x.length, out)).toBe(false);
+  let seed = 9;
+  for (let t = 0; t < 20; t++) {
+    const junk = Uint8Array.from({ length: 300 }, (_, i) => (i === 0 ? 6 + (t % 6) : (seed = (seed * 1103515245 + 12345) >>> 0) >>> 24));
+    expect(typeof decodeTake(junk, x.length, out)).toBe("boolean");
+  }
+  expect(decodeTake(bytes, x.length, new Float32Array(10))).toBe(false);
+});
+
+test("takes laid one after another decode together, or any one alone from its own bytes, as the library asks for them", () => {
+  const takes = hardTakes().slice(0, 2);
+  const coded = takes.map((x) => codeTake(x, 32000, { looser: 0, loop: false, noise: true }).bytes);
+  const rows = takes.map((x, k) => ({ samples: x.length, bytes: coded[k]!.length }));
+  const both = decodeTakes(Uint8Array.from([...coded[0]!, ...coded[1]!]), rows)!;
+  const second = decodeTakes(coded[1]!, [rows[1]!])!;
+  expect(both.map((t) => t.length)).toEqual(takes.map((x) => x.length));
+  expect(Array.from(second[0]!)).toEqual(Array.from(both[1]!));
+  expect(decodeTakes(coded[0]!, rows)).toBeNull();
+});
+
+test("a loop's end runs on into its start as the sound did: no step where they join", () => {
+  // Twelve whole turns of a tone with a little noise: as a loop it has no seam to hear.
+  let seed = 5;
+  const x = Float32Array.from({ length: 8000 }, (_, i) => 0.5 * Math.sin((2 * Math.PI * 12 * i) / 8000) + 0.02 * ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 31 - 1));
+  const out = new Float32Array(x.length);
+  expect(decodeTake(codeTake(x, 32000, { looser: 0, loop: true, noise: true }).bytes, x.length, out)).toBe(true);
+  const step = Math.abs(out[0]! - out[out.length - 1]!);
+  let most = 0;
+  for (let i = 1; i < out.length; i++) most = Math.max(most, Math.abs(out[i]! - out[i - 1]!));
+  expect(step).toBeLessThanOrEqual(most);
+  expect(Math.abs(out[0]! - x[0]!)).toBeLessThan(0.05);
+});
+
+test("each sound is kept at the lowest rate that holds its takes, and no higher than its files", () => {
+  const tone = Float32Array.from({ length: 48000 }, (_, i) => 0.5 * Math.sin((2 * Math.PI * 300 * i) / 48000));
+  expect(rateFor(bandwidth(tone, 48000), 48000)).toBe(8000);
+  let seed = 1;
+  const hiss = Float32Array.from({ length: 48000 }, () => 0.3 * ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 31 - 1));
+  expect(rateFor(bandwidth(hiss, 48000), 48000)).toBe(32000);
+  expect(rateFor(bandwidth(hiss.subarray(0, 24000), 24000), 24000)).toBe(24000);
 });
 
 test("a WAV of 16, 24 or 32 bits, or of floats, reads back; a take is cut, levelled to its sheet and kept under -1 dB", () => {
@@ -103,19 +156,26 @@ test("a WAV of 16, 24 or 32 bits, or of floats, reads back; a take is cut, level
   expect(Array.from(readWav(flt).channels[0]!)).toEqual([0.75, -1]);
   expect(() => readWav(new Uint8Array(12))).toThrow();
 
-  const take = prepareTake(back, { file: "", start: 0.05, end: 0.25 }, { level: -20, rate: 32000 });
-  expect(take.samples.length).toBe(Math.floor(0.2 * 48000 * (32000 / 48000)));
-  expect(loudness(take.samples, 32000)).toBeCloseTo(-20, 0);
+  const take = prepareTake(back, { file: "", start: 0.05, end: 0.25 }, { level: -20 });
+  expect(take.samples.length).toBe(Math.round(0.2 * 48000));
+  expect(loudness(take.samples, 48000)).toBeCloseTo(-20, 0);
   // Faded at both ends.
   expect(Math.abs(take.samples[0]!)).toBeLessThan(0.01);
   expect(Math.abs(take.samples[take.samples.length - 1]!)).toBeLessThan(0.01);
-  const loud = prepareTake(back, { file: "" }, { level: 0, rate: 32000 });
+  const loud = prepareTake(back, { file: "" }, { level: 0 });
   expect(loud.limited).toBe(true);
   expect(Math.max(...loud.samples.map(Math.abs))).toBeLessThanOrEqual(10 ** (-1 / 20) + 1e-6);
+  // A loop's take joined by the build: cut to its end, which runs on into its start with no greater step than any other.
+  const loop = prepareTake(back, { file: "", start: 0.05, end: 0.2, crossfade: 0.02 }, { level: -20, loop: true }).samples;
+  expect(loop.length).toBe(Math.round(0.15 * 48000));
+  let most = 0;
+  for (let i = 1; i < loop.length; i++) most = Math.max(most, Math.abs(loop[i]! - loop[i - 1]!));
+  expect(Math.abs(loop[0]! - loop[loop.length - 1]!)).toBeLessThanOrEqual(most);
+  expect(() => prepareTake(back, { file: "", start: 0, end: 0.05, crossfade: 0.02 }, { level: -20, loop: true })).toThrow("crossfade");
 });
 
 const made = builtSounds();
-const built = { file: made.file, manifest: parseManifest(JSON.stringify({ version: 3, files: [{ name: "boot", bytes: 0, role: "boot" }, { name: "sounds", bytes: made.file.length, role: "sound" }], boot: 0, clipHash: 0, meshes: [], sounds: made.sounds })) };
+const built = { file: made.file, manifest: parseManifest(JSON.stringify({ version: MANIFEST_VERSION, files: [{ name: "boot", bytes: 0, role: "boot" }, { name: "sounds", bytes: made.file.length, role: "sound" }], boot: 0, clipHash: 0, meshes: [], sounds: made.sounds })) };
 
 test("the build names each sound by its owner and occasion, and a manifest that says a wrong thing of one is refused", () => {
   const ids = built.manifest.sounds!.map((s) => s.id);
@@ -130,7 +190,7 @@ test("the build names each sound by its owner and occasion, and a manifest that 
     return JSON.stringify(m);
   };
   expect(() => parseManifest(wrong((s) => (s.file = 0)))).toThrow("holds no sounds");
-  expect(() => parseManifest(wrong((s) => (s.takes[0]!.bytes = 4)))).toThrow("size");
+  expect(() => parseManifest(wrong((s) => (s.takes[0]!.bytes = 1)))).toThrow("size");
   expect(() => parseManifest(wrong((s) => (s.at = built.file.length)))).toThrow("outside");
   expect(() => parseManifest(wrong((s) => (s.id = "dodo call")))).toThrow("named");
 });
@@ -191,6 +251,53 @@ test("the library asks for what is wanted two at a time, nearest first, decodes 
   expect(lib.ready(0)).toBe(true);
   expect(lib.used).toBeLessThanOrEqual(lib.budget);
   expect(lib.stats.evicted).toBeGreaterThan(0);
+});
+
+test("a sound is held two takes at first and one more for each start, and past two its takes give way to a sound not yet held", () => {
+  const root = mkdtempSync(join(tmpdir(), "snark-takes-"));
+  try {
+    const dir = join(root, "core", "creatures", "dodo", "sound");
+    mkdirSync(join(dir, "takes"), { recursive: true });
+    const takes = [0, 1, 2, 3, 4, 5].map((k) => {
+      writeFileSync(join(dir, "takes", `${k}.wav`), writeWav(chirp(0.5 + k * 0.05, 32000), 32000));
+      return { file: `takes/${k}.wav` };
+    });
+    writeFileSync(join(dir, "sounds.json"), JSON.stringify({ sounds: { call: { range: 40, level: -20, takes }, hurt: { range: 40, level: -20, takes } } }));
+    const six = buildSounds(1, root, null)!;
+    const net = new FakeNet([new Uint8Array(0), six.bytes], { latencyMs: 1, bytesPerSecond: 1e8 });
+    const lib = new SoundLibrary({ sounds: six.sounds }, net);
+    const call = lib.index.get("core:dodo/sound/call")!;
+    const hurt = lib.index.get("core:dodo/sound/hurt")!;
+    const p = new SoundPacket();
+    const unloads: number[] = [];
+    let now = 0;
+    const frames = (n: number, wanted: number[]): void => {
+      for (let k = 0; k < n; k++) {
+        now += 16;
+        net.advance(now);
+        p.clear();
+        lib.begin(now, p);
+        for (const s of wanted) lib.want(s, 1);
+        lib.end(p);
+        unloads.push(...p.unloads);
+      }
+    };
+    frames(30, [call]);
+    expect(lib.takes(call)).toBe(2);
+    expect(net.log.filter((l) => l.includes(" ask ")).map((l) => l.split(" ").at(-1))).toEqual(["x2"]);
+    for (let k = 0; k < 9; k++) lib.grow(call);
+    frames(30, [call]);
+    expect(lib.takes(call)).toBe(6);
+    expect(net.log.filter((l) => l.includes(" ask ")).map((l) => l.split(" ").at(-1))).toEqual(["x2", "x4"]);
+    // Two takes of the hurt do not fit beside the six of the call, so the call keeps two and the hurt is held.
+    lib.budget = lib.used + 1000;
+    frames(30, [call, hurt]);
+    expect([lib.takes(call), lib.takes(hurt)]).toEqual([2, 2]);
+    expect(unloads.sort((a, b) => a - b)).toEqual([2, 3, 4, 5].map((k) => lib.first[call]! + k));
+    expect(lib.used).toBeLessThanOrEqual(lib.budget);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("a request that fails is asked again later, one whose bytes are wrong twice is given up, and one nobody wants is cancelled", () => {
@@ -309,6 +416,33 @@ test("forty dodos startled at once are heard as the nearest five, the quietest s
   // Voices end with their sound.
   m.expire(5000);
   expect(m.playing).toBe(0);
+});
+
+test("a voice is moved on the device only when the change is heard: past 2 degrees, 0.5 dB or 5% of its dullness, and where a fade comes to rest", () => {
+  const m = new Mixer();
+  const p = new SoundPacket();
+  const ear = { x: 0, y: 0, z: 0 };
+  const at = [10, 0, 0];
+  const locate = (_e: number, out: number[]): boolean => ((out[0] = at[0]!), (out[1] = at[1]!), (out[2] = at[2]!), true);
+  const follow = (): number[] => {
+    p.clear();
+    m.follow(p, ear, locate);
+    return p.moves.slice();
+  };
+  const serial = m.play(p, ear, 0, 1, 0, 1, 40, KIND_VOCAL, 1, 7, 10, 0, 0, 0, 1, 1, 0, LOOP);
+  expect(follow()).toEqual([]);
+  // A tenth of a metre at ten metres is half a degree.
+  at[2] = 0.1;
+  expect(follow()).toEqual([]);
+  at[2] = 1;
+  expect(follow().length).toBe(MOVE_FIELDS);
+  expect(follow()).toEqual([]);
+  // A small step of a fade is not sent, and where the fade stops its gain is.
+  m.gain(serial, 0.97);
+  expect(follow()).toEqual([]);
+  const rest = follow();
+  expect(rest[1]).toBeCloseTo(0.97 * distanceGain(Math.hypot(10, 1), 40), 6);
+  expect(follow()).toEqual([]);
 });
 
 test("the ground under a foot: the plaza is stone, the pool's low rim sand, the open land grass", () => {
@@ -527,4 +661,56 @@ test("a voice taken over in the frame it was started never reaches the device, w
   expect(p.stops.length).toBe(5);
   apply();
   expect(device.size).toBe(m.playing);
+});
+
+test("a pteranodon is heard flapping once a beat of its flight, twice flying fast, and as it takes off; never on still wings or standing", () => {
+  const flaps = builtSounds(1, false, true);
+  const manifest = parseManifest(JSON.stringify({ version: MANIFEST_VERSION, files: [{ name: "boot", bytes: 0, role: "boot" }, { name: "sounds", bytes: flaps.file.length, role: "sound" }], boot: 0, clipHash: 0, meshes: [], sounds: flaps.sounds }));
+  const net = new FakeNet([new Uint8Array(0), flaps.file], { latencyMs: 1, bytesPerSecond: 1e8 });
+  const ptera = reg.index.get("core:pteranodon")!;
+  const flyer = flyerAnim();
+  const sounds = new Sounds(manifest, net, reg, (k) => (k === ptera ? flyer : null));
+  const lib = sounds.library;
+  const hf = buildProvingHeightfield();
+  const remote = new RemoteSample();
+  const ears = new Ears();
+  const st = new AnimState();
+  let tick = 1000;
+  let now = 0;
+  remote.count = 1;
+  remote.id[0] = 91;
+  remote.kind[0] = ptera;
+  [remote.x[0], remote.y[0], remote.z[0]] = [380, hf.heightAt(380, 380) + 10, 380];
+  st.seed = bodySeed(91);
+  const run = (ticks: number): string[] => {
+    const heard: string[] = [];
+    for (let k = 0; k < ticks; k++) {
+      now += 1000 / 30;
+      tick += 1;
+      net.advance(now);
+      remote.anim[0] = st.pack();
+      remote.cue[0] = st.packCue();
+      remote.tick = tick;
+      ears.starts.length = 0;
+      sounds.frame(ears, now, remote, hf, { x: 377, y: remote.y[0]! + 1.6, z: 380, yaw: 0, pitch: 0 }, { master: 1, effects: 1, ambience: 1, music: 1, interface: 1 });
+      for (const s of ears.starts) heard.push(lib.sounds[[...lib.first].findLastIndex((f) => f <= s[1]!)]!.id);
+    }
+    return heard;
+  };
+  // Standing until its sounds are held, then taking off.
+  run(30);
+  expect(run(30)).toEqual([]);
+  st.mode = MODE_FLYER;
+  st.grounded = false;
+  st.cue = CUE_TAKEOFF;
+  st.cueStart = tick & 255;
+  expect(run(1)).toEqual(["core:pteranodon/sound/flap"]);
+  st.cue = 0;
+  // A beat is 30 ticks: hovering and flying, a flap a beat; flying fast, two; gliding, none.
+  const flapped = (vz: number, pitch: number): number => {
+    st.setMotion(0, vz, 0, pitch);
+    run(2);
+    return run(6 * TICK_RATE).length;
+  };
+  expect([flapped(0, 0), flapped(6, 0), flapped(16, 0), flapped(6, -0.4)]).toEqual([6, 6, 12, 0]);
 });

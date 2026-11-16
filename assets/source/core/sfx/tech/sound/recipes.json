@@ -1,0 +1,754 @@
+{
+  "takes": {
+    "takes/obelisk/moss-pt-26801-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "obelisk",
+      "prompt_id": "v4-26800",
+      "prompt": "A towering ancient alien machine hums with a deep resonant drone and soft shimmering harmonics, steady. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 26801,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-26801.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A towering ancient alien machine hums with a deep resonant drone and soft shimmering harmonics, steady. Close-miked, dry, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "996a1e42569edc4a6383d7eb505711403aedb75a2cb551fc06902925072cca0e",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.27
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1059.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.3,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "000fff182a1d196a7f2ee927daedfe8ca5858881c48c77775e8eed3849f3d03d",
+      "cut": {
+        "source_file": "moss-pt-26801.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/chime/moss-pt-26810-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chime",
+      "prompt_id": "v4-26810",
+      "prompt": "Glassy crystal chimes ring out a shimmering sparkle, four separate chimes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 26810,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-26810.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Glassy crystal chimes ring out a shimmering sparkle, four separate chimes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f29dcfe21e3a7aa6210619d08466dc022668630b66355553c20c168625e52ba8",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.27
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1059.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.3,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "97ff9bf0b8558e09a665b0d2be370df47abbe84e161bf6d21761445ce44ce29c",
+      "cut": {
+        "source_file": "moss-pt-26810.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          345120
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chime/moss-pt-26811-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chime",
+      "prompt_id": "v4-26810",
+      "prompt": "Glassy crystal chimes ring out a shimmering sparkle, four separate chimes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 26811,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-26811.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Glassy crystal chimes ring out a shimmering sparkle, four separate chimes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "67dd1017f82c014db3a21daef22581ad53f5d4f0d56fa0f2a8f088d904bd2e71",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.27
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1059.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.3,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "071715160b9949569d893cb0b0a92718a3ffe5fcaad061b23f3fba64f9cc4f6c",
+      "cut": {
+        "source_file": "moss-pt-26811.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          300720
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/pulse/moss-pt-26820-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "pulse",
+      "prompt_id": "v4-26820",
+      "prompt": "A deep pulse of energy throbs outward with a wobbling whoomp, four separate pulses with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 26820,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-26820.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A deep pulse of energy throbs outward with a wobbling whoomp, four separate pulses with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "610a2d8a3dfddd62e4ec2be4df64c29d58827b7cdeb4496c9c2d01661008dc8b",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.27
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1059.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.3,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c83eaa57e6e05e4d241a34fafcb1731ee351571d96f91b97dda83e4b9ec3e77d",
+      "cut": {
+        "source_file": "moss-pt-26820.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          27841
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/beam/moss-pt-26831-04550.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "beam",
+      "prompt_id": "v4-26830",
+      "prompt": "A teleporter beam: a rising sparkling shimmer and a bright whoosh upward, three separate beams with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 26831,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-26831.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A teleporter beam: a rising sparkling shimmer and a bright whoosh upward, three separate beams with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "0239f88c79b1abd63aab9e3f102fdc4da5365999260262090b6f0e8bf7b387ff",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.27
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1059.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.3,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "bd41a66a55b25b0c355ca326f06159bf23d265b7c1f9c53d2dc5c18bdc1224ba",
+      "cut": {
+        "source_file": "moss-pt-26831.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          216000,
+          331440
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/beam/moss-pt-26831-00555.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "beam",
+      "prompt_id": "v4-26830",
+      "prompt": "A teleporter beam: a rising sparkling shimmer and a bright whoosh upward, three separate beams with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 26831,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-26831.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A teleporter beam: a rising sparkling shimmer and a bright whoosh upward, three separate beams with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "6ef6e6b9253e97c7f417a1041978eb30a2f696ffdc09645a7e3e5d4a98c2ae26",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.27
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1059.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.3,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "bd41a66a55b25b0c355ca326f06159bf23d265b7c1f9c53d2dc5c18bdc1224ba",
+      "cut": {
+        "source_file": "moss-pt-26831.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          24240,
+          108240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/shimmer/moss-pt-26841-06305.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "shimmer",
+      "prompt_id": "v4-26840",
+      "prompt": "A soft magical shimmer, twinkling and sparkling, four separate shimmers with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 26841,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-26841.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A soft magical shimmer, twinkling and sparkling, four separate shimmers with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "a61f6a6fdf05070b698dddd6c7bf371d7313b3174b24d8e4300c73f3dc31b771",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.27
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1059.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.3,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f5f09ca6859c21c0aee0645727d9edfd3647413885c2b5057c97dfc8a98e7c7a",
+      "cut": {
+        "source_file": "moss-pt-26841.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          300240,
+          372000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/shimmer/moss-pt-26841-00305.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "shimmer",
+      "prompt_id": "v4-26840",
+      "prompt": "A soft magical shimmer, twinkling and sparkling, four separate shimmers with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 26841,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-26841.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A soft magical shimmer, twinkling and sparkling, four separate shimmers with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "b65c2dd4dd25ebea76dfda6c70e9b5027669d74b7268b061408dc3a1078a29dc",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.27
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1059.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.3,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f5f09ca6859c21c0aee0645727d9edfd3647413885c2b5057c97dfc8a98e7c7a",
+      "cut": {
+        "source_file": "moss-pt-26841.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          12240,
+          84000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hologram/moss-pt-26850-04150.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hologram",
+      "prompt_id": "v4-26850",
+      "prompt": "A hologram projector flickers on with glitchy digital crackles and a soft hum, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 26850,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-26850.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A hologram projector flickers on with glitchy digital crackles and a soft hum, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e74597503e9b436b174f8d96c3f2fdb69d1adc79125e96ffc687a752df6aca67",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.27
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1059.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.3,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "30e95cffb88e50121d9f07d137e8c73e51570158133831730937f163b8c1a111",
+      "cut": {
+        "source_file": "moss-pt-26850.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          196800,
+          227280
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hologram/moss-pt-26850-00165.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hologram",
+      "prompt_id": "v4-26850",
+      "prompt": "A hologram projector flickers on with glitchy digital crackles and a soft hum, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 26850,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-26850.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A hologram projector flickers on with glitchy digital crackles and a soft hum, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "317a3f3be7088c8fe62c059d3a4f410ef8b798b8c7333b80fe1d092bfb7a12d0",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.27
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1059.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.3,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "30e95cffb88e50121d9f07d137e8c73e51570158133831730937f163b8c1a111",
+      "cut": {
+        "source_file": "moss-pt-26850.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          5520,
+          35281
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    }
+  }
+}

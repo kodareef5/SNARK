@@ -1,0 +1,66 @@
+{
+  "map": "core:los-angeles",
+  "mapHash": 2219525009,
+  "tier": "medium",
+  "seconds": 61.37,
+  "peakResidentMiB": 5296.6,
+  "views": [
+    {
+      "name": "hollywood-boulevard",
+      "frames": 43,
+      "milliseconds": 21244,
+      "eye": [
+        5130,
+        116.84375,
+        3633
+      ],
+      "draws": 1299,
+      "triangles": 1269864,
+      "budget": {
+        "draws": 1024,
+        "triangles": 2000000
+      },
+      "buildMs": 7.57,
+      "dropped": 0,
+      "casterDropped": 0
+    },
+    {
+      "name": "steep-street-innsdale-drive",
+      "frames": 44,
+      "milliseconds": 15374,
+      "eye": [
+        4590,
+        313.6875,
+        6772
+      ],
+      "draws": 791,
+      "triangles": 1062874,
+      "budget": {
+        "draws": 1024,
+        "triangles": 2000000
+      },
+      "buildMs": 4.9,
+      "dropped": 0,
+      "casterDropped": 0
+    },
+    {
+      "name": "flyer-150m",
+      "frames": 36,
+      "milliseconds": 13456,
+      "eye": [
+        5130,
+        264.84375,
+        3633
+      ],
+      "draws": 994,
+      "triangles": 1067324,
+      "budget": {
+        "draws": 1024,
+        "triangles": 2000000
+      },
+      "buildMs": 4.12,
+      "dropped": 0,
+      "casterDropped": 0
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+[
+  {
+    "name": "grass",
+    "draws": 2,
+    "triangles": 47216,
+    "textureBytes": 22020086
+  },
+  {
+    "name": "sand",
+    "draws": 2,
+    "triangles": 47216,
+    "textureBytes": 22020086
+  },
+  {
+    "name": "dirt",
+    "draws": 2,
+    "triangles": 47216,
+    "textureBytes": 22020086
+  },
+  {
+    "name": "mud",
+    "draws": 2,
+    "triangles": 47216,
+    "textureBytes": 22020086
+  },
+  {
+    "name": "rock",
+    "draws": 2,
+    "triangles": 47216,
+    "textureBytes": 22020086
+  },
+  {
+    "name": "gravel",
+    "draws": 2,
+    "triangles": 47216,
+    "textureBytes": 22020086
+  },
+  {
+    "name": "asphalt",
+    "draws": 2,
+    "triangles": 47216,
+    "textureBytes": 22020086
+  },
+  {
+    "name": "paving",
+    "draws": 2,
+    "triangles": 47216,
+    "textureBytes": 22020086
+  },
+  {
+    "name": "concrete",
+    "draws": 3,
+    "triangles": 49268,
+    "textureBytes": 22020086
+  },
+  {
+    "name": "brick",
+    "draws": 3,
+    "triangles": 49268,
+    "textureBytes": 22020086
+  },
+  {
+    "name": "clay",
+    "draws": 3,
+    "triangles": 49268,
+    "textureBytes": 22020086
+  },
+  {
+    "name": "rust",
+    "draws": 3,
+    "triangles": 49268,
+    "textureBytes": 22020086
+  },
+  {
+    "name": "steel",
+    "draws": 3,
+    "triangles": 49268,
+    "textureBytes": 22020086
+  },
+  {
+    "name": "plaster",
+    "draws": 3,
+    "triangles": 49268,
+    "textureBytes": 22020086
+  },
+  {
+    "name": "wood",
+    "draws": 3,
+    "triangles": 49268,
+    "textureBytes": 22020086
+  },
+  {
+    "name": "glass",
+    "draws": 3,
+    "triangles": 49268,
+    "textureBytes": 22020086
+  }
+]

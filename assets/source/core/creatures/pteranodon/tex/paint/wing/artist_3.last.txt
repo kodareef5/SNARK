@@ -1,0 +1,5 @@
+Done. The painter reads the live round-four fuzz and invokes the study’s unchanged builder if layers are missing. Old copies are deleted.
+
+Extras are archived in ignored `superseded/`; no TypeScript remains. Added the “Files” section to [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/paint/wing/REPORT.md).
+
+All seven delivery files match byte for byte across two clean builds. Checks pass. The network and masks remain unchanged; existing mean normalization shifted 13 membrane base pixels by one level, documented in the report.

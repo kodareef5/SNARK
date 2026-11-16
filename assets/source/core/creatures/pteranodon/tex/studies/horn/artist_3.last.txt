@@ -1,0 +1,3 @@
+Tidied as instructed: superseded files archived, `.gitignore` added, and `REPORT.md` updated. Repository files total 3.04 MiB.
+
+The clean rebuild reproduced all ten accepted pictures byte for byte. Existing checks remain unchanged.

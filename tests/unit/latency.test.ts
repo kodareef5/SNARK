@@ -7,7 +7,7 @@ import { EntityView, MAX_VIEW, SentView, VIEW_RING, ViewRing, readViewDelta, wri
 import { Rng } from "../../shared/rng.ts";
 
 function looksFor(n: number): Looks {
-  return { level: new Uint16Array(n), colors: new Uint8Array(n * 6), name: new Array<string>(n).fill(""), look: new Array<Uint8Array | null>(n).fill(null), gear: new Array<Uint16Array | null>(n).fill(null), team: new Uint32Array(n), seat: new Uint32Array(n), span: new Uint32Array(n), grown: new Uint32Array(n) };
+  return { level: new Uint16Array(n), colors: new Uint8Array(n * 6), names: new Map<number, string>(), looks: new Map<number, Uint8Array>(), gears: new Map<number, Uint16Array>(), team: new Uint32Array(n), seat: new Uint32Array(n), span: new Uint32Array(n), grown: new Uint32Array(n) };
 }
 
 /** After a snapshot is read: what the client drew before it and draws now, and the views those were read into. */

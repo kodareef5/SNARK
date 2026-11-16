@@ -136,7 +136,7 @@ test("armor stops most of a blow on the part it covers, is worn by what it stops
   const drec = h.host.records.byPid.get(ents.pid[far]!)!;
   const inv = h.host.items.inv(drec);
   expect([...inv.item.subarray(inv.armor, inv.armor + 5)]).toEqual(["hat", "shirt", "gloves", "pants", "boots"].map((p) => id(`flak_${p}`)));
-  expect([...ents.gear[far]!.subarray(1)]).toEqual([...inv.item.subarray(inv.armor, inv.armor + 5)]);
+  expect([...ents.gears.get(far)!.subarray(1)]).toEqual([...inv.item.subarray(inv.armor, inv.armor + 5)]);
   expect(Math.hypot(ents.x[far]! - ents.x[h.ent(s)]!, ents.z[far]! - ents.z[h.ent(s)]!)).toBeCloseTo(3, 1);
   // The console's dummy stands 3 m off, so the survivor steps up to it.
   h.say(s, `tp ${ents.x[far]!.toFixed(3)} ${(ents.z[far]! - APART).toFixed(3)}`);

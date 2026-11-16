@@ -194,7 +194,7 @@ test("every piece content means to be walked onto still is, and every piece mean
     if (d?.type !== "structure" || d.id.startsWith("test:") || (hulls && hulls.start[k + 1]! > hulls.start[k]!)) continue;
     // Fixed assemblies can have a low walking surface below a high guard or ceiling. Their half-height is not a
     // single climbable top: Koru's complete decks, stairs and gangway are walked in tests/integration/koru.test.ts.
-    if (d.class === "static" && reg.parts.start[k + 1]! - reg.parts.start[k]! > 1) continue;
+    if (d.id.startsWith("core:koru_") && reg.parts.start[k + 1]! - reg.parts.start[k]! > 1) continue;
     const role = reg.role[k]!;
     const w = world();
     if (!joined.includes(role)) {

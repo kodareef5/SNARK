@@ -1,0 +1,51 @@
+{
+  "sounds": {
+    "call": {
+      "range": 60, "level": -20, "vary": 0.6,
+      "takes": [
+        {"file": "takes/call/moss-pt-7850-05920.wav", "from": "moss", "start": 0.05, "end": 1.21},
+        {"file": "takes/call/moss-pt-7851-00300.wav", "from": "moss", "start": 0.05, "end": 1.355},
+        {"file": "takes/call/moss-pt-7850-01720.wav", "from": "moss", "start": 0.05, "end": 1.12},
+        {"file": "takes/call/moss-pt-7851-02830.wav", "from": "moss", "start": 0.05, "end": 1.545},
+        {"file": "takes/call/moss-pt-7850-00135.wav", "from": "moss", "start": 0.05, "end": 1.285},
+        {"file": "takes/call/moss-pt-7851-05660.wav", "from": "moss", "start": 0.05, "end": 2.045}
+      ]
+    },
+    "startled": {
+      "range": 80, "level": -16, "vary": 0.5,
+      "takes": [
+        {"file": "takes/startled/moss-pt-7860-00000.wav", "from": "moss", "start": 0.0, "end": 2.98},
+        {"file": "takes/startled/moss-pt-7860-04445.wav", "from": "moss", "start": 0.05, "end": 2.985}
+      ]
+    },
+    "hurt": {
+      "range": 50, "level": -18, "vary": 0.5,
+      "takes": [
+        {"file": "takes/hurt/moss-pt-7870-03980.wav", "from": "moss", "start": 0.05, "end": 1.545},
+        {"file": "takes/hurt/moss-pt-7870-06020.wav", "from": "moss", "start": 0.05, "end": 1.665}
+      ]
+    },
+    "death": {
+      "range": 50, "level": -18, "vary": 0.3,
+      "takes": [
+        {"file": "takes/death/moss-pt-7880-00080.wav", "from": "moss", "start": 0.05, "end": 2.49},
+        {"file": "takes/death/moss-pt-7880-04100.wav", "from": "moss", "start": 0.05, "end": 2.27}
+      ]
+    },
+    "attack": {
+      "range": 40, "level": -16, "vary": 0.5,
+      "takes": [
+        {"file": "takes/attack/moss-pt-7890-02875.wav", "from": "moss", "start": 0.05, "end": 0.85},
+        {"file": "takes/attack/moss-pt-7890-04730.wav", "from": "moss", "start": 0.05, "end": 1.025}
+      ]
+    },
+    "step": {
+      "range": 30, "level": -24, "vary": 0.6,
+      "takes": [
+        {"file": "takes/step/moss-pt-7900-05987.wav", "from": "moss", "start": 0.05, "end": 0.518},
+        {"file": "takes/step/moss-pt-7900-06987.wav", "from": "moss", "start": 0.05, "end": 0.688},
+        {"file": "takes/step/moss-pt-7900-00987.wav", "from": "moss", "start": 0.05, "end": 0.553}
+      ]
+    }
+  }
+}

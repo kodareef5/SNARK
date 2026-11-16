@@ -300,6 +300,381 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/call/moss-pt-6780-05110.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6780",
+      "prompt": "A large flying reptile gives raspy screeching cries like a giant seabird, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6780,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6780.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile gives raspy screeching cries like a giant seabird, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "7130e484e2ecafa8a9e148d88367400793438ce2f52523f3e17d2c9e99dab06c",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "905c3378f6af97777acfacd8c5c2e1c9fc566516d6d4aa20a6363e56000ee5f6",
+      "cut": {
+        "source_file": "moss-pt-6780.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          242880,
+          346560
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6781-00240.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6780",
+      "prompt": "A large flying reptile gives raspy screeching cries like a giant seabird, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6781,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6781.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile gives raspy screeching cries like a giant seabird, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "963f84c99869a971196f9a61c426a8fcdc88f4f7ae645ff0d28c39a8156b606a",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a4418b8442028d40c8b793ee8a5c8ad13c1ed9f898ca92236f498893acafa9b8",
+      "cut": {
+        "source_file": "moss-pt-6781.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          9120,
+          73440
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6780-00240.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6780",
+      "prompt": "A large flying reptile gives raspy screeching cries like a giant seabird, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6780,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6780.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile gives raspy screeching cries like a giant seabird, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "a7fb875ce6e0e119aae00f9b77fc06768cb49058233b8d757f31793275b0ff9d",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "905c3378f6af97777acfacd8c5c2e1c9fc566516d6d4aa20a6363e56000ee5f6",
+      "cut": {
+        "source_file": "moss-pt-6780.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          9120,
+          137040
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6781-03490.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6780",
+      "prompt": "A large flying reptile gives raspy screeching cries like a giant seabird, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6781,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6781.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile gives raspy screeching cries like a giant seabird, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "65206644c15611486804ae77e46f461406ca10f2b56fc2d53b554b5bddfc1125",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a4418b8442028d40c8b793ee8a5c8ad13c1ed9f898ca92236f498893acafa9b8",
+      "cut": {
+        "source_file": "moss-pt-6781.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          165120,
+          231600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6781-06305.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6780",
+      "prompt": "A large flying reptile gives raspy screeching cries like a giant seabird, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6781,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6781.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile gives raspy screeching cries like a giant seabird, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "5d9c274a3800bd98708c3a38f7b753824436511442e89f62625bea9b447caf96",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a4418b8442028d40c8b793ee8a5c8ad13c1ed9f898ca92236f498893acafa9b8",
+      "cut": {
+        "source_file": "moss-pt-6781.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          300240,
+          372720
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/startled/moss-pt-3080-04120.wav": {
       "model": "moss",
       "backend": "torch",
@@ -450,6 +825,381 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/startled/moss-pt-6790-00185.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6790",
+      "prompt": "A large flying reptile shrieks a loud alarmed squawk, three separate shrieks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6790,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6790.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile shrieks a loud alarmed squawk, three separate shrieks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "00970de785c59969bafe40e0c3658e2f893c9151af0c1ff3aba456ba346c6e86",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "d7a3a985941d2551e08865a423415d3ebc50512b6aebcdf33e6ba782c8b7b0b2",
+      "cut": {
+        "source_file": "moss-pt-6790.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          6480,
+          78240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6791-00080.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6790",
+      "prompt": "A large flying reptile shrieks a loud alarmed squawk, three separate shrieks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6791,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6791.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile shrieks a loud alarmed squawk, three separate shrieks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.1,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f50bd1726f34164a601e931925d85d65a2e2e47a77325b9ee0e4b65829614f59",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "cf5a78237f4a3f41cc85329ee008b24128dba7a3b6c3baacf417bc3afbcb2b15",
+      "cut": {
+        "source_file": "moss-pt-6791.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          1440,
+          100080
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6790-04240.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6790",
+      "prompt": "A large flying reptile shrieks a loud alarmed squawk, three separate shrieks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6790,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6790.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile shrieks a loud alarmed squawk, three separate shrieks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "6abf06a0da30fea39ba1b4b090f29f0fc2b09eddcd9fb68f78340aa3638a0bd4",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "d7a3a985941d2551e08865a423415d3ebc50512b6aebcdf33e6ba782c8b7b0b2",
+      "cut": {
+        "source_file": "moss-pt-6790.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          201120,
+          276240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6791-06380.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6790",
+      "prompt": "A large flying reptile shrieks a loud alarmed squawk, three separate shrieks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6791,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6791.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile shrieks a loud alarmed squawk, three separate shrieks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.1,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2ddb3872ff173a49e643fd039a8fe62c6398682d3c86ba175280277c417b4b9b",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "cf5a78237f4a3f41cc85329ee008b24128dba7a3b6c3baacf417bc3afbcb2b15",
+      "cut": {
+        "source_file": "moss-pt-6791.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          303840,
+          361680
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6791-04110.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6790",
+      "prompt": "A large flying reptile shrieks a loud alarmed squawk, three separate shrieks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6791,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6791.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile shrieks a loud alarmed squawk, three separate shrieks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.1,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ce689e852747a55b06ed623ba6eddac88c5e8aa8cb26b1eca46c9a207216a4b2",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "cf5a78237f4a3f41cc85329ee008b24128dba7a3b6c3baacf417bc3afbcb2b15",
+      "cut": {
+        "source_file": "moss-pt-6791.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          194880,
+          295200
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/hurt/moss-pt-3090-02155.wav": {
       "model": "moss",
       "backend": "torch",
@@ -594,6 +1344,231 @@
         "frames": [
           0,
           47041
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6810-06650.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6810",
+      "prompt": "A large flying reptile squawks in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6810,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6810.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile squawks in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "3f8f2f1027d777f53a59b6453aba2fe0334ab0227b18332c5669ea9815b4b21c",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f6b6f325b6f033ec920266f61e1941e915b13885c9c3294a94a30d8eb70cfe27",
+      "cut": {
+        "source_file": "moss-pt-6810.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          316800,
+          371520
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6810-04405.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6810",
+      "prompt": "A large flying reptile squawks in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6810,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6810.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile squawks in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f7af092c3f698cbd9d891d9cce4e06d926ee909d70044e9d9de594cb0c25ff8f",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f6b6f325b6f033ec920266f61e1941e915b13885c9c3294a94a30d8eb70cfe27",
+      "cut": {
+        "source_file": "moss-pt-6810.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          209040,
+          269520
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6810-02335.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6810",
+      "prompt": "A large flying reptile squawks in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6810,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6810.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile squawks in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "eca2f835728aa0772302b4dedcf08900430d21f3801736a324fb398d54909de6",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f6b6f325b6f033ec920266f61e1941e915b13885c9c3294a94a30d8eb70cfe27",
+      "cut": {
+        "source_file": "moss-pt-6810.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          109680,
+          166800
         ],
         "rate": 48000,
         "stored_as": "mono PCM_24",
@@ -900,6 +1875,381 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/attack/moss-pt-6801-00390.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6800",
+      "prompt": "A large flying reptile snaps its long beak shut with a hiss, five separate snaps with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6801,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6801.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile snaps its long beak shut with a hiss, five separate snaps with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2cd41789f968003e564113ff49d58c8c6ce2e305afef39ad314b4c548b352dfa",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "474b715775857f32cccd721f971962b4b1285a7b58ff3e76503228363512088d",
+      "cut": {
+        "source_file": "moss-pt-6801.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          16320,
+          37920
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6800-06035.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6800",
+      "prompt": "A large flying reptile snaps its long beak shut with a hiss, five separate snaps with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6800,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6800.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile snaps its long beak shut with a hiss, five separate snaps with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "03bc0ac5133236fe9a7fe1bb5f91e71c09030b70d20d58901581e1bc13602528",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "61453caefbb71811706bdbaac1298c8b3768b51c3f2d8b629cb2f95d7ce57f06",
+      "cut": {
+        "source_file": "moss-pt-6800.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          287280,
+          304320
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6801-03410.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6800",
+      "prompt": "A large flying reptile snaps its long beak shut with a hiss, five separate snaps with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6801,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6801.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile snaps its long beak shut with a hiss, five separate snaps with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "3b460acc3c8c1dab8e3e0c05eb3cb0933dce609ff5fe43af5e423845616571ac",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "474b715775857f32cccd721f971962b4b1285a7b58ff3e76503228363512088d",
+      "cut": {
+        "source_file": "moss-pt-6801.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          161280,
+          181440
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6800-00665.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6800",
+      "prompt": "A large flying reptile snaps its long beak shut with a hiss, five separate snaps with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6800,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6800.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile snaps its long beak shut with a hiss, five separate snaps with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f0dd6133aee3609b0bb665194fca53abca90c96d7041e8951bac33677ca2eaf0",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "61453caefbb71811706bdbaac1298c8b3768b51c3f2d8b629cb2f95d7ce57f06",
+      "cut": {
+        "source_file": "moss-pt-6800.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          29520,
+          46561
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6801-07080.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6800",
+      "prompt": "A large flying reptile snaps its long beak shut with a hiss, five separate snaps with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6801,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6801.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile snaps its long beak shut with a hiss, five separate snaps with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "321e94cff6740ecaf1853525875c34a412f85f555cb7ec3f7203637af1f15fa3",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "474b715775857f32cccd721f971962b4b1285a7b58ff3e76503228363512088d",
+      "cut": {
+        "source_file": "moss-pt-6801.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          337440,
+          365760
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/step/moss-pt-3120-00277.wav": {
       "model": "moss",
       "backend": "torch",
@@ -969,6 +2319,231 @@
         "frames": [
           10896,
           43200
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-6821-04622.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-6820",
+      "prompt": "Huge leathery wings flapping: deep slow whooshing wingbeats, several separate takeoffs. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6821,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6821.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Huge leathery wings flapping: deep slow whooshing wingbeats, several separate takeoffs. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.2,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "31fc353723873391578610560767f0f4f2a8e1fda778180f7b4435b2f9081532",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "42bd21c1f670dffd7d7d7f308bbaee2c05150450fe895d2b5a52571cd423fd3a",
+      "cut": {
+        "source_file": "moss-pt-6821.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          219456,
+          249120
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-6821-03172.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-6820",
+      "prompt": "Huge leathery wings flapping: deep slow whooshing wingbeats, several separate takeoffs. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6821,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6821.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Huge leathery wings flapping: deep slow whooshing wingbeats, several separate takeoffs. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.2,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e63b57d9f938cb911621af78cfbd39762e2aa7a87f480235d7da8c24ced4cdb2",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "42bd21c1f670dffd7d7d7f308bbaee2c05150450fe895d2b5a52571cd423fd3a",
+      "cut": {
+        "source_file": "moss-pt-6821.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          149856,
+          178560
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-6821-00147.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-6820",
+      "prompt": "Huge leathery wings flapping: deep slow whooshing wingbeats, several separate takeoffs. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6821,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6821.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Huge leathery wings flapping: deep slow whooshing wingbeats, several separate takeoffs. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.2,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e9039ca1ef68b7c5ff6bccf88b998df54a3da7917c2991f45fa238ea38746cae",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "42bd21c1f670dffd7d7d7f308bbaee2c05150450fe895d2b5a52571cd423fd3a",
+      "cut": {
+        "source_file": "moss-pt-6821.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          4655,
+          36000
         ],
         "rate": 48000,
         "stored_as": "mono PCM_24",
@@ -1119,6 +2694,606 @@
         "frames": [
           7200,
           44160
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6831-05900.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6830",
+      "prompt": "A large flying reptile dives screeching: sharp rasping screeches with wingbeats, four separate dives with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6831,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6831.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile dives screeching: sharp rasping screeches with wingbeats, four separate dives with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "d79f30ce359d6b9ca2ae53f61bdd9a4ee96f665412eb8d91a49559108a2b469a",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "eb9481b4b14bdf05936ac51f47d18cc35d2e9daf4f09fed196e0c515dabfd361",
+      "cut": {
+        "source_file": "moss-pt-6831.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          280800,
+          366000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6830-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6830",
+      "prompt": "A large flying reptile dives screeching: sharp rasping screeches with wingbeats, four separate dives with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6830,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6830.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile dives screeching: sharp rasping screeches with wingbeats, four separate dives with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "3375c8ca28f09a023fed3e0a08244c7807f806ca22d30905dc620c7a6c68af04",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "3733501d0159d5c743d42300139c8afd77a5022515e67bebd223a33065f4823b",
+      "cut": {
+        "source_file": "moss-pt-6830.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          57840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6830-04115.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6830",
+      "prompt": "A large flying reptile dives screeching: sharp rasping screeches with wingbeats, four separate dives with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6830,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6830.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile dives screeching: sharp rasping screeches with wingbeats, four separate dives with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "91a16921751f31703add4ed7ecd5db12b200d8614e853f9f4740d3198d4a467d",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "3733501d0159d5c743d42300139c8afd77a5022515e67bebd223a33065f4823b",
+      "cut": {
+        "source_file": "moss-pt-6830.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          195120,
+          256320
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6831-00195.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6830",
+      "prompt": "A large flying reptile dives screeching: sharp rasping screeches with wingbeats, four separate dives with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6831,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6831.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile dives screeching: sharp rasping screeches with wingbeats, four separate dives with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "a032c42ccf6bd4b4bae919866579bb0cc880c043712e97fb66a1bf75d5a886d0",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "eb9481b4b14bdf05936ac51f47d18cc35d2e9daf4f09fed196e0c515dabfd361",
+      "cut": {
+        "source_file": "moss-pt-6831.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          6960,
+          76320
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6830-01990.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6830",
+      "prompt": "A large flying reptile dives screeching: sharp rasping screeches with wingbeats, four separate dives with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6830,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6830.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile dives screeching: sharp rasping screeches with wingbeats, four separate dives with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "4128571866cd36c84de5d0065ca17bcf2f4b0f8d4918d33271f32f96cc8d58f8",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "3733501d0159d5c743d42300139c8afd77a5022515e67bebd223a33065f4823b",
+      "cut": {
+        "source_file": "moss-pt-6830.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          93120,
+          165120
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6831-03825.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6830",
+      "prompt": "A large flying reptile dives screeching: sharp rasping screeches with wingbeats, four separate dives with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6831,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6831.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile dives screeching: sharp rasping screeches with wingbeats, four separate dives with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "510adbde7198ca9af8f446ce0ac454fa3139025a6d07fbb365481dc6201b143c",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "eb9481b4b14bdf05936ac51f47d18cc35d2e9daf4f09fed196e0c515dabfd361",
+      "cut": {
+        "source_file": "moss-pt-6831.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          181200,
+          252000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/growl/moss-pt-6840-04675.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "growl",
+      "prompt_id": "v2-6840",
+      "prompt": "A large flying reptile clacks its beak and hisses, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6840,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6840.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile clacks its beak and hisses, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "484d3893d03f6a81a48266fea8b820f8c5307c23e41965a6769f42aa55fc2d44",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b1ad691d08dd800c2e278971cd8613f42c423dca94fad01f5ad34feb4bfc65e8",
+      "cut": {
+        "source_file": "moss-pt-6840.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          222000,
+          269520
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/growl/moss-pt-6840-02525.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "growl",
+      "prompt_id": "v2-6840",
+      "prompt": "A large flying reptile clacks its beak and hisses, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6840,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6840.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large flying reptile clacks its beak and hisses, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "4708c22d679471774b1e19cd31021abdbfe19657abfc6ab9b70c08405c82b120",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b1ad691d08dd800c2e278971cd8613f42c423dca94fad01f5ad34feb4bfc65e8",
+      "cut": {
+        "source_file": "moss-pt-6840.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          118800,
+          163680
         ],
         "rate": 48000,
         "stored_as": "mono PCM_24",

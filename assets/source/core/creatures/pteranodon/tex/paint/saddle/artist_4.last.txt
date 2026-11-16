@@ -1,0 +1,5 @@
+Fixed `paint.py` to measure the published layout and bakes through `surface.py`, without Blender or modeller code.
+
+Rebuilt all 22 pieces and inspected all four requested game views. The accepted materials remain intact; white strap patches are gone. Two clean builds reproduced all six files byte for byte.
+
+Updated the [report and Files section](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/paint/saddle/REPORT.md).

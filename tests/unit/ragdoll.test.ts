@@ -322,7 +322,7 @@ test("a body lies the same, to the bit, for a client that saw it fall, one that 
     expect([id, Array.from(a.solved.pos), Array.from(a.solved.rot)]).toEqual([id, Array.from(b.solved.pos), Array.from(b.solved.rot)]);
     // The server lays it from what it sends and steps it a tick at a time, as the server's Corpses does.
     const pose = new Solved(rigs.get(id)!.bones);
-    const fall = new Fall(layCorpse(anims[kind]!, out, wireX(x), wireY(hf.heightAt(x, z)), wireX(z), wireYaw(yaw), 1, pose)!);
+    const fall = new Fall(layCorpse(anims[kind]!, out, false, wireX(x), wireY(hf.heightAt(x, z)), wireX(z), wireYaw(yaw), 1, pose)!);
     while (!fall.still) fall.tick(world);
     fall.ragdoll.pose(pose);
     expect([id, Array.from(pose.pos), Array.from(pose.rot)]).toEqual([id, Array.from(b.solved.pos), Array.from(b.solved.rot)]);
@@ -381,7 +381,7 @@ test("a body sent falling is drawn where each sample has it, is not landed by a 
   expect([c.fall!.still, d.falling, d.fall!.still]).toEqual([true, false, true]);
   expect([Array.from(c.solved.pos), Array.from(c.solved.rot)]).toEqual([Array.from(d.solved.pos), Array.from(d.solved.rot)]);
   const pose = new Solved(rigs.get("core:raptor")!.bones);
-  const fall = new Fall(layCorpse(anims[kind]!, false, wireX(x), ground, wireX(z), wireYaw(yaw), 1, pose)!);
+  const fall = new Fall(layCorpse(anims[kind]!, false, false, wireX(x), ground, wireX(z), wireYaw(yaw), 1, pose)!);
   while (!fall.still) fall.tick(world);
   fall.ragdoll.pose(pose);
   expect([Array.from(pose.pos), Array.from(pose.rot)]).toEqual([Array.from(d.solved.pos), Array.from(d.solved.rot)]);

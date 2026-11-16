@@ -4,8 +4,10 @@ import { KEY_CONSOLE_INPUT, KEY_CONSOLE_ROW } from "../../client/core/ui/console
 import { KEY_CHAT_INPUT, KEY_CHAT_ROW, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
 import { KEY_BANNER, KEY_CROSS, KEY_PROMPT, KEY_READOUT, KEY_STATUS, KEY_TALKER, KEY_VITAL, KEY_VOICE } from "../../client/core/ui/hud.ts";
 import { KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
-import { KEY_SETTINGS_MIC } from "../../client/core/ui/settings.ts";
-import { BTN_MELEE } from "../../shared/sim/character.ts";
+import { KEY_SETTINGS_MIC, KEY_SETTINGS_TAB } from "../../client/core/ui/settings.ts";
+import { KEY_MENU_OPEN, KEY_MENU_RESUME } from "../../client/core/ui/menu.ts";
+import { BTN_JUMP, BTN_MELEE } from "../../shared/sim/character.ts";
+import { RESULT_OK } from "../../shared/net/protocol.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
@@ -26,9 +28,39 @@ function consoleRows(app: App): string[] {
   return out;
 }
 
+test("opening the menu releases held movement and attacks until a deliberate resume", () => {
+  const h = new Harness();
+  const app = client(h, "menu");
+  const run = (ms: number) => h.run(ms, (now) => app.frame(now, 1280, 720));
+  run(500);
+  app.key("KeyW", true);
+  app.mouseButton(0, true);
+  run(200);
+  app.pointer(0, KEY_MENU_OPEN, 0, 0, 0);
+  expect(app.controls.buttons).toBe(0);
+  expect(app.controls.moveZ).toBe(0);
+  run(500);
+  const z = app.session.own.z;
+  app.key("KeyW", true);
+  app.key("KeyR", true);
+  app.mouseButton(0, true);
+  app.look(200, 100);
+  run(500);
+  expect(app.session.own.z).toBe(z);
+  expect(app.controls.buttons).toBe(0);
+  expect(app.controls.yaw).toBe(0);
+  app.pointer(0, KEY_MENU_RESUME, 0, 0, 0);
+  run(200);
+  expect(app.controls.moveZ).toBe(0);
+  app.key("KeyW", true);
+  run(500);
+  expect(app.session.own.z).toBeGreaterThan(z);
+});
+
 test("a headless client boots, draws, walks, and its interface says where it is", () => {
   const h = new Harness();
   const app = client(h, "ada");
+  app.ui.settings.diagnostics = true;
   expect(app.frame(0, 1280, 720)).toBeNull();
   expect(app.ui.frame.find(KEY_STATUS)!.text).toBe("connecting");
   let packet = null;
@@ -398,7 +430,9 @@ test("the talk key with Alt is a whisper and with Shift a yell; set to switch, o
   expect(volumes).toEqual([1, 0.5]);
   app.key("KeyO", true);
   run(50);
-  expect(app.ui.frame.find(KEY_SETTINGS_MIC + 1)!.value).toBeCloseTo(1 + (20 * Math.log10(0.25)) / 60, 5);
+  app.pointer(0, KEY_SETTINGS_TAB + 1, 0, 0, 0);
+  run(50);
+  expect(Array.from({length:16},(_,i)=>app.ui.frame.find(KEY_SETTINGS_MIC+1+i)!).filter(n=>n.alpha>.5 && !n.interactive).length).toBe(13);
 });
 
 test("the melee key reaches the controls through the whole client, and F does not", () => {
@@ -410,4 +444,82 @@ test("the melee key reaches the controls through the whole client, and F does no
   app.key("KeyG", false);
   app.key("KeyF", true);
   expect(app.controls.buttons & BTN_MELEE).toBe(0);
+});
+
+test("controller releases survive an inventory screen, and hiding the minimap stops its image work", () => {
+  const h = new Harness(), app = client(h,"hud-map");
+  const run = (ms:number) => h.run(ms,now=>app.frame(now,1280,720));
+  run(500);
+  const pad={connected:true,mapping:"standard",axes:[0,0,0,0],buttons:Array.from({length:17},()=>({pressed:false,value:0}))};
+  pad.buttons[7]!.pressed=true; app.gamepads([pad],0);
+  expect(app.controls.buttons).not.toBe(0);
+  app.key("KeyI",true); app.gamepads([pad],16);
+  expect(app.ui.inventory.open).toBe(true); expect(app.controls.buttons).toBe(0);
+  app.key("KeyI",true); app.gamepads([pad],32);
+  expect(app.controls.buttons).toBe(0);
+  pad.buttons[7]!.pressed=false; app.gamepads([pad],48);
+  pad.buttons[7]!.pressed=true; app.gamepads([pad],64);
+  expect(app.controls.buttons).not.toBe(0); app.gamepads([],80); expect(app.controls.buttons).toBe(0);
+  const chart=app.hud.chart!;
+  app.key("KeyL",true); run(100); const version=chart.mini.image.version;
+  app.key("KeyW",true); run(500); app.key("KeyW",false);
+  expect(chart.mini.image.version).toBe(version);
+  app.key("KeyL",true); run(100); expect(chart.mini.image.version).toBeGreaterThan(version);
+  app.key("KeyH",true); const zoom=chart.miniZoom;
+  app.key("Equal",true); expect(chart.miniZoom).toBe(Math.min(3,zoom+1));
+  expect(app.ui.settings.minimapZoom).toBe(chart.miniZoom);
+  app.key("KeyH",false); expect(app.ui.wantsPointerLock).toBe(true);
+});
+
+test("Leave disconnects deliberately and Reconnect asks the page to reload once through its existing identity path",()=>{
+  const h=new Harness(),app=client(h,"hud-return");
+  h.run(500,now=>app.frame(now,1280,720));
+  let reloads=0;
+  app.page={origin:"http://localhost:8788",protocol:"http:",hostname:"localhost",go(){},arrived(){},reload(){reloads++;},cluster:async()=>({world:0,name:"",url:"",port:8788,servers:[]})};
+  app.key("Escape",true); app.frame(600,1280,720);
+  app.pointer(0,5405,0,0,2); expect(app.session.state).toBe("active");
+  app.pointer(0,5405,0,0,0); app.frame(620,1280,720);
+  expect(app.session.state).toBe("closed"); expect(app.ui.frame.find(KEY_MENU_RESUME)!.text).toBe("Reconnect");
+  app.pointer(0,KEY_MENU_RESUME,0,0,0); app.frame(640,1280,720); app.frame(660,1280,720);
+  expect(reloads).toBe(1); expect(app.session.name).toBe("hud-return");
+});
+
+test("a controller drives a car: the left stick throttles and steers, A holds the brake, and Y gets out", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const app = client(h, "pad-driver");
+  const pad = { connected: true, mapping: "standard", axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+  const run = (ms: number) => h.run(ms, (now) => { app.gamepads([pad], now); app.frame(now, 1280, 720); });
+  run(500);
+  const s = app.session;
+  s.text("enablecheats");
+  run(300);
+  const g = flatGround(h, 60, 60), x = g.x + 30, z = g.z + 10;
+  s.text(`tp ${x + 1.6} ${z + 0.12}`);
+  run(500);
+  const me = h.client(s)!;
+  const car = h.host.spawnVehicle("core:compact", x, z, h.host.records.byPid.get(me.pid)!.team, 0);
+  expect(h.host.urban.mount(me, car)).toBe(RESULT_OK);
+  run(800);
+  expect(s.driving).toBe(car);
+  const ents = h.world.ents, yaw = ents.vehicleYaw[ents.vrow[car]!]!;
+  pad.axes[1] = -1;
+  run(2000);
+  expect(app.hud.vehicle!.speed).toBeGreaterThan(3);
+  expect(Math.hypot(ents.x[car]! - x, ents.z[car]! - z)).toBeGreaterThan(3);
+  pad.axes[0] = 1;
+  run(1000);
+  expect(Math.abs(ents.vehicleYaw[ents.vrow[car]!]! - yaw)).toBeGreaterThan(0.2);
+  pad.axes[0] = pad.axes[1] = 0;
+  pad.buttons[0]!.pressed = true;
+  run(100);
+  expect(app.controls.buttons & BTN_JUMP).toBe(BTN_JUMP);
+  expect(app.hud.vehicle!.handbrake).toBe(true);
+  pad.buttons[0]!.pressed = false;
+  run(2000);
+  pad.buttons[3]!.pressed = true;
+  run(100);
+  pad.buttons[3]!.pressed = false;
+  run(800);
+  expect(s.driving).toBe(-1);
+  h.host.shutdown();
 });

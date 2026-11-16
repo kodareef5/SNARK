@@ -1,0 +1,66 @@
+{
+  "map": "core:las-vegas",
+  "mapHash": 91454379,
+  "tier": "medium",
+  "seconds": 62.79,
+  "peakResidentMiB": 4900.9,
+  "views": [
+    {
+      "name": "the-boulevard-north-from-harmon",
+      "frames": 55,
+      "milliseconds": 18852,
+      "eye": [
+        4136,
+        645.0234375,
+        3509
+      ],
+      "draws": 696,
+      "triangles": 1233284,
+      "budget": {
+        "draws": 1024,
+        "triangles": 2000000
+      },
+      "buildMs": 2.18,
+      "dropped": 0,
+      "casterDropped": 0
+    },
+    {
+      "name": "welcome-sign",
+      "frames": 36,
+      "milliseconds": 12459,
+      "eye": [
+        4136,
+        664.859375,
+        370
+      ],
+      "draws": 522,
+      "triangles": 571284,
+      "budget": {
+        "draws": 1024,
+        "triangles": 2000000
+      },
+      "buildMs": 0.96,
+      "dropped": 0,
+      "casterDropped": 0
+    },
+    {
+      "name": "flyer-150m",
+      "frames": 35,
+      "milliseconds": 20906,
+      "eye": [
+        4136,
+        793.0234375,
+        3509
+      ],
+      "draws": 693,
+      "triangles": 1251234,
+      "budget": {
+        "draws": 1024,
+        "triangles": 2000000
+      },
+      "buildMs": 2.47,
+      "dropped": 0,
+      "casterDropped": 0
+    }
+  ]
+}

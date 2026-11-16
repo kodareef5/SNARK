@@ -1,0 +1,28 @@
+{
+  "map": "core:las-vegas",
+  "mapHash": 91454379,
+  "tier": "lowpoly",
+  "seconds": 6.65,
+  "peakResidentMiB": 2625.8,
+  "views": [
+    {
+      "name": "flyer-150m",
+      "frames": 8,
+      "milliseconds": 3460,
+      "eye": [
+        4136,
+        793.0234375,
+        3509
+      ],
+      "draws": 612,
+      "triangles": 964374,
+      "budget": {
+        "draws": 2048,
+        "triangles": 2000000
+      },
+      "buildMs": 2.12,
+      "dropped": 0,
+      "casterDropped": 0
+    }
+  ]
+}

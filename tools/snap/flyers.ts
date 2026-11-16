@@ -1,10 +1,11 @@
 // Pictures of wild pteranodons where the server has flown them (planning/reference/flyers-plan.md, FL3), drawn by snap's
 // renderer: 100 put down as tools/bench/flyers.ts puts them, left `--minutes` (2 by default), then seen from each camera of
 // `--views` (x, y over the ground, z, yaw, pitch, in metres and degrees, semicolons between), or without it from two cameras
-// on one in the air near the middle of the rest: from 30 m behind it and above, and from open ground looking up. Until the
-// art replaces it, a pteranodon is a grey box.
+// on one in the air near the middle of the rest: from 30 m behind it and above, and from open ground looking up. With
+// --beach none are put down: the spawner stocks the map's spawn regions as a running server does, the proving ground's
+// pool beach among them, and the pictures are of the pteranodons it put there. --graphics TIER draws textured.
 //
-//   bun tools/snap/flyers.ts [--map FILE] [--at X,Z] [--minutes N] [--views "x,y,z,yaw,pitch;..."] [--out DIR]
+//   bun tools/snap/flyers.ts [--map FILE] [--at X,Z] [--minutes N] [--beach] [--graphics TIER] [--views "x,y,z,yaw,pitch;..."] [--out DIR]
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -14,7 +15,9 @@ import { PROVING_POOL } from "../../shared/world/proving.ts";
 import { openSky } from "../../server/behavior.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
 import { flock, watched } from "../../tests/fixtures/flyers.ts";
-import { provingView } from "../snap.ts";
+import { tierOf } from "../../client/core/assets/tiers.ts";
+import { provingView, settle } from "../snap.ts";
+import { gameFiles } from "./files.ts";
 import { encodePng } from "./png.ts";
 
 const args = process.argv.slice(2);
@@ -31,14 +34,20 @@ const out = resolve(arg("out") ?? "artifacts/flyers");
 const [w, h] = (arg("size") ?? "960x540").split("x").map(Number) as [number, number];
 
 // The server's flight.
-const { h: harness } = watched([[cx, cz]], { ...(bytes ? { map: bytes as Uint8Array<ArrayBuffer> } : {}), wakeRadius: 5 });
-const list = flock(harness, 100, (rng) => {
-  const a = rng.float() * Math.PI * 2;
-  const d = 120 * Math.sqrt(rng.float());
-  return [cx + Math.sin(a) * d, cz + Math.cos(a) * d];
-});
+const beach = args.includes("--beach");
+const { h: harness } = watched([[cx, cz]], { ...(bytes ? { map: bytes as Uint8Array<ArrayBuffer> } : {}), wakeRadius: 5, ...(beach ? { wild: true } : {}) });
+const list = beach
+  ? []
+  : flock(harness, 100, (rng) => {
+      const a = rng.float() * Math.PI * 2;
+      const d = 120 * Math.sqrt(rng.float());
+      return [cx + Math.sin(a) * d, cz + Math.cos(a) * d];
+    });
 harness.run(minutes * 60 * 1000);
 const ents = harness.world.ents;
+const ptera = harness.reg.index.get("core:pteranodon")!;
+if (beach) for (let e = 0; e < ents.cap; e++) if (ents.kind[e] === ptera && (ents.flags[e]! & 1) !== 0 && Math.hypot(ents.x[e]! - cx, ents.z[e]! - cz) < 300) list.push(e);
+if (list.length === 0) throw new Error("no pteranodon lives near there");
 const hf = harness.world.hf;
 
 /** A camera at (x, y, z) looking at (tx, ty, tz), as a view: y over the ground there, and degrees. */
@@ -74,8 +83,14 @@ if (views.length === 0) {
 }
 
 mkdirSync(out, { recursive: true });
+const graphics = arg("graphics");
+const files = graphics ? await gameFiles() : undefined;
 views.forEach(([x, y, z, yaw, pitch], i) => {
-  const view = provingView(w, h, undefined, undefined, mapFile);
+  const view = files ? provingView(w, h, {}, files, mapFile) : provingView(w, h, undefined, undefined, mapFile);
+  if (graphics) {
+    view.scene.assets.tier = tierOf(graphics);
+    view.scene.viewHeight = h;
+  }
   // Each body where the server has it, posed as it sent it.
   const r = view.remote;
   r.count = 0;
@@ -88,9 +103,10 @@ views.forEach(([x, y, z, yaw, pitch], i) => {
     r.y[n] = ents.y[e]!;
     r.z[n] = ents.z[e]!;
     r.yaw[n] = (ents.yaw[e]! / 65536) * Math.PI * 2;
-    r.flags[n] = ents.flags[e]! & 3;
+    r.flags[n] = (ents.flags[e]! >>> 1) & 0xf;
     r.anim[n] = ents.anim[e]!;
     r.cue[n] = ents.cue[e]!;
+    r.colors.set(ents.colors.subarray(e * 6, e * 6 + 6), n * 6);
   }
   // A camera's y is over the ground there.
   view.cam.x = x;
@@ -99,7 +115,8 @@ views.forEach(([x, y, z, yaw, pitch], i) => {
   view.cam.yaw = (yaw * Math.PI) / 180;
   view.cam.pitch = (pitch * Math.PI) / 180;
   if (mapFile) view.nodes.retain(chunkAt(mapFile.dims, x, z), 4, 1, () => false);
-  view.render();
+  if (graphics) settle(view);
+  else view.render();
   const file = join(out, `view-${i + 1}.png`);
   writeFileSync(file, encodePng(w, h, view.raster.color));
   const aloft = list.filter((e) => ents.mode[e] === 5).length;

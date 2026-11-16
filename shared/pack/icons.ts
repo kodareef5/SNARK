@@ -17,7 +17,7 @@ export interface IconSheet {
   rows: number;
 }
 
-/** The pictures of a build, in the manifest from version 4. */
+/** The pictures of a build, in the manifest. */
 export interface ManifestIcons {
   /** The side of a cell, in pixels. */
   size: number;

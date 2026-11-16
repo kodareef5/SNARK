@@ -2,7 +2,7 @@
 // survivor, a tribe's creature or its base, a save keeps its creatures and is not filled on top of them, and the settings.
 import { Database } from "bun:sqlite";
 import { afterAll, expect, test } from "bun:test";
-import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CORE_CONTENT, CORE_PACK } from "../../content/core.ts";
@@ -202,7 +202,7 @@ test("a saved world comes back with its creatures where they were, counted, and 
   second.shutdown();
 });
 
-test("a save made before the spawner keeps its herd, counted for the region it stands in, and the empty regions top up at the pace of their checks", () => {
+test("a save made with the spawner off keeps its herd, counted for the region it stands in, and the empty regions top up at the pace of their checks", () => {
   const db = join(dir, "old.db");
   const old = createHost(reg, { dbPath: db, startingCreatures: 30, startingSpecies: "core:parasaur" });
   old.shutdown();
@@ -215,16 +215,10 @@ test("a save made before the spawner keeps its herd, counted for the region it s
   ticks(host, 2 * CHECK_SECONDS * TICK_RATE);
   expect([herd!.count, beach!.count > 0, hunters!.count > 0]).toEqual([30, true, true]);
   host.shutdown();
-  // And one made before content was realigned loads with the spawner on.
-  const fixture = join(dir, "before.db");
-  copyFileSync(join(import.meta.dir, "../fixtures/saves/before-realignment.db"), fixture);
-  const older = createHost(reg, { wild: true, dbPath: fixture });
-  ticks(older, CHECK_SECONDS * TICK_RATE + 1);
-  expect(older.spawner!.made).toBeGreaterThan(0);
-  older.shutdown();
 });
 
 test("-ForceRespawnDinos, or ServerAutoForceRespawnWildDinosInterval come round, replaces every wild creature at a start, and only the wild", () => {
+  const since = Date.now() / 1000;
   const db = join(dir, "forced.db");
   const open = (argv: string[] = [], server: string[] = []): Host => createHost(reg, { wild: true, dbPath: db, config: rulesOf(server, [], argv) });
   let host = open();
@@ -248,7 +242,7 @@ test("-ForceRespawnDinos, or ServerAutoForceRespawnWildDinosInterval come round,
   host.shutdown();
   const save = new Database(db);
   const last = JSON.parse(String((save.query("SELECT value FROM meta WHERE key = 'spawner'").get() as { value: string }).value)) as { forced: number };
-  expect(Math.abs(last.forced - Date.now() / 1000)).toBeLessThan(60);
+  expect([last.forced >= since, last.forced <= Date.now() / 1000]).toEqual([true, true]);
   save.query("UPDATE meta SET value = ? WHERE key = 'spawner'").run(JSON.stringify({ forced: last.forced - 3601 }));
   save.close();
   host = open([], ["ServerAutoForceRespawnWildDinosInterval=3600"]);

@@ -3,14 +3,16 @@
 
 import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, TICK_RATE, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { TAU, detCos, detSin } from "../shared/math/scalar.ts";
-import { BitReader, BitWriter } from "../shared/net/codec.ts";
+import { BitReader, BitWriter, Named } from "../shared/net/codec.ts";
 import {
+  CMD_STATICS,
   CMD_VIEW,
   C_COMMAND,
   C_HELLO,
   C_INPUT,
   HELLO_LOOK,
   HELLO_SPECTATE,
+  HELLO_STATICS,
   HELLO_TICKET,
   INPUT_HOLD_TICKS,
   INPUT_KEPT,
@@ -72,6 +74,7 @@ import { GONE_TAKEN, RECENT } from "../shared/world/structures.ts";
 import { sortU32 } from "../shared/sort.ts";
 import { groundStands, groundUnder } from "../shared/world/collide.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
+import { staticKinds, type MapStatics } from "../shared/world/mapfile.ts";
 import { Guesses } from "./guesses.ts";
 import { freeAt, freePlace, placeFree } from "./place.ts";
 import type { ServerWorld } from "./world.ts";
@@ -140,8 +143,8 @@ const COMMAND_QUEUE = 16;
 const COMMANDS_PER_TICK = 4;
 /** The least snapshot budget a client may ask for, in bytes. The quarter of it that a crowd of players leaves the rest holds any one create. */
 const SNAPSHOT_BYTES_MIN = 600;
-/** The most bits one row of a chunk message takes. */
-const ROW_BITS = 190;
+/** The most bits one row of a chunk message takes: slot 25, in place 1, kind 17, x and z 30, height 41, yaw 17, owner 41, health 33. */
+const ROW_BITS = 205;
 /**
  * Chunk bytes a client may have on the way, or two ticks of the slot budget if that is more. On one stream everything
  * sent before a snapshot it has read has reached it, so what was sent since its newest acknowledged snapshot is still
@@ -247,6 +250,8 @@ export class Client {
   syncTarget = 0;
   /** Removed rows of the chunk being synced go as grouped removals, not row by row. */
   syncByRemoval = false;
+  /** It holds the map's statics and takes a chunk's from them (HELLO_STATICS). */
+  statics = false;
   rotate = 0;
   /** The most entities it is shown and its snapshot byte budget, where it has asked. 0 for the server's own. */
   viewCap = 0;
@@ -422,7 +427,16 @@ export class GameServer {
   /** Per chunk: the tick `around[aroundAt]` was gathered for it. */
   private readonly aroundTick: Uint32Array;
   private readonly aroundAt: Uint16Array;
-  private readonly changed = new Uint16Array(RECENT);
+  /** A slot changed, times 2, plus 1 where it was moved, made or emptied. */
+  private readonly changed = new Uint32Array(RECENT);
+  /** The map's statics' kinds as content indices. */
+  private readonly staticKinds: Uint16Array | null;
+  /** Kept through the rows of one chunk message: the last row's slot and height, and the values it has named. */
+  private rowSlot = -1;
+  private rowY = 0;
+  private readonly kinds = new Named();
+  private readonly yaws = new Named();
+  private readonly owners = new Named();
   private readonly ids = new Uint32Array(MAX_VIEW);
   private readonly movers = new Uint32Array(MAX_VIEW);
   private readonly idle = new Uint32Array(MAX_VIEW);
@@ -442,6 +456,7 @@ export class GameServer {
     this.entityOffsets = nearestFirst(this.opts.entityRadius);
     this.structOffsets = nearestFirst(this.opts.structRadius);
     this.survivor = world.reg.index.get("core:survivor")!;
+    this.staticKinds = world.statics ? staticKinds(world.statics, world.reg) : null;
   }
 
   listen(listener: Listener): void {
@@ -751,7 +766,7 @@ export class GameServer {
     let z = cz;
     let y = 0;
     let yaw = at ? at.yaw : world.spawn.yaw;
-    // A place on the ground, or one saved before bodies stood on their lower sphere, is lifted to where the body rests there.
+    // A place on the ground is lifted to where the body rests there.
     // A bed is stood on as it is. A spawn point on ground too steep to stand on is taken as taken.
     const wantY = want ? (exact ? want.y : Math.max(want.y, groundUnder(world.hf, want.x, want.z, p.radius))) : 0;
     const slides = want !== null && !exact && wantY === groundUnder(world.hf, want.x, want.z, p.radius) && !groundStands(p.slopeCos);
@@ -959,12 +974,19 @@ export class GameServer {
       const op = r.u8();
       const handler = this.handlers[op];
       // What a session is shown is its own to ask in any state, so that is answered here.
-      const code = op === CMD_VIEW ? this.askView(c, r) : !handler ? RESULT_INVALID : this.allows && !this.allows(c, op) ? RESULT_DENIED : handler(c, r);
+      const code = op === CMD_VIEW ? this.askView(c, r) : op === CMD_STATICS ? this.takeStatics(c) : !handler ? RESULT_INVALID : this.allows && !this.allows(c, op) ? RESULT_DENIED : handler(c, r);
       this.stats.commands++;
       // The handler may have ended the session (a kick, too many password attempts).
       if (this.clients[c.id] !== c || c.closed || !c.conn.open) return;
       this.result(c, seq, code);
     }
+  }
+
+  /** CMD_STATICS. Every chunk message sent after the answer takes from the map what is as the map has it. */
+  private takeStatics(c: Client): number {
+    if (!this.world.statics) return RESULT_INVALID;
+    c.statics = true;
+    return RESULT_OK;
   }
 
   /** CMD_VIEW. The snapshot takes up what was asked. */
@@ -1057,6 +1079,7 @@ export class GameServer {
         if (!other.active) break;
       }
       other.relink(conn);
+      other.statics = (flags & HELLO_STATICS) !== 0 && world.statics !== null;
       this.bind(other, conn);
       this.welcome(other);
       this.onPresence?.(other);
@@ -1086,6 +1109,7 @@ export class GameServer {
     c.name = name;
     c.key = key;
     c.look = look;
+    c.statics = (flags & HELLO_STATICS) !== 0 && world.statics !== null;
     c.kind = this.survivor;
     if (spectate) {
       const b = c.body;
@@ -1151,6 +1175,7 @@ export class GameServer {
     w.f64(world.clock.day);
     w.f64(world.clock.night);
     w.u16(Math.min(65535, Math.max(0, Math.round(this.opts.motdSeconds))));
+    w.bool(c.statics);
     c.conn.send(CH_RELIABLE, w.bytes());
   }
 
@@ -1232,18 +1257,18 @@ export class GameServer {
     for (let k = 0; k < n; k++) {
       const i = Math.floor(ids[k]! / MAX_VIEW);
       rank[k] = ids[k]! % MAX_VIEW;
-      const vehicle = this.world.reg.vehicle[ents.kind[i]!], rotor = vehicle?.movement === "rotor", boat = vehicle?.movement === "boat";
+      const vehicle = this.world.reg.vehicle[ents.kind[i]!], rotor = vehicle?.movement === "rotor", boat = vehicle?.movement === "boat", v = ents.vrow[i]!;
       cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6,
         (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!, ents.rev[i]!, ents.cue[i]!,
-        vehicle ? packVehiclePose(ents.vehiclePitch[i]!, ents.vehicleRoll[i]!, ents.steering[i]!) : 0,
-        vehicle ? quantVehicleWheel(ents.wheelAngle[i]!) : 0,
-        vehicle ? packVehicleRide(ents.vehicleGroundPitch[i]!, ents.vehicleGroundRoll[i]!, ents.vehicleRideOffset[i]!, (ents.flags[i]! & F_GROUNDED) !== 0) : 0,
-        ents.vehicleDoors[i]!, vehicle && !rotor ? packVehicleDrive(ents.vehicleGear[i]!, ents.vehicleRpm[i]!, vehicle.movement === "boat" ? ents.vehicleShiftTime[i]! > 0 : drivetrainShifting(ents.vehicleShiftTime[i]!, vehicle.spec.drivetrain)) : 0,
-        rotor ? packVehicleRotor(ents.vehicleRotorRpm[i]!, ents.vehicleRotorPhase[i]!) : 0,
-        vehicle ? packVehicleSystems(ents.fuel[i]!, vehicle.spec.fuelCapacity, ents.vehicleEngineCondition[i]!, ents.vehicleRotorCondition[i]!, ents.vehicleEngineOn[i] !== 0) : 0,
-        rotor || boat ? packVehicleQuaternionPair(ents.vehicleQx[i]!, ents.vehicleQy[i]!) : 0,
-        rotor || boat ? packVehicleQuaternionPair(ents.vehicleQz[i]!, ents.vehicleQw[i]!) : 0,
-        boat ? packBoatWater(ents.vehicleHullCondition[i]!, ents.vehicleFlooding[i]!) : 0);
+        vehicle ? packVehiclePose(ents.vehiclePitch[v]!, ents.vehicleRoll[v]!, ents.steering[v]!) : 0,
+        vehicle ? quantVehicleWheel(ents.wheelAngle[v]!) : 0,
+        vehicle ? packVehicleRide(ents.vehicleGroundPitch[v]!, ents.vehicleGroundRoll[v]!, ents.vehicleRideOffset[v]!, (ents.flags[i]! & F_GROUNDED) !== 0) : 0,
+        ents.vehicleDoors[v]!, vehicle && !rotor ? packVehicleDrive(ents.vehicleGear[v]!, ents.vehicleRpm[v]!, vehicle.movement === "boat" ? ents.vehicleShiftTime[v]! > 0 : drivetrainShifting(ents.vehicleShiftTime[v]!, vehicle.spec.drivetrain)) : 0,
+        rotor ? packVehicleRotor(ents.vehicleRotorRpm[v]!, ents.vehicleRotorPhase[v]!) : 0,
+        vehicle ? packVehicleSystems(ents.fuel[v]!, vehicle.spec.fuelCapacity, ents.vehicleEngineCondition[v]!, ents.vehicleRotorCondition[v]!, ents.vehicleEngineOn[v] !== 0) : 0,
+        rotor || boat ? packVehicleQuaternionPair(ents.vehicleQx[v]!, ents.vehicleQy[v]!) : 0,
+        rotor || boat ? packVehicleQuaternionPair(ents.vehicleQz[v]!, ents.vehicleQw[v]!) : 0,
+        boat ? packBoatWater(ents.vehicleHullCondition[v]!, ents.vehicleFlooding[v]!) : 0);
       cur.urgent[k] = (ents.flags[i]! & F_PLAYER) !== 0 || ents.driven[i] !== 0 ? 1 : 0;
     }
     this.aroundTick[chunk] = T;
@@ -1360,38 +1385,64 @@ export class GameServer {
   }
 
   /**
-   * Collects into `changed` the slots of `t` changed since version `from`, from its log. Returns how many, or -1 if the
-   * log does not reach back that far or holds more than `most`.
+   * Collects into `changed` the slots of `t` changed since version `from`, from its log, in ascending order, each times 2
+   * plus 1 where one of those changes moved, made or emptied it. Returns how many, or -1 if the log does not reach back
+   * that far or holds more than `most`.
    */
   private changedSince(t: ChunkTable, from: number, byRemoval: boolean, most: number): number {
     const slots = t.recentSlot;
     const vers = t.recentVer;
-    if (!slots || !vers || from < t.recentFloor) return -1;
+    const shaped = t.recentShaped;
+    if (!slots || !vers || !shaped || from < t.recentFloor) return -1;
+    const changed = this.changed;
     let n = 0;
     for (let k = 1, held = Math.min(t.recentCount, RECENT); k <= held; k++) {
       const at = (t.recentCount - k) % RECENT;
-      const version = vers[at]!;
-      if (version <= from) break;
+      if (vers[at]! <= from) break;
       const slot = slots[at]!;
-      // A slot changed twice is sent for its later change only.
-      if (t.mod[slot] !== version || (byRemoval && t.kind[slot] === 0)) continue;
-      if (n === most) return -1;
-      this.changed[n++] = slot;
+      if (byRemoval && t.kind[slot] === 0) continue;
+      changed[n++] = slot * 2 + shaped[at]!;
     }
-    return n;
+    changed.subarray(0, n).sort();
+    // A slot changed twice is sent once, and in place only if neither change moved it.
+    let m = 0;
+    for (let i = 0; i < n; i++) {
+      if (m > 0 && changed[m - 1]! >> 1 === changed[i]! >> 1) changed[m - 1] = changed[m - 1]! | changed[i]!;
+      else if (m === most) return -1;
+      else changed[m++] = changed[i]!;
+    }
+    return m;
   }
 
-  private row(w: BitWriter, t: ChunkTable, s: number, x0: number, z0: number): void {
-    const kind = t.kind[s]!;
-    w.u16(s);
-    w.u16(kind);
-    if (kind === 0) return;
-    w.bits(Math.round((t.x[s]! - x0) * STRUCT_UNITS), 15);
-    w.bits(Math.round((t.z[s]! - z0) * STRUCT_UNITS), 15);
-    w.svarint(Math.round(t.y[s]! * STRUCT_UNITS));
-    w.u16(t.yaw[s]!);
-    w.varint(t.owner[s]!);
-    w.f32(t.hp[s]!);
+  /** Whether slot `s` of `t` holds the map's static `m` as placeStatics set it down. */
+  private asMap(t: ChunkTable, s: number, statics: MapStatics, m: number): boolean {
+    const kind = this.staticKinds![statics.kind[m]!]!;
+    return s < t.high && t.kind[s] === kind && t.x[s] === statics.x[m] && t.y[s] === statics.y[m] && t.z[s] === statics.z[m] && t.yaw[s] === statics.yaw[m] && t.owner[s] === 0 && t.hp[s] === this.world.reg.maxHp[kind];
+  }
+
+  /** A row of a chunk message (CHUNK in shared/net/protocol.ts). In place, only its owner and health. */
+  private row(w: BitWriter, t: ChunkTable, s: number, x0: number, z0: number, inPlace: boolean): void {
+    const gap = s - this.rowSlot - 1;
+    this.rowSlot = s;
+    w.bool(gap === 0);
+    if (gap !== 0) w.varint(gap - 1);
+    w.bool(inPlace);
+    const kind = s < t.high ? t.kind[s]! : 0;
+    if (!inPlace) {
+      this.kinds.write(w, kind, 16);
+      if (kind === 0) return;
+      w.bits(Math.round((t.x[s]! - x0) * STRUCT_UNITS), 15);
+      w.bits(Math.round((t.z[s]! - z0) * STRUCT_UNITS), 15);
+      const y = Math.round(t.y[s]! * STRUCT_UNITS);
+      w.bool(y === this.rowY);
+      if (y !== this.rowY) w.svarint(y - this.rowY);
+      this.rowY = y;
+      this.yaws.write(w, t.yaw[s]!, 16);
+    }
+    this.owners.write(w, t.owner[s]!, 0);
+    const full = t.hp[s] === this.world.reg.maxHp[kind];
+    w.bool(full);
+    if (!full) w.f32(t.hp[s]!);
   }
 
   /** Returns the budget left, or 0 if the chunk is unfinished. */
@@ -1419,24 +1470,51 @@ export class GameServer {
     w.u32(target);
     const header = w.pos;
     w.bits(0, 1 + 16);
+    // A client with the map's statics that holds none of this chunk takes the slots still as the map has them from its own copy.
+    const statics = c.statics ? this.world.statics : null;
+    const first = statics ? statics.first[chunk]! : 0;
+    const mapped = statics ? statics.first[chunk + 1]! - first : 0;
+    const filling = mapped > 0 && from === 0;
+    if (mapped > 0) w.bool(filling);
+    const fill = w.pos;
+    if (filling) w.bits(0, 32);
+    this.rowSlot = -1;
+    this.rowY = 0;
+    this.kinds.reset();
+    this.yaws.reset();
+    this.owners.reset();
+    // Slots taken from the map count against the budget as rows do, since the client sets each down as it does a row.
     let count = 0;
+    let rows = 0;
     let s = cursor;
     let final = true;
     // A client a few changes behind is sent those from the chunk's log. Otherwise every slot is looked at.
-    const logged = cursor === 0 ? this.changedSince(t, from, byRemoval, budget) : -1;
+    const logged = cursor === 0 && !filling ? this.changedSince(t, from, byRemoval, budget) : -1;
     if (logged >= 0) {
-      for (; count < logged; count++) this.row(w, t, this.changed[count]!, x0, z0);
+      for (; rows < logged; rows++) this.row(w, t, this.changed[rows]! >> 1, x0, z0, (this.changed[rows]! & 1) === 0);
+      count = rows;
     } else {
       // Rows stop where another might not fit, with a byte left for the count of removals.
       const room = w.buf.length * 8 - ROW_BITS - 8;
-      for (; s < t.high && count < budget && w.pos <= room; s++) {
-        if (t.mod[s]! <= from || (byRemoval && t.kind[s] === 0)) continue;
-        this.row(w, t, s, x0, z0);
-        count++;
+      const end = filling ? Math.max(t.high, mapped) : t.high;
+      for (; s < end && count < budget && w.pos <= room; s++) {
+        if (filling && s < mapped) {
+          count++;
+          if (this.asMap(t, s, statics!, first + s)) continue;
+        } else if (t.mod[s]! <= from || (byRemoval && t.kind[s] === 0)) continue;
+        else count++;
+        this.row(w, t, s, x0, z0, false);
+        rows++;
       }
-      final = s >= t.high;
+      final = s >= end;
+      if (filling && cursor < mapped) {
+        const pos = w.pos;
+        w.pos = fill;
+        w.u16(cursor);
+        w.u16(Math.min(s, mapped) - cursor);
+        w.pos = pos;
+      }
     }
-    const rows = count;
     // Removals go with the last rows, each as runs of slots.
     let removals = 0;
     const at = w.pos;

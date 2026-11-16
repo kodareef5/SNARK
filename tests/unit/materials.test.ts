@@ -1,7 +1,7 @@
 // An asset's materials: from the pictures its asset.ts names to a pack with surfaces, sections and materials, the
 // textures the build is given, and what the check says of the pictures. Blender is never run here: the models are
 // written in code.
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,11 +13,11 @@ import { convertModel, convertPieces, packOf, repack, type Built } from "../../t
 import { bothWays, checkAsset } from "../../tools/art/check.ts";
 import { describe, gameTextures, materialsOf } from "../../tools/art/materials.ts";
 import { shared, type CreatureAsset, type MaterialSpec, type PiecesAsset } from "../../tools/art/spec.ts";
+import * as image from "../../tools/pack/image.ts";
 import { encodePng, readPicture, type Picture } from "../../tools/pack/image.ts";
 import { splitPack } from "../../tools/pack/split.ts";
 import { tangentsOf } from "../../tools/pack/surface.ts";
 import { buildPack, unpackMeshes, type SourceLod } from "../../tools/pack/write.ts";
-import { underLoad } from "../fixtures/load.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { tubeGlb, tubeMesh, tubePictures } from "../fixtures/textured.ts";
 
@@ -134,6 +134,35 @@ test("authored skinned levels preserve their silhouette, palette and dominant bo
   });
 });
 
+test("the check notes a map that draws as none would, one larger than its content needs, and a picture two materials name; `tops` stores a map smaller", async () => {
+  await scratch(async (root) => {
+    const black: Picture = { width: 64, height: 64, channels: 3, depth: 8, data: new Uint8Array(64 * 64 * 3) };
+    const soft: Picture = { width: 256, height: 256, channels: 3, depth: 8, data: new Uint8Array(256 * 256 * 3) };
+    for (let p = 0; p < 256 * 256; p++) soft.data.set([128 + Math.round(3 * Math.sin(((p % 256) * Math.PI) / 32)), 128, 255], p * 3);
+    const hide: MaterialSpec = { base: "tex/base.png", packed: "tex/mro.png", regions: "tex/black.png", normal: "tex/soft.png" };
+    const { asset, glb } = tube(join(root, "source"), { materials: { hide, horn: { base: "tex/base.png", twoSided: true } }, budgets: { triangles: [512, 256, 128, 64], texture: { top: 256, megabytes: 1 } } });
+    writeFileSync(join(asset.dir, "tex/black.png"), encodePng(black));
+    writeFileSync(join(asset.dir, "tex/soft.png"), encodePng(soft));
+    const out = built();
+    convertModel(asset, glb, out);
+    const report = checkAsset(asset, parsePack(packOf(out)), true);
+    const kept = "and the build keeps one texture of what the two make alike";
+    // The tube is open at its ends: its holes are no matter here.
+    expect([report.textures[0]!.tops, [...report.faults, ...report.notes].filter((n) => n.startsWith("t:tube/"))]).toEqual([
+      { base: 64, mask: 64, mro: 64, normal: 256 },
+      [
+        "t:tube/hide: its mask is everywhere what a material without one draws, and the build leaves it out",
+        expect.stringMatching(/^t:tube\/hide: its normal needs 64 pixels and is stored at 256: from 64 up no texel turns more than [0-2]\.\d degrees \(tops: \{ normal: 64 \}\)$/),
+        `t:tube/hide: its base picture is t:tube/horn's too, ${kept}`,
+        `t:tube/horn: its base picture is t:tube/hide's too, ${kept}`,
+      ],
+    ]);
+    const told = (tops: MaterialSpec["tops"]) => describe({ name: "hide", id: "t:tube/hide", dir: asset.dir, spec: { ...hide, tops } }, 256, palette).textures.map((t) => [t.role, t.top]);
+    expect(told({ normal: 64 })).toEqual([["base", 64], ["mask", 64], ["mro", 64], ["normal", 64]]);
+    expect(() => told({ normal: 96 })).toThrow("t:tube/hide: it stores its normal at 96 pixels, and a texture is a power of two from 64 to 4096");
+  });
+});
+
 test("pieces take their materials by name: one of the asset's own, one that several assets share, and their flat colours from the pictures or the asset", async () => {
   await scratch((root) => {
     const dir = join(root, "t/structures/posts");
@@ -214,10 +243,10 @@ test("pieces take their materials by name: one of the asset's own, one that seve
 
 test("every texture the game's packs name has its pictures listed for the texture build, and listing them reads no picture", async () => {
   const named = corePack().header.textures ?? [];
-  const t0 = performance.now();
+  const read = spyOn(image, "readPicture");
   const sources = await gameTextures();
-  // Reading a picture would take seconds; listing takes a tenth of one. The limit stretches with the machine's load.
-  expect(performance.now() - t0).toBeLessThan(underLoad(500));
+  expect(read).not.toHaveBeenCalled();
+  read.mockRestore();
   expect(named.length).toBeGreaterThan(0);
   for (const t of named) expect([t.id, sources.find((s) => s.id === t.id)?.role, sources.find((s) => s.id === t.id)?.top]).toEqual([t.id, t.role, t.top]);
   // The examples are in no game pack, and theirs are found the same way.

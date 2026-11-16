@@ -6,12 +6,13 @@ import { deriveRegistry, parseTuning } from "../../shared/content/tuning.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, TICK_RATE, YAW_UNITS, chunkAt, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { BitReader, BitWriter } from "../../shared/net/codec.ts";
+import { BitReader, BitWriter, Named } from "../../shared/net/codec.ts";
 import {
   CMD_TEXT,
   CMD_VIEW,
   BUTTON_MASK,
   HELLO_SPECTATE,
+  HELLO_STATICS,
   INPUT_HOLD_TICKS,
   INPUT_KEPT,
   INPUT_REDUNDANCY,
@@ -102,13 +103,15 @@ import { Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
+import { staticKinds, type MapStatics } from "../../shared/world/mapfile.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
-import { CMD_FAR, RESULT_BUSY, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
+import { CMD_FAR, CMD_STATICS, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import type { FarSource } from "./render/far.ts";
+import type { CityMaker } from "./render/citymake.ts";
 import type { CitySource } from "./render/farcity.ts";
-import type { CityStatics } from "../../shared/world/city.ts";
+import { CityStatics } from "../../shared/world/city.ts";
 import { NodeChanges, type FarNodeSource } from "./render/farnodes.ts";
 import { MapStore } from "./tactical.ts";
 
@@ -131,8 +134,14 @@ export interface SessionOptions {
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
   /** The map's resource nodes, from the same pure function the server uses. */
   nodes?(hf: Heightfield, registry: Registry): NodeSource | null;
-  /** The map's static pieces by chunk, which the far city draws past the near rows (render/farcity.ts). */
+  /**
+   * The map's static pieces by chunk, which the far city draws past the near rows (render/farcity.ts); without it the far
+   * city is made of the statics staticsArrived gives. And where its levels are made, here if not given.
+   */
   city?(registry: Registry): CityStatics | null;
+  cityMaker?: CityMaker;
+  /** The statics of the map file resolveMap accepts. With them the server sends a chunk's only where they differ (HELLO_STATICS). */
+  statics?: MapStatics;
 }
 
 /** Null if the tuning does not parse or the derived content does not compile. */
@@ -204,6 +213,8 @@ export class RemoteSample {
   readonly vehicleQy = new Float32Array(MAX_VIEW);
   readonly vehicleQz = new Float32Array(MAX_VIEW);
   readonly vehicleQw = new Float32Array(MAX_VIEW);
+  /** 1 where the vehicle columns hold what a body sent no vehicle parts has, which then need not be written again. */
+  readonly bare = new Uint8Array(MAX_VIEW);
   readonly flags = new Uint8Array(MAX_VIEW);
   readonly level = new Uint16Array(MAX_VIEW);
   /** Six colour regions per entity. Zero means the species' own colour. */
@@ -257,6 +268,11 @@ const SMOOTH_LIMIT = 3;
 const NODE_RADIUS = 3;
 /** A view or far request the server was too busy to take is sent again this long after. The server reads either once a second. */
 const ASK_AGAIN_MS = 1000;
+/**
+ * Ticks of snapshots after which a page that sent no input, such as a hidden one that draws no frames, acknowledges by
+ * itself. The server reads against an acknowledged view only while it is younger than VIEW_RING, and sends it whole after.
+ */
+const QUIET_TICKS = 8;
 const CLOSED_BY_PEER = -1;
 const CLOSED_BAD_MAP = -2;
 /** The content this client derives from the server's tuning does not hash to the server's. */
@@ -343,7 +359,7 @@ export class ClientSession {
 
   private sailStates: readonly SailState[] = [];
   readonly sails: SailSource = { states: () => this.sailStates, tick: () => this.tickClock };
-  world: (CollisionWorld & { dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource; sails: SailSource }) | null = null;
+  world: (CollisionWorld & { mapId: string; dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource; sails: SailSource }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
   ownHandle = 0;
   ownKind = 0;
@@ -445,6 +461,15 @@ export class ClientSession {
   readonly far = new FarStore();
   /** Per chunk, 1 once its last row has come since it was last dropped: the near store holds it whole. */
   private whole = new Uint8Array(0);
+  /** The map's statics, come after the session began (staticsArrived). */
+  private arrived: MapStatics | null = null;
+  /** The command that told the server of them (CMD_STATICS), until its answer. */
+  private staticsSeq = 0;
+  /** The map's statics' kinds as content indices, from the welcome or CMD_STATICS's answer, when the client takes chunks from them. */
+  private staticKinds: Uint16Array | null = null;
+  private readonly kinds = new Named();
+  private readonly yaws = new Named();
+  private readonly owners = new Named();
   readonly progress = { xp: 0, level: 1, statPoints: 0, engramPoints: 0, engrams: [] as number[], jobs: [] as { item: number; left: number; doneAt: number }[], version: 0 };
   /** Resource nodes around the body, filled from the map minus those the server reports used up. */
   nodeField: NodeField | null = null;
@@ -525,6 +550,9 @@ export class ClientSession {
   private readonly margins = new Int8Array(128);
   private readonly marginAt = new Uint32Array(128);
   private needFull = true;
+  /** The newest input sent, and the snapshot it acknowledged. */
+  private sentInput = 0;
+  private sentAck = 0;
   private commandSeq = 0;
   /** What `view` and `askFar` last asked the server for, and the commands that asked. After the server refuses one, neither is sent before `askAt`. */
   private viewCap = 0;
@@ -548,7 +576,7 @@ export class ClientSession {
       }
     };
     const w = this.w;
-    writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, opts.spectate ? HELLO_SPECTATE : 0, opts.key, opts.look ?? null, opts.password ?? "", opts.ticket ?? null);
+    writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, (opts.spectate ? HELLO_SPECTATE : 0) | (opts.statics ? HELLO_STATICS : 0), opts.key, opts.look ?? null, opts.password ?? "", opts.ticket ?? null);
     conn.send(CH_RELIABLE, w.bytes());
   }
 
@@ -628,6 +656,7 @@ export class ClientSession {
     let dt = this.lastNow < 0 ? 0 : nowMs - this.lastNow;
     const frameMs = dt;
     this.lastNow = nowMs;
+    if (this.arrived && !this.staticKinds && this.staticsSeq === 0) this.staticsSeq = this.command(CMD_STATICS);
     if (dt > 100) this.hitch = true;
     if (dt > 250) dt = 250;
     const ticks = (dt / 1000) * TICK_RATE;
@@ -719,66 +748,16 @@ export class ClientSession {
       out.seatGen[n] = b.seatGen[j]!;
       out.span[n] = b.span[j]!;
       out.grown[n] = b.grown[j]!;
-      const vehiclePose = b.vehiclePose[j]!;
-      out.vehiclePitch[n] = unpackVehiclePitch(vehiclePose);
-      out.vehicleRoll[n] = unpackVehicleRoll(vehiclePose);
-      out.steering[n] = unpackVehicleSteering(vehiclePose);
-      out.wheelAngle[n] = unpackVehicleWheel(b.vehicleWheel[j]!);
-      const ride = b.vehicleRide[j]!;
-      out.vehicleGroundPitch[n] = unpackVehicleGroundPitch(ride);
-      out.vehicleGroundRoll[n] = unpackVehicleGroundRoll(ride);
-      out.vehicleRideOffset[n] = unpackVehicleRideOffset(ride);
-      out.vehicleGrounded[n] = vehicleRideGrounded(ride) ? 1 : 0;
-      out.vehicleDoors[n] = b.vehicleDoors[j]!;
-      out.vehicleRotorcraft[n] = this.registry.vehicle[b.kind[j]!]?.movement === "rotor" ? 1 : 0;
-      out.vehicleBoat[n] = this.registry.vehicle[b.kind[j]!]?.movement === "boat" ? 1 : 0;
-      out.vehicleHullCondition[n] = unpackBoatHullCondition(b.vehicleWater[j]!);
-      out.vehicleFlooding[n] = unpackBoatFlooding(b.vehicleWater[j]!);
-      const rotor = b.vehicleRotor[j]!, systems = b.vehicleSystems[j]!;
-      out.vehicleRotorRpm[n] = unpackRotorRpm(rotor); out.vehicleRotorPhase[n] = unpackRotorPhase(rotor);
-      out.vehicleFuel[n] = unpackVehicleFuel(systems); out.vehicleEngineCondition[n] = unpackEngineCondition(systems);
-      out.vehicleRotorCondition[n] = unpackRotorCondition(systems); out.vehicleEngineOn[n] = vehicleEngineRunning(systems) ? 1 : 0;
-      unpackVehicleQuaternion(b.vehicleAttitudeA[j]!, b.vehicleAttitudeB[j]!, this.rotorQuat);
-      const drive = b.vehicleDrive[j]!;
-      out.vehicleGear[n] = unpackVehicleGear(drive);
-      out.vehicleRpm[n] = unpackVehicleRpm(drive);
-      out.vehicleShifting[n] = vehicleShifting(drive) ? 1 : 0;
-      if (a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j]) {
-        if (out.vehicleRotorcraft[n] || out.vehicleBoat[n]) {
-          unpackVehicleQuaternion(a!.vehicleAttitudeA[i]!, a!.vehicleAttitudeB[i]!, this.rotorQuatA);
-          this.rotorQuatB.set(this.rotorQuat);
-          quatNlerp(this.rotorQuat, 0, this.rotorQuatA, 0, this.rotorQuatB, 0, k);
-        }
-        if (out.vehicleRotorcraft[n]) {
-          const oldRotor = a!.vehicleRotor[i]!, rpm = unpackRotorRpm(oldRotor);
-          out.vehicleRotorPhase[n] = interpolateRotorPhase(unpackRotorPhase(oldRotor), unpackRotorPhase(rotor), rpm, out.vehicleRotorRpm[n]!, (b.tick - a!.tick) / TICK_RATE, k);
-          out.vehicleRotorRpm[n] = rpm + (out.vehicleRotorRpm[n]! - rpm) * k;
-        }
-        const oldPose = a!.vehiclePose[i]!;
-        out.vehiclePitch[n] = unpackVehiclePitch(oldPose) + (out.vehiclePitch[n]! - unpackVehiclePitch(oldPose)) * k;
-        out.vehicleRoll[n] = unpackVehicleRoll(oldPose) + (out.vehicleRoll[n]! - unpackVehicleRoll(oldPose)) * k;
-        out.steering[n] = unpackVehicleSteering(oldPose) + (out.steering[n]! - unpackVehicleSteering(oldPose)) * k;
-        const oldRide = a!.vehicleRide[i]!;
-        out.vehicleGroundPitch[n] = unpackVehicleGroundPitch(oldRide) + (out.vehicleGroundPitch[n]! - unpackVehicleGroundPitch(oldRide)) * k;
-        out.vehicleGroundRoll[n] = unpackVehicleGroundRoll(oldRide) + (out.vehicleGroundRoll[n]! - unpackVehicleGroundRoll(oldRide)) * k;
-        out.vehicleRideOffset[n] = unpackVehicleRideOffset(oldRide) + (out.vehicleRideOffset[n]! - unpackVehicleRideOffset(oldRide)) * k;
-        out.vehicleGrounded[n] = vehicleRideGrounded(k < .5 ? oldRide : ride) ? 1 : 0;
-        let doors = 0;
-        for (let d = 0; d < MAX_VEHICLE_DOORS; d++) {
-          const was = vehicleDoor(a!.vehicleDoors[i]!, d);
-          doors = withVehicleDoor(doors, d, was + (vehicleDoor(b.vehicleDoors[j]!, d) - was) * k);
-        }
-        out.vehicleDoors[n] = doors;
-        const oldDrive = a!.vehicleDrive[i]!;
-        out.vehicleGear[n] = unpackVehicleGear(k < .5 ? oldDrive : drive);
-        out.vehicleRpm[n] = unpackVehicleRpm(oldDrive) + (out.vehicleRpm[n]! - unpackVehicleRpm(oldDrive)) * k;
-        out.vehicleShifting[n] = vehicleShifting(k < .5 ? oldDrive : drive) ? 1 : 0;
-        const oldWheel = unpackVehicleWheel(a!.vehicleWheel[i]!);
-        let wheelTurn = out.wheelAngle[n]! - oldWheel;
-        wheelTurn -= Math.floor((wheelTurn + TAU / 2) / TAU) * TAU;
-        out.wheelAngle[n] = out.vehicleBoat[n]
-          ? interpolateRotorPhase(oldWheel, out.wheelAngle[n]!, unpackVehicleRpm(oldDrive) * unpackVehicleGear(oldDrive), unpackVehicleRpm(drive) * unpackVehicleGear(drive), (b.tick - a!.tick) / TICK_RATE, k)
-          : oldWheel + wheelTurn * k;
+      const both = a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j];
+      const vehicle = this.registry.vehicle[b.kind[j]!];
+      if (vehicle || hasVehicleParts(b, j) || (both && hasVehicleParts(a!, i))) {
+        this.vehicleColumns(out, n, b, j, both ? a : null, i, k, vehicle?.movement);
+        out.bare[n] = 0;
+      } else if (out.bare[n] === 0) {
+        noVehicle(out, n);
+        out.bare[n] = 1;
+      }
+      if (both) {
         out.x[n] = dequantX(a!.qx[i]! + (b.qx[j]! - a!.qx[i]!) * k);
         out.y[n] = dequantY(a!.qy[i]! + (b.qy[j]! - a!.qy[i]!) * k);
         out.z[n] = dequantX(a!.qz[i]! + (b.qz[j]! - a!.qz[i]!) * k);
@@ -797,9 +776,74 @@ export class ClientSession {
         out.z[n] = dequantX(b.qz[j]!);
         out.yaw[n] = (b.yaw[j]! * TAU) / 1024;
       }
-      out.vehicleQx[n] = this.rotorQuat[0]!; out.vehicleQy[n] = this.rotorQuat[1]!;
-      out.vehicleQz[n] = this.rotorQuat[2]!; out.vehicleQw[n] = this.rotorQuat[3]!;
     }
+  }
+
+  /** The vehicle columns of `out` at `n`, from entity `j` of `b`, blended with entity `i` of `a` where it is given. */
+  private vehicleColumns(out: RemoteSample, n: number, b: EntityView, j: number, a: EntityView | null, i: number, k: number, movement: string | undefined): void {
+    const vehiclePose = b.vehiclePose[j]!;
+    out.vehiclePitch[n] = unpackVehiclePitch(vehiclePose);
+    out.vehicleRoll[n] = unpackVehicleRoll(vehiclePose);
+    out.steering[n] = unpackVehicleSteering(vehiclePose);
+    out.wheelAngle[n] = unpackVehicleWheel(b.vehicleWheel[j]!);
+    const ride = b.vehicleRide[j]!;
+    out.vehicleGroundPitch[n] = unpackVehicleGroundPitch(ride);
+    out.vehicleGroundRoll[n] = unpackVehicleGroundRoll(ride);
+    out.vehicleRideOffset[n] = unpackVehicleRideOffset(ride);
+    out.vehicleGrounded[n] = vehicleRideGrounded(ride) ? 1 : 0;
+    out.vehicleDoors[n] = b.vehicleDoors[j]!;
+    out.vehicleRotorcraft[n] = movement === "rotor" ? 1 : 0;
+    out.vehicleBoat[n] = movement === "boat" ? 1 : 0;
+    out.vehicleHullCondition[n] = unpackBoatHullCondition(b.vehicleWater[j]!);
+    out.vehicleFlooding[n] = unpackBoatFlooding(b.vehicleWater[j]!);
+    const rotor = b.vehicleRotor[j]!, systems = b.vehicleSystems[j]!;
+    out.vehicleRotorRpm[n] = unpackRotorRpm(rotor); out.vehicleRotorPhase[n] = unpackRotorPhase(rotor);
+    out.vehicleFuel[n] = unpackVehicleFuel(systems); out.vehicleEngineCondition[n] = unpackEngineCondition(systems);
+    out.vehicleRotorCondition[n] = unpackRotorCondition(systems); out.vehicleEngineOn[n] = vehicleEngineRunning(systems) ? 1 : 0;
+    unpackVehicleQuaternion(b.vehicleAttitudeA[j]!, b.vehicleAttitudeB[j]!, this.rotorQuat);
+    const drive = b.vehicleDrive[j]!;
+    out.vehicleGear[n] = unpackVehicleGear(drive);
+    out.vehicleRpm[n] = unpackVehicleRpm(drive);
+    out.vehicleShifting[n] = vehicleShifting(drive) ? 1 : 0;
+    if (a) {
+      if (out.vehicleRotorcraft[n] || out.vehicleBoat[n]) {
+        unpackVehicleQuaternion(a.vehicleAttitudeA[i]!, a.vehicleAttitudeB[i]!, this.rotorQuatA);
+        this.rotorQuatB.set(this.rotorQuat);
+        quatNlerp(this.rotorQuat, 0, this.rotorQuatA, 0, this.rotorQuatB, 0, k);
+      }
+      if (out.vehicleRotorcraft[n]) {
+        const oldRotor = a.vehicleRotor[i]!, rpm = unpackRotorRpm(oldRotor);
+        out.vehicleRotorPhase[n] = interpolateRotorPhase(unpackRotorPhase(oldRotor), unpackRotorPhase(rotor), rpm, out.vehicleRotorRpm[n]!, (b.tick - a.tick) / TICK_RATE, k);
+        out.vehicleRotorRpm[n] = rpm + (out.vehicleRotorRpm[n]! - rpm) * k;
+      }
+      const oldPose = a.vehiclePose[i]!;
+      out.vehiclePitch[n] = unpackVehiclePitch(oldPose) + (out.vehiclePitch[n]! - unpackVehiclePitch(oldPose)) * k;
+      out.vehicleRoll[n] = unpackVehicleRoll(oldPose) + (out.vehicleRoll[n]! - unpackVehicleRoll(oldPose)) * k;
+      out.steering[n] = unpackVehicleSteering(oldPose) + (out.steering[n]! - unpackVehicleSteering(oldPose)) * k;
+      const oldRide = a.vehicleRide[i]!;
+      out.vehicleGroundPitch[n] = unpackVehicleGroundPitch(oldRide) + (out.vehicleGroundPitch[n]! - unpackVehicleGroundPitch(oldRide)) * k;
+      out.vehicleGroundRoll[n] = unpackVehicleGroundRoll(oldRide) + (out.vehicleGroundRoll[n]! - unpackVehicleGroundRoll(oldRide)) * k;
+      out.vehicleRideOffset[n] = unpackVehicleRideOffset(oldRide) + (out.vehicleRideOffset[n]! - unpackVehicleRideOffset(oldRide)) * k;
+      out.vehicleGrounded[n] = vehicleRideGrounded(k < .5 ? oldRide : ride) ? 1 : 0;
+      let doors = 0;
+      for (let d = 0; d < MAX_VEHICLE_DOORS; d++) {
+        const was = vehicleDoor(a.vehicleDoors[i]!, d);
+        doors = withVehicleDoor(doors, d, was + (vehicleDoor(b.vehicleDoors[j]!, d) - was) * k);
+      }
+      out.vehicleDoors[n] = doors;
+      const oldDrive = a.vehicleDrive[i]!;
+      out.vehicleGear[n] = unpackVehicleGear(k < .5 ? oldDrive : drive);
+      out.vehicleRpm[n] = unpackVehicleRpm(oldDrive) + (out.vehicleRpm[n]! - unpackVehicleRpm(oldDrive)) * k;
+      out.vehicleShifting[n] = vehicleShifting(k < .5 ? oldDrive : drive) ? 1 : 0;
+      const oldWheel = unpackVehicleWheel(a.vehicleWheel[i]!);
+      let wheelTurn = out.wheelAngle[n]! - oldWheel;
+      wheelTurn -= Math.floor((wheelTurn + TAU / 2) / TAU) * TAU;
+      out.wheelAngle[n] = out.vehicleBoat[n]
+        ? interpolateRotorPhase(oldWheel, out.wheelAngle[n]!, unpackVehicleRpm(oldDrive) * unpackVehicleGear(oldDrive), unpackVehicleRpm(drive) * unpackVehicleGear(drive), (b.tick - a.tick) / TICK_RATE, k)
+        : oldWheel + wheelTurn * k;
+    }
+    out.vehicleQx[n] = this.rotorQuat[0]!; out.vehicleQy[n] = this.rotorQuat[1]!;
+    out.vehicleQz[n] = this.rotorQuat[2]!; out.vehicleQw[n] = this.rotorQuat[3]!;
   }
 
   close(): void {
@@ -892,6 +936,7 @@ export class ClientSession {
     // The last argument is how far behind the newest snapshot remote entities were drawn when the newest input was sampled.
     writeInputs(w, this.inputs, this.needFull ? 0 : this.latestSnapshot, newest, count, this.latestSnapshot - (this.shown > 0 ? this.shown : this.renderClock - this.remoteDelay));
     this.conn.send(CH_UNRELIABLE, w.bytes());
+    [this.sentInput, this.sentAck] = [newest, this.latestSnapshot];
   }
 
   private receive(_channel: number, data: Uint8Array): void {
@@ -918,6 +963,10 @@ export class ClientSession {
       const seq = r.u16();
       const code = r.u8();
       if (r.overflow) return;
+      if (seq !== 0 && seq === this.staticsSeq) {
+        if (code === RESULT_OK) this.staticKinds = staticKinds(this.arrived!, this.registry);
+        else if (code === RESULT_BUSY) this.staticsSeq = 0;
+      }
       // The newest view or far request, refused, is forgotten so that it is asked again.
       if (code === RESULT_BUSY && seq !== 0 && (seq === this.viewSeq || seq === this.farSeq)) {
         if (seq === this.viewSeq) this.viewCap = this.viewBytes = -1;
@@ -1279,6 +1328,7 @@ export class ClientSession {
     const day = r.f64();
     const night = r.f64();
     const motdSeconds = r.u16();
+    const fills = r.bool();
     const refuse = (reason: number): void => {
       this.state = "closed";
       this.closeReason = reason;
@@ -1301,13 +1351,14 @@ export class ClientSession {
     const source = this.opts.nodes?.(hf, reg) ?? null;
     this.nodeField = source ? new NodeField(dims, reg, source) : null;
     this.whole = new Uint8Array(dims.chunksX * dims.chunksZ);
+    this.staticKinds = fills && this.opts.statics ? staticKinds(this.opts.statics, reg) : null;
+    this.staticsSeq = 0;
     const far: FarSource = { cells: this.far, complete: (chunk) => this.whole[chunk] === 1 };
     const field = this.nodeField;
     this.nodeChanges = field ? new NodeChanges(dims) : null;
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges! } } : {};
-    const statics = this.opts.city?.(reg) ?? null;
-    const city = statics && statics.count > 0 ? { city: { statics, complete: far.complete } } : {};
-    this.world = { dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...city, sails: this.sails };
+    this.world = { mapId, dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, sails: this.sails };
+    this.startCity(this.arrived);
     this.recenterNodes();
     this.move = move;
     this.ownPrev.copy(this.own);
@@ -1316,6 +1367,22 @@ export class ClientSession {
     this.simTick = tick + INITIAL_LEAD;
     this.renderClock = tick;
     this.state = "active";
+  }
+
+  /**
+   * Call when the map's statics arrive after the session began: the far city starts with them, and the server is told, so
+   * that from its answer on it sends a chunk's statics only where they differ from them (CMD_STATICS).
+   */
+  staticsArrived(statics: MapStatics): void {
+    this.arrived = statics;
+    this.startCity(statics);
+  }
+
+  private startCity(statics: MapStatics | null): void {
+    const world = this.world;
+    if (!world || world.city) return;
+    const city = this.opts.city?.(this.registry) ?? (statics ? new CityStatics(world.dims, statics, this.registry) : null);
+    if (city && city.count > 0) world.city = { statics: city, complete: world.far.complete, maker: this.opts.cityMaker };
   }
 
   private snapshot(r: BitReader): void {
@@ -1354,6 +1421,8 @@ export class ClientSession {
     this.sessionState = state;
     this.driving = driving;
     this.stats.snapshots++;
+    // The inputs sent again are ones the server has, so this says only which snapshot came.
+    if (this.sentInput > 0 && tick - this.sentAck >= QUIET_TICKS) this.sendInputs(this.sentInput, 1);
 
     // Render clock follows the newest server tick, smoothly unless far off.
     const lag = tick - this.renderClock;
@@ -1514,32 +1583,61 @@ export class ClientSession {
     const final = r.bool();
     const count = r.bits(16);
     if (chunk >= world.structs.chunks.length) return;
+    const structs = world.structs;
+    const statics = this.staticKinds ? (this.arrived ?? this.opts.statics)! : null;
+    const maxHp = this.registry.maxHp;
+    if (statics && statics.first[chunk + 1]! > statics.first[chunk]! && r.bool()) {
+      // Slots the server has as the map has them, set down from this client's own copy of the map.
+      const first = r.u16();
+      const n = r.u16();
+      const at = statics.first[chunk]! + first;
+      if (r.overflow || at + n > statics.first[chunk + 1]!) return;
+      for (let m = at; m < at + n; m++) {
+        const kind = this.staticKinds![statics.kind[m]!]!;
+        structs.put(chunk, m - at + first, kind, statics.x[m]!, statics.y[m]!, statics.z[m]!, statics.yaw[m]!, 0, maxHp[kind]!, version);
+      }
+    }
     const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
     const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
     const kinds = this.registry.defs.length;
     const told = this.onStructure && this.whole[chunk] === 1 ? this.onStructure : null;
-    const rows = world.structs.chunks[chunk];
+    const rows = structs.chunks[chunk];
+    this.kinds.reset();
+    this.yaws.reset();
+    this.owners.reset();
+    let slot = -1;
+    let height = 0;
     for (let i = 0; i < count; i++) {
-      const slot = r.u16();
-      const kind = r.u16();
-      const was = told && rows && slot < rows.high ? rows.kind[slot]! : 0;
+      slot += r.bool() ? 1 : r.varint() + 2;
+      const inPlace = r.bool();
+      const kind = inPlace ? 0 : this.kinds.read(r, 16);
+      if (r.overflow || slot > 0xffff || kind >= kinds) return;
+      const was = rows && slot < rows.high ? rows.kind[slot]! : 0;
       const hpWas = was !== 0 ? rows!.hp[slot]! : 0;
+      if (inPlace) {
+        const owner = this.owners.read(r, 0);
+        const hp = r.bool() ? maxHp[was]! : r.f32();
+        if (r.overflow) return;
+        if (was === 0) continue;
+        if (told && hpWas !== Math.fround(hp)) told(was, was, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, hp, -1);
+        structs.put(chunk, slot, was, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, rows!.yaw[slot]!, owner, hp, version);
+        continue;
+      }
       if (kind === 0) {
-        if (!r.overflow) {
-          if (told && was !== 0) told(was, 0, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, 0, GONE_TAKEN);
-          world.structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, version);
-        }
+        if (told && was !== 0) told(was, 0, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, 0, GONE_TAKEN);
+        structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, version);
         continue;
       }
       const x = x0 + r.bits(15) / STRUCT_UNITS;
       const z = z0 + r.bits(15) / STRUCT_UNITS;
-      const y = r.svarint() / STRUCT_UNITS;
-      const yaw = r.u16();
-      const owner = r.varint();
-      const hp = r.f32();
-      if (r.overflow || kind >= kinds) return;
+      if (!r.bool()) height += r.svarint();
+      const yaw = this.yaws.read(r, 16);
+      const owner = this.owners.read(r, 0);
+      const hp = r.bool() ? maxHp[kind]! : r.f32();
+      if (r.overflow) return;
+      const y = height / STRUCT_UNITS;
       if (told && (was !== kind || hpWas !== Math.fround(hp))) told(was, kind, x, y, z, hpWas, hp, -1);
-      world.structs.put(chunk, slot, kind, x, y, z, yaw, owner, hp, version);
+      structs.put(chunk, slot, kind, x, y, z, yaw, owner, hp, version);
     }
     // Removals follow, each as runs of slots. A row newer than its removal (the slot was reused) is left alone.
     const t = world.structs.chunks[chunk];
@@ -1572,6 +1670,22 @@ export class ClientSession {
     world.structs.setVersion(chunk, version);
     this.whole[chunk] = 1;
   }
+}
+
+/** Whether entity `j` of a view was sent any vehicle part. */
+function hasVehicleParts(v: EntityView, j: number): boolean {
+  return (v.vehiclePose[j]! | v.vehicleWheel[j]! | v.vehicleRide[j]! | v.vehicleDoors[j]! | v.vehicleDrive[j]! | v.vehicleRotor[j]! | v.vehicleSystems[j]! | v.vehicleAttitudeA[j]! | v.vehicleAttitudeB[j]! | v.vehicleWater[j]!) !== 0;
+}
+
+/** The vehicle columns of a body that is no vehicle and was sent no vehicle part: each part as it unpacks from 0 (vehicleColumns). */
+function noVehicle(out: RemoteSample, n: number): void {
+  out.vehiclePitch[n] = 0; out.vehicleRoll[n] = 0; out.steering[n] = 0; out.wheelAngle[n] = 0;
+  out.vehicleGroundPitch[n] = 0; out.vehicleGroundRoll[n] = 0; out.vehicleRideOffset[n] = 0; out.vehicleGrounded[n] = 0;
+  out.vehicleDoors[n] = 0; out.vehicleRotorcraft[n] = 0; out.vehicleBoat[n] = 0;
+  out.vehicleHullCondition[n] = 1; out.vehicleFlooding[n] = 0;
+  out.vehicleRotorRpm[n] = 0; out.vehicleRotorPhase[n] = 0; out.vehicleFuel[n] = 0; out.vehicleEngineCondition[n] = 0; out.vehicleRotorCondition[n] = 0; out.vehicleEngineOn[n] = 0;
+  out.vehicleGear[n] = -1; out.vehicleRpm[n] = 0; out.vehicleShifting[n] = 0;
+  out.vehicleQx[n] = 0; out.vehicleQy[n] = 0; out.vehicleQz[n] = 0; out.vehicleQw[n] = 1;
 }
 
 function clamp1(v: number): number {

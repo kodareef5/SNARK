@@ -4,15 +4,17 @@
 // height, a region map that is not flat colours, masks that dye a pixel more than wholly, a large picture that is not
 // its small one, and more megabytes than the asset allows.
 
-import { closeSync, existsSync, openSync, readSync } from "node:fs";
-import { relative } from "node:path";
+import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from "node:fs";
+import { relative, resolve } from "node:path";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { nearestColour } from "../../shared/pack/palette.ts";
-import { STEP0_SIZE, TEXTURE_FORMATS, textureBytes, topIn, type TextureRole } from "../../shared/pack/texture.ts";
+import { STEP0_SIZE, TEXTURE_FORMATS, blockOf, textureBytes, topIn, type TextureRole } from "../../shared/pack/texture.ts";
+import { astcBlock } from "../pack/encode.ts";
 import { asPicture, baseMips, normalAgainstHeight, normalMips, readPicture, seam, shrunkAgainst, type Picture } from "../pack/image.ts";
 import { checkMasks, readRegions, regionMasks } from "../pack/mask.ts";
+import { isNeutral, materialMips, neededSide } from "../pack/texture.ts";
 import type { Asset } from "./assets.ts";
-import { materialsOf, pictureFiles, sideOf, type Material } from "./materials.ts";
+import { materialsOf, pictureFiles, readMaps, sideOf, type Material } from "./materials.ts";
 
 /**
  * A picture that tiles jumps across its edge about as hard as inside it: 1. Pictures that do tile measure up to
@@ -73,8 +75,8 @@ function header(file: string): { width: number; height: number; depth: number } 
   return { width: view.getUint32(16), height: view.getUint32(20), depth: bytes[24]! };
 }
 
-/** One material's facts. `deep` reads its pictures. */
-function measure(asset: Asset, m: Material, pack: Pack, deep: boolean, faults: string[], notes: string[]): MaterialFacts {
+/** One material's facts. `deep` reads its pictures, and holds them against those of `others`. */
+function measure(asset: Asset, m: Material, pack: Pack, deep: boolean, faults: string[], notes: string[], others: readonly Material[]): MaterialFacts {
   const before = faults.length;
   const held = (pack.header.materials ?? []).find((p) => p.id === m.id);
   const tops: Partial<Record<TextureRole, number>> = {};
@@ -156,7 +158,48 @@ function measure(asset: Asset, m: Material, pack: Pack, deep: boolean, faults: s
   if (base && smallBase) (out.shrunk ??= {}).base = shrunkAgainst(baseMips(base), baseMips(smallBase));
   if (normal && smallNormal) (out.shrunk ??= {}).normal = shrunkAgainst(normalMips(normal).pictures, normalMips(smallNormal).pictures);
   for (const [what, db] of Object.entries(out.shrunk ?? {})) if (db < ALIKE) faults.push(`${m.id}: its ${what} picture, shrunk, is not its small one (${db.toFixed(1)} dB)`);
+  if (faults.length === before) notes.push(...contentNotes(m, tops, others));
   return out;
+}
+
+/** The map each picture a material's textures are made from goes into. Its height and small pictures are kept for the record. */
+const MAKES: Readonly<Record<string, TextureRole>> = { base: "base", normal: "normal", packed: "mro", occlusion: "mro", roughness: "mro", metal: "mro", regions: "mask", mask: "mask", mask2: "mask2", hurt: "layer", decay: "layer" };
+
+/**
+ * What a material's maps hold, as the build makes them: one its role's neutral everywhere, which the build leaves out;
+ * one whose pictures' steps past some side change nothing beyond what tools/pack/texture.ts `neededSide` allows, which
+ * its asset can store at that side (`tops`); and a picture another material names too, of which the build keeps one
+ * texture where the two are made alike.
+ */
+function contentNotes(m: Material, tops: Partial<Record<TextureRole, number>>, others: readonly Material[]): string[] {
+  const notes: string[] = [];
+  const mips = materialMips(readMaps(m));
+  const neutral = new Set<TextureRole>();
+  for (const [role, top] of Object.entries(tops) as [TextureRole, number][]) {
+    const all = mips[role];
+    if (!all || all.length < Math.log2(top) + 1) continue;
+    const alpha = role === "layer" || (role === "base" && m.spec.cutout !== undefined && m.spec.cutout !== false);
+    if (isNeutral(role, alpha, all.slice(0, Math.log2(top) + 1))) {
+      neutral.add(role);
+      notes.push(`${m.id}: its ${role} is everywhere what a material without one draws, and the build leaves it out`);
+      continue;
+    }
+    if (role === "mask" || role === "mask2") continue;
+    const { side, change } = neededSide(role, alpha, all);
+    if (side < top) notes.push(`${m.id}: its ${role} needs ${side} pixels and is stored at ${top}: from ${side} up no texel ${role === "normal" ? `turns more than ${change.toFixed(1)} degrees` : `moves more than ${change.toFixed(1)} levels`} (tops: { ${role}: ${side} })`);
+  }
+  const files = pictureFiles(m);
+  for (const [what, file] of Object.entries(files)) {
+    if (MAKES[what] === undefined || neutral.has(MAKES[what]) || !existsSync(file)) continue;
+    const bytes = statSync(file).size;
+    const twin = others.find((o) => {
+      const theirs = o.id === m.id ? undefined : pictureFiles(o)[what];
+      if (theirs === undefined || !existsSync(theirs)) return false;
+      return resolve(theirs) === resolve(file) || (statSync(theirs).size === bytes && readFileSync(theirs).equals(readFileSync(file)));
+    });
+    if (twin) notes.push(`${m.id}: its ${what} picture is ${twin.id}'s too, and the build keeps one texture of what the two make alike`);
+  }
+  return notes;
 }
 
 export interface TextureReport {
@@ -166,13 +209,18 @@ export interface TextureReport {
   budget: number | null;
 }
 
-/** The facts of every material the asset names. With `deep` their pictures are read and measured, which takes seconds. */
-export function measureTextures(asset: Asset, pack: Pack, deep: boolean, faults: string[], notes: string[]): TextureReport {
+/**
+ * The facts of every material the asset names. With `deep` their pictures are read and measured, which takes seconds,
+ * and held against the pictures of its other materials and of the `others` assets' materials.
+ */
+export function measureTextures(asset: Asset, pack: Pack, deep: boolean, faults: string[], notes: string[], others: readonly Asset[] = []): TextureReport {
   const spec = asset.spec;
-  const materials = materialsOf(asset).map((m) => measure(asset, m, pack, deep, faults, notes));
+  const own = materialsOf(asset);
+  const pool = deep ? [...own, ...others.filter((o) => o.id !== asset.id).flatMap(materialsOf)] : [];
+  const materials = own.map((m) => measure(asset, m, pack, deep, faults, notes, pool));
   const named = pack.header.textures ?? [];
   for (const t of named) if (!materials.some((m) => t.id === `${m.id}/${t.role}`)) faults.push(`the pack names the texture ${t.id}, which no material in asset.ts has. Build the asset again`);
-  const megabytes = Math.max(...TEXTURE_FORMATS.map((format) => named.reduce((sum, t) => sum + textureBytes(format, t.role, topIn(format, t.top)), 0))) / 2 ** 20;
+  const megabytes = Math.max(...TEXTURE_FORMATS.map((format) => named.reduce((sum, t) => sum + textureBytes(format, t.role, topIn(format, t.top), format === "astc" ? astcBlock(t.role, t.role === "layer") : blockOf(format, {})), 0))) / 2 ** 20;
   const budget = (spec.kind === "creature" || spec.kind === "pieces" ? spec.budgets.texture?.megabytes : undefined) ?? null;
   if (budget !== null && megabytes > budget) faults.push(`its textures take ${megabytes.toFixed(1)} MB in one variant, and its budget is ${budget} MB`);
   return { materials, megabytes, budget };

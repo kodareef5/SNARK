@@ -176,7 +176,7 @@ test("a survivor walks from the marina through the gangway and all four interior
     walk.route("shore_to_arrival", true);
     expect(s.stats.corrections - before).toBe(0);
   } finally { h.host.shutdown(); }
-}, 15000);
+});
 
 test("every authored stairway, room and circulation route is reachable on foot with normal E cabin doors", () => {
   const h = new Harness({}, 32, 60, { dev: true, clips: NO_CLIPS, rigs: [], map }, reg);
@@ -185,7 +185,7 @@ test("every authored stairway, room and circulation route is reachable on foot w
     for (const r of KORU_LAYOUT.routes) { nav.visit(r.id); if (r.kind === "stairs") nav.visit(r.id, true); }
     expect(s.stats.corrections - before).toBe(0);
   } finally { h.host.shutdown(); }
-}, 20000);
+});
 
 test("gangway rails stop an ordinary sprint into the harbour on both sides", () => {
   const h = new Harness({}, 34, 60, { dev: true, clips: NO_CLIPS, rigs: [], map }, reg);
@@ -254,4 +254,4 @@ test("delayed peers walk onto separate yacht decks, see the correct floor, and r
       expect(capsuleFree(h.world, s.own.x, s.own.y, s.own.z, .4, 2.6)).toBe(true);
     }
   } finally { h.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
-}, 20000);
+});

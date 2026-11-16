@@ -1,0 +1,299 @@
+{
+  "asset": "core/sfx/bugs",
+  "review": "../ref/sound",
+  "about": "Insects and frogs: crickets and cicadas, a mosquito at the ear, flies, bees, wasps, beetles, a dragonfly, a locust swarm, frogs, a scorpion and a cockroach skittering.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "crickets": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.04,
+      "want": "crickets at night",
+      "prompts": [
+        {
+          "id": "v4-22200",
+          "models": [
+            "moss"
+          ],
+          "seed": 22200,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "Crickets chirping in the night, steady and even. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "cicadas": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.04,
+      "want": "cicadas in the heat",
+      "prompts": [
+        {
+          "id": "v4-22210",
+          "models": [
+            "moss"
+          ],
+          "seed": 22210,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "Cicadas buzzing loudly in the summer heat, a steady pulsing drone. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "mosquito": {
+      "kind": "impact",
+      "range": 2,
+      "level": -26,
+      "vary": 0.04,
+      "want": "a mosquito at the ear",
+      "prompts": [
+        {
+          "id": "v4-22220",
+          "models": [
+            "moss"
+          ],
+          "seed": 22220,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A mosquito whines right by the ear, a thin high buzz, steady."
+        }
+      ],
+      "loop": true
+    },
+    "mosquito/pass": {
+      "kind": "impact",
+      "range": 3,
+      "level": -24,
+      "vary": 0.04,
+      "want": "a mosquito flying past",
+      "prompts": [
+        {
+          "id": "v4-22230",
+          "models": [
+            "moss"
+          ],
+          "seed": 22230,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A mosquito flies past the ear with a high whining buzz that comes and goes, four separate passes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "fly": {
+      "kind": "impact",
+      "range": 5,
+      "level": -26,
+      "vary": 0.04,
+      "want": "flies buzzing",
+      "prompts": [
+        {
+          "id": "v4-22240",
+          "models": [
+            "moss"
+          ],
+          "seed": 22240,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Houseflies buzz around lazily, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "fly/pass": {
+      "kind": "impact",
+      "range": 5,
+      "level": -24,
+      "vary": 0.04,
+      "want": "a fly buzzing past",
+      "prompts": [
+        {
+          "id": "v4-22250",
+          "models": [
+            "moss"
+          ],
+          "seed": 22250,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A big fly buzzes past the ear, four separate passes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "bees": {
+      "kind": "impact",
+      "range": 15,
+      "level": -22,
+      "vary": 0.04,
+      "want": "bees at a hive",
+      "prompts": [
+        {
+          "id": "v4-22260",
+          "models": [
+            "moss"
+          ],
+          "seed": 22260,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A swarm of honeybees buzzing around a hive, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "wasp": {
+      "kind": "impact",
+      "range": 8,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a wasp",
+      "prompts": [
+        {
+          "id": "v4-22270",
+          "models": [
+            "moss"
+          ],
+          "seed": 22270,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "An angry wasp buzzes past with a loud droning hum, four separate passes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "beetle": {
+      "kind": "impact",
+      "range": 5,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a beetle",
+      "prompts": [
+        {
+          "id": "v4-22280",
+          "models": [
+            "moss"
+          ],
+          "seed": 22280,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A large beetle clicks and its hard wing cases buzz as it takes off, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "dragonfly": {
+      "kind": "impact",
+      "range": 8,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a dragonfly",
+      "prompts": [
+        {
+          "id": "v4-22290",
+          "models": [
+            "moss"
+          ],
+          "seed": 22290,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A dragonfly's wings whir and rattle as it darts past, four separate passes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "swarm": {
+      "kind": "impact",
+      "range": 60,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a locust swarm",
+      "prompts": [
+        {
+          "id": "v4-22300",
+          "models": [
+            "moss"
+          ],
+          "seed": 22300,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A huge swarm of locusts: a dense roaring buzz of countless wings, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true
+    },
+    "frogs": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.04,
+      "want": "frogs at night",
+      "prompts": [
+        {
+          "id": "v4-22310",
+          "models": [
+            "moss"
+          ],
+          "seed": 22310,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A chorus of frogs croaking and peeping in a swamp at night, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "frog": {
+      "kind": "impact",
+      "range": 30,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a frog's croak",
+      "prompts": [
+        {
+          "id": "v4-22320",
+          "models": [
+            "moss"
+          ],
+          "seed": 22320,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A big bullfrog croaks deeply, five separate croaks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "skitter": {
+      "kind": "impact",
+      "range": 5,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a scorpion or cockroach skittering",
+      "prompts": [
+        {
+          "id": "v4-22330",
+          "models": [
+            "moss"
+          ],
+          "seed": 22330,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A scorpion skitters quickly over dry stone, tiny clicking legs, four separate runs with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

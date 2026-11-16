@@ -110,7 +110,7 @@ test("the graphics setting steps through the tiers and stops at either end", () 
     seen.push(row.value(s));
   }
   expect(seen).toEqual(["low poly", "low poly", "medium", "high", "ultra", "ultra"]);
-  // A touch-first device is offered low poly to high, and draws medium's and high's shadows as their touch rule says.
+  // A touch-first device is offered low poly to high, and draws medium's and high's shadows as their touch rule says, with high's card a third smaller.
   s.touchFirst = true;
   row.step(s, 1);
   expect(row.value(s)).toBe("high");
@@ -121,6 +121,7 @@ test("the graphics setting steps through the tiers and stops at either end", () 
     expect(forTouch(tier, true)).toBe(touched);
     expect(forTouch(tier, false)).toBe(tier);
   }
+  expect([forTouch(tierOf("medium"), true).gpuBytes, forTouch(tierOf("high"), true).gpuBytes]).toEqual([tierOf("medium").gpuBytes, 1024 * 1048576]);
   expect(forTouch(tierOf("lowpoly"), true)).toBe(tierOf("lowpoly"));
   // Steady frame is automatic unless turned off.
   const steady = SETTING_ROWS.find((r) => r.label === "Steady frame")!;

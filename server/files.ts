@@ -3,7 +3,7 @@
 
 import { join, normalize } from "node:path";
 
-const TYPES: Record<string, string> = { html: "text/html; charset=utf-8", js: "text/javascript", snpk: "application/octet-stream", json: "application/json" };
+const TYPES: Record<string, string> = { html: "text/html; charset=utf-8", js: "text/javascript", snpk: "application/octet-stream", json: "application/json", png: "image/png", ttf: "font/ttf", txt: "text/plain; charset=utf-8", opus: "audio/ogg" };
 /** Sixteen hex digits in a name are the start of the SHA-256 of the file. */
 const HASHED = /\.[0-9a-f]{16}\./;
 
@@ -30,6 +30,9 @@ export async function serveFile(dir: string, req: Request): Promise<Response> {
   }
   // A whole file goes out compressed where a compressed copy was built beside it. A range never does: its offsets are the file's own.
   const packed = Bun.file(path + ".br");
-  if ((req.headers.get("accept-encoding") ?? "").includes("br") && (await packed.exists())) return new Response(packed, { headers: { ...headers, "content-encoding": "br", vary: "accept-encoding" } });
+  if (await packed.exists()) {
+    headers.vary = "accept-encoding";
+    if ((req.headers.get("accept-encoding") ?? "").includes("br")) return new Response(packed, { headers: { ...headers, "content-encoding": "br" } });
+  }
   return new Response(file, { headers: { ...headers, "accept-ranges": "bytes" } });
 }

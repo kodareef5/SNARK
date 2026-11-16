@@ -31,14 +31,18 @@ function columnBytes(of: object): number {
   return bytes;
 }
 
+/** A map's entry from a number to something, as Bun 1.4.3 keeps a million of them. */
+const MAP_ENTRY = 55;
+
 /**
- * What one slot takes: the store's columns and its free ring, three references for its name, look and gear, and the columns
- * kept beside the store by the creatures, their minds and the history (four bytes there).
+ * What one slot takes: the store's columns, its vehicle rows among them, an entry for each name, look and gear a slot has,
+ * and the columns kept beside the store by the creatures, their minds and the history (four bytes there).
  */
 function slotBytes(host: Host): number {
   const ents = host.world.ents;
   const beside = columnBytes(host.creatures.mind) + columnBytes(host.creatures) + ents.cap * 4;
-  return (columnBytes(ents) - ents.chunkHead.byteLength + ents.cap * 24 + beside) / ents.cap;
+  const entries = (ents.names.size + ents.looks.size + ents.gears.size) * MAP_ENTRY;
+  return (columnBytes(ents) - ents.chunkHead.byteLength + entries + beside) / ents.cap;
 }
 
 export function storeRows(section: Section, record: Row): void {

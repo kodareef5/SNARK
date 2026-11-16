@@ -1,0 +1,66 @@
+{
+  "map": "core:san-francisco",
+  "mapHash": 3644417512,
+  "tier": "medium",
+  "seconds": 14.6,
+  "peakResidentMiB": 3084.8,
+  "views": [
+    {
+      "name": "painted-ladies",
+      "frames": 86,
+      "milliseconds": 6053,
+      "eye": [
+        3842,
+        74.265625,
+        1596
+      ],
+      "draws": 1423,
+      "triangles": 1994834,
+      "budget": {
+        "draws": 1024,
+        "triangles": 2000000
+      },
+      "buildMs": 1.57,
+      "dropped": 0,
+      "casterDropped": 0
+    },
+    {
+      "name": "spawn-presidio-tunnel-tops",
+      "frames": 43,
+      "milliseconds": 2672,
+      "eye": [
+        5854,
+        12.604375000000001,
+        4556
+      ],
+      "draws": 860,
+      "triangles": 818762,
+      "budget": {
+        "draws": 1024,
+        "triangles": 2000000
+      },
+      "buildMs": 1.38,
+      "dropped": 0,
+      "casterDropped": 0
+    },
+    {
+      "name": "flyer-150m",
+      "frames": 40,
+      "milliseconds": 3071,
+      "eye": [
+        3842,
+        219.265625,
+        1596
+      ],
+      "draws": 990,
+      "triangles": 1384518,
+      "budget": {
+        "draws": 1024,
+        "triangles": 2000000
+      },
+      "buildMs": 3.17,
+      "dropped": 0,
+      "casterDropped": 0
+    }
+  ]
+}

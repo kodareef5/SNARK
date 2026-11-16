@@ -114,6 +114,7 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
       for (let i = 0; i < 30; i++) ui.chat.print(TEXT_NOTICE + (i % 4), `ada: ${"W".repeat(i * 5)} and so on`, 1000);
       if (chatOpen) ui.chat.begin(TEXT_TRIBE, null);
       ui.chat.edit("y".repeat(300));
+      ui.settings.diagnostics = true;
       const hud = fullHud();
       hud.prompt = "E  open ada's cache";
       hud.ammo = "stone arrow  1 / 1   (24 more)";
@@ -184,7 +185,8 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
       expect(markers.length).toBe(256);
       const own = f.nodes[markers[255]!]!;
       const map = f.find(KEY_MINIMAP)!;
-      expect([own.x + 2, own.y + 2]).toEqual([map.x + map.w, map.y + map.h]);
+      // The complete marker remains inside the map at its far boundary.
+      expect([own.x + own.w, own.y + own.h]).toEqual([map.x + map.w, map.y + map.h]);
     }
   }
 });
@@ -306,7 +308,7 @@ test("console keys: one press toggles once, the open console owns the keyboard, 
   ui.build(16 / 9, new HudModel(), null);
   const rows = (): string[] => {
     const out: string[] = [];
-    for (let i = 0; i < ui.frame.count; i++) if (ui.frame.nodes[i]!.key >= KEY_CONSOLE_ROW) out.push(ui.frame.nodes[i]!.text);
+    for (let i = 0; i < ui.frame.count; i++) if (ui.frame.nodes[i]!.key >= KEY_CONSOLE_ROW && ui.frame.nodes[i]!.key < KEY_CONSOLE_ROW + 60) out.push(ui.frame.nodes[i]!.text);
     return out;
   };
   const shown = rows().length;
@@ -1133,11 +1135,13 @@ const GROWN_ONE = { saddled: false, breeds: false, mating: false, female: false,
 
 test("a creature looked into says how its taming goes; one just tamed is asked a name for, and Enter sends it", () => {
   const narcotic = reg.index.get("core:narcotic")!;
+  const saddle = reg.index.get("core:saddle_pteranodon")!;
   for (const [name, aspect] of ASPECTS) {
     const { session, sent } = fakeSession(fullInventory());
     const inside = new Inventory(20);
     inside.set(2, narcotic, 3, 0, 0, 0);
     inside.set(3, stone, 1, 0, 0, 0);
+    inside.set(4, saddle, 1, 0, 0, 0);
     Object.assign(session, { sessionState: SESSION_ALIVE, open: { name: "", inventory: inside }, subject: { taming: true, owned: false, level: 30, progress: 0.4, te: 0.946, torpor: 0.61, food: 0.9 } });
     const ui = new Ui();
     ui.registry = reg;
@@ -1146,11 +1150,14 @@ test("a creature looked into says how its taming goes; one just tamed is asked a
     const line = f.find(KEY_OPEN_SUBJECT)!;
     expect(line.text, name).toBe("taming 40%  well 95%  torpor 61%  food 90%".slice(0, line.text.length));
     expect(line.x + line.w).toBeLessThanOrEqual(f.width + 0.01);
-    // A right click on a narcotic in it feeds it. On anything else in it, nothing happens.
+    // A right click on a narcotic in it feeds it, and on a saddle puts it on (the server says whether it fits). On
+    // anything else in it, nothing happens.
     ui.pointer(0, KEY_OPEN_SLOT + 2 * 3, 0, 0, 2, session);
     ui.pointer(0, KEY_OPEN_SLOT + 3 * 3, 0, 0, 2, session);
+    ui.pointer(0, KEY_OPEN_SLOT + 4 * 3, 0, 0, 2, session);
     const r = new BitReader(sent[0]!.bytes);
-    expect([sent.length, sent[0]!.op, r.varint(), r.u16()]).toEqual([1, CMD_FEED, 2, narcotic]);
+    const r2 = new BitReader(sent[1]!.bytes);
+    expect([sent.length, sent[0]!.op, r.varint(), r.u16(), sent[1]!.op, r2.varint(), r2.u16()]).toEqual([2, CMD_FEED, 2, narcotic, CMD_FEED, 4, saddle]);
     Object.assign(session, { subject: { taming: false, owned: true, level: 42, progress: 0, te: 0.81, torpor: 0, food: 0.5, ...GROWN_ONE } });
     ui.build(aspect, fullHud(), session);
     expect(f.find(KEY_OPEN_SUBJECT)!.text).toBe("level 42  torpor 0%  food 50%");
@@ -1173,15 +1180,15 @@ test("a creature looked into says how its taming goes; one just tamed is asked a
     expect(ui.inventory.open).toBe(false);
     ui.input(KEY_NAME_INPUT, "Blue");
     expect(ui.key("Enter", true, false, session)).toBe(true);
-    // Closing the inventory told the server the creature was shut, which was the second command sent.
-    const named = new BitReader(sent[2]!.bytes);
-    expect([sent[2]!.op, named.u32(), named.string(24)]).toEqual([CMD_NAME, 0x1234, "Blue"]);
+    // Closing the inventory told the server the creature was shut, which was the third command sent.
+    const named = new BitReader(sent[3]!.bytes);
+    expect([sent[3]!.op, named.u32(), named.string(24)]).toEqual([CMD_NAME, 0x1234, "Blue"]);
     // The next tame is asked about in turn. Escape leaves it unnamed, and then there is nothing left to ask.
     ui.build(aspect, fullHud(), session);
     expect([ui.naming.open, f.find(KEY_NAME_TITLE)!.text]).toEqual([true, "Tamed: a parasaur, level 3"]);
     ui.key("Escape", true, false, session);
     ui.build(aspect, fullHud(), session);
-    expect([ui.naming.open, sent.length, session.tamed.length, f.find(KEY_NAME_PANEL)]).toEqual([false, 3, 0, null]);
+    expect([ui.naming.open, sent.length, session.tamed.length, f.find(KEY_NAME_PANEL)]).toEqual([false, 4, 0, null]);
   }
 });
 

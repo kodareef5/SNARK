@@ -1,0 +1,173 @@
+{
+  "asset": "core/sfx/raft",
+  "review": "../ref/sound",
+  "about": "Rafts: paddling, the logs and lashings creaking, water lapping and rushing between the logs, a sail flapping and filling, bumping a rock and running aground.",
+  "notes": "v3 (vehicle round). Engine layers are 20 s beds cut to loop, played faster or slower by rpm; slot names match core:vehicle's, so a vehicle of this family is heard by them first and by core:vehicle for the rest.",
+  "slots": {
+    "paddle": {
+      "kind": "impact",
+      "range": 25,
+      "level": -20,
+      "vary": 0.0,
+      "want": "a paddle stroke",
+      "prompts": [
+        {
+          "id": "v3-9800",
+          "models": [
+            "moss"
+          ],
+          "seed": 9800,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A wooden paddle dips and pulls through calm water: a splashy stroke and drips, six separate strokes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 6
+    },
+    "creak": {
+      "kind": "impact",
+      "range": 20,
+      "level": -24,
+      "vary": 0.0,
+      "want": "the logs and lashings creaking",
+      "prompts": [
+        {
+          "id": "v3-9810",
+          "models": [
+            "moss"
+          ],
+          "seed": 9810,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A log raft drifts on a gentle swell: wooden logs and rope lashings creak and groan slowly, water lapping between the logs, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "hull/slow": {
+      "kind": "impact",
+      "range": 20,
+      "level": -24,
+      "vary": 0.0,
+      "want": "water lapping between the logs",
+      "prompts": [
+        {
+          "id": "v3-9820",
+          "models": [
+            "moss"
+          ],
+          "seed": 9820,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Calm water laps and gurgles gently between floating wooden logs, steady and slow. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "hull/fast": {
+      "kind": "impact",
+      "range": 30,
+      "level": -22,
+      "vary": 0.0,
+      "want": "water rushing between the logs at speed",
+      "prompts": [
+        {
+          "id": "v3-9830",
+          "models": [
+            "moss"
+          ],
+          "seed": 9830,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A wooden log raft moves quickly downriver: water rushing and splashing between the logs, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "sail/flap": {
+      "kind": "impact",
+      "range": 30,
+      "level": -22,
+      "vary": 0.0,
+      "want": "the sail flapping",
+      "prompts": [
+        {
+          "id": "v3-9840",
+          "models": [
+            "moss"
+          ],
+          "seed": 9840,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A canvas sail luffs and flaps in the wind with ropes rattling and slapping, steady gusty flapping. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "sail/fill": {
+      "kind": "impact",
+      "range": 30,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the sail filling with wind",
+      "prompts": [
+        {
+          "id": "v3-9850",
+          "models": [
+            "moss"
+          ],
+          "seed": 9850,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A canvas sail catches the wind and fills with a sudden heavy whump and a creak of the mast, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "bump": {
+      "kind": "impact",
+      "range": 30,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the raft bumping a rock",
+      "prompts": [
+        {
+          "id": "v3-9860",
+          "models": [
+            "moss"
+          ],
+          "seed": 9860,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy wooden log raft bumps against a rock: a hollow wooden knock and creak, five separate bumps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "beach": {
+      "kind": "impact",
+      "range": 30,
+      "level": -16,
+      "vary": 0.0,
+      "want": "running aground on a shore",
+      "prompts": [
+        {
+          "id": "v3-9870",
+          "models": [
+            "moss"
+          ],
+          "seed": 9870,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A wooden log raft runs aground on a sandy shore: the logs scrape and grind on sand and pebbles, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

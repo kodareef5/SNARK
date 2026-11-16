@@ -7,7 +7,7 @@ const tall = { ...sideways, direction: 5, pitch: 23, phase: .625 };
 
 test("the actual dressed survivor witness needs the wider yacht doorway", () => {
   const fit = actualKoruFit(sideways);
-  expect(fit.maximum[0]!).toBeCloseTo(.6784451, 5);
+  expect(fit.maximum[0]!).toBeCloseTo(.6785143, 5);
   expect(fit.maximum[0]!).toBeGreaterThan(.6); // The previous 1.2 m aperture cut through a legal glove vertex.
   expect(fit.maximum[0]!).toBeLessThan(KORU_LAYOUT.clearances.doorWidth / 2);
   expect(fit.witnesses[3]).toContain("armor/hide/hands vertex203 profile34");

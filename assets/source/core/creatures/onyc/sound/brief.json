@@ -1,0 +1,134 @@
+{
+  "asset": "core/creatures/onyc",
+  "review": "../ref/sound",
+  "about": "A swarm of giant cave bats.",
+  "notes": "v2 brief: a creature still to come; its sounds are found by id the day its definition exists.",
+  "slots": {
+    "call": {
+      "kind": "voice",
+      "range": 60,
+      "level": -20,
+      "vary": 0.6,
+      "want": "calm call",
+      "prompts": [
+        {
+          "id": "v2-9290",
+          "models": [
+            "moss"
+          ],
+          "seed": 9290,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A swarm of giant cave bats gives high squeaking chitter and echoing clicks, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 8
+    },
+    "startled": {
+      "kind": "voice",
+      "range": 80,
+      "level": -16,
+      "vary": 0.5,
+      "want": "alarm",
+      "prompts": [
+        {
+          "id": "v2-9300",
+          "models": [
+            "moss"
+          ],
+          "seed": 9300,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A swarm of giant cave bats lets out a burst of shrieks and wingbeats, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
+    },
+    "hurt": {
+      "kind": "voice",
+      "range": 50,
+      "level": -18,
+      "vary": 0.5,
+      "want": "pain",
+      "prompts": [
+        {
+          "id": "v2-9310",
+          "models": [
+            "moss"
+          ],
+          "seed": 9310,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A swarm of giant cave bats a shrill squeal, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
+    },
+    "death": {
+      "kind": "voice",
+      "range": 50,
+      "level": -18,
+      "vary": 0.3,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "v2-9320",
+          "models": [
+            "moss"
+          ],
+          "seed": 9320,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A swarm of giant cave bats gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 2
+    },
+    "attack": {
+      "kind": "voice",
+      "range": 40,
+      "level": -16,
+      "vary": 0.5,
+      "want": "attack",
+      "prompts": [
+        {
+          "id": "v2-9330",
+          "models": [
+            "moss"
+          ],
+          "seed": 9330,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A swarm of giant cave bats: a bat bites with a squeak and a flutter, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
+    },
+    "step": {
+      "kind": "step",
+      "range": 30,
+      "level": -24,
+      "vary": 0.6,
+      "want": "footfalls or movement",
+      "prompts": [
+        {
+          "id": "v2-9340",
+          "models": [
+            "moss"
+          ],
+          "seed": 9340,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Leathery bat wings flapping fast in a cave, well spaced and distinct. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 6
+    }
+  }
+}

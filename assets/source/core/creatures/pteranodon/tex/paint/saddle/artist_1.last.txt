@@ -1,0 +1,5 @@
+Painted all 22 saddle pieces at **1,024²**. Full coverage, black dye map, byte-identical rebuild and game-renderer review verified.
+
+[Preview](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/paint/saddle/checks/game_review.png) · [Report and rebuild instructions](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/paint/saddle/REPORT.md)
+
+Existing grip/cantle gaps and strap intersections remain geometry issues; they’re documented in the report.

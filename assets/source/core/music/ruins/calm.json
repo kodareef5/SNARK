@@ -1,0 +1,44 @@
+{
+  "track": "ruins",
+  "layer": "calm",
+  "candidate": 2,
+  "model": "Stable Audio 3 medium",
+  "repo": "stabilityai/stable-audio-3-medium",
+  "revision": "d4d3579395a8ac0df4ab13b5b1d7138ce7290f81",
+  "code": {
+    "repo": "github.com/Stability-AI/stable-audio-3",
+    "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57"
+  },
+  "licence": {
+    "name": "Stability AI Community License",
+    "terms": "free under US$1M annual revenue, commercial users register with Stability AI; outputs are ours; not for training other foundation models"
+  },
+  "prompt": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, the overgrown ruins of a fallen city, desolate and industrial: metallic percussion, distorted low bass drones, cold strings, an eerie music-box melody, echoing, continuous. 100 BPM, F# minor.",
+  "negative_prompt": "fade out, ending, silence, gaps, dropouts, lo-fi, pop, happy, major key, vocals with lyrics, singing words",
+  "seconds": 120,
+  "bpm": 100,
+  "key": "F# minor",
+  "seed": 17002,
+  "steps": 8,
+  "cfg": 1.0,
+  "init_from": null,
+  "init_noise_level": null,
+  "rate": 44100,
+  "channels": 2,
+  "seconds_to_make": 2.7,
+  "gpu_peak_gb": 5.47,
+  "torch": "2.7.1+cu128",
+  "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "date": "2026-11-15",
+  "sha256": "e1368d548569d663e926a68f33b3d1c397b8078d7895de28cdb9e90414c5c4d1",
+  "chosen": "calm@2.wav",
+  "measures": {
+    "loudness_db": -21.7,
+    "dropouts": 0.025,
+    "stray_db": 4.1,
+    "clipped": 11,
+    "brightness": 0.014,
+    "score": -3.516
+  },
+  "stored_as": "Opus 96 kb/s stereo (ffmpeg libopus); the master is made again from this recipe"
+}

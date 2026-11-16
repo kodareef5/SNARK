@@ -1,3 +1,4 @@
+import { K_SLIDER } from "../../client/core/ui/nodes.ts";
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -75,6 +76,7 @@ test("a new name arrives in the creator with no body; it makes a look, and the s
     expect(n, `node ${key}`).not.toBeNull();
     expect(n.interactive).toBe(true);
     app.pointer(0, key, n.x + n.w * at, n.y + n.h / 2, 0);
+    if(n.kind===K_SLIDER)app.textInput(key,String(at));
     app.pointer(1, key, n.x + n.w * at, n.y + n.h / 2, 0);
     run(34);
   };
@@ -125,7 +127,7 @@ test("a new name arrives in the creator with no body; it makes a look, and the s
   expect(look[LOOK_BEARD]).toBe(1);
   click(KEY_CREATOR_SEX + 1);
   expect(look[LOOK_BEARD]).toBe(0);
-  // On the body tab each region has four keys: its label, minus, its bar and plus. A step is 0.1, a press on the bar sets the value, and a drag follows.
+  // On the body tab each region has four keys: its label, minus, its bar and plus. A step is 0.1, native range input sets the value, and further input follows the drag.
   click(KEY_CREATOR_TAB + 1);
   expect(f.find(KEY_CREATOR_REGION)!.text).toBe("Head size");
   for (let i = 0; i < 3; i++) click(KEY_CREATOR_REGION + 3);
@@ -137,7 +139,7 @@ test("a new name arrives in the creator with no body; it makes a look, and the s
   expect(f.find(KEY_CREATOR_REGION + 5 * 4 + 2)!.value).toBeCloseTo(0.25, 1);
   const bar = f.find(KEY_CREATOR_REGION + 12 * 4 + 2)!;
   app.pointer(0, bar.key, bar.x + bar.w * 0.5, bar.y, 0);
-  app.pointer(2, bar.key, bar.x + bar.w * 0.9, bar.y, -1);
+  app.textInput(bar.key,"0.9");
   expect(regionOf(look, 12)).toBeCloseTo(0.8, 1);
   app.pointer(1, bar.key, bar.x + bar.w * 0.9, bar.y, 0);
   app.pointer(2, bar.key, bar.x + bar.w * 0.1, bar.y, -1); // not dragging any more
@@ -172,7 +174,7 @@ test("a new name arrives in the creator with no body; it makes a look, and the s
   expect(e).toBeGreaterThanOrEqual(0);
   const rec = h.host.records.byPid.get(h.world.ents.pid[e]!)!;
   expect([...rec.look!]).toEqual([...made]);
-  expect([...h.world.ents.look[e]!]).toEqual([...made]);
+  expect([...h.world.ents.looks.get(e)!]).toEqual([...made]);
   expect([...session.ownLook!]).toEqual([...made]);
   expect(f.find(KEY_CREATOR_PANEL)).toBeNull();
   expect(f.find(KEY_CROSS)).not.toBeNull();
@@ -258,14 +260,14 @@ test("only a session in the creator can create, only once, and only with a look 
   const seq = bo.create(randomLook(new Rng(8)));
   h.run(200);
   expect(results.get(seq + 1000)).toBe(RESULT_DENIED);
-  expect([...h.world.ents.look[h.ent(bo)]!]).toEqual([...defaultLook()]);
+  expect([...h.world.ents.looks.get(h.ent(bo))!]).toEqual([...defaultLook()]);
   const good = randomLook(new Rng(9));
   const ok = ada.create(good);
   const twice = ada.create(defaultLook());
   h.run(300);
   expect(results.get(ok)).toBe(0);
   expect(results.get(twice)).toBe(RESULT_DENIED);
-  expect([...h.world.ents.look[h.ent(ada)]!]).toEqual([...good]);
+  expect([...h.world.ents.looks.get(h.ent(ada))!]).toEqual([...good]);
   expect(h.world.ents.count).toBe(2);
 
   // A hello with an invalid look is refused before anything is made.

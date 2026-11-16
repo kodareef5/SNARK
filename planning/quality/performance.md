@@ -25,6 +25,7 @@ ASTC, 24-bit depth, 16 texture units, no timer queries.
 | P2 | `bun tools/bench/corpses.ts`, three runs on a busy machine, ranges | 2026-11-15 | branch `r9/p2-corpses` |
 | P10 | the hurt and decay layers' rows, once each on a busy machine (load 9 to 14) | 2026-11-15 | `r9/p10-layers` |
 | B | `bun tools/bench/budget.ts`, two runs after merging main, counts alike (load 2.3 on 10 cores) | 2026-11-15 | branch `r9/frame-budget` |
+| W | the bench through its siege, twice on a busy machine (load 10 to 44), for counts and bytes: protocol 21 | 2026-11-16 | branch `perf/built-wire` |
 | Dnnn | the measurement its decision records | | |
 | iPhone | the device page's reports (D349), kept in `planning/reference/device-reports`, named by UTC time | 2026-11-15 | |
 
@@ -61,7 +62,7 @@ high and are given only where no quiet run has the row, marked "busy".
 | A checkpoint between ticks; after the bench's bulk writes | 4.5 to 4.8; 29 ms | 10 | S; Q |
 | Live objects gained over 900 ticks | 2,834 | 5,000 | M |
 | Process memory, server and scripted clients | 374 to 385 MB | 2,048 | Q |
-| Entity store: a slot; full at 524,288 slots | 195 bytes; 97.5 MB | 200; 128 MB | M |
+| Entity store: a slot; full at 524,288 slots | 188 bytes; 94.0 MB | 200; 128 MB | M |
 
 The worst tick lands on a tick with no commit, a different one each run: the
 garbage collector, and noise at this sample size (Q).
@@ -79,8 +80,8 @@ garbage collector, and noise at this sample size (Q).
 | Crowd: every survivor and 2,000 creatures | 31.6 KB/s | 36 | M |
 | Crowd: bodies shown to a client that asked for 2,048; that never asked | 982 of 1,024; 452 of 512 | | M |
 | Breeding base, each survivor there | 32.3 KB/s | 34 | M |
-| Siege: 50 pieces of a 20,000-piece chunk damaged a tick | 26.0 KB/s | 30 | M |
-| A 1,512-piece house collapsing, each watcher, all of it | 2,843 bytes | 3,024 | M |
+| Siege: 50 pieces of a 20,000-piece chunk damaged a tick | 9.5 KB/s | 30 | W |
+| A 1,512-piece house collapsing, each watcher, all of it | 2,466 bytes | 3,024 | W |
 | Voice, 100 talking, each listener | 28.7 KB/s | 31 | M |
 | The map's feeds | 0.008 KB/s | 0.5 | M |
 | Far feed: first 20 s, mean and most; after; a siege watched | 27.9, 29.1 KB; 0.006 KB/s; 0.28 KB/s | none; 0.2; 2 | M |
@@ -104,7 +105,7 @@ the far feed delays no near chunk at any of six links, 50 ms clean to 180 ms wit
 | Fly 2,000 arrows, median, 99th; a blast in a 2,000-piece base, median, worst | 0.82, 1.50; 0.05, 0.45 ms | 2, 4; 1, 4 | R4 |
 | Brawl, median; siege, added to the tick | 2.0; 0.25 ms | 8; none | Q |
 | Siege: chunk writes in 10 s; commit median; commit writing the chunk | 10; 0.10 to 0.11; 4.9 to 5.1 ms (0.71 busy on M) | 11; 4; 10 | S, M |
-| Collapse of 1,512 pieces: ticks to the last; work a tick, median, worst | 32; 0.57, 1.6 to 4.3 ms | 60; 1.5, 3 | M; R4, S |
+| Collapse of 1,512 pieces: ticks to the last; work a tick, median, worst | 29; 0.57, 1.6 to 4.3 ms | 60; 1.5, 3 | W; R4, S |
 | The same: whole tick, worst; ask whether a piece stands | 7.5 to 8.5; 0.047 ms | 16; 0.1 | Q; R4 |
 | Voice: relay for a second of 100 talking; who hears whom, median, worst | 4.2; 0.19, 0.29 ms | 20; 0.5, 2 | R4 |
 | Breeding base: tick median before and with it; 99th; look for pairs, median, worst | 3.78, 4.13; 11.7; 0.11, 0.14 ms | 1.5 × before + 0.5; 16; 0.5, 2 | R4 |
@@ -337,7 +338,12 @@ itself). The far edge keeps the 50% its rule says.
 | Compared taps: 1, 4, 9 | 0.06, 0.19, 0.49 | |
 
 Depth passes cost 0.18 ms a 100,000 triangles at 1,024 and 0.38 at 2,048, rigid
-or skinned; a draw costs 0.44 µs of main thread.
+or skinned. The 0.44 µs of main thread a draw was a probe's six-call draw; the
+device page now times the executor's own five kinds (D638), not yet on the
+iPhone. Counted over a fake WebGL2, the executor sends 11 GL calls for a textured
+draw, 7.8 flat, 6.5 far and 6 for a caster, and 8.4 a draw in the young wood on
+medium, where it sent 18, 13, 15, 12 and 14.4 before it kept a mirror of the
+card's state.
 
 **The ladder** (D246): a rung holds while its median frame is within 1.12 times
 the display's 17 ms and its 95th percentile within 1.5 times. Two runs, `07-43`
@@ -374,7 +380,7 @@ Reasoned from the rows, in the order a growing world meets them.
 | Draws | 4,096 in the packet; the iPhone held 256 to 2,048 on lit tiers | Far stand-ins (F4); texture arrays before multi-draw (D210) |
 | Shadow casters | 812 of 4,096 in the siege on ultra (building pieces only since the refining forge, S1) | Merged casters cached by shape (D267) |
 | Garbage collection | A worst tick of 7 to 20 ms once in some hundreds | Less garbage a tick; the simulation in a worker |
-| Textures on a phone | 1.5 GB held, the tab dropped at 2 GB | A smaller card budget on a phone |
+| Textures on a phone | 1.5 GB held, the tab dropped at 2 GB; the game's ASTC holds at most 507 MB on high and 152 on medium, its blocks sized by map ([encoders](encoders.md)) | A smaller card budget on a phone |
 
 ## Not measured
 
@@ -395,6 +401,43 @@ Reasoned from the rows, in the order a growing world meets them.
 - Small details on a phone: the fill of a hundred dust rings near the camera, and the details program's cost a
   megapixel beside LIT's. `bun run snap -- --details fight` shows the scene; a phone run is to time it.
 - Real network congestion; WebSocket send cost under load; Firefox.
+
+## Glass HUD (E11 interface slice)
+
+`feat/ui-hud-plan` on `c70b9a79`, 2026-11-15; Intel Core i9-13980HX,
+32 logical cores, Linux, Bun 1.4.3. `bun run bench -- --ui` isolates the HUD
+from the world sizing run. These are CPU layout measurements on a shared,
+busy host, not browser frame times or an idle-machine baseline. These rows
+include the controls/slider polish pass. The expanded body/ring atlas costs
+2,668 additional transfer bytes; its dimensions and decoded size are unchanged.
+
+| Row | Result | Budget |
+| --- | --- | --- |
+| Play layout, median / p99 | 0.011 / 0.019 ms | 0.25 / 1 ms |
+| Menu layout, median / p99 | 0.002 / 0.004 ms | 0.25 / 1 ms |
+| Settings layout, median / p99 | 0.003 / 0.009 ms | 0.25 / 1 ms |
+| Keyboard layout, median / p99 | 0.014 / 0.028 ms | 0.25 / 1 ms |
+| Audio layout, median / p99 | 0.005 / 0.010 ms | 0.25 / 1 ms |
+| Controller layout, median / p99 | 0.010 / 0.019 ms | 0.25 / 1 ms |
+| Largest frame; node growth after warmup | 263; 0 | 500; 0 |
+| Shared sheet decoded | 917,504 B | 1,048,576 B |
+| Sheet plus Brotli font, excluding HTTP headers | 64,523 B | 98,304 B |
+| Primitive fallback creation, once at boot | 43.7 ms | none |
+
+An earlier busy-host play p99 missed at 1.205 ms; subsequent runs passed.
+The sheet figure excludes browser copies, fallback pixels and canvas uploads.
+
+After the merge with main (`review/ui-hud`, 2026-11-15; Apple M5, 10 cores,
+macOS 26.3.1, Bun 1.4.3, three runs on a loaded machine), the bench has a
+driving row with the car's dashboard on the glass:
+
+| Row | Result | Budget |
+| --- | --- | --- |
+| Play layout, median / p99 | 0.004-0.005 / 0.007-0.020 ms | 0.25 / 1 ms |
+| Driving layout, median / p99 | 0.004 / 0.006-0.023 ms | 0.25 / 1 ms |
+| Play nodes; driving nodes | 165; 182 | 500 |
+See the [review evidence](../reference/ui-hud-review.md) for input/layout
+coverage, asset provenance, browser findings and the remaining device work.
 
 ## Still moving
 

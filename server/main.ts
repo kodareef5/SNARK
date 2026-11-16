@@ -1,4 +1,4 @@
-// bun server/main.ts [--dev] [--config dir] [--port 8787] [--host address] [--public-url https://name.example] [--map file.snmap] [--db var/world.db] [--allow-map-mismatch] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
+// bun server/main.ts [--dev] [--config dir] [--port 8787] [--host address] [--public-url https://name.example] [--map file.snmap] [--db var/world.db] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
 // SNARK_ADMIN_PASSWORD sets the `enablecheats` password. In a terminal, typed lines run as console commands with full rights.
 
 import { CORE_CONTENT } from "../content/core.ts";
@@ -20,6 +20,7 @@ import { parseManifest } from "../shared/pack/manifest.ts";
 import { serveFile } from "./files.ts";
 import { boardOwners, soundBoard, type BoardGate } from "./sound-board.ts";
 import { CUES } from "../shared/sound/cues.ts";
+import { mapCopy } from "../shared/world/mapfile.ts";
 
 export interface ServerOptions {
   port?: number;
@@ -33,8 +34,6 @@ export interface ServerOptions {
   terminal?: boolean;
   /** Path of the map file to run (shared/world/mapfile.ts). Without one, the proving ground. */
   map?: string;
-  /** See `HostOptions.allowMapMismatch`. */
-  allowMapMismatch?: boolean;
   /** See `StoreOptions.allowMissingContent`. */
   allowMissingContent?: boolean;
   dbPath?: string;
@@ -108,18 +107,29 @@ export function liveFileOf(folder: string): (() => string | null) | undefined {
 
 /**
  * Answers the two requests a client makes for the map. `/map.json` names the map and its file. The file's name carries the
- * start of its SHA-256, so whoever fetched it keeps it for good, and it goes out compressed. Null for any other path.
+ * start of its SHA-256, so whoever fetched it keeps it for good, and it goes out as the copies its build made for the wire
+ * (tools/map/pack.ts). A map with none, as a test's or the proving ground, is small enough to compress here. Null for any
+ * other path. `link` is the header that has a page ask for the file as it is read, before it has read map.json.
  */
-export function mapRoutes(file: Uint8Array<ArrayBuffer>, id: string, hash: number): (path: string, accepts: string) => Response | null {
+export function mapRoutes(file: Uint8Array<ArrayBuffer>, id: string, hash: number, copies: { br?: Blob; gz?: Blob } = {}): ((path: string, accepts: string) => Response | null) & { readonly link: string } {
   const name = `map.${new Bun.CryptoHasher("sha256").update(file).digest("hex").slice(0, 16)}.snmap`;
   const json = JSON.stringify({ id, hash, file: name });
-  const packed = Bun.gzipSync(file);
-  return (path, accepts) => {
+  const gz = copies.gz ?? Bun.gzipSync(file);
+  return Object.assign((path: string, accepts: string): Response | null => {
     if (path === "/map.json") return new Response(json, { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
     if (path !== `/${name}`) return null;
     const headers = { "content-type": "application/octet-stream", "cache-control": "public, max-age=31536000, immutable", vary: "accept-encoding" };
-    return accepts.includes("gzip") ? new Response(packed, { headers: { ...headers, "content-encoding": "gzip" } }) : new Response(file, { headers });
-  };
+    if (copies.br && accepts.includes("br")) return new Response(copies.br, { headers: { ...headers, "content-encoding": "br" } });
+    return accepts.includes("gzip") ? new Response(gz, { headers: { ...headers, "content-encoding": "gzip" } }) : new Response(file, { headers });
+  }, { link: `</${name}>; rel=preload; as=fetch; crossorigin` });
+}
+
+/** The copies for the wire the build wrote beside the map file at `path`, if it did. */
+export function mapCopies(path: string, hash: number): { br?: Blob; gz?: Blob } {
+  const [br, gz] = [mapCopy(path, hash, "br"), mapCopy(path, hash, "gz")];
+  if (existsSync(br) && existsSync(gz)) return { br: Bun.file(br), gz: Bun.file(gz) };
+  console.log(`map: ${path} has no copies for the wire beside it, so it is compressed now: bun tools/map.ts pack ${path} writes them`);
+  return {};
 }
 
 /**
@@ -163,7 +173,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const manifest = parseManifest(readFileSync(manifestFile, "utf8"));
   const pack = parsePack(new Uint8Array(readFileSync(join(clientDir, "assets", manifest.files[manifest.boot]!.name))));
   const clips = pack.clips;
-  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: new Uint8Array(readFileSync(opts.map)) } : {}), allowMapMismatch: opts.allowMapMismatch ?? false, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
+  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: new Uint8Array(readFileSync(opts.map)) } : {}), ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, backups: !opts.noBackups, store: { allowMissingContent: opts.allowMissingContent ?? false } } : {}), wild: true });
   // Settings problems are logged at startup and do not stop the server.
   for (const m of host.lists.missing) console.log(`settings: ${m.setting} names ${m.name}, which this build does not have`);
@@ -171,7 +181,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   for (const m of host.lists.unclear) console.log(`settings: ${m.setting} names ${m.name}, which could be ${m.could.join(" or ")}, so write the one meant in full`);
   for (const line of host.passed) console.log(`settings: passed over: ${line}`);
   if (!opts.probeScene && host.spawner === null && host.world.zones.every((z) => z.spawns === undefined)) console.log(`map: neither the content nor the map file gives ${host.world.mapId} a spawn region, so no wild creature lives on it`);
-  const mapRoute = mapRoutes(host.mapFile!, host.world.mapId, host.world.mapHash);
+  const mapRoute = mapRoutes(host.mapFile!, host.world.mapId, host.world.mapHash, opts.map ? mapCopies(opts.map, host.world.mapHash) : {});
   // The shared families of sounds are the owners the catalogue's fallbacks name.
   const families = [...new Set(CUES.flatMap((c) => c.falls.map((f) => f.slice(0, f.indexOf("/")))).filter((o) => o !== "{owner}"))];
   const board: BoardGate = { dev: opts.dev ?? false, password: host.adminPassword, guesses: host.game.cheatGuesses, tick: () => host.world.tick };
@@ -229,7 +239,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const server = Bun.serve<Socket>({
     port: opts.port ?? 8787,
     ...(hostname ? { hostname } : {}),
-    ...(opts.cert && opts.key ? { tls: { cert: Bun.file(opts.cert), key: Bun.file(opts.key) } } : {}),
+    ...(opts.cert && opts.key ? { tls: { cert: Bun.file(opts.cert), key: Bun.file(opts.key) }, http2: true } : {}),
     async fetch(req, srv) {
       const url = new URL(req.url);
       const answered = opts.routes?.(req, url);
@@ -260,7 +270,12 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       }
       const sounds = soundBoard(req, srv.requestIP(req)?.address ?? "", board, join(clientDir, "sounds.html"), () => boardOwners(registry, families));
       if (sounds) return sounds;
-      return mapRoute(url.pathname, req.headers.get("accept-encoding") ?? "") ?? serveFile(clientDir, req);
+      const map = mapRoute(url.pathname, req.headers.get("accept-encoding") ?? "");
+      if (map) return map;
+      const file = await serveFile(clientDir, req);
+      // A device probe measures the link quiet before the game's files come, as index.html leaves its own preloads.
+      if ((url.pathname === "/" || url.pathname === "/index.html") && file.ok && !url.searchParams.has("device")) file.headers.set("link", mapRoute.link);
+      return file;
     },
     websocket: {
       maxPayloadLength: 4096,
@@ -407,7 +422,6 @@ if (import.meta.main) {
     config: rules,
     ...(live ? { live } : {}),
     map: value("--map"),
-    allowMapMismatch: args.includes("--allow-map-mismatch"),
     allowMissingContent: args.includes("--allow-missing-content"),
     dbPath: value("--db"),
     noBackups: args.includes("--no-backups"),

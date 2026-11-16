@@ -300,6 +300,381 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/call/moss-pt-6361-05395.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6360",
+      "prompt": "A big cat growls low and rumbles a deep purring growl, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6361,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6361.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat growls low and rumbles a deep purring growl, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.1,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f284908475e4857721f6f69bd40ed4f1009c555ede18332c91e25e7a4344b876",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "ac4e97e532ae7a06c4eb83bd599edeaa4471e14af84cc261413bc01b9b505a73",
+      "cut": {
+        "source_file": "moss-pt-6361.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          256560,
+          352800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6360-07045.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6360",
+      "prompt": "A big cat growls low and rumbles a deep purring growl, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6360,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6360.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat growls low and rumbles a deep purring growl, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.2,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ba5ed61a2cc305dafd487421507b1044bfaed7bf2fd4a429d5648d0c2aab6cb5",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b987a88e69b885b783c192175b170b4f29fc3308bdc5e5ba44e8010771f60a7d",
+      "cut": {
+        "source_file": "moss-pt-6360.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          335760,
+          384000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6361-00955.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6360",
+      "prompt": "A big cat growls low and rumbles a deep purring growl, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6361,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6361.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat growls low and rumbles a deep purring growl, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.1,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "6ef2f781efa1d4a3fbe1b3187ec7f293110efb301ea67422449b1b4bc365f15e",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "ac4e97e532ae7a06c4eb83bd599edeaa4471e14af84cc261413bc01b9b505a73",
+      "cut": {
+        "source_file": "moss-pt-6361.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          43439,
+          183360
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6360-00300.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6360",
+      "prompt": "A big cat growls low and rumbles a deep purring growl, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6360,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6360.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat growls low and rumbles a deep purring growl, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.2,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "031cf6bda113cb1a379e676432744df27c81c9d29fd2562c5e393c1df2d279a4",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b987a88e69b885b783c192175b170b4f29fc3308bdc5e5ba44e8010771f60a7d",
+      "cut": {
+        "source_file": "moss-pt-6360.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          12000,
+          88080
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6360-02290.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6360",
+      "prompt": "A big cat growls low and rumbles a deep purring growl, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6360,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6360.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat growls low and rumbles a deep purring growl, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.2,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "401d4d4b5153985bf9e3c899d14d69bd966686eb165978c8d2a5a920e429f653",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b987a88e69b885b783c192175b170b4f29fc3308bdc5e5ba44e8010771f60a7d",
+      "cut": {
+        "source_file": "moss-pt-6360.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          107520,
+          229920
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/startled/moss-pt-3210-03095.wav": {
       "model": "moss",
       "backend": "torch",
@@ -450,6 +825,456 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/startled/moss-pt-6371-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6370",
+      "prompt": "A big cat snarls and roars sharply, three separate snarls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6371,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6371.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat snarls and roars sharply, three separate snarls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "44db0cc5705c9300da84da464f22d6436d0974eb3666c66113a89fc31a1f7382",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "afbde3675dd5a730251b288ebce6647bdde23753db7e8a6af247574b17ea9247",
+      "cut": {
+        "source_file": "moss-pt-6371.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          38640
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6370-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6370",
+      "prompt": "A big cat snarls and roars sharply, three separate snarls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6370,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6370.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat snarls and roars sharply, three separate snarls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "7eecda573e0f011c4d1694233bf35648d0ab5e2e0eec7e70df5fabd3aeeb97b5",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "e0b3d430ca1ce82f295166fcd31445815f922b08463dad9314b0f333a7424f0d",
+      "cut": {
+        "source_file": "moss-pt-6370.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          44880
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6371-04295.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6370",
+      "prompt": "A big cat snarls and roars sharply, three separate snarls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6371,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6371.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat snarls and roars sharply, three separate snarls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "fd2b23949f6c225d7996ae2bef8c1ad0210c742415fdb1cd3abdb27aa75ad583",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "afbde3675dd5a730251b288ebce6647bdde23753db7e8a6af247574b17ea9247",
+      "cut": {
+        "source_file": "moss-pt-6371.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          203760,
+          252720
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6370-06020.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6370",
+      "prompt": "A big cat snarls and roars sharply, three separate snarls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6370,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6370.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat snarls and roars sharply, three separate snarls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "7802b4845cdba6f4f78c32c8f6882de7faaa2b3228ab4685d8801b5fcc46db1f",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "e0b3d430ca1ce82f295166fcd31445815f922b08463dad9314b0f333a7424f0d",
+      "cut": {
+        "source_file": "moss-pt-6370.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          286560,
+          376800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6371-02670.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6370",
+      "prompt": "A big cat snarls and roars sharply, three separate snarls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6371,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6371.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat snarls and roars sharply, three separate snarls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "19bb83f8618d4faf0e05a4491a621a24938aa19a3b279df769cbc7d6cf9e3fab",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "afbde3675dd5a730251b288ebce6647bdde23753db7e8a6af247574b17ea9247",
+      "cut": {
+        "source_file": "moss-pt-6371.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          125760,
+          192720
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6370-04170.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6370",
+      "prompt": "A big cat snarls and roars sharply, three separate snarls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6370,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6370.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat snarls and roars sharply, three separate snarls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ca22a436aeb3f8401c75d5211a2d247b6789b67a830c47c8813882bfd8bc87d2",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "e0b3d430ca1ce82f295166fcd31445815f922b08463dad9314b0f333a7424f0d",
+      "cut": {
+        "source_file": "moss-pt-6370.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          197760,
+          246720
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/hurt/moss-pt-3220-04065.wav": {
       "model": "moss",
       "backend": "torch",
@@ -594,6 +1419,231 @@
         "frames": [
           10560,
           76080
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6390-06775.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6390",
+      "prompt": "A big cat yowls in pain, four separate yowls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6390,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6390.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat yowls in pain, four separate yowls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "937f12125318d955793d00521db1b057f8e0a4286faf082f596a03e4a5e593f1",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "3afe1446bbe2d8446518fbcae57edb447c92d36dd1dfa3835755bffc5d28d8b1",
+      "cut": {
+        "source_file": "moss-pt-6390.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          322800,
+          384000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6390-04685.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6390",
+      "prompt": "A big cat yowls in pain, four separate yowls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6390,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6390.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat yowls in pain, four separate yowls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "9037d1e249b145b6b4c45130cb6c330202311186be1ff325b92a767571c4784c",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "3afe1446bbe2d8446518fbcae57edb447c92d36dd1dfa3835755bffc5d28d8b1",
+      "cut": {
+        "source_file": "moss-pt-6390.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          222480,
+          290160
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6390-00295.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6390",
+      "prompt": "A big cat yowls in pain, four separate yowls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6390,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6390.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat yowls in pain, four separate yowls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "46bf5316506731c61f67188c2969ec0840f5c12c6bd7ef3a46e6be9871dcdb07",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "3afe1446bbe2d8446518fbcae57edb447c92d36dd1dfa3835755bffc5d28d8b1",
+      "cut": {
+        "source_file": "moss-pt-6390.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          11760,
+          90720
         ],
         "rate": 48000,
         "stored_as": "mono PCM_24",
@@ -900,6 +1950,231 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/attack/moss-pt-6380-06185.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6380",
+      "prompt": "A big cat lunges with a vicious snarling bite, five separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6380,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6380.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat lunges with a vicious snarling bite, five separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "31504c1d9b7823d229b97f6d2d8d8661362eae6d8098ec970be35bff1de900b2",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b920256d6efcc2299b9083d36e019f58dfbd977bed47f5caaf54d4800f9a926d",
+      "cut": {
+        "source_file": "moss-pt-6380.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          294480,
+          339600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6380-04000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6380",
+      "prompt": "A big cat lunges with a vicious snarling bite, five separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6380,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6380.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat lunges with a vicious snarling bite, five separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "4ee33eba902532b1ad3b362deafcf68db64ea86650c6c00eaba972788522aba9",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b920256d6efcc2299b9083d36e019f58dfbd977bed47f5caaf54d4800f9a926d",
+      "cut": {
+        "source_file": "moss-pt-6380.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          189600,
+          240000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6380-01935.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6380",
+      "prompt": "A big cat lunges with a vicious snarling bite, five separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6380,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6380.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat lunges with a vicious snarling bite, five separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "1fd8dc4a4ea599a564dbd39af9bf1b9046815c08187fadc99b7072b6bb551cac",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b920256d6efcc2299b9083d36e019f58dfbd977bed47f5caaf54d4800f9a926d",
+      "cut": {
+        "source_file": "moss-pt-6380.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          90480,
+          136800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/step/moss-pt-3250-04282.wav": {
       "model": "moss",
       "backend": "torch",
@@ -969,6 +2244,756 @@
         "frames": [
           203136,
           235680
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-6400-02850.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-6400",
+      "prompt": "Soft heavy paws of a big cat walking on earth: muffled padded steps, well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6400,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6400.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Soft heavy paws of a big cat walking on earth: muffled padded steps, well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.0,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "c9c58b267bc6a90fd7f2ddfe2743ce7fa9312df6d2930f232ac628d24dc12459",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "1c6a5ec22484781da64305501b2efca91123e5129aa5b19a3f25c2f5330386dd",
+      "cut": {
+        "source_file": "moss-pt-6400.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          134400,
+          154560
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-6401-04487.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-6400",
+      "prompt": "Soft heavy paws of a big cat walking on earth: muffled padded steps, well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6401,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6401.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Soft heavy paws of a big cat walking on earth: muffled padded steps, well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.6,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "5dfbf5f2654fd8d0f173cd8c9b3129f79e882fefcb26693b4348a7c46bb9994f",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "06c21ed7df0e43baf9143d98bf5bc95af1a30adf2ee942c97d56b5302c1cffe0",
+      "cut": {
+        "source_file": "moss-pt-6401.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          212976,
+          245280
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6410-02365.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6410",
+      "prompt": "A big cat chases its prey: short snarls and grunting huffs while running, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6410,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6410.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat chases its prey: short snarls and grunting huffs while running, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.6,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "bdbc9dcb0a82b06beb1bee03759bb31000e53b049bb7ca558d978253b2b5d6f9",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "ac0470aae43b07395b5e80b7306a3b6eff169ac288936669504e11d2b800d722",
+      "cut": {
+        "source_file": "moss-pt-6410.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          111120,
+          158640
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6411-05990.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6410",
+      "prompt": "A big cat chases its prey: short snarls and grunting huffs while running, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6411,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6411.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat chases its prey: short snarls and grunting huffs while running, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "430e014fbc9bf305ecb9bcb0f40e4ccf42dd3bb40e6b1e8f2093f7bf37a8a632",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "8e32ad3226bef22a8b7252aac4f91afb582aac0c92ce1504956f0081374d0bc9",
+      "cut": {
+        "source_file": "moss-pt-6411.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          285120,
+          319200
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6410-05200.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6410",
+      "prompt": "A big cat chases its prey: short snarls and grunting huffs while running, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6410,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6410.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat chases its prey: short snarls and grunting huffs while running, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.6,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "7322235d39885f653637e7211c1b6dcaec4bbdb96bd63fe173f0dc75983661c2",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "ac0470aae43b07395b5e80b7306a3b6eff169ac288936669504e11d2b800d722",
+      "cut": {
+        "source_file": "moss-pt-6410.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          247200,
+          289680
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6411-00785.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6410",
+      "prompt": "A big cat chases its prey: short snarls and grunting huffs while running, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6411,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6411.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat chases its prey: short snarls and grunting huffs while running, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2784efcb670250a2ad238c563479ba3918ef8dc99eb61c8fde526c9526cf3931",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "8e32ad3226bef22a8b7252aac4f91afb582aac0c92ce1504956f0081374d0bc9",
+      "cut": {
+        "source_file": "moss-pt-6411.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          35280,
+          64321
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6410-00405.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6410",
+      "prompt": "A big cat chases its prey: short snarls and grunting huffs while running, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6410,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6410.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat chases its prey: short snarls and grunting huffs while running, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.6,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "d0fd14933d5644e5d413b36f0594db70d6f16a870dddf39c3523148203ab02b4",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "ac0470aae43b07395b5e80b7306a3b6eff169ac288936669504e11d2b800d722",
+      "cut": {
+        "source_file": "moss-pt-6410.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          17040,
+          54480
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6411-03615.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6410",
+      "prompt": "A big cat chases its prey: short snarls and grunting huffs while running, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6411,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6411.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat chases its prey: short snarls and grunting huffs while running, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "c687998793669a9a2a67f23bbb94b20947688a6d08aeff6318573dd0e9292a6d",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "8e32ad3226bef22a8b7252aac4f91afb582aac0c92ce1504956f0081374d0bc9",
+      "cut": {
+        "source_file": "moss-pt-6411.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          171120,
+          196320
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/growl/moss-pt-6420-04185.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "growl",
+      "prompt_id": "v2-6420",
+      "prompt": "A big cat growls low and hisses with ears back, four separate growls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6420,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6420.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat growls low and hisses with ears back, four separate growls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "d483b6c6b66c7c322ce4745b411d06467980d30f2287096c8b6a874b82d78530",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "5dbc7243f3d5b8df86c528381a5fed6b7329943caae6b06f4d75f67cee76e7e1",
+      "cut": {
+        "source_file": "moss-pt-6420.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          198480,
+          265920
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/growl/moss-pt-6420-06080.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "growl",
+      "prompt_id": "v2-6420",
+      "prompt": "A big cat growls low and hisses with ears back, four separate growls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6420,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6420.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big cat growls low and hisses with ears back, four separate growls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "5e431f6f267d16cd9e4e84cf36935f4dee693b0769998eaa82e2863532de2f06",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.6,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 39.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "5dbc7243f3d5b8df86c528381a5fed6b7329943caae6b06f4d75f67cee76e7e1",
+      "cut": {
+        "source_file": "moss-pt-6420.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          289440,
+          333600
         ],
         "rate": 48000,
         "stored_as": "mono PCM_24",

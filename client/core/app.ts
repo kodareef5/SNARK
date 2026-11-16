@@ -2,6 +2,7 @@
 // here, and draws what frame() returns. Tests drive this class directly.
 
 import { Icons } from "./assets/icons.ts";
+import { GamepadInput, type PadSample, type PadTarget } from "./gamepad.ts";
 import type { AssetPort } from "./assets/port.ts";
 import { forTouch, tierOf } from "./assets/tiers.ts";
 import { DRAW_TRIANGLES, Governor } from "./governor.ts";
@@ -55,6 +56,7 @@ import { MODE_TALK, MODE_WHISPER, MODE_YELL } from "../../shared/voice/packet.ts
 import type { SoundSink } from "./sound/packet.ts";
 import { Sounds } from "./sound/sounds.ts";
 import type { SoundDecoder } from "./sound/library.ts";
+import type { MusicTrack } from "./sound/music.ts";
 import { hearSession, soundView } from "./sound/view.ts";
 import { cueKey } from "../../shared/sound/cues.ts";
 import { soundCommand } from "./sound/command.ts";
@@ -62,7 +64,7 @@ import { SplitPort } from "./sound/split.ts";
 
 /** Indexed by MODE_*. */
 const TALK_LABEL: readonly string[] = ["WHISPERING", "TALKING", "YELLING"];
-import { IMAGE_MAP, IMAGE_MINIMAP } from "./ui/hud.ts";
+import { IMAGE_MAP, IMAGE_MINIMAP, KEY_HOTBAR, KEY_MINIMAP_TOGGLE, KEY_MINIMAP_OUT, KEY_MINIMAP_IN, KEY_VITAL } from "./ui/hud.ts";
 import { CANVAS_HEIGHT } from "./ui/nodes.ts";
 import { mapPointer } from "./ui/screens.ts";
 import { Ui } from "./ui/ui.ts";
@@ -117,7 +119,7 @@ export class App {
   readonly ui = new Ui();
   readonly cam = new Camera();
   readonly hud = new HudModel();
-  /** Read-only to the shell: native sound follows this state and never drives simulation. */
+  /** The dash's readings of the vehicle driven. */
   readonly vehicleTelemetry = new VehicleTelemetry();
   readonly feedback = new Feedback();
   /** Laser dots this frame (client/core/render/laser.ts). */
@@ -162,6 +164,8 @@ export class App {
 
   /** The registry last handed to the UI and shots. frame() swaps it when the session's changes. */
   private shown: Registry;
+  private readonly pad = new GamepadInput();
+  private readonly padTarget: PadTarget;
   private readonly pack: Pack;
   private last = -1;
   /** Adopt the welcome's authored/saved facing once, before the first input overwrites it. */
@@ -186,6 +190,19 @@ export class App {
     this.pack = pack;
     this.ui.registry = reg;
     this.ui.palette = pack.palette;
+    const app = this;
+    this.padTarget = {
+      get inMenu() { return !app.ui.wantsPointerLock; },
+      get inspecting() { return app.ui.inspect; },
+      get flying() { return app.controls.onFlyer; },
+      adjust: by => this.ui.adjustFocused(by),
+      key: (code, down) => { this.key(code, down, false, 1); }, mouse: (button, down) => this.mouseButton(button, down, 1),
+      move: (x, z) => this.controls.padMove(x, z), look: (x, y) => this.look(x,y), used: () => { this.ui.inputDevice = 1; },
+      navigate: (direction, press) => {
+        const key = this.ui.navigate(direction), n = this.ui.frame.find(key);
+        if (press && n) this.pointer(press === 1 ? 0 : 1, key, n.x+n.w/2, n.y+n.h/2, 0);
+      },
+    };
     this.ui.local = (line) => (this.sounds ? soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null);
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
@@ -236,6 +253,8 @@ export class App {
   sounds: Sounds | null = null;
   /** Decodes sounds off the main thread: the browser's worker, set before the first frame. Null decodes inline. */
   soundDecoder: SoundDecoder | null = null;
+  /** The music tracks the build lists (assets/music/music.json), once fetched; null for none. */
+  musicTracks: readonly MusicTrack[] | null = null;
   /** Tames already heard of the session's queue, which the naming prompt empties. */
   private tamedHeard = 0;
   talking = false;
@@ -290,20 +309,24 @@ export class App {
   private readonly heardAt = new Float32Array(HEAR_FIELDS * 128);
 
   /** Returns true if the page should not also act on the key. */
-  key(code: string, down: boolean, repeat = false): boolean {
+  key(code: string, down: boolean, repeat = false, source = 0): boolean {
+    if (down && !repeat) this.ui.inputDevice = source;
     if (!this.ui.captureKeyboard && this.vehiclePlacement.key(code, down, repeat)) return true;
     if (this.ui.key(code, down, repeat, this.session)) {
       // A screen that captures the keyboard releases the body's keys and a push-to-talk microphone.
       if (this.ui.captureKeyboard) {
-        this.controls.release();
-        if (!this.ui.settings.toggleTalk) this.talk(false);
+        this.blur();
       }
       return true;
     }
+    if (this.ui.inspect && (code === "Minus" || code === "Equal")) { if (down && !repeat) this.zoomMini(code === "Equal" ? 1 : -1); return true; }
     if (this.ui.captureKeyboard) return false;
     if (this.builder.key(code, down, repeat, this.nowMs, this.reg)) return true;
     // Minus and Equal zoom the minimap, or the map while it is open, where the arrows move it.
-    if (this.hud.chart?.key(code, down, this.ui.map)) return true;
+    if (this.hud.chart?.key(code, down && !repeat, this.ui.map)) {
+      if (!this.ui.map && down && !repeat) { this.ui.settings.minimapZoom = this.hud.chart.miniZoom; this.ui.settings.changed(); }
+      return true;
+    }
     if (code === "AltLeft" || code === "AltRight") {
       // Returning true keeps the browser from opening its menu.
       this.alt = down;
@@ -383,11 +406,11 @@ export class App {
     }
     // Arms round a creature do not lie down with it.
     if (code === "KeyX" && down && this.holding >= 0) return true;
-    return this.controls.key(code, down);
+    return this.controls.key(code, down, source);
   }
 
-  mouseButton(button: number, down: boolean): void {
-    if (!this.ui.wantsPointerLock) return;
+  mouseButton(button: number, down: boolean, source = 0): void {
+    if (!this.ui.wantsPointerLock) { if (!down) this.controls.mouseButton(button, false, source); return; }
     if (button === 0 && this.vehiclePlacement.active) {
       if (down) this.vehiclePlacement.place(this.session);
       return;
@@ -401,7 +424,11 @@ export class App {
       this.session.command(CMD_CARRY, (w) => w.u8(CARRY_THROW));
       return;
     }
-    this.controls.mouseButton(button, down);
+    this.controls.mouseButton(button, down, source);
+  }
+
+  gamepads(pads: readonly (PadSample | null)[], now: number): void {
+    if (this.steer) this.pad.update(pads, now, this.padTarget);
   }
 
   look(dx: number, dy: number): void {
@@ -438,6 +465,9 @@ export class App {
 
   blur(): void {
     this.controls.release();
+    this.useDownAt = -1;
+    this.useKept = this.eggKept = false;
+    this.usePulse = 0;
     this.alt = this.shift = false;
     if (!this.ui.settings.toggleTalk) this.talk(false);
   }
@@ -458,8 +488,24 @@ export class App {
 
   /** `kind` is 0 for down, 1 for up, 2 for move. The position is in canvas units. */
   pointer(kind: number, key: number, x: number, y: number, button: number): void {
-    if (mapPointer(this.hud, kind, key, x, y)) return;
+    if (!this.ui.menu && this.ui.map && mapPointer(this.hud, kind, key, x, y)) return;
+    if ((this.ui.wantsPointerLock || this.ui.inspect) && kind === 0 && button === 0) {
+      if (key >= KEY_VITAL && key < KEY_VITAL + this.hud.vitals.length * 2) { this.ui.settings.vitalLabels = !this.ui.settings.vitalLabels; this.ui.settings.changed(); }
+      if (key === KEY_MINIMAP_TOGGLE) { this.ui.settings.minimap = !this.ui.settings.minimap; this.ui.settings.changed(); }
+      if (key === KEY_MINIMAP_OUT || key === KEY_MINIMAP_IN) this.zoomMini(key === KEY_MINIMAP_OUT ? -1 : 1);
+      const slot = (key - KEY_HOTBAR) / 3;
+      if (Number.isInteger(slot) && slot >= 0 && slot < this.hud.hotbar.length) this.session.command(CMD_SELECT, (w) => w.u8(this.session.held === slot ? 255 : slot));
+    }
     this.ui.pointer(kind, key, x, y, button, this.session);
+    if (this.ui.menu) this.blur();
+  }
+
+  private zoomMini(turn: number): void {
+    const chart = this.hud.chart;
+    if (!chart) return;
+    chart.key(turn > 0 ? "Equal" : "Minus", true, false);
+    this.ui.settings.minimapZoom = chart.miniZoom;
+    this.ui.settings.changed();
   }
 
   /** Scale of remote body `i` relative to its kind. Below 1 for a young one. */
@@ -836,6 +882,7 @@ export class App {
     }
 
     this.travel(nowMs);
+    if (this.ui.reconnectRequested) { this.ui.reconnectRequested = false; this.page?.reload?.(); }
     if (session.state === "closed") {
       this.vehicleTelemetry.stop();
       // Only the reasons a player can act on are spelled out.
@@ -844,6 +891,7 @@ export class App {
       if (this.sound) this.sounds?.hush(this.sound);
       return null;
     }
+    if (this.ui.menu || this.ui.inspect) this.blur();
     if (this.usePulse > 0) c.key("KeyE", --this.usePulse > 0);
     this.holding = this.heldInArms();
     const flyer = this.flyerKeys();
@@ -870,7 +918,7 @@ export class App {
       const split = this.sound && this.stream ? new SplitPort(this.stream.port) : null;
       this.scene = new Scene(world, this.reg, this.pack, split ? { manifest: this.stream!.manifest, port: split.assets } : this.stream);
       if (split) {
-        this.sounds = new Sounds(this.stream!.manifest, split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.ui.settings.touchFirst, this.soundDecoder ?? undefined);
+        this.sounds = new Sounds(this.stream!.manifest, split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.soundDecoder ?? undefined, this.pack.header.details?.sheets ?? []);
         hearSession(session, this.sounds);
         this.ui.hear = (key) => this.sounds?.hearUi(cueKey(key));
       }
@@ -1123,6 +1171,8 @@ export class App {
     session.holdNodes(this.scene.assets.tier.nodes.chunks);
     const packet = this.scene.build(cam, this.remote);
     packetWithout(packet, this.off);
+    hud.minimapVisible = this.ui.settings.minimap && !this.ui.menu;
+    if (hud.chart && this.ui.settings.minimapZoom >= 0) hud.chart.miniZoom = this.ui.settings.minimapZoom;
     updateHud(hud, session, this.remote, this.fps, height / CANVAS_HEIGHT);
     hud.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
     this.feedback.absorb(session, this.reg, nowMs);
@@ -1135,6 +1185,8 @@ export class App {
     if (alive && car) hud.ammo = "";
     this.listen(hud);
     const vol = this.ui.settings;
+    if (this.sounds && this.musicTracks && !this.sounds.music) this.sounds.setMusic(this.musicTracks);
+    if (this.sounds) this.sounds.assetsIdle = this.scene.assets.residency.flying === 0 && this.scene.assets.residency.waiting === 0;
     if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, { master: vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, soundView(session));
     const ghost = this.scene.ghost;
     ghost.kind = 0;

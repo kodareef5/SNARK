@@ -4,7 +4,7 @@
 
 import { availableParallelism } from "node:os";
 import { join } from "node:path";
-import { TEXTURE_ROLES, pictureBytes, type TextureRole } from "../../shared/pack/texture.ts";
+import { TEXTURE_ROLES, blockOf, pictureBytes, type TextureRole } from "../../shared/pack/texture.ts";
 import { decodeAstc, encodeAstc } from "../pack/astc.ts";
 import { decodeBc5, decodeBc7, encodeBc5, encodeBc7 } from "../pack/bc.ts";
 import { encodeTextures, encodingOf, type TextureSource } from "../pack/encode.ts";
@@ -17,6 +17,8 @@ type Row = (name: string, value: number, unit: string, budget?: number | null) =
 const SIZE = 1024;
 /** No picture of the set may come back further from its source than this. */
 const FLOOR_DB = 40;
+/** Nor, in ASTC blocks larger than 4 by 4, than this by the side of its blocks. */
+const ASTC_FLOOR_DB: Readonly<Record<number, number>> = { 5: 38, 6: 36, 8: 34 };
 
 /** Decibels of `got` against `want`, pixel by pixel, in the channels listed as pairs of where each is in the two. 99 for no difference. */
 function decibels(want: Uint8Array, got: Uint8Array, channels: readonly (readonly [number, number])[]): number {
@@ -46,7 +48,7 @@ export async function benchTextures(section: Section, record: Row): Promise<void
     for (const format of ["bc", "astc"] as const) {
       const how = encodingOf(format, s.role, false);
       const t0 = performance.now();
-      const blocks = how.with === "astc" ? encodeAstc(top, SIZE, SIZE, how.kind) : how.with === "bc5" ? encodeBc5(top, SIZE, SIZE) : encodeBc7(top, SIZE, SIZE, how.channels);
+      const blocks = how.with === "astc" ? encodeAstc(top, SIZE, SIZE, how.kind, how.block) : how.with === "bc5" ? encodeBc5(top, SIZE, SIZE) : encodeBc7(top, SIZE, SIZE, how.channels);
       took[how.with][0]! += (performance.now() - t0) / 1000;
       took[how.with][1]! += megapixels;
       made.push(blocks);
@@ -54,16 +56,16 @@ export async function benchTextures(section: Section, record: Row): Promise<void
       const db =
         how.with === "bc7" ? decibels(top, decodeBc7(blocks, SIZE, SIZE), [[0, 0], [1, 1], [2, 2]])
         : how.with === "bc5" ? decibels(top, decodeBc5(blocks, SIZE, SIZE), [[0, 0], [1, 1]])
-        : decibels(top, decodeAstc(blocks, SIZE, SIZE, how.kind), how.kind === "normal" ? [[0, 0], [1, 3]] : [[0, 0], [1, 1], [2, 2]]);
-      if (db < FLOOR_DB) under++;
+        : decibels(top, decodeAstc(blocks, SIZE, SIZE, how.kind, how.block), how.kind === "normal" ? [[0, 0], [1, 3]] : [[0, 0], [1, 1], [2, 2]]);
+      if (db < (how.with === "astc" && how.block > 4 ? ASTC_FLOOR_DB[how.block]! : FLOOR_DB)) under++;
       record(`${s.id}, ${format}`, db, "dB");
     }
     alone.push(made);
   }
-  record(`pictures under the floor of ${FLOOR_DB} dB`, under, "", 0);
+  record(`pictures under the floor of ${FLOOR_DB} dB, and in larger astc blocks ${Object.entries(ASTC_FLOOR_DB).map(([side, db]) => `${db} at ${side}`).join(", ")}`, under, "", 0);
   record("BC7 on one core, a megapixel", took.bc7[0]! / took.bc7[1]!, "s", 3);
   record("BC5 on one core, a megapixel", took.bc5[0]! / took.bc5[1]!, "s", 1.5);
-  record("ASTC on one core, a megapixel", took.astc[0]! / took.astc[1]!, "s", 1.5);
+  record("ASTC on one core, a megapixel", took.astc[0]! / took.astc[1]!, "s", 2.5);
 
   // Every core: the whole set as a build encodes it, every mip in both variants, with nothing kept from before.
   const t0 = performance.now();
@@ -73,8 +75,9 @@ export async function benchTextures(section: Section, record: Row): Promise<void
   let differ = 0;
   sources.forEach((s, i) => {
     variants.slice(0, 2).forEach((v, f) => {
-      const at = v.placed[i]!.at + pictureOffset(v.format, s.role, SIZE);
-      if (!Buffer.from(alone[i]![f]!).equals(v.bytes.subarray(at, at + pictureBytes(v.format, s.role, SIZE)))) differ++;
+      const block = blockOf(v.format, v.placed[i]!);
+      const at = v.placed[i]!.at + pictureOffset(v.format, s.role, SIZE, block);
+      if (!Buffer.from(alone[i]![f]!).equals(v.bytes.subarray(at, at + pictureBytes(v.format, s.role, SIZE, block)))) differ++;
     });
   });
   record("pictures whose bytes differ between one core and all", differ, "", 0);

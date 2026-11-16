@@ -5,15 +5,16 @@
 //
 // One that died off the ground, in the air or in the water, first falls or sinks to where it comes to rest. Only the
 // server works that out (server/corpses.ts); its entity is sent where it is with the FALLING pose word, and the ragdoll is
-// laid where it landed, which every client is then sent.
+// laid where it landed, which every client is then sent. One that died in its own flight carries CUE_FELL in its cue
+// word for as long as it lies, and goes limp from its death in the air.
 
 import { TICK_RATE, WORLD_MIN_Y } from "../coords.ts";
 import { TAU } from "../math/scalar.ts";
 import { POS_UNITS } from "../net/view.ts";
 import type { CollisionWorld } from "../world/collide.ts";
-import { sampleClip } from "./clip.ts";
+import { sampleClip, type Clip } from "./clip.ts";
 import { creaturePose, type CreatureAnim } from "./creature.ts";
-import { AnimState } from "./pose.ts";
+import { AnimState, CUE_FELL } from "./pose.ts";
 import { Ragdoll } from "./ragdoll.ts";
 import { Solved, solve } from "./skeleton.ts";
 
@@ -68,13 +69,27 @@ export function yawOf16(yaw: number): number {
   return ((yaw >>> 6) * TAU) / YAW_STEPS;
 }
 
+/** The bits of a body's cue word that say it died in its own flight (CUE_FELL). */
+export const FELL = CUE_FELL << 1;
+
+/** Whether the body whose cue word is `cue` died in its own flight. */
+export function diedAloft(cue: number): boolean {
+  return (cue & (7 << 1)) === FELL;
+}
+
+/** The clip a body dies by: its death in the air where it died in its own flight and its kind has one, else its death. */
+export function deathOf(anim: CreatureAnim, air: boolean): Clip | null {
+  return (air ? anim.deathAir : null) ?? anim.death;
+}
+
 /**
  * The pose a body goes limp in, solved as the model's, and the pose a tick before it, which says how it moves: its death
- * clip at its asset's frame, or, for one that died knocked out or has no clip, how it lay, still.
+ * clip (`air`, its death in the air) at its asset's frame, or, for one that died knocked out or has no clip, how it lay,
+ * still.
  */
-export function limpPose(anim: CreatureAnim, out: boolean, now: Solved, was: Solved): void {
+export function limpPose(anim: CreatureAnim, out: boolean, air: boolean, now: Solved, was: Solved): void {
   const rig = anim.rig;
-  const clip = anim.death;
+  const clip = deathOf(anim, air);
   if (out || !clip) {
     st.unpack(0, 0);
     st.out = out;
@@ -95,12 +110,12 @@ export function limpPose(anim: CreatureAnim, out: boolean, now: Solved, was: Sol
  * The ragdoll of a body that went limp at (x, y, z) facing `yaw` radians, `size` times as large as it was made, or null for
  * a rig without one. `now` is filled with its first pose. Every argument must be as the wire has it.
  */
-export function layCorpse(anim: CreatureAnim, out: boolean, x: number, y: number, z: number, yaw: number, size: number, now: Solved): Ragdoll | null {
+export function layCorpse(anim: CreatureAnim, out: boolean, air: boolean, x: number, y: number, z: number, yaw: number, size: number, now: Solved): Ragdoll | null {
   const rig = anim.rig;
   if (!rig.ragdoll) return null;
   let was = before.get(rig.bones);
   if (!was) before.set(rig.bones, (was = new Solved(rig.bones)));
-  limpPose(anim, out, now, was);
+  limpPose(anim, out, air, now, was);
   const r = new Ragdoll(rig, rig.ragdoll);
   r.start(now, was, x, y, z, yaw, size);
   return r;

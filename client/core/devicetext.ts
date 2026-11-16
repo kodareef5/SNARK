@@ -70,11 +70,11 @@ export function progressText(mode: Mode, stage: string, detail: string): string 
   return escape(`${TESTS[mode].replace(/,.*/, "")}: ${stage}${detail ? `, ${detail}` : ""}\nKeep this page open and the screen on until it says Done.`);
 }
 
-const WIDTHS = [8, 7, 10, 6, 7, 7, 7, 7, 6, 6, 6, 6, 7, 5, 5, 5, 5, 6, 5, 5];
+const WIDTHS = [8, 7, 10, 6, 7, 7, 7, 7, 6, 6, 6, 6, 7, 5, 7, 5, 5, 5, 5, 6, 5, 5];
 const row = (cells: string[], widths = WIDTHS): string => cells.map((c, i) => (i < 2 || (widths === WIDTHS && i === 2) ? c.padEnd(widths[i]!) : c.padStart(widths[i]!))).join(" ").trimEnd();
 
 function phaseRow(p: PhaseReport, tier = p.tier): string {
-  const line = row([tier, p.scene, p.canvas.join("x"), `${secs(p.settleMs)}${p.settled ? "" : "!"}`, String(p.frameMs.median), String(p.frameMs.p95), String(p.frameMs.p99), String(p.frameMs.worst), String(p.buildMs.median), String(p.drawMs.median), p.gpuMs == null ? "-" : String(p.gpuMs), count(p.drawCalls), count(p.triangles), count(p.textured), String(p.dropped), String(p.skipped), String(p.lost), mb(p.fetched), String(p.failed), String(p.missed)]);
+  const line = row([tier, p.scene, p.canvas.join("x"), `${secs(p.settleMs)}${p.settled ? "" : "!"}`, String(p.frameMs.median), String(p.frameMs.p95), String(p.frameMs.p99), String(p.frameMs.worst), String(p.buildMs.median), String(p.drawMs.median), p.gpuMs == null ? "-" : String(p.gpuMs), count(p.drawCalls), count(p.triangles), count(p.casterDraws), count(p.casterTris), count(p.textured), String(p.dropped), String(p.skipped), String(p.lost), mb(p.fetched), String(p.failed), String(p.missed)]);
   const failed = [p.failedHow ? `fetches failed: ${p.failedHow}` : "", p.refused > 0 ? `${p.refused} uploads the card refused` : ""].filter((w) => w !== "").join("; ");
   return `${line}${p.fellTo ? `  fell to ${p.fellTo}` : ""}${failed ? `  ${failed}` : ""}`;
 }
@@ -85,7 +85,7 @@ function phaseRow(p: PhaseReport, tier = p.tier): string {
  */
 export function materialsLacking(r: DeviceReport): { drawn: string[]; lacking: string[] } {
   const shown = [...r.phases, ...(r.ladder?.rungs ?? []), ...(r.trees?.rungs ?? [])].map((p) => ("textured" in p ? { tier: p.tier, mat: p.textured } : { tier: p.tier, mat: p.mat }));
-  if (r.soak && !r.soak.wood) shown.push({ tier: r.soak.tier, mat: Math.max(0, ...r.soak.minutes.map((m) => m.mat ?? 0)) });
+  if (r.soak && !r.soak.wood) shown.push({ tier: r.soak.tier, mat: Math.max(0, ...r.soak.minutes.map((m) => m.mat)) });
   const drawn = [...new Set(shown.filter((p) => p.mat > 0).map((p) => p.tier))];
   const textured = new Set<string>(TIERS.filter((t) => t.texture > 0).map((t) => t.name));
   return { drawn, lacking: [...new Set(shown.map((p) => p.tier))].filter((t) => textured.has(t) && !drawn.includes(t)) };
@@ -116,10 +116,11 @@ function ladderLines(r: DeviceReport): string[] {
   for (const tier of tiers) out.push(line([tier, ...AXES.map((a) => cell(tier, a))]));
   out.push("each: the most that held, and then the first that did not and what took its frame (our code, the GPU, or a lost context),");
   out.push("or invalid where it did not draw all it was given or never settled, so its frames prove nothing;");
-  out.push("where all held: our code's ms a frame at the last rung, which is the engine's most for bodies, draws and pieces");
-  for (const g of l.rungs.filter((x) => !x.held)) out.push(`${g.invalid ? "invalid  " : "broke    "} ${g.tier} ${g.axis} ${g.n}: ${g.invalid ? `${g.invalid}; ` : ""}frames ${g.frameMs.median} ms, 95th ${g.frameMs.p95}; our code ${g.buildMs} + ${g.drawMs} ms; ${count(g.calls)} draws, ${count(g.tris)} triangles, ${count(g.bones)} bones, ${g.mat} with materials, canvas ${g.canvas.join("x")}`);
+  out.push("where all held: our code's ms a frame at the last rung, which is the engine's most for bodies, draws and pieces;");
+  out.push("base: a box base 10 m off of thatch, wood and stone rooms, a storey a rung; vehicles: parked cars, helicopters and boats");
+  for (const g of l.rungs.filter((x) => !x.held)) out.push(`${g.invalid ? "invalid  " : "broke    "} ${g.tier} ${g.axis} ${g.n}: ${g.invalid ? `${g.invalid}; ` : ""}frames ${g.frameMs.median} ms, 95th ${g.frameMs.p95}; our code ${g.buildMs} + ${g.drawMs} ms; ${count(g.calls)} draws, ${count(g.tris)} triangles, ${count(g.casterDraws)} into the shadows of ${count(g.casterTris)} triangles, ${count(g.bones)} bones, ${g.mat} with materials, canvas ${g.canvas.join("x")}`);
   const top = (axis: Axis): string => count(Math.max(0, ...l.rungs.filter((g) => g.axis === axis && g.held).map((g) => (axis === "triangles" ? g.tris : axis === "draws" ? g.calls : g.n))));
-  out.push(`most held ${top("bodies")} bodies, ${top("pieces")} pieces, ${top("triangles")} triangles, ${top("draws")} draws, on any tier; the rungs: ${AXES.map((a) => `${a} ${RUNGS[a].join(" ")}`).join("; ")}`);
+  out.push(`most held ${top("bodies")} bodies, ${top("pieces")} pieces, ${top("triangles")} triangles, ${top("draws")} draws, ${top("base")} pieces of the base up close, ${top("vehicles")} vehicles, on any tier; the rungs: ${AXES.map((a) => `${a} ${RUNGS[a].join(" ")}`).join("; ")}`);
   const m = l.memory;
   const crashed = r.reloadedDuring?.startsWith("memory") ? r.reloadedDuring.replace("memory ", "") : null;
   const slow = m?.slowMB == null ? "every amount kept the display's rate" : `frames first fell behind the display's rate at ${m.slowMB} MB`;
@@ -153,11 +154,12 @@ function gpuLines(r: DeviceReport): string[] {
   const [lit, shadowed, depth] = [slope("lit"), slope("lit shadowed"), slope("depth rigid 2048")];
   const mp = (q.screen[0]! * q.screen[1]!) / 1e6;
   if (lit !== null && shadowed !== null) out.push(`shadowed  LIT looking the sun's shadow up costs ${round3(shadowed - lit)} ms a megapixel more than LIT: ${round3((shadowed - lit) * mp)} ms over this screen's ${mp.toFixed(2)} megapixels; and a cascade of 100k triangles drawn 2,048 square ${depth ?? "?"} ms`);
-  out.push(`full screen at ${q.screen.join("x")}, blended, the game's programs under noon's frame block: flat, lit and far on a wall 12 m off, lit hazed`);
+  out.push(`full screen at ${q.screen.join("x")}, blended, the game's programs under noon's frame block: flat, lit and far on a wall 12 m off, lit`);
+  out.push("with the world's concrete from maps 512 square as near as reads 9 texels a pixel and in the fade band reading 18, lit hazed");
   out.push("on one 500 m and 3.5 km off, surface with five maps 512 square; the sky looking 14 degrees up toward the sun, its table alone,");
   out.push("then with the sun, moon and stars and 0, 1 and 2 cloud layers 1,024 square; the sea 2 m deep from 10 m up, calm and with");
   out.push("waves 256 square, and lit where it is. depth into a 16-bit depth array; lit shadowed looks up medium's shadow in the");
-  out.push("2,048 one; a draw is a uniform, a vertex array, a buffer, two pointers and the draw");
+  out.push("2,048 one; draw: the renderer's executor drawing k of the frame's draws of a kind, or casters into one shadow map");
   if (q.lostDuring) out.push(`lost      the graphics context was lost during ${q.lostDuring}`);
   return out;
 }
@@ -242,7 +244,7 @@ function soakLines(r: DeviceReport): string[] {
   const widths = [6, 7, 7, 7, 7, 7, 6, 6, 5, 5, 5, 6];
   out.push(row(["minute", "frames", "median", "p95", "p99", "worst", "build", "draw", "mat", "long", "miss", ...(s.governed ? ["level"] : [])], widths));
   for (const m of s.minutes) {
-    out.push(row([String(m.minute), String(m.frames), String(m.frameMs.median), String(m.frameMs.p95), String(m.frameMs.p99), String(m.frameMs.worst), String(m.buildMs), String(m.drawMs), String(m.mat ?? "?"), String(m.long ?? "?"), String(m.missed), ...(s.governed ? [`${m.level ?? "?"}${m.most !== m.level ? ` (${m.most})` : ""}`] : [])], widths));
+    out.push(row([String(m.minute), String(m.frames), String(m.frameMs.median), String(m.frameMs.p95), String(m.frameMs.p99), String(m.frameMs.worst), String(m.buildMs), String(m.drawMs), String(m.mat), String(m.long), String(m.missed), ...(s.governed ? [`${m.level ?? "?"}${m.most !== m.level ? ` (${m.most})` : ""}`] : [])], widths));
     for (const step of m.steps ?? []) out.push(`          to ${step}`);
   }
   if (s.governed) out.push("level: the governor's at the minute's end, and the deepest in it in brackets where deeper; its steps under the minute");
@@ -300,12 +302,13 @@ export function deviceTable(r: DeviceReport): string[] {
   if (r.phases.length > 0) {
     out.push(`tiers run ${[...new Set(r.phases.map((p) => p.tier))].join(", ")}`);
     out.push("");
-    out.push(row(["tier", "scene", "canvas", "settle", "median", "p95", "p99", "worst", "build", "draw", "gpu", "calls", "tris", "mat", "drop", "skip", "lost", "MB", "fail", "miss"]));
+    out.push(row(["tier", "scene", "canvas", "settle", "median", "p95", "p99", "worst", "build", "draw", "gpu", "calls", "tris", "cast", "ctris", "mat", "drop", "skip", "lost", "MB", "fail", "miss"]));
     for (const p of r.phases) out.push(phaseRow(p));
     if (r.again) out.push(phaseRow(r.again, "again"));
     out.push("median to worst: ms between frames. settle: s until nothing was on its way, ! if never. build, draw: ms in our code;");
     out.push("gpu: the GPU's ms a frame by timer query, - where there are none.");
-    out.push("calls: WebGL draws. mat: draws with materials. drop, skip: what the frame left out.");
+    out.push("calls: WebGL draws, cast of them into the shadow maps with ctris triangles beside tris. mat: draws with materials.");
+    out.push("drop, skip: what the frame left out.");
     out.push("MB, fail, miss: fetched, fetches failed and snapshots missed while the phase settled and ran.");
     out.push("crowd1: the crowd in one depth range on a tier of two; crowd0: with no shadows on a tier that casts, or where the GPU is");
     out.push("timed, with shadows and none by turns, frame by frame; each to set against crowd");

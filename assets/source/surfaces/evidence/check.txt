@@ -1,0 +1,87 @@
+$ bun tools/check.ts
+pack         7.31s
+  shell size   1073/1150 lines
+  voice size   470/600 lines
+  assets size  281/500 lines
+  sound size   256/300 lines
+policy       5.38s
+types        5.70s
+tests        345.05s
+
+over the 45s budget at 352.6s, not counted: load 60 on 10 cores
+
+FAILED (1)
+ - tests failed:
+bun test v1.4.3 (c6da4a4d3) 10x PARALLEL
+
+tests/integration/renames.test.ts:
+set down 4 pieces of the map's obelisks, which this save was made without
+
+tests/integration/item-exploits.test.ts:
+the world has no place for more bodies (1 refused): it holds 441 of the 512 that MaxEntities allows, with 70 kept for survivors
+
+tests/integration/retime.test.ts:
+DynamicConfig.ini read again: 1 applied, 0 not yet effective, 0 of no meaning here, 1 unknown, 1 refused
+  applied   EggHatchSpeedMultiplier=8  (DynamicConfig.ini:1)
+  unknown   Gravity  (DynamicConfig.ini:3)
+  refused   ServerPassword  (DynamicConfig.ini:2): is read at start only
+
+tests/integration/listen.test.ts:
+224 |   /** A message is a channel byte and then what the game wrote. The game's writers hold 16 KB, and a welcome a little more. */
+225 |   const outgoing = new Uint8Array(65536);
+226 |   let skipped = 0;
+227 |   // A development server gives cheats without a password, so nothing off this machine reaches it unless it is asked to listen there.
+228 |   const hostname = opts.hostname ?? (opts.dev ? "127.0.0.1" : undefined);
+229 |   const server = Bun.serve<Socket>({
+                           ^
+error: Failed to start server. Is port 0 in use?
+ syscall: "listen",
+   errno: 0,
+    code: "EADDRINUSE"
+
+      at startServer (/home/user/dev/SNARK/.claude/worktrees/artist-surfaces/server/main.ts:229:22)
+      at answers (/home/user/dev/SNARK/.claude/worktrees/artist-surfaces/tests/integration/listen.test.ts:27:18)
+      at <anonymous> (/home/user/dev/SNARK/.claude/worktrees/artist-surfaces/tests/integration/listen.test.ts:47:16)
+(fail) a development server answers this machine and no other, unless it is given an address to listen on [287.03ms]
+
+tests/integration/modules.test.ts:
+backup of tick 174 in /var/folders/q6/zvp5ryyj7tl5k_frk3522n_w0000gn/T/snark-modules-wdOb4S/script.db.backups/2026-11-16T01-30-49Z-t174 (0.1 MB, 2 ms)
+backup of tick 354 in /var/folders/q6/zvp5ryyj7tl5k_frk3522n_w0000gn/T/snark-modules-wdOb4S/script.db.backups/2026-11-16T01-30-49Z-t354 (0.1 MB, 1 ms)
+the world could not be saved (SQLITE_FULL: database or disk is full); trying again, and the world runs on
+saving again
+backup of tick 534 in /var/folders/q6/zvp5ryyj7tl5k_frk3522n_w0000gn/T/snark-modules-wdOb4S/script.db.backups/2026-11-16T01-30-49Z-t534 (0.1 MB, 2 ms)
+
+tests/integration/vehicle-lifecycle.test.ts:
+vehicle 1099511627780: preserved unreadable version 9 (90 bytes); using parked defaults
+
+tests/integration/sockets.test.ts:
+224 |   /** A message is a channel byte and then what the game wrote. The game's writers hold 16 KB, and a welcome a little more. */
+225 |   const outgoing = new Uint8Array(65536);
+226 |   let skipped = 0;
+227 |   // A development server gives cheats without a password, so nothing off this machine reaches it unless it is asked to listen there.
+228 |   const hostname = opts.hostname ?? (opts.dev ? "127.0.0.1" : undefined);
+229 |   const server = Bun.serve<Socket>({
+                           ^
+error: Failed to start server. Is port 0 in use?
+ syscall: "listen",
+   errno: 0,
+    code: "EADDRINUSE"
+
+      at startServer (/home/user/dev/SNARK/.claude/worktrees/artist-surfaces/server/main.ts:229:22)
+      at <anonymous> (/home/user/dev/SNARK/.claude/worktrees/artist-surfaces/tests/integration/sockets.test.ts:21:18)
+(fail) a page on another site may not open a socket, the server's own page and a program that is no browser may, and an operator lists the rest [2078.90ms]
+
+tests/integration/spawner.test.ts:
+set down 4 pieces of the map's obelisks, which this save was made without
+destroyed 41 wild creatures at the start, to be replaced
+destroyed 41 wild creatures at the start, to be replaced
+
+tests/integration/flyers.test.ts:
+(fail) left 20 minutes, 100 wild pteranodons over the proving ground fly and land by turns, aloft 55 to 92% of the time, never inside anything, stuck or in the water [152458.80ms]
+  ^ this test timed out after 60000ms.
+
+ 1653 pass
+ 3 fail
+ 5727538 expect() calls
+Ran 1656 tests across 280 files. [344.97s]
+error: script "check" exited with code 1

@@ -1,0 +1,258 @@
+{
+ "size": 2048,
+ "position_box": {
+  "min": [
+   -1.57117,
+   0.41082,
+   -1.29694
+  ],
+  "max": [
+   -0.0,
+   1.95028,
+   1.51143
+  ]
+ },
+ "pieces": [
+  {
+   "number": 1,
+   "name": "beak",
+   "regions": [
+    2,
+    6
+   ],
+   "box": [
+    771,
+    1087,
+    1769,
+    1365
+   ],
+   "texels": 143529,
+   "median_mm_a_texel": 0.637
+  },
+  {
+   "number": 2,
+   "name": "crest",
+   "regions": [
+    2,
+    3
+   ],
+   "box": [
+    13,
+    978,
+    871,
+    2036
+   ],
+   "texels": 310692,
+   "median_mm_a_texel": 0.598
+  },
+  {
+   "number": 3,
+   "name": "eye_l",
+   "regions": [
+    6
+   ],
+   "box": [
+    13,
+    1398,
+    260,
+    1603
+   ],
+   "texels": 35867,
+   "median_mm_a_texel": 0.314
+  },
+  {
+   "number": 4,
+   "name": "hand_0",
+   "regions": [
+    2,
+    6
+   ],
+   "box": [
+    496,
+    1821,
+    585,
+    2035
+   ],
+   "texels": 14710,
+   "median_mm_a_texel": 0.513
+  },
+  {
+   "number": 5,
+   "name": "hand_1",
+   "regions": [
+    2,
+    6
+   ],
+   "box": [
+    388,
+    1082,
+    483,
+    1323
+   ],
+   "texels": 17670,
+   "median_mm_a_texel": 0.518
+  },
+  {
+   "number": 6,
+   "name": "hand_2",
+   "regions": [
+    2,
+    6
+   ],
+   "box": [
+    893,
+    1036,
+    980,
+    1239
+   ],
+   "texels": 13484,
+   "median_mm_a_texel": 0.515
+  },
+  {
+   "number": 7,
+   "name": "head",
+   "regions": [
+    0,
+    2,
+    5,
+    6
+   ],
+   "box": [
+    631,
+    1382,
+    1753,
+    2036
+   ],
+   "texels": 494236,
+   "median_mm_a_texel": 0.479
+  },
+  {
+   "number": 8,
+   "name": "jaw",
+   "regions": [
+    2,
+    6
+   ],
+   "box": [
+    17,
+    121,
+    1379,
+    316
+   ],
+   "texels": 157627,
+   "median_mm_a_texel": 0.686
+  },
+  {
+   "number": 9,
+   "name": "leg",
+   "regions": [
+    2,
+    5
+   ],
+   "box": [
+    1633,
+    14,
+    2034,
+    790
+   ],
+   "texels": 213766,
+   "median_mm_a_texel": 0.867
+  },
+  {
+   "number": 10,
+   "name": "neck",
+   "regions": [
+    0,
+    5
+   ],
+   "box": [
+    1118,
+    316,
+    1746,
+    1091
+   ],
+   "texels": 231941,
+   "median_mm_a_texel": 0.765
+  },
+  {
+   "number": 11,
+   "name": "toe_0",
+   "regions": [
+    2,
+    6
+   ],
+   "box": [
+    1743,
+    1640,
+    1839,
+    2034
+   ],
+   "texels": 24105,
+   "median_mm_a_texel": 0.526
+  },
+  {
+   "number": 12,
+   "name": "toe_1",
+   "regions": [
+    2,
+    6
+   ],
+   "box": [
+    14,
+    981,
+    116,
+    1415
+   ],
+   "texels": 28517,
+   "median_mm_a_texel": 0.528
+  },
+  {
+   "number": 13,
+   "name": "toe_2",
+   "regions": [
+    2,
+    6
+   ],
+   "box": [
+    253,
+    1032,
+    353,
+    1451
+   ],
+   "texels": 26843,
+   "median_mm_a_texel": 0.527
+  },
+  {
+   "number": 14,
+   "name": "toe_3",
+   "regions": [
+    2,
+    6
+   ],
+   "box": [
+    1539,
+    228,
+    1630,
+    604
+   ],
+   "texels": 21711,
+   "median_mm_a_texel": 0.525
+  },
+  {
+   "number": 15,
+   "name": "torso",
+   "regions": [
+    0,
+    5
+   ],
+   "box": [
+    14,
+    314,
+    1244,
+    1000
+   ],
+   "texels": 533561,
+   "median_mm_a_texel": 0.947
+  }
+ ]
+}
