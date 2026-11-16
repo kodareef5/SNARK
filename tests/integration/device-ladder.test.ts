@@ -4,15 +4,19 @@
 
 import { expect, test } from "bun:test";
 import { JOIN_MS } from "../../client/core/governor.ts";
-import { DeviceProbe, MEMORY_MB } from "../../client/core/device.ts";
+import { DeviceProbe, MEMORY_MB, RUNGS, type RungReport } from "../../client/core/device.ts";
 import { deviceTable } from "../../client/core/devicetext.ts";
 import { lacking } from "../../tools/device.ts";
+import { BodyCopies, boxBase, crowdScene } from "../../client/core/devicescene.ts";
+import { RemoteSample } from "../../client/core/session.ts";
+import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { TIMING, TOKEN, browser, client, renderer, run } from "../fixtures/device.ts";
+import { coreRegistry } from "../fixtures/world.ts";
 
 test("the ladder climbs until a rung breaks, asks the server for the base, and ends taking texture memory until the device refuses it", async () => {
   const { h, pack, app, expected } = client();
   // A display twice as fast as the harness draws: no rung holds its rate, so each axis stops at its first.
-  const { b, asked } = browser({ clock: () => h.now, expected, mode: "ladder", frameMs: 8.3 });
+  const { b, asked, boxed } = browser({ clock: () => h.now, expected, mode: "ladder", frameMs: 8.3 });
   const probe = new DeviceProbe(TOKEN, b, TIMING);
   expect(await probe.before()).toBe(true);
   const card = renderer(300);
@@ -22,11 +26,17 @@ test("the ladder climbs until a rung breaks, asks the server for the base, and e
   expect([r.mode, r.done, r.errors]).toEqual(["ladder", true, []]);
   const l = r.ladder!;
   expect(l.display).toBe(8.3);
-  expect(l.rungs.map((g) => `${g.tier} ${g.axis} ${g.n} ${g.held}`)).toEqual(["lowpoly", "medium", "high"].flatMap((t) => [`${t} bodies 25 false`, `${t} triangles 8 false`, `${t} draws 256 false`, `${t} pieces 64 false`]));
+  expect(l.rungs.map((g) => `${g.tier} ${g.axis} ${g.n} ${g.held}`)).toEqual(["lowpoly", "medium", "high"].flatMap((t) => [`${t} bodies 25 false`, `${t} triangles 8 false`, `${t} draws 256 false`, `${t} pieces 64 false`, `${t} base 409 false`, `${t} vehicles 3 false`]));
+  // Three parked vehicles add their triangles to the view of the bodies rung, which has no body here to copy; the tiers
+  // that cast count their shadow maps' draws.
+  const at = (tier: string, axis: string): RungReport => l.rungs.find((g) => g.tier === tier && g.axis === axis)!;
+  for (const t of ["lowpoly", "medium", "high"]) expect(at(t, "vehicles").tris - at(t, "bodies").tris).toBeGreaterThan(30000);
+  expect(l.rungs.filter((g) => g.casterDraws > 0).length).toBe(12);
   // The harness frames take its 16.7 ms while our code takes 1.5, so the GPU is said to have taken the frame.
   expect(l.rungs.every((g) => g.limit === "the GPU")).toBe(true);
-  // The base was asked for on each tier's pieces rung, and let go after.
-  expect(asked).toEqual([64, 0, 64, 0, 64, 0]);
+  // The houses were asked for on each tier's pieces rung and the compact base's ground floor on its base rung, each let go after.
+  expect([asked, boxed]).toEqual([[64, 0, 64, 0, 64, 0], [409, 0, 409, 0, 409, 0]]);
+  expect(RUNGS.base).toEqual([409, 673, 937]);
   // Every amount was sampled and read back as the colour its blocks decode to; the harness's frames are slow for a display this fast.
   const rung = { frameMs: 16.7, p95: 16.7, worst: 16.7, oursMs: 0, held: false };
   expect(l.memory).toEqual({ variant: "astc", gameMB: 0, heldMB: 256, failedMB: 512, slowMB: 128, how: "out of memory", rungs: [{ mb: 128, ...rung }, { mb: 256, ...rung }] });
@@ -113,14 +123,50 @@ test("a rung that did not draw all it was given, or never settled, is invalid: n
   const r = probe.report;
   expect([r.done, r.errors]).toEqual([true, []]);
   const rungs = r.ladder!.rungs;
-  expect(rungs.map((g) => `${g.tier} ${g.axis} ${g.n}`)).toEqual(["lowpoly", "medium", "high"].flatMap((t) => [`${t} bodies 25`, `${t} triangles 8`, `${t} draws 256`, `${t} pieces 64`]));
+  expect(rungs.map((g) => `${g.tier} ${g.axis} ${g.n}`)).toEqual(["lowpoly", "medium", "high"].flatMap((t) => [`${t} bodies 25`, `${t} triangles 8`, `${t} draws 256`, `${t} pieces 64`, `${t} base 409`, `${t} vehicles 3`]));
   for (const g of rungs) {
     expect([g.held, g.limit, g.settled]).toEqual([false, "", false]);
     expect(g.invalid).toMatch(/^\d+ things dropped, \d+ draws skipped, never settled$/);
   }
   const table = deviceTable(r);
-  expect(table).toContain("lowpoly  none; 25 invalid         none; 8 invalid          none; 256 invalid        none; 64 invalid");
+  expect(table).toContain("lowpoly  none; 25 invalid         none; 8 invalid          none; 256 invalid        none; 64 invalid         none; 409 invalid        none; 3 invalid");
   expect(table.some((line) => line.startsWith("most held 0 bodies, 0 pieces, 0 triangles, 0 draws"))).toBe(true);
   expect(table.some((line) => line.startsWith("invalid   medium bodies 25: ") && line.includes("draws skipped, never settled"))).toBe(true);
   expect(table.some((line) => line.startsWith("broke "))).toBe(false);
+});
+
+test("the bodies copied are the crowd's real kinds, survivors dressed and riding saddled tames, and the vehicles stand parked beside them", () => {
+  const { h, app } = client();
+  for (const s of crowdScene().bodies) h.host.spawnCreature(s.species, s.x, s.z, 1);
+  h.run(1000, (now) => void app.frame(now, 390, 844));
+  const copies = new BodyCopies(app.session, h.world.hf, h.reg);
+  [copies.n, copies.vehicles] = [40, 3];
+  const out = new RemoteSample();
+  app.session.sampleRemote(out);
+  const id = (name: string): number => h.reg.index.get(`core:${name}`)!;
+  const made = Array.from({ length: out.count }, (_, i) => i).filter((i) => out.id[i]! >= 0x40000000);
+  const kinds = new Set(made.map((i) => h.reg.defs[out.kind[i]!]!.id));
+  expect([made.length, ["survivor", "dodo", "pteranodon", "raptor", "parasaur", "compact", "helicopter", "boat"].every((k) => kinds.has(`core:${k}`)), kinds.has("core:grazer")]).toEqual([43, true, false]);
+  const humans = made.filter((i) => out.kind[i] === id("survivor"));
+  const gear = (i: number, slot: number): number => out.gear[i * GEAR_COUNT + slot]!;
+  expect(humans.every((i) => out.hasLook[i] === 1 && gear(i, GEAR_HELD) > 0 && gear(i, GEAR_WORN) > 0)).toBe(true);
+  const riders = humans.filter((i) => out.seat[i]! > 0);
+  const mounts = riders.map((i) => made.find((j) => out.id[j] === out.seat[i]! - 1)!);
+  expect(riders.length).toBeGreaterThan(3);
+  expect(mounts.every((j) => gear(j, GEAR_WORN) === id(`saddle_${h.reg.defs[out.kind[j]!]!.id.slice(5)}`))).toBe(true);
+  const parked = made.filter((i) => h.reg.vehicle[out.kind[i]!]);
+  expect(parked.map((i) => [h.reg.defs[out.kind[i]!]!.id, out.vehicleRotorcraft[i], out.vehicleBoat[i], out.vehicleQw[i], out.vehicleGrounded[i]])).toEqual([["core:compact", 0, 0, 1, 1], ["core:helicopter", 1, 0, 1, 1], ["core:boat", 0, 1, 1, 1]]);
+});
+
+test("the compact base is a box base of thatch, wood and stone rooms 10 m off toward the houses, built from its foundations up", () => {
+  const all = boxBase();
+  const spawn = { x: 256, z: 240 };
+  expect([all.length, boxBase(1).length, all.slice(0, boxBase(2).length)]).toEqual([937, 409, boxBase(2)]);
+  const count = (re: RegExp): number => all.filter((p) => re.test(p.id)).length;
+  expect([count(/foundation/), count(/^core:wall/), count(/ceiling/), count(/doorframe/), count(/door_/)]).toEqual([144, 359, 432, 1, 1]);
+  for (const tier of ["thatch", "wood", "stone"]) expect(count(new RegExp(`_${tier}$`))).toBeGreaterThan(250);
+  expect(Math.max(...all.map((p) => p.x))).toBe(spawn.x - 10);
+  expect(all.every((p) => Math.abs(p.z - spawn.z) <= 18 && p.x >= spawn.x - 46)).toBe(true);
+  const reg = coreRegistry();
+  expect(all.every((p) => reg.defs[reg.index.get(p.id)!]?.type === "structure")).toBe(true);
 });

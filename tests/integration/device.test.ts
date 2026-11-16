@@ -7,9 +7,9 @@ import { afterAll, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DeviceProbe, newReport, spread, type DeviceReport, type RungReport } from "../../client/core/device.ts";
+import { DeviceProbe, RUNGS, newReport, spread, type DeviceReport, type RungReport } from "../../client/core/device.ts";
 import { deviceTable } from "../../client/core/devicetext.ts";
-import { FRAME } from "../../client/core/render/packet.ts";
+import { DRAW_PULLED, DRAW_SIZED, FRAME } from "../../client/core/render/packet.ts";
 import { MAX_RUNS, MAX_WRONG, REPORT_BYTES, deviceRoutes, filesChanged, lacking, servedFiles } from "../../tools/device.ts";
 import { TIMING, TOKEN, browser, client, renderer, run, settle } from "../fixtures/device.ts";
 
@@ -53,9 +53,18 @@ test("a page shows which device it is on and the tests, starts nothing until one
   expect([split.get("medium crowd"), split.get("medium crowd1"), split.get("high plain")]).toEqual([384, 0, 384]);
   expect(deviceTable(r).some((line) => line.startsWith("ranges    medium, two against one in the crowd: frames "))).toBe(true);
   expect(deviceTable(r).some((line) => line.startsWith("shadows   medium, on against off in the crowd: the GPU's time not known here (no timer queries); frames "))).toBe(true);
-  // The GPU questions were asked first, and each answered on the harness's context.
+  // The tiers that cast count their shadow maps' draws and triangles beside the view's.
+  expect(r.phases.filter((p) => p.casterDraws > 0).map((p) => p.scene)).toEqual(["plain", "stress", "crowd", "crowd1", "plain", "stress", "crowd", "crowd1"]);
+  expect(r.phases.every((p) => (p.casterDraws > 0) === (p.casterTris > 0))).toBe(true);
+  expect(deviceTable(r).some((line) => /^medium +plain +585x1266 .* 50 +\d+k +\d+ +\d+k +0 /.test(line))).toBe(true);
+  // The GPU questions were asked first, and each answered on the harness's context; the frame they copied had no draws
+  // with materials or bones, since the harness fetches no textures and stands no body in view.
   const q = r.gpuTests!;
-  expect([q.lostDuring, q.passes.filter((p) => p.note !== "").length, typeof q.seam]).toEqual([null, 0, "object"]);
+  expect([q.lostDuring, q.passes.filter((p) => p.note !== "").map((p) => `${p.name}: ${p.note}`), typeof q.seam]).toEqual([null, ["draw textured: none in the frame", "draw skinned: none in the frame"], "object"]);
+  expect(["lit", "lit world near", "lit world fade"].map((n) => q.passes.find((p) => p.name === n)?.slope)).toEqual([0.135, 0.135, 0.135]);
+  // The executor took 0.1 ms a draw, a caster each: 100 µs, through packets of the frame's own draws of each kind.
+  expect(q.passes.filter((p) => p.per === "draw" && p.note === "").map((p) => [p.name, p.slope, p.k])).toEqual([["draw far", 100, 128], ["draw flat", 100, 128], ["draw caster", 100, 128]]);
+  expect([...card.kinds].sort((a, b) => a - b)).toEqual([0, DRAW_SIZED, DRAW_PULLED]);
   expect([r.again?.tier, r.again?.scene]).toEqual(["lowpoly", "plain"]);
   expect(r.hashes!.every((x) => x.got === x.want)).toBe(true);
   expect([r.load!.pageBytes, r.link.httpMs!.median, r.idleFrameMs, r.wakeLock, r.gpu!.maxTexture, r.gpu!.variant, r.device!.touch]).toEqual([500000, 0, 16.6, "held", 2048, "astc", 5]);
@@ -68,7 +77,7 @@ test("a page shows which device it is on and the tests, starts nothing until one
   expect(page.text).toContain("Done.</b> Sent.");
   expect(page.text).toContain("tiers run lowpoly, medium, high");
   // The fake draws nothing, so the pictures and the far blocks' edge read wrong; and the harness fetches no textures.
-  expect(lacking(r).filter((line) => !/^(probe |gpu far edge)/.test(line))).toEqual(["nothing was drawn with its materials on medium, which has them", "nothing was drawn with its materials on high, which has them", "tier ultra did not run every scene"]);
+  expect(lacking(r).filter((line) => !/^(probe |gpu far edge|gpu draw (textured|skinned))/.test(line))).toEqual(["nothing was drawn with its materials on medium, which has them", "nothing was drawn with its materials on high, which has them", "tier ultra did not run every scene"]);
   expect(card.gl.invalid).toEqual([]);
   expect([air.length > 0, air.every(([haze, detail]) => haze === 0 && detail === 0), app.scene!.plainSky]).toEqual([true, true, false]);
 
@@ -101,7 +110,7 @@ test("a page the browser reloads in the middle of a run shows and sends what it 
 });
 
 test("a soak tapped on a page the browser reloaded during a ladder takes half of what that ladder held, and runs", async () => {
-  const rung = (axis: RungReport["axis"], n: number): RungReport => ({ tier: "high", axis, n, held: true, limit: "", invalid: "", canvas: [], settled: true, frameMs: spread([16.7]), buildMs: 1, drawMs: 1, calls: 0, tris: 0, bones: 0, mat: 0, fetched: 0, failed: 0, refused: 0, missed: 0 });
+  const rung = (axis: RungReport["axis"], n: number): RungReport => ({ tier: "high", axis, n, held: true, limit: "", invalid: "", canvas: [], settled: true, frameMs: spread([16.7]), buildMs: 1, drawMs: 1, calls: 0, tris: 0, bones: 0, mat: 0, casterDraws: 0, casterTris: 0, fetched: 0, failed: 0, refused: 0, missed: 0 });
   const ladder = { display: 16.7, rungs: [rung("bodies", 400), rung("pieces", 64), rung("triangles", 8), rung("draws", 256)], memory: null };
   const saved = JSON.stringify({ token: TOKEN, report: { ...newReport("0011223344556677", "ladder"), seq: 70, stage: "memory 2048 MB", ladder } });
   const { h, pack, app, expected } = client();
@@ -167,10 +176,10 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 function server(terrain = false) {
   const said: string[] = [];
   const done: string[] = [];
-  const bases: number[] = [];
+  const bases: string[] = [];
   const [stood, counted] = [[] as number[], [] as number[][]];
   const trees = { stand: (k: number) => (stood.push(k), k < 2 ? [100 + k, 200] : null), layers: (w: number, h: number, fov: number) => (counted.push([w, h, fov]), { state: "counting" as const }) };
-  const { routes } = deviceRoutes({ dir, token: TOKEN, code: "bqzk", password: "secret", expected: { sim: "abc" }, say: (line) => said.push(line), done: (_, file) => done.push(file), base: (n) => (bases.push(n), Math.min(n, 1000)), held: () => ({ skipped: 7, overflows: 2 }), ...(terrain ? trees : {}) });
+  const { routes } = deviceRoutes({ dir, token: TOKEN, code: "bqzk", password: "secret", expected: { sim: "abc" }, say: (line) => said.push(line), done: (_, file) => done.push(file), base: (n, box) => (bases.push(`${box ? "box" : "base"} ${n}`), Math.min(n, 1000)), held: () => ({ skipped: 7, overflows: 2 }), ...(terrain ? trees : {}) });
   const ask = async (path: string, init: RequestInit = {}): Promise<Response | null> => {
     const req = new Request(`http://127.0.0.1${path}`, init);
     return (await routes(req, new URL(req.url))) ?? null;
@@ -203,9 +212,10 @@ test("the probe's routes need the token, the short path leads to the page until 
   expect(await (await ask(`/__device/hashes?token=${TOKEN}`))!.json()).toEqual({ sim: "abc" });
   expect(await (await ask(`/__device/base/64?token=${TOKEN}`, { method: "POST" }))!.json()).toEqual({ pieces: 64 });
   expect(await (await ask(`/__device/base/4096?token=${TOKEN}`, { method: "POST" }))!.json()).toEqual({ pieces: 1000 });
-  for (const path of ["/__device/base/4097", "/__device/base/-1", "/__device/base/12345678", "/__device/base/1e3"]) expect((await ask(`${path}?token=${TOKEN}`, { method: "POST" }))!.status).toBe(path.endsWith("4097") ? 400 : 404);
+  expect(await (await ask(`/__device/box/${RUNGS.base.at(-1)}?token=${TOKEN}`, { method: "POST" }))!.json()).toEqual({ pieces: RUNGS.base.at(-1) });
+  for (const path of ["/__device/base/4097", `/__device/box/${RUNGS.base.at(-1)! + 1}`, "/__device/base/-1", "/__device/base/12345678", "/__device/base/1e3", "/__device/house/4"]) expect((await ask(`${path}?token=${TOKEN}`, { method: "POST" }))!.status).toBe(/4097|box/.test(path) ? 400 : 404);
   expect((await ask(`/__device/base/64?token=${TOKEN}`))!.status).toBe(404);
-  expect(bases).toEqual([64, 4096]);
+  expect(bases).toEqual(["base 64", "base 4096", "box 937"]);
   const to = await ask("/d/bqzk");
   expect([to!.status, to!.headers.get("location")]).toEqual([302, `/?device=${TOKEN}&password=secret`]);
   for (let i = 0; i < MAX_WRONG; i++) expect((await ask(`/d/x${i}`))!.status).toBe(404);
