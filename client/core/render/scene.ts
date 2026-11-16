@@ -43,6 +43,8 @@ import { shadowBytes } from "./shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
 import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
+import type { SailSource } from "../../../shared/sim/sails.ts";
+import { SailVisuals } from "./sails.ts";
 
 export interface RenderWorld {
   readonly dims: MapDims;
@@ -56,6 +58,8 @@ export interface RenderWorld {
   readonly farNodes?: FarNodeSource;
   /** The map's own buildings past the near rows (farcity.ts). */
   readonly city?: CitySource;
+  /** Reliable landmark state stays available past near-row ownership; only the cloth is dynamic. */
+  readonly sails?: SailSource;
 }
 
 /** The viewer's own body, which is not among the remote entities. */
@@ -171,6 +175,7 @@ interface ChunkBatch {
 
 export class Scene {
   readonly packet = new FramePacket();
+  readonly sails: SailVisuals;
   readonly terrain: TerrainLod;
   /** Metres. Terrain beyond this is not drawn and fog reaches full strength here. */
   viewDistance = 4000;
@@ -376,6 +381,7 @@ export class Scene {
     // The renderer holds the sky table on every tier.
     this.assets.residency.reserve("sky table", SKY_SIZE * SKY_SIZE * SKY_SLICES * 4);
     const { table, bind } = this.assets;
+    this.sails = new SailVisuals(reg, table, pack);
     const missing = Math.max(0, table.find(MISSING_MESH));
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
     this.colorOfKind = new Uint8Array(reg.defs.length);
@@ -524,6 +530,7 @@ export class Scene {
     if (this.falling && this.falling.count > 0) this.showFalling(cam, this.falling);
     if (this.ghost.kind !== 0) this.showGhost(cam);
     if (this.things.length > 0) this.showThings(cam);
+    if (this.world.sails) this.showSails(cam, this.world.sails);
     // Water seen from above on a lit tier is drawn with its waves and its depth (water.ts), from the frame block's sea part.
     const lit = p.lit && !this.plainSky && !under;
     let waves = sea > -Infinity && this.waterMesh >= 0 && this.water(cam, sea, lit);
@@ -1059,6 +1066,45 @@ export class Scene {
       t.level = p.drawCount > d ? p.drawLod[d]! : -1;
       wanted = -1;
       p.transientCount = first + 1;
+    }
+  }
+
+  /** Sails retain one owner through every city handover, after bodies have taken their normal frame priority. */
+  private showSails(cam: Camera, source: SailSource): void {
+    const p = this.packet, tier = this.assets.tier, reach = Math.min(this.viewDistance, tier.reach.city);
+    const groups = this.sails.prepare(source, cam, reach, this.casting ? this.castBox : null), stats = this.sails.stats;
+    p.skipped += stats.missing; p.frame[FRAME.fade] = tier.fade;
+    for (const group of groups) {
+      // Pose an assembly whole. At the raised endpoint every matrix is identical, so one bone per sail is exact.
+      const active = group.sails.filter(sail => sail.mesh >= 0 && (sail.seen || sail.casts));
+      let draws = 0;
+      for (const sail of active) if (sail.seen) {
+        const b = sail.box, sections = Math.max(1, ...this.assets.table.sections[sail.mesh]!.map(runs => runs.length / 3));
+        draws += sections * (cam.passes(b[0]!, b[1]!, b[2]!, b[3]!, b[4]!, b[5]!) === (NEAR | FAR) ? 2 : 1);
+      }
+      if (p.boneCount + group.bones > Math.min(tier.bones, MAX_BONES) || p.transientCount + active.length > p.transientIds.length || p.drawCount + this.doubled + draws > Math.min(MAX_DRAWS, tier.budget.draws)) {
+        stats.limited++; p.dropped++; continue;
+      }
+      stats.groups++;
+      for (const entry of active) {
+        const { mesh, box, visual } = entry, first = p.transientCount++, bone = p.boneCount, count = group.progress === 1 ? 1 : visual.bones.length;
+        p.bones.set(entry.pose.subarray(0, count * BONE_FLOATS), bone * BONE_FLOATS); p.boneCount += count;
+        this.transient.setSkinned(first, bone, 0); p.transientIds[first] = 0;
+        const flags = DRAW_SKINNED | (group.progress === 1 ? DRAW_ONE_BONE : 0);
+        entry.level = this.assets.choose(this.assets.table.error[mesh]!, entry.distance, entry.level);
+        this.assets.wantTextured(mesh, entry.level, entry.distance);
+        if (entry.seen) {
+          const start = p.drawCount;
+          this.draw(mesh, entry.level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, flags, cam.passes(box[0]!, box[1]!, box[2]!, box[3]!, box[4]!, box[5]!));
+          for (let d = start; d < p.drawCount; d++) p.drawFade[d] = reach;
+        }
+        if (entry.casts) {
+          const radius = .5 * Math.hypot(box[3]! - box[0]!, box[4]! - box[1]!, box[5]! - box[2]!);
+          const mask = entry.casts & this.cascades.fits(radius);
+          if (mask) this.castBody(mesh, entry.level, first, 1, flags, mask);
+        }
+        stats.sails++; stats.bones += count;
+      }
     }
   }
 
