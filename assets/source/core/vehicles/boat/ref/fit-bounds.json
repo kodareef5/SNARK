@@ -1,0 +1,43 @@
+{
+  "pointsTested": 133121840,
+  "worst": {
+    "margin": 0.08767902543325021,
+    "mesh": "core:human_m/torso",
+    "sex": "m",
+    "seat": "seat_driver",
+    "profile": "controls_3551@0",
+    "at": [
+      0.8482733207751529,
+      1.445131401642588,
+      0.4375044098971417
+    ]
+  },
+  "headWorst": {
+    "margin": 0.26366636355552786,
+    "mesh": "core:human_m/armor/hide/head",
+    "sex": "m",
+    "seat": "seat_driver",
+    "profile": "interval_0_-1.5707963267948966",
+    "at": [
+      0.4800226563352781,
+      1.9240420168602157,
+      0.6971629536462808
+    ]
+  },
+  "controlsWorst": {
+    "margin": 0.08767902543325021,
+    "mesh": "core:human_m/torso",
+    "sex": "m",
+    "seat": "seat_driver",
+    "profile": "controls_3551@0",
+    "at": [
+      0.8482733207751529,
+      1.445131401642588,
+      0.4375044098971417
+    ]
+  },
+  "headMotionAllowance": 0.13379159496132967,
+  "pilotProfiles": 41984,
+  "gripResidual": 2.2497850412192472e-7,
+  "failures": []
+}
