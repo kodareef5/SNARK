@@ -3,10 +3,11 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import layout from "../../content/landmarks/koru-sails.json" with { type: "json" };
-import evidence from "../../assets/source/core/landmarks/koru-sails/ref/bounds.json" with { type: "json" };
 import { parsePack } from "../../shared/pack/pack.ts";
 import { measureSurface } from "../../tools/art/check.ts";
 import { unpackMeshes } from "../../tools/pack/write.ts";
+
+const evidence = JSON.parse(readFileSync(new URL("../../assets/source/core/landmarks/koru-sails/ref/bounds.json", import.meta.url), "utf8")) as Record<string, { sourceSha256: string; boneBounds: number[][]; bounds: { center: number[]; radius: number } }>;
 
 const assets = layout.sails.map(sail => {
   const bytes = new Uint8Array(readFileSync(new URL(`../../assets/source/core/landmarks/koru_sail_${sail.id}/koru_sail_${sail.id}.snpk`, import.meta.url)));
@@ -49,7 +50,7 @@ test("five deployed sail rigs retain six closed authored levels, cloth colors an
 test("every native sail vertex and skin influence fits its certified culling box at all six levels", () => {
   const faults: string[] = [];
   for (const { sail, bytes, mesh } of assets) {
-    const record = evidence[sail.id as keyof typeof evidence];
+    const record = evidence[sail.id]!;
     expect(createHash("sha256").update(bytes).digest("hex")).toBe(record.sourceSha256);
     expect(sail.boneBounds).toEqual(record.boneBounds);
     expect(sail.bounds).toEqual(record.bounds);

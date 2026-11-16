@@ -61,10 +61,12 @@ test("the pack carries each creature as its asset describes it: a rig that is a 
     }
     expect(mesh.lods.length).toBeLessThanOrEqual(spec.budgets.triangles.length);
     mesh.lods.forEach((lod, l) => expect([l, lod.indexCount / 3 <= spec.budgets.triangles[l]!]).toEqual([l, true]));
-    // Each coarser level has fewer triangles and lies further from the finest.
+    // Authored tessellation can get smaller while retaining the same maximum geometric deviation.
+    // Automatically simplified levels still require their existing strict error progression.
     for (let l = 1; l < mesh.lods.length; l++) {
       expect(mesh.lods[l]!.indexCount).toBeLessThan(mesh.lods[l - 1]!.indexCount);
-      expect(mesh.lods[l]!.error).toBeGreaterThan(mesh.lods[l - 1]!.error);
+      if (spec.authoredLevels) expect(mesh.lods[l]!.error).toBeGreaterThanOrEqual(mesh.lods[l - 1]!.error);
+      else expect(mesh.lods[l]!.error).toBeGreaterThan(mesh.lods[l - 1]!.error);
     }
   }
   // A species that is drawn on a skeleton of its own has that rig in the pack.
