@@ -1,7 +1,11 @@
-# `bun run ci` on every push: the pushed commit, written out clean, installed from the lockfile and checked.
-# No step uses an action, so nothing is fetched from GitHub or a marketplace. planning/ci.md says what this needs of the
-# runner and how to set one up.
-on: [push, workflow_dispatch]
+# `bun run ci` on every push: the pushed commit, written out clean, installed from the lockfile and checked. A push to main,
+# a run from the Actions tab and the nightly run add the slow tier. No step uses an action, so nothing is fetched from
+# GitHub or a marketplace. planning/ci.md says what this needs of the runner and how to set one up.
+on:
+  push:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * *"
 
 jobs:
   ci:
@@ -27,4 +31,8 @@ jobs:
           echo "$RUNNER_TEMP/bun/bin" >> "$FORGEJO_PATH"
 
       - name: bun run ci
-        run: bun run ci
+        env:
+          EVENT: ${{ forge.event_name }}
+          REF: ${{ forge.ref }}
+        run: |
+          if [ "$EVENT" = push ] && [ "$REF" != refs/heads/main ]; then bun run ci; else bun run ci -- --slow; fi
