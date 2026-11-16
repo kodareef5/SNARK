@@ -1,9 +1,11 @@
-// What the wiki takes from the game's build, client/dist: its manifest and boot pack, its files read by range as a
+// What the wiki takes from the game's build, client/dist: its manifest, boot pack and every clip, its files read by range as a
 // client reads them, the loose sounds, and the names of the files the wiki's pages share with the game's.
 
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { inflateRawSync } from "node:zlib";
+import type { ClipSet } from "../../shared/anim/clip.ts";
+import { allClips } from "../../shared/pack/clips.ts";
 import { parseManifest, storedBytes, type Manifest } from "../../shared/pack/manifest.ts";
 import { parsePack, type Pack, type PackLod, type PackMesh } from "../../shared/pack/pack.ts";
 import type { ManifestSound } from "../../shared/pack/sound.ts";
@@ -13,6 +15,8 @@ export interface Built {
   readonly dist: string;
   readonly manifest: Manifest;
   readonly boot: Pack;
+  /** Every clip of the build: the boot pack's, and each creature skeleton's from the clip file. */
+  readonly clips: ClipSet;
   readonly loose: { file: string; sounds: ManifestSound[] } | null;
   /** `bytes` bytes of a file of the manifest, by its index, from `at`. */
   read(file: number, at: number, bytes: number): Uint8Array;
@@ -25,7 +29,9 @@ export function readBuilt(dist: string): Built {
   const at = (name: string): string => join(dist, "assets", name);
   if (!existsSync(at("manifest.json"))) throw new Error(`${at("manifest.json")} is missing: build the game first (bun run build)`);
   const manifest = parseManifest(readFileSync(at("manifest.json"), "utf8"));
-  const boot = parsePack(new Uint8Array(readFileSync(at(manifest.files[manifest.boot]!.name))));
+  const whole = (file: number): Uint8Array => new Uint8Array(readFileSync(at(manifest.files[file]!.name)));
+  const boot = parsePack(whole(manifest.boot));
+  const clips = allClips(manifest, boot, whole, (stored) => new Uint8Array(inflateRawSync(stored)));
   const loose = existsSync(at("loose.json")) ? (JSON.parse(readFileSync(at("loose.json"), "utf8")) as Built["loose"]) : null;
   const open = new Map<number, number>();
   const names = readdirSync(join(dist, "assets"));
@@ -33,6 +39,7 @@ export function readBuilt(dist: string): Built {
     dist,
     manifest,
     boot,
+    clips,
     loose,
     read(file, from, bytes) {
       let fd = open.get(file);
@@ -56,8 +63,8 @@ export function readBuilt(dist: string): Built {
 const pad4 = (n: number): number => (n + 3) & ~3;
 
 /**
- * A pack of the meshes named, each its finest level as the mesh file stores it, with the boot pack's palette, rigs and
- * clips and the manifest's materials and textures: what the rasterizer draws from.
+ * A pack of the meshes named, each its finest level as the mesh file stores it, with the boot pack's palette and rigs,
+ * every clip, and the manifest's materials and textures: what the rasterizer draws from.
  */
 export function meshPack(b: Built, ids: readonly string[]): Pack {
   const parts: Uint8Array[] = [b.boot.palette];
@@ -94,5 +101,5 @@ export function meshPack(b: Built, ids: readonly string[]): Pack {
   parts.reduce((at, p) => (blob.set(p, at), at + p.length), 0);
   const textures = (b.manifest.textures ?? []).map(({ id, role, top }) => ({ id, role, top }));
   const header = { paletteOffset: 0, meshes, rigs: b.boot.header.rigs, clips: [], materials: b.manifest.materials ?? [], textures };
-  return { header, blob, blobAt: 0, palette: blob.subarray(0, 1024), meshIndex: new Map(ids.map((id, k) => [id, k])), clips: b.boot.clips };
+  return { header, blob, blobAt: 0, palette: blob.subarray(0, 1024), meshIndex: new Map(ids.map((id, k) => [id, k])), clips: b.clips };
 }

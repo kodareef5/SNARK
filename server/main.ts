@@ -15,7 +15,9 @@ import { stopOnSignals } from "./signals.ts";
 import type { VoicePeer } from "./voice.ts";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { inflateRawSync } from "node:zlib";
 import { parsePack } from "../shared/pack/pack.ts";
+import { allClips } from "../shared/pack/clips.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { serveFile } from "./files.ts";
 import { boardOwners, soundBoard, type BoardGate } from "./sound-board.ts";
@@ -167,12 +169,14 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const { registry, errors } = compileContent(CORE_CONTENT);
   if (!registry) throw new Error("content errors:\n" + errors.join("\n"));
   const clientDir = resolve(opts.clientDir ?? join(import.meta.dir, "../client/dist"));
-  // The server poses and hit-tests bodies with the clips of the boot pack the clients are served. The manifest names it.
+  // The server poses and hit-tests bodies with every clip the clients are served: the boot pack's and each skeleton's
+  // from the clip file. The manifest names both.
   const manifestFile = join(clientDir, "assets/manifest.json");
   if (!existsSync(manifestFile)) throw new Error(`${manifestFile} is missing: build the client first (bun run build)`);
   const manifest = parseManifest(readFileSync(manifestFile, "utf8"));
-  const pack = parsePack(new Uint8Array(readFileSync(join(clientDir, "assets", manifest.files[manifest.boot]!.name))));
-  const clips = pack.clips;
+  const served = (file: number): Uint8Array => new Uint8Array(readFileSync(join(clientDir, "assets", manifest.files[file]!.name)));
+  const pack = parsePack(served(manifest.boot));
+  const clips = allClips(manifest, pack, served, (stored) => new Uint8Array(inflateRawSync(stored)));
   const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: new Uint8Array(readFileSync(opts.map)) } : {}), ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, backups: !opts.noBackups, store: { allowMissingContent: opts.allowMissingContent ?? false } } : {}), wild: true });
   // Settings problems are logged at startup and do not stop the server.

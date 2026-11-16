@@ -9,12 +9,12 @@ import { startServer, type ServerOptions } from "../../server/main.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { splitPack } from "../../tools/pack/split.ts";
 
-// A built client, as far as a server needs one: the manifest and the boot file it names.
+// A built client, as far as a server needs one: the manifest and the boot and clip files it names.
 const dir = mkdtempSync(join(tmpdir(), "snark-listen-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 const { files, manifest } = splitPack(corePackBytes(), "core");
 mkdirSync(join(dir, "assets"));
-writeFileSync(join(dir, "assets", manifest.files[manifest.boot]!.name), files[manifest.boot]!.bytes);
+for (const [f, file] of files.entries()) if (file.role !== "mesh") writeFileSync(join(dir, "assets", manifest.files[f]!.name), file.bytes);
 writeFileSync(join(dir, "assets/manifest.json"), JSON.stringify(manifest));
 
 /** This machine's address on a network, if it is on one. */

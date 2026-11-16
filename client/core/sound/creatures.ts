@@ -178,6 +178,12 @@ export class CreatureSounds {
   readonly books: (Book | null)[];
   readonly bodies = new Map<number, Heard>();
   private readonly reg: Registry;
+  private readonly lib: SoundLibrary;
+  private readonly res: Resolver;
+  private readonly sheets: readonly DetailSheet[];
+  /** What each kind plays as it is drawn, and what it played when its book was made. */
+  private readonly animOf: (kind: number) => CreatureAnim | null;
+  private readonly made: (CreatureAnim | null)[];
   private readonly st = new AnimState();
   private frame = 0;
   private readonly rng = new Rng(5);
@@ -186,12 +192,19 @@ export class CreatureSounds {
 
   constructor(reg: Registry, lib: SoundLibrary, res: Resolver, animOf: (kind: number) => CreatureAnim | null, sheets: readonly DetailSheet[] = []) {
     this.reg = reg;
-    this.books = reg.defs.map((d, kind) => {
-      if (d?.type !== "species") return null;
-      const anim = animOf(kind);
-      const book = new Book(d.id, anim, reg.bodyHeight[kind]!, lib, res, d.bite ? (reg.weapon[kind]?.strikeTick ?? null) : null, sheets.find((s) => s.owner === d.id) ?? null);
-      return book.reach > 0 ? book : null;
-    });
+    this.lib = lib;
+    this.res = res;
+    this.sheets = sheets;
+    this.animOf = animOf;
+    this.made = reg.defs.map((d, kind) => (d?.type === "species" ? animOf(kind) : null));
+    this.books = reg.defs.map((_, kind) => this.bookOf(kind));
+  }
+
+  private bookOf(kind: number): Book | null {
+    const d = this.reg.defs[kind];
+    if (d?.type !== "species") return null;
+    const book = new Book(d.id, this.made[kind] ?? null, this.reg.bodyHeight[kind]!, this.lib, this.res, d.bite ? (this.reg.weapon[kind]?.strikeTick ?? null) : null, this.sheets.find((s) => s.owner === d.id) ?? null);
+    return book.reach > 0 ? book : null;
   }
 
   /**
@@ -206,6 +219,12 @@ export class CreatureSounds {
     const st = this.st;
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!;
+      // Its skeleton's clips have come, on a rig made anew with them: it is heard by them from now, each of its bodies afresh, as one first heard.
+      if (this.made[kind] && this.made[kind]!.rig !== this.animOf(kind)?.rig) {
+        this.made[kind] = this.animOf(kind);
+        this.books[kind] = this.bookOf(kind);
+        for (const [id, b] of this.bodies) if (b.kind === kind) this.bodies.delete(id);
+      }
       const book = this.books[kind];
       // A dead creature's body is an entity of its own (client/core/ragdoll.ts): its death was heard as the living one left.
       if (!book || (remote.flags[i]! & 8) !== 0 || (remote.cue[i]! & CUE_DEAD) !== 0) continue;

@@ -11,12 +11,13 @@ const MB = 1024 * KB;
 
 /** The budgets, by row name: today's size and about 3%. A negative budget pins the row at exactly that number. */
 const BUDGETS: Record<string, number> = {
-  "the page's script, Brotli": 323 * KB,
+  "the page's script, Brotli": 324 * KB,
   "manifest, Brotli": 127 * KB,
   "manifest": 583 * KB,
-  "boot pack, Brotli": 591 * KB,
-  "everything before the first frame, Brotli": 1160 * KB,
+  "boot pack, Brotli": 481 * KB,
+  "everything before the first frame, Brotli": 1058 * KB,
   "mesh file": 20.2 * MB,
+  "clip file": 122 * KB,
   "textures to 1,024, astc": 129 * MB,
   "textures to 2,048, astc": 348 * MB,
   "textures to 1,024, bc": 237 * MB,
@@ -68,6 +69,7 @@ export function weigh(dist: string): boolean {
     ["boot pack, Brotli", size(`${boot}.br`)],
     ["everything before the first frame, Brotli", ["index.html.br", ...script, "assets-worker.js.br", ...fetched, ...hud].reduce((s, n) => s + size(n), 0)],
     ["mesh file", fileOf("mesh")],
+    ["clip file", fileOf("clip")],
     ["textures to 1,024, astc", textures("astc", 1024)],
     ["textures to 2,048, astc", textures("astc", 2048)],
     ["textures to 1,024, bc", textures("bc", 1024)],

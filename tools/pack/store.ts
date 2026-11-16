@@ -1,5 +1,5 @@
 // The ranged files of a build as it serves them. Every part a client fetches by range (a level's indices and vertices,
-// its surface, its skin, a step of a texture) is stored deflated where that makes it smaller, so a range brings fewer
+// its surface, its skin, a skeleton's clips, a step of a texture) is stored deflated where that makes it smaller, so a range brings fewer
 // bytes and the client inflates them (shared/pack/stored.ts). The boot file is fetched whole and is left as it is.
 
 import { createHash } from "node:crypto";
@@ -64,6 +64,8 @@ function partsOf(files: readonly SplitFile[], manifest: Manifest): Part[][] {
       });
     }
   }
+  // A skeleton's clips are in planes already.
+  for (const e of manifest.clips ?? []) parts[e.file]!.push({ at: e.at, bytes: e.part.bytes, filters: [[FILTER_NONE, []]], put: (at, stored) => void ((e.at = at), stored < e.part.bytes && (e.part.stored = stored)) });
   for (const tex of manifest.textures ?? []) {
     for (const [format, v] of Object.entries(tex.in) as [TextureFormat, NonNullable<(typeof tex.in)[TextureFormat]>][]) {
       const stored: number[] = [];

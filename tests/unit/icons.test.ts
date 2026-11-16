@@ -115,7 +115,7 @@ test("a vehicle assembly is pictured from its authored deployment model and live
 });
 
 test("a sheet of pictures is a file of the manifest, which refuses a picture outside its sheet", () => {
-  expect(MANIFEST_VERSION).toBe(4);
+  expect(MANIFEST_VERSION).toBe(5);
   expect([sheet.role, [...sheet.bytes.subarray(0, 8)]]).toEqual(["icon", [137, 80, 78, 71, 13, 10, 26, 10]]);
   // One picture, alone on its sheet: one cell across and down.
   const m = parseManifest(JSON.stringify(manifest));

@@ -9,11 +9,11 @@ import { corePackBytes } from "../fixtures/pack.ts";
 import { splitPack } from "../../tools/pack/split.ts";
 
 test("a page on another site may not open a socket, the server's own page and a program that is no browser may, and an operator lists the rest", async () => {
-  // A client folder with what the server reads of it: the manifest and the boot pack.
+  // A client folder with what the server reads of it: the manifest, the boot pack and the clip file.
   const dir = mkdtempSync(join(tmpdir(), "snark-sockets-"));
   mkdirSync(join(dir, "assets"));
   const { files, manifest } = splitPack(corePackBytes(), "core");
-  writeFileSync(join(dir, "assets", manifest.files[manifest.boot]!.name), files[manifest.boot]!.bytes);
+  for (const [f, file] of files.entries()) if (file.role !== "mesh") writeFileSync(join(dir, "assets", manifest.files[f]!.name), file.bytes);
   writeFileSync(join(dir, "assets/manifest.json"), JSON.stringify(manifest));
   const log = console.log;
   const said: string[] = [];
