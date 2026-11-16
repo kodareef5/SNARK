@@ -196,9 +196,7 @@ const OTHER_KINDS = 130;
 
 /**
  * The proving ground's nodes, as its map file holds them. Every node stands 3 m or more beyond the plaza's edge. The first layer
- * scatters trees, rocks and bushes over all of that, as it always has, so a world saved before the second came keeps every node
- * where it was and of its kind. The second grows the other kinds from 130 m out, so the woods nearest the plaza are as they
- * were, by a simple rule: mangroves, palms, palmetto and sea grape by the water, palms, figs, ferns and creeper on the low
+ * scatters trees, rocks and bushes over all of that. The second grows the other kinds from 130 m out, by a simple rule: mangroves, palms, palmetto and sea grape by the water, palms, figs, ferns and creeper on the low
  * ground, and figs, banyans, rubble and metal rocks higher up, with an elder oak here and there among the figs. The third
  * lists the resource nodes of PROVING_RESOURCES.
  */

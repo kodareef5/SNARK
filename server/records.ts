@@ -158,8 +158,7 @@ export function hashKey(key: Uint8Array): Uint8Array {
 
 /**
  * Team numbers each world makes. A world's are its id times this plus a count of its own, so a team means the same on every
- * server of a cluster and a survivor keeps its team as it travels. Saves from before held teams below it, numbered with
- * their records, which no world's range reaches while no world is 0.
+ * server of a cluster and a survivor keeps its team as it travels.
  */
 export const TEAM_RANGE = 1 << 20;
 /** A team number is 32 bits, so this is the highest world id that can make teams. */
