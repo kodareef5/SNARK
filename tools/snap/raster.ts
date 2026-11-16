@@ -194,6 +194,8 @@ export class Rasterizer {
   private readonly manifest: Manifest | null;
   /** Given a manifest: the surfaces uploaded, by the slot of their level, each with its own slot. */
   private readonly surfaces = new Map<number, { slot: number; surface: DecodedSurface }>();
+  /** Levels and surfaces going up in pieces, as far as they have come. */
+  private readonly coming = new Map<number, Uint8Array>();
   private packet!: FramePacket;
   /**
    * The step being drawn (packet.ts): its matrix, the view depths it clips to, how its depth goes into the buffer, and
@@ -275,8 +277,21 @@ export class Rasterizer {
     for (const u of packet.uploads) this.buffers.set(u.buffer, { data: u.data.slice(), slots: u.slots.slice() });
     for (const id of packet.drops) this.buffers.delete(id);
     // Far blocks come as levels of their own (far.ts), with a manifest or without.
-    for (const u of packet.assetUploads) {
-      if (!this.manifest && u.slot < FAR_SLOTS) continue;
+    for (const piece of packet.assetUploads) {
+      if (!this.manifest && piece.slot < FAR_SLOTS) continue;
+      // A level or a surface in pieces is taken once its last is in.
+      let u = piece;
+      if (piece.whole !== undefined) {
+        const whole = piece.at === 0 ? new Uint8Array(piece.whole) : this.coming.get(piece.slot);
+        if (!whole) continue;
+        whole.set(piece.data, piece.at);
+        if (piece.at! + piece.data.length < piece.whole) {
+          this.coming.set(piece.slot, whole);
+          continue;
+        }
+        this.coming.delete(piece.slot);
+        u = { ...piece, data: whole };
+      }
       if (u.of === undefined) this.lods.set(u.slot, this.decodeUpload(u));
       else this.surfaces.set(u.of, { slot: u.slot, surface: surfaceOf(u.data.subarray(0, u.skinAt), u.data.subarray(u.skinAt ?? u.data.length), this.manifest!.meshes[u.mesh]!.uv) });
     }

@@ -282,51 +282,67 @@ export class GlRenderer {
     this.drawCalls++;
   }
 
-  /** One vertex array for a level of detail. Instance attributes are pointed per draw. */
+  /**
+   * One vertex array for a level of detail, its buffers made the size of the whole by its first piece and each piece
+   * written where it belongs (residency.ts AssetUpload). Instance attributes are pointed per draw.
+   */
   private take(u: AssetUpload): void {
     const gl = this.gl;
-    const indexBytes = u.indexCount * u.indexBytes;
-    const vao = gl.createVertexArray()!;
-    const buffers = [gl.createBuffer()!, gl.createBuffer()!];
-    this.vertexArray(vao);
-    this.array(buffers[0]!);
-    gl.bufferData(gl.ARRAY_BUFFER, u.data.subarray((indexBytes + 3) & ~3), gl.STATIC_DRAW);
-    gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(0, 3, gl.SHORT, true, VERTEX_BYTES, 0);
-    gl.enableVertexAttribArray(1);
-    gl.vertexAttribIPointer(1, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 6);
-    gl.enableVertexAttribArray(6);
-    gl.vertexAttribIPointer(6, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 7);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers[1]!);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, u.data.subarray(0, indexBytes), gl.STATIC_DRAW);
-    for (let a = 2; a <= 5; a++) {
-      gl.enableVertexAttribArray(a);
-      gl.vertexAttribDivisor(a, 1);
-    }
-    this.levels.set(u.slot, { vao, buffers, indexCount: u.indexCount, type: u.indexBytes === 4 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, indexBytes: u.indexBytes, surface: null, skin: false, buffer: null, first: 0 });
+    const indexBytes = u.indexCount * u.indexBytes, vertices = (indexBytes + 3) & ~3;
+    const at = u.at ?? 0, end = at + u.data.length, from = Math.max(at, vertices);
+    let lod = this.levels.get(u.slot);
+    if (at === 0) {
+      lod = { vao: gl.createVertexArray()!, buffers: [gl.createBuffer()!, gl.createBuffer()!], indexCount: u.indexCount, type: u.indexBytes === 4 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, indexBytes: u.indexBytes, surface: null, skin: false, buffer: null, first: 0 };
+      this.levels.set(u.slot, lod);
+      this.vertexArray(lod.vao);
+      this.array(lod.buffers[0]!);
+      gl.bufferData(gl.ARRAY_BUFFER, (u.whole ?? end) - vertices, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 3, gl.SHORT, true, VERTEX_BYTES, 0);
+      gl.enableVertexAttribArray(1);
+      gl.vertexAttribIPointer(1, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 6);
+      gl.enableVertexAttribArray(6);
+      gl.vertexAttribIPointer(6, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 7);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, lod.buffers[1]!);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexBytes, gl.STATIC_DRAW);
+      for (let a = 2; a <= 5; a++) {
+        gl.enableVertexAttribArray(a);
+        gl.vertexAttribDivisor(a, 1);
+      }
+    } else if (!lod) return;
+    this.vertexArray(lod.vao);
+    if (at < indexBytes) gl.bufferSubData(gl.ELEMENT_ARRAY_BUFFER, at, u.data, 0, Math.min(end, indexBytes) - at);
+    if (end <= from) return;
+    this.array(lod.buffers[0]!);
+    gl.bufferSubData(gl.ARRAY_BUFFER, from - vertices, u.data, from - at, end - from);
   }
 
-  /** A level's surface entries, and on a body its skin entries, as attributes 7 to 11 of the level's vertex array. */
+  /** A level's surface entries, and on a body its skin entries, as attributes 7 to 11 of the level's vertex array, made and written as a level is. */
   private takeSurface(u: AssetUpload): void {
     const lod = this.levels.get(u.of!);
-    if (!lod) return;
+    const at = u.at ?? 0;
+    if (!lod || (at > 0 && !lod.surface)) return;
     const gl = this.gl;
-    const skinAt = u.skinAt ?? u.data.length;
-    this.surfaces.set(u.slot, u.of!);
-    lod.surface = gl.createBuffer()!;
-    lod.skin = u.data.length > skinAt;
-    this.vertexArray(lod.vao);
-    this.array(lod.surface);
-    gl.bufferData(gl.ARRAY_BUFFER, u.data, gl.STATIC_DRAW);
-    gl.vertexAttribPointer(7, 2, gl.UNSIGNED_SHORT, true, SURFACE_BYTES, 0);
-    gl.vertexAttribPointer(8, 4, gl.INT_2_10_10_10_REV, true, SURFACE_BYTES, 4);
-    gl.vertexAttribPointer(9, 4, gl.INT_2_10_10_10_REV, true, SURFACE_BYTES, 8);
-    if (lod.skin) {
-      gl.vertexAttribIPointer(10, 4, gl.UNSIGNED_BYTE, SKIN_BYTES, skinAt);
-      gl.vertexAttribPointer(11, 4, gl.UNSIGNED_BYTE, true, SKIN_BYTES, skinAt + 4);
+    if (at === 0) {
+      const whole = u.whole ?? u.data.length, skinAt = u.skinAt ?? whole;
+      this.surfaces.set(u.slot, u.of!);
+      lod.surface = gl.createBuffer()!;
+      lod.skin = whole > skinAt;
+      this.vertexArray(lod.vao);
+      this.array(lod.surface);
+      gl.bufferData(gl.ARRAY_BUFFER, whole, gl.STATIC_DRAW);
+      gl.vertexAttribPointer(7, 2, gl.UNSIGNED_SHORT, true, SURFACE_BYTES, 0);
+      gl.vertexAttribPointer(8, 4, gl.INT_2_10_10_10_REV, true, SURFACE_BYTES, 4);
+      gl.vertexAttribPointer(9, 4, gl.INT_2_10_10_10_REV, true, SURFACE_BYTES, 8);
+      if (lod.skin) {
+        gl.vertexAttribIPointer(10, 4, gl.UNSIGNED_BYTE, SKIN_BYTES, skinAt);
+        gl.vertexAttribPointer(11, 4, gl.UNSIGNED_BYTE, true, SKIN_BYTES, skinAt + 4);
+      }
+      for (let a = 7; a < (lod.skin ? 12 : 10); a++) gl.enableVertexAttribArray(a);
+      this.vertexArray(null);
     }
-    for (let a = 7; a < (lod.skin ? 12 : 10); a++) gl.enableVertexAttribArray(a);
-    this.vertexArray(null);
+    this.array(lod.surface);
+    gl.bufferSubData(gl.ARRAY_BUFFER, at, u.data);
   }
 
   /** A level, or a surface alone: a surface goes before its level, which is drawn flat until it has one again. */
