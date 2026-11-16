@@ -2,6 +2,7 @@
 import { expect, test } from "bun:test";
 import type { CruiseLayout } from "../../content/landmarks/cruise-layout.ts";
 import { CRUISE_LAYOUT } from "../../content/landmarks/cruise.ts";
+import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { cruiseArt, cruiseArtSections, cruiseOwnerLod } from "../fixtures/cruise-art.ts";
 
 test("delivered cruise floor caps face upward, with every authored top present throughout the textured near levels", () => {
@@ -22,10 +23,15 @@ test("delivered cruise floor caps face upward, with every authored top present t
       const planes = tops.get(section.instance.id)!;
       const header = cruiseArt.pack.header.meshes[cruiseArt.pack.meshIndex.get(section.mesh)!]!;
       const tolerance = header.half[1] / 32767 + .000004;
+      // Far structural unions use 5 mm authored planes. Check those as well as
+      // the original plane, retaining the same native quantization tolerance.
+      const originY = Math.round(section.instance.at[1]! * STRUCT_UNITS) / STRUCT_UNITS;
+      const coarse = level >= 3 ? planes.map(y => Math.round((y + originY) * 200) / 200 - originY) : planes;
       const lod = cruiseOwnerLod(section), p = lod.positions;
       for (let i = 0; i < lod.indices.length; i += 3) {
         const a = lod.indices[i]! * 3, b = lod.indices[i + 1]! * 3, c = lod.indices[i + 2]! * 3;
-        const top = planes.findIndex(y => [a,b,c].every(v => Math.abs(p[v + 1]! - y) <= tolerance));
+        const top = planes.findIndex((y, plane) => [a,b,c].every(v => Math.abs(p[v + 1]! - y) <= tolerance) ||
+          [a,b,c].every(v => Math.abs(p[v + 1]! - coarse[plane]!) <= tolerance));
         if (top < 0) continue;
         const ny = (p[b + 2]! - p[a + 2]!) * (p[c]! - p[a]!) - (p[b]! - p[a]!) * (p[c + 2]! - p[a + 2]!);
         if (ny < 0) faults.push(`${section.instance.id} L${level}: downward top cap`);
