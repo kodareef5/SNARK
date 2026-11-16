@@ -29,7 +29,13 @@ export interface SourceArt {
   details: SourceDetails | null;
 }
 
-/** What every pack under `dir` holds, together. Two packs may not hold the same mesh, rig or clip. */
+/** Where a landmark's assets are (tools/art/assets.ts landmarkOf). The core pack reads none of them. */
+export const LANDMARKS = join(SOURCE, "landmarks");
+
+/**
+ * What every pack under `dir` holds, together. Two packs may not hold the same mesh, rig or clip. Under the whole source
+ * tree a landmark's packs are left out: each is read under its own folder.
+ */
 export function readPacks(dir: string = SOURCE): SourceArt {
   const out: SourceArt = { meshes: [], rigs: [], clips: [], details: null };
   const from = new Map<string, string>();
@@ -39,6 +45,7 @@ export function readPacks(dir: string = SOURCE): SourceArt {
     from.set(key, file);
   };
   for (const file of filesUnder(dir, ".snpk")) {
+    if (dir === SOURCE && file.startsWith(LANDMARKS + "/")) continue;
     const pack = parsePack(new Uint8Array(readFileSync(file)));
     for (const m of pack.header.meshes) claim("mesh", m.id, file);
     for (const r of pack.header.rigs) claim("rig", r.id, file);
