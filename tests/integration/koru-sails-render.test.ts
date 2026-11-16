@@ -1,5 +1,14 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
+import { tierOf } from "../../client/core/assets/tiers.ts";
+import { Camera } from "../../client/core/render/camera.ts";
+import { Scene } from "../../client/core/render/scene.ts";
+import { CORE_CONTENT } from "../../content/core.ts";
+import { compileContent } from "../../shared/content/registry.ts";
+import type { SailState } from "../../shared/sim/sails.ts";
+import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import { StructureStore } from "../../shared/world/structures.ts";
+import { Rasterizer } from "../../tools/snap/raster.ts";
 import { DRAW_ONE_BONE, DRAW_SKINNED, type FramePacket } from "../../client/core/render/packet.ts";
 import plan from "../../content/landmarks/koru-sails.json" with { type: "json" };
 import { MODE_GHOST, MODE_WALK, stanceEye } from "../../shared/sim/character.ts";
@@ -60,3 +69,36 @@ test("native dynamic sails keep one owner and advancing poses through city hando
     expect(scene.sails.stats.groups).toBe(0); expect(scene.sails.stats.sails).toBe(0);
   } finally { h.host.shutdown(); }
 }, 10000);
+
+
+test("native sail casters produce changing cascade depth at folded and raised endpoints", () => {
+  const reg = compileContent(CORE_CONTENT).registry!, pack = corePack(), dims = { chunksX: 4, chunksZ: 4 };
+  const hf = new Heightfield(dims, TERRAIN_CELL, -32, 1 / 256);
+  const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  let state: SailState = { ref: 1, kind: reg.index.get("core:koru_sail_control")!, x: 128, y: 0, z: 128, yaw: 0, from: 0, target: 0, startedAt: 0 };
+  const scene = new Scene({ dims, hf, structs, sails: { states: () => [state], tick: () => 0 } }, reg, pack);
+  scene.assets.tier = tierOf("high"); scene.hour = 9; scene.viewHeight = 500;
+  const cam = new Camera(); Object.assign(cam, { x: 13, y: 35, z: 118, yaw: Math.atan2(115, 10), pitch: -.03, aspect: 1.6 });
+  const raster = new Rasterizer(16, 16, pack, hf), sailMeshes = new Set(plan.sails.map(sail => scene.assets.table.find(sail.mesh)));
+  const depths: Float32Array[] = [];
+  for (const progress of [0, 1] as const) {
+    state = { ...state, from: progress, target: progress };
+    const p = scene.build(cam, null);
+    expect(p.casterCount).toBeGreaterThan(0);
+    for (let i = 0; i < p.casterCount; i++) {
+      expect(sailMeshes.has(p.casterMesh[i]!)).toBe(true);
+      expect(p.casterFlags[i]! & DRAW_SKINNED).toBe(DRAW_SKINNED);
+    }
+    // Upload the native packet resources, but isolate cloth depth from terrain and ordinary scene colour.
+    p.drawCount = p.tileCount = 0;
+    raster.render(p);
+    const depth = new Float32Array(3 * 256 * 256);
+    for (let k = 0; k < 3; k++) depth.set(raster.cascade(p, k, 256), k * 256 * 256);
+    expect(depth.every(Number.isFinite)).toBe(true);
+    expect(depth.some(value => value < 1)).toBe(true);
+    depths.push(depth);
+  }
+  const coverage = depths.map(depth => depth.reduce((sum, value) => sum + Number(value < 1), 0));
+  expect(coverage[1]!).toBeGreaterThan(coverage[0]! * 2);
+  expect(depths[0]).not.toEqual(depths[1]);
+});

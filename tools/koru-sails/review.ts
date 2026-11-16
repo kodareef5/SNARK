@@ -1,5 +1,5 @@
 // Native App review: a real player operates the winch with E, while another client watches the synchronized rig.
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { App } from "../../client/core/app.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
@@ -13,7 +13,7 @@ import { MODE_GHOST, MODE_WALK, stanceEye } from "../../shared/sim/character.ts"
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { sailsProgress } from "../../shared/sim/sails.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
-import { writeMap } from "../../shared/world/mapfile.ts";
+import { parseMap, writeMap } from "../../shared/world/mapfile.ts";
 import { FakeNet } from "../../tests/fixtures/assetnet.ts";
 import { Harness } from "../../tests/fixtures/net.ts";
 import { SOURCE } from "../art/source.ts";
@@ -53,7 +53,7 @@ export function sailReviewShots(): readonly SailShot[] {
     { name: "09-reversed-half", progress: .5, eye, target, reverse: true },
     { name: "10-raised-shore-arrival", progress: 1, eye: [0, 0, 0], target, arrival: true },
     ...[0, .5, 1].map(progress => ({ name: `11-sun-deck-${progress === 0 ? "lowered" : progress === 1 ? "raised" : "half"}`, progress,
-      eye: KORU_LAYOUT.views.sunTerrace, target: [0, 20, -8], walkFloor: KORU_LAYOUT.decks[3]!.floorY })),
+      eye: KORU_LAYOUT.views.sunTerrace, target: [0, 14, -8], walkFloor: KORU_LAYOUT.decks[3]!.floorY })),
     { name: "12-control-portrait", progress: .5, eye: [6.7, 5.37, -23.7], target: plan.control.aim, walkFloor: 3.75, portrait: true, control: true },
     ...[280, 650, 900].map(distance => ({ name: `far-${distance}m-raised`, progress: 1, eye: [-distance, 35, -10], target })),
     { name: "far-650m-half", progress: .5, eye: [-650, 35, -10], target },
@@ -85,13 +85,19 @@ export async function reviewKoruSails(args = process.argv.slice(2)): Promise<voi
     return rgbaOf(source.material, texture.role, texture.top);
   });
   const built = compileContent(CORE_CONTENT); if (!built.registry) throw new Error(built.errors.join("\n"));
-  const reg = built.registry, boot = parsePack(files.files[0]!), map = koruSailsCourse(), report: unknown[] = [];
+  const reg = built.registry, boot = parsePack(files.files[0]!), map = koruSailsCourse(), report: Record<string, unknown>[] = [];
+  const mapBytes = writeMap(map), packHash = hashBytes(bytes).toString(16).padStart(8, "0"), registryHash = reg.hash.toString(16).padStart(8, "0"), mapHash = parseMap(mapBytes).hash.toString(16).padStart(8, "0");
+  if (only.length && existsSync(resolve(out, "report.json"))) {
+    const kept = (JSON.parse(readFileSync(resolve(out, "report.json"), "utf8")).shots as Record<string, unknown>[]).filter(old => !shots.some(shot => shot.name === old.name));
+    if (kept.some(old => old.packHash !== packHash || old.registryHash !== registryHash || old.mapHash !== mapHash)) throw new Error("Do a full review after changing assets, content or map; partial review cannot combine different finished states");
+    report.push(...kept);
+  }
   const recordCpu = !args.includes("--visual-only");
   mkdirSync(out, { recursive: true });
   for (const shot of shots) {
     console.log(`Native sails ${shot.name}`);
     const shotWidth = shot.portrait ? 540 : width, shotHeight = shot.portrait ? 960 : height;
-    const h = new Harness({}, 629, 60, { dev: true, map: writeMap(map), clips: pack.clips, rigs: pack.header.rigs }, reg);
+    const h = new Harness({}, 629, 60, { dev: true, map: mapBytes, clips: pack.clips, rigs: pack.header.rigs }, reg);
     try {
       const operator = h.join("Sail operator", {}, { manual: true, city: true }), observer = h.join("Sail observer", {}, { manual: true, city: true });
       const helm = new App(operator, reg, pack), port = new FakeNet(files.files, { keep: true }), app = new App(observer, reg, boot, { manifest: files.manifest, port });
@@ -167,7 +173,7 @@ export async function reviewKoruSails(args = process.argv.slice(2)): Promise<voi
       render.render(p); const scene = render.color.slice(); drawUi(render.color, shotWidth, shotHeight, app.ui.frame);
       writeFileSync(resolve(out, `${shot.name}-scene.png`), encodePng(shotWidth, shotHeight, scene));
       writeFileSync(resolve(out, `${shot.name}.png`), encodePng(shotWidth, shotHeight, render.color));
-      report.push({ ...shot, progress: actual, packHash: hashBytes(bytes).toString(16).padStart(8, "0"), registryHash: reg.hash.toString(16).padStart(8, "0"), mapHash: h.world.mapHash.toString(16).padStart(8, "0"), draws,
+      report.push({ ...shot, progress: actual, packHash, registryHash, mapHash, draws,
         casters, width: shotWidth, height: shotHeight,
         cpu: recordCpu ? { samples: times.length, medianMs: percentile(.5), p95Ms: percentile(.95), p99Ms: percentile(.99), maxMs: percentile(1), progressRange: [timings[0]!.progress, timings.at(-1)!.progress], scope: "Observer App.frame wall time after 30 quiet streaming frames; excludes the operator App, server stepping, network delivery, software rasterization, encoding and GPU work. Transition samples cover the stated advancing progress range." } : { samples: 0, scope: "Visual-only review; no CPU claim." },
         render: { ...app.scene.sails.stats }, triangles: p.triangles, drawCount: p.drawCount, boneCount: p.boneCount, dropped: p.dropped, skipped: p.skipped, casterDropped: p.casterDropped,
@@ -175,6 +181,7 @@ export async function reviewKoruSails(args = process.argv.slice(2)): Promise<voi
         state: observer.sails.states()[0], operatorPrompt: helm.hud.prompt, observerPrompt: app.hud.prompt, city: app.scene.city?.stats,
         camera: { x: p.camX, y: p.camY, z: p.camZ, yaw: app.cam.yaw, pitch: app.cam.pitch },
         fixture: `Operator placed once on the real control deck; normal App E ray commands the authoritative winch. ${shot.arrival ? "Observer uses untouched shore spawn and facing." : shot.walkFloor !== undefined ? "Observer placed once on a real floor; ordinary grounded prediction and camera collision continue." : "Observer placed once as an exterior spectator."} Synchronized server clock drives every pose; no direct progress mutation.` });
+      report.sort((a, b) => String(a.name).localeCompare(String(b.name)));
       writeFileSync(resolve(out, "report.json"), JSON.stringify({ source, generated: new Date().toISOString(), pipeline: "native map → two authoritative clients → real E command → synchronized App poses → native Rasterizer", timing: "Scoped App.frame CPU statistics only where each view records samples; no GPU frame-rate claim.", shots: report }, null, 2));
     } finally { h.host.shutdown(); }
   }
