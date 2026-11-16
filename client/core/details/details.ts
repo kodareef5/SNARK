@@ -20,6 +20,7 @@ import { quatAxis, quatRotate } from "../../../shared/math/quat.ts";
 import type { CollisionWorld } from "../../../shared/world/collide.ts";
 import { castWorld, HIT_NONE, rayHit } from "../../../shared/world/ray.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
+import { MAX_VIEW } from "../../../shared/net/view.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { Occasions, type Happening, type ShotEnd, type Viewer } from "../occasions.ts";
 import type { Corpse } from "../ragdoll.ts";
@@ -42,6 +43,8 @@ const MOST_WAITING = 512;
 const MOST_BURSTS = 24;
 /** A see-through particle within this many metres of the eye fades out, so one through the camera does not fill the screen. */
 const EYE_FADE = 1;
+/** A boat's wake and its spray: the sockets each comes from, and the speed it starts at. */
+const WAKES = [{ occasion: "boat_wake", sockets: ["wake_left", "wake_right"], speed: .6 }, { occasion: "boat_spray", sockets: ["spray_left", "spray_right"], speed: 5 }] as const;
 
 interface Answer {
   entry: DetailEntry;
@@ -60,6 +63,8 @@ interface Book {
   radius: number;
   vehicle: VehicleDefinition | null;
 }
+
+const NO_ANSWERS: readonly Answer[] = [];
 
 interface Waiting {
   h: Happening;
@@ -89,6 +94,8 @@ export class Details {
   private readonly at = [0, 0, 0];
   private readonly colour = [0, 0, 0];
   private readonly order = new Uint32Array(MAX_DETAILS);
+  /** The see-through particles as written, while they are put far to near: words, so that every bit is kept. */
+  private readonly unsorted = new Uint32Array(MAX_DETAILS * DETAIL_FLOATS);
   private readonly index = new Map<number, number>();
   private readonly due: Waiting[] = [];
   /** The body last posed for a burst this frame, and the tick it was posed at. */
@@ -102,6 +109,8 @@ export class Details {
   private readonly rotation = new Float64Array(4);
   private readonly up = new Float64Array(3);
   private readonly emitter = new Float64Array(3);
+  /** The frame of the machine giving off details (machinery). */
+  private readonly machine = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, qx: 0, qy: 0, qz: 0, qw: 1 };
 
   /** `animOf` gives what a species of a kind plays, or null for one not drawn on a rig of its own. */
   constructor(reg: Registry, details: PackDetails | undefined, palette: Uint8Array, animOf: (kind: number) => CreatureAnim | null) {
@@ -119,7 +128,8 @@ export class Details {
       if (!sheet || !anim) return null;
       const moments: Partial<Record<Occasion, number>> = { down: bodyDown(anim.rig, anim.torporIn ?? anim.death), death: bodyDown(anim.rig, anim.death), up: bodyUp(anim.rig, anim.torporOut) };
       const answers: Book["answers"] = {};
-      for (const [o, cue] of Object.entries(sheet.cues) as [Occasion, NonNullable<(typeof sheet.cues)[Occasion]>][]) {
+      for (const o of Object.keys(sheet.cues) as Occasion[]) {
+        const cue = sheet.cues[o]!;
         answers[o] = cue.effects.map((entry) => ({ entry, effect: this.effects[entry.effect]!, delay: entry.at === "down" ? (moments[o] ?? 0) : entry.at === "now" ? 0 : entry.at }));
         listens[kind]! |= 1 << OCCASIONS.indexOf(o);
       }
@@ -153,7 +163,8 @@ export class Details {
           if (this.waiting.length < MOST_WAITING) this.waiting.push({ h, answer, due: h.tick + answer.delay * TICK_RATE, index: k });
         });
       }
-      this.index.clear();
+      // Kept from frame to frame, as clearing it would make it grow again each frame; a stale place is checked where it is read.
+      if (this.index.size > 2 * MAX_VIEW) this.index.clear();
       for (let i = 0; i < remote.count; i++) this.index.set(remote.id[i]!, i);
     }
     const seconds = tick / TICK_RATE;
@@ -188,85 +199,105 @@ export class Details {
     for (let i = 0; i < r.count; i++) {
       const kind = r.kind[i]!, book = this.books[kind];
       if ((!this.rotorKinds[kind] && !this.boatKinds[kind]) || !book || (r.cue[i]! & CUE_DEAD) !== 0 || Math.hypot(r.x[i]! - cam.x, r.y[i]! - cam.y, r.z[i]! - cam.z) > 90) continue;
-      const key = r.id[i]! + r.gen[i]! * 1048576;
-      let seen = this.emissions.get(key);
-      if (!seen) this.emissions.set(key, seen = { wash: -1, smoke: -1, seen: frameNumber, tick: r.tick, x: r.x[i]!, z: r.z[i]!, speed: 0 });
-      seen.seen = frameNumber;
-      if (r.tick > seen.tick) {
-        const elapsed = (r.tick - seen.tick) / TICK_RATE;
-        seen.speed = elapsed < .5 ? Math.hypot(r.x[i]! - seen.x, r.z[i]! - seen.z) / elapsed : 0;
-        seen.tick = r.tick; seen.x = r.x[i]!; seen.z = r.z[i]!;
-      }
-      const frame = { x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, yaw: r.yaw[i]!, pitch: r.vehiclePitch[i]!, roll: r.vehicleRoll[i]!, qx: r.vehicleQx[i]!, qy: r.vehicleQy[i]!, qz: r.vehicleQz[i]!, qw: r.vehicleQw[i]! };
-      const emit = (occasion: "rotor_wash" | "engine_smoke" | "boat_wake" | "boat_spray", x: number, y: number, z: number, floor: number, socket?: string): void => {
-        const h: Happening = { occasion, id: r.id[i]!, kind, tick: r.tick, x: frame.x, y: frame.y, z: frame.z, yaw: frame.yaw, size: 1, anim: r.anim[i]!, cue: r.cue[i]!, grounded: Number.isFinite(floor), colours: r.colors.slice(i * 6, i * 6 + 6), fromX: NaN, fromY: NaN, fromZ: NaN, foot: -1, corpse: null };
-        book.answers[occasion]?.forEach((answer, index) => {
-          if (socket && answer.entry.from !== socket) return;
-          if (this.waiting.length < MOST_WAITING) this.waiting.push({ h, answer, due: r.tick, index, origin: { x, y, z, floor } });
-        });
-      };
-      // A socket may live on the steering outboard. Pose the same native rig as rendering before resolving it.
-      const socketAt = (name: string): boolean => {
-        const rig = book.anim.rig, anchor = rig.sockets.get(name); if (!anchor) return false;
-        rig.a.rest();
-        if (book.vehicle?.movement === "boat" && book.vehicle.outboard) {
-          const motor = book.vehicle.outboard, bone = rig.names.indexOf(motor.bone);
-          if (bone >= 0) quatAxis(rig.a.rot, bone * 4, motor.axis[0], motor.axis[1], motor.axis[2], r.steering[i]! * motor.ratio);
-        }
-        solve(rig, rig.a, rig.solved); boneToModel(rig.solved, anchor.bone, anchor.x, anchor.y, anchor.z, this.emitter);
-        vehiclePoint(frame, this.emitter, this.emitter); return true;
-      };
-      if (this.boatKinds[kind]) {
-        const beat = Math.floor(r.tick / (TICK_RATE / 8));
-        vehicleRotation(frame, this.rotation); quatRotate(this.rotation, 0, 0, 1, 0, this.up, 0);
-        const water = hf.waterAt(frame.x, frame.z), draft = water - frame.y;
-        if (beat !== seen.wash && seen.speed > .6 && seen.speed < 60 && this.up[1]! > .5 && draft > -.08 && draft < .95 && water > hf.heightAt(frame.x, frame.z) + .15) {
-          seen.wash = beat;
-          for (const [occasion, sockets, speed] of [["boat_wake", ["wake_left", "wake_right"], .6], ["boat_spray", ["spray_left", "spray_right"], 5]] as const) {
-            if (seen.speed < speed) continue;
-            for (const socket of sockets) if (socketAt(socket)) {
-              const x = this.emitter[0]!, z = this.emitter[2]!, surface = hf.waterAt(x, z);
-              if (Number.isFinite(surface) && Math.abs(surface - water) < .05 && surface > hf.heightAt(x, z) + .1 && Math.abs(this.emitter[1]! - surface) < .9) emit(occasion, x, surface + .025, z, surface, socket);
-            }
-          }
-        }
-        const smoke = Math.floor(r.tick / (TICK_RATE / 3));
-        if (r.vehicleEngineOn[i] && r.vehicleEngineCondition[i]! < .65 && smoke !== seen.smoke) {
-          seen.smoke = smoke;
-          for (const answer of book.answers.engine_smoke ?? []) if (socketAt(answer.entry.from)) {
-            if (this.emitter[1]! > hf.waterAt(this.emitter[0]!, this.emitter[2]!)) emit("engine_smoke", this.emitter[0]!, this.emitter[1]!, this.emitter[2]!, NaN, answer.entry.from);
-          }
-        }
-        continue;
-      }
-      const wash = Math.floor(r.tick / (TICK_RATE / 4));
-      if (r.vehicleRotorRpm[i]! > 220 && wash !== seen.wash) {
-        seen.wash = wash;
-        const anchor = book.anim.rig.sockets.get("rotor_main");
-        if (anchor) {
-          vehicleRotation(frame, this.rotation); quatRotate(this.rotation, 0, 0, 1, 0, this.up, 0);
-          vehiclePoint(frame, [anchor.x, anchor.y, anchor.z], this.emitter);
-          if (this.up[1]! > .45) {
-            const x = this.emitter[0]!, y = this.emitter[1]!, z = this.emitter[2]!;
-            let distance = world ? Infinity : (y - hf.heightAt(x, z)) / this.up[1]!;
-            if (world && castWorld(world, x, y, z, -this.up[0]!, -this.up[1]!, -this.up[2]!, 7.2) !== HIT_NONE) distance = rayHit.t;
-            // Water is a surface for spray, even though the solid-world ray deliberately passes through it.
-            distance = Math.min(distance, (y - hf.waterAt(x, z)) / this.up[1]!);
-            if (distance >= 0 && distance <= 7.2) {
-              const gx = x - this.up[0]! * distance, gy = y - this.up[1]! * distance, gz = z - this.up[2]! * distance;
-              emit("rotor_wash", gx, gy + .04, gz, gy);
-            }
+      this.machinery(r, i, book, hf, world, frameNumber);
+    }
+    for (const key of this.emissions.keys()) if (this.emissions.get(key)!.seen !== frameNumber) this.emissions.delete(key);
+  }
+
+  /** What the boat or aircraft `i` gives off this frame. */
+  private machinery(r: RemoteSample, i: number, book: Book, hf: Heightfield, world: CollisionWorld | undefined, frameNumber: number): void {
+    const kind = r.kind[i]!;
+    const key = r.id[i]! + r.gen[i]! * 1048576;
+    let seen = this.emissions.get(key);
+    if (!seen) this.emissions.set(key, seen = { wash: -1, smoke: -1, seen: frameNumber, tick: r.tick, x: r.x[i]!, z: r.z[i]!, speed: 0 });
+    seen.seen = frameNumber;
+    if (r.tick > seen.tick) {
+      const elapsed = (r.tick - seen.tick) / TICK_RATE;
+      seen.speed = elapsed < .5 ? Math.hypot(r.x[i]! - seen.x, r.z[i]! - seen.z) / elapsed : 0;
+      seen.tick = r.tick; seen.x = r.x[i]!; seen.z = r.z[i]!;
+    }
+    const frame = this.machine;
+    frame.x = r.x[i]!; frame.y = r.y[i]!; frame.z = r.z[i]!; frame.yaw = r.yaw[i]!; frame.pitch = r.vehiclePitch[i]!; frame.roll = r.vehicleRoll[i]!;
+    frame.qx = r.vehicleQx[i]!; frame.qy = r.vehicleQy[i]!; frame.qz = r.vehicleQz[i]!; frame.qw = r.vehicleQw[i]!;
+    if (this.boatKinds[kind]) {
+      const beat = Math.floor(r.tick / (TICK_RATE / 8));
+      vehicleRotation(frame, this.rotation); quatRotate(this.rotation, 0, 0, 1, 0, this.up, 0);
+      const water = hf.waterAt(frame.x, frame.z), draft = water - frame.y;
+      if (beat !== seen.wash && seen.speed > .6 && seen.speed < 60 && this.up[1]! > .5 && draft > -.08 && draft < .95 && water > hf.heightAt(frame.x, frame.z) + .15) {
+        seen.wash = beat;
+        for (const wake of WAKES) {
+          if (seen.speed < wake.speed) continue;
+          for (const socket of wake.sockets) if (this.socketAt(r, i, book, socket)) {
+            const x = this.emitter[0]!, z = this.emitter[2]!, surface = hf.waterAt(x, z);
+            if (Number.isFinite(surface) && Math.abs(surface - water) < .05 && surface > hf.heightAt(x, z) + .1 && Math.abs(this.emitter[1]! - surface) < .9) this.emit(r, i, book, wake.occasion, x, surface + .025, z, surface, socket);
           }
         }
       }
       const smoke = Math.floor(r.tick / (TICK_RATE / 3));
-      if (r.vehicleEngineCondition[i]! < .65 && r.vehicleRotorRpm[i]! > 30 && smoke !== seen.smoke) {
+      if (r.vehicleEngineOn[i] && r.vehicleEngineCondition[i]! < .65 && smoke !== seen.smoke) {
         seen.smoke = smoke;
-        const anchor = book.anim.rig.sockets.get("exhaust");
-        if (anchor) { vehiclePoint(frame, [anchor.x, anchor.y, anchor.z], this.emitter); emit("engine_smoke", this.emitter[0]!, this.emitter[1]!, this.emitter[2]!, NaN); }
+        for (const answer of book.answers.engine_smoke ?? NO_ANSWERS) if (this.socketAt(r, i, book, answer.entry.from)) {
+          if (this.emitter[1]! > hf.waterAt(this.emitter[0]!, this.emitter[2]!)) this.emit(r, i, book, "engine_smoke", this.emitter[0]!, this.emitter[1]!, this.emitter[2]!, NaN, answer.entry.from);
+        }
+      }
+      return;
+    }
+    const wash = Math.floor(r.tick / (TICK_RATE / 4));
+    if (r.vehicleRotorRpm[i]! > 220 && wash !== seen.wash) {
+      seen.wash = wash;
+      const anchor = book.anim.rig.sockets.get("rotor_main");
+      if (anchor) {
+        vehicleRotation(frame, this.rotation); quatRotate(this.rotation, 0, 0, 1, 0, this.up, 0);
+        this.emitter[0] = anchor.x; this.emitter[1] = anchor.y; this.emitter[2] = anchor.z;
+        vehiclePoint(frame, this.emitter, this.emitter);
+        if (this.up[1]! > .45) {
+          const x = this.emitter[0]!, y = this.emitter[1]!, z = this.emitter[2]!;
+          let distance = world ? Infinity : (y - hf.heightAt(x, z)) / this.up[1]!;
+          if (world && castWorld(world, x, y, z, -this.up[0]!, -this.up[1]!, -this.up[2]!, 7.2) !== HIT_NONE) distance = rayHit.t;
+          // Water is a surface for spray, even though the solid-world ray deliberately passes through it.
+          distance = Math.min(distance, (y - hf.waterAt(x, z)) / this.up[1]!);
+          if (distance >= 0 && distance <= 7.2) {
+            const gx = x - this.up[0]! * distance, gy = y - this.up[1]! * distance, gz = z - this.up[2]! * distance;
+            this.emit(r, i, book, "rotor_wash", gx, gy + .04, gz, gy);
+          }
+        }
       }
     }
-    for (const [key, state] of this.emissions) if (state.seen !== frameNumber) this.emissions.delete(key);
+    const smoke = Math.floor(r.tick / (TICK_RATE / 3));
+    if (r.vehicleEngineCondition[i]! < .65 && r.vehicleRotorRpm[i]! > 30 && smoke !== seen.smoke) {
+      seen.smoke = smoke;
+      const anchor = book.anim.rig.sockets.get("exhaust");
+      if (anchor) {
+        this.emitter[0] = anchor.x; this.emitter[1] = anchor.y; this.emitter[2] = anchor.z;
+        vehiclePoint(frame, this.emitter, this.emitter);
+        this.emit(r, i, book, "engine_smoke", this.emitter[0]!, this.emitter[1]!, this.emitter[2]!, NaN);
+      }
+    }
+  }
+
+  /** Queues the answers of the machine `i` (machinery) to `occasion` at a place, those from `socket` alone where it is given. */
+  private emit(r: RemoteSample, i: number, book: Book, occasion: "rotor_wash" | "engine_smoke" | "boat_wake" | "boat_spray", x: number, y: number, z: number, floor: number, socket?: string): void {
+    const answers = book.answers[occasion];
+    if (!answers) return;
+    const frame = this.machine;
+    const h: Happening = { occasion, id: r.id[i]!, kind: r.kind[i]!, tick: r.tick, x: frame.x, y: frame.y, z: frame.z, yaw: frame.yaw, size: 1, anim: r.anim[i]!, cue: r.cue[i]!, grounded: Number.isFinite(floor), colours: r.colors.slice(i * 6, i * 6 + 6), fromX: NaN, fromY: NaN, fromZ: NaN, foot: -1, corpse: null };
+    for (let index = 0; index < answers.length; index++) {
+      const answer = answers[index]!;
+      if (socket && answer.entry.from !== socket) continue;
+      if (this.waiting.length < MOST_WAITING) this.waiting.push({ h, answer, due: r.tick, index, origin: { x, y, z, floor } });
+    }
+  }
+
+  /** Puts in `emitter` where the machine `i`'s socket `name` is, posed as it is drawn; false if its rig has none. A socket may live on the steering outboard. */
+  private socketAt(r: RemoteSample, i: number, book: Book, name: string): boolean {
+    const rig = book.anim.rig, anchor = rig.sockets.get(name); if (!anchor) return false;
+    rig.a.rest();
+    if (book.vehicle?.movement === "boat" && book.vehicle.outboard) {
+      const motor = book.vehicle.outboard, bone = rig.names.indexOf(motor.bone);
+      if (bone >= 0) quatAxis(rig.a.rot, bone * 4, motor.axis[0], motor.axis[1], motor.axis[2], r.steering[i]! * motor.ratio);
+    }
+    solve(rig, rig.a, rig.solved); boneToModel(rig.solved, anchor.bone, anchor.x, anchor.y, anchor.z, this.emitter);
+    vehiclePoint(this.machine, this.emitter, this.emitter); return true;
   }
 
   /** Makes one burst. Returns the share of the screen it is expected to cover, if it is see-through. */
@@ -283,7 +314,7 @@ export class Details {
     let z = h.z;
     let yaw = h.yaw, steering = 0;
     const from = answer.entry.from;
-    let [ox, oy, oz] = [0, 0, 0];
+    let ox = 0, oy = 0, oz = 0;
     if (w.origin) { at[0] = w.origin.x; at[1] = w.origin.y; at[2] = w.origin.z; }
     else {
     let solved: Solved | null = null;
@@ -292,18 +323,24 @@ export class Details {
     if (h.corpse) {
       const c = h.corpse;
       solved = c.solved;
-      [x, y, z] = [c.x, c.y, c.z];
+      x = c.x;
+      y = c.y;
+      z = c.z;
       if (c.rigid) {
         vehicleRotation({ ...c, pitch: 0, roll: 0 }, this.rotation);
         rotated = true;
       }
     }
     else {
-      const i = remote ? this.index.get(h.id) : undefined;
+      const at = remote ? this.index.get(h.id) : undefined;
+      const i = at !== undefined && at < remote!.count && remote!.id[at] === h.id ? at : undefined;
       const st = this.st;
       if (i !== undefined) {
         const r = remote!;
-        [x, y, z, yaw] = [r.x[i]!, r.y[i]!, r.z[i]!, r.yaw[i]!]; steering = r.steering[i]!;
+        x = r.x[i]!;
+        y = r.y[i]!;
+        z = r.z[i]!;
+        yaw = r.yaw[i]!; steering = r.steering[i]!;
         if (this.rotorKinds[h.kind] || this.boatKinds[h.kind]) {
           vehicleRotation({ x, y, z, yaw, pitch: 0, roll: 0, qx: r.vehicleQx[i]!, qy: r.vehicleQy[i]!, qz: r.vehicleQz[i]!, qw: r.vehicleQw[i]! }, this.rotation);
           rotated = true;
@@ -316,11 +353,12 @@ export class Details {
       if (this.posed !== h.id || this.posedAt !== w.due) {
         creaturePose(book.anim, st, w.due, rig.a);
         solve(rig, rig.a, rig.solved);
-        [this.posed, this.posedAt] = [h.id, w.due];
+        this.posed = h.id;
+        this.posedAt = w.due;
       }
       solved = rig.solved;
     }
-    const [s, c] = [Math.sin(yaw), Math.cos(yaw)];
+    const s = Math.sin(yaw), c = Math.cos(yaw);
     const world = (mx: number, my: number, mz: number): void => {
       if (rotated) {
         quatRotate(this.rotation, 0, mx * size, my * size, mz * size, at, 0);
@@ -334,30 +372,37 @@ export class Details {
     if (from === "body" || from === "ground") world(solved.pos[0]!, solved.pos[1]!, solved.pos[2]!);
     else if (from === "hit") {
       world(solved.pos[0]!, book.height * 0.55, solved.pos[2]!);
-      const [cx, cz] = [at[0]!, at[2]!];
+      const cx = at[0]!, cz = at[2]!;
       if (rotated && (book.vehicle?.movement === "rotor" || book.vehicle?.movement === "boat")) {
         // The impact surface follows the cabin in three dimensions, including an inverted aircraft.
-        let [sx, sy, sz] = [h.fromX, h.fromY - .6, h.fromZ];
+        let sx = h.fromX, sy = h.fromY - .6, sz = h.fromZ;
         if (!Number.isFinite(sx)) {
           const a = rng.float() * Math.PI * 2, dy = rng.float() * 2 - 1, r = Math.sqrt(1 - dy * dy);
-          [sx, sy, sz] = [cx + Math.cos(a) * r * 10, at[1]! + dy * 10, cz + Math.sin(a) * r * 10];
+          sx = cx + Math.cos(a) * r * 10;
+          sy = at[1]! + dy * 10;
+          sz = cz + Math.sin(a) * r * 10;
         }
         const dx = cx - sx, dy = at[1]! - sy, dz = cz - sz, len = Math.hypot(dx, dy, dz) || 1;
-        [ox, oy, oz] = [dx / len, dy / len, dz / len];
+        ox = dx / len;
+        oy = dy / len;
+        oz = dz / len;
         const t = rayVehicle(book.vehicle, x, y, z, yaw, sx, sy, sz, ox, oy, oz, book.height, { pitch: 0, roll: 0, steering, qx: this.rotation[0]!, qy: this.rotation[1]!, qz: this.rotation[2]!, qw: this.rotation[3]! });
-        if (Number.isFinite(t)) [at[0], at[1], at[2]] = [sx + ox * t, sy + oy * t, sz + oz * t];
+        if (Number.isFinite(t)) { at[0] = sx + ox * t; at[1] = sy + oy * t; at[2] = sz + oz * t; }
       } else if (h.fromX === h.fromX) {
         // The side of the body that faces whoever struck it, and away from them.
-        const [dx, dz] = [h.fromX - cx, h.fromZ - cz];
+        const dx = h.fromX - cx, dz = h.fromZ - cz;
         const l = Math.hypot(dx, dz) || 1;
         const r = book.radius * size;
         at[0] = cx + (dx / l) * r;
         at[1] = Math.min(y + book.height * size, Math.max(y + 0.1, h.fromY - 0.6));
         at[2] = cz + (dz / l) * r;
-        [ox, oy, oz] = [-dx / l, 0, -dz / l];
+        ox = -dx / l;
+        oy = 0;
+        oz = -dz / l;
       } else {
         const a = rng.float() * Math.PI * 2;
-        [ox, oz] = [Math.cos(a), Math.sin(a)];
+        ox = Math.cos(a);
+        oz = Math.sin(a);
         at[0] = cx + ox * book.radius * size;
         at[2] = cz + oz * book.radius * size;
       }
@@ -376,7 +421,7 @@ export class Details {
     const surface = hf.waterAt(at[0]!, at[2]!);
     const marineWater = this.boatKinds[h.kind] && from === "ground" && Number.isFinite(surface) && surface > hf.heightAt(at[0]!, at[2]!) + .1 && Math.abs(y - surface) < 1.2;
     if (marineWater) at[1] = surface + .025;
-    const [px, py, pz] = [at[0]!, at[1]!, at[2]!];
+    const px = at[0]!, py = at[1]!, pz = at[2]!;
     const d = Math.hypot(px - cam.x, py - cam.y, pz - cam.z);
     if (d > e.reach * tier.details.reach) return 0;
     // What the ground is, for the dust's colour and whether there is any.
@@ -410,30 +455,37 @@ export class Details {
       const i = pool.count < tier.details.pool ? pool.take() : -1;
       if (i < 0) break;
       // Where it starts and which way it goes: out from the place, and up by the effect's share.
-      let [sx, sy, sz] = [0, 0, 0];
-      let [dx, dy, dz] = [ox, oy, oz];
+      let sx = 0, sy = 0, sz = 0;
+      let dx = ox, dy = oy, dz = oz;
       const turn = ((k + rng.float() * 0.6) / n) * Math.PI * 2;
       if (e.shape === "ring" || e.shape === "disc") {
         const r = e.radius * size * (e.shape === "disc" ? Math.sqrt(rng.float()) : 0.85 + rng.float() * 0.3);
-        [dx, dy, dz] = [Math.cos(turn), 0, Math.sin(turn)];
-        [sx, sz] = [dx * r, dz * r];
+        dx = Math.cos(turn);
+        dy = 0;
+        dz = Math.sin(turn);
+        sx = dx * r;
+        sz = dz * r;
       } else {
         const u = rng.float() * 2 - 1;
         const a = rng.float() * Math.PI * 2;
         const ring = Math.sqrt(1 - u * u);
-        const [rx, ry, rz] = [ring * Math.cos(a), u, ring * Math.sin(a)];
+        const rx = ring * Math.cos(a), ry = u, rz = ring * Math.sin(a);
         if (e.shape === "sphere") {
           const r = e.radius * size * Math.cbrt(rng.float());
-          [sx, sy, sz] = [rx * r, ry * r, rz * r];
+          sx = rx * r;
+          sy = ry * r;
+          sz = rz * r;
         }
-        if (from === "hit") [dx, dy, dz] = [dx + rx * 0.6, dy + Math.abs(ry) * 0.3, dz + rz * 0.6];
-        else [dx, dy, dz] = [rx, Math.abs(ry), rz];
+        if (from === "hit") { dx = dx + rx * 0.6; dy = dy + Math.abs(ry) * 0.3; dz = dz + rz * 0.6; }
+        else { dx = rx; dy = Math.abs(ry); dz = rz; }
       }
       const up = e.up;
       const hl = Math.hypot(dx, dz);
-      const [hx, hz] = hl > 0 ? [dx / hl, dz / hl] : [0, 0];
+      const hx = hl > 0 ? dx / hl : 0, hz = hl > 0 ? dz / hl : 0;
       const speed = e.speed[0] + rng.float() * (e.speed[1] - e.speed[0]);
-      [pool.x[i], pool.y[i], pool.z[i]] = [px + sx, py + sy, pz + sz];
+      pool.x[i] = px + sx;
+      pool.y[i] = py + sy;
+      pool.z[i] = pz + sz;
       pool.vx[i] = hx * (1 - up) * speed;
       pool.vy[i] = up * speed;
       pool.vz[i] = hz * (1 - up) * speed;
@@ -463,11 +515,13 @@ export class Details {
     let r: number;
     let g: number;
     let b: number;
-    if (e.colour === "ground") [r, g, b] = [ground[0]!, ground[1]!, ground[2]!];
+    if (e.colour === "ground") { r = ground[0]!; g = ground[1]!; b = ground[2]!; }
     else if (Array.isArray(e.colour)) [r, g, b] = e.colour;
     else {
       const dye = (region >= 0 && h.colours[region]) || book.colour;
-      [r, g, b] = [this.palette[dye * 4]!, this.palette[dye * 4 + 1]!, this.palette[dye * 4 + 2]!];
+      r = this.palette[dye * 4]!;
+      g = this.palette[dye * 4 + 1]!;
+      b = this.palette[dye * 4 + 2]!;
     }
     const k = (v: number): number => Math.max(0, Math.min(255, Math.round(v * shade)));
     return (k(r) | (k(g) << 8) | (k(b) << 16) | (255 << 24)) >>> 0;
@@ -479,11 +533,11 @@ export class Details {
     const out = p.details;
     const words = p.detailWords;
     const order = this.order;
-    const [cx, cy, cz] = [cam.x, cam.y, cam.z];
+    const cx = cam.x, cy = cam.y, cz = cam.z;
     // The camera's right and up, which a puff faces.
-    const [sy, cyw, sp, cp] = [Math.sin(cam.yaw), Math.cos(cam.yaw), Math.sin(cam.pitch), Math.cos(cam.pitch)];
-    const [rx, rz] = [-cyw, sy];
-    const [ux, uy, uz] = [-sy * sp, cp, -cyw * sp];
+    const sy = Math.sin(cam.yaw), cyw = Math.cos(cam.yaw), sp = Math.sin(cam.pitch), cp = Math.cos(cam.pitch);
+    const rx = -cyw, rz = sy;
+    const ux = -sy * sp, uy = cp, uz = -cyw * sp;
     const t = Math.tan(cam.fovY / 2);
     let cut = 0;
     let blended = 0;
@@ -519,14 +573,19 @@ export class Details {
         const lying = pool.landed[i]! >= 0;
         if (e.face === "camera") {
           const a = pool.heading[i]! + e.turn * pool.age[i]!;
-          const [ca, sa] = [Math.cos(a), Math.sin(a)];
-          out.set([(ux * ca - rx * sa) * half, uy * ca * half, (uz * ca - rz * sa) * half, (rx * ca + ux * sa) * width, uy * sa * width, (rz * ca + uz * sa) * width], o + DETAIL.along);
+          const ca = Math.cos(a), sa = Math.sin(a);
+          sides(out, o, (ux * ca - rx * sa) * half, uy * ca * half, (uz * ca - rz * sa) * half, (rx * ca + ux * sa) * width, uy * sa * width, (rz * ca + uz * sa) * width);
         } else if (lying || e.face === "flat") {
           const l = i * 6;
           if (!lying) {
             const h = pool.heading[i]! + e.turn * pool.age[i]!;
-            out.set([Math.cos(h) * half, 0, Math.sin(h) * half, -Math.sin(h) * width, 0, Math.cos(h) * width], o + DETAIL.along);
-          } else for (let k = 0; k < 3; k++) [out[o + DETAIL.along + k], out[o + DETAIL.across + k]] = [pool.lying[l + k]! * half, pool.lying[l + 3 + k]! * width];
+            sides(out, o, Math.cos(h) * half, 0, Math.sin(h) * half, -Math.sin(h) * width, 0, Math.cos(h) * width);
+          } else {
+            for (let k = 0; k < 3; k++) {
+              out[o + DETAIL.along + k] = pool.lying[l + k]! * half;
+              out[o + DETAIL.across + k] = pool.lying[l + 3 + k]! * width;
+            }
+          }
         } else {
           // Falling, a feather lies across its fall and rocks; bursting out, it tumbles.
           const age = pool.age[i]!;
@@ -534,12 +593,12 @@ export class Details {
           const h = pool.heading[i]! + e.turn * age;
           const pitch = pool.pitch[i]! + e.rock * swing;
           const roll = e.rock * 0.6 * Math.cos(2 * Math.PI * e.swayHz * age + pool.phase[i]!) + 3 * Math.max(0, 0.5 - age) * pool.phase[i]!;
-          const [ch, sh, cpt, spt, cr, sr] = [Math.cos(h), Math.sin(h), Math.cos(pitch), Math.sin(pitch), Math.cos(roll), Math.sin(roll)];
-          const [ax, ay, az] = [ch * cpt, spt, sh * cpt];
+          const ch = Math.cos(h), sh = Math.sin(h), cpt = Math.cos(pitch), spt = Math.sin(pitch), cr = Math.cos(roll), sr = Math.sin(roll);
+          const ax = ch * cpt, ay = spt, az = sh * cpt;
           // Across: the level side direction, rolled about the length.
-          const [bx, by, bz] = [-sh, 0, ch];
-          const [nx, ny, nz] = [ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx];
-          out.set([ax * half, ay * half, az * half, (bx * cr + nx * sr) * width, (by * cr + ny * sr) * width, (bz * cr + nz * sr) * width], o + DETAIL.along);
+          const bx = -sh, by = 0, bz = ch;
+          const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+          sides(out, o, ax * half, ay * half, az * half, (bx * cr + nx * sr) * width, (by * cr + ny * sr) * width, (bz * cr + nz * sr) * width);
         }
         out[o + DETAIL.floor] = pool.floor(i, pool.x[i]!, pool.z[i]!, hf) - cy;
         words[o + DETAIL.colourA] = pool.colourA[i]!;
@@ -555,13 +614,28 @@ export class Details {
     // The see-through ones far to near: their keys are inverted distances, sorted from least.
     if (blended > 1) {
       sortU32(order, blended);
-      const from = p.details.slice(cut * DETAIL_FLOATS, (cut + blended) * DETAIL_FLOATS);
-      for (let k = 0; k < blended; k++) out.set(from.subarray(((order[k]! % MAX_DETAILS) - cut) * DETAIL_FLOATS, ((order[k]! % MAX_DETAILS) - cut + 1) * DETAIL_FLOATS), (cut + k) * DETAIL_FLOATS);
+      const from = this.unsorted;
+      for (let k = 0, at = cut * DETAIL_FLOATS; k < blended * DETAIL_FLOATS; k++) from[k] = words[at + k]!;
+      for (let k = 0; k < blended; k++) {
+        const src = ((order[k]! % MAX_DETAILS) - cut) * DETAIL_FLOATS;
+        const dst = (cut + k) * DETAIL_FLOATS;
+        for (let f = 0; f < DETAIL_FLOATS; f++) words[dst + f] = from[src + f]!;
+      }
     }
     p.detailCount = cut + blended;
     p.detailFill = this.fill = fill;
     return cut;
   }
+}
+
+/** Writes a particle's half length and half width, each a vector, from `o`. */
+function sides(out: Float32Array, o: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number): void {
+  out[o + DETAIL.along] = ax;
+  out[o + DETAIL.along + 1] = ay;
+  out[o + DETAIL.along + 2] = az;
+  out[o + DETAIL.across] = bx;
+  out[o + DETAIL.across + 1] = by;
+  out[o + DETAIL.across + 2] = bz;
 }
 
 /** Fast at first and slower as it ends, 0 to 1. */

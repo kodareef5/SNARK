@@ -124,7 +124,8 @@ export const TIERS: readonly Tier[] = [
 export const DEFAULT_TIER: Tier["name"] = "medium";
 
 export function tierOf(name: string): Tier {
-  return TIERS.find((t) => t.name === name) ?? TIERS.find((t) => t.name === DEFAULT_TIER)!;
+  for (const t of TIERS) if (t.name === name) return t;
+  return tierOf(DEFAULT_TIER);
 }
 
 const touched = new Map<Tier, Tier>();
@@ -132,8 +133,10 @@ const touched = new Map<Tier, Tier>();
 /** The rule for touch-first devices: a tier as one draws it, the same copy each time, since the renderer keeps programs by the tier. */
 export function forTouch(tier: Tier, touchFirst: boolean): Tier {
   if (!touchFirst || !tier.touch) return tier;
+  const had = touched.get(tier);
+  if (had) return had;
   const { offered: _, ...values } = tier.touch;
-  return touched.get(tier) ?? touched.set(tier, { ...tier, ...values }).get(tier)!;
+  return touched.set(tier, { ...tier, ...values }).get(tier)!;
 }
 
 /** The tiers the settings offer: on a touch-first device, those whose touch rule does not leave them out. */

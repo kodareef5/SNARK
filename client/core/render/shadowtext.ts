@@ -60,7 +60,8 @@ export function axisWeights(m: number, s: number, out: Float64Array): void {
   const rows = TAP_AXIS[m]!;
   const total = rows.reduce((sum, [a, b]) => sum + a + b * s, 0);
   out.fill(0, 0, 2 * m);
-  for (const [a, b, c, d, e] of rows) {
+  for (const row of rows) {
+    const a = row[0], b = row[1], c = row[2], d = row[3], e = row[4];
     const w = a + b * s;
     const at = (c + d * s) / w + e + m - 1;
     const j = Math.min(Math.floor(at), 2 * m - 2);
@@ -71,7 +72,7 @@ export function axisWeights(m: number, s: number, out: Float64Array): void {
 
 /** The step of the 4 by 4 pattern a pixel hands over to the next cascade by, 0 to 1: Bayer's ordered dither. */
 export function handOver(x: number, y: number): number {
-  const [qx, qy] = [x & 3, y & 3];
+  const qx = x & 3, qy = y & 3;
   return ((((qx ^ qy) & 1) * 8 + (qy & 1) * 4 + (((qx ^ qy) >> 1) & 1) * 2 + ((qy >> 1) & 1)) + 0.5) / 16;
 }
 

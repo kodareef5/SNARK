@@ -162,6 +162,8 @@ export class Found {
 export class StructureStore {
   readonly dims: MapDims;
   readonly chunks: (ChunkTable | null)[];
+  /** The chunks that have a table, lowest first, for a walk that would otherwise visit every chunk of the map. */
+  readonly held: number[] = [];
   count = 0;
   /** Called after any change to a chunk's table. `healthOnly` is true when nothing but a piece's health changed. */
   onChunkChanged: ((chunk: number, healthOnly: boolean) => void) | null = null;
@@ -260,7 +262,7 @@ export class StructureStore {
     y = Math.round(y * STRUCT_UNITS) / STRUCT_UNITS;
     z = Math.round(z * STRUCT_UNITS) / STRUCT_UNITS;
     const chunk = chunkAt(this.dims, x, z);
-    const t = (this.chunks[chunk] ??= new ChunkTable());
+    const t = this.tableOf(chunk);
     let slot: number;
     if (t.freeStale) {
       // Rows were loaded or applied since the list was kept. A client applies rows every tick and never adds, so it never pays for this.
@@ -422,7 +424,7 @@ export class StructureStore {
 
   /** Sets a slot to replicated or loaded contents. `kind` 0 empties it. Does not advance the table version, so follow with setVersion. */
   put(chunk: number, slot: number, kind: number, x: number, y: number, z: number, yaw: number, owner: number, hp: number, mod: number): void {
-    const t = (this.chunks[chunk] ??= new ChunkTable());
+    const t = this.tableOf(chunk);
     if (kind !== 0 && slot < t.high && t.kind[slot] === kind && t.x[slot] === Math.fround(x) && t.y[slot] === Math.fround(y) && t.z[slot] === Math.fround(z) && t.yaw[slot] === yaw) {
       // The same piece in the same place: only its health or owner changed, so the grid and what is drawn stand.
       t.owner[slot] = owner;
@@ -441,7 +443,7 @@ export class StructureStore {
 
   /** Call after loading or applying a delta. */
   setVersion(chunk: number, version: number): void {
-    const t = (this.chunks[chunk] ??= new ChunkTable());
+    const t = this.tableOf(chunk);
     t.version = version;
     // What was loaded or applied is not in the log of changes.
     t.recentCount = 0;
@@ -456,7 +458,30 @@ export class StructureStore {
     if (!t) return;
     for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0) this.erase(chunk, t, s, 0);
     this.chunks[chunk] = null;
+    this.held.splice(this.heldAt(chunk), 1);
     this.onChunkChanged?.(chunk, false);
+  }
+
+  /** The chunk's table, made if it has none. */
+  private tableOf(chunk: number): ChunkTable {
+    let t = this.chunks[chunk];
+    if (!t) {
+      this.chunks[chunk] = t = new ChunkTable();
+      this.held.splice(this.heldAt(chunk), 0, chunk);
+    }
+    return t;
+  }
+
+  /** Where `chunk` is or would go in `held`. */
+  private heldAt(chunk: number): number {
+    let lo = 0;
+    let hi = this.held.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.held[mid]! < chunk) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
   }
 
   /** The highest top of what stands in the grid cells over the rectangle, or -Infinity where nothing does. Conservative, as query is. */

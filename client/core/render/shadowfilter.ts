@@ -27,19 +27,20 @@ void main() {
 /** "filtered", "hard", or why neither: what a compared lookup in a 16-bit depth array gives on this device. */
 export function comparedLookup(gl: Gl2): string {
   const restore = saveState(gl);
-  const [map, out, vao] = [gl.createTexture(), gl.createTexture(), gl.createVertexArray()];
+  const map = gl.createTexture(), out = gl.createTexture(), vao = gl.createVertexArray();
   const made: { obj: unknown; kind: "framebuffer" | "program" }[] = [];
   try {
     gl.activeTexture(GL.TEXTURE0 + 9);
     gl.bindTexture(GL.TEXTURE_2D_ARRAY, map);
     gl.texStorage3D(GL.TEXTURE_2D_ARRAY, 1, GL.DEPTH_COMPONENT16, 4, 4, 1);
-    for (const [name, value] of [[GL.TEXTURE_MIN_FILTER, GL.LINEAR], [GL.TEXTURE_MAG_FILTER, GL.LINEAR], [GL.TEXTURE_WRAP_S, GL.CLAMP_TO_EDGE], [GL.TEXTURE_WRAP_T, GL.CLAMP_TO_EDGE], [GL.TEXTURE_COMPARE_MODE, GL.COMPARE_REF_TO_TEXTURE], [GL.TEXTURE_COMPARE_FUNC, GL.LEQUAL]] as const) gl.texParameteri(GL.TEXTURE_2D_ARRAY, name, value);
+    const params = [GL.TEXTURE_MIN_FILTER, GL.LINEAR, GL.TEXTURE_MAG_FILTER, GL.LINEAR, GL.TEXTURE_WRAP_S, GL.CLAMP_TO_EDGE, GL.TEXTURE_WRAP_T, GL.CLAMP_TO_EDGE, GL.TEXTURE_COMPARE_MODE, GL.COMPARE_REF_TO_TEXTURE, GL.TEXTURE_COMPARE_FUNC, GL.LEQUAL];
+    for (let k = 0; k < params.length; k += 2) gl.texParameteri(GL.TEXTURE_2D_ARRAY, params[k]!, params[k + 1]!);
     gl.activeTexture(GL.TEXTURE0 + 10);
     texture2d(gl, GL.RGBA8, 4, 1, GL.NEAREST, 1, () => out);
     const keep = <T>(obj: T, kind: "framebuffer" | "program"): T => (made.push({ obj, kind }), obj);
     const depth = keep(framebuffer(gl, (f) => gl.framebufferTextureLayer(f, GL.DEPTH_ATTACHMENT, map, 0, 0), "a 16-bit depth array"), "framebuffer");
     const target = keep(framebuffer(gl, (f) => gl.framebufferTexture2D(f, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, out, 0), "a 4x1 RGBA8 texture"), "framebuffer");
-    const [write, read] = [keep(compile(gl, ...WRITE), "program"), keep(compile(gl, ...READ), "program")];
+    const write = keep(compile(gl, ...WRITE), "program"), read = keep(compile(gl, ...READ), "program");
     gl.bindVertexArray(vao);
     gl.bindFramebuffer(GL.FRAMEBUFFER, depth);
     gl.viewport(0, 0, 4, 4);

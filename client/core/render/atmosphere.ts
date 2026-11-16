@@ -116,7 +116,8 @@ export function airFrame(frame: Float32Array, sky: Sky, hour: number, camX: numb
   frame[FRAME.skyDetail] = plain ? 0 : 1 + layers;
   frame[FRAME.ends] = plain ? 0 : view * VIEW_FADE;
   frame[FRAME.ends + 1] = plain ? 0 : view;
-  for (const [layer, at] of [[LOW, FRAME.clouds], [HIGH, FRAME.clouds + 2]] as const) {
+  for (let n = 0; n < 2; n++) {
+    const layer = n === 0 ? LOW : HIGH, at = FRAME.clouds + n * 2;
     for (let k = 0; k < 2; k++) {
       const x = ((k === 0 ? -1 : 1) * ((k === 0 ? camX : camZ) + layer.wind[k]! * seconds)) / layer.span;
       frame[at + k] = x - Math.floor(x);
@@ -129,7 +130,7 @@ export function airFrame(frame: Float32Array, sky: Sky, hour: number, camX: numb
   trueSun(frame, towardSun);
   hazeColor(sky.table, towardSun, towardSun, 1, glow);
   const w = smooth((up - GLOW_TURN[0]!) / (GLOW_TURN[1]! - GLOW_TURN[0]!));
-  const [lit, seen] = [luminance(light), luminance(glow)];
+  const lit = luminance(light), seen = luminance(glow);
   for (let k = 0; k < 3; k++) frame[FRAME.cloudSun + k] = w * light[k]! + (seen > 0 ? (1 - w) * (glow[k]! / seen) * lit * GLOW_DIM : 0);
 }
 
@@ -288,9 +289,9 @@ const smooth = (x: number): number => {
 export function brokenRead(read: (u: number, v: number, side: number) => readonly number[], u: number, v: number, side: number): [number, number] {
   const b = BREAK;
   const a = read(u, v, side);
-  const [c, s] = [Math.cos(b.turn), Math.sin(b.turn)];
+  const c = Math.cos(b.turn), s = Math.sin(b.turn);
   const o = read(c * u - s * v + b.at[0]!, s * u + c * v + b.at[1]!, side);
-  const [cc, sc] = [Math.cos(b.chooser), Math.sin(b.chooser)];
+  const cc = Math.cos(b.chooser), sc = Math.sin(b.chooser);
   const m = read((cc * u - sc * v) * b.scale + b.chooserAt[0]!, (sc * u + cc * v) * b.scale + b.chooserAt[1]!, 32)[0]!;
   const w = smooth((m - 0.25) / b.soft + 0.5);
   const worn = (r: readonly number[], e: number): number => Math.max(0, Math.min(1, r[0]! - Math.max(0, Math.min(b.most, e)) * (1 - Math.min(r[1]! * b.keep, 1))));
