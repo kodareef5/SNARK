@@ -56,6 +56,8 @@ export interface CruiseShot {
   readonly sightlinePoints?: readonly (readonly [number, number, number])[];
   /** Far shots intentionally let the native map proxy take over after structure rows leave interest. */
   readonly far?: boolean;
+  /** Save a genuine nearby flat fallback while the production fine levels stream. */
+  readonly coldFallback?: boolean;
 }
 
 /** Deliberate viewpoints consume the authored geometry, floor and eye anchors; only camera composition is preview-owned. */
@@ -122,7 +124,8 @@ export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
   }
   const medium = new Set(["cabin_9", "dome_inside", "promenade", "central_park", "thrill", "bridge", "engine", "chill"]);
   for (const view of localViews) for (const tier of medium.has(view.id) ? ["medium", "high"] as const : ["high"] as const)
-    shots.push({ name: `interior-${view.id}-${tier}`, feet: p(view.at), target: p(view.target), mode: view.mode as "walk" | "spectator", tier });
+    shots.push({ name: `interior-${view.id}-${tier}`, feet: p(view.at), target: p(view.target), mode: view.mode as "walk" | "spectator", tier,
+      coldFallback: ["aquatheater", "promenade", "cabin_9"].includes(view.id) });
   const promenade = localViews.find(view => view.id === "promenade" && view.mode === "walk");
   if (!promenade) throw new Error("Cruise review requires the authored Royal Promenade anchor");
   shots.push({ name: "04-portrait-promenade", feet: p(promenade.at), target: p(promenade.target), mode: "walk", tier: "high", portrait: true },
@@ -208,6 +211,9 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, fil
   const app = new App(session, reg, boot, { manifest: files.manifest, port });
   app.ui.settings.tier = shot.tier; app.ui.settings.steady = false;
   let raster: Rasterizer | null = null, packet: FramePacket | null = null;
+  let coldSetup = shot.arrival === true;
+  let fallback: { frame: number; file: string | null; meshes: { id: string; lod: number; distance: number }[] } | null = null;
+  const cellCenters = new Map(CRUISE_LAYOUT.cells.map(cell => [cell.id, cruiseWorldPoint(cell.origin)]));
   let quietFrames = 0, measure = false, measuredUploadFrames = 0;
   let resumedStreaming: unknown;
   const rejectedSamples: { uploadFrames: number; lastUpload: unknown }[] = [];
@@ -234,6 +240,21 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, fil
       cold.dropped += packet.dropped; cold.skipped += packet.skipped; cold.casterDropped += packet.casterDropped;
     }
     if (images && packet && session.world) { raster ??= new Rasterizer(width, height, boot, session.world.hf, files.manifest); uploadOnly(raster, packet); }
+    if (shot.coldFallback && !fallback && coldSetup && packet &&
+        Math.hypot(session.own.x-shot.feet[0], session.own.z-shot.feet[2]) < 1) {
+      const meshes: { id: string; lod: number; distance: number }[] = [];
+      for (let i = 0; i < packet.drawCount; i++) {
+        const mesh = files.manifest.meshes[packet.drawMesh[i]!], center = mesh && cellCenters.get(mesh.id), lod = packet.drawLod[i]!;
+        if (!mesh || !center || lod < (mesh.flat ?? 0)) continue;
+        const distance = Math.hypot(center[0]-packet.camX, center[1]-packet.camY, center[2]-packet.camZ);
+        if (distance < 32) meshes.push({ id: mesh.id, lod, distance });
+      }
+      if (meshes.length) {
+        const file = images ? `${shot.name}-cold-fallback-scene.png` : null;
+        fallback = { frame: cold.frames, file, meshes };
+        if (file && raster) { raster.render(packet); writeFileSync(resolve(out, file), encodePng(width, height, raster.color)); }
+      }
+    }
   };
   const run = (ms: number) => h.run(ms, frame);
   try {
@@ -255,6 +276,7 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, fil
       app.controls.yaw = Math.atan2(dx, dz); app.controls.pitch = Math.atan2(shot.target[1] - eye, Math.hypot(dx, dz));
     }
     if (app.view.thirdPerson !== !!shot.thirdPerson) { app.key("KeyV", true); app.key("KeyV", false); }
+    coldSetup = true;
     run(3600);
     let corrections = session.stats.corrections, accepted = false;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -340,7 +362,7 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, fil
       placement: { ...placement, actualPlaced: placed.length, cruiseInstances: shipRows.length, auxiliaryPortAndKoruInstances: map.statics.length - shipRows.length },
       budget: { tier: tier.name, ...tier.budget, gpuBytes: tier.gpuBytes, uploadBytes: tier.uploadBytes },
       cold: { ...cold, assetTransport: "Zero latency, unlimited bandwidth, no loss; native per-frame upload budgets remain enabled.", medianMs: coldTimes[Math.floor(coldTimes.length / 2)], p95Ms: coldTimes[Math.ceil(coldTimes.length * .95) - 1], maxMs: coldTimes.at(-1),
-        retries: rejectedSamples.length, rejectedSamples,
+        retries: rejectedSamples.length, rejectedSamples, fallback,
         scope: "App.frame from cold client arrival through placement and streaming, including every discarded sample; excludes the accepted window and server/network/raster/GPU work." },
       shipTarget: { triangles: draws.filter(draw => isShipMesh(draw.mesh)).reduce((sum, draw) => sum + draw.triangles, 0), draws: draws.filter(draw => isShipMesh(draw.mesh)).length, targetTriangles: 1000000, targetDraws: 600, note: "Near cruise meshes only; shared far-city draws are reported separately and include port/Koru geometry." },
       residency: { ...app.scene.assets.residency?.stats }, worldSurfaces, casterCount: p.casterCount,
