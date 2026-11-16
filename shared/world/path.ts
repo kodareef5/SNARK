@@ -3,7 +3,7 @@
 // a roof or an obstacle. Costs are integers and ties are broken by cell, so the same world gives the same way on every engine.
 
 import { CHUNK_SIZE } from "../coords.ts";
-import { capsuleFree, ground, groundUnder, nothingBuilt, stepOnto, type CollisionWorld } from "./collide.ts";
+import { capsuleFree, groundStands, groundUnder, nothingBuilt, stepOnto, type CollisionWorld } from "./collide.ts";
 import { frame, frameOf } from "./frame.ts";
 import { Found, type StructureStore } from "./structures.ts";
 
@@ -38,8 +38,8 @@ export function groundAt(w: CollisionWorld, p: Walker, x: number, z: number, r =
   const hf = w.hf;
   if (x < r || z < r || x > hf.sizeX - r || z > hf.sizeZ - r) return GROUND_OFF;
   const y = groundUnder(hf, x, z, r);
-  if (hf.seaLevel - y > p.height * SWIM_SHARE) return GROUND_WATER;
-  if (ground.ny < p.slopeCos) return GROUND_STEEP;
+  if (hf.waterAt(x, z) - y > p.height * SWIM_SHARE) return GROUND_WATER;
+  if (!groundStands(p.slopeCos)) return GROUND_STEEP;
   const top = y + p.stepUp;
   // Where nothing is built, the ground is all there is.
   if (nothingBuilt(w, x, z, r, y, top + p.height + 2 * r)) return GROUND_FREE;

@@ -45,6 +45,8 @@ export class Progression {
   bus: Bus = NO_BUS;
   /** Called after anything that changes a record's stat points or level. */
   onChange: ((rec: EntityRecord) => void) | null = null;
+  /** Tells a survivor why what it asked for was refused (a powered station that is out). */
+  onNotice: ((pid: number, text: string) => void) | null = null;
   private readonly world: ServerWorld;
   private readonly records: Records;
   private readonly items: Items;
@@ -193,12 +195,14 @@ export class Progression {
 
   /**
    * Made at `station` (a structure's record) for the survivor `by`: queued on the station's record, from what lies in it,
-   * and landing in it. Only an item whose craft names the station's kind is made there.
+   * and landing in it. Only an item whose craft names the station's kind is made there; a lit station and the same station
+   * out are one kind to it (Registry.stationBase).
    */
   craftAt(by: EntityRecord, station: EntityRecord, item: number, count: number): number {
     const craft = this.craftOf(item);
     if (!craft || !(count >= 1 && count <= 100)) return RESULT_INVALID;
-    if (station.at < 0 || station === by || this.world.reg.craftAt[item] !== station.kind) return RESULT_INVALID;
+    const at = this.world.reg.craftAt[item]!;
+    if (station.at < 0 || station === by || at === 0 || at !== this.world.reg.stationBase[station.kind]) return RESULT_INVALID;
     return this.queue(station, by, craft, item, count);
   }
 
@@ -217,7 +221,7 @@ export class Progression {
     if (!craft) return RESULT_INVALID;
     // Made where its craft says: in the hands from the survivor's own, or at a station of the right kind from the station's.
     const at = this.world.reg.craftAt[item]!;
-    if (at === 0 ? on !== by : on === by || on.at < 0 || on.kind !== at) return RESULT_INVALID;
+    if (at === 0 ? on !== by : on === by || on.at < 0 || this.world.reg.stationBase[on.kind] !== at) return RESULT_INVALID;
     return this.queue(on, by, craft, item, count, inv.quality[slot]!);
   }
 
@@ -225,6 +229,11 @@ export class Progression {
   private queue(on: EntityRecord, by: EntityRecord, craft: CraftFacet, item: number, count: number, bp = -1): number {
     if (bp < 0 && !this.knows(by, this.engramOf[item]!)) return RESULT_DENIED;
     if (bp < 0 && craft.level !== undefined && this.level(by) < craft.level) return RESULT_SHORT;
+    // A powered station takes no job while it is out, from the engram or a blueprint (planning/reference/stations-plan.md, M5).
+    if (on !== by && this.unpowered(on)) {
+      this.onNotice?.(by.pid, "It needs fuel and must be on.");
+      return RESULT_SHORT;
+    }
     if (on.jobs.length >= MAX_JOBS) return RESULT_FULL;
     if (on.jobs.length === 0 && !this.canStart(on, craft, item, bp)) return RESULT_SHORT;
     // A module may refuse the job, or change how many are made.
@@ -252,8 +261,12 @@ export class Progression {
   /** A DEADLINE_CRAFT entry came due. */
   due(pid: number, stamp: number): void {
     const rec = this.records.byPid.get(pid);
-    const job = rec?.jobs[0];
-    if (!rec || !job || job.doneAt !== stamp) return;
+    if (!rec) return;
+    // A powered station's fire is advanced first (Items.inv tends it): if its fuel ran out before this tick, it went out
+    // then, and pause() has stopped the unit under way, so no unit finishes past the tick its station went out.
+    if (this.world.reg.powered[rec.kind] === 1) this.items.inv(rec);
+    const job = rec.jobs[0];
+    if (!job || job.doneAt !== stamp) return;
     const product = job.item;
     const def = this.world.reg.defs[product] as ItemDef;
     const craft = def.craft!;
@@ -289,18 +302,48 @@ export class Progression {
     return def?.type === "species" ? statOf(def, rec!.genome, STAT_CRAFTING, 1) : 1;
   }
 
-  /** Restores the craft deadline of a loaded record. */
+  /**
+   * A powered station went out at tick `t` (server/power.ts, on Stations.onSwap): the unit under way waits with the ticks it
+   * had left then (Job.rest), its ingredients spent, and its queue is kept. A unit that was done by `t` is left for due().
+   * Whether ARK keeps the progress is not on its pages; keeping it is the owner's (stations-plan.md, Decided 3).
+   */
+  pause(rec: EntityRecord, t: number): void {
+    const job = rec.jobs[0];
+    if (!job || job.doneAt === 0 || job.doneAt <= t) return;
+    job.rest = job.doneAt - t;
+    // The deadline already pushed finds its stamp gone and does nothing.
+    job.doneAt = 0;
+    rec.progVersion++;
+    this.records.dirty.add(rec.pid);
+  }
+
+  /**
+   * Restores the craft deadline of a loaded record, and starts a powered station's queue when it is lit (server/power.ts):
+   * a paused unit goes on from its ticks left and spends nothing more.
+   */
   resume(rec: EntityRecord): void {
+    // A job of something no longer made at all is dropped, as a job whose content is gone is when read: the metal ingot
+    // in the hand, since the stations wave (planning/reference/stations-plan.md, Decided 2).
+    const made = rec.jobs.filter((j) => this.craftOf(j.item) !== null);
+    if (made.length !== rec.jobs.length) {
+      rec.jobs.splice(0, rec.jobs.length, ...made);
+      rec.progVersion++;
+      this.records.dirty.add(rec.pid);
+    }
     const job = rec.jobs[0];
     if (!job) return;
     if (job.doneAt === 0) this.start(rec);
     else this.deadlines.push(job.doneAt, DEADLINE_CRAFT, rec.pid, job.doneAt);
   }
 
-  /** How `item` is made, or null if it is not. */
+  /**
+   * How `item` is made by a job, or null if it is not. What a fire makes by itself (`craft.fired`, the forge's ingots) is
+   * made by no job: refused in the hand, at the station and from a blueprint, and a loaded job of it is dropped
+   * (planning/reference/stations-plan.md, S1).
+   */
   private craftOf(item: number): CraftFacet | null {
     const def = this.world.reg.defs[item];
-    return def?.type === "item" && def.craft ? def.craft : null;
+    return def?.type === "item" && def.craft && !def.craft.fired ? def.craft : null;
   }
 
   /** Whether a unit can start: the ingredients are there, and for one from a blueprint of quality `bp`, that blueprint. */
@@ -310,10 +353,28 @@ export class Progression {
     return craft.needs.every((n) => inv.total(this.world.reg.index.get(n.item)!) >= (bp >= 0 ? blueprintCost(n.count, bp) : n.count));
   }
 
-  /** Starts the next unit of the first job. Drops jobs that cannot start. */
+  /** A powered station that is out: it starts nothing and takes no job (M5). */
+  private unpowered(rec: EntityRecord): boolean {
+    const reg = this.world.reg;
+    return reg.powered[rec.kind] === 1 && (reg.burning[rec.kind] !== 1 || !rec.fire);
+  }
+
+  /**
+   * Starts the next unit of the first job. Drops jobs that cannot start. A powered station that is out starts nothing and
+   * keeps its queue; lit, a unit it paused goes on from its ticks left, its ingredients already spent.
+   */
   private start(rec: EntityRecord): void {
+    if (this.unpowered(rec)) return;
     while (rec.jobs.length > 0) {
       const job = rec.jobs[0]!;
+      if (job.rest !== undefined) {
+        job.doneAt = this.world.tick + Math.max(1, job.rest);
+        delete job.rest;
+        this.deadlines.push(job.doneAt, DEADLINE_CRAFT, rec.pid, job.doneAt);
+        rec.progVersion++;
+        this.records.dirty.add(rec.pid);
+        return;
+      }
       const craft = this.craftOf(job.item);
       const bp = job.bp ?? -1;
       if (craft && this.canStart(rec, craft, job.item, bp)) {

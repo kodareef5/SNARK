@@ -76,7 +76,7 @@ test("the building set: every piece in every material it is made in, with the re
   const broken = (change: (d: Def) => Def): string[] => compileContent(CORE_CONTENT.map(change)).errors;
   expect(broken((d) => (d.id === "core:wall_wood" ? { ...d, half: [1.5, 1.5, 0.3] } : d))[0]).toContain("core:wall_wood: half must be [1.5, 1.5, 0.1]");
   expect(broken((d) => (d.id === "core:wall_wood" ? { ...d, shape: "core:stone" } : d))[0]).toContain('"core:stone" is not a shape');
-  expect(broken((d) => (d.id === "core:wall_wood" && d.type === "structure" ? { ...d, mesh: "box" } : d))[0]).toContain('a mesh of "shape" and a shape go together');
+  expect(broken((d) => (d.id === "core:wall_wood" && d.type === "structure" ? { ...d, mesh: "box" } : d))[0]).toContain('a mesh of "box" is its half extents, and takes no shape');
   expect(broken((d) => (d.id === "core:shape_wall" ? { ...d, boxes: [] } : d))[0]).toContain("a shape has 1 to 16 boxes");
   expect(broken((d) => (d.id === "core:shape_wall" ? ({ ...d, role: "roof" } as unknown as Def) : d))[0]).toContain("role must be one of");
 });

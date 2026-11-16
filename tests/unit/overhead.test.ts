@@ -7,6 +7,7 @@ import { K_IMAGE, K_TEXT, textWidth, type UiFrame } from "../../client/core/ui/n
 import { IMAGE_HEART, KEY_HEART, KEY_OVER_NOTE, KEY_OVER_PANEL, KEY_OVER_TITLE, heartImage, heartSize } from "../../client/core/ui/tame.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { CUE_MATING_SHIFT, MATING_STEPS } from "../../shared/anim/pose.ts";
+import { underLoad } from "../fixtures/load.ts";
 import { flatWorld } from "../fixtures/world.ts";
 
 const ASPECTS: [string, number][] = [["4:3", 4 / 3], ["16:9", 16 / 9], ["21:9", 21 / 9], ["phone upright", 9 / 16]];
@@ -46,6 +47,7 @@ test("the marks over creatures fit every window shape: on the canvas wherever th
       for (const v of places) {
         for (const heart of [false, true]) {
           const ui = new Ui();
+          ui.settings.diagnostics = true;
           ui.build(aspect, fullest(u, v, heart), null);
           const f: UiFrame = ui.frame;
           const where = `${name} at ${u}, ${v}${heart ? " with a heart" : ""}`;
@@ -175,6 +177,7 @@ test("a base of 550 creatures in view, half of them mating: at most MAX_HEARTS h
   let nodes = 0;
   for (let i = 0; i < ui.frame.count; i++) if (isOver(ui.frame.nodes[i]!.key) || isHeart(ui.frame.nodes[i]!.key)) nodes++;
   expect(nodes).toBeLessThanOrEqual(MAX_HEARTS + 12);
-  // With the rest of the HUD's build, 0.06 to 0.08 ms on the development machine. Loose, for a busy one.
-  expect(each).toBeLessThan(2);
+  // With the rest of the HUD's build, 0.06 to 0.08 ms on the development machine. Loose, for a busy one, and stretched
+  // with its load.
+  expect(each).toBeLessThan(underLoad(2));
 });

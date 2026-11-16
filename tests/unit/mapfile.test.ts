@@ -39,7 +39,7 @@ test("a file that is damaged, foreign or unplayable is refused, and the reason s
   expect(() => parseMap(file.subarray(0, file.length - 9))).toThrow("map: the file is damaged");
   expect(() => parseMap(new Uint8Array(100))).toThrow("map: this is not a map file");
   expect(() => parseMap(file.subarray(0, 20))).toThrow("map: this is not a map file");
-  expect(() => parseMap(rehashed((view) => view.setUint16(4, 3, true)))).toThrow("map: version 3 is not one this build reads");
+  expect(() => parseMap(rehashed((view) => view.setUint16(4, 4, true)))).toThrow("map: version 4 is not one this build reads");
   // A file of the version before zoned nodes is read as it was.
   expect(parseMap(rehashed((view) => view.setUint16(4, 1, true))).heights).toEqual(parseMap(file).heights);
   expect(() => parseMap(rehashed((view) => view.setFloat32(16, 4, true)))).toThrow("map: its samples are 4 m apart");
@@ -61,6 +61,7 @@ test("a file that is damaged, foreign or unplayable is refused, and the reason s
   expect(refused({ nodes: [{ ...scatter, allow: scatter.allow!.subarray(1) }] })).toThrow("map: where scattered nodes may stand");
   expect(refused({ regions: [{ kind: "spawn", spawns: "core:spawns_beach", count: 70000, at: [10, 10], radius: 5 }] })).toThrow("map: a spawn region at 10, 10 names no spawns, or holds other than 0 to 65,535");
   expect(refused({ regions: [{ kind: "spawn", spawns: "core:spawns_beach", count: 5, at: [130, 10], radius: 5 }] })).toThrow("map: the spawn region of core:spawns_beach at 130, 10 is off the map or has no size");
+  expect(refused({ vehicles: [{ kind: "core:compact", x: 20, z: 193, yaw: 0 }] })).toThrow("map: a core:compact parked at 20, 193 is off the map");
 });
 
 test("a map's nodes are its layers one after another: scattered where the map allows, and listed where the list says", () => {

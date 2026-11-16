@@ -1,9 +1,10 @@
 import { hash3 } from "./raster.ts";
-import { RUIN_SHAPES } from "../../content/ruins.ts";
+import { RUIN_SHAPES, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import { inside, Mason, SIDES, tileKey, tilesOf, type Tile } from "./ruin-geometry.ts";
-import type { Composition, Rule, Vocabulary } from "./ruin-vocabulary.ts";
+import type { Composition, Round, Rule, Vocabulary } from "./ruin-vocabulary.ts";
 
 export interface LayoutOptions { seed: number; playable: number; detail: number; coreU?: number; }
+type Op = Composition["operations"][number];
 const has = (tiles: Set<string>, t: Tile, dx: number, dz: number): boolean => tiles.has(tileKey(t.i + dx, t.j + dz));
 
 // A layout composes an intact circulation path, structural frame, then the remnants around it.
@@ -11,7 +12,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   if (!tiles.length || height < 4) return;
   const keys = new Set(tiles.map((t) => tileKey(t.i, t.j)));
   if (rule.collapse === "lost-top") height = Math.max(16, Math.floor(height * (rule.damage?.retain ?? .72) / 4) * 4);
-  const floors = Math.round(height / 4); const playable = Math.min(floors, opts.playable);
+  const floors = Math.round(height / 4); let playable = Math.min(floors, opts.playable);
   const candidates = bay === 8 ? tiles.filter((t) => has(keys, t, 0, 1) && has(keys, t, 0, -1)).sort((a, b) => (a.u - (opts.coreU ?? 0)) ** 2 + a.v ** 2 - (b.u - (opts.coreU ?? 0)) ** 2 - b.v ** 2) : [];
   const cores: Tile[] = candidates.length ? [candidates[0]!] : [];
   const wanted = Math.min(8, Math.max(1, Math.ceil(tiles.length * bay * bay / 3500)));
@@ -20,6 +21,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
     if (!next) break; cores.push(next);
   }
   const escape = cores.map((c) => tiles.find((t) => Math.abs(t.u - c.u) === bay && t.v === c.v && has(keys, t, 0, 1) && has(keys, t, 0, -1) && !cores.includes(t))).filter((t): t is Tile => !!t);
+  if (escape.length < cores.length) playable = Math.min(playable, 8);
   const entryCores = cores.length ? cores : [[...tiles].sort((a, b) => Math.abs(a.u) - Math.abs(b.u) || Math.abs(a.v) - Math.abs(b.v))[0]!];
   const entryLane = (t: Tile): boolean => entryCores.some((c) => t.i === c.i);
   const safe = (t: Tile): boolean => cores.some((c) => Math.abs(t.u - c.u) <= bay && Math.abs(t.v - c.v) <= bay) || entryLane(t);
@@ -27,14 +29,17 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   const mode = rule.collapse ?? "shear";
   const minU = Math.min(...tiles.map((t) => t.u)); const maxU = Math.max(...tiles.map((t) => t.u));
   const minV = Math.min(...tiles.map((t) => t.v)); const maxV = Math.max(...tiles.map((t) => t.v));
-  const cornerU = hash3(opts.seed, 7, 0) % 2 === 0 ? maxU : minU;
-  const cornerV = hash3(opts.seed, 7, 1) % 2 === 0 ? maxV : minV;
+  const wind = rule.event?.travel;
+  const cornerU = wind ? (wind[0] * m.frame.c - wind[1] * m.frame.s > 0 ? minU : maxU) : hash3(opts.seed, 7, 0) % 2 === 0 ? maxU : minU;
+  const cornerV = wind ? (wind[0] * m.frame.s + wind[1] * m.frame.c > 0 ? minV : maxV) : hash3(opts.seed, 7, 1) % 2 === 0 ? maxV : minV;
   const radius = Math.max(bay * 1.1, Math.min(maxU - minU + bay, maxV - minV + bay) * (rule.damage?.radius ?? .44));
   const tops = new Map<string, number>(); const damaged = new Set<Tile>();
   for (const t of tiles) {
     const distance = Math.hypot(t.u - cornerU, t.v - cornerV);
     const broken = !safe(t) && distance < radius;
     let top = floors;
+    if (form.terrace && floors > 2 && !safe(t) && (t.u === minU || t.u === maxU)) top = Math.max(1, floors - form.terrace);
+    if (form.setbacks && floors > 3 && !safe(t)) top = Math.max(2, floors - Math.ceil(Math.abs(t.u) / Math.max(8, maxU) * form.setbacks));
     if (broken) {
       damaged.add(t);
       if (mode === "shear") top = Math.max(0, Math.floor(floors * distance / radius));
@@ -75,7 +80,8 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
         if (upper && bay === 8 && top - level >= 4 && !burnt && !lookout) {
           m.put("zshaft8", u, h + 8, v, form.shell === "curtain" ? (rule.infill ?? "blue") : rule.finish, turn); level += 4; continue;
         }
-        const opening = lookout || form.shell === "open" || (t.i + t.j + side + level) % form.windowEvery === 0;
+        const party = rule.party?.includes(side) && adjacent === 0;
+        const opening = !party && (lookout || form.shell === "open" || (t.i + t.j + side + level) % form.windowEvery === 0);
         if (burnt) {
           m.put(bay === 8 ? "beam8" : "beam4", u, h + 3.7, v, "concrete", turn);
           if (level === 0) m.put("fin4", u - dz * (bay / 2 - .4), h + 2, v + dx * (bay / 2 - .4), "steel");
@@ -90,7 +96,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
           if ((t.i + t.j + side) % 2 === 0 || entry) m.put("fin4", u - dz * (bay / 2 - .4), h + 2, v + dx * (bay / 2 - .4), rule.finish, turn);
         }
         if (!upper && !burnt && (form.front === "balconies" || form.front === "deco") && bay === 8 && level % 2 === 1) m.put("trim8", u + dx * .6, h + 3.2, v + dz * .6, rule.finish, turn);
-        if (!upper && !burnt && bay === 8 && level > 0 && form.front === "balconies") {
+        if (!upper && !burnt && !party && bay === 8 && level > 0 && form.front === "balconies") {
           m.put("zbalcony", u + dx * 1, h - .2, v + dz * 1, rule.finish, turn);
           m.put("sill8", u + dx * 1.8, h + .45, v + dz * 1.8, rule.finish, turn);
         }
@@ -108,7 +114,22 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
     }
   }
   for (const p of posts.values()) m.post(p.u, base, p.v, p.top * 4);
-  if (base === 0) for (const core of cores) { m.stairs(core, playable); const drop = escape.find((t) => Math.abs(t.u - core.u) === bay && t.v === core.v); if (drop) m.escape(drop, playable, core); }
+  if (base === 0) for (const core of cores) {
+    m.stairs(core, playable);
+    const drop = escape.find((t) => Math.abs(t.u - core.u) === bay && t.v === core.v);
+    if (drop && playable >= 12) {
+      m.stairExit(drop, playable, core);
+      const dir = playable % 2 === 0 ? -1 : 1; const y = playable * 4;
+      const gallery = tiles.find((t) => t.i === core.i && t.j === core.j + dir)!;
+      m.put("zbed", gallery.u + 2.8, y + .25, gallery.v + dir * 1.5, rule.finish);
+      m.put("zcover", gallery.u + 2.8, y + .55, gallery.v - dir * 1.5, rule.finish, 90);
+      m.put("zpartition", gallery.u + 4, y + 1.4, gallery.v, rule.finish, 90);
+      m.put("zroof8", gallery.u, y + 3.5, gallery.v, rule.finish);
+      const points = [[core.u - 1.5, core.v + dir * 3.25], [core.u - 1.5, core.v + dir * 5.5], [gallery.u, gallery.v], [drop.u - 1.5, drop.v + dir * 5.5], [drop.u - 1.5, drop.v + dir * 3.25]];
+      const route = points.concat([...points].reverse()).map(([u, v]) => { const [x, z] = m.point(u!, v!); return { x, y: m.base + y, z }; });
+      m.rooms.push({ kind: "refuge", points: route });
+    } else if (drop) m.stairExit(drop, playable, core);
+  }
   if (base === 0) for (const core of entryCores) {
     let lo = core.j; let hi = core.j;
     while (keys.has(tileKey(core.i, lo - 1))) lo--; while (keys.has(tileKey(core.i, hi + 1))) hi++;
@@ -131,7 +152,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       m.alternatives.push({ entry: { x, y: m.base, z, yaw: m.frame.yaw + 90, coreX, coreZ, crossing: true }, support: [gallery.u, gallery.v], path });
     }
   }
-  const cap = tiles.filter((t) => (tops.get(tileKey(t.i, t.j)) ?? 0) === floors && !cores.includes(t) && !escape.includes(t) && !entryLane(t));
+  const cap = tiles.filter((t) => (tops.get(tileKey(t.i, t.j)) ?? 0) === floors && !cores.includes(t) && !escape.includes(t));
   if (cap.length && opts.detail < 2) {
     const t = cap[Math.floor(cap.length / 2)]!;
     if (form.marker) {
@@ -139,9 +160,15 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       assembly(m, rule, form.marker, front.u, base + height, front.v);
     }
     if (form.roof === "service") m.put("zcore", t.u, base + height + 2, t.v, "steel");
-    if (form.roof === "hip") for (const r of cap.filter((r) => r.i % 2 === 0)) { m.put("zroof8", r.u, base + height + .5, r.v, "clay"); m.put("zroof8", r.u, base + height + 1.5, r.v, "clay", 90); }
-    if (form.roof === "monitor" || form.roof === "nave") for (const r of cap.filter((r) => r.i % 2 === 0 && r.j === t.j)) { m.put("zpanel8", r.u, base + height + 2, r.v, "steel"); m.put("zroof8", r.u, base + height + 4.5, r.v, "rust"); }
+    if (form.roof === "hip" || form.roof === "pitched") pitched(m, cap, bay, base + height);
+    if (form.roof === "monitor" || form.roof === "nave") for (const r of cap.filter((r) => r.i % 2 === 0 && r.j === t.j)) { m.put("zpanel8", r.u, base + height + 2, r.v, "steel"); m.put("zpitch8", r.u, base + height + 5.4, r.v, form.roof === "nave" ? "clay" : "rust"); }
     if (form.front === "belfry") { m.put("zcore", t.u, base + height + 2, t.v, rule.finish); m.put("fin8", t.u, base + height + 8, t.v, rule.finish); m.put("trim4", t.u, base + height + 10, t.v, rule.finish); }
+    if (height <= 20 && !["hip", "pitched", "nave"].includes(form.roof) && hash3(opts.seed, 32, 1) / 4294967296 < (rule.roofGrowth ?? 0)) {
+      m.put("zcover", t.u, base + height + .55, t.v, "clay");
+      m.put("zshrub", t.u, base + height + 1.1, t.v, "concrete", 13);
+      if (hash3(opts.seed, 32, 2) % 3 === 0) m.put("zshrub", t.u + 2, base + height + .62, t.v + 2);
+      m.put("rubble", t.u + 2, base + height + .35, t.v + 2);
+    }
   }
   if ((rule.feature === "deco" || form.front === "deco") && opts.detail === 0) {
     const t = [...tiles].sort((a, b) => a.v - b.v || Math.abs(a.u) - Math.abs(b.u))[0]!;
@@ -151,7 +178,19 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   if (mode === "lost-top") for (const t of cap.filter((t) => (t.i + t.j) % 4 === 0).slice(0, 6)) {
     m.put("fin4", t.u, base + height + 2, t.v, "steel"); m.put("rubble4", t.u + 1.5, base + height + .55, t.v, "concrete", 19);
   }
-  for (const t of [...damaged].filter((t) => !entryLane(t))) collapse(m, t, mode, height, rule, opts, base, bay);
+  for (const t of [...damaged].filter((t) => !entryLane(t))) collapse(m, t, mode, height, rule, opts, base, bay, !has(keys, t, 0, -1) ? -1 : !has(keys, t, 0, 1) ? 1 : 0);
+}
+
+function pitched(m: Mason, tiles: Tile[], bay: number, y: number): void {
+  const left = new Set(tiles.map((t) => tileKey(t.i, t.j)));
+  for (const t of tiles) {
+    if (!left.has(tileKey(t.i, t.j))) continue;
+    let cells = 1;
+    for (const n of bay === 4 ? [4, 2] : [2]) if (Array.from({ length: n * n }, (_, k) => left.has(tileKey(t.i + k % n, t.j + Math.floor(k / n)))).every(Boolean)) { cells = n; break; }
+    const shape = bay * cells >= 16 ? "zpitch16" : bay * cells === 8 ? "zpitch8" : "zpitch4";
+    m.put(shape, t.u + (cells - 1) * bay / 2, y + RUIN_SHAPES[shape][1] / 2, t.v + (cells - 1) * bay / 2, "clay");
+    for (let j = 0; j < cells; j++) for (let i = 0; i < cells; i++) left.delete(tileKey(t.i + i, t.j + j));
+  }
 }
 
 function mergeFloors(m: Mason, tiles: Tile[], bay: number, y: number): void {
@@ -166,7 +205,9 @@ function mergeFloors(m: Mason, tiles: Tile[], bay: number, y: number): void {
 }
 
 export function assembly(m: Mason, rule: Rule, name: string, u: number, y: number, v: number): void {
+  const first = m.pieces.length;
   for (const [shape, du, dy, dv, finish, turn] of rule.assemblies?.[name]?.parts ?? []) m.put(shape, u + du, y + dy, v + dv, finish === "finish" ? rule.finish : finish, turn ?? 0);
+  if (rule.assemblies?.[name]?.role === "roof identity") m.assemblies.push(m.pieces.slice(first));
 }
 
 function interior(m: Mason, t: Tile, dir: number, floors: number, base: number, kind: string, rule: Rule): void {
@@ -188,14 +229,32 @@ function interior(m: Mason, t: Tile, dir: number, floors: number, base: number, 
   }
 }
 
-function collapse(m: Mason, t: Tile, mode: string, height: number, rule: Rule, opts: LayoutOptions, base: number, bay: number): void {
+function collapse(m: Mason, t: Tile, mode: string, height: number, rule: Rule, opts: LayoutOptions, base: number, bay: number, facadeSide: number): void {
   m.falls.push({ mode, u: t.u, v: t.v });
   if (base !== 0 || opts.detail > 1) return;
-  if (mode === "facade") { m.put("zpanel8", t.u, 2, t.v + 3.5, rule.finish); if (height >= 8) m.put("zpanel8", t.u, 6, t.v + 3.5, rule.finish); }
-  if (mode === "pancake") for (let n = 0; n < (rule.damage?.layers ?? 3); n++) m.put("floor8", t.u + (n % 2) * .5, .3 + n * .6, t.v, "concrete", n * 7);
-  else if (mode === "hanging") { m.put("floor8", t.u + 1, height - .2, t.v, "concrete", 12); m.put("rubble4", t.u, .55, t.v + 1, "concrete", 21); }
+  if (mode === "facade" && facadeSide) for (let y = 0; y < Math.min(12, height); y += 4) {
+    m.put("fin4", t.u - 3.5, y + 2, t.v + facadeSide * 3.5, rule.finish);
+    m.put("fin4", t.u + 3.5, y + 2, t.v + facadeSide * 3.5, rule.finish);
+    m.put("sill8", t.u, y + .45, t.v + facadeSide * 3.5, rule.finish);
+    m.put("zheader", t.u, y + 3.5, t.v + facadeSide * 3.5, rule.finish);
+  }
+  if (mode === "pancake") {
+    m.put("rubble4", t.u - 1, .55, t.v + 1, "concrete", 38);
+    m.put("rubble4", t.u + .7, 1.1, t.v - .7, "concrete", -28);
+    m.put("rubble", t.u + 2.5, .35, t.v - 2.8, "concrete", 61);
+    for (let n = 0; n < (rule.damage?.layers ?? 3); n++) {
+      const h = hash3(t.i, t.j, opts.seed + n * 71);
+      const u = ((h & 255) / 255 - .5) * 4; const v = (((h >>> 8) & 255) / 255 - .5) * 4;
+      const palette = rule.damage?.plates ?? ["plate15", "plate4", "plate30"] as const;
+      const shape = palette[n % palette.length]!;
+      m.put(shape, t.u + u, RUIN_SHAPES[shape][1] / 2 + n * .38 + ((h >>> 16) & 255) / 700, t.v + v, "concrete", h % 160 - 80 + n % 2 * 180);
+    }
+  }
+  else if (mode === "hanging") { const shape = rule.damage?.plates?.[0] ?? "plate30"; m.put(shape, t.u + 1, height - RUIN_SHAPES[shape][1] / 2, t.v, "concrete", 12); m.put("rubble4", t.u, .55, t.v + 1, "concrete", 21); }
   else if (mode !== "burnt") {
     m.put("rubble4", t.u, .55, t.v + 1, "concrete", 21); m.put("rubble", t.u - 2, .35, t.v - 1, "concrete", 63);
+    if (mode === "lost-top") { m.put("mound", t.u, 1, t.v - 1); m.put("plate30", t.u + .5, RUIN_SHAPES.plate30[1] / 2, t.v, "concrete", 160); }
+    if (mode === "facade" && !facadeSide) { const shape = rule.damage?.front ?? "front60"; m.put(shape, t.u, RUIN_SHAPES[shape][1] / 2, t.v, "concrete", 15); }
     if (mode === "shear" && bay === 8 && !m.rooms.some((r) => r.kind === "rubble") && hash3(t.i, t.j, opts.seed) % 3 === 0) {
       m.floor([t.u, t.v], 0, 8);
       const points = [[-3, 0, -3], [-2, .7, -1], [0, 1.1, 1], [2.5, 0, -2.5]].map(([u, y, v]) => { const [x, z] = m.point(t.u + u!, t.v + v!); return { x, y: m.base + y!, z }; });
@@ -341,6 +400,123 @@ export function layout(m: Mason, rule: Rule, opts: LayoutOptions, special?: stri
   }
 }
 
+/**
+ * Pieces round a circle at one height, each turned along it and as many as its length allows; one at the middle when the
+ * circle is smaller than a piece. `scale` stretches the circle along u and v into an ellipse.
+ */
+function ring(m: Mason, op: Round, radius: number, y: number, finish: RuinFinish, scale?: readonly [number, number]): void {
+  const shape = op.shape ?? "crown"; const [cu, cv] = op.at ?? [0, 0]; const [from, to] = op.arc ?? [0, 360];
+  const along = RUIN_SHAPES[shape][0];
+  const whole = to - from >= 360;
+  if (scale) {
+    const ru = radius * scale[0]; const rv = radius * scale[1];
+    if ((ru + rv) / 2 < along / 2) { m.put(shape, cu, y, cv, finish); return; }
+    const count = Math.max(whole ? 3 : 2, Math.round((((ru + rv) / 2) * (to - from) * Math.PI) / 180 / along));
+    for (let k = 0; k < count; k++) {
+      const rad = ((from + (to - from) * (whole ? k / count : k / (count - 1))) * Math.PI) / 180;
+      m.put(shape, cu + ru * Math.cos(rad), y, cv + rv * Math.sin(rad), finish, -(Math.atan2(rv * Math.cos(rad), -ru * Math.sin(rad)) * 180) / Math.PI);
+    }
+    return;
+  }
+  if (radius < along / 2) { m.put(shape, cu, y, cv, finish); return; }
+  const count = Math.max(whole ? 3 : 2, Math.round((radius * (to - from) * Math.PI) / 180 / along));
+  for (let k = 0; k < count; k++) {
+    const a = from + (to - from) * (whole ? k / count : k / (count - 1));
+    const rad = (a * Math.PI) / 180;
+    m.put(shape, cu + radius * Math.cos(rad), y, cv + radius * Math.sin(rad), finish, -(a + 90));
+  }
+}
+
+/** The largest radius of a round op, and how its ellipse stretches a circle of that radius, if it is one. */
+function roundOf(op: Round): [number, (readonly [number, number]) | undefined] {
+  if (!op.radii) return [op.radius ?? 8, undefined];
+  const r = Math.max(op.radii[0], op.radii[1]);
+  return [r, [op.radii[0] / r, op.radii[1] / r]];
+}
+
+/** A stepped pyramid of courses a piece high round a shrinking rectangle, each filled in to where the course above reaches. */
+function pyramid(m: Mason, op: Op, rule: Rule): void {
+  const shape = op.shape ?? "zmass8"; const [along, h, depth] = RUIN_SHAPES[shape]; const finish = op.finish ?? rule.finish;
+  const [cu, cv] = op.at ?? [0, 0]; const [hu, hv] = op.half ?? [m.frame.width / 2, m.frame.depth / 2];
+  const foot = op.y ?? 0; const rise = (op.height ?? rule.height) - foot;
+  const square = (wu: number, wv: number, y: number): void => {
+    const nu = Math.max(1, Math.round((2 * wu + depth) / along)); const nv = Math.max(1, Math.round((2 * wv) / along));
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < nu; i++) m.put(shape, cu - wu - depth / 2 + ((i + .5) * (2 * wu + depth)) / nu, y, cv + side * wv, finish);
+      if (wv > along / 2) for (let i = 0; i < nv; i++) m.put(shape, cu + side * wu, y, cv - wv + ((i + .5) * 2 * wv) / nv, finish, 90);
+    }
+  };
+  const courses: [number, number][] = [];
+  for (let k = 0; k * h < rise; k++) { const f = 1 - ((k + .5) * h) / rise; courses.push([hu * f, hv * f]); }
+  courses.forEach(([wu, wv], k) => {
+    const y = foot + (k + .5) * h; const [nu, nv] = courses[k + 1] ?? [-along, -along];
+    for (let j = 0; ; j++) {
+      const iu = wu - j * along; const iv = wv - j * along;
+      if (j > 0 && iu < nu + along / 4 && iv < nv + along / 4) break;
+      if (iv <= along / 2) { if (iu > -along / 2) for (let u = -Math.max(0, iu); u <= Math.max(0, iu) + .01; u += along) m.put(shape, cu + u, y, cv, finish); break; }
+      if (iu <= along / 2) { for (let v = -iv; v <= iv + .01; v += along) m.put(shape, cu, y, cv + v, finish, 90); break; }
+      square(iu, iv, y);
+    }
+  });
+}
+
+/** A wheel standing in a vertical plane: its rim of pieces round a hub, cabins outside it, and a leg each side to the ground. */
+function wheel(m: Mason, op: Op, rule: Rule): void {
+  const shape = op.shape ?? "crown"; const [along, h] = RUIN_SHAPES[shape]; const finish = op.finish ?? rule.finish;
+  const r = op.radius ?? 20; const [cu, cv] = op.at ?? [0, 0]; const hub = op.y ?? r + 2;
+  const turn = ((op.turn ?? 0) * Math.PI) / 180; const cu1 = Math.cos(turn); const sv1 = Math.sin(turn);
+  const at = (w: number, y: number, shapeName: RuinShape, finishName: RuinFinish): void => m.put(shapeName, cu + w * cu1, y, cv + w * sv1, finishName, -(op.turn ?? 0));
+  const count = Math.max(8, Math.round((2 * Math.PI * r) / Math.max(along, h)));
+  for (let k = 0; k < count; k++) { const a = (2 * Math.PI * k) / count; at(r * Math.cos(a), hub + r * Math.sin(a), shape, finish); }
+  for (let k = 0; k < (op.cabins ?? 0); k++) { const a = (2 * Math.PI * k) / op.cabins!; at((r + 3.5) * Math.cos(a), hub + (r + 3.5) * Math.sin(a), "zcore", "blue"); }
+  at(0, hub, "zcore", "steel");
+  for (const side of [-1, 1]) for (let y = 0; y < hub - 4; y += 16) {
+    const top = Math.min(hub - 2, y + 16); const piece: RuinShape = top - y > 8 ? "fin16" : top - y > 4 ? "fin8" : "fin4";
+    m.put(piece, cu - side * 4 * sv1, y + RUIN_SHAPES[piece][1] / 2, cv + side * 4 * cu1, "steel", -(op.turn ?? 0));
+  }
+}
+
+/** A lattice tower: rings of beams round a square narrowing up a curve, a leg at each corner between them, floors at its decks and a spire. */
+function lattice(m: Mason, op: Op, rule: Rule): void {
+  const beam = op.shape ?? "trim8"; const along = RUIN_SHAPES[beam][0]; const finish = op.finish ?? rule.finish;
+  const [cu, cv] = op.at ?? [0, 0]; const [hu, hv] = op.half ?? [m.frame.width / 2, m.frame.depth / 2];
+  const top = op.height ?? rule.height; const tip = op.tip ?? 1.5; const p = op.profile ?? 1; const every = op.every ?? 8;
+  const half = (y: number): [number, number] => { const f = (1 - Math.min(1, y / top)) ** p; return [tip + (hu - tip) * f, tip + (hv - tip) * f]; };
+  for (let y = 0; y < top - every / 2; y += every) {
+    const [wu, wv] = half(y + every); const [lu, lv] = half(y + every / 2);
+    if (y + every < top) for (const side of [-1, 1]) {
+      const nu = Math.max(1, Math.round((2 * wu) / along)); const nv = Math.max(1, Math.round((2 * wv) / along));
+      for (let i = 0; i < nu; i++) m.put(beam, cu - wu + ((i + .5) * 2 * wu) / nu, y + every, cv + side * wv, finish);
+      for (let i = 0; i < nv; i++) m.put(beam, cu + side * wu, y + every, cv - wv + ((i + .5) * 2 * wv) / nv, finish, 90);
+    }
+    const leg: RuinShape = every >= 16 ? "fin16" : every >= 8 ? "fin8" : "fin4";
+    for (const su of [-1, 1]) for (const sv of [-1, 1]) m.put(leg, cu + su * lu, y + every / 2, cv + sv * lv, finish);
+  }
+  for (const d of op.decks ?? []) {
+    const [wu, wv] = half(d);
+    for (let u = -wu + 4; u <= wu - 3.99; u += 8) for (let v = -wv + 4; v <= wv - 3.99; v += 8) m.put("floor8", cu + u, d, cv + v, finish);
+  }
+  m.put("fin16", cu, top + 8, cv, "steel");
+}
+
+/** A roof of plates over the chosen part of the footprint, each raised to where a shallow dome over it stands. */
+function vault(m: Mason, tiles: Tile[], op: Op, rule: Rule): void {
+  if (!tiles.length) return;
+  const shape = op.shape ?? "floor16"; const along = RUIN_SHAPES[shape][0]; const finish = op.finish ?? rule.finish;
+  const minU = Math.min(...tiles.map((t) => t.u)) - 4; const maxU = Math.max(...tiles.map((t) => t.u)) + 4;
+  const minV = Math.min(...tiles.map((t) => t.v)) - 4; const maxV = Math.max(...tiles.map((t) => t.v)) + 4;
+  const [cu, cv] = op.at ?? [(minU + maxU) / 2, (minV + maxV) / 2];
+  const [ru, rv] = op.radii ?? [(maxU - minU) / 2, (maxV - minV) / 2];
+  const keys = new Set(tiles.map((t) => `${Math.round(t.u)},${Math.round(t.v)}`));
+  const near = (u: number, v: number): boolean => tiles.some((t) => Math.abs(t.u - u) <= 4 && Math.abs(t.v - v) <= 4) || keys.has(`${Math.round(u)},${Math.round(v)}`);
+  const spring = op.y ?? rule.height; const rise = op.rise ?? 8;
+  for (let u = minU + along / 2; u < maxU; u += along) for (let v = minV + along / 2; v < maxV; v += along) {
+    if (!near(u, v)) continue;
+    const d = ((u - cu) / ru) ** 2 + ((v - cv) / rv) ** 2;
+    m.put(shape, u, spring + Math.round(rise * Math.max(0, 1 - d) * 4) / 4, v, finish);
+  }
+}
+
 function compose(m: Mason, tiles: Tile[], rule: Rule, opts: LayoutOptions, composition: Composition): void {
   const inRect = (t: Tile, rect: number[]): boolean => t.u >= rect[0]! && t.v >= rect[1]! && t.u <= rect[2]! && t.v <= rect[3]!;
   for (const op of composition.operations) {
@@ -359,6 +535,33 @@ function compose(m: Mason, tiles: Tile[], rule: Rule, opts: LayoutOptions, compo
         m.put("trim8", t.u, rule.height, t.v + (op.rear ? 4 : -4), op.finish ?? rule.finish);
       }
     }
+    if (op.op === "ring") { const [r, scale] = roundOf(op); for (const y of op.heights ?? []) ring(m, op, r, y, op.finish ?? rule.finish, scale); }
+    if (op.op === "dome") {
+      // A drum up to the springing, then courses a block high as far in as the dome's radius at their middle, each
+      // filled inward to where the course above it reaches, so the dome is closed from above. `below` carries the
+      // sphere down from the drum's foot, each course filled outward to the one above, so it is closed from below.
+      const [r, scale] = roundOf(op); const shape = op.shape ?? "crown"; const [along, h] = RUIN_SHAPES[shape]; const spring = op.y ?? rule.height;
+      const finish = op.finish ?? rule.finish; const top = op.rise ?? r;
+      const at = (d: number): number => op.rise === undefined ? Math.sqrt(Math.max(0, r * r - d ** 2)) : r * Math.sqrt(Math.max(0, 1 - (d / top) ** 2));
+      for (let y = spring - (op.drum ?? 0); y < spring - .01; y += h) ring(m, op, r, y + h / 2, finish, scale);
+      const radii: number[] = [];
+      for (let k = 0; k * h < top; k++) radii.push(at((k + .5) * h));
+      radii.forEach((outer, k) => {
+        const inner = radii[k + 1] ?? -along;
+        // Each course lays at least its own ring, however little the course above draws in (near a large dome's springing).
+        for (let rho = outer; rho === outer || rho > inner + along / 4; rho -= along) ring(m, op, Math.max(0, rho), spring + (k + .5) * h, finish, scale);
+      });
+      const foot = spring - (op.drum ?? 0); const lower: number[] = [];
+      for (let k = 0; k * h < (op.below ?? 0); k++) lower.push(at((k + .5) * h));
+      lower.forEach((rho, k) => {
+        const above = k === 0 ? r : lower[k - 1]!;
+        for (let q = rho; q < above - along / 4 || q === rho; q += along) ring(m, op, Math.max(0, q), foot - (k + .5) * h, finish, scale);
+      });
+    }
+    if (op.op === "pyramid") pyramid(m, op, rule);
+    if (op.op === "wheel") wheel(m, op, rule);
+    if (op.op === "vault") vault(m, selected, op, rule);
+    if (op.op === "lattice") lattice(m, op, rule);
     if (op.op === "portal") for (let i = m.pieces.length - 1; i >= 0; i--) {
       const p = m.pieces[i]!; const u = (p.x - m.frame.x) * m.frame.c - (p.z - m.frame.z) * m.frame.s;
       if (Math.abs(u) < (op.width ?? 12) / 2 && p.y - m.base < (op.height ?? 16) - .5) m.pieces.splice(i, 1);

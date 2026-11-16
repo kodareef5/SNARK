@@ -6,7 +6,7 @@ import { CMD_CRAFT, CMD_LEARN, CMD_SPEND } from "../../../shared/net/protocol.ts
 import { STAT_NAMES } from "../../../shared/sim/genome.ts";
 import type { ClientSession } from "../session.ts";
 import { itemLabel } from "./inventory.ts";
-import { K_BUTTON, K_PANEL, columns, lineHeight, type UiFrame } from "./nodes.ts";
+import { K_BUTTON, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
 import { S_BUTTON, S_LABEL, S_PANEL, S_TITLE } from "./style.ts";
 
 export const KEY_CHAR_PANEL = 1100;
@@ -27,6 +27,8 @@ export const KEY_CHAR_ENGRAM = 200000;
 export const KEY_CHAR_RECIPE = KEY_CHAR_ENGRAM + LIST_KEYS;
 /** Per item that can be made, in content order: its picture. Past both lists, and as clear of every other key. */
 export const KEY_CHAR_RECIPE_PICTURE = KEY_CHAR_RECIPE + LIST_KEYS;
+/** Per engram, in engramOrder: its picture, its item's where it has none of its own. Past the pictures of the recipes. */
+export const KEY_CHAR_ENGRAM_PICTURE = KEY_CHAR_RECIPE_PICTURE + LIST_KEYS;
 export const TAB_STATS = 0;
 export const TAB_ENGRAMS = 1;
 export const TAB_MAKE = 2;
@@ -73,7 +75,6 @@ export class CharacterScreen {
     const x = Math.round((f.width - w) / 2);
     const y0 = Math.round((f.height - h) / 2);
     const inner = w - PAD * 2;
-    const cols = columns(inner - BUTTON - 8, S_LABEL);
     f.add(KEY_CHAR_PANEL, K_PANEL, x, y0, w, h, S_PANEL);
     f.text(KEY_CHAR_TITLE, x + PAD, y0 + PAD, inner, S_TITLE, `Level ${p.level}  ${p.xp} xp`);
     let y = y0 + PAD + titleH;
@@ -81,7 +82,7 @@ export class CharacterScreen {
     y += lh;
     const job = p.jobs[0];
     const making = job ? `making ${itemLabel(reg, job.item)} (${p.jobs.reduce((n, j) => n + j.left, 0)} to go)` : "nothing being made";
-    f.text(KEY_CHAR_JOBS, x + PAD, y, inner, S_LABEL, making.slice(0, columns(inner, S_LABEL)));
+    f.text(KEY_CHAR_JOBS, x + PAD, y, inner, S_LABEL, fitText(making, inner, S_LABEL));
     y += lh + 6;
     const tabW = (inner - 8) / TABS.length;
     TABS.forEach((label, i) => {
@@ -92,7 +93,8 @@ export class CharacterScreen {
     });
     y += ROW + 10;
 
-    // `button` is "" for a row without one. A row of the Make tab has the picture of what it makes at its left, where there is one.
+    // `button` is "" for a row without one. A row of the Engrams and Make tabs has the picture of what it makes at its left,
+    // where there is one.
     const rows: { key: number; text: string; button: string; picture?: { key: number; owner: string } }[] = [];
     if (this.tab === TAB_STATS) {
       STAT_NAMES.forEach((name, i) => {
@@ -105,7 +107,7 @@ export class CharacterScreen {
         const def = reg.defs[e] as EngramDef;
         const known = p.engrams.includes(e);
         const can = !known && p.level >= def.level && p.engramPoints >= def.cost;
-        rows.push({ key: KEY_CHAR_ENGRAM + n * 2, text: known ? `${def.label}: known` : `${def.label}: level ${def.level}, ${def.cost} points`, button: can ? "learn" : "" });
+        rows.push({ key: KEY_CHAR_ENGRAM + n * 2, text: known ? `${def.label}: known` : `${def.label}: level ${def.level}, ${def.cost} points`, button: can ? "learn" : "", picture: { key: KEY_CHAR_ENGRAM_PICTURE + n, owner: def.id } });
       });
     } else {
       const known = new Set(p.engrams.map((e) => (reg.defs[e] as EngramDef).item));
@@ -123,7 +125,7 @@ export class CharacterScreen {
       // Rows keep one edge whether or not each has a picture, where any may.
       const indent = row.picture && f.icons ? ROW : 0;
       if (row.picture) f.picture(row.picture.key, x + PAD, y, ROW - 2, ROW - 2, S_LABEL, row.picture.owner);
-      f.text(row.key, x + PAD + indent, y + 2, inner - BUTTON - 8 - indent, S_LABEL, row.text.slice(0, cols - (indent > 0 ? columns(indent, S_LABEL) : 0)));
+      f.text(row.key, x + PAD + indent, y + 2, inner - BUTTON - 8 - indent, S_LABEL, fitText(row.text, inner - BUTTON - 8 - indent, S_LABEL));
       if (row.button !== "") {
         const b = f.add(row.key + 1, K_BUTTON, x + w - PAD - BUTTON, y + 1, BUTTON, ROW - 3, S_BUTTON);
         b.text = row.button;

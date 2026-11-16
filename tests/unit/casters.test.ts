@@ -256,6 +256,9 @@ test("casters ask for nothing, name only what the card holds, and cut out a sect
 test("the siege scene fits the caster list on every lit tier, with none dropped", () => {
   const s = siegeScene(compileContent(CORE_CONTENT).registry!, corePack(), tierOf("medium"));
   const counts: number[] = [];
+  // Its structures are building pieces only (tools/bench/shadow.ts), so a new station does not move it: 565, 764 and 812
+  // entries on medium, high and ultra, with or without the refining forge. With every structure kind it was 3,702, 3,920 and
+  // 3,996 on main before the forge, and the forge's two kinds took ultra to the 4,096 cap with 22 dropped.
   // With the whole pack every level is held from the first frame.
   for (const name of ["medium", "high", "ultra"] as const) {
     s.scene.assets.tier = tierOf(name);

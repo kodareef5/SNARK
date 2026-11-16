@@ -91,10 +91,12 @@ Four Fifty Sutter Building, Pier 2's Herbst Pavilion among them): `reports/ruins
     and `world.py --accept` writes `world.json`. It also writes the settings round three reads: `bridgeGapLayer`,
     `ruins.report`, `ruins.yardDistricts`, and `containerDistrict` only when a city names one (San Francisco has no
     container port in its frame). `frame.py` writes `map.json`'s `bathymetry`.
-12. **The vocabulary is composed, not copied.** `vocabulary.py` takes the reference map's rule sections (Miami's version
-    4: forms, choices, assemblies, street, damage, interiors and the rest) and keeps the city's own districts, recipes,
-    compositions (`ruins/compositions.json`) and budgets: a city cap of 130 blocks a footprint (5.75 M; 2.89 M used) and
-    a height cap above the tallest label (336 m). San Francisco's six named places are compositions: the Transamerica
+12. **The vocabulary is composed, not copied.** It extends the shared rule library (`tools/mapworld/rules/default.json`:
+    forms, choices, assemblies, street, damage, interiors, the surge, growth and frontage), which reaches every city at
+    its build; `vocabulary.py` writes only the city's own districts, recipes, label tables, compositions
+    (`ruins/compositions.json`) and budgets: a city cap of 130 blocks a footprint (5.75 M; 2.89 M used), a height cap
+    above the tallest label (336 m) and the reference's chunk cap. San Francisco names no surge direction or sight
+    corridors of its own, so its surge is the library's. San Francisco's six named places are compositions: the Transamerica
     Pyramid narrowing in three steps to a spire, Coit Tower's column and gallery, the Ferry Building's hall and clock
     tower, the Palace of Fine Arts' rotunda of eight piers and a stepped dome, Alcatraz's cellhouse and lighthouse. A
     composition needs a footprint of a whole tile: a smaller one takes no layout at all (178 such parts).
@@ -140,8 +142,7 @@ blocks.
 
 ## Engine asks, with what was measured
 
-- **Water above the sea.** Ten lakes stand 41 to 114 m over San Francisco's sea and are marsh here; Los Angeles has a
-  reservoir far above its.
+- **Water above the sea.** Done in round nine: eight of the ten lakes are water on their own surfaces (below).
 - **A chunk budget for dense blocks.** 455 parts refused at 1,000 blocks a chunk or the bounds, most downtown; the engine's file holds 65,535 a chunk.
 - **A temperate flora.** Every plant zone is subtropical.
 - **The far city's lattices.** Cables and hangers of 0.3 to 1 m pieces fill into solid cells past the near reach.
@@ -170,3 +171,31 @@ Green, by the Embarcadero beside the Ferry Building, and in the Panhandle, each 
 48 s. A first one at Civic Center Plaza was 1.4 km from the nearest spawn point and the walk stuck downtown, so it
 moved. `tools/mapworld/build.ts` counted walkable land at a fixed 50°; it now reads the survivor's own limit from the
 content, the one generator line changed for the slopes.
+
+## Water above the sea (round nine)
+
+The engine now holds water on its own surfaces (`planning/reference/maps.md`), and the builder makes each perched lake
+one (`tools/mapworld/lakes.ts`, `tools/mapworld/README.md`). Nothing in `base/` changed and `prepare.py` was not run
+again: `bun tools/mapworld/build.ts san-francisco` reads `base/perched_water.geojson` as it stands.
+
+| Lake (TIGER id) | Surface over the sea | Water | |
+|---|---|---|---|
+| Stow Lake (110498941493) | 86.0 m | 5.10 ha | Strawberry Hill an island, its two mapped footbridges standing over the water |
+| Mountain Lake (110498941571) | 40.4 m | 1.69 ha | |
+| On Strawberry Hill's top (110498941568) | 113.0 m | 0.12 ha | The pool Huntington Falls leaves; the fall down to Stow Lake is not water |
+| Golden Gate Park, four ponds (…545, …547, …551, …552) | 49.8 to 73.8 m | 0.14 to 0.39 ha | |
+| Golden Gate Park (110498941546) | 61.3 m | 0.04 ha | |
+| By the shore, 3.7 m up (110498941567) | | none | Left marsh: 52% of its shore stands more than 0.25 m under its lidar's surface, so the ground would not hold it |
+| Golden Gate Park (110498941566) | | none | Left marsh: 23% of its lidar is within 0.25 m of one level, so it is not flattened water |
+
+Eight bodies, 8.0 ha in 24,270 squares of 2 m over 66 chunks, beds carved 0.3 m at the shore to 4.6 m at the deepest.
+The map file is 99,983,456 bytes (31.8 MB compressed), 135 KB of them the water (2.6 KB compressed); built in 137 to
+160 s at 8.4 to 9.9 GB peak as the build counts it, by the machine's load. Every walk is as it was (approaches
+25,962/8, bridges 2,068/2, routes 2,625/1, rooms 19,585/9, obelisks 3/3); walkable land is 98.70% at 44.8°. Over the
+lakes medium's frame keeps under its 2 M triangles; the water adds 2 to 13 draws and 2 k triangles to the same views
+without it, and the views in Golden Gate Park's woods pass medium's 1,024 draws with it or without
+(`reports/water1/rendering.json`).
+
+Pictures from the software rasterizer on medium (`reports/water1/views.json`): `stow-lake-from-above.png`,
+`stow-lake-and-strawberry-hill.png`, `stow-lake-on-the-water.png`, `mountain-lake-on-the-water.png`,
+`mountain-lake-from-above.png`, and the map screen, `mapscreen-z3-0_7.png` round Stow Lake.

@@ -113,8 +113,10 @@ export const DODO: readonly Def[] = [
     // hatchet favours hide and a pick meat (ark.wiki.gg, Weapons), each picking its drop 60 rolls in 100.
     corpse: { health: 32, roll: 8 },
     drops: [{ item: "core:hide", min: 1, max: 1, favoured: "wood" }, { item: "core:meat", min: 1, max: 1, favoured: "stone" }],
-    // ARK's herbivores take three eighths of fire and three fifths of explosions. Its head and the top of its neck take three times.
-    takes: { fire: 0.375, explosive: 0.6 },
+    // ARK's herbivores take three eighths of fire and three fifths of explosions, and every creature 70% from guns ("all
+    // creatures aside from Humans", ark.wiki.gg, Longneck Rifle, 2026-11-15). Its head and the top of its neck take three
+    // times.
+    takes: { fire: 0.375, explosive: 0.6, bullet: 0.7 },
     zones: { head: 3 },
     // The experience the wiki's Experience page gives for a kill at level 1. Its data module's base is 0.5.
     killXp: 2,

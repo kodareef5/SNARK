@@ -7,7 +7,7 @@ import { B_PROP_L, B_PROP_R, HUMAN } from "../../shared/anim/human.ts";
 import { MOST_SECTIONS, detailsAtlas, parsePack, setTexture, textureOf, type PackMaterial, type PackRig, type PackTexture } from "../../shared/pack/pack.ts";
 import { RAMP_BASE, SKIN_BASE, defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
 import { LAST_STEP, TEXTURE_ROLES, stepSize } from "../../shared/pack/texture.ts";
-import { convertCreature, withMotion } from "../pack/creature.ts";
+import { convertCreature, planOf, withMotion } from "../pack/creature.ts";
 import { importGlb } from "../pack/glb.ts";
 import { readGltf } from "../pack/gltf.ts";
 import { lying } from "../pack/lying.ts";
@@ -96,25 +96,41 @@ function surfaceFaults(mesh: SourceMesh): string[] {
 export function convertModel(asset: Asset & { spec: CreatureAsset }, glb: string, out: Built): void {
   const spec = asset.spec;
   const palette = defaultPalette();
-  const made = convertCreature(readGltf(glb), asset.id, spec);
+  const made = convertCreature(readGltf(glb), asset.id, spec, palette);
   const pictured = described(asset, palette, out);
-  let mesh: SourceMesh;
-  if (pictured.size === 0) mesh = withLevels(made.mesh); // A model that brings one level gets the rest from ours.
-  else {
-    // The finest level is the model's, and the rest are made from it in the colours its pictures give them.
-    const first = withMaterials({ ...made.mesh, flat: 1, materials: [] }, [...pictured.keys()], pictured);
-    measureSpans([first.mesh]);
-    out.faults.push(...surfaceFaults(first.mesh));
-    const budgets = spec.budgets.triangles.slice(1);
-    mesh = withSurfaceLevels(first.mesh, { budgets, flat: spec.flat ?? Math.max(1, budgets.length), maps: first.maps, palette });
+  // The body, its worn saddles and its saddled model name their materials in one list: a name is one material.
+  const given = new Map<string, string>();
+  for (const list of [spec.materials, ...(spec.worn ?? []).map((w) => w.materials), spec.saddled?.materials]) {
+    for (const [name, m] of Object.entries(list ?? {})) {
+      const was = given.get(name);
+      if (was !== undefined && was !== JSON.stringify(m)) out.faults.push(`material "${name}" is given twice, with other pictures`);
+      given.set(name, JSON.stringify(m));
+    }
   }
-  out.meshes.push(mesh);
+  // The bare body, then each saddle worn on it and the saddled model, each with the levels its own plan asks for.
+  const textured: { mesh: SourceMesh; maps: MaterialMaps[]; budgets: readonly number[]; flat?: number }[] = [];
+  const meshes = [made.mesh, ...made.extra].map((source) => {
+    const plan = planOf(asset.id, spec, source.id);
+    const names = Object.keys(plan.materials);
+    if (names.length === 0) return withLevels(source); // A model that brings one level gets the rest from ours.
+    // The finest level is the model's, and the rest are made from it in the colours its pictures give them.
+    const first = withMaterials({ ...source, flat: 1, materials: [] }, names, pictured);
+    textured.push({ ...first, budgets: plan.budgets.triangles.slice(1), flat: plan.flat });
+    return first.mesh;
+  });
+  measureSpans(textured.map((t) => t.mesh));
+  for (const t of textured) {
+    out.faults.push(...surfaceFaults(t.mesh));
+    meshes[meshes.indexOf(t.mesh)] = withSurfaceLevels(t.mesh, { budgets: t.budgets, flat: t.flat ?? Math.max(1, t.budgets.length), maps: t.maps, palette });
+  }
+  out.meshes.push(...meshes);
   out.rigs.push(made.rig);
   out.clips.push(...made.clips);
   out.warnings.push(...made.warnings);
   out.faults.push(...made.faults);
   const w = made.weights;
-  out.lines.push(`${made.rig.names!.length} bones, ${made.rig.caps!.length / 9} capsules, triangles ${triangles(mesh).trim()}`);
+  out.lines.push(`${made.rig.names!.length} bones, ${made.rig.caps!.length / 9} capsules, triangles ${triangles(meshes[0]!).trim()}`);
+  for (const m of meshes.slice(1)) out.lines.push(`${m.id}: triangles ${triangles(m).trim()}`);
   out.lines.push(`weights: ${w.vertices} vertices, ${w.none} on no joint, ${w.over} on more than four, ${w.shared} shared between joints${pictured.size === 0 ? " and drawn on the heaviest" : ""}`);
   out.lines.push(`clips ${made.clips.map((c) => `${c.id.split("/")[1]} ${c.frames}`).join(", ")}`);
 }
@@ -333,8 +349,10 @@ export function repack(file: Uint8Array, levels: boolean, asset?: Asset): Uint8A
     const spec = asset?.spec;
     if (!asset || spec?.kind !== "creature") throw new Error(`${m.id} is drawn with materials: its levels are made again only from its asset's pictures`);
     const pictures = new Map(materialsOf(asset).map((d) => [d.id, describe(d, spec.budgets.texture?.top ?? stepSize(LAST_STEP), palette).maps]));
-    const budgets = spec.budgets.triangles.slice(1);
-    return withSurfaceLevels({ ...measured, lods: [measured.lods[0]!] }, { budgets, flat: spec.flat ?? Math.max(1, budgets.length), maps: measured.materials!.map((d) => pictures.get(d.id) ?? {}), palette });
+    // The body's plan, or a worn saddle's or the saddled model's own.
+    const plan = planOf(asset.id, spec, m.id);
+    const budgets = plan.budgets.triangles.slice(1);
+    return withSurfaceLevels({ ...measured, lods: [measured.lods[0]!] }, { budgets, flat: plan.flat ?? Math.max(1, budgets.length), maps: measured.materials!.map((d) => pictures.get(d.id) ?? {}), palette });
   });
   // A creature's rig takes what its asset now says of how it moves and dies.
   const spec = asset?.spec;

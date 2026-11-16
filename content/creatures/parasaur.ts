@@ -32,6 +32,8 @@ export const PARASAUR: readonly Def[] = [
     // Chosen, near what it gave before bodies were harvested: 12 hide and 11 meat in all on average.
     corpse: { health: 230, roll: 10 },
     drops: [{ item: "core:hide", min: 1, max: 1, weight: 12, favoured: "wood" }, { item: "core:meat", min: 1, max: 1, weight: 11, favoured: "stone" }],
+    // Every creature takes 70% from guns ("all creatures aside from Humans", ark.wiki.gg, Longneck Rifle, 2026-11-15).
+    takes: { bullet: 0.7 },
     zones: { head: 1.5 },
     killXp: 6,
     torporDrain: 0.3,
@@ -41,7 +43,8 @@ export const PARASAUR: readonly Def[] = [
   { type: "prop", class: "egg", id: "core:egg_parasaur", mesh: "core:egg_xs", color: 9, radius: 0.04, height: 0.11, item: "core:parasaur_egg", fertile: "core:parasaur_egg_fertile" },
   { type: "item", class: "egg", id: "core:parasaur_egg", label: "parasaur egg", color: 9, stack: 100, weight: 5, eat: { food: 25, health: 25 }, spoilHours: (8 * 3600) / 140, decomposeHours: (30 * 60) / 140 },
   { type: "item", class: "egg", id: "core:parasaur_egg_fertile", label: "fertilised parasaur egg", color: 9, stack: 1, weight: 5, eat: { food: 25, health: 25 }, spoilHours: (8 * 3600) / 140 },
-  { type: "item", class: "saddle", id: "core:saddle_parasaur", stack: 1, weight: 10, label: "parasaur saddle", color: 3, saddle: { fits: "core:parasaur", armor: 25 } },
+  // One seat, ARK's: the rider's, on the rig's `seat` socket, got onto and off from its left.
+  { type: "item", class: "saddle", id: "core:saddle_parasaur", stack: 1, weight: 10, label: "parasaur saddle", color: 3, saddle: { fits: "core:parasaur", armor: 25, seats: [{ id: "rider", driver: true, socket: "seat", anchor: [0, 2.57, 0.7], entry: [1.7, 0, 0.7] }] } },
   crafting("core:saddle_parasaur", { needs: [{ item: "core:hide", count: 80 }, { item: "core:fiber", count: 50 }, { item: "core:wood", count: 15 }], seconds: 10, xp: 6 }),
   { type: "engram", id: "core:engram-saddle_parasaur", label: "Parasaur saddle", level: 9, cost: 9, item: "core:saddle_parasaur" },
 ];

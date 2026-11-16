@@ -1,0 +1,15 @@
+You are looking again at the knocked-out, eating, waking and dying clips of a browser game's pteranodon, after the changes your first look asked for (`../review_1/artist_1.last.txt` in this folder's parent is your first answer; read it). Do not change any file; write only your answer.
+
+Everything in the first brief (`../review_1/BRIEF.md`) still holds: who the animal is, what the game does with each clip, what the sheets and strips show. The pictures are again the untextured grey model. One thing is new: `strip_torpor_idle_close.jpg` shows the lie every 15th frame from close, for the breathing.
+
+**What changed, against your points.**
+- The lie: it now lies a little over onto its right side, which bears it; the left wing is gathered against the flank, elbow bent and wrist drawn in, the right flung out along the ground. The neck slumps down from the shoulders onto the ground and lies along it, the head on its cheek. The breaths are deeper, with a quicker intake and a long slow release, and swell the upper flank.
+- `torpor_in`: one failed recovery, the chest and neck base sagging and rising with the head, the second effort weaker; the right hand skids out and that arm gives, the chest tips onto that side, then the left arm gives; the breast lands, the head arrives after it, and the long folded fingers tip outward and fall open along the ground last.
+- `torpor_out`: the failed head lift carries the shoulders with it; with the breast still down it draws each arm in and plants the hand, gathers its feet, pushes up right side first with one sag back, and folds the outer wing home only once it is up; a balance correction, then the head shake and shrug.
+- `death`: no wing flare; during the jolt the left hand skids and the hips drop; the gape is small until it is down; the head trails the chest; at frame 24 it is down but the head and the left wing are still settling, finished after 24. Dead, it lies rolled further, the right wing trapped and gathered under its side, the left flung out, the head thrown out to its left with the beak gaping.
+- `torpor_eat`: a small lift, a clear bite, a swallow running down the neck, the head settling back.
+- `torpor_fall` and `death_air`: the wrists and ankles hang loose; `death_air`'s left shoulder lets go first, the right after, the head a beat behind; its limp pose is the dead lie's shape mirrored, lifted off the ground.
+
+A limit you should know: the wing's skin is weighted to fold cleanly only along the rig's own fold (folded, tucked along the body, spread), so the wings open and close along it; poses off that path cross the skin through itself.
+
+**What I want from you.** The same as before, blunt and specific, a short numbered list per clip: what each now reads as; whether the lie reads as alive and out cold and the dead pose as dead, and whether they are told apart at a glance and at 40 to 100 pixels; what still makes a stranger wince, by clip and frame; what is still missing for weight and limpness. Say plainly which of your first points are now met and which are not. If a clip is good enough to keep, say so.

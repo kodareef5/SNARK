@@ -51,6 +51,7 @@ import { benchDenseWood, benchNodes } from "./bench/nodes.ts";
 import { benchFrameBudget } from "./bench/budget.ts";
 import { benchHunt } from "./bench/hunt.ts";
 import { benchFlock } from "./bench/flock.ts";
+import { benchFlyers } from "./bench/flyers.ts";
 import { benchSpawn } from "./bench/spawn.ts";
 import { benchLatency } from "./bench/latency.ts";
 import { benchPoses } from "./bench/poses.ts";
@@ -66,6 +67,7 @@ import { benchTextures } from "./bench/textures.ts";
 import { benchParts } from "./bench/parts.ts";
 import { benchTransport } from "./bench/transport.ts";
 import { benchGpu } from "./bench/gpu.ts";
+import { benchUi } from "./bench/ui.ts";
 
 const PLAYERS = 100;
 const STRUCTURES = 500000;
@@ -90,6 +92,14 @@ const record = (name: string, value: number, unit: string, budget: number | null
 const section = (title: string): void => console.log(`\n${title}`);
 const percentile = (sorted: number[], q: number): number => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))]!;
 const mb = (bytes: number): number => bytes / 1048576;
+
+benchUi(section, record);
+// Focused HUD rows avoid rebuilding the unrelated world sizing target.
+if (process.argv.includes("--ui")) {
+  mkdirSync(resolve("artifacts"), { recursive: true });
+  writeFileSync(resolve("artifacts/bench-ui.json"), JSON.stringify({ machine: `${cpus()[0]!.model}, ${cpus().length} cores`, bun: Bun.version, rows }, null, 2));
+  process.exit(rows.some(r => r.budget !== null && r.value > r.budget) ? 1 : 0);
+}
 
 function buildTerrain(): Heightfield {
   const hf = new Heightfield(DIMS, TERRAIN_CELL, -32, 1 / 64);
@@ -1229,6 +1239,7 @@ benchDenseWood(section, record);
 benchFrameBudget(section, record);
 benchHunt(section, record);
 benchFlock(section, record);
+benchFlyers(section, record);
 benchSpawn(section, record);
 benchLatency(section, record);
 benchPoses(section, record);

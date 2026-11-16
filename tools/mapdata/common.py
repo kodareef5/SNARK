@@ -57,6 +57,28 @@ class Map:
             'features': [{'type': 'Feature', 'geometry': mapping(g), 'properties': p} for g, p in features]}, separators=(',', ':')))
 
 
+def relation_polygon(members, to_map):
+    """A multipolygon relation's area from its members' shapes (out geom): outer rings, which may be drawn in several
+    ways, joined and less the inner ones. None when the members close no ring."""
+    from shapely import make_valid
+    from shapely.geometry import LineString
+    from shapely.ops import polygonize, unary_union
+    rings = {'outer': [], 'inner': []}
+    for mb in members:
+        g = mb.get('geometry') or []
+        if mb.get('type') == 'way' and len(g) >= 2 and mb.get('role') in rings:
+            rings[mb['role']].append(LineString([to_map(p['lon'], p['lat']) for p in g]))
+    outer = [make_valid(p) for p in polygonize(unary_union(rings['outer']))] if rings['outer'] else []
+    if not outer:
+        return None
+    area = unary_union(outer)
+    if rings['inner']:
+        inner = [make_valid(p) for p in polygonize(unary_union(rings['inner']))]
+        if inner:
+            area = area.difference(unary_union(inner))
+    return None if area.is_empty else area
+
+
 def save(a, path):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

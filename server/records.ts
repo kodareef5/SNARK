@@ -4,6 +4,7 @@
 import type { BuffOn } from "./buffs.ts";
 import { makePid } from "../shared/ids.ts";
 import type { Genome } from "../shared/sim/genome.ts";
+import type { Fire } from "../shared/sim/station.ts";
 import type { Inventory } from "../shared/sim/items.ts";
 import type { Vitals } from "../shared/sim/vitals.ts";
 
@@ -19,7 +20,8 @@ export interface Marker {
  * A run of making one item. `left` units remain, and the current one finishes at tick `doneAt`. The record a job is on gives
  * the ingredients and takes the product. `by` is the record id of the survivor who queued it at a station, who gets the
  * experience; it is absent for a job made in the hands. `bp` is the quality of the blueprint it is made from, absent for one
- * made from the engram.
+ * made from the engram. `rest` is the ticks left of the unit under way when its powered station went out, absent for a job
+ * that is not waiting for fuel (planning/reference/stations-plan.md, M5: kept and saved, set by nothing until S2).
  */
 export interface Job {
   item: number;
@@ -27,6 +29,16 @@ export interface Job {
   doneAt: number;
   by?: number;
   bp?: number;
+  rest?: number;
+}
+
+/**
+ * A burning fire's state (shared/sim/station.ts), with what the server derives from it and does not save: the tick of its
+ * deadline, and the tick it is due to go out on what lies in it (0 until worked out), which OWN_STATION tells.
+ */
+export interface FireState extends Fire {
+  due: number;
+  out: number;
 }
 
 export class EntityRecord {
@@ -126,7 +138,7 @@ export class EntityRecord {
   /** For a bed, the tick from which a survivor may next respawn at it. */
   readyAt = 0;
   /** For a burning fire: its state as of tick `at` (shared/sim/station.ts), and the tick of its deadline. Null when it is out. */
-  fire: { at: number; fuel: number; cook: number; due: number } | null = null;
+  fire: FireState | null = null;
   /** Component blobs this build does not understand, kept byte for byte. */
   readonly extra = new Map<number, Uint8Array>();
 

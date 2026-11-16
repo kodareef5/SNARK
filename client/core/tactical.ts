@@ -98,7 +98,7 @@ const VOID = 0xff30241a;
 const RELIEF_SIZE = 256;
 const RELIEF_KEPT = 24;
 
-/** Paints one tile of the pyramid from the heightfield: each sample's colour, shaded by its slope with the light from the north-west, and water over what lies under the sea. */
+/** Paints one tile of the pyramid from the heightfield: each sample's colour, shaded by its slope with the light from the north-west, and water over what lies under the sea or a lake. */
 export function paintRelief(hf: Heightfield, palette: Uint8Array, zoom: number, col: number, row: number, size: number, out: Uint32Array): void {
   const side = Math.max(hf.sizeX, hf.sizeZ) / (1 << zoom);
   // The slope is taken over about a pixel, so a far zoom shows the broad shape of the land.
@@ -120,9 +120,10 @@ export function paintRelief(hf: Heightfield, palette: Uint8Array, zoom: number, 
       let r = palette[tint]! * shade;
       let g = palette[tint + 1]! * shade;
       let b = palette[tint + 2]! * shade;
-      if (h < hf.seaLevel) {
+      const water = hf.waterAt(x, z);
+      if (h < water) {
         // Deeper water is more of the water's colour.
-        const k = Math.min(0.9, 0.55 + (hf.seaLevel - h) * 0.08);
+        const k = Math.min(0.9, 0.55 + (water - h) * 0.08);
         r += (40 - r) * k;
         g += (92 - g) * k;
         b += (140 - b) * k;
@@ -237,6 +238,8 @@ function cellColour(palette: Uint8Array, tint: number, band: number, whose: numb
 
 /** A picture of the map as a screen shows it: terrain, then structure cells, then the grid and its numbers. */
 export class MapPicture {
+  private readonly coordinates: boolean;
+  constructor(coordinates = true) { this.coordinates = coordinates; }
   /** Made anew at the size asked for, so its pixels are the screen's and a line is never lost to scaling. */
   readonly image: UiImage = { width: 0, height: 0, data: new Uint8ClampedArray(0), version: 0 };
   readonly view = new MapView();
@@ -373,15 +376,15 @@ export class MapPicture {
     for (let k = Math.max(0, Math.ceil((view.u0 * 100) / step - 1e-6)); k * step <= 100; k++) {
       const px = Math.round((((k * step) / 100 - view.u0) / view.du) * N);
       if (px >= N) break;
-      for (let py = top; py < bottom; py++) darken(out, py * N + px, (k * step) % 10 === 0 ? 110 : 56);
-      if ((k * step) % sparse === 0) this.number(k * step, px + 2, top + 2, big);
+      for (let py = top; py < bottom; py++) darken(out, py * N + px, this.coordinates ? (k * step) % 10 === 0 ? 110 : 56 : 26);
+      if (this.coordinates && (k * step) % sparse === 0) this.number(k * step, px + 2, top + 2, big);
     }
     for (let k = Math.max(0, Math.ceil((view.v0 * 100) / step - 1e-6)); k * step <= 100; k++) {
       const py = Math.round((((k * step) / 100 - view.v0) / view.dv) * N);
       if (py >= N) break;
-      for (let px = left; px < right; px++) darken(out, py * N + px, (k * step) % 10 === 0 ? 110 : 56);
+      for (let px = left; px < right; px++) darken(out, py * N + px, this.coordinates ? (k * step) % 10 === 0 ? 110 : 56 : 26);
       // The top row belongs to the longitudes.
-      if ((k * step) % sparse === 0 && py - top > 7 * big) this.number(k * step, left + 2, py + 2, big);
+      if (this.coordinates && (k * step) % sparse === 0 && py - top > 7 * big) this.number(k * step, left + 2, py + 2, big);
     }
   }
 
@@ -407,7 +410,7 @@ export class MapPicture {
 /** The map as one client shows it: the minimap's picture and zoom, and the map screen's picture, zoom and the place it looks at. */
 export class Chart {
   readonly tiles: TileSource;
-  readonly mini = new MapPicture();
+  readonly mini = new MapPicture(false);
   readonly full = new MapPicture();
   miniZoom: number;
   fullZoom = 0;

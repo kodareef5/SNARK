@@ -7,7 +7,7 @@ import { CMD_STRUCT, MAX_NAME_BYTES, RESULT_DAMAGED, RESULT_DENIED, RESULT_FAR, 
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../../../shared/world/upkeep.ts";
 import { fitBytes } from "./tame.ts";
 import type { ClientSession } from "../session.ts";
-import { K_BUTTON, K_INPUT, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
+import { K_BUTTON, K_INPUT, K_PANEL, lineHeight, textWidth, type UiFrame } from "./nodes.ts";
 import { S_BUTTON, S_INPUT, S_LABEL, S_PANEL, S_TITLE } from "./style.ts";
 
 export const KEY_STRUCT_PANEL = 2400;
@@ -61,13 +61,23 @@ export function structName(reg: Registry, kind: number): string {
 }
 
 /** Formats the shared `cost` buffer, as in "40 wood, 10 thatch". */
-function listed(reg: Registry): string {
+/**
+ * What `cost` holds, as "4 metal ingot, 2 cementing paste", after `lead`. A list wider than `width` keeps the items that
+ * fit whole and says how many more there are, so a piece of many ingredients still reads in its row.
+ */
+function listed(reg: Registry, lead: string, width: number): string {
   const parts: string[] = [];
   for (let k = 0; k < cost.n; k++) {
     const d = reg.defs[cost.item[k]!] as ItemDef;
     parts.push(`${cost.count[k]} ${d.label ?? d.id.slice(d.id.indexOf(":") + 1)}`);
   }
-  return parts.join(", ");
+  const all = `${lead} ${parts.join(", ")}`;
+  if (textWidth(all, S_LABEL) <= width) return all;
+  for (let shown = parts.length - 1; shown > 0; shown--) {
+    const line = `${lead} ${parts.slice(0, shown).join(", ")} and ${parts.length - shown} more`;
+    if (textWidth(line, S_LABEL) <= width) return line;
+  }
+  return `${lead} ${parts.length} things`;
 }
 
 export class StructMenu {
@@ -282,10 +292,11 @@ export class StructMenu {
       return;
     }
     this.actions = actionsOf(reg, kind);
+    const inner = w - pad * 2;
     const said: Record<number, [string, string]> = {
       [STRUCT_PICKUP]: ["Take it back", hp < max ? "not while it is damaged" : "into your hands, as it was"],
-      [STRUCT_REPAIR]: ["Mend it", repairCostOf(reg, kind, hp) ? `costs ${listed(reg)}` : "it is whole"],
-      [STRUCT_DEMOLISH]: ["Take it down", refundOf(reg, kind) && cost.n > 0 ? `gives ${listed(reg)}` : "gives nothing back"],
+      [STRUCT_REPAIR]: ["Mend it", repairCostOf(reg, kind, hp) ? listed(reg, "costs", inner) : "it is whole"],
+      [STRUCT_DEMOLISH]: ["Take it down", refundOf(reg, kind) && cost.n > 0 ? listed(reg, "gives", inner) : "gives nothing back"],
       [STRUCT_LOCK]: ["Lock it", "for your tribe alone"],
       [STRUCT_UNLOCK]: ["Unlock it", "for anyone"],
       [STRUCT_PIN]: ["Give it a PIN", "four digits let others in"],

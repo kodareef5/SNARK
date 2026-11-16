@@ -19,6 +19,7 @@ import {
   MARGIN_UNKNOWN,
   MAX_CLIENT_MESSAGE,
   MAX_NAME_BYTES,
+  MAX_PLACE_NAME_BYTES,
   MAX_SERVER_TEXT_BYTES,
   MAX_TEXT_BYTES,
   CMD_CREATE,
@@ -86,8 +87,11 @@ import { LOOK_BYTES } from "../../shared/anim/look.ts";
 import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
-import { Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
-import { FISTS, actionOut, stepAction } from "../../shared/sim/weapon.ts";
+import { BTN_JUMP, Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { MAX_VEHICLE_DOORS } from "../../shared/sim/vehicle.ts";
+import { PredictionTrace } from "./diagnostics.ts";
+import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, vehicleDoor, withVehicleDoor, unpackVehicleGear, unpackVehicleRpm, vehicleShifting } from "../../shared/sim/vehicle-body.ts";
+import { FISTS, actionOut, biteCost, stepAction } from "../../shared/sim/weapon.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Inventory } from "../../shared/sim/items.ts";
@@ -162,12 +166,26 @@ export class RemoteSample {
   /** The bodies the server said died, by id, with the tick of the snapshot that said so. Kept for a few seconds. */
   died: ReadonlyMap<number, number> = new Map();
   readonly id = new Uint32Array(MAX_VIEW);
+  readonly gen = new Uint16Array(MAX_VIEW);
   readonly kind = new Uint16Array(MAX_VIEW);
   readonly x = new Float32Array(MAX_VIEW);
   readonly y = new Float32Array(MAX_VIEW);
   readonly z = new Float32Array(MAX_VIEW);
   /** Radians. */
   readonly yaw = new Float32Array(MAX_VIEW);
+  readonly vehiclePitch = new Float32Array(MAX_VIEW);
+  readonly vehicleRoll = new Float32Array(MAX_VIEW);
+  readonly steering = new Float32Array(MAX_VIEW);
+  readonly wheelAngle = new Float32Array(MAX_VIEW);
+  readonly vehicleGroundPitch = new Float32Array(MAX_VIEW);
+  readonly vehicleGroundRoll = new Float32Array(MAX_VIEW);
+  readonly vehicleRideOffset = new Float32Array(MAX_VIEW);
+  readonly vehicleGrounded = new Uint8Array(MAX_VIEW);
+  /** Each door's open share, 8 bits a door (shared/sim/vehicle-body.ts vehicleDoor). */
+  readonly vehicleDoors = new Uint32Array(MAX_VIEW);
+  readonly vehicleGear = new Int8Array(MAX_VIEW);
+  readonly vehicleRpm = new Float32Array(MAX_VIEW);
+  readonly vehicleShifting = new Uint8Array(MAX_VIEW);
   readonly flags = new Uint8Array(MAX_VIEW);
   readonly level = new Uint16Array(MAX_VIEW);
   /** Six colour regions per entity. Zero means the species' own colour. */
@@ -188,6 +206,8 @@ export class RemoteSample {
   /** Each 0 for none: the owning team, the entity it sits on plus one, the ticks its growing takes, and the tick it will be grown. */
   readonly team = new Uint32Array(MAX_VIEW);
   readonly seat = new Uint32Array(MAX_VIEW);
+  readonly seatSlot = new Uint8Array(MAX_VIEW);
+  readonly seatGen = new Uint16Array(MAX_VIEW);
   readonly span = new Uint32Array(MAX_VIEW);
   readonly grown = new Uint32Array(MAX_VIEW);
 }
@@ -370,8 +390,12 @@ export class ClientSession {
   looked: { id: number; health: number; food: number; torpor: number; taming: number; te: number; mating: number; tribe: string } | null = null;
   inventory: Inventory | null = null;
   open: { name: string; inventory: Inventory } | null = null;
-  /** The queue of the open container when it is a crafting station (OWN_STATION), or null. `kind` is the station's structure kind. */
-  station: { kind: number; jobs: { item: number; left: number; doneAt: number }[] } | null = null;
+  /**
+   * The open container when it is a crafting station (OWN_STATION), or null. `kind` is the station's structure kind and `ref`
+   * the structure; `out` the tick its fire is due to go out (0 when it does not burn); `lanes` what its fire makes by itself,
+   * each unit done at `doneAt` (0 while it waits); `jobs` its queue, a unit paused for want of fuel with `rest` ticks left.
+   */
+  station: { kind: number; ref: number; out: number; lanes: { item: number; doneAt: number }[]; jobs: { item: number; left: number; doneAt: number; rest: number }[] } | null = null;
   /** Oldest first. */
   readonly markers: { kind: number; x: number; y: number; z: number; tick: number }[] = [];
   /**
@@ -428,9 +452,11 @@ export class ClientSession {
 
   /**
    * `corrections` counts snapshots that moved the predicted body. `stateCorrections` counts those that changed only other
-   * predicted state. `unsent` counts commands too long for a message.
+   * predicted state. `transitions` counts those that changed which body it is or where it sits (a mount, a seat), which
+   * nothing predicts and are not counted as either. `unsent` counts commands too long for a message.
    */
-  readonly stats = { snapshots: 0, undecodable: 0, corrections: 0, stateCorrections: 0, clockJumps: 0, margin: 0, rttTicks: 0, bytesIn: 0, unsent: 0 };
+  readonly stats = { snapshots: 0, undecodable: 0, corrections: 0, stateCorrections: 0, transitions: 0, clockJumps: 0, margin: 0, rttTicks: 0, bytesIn: 0, unsent: 0 };
+  readonly prediction = new PredictionTrace();
   /** What is left to hide of the last correction. Add it to the body's position when drawing. */
   smoothX = 0;
   smoothY = 0;
@@ -450,6 +476,7 @@ export class ClientSession {
   private readonly w = new BitWriter(MAX_CLIENT_MESSAGE);
   private readonly r = new BitReader();
   private readonly serverBody = new Body();
+  private readonly passengerCompared = new Body();
   private lastNow = -1;
   private dilation = 1;
   private guardTick = 0;
@@ -563,6 +590,7 @@ export class ClientSession {
   update(nowMs: number, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number): void {
     if (this.state !== "active") return;
     let dt = this.lastNow < 0 ? 0 : nowMs - this.lastNow;
+    const frameMs = dt;
     this.lastNow = nowMs;
     if (dt > 100) this.hitch = true;
     if (dt > 250) dt = 250;
@@ -597,9 +625,11 @@ export class ClientSession {
       this.step(t);
     }
     // Too far behind to catch up by simulating, so skip. The server held the last input meanwhile.
+    const newestInput = this.simTick;
+    this.prediction.frame(frameMs, steps, Math.max(0, target - newestInput));
     if (this.simTick < target) this.simTick = target;
     if (steps > 0) {
-      this.sendInputs();
+      this.sendInputs(newestInput, steps);
       this.recenterNodes();
     }
   }
@@ -634,6 +664,7 @@ export class ClientSession {
       while (i < na && a!.id[i]! < id) i++;
       const n = out.count++;
       out.id[n] = id;
+      out.gen[n] = b.gen[j]!;
       out.kind[n] = b.kind[j]!;
       out.flags[n] = b.flags[j]!;
       out.level[n] = b.level[j]!;
@@ -648,9 +679,49 @@ export class ClientSession {
       for (let q = 0; q < 6; q++) out.colors[n * 6 + q] = b.colors[j * 6 + q]!;
       out.team[n] = b.team[j]!;
       out.seat[n] = b.seat[j]!;
+      out.seatSlot[n] = b.seatSlot[j]!;
+      out.seatGen[n] = b.seatGen[j]!;
       out.span[n] = b.span[j]!;
       out.grown[n] = b.grown[j]!;
+      const vehiclePose = b.vehiclePose[j]!;
+      out.vehiclePitch[n] = unpackVehiclePitch(vehiclePose);
+      out.vehicleRoll[n] = unpackVehicleRoll(vehiclePose);
+      out.steering[n] = unpackVehicleSteering(vehiclePose);
+      out.wheelAngle[n] = unpackVehicleWheel(b.vehicleWheel[j]!);
+      const ride = b.vehicleRide[j]!;
+      out.vehicleGroundPitch[n] = unpackVehicleGroundPitch(ride);
+      out.vehicleGroundRoll[n] = unpackVehicleGroundRoll(ride);
+      out.vehicleRideOffset[n] = unpackVehicleRideOffset(ride);
+      out.vehicleGrounded[n] = vehicleRideGrounded(ride) ? 1 : 0;
+      out.vehicleDoors[n] = b.vehicleDoors[j]!;
+      const drive = b.vehicleDrive[j]!;
+      out.vehicleGear[n] = unpackVehicleGear(drive);
+      out.vehicleRpm[n] = unpackVehicleRpm(drive);
+      out.vehicleShifting[n] = vehicleShifting(drive) ? 1 : 0;
       if (a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j]) {
+        const oldPose = a!.vehiclePose[i]!;
+        out.vehiclePitch[n] = unpackVehiclePitch(oldPose) + (out.vehiclePitch[n]! - unpackVehiclePitch(oldPose)) * k;
+        out.vehicleRoll[n] = unpackVehicleRoll(oldPose) + (out.vehicleRoll[n]! - unpackVehicleRoll(oldPose)) * k;
+        out.steering[n] = unpackVehicleSteering(oldPose) + (out.steering[n]! - unpackVehicleSteering(oldPose)) * k;
+        const oldRide = a!.vehicleRide[i]!;
+        out.vehicleGroundPitch[n] = unpackVehicleGroundPitch(oldRide) + (out.vehicleGroundPitch[n]! - unpackVehicleGroundPitch(oldRide)) * k;
+        out.vehicleGroundRoll[n] = unpackVehicleGroundRoll(oldRide) + (out.vehicleGroundRoll[n]! - unpackVehicleGroundRoll(oldRide)) * k;
+        out.vehicleRideOffset[n] = unpackVehicleRideOffset(oldRide) + (out.vehicleRideOffset[n]! - unpackVehicleRideOffset(oldRide)) * k;
+        out.vehicleGrounded[n] = vehicleRideGrounded(k < .5 ? oldRide : ride) ? 1 : 0;
+        let doors = 0;
+        for (let d = 0; d < MAX_VEHICLE_DOORS; d++) {
+          const was = vehicleDoor(a!.vehicleDoors[i]!, d);
+          doors = withVehicleDoor(doors, d, was + (vehicleDoor(b.vehicleDoors[j]!, d) - was) * k);
+        }
+        out.vehicleDoors[n] = doors;
+        const oldDrive = a!.vehicleDrive[i]!;
+        out.vehicleGear[n] = unpackVehicleGear(k < .5 ? oldDrive : drive);
+        out.vehicleRpm[n] = unpackVehicleRpm(oldDrive) + (out.vehicleRpm[n]! - unpackVehicleRpm(oldDrive)) * k;
+        out.vehicleShifting[n] = vehicleShifting(k < .5 ? oldDrive : drive) ? 1 : 0;
+        const oldWheel = unpackVehicleWheel(a!.vehicleWheel[i]!);
+        let wheelTurn = out.wheelAngle[n]! - oldWheel;
+        wheelTurn -= Math.floor((wheelTurn + TAU / 2) / TAU) * TAU;
+        out.wheelAngle[n] = oldWheel + wheelTurn * k;
         out.x[n] = dequantX(a!.qx[i]! + (b.qx[j]! - a!.qx[i]!) * k);
         out.y[n] = dequantY(a!.qy[i]! + (b.qy[j]! - a!.qy[i]!) * k);
         out.z[n] = dequantX(a!.qz[i]! + (b.qz[j]! - a!.qz[i]!) * k);
@@ -714,13 +785,18 @@ export class ClientSession {
     const inp = this.inputs;
     const buttons = inp.buttons[i]!;
     // The body steps with the move parameters of the kind the server last sent: its own species, or its mount's once tamed.
-    stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.tamedMove[this.own.kind] ?? this.move!, TICK_DT);
+    const vehicle = this.registry.vehicle[this.own.kind];
+    if (vehicle) stepVehicleBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, TICK_DT);
+    // Any vehicle seat slot other than 0 holds the body still, as the server does (server/game.ts).
+    else if (this.own.seatSlot === 0) stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.tamedMove[this.own.kind] ?? this.move!, TICK_DT);
+    else this.own.yaw = inp.yaw[i]!;
     if (this.driving >= 0) {
       // A mount's bite is stepped here as the server steps it, so both agree on the body's action.
       const jaws = this.registry.weapon[this.own.kind];
-      if (jaws) {
+      if (jaws && !vehicle) {
         const was = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
         stepAction(this.own, buttons, buttons & ~was, jaws);
+        biteCost(this.own, this.registry.biteStamina[this.own.kind]!);
       }
       this.bodies[t & (HISTORY - 1)]!.copy(this.own);
       this.bodyTick[t & (HISTORY - 1)] = t;
@@ -745,13 +821,15 @@ export class ClientSession {
     this.bodyTick[t & (HISTORY - 1)] = t;
   }
 
-  private sendInputs(): void {
+  private sendInputs(newest: number, sampled: number): void {
+    // Every freshly sampled tick must be sent, including a short tap at the start of a catch-up frame.
+    // The existing wire count holds eight ticks, the same bound as one update's simulation work.
     let count = 1;
-    while (count < INPUT_REDUNDANCY && this.inputs.has(this.simTick - count)) count++;
+    while (count < Math.max(INPUT_REDUNDANCY, sampled) && this.inputs.has(newest - count)) count++;
     const w = this.w;
     w.reset();
     // The last argument is how far behind the newest snapshot remote entities were drawn when the newest input was sampled.
-    writeInputs(w, this.inputs, this.needFull ? 0 : this.latestSnapshot, this.simTick, count, this.latestSnapshot - (this.shown > 0 ? this.shown : this.renderClock - this.remoteDelay));
+    writeInputs(w, this.inputs, this.needFull ? 0 : this.latestSnapshot, newest, count, this.latestSnapshot - (this.shown > 0 ? this.shown : this.renderClock - this.remoteDelay));
     this.conn.send(CH_UNRELIABLE, w.bytes());
   }
 
@@ -942,9 +1020,13 @@ export class ClientSession {
       }
     } else if (component === OWN_STATION) {
       const kind = r.u16();
-      const jobs: { item: number; left: number; doneAt: number }[] = [];
-      for (let k = r.u8(); k > 0 && !r.overflow; k--) jobs.push({ item: r.u16(), left: r.u8(), doneAt: r.u32() });
-      if (!r.overflow) this.station = kind === 0 ? null : { kind, jobs };
+      const ref = r.u32();
+      const out = r.u32();
+      const lanes: { item: number; doneAt: number }[] = [];
+      for (let k = r.u8(); k > 0 && !r.overflow; k--) lanes.push({ item: r.u16(), doneAt: r.u32() });
+      const jobs: { item: number; left: number; doneAt: number; rest: number }[] = [];
+      for (let k = r.u8(); k > 0 && !r.overflow; k--) jobs.push({ item: r.u16(), left: r.u8(), doneAt: r.u32(), rest: r.u32() });
+      if (!r.overflow) this.station = kind === 0 ? null : { kind, ref, out, lanes, jobs };
     } else if (component === OWN_OPEN) {
       // A station's queue comes after it is opened.
       this.station = null;
@@ -1038,7 +1120,7 @@ export class ClientSession {
       const number = r.u8();
       const count = r.u8();
       const list = [];
-      for (let k = 0; k < count; k++) list.push({ kind: r.u16(), name: r.string(MAX_NAME_BYTES), x: r.f32(), z: r.f32(), readyAt: r.u32() });
+      for (let k = 0; k < count; k++) list.push({ kind: r.u16(), name: r.string(MAX_PLACE_NAME_BYTES), x: r.f32(), z: r.f32(), readyAt: r.u32() });
       if (r.overflow) return;
       this.choosing = why;
       this.placesList = number;
@@ -1266,18 +1348,47 @@ export class ClientSession {
 
   /** On a mismatch with the body predicted for `tick`, rewinds and replays. */
   private reconcile(tick: number, sb: Body): void {
+    const passenger = this.driving < 0 && sb.seatSlot !== 0 && sb.seat > 0;
     if (tick >= this.simTick) {
       // The server is at or past the prediction (join, stall), so adopt its state.
+      this.prediction.adopt(tick, this.simTick);
       this.own.copy(sb);
       this.ownPrev.copy(sb);
+      // This is the state AFTER tick, so no later update may step tick (or an earlier one) again.
+      // Keep the input clock's elapsed time: moving its clock here would add the stalled interval twice.
+      this.simTick = tick;
+      const slot = tick & (HISTORY - 1);
+      this.bodies[slot]!.copy(sb);
+      this.bodyTick[slot] = tick;
       return;
     }
     const slot = tick & (HISTORY - 1);
     const predicted = this.bodyTick[slot] === tick;
-    if (predicted && this.bodies[slot]!.equals(sb)) return;
-    const moved = !predicted || !this.bodies[slot]!.samePosition(sb);
-    if (predicted) {
-      if (moved) this.stats.corrections++;
+    let compared = this.bodies[slot]!;
+    const pinned = passenger && predicted && compared.seat === sb.seat && compared.seatSlot === sb.seatSlot && compared.seatGen === sb.seatGen;
+    if (pinned) {
+      // The host owns passenger movement. Look, weapon actions, ammo, bloom and recoil still predict normally.
+      this.passengerCompared.copy(compared);
+      compared = this.passengerCompared;
+      compared.x = sb.x; compared.y = sb.y; compared.z = sb.z;
+      compared.vx = sb.vx; compared.vy = sb.vy; compared.vz = sb.vz;
+      compared.grounded = sb.grounded;
+    }
+    const matches = predicted && compared.equals(sb);
+    if (matches && !passenger) return;
+    if (predicted && !matches && this.prediction.enabled) {
+      const i = tick & this.inputs.mask;
+      this.prediction.record(tick, this.simTick, this.stats.margin, this.driving, compared, sb,
+        [this.inputs.moveX[i]!, this.inputs.moveZ[i]!, this.inputs.buttons[i]!, this.inputs.yaw[i]!, this.inputs.pitch[i]!]);
+    }
+    const moved = !predicted || !compared.samePosition(sb);
+    // The server changed which body this is or where it sits (a mount, a seat, getting out, being pulled out), or what the
+    // vehicle it drives carries (someone getting in or out of it, its hold changed). Nothing
+    // predicts when the server commits one, so it is no misprediction; it is taken as told and shown at once.
+    const changed = predicted && (compared.kind !== sb.kind || compared.vehicle !== sb.vehicle || compared.seat !== sb.seat || compared.seatSlot !== sb.seatSlot || compared.seatGen !== sb.seatGen || compared.vehiclePayloadMass !== sb.vehiclePayloadMass);
+    if (predicted && !matches) {
+      if (changed) this.stats.transitions++;
+      else if (moved) this.stats.corrections++;
       else this.stats.stateCorrections++;
     }
     if (this.simTick - tick >= HISTORY) {
@@ -1301,12 +1412,17 @@ export class ClientSession {
       } else if (last !== 0) {
         const i = last & this.inputs.mask;
         const held = ++gap <= INPUT_HOLD_TICKS;
-        this.inputs.set(t, held ? this.inputs.moveX[i]! : 0, held ? this.inputs.moveZ[i]! : 0, this.inputs.yaw[i]!, this.inputs.pitch[i]!, this.inputs.buttons[i]! & (held ? BUTTON_MASK : INPUT_KEPT));
+        // Past the hold the server stops a quiet car on its handbrake (server/game.ts); replay the same.
+        const quiet = this.registry.vehicle[this.own.kind] ? BTN_JUMP : this.inputs.buttons[i]! & INPUT_KEPT;
+        this.inputs.set(t, held ? this.inputs.moveX[i]! : 0, held ? this.inputs.moveZ[i]! : 0, this.inputs.yaw[i]!, this.inputs.pitch[i]!, held ? this.inputs.buttons[i]! & BUTTON_MASK : quiet);
         last = t;
       } else this.inputs.set(t, 0, 0, Math.round((this.ownYaw / TAU) * YAW_UNITS) & 0xffff, 0, 0);
       if (t === this.simTick) this.ownPrev.copy(this.own);
       this.step(t);
     }
+    // Replaying a seated body only steps look/action/aim. Its spatial state is the latest authoritative pin;
+    // rendering attaches it to the interpolated host, so it needs no independent correction fade.
+    if (passenger || changed) { this.smoothX = this.smoothY = this.smoothZ = 0; return; }
     // Keep drawing from where the body appeared to be, and let that fade. A large jump (a teleport) is shown at once.
     const dx = wasX - this.own.x + this.smoothX;
     const dy = wasY - this.own.y + this.smoothY;

@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
@@ -8,6 +8,7 @@ import type { NodeSpot } from "../../shared/world/nodes.ts";
 import { describe } from "../../tools/map.ts";
 import { readLayers, writeLayers } from "../../tools/map/layers.ts";
 import { readGrey, writeGrey } from "../../tools/map/png.ts";
+import { lakesMap } from "../fixtures/lakes.ts";
 import { busyMap } from "../fixtures/map.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -27,8 +28,20 @@ test("a map unpacked into a folder of layers and built from it again is the same
     "30 node slots a chunk, by zones of 16 m: 1 core:palm x1, bare x2; 2 core:fig x1, core:fern x2",
     "spawn points: Shore (20, 30.5), Çà et là (100, 150)",
     "spawn regions: 12 of core:spawns_beach at (30, 60.5), 0 of test:elsewhere at (100, 150)",
-    "not in the core content: test:elsewhere",
+    "parked vehicles: 2 of core:compact, 1 of test:hauler",
+    "not in the core content: test:elsewhere, test:hauler",
   ]);
+});
+
+test("a map's water unpacked into its picture of squares and its list of bodies builds the same file again", () => {
+  const file = writeMap(lakesMap());
+  const folder = join(dir, "lakes");
+  writeLayers(parseMap(file), folder);
+  expect(writeMap(readLayers(folder))).toEqual(file);
+  expect(describe(file).at(-1)).toBe("4 bodies of water in 1932 squares of 2 m over 10 chunks, surfaces 1.25 to 20.00 m: High Pond, Low Pond, Channel");
+  // North up: the high pond, at x 190 and z 190 from the south-east corner, is in the picture's upper left quarter.
+  const squares = readGrey(new Uint8Array(readFileSync(join(folder, "water.png"))), "water.png");
+  expect([squares.width, squares.data[(128 - 95) * 128 + (128 - 95)]]).toEqual([128, 1]);
 });
 
 test("layers written by hand: pictures are north up, a raw layer reads like its picture, and a wrong one is named", () => {

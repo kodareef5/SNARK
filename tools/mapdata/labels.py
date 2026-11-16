@@ -13,15 +13,31 @@ def local(lat, lon): return _tm.transform(lon, lat)
 
 # Our footprints, with a grid to find the one a point falls in.
 feet, grid = {}, collections.defaultdict(list)
+# Footprints split.py cut from a building's parts: each part's own height, and the podium round them none of the building's.
+part_of, podium = {}, set()
+# With split_taller_first a piece split from an OpenStreetMap building is labelled by that building alone, wherever its
+# centre falls, and another building's centre falling on it (a tower drawn across a casino) adds no name or height.
+own_way = json.load(open(os.path.join(MAIN, "city.json"))).get("footprints", {}).get("split_taller_first", False)
+way_of, host_of, way_names = {}, {}, {}
 for f in json.load(open(os.path.join(HERE, "..", "base", "buildings.geojson")))["features"]:
     g = f["geometry"]
     polys = [g["coordinates"]] if g["type"] == "Polygon" else g["coordinates"]
+    if f["properties"].get("osm_part"): part_of[f["properties"]["id"]] = f["properties"]["osm_part"]
+    if f["properties"].get("parts_remainder"): podium.add(f["properties"]["id"])
+    if own_way and f["properties"].get("osm_way") and not f["properties"].get("parts_remainder"): way_of[f["properties"]["id"]] = f["properties"]["osm_way"]
+    if own_way and f["properties"].get("host"): host_of[f["properties"]["id"]] = f["properties"]["host"]
     for poly in polys:
         ring = poly[0]; xs = [p[0] for p in ring]; ys = [p[1] for p in ring]
         a = sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(ring, ring[1:])) / 2
         fid = f["properties"]["id"]
         if fid in feet and feet[fid]["area"] >= abs(a): continue
         feet[fid] = {"ring": ring, "box": (min(xs), min(ys), max(xs), max(ys)), "area": abs(a), "e": sum(xs) / len(xs), "n": sum(ys) / len(ys)}
+piece_of_way = collections.defaultdict(list)
+for fid, w in way_of.items(): piece_of_way[w].append(fid)
+part_tags = {}
+if part_of and os.path.exists(os.path.join(MAIN, "raw", "osm", "features.json")):
+    wanted = set(part_of.values())
+    part_tags = {el["id"]: el.get("tags", {}) for el in json.load(open(os.path.join(MAIN, "raw", "osm", "features.json")))["elements"] if el["type"] == "way" and el["id"] in wanted}
 for fid, ft in feet.items():
     x0, y0, x1, y1 = ft["box"]
     for cx in range(int(x0 // 50), int(x1 // 50) + 1):
@@ -91,15 +107,20 @@ for el in json.load(open(os.path.join(MAIN, "raw", "osm", "all.json")))["element
     if lat is None: continue
     e, n = local(lat, lon)
     if "building" in t:
-        fid = footprint_at(e, n, 25.0)
-        if fid is None: loose += 1; continue
-        L = labels[fid]; L["osm"] += 1
-        if t.get("name"): L["names"].append(t["name"])
-        k = kind_of(t)
-        if k: L["kinds"][k] += 3
-        if metres(t.get("height")): L["heights"].append((metres(t["height"]), bare(t["height"])))
-        if re.match(r"^\d+$", t.get("building:levels", "")): L["levels"].append(int(t["building:levels"]))
-        if t.get("addr:housenumber") and t.get("addr:street") and not L["address"]: L["address"] = t["addr:housenumber"] + " " + t["addr:street"]
+        if t.get("name"): way_names[el["id"] if el["type"] == "way" else -el["id"]] = t["name"]
+        owned = piece_of_way.get(el["id"] if el["type"] == "way" else -el["id"], [])
+        found = footprint_at(e, n, 25.0) if not owned else None
+        if not owned and found is None: loose += 1; continue
+        if not owned and found in way_of: continue
+        for fid in owned or [found]:
+            L = labels[fid]; L["osm"] += 1
+            if t.get("name"): L["names"].append(t["name"])
+            k = kind_of(t)
+            if k: L["kinds"][k] += 3
+            own = fid not in part_of and fid not in podium
+            if own and metres(t.get("height")): L["heights"].append((metres(t["height"]), bare(t["height"])))
+            if own and re.match(r"^\d+$", t.get("building:levels", "")): L["levels"].append(int(t["building:levels"]))
+            if t.get("addr:housenumber") and t.get("addr:street") and not L["address"]: L["address"] = t["addr:housenumber"] + " " + t["addr:street"]
         continue
     fid = footprint_at(e, n) if el["type"] == "node" else None
     k = kind_of(t)
@@ -109,12 +130,23 @@ for el in json.load(open(os.path.join(MAIN, "raw", "osm", "all.json")))["element
         if k in ("fire_station", "police_station", "city_hall", "courthouse", "library", "hospital", "school", "university", "museum", "place_of_worship", "theatre", "hotel", "stadium", "convention_center") and feet[fid]["area"] < 4000:
             L["tenant"] = (k, t.get("name"))
         continue
-    what = (t.get("leisure") in ("park", "garden", "marina", "golf_course", "stadium", "beach_resort", "dog_park") and t["leisure"]) or (t.get("natural") == "beach" and "beach") or \
+    # A board with its words mapped, standing on posts by a road: a welcome sign, a roadside sign.
+    board = el["type"] == "node" and t.get("inscription") and (t.get("information") == "board" or t.get("advertising") == "board" or t.get("man_made") == "advertising")
+    what = (board and "board") or (t.get("leisure") in ("park", "garden", "marina", "golf_course", "stadium", "beach_resort", "dog_park") and t["leisure"]) or (t.get("natural") == "beach" and "beach") or \
            (t.get("man_made") in ("bridge", "pier", "tower", "crane", "breakwater", "storage_tank", "wastewater_plant") and t["man_made"]) or ("bridge" in t and "bridge") or \
            (t.get("historic") and "monument") or (t.get("tourism") in ("artwork", "attraction", "viewpoint", "museum") and t["tourism"]) or (t.get("amenity") == "fountain" and "fountain") or \
            (t.get("place") and t["place"]) or (t.get("railway") == "station" and "station") or (t.get("public_transport") == "station" and "station") or (k and k)
     if what and (t.get("name") or what in ("pier", "crane", "bridge", "storage_tank")):
         places.append({"name": t.get("name"), "kind": what, "e": round(e, 1), "n": round(n, 1), "lat": lat, "lon": lon, "in_footprint": fid})
+        if what == "board" and re.fullmatch(r"\d+(\.\d+)?", t.get("direction", "")): places[-1]["facing"] = float(t["direction"]) % 360
+
+for fid, host in host_of.items():
+    if not labels[fid]["names"] and way_names.get(host): labels[fid]["names"].append(way_names[host])
+for fid, way in part_of.items():
+    t = part_tags.get(way, {}); L = labels[fid]
+    if t.get("name"): L["names"].insert(0, t["name"])
+    if metres(t.get("height")): L["heights"].append((metres(t["height"]), bare(t["height"])))
+    if re.match(r"^\d+$", t.get("building:levels", "")): L["levels"].append(int(t["building:levels"]))
 
 # OpenStreetMap heights with no unit are metres by its rules, but imports have brought in feet (Tampa's). Where the
 # city's bare heights run near 3.28 times USA Structures' at the median, a bare height 2.6 to 4.2 times the survey's is
@@ -122,7 +154,7 @@ for el in json.load(open(os.path.join(MAIN, "raw", "osm", "all.json")))["element
 pairs = []
 for fid, L in labels.items():
     s = attrs.get(str(fid), {}).get("HEIGHT")
-    if L["heights"] and s and float(s) > 2:
+    if L["heights"] and s and float(s) > 2 and fid not in part_of:
         h, is_bare = max(L["heights"])
         if is_bare: pairs.append((fid, h / float(s)))
 ratios = sorted(r for _, r in pairs)
@@ -140,7 +172,8 @@ print("height units: %d bare OpenStreetMap heights beside USA Structures, median
 out = {}
 for fid, L in labels.items():
     a = attrs.get(str(fid), {})
-    survey_h = a.get("HEIGHT")
+    # A part's survey height is its podium's: a part with no height of its own takes its storeys instead.
+    survey_h = None if fid in part_of else a.get("HEIGHT")
     h = max(L["heights"])[0] if L["heights"] else (round(float(survey_h), 1) if survey_h else None)
     if fid in in_feet: h = round(h * 0.3048, 1)
     use = a.get("OCC_CLS")

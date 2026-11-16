@@ -1,4 +1,4 @@
-import { RUIN_SHAPES, ruinKind, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
+import { finished, RUIN_SHAPES, ruinKind, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import type { Footprint, Site, StaticPiece } from "./statics.ts";
 
 export type Point = readonly [number, number];
@@ -55,12 +55,13 @@ export const SIDES = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
 interface Entry { x: number; y: number; z: number; yaw: number; coreX: number; coreZ: number; crossing?: boolean; }
 
 export class Mason {
+  readonly assemblies: StaticPiece[][] = [];
   readonly pieces: StaticPiece[] = [];
   readonly clear: { x: number; z: number; radius: number }[] = [];
   readonly routes: { x: number; y: number; z: number; yaw: number; floors: number }[] = [];
   readonly entries: Entry[] = [];
   readonly alternatives: { entry: Entry; support: Point; path: { x: number; y: number; z: number }[] }[] = [];
-  readonly escapes: { points: { x: number; y: number; z: number }[] }[] = [];
+  readonly escapes: { bidirectional?: boolean; points: { x: number; y: number; z: number }[] }[] = [];
   readonly rooms: { kind: string; points: { x: number; y: number; z: number }[] }[] = [];
   readonly falls: { mode: string; u: number; v: number }[] = [];
   readonly wings: { tiles: number; height: number; u: number; v: number }[] = [];
@@ -70,7 +71,8 @@ export class Mason {
   point(u: number, v: number): Point { return worldPoint(this.frame, u, v); }
   put(shape: RuinShape, u: number, y: number, v: number, finish: RuinFinish = "concrete", turn = 0): void {
     const [x, z] = worldPoint(this.frame, u, v);
-    this.pieces.push({ kind: ruinKind(shape, finish), x, y: this.base + y, z, yaw: ((this.frame.yaw + turn) % 360 + 360) % 360 });
+    // A shape the kit has in no such finish (a floor plate is concrete) is concrete.
+    this.pieces.push({ kind: ruinKind(shape, finished(shape, finish) ? finish : "concrete"), x, y: this.base + y, z, yaw: ((this.frame.yaw + turn) % 360 + 360) % 360 });
   }
   cover(u: number, v: number, radius: number): void {
     const [x, z] = worldPoint(this.frame, u, v); this.clear.push({ x, z, radius });
@@ -83,21 +85,6 @@ export class Mason {
       y += h;
     }
   }
-  escape(t: Tile, floors: number, core: Tile): void {
-    const dir = floors % 2 === 0 ? -1 : 1;
-    const near = t.u < core.u ? 1 : -1;
-    const corners = [[near * 2, dir * 2], [-near * 2, dir * 2], [-near * 2, -dir * 2], [near * 2, -dir * 2]];
-    const points: { x: number; y: number; z: number }[] = [];
-    for (const [u, v] of [[core.u + (floors % 2 === 0 ? -1.5 : 1.5), core.v + dir * 5.5], [t.u + near * 2, t.v + dir * 5.5]]) {
-      const [x, z] = this.point(u!, v!); points.push({ x, y: this.base + floors * 4, z });
-    }
-    for (let step = 0; step <= floors * 2; step++) {
-      const [du, dv] = corners[step % 4]!; const y = floors * 4 - step * 2;
-      const u = t.u + du!; const v = t.v + dv!;
-      this.floor([u, v], y, 4); const [x, z] = this.point(u, v); points.push({ x, y: this.base + y, z });
-    }
-    this.escapes.push({ points }); this.cover(t.u, t.v, 16);
-  }
   stairs(t: Tile, floors: number): void {
     // Banyan prop roots reach beyond their planting cell into the stair approach.
     this.cover(t.u, t.v, 20);
@@ -105,11 +92,21 @@ export class Mason {
     for (let f = 0; f < floors; f++) {
       const dir = f % 2 === 0 ? 1 : -1;
       const u = t.u + (f % 2 === 0 ? -1.5 : 1.5);
-      for (let n = 0; n < 11; n++) this.put("step", u, f * 4 + (n + 1) * (4 / 11) - .2, t.v + dir * (-2.5 + n * .5));
-      this.put("landing", t.u, (f + 1) * 4 - .2, t.v + dir * 3.25);
+      this.put("flight", u, f * 4 + 2, t.v - dir * .5, "concrete", dir > 0 ? 0 : 180);
+      this.put("landing", t.u, (f + 1) * 4 - .2, t.v + dir * 3);
     }
     const [x, z] = worldPoint(this.frame, t.u, t.v);
     this.routes.push({ x, y: this.base, z, yaw: this.frame.yaw, floors });
+  }
+  stairExit(t: Tile, floors: number, core: Tile): void {
+    this.stairs(t, floors);
+    const dir = floors % 2 === 0 ? -1 : 1; const lane = floors % 2 === 0 ? -1.5 : 1.5;
+    const points = [[core.u + lane, floors * 4, core.v + dir * 5.5], [t.u + lane, floors * 4, t.v + dir * 5.5], [t.u + lane, floors * 4, t.v + dir * 3.25]];
+    for (let f = floors - 1; f >= 0; f--) {
+      const d = f % 2 === 0 ? 1 : -1; const u = t.u + (f % 2 === 0 ? -1.5 : 1.5);
+      points.push([u, (f + 1) * 4, t.v + d * 3.25], [u, f * 4, t.v - d * (f ? 3.25 : 3.5)]);
+    }
+    this.escapes.push({ bidirectional: true, points: points.map(([u, y, v]) => { const [x, z] = this.point(u!, v!); return { x, y: this.base + y!, z }; }) });
   }
 }
 
@@ -146,16 +143,16 @@ export function reserveRoutes(m: Mason): number {
     const point = (u: number, y: number, v: number): { x: number; y: number; z: number } => ({ x: r.x + u * c + v * s, y: r.y + y, z: r.z - u * s + v * c });
     for (let f = 0; f < r.floors; f++) {
       const dir = f % 2 === 0 ? 1 : -1; const u = f % 2 === 0 ? -1.5 : 1.5;
-      paths.push([point(u, f * 4, -dir * 3.25), point(u, (f + 1) * 4, dir * 3.25), point(-u, (f + 1) * 4, dir * 3.25)]);
+      paths.push([point(u, f * 4, -dir * 3.25), point(u, (f + 1) * 4, dir * 2.25), point(u, (f + 1) * 4, dir * 3.25), point(-u, (f + 1) * 4, dir * 3.25)]);
     }
     const dir = r.floors % 2 === 0 ? -1 : 1;
     paths.push([point(dir * 1.5, r.floors * 4, dir * 3.25), point(dir * 1.5, r.floors * 4, dir * 5.5)]);
   }
-  const removable = new Set(["fin4", "fin8", "fin16", "crown", "zcore", "zroof8", "zroof16", "zbalcony", "sill8", "sill4"]);
+  const removable = new Set(["fin4", "fin8", "fin16", "crown", "zcore", "zroof8", "zroof16", "zpitch4", "zpitch8", "zpitch16", "zbalcony", "sill8", "sill4", "zshrub", "zrooftree"]);
   const before = m.pieces.length;
   const kept = m.pieces.filter((p) => {
     const name = p.kind.split("_")[1] as RuinShape;
-    if (["step", "landing", "floor4", "floor8", "floor16"].includes(name)) return true;
+    if (["flight", "step", "landing", "floor4", "floor8", "floor16"].includes(name)) return true;
     if (!removable.has(name) && !entryPaths.length) return true;
     const [w, h, d] = RUIN_SHAPES[name]; const a = p.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
     for (const points of [...(removable.has(name) ? paths : []), ...entryPaths]) for (let i = 1; i < points.length; i++) {
@@ -171,5 +168,7 @@ export function reserveRoutes(m: Mason): number {
     }
     return true;
   });
-  m.pieces.length = 0; for (const p of kept) m.pieces.push(p); return before - kept.length;
+  const present = new Set(kept);
+  for (const group of m.assemblies) if (group.some((p) => !present.has(p))) for (const p of group) present.delete(p);
+  m.pieces.length = 0; for (const p of kept) if (present.has(p)) m.pieces.push(p); return before - m.pieces.length;
 }

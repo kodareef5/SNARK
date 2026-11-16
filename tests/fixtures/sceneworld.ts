@@ -1,6 +1,6 @@
 // A small world for the scene to draw with materials: the core content and a few things of its own, a creature (the
-// tube), the tube again as a thing on no bones, a building piece, that again as a thing that lies tilted, and a held
-// item, in a pack split as a build splits it, with their textures in the rgba variant. Levels, surfaces and textures come over a network made of numbers to a
+// tube) and a saddle it may wear, the tube again as a thing on no bones, a building piece, that again as a thing that
+// lies tilted, and a held item, in a pack split as a build splits it, with their textures in the rgba variant. Levels, surfaces and textures come over a network made of numbers to a
 // card that holds only what packets upload, and the software rasterizer draws each frame from the same packets.
 
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -18,7 +18,7 @@ import type { Manifest } from "../../shared/pack/manifest.ts";
 import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { MAP_ROLES } from "../../shared/pack/texture.ts";
-import { GEAR_COUNT, GEAR_HELD } from "../../shared/sim/entities.ts";
+import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { nodeForms } from "../../shared/world/nodes.ts";
@@ -39,6 +39,8 @@ export const PANEL = "test:panel";
 export const CLUB = "test:club";
 export const POST = "test:post";
 export const SHARD = "test:shard";
+/** A saddle the tube wears, drawn as its worn mesh on the tube's bones. Its mesh sorts after every other, so none is numbered otherwise for it. */
+export const TUBE_SADDLE = "test:tube_saddle";
 export const W = 160;
 export const H = 90;
 const HORN = 177;
@@ -56,7 +58,21 @@ const DEFS: readonly Def[] = [
   { type: "item", class: "weapon", id: CLUB, stack: 1, weight: 1, color: 5, weapon: { kind: "melee", damage: 10, type: "melee", uses: 10, mesh: CLUB, hold: "tool" } },
   // The panel again as a thing that lies as it landed, tilted, as an arrow does. It is drawn hanging from its origin.
   { type: "prop", class: "projectile", id: SHARD, mesh: PANEL, color: 5, radius: 0.1, height: 0.1, pitched: true },
+  { type: "item", class: "saddle", id: TUBE_SADDLE, stack: 1, weight: 10, color: 3, saddle: { fits: TUBE, armor: 25, seats: [{ id: "rider", driver: true, anchor: [0, 2, 0], entry: [0.85, 0, 0] }] } },
 ];
+
+/**
+ * The tube's saddle: a collar where its upper bone begins, every vertex on that bone, in two levels, the second a little
+ * smaller and said to lie 2 cm from the first. Flat, in a colour of its own.
+ */
+function tubeSaddleMesh(): SourceMesh {
+  const level = (half: number, error?: number) => {
+    const lod = boxMesh([half, 0.06, half], 12);
+    for (let i = 1; i < lod.positions.length; i += 3) lod.positions[i]! += 1.1;
+    return { ...lod, bones: new Uint8Array(24).fill(1), ...(error === undefined ? {} : { error }) };
+  };
+  return { id: `${TUBE_SADDLE}/worn`, skeleton: TUBE, rig: TUBE, lods: [level(0.32), level(0.3, 0.02)] };
+}
 
 /**
  * A square two metres across whose picture is laid a metre wide, so it runs across the piece twice and on into the
@@ -146,7 +162,7 @@ export function sceneSet(pixels = 64, layered = false): SceneSet {
   if (layered) tube.materials![0]!.layer = tube.textures!.push({ id: `${TUBE}/layer`, role: "layer", top: pixels }) - 1;
   // Drawn flat, the tube's horn is the palette colour the build finds nearest its pictures (D154), not the fixture's yellow.
   for (const lod of tube.lods) lod.colors = lod.colors.map((c) => (c === 6 ? HORN : c));
-  const meshes = [...grayboxMeshes(DEFS), ...mannequinMeshes(), ...weaponMeshes(), tube, panelMesh(), clubMesh()];
+  const meshes = [...grayboxMeshes(DEFS), ...mannequinMeshes(), ...weaponMeshes(), tube, panelMesh(), clubMesh(), tubeSaddleMesh()];
   const { files, manifest } = splitPack(buildPack(meshes, defaultPalette(), [...authoredClips(), ...tubeClips()], [TUBE_RIG]), "scene");
   // Planks in two browns, with every fourth square of them clear.
   const planks = picture(64, (x, y) => (((x >> 3) + (y >> 3)) & 3) === 0 ? [150, 110, 70, 0] : (x >> 3) & 1 ? [170, 125, 80, 255] : [120, 85, 55, 255]);
@@ -169,6 +185,8 @@ export interface Body {
   colors?: readonly number[];
   /** The item in its hand, by id. */
   held?: string;
+  /** The saddle a creature wears, by id. */
+  saddle?: string;
 }
 
 /**
@@ -210,6 +228,7 @@ export function sceneWorld(net: NetOptions = {}, tier: Partial<Tier> = {}, set =
       [remote.id[n], remote.kind[n], remote.x[n], remote.y[n], remote.z[n], remote.yaw[n], remote.flags[n]] = [100 + n, kind(id), x, more.y ?? 0, z, more.yaw ?? Math.PI, 1];
       remote.colors.set(more.colors ?? [], n * 6);
       if (more.held) remote.gear[n * GEAR_COUNT + GEAR_HELD] = kind(more.held);
+      if (more.saddle) remote.gear[n * GEAR_COUNT + GEAR_WORN] = kind(more.saddle);
       return n;
     },
     /**

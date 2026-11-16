@@ -147,6 +147,39 @@ Several people can work in one folder at once if each owns a script.
 in five short files, built by
 `bun run art -- --source tools/blender/example demo:pup`.
 
+## A vehicle
+
+A vehicle is a creature asset with no clips: `clips`, `feet` and `gaits` are
+empty, and each part is rigid, every vertex of it on one bone. The client
+poses the bones by name (`client/core/render/characters.ts`): the wheels turn
+and steer, the doors swing on their hinges, the steering wheel spins. Its
+content (`content/vehicles/`) gives the hull it is driven, hit and parked by,
+so it needs no hit capsules. Its rig, sockets and closed size are a measured
+contract the seats depend on, kept beside the asset (`content/vehicles/compact-art.ts` for the compact) and held to
+the built pack by a test. Its paint is colour region 0, which the species'
+colours dye as they dye a creature's hide, and its materials carry a hurt
+picture (dents, scrapes, cracked glass) and a decay picture (burnt, rusted)
+as a creature's do, so a damaged car looks damaged and a dead one burnt out.
+
+`core/vehicles/compact/` is the first, and the pattern for the rest:
+
+- `shape.py` holds its curves and numbers, `parts.py` the tools, `rig.py` the
+  bones and `model.py` the car: the body lofted along its length and cut open
+  with Blender's manifold booleans (cabin, windows, wheel wells, recesses that
+  follow the surface for lamps and grilles), the doors cut from the body, every
+  face tagged with what it is (paint, tread, glass, leather...) and laid out on
+  the three materials' pictures by its own projection, so the layout depends
+  on nothing Blender might change.
+- `tex/bake.py` and `tex/paint.py` make every picture from that layout: each
+  texel is placed on the car and painted by what it is and where
+  (`tex/PROVENANCE.md`). `model.py` stops a build whose layout is not the one
+  the pictures were painted for.
+- A glass pane is a closed slab whose inside face is cut out of the picture,
+  so from within the cabin the glass is not there, and from outside it is.
+- Its wrecks are a pieces asset built from the same model on the same layout
+  (`core/vehicles/compact_wreck/`), painted as the car's last stage of decay,
+  for a map to set in its streets as statics.
+
 ## Rigid pieces
 
 `kind: "pieces"` is for structure pieces and other rigid meshes: one script
@@ -217,8 +250,10 @@ pieces: [{ id: "core:pick", object: "pick", hold: "prop_r", dropped: "auto", ico
   or of an item with no lying mesh, as the bag.
 - `icon`: the view its inventory picture is drawn from, where the usual
   three-quarter view with its length on the diagonal does not suit it: angles
-  in radians round and above, `roll` about the view, and `zoom` past the
-  framing that fits it.
+  in radians round and above, `roll` about the view, `zoom` past the
+  framing that fits it, and `shift`, the middle of the picture moved right and
+  up as shares of that framing's half side: with a zoom, the part of a long
+  thing that says what it is (the spear's head).
 
 Its materials, levels and budgets are any piece's. Seen closer than anything
 else in first person, a held piece is worth its finest level.

@@ -1,6 +1,9 @@
 // Dense indices are assigned in id order, so every process that loads the same definitions gets the same indices and hash.
 // Index 0 is reserved. It marks an empty structure slot and stands in for content that no longer exists.
 
+import { validVehicleSurface } from "../world/vehicle-surface.ts";
+import { validateVehicleDefinition, type VehicleDefinition } from "../sim/vehicle.ts";
+import { validateSeats, type Seat } from "../sim/seats.ts";
 import { BIRTH_SCALE } from "../sim/breeding.ts";
 import type { TameParams } from "../sim/taming.ts";
 import { TICK_RATE } from "../coords.ts";
@@ -16,7 +19,7 @@ import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, 
 import { hullOf, hullTable, type HullDef } from "../world/convex.ts";
 import type { PartTable } from "../world/structures.ts";
 import { defFaults, refFaults } from "./classes.ts";
-import { PIECE_ROLES, shapeHalf, type Def, type NodeShape, type RenameDef, type SpeciesDef, type WeaponFacet } from "./defs.ts";
+import { PIECE_ROLES, shapeHalf, type Def, type NodeShape, type RenameDef, type SpeciesDef, type StructureDef, type WeaponFacet } from "./defs.ts";
 
 export const MISSING = 0;
 export const MAX_STRUCTURE_HALF = 16;
@@ -66,6 +69,7 @@ export interface Registry {
   readonly halfZ: Float32Array;
   /** Null for everything that is not a species. */
   readonly move: readonly (MoveParams | null)[];
+  readonly vehicle: readonly (VehicleDefinition | null)[];
   /** Item columns, zero for content that is not an item. See shared/sim/items.ts. */
   readonly stack: Uint16Array;
   readonly weight: Float32Array;
@@ -143,11 +147,16 @@ export interface Registry {
   /** Per species: the colours each region of a wild one may take, and the palette colours a mutation may give a region. Null for everything else. */
   readonly colorSet: readonly (ColorSet | null)[];
   readonly mutationColors: readonly (readonly number[] | null)[];
-  /** Per species: how many times as long things keep in its inventory. 1 for everything else. */
+  /**
+   * Per species and structure: how many times as long things keep in its inventory (a species' or a structure's `keeps`;
+   * for a structure the same as structKeeps). 1 for everything else.
+   */
   readonly keeps: Float32Array;
   /** Per item: the species it is a saddle for (0 if it is no saddle), and the armor it gives. */
   readonly saddleFits: Uint16Array;
   readonly saddleArmor: Float32Array;
+  /** Per item: the seats a saddle puts on the creature that wears it, or null for an item that is no saddle. */
+  readonly saddleSeats: readonly (readonly Seat[] | null)[];
   /** Per item: the torpor a dose gives and the seconds it takes (0 if it is no dose). */
   readonly doseTorpor: Float32Array;
   readonly doseSeconds: Float32Array;
@@ -241,12 +250,34 @@ export interface Registry {
   /** FL2, per species: the share of a rider's weight that counts on it, 1 where not given, and the stamina units one bite costs. */
   readonly riderWeight: Float32Array;
   readonly biteStamina: Uint32Array;
+  /** FL2, per species: the damage its barrel roll does to each body it passes (`fly.roll.damage`), 0 for none. */
+  readonly rollDamage: Float32Array;
   /**
    * Per species: what the damage of a missile, a projectile that is not a bullet, is multiplied by against it, and what its
    * bite's and bare hands' damage is multiplied by against a structure. 1 where not given.
    */
   readonly missileMul: Float32Array;
   readonly biteStructureMul: Float32Array;
+  // The stations wave's columns (planning/reference/stations-plan.md, S0). `stationBase`, `stationFuel` and `powered` (S2)
+  // are read; the rest are compiled and read by nothing until the project named builds them.
+  /**
+   * Per structure: the one station it is to what is made at it, the unlit kind of a lit pair and the kind itself otherwise
+   * (0 for everything else). `craftAt` holds base kinds, so a fire lit and out is one crafting station (M2).
+   */
+  readonly stationBase: Uint16Array;
+  /** Per structure that names its own fuel (`burns`): the ticks one of each item burns in it, 0 for what it does not take. Null where it burns every item's own fuel (fuelTicks). */
+  readonly stationFuel: readonly (Uint32Array | null)[];
+  /** Per structure: 0 for a fire that does not cook (`cooks: false`), else 1. */
+  readonly stationCooks: Uint8Array;
+  /** Per structure: how many times as long things keep in it, 1 where not given (M6). Registry.keeps holds the same. */
+  readonly structKeeps: Float32Array;
+  /** Per item made by a fire by itself (`craft.fired`): the station's base kind, else 0. */
+  readonly firedAt: Uint16Array;
+  /** Per item: what one piece leaves in the fire when it has burnt out (0 for nothing). */
+  readonly burnsInto: Uint16Array;
+  /** S2 and S1, per structure: 1 if its jobs run only while it burns, and 1 if it is not lit below sea level. */
+  readonly powered: Uint8Array;
+  readonly dry: Uint8Array;
 }
 
 /** Default reach of bare hands and of a melee weapon, in metres. */
@@ -311,6 +342,14 @@ export function compileContent(all: readonly Def[]): CompileResult {
     }
     if (d.type === "species" && d.tag !== undefined && !TAG.test(d.tag)) errors.push(`${d.id}: tag "${d.tag}" must be one word of lower-case letters, digits and "_"`);
     if (d.type === "species") {
+      if (d.vehicle) {
+        try {
+          if (d.vehicle.id !== d.id) throw new Error("its vehicle must carry its own id");
+          // The body other systems see (radius, height) is the chassis, so nothing reads two sizes for one car.
+          if (d.radius !== d.vehicle.spec.halfWidth || d.height !== d.vehicle.spec.height) throw new Error("its radius and height must be its chassis half width and height");
+          validateVehicleDefinition(d.vehicle);
+        } catch (e) { errors.push(`${d.id}: ${(e as Error).message}`); }
+      }
       positive(d, "radius", d.radius, 8);
       positive(d, "height", d.height, 32);
       positive(d, "walkSpeed", d.walkSpeed, 40);
@@ -322,7 +361,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       // The pack decides which skeletons exist, so only an empty name is an error here.
       if (d.skeleton !== undefined && d.skeleton.length === 0) errors.push(`${d.id}: a skeleton must be named`);
       if (d.stamina && !(d.stamina.sprint >= 0 && d.stamina.regen >= 0 && d.stamina.jump >= 0 && (d.stamina.walk ?? 0) >= 0)) errors.push(`${d.id}: stamina costs must not be negative`);
-      if (d.height < 2 * d.radius) errors.push(`${d.id}: height must be at least twice the radius`);
+      if (d.class !== "vehicle" && d.height < 2 * d.radius) errors.push(`${d.id}: height must be at least twice the radius`);
       if (!(d.eyeHeight > 0 && d.eyeHeight <= d.height)) errors.push(`${d.id}: eyeHeight must be within the body`);
       for (const [name, st] of [["crouch", d.crouch], ["prone", d.prone]] as const) {
         if (st && !(st.height > 0 && st.height <= d.height && st.eye > 0 && st.eye <= st.height && st.speed > 0 && st.speed <= 1)) errors.push(`${d.id}: ${name} needs 0 < eye <= height <= the body's height and 0 < speed <= 1`);
@@ -366,6 +405,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       positive(d, "hits", d.hits, MAX_NODE_HITS);
       positive(d, "respawnHours", d.respawnHours, 1e6);
       for (const y of d.yields) if (!(y.min >= 0 && y.max >= y.min)) errors.push(`${d.id}: a yield's range must be 0 <= min <= max`);
+      if (d.sea !== undefined && d.sea !== "under" && d.sea !== "either") errors.push(`${d.id}: its sea is "under" or "either", not "${d.sea}"`);
       const largest = d.size?.[1] ?? 1;
       if (!(d.half[1] * 2 * largest <= MAX_NODE_HEIGHT && Math.max(d.half[0], d.half[2]) * largest <= MAX_STRUCTURE_HALF)) errors.push(`${d.id}: its box reaches further than ${MAX_STRUCTURE_HALF} m sideways or ${MAX_NODE_HEIGHT} m up from its origin at its largest size`);
       const shaped = (what: string, s: NodeShape): void => {
@@ -427,11 +467,20 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (!(Number.isInteger(d.color) && d.color >= 0 && d.color < 256)) errors.push(`${d.id}: color must be a palette index`);
       if (d.damage !== undefined && !DAMAGE_TYPES.includes(d.damage)) errors.push(`${d.id}: damage must name a kind of damage`);
     } else if (d.type === "structure") {
+      if (d.vehicleSurface !== undefined && !validVehicleSurface(d.vehicleSurface)) errors.push(`${d.id}: invalid vehicleSurface grip/resistance`);
       positive(d, "half[0]", d.half[0], MAX_STRUCTURE_HALF);
       positive(d, "half[1]", d.half[1], MAX_STRUCTURE_HALF);
       positive(d, "half[2]", d.half[2], MAX_STRUCTURE_HALF);
       positive(d, "hp", d.hp, 1e9);
-      if ((d.mesh === "shape") !== (d.shape !== undefined)) errors.push(`${d.id}: a mesh of "shape" and a shape go together`);
+      // A mesh of the pack may come with a shape, which it is walked and seen far off as, its origin the mesh's.
+      if (d.mesh === "shape" && d.shape === undefined) errors.push(`${d.id}: a mesh of "shape" needs a shape`);
+      if (d.mesh === "box" && d.shape !== undefined) errors.push(`${d.id}: a mesh of "box" is its half extents, and takes no shape`);
+      if (d.burns !== undefined) {
+        if (!Array.isArray(d.burns) || d.burns.length === 0) errors.push(`${d.id}: burns names at least one fuel`);
+        for (const b of Array.isArray(d.burns) ? d.burns : []) positive(d, "a fuel's seconds", b?.seconds, MAX_BURN_SECONDS);
+        if (Array.isArray(d.burns) && new Set(d.burns.map((b) => b?.item)).size !== d.burns.length) errors.push(`${d.id}: burns names each fuel once`);
+      }
+      if (d.keeps !== undefined) positive(d, "keeps", d.keeps, 1000);
     } else if (d.type === "shape") {
       if (!PIECE_ROLES.includes(d.role)) errors.push(`${d.id}: role must be one of ${PIECE_ROLES.join(", ")}`);
       const parts = d.boxes.length + (d.hulls?.length ?? 0);
@@ -458,6 +507,11 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (d.craft.level !== undefined) positive(d, "craft.level", d.craft.level, 1000);
       }
       if (d.weight !== undefined && !(d.weight >= 0)) errors.push(`${d.id}: weight must not be negative`);
+      if (d.saddle) {
+        try {
+          validateSeats(d.saddle.seats, 0, "saddle");
+        } catch (e) { errors.push(`${d.id}: ${(e as Error).message}`); }
+      }
       if (d.fuel !== undefined) positive(d, "fuel", d.fuel, MAX_BURN_SECONDS);
       if (d.cooks !== undefined) positive(d, "cooks.seconds", d.cooks.seconds, MAX_BURN_SECONDS);
       if (d.spoilHours !== undefined && !(d.spoilHours > 0 && d.spoilHours <= MAX_SPOIL_HOURS)) errors.push(`${d.id}: spoilHours must be above 0 and at most ${MAX_SPOIL_HOURS}`);
@@ -552,6 +606,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
   // A station's recipes take from its slots and put the product there, so a station something is made at must have some.
   const stationSlots = new Map(input.flatMap((d) => (d.type === "structure" && d.class === "station" ? [[d.id, d.slots ?? 0] as const] : [])));
   for (const d of input) if (d.type === "item" && d.craft?.at !== undefined && stationSlots.get(d.craft.at) === 0) errors.push(`${d.id}: it is made at "${d.craft.at}", which has no slots to make it from`);
+  errors.push(...stationFaults(input));
   const noAmmo = new Set(input.flatMap((d) => (d.type === "item" && !d.ammo ? [d.id] : [])));
   const taught = new Map<string, string>();
   const young = new Map<string, string>();
@@ -589,6 +644,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const halfY = new Float32Array(n);
   const halfZ = new Float32Array(n);
   const move: (MoveParams | null)[] = new Array(n).fill(null);
+  const vehicle: (VehicleDefinition | null)[] = new Array(n).fill(null);
   const stack = new Uint16Array(n);
   const weight = new Float32Array(n);
   const spoilTicks = new Uint32Array(n);
@@ -639,6 +695,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const keeps = new Float32Array(n).fill(1);
   const saddleFits = new Uint16Array(n);
   const saddleArmor = new Float32Array(n);
+  const saddleSeats: (readonly Seat[] | null)[] = new Array(n).fill(null);
   const doseTorpor = new Float32Array(n);
   const doseSeconds = new Float32Array(n);
   const temper = new Uint8Array(n);
@@ -691,8 +748,17 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const defendsEgg = new Uint8Array(n);
   const riderWeight = new Float32Array(n).fill(1);
   const biteStamina = new Uint32Array(n);
+  const rollDamage = new Float32Array(n);
   const missileMul = new Float32Array(n).fill(1);
   const biteStructureMul = new Float32Array(n).fill(1);
+  const stationBase = new Uint16Array(n);
+  const stationFuel: (Uint32Array | null)[] = new Array(n).fill(null);
+  const stationCooks = new Uint8Array(n);
+  const structKeeps = new Float32Array(n).fill(1);
+  const firedAt = new Uint16Array(n);
+  const burnsInto = new Uint16Array(n);
+  const powered = new Uint8Array(n);
+  const dry = new Uint8Array(n);
   const materials = new Map(sorted.flatMap((o) => (o.type === "material" ? [[o.id, o] as const] : [])));
   let hash = hashString("snark-content-1");
   for (let i = 1; i < n; i++) {
@@ -720,6 +786,11 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (d.falls) fallsWhole[i] = 1;
         if (d.lit) burning[i] = 1;
         if (d.bed) isBed[i] = 1;
+        if (d.cooks !== false) stationCooks[i] = 1;
+        structKeeps[i] = d.keeps ?? 1;
+        keeps[i] = structKeeps[i]!;
+        if (d.powered) powered[i] = 1;
+        if (d.dry) dry[i] = 1;
       }
       if (d.type === "structure") {
         const m = d.material !== undefined ? materials.get(d.material)! : null;
@@ -733,6 +804,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     } else if (d.type === "species" || d.type === "prop") {
       if (d.type === "species") {
         move[i] = moveParams(d);
+        vehicle[i] = d.vehicle ?? null;
         // A survivor's tamed numbers are its own. A creature once tamed stands on steeper ground, and may run at another
         // speed, on the ground and in the air.
         const m = move[i]!;
@@ -743,6 +815,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (d.defendsEgg) defendsEgg[i] = 1;
         riderWeight[i] = d.riderWeight ?? 1;
         biteStamina[i] = Math.round((d.bite?.stamina ?? 0) * STAMINA_UNITS);
+        rollDamage[i] = d.fly?.roll.damage ?? 0;
         missileMul[i] = d.missiles ?? 1;
         biteStructureMul[i] = d.structures ?? 1;
         damage[i] = d.fists ?? 8;
@@ -820,7 +893,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     return d?.type === "structure" && d.shape !== undefined ? (shapes.get(d.shape)!.hulls ?? []) : [];
   };
   const anyHull = defs.some((_, k) => hullsOf(k).length > 0);
-  const parts: PartTable = { start: partStart, box: Float32Array.from(partBox), ...(anyHull ? { hulls: hullTable(n, hullsOf) } : {}) };
+  const parts: PartTable = { vehicleSurface: defs.map(d => d?.type === "structure" && d.vehicleSurface ? Object.freeze({ ...d.vehicleSurface }) : null), start: partStart, box: Float32Array.from(partBox), ...(anyHull ? { hulls: hullTable(n, hullsOf) } : {}) };
   // A second pass resolves references, now that every definition has its index.
   for (let i = 1; i < n; i++) {
     const d = defs[i]!;
@@ -864,6 +937,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     if (d.type === "item" && d.saddle) {
       saddleFits[i] = index.get(d.saddle.fits)!;
       saddleArmor[i] = d.saddle.armor;
+      saddleSeats[i] = d.saddle.seats;
     }
     if (d.type === "item" && d.dose) {
       doseTorpor[i] = d.dose.torpor;
@@ -877,18 +951,32 @@ export function compileContent(all: readonly Def[]): CompileResult {
         cookTicks[i] = Math.max(1, Math.round(d.cooks.seconds * TICK_RATE));
       }
       if (d.spoilsInto !== undefined) spoilsInto[i] = index.get(d.spoilsInto)!;
+      if (d.burnsInto !== undefined) burnsInto[i] = index.get(d.burnsInto)!;
+    }
+    if (d.type === "structure" && d.burns) {
+      const table = (stationFuel[i] = new Uint32Array(n));
+      // At least 1 tick, because 0 means it takes no such fuel.
+      for (const b of d.burns) table[index.get(b.item)!] = Math.max(1, Math.round(b.seconds * TICK_RATE));
     }
     if (d.type === "item" && d.craft) {
       recipeOf[index.get(d.id)!] = Uint16Array.from(d.craft.needs.flatMap((need) => [index.get(need.item)!, need.count]));
       recipeMakes[index.get(d.id)!] = d.craft.count ?? 1;
       if (d.craft.at !== undefined) craftAt[index.get(d.id)!] = index.get(d.craft.at)!;
-      if (d.blueprint !== false) blueprints[index.get(d.id)!] = 1;
+      // What a fire makes by itself is made from no blueprint.
+      if (d.blueprint !== false && !d.craft.fired) blueprints[index.get(d.id)!] = 1;
     }
   }
   // An open door maps back to the closed door's item.
   for (let i = 1; i < n; i++) if (opens[i] !== 0 && pieceItem[opens[i]!] === 0) pieceItem[opens[i]!] = pieceItem[i]!;
   // A burning fire maps back to the unlit fire's item.
   for (let i = 1; i < n; i++) if (lights[i] !== 0 && pieceItem[lights[i]!] === 0) pieceItem[lights[i]!] = pieceItem[i]!;
+  // A lit station is its unlit kind to what is made at it, so an item made `at` either is made at both.
+  for (let i = 1; i < n; i++) if (defs[i]!.type === "structure") stationBase[i] = burning[i] === 1 && lights[i] !== 0 ? lights[i]! : i;
+  for (let i = 1; i < n; i++) {
+    if (craftAt[i] !== 0) craftAt[i] = stationBase[craftAt[i]!]!;
+    const d = defs[i]!;
+    if (d.type === "item" && d.craft?.fired) firedAt[i] = craftAt[i]!;
+  }
   const redirects = new Map(renames.map((r) => [r.id, r.to.map((to) => index.get(to)!)]));
   const aliases = new Map<string, number>();
   const tags = new Map<string, number[]>();
@@ -896,7 +984,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
-  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, missileMul, biteStructureMul }, errors };
+  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, vehicle, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;
@@ -1030,6 +1118,31 @@ function flight(f: SpeciesDef["fly"]) {
   };
 }
 
+/**
+ * What is wrong with the stations wave's fields (planning/reference/stations-plan.md, S0): the two kinds of a lit pair burn,
+ * cook, need power and stay dry alike; a fired recipe is made at a fire; what a fuel leaves is another item, and only a
+ * fuel leaves anything.
+ */
+function stationFaults(input: readonly Def[]): string[] {
+  const out: string[] = [];
+  const structures = new Map(input.flatMap((d) => (d.type === "structure" ? [[d.id, d] as const] : [])));
+  const burnt = new Set(input.flatMap((d) => (d.type === "structure" ? (d.burns ?? []).map((b) => b?.item) : d.type === "item" && d.fuel !== undefined ? [d.id] : [])));
+  for (const d of input) {
+    if (d.type === "structure" && d.lights !== undefined && d.id < d.lights) {
+      const other = structures.get(d.lights);
+      const same = (a: StructureDef, b: StructureDef): boolean => canonical(a.burns ?? null) === canonical(b.burns ?? null) && (a.cooks ?? true) === (b.cooks ?? true) && (a.powered ?? false) === (b.powered ?? false) && (a.dry ?? false) === (b.dry ?? false);
+      if (other && !same(d, other)) out.push(`${d.id}: it and ${d.lights}, lit and out, must agree on burns, cooks, powered and dry`);
+    }
+    if (d.type !== "item") continue;
+    if (d.craft?.fired !== undefined) {
+      const at = d.craft.at === undefined ? undefined : structures.get(d.craft.at);
+      if (d.craft.fired && at?.lights === undefined) out.push(`${d.id}: only a fire makes a thing by itself, so craft.fired needs craft.at to name a station that lights`);
+    }
+    if (d.burnsInto !== undefined && (d.burnsInto === d.id || !burnt.has(d.id))) out.push(`${d.id}: burnsInto names another item, and only a fuel has it`);
+  }
+  return out;
+}
+
 /** What is wrong with a species' flyer fields (planning/reference/flyers-plan.md, FL0). */
 function flyerFaults(d: SpeciesDef): string[] {
   const out: string[] = [];
@@ -1048,6 +1161,7 @@ function flyerFaults(d: SpeciesDef): string[] {
     within("wait", f.wait, 0, FLIGHT_TICKS_MAX / TICK_RATE, false);
     within("roll.burst", f.roll?.burst, 0, 40, false);
     within("roll.every", f.roll?.every, 0, FLIGHT_TICKS_MAX / TICK_RATE);
+    if (f.roll?.damage !== undefined) within("roll.damage", f.roll.damage, 0, 1e6, false);
   }
   if (d.grab && !(d.grab.drag > 0 && d.grab.drag <= 1e6 && d.grab.reach > 0 && d.grab.reach <= 100)) out.push(`${d.id}: grab needs a drag above 0 and a reach above 0 and at most 100 m`);
   if (d.riderWeight !== undefined && !(d.riderWeight >= 0 && d.riderWeight <= 1)) out.push(`${d.id}: riderWeight must be from 0 to 1`);

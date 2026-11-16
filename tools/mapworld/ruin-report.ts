@@ -5,16 +5,37 @@ import { reportPaths } from "./report-path.ts";
 const paths = reportPaths(); const root = paths.folder;
 const read = (name: string): any => JSON.parse(readFileSync(join(root, name), "utf8"));
 const html = (value: unknown): string => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-const config = JSON.parse(readFileSync(join(paths.source, "ruins/proof.json"), "utf8"));
+const configFile = join(paths.source, "ruins/proof.json");
+const config = existsSync(configFile) ? JSON.parse(readFileSync(configFile, "utf8")) : { previous: `ruins${Math.max(1, Number(basename(root).replace("ruins", "")) - 1)}` };
 copyFileSync(join("var/maps", basename(paths.mapFile, ".snmap"), "stats.json"), join(root, "build.json"));
-const g = read("generation.json"); const build = read("build.json"); const samples = read("samples.json");
-const old = JSON.parse(readFileSync(join(paths.source, "reports", config.previous, "build.json"), "utf8"));
-const views = read("views.json") as { name: string; baseline?: string }[];
+const g = read("generation.json"); const build = read("build.json"); const samples = existsSync(join(root, "samples.json")) ? read("samples.json") : { samples: [] };
+if (existsSync(join(root, "chunks.json"))) {
+  build.staticMaxChunkBeforePacking ??= build.staticMaxChunk;
+  build.staticMaxChunk = read("chunks.json").maximum;
+  writeFileSync(join(root, "build.json"), JSON.stringify(build, null, 2) + "\n");
+}
+const oldFile = join(paths.source, "reports", config.previous, "build.json");
+const old = existsSync(oldFile) ? JSON.parse(readFileSync(oldFile, "utf8")) : {};
+const views = (existsSync(join(root, "views.json")) ? read("views.json") : []) as { name: string; baseline?: string }[];
 const captionsFile = join(paths.source, "ruins/captions.json");
 const captions = existsSync(captionsFile) ? JSON.parse(readFileSync(captionsFile, "utf8")) : {};
 const licenceFile = join(root, "references/licences.json");
 const references: { file: string; page: string; licence: string; author: string }[] = existsSync(licenceFile) ? JSON.parse(readFileSync(licenceFile, "utf8")) : [];
+const diagnostics: { title: string; note: string; images: { file: string; caption: string }[] }[] = existsSync(join(root, "diagnostics.json")) ? read("diagnostics.json") : [];
 const comparison = read("baseline-kinds.json");
+const buildings = read("buildings.json") as import("./ruins.ts").RuinRecord[];
+const floorCounts: Record<number, number> = {};
+for (const r of buildings) for (const route of r.routes) floorCounts[route.floors] = (floorCounts[route.floors] ?? 0) + 1;
+writeFileSync(join(root, "slopes.json"), JSON.stringify({
+  buildingFlights: g.kinds["core:zruin_flight_concrete"] ?? 0,
+  flight: { width: 2, run: 5.5, rise: 4, degrees: Math.atan2(4, 5.5) * 180 / Math.PI, landingGap: 0 },
+  ramp: { run: 4, riseQuantum: .25, maxRise: 3, maxDegrees: Math.atan2(3, 4) * 180 / Math.PI },
+  stairsByFloors: floorCounts,
+  highBuildings: buildings.filter((r) => r.routes.some((s) => s.floors >= 12)).map((r) => ({ part: r.part, name: r.name, floors: Math.max(...r.routes.map((s) => s.floors)), refuges: r.rooms.filter((s) => s.kind === "refuge").length, exits: r.escapes.length })),
+  refugeCircuits: buildings.reduce((n, r) => n + r.rooms.filter((s) => s.kind === "refuge").length, 0),
+  bidirectionalExits: buildings.reduce((n, r) => n + r.escapes.filter((s) => s.bidirectional).length, 0),
+  slopedKinds: Object.fromEntries(Object.entries(g.kinds).filter(([k]) => /_flight_|_ramp\d+_|_zpitch\d+_|_plate\d+_|_front60_|_mound_/.test(k))),
+}, null, 2) + "\n");
 const csv = (rows: unknown[][]): string => rows.map((r) => r.map((v) => `"${String(v).replaceAll('"', '""')}"`).join(",")).join("\n") + "\n";
 writeFileSync(join(root, "pieces-by-kind.csv"), csv([["kind", "before_buildings", "before_pieces", "before_mean", "after_buildings", "after_pieces", "after_mean", "after_max"], ...[...new Set([...Object.keys(comparison.byKind), ...Object.keys(g.piecesByKind)])].sort().map((kind) => {
   const a = comparison.byKind[kind] ?? { buildings: 0, pieces: 0 }; const b = g.piecesByKind[kind] ?? { buildings: 0, pieces: 0, max: 0 };
@@ -26,17 +47,18 @@ writeFileSync(join(root, "label-summary.json"), JSON.stringify({ ...Object.fromE
 const row = (cells: unknown[]): string => `<tr>${cells.map((c) => `<td>${html(c)}</td>`).join("")}</tr>`;
 const pictures = (list: typeof views): string => list.map((v) => {
   const ref = references.find((r) => r.file === config.references?.[v.name]);
-  return `<section><h2>${html(v.name)}</h2><div class="pair">${v.baseline ? `<figure><img src="${html(v.baseline)}"><figcaption>Previous round, same camera.</figcaption></figure>` : ""}${ref ? `<figure><img src="references/${html(ref.file)}"><figcaption><a href="${html(ref.page)}">${html(ref.author)}; ${html(ref.licence)}</a>. Unmodified reference only.</figcaption></figure>` : ""}<figure><img src="${html(v.name)}.png"><figcaption>${html(captions[v.name] ?? "")}</figcaption></figure></div></section>`;
+  return `<section><h2>${html(v.name)}</h2><div class="pair">${v.baseline ? `<figure><img src="${html(v.baseline)}"><figcaption>Previous round. City cameras are unchanged; isolated specimens are selected afresh from the same rules.</figcaption></figure>` : ""}${ref ? `<figure><img src="references/${html(ref.file)}"><figcaption><a href="${html(ref.page)}">${html(ref.author)}; ${html(ref.licence)}</a>. Unmodified reference only.</figcaption></figure>` : ""}<figure><img src="${html(v.name)}.png"><figcaption>${html(captions[v.name] ?? "")}</figcaption></figure></div></section>`;
 }).join("\n");
 const page = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${html(paths.world.label)} ruins</title>
 <style>body{font:16px/1.55 system-ui,sans-serif;background:#11191d;color:#e3e7e3;margin:0 auto;padding:3vw;max-width:1500px}a{color:#a8d9d2}h1{font-size:3rem;line-height:1.1}h2{font-size:1.25rem}p{max-width:90ch}.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1rem}.lineup{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}figure{margin:0}img{width:100%;background:#080c0e}section{margin:2rem 0}table{border-collapse:collapse;width:100%;font-size:.9rem}th,td{text-align:left;padding:.5rem;border-bottom:1px solid #344349}details{margin:1rem 0}</style>
 <h1>${html(paths.world.label)}: a city that fell</h1><p>${g.blocks.toLocaleString()} pieces, ${g.topChunks[0].blocks} in the busiest chunk. ${g.routes} stairs, ${g.roomRoutes} room and rubble routes. The line-ups use exact packed building pieces, translated and rotated onto the same flat stage. No parts are added or removed. City views retain terrain, neighbouring buildings and plants.</p>
-<p><a href="../../ruins/REPORT_3.md">Report</a> · <a href="generation.json">Counts</a> · <a href="samples.json">Selection and seeded draw</a> · <a href="views.json">Cameras</a> · <a href="route-test.json">Stairs and roofs</a> · <a href="room-test.json">Rooms and rubble</a> · <a href="access-test.json">Street approaches</a> · <a href="bridge-test.json">Decks and swims</a></p>
+<p><a href="../../ruins/REPORT_${basename(root).replace("ruins", "")}.md">Report</a> · <a href="generation.json">Counts</a> · <a href="samples.json">Selection and seeded draw</a> · <a href="views.json">Cameras</a> · <a href="route-test.json">Stairs and roofs</a> · <a href="room-test.json">Rooms and rubble</a> · <a href="access-test.json">Street approaches</a> · <a href="bridge-test.json">Decks and swims</a></p>
 <h2>Building line-up</h2><div class="lineup">${views.filter((v) => v.name.startsWith("kind-")).map((v) => `<img src="${v.name}.png">`).join("")}</div>
 <details><summary>Building answer key, in picture order</summary><table>${samples.samples.filter((s: any) => s.view.startsWith("kind-")).map((s: any) => row([s.view, s.form, s.kind, s.name, s.footprint, s.pieces])).join("")}</table></details>
 <h2>Collapse line-up</h2><div class="lineup">${views.filter((v) => v.name.startsWith("fall-")).map((v) => `<img src="${v.name}.png">`).join("")}</div>
 <details><summary>Collapse answer key</summary><table>${samples.samples.filter((s: any) => s.view.startsWith("fall-")).map((s: any) => row([s.collapse, s.footprint, s.pieces])).join("")}</table></details>
-${pictures(views.filter((v) => !v.name.startsWith("kind-") && !v.name.startsWith("fall-")))}
+${pictures(views)}
+${diagnostics.map((d) => `<section><h2>${html(d.title)}</h2><p>${html(d.note)}</p><div class="pair">${d.images.map((i) => `<figure><img src="${html(i.file)}"><figcaption>${html(i.caption)}</figcaption></figure>`).join("")}</div></section>`).join("")}
 <h2>Build comparison</h2><table>${[["Measurement",config.previous,basename(root)],["Pieces",old.staticTotal,build.staticTotal],["Map bytes",old.bytes,build.bytes],["Compressed bytes",old.gzipped,build.gzipped],["Build seconds",old.buildSeconds,build.buildSeconds],["Total seconds",old.totalSeconds,build.totalSeconds],["Peak resident MiB",old.peakResidentMiB,build.peakResidentMiB],["Resource nodes",old.nodeTotal,build.nodeTotal]].map(row).join("")}</table>
 <details><summary>Pieces per building by supplied or resolved use</summary><table>${[["Kind","Before buildings","Before pieces / building","After buildings","After pieces / building","After total"],...Object.entries(g.piecesByKind).sort().map(([kind,value]) => { const now = value as any; const before = comparison.byKind[kind]; return [kind,before?.buildings ?? 0,before ? (before.pieces / before.buildings).toFixed(1) : "",now.buildings,(now.pieces / now.buildings).toFixed(1),now.pieces]; })].map(row).join("")}</table></details>
 <details><summary>Blocks by shape and finish</summary><table>${Object.entries(g.kinds).sort((a,b) => Number(b[1]) - Number(a[1])).map(row).join("")}</table></details></html>`;

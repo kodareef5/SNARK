@@ -3,6 +3,7 @@ import { Controls, LOOK_SPEED } from "../../client/core/controls.ts";
 import { HudModel } from "../../client/core/hud.ts";
 import { KEY_CHAT_INPUT, KEY_CHAT_PANEL, KEY_CHAT_ROW, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT, KEY_CONSOLE_PANEL, KEY_CONSOLE_ROW, MAX_LINE } from "../../client/core/ui/console.ts";
+import { bindTextInput } from "../../client/core/ui/events.ts";
 import { KEY_BANNER, KEY_CROSS, KEY_MARKER, KEY_MINIMAP, KEY_READOUT, KEY_VITAL, KEY_VOICE } from "../../client/core/ui/hud.ts";
 import { K_BAR, K_INPUT, K_TEXT, textWidth, wrap, type UiFrame } from "../../client/core/ui/nodes.ts";
 import type { ClientSession } from "../../client/core/session.ts";
@@ -25,7 +26,7 @@ import { coreRegistry } from "../fixtures/world.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
-import { BTN_CROUCH, BTN_JUMP, BTN_MELEE, BTN_MOD, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY, BTN_SPRINT, BTN_USE } from "../../shared/sim/character.ts";
+import { BTN_BRAKE, BTN_CROUCH, BTN_JUMP, BTN_MELEE, BTN_MOD, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_ROLL, BTN_SECONDARY, BTN_SPRINT, BTN_USE } from "../../shared/sim/character.ts";
 
 const ASPECTS: [string, number][] = [["4:3", 4 / 3], ["16:9", 16 / 9], ["21:9", 21 / 9], ["phone upright", 9 / 16]];
 
@@ -113,6 +114,7 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
       for (let i = 0; i < 30; i++) ui.chat.print(TEXT_NOTICE + (i % 4), `ada: ${"W".repeat(i * 5)} and so on`, 1000);
       if (chatOpen) ui.chat.begin(TEXT_TRIBE, null);
       ui.chat.edit("y".repeat(300));
+      ui.settings.diagnostics = true;
       const hud = fullHud();
       hud.prompt = "E  open ada's cache";
       hud.ammo = "stone arrow  1 / 1   (24 more)";
@@ -183,7 +185,8 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
       expect(markers.length).toBe(256);
       const own = f.nodes[markers[255]!]!;
       const map = f.find(KEY_MINIMAP)!;
-      expect([own.x + 2, own.y + 2]).toEqual([map.x + map.w, map.y + map.h]);
+      // The complete marker remains inside the map at its far boundary.
+      expect([own.x + own.w, own.y + own.h]).toEqual([map.x + map.w, map.y + map.h]);
     }
   }
 });
@@ -238,6 +241,55 @@ test("the console edits a line, sends it once, and browses history without losin
   expect(c.history[49]).toBe("line 79");
 });
 
+test("the console keeps accepting edits and commands as output and HUD rows change without reopening", () => {
+  for (const [, aspect] of ASPECTS) {
+    const ui = new Ui();
+    const hud = new HudModel();
+    const sent: string[] = [];
+    ui.local = (line) => { sent.push(line); return "answer to " + line; };
+    ui.key("Backquote", true, false, null);
+    ui.build(aspect, hud, null);
+    // The shell creates one field and listener, then keeps both while the console stays open.
+    const field = { value: "" };
+    const edit = bindTextInput(ui.frame.find(KEY_CONSOLE_INPUT)!, field, { text: (key, value) => ui.input(key, value) });
+    const rebuild = () => {
+      ui.build(aspect, hud, null);
+      expect(ui.console.open).toBe(true);
+      expect(ui.captureKeyboard).toBe(true);
+      expect(ui.wantsPointerLock).toBe(false);
+      expect(ui.frame.find(KEY_CONSOLE_INPUT)!.focus).toBe(true);
+      return ui.frame.find(KEY_CONSOLE_INPUT)!.text;
+    };
+    const commands = ["help", "pos", "help", "who"];
+    for (const command of commands) {
+      field.value = "";
+      for (const char of command) {
+        field.value += char;
+        edit();
+        expect(rebuild()).toBe(field.value);
+      }
+      ui.key("Enter", true, false, null);
+      expect(rebuild()).toBe("");
+    }
+    expect(sent).toEqual(commands);
+
+    field.value = "draft";
+    edit();
+    expect(rebuild()).toBe("draft");
+    // Incoming output wraps; changing HUD rows also moves the input's slot in the pooled frame.
+    ui.console.print("server notice ".repeat(100));
+    hud.banner = "SPECTATING";
+    expect(rebuild()).toBe("draft");
+    field.value += " continued";
+    edit();
+    expect(rebuild()).toBe("draft continued");
+    ui.key("ArrowUp", true, false, null);
+    expect(rebuild()).toBe("who");
+    ui.key("ArrowDown", true, false, null);
+    expect(rebuild()).toBe("draft continued");
+  }
+});
+
 test("console keys: one press toggles once, the open console owns the keyboard, and paging stays in range", () => {
   const ui = new Ui();
   ui.build(16 / 9, new HudModel(), null);
@@ -256,7 +308,7 @@ test("console keys: one press toggles once, the open console owns the keyboard, 
   ui.build(16 / 9, new HudModel(), null);
   const rows = (): string[] => {
     const out: string[] = [];
-    for (let i = 0; i < ui.frame.count; i++) if (ui.frame.nodes[i]!.key >= KEY_CONSOLE_ROW) out.push(ui.frame.nodes[i]!.text);
+    for (let i = 0; i < ui.frame.count; i++) if (ui.frame.nodes[i]!.key >= KEY_CONSOLE_ROW && ui.frame.nodes[i]!.key < KEY_CONSOLE_ROW + 60) out.push(ui.frame.nodes[i]!.text);
     return out;
   };
   const shown = rows().length;
@@ -364,6 +416,46 @@ test("controls: keys and mouse become one input sample", () => {
   expect(c.pitch).toBe(1.5);
   c.look(0, 100000);
   expect(c.pitch).toBe(-1.5);
+});
+
+test("controls driving a flyer: Space toggles its jump, held every tick, C rolls and X brakes while held, and on foot again they are stances", () => {
+  const c = new Controls();
+  // A stance chosen on foot is dropped, and a flyer found on the ground stays there.
+  c.key("KeyC", true);
+  c.key("KeyC", false);
+  c.fly(true, false);
+  expect([c.buttons, c.wing]).toEqual([0, false]);
+  c.key("Space", true);
+  c.key("Space", true); // repeating while held changes nothing
+  expect([c.buttons, c.wing]).toEqual([BTN_JUMP, true]);
+  c.key("Space", false);
+  c.key("KeyC", true);
+  c.key("KeyX", true);
+  expect(c.buttons).toBe(BTN_JUMP | BTN_ROLL | BTN_BRAKE);
+  c.key("KeyC", false);
+  c.key("KeyX", false);
+  expect(c.buttons).toBe(BTN_JUMP);
+  // Losing focus keeps it up. Space again, or the flyer coming down, lets go of its jump.
+  c.release();
+  expect(c.buttons).toBe(BTN_JUMP);
+  c.key("Space", true);
+  c.key("Space", false);
+  expect([c.buttons, c.wing]).toEqual([0, false]);
+  c.key("Space", true);
+  c.key("Space", false);
+  c.land();
+  expect([c.buttons, c.wing]).toEqual([0, false]);
+  // Taken over in the air, it is kept up. Off it, C is a stance again and Space a jump.
+  c.fly(true, true);
+  expect(c.buttons).toBe(BTN_JUMP);
+  c.fly(false, false);
+  c.key("KeyC", true);
+  c.key("KeyC", false);
+  expect(c.buttons).toBe(BTN_CROUCH);
+  c.key("KeyC", true);
+  c.key("KeyC", false);
+  c.key("Space", true);
+  expect(c.buttons).toBe(BTN_JUMP);
 });
 
 test("the inventory screen turns clicks into commands and never changes anything by itself", () => {
@@ -557,7 +649,8 @@ test("with more places to rise at than fit the window, the list is paged, and ev
 test("the character screen fits every window shape on every tab and page, and its buttons send what they say", () => {
   const engram = (name: string) => reg.index.get(name)!;
   const engrams = engramOrder(reg);
-  const recipes = reg.defs.flatMap((d, k) => (d?.type === "item" && d.craft ? [k] : []));
+  // The making tab lists what is made in the hands, so a row is a hand recipe's place among them.
+  const recipes = reg.defs.flatMap((d, k) => (d?.type === "item" && d.craft && reg.craftAt[k] === 0 ? [k] : []));
   for (const [name, aspect] of ASPECTS) {
     const { session, sent } = fakeSession(new Inventory(40));
     Object.assign(session, {
@@ -653,7 +746,8 @@ test("the character screen fits every window shape on every tab and page, and it
     expect(f.find(KEY_CHAR_RECIPE + pickRow * 2)!.text.startsWith("pick: 1 stone, 1 wood")).toBe(true);
     ui.pointer(0, KEY_CHAR_RECIPE + pickRow * 2 + 1, 0, 0, 0, session);
     expect(seek(KEY_CHAR_RECIPE + recipes.indexOf(reg.index.get("core:waterskin")!) * 2)).toBe(false);
-    expect(seek(KEY_CHAR_RECIPE + recipes.indexOf(reg.index.get("core:flak_shirt")!) * 2)).toBe(true);
+    // And one far down the list (it was the flak shirt until S6 moved that to the smithy).
+    expect(seek(KEY_CHAR_RECIPE + recipes.indexOf(reg.index.get("core:spear")!) * 2)).toBe(true);
 
     expect(sent.map((c) => c.op)).toEqual([CMD_SPEND, CMD_LEARN, CMD_CRAFT]);
     expect(sent[0]!.bytes[0]).toBe(speed);

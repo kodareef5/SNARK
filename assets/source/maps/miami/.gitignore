@@ -40,6 +40,33 @@ reports/ruins3/room-walk.json
 !reports/ruins3/references/
 !reports/ruins3/references/**
 
+# Regenerated round four inventories.
+reports/ruins4/buildings.json
+reports/ruins4/labels.json
+reports/ruins4/circulation.json
+reports/ruins4/places.json
+reports/ruins4/bridges.json
+reports/ruins4/bridge-walk.json
+
+reports/ruins4/street-clusters.json
+reports/ruins4/roof-gardens.json
+!reports/ruins4/references/
+!reports/ruins4/references/**
+
 # The far city's review pictures of each Miami round, before and after, are evidence and kept.
 !reports/farcity/round*/
 !reports/farcity/round*/**
+
+# Regenerated round five inventories.
+reports/ruins5/buildings.json
+reports/ruins5/labels.json
+reports/ruins5/circulation.json
+reports/ruins5/places.json
+reports/ruins5/bridges.json
+reports/ruins5/bridge-walk.json
+reports/ruins5/room-walk.json
+reports/ruins5/street-clusters.json
+reports/ruins5/roof-gardens.json
+reports/ruins5/remnants.json
+!reports/ruins5/references/
+!reports/ruins5/references/**

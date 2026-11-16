@@ -40,7 +40,9 @@ export default {
   pieces: [
     { id: "core:pick", object: "pick", hold: "prop_r", dropped: "auto", icon: ICON },
     { id: "core:hatchet", object: "hatchet", hold: "prop_r", dropped: "auto", icon: ICON },
-    { id: "core:spear", object: "spear", hold: "prop_r", dropped: "auto", icon: { ...ICON, zoom: 1.15 } },
+    // Whole, the spear's leaf is a few pixels at the end of a long diagonal: the picture is its head and lashing, the
+    // shaft running off at the bottom left.
+    { id: "core:spear", object: "spear", hold: "prop_r", dropped: "auto", icon: { ...ICON, zoom: 3, shift: [0.62, 0.62] } },
   ],
   // Metres a picture spans, as model.py's TILE lays them.
   materials: {

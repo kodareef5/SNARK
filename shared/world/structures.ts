@@ -2,6 +2,7 @@
 // Each slot records the table version that last changed it, so a client is brought up to date by a scan, without an op log.
 
 import { CHUNK_SIZE, STRUCT_UNITS, chunkAt, chunkCount, type MapDims } from "../coords.ts";
+import type { VehicleSurface } from "../sim/vehicle.ts";
 import { hullPoint, type HullTable } from "./convex.ts";
 import { HALF_SIDE, STRETCH_MOST, frame, frameOf } from "./frame.ts";
 
@@ -11,6 +12,7 @@ export const GRID_CELL = 4;
  * `box`: its centre, measured from the structure's origin, then its half extents.
  */
 export interface PartTable {
+  readonly vehicleSurface?: readonly (VehicleSurface | null)[];
   readonly start: Uint32Array;
   readonly box: Float32Array;
   /** Convex parts, for kinds with sloped or three-sided forms. */
@@ -455,6 +457,23 @@ export class StructureStore {
     for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0) this.erase(chunk, t, s, 0);
     this.chunks[chunk] = null;
     this.onChunkChanged?.(chunk, false);
+  }
+
+  /** The highest top of what stands in the grid cells over the rectangle, or -Infinity where nothing does. Conservative, as query is. */
+  topIn(minX: number, minZ: number, maxX: number, maxZ: number): number {
+    const cx0 = Math.max(0, Math.floor(minX / GRID_CELL));
+    const cz0 = Math.max(0, Math.floor(minZ / GRID_CELL));
+    const cx1 = Math.min(this.gridX - 1, Math.floor(maxX / GRID_CELL));
+    const cz1 = Math.min(this.gridZ - 1, Math.floor(maxZ / GRID_CELL));
+    let top = -Infinity;
+    for (let cz = cz0; cz <= cz1; cz++) {
+      for (let cx = cx0; cx <= cx1; cx++) {
+        const cells = this.heads[(cz >> 4) * this.dims.chunksX + (cx >> 4)];
+        if (!cells) continue;
+        for (let node = cells[(cz & 15) * CELLS + (cx & 15)]!; node !== 0; node = this.nodeNext[node - 1]!) if (this.nodeTop[node - 1]! > top) top = this.nodeTop[node - 1]!;
+      }
+    }
+    return top;
   }
 
   /**

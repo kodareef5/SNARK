@@ -372,7 +372,7 @@ Reasoned from the rows, in the order a growing world meets them.
 | One thread runs the tick | 2.0 to 2.3 ms of 33.3, 3.5 in combat; the crowd asks first | Snapshot encoding in workers over the typed-array entity store |
 | Bandwidth where bodies crowd | 31.6 to 32.3 KB/s of 34 to 36 | Velocity in snapshots |
 | Draws | 4,096 in the packet; the iPhone held 256 to 2,048 on lit tiers | Far stand-ins (F4); texture arrays before multi-draw (D210) |
-| Shadow casters | 933 of 4,096 in the siege on ultra | Merged casters cached by shape (D267) |
+| Shadow casters | 812 of 4,096 in the siege on ultra (building pieces only since the refining forge, S1) | Merged casters cached by shape (D267) |
 | Garbage collection | A worst tick of 7 to 20 ms once in some hundreds | Less garbage a tick; the simulation in a worker |
 | Textures on a phone | 1.5 GB held, the tab dropped at 2 GB | A smaller card budget on a phone |
 
@@ -395,6 +395,43 @@ Reasoned from the rows, in the order a growing world meets them.
 - Small details on a phone: the fill of a hundred dust rings near the camera, and the details program's cost a
   megapixel beside LIT's. `bun run snap -- --details fight` shows the scene; a phone run is to time it.
 - Real network congestion; WebSocket send cost under load; Firefox.
+
+## Glass HUD (E11 interface slice)
+
+`feat/ui-hud-plan` on `c70b9a79`, 2026-11-15; Intel Core i9-13980HX,
+32 logical cores, Linux, Bun 1.4.3. `bun run bench -- --ui` isolates the HUD
+from the world sizing run. These are CPU layout measurements on a shared,
+busy host, not browser frame times or an idle-machine baseline. These rows
+include the controls/slider polish pass. The expanded body/ring atlas costs
+2,668 additional transfer bytes; its dimensions and decoded size are unchanged.
+
+| Row | Result | Budget |
+| --- | --- | --- |
+| Play layout, median / p99 | 0.011 / 0.019 ms | 0.25 / 1 ms |
+| Menu layout, median / p99 | 0.002 / 0.004 ms | 0.25 / 1 ms |
+| Settings layout, median / p99 | 0.003 / 0.009 ms | 0.25 / 1 ms |
+| Keyboard layout, median / p99 | 0.014 / 0.028 ms | 0.25 / 1 ms |
+| Audio layout, median / p99 | 0.005 / 0.010 ms | 0.25 / 1 ms |
+| Controller layout, median / p99 | 0.010 / 0.019 ms | 0.25 / 1 ms |
+| Largest frame; node growth after warmup | 263; 0 | 500; 0 |
+| Shared sheet decoded | 917,504 B | 1,048,576 B |
+| Sheet plus Brotli font, excluding HTTP headers | 64,523 B | 98,304 B |
+| Primitive fallback creation, once at boot | 43.7 ms | none |
+
+An earlier busy-host play p99 missed at 1.205 ms; subsequent runs passed.
+The sheet figure excludes browser copies, fallback pixels and canvas uploads.
+
+After the merge with main (`review/ui-hud`, 2026-11-15; Apple M5, 10 cores,
+macOS 26.3.1, Bun 1.4.3, three runs on a loaded machine), the bench has a
+driving row with the car's dashboard on the glass:
+
+| Row | Result | Budget |
+| --- | --- | --- |
+| Play layout, median / p99 | 0.004-0.005 / 0.007-0.020 ms | 0.25 / 1 ms |
+| Driving layout, median / p99 | 0.004 / 0.006-0.023 ms | 0.25 / 1 ms |
+| Play nodes; driving nodes | 165; 182 | 500 |
+See the [review evidence](../reference/ui-hud-review.md) for input/layout
+coverage, asset provenance, browser findings and the remaining device work.
 
 ## Still moving
 

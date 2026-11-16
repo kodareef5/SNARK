@@ -634,7 +634,7 @@ test("the client shows shots: its own arrow at once, another's when told, the li
   expect(s.stats.undecodable).toBe(0);
 });
 
-test("a creature that came as a model is hit where its capsules are, in the pose it is in: its head for half as much again, its body for what the round does", () => {
+test("a creature that came as a model is hit where its capsules are, in the pose it is in: its head for half as much again, its body for the 70% of a round a creature takes", () => {
   // `still` keeps the parasaur where it is put, so the test can compute where its head is.
   const wild = CORE_CONTENT.find((d) => d.id === "core:parasaur")!;
   const { registry } = compileContent([...CORE_CONTENT, { ...wild, id: "core:parasaur_still", still: true } as Def]);
@@ -668,17 +668,18 @@ test("a creature that came as a model is hit where its capsules are, in the pose
   aim(pilot, 30 - body[0]!, body[1]!, body[2]!);
   h.run(100);
   pull(h, pilot, 4800);
-  expect([combat.last.victim, combat.last.zone, combat.last.damage]).toEqual([rec.pid, ZONE_TORSO, 280]);
+  // The rifle's 280, of which a creature takes 70% (Longneck Rifle).
+  expect([combat.last.victim, combat.last.zone, Math.round(combat.last.damage * 1000) / 1000]).toEqual([rec.pid, ZONE_TORSO, 196]);
   // It has mended a little in the seconds the rifle took to reload.
-  expect(full - health()).toBeGreaterThan(270);
-  expect(full - health()).toBeLessThanOrEqual(280);
+  expect(full - health()).toBeGreaterThan(186);
+  expect(full - health()).toBeLessThanOrEqual(196);
   // The head is where the idle clip has it at this tick.
   st.unpack(h.world.ents.anim[e]!);
   const head = middle("Head");
   aim(pilot, 30 - head[0]!, head[1]!, head[2]!);
   h.run(100);
   pull(h, pilot, 4800);
-  expect([combat.last.zone, combat.last.damage]).toEqual([ZONE_HEAD, 420]);
+  expect([combat.last.zone, Math.round(combat.last.damage * 1000) / 1000]).toEqual([ZONE_HEAD, 294]);
   // A shot over its back, inside its bounding box, hits nothing.
   const before = combat.hits;
   aim(pilot, 30, rig.mid * 2.4, -1.5);

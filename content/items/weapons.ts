@@ -76,15 +76,15 @@ export const WEAPONS: readonly Def[] = [
 
   // How each is made, from the same infoboxes on 2026-11-15: requiredlevel, engrampoints, the ingredients, craftingtime where
   // the page gives one, and the Crafting XP the page shows (its craftingxp times the global 4 of patches 253.0 and 313.5, as
-  // the mortar's 28.8 is). ARK makes the crossbow, pistol and long rifle at the smithy, which is not built: they are made in
-  // the hand until it is (DEV136). Their pages give no craftingtime, so those seconds are ours (DEV135).
+  // the mortar's 28.8 is). The crossbow, pistol and long rifle are made at the smithy, as ARK makes them (each infobox's
+  // craftedin; moved from the hand by stations S6). Their pages give no craftingtime, so those seconds are ours (DEV135).
   ...making("bow", "Bow", 10, 11, 1, 10, [["wood", 15], ["fiber", 50]], 20),
-  ...making("crossbow", "Crossbow", 25, 12, 1, 10, [["ingot", 7], ["wood", 10], ["fiber", 35]], 36),
-  ...making("pistol", "Pistol", 34, 15, 1, 12, [["ingot", 60], ["wood", 5], ["hide", 15]], 100.8),
-  ...making("rifle", "Long rifle", 35, 18, 1, 15, [["ingot", 95], ["wood", 20], ["hide", 25]], 330),
-  // The shotgun (W3): level 39, 18 points, 80 ingots, 20 wood and 25 hide, craftingxp 105.8, at the smithy (Shotgun); made
-  // in the hand (DEV136) and its 15 s ours, the long rifle's (DEV135).
-  ...making("shotgun", "Shotgun", 39, 18, 1, 15, [["ingot", 80], ["wood", 20], ["hide", 25]], 423.2),
+  ...making("crossbow", "Crossbow", 25, 12, 1, 10, [["ingot", 7], ["wood", 10], ["fiber", 35]], 36, "smithy"),
+  ...making("pistol", "Pistol", 34, 15, 1, 12, [["ingot", 60], ["wood", 5], ["hide", 15]], 100.8, "smithy"),
+  ...making("rifle", "Long rifle", 35, 18, 1, 15, [["ingot", 95], ["wood", 20], ["hide", 25]], 330, "smithy"),
+  // The shotgun (W3): level 39, 18 points, 80 ingots, 20 wood and 25 hide, craftingxp 105.8, at the smithy (Shotgun); its
+  // 15 s ours, the long rifle's (DEV135).
+  ...making("shotgun", "Shotgun", 39, 18, 1, 15, [["ingot", 80], ["wood", 20], ["hide", 25]], 423.2, "smithy"),
   // The flare gun, from its infobox above: made in the inventory, its craftingxp 0.24 times the global 4.
   ...making("flare_gun", "Flare gun", 15, 6, 1, 5, [["wood", 4], ["fiber", 2], ["sparkpowder", 10], ["gunpowder", 2]], 0.96),
 ];

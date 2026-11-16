@@ -15,8 +15,9 @@ import type { StructureStore } from "../../../shared/world/structures.ts";
 import { SIZE_UNITS, nodeForms } from "../../../shared/world/nodes.ts";
 import { LOOK_BYTES } from "../../../shared/anim/look.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
-import { GEAR_COUNT } from "../../../shared/sim/entities.ts";
+import { GEAR_COUNT, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { AnimState, CUE_DEAD, CUE_HELD, PITCH_STEPS, bodySeed } from "../../../shared/anim/pose.ts";
+import { SEAT_FLOATS } from "../../../shared/anim/seat.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { sortU32 } from "../../../shared/sort.ts";
 import { Details } from "../details/details.ts";
@@ -24,7 +25,7 @@ import type { Falling } from "../rubble.ts";
 import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
-import { Characters, showMaterials, type BodyShadows, type CastFn } from "./characters.ts";
+import { Characters, showMaterials, type BodyShadows, type CastFn, type VehicleRenderPose, type VehicleSeatPose } from "./characters.ts";
 import { Clouds } from "./clouds.ts";
 import { Dropped } from "./dropped.ts";
 import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
@@ -32,6 +33,7 @@ import { FrameBudget, coverScale, crownScale, leavesAt, thinning } from "./budge
 import { CITY_BUFFER, FarCity, type CitySource } from "./farcity.ts";
 import { FarNodes, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
+import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
@@ -75,6 +77,9 @@ export interface OwnBody {
   /** Laid out as EntityStore.gear. */
   readonly gear: Uint16Array;
   id: number;
+  generation?: number;
+  vehicle?: VehicleRenderPose;
+  attachment?: { host: number; slot: number; generation: number };
 }
 
 /** Instance buffers of the node store are numbered from here, clear of chunk indices. */
@@ -90,8 +95,6 @@ export const NODE_BUFFERS = 1 << 20;
  */
 export const NODE_CELLS = 4;
 
-/** Metres a rider's feet hang below its seat. Matches server/riding.ts. */
-const SEAT_DROP = 0.55;
 const MISSING_MESH = "core:missing";
 const WATER_MESH = "core:water";
 const BEAM_MESH = "core:beam";
@@ -269,6 +272,7 @@ export class Scene {
   /** The piece shown where it would be built. kind is 0 for none, x, y, z are metres, yaw is in wire units, color is a palette index. */
   readonly ghost = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, color: 0 };
   readonly characters: Characters;
+  private readonly vehicleSeats: (VehicleSeatPose | undefined)[] = new Array(MAX_VIEW);
   /** Small details: feathers knocked loose, dust thrown up. */
   readonly details: Details;
   /** Smoke and gas: each prop/cloud drawn as puffs over its reach, with the details (clouds.ts). */
@@ -279,7 +283,12 @@ export class Scene {
   own: OwnBody | null = null;
   /** Index of an entity to leave out of the remote bodies, because `own` is that body as the viewer predicts it (a mount). -1 for none. */
   skip = -1;
-  private readonly seatAt = [0, 0, 0];
+  private readonly seatAt = new Float64Array(SEAT_FLOATS);
+  /** By remote entity this frame: whether it rides in a seat, and the rows of that seat's turn (Characters.seat). */
+  /** Per body this frame: 1 for one astride the seat that steers its creature, 2 for a passenger astride, else 0. */
+  private readonly seated = new Uint8Array(MAX_VIEW);
+  private readonly saddleSeats: Registry["saddleSeats"];
+  private readonly seatTurn = new Float64Array(MAX_VIEW * 9);
   /** The bodies in view this frame: which remote entity each is, its place (x, y, z, yaw), and whether it gets only one bone. */
   private readonly bodyFrom = new Uint16Array(MAX_VIEW);
   private readonly bodyAt = new Float64Array(MAX_VIEW * 4);
@@ -296,6 +305,8 @@ export class Scene {
   readonly nodesFar: FarNodes | null;
   /** The map's own buildings where the near store does not hold their chunks whole, given a source of them. */
   readonly city: FarCity | null;
+  /** Water on its own surfaces apart from the sea, and the sea round those whose beds go under it (lakes.ts), given the far mesh. */
+  private readonly lakes: Lakes | null;
   /** Sun shadows: the cascades fitted this frame. */
   readonly cascades = new Cascades();
   /** Whether anything casts this frame, how far the true sun climbs (its unit vector's y), and frames fitted, for a cascade drawn every other frame. */
@@ -367,6 +378,7 @@ export class Scene {
     this.colorOfKind = new Uint8Array(reg.defs.length);
     this.pitched = Uint8Array.from(reg.defs, (d) => (d?.type === "prop" && d.pitched ? 1 : 0));
     this.birthScale = reg.birthScale;
+    this.saddleSeats = reg.saddleSeats;
     for (let k = 1; k < reg.defs.length; k++) {
       const d = reg.defs[k]!;
       if (!("mesh" in d)) continue;
@@ -428,6 +440,7 @@ export class Scene {
     const last = (mesh: number): ReturnType<NodeLooks["last"]> => this.assets.residency.bootLevel(mesh, table.tris[mesh]!.length - 1);
     const looks: NodeLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, side: table.side, low: table.low, high: table.high, tris: table.tris, last };
     this.nodesFar = world.farNodes ? new FarNodes(world.farNodes, world.far?.cells ?? null, world.dims, reg, looks) : null;
+    this.lakes = world.hf.water && far >= 0 ? new Lakes(world.hf, world.hf.water, far, pack.header.meshes[far]!) : null;
     this.waterMesh = table.find(WATER_MESH);
     this.beamMesh = table.find(BEAM_MESH);
     this.skyMaterial = table.materials.findIndex((m) => m.id === SKY_MATERIAL);
@@ -446,6 +459,7 @@ export class Scene {
     this.far?.reset();
     this.nodesFar?.reset();
     this.city?.reset();
+    this.lakes?.reset();
     this.cascades.clear();
   }
 
@@ -476,11 +490,13 @@ export class Scene {
     }
     this.fit(cam);
 
-    // Under water the view is short and the fog is the water's colour, dimmed.
+    // Under water, the sea's or a lake's where the camera is, the view is short and the fog is the water's colour, dimmed.
+    // Out of it the air is measured from the sea, or from 0 over a map with none.
     const sea = this.world.hf.seaLevel;
-    // Over a map with no sea the air is measured from 0, and the camera is never under water.
-    p.frame[FRAME.eyeHeight] = sea > -Infinity ? cam.y - sea : Math.max(cam.y, 0);
-    if (cam.y < sea) {
+    const water = this.world.hf.waterAt(cam.x, cam.z);
+    const under = cam.y < water;
+    p.frame[FRAME.eyeHeight] = under ? cam.y - water : Math.max(cam.y - (sea > -Infinity ? sea : 0), 0);
+    if (under) {
       for (let k = 0; k < 3; k++) p.sky[k] = this.deepColor[k]! * p.light;
       p.fogStart = 0;
       p.fogEnd = UNDERWATER_VIEW;
@@ -505,7 +521,14 @@ export class Scene {
     if (this.falling && this.falling.count > 0) this.showFalling(cam, this.falling);
     if (this.ghost.kind !== 0) this.showGhost(cam);
     if (this.things.length > 0) this.showThings(cam);
-    if (sea > -Infinity && this.waterMesh >= 0) this.water(cam, sea);
+    // Water seen from above on a lit tier is drawn with its waves and its depth (water.ts), from the frame block's sea part.
+    const lit = p.lit && !this.plainSky && !under;
+    let waves = sea > -Infinity && this.waterMesh >= 0 && this.water(cam, sea, lit);
+    if (this.lakes) waves = this.showLakes(cam, lit) || waves;
+    if (waves) {
+      seaFrame(p.frame, this.world.hf, this.terrain.size, p.groundWindow, cam.x, cam.z, this.now / 1000, cam.y);
+      if (this.waterMaterial >= 0) this.assets.residency.material(this.waterMaterial, WATER_ASKED.pixels, WATER_ASKED.distance);
+    }
     this.showDetails(cam, remote);
     // The viewer's own body goes over everything else, water included.
     this.characters.flush(p, this.transient, true, this.drawBody, this.casting ? this.castBody : null);
@@ -807,12 +830,14 @@ export class Scene {
     ch.begin();
     let unseen = 0;
     if (remote) {
+      this.vehicleSeats.fill(undefined, 0, remote.count);
       // First which bodies are in view and where, then which of them the frame has the bones to pose.
       const from = this.bodyFrom;
       const place = this.bodyAt;
       const rigid = this.bodyRigid;
       let n = 0;
       let wanted = 0;
+      this.seated.fill(0, 0, remote.count);
       for (let i = 0; i < remote.count; i++) {
         const kind = remote.kind[i]!;
         // A dead creature's body is drawn where it lies, by ch.corpses.
@@ -828,23 +853,38 @@ export class Scene {
           const at = this.seatAt;
           const held = (remote.cue[i]! & CUE_HELD) !== 0;
           let found = false;
-          if (own && own.id === on) {
-            found = held ? ch.heldAt(remote.id[i]!, kind, on, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, at) : ch.seat(own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, at);
+          let saddle = 0;
+          if (own && own.id === on && (remote.seatSlot[i] === 0 || own.generation === remote.seatGen[i])) {
+            saddle = own.gear[GEAR_WORN]!;
+            found = held ? ch.heldAt(remote.id[i]!, kind, on, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, at) : ch.seat(own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, at, remote.seatSlot[i]!, own.vehicle, saddle);
             yaw = own.yaw;
+            if (found && !held && ch.vehicle(own.kind)) this.vehicleSeats[i] = ch.seatPose(own.kind, remote.seatSlot[i]!, own.vehicle!, at, yaw, remote.yaw[i]!);
           } else {
             for (let j = 0; j < remote.count && !found; j++) {
               if (remote.id[j] !== on) continue;
+              if (remote.seatSlot[i] !== 0 && remote.seatGen[i] !== remote.gen[j]) continue;
               const ms = this.mountState;
               ms.unpack(remote.anim[j]!, remote.cue[j]!);
               ms.seed = bodySeed(on);
-              found = held ? ch.heldAt(remote.id[i]!, kind, on, remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, at) : ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, remote.tick, at);
+              const vehicle = this.remoteVehicle(remote, j);
+              saddle = remote.gear[j * GEAR_COUNT + GEAR_WORN]!;
+              found = held ? ch.heldAt(remote.id[i]!, kind, on, remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, at) : ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, remote.tick, at, remote.seatSlot[i]!, vehicle, saddle);
               yaw = remote.yaw[j]!;
+              if (found && !held && ch.vehicle(remote.kind[j]!)) this.vehicleSeats[i] = ch.seatPose(remote.kind[j]!, remote.seatSlot[i]!, vehicle, at, yaw, remote.yaw[i]!);
             }
           }
           if (found) {
             x = at[0]!;
-            y = at[1]! - (held ? 0 : SEAT_DROP);
+            y = at[1]!;
             z = at[2]!;
+            // A rider sits in its seat's whole frame; one in a vehicle's seat is posed in the vehicle's (vehicleSeats).
+            if (!held && !this.vehicleSeats[i]) {
+              const steers = remote.seatSlot[i] === 0 || this.saddleSeats[saddle]?.[remote.seatSlot[i]! - 1]?.driver === true;
+              this.seated[i] = steers ? 1 : 2;
+              for (let q = 0; q < 9; q++) this.seatTurn[i * 9 + q] = at[3 + q]!;
+              // A passenger looks and aims as it will: its own facing turns it within the seat.
+              if (!steers) yaw = remote.yaw[i]!;
+            }
           }
         }
         const r = ch.reach(kind);
@@ -903,7 +943,25 @@ export class Scene {
     }
     // Then the shots in the air.
     this.shots?.draw(ch, p, cam, this.shotTick);
-    if (own && ch.has(own.kind)) ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.gear, 0, own.id, own.firstPerson, own.firstPerson);
+    if (own && ch.has(own.kind)) {
+      let seat: VehicleSeatPose | undefined;
+      let saddled = false;
+      const at = this.seatAt;
+      if (own.attachment && remote) for (let j = 0; j < remote.count; j++) {
+        if (remote.id[j] !== own.attachment.host || remote.gen[j] !== own.attachment.generation) continue;
+        const vehicle = this.remoteVehicle(remote, j), ms = this.mountState;
+        ms.unpack(remote.anim[j]!, remote.cue[j]!);
+        ms.seed = bodySeed(remote.id[j]!);
+        if (ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, remote.tick, at, own.attachment.slot, vehicle, remote.gear[j * GEAR_COUNT + GEAR_WORN]!)) {
+          // A passenger in a car is posed in the car's frame; on a creature, astride in its seat's.
+          if (ch.vehicle(remote.kind[j]!)) seat = ch.seatPose(remote.kind[j]!, own.attachment.slot, vehicle, at, remote.yaw[j]!, own.yaw);
+          else saddled = true;
+        }
+        break;
+      }
+      if (saddled) ch.add(p, own.kind, at[0]!, at[1]!, at[2]!, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.gear, 0, own.id, own.firstPerson, own.firstPerson, 1, false, false, at, 3, undefined, undefined, false);
+      else ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.gear, 0, own.id, own.firstPerson, own.firstPerson, 1, false, false, null, 0, own.vehicle, seat);
+    }
     if (remote && unseen > 0) this.poseUnseen(remote, unseen);
     const from = p.drawCount;
     ch.flush(p, this.transient, false, this.drawBody, this.casting ? this.castBody : null);
@@ -918,7 +976,11 @@ export class Scene {
     st.seed = bodySeed(remote.id[i]!);
     const look = remote.hasLook[i] !== 0 ? remote.look : null;
     const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
-    this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false, size, rigid, unseen);
+    this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false, size, rigid, unseen, this.seated[i] !== 0 ? this.seatTurn : null, i * 9, this.remoteVehicle(remote, i), this.vehicleSeats[i], this.seated[i] !== 2);
+  }
+
+  private remoteVehicle(remote: RemoteSample, i: number): VehicleRenderPose {
+    return { pitch: remote.vehiclePitch[i]!, roll: remote.vehicleRoll[i]!, steering: remote.steering[i]!, wheelAngle: remote.wheelAngle[i]!, groundPitch: remote.vehicleGroundPitch[i]!, groundRoll: remote.vehicleGroundRoll[i]!, rideOffset: remote.vehicleRideOffset[i]!, grounded: remote.vehicleGrounded[i] !== 0, doors: remote.vehicleDoors[i]! };
   }
 
   /**
@@ -1017,17 +1079,16 @@ export class Scene {
   }
 
   /**
-   * Tiles of one flat mesh over the map, drawn last because they are see-through. On a lit tier the sea seen from above
-   * runs on past the map to the end of the view, and is drawn with its waves and its depth (water.ts); seen from under
-   * it, or in a plain sky, it is as it always was.
+   * Tiles of one flat mesh over the map, drawn last because they are see-through, but for those the lakes draw. With
+   * `lit` the sea runs on past the map to the end of the view, and is drawn with its waves and its depth (water.ts);
+   * seen from under water, or in a plain sky, it is as it always was. Whether it drew with its waves.
    */
-  private water(cam: Camera, sea: number): void {
+  private water(cam: Camera, sea: number, lit: boolean): boolean {
     const p = this.packet;
     const hf = this.world.hf;
     const first = p.transientCount;
     let n = 0;
     const half = WATER_TILE / 2;
-    const lit = p.lit && !this.plainSky && cam.y >= sea;
     const r = Math.ceil(this.viewDistance / WATER_TILE);
     const [cx, cz] = [Math.floor(cam.x / WATER_TILE), Math.floor(cam.z / WATER_TILE)];
     const [ix0, iz0, ix1, iz1] = lit ? [cx - r, cz - r, cx + r, cz + r] : [0, 0, Math.ceil(hf.sizeX / WATER_TILE) - 1, Math.ceil(hf.sizeZ / WATER_TILE) - 1];
@@ -1041,7 +1102,7 @@ export class Scene {
         const x = tx * WATER_TILE + half - cam.x;
         const z = tz * WATER_TILE + half - cam.z;
         const y = sea - cam.y;
-        if (!cam.boxVisible(x - half, y - 0.1, z - half, x + half, y + 0.1, z + half)) continue;
+        if (this.lakes?.holed(tx, tz) || !cam.boxVisible(x - half, y - 0.1, z - half, x + half, y + 0.1, z + half)) continue;
         if (n === MAX_WATER_TILES) {
           p.dropped++;
           continue;
@@ -1052,14 +1113,38 @@ export class Scene {
         [x0, z0, x1, z1] = [Math.min(x0, x - half), Math.min(z0, z - half), Math.max(x1, x + half), Math.max(z1, z + half)];
       }
     }
-    if (n === 0) return;
+    if (n === 0) return false;
     const d = p.drawCount;
     this.draw(this.waterMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0, lit ? DRAW_BLEND | DRAW_WATER : DRAW_BLEND, cam.passes(x0, sea - cam.y - 0.1, z0, x1, sea - cam.y + 0.1, z1));
     p.transientCount = first + n;
-    if (!lit || p.drawCount === d) return;
+    if (!lit || p.drawCount === d) return false;
     p.drawMaterial[d] = this.waterMaterial;
-    seaFrame(p.frame, hf, this.terrain.size, p.groundWindow, cam.x, cam.z, this.now / 1000);
-    if (this.waterMaterial >= 0) this.assets.residency.material(this.waterMaterial, WATER_ASKED.pixels, WATER_ASKED.distance);
+    return true;
+  }
+
+  /** The lakes' tiles to the end of the view, each a draw as the sea's is. Whether any drew with its waves. */
+  private showLakes(cam: Camera, lit: boolean): boolean {
+    const p = this.packet;
+    const lakes = this.lakes!;
+    lakes.update(p, this.assets.residency, cam.x, cam.z, this.viewDistance);
+    let waves = false;
+    lakes.draw(cam, this.viewDistance, (slot, triangles, ox, oy, oz, passes) => {
+      const d = p.drawCount;
+      const copies = passes === (NEAR | FAR) ? 2 : 1;
+      if (d + this.doubled + copies > MAX_DRAWS) {
+        p.dropped++;
+        return;
+      }
+      [p.drawMesh[d], p.drawLod[d], p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawFlags[d]] = [lakes.mesh, 0, slot, LAKE_BUFFER, 0, 1, lit ? DRAW_BLEND | DRAW_WATER : DRAW_BLEND];
+      p.drawOffset.set([ox, oy, oz], d * 3);
+      p.drawMaterial[d] = this.waterMaterial;
+      this.passOf[d] = passes;
+      p.drawCount = d + 1;
+      this.doubled += copies - 1;
+      p.triangles += triangles * copies;
+      waves ||= lit;
+    });
+    return waves;
   }
 
   /**
@@ -1351,9 +1436,11 @@ export class Scene {
       const lies = this.dropped.item(remote.kind[i]!, remote.gear, i * GEAR_COUNT);
       const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[remote.kind[i]!]!;
       const r = this.radiusOfMesh[mesh]!;
-      const x = remote.x[i]! - cam.x;
-      const y = remote.y[i]! - cam.y;
-      const z = remote.z[i]! - cam.z;
+      // The mount the viewer rides is where its prediction has it, as its rider is drawn on it (bodies()).
+      const mine = this.own !== null && remote.id[i] === this.skip;
+      const x = (mine ? this.own!.x : remote.x[i]!) - cam.x;
+      const y = (mine ? this.own!.y : remote.y[i]!) - cam.y;
+      const z = (mine ? this.own!.z : remote.z[i]!) - cam.z;
       // Culled entries are left out of the counts. The second pass repeats the test.
       if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
       this.tally(cam, mesh, x, y, z);
@@ -1367,12 +1454,13 @@ export class Scene {
       const lies = this.dropped.item(kind, remote.gear, i * GEAR_COUNT);
       const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[kind]!;
       const r = this.radiusOfMesh[mesh]!;
-      const x = remote.x[i]! - cam.x;
-      const y = remote.y[i]! - cam.y;
-      const z = remote.z[i]! - cam.z;
+      const mine = this.own !== null && remote.id[i] === this.skip;
+      const x = (mine ? this.own!.x : remote.x[i]!) - cam.x;
+      const y = (mine ? this.own!.y : remote.y[i]!) - cam.y;
+      const z = (mine ? this.own!.z : remote.z[i]!) - cam.z;
       if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
       const at = this.cursor[mesh]!++;
-      const yaw = Math.round((remote.yaw[i]! / (2 * Math.PI)) * 65536) & 0xffff;
+      const yaw = Math.round(((mine ? this.own!.yaw : remote.yaw[i]!) / (2 * Math.PI)) * 65536) & 0xffff;
       if (lies !== 0) this.transient.set(at, x, y, z, this.dropped.yaw(remote.id[i]!, yaw), this.dropped.colorOf(lies));
       else this.transient.set(at, x, y, z, yaw, this.colorOfKind[kind]!);
       this.transient.regions(at, remote.colors, i * 6);

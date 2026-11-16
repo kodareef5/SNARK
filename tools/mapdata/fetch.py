@@ -133,7 +133,10 @@ def fema(m, man):
 
 
 def bathymetry(m, man):
-    c = m.city['bathymetry']
+    c = m.city.get('bathymetry')
+    if not c:
+        print('bathymetry: none, the frame has no sea', flush=True)
+        return
     w, s, e, n = m.lonlat_bounds(c.get('margin_deg', 0.006))
     keep(m, man, 'bathymetry/' + c['url'].rsplit('/', 1)[1], c['url'], c['source'], c['licence'], params={
         'var': 'Band1', 'north': round(n, 3), 'south': round(s, 3), 'west': round(w, 3), 'east': round(e, 3),
@@ -145,7 +148,8 @@ def osm(m, man):
     o = m.city['osm']
     w, s, e, n = m.lonlat_bounds()
     bbox = f'{math.floor(s * 1e4) / 1e4},{math.floor(w * 1e4) / 1e4},{math.ceil(n * 1e4) / 1e4},{math.ceil(e * 1e4) / 1e4}'
-    names = ['osm', 'ways'] + (['buildings'] if m.city['footprints'].get('split_by_osm') else [])
+    # features: building parts, water standing above any sea, pools, fountains, runways and wheels, with their shapes.
+    names = ['osm', 'ways'] + (['buildings'] if m.city['footprints'].get('split_by_osm') else []) + ['features']
     for name in names:
         query = (HERE / f'{name}.overpassql').read_text().replace('{bbox}', bbox)
         (m.root / 'blocks').mkdir(exist_ok=True)

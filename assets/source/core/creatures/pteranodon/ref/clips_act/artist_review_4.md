@@ -1,0 +1,1 @@
+**Yes—passes now.** The lower load in **4–5** feeds into a **6–8** thrust aligned with the beak, while the shoulders stay up. Closure on **8** reads as contact. Leave the withdrawal and settle as they are.

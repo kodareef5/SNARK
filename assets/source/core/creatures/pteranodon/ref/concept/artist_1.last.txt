@@ -1,0 +1,5 @@
+Saved all **19 requested PNGs**, plus scripts, prompts, measurements and overlays, in this folder.
+
+[Report and checks](/home/user/dev/SNARK/.claude/worktrees/agent-a01a89f1f31e749da/assets/source/core/creatures/pteranodon/ref/concept/REPORT.md) · [Flight portrait](/home/user/dev/SNARK/.claude/worktrees/agent-a01a89f1f31e749da/assets/source/core/creatures/pteranodon/ref/concept/three_quarter.png)
+
+Created with built-in imagegen. All 27 measured visible-landmark comparisons pass. The report documents deviations—including the roughly 2.4 m standing crest, leaner chest and longer toes—and unresolved internal rig geometry.

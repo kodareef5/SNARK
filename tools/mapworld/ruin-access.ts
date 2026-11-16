@@ -3,18 +3,20 @@ import { S } from "./ground.ts";
 import type { Mason } from "./ruin-geometry.ts";
 import type { Site, StaticPiece } from "./statics.ts";
 
+const streetLevel = (ground: number, base: number): number => Math.abs(ground - base) < .4 ? base : base - Math.round((base - ground) * 4) / 4;
+
 export interface Approach { street: { x: number; y: number; z: number }; door: { x: number; y: number; z: number }; core: { x: number; y: number; z: number }; ramp: number; }
 export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]): ((m: Mason, owner: number) => Approach[]) & { reserve: (routes: Approach[]) => void } {
   const { n, surface, heaps } = site.ground; const size = (n - 1) * 2;
   const bins = new Map<string, { x: number; z: number }[]>();
-  interface Solid { x: number; z: number; lo: number; hi: number; c: number; s: number; w: number; d: number; }
+  interface Solid { x: number; z: number; lo: number; hi: number; floor: boolean; c: number; s: number; w: number; d: number; }
   const index = (pieces: readonly StaticPiece[]): Map<number, Solid[]> => {
     const out = new Map<number, Solid[]>();
     for (const p of pieces) {
       const [w, h, d] = RUIN_SHAPES[p.kind.split("_")[1] as RuinShape]; const angle = p.yaw * Math.PI / 180;
       const k = Math.floor(p.x / 16) + Math.floor(p.z / 16) * 1024;
       if (!out.has(k)) out.set(k, []);
-      out.get(k)!.push({ x: p.x, z: p.z, lo: p.y - h / 2, hi: p.y + h / 2, c: Math.cos(angle), s: Math.sin(angle), w: w / 2 + .45, d: d / 2 + .45 });
+      out.get(k)!.push({ x: p.x, z: p.z, lo: p.y - h / 2, hi: p.y + h / 2, floor: p.kind.includes("_floor"), c: Math.cos(angle), s: Math.sin(angle), w: w / 2 + .45, d: d / 2 + .45 });
     }
     return out;
   };
@@ -38,7 +40,8 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
       const bx = Math.floor(x / 16); const bz = Math.floor(z / 16);
       for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) for (const grid of [own, solids]) {
         for (const o of grid.get(bx + dx + (bz + dz) * 1024) ?? []) {
-          if (o.hi <= y + .38 || o.lo >= y + 2.1) continue;
+          const overDeck = grid === solids && o.floor && o.hi < y - .35 && o.hi > y - 3;
+          if (!overDeck && (o.hi <= y + .38 || o.lo >= y + 2.1)) continue;
           const px = x - o.x; const pz = z - o.z;
           if (Math.abs(px * o.c - pz * o.s) < o.w && Math.abs(px * o.s + pz * o.c) < o.d) return true;
         }
@@ -53,7 +56,7 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
       for (let x = bx - 2; x <= bx + 2; x++) for (let z = bz - 2; z <= bz + 2; z++) candidates.push(...bins.get(`${x},${z}`) ?? []);
       candidates.sort((a, b) => Math.hypot(a.x - entry.x, a.z - entry.z) - Math.hypot(b.x - entry.x, b.z - entry.z));
       const street = [4, 0].flatMap((margin) => candidates.slice(0, 48).map((street) => ({ street, margin }))).find(({ street: p, margin }) => {
-        const len = Math.hypot(p.x - entry.x, p.z - entry.z); const groundY = site.groundAt(p.x, p.z); const y = Math.abs(groundY - m.base) < .4 ? m.base : groundY;
+        const len = Math.hypot(p.x - entry.x, p.z - entry.z); const groundY = site.groundAt(p.x, p.z); const y = streetLevel(groundY, m.base);
         if (len > 112 || len < 4 || y < .1 || Math.abs(y - m.base) / len > .12) return false;
         let boundary = len;
         for (let s = 0; s <= len; s += .25) {
@@ -67,6 +70,8 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
           if (other === owner) boundary = Math.min(boundary, s);
         }
         ramp = Math.max(.05, (boundary - 3) / len);
+        if (Math.abs(y - m.base) > .4) ramp = Math.floor(len * ramp / 4) * 4 / len;
+        if (ramp <= 0) return false;
         if (Math.abs(y - m.base) / (len * ramp) > .18) return false;
         for (let s = 0; s <= len; s += .25) {
           const t = s / len; const x = p.x + (entry.x - p.x) * t; const z = p.z + (entry.z - p.z) * t;
@@ -84,20 +89,35 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
       })?.street;
       if (!street) continue;
       const groundY = site.groundAt(street.x, street.z);
-      const from = { ...street, y: Math.abs(groundY - m.base) < .4 ? m.base : groundY }; const door = { x: entry.x, y: m.base, z: entry.z };
+      const from = { ...street, y: streetLevel(groundY, m.base) }; const door = { x: entry.x, y: m.base, z: entry.z };
       out.push({ street: from, door, core: { x: entry.coreX, y: m.base, z: entry.coreZ }, ramp });
       const length = Math.hypot(from.x - door.x, from.z - door.z);
+      const hillside = Math.abs(from.y - door.y) > .4;
+      if (hillside) {
+        const modules = Math.round(length * ramp / 4); const dx = (door.x - from.x) / length; const dz = (door.z - from.z) / length;
+        const yaw = Math.atan2(dx, dz) * 180 / Math.PI;
+        for (let i = 0; i < modules; i++) {
+          const lo = from.y + Math.round((door.y - from.y) * i / modules * 4) / 4;
+          const hi = from.y + Math.round((door.y - from.y) * (i + 1) / modules * 4) / 4;
+          const rise = Math.round(Math.abs(hi - lo) * 4);
+          m.pieces.push({ kind: rise ? `core:zruin_ramp${rise}_concrete` : "core:zruin_floor4_concrete", x: from.x + dx * (i * 4 + 2), y: (lo + hi) / 2 - .2, z: from.z + dz * (i * 4 + 2), yaw: yaw + (hi < lo ? 180 : 0) });
+        }
+        for (let d = modules * 4 + 2; d <= length + 1; d += 2) m.pieces.push({ kind: "core:zruin_floor4_concrete", x: from.x + dx * d, y: door.y - .2, z: from.z + dz * d, yaw });
+      }
       for (let d = 0; d <= length; d += 2) {
         const t = d / length; const x = from.x + (door.x - from.x) * t; const z = from.z + (door.z - from.z) * t; const y = from.y + (door.y - from.y) * Math.min(1, t / ramp);
         m.clear.push({ x, z, radius: 10 });
-        if ([-6, -4, -2, 0, 2, 4, 6].some((s) => site.ground.water[at(x + (door.x - from.x) / length * s, z + (door.z - from.z) / length * s)])) {
+        if (!hillside && [-6, -4, -2, 0, 2, 4, 6].some((s) => [-4, 0, 4].some((side) => {
+          const i = at(x + (door.x - from.x) / length * s - (door.z - from.z) / length * side, z + (door.z - from.z) / length * s + (door.x - from.x) / length * side);
+          return site.ground.water[i] || heaps.owner[i]! >= 0 && heaps.owner[i] !== owner;
+        }))) {
           m.pieces.push({ kind: "core:zruin_floor4_concrete", x, y: y - .2, z, yaw: Math.atan2(from.z - door.z, door.x - from.x) * 180 / Math.PI });
         }
       }
       const inside = Math.hypot(entry.coreX - door.x, entry.coreZ - door.z);
       for (let d = 0; d <= inside; d += 2) {
         const t = d / inside; const x = door.x + (entry.coreX - door.x) * t; const z = door.z + (entry.coreZ - door.z) * t;
-        if (site.ground.water[at(x, z)] || site.groundAt(x, z) < m.base - .4) m.pieces.push({ kind: "core:zruin_floor4_concrete", x, y: m.base - .2, z, yaw: entry.yaw });
+        if (hillside || site.ground.water[at(x, z)] || site.groundAt(x, z) < m.base - .4) m.pieces.push({ kind: "core:zruin_floor4_concrete", x, y: m.base - .2, z, yaw: entry.yaw });
       }
     }
     return out;

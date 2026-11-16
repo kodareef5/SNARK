@@ -182,6 +182,11 @@ export class Residency {
   private readonly fromBoot: number[] = [];
   private readonly arrivals: AssetArrival[] = [];
 
+  /** Bounded, on-demand inspection: authored texture identity and its resident/incoming step. */
+  textureState(): { id: string; have: number; goal: number; state: number; wanted: boolean }[] {
+    return (this.manifest.textures ?? []).map((texture, t) => ({ id: texture.id, have: this.has[t]!, goal: this.goal[t]!, state: this.state[this.texBase + t]!, wanted: this.seen[this.texBase + t] === this.frame }));
+  }
+
   constructor(manifest: Manifest, boot: Pack, port: AssetPort | null, seed = 1) {
     this.manifest = manifest;
     this.boot = boot;

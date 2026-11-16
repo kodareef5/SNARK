@@ -4,7 +4,7 @@
 
 import { Pose } from "../anim/clip.ts";
 import { HUMAN, HUMAN_BONES } from "../anim/human.ts";
-import { AnimState, CUE_LAND, CUE_NONE, CUE_STARTLE, CUE_TORPOR, HumanAnim, LAYER_EAT, LAYER_FLINCH, LAYER_NONE, humanPose } from "../anim/pose.ts";
+import { AnimState, CUE_LAND, CUE_NONE, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, HumanAnim, LAYER_EAT, LAYER_FLINCH, LAYER_NONE, humanPose } from "../anim/pose.ts";
 import { ACT_COOL, ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL } from "./weapon.ts";
 import { Solved, rayZones, solve, zoneHit } from "../anim/skeleton.ts";
 import { creaturePose, rayCreature, type CreatureAnim } from "../anim/creature.ts";
@@ -13,12 +13,13 @@ import { compileContent, type Registry } from "../content/registry.ts";
 import { deriveRegistry, type Tuning } from "../content/tuning.ts";
 import { TICK_DT } from "../coords.ts";
 import { Rng } from "../rng.ts";
-import { BTN_CROUCH, BTN_PRONE, Body, MODE_GHOST, MODE_SWIM, MODE_WALK, stepBody } from "./character.ts";
+import { BTN_BRAKE, BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_ROLL, BTN_SPRINT, Body, MF_NO_JUMP, MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, MODE_FLYER, MODE_GHOST, MODE_SWIM, MODE_WALK, STAMINA_UNITS, stepBody } from "./character.ts";
 import type { Heightfield } from "../world/heightfield.ts";
 import { buildProvingHeightfield, populateProving, PROVING_DIMS } from "../world/proving.ts";
 import { castWorld, lookDirection, rayHit } from "../world/ray.ts";
 import { NodeField, nodeForms, scatterNodes, type NodeSpot } from "../world/nodes.ts";
 import { StructureStore } from "../world/structures.ts";
+import { MapWater } from "../world/water.ts";
 import { frameAxes, makeAim, makeSockets, obstructed, pickSnap, poseAt, socketsOf, type Pose as SnapPose } from "../world/snap.ts";
 
 /** A tuning with an entry of every kind and numbers that do not come out even, as a server's settings might produce. */
@@ -68,7 +69,10 @@ export function tunedHash(base: Registry): string {
   return (h >>> 0).toString(16).padStart(8, "0") + simHash(reg, 600);
 }
 
-/** `ground` is the proving ground from elsewhere, such as its map file. Without it the proving ground is built here. */
+/**
+ * Survivors walking, jumping, crouching and swimming over the proving ground, one a ghost, and pteranodons flying over it.
+ * `ground` is the proving ground from elsewhere, such as its map file. Without it the proving ground is built here.
+ */
 export function simHash(reg: Registry, ticks = 3000, ground: { hf: Heightfield; structs: StructureStore } | null = null): string {
   const hf = ground ? ground.hf : buildProvingHeightfield();
   const structs = ground ? ground.structs : new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
@@ -92,10 +96,42 @@ export function simHash(reg: Registry, ticks = 3000, ground: { hf: Heightfield; 
     return b;
   });
   const input = bodies.map(() => [0, 0, 0, 0, 0]);
+  // Pteranodons, wild and tamed, from the plaza, the pool's shore and the slopes, on their own stream of inputs: in the air
+  // while their jump is held, climbing and diving by the look, sprinting, braking and rolling, let down to land, and now and
+  // then knocked out, caught by a bola or too heavy, as the server sets them. One tires within seconds and is put down.
+  const ptera = reg.index.get("core:pteranodon");
+  const flyers = ptera === undefined ? [] : [[256, 236], [196, 256], [290, 262], [230, 292]].map(([x, z], i) => {
+    const b = new Body();
+    b.x = x!;
+    b.z = z!;
+    b.y = hf.heightAt(b.x, b.z);
+    b.grounded = true;
+    b.kind = ptera;
+    b.staminaMax = i === 1 ? 20 : 150;
+    b.stamina = b.staminaMax * STAMINA_UNITS;
+    return b;
+  });
+  const flies = ptera === undefined ? [] : [reg.move[ptera]!, reg.tamedMove[ptera]!];
+  const air = new Rng(20261115);
+  const flown = flyers.map(() => [127, 0, 0, BTN_JUMP]);
   const f = new Float32Array(6);
   const bytes = new Uint8Array(f.buffer);
   let h1 = 0x811c9dc5;
   let h2 = 0x9747b28c;
+  const mix = (b: Body): void => {
+    f[0] = b.x;
+    f[1] = b.y;
+    f[2] = b.z;
+    f[3] = b.vx;
+    f[4] = b.vy;
+    f[5] = b.vz;
+    for (let k = 0; k < 24; k++) {
+      h1 = Math.imul(h1 ^ bytes[k]!, 0x01000193);
+      h2 = Math.imul(h2 + bytes[k]!, 0x85ebca6b) ^ (h2 >>> 13);
+    }
+    h1 = Math.imul(h1 ^ ((b.grounded ? 1 : 0) | (b.mode << 1) | (b.mflags << 4) | (b.stance << 8)), 0x01000193);
+    h2 = Math.imul(h2 + b.stamina, 0x85ebca6b) ^ (h2 >>> 13);
+  };
   for (let t = 0; t < ticks; t++) {
     for (let i = 0; i < bodies.length; i++) {
       const b = bodies[i]!;
@@ -109,21 +145,49 @@ export function simHash(reg: Registry, ticks = 3000, ground: { hf: Heightfield; 
         inp[4] = rng.int(32769) - 16384;
       }
       stepBody(world, b, inp[0]!, inp[1]!, inp[2]!, inp[4]!, inp[3]!, p, TICK_DT);
-      f[0] = b.x;
-      f[1] = b.y;
-      f[2] = b.z;
-      f[3] = b.vx;
-      f[4] = b.vy;
-      f[5] = b.vz;
-      for (let k = 0; k < 24; k++) {
-        h1 = Math.imul(h1 ^ bytes[k]!, 0x01000193);
-        h2 = Math.imul(h2 + bytes[k]!, 0x85ebca6b) ^ (h2 >>> 13);
+      mix(b);
+    }
+    for (let i = 0; i < flyers.length; i++) {
+      const b = flyers[i]!;
+      const inp = flown[i]!;
+      if (air.int(20) === 0) {
+        inp[0] = air.int(255) - 127;
+        inp[1] = air.int(65536);
+        inp[2] = air.int(32769) - 16384;
+        inp[3] = (air.int(5) === 0 ? 0 : BTN_JUMP) | (air.int(2) === 0 ? BTN_SPRINT : 0) | (air.int(8) === 0 ? BTN_BRAKE : 0) | (air.int(8) === 0 ? BTN_ROLL : 0);
+        const r = air.int(40);
+        b.mflags = (b.mflags & MF_WINDED) | (r === 0 ? MF_OUT : r === 1 ? MF_ROOTED | MF_NO_SPRINT : r === 2 ? MF_ROOTED | MF_NO_SPRINT | MF_NO_JUMP : 0);
       }
-      h1 = Math.imul(h1 ^ ((b.grounded ? 1 : 0) | (b.mode << 1) | (b.mflags << 4) | (b.stance << 8)), 0x01000193);
-      h2 = Math.imul(h2 + b.stamina, 0x85ebca6b) ^ (h2 >>> 13);
+      stepBody(world, b, 0, inp[0]!, inp[1]!, inp[2]!, inp[3]!, flies[i % 2]!, TICK_DT);
+      mix(b);
+      h1 = Math.imul(h1 ^ (b.yaw | (b.regenWait << 16)), 0x01000193);
+      h2 = Math.imul(h2 + b.rollWait, 0x85ebca6b) ^ (h2 >>> 13);
     }
   }
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * The bodies of `simHash` over the proving ground with water standing on its own surfaces: the pool's west half 1.25 m
+ * over the sea in its east half, a pond 2 m up over the foot of the slopes, and a puddle 0.6 m deep on the plaza where the
+ * first survivor starts. Equal on both engines means swimming into, out of and between waters of different heights is
+ * predicted as the server steps it.
+ */
+export function waterHash(reg: Registry, ticks = 3000): string {
+  const hf = buildProvingHeightfield();
+  const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  populateProving(structs, hf, reg);
+  const side = (PROVING_DIMS.chunksX * 64) / 2;
+  const grid = new Uint16Array(side * side);
+  const fill = (x0: number, z0: number, x1: number, z1: number, b: number): void => {
+    for (let j = z0 / 2; j < z1 / 2; j++) for (let i = x0 / 2; i < x1 / 2; i++) grid[j * side + i] = b;
+  };
+  fill(140, 220, 172, 292, 1);
+  fill(196, 276, 246, 300, 2);
+  fill(248, 234, 264, 250, 3);
+  const level = (m: number): number => Math.round((m - hf.minY) / hf.stepY);
+  hf.water = MapWater.fromGrid(PROVING_DIMS, hf.minY, hf.stepY, 2, [{ name: "Raised pool", level: level(0.75) }, { name: "Slope pond", level: level(2) }, { name: "Puddle", level: level(0.6) }], grid);
+  return simHash(reg, ticks, { hf, structs });
 }
 
 /** Poses of the human clips in `anim` over every state a body can be in, and what three rays hit. */
@@ -326,7 +390,8 @@ export function snapHash(reg: Registry): string {
 /**
  * Every creature at every third speed, striking and not, at whole and fractional ticks. Then each through a knock-out,
  * fed twice and waking; a flinch over a walk and over a strike; a startle into a run, a fall and its landing, swimming, and
- * standing long enough for its idles. Hashes its bone transforms and what two rays hit.
+ * standing long enough for its idles; and one that flies through its flight, taking off, banked, pitched, rolling and
+ * landing. Hashes its bone transforms and what two rays hit.
  */
 export function creatureHash(anims: Iterable<CreatureAnim>): string {
   const st = new AnimState();
@@ -428,6 +493,27 @@ export function creatureHash(anims: Iterable<CreatureAnim>): string {
       st.seed = seed;
       for (let tick = 2000; tick < 3800; tick += 11.5) pose(tick, false);
     }
+    if (!a.flies) continue;
+    // In the air: each speed, look, bank and climb in turn, taking off and rolling now and then, and landing.
+    for (let k = 0; k < 96; k++) {
+      const tick = 4000 + k * 3.25;
+      st.unpack(0);
+      st.mode = MODE_FLYER;
+      st.grounded = false;
+      st.seed = (k * 37) % 1024;
+      st.speed = k % 11;
+      st.pitch = ((k * 7) % 61) - 30;
+      st.bank = (k % 15) - 7;
+      st.climb = k % 4;
+      st.cue = k % 5 === 0 ? CUE_TAKEOFF : k % 5 === 1 ? CUE_ROLL : CUE_NONE;
+      st.cueStart = (Math.floor(tick) - (k % 70)) & 255;
+      pose(tick, true);
+    }
+    st.unpack(0);
+    st.mode = MODE_WALK;
+    st.cue = CUE_LAND;
+    st.cueStart = 4500 & 255;
+    for (let tick = 4500; tick < 4550; tick += 1.5) pose(tick, false);
   }
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
 }

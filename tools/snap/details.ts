@@ -72,7 +72,7 @@ export function playDetails(view: ProvingView, which: string, w: number, h: numb
     const [x, z] = [x0 + Math.cos(a) * rr, z0 + 6 + Math.sin(a) * rr];
     birds.push({ id: 2000 + k * 7, x, y: hf.heightAt(x, z), z, yaw: a * 1.7, st: new AnimState() });
   }
-  const sea = hf.seaLevel;
+  const sea = hf.waterAt(x0, z0);
   // Each bird its own dyes from the species' sets, the first its default, so a feather shows whose it was.
   const def = reg.defs[kind]!;
   const sets = def.type === "species" ? (def.regions ?? []) : [];
@@ -193,6 +193,6 @@ export function playDetails(view: ProvingView, which: string, w: number, h: numb
 /** A point on the proving ground a metre from the water's edge, out in the water. */
 function findWater(view: ProvingView): [number, number] {
   const hf = view.hf;
-  for (let z = 256; z < 300; z += 1) for (let x = 140; x < 200; x += 1) if (hf.heightAt(x, z) < hf.seaLevel - 0.6 && hf.heightAt(x + 3, z) > hf.seaLevel) return [x, z - 6];
+  for (let z = 256; z < 300; z += 1) for (let x = 140; x < 200; x += 1) if (hf.heightAt(x, z) < hf.waterAt(x, z) - 0.6 && hf.heightAt(x + 3, z) > hf.waterAt(x + 3, z)) return [x, z - 6];
   return [172, 250];
 }

@@ -1,0 +1,5 @@
+A fourth look at the pteranodon's `death` only, after your third answer (`../review_3/artist_3.last.txt`; `../review_1/BRIEF.md` says what the clip and the pictures are). You were right that the last strip still gaped: the jolt's cry closed slowly. Do not change any file; write only your answer.
+
+**What changed.** The cry snaps shut by about frame 9 and the jaw stays shut until the head lies on its cheek; it falls open from about 21 to 25. The head now swings round by its heading, pitch and roll each turned on its own, so the bill is held about level as the head comes round to the side and rolls onto its cheek. These pictures are fresh renders of that: the sheet `death.jpg`, the close strip `strip_death_close.jpg` (from in front and to the left, where a bill swinging toward the camera is seen end on and can look as if it points down), and the same frames from the side, `strip_death_side.jpg` (the animal faces left), which shows the bill's height and angle plainly.
+
+**What I want from you.** Is `death` now good enough to keep? If not, what exactly still makes a stranger wince, by frame, and what would fix it. Short and blunt.

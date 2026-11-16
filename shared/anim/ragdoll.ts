@@ -49,6 +49,9 @@ const PUSH_OUT = 3;
 /** Under water a body weighs this share of what it does in air, and its motion dies away this much faster. */
 const SINKS = 0.25;
 const WATER_DAMP = 3;
+/** What a body under water is pulled down by, in metres a second each second, and the share of its speed it loses a second. */
+export const WET_GRAVITY = GRAVITY * SINKS;
+export const WET_DAMP = DAMP + WATER_DAMP;
 /**
  * It sleeps once, for SLEEP_AFTER seconds, no body has moved more than SLEEP_MOVE of the widest capsule's radius or turned
  * more than SLEEP_TURN (the cosine of half that angle, 6 degrees). Measured by place and not by speed, so the shiver of a
@@ -427,9 +430,9 @@ export class Ragdoll {
   private substep(world: CollisionWorld, h: number): void {
     const { n, x, v, w, q, px, pq } = this;
     this.h = h;
-    const sea = world.hf.seaLevel;
+    const hf = world.hf;
     for (let i = 0; i < n; i++) {
-      const wet = x[i * 3 + 1]! < sea;
+      const wet = x[i * 3 + 1]! < hf.waterAt(x[i * 3]!, x[i * 3 + 2]!);
       const damp = 1 - (DAMP + (wet ? WATER_DAMP : 0)) * h;
       const spinDamp = 1 - (SPIN_DAMP + (wet ? WATER_DAMP : 0)) * h;
       v[i * 3 + 1]! -= GRAVITY * (wet ? SINKS : 1) * h;

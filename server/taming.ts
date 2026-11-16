@@ -4,7 +4,7 @@
 import { TICK_RATE } from "../shared/coords.ts";
 import type { BitReader } from "../shared/net/codec.ts";
 import { CUE_DEAD } from "../shared/anim/pose.ts";
-import { EVENT_TAMED, MAX_NAME_BYTES, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_UNSADDLE, ORDER_WANDER, ORDER_YOURS, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_STALE, S_EVENT, WHISTLE_RANGE } from "../shared/net/protocol.ts";
+import { EVENT_TAMED, MAX_NAME_BYTES, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_LAND, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_UNSADDLE, ORDER_WANDER, ORDER_YOURS, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_STALE, S_EVENT, WHISTLE_RANGE } from "../shared/net/protocol.ts";
 import { STANCE_YOURS } from "./behavior.ts";
 import type { Creatures } from "./creatures.ts";
 import type { Progression } from "./progression.ts";
@@ -102,6 +102,8 @@ export class Taming {
   /** Breeding hooks. `onMate` gets ORDER_MATE or ORDER_UNMATE and returns a RESULT code. `bred` fills a Subject's breeding fields. */
   onMate: ((rec: EntityRecord, what: number) => number) | null = null;
   bred: ((rec: EntityRecord) => typeof NO_BREEDING) | null = null;
+  /** Whether anyone sits on creature `e` or is getting on or off it, steering or not (server/riding.ts). */
+  ridden: ((e: number) => boolean) | null = null;
   private readonly ctx: TamingContext;
   private readonly rng: Rng;
   /** Pids of creatures being tamed. Few at any time. */
@@ -503,13 +505,13 @@ export class Taming {
     if (!me || c.ent < 0 || me.dead) return RESULT_DENIED;
     const stance = what === ORDER_YOURS ? STANCE_YOURS : what - ORDER_STANCE;
     const mate = what === ORDER_MATE || what === ORDER_UNMATE;
-    if (what !== ORDER_STAY && what !== ORDER_FOLLOW && what !== ORDER_UNSADDLE && what !== ORDER_WANDER && what !== ORDER_ATTACK && !mate && !(what >= ORDER_STANCE && stance >= 0 && stance <= STANCE_YOURS) && what < ORDER_LEVEL) return RESULT_INVALID;
+    if (what !== ORDER_STAY && what !== ORDER_FOLLOW && what !== ORDER_UNSADDLE && what !== ORDER_WANDER && what !== ORDER_ATTACK && what !== ORDER_LAND && !mate && !(what >= ORDER_STANCE && stance >= 0 && stance <= STANCE_YOURS) && what < ORDER_LEVEL) return RESULT_INVALID;
     if (what === ORDER_ATTACK) {
       const seen = this.mayAttack(c, me, target);
       if (seen !== RESULT_OK) return seen;
     }
     const obey = (e: number, rec: EntityRecord): number => {
-      const order = what === ORDER_STAY ? "stay" : what === ORDER_FOLLOW ? "follow" : what === ORDER_WANDER ? "wander" : what === ORDER_ATTACK ? "attack" : what === ORDER_UNSADDLE ? "unsaddle" : what === ORDER_MATE ? "mate" : what === ORDER_UNMATE ? "unmate" : what >= ORDER_LEVEL ? "level" : "stance";
+      const order = what === ORDER_STAY ? "stay" : what === ORDER_FOLLOW ? "follow" : what === ORDER_WANDER ? "wander" : what === ORDER_ATTACK ? "attack" : what === ORDER_LAND ? "land" : what === ORDER_UNSADDLE ? "unsaddle" : what === ORDER_MATE ? "mate" : what === ORDER_UNMATE ? "unmate" : what >= ORDER_LEVEL ? "level" : "stance";
       const refused = this.ctx.game.bus.before(CREATURE_ORDER, { pid: rec.pid, byPid: me.pid, order });
       if (refused !== "") {
         this.ctx.onNotice?.(me.pid, refused);
@@ -518,7 +520,7 @@ export class Taming {
       if (what === ORDER_UNSADDLE) {
         // The saddle comes off into its inventory.
         if (rec.saddle === 0) return RESULT_INVALID;
-        if (ents.driven[e] !== 0) return RESULT_BUSY;
+        if (ents.driven[e] !== 0 || this.ridden?.(e)) return RESULT_BUSY;
         if (this.ctx.items.mint(rec, rec.saddle, 1) === 0) return RESULT_FULL;
         rec.saddle = 0;
         this.ctx.refresh(rec);
@@ -533,6 +535,11 @@ export class Taming {
         rec.follow = 0;
         rec.wander = true;
         creatures.mind.wander(e);
+      } else if (what === ORDER_LAND) {
+        // A flyer comes down where it is (ARK's whistle, ASE 288.113). A ridden one lands as its rider takes it.
+        if (!world.reg.flies[rec.kind]) return RESULT_INVALID;
+        if (ents.driven[e] !== 0) return RESULT_BUSY;
+        creatures.mind.land(e);
       } else if (what === ORDER_ATTACK) {
         // A ridden creature goes where its rider takes it, and none goes for one of its own tribe or for itself.
         if (ents.driven[e] !== 0) return RESULT_BUSY;
