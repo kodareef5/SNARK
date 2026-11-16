@@ -86,6 +86,16 @@ function rotationError(): void {
   quatMul(error, 0, turn, 0, wanted, 0);
   if (error[3]! < 0) for (let i = 0; i < 4; i++) error[i] = -error[i]!;
 }
+/** Aerodynamic force per unit mass. Rotor assistance may compensate its vertical part through collective, never by editing velocity. */
+function bodyDrag(s: Readonly<HelicopterState>, p: HelicopterSpec): void {
+  quatUnrotate(q, 0, s.vx, s.vy, s.vz, velocity, 0);
+  const forwardDrag = p.gravity * (detSin(p.pitchAngle) / detCos(p.pitchAngle)) / (p.maxForward * p.maxForward);
+  const sideDrag = p.gravity * (detSin(p.bankAngle) / detCos(p.bankAngle)) / (p.maxSide * p.maxSide);
+  drag[0] = -velocity[0]! * Math.abs(velocity[0]!) * sideDrag;
+  drag[1] = -velocity[1]! * Math.abs(velocity[1]!) * forwardDrag * 1.3;
+  drag[2] = -velocity[2]! * Math.abs(velocity[2]!) * forwardDrag * (velocity[2]! < 0 ? square(p.maxForward / p.maxReverse) : 1);
+  quatRotate(q, 0, drag[0]!, drag[1]!, drag[2]!, drag, 0);
+}
 function recordHit(hit: HelicopterContact, speed: number): void {
   result.blocked ??= hit.reason; result.rotorHit ||= hit.rotor;
   result.impactSpeed = Math.max(result.impactSpeed, speed);
@@ -134,7 +144,8 @@ export function stepHelicopter(s: HelicopterState, input: Readonly<HelicopterInp
     const verticalAcceleration = clamp((wantedVy - s.vy) * 2.2, -8, 8);
     // Assistance works through available lift and only upright. Recovery must physically turn first.
     const projected = Math.max(0.15, upright[1]!);
-    const target = clamp((p.gravity + verticalAcceleration) / Math.max(0.1, liftMax * projected), 0, 1);
+    bodyDrag(s, p);
+    const target = clamp((p.gravity + verticalAcceleration - drag[1]!) / Math.max(0.1, liftMax * projected), 0, 1);
     s.collective = approach(s.collective, upright[1]! < 0.15 ? 0.12 : target, 0.7 * TICK_DT);
   }
   let wantedPitchRate = -forward * p.pitchRate, wantedRollRate = right * p.rollRate;
@@ -174,13 +185,7 @@ export function stepHelicopter(s: HelicopterState, input: Readonly<HelicopterInp
     }
     if (s.grounded) continue;
     // Anisotropic body drag, with no desired-speed servo: flares, dives and inverted momentum remain available.
-    quatUnrotate(q, 0, s.vx, s.vy, s.vz, velocity, 0);
-    const forwardDrag = p.gravity * (detSin(p.pitchAngle) / detCos(p.pitchAngle)) / (p.maxForward * p.maxForward);
-    const sideDrag = p.gravity * (detSin(p.bankAngle) / detCos(p.bankAngle)) / (p.maxSide * p.maxSide);
-    drag[0] = -velocity[0]! * Math.abs(velocity[0]!) * sideDrag;
-    drag[1] = -velocity[1]! * Math.abs(velocity[1]!) * forwardDrag * 1.3;
-    drag[2] = -velocity[2]! * Math.abs(velocity[2]!) * forwardDrag * (velocity[2]! < 0 ? square(p.maxForward / p.maxReverse) : 1);
-    quatRotate(q, 0, drag[0]!, drag[1]!, drag[2]!, drag, 0);
+    bodyDrag(s, p);
     const thrust = liftMax * s.collective;
     const ax = upright[0]! * thrust + drag[0]!, az = upright[2]! * thrust + drag[2]!;
     let ay = upright[1]! * thrust - p.gravity + drag[1]!;

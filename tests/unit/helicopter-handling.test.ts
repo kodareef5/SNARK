@@ -44,6 +44,7 @@ test("spin-up is deliberate, hover holds height, and horizontal travel comes fro
   expect(Math.abs(s.vy)).toBeLessThan(.001);
   const start = s.z; run(s, 90, command({ forward: 1 }), world);
   expect(s.z - start).toBeGreaterThan(10); expect(s.pitch).toBeLessThan(-.2); expect(s.vz).toBeGreaterThan(10);
+  expect(Math.abs(s.vy)).toBeLessThan(.1);
   const speed = s.vz; stepHelicopter(s, command({ brake: true }), def, world);
   expect(s.vz).toBeGreaterThan(speed * .9); // No hidden instantaneous velocity reset.
   run(s, 180, command({ brake: true }), world); expect(Math.abs(s.vz)).toBeLessThan(.15);
@@ -72,8 +73,18 @@ test("a vertical dive has real momentum; collective and a flare arrest it only a
   const s = flight(250); s.qx = Math.SQRT1_2; s.qw = Math.SQRT1_2; s.collective = .3; s.vy = -22;
   run(s, 18, command({ direct: true })); const fall = s.vy, start = s.y;
   expect(fall).toBeLessThan(-25);
-  run(s, 180, command({ brake: true }));
+  run(s, 210, command({ brake: true }));
   expect(s.y).toBeLessThan(start - 15); expect(up(s)).toBeGreaterThan(.99); expect(s.vy).toBeGreaterThan(-.1);
+});
+
+test("assisted forward, reverse and sideways thrust hold altitude under tilted aerodynamic drag", () => {
+  for (const input of [{ forward: 1 }, { forward: -1 }, { right: 1 }, { right: -1 }]) {
+    const s = flight(); run(s, 450, command(input)); const y = s.y;
+    run(s, 150, command(input));
+    expect(Math.abs(s.y - y)).toBeLessThan(.01);
+    expect(Math.abs(s.vy)).toBeLessThan(.005);
+    expect(Math.hypot(s.vx, s.vz)).toBeGreaterThan(8);
+  }
 });
 
 test("overload cannot lift, damage changes available lift, and loss of pilot descends to support and shuts down", () => {

@@ -159,7 +159,9 @@ export class StaticHelicopterWorld implements HelicopterWorld {
         this.hit.reason = "map-edge"; this.hit.rotor = local.rotor;
         this.hit.nx = b.minX < 0 ? 1 : b.maxX >= hf.sizeX ? -1 : 0;
         this.hit.nz = b.minZ < 0 ? 1 : b.maxZ >= hf.sizeZ ? -1 : 0;
-        this.hit.ny = b.maxY > WORLD_MAX_Y ? -1 : b.minY < WORLD_MIN_Y ? 1 : 0; return this.hit;
+        this.hit.ny = b.maxY > WORLD_MAX_Y ? -1 : b.minY < WORLD_MIN_Y ? 1 : 0;
+        const length = len3(this.hit.nx, this.hit.ny, this.hit.nz);
+        this.hit.nx /= length; this.hit.ny /= length; this.hit.nz /= length; return this.hit;
       }
       // Exact native terrain triangles, extruded down. Crossing a thin crest is found even when no corner ends inside it.
       for (let z = Math.max(0, Math.floor(b.minZ / hf.cell)); z < Math.min(hf.nz - 1, Math.ceil(b.maxZ / hf.cell)); z++) {
