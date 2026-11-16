@@ -217,7 +217,7 @@ const WAITS_VEHICLES = "waits:vehicles";
 const FIRED = new Set(["engine/{revs}", "engine/start", "engine/stop", "vehicle/cabin", "vehicle/wash", "vehicle/wash/water", "vehicle/hull/slow", "vehicle/hull/fast"]);
 const vstatus = (name: string): CueStatus => (FIRED.has(name) ? "fire" : WAITS_VEHICLES);
 const vfalls = (n: string, shared = true): string[] => [`{owner}/${n}`, `{family}/${n}`, ...(shared ? [`core:vehicle/${n}`] : [])];
-cue("engine/{revs}", VEHICLE, "vehicle", "body", vstatus("engine/{revs}"), "a running engine (a rotor, a propeller, an outboard): four layers looped, faded across by rpm and each played faster or slower to meet it", { loop: true, falls: vfalls("engine/{revs}") });
+cue("engine/{revs}", VEHICLE, "vehicle", "body", vstatus("engine/{revs}"), "a running engine (a rotor, a propeller, an outboard): four layers looped and faded across by rpm, not yet pitched to it", { loop: true, falls: vfalls("engine/{revs}") });
 for (const n of ["start", "stop", "rev", "stall"]) cue(`engine/${n}`, VEHICLE, "vehicle", "body", vstatus(`engine/${n}`), `the engine: ${n} (the snapshot's engine state)`, { falls: vfalls(`engine/${n}`) });
 cue("engine/brake", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "a truck slowing on its engine brake", { falls: vfalls("engine/brake", false) });
 cue("shift", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "the gear changes", { falls: vfalls("shift") });

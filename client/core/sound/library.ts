@@ -1,6 +1,6 @@
 // Which sounds are held, asked for and let go. A sound is wanted while something that makes it is within its range, and
 // how urgently by how near. Its first few takes are fetched through the asset port, checked there against their hashes,
-// decoded by a SoundDecoder (in the browser a worker of its own, since a long bed takes 90 ms to decode), and handed to
+// decoded by a SoundDecoder (in the browser a worker of its own, since a long bed takes several milliseconds), and handed to
 // the audio device a few at a time, so that no frame waits long; each start of a take asks for one more, up to all of
 // them. Decoded takes are kept within a budget of bytes: when a sound wanted does not fit, the least lately used of those
 // not wanted are let go first, then the takes past the first few of the others, and while it still does not fit the
