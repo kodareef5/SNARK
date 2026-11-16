@@ -22,12 +22,12 @@ import { ASSETS } from "../fixtures/assets.ts";
 const EXAMPLES = await findAssets(join(import.meta.dir, "../../tools/blender/example"));
 
 /**
- * A node pack (trees, rocks, plants) is many meshes of crowns and cards, whose errors are stated rather than measured on
- * their points, and that measure takes seconds on such a pack. Its maker sees it in `bun run art -- <id> --check`. Here a
- * node pack is checked without it, and its stated errors are held to rise level by level while its triangles fall.
+ * Piece packs can contain hundreds of meshes (crowns, cards or a full landmark). Recomputing every stated surface
+ * distance belongs in `bun run art -- <id> --check`, as the testing policy requires. This inventory check still validates
+ * every mesh's geometry, budgets and materials; error.test.ts verifies the distance algorithm on small mesh pairs.
  */
 function unmeasured(asset: Asset): Asset {
-  if (!isNode(asset) || asset.spec.kind !== "pieces") return asset;
+  if (asset.spec.kind !== "pieces") return asset;
   return { ...asset, spec: { ...asset.spec, pieces: asset.spec.pieces.map(({ errors: _, ...p }) => p) } };
 }
 
