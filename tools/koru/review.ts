@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { App } from "../../client/core/app.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { KORU_LAYOUT } from "../../content/landmarks/koru.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { hashBytes } from "../../shared/hash.ts";
@@ -20,6 +21,7 @@ import { encodePng } from "../snap/png.ts";
 import { Rasterizer } from "../snap/raster.ts";
 import { drawUi } from "../snap/ui.ts";
 import { seedKoruPreview } from "./dev.ts";
+import { KORU_COURSE, koruCourse, koruWorldPoint } from "./course.ts";
 
 export interface KoruShot {
   readonly name: string;
@@ -30,8 +32,40 @@ export interface KoruShot {
   readonly tier: "high" | "lowpoly";
   readonly thirdPerson?: boolean;
   readonly portrait?: boolean;
+  /** Captures the genuine map spawn and its authored facing, without a setup placement or look adjustment. */
+  readonly arrival?: boolean;
+  /** Important authored silhouette points that must all fit the ordinary camera. */
+  readonly framePoints?: readonly (readonly [number, number, number])[];
   /** Far shots intentionally let the native map proxy take over after structure rows leave interest. */
   readonly far?: boolean;
+}
+
+/** Deliberate viewpoints consume the authored geometry, floor and eye anchors; only camera composition is preview-owned. */
+export function koruReviewShots(): readonly KoruShot[] {
+  const p = koruWorldPoint, { views, dimensions, decks, rig, docking } = KORU_LAYOUT;
+  const floor = (index: number, eye: readonly number[]) => p([eye[0]!, decks[index]!.floorY, eye[2]!]);
+  const spectator = (eye: readonly number[]) => p([eye[0]!, eye[1]! - 1.62, eye[2]!]);
+  const focus = p([0, dimensions.highestMast / 3, 0]);
+  const framePoints = [p([-dimensions.beam / 2, 0, dimensions.hullMinZ]), p([dimensions.beam / 2, 0, dimensions.hullMaxZ]), p(dimensions.bowspritTip), ...rig.masts.map(mast => p([0, mast.tipY, mast.z]))];
+  const walk = (name: string, deck: number, eye: readonly number[], target: readonly number[], extra: Partial<KoruShot> = {}): KoruShot => ({ name, feet: floor(deck, eye), target: p(target), mode: "walk", tier: "high", ...extra });
+  return [
+    { name: "01-authentic-arrival", feet: [KORU_COURSE.spawn.x, docking.shoreLanding[1]!, KORU_COURSE.spawn.z], target: focus, mode: "walk", tier: "high", arrival: true, framePoints },
+    { name: "02-shore-scenic", feet: [KORU_COURSE.scenic.x, docking.shoreLanding[1]!, KORU_COURSE.scenic.z], target: focus, mode: "walk", tier: "high", framePoints },
+    { name: "03-port-profile", feet: spectator(views.profile), target: focus, mode: "spectator", tier: "high", framePoints },
+    { name: "04-bow-quarter", feet: spectator(views.bowQuarter), target: focus, mode: "spectator", tier: "high" },
+    { name: "05-stern-quarter", feet: spectator(views.sternQuarter), target: focus, mode: "spectator", tier: "high" },
+    walk("06-port-gangway", 1, docking.shoreApproach, [docking.arrival[0]!, docking.arrival[1]! + 1.4, docking.arrival[2]!]),
+    walk("07-lower-interior", 0, views.lowerInterior, [0, decks[0]!.floorY + 1.4, -23]),
+    walk("08-main-salon", 1, views.mainSalon, [-2.5, decks[1]!.floorY + 1.3, -37]),
+    walk("09-upper-bridge", 2, views.upperBridge, [0, decks[2]!.floorY + 1.45, 20]),
+    walk("10-sun-terrace", 3, views.sunTerrace, [0, decks[3]!.floorY + 1.3, -26]),
+    walk("11-grand-stair", 1, views.stairs, [-1, decks[1]!.floorY + 1.5, 1.5]),
+    walk("12-portrait-arrival-lobby", 1, views.arrival, [0, decks[1]!.floorY + 1.4, -29], { portrait: true }),
+    { name: "13-flat-profile", feet: spectator(views.profile), target: focus, mode: "spectator", tier: "lowpoly", framePoints },
+    walk("14-flat-main-salon", 1, views.mainSalon, [-2.5, decks[1]!.floorY + 1.3, -37], { tier: "lowpoly" }),
+    walk("15-shoulder-stair", 1, views.stairs, [-1, decks[1]!.floorY + 1.5, 1.5], { thirdPerson: true }),
+    ...[280, 650, 900].map((distance, index): KoruShot => ({ name: `${16 + index}-far-${distance}m`, feet: spectator([distance, 35, -10]), target: focus, mode: "spectator", tier: "high", far: true, framePoints })),
+  ];
 }
 
 function uploadOnly(raster: Rasterizer, packet: FramePacket): void {
@@ -57,15 +91,16 @@ function capture(shot: KoruShot, map: MapData, pack: Pack, files: GameFiles, wid
   try {
     frame(0); run(1200); seedKoruPreview(h.host); run(300);
     const me = h.client(session)!, ents = h.world.ents, move = reg.move[ents.kind[me.ent]!]!;
-    session.text("enablecheats"); run(100);
-    if (shot.mode === "spectator") { session.text("fly"); run(150); }
-    // One documented setup placement. Everything after settling is ordinary prediction, camera collision and rendering.
-    ents.setPosition(me.ent, ...shot.feet); ents.vx[me.ent] = ents.vy[me.ent] = ents.vz[me.ent] = 0;
-    ents.mode[me.ent] = shot.mode === "spectator" ? MODE_GHOST : MODE_WALK;
-    ents.flags[me.ent] = ents.flags[me.ent]! & ~F_GROUNDED; me.ownDirty = true;
-    const eye = shot.feet[1] + stanceEye(move, ents.stance[me.ent]!);
-    const dx = shot.target[0] - shot.feet[0], dz = shot.target[2] - shot.feet[2];
-    app.controls.yaw = Math.atan2(dx, dz); app.controls.pitch = Math.atan2(shot.target[1] - eye, Math.hypot(dx, dz));
+    if (!shot.arrival) {
+      if (shot.mode === "spectator") { session.text("enablecheats"); run(100); session.text("fly"); run(150); }
+      // One documented setup placement. Everything after settling uses ordinary prediction, camera collision and rendering.
+      ents.setPosition(me.ent, ...shot.feet); ents.vx[me.ent] = ents.vy[me.ent] = ents.vz[me.ent] = 0;
+      ents.mode[me.ent] = shot.mode === "spectator" ? MODE_GHOST : MODE_WALK;
+      ents.flags[me.ent] = ents.flags[me.ent]! & ~F_GROUNDED; me.ownDirty = true;
+      const eye = shot.feet[1] + stanceEye(move, ents.stance[me.ent]!);
+      const dx = shot.target[0] - shot.feet[0], dz = shot.target[2] - shot.feet[2];
+      app.controls.yaw = Math.atan2(dx, dz); app.controls.pitch = Math.atan2(shot.target[1] - eye, Math.hypot(dx, dz));
+    }
     if (app.view.thirdPerson !== !!shot.thirdPerson) { app.key("KeyV", true); app.key("KeyV", false); }
     run(3600); const corrections = session.stats.corrections; run(600);
     const p = packet as FramePacket | null, render = raster as Rasterizer | null;
@@ -87,6 +122,11 @@ function capture(shot: KoruShot, map: MapData, pack: Pack, files: GameFiles, wid
     if (!draws.some(draw => draw.mesh.startsWith("core:koru")) && !shot.far) throw new Error(`${shot.name}: actual frame drew no authored Koru mesh`);
     if (shot.far && !draws.length) throw new Error(`${shot.name}: distant yacht has neither a native mesh nor a map proxy`);
     if (p.dropped || p.skipped || p.casterDropped) throw new Error(`${shot.name}: native rendering dropped draws or shadow casters`);
+    const framing = (shot.framePoints ?? []).map(point => {
+      const projected = new Float32Array(3);
+      if (!app.cam.project(...point, projected) || projected[0]! < .02 || projected[0]! > .98 || projected[1]! < .02 || projected[1]! > .98) throw new Error(`${shot.name}: authored silhouette point ${point.join(",")} is clipped by the camera`);
+      return { point, screen: [...projected] };
+    });
     render.render(p); const scene = render.color.slice(); drawUi(render.color, width, height, app.ui.frame);
     writeFileSync(resolve(out, `${shot.name}-scene.png`), encodePng(width, height, scene));
     writeFileSync(resolve(out, `${shot.name}.png`), encodePng(width, height, render.color));
@@ -95,8 +135,9 @@ function capture(shot: KoruShot, map: MapData, pack: Pack, files: GameFiles, wid
       city: app.scene.city?.stats, assets: app.scene.assets.line(),
       camera: { x: p.camX, y: p.camY, z: p.camZ, yaw: app.cam.yaw, pitch: app.cam.pitch, thirdPerson: app.view.thirdPerson },
       state: { x: ents.x[me.ent], y: ents.y[me.ent], z: ents.z[me.ent], mode: ents.mode[me.ent], grounded: !!(ents.flags[me.ent]! & F_GROUNDED) },
+      framing,
       settledCorrections: session.stats.corrections - corrections,
-      fixture: "One authoritative setup placement before settling; walking views then use ordinary player movement and camera collision. Exterior views use an identified spectator." };
+      fixture: shot.arrival ? "Genuine map arrival, authored spawn facing and ordinary first-person camera; no setup placement or look adjustment." : "One authoritative setup placement before settling; walking views then use ordinary player movement and camera collision. Exterior views use an identified spectator." };
   } finally { h.host.shutdown(); }
 }
 
@@ -125,3 +166,5 @@ export async function reviewKoru(map: MapData, shots: readonly KoruShot[], args 
   }
   console.log(`${out}: ${report.length} native Koru views`);
 }
+
+if (import.meta.main) await reviewKoru(koruCourse(), koruReviewShots());

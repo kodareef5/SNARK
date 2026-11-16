@@ -7,7 +7,7 @@ import { formatReport, loadConfigFolder } from "../../server/settings/config.ts"
 import { stopOnSignals } from "../../server/signals.ts";
 import { VEHICLE_ORIGIN } from "../../server/vehicle-service.ts";
 import { buildClient } from "../build-client.ts";
-import { KORU_COURSE } from "./course.ts";
+import { KORU_COURSE, writeKoruCourse } from "./course.ts";
 
 /** The tender is an ordinary usable motorboat, persisted once under its stable authored origin. */
 export function seedKoruPreview(host: Host): number {
@@ -20,6 +20,11 @@ export function seedKoruPreview(host: Host): number {
   host.world.ents.setLook(e, 1, rec.genome?.colors ?? null, rec.name);
   host.items.mint(rec, host.world.reg.index.get("core:gasoline")!, 20);
   return 1;
+}
+
+if (import.meta.main) {
+  const at = process.argv.indexOf("--map");
+  await startKoruPreview(at >= 0 ? process.argv[at + 1]! : writeKoruCourse());
 }
 
 /** Starts only after the authored assembly has produced a native map; never substitutes an empty model preview. */

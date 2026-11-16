@@ -2,6 +2,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { ruinKind } from "../../content/ruins.ts";
+import { KORU_LAYOUT, koruPoint, koruStatics } from "../../content/landmarks/koru.ts";
 import { CHUNK_SIZE, chunkAt, chunkCount, type MapDims } from "../../shared/coords.ts";
 import { defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
 import { Heightfield } from "../../shared/world/heightfield.ts";
@@ -48,7 +49,7 @@ export function marinaCourse(placement: MarinaPlacement): MapData {
     // A level arrival promenade and steep quay edge; the whole yacht remains over genuine deep water.
     const edge = 1080 + (z < 880 || z > 1170 ? 38 * Math.sin(z / 145) : 0);
     let y = x >= edge ? deck : Math.max(-18, deck - (edge - x) * 1.5);
-    if (x > 1148) y += 14 * (1 - Math.exp(-(x - 1148) / 120)) * (.55 + .45 * Math.sin(z / 118) ** 2);
+    if (x > 1168) y += 14 * (1 - Math.exp(-(x - 1168) / 120)) * (.55 + .45 * Math.sin(z / 118) ** 2);
     // Low headlands frame the harbour while leaving its western sea approach open.
     if ((z < 640 || z > 1400) && x > 760) {
       const ridge = Math.max(0, 22 - Math.abs(x - 955) * .055) * Math.min(1, Math.max(0, (Math.abs(z - 1020) - 380) / 130));
@@ -94,3 +95,25 @@ export function marinaCourse(placement: MarinaPlacement): MapData {
 export function writeMarinaCourse(path: string, placement: MarinaPlacement): string {
   const out = resolve(path); mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, writeMap(marinaCourse(placement))); return out;
 }
+
+/** Shared placement frame for review anchors and the real player route; source points stay in the authored JSON. */
+export function koruWorldPoint(local: readonly number[]): readonly [number, number, number] {
+  const at = KORU_COURSE.vessel; return koruPoint(at.x, at.y, at.z, at.yaw, local);
+}
+
+/** World-space feet from the genuine shore spawn to the authored gangway; the public route continues in KORU_LAYOUT. */
+export function koruApproach(): readonly (readonly [number, number, number])[] {
+  const shore = koruWorldPoint(KORU_LAYOUT.docking.shoreLanding), approach = koruWorldPoint(KORU_LAYOUT.docking.shoreApproach);
+  return [[KORU_COURSE.spawn.x, shore[1], KORU_COURSE.spawn.z], [1084, shore[1], shore[2]], approach, shore];
+}
+
+export function koruCourse(): MapData {
+  const at = KORU_COURSE.vessel;
+  return marinaCourse({ statics: koruStatics(at.x, at.y, at.z, at.yaw), landing: koruWorldPoint(KORU_LAYOUT.docking.shoreLanding) });
+}
+
+export function writeKoruCourse(path = "var/koru-preview/marina.snmp"): string {
+  const out = resolve(path); mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, writeMap(koruCourse())); return out;
+}
+
+if (import.meta.main) console.log(writeKoruCourse(process.argv[2]));
