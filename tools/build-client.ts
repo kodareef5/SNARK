@@ -97,10 +97,10 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
     writeFileSync(join(dist, "assets", manifest.files[i]!.name), f.bytes);
   });
   writeFileSync(join(dist, "assets/manifest.json"), JSON.stringify(manifest));
-  // Everything the first frame needs is asked for as the page is read. The server names its map, so main.js asks for that.
+  // The page asks for its script and the files the first frame needs as it is read. The server names its map's file, so main.js asks for that.
   const boot = `assets/${manifest.files[manifest.boot]!.name}`;
-  const preloads = [...["main.js", ...pieces].map((f) => `<link rel="modulepreload" href="${f}">`), ...["map.json", "assets/manifest.json", boot, skyName].map((f) => `<link rel="preload" href="${f}" as="fetch" crossorigin>`)];
-  writeFileSync(join(dist, "index.html"), readFileSync(join(root, "client/index.html"), "utf8").replaceAll("HUD_FONT_URL", ui.font).replaceAll("HUD_ATLAS_URL", ui.atlas).replace("<!-- PRELOADS -->", preloads.join("\n")));
+  const modules = ["main.js", ...pieces].map((f) => `<link rel="modulepreload" href="${f}">`).join("\n");
+  writeFileSync(join(dist, "index.html"), readFileSync(join(root, "client/index.html"), "utf8").replaceAll("HUD_FONT_URL", ui.font).replaceAll("HUD_ATLAS_URL", ui.atlas).replace("<!-- MODULES -->", modules).replace("FETCHED", JSON.stringify(["map.json", "assets/manifest.json", boot, skyName])));
   const whole = ["index.html", "assets/manifest.json", boot, skyName, ...scripts];
   for (const name of whole) writeFileSync(join(dist, `${name}.br`), brotli(readFileSync(join(dist, name)), opts.quick ?? false));
   return { jsBytes: ["main.js", ...pieces].reduce((sum, f) => sum + statSync(join(dist, f)).size, 0), packBytes: files.reduce((sum, f) => sum + (f.role === "tex" ? 0 : f.bytes.length), 0) };

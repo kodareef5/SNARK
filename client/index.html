@@ -4,7 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Play</title>
-<!-- PRELOADS -->
+<!-- MODULES -->
+<script>
+  // What the first frame needs is asked for as the page is read. A device probe measures the link quiet first (client/core/device.ts).
+  if (!new URLSearchParams(location.search).has("device")) for (const href of FETCHED) document.head.append(Object.assign(document.createElement("link"), { rel: "preload", as: "fetch", crossOrigin: "anonymous", href }));
+</script>
 <link rel="preload" href="HUD_FONT_URL" as="font" type="font/ttf" crossorigin>
 <link rel="preload" href="HUD_ATLAS_URL" as="image">
 <style>

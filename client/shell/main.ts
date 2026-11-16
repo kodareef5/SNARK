@@ -42,7 +42,7 @@ const root = document.querySelector<HTMLElement>("#ui")!;
 const arrival = arrivalOf(location.hash);
 
 async function boot(): Promise<void> {
-  // Every file the first frame needs is asked for before anything else runs; index.html has already asked for them.
+  // Every file the first frame needs is asked for before anything else runs, and index.html asked for most of them already.
   // The server names its map's file. It is fetched whole, since the renderer draws the ground from it.
   const mapBytes = fetchJson(fetch, "map.json").then((named) => fetchBytes(fetch, (named as { file: string }).file));
   const [manifestText, skyBytes] = [fetchText(fetch, "assets/manifest.json"), fetchBytes(fetch, SKY_FILE)];
