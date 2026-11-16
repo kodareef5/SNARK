@@ -1,5 +1,5 @@
 {
-  "scope": "Original native source forms0/1 unchanged. Exact helper2..5, authored bounds, native bidirectional whole-object surfaceError plus0.5mm cell quantization reserve. Stage3 pod uses the separate finite exterior-visible certificate. Capacity is the complete affected16m cells with current ship surroundings; final normal export/artcheck and native visual review remain required.",
+  "scope": "Provisional helper checkpoint, now passed through actual native buildPack/parsePack/unpackMeshes. Pod topology fails at stages3–5, and original placement exceeds cell capacity. Both remain required fixes. Whole-object bidirectional P95 includes0.5mm reserve for cell quantization; stage3 visible certificate is a separate finite source-surface survey tied to this layout. This is not final asset acceptance.",
   "sources": {
     "layout": "40568816ce4a8c5b0b254ede2a92dd3c29e2b4a36ea69eb4c43b943894e64f61",
     "helper": "264b08e3301dfeaa2a509512fea0145ccca94501da21628aa637a81c8423c82a",
@@ -8,88 +8,160 @@
     "model_interiors.py": "46aa7a191fa08d02bb7dcacc1e2a2f73fbe0a68bab38163463a8e22d67963d2e",
     "model_cells.py": "c20c8982f09979acaf46c65728cc931afd5b08c985ad88fae89e4db771d7762a"
   },
-  "geometryPass": true,
+  "geometryPass": false,
   "capacityPass": false,
   "rows": [
     {
       "fixture": "aquadome_pod_1_0",
       "stage": 2,
       "triangles": 1314,
-      "wholeObjectP95": 0.01956396411372546,
+      "wholeObjectP95": 0.019566804686911944,
       "quantizationReserve": 0.0005,
       "threshold": 0.025,
       "test": "Native whole-object P95 plus0.5mm reserve",
-      "pass": true
+      "pass": true,
+      "nativeTopology": {
+        "parts": 25,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
     },
     {
       "fixture": "aquadome_pod_1_0",
       "stage": 3,
       "triangles": 418,
-      "wholeObjectP95": 0.07333334287007648,
+      "wholeObjectP95": 0.07333632310231525,
       "quantizationReserve": 0.0005,
       "threshold": 0.06,
       "test": "See placement-bound visible certificate",
-      "pass": true
+      "pass": false,
+      "nativeTopology": {
+        "parts": 23,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 30,
+        "insideOut": 0,
+        "crowded": 68,
+        "collapsed": 0
+      }
     },
     {
       "fixture": "aquadome_pod_1_0",
       "stage": 4,
       "triangles": 190,
-      "wholeObjectP95": 0.1283204748385059,
+      "wholeObjectP95": 0.12834160582298054,
       "quantizationReserve": 0.0005,
       "threshold": 0.13,
       "test": "Native whole-object P95 plus0.5mm reserve",
-      "pass": true
+      "pass": false,
+      "nativeTopology": {
+        "parts": 16,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 11,
+        "insideOut": 0,
+        "crowded": 29,
+        "collapsed": 0
+      }
     },
     {
       "fixture": "aquadome_pod_1_0",
       "stage": 5,
       "triangles": 190,
-      "wholeObjectP95": 0.1283204748385059,
+      "wholeObjectP95": 0.12834160582298054,
       "quantizationReserve": 0.0005,
       "threshold": 0.25,
       "test": "Native whole-object P95 plus0.5mm reserve",
-      "pass": true
+      "pass": false,
+      "nativeTopology": {
+        "parts": 16,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 11,
+        "insideOut": 0,
+        "crowded": 29,
+        "collapsed": 0
+      }
     },
     {
       "fixture": "aquatheater_seating_1_0",
       "stage": 2,
       "triangles": 292,
-      "wholeObjectP95": 0.023333330949147524,
+      "wholeObjectP95": 0.02333565553029382,
       "quantizationReserve": 0.0005,
       "threshold": 0.025,
       "test": "Native whole-object P95 plus0.5mm reserve",
-      "pass": true
+      "pass": true,
+      "nativeTopology": {
+        "parts": 40,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 55,
+        "collapsed": 0
+      }
     },
     {
       "fixture": "aquatheater_seating_1_0",
       "stage": 3,
       "triangles": 124,
-      "wholeObjectP95": 0.030516394117696195,
+      "wholeObjectP95": 0.03054051727713052,
       "quantizationReserve": 0.0005,
       "threshold": 0.06,
       "test": "Native whole-object P95 plus0.5mm reserve",
-      "pass": true
+      "pass": true,
+      "nativeTopology": {
+        "parts": 18,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 19,
+        "collapsed": 0
+      }
     },
     {
       "fixture": "aquatheater_seating_1_0",
       "stage": 4,
       "triangles": 20,
-      "wholeObjectP95": 0.1289999932050705,
+      "wholeObjectP95": 0.12899410724639893,
       "quantizationReserve": 0.0005,
       "threshold": 0.13,
       "test": "Native whole-object P95 plus0.5mm reserve",
-      "pass": true
+      "pass": true,
+      "nativeTopology": {
+        "parts": 5,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
     },
     {
       "fixture": "aquatheater_seating_1_0",
       "stage": 5,
       "triangles": 20,
-      "wholeObjectP95": 0.1289999932050705,
+      "wholeObjectP95": 0.12899410724639893,
       "quantizationReserve": 0.0005,
       "threshold": 0.25,
       "test": "Native whole-object P95 plus0.5mm reserve",
-      "pass": true
+      "pass": true,
+      "nativeTopology": {
+        "parts": 5,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
     },
     {
       "fixture": "aquatheater_stage",
@@ -99,7 +171,16 @@
       "quantizationReserve": 0.0005,
       "threshold": 0.025,
       "test": "Native whole-object P95 plus0.5mm reserve",
-      "pass": true
+      "pass": true,
+      "nativeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
     },
     {
       "fixture": "aquatheater_stage",
@@ -109,7 +190,16 @@
       "quantizationReserve": 0.0005,
       "threshold": 0.06,
       "test": "Native whole-object P95 plus0.5mm reserve",
-      "pass": true
+      "pass": true,
+      "nativeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
     },
     {
       "fixture": "aquatheater_stage",
@@ -119,7 +209,16 @@
       "quantizationReserve": 0.0005,
       "threshold": 0.13,
       "test": "Native whole-object P95 plus0.5mm reserve",
-      "pass": true
+      "pass": true,
+      "nativeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
     },
     {
       "fixture": "aquatheater_stage",
@@ -129,7 +228,16 @@
       "quantizationReserve": 0.0005,
       "threshold": 0.25,
       "test": "Native whole-object P95 plus0.5mm reserve",
-      "pass": true
+      "pass": true,
+      "nativeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
     }
   ],
   "capacity": [

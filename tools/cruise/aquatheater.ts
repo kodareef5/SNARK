@@ -1,8 +1,11 @@
 // Manual bounded replay. Add --capacity only when the final fixture placement is authored.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { parsePack } from "../../shared/pack/pack.ts";
+import { defaultPalette } from "../../shared/pack/palette.ts";
+import { measureSurface } from "../art/check.ts";
 import { surfaceError } from "../pack/error.ts";
-import type { SourceLod } from "../pack/write.ts";
+import { buildPack, unpackMeshes, type SourceLod } from "../pack/write.ts";
 
 type Raw = { positions: number[]; indices: number[] };
 type Cell = { id: string; triangles: number[]; retained: number[] };
@@ -17,11 +20,14 @@ if (run.exitCode !== 0) throw new Error(`AquaTheater Blender replay failed; see 
 const data = JSON.parse(readFileSync(join(out, "forms.json"), "utf8")) as { sources: Record<string, string>; forms: Record<string, Record<string, Raw>> };
 const lod = (r: Raw): SourceLod => ({ positions: Float32Array.from(r.positions), indices: Uint32Array.from(r.indices), colors: new Uint8Array(r.positions.length / 3) });
 const rows = Object.entries(data.forms).flatMap(([fixture, stages]) => [2, 3, 4, 5].map(stage => {
-  const error = surfaceError(lod(stages["0"]!), lod(stages[String(stage)]!));
+  const native = unpackMeshes(parsePack(buildPack([{ id: `cruise:${fixture}`, lods: [lod(stages["0"]!), lod(stages[String(stage)]!)] }], defaultPalette())))[0]!;
+  const error = surfaceError(native.lods[0]!, native.lods[1]!);
+  const topology = measureSurface(native.lods[1]!);
   const visibleCertificate = fixture.startsWith("aquadome_pod") && stage === 3;
   const threshold = [0, .0125, .025, .06, .13, .25][stage]!;
-  return { fixture, stage, triangles: stages[String(stage)]!.indices.length / 3, wholeObjectP95: error, quantizationReserve: .0005, threshold,
-    test: visibleCertificate ? "See placement-bound visible certificate" : "Native whole-object P95 plus0.5mm reserve", pass: visibleCertificate || error + .0005 <= threshold };
+  return { fixture, stage, triangles: native.lods[1]!.indices.length / 3, wholeObjectP95: error, nativeTopology: topology, quantizationReserve: .0005, threshold,
+    test: visibleCertificate ? "See placement-bound visible certificate" : "Native whole-object P95 plus0.5mm reserve",
+    pass: (visibleCertificate || error + .0005 <= threshold) && !topology.holes && !topology.flipped && !topology.insideOut && !topology.collapsed };
 }));
 const cells = (JSON.parse(readFileSync(join(out, "diagnostic-report.json"), "utf8")) as { cells: Cell[] }).cells;
 const budgets = [4000, 1250, 300, 300];
