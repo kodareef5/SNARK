@@ -420,6 +420,16 @@ include the controls/slider polish pass. The expanded body/ring atlas costs
 
 An earlier busy-host play p99 missed at 1.205 ms; subsequent runs passed.
 The sheet figure excludes browser copies, fallback pixels and canvas uploads.
+
+After the merge with main (`review/ui-hud`, 2026-11-15; Apple M5, 10 cores,
+macOS 26.3.1, Bun 1.4.3, three runs on a loaded machine), the bench has a
+driving row with the car's dashboard on the glass:
+
+| Row | Result | Budget |
+| --- | --- | --- |
+| Play layout, median / p99 | 0.004-0.005 / 0.007-0.020 ms | 0.25 / 1 ms |
+| Driving layout, median / p99 | 0.004 / 0.006-0.023 ms | 0.25 / 1 ms |
+| Play nodes; driving nodes | 165; 182 | 500 |
 See the [review evidence](../reference/ui-hud-review.md) for input/layout
 coverage, asset provenance, browser findings and the remaining device work.
 
