@@ -121,9 +121,12 @@ export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
     { name: "08-starboard-profile", feet: spectator([-400, 42, 0]), target: focus, mode: "spectator", tier: "high", framePoints },
     { name: "09-bow-quarter", feet: spectator([-250, 68, 270]), target: p([0, 32, 30]), mode: "spectator", tier: "high", framePoints },
     { name: "10-stern-quarter", feet: spectator([-250, 68, -270]), target: p([0, 32, -30]), mode: "spectator", tier: "high", framePoints });
-  // Close native-mesh detail view, intentionally cropped at the ordinary FOV.
+  // Close native-mesh detail views, intentionally cropped at the ordinary FOV.
   // Whole-envelope certification belongs to the separate 400 m profiles.
-  shots.push({ name: "12-near-starboard-profile", feet: spectator([-185, 48, 0]), target: focus, mode: "spectator", tier: "high" });
+  shots.push({ name: "12-near-starboard-profile", feet: spectator([-185, 48, 0]), target: focus, mode: "spectator", tier: "high" },
+    { name: "13-near-port-profile", feet: spectator([185, 48, 0]), target: focus, mode: "spectator", tier: "high" },
+    { name: "12-near-starboard-profile-medium", feet: spectator([-185, 48, 0]), target: focus, mode: "spectator", tier: "medium" },
+    { name: "13-near-port-profile-medium", feet: spectator([185, 48, 0]), target: focus, mode: "spectator", tier: "medium" });
   const lifeboat = fitting("lifeboat_1_6");
   shots.push({ name: "11-lifeboat-berth", feet: spectator([lifeboat[0]! + 19, lifeboat[1]! + 2.5, lifeboat[2]! + 2]),
     target: p(lifeboat), mode: "spectator", tier: "high" });
