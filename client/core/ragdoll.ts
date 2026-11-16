@@ -47,6 +47,12 @@ export interface Corpse {
   y: number;
   z: number;
   readonly yaw: number;
+  /** Rotorcraft salvage is rigid and retains its replicated full attitude, including inversion. */
+  readonly rigid: boolean;
+  qx: number;
+  qy: number;
+  qz: number;
+  qw: number;
   readonly size: number;
   readonly colors: Uint8Array;
   /** The whole tick its death clip starts at. */
@@ -191,6 +197,9 @@ export class Corpses {
       }
       c ??= this.meet(remote, i, tick, gaits);
       if (c.falling) this.follow(c, remote, i, tick);
+      if (c.rigid) {
+        c.qx = remote.vehicleQx[i]!; c.qy = remote.vehicleQy[i]!; c.qz = remote.vehicleQz[i]!; c.qw = remote.vehicleQw[i]!;
+      }
       c.seen = seen;
       c.decay = (remote.cue[i]! >>> CUE_DECAY_SHIFT) & 3;
     }
@@ -237,7 +246,8 @@ export class Corpses {
       from = k;
     }
     let alive: Pose | null = null;
-    if (from >= 0) {
+    const rigid = r.vehicleRotorcraft[i] !== 0;
+    if (from >= 0 && !rigid) {
       const f = fallen[from]!;
       fallen.splice(from, 1);
       const st = this.st;
@@ -253,6 +263,7 @@ export class Corpses {
       y,
       z,
       yaw: wireYaw(r.yaw[i]!),
+      rigid, qx: r.vehicleQx[i]!, qy: r.vehicleQy[i]!, qz: r.vehicleQz[i]!, qw: r.vehicleQw[i]!,
       size: corpseSize(r.span[i]!),
       colors: r.colors.slice(i * 6, i * 6 + 6),
       born: Math.floor(tick),
@@ -301,6 +312,7 @@ export class Corpses {
   /** The pose a body not watched is drawn in while it falls: the one its ragdoll will start from, or the one it lies in without. */
   private held(c: Corpse): void {
     const m = this.mortal[c.kind]!;
+    if (c.rigid) { this.lie(c); return; }
     if (m.rig.ragdoll) limpPose(m, c.lying, c.solved, this.scratch(m.rig.bones));
     else this.lie(c);
   }
@@ -309,6 +321,7 @@ export class Corpses {
   private lie(c: Corpse): void {
     const m = this.mortal[c.kind]!;
     const rig = m.rig;
+    if (c.rigid) { const pose = this.posed(rig.bones); pose.rest(); solve(rig, pose, c.solved); return; }
     if (m.death && !c.lying) {
       const pose = this.posed(rig.bones);
       sampleClip(m.death, m.death.frames - 1, pose);
@@ -342,6 +355,7 @@ export class Corpses {
     const m = this.mortal[c.kind]!;
     c.limp = true;
     c.clock = at;
+    if (c.rigid) { this.lie(c); return; }
     const r = layCorpse(m, c.lying, c.x, c.y, c.z, c.yaw, c.size, c.solved);
     if (r) {
       c.fall = new Fall(r);

@@ -31,7 +31,7 @@ test("helicopter content validates its own rotor mechanics and four enclosed sea
   expect(def.seats.length).toBe(4);
   expect(() => validateVehicleDefinition({ ...def, wheels: [{ bone: "fake_wheel" }] })).toThrow("invalid helicopter rig");
   expect(() => validateVehicleDefinition({ ...def, spec: { ...spec, liftMass: spec.mass } })).toThrow();
-  expect(() => validateVehicleDefinition({ ...def, rotors: [{ ...def.rotors[0]!, axis: [0, 2, 0] }] })).toThrow();
+  expect(() => validateVehicleDefinition({ ...def, rotors: [{ ...def.rotors[0]!, axis: [0, 2, 0] as const }] })).toThrow();
 });
 
 test("spin-up is deliberate, hover holds height, and horizontal travel comes from banked thrust", () => {
