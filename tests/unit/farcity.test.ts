@@ -260,7 +260,7 @@ test("a tile wholly short of the last tenth of its reach draws with no fade, and
   expect(fades.filter(([near]) => !near).map(([, f]) => f)).toEqual([2048]);
 });
 
-test("tiles with nothing on the card are made first, a level at a time within the frame's budget", () => {
+test("tiles with nothing on the card are made first, a chunk at a time within the frame's budget", () => {
   const statics: MapStatic[] = [];
   for (let cx = 2; cx < 14; cx += 2) for (let cz = 2; cz < 14; cz += 2) statics.push(...building(...mid(cx, cz), 0, 4));
   const w = cityWorld({ chunks: 16, statics });
@@ -268,7 +268,7 @@ test("tiles with nothing on the card are made first, a level at a time within th
   const city = w.scene.city!;
   city.makeMs = 0;
   w.frame();
-  // One level a frame: tiles come in one by one, and none is drawn before it is made.
+  // One chunk's piece a frame: tiles come in one by one, and none is drawn before its every chunk is made.
   expect(city.stats.made).toBeLessThanOrEqual(1);
   let frames = 1;
   while (city.stats.behind > 0 || city.stats.missing > 0) {
