@@ -217,7 +217,7 @@ def populate(D,prototype,instance,box,node):
    ident=f'cabin_{label}_{ci}';place(ident,cabin,[x,y,z],label,'playable-cabins')
    entry=[x-4,y,z];target=[x-1,y,z-.5];outside=[x-5.4,y,z]
    node(ident,target,label,'room');node(ident+'_entry',outside,label,'corridor')
-   route(ident+'_door','room',ident+'_entry',ident,[outside,entry,[x-2,y,z],target],family='balcony-cabin-ingress')
+   route(ident+'_door','room',ident+'_entry',ident,[outside,entry,[x-1,y,z],target],family='balcony-cabin-ingress')
    route(ident+'_access','corridor',f'fore_{label}',ident+'_entry',[[-1.1,y,59.0],[x-5.4,y,59.0],outside],2.4)
    D['rooms'].append({'id':ident,'node':ident,'label':'Balcony stateroom','deck':label,'section':'prototype-cabins',
                      'bounds':{'min':[x-4,y,z-3.2],'max':[x+4,y+2.96,z+3.2]},'entry':entry,'routeTarget':target,'evidence':'original-fitted-room'})

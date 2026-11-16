@@ -104,7 +104,7 @@ def finish(D,p,world,place,box,ys,beam):
  for i in range(12):
   a=-2.57+5.14*i/12;b=-2.57+5.14*(i+1)/12
   podhulls.append({'points':[[rx*math.sin(t),y,-.12+rz*math.cos(t)] for t in(a,b) for rx,rz in[(1.12,.43),(2.4,1.61)] for y in(.08,1.16)]})
- podboxes=[box([x-.4,.07,-1],[x+.4,.61,-.4]) for x in(-.6,.6)]+[box([-1.5,.04,1.53],[1.5,.31,1.93])]
+ podboxes=[box([x-.4,.07,-1],[x+.4,.61,-.4]) for x in(-.6,.6)]+[box([-1.5,.04,1.53],[1.5,.31,1.93]),box([-1.52,.012,-1.46],[1.52,.065,.88])]
  podlook={'hulls':podhulls,'boxes':podboxes+[box([-2.5,.1,-.3],[-2.3,1.2,.3]),box([2.3,.1,-.3],[2.5,1.2,.3]),box([-1.5,.31,1.5],[1.5,1.6,2])]}
  pod=p('aquadome_pod','furniture',podboxes,podhulls,art={'kind':'aquadome_pod','finish':'purple'},color=32,look=podlook)
  for side in(-1,1):

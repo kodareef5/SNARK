@@ -37912,10 +37912,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_e34ef11775",
-      "mesh": "core:cruise_dome_sector_e34ef11775",
+      "id": "core:cruise_dome_sector_b17d2f570f",
+      "mesh": "core:cruise_dome_sector_b17d2f570f",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -40329,10 +40329,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_ee72ff3e30",
-      "mesh": "core:cruise_dome_sector_ee72ff3e30",
+      "id": "core:cruise_dome_sector_7682c24b24",
+      "mesh": "core:cruise_dome_sector_7682c24b24",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -46202,10 +46202,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_0b7f9b9d86",
-      "mesh": "core:cruise_dome_sector_0b7f9b9d86",
+      "id": "core:cruise_dome_sector_c0809cd6af",
+      "mesh": "core:cruise_dome_sector_c0809cd6af",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -48619,10 +48619,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_dbc30e5cff",
-      "mesh": "core:cruise_dome_sector_dbc30e5cff",
+      "id": "core:cruise_dome_sector_405047e6a1",
+      "mesh": "core:cruise_dome_sector_405047e6a1",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -54492,10 +54492,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_fc89fe2c27",
-      "mesh": "core:cruise_dome_sector_fc89fe2c27",
+      "id": "core:cruise_dome_sector_b11e5e315d",
+      "mesh": "core:cruise_dome_sector_b11e5e315d",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -56909,10 +56909,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_feb6f904b1",
-      "mesh": "core:cruise_dome_sector_feb6f904b1",
+      "id": "core:cruise_dome_sector_87900955a3",
+      "mesh": "core:cruise_dome_sector_87900955a3",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -62782,10 +62782,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_2804ec17c5",
-      "mesh": "core:cruise_dome_sector_2804ec17c5",
+      "id": "core:cruise_dome_sector_2bbb2e2748",
+      "mesh": "core:cruise_dome_sector_2bbb2e2748",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -65199,10 +65199,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_a527b85a3d",
-      "mesh": "core:cruise_dome_sector_a527b85a3d",
+      "id": "core:cruise_dome_sector_bf4e656185",
+      "mesh": "core:cruise_dome_sector_bf4e656185",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -71072,10 +71072,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_d284cd71bf",
-      "mesh": "core:cruise_dome_sector_d284cd71bf",
+      "id": "core:cruise_dome_sector_39ffd4eefb",
+      "mesh": "core:cruise_dome_sector_39ffd4eefb",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -73489,10 +73489,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_3cafffea06",
-      "mesh": "core:cruise_dome_sector_3cafffea06",
+      "id": "core:cruise_dome_sector_86efe08d12",
+      "mesh": "core:cruise_dome_sector_86efe08d12",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -79362,10 +79362,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_319af4cf8d",
-      "mesh": "core:cruise_dome_sector_319af4cf8d",
+      "id": "core:cruise_dome_sector_3721fa3ced",
+      "mesh": "core:cruise_dome_sector_3721fa3ced",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -81779,10 +81779,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_6014cdd5e1",
-      "mesh": "core:cruise_dome_sector_6014cdd5e1",
+      "id": "core:cruise_dome_sector_27863ca68d",
+      "mesh": "core:cruise_dome_sector_27863ca68d",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -87652,10 +87652,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_5fab7f1d6c",
-      "mesh": "core:cruise_dome_sector_5fab7f1d6c",
+      "id": "core:cruise_dome_sector_e2538a0f75",
+      "mesh": "core:cruise_dome_sector_e2538a0f75",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -90069,10 +90069,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_a06ea5084c",
-      "mesh": "core:cruise_dome_sector_a06ea5084c",
+      "id": "core:cruise_dome_sector_25c3d1cefd",
+      "mesh": "core:cruise_dome_sector_25c3d1cefd",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -95942,10 +95942,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_959f36303d",
-      "mesh": "core:cruise_dome_sector_959f36303d",
+      "id": "core:cruise_dome_sector_f50599ede3",
+      "mesh": "core:cruise_dome_sector_f50599ede3",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -98359,10 +98359,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_bce87bf659",
-      "mesh": "core:cruise_dome_sector_bce87bf659",
+      "id": "core:cruise_dome_sector_755ab51e32",
+      "mesh": "core:cruise_dome_sector_755ab51e32",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -104232,10 +104232,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_327737cdc2",
-      "mesh": "core:cruise_dome_sector_327737cdc2",
+      "id": "core:cruise_dome_sector_9ddad23086",
+      "mesh": "core:cruise_dome_sector_9ddad23086",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -106649,10 +106649,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_75eb007233",
-      "mesh": "core:cruise_dome_sector_75eb007233",
+      "id": "core:cruise_dome_sector_cb070578af",
+      "mesh": "core:cruise_dome_sector_cb070578af",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -112522,10 +112522,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_7db994c6cc",
-      "mesh": "core:cruise_dome_sector_7db994c6cc",
+      "id": "core:cruise_dome_sector_b4bca04524",
+      "mesh": "core:cruise_dome_sector_b4bca04524",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -114939,10 +114939,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_84c152d970",
-      "mesh": "core:cruise_dome_sector_84c152d970",
+      "id": "core:cruise_dome_sector_d233e321f1",
+      "mesh": "core:cruise_dome_sector_d233e321f1",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -120812,10 +120812,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_48362cae64",
-      "mesh": "core:cruise_dome_sector_48362cae64",
+      "id": "core:cruise_dome_sector_739f6ff55a",
+      "mesh": "core:cruise_dome_sector_739f6ff55a",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -123229,10 +123229,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_1c33facae0",
-      "mesh": "core:cruise_dome_sector_1c33facae0",
+      "id": "core:cruise_dome_sector_f7bc3440fc",
+      "mesh": "core:cruise_dome_sector_f7bc3440fc",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -128466,10 +128466,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_52922c3fc9",
-      "mesh": "core:cruise_dome_sector_52922c3fc9",
+      "id": "core:cruise_dome_sector_0ed37d6ef7",
+      "mesh": "core:cruise_dome_sector_0ed37d6ef7",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -130883,10 +130883,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_9784540e10",
-      "mesh": "core:cruise_dome_sector_9784540e10",
+      "id": "core:cruise_dome_sector_1e608563e5",
+      "mesh": "core:cruise_dome_sector_1e608563e5",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -136120,10 +136120,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_9b6ce23ac2",
-      "mesh": "core:cruise_dome_sector_9b6ce23ac2",
+      "id": "core:cruise_dome_sector_c3b140f7d8",
+      "mesh": "core:cruise_dome_sector_c3b140f7d8",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -138537,10 +138537,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_1ebb622865",
-      "mesh": "core:cruise_dome_sector_1ebb622865",
+      "id": "core:cruise_dome_sector_8c11c39290",
+      "mesh": "core:cruise_dome_sector_8c11c39290",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -144410,10 +144410,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_3dbe18f462",
-      "mesh": "core:cruise_dome_sector_3dbe18f462",
+      "id": "core:cruise_dome_sector_2e3cb245ba",
+      "mesh": "core:cruise_dome_sector_2e3cb245ba",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -146827,10 +146827,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_00146232bc",
-      "mesh": "core:cruise_dome_sector_00146232bc",
+      "id": "core:cruise_dome_sector_d005a07f15",
+      "mesh": "core:cruise_dome_sector_d005a07f15",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -152700,10 +152700,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_6a7e2173c7",
-      "mesh": "core:cruise_dome_sector_6a7e2173c7",
+      "id": "core:cruise_dome_sector_25681de7d5",
+      "mesh": "core:cruise_dome_sector_25681de7d5",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -155117,10 +155117,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_c94c177a8b",
-      "mesh": "core:cruise_dome_sector_c94c177a8b",
+      "id": "core:cruise_dome_sector_9791068535",
+      "mesh": "core:cruise_dome_sector_9791068535",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -160990,10 +160990,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_82251b612e",
-      "mesh": "core:cruise_dome_sector_82251b612e",
+      "id": "core:cruise_dome_sector_a6e79e0898",
+      "mesh": "core:cruise_dome_sector_a6e79e0898",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -163407,10 +163407,10 @@
       }
     },
     {
-      "id": "core:cruise_dome_sector_29e66d9c88",
-      "mesh": "core:cruise_dome_sector_29e66d9c88",
+      "id": "core:cruise_dome_sector_afc3504a42",
+      "mesh": "core:cruise_dome_sector_afc3504a42",
       "category": "dome",
-      "color": 91,
+      "color": 85,
       "boxes": [],
       "hulls": [
         {
@@ -198817,8 +198817,8 @@
       }
     },
     {
-      "id": "core:cruise_aquadome_pod_3d73798759",
-      "mesh": "core:cruise_aquadome_pod_3d73798759",
+      "id": "core:cruise_aquadome_pod_66cc498dbb",
+      "mesh": "core:cruise_aquadome_pod_66cc498dbb",
       "category": "furniture",
       "color": 32,
       "boxes": [
@@ -198856,6 +198856,18 @@
             1.5,
             0.135,
             0.2
+          ]
+        },
+        {
+          "at": [
+            0.0,
+            0.0385,
+            -0.29
+          ],
+          "half": [
+            1.52,
+            0.0265,
+            1.17
           ]
         }
       ],
@@ -199392,7 +199404,7 @@
       "visualBounds": {
         "min": [
           -2.5,
-          0.04,
+          0.012,
           -1.474075
         ],
         "max": [
@@ -199971,6 +199983,18 @@
               1.5,
               0.135,
               0.2
+            ]
+          },
+          {
+            "at": [
+              0.0,
+              0.0385,
+              -0.29
+            ],
+            "half": [
+              1.52,
+              0.0265,
+              1.17
             ]
           },
           {
@@ -271762,7 +271786,7 @@
     },
     {
       "id": "aquadome_0_2",
-      "prototype": "core:cruise_dome_sector_e34ef11775",
+      "prototype": "core:cruise_dome_sector_b17d2f570f",
       "at": [
         15.092108,
         59.394776,
@@ -271775,7 +271799,7 @@
     },
     {
       "id": "aquadome_0_3",
-      "prototype": "core:cruise_dome_sector_ee72ff3e30",
+      "prototype": "core:cruise_dome_sector_7682c24b24",
       "at": [
         5.465958,
         61.855879,
@@ -271814,7 +271838,7 @@
     },
     {
       "id": "aquadome_1_2",
-      "prototype": "core:cruise_dome_sector_0b7f9b9d86",
+      "prototype": "core:cruise_dome_sector_c0809cd6af",
       "at": [
         13.125719,
         59.394984,
@@ -271827,7 +271851,7 @@
     },
     {
       "id": "aquadome_1_3",
-      "prototype": "core:cruise_dome_sector_dbc30e5cff",
+      "prototype": "core:cruise_dome_sector_405047e6a1",
       "at": [
         5.029797,
         61.855891,
@@ -271866,7 +271890,7 @@
     },
     {
       "id": "aquadome_2_2",
-      "prototype": "core:cruise_dome_sector_fc89fe2c27",
+      "prototype": "core:cruise_dome_sector_b11e5e315d",
       "at": [
         9.180998,
         59.395263,
@@ -271879,7 +271903,7 @@
     },
     {
       "id": "aquadome_2_3",
-      "prototype": "core:cruise_dome_sector_feb6f904b1",
+      "prototype": "core:cruise_dome_sector_87900955a3",
       "at": [
         3.838449,
         61.855902,
@@ -271918,7 +271942,7 @@
     },
     {
       "id": "aquadome_3_2",
-      "prototype": "core:cruise_dome_sector_2804ec17c5",
+      "prototype": "core:cruise_dome_sector_2bbb2e2748",
       "at": [
         3.842217,
         59.395453,
@@ -271931,7 +271955,7 @@
     },
     {
       "id": "aquadome_3_3",
-      "prototype": "core:cruise_dome_sector_a527b85a3d",
+      "prototype": "core:cruise_dome_sector_bf4e656185",
       "at": [
         2.07834,
         61.855907,
@@ -271970,7 +271994,7 @@
     },
     {
       "id": "aquadome_4_2",
-      "prototype": "core:cruise_dome_sector_d284cd71bf",
+      "prototype": "core:cruise_dome_sector_39ffd4eefb",
       "at": [
         -3.805786,
         59.395503,
@@ -271983,7 +272007,7 @@
     },
     {
       "id": "aquadome_4_3",
-      "prototype": "core:cruise_dome_sector_3cafffea06",
+      "prototype": "core:cruise_dome_sector_86efe08d12",
       "at": [
         -2.045853,
         61.855907,
@@ -272022,7 +272046,7 @@
     },
     {
       "id": "aquadome_5_2",
-      "prototype": "core:cruise_dome_sector_319af4cf8d",
+      "prototype": "core:cruise_dome_sector_3721fa3ced",
       "at": [
         -9.162252,
         59.395486,
@@ -272035,7 +272059,7 @@
     },
     {
       "id": "aquadome_5_3",
-      "prototype": "core:cruise_dome_sector_6014cdd5e1",
+      "prototype": "core:cruise_dome_sector_27863ca68d",
       "at": [
         -3.82977,
         61.855904,
@@ -272074,7 +272098,7 @@
     },
     {
       "id": "aquadome_6_2",
-      "prototype": "core:cruise_dome_sector_5fab7f1d6c",
+      "prototype": "core:cruise_dome_sector_e2538a0f75",
       "at": [
         -13.116023,
         59.395332,
@@ -272087,7 +272111,7 @@
     },
     {
       "id": "aquadome_6_3",
-      "prototype": "core:cruise_dome_sector_a06ea5084c",
+      "prototype": "core:cruise_dome_sector_25c3d1cefd",
       "at": [
         -5.026441,
         61.855895,
@@ -272126,7 +272150,7 @@
     },
     {
       "id": "aquadome_7_2",
-      "prototype": "core:cruise_dome_sector_959f36303d",
+      "prototype": "core:cruise_dome_sector_f50599ede3",
       "at": [
         -15.074435,
         59.395047,
@@ -272139,7 +272163,7 @@
     },
     {
       "id": "aquadome_7_3",
-      "prototype": "core:cruise_dome_sector_bce87bf659",
+      "prototype": "core:cruise_dome_sector_755ab51e32",
       "at": [
         -5.460405,
         61.855882,
@@ -272178,7 +272202,7 @@
     },
     {
       "id": "aquadome_8_2",
-      "prototype": "core:cruise_dome_sector_327737cdc2",
+      "prototype": "core:cruise_dome_sector_9ddad23086",
       "at": [
         -15.092108,
         59.394776,
@@ -272191,7 +272215,7 @@
     },
     {
       "id": "aquadome_8_3",
-      "prototype": "core:cruise_dome_sector_75eb007233",
+      "prototype": "core:cruise_dome_sector_cb070578af",
       "at": [
         -5.465958,
         61.855879,
@@ -272230,7 +272254,7 @@
     },
     {
       "id": "aquadome_9_2",
-      "prototype": "core:cruise_dome_sector_7db994c6cc",
+      "prototype": "core:cruise_dome_sector_b4bca04524",
       "at": [
         -13.125719,
         59.394984,
@@ -272243,7 +272267,7 @@
     },
     {
       "id": "aquadome_9_3",
-      "prototype": "core:cruise_dome_sector_84c152d970",
+      "prototype": "core:cruise_dome_sector_d233e321f1",
       "at": [
         -5.029797,
         61.855891,
@@ -272282,7 +272306,7 @@
     },
     {
       "id": "aquadome_10_2",
-      "prototype": "core:cruise_dome_sector_48362cae64",
+      "prototype": "core:cruise_dome_sector_739f6ff55a",
       "at": [
         -9.180998,
         59.395263,
@@ -272295,7 +272319,7 @@
     },
     {
       "id": "aquadome_10_3",
-      "prototype": "core:cruise_dome_sector_1c33facae0",
+      "prototype": "core:cruise_dome_sector_f7bc3440fc",
       "at": [
         -3.838449,
         61.855902,
@@ -272334,7 +272358,7 @@
     },
     {
       "id": "aquadome_11_2",
-      "prototype": "core:cruise_dome_sector_52922c3fc9",
+      "prototype": "core:cruise_dome_sector_0ed37d6ef7",
       "at": [
         -3.842217,
         59.395453,
@@ -272347,7 +272371,7 @@
     },
     {
       "id": "aquadome_11_3",
-      "prototype": "core:cruise_dome_sector_9784540e10",
+      "prototype": "core:cruise_dome_sector_1e608563e5",
       "at": [
         -2.07834,
         61.855907,
@@ -272386,7 +272410,7 @@
     },
     {
       "id": "aquadome_12_2",
-      "prototype": "core:cruise_dome_sector_9b6ce23ac2",
+      "prototype": "core:cruise_dome_sector_c3b140f7d8",
       "at": [
         3.805786,
         59.395503,
@@ -272399,7 +272423,7 @@
     },
     {
       "id": "aquadome_12_3",
-      "prototype": "core:cruise_dome_sector_1ebb622865",
+      "prototype": "core:cruise_dome_sector_8c11c39290",
       "at": [
         2.045853,
         61.855907,
@@ -272438,7 +272462,7 @@
     },
     {
       "id": "aquadome_13_2",
-      "prototype": "core:cruise_dome_sector_3dbe18f462",
+      "prototype": "core:cruise_dome_sector_2e3cb245ba",
       "at": [
         9.162252,
         59.395486,
@@ -272451,7 +272475,7 @@
     },
     {
       "id": "aquadome_13_3",
-      "prototype": "core:cruise_dome_sector_00146232bc",
+      "prototype": "core:cruise_dome_sector_d005a07f15",
       "at": [
         3.82977,
         61.855904,
@@ -272490,7 +272514,7 @@
     },
     {
       "id": "aquadome_14_2",
-      "prototype": "core:cruise_dome_sector_6a7e2173c7",
+      "prototype": "core:cruise_dome_sector_25681de7d5",
       "at": [
         13.116023,
         59.395332,
@@ -272503,7 +272527,7 @@
     },
     {
       "id": "aquadome_14_3",
-      "prototype": "core:cruise_dome_sector_c94c177a8b",
+      "prototype": "core:cruise_dome_sector_9791068535",
       "at": [
         5.026441,
         61.855895,
@@ -272542,7 +272566,7 @@
     },
     {
       "id": "aquadome_15_2",
-      "prototype": "core:cruise_dome_sector_82251b612e",
+      "prototype": "core:cruise_dome_sector_a6e79e0898",
       "at": [
         15.074435,
         59.395047,
@@ -272555,7 +272579,7 @@
     },
     {
       "id": "aquadome_15_3",
-      "prototype": "core:cruise_dome_sector_29e66d9c88",
+      "prototype": "core:cruise_dome_sector_afc3504a42",
       "at": [
         5.460405,
         61.855882,
@@ -292964,10 +292988,10 @@
       "placed": true
     },
     {
-      "id": "engine_fit_0_-13",
+      "id": "engine_fit_0_-12",
       "prototype": "core:cruise_furniture_engine_aabd73c8d8",
       "at": [
-        -13,
+        -12,
         3.0,
         34
       ],
@@ -292977,10 +293001,10 @@
       "placed": true
     },
     {
-      "id": "engine_fit_0_13",
+      "id": "engine_fit_0_12",
       "prototype": "core:cruise_furniture_engine_aabd73c8d8",
       "at": [
-        13,
+        12,
         3.0,
         34
       ],
@@ -292990,10 +293014,10 @@
       "placed": true
     },
     {
-      "id": "engine_fit_1_-13",
+      "id": "engine_fit_1_-12",
       "prototype": "core:cruise_furniture_engine_aabd73c8d8",
       "at": [
-        -13,
+        -12,
         3.0,
         48
       ],
@@ -293003,10 +293027,10 @@
       "placed": true
     },
     {
-      "id": "engine_fit_1_13",
+      "id": "engine_fit_1_12",
       "prototype": "core:cruise_furniture_engine_aabd73c8d8",
       "at": [
-        13,
+        12,
         3.0,
         48
       ],
@@ -315104,7 +315128,7 @@
     },
     {
       "id": "aquadome_pod_-1_0",
-      "prototype": "core:cruise_aquadome_pod_3d73798759",
+      "prototype": "core:cruise_aquadome_pod_66cc498dbb",
       "at": [
         -13,
         45.6,
@@ -315117,7 +315141,7 @@
     },
     {
       "id": "aquadome_pod_-1_1",
-      "prototype": "core:cruise_aquadome_pod_3d73798759",
+      "prototype": "core:cruise_aquadome_pod_66cc498dbb",
       "at": [
         -13,
         45.6,
@@ -315130,7 +315154,7 @@
     },
     {
       "id": "aquadome_pod_-1_2",
-      "prototype": "core:cruise_aquadome_pod_3d73798759",
+      "prototype": "core:cruise_aquadome_pod_66cc498dbb",
       "at": [
         -13,
         45.6,
@@ -315143,7 +315167,7 @@
     },
     {
       "id": "aquadome_pod_1_0",
-      "prototype": "core:cruise_aquadome_pod_3d73798759",
+      "prototype": "core:cruise_aquadome_pod_66cc498dbb",
       "at": [
         13,
         45.6,
@@ -315156,7 +315180,7 @@
     },
     {
       "id": "aquadome_pod_1_1",
-      "prototype": "core:cruise_aquadome_pod_3d73798759",
+      "prototype": "core:cruise_aquadome_pod_66cc498dbb",
       "at": [
         13,
         45.6,
@@ -315169,7 +315193,7 @@
     },
     {
       "id": "aquadome_pod_1_2",
-      "prototype": "core:cruise_aquadome_pod_3d73798759",
+      "prototype": "core:cruise_aquadome_pod_66cc498dbb",
       "at": [
         13,
         45.6,
@@ -323008,7 +323032,7 @@
           94.4
         ],
         [
-          21,
+          22,
           22.6,
           94.4
         ],
@@ -323064,7 +323088,7 @@
           100.8
         ],
         [
-          21,
+          22,
           22.6,
           100.8
         ],
@@ -323120,7 +323144,7 @@
           107.2
         ],
         [
-          21,
+          22,
           22.6,
           107.2
         ],
@@ -323176,7 +323200,7 @@
           94.4
         ],
         [
-          21,
+          22,
           26.0,
           94.4
         ],
@@ -323232,7 +323256,7 @@
           100.8
         ],
         [
-          21,
+          22,
           26.0,
           100.8
         ],
@@ -323288,7 +323312,7 @@
           107.2
         ],
         [
-          21,
+          22,
           26.0,
           107.2
         ],
@@ -323344,7 +323368,7 @@
           94.4
         ],
         [
-          21,
+          22,
           29.2,
           94.4
         ],
@@ -323401,7 +323425,7 @@
           100.8
         ],
         [
-          21,
+          22,
           29.2,
           100.8
         ],
@@ -323458,7 +323482,7 @@
           107.2
         ],
         [
-          21,
+          22,
           29.2,
           107.2
         ],
@@ -323514,7 +323538,7 @@
           94.4
         ],
         [
-          21,
+          22,
           32.4,
           94.4
         ],
@@ -323570,7 +323594,7 @@
           100.8
         ],
         [
-          21,
+          22,
           32.4,
           100.8
         ],
@@ -323626,7 +323650,7 @@
           107.2
         ],
         [
-          21,
+          22,
           32.4,
           107.2
         ],
@@ -323682,7 +323706,7 @@
           94.4
         ],
         [
-          21,
+          22,
           35.6,
           94.4
         ],
@@ -323738,7 +323762,7 @@
           100.8
         ],
         [
-          21,
+          22,
           35.6,
           100.8
         ],
@@ -323794,7 +323818,7 @@
           107.2
         ],
         [
-          21,
+          22,
           35.6,
           107.2
         ],
@@ -323850,7 +323874,7 @@
           94.4
         ],
         [
-          21,
+          22,
           38.8,
           94.4
         ],
@@ -323906,7 +323930,7 @@
           100.8
         ],
         [
-          21,
+          22,
           38.8,
           100.8
         ],
@@ -323962,7 +323986,7 @@
           107.2
         ],
         [
-          21,
+          22,
           38.8,
           107.2
         ],
@@ -324018,7 +324042,7 @@
           94.4
         ],
         [
-          21,
+          22,
           42.0,
           94.4
         ],
@@ -324074,7 +324098,7 @@
           100.8
         ],
         [
-          21,
+          22,
           42.0,
           100.8
         ],
@@ -324130,7 +324154,7 @@
           107.2
         ],
         [
-          21,
+          22,
           42.0,
           107.2
         ],

@@ -39,7 +39,7 @@ def dome(D,p,place,beam):
    look={'hulls':[{'points':[local(q) for q in h]} for h in proxy]}
    art={'kind':'dome_dense','finish':'steel','beams':[[local(q) for q in line] for line in frames],
         'roof':[[local(q) for q in cell] for cell in cells]}
-   ident=p('dome_sector','dome',[],hs,art,91,look)
+   ident=p('dome_sector','dome',[],hs,art,85 if band>=2 else 91,look)
    place(f'aquadome_{sector}_{band}',ident,o,'15','aquadome')
 
 def finish(D,p,raw,world,place,box,node,route,rect,ys,beam):
@@ -198,7 +198,7 @@ def finish(D,p,raw,world,place,box,node,route,rect,ys,beam):
    xs=[x0+3,x1-3]
    if ident=='workshop':xs=[4.6,12]
    if ident=='laundry':xs=[-14,-4.6]
-   if ident=='crew':xs=[-12,12]
+   if ident in('crew','engine'):xs=[-12,12]
    for x in xs:furnish(f'{ident}_fit_{i}_{x}',kind,[x,y,z],[3,1.6 if kind not in('table','counter') else .9,2.2],deck,'enamel' if ident in('medical','laundry','galley') else 'steel')
  # Neighborhood parks and terraces: clear central circulation, planted edges and recognizable grouped seating.
  room('central_park','Central Park','8',[-8.6,-66,8.6,58],[0,26,12],'fore_8',[[0,26,59.0]])
