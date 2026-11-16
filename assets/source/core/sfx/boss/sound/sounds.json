@@ -7,6 +7,14 @@
         {"file": "takes/roar/moss-pt-21002-06085.wav", "from": "moss", "start": 0.05, "end": 5.535}
       ]
     },
+    "enrage": {
+      "range": 600, "level": -6, "vary": 0.04,
+      "takes": [
+        {"file": "takes/enrage/moss-pt-40190-00020.wav", "from": "moss", "start": 0.02, "end": 5.625},
+        {"file": "takes/enrage/moss-pt-40191-00035.wav", "from": "moss", "start": 0.035, "end": 5.6},
+        {"file": "takes/enrage/moss-pt-40192-00075.wav", "from": "moss", "start": 0.05, "end": 4.095}
+      ]
+    },
     "growl": {
       "range": 80, "level": -18, "vary": 0.04, "loop": true,
       "takes": [

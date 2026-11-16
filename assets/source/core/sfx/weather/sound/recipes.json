@@ -1050,6 +1050,81 @@
         "loop_crossfade_frames": 36000
       }
     },
+    "takes/wind/gust/moss-pt-40180-00200.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "wind/gust",
+      "prompt_id": "v5-40180",
+      "prompt": "One strong gust of wind rushes through trees, rising and falling away to calm. Recorded outdoors, no music, no voices.",
+      "negative_prompt": "",
+      "seed": 40180,
+      "seconds": 10,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-40180.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "One strong gust of wind rushes through trees, rising and falling away to calm. Recorded outdoors, no music, no voices. duration: 10.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "6bcc0c3d1cf294ec72866eb347d8efdda6d53daba67d5e2b3212911b70c2ddf2",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1071.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "916201eef96fad98655d2a03fdff16aa74fabd86d8113ac655c0be73dc0a3a7d",
+      "cut": {
+        "source_file": "moss-pt-40180.wav",
+        "source_frames": 480000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          7200,
+          429601
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/wind/gale/moss-pt-20330-01500.wav": {
       "model": "moss",
       "backend": "torch",

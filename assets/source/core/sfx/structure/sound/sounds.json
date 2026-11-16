@@ -147,6 +147,15 @@
         {"file": "takes/fire/light/moss-pt-2410-03015.wav", "from": "moss", "start": 0.05, "end": 0.275}
       ]
     },
+    "fire/out": {
+      "range": 20, "level": -22, "vary": 0.6,
+      "takes": [
+        {"file": "takes/fire/out/moss-pt-40062-00155.wav", "from": "moss", "start": 0.05, "end": 2.0},
+        {"file": "takes/fire/out/moss-pt-40061-00000.wav", "from": "moss", "start": 0.0, "end": 2.765},
+        {"file": "takes/fire/out/moss-pt-40070-04900.wav", "from": "moss", "start": 0.05, "end": 1.335},
+        {"file": "takes/fire/out/moss-pt-40072-00665.wav", "from": "moss", "start": 0.05, "end": 1.3}
+      ]
+    },
     "grind": {
       "range": 15, "level": -24, "vary": 0.3, "loop": true,
       "takes": [

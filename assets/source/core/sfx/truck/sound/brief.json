@@ -109,7 +109,7 @@
       ]
     },
     "engine/stop": {
-      "kind": "impact",
+      "kind": "voice",
       "range": 40,
       "level": -18,
       "vary": 0.0,
@@ -125,11 +125,22 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A big diesel truck engine is switched off: it shudders, knocks and dies, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v5-40170",
+          "models": [
+            "moss"
+          ],
+          "seed": 40170,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 6,
+          "text": "A big diesel truck engine idling is switched off: it shudders, knocks twice and dies into silence. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
     },
     "engine/brake": {
-      "kind": "impact",
+      "kind": "voice",
       "range": 150,
       "level": -12,
       "vary": 0.0,
@@ -145,8 +156,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A heavy truck slows on its engine brake: a loud rapid barking rattle from the exhaust, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v5-40160",
+          "models": [
+            "moss"
+          ],
+          "seed": 40160,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 6,
+          "text": "A heavy truck's engine brake: a loud rapid machine-gun barking from the exhaust for two seconds, then silence. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "whole": true
     },
     "brake": {
       "kind": "impact",

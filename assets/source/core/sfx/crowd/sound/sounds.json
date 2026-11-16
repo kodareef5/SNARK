@@ -51,6 +51,12 @@
         {"file": "takes/laugh/crowd/moss-pt-26070-00380.wav", "from": "moss", "start": 0.05, "end": 7.22}
       ]
     },
+    "boo": {
+      "range": 80, "level": -16, "vary": 0.04,
+      "takes": [
+        {"file": "takes/boo/moss-pt-40221-00200.wav", "from": "moss", "start": 0.05, "end": 7.75}
+      ]
+    },
     "scream/man": {
       "range": 120, "level": -10, "vary": 0.04,
       "takes": [

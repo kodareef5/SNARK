@@ -67,7 +67,7 @@
       ]
     },
     "brake": {
-      "kind": "impact",
+      "kind": "voice",
       "range": 30,
       "level": -18,
       "vary": 0.0,
@@ -83,6 +83,17 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A bicycle's rim brakes squeal as it stops, four separate stops with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v5-40150",
+          "models": [
+            "moss"
+          ],
+          "seed": 40150,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 6,
+          "text": "A bicycle's rim brakes squeal sharply for one second as it stops, then silence. Loud and close. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
     },

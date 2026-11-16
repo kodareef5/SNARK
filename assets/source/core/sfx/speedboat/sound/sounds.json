@@ -31,6 +31,12 @@
         {"file": "takes/engine/start/moss-pt-9640-01890.wav", "from": "moss", "start": 0.05, "end": 8.16}
       ]
     },
+    "engine/rev": {
+      "range": 120, "level": -14, "vary": 0.0,
+      "takes": [
+        {"file": "takes/engine/rev/moss-pt-40130-00200.wav", "from": "moss", "start": 0.05, "end": 5.75}
+      ]
+    },
     "hull/fast": {
       "range": 60, "level": -18, "vary": 0.0, "loop": true,
       "takes": [

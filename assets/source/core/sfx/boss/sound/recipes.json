@@ -150,6 +150,231 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/enrage/moss-pt-40190-00020.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "enrage",
+      "prompt_id": "v5-40190",
+      "prompt": "A giant monster screams in rage: one long furious roaring howl, then silence. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 40190,
+      "seconds": 6,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-40190.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant monster screams in rage: one long furious roaring howl, then silence. Close-miked, dry, no music, no voices, quiet background. duration: 6.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "499aa5c864c820137bdfaa297efb1772d21e4bef78a7218dcaade6b912425a8f",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1071.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "fbbb7e29f19511594ea759024773252545604b8398030327fae700085367e8ba",
+      "cut": {
+        "source_file": "moss-pt-40190.wav",
+        "source_frames": 288000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          272400
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/enrage/moss-pt-40191-00035.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "enrage",
+      "prompt_id": "v5-40190",
+      "prompt": "A giant monster screams in rage: one long furious roaring howl, then silence. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 40191,
+      "seconds": 6,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-40191.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant monster screams in rage: one long furious roaring howl, then silence. Close-miked, dry, no music, no voices, quiet background. duration: 6.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "8b828354f15886f1882c0c81b2b793f8a21bfc58b01735500da0236c3b851953",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1071.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "9387819e5f28364286cbf06b2b86ecf8df317ab49fbad10dbdc066cfff373d39",
+      "cut": {
+        "source_file": "moss-pt-40191.wav",
+        "source_frames": 288000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          271200
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/enrage/moss-pt-40192-00075.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "enrage",
+      "prompt_id": "v5-40190",
+      "prompt": "A giant monster screams in rage: one long furious roaring howl, then silence. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 40192,
+      "seconds": 6,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-40192.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant monster screams in rage: one long furious roaring howl, then silence. Close-miked, dry, no music, no voices, quiet background. duration: 6.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "32a1528201a9eb5abde8fe73d60139b423ec50f8fb4505b2d1c3360e416165cd",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1071.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b6063fb55d98ceda1a410831aa8a972b837c5edf9874777c564984997375c2ff",
+      "cut": {
+        "source_file": "moss-pt-40192.wav",
+        "source_frames": 288000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          1199,
+          200160
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/growl/moss-pt-21020-01500.wav": {
       "model": "moss",
       "backend": "torch",

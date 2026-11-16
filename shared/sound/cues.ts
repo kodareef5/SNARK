@@ -82,9 +82,9 @@ cue("death", CREATURE, "vocal", "body", "built", "the body leaves the view as th
 cue("attack", CREATURE, "hit", "body", "built", "act=SWING starts; heard as the blow lands (the bite's lands tick)", { falls: ["{owner}/peck", "{owner}/bite", "core:weapon/swing/hands"] });
 cue("land", CREATURE, "hit", "body", "built", "CUE_LAND in the cue word", { falls: ["{owner}/thump", "core:body/thump/medium"] });
 cue("torpor_in", CREATURE, "vocal", "body", "built", "CUE_TORPOR as it goes out", { falls: ["{owner}/hurt@0.8"] });
-cue("torpor_out", CREATURE, "vocal", "body", "built", "CUE_TORPOR as it comes round");
+cue("torpor_out", CREATURE, "vocal", "body", "built", "CUE_TORPOR as it comes round", { falls: ["{owner}/call@0.85"] });
 cue("snore", CREATURE, "vocal", "body", "waits:polish", "lying knocked out", { loop: true });
-cue("eat", CREATURE, "item", "body", "built", "LAYER_EAT in the cue word");
+cue("eat", CREATURE, "item", "body", "built", "LAYER_EAT in the cue word", { falls: ["core:body/eat"] });
 cue("chase", CREATURE, "vocal", "body", "fire", "running (the pose's speed near its run): a call now and then, each body on its own time, so a pack talks as it hunts");
 cue("growl", CREATURE, "vocal", "body", "fire", "a hunter (temper 2) walking within 15 m of the ear, now and then");
 cue("roar", CREATURE, "vocal", "body", "waits:riding", "a rider's roar key", { falls: ["{owner}/startled"] });
