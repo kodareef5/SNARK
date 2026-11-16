@@ -44,7 +44,7 @@ Image.fromarray(np.clip((normal*.5+.5)*255,0,255).astype('uint8')).save(HERE/'su
 packed=np.stack([np.ones_like(rough)*.97,rough,metal],axis=-1)
 Image.fromarray(np.clip(packed*255,0,255).astype('uint8')).save(HERE/'surfaces_packed.png')
 layout=json.loads((ASSET.parents[4]/'content/landmarks/koru-layout.json').read_text())
-labels=sorted(set(r['label'] for r in layout['rooms'])|{'KORU','LOWER DECK','MAIN DECK','UPPER DECK','SUN DECK','COASTAL CHART'})
+labels=sorted(set(r['label'] for r in layout['rooms'])|{'KORU','LOWER DECK','MAIN DECK','UPPER DECK','SUN DECK','COASTAL CHART','SAILS'})
 signs={label:i for i,label in enumerate(labels)};(ASSET/'signs.json').write_text(json.dumps(signs,indent=2)+'\n')
 atlas=Image.new('RGB',(2048,2048),(95,65,39));draw=ImageDraw.Draw(atlas)
 fontpath='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
