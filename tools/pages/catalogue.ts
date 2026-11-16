@@ -6,7 +6,7 @@ import type { Def, ItemDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import type { EntryKind, GuideEntry, GuideFact, GuideServer, GuideSetting } from "../../shared/pages/types.ts";
 import { PUBLIC_SETTINGS, validatePublicSnapshot } from "../../shared/pages/validate.ts";
-import { CATALOG, rowOf } from "../../server/settings/catalog.ts";
+import { rowOf } from "../../server/settings/catalog.ts";
 
 export const words = (text: string): string => text.replace(/^.*:/, "").replace(/[_/\-]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\b\w/g, (c) => c.toUpperCase());
 const valueOf = (value: number | boolean): string => typeof value === "boolean" ? value ? "On" : "Off" : String(Math.round(value * 10000) / 10000);
@@ -105,7 +105,8 @@ function setting(key: string, value: number | boolean): GuideSetting {
   const row = rowOf(key);
   if (!row || (row.kind !== "float" && row.kind !== "int" && row.kind !== "bool")) throw new Error(`public setting ${key} has no supported catalogue row`);
   if ((row.kind === "bool") !== (typeof value === "boolean") || (typeof value === "number" && (value < row.min || value > row.max || (row.kind === "int" && !Number.isInteger(value))))) throw new Error(`public setting ${key} is outside its catalogue range`);
-  return { key, label: words(key), value: valueOf(value), default: valueOf(row.def as number | boolean), group: row.group, description: row.doc };
+  const exact = (v: number | boolean): string => typeof v === "boolean" ? valueOf(v) : String(v);
+  return { key, label: words(key), value: exact(value), default: exact(row.def as number | boolean), group: row.group, description: row.doc };
 }
 
 /** Without a runtime snapshot, show engine defaults and unknown occupancy, never an invented live server. */
@@ -122,8 +123,8 @@ export function buildServers(snapshot?: unknown): GuideServer[] {
     });
   }
   const defaults = PUBLIC_SETTINGS.flatMap((name) => {
-    const row = CATALOG.find((r) => r.name === name && r.status === "live");
-    return row && (typeof row.def === "number" || typeof row.def === "boolean") ? [setting(name, row.def)] : [];
+    const row = rowOf(name);
+    return row?.status === "live" && (typeof row.def === "number" || typeof row.def === "boolean") ? [setting(name, row.def)] : [];
   });
   return CORE_CONTENT.filter((d) => d.type === "map").map((d) => ({ id: d.id.split(":")[1]!, label: labelOf(d), mapId: d.id, sampledAt: null, players: [], capacity: null, settings: defaults.map((s) => ({ ...s })), facts: [{ label: "Snapshot", value: "Not connected" }, { label: "Settings shown", value: "Engine defaults" }] }));
 }

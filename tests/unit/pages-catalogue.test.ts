@@ -39,6 +39,8 @@ test("default server previews show known defaults without pretending to know pla
     expect([s.sampledAt, s.capacity]).toEqual([null, null]);
     expect(s.players).toEqual([]);
     expect(s.settings.some((r) => r.key === "TamingSpeedMultiplier" && r.value === r.default)).toBe(true);
+    expect(s.settings.some((r) => r.key === "ServerPVE" && r.value === "Off")).toBe(true);
+    expect(s.settings.some((r) => r.key === "CropGrowthSpeedMultiplier")).toBe(false);
     expect(JSON.stringify(s)).not.toMatch(/ServerPassword|AdminPassword|RCON|savePath|accountId/);
   }
 });

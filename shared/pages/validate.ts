@@ -7,7 +7,7 @@ export const PUBLIC_SETTINGS = [
   "PlayerCharacterFoodDrainMultiplier", "PlayerCharacterWaterDrainMultiplier",
   "PlayerCharacterStaminaDrainMultiplier", "DinoCharacterFoodDrainMultiplier",
   "BabyMatureSpeedMultiplier", "EggHatchSpeedMultiplier", "MatingIntervalMultiplier",
-  "CropGrowthSpeedMultiplier", "ResourcesRespawnPeriodMultiplier", "GlobalSpoilingTimeMultiplier",
+  "ResourcesRespawnPeriodMultiplier", "GlobalSpoilingTimeMultiplier",
   "HarvestXPMultiplier", "CraftXPMultiplier", "KillXPMultiplier",
 ] as const;
 export type PublicSetting = typeof PUBLIC_SETTINGS[number];
