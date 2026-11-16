@@ -50,7 +50,7 @@
 import { readFileSync } from "node:fs";
 import { CORE_CONTENT } from "../content/core.ts";
 import { provingFile } from "../server/world.ts";
-import { compileContent } from "../shared/content/registry.ts";
+import { compileContent, withContent } from "../shared/content/registry.ts";
 import { CHUNK_SIZE } from "../shared/coords.ts";
 import { parseMap, writeMap, type MapData } from "../shared/world/mapfile.ts";
 import { readLayers, writeLayers } from "./map/layers.ts";
@@ -96,7 +96,8 @@ export function describe(file: Uint8Array): string[] {
     const names = [...new Set(w.bodies.map((b) => b.name).filter((n) => n !== ""))];
     lines.push(`${w.bodies.length} bodies of water in ${squares} squares of ${w.cell} m over ${w.chunks().length} chunks, surfaces ${Math.min(...w.surface.subarray(1)).toFixed(2)} to ${Math.max(...w.surface.subarray(1)).toFixed(2)} m${names.length > 0 ? `: ${names.join(", ")}` : ""}`);
   }
-  const known = registry().index;
+  if (map.content) lines.push(`landmarks ${map.content.landmarks.join(", ")}, ${map.content.defs.length} definitions of their own`);
+  const known = withContent(registry(), map.content?.defs ?? []).index;
   const named = new Set([...map.statics.kinds, ...map.nodes.flatMap((layer) => ("first" in layer ? layer.kinds : "zone" in layer ? layer.zones.flatMap((z) => z.kinds.map(([id]) => id)) : layer.kinds.map(([id]) => id))), ...(map.regions ?? []).map((r) => r.spawns!), ...(map.vehicles ?? []).map((v) => v.kind)]);
   const lacking = [...named].filter((id) => !known.has(id));
   if (lacking.length > 0) lines.push(`not in the core content: ${lacking.join(", ")}`);
