@@ -9,6 +9,7 @@ import { EGGS } from "./eggs.ts";
 import { FOODS } from "./foods.ts";
 import { ITEMS } from "./items/index.ts";
 import { KNOCKOUT } from "./knockout.ts";
+import { KORU_CONTENT } from "./landmarks/koru.ts";
 import { MAPS } from "./maps.ts";
 import { RUIN_BLOCKS } from "./miami-ruins.ts";
 import { SLOPE_BLOCKS } from "./slopes.ts";
@@ -450,7 +451,7 @@ const ALL: readonly Def[] = [
   LEVELS,
 ];
 
-export const CORE_CONTENT: readonly Def[] = crafted([...ALL, ...RUIN_BLOCKS, ...TERMINALS, ...SLOPE_BLOCKS, ...LETTER_BLOCKS]);
+export const CORE_CONTENT: readonly Def[] = crafted([...ALL, ...RUIN_BLOCKS, ...TERMINALS, ...SLOPE_BLOCKS, ...LETTER_BLOCKS, ...KORU_CONTENT]);
 
 /** CORE_CONTENT as a pack, for stacking other packs on top. */
 export const CORE_PACK: ContentPack = { name: "core", defs: CORE_CONTENT as readonly Def[] as unknown as ContentPack["defs"] };
