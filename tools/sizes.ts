@@ -19,8 +19,9 @@ const MB = 1024 * KB;
  * 660 meshes and is 658 with ten times as many, a mesh adding 4 bytes of its name and page, so its room, about a third
  * of it, is for the script and the content as the game is built. The rest are waste the build can always avoid.
  */
+export const FIRST_FRAME_BUDGET = 1024 * KB;
 const BUDGETS: Record<string, number> = {
-  "everything before the first frame, Brotli": 1024 * KB,
+  "everything before the first frame, Brotli": FIRST_FRAME_BUDGET,
   "sound, kbit/s": 42,
   "sound takes stored twice": 0,
   "texture steps stored twice, astc": 0,
@@ -86,7 +87,7 @@ export function weigh(dist: string): boolean {
 }
 
 /** The page's script and its Brotli bytes before the first frame, as the page asks for them: its script's modules, and the files the first frame needs, which the server's map is not among. */
-function firstFrame(dist: string): { script: string[]; fetched: string[]; first: number } {
+export function firstFrame(dist: string): { script: string[]; fetched: string[]; first: number } {
   const size = (name: string): number => statSync(join(dist, name)).size;
   const page = readFileSync(join(dist, "index.html"), "utf8");
   const script = [...page.matchAll(/rel="modulepreload" href="([^"]+)"/g)].map((x) => `${x[1]}.br`);

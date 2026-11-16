@@ -33,6 +33,7 @@ import { Rasterizer } from "../snap/raster.ts";
 import { drawUi } from "../snap/ui.ts";
 import { seedCruisePreview } from "./dev.ts";
 import { assertCruiseMap, assertCruisePlaced } from "./preflight.ts";
+import { auditCruiseFirstFrame } from "./first-frame.ts";
 import { cruiseHash, verifyCruiseGroups, type CruisePackedGroups } from "./packed-groups.ts";
 import { CRUISE_COURSE, cruiseCourse, cruiseWorldPoint } from "./course.ts";
 
@@ -164,10 +165,12 @@ export function cruiseHeadingShots(shots: readonly CruiseShot[]): readonly Cruis
 const isShipMesh = (id: string): boolean => id.startsWith("cruise:") && !id.startsWith("cruise:port_");
 
 /** Read the actual production build, including its initially unknown paged core meshes. */
-async function cruiseFiles(names: readonly string[]): Promise<GameFiles & { boot: Pack }> {
+async function cruiseFiles(names: readonly string[]): Promise<GameFiles & { boot: Pack; firstFrame: ReturnType<typeof auditCruiseFirstFrame> }> {
   // Rebuild here so source/pack ownership checks and rendered files cannot silently
-  // refer to different revisions. Quick changes Brotli effort, not runtime assets.
-  await buildClient({ quick: true });
+  // refer to different revisions. Use the production compression for its census.
+  await buildClient({ quick: false });
+  const firstFrame = auditCruiseFirstFrame(names);
+  if (!firstFrame.pass) throw new Error(`Combined cruise-map first-frame budget exceeded: ${JSON.stringify(firstFrame)}`);
   const assets = resolve(import.meta.dir, "../../client/dist/assets");
   const manifest = parseManifest(readFileSync(join(assets, "manifest.json"), "utf8"));
   if (!manifest.pages?.length || !manifest.meshes.some(mesh => !meshKnown(mesh))) throw new Error("Cruise review requires main's cold paged core manifest");
@@ -179,7 +182,7 @@ async function cruiseFiles(names: readonly string[]): Promise<GameFiles & { boot
     joined = joinLandmark(joined, { manifest: own, boot: parsePack(bytes[own.boot]!) }, "landmarks");
     files.push(...bytes.filter((_, index) => index !== own.boot));
   }
-  return { ...joined, files };
+  return { ...joined, files, firstFrame };
 }
 
 function uploadOnly(raster: Rasterizer, packet: FramePacket): void {
@@ -419,7 +422,7 @@ export async function reviewCruise(map: MapData, shots: readonly CruiseShot[], a
     console.log(`Native cruise review ${shot.name}`);
     report.push({ ...capture(shot, map, pack, clips, files, shot.portrait ? 540 : width, shot.portrait ? 960 : height, out, !args.includes("--visual-only"), !args.includes("--no-images") && !sweep), packHash, packedGroupsHash: cellStages?.groupsSHA256 ?? null, assetStage: graybox ? "preliminary graybox" : CRUISE_LAYOUT.phase });
     report.sort((a, b) => String(a.name).localeCompare(String(b.name)));
-    writeFileSync(resolve(out, "report.json"), JSON.stringify({ source, generated: new Date().toISOString(), pipeline: "native LAND map → authoritative Harness → App → separate core/landmark manifest and boot joins, streamed assets and world surfaces → native frame packet → optional Rasterizer", packIdentity: "FNV-1a of joined manifest/boot blob and every source stream file, including textures and world surfaces", landmarks: map.content.landmarks, authoritativeAnimation: { clips: clips.clips.length, hash: clips.hash, rigs: pack.header.rigs.length }, cellStages, standaloneAssets, layout: { phase: CRUISE_LAYOUT.phase, logicalPrototypes: CRUISE_LAYOUT.prototypes.length, logicalInstances: CRUISE_LAYOUT.instances.filter(instance => instance.placed).length, collisionPrototypes: CRUISE_COLLISION_PROTOTYPES.length, cells: cellIds.size, placedInstances: CRUISE_COLLISION_INSTANCES.filter(instance => instance.placed).length, deckLabels: CRUISE_LAYOUT.decks.map(deck => deck.id) }, shots: report,
+    writeFileSync(resolve(out, "report.json"), JSON.stringify({ source, generated: new Date().toISOString(), pipeline: "native LAND map → authoritative Harness → App → production cold paged core and separate landmark files, streamed assets and world surfaces → native frame packet → optional Rasterizer", packIdentity: "FNV-1a of joined manifest/boot blob and every source stream file, including textures and world surfaces", landmarks: map.content.landmarks, firstFrame: files.firstFrame, authoritativeAnimation: { clips: clips.clips.length, hash: clips.hash, rigs: pack.header.rigs.length }, cellStages, standaloneAssets, layout: { phase: CRUISE_LAYOUT.phase, logicalPrototypes: CRUISE_LAYOUT.prototypes.length, logicalInstances: CRUISE_LAYOUT.instances.filter(instance => instance.placed).length, collisionPrototypes: CRUISE_COLLISION_PROTOTYPES.length, cells: cellIds.size, placedInstances: CRUISE_COLLISION_INSTANCES.filter(instance => instance.placed).length, deckLabels: CRUISE_LAYOUT.decks.map(deck => deck.id) }, shots: report,
       limits: "Static native software-rendered views establish model, collision-camera and streaming behavior; they do not establish browser GPU performance or identical lit ocean shading." }, null, 2));
   }
   console.log(`${out}: ${report.length} native cruise views`);
