@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { MODE_FLYER } from "../../shared/sim/character.ts";
 import { F_ALIVE } from "../../shared/sim/entities.ts";
-import { TEAM_RANGE, type EntityRecord, type Records } from "../records.ts";
+import type { EntityRecord, Records } from "../records.ts";
 import type { ServerWorld } from "../world.ts";
 import type { BackupReport } from "./backup.ts";
 import { inlineKeeper, type Keeper } from "./keeper.ts";
@@ -23,8 +23,6 @@ export interface PersistenceOptions {
   positionTicks: number;
   /** Journal entries kept. Older ones are deleted. */
   journalKeep: number;
-  /** Load a save made on another map, or on other bytes of this one. From its next commit it is this map's. */
-  allowMapMismatch: boolean;
 }
 
 /**
@@ -124,7 +122,7 @@ export class Persistence {
     this.records = records;
     this.store = store;
     this.saveId = store.saveId;
-    this.opts = { positionTicks: 1800, journalKeep: 100_000, allowMapMismatch: false, ...opts };
+    this.opts = { positionTicks: 1800, journalKeep: 100_000, ...opts };
     this.keeper = this.keep(store);
     this.keeper.onBackup = (r) => this.onBackup?.(r);
     world.structs.onChunkChanged = (chunk, healthOnly) => (healthOnly ? this.hurtChunks : this.dirtyChunks).add(chunk);
@@ -136,19 +134,14 @@ export class Persistence {
     const world = this.world;
     if (!store.fresh) {
       const mapId = store.meta("map_id");
-      // A save from before maps were files has no hash. It takes this map's at its next commit.
-      const mapHash = store.meta("map_hash");
+      const mapHash = Number(store.meta("map_hash"));
       const hex = (hash: number): string => hash.toString(16).padStart(8, "0");
-      if (!this.opts.allowMapMismatch) {
-        const onto = "start with the map file it was made on, or with --allow-map-mismatch to load it onto this one";
-        if (mapId !== world.mapId) throw new Error(`save is for map "${mapId}", not "${world.mapId}": ${onto}`);
-        if (mapHash !== null && Number(mapHash) !== world.mapHash) throw new Error(`save is for other bytes of map "${mapId}" (hash ${hex(Number(mapHash))}, and this file's is ${hex(world.mapHash)}): ${onto}`);
-      }
-      world.tick = Number(store.meta("tick") ?? 0);
-      world.dayOffset = Number(store.meta("day_offset") ?? 0);
-      this.records.nextSeq = Number(store.meta("next_seq") ?? 1);
-      // A save from before teams had worlds numbered them with its records, so its new ones start past every record it made.
-      this.records.nextTeam = Number(store.meta("next_team") ?? Math.max(1, this.records.nextSeq - this.records.worldId * TEAM_RANGE));
+      if (mapId !== world.mapId) throw new Error(`save is for map "${mapId}", not "${world.mapId}": start with the map file it was made on`);
+      if (mapHash !== world.mapHash) throw new Error(`save is for other bytes of map "${mapId}" (hash ${hex(mapHash)}, and this file's is ${hex(world.mapHash)}): start with the map file it was made on`);
+      world.tick = Number(store.meta("tick"));
+      world.dayOffset = Number(store.meta("day_offset"));
+      this.records.nextSeq = Number(store.meta("next_seq"));
+      this.records.nextTeam = Number(store.meta("next_team"));
     }
     const structures = store.fresh ? world.structs.count : store.loadChunks(world.structs);
     // A fresh save keeps the structures the world was created with, so the first commit writes them all.

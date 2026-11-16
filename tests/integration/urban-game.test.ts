@@ -132,27 +132,6 @@ test('normal record codec restores vehicle fuel and wheel state without changing
   } finally { host?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('the upgraded suspension loads the first playable build vehicle save without losing fuel or pose', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'snark-urban-legacy-')), dbPath = join(dir, 'world.db');
-  let active: Harness | null = null;
-  try {
-    const { h, car } = setup(dbPath); active = h;
-    const pid = h.world.ents.pid[car]!, record = h.host.records.byPid.get(pid)!;
-    const bytes = new Uint8Array(25), view = new DataView(bytes.buffer);
-    bytes[0] = 1;
-    [0.3, 0.04, -0.02, 0.1, 1.25, 17.5].forEach((v, i) => view.setFloat32(1 + i * 4, v, true));
-    record.extra.set(0x757262, bytes); h.host.records.dirty.add(pid);
-    h.host.shutdown(); active = null;
-    const restored = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], dbPath }); active = restored;
-    const e = restored.host.records.entOf.get(pid)!;
-    expect(restored.world.ents.fuel[restored.world.ents.vrow[e]!]).toBe(17.5);
-    expect(restored.world.ents.wheelAngle[restored.world.ents.vrow[e]!]).toBe(1.25);
-    expect(restored.world.ents.vehicleGroundPitch[restored.world.ents.vrow[e]!]).toBe(Math.fround(.04));
-    expect(restored.world.ents.vehicleYawRate[restored.world.ents.vrow[e]!]).toBe(0);
-    expect(restored.host.records.byPid.get(pid)!.extra.get(0x757262)![0]).toBe(4);
-  } finally { active?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
-});
-
 test('a real SQLite restart retains airborne velocity, suspension and transmission together', () => {
   const dir = mkdtempSync(join(tmpdir(), 'snark-urban-flight-')), dbPath = join(dir, 'world.db');
   let active: Harness | null = null;

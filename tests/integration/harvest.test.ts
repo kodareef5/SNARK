@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ClientSession } from "../../client/core/session.ts";
 import { SWING_TICKS } from "../../shared/sim/weapon.ts";
-import { SCHEMA_VERSION, WorldStore } from "../../server/persist/store.ts";
+import { WorldStore } from "../../server/persist/store.ts";
 import { CMD_CRAFT, CMD_LEARN, CMD_REPAIR, CMD_SPEND, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_SHORT } from "../../shared/net/protocol.ts";
 import { BTN_USE } from "../../shared/sim/character.ts";
 import { STAT_NAMES } from "../../shared/sim/genome.ts";
@@ -232,7 +232,7 @@ test("a pick gets three times the stone and flint besides, wears with each hit, 
   expect(items.audit()).toEqual([]);
 });
 
-test("touched nodes are saved and nothing else about nodes is; a save from before nodes gains the table", () => {
+test("touched nodes are saved and nothing else about nodes is", () => {
   const db = join(dir, "nodes.db");
   const { h, s, pilot, harvest } = setup({ dbPath: db });
   const trees = nodesOf(h, "core:tree", 256, 256)
@@ -251,14 +251,7 @@ test("touched nodes are saved and nothing else about nodes is; a save from befor
   const blobs = store.loadBlobs(harvest.tag);
   expect(blobs.length).toBeLessThanOrEqual(2);
   expect(blobs.reduce((n, row) => n + row.data.length, 0)).toBeLessThan(40);
-  // Makes the save look like one from before nodes existed, with no table and schema 1.
-  store.db.exec("DROP TABLE chunk_blobs");
-  store.db.exec("UPDATE meta SET value = 1 WHERE key = 'schema_version'");
   store.close();
-  const old = new Harness({}, 1, 30, { dbPath: db, dev: true, config: FAST });
-  expect(Number(old.host.persistence!.store.meta("schema_version"))).toBe(SCHEMA_VERSION);
-  expect(old.host.harvest!.goneCount).toBe(0); // the table is there and empty, so every node stands
-  old.host.shutdown();
 
   // After a restart the standing tree keeps its damage, and the felled one stays down and keeps its regrow time.
   const db2 = join(dir, "nodes2.db");

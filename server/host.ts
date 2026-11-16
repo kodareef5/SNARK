@@ -72,7 +72,6 @@ import { LIVE_FILE, applyLive, emptyReport, formatReport } from "./settings/conf
 import { difficultyOf, tuningOf, wildLevel } from "./settings/tune.ts";
 import { deriveRegistry } from "../shared/content/tuning.ts";
 import { hourOfDay, offsetForHour } from "../shared/sim/clock.ts";
-import { GAME_HOUR_TICKS } from "../shared/sim/lazy.ts";
 import { CAUSE_WORDS, DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
 import { createMapWorld, provingFile, type ServerWorld } from "./world.ts";
 import { settle, settleNear } from "./place.ts";
@@ -86,7 +85,6 @@ import { F_ALIVE, GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entitie
 import { ARMOR_SLOTS, FLAG_ON } from "../shared/sim/items.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
 import { Cluster } from "./cluster/cluster.ts";
-import { restoreObelisks } from "../shared/world/obelisks.ts";
 import { dirname, join, resolve } from "node:path";
 
 export interface HostOptions {
@@ -129,8 +127,6 @@ export interface HostOptions {
   dev?: boolean;
   /** Load a save whose item ledger does not match its contents, instead of refusing. */
   allowLedgerMismatch?: boolean;
-  /** Load a save made on another map, or on other bytes of this one, instead of refusing. */
-  allowMapMismatch?: boolean;
   /** The animation clips of the asset pack the clients are served. They decide where hit zones are. */
   clips?: ClipSet;
   /** The rigs of that pack. Creatures are posed and hit on the rigs that have their own bones. */
@@ -355,12 +351,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   /** Creates the entity store had refused when the log last said so, and the tick from which it may say so again. */
   let refusedTold = 0;
   let refusedNext = 0;
-  const persistence = store ? new Persistence(world, records, store, { allowMapMismatch: opts.allowMapMismatch ?? false }) : null;
+  const persistence = store ? new Persistence(world, records, store) : null;
   const loaded = persistence ? persistence.load() : null;
-  if (loaded && !loaded.fresh && parsed) {
-    const set = restoreObelisks(parsed, world.structs, reg);
-    if (set > 0) say(`set down ${set} pieces of the map's obelisks, which this save was made without`);
-  }
   const commitEvery = opts.commitEvery ?? 6;
   const survivor = reg.index.get("core:survivor")!;
   const survivorMove = reg.move[survivor]!;
@@ -456,7 +448,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   const stocked = opts.wild && !quiet ? new Spawner({ world, game, records, creatures, items, survival, buffs, persistence, rules, deadlines, tables: spawns.tables }, (opts.seed ?? 1) + 101) : null;
   const spawner = stocked && stocked.regions.length > 0 ? stocked : null;
   // The save keeps the setting values its timers were computed under, so they can be re-timed under other rules.
-  const loadedUnder = persistence && !loaded!.fresh ? timersOf(persistence.store.meta("settings_at"), persistence.store.meta("rules")) : null;
+  const loadedUnder = persistence && !loaded!.fresh ? timersOf(persistence.store.meta("settings_at")) : null;
   if (persistence) {
     const at = { dirty: true, version: rules.version, serialize: () => JSON.stringify({ timers: rules.timers() }) };
     persistence.sidecar("settings_at", at);
@@ -794,13 +786,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     if (bodiless > 0) say(`no body for ${bodiless} of the creatures and things in the save, which stay in it without one: the world holds ${world.ents.count} of the ${world.ents.max} that MaxEntities allows, with ${world.ents.reserve} kept for survivors`);
     refusedTold = world.ents.refused;
     survival.rerate = false;
-    // The hour of day survives a change of clock pace, so the offset is recomputed for the new pace. A save from before
-    // the clock had a pace counted 140 seconds to the hour.
-    const paced = loadedUnder !== null && loadedUnder.DayCycleSpeedScale !== undefined;
+    // The hour of day survives a change of clock pace, so the offset is recomputed for the new pace.
     const pace = { cycle: wasAt("DayCycleSpeedScale"), day: wasAt("DayTimeSpeedScale"), night: wasAt("NightTimeSpeedScale") };
-    if (!paced || pace.cycle !== world.clock.cycle || pace.day !== world.clock.day || pace.night !== world.clock.night) {
-      const hour = paced ? hourOfDay(world.tick, world.dayOffset, pace) : ((world.tick + world.dayOffset) % (24 * GAME_HOUR_TICKS)) / GAME_HOUR_TICKS;
-      world.dayOffset = offsetForHour(world.tick, hour, world.clock);
+    if (pace.cycle !== world.clock.cycle || pace.day !== world.clock.day || pace.night !== world.clock.night) {
+      world.dayOffset = offsetForHour(world.tick, hourOfDay(world.tick, world.dayOffset, pace), world.clock);
       if (settingsAt) settingsAt.dirty = true;
     }
     retime(true);
@@ -879,7 +868,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
       rec.keyHash = hashKey(c.key);
       records.dirty.add(rec.pid);
     }
-    // A survivor from before looks existed gets the default look.
+    // A survivor without a look takes the one it came with, or the default.
     if (!rec.look) {
       rec.look = c.look ?? defaultLook();
       records.dirty.add(rec.pid);

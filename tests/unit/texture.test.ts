@@ -1,7 +1,7 @@
 // Texture files: a painted region map into the two masks of weights, the file's layout, a material's maps together,
 // and the stress cards.
 import { expect, test } from "bun:test";
-import { parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
+import { MANIFEST_VERSION, parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
 import { TEXTURE_HEADER_BYTES, TEXTURE_MAGIC, pictureBytes, stepBytes, stepOf, stepOffset, stepSize, textureBytes, type TextureRole } from "../../shared/pack/texture.ts";
 import { Rng } from "../../shared/rng.ts";
 import { asPicture, baseMips, normalMips, packedMips, type Picture } from "../../tools/pack/image.ts";
@@ -125,7 +125,7 @@ test("a texture file's sizes are the contract's, each step hashes as listed, and
   }
 
   // The manifest takes the file and what the writer returned.
-  const manifest: Manifest = { version: 2, files: [{ name: "t.boot.snpk", bytes: 0, role: "boot" }, { name: "t.tex.rgba.sntx", bytes: bytes.length, role: "tex", format: "rgba" }], boot: 0, clipHash: 0, meshes: [] };
+  const manifest: Manifest = { version: MANIFEST_VERSION, files: [{ name: "t.boot.snpk", bytes: 0, role: "boot" }, { name: "t.tex.rgba.sntx", bytes: bytes.length, role: "tex", format: "rgba" }], boot: 0, clipHash: 0, meshes: [] };
   manifest.textures = sources.map(([role, m], t) => ({ id: `t:${role}`, role, top: 1 << (m.length - 1), in: { rgba: { file: 1, ...placed[t]! } } }));
   expect(parseManifest(JSON.stringify(manifest))).toEqual(manifest);
 
@@ -203,7 +203,7 @@ test("the stress cards: a flat colour names each step of a base colour card, and
   const cards = [{ ...mask, top: 64 }, { ...base, top: 256 }, { ...STRESS_CARDS[6]!, top: 128 }, { ...mask2, top: 64 }];
   const { file, textures } = stressTextures(1, cards);
   expect([file.name, file.role, textures.map((t) => t.id)]).toEqual(["stress.tex.rgba.sntx", "tex", ["stress:card_0", "stress:card_1", "stress:card_6", "stress:card_7"]]);
-  const manifest: Manifest = { version: 2, files: [{ name: "stress.boot.snpk", bytes: 0, role: "boot" }, { name: file.name, bytes: file.bytes.length, role: "tex", format: "rgba" }], boot: 0, clipHash: 0, meshes: [], textures };
+  const manifest: Manifest = { version: MANIFEST_VERSION, files: [{ name: "stress.boot.snpk", bytes: 0, role: "boot" }, { name: file.name, bytes: file.bytes.length, role: "tex", format: "rgba" }], boot: 0, clipHash: 0, meshes: [], textures };
   expect(parseManifest(JSON.stringify(manifest))).toEqual(manifest);
   for (const t of textures.slice(1, 3)) {
     for (let step = 0; step <= stepOf(t.top); step++) {

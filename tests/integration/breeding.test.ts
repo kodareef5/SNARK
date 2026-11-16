@@ -1,5 +1,4 @@
-import { Database } from "bun:sqlite";
-import { BitReader, BitWriter } from "../../shared/net/codec.ts";
+import { BitWriter } from "../../shared/net/codec.ts";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,7 +17,7 @@ import type { EntityRecord } from "../../server/records.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BOX_OPEN, BOX_SELF, CMD_CLOSE, CMD_FEED, CMD_MOVE, CMD_OPEN, CMD_ORDER, ORDER_ALL, ORDER_FOLLOW, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, RESULT_DENIED, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK } from "../../shared/net/protocol.ts";
-import { MATE_TICKS, growthStep, maturity, youngHunger, youngScale, youngShare } from "../../shared/sim/breeding.ts";
+import { MATE_TICKS, growthStep, youngHunger, youngScale, youngShare } from "../../shared/sim/breeding.ts";
 import { BTN_USE, MF_ROOTED, stanceEye } from "../../shared/sim/character.ts";
 import { F_PROP } from "../../shared/sim/entities.ts";
 import { STAT_COUNT } from "../../shared/sim/genome.ts";
@@ -574,96 +573,4 @@ test("a whole client, looking at an egg, is told when it will hatch and takes it
   app.key("KeyE", false);
   run(400);
   expect([baby.team, app.ui.naming.open, app.ui.frame.find(KEY_NAME_TITLE)!.text]).toEqual([me.team, true, `Yours: a young parasaur, level ${baby.genome!.level}`]);
-});
-
-test("a world saved when a young one's birth and an egg's laying were kept as ticks is read as it was: each is now how long its growing takes and when it ends", () => {
-  const dir = mkdtempSync(join(tmpdir(), "snark-breed-old-"));
-  const dbPath = join(dir, "world.db");
-  let h = new Harness({}, 1, 60, { dev: true, dbPath });
-  // The old save stored begin ticks, so the world must be old enough for those below to be positive.
-  h.run(60000);
-  const g = flatGround(h, 20, 20);
-  // A young one a third grown, an egg part way to hatching, and an adult female resting after laying.
-  const young = h.host.records.byPid.get(((e: number) => h.world.ents.pid[e]!)(h.host.spawnCreature("core:parasaur", g.x + 5, g.z + 5, 4)))!;
-  young.span = 1500;
-  young.grown = h.world.tick + 1000;
-  h.world.ents.setYoung(h.host.records.entOf.get(young.pid)!, young.span, young.grown);
-  const egg = h.host.records.create(id("egg_parasaur"), "parasaur egg");
-  egg.genome = young.genome;
-  egg.x = g.x + 9;
-  egg.z = g.z + 5;
-  egg.y = g.y;
-  egg.egg = { species: id("parasaur"), span: 1200, hatchAt: h.world.tick + 800, carrier: 0 };
-  h.host.death.place(egg);
-  const mother = h.host.records.byPid.get(((e: number) => h.world.ents.pid[e]!)(h.host.spawnCreature("core:parasaur", g.x + 13, g.z + 5, 4)))!;
-  mother.mating = true;
-  mother.mateReadyAt = h.world.tick + 777777;
-  for (const r of [young, egg, mother]) h.host.records.dirty.add(r.pid);
-  h.host.breeding.resume();
-  h.run(1000);
-  expect([young.grown - young.span > 0, egg.egg.hatchAt - egg.egg.span > 0]).toEqual([true, true]);
-  const was = { young: [young.span, young.grown], egg: { ...egg.egg }, mother: [mother.mating, mother.mateReadyAt, mother.span, mother.grown] };
-  const pids = [young.pid, egg.pid, mother.pid];
-  h.host.shutdown();
-
-  // Rewrites the save into the older layout. Breeding is component 16 there, and holds a begin tick where component 18 holds a span.
-  const db = new Database(dbPath);
-  let rewritten = 0;
-  for (const row of db.query("SELECT pid, data FROM entities").all() as { pid: number; data: Uint8Array }[]) {
-    const r = new BitReader(row.data);
-    const w = new BitWriter(row.data.length + 64);
-    w.u8(r.u8());
-    w.string(r.string(256));
-    const n = r.varint();
-    w.varint(n);
-    for (let k = 0; k < n; k++) {
-      const component = r.varint();
-      const blob = r.blob(1 << 20);
-      if (component !== 18) {
-        w.varint(component);
-        w.blob(blob);
-        continue;
-      }
-      const c = new BitReader(blob);
-      const o = new BitWriter(96);
-      o.bool(c.bool());
-      o.uint53(c.uint53());
-      const span = c.uint53();
-      const grown = c.uint53();
-      o.uint53(grown === 0 ? 0 : grown - span);
-      o.uint53(grown);
-      const isEgg = c.bool();
-      o.bool(isEgg);
-      if (isEgg) {
-        o.varint(c.varint());
-        const hatching = c.uint53();
-        const hatchAt = c.uint53();
-        o.uint53(hatchAt - hatching);
-        o.uint53(hatchAt);
-        o.uint53(c.uint53());
-      }
-      expect([c.overflow, o.overflow]).toEqual([false, false]);
-      w.varint(16);
-      w.blob(o.bytes());
-      rewritten++;
-    }
-    expect([r.overflow, w.overflow]).toEqual([false, false]);
-    db.query("UPDATE entities SET data = ? WHERE pid = ?").run(w.bytes().slice(), row.pid);
-  }
-  db.close();
-  expect(rewritten).toBe(3);
-
-  h = new Harness({}, 1, 60, { dev: true, dbPath });
-  const [y, e, m] = pids.map((pid) => h.host.records.byPid.get(pid)!);
-  expect({ young: [y!.span, y!.grown], egg: { ...e!.egg }, mother: [m!.mating, m!.mateReadyAt, m!.span, m!.grown] }).toEqual(was);
-  const ye = h.host.records.entOf.get(y!.pid)!;
-  expect([h.world.ents.span[ye], h.world.ents.grown[ye], h.host.breeding.subject(y!).maturity]).toEqual([1500, was.young[1]!, maturity(1500, was.young[1]!, h.world.tick)]);
-  expect(h.host.breeding.subject(y!).maturity).toBeGreaterThan(0.33);
-  // The next save writes the new layout, and reads back the same.
-  h.run(1000);
-  h.host.shutdown();
-  h = new Harness({}, 1, 60, { dev: true, dbPath });
-  expect([h.host.records.byPid.get(pids[0]!)!.span, h.host.records.byPid.get(pids[1]!)!.egg]).toEqual([1500, was.egg]);
-  h.host.shutdown();
-  rmSync(dir, { recursive: true, force: true });
 });
