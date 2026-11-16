@@ -5,7 +5,8 @@ import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { slopeKind } from "../../content/slopes.ts";
 import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
-import { fadeKeeps } from "../../client/core/render/far.ts";
+import { FAR_BUFFER, fadeKeeps } from "../../client/core/render/far.ts";
+import { cityJob, cityKinds, makeLevel } from "../../client/core/render/citymake.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
@@ -15,14 +16,16 @@ import { compileContent, type Registry } from "../../shared/content/registry.ts"
 import { slopeShape, staticOf } from "../../shared/content/slopes.ts";
 import { CHUNK_SIZE, YAW_UNITS, chunkAt, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { TAU, detCos, detSin } from "../../shared/math/scalar.ts";
+import { VERTEX_BYTES } from "../../shared/pack/pack.ts";
 import { Rng } from "../../shared/rng.ts";
 import { CityStatics, cellPart, cityTops, goneByCells, goneByRows, mergedPart, type CityPart } from "../../shared/world/city.ts";
 import { hullOf, hullPoint, type HullDef } from "../../shared/world/convex.ts";
+import { HeightWindow } from "../../shared/world/heightfield.ts";
 import { mapHeightfield, parseMap, placeStatics, writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
 import { Found, StructureStore } from "../../shared/world/structures.ts";
 import { Summary, bakeChunk, pieceShapes } from "../../shared/world/tactical.ts";
 import { BEAM, FLOOR, PIER, SLOPE_SLAB30, STEP, WALL, asWritten, building, cityWorld, slopes } from "../fixtures/cityworld.ts";
-import { farRegistry } from "../fixtures/farworld.ts";
+import { farPack, farRegistry } from "../fixtures/farworld.ts";
 import { flatMap } from "../fixtures/map.ts";
 
 const sum = (a: Uint8Array): number => a.reduce((n, v) => n + v, 0);
@@ -218,13 +221,13 @@ test("far blocks draw only what players built above the city: none for a chunk o
   w.send(chunk);
   w.look(x, 6, z, 500, 0.3, 40);
   const p = w.frame();
-  const blocks = p.drawFade.subarray(0, p.drawCount).filter((f, d) => f > 0 && p.drawBuffer[d] !== CITY_BUFFER).length;
-  expect(blocks).toBe(0);
+  const blocks = (q: FramePacket): number => q.drawBuffer.subarray(0, q.drawCount).filter((b) => b === FAR_BUFFER).length;
+  expect(blocks(p)).toBe(0);
   // A player's wall on the roof: the feed's top over that cell rises past the city's.
   w.server.add(w.reg.index.get(WALL)!, x, 12 + 1.4, z, 0, 1, 1000);
   w.send(chunk);
   const q = w.frame();
-  expect(q.drawFade.subarray(0, q.drawCount).filter((f, d) => f > 0 && q.drawBuffer[d] !== CITY_BUFFER).length).toBeGreaterThan(0);
+  expect(blocks(q)).toBeGreaterThan(0);
 });
 
 test("the lattice fades out over the end of its reach exactly where the mass fades in", () => {
@@ -244,7 +247,7 @@ test("the lattice fades out over the end of its reach exactly where the mass fad
   expect(fades.some((f) => f === -900)).toBe(true);
 });
 
-test("tiles with nothing on the card are made first, a chunk at a time within the frame's budget", () => {
+test("tiles with nothing on the card are made first, a level at a time within the frame's budget", () => {
   const statics: MapStatic[] = [];
   for (let cx = 2; cx < 14; cx += 2) for (let cz = 2; cz < 14; cz += 2) statics.push(...building(...mid(cx, cz), 0, 4));
   const w = cityWorld({ chunks: 16, statics });
@@ -252,7 +255,7 @@ test("tiles with nothing on the card are made first, a chunk at a time within th
   const city = w.scene.city!;
   city.makeMs = 0;
   w.frame();
-  // One chunk's piece a frame: tiles come in one by one, and none is drawn before its every chunk is made.
+  // One level a frame: tiles come in one by one, and none is drawn before it is made.
   expect(city.stats.made).toBeLessThanOrEqual(1);
   let frames = 1;
   while (city.stats.behind > 0 || city.stats.missing > 0) {
@@ -318,6 +321,47 @@ test("a map's statics written, read back and set down give the rows and far city
       for (const make of forms) expect(make(city)).toEqual(make(old));
       expect(cityTops(city, c, hf, null)).toEqual(cityTops(old, c, hf, null));
     }
+  }
+});
+
+test("a level made from what a worker is sent, its tile's statics, those round it and the ground under them, is the level made from the whole map", () => {
+  const reg = farRegistry();
+  const rng = new Rng(11);
+  const kinds = [FLOOR, PIER, BEAM, WALL, "core:zruin_container_rust", ...SLOPED.map(slopeKind)];
+  // A tile of 3 by 3 chunks, pieces across its edges, on rolling ground.
+  const statics: MapStatic[] = Array.from({ length: 700 }, () => ({ kind: kinds[Math.floor(rng.float() * kinds.length)]!, x: 150 + rng.float() * 280, y: 2 + rng.float() * 30, z: 150 + rng.float() * 280, yaw: Math.floor(rng.float() * 65536) }));
+  const w = cityWorld({ chunks: 8, statics, ground: (x, z) => 4 * Math.sin(x / 17) + 3 * Math.cos(z / 11) });
+  const city = new CityStatics(w.dims, asWritten(statics), reg);
+  const window = new HeightWindow({ cell: w.hf.cell, nx: w.hf.nx, nz: w.hf.nz, minY: w.hf.minY, stepY: w.hf.stepY, i0: 30, j0: 40, w: 140, heights: w.hf.window(30, 40, 169, 189) });
+  for (let k = 0; k < 2000; k++) {
+    const [x, z] = [60 + rng.float() * 276, 80 + rng.float() * 296];
+    expect(window.heightAt(x, z)).toBe(w.hf.heightAt(x, z));
+  }
+  expect(() => window.heightAt(20, 200)).toThrow();
+  const pack = farPack();
+  const bounds = pack.header.meshes[pack.header.meshes.findIndex((m) => m.id === "core:far")]!;
+  const chunks = [9, 10, 11, 17, 18, 19, 25, 26, 27].filter((c) => city.in(c) > 0);
+  const lost = new Map(chunks.map((c) => [c, Uint8Array.from({ length: city.in(c) }, () => (rng.float() < 0.2 ? 1 : 0))]));
+  const goneOf = (c: number): Uint8Array | null => lost.get(c) ?? null;
+  for (const level of [{ gap: 0.01, least: 0, cell: 0, tall: 0 }, { gap: 0.5, least: 2.1, cell: 0, tall: 0 }, { gap: -1, least: 0, cell: 4, tall: 4 }]) {
+    const made = makeLevel(cityKinds(city, w.hf, bounds), cityJob(0, city, w.hf, goneOf, chunks, level, 32, -8, 32));
+    // The same faces, chunk by chunk, made from the whole map and stored as the level stores them.
+    let faces = 0;
+    chunks.forEach((c, r) => {
+      const part = level.cell > 0 ? cellPart(city, c, w.hf, goneOf(c), level.cell, level.tall) : mergedPart(city, c, w.hf, goneOf, level.gap, level.least);
+      expect([made.first[r], made.count[r]]).toEqual([faces * 6, part.faces * 6]);
+      const at = (made.first.at(-1)! + made.count.at(-1)!) * made.indexBytes;
+      const view = new DataView(made.data.buffer, (at + 3) & ~3);
+      for (let v = 0; v < part.faces * 4; v++) {
+        const o = (faces * 4 + v) * VERTEX_BYTES;
+        const got = [0, 1, 2].map((a) => bounds.center[a]! + (view.getInt16(o + a * 2, true) / 32767) * bounds.half[a]!);
+        const want = [part.pos[v * 3]! + chunkCx(w.dims, c) * CHUNK_SIZE - 32, part.pos[v * 3 + 1]! + 8, part.pos[v * 3 + 2]! + chunkCz(w.dims, c) * CHUNK_SIZE - 32];
+        for (let a = 0; a < 3; a++) expect(Math.abs(got[a]! - want[a]!)).toBeLessThan(bounds.half[a]! / 32767);
+        expect(view.getUint8(o + 6)).toBe(part.color[v >> 2]!);
+      }
+      faces += part.faces;
+    });
+    expect(faces).toBeGreaterThan(200);
   }
 });
 

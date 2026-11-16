@@ -105,6 +105,7 @@ import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
 import { CMD_FAR, RESULT_BUSY, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import type { FarSource } from "./render/far.ts";
+import type { CityMaker } from "./render/citymake.ts";
 import type { CitySource } from "./render/farcity.ts";
 import type { CityStatics } from "../../shared/world/city.ts";
 import { NodeChanges, type FarNodeSource } from "./render/farnodes.ts";
@@ -129,8 +130,9 @@ export interface SessionOptions {
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
   /** The map's resource nodes, from the same pure function the server uses. */
   nodes?(hf: Heightfield, registry: Registry): NodeSource | null;
-  /** The map's static pieces by chunk, which the far city draws past the near rows (render/farcity.ts). */
+  /** The map's static pieces by chunk, which the far city draws past the near rows (render/farcity.ts), and where its levels are made, here if not given. */
   city?(registry: Registry): CityStatics | null;
+  cityMaker?: CityMaker;
 }
 
 /** Null if the tuning does not parse or the derived content does not compile. */
@@ -1294,7 +1296,7 @@ export class ClientSession {
     this.nodeChanges = field ? new NodeChanges(dims) : null;
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges! } } : {};
     const statics = this.opts.city?.(reg) ?? null;
-    const city = statics && statics.count > 0 ? { city: { statics, complete: far.complete } } : {};
+    const city = statics && statics.count > 0 ? { city: { statics, complete: far.complete, maker: this.opts.cityMaker } } : {};
     this.world = { mapId, dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...city };
     this.recenterNodes();
     this.move = move;

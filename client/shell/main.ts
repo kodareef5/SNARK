@@ -6,6 +6,7 @@ import { compileContent } from "../../shared/content/registry.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { WorkerPort } from "../assets/port.ts";
+import { WorkerCityMaker } from "../city/maker.ts";
 import { DEFAULT_TIER, tierOf } from "../core/assets/tiers.ts";
 import { CityStatics } from "../../shared/world/city.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
@@ -73,6 +74,7 @@ async function boot(): Promise<void> {
     resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),
     nodes: (ground, content) => mapNodes(map, ground, content),
     city: (content) => new CityStatics(map.dims, map.statics, content),
+    cityMaker: new WorkerCityMaker(),
   });
   const surfaces = selfcheck ? new SelfcheckSurfaces(manifest, port) : null;
   const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });

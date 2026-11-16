@@ -4,6 +4,7 @@
 
 import { expect, test } from "bun:test";
 import { Camera } from "../../client/core/render/camera.ts";
+import { FAR_BUFFER } from "../../client/core/render/far.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
@@ -34,7 +35,7 @@ test("a base the survivor stands by is drawn near once its rows are whole, and a
   const drawn = (): string => {
     [cam.x, cam.y, cam.z, cam.yaw] = [s.own.x, 1.6, s.own.z, Math.atan2(162 - s.own.x, 100 - s.own.z)];
     const p = scene.build(cam, null);
-    const far = p.drawFade.subarray(0, p.drawCount).some((f) => f > 0);
+    const far = p.drawBuffer.subarray(0, p.drawCount).includes(FAR_BUFFER);
     const near = p.drawBuffer.subarray(0, p.drawCount).includes(chunk);
     return far === near ? "both or neither" : far ? "far" : "near";
   };

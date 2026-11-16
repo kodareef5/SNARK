@@ -7,17 +7,21 @@
 // left out), then a building's mass in cells. The lattice fades out over the last share of its reach as the mass fades in,
 // pixel by pixel in the far fade's pattern; the other changes of level are a tile at a time.
 //
+// Levels are made where the scene's maker makes them (citymake.ts): in the browser on a worker, sent only what a level
+// needs, and here a frame's budget at a time. What is made goes on the card and is not kept in the page.
+//
 // What stands: a chunk the near store holds whole says exactly which of the map's pieces stand, and that is kept when it
 // is let go. Past that, the far feed's cells (farcells.ts) show a piece gone when its top stands over the top sent for a
 // cell it fills. A piece gone either way is left out of every level of its chunk.
 
 import { CHUNK_SIZE, chunkCount, type MapDims } from "../../../shared/coords.ts";
-import { INSTANCE_BYTES, VERTEX_BYTES } from "../../../shared/pack/pack.ts";
-import { cellPart, cityTops, goneByCells, goneByRows, mergedPart, type CityPart, type CityStatics, type Gone } from "../../../shared/world/city.ts";
+import { INSTANCE_BYTES } from "../../../shared/pack/pack.ts";
+import { cityTops, goneByCells, goneByRows, type CityStatics, type Gone } from "../../../shared/world/city.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
 import type { FarStore } from "../farcells.ts";
 import type { Camera } from "./camera.ts";
+import { InlineCityMaker, cityJob, cityKinds, type CityMade, type CityMaker } from "./citymake.ts";
 import { FAR_BUFFER, FAR_HEIGHT, FAR_TILE_METRES } from "./far.ts";
 import type { FramePacket } from "./packet.ts";
 
@@ -34,8 +38,10 @@ const CITY_SLOT_SPAN = 2 ** 30;
 /** The instance buffer every tile is drawn with: one instance at the origin. */
 export const CITY_BUFFER = FAR_BUFFER + 1;
 const RESERVE = "far city";
-/** Tiles are made, nearest first and those with nothing on the card before the rest, until this much of a frame is spent. */
+/** Levels are made, nearest first and tiles with nothing on the card before the rest; here, until this much of a frame is spent. */
 export const MAKE_MS = 2;
+/** Levels a worker is asked for ahead of what it has made: it never waits on the page, and a nearer tile soon goes first. */
+const FLIGHTS = 3;
 /** Milliseconds from some fixed moment: the page's clock in a browser and under Bun. */
 const clock = (): number => (globalThis as { performance?: { now(): number } }).performance?.now() ?? Date.now();
 /** A tile leaves a level for a coarser one this much past where the level ends, and comes back this much short of it. */
@@ -44,10 +50,14 @@ const LEVELS = 8;
 /** The slot of a level made with no faces, which is never on the card. */
 const EMPTY = -2;
 
-/** What the scene draws a map's buildings from: its statics, and which chunks the near store holds whole. */
+/** Levels asked of makers, counted over every city of the page, so a maker's answer to one before is known for that. */
+let levelsAsked = 0;
+
+/** What the scene draws a map's buildings from: its statics, which chunks the near store holds whole, and where levels are made (here, if not given). */
 export interface CitySource {
   readonly statics: CityStatics;
   complete(chunk: number): boolean;
+  readonly maker?: CityMaker;
 }
 
 /**
@@ -64,11 +74,10 @@ export interface CityLevel {
   readonly tall: number;
 }
 
-/** A tile's level on the card: its slot, and where each chunk's faces start in its indices and how many indices they take. */
+/** A tile's level on the card: its slot, its bytes there, and where each chunk's faces start in its indices and how many indices they take. */
 interface Held {
   readonly level: number;
-  readonly data: Uint8Array;
-  readonly indexBytes: 2 | 4;
+  readonly bytes: number;
   readonly first: Uint32Array;
   readonly count: Uint32Array;
   slot: number;
@@ -88,12 +97,22 @@ interface Tile {
   readonly held: (Held | null)[];
   /** Frames in a row it has been in view and reach with nothing made to draw. */
   unseen: number;
+  /** The levels it wanted when last in reach, and those being made, a bit each. */
+  wants: number;
+  making: number;
+  /** Counts of its lettings go and of the changes to what stands that its levels show, so a level asked for before one is known. */
+  epoch: number;
+  version: number;
+  /** Where its levels go in this frame's order of making: lower first. */
+  rank: number;
 }
 
-/** One chunk's faces at a level, as the card takes them within its tile: VERTEX_BYTES a vertex, four a face. */
-interface Piece {
-  readonly verts: Uint8Array;
-  readonly faces: number;
+/** A level asked of the maker, and its tile's counts then. */
+interface Asked {
+  readonly tile: number;
+  readonly level: number;
+  readonly epoch: number;
+  readonly version: number;
 }
 
 export class FarCity {
@@ -101,28 +120,32 @@ export class FarCity {
   readonly mesh: number;
   /** Bytes of tiles on the card. */
   bytes = 0;
-  /** Last frame: milliseconds spent making tiles and tiles made, tiles in reach with nothing on the card, and levels wanted and not yet made. */
+  /**
+   * Last frame: milliseconds of the page's thread spent making tiles (here, or asking a worker and taking what it made)
+   * and levels taken, tiles in reach with nothing on the card, and levels wanted and not yet made.
+   */
   readonly stats = { makeMs: 0, made: 0, missing: 0, behind: 0, unseen: 0, unseenAt: Infinity, unseenFrames: 0, coarse: 0 };
   /** Triangles drawn this frame at each level. */
   readonly drawn = new Float64Array(LEVELS);
-  /** Milliseconds of a frame tiles may be made in, after the first; Infinity makes every tile wanted in the frame it is. */
+  /** Milliseconds of a frame levels may be made in here, after the first; Infinity makes every level wanted in the frame it is. */
   makeMs = MAKE_MS;
   private readonly source: CitySource;
   private readonly dims: MapDims;
   private readonly hf: Heightfield;
-  private readonly center: readonly number[];
-  private readonly half: readonly number[];
+  private readonly maker: CityMaker;
   private readonly tilesX: number;
   private readonly tiles: Tile[] = [];
   private readonly tileOfChunk: Int32Array;
-  /** Pieces made, by chunk times LEVELS plus level. */
-  private readonly pieces = new Map<number, Piece>();
   /** Per chunk: which of its pieces are gone, as last seen near and as the far feed shows; and a count of changes to that. */
   private readonly gone = new Map<number, Uint8Array>();
   private readonly seenNear = new Map<number, Uint8Array>();
   private readonly seenShape: Int32Array;
   private readonly seenCells: Uint32Array;
   readonly goneVersion: Uint32Array;
+  /** Chunks matched against the near store's rows and still held whole, and the far feed's count of messages when last looked at. */
+  private readonly whole = new Set<number>();
+  private cellsSeen = 0;
+  private readonly changed = new Set<number>();
   /** Per chunk, the far feed's top byte of each cell as its standing pieces give it, made when asked for. */
   private readonly tops = new Map<number, Uint8Array>();
   private levels: readonly CityLevel[] = [];
@@ -131,7 +154,19 @@ export class FarCity {
   private next = 0;
   private sent = false;
   private on = false;
+  /** This frame's levels to make, in order, how many of them the maker has been asked for, and how many it is making. */
   private readonly work: number[] = [];
+  private fed = 0;
+  private out = 0;
+  /** Milliseconds spent asking the worker for levels since the last frame. */
+  private fedMs = 0;
+  private readonly asked = new Map<number, Asked>();
+  private readonly arrived: CityMade[] = [];
+  private readonly got: CityMade[] = [];
+  /** The tiles that may be in reach: those within it and two tiles more of where the camera was when they were found. */
+  private around: number[] = [];
+  private readonly listed: Uint8Array;
+  private aroundAt: [number, number, number] = [Infinity, Infinity, -1];
   /** Per chunk, the box its pieces' faces may reach, as a tile's; and per chunk of the tile being drawn, its depth ranges or 0. */
   private readonly chunkBox: Float64Array;
   private readonly ways = new Uint8Array(CITY_TILE * CITY_TILE);
@@ -142,8 +177,9 @@ export class FarCity {
     this.dims = dims;
     this.hf = hf;
     this.mesh = mesh;
-    this.center = bounds.center;
-    this.half = bounds.half;
+    this.maker = source.maker ?? new InlineCityMaker();
+    this.maker.start(cityKinds(source.statics, hf, bounds));
+    this.maker.onMade = () => this.feed();
     this.tilesX = Math.ceil(dims.chunksX / CITY_TILE);
     const chunks = chunkCount(dims);
     this.tileOfChunk = new Int32Array(chunks).fill(-1);
@@ -184,8 +220,9 @@ export class FarCity {
       const base = Math.floor(box[1]!);
       if (box[4]! - base > FAR_HEIGHT) throw new Error(`far city: the pieces of tile ${t} stand ${Math.round(box[4]! - base)} m tall, and a tile holds ${FAR_HEIGHT}`);
       for (const c of list) this.tileOfChunk[c] = this.tiles.length;
-      this.tiles.push({ t, chunks: list, box, base, primary: -1, held: [], unseen: 0 });
+      this.tiles.push({ t, chunks: list, box, base, primary: -1, held: [], unseen: 0, wants: 0, making: 0, epoch: 0, version: 0, rank: 0 });
     }
+    this.listed = new Uint8Array(this.tiles.length);
   }
 
   /** Whether `chunk`'s statics are drawn here this frame, so the near store draws none of that chunk. */
@@ -193,9 +230,9 @@ export class FarCity {
     return this.on && this.tileOfChunk[chunk]! >= 0 && !this.source.complete(chunk);
   }
 
-  /** After a lost context: every tile and the instance buffer go on the card again. */
+  /** After a lost context: every tile is made again, and the instance buffer goes on the card again. */
   reset(): void {
-    for (const tile of this.tiles) for (const h of tile.held) if (h && h.data.length > 0) h.slot = -1;
+    for (const tile of this.tiles) tile.held.length = 0;
     this.sent = false;
   }
 
@@ -221,17 +258,22 @@ export class FarCity {
     if (levels !== this.levels) {
       // Another tier: what was made at the old levels is let go.
       for (const tile of this.tiles) this.letGo(p, tile);
-      this.pieces.clear();
       this.levels = levels;
     }
     this.on = reach > 0 && levels.length > 0;
     this.share = share;
     this.standing(near, cells);
     const stats = this.stats;
-    [stats.makeMs, stats.made, stats.missing, stats.behind] = [0, 0, 0, 0];
+    const start = clock();
+    this.collect();
+    stats.made = this.take(p, budget);
+    stats.missing = 0;
+    let makeMs = clock() - start + this.fedMs;
+    this.fedMs = 0;
     const work = this.work;
     work.length = 0;
-    for (let n = 0; n < this.tiles.length; n++) {
+    let lacking = 0;
+    for (const n of this.nearby(p, cam, reach)) {
       const tile = this.tiles[n]!;
       const off = this.off(tile, cam);
       if (!this.on || off > reach + TILE_METRES) {
@@ -239,67 +281,54 @@ export class FarCity {
         continue;
       }
       if (off > reach) continue;
-      const needed = this.needed(tile, cam, off, share);
+      const needed = (tile.wants = this.needed(tile, cam, off, share));
       let any = false;
+      let short = false;
       for (let l = 0; l < levels.length; l++) {
         const h = tile.held[l];
         if (h) any = true;
-        if ((needed & (1 << l)) !== 0 && (!h || h.stale)) work.push(n * LEVELS + l);
+        if ((needed & (1 << l)) === 0 || (h && !h.stale)) continue;
+        short = true;
+        lacking++;
+        if ((tile.making & (1 << l)) === 0) work.push(n * LEVELS + l);
       }
       if (!any) stats.missing++;
-      // Levels no longer wanted go once every wanted one is there to draw in their place.
-      if (work.length === 0 || Math.floor(work.at(-1)! / LEVELS) !== n) {
-        for (let l = 0; l < tile.held.length; l++) {
-          const h = tile.held[l];
-          if (!h || (needed & (1 << l)) !== 0) continue;
-          if (h.slot >= 0) p.assetDrops.push(h.slot);
-          tile.held[l] = null;
-          for (const c of tile.chunks) this.pieces.delete(c * LEVELS + l);
-        }
-      }
-    }
-    if (work.length > 0) {
-      // Tiles with nothing on the card first, those in view before those not, then by distance.
-      const key = (w: number): number => {
-        const tile = this.tiles[Math.floor(w / LEVELS)]!;
+      if (short) {
+        // Tiles with nothing on the card first, those in view before those not, then by distance.
         const b = tile.box;
         const seen = cam.boxVisible(b[0]! - cam.x, b[1]! - cam.y, b[2]! - cam.z, b[3]! - cam.x, b[4]! - cam.y, b[5]! - cam.z);
-        return (tile.held.some((h) => h !== null) ? 1e6 : 0) + (seen ? 0 : 5e5) + this.off(tile, cam);
-      };
-      work.sort((a, b) => key(a) - key(b));
-      // A chunk or a tile's putting together at a time, so no frame takes more than the budget and one of those.
-      const start = clock();
+        tile.rank = (any ? 1e6 : 0) + (seen ? 0 : 5e5) + off;
+        continue;
+      }
+      // Levels no longer wanted go once every wanted one is there to draw in their place.
+      for (let l = 0; l < tile.held.length; l++) {
+        const h = tile.held[l];
+        if (!h || (needed & (1 << l)) !== 0) continue;
+        if (h.slot >= 0) p.assetDrops.push(h.slot);
+        tile.held[l] = null;
+      }
+    }
+    const tiles = this.tiles;
+    work.sort((a, b) => tiles[Math.floor(a / LEVELS)]!.rank - tiles[Math.floor(b / LEVELS)]!.rank);
+    this.fed = 0;
+    const asking = clock();
+    if (this.maker.inline) {
+      // A level at a time, so no frame takes more than the budget and one of those.
       let made = 0;
-      let k = 0;
-      next: for (; k < work.length; k++) {
-        const [tile, level] = [this.tiles[Math.floor(work[k]! / LEVELS)]!, work[k]! % LEVELS];
-        for (const c of tile.chunks) {
-          if (this.pieces.has(c * LEVELS + level)) continue;
-          if (made > 0 && clock() - start >= this.makeMs) break next;
-          this.piece(c, level, tile);
-          made++;
-        }
-        if (made > 0 && clock() - start >= this.makeMs) break;
-        this.make(p, tile, level);
-        made++;
+      while (this.fed < work.length && (made === 0 || clock() - asking < this.makeMs)) {
+        this.post(work[this.fed++]!);
+        this.collect();
+        made += this.take(p, budget);
       }
-      stats.makeMs = clock() - start;
-      stats.made = k;
-      stats.behind = work.length - k;
-    }
+      stats.made += made;
+      lacking -= made;
+    } else this.feed();
+    makeMs += clock() - asking;
+    this.fedMs = 0;
+    stats.makeMs = makeMs;
+    stats.behind = lacking;
     let bytes = 0;
-    for (const tile of this.tiles) {
-      for (const h of tile.held) {
-        if (!h) continue;
-        if (h.slot === -1) {
-          h.slot = CITY_SLOTS + this.next;
-          this.next = (this.next + 1) % CITY_SLOT_SPAN;
-          p.assetUploads.push({ slot: h.slot, mesh: this.mesh, level: 0, data: h.data, indexCount: h.first.at(-1)! + h.count.at(-1)!, indexBytes: h.indexBytes });
-          budget.spend(h.data.length);
-        }
-        bytes += h.data.length;
-      }
-    }
+    for (const n of this.around) for (const h of this.tiles[n]!.held) if (h) bytes += h.bytes;
     if (bytes > 0 && !this.sent) {
       p.uploads.push({ buffer: CITY_BUFFER, data: new Uint8Array(INSTANCE_BYTES), slots: new Uint16Array(1) });
       this.sent = true;
@@ -311,23 +340,38 @@ export class FarCity {
   /**
    * Calls `put` for each run of a tile's chunks drawn far, at each level of the tile drawn, where the tile is on the
    * card, within `reach` of the camera and in its view: the level's slot, its first index and how many, where its stored
-   * origin is from the camera, the depth ranges its box is in, and where it is gone (`drawFade`, below 0 to fade in).
+   * origin is from the camera, the depth ranges its box is in, and where it is gone (`drawFade`, below 0 to fade in, and
+   * 0 for a tile wholly short of where the reach fades, so its draw may take the program that never discards).
    */
   draw(cam: Camera, reach: number, put: (slot: number, firstIndex: number, indexCount: number, ox: number, oy: number, oz: number, passes: number, fade: number) => void): void {
     const levels = this.levels;
     const stats = this.stats;
     this.drawn.fill(0);
-    [stats.unseen, stats.unseenAt, stats.unseenFrames, stats.coarse] = [0, Infinity, 0, 0];
-    for (const tile of this.tiles) {
+    stats.unseen = 0;
+    stats.unseenAt = Infinity;
+    stats.unseenFrames = 0;
+    stats.coarse = 0;
+    const whole = reach * (1 - this.share);
+    const cb = this.chunkBox;
+    const ways = this.ways;
+    for (const n of this.around) {
+      const tile = this.tiles[n]!;
       const b = tile.box;
-      const [ax, ay, az, bx, by, bz] = [b[0]! - cam.x, b[1]! - cam.y, b[2]! - cam.z, b[3]! - cam.x, b[4]! - cam.y, b[5]! - cam.z];
+      const ax = b[0]! - cam.x;
+      const ay = b[1]! - cam.y;
+      const az = b[2]! - cam.z;
+      const bx = b[3]! - cam.x;
+      const by = b[4]! - cam.y;
+      const bz = b[5]! - cam.z;
       const near = Math.hypot(Math.max(ax, -bx, 0), Math.max(ay, -by, 0), Math.max(az, -bz, 0));
       if (near >= reach || !cam.boxVisible(ax, ay, az, bx, by, bz)) {
         tile.unseen = 0;
         continue;
       }
       // A tile in view whose levels are none of them made yet, empty ones aside, is not drawn at all.
-      if (!tile.held.some((h) => h !== null)) {
+      let held = 0;
+      for (let l = 0; l < tile.held.length; l++) if (tile.held[l]) held |= 1 << l;
+      if (held === 0) {
         stats.unseen++;
         stats.unseenAt = Math.min(stats.unseenAt, near);
         stats.unseenFrames = Math.max(stats.unseenFrames, ++tile.unseen);
@@ -335,9 +379,7 @@ export class FarCity {
       }
       tile.unseen = 0;
       // The levels wanted that are on the card; or, if none is yet, the one on the card nearest the first wanted.
-      const needed = this.needed(tile, cam, near, this.share);
-      let drawn = 0;
-      for (let l = 0; l < tile.held.length; l++) if (tile.held[l] && (needed & (1 << l)) !== 0) drawn |= 1 << l;
+      let drawn = this.needed(tile, cam, near, this.share) & held;
       if (drawn === 0) {
         let best = -1;
         for (let l = 0; l < tile.held.length; l++) if (tile.held[l] && (best < 0 || Math.abs(l - tile.primary) < Math.abs(best - tile.primary))) best = l;
@@ -345,30 +387,36 @@ export class FarCity {
         if (best > tile.primary) stats.coarse++;
       }
       // Each chunk drawn far, in view, and the depth ranges its own box is in: a run is chunks alike in those.
-      const ways = this.ways;
-      tile.chunks.forEach((c, n) => {
+      for (let r = 0; r < tile.chunks.length; r++) {
+        const c = tile.chunks[r]!;
         const k = c * 6;
-        const cb = this.chunkBox;
-        const [cx0, cy0, cz0, cx1, cy1, cz1] = [cb[k]! - cam.x, cb[k + 1]! - cam.y, cb[k + 2]! - cam.z, cb[k + 3]! - cam.x, cb[k + 4]! - cam.y, cb[k + 5]! - cam.z];
-        ways[n] = this.source.complete(c) || !cam.boxVisible(cx0, cy0, cz0, cx1, cy1, cz1) ? 0 : cam.passes(cx0, cy0, cz0, cx1, cy1, cz1);
-      });
-      const [tx, tz] = this.corner(tile.t);
-      const [ox, oy, oz] = [tx - LOCAL - cam.x, tile.base - cam.y, tz - LOCAL - cam.z];
+        const x0 = cb[k]! - cam.x;
+        const y0 = cb[k + 1]! - cam.y;
+        const z0 = cb[k + 2]! - cam.z;
+        const x1 = cb[k + 3]! - cam.x;
+        const y1 = cb[k + 4]! - cam.y;
+        const z1 = cb[k + 5]! - cam.z;
+        ways[r] = this.source.complete(c) || !cam.boxVisible(x0, y0, z0, x1, y1, z1) ? 0 : cam.passes(x0, y0, z0, x1, y1, z1);
+      }
+      const ox = (tile.t % this.tilesX) * TILE_METRES - LOCAL - cam.x;
+      const oy = tile.base - cam.y;
+      const oz = Math.floor(tile.t / this.tilesX) * TILE_METRES - LOCAL - cam.z;
+      const most = Math.hypot(Math.max(-ax, bx), Math.max(-ay, by), Math.max(-az, bz));
       for (let l = 0; l < tile.held.length; l++) {
         const h = tile.held[l];
         if ((drawn & (1 << l)) === 0 || !h || h.slot < 0) continue;
         // The lattice fades out as the mass fades in, where both are drawn; else each is gone at the reach.
-        const fade = this.blends(l + 1) && (drawn & (1 << (l + 1))) !== 0 ? levels[l]!.to : this.blends(l) && (drawn & (1 << (l - 1))) !== 0 ? -levels[l - 1]!.to : reach;
+        const fade = this.blends(l + 1) && (drawn & (1 << (l + 1))) !== 0 ? levels[l]!.to : this.blends(l) && (drawn & (1 << (l - 1))) !== 0 ? -levels[l - 1]!.to : most < whole ? 0 : reach;
         let run = 0;
-        for (let n = 1; n <= tile.chunks.length; n++) {
-          if (n < tile.chunks.length && ways[n] === ways[run]) continue;
+        for (let r = 1; r <= tile.chunks.length; r++) {
+          if (r < tile.chunks.length && ways[r] === ways[run]) continue;
           const first = h.first[run]!;
-          const count = h.first[n - 1]! + h.count[n - 1]! - first;
+          const count = h.first[r - 1]! + h.count[r - 1]! - first;
           if (ways[run] !== 0 && count > 0) {
             put(h.slot, first, count, ox, oy, oz, ways[run]!, fade);
             this.drawn[l]! += count / 3;
           }
-          run = n;
+          run = r;
         }
       }
     }
@@ -409,57 +457,148 @@ export class FarCity {
     return Math.hypot(Math.max(b[0]! - cam.x, cam.x - b[3]!, 0), Math.max(b[1]! - cam.y, cam.y - b[4]!, 0), Math.max(b[2]! - cam.z, cam.z - b[5]!, 0));
   }
 
+  /**
+   * The tiles that may be within `reach` of the camera, found again when it has moved a tile's side: within that of
+   * where they were found, any other is farther than the reach and a tile, where update lets go of it. Those that leave
+   * the list are let go of.
+   */
+  private nearby(p: FramePacket, cam: Camera, reach: number): readonly number[] {
+    const at = this.aroundAt;
+    if (reach === at[2] && Math.hypot(cam.x - at[0], cam.z - at[1]) < TILE_METRES) return this.around;
+    this.aroundAt = [cam.x, cam.z, reach];
+    const list: number[] = [];
+    for (let n = 0; n < this.tiles.length; n++) {
+      const b = this.tiles[n]!.box;
+      if (Math.hypot(Math.max(b[0]! - cam.x, cam.x - b[3]!, 0), Math.max(b[2]! - cam.z, cam.z - b[5]!, 0)) > reach + 2 * TILE_METRES) continue;
+      list.push(n);
+      this.listed[n] = 2;
+    }
+    for (const n of this.around) {
+      if (this.listed[n] === 2) continue;
+      this.letGo(p, this.tiles[n]!);
+      this.listed[n] = 0;
+    }
+    for (const n of list) this.listed[n] = 1;
+    return (this.around = list);
+  }
+
   private tileOf(chunk: number): number {
     const cx = chunk % this.dims.chunksX;
     const cz = Math.floor(chunk / this.dims.chunksX);
     return Math.floor(cz / CITY_TILE) * this.tilesX + Math.floor(cx / CITY_TILE);
   }
 
-  private corner(t: number): [number, number] {
-    return [(t % this.tilesX) * TILE_METRES, Math.floor(t / this.tilesX) * TILE_METRES];
-  }
-
-  /** Lets go of every level of `tile` on the card and the pieces made for it. */
+  /** Lets go of every level of `tile` on the card, and of what is being made of it. */
   private letGo(p: FramePacket, tile: Tile): void {
-    if (tile.held.length === 0 && tile.primary < 0) return;
+    tile.unseen = 0;
+    if (tile.held.length === 0 && tile.primary < 0 && tile.making === 0) return;
     for (const h of tile.held) if (h && h.slot >= 0) p.assetDrops.push(h.slot);
     tile.held.length = 0;
     tile.primary = -1;
-    for (const c of tile.chunks) for (let l = 0; l < LEVELS; l++) this.pieces.delete(c * LEVELS + l);
+    tile.wants = tile.making = 0;
+    tile.epoch++;
+  }
+
+  /** Asks the maker for this frame's level `w` (a tile times LEVELS plus a level). */
+  private post(w: number): void {
+    const n = Math.floor(w / LEVELS);
+    const level = w % LEVELS;
+    const tile = this.tiles[n]!;
+    const id = levelsAsked++;
+    this.asked.set(id, { tile: n, level, epoch: tile.epoch, version: tile.version });
+    tile.making |= 1 << level;
+    this.out++;
+    const [tx, tz] = [(tile.t % this.tilesX) * TILE_METRES, Math.floor(tile.t / this.tilesX) * TILE_METRES];
+    this.maker.make(cityJob(id, this.source.statics, this.hf, (c) => this.gone.get(c) ?? null, tile.chunks, this.levels[level]!, tx - LOCAL, tile.base, tz - LOCAL));
+  }
+
+  /** Keeps a worker making a few levels ahead, in this frame's order: in update, and as each level comes back. */
+  private feed(): void {
+    const start = clock();
+    this.collect();
+    while (this.out < FLIGHTS && this.fed < this.work.length) this.post(this.work[this.fed++]!);
+    this.fedMs += clock() - start;
+  }
+
+  /** What the maker has made of what was asked of it, to be taken in the next update. */
+  private collect(): void {
+    const n = this.maker.take(this.got);
+    for (let i = 0; i < n; i++) {
+      const made = this.got[i]!;
+      if (!this.asked.has(made.id)) continue;
+      this.arrived.push(made);
+      this.out--;
+    }
+    this.got.length = 0;
+  }
+
+  /** Puts the levels made on the card, but for those of tiles let go since or no longer wanted. Returns how many. */
+  private take(p: FramePacket, budget: { spend(bytes: number): void }): number {
+    let n = 0;
+    for (const made of this.arrived) {
+      const a = this.asked.get(made.id)!;
+      this.asked.delete(made.id);
+      const tile = this.tiles[a.tile]!;
+      if (a.epoch !== tile.epoch) continue;
+      const bit = 1 << a.level;
+      tile.making &= ~bit;
+      if ((tile.wants & bit) === 0) continue;
+      const old = tile.held[a.level];
+      if (old && old.slot >= 0) p.assetDrops.push(old.slot);
+      // A level with no faces is made but never on the card.
+      let slot = EMPTY;
+      if (made.data.length > 0) {
+        slot = CITY_SLOTS + this.next;
+        this.next = (this.next + 1) % CITY_SLOT_SPAN;
+        p.assetUploads.push({ slot, mesh: this.mesh, level: 0, data: made.data, indexCount: made.first.at(-1)! + made.count.at(-1)!, indexBytes: made.indexBytes });
+        budget.spend(made.data.length);
+      }
+      tile.held[a.level] = { level: a.level, bytes: made.data.length, first: made.first, count: made.count, slot, stale: a.version !== tile.version };
+      n++;
+    }
+    this.arrived.length = 0;
+    return n;
   }
 
   /** Brings what stands up to date: chunks the near store holds whole, and the far feed's cells of the rest. */
   private standing(near: StructureStore | null, cells: FarStore | null): void {
     const city = this.source.statics;
-    for (const tile of this.tiles) {
-      for (const c of tile.chunks) {
-        let changed = false;
-        const table = near?.chunks[c];
-        const whole = this.source.complete(c);
-        // A chunk let go and held again is matched again, whatever its table's count of changes says.
-        if (!whole) this.seenShape[c] = -1;
-        else if (table && table.shape !== this.seenShape[c]) {
-          this.seenShape[c] = table.shape;
-          const g = new Uint8Array(city.in(c));
-          goneByRows(city, c, table, g);
-          this.seenNear.set(c, g);
-          changed = true;
-        }
-        const stamp = cells?.changed[c] ?? 0;
-        if (stamp !== this.seenCells[c]) {
-          this.seenCells[c] = stamp;
-          changed = true;
-        }
-        if (!changed) continue;
-        const g = this.seenNear.get(c)?.slice() ?? new Uint8Array(city.in(c));
-        // Cells told since the chunk was last held whole say more; a chunk sent empty has none of its pieces left.
-        if (cells && stamp > 0 && !whole) goneByCells(city, c, this.hf, cells.chunks.get(c)?.top ?? new Uint8Array(256), g);
-        this.setGone(c, g);
+    const changed = this.changed;
+    changed.clear();
+    // A chunk let go and held again is matched again, whatever its table's count of changes says.
+    for (const c of this.whole) {
+      if (this.source.complete(c)) continue;
+      this.seenShape[c] = -1;
+      this.whole.delete(c);
+    }
+    const tables = near?.chunks ?? [];
+    for (let c = 0; c < tables.length; c++) {
+      const table = tables[c];
+      if (!table || table.shape === this.seenShape[c] || this.tileOfChunk[c]! < 0 || !this.source.complete(c)) continue;
+      this.seenShape[c] = table.shape;
+      this.whole.add(c);
+      const g = new Uint8Array(city.in(c));
+      goneByRows(city, c, table, g);
+      this.seenNear.set(c, g);
+      changed.add(c);
+    }
+    if (cells && cells.version !== this.cellsSeen) {
+      this.cellsSeen = cells.version;
+      for (let c = 0; c < cells.changed.length; c++) {
+        if (cells.changed[c] === this.seenCells[c] || this.tileOfChunk[c]! < 0) continue;
+        this.seenCells[c] = cells.changed[c]!;
+        changed.add(c);
       }
+    }
+    for (const c of changed) {
+      const g = this.seenNear.get(c)?.slice() ?? new Uint8Array(city.in(c));
+      // Cells told since the chunk was last held whole say more; a chunk sent empty has none of its pieces left.
+      if (cells && this.seenCells[c]! > 0 && !this.source.complete(c)) goneByCells(city, c, this.hf, cells.chunks.get(c)?.top ?? new Uint8Array(256), g);
+      this.setGone(c, g);
     }
   }
 
-  /** Says which pieces of `chunk` are gone, and lets go of what was made of it and its neighbours, whose faces it held. */
+  /** Says which pieces of `chunk` are gone, and marks what was made of it and its neighbours, whose faces it held, to be made again. */
   private setGone(chunk: number, gone: Uint8Array): void {
     const was = this.gone.get(chunk);
     const none = !gone.includes(1);
@@ -473,74 +612,12 @@ export class FarCity {
     for (let dz = -1; dz <= 1; dz++) {
       for (let dx = -1; dx <= 1; dx++) {
         if (cx + dx < 0 || cz + dz < 0 || cx + dx >= this.dims.chunksX || cz + dz >= this.dims.chunksZ) continue;
-        const c = (cz + dz) * this.dims.chunksX + cx + dx;
-        for (let l = 0; l < LEVELS; l++) this.pieces.delete(c * LEVELS + l);
-        const n = this.tileOfChunk[c]!;
-        if (n >= 0) for (const h of this.tiles[n]!.held) if (h) h.stale = true;
+        const n = this.tileOfChunk[(cz + dz) * this.dims.chunksX + cx + dx]!;
+        if (n < 0) continue;
+        const tile = this.tiles[n]!;
+        tile.version++;
+        for (const h of tile.held) if (h) h.stale = true;
       }
     }
-  }
-
-  /** `chunk`'s faces at `level`, quantized within its tile. */
-  private piece(chunk: number, level: number, tile: Tile): Piece {
-    const key = chunk * LEVELS + level;
-    const made = this.pieces.get(key);
-    if (made) return made;
-    const l = this.levels[level]!;
-    const city = this.source.statics;
-    const gone = (c: number): Gone => this.gone.get(c) ?? null;
-    const part: CityPart = l.cell > 0 ? cellPart(city, chunk, this.hf, gone(chunk), l.cell, l.tall) : mergedPart(city, chunk, this.hf, gone, l.gap, l.least);
-    const [tx, tz] = this.corner(tile.t);
-    const dx = (chunk % this.dims.chunksX) * CHUNK_SIZE - tx + LOCAL;
-    const dz = Math.floor(chunk / this.dims.chunksX) * CHUNK_SIZE - tz + LOCAL;
-    const verts = new Uint8Array(part.faces * 4 * VERTEX_BYTES);
-    const view = new DataView(verts.buffer);
-    const [c, h] = [this.center, this.half];
-    const q = (v: number, a: number): number => Math.max(-32767, Math.min(32767, Math.round(((v - c[a]!) / h[a]!) * 32767)));
-    const { pos, color } = part;
-    for (let v = 0; v < part.faces * 4; v++) {
-      const o = v * VERTEX_BYTES;
-      view.setInt16(o, q(pos[v * 3]! + dx, 0), true);
-      view.setInt16(o + 2, q(pos[v * 3 + 1]! - tile.base, 1), true);
-      view.setInt16(o + 4, q(pos[v * 3 + 2]! + dz, 2), true);
-      verts[o + 6] = color[v >> 2]!;
-    }
-    const piece = { verts, faces: part.faces };
-    this.pieces.set(key, piece);
-    return piece;
-  }
-
-  /** Makes `tile` at `level`, every chunk of it in order, letting go of what the card held of that level. */
-  private make(p: FramePacket, tile: Tile, level: number): void {
-    const old = tile.held[level];
-    if (old && old.slot >= 0) p.assetDrops.push(old.slot);
-    const pieces = tile.chunks.map((c) => this.piece(c, level, tile));
-    const faces = pieces.reduce((n, piece) => n + piece.faces, 0);
-    const verts = faces * 4;
-    const indexBytes = verts > 65535 ? 4 : 2;
-    const at = (faces * 6 * indexBytes + 3) & ~3;
-    const data = new Uint8Array(at + verts * VERTEX_BYTES);
-    const index = indexBytes === 4 ? new Uint32Array(data.buffer, 0, faces * 6) : new Uint16Array(data.buffer, 0, faces * 6);
-    const first = new Uint32Array(pieces.length);
-    const count = new Uint32Array(pieces.length);
-    let v = 0;
-    let k = 0;
-    pieces.forEach((piece, n) => {
-      first[n] = k;
-      count[n] = piece.faces * 6;
-      data.set(piece.verts, at + v * VERTEX_BYTES);
-      // Kept as its part of the tile's level, so a chunk's faces are held once.
-      this.pieces.set(tile.chunks[n]! * LEVELS + level, { verts: data.subarray(at + v * VERTEX_BYTES, at + (v + piece.faces * 4) * VERTEX_BYTES), faces: piece.faces });
-      for (let f = 0; f < piece.faces; f++, v += 4) {
-        index[k++] = v;
-        index[k++] = v + 1;
-        index[k++] = v + 2;
-        index[k++] = v;
-        index[k++] = v + 2;
-        index[k++] = v + 3;
-      }
-    });
-    // A level with no faces is made but never on the card.
-    tile.held[level] = { level, data, indexBytes, first, count, slot: faces > 0 ? -1 : EMPTY, stale: false };
   }
 }

@@ -43,7 +43,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   mkdirSync(join(dist, "assets"), { recursive: true });
   const ui = buildUiAssets(dist);
   // Workers and worklets run in their own threads, so each is bundled as a separate file.
-  const entrypoints = ["client/shell/main.ts", "client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts", "client/sound/decode-worker.ts"].map((f) => join(root, f));
+  const entrypoints = ["client/shell/main.ts", "client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts", "client/sound/decode-worker.ts", "client/city/city-worker.ts"].map((f) => join(root, f));
   const result = await Bun.build({ entrypoints, outdir: dist, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked", define: { __HUD_ATLAS_URL__: JSON.stringify(ui.atlas) } });
   if (!result.success) throw new Error(result.logs.map(String).join("\n"));
   writeFileSync(join(dist, "index.html"), readFileSync(join(root, "client/index.html"), "utf8").replaceAll("HUD_FONT_URL", ui.font).replaceAll("HUD_ATLAS_URL", ui.atlas));

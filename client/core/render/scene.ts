@@ -765,11 +765,11 @@ export class Scene {
     const tier = this.assets.tier;
     p.frame[FRAME.fade] = tier.fade;
     this.far!.update(p, this.assets.residency, cam.x, cam.z, tier.reach.bases);
-    this.far!.draw(cam, tier.reach.bases, this.drawFar);
+    this.far!.draw(cam, tier.reach.bases, tier.fade, this.drawFar);
   }
 
-  /** A tile of far blocks: one instance of its own level, gone at the tier's reach. */
-  private readonly drawFar = (slot: number, triangles: number, ox: number, oy: number, oz: number, passes: number): void => {
+  /** A tile of far blocks: one instance of its own level, gone at the tier's reach where it reaches into the fade (far.ts). */
+  private readonly drawFar = (slot: number, triangles: number, ox: number, oy: number, oz: number, passes: number, fade: number): void => {
     const p = this.packet;
     const d = p.drawCount;
     const copies = passes === (NEAR | FAR) ? 2 : 1;
@@ -779,7 +779,7 @@ export class Scene {
     }
     [p.drawMesh[d], p.drawLod[d], p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawFlags[d]] = [this.far!.mesh, 0, slot, FAR_BUFFER, 0, 1, 0];
     p.drawOffset.set([ox, oy, oz], d * 3);
-    p.drawFade[d] = this.assets.tier.reach.bases;
+    p.drawFade[d] = fade;
     this.passOf[d] = passes;
     p.drawCount = d + 1;
     this.doubled += copies - 1;

@@ -20,7 +20,7 @@ import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { Summary, FAR_RADIUS, bakeChunk, pieceShapes } from "../../shared/world/tactical.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { FAR_SLOTS, farPart } from "../../client/core/render/far.ts";
+import { FAR_BUFFER, FAR_SLOTS, farPart } from "../../client/core/render/far.ts";
 import { FAR_NODE_BUFFERS, farNodeOf } from "../../client/core/render/farnodes.ts";
 import { ATLAS_REGION, type FramePacket } from "../../client/core/render/packet.ts";
 import { INSTANCE_BYTES, parsePack } from "../../shared/pack/pack.ts";
@@ -342,7 +342,7 @@ export function benchFarBlocks(section: (title: string) => void, record: Record)
     turn(120, (p, ms, share) => {
       on.push(ms);
       far.push(share);
-      draws.push(p.drawFade.subarray(0, p.drawCount).filter((f) => f > 0).length);
+      draws.push(p.drawBuffer.subarray(0, p.drawCount).filter((b) => b === FAR_BUFFER).length);
       tris.push(p.triangles - offTris[tris.length]!);
     });
     record(`${n} base chunks: frames until every tile is made`, making.length, `frames, the first ${making[0]!.toFixed(2)} ms of blocks, the worst ${Math.max(...making).toFixed(2)}`);
@@ -375,7 +375,7 @@ export function benchFarBlocks(section: (title: string) => void, record: Record)
     const before = w.scene.assets.residency.reserved;
     let made = 0;
     turn(60, (p) => {
-      draws.push(p.drawFade.subarray(0, p.drawCount).filter((f) => f > 0).length);
+      draws.push(p.drawBuffer.subarray(0, p.drawCount).filter((b) => b === FAR_BUFFER).length);
       made += tile(p);
     });
     record(`${name}: far draws a frame, mean and most`, mean(draws), `(${Math.max(...draws)}), ${made} tiles made, reserve ${((w.scene.assets.residency.reserved - before) / 1024).toFixed(0)} KB more`);
