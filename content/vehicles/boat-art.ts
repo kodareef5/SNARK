@@ -1,7 +1,7 @@
 /** Original utility motorboat. Metres; +Y up, +Z forward, +X the pilot's left; origin on the hull keel plane. */
 export const BOAT_ART = {
   id: "core:boat",
-  envelope: { min: [-1.36, -0.28, -4.10], max: [1.36, 2.45, 3.40] },
+  envelope: { min: [-1.36, -0.28, -4.10], max: [1.36, 2.45, 3.46] },
   hull: { min: [-1.30, 0, -3.40], max: [1.30, 1.55, 3.40] },
   /** The rated-load waterline; finite buoyancy places the unloaded hull higher. */
   waterline: 0.60,
@@ -17,7 +17,7 @@ export const BOAT_ART = {
   ladder: { x: 1.03, z: -3.48, width: 0.38, bottom: -0.15, top: 1.15 },
   bones: ["chassis", "outboard", "propeller", "steering", "throttle"],
   parents: [-1, 0, 1, 0, 0],
-  pivots: [[0, 0, 0], [0, 0.98, -3.48], [0, 0.08, -3.90], [0.48, 1.64, 0.67], [0.90, 1.38, 0.53]],
+  pivots: [[0, 0, 0], [0, 0.98, -3.48], [0, 0.08, -3.90], [0.48, 1.64, 0.67], [0.98, 1.38, 0.53]],
   anchors: {
     seat_driver: [0.48, 1.28, 0.40],
     seat_front_passenger: [-0.48, 1.28, 0.40],
@@ -37,7 +37,7 @@ export const BOAT_ART = {
     camera_chase: [0, 1.25, -0.25],
     helm_left: [0.66, 1.64, 0.67],
     helm_right: [0.30, 1.64, 0.67],
-    throttle: [0.90, 1.48, 0.66],
+    throttle: [0.98, 1.48, 0.66],
     cargo: [0, 1.30, 2.45],
     refuel: [-1.23, 1.36, -2.38],
     engine: [0, 1.36, -3.70],
