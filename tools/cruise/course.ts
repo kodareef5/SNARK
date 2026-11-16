@@ -1,11 +1,13 @@
 // A separate deep-water cruise port, built around the authored ship's actual gangway landing.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { CRUISE_LAYOUT, cruisePoint, cruiseStatics } from "../../content/landmarks/cruise.ts";
 import { KORU_LAYOUT, koruPoint, koruStatics } from "../../content/landmarks/koru.ts";
 import { ruinKind } from "../../content/ruins.ts";
 import { defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
-import { Heightfield } from "../../shared/world/heightfield.ts";
+import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { mapHeightfield, writeMap, type MapData, type MapStatic } from "../../shared/world/mapfile.ts";
+import { assertCruiseMap } from "./preflight.ts";
 
 export const CRUISE_COURSE = {
   id: "preview:cruise-port", water: 0,
@@ -13,9 +15,9 @@ export const CRUISE_COURSE = {
   // A genuine hill above the terminal, facing the whole ship from 400 m broadside.
   spawn: { x: 2448, z: 2024, yaw: 49152 },
   scenic: { x: 2448, z: 2200, yaw: 45056 },
-  quayX: 2138,
-  koru: { x: 2048, y: 0, z: 1705, yaw: 0 },
-  utility: { x: 2114, z: 1740, yaw: 0 },
+  quayX: 2188,
+  koru: { x: 2118, y: 0, z: 1705, yaw: 0 },
+  utility: { x: 2164, z: 1740, yaw: 0 },
 } as const;
 
 export interface CruisePortPlacement {
@@ -30,14 +32,15 @@ export function cruiseKoruPoint(local: readonly number[]): readonly [number, num
 
 /** The 4 km sea approach accommodates a real 2 km distant view without taking the spectator off-map. */
 export function cruisePort(placement: CruisePortPlacement): MapData {
-  const hf = new Heightfield({ chunksX: 64, chunksZ: 64 }, 4, -96, 1 / 128), c = CRUISE_COURSE;
+  const hf = new Heightfield({ chunksX: 64, chunksZ: 64 }, TERRAIN_CELL, -96, 1 / 128), c = CRUISE_COURSE;
   const [landingX, deck, landingZ] = placement.landing, k = c.koru;
   if (!(landingX > c.vessel.x && landingX < c.quayX && deck > 0 && deck < 32)) throw new Error("Cruise gangway must meet the port side quay above water and below 32 m");
   const statics: MapStatic[] = [...placement.statics, ...koruStatics(k.x, k.y, k.z, k.yaw)];
   const palette = defaultPalette(), sand = nearestColour(palette, 171, 159, 134), stone = nearestColour(palette, 170, 167, 154), grass = nearestColour(palette, 109, 128, 95);
   const quayY = (z: number) => 3.75 + (deck - 3.75) * Math.max(0, Math.min(1, (z - 1800) / 100));
   // The real arrival eye must see the waterline over the real quay, not merely fit it into the frustum.
-  const arrivalFloor = Math.max(deck + 16, (deck + 1.2) * (c.spawn.x - c.vessel.x) / (c.quayX - c.vessel.x));
+  const nearestHullX = c.vessel.x + CRUISE_LAYOUT.dimensions.waterlineBeam / 2;
+  const arrivalFloor = Math.max(deck + 16, (deck + 1.2) * (c.spawn.x - nearestHullX) / (c.quayX - nearestHullX));
   for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) {
     const x = i * hf.cell, z = j * hf.cell, quay = quayY(z);
     let y = x >= c.quayX ? quay : Math.max(-24, quay - (c.quayX - x) * 1.5);
@@ -71,12 +74,13 @@ export function cruisePort(placement: CruisePortPlacement): MapData {
     add(ruinKind("zcounter", "clay"), c.quayX + 14, hf.heightAt(c.quayX + 14, z) + .5, z, 16384);
   }
   // The ordinary utility motorboat has a dry lower pier and a native stair back to the quay.
-  for (let z = 1728; z <= 1749; z += 3) floor(2117, .75, z, true);
-  add("core:stairs_wood", 2117, 2.25, 1752);
-  for (let x = 2117; x < c.quayX + 3; x += 3) floor(x, 3.75, 1755);
-  for (const z of [1731, 1746]) pile(2118.1, z, .6);
-  return { id: c.id, dims: hf.dims, minY: hf.minY, stepY: hf.stepY, seaLevel: c.water, heights: hf.heights, tint: hf.tint, statics, nodes: [],
+  for (let z = 1728; z <= 1749; z += 3) floor(2167, .75, z, true);
+  add("core:stairs_wood", 2167, 2.25, 1752);
+  for (let x = 2167; x < c.quayX + 3; x += 3) floor(x, 3.75, 1755);
+  for (const z of [1731, 1746]) pile(2168.1, z, .6);
+  const map: MapData = { id: c.id, dims: hf.dims, minY: hf.minY, stepY: hf.stepY, seaLevel: c.water, heights: hf.heights, tint: hf.tint, statics, nodes: [],
     spawns: [{ name: "Cruise terminal", ...c.spawn }] };
+  assertCruiseMap(map); return map;
 }
 
 /** World-space feet from the authentic shore spawn, over native terrain, to the authored gangway. */
@@ -88,3 +92,23 @@ export function cruisePortApproach(map: MapData, landing: readonly [number, numb
 export function writeCruisePort(path: string, placement: CruisePortPlacement): string {
   const out = resolve(path); mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, writeMap(cruisePort(placement))); return out;
 }
+
+
+export function cruiseWorldPoint(local: readonly number[]): readonly [number, number, number] {
+  const p = CRUISE_COURSE.vessel; return cruisePoint(p.x, p.y, p.z, p.yaw, local);
+}
+
+export function cruiseCourse(): MapData {
+  const p = CRUISE_COURSE.vessel;
+  return cruisePort({ statics: cruiseStatics(p.x, p.y, p.z, p.yaw), landing: cruiseWorldPoint(CRUISE_LAYOUT.docking.shoreLanding) });
+}
+
+export function cruiseApproach(map = cruiseCourse()): readonly (readonly [number, number, number])[] {
+  return [...cruisePortApproach(map, cruiseWorldPoint(CRUISE_LAYOUT.docking.shoreLanding)), cruiseWorldPoint(CRUISE_LAYOUT.docking.shipLanding), cruiseWorldPoint(CRUISE_LAYOUT.docking.arrival)];
+}
+
+export function writeCruiseCourse(path = "var/cruise-preview/port.snmp"): string {
+  const out = resolve(path); mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, writeMap(cruiseCourse())); return out;
+}
+
+if (import.meta.main) console.log(writeCruiseCourse(process.argv[2]));

@@ -7,7 +7,7 @@ import { formatReport, loadConfigFolder } from "../../server/settings/config.ts"
 import { stopOnSignals } from "../../server/signals.ts";
 import { VEHICLE_ORIGIN } from "../../server/vehicle-service.ts";
 import { buildClient } from "../build-client.ts";
-import { CRUISE_COURSE } from "./course.ts";
+import { CRUISE_COURSE, writeCruiseCourse } from "./course.ts";
 
 /** An ordinary motorboat, persisted once under the independent map's stable authored origin. */
 export function seedCruisePreview(host: Host): number {
@@ -41,6 +41,5 @@ export async function startCruisePreview(map: string, args = process.argv.slice(
 
 if (import.meta.main) {
   const at = process.argv.indexOf("--map");
-  if (at < 0 || !process.argv[at + 1]) throw new Error("Pass --map with the authored cruise port map; the shared layout wrapper will supply its default when ready.");
-  await startCruisePreview(process.argv[at + 1]!);
+  await startCruisePreview(at >= 0 ? process.argv[at + 1]! : writeCruiseCourse());
 }
