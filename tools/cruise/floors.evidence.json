@@ -1,7 +1,7 @@
 {
   "scope": "All authored deck outline polygons minus explicit voids; native floor-only vertical rays on <=0.5 m grid and polygon edges, 0.02 m boundary inset. Supplemental sampled coverage, not a proof of every interior point.",
   "sources": {
-    "content/landmarks/cruise-layout.json": "3a1baa85b1b66fcf769de646754e023e02fdb5c36e61e69ed8bb78cb5c648f08",
+    "content/landmarks/cruise-layout.json": "e0f08da9216c138754b343d886925ae0b83122e07cb4636172739a5c005459bf",
     "shared/world/ray.ts": "0b4bc02b7be06ddfa0279f17a501936c49dd71ece165cf7615866ff49f898165",
     "shared/world/convex.ts": "004b999ebaa7d10b957203dafa31169009815ffd6eca888b476eeaab077950c5",
     "shared/world/structures.ts": "1703ea997a2ab7d9bb61c0ff8fa8cd4a392f309a37480bc814f413baa470585f",
@@ -14,10 +14,10 @@
     "z": 2048,
     "yaw": 0
   },
-  "floorInstances": 1455,
+  "floorInstances": 205,
   "samples": 910494,
   "missing": 0,
-  "elapsedMs": 1501.547544,
+  "elapsedMs": 1899.476352,
   "decks": [
     {
       "id": "deck 2",
