@@ -302,6 +302,7 @@ export interface PieceSpec {
   readonly id: string;
   readonly object: string;
   readonly errors?: readonly number[];
+  readonly triangles?: readonly number[];
   readonly hold?: "prop_r" | "prop_l";
   readonly dropped?: "auto" | string;
   readonly icon?: { readonly around: number; readonly above: number; readonly roll?: number; readonly zoom?: number; readonly shift?: readonly [number, number] };
@@ -319,6 +320,9 @@ export interface PiecesAsset {
    * lies from the finest's, in place of measuring how far its points moved. It is for levels a measure of points
    * cannot judge, such as a crown that is other leaves in the same outline. A level it leaves out is measured.
    * `--check` and the sheet print both, and where each level is then first drawn on each tier.
+   *
+   * `triangles` is the piece's own budget for each level, in place of the asset's, for pieces of one asset that differ
+   * in size.
    *
    * An item's piece (planning/reference/items-plan.md) may also say, though nothing reads these until tasks A and B:
    * - `hold`: the piece is held, in the right or left hand, on that hand's prop bone of the human skeleton. Modelled

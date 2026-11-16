@@ -60,12 +60,12 @@ def plain(look, extra=0.0):
     return {"rise": [mean] * 4, "bevel": look["bevel"], "crown": 0.0, "at": look["at"]}
 
 
-def lay(m, frame, s, look, mat, level=0, keep=(), uv_of=None):
+def lay(m, frame, s, look, mat, level=0, keep=(), uv_of=None, crowned=True):
     """A shaped stone on a frame, in both halves where it runs past the span's edge, cut to the half-spaces in `keep`."""
     wraps = max(p[0] for p in s["footprint"]) > TILE + 1e-9
     for shift in (0.0, -TILE) if wraps else (0.0,):
         # The next level keeps each stone's rise and crown and loses its broken corners.
-        faces = stone(frame, s["footprint"], s["chips"] if level == 0 else None, look, shift)
+        faces = stone(frame, s["footprint"], s["chips"] if level == 0 else None, look, shift, crowned)
         planes = list(keep)
         if wraps:
             planes.append(keep_below(frame, TILE) if shift == 0.0 else keep_above(frame, 0.0))
@@ -140,6 +140,27 @@ def walling(m, frame, side, stones, level, keep=()):
         lay(m, frame, s, L.face(s), "masonry", level, keep)
 
 
+def runs(m, frame, stones, rise=0.034):
+    """Each run of a course's stones as one stone, its head joints gone: the walling beside an opening, coarser."""
+    cells = {}
+    for s in stones:
+        us = [p[0] for p in s["footprint"]]
+        vs = [p[1] for p in s["footprint"]]
+        for shift in (0.0, -TILE) if max(us) > TILE + 1e-9 else (0.0,):
+            cells.setdefault((s["course"], s.get("band")), []).append((max(0.0, min(us) + shift), min(TILE, max(us) + shift), min(vs), max(vs)))
+    look = {"rise": [rise] * 4, "bevel": [0.028, 0.0, 0.028, 0.0], "crown": 0.0, "at": (0.5, 0.5)}
+    for row in cells.values():
+        row.sort()
+        run = list(row[0])
+        for c in row[1:] + [None]:
+            if c is not None and c[0] - run[1] < 0.06:
+                run = [run[0], max(run[1], c[1]), min(run[2], c[2]), max(run[3], c[3])]
+                continue
+            m.convex(stone(frame, cell(*run), None, look, crowned=False), "masonry", on(frame))
+            if c is not None:
+                run = list(c)
+
+
 def bands(m, frame, rise=0.034):
     """The courses of a face without their head joints: a coarser level of walling."""
     for k in range(len(L.BEDS) - 1):
@@ -180,18 +201,14 @@ def opening(kind, level):
     def reveal(inner_x):
         return lambda n: "dressed" if abs(n[0]) > 0.5 and n[0] * inner_x > 0 else "masonry"
 
-    if level == 2:
-        # The content's boxes, with the lintel, the jambs and the sill or threshold on them.
+    if level == 3:
+        # The content's boxes, dressed in the reveals, and the lintel.
         m.box((-H, -H, -T), (ox0, H, T), reveal(1))
         m.box((ox1, -H, -T), (H, H, T), reveal(-1))
         m.box((ox0, lin_top, -T), (ox1, H, T), "masonry")
         if kind == "window":
             m.box((ox0, -H, -T), (ox1, open_bottom - 0.01, T), "masonry")
         m.box((ll - H, lin_bottom, -T - 0.008), (lr - H, lin_top, T + 0.008), "timber", grain="x")
-        for sign, x_open in ((-1, ox0), (1, ox1)):
-            lo, hi = sorted((x_open, x_open + sign * 0.4))
-            m.box((lo, open_bottom, -T - 0.004), (hi, open_top, T + 0.004), "dressed")
-        sill_or_threshold(m, kind, ox0, ox1, open_bottom)
         return m
 
     # The core: two posts the height of the wall, standing a centimetre back from the jamb stones, and what is above
@@ -212,7 +229,10 @@ def opening(kind, level):
             continue
         keep.append(s)
     for frame, side in ((FRONT, "front"), (BACK, "back")):
-        walling(m, frame, side, keep, level)
+        if level == 2:
+            runs(m, frame, keep)
+        else:
+            walling(m, frame, side, keep, level)
 
     # Jamb stones, dressed, through the wall: their outer ends are the pattern's head joints on each face.
     for k, l, r in spec["jambs"]:
@@ -484,10 +504,10 @@ RISE = TILE / STEPS
 def stairs(level):
     m = Mesh()
     if level == 3:
-        # A ramp the size of the flight.
-        m.prism([(-H, -H), (H, -H), (H, H), (H - RISE, H)], "x", -H, H, "dressed")
+        # A ramp the size of the flight, its slope midway between the steps' noses and their roots.
+        m.prism([(-H, -H), (H, -H), (H, H), (H - RISE / 2, H), (-H, -H + RISE / 2)], "x", -H, H, "dressed")
         return m
-    inset_x = MD if level == 0 else MD / 2
+    inset_x = MD if level < 2 else MD / 2
     back = H - inset_x
     # The mass under the treads, stepped to carry each, walled with the pattern's stones on its sides and back.
     profile = [(-H + RISE, -H), (back, -H)]
@@ -516,7 +536,7 @@ def stairs(level):
                 stations = [(x0, prof), (x1, prof)]
             shift = (g.uniform(-0.3, 0.3), g.uniform(-0.3, 0.3))
             m.convex(loft("x", stations), "dressed", lambda n, shift=shift: straight(n, None, shift))
-    if level == 0:
+    if level < 2:
         stones = L.masonry_stones()
         for sign in (1, -1):
             if sign > 0:
@@ -528,13 +548,13 @@ def stairs(level):
             cheek = [((0.0, 0.0, 0.0), (0.0, 0.7071067811865476, -0.7071067811865476)), keep_above(frame, MD) if sign > 0 else keep_below(frame, TILE - MD)]
             for s in stones:
                 # The stairs' walling keeps its stones' lumps but not their broken corners, which on this much
-                # walling cost more than they show.
-                lay(m, frame, s, L.face(s), "masonry", 1, cheek)
+                # walling cost more than they show, and the next level not their crowns.
+                lay(m, frame, s, L.face(s), "masonry", 1, cheek, crowned=level == 0)
         rear = Frame((-H, H, H - MD), (1, 0, 0), (0, -1, 0), (0, 0, 1))
         for s in stones:
             if max(p[1] for p in s["footprint"]) < RISE:
                 continue
-            lay(m, rear, s, L.face(s), "masonry", 1, [keep_lower(rear, RISE)])
+            lay(m, rear, s, L.face(s), "masonry", 1, [keep_lower(rear, RISE)], crowned=level == 0)
     return m
 
 
@@ -693,8 +713,8 @@ def swung(p):
 PIECES = {
     "foundation": (foundation, 3),
     "wall": (wall, 4),
-    "doorframe": (lambda level: opening("door", level), 3),
-    "windowframe": (lambda level: opening("window", level), 3),
+    "doorframe": (lambda level: opening("door", level), 4),
+    "windowframe": (lambda level: opening("window", level), 4),
     "ceiling": (ceiling, 3),
     "pillar": (pillar, 3),
     "stairs": (stairs, 4),

@@ -210,7 +210,8 @@ leaves in the same outline, and its points lie far from the finest's however
 alike the two look. A piece whose levels a measure of points cannot judge may
 state their errors in metres, for its levels after the finest in turn:
 `pieces: [{ id, object, errors: [0.012, 0.04] }]`. A level it leaves out is
-measured. State an error as the size of the difference a player would see, at
+measured. A piece may give its own `triangles` in place of the asset's
+budgets, where its pieces differ in size. State an error as the size of the difference a player would see, at
 the size the piece is modelled: a node drawn larger has its errors scaled with
 it. `--check` and the sheet print each stated error beside the one measured on
 its points, and where each level is first drawn on each tier and how tall the
@@ -427,7 +428,7 @@ prints numbers and fails only on what would draw wrong:
   normal map that leans against its height, a region map with more than 2% of
   it no region's colour, masks that sum past 1, a large picture that is not
   its small one when shrunk (under 30 dB);
-- budgets: triangles a level, megabytes of textures in one variant.
+- budgets: triangles a level, megabytes of textures in one variant; and a building piece of any tier (content/building.ts) against `PIECE_TRIANGLES`, what it may be drawn with from each distance on medium, kept to its pictures to 80 m and with no level that is never drawn or drawn over a sliver.
 
 It also says how tall the creature stands when each level is first drawn, the
 stride each gait holds best at, a loop that walks and has no stride, a loop

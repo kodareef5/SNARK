@@ -5,9 +5,9 @@
 # nothing stands out of them by more than a sill, a peg or a door ring.
 #
 # Levels: 0 is everything, hewn and bowed; 1 is the same boards, straight, on
-# squared timbers, without iron or pegs; 2 is a few boxes in flat colours; 3 is the
-# plainest solid. Every piece draws its randomness from its own seeds, so it is
-# the same each build.
+# squared timbers, without pegs or most iron, still with its pictures; 2 is a few
+# boxes in flat colours; 3 is the plainest solid. Every piece draws its randomness
+# from its own seeds, so it is the same each build.
 
 import math
 import random
@@ -51,12 +51,12 @@ def named(base, level):
 
 
 def member(p, level, a, b, w, h, up, bands, end=None, seed=0, rough=ROUGH, along0=0.0):
-    """A timber: hewn and chamfered on the finest level, squared and in one of the
-    timber tones on the flat ones."""
+    """A timber: hewn and chamfered on the finest level, squared on the next, and
+    in one of the timber tones on the flat ones."""
     if level == 0:
         timber(p, a, b, w, h, up, bands, end=end, rough=rough, seed=seed, along0=along0)
     else:
-        timber(p, a, b, w, h, up, bands, end=end, chamfer=0.0, along0=along0, mat=TONES["timber"][seed % 2])
+        timber(p, a, b, w, h, up, bands, end=end, chamfer=0.0, along0=along0, mat="timber" if level == 1 else TONES["timber"][seed % 2])
 
 
 def bay(p, x0, x1, z0, z1, seed, level, u0=0.0, flat="boards"):
@@ -93,7 +93,7 @@ def bay(p, x0, x1, z0, z1, seed, level, u0=0.0, flat="boards"):
             # Nail columns of the picture at u0 and u0 + 0.5, 6 cm in from each end.
             start, finish = u0 - 0.06 / 3, u0 + 0.5 + 0.06 / 3
             us = [start + (finish - start) * (x - a) / length for x in xs]
-            lap_board(p, xs, zbs, w, top, lip, BOARD_TOP, row, us, mat="boards" if level == 0 else rng.choice(TONES["boards"]))
+            lap_board(p, xs, zbs, w, top, lip, BOARD_TOP, row, us)
         z += w
 
 
@@ -180,7 +180,7 @@ def knee(p, level, a, b, band, seed, curve=0.0):
 
 
 def wall(level):
-    p = Piece(named("wall", level), surface=level < 1)
+    p = Piece(named("wall", level), surface=level < 2)
     if level == 3:
         p.box((-H, -WALL_T, -H), (H, WALL_T, H), grid("boards"))
         return p.done()
@@ -199,7 +199,7 @@ def wall(level):
 
 
 def doorframe(level):
-    p = Piece(named("doorframe", level), surface=level < 1)
+    p = Piece(named("doorframe", level), surface=level < 2)
     jamb = 0.18
     xj = DOOR_W / 2
     lintel_top = 1.0
@@ -238,7 +238,7 @@ def doorframe(level):
 def windowframe(level):
     """The window is framed by its own jambs, a head and a sill whose horns run
     past them, with a short stud above and below; full bays either side."""
-    p = Piece(named("windowframe", level), surface=level < 1)
+    p = Piece(named("windowframe", level), surface=level < 2)
     jamb = 0.15
     xw = WIN_W / 2
     reach = xw + jamb + 0.17
@@ -300,7 +300,7 @@ def deck(p, top, thick, under, level, seed):
             x0, x1 = -H + rng.uniform(0, 0.012), H - rng.uniform(0, 0.012)
             floor_board(p, x0, x1, y, y + w, top, thick, k, rng, lift=rng.uniform(-0.0025, 0.0))
         else:
-            floor_board(p, -H, H, y, y + w, top, thick, k, rng, cup=0.0, edge=0.01, mat=rng.choice(TONES["deck"]))
+            floor_board(p, -H, H, y, y + w, top, thick, k, rng, cup=0.0, edge=0.01)
         y += w
     p.box((-H + 0.015, -H + 0.015, bottom - 0.012), (H - 0.015, H - 0.015, bottom + 0.004), mapping)
 
@@ -311,7 +311,7 @@ def foundation(level):
     and iron dogs bolted round each corner. The blocks reach a little into the
     ground; nothing of the crib breaks through the deck, so many tiles make one
     floor."""
-    p = Piece(named("foundation", level), surface=level < 1)
+    p = Piece(named("foundation", level), surface=level < 2)
     top, bottom = 0.1875, -0.1875
     thick = 0.05
     if level == 3:
@@ -361,14 +361,16 @@ def foundation(level):
 def ceiling(level):
     """Floorboards over four hewn joists inside a rim of beams, with an end-grain
     block at each corner; the joists' ends show in the rim, and the underside of
-    the boards is the ceiling of the room below."""
-    p = Piece(named("ceiling", level), surface=level < 1)
+    the boards is the ceiling of the room below. Its next level is the deck as one
+    board on the rim and joists, still with its pictures."""
+    p = Piece(named("ceiling", level), surface=level < 2)
     top, bottom = 0.125, -0.115
     thick = 0.05
-    if level == 3:
-        p.box((-H, -H, bottom), (H, H, top), grid("deck"))
+    if level == 2:
+        # Down to halfway between the boards' underside and the joists' foot.
+        p.box((-H, -H, (bottom + top - thick) / 2), (H, H, top), grid("deck"))
         return p.done()
-    deck(p, top, thick, "boards", level, 500)
+    deck(p, top, thick, "boards", 2 * level, 500)
     r, w = 1.49, 0.16
     z1 = top - thick
     zc, hgt = (bottom + z1) / 2, z1 - bottom
@@ -376,12 +378,12 @@ def ceiling(level):
     for s, band in ((-1, 2), (1, 6)):
         member(p, level, (-inner, s * (r - w / 2), zc), (inner, s * (r - w / 2), zc), w, hgt, Z, (band, band + 1, band, band + 3), None, 510 + s, along0=H - inner)
         member(p, level, (s * (r - w / 2), -inner, zc), (s * (r - w / 2), inner, zc), w, hgt, Z, (band + 3, band + 4, band + 3, band + 5), None, 520 + s, along0=H - inner)
-    if level < 2:
+    if level == 0:
         for i, (sx, sy) in enumerate(((-1, -1), (1, -1), (1, 1), (-1, 1))):
             c = (sx * (r - w / 2), sy * (r - w / 2))
             member(p, level, (c[0], c[1], bottom), (c[0], c[1], z1), w, w, Y, (4, 5, 6, 7), None, 525 + i, ROUGH * 0.3)
-        for i, (x, band) in enumerate(((-0.9, 11), (-0.3, 5), (0.3, 8), (0.9, 1))):
-            member(p, level, (x, -inner, zc + 0.012), (x, inner, zc + 0.012), 0.13, hgt - 0.024, Z, (band, band + 1, band, band + 1), None, 530 + i, along0=H - inner)
+    for i, (x, band) in enumerate(((-0.9, 11), (-0.3, 5), (0.3, 8), (0.9, 1))):
+        member(p, level, (x, -inner, zc + 0.012), (x, inner, zc + 0.012), 0.13, hgt - 0.024, Z, (band, band + 1, band, band + 1), None, 530 + i, along0=H - inner)
     if level == 0:
         # The joists' ends, flush in the rim.
         for s in (-1, 1):
@@ -395,7 +397,7 @@ def pillar(level):
     """A hewn post on a flared plinth, under a head that flares and then steps out
     into a cross of short arms, bolted through with iron plates: a post made to
     carry a beam each way."""
-    p = Piece(named("pillar", level), surface=level < 1)
+    p = Piece(named("pillar", level), surface=level < 2)
     if level == 3:
         p.box((-0.25, -0.25, -H), (0.25, 0.25, H), beam("z", 7))
         return p.done()
@@ -456,7 +458,7 @@ DOOR_ROWS = (10, 3, 7, 0, 4)  # rows of the boards picture with no butt joint
 
 
 def door_mesh(name, level, transform=None):
-    p = Piece(named(name, level), surface=level < 1)
+    p = Piece(named(name, level), surface=level < 2)
     hw, hh = DOOR_W / 2, DOOR_H / 2
     front, back = -0.036, 0.006
     if level == 3:
@@ -488,7 +490,7 @@ def door_mesh(name, level, transform=None):
                 rings.append([Vector((x, y, z)) for x, y in sec])
             x0n, x1n = edges[j], edges[j + 1]
 
-            mat = "boards" if level == 0 else TONES["boards"][j % 3]
+            mat = "boards"
 
             def side(k, i, jj, x0=x0n, x1=x1n, v0=v0, v1=v1, rings=rings, mat=mat):
                 q = rings[i][jj]
@@ -530,16 +532,18 @@ def door_mesh(name, level, transform=None):
                 x = -hw + (j + 0.5) * DOOR_W / len(DOOR_ROWS)
                 if x > 0.2:
                     stud(p, (x + 0.05, front, z + 0.04), (0, -1, 0), 0.006, 0.004, 4, uv=(0.31, 0.34))
+    zp = -0.25
+    if level < 2:
         # A latch bar over a keeper, and a D-shaped pull below it.
         zl, xl = 0.02, 0.38
         p.box((xl, -0.046, zl - 0.012), (hw + 0.012, front + 0.004, zl + 0.012), iron("x", "strap", xl))
         p.box((xl - 0.03, -0.044, zl - 0.04), (xl + 0.01, front + 0.004, zl + 0.04), iron("x", "plate", xl - 0.03))
-        zp = -0.25
         p.box((0.47, -0.042, zp - 0.12), (0.53, front + 0.004, zp + 0.12), iron("x", "plate", 0.47))
         for dz in (-0.08, 0.08):
             p.box((0.488, -0.075, zp + dz - 0.011), (0.512, -0.04, zp + dz + 0.011), iron("y", "strap", -0.075))
         p.box((0.488, -0.085, zp - 0.09), (0.512, -0.07, zp + 0.09), iron("z", "strap", zp - 0.09))
         p.box((0.47, back - 0.004, zp - 0.1), (0.53, 0.016, zp + 0.1), iron("x", "plate", 0.47))
+    if level == 0:
         p.ring((0.5, 0.025, zp - 0.03), 0.045, 0.008, iron("x", "strap", 0.4))
     return p.done(transform)
 
@@ -561,12 +565,13 @@ STEPS = 10
 
 
 def stairs(level):
-    p = Piece(named("stairs", level), surface=level < 1)
+    p = Piece(named("stairs", level), surface=level < 2)
     run = rise = 3.0 / STEPS
     s = 1.42
     nose, tread = 0.025, 0.05
-    if level == 3:
-        p.extrude([(H, -H), (H, -H + rise), (-H, H), (-H, -H)], "x", -H, H, grid("boards"))
+    if level == 2:
+        # The flight's slope midway between the steps' noses and their roots.
+        p.extrude([(H, -H), (H, -H + rise / 2), (-H + run / 2, H), (-H, H), (-H, -H)], "x", -H, H, grid("boards"))
         return p.done()
     cut, back = (tread, nose) if level == 0 else (0.0, 0.0)
     rear = -H + 0.06  # the solid's back stands in behind the frame and under the top tread
@@ -648,6 +653,7 @@ PIECES = {
     "stairs": stairs,
 }
 
-for build in PIECES.values():
-    for level in range(4):
+# The ceiling and the stairs go from their second level straight to their plainest.
+for name, build in PIECES.items():
+    for level in range(3 if name in ("ceiling", "stairs") else 4):
         build(level)
