@@ -47,7 +47,11 @@ def populate(D,prototype,instance,box,node):
   for (a,wa,_),(b,wb,_) in zip(stations,stations[1:]):
    if a<=z<=b:return wa+(wb-wa)*(z-a)/(b-a)
   return stations[0][1] if z<stations[0][0] else stations[-1][1]
- for j,(a,b) in enumerate(zip(stations,stations[1:])):
+ sections=[]
+ for a,b in zip(stations,stations[1:]):
+  n=math.ceil((b[0]-a[0])/12)
+  sections.extend([([a[k]+(b[k]-a[k])*i/n for k in range(3)],[a[k]+(b[k]-a[k])*(i+1)/n for k in range(3)]) for i in range(n)])
+ for j,(a,b) in enumerate(sections):
   for sign in(-1,1):
    ps=[]
    for z,w,k in(a,b):ps += [[0,k,z],[sign*w*.70,k*.75,z],[sign*w,0,z],[0,0,z]]
@@ -60,37 +64,45 @@ def populate(D,prototype,instance,box,node):
    q,o=world('hull_side','hull_side',hs=[side],art={'kind':'solids','finish':'enamel'},color=232)
    place(f'hull_side_{j}_{sign}',q,o)
  # Actual floor outlines remain stepped and retain the two open neighborhoods through their upper decks.
- cores=[('fore',0,82,0,16),('aft',0,-72,0,14),('launch',16,-128,13,17)]
+ cores=[('fore',0,64,0,16),('aft',0,-72,0,14),('launch',16,-128,13,17)]
  for i,d in enumerate(D['decks']):
   label=d['id'];y=d['floorY'];n=int(label)
   if n<=4:spans=[(-176,164,24.0)]
-  elif n<=8:spans=[(-180,174,28.9)]
-  elif n<=14:spans=[(-178,154 if n==14 else 158,28.9)]
-  elif n==15:spans=[(-180,178,28.9)]
-  elif n==16:spans=[(-178,164,28.9)]
-  elif n==17:spans=[(76,154,25.0)]
-  elif n==18:spans=[(74,170,27.5),(-134,-122,12.0)]
-  elif n==19:spans=[(74,128,22.0),(-134,-122,12.0)]
+  elif n<=8:spans=[(-180,{5:168,6:172,7:150,8:140}[n],28.9)]
+  elif n<=14:spans=[(-178,{9:134,10:128,11:124,12:146,14:112}[n],28.9)]
+  elif n==15:spans=[(-180,147,28.9)]
+  elif n==16:spans=[(-178,112,28.9)]
+  elif n==17:spans=[(30,100,25.0)]
+  elif n==18:spans=[(48,100,27.5),(-134,-122,12.0)]
+  elif n==19:spans=[(48,76,22.0),(-134,-122,12.0)]
   else:spans=[(-142,-116,14.0)]
   outlines=[]
   for z0,z1,w in spans:
    if n>=18 and z0<0:outlines.append(rect(10,z0,22 if n<20 else 26,z1));continue
-   zcuts=sorted(set([z0,z1]+[s[0] for s in stations if z0<s[0]<z1]))
+   zcuts=sorted(set([z0,z1]+[s[0] for s in stations if z0<s[0]<z1]+[z for z in (112,130,140) if n>=15 and z0<z<z1]))
    def dw(z):
     if n>=17:return w
+    if n==15:return min(w,waterwidth(z)+4.65) if z<=112 else min(w,28.5*math.sqrt(max(0,1-((z-112)/35)**2))+.2)
     # Deckhouse reaches its independently published beam; bow and rounded stern taper honestly.
     return min(w,waterwidth(z)+(4.65 if n>=5 else -.25))
    outlines.append([[-dw(z),z] for z in zcuts]+[[dw(z),z] for z in reversed(zcuts)])
   if n==17:
-   outlines += [rect(10,-72,27.5,76),rect(-27.5,-72,-20,76),rect(-26,-142,26,-72)]
+   outlines += [rect(10,-72,27.5,30),rect(-27.5,-72,-20,30),rect(-26,-142,26,-72)]
   if n==16:
    # Dome volume is open above its deck15 floor, not bisected by an upper slab.
    pass
   voids=[]
-  if n>=9 and n<=17:voids.append({'id':'central_park','kind':'atrium','polygon':rect(-8.6,-66,8.6,76)})
+  if n>=9 and n<=17:voids.append({'id':'central_park','kind':'atrium','polygon':rect(-8.6,-66,8.6,58)})
   if n>=8 and n<=14:voids.append({'id':'surfside','kind':'atrium','polygon':rect(-11,-174,11,-86)})
   if n in(15,16,17):voids.append({'id':'aft_canyon','kind':'atrium','polygon':rect(-7,-151,7,-96)})
-  if n>=16 and n<=18:voids.append({'id':'aquadome','kind':'atrium','polygon':rect(-22,110,22,174)})
+  if n>=16 and n<=18:voids.append({'id':'aquadome','kind':'atrium','polygon':rect(-29,77,29,174)})
+  if n in(6,7,8):voids.append({'id':'pearl','kind':'atrium','polygon':rect(6,-23,28.9,7)})
+  if n in(5,6):voids.append({'id':'royal_theater','kind':'atrium','polygon':rect(-18,100,18,148)})
+  if n==5:voids.append({'id':'absolute_zero','kind':'atrium','polygon':rect(-18,-178,18,-156)})
+  if n==7:voids.append({'id':'waters_edge','kind':'basin','polygon':rect(-6,-176,6,-166)})
+  if n==15:
+   voids.append({'id':'royal_bay','kind':'basin','polygon':rect(-24,-19,-12,5)})
+   voids.append({'id':'hideaway','kind':'basin','polygon':rect(-5,-176,5,-166)})
   for cname,cx,cz,low,high in cores:
    if low<i<=high:voids.append({'id':f'stair_{cname}_{label}','kind':'stair','polygon':rect(cx-2.4,cz-3.6,cx+2.4,cz+3.4)})
   # The shallow decorative pool reserves 2.66 m beneath its actual slab over an occupied room.
@@ -148,17 +160,17 @@ def populate(D,prototype,instance,box,node):
  for i,d in enumerate(D['decks'][:15]):
   label=d['id'];y=d['floorY'];a=f'fore_{label}';b=f'aft_{label}'
   if any(n['id']==a for n in D['graph']['nodes']) and any(n['id']==b for n in D['graph']['nodes']):
-   aisle=24 if label=='17' else 25 if int(label)>=15 else 15.5
-   anchors=[[-1.1,y,-76.6],[aisle,y,-76.6],[aisle,y,77.4],[-1.1,y,77.4]]
-   if int(label)>=16:anchors=[[-1.1,y,-76.6],[-1.1,y,-88],[aisle,y,-88],[aisle,y,77.4],[-1.1,y,77.4]]
+   aisle=-15.5 if label in('5','6','7','8') else 24 if label=='17' else 25 if int(label)>=15 else 15.5
+   anchors=[[-1.1,y,-76.6],[aisle,y,-76.6],[aisle,y,59.4],[-1.1,y,59.4]]
+   if int(label)>=16:anchors=[[-1.1,y,-76.6],[-1.1,y,-88],[aisle,y,-88],[aisle,y,59.4],[-1.1,y,59.4]]
    route('spine_'+label,'corridor',b,a,anchors,1.8 if label=='17' else 2.4)
  # Exterior arrival, clear of the outer white hull, opens directly to the promenade.
- gp=p('gangway','gangway',[box([-14.8,-.24,-1.4],[14.8,0,1.4]),box([-14.8,0,-1.48],[14.8,1.15,-1.4]),
-                         box([-14.8,0,1.4],[14.8,1.15,1.48])],art={'kind':'gangway','finish':'deck'},color=101)
- place('port_gangway',gp,[43.2,14,-24],'5','arrival')
+ gp=p('gangway','gangway',[box([-7.4,-.24,-1.4],[7.4,0,1.4]),box([-7.4,0,-1.48],[7.4,1.15,-1.4]),
+                         box([-7.4,0,1.4],[7.4,1.15,1.48])],art={'kind':'gangway','finish':'deck'},color=122)
+ for i,x in enumerate([35.8,50.6]):place('port_gangway_'+str(i),gp,[x,14,-24],'5','arrival')
  node('quay',[58,14,-24],'5','docking');node('arrival',[20,14,-24],'5','lobby')
  route('board','docking','quay','arrival',[[58,14,-24],[28.9,14,-24],[20,14,-24]],2.8)
- route('arrival_fore','corridor','arrival','fore_5',[[20,14,-24],[15.5,14,-24],[15.5,14,77.4],[-1.1,14,77.4]],2.4)
+ route('arrival_fore','corridor','arrival','fore_5',[[20,14,-24],[-15.5,14,-24],[-15.5,14,59.4],[-1.1,14,59.4]],2.4)
  route('launch_access','corridor','aft_16','launch_16',[[-1.1,49.6,-76.6],[-1.1,49.6,-88],[20.5,49.6,-88],[20.5,49.6,-132.6],[14.9,49.6,-132.6]],2.0)
  D['rooms'].append({'id':'arrival','node':'arrival','label':'Royal Promenade arrival','deck':'5','section':'arrival',
                    'bounds':{'min':[10,14,-35],'max':[28.9,18.16,-10]},'entry':[28.9,14,-24],
@@ -185,7 +197,7 @@ def populate(D,prototype,instance,box,node):
    entry=[19,y,z];target=[22,y,z-.5];outside=[17.6,y,z]
    node(ident,target,label,'room');node(ident+'_entry',outside,label,'corridor')
    route(ident+'_door','room',ident+'_entry',ident,[outside,entry,[21,y,z],target],family='balcony-cabin-ingress')
-   route(ident+'_access','corridor',f'fore_{label}',ident+'_entry',[[-1.1,y,77.4],[17.6,y,77.4],outside],2.4)
+   route(ident+'_access','corridor',f'fore_{label}',ident+'_entry',[[-1.1,y,59.4],[17.6,y,59.4],outside],2.4)
    D['rooms'].append({'id':ident,'node':ident,'label':'Balcony stateroom','deck':label,'section':'prototype-cabins',
                      'bounds':{'min':[19,y,z-3.2],'max':[27,y+2.96,z+3.2]},'entry':entry,'routeTarget':target,'evidence':'original-fitted-room'})
    D['portals'].append({'id':ident+'_portal','from':ident+'_entry','to':ident,'at':entry,'normal':[-1,0,0],
@@ -202,12 +214,12 @@ def populate(D,prototype,instance,box,node):
                      'hinge':hinge,'clearWidth':1.8,'clearHeight':2.6})
   next(r for r in D['routes'] if r['id']==f'cabin_9_{i}_door')['requiresOpen']=door
  # Full accommodation outline uses repeated six-metre balcony/frame bays without filling the window apertures.
- balcony=p('balcony_6','balcony',[box([-1.8,-.18,-3],[0,0,3]),box([-.09,0,-3],[0,1.15,3]),
-                                box([-1.8,0,-3],[-.09,2.96,-2.92]),box([-1.8,2.96,-3],[0,3.12,3])],
+ balcony=p('balcony_3_2','balcony',[box([-1.8,-.18,-1.6],[0,0,1.6]),box([-.09,0,-1.6],[0,1.15,1.6]),
+                                box([-1.8,0,-1.6],[-.09,2.96,-1.52]),box([-1.8,2.96,-1.6],[0,3.12,1.6])],
            art={'kind':'balcony','finish':'enamel'},color=232)
  for label in ['7','8','9','10','11','12','14']:
   for side in(-1,1):
-   for j,z in enumerate(range(-141,112,6)):
+   for j,z in enumerate(i*3.2 for i in range(-48,35)):
     place(f'balcony_{label}_{side}_{j}',balcony,[side*28.9,ys[label],z],label,section(z),0 if side>0 else 180)
  # Independently measured bridge wing envelope, clear framed front rather than an opaque dark plane.
  for side in(-1,1):
@@ -215,33 +227,22 @@ def populate(D,prototype,instance,box,node):
                                     [32.9 if side>0 else -24,38.8,134])],art={'kind':'floor','finish':'enamel'})
   place('bridge_wing_'+str(side),q,o,'12','bridge')
  # Flattened ellipsoidal AquaDome framing: closed ribs and sparse pane-edge cues, all panes are clear apertures.
- def dome(t,a):return [28.2*math.cos(t)*math.cos(a),48.2+16.8*math.sin(t),138+42*math.cos(t)*math.sin(a)]
  def beam(a,b,r):
   v=[b[k]-a[k] for k in range(3)];length=math.sqrt(sum(x*x for x in v));v=[x/length for x in v]
   u=[v[2],0,-v[0]];l=math.sqrt(sum(x*x for x in u));u=[x/l for x in u] if l>1e-5 else [1,0,0]
   w=[v[1]*u[2]-v[2]*u[1],v[2]*u[0]-v[0]*u[2],v[0]*u[1]-v[1]*u[0]]
   return [[q[k]+r*(su*u[k]+sw*w[k]) for k in range(3)] for q in(a,b) for su,sw in[(-1,-1),(-1,1),(1,-1),(1,1)]]
- for ai in range(24):
-  for ti in range(3):
-   a0=ai*math.tau/24;a1=(ai+1)*math.tau/24;t0=ti*math.pi/6;t1=(ti+1)*math.pi/6
-   if ti==2:t1=math.pi/2-.003
-   a,b,c=dome(t0,a0),dome(t0,a1),dome(t1,a0)
-   # A genuine rear entrance through the low rim; the upper arch remains above the walking envelope.
-   hs=[]
-   if not(ti==0 and ai in(17,18)):hs.append(beam(a,b,.11))
-   if not(ti==0 and ai==18):hs.append(beam(a,c,.11))
-   if not hs:continue
-   q,o=world('dome_cell','dome',hs=hs,art={'kind':'dome','finish':'steel'})
-   place(f'dome_{ai}_{ti}',q,o,'15','aquadome')
+ from layout_production import dome as production_dome,finish as production_finish
+ production_dome(D,p,place,beam)
  # Side-by-side aft funnel housings are a distinctive photographed feature, not two longitudinal stacks.
  funnelh=[{'points':[[x,y,z] for y,rx,rz,shift in[(-11.5,7.2,10.2,0),(8,4.6,7.2,1.5)] for x in(-rx,rx) for z in(-rz+shift,rz+shift)]}]
  funnelboxes=[box([x-.65,7.8,z-.65],[x+.65,12,z+.65]) for x in(-1.4,1.4) for z in(-1.0,2.5)]
- fp=p('funnel','funnel',funnelboxes,funnelh,{'kind':'funnel','finish':'blue'},232)
+ fp=p('funnel','funnel',funnelboxes,funnelh,{'kind':'funnel','finish':'blue'},53)
  for side in(-1,1):place('funnel_'+str(side),fp,[side*11,63,-72],'17','funnel')
  mast=p('signal_mast','mast',[box([-.22,-8.65,-.22],[.22,8.65,.22]),
                              box([-3.2,4.4,-.1],[3.2,4.6,.1]),box([-2.4,6.4,-.1],[2.4,6.6,.1])],
         art={'kind':'mast','finish':'enamel'})
- place('forward_signal_mast',mast,[0,61.85,102],'17','aerial')
+ place('forward_signal_mast',mast,[0,61.85,72],'17','aerial')
  # Pool prototype: real recessed basin and shallow stair-out above an occupied dry room; no map-water semantics.
  basin=[box([-5,-.94,-8],[5,-.74,8]),box([-5.2,-.74,-8.2],[-5,0.18,8.2]),box([5,-.74,-8.2],[5.2,.18,8.2]),
         box([-5,-.74,-8.2],[5,.18,-8]),box([-5,-.74,8],[5,.18,8.2])]
@@ -249,9 +250,9 @@ def populate(D,prototype,instance,box,node):
  q=p('pool_basin','pool',basin,art={'kind':'pool','waterY':-.18,'finish':'tile','decorativeWater':True},color=87)
  place('prototype_pool',q,[18,ys['15'],-6],'15','pool-prototype')
  for ident,label,title,at,anchors,bounds in [
-  ('aquadome','15','AquaDome',[0,45.6,130],[[-1.1,45.6,77.4],[5,45.6,77.4],[5,45.6,100],[0,45.6,130]],([-22,45.6,108],[22,65,174])),
-  ('pool_under','14','Pool service lounge',[18,42,-6],[[-1.1,42,77.4],[15.5,42,77.4],[15.5,42,-6],[18,42,-6]],([12,42,-18],[27,44.66,6])),
-  ('pool_edge','15','Pool terrace',[25,45.6,-6],[[-1.1,45.6,77.4],[25,45.6,77.4],[25,45.6,-6]],([23,45.6,-18],[28.9,48.6,6]))]:
+  ('aquadome','15','AquaDome',[0,45.6,112],[[-1.1,45.6,59.4],[5,45.6,59.4],[5,45.6,90],[0,45.6,112]],([-24,45.6,78],[24,62.6,147])),
+  ('pool_under','14','Pool service lounge',[18,42,-6],[[-1.1,42,59.4],[15.5,42,59.4],[15.5,42,-6],[18,42,-6]],([12,42,-18],[27,44.66,6])),
+  ('pool_edge','15','Pool terrace',[25,45.6,-6],[[-1.1,45.6,59.4],[25,45.6,59.4],[25,45.6,-6]],([23,45.6,-18],[28.9,48.6,6]))]:
   node(ident,at,label,'room');route(ident+'_access','room',f'fore_{label}',ident,anchors,2.0)
   D['rooms'].append({'id':ident,'node':ident,'label':title,'deck':label,'section':ident,
                      'bounds':{'min':bounds[0],'max':bounds[1]},'entry':at,'routeTarget':at,'evidence':'original-fit-within-public-plan'})
@@ -260,8 +261,9 @@ def populate(D,prototype,instance,box,node):
   D['views'].append({'id':'cabin_'+label,'at':[22,ys[label],93.9],'target':[25,ys[label]+1.2,96],
                      'deck':label,'section':'prototype-cabins','mode':'walk'})
  D['views'] += [{'id':'arrival','at':[20,14,-24],'target':[0,16,-24],'deck':'5','section':'arrival','mode':'walk'},
-               {'id':'dome_inside','at':[0,45.6,130],'target':[0,60,164],'deck':'15','section':'aquadome','mode':'walk'},
+               {'id':'dome_inside','at':[0,45.6,112],'target':[0,59,140],'deck':'15','section':'aquadome','mode':'walk'},
                {'id':'pool_under','at':[18,42,-6],'target':[18,44,-1],'deck':'14','section':'pool-prototype','mode':'walk'},
                {'id':'pool_edge','at':[25,45.6,-6],'target':[18,45.4,-6],'deck':'15','section':'pool-prototype','mode':'walk'},
                {'id':'profile','at':[260,40,0],'target':[0,32,0],'deck':'5','section':'envelope','mode':'spectator'}]
  D['prototypeScope']={'complete':False,'notes':'Full envelope, repeated cabin slice, continuous stair cores, framed dome and decorative basin. Funnels, public-room finishes, lifesaving equipment and final neighborhoods follow native prototype acceptance.'}
+ production_finish(D,p,prototype,world,place,box,node,route,rect,ys,beam)

@@ -3,7 +3,7 @@
 This generator owns both native collision and the source mesh contract. Prototypes are reused by instances;
 an instance ID is a placement identity, never a second content definition. Run with Python 3, no dependencies.
 """
-import json
+import json,math
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -54,6 +54,7 @@ def prototype(name,category,boxes,*,hulls=None,look=None,art=None,color=232):
  bounds={'min':[min(p[k] for p in points) for k in range(3)],'max':[max(p[k] for p in points) for k in range(3)]}
  assert len(boxes)+len(hulls or []) <= 16, name
  assert all(abs(v)<=16 for side in bounds.values() for v in side), (name,bounds)
+ assert max(math.hypot(q[0],q[2]) for q in points)<=14.5+.000001, (name,'native route radius')
  ident='core:cruise_'+name
  p={'id':ident,'mesh':ident,'category':category,'color':color,'boxes':boxes,'hulls':hulls or [],
     'visualBounds':bounds,'art':art or {'kind':'solids','finish':'enamel'}}
@@ -72,26 +73,9 @@ for i,(label,y) in enumerate(DECKS):
  D['decks'].append({'id':label,'index':i,'floorY':y,'ceilingY':DECKS[i+1][1]-.24 if i+1<len(DECKS) else None,
                     'evidence':'inferred','outlines':[],'voids':[]})
 
-# The first explicit sample keeps adapter work independent of final source geometry.
-landing = prototype('floor_12x12','floor',[box([-6,-.24,-6],[6,0,6])],art={'kind':'floor','finish':'deck'},color=101)
-instance('d5_arrival_sample',landing,[22.5,14,-24],'5','arrival')
-gangway = prototype('gangway','gangway',[
- box([-14.8,-.24,-1.4],[14.8,0,1.4]),
- box([-14.8,0,-1.48],[14.8,1.15,-1.4]),box([-14.8,0,1.4],[14.8,1.15,1.48])],
- art={'kind':'gangway','clearWidth':2.8,'finish':'deck'},color=101)
-instance('port_gangway',gangway,[43.2,14,-24],'5','arrival')
 D['docking']={'shipLanding':[28.9,14,-24],'shoreLanding':[58,14,-24],'shoreApproach':[61,14,-24],
               'arrival':[20,14,-24],'clearWidth':2.8,'side':'port','deck':'5','seaDatum':0,
               'pierConnection':{'xMinimum':58,'zMinimum':-25.6,'zMaximum':-22.4}}
-node('quay',[58,14,-24],'5','docking');node('arrival',[20,14,-24],'5','lobby')
-D['rooms'].append({'id':'arrival','label':'Royal Promenade arrival','deck':'5','section':'arrival',
-                  'bounds':{'min':[16.5,14,-30],'max':[28.5,18.16,-18]},'entry':[28.4,14,-24],
-                  'routeTarget':[20,14,-24],'evidence':'original-fit-within-public-plan'})
-D['portals'].append({'id':'boarding','from':'quay','to':'arrival','at':[28.9,14,-24],
-                    'normal':[1,0,0],'clearWidth':2.8,'clearHeight':4.16,'kind':'open'})
-D['routes'].append({'id':'board','kind':'docking','from':'quay','to':'arrival',
-                   'anchors':[[58,14,-24],[28.9,14,-24],[20,14,-24]],'clearWidth':2.8,'clearHeight':2.6})
-D['views'].append({'id':'arrival','at':[20,14,-24],'target':[0,16,-24],'deck':'5','section':'arrival','mode':'walk'})
 from layout_geometry import populate
 populate(D,prototype,instance,box,node)
 OUT.write_text(json.dumps(clean(D),indent=2)+'\n')
