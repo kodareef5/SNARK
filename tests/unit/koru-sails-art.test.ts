@@ -82,3 +82,20 @@ test("native head cloth remains attached around both sides of each rigid gaff pe
     expect(leech).toBeGreaterThan(0);
   }
 });
+
+test("all six halyard levels attach to fixed masthead and moving gaff bones", () => {
+  for (const { sail, mesh } of assets) {
+    if (!("peakHalyard" in sail)) continue;
+    const halyard = sail.peakHalyard!, gaff = sail.bones.indexOf(halyard.movingBone);
+    for (const lod of mesh.lods) {
+      let fixed = 0, moving = 0;
+      for (let v = 0; v < lod.positions.length / 3; v++) {
+        const p = [...lod.positions.slice(v * 3, v * 3 + 3)];
+        if (Math.hypot(...p.map((x, k) => x - halyard.fixed[k]!)) < halyard.radius + .003 && lod.bones![v] === 0) fixed++;
+        if (Math.hypot(...p.map((x, k) => x - halyard.moving[k]!)) < halyard.radius + .003 && lod.bones![v] === gaff) moving++;
+      }
+      expect(fixed, `${sail.id} fixed halyard ring`).toBeGreaterThanOrEqual(4);
+      expect(moving, `${sail.id} moving halyard ring`).toBeGreaterThanOrEqual(4);
+    }
+  }
+});

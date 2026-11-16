@@ -11,6 +11,7 @@ sails=[]
 for name,z,boom,width,peak,throat,pz in [('fore',20,12.8,19,57.5,42.5,11),('main',-8,12.8,20.6,56.5,41.5,11),('mizzen',-30,10.8,17,51.5,36.5,9)]:
  anchor=[.25,boom+.42,z-.56];hp=peak-anchor[1];ht=throat-anchor[1];gth=ht+(hp-ht)*.25/pz
  sails.append(dict(id=name,mesh='core:koru_sail_'+name,skeleton='koru_sail_'+name,kind='main',anchor=anchor,basis=[[-1,0,0],[0,1,0],[0,0,-1]],polygon=[[0,0],[0,width],[hp,pz],[ht,0]],bandAxis='y',bandSize=.75,foldSign=1,billow=-.012,gaff=dict(bone='gaff',throat=[0,gth,.25],peak=[0,hp,pz],lowerThroatY=.12,lowerAngle=math.atan2(hp-gth,pz-.25))))
+ sails[-1]['peakHalyard']={'fixed':[0,{'fore':70,'main':67,'mizzen':64}[name]-1-anchor[1],-.21],'moving':[0,hp,pz],'fixedBone':'root','movingBone':'gaff','radius':.014}
 for name,tack,head,clew,sign in [('outer',[.10,8.5,70.5],[.10,69,20],[.10,27,43],1),('inner',[-.10,7.8,52],[-.10,58,20],[-.10,17,29.8],-1)]:
  up=unit(sub(head,tack));stay={'heel':[0,*tack[1:]],'head':[0,*head[1:]],'inset':.6}
  tack=[v+.6*up[k] for k,v in enumerate(tack)];head=[v-.6*up[k] for k,v in enumerate(head)]

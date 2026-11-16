@@ -36,8 +36,8 @@ for (const sail of data.sails) {
     }
   }
   // Rotation/chain derivatives are bounded by4πR(1+tan(alpha)): the smoothstep slope is≤1.5,
-  // every fold angle spans<π/2, and the rigid gaff's asin derivative is≤1/cos(alpha).
-  // This deliberately loose bound also covers translations and weighted points (a convex combination).
+  // every fold angle spans<π/2; the retracting gaff angle derivative is≤tan(alpha)*f',
+  // and its uniform scale derivative is≤f'. This loose bound covers translations and weighted points too.
   const reach = Math.max(...boxes.filter((box: number[]) => box[0] !== Infinity).map((box: number[]) => Math.hypot(...[0, 1, 2].map(k => Math.max(Math.abs(box[k]!), Math.abs(box[k + 3]!))))));
   const derivativeBound = 4 * Math.PI * reach * (1 + Math.tan(sail.gaff?.lowerAngle ?? 0));
   const betweenSampleMargin = derivativeBound / (2 * 1024);

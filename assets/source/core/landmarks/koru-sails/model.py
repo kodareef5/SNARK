@@ -115,6 +115,9 @@ def build(name):
   if 'gaff'in s:
    g=s['gaff'];m.tube([g['throat'],g['peak']],.145,2,gaff=True)
    if level<3:m.tube([[0,s['polygon'][-1][0],0],g['throat']],.025,2,gaff=True,n=6 if level<2 else 4)
+   # A closed flexible halyard joins a fixed masthead fairlead to the moving peak, using the existing root/gaff bones.
+   h=s['peakHalyard'];start=len(m.v);sides=[8,6,6,4,4,4][level];m.tube([h['fixed'],h['moving']],h['radius'],1,gaff=True,n=sides)
+   for v in range(start,start+sides):m.weights[v]={'root':1}
   elif level<3:
    # Small luff straps stay on the fixed forestay axis while the first panel hinges from this line.
    for y in range(0,math.floor(max(p[0] for p in s['polygon'])),8):m.tube([[0,y,0],[s['anchor'][0],y,0]],.012,1,{'bone':'root'},n=6 if level<2 else 4)
