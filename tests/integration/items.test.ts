@@ -285,6 +285,16 @@ test("creatures arrive with their level and colours, players with their names, a
   expect(bo.stats.undecodable).toBe(0);
 });
 
+test("gmsummon gives a creature tamed, and saddled where a saddle is made for it", () => {
+  const { h, s, rec } = setup();
+  expect(h.say(s, "gmsummon pteranodon 150")[0]).toBe("summoned core:pteranodon level 150, tamed and saddled");
+  const ptera = [...h.host.records.byPid.values()].find((r) => r.kind === h.reg.index.get("core:pteranodon"))!;
+  expect([ptera.team, ptera.saddle]).toEqual([rec.team, h.reg.index.get("core:saddle_pteranodon")!]);
+  expect(h.say(s, "gmsummon grazer 5")[0]).toBe("summoned core:grazer level 5, tamed");
+  expect(h.say(s, "gmsummon helicopter")[0]).toBe("core:helicopter is a vehicle: spawn it");
+  expect(h.host.items.audit()).toEqual([]);
+});
+
 test("setstat refreshes everything the points feed, with the load still counted", () => {
   const { h, s, rec, ents, e } = setup();
   h.say(s, "give stone 200"); // 100 kg, the limit
