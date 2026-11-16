@@ -33,6 +33,7 @@ import { Rasterizer } from "../snap/raster.ts";
 import { drawUi } from "../snap/ui.ts";
 import { seedCruisePreview } from "./dev.ts";
 import { assertCruiseMap, assertCruisePlaced } from "./preflight.ts";
+import { cruiseHash, verifyCruiseGroups, type CruisePackedGroups } from "./packed-groups.ts";
 import { CRUISE_COURSE, cruiseCourse, cruiseWorldPoint } from "./course.ts";
 
 export interface CruiseShot {
@@ -360,7 +361,30 @@ export async function reviewCruise(map: MapData, shots: readonly CruiseShot[], a
   const cellIds = new Set(CRUISE_LAYOUT.cells.map(cell => cell.id));
   const standaloneIds = new Set(CRUISE_COLLISION_PROTOTYPES.filter(prototype => prototype.mesh !== "none" && !cellIds.has(prototype.mesh)).map(prototype => prototype.mesh));
   const meshes = new Map(files.manifest.meshes.map(mesh => [mesh.id, mesh]));
-  if (!native.length || [...cellIds].some(id => !meshes.has(id) || (!graybox && meshes.get(id)!.levels.length !== 6))) throw new Error("Build every authored cruise cell with six LODs before native review; --graybox is an explicitly preliminary collision-mesh audit");
+  if (!native.length || [...cellIds].some(id => !meshes.has(id))) throw new Error("Build every authored cruise cell before native review");
+  let cellStages: { groupsSHA256: string; nativeLevels: Record<string, number>; authoredStages: Record<string, number> } | null = null;
+  if (!graybox) {
+    const asset = join(LANDMARKS, "cruise"), groupBytes = readFileSync(join(asset, "ref/packed-groups.json"));
+    const groups: CruisePackedGroups = JSON.parse(groupBytes.toString());
+    verifyCruiseGroups(groups, readFileSync(resolve(import.meta.dir, "../../content/landmarks/cruise-layout.json")), readFileSync(join(asset, "cruise.snpk")));
+    if (groups.meshes.length !== cellIds.size || groups.meshes.some(mesh => !cellIds.has(mesh.id))) throw new Error("Packed ownership metadata must cover exactly the authored cruise cells");
+    const nativeLevels: Record<string, number> = {}, authoredStages: Record<string, number> = {};
+    for (const group of groups.meshes) {
+      const mesh = meshes.get(group.id)!;
+      if (mesh.levels.length < 2 || mesh.levels.length > 6 || group.levels.length !== mesh.levels.length) throw new Error(`${group.id}: expected 2..6 retained native levels with matching ownership metadata`);
+      let previous = -1;
+      for (let index = 0; index < group.levels.length; index++) {
+        const level = group.levels[index]!, authored = level.authoredLevel;
+        if (level.level !== index || !Number.isInteger(authored) || authored < 0 || authored > 5 || authored <= previous || (index === 0 && authored !== 0) ||
+            level.triangles <= 0 || level.triangles !== mesh.levels[index]!.tris) throw new Error(`${group.id} L${index}: retained authored stage or native triangle coverage is invalid`);
+        previous = authored;
+      }
+      const stages = group.levels.map(level => level.authoredLevel).join(",");
+      nativeLevels[mesh.levels.length] = (nativeLevels[mesh.levels.length] ?? 0) + 1;
+      authoredStages[stages] = (authoredStages[stages] ?? 0) + 1;
+    }
+    cellStages = { groupsSHA256: cruiseHash(groupBytes), nativeLevels, authoredStages };
+  }
   // Doors and the independent port signs follow building-piece schedules, which need not have six levels.
   // Their distance/triangle/material budgets are checked by the native art gate; here every referenced
   // standalone must exist with real geometry at each authored level, independently of the cell count.
@@ -381,14 +405,14 @@ export async function reviewCruise(map: MapData, shots: readonly CruiseShot[], a
   const registryHash = withContent(compiled.registry, map.content.defs).hash.toString(16).padStart(8, "0"), mapHash = parseMap(writeMap(map)).hash.toString(16).padStart(8, "0");
   if (only.length && existsSync(resolve(out, "report.json"))) {
     const kept = (JSON.parse(readFileSync(resolve(out, "report.json"), "utf8")).shots as Record<string, unknown>[]).filter(old => !selected.some(shot => shot.name === old.name));
-    if (kept.some(old => old.packHash !== packHash || old.registryHash !== registryHash || old.mapHash !== mapHash)) throw new Error("Partial review cannot combine different assets, content or map; run a complete review");
+    if (kept.some(old => old.packHash !== packHash || old.registryHash !== registryHash || old.mapHash !== mapHash || old.packedGroupsHash !== (cellStages?.groupsSHA256 ?? null))) throw new Error("Partial review cannot combine different assets, content, map or packed stage metadata; run a complete review");
     report.push(...kept);
   }
   for (const shot of selected) {
     console.log(`Native cruise review ${shot.name}`);
-    report.push({ ...capture(shot, map, pack, clips, files, shot.portrait ? 540 : width, shot.portrait ? 960 : height, out, !args.includes("--visual-only"), !args.includes("--no-images") && !sweep), packHash, assetStage: graybox ? "preliminary graybox" : CRUISE_LAYOUT.phase });
+    report.push({ ...capture(shot, map, pack, clips, files, shot.portrait ? 540 : width, shot.portrait ? 960 : height, out, !args.includes("--visual-only"), !args.includes("--no-images") && !sweep), packHash, packedGroupsHash: cellStages?.groupsSHA256 ?? null, assetStage: graybox ? "preliminary graybox" : CRUISE_LAYOUT.phase });
     report.sort((a, b) => String(a.name).localeCompare(String(b.name)));
-    writeFileSync(resolve(out, "report.json"), JSON.stringify({ source, generated: new Date().toISOString(), pipeline: "native LAND map → authoritative Harness → App → separate core/landmark manifest and boot joins, streamed assets and world surfaces → native frame packet → optional Rasterizer", packIdentity: "FNV-1a of joined manifest/boot blob and every source stream file, including textures and world surfaces", landmarks: map.content.landmarks, authoritativeAnimation: { clips: clips.clips.length, hash: clips.hash, rigs: pack.header.rigs.length }, standaloneAssets, layout: { phase: CRUISE_LAYOUT.phase, logicalPrototypes: CRUISE_LAYOUT.prototypes.length, logicalInstances: CRUISE_LAYOUT.instances.filter(instance => instance.placed).length, collisionPrototypes: CRUISE_COLLISION_PROTOTYPES.length, cells: cellIds.size, placedInstances: CRUISE_COLLISION_INSTANCES.filter(instance => instance.placed).length, deckLabels: CRUISE_LAYOUT.decks.map(deck => deck.id) }, shots: report,
+    writeFileSync(resolve(out, "report.json"), JSON.stringify({ source, generated: new Date().toISOString(), pipeline: "native LAND map → authoritative Harness → App → separate core/landmark manifest and boot joins, streamed assets and world surfaces → native frame packet → optional Rasterizer", packIdentity: "FNV-1a of joined manifest/boot blob and every source stream file, including textures and world surfaces", landmarks: map.content.landmarks, authoritativeAnimation: { clips: clips.clips.length, hash: clips.hash, rigs: pack.header.rigs.length }, cellStages, standaloneAssets, layout: { phase: CRUISE_LAYOUT.phase, logicalPrototypes: CRUISE_LAYOUT.prototypes.length, logicalInstances: CRUISE_LAYOUT.instances.filter(instance => instance.placed).length, collisionPrototypes: CRUISE_COLLISION_PROTOTYPES.length, cells: cellIds.size, placedInstances: CRUISE_COLLISION_INSTANCES.filter(instance => instance.placed).length, deckLabels: CRUISE_LAYOUT.decks.map(deck => deck.id) }, shots: report,
       limits: "Static native software-rendered views establish model, collision-camera and streaming behavior; they do not establish browser GPU performance or identical lit ocean shading." }, null, 2));
   }
   console.log(`${out}: ${report.length} native cruise views`);
