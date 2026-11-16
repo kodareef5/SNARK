@@ -1,0 +1,671 @@
+{
+  "version": 1,
+  "scope": "Manual authoring diagnostic for six representative cells and four focused fixtures. Geometry-only native buildPack/unpackMeshes, not delivered-pack acceptance or a full-ship census. Near geometry and collision are unchanged.",
+  "identities": {
+    "helperSHA256": "32d8bd388a22725898dd4aa3197c5cf8041453a3723461e5441a9e4a480aaf76",
+    "layoutSHA256": "a4d41098e14543f557ea42df16f9581996e505b8574a11775cb74e5deb3aea9a",
+    "rawIndexSHA256": "3dec4c6740b094f6ad7f1a212e1b1a5d0829859a63b18646e65ce42e481febf1",
+    "nativeSources": {
+      "tools/art/check.ts": "64688629d27e3f5ce99177252014d030b06eb2f742bfef32d21d7a2d7608e0d8",
+      "tools/pack/write.ts": "7357fbbb8ed2f231e930a2ea614b7020e065bfb18ae17c1e1a073e87d9e038f4",
+      "tools/pack/error.ts": "fbc0dd89d5bd823f8ec3ce550df692e7d087152797bb450eadba2834165c93aa"
+    },
+    "artistSourcesObservedAfterDiagnostic": {
+      "model_cells.py": "16786b924f687cf3a99fbe1df2ae637ace144d7eb93ae4095305f8668e686644",
+      "model_parts.py": "7e27b96158360cca3fb3e2468b6eda3f5ec79d0a6b4451e348023abe1aac3514",
+      "parts.py": "3b0aa85c04fe44559f49d5370598b3504b0b9c4b076adb249ea52c467b57a9ab"
+    }
+  },
+  "methods": {
+    "surface": "Native measureSurface after geometry-only packing, using every referenced triangle position at all retained LODs for shared bounds. Placeholder colors; no UV/material claims.",
+    "visibleFacade": "Clipped authored facade outer broad-face samples (four corners+center per actual input panel) against native-quantized corresponding far-owner surfaces. All retained levels set shared native bounds. This excludes back/cap surfaces and omitted unrelated details; whole-cell native surfaceError is reported separately. Geometry-only diagnostic, final native pack/visibility review still required.",
+    "wholeCell": "Existing native surfaceError from the complete finest cell to far cell. Includes omitted unrelated geometry; these 1.21\u20131.24 m values are not represented as meeting the visible-facade error.",
+    "quantization": "Measured facade samples already include native int16 position quantization. nativeGridHalfDiagonal is half a three-axis grid cell for the shared referenced-vertex bounds, excluding float32-header rounding. Unused GLTF vertices are unavailable and can change delivered shared bounds.",
+    "fixtures": "Actual native 30-degree frame plus straight 2 m opening, including samples 2 cm inside each jamb; measured 28.9 m beam extremum; authored navy on both sides of aft facade with its actual interior reference."
+  },
+  "exception": {
+    "grid": [
+      -2,
+      1,
+      6
+    ],
+    "bounds": {
+      "min": [
+        -32,
+        16,
+        96
+      ],
+      "max": [
+        -16,
+        32,
+        112
+      ]
+    },
+    "statedError": 0.14,
+    "sourceFitAllowance": 0.139,
+    "nativeMeasuredP95": 0.13865390658093366,
+    "nativeMeasuredMax": 0.13872950498692407,
+    "nativeMeasuredReserve": 0.0012704950130759396,
+    "reason": "Stepped promenade facade requires a local measured 0.14 m visible-error declaration. Identified by source spatial grid, not generated ordinal. All representative far counts remain under the unchanged 300-triangle limit."
+  },
+  "forebody": {
+    "outside": "Original 24-X-station outer vertices, white/navy height bands and extrema are unchanged. No claim to cure pre-existing outer rake approximation error.",
+    "inside": "Only pale back rows at 30.7 and 35.4 m are replaced by inward chords between retained rows.",
+    "maxAnalyticInnerDisplacement": 0.1232243879
+  },
+  "cells": [
+    {
+      "diagnosticId": "cruise:cell_0065",
+      "bounds": {
+        "min": [
+          -32.0,
+          16.0,
+          96.0
+        ],
+        "max": [
+          -16.0,
+          32.0,
+          112.0
+        ]
+      },
+      "farTriangles": 206,
+      "statedVisibleError": 0.14,
+      "nativeSurface": {
+        "parts": 34,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 35,
+        "collapsed": 0
+      },
+      "visibleFacade": {
+        "groups": 8,
+        "worstGroupP95": 0.13865390658093366,
+        "max": 0.13872950498692407
+      },
+      "wholeCellP95": 1.2143926620483398,
+      "sharedReferencedVertexBounds": {
+        "min": [
+          -4.900390625,
+          -8.0,
+          -8.0
+        ],
+        "max": [
+          8.0,
+          8.0,
+          8.0
+        ]
+      },
+      "nativeGridHalfDiagonal": 0.00019872507696790077,
+      "files": [
+        {
+          "authoredLevel": 0,
+          "sha256": "e1de8dfb30f4f9b25b9eca48ad144f0a8f141d5e1b876eae74190f99deb3abd0"
+        },
+        {
+          "authoredLevel": 1,
+          "sha256": "3aa8a995cbb4a697ee5ec0db9e4f10b3bf1641412cb77983f068738bc38a9a4a"
+        },
+        {
+          "authoredLevel": 2,
+          "sha256": "e15f5438e49d701d64c3e9db93782a9e320576d8145952752c0beba257d9e7c6"
+        },
+        {
+          "authoredLevel": 3,
+          "sha256": "b032ab2d80d52636e40ed6f88b6334c09511d969f94c10704a0ddf1653084947"
+        },
+        {
+          "authoredLevel": 4,
+          "sha256": "683c73a3d15dac667d89f7b9c6e53be0b827779261ce4d341bb8df04adb4b939"
+        }
+      ]
+    },
+    {
+      "diagnosticId": "cruise:cell_0066",
+      "bounds": {
+        "min": [
+          -32.0,
+          16.0,
+          112.0
+        ],
+        "max": [
+          -16.0,
+          32.0,
+          128.0
+        ]
+      },
+      "farTriangles": 222,
+      "statedVisibleError": 0.13,
+      "nativeSurface": {
+        "parts": 17,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 66,
+        "collapsed": 0
+      },
+      "visibleFacade": {
+        "groups": 8,
+        "worstGroupP95": 0.05618999105868577,
+        "max": 0.05618999105868577
+      },
+      "wholeCellP95": 1.2168340682983398,
+      "sharedReferencedVertexBounds": {
+        "min": [
+          -3.550899028778076,
+          -8.0,
+          -8.0
+        ],
+        "max": [
+          8.0,
+          8.0,
+          8.0
+        ]
+      },
+      "nativeGridHalfDiagonal": 0.00019383207128894543,
+      "files": [
+        {
+          "authoredLevel": 0,
+          "sha256": "4197315205185cb3f400a37567ccd27c72535c0e8a933d07c2ec5a40b910b712"
+        },
+        {
+          "authoredLevel": 1,
+          "sha256": "91cd2e86bac36363dce284bcb8402fdb10fc91aef121ea147af8b025fdaecaf8"
+        },
+        {
+          "authoredLevel": 2,
+          "sha256": "6ec4e8d45025af2a84682c172b48bf8257c66d38bbdd00bde2f178f34a924afc"
+        },
+        {
+          "authoredLevel": 3,
+          "sha256": "ef4409f3958bbb4a55cfedc17d1c5ca3fbcbc9508a6617a2e5f6b1d886685c24"
+        },
+        {
+          "authoredLevel": 4,
+          "sha256": "1cb65828977ca439e9329d68ac2864d8cc44663bd3b1e014186a8a379b34ca5c"
+        }
+      ]
+    },
+    {
+      "diagnosticId": "cruise:cell_0067",
+      "bounds": {
+        "min": [
+          -32.0,
+          16.0,
+          128.0
+        ],
+        "max": [
+          -16.0,
+          32.0,
+          144.0
+        ]
+      },
+      "farTriangles": 254,
+      "statedVisibleError": 0.13,
+      "nativeSurface": {
+        "parts": 16,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 64,
+        "collapsed": 0
+      },
+      "visibleFacade": {
+        "groups": 5,
+        "worstGroupP95": 0.056356521892461285,
+        "max": 0.056356521892461285
+      },
+      "wholeCellP95": 1.2396372600691439,
+      "sharedReferencedVertexBounds": {
+        "min": [
+          -2.1960580348968506,
+          -8.0,
+          -8.0
+        ],
+        "max": [
+          8.0,
+          8.0,
+          8.0
+        ]
+      },
+      "nativeGridHalfDiagonal": 0.00018935616158316702,
+      "files": [
+        {
+          "authoredLevel": 0,
+          "sha256": "1bd3a9742bf2ce29047bd9d8de55662d3956727005c8f6e276f58cb3d8b15a7a"
+        },
+        {
+          "authoredLevel": 1,
+          "sha256": "7df54bcd201af53bb9191d35e2a423f868e27e4b85bb24202ab22f691b30f798"
+        },
+        {
+          "authoredLevel": 2,
+          "sha256": "325c7290168ef0c506296aad7e02a070bcdc5f188241c14fb33c043c6ae5a6f8"
+        },
+        {
+          "authoredLevel": 3,
+          "sha256": "a6202a9d510a438d4a7be1e3c95e14807cecc078dbd7061e6c507301a72a956a"
+        },
+        {
+          "authoredLevel": 4,
+          "sha256": "d16bddb03fe4386723f7502bacbe31d596ae8f89d92f120b52ed86de5f59d6d0"
+        }
+      ]
+    },
+    {
+      "diagnosticId": "cruise:cell_0068",
+      "bounds": {
+        "min": [
+          -32.0,
+          16.0,
+          144.0
+        ],
+        "max": [
+          -16.0,
+          32.0,
+          160.0
+        ]
+      },
+      "farTriangles": 222,
+      "statedVisibleError": 0.13,
+      "nativeSurface": {
+        "parts": 11,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 42,
+        "collapsed": 0
+      },
+      "visibleFacade": {
+        "groups": 3,
+        "worstGroupP95": 0.05624216907445227,
+        "max": 0.05624216907445227
+      },
+      "wholeCellP95": 1.239458243052165,
+      "sharedReferencedVertexBounds": {
+        "min": [
+          0.14948169887065887,
+          -8.0,
+          -8.0
+        ],
+        "max": [
+          8.0,
+          8.0,
+          8.0
+        ]
+      },
+      "nativeGridHalfDiagonal": 0.00018273405725669127,
+      "files": [
+        {
+          "authoredLevel": 0,
+          "sha256": "88a35923a5df05cb7d70dee5f43ae025576bbe409f0ae9b9ef14064844025f07"
+        },
+        {
+          "authoredLevel": 1,
+          "sha256": "a5bcbc0d890889fbe9f6327bddf1641ac2bd7fba035945f13582ccd5c70ac9bf"
+        },
+        {
+          "authoredLevel": 2,
+          "sha256": "3aead91d3d8760ca8c2e54c52ea85a090e94f5aaeb33ffdc357c368350983d16"
+        },
+        {
+          "authoredLevel": 3,
+          "sha256": "f35e4b404d20005a5992c3a78b840662e79bea8a96c83a03d137f8de3a4a3317"
+        },
+        {
+          "authoredLevel": 4,
+          "sha256": "f9ecb6e97a02fa3dfda5d93b1e4916e71e2372880b015cd38cb9ad05983bcec1"
+        }
+      ]
+    },
+    {
+      "diagnosticId": "cruise:cell_0183",
+      "bounds": {
+        "min": [
+          -16.0,
+          16.0,
+          144.0
+        ],
+        "max": [
+          0.0,
+          32.0,
+          160.0
+        ]
+      },
+      "farTriangles": 182,
+      "statedVisibleError": 0.13,
+      "nativeSurface": {
+        "parts": 6,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 6,
+        "collapsed": 0
+      },
+      "visibleFacade": {
+        "groups": 1,
+        "worstGroupP95": 0.05617030933232566,
+        "max": 0.05617030933232566
+      },
+      "wholeCellP95": 1.2407605051994324,
+      "sharedReferencedVertexBounds": {
+        "min": [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        "max": [
+          8.0,
+          8.0,
+          8.0
+        ]
+      },
+      "nativeGridHalfDiagonal": 0.00021143843593479747,
+      "files": [
+        {
+          "authoredLevel": 0,
+          "sha256": "52602906ce3152c9ce5f60d44599d047d76b74e50705a011ef19c99e67ea7c46"
+        },
+        {
+          "authoredLevel": 1,
+          "sha256": "6998c924464226e3c9fa140bad48ebf4ea302cf9459f765c250bb4d2a6b07a35"
+        },
+        {
+          "authoredLevel": 2,
+          "sha256": "fe3aa2706d0c2a97971feac23c9881944b9bd234e97a1e02c7266c4541cc3d4c"
+        },
+        {
+          "authoredLevel": 3,
+          "sha256": "3a9070900f857f1b35be945fc77c3577ca474e7a3a3c61bb454be50294e0676a"
+        },
+        {
+          "authoredLevel": 4,
+          "sha256": "0d4ac9eefe19a466f5b81a54dab83177880426b183cdcc58cf381d8037104494"
+        }
+      ]
+    },
+    {
+      "diagnosticId": "cruise:cell_0207",
+      "bounds": {
+        "min": [
+          -16.0,
+          32.0,
+          144.0
+        ],
+        "max": [
+          0.0,
+          48.0,
+          160.0
+        ]
+      },
+      "farTriangles": 242,
+      "statedVisibleError": 0.13,
+      "nativeSurface": {
+        "parts": 7,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 3,
+        "collapsed": 0
+      },
+      "visibleFacade": {
+        "groups": 0,
+        "worstGroupP95": null,
+        "max": null
+      },
+      "wholeCellP95": 1.2400280833244324,
+      "sharedReferencedVertexBounds": {
+        "min": [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        "max": [
+          8.0,
+          8.0,
+          0.45366960763931274
+        ]
+      },
+      "nativeGridHalfDiagonal": 0.0001842937288270758,
+      "files": [
+        {
+          "authoredLevel": 0,
+          "sha256": "881641f37e3da2242dcd34c42b3cfa87c1ffeb04ab3ca013f6604c1b75e8c528"
+        },
+        {
+          "authoredLevel": 1,
+          "sha256": "984634bcfdbda5dfc3968814b84fa209e7cda7397e9b330e5eba98b8b4bebd5f"
+        },
+        {
+          "authoredLevel": 2,
+          "sha256": "d57efdc0590bfd266ee7f5c8c7d0f0dd67d3e68c628487936c344462a35e36be"
+        },
+        {
+          "authoredLevel": 3,
+          "sha256": "21e4be6abaa993478a204e8cd45b3ffae5842a86699488e2ac18ad451d8f1a11"
+        },
+        {
+          "authoredLevel": 4,
+          "sha256": "e6af521b8f57a34c787337b454f9a35045be867f1cbc4c2a01bd18997f4958d8"
+        }
+      ]
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "cruise:door",
+      "triangles": 12,
+      "surface": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 5,
+        "collapsed": 0
+      },
+      "queries": [
+        {
+          "point": [
+            8,
+            1.3,
+            8
+          ],
+          "minimumDistance": 0.9,
+          "distance": 1.0050179661984473
+        },
+        {
+          "point": [
+            8,
+            2.8,
+            8
+          ],
+          "maximumDistance": 0.13,
+          "distance": 0.10000038146972656
+        },
+        {
+          "point": [
+            8.1,
+            1.3,
+            7.02
+          ],
+          "minimumDistance": 0.01,
+          "distance": 0.020030517581757012
+        },
+        {
+          "point": [
+            8.1,
+            1.3,
+            8.98
+          ],
+          "minimumDistance": 0.01,
+          "distance": 0.020030517581757012
+        }
+      ],
+      "bounds": {
+        "min": [
+          8.100000381469727,
+          0,
+          4
+        ],
+        "max": [
+          8.100000381469727,
+          3,
+          12
+        ]
+      },
+      "tags": [
+        "enamel"
+      ],
+      "declaredError": 0.13
+    },
+    {
+      "id": "cruise:turned_door",
+      "triangles": 12,
+      "surface": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 3,
+        "collapsed": 0
+      },
+      "queries": [
+        {
+          "point": [
+            8,
+            1.3,
+            8
+          ],
+          "minimumDistance": 0.9,
+          "distance": 1.0038567767817517
+        },
+        {
+          "point": [
+            8,
+            2.8,
+            8
+          ],
+          "maximumDistance": 0.13,
+          "distance": 0.09998866061126971
+        },
+        {
+          "point": [
+            7.596588541666666,
+            1.3,
+            7.101432291666667
+          ],
+          "minimumDistance": 0.01,
+          "distance": 0.018983519936383492
+        },
+        {
+          "point": [
+            8.576588541666666,
+            1.3,
+            8.798567708333334
+          ],
+          "minimumDistance": 0.01,
+          "distance": 0.018983984421289252
+        }
+      ],
+      "bounds": {
+        "min": [
+          6.085747241973877,
+          0,
+          4.485000133514404
+        ],
+        "max": [
+          10.087430953979492,
+          3,
+          11.414999961853027
+        ]
+      },
+      "tags": [
+        "enamel"
+      ],
+      "declaredError": 0.13
+    },
+    {
+      "id": "cruise:beam",
+      "triangles": 4,
+      "surface": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 1,
+        "collapsed": 0
+      },
+      "queries": [],
+      "bounds": {
+        "min": [
+          28.899999618530273,
+          18,
+          2
+        ],
+        "max": [
+          28.899999618530273,
+          21,
+          5
+        ]
+      },
+      "tags": [
+        "enamel"
+      ],
+      "declaredError": 0.13
+    },
+    {
+      "id": "cruise:aft_navy",
+      "triangles": 4,
+      "surface": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 1,
+        "collapsed": 0
+      },
+      "queries": [],
+      "bounds": {
+        "min": [
+          4,
+          18,
+          60.400001525878906
+        ],
+        "max": [
+          10,
+          21,
+          60.400001525878906
+        ]
+      },
+      "tags": [
+        "navy"
+      ],
+      "declaredError": 0.13
+    }
+  ],
+  "integration": {
+    "candidates": [
+      4,
+      5
+    ],
+    "panelInterception": "After cell clipping and before box_of, call facade_panel(faces, owner, category, interior) for facade/wall categories; accepted panels are collected and passed to facade_panels once per cell. Preserve original handling for non-panels and candidates 0\u20133.",
+    "interior": "Use the same authored interior references as near pane_side, notably upper accommodation (0, 68.65) and bridge public interior (0, 130); do not infer every outward direction from coordinate sign.",
+    "forebody": "Call forebody only for distant_shell forebody_rake at candidates 4/5; retain original earlier levels.",
+    "errors": "Carry mesh.far_facade_error into each candidate and retained native LOD declaration; no global error increase."
+  },
+  "limits": [
+    "All retained LOD positions establish geometry-only shared bounds, but unused source vertices and final mesh conversion must still be checked in the delivered pack.",
+    "Visible error samples cover actual retained facade outer broad faces, not every original cell surface or every direction of visibility.",
+    "Final full native art validation, all occupied cells, and independent distant visibility review remain required."
+  ]
+}
