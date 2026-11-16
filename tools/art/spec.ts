@@ -198,8 +198,6 @@ export interface RagdollSpec {
 export interface CreatureAsset {
   readonly kind: "creature";
   readonly source: ModelSource;
-  /** Keep authored _LOD1… meshes as flat levels, including their dominant bones and palette materials. Requires flat:1. */
-  readonly authoredLevels?: boolean;
   /** Metres to one of the model's units. */
   readonly scale: number;
 

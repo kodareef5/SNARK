@@ -6,7 +6,7 @@ import type { Def } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { isBoatVehicle } from "../../shared/sim/vehicle.ts";
 import { boatRestY } from "../../shared/sim/boat.ts";
-import { placeLandmark, type Landmark } from "../../shared/world/landmark.ts";
+import { GROUND_EASE, landmarkGround, placeLandmark, type Landmark } from "../../shared/world/landmark.ts";
 import type { MapContent, MapStatic, MapVehicle } from "../../shared/world/mapfile.ts";
 import { S, type Ground } from "./ground.ts";
 
@@ -17,9 +17,6 @@ export interface LandmarkSite {
   readonly y?: number;
   readonly yaw: number;
 }
-
-/** Metres over which ground laid to a height eases back into the ground round it. */
-const EASE = 16;
 
 const yawUnits = (degrees: number): number => Math.round((degrees * 65536) / 360) & 65535;
 
@@ -36,40 +33,20 @@ export const landmarkDefs = (placed: readonly { landmark: Landmark }[]): Def[] =
 
 /**
  * The ground each landmark asks for, laid on the map's samples (x is size less twice the column, z size less twice the
- * row): dug rectangles lowered to their depth and made deep water, the rest set to their height and paved, easing into the
- * ground round them.
+ * row): dug ground made deep water, paved ground deck.
  */
 export function layLandmarkGround(ground: Ground, placed: readonly { site: LandmarkSite; landmark: Landmark }[], size: number, sea: number): void {
-  const n = ground.n;
+  const n = ground.n, laid = new Uint8Array(1);
   for (const { site, landmark } of placed) {
-    const a = (yawUnits(site.yaw) / 65536) * Math.PI * 2, s = Math.sin(a), c = Math.cos(a);
-    for (const g of landmark.ground) {
-      const [x0, z0] = [Math.min(g.from[0], g.to[0]), Math.min(g.from[1], g.to[1])], [x1, z1] = [Math.max(g.from[0], g.to[0]), Math.max(g.from[1], g.to[1])];
-      const reach = Math.hypot(x1 - x0, z1 - z0) / 2 + EASE + Math.hypot((x0 + x1) / 2, (z0 + z1) / 2);
-      const cols = [Math.floor((size - site.at[0] - reach) / 2), Math.ceil((size - site.at[0] + reach) / 2)];
-      const rows = [Math.floor((size - site.at[1] - reach) / 2), Math.ceil((size - site.at[1] + reach) / 2)];
-      for (let row = Math.max(0, rows[0]!); row <= Math.min(n - 1, rows[1]!); row++) {
-        for (let col = Math.max(0, cols[0]!); col <= Math.min(n - 1, cols[1]!); col++) {
-          // The sample in the landmark's metres: its yaw undone.
-          const dx = size - col * 2 - site.at[0], dz = size - row * 2 - site.at[1];
-          const lx = c * dx - s * dz, lz = s * dx + c * dz;
-          const out = Math.hypot(Math.max(x0 - lx, 0, lx - x1), Math.max(z0 - lz, 0, lz - z1));
-          const i = row * n + col, y = (site.y ?? sea) + g.y;
-          if (g.dig) {
-            if (out > 0 || ground.height[i]! <= y) continue;
-            ground.height[i] = y;
-            ground.surface[i] = S.DEEP;
-            ground.water[i] = 1;
-            continue;
-          }
-          if (out >= EASE) continue;
-          const w = out === 0 ? 1 : 1 - out / EASE;
-          ground.height[i] = ground.height[i]! + (y - ground.height[i]!) * w * w * (3 - 2 * w);
-          if (out === 0) {
-            ground.surface[i] = S.DECK;
-            ground.water[i] = 0;
-          }
-        }
+    const reach = Math.max(...landmark.ground.flatMap((g) => [...g.from, ...g.to].map(Math.abs))) * Math.SQRT2 + GROUND_EASE;
+    const [c0, c1] = [Math.floor((size - site.at[0] - reach) / 2), Math.ceil((size - site.at[0] + reach) / 2)];
+    const [r0, r1] = [Math.floor((size - site.at[1] - reach) / 2), Math.ceil((size - site.at[1] + reach) / 2)];
+    for (let row = Math.max(0, r0); row <= Math.min(n - 1, r1); row++) {
+      for (let col = Math.max(0, c0); col <= Math.min(n - 1, c1); col++) {
+        const i = row * n + col;
+        ground.height[i] = landmarkGround(landmark, site.at[0], site.y ?? sea, site.at[1], yawUnits(site.yaw), size - col * 2, size - row * 2, ground.height[i]!, laid);
+        if (laid[0] === 1) [ground.surface[i], ground.water[i]] = [S.DEEP, 1];
+        else if (laid[0] === 2) [ground.surface[i], ground.water[i]] = [S.DECK, 0];
       }
     }
   }

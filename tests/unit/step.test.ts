@@ -192,26 +192,16 @@ test("every piece content means to be walked onto still is, and every piece mean
     // Sloped pieces are walked by tests/unit/slopes.test.ts.
     const hulls = reg.parts.hulls;
     if (d?.type !== "structure" || d.id.startsWith("test:") || (hulls && hulls.start[k + 1]! > hulls.start[k]!)) continue;
-    // Fixed assemblies can have a low walking surface below a high guard or ceiling. Their half-height is not a
-    // single climbable top: Koru's complete decks, stairs and gangway are walked in tests/integration/koru.test.ts.
-    if (d.id.startsWith("core:koru_") && reg.parts.start[k + 1]! - reg.parts.start[k]! > 1) continue;
     const role = reg.role[k]!;
     const w = world();
     if (!joined.includes(role)) {
       // On open ground: a foundation as it is set down, anything else on its base. From eight sides, a step reaches it if it
-      // is a foundation or low enough. A single collider may be offset from its origin and have larger decorative look
-      // bounds: centre that physical box at (64, 64), rest its bottom on the ground, and measure its actual placed top.
-      const first = reg.parts.start[k]!, single = reg.parts.start[k + 1] === first + 1, at = first * 6, box = reg.parts.box;
-      const ref = role === ROLE_FOUNDATION ? put(w, k) : single
-        ? w.structs.add(k, 64 - box[at]!, box[at + 4]! - box[at + 1]!, 64 - box[at + 2]!, 0, 0, 1)
-        : w.structs.add(k, 64, w.structs.halfYOf(k), 64, 0, 0, 1);
-      const row = w.structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
-      const x = single ? row.x[slot]! + box[at]! : 64, z = single ? row.z[slot]! + box[at + 2]! : 64;
-      const top = single ? row.y[slot]! + box[at + 1]! + box[at + 4]! : topOf(w, ref, k);
-      const from = (single ? Math.hypot(box[at + 3]!, box[at + 5]!) : Math.hypot(reg.halfX[k]!, reg.halfZ[k]!)) + .5;
+      // is a foundation or low enough.
+      const ref = role === ROLE_FOUNDATION ? put(w, k) : w.structs.add(k, 64, w.structs.halfYOf(k), 64, 0, 0, 1);
+      const top = topOf(w, ref, k);
       const onto = role === ROLE_FOUNDATION || top <= STEP + SKIN;
       for (let side = 0; side < 8; side++) {
-        const { high, upon } = walk(w, survivor, x, z, side * 45, { from });
+        const { high, upon } = walk(w, survivor, 64, 64, side * 45, { from: Math.hypot(reg.halfX[k]!, reg.halfZ[k]!) + 0.5 });
         if (onto ? high < top - 0.01 : upon) wrong.push(`${d.id}, ${top.toFixed(3)} m up, from side ${side}: stood ${high.toFixed(3)} m up`);
       }
       continue;

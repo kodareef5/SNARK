@@ -70,3 +70,32 @@ export function placeLandmark(l: Landmark, x: number, y: number, z: number, yaw:
   });
   return { statics, vehicles };
 }
+
+/** Metres over which ground laid to a height eases into the ground round it. */
+export const GROUND_EASE = 16;
+
+/**
+ * The ground at (x, z) once the landmark set down at (ox, oy, oz) and turned by `yaw` lays its own (LandmarkGround), where it
+ * was `h`; and in `laid[0]` 1 where that is dug, 2 where it is paved whole, 0 elsewhere.
+ */
+export function landmarkGround(l: Landmark, ox: number, oy: number, oz: number, yaw: number, x: number, z: number, h: number, laid?: Uint8Array): number {
+  const a = (yaw / 65536) * Math.PI * 2, s = Math.sin(a), c = Math.cos(a);
+  // The point in the landmark's metres: its yaw undone.
+  const dx = x - ox, dz = z - oz, lx = c * dx - s * dz, lz = s * dx + c * dz;
+  if (laid) laid[0] = 0;
+  for (const g of l.ground) {
+    const out = Math.hypot(Math.max(Math.min(g.from[0], g.to[0]) - lx, 0, lx - Math.max(g.from[0], g.to[0])), Math.max(Math.min(g.from[1], g.to[1]) - lz, 0, lz - Math.max(g.from[1], g.to[1])));
+    const y = oy + g.y;
+    if (g.dig) {
+      if (out === 0 && h > y) {
+        h = y;
+        if (laid) laid[0] = 1;
+      }
+    } else if (out < GROUND_EASE) {
+      const w = out === 0 ? 1 : 1 - out / GROUND_EASE;
+      h += (y - h) * w * w * (3 - 2 * w);
+      if (laid && out === 0) laid[0] = 2;
+    }
+  }
+  return h;
+}

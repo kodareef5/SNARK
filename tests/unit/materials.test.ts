@@ -107,33 +107,6 @@ test("a creature whose materials name pictures converts to a mesh drawn with the
   });
 });
 
-test("authored skinned levels preserve their silhouette, palette and dominant bones while the default still simplifies the fine surface", async () => {
-  await scratch((root) => {
-    const { asset, glb } = tube(root, { flat: 1, authoredLevels: true, budgets: { triangles: [512, 256], texture: { top: 64, megabytes: 1 } } });
-    writeFileSync(glb, tubeGlb(true, true));
-    const authored = built();
-    convertModel(asset, glb, authored);
-    expect(authored.faults).toEqual([]);
-    const coarse = authored.meshes[0]!.lods[1]!;
-    expect(coarse.indices.length).toBe(12);
-    expect([...coarse.bones!]).toEqual([1, 1, 1, 1]);
-    expect(Math.max(...coarse.positions)).toBeCloseTo(.6);
-    expect(coarse.uvs).toBeUndefined();
-    expect(new Set(coarse.colors).size).toBe(1);
-    expect(coarse.colors[0]).toBeLessThan(REGION_BASE);
-    const packed = packOf(authored);
-    expect(unpackMeshes(parsePack(repack(packed, true, asset)))[0]!.lods[1]!.indices.length).toBe(12);
-    const generated = built();
-    convertModel({ ...asset, spec: { ...asset.spec, authoredLevels: undefined } }, glb, generated);
-    expect(generated.faults).toEqual([]);
-    expect(generated.meshes[0]!.lods[1]!.indices.length).toBeGreaterThan(12);
-    expect(Math.max(...generated.meshes[0]!.lods[1]!.positions)).toBeGreaterThan(1.8);
-    expect(new Set(generated.meshes[0]!.lods[1]!.bones!).size).toBe(2);
-    expect(authored.meshes[0]!.lods[0]!.colors).toEqual(generated.meshes[0]!.lods[0]!.colors);
-    expect([...new Set(authored.meshes[0]!.lods[0]!.colors)].sort((a, b) => a - b)).toEqual([nearestColour(palette, 214, 194, 137), 240, 241, 242, 243]);
-  });
-});
-
 test("the check notes a map that draws as none would, one larger than its content needs, and a picture two materials name; `tops` stores a map smaller", async () => {
   await scratch(async (root) => {
     const black: Picture = { width: 64, height: 64, channels: 3, depth: 8, data: new Uint8Array(64 * 64 * 3) };
