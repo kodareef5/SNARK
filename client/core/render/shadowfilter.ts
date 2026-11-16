@@ -4,7 +4,7 @@
 // a texel of each half and a quarter of the way. It is one draw, one lookup and four pixels read back, in targets of its
 // own, and the context is left as it was found.
 
-import { FULL_SCREEN, GL, compareKind, compile, framebuffer, saveState, texture2d, type Gl2 } from "../devicegpu.ts";
+import { FULL_SCREEN, GL, compareKind, compile, framebuffer, saveState, texture2d, type Gl2 } from "../probegl.ts";
 
 const WRITE = [`#version 300 es
 ${FULL_SCREEN}

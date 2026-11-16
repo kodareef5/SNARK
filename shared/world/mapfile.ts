@@ -781,15 +781,15 @@ function read(r: In): Omit<MapFile, "hash"> {
   return { id, dims, minY, stepY, seaLevel, heights, tint: tint ?? new Uint8Array(heights.length), statics, nodes, spawns, ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(water ? { water } : {}) };
 }
 
-/** Throws with a reason if the file is not a map this build can play on. */
-export function parseMap(file: Uint8Array): MapFile {
+/** Throws with a reason if the file is not a map this build can play on. Without `verify`, the body is taken to match the header's hash. */
+export function parseMap(file: Uint8Array, verify = true): MapFile {
   const r = new In(file);
   if (file.length < HEADER_BYTES || r.u32() !== MAGIC) throw new Error("map: this is not a map file");
   const version = r.u16();
   if (version !== MAP_VERSION && version !== MAP_VERSION_DRY && version !== 1) throw new Error(`map: version ${version} is not one this build reads`);
   r.at += 2;
   const hash = r.u32();
-  if (hash !== hashBytes(file.subarray(12))) throw new Error("map: the file is damaged: its hash is not that of its bytes");
+  if (verify && hash !== hashBytes(file.subarray(12))) throw new Error("map: the file is damaged: its hash is not that of its bytes");
   let map: Omit<MapFile, "hash">;
   try {
     map = read(r);
