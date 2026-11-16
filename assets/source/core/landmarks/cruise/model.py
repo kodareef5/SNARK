@@ -220,13 +220,15 @@ def build(m,p):
   n=[32,24,16,12,8,8][m.level]
   rings=[[[rx*math.cos(k*math.tau/n),y,shift+rz*math.sin(k*math.tau/n)] for k in range(n)] for y,rx,rz,shift in p['art']['profile']]
   m.loft(rings,finish)
+ elif kind=='hull_shell':
+  for hull,tag in zip(p['hulls'],p['art']['finishes']):m.convex(hull['points'],tag)
  elif kind=='mast':
   for b in p['boxes']:
    lo,hi=extents(b);axis=max(range(3),key=lambda k:hi[k]-lo[k]);a=b['at'][:];c=a[:]
    a[axis]=lo[axis];c[axis]=hi[axis];radius=min(b['half'][k] for k in range(3) if k!=axis)
    m.tube([a,c],radius,finish)
  else:
-  for b in p['boxes']:drawbox(m,b,finish)
+  for b in p['art'].get('visualBoxes',p['boxes']):drawbox(m,b,finish)
   for h in p['hulls']:m.convex(h['points'],finish)
 
 report={'prototypes':[],'totals':[0]*6,'notes':['Six authored native levels of the production reconstruction.','Original materials; reference pixels are not sampled.']}

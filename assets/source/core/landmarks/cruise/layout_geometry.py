@@ -334,3 +334,7 @@ def populate(D,prototype,instance,box,node):
  finish_entries(D)
  from layout_batches import finish as finish_batches
  finish_batches(D,world,place)
+ from layout_hull_batches import finish as finish_hull_batches
+ finish_hull_batches(D,p,world,place,box,ys)
+ from layout_wall_batches import finish as finish_wall_batches
+ finish_wall_batches(D,p,world,place,box,ys)
