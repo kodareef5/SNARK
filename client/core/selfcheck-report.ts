@@ -6,7 +6,7 @@ import type { Heightfield } from "../../shared/world/heightfield.ts";
 import type { App } from "./app.ts";
 import type { AssetPort } from "./assets/port.ts";
 import type { FramePacket } from "./render/packet.ts";
-import type { SelfcheckSurfaces } from "./selfcheck-surfaces.ts";
+import { NO_REFERENCE, type SelfcheckSurfaces } from "./selfcheck-surfaces.ts";
 import type { VehicleSelfcheck } from "./vehicle-selfcheck.ts";
 import { probeProgress } from "./diagnostics.ts";
 import { heldTo, probePasses, provingProbes, type Probe } from "./selfcheck.ts";
@@ -41,7 +41,7 @@ export interface SelfcheckObservations {
   sound: { peak: number } | null;
   cache: AssetPort["cache"];
   userAgent: string;
-  surfaces?: Pick<SelfcheckSurfaces, "sample" | "error" | "fetched" | "cached"> | null;
+  surfaces?: Pick<SelfcheckSurfaces, "sample" | "state"> | null;
   width: number;
   height: number;
   times: number[];
@@ -87,7 +87,7 @@ export function selfcheckReport(app: App, pack: Pack, manifest: Manifest, hf: He
     textures: { format: renderer.format, takes: renderer.formats, errors: renderer.errors },
     canvas: [width, height],
     probes,
-    ...(packet.lit ? { surfaceReference: { ready: !!o.surfaces?.sample, format: "rgba", error: o.surfaces?.error ?? null, fetched: o.surfaces?.fetched ?? 0, cached: o.surfaces?.cached ?? 0 } } : {}),
+    ...(packet.lit ? { surfaceReference: o.surfaces?.state ?? NO_REFERENCE } : {}),
     interface: { nodes: app.ui.frame.count, misplaced },
     structures: session.world!.structs.count,
     tiles: packet.tileCount,

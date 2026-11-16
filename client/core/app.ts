@@ -143,7 +143,8 @@ export class App {
   marks: Mark[] = [];
   /** Show the asset library's state on the status line. */
   debug = false;
-  private readonly stream: { manifest: Manifest; port: AssetPort } | undefined;
+  /** The manifest and the asset port the scene is made with once the session has a world. */
+  stream: { manifest: Manifest; port: AssetPort } | undefined;
   /** The asset port shared with the sounds, once there is a scene and a device to play on. */
   private split: SplitPort | null = null;
   /** Smoothed. */

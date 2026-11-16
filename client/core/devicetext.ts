@@ -293,6 +293,8 @@ export function deviceTable(r: DeviceReport): string[] {
   if (r.probes) {
     const wrong = r.probes.filter((p) => !p.ok);
     out.push(`picture   ${r.probes.length - wrong.length} of ${r.probes.length} probes right (${r.probes.map((p) => p.name).join(" ")})${wrong.map((p) => `; ${p.name} is ${p.got.join(",")}, not ${p.expected.join(",")}`).join("")}`);
+    const s = r.surfaceReference;
+    if (s) out.push(`          ${s.ready ? "ground and statics held to the" : "ground and statics not judged: no"} world surfaces' ${s.format} reference${s.error ? ` (${s.error})` : ""}, ${mb(s.fetched)} MB fetched, ${mb(s.cached)} MB from disk`);
   }
   if (r.hashes) {
     const differ = r.hashes.filter((h) => h.got !== h.want);

@@ -31,8 +31,8 @@ test("surface twins hit the same pixels, planes and mips as the software scene a
       }
     }
     for (const [index, kind] of [[1, PICK_TERRAIN], [2, PICK_STRUCTURE], [3, PICK_TERRAIN], [4, PICK_ENTITY]]) expect(v.raster.pickKind[probePixel(v, probes[index!]!)]).toBe(kind);
-    const flat = provingProbes(v.cam, v.reg, v.pack.palette, SKY_COLOR, v.hf, true, p);
-    for (const i of hour === 9 ? [2, 3] : [3]) expect(probePasses(flat[i]!, ...probeRgb(v, probes[i]!))).toBe(false);
+    // Without the reference the ground and the statics are left out, never held to palette light.
+    expect(provingProbes(v.cam, v.reg, v.pack.palette, SKY_COLOR, v.hf, true, p, { width: width!, height: height!, sample: null }).map((b) => b.name)).toEqual(["sky", "creature", "body"]);
   }
 });
 
@@ -40,7 +40,7 @@ test("a rigid species keeps its palette light with or without the atlas; removin
   const v = surfaceProbeView(320, 180), maps = worldMaps(v.pack);
   const p = v.scene.build(v.cam, v.remote);
   p.texUploads.push(...maps.uploads); v.raster.render(p);
-  const creature = provingProbes(v.cam, v.reg, v.pack.palette, SKY_COLOR, v.hf, true, p).find((b) => b.name === "creature")!;
+  const creature = provingProbes(v.cam, v.reg, v.pack.palette, SKY_COLOR, v.hf, true, p, { width: 320, height: 180, sample: maps.sample }).find((b) => b.name === "creature")!;
   const at = probePixel(v, creature), draw = v.raster.pickDraw[at]!;
   expect(v.raster.pickId[at]).toBe(v.remote.id[1]!);
   expect(p.drawFlags[draw]! & DRAW_PLAIN).toBe(DRAW_PLAIN);

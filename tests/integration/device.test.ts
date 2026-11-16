@@ -10,8 +10,15 @@ import { join } from "node:path";
 import { DeviceProbe, RUNGS, newReport, spread, type DeviceReport, type RungReport } from "../../client/core/device.ts";
 import { deviceTable } from "../../client/core/devicetext.ts";
 import { DRAW_PULLED, DRAW_SIZED, FRAME } from "../../client/core/render/packet.ts";
+import { decodeTexture, sampleWorldTexture } from "../../client/core/render/cpu-texture.ts";
+import { selfcheckReport } from "../../client/core/selfcheck-report.ts";
+import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
+import { describePack } from "../../shared/pack/manifest.ts";
 import { MAX_RUNS, MAX_WRONG, REPORT_BYTES, deviceRoutes, filesChanged, lacking, servedFiles } from "../../tools/device.ts";
+import { writeTextureFile } from "../../tools/pack/texture.ts";
+import { FakeNet } from "../fixtures/assetnet.ts";
 import { TIMING, TOKEN, browser, client, renderer, run, settle } from "../fixtures/device.ts";
+import { corePack } from "../fixtures/pack.ts";
 
 test("a page shows which device it is on and the tests, starts nothing until one is tapped, then runs the quick look and posts after every step", async () => {
   const { h, pack, app, expected } = client();
@@ -76,8 +83,10 @@ test("a page shows which device it is on and the tests, starts nothing until one
   expect(page.text.startsWith("<div")).toBe(true);
   expect(page.text).toContain("Done.</b> Sent.");
   expect(page.text).toContain("tiers run lowpoly, medium, high");
-  // The fake draws nothing, so the pictures and the far blocks' edge read wrong; and the harness fetches no textures.
-  expect(lacking(r).filter((line) => !/^(probe |gpu far edge|gpu draw (textured|skinned))/.test(line))).toEqual(["nothing was drawn with its materials on medium, which has them", "nothing was drawn with its materials on high, which has them", "tier ultra did not run every scene"]);
+  // The fake draws nothing, so the pictures and the far blocks' edge read wrong; and the harness fetches no textures,
+  // the world surfaces' reference among them, so the lit ground and statics are not judged.
+  expect(lacking(r).filter((line) => !/^(probe |gpu far edge|gpu draw (textured|skinned))/.test(line))).toEqual(["ground and statics not judged: no world-surface reference (the page made none)", "nothing was drawn with its materials on medium, which has them", "nothing was drawn with its materials on high, which has them", "tier ultra did not run every scene"]);
+  expect([r.probes!.map((p) => p.name), r.surfaceReference]).toEqual([["sky", "creature"], { ready: false, format: "rgba", error: "the page made none", fetched: 0, cached: 0 }]);
   expect(card.gl.invalid).toEqual([]);
   expect([air.length > 0, air.every(([haze, detail]) => haze === 0 && detail === 0), app.scene!.plainSky]).toEqual([true, true, false]);
 
@@ -86,9 +95,41 @@ test("a page shows which device it is on and the tests, starts nothing until one
   expect([probe.report.mode, probe.report.run, probe.report.done, probe.report.device?.touch]).toEqual(["soak", "fedcba9876543201", false, 5]);
   await run(probe, h, app, gpu, 30000);
   const s = probe.report.soak!;
-  expect([probe.report.done, probe.report.errors, s.tier, s.from, s.minutes.length]).toEqual([true, [], "high", "defaults", 1]);
+  expect([probe.report.done, probe.report.errors, s.tier, s.from, s.minutes.length, probe.report.link.gameMs !== null]).toEqual([true, [], "high", "defaults", 1, true]);
   expect(s.minutes[0]!.frames).toBeGreaterThan(100);
   expect(deviceTable(probe.report).some((line) => line.startsWith("soak      high: 200 bodies, 1024 pieces") && line.includes("shadows on in 3 cascades"))).toBe(true);
+});
+
+test("the page holds the lit ground and statics to what the plain self-check expects of the same frame, by the world surfaces' reference through the game's port", async () => {
+  const pack = corePack(), manifest = describePack(pack, { name: "boot", bytes: 0 });
+  const material = manifest.materials!.find((m) => m.id === SURFACE_MATERIAL)!;
+  const roles = ["base", "normal", "mro"] as const;
+  const pictures = roles.map((role) => Array.from({ length: 7 }, (_, k) => new Uint8Array(4 ** k * (role === "normal" ? 2 : 4)).fill(128)));
+  const encoded = writeTextureFile("rgba", roles.map((role, k) => ({ role, block: 1, pictures: pictures[k]! })));
+  manifest.files.push({ name: "reference", bytes: encoded.bytes.length, role: "tex", format: "rgba" });
+  roles.forEach((role, k) => void (manifest.textures![material[role]] = { id: `reference/${role}`, role, top: 64, in: { rgba: { file: 1, ...encoded.placed[k]! } } }));
+  const port = new FakeNet([new Uint8Array(0), encoded.bytes]);
+  const { h, app, expected } = client({ manifest, port });
+  const { b } = browser({ clock: () => h.now, expected, mode: "quick" });
+  const probe = new DeviceProbe(TOKEN, b, TIMING);
+  await probe.before();
+  const card = renderer();
+  probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, card.r);
+  // The plain probe's own report of the frame the page reads, from the same pictures decoded apart from the page's.
+  const maps = roles.map((role, k) => decodeTexture(role, pictures[k]!));
+  const surfaces = { sample: (role: number, u: number, v: number, spread: number, out: Float64Array) => sampleWorldTexture(maps[role]!, u, v, spread, out), state: { ready: true, format: "rgba" as const, error: null, fetched: 0, cached: 0 } };
+  let plain: ReturnType<typeof selfcheckReport> | null = null;
+  card.r.readPixel = () => {
+    const [width, height] = [card.gl.drawingBufferWidth, card.gl.drawingBufferHeight];
+    plain ??= selfcheckReport(app, pack, manifest, h.world.hf, app.scene!.packet, { has: (name) => name === "creature", voiced: false, voiceListen: false, voice: { played: 0, odd: 0, errors: 0, heard: [] }, driveCheck: false, drive: undefined, restored: 0, misplaced: 0, sound: null, cache: port.cache, userAgent: "", surfaces, width, height, times: [], renderer: { readPixel: () => [0, 0, 0], errors: 0, rendererName: "", format: "rgba", formats: [], drawCalls: 0 } });
+    return [0, 0, 0];
+  };
+  await run(probe, h, app, card.r, 20000, { each: (now) => port.advance(now), until: () => probe.report.probes !== null });
+  const r = probe.report;
+  expect([r.probes?.map((p) => p.name), r.surfaceReference?.ready, r.surfaceReference?.error, r.surfaceReference!.fetched > 0]).toEqual([["sky", "plaza", "block", "creature"], true, null, true]);
+  const twins = new Map(plain!.probes.map((p) => [p.name, p.expected]));
+  for (const p of r.probes!) expect([p.name, p.expected]).toEqual([p.name, twins.get(p.name)!]);
+  expect(deviceTable(r).some((line) => /^ {10}ground and statics held to the world surfaces' rgba reference, 0\.1 MB fetched, 0\.0 MB from disk$/.test(line))).toBe(true);
 });
 
 test("a page the browser reloads in the middle of a run shows and sends what it had, and runs again only when a test is tapped", async () => {

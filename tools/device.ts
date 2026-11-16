@@ -258,6 +258,7 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
   // The picture probes look at the proving ground, which the terrain server's map is not.
   for (const [part, value] of [["device", r.device], ["gpu", r.gpu], ["load", r.load], ["link", r.link.httpMs], ["probes", mode === "terrain" || mode === "trees" || r.soak?.wood || r.probes], ["hashes", r.hashes]] as const) if (!value) out.push(`no ${part}`);
   for (const p of r.probes ?? []) if (!p.ok) out.push(`probe ${p.name} is wrong`);
+  if (r.surfaceReference && !r.surfaceReference.ready) out.push(`ground and statics not judged: no world-surface reference (${r.surfaceReference.error})`);
   for (const h of r.hashes ?? []) if (h.got !== h.want) out.push(`hash ${h.name} differs from the server's`);
   if (r.link.missed > 0) out.push(`${r.link.missed} snapshots missed on this machine's own link`);
   if (r.served) out.push(`the server's files ${r.served}`);

@@ -47,16 +47,18 @@ const FACINGS = 64;
  * Probes for the proving ground seen from its spawn point looking north, in frame `p`. The slope probe lands where
  * expected only if terrain heights reach the GPU correctly. `withCreature` adds the creature and the body the probe
  * server places. Lit ground and statics use world-surfaces.ts at the readback pixel's intersection with their
- * plane, including the projected pixel footprint. Species keep palette lighting. The sky is the same dome table.
+ * plane, including the projected pixel footprint, and are left out on a lit frame without the reference atlas. Species
+ * keep palette lighting. The sky is the same dome table.
  */
-export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, skyIndex: number, hf: Heightfield, withCreature: boolean, p: FramePacket, surfaces?: ProbeSurfaces): Probe[] {
+export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, skyIndex: number, hf: Heightfield, withCreature: boolean, p: FramePacket, surfaces: ProbeSurfaces): Probe[] {
   const ray = [0, 0, 0];
   const out = [0, 0, 0];
   const rgb = [0, 0, 0];
   const at = [0, 0, 0];
   // gl.readPixel floors bottom-up coordinates. In particular, a probe exactly on a row boundary reads the row
   // ABOVE floor(sy * height). Sample its centre, not the projected landmark or the pixel's corner.
-  const screen = (): [number, number] => surfaces ? [(Math.floor(at[0]! * surfaces.width) + 0.5) / surfaces.width, 1 - (Math.floor((1 - at[1]!) * surfaces.height) + 0.5) / surfaces.height] : [at[0]!, at[1]!];
+  const screen = (): [number, number] => [(Math.floor(at[0]! * surfaces.width) + 0.5) / surfaces.width, 1 - (Math.floor((1 - at[1]!) * surfaces.height) + 0.5) / surfaces.height];
+  const finished = !p.lit || surfaces.sample !== null;
   const sun = [0, 0, 0];
   trueSun(p.frame, sun);
   const look = (view: ArrayLike<number>, light: Float64Array | Float32Array | number[]): void => domeLight(theSky().table, sun, view, light);
@@ -70,7 +72,7 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
     const albedo = Float64Array.from(raw, (c) => srgbToLinear(c / 255));
     const normal = Float64Array.from(n ?? v), orm = Float64Array.of(1, 1, 0), mirrored = new Float64Array(3);
     let distance = at[2]!;
-    if (plane && surfaces?.sample && n) {
+    if (plane && surfaces.sample && n) {
       const eye = [cam.x, cam.y, cam.z];
       const numerator = n.reduce((sum, c, k) => sum + c * (plane.point[k]! - eye[k]!), 0);
       const hit = (x: number, y: number): number[] => {
@@ -118,13 +120,13 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
   const hue: Probe["mode"] = p.lit ? "lit" : "hue";
   // The plaza is level, and far nearer than the fog.
   [at[0], at[1]] = [0.5, 0.97];
-  probes.push({ name: "plaza", sx: 0.5, sy: 0.97, rgb: color(1, [0, 1, 0], { point: [256, hf.heightAt(256, 240), 240], ground: true }), mode: hue });
+  if (finished) probes.push({ name: "plaza", sx: 0.5, sy: 0.97, rgb: color(1, [0, 1, 0], { point: [256, hf.heightAt(256, 240), 240], ground: true }), mode: hue });
   const block = reg.defs[reg.index.get("core:block") ?? 0];
   // South face of the block at (253, 1, 262).
-  if (block && block.type === "structure" && cam.project(253, 1, 260.99, at)) {
+  if (finished && block && block.type === "structure" && cam.project(253, 1, 260.99, at)) {
     probes.push({ name: "block", sx: at[0]!, sy: at[1]!, rgb: color(block.color, [0, 0, -1], { point: [253, 1, 261], ground: false }), mode: hue });
   }
-  if (cam.project(232, hf.heightAt(232, 296), 296, at)) {
+  if (finished && cam.project(232, hf.heightAt(232, 296), 296, at)) {
     // The slope is one plane there: its normal from the heights a sample either side.
     const [dx, dz] = [hf.heightAt(232 + hf.cell, 296) - hf.heightAt(232 - hf.cell, 296), hf.heightAt(232, 296 + hf.cell) - hf.heightAt(232, 296 - hf.cell)];
     const n = [-dx, 2 * hf.cell, -dz].map((c, _, all) => c / Math.hypot(...all));

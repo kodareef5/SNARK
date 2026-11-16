@@ -6,6 +6,10 @@ import { textureParts, type AssetArrival, type AssetPort, type AssetRequest, typ
 import { decodeTexture, sampleWorldTexture, type Texture } from "./render/cpu-texture.ts";
 import type { WorldSample } from "./render/world-surfaces.ts";
 
+/** What a report says of the reference: whether its maps are in, why not, and its bytes from the network and from disk. */
+export interface SurfaceReference { ready: boolean; format: "rgba"; error: string | null; fetched: number; cached: number }
+export const NO_REFERENCE: SurfaceReference = { ready: false, format: "rgba", error: "the page made none", fetched: 0, cached: 0 };
+
 /** Wrap the page's port only for self-checks. Negative slots belong to this reference, never GPU residency. */
 export class SelfcheckSurfaces implements AssetPort {
   sample: WorldSample | null = null;
@@ -26,6 +30,7 @@ export class SelfcheckSurfaces implements AssetPort {
   get cache(): AssetPort["cache"] { return this.port.cache; }
   get protocol(): string { return this.port.protocol; }
   get done(): boolean { return this.started && this.left === 0; }
+  get state(): SurfaceReference { return { ready: this.sample !== null, format: "rgba", error: this.error, fetched: this.fetched, cached: this.cached }; }
   request(r: AssetRequest): void { this.port.request(r); }
   cancel(slot: number): void { this.port.cancel(slot); }
   fill(parts: readonly { file: number; part: AssetPart }[]): void { this.port.fill(parts); }

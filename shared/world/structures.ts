@@ -67,6 +67,8 @@ export class ChunkTable {
   version = 0;
   /** Bumped when a slot's kind, position or yaw changes. Damage, repair and a change of owner leave it alone, so what is drawn need not be rebuilt for them. */
   shape = 0;
+  /** Bumped with `shape` but where a slot keeps its place and turn and takes another kind (a door opening), which what is drawn may follow in place. */
+  placed = 0;
   /** The free list must be rebuilt before the authority next adds to this chunk. */
   freeStale = false;
   /** The last GONE_KEPT removals, oldest first. goneFloor is the version of the newest removal dropped from the list. */
@@ -365,8 +367,8 @@ export class StructureStore {
     if (!t || slot >= t.high || t.kind[slot] === 0 || kind === 0) return false;
     const [x, y, z, yaw, owner, hp] = [t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, t.owner[slot]!, t.hp[slot]!];
     t.version++;
-    this.erase(chunk, t, slot, t.version);
-    this.write(chunk, t, slot, kind, x, y, z, yaw, owner, hp, t.version);
+    this.erase(chunk, t, slot, t.version, true);
+    this.write(chunk, t, slot, kind, x, y, z, yaw, owner, hp, t.version, true);
     t.touch(slot, 1);
     this.onChunkChanged?.(chunk, false);
     return true;
@@ -439,8 +441,9 @@ export class StructureStore {
       t.mod[slot] = mod;
       return;
     }
-    if (slot < t.high && t.kind[slot] !== 0) this.erase(chunk, t, slot, mod);
-    if (kind !== 0) this.write(chunk, t, slot, kind, x, y, z, yaw, owner, hp, mod);
+    const inPlace = kind !== 0 && slot < t.high && t.kind[slot] !== 0 && t.x[slot] === Math.fround(x) && t.y[slot] === Math.fround(y) && t.z[slot] === Math.fround(z) && t.yaw[slot] === yaw;
+    if (slot < t.high && t.kind[slot] !== 0) this.erase(chunk, t, slot, mod, inPlace);
+    if (kind !== 0) this.write(chunk, t, slot, kind, x, y, z, yaw, owner, hp, mod, inPlace);
     else {
       t.ensure(slot);
       if (slot >= t.high) t.high = slot + 1;
@@ -583,7 +586,8 @@ export class StructureStore {
     return this.halfZ[kind]!;
   }
 
-  private write(chunk: number, t: ChunkTable, slot: number, kind: number, x: number, y: number, z: number, yaw: number, owner: number, hp: number, mod: number): void {
+  private write(chunk: number, t: ChunkTable, slot: number, kind: number, x: number, y: number, z: number, yaw: number, owner: number, hp: number, mod: number, inPlace = false): void {
+    if (!inPlace) t.placed++;
     t.ensure(slot);
     if (slot >= t.high) t.high = slot + 1;
     t.kind[slot] = kind;
@@ -614,7 +618,8 @@ export class StructureStore {
     }
   }
 
-  private erase(chunk: number, t: ChunkTable, slot: number, mod: number): void {
+  private erase(chunk: number, t: ChunkTable, slot: number, mod: number, inPlace = false): void {
+    if (!inPlace) t.placed++;
     this.footprint(t.kind[slot]!, t.x[slot]!, t.z[slot]!, t.yaw[slot]!);
     const ref = chunk * 65536 + slot;
     for (let cz = this.fz0; cz <= this.fz1; cz++) {
