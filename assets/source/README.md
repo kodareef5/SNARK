@@ -397,7 +397,8 @@ materials: {
   colour is used, so no palette index is written down anywhere.
 - Every picture is square. Base colour and normal are stored as large as they
   come, up to `budgets.texture.top`, and the packed map and masks one size
-  under the base colour.
+  under the base colour. A material's `tops` stores a map smaller where its
+  content needs less than its picture, as `--check` notes.
 - A material that several assets use is said once, beside its pictures:
   `export const POLE = shared(import.meta.dir, "core:pole", { ... })`, and
   `materials: { Pole: POLE }` in each asset. It must say how far it `tiles`.
@@ -408,6 +409,9 @@ converted from a raw file must bring its own if any part of it is mirrored.
 The game's build finds the pictures through the packs: `gameTextures()` in
 `tools/art/materials.ts` lists every texture the packs name, and
 `bun run build` encodes them. Nothing but the source pictures is committed.
+Textures that come out the same, under any materials, are stored and held
+once, and a map that is everywhere what a material without one draws (masks
+that dye nothing) is left out.
 
 ## The check
 
@@ -434,9 +438,14 @@ It also says how tall the creature stands when each level is first drawn, the
 stride each gait holds best at, a loop that walks and has no stride, a loop
 that stands still, a hit capsule buried in others, how many pixels a metre each
 material has on each mesh, and how far each material's mean colour is from the
-palette colour it is drawn flat in. A test runs the check over every asset
-here, so a pack with a fault does not pass `bun run check`. That test reads
-only the sizes of the pictures. `--check` reads and measures them.
+palette colour it is drawn flat in. Of the maps, it notes one the build leaves
+out, a picture another material names too, and a map larger than its content
+needs, with the `tops` that stores it at the side it needs: the smallest that,
+stored that many steps smaller and so drawn that much coarser at every
+distance, turns no normal more than 3 degrees and moves no other channel more
+than 4 levels. A test runs the check over every asset here, so a pack with a
+fault does not pass `bun run check`. That test reads only the sizes of the
+pictures. `--check` reads and measures them.
 
 ## Looking at an asset
 

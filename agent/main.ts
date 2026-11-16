@@ -133,6 +133,7 @@ async function main(): Promise<void> {
         nodes: (ground, content) => mapNodes(map, ground, content),
         // The map's own pieces everywhere, as a browser has them for its far city: the skyline a flight keeps over.
         city: (content) => new CityStatics(map.dims, map.statics, content),
+        statics: map.statics,
       });
       agent = new Agent(session, { console: args.console });
       console.error(`joining ${url} as ${args.name}${ticket ? " with a travel ticket" : ""}`);

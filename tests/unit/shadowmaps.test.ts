@@ -3,11 +3,13 @@
 // the lit programs carry the tier's shadows, the maps' bytes come off the card's budget, the rasterizer lights as if
 // in the sun, and the game asks the device what its compared lookups give and leaves the context as it was.
 import { expect, test } from "bun:test";
-import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
+import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { GL } from "../../client/core/devicegpu.ts";
+import { ladder } from "../../client/core/governor.ts";
+import { tierWithout } from "../../client/core/passes.ts";
 import { FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
-import { FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
+import { FRAME, FRAME_FLOATS, MAX_CASCADES } from "../../client/core/render/packet.ts";
 import { PROGRAMS, UNIT } from "../../client/core/render/programs.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { comparedLookup } from "../../client/core/render/shadowfilter.ts";
@@ -51,7 +53,7 @@ test("over the last tenth of its sphere a pixel hands over to the next cascade i
   expect(shadowCascade(0, 0, 7, spheres, 0, 0, 0).cascade).toBe(-1);
 });
 
-test("the lit tiers look the sun's shadow up as their tier says, a device that compares hard in the shader, and casters keep the view's heights", () => {
+test("the lit tiers look the sun's shadow up as their tier says, with the same texts down the governor's steps, a device that compares hard in the shader, and casters keep the view's heights", () => {
   for (const tier of TIERS) {
     for (const name of ["flat", "terrain", "seeThrough", "far", "surface"]) {
       const p = PROGRAMS[name]!(tier, "rgba");
@@ -59,10 +61,17 @@ test("the lit tiers look the sun's shadow up as their tier says, a device that c
         if (name !== "surface") expect([p.defines, "uShadow" in p.samplers]).toEqual(["", false]);
         continue;
       }
-      const { cascades, taps, size } = tier.shadows;
-      expect(p.defines).toBe(`#define SHADOW_CASCADES ${cascades}\n#define SHADOW_TAPS ${Math.sqrt(taps)}\n#define SHADOW_SIZE ${size}.0\n`);
+      const { taps, size } = tier.shadows;
+      expect(p.defines).toBe(`#define SHADOW_CASCADES ${MAX_CASCADES}\n#define SHADOW_TAPS ${Math.sqrt(taps)}\n#define SHADOW_SIZE ${size}.0\n`);
       expect(p.samplers.uShadow).toBe(UNIT.shadow);
       expect(PROGRAMS[name]!(tier, "rgba", true).defines).toEndWith("#define SHADOW_HARD\n");
+      // One cascade fewer, none, or shadows turned off: the lookup stops at the frame's cascades, and nothing is compiled again.
+      for (const touch of [false, true]) {
+        const top = forTouch(tier, touch);
+        const steps = [...ladder(top, 2).map((l) => l.tier), tierWithout(top, new Set(["shadows" as const]))];
+        expect(steps.some((t) => t.shadows.cascades === 0)).toBe(true);
+        for (const t of steps) expect(PROGRAMS[name]!(t, "rgba")).toEqual(PROGRAMS[name]!(top, "rgba"));
+      }
     }
   }
   // What lies sunward of a cascade is flattened onto its near face; the ground is placed by the view's own text.

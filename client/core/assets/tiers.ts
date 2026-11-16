@@ -62,7 +62,7 @@ export interface Tier {
    * What a touch-first device draws on this tier in place of the tier's own values, or null for the same (forTouch), and
    * whether its settings offer the tier at all. Each value is a phone's report's (planning/decisions.md, M2's rows).
    */
-  readonly touch: { readonly shadows?: Tier["shadows"]; readonly offered?: boolean } | null;
+  readonly touch: { readonly shadows?: Tier["shadows"]; readonly gpuBytes?: number; readonly offered?: boolean } | null;
   /**
    * What a frame may spend (render/budget.ts): triangles, which crowns near give up for what stands above them in the
    * frame's order, and draws, which are counted and told. From the iPhone's tree order (D423) on medium: the young wood
@@ -95,7 +95,10 @@ const mass = (to: number, size: number): CityLevel => ({ to, gap: -1, least: 0, 
 // megapixel against 0.19 for 4 and 0.49 for 9 (the quick look of 07-35-24). Ultra draws at the phone's own three pixels
 // a side and broke the ladder at 256 to 512 draws and 64 to 128 near rocks where high held 1,024 and 128 (the ladders of
 // 07-43-00 and 08-19-25), and its textures may take 2.4 GB where the phone's tab was dropped at 2 GB, so a phone is not
-// offered it.
+// offered it. iOS ends a tab short of memory without the card saying so (D123 never hears of it): the device page's
+// memory step lost the iPhone's tab between 1.5 and 2 GB of textures, where high's card may hold 1.9 GB with its
+// overflow. High's card on a phone is a first guess, 1.25 GB with the overflow, for the phone to confirm.
+const PHONE_HIGH_CARD = 1024 * MB;
 
 export const TIERS: readonly Tier[] = [
   {
@@ -110,7 +113,7 @@ export const TIERS: readonly Tier[] = [
   },
   {
     name: "high", texture: 2048, textureShare: 0.6, view: 1024, bones: 32768, threshold: 0.14, finest: 0, instanced: 384, pixelRatio: 2, gpuBytes: 1536 * MB, uploadBytes: 2 * MB, diskBytes: 8192 * MB,
-    lit: true, split: 384, reach: { bases: 2048, city: 3072, trees: 2000, rocks: 900, bushes: 500 }, fade: 0.1, city: { levels: [boxes(500), lattice(1300), mass(2000, 4), mass(Infinity, 8)] }, nodes: { chunks: 4, band: [216, 248] }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false }, touch: { shadows: { cascades: 3, size: 1024, distance: 128, taps: 1, blend: 0.85, everyOther: false } }, clouds: 2, water: "simple",
+    lit: true, split: 384, reach: { bases: 2048, city: 3072, trees: 2000, rocks: 900, bushes: 500 }, fade: 0.1, city: { levels: [boxes(500), lattice(1300), mass(2000, 4), mass(Infinity, 8)] }, nodes: { chunks: 4, band: [216, 248] }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false }, touch: { shadows: { cascades: 3, size: 1024, distance: 128, taps: 1, blend: 0.85, everyOther: false }, gpuBytes: PHONE_HIGH_CARD }, clouds: 2, water: "simple",
     details: { pool: 3072, share: 1, reach: 1, fill: 1.5 }, budget: { triangles: 4e6, draws: 2048 }, bodyError: 1,
   },
   {
