@@ -244,6 +244,8 @@ export interface CreatureAsset {
    * with a budget, where not given. Read only with `materials`.
    */
   readonly flat?: number;
+  /** Rigid bones whose thin parts define the silhouette, such as rotors. Their axis extremes survive every LOD. */
+  readonly preserveBones?: readonly string[];
   /** What goes limp when it dies. Without it the death clip plays and its last frame stays. */
   readonly ragdoll?: RagdollSpec;
   /**

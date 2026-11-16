@@ -104,8 +104,8 @@ export interface Simplified {
  * nothing more can be collapsed without turning a triangle over. The levels are flat: what `fine` has of a surface is
  * left behind.
  */
-export function simplify(fine: SourceLod, targets: readonly number[]): Simplified[] {
-  return collapsed(fine, targets, false);
+export function simplify(fine: SourceLod, targets: readonly number[], preserveBones: readonly number[] = []): Simplified[] {
+  return collapsed(fine, targets, false, preserveBones);
 }
 
 /**
@@ -114,12 +114,12 @@ export function simplify(fine: SourceLod, targets: readonly number[]): Simplifie
  * than STRETCH. It costs more the further it slides the picture over the surface, and the further its new edges reach
  * across changing bone weights, so the loops of edges at a joint are the last to go.
  */
-export function simplifySurface(fine: SourceLod, targets: readonly number[]): Simplified[] {
+export function simplifySurface(fine: SourceLod, targets: readonly number[], preserveBones: readonly number[] = []): Simplified[] {
   if (!fine.uvs || !fine.normals) throw new Error("a level keeps its surface only if it has texture coordinates and normals");
-  return collapsed(fine, targets, true);
+  return collapsed(fine, targets, true, preserveBones);
 }
 
-function collapsed(fine: SourceLod, targets: readonly number[], textured: boolean): Simplified[] {
+function collapsed(fine: SourceLod, targets: readonly number[], textured: boolean, preserveBones: readonly number[]): Simplified[] {
   const { joints, weights, tangents } = fine;
   const uvs = fine.uvs ?? new Float32Array(0);
   const normals = fine.normals ?? new Float32Array(0);
@@ -194,6 +194,21 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
     component[componentOf(b)] = componentOf(c);
   }
   for (let v = 0; v < component.length; v++) component[v] = componentOf(v);
+  // Some thin moving parts define the silhouette even when their surface area is small (rotor blades). Preserve
+  // each of their closed islands' axis extremes explicitly; this is opt-in, so existing assets keep their levels.
+  const locked = new Uint8Array(bone.length);
+  const extremes = new Map<number, number[]>();
+  for (let v = 0; v < bone.length; v++) {
+    if (!preserveBones.includes(bone[v]!)) continue;
+    const part = component[v]!;
+    let ends = extremes.get(part);
+    if (!ends) extremes.set(part, (ends = [v, v, v, v, v, v]));
+    for (let axis = 0; axis < 3; axis++) {
+      if (pos[v * 3 + axis]! < pos[ends[axis * 2]! * 3 + axis]!) ends[axis * 2] = v;
+      if (pos[v * 3 + axis]! > pos[ends[axis * 2 + 1]! * 3 + axis]!) ends[axis * 2 + 1] = v;
+    }
+  }
+  for (const ends of extremes.values()) for (const v of ends) locked[v] = 1;
   const closed = new Uint8Array(bone.length).fill(1);
   const edgeUse = new Map<number, number>();
   for (let f = 0; f < faces; f++) for (let k = 0; k < 3; k++) {
@@ -362,6 +377,7 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
   const version = new Uint32Array(bone.length);
   const heap = new Heap();
   const price = (from: number, to: number): void => {
+    if (locked[from]) return;
     let cost = Math.max(0, errorAt(quadrics[from]!, quadrics[to]!, pos[to * 3]!, pos[to * 3 + 1]!, pos[to * 3 + 2]!));
     if (textured) cost += strain(from, to);
     if (cost < Infinity) heap.push({ cost, from, to, stamp: version[from]! + version[to]! });
@@ -519,6 +535,8 @@ export interface LevelPlan {
   /** The pictures of each of the mesh's materials, in the order of `materials`. The base colour and the regions are read. */
   maps: readonly MaterialMaps[];
   palette: Uint8Array;
+  /** Rigid bones whose small closed parts must retain their axis extremes at every level. */
+  preserveBones?: readonly number[];
 }
 
 /**
@@ -537,13 +555,13 @@ export function withSurfaceLevels(mesh: SourceMesh, plan: LevelPlan): SourceMesh
   const colours = baker(fine, mesh.materials ?? [], plan.maps, plan.palette);
   const worth = (made: SourceLod, last: SourceLod): boolean => made.indices.length <= last.indices.length * 0.8;
   const surface = [fine];
-  for (const made of simplifySurface(fine, plan.budgets.slice(0, plan.flat - 1))) {
+  for (const made of simplifySurface(fine, plan.budgets.slice(0, plan.flat - 1), plan.preserveBones)) {
     if (!worth(made.lod, surface[surface.length - 1]!)) break;
     surface.push(made.lod);
   }
   const flat = surface.map(colours);
   const lods = surface.map((lod, level) => painted(lod, flat[level]!));
-  for (const made of simplify(flatOf(surface[surface.length - 1]!, flat[flat.length - 1]!), plan.budgets.slice(plan.flat - 1))) {
+  for (const made of simplify(flatOf(surface[surface.length - 1]!, flat[flat.length - 1]!), plan.budgets.slice(plan.flat - 1), plan.preserveBones)) {
     if (!worth(made.lod, lods[lods.length - 1]!)) break;
     lods.push(made.lod);
   }

@@ -52,3 +52,26 @@ test("separate closed parts retain their own winding when one part follows anoth
     }
   }
 });
+
+test("opt-in moving parts retain each island's axis extremes even at the coarsest target", () => {
+  const count = original.positions.length / 3;
+  const blade = original.positions.map((v, i) => v * [12, .015, .22][i % 3]! + [0, 3, 0][i % 3]!);
+  const fine: SourceLod = {
+    positions: Float32Array.from([...original.positions, ...blade]),
+    colors: new Uint8Array(count * 2).fill(5),
+    bones: Uint8Array.from({ length: count * 2 }, (_, i) => i < count ? 0 : 1),
+    indices: Uint32Array.from([...original.indices, ...original.indices.map(v => v + count)]),
+  };
+  const range = (lod: SourceLod, axis: number): number[] => {
+    const values = [...lod.bones!].flatMap((bone, v) => bone === 1 ? [lod.positions[v * 3 + axis]!] : []);
+    return [Math.min(...values), Math.max(...values)];
+  };
+  for (const { lod } of simplify(fine, [32, 20, 12, 8], [1])) {
+    expect(lod.bones!.includes(1)).toBe(true);
+    for (let axis = 0; axis < 3; axis++) expect(range(lod, axis)).toEqual(range(fine, axis));
+    const facts = measureSurface(lod);
+    expect([facts.holes, facts.flipped, facts.insideOut]).toEqual([0, 0, 0]);
+  }
+  // Opt-in behavior must not perturb assets that have no protected moving components.
+  expect(simplify(fine, [20])).toEqual(simplify(fine, [20], []));
+});
