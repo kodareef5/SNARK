@@ -23,8 +23,16 @@ def finish(D,p,world,place,box,ys,beam):
   if ln<.08:return
   if abs(dx)<1e-7 or abs(dz)<1e-7:
    axis=0 if abs(dx)>abs(dz) else 1;start=min(a[axis],b[axis]);end=max(a[axis],b[axis]);fixed=a[1-axis]
-   cuts=[start,end]
-   for i,(lo,hi) in enumerate(zip(cuts,cuts[1:])):
+   # Reuse a bounded set without extending a protected endpoint. A final
+   # one-metre panel may overlap its predecessor, with identical rail material.
+   spans=[];cursor=start
+   if end-start<1:spans=[(start,end)]
+   else:
+    while end-cursor>=1-1e-7:
+     length=next(s for s in(8,4,2,1) if s<=end-cursor+1e-7)
+     spans.append((cursor,cursor+length));cursor+=length
+    if end-cursor>1e-7:spans.append((end-1,end))
+   for i,(lo,hi) in enumerate(spans):
     length=hi-lo;art={'kind':'guard','finish':'steel','ends':[[-length/2,-.575,0],[length/2,-.575,0]]}
     if name.startswith('bridge_'):art['measurement']='bridge'
     q=p('cardinal_guard','guard',[box([-length/2,-.575,-.04],[length/2,.575,.04])],art=art,color=91)
@@ -64,7 +72,8 @@ def finish(D,p,world,place,box,ys,beam):
     if crossing(aa,bb,y):use=False
     if use:
      if pending is None:pending=aa
-     if math.dist(pending,bb)>=10 or j==n-1:
+     limit=24 if abs(dx)<1e-7 or abs(dz)<1e-7 else 10
+     if math.dist(pending,bb)>=limit or j==n-1:
       guard(f'guard_{d["id"]}_{ei}_{j}',pending,bb,y,d['id']);pending=None
     elif pending is not None:guard(f'guard_{d["id"]}_{ei}_{j}',pending,aa,y,d['id']);pending=None
  # Framed public promenade enclosure follows the actual tapered side outline. Clear window apertures stay clear visually.
@@ -120,6 +129,11 @@ def finish(D,p,world,place,box,ys,beam):
  pod=p('aquadome_pod','furniture',podboxes,podhulls,art={'kind':'aquadome_pod','finish':'purple'},color=32,look=podlook)
  for side in(-1,1):
   for i,z in enumerate([100,112,124]):place(f'aquadome_pod_{side}_{i}',pod,[side*13,45.6,z],'15','aquatheater',90 if side>0 else 270)
+ q=p('aquatheater_seating','furniture',[box([-3.5,0,-.675],[3.5,1.1,.675])],
+     art={'kind':'furniture','wallCount':0,'items':[{'kind':'seating_row','at':[0,0,0],'size':[7,1.1,1.35],'finish':'purple'}]},color=32)
+ for side in(-1,1):
+  for row,z in enumerate([108,112,116,120,124]):place(f'aquatheater_seating_{side}_{row}',q,[side*5.5,45.6,z],'15','aquatheater',180)
+ next(r for r in D['rooms'] if r['id']=='aquadome')['entry']=[3,45.6,98.8]
  q=p('aquatheater_stage','furniture',[box([-7,0,-4],[7,.55,4])],art={'kind':'furniture','wallCount':0,'items':[{'kind':'stage','at':[0,0,0],'size':[14,.55,8],'finish':'navy'}]},color=29)
  place('aquatheater_stage',q,[0,45.6,132],'15','aquatheater')
  # Suspended architectural performance ring; original static interpretation of the public theater photographs.

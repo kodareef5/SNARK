@@ -18,18 +18,19 @@ def extents(b):return ([b['at'][k]-b['half'][k] for k in range(3)],[b['at'][k]+b
 def drawbox(m,b,tag,bevel=0):m.box(*extents(b),tag,bevel)
 
 def rail(m,lo,hi):
+ sides=[8,6,6,4,4,4][m.level]
  axis=0 if hi[0]-lo[0]>hi[2]-lo[2] else 2
  a=[(lo[k]+hi[k])/2 for k in range(3)];b=a[:]
  a[axis]=lo[axis]+.035;b[axis]=hi[axis]-.035;a[1]=b[1]=hi[1]-.03
  q=a[:];r=b[:];q[1]=r[1]=lo[1]+.025
  radius=min(.025,(hi[1]-lo[1])/4,(hi[2-axis]-lo[2-axis])/3)
- m.tube([a,b],radius,'steel')
+ m.tube([a,b],radius,'steel',n=sides)
  count=max(1,math.ceil((hi[axis]-lo[axis])/[1.5,2,3,4,6,12][m.level]))
  for i in range(count+1):
   t=i/count;p=[a[k]+(b[k]-a[k])*t for k in range(3)];bottom=p[:];bottom[1]=lo[1]+radius
-  m.tube([bottom,p],radius,'steel')
+  m.tube([bottom,p],radius,'steel',n=sides)
  if m.level<3:
-  a[1]=b[1]=lo[1]+(hi[1]-lo[1])*.46;m.tube([a,b],.014,'glass')
+  a[1]=b[1]=lo[1]+(hi[1]-lo[1])*.46;m.tube([a,b],.014,'glass',n=sides)
 
 def floor(m,p):
  tag=p['art']['finish']
@@ -133,14 +134,15 @@ def build(m,p):
  elif kind=='rails':
   for b in p['boxes']:rail(m,*extents(b))
  elif kind=='guard':
+  sides=[8,6,6,4,4,4][m.level]
   a,b=p['art']['ends'];dx=b[0]-a[0];dz=b[2]-a[2];ln=math.hypot(dx,dz);inset=min(.03,ln/4)
   aa=[a[0]+dx/ln*inset,a[1]+1.12,a[2]+dz/ln*inset];bb=[b[0]-dx/ln*inset,b[1]+1.12,b[2]-dz/ln*inset]
-  m.tube([aa,bb],.025,'steel')
+  m.tube([aa,bb],.025,'steel',n=sides)
   n=max(1,math.ceil(ln/[1.5,2,3,4,6,12][m.level]))
   for i in range(n+1):
-   t=i/n;top=[aa[k]+(bb[k]-aa[k])*t for k in range(3)];bot=top[:];bot[1]=a[1]+(b[1]-a[1])*t+.025;m.tube([bot,top],.022,'steel')
+   t=i/n;top=[aa[k]+(bb[k]-aa[k])*t for k in range(3)];bot=top[:];bot[1]=a[1]+(b[1]-a[1])*t+.025;m.tube([bot,top],.022,'steel',n=sides)
   if m.level<3:
-   aa[1]=a[1]+.54;bb[1]=b[1]+.54;m.tube([aa,bb],.012,'glass')
+   aa[1]=a[1]+.54;bb[1]=b[1]+.54;m.tube([aa,bb],.012,'glass',n=sides)
  elif kind=='window_wall':
   for i,b in enumerate(p['boxes']):
    if i not in p['art'].get('glassBoxes',[]):drawbox(m,b,finish)

@@ -30,9 +30,9 @@ def furniture(m,p):
   elif kind=='seating_row':
    count=max(1,round(sx/.72)) if m.level<4 else max(1,round(sx/2))
    for i in range(count):
-    a=-.5+i/count+.014;b0=-.5+(i+1)/count-.014
+    a=-.5+i/count+.025/sx;b0=-.5+(i+1)/count-.025/sx
     b(a,.24,-.48,b0,.58,.23,finish,.035);b(a,.58,.23,b0,1,.48,finish,.035)
-    if m.level<2:b(a,.44,-.40,a+.025,.69,.23,'oak',.008)
+    if m.level<2:b(a,.58,-.40,a+.06/sx,.69,.23,'oak',.008)
    b(-.48,0,-.25,.48,.24,.32,'steel')
   elif kind in('counter','console','gaming_table'):
    body='oak' if kind=='gaming_table' else ('navy' if kind=='console' else 'enamel')

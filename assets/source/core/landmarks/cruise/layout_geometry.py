@@ -119,12 +119,12 @@ def populate(D,prototype,instance,box,node):
   if label=='15':voids.append({'id':'prototype_basin','kind':'basin','polygon':rect(13,-14,23,2)})
   d['outlines']=outlines;d['voids']=voids
   if n>=15:d['ceilingY']=None
-  # Exact fragments are batched inside bounded24×12m tiles. Holes remain real;
+  # Exact fragments are batched inside bounded20×20m tiles. Holes remain real;
   # a convex union is merged only when its area exactly equals the source fragments.
   floor_groups={}
   for oi,poly in enumerate(outlines):
    z0=min(q[1] for q in poly);z1=max(q[1] for q in poly)
-   cuts=sorted(set([z0,z1]+[q[1] for q in poly]+[z for z in range(-180,181,12) if z0<z<z1]+
+   cuts=sorted(set([z0,z1]+[q[1] for q in poly]+[z for z in range(-180,181,20) if z0<z<z1]+
                    [q[1] for h in voids for q in h['polygon'] if z0<q[1]<z1]))
    def edges(z):
     xs=[]
@@ -135,7 +135,7 @@ def populate(D,prototype,instance,box,node):
     return min(xs),max(xs)
    for zi,(za,zb) in enumerate(zip(cuts,cuts[1:])):
     la,ra=edges(za);lb,rb=edges(zb);active=[h for h in voids if min(q[1] for q in h['polygon'])<(za+zb)/2<max(q[1] for q in h['polygon'])]
-    xcuts=sorted(set([min(la,lb),max(ra,rb)]+[x for x in range(-24,25,24) if min(la,lb)<x<max(ra,rb)]+[q[0] for h in active for q in h['polygon']]))
+    xcuts=sorted(set([min(la,lb),max(ra,rb)]+[x for x in range(-20,21,20) if min(la,lb)<x<max(ra,rb)]+[q[0] for h in active for q in h['polygon']]))
     for xi,(xl,xr) in enumerate(zip(xcuts,xcuts[1:])):
      mid=(xl+xr)/2
      if any(min(q[0] for q in h['polygon'])<mid<max(q[0] for q in h['polygon']) for h in active):continue
@@ -155,7 +155,7 @@ def populate(D,prototype,instance,box,node):
      for a in plan:
       if not any(math.dist(a,b)<1e-7 for b in unique):unique.append(a)
      if len(unique)<3 or abs(sum(a[0]*b[1]-b[0]*a[1] for a,b in zip(unique,unique[1:]+unique[:1])))<1e-7:continue
-     key=(math.floor(sum(v[0] for v in unique)/len(unique)/24),math.floor((za+zb)/2/12))
+     key=(math.floor(sum(v[0] for v in unique)/len(unique)/20),math.floor((za+zb)/2/20))
      floor_groups.setdefault(key,[]).append(unique)
   def area(poly):return abs(sum(a[0]*b[1]-b[0]*a[1] for a,b in zip(poly,poly[1:]+poly[:1])))/2
   def convex_plan(points):
@@ -306,7 +306,7 @@ def populate(D,prototype,instance,box,node):
  q=p('pool_basin','pool',basin,art={'kind':'pool','waterY':-.18,'finish':'tile','decorativeWater':True},color=87)
  place('prototype_pool',q,[18,ys['15'],-6],'15','pool-prototype')
  for ident,label,title,at,anchors,bounds in [
-  ('aquadome','15','AquaDome',[0,45.6,112],[[-1.1,45.6,59.0],[5,45.6,59.0],[5,45.6,90],[0,45.6,112]],([-24,45.6,78],[24,62.6,147])),
+  ('aquadome','15','AquaDome',[0,45.6,112],[[-1.1,45.6,59.0],[5,45.6,59.0],[5,45.6,90],[3,45.6,98.8],[0,45.6,103],[0,45.6,112]],([-24,45.6,78],[24,62.6,147])),
   ('pool_under','14','Pool service lounge',[18,42,-6],[[-1.1,42,59.0],[15.5,42,59.0],[15.5,42,-6],[18,42,-6]],([12,42,-18],[27,44.66,6])),
   ('pool_edge','15','Pool terrace',[25,45.6,-6],[[-1.1,45.6,59.0],[25,45.6,59.0],[25,45.6,-6]],([23,45.6,-18],[28.9,48.6,6]))]:
   node(ident,at,label,'room');route(ident+'_access','room',f'fore_{label}',ident,anchors,2.0)

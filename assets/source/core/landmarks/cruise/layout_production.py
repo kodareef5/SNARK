@@ -165,13 +165,13 @@ def finish(D,p,raw,world,place,box,node,route,rect,ys,beam):
  # Theater and ice arena are genuine multi-deck voids, not stacks of intervening opaque floors.
  room('theater','Royal Theater','4',[-18,100,18,140],[0,9.8,116],'fore_4',[[5,9.8,59.0],[5,9.8,96],[0,9.8,96]],True,12.56,entry=[0,9.8,100])
  for row,z in enumerate(range(106,129,3)):
-  for side in(-1,1):furnish(f'theater_bench_{row}_{side}','seating_row',[side*9,9.8,z],[12,1.1,1.35],'4','red')
+  for side in(-1,1):furnish(f'theater_bench_{row}_{side}','seating_row',[side*9,9.8,z],[12,1.1,1.35],'4','red',180)
  furnish('theater_stage','stage',[0,9.8,134],[26,.8,10],'4','oak')
  furnish('theater_screen','screen',[0,11,139.3],[26,7,.20],'4','navy')
  room('absolute_zero','Absolute Zero','4',[-18,-175.7,18,-157],[0,9.8,-166],'aft_4',[[-22.2,9.8,-77.0],[-22.2,9.8,-155.5],[0,9.8,-155.5]],True,8.36,entry=[0,9.8,-157])
  furnish('ice_arena','stage',[0,9.8,-167],[20,.02,16],'4','ivory')
  for side in(-1,1):
-  for j,z in enumerate([-161,-166,-171]):furnish(f'ice_bench_{side}_{j}','seating_row',[side*14.3,9.8,z],[4.2,1.1,1.4],'4','blue',90)
+  for j,z in enumerate([-161,-166,-171]):furnish(f'ice_bench_{side}_{j}','seating_row',[side*14.3,9.8,z],[4.2,1.1,1.4],'4','blue',90 if side>0 else 270)
  room('fitness','Fitness Center','6',[-8,160,8,171],[0,18.4,164],'fore_6',[[22,18.4,59.0],[22,18.4,96],[19,18.4,143],[0,18.4,143],[0,18.4,158]],True,entry=[0,18.4,160])
  for side in(-1,1):
   for i,z in enumerate([163,166,169]):furnish(f'fitness_{side}_{i}','gym',[side*5,18.4,z],[2,1.7,2],'6','rubber')
