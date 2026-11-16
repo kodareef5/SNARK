@@ -96,11 +96,12 @@ export class Harness {
   private readonly hf: Heightfield;
 
   constructor(opts: Partial<GameOptions> = {}, seed = 1, clientFps = 60, host: HostOptions = {}, reg: Registry = coreRegistry()) {
-    this.reg = reg;
     // The host uses the real pack's clips and rigs, as a server started from the built client does, unless given others.
     this.host = createHost(reg, { ...host, clips: host.clips ?? corePack().clips, rigs: host.rigs ?? corePack().header.rigs, game: opts });
     this.world = this.host.world;
     this.map = parseMap(this.host.mapFile!);
+    // A map with landmarks adds their definitions, as a browser compiles them from the map it fetched.
+    this.reg = this.map.content?.defs.length ? (this.world.reg.source ?? this.world.reg) : reg;
     this.hf = mapHeightfield(this.map);
     this.server = this.host.game;
     this.net = new LoopbackNet(seed);

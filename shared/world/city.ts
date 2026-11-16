@@ -874,6 +874,90 @@ let stack = new Int32Array(1 << 16);
 let mask = new Int16Array(4096);
 /** A box takes a cell it covers at least this share of, along each axis; or, along an axis it takes none of, the one it covers most. */
 const TAKES = 0.3;
+/** A slanted part narrower than this share of a mass cell across, and two cells long or more, is a rod. */
+const THIN = 0.25;
+const ROD_CELLS = 2;
+const rodCorners = new Float64Array(MAX_CORNERS * 3);
+const rodAt = new Float64Array(24);
+const rodAxes = new Float64Array(9);
+
+/**
+ * Whether a hull's `n` corners in the frame (turned by `c` and `s`) are a rod: all within `wide` across of the line through
+ * the two farthest apart, which are `long` apart at least. If so its faces are put out as the box along that line that holds
+ * them. Cells along a slanted line make a staircase that fills the plane it crosses (a stay across a rig); a box lies along
+ * the lattice and a row of cells holds it.
+ */
+function rod(p: Float64Array, n: number, wide: number, long: number, c: number, s: number, colour: number): boolean {
+  let a = 0, b = 0, far = -1;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const ex = p[i * 3]! - p[j * 3]!, ey = p[i * 3 + 1]! - p[j * 3 + 1]!, ez = p[i * 3 + 2]! - p[j * 3 + 2]!;
+      const d = ex * ex + ey * ey + ez * ez;
+      if (d > far) {
+        far = d;
+        a = i;
+        b = j;
+      }
+    }
+  }
+  const len = Math.sqrt(far);
+  if (len < long) return false;
+  const dx = (p[b * 3]! - p[a * 3]!) / len, dy = (p[b * 3 + 1]! - p[a * 3 + 1]!) / len, dz = (p[b * 3 + 2]! - p[a * 3 + 2]!) / len;
+  // Two directions across the line: level, and the other.
+  let ux = dz, uy = 0, uz = -dx;
+  if (ux * ux + uz * uz < 1e-6) {
+    ux = 1;
+    uz = 0;
+  }
+  const ul = Math.sqrt(ux * ux + uz * uz);
+  ux /= ul;
+  uz /= ul;
+  const vx = dy * uz - dz * uy, vy = dz * ux - dx * uz, vz = dx * uy - dy * ux;
+  // How far the corners reach across, either way, measured from the line through the first corner.
+  let lo0 = 0, hi0 = 0, lo1 = 0, hi1 = 0, lo2 = 0, hi2 = len;
+  for (let i = 0; i < n; i++) {
+    const qx = p[i * 3]! - p[a * 3]!, qy = p[i * 3 + 1]! - p[a * 3 + 1]!, qz = p[i * 3 + 2]! - p[a * 3 + 2]!;
+    const u = qx * ux + qy * uy + qz * uz, v = qx * vx + qy * vy + qz * vz, along = qx * dx + qy * dy + qz * dz;
+    lo0 = Math.min(lo0, u); hi0 = Math.max(hi0, u);
+    lo1 = Math.min(lo1, v); hi1 = Math.max(hi1, v);
+    lo2 = Math.min(lo2, along); hi2 = Math.max(hi2, along);
+  }
+  if (hi0 - lo0 > wide || hi1 - lo1 > wide) return false;
+  const mu = (lo0 + hi0) / 2, mv = (lo1 + hi1) / 2, hu = (hi0 - lo0) / 2, hv = (hi1 - lo1) / 2;
+  let cx = 0, cy = 0, cz = 0;
+  for (let k = 0; k < 8; k++) {
+    const u = mu + (k & 1 ? hu : -hu), v = mv + (k & 2 ? hv : -hv), w = k & 4 ? hi2 : lo2;
+    const x = p[a * 3]! + ux * u + vx * v + dx * w, y = p[a * 3 + 1]! + uy * u + vy * v + dy * w, z = p[a * 3 + 2]! + uz * u + vz * v + dz * w;
+    rodAt[k * 3] = c * x + s * z;
+    rodAt[k * 3 + 1] = y;
+    rodAt[k * 3 + 2] = c * z - s * x;
+    cx += rodAt[k * 3]! / 8;
+    cy += y / 8;
+    cz += rodAt[k * 3 + 2]! / 8;
+  }
+  for (const face of ROD_FACES) {
+    for (let k = 0; k < 4; k++) for (let ax = 0; ax < 3; ax++) rect[k * 3 + ax] = rodAt[face[k]! * 3 + ax]!;
+    // Turned to face out of the rod.
+    for (let ax = 0; ax < 3; ax++) {
+      rodAxes[ax] = rect[3 + ax]! - rect[ax]!;
+      rodAxes[3 + ax] = rect[6 + ax]! - rect[ax]!;
+      rodAxes[6 + ax] = rect[ax]! - (ax === 0 ? cx : ax === 1 ? cy : cz);
+    }
+    const nx = rodAxes[1]! * rodAxes[5]! - rodAxes[2]! * rodAxes[4]!, ny = rodAxes[2]! * rodAxes[3]! - rodAxes[0]! * rodAxes[5]!, nz = rodAxes[0]! * rodAxes[4]! - rodAxes[1]! * rodAxes[3]!;
+    if (nx * rodAxes[6]! + ny * rodAxes[7]! + nz * rodAxes[8]! < 0) {
+      for (let ax = 0; ax < 3; ax++) {
+        const t = rect[3 + ax]!;
+        rect[3 + ax] = rect[9 + ax]!;
+        rect[9 + ax] = t;
+      }
+    }
+    out.quad(rect, 0, colour);
+  }
+  return true;
+}
+
+/** The faces of a rod's box, by its corners' numbers: bit 0 one side, bit 1 the other, bit 2 the far end. */
+const ROD_FACES: readonly (readonly number[])[] = [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]];
 const rect = new Float64Array(12);
 
 /** Fills `cell` with a box from (lx, ly, lz) to (hx, hy, hz) in the frame: how far out it reaches each way. */
@@ -1137,7 +1221,12 @@ export function cellPart(city: CityStatics, chunk: number, hf: Ground, gone: Gon
       }
     }
     let nt = 0;
-    for (let h = 0; h < hulls.n; h++) nt = hullCells(h, o, step, n, nt);
+    // A rod (a stay, a shroud, a slanted pole) takes none and is drawn as itself.
+    for (let h = 0; h < hulls.n; h++) {
+      const t = hulls.table[h]!, count = t.corner[hulls.part[h]! + 1]! - t.corner[hulls.part[h]!]!;
+      for (let k = 0; k < count * 3; k++) rodCorners[k] = hulls.at[h * MAX_CORNERS * 3 + k]!;
+      if (!rod(rodCorners, count, size * THIN, size * ROD_CELLS, c, s, hulls.color[h]!)) nt = hullCells(h, o, step, n, nt);
+    }
     // A face of a cell is coloured as that side of the pieces in it shows: first how far out the outermost reaches, then
     // the colour of the box showing most area that way among those within FACE_DEPTH of it, so a wall gives a front its
     // colour over the slab edge before it. A part reaches as far as the box round it, and shows what it fills of the cell.

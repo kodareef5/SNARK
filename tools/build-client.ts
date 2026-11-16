@@ -23,6 +23,8 @@ import { parsePack, type Pack } from "../shared/pack/pack.ts";
 import { soundsHeard } from "../shared/sound/reach.ts";
 import { nodeForms } from "../shared/world/nodes.ts";
 import { gameTextures } from "./art/materials.ts";
+import { LANDMARKS, SOURCE, readPacks } from "./art/source.ts";
+import { defaultPalette } from "../shared/pack/palette.ts";
 import { BEAM_MESH, MISSING_MESH, WATER_MESH, buildCorePack, importedMeshes } from "./pack/build.ts";
 import { buildTextures, type TextureSource } from "./pack/encode.ts";
 import { gameIcons } from "./pack/icons.ts";
@@ -31,8 +33,9 @@ import { orderPack } from "./pack/order.ts";
 import { SOUND_RATES, buildSounds, findSheets, type SoundReport } from "./pack/sound.ts";
 import { bootManifest, splitPack, writePages } from "./pack/split.ts";
 import { storeParts } from "./pack/store.ts";
+import { buildPack } from "./pack/write.ts";
 import { STRESS_CARDS, cardPicture, spoilStress, stressMeshes } from "./pack/stress.ts";
-import { weigh } from "./sizes.ts";
+import { weigh, weighLandmarks } from "./sizes.ts";
 import { buildUiAssets } from "./ui/assets.ts";
 
 /** The stress cards as textures to build: every picture of each, from one pixel across up to its top. */
@@ -103,7 +106,7 @@ function wholeFarColours(reg: Registry, pack: Pack): number[] {
   const missing = table.find(MISSING_MESH);
   const meshOf = (k: number): number => {
     const d = reg.defs[k];
-    const mesh = d && "mesh" in d ? bind.mesh(d.id, d.type === "species" ? "body" : "mesh") : -1;
+    const mesh = d && "mesh" in d && !(d.type === "structure" && d.mesh === "none") ? bind.mesh(d.id, d.type === "species" ? "body" : "mesh") : -1;
     return mesh === missing ? -1 : mesh;
   };
   return [...farColours(reg, pack, meshOf)];
@@ -150,7 +153,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   const split = splitPack(core, "core", paging(registry!, whole));
   const manifest = split.manifest;
   const pageFile = split.files.findIndex((f) => f.role === "page");
-  // The game's own textures, from its asset folders, and the cards.
+  // The game's own textures, from its asset folders but its landmarks', and the cards.
   const sources: TextureSource[] = [...(await gameTextures()), ...(opts.stress ? stressCards() : [])];
   let t0 = performance.now();
   const textures = await buildTextures(manifest, sources, "core");
@@ -200,18 +203,45 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   // The materials the client finds by name: the world's finishes, the sky's and the water's.
   const named = new Set([SURFACE_MATERIAL, SKY_MATERIAL, WATER_MATERIAL]);
   writeFileSync(join(dist, "assets/manifest.json"), JSON.stringify(bootManifest(manifest, (id) => named.has(id))));
+  const landmarks = await buildLandmarks(dist, opts.quick ?? false);
   // The page asks for its script and the files the first frame needs as it is read. The server names its map's file, so main.js asks for that.
   const boot = `assets/${manifest.files[manifest.boot]!.name}`;
   const modules = ["main.js", ...pieces].map((f) => `<link rel="modulepreload" href="${f}">`).join("\n");
   writeFileSync(join(dist, "index.html"), readFileSync(join(root, "client/index.html"), "utf8").replaceAll("HUD_FONT_URL", ui.font).replaceAll("HUD_ATLAS_URL", ui.atlas).replace("<!-- MODULES -->", modules).replace("FETCHED", JSON.stringify(["map.json", "assets/manifest.json", boot, skyName, contentName])));
   const fetchedWhole = ["index.html", "assets/manifest.json", boot, skyName, contentName, ...(rows ? [`assets/${manifest.soundRows}`] : []), ...scripts];
   for (const name of fetchedWhole) writeFileSync(join(dist, `${name}.br`), brotli(readFileSync(join(dist, name)), opts.quick ?? false));
-  return { jsBytes: ["main.js", ...pieces].reduce((sum, f) => sum + statSync(join(dist, f)).size, 0), packBytes: files.reduce((sum, f) => sum + (f.role === "tex" ? 0 : f.bytes.length), 0) };
+  return { jsBytes: ["main.js", ...pieces].reduce((sum, f) => sum + statSync(join(dist, f)).size, 0), packBytes: files.reduce((sum, f) => sum + (f.role === "tex" ? 0 : f.bytes.length), 0) + landmarks };
+}
+
+/**
+ * Each landmark's files in assets/landmarks: a boot file, a mesh file and its textures as the core's are made, and the
+ * manifest that names them, which a client on a map that places it joins after the core's (shared/pack/join.ts). Its bytes.
+ */
+async function buildLandmarks(dist: string, quick: boolean): Promise<number> {
+  const out = join(dist, "assets/landmarks");
+  mkdirSync(out, { recursive: true });
+  let bytes = 0;
+  for (const name of existsSync(LANDMARKS) ? readdirSync(LANDMARKS).filter((n) => statSync(join(LANDMARKS, n)).isDirectory()).sort() : []) {
+    const art = readPacks(join(LANDMARKS, name));
+    const { files: split, manifest } = splitPack(orderPack(buildPack(art.meshes, defaultPalette(), [], art.rigs)), name);
+    const textures = await buildTextures(manifest, await gameTextures(SOURCE, name), name);
+    const { files } = await storeParts([...split, ...textures.files], manifest);
+    files.forEach((f, i) => {
+      manifest.files[i]!.name = f.name.replace(/\.(\w+)$/, `.${partHash(f.bytes)}.$1`);
+      writeFileSync(join(out, manifest.files[i]!.name), f.bytes);
+      bytes += f.bytes.length;
+    });
+    writeFileSync(join(out, `${name}.json`), JSON.stringify(manifest));
+    for (const file of [`${name}.json`, manifest.files[manifest.boot]!.name]) writeFileSync(join(out, `${file}.br`), brotli(readFileSync(join(out, file)), quick));
+    console.log(`landmark     ${name}: ${manifest.meshes.length} meshes, ${manifest.textures?.length ?? 0} textures, ${files.map((f) => `${f.role} ${f.bytes.length}`).join(", ")} bytes`);
+  }
+  return bytes;
 }
 
 if (import.meta.main) {
   const t0 = performance.now();
   const { jsBytes, packBytes } = await buildClient({ stress: process.argv.includes("--stress") });
   console.log(`client/dist  main.js ${jsBytes} bytes, assets ${packBytes} bytes, ${(performance.now() - t0).toFixed(0)} ms`);
-  if (!process.argv.includes("--stress") && !weigh(resolve(import.meta.dir, "../client/dist"))) process.exitCode = 1;
+  const dist = resolve(import.meta.dir, "../client/dist");
+  if (!process.argv.includes("--stress") && ![weigh(dist), weighLandmarks(dist)].every(Boolean)) process.exitCode = 1;
 }

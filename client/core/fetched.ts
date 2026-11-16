@@ -1,12 +1,14 @@
 // What the page fetches whole as it starts. A request that fails says which it was and what the server answered, not
 // a parser's complaint about the answer.
 
-import type { MapDims } from "../../shared/coords.ts";
 import type { Def } from "../../shared/content/defs.ts";
-import { compileContent, type Registry } from "../../shared/content/registry.ts";
-import type { Manifest } from "../../shared/pack/manifest.ts";
+import { compileContent, withContent, type Registry } from "../../shared/content/registry.ts";
+import type { MapDims } from "../../shared/coords.ts";
+import { joinLandmark } from "../../shared/pack/join.ts";
+import { parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
+import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { soundFault, type ManifestSound } from "../../shared/pack/sound.ts";
-import { groundBytes, staticsSteps, type MapStatics } from "../../shared/world/mapfile.ts";
+import { groundBytes, staticsSteps, type MapContent, type MapStatics } from "../../shared/world/mapfile.ts";
 
 export interface Answer {
   ok: boolean;
@@ -107,4 +109,17 @@ export async function fetchJson(get: Get, url: string): Promise<unknown> {
   } catch {
     throw new Error(`${url}: the server answered ${res.status} with what is not JSON: ${JSON.stringify(text.slice(0, 60))}`);
   }
+}
+
+/**
+ * The core's files with those of the map's landmarks after them, each fetched as the core's are (shared/pack/join.ts), and
+ * the content with their definitions.
+ */
+export async function withLandmarks(get: Get, land: MapContent | undefined, core: Registry, manifest: Manifest, boot: Pack): Promise<{ reg: Registry; manifest: Manifest; pack: Pack }> {
+  let joined = { manifest, boot };
+  for (const name of land?.landmarks ?? []) {
+    const m = parseManifest(await fetchText(get, `assets/landmarks/${name}.json`));
+    joined = joinLandmark(joined, { manifest: m, boot: parsePack(new Uint8Array(await fetchBytes(get, `assets/landmarks/${m.files[m.boot]!.name}`))) }, "landmarks");
+  }
+  return { reg: withContent(core, land?.defs ?? []), manifest: joined.manifest, pack: joined.boot };
 }

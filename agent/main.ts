@@ -9,7 +9,7 @@ import { createInterface } from "node:readline";
 import { CLOSED_BAD_CONTENT, ClientSession } from "../client/core/session.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { defaultLook } from "../shared/anim/look.ts";
-import { compileContent } from "../shared/content/registry.ts";
+import { compileContent, withContent } from "../shared/content/registry.ts";
 import type { ClusterList } from "../client/core/travel.ts";
 import { CMD_RESPAWN, CMD_TRAVEL, KEY_BYTES, SESSION_ALIVE, REJECT_CONTENT, REJECT_DENIED, REJECT_FULL, REJECT_KICKED, REJECT_NAME, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION } from "../shared/net/protocol.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
@@ -124,7 +124,8 @@ async function main(): Promise<void> {
       const session = new ClientSession(connect(url), {
         name: args.name,
         key,
-        registry: reg,
+        // A map's landmarks bring definitions of their own, compiled after the core's as the server's are.
+        registry: withContent(reg, map.content?.defs ?? []),
         clipHash,
         look: defaultLook(),
         password: process.env.SNARK_PASSWORD ?? "",

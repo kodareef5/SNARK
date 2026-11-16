@@ -231,7 +231,31 @@ export interface ShapeLook {
   readonly hulls?: readonly HullDef[];
 }
 
+/**
+ * Where a moving part stands from its static's origin, in the static's frame: offset in metres, then a turn as a unit
+ * quaternion (x, y, z, w), then a scale along the part's own axes. A turn or a scale left out is none.
+ */
+export interface PartPlacement {
+  readonly at: readonly [number, number, number];
+  readonly turn?: readonly [number, number, number, number];
+  readonly scale?: readonly [number, number, number];
+}
+
+/**
+ * Using the static moves its parts from one placement to the other over `seconds`, and back if used again, from where they
+ * stand: a door with a travel time. Each part is a mesh of the pack, drawn as one piece and walked by nothing. A new
+ * world has each at `from`. `say` is what using it does toward each state, the second and then the first, which the
+ * prompt shows.
+ */
+export interface MotionFacet {
+  readonly seconds: number;
+  readonly parts: readonly { readonly mesh: string; readonly from: PartPlacement; readonly to: PartPlacement }[];
+  readonly say: readonly [string, string];
+}
+
 export interface StructureDef extends Named {
+  /** A static whose parts move between two placements when it is used. */
+  readonly motion?: MotionFacet;
   /** Grip/resistance of its supporting faces; shared vehicle prediction reads this independently of artwork. */
   readonly vehicleSurface?: VehicleSurface;
   readonly type: "structure";
@@ -240,6 +264,7 @@ export interface StructureDef extends Named {
   /**
    * "box" for one made from its half extents, "shape" for one made from its shape's boxes, or a mesh of the pack. A mesh of
    * the pack with a shape is drawn at the shape's origin and walked as its boxes, so its origin may be on the ground under it.
+   * "none" for a static drawn as nothing: a landmark's collision, which its cells draw.
    */
   readonly mesh: string;
   readonly color: number;

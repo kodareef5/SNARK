@@ -403,14 +403,14 @@ test("tiles go on the card again after a lost context, tiles past reach are let 
   // With the atlas and the pulled draws' three levels.
   expect([again.atlasRows, again.assetUploads.filter((u) => u.slot >= PULL_SLOTS && u.slot < PULL_SLOTS + 3).map((u) => u.indexCount)]).toEqual([20, [48, 96, 192]]);
   // Trees reach 300 m: the tiles more than a tile past that are let go, and the rest kept as they are.
-  w.scene.assets.tier = { ...tierOf("medium"), reach: { bases: 2048, city: 2048, trees: 300, rocks: 0, bushes: 0 } };
+  w.scene.assets.tier = { ...tierOf("medium"), reach: { ...tierOf("medium").reach, trees: 300, rocks: 0, bushes: 0 } };
   expect(w.frame().uploads.length).toBe(0);
   const left = [...w.card.keys()].filter((b) => b >= FAR_NODE_BUFFERS);
   const start = (b: number): number => ((b - FAR_NODE_BUFFERS) % 6) * 256;
   expect(tiles.filter((b) => !left.includes(b)).map(start)).toEqual(tiles.filter((b) => start(b) - w.cam.x > 556).map(start));
   expect(left.length).toBeGreaterThan(4);
   const [reserved, held] = [w.scene.assets.residency.reserved, w.scene.nodesFar!.bytes];
-  w.scene.assets.tier = { ...tierOf("medium"), reach: { bases: 2048, city: 2048, trees: 0, rocks: 0, bushes: 0 } };
+  w.scene.assets.tier = { ...tierOf("medium"), reach: { ...tierOf("medium").reach, trees: 0, rocks: 0, bushes: 0 } };
   const none = w.frame();
   expect([[...w.card.keys()].filter((b) => b >= FAR_NODE_BUFFERS).length, [...none.drawBuffer.subarray(0, none.drawCount)].filter((b) => b >= FAR_NODE_BUFFERS).length]).toEqual([0, 0]);
   expect([held > 100000, reserved - w.scene.assets.residency.reserved]).toEqual([true, held]);

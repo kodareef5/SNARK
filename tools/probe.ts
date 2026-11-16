@@ -19,6 +19,7 @@ import { buildClient } from "./build-client.ts";
 import { litProbe } from "./probe-lit.ts";
 import { wikiProbe } from "./probe-wiki.ts";
 import { texturedProbe } from "./probe-textured.ts";
+import { prepareDriveProbe } from "./probe-drive.ts";
 
 // --drive puts a car with a seated civilian by the spawn and has the page drive it with the real player controls, on
 // the ordinary build: the car is in the core pack. --medium draws it on the medium tier rather than low poly.
@@ -54,12 +55,8 @@ for (const [flag, run] of [["--textured", texturedProbe], ["--lit", litProbe], [
 }
 const server = startServer({ dev: true, port: 0, probeScene: true });
 if (drive) {
-  const h = server.host, s = h.world.spawn;
-  // South is clear acceleration room; the north fixture intentionally holds collision blocks.
-  const x = s.x + 1.6, z = s.z - .12;
-  const car = h.spawnVehicle("core:compact", x, z, 0, Math.PI);
-  const driver = h.spawnCreature("core:civilian", x - 1.25, z - .12, 1);
-  if (car < 0 || driver < 0 || h.urban.seatNpc(driver, car) !== 0) throw new Error("drive probe could not seat the civilian");
+  try { await prepareDriveProbe(server.host); }
+  catch (error) { server.stop(); throw error; }
 }
 const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
 // Unless --no-voice is given, the page talks to itself through the server. VOICE_FLAGS give Chrome a fake microphone, grant it

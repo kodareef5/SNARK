@@ -12,6 +12,10 @@ import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { asTextured, boxBase } from "../../tools/bench/base.ts";
 import { SPOTS, VIEW, count, turn, wood, type Counted } from "../../tools/bench/budget.ts";
+import { KORU_LAYOUT } from "../../content/landmarks/koru.ts";
+import { withContent } from "../../shared/content/registry.ts";
+import { mapHeightfield, parseMap, placeStatics } from "../../shared/world/mapfile.ts";
+import { KORU_QUAY, koruMapFile, koruPack, koruPoint } from "../fixtures/koru.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -86,6 +90,42 @@ test("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draws a
   // 250,264, by its 16 m cells, each at its own level. From outside air it draws and casts its shell alone (rooms.ts), in
   // the same draws at the same levels. What it casts is cascade 1's, which holds every cell.
   expect(frames).toEqual([[21, 1435488, 69052], [27, 1148264, 62908]]);
+});
+
+test("Koru moored in its bay on medium at the iPhone's view: its eight cells, three doors and sails in a score of draws, and what it casts", () => {
+  const map = parseMap(koruMapFile());
+  const reg = withContent(coreRegistry(), map.content!.defs);
+  const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  placeStatics(map, structs, reg);
+  const scene = new Scene({ dims: map.dims, hf: mapHeightfield(map), structs, motion: { states: () => new Map(), tick: () => 0, statics: () => map.statics } }, reg, koruPack());
+  asTextured(scene);
+  [scene.assets.tier, scene.viewHeight] = [MEDIUM, VIEW[1]];
+  const cam = new Camera();
+  [cam.aspect, cam.fovY] = [VIEW[0] / VIEW[1], (VIEW[2] * Math.PI) / 180];
+  const yacht = new Set(koruPack().header.meshes.flatMap((m, i) => (m.id.startsWith("koru:") ? [i] : [])));
+  const views: Record<string, readonly number[]> = {
+    dock: [KORU_QUAY[0], KORU_QUAY[1] + 1.62, KORU_QUAY[2]],
+    deck: koruPoint([4, 5.37, -24]),
+    below: koruPoint([0, 2.37, -12]),
+    "200 m off": koruPoint([-200, 2, -10]),
+  };
+  const got = Object.fromEntries(Object.entries(views).map(([name, at]) => {
+    [cam.x, cam.y, cam.z] = at as [number, number, number];
+    let own = 0;
+    const frames = Array.from({ length: HEADINGS }, (_, k) => {
+      const [f] = headings(scene, cam, [(k / HEADINGS) * Math.PI * 2]);
+      const p = scene.packet;
+      let n = 0;
+      for (let d = 0; d < p.drawCount; d++) if (yacht.has(p.drawMesh[d]!)) n++;
+      own = Math.max(own, n);
+      return f!;
+    });
+    return [name, [most(frames, (f) => f.draws), most(frames, (f) => f.triangles), most(frames, (f) => f.cast), own]];
+  }));
+  // The most a heading draws of the whole frame, its triangles, what it casts, and the most of the draws that are the
+  // yacht's: its cells, doors and sails, where the modules one draw each made it 470.
+  expect(got).toEqual({ dock: [18, 85634, 69756, 16], deck: [21, 87938, 69932, 19], below: [19, 92034, 69968, 17], "200 m off": [21, 66496, 10240, 19] });
+  expect(KORU_LAYOUT.cells.length).toBe(8);
 });
 
 test("the HUD holds at most 500 nodes in every mode, the vehicles' dashes and the menus among them, and grows none after warming up", () => {

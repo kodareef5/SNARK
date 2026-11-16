@@ -12,7 +12,7 @@ import type { TextureSource } from "../pack/encode.ts";
 import { baseMips, layerPicture, packMro, packedMips, readPicture, type Picture } from "../pack/image.ts";
 import { checkMasks, maskMips, readMasks, readRegions } from "../pack/mask.ts";
 import { materialMips, type MaterialMaps } from "../pack/texture.ts";
-import { findAssets, type Asset } from "./assets.ts";
+import { findAssets, landmarkOf, type Asset } from "./assets.ts";
 import { SOURCE } from "./source.ts";
 import type { MaterialSpec } from "./spec.ts";
 
@@ -190,12 +190,12 @@ export function mipsOf(m: Material, role: TextureRole, top: number): Uint8Array[
 /**
  * Every texture the packs under `source` name, for the texture build (tools/pack/encode.ts): its id, role and top as
  * its pack has them, and a way to its mips, which reads its pictures only when asked. A texture several packs name
- * is listed once.
+ * is listed once. A landmark's are its own (tools/art/assets.ts landmarkOf), and the core's are every other.
  */
-export async function gameTextures(source: string = SOURCE): Promise<TextureSource[]> {
+export async function gameTextures(source: string = SOURCE, landmark: string | null = null): Promise<TextureSource[]> {
   const out = new Map<string, TextureSource>();
   for (const asset of await findAssets(source)) {
-    if (!existsSync(asset.file)) continue;
+    if (!existsSync(asset.file) || landmarkOf(asset, source) !== landmark) continue;
     const named = parsePack(new Uint8Array(readFileSync(asset.file))).header.textures ?? [];
     const materials = materialsOf(asset);
     for (const t of named) {
@@ -206,7 +206,7 @@ export async function gameTextures(source: string = SOURCE): Promise<TextureSour
       out.set(t.id, { id: t.id, role: t.role, top: t.top, mips: () => mipsOf(m, t.role, t.top) });
     }
   }
-  if (resolve(source) === resolve(SOURCE)) {
+  if (resolve(source) === resolve(SOURCE) && landmark === null) {
     let material: Material | undefined;
     for (const t of worldSurfaceMesh().textures!) out.set(t.id, { id: t.id, role: t.role, top: t.top, mips: () => mipsOf(material ??= worldMaterial(), t.role, t.top) });
   }

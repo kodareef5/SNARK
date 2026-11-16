@@ -21,7 +21,7 @@ import { SLOW_MOST, slowSurfaceError, surfaceError } from "../pack/error.ts";
 import { boundsOf } from "../pack/lying.ts";
 import { spanOf } from "../pack/surface.ts";
 import { unpackMeshes, type SourceLod, type SourceMesh } from "../pack/write.ts";
-import type { Asset } from "./assets.ts";
+import { landmarkOf, type Asset } from "./assets.ts";
 import { HOLD_BONES } from "./build.ts";
 import type { CreatureAsset, PieceSpec } from "./spec.ts";
 import { measureTextures, type MaterialFacts } from "./textures.ts";
@@ -64,6 +64,10 @@ export const REST_SLACK = 0.002;
 export const PIECE_TRIANGLES = [[0, 3200], [50, 2000], [100, 800], [250, 250], [500, 60]] as const;
 /** Metres on medium a building piece keeps its materials to at least, so a base does not go flat across a yard. */
 export const PIECE_TEXTURED = 80;
+/** What a landmark's 16 m cell of its ship or building may draw from each distance on medium: five building pieces' worth. */
+export const LANDMARK_TRIANGLES = PIECE_TRIANGLES.map(([metres, most]) => [metres, most * 5] as const);
+/** A landmark's piece that is one of its cells (assets/source/landmarks); its others are held as building pieces are. */
+const LANDMARK_CELL = /:cell_\d+$/;
 const PIECES = new Set(BUILDING_CONTENT.flatMap((d) => (d.type === "structure" && d.class === "piece" ? [d.id] : [])));
 
 export interface LevelFacts {
@@ -611,6 +615,7 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false, others: r
       if (mesh) report.meshes.push(measureMesh(mesh, pack, piece.triangles ?? spec.budgets.triangles, report.faults, undefined, piece.errors));
       else report.faults.push(`${piece.id}: not in the pack`);
       if (mesh && PIECES.has(piece.id)) report.faults.push(...pieceFaults(mesh, report.meshes[report.meshes.length - 1]!));
+      else if (mesh && landmarkOf(asset) !== null) report.faults.push(...pieceFaults(mesh, report.meshes[report.meshes.length - 1]!, LANDMARK_CELL.test(piece.id) ? LANDMARK_TRIANGLES : PIECE_TRIANGLES));
       if (mesh && piece.hold) report.faults.push(...heldFaults(mesh, piece.hold));
       if (piece.dropped === undefined) continue;
       const lying = meshes.find((m) => m.id === `${piece.id}/dropped`);
@@ -639,8 +644,12 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false, others: r
   return report;
 }
 
-/** What is wrong with a building piece's levels on medium: one never drawn or drawn over a sliver, one over PIECE_TRIANGLES, or flat too near. */
-export function pieceFaults(mesh: SourceMesh, facts: MeshFacts): string[] {
+/**
+ * What is wrong with a building piece's levels on medium, or a landmark's piece's: one never drawn or drawn over a sliver,
+ * one over `most` (PIECE_TRIANGLES, or LANDMARK_TRIANGLES for a landmark's cell), or flat too near. A piece with no
+ * materials is flat by design.
+ */
+export function pieceFaults(mesh: SourceMesh, facts: MeshFacts, most: readonly (readonly [number, number])[] = PIECE_TRIANGLES): string[] {
   const faults: string[] = [];
   const at = TIERS.indexOf(tierOf(TIER));
   const from = facts.levels.map((l) => l.starts[at]?.from ?? null);
@@ -649,13 +658,13 @@ export function pieceFaults(mesh: SourceMesh, facts: MeshFacts): string[] {
     if (d === null) faults.push(`${mesh.id} level ${l}: never drawn on ${TIER}`);
     else if (next !== undefined && next! < d * (1 + HYSTERESIS)) faults.push(`${mesh.id} level ${l}: drawn only from ${d.toFixed(0)} to ${next!.toFixed(0)} m on ${TIER}, within the ${HYSTERESIS * 100}% a level waits before it changes`);
   });
-  for (const [metres, most] of PIECE_TRIANGLES) {
+  for (const [metres, limit] of most) {
     const l = from.findLastIndex((d) => d !== null && d <= metres);
     const n = facts.levels[l]!.triangles;
-    if (n > most) faults.push(`${mesh.id}: ${n} triangles drawn from ${metres} m on ${TIER}, and a building piece may draw ${most}`);
+    if (n > limit) faults.push(`${mesh.id}: ${n} triangles drawn from ${metres} m on ${TIER}, and it may draw ${limit}`);
   }
-  const flat = from[mesh.flat ?? 0];
-  if (flat !== undefined && flat !== null && flat < PIECE_TEXTURED) faults.push(`${mesh.id}: drawn flat from ${flat.toFixed(0)} m on ${TIER}, and a building piece keeps its materials to ${PIECE_TEXTURED} m`);
+  const flat = mesh.flat ? from[mesh.flat] : undefined;
+  if (flat !== undefined && flat !== null && flat < PIECE_TEXTURED) faults.push(`${mesh.id}: drawn flat from ${flat.toFixed(0)} m on ${TIER}, and it keeps its materials to ${PIECE_TEXTURED} m`);
   return faults;
 }
 
