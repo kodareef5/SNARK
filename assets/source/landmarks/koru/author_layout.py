@@ -7,7 +7,7 @@ D={'schema':2,'id':'koru','frame':{'units':'metres','up':'+Y','forward':'+Z','po
  'evidence':{'published':{'lengthOverall':125,'beam':17.2,'source':'https://www.oceancoyacht.com/fleet/koru/'},'discrepancy':'Lateral title says125m; text says127m/16m. Builder baseline is used.','inferred':['hull stations','draft','mast stations and heights','deck datums','bowsprit proportion'],'original':['all room identities and positions','circulation and stairs','dock access','furniture layout']},
  'dimensions':{'hullMinZ':-54.5,'hullMaxZ':54.5,'bowspritTip':[0,8.5,70.5],'beam':17.2,'lowestKeel':-6.2,'highestMast':70},
  'clearances':{'floorSpacing':3,'floorThickness':.2,'doorWidth':1.6,'doorHeight':2.6,'corridorWidth':1.8,'stairWidth':1.6,'ceilingClear':2.8,'railHeight':1.1},
- 'decks':[],'hullStations':[],'rooms':[],'modules':[],'stairs':[],'doors':[],'routes':[],'docking':{},'rig':{},'cells':[],'travel':{}}
+ 'decks':[],'hullStations':[],'rooms':[],'modules':[],'stairs':[],'doors':[],'routes':[],'docking':{},'rig':{},'cells':[],'motion':{}}
 mods=D['modules']
 def clean(v):
  if isinstance(v,float):return round(v,6)
@@ -214,7 +214,7 @@ for mast,foot,peak,throat,aft,camber in [(masts[0],19,57.5,42.5,11,.9),(masts[1]
  z=mast['z']-.56;y=mast['boomY']+.27
  D['rig']['sails'].append({'id':mast['id'],'kind':'gaff','sheet':'koru:sail_'+mast['id'],'gaff':'koru:sail_'+mast['id']+'_gaff','camber':camber,
   'tack':[0,y,z],'clew':[0,y,z-foot],'peak':[0,peak,z-aft],'throat':[0,throat,z]})
-for name,heel,head,clew,camber in [('outer',[0,8.5,70.5],[0,69,20],[0,27,43],1.0),('inner',[0,7.8,52],[0,58,20],[0,17,29.8],.8)]:
+for name,heel,head,clew,camber in [('outer',[0,8.5,70.5],[0,69,20],[0,27,43],.85),('inner',[0,7.8,52],[0,58,20],[0,17,29.8],.7)]:
  up=[(b-a)/math.dist(heel,head) for a,b in zip(heel,head)]
  D['rig']['sails'].append({'id':name,'kind':'jib','sheet':'koru:sail_'+name,'camber':camber,'tack':[a+.6*u for a,u in zip(heel,up)],'head':[b-.6*u for b,u in zip(head,up)],'clew':clew})
 # Baseline ordered promenade/atrium routes; door-suite branches are separate above.
@@ -297,7 +297,7 @@ for s in D['rig']['sails']:
   q=qframe(chord,luff,normal)
   parts.append({'mesh':s['sheet'],'from':{'at':local(t),'turn':q,'scale':[.015,1,.3]},'to':{'at':local(t),'turn':q}})
 assert len(parts)<=16
-D['travel']={'static':'koru:sail_control','seconds':18,'parts':parts}
+D['motion']={'static':'koru:sail_control','seconds':18,'parts':parts}
 # Cells: 16 m of the ship's length, the whole beam wide. A cell is one mesh, modelled in its anchor's frame and drawn by
 # the anchor's static; its other modules draw nothing and are collision alone. A door draws itself.
 for m in mods:
