@@ -5,7 +5,8 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { clientAddress, closeCode, frontRoute, frontWorlds, startFront } from "../../server/front.ts";
+import { clientAddress, closeCode, frontRoute, frontWorlds, sendDown, startFront, type Pipe } from "../../server/front.ts";
+import { CH_RELIABLE, CH_UNRELIABLE } from "../../shared/net/transport.ts";
 import { startServer, type RunningServer } from "../../server/main.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { linkOf, pathOf, placeOf, startPage, worldAddress } from "../../server/site.ts";
@@ -148,4 +149,18 @@ test("the front knows only worlds running and listening, routes a path to its wo
   // A world believes who a request is from what a proxy on its own machine says, and nothing else does.
   expect([clientAddress("127.0.0.1", "198.51.100.1, 203.0.113.7, 127.0.0.1"), clientAddress("::ffff:127.0.0.1", "2001:db8::7"), clientAddress("203.0.113.9", "198.51.100.1"), clientAddress("127.0.0.1", "<script>, 127.0.0.1"), clientAddress("::1", null)]).toEqual(["203.0.113.7", "2001:db8::7", "203.0.113.9", "127.0.0.1", "::1"]);
   expect([closeCode(1000), closeCode(1008), closeCode(1005), closeCode(1006), closeCode(4001), closeCode(0)]).toEqual([1000, 1008, 1000, 1000, 4001, 1000]);
+});
+
+test("the front keeps a world's backlog rule on a page's socket, which the world cannot see past it", () => {
+  // What becomes of an unreliable message and then a reliable one, to a page with `buffered` bytes waiting.
+  const page = (voice: boolean, buffered: number): string => {
+    const did: string[] = [];
+    const ws = { data: { voice } as Pipe, getBufferedAmount: () => buffered, send: () => (did.push("sent"), 0), close: (code?: number) => void did.push(`closed ${code}`) };
+    for (const channel of [CH_UNRELIABLE, CH_RELIABLE]) {
+      did.push(`${channel}:`);
+      sendDown(ws, Uint8Array.of(channel));
+    }
+    return did.join(" ");
+  };
+  expect([page(false, 0), page(false, 8000), page(false, 5 << 20), page(true, 8000), page(true, 20000)]).toEqual(["0: sent 1: sent", "0: 1: sent", "0: 1: closed 1008", "0: sent 1: sent", "0: 1:"]);
 });

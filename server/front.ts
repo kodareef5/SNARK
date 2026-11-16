@@ -77,7 +77,7 @@ export function closeCode(code: number): number {
   return code === 1000 || (code >= 1001 && code <= 1014 && code !== 1004 && code !== 1005 && code !== 1006) || (code >= 3000 && code <= 4999) ? code : 1000;
 }
 
-interface Pipe {
+export interface Pipe {
   /** The world's socket, open before the page's is taken. */
   up: WebSocket;
   voice: boolean;
@@ -104,7 +104,7 @@ function openUp(target: string, headers: Record<string, string>): Promise<WebSoc
  * Sends a world's message on to its page. The world sees no backlog past the front, so the front keeps the world's rule
  * (backlog): what a slow page would wait behind is skipped, and a page far behind is dropped.
  */
-function sendDown(ws: ServerWebSocket<Pipe>, m: Uint8Array): void {
+export function sendDown(ws: Pick<ServerWebSocket<Pipe>, "data" | "getBufferedAmount" | "send" | "close">, m: Uint8Array): void {
   const buffered = ws.getBufferedAmount();
   const rule = ws.data.voice ? (buffered > VOICE_BACKLOG ? 1 : 0) : backlog(m[0] ?? 0, buffered, SNAPSHOT_BYTES_MOST);
   if (rule === 2) ws.close(1008, "too slow");
