@@ -16,7 +16,7 @@ import { youngScale } from "../../../shared/sim/breeding.ts";
 import { sortU32 } from "../../../shared/sort.ts";
 import { rayVehicle, vehiclePoint, vehicleRotation } from "../../../shared/sim/vehicle-frame.ts";
 import type { VehicleDefinition } from "../../../shared/sim/vehicle.ts";
-import { quatRotate } from "../../../shared/math/quat.ts";
+import { quatAxis, quatRotate } from "../../../shared/math/quat.ts";
 import type { CollisionWorld } from "../../../shared/world/collide.ts";
 import { castWorld, HIT_NONE, rayHit } from "../../../shared/world/ray.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
@@ -96,7 +96,8 @@ export class Details {
   private posedAt = 0;
   private readonly birth: Float32Array;
   private readonly rotorKinds: Uint8Array;
-  private readonly emissions = new Map<number, { wash: number; smoke: number; seen: number }>();
+  private readonly boatKinds: Uint8Array;
+  private readonly emissions = new Map<number, { wash: number; smoke: number; seen: number; tick: number; x: number; z: number; speed: number }>();
   private emissionFrame = 0;
   private readonly rotation = new Float64Array(4);
   private readonly up = new Float64Array(3);
@@ -106,6 +107,7 @@ export class Details {
   constructor(reg: Registry, details: PackDetails | undefined, palette: Uint8Array, animOf: (kind: number) => CreatureAnim | null) {
     this.palette = palette;
     this.birth = reg.birthScale;
+    this.boatKinds = Uint8Array.from(reg.vehicle, v => v?.movement === "boat" ? 1 : 0);
     this.rotorKinds = Uint8Array.from(reg.vehicle, v => v?.movement === "rotor" ? 1 : 0);
     this.effects = details?.effects ?? [];
     this.pictures = details?.pictures ?? [];
@@ -185,18 +187,58 @@ export class Details {
     const frameNumber = ++this.emissionFrame;
     for (let i = 0; i < r.count; i++) {
       const kind = r.kind[i]!, book = this.books[kind];
-      if (!this.rotorKinds[kind] || !book || (r.cue[i]! & CUE_DEAD) !== 0 || Math.hypot(r.x[i]! - cam.x, r.y[i]! - cam.y, r.z[i]! - cam.z) > 90) continue;
+      if ((!this.rotorKinds[kind] && !this.boatKinds[kind]) || !book || (r.cue[i]! & CUE_DEAD) !== 0 || Math.hypot(r.x[i]! - cam.x, r.y[i]! - cam.y, r.z[i]! - cam.z) > 90) continue;
       const key = r.id[i]! + r.gen[i]! * 1048576;
       let seen = this.emissions.get(key);
-      if (!seen) this.emissions.set(key, seen = { wash: -1, smoke: -1, seen: frameNumber });
+      if (!seen) this.emissions.set(key, seen = { wash: -1, smoke: -1, seen: frameNumber, tick: r.tick, x: r.x[i]!, z: r.z[i]!, speed: 0 });
       seen.seen = frameNumber;
+      if (r.tick > seen.tick) {
+        const elapsed = (r.tick - seen.tick) / TICK_RATE;
+        seen.speed = elapsed < .5 ? Math.hypot(r.x[i]! - seen.x, r.z[i]! - seen.z) / elapsed : 0;
+        seen.tick = r.tick; seen.x = r.x[i]!; seen.z = r.z[i]!;
+      }
       const frame = { x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, yaw: r.yaw[i]!, pitch: r.vehiclePitch[i]!, roll: r.vehicleRoll[i]!, qx: r.vehicleQx[i]!, qy: r.vehicleQy[i]!, qz: r.vehicleQz[i]!, qw: r.vehicleQw[i]! };
-      const emit = (occasion: "rotor_wash" | "engine_smoke", x: number, y: number, z: number, floor: number): void => {
+      const emit = (occasion: "rotor_wash" | "engine_smoke" | "boat_wake" | "boat_spray", x: number, y: number, z: number, floor: number, socket?: string): void => {
         const h: Happening = { occasion, id: r.id[i]!, kind, tick: r.tick, x: frame.x, y: frame.y, z: frame.z, yaw: frame.yaw, size: 1, anim: r.anim[i]!, cue: r.cue[i]!, grounded: Number.isFinite(floor), colours: r.colors.slice(i * 6, i * 6 + 6), fromX: NaN, fromY: NaN, fromZ: NaN, foot: -1, corpse: null };
         book.answers[occasion]?.forEach((answer, index) => {
+          if (socket && answer.entry.from !== socket) return;
           if (this.waiting.length < MOST_WAITING) this.waiting.push({ h, answer, due: r.tick, index, origin: { x, y, z, floor } });
         });
       };
+      // A socket may live on the steering outboard. Pose the same native rig as rendering before resolving it.
+      const socketAt = (name: string): boolean => {
+        const rig = book.anim.rig, anchor = rig.sockets.get(name); if (!anchor) return false;
+        rig.a.rest();
+        if (book.vehicle?.movement === "boat" && book.vehicle.outboard) {
+          const motor = book.vehicle.outboard, bone = rig.names.indexOf(motor.bone);
+          if (bone >= 0) quatAxis(rig.a.rot, bone * 4, motor.axis[0], motor.axis[1], motor.axis[2], r.steering[i]! * motor.ratio);
+        }
+        solve(rig, rig.a, rig.solved); boneToModel(rig.solved, anchor.bone, anchor.x, anchor.y, anchor.z, this.emitter);
+        vehiclePoint(frame, this.emitter, this.emitter); return true;
+      };
+      if (this.boatKinds[kind]) {
+        const beat = Math.floor(r.tick / (TICK_RATE / 8));
+        vehicleRotation(frame, this.rotation); quatRotate(this.rotation, 0, 0, 1, 0, this.up, 0);
+        const water = hf.waterAt(frame.x, frame.z), draft = water - frame.y;
+        if (beat !== seen.wash && seen.speed > .6 && seen.speed < 60 && this.up[1]! > .5 && draft > -.08 && draft < .95 && water > hf.heightAt(frame.x, frame.z) + .15) {
+          seen.wash = beat;
+          for (const [occasion, sockets, speed] of [["boat_wake", ["wake_left", "wake_right"], .6], ["boat_spray", ["spray_left", "spray_right"], 5]] as const) {
+            if (seen.speed < speed) continue;
+            for (const socket of sockets) if (socketAt(socket)) {
+              const x = this.emitter[0]!, z = this.emitter[2]!, surface = hf.waterAt(x, z);
+              if (Number.isFinite(surface) && Math.abs(surface - water) < .05 && surface > hf.heightAt(x, z) + .1 && Math.abs(this.emitter[1]! - surface) < .9) emit(occasion, x, surface + .025, z, surface, socket);
+            }
+          }
+        }
+        const smoke = Math.floor(r.tick / (TICK_RATE / 3));
+        if (r.vehicleEngineOn[i] && r.vehicleEngineCondition[i]! < .65 && smoke !== seen.smoke) {
+          seen.smoke = smoke;
+          for (const answer of book.answers.engine_smoke ?? []) if (socketAt(answer.entry.from)) {
+            if (this.emitter[1]! > hf.waterAt(this.emitter[0]!, this.emitter[2]!)) emit("engine_smoke", this.emitter[0]!, this.emitter[1]!, this.emitter[2]!, NaN, answer.entry.from);
+          }
+        }
+        continue;
+      }
       const wash = Math.floor(r.tick / (TICK_RATE / 4));
       if (r.vehicleRotorRpm[i]! > 220 && wash !== seen.wash) {
         seen.wash = wash;
@@ -262,7 +304,7 @@ export class Details {
       if (i !== undefined) {
         const r = remote!;
         [x, y, z, yaw] = [r.x[i]!, r.y[i]!, r.z[i]!, r.yaw[i]!];
-        if (this.rotorKinds[h.kind]) {
+        if (this.rotorKinds[h.kind] || this.boatKinds[h.kind]) {
           vehicleRotation({ x, y, z, yaw, pitch: 0, roll: 0, qx: r.vehicleQx[i]!, qy: r.vehicleQy[i]!, qz: r.vehicleQz[i]!, qw: r.vehicleQw[i]! }, this.rotation);
           rotated = true;
         }
@@ -293,7 +335,7 @@ export class Details {
     else if (from === "hit") {
       world(solved.pos[0]!, book.height * 0.55, solved.pos[2]!);
       const [cx, cz] = [at[0]!, at[2]!];
-      if (rotated && book.vehicle?.movement === "rotor") {
+      if (rotated && (book.vehicle?.movement === "rotor" || book.vehicle?.movement === "boat")) {
         // The impact surface follows the cabin in three dimensions, including an inverted aircraft.
         let [sx, sy, sz] = [h.fromX, h.fromY - .6, h.fromZ];
         if (!Number.isFinite(sx)) {

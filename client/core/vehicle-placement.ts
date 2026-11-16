@@ -4,7 +4,9 @@ import { handleIndex } from "../../shared/ids.ts";
 import { CMD_VEHICLE, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, VEHICLE_DEPLOY } from "../../shared/net/protocol.ts";
 import { stanceHeight } from "../../shared/sim/character.ts";
 import { FLAG_BLUEPRINT } from "../../shared/sim/items.ts";
-import { isRotorVehicle } from "../../shared/sim/vehicle.ts";
+import { boatRestY } from "../../shared/sim/boat.ts";
+import { boatMeetsCapsule, boatMeetsVehicle, boatPlacement } from "../../shared/world/boat.ts";
+import { isRotorVehicle, isBoatVehicle } from "../../shared/sim/vehicle.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { helicopterMeetsCapsule, helicopterMeetsVehicle, helicopterPlacement } from "../../shared/world/helicopter.ts";
 import { castWorld, HIT_NONE, rayHit } from "../../shared/world/ray.ts";
@@ -51,29 +53,39 @@ export class VehiclePlacement {
     this.active = !!def && item !== this.suppressed && session.driving < 0 && session.own.seat === 0;
     if (!this.active || !def) { this.notice = ""; if (!def) this.selected = -1; return; }
     const hit = castWorld(world, ox, oy, oz, dx, dy, dz, REACH);
-    const distance = hit === HIT_NONE ? 8 : rayHit.t;
+    let distance = hit === HIT_NONE ? 8 : rayHit.t;
+    // The solid-world ray passes through water. Find the first wet plane before its solid hit.
+    let waterHit = false;
+    if (isBoatVehicle(def) && dy < -.001) for (let d = .25; d <= REACH; d += .25) {
+      const water = world.hf.waterAt(ox + dx * d, oz + dz * d), t = (water - oy) / dy;
+      if (Number.isFinite(t) && t >= 0 && t <= REACH && t <= (hit === HIT_NONE ? REACH : rayHit.t) && Math.abs(t - d) <= .5 &&
+        Math.abs(world.hf.waterAt(ox + dx * t, oz + dz * t) - water) < .02) { distance = t; waterHit = true; break; }
+    }
     const p = this.pose;
     p.x = ox + dx * distance; p.y = oy + dy * distance; p.z = oz + dz * distance;
     p.yaw = (Math.round(yaw * 65536 / (2 * Math.PI)) + this.turn * 4096) & 65535;
+    if (isBoatVehicle(def)) p.y = boatRestY(def.spec, world.hf.waterAt(p.x, p.z));
     const angle = p.yaw * 2 * Math.PI / 65536, frame = { ...p, yaw: angle, pitch: 0, roll: 0 };
-    let problem = session.driving >= 0 || session.own.seat > 0 ? RESULT_DENIED : hit === HIT_NONE || rayHit.ny < .94 ? RESULT_NO_SUPPORT : 0;
-    if (!problem && (!isRotorVehicle(def) || !helicopterPlacement(world, p.x, p.y, p.z, angle, def))) problem = RESULT_NO_SUPPORT;
-    if (!problem && isRotorVehicle(def)) {
+    let problem = session.driving >= 0 || session.own.seat > 0 ? RESULT_DENIED : (isBoatVehicle(def) ? !waterHit : hit === HIT_NONE || rayHit.ny < .94) ? RESULT_NO_SUPPORT : 0;
+    if (!problem && !(isBoatVehicle(def) ? boatPlacement(world, p.x, p.y, p.z, angle, def) : isRotorVehicle(def) && helicopterPlacement(world, p.x, p.y, p.z, angle, def))) problem = RESULT_NO_SUPPORT;
+    if (!problem && (isRotorVehicle(def) || isBoatVehicle(def))) {
+      const meetsCapsule = isBoatVehicle(def) ? (x: number, y: number, z: number, r: number, h: number) => boatMeetsCapsule(def, frame, x, y, z, r, h) : (x: number, y: number, z: number, r: number, h: number) => helicopterMeetsCapsule(def, frame, x, y, z, r, h);
       const me = reg.move[session.ownKind];
-      if (me && helicopterMeetsCapsule(def, frame, session.own.x, session.own.y, session.own.z, me.radius, stanceHeight(me, session.own.stance))) problem = RESULT_OBSTRUCTED;
+      if (me && meetsCapsule(session.own.x, session.own.y, session.own.z, me.radius, stanceHeight(me, session.own.stance))) problem = RESULT_OBSTRUCTED;
       session.sampleRemote(this.remote);
       for (let i = 0; !problem && i < this.remote.count; i++) {
         const r = this.remote, kind = r.kind[i]!;
         if (r.id[i] === handleIndex(session.ownHandle) || Math.hypot(r.x[i]! - p.x, r.y[i]! - p.y, r.z[i]! - p.z) > 18) continue;
         const other = reg.vehicle[kind];
-        if (other ? helicopterMeetsVehicle(def, frame, other, {
+        const otherFrame = {
           x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, yaw: r.yaw[i]!, pitch: r.vehiclePitch[i]!, roll: r.vehicleRoll[i]!,
-          ...(isRotorVehicle(other) ? { qx: r.vehicleQx[i]!, qy: r.vehicleQy[i]!, qz: r.vehicleQz[i]!, qw: r.vehicleQw[i]! } : {}),
-        }) : reg.move[kind] && helicopterMeetsCapsule(def, frame, r.x[i]!, r.y[i]!, r.z[i]!, reg.bodyRadius[kind]!, reg.bodyHeight[kind]!)) problem = RESULT_OBSTRUCTED;
+          ...(other && (isRotorVehicle(other) || isBoatVehicle(other)) ? { qx: r.vehicleQx[i]!, qy: r.vehicleQy[i]!, qz: r.vehicleQz[i]!, qw: r.vehicleQw[i]! } : {}),
+        };
+        if (other ? (isBoatVehicle(def) ? boatMeetsVehicle(def, frame, other, otherFrame) : helicopterMeetsVehicle(def, frame, other, otherFrame)) : reg.move[kind] && meetsCapsule(r.x[i]!, r.y[i]!, r.z[i]!, reg.bodyRadius[kind]!, reg.bodyHeight[kind]!)) problem = RESULT_OBSTRUCTED;
       }
     }
     this.problem = this.asked ? RESULT_BUSY : problem;
-    this.notice = nowMs < this.refusalUntil ? this.refusal : VEHICLE_PLACEMENT_REASONS[this.problem] ?? "Assemble • click   Rotate • Q / E   Cancel • Esc";
+    this.notice = nowMs < this.refusalUntil ? this.refusal : (isBoatVehicle(def) && this.problem === RESULT_NO_SUPPORT ? "Needs open water with room for the hull and outboard" : VEHICLE_PLACEMENT_REASONS[this.problem]) ?? "Assemble • click   Rotate • Q / E   Cancel • Esc";
   }
 
   key(code: string, down: boolean, repeat: boolean): boolean {
@@ -91,7 +103,7 @@ export class VehiclePlacement {
     if (seq === 0 || seq !== this.asked) return;
     this.asked = 0;
     if (code === RESULT_OK) { this.cancel(); return; }
-    this.refusal = VEHICLE_PLACEMENT_REASONS[code] ?? "The aircraft cannot be assembled here";
+    this.refusal = VEHICLE_PLACEMENT_REASONS[code] ?? "The vehicle cannot be assembled here";
     this.refusalUntil = nowMs + 2500;
   }
 }

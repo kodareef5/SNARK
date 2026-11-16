@@ -5,7 +5,7 @@ import { CUE_HURT_SHIFT } from "../../../shared/anim/pose.ts";
 import { makeHandle } from "../../../shared/ids.ts";
 import type { ItemDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_FEED, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_UNSADDLE, ORDER_WANDER, ORDER_YOURS, CMD_USE, CMD_CRAFT_BLUEPRINT, CMD_VEHICLE, VEHICLE_REFUEL, VEHICLE_REPAIR } from "../../../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_FEED, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_UNSADDLE, ORDER_WANDER, ORDER_YOURS, CMD_USE, CMD_CRAFT_BLUEPRINT, CMD_VEHICLE, VEHICLE_REFUEL, VEHICLE_REPAIR, VEHICLE_RECOVER } from "../../../shared/net/protocol.ts";
 import { VEHICLE_FUEL_PER_GASOLINE, VEHICLE_REPAIR_BILL, VEHICLE_REPAIR_STEP } from "../../../shared/sim/vehicle-maintenance.ts";
 import { ARMOR_SLOTS, FLAG_BLUEPRINT, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, blueprintCost, type Inventory } from "../../../shared/sim/items.ts";
 import { RemoteSample, type ClientSession } from "../session.ts";
@@ -62,6 +62,7 @@ export const KEY_VEHICLE_REFUEL = 2898;
 export const KEY_VEHICLE_REPAIR = 2899;
 export const KEY_INV_DEPLOY = 2900;
 export const KEY_VEHICLE_TAB = 2901;
+export const KEY_VEHICLE_RECOVER = 2902;
 /** A slot's colour by quality: none for primitive, then green, blue, purple, gold and cyan, as ARK's tiers read. */
 const QUALITY_TINT: readonly number[] = [-1, 0x3f7a42, 0x31579a, 0x6c4290, 0x8f7426, 0x2b8790];
 
@@ -84,7 +85,7 @@ export class InventoryScreen {
   onDeploy: ((slot: number) => void) | null = null;
   private readonly vehicleSample = new RemoteSample();
   private vehicleBag = false;
-  private service: { handle: number; fuel: boolean; repair: boolean; lines: string[] } | null = null;
+  private service: { handle: number; fuel: boolean; repair: boolean; boat: boolean; recover: boolean; lines: string[] } | null = null;
   /** Box and slot of the picked-up stack. `held` is -1 for none. */
   heldBox = BOX_SELF;
   held = -1;
@@ -138,6 +139,11 @@ export class InventoryScreen {
     }
     if (kind === 0 && this.registry && this.station.click(key, session, this.registry)) return;
     if (kind === 0 && key === KEY_VEHICLE_TAB) { this.vehicleBag = !this.vehicleBag; return; }
+    if (kind === 0 && key === KEY_VEHICLE_RECOVER) {
+      const service = this.service;
+      if (service?.recover) session.command(CMD_VEHICLE, w => { w.u8(VEHICLE_RECOVER); w.u32(service.handle); });
+      return;
+    }
     if (kind === 0 && (key === KEY_VEHICLE_REFUEL || key === KEY_VEHICLE_REPAIR)) {
       const service = this.service, refuel = key === KEY_VEHICLE_REFUEL;
       if (service && (refuel ? service.fuel : service.repair)) session.command(CMD_VEHICLE, w => { w.u8(refuel ? VEHICLE_REFUEL : VEHICLE_REPAIR); w.u32(service.handle); if (refuel) w.u8(0); });
@@ -272,24 +278,26 @@ export class InventoryScreen {
       if (def && index >= 0) {
         const hull = session.looked?.id === subject.id && session.looked.health >= 0 ? `${Math.round(session.looked.health * 100)}%` : ["75–100%", "50–75%", "25–50%", "under 25%"][(r.cue[index]! >>> CUE_HURT_SHIFT) & 3]!;
         const fuel = r.vehicleFuel[index]!, engine = r.vehicleEngineCondition[index]!, rotor = r.vehicleRotorCondition[index]!;
-        const stopped = r.vehicleGrounded[index] !== 0 && (def.movement !== "rotor" || (!r.vehicleEngineOn[index] && r.vehicleRotorRpm[index]! <= 30));
+        const boat = def.movement === "boat";
+        const stopped = boat ? !r.vehicleEngineOn[index] && r.vehicleRpm[index]! <= 30 : r.vehicleGrounded[index] !== 0 && (def.movement !== "rotor" || (!r.vehicleEngineOn[index] && r.vehicleRotorRpm[index]! <= 30));
         const gasoline = reg.index.get("core:gasoline")!, haveFuel = own.total(gasoline);
         const repairItems = VEHICLE_REPAIR_BILL.map(([id]) => own.total(reg.index.get(id)!));
         const maxCost = VEHICLE_REPAIR_BILL.map(([, n]) => Math.ceil(n * VEHICLE_REPAIR_STEP));
         const lines = [`Hull ${hull} | Fuel ${(fuel * def.spec.fuelCapacity).toFixed(1)}/${def.spec.fuelCapacity}`];
         if (def.movement === "rotor") lines.push(`Engine ${Math.round(engine * 100)}% | Rotor ${Math.round(rotor * 100)}%`);
-        lines.push(stopped ? "Service available when stationary" : "To service: land, exit and wait for rotors");
+        if (boat) lines.push(`Engine ${Math.round(engine * 100)}% | Bilge ${Math.round(r.vehicleFlooding[index]! * 100)}%`);
+        lines.push(boat ? "To service: release throttle, exit and let boat settle" : stopped ? "Service available when stationary" : "To service: land, exit and wait for rotors");
         lines.push(`Refuel: ${VEHICLE_FUEL_PER_GASOLINE} fuel per gasoline | carrying ${haveFuel}`);
         lines.push(`Repair: up to ${VEHICLE_REPAIR_STEP * 100}%; at most ${maxCost[0]} ingots, ${maxCost[1]} polymer, ${maxCost[2]} electronics`);
         lines.push(`Materials: ${repairItems[0]} ingots, ${repairItems[1]} polymer, ${repairItems[2]} electronics`);
         this.service = { handle: makeHandle(subject.id, r.gen[index]!), fuel: stopped && fuel < .9999 && haveFuel > 0,
-          repair: stopped && repairItems.every(n => n > 0), lines: [] };
+          repair: stopped && repairItems.every(n => n > 0), boat, recover: boat && stopped, lines: [] };
         for (const line of lines) wrap(line, columns(w - PAD * 2, S_LABEL), this.service.lines);
       }
     }
     // An owned one has a row of buttons under that, and a second row when it has levels to spend.
     const orderH = !this.service && subject?.owned ? 28 + (subject.points > 0 ? 28 : 0) : 0;
-    const subjectH = this.service ? this.service.lines.length * infoH + 30 : subject ? infoH + 2 + orderH : 0;
+    const subjectH = this.service ? this.service.lines.length * infoH + (this.service.boat ? 58 : 30) : subject ? infoH + 2 + orderH : 0;
     if (this.service && other) {
       const roomRows = Math.max(1, Math.min(OPEN_ROWS, Math.floor((f.height - titleH - subjectH - PAD * 2 - 48) / (CELL + GAP))));
       this.pageSize = cols * roomRows; this.pages = Math.max(1, Math.ceil(other.bag / this.pageSize));
@@ -372,9 +380,13 @@ export class InventoryScreen {
         const service = this.service, sy = y + PAD + titleH;
         for (let i = 0; i < service.lines.length; i++) f.text(KEY_VEHICLE_SERVICE + i, x0 + PAD, sy + i * infoH, w - PAD * 2, S_LABEL, service.lines[i]!);
         const bw = (w - PAD * 2 - GAP) / 2;
-        for (const [i, key, label, enabled] of [[0, KEY_VEHICLE_REFUEL, "Refuel", service.fuel], [1, KEY_VEHICLE_REPAIR, "Repair up to 25%", service.repair]] as const) {
+        for (const [i, key, label, enabled] of [[0, KEY_VEHICLE_REFUEL, "Refuel", service.fuel], [1, KEY_VEHICLE_REPAIR, service.boat ? "Repair / pump" : "Repair up to 25%", service.repair]] as const) {
           const b = f.add(key, K_BUTTON, x0 + PAD + i * (bw + GAP), sy + service.lines.length * infoH + 3, bw, 24, S_BUTTON);
           b.text = label; b.interactive = enabled; b.alpha = enabled ? 1 : .45;
+        }
+        if (service.boat) {
+          const b = f.add(KEY_VEHICLE_RECOVER, K_BUTTON, x0 + PAD, sy + service.lines.length * infoH + 31, w - PAD * 2, 24, S_BUTTON);
+          b.text = "Push toward water"; b.interactive = service.recover; b.alpha = service.recover ? 1 : .45;
         }
       } else if (subject) {
         const pct = (v: number): string => `${Math.round(v * 100)}%`;
