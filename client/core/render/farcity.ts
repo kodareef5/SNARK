@@ -359,7 +359,7 @@ export class FarCity {
         const cx0 = cb[k]! - cam.x, cy0 = cb[k + 1]! - cam.y, cz0 = cb[k + 2]! - cam.z, cx1 = cb[k + 3]! - cam.x, cy1 = cb[k + 4]! - cam.y, cz1 = cb[k + 5]! - cam.z;
         ways[n] = this.source.complete(c) || !cam.boxVisible(cx0, cy0, cz0, cx1, cy1, cz1) ? 0 : cam.passes(cx0, cy0, cz0, cx1, cy1, cz1);
       });
-      const [tx, tz] = this.corner(tile.t);
+      const tx = this.cornerX(tile.t), tz = this.cornerZ(tile.t);
       const ox = tx - LOCAL - cam.x, oy = tile.base - cam.y, oz = tz - LOCAL - cam.z;
       for (let l = 0; l < tile.held.length; l++) {
         const h = tile.held[l];
@@ -422,8 +422,13 @@ export class FarCity {
     return Math.floor(cz / CITY_TILE) * this.tilesX + Math.floor(cx / CITY_TILE);
   }
 
-  private corner(t: number): [number, number] {
-    return [(t % this.tilesX) * TILE_METRES, Math.floor(t / this.tilesX) * TILE_METRES];
+  /** Tile `t`'s corner nearest the map's origin, in metres. */
+  private cornerX(t: number): number {
+    return (t % this.tilesX) * TILE_METRES;
+  }
+
+  private cornerZ(t: number): number {
+    return Math.floor(t / this.tilesX) * TILE_METRES;
   }
 
   /** Lets go of every level of `tile` on the card and the pieces made for it. */
@@ -497,7 +502,7 @@ export class FarCity {
     const city = this.source.statics;
     const gone = (c: number): Gone => this.gone.get(c) ?? null;
     const part: CityPart = l.cell > 0 ? cellPart(city, chunk, this.hf, gone(chunk), l.cell, l.tall) : mergedPart(city, chunk, this.hf, gone, l.gap, l.least);
-    const [tx, tz] = this.corner(tile.t);
+    const tx = this.cornerX(tile.t), tz = this.cornerZ(tile.t);
     const dx = (chunk % this.dims.chunksX) * CHUNK_SIZE - tx + LOCAL;
     const dz = Math.floor(chunk / this.dims.chunksX) * CHUNK_SIZE - tz + LOCAL;
     const verts = new Uint8Array(part.faces * 4 * VERTEX_BYTES);

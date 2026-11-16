@@ -754,6 +754,7 @@ export class Scene {
     this.drawDetails(seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far);
   }
 
+  /** `count` of the packet's details from `first`, one draw in the depth ranges `passes`. */
   private drawDetails(first: number, count: number, flags: number, passes: number): void {
     const p = this.packet;
     const d = p.drawCount;

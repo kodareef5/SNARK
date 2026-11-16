@@ -202,6 +202,8 @@ export class RemoteSample {
   readonly vehicleQy = new Float32Array(MAX_VIEW);
   readonly vehicleQz = new Float32Array(MAX_VIEW);
   readonly vehicleQw = new Float32Array(MAX_VIEW);
+  /** 1 where the vehicle columns hold what a body sent no vehicle parts has, which then need not be written again. */
+  readonly bare = new Uint8Array(MAX_VIEW);
   readonly flags = new Uint8Array(MAX_VIEW);
   readonly level = new Uint16Array(MAX_VIEW);
   /** Six colour regions per entity. Zero means the species' own colour. */
@@ -717,8 +719,13 @@ export class ClientSession {
       out.grown[n] = b.grown[j]!;
       const both = a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j];
       const vehicle = this.registry.vehicle[b.kind[j]!];
-      if (vehicle || hasVehicleParts(b, j) || (both && hasVehicleParts(a!, i))) this.vehicleColumns(out, n, b, j, both ? a : null, i, k, vehicle?.movement);
-      else noVehicle(out, n);
+      if (vehicle || hasVehicleParts(b, j) || (both && hasVehicleParts(a!, i))) {
+        this.vehicleColumns(out, n, b, j, both ? a : null, i, k, vehicle?.movement);
+        out.bare[n] = 0;
+      } else if (out.bare[n] === 0) {
+        noVehicle(out, n);
+        out.bare[n] = 1;
+      }
       if (both) {
         out.x[n] = dequantX(a!.qx[i]! + (b.qx[j]! - a!.qx[i]!) * k);
         out.y[n] = dequantY(a!.qy[i]! + (b.qy[j]! - a!.qy[i]!) * k);

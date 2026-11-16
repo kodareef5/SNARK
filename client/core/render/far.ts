@@ -445,14 +445,14 @@ export class FarBlocks {
       const ax = b[0]! - cam.x, ay = b[1]! - cam.y, az = b[2]! - cam.z, bx = b[3]! - cam.x, by = b[4]! - cam.y, bz = b[5]! - cam.z;
       const near = Math.hypot(Math.max(ax, -bx, 0), Math.max(ay, -by, 0), Math.max(az, -bz, 0));
       if (near >= reach || !cam.boxVisible(ax, ay, az, bx, by, bz)) continue;
-      const [ox, oz] = this.corner(t);
+      const ox = this.cornerX(t), oz = this.cornerZ(t);
       put(tile.slot, tile.indexCount / 3, ox - cam.x, tile.base - cam.y, oz - cam.z, cam.passes(ax, ay, az, bx, by, bz));
     }
   }
 
   /** Metres from (x, z) to tile `t`'s square. */
   private off(t: number, x: number, z: number): number {
-    const [ox, oz] = this.corner(t);
+    const ox = this.cornerX(t), oz = this.cornerZ(t);
     return Math.hypot(Math.max(ox - x, x - ox - FAR_TILE_METRES, 0), Math.max(oz - z, z - oz - FAR_TILE_METRES, 0));
   }
 
@@ -471,8 +471,13 @@ export class FarBlocks {
     return Math.floor(cz / FAR_TILE) * this.tilesX + Math.floor(cx / FAR_TILE);
   }
 
-  private corner(t: number): [number, number] {
-    return [(t % this.tilesX) * FAR_TILE_METRES, Math.floor(t / this.tilesX) * FAR_TILE_METRES];
+  /** Tile `t`'s corner nearest the map's origin, in metres. */
+  private cornerX(t: number): number {
+    return (t % this.tilesX) * FAR_TILE_METRES;
+  }
+
+  private cornerZ(t: number): number {
+    return Math.floor(t / this.tilesX) * FAR_TILE_METRES;
   }
 
   private touch(chunk: number): void {
@@ -484,7 +489,7 @@ export class FarBlocks {
 
   /** The chunks of tile `t`, by calling `each` with each that is on the map. */
   private chunks(t: number, each: (chunk: number, x0: number, z0: number) => void): void {
-    const [ox, oz] = this.corner(t);
+    const ox = this.cornerX(t), oz = this.cornerZ(t);
     const cx0 = ox / CHUNK_SIZE, cz0 = oz / CHUNK_SIZE;
     for (let cz = cz0; cz < Math.min(cz0 + FAR_TILE, this.dims.chunksZ); cz++) for (let cx = cx0; cx < Math.min(cx0 + FAR_TILE, this.dims.chunksX); cx++) each(cz * this.dims.chunksX + cx, cx * CHUNK_SIZE, cz * CHUNK_SIZE);
   }
@@ -495,7 +500,7 @@ export class FarBlocks {
 
   /** Makes tile `t`'s mesh of the parts of its chunks drawn far, or none if it has none. */
   private make(t: number, tile: Tile): void {
-    const [ox, oz] = this.corner(t);
+    const ox = this.cornerX(t), oz = this.cornerZ(t);
     const list = this.list;
     list.length = 0;
     let faces = 0;
