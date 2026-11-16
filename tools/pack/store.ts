@@ -1,5 +1,5 @@
 // The ranged files of a build as it serves them. Every part a client fetches by range (a level's indices and vertices,
-// its surface, its skin, a step of a texture) is stored deflated where that makes it smaller, so a range brings fewer
+// its surface, its skin, a skeleton's clips, a step of a texture) is stored deflated where that makes it smaller, so a range brings fewer
 // bytes and the client inflates them (shared/pack/stored.ts). The boot file is fetched whole and is left as it is.
 
 import { createHash } from "node:crypto";
@@ -10,7 +10,7 @@ import { Worker } from "node:worker_threads";
 import { inflateRawSync } from "node:zlib";
 import { MANIFEST_VERSION, type Manifest } from "../../shared/pack/manifest.ts";
 import { FILTER_LEVEL, FILTER_NONE, FILTER_PIXELS, FILTER_PLANES, FILTER_SURFACE, PARTS_HEADER_BYTES, PARTS_MAGIC, PARTS_VERSION, STORED_TEXTURE_VERSION, filterPart, unfilterPart } from "../../shared/pack/stored.ts";
-import { STEP0_SIZE, TEXTURE_HEADER_BYTES, stepBytes, stepOffset, type TextureFormat, type TextureRole } from "../../shared/pack/texture.ts";
+import { STEP0_SIZE, TEXTURE_HEADER_BYTES, blockOf, stepBytes, stepOffset, type TextureFormat, type TextureRole } from "../../shared/pack/texture.ts";
 import { partHash } from "./manifest.ts";
 import type { SplitFile } from "./split.ts";
 
@@ -64,13 +64,15 @@ function partsOf(files: readonly SplitFile[], manifest: Manifest): Part[][] {
       });
     }
   }
+  // A skeleton's clips are in planes already.
+  for (const e of manifest.clips ?? []) parts[e.file]!.push({ at: e.at, bytes: e.part.bytes, filters: [[FILTER_NONE, []]], put: (at, stored) => void ((e.at = at), stored < e.part.bytes && (e.part.stored = stored)) });
   for (const tex of manifest.textures ?? []) {
     for (const [format, v] of Object.entries(tex.in) as [TextureFormat, NonNullable<(typeof tex.in)[TextureFormat]>][]) {
       const stored: number[] = [];
       v.hash.forEach((_, step) => {
-        const bytes = stepBytes(format, tex.role, step);
+        const bytes = stepBytes(format, tex.role, step, blockOf(format, v));
         parts[v.file]!.push({
-          at: v.at + stepOffset(format, tex.role, step),
+          at: v.at + stepOffset(format, tex.role, step, blockOf(format, v)),
           bytes,
           filters: textureFilters(format, tex.role, step),
           put: (to, size) => {

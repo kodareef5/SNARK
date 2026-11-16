@@ -56,7 +56,7 @@ export function benchTextured(section: Section, record: Row): void {
   let top = STEP0_SIZE;
   while (top < shown && top < Math.min(tier.texture, PIXELS)) top *= 2;
   const textures = set.manifest.textures!.filter((t) => t.id.startsWith(TUBE));
-  const wanted = textures.reduce((sum, t) => sum + textureBytes("rgba", t.role, top), 0);
+  const wanted = textures.reduce((sum, t) => sum + textureBytes("rgba", t.role, top, 1), 0);
 
   // From nothing, over 20 Mbit/s with 50 ms delay.
   const r = scene.assets.residency;
@@ -158,7 +158,7 @@ function layered(section: Section, record: Row, before: number): void {
   record(`${HURT} hurt or dead: frame build, median`, some.median, "ms", 1.2);
   record(`${HURT} hurt or dead: draw calls, against none hurt`, some.p.drawCount - none.p.drawCount, "");
   record(`${HURT} hurt or dead: draws with a layer`, some.layered, "");
-  record("the layer's texture bytes held", some.held ? textureBytes("rgba", "layer", Math.min(tier.texture, PIXELS)) / MB : 0, "MB");
+  record("the layer's texture bytes held", some.held ? textureBytes("rgba", "layer", Math.min(tier.texture, PIXELS), 1) / MB : 0, "MB");
 }
 
 /** The nearest bodies of the herd that are hurt or dead in `layered`. */
@@ -166,7 +166,7 @@ const HURT = 40;
 
 /** Bytes of every copy of a texture the card was sent whole. */
 function texturesUp(w: ReturnType<typeof sceneWorld>): number {
-  return w.card.made.reduce((sum, [t, top]) => sum + textureBytes("rgba", w.manifest.textures![t]!.role, top), 0);
+  return w.card.made.reduce((sum, [t, top]) => sum + textureBytes("rgba", w.manifest.textures![t]!.role, top, 1), 0);
 }
 
 if (import.meta.main) {

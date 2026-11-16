@@ -3,6 +3,7 @@
 // and is resident when first drawn. Given a manifest and a port, only the boot pack is here at start and the rest is
 // asked for as it is wanted.
 
+import type { ClipSet } from "../../../shared/anim/clip.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { describePack, type Manifest } from "../../../shared/pack/manifest.ts";
 import type { Pack } from "../../../shared/pack/pack.ts";
@@ -33,7 +34,7 @@ export class Assets {
   /** The variant of the textures the device takes. The shell says which. */
   format: TextureFormat = "rgba";
   /** The pixels a metre covers on screen from a metre away. */
-  private scale = 0;
+  scale = 0;
   /** The share of the tier's budget in use: less each time the graphics card runs out of memory or is lost. */
   private squeeze = 1;
   private pressures = 0;
@@ -160,6 +161,16 @@ export class Assets {
   material(material: number, distance: number, size = 1): void {
     const d = distance > 0.01 ? distance : 0.01;
     this.residency.material(material, (this.table.materials[material]!.span * size * this.scale) / (d * this.residency.relax), d > 1 ? d : 1);
+  }
+
+  /** Says the clips of the manifest's skeleton `c` are wanted, which asks for them at once: a body without them stands at rest. */
+  wantClips(c: number): void {
+    this.residency.wantClips(c);
+  }
+
+  /** The clips of the manifest's skeleton `c`, or null until they have come. */
+  clips(c: number): ClipSet | null {
+    return this.residency.clips(c);
   }
 
   /**

@@ -254,8 +254,8 @@ export function shown(out: Out, light: Numbers, dist: number, p: FramePacket): v
 
 /**
  * How a draw's vertices are placed, which is `uSkin`: 0 a rigid mesh turned by its yaw, -1 the same at the size its instance
- * carries (DRAW_SIZED), 1 each vertex on its own bone, 2 all on the instance's first bone, 3 each on up to four bones by its
- * skin entry. `entries` says the level has those.
+ * carries (DRAW_SIZED), 1 each vertex on its own bone, 2 each on its own bone of the pose the draw stands in (DRAW_ONE_BONE)
+ * and then on the instance's first bone, 3 each on up to four bones by its skin entry. `entries` says the level has those.
  */
 export function skinMode(flags: number, entries: boolean): number {
   if ((flags & DRAW_SKINNED) === 0) return (flags & DRAW_SIZED) !== 0 ? -1 : 0;
@@ -316,9 +316,17 @@ ${dyed ? DYE : ""}void main() {
     mat3x4 m;
     if (uSkin > 2.5) m = bone(first + int(aBones.x)) * aWeights.x + bone(first + int(aBones.y)) * aWeights.y + bone(first + int(aBones.z)) * aWeights.z + bone(first + int(aBones.w)) * aWeights.w;
     else m = bone(first + (uSkin > 1.5 ? 0 : int(aBone)));
-    p = vec4(l + iPos, 1.0) * m;
-    n = vec4(aNormal, 0.0) * m;
-    t = vec4(aTangent.xyz, 0.0) * m;
+    vec4 v = vec4(l + iPos, 1.0), nv = vec4(aNormal, 0.0), tv = vec4(aTangent.xyz, 0.0);
+    if (uSkin > 1.5 && uSkin < 2.5) {
+      // Standing in a pose: first its bone of that pose, whose first bone is uOffset.x, about the body's origin.
+      mat3x4 s = bone(int(uOffset.x) + int(aBone));
+      v = vec4(v * s, 1.0);
+      nv = vec4(nv * s, 0.0);
+      tv = vec4(tv * s, 0.0);
+    }
+    p = v * m;
+    n = nv * m;
+    t = tv * m;
   } else {
     float a = iYaw * 6.283185307;
     float s = sin(a), c = cos(a);

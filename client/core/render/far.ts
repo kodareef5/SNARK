@@ -14,7 +14,7 @@ import { TACTICAL_CELL, farTopMetres, pieceShapes, type FarCells } from "../../.
 import type { FarStore } from "../farcells.ts";
 import type { Camera } from "./camera.ts";
 import { FADE_ORDER } from "./hand.ts";
-import type { FramePacket } from "./packet.ts";
+import { quadBytes, type FramePacket } from "./packet.ts";
 import { linearToSrgb, srgbToLinear } from "./surface.ts";
 
 /** The pack mesh whose bounds every tile's vertices are stored within: FAR_TILE_METRES square and FAR_HEIGHT tall. */
@@ -293,7 +293,7 @@ export function farPart(cells: FarCells, x0: number, z0: number, ox: number, oz:
 interface Tile {
   /** Its chunks turned near or far, or changed their cells, since it was made. */
   dirty: boolean;
-  /** What goes on the card, kept to send again after a lost context: indices, then vertices from the next multiple of 4. */
+  /** What goes on the card, kept to send again after a lost context: its vertices, drawn with the quads' indices (packet.ts quadIndices). */
   data: Uint8Array | null;
   indexCount: number;
   indexBytes: 2 | 4;
@@ -426,7 +426,7 @@ export class FarBlocks {
       if (tile.slot < 0 && this.off(t, x, z) <= reach) {
         tile.slot = FAR_SLOTS + this.next;
         this.next = (this.next + 1) % FAR_SLOTS;
-        p.assetUploads.push({ slot: tile.slot, mesh: this.mesh, level: 0, data: tile.data, indexCount: tile.indexCount, indexBytes: tile.indexBytes });
+        p.assetUploads.push({ slot: tile.slot, mesh: this.mesh, level: 0, data: tile.data, indexCount: tile.indexCount, indexBytes: tile.indexBytes, quads: true });
         budget.spend(tile.data.length);
       }
       if (tile.slot >= 0) bytes += tile.data.length;
@@ -535,26 +535,14 @@ export class FarBlocks {
     box[2] = box[2]! + oz;
     box[3] = box[3]! + ox;
     box[5] = box[5]! + oz;
-    const verts = faces * 4;
-    const indexBytes = verts > 65535 ? 4 : 2;
-    const at = (faces * 6 * indexBytes + 3) & ~3;
-    const data = new Uint8Array(at + verts * VERTEX_BYTES);
+    const data = new Uint8Array(faces * 4 * VERTEX_BYTES);
     const view = new DataView(data.buffer);
     const c = this.center, h = this.half;
     const q = (v: number, a: number): number => Math.max(-32767, Math.min(32767, Math.round(((v - c[a]!) / h[a]!) * 32767)));
-    let v = 0;
-    let k = 0;
+    let o = 0;
     for (const part of list) {
       const { pos, color } = part;
-      for (let f = 0; f < part.faces; f++, v += 4) {
-        for (const i of [0, 1, 2, 0, 2, 3]) {
-          if (indexBytes === 4) view.setUint32(k * 4, v + i, true);
-          else view.setUint16(k * 2, v + i, true);
-          k++;
-        }
-      }
-      for (let i = 0; i < color.length; i++) {
-        const o = at + (v - part.faces * 4 + i) * VERTEX_BYTES;
+      for (let i = 0; i < color.length; i++, o += VERTEX_BYTES) {
         view.setInt16(o, q(pos[i * 3]!, 0), true);
         view.setInt16(o + 2, q(pos[i * 3 + 1]! - base, 1), true);
         view.setInt16(o + 4, q(pos[i * 3 + 2]!, 2), true);
@@ -563,6 +551,6 @@ export class FarBlocks {
     }
     tile.data = data;
     tile.indexCount = faces * 6;
-    tile.indexBytes = indexBytes;
+    tile.indexBytes = quadBytes(faces);
   }
 }

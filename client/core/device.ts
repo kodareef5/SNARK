@@ -10,13 +10,14 @@
 // devicescene.ts, and the table and pages it shows in devicetext.ts. What only a browser can say comes from the shell
 // (client/shell/device.ts).
 
+import { joinClips, type ClipSet } from "../../shared/anim/clip.ts";
 import { HumanAnim } from "../../shared/anim/pose.ts";
 import { creatureAnims } from "../../shared/anim/creature.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
-import type { Pack } from "../../shared/pack/pack.ts";
+import type { Pack, PackRig } from "../../shared/pack/pack.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
 import { creatureHash, hullHash, nodeHash, poseHash, simHash, snapHash, tunedHash } from "../../shared/sim/scenarios.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -462,7 +463,7 @@ export interface DeviceInfo {
   memoryGB: number | null;
   touch: number;
   /** Whether the page took the device for touch-first, which draws each tier as its touch rule says (tiers.ts forTouch). */
-  touchFirst?: boolean;
+  touchFirst: boolean;
   features: Record<string, boolean | string | number>;
 }
 
@@ -658,13 +659,13 @@ export function formatsOf(extensions: readonly string[]): string[] {
 }
 
 /**
- * The scenarios of shared/sim/scenarios.ts on a client's content and boot pack. The server runs the same on the pack it
- * serves, so equal hashes mean this JavaScript engine simulates, poses and builds exactly as the server's does.
+ * The scenarios of shared/sim/scenarios.ts on a client's content, rigs and every clip of its build. The server runs the
+ * same on what it serves, so equal hashes mean this JavaScript engine simulates, poses and builds exactly as the server's does.
  */
-export function deviceScenarios(reg: Registry, pack: Pack): [string, () => string][] {
-  const anim = new HumanAnim(pack.clips);
-  const rigs = buildRigs(pack.header.rigs, pack.clips);
-  const creatures = creatureAnims(reg, (d) => rigs.get(d.mesh)).filter((a) => a !== null);
+export function deviceScenarios(reg: Registry, rigs: readonly PackRig[], clips: ClipSet): [string, () => string][] {
+  const anim = new HumanAnim(clips);
+  const built = buildRigs(rigs, clips);
+  const creatures = creatureAnims(reg, (d) => built.get(d.mesh)).filter((a) => a !== null);
   return [["sim", () => simHash(reg)], ["pose", () => poseHash(anim)], ["snap", () => snapHash(reg)], ["creature", () => creatureHash(creatures)], ["tuned", () => tunedHash(reg)], ["hull", () => hullHash(reg)], ["node", () => nodeHash(reg)]];
 }
 
@@ -915,6 +916,8 @@ export interface DeviceSide {
   display: number;
   /** Whether the page's server is the terrain flight's, on its 8 km map, where the soak turns through the wood. */
   terrainMap: boolean;
+  /** The tier the page's link names for the soaks (`soaktier`), or null for high. */
+  soakTier?: string | null;
   /** Asks the server to stand the body at the tree order's spot `k` (WOODS). Resolves with where, x and z, or null if it would not. */
   stand(k: number): Promise<number[] | null>;
   /** Asks the server to count the view `w` by `h` CSS pixels, `fov` degrees high, or how its count goes. Null for no answer. */
@@ -1164,7 +1167,16 @@ export class DeviceRun {
 
   private hashes(): boolean {
     const side = this.side;
-    this.report.hashes = deviceScenarios(side.reg, side.pack).map(([name, run]) => {
+    // The scenarios pose every creature, so they wait for each skeleton's clips, asked for here.
+    const assets = side.app.scene!.assets;
+    const sets = [side.pack.clips];
+    for (let c = 0; c < assets.table.skeletons.size; c++) {
+      const set = assets.clips(c);
+      if (set) sets.push(set);
+      else assets.wantClips(c);
+    }
+    if (sets.length <= assets.table.skeletons.size) return false;
+    this.report.hashes = deviceScenarios(side.reg, side.pack.header.rigs, joinClips(sets)).map(([name, run]) => {
       const t = side.now();
       const got = run();
       return { name, got, want: side.expected?.[name] ?? null, ms: tenth(side.now() - t) };
@@ -1874,7 +1886,8 @@ export class DeviceRun {
     const taken = report.governed ? g.steps.slice(Math.max(0, g.steps.length - (g.moved - this.governedFrom))).map((x) => ({ ...x, at: Math.round(x.at - this.soakAt) })) : [];
     report.governed?.push(...taken);
     this.governedFrom = g.moved;
-    report.minutes.push({ minute: minute + 1, frames: s.frame.length, frameMs: spread(s.frame), long, buildMs: spread(s.build).median, drawMs: spread(s.draw).median, missed: this.missedSince(this.stepBase), mat: Math.max(0, ...s.textured), ...(report.governed ? { level: g.level, most: Math.max(this.most, g.level), steps: taken.map((x) => `${x.level}: ${x.name} (${x.why})`) } : {}) });
+    const clock = (ms: number): string => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
+    report.minutes.push({ minute: minute + 1, frames: s.frame.length, frameMs: spread(s.frame), long, buildMs: spread(s.build).median, drawMs: spread(s.draw).median, missed: this.missedSince(this.stepBase), mat: Math.max(0, ...s.textured), ...(report.governed ? { level: g.level, most: Math.max(this.most, g.level), steps: taken.map((x) => `at ${clock(x.at)} to ${x.level}: ${x.name} (${x.why})`) } : {}) });
     this.most = g.level;
     for (const list of Object.values(s)) list.length = 0;
     this.stepBase = { snapshots: this.side.app.session.stats.snapshots, latest: this.side.app.session.latestSnapshot };
@@ -1883,10 +1896,10 @@ export class DeviceRun {
     return true;
   }
 
-  /** The soak's tier: high, or the finest under it the device can take. */
+  /** The soak's tier: the one the link names, else high, or the finest under it the device can take. */
   private soakTier(): Tier {
     const can = takes(this.side.maxTexture);
-    return can.find((t) => t.name === "high") ?? can.at(-1) ?? tierOf(DEFAULT_TIER);
+    return can.find((t) => t.name === (this.side.soakTier ?? "high")) ?? can.at(-1) ?? tierOf(DEFAULT_TIER);
   }
 
   /** Device pixels the page draws for one CSS pixel, as client/shell/main.ts works it out from the tier in use. */
@@ -2165,6 +2178,7 @@ export class DeviceProbe {
       frames: new FrameTimer(gl),
       display: this.report.idleFrameMs ?? 16.7,
       terrainMap: this.offered.includes("terrain"),
+      soakTier: b.query("soaktier"),
       stand: (k) => this.within(() => b.fetch(`stand/${k}`, "").then((res) => (res.ok ? (res.json() as Promise<number[] | null>) : null)), 20000, null),
       layers: (w, h, fov) => this.within(() => b.fetch(`layers/${w}/${h}/${fov}`, "").then((res) => (res.ok ? (res.json() as Promise<LayerAnswer | null>) : null)), 10000, null),
     };

@@ -32,7 +32,11 @@ export const DRAW_SKINNED = 2;
 export const DRAW_PLAIN = 4;
 /** The viewer's own body. Drawn last, over everything, with `nearViewProj`, whose near plane is close enough for arms and hands. */
 export const DRAW_NEAR = 8;
-/** A body the frame had no bones left to pose: every vertex follows the instance's first bone, so it is drawn rigid in its rest pose. */
+/**
+ * Bodies the frame had no bones left to pose, standing in a pose for what each is doing (characters.ts standIn): the x of
+ * `drawOffset` is that pose's first bone, whose rows take a vertex about the body's origin. Each vertex follows its bone
+ * there, and then the instance's first bone, which places the body.
+ */
 export const DRAW_ONE_BONE = 16;
 /**
  * Drawn with a material: `drawMaterial` names it, and `drawFirstIndex` and `drawIndexCount` the run of the level's
@@ -84,6 +88,31 @@ export const DETAIL_PUFF = 16;
 export const DETAIL_ROTOR = 32;
 /** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
 export const DRAW_RANGED = 4096;
+/** Faces of four corners that 16-bit indices reach. */
+export const QUAD_FACES = 16384;
+
+/** The bytes of an index of a level of quads (quadIndices) with `faces` faces. */
+export function quadBytes(faces: number): 2 | 4 {
+  return faces > QUAD_FACES ? 4 : 2;
+}
+
+/**
+ * The indices of every level of quads, far blocks, far city tiles and lakes: face f is the triangles 4f, 4f+1, 4f+2 and
+ * 4f, 4f+2, 4f+3. The card holds them once for all such levels, which send their vertices alone (AssetUpload `quads`):
+ * at least `count`, `bytes` each, as many as 16-bit indices reach, or 32-bit ones in steps of 4,096 faces (96 KB).
+ */
+export function quadIndices(count: number, bytes: 2 | 4): Uint16Array | Uint32Array {
+  const step = (QUAD_FACES / 4) * 6;
+  const n = bytes === 2 ? QUAD_FACES * 6 : Math.ceil(count / step) * step;
+  const out = bytes === 2 ? new Uint16Array(n) : new Uint32Array(n);
+  for (let i = 0, v = 0; i < n; i += 6, v += 4) {
+    out[i] = out[i + 3] = v;
+    out[i + 1] = v + 1;
+    out[i + 2] = out[i + 4] = v + 2;
+    out[i + 5] = v + 3;
+  }
+  return out;
+}
 export const ATLAS_REGION = 4;
 /**
  * The far nodes' meshes as a float texture ATLAS_WIDTH texels wide, a row a mesh: in its first texel its reach and its
@@ -96,11 +125,16 @@ export const ATLAS_ROWS = 128;
 export const BONE_FLOATS = 12;
 /** Bones per row of the bone texture. A texel is four floats, so a bone is three texels. */
 export const BONES_PER_ROW = 256;
-export const BONE_ROWS = 256;
-/** 65,536, which is as many as an instance's sixteen bits can name the first of. A graphics tier poses fewer (assets/tiers.ts). */
-export const MAX_BONES = BONES_PER_ROW * BONE_ROWS;
-/** Bones the bodies leave for loose things: arrows where they landed and shots in the air. */
-export const LOOSE_BONES = 256;
+/**
+ * 65,536, which is as many as an instance's sixteen bits can name the first of. A graphics tier has fewer (assets/tiers.ts),
+ * and its texture as many rows as those take (boneRows).
+ */
+export const MAX_BONES = BONES_PER_ROW * 256;
+
+/** The rows of the bone texture a tier with `bones` bones has. */
+export function boneRows(bones: number): number {
+  return Math.ceil(Math.min(bones, MAX_BONES) / BONES_PER_ROW);
+}
 /** Skinned instances a frame may carry. Every body is several meshes. */
 export const MAX_SKINNED = MAX_VIEW * 10;
 /** Sun shadow cascades a tier may have, and shadow casters a frame may carry, in a list apart from its draws. */
@@ -240,10 +274,12 @@ export interface TextureUpload {
   slot: number;
   role: TextureRole;
   format: TextureFormat;
+  /** Pixels a block holds on a side in bc and astc: 4 in bc, and in astc the texture's own (shared/pack/texture.ts). */
+  block?: number;
   /** The side of the texture being made, and of the picture these rows belong to. */
   top: number;
   size: number;
-  /** The first row and how many: pixels in the rgba variant, blocks of four in the others. */
+  /** The first row of pixels and how many, whole rows of blocks, the last of them cut at the picture's edge. */
   row: number;
   rows: number;
   /** The scene owns it, so upload it before the next build. */

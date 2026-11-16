@@ -210,8 +210,7 @@ The machine has an RTX 4070 Laptop GPU with 8 GB, not 12 GB, and 62 GB of memory
   (checked on all 49 older takes); from float it is within 2^-24. The recipe keeps the source's sha256 and the
   cut in frames. `remake.py` remakes each source once, cuts it and compares. Takes went from 19.3 MB (32 whole files)
   to 7.9 MB (67 cuts). The game's pack holds 51.2 s in 1.62 MB.
-- `accept.py` now adds picks to the takes already accepted (`--replace` starts a slot afresh), and `--compact` cuts
-  any take still stored whole.
+- `accept.py` now adds picks to the takes already accepted (`--replace` starts a slot afresh).
 
 ## What the new machine changes (the plan written on the Mac)
 

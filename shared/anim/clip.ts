@@ -18,11 +18,17 @@ export interface Clip {
 export interface ClipSet {
   readonly clips: readonly Clip[];
   readonly index: ReadonlyMap<string, number>;
-  /** Changes when any clip changes. The server and its clients must agree. */
+  /** Changes when any clip changes. The server and its clients must agree. The sum of its clips' own, so sets joined sum theirs. */
   readonly hash: number;
 }
 
 export const NO_CLIPS: ClipSet = { clips: [], index: new Map(), hash: 0 };
+
+/** One set of the clips of several that share none. */
+export function joinClips(sets: readonly ClipSet[]): ClipSet {
+  const clips = sets.flatMap((s) => s.clips);
+  return { clips, index: new Map(clips.map((c, i) => [c.id, i])), hash: sets.reduce((h, s) => (h + s.hash) >>> 0, 0) };
+}
 
 export class Pose {
   readonly rot: Float32Array;

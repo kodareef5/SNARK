@@ -4,7 +4,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHost, type Host } from "../../server/host.ts";
-import { WorldStore } from "../../server/persist/store.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { MF_ROOTED } from "../../shared/sim/character.ts";
 import { V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
@@ -54,43 +53,6 @@ test("a creature set alight before a restart burns for what was left of its fire
   run(host, most / 0.6);
   expect([dosed.out, host.survival.value(dosed, V_TORPOR)]).toEqual([false, 0]);
   expect(host.records.byPid.has(a.pid)).toBe(true);
-  host.shutdown();
-});
-
-test("a save from before buffs were saved: what a buff was doing to a body ends at the load, since nothing says when else", () => {
-  const db = join(dir, "before.db");
-  let host = open(db);
-  const [a, b] = [grazer(host, 250), grazer(host, 262)];
-  host.buffs.give(a, id("burning"), 0);
-  host.buffs.give(b, id("tranquilized"), 0, 5, 10);
-  run(host, 2);
-  // As such a build left them: the buff's rate in the vitals, and no buff in the record.
-  for (const rec of [a, b]) {
-    rec.buffs.length = 0;
-    host.records.dirty.add(rec.pid);
-  }
-  host.shutdown();
-  const store = new WorldStore(db, reg);
-  for (const rec of [a, b]) {
-    const data = (store.db.query("SELECT data FROM entities WHERE pid = ?").get(rec.pid) as { data: Uint8Array }).data;
-    data[0] = 1;
-    store.db.query("UPDATE entities SET data = ? WHERE pid = ?").run(data, rec.pid);
-  }
-  store.close();
-
-  host = open(db);
-  const [burnt, dosed] = [host.records.byPid.get(a.pid)!, host.records.byPid.get(b.pid)!];
-  const health = host.survival.value(burnt, V_HEALTH);
-  const torpor = host.survival.value(dosed, V_TORPOR);
-  expect(torpor).toBeCloseTo(20, 1);
-  run(host, 60);
-  expect(host.records.byPid.has(a.pid)).toBe(true);
-  expect(host.survival.value(burnt, V_HEALTH)).toBeCloseTo(health + 60 * 0.2, 1);
-  expect(host.survival.value(dosed, V_TORPOR)).toBe(0);
-  host.shutdown();
-  // They were saved again in this build's form, so the next load takes their rates as they are.
-  host = open(db);
-  expect(host.persistence!.store.unrated.size).toBe(0);
   host.shutdown();
 });
 

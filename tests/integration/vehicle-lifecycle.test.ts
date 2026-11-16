@@ -81,15 +81,14 @@ test('PvE keeps another tribe out of its cars and its survivors in their seats; 
   } finally { h.host.shutdown(); }
 });
 
-test('a saved car from another build or a retuned definition loads clamped instead of stopping the world', () => {
+test('a saved car loads clamped to a retuned definition, and a component of another form is refused', () => {
   const dir = mkdtempSync(join(tmpdir(), 'snark-urban-clamp-')), dbPath = join(dir, 'world.db');
   let active: Harness | null = null;
   try {
-    const { h, car, x, z, owner } = setup(dbPath); active = h;
-    const second = h.host.spawnVehicle('core:compact', x, z + 8, owner, 0);
-    const ents = h.world.ents, pid = ents.pid[car]!, pid2 = ents.pid[second]!;
+    const { h, car } = setup(dbPath); active = h;
+    const pid = h.world.ents.pid[car]!;
     h.run(100);
-    // A v4 component whose fuel and gear exceed the current definition.
+    // A component whose fuel and gear exceed the current definition.
     const tuned = new Uint8Array(h.host.records.byPid.get(pid)!.extra.get(0x757262)!);
     const view = new DataView(tuned.buffer);
     view.setFloat32(1 + 5 * 4, 999, true);
@@ -101,30 +100,26 @@ test('a saved car from another build or a retuned definition loads clamped inste
     view.setFloat32(1 + 13 * 4, 120, true); // horizontal speed
     view.setFloat32(1 + 14 * 4, 120, true); // vertical speed
     h.host.records.byPid.get(pid)!.extra.set(0x757262, tuned);
-    // A component version this build does not know.
-    const future = new Uint8Array(90); future[0] = 9;
-    h.host.records.byPid.get(pid2)!.extra.set(0x757262, future);
-    h.host.records.dirty.add(pid); h.host.records.dirty.add(pid2);
+    h.host.records.dirty.add(pid);
     h.host.shutdown(); active = null;
     const restored = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], dbPath }); active = restored;
     const definition = restored.reg.vehicle[restored.reg.index.get('core:compact')!]!;
     if (definition.movement === 'rotor' || definition.movement === 'boat') throw new Error('compact must keep its wheeled controller');
     const spec = definition.spec;
-    const e = restored.host.records.entOf.get(pid)!, e2 = restored.host.records.entOf.get(pid2)!;
-    expect(restored.world.ents.fuel[restored.world.ents.vrow[e]!]).toBe(Math.fround(spec.fuelCapacity));
-    expect(restored.world.ents.vehicleGear[restored.world.ents.vrow[e]!]).toBe(spec.drivetrain!.forwardRatios.length);
-    expect(Math.abs(restored.world.ents.vehiclePitch[restored.world.ents.vrow[e]!]!)).toBeLessThan(1);
-    expect(restored.world.ents.steering[restored.world.ents.vrow[e]!]).toBe(Math.fround(spec.maxSteer));
-    expect(restored.world.ents.vehicleYawRate[restored.world.ents.vrow[e]!]).toBe(3);
-    expect(restored.world.ents.vehicleRideOffset[restored.world.ents.vrow[e]!]).toBe(Math.fround(spec.suspensionTravel!));
-    expect(restored.world.ents.vx[e]).toBe(spec.maxForward);
-    expect(restored.world.ents.vy[e]).toBe(60);
-    expect(restored.world.ents.fuel[restored.world.ents.vrow[e2]!]).toBe(Math.fround(spec.fuelCapacity));
-    expect(restored.host.records.byPid.get(pid2)!.extra.get(0x757263)).toEqual(future);
-    // The unreadable future component survives the ordinary record codec too.
+    const ents = restored.world.ents, e = restored.host.records.entOf.get(pid)!, v = ents.vrow[e]!;
+    expect(ents.fuel[v]).toBe(Math.fround(spec.fuelCapacity));
+    expect(ents.vehicleGear[v]).toBe(spec.drivetrain!.forwardRatios.length);
+    expect(Math.abs(ents.vehiclePitch[v]!)).toBeLessThan(1);
+    expect(ents.steering[v]).toBe(Math.fround(spec.maxSteer));
+    expect(ents.vehicleYawRate[v]).toBe(3);
+    expect(ents.vehicleRideOffset[v]).toBe(Math.fround(spec.suspensionTravel!));
+    expect(ents.vx[e]).toBe(spec.maxForward);
+    expect(ents.vy[e]).toBe(60);
+    const other = new Uint8Array(90); other[0] = 9;
+    restored.host.records.byPid.get(pid)!.extra.set(0x757262, other);
+    restored.host.records.dirty.add(pid);
     restored.host.shutdown(); active = null;
-    const again = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], dbPath }); active = again;
-    expect(again.host.records.byPid.get(pid2)!.extra.get(0x757263)).toEqual(future);
+    expect(() => new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], dbPath })).toThrow(`vehicle ${pid}: its saved state is version 9 in 90 bytes, and this build reads version 4 in 82`);
   } finally { active?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
 });
 

@@ -3,13 +3,14 @@
 
 import { join, normalize } from "node:path";
 
-const TYPES: Record<string, string> = { html: "text/html; charset=utf-8", js: "text/javascript", snpk: "application/octet-stream", json: "application/json", png: "image/png", ttf: "font/ttf", txt: "text/plain; charset=utf-8", opus: "audio/ogg" };
+const TYPES: Record<string, string> = { html: "text/html; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript", snpk: "application/octet-stream", json: "application/json", png: "image/png", ttf: "font/ttf", txt: "text/plain; charset=utf-8", opus: "audio/ogg" };
 /** Sixteen hex digits in a name are the start of the SHA-256 of the file. */
 const HASHED = /\.[0-9a-f]{16}\./;
 
 export async function serveFile(dir: string, req: Request): Promise<Response> {
   const url = new URL(req.url);
-  const path = normalize(join(dir, url.pathname === "/" ? "index.html" : url.pathname));
+  // A folder's address is its index.html, as the wiki's pages are written (tools/wiki.ts).
+  const path = normalize(join(dir, url.pathname.endsWith("/") ? `${url.pathname}index.html` : url.pathname));
   if (!path.startsWith(dir)) return new Response("not found", { status: 404 });
   const file = Bun.file(path);
   if (!(await file.exists())) return new Response("not found", { status: 404 });

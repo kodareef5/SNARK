@@ -1,7 +1,8 @@
-// What is on the graphics card, and what is asked for, kept and let go to keep it so. There are three kinds of slot.
+// What is on the graphics card, and what is asked for, kept and let go to keep it so. There are four kinds of slot.
 // A level is the indices and flat vertices of one level of a mesh. A surface is what that level needs besides to be
 // drawn with materials, its surface and its skin, and is of use only with its level. A texture holds its pictures up
 // to some step, and changes step by being made again from its first picture while the card still draws with the old.
+// A skeleton's clips never go on the card: they are read as they come and kept.
 //
 // What the boot pack holds is resident as soon as it is wanted and is never let go, so there is always some level of
 // every mesh to draw. Everything else is asked of the port, most urgent first, put on the card within a frame's
@@ -11,12 +12,13 @@
 // What the card holds that is not an asset (terrain pictures, shadow maps, the sky, far meshes) is reserved by name and
 // comes off the budget, and what goes onto the card that is not an asset is spent from the same frame's allowance.
 
-import type { Manifest, ManifestLevel } from "../../../shared/pack/manifest.ts";
+import type { ClipSet } from "../../../shared/anim/clip.ts";
+import { skeletonClips, type Manifest, type ManifestLevel } from "../../../shared/pack/manifest.ts";
 import { VERTEX_BYTES, type Pack } from "../../../shared/pack/pack.ts";
-import { LAST_STEP, STEP0_SIZE, pictureBytes, stepBytes, stepOf, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
+import { LAST_STEP, STEP0_SIZE, blockOf, pictureBytes, stepBytes, stepOf, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
 import { Rng } from "../../../shared/rng.ts";
 import type { TextureUpload } from "../render/packet.ts";
-import { FAIL_HASH, FAIL_RANGE, levelParts, textureParts, type AssetArrival, type AssetPart, type AssetPort } from "./port.ts";
+import { FAIL_HASH, FAIL_RANGE, clipPart, levelParts, textureParts, type AssetArrival, type AssetPart, type AssetPort } from "./port.ts";
 
 /**
  * A level to put on the graphics card: its indices and then its vertices, as the pack holds them. With `of` it is a
@@ -31,6 +33,10 @@ export interface AssetUpload {
   /** How many indices the data starts with, and the bytes of each. The vertices follow, from the next multiple of 4. */
   indexCount: number;
   indexBytes: 2 | 4;
+  /** Its indices are those every level of quads shares (packet.ts quadIndices), and `data` holds its vertices alone. */
+  quads?: boolean;
+  /** The bounds its vertices are stored within, where they are not its mesh's. */
+  bounds?: { readonly center: readonly number[]; readonly half: readonly number[] };
   of?: number;
   skinAt?: number;
   /**
@@ -119,9 +125,15 @@ export class Residency {
   private readonly rng: Rng;
   /** The first slot of each mesh, and one past the last. */
   private readonly first: Uint32Array;
-  /** How many levels there are. The surface of the level in slot s is slot `levels + s`, and texture t is slot `texBase + t`. */
+  /**
+   * How many levels there are. The surface of the level in slot s is slot `levels + s`, texture t is slot `texBase + t`,
+   * and the clips of the manifest's skeleton c are slot `clipBase + c`.
+   */
   private readonly levels: number;
   private readonly texBase: number;
+  private readonly clipBase: number;
+  /** Each skeleton's clips once they have come. */
+  private readonly clipSets: (ClipSet | null)[];
   private readonly meshOf: Uint32Array;
   private readonly levelOf: Uint8Array;
   /** Bytes of a level or a surface. For a texture, bytes of the copy on its way. */
@@ -184,6 +196,8 @@ export class Residency {
   private readonly late: number[] = [];
 
   private frame = 0;
+  /** The time the frame began, in milliseconds. */
+  private now = 0;
   private readonly reserves = new Map<string, number>();
   /** Bytes of this frame's allowance spent on what is not an asset. */
   private spent = 0;
@@ -217,7 +231,10 @@ export class Residency {
     manifest.meshes.forEach((m, i) => (this.first[i + 1] = this.first[i]! + m.levels.length));
     this.levels = this.first[manifest.meshes.length]!;
     this.texBase = this.levels * 2;
-    const slots = this.texBase + textures.length;
+    this.clipBase = this.texBase + textures.length;
+    const clips = manifest.clips ?? [];
+    this.clipSets = clips.map(() => null);
+    const slots = this.clipBase + clips.length;
     this.meshOf = new Uint32Array(this.levels);
     this.levelOf = new Uint8Array(this.levels);
     this.size = new Uint32Array(slots);
@@ -235,6 +252,7 @@ export class Residency {
         if (level.sections) this.runs[slot] = level.sections;
       }),
     );
+    clips.forEach((e, c) => (this.size[this.clipBase + c] = e.part.bytes));
     this.state = new Uint8Array(slots);
     this.seen = new Uint32Array(slots);
     this.urgency = new Float32Array(slots);
@@ -288,7 +306,8 @@ export class Residency {
     this.made = this.format;
     (this.manifest.textures ?? []).forEach((tex, t) => {
       this.limit[t] = this.port && tex.in[this.made] ? stepOf(topIn(this.made, tex.top)) : -1;
-      for (let k = 0, bytes = 0; k <= this.limit[t]!; k++) this.through[t * STEPS + k] = bytes += stepBytes(this.made, tex.role, k);
+      const block = blockOf(this.made, tex.in[this.made] ?? {});
+      for (let k = 0, bytes = 0; k <= this.limit[t]!; k++) this.through[t * STEPS + k] = bytes += stepBytes(this.made, tex.role, k, block);
     });
     this.recan();
   }
@@ -364,10 +383,14 @@ export class Residency {
   private undo(slot: number): void {
     if (slot < this.levels) {
       if (this.state[this.levels + slot] === RIDING) this.state[this.levels + slot] = ABSENT;
-    } else if (slot >= this.texBase) {
+    } else if (this.isTexture(slot)) {
       this.texComing -= this.size[slot]!;
       this.settle(slot - this.texBase);
     }
+  }
+
+  private isTexture(slot: number): boolean {
+    return slot >= this.texBase && slot < this.clipBase;
   }
 
   /** A texture's copy on its way is no longer a smaller one. */
@@ -380,6 +403,7 @@ export class Residency {
   /** Starts a frame: takes in what has arrived since the last. */
   begin(nowMs: number): void {
     this.frame++;
+    this.now = nowMs;
     this.spent = 0;
     this.wants.length = 0;
     this.unlink(this.mark);
@@ -404,10 +428,15 @@ export class Residency {
       const rider = slot < this.levels && this.state[this.levels + slot] === RIDING ? this.levels + slot : -1;
       // A port that brings fewer bytes than were asked for has failed, whatever it says.
       if (a.data && a.data.length === this.asked(slot)) {
+        this.tries[slot] = 0;
+        if (slot >= this.clipBase) {
+          this.clipSets[slot - this.clipBase] = skeletonClips(this.manifest.clips![slot - this.clipBase]!, a.data);
+          this.state[slot] = RESIDENT;
+          continue;
+        }
         this.data[slot] = rider < 0 ? a.data : a.data.subarray(0, this.size[slot]!);
         this.state[slot] = ARRIVED;
         this.waiting += this.size[slot]!;
-        this.tries[slot] = 0;
         if (rider >= 0) {
           this.data[rider] = a.data.subarray(this.size[slot]!);
           this.state[rider] = ARRIVED;
@@ -431,7 +460,7 @@ export class Residency {
           this.state[rider] = DEAD;
           this.state[slot] = ABSENT;
           this.rehashed[slot] = 0;
-        } else if (slot >= this.texBase) {
+        } else if (this.isTexture(slot)) {
           // The texture stays at the step before.
           this.limit[slot - this.texBase] = this.goal[slot - this.texBase]! - 1;
           this.state[slot] = ABSENT;
@@ -473,6 +502,19 @@ export class Residency {
     if (this.cap < 0 || this.can[slot] === 0) return false;
     this.wantSlot(this.levels + slot, urgency);
     return true;
+  }
+
+  /** Says the clips of the manifest's skeleton `c` are wanted. They are asked for at once, as a body without them stands at rest. */
+  wantClips(c: number): void {
+    const slot = this.clipBase + c;
+    this.seen[slot] = this.frame;
+    this.urgency[slot] = FIRST;
+    if (this.state[slot] === ABSENT && this.port && this.retryAt[slot]! <= this.now) this.ask(slot, -1, 0);
+  }
+
+  /** The clips of the manifest's skeleton `c`, or null until they have come. */
+  clips(c: number): ClipSet | null {
+    return this.clipSets[c]!;
   }
 
   /**
@@ -701,8 +743,8 @@ export class Residency {
 
   /**
    * Asks the port to keep everything this tier may fetch, so nothing need be fetched while playing: every level that
-   * is not in the boot pack and, where there are textures, its surface and every texture as far as the tier takes it.
-   * Returns their bytes.
+   * is not in the boot pack and, where there are textures, its surface and every texture as far as the tier takes it,
+   * and every skeleton's clips. Returns their bytes.
    */
   download(): number {
     const parts: { file: number; part: AssetPart }[] = [];
@@ -717,6 +759,7 @@ export class Residency {
       if (this.cap < 0 || this.inBoot[this.levels + slot] === 1) continue;
       for (const p of levelParts(level, 1, level.parts.length)) add((level.surface ?? level).file, p);
     }
+    for (const e of this.manifest.clips ?? []) add(e.file, clipPart(e));
     if (this.cap >= 0) {
       // A texture is taken as far as the material that shows it widest would.
       const most = new Int8Array(this.has.length).fill(-1);
@@ -838,7 +881,7 @@ export class Residency {
       let bytes = this.size[slot]!;
       let rider = -1;
       let goal = 0;
-      if (slot >= this.texBase) {
+      if (this.isTexture(slot)) {
         // A texture climbs a step at a time, and only into room that is not spoken for.
         goal = this.has[slot - this.texBase]! + 1;
         bytes = this.through[(slot - this.texBase) * STEPS + goal]!;
@@ -846,11 +889,11 @@ export class Residency {
           this.short = true;
           continue;
         }
-      } else if (slot >= this.levels) {
+      } else if (slot >= this.levels && slot < this.texBase) {
         // A surface is asked for by itself when its level is here or coming. Otherwise it comes in its level's request.
         const level = this.state[slot - this.levels]!;
         if (level !== LOADING && level !== ARRIVED && level !== RESIDENT) continue;
-      } else {
+      } else if (slot < this.levels) {
         // A surface that follows its level in the file comes with it, so that the two arrive together.
         const s = this.levels + slot;
         if (this.seen[s] === this.frame && this.state[s] === ABSENT && this.retryAt[s]! <= nowMs && !this.levelAt(slot).surface) {
@@ -869,11 +912,15 @@ export class Residency {
     else if (this.relax > 1 && this.ledger < this.budget * 0.7) this.relax = Math.max(1, this.relax / 1.02);
   }
 
-  /** Asks the port for a level, with its surface if `rider` is that, for a surface, or for steps 0 to `goal` of a texture. */
+  /** Asks the port for a level, with its surface if `rider` is that, for a surface, for steps 0 to `goal` of a texture, or for clips. */
   private ask(slot: number, rider: number, goal: number): void {
     const parts: AssetPart[] = [];
     let file: number;
-    if (slot >= this.texBase) {
+    if (slot >= this.clipBase) {
+      const e = this.manifest.clips![slot - this.clipBase]!;
+      file = e.file;
+      parts.push(clipPart(e));
+    } else if (slot >= this.texBase) {
       const t = slot - this.texBase;
       const tex = this.manifest.textures![t]!;
       file = tex.in[this.made]!.file;
@@ -932,10 +979,11 @@ export class Residency {
     const goal = this.goal[t]!;
     const whole = this.through[t * STEPS + goal]!;
     const tex = this.manifest.textures![t]!;
+    const block = blockOf(this.made, tex.in[this.made]!);
     let at = this.gone[t]!;
     if (at === 0) {
       // A copy is begun in a frame that has bytes left for its first row.
-      if (sent > this.spent && sent + pictureBytes(this.made, tex.role, 1) > this.uploadBytes) return sent;
+      if (sent > this.spent && sent + pictureBytes(this.made, tex.role, 1, block) > this.uploadBytes) return sent;
       // Textures keep to their share, but for a smaller copy that will give room back. Levels make way for them.
       const share = this.texBudget * (this.down[t] === 1 ? OVERFLOW : 1);
       this.texRoom(whole, share, texDrops);
@@ -954,10 +1002,11 @@ export class Residency {
     const data = this.data[slot]!;
     let side = 1;
     let start = 0;
-    for (let bytes = pictureBytes(this.made, tex.role, side); start + bytes <= at; bytes = pictureBytes(this.made, tex.role, (side <<= 1))) start += bytes;
+    for (let bytes = pictureBytes(this.made, tex.role, side, block); start + bytes <= at; bytes = pictureBytes(this.made, tex.role, (side <<= 1), block)) start += bytes;
     while (at < whole) {
-      const rows = this.made === "rgba" ? side : (side + 3) >> 2;
-      const rowBytes = pictureBytes(this.made, tex.role, side) / rows;
+      // Rows of blocks, which are rows of pixels in rgba.
+      const rows = Math.ceil(side / block);
+      const rowBytes = pictureBytes(this.made, tex.role, side, block) / rows;
       const row = (at - start) / rowBytes;
       let n = Math.floor((this.uploadBytes - sent) / rowBytes);
       if (n <= 0) {
@@ -966,7 +1015,7 @@ export class Residency {
       }
       if (n > rows - row) n = rows - row;
       const bytes = n * rowBytes;
-      out.push({ slot: t, role: tex.role, format: this.made, top: STEP0_SIZE << goal, size: side, row, rows: n, data: data.subarray(at, at + bytes), last: at + bytes === whole });
+      out.push({ slot: t, role: tex.role, format: this.made, block, top: STEP0_SIZE << goal, size: side, row: row * block, rows: Math.min(n * block, side - row * block), data: data.subarray(at, at + bytes), last: at + bytes === whole });
       at += bytes;
       sent += bytes;
       if (row + n === rows) {
@@ -1101,9 +1150,9 @@ export class Residency {
     this.retable();
   }
 
-  /** The graphics card has lost everything. What had arrived and what is on its way are kept. */
+  /** The graphics card has lost everything. What had arrived and what is on its way are kept, and clips, which were never on it. */
   reset(): void {
-    for (let slot = 0; slot < this.state.length; slot++) if (this.state[slot] === RESIDENT) this.state[slot] = ABSENT;
+    for (let slot = 0; slot < this.clipBase; slot++) if (this.state[slot] === RESIDENT) this.state[slot] = ABSENT;
     for (let t = 0; t < this.has.length; t++) {
       this.has[t] = -1;
       // A copy the card had begun is begun again.

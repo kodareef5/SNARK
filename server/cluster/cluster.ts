@@ -16,7 +16,7 @@ import { rebaseTicks } from "../persist/codec.ts";
 import type { SaveLock } from "../persist/lock.ts";
 import type { Persistence } from "../persist/persistence.ts";
 import { TRANSFER_IN, TRANSFER_OUT, type TransferRow, type WorldStore } from "../persist/store.ts";
-import { MAX_TEAM_WORLD, TEAM_RANGE, hashKey, type EntityRecord, type Records } from "../records.ts";
+import { MAX_TEAM_WORLD, hashKey, type EntityRecord, type Records } from "../records.ts";
 import type { Rules } from "../settings/rules.ts";
 import type { Tribes } from "../tribes.ts";
 import type { ServerWorld } from "../world.ts";
@@ -104,20 +104,17 @@ export class Cluster {
   private readonly lock: SaveLock;
   private readonly saveId: string;
   private readonly savePath: string;
-  /** The save takes its world id in this folder for the first time. */
-  private readonly first: boolean;
   private namesAt = -1;
   private stopped = false;
   private failedAt = 0;
 
-  private constructor(folder: ClusterFolder, id: string, world: number, lock: SaveLock, store: WorldStore, first: boolean) {
+  private constructor(folder: ClusterFolder, id: string, world: number, lock: SaveLock, store: WorldStore) {
     this.folder = folder;
     this.id = id;
     this.world = world;
     this.lock = lock;
     this.saveId = store.saveId;
     this.savePath = resolve(store.path);
-    this.first = first;
   }
 
   /**
@@ -142,7 +139,7 @@ export class Cluster {
       if (!had && was !== null) throw new Error(`this save is world ${world} of the cluster ${id}, and the folder ${root} does not know it, so what left this world is not there: start it with the folder it used (-ClusterDirOverride)`);
       const lock = folder.hold(world);
       if (!had) folder.announce(blank(world), true);
-      return new Cluster(folder, id, world, lock, store, !had);
+      return new Cluster(folder, id, world, lock, store);
     }
     for (let world = 1; world <= MAX_TEAM_WORLD; world++) {
       if (folder.announcement(world)) continue;
@@ -158,7 +155,7 @@ export class Cluster {
         continue;
       }
       folder.announce(blank(world), true);
-      return new Cluster(folder, id, world, lock, store, true);
+      return new Cluster(folder, id, world, lock, store);
     }
     throw new Error(`the cluster in ${root} has no world id left for a new save`);
   }
@@ -178,7 +175,6 @@ export class Cluster {
     }
     // What a loaded save holds resumes with the rest of it. A new world resumes nothing, so what comes into it now is put in.
     this.resumes = !fresh;
-    if (this.first && !fresh) this.checkTeams();
     this.recover();
     this.rebuildAway();
     this.expire(this.folder.places(), this.resumes);
@@ -644,20 +640,5 @@ export class Cluster {
       if (!was || t.hop > was.hop || (t.hop === was.hop && t.dir > was.dir)) last.set(t.pid, t);
     }
     for (const t of last.values()) if (t.dir === TRANSFER_OUT && !records.byPid.has(t.pid)) this.away.set(t.name, { id: t.id, pid: t.pid, to: t.peer, settled: false });
-  }
-
-  /**
-   * A save joining a cluster for the first time must number its teams as no other world can. One made before team numbers
-   * had worlds numbered them with its records, which is safe only below the first world's range.
-   */
-  private checkTeams(): void {
-    const { records, world } = this.ctx!;
-    const wrong = (team: number): boolean => team >= TEAM_RANGE && Math.floor(team / TEAM_RANGE) !== this.world;
-    let bad = 0;
-    for (const rec of records.byPid.values()) if (wrong(rec.team)) bad = rec.team;
-    world.structs.chunks.forEach((t) => {
-      for (let s = 0; t && s < t.high; s++) if (t.kind[s] !== 0 && wrong(t.owner[s]!)) bad = t.owner[s]!;
-    });
-    if (bad !== 0) throw new Error(`this save numbers its teams as saves did before clusters, up to ${bad}, past what a cluster can tell from another world's: it cannot join a cluster, so give the cluster a new save for this map`);
   }
 }

@@ -101,6 +101,7 @@ export function addAdminCommands(con: Console): void {
     {
       name: "setstat",
       usage: "<stat> <points>",
+      examples: ["setstat health 10"],
       help: `Set your level-up points in a stat (0 to ${POINT_CAP}). Stats: ${STAT_NAMES.join(", ")}.`,
       admin: true,
       run(ctx, args) {
@@ -123,6 +124,7 @@ export function addAdminCommands(con: Console): void {
     {
       name: "give",
       usage: "<item> [count] [quality] [bp]",
+      examples: ["give core:spear 1", "give core:spear 1 apprentice bp"],
       help: `Create items in your inventory. The item may be named without its pack: spear for core:spear. The quality is a name or its number from 0: ${QUALITY_NAMES.join(", ")}. bp makes each a blueprint of the item.`,
       admin: true,
       run(ctx, args) {
@@ -153,6 +155,7 @@ export function addAdminCommands(con: Console): void {
     {
       name: "spawn",
       usage: "<species> [level] [count]",
+      examples: ["spawn core:raptor 30 3"],
       help: "Put a wild creature four metres in front of you, or up to 64 of them in a flock from there. It may be named without its pack: raptor for core:raptor.",
       admin: true,
       run(ctx, args) {
@@ -215,6 +218,7 @@ export function addAdminCommands(con: Console): void {
     {
       name: "addxp",
       usage: "<amount>",
+      examples: ["addxp 100"],
       help: "Give yourself experience.",
       admin: true,
       run(ctx, args) {

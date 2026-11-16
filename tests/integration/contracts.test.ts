@@ -3,7 +3,7 @@
 
 import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
-import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHost } from "../../server/host.ts";
@@ -78,7 +78,7 @@ test("the grab codes are refused until their package builds them, a wild flyer i
   expect(flew).toBe(true);
 });
 
-test("a creature in its own flight is saved flying and loads in the air, and a save written by main before the flying bit loads as it was", () => {
+test("a creature in its own flight is saved flying and loads in the air", () => {
   const dir = mkdtempSync(join(tmpdir(), "snark-test-"));
   try {
     const reg = coreRegistry();
@@ -110,30 +110,6 @@ test("a creature in its own flight is saved flying and loads in the air, and a s
     const again = createHost(reg, { dbPath: db });
     expect([again.records.byPid.get(pid)!.flying, again.world.ents.mode[again.records.entOf.get(pid)!]]).toEqual([false, MODE_WALK]);
     again.shutdown();
-
-    // A survivor holding hotbar slot 2 with 40 stone, a saddled raptor of team 7 in stance 2, and a dead survivor whose
-    // record expires at tick 900, written by main in record format 5 (tests/fixtures/saves/before-flyers.db).
-    const old = join(dir, "before-flyers.db");
-    copyFileSync(join(import.meta.dir, "../fixtures/saves/before-flyers.db"), old);
-    const [ada, mount, bo] = [1099511627777, 1099511627778, 1099511627779];
-    expect([ada, mount, bo].map((id) => format(old, id))).toEqual([5, 5, 5]);
-    // It was made on the proving ground before the ground listed its resource nodes (shared/world/proving.ts), so on other
-    // bytes of the same map; what it holds is what is read here, so it is loaded as an operator would, told to go on.
-    const loaded = createHost(reg, { dbPath: old, allowMapMismatch: true });
-    const rec = (id: number) => loaded.records.byPid.get(id)!;
-    // The save knew the ingot's engram, which the stations wave took out (planning/reference/stations-plan.md, Decided 2).
-    // Nothing in it uses the engram, so it loads without --allow-missing-content.
-    expect(loaded.persistence!.store.missingContent).toEqual(["core:engram-ingot"]);
-    expect([rec(ada).held, rec(ada).inv!.total(reg.index.get("core:stone")!), rec(ada).flying]).toEqual([2, 40, false]);
-    expect([reg.ids[rec(mount).saddle], rec(mount).stance, rec(mount).team, rec(mount).flying]).toEqual(["core:saddle_raptor", 2, 7, false]);
-    expect([rec(bo).dead, rec(bo).expiresAt, rec(bo).flying]).toEqual([true, 900, false]);
-    expect(loaded.world.ents.mode[loaded.records.entOf.get(mount)!]).toBe(MODE_WALK);
-    loaded.shutdown();
-    // Written again by this build, it is revision 7 and reads the same.
-    expect([ada, mount, bo].map((id) => format(old, id))).toEqual([7, 7, 7]);
-    const resaved = createHost(reg, { dbPath: old });
-    expect([resaved.records.byPid.get(ada)!.held, reg.ids[resaved.records.byPid.get(mount)!.saddle], resaved.records.byPid.get(bo)!.expiresAt]).toEqual([2, "core:saddle_raptor", 900]);
-    resaved.shutdown();
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

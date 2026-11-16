@@ -12,7 +12,7 @@ export const RESOURCES: readonly Def[] = [
   // recipe) and 8 stone at the mortar and pestle, one a grind in 1 s, craftingxp 1.2 (our 4.8, D465's four times); level
   // 13, 3 engram points. The chemistry bench's recipe waits for the bench.
   { type: "item", class: "resource", id: "core:paste", stack: 100, weight: 0.01, label: "cementing paste", color: 15 },
-  crafting("core:paste", { needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 1, xp: 4.8, at: "core:mortar" }),
+  ...crafting("core:paste", { needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 1, xp: 4.8, at: "core:mortar" }),
   { type: "engram", id: "core:engram-paste", label: "Cementing paste", level: 13, cost: 3, item: "core:paste" },
 
   // Charcoal: "one Charcoal every time the burning of the current fuel piece has ended" for wood in any fire; no engram.
@@ -42,11 +42,11 @@ export const RESOURCES: readonly Def[] = [
   // Polymer: 2 obsidian and 2 cementing paste at the fabricator, one a craft in 2 s, craftingxp 0.56 (our 2.24, D465's
   // four times); level 48, 6 engram points (Polymer, S2).
   { type: "item", class: "resource", id: "core:polymer", stack: 100, weight: 0.25, label: "polymer", color: 5 },
-  crafting("core:polymer", { needs: [{ item: "core:obsidian", count: 2 }, { item: "core:paste", count: 2 }], seconds: 2, xp: 2.24, at: "core:fabricator" }),
+  ...crafting("core:polymer", { needs: [{ item: "core:obsidian", count: 2 }, { item: "core:paste", count: 2 }], seconds: 2, xp: 2.24, at: "core:fabricator" }),
   { type: "engram", id: "core:engram-polymer", label: "Polymer", level: 48, cost: 6, item: "core:polymer" },
   // Electronics: 3 silica pearls and 1 metal ingot at the fabricator, one a craft in 2 s, craftingxp 0.76 (our 3.04);
   // level 48, 6 engram points (Electronics, S2).
   { type: "item", class: "resource", id: "core:electronics", stack: 100, weight: 0.01, label: "electronics", color: 9 },
-  crafting("core:electronics", { needs: [{ item: "core:silica_pearls", count: 3 }, { item: "core:ingot", count: 1 }], seconds: 2, xp: 3.04, at: "core:fabricator" }),
+  ...crafting("core:electronics", { needs: [{ item: "core:silica_pearls", count: 3 }, { item: "core:ingot", count: 1 }], seconds: 2, xp: 3.04, at: "core:fabricator" }),
   { type: "engram", id: "core:engram-electronics", label: "Electronics", level: 48, cost: 6, item: "core:electronics" },
 ];

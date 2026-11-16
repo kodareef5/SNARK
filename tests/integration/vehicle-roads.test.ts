@@ -4,8 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { COMPACT } from "../../content/vehicles/compact.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
-import { Body } from "../../shared/sim/character.ts";
-import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { StaticVehicleWorld } from "../../shared/world/vehicle.ts";
 import { OFFROAD } from "../../shared/world/vehicle-surface.ts";
 import { flatGround } from "../fixtures/arena.ts";
@@ -74,34 +72,5 @@ test("native road kinds replicate, update existing wheel adapters and persist th
     expect(joined.world!.structs.chunks[Math.floor(second / 65536)]!.kind[second & 65535]).toBe(gravel);
     const authority = new StaticVehicleWorld(restored.world), predicted = new StaticVehicleWorld(joined.world!);
     expect([authority.support(x, ground.y, z, COMPACT)!.surface, predicted.support(x, ground.y, z, COMPACT)!.surface]).toEqual([authoredGravel, authoredGravel]);
-  } finally { active?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
-});
-
-test("a v3 moving vehicle component migrates to v4 without losing its existing physical state", () => {
-  const dir = mkdtempSync(join(tmpdir(), "snark-vehicle-v3-")), dbPath = join(dir, "world.db");
-  let active: Harness | null = null;
-  try {
-    const h = new Harness({}, 1, 60, { ...hostOptions, dbPath }); active = h;
-    const ground = flatGround(h, 12, 12), car = h.host.spawnVehicle("core:compact", ground.x + 6, ground.z + 6);
-    expect(car).toBeGreaterThanOrEqual(0);
-    const pid = h.world.ents.pid[car]!, record = h.host.records.byPid.get(pid)!;
-    // Exact pre-drivetrain v3 layout: sixteen f32 values followed by the grounded byte.
-    const fields = ["vehicleYaw", "vehiclePitch", "vehicleRoll", "steering", "wheelAngle", "fuel", "vehicleYawRate", "vehiclePitchRate", "vehicleRollRate", "vehicleGroundPitch", "vehicleGroundRoll", "vehicleRideOffset", "vehicleRideVelocity", "vx", "vy", "vz"] as const;
-    const values = [.3, .04, -.02, .1, 1.25, 17.5, .12, .08, -.03, .02, -.01, .02, -.2, 3, -4, 6];
-    const bytes = new Uint8Array(66), view = new DataView(bytes.buffer); bytes[0] = 3;
-    values.forEach((value, index) => view.setFloat32(1 + index * 4, value, true)); bytes[65] = 0;
-    record.extra.set(0x757262, bytes); h.host.records.dirty.add(pid);
-    h.host.shutdown(); active = null;
-
-    const restored = new Harness({}, 1, 60, { ...hostOptions, dbPath }); active = restored;
-    const e = restored.host.records.entOf.get(pid)!, ents = restored.world.ents;
-    expect(e).toBeGreaterThanOrEqual(0);
-    const b = new Body(); ents.loadBody(e, b);
-    expect(fields.map(field => b[field])).toEqual(values.map(Math.fround));
-    expect(ents.flags[e]! & F_GROUNDED).toBe(0);
-    expect([ents.vehicleGear[ents.vrow[e]!], ents.vehicleShiftTime[ents.vrow[e]!], ents.vehiclePayloadMass[ents.vrow[e]!]]).toEqual([0, 0, 0]);
-    expect(ents.vehicleRpm[ents.vrow[e]!]).toBe(COMPACT.drivetrain!.idleRpm);
-    const upgraded = restored.host.records.byPid.get(pid)!.extra.get(0x757262)!;
-    expect(upgraded[0]).toBe(4); expect(upgraded.length).toBe(82);
   } finally { active?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
 });

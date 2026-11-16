@@ -1,14 +1,15 @@
 // Water standing on its own surfaces, apart from the sea (shared/world/water.ts): lakes, ponds and a river's reaches,
 // drawn as the sea is, see-through, with the lit tiers' WATER program seen from above and the flat plane from under
-// water, in both depth ranges and to the end of the view. Water does not change, so the tiles of 4 by 4 chunks that hold
-// some are made once, with the map: each body's squares merged into rectangles at its surface, but for squares whose
-// ground is all above it, since the flat plane is hidden only by the ground's depth; and a sheet of water down each step
-// from a body to lower water beside it, a river's reach to the next or to the sea.
+// water, in both depth ranges and to the end of the view. Water does not change, so the tiles of LAKE_TILE that hold
+// some are made once, with the map, 256 m at a time: each body's squares merged into rectangles at its surface, but for
+// squares whose ground is all above it, since the flat plane is hidden only by the ground's depth; and a sheet of water
+// down each step from a body to lower water beside it, a river's reach to the next or to the sea.
 //
 // The sea is one plane under everything, so it would show inside a body whose bed goes below it. A tile of the sea's
-// (WATER_TILE) holding such a body is not drawn as the sea's mesh: its tiles here draw the sea too, on every square that
-// is no body's, on the map and past it. A tile is a level in a slot range of its own, quantized by the pack mesh FAR_MESH
-// as the far blocks are (far.ts), from its lowest surface, and drawn with one instance at the origin.
+// (WATER_TILE) holding such a body is not drawn as the sea's mesh: the tile here that holds it draws the sea too, on every
+// square of it that is no body's, on the map and past it. A tile is a level in a slot range of its own, its vertices
+// stored within bounds of its own (AssetUpload `bounds`) from its corner and its lowest surface, and drawn with one
+// instance at the origin.
 
 import { CHUNK_SIZE } from "../../../shared/coords.ts";
 import { INSTANCE_BYTES, VERTEX_BYTES } from "../../../shared/pack/pack.ts";
@@ -16,8 +17,8 @@ import { WATER_COLOR } from "../../../shared/pack/palette.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { MapWater } from "../../../shared/world/water.ts";
 import type { Camera } from "./camera.ts";
-import { FAR_BUFFER, FAR_HEIGHT, FAR_TILE, FAR_TILE_METRES } from "./far.ts";
-import type { FramePacket } from "./packet.ts";
+import { FAR_BUFFER, FAR_TILE, FAR_TILE_METRES } from "./far.ts";
+import { quadBytes, type FramePacket } from "./packet.ts";
 import { WATER_TILE } from "./shading.ts";
 
 /** Slots of tiles on the card start here, past the far city's (farcity.ts, 2^31 up to three times 2^30). */
@@ -25,27 +26,30 @@ export const LAKE_SLOTS = 3 * 2 ** 30;
 const LAKE_SLOT_SPAN = 2 ** 30;
 /** The instance buffer every tile is drawn with: one instance at the origin. */
 export const LAKE_BUFFER = FAR_BUFFER + 2;
+/** A tile's side in metres, four of the sea's. */
+const LAKE_TILE = 4 * WATER_TILE;
+/** Half what a tile's vertices are stored within across: an eighth of a metre a step, so every square's corner is stored exactly. */
+const ACROSS = 32767 / 8;
 /** What the tiles hold on the card, as residency.ts reserves it. */
 const RESERVE = "water";
 /** A square's value in a tile's grid that is the sea's, past every body's number. */
 const SEA = 65536;
-/** The sea's tiles a side of a tile here. */
-const PER_SEA = WATER_TILE / FAR_TILE_METRES;
+/** A tile is made in parts of a far tile's side, PARTS a side. */
+const PARTS = LAKE_TILE / FAR_TILE_METRES;
 const WAYS: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-/** A face's two triangles, by its corners. */
-const QUAD = [0, 1, 2, 0, 2, 3];
 
 interface Tile {
   /** Its corner in the world. */
   readonly x: number;
   readonly z: number;
-  /** What goes on the card: indices, then vertices from the next multiple of 4. */
+  /** What goes on the card: its vertices, drawn with the quads' indices (packet.ts quadIndices). */
   readonly data: Uint8Array;
   readonly indexCount: number;
   readonly indexBytes: 2 | 4;
-  /** Where its vertices' heights start, and the box that holds it, in the world. */
+  /** Where its vertices' heights start, the box that holds it, in the world, and the bounds they are stored within. */
   readonly base: number;
   readonly box: Float64Array;
+  readonly bounds: { readonly center: readonly number[]; readonly half: readonly number[] };
   /** Its slot on the card, or -1. */
   slot: number;
 }
@@ -60,7 +64,7 @@ function lowest(hf: Heightfield, x: number, z: number, size: number): number {
 }
 
 export class Lakes {
-  /** The pack mesh of the tiles' bounds, as a draw names it. */
+  /** The pack mesh a draw names (far.ts FAR_MESH), whose bounds the tiles' own stand in for. */
   readonly mesh: number;
   /** Bytes of tiles on the card. */
   bytes = 0;
@@ -72,8 +76,7 @@ export class Lakes {
   private next = 0;
   private sent = false;
 
-  /** `bounds` is FAR_MESH's centre and half extent, as the pack has them. */
-  constructor(hf: Heightfield, water: MapWater, mesh: number, bounds: { center: readonly number[]; half: readonly number[] }) {
+  constructor(hf: Heightfield, water: MapWater, mesh: number) {
     this.mesh = mesh;
     const { cell, side, surface } = water;
     const sea = hf.seaLevel;
@@ -82,10 +85,12 @@ export class Lakes {
     this.seaZ = Math.ceil(hf.sizeZ / WATER_TILE);
     this.holes = new Uint8Array(this.seaX * this.seaZ);
     // The body squares whose ground goes under their surface, the sea's tiles where a body's ground goes under the sea,
-    // and the tiles here that hold a body's squares.
+    // and the parts and tiles that hold a body's squares.
     const wet = new Uint8Array(water.squares.length);
-    const tilesX = Math.ceil(dims.chunksX / FAR_TILE);
-    const made = new Set<number>();
+    const partsX = Math.ceil(dims.chunksX / FAR_TILE);
+    const parts = new Set<number>();
+    const tilesX = Math.ceil(hf.sizeX / LAKE_TILE);
+    const tiles = new Set<number>();
     for (const c of water.chunks()) {
       const x0 = (c % dims.chunksX) * CHUNK_SIZE, z0 = Math.floor(c / dims.chunksX) * CHUNK_SIZE;
       const at = water.block[c]!;
@@ -97,21 +102,18 @@ export class Lakes {
         if (low < surface[b]!) wet[at + s] = 1;
         if (low < sea) this.holes[Math.floor(z / WATER_TILE) * this.seaX + Math.floor(x / WATER_TILE)] = 1;
       }
-      made.add(Math.floor(z0 / FAR_TILE_METRES) * tilesX + Math.floor(x0 / FAR_TILE_METRES));
+      parts.add(Math.floor(z0 / FAR_TILE_METRES) * partsX + Math.floor(x0 / FAR_TILE_METRES));
+      tiles.add(Math.floor(z0 / LAKE_TILE) * tilesX + Math.floor(x0 / LAKE_TILE));
     }
-    const tiles: [number, number][] = [...made].map((t) => [(t % tilesX) * FAR_TILE_METRES, Math.floor(t / tilesX) * FAR_TILE_METRES]);
-    for (let k = 0; k < this.holes.length; k++) {
-      if (this.holes[k] === 0) continue;
-      const sx = (k % this.seaX) * WATER_TILE, sz = Math.floor(k / this.seaX) * WATER_TILE;
-      for (let j = 0; j < PER_SEA; j++) {
-        for (let i = 0; i < PER_SEA; i++) {
-          const x = sx + i * FAR_TILE_METRES, z = sz + j * FAR_TILE_METRES;
-          if (x >= hf.sizeX || z >= hf.sizeZ || !made.has((z / FAR_TILE_METRES) * tilesX + x / FAR_TILE_METRES)) tiles.push([x, z]);
-        }
+    // A tile is made a part at a time: those that hold a body's squares, and every part of a sea's tile it draws the sea of.
+    for (const t of tiles) {
+      const tx = (t % tilesX) * LAKE_TILE, tz = Math.floor(t / tilesX) * LAKE_TILE;
+      const pos: number[] = [];
+      for (let k = 0; k < PARTS * PARTS; k++) {
+        const x = tx + (k % PARTS) * FAR_TILE_METRES, z = tz + Math.floor(k / PARTS) * FAR_TILE_METRES;
+        if (this.holed(Math.floor(x / WATER_TILE), Math.floor(z / WATER_TILE)) || (x < hf.sizeX && z < hf.sizeZ && parts.has((z / FAR_TILE_METRES) * partsX + x / FAR_TILE_METRES))) this.part(hf, water, wet, x, z, x - tx, z - tz, pos);
       }
-    }
-    for (const at of tiles) {
-      const tile = this.make(hf, water, wet, bounds, at[0], at[1]);
+      const tile = this.tile(pos, tx, tz);
       if (tile) this.tiles.push(tile);
     }
   }
@@ -134,14 +136,14 @@ export class Lakes {
   update(p: FramePacket, budget: { spend(bytes: number): void; reserve(name: string, bytes: number): void }, x: number, z: number, reach: number): void {
     let bytes = 0;
     for (const tile of this.tiles) {
-      const off = Math.hypot(Math.max(tile.x - x, x - tile.x - FAR_TILE_METRES, 0), Math.max(tile.z - z, z - tile.z - FAR_TILE_METRES, 0));
-      if (tile.slot >= 0 && off > reach + FAR_TILE_METRES) {
+      const off = Math.hypot(Math.max(tile.x - x, x - tile.x - LAKE_TILE, 0), Math.max(tile.z - z, z - tile.z - LAKE_TILE, 0));
+      if (tile.slot >= 0 && off > reach + LAKE_TILE) {
         p.assetDrops.push(tile.slot);
         tile.slot = -1;
       } else if (tile.slot < 0 && off <= reach) {
         tile.slot = LAKE_SLOTS + this.next;
         this.next = (this.next + 1) % LAKE_SLOT_SPAN;
-        p.assetUploads.push({ slot: tile.slot, mesh: this.mesh, level: 0, data: tile.data, indexCount: tile.indexCount, indexBytes: tile.indexBytes });
+        p.assetUploads.push({ slot: tile.slot, mesh: this.mesh, level: 0, data: tile.data, indexCount: tile.indexCount, indexBytes: tile.indexBytes, quads: true, bounds: tile.bounds });
         budget.spend(tile.data.length);
       }
       if (tile.slot >= 0) bytes += tile.data.length;
@@ -169,8 +171,11 @@ export class Lakes {
     }
   }
 
-  /** The tile whose corner is (ox, oz), or null where it has nothing to draw. `wet` marks the body squares that hold water. */
-  private make(hf: Heightfield, water: MapWater, wet: Uint8Array, bounds: { center: readonly number[]; half: readonly number[] }, ox: number, oz: number): Tile | null {
+  /**
+   * Adds to `pos` the faces of the part whose corner is (ox, oz), x and z from (ox - dx, oz - dz) and y in the world.
+   * `wet` marks the body squares that hold water.
+   */
+  private part(hf: Heightfield, water: MapWater, wet: Uint8Array, ox: number, oz: number, dx: number, dz: number, pos: number[]): void {
     const { cell, side, surface, dims } = water;
     const sea = hf.seaLevel;
     const n = FAR_TILE_METRES / cell;
@@ -196,9 +201,10 @@ export class Lakes {
       const top = b === 0 ? sea : surface[b]!;
       return top > -Infinity && lowest(hf, x, z, cell) < top ? top : -Infinity;
     };
-    const pos: number[] = [];
-    // A face is a corner and two edges, x and z from the tile's corner, y in the world.
+    // A face is a corner and two edges, x and z from the part's corner, y in the world.
     const face = (x: number, y: number, z: number, ux: number, uy: number, uz: number, vx: number, vy: number, vz: number): void => {
+      x += dx;
+      z += dz;
       pos.push(x, y, z, x + ux, y + uy, z + uz, x + ux + vx, y + uy + vy, z + uz + vz, x + vx, y + vy, z + vz);
     };
     // The squares of one water merged into rectangles, facing up.
@@ -255,6 +261,10 @@ export class Lakes {
         }
       }
     }
+  }
+
+  /** The tile whose corner is (ox, oz) with the faces `pos`, or null where it has none. */
+  private tile(pos: readonly number[], ox: number, oz: number): Tile | null {
     const faces = pos.length / 12;
     if (faces === 0) return null;
     const box = Float64Array.of(Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity);
@@ -263,31 +273,22 @@ export class Lakes {
       box[(k % 3) + 3] = Math.max(box[(k % 3) + 3]!, pos[k]!);
     }
     const base = box[1]!;
+    const up = Math.max(1, box[4]! - base) / 2;
+    const bounds = { center: [ACROSS, up, ACROSS], half: [ACROSS, up, ACROSS] };
     box[0] = box[0]! + ox;
     box[2] = box[2]! + oz;
     box[3] = box[3]! + ox;
     box[5] = box[5]! + oz;
-    const verts = faces * 4;
-    const indexBytes = verts > 65535 ? 4 : 2;
-    const at = (faces * 6 * indexBytes + 3) & ~3;
-    const data = new Uint8Array(at + verts * VERTEX_BYTES);
+    const data = new Uint8Array(faces * 4 * VERTEX_BYTES);
     const view = new DataView(data.buffer);
-    const c = bounds.center, h = bounds.half;
-    const q = (v: number, a: number): number => Math.max(-32767, Math.min(32767, Math.round(((v - c[a]!) / h[a]!) * 32767)));
-    for (let f = 0; f < faces; f++) {
-      for (let k = 0; k < 6; k++) {
-        const i = QUAD[k]!;
-        if (indexBytes === 4) view.setUint32((f * 6 + k) * 4, f * 4 + i, true);
-        else view.setUint16((f * 6 + k) * 2, f * 4 + i, true);
-      }
-    }
-    for (let v = 0; v < verts; v++) {
-      const o = at + v * VERTEX_BYTES;
+    const q = (v: number, a: number): number => Math.max(-32767, Math.min(32767, Math.round(((v - bounds.center[a]!) / bounds.half[a]!) * 32767)));
+    for (let v = 0; v < faces * 4; v++) {
+      const o = v * VERTEX_BYTES;
       view.setInt16(o, q(pos[v * 3]!, 0), true);
-      view.setInt16(o + 2, q(Math.min(pos[v * 3 + 1]! - base, FAR_HEIGHT), 1), true);
+      view.setInt16(o + 2, q(pos[v * 3 + 1]! - base, 1), true);
       view.setInt16(o + 4, q(pos[v * 3 + 2]!, 2), true);
       data[o + 6] = WATER_COLOR;
     }
-    return { x: ox, z: oz, data, indexCount: faces * 6, indexBytes, base, box, slot: -1 };
+    return { x: ox, z: oz, data, indexCount: faces * 6, indexBytes: quadBytes(faces), base, box, bounds, slot: -1 };
   }
 }

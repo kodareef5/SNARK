@@ -25,6 +25,7 @@ ASTC, 24-bit depth, 16 texture units, no timer queries.
 | P2 | `bun tools/bench/corpses.ts`, three runs on a busy machine, ranges | 2026-11-15 | branch `r9/p2-corpses` |
 | P10 | the hurt and decay layers' rows, once each on a busy machine (load 9 to 14) | 2026-11-15 | `r9/p10-layers` |
 | B | `bun tools/bench/budget.ts`, two runs after merging main, counts alike (load 2.3 on 10 cores) | 2026-11-15 | branch `r9/frame-budget` |
+| G | `bun tools/bench/governor.ts`, eight headings, counts alike run to run | 2026-11-16 | branch `perf/governor` after merging main `086f25ae` |
 | W | the bench through its siege, twice on a busy machine (load 10 to 44), for counts and bytes: protocol 21 | 2026-11-16 | branch `perf/built-wire` |
 | Dnnn | the measurement its decision records | | |
 | iPhone | the device page's reports (D349), kept in `planning/reference/device-reports`, named by UTC time | 2026-11-15 | |
@@ -296,6 +297,42 @@ Pictures by the rasterizer at the iPhone's medium view, `planning/reference/roun
 of 2.84, 5.90 M triangles whole and 1.94 M as drawn toward an oak 20 m off, 5.38 and 1.96 M toward one 60 m off; one
 elder oak alone at 20 and 60 m, whole and held at 2.84, and at 20 m with its leaves cut to 100, 60 and 30%.
 
+### The governor (D659 to D661)
+
+`bun tools/bench/governor.ts` (G) counts what each level of the governor's ladder leaves on high with the touch rule
+at the iPhone's view: the scenes of its two kept soaks as the device page stands them (the core's rocks in the stress
+pack's places), and the budget's woods with forty bodies; then what that frame would take the iPhone's GPU at full
+clock (D423's 6.5 ms a million drawn triangles, D349's 0.18 ms a 100,000 cast into 1,024 maps, a draw as 2,000 of its
+ladder's triangles, 1.3 ms a megapixel). Triangles and cast, millions, then the phone's ms:
+
+| Level | 200 bodies, 1,024 pieces | 800 bodies, 64 rocks | Young wood | Elder stand |
+| --- | --- | --- | --- | --- |
+| The tier | 0.354, 0.164; 5.23 | 0.358, 0.153; 5.07 | 2.186, 0.724; 21.4 | 3.891, 5.021; 41.5 |
+| 1 Levels, half again the error | 0.296, 0.164; 4.81 | 0.305, 0.152; 4.69 | 1.969, 0.724; 19.9 | 3.767, 5.021; 40.6 |
+| 2 Leaves to 75% | passed by | passed by | as level 1 | 2.910, 5.021; 34.9 |
+| 3 The farther cascade every other frame | 0.296, 0.138; 4.68 | 0.305, 0.113; 4.55 | 1.969, 0.620; 19.2 | 2.904, 4.840; 34.0 |
+| 4 Levels, twice | 0.261, 0.137; 4.51 | 0.267, 0.110; 4.33 | 1.766, 0.620; 17.8 | 2.919, 4.840; 34.1 |
+| 5 Far trees, rocks and bushes to 70% | as level 4 | as level 4 | 1.457, 0.620; 15.7 | as level 4 |
+| 6 Leaves to 50% | passed by | passed by | as level 5 | 1.944, 4.840; 27.3 |
+| 7 Levels, three times | 0.187, 0.136; 4.04 | 0.222, 0.109; 4.05 | 1.138, 0.620; 13.5 | as level 6 |
+| 8 One cascade fewer | 0.187, 0.083; 3.78 | 0.222, 0.070; 3.85 | 1.138, 0.236; 12.2 | 1.943, 1.007; 19.5 |
+| 9 Bodies a level coarser | 0.162, 0.078; 3.59 | 0.181, 0.065; 3.56 | 1.113, 0.232; 12.0 | 1.938, 1.003; 19.5 |
+| 10, 11 85% and 70% of the pixels | 3.20, 2.87 | 3.16, 2.83 | 11.6, 11.3 | 19.1, 18.7 |
+| 13 No sun shadows | 0.162, 0; 2.43 | 0.181, 0; 2.51 | 1.113, 0; 9.78 | 1.938, 0; 15.5 |
+
+On medium the tier's 3.86, 3.73, 13.3 and 20.9 ms come to 1.93, 1.94, 6.58 and 8.10 at the last level. The small
+details' step changes nothing here: none of these scenes has a burst. The iPhone's kept soaks replayed through the
+governor, each level leaving the share it leaves in the soak's scene (minute 1, minute 10, the level at minute 10):
+
+| Soak | Without the governor | Main's ladder, shares from this Mac's GPU | Main's ladder, the phone's shares | This ladder |
+| --- | --- | --- | --- | --- |
+| `07-47`, 200 bodies, 1,024 pieces | 17, 27 | 16.8, 16.7, 9 | 16.9, 17.8, 11 (its last) | 16.7, 16.7, 10 (0.61 of the GPU's time) |
+| `08-23`, 800 bodies | 17, 24 | 16.7, 18.8, 4 | 16.7, 16.7, 11 (its last, no sun shadows) | 16.7, 16.8, 9 (0.70) |
+| `08-03`, the wood | 28, 22 | 22.2, 16.7, 9 | 22.8, 16.7, 9 | 20.5, 16.7, 8 (0.56) |
+
+None stepped back up while it warmed. The model's soak scenes take about 5 ms where the phone took 17; the 200-body
+soak still holds if up to about 30% of the phone's real frame is work no step touches.
+
 ## The GPU on this Mac
 
 | Row | Result | Source |
@@ -380,7 +417,7 @@ Reasoned from the rows, in the order a growing world meets them.
 | Draws | 4,096 in the packet; the iPhone held 256 to 2,048 on lit tiers | Far stand-ins (F4); texture arrays before multi-draw (D210) |
 | Shadow casters | 812 of 4,096 in the siege on ultra (building pieces only since the refining forge, S1) | Merged casters cached by shape (D267) |
 | Garbage collection | A worst tick of 7 to 20 ms once in some hundreds | Less garbage a tick; the simulation in a worker |
-| Textures on a phone | 1.5 GB held, the tab dropped at 2 GB | A smaller card budget on a phone |
+| Textures on a phone | 1.5 GB held, the tab dropped at 2 GB; the game's ASTC holds at most 507 MB on high and 152 on medium, its blocks sized by map ([encoders](encoders.md)) | A smaller card budget on a phone |
 
 ## Not measured
 
@@ -391,6 +428,8 @@ Reasoned from the rows, in the order a growing world meets them.
 - GPU time per pass in a real frame; the iPhone has no timer queries.
 - The wood with D353's pulled draws, far stones and the broadleaf trees on a phone.
 - A soak on medium, the default tier.
+- A governed soak on a phone: `bun run device -- --tunnel`, "Soak with the governor on", on high and then with
+  `--soak-tier medium`; the report gives each step and when it was taken.
 - Hurt and dead creatures on a phone: `bun run device -- --tunnel --flock` stands forty round the spawn point, and the
   quick look times `surface layered` beside `surface`. On this Mac the layer adds about 13% to a pixel of SURFACE; at
   the iPhone's 0.85 ms a megapixel that is 0.11 ms for each megapixel of hurt bodies, under 0.1 ms with the whole of
@@ -443,10 +482,6 @@ coverage, asset provenance, browser findings and the remaining device work.
 
 **A roof overhead** (`r8/l8-roof`, D344, D345). Nothing measured. The lighting
 design estimated 0.1 MB for a 256-square roof map on medium and 0.5 MB for 512.
-
-**Per-pass timers, a governor, the touch rule** (`r8/m2-governor`). Settled: the
-soaks above and `touchShadows` unset. Its timer rows, steps and touch values go
-here.
 
 **Broadleaf crowns** (art, `r8/n-trees-4`). The trees' third round and the
 stones' far level are in the rows above (D357, D361). The crowns' surface has a

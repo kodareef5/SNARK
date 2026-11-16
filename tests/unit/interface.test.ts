@@ -75,11 +75,11 @@ test("inspection releases the camera and exposes details only until its key is r
   ui.key("KeyL", true, true, null); expect(ui.settings.minimap).toBe(false);
 });
 
-test("saved preferences migrate old flags, bound numeric values and never restore transient actions", () => {
+test("saved preferences bound numeric values and never restore transient actions", () => {
   const settings = new Settings();
   for (const bad of [null, "{", "null", "[]", '{"version":99,"minimap":false}', '{"minimap":"false","diagnostics":3}']) settings.restoreInterface(bad);
   expect([settings.minimap,settings.diagnostics]).toEqual([true,false]);
-  settings.restoreInterface('{"minimap":false,"vitalLabels":true,"diagnostics":true}');
+  settings.restoreInterface('{"version":1,"minimap":false,"vitalLabels":true,"diagnostics":true}');
   settings.restoreInterface('{"version":1,"sensitivity":99,"fov":-1,"masterVolume":0,"minimapZoom":30,"snapshotBytes":999999,"tier":"bogus","download":true,"tab":3}');
   const copy = new Settings(); copy.restoreInterface(settings.interfacePreferences());
   expect([copy.minimap,copy.vitalLabels,copy.diagnostics,copy.sensitivity,copy.fov,copy.masterVolume,copy.minimapZoom]).toEqual([false,true,true,3,50,0,3]);

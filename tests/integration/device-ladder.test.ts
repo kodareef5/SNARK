@@ -106,12 +106,12 @@ test("the governed soak lets the governor act, says beside each minute what it d
   await run(probe, h, app, gpu, 60000, { each });
   const s = probe.report.soak!;
   expect([probe.report.done, probe.report.errors, held, app.governor.held, s.minutes.length]).toEqual([true, [], null, 0, 1]);
-  // Two missed windows took a step: the far trees', the leaves' passed by with no crowns near to give.
-  expect(s.governed!.map((x) => x.level)).toEqual([2]);
-  expect([s.minutes[0]!.level, s.minutes[0]!.most, s.minutes[0]!.steps!.length]).toEqual([2, 2, 1]);
+  // Two missed windows took a step: levels the first, said with when it was taken.
+  expect(s.governed!.map((x) => x.level)).toEqual([1]);
+  expect([s.minutes[0]!.level, s.minutes[0]!.most, s.minutes[0]!.steps!.length]).toEqual([1, 1, 1]);
   const table = deviceTable(probe.report);
   expect(table.some((line) => line.includes("the governor on"))).toBe(true);
-  expect(table.some((line) => line.startsWith("          to 2: far trees, rocks and bushes to 70% as far (30 ms a frame)"))).toBe(true);
+  expect(table.some((line) => /^ {10}at 0:\d\d to 1: levels: half again the error \(30 ms a frame\)$/.test(line))).toBe(true);
   const lacks = lacking(probe.report, "governed");
   expect([lacks.includes("the soak did not run its minutes"), lacks.includes("the governed soak does not say what the governor did")]).toEqual([false, false]);
 });
