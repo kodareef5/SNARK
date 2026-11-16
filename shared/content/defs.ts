@@ -308,7 +308,7 @@ export interface MaterialDef extends Named {
 
 export interface ItemDef extends Named {
   readonly type: "item";
-  readonly class: "resource" | "consumable" | "weapon" | "ammo" | "attachment" | "armor" | "saddle" | "structure" | "egg" | "feces" | "shield" | "costume" | "skin" | "dye" | "artifact";
+  readonly class: "resource" | "consumable" | "weapon" | "ammo" | "attachment" | "armor" | "saddle" | "structure" | "vehicle" | "egg" | "feces" | "shield" | "costume" | "skin" | "dye" | "artifact";
   readonly id: string;
   /** Largest stack. 1 for things that carry their own quality and durability. */
   readonly stack: number;
@@ -355,6 +355,8 @@ export interface ItemDef extends Named {
   readonly attachment?: "scope" | "silencer" | "light" | "laser" | "holo";
   /** The structures it may be set down as. The first is the usual form. The rest are other forms (a wall as a doorframe), chosen as it is placed. */
   readonly places?: readonly string[];
+  /** A completed vehicle assembly. Deployment consumes one only after the named vehicle fits on a supporting surface. */
+  readonly deploys?: string;
   /** How it is made. An item without this cannot be crafted. */
   readonly craft?: CraftFacet;
   // Stubs, read by nothing yet.

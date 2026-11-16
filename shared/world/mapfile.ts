@@ -180,9 +180,16 @@ export interface MapSpawn {
 /** A vehicle the map parks: set down once, in a new world, and its save's from then on. `kind` is a content id, `yaw` in 1/65,536 turns. */
 export interface MapVehicle {
   readonly kind: string;
+  /** Stable authored placement name, independent of list order. Rolled condition is saved with the vehicle. */
+  readonly id?: string;
   readonly x: number;
+  /** Landing surface height. Omitted placements use terrain as older maps do. */
+  readonly y?: number;
   readonly z: number;
   readonly yaw: number;
+  /** Inclusive starting fractions. Each mechanical component is rolled independently once. */
+  readonly condition?: readonly [number, number];
+  readonly fuel?: readonly [number, number];
 }
 
 /** Nodes scattered by a hash: `perChunk` slots in every chunk, each a kind drawn by weight, or empty where the ground does not suit. */
@@ -319,7 +326,17 @@ function check(m: MapData): void {
     if (z.kind !== "spawn" || z.spawns === undefined || !whole(z.count ?? -1, 0, 65535)) fail(`a spawn region at ${z.at[0]}, ${z.at[1]} names no spawns, or holds other than 0 to 65,535`);
     if (!inside(z.at[0], z.at[1]) || !(rx > 0 && rz > 0 && rx <= sizeX && rz <= sizeZ)) fail(`the spawn region of ${z.spawns} at ${z.at[0]}, ${z.at[1]} is off the map or has no size`);
   }
-  for (const v of m.vehicles ?? []) if (!inside(v.x, v.z)) fail(`a ${v.kind} parked at ${v.x}, ${v.z} is off the map`);
+  const vehicleIds = new Set<string>();
+  for (const v of m.vehicles ?? []) {
+    if (!inside(v.x, v.z)) fail(`a ${v.kind} parked at ${v.x}, ${v.z} is off the map`);
+    if (v.y !== undefined && !(v.y >= WORLD_MIN_Y && v.y <= WORLD_MAX_Y)) fail(`a ${v.kind} has an invalid landing height`);
+    if (v.id !== undefined) {
+      if (!/^[\x21-\x7e]{1,80}$/.test(v.id) || vehicleIds.has(v.id)) fail("parked vehicle ids must be unique plain names of 1 to 80 characters");
+      vehicleIds.add(v.id);
+    }
+    for (const range of [v.condition, v.fuel]) if (range !== undefined &&
+      (!Array.isArray(range) || range.length !== 2 || !range.every(Number.isFinite) || range[0]! < 0 || range[1]! > 1 || range[0]! > range[1]!)) fail("parked vehicle condition and fuel ranges must be ordered fractions from 0 to 1");
+  }
 }
 
 class Out {
@@ -499,6 +516,7 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
         o.u32(Math.round(rz * STRUCT_UNITS));
       }
     });
+
   }
   const vehicles = m.vehicles ?? [];
   if (vehicles.length > 0) {
@@ -513,6 +531,18 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
         o.u16(v.yaw);
         o.i32(Math.round(v.x * STRUCT_UNITS));
         o.i32(Math.round(v.z * STRUCT_UNITS));
+      }
+    });
+    const extended = vehicles.map((v, index) => ({ v, index })).filter(({ v }) => v.id !== undefined || v.y !== undefined || v.condition !== undefined || v.fuel !== undefined);
+    if (extended.length > 0) section("VHCX", () => {
+      o.u8(1); o.u32(extended.length);
+      for (const { v, index } of extended) {
+        o.u32(index);
+        o.u8((v.id !== undefined ? 1 : 0) | (v.y !== undefined ? 2 : 0) | (v.condition !== undefined ? 4 : 0) | (v.fuel !== undefined ? 8 : 0));
+        if (v.id !== undefined) o.text(v.id);
+        if (v.y !== undefined) o.f64(v.y);
+        if (v.condition !== undefined) { o.f64(v.condition[0]); o.f64(v.condition[1]); }
+        if (v.fuel !== undefined) { o.f64(v.fuel[0]); o.f64(v.fuel[1]); }
       }
     });
   }
@@ -654,6 +684,7 @@ function read(r: In): Omit<MapFile, "hash"> {
   const spawns: MapSpawn[] = [];
   const regions: MapZone[] = [];
   const vehicles: MapVehicle[] = [];
+  const vehicleExtras = new Map<number, Partial<MapVehicle>>();
   let water: MapWater | null = null;
   while (r.at < r.bytes.length) {
     const tag = String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8());
@@ -707,6 +738,18 @@ function read(r: In): Omit<MapFile, "hash"> {
         const yaw = s.u16();
         vehicles.push({ kind, x: s.i32() / STRUCT_UNITS, z: s.i32() / STRUCT_UNITS, yaw });
       }
+    } else if (tag === "VHCX") {
+      if (s.u8() !== 1) throw new Error("map: unsupported parked vehicle extension");
+      for (let n = s.u32(); n > 0; n--) {
+        const index = s.u32(), flags = s.u8();
+        if ((flags & ~15) !== 0 || vehicleExtras.has(index)) throw new Error("map: invalid parked vehicle extension");
+        vehicleExtras.set(index, {
+          ...(flags & 1 ? { id: s.text() } : {}),
+          ...(flags & 2 ? { y: s.f64() } : {}),
+          ...(flags & 4 ? { condition: [s.f64(), s.f64()] as const } : {}),
+          ...(flags & 8 ? { fuel: [s.f64(), s.f64()] as const } : {}),
+        });
+      }
     } else if (tag === "WATR") {
       if (water) throw new Error("map: it has two WATR sections");
       const cell = s.u8();
@@ -726,6 +769,10 @@ function read(r: In): Omit<MapFile, "hash"> {
     }
   }
   if (!heights) throw new Error("map: it has no heights");
+  for (const [index, extra] of vehicleExtras) {
+    if (!vehicles[index]) throw new Error("map: parked vehicle extension names a missing vehicle");
+    vehicles[index] = { ...vehicles[index]!, ...extra };
+  }
   statics ??= new MapStatics(dims, [], 0, () => {});
   return { id, dims, minY, stepY, seaLevel, heights, tint: tint ?? new Uint8Array(heights.length), statics, nodes, spawns, ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(water ? { water } : {}) };
 }
