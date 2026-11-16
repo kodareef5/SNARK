@@ -92,7 +92,9 @@ def lifeboat(m, prototype):
     """Append the whole enclosed craft; no layout, collision or material edits."""
     first_vertex = len(m.v)
     level = m.level
-    steps = (5, 4, 3, 2, 1, 1)[level]
+    # Both textured stages retain the same envelope; changing the corner
+    # stations alone exceeded their stated 12.5 mm visible error.
+    steps = (5, 5, 3, 2, 1, 1)[level]
 
     # White double-chine hull. The dark rubbing strake is a material region of
     # this same closed shell, avoiding a coplanar black overlay at every LOD.
