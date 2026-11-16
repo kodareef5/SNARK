@@ -9,7 +9,7 @@
 // it sinks. It lies, and its ragdoll is laid, only where it came to rest.
 
 import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT, hurtStage } from "../shared/anim/pose.ts";
-import { FALLING, Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16 } from "../shared/anim/corpse.ts";
+import { FALLING, FELL, Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16 } from "../shared/anim/corpse.ts";
 import { WET_DAMP, WET_GRAVITY } from "../shared/anim/ragdoll.ts";
 import { Solved, rayZones, zoneHit } from "../shared/anim/skeleton.ts";
 import type { ItemDef, SpeciesDef } from "../shared/content/defs.ts";
@@ -17,7 +17,7 @@ import { TICK_DT, TICK_RATE } from "../shared/coords.ts";
 import { detCos, detSin } from "../shared/math/scalar.ts";
 import { Rng } from "../shared/rng.ts";
 import { GROWN, growthStep, leftAtPeriod, youngScale } from "../shared/sim/breeding.ts";
-import { Body as Mover, MF_OUT, MF_ROOTED, MODE_WALK, STANCE_STAND, stepBody, type MoveParams } from "../shared/sim/character.ts";
+import { Body as Mover, MF_OUT, MF_ROOTED, MODE_FLYER, MODE_WALK, STANCE_STAND, stepBody, type MoveParams } from "../shared/sim/character.ts";
 import { F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
 import { Inventory } from "../shared/sim/items.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
@@ -85,6 +85,8 @@ export interface Body {
   readonly size: number;
   /** It died knocked out. */
   readonly out: boolean;
+  /** It died in its own flight, and goes limp from its death in the air. */
+  readonly air: boolean;
   /** Ticks its whole time lasts under the rules now. It ends at rec.expiresAt. */
   life: number;
   /** The tick of its next deadline. */
@@ -198,7 +200,7 @@ export class Corpses {
     const max = (of.corpse?.health ?? HEALTH) * size * rules.num("HarvestHealthMultiplier");
     // Survival clears rec.out as health runs out, so the body asks what the entity still shows.
     const out = rec.out || (ents.mflags[e]! & MF_OUT) !== 0 || (ents.cue[e]! & CUE_OUT) !== 0;
-    const b = this.make(body, rec.kind, max, max, young, size, out, life);
+    const b = this.make(body, rec.kind, max, max, young, size, out, !out && ents.mode[e] === MODE_FLYER, life);
     // Off the ground with nothing under it, it falls on as it was going.
     if ((ents.flags[e]! & F_GROUNDED) === 0 && !this.held(b)) this.fallFrom(b, ents.vx[e]!, ents.vy[e]!, ents.vz[e]!, ents.yaw[e]!);
     this.save(b);
@@ -230,16 +232,16 @@ export class Corpses {
     rec.y = wireY(rec.y);
     rec.z = wireX(rec.z);
     rec.yaw &= 0xffc0;
-    const b = this.make(rec, s.species, s.max, s.left, s.young, corpseSize(s.span), s.out, s.life);
+    const b = this.make(rec, s.species, s.max, s.left, s.young, corpseSize(s.span), s.out, s.air, s.life);
     this.place(b);
     // A body saved while it fell lies where it was in the air until it is found to hang there, when the world is whole.
     this.loaded.push(b);
   }
 
-  private make(rec: EntityRecord, kind: number, max: number, left: number, young: boolean, size: number, out: boolean, life: number): Body {
+  private make(rec: EntityRecord, kind: number, max: number, left: number, young: boolean, size: number, out: boolean, air: boolean, life: number): Body {
     const anim = this.ctx.world.anims[kind];
     const b: Body = {
-      rec, kind, e: -1, max, left, young, size, out, life, next: 0, stage: 0,
+      rec, kind, e: -1, max, left, young, size, out, air, life, next: 0, stage: 0,
       x: rec.x, y: rec.y, z: rec.z, yaw: yawOf16(rec.yaw),
       fall: null, pose: anim?.rig.ragdoll ? new Solved(anim.rig.bones) : null, moving: false, drop: null, dropped: 0,
     };
@@ -297,7 +299,7 @@ export class Corpses {
   /** Lays a body's ragdoll where it lies. */
   private lay(b: Body): void {
     const anim = this.ctx.world.anims[b.kind];
-    const r = anim && b.pose ? layCorpse(anim, b.out, b.x, b.y, b.z, b.yaw, b.size, b.pose) : null;
+    const r = anim && b.pose ? layCorpse(anim, b.out, b.air, b.x, b.y, b.z, b.yaw, b.size, b.pose) : null;
     if (r) {
       b.fall = new Fall(r);
       this.wake(b);
@@ -366,7 +368,7 @@ export class Corpses {
     b.stage = Math.max(hurtStage(b.rec.expiresAt - tick, b.life), hurtStage(b.left, b.max));
     if (b.e < 0) return;
     const ents = this.ctx.world.ents;
-    const cue = (CUE_DEAD | (b.stage << CUE_DECAY_SHIFT) | (b.out ? CUE_OUT : 0)) >>> 0;
+    const cue = (CUE_DEAD | (b.stage << CUE_DECAY_SHIFT) | (b.out ? CUE_OUT : 0) | (b.air ? FELL : 0)) >>> 0;
     if (ents.cue[b.e] === cue) return;
     ents.cue[b.e] = cue;
     this.ctx.world.history.cued(b.e);
@@ -606,7 +608,7 @@ export class Corpses {
 
   /** Writes a body's own state into its record, for the store. */
   private save(b: Body): void {
-    b.rec.corpse = { species: b.kind, max: b.max, left: b.left, span: sizeSpan(b.size), young: b.young, out: b.out, life: b.life };
+    b.rec.corpse = { species: b.kind, max: b.max, left: b.left, span: sizeSpan(b.size), young: b.young, out: b.out, air: b.air, life: b.life };
     this.ctx.records.dirty.add(b.rec.pid);
   }
 

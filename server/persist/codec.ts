@@ -364,6 +364,7 @@ export class RecordCodec {
       c.bool(b.young);
       c.bool(b.out);
       c.uint53(b.life);
+      c.bool(b.air);
       this.part(COMP_CORPSE);
     }
     const v = rec.vitals;
@@ -640,7 +641,9 @@ export class RecordCodec {
         for (let k = c.varint(); k > 0 && !c.overflow; k--) refs.push(c.varint(), c.uint53());
       } else if (component === COMP_CORPSE) {
         // A body of a species this build lacks keeps 0, and Corpses lets it go with what it held.
-        rec.corpse = { species: this.toRuntime[c.varint()] ?? 0, max: c.f64(), left: c.f64(), span: c.varint(), young: c.bool(), out: c.bool(), life: c.uint53() };
+        // A body saved before one could die in its own flight has nothing after its time, or padding that reads false.
+        rec.corpse = { species: this.toRuntime[c.varint()] ?? 0, max: c.f64(), left: c.f64(), span: c.varint(), young: c.bool(), out: c.bool(), life: c.uint53(), air: false };
+        if (c.pos < blob.length * 8) rec.corpse.air = c.bool();
       } else rec.extra.set(component, blob.slice());
       if (c.overflow) throw new Error(`entity ${row.pid}: unreadable component ${component}`);
     }

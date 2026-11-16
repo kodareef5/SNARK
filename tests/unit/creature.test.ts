@@ -365,7 +365,7 @@ function madeClip(name: string, frames: number, loop: boolean, bones: readonly s
 
 const LEGS = ["shin_l", "foot_l", "toes_l", "shin_r", "foot_r", "toes_r"];
 
-/** The block-out with what PA3b and PA3c will make: the bite in the air on the neck and head, the feet's grab, carry and release, and the limp fall. */
+/** Its rig with plain clips, which a test can name the bones of, in place of its own bite in the air, grab, carry, release and limp fall. */
 function withActs(): CreatureAnim {
   const bump = (n: number) => (f: number) => 0.5 * Math.sin((Math.PI * f) / (n - 1));
   const clips = new Map(frig.clips);
@@ -404,4 +404,12 @@ test("knocked out in the air it goes limp from its flight and falls so", () => {
   const out = state((s) => ((s.out = true), (s.grounded = false), (s.cue = CUE_TORPOR), (s.cueStart = start & 255)), false);
   expect(posed(a, out, start).rot).toEqual(posed(a, hovering, start).rot);
   expect(posed(a, out, start + FADE + 4).rot).toEqual(frameOf("torpor_fall", start + FADE + 4 + SEED, a));
+  // Come to the ground, it lies down from its fall over FADE ticks.
+  const land = start + 40;
+  const down = state((s) => ((s.out = true), (s.cue = CUE_LAND), (s.cueStart = land & 255)), false);
+  expect(posed(a, down, land).rot).toEqual(frameOf("torpor_fall", land + SEED, a));
+  const half = posed(a, down, land + FADE / 2).rot;
+  const same = (p: number[], q: number[]): boolean => p.every((x, k) => x === q[k]);
+  expect([same(half, frameOf("torpor_fall", land + FADE / 2 + SEED, a)), same(half, frameOf("torpor_idle", land + FADE / 2 + SEED, a))]).toEqual([false, false]);
+  expect(posed(a, down, land + FADE).rot).toEqual(frameOf("torpor_idle", land + FADE + SEED, a));
 });

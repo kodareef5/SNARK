@@ -143,10 +143,11 @@ export class Occasions {
       if (!first) {
         was.unpack(b.anim, b.cue);
         const cueChanged = (remote.cue[i]! & 0xffe) !== (b.cue & 0xffe);
-        if (cueChanged && st.cue === CUE_LAND) happen("land", started(tick, st.cueStart));
+        const landed = cueChanged && st.cue === CUE_LAND;
+        if (landed) happen("land", started(tick, st.cueStart));
         else if (cueChanged && st.cue === CUE_TORPOR) happen(st.out ? "down" : "up", started(tick, st.cueStart));
-        // One knocked out has no landing cue, so its landing is read from its state.
-        if (st.out && st.grounded && !was.grounded && was.out) happen("land", tick);
+        // One knocked out has a landing cue only where its kind falls limp on a clip, so its landing is read from its state.
+        if (!landed && st.out && st.grounded && !was.grounded && was.out) happen("land", tick);
         if (((remote.cue[i]! >>> 12) & 0x3ff) !== ((b.cue >>> 12) & 0x3ff) && st.layer === LAYER_FLINCH) {
           const h = happen("struck", started(tick, st.layerStart));
           if (h) this.striker(h, remote, i, shots, viewer, nowMs);
@@ -168,9 +169,12 @@ export class Occasions {
     for (const [id, b] of this.bodies) if (b.frame !== frame) this.bodies.delete(id);
     for (const c of corpses) {
       if (this.corpses.has(c.id)) continue;
+      // One that died in its own flight is met where it comes down, as it lands.
+      if (c.air && c.falling) continue;
       this.corpses.add(c.id);
-      if (!c.watched || c.lying || (this.listens[c.kind]! & this.bit("death")) === 0) continue;
-      out.push({ occasion: "death", id: c.id, kind: c.kind, tick: c.born, x: c.x, y: c.y, z: c.z, yaw: c.yaw, size: c.size, anim: 0, cue: 0, grounded: true, colours: c.colors.slice(), fromX: NaN, fromY: NaN, fromZ: NaN, foot: -1, corpse: c });
+      const occasion = c.air ? "land" : "death";
+      if (!c.watched || c.lying || (this.listens[c.kind]! & this.bit(occasion)) === 0) continue;
+      out.push({ occasion, id: c.id, kind: c.kind, tick: c.air ? Math.max(c.landed, c.born) : c.born, x: c.x, y: c.y, z: c.z, yaw: c.yaw, size: c.size, anim: 0, cue: 0, grounded: true, colours: c.colors.slice(), fromX: NaN, fromY: NaN, fromZ: NaN, foot: -1, corpse: c });
     }
     if (this.corpses.size > corpses.length * 2 + 64) {
       const now = new Set(corpses.map((c) => c.id));

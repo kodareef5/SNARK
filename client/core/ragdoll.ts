@@ -7,10 +7,10 @@
 //
 // A body that died in the air or in the water is sent falling (FALLING) where the server has it as it falls or sinks.
 // It is drawn there limp, as it goes limp or as it lay, and goes limp as a ragdoll only once it is sent lying still, at
-// the place the wire then carries.
+// the place the wire then carries. One that died in its own flight plays its death in the air (CUE_FELL).
 
 import { Pose, blendPose, sampleClip } from "../../shared/anim/clip.ts";
-import { Fall, bodyFalls, corpseSize, layCorpse, limpPose, wireX, wireY, wireYaw } from "../../shared/anim/corpse.ts";
+import { Fall, bodyFalls, corpseSize, deathOf, diedAloft, layCorpse, limpPose, wireX, wireY, wireYaw } from "../../shared/anim/corpse.ts";
 import { creaturePose, type CreatureAnim } from "../../shared/anim/creature.ts";
 import type { Gait } from "../../shared/anim/gait.ts";
 import { AnimState, CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT, FLY_SPEED_STEP, SPEED_STEP, bodySeed } from "../../shared/anim/pose.ts";
@@ -55,6 +55,8 @@ export interface Corpse {
   readonly watched: boolean;
   /** It died knocked out, and goes limp as it lay. */
   readonly lying: boolean;
+  /** It died in its own flight, and plays its death in the air. */
+  readonly air: boolean;
   /** The server has it falling or sinking still. Once it lies, the whole tick this client saw it lying. */
   falling: boolean;
   landed: number;
@@ -258,6 +260,7 @@ export class Corpses {
       born: Math.floor(tick),
       watched: alive !== null,
       lying: (r.cue[i]! & CUE_OUT) !== 0,
+      air: diedAloft(r.cue[i]!),
       falling,
       landed: 0,
       decay: 0,
@@ -301,7 +304,7 @@ export class Corpses {
   /** The pose a body not watched is drawn in while it falls: the one its ragdoll will start from, or the one it lies in without. */
   private held(c: Corpse): void {
     const m = this.mortal[c.kind]!;
-    if (m.rig.ragdoll) limpPose(m, c.lying, c.solved, this.scratch(m.rig.bones));
+    if (m.rig.ragdoll) limpPose(m, c.lying, c.air, c.solved, this.scratch(m.rig.bones));
     else this.lie(c);
   }
 
@@ -309,11 +312,12 @@ export class Corpses {
   private lie(c: Corpse): void {
     const m = this.mortal[c.kind]!;
     const rig = m.rig;
-    if (m.death && !c.lying) {
+    const clip = deathOf(m, c.air);
+    if (clip && !c.lying) {
       const pose = this.posed(rig.bones);
-      sampleClip(m.death, m.death.frames - 1, pose);
+      sampleClip(clip, clip.frames - 1, pose);
       solve(rig, pose, c.solved);
-    } else limpPose(m, c.lying, c.solved, this.scratch(rig.bones));
+    } else limpPose(m, c.lying, c.air, c.solved, this.scratch(rig.bones));
   }
 
   /** A scratch solved pose for a rig of `bones`. */
@@ -328,7 +332,7 @@ export class Corpses {
 
   /** The pose `frame` ticks into dying: the death clip, blended in from the last pose alive. Lying, or without a clip, that pose. */
   private dying(c: Corpse, frame: number, out: Pose): void {
-    const clip = this.mortal[c.kind]!.death;
+    const clip = deathOf(this.mortal[c.kind]!, c.air);
     if (!clip || c.lying) {
       blendPose(out, c.alive!, c.alive!, 0);
       return;
@@ -342,7 +346,7 @@ export class Corpses {
     const m = this.mortal[c.kind]!;
     c.limp = true;
     c.clock = at;
-    const r = layCorpse(m, c.lying, c.x, c.y, c.z, c.yaw, c.size, c.solved);
+    const r = layCorpse(m, c.lying, c.air, c.x, c.y, c.z, c.yaw, c.size, c.solved);
     if (r) {
       c.fall = new Fall(r);
       c.settling = !c.watched;
@@ -372,7 +376,7 @@ export class Corpses {
       if (!c.watched) return;
       // Watched, it plays its clip until it goes limp, or to the clip's end for a rig with no ragdoll, and holds that
       // frame while it still falls.
-      const clip = m.death;
+      const clip = deathOf(m, c.air);
       const end = c.lying || !clip ? 0 : rig.ragdoll ? rig.ragdoll.limp : clip.frames - 1;
       const frame = tick - c.born;
       if (frame < end || c.falling) {

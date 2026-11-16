@@ -110,7 +110,7 @@ export class CreatureAnim {
   readonly biteBones: Uint8Array;
   /** Radians a second at which its turn plays at its own rate. */
   readonly spinAt: number;
-  /** Its flight's: taking off, hovering, flying, flying fast, gliding, diving, the barrel roll, and limp in the air when knocked out. */
+  /** Its flight's: taking off, hovering, flying, flying fast, gliding, diving, the barrel roll, limp in the air when knocked out, and dying in the air. */
   readonly takeOff: Clip | null;
   readonly hover: Clip | null;
   readonly fly: Clip | null;
@@ -119,6 +119,7 @@ export class CreatureAnim {
   readonly dive: Clip | null;
   readonly roll: Clip | null;
   readonly torporFall: Clip | null;
+  readonly deathAir: Clip | null;
   /** Layers: the bite in the air on its neck and head; its feet taking hold, holding and letting go. */
   readonly attackAir: Clip | null;
   readonly grab: Clip | null;
@@ -203,6 +204,7 @@ export class CreatureAnim {
     this.dive = loop(named("dive"));
     this.roll = named("barrel_roll");
     this.torporFall = named("torpor_fall");
+    this.deathAir = named("death_air");
     this.attackAir = named("attack_air");
     this.grab = named("grab");
     this.carry = loop(named("carry"));
@@ -661,7 +663,13 @@ export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: 
   else steady(a, st, tick, out, gait, st.out);
   if (st.out) {
     const s = since(tick, st.cueStart);
-    if (st.cue !== CUE_TORPOR) {
+    if (st.cue === CUE_LAND) {
+      // Come down from its limp fall, it lies down from that.
+      if (s < FADE && a.torporFall && st.grounded) {
+        sampleClip(a.torporFall, tick + st.seed, rig.e);
+        blendPose(out, rig.e, out, smooth(s / FADE));
+      }
+    } else if (st.cue !== CUE_TORPOR) {
       // Out cold.
     } else if (a.torporFall && !st.grounded && st.mode !== MODE_SWIM) {
       // Knocked out off the ground it goes limp from what it was doing there.
