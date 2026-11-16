@@ -1,25 +1,18 @@
 // Sounds in an asset build. A sound is a name a definition owns, such as `core:dodo/sound/call`, and one or more takes
-// of it, of which the engine plays one at a time. A build keeps every sound in one file of its own:
+// of it, of which the engine plays one at a time. A build keeps the sounds the game plays in one file of its own:
 //
 //   0   "SNSD"
 //   4   u16 version, u16 0
 //   8   the takes, one after another, each sound's takes together, where the manifest says
 //
-// A take is mono 16-bit samples at its sound's rate:
-//
-//   0   u8 its code: 0, the lossless code of rice.ts. Others are left for a code that loses what cannot be heard.
-//   1   u8 0, u8 0, u8 0
-//   4   the stream
-//
-// A client fetches a sound's takes together as one range, checks each against its hash, and decodes them to floats.
+// A take is mono at its sound's rate, coded as shared/pack/transform.ts says. A client fetches a sound's takes together
+// as one range, checks each against its hash, and decodes them to floats.
 
-import { BLOCK, decodeLossless, encodeLossless } from "./rice.ts";
+import { decodeTransform } from "./transform.ts";
 
 export const SOUND_MAGIC = 0x44534e53; // "SNSD" little-endian
-export const SOUND_VERSION = 1;
+export const SOUND_VERSION = 2;
 export const SOUND_HEADER_BYTES = 8;
-export const TAKE_HEADER_BYTES = 4;
-export const CODE_LOSSLESS = 0;
 
 /** A take of a sound: its samples, its bytes as coded, their hash, and the model or method that made it. */
 export interface ManifestTake {
@@ -44,27 +37,30 @@ export interface ManifestSound {
   takes: ManifestTake[];
 }
 
-/** Whether `bytes` could hold a take of `samples` samples: more than its header, and no more than the code's worst case. */
+/** Whether `bytes` could hold a take of `samples` samples: its frame and a coded byte, and no more than 32 bits a sample
+ * past what its first frames take however short it is. */
 export function takeFits(samples: number, bytes: number): boolean {
-  return bytes > TAKE_HEADER_BYTES && bytes <= TAKE_HEADER_BYTES + samples * 3 + 64 * Math.ceil(samples / BLOCK);
-}
-
-/** `samples` (16-bit values) as a take. */
-export function encodeTake(samples: Int16Array): Uint8Array {
-  const body = encodeLossless(samples);
-  const out = new Uint8Array(TAKE_HEADER_BYTES + body.length);
-  out[0] = CODE_LOSSLESS;
-  out.set(body, TAKE_HEADER_BYTES);
-  return out;
+  return bytes >= 2 && bytes <= 1024 + samples * 4;
 }
 
 /**
  * Decodes a take of `samples` samples from `data` into `out` as floats from -1 to 1. Returns false, with `out` left as far as
- * it got, when the data names a code there is not, or does not hold that many samples.
+ * it got, when the data is not such a take.
  */
 export function decodeTake(data: Uint8Array, samples: number, out: Float32Array): boolean {
-  if (out.length < samples || data.length < TAKE_HEADER_BYTES || data[0] !== CODE_LOSSLESS) return false;
-  return samples === 0 || decodeLossless(data.subarray(TAKE_HEADER_BYTES), samples, out);
+  return out.length >= samples && samples > 0 && decodeTransform(data, samples, out);
+}
+
+/** Takes one after another in `data`, as the manifest gives them, decoded; null if any is not such a take. */
+export function decodeTakes(data: Uint8Array, takes: readonly { samples: number; bytes: number }[]): Float32Array<ArrayBuffer>[] | null {
+  const out: Float32Array<ArrayBuffer>[] = [];
+  let at = 0;
+  for (const t of takes) {
+    const samples = new Float32Array(t.samples);
+    if (!decodeTake(data.subarray(at, (at += t.bytes)), t.samples, samples)) return null;
+    out.push(samples);
+  }
+  return out;
 }
 
 /** What is wrong with a manifest's sounds against its files, or "" if nothing. */

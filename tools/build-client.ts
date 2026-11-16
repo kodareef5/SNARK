@@ -7,13 +7,16 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync,
 import { join, resolve, sep } from "node:path";
 import { brotliCompressSync, constants } from "node:zlib";
 import { skyFile, theSky } from "../client/core/render/sky.ts";
+import { CORE_CONTENT } from "../content/core.ts";
+import { compileContent } from "../shared/content/registry.ts";
+import { soundsHeard } from "../shared/sound/reach.ts";
 import { gameTextures } from "./art/materials.ts";
 import { buildCorePack, importedMeshes } from "./pack/build.ts";
 import { buildTextures, type TextureSource } from "./pack/encode.ts";
 import { gameIcons } from "./pack/icons.ts";
 import { partHash } from "./pack/manifest.ts";
 import { orderPack } from "./pack/order.ts";
-import { buildSounds } from "./pack/sound.ts";
+import { SOUND_RATES, buildSounds, findSheets, type SoundReport } from "./pack/sound.ts";
 import { splitPack } from "./pack/split.ts";
 import { storeParts } from "./pack/store.ts";
 import { STRESS_CARDS, cardPicture, spoilStress, stressMeshes } from "./pack/stress.ts";
@@ -55,7 +58,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
     if (!result.success) throw new Error(result.logs.map(String).join("\n"));
     return result.outputs;
   };
-  const scripts = [...(await bundle(["client/shell/main.ts"], true)), ...(await bundle(["client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts", "client/sound/decode-worker.ts"], false))].filter((o) => o.path.endsWith(".js")).map((o) => o.path.slice(dist.length + 1));
+  const scripts = [...(await bundle(["client/shell/main.ts"], true)), ...(await bundle(["client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts", "client/sound/decode-worker.ts", "client/city/city-worker.ts"], false))].filter((o) => o.path.endsWith(".js")).map((o) => o.path.slice(dist.length + 1));
   // The pieces main.js imports before it runs, which the page asks for beside it.
   const pieces = [...readFileSync(join(dist, "main.js"), "utf8").matchAll(/\bimport\s*(?:\{[^}]*\}\s*from\s*)?"\.\/([^"]+\.js)"/g)].map((m) => m[1]!);
   console.log(`ui           ${ui.bytes} bytes transferred with compressed font, ${ui.decodedBytes} RGBA bytes`);
@@ -83,20 +86,28 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   // The inventory pictures, drawn from the meshes and the textures as stored, in sheets after the other files.
   files.push(...(await gameIcons(core, manifest, files)));
   if (opts.stress) spoilStress(files, manifest);
-  // Sounds are a file of their own, fetched a sound at a time and stored as they are coded.
+  // Sounds are a file of their own, fetched a sound at a time and stored as they are coded: those a cue the game fires
+  // can reach. The rest go in a file of their own for the sound board, which lists them from loose.json.
   t0 = performance.now();
-  const sounds = buildSounds(files.length);
+  const { registry } = compileContent(CORE_CONTENT);
+  const ids = findSheets().flatMap((s) => Object.keys(s.sheet.sounds).map((name) => `${s.owner}/sound/${name}`));
+  const sounds = buildSounds(files.length, undefined, undefined, soundsHeard(ids, registry!));
   if (sounds) {
     files.push({ name: "core.snsd", role: "sound", bytes: sounds.bytes });
     manifest.files.push({ name: "core.snsd", role: "sound", bytes: sounds.bytes.length });
     manifest.sounds = sounds.sounds;
-    const r = sounds.report;
-    console.log(`sounds       ${r.sounds} with ${r.takes} takes, ${r.seconds.toFixed(1)} s in ${r.bytes} bytes (${Math.round((100 * r.bytes) / Math.max(1, r.raw))}% of 16-bit), ${r.made} coded anew${r.limited.length > 0 ? `, ${r.limited.length} brought under -1 dB` : ""}, ${(performance.now() - t0).toFixed(0)} ms`);
+    const line = (r: SoundReport): string => `${r.sounds} with ${r.takes} takes, ${r.seconds.toFixed(1)} s in ${r.bytes} bytes (${((r.bytes * 8) / Math.max(1, r.seconds) / 1000).toFixed(0)} kbps; s at ${SOUND_RATES.map((k, i) => `${k / 1000}k ${r.rates[i]!.toFixed(0)}`).join(", ")}; ${(r.decoded / 1048576).toFixed(1)} MB decoded), ${r.made} coded anew${r.limited.length > 0 ? `, ${r.limited.length} brought under -1 dB` : ""}`;
+    console.log(`sounds       ${line(sounds.report)}; loose ${line(sounds.loose!.report)}, ${(performance.now() - t0).toFixed(0)} ms`);
   }
   files.forEach((f, i) => {
     manifest.files[i]!.name = f.name.replace(/\.(\w+)$/, `.${partHash(f.bytes)}.$1`);
     writeFileSync(join(dist, "assets", manifest.files[i]!.name), f.bytes);
   });
+  if (sounds?.loose) {
+    const name = `loose.${partHash(sounds.loose.bytes)}.snsd`;
+    writeFileSync(join(dist, "assets", name), sounds.loose.bytes);
+    writeFileSync(join(dist, "assets/loose.json"), JSON.stringify({ file: name, sounds: sounds.loose.sounds }));
+  }
   writeFileSync(join(dist, "assets/manifest.json"), JSON.stringify(manifest));
   // The page asks for its script and the files the first frame needs as it is read. The server names its map's file, so main.js asks for that.
   const boot = `assets/${manifest.files[manifest.boot]!.name}`;

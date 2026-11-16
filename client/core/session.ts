@@ -104,11 +104,12 @@ import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { staticKinds, type MapStatics } from "../../shared/world/mapfile.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
-import { CMD_FAR, RESULT_BUSY, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
+import { CMD_FAR, CMD_STATICS, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import type { FarSource } from "./render/far.ts";
+import type { CityMaker } from "./render/citymake.ts";
 import type { CitySource } from "./render/farcity.ts";
-import type { CityStatics } from "../../shared/world/city.ts";
+import { CityStatics } from "../../shared/world/city.ts";
 import { NodeChanges, type FarNodeSource } from "./render/farnodes.ts";
 import { MapStore } from "./tactical.ts";
 
@@ -131,8 +132,12 @@ export interface SessionOptions {
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
   /** The map's resource nodes, from the same pure function the server uses. */
   nodes?(hf: Heightfield, registry: Registry): NodeSource | null;
-  /** The map's static pieces by chunk, which the far city draws past the near rows (render/farcity.ts). */
+  /**
+   * The map's static pieces by chunk, which the far city draws past the near rows (render/farcity.ts); without it the far
+   * city is made of the statics staticsArrived gives. And where its levels are made, here if not given.
+   */
   city?(registry: Registry): CityStatics | null;
+  cityMaker?: CityMaker;
   /** The statics of the map file resolveMap accepts. With them the server sends a chunk's only where they differ (HELLO_STATICS). */
   statics?: MapStatics;
 }
@@ -452,7 +457,11 @@ export class ClientSession {
   readonly far = new FarStore();
   /** Per chunk, 1 once its last row has come since it was last dropped: the near store holds it whole. */
   private whole = new Uint8Array(0);
-  /** The map's statics' kinds as content indices, from the welcome, when the client takes chunks from them. */
+  /** The map's statics, come after the session began (staticsArrived). */
+  private arrived: MapStatics | null = null;
+  /** The command that told the server of them (CMD_STATICS), until its answer. */
+  private staticsSeq = 0;
+  /** The map's statics' kinds as content indices, from the welcome or CMD_STATICS's answer, when the client takes chunks from them. */
   private staticKinds: Uint16Array | null = null;
   private readonly kinds = new Named();
   private readonly yaws = new Named();
@@ -643,6 +652,7 @@ export class ClientSession {
     let dt = this.lastNow < 0 ? 0 : nowMs - this.lastNow;
     const frameMs = dt;
     this.lastNow = nowMs;
+    if (this.arrived && !this.staticKinds && this.staticsSeq === 0) this.staticsSeq = this.command(CMD_STATICS);
     if (dt > 100) this.hitch = true;
     if (dt > 250) dt = 250;
     const ticks = (dt / 1000) * TICK_RATE;
@@ -949,6 +959,10 @@ export class ClientSession {
       const seq = r.u16();
       const code = r.u8();
       if (r.overflow) return;
+      if (seq !== 0 && seq === this.staticsSeq) {
+        if (code === RESULT_OK) this.staticKinds = staticKinds(this.arrived!, this.registry);
+        else if (code === RESULT_BUSY) this.staticsSeq = 0;
+      }
       // The newest view or far request, refused, is forgotten so that it is asked again.
       if (code === RESULT_BUSY && seq !== 0 && (seq === this.viewSeq || seq === this.farSeq)) {
         if (seq === this.viewSeq) this.viewCap = this.viewBytes = -1;
@@ -1326,13 +1340,13 @@ export class ClientSession {
     this.nodeField = source ? new NodeField(dims, reg, source) : null;
     this.whole = new Uint8Array(dims.chunksX * dims.chunksZ);
     this.staticKinds = fills && this.opts.statics ? staticKinds(this.opts.statics, reg) : null;
+    this.staticsSeq = 0;
     const far: FarSource = { cells: this.far, complete: (chunk) => this.whole[chunk] === 1 };
     const field = this.nodeField;
     this.nodeChanges = field ? new NodeChanges(dims) : null;
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges! } } : {};
-    const statics = this.opts.city?.(reg) ?? null;
-    const city = statics && statics.count > 0 ? { city: { statics, complete: far.complete } } : {};
-    this.world = { mapId, dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...city };
+    this.world = { mapId, dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes };
+    this.startCity(this.arrived);
     this.recenterNodes();
     this.move = move;
     this.ownPrev.copy(this.own);
@@ -1341,6 +1355,22 @@ export class ClientSession {
     this.simTick = tick + INITIAL_LEAD;
     this.renderClock = tick;
     this.state = "active";
+  }
+
+  /**
+   * Call when the map's statics arrive after the session began: the far city starts with them, and the server is told, so
+   * that from its answer on it sends a chunk's statics only where they differ from them (CMD_STATICS).
+   */
+  staticsArrived(statics: MapStatics): void {
+    this.arrived = statics;
+    this.startCity(statics);
+  }
+
+  private startCity(statics: MapStatics | null): void {
+    const world = this.world;
+    if (!world || world.city) return;
+    const city = this.opts.city?.(this.registry) ?? (statics ? new CityStatics(world.dims, statics, this.registry) : null);
+    if (city && city.count > 0) world.city = { statics: city, complete: world.far.complete, maker: this.opts.cityMaker };
   }
 
   private snapshot(r: BitReader): void {
@@ -1542,7 +1572,7 @@ export class ClientSession {
     const count = r.bits(16);
     if (chunk >= world.structs.chunks.length) return;
     const structs = world.structs;
-    const statics = this.staticKinds ? this.opts.statics! : null;
+    const statics = this.staticKinds ? (this.arrived ?? this.opts.statics)! : null;
     const maxHp = this.registry.maxHp;
     if (statics && statics.first[chunk + 1]! > statics.first[chunk]! && r.bool()) {
       // Slots the server has as the map has them, set down from this client's own copy of the map.

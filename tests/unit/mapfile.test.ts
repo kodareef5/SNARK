@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { hashBytes } from "../../shared/hash.ts";
-import { mapHeightfield, mapNodes, parseMap, placeStatics, writeMap, type MapData, type NodeScatter, type NodeZoned } from "../../shared/world/mapfile.ts";
+import { MapStatics, groundBytes, mapHeightfield, mapNodes, parseMap, parseStatics, placeStatics, staticsSteps, writeMap, type MapData, type NodeScatter, type NodeZoned } from "../../shared/world/mapfile.ts";
 import { nodeForms, scatterNodes, type NodeSpot } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { busyMap, flatMap } from "../fixtures/map.ts";
@@ -23,6 +23,60 @@ test("a map written to a file is read back whole, and the same map is the same b
   expect(Bun.gzipSync(writeMap(flatMap(4))).length).toBeLessThan(400);
 });
 
+test("a file's ground comes before its statics, and each reads alone: the ground as the map with none, the rest as its statics", () => {
+  const map = busyMap();
+  const file = writeMap(map);
+  const ground = groundBytes(file);
+  expect(ground).toBeLessThan(file.length);
+  const first = parseMap(file.subarray(0, ground), false);
+  expect([first.hash, first.statics.length, first.heights, first.nodes]).toEqual([parseMap(file).hash, 0, map.heights, map.nodes]);
+  expect(() => parseMap(file.subarray(0, ground))).toThrow("map: the file is damaged");
+  expect([...parseStatics(file.subarray(ground), map.dims)]).toEqual([...MapStatics.of(map.dims, map.statics)]);
+  expect(parseStatics(new Uint8Array(0), map.dims).length).toBe(0);
+  // Pieces from one end of the widest map to the other, and from the lowest to the highest, come back where they were.
+  const dims = { chunksX: 256, chunksZ: 1 };
+  const samples = (256 * 32 + 1) * 33;
+  const far = [{ kind: "core:wall", x: 0, y: -1024, z: 64, yaw: 65535 }, { kind: "core:wall", x: 16384, y: 3072, z: 0, yaw: 0 }, { kind: "core:wall", x: 0.5, y: 0, z: 63.5, yaw: 1 }];
+  const wide = writeMap({ ...flatMap(1), dims, heights: new Uint16Array(samples), tint: new Uint8Array(samples), statics: far });
+  expect([...parseStatics(wide.subarray(groundBytes(wide)), dims)]).toEqual([...MapStatics.of(dims, far)]);
+  // Read a step at a time, a city's pieces come to the same table, a slice of them a step.
+  const many = Array.from({ length: 70000 }, (_, i) => ({ kind: i % 3 ? "core:wall" : "core:crate", x: (i % 250) / 4, y: 1 + (i % 7), z: (i * 7) % 64, yaw: i % 65536 }));
+  const city = writeMap({ ...flatMap(1), statics: many });
+  const steps = staticsSteps(city.subarray(groundBytes(city)), { chunksX: 1, chunksZ: 1 });
+  let step = steps.next();
+  let taken = 0;
+  for (; !step.done; step = steps.next()) taken++;
+  expect([taken >= 4, [...step.value].slice(-3)]).toEqual([true, [...MapStatics.of({ chunksX: 1, chunksZ: 1 }, many)].slice(-3)]);
+  // A piece off the map in the file itself is refused as one in a map written so would be.
+  const off = city.slice();
+  // The high byte of the last piece's x, in the third of x's planes: the columns end the file.
+  off[off.length - 13 * many.length + 6 * many.length + many.length - 1]! = 0x7f;
+  expect(() => parseStatics(off.subarray(groundBytes(city)), { chunksX: 1, chunksZ: 1 })).toThrow("is off the map");
+});
+
+test("slots taken out of a scattered layer stand empty, and the rest are the scatter's", () => {
+  const zoned = busyMap().nodes[2] as NodeZoned;
+  const out = new Uint8Array(Math.ceil((6 * zoned.perChunk) / 8)).fill(0x55);
+  const map = parseMap(writeMap({ ...busyMap(), nodes: [{ ...zoned, out }] }));
+  expect((map.nodes[0] as NodeZoned).out).toEqual(out);
+  const hf = mapHeightfield(map);
+  const kept = mapNodes(map, hf, reg)!;
+  const all = mapNodes({ ...map, nodes: [zoned] }, hf, reg)!;
+  const [a, b] = [spot(), spot()];
+  let stood = 0;
+  for (let chunk = 0; chunk < 6; chunk++) {
+    for (let i = 0; i < zoned.perChunk; i++) {
+      kept.at(chunk, i, a);
+      all.at(chunk, i, b);
+      if (i % 2 === 0) expect(a.kind).toBe(0);
+      else expect(a.kind === 0 ? [b.kind] : a).toEqual(a.kind === 0 ? [0] : b);
+      if (a.kind !== 0) stood++;
+    }
+  }
+  expect(stood).toBeGreaterThan(10);
+  expect(() => writeMap({ ...busyMap(), nodes: [{ ...zoned, out: out.subarray(1) }] })).toThrow("map: the slots taken out of scattered nodes are not a bit per slot of every chunk");
+});
+
 test("a file that is damaged, foreign or unplayable is refused, and the reason says which", () => {
   const file = writeMap(flatMap(1));
   /** The file with one thing changed and its hash made right again, as a faulty writer would leave it. */
@@ -36,19 +90,19 @@ test("a file that is damaged, foreign or unplayable is refused, and the reason s
   const flipped = file.slice();
   flipped[file.length >> 1]! ^= 4;
   expect(() => parseMap(flipped)).toThrow("map: the file is damaged");
-  expect(() => parseMap(file.subarray(0, file.length - 9))).toThrow("map: the file is damaged");
+  expect(() => parseMap(file.subarray(0, file.length - 9))).toThrow("map: it is cut short");
+  const busy = writeMap(busyMap());
+  expect(() => parseMap(busy.subarray(0, busy.length - 9))).toThrow("map: the file is damaged");
   // A page fetched the file by its SHA-256, so it reads the body without hashing it again.
   expect(parseMap(file, false)).toEqual(parseMap(file));
-  expect(() => parseMap(file.subarray(0, file.length - 9), false)).toThrow("map: a section runs past its end");
+  expect(() => parseMap(file.subarray(0, file.length - 9), false)).toThrow("map: it is cut short");
   expect(() => parseMap(new Uint8Array(100))).toThrow("map: this is not a map file");
-  expect(() => parseMap(file.subarray(0, 20))).toThrow("map: this is not a map file");
-  expect(() => parseMap(rehashed((view) => view.setUint16(4, 4, true)))).toThrow("map: version 4 is not one this build reads");
-  // A file of the version before zoned nodes is read as it was.
-  expect(parseMap(rehashed((view) => view.setUint16(4, 1, true))).heights).toEqual(parseMap(file).heights);
-  expect(() => parseMap(rehashed((view) => view.setFloat32(16, 4, true)))).toThrow("map: its samples are 4 m apart");
-  expect(() => parseMap(rehashed((view) => view.setUint16(12, 2, true)))).toThrow("map: it has 1089 heights and 1089 tints, and its size takes 2145 of each");
+  expect(() => parseMap(file.subarray(0, 20))).toThrow("map: it is cut short");
+  expect(() => parseMap(rehashed((view) => view.setUint16(4, 3, true)))).toThrow("map: version 3 is not one this build reads: build the map again");
+  expect(() => parseMap(rehashed((view) => view.setFloat32(20, 4, true)))).toThrow("map: its samples are 4 m apart");
+  expect(() => parseMap(rehashed((view) => view.setUint16(16, 2, true)))).toThrow("map: it has 1089 heights and 1089 tints, and its size takes 2145 of each");
   // The first section's length, made to reach past the end of the file.
-  const lengthAt = 44 + 1 + "test:flat".length + 4;
+  const lengthAt = 48 + 1 + "test:flat".length + 4;
   expect(() => parseMap(rehashed((view) => view.setUint32(lengthAt, file.length, true)))).toThrow("map: a section runs past its end");
 
   const refused = (more: Partial<MapData>): (() => void) => () => void writeMap({ ...busyMap(), ...more });
@@ -132,6 +186,25 @@ test("zoned nodes are refused where a square names a zone the layer lacks, or th
   expect(refused({ zoneCell: 32 })).toThrow("map: the zones of zoned nodes are not a byte per square");
   expect(refused({ zones: [] })).toThrow("map: zoned nodes need");
   expect(refused({ zones: [{ bare: 0, kinds: [] }, zoned.zones[1]!] })).toThrow("map: zoned nodes need");
+});
+
+test("zoned layers of the same squares share one picture in the file and in memory, and grow as they did apart", () => {
+  const zoned = busyMap().nodes[2] as NodeZoned;
+  const other: NodeZoned = { ...zoned, seed: 5, zone: zoned.zone.map((z, i) => (i % 3 === 0 ? 0 : (z % 2) + 1)) };
+  const apart = { ...busyMap(), nodes: [zoned, other] };
+  const file = writeMap(apart);
+  const [a, b] = parseMap(file).nodes as NodeZoned[];
+  expect([a!.zone === b!.zone, a!.codes!.length, b!.codes!.length]).toEqual([true, 6, 6]);
+  expect(writeMap(parseMap(file))).toEqual(file);
+  const [shared, alone] = [mapNodes(parseMap(file), mapHeightfield(parseMap(file)), reg)!, mapNodes(apart, mapHeightfield(apart), reg)!];
+  const [s, t] = [spot(), spot()];
+  for (let chunk = 0; chunk < 6; chunk++) {
+    for (let i = 0; i < shared.perChunk; i++) {
+      shared.at(chunk, i, s);
+      alone.at(chunk, i, t);
+      expect(s.kind === 0 ? [0] : s).toEqual(t.kind === 0 ? [0] : t);
+    }
+  }
 });
 
 test("a map's static pieces are set down in the file's order, and a piece the content lacks stops the load", () => {

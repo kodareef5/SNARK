@@ -25,7 +25,7 @@ function setup(dbPath?: string) {
 /** Whether a point at height y lies within a car's hull, grown by a body's radius. */
 function within(h: Harness, car: number, px: number, py: number, pz: number, radius: number): boolean {
   const ents = h.world.ents, spec = h.reg.vehicle[ents.kind[car]!]!.spec;
-  const a = ents.vehicleYaw[car]!, dx = px - ents.x[car]!, dz = pz - ents.z[car]!;
+  const a = ents.vehicleYaw[ents.vrow[car]!]!, dx = px - ents.x[car]!, dz = pz - ents.z[car]!;
   const x = Math.abs(Math.cos(a) * dx - Math.sin(a) * dz), z = Math.abs(Math.sin(a) * dx + Math.cos(a) * dz);
   return py < ents.y[car]! + spec.height && x < spec.halfWidth + radius && z < spec.halfLength + radius;
 }

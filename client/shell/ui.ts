@@ -119,7 +119,7 @@ export class UiView {
       if (n.kind === K_IMAGE) {
         const image = f.images[n.image];
         // A picture in a file is the background, the part shown scaled to fill the node. The browser fetches the file once.
-        const [w, h] = [n.sw || image?.width || 1, n.sh || image?.height || 1];
+        const w = n.sw || image?.width || 1, h = n.sh || image?.height || 1;
         const src = image?.url ? `url("${image.url}") ${(n.sx / Math.max(1, image.width - w)) * 100}% ${(n.sy / Math.max(1, image.height - h)) * 100}% / ${(image.width / w) * 100}% ${(image.height / h) * 100}% no-repeat` : "";
         if (src !== "" && b.src !== src) {
           b.src = src;
@@ -132,7 +132,8 @@ export class UiView {
           b.version = image.version;
           b.src = crop;
           const canvas = b.el as HTMLCanvasElement;
-          if (canvas.width !== w || canvas.height !== h) [canvas.width, canvas.height] = [w, h];
+          if (canvas.width !== w) canvas.width = w;
+          if (canvas.height !== h) canvas.height = h;
           // The part shown goes straight from the picture's own pixels onto the node.
           canvas.getContext("2d")!.putImageData(new ImageData(image.data as Uint8ClampedArray<ArrayBuffer>, image.width, image.height), -n.sx, -n.sy, n.sx, n.sy, w, h);
         }
@@ -150,7 +151,8 @@ export class UiView {
       }
       if (n.focus && document.activeElement !== b.el) b.el.focus();
     }
-    for (const [key, b] of this.bound) {
+    for (const key of this.bound.keys()) {
+      const b = this.bound.get(key)!;
       if (b.seen === pass) continue;
       b.el.remove();
       this.bound.delete(key);

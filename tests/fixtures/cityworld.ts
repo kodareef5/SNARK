@@ -5,6 +5,7 @@
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import { Camera } from "../../client/core/render/camera.ts";
+import type { CitySource } from "../../client/core/render/farcity.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { slopeKind } from "../../content/slopes.ts";
@@ -115,6 +116,8 @@ export interface CityWorldOptions {
   /** The ground's height at (x, z), flat at 0 if not given. */
   ground?: (x: number, z: number) => number;
   pack?: Pack;
+  /** The statics come after the scene is made, when `arrive` is called, as they do after a client's first frame. */
+  late?: boolean;
 }
 
 export type CityWorld = ReturnType<typeof cityWorld>;
@@ -143,9 +146,11 @@ export function cityWorld(options: CityWorldOptions) {
   const whole = new Uint8Array(dims.chunksX * dims.chunksZ);
   const complete = (chunk: number): boolean => whole[chunk] === 1;
   const pack = o.pack ?? farPack();
-  const scene = new Scene({ dims, hf, structs, far: { cells, complete }, city: { statics, complete } }, reg, pack);
+  const world: { dims: MapDims; hf: Heightfield; structs: StructureStore; far: { cells: FarStore; complete: typeof complete }; city?: CitySource } = { dims, hf, structs, far: { cells, complete } };
+  if (!o.late) world.city = { statics, complete };
+  const scene = new Scene(world, reg, pack);
   scene.assets.tier = { ...tierOf("medium"), ...o.tier };
-  scene.city!.makeMs = Infinity;
+  if (scene.city) scene.city.makeMs = Infinity;
   const [W, H] = [o.width ?? 320, o.height ?? 180];
   scene.viewHeight = H;
   const cam = new Camera();
@@ -172,6 +177,10 @@ export function cityWorld(options: CityWorldOptions) {
       if (t) for (let s = 0; s < t.high; s++) structs.put(chunk, s, t.kind[s]!, t.x[s]!, t.y[s]!, t.z[s]!, t.yaw[s]!, t.owner[s]!, t.hp[s]!, t.version);
       structs.setVersion(chunk, t?.version ?? 0);
       whole[chunk] = 1;
+    },
+    /** The statics of a `late` world come. */
+    arrive(): void {
+      world.city = { statics, complete };
     },
     /** The near store lets go of `chunk`. */
     drop(chunk: number): void {

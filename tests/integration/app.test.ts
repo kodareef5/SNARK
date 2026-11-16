@@ -501,14 +501,14 @@ test("a controller drives a car: the left stick throttles and steers, A holds th
   expect(h.host.urban.mount(me, car)).toBe(RESULT_OK);
   run(800);
   expect(s.driving).toBe(car);
-  const ents = h.world.ents, yaw = ents.vehicleYaw[car]!;
+  const ents = h.world.ents, yaw = ents.vehicleYaw[ents.vrow[car]!]!;
   pad.axes[1] = -1;
   run(2000);
   expect(app.hud.vehicle!.speed).toBeGreaterThan(3);
   expect(Math.hypot(ents.x[car]! - x, ents.z[car]! - z)).toBeGreaterThan(3);
   pad.axes[0] = 1;
   run(1000);
-  expect(Math.abs(ents.vehicleYaw[car]! - yaw)).toBeGreaterThan(0.2);
+  expect(Math.abs(ents.vehicleYaw[ents.vrow[car]!]! - yaw)).toBeGreaterThan(0.2);
   pad.axes[0] = pad.axes[1] = 0;
   pad.buttons[0]!.pressed = true;
   run(100);

@@ -24,7 +24,8 @@ import type { ServerWorld } from "./world.ts";
 import { event } from "./events/bus.ts";
 
 export const DEADLINE_NODE = 3;
-export const TAG_NODES = 1;
+/** 2 since map format 4 gave every map node a new slot: what tag 1 holds is not read. */
+export const TAG_NODES = 2;
 /** Metres from the eye, for picking with the use key. */
 const REACH = 3.5;
 /**

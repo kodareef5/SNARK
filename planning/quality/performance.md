@@ -62,7 +62,7 @@ high and are given only where no quiet run has the row, marked "busy".
 | A checkpoint between ticks; after the bench's bulk writes | 4.5 to 4.8; 29 ms | 10 | S; Q |
 | Live objects gained over 900 ticks | 2,834 | 5,000 | M |
 | Process memory, server and scripted clients | 374 to 385 MB | 2,048 | Q |
-| Entity store: a slot; full at 524,288 slots | 195 bytes; 97.5 MB | 200; 128 MB | M |
+| Entity store: a slot; full at 524,288 slots | 188 bytes; 94.0 MB | 200; 128 MB | M |
 
 The worst tick lands on a tick with no commit, a different one each run: the
 garbage collector, and noise at this sample size (Q).
@@ -338,7 +338,12 @@ itself). The far edge keeps the 50% its rule says.
 | Compared taps: 1, 4, 9 | 0.06, 0.19, 0.49 | |
 
 Depth passes cost 0.18 ms a 100,000 triangles at 1,024 and 0.38 at 2,048, rigid
-or skinned; a draw costs 0.44 µs of main thread.
+or skinned. The 0.44 µs of main thread a draw was a probe's six-call draw; the
+device page now times the executor's own five kinds (D638), not yet on the
+iPhone. Counted over a fake WebGL2, the executor sends 11 GL calls for a textured
+draw, 7.8 flat, 6.5 far and 6 for a caster, and 8.4 a draw in the young wood on
+medium, where it sent 18, 13, 15, 12 and 14.4 before it kept a mirror of the
+card's state.
 
 **The ladder** (D246): a rung holds while its median frame is within 1.12 times
 the display's 17 ms and its 95th percentile within 1.5 times. Two runs, `07-43`

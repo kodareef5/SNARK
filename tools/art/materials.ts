@@ -1,8 +1,7 @@
 // The materials an asset names in its asset.ts: where their pictures are, what a pack says of each, the colour each is
 // drawn flat in, and the mips of each of their textures for the texture build.
 
-import { surfaceMips, worldMaterial, worldSurfaceMesh } from "../surfaces/build.ts";
-import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
+import { worldMaterial, worldSurfaceMesh } from "../surfaces/build.ts";
 import { resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -185,7 +184,7 @@ export function mipsOf(m: Material, role: TextureRole, top: number): Uint8Array[
   }
   const mips = materialMips(readMaps(m, [role]))[role];
   if (!mips || mips.length < Math.log2(top) + 1) throw new Error(`${m.id}: its pictures do not make a ${role} texture ${top} pixels across`);
-  return (m.id === SURFACE_MATERIAL ? surfaceMips(mips) : mips).slice(0, Math.log2(top) + 1);
+  return mips.slice(0, Math.log2(top) + 1);
 }
 
 /**

@@ -174,11 +174,11 @@ test("whose an entity is, what it sits on and how old it is travel when it appea
   /** The appearance of each entity of `v` by its id, as the entity store has it. */
   const looksOf = (v: EntityView): Looks => {
     const n = MAX_VIEW + 9001;
-    const looks = { level: new Uint16Array(n), colors: new Uint8Array(n * 6), name: new Array<string>(n).fill(""), look: new Array<Uint8Array | null>(n).fill(null), gear: new Array<Uint16Array | null>(n).fill(null), team: new Uint32Array(n), seat: new Uint32Array(n), span: new Uint32Array(n), grown: new Uint32Array(n) };
+    const looks = { level: new Uint16Array(n), colors: new Uint8Array(n * 6), names: new Map<number, string>(), looks: new Map<number, Uint8Array>(), gears: new Map<number, Uint16Array>(), team: new Uint32Array(n), seat: new Uint32Array(n), span: new Uint32Array(n), grown: new Uint32Array(n) };
     for (let i = 0; i < v.count; i++) {
       const id = v.id[i]!;
       looks.level[id] = v.level[i]!;
-      looks.name[id] = v.name[i]!;
+      if (v.name[i]) looks.names.set(id, v.name[i]!);
       looks.team[id] = v.team[i]!;
       looks.seat[id] = v.seat[i]!;
       looks.span[id] = v.span[i]!;
@@ -231,7 +231,7 @@ test("a creature's cues go with its action: sent when they change, the action ag
   const w = new BitWriter(1 << 12);
   const r = new BitReader();
   const colors = new Uint8Array(6);
-  const looks: Looks = { level: new Uint16Array(16), colors: new Uint8Array(96), name: new Array<string>(16).fill(""), look: new Array<Uint8Array | null>(16).fill(null), gear: new Array<Uint16Array | null>(16).fill(null), team: new Uint32Array(16), seat: new Uint32Array(16), span: new Uint32Array(16), grown: new Uint32Array(16) };
+  const looks: Looks = { level: new Uint16Array(16), colors: new Uint8Array(96), names: new Map<number, string>(), looks: new Map<number, Uint8Array>(), gears: new Map<number, Uint16Array>(), team: new Uint32Array(16), seat: new Uint32Array(16), span: new Uint32Array(16), grown: new Uint32Array(16) };
   const st = new AnimState();
   st.speed = 3;
   const anim = st.pack();

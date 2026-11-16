@@ -88,13 +88,19 @@ function digest(h: Harness): string[] {
   const ents = h.world.ents;
   const mind = h.host.creatures.mind;
   const past = new Past();
-  // Every typed column the store has, so one added later is compared too. The free ring and the chunk heads are not per entity.
-  const columns = Object.entries(ents).filter(([name, col]) => ArrayBuffer.isView(col) && name !== "freeRing" && name !== "chunkHead") as [string, Uint8Array][];
+  // Every typed column the store has, so one added later is compared too: a vehicle's by the slot's vehicle row, the rest by
+  // slot. The chunk heads are not per entity.
+  const columns = Object.entries(ents).filter(([name, col]) => ArrayBuffer.isView(col) && name !== "chunkHead") as [string, Uint8Array][];
+  const byRow = (name: string): boolean => name.startsWith("vehicle") || name === "steering" || name === "wheelAngle" || name === "fuel";
   const out: string[] = [];
   for (let e = 0; e < ents.cap; e++) {
     if ((ents.flags[e]! & F_ALIVE) === 0) continue;
-    const row: unknown[] = [e, ents.name[e], ents.look[e]?.join(","), ents.gear[e]?.join(",")];
+    const row: unknown[] = [e, ents.names.get(e), ents.looks.get(e)?.join(","), ents.gears.get(e)?.join(",")];
     for (const [name, col] of columns) {
+      if (byRow(name)) {
+        row.push(`${name} ${col[ents.vrow[e]!]}`);
+        continue;
+      }
       const per = col.length / ents.cap;
       row.push(`${name} ${col.subarray(e * per, e * per + per).join(",")}`);
     }

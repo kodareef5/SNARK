@@ -31,6 +31,12 @@ test("a map unpacked into a folder of layers and built from it again is the same
     "parked vehicles: 2 of core:compact, 1 of test:hauler",
     "not in the core content: test:elsewhere, test:hauler",
   ]);
+  // A scattered layer's slots taken out go into the folder as their own file, and come back.
+  const busy = busyMap();
+  const out = writeMap({ ...busy, nodes: busy.nodes.map((l) => ("zone" in l ? { ...l, out: new Uint8Array(Math.ceil((6 * l.perChunk) / 8)).fill(0x0f) } : l)) });
+  writeLayers(parseMap(out), join(dir, "out"));
+  expect(writeMap(readLayers(join(dir, "out")))).toEqual(out);
+  expect(describe(out)[5]).toBe("30 node slots a chunk, by zones of 16 m: 1 core:palm x1, bare x2; 2 core:fig x1, core:fern x2; 92 slots taken out");
 });
 
 test("a map's water unpacked into its picture of squares and its list of bodies builds the same file again", () => {
