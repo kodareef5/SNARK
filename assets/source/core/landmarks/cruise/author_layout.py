@@ -92,5 +92,7 @@ D['portals'].append({'id':'boarding','from':'quay','to':'arrival','at':[28.9,14,
 D['routes'].append({'id':'board','kind':'docking','from':'quay','to':'arrival',
                    'anchors':[[58,14,-24],[28.9,14,-24],[20,14,-24]],'clearWidth':2.8,'clearHeight':2.6})
 D['views'].append({'id':'arrival','at':[20,14,-24],'target':[0,16,-24],'deck':'5','section':'arrival','mode':'walk'})
+from layout_geometry import populate
+populate(D,prototype,instance,box,node)
 OUT.write_text(json.dumps(clean(D),indent=2)+'\n')
 print(f'Cruise layout: {len(D["prototypes"])} prototypes, {len(D["instances"])} instances, {len(D["routes"])} routes')
