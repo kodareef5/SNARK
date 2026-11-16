@@ -87,6 +87,9 @@ try {
   for (const [grid, courses] of Object.entries(data.grids)) if (!Object.values(courses).some(stages => stages["0"])) throw new Error(`Far-only cell ${grid}`);
   for (const [grid, courses] of Object.entries(data.grids)) for (const [number, stages] of Object.entries(courses)) for (const [stage, mesh] of Object.entries(stages)) {
     if (!mesh) continue;
+    // Each course has its own colour, and native far groups require a physical
+    // owner of that colour in the same cell, not merely any physical neighbour.
+    if (!stages["0"]) throw new Error(`Far-only colour/course fragment ${grid}/${number}/${stage}`);
     const surface = exterior(mesh, grid, number, stage), key = `${number}/${stage}`;
     pieces.set(`${grid}/${key}`, surface); const list = assemblies.get(key) ?? []; list.push(surface); assemblies.set(key, list);
   }

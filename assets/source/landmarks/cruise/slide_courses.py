@@ -93,6 +93,9 @@ def courses():
                     shape='open_trough' if opened else 'closed_tube',points=points)
         far_tolerance=.11 if number==0 else .10
         course['lodPoints']=[points]+[_simplify(points,t) for t in (.004,.004,.018,far_tolerance,.13)]
+        # Keep the green raft's last stage within its genuine physical colour
+        # cells. Its preceding geometry is already comfortably below budget.
+        if number==5:course['lodPoints'][5]=course['lodPoints'][4]
         course['visualRadius']=max(_profile_radius(course,level) for level in range(6))
         result.append(course)
     return result
@@ -113,6 +116,7 @@ def course_frames(points):
 def _sides(course,level):
     if course['open']:return (8,8,8,4,3,2)[level]  # Lower semicircle segments.
     if course['number']==4 and level==4:return 5
+    if course['number']==5 and level==5:return 6
     return (16,16,16,10,6,5)[level] if course['radius']>.8 else (16,16,16,8,5,4)[level]
 
 
