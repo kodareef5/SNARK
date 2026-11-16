@@ -179,9 +179,12 @@ const pad4 = (n: number): number => (n + 3) & ~3;
 const STAND_IN_MATERIAL: PackMaterial = { id: "", base: -1, normal: -1, mro: -1, mask: -1, mask2: -1, tint: [1, 1, 1], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 1 };
 const STAND_IN_TEXTURE: ManifestTexture = { id: "", role: "base", top: STEP0_SIZE, in: {} };
 
-/** A mesh as known before its page comes: its levels, as many as it has, are empty, and its bounds a point. */
+const STAND_IN_LEVEL: ManifestLevel = Object.freeze({ file: -1, at: 0, verts: 0, tris: 0, index: 2, error: 0, parts: Object.freeze([]) as unknown as ManifestPart[] });
+const POINT = Object.freeze([0, 0, 0]) as unknown as [number, number, number];
+
+/** A mesh as known before its page comes: its levels, as many as it has, are empty, and its bounds a point. Its page's row takes its place whole. */
 export function placeholderMesh(s: MeshStub): ManifestMesh {
-  const out: ManifestMesh = { id: s.id, center: [0, 0, 0], half: [0, 0, 0], page: s.page, levels: Array.from({ length: s.count }, () => ({ file: -1, at: 0, verts: 0, tris: 0, index: 2, error: 0, parts: [] })) };
+  const out: ManifestMesh = { id: s.id, center: POINT, half: POINT, page: s.page, levels: new Array<ManifestLevel>(s.count).fill(STAND_IN_LEVEL) };
   if (s.skeleton !== undefined) out.skeleton = s.skeleton;
   if (s.rig !== undefined) out.rig = s.rig;
   if (s.bone !== undefined) out.bone = s.bone;

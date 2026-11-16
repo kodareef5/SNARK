@@ -8,6 +8,8 @@ import type { Slot } from "../../../shared/content/classes.ts";
 import { meshKnown, type Manifest } from "../../../shared/pack/manifest.ts";
 import type { Pack, PackMaterial } from "../../../shared/pack/pack.ts";
 
+const NONE: readonly number[] = [];
+
 export class AssetTable {
   /** Meshes. A mesh is known by its index here, which is its index in the manifest. */
   readonly count: number;
@@ -49,7 +51,7 @@ export class AssetTable {
     this.index = new Map(meshes.map((m, i) => [m.id, i]));
     this.tris = meshes.map((m) => m.levels.map(() => 0));
     this.error = meshes.map((m) => m.levels.map(() => 0));
-    this.sections = meshes.map((m) => m.levels.map(() => []));
+    this.sections = meshes.map((m) => m.levels.map(() => NONE));
     this.flat = new Uint8Array(this.count);
     this.materials = manifest.materials ?? [];
     this.radius = new Float32Array(this.count);
