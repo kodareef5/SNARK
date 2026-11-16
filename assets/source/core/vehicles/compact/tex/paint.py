@@ -163,6 +163,8 @@ class Surface:
         self.mask = np.zeros((self.n, 3), np.float32)
         self.hurt = np.zeros((self.n, 4), np.float32)
         self.decay = np.zeros((self.n, 4), np.float32)
+        # When rust, not fire, shows in the decay picture, in stages; 9 for never.
+        self.rust = np.full(self.n, 9.0, np.float32)
 
     def _convexity(self):
         """How sharply the surface turns at each texel, outward positive: the change of normal over distance to the
@@ -287,8 +289,63 @@ class Surface:
         mask = (np.clip(self.mask, 0, 1) * (~shown)[:, None]).reshape(S, S, 3)
         Image.fromarray(np.round(half(mask) * 255).astype(np.uint8)).save(out("mask"), optimize=True)
 
+    def save_abandoned(self, cutout=False):
+        """The car as years standing in the street leave it (../compact_abandoned): its first knocks and the first rust on
+        the body, as the first third of the hurt and decay pictures show them; dust settled on what faces up and run down
+        the sides, the paint chalked by the sun where it faces it, the clear coat and the chrome dull. A static dyes region
+        0 only, so the upholstery and the alloys are painted in at their sample colours, as a dye would show them."""
+        S = self.size
+        out = lambda suffix: os.path.join(ABANDONED, f"{self.name}_{suffix}.png")
+        P, N = self.P, self.N
+        lin = lambda c: np.where(c <= 0.04045, c / 12.92, ((np.clip(c, 0, None) + 0.055) / 1.055) ** 2.4)
+        srgb = lambda c: np.where(c <= 0.0031308, c * 12.92, 1.055 * np.clip(c, 0, None) ** (1 / 2.4) - 0.055)
+        luma = np.array([0.2126, 0.7152, 0.0722], np.float32)
+        albedo = lin(np.clip(self.base, 0, 1))
+        mask = np.clip(self.mask, 0, 1).copy()
+        # The material's grey, as the pack measures it (tools/art/materials.ts), divides a sample colour into a dye.
+        share = mask[:, 1] + mask[:, 2]
+        if share.sum() > 0:
+            grey = float((share * (albedo @ luma)).sum() / share.sum())
+            for k, colour in ((1, UPHOLSTERY), (2, WHEELS)):
+                albedo *= (1 - mask[:, k:k + 1]) + mask[:, k:k + 1] * lin(colour) / grey
+            mask[:, 1:] = 0
+        albedo = srgb(albedo)
+        rough, metal = self.rough.copy(), self.metal.copy()
+        knocked = self.hurt[:, 3] >= 1 - FIRST / 3
+        albedo[knocked] = self.hurt[knocked, :3]
+        rough[knocked], metal[knocked] = 0.6, 0.0
+        rusted = (self.rust < FIRST) & ~knocked
+        albedo[rusted] = self.decay[rusted, :3]
+        rough[rusted], metal[rusted] = 0.9, 0.0
+        mask[knocked | rusted, 0] = 0
+        up = np.clip(N[:, 1], 0, 1)
+        runs = smoothstep(0.6, 0.85, streaks(P, 1, 0.05, 201)) * smoothstep(0.9, 0.4, P[:, 1])
+        dust = np.clip(0.1 + up ** 1.5 * (0.3 + 0.4 * fbm(P, 0.3, 3, 202)) + runs * 0.18 + smoothstep(0.8, 0.3, self.AO) * 0.15, 0, 0.8)
+        # Less on the glass, which stays dark enough to read as glass in a far level's flat colour.
+        if self.name == "cabin":
+            dust[self.where("glass")] *= 0.45
+        mask[:, 0] *= (1 - dust) * (1 - 0.3 * up * fbm(P, 0.5, 2, 203))
+        albedo = mix(albedo, DUST * (0.92 + 0.16 * fbm(P, 0.05, 3, 204))[:, None], dust)
+        rough = np.clip(rough + 0.2 + dust * 0.4, 0, 1)
+        metal = metal * (1 - dust) * 0.7
+        alpha = self.alpha
+        base = np.concatenate([np.clip(albedo, 0, 1), alpha[:, None]], -1).reshape(S, S, 4)
+        Image.fromarray(np.round(base * 255).astype(np.uint8)).convert("RGBA" if cutout else "RGB").save(out("base"), optimize=True)
+        occlusion = np.clip(self.AO * self.cavity, 0, 1)
+        half = lambda a: a.reshape(S // 2, 2, S // 2, 2, *a.shape[2:]).mean((1, 3))
+        packed = np.stack([occlusion, rough, metal], -1).reshape(S, S, 3)
+        Image.fromarray(np.round(half(packed) * 255).astype(np.uint8)).save(out("packed"), optimize=True)
+        Image.fromarray(np.round(half(mask.reshape(S, S, 3)) * 255).astype(np.uint8)).save(out("mask"), optimize=True)
+
 
 WRECK = os.path.join(os.path.dirname(FOLDER), "compact_wreck", "tex")
+ABANDONED = os.path.join(os.path.dirname(FOLDER), "compact_abandoned", "tex")
+# How far into the hurt and decay pictures an abandoned car shows, in stages of three; dust's colour; the sample
+# colours of the upholstery and the alloys (palette 220 and 91, asset.ts `regions`).
+FIRST = 0.8
+DUST = rgb(0.55, 0.51, 0.44)
+UPHOLSTERY = rgb(150, 98, 66) / 255
+WHEELS = rgb(174, 182, 191) / 255
 
 
 # The order a layer reveals in: alpha 1 shows from the first stage, falling a third a stage, 0 never.
@@ -454,6 +511,7 @@ def paint_body():
     decay = (paint | jamb) & (t < 3) & (s.hurt[:, 3] == 0)
     s.decay[decay, :3] = colour[decay]
     s.decay[decay, 3] = reveal(t[decay])
+    s.rust[decay & ~is_burn] = rust_t[decay & ~is_burn]
     s.save()
     return s
 
@@ -635,6 +693,8 @@ def paint_trim():
     decay = (t < 3) & (s.hurt[:, 3] == 0)
     s.decay[decay, :3] = colour[decay]
     s.decay[decay, 3] = reveal(t[decay])
+    rusts = decay & s.where("chrome", "disc", "exhaust", "plate", "mirror")
+    s.rust[rusts] = t[rusts]
     s.save()
     return s
 
@@ -802,6 +862,8 @@ if __name__ == "__main__":
         s = fn()
         os.makedirs(WRECK, exist_ok=True)
         s.save_wreck(cutout=name == "cabin")
+        os.makedirs(ABANDONED, exist_ok=True)
+        s.save_abandoned(cutout=name == "cabin")
         ranges[f"{name}_height_mm"] = round(float(s.height.max() - s.height.min()) * 1000, 4)
         review(s)
         print(f"paint: {name}")
