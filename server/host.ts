@@ -12,6 +12,7 @@ import { addCreatureCommands } from "./commands/creatures.ts";
 import { addSettingsCommands } from "./commands/settings.ts";
 import { addClusterCommands } from "./commands/cluster.ts";
 import { Build } from "./build.ts";
+import { Sails } from "./sails.ts";
 import { Fixtures } from "./fixtures.ts";
 import { Beds } from "./beds.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
@@ -172,6 +173,7 @@ export interface Host {
   readonly voice: Voice;
   readonly build: Build;
   readonly fixtures: Fixtures;
+  readonly sails: Sails;
   readonly stations: Stations;
   readonly taming: Taming;
   readonly riding: Riding;
@@ -581,6 +583,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   const fixtures = new Fixtures(world, records, items);
   fixtures.rules = rules;
   fixtures.index();
+  const sails = new Sails(world, records, fixtures, game);
   const stations = new Stations(world, records, items, fixtures, deadlines);
   // A powered station (the fabricator) makes things only while it burns; why it refuses is told as a notice.
   wirePower(world, stations, progression);
@@ -609,7 +612,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   });
   if (persistence && !loaded!.fresh) beds.restore(persistence.store.meta("beds"));
   persistence?.sidecar("beds", beds.saved);
-  const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, light: (ref) => stations.toggle(ref), bed: (c, ref, action, name) => beds.act(c, ref, action, name), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
+  const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, sails: (c, ref) => sails.use(c, ref), light: (ref) => stations.toggle(ref), bed: (c, ref, action, name) => beds.act(c, ref, action, name), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
   build.onPlaced = (by, ref) => beds.placed(by, ref);
   death.onUseBuilt = (c, ref) => build.use(c, ref);
   death.keepsBuilt = (c, ref) => build.keeps(c, ref);
@@ -999,6 +1002,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     for (const e of urban.contacts!.step()) urban.syncAfterContact(e);
     spawner?.step(tick);
     build.step();
+    sails.step();
     taming.step();
     breeding.step(tick);
     feces.step(tick);
@@ -1099,6 +1103,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   };
   const tactical = new Tactical(world, game, records, rules);
   game.onReplicate = (c) => {
+    sails.sync(c);
     syncOwn(own, c);
     harvest?.sync(c);
     tactical.sync(c);
@@ -1236,6 +1241,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     voice,
     build,
     fixtures,
+    sails,
     stations,
     taming,
     riding,

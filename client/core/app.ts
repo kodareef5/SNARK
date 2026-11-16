@@ -11,6 +11,7 @@ import { stressThings, type Mark } from "./stress.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
+import { sailsProgress } from "../../shared/sim/sails.ts";
 import { MODE_FLYER, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
@@ -597,6 +598,12 @@ export class App {
     const ref = rayHit.ref;
     const t = world.structs.chunks[Math.floor(ref / 65536)]!;
     const kind = t.kind[ref & 0xffff]!;
+    if (this.reg.sails[kind] && rayHit.t <= REACH) {
+      const state = s.sails.states().find(state => state.ref === ref);
+      if (!state) return "Sail control connecting";
+      const progress = sailsProgress(state, s.sails.tick()), action = state.target === 1 ? "E lower sails" : "E raise sails";
+      return progress === state.target ? action : `${action} · ${state.target === 1 ? "Raising" : "Lowering"} ${Math.round(progress * 100)}%`;
+    }
     if (kind === this.reg.index.get(TRAVEL_TERMINAL)) {
       this.terminalAimed = ref;
       return "E travel to another server";

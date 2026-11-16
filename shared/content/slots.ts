@@ -53,13 +53,14 @@ export function slotsOf(defs: readonly Def[]): SlotUse[] {
     if (!row) continue;
     for (const [slot, s] of Object.entries(row.slots)) {
       if (s.when !== undefined && (d as unknown as Record<string, unknown>)[s.when] === undefined) continue;
-      const keys = s.keys === undefined ? [""] : s.keys === "hair" ? styles(HAIR_STYLES) : s.keys === "beard" ? styles(BEARD_STYLES) : s.keys === "any" ? [] : s.keys;
+      const sails = d.type === "structure" ? d.sails?.rig.sails : undefined;
+      const keys = s.keys === undefined ? [""] : s.keys === "hair" ? styles(HAIR_STYLES) : s.keys === "beard" ? styles(BEARD_STYLES) : s.keys === "sails" ? sails?.map(s => s.id) ?? [] : s.keys === "any" ? [] : s.keys;
       const sexes = s.from.includes("{sex}") ? SEX_IDS : [""];
       const cut = s.from.includes("{body}") ? bodies : [""];
       for (const body of cut) {
         for (const sex of sexes) {
           for (const k of keys) {
-            const vars: Vars = { key: k, sex, body };
+            const vars: Vars = { key: k, sex, body, sail: sails?.find(s => s.id === k)?.mesh ?? "" };
             const id = fill(s.from, d, vars);
             const key = [body.slice(body.indexOf(":") + 1), sex, k].filter((part) => part !== "").join("/");
             out.push({ owner: d.id, slot, key, asset: s.asset, need: s.need, id, fallback: s.fallback.map((f) => (f.includes("{") ? fill(f, d, vars) : f)) });

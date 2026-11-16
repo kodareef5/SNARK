@@ -1,11 +1,14 @@
 // The authored JSON is shared with the mesh exporter; these are native structures, not a vehicle-sized collision box.
 import layout from "./koru-layout.json" with { type: "json" };
+import sailPlan from "./koru-sails.json" with { type: "json" };
+import type { SailVisualRig } from "../../shared/sim/sail-rig.ts";
 import { shapeHalf, type Def, type ShapeDef, type ShapeLook, type StructureDef } from "../../shared/content/defs.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import { frameAxes, HALF_SIDE } from "../../shared/world/frame.ts";
 import type { MapStatic } from "../../shared/world/mapfile.ts";
 
 export const KORU_LAYOUT = layout;
+export const KORU_SAILS = sailPlan;
 const point = (p: readonly number[]): readonly [number, number, number] => [p[0]!, p[1]!, p[2]!];
 interface SourceParts {
   readonly boxes?: readonly { readonly at: readonly number[]; readonly half: readonly number[] }[];
@@ -29,6 +32,7 @@ export const KORU_CONTENT: readonly Def[] = modules.flatMap(module => {
     boxes: collision.boxes ?? [], hulls: collision.hulls, ...(module.look ? { look: parts(module.look) } : {}) };
   const structure: StructureDef = { type: "structure", class: "static", id: module.id, mesh: module.mesh, shape: shape.id,
     half: shapeHalf(shape.boxes, shape.hulls, shape.look), color: module.color, hp: 10000,
+    ...(module.id === sailPlan.control.id ? { sails: { group: sailPlan.id, at: point(module.origin), yaw: Math.round(module.yaw * YAW_UNITS / 360), rig: sailPlan as unknown as SailVisualRig } } : {}),
     ...(module.opens ? { opens: module.opens } : {}) };
   return [shape, structure];
 });

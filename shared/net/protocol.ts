@@ -187,6 +187,8 @@ export const S_FAR = 13;
  * world id u16. The page takes the ticket to the destination, whose HELLO carries it, and the server closes this connection.
  */
 export const S_TRAVEL = 14;
+/** Reliable full scene sail collection, independent of near chunk subscriptions; shared/sim/sails.ts owns its codec. */
+export const S_SAILS = 15;
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;

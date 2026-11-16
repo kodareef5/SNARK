@@ -5,6 +5,7 @@
 
 import type { Seat } from "../sim/seats.ts";
 import type { VehicleDefinition, VehicleSurface } from "../sim/vehicle.ts";
+import type { SailControlDefinition } from "../sim/sails.ts";
 import type { Feature } from "../features.ts";
 import type { StatCurve, StatName } from "../sim/genome.ts";
 import { hullPoint, type HullDef } from "../world/convex.ts";
@@ -232,6 +233,8 @@ export interface ShapeLook {
 }
 
 export interface StructureDef extends Named {
+  /** Public moored-landmark sail control and its visual assembly; no movement, lock or inventory. */
+  readonly sails?: SailControlDefinition;
   /** Grip/resistance of its supporting faces; shared vehicle prediction reads this independently of artwork. */
   readonly vehicleSurface?: VehicleSurface;
   readonly type: "structure";

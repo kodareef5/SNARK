@@ -1,6 +1,7 @@
 // A moored landmark's reversible deployment, shared by authority and every viewing distance. No propulsion.
 import { TICK_RATE } from "../coords.ts";
 import type { BitReader, BitWriter } from "../net/codec.ts";
+import { validateSailVisualRig, type SailVisualRig } from "./sail-rig.ts";
 
 export const SAIL_TRAVEL_TICKS = 18 * TICK_RATE;
 export const MAX_SAIL_GROUPS = 128;
@@ -27,6 +28,24 @@ export interface SailState extends SailTransition {
 export interface SailSource {
   states(): readonly SailState[];
   tick(): number;
+}
+
+/** Authored control transform relative to the landmark datum, and its independently drawn cloth rig. */
+export interface SailControlDefinition {
+  readonly group: string;
+  readonly at: readonly [number, number, number];
+  readonly yaw: number;
+  readonly rig: SailVisualRig;
+}
+
+export function validateSailControl(value: SailControlDefinition): readonly string[] {
+  if (!value || typeof value !== "object") return ["sails must describe a control and visual rig"];
+  const errors: string[] = [];
+  if (typeof value.group !== "string" || !/^[a-z][a-z0-9_-]{0,63}$/.test(value.group)) errors.push("sails.group must name a bounded landmark group");
+  if (!Array.isArray(value.at) || value.at.length !== 3 || value.at.some(n => !Number.isFinite(n) || Math.abs(n) > 128)) errors.push("sails.at must be three finite local metres within 128 m");
+  if (!Number.isInteger(value.yaw) || value.yaw < 0 || value.yaw > 65535) errors.push("sails.yaw must be a native turn from 0 to 65535");
+  errors.push(...validateSailVisualRig(value.rig));
+  return errors;
 }
 
 /** Signed modular elapsed holds the starting pose if a packet arrives just ahead of the viewer's clock. */
