@@ -1,0 +1,3 @@
+Revised the eye with a 1–2 mm bare lid, short left-to-right fuzz, and a soft brow in height and occlusion. Iris, region map, and all four accepted sets remain unchanged. All checks pass.
+
+[Preview](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/studies/skin/checks/eye_round1_review.png) · [Updated report, measurements and imagegen prompts](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/studies/skin/REPORT.md)

@@ -1,0 +1,5 @@
+Rebuilt all four maps with a narrow uneven slit, broken puncture runoff, and fine dark wrinkles. Approved blood, fuzz, grazes, and horn treatments are preserved.
+
+Reviewed every stage in all three dyes. Rebuild, overlap, membrane correspondence, and unhurt checks pass. Shared-UV mirroring and weaker distance readability remain documented.
+
+[Review sheet](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/layers/REVIEW.jpg) · [Updated report](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/layers/REPORT.md)

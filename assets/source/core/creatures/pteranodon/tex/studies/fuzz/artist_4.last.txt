@@ -1,0 +1,5 @@
+Updated all three sets: stronger strand contrast, straighter lie, reduced column repetition, and varied mantle overlaps. Scale, direction and means are preserved.
+
+Compared against rounds 2 and 3 at 0.5/1.5 m and the concept neck. All numerical checks pass.
+
+[Updated report](tex/studies/fuzz/REPORT.md) includes comparisons, remaining differences, and the built-in imagegen source and prompt.

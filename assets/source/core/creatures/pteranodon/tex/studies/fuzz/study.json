@@ -1,0 +1,117 @@
+{
+  "sets": {
+    "fuzz": {
+      "span_m": 0.5,
+      "tiles": true,
+      "tile_axes": [
+        "x",
+        "y"
+      ],
+      "cutout": false,
+      "height_mm": 0.8,
+      "regions": [
+        5
+      ],
+      "form": "ball",
+      "radii": [
+        0.2,
+        0.19,
+        0.3
+      ],
+      "fibre_length_mm": [
+        6,
+        12
+      ],
+      "lock_length_mm": [
+        12,
+        30
+      ],
+      "lie_degrees_from_down": 0,
+      "roughness_mean": 0.86
+    },
+    "fuzz_face": {
+      "span_m": 0.25,
+      "tiles": true,
+      "tile_axes": [
+        "x",
+        "y"
+      ],
+      "cutout": false,
+      "height_mm": 0.4,
+      "regions": [
+        5
+      ],
+      "form": "ball",
+      "radii": [
+        0.06,
+        0.07,
+        0.1
+      ],
+      "fibre_length_mm": [
+        3,
+        6
+      ],
+      "lock_length_mm": [
+        6,
+        15
+      ],
+      "lie_degrees_from_down": 0,
+      "roughness_mean": 0.86
+    },
+    "mantle_edge": {
+      "span_m": 0.5,
+      "tiles": true,
+      "tile_axes": [
+        "x",
+        "y"
+      ],
+      "cutout": false,
+      "height_mm": 0.8,
+      "regions": [
+        0,
+        5
+      ],
+      "form": "ball",
+      "radii": [
+        0.2,
+        0.19,
+        0.3
+      ],
+      "fibre_length_mm": [
+        6,
+        12
+      ],
+      "lock_length_mm": [
+        12,
+        30
+      ],
+      "lie_degrees_from_down": 0,
+      "roughness_mean": 0.86
+    }
+  },
+  "round": 4,
+  "source": "source/fuzz_strands_round4.png",
+  "source_native_px": [
+    1254,
+    1254
+  ],
+  "elements_manifest": "elements/elements.json",
+  "source_scale_before_quilting": 0.78,
+  "build_seed": 281403,
+  "method": "Generated straight/gently curved pale tips over darker roots; irregular affine synthesis; strong fine strand value and subdued lock value/relief; unequal rounded mantle locks.",
+  "normal_convention": "OpenGL +Y up; central wrapped derivatives of delivered 16-bit height.",
+  "height_note": "height_mm is the unchanged physical distance from encoded black to white, not exposed fibre length. Relief remains shallow.",
+  "edge_note": "Gently wandering main band near row 1024; dark locks reach 10\u201330 mm, fewer pale locks overlap them; a quieter second band closes the wrap.",
+  "build_seconds": 15.4,
+  "source_lie_correction_deg": 0,
+  "value_bands": {
+    "strand_gain": 2.3,
+    "lock_envelope_gain": 0.3,
+    "split_sigma_px": 6
+  },
+  "relief_bands": {
+    "fine_gain": 0.7,
+    "bed_gain": 0.18
+  },
+  "patch_mirroring": false
+}

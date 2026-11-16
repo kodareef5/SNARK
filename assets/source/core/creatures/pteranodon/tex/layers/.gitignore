@@ -1,0 +1,11 @@
+# Archived reviews, experiments and verification output.
+/superseded/
+/checks/
+/look/
+/__pycache__/
+
+# Recreated by contact.py for the optional storage comparison.
+/STORAGE_256_512.jpg
+
+# paint.py reads source/marks.json and source/palette.json and writes nothing
+# under source/. Keep both authored inputs visible to Git.

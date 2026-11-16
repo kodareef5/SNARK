@@ -1,0 +1,3 @@
+Wrapped the stripe to measured profile depths of **1.54, 2.12, 2.95, and 3.65 cm**, retaining the interlocking fringe. Only neck region texels changed; accepted fuzz and material maps are identical.
+
+Checked `head`, `side`, and `rider`; validation and reproducibility passed. [Round 2 report](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/paint/body/REPORT.md).

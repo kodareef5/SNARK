@@ -1,0 +1,37 @@
+// Body round 2: exact-scale profile inspection through the game renderer.
+// Run after: zsh tex/paint/look.sh tex/paint/body/checks/look --maps
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve, join } from 'node:path';
+import { buildRig } from '../../../../../../../../shared/anim/rigs.ts';
+import { parsePack } from '../../../../../../../../shared/pack/pack.ts';
+import { nearestColour } from '../../../../../../../../shared/pack/palette.ts';
+import { findAssets } from '../../../../../../../../tools/art/assets.ts';
+import { Poser } from '../../../../../../../../tools/art/check.ts';
+import { materialsOf } from '../../../../../../../../tools/art/materials.ts';
+import { ModelView } from '../../../../../../../../tools/snap.ts';
+import { rgbaOf } from '../../../../../../../../tools/snap/files.ts';
+import { encodePng } from '../../../../../../../../tools/snap/png.ts';
+const here=import.meta.dir;
+const source='/private/tmp/ptera-look/'+resolve(here,'checks/look').replaceAll('/','_').slice(1);
+const out=join(here,'checks/round2_details');mkdirSync(out,{recursive:true});
+const asset=(await findAssets(source)).find(a=>a.id==='core:pteranodon')!;
+const pack=parsePack(new Uint8Array(readFileSync(asset.file)));
+const mesh=pack.meshIndex.get('core:pteranodon')!;
+const rig=buildRig(pack.header.rigs[pack.header.meshes[mesh]!.rig!]!,pack.clips)!;
+new Poser(rig).set(null,0);
+const materials=materialsOf(asset);
+const textures=(pack.header.textures??[]).map(t=>rgbaOf(materials.find(m=>t.id===`${m.id}/${t.role}`)!,t.role,t.top,null));
+const palette=(values:string[])=>values.map(h=>nearestColour(pack.palette,parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)));
+const colors=palette(['2E3134','9C8B78','C8662E','2A2C2F','56677A','E9E4D8']);
+const shots=[
+  {name:'neck_profile_1000ppm',centre:[0,1.19,.39],radius:.40*Math.cos(.1),around:90,above:0,w:1000,h:800},
+  {name:'head_side_1000ppm',centre:[0,1.44,.88],radius:.65*Math.cos(.1),around:90,above:0,w:1800,h:1300},
+];
+
+for(const shot of shots){
+  const view=new ModelView(pack,shot.w,shot.h,[.84,.83,.81]);
+  textures.forEach((t,slot)=>view.texture(slot,t.role,t.pictures));
+  view.draw({mesh,level:0,rig,colors,textured:true,centre:shot.centre as [number,number,number],radius:shot.radius,around:shot.around,above:shot.above});
+  const path=join(out,`${shot.name}_design.png`);
+  writeFileSync(path,encodePng(shot.w,shot.h,view.raster.color));console.log(path);
+}

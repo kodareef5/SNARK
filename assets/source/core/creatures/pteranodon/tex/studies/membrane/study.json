@@ -1,0 +1,80 @@
+{
+  "sets": {
+    "membrane_upper": {
+      "span_m": 1.0,
+      "tiles": true,
+      "cutout": false,
+      "height_mm": 0.8,
+      "regions": [
+        4
+      ],
+      "form": "sheet",
+      "width": 2.0,
+      "depth": 1.0,
+      "camber": 0.05,
+      "face": "upper",
+      "mean_linear": 0.4,
+      "pixels": 2048,
+      "height_zero_mm": -0.4
+    },
+    "membrane_under": {
+      "span_m": 1.0,
+      "tiles": true,
+      "cutout": false,
+      "height_mm": 0.8,
+      "regions": [
+        4
+      ],
+      "form": "sheet",
+      "width": 2.0,
+      "depth": 1.0,
+      "camber": 0.05,
+      "face": "under",
+      "mean_linear": 0.6,
+      "pixels": 2048,
+      "height_zero_mm": -0.4
+    },
+    "membrane_creased": {
+      "span_m": 1.0,
+      "tiles": true,
+      "cutout": false,
+      "height_mm": 0.8,
+      "regions": [
+        4
+      ],
+      "form": "sheet",
+      "width": 2.0,
+      "depth": 1.0,
+      "camber": 0.05,
+      "face": "upper",
+      "mean_linear": 0.4,
+      "pixels": 2048,
+      "height_zero_mm": -0.4
+    }
+  },
+  "round": 2,
+  "generator": {
+    "feature_scale": 1.0,
+    "direction_deg": 0.0
+  },
+  "direction": "x span toward tip, y leading to trailing; underside mirrored in x for back-to-back UVs",
+  "normal": "OpenGL, red=-dH/dx, green=+dH/d(image y), wrapped centred derivative in metres",
+  "height_encoding": "0..65535 represents 0.8 mm; midgrey is zero displacement",
+  "physical_features": {
+    "primary_fwhm_mm": [
+      2.3,
+      2.8
+    ],
+    "terminal_fwhm_mm": [
+      0.5,
+      0.9
+    ],
+    "vein_rise_mm": 0.08,
+    "microcrease_spacing_mm": [
+      0.4,
+      1.0
+    ],
+    "pleat_depth_mm": 0.215
+  },
+  "source": "Built-in imagegen membrane_original.png, membrane_refined_original.png and gathered_original.png; traced painted vessels; extracted generated skin and folds"
+}

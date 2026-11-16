@@ -1,0 +1,6 @@
+layers/
+checks/
+__pycache__/
+superseded/
+
+# paint.py writes no files under source/; placement.json is a build input.

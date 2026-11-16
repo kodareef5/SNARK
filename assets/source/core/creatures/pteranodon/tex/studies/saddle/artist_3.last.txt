@@ -1,0 +1,3 @@
+Tidied as requested: archived superseded files, added explicit ignore paths, and updated `REPORT.md`.
+
+The clean rebuild reproduced all 35 delivered pictures byte for byte. All seven sets passed validation; existing checks stayed unchanged.

@@ -286,8 +286,11 @@ STANCE = {
 # solved from these into turns of each bone relative to its parent, so it rides with the chest in any pose. The elbow
 # lies back by the flank; the forearm leans forward and the long hand bone down to the hand on the ground; the wing
 # finger folds back up along the outside of that strut, past the elbow, to a tip that points up and back behind the
-# hips. The battens are aimed so the skin gathers between the arm, the finger and the leg without entering the body
-# (searched; ref/blockout/checks.json).
+# hips. The battens point where the skin should go: the first back from the elbow toward the hip, the second down and
+# back from the wrist, high enough that they and the skin's rear edge stay above the ground through every ground clip
+# (check_clip); the inner skin hangs in layers between the arm's strut and the leg, hidden behind the outer wing, which
+# hangs from the finger (FINGER_ROLL). They and model.py's membrane weights were searched together so the folded skin
+# crosses neither itself, the body nor the other wing in STANCE (ref/wing/checks.json).
 FOLD = {
     "elbow":    (0.300, 0.580, -0.170),
     "wrist":    (0.340, 0.360, 0.300),
@@ -298,9 +301,9 @@ FOLD = {
     "wing_2":   (0.420, 0.700, -0.360),
     "wing_3":   (0.420, 0.950, -0.790),
     "wing_4":   (0.410, 1.076, -1.128),
-    "web_1":    (0.420, 0.700, -0.600),
-    "web_2":    (0.360, 0.360, -0.100),
-    "web_3":    (0.430, 0.750, -0.400),
+    "web_1":    (0.481, 0.359, -1.142),
+    "web_2":    (0.499, 0.359, -0.386),
+    "web_3":    (0.551, 0.306, 0.446),
 }
 # The wing tucked in the air, halfway to FOLD: where each joint lies with the body at rest (level). The elbow goes back
 # by the flank, the wrist forward under the shoulder, the long hand bone and the finger fold back along the body to a
@@ -315,10 +318,16 @@ TUCK = {
     "wing_2":   (0.440, 0.660, -1.580),
     "wing_3":   (0.420, 0.640, -2.080),
     "wing_4":   (0.390, 0.630, -2.440),
-    "web_1":    (0.280, 0.400, -0.600),
-    "web_2":    (0.400, 0.450, -0.300),
-    "web_3":    (0.420, 0.620, -1.300),
+    "web_1":    (0.435, 0.509, -0.858),
+    "web_2":    (0.691, 0.673, -1.872),
+    "web_3":    (0.591, 0.182, -1.453),
 }
+
+# How far the wing finger's four bones roll about their own length in TUCK and in FOLD, in degrees: the joints do not
+# move, but the membrane on the finger turns with it, so folded on the ground the outer wing hangs from the finger as
+# one panel down to the ground and the rear edge, as the concept's folded views have it. The third batten rides on the
+# finger and rolls with it; its targets above are where it points before the roll.
+FINGER_ROLL = {"tuck": -5.7, "fold": 66.3}
 
 # =====================================================================================================================
 # Block-out masses. Fitted to the concept views (ref/blockout_vs_concept.png).
@@ -517,16 +526,18 @@ def _bird(q):
     return b.inverted() @ m @ b
 
 
-def solve_fold(targets_at=None, standing=True):
+def solve_fold(targets_at=None, standing=True, roll=0.0):
     """Turns of each left wing bone, relative to its parent in the animal's axes, that put the wing's joints where
-    `targets_at` (FOLD by default) has them, with the body in STANCE or, not standing, at rest. Returns ({bone: turn
-    relative to its parent}, {bone: turn relative to rest}), as Blender-axes quaternions, the form Clip._rotate takes,
-    and where the knuckle lands, where STANCE plants the hand."""
+    `targets_at` (FOLD by default) has them, with the body in STANCE or, not standing, at rest. Each bone takes the
+    least turn that points it there; then the wing finger's four bones are each rolled `roll` degrees about their own
+    length (FINGER_ROLL), which moves no joint, and the third batten, riding on the finger, rolls with it. Returns
+    ({bone: turn relative to its parent}, {bone: turn relative to rest}), as Blender-axes quaternions, the form
+    Clip._rotate takes, and where the knuckle lands, where STANCE plants the hand."""
     targets_at = targets_at or FOLD
     b = Matrix(((1, 0, 0), (0, 0, -1), (0, 1, 0)))
     world = {"chest": stance_delta("chest") if standing else Quaternion()}
     joint = {"chest": _stance_joint("chest") if standing else Vector(_JOINT["chest"])}
-    out = {}
+    axis = {}
     targets = {"upper_arm_l": "elbow", "forearm_l": "wrist", "hand_l": "knuckle", "fingers_l": "fingers",
                "pteroid_l": "pteroid", "wing_1_l": "wing_1", "wing_2_l": "wing_2", "wing_3_l": "wing_3",
                "wing_4_l": "wing_4", "web_1_l": "web_1", "web_2_l": "web_2", "web_3_l": "web_3"}
@@ -541,10 +552,14 @@ def solve_fold(targets_at=None, standing=True):
         # animal's axes, then expressed in Blender's.
         turn_animal = now.rotation_difference(want)
         turn = (b @ turn_animal.to_matrix() @ b.inverted()).to_quaternion()
-        d = turn @ d_parent
-        world[name] = d
+        world[name] = turn @ d_parent
         joint[name] = head
-        out[name] = d_parent.inverted() @ d
+        axis[name] = b @ want
+    if roll:
+        for name in ("wing_1_l", "wing_2_l", "wing_3_l", "wing_4_l", "web_3_l"):
+            about = axis["wing_2_l" if name == "web_3_l" else name]
+            world[name] = Quaternion(about, roll * DEG) @ world[name]
+    out = {name: world[_PARENT[name]].inverted() @ world[name] for name in _WING_L}
     return out, world, tuple(joint["fingers_l"])
 
 
@@ -558,8 +573,8 @@ class Rig:
     def __init__(self, obj):
         self.obj = obj
         self.clips = {}
-        self.fold, self.fold_world, self.knuckle = solve_fold()
-        self.tuck = solve_fold(TUCK, standing=False)[0]
+        self.fold, self.fold_world, self.knuckle = solve_fold(roll=FINGER_ROLL["fold"])
+        self.tuck = solve_fold(TUCK, standing=False, roll=FINGER_ROLL["tuck"])[0]
 
     @property
     def blockout(self):
