@@ -145,6 +145,7 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
       if (hash3(Math.round(cx), Math.round(cz), seed + 1201) % 6 !== 0 || roads.junction(cx, cz, cars.parked.junction)) continue;
       // At the right kerb of the way it was drawn, nose along it.
       const off = s.half - spec.halfWidth - .3; const x = cx - dz * off; const z = cz + dx * off;
+      if (Math.min(x, z, size - x, size - z) < reach) continue;
       const yaw = Math.atan2(dx, dz); const c = Math.cos(yaw); const sn = Math.sin(yaw);
       const corner = (u: number, v: number): [number, number] => [x + u * c + v * sn, z - u * sn + v * c];
       const wheels = [[spec.track / 2, spec.wheelbase / 2], [-spec.track / 2, spec.wheelbase / 2], [spec.track / 2, -spec.wheelbase / 2], [-spec.track / 2, -spec.wheelbase / 2]].map(([u, v]) => corner(u!, v!));

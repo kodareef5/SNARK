@@ -211,7 +211,8 @@ once in a new world; the save keeps it from then on. `parkCars` in
 `street-cars.ts` chooses them by `street.cars.parked`:
 
 - At the kerb on the right of travel of a centreline of the listed classes (local
-  and secondary streets and car parks' roads), turned along it, on street ground.
+  and secondary streets and car parks' roads), turned along it, on street ground,
+  its room inside the map.
 - At least 15 m from a junction (a point two lines share, or a line's end).
 - Clear of every static's boxes, the wrecks' too, and of every reserved route, by
   the car's envelope, X ±0.9, Y 0 to 1.5, Z ±2.0, plus 1 m, and plus the door room
