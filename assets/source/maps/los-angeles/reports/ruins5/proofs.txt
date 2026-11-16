@@ -1,9 +1,9 @@
 chunk-report
-{"mapHash":2219525009,"total":2909021,"maximum":1813,"cap":2000,"passed":true}
+{"mapHash":309878901,"total":2887759,"maximum":1812,"cap":2000,"passed":true}
 
 ruin-walk
 {
-  "mapHash": 2219525009,
+  "mapHash": 309878901,
   "includes": "terrain and resource-node collision; ascent, landing turns, roof exit, descent and independent stair exits in both directions",
   "sampledBuildings": 1992,
   "stairRoutes": 3632,
@@ -18,8 +18,8 @@ ruin-walk
 
 room-walk
 {
-  "mapHash": 2219525009,
-  "routes": 13886,
+  "mapHash": 309878901,
+  "routes": 13821,
   "kinds": {
     "suites": 3253,
     "refuge": 8,
@@ -30,16 +30,16 @@ room-walk
     "storage": 1113,
     "domestic": 818,
     "wards": 115,
-    "street-gap": 1299
+    "street-gap": 1234
   },
-  "passed": 13886,
+  "passed": 13821,
   "failed": 0,
   "failures": []
 }
 
 access-walk
 {
-  "mapHash": 2219525009,
+  "mapHash": 309878901,
   "routes": 34729,
   "buildingsWithApproach": 22915,
   "coresWithoutStreetApproach": [
@@ -483,7 +483,7 @@ access-walk
 
 bridge-walk
 {
-  "mapHash": 2219525009,
+  "mapHash": 309878901,
   "ways": 217,
   "built": 217,
   "deckRuns": 217,
@@ -501,33 +501,33 @@ bridge-walk
 }
 
 walk
-host on core:los-angeles in 1570 ms, 382 spawn regions; 1650 MB resident, 1069 MB of heap
+host on core:los-angeles in 1697 ms, 382 spawn regions; 1623 MB resident, 1051 MB of heap
 ok   Hollywood/Highland arrived 1.5 m from its point at y 115.6; walked 27 m to y 115.8, 27 m to y 115.4, 27 m to y 115.2, 27 m to y 115.5
-ok   Lake Hollywood Park arrived 0.0 m from its point at y 275.7; walked 25 m to y 276.3, 27 m to y 275.6, 26 m to y 274.7, 27 m to y 275.7
+ok   Lake Hollywood Park arrived 0.0 m from its point at y 275.7; walked 25 m to y 276.3, 27 m to y 275.6, 27 m to y 274.6, 27 m to y 275.7
 ok   Astronomers' Monument arrived 0.0 m from its point at y 345.1; walked 27 m to y 344.8, 27 m to y 339.6, 13 m to y 339.6, 1 m to y 339.6
-ok   Hollywood Bowl Overlook arrived 0.0 m from its point at y 299.4; walked 27 m to y 291.9, 27 m to y 303.2, 18 m to y 305.4, 27 m to y 299.8
+ok   Hollywood Bowl Overlook arrived 0.0 m from its point at y 299.4; walked 27 m to y 291.9, 27 m to y 303.2, 18 m to y 305.6, 27 m to y 299.8
 ok   Runyon Canyon  arrived 0.0 m from its point at y 177.5; walked 27 m to y 179.9, 25 m to y 181.5, 25 m to y 178.6, 27 m to y 177.6
 ok   Barnsdall Art Park arrived 0.0 m from its point at y 149.3; walked 26 m to y 148.8, 27 m to y 148.0, 27 m to y 149.2, 27 m to y 149.2
 ok   Pan Pacific Park arrived 0.0 m from its point at y 62.5; walked 27 m to y 62.5, 27 m to y 61.0, 27 m to y 59.5, 27 m to y 62.5
 ok   Paramount Pictures Studio Tour arrived 0.0 m from its point at y 86.9; walked 27 m to y 87.4, 27 m to y 88.0, 27 m to y 88.0, 25 m to y 87.1
 ok   Universal CityWalk Hollywood arrived 0.0 m from its point at y 239.3; walked 27 m to y 239.4, 27 m to y 237.8, 25 m to y 237.8, 27 m to y 239.4
 ok   Dante's View   arrived 0.0 m from its point at y 475.5; walked 26 m to y 473.0, 27 m to y 454.1, 26 m to y 462.0, 27 m to y 475.5
-1975 wild creatures after 391 s of virtual time; 1688 MB resident, 1069 MB of heap, server and client in one process
+1964 wild creatures after 391 s of virtual time; 1754 MB resident, 1048 MB of heap, server and client in one process
 
 obelisk-walk
-core:los-angeles: 2909021 static pieces and 265339 standing nodes in the way, 32.8% of samples closed, in 0.9 s
-ok   Griffith Observatory   terminal at 1796.0, 5695.2 facing 180 degrees: from Astronomers' Monument, 144 m of way, walked in 32 s to 0.09 m of its front at y 344.0
+core:los-angeles: 2887759 static pieces and 265912 standing nodes in the way, 32.6% of samples closed, in 1.0 s
+ok   Griffith Observatory   terminal at 1797.9, 5693.2 facing 181 degrees: from Astronomers' Monument, 137 m of way, walked in 31 s to 0.07 m of its front at y 344.0
 ok   Hollywood and Highland terminal at 5282.8, 3630.4 facing 85 degrees: from Hollywood/Highland, 113 m of way, walked in 25 s to 0.12 m of its front at y 115.0
 ok   Lake Hollywood Park    terminal at 4171.9, 6378.3 facing 334 degrees: from Lake Hollywood Park, 69 m of way, walked in 16 s to 0.11 m of its front at y 275.8
 3 of 3 reached in 1.0 s
 
 server-bench
 {
-  "milliseconds": 1324.5,
-  "residentMiB": 1257.4,
-  "heapMiB": 597.9,
-  "peakResidentMiB": 1259.8,
-  "mapBytes": 101898408,
+  "milliseconds": 1400.3,
+  "residentMiB": 1274.7,
+  "heapMiB": 593.7,
+  "peakResidentMiB": 1274.7,
+  "mapBytes": 101570907,
   "spawnRegions": 382,
   "scope": "createHost, real pack clips, wild spawner; no HTTP listener, persistence or clients"
 }
