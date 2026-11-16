@@ -73,14 +73,16 @@ def courses():
         ('storm_chasers_blue','Storm Chasers — blue','blue',.60,False,[
             [16.6,68.4,-117.3],[12.3,66,-124],[.3,63,-134],[-8.7,60.5,-145],
             [-9.6,57.5,-158],[-8.3,55.8,-169.5]]),
+        # Keep the low channel east of the full stair band until its aft turn;
+        # the two raft courses pass above the upper access before descending.
         ('pressure_drop','Pressure Drop','yellow',.65,True,[
             [18.9,68.4,-117.3],[18.9,67.2,-117.8],[18.9,57,-122.3],
-            [17,55.8,-128],[4.683708242,55.8,-161.539803799]]),
+            [20.2,55.8,-128],[20.2,55.8,-137],[4.683708242,55.8,-161.539803799]]),
         ('hurricane_hunter','Hurricane Hunter','purple',.95,False,[
-            [21.2,68.4,-117.3],[20,66.5,-125],[16,64.8,-134],[9,63,-140],
+            [21.2,68.4,-117.3],[20,67.8,-125],[20,67.8,-137],[9,63,-144],
             [5,61.5,-147],[8,59.5,-155],[14.735591197,55.8,-163.762656365]]),
         ('storm_surge','Storm Surge','leaf',.95,False,[
-            [23.5,68.4,-117.3],[23,67,-126],[22,65,-138],[17,62.8,-149],
+            [23.5,68.4,-117.3],[23.5,67.8,-126],[23.5,67.8,-138],[17,62.8,-149],
             [11,60.7,-158],[12,58.3,-166],[13.229148967,55.8,-171.540814972]]),
     ]
     result=[]
@@ -89,7 +91,8 @@ def courses():
         course=dict(number=number,id=ident,name=name,finish=finish,radius=radius,
                     outerRadius=radius+.08 if opened else radius,open=opened,
                     shape='open_trough' if opened else 'closed_tube',points=points)
-        course['lodPoints']=[points]+[_simplify(points,t) for t in (.004,.004,.018,.09,.13)]
+        far_tolerance=.11 if number==0 else .10
+        course['lodPoints']=[points]+[_simplify(points,t) for t in (.004,.004,.018,far_tolerance,.13)]
         course['visualRadius']=max(_profile_radius(course,level) for level in range(6))
         result.append(course)
     return result
@@ -109,12 +112,17 @@ def course_frames(points):
 
 def _sides(course,level):
     if course['open']:return (8,8,8,4,3,2)[level]  # Lower semicircle segments.
+    if course['number']==4 and level==4:return 5
     return (16,16,16,10,6,5)[level] if course['radius']>.8 else (16,16,16,8,5,4)[level]
 
 
 def _profile_radius(course,level):
     sides=_sides(course,level)*(2 if course['open'] else 1)
     fit=1 if level<3 else 2/(1+math.cos(math.pi/sides))
+    if course['number']==4 and level==4:
+        # Balance against the actual fine sixteen-sided profile, including its
+        # chord sag, rather than an ideal circle absent from the source asset.
+        fit=(1+math.cos(math.pi/16))/(1+math.cos(math.pi/sides))
     return course['outerRadius']*fit
 
 

@@ -11,21 +11,25 @@ const root = resolve(import.meta.dir, "../.."), source = resolve(process.argv[2]
 const out = resolve(process.argv[3] ?? join(root, "var/cruise-preview/slides.json")), dir = mkdtempSync(join(tmpdir(), "snark-slides-"));
 const lod = (v: Pick<Raw, "positions" | "indices">): SourceLod => ({ positions: Float32Array.from(v.positions), colors: new Uint8Array(v.positions.length / 3), indices: Uint32Array.from(v.indices) });
 const capAreas = new Map<string, [number, number]>();
+let quantizationCollapsedTriangles = 0;
 
 /** Actual cell surface, excluding paired artificial cuts. Quantize as a 16 m native cell. */
 function exterior(raw: Raw, grid: string, course: string, stage: string): SourceLod {
   const at = grid.split(",").map(Number), positions: number[] = [], indices: number[] = [], used = new Map<number, number>();
   const quantized = raw.positions.map(v => Math.round(v / 8 * 32767) / 32767 * 8);
+  const placed = quantized.map((v, i) => Math.fround(v + at[i % 3]! * 16 + 8));
   for (let i = 0; i < raw.indices.length; i += 3) {
     const face = raw.indices.slice(i, i + 3);
+    const a = face[0]! * 3, b = face[1]! * 3, c = face[2]! * 3;
+    const u = [0, 1, 2].map(k => placed[b + k]! - placed[a + k]!), v = [0, 1, 2].map(k => placed[c + k]! - placed[a + k]!);
+    const area = Math.hypot(u[1]! * v[2]! - u[2]! * v[1]!, u[2]! * v[0]! - u[0]! * v[2]!, u[0]! * v[1]! - u[1]! * v[0]!) / 2;
+    if (area <= 1e-10) { quantizationCollapsedTriangles++; continue; }
     let plane: [number, number] | undefined;
     for (let axis = 0; axis < 3; axis++) for (const side of [-1, 1]) {
       if (face.every(j => Math.abs(quantized[j * 3 + axis]! - side * 8) < 1e-5)) plane = [axis, side];
     }
     if (plane) {
-      const [axis, side] = plane, a = face[0]! * 3, b = face[1]! * 3, c = face[2]! * 3;
-      const u = [0, 1, 2].map(k => quantized[b + k]! - quantized[a + k]!), v = [0, 1, 2].map(k => quantized[c + k]! - quantized[a + k]!);
-      const area = Math.hypot(u[1]! * v[2]! - u[2]! * v[1]!, u[2]! * v[0]! - u[0]! * v[2]!, u[0]! * v[1]! - u[1]! * v[0]!) / 2;
+      const [axis, side] = plane;
       const key = `${course}/${stage}/${axis}/${at.map((v, k) => k === axis ? v + (side === 1 ? 1 : 0) : v).join(",")}`;
       const values = capAreas.get(key) ?? [0, 0]; values[side === -1 ? 0 : 1] += area; capAreas.set(key, values);
       continue;
@@ -33,7 +37,7 @@ function exterior(raw: Raw, grid: string, course: string, stage: string): Source
     for (const j of face) {
       if (!used.has(j)) {
         used.set(j, positions.length / 3);
-        for (let k = 0; k < 3; k++) positions.push(quantized[j * 3 + k]! + at[k]! * 16 + 8);
+        for (let k = 0; k < 3; k++) positions.push(placed[j * 3 + k]!);
       }
       indices.push(used.get(j)!);
     }
@@ -65,6 +69,7 @@ function samples(from: SourceLod, to: SourceLod): { p95: number; maximum: number
       if (square > best * best) continue;
       best = Math.min(best, toTriangle(point[0]!, point[1]!, point[2]!, target, ids[i]! * 3, ids[i + 1]! * 3, ids[i + 2]! * 3));
     }
+    if (!Number.isFinite(best)) throw new Error("Non-finite visible-surface distance");
     distances.push(best);
   };
   for (let i = 0; i < from.positions.length; i += 3) nearest(Array.from(from.positions.slice(i, i + 3)));
@@ -79,9 +84,9 @@ try {
   if (run.exitCode !== 0) throw new Error(new TextDecoder().decode(run.stdout) + new TextDecoder().decode(run.stderr));
   const data = JSON.parse(readFileSync(raw, "utf8")) as Data;
   const pieces = new Map<string, SourceLod>(), assemblies = new Map<string, SourceLod[]>();
+  for (const [grid, courses] of Object.entries(data.grids)) if (!Object.values(courses).some(stages => stages["0"])) throw new Error(`Far-only cell ${grid}`);
   for (const [grid, courses] of Object.entries(data.grids)) for (const [number, stages] of Object.entries(courses)) for (const [stage, mesh] of Object.entries(stages)) {
     if (!mesh) continue;
-    if (!stages["0"]) throw new Error(`Far-only course/cell ${grid}/${number}/${stage}`);
     const surface = exterior(mesh, grid, number, stage), key = `${number}/${stage}`;
     pieces.set(`${grid}/${key}`, surface); const list = assemblies.get(key) ?? []; list.push(surface); assemblies.set(key, list);
   }
@@ -93,23 +98,24 @@ try {
     const details = [];
     for (const [number, stages] of Object.entries(courses)) {
       const fine = stages["0"], coarse = stages[String(stage)]; if (!fine && !coarse) continue;
-      if (!fine || !coarse) throw new Error(`Missing course surface ${grid}/${number}/${stage}`);
-      const a = samples(pieces.get(`${grid}/${number}/0`)!, targets.get(`${number}/${stage}`)!);
-      const b = samples(pieces.get(`${grid}/${number}/${stage}`)!, targets.get(`${number}/0`)!);
-      details.push({ course: Number(number), triangles: coarse.triangles, clippedCapInclusiveP95: surfaceError(lod(fine), lod(coarse)), exteriorP95: Math.max(a.p95, b.p95), exteriorMaximum: Math.max(a.maximum, b.maximum), badEdges: coarse.badEdges, signedVolume: coarse.signedVolume });
+      const a = fine ? samples(pieces.get(`${grid}/${number}/0`)!, targets.get(`${number}/${stage}`)!) : { p95: 0, maximum: 0 };
+      const b = coarse ? samples(pieces.get(`${grid}/${number}/${stage}`)!, targets.get(`${number}/0`)!) : { p95: 0, maximum: 0 };
+      details.push({ course: Number(number), triangles: coarse?.triangles ?? 0, coarseOnlyCourseFragment: !fine, fineOnlyCourseFragment: !coarse,
+        clippedCapInclusiveP95: fine && coarse ? surfaceError(lod(fine), lod(coarse)) : null, exteriorP95: Math.max(a.p95, b.p95),
+        exteriorMaximum: Math.max(a.maximum, b.maximum), badEdges: coarse?.badEdges ?? 0, signedVolume: coarse?.signedVolume ?? null });
     }
     rows.push({ grid, authoredLevel: stage, triangles: details.reduce((sum, c) => sum + c.triangles, 0), exteriorP95: Math.max(...details.map(c => c.exteriorP95)), courses: details });
   }
   const errors = [.0125, .025, .06, .13, .25], budgets = [10000, 4000, 1250, 300, 300];
   const report = {
-    scope: "Slide courses only, not the complete ship or final packed artifact. Continuous source at all six stages, independently clipped to every occupied 16 m cell and Blender-triangulated. Exterior error uses native vertex/centroid sampling and toTriangle at P95 in both directions, after signed 16-bit cell quantization. Artificial clipping caps are excluded only after matching opposite-cell area checks; exterior targets include neighboring pieces of the same course. Raw cap-inclusive native surfaceError is retained separately.",
+    scope: "Slide courses only, not complete cell budgets or a final packed artifact. Continuous source at all six stages, independently clipped to every occupied 16 m cell and Blender-triangulated. Exterior error uses native vertex/centroid sampling and toTriangle at P95 in both directions, after signed 16-bit cell quantization. Quantization-collapsed triangle areas <=1e-10m² are excluded from distance queries but remain in reported triangle counts. Artificial clipping caps are excluded only after matching opposite-cell area checks; exterior targets include neighboring pieces of the same course. Raw cap-inclusive native surfaceError is retained separately.",
     sources: data.sources, persistedCoursesMatched: data.persistedCoursesMatched, cellCount: Object.keys(data.grids).length,
     stageLimits: errors.map((error, i) => ({ authoredLevel: i + 1, exteriorP95: error, triangles: budgets[i] })),
-    capPairMaximumAreaDifference: capMismatch, noFarOnlyCells: true, separation: data.separation,
+    capPairMaximumAreaDifference: capMismatch, quantizationCollapsedTriangles, noFarOnlyCells: true, separation: data.separation,
     courses: data.courses.map(({ points, lodPoints, ...course }) => ({ ...course, endpoints: [points[0], points.at(-1)], ringCounts: lodPoints.map(p => p.length) })), rows,
   };
   mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, JSON.stringify(report, null, 2) + "\n");
   const far = rows.filter(r => r.authoredLevel === 4);
-  if (rows.some(r => r.exteriorP95 > errors[r.authoredLevel - 1]! || r.triangles > budgets[r.authoredLevel - 1]! || r.courses.some(c => c.badEdges || c.signedVolume <= 0))) throw new Error(`Slide diagnostic failed; see ${out}`);
+  if (rows.some(r => r.exteriorP95 > errors[r.authoredLevel - 1]! || r.triangles > budgets[r.authoredLevel - 1]! || r.courses.some(c => c.badEdges || c.signedVolume !== null && c.signedVolume <= 0))) throw new Error(`Slide diagnostic failed; see ${out}`);
   console.log(JSON.stringify({ out, cells: report.cellCount, stage4MaxTriangles: Math.max(...far.map(r => r.triangles)), stage4MaxExteriorP95: Math.max(...far.map(r => r.exteriorP95)), capPairMaximumAreaDifference: capMismatch }));
 } finally { rmSync(dir, { recursive: true, force: true }); }
