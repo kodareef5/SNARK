@@ -10,7 +10,7 @@ The game models every beam and plank as real geometry, chamfered edges, joints a
 
 ## What excellent looks like
 
-The bar to beat is the wood plank wall in `/home/user/dev/SNARK/.claude/worktrees/agent-a2517e755af91bae1/planning/artist-test/wood/` (start with `checks/layers.jpg`, then its `REPORT.md`): a complete, aligned, tileable layer set with its own build and checks, in which the layers agree to the pixel. Yours should be better: it is heavier, older wood, worked by an adze and not a saw.
+The bar to beat is the wood plank wall in `/home/user/dev/SNARK/.claude/worktrees/agent-a2517e755af91bae1/planning/art-trial/wood/` (start with `checks/layers.jpg`, then its `REPORT.md`): a complete, aligned, tileable layer set with its own build and checks, in which the layers agree to the pixel. Yours should be better: it is heavier, older wood, worked by an adze and not a saw.
 
 - Oak, hewn: shallow scalloped adze facets across the grain, long drying checks (splits) running with the grain, a few knots and the swirl of grain round them, medullary ray fleck, open pores. Weathered to a warm grey-brown on the surface with darker brown in the checks and pores. No paint, no planks, no saw marks, no rot.
 - A strip of it 0.1 to 0.4 m tall cut from anywhere must look like the face of one beam. So no feature runs across the whole tile's height, and none is so striking that it marks a repeat.

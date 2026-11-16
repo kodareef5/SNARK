@@ -26,7 +26,7 @@ Keep the generated source pictures at full size in `source/`, and the scripts th
 
 ## What excellent looks like
 
-The bar is the concept pictures, the palm stump cut you can see in `../palm_parts/` (the bottom left quarter of `palm_parts_base.png`), and the bar for a complete layer set is the wood plank wall in `../../../../../../../planning/artist-test/wood/` (start with `checks/layers.jpg`). Fresh, raw, hacked wood that a player knows they made. The image tool returns about 1254 pixels a side; reach 2048 by composing generated pictures in a larger master and by adding fine detail by script.
+The bar is the concept pictures, the palm stump cut you can see in `../palm_parts/` (the bottom left quarter of `palm_parts_base.png`), and the bar for a complete layer set is the wood plank wall in `../../../../../../../planning/art-trial/wood/` (start with `checks/layers.jpg`). Fresh, raw, hacked wood that a player knows they made. The image tool returns about 1254 pixels a side; reach 2048 by composing generated pictures in a larger master and by adding fine detail by script.
 
 ## Checks to leave in `checks/`
 

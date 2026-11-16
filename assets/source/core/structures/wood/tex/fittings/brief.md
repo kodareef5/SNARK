@@ -36,7 +36,7 @@ All 2,048 by 2,048, pixel-aligned with one another, PNG:
 
 ## The example to beat
 
-A wood wall material from an earlier test is at `/home/user/dev/SNARK/.claude/worktrees/agent-ae515c340350f410b/planning/artist-test/wood/` (look at `checks/layers.jpg`, `wood_orm.png`, `REPORT.md`). It is good: aligned, seamless, honest, and its iron nails are correctly metal in the packed map. Beat it: its iron is a few flat grey dots and its relief is shallow. Yours should hold up at four times its density.
+A wood wall material from an earlier test is at `/home/user/dev/SNARK/.claude/worktrees/agent-ae515c340350f410b/planning/art-trial/wood/` (look at `checks/layers.jpg`, `wood_orm.png`, `REPORT.md`). It is good: aligned, seamless, honest, and its iron nails are correctly metal in the packed map. Beat it: its iron is a few flat grey dots and its relief is shallow. Yours should hold up at four times its density.
 
 ## How
 

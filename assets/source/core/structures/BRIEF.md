@@ -15,7 +15,7 @@ Your worktree starts from an old commit. Run `git merge main` first (a fast-forw
 
 Read:
 - `planning/reference/round7-plan.md`: "How ARK does it", "How art is directed", "The three structure tiers", and in "Workstream F" the parts "The mesh" and "Materials and textures".
-- `planning/artist-test/README.md`, and look at the wood wall material there (`planning/artist-test/wood/`, start with `checks/layers.jpg`): it is the example to beat.
+- `planning/art-trial/README.md`, and look at the wood wall material there (`planning/art-trial/wood/`, start with `checks/layers.jpg`): it is the example to beat.
 - `content/building.ts`: every piece your tier has (ids are `core:<piece>_<tier>`), its exact size in metres as boxes, and the constants (a 3 m span, 3 m walls 0.2 m thick, the doorway and window openings). Collision is those boxes and does not change. Your meshes must fit them: a wall fills its span edge to edge so two walls meet with no gap, an opening is exactly where the boxes leave it, and nothing sticks out far enough to pass through a neighbour.
 - `assets/source/README.md` and the worked example `tools/blender/example/demo/structures/crate/` (a `pieces` asset built by a Blender script), and `tools/art/spec.ts` for the spec type.
 

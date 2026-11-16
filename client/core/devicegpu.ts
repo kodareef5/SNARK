@@ -9,7 +9,7 @@
 // timed across a readback that waits for the GPU; the fit's standard error says how noisy it was. Each question has a deadline and
 // says "did not finish" past it, and a lost context ends them, naming the one it hit.
 
-import { tierOf, type Tier } from "./assets/tiers.ts";
+import { forTouch, tierOf, type Tier } from "./assets/tiers.ts";
 import { airFrame } from "./render/atmosphere.ts";
 import { FAR_FROM } from "./render/camera.ts";
 import { fadeKeeps } from "./render/far.ts";
@@ -123,7 +123,7 @@ export function newGpuReport(): GpuReport {
  * lit program looks the sun's shadow up only when `shadowed`, in the depth passes' array, whose first cascade the frame
  * block puts the wall in. With `sea` it is drawn on the sea from 10 m up, 2 m deep, calm or with its waves' pictures.
  * With `world` LIT draws the wall's finish (world-surfaces.ts) from maps of the probe's, the wall as far off as reads
- * the finish at that spread, which says how many reads a pixel takes.
+ * the finish at that spread, which says how many reads a pixel takes; with `touch`, as the tier's touch rule has it.
  */
 export interface ScreenPass {
   name: string;
@@ -135,13 +135,15 @@ export interface ScreenPass {
   plain: boolean;
   shadowed?: boolean;
   sea?: "calm" | "waves";
+  touch?: boolean;
 }
 
 /** LIT with its shadow lookup, against LIT without it: what shadows cost a pixel. */
 export const SHADOWED_PASS: ScreenPass = { name: "lit shadowed", program: "flat", tier: "medium", wall: 12, layers: 0, plain: true, shadowed: true };
 
 /**
- * The full-screen passes. LIT plain, with the world's finish near and in its fade band with relief (5 reads a pixel each), and hazed
+ * The full-screen passes. LIT plain, with the world's finish near and in its fade band with relief (5 reads a pixel each) and
+ * the touch rule's light finish near (one read), and hazed
  * at 500 m and 3.5 km, where haze costs most (D266); the far blocks' program has its fade's discard, against LIT; SURFACE
  * in each of the four texts drawProgram chooses among and with the hurt layer; the dome is timed with the table alone and with 0, 1 and 2 cloud layers (D265); the sea calm and with its waves, against
  * LIT drawn where it is (D270).
@@ -151,6 +153,7 @@ export const SCREEN_PASSES: readonly ScreenPass[] = [
   { name: "lit", program: "flat", tier: "medium", wall: 12, layers: 0, plain: true },
   { name: "lit world near", program: "flat", tier: "medium", world: -6, layers: 0, plain: true },
   { name: "lit world fade", program: "flat", tier: "medium", world: -3.5, layers: 0, plain: true },
+  { name: "lit world light", program: "flat", tier: "medium", world: -6, layers: 0, plain: true, touch: true },
   { name: "lit haze 500 m", program: "flat", tier: "medium", wall: 500, layers: 0, plain: false },
   { name: "lit haze 3.5 km", program: "flat", tier: "medium", wall: 3500, layers: 0, plain: false },
   { name: "far", program: "far", tier: "medium", wall: 12, layers: 0, plain: true },
@@ -1100,7 +1103,7 @@ void main() {}`);
   /** A pass of SCREEN_PASSES, with every uniform its program may read set as the renderer would, and its textures bound. */
   private screenPass(spec: ScreenPass): { bind(): void; draw(): void; scale: number } {
     const gl = this.gl;
-    const tier = tierOf(spec.tier);
+    const tier = forTouch(tierOf(spec.tier), spec.touch === true);
     const [w, h] = this.report.screen;
     const vertex = spec.program === "sky" ? undefined : spec.sea ? SEA_VERTEX : spec.program.startsWith("surface") ? SURFACE_VERTEX : wallVertex(spec.world === undefined ? (spec.wall ?? 12) : worldWall(spec.world, w!, h!));
     const { prog, units } = this.linked(spec.program, tier, vertex);

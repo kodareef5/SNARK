@@ -62,4 +62,4 @@ Work only in this folder. Do not use or imitate pictures from any existing game,
 
 ## The bar
 
-Look at the concept pictures and at `../../../../../../../planning/artist-test/wood/checks/layers.jpg` (a complete, aligned layer set made for this project before). The elements should be as good as the concept's: a stranger seeing one spray at full size should take it for a photograph of a real plant, and seeing the sheet at 256 pixels should still see crisp, separate, well-shaped leaves.
+Look at the concept pictures and at `../../../../../../../planning/art-trial/wood/checks/layers.jpg` (a complete, aligned layer set made for this project before). The elements should be as good as the concept's: a stranger seeing one spray at full size should take it for a photograph of a real plant, and seeing the sheet at 256 pixels should still see crisp, separate, well-shaped leaves.

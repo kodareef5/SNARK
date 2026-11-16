@@ -36,7 +36,7 @@ Keep the generated source pictures you build from at full size in `source/`, and
 
 ## What excellent looks like
 
-The bar is the concept paintings, and for a complete layer set the wood plank wall in `../../../../../../../planning/artist-test/wood/` (start with `checks/layers.jpg`) and the palm frond sets in `../coconut_frond/` and `../royal_frond/`, which were accepted. The best broadleaf foliage you know of in any game. The image tool returns about 1254 pixels a side; reach 2048 by composing generated shoots and leaves in a larger master and adding fine detail by script.
+The bar is the concept paintings, and for a complete layer set the wood plank wall in `../../../../../../../planning/art-trial/wood/` (start with `checks/layers.jpg`) and the palm frond sets in `../coconut_frond/` and `../royal_frond/`, which were accepted. The best broadleaf foliage you know of in any game. The image tool returns about 1254 pixels a side; reach 2048 by composing generated shoots and leaves in a larger master and adding fine detail by script.
 
 ## Checks to leave in `checks/`
 

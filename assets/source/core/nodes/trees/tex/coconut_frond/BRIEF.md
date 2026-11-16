@@ -28,7 +28,7 @@ Keep the generated source pictures at full size in `source/`, and the scripts th
 
 ## What excellent looks like
 
-The bar is the concept pictures, and the bar for a complete layer set is the wood plank wall in `../../../../../../../planning/artist-test/wood/` (start with `checks/layers.jpg`). The best palm foliage in any game you know of, on one card per frond. Real detail at full size: every leaflet its own strap with a lit and a shaded half either side of its crease, a lighter vein, a tip that tapers, browns and sometimes splits; the midrib a smooth stalk with a pale stripe. Not clip art, not a comb of identical teeth: leaflets of different lengths and angles, the odd gap. The image tool returns about 1254 pixels a side; reach 2048 by composing generated fronds or leaflets on the guides in a larger master and by adding fine detail by script.
+The bar is the concept pictures, and the bar for a complete layer set is the wood plank wall in `../../../../../../../planning/art-trial/wood/` (start with `checks/layers.jpg`). The best palm foliage in any game you know of, on one card per frond. Real detail at full size: every leaflet its own strap with a lit and a shaded half either side of its crease, a lighter vein, a tip that tapers, browns and sometimes splits; the midrib a smooth stalk with a pale stripe. Not clip art, not a comb of identical teeth: leaflets of different lengths and angles, the odd gap. The image tool returns about 1254 pixels a side; reach 2048 by composing generated fronds or leaflets on the guides in a larger master and by adding fine detail by script.
 
 ## Checks to leave in `checks/`
 
