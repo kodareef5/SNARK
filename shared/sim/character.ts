@@ -184,6 +184,9 @@ export class Body {
   vehicleRotorRpm = 0;
   vehicleRotorPhase = 0;
   vehicleEngineCondition = 1;
+  /** Marine hull integrity and flooded volume, separate from propulsion health. */
+  vehicleHullCondition = 1;
+  vehicleFlooding = 0;
   vehicleRotorCondition = 1;
   vehicleEngineOn = false;
   vehicleQx = 0;
@@ -258,6 +261,8 @@ export class Body {
     this.vehicleRotorRpm = o.vehicleRotorRpm;
     this.vehicleRotorPhase = o.vehicleRotorPhase;
     this.vehicleEngineCondition = o.vehicleEngineCondition;
+    this.vehicleHullCondition = o.vehicleHullCondition;
+    this.vehicleFlooding = o.vehicleFlooding;
     this.vehicleRotorCondition = o.vehicleRotorCondition;
     this.vehicleEngineOn = o.vehicleEngineOn;
     this.vehicleQx = o.vehicleQx;
@@ -319,6 +324,8 @@ export class Body {
       this.vehicleRotorRpm === o.vehicleRotorRpm &&
       this.vehicleRotorPhase === o.vehicleRotorPhase &&
       this.vehicleEngineCondition === o.vehicleEngineCondition &&
+      this.vehicleHullCondition === o.vehicleHullCondition &&
+      this.vehicleFlooding === o.vehicleFlooding &&
       this.vehicleRotorCondition === o.vehicleRotorCondition &&
       this.vehicleEngineOn === o.vehicleEngineOn &&
       this.vehicleQx === o.vehicleQx &&
