@@ -141,7 +141,7 @@ export interface ScreenPass {
 export const SHADOWED_PASS: ScreenPass = { name: "lit shadowed", program: "flat", tier: "medium", wall: 12, layers: 0, plain: true, shadowed: true };
 
 /**
- * The full-screen passes. LIT plain, with the world's finish near (9 reads a pixel) and in its fade band (18), and hazed
+ * The full-screen passes. LIT plain, with the world's finish near and in its fade band with relief (5 reads a pixel each), and hazed
  * at 500 m and 3.5 km, where haze costs most (D266); the far blocks' program has its fade's discard, against LIT; SURFACE
  * in each of the four texts drawProgram chooses among and with the hurt layer; the dome is timed with the table alone and with 0, 1 and 2 cloud layers (D265); the sea calm and with its waves, against
  * LIT drawn where it is (D270).

@@ -9,6 +9,9 @@ import { PROGRAMS, UNIT, drawProgram, tierPrograms } from "../../client/core/ren
 import type { PackMaterial } from "../../shared/pack/pack.ts";
 import { TEXTURE_FORMATS } from "../../shared/pack/texture.ts";
 
+/** A program's name, from its number. */
+const named = (n: number): string => Object.keys(PROGRAMS)[n]!;
+
 test("low poly's programs are the pinned flat texts, and every sampler a program declares reads a unit of its own", () => {
   const low = TIERS[0]!;
   expect(["flat", "terrain"].map((name) => PROGRAMS[name]!(low, "rgba")).map((p) => [p.vertex, p.fragment, p.defines])).toEqual([
@@ -78,10 +81,10 @@ test("a textured draw is drawn undyed where its material has no masks, and by a 
     drawProgram(p, draw(DRAW_TEXTURED | DRAW_BLEND), one),
     drawProgram(p, draw(DRAW_TEXTURED, HAND_NEAR), second),
     drawProgram(p, draw(DRAW_TEXTURED, 0, 5), none),
-  ]).toEqual(["surfaceUndyedWhole", "surfaceUndyed", "surfaceUndyed", "surfaceWhole", "surface", "surfaceLayer"]);
-  expect([draw(DRAW_PULLED, 0, 0, 900), draw(0, 0, 0, 900), draw(0, HAND_NEAR), draw(DRAW_WATER | DRAW_BLEND), draw(DRAW_BLEND), draw(0)].map((d) => drawProgram(p, d, undefined))).toEqual(["pulled", "far", "far", "water", "seeThrough", "flat"]);
+  ].map(named)).toEqual(["surfaceUndyedWhole", "surfaceUndyed", "surfaceUndyed", "surfaceWhole", "surface", "surfaceLayer"]);
+  expect([draw(DRAW_PULLED, 0, 0, 900), draw(0, 0, 0, 900), draw(0, HAND_NEAR), draw(DRAW_WATER | DRAW_BLEND), draw(DRAW_BLEND), draw(0)].map((d) => named(drawProgram(p, d, undefined)))).toEqual(["pulled", "far", "far", "water", "seeThrough", "flat"]);
   p.split = 0;
-  expect(drawProgram(p, draw(DRAW_BLEND), undefined)).toBe("flat");
+  expect(named(drawProgram(p, draw(DRAW_BLEND), undefined))).toBe("flat");
 
   // Undyed, a vertex writes neither dye nor the hand-over's distance where it drops nothing: 35 floats become 16.
   const tier = TIERS[2]!;
@@ -95,7 +98,7 @@ test("a tier's programs are every one its frames may draw with, each once, the s
   for (const base of TIERS) {
     for (const touch of [false, true]) {
       const tier = forTouch(base, touch);
-      const names = tierPrograms(tier);
+      const names = tierPrograms(tier).map(named);
       expect(new Set(names).size).toBe(names.length);
       if (!tier.lit) expect(names).toEqual(["flat", "terrain", "terrainWindow", "far", "pulled", "details"]);
       else expect(names).toEqual(Object.keys(PROGRAMS));

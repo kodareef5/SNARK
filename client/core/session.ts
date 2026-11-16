@@ -107,6 +107,7 @@ import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
 import { CMD_FAR, CMD_STATICS, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import type { FarSource } from "./render/far.ts";
+import type { CityMaker } from "./render/citymake.ts";
 import type { CitySource } from "./render/farcity.ts";
 import { CityStatics } from "../../shared/world/city.ts";
 import { NodeChanges, type FarNodeSource } from "./render/farnodes.ts";
@@ -131,8 +132,12 @@ export interface SessionOptions {
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
   /** The map's resource nodes, from the same pure function the server uses. */
   nodes?(hf: Heightfield, registry: Registry): NodeSource | null;
-  /** The map's static pieces by chunk, which the far city draws past the near rows (render/farcity.ts). Without it the far city is made of the statics staticsArrived gives. */
+  /**
+   * The map's static pieces by chunk, which the far city draws past the near rows (render/farcity.ts); without it the far
+   * city is made of the statics staticsArrived gives. And where its levels are made, here if not given.
+   */
   city?(registry: Registry): CityStatics | null;
+  cityMaker?: CityMaker;
   /** The statics of the map file resolveMap accepts. With them the server sends a chunk's only where they differ (HELLO_STATICS). */
   statics?: MapStatics;
 }
@@ -1365,7 +1370,7 @@ export class ClientSession {
     const world = this.world;
     if (!world || world.city) return;
     const city = this.opts.city?.(this.registry) ?? (statics ? new CityStatics(world.dims, statics, this.registry) : null);
-    if (city && city.count > 0) world.city = { statics: city, complete: world.far.complete };
+    if (city && city.count > 0) world.city = { statics: city, complete: world.far.complete, maker: this.opts.cityMaker };
   }
 
   private snapshot(r: BitReader): void {

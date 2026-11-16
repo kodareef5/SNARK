@@ -138,7 +138,7 @@ export class Death {
     if (inv && inv.used() === 1) for (let s = 0; s < inv.cap && item === 0; s++) item = inv.item[s]!;
     const ents = this.ctx.world.ents;
     // A bag that never showed a stack has no gear to send.
-    if (item === 0 && !ents.gear[e]) return;
+    if (item === 0 && !ents.gears.has(e)) return;
     this.gear[GEAR_HELD] = item;
     ents.setGear(e, this.gear);
   }
@@ -571,11 +571,11 @@ export class Death {
           const r = reg.bodyRadius[ents.kind[i]!]! * size;
           // A creature's body is met where it lies, as a blow meets it.
           const body = this.corpses?.at(i);
-          const car = reg.vehicle[ents.kind[i]!];
+          const car = reg.vehicle[ents.kind[i]!], v = ents.vrow[i]!;
           // A vehicle is looked at by its hull, nose to tail and up to its roof.
-          const t = car && !body ? rayVehicle(car, ents.x[i]!, ents.y[i]!, ents.z[i]!, ents.vehicleYaw[i]!, ox, oy, oz, d[0]!, d[1]!, d[2]!, car.spec.height, {
-            pitch: ents.vehiclePitch[i]!, roll: ents.vehicleRoll[i]!, steering: ents.steering[i]!,
-            ...(car.movement === "boat" || car.movement === "rotor" ? { qx: ents.vehicleQx[i]!, qy: ents.vehicleQy[i]!, qz: ents.vehicleQz[i]!, qw: ents.vehicleQw[i]! } : {}),
+          const t = car && !body ? rayVehicle(car, ents.x[i]!, ents.y[i]!, ents.z[i]!, ents.vehicleYaw[v]!, ox, oy, oz, d[0]!, d[1]!, d[2]!, car.spec.height, {
+            pitch: ents.vehiclePitch[v]!, roll: ents.vehicleRoll[v]!, steering: ents.steering[v]!,
+            ...(car.movement === "boat" || car.movement === "rotor" ? { qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]! } : {}),
           }) : body ? this.corpses!.hit(i, ox, oy, oz, d[0]!, d[1]!, d[2]!, best) : rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, ents.x[i]! - r, ents.y[i]!, ents.z[i]! - r, ents.x[i]! + r, ents.y[i]! + reg.bodyHeight[ents.kind[i]!]! * size, ents.z[i]! + r);
           if (t < best) {
             best = t;

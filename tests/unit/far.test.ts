@@ -14,8 +14,8 @@ import { corePack } from "../fixtures/pack.ts";
 /** The middle of the map the castles stand on, 24 chunks a side. */
 const MID = 12 * CHUNK_SIZE + 32;
 const sum = (a: Uint8Array): number => a.reduce((n, v) => n + v, 0);
-/** The far draws of a frame, and the draws of the near store's chunk `chunk`. */
-const farDraws = (p: FramePacket): number => p.drawFade.subarray(0, p.drawCount).filter((f) => f > 0).length;
+/** The far blocks' draws of a frame, and the draws of the near store's chunk `chunk`. */
+const farDraws = (p: FramePacket): number => p.drawBuffer.subarray(0, p.drawCount).filter((b) => b === FAR_BUFFER).length;
 const nearDraws = (p: FramePacket, chunk: number): number => p.drawBuffer.subarray(0, p.drawCount).filter((b) => b === chunk).length;
 
 /** Every vertex of a far tile uploaded and drawn in `p`, in the world: x, y, z. */

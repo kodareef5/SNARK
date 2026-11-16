@@ -96,6 +96,14 @@ export class Heightfield {
     return b === 0 ? this.seaLevel : w.surface[b]!;
   }
 
+  /** The samples from (i0, j0) to (i1, j1), both included, row by row. */
+  window(i0: number, j0: number, i1: number, j1: number): Uint16Array {
+    const w = i1 - i0 + 1;
+    const out = new Uint16Array(w * (j1 - j0 + 1));
+    for (let j = j0; j <= j1; j++) out.set(this.heights.subarray(j * this.nx + i0, j * this.nx + i0 + w), (j - j0) * w);
+    return out;
+  }
+
   /** Cosine of the slope angle. 1 is flat, 0 is vertical. */
   slopeCosAt(x: number, z: number): number {
     const nx = this.nx;
@@ -128,5 +136,57 @@ export class Heightfield {
     dx *= s;
     dz *= s;
     return 1 / Math.sqrt(1 + dx * dx + dz * dz);
+  }
+}
+
+/** The ground's shape as Heightfield gives it: its scale, and samples from `window` with where they start in it. */
+export interface HeightPart {
+  readonly cell: number;
+  readonly nx: number;
+  readonly nz: number;
+  readonly minY: number;
+  readonly stepY: number;
+  readonly i0: number;
+  readonly j0: number;
+  /** Samples a row. */
+  readonly w: number;
+  readonly heights: Uint16Array;
+}
+
+/** Heightfield.heightAt over a part of its samples, to the bit: for a worker sent only those. */
+export class HeightWindow {
+  private readonly part: HeightPart;
+
+  constructor(part: HeightPart) {
+    this.part = part;
+  }
+
+  heightAt(x: number, z: number): number {
+    const { cell, nx, nz, minY, stepY, i0, j0, w, heights: hts } = this.part;
+    let fx = x / cell;
+    let fz = z / cell;
+    if (fx < 0) fx = 0;
+    else if (fx > nx - 1) fx = nx - 1;
+    if (fz < 0) fz = 0;
+    else if (fz > nz - 1) fz = nz - 1;
+    let i = Math.floor(fx);
+    let j = Math.floor(fz);
+    if (i > nx - 2) i = nx - 2;
+    if (j > nz - 2) j = nz - 2;
+    const u = fx - i;
+    const v = fz - j;
+    if (i < i0 || j < j0 || i + 1 >= i0 + w || j + 1 >= j0 + hts.length / w) throw new Error(`the ground at ${x}, ${z} is outside the part sent`);
+    const k = (j - j0) * w + i - i0;
+    const h00 = hts[k]!;
+    const h11 = hts[k + w + 1]!;
+    let q: number;
+    if (u >= v) {
+      const h10 = hts[k + 1]!;
+      q = h00 + (h10 - h00) * u + (h11 - h10) * v;
+    } else {
+      const h01 = hts[k + w]!;
+      q = h00 + (h11 - h01) * u + (h01 - h00) * v;
+    }
+    return minY + q * stepY;
   }
 }

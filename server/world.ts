@@ -67,7 +67,7 @@ export interface WorldOptions {
 /** `entityMax` is the most entities the world may hold. Its store starts at `entityStart`, or at the limit if that is less. */
 export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId: string, mapHash: number, spawn: ServerWorld["spawn"], entityMax: number, spawns?: ServerWorld["spawns"], nodeSource?: NodeSource, zones: ServerWorld["zones"] = [], entityStart = ENTITY_START): ServerWorld {
   const nodeField = nodeSource ? new NodeField(dims, reg, nodeSource) : null;
-  const ents = new EntityStore(dims, Math.min(entityStart, entityMax), entityMax);
+  const ents = new EntityStore(dims, Math.min(entityStart, entityMax), entityMax, reg.vehicle);
   return {
     reg,
     clock: { cycle: 1, day: 1, night: 1 },

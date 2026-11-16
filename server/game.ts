@@ -1257,18 +1257,18 @@ export class GameServer {
     for (let k = 0; k < n; k++) {
       const i = Math.floor(ids[k]! / MAX_VIEW);
       rank[k] = ids[k]! % MAX_VIEW;
-      const vehicle = this.world.reg.vehicle[ents.kind[i]!], rotor = vehicle?.movement === "rotor", boat = vehicle?.movement === "boat";
+      const vehicle = this.world.reg.vehicle[ents.kind[i]!], rotor = vehicle?.movement === "rotor", boat = vehicle?.movement === "boat", v = ents.vrow[i]!;
       cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6,
         (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!, ents.rev[i]!, ents.cue[i]!,
-        vehicle ? packVehiclePose(ents.vehiclePitch[i]!, ents.vehicleRoll[i]!, ents.steering[i]!) : 0,
-        vehicle ? quantVehicleWheel(ents.wheelAngle[i]!) : 0,
-        vehicle ? packVehicleRide(ents.vehicleGroundPitch[i]!, ents.vehicleGroundRoll[i]!, ents.vehicleRideOffset[i]!, (ents.flags[i]! & F_GROUNDED) !== 0) : 0,
-        ents.vehicleDoors[i]!, vehicle && !rotor ? packVehicleDrive(ents.vehicleGear[i]!, ents.vehicleRpm[i]!, vehicle.movement === "boat" ? ents.vehicleShiftTime[i]! > 0 : drivetrainShifting(ents.vehicleShiftTime[i]!, vehicle.spec.drivetrain)) : 0,
-        rotor ? packVehicleRotor(ents.vehicleRotorRpm[i]!, ents.vehicleRotorPhase[i]!) : 0,
-        vehicle ? packVehicleSystems(ents.fuel[i]!, vehicle.spec.fuelCapacity, ents.vehicleEngineCondition[i]!, ents.vehicleRotorCondition[i]!, ents.vehicleEngineOn[i] !== 0) : 0,
-        rotor || boat ? packVehicleQuaternionPair(ents.vehicleQx[i]!, ents.vehicleQy[i]!) : 0,
-        rotor || boat ? packVehicleQuaternionPair(ents.vehicleQz[i]!, ents.vehicleQw[i]!) : 0,
-        boat ? packBoatWater(ents.vehicleHullCondition[i]!, ents.vehicleFlooding[i]!) : 0);
+        vehicle ? packVehiclePose(ents.vehiclePitch[v]!, ents.vehicleRoll[v]!, ents.steering[v]!) : 0,
+        vehicle ? quantVehicleWheel(ents.wheelAngle[v]!) : 0,
+        vehicle ? packVehicleRide(ents.vehicleGroundPitch[v]!, ents.vehicleGroundRoll[v]!, ents.vehicleRideOffset[v]!, (ents.flags[i]! & F_GROUNDED) !== 0) : 0,
+        ents.vehicleDoors[v]!, vehicle && !rotor ? packVehicleDrive(ents.vehicleGear[v]!, ents.vehicleRpm[v]!, vehicle.movement === "boat" ? ents.vehicleShiftTime[v]! > 0 : drivetrainShifting(ents.vehicleShiftTime[v]!, vehicle.spec.drivetrain)) : 0,
+        rotor ? packVehicleRotor(ents.vehicleRotorRpm[v]!, ents.vehicleRotorPhase[v]!) : 0,
+        vehicle ? packVehicleSystems(ents.fuel[v]!, vehicle.spec.fuelCapacity, ents.vehicleEngineCondition[v]!, ents.vehicleRotorCondition[v]!, ents.vehicleEngineOn[v] !== 0) : 0,
+        rotor || boat ? packVehicleQuaternionPair(ents.vehicleQx[v]!, ents.vehicleQy[v]!) : 0,
+        rotor || boat ? packVehicleQuaternionPair(ents.vehicleQz[v]!, ents.vehicleQw[v]!) : 0,
+        boat ? packBoatWater(ents.vehicleHullCondition[v]!, ents.vehicleFlooding[v]!) : 0);
       cur.urgent[k] = (ents.flags[i]! & F_PLAYER) !== 0 || ents.driven[i] !== 0 ? 1 : 0;
     }
     this.aroundTick[chunk] = T;

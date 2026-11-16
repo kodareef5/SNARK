@@ -218,11 +218,12 @@ export class Corpses {
     const out = rec.out || (ents.mflags[e]! & MF_OUT) !== 0 || (ents.cue[e]! & CUE_OUT) !== 0;
     const b = this.make(body, rec.kind, max, max, young, size, out, !out && ents.mode[e] === MODE_FLYER, life);
     if (b.wreck) {
-      Object.assign(b.wreck, { qx: ents.vehicleQx[e]!, qy: ents.vehicleQy[e]!, qz: ents.vehicleQz[e]!, qw: ents.vehicleQw[e]!,
+      const v = ents.vrow[e]!;
+      Object.assign(b.wreck, { qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!,
         vx: ents.vx[e]!, vy: ents.vy[e]!, vz: ents.vz[e]!,
-        pitchRate: ents.vehiclePitchRate[e]!, yawRate: ents.vehicleYawRate[e]!, rollRate: ents.vehicleRollRate[e]! });
+        pitchRate: ents.vehiclePitchRate[v]!, yawRate: ents.vehicleYawRate[v]!, rollRate: ents.vehicleRollRate[v]! });
       if ("flooding" in b.wreck) {
-        b.wreck.flooding = ents.vehicleFlooding[e]!; b.wreck.steering = ents.steering[e]!;
+        b.wreck.flooding = ents.vehicleFlooding[v]!; b.wreck.steering = ents.steering[v]!;
         b.wreck.payloadMass = body.inv ? items.inv(body).weight(items.table) : 0;
       }
     }
@@ -438,12 +439,12 @@ export class Corpses {
 
   private wreckPose(b: Body): void {
     if (!b.wreck || b.e < 0) return;
-    const s = b.wreck, ents = this.ctx.world.ents, e = b.e;
-    ents.vehicleQx[e] = s.qx; ents.vehicleQy[e] = s.qy; ents.vehicleQz[e] = s.qz; ents.vehicleQw[e] = s.qw;
-    ents.steering[e] = s.steering;
-    ents.vehicleRotorRpm[e] = ents.vehicleEngineOn[e] = ents.vehicleRpm[e] = ents.vehicleCollective[e] = 0;
-    ents.vehicleEngineCondition[e] = ents.vehicleRotorCondition[e] = 0;
-    if ("flooding" in s) { ents.vehicleHullCondition[e] = 0; ents.vehicleFlooding[e] = s.flooding; }
+    const s = b.wreck, ents = this.ctx.world.ents, v = ents.vrow[b.e]!;
+    ents.vehicleQx[v] = s.qx; ents.vehicleQy[v] = s.qy; ents.vehicleQz[v] = s.qz; ents.vehicleQw[v] = s.qw;
+    ents.steering[v] = s.steering;
+    ents.vehicleRotorRpm[v] = ents.vehicleEngineOn[v] = ents.vehicleRpm[v] = ents.vehicleCollective[v] = 0;
+    ents.vehicleEngineCondition[v] = ents.vehicleRotorCondition[v] = 0;
+    if ("flooding" in s) { ents.vehicleHullCondition[v] = 0; ents.vehicleFlooding[v] = s.flooding; }
   }
 
   private wake(b: Body): void {

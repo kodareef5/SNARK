@@ -424,11 +424,12 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     world.ents.yaw[e] = rec.yaw;
     // Registered once turned, so the parked state it saves at once has its yaw.
     urban.register(e);
-    world.ents.vehicleYaw[e] = Math.fround(yaw);
-    world.ents.vehicleQy[e] = Math.fround(Math.sin(yaw / 2)); world.ents.vehicleQw[e] = Math.fround(Math.cos(yaw / 2));
-    world.ents.fuel[e] = Math.fround((start.fuel ?? 1) * def.spec.fuelCapacity);
-    world.ents.vehicleEngineCondition[e] = start.engine ?? 1; world.ents.vehicleRotorCondition[e] = start.rotor ?? 1;
-    world.ents.vehicleHullCondition[e] = Math.max(.01, start.hull ?? 1); world.ents.vehicleFlooding[e] = 0;
+    const ents = world.ents, v = ents.vrow[e]!;
+    ents.vehicleYaw[v] = Math.fround(yaw);
+    ents.vehicleQy[v] = Math.fround(Math.sin(yaw / 2)); ents.vehicleQw[v] = Math.fround(Math.cos(yaw / 2));
+    ents.fuel[v] = Math.fround((start.fuel ?? 1) * def.spec.fuelCapacity);
+    ents.vehicleEngineCondition[v] = start.engine ?? 1; ents.vehicleRotorCondition[v] = start.rotor ?? 1;
+    ents.vehicleHullCondition[v] = Math.max(.01, start.hull ?? 1); ents.vehicleFlooding[v] = 0;
     if (start.origin) rec.extra.set(VEHICLE_ORIGIN, new TextEncoder().encode(start.origin));
     if (persistence) persistence.attach(rec, e);
     records.dirty.add(rec.pid);
@@ -1124,7 +1125,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     for (const rider of riding.riders(e)) if (rider.inv) carried += items.inv(rider).weight(items.table);
     const arms = carry.heldBy(rec.pid);
     const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + carried * reg.riderWeight[rec.kind]! + (arms >= 0 ? carry.load(rec) : 0);
-    if (reg.vehicle[rec.kind]) world.ents.vehiclePayloadMass[e] = Math.fround(urban.payloadMass(e));
+    if (reg.vehicle[rec.kind]) world.ents.vehiclePayloadMass[world.ents.vrow[e]!] = Math.fround(urban.payloadMass(e));
     // A creature in someone's arms weighs on them.
     const carrier = carry.carrierOf(e);
     if (carrier && carrier !== rec) refreshBody(carrier);
@@ -1148,7 +1149,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
       }
       const slot = rec.held >= 0 && inv.item[inv.hotbar + rec.held] !== 0 ? inv.hotbar + rec.held : -1;
       const item = slot >= 0 ? inv.item[slot]! : 0;
-      const was = ents.gear[e]?.[GEAR_HELD] ?? 0;
+      const was = ents.gears.get(e)?.[GEAR_HELD] ?? 0;
       gear[GEAR_HELD] = item;
       for (let k = 0; k < ARMOR_SLOTS; k++) gear[GEAR_WORN + k] = inv.item[inv.armor + k]!;
       ents.setGear(e, gear);
@@ -1174,7 +1175,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
         if (session) session.did = 0;
       }
       inHand.set(rec.pid, slot);
-    } else if (rec.saddle !== 0 || world.ents.gear[e]) {
+    } else if (rec.saddle !== 0 || world.ents.gears.has(e)) {
       // A creature's gear names the saddle it wears, which every client draws on it (D491).
       gear.fill(0);
       gear[GEAR_WORN] = rec.saddle;

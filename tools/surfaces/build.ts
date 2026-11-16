@@ -1,5 +1,5 @@
 // Deterministic processing of the accepted photographic studies. Encoded variants stay in the build cache.
-// bun tools/surfaces/build.ts writes the three maps and per-cell means under var/surfaces/art.
+// bun tools/surfaces/build.ts writes the three maps under var/surfaces/art.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -11,18 +11,6 @@ import type { SourceMesh } from "../pack/write.ts";
 const ROOT = resolve(import.meta.dir, "../..");
 export const SURFACE_ART = resolve(ROOT, "var/surfaces/art");
 export const SURFACE_TOP = 2048;
-/** Keep each distant cell in its own compression block: a 4x4 atlas would put sixteen finishes in ONE block. */
-export function surfaceMips(mips: Uint8Array[]): Uint8Array[] {
-  const means = mips[2]!; // The ordinary 4x4 mip contains the sixteen linear-light cell means.
-  for (const level of [3, 4]) {
-    const side = 1 << level, cell = side / 4, mip = mips[level]!;
-    for (let y = 0; y < side; y++) for (let x = 0; x < side; x++) {
-      const from = (Math.floor(y / cell) * 4 + Math.floor(x / cell)) * 4;
-      mip.set(means.subarray(from, from + 4), (y * side + x) * 4);
-    }
-  }
-  return mips;
-}
 export function worldMaterial(): Material {
   buildSurfaceArt();
   return { name: "atlas", id: SURFACE_MATERIAL, dir: SURFACE_ART, spec: { base: "base.png", normal: "normal.png", packed: "orm.png", tiles: 3 } };
@@ -40,7 +28,6 @@ export function buildSurfaceArt(): void {
   const pictures = sources.map(readPicture);
   const side = SURFACE_TOP, cell = side / 4, pad = 16, core = cell - pad * 2;
   const base = new Uint8Array(side * side * 4), normal = new Uint8Array(base.length), orm = new Uint8Array(base.length);
-  const means: number[][] = [];
   const byte = (x: number): number => Math.max(0, Math.min(255, Math.round(x)));
   for (let tile = 0; tile < 16; tile++) {
     const tx = tile % 4, ty = tile >> 2;
@@ -71,11 +58,10 @@ export function buildSurfaceArt(): void {
       const a = (wrap(y) * core + wrap(x)) * 3;
       return (periodic[a]! * 0.25 + periodic[a + 1]! * 0.6 + periodic[a + 2]! * 0.15) / 255;
     };
-    const mean = [0, 0, 0];
     for (let y = 0; y < cell; y++) for (let x = 0; x < cell; x++) {
       const u = wrap(x - pad), v = wrap(y - pad), from = (v * core + u) * 3;
       const to = ((ty * cell + y) * side + tx * cell + x) * 4;
-      for (let c = 0; c < 3; c++) { base[to + c] = byte(periodic[from + c]!); mean[c]! += base[to + c]! / (cell * cell); }
+      for (let c = 0; c < 3; c++) base[to + c] = byte(periodic[from + c]!);
       base[to + 3] = 255;
       // Shape is inferred from local luminance, not assumed to be scanned geometry; low strength avoids baked-light relief.
       const dx = (height(u - 2, v) - height(u + 2, v)) * 1.8;
@@ -85,10 +71,8 @@ export function buildSurfaceArt(): void {
       const h = height(u, v);
       orm[to] = byte(225 + 30 * h); orm[to + 1] = byte(220 + 30 * h); orm[to + 2] = 0; orm[to + 3] = 255;
     }
-    means.push(mean);
   }
   for (const [name, data] of [["base", base], ["normal", normal], ["orm", orm]] as const) writeFileSync(resolve(SURFACE_ART, `${name}.png`), encodePng({ width: side, height: side, channels: 4, depth: 8, data }));
-  writeFileSync(resolve(SURFACE_ART, "means.json"), JSON.stringify(means, null, 2) + "\n");
   writeFileSync(stamp, key);
 }
 

@@ -174,7 +174,7 @@ test("a new name arrives in the creator with no body; it makes a look, and the s
   expect(e).toBeGreaterThanOrEqual(0);
   const rec = h.host.records.byPid.get(h.world.ents.pid[e]!)!;
   expect([...rec.look!]).toEqual([...made]);
-  expect([...h.world.ents.look[e]!]).toEqual([...made]);
+  expect([...h.world.ents.looks.get(e)!]).toEqual([...made]);
   expect([...session.ownLook!]).toEqual([...made]);
   expect(f.find(KEY_CREATOR_PANEL)).toBeNull();
   expect(f.find(KEY_CROSS)).not.toBeNull();
@@ -260,14 +260,14 @@ test("only a session in the creator can create, only once, and only with a look 
   const seq = bo.create(randomLook(new Rng(8)));
   h.run(200);
   expect(results.get(seq + 1000)).toBe(RESULT_DENIED);
-  expect([...h.world.ents.look[h.ent(bo)]!]).toEqual([...defaultLook()]);
+  expect([...h.world.ents.looks.get(h.ent(bo))!]).toEqual([...defaultLook()]);
   const good = randomLook(new Rng(9));
   const ok = ada.create(good);
   const twice = ada.create(defaultLook());
   h.run(300);
   expect(results.get(ok)).toBe(0);
   expect(results.get(twice)).toBe(RESULT_DENIED);
-  expect([...h.world.ents.look[h.ent(ada)]!]).toEqual([...good]);
+  expect([...h.world.ents.looks.get(h.ent(ada))!]).toEqual([...good]);
   expect(h.world.ents.count).toBe(2);
 
   // A hello with an invalid look is refused before anything is made.

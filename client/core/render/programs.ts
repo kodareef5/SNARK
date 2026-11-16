@@ -57,17 +57,14 @@ function surface(tier: Tier, format: TextureFormat, hard: boolean, variant: Surf
   return { vertex: surfaceVertex(variant), fragment: surfaceFragment(format, AIR, variant), defines: shadowDefines(tier.shadows, hard), samplers };
 }
 
-/**
- * The programs by name. A lit tier draws flat with LIT where low poly has FLAT, and draws the dome, "sky", where low
- * poly clears to its sky colour. Low poly never draws with materials, so the surface programs are lit alone, nor
- * see-through with a split (`tierPrograms`). The depth programs draw the sun's shadow maps.
- */
-export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureFormat, hard?: boolean) => ProgramText>> = {
+type Make = (tier: Tier, format: TextureFormat, hard?: boolean) => ProgramText;
+
+const MAKE = {
   flat: (tier, format, hard = false) => flatOr(tier, format, hard, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_FRAGMENT, MESH),
   terrain: (tier, format, hard = false) => flatOr(tier, format, hard, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_FRAGMENT, GROUND),
   // The same, for the tiles that read the window round the camera (terrain.ts).
-  terrainWindow: (tier, format, hard) => {
-    const t = PROGRAMS.terrain!(tier, format, hard);
+  terrainWindow: (tier, format, hard): ProgramText => {
+    const t = MAKE.terrain(tier, format, hard);
     return { ...t, samplers: { ...t.samplers, ...WINDOW } };
   },
   // See-through flat draws where the view is split in two depth ranges. A program of their own keeps the discard out of
@@ -105,34 +102,43 @@ export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureForma
   depthCutout: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_CUTOUT_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones, uBase: UNIT.maps } }),
   depthTerrain: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: GROUND }),
   depthTerrainWindow: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: { ...GROUND, ...WINDOW } }),
-};
+} satisfies Record<string, Make>;
+
+/**
+ * The programs by name. A lit tier draws flat with LIT where low poly has FLAT, and draws the dome, "sky", where low
+ * poly clears to its sky colour. Low poly never draws with materials, so the surface programs are lit alone, nor
+ * see-through with a split (`tierPrograms`). The depth programs draw the sun's shadow maps.
+ */
+export const PROGRAMS: Readonly<Record<string, Make>> = MAKE;
+/** Each program's number, its place in PROGRAMS: how a frame's draws name the one they are drawn with, and how a shell keeps them. */
+export const PROGRAM = Object.fromEntries(Object.keys(MAKE).map((name, n) => [name, n])) as Readonly<Record<keyof typeof MAKE, number>>;
 
 /** The programs low poly draws with: no materials, dome, sea or shadows. */
 const UNLIT = ["flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "details"];
 
-/** The programs a frame of `tier` may ask for, which a shell may begin making before one does. */
-export function tierPrograms(tier: Tier): string[] {
-  return Object.keys(PROGRAMS).filter((name) => (tier.lit || UNLIT.includes(name)) && (name !== "seeThrough" || tier.split > 0) && (!name.startsWith("depth") || tier.shadows.size > 0));
+/** The programs a frame of `tier` may ask for, by number, which a shell may begin making before one does. */
+export function tierPrograms(tier: Tier): number[] {
+  return Object.keys(MAKE).flatMap((name, n) => ((tier.lit || UNLIT.includes(name)) && (name !== "seeThrough" || tier.split > 0) && (!name.startsWith("depth") || tier.shadows.size > 0) ? [n] : []));
 }
 
 /** The SURFACE programs by whether a draw is dyed, twice, and may drop fragments, once. */
-const SURFACES = ["surfaceUndyedWhole", "surfaceUndyed", "surfaceWhole", "surface"] as const;
+const SURFACES = [PROGRAM.surfaceUndyedWhole, PROGRAM.surfaceUndyed, PROGRAM.surfaceWhole, PROGRAM.surface] as const;
 
 /**
  * The program draw `d` of a frame is drawn with, `material` its material where it has one. A textured draw is drawn
  * undyed where its material has no masks, and by a program that never drops a fragment unless it is cut out or in a
  * node's hand-over; a body with its layer by `surfaceLayer`.
  */
-export function drawProgram(p: FramePacket, d: number, material: PackMaterial | undefined): string {
+export function drawProgram(p: FramePacket, d: number, material: PackMaterial | undefined): number {
   const flags = p.drawFlags[d]!;
   const hand = p.drawHand[d]!;
   if ((flags & DRAW_TEXTURED) !== 0) {
-    if (p.drawLayer[d]! > 0) return "surfaceLayer";
+    if (p.drawLayer[d]! > 0) return PROGRAM.surfaceLayer;
     const dyed = !material || material.mask >= 0 || material.mask2 >= 0;
     return SURFACES[(dyed ? 2 : 0) + (hand !== 0 || (flags & DRAW_CUTOUT) !== 0 ? 1 : 0)]!;
   }
-  if ((flags & DRAW_PULLED) !== 0) return "pulled";
-  if (p.drawFade[d] !== 0 || hand !== 0) return "far";
-  if ((flags & DRAW_WATER) !== 0) return "water";
-  return (flags & DRAW_BLEND) !== 0 && p.split > 0 ? "seeThrough" : "flat";
+  if ((flags & DRAW_PULLED) !== 0) return PROGRAM.pulled;
+  if (p.drawFade[d] !== 0 || hand !== 0) return PROGRAM.far;
+  if ((flags & DRAW_WATER) !== 0) return PROGRAM.water;
+  return (flags & DRAW_BLEND) !== 0 && p.split > 0 ? PROGRAM.seeThrough : PROGRAM.flat;
 }
