@@ -1,5 +1,5 @@
 // Where a frame's GPU time goes. Where the browser has timer queries (EXT_disjoint_timer_query_webgl2) the clock times
-// the whole frame, which the governor reads, or each pass the shell marks (client/shell/gl.ts), which `?bench=1&passes=1`
+// the whole frame, which `?bench=1` reports, or each pass the shell marks (client/shell/gl.ts), which `?bench=1&passes=1`
 // reports; `?off=` turns effects off for a before and after in a real scene. On an Apple GPU through ANGLE a query
 // between passes ends Metal's render pass, which a frame does not otherwise do, so what an effect costs is read off the
 // whole frame.

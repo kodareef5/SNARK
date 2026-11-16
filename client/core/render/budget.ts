@@ -18,7 +18,7 @@ import type { Tier } from "../assets/tiers.ts";
  * is what a player aims at, what a fight shows says who is hit, walls, trunks, stones and bushes are cover, and the
  * ground is what everything stands on. Far trees and the far city are below crowns near but do not give to the squeeze:
  * a reach that grows makes every far tile again, which no frame can do at no cost. Far trees give by the governor's
- * second step, which takes their reach in; the far city keeps its levels, as changing them lets go of every tile made
+ * far trees' step, which takes their reach in; the far city keeps its levels, as changing them lets go of every tile made
  * (farcity.ts). Ambient details come last, and take what the frame leaves.
  */
 export const ORDER = ["own", "bodies", "fight", "built", "ground", "cover", "crowns", "far", "ambient"] as const;

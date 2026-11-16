@@ -70,7 +70,7 @@ export interface Tier {
    * held 60 a second at 2.1 M triangles and the elder oaks took 6.5 ms more for each million past it.
    */
   readonly budget: { readonly triangles: number; readonly draws: number };
-  /** How many times the tier's threshold a body's level may err by: 1, and more at the governor's last step. */
+  /** How many times the tier's threshold a body's level may err by: 1, and more at the governor's bodies step. */
   readonly bodyError: number;
   /** Cloud layers over the dome. */
   readonly clouds: number;

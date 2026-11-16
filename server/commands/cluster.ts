@@ -10,6 +10,7 @@ export function addClusterCommands(con: Console): void {
     {
       name: "travel",
       usage: "[server]",
+      examples: ["travel"],
       help: "List the other servers of the cluster, or send your survivor to one with what it carries, as its terminal would.",
       admin: true,
       run(ctx, args) {
@@ -34,6 +35,7 @@ export function addClusterCommands(con: Console): void {
     {
       name: "cluster",
       usage: "[audit]",
+      examples: ["cluster audit"],
       help: "Show this server's cluster and what has left it, or with audit, whether every item of the cluster is accounted for.",
       admin: true,
       run(ctx, args) {

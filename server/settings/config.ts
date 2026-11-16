@@ -24,8 +24,8 @@ const SECTIONS: Record<string, Place> = {
 };
 /** Sections that ARK's files hold and the server does not read. They are skipped without a report. */
 const NOT_OURS = new Set(["/script/shootergame.shootergameusersettings", "/script/engine.gameusersettings", "scalabilitygroups", "multihome", "modinstaller", "shootergamemode_tempoverrides"]);
-const FILE_OF: Record<Place, string> = { server: GUS_FILE, session: GUS_FILE, motd: GUS_FILE, gamesession: GUS_FILE, snark: GUS_FILE, map: GUS_FILE, mode: GAME_FILE, cli: "the command line", dynamic: LIVE_FILE };
-const SECTION_OF: Record<Place, string> = { server: "[ServerSettings]", session: "[SessionSettings]", motd: "[MessageOfTheDay]", gamesession: "[/Script/Engine.GameSession]", snark: "[SnarkSettings]", map: "a map's section", mode: "[/script/shootergame.shootergamemode]", cli: "", dynamic: "" };
+export const FILE_OF: Record<Place, string> = { server: GUS_FILE, session: GUS_FILE, motd: GUS_FILE, gamesession: GUS_FILE, snark: GUS_FILE, map: GUS_FILE, mode: GAME_FILE, cli: "the command line", dynamic: LIVE_FILE };
+export const SECTION_OF: Record<Place, string> = { server: "[ServerSettings]", session: "[SessionSettings]", motd: "[MessageOfTheDay]", gamesession: "[/Script/Engine.GameSession]", snark: "[SnarkSettings]", map: "a map's section", mode: "[/script/shootergame.shootergamemode]", cli: "", dynamic: "" };
 
 export interface Report {
   /** Settings that take effect and were given a value. */

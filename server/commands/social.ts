@@ -27,6 +27,7 @@ export function addSocialCommands(con: Console): void {
     {
       name: "tribe",
       usage: "[create <name> | invite <survivor> | accept | decline | leave | kick <member> | name <new name>]",
+      examples: ['tribe create "Example Tribe"'],
       help: "Show your tribe, or found, join, leave or run one. Joining gives the tribe everything you own; leaving takes nothing with you.",
       admin: false,
       run(ctx, args) {

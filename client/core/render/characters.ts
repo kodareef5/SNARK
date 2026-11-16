@@ -937,7 +937,7 @@ export class Characters {
     if (++this.frame % FORGET_GAIT === 0) for (const id of this.gaits.keys()) if (this.frame - this.gaits.get(id)!.seen > FORGET_GAIT) this.gaits.delete(id);
   }
 
-  /** The level a body `distance` off is drawn at: as the tier asks, but at the governor's last step coarser (Tier.bodyError). */
+  /** The level a body `distance` off is drawn at: as the tier asks, and coarser at the governor's bodies step (Tier.bodyError). */
   private levelOf(id: number, errors: readonly number[], distance: number): number {
     const level = this.assets.choose(errors, distance * this.assets.tier.bodyError, this.last.get(id) ?? -1);
     this.last.set(id, level);

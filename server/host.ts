@@ -4,13 +4,6 @@ import { withContent, type Registry } from "../shared/content/registry.ts";
 import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
-import { addAdminCommands } from "./commands/admin.ts";
-import { addCombatCommands } from "./commands/combat.ts";
-import { addCoreCommands } from "./commands/core.ts";
-import { addSocialCommands } from "./commands/social.ts";
-import { addCreatureCommands } from "./commands/creatures.ts";
-import { addSettingsCommands } from "./commands/settings.ts";
-import { addClusterCommands } from "./commands/cluster.ts";
 import { Build } from "./build.ts";
 import { Travel } from "./travel.ts";
 import { Fixtures } from "./fixtures.ts";
@@ -55,6 +48,7 @@ import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { ACT_EQUIP, ACT_NONE, FISTS, HOLD_CARRY } from "../shared/sim/weapon.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
 import { Items } from "./items.ts";
+import { COMMAND_FAMILIES } from "./commands/families.ts";
 import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { Projectiles } from "./projectiles.ts";
@@ -1185,13 +1179,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
 
   const con = new Console();
   con.bus = bus;
-  addCoreCommands(con);
-  addAdminCommands(con);
-  addCombatCommands(con);
-  addSocialCommands(con);
-  addCreatureCommands(con);
-  addSettingsCommands(con);
-  addClusterCommands(con);
+  for (const [, add] of COMMAND_FAMILIES) add(con);
   // After the server's own commands, so a module can take no name of theirs.
   const modules = new Modules(
     {

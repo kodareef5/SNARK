@@ -20,6 +20,8 @@ export interface ConsoleCommand {
   /** Argument summary shown by `help`, such as "<name>". */
   readonly usage: string;
   readonly help: string;
+  /** Lines as one would type them, for the wiki's command reference. */
+  readonly examples?: readonly string[];
   /** Requires cheats to be enabled on the session. */
   readonly admin: boolean;
   /** Not written to the journal even when admin (it would record a password). */

@@ -207,8 +207,8 @@ export async function gameTextures(source: string = SOURCE, landmark: string | n
     }
   }
   if (resolve(source) === resolve(SOURCE) && landmark === null) {
-    const m = worldMaterial();
-    for (const t of worldSurfaceMesh().textures!) out.set(t.id, { id: t.id, role: t.role, top: t.top, mips: () => mipsOf(m, t.role, t.top) });
+    let material: Material | undefined;
+    for (const t of worldSurfaceMesh().textures!) out.set(t.id, { id: t.id, role: t.role, top: t.top, mips: () => mipsOf(material ??= worldMaterial(), t.role, t.top) });
   }
   return [...out.values()];
 }
