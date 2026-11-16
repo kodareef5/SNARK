@@ -226,7 +226,12 @@ def populate(D,prototype,instance,box,node):
    a0=ai*math.tau/24;a1=(ai+1)*math.tau/24;t0=ti*math.pi/6;t1=(ti+1)*math.pi/6
    if ti==2:t1=math.pi/2-.003
    a,b,c=dome(t0,a0),dome(t0,a1),dome(t1,a0)
-   hs=[beam(a,b,.11),beam(a,c,.11)];q,o=world('dome_cell','dome',hs=hs,art={'kind':'dome','finish':'steel'})
+   # A genuine rear entrance through the low rim; the upper arch remains above the walking envelope.
+   hs=[]
+   if not(ti==0 and ai in(17,18)):hs.append(beam(a,b,.11))
+   if not(ti==0 and ai==18):hs.append(beam(a,c,.11))
+   if not hs:continue
+   q,o=world('dome_cell','dome',hs=hs,art={'kind':'dome','finish':'steel'})
    place(f'dome_{ai}_{ti}',q,o,'15','aquadome')
  # Side-by-side aft funnel housings are a distinctive photographed feature, not two longitudinal stacks.
  funnelh=[{'points':[[x,y,z] for y,rx,rz,shift in[(-11.5,7.2,10.2,0),(8,4.6,7.2,1.5)] for x in(-rx,rx) for z in(-rz+shift,rz+shift)]}]

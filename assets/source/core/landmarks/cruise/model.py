@@ -30,15 +30,20 @@ def rail(m,lo,hi):
 
 def floor(m,p):
  tag=p['art']['finish']
+ def slab(lo,hi):
+  m.box(lo,hi,'enamel');m.tags[-3]=tag
  for h in p['hulls']:
   pts=h['points'];xs=sorted(set(q[0] for q in pts));zs=sorted(set(q[2] for q in pts));ys=sorted(set(q[1] for q in pts))
   if len(xs)==2 and len(zs)==2 and m.level==0:
    nx=max(1,math.ceil((xs[-1]-xs[0])/4));nz=max(1,math.ceil((zs[-1]-zs[0])/4))
    for i in range(nx):
-    for j in range(nz):m.box([xs[0]+(xs[-1]-xs[0])*i/nx,ys[0],zs[0]+(zs[-1]-zs[0])*j/nz],
-                            [xs[0]+(xs[-1]-xs[0])*(i+1)/nx,ys[-1],zs[0]+(zs[-1]-zs[0])*(j+1)/nz],tag)
-  else:m.convex(pts,tag)
- for b in p['boxes']:drawbox(m,b,tag)
+    for j in range(nz):slab([xs[0]+(xs[-1]-xs[0])*i/nx,ys[0],zs[0]+(zs[-1]-zs[0])*j/nz],
+                           [xs[0]+(xs[-1]-xs[0])*(i+1)/nx,ys[-1],zs[0]+(zs[-1]-zs[0])*(j+1)/nz])
+  else:
+   start=len(m.f);m.convex(pts,'enamel')
+   for i in range(start,len(m.f)):
+    if all(abs(m.v[v][1]-ys[-1])<1e-5 for v in m.f[i]):m.tags[i]=tag
+ for b in p['boxes']:slab(*extents(b))
 
 def staircase(m,p):
  a=p['art'];x0=a['x0'];x1=a['x1'];z0=a['z0'];z1=a['z1'];y0=a['y0'];y1=a['y1']
@@ -64,15 +69,15 @@ def furnished(m,p):
   x,y,z=f['at'];sx,sy,sz=f['size'];kind=f['kind']
   def b(ax,ay,az,bx,by,bz,tag,bevel=.02):m.box([x+ax*sx,y+ay*sy,z+az*sz],[x+bx*sx,y+by*sy,z+bz*sz],tag,bevel if m.level<2 else 0)
   if kind=='bed':
-   b(-.49,0,-.49,.49,.32,.49,'oak');b(-.5,.32,-.5,.5,.88,.5,'linen',.07)
+   b(-.49,0,-.49,.49,.32,.49,'oak');b(-.5,.32,-.5,.42,.88,.5,'linen',.07)
    b(.42,.32,-.5,.5,1,.5,'carpet',.025)
    if m.level<4:
     b(.19,.88,-.43,.4,.99,-.02,'linen',.045);b(.19,.88,.02,.4,.99,.43,'linen',.045)
     b(-.47,.88,-.49,-.15,.90,.49,'blue',.004)
   elif kind=='sofa':
-   b(-.5,0,-.5,.5,.20,.5,'oak');b(-.5,.20,-.5,.5,.55,.3,'carpet',.055)
+   b(-.5,0,-.5,.5,.20,.5,'oak');b(-.42,.20,-.5,.42,.55,.25,'carpet',.055)
    b(-.5,.55,.25,.5,1,.5,'carpet',.04)
-   b(-.5,.2,-.5,-.42,.78,.5,'carpet');b(.42,.2,-.5,.5,.78,.5,'carpet')
+   b(-.5,.2,-.5,-.42,.78,.25,'carpet');b(.42,.2,-.5,.5,.78,.25,'carpet')
    if m.level<3:b(-.35,.55,-.30,-.05,.79,.12,'coral',.04)
   elif kind=='wardrobe':
    b(-.5,0,-.5,.5,1,.5,'oak')
