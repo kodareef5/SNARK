@@ -93,6 +93,9 @@ test("a file that is damaged, foreign or unplayable is refused, and the reason s
   expect(() => parseMap(file.subarray(0, file.length - 9))).toThrow("map: it is cut short");
   const busy = writeMap(busyMap());
   expect(() => parseMap(busy.subarray(0, busy.length - 9))).toThrow("map: the file is damaged");
+  // A page fetched the file by its SHA-256, so it reads the body without hashing it again.
+  expect(parseMap(file, false)).toEqual(parseMap(file));
+  expect(() => parseMap(file.subarray(0, file.length - 9), false)).toThrow("map: it is cut short");
   expect(() => parseMap(new Uint8Array(100))).toThrow("map: this is not a map file");
   expect(() => parseMap(file.subarray(0, 20))).toThrow("map: it is cut short");
   expect(() => parseMap(rehashed((view) => view.setUint16(4, 3, true)))).toThrow("map: version 3 is not one this build reads: build the map again");

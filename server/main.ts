@@ -111,19 +111,19 @@ export function liveFileOf(folder: string): (() => string | null) | undefined {
  * Answers the two requests a client makes for the map. `/map.json` names the map and its file. The file's name carries the
  * start of its SHA-256, so whoever fetched it keeps it for good, and it goes out as the copies its build made for the wire
  * (tools/map/pack.ts). A map with none, as a test's or the proving ground, is small enough to compress here. Null for any
- * other path.
+ * other path. `link` is the header that has a page ask for the file as it is read, before it has read map.json.
  */
-export function mapRoutes(file: Uint8Array<ArrayBuffer>, id: string, hash: number, copies: { br?: Blob; gz?: Blob } = {}): (path: string, accepts: string) => Response | null {
+export function mapRoutes(file: Uint8Array<ArrayBuffer>, id: string, hash: number, copies: { br?: Blob; gz?: Blob } = {}): ((path: string, accepts: string) => Response | null) & { readonly link: string } {
   const name = `map.${new Bun.CryptoHasher("sha256").update(file).digest("hex").slice(0, 16)}.snmap`;
   const json = JSON.stringify({ id, hash, file: name });
   const gz = copies.gz ?? Bun.gzipSync(file);
-  return (path, accepts) => {
+  return Object.assign((path: string, accepts: string): Response | null => {
     if (path === "/map.json") return new Response(json, { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
     if (path !== `/${name}`) return null;
     const headers = { "content-type": "application/octet-stream", "cache-control": "public, max-age=31536000, immutable", vary: "accept-encoding" };
     if (copies.br && accepts.includes("br")) return new Response(copies.br, { headers: { ...headers, "content-encoding": "br" } });
     return accepts.includes("gzip") ? new Response(gz, { headers: { ...headers, "content-encoding": "gzip" } }) : new Response(file, { headers });
-  };
+  }, { link: `</${name}>; rel=preload; as=fetch; crossorigin` });
 }
 
 /** The copies for the wire the build wrote beside the map file at `path`, if it did. */
@@ -272,7 +272,12 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       }
       const sounds = soundBoard(req, srv.requestIP(req)?.address ?? "", board, join(clientDir, "sounds.html"), () => boardOwners(registry, families));
       if (sounds) return sounds;
-      return mapRoute(url.pathname, req.headers.get("accept-encoding") ?? "") ?? serveFile(clientDir, req);
+      const map = mapRoute(url.pathname, req.headers.get("accept-encoding") ?? "");
+      if (map) return map;
+      const file = await serveFile(clientDir, req);
+      // A device probe measures the link quiet before the game's files come, as index.html leaves its own preloads.
+      if ((url.pathname === "/" || url.pathname === "/index.html") && file.ok && !url.searchParams.has("device")) file.headers.set("link", mapRoute.link);
+      return file;
     },
     websocket: {
       maxPayloadLength: 4096,

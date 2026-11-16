@@ -259,6 +259,11 @@ const SMOOTH_LIMIT = 3;
 const NODE_RADIUS = 3;
 /** A view or far request the server was too busy to take is sent again this long after. The server reads either once a second. */
 const ASK_AGAIN_MS = 1000;
+/**
+ * Ticks of snapshots after which a page that sent no input, such as a hidden one that draws no frames, acknowledges by
+ * itself. The server reads against an acknowledged view only while it is younger than VIEW_RING, and sends it whole after.
+ */
+const QUIET_TICKS = 8;
 const CLOSED_BY_PEER = -1;
 const CLOSED_BAD_MAP = -2;
 /** The content this client derives from the server's tuning does not hash to the server's. */
@@ -534,6 +539,9 @@ export class ClientSession {
   private readonly margins = new Int8Array(128);
   private readonly marginAt = new Uint32Array(128);
   private needFull = true;
+  /** The newest input sent, and the snapshot it acknowledged. */
+  private sentInput = 0;
+  private sentAck = 0;
   private commandSeq = 0;
   /** What `view` and `askFar` last asked the server for, and the commands that asked. After the server refuses one, neither is sent before `askAt`. */
   private viewCap = 0;
@@ -902,6 +910,7 @@ export class ClientSession {
     // The last argument is how far behind the newest snapshot remote entities were drawn when the newest input was sampled.
     writeInputs(w, this.inputs, this.needFull ? 0 : this.latestSnapshot, newest, count, this.latestSnapshot - (this.shown > 0 ? this.shown : this.renderClock - this.remoteDelay));
     this.conn.send(CH_UNRELIABLE, w.bytes());
+    [this.sentInput, this.sentAck] = [newest, this.latestSnapshot];
   }
 
   private receive(_channel: number, data: Uint8Array): void {
@@ -1378,6 +1387,8 @@ export class ClientSession {
     this.sessionState = state;
     this.driving = driving;
     this.stats.snapshots++;
+    // The inputs sent again are ones the server has, so this says only which snapshot came.
+    if (this.sentInput > 0 && tick - this.sentAck >= QUIET_TICKS) this.sendInputs(this.sentInput, 1);
 
     // Render clock follows the newest server tick, smoothly unless far off.
     const lag = tick - this.renderClock;

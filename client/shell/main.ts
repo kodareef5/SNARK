@@ -7,17 +7,17 @@ import { parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { WorkerPort } from "../assets/port.ts";
 import { DEFAULT_TIER, tierOf } from "../core/assets/tiers.ts";
-import { mapHeightfield, mapNodes } from "../../shared/world/mapfile.ts";
+import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
-import { fetchBytes, fetchJson, fetchMapFile, fetchText } from "../core/fetched.ts";
+import { fetchBytes, fetchJson, fetchMap, fetchText, readStatics } from "../core/fetched.ts";
 import { loadIdentity } from "../core/identity.ts";
 import { SelfcheckSurfaces } from "../core/selfcheck-surfaces.ts";
 import { SelfcheckProgress, selfcheckReport } from "../core/selfcheck-report.ts";
 import { BenchRun, PassClock } from "../core/passes.ts";
+import { giveSky, SKY_FILE } from "../core/render/sky.ts";
 import { groundSize } from "../core/render/terrain.ts";
 import { ClientSession } from "../core/session.ts";
 import { arrivalOf, type ClusterList } from "../core/travel.ts";
-import { devicePage } from "./device.ts";
 import { GlRenderer } from "./gl.ts";
 import { bindInput } from "./input.ts";
 import { connect } from "./socket.ts";
@@ -27,7 +27,7 @@ import { WorkerDecoder } from "../sound/decoder.ts";
 import { UiView } from "./ui.ts";
 import { VehicleSelfcheck } from "../core/vehicle-selfcheck.ts";
 import { probeProgress } from "../core/diagnostics.ts";
-import { installSkin, SKIN_URL } from "../core/ui/skin.ts";
+import { installSkin, SKIN_URL, skinPixels } from "../core/ui/skin.ts";
 
 const params = new URLSearchParams(location.search);
 const selfcheck = params.has("selfcheck");
@@ -35,22 +35,30 @@ const driveCheck = selfcheck && params.has("urbanDrive");
 /** A measurement run. The camera flies itself and the page reports frame times and the GPU's by pass. */
 const bench = params.has("bench") ? new BenchRun() : null;
 /** A device probe (tools/device.ts). The page measures itself and reports. */
-const device = params.has("device") ? devicePage(params.get("device")!) : null;
+const device = params.has("device") ? (await import("./device.ts")).devicePage(params.get("device")!) : null;
 const root = document.querySelector<HTMLElement>("#ui")!;
 /** A survivor arriving from another server of the cluster, with its ticket (client/core/travel.ts). */
 const arrival = arrivalOf(location.hash);
 
 async function boot(): Promise<void> {
+  // Every file the first frame needs is asked for before anything else runs, and index.html asked for most of them already.
+  // The server names its map's file. The renderer draws from its ground, which comes first; the far city from its statics,
+  // which come after, while the world is drawn.
+  const mapFile = fetchJson(fetch, "map.json").then((named) => fetchMap(fetch, (named as { file: string }).file));
+  const [manifestText, skyBytes] = [fetchText(fetch, "assets/manifest.json"), fetchBytes(fetch, SKY_FILE)];
+  // The socket opens once the map's ground is in, so its handshake runs while the map is read. The server waits 5 s for a
+  // hello, and a socket it gave up on is opened again.
+  const sockets = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
+  const early = mapFile.then(() => connect(`${sockets}/ws`), () => null);
   const reg = compileContent(CORE_CONTENT).registry!;
-  // The server names its map's file, fetched while the assets are. The renderer draws from its ground, which comes first, and
-  // the far city from its statics, which arrive while the world is drawn.
-  const mapFile = fetchMapFile(fetch, () => new Promise((go) => setTimeout(go)));
   // The manifest says where every level of every mesh is. The boot pack is fetched whole, and the rest as it is wanted.
-  const manifest = parseManifest(await fetchText(fetch, "assets/manifest.json"));
-  const pack = parsePack(new Uint8Array(await fetchBytes(fetch, `assets/${manifest.files[manifest.boot]!.name}`)));
+  const manifest = parseManifest(await manifestText);
   const port = new WorkerPort(manifest, "assets", tierOf(DEFAULT_TIER).diskBytes, params.get("assetnet"));
-  const { map, statics } = await mapFile;
-  const hf = mapHeightfield(map);
+  const pack = parsePack(new Uint8Array(await fetchBytes(fetch, `assets/${manifest.files[manifest.boot]!.name}`)));
+  // The file is named by its SHA-256, so its body is not hashed again.
+  const { ground: first, rest } = await mapFile;
+  const map = parseMap(first, false), hf = mapHeightfield(map);
+  giveSky(new Uint8Array(await skyBytes));
   const canvas = document.querySelector<HTMLCanvasElement>("#view")!;
   // The texture variant is the best this device takes, or the one ?texfmt= names if it takes that.
   const renderer = new GlRenderer(canvas, pack, hf, manifest, params.get("texfmt"));
@@ -58,7 +66,8 @@ async function boot(): Promise<void> {
   const widest = renderer.gl.getParameter(renderer.gl.MAX_TEXTURE_SIZE) as number;
   const ground = groundSize(hf);
   if (Math.max(...ground.width, ...ground.height) > widest) throw new Error(`this map's ground is ${ground.width[0]} by ${ground.height[0]} texels, and this device draws ground of at most ${widest} a side`);
-  const session = new ClientSession(connect(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`), {
+  const socket = await early;
+  const session = new ClientSession(socket?.open ? socket : connect(`${sockets}/ws`), {
     ...loadIdentity({ getItem: (key) => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }, (bytes) => { crypto.getRandomValues(bytes); }, arrival?.name ?? params.get("name"), arrival !== null),
     ...(arrival ? { ticket: arrival.ticket } : {}),
     spectate: params.has("spectate"),
@@ -70,13 +79,12 @@ async function boot(): Promise<void> {
     resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),
     nodes: (ground, content) => mapNodes(map, ground, content),
   });
-  void statics.then((pieces) => session.staticsArrived(pieces));
+  void readStatics(rest, map.dims, () => new Promise((go) => setTimeout(go))).then((statics) => session.staticsArrived(statics));
   const surfaces = selfcheck ? new SelfcheckSurfaces(manifest, port) : null;
   const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });
   session.prediction.enabled = selfcheck;
-  const skin = installSkin(app.ui.frame), skinImage = new Image();
-  skinImage.src = SKIN_URL;
-  void skinImage.decode().then(() => { skin.url = SKIN_URL; }).catch(() => {});
+  const skin = installSkin(app.ui.frame);
+  void Object.assign(new Image(), { src: SKIN_URL }).decode().catch(() => Object.assign(skin, { ...skinPixels(), url: "" }));
   // A measurement run neither reads nor writes the player's saved interface preferences.
   const measured = selfcheck || bench !== null || device !== null;
   const save = (): void => { if (!measured) try { localStorage.setItem("snark.interface", app.ui.settings.interfacePreferences()); } catch {} };
@@ -108,7 +116,7 @@ async function boot(): Promise<void> {
   if (sound && typeof Worker !== "undefined") app.soundDecoder = new WorkerDecoder();
   // The music the build lists; without it the game has no music and plays on.
   if (sound) void fetch("assets/music/music.json").then((r) => (r.ok ? r.json() : null)).then((m) => (app.musicTracks = m?.tracks ?? null)).catch(() => {});
-  const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`, sound ? () => sound.shared() : null);
+  const voice = new VoiceIo(`${sockets}/voice`, sound ? () => sound.shared() : null);
   app.voice = voice;
   for (const gesture of ["pointerdown", "pointerup", "keydown"]) addEventListener(gesture, () => (voice.unlock(), sound?.unlock()));
   /** With ?voice=1 the self-check talks to itself. Its own voice must come back from the server and play. */
@@ -190,7 +198,7 @@ async function boot(): Promise<void> {
     // second of played voice, or for ten seconds to report that none was.
     const voiced = voiceCheck || voiceListen;
     // Parts are written to disk a little after they arrive. The report waits until that has been still for half a second.
-    if (progress.advance(performance.now() - t0, port.cache.used, selfcheck && (!packet.lit || surfaces!.done), voiced, voice.report.played, !drive || drive.finished)) {
+    if (selfcheck && progress.advance(performance.now() - t0, port.cache.used, !packet.lit || surfaces!.done, voiced, voice.report.played, !drive || drive.finished)) {
       const report = selfcheckReport(app, pack, manifest, hf, packet, {
         has: name => params.has(name), voiced, voiceListen, voice: voice.report,
         driveCheck, drive, restored, misplaced: view.misplaced(app.ui.frame), sound: sound ? { peak: sound.peak } : null,
