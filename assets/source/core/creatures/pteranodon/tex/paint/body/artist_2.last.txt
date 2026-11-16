@@ -1,0 +1,5 @@
+Widened the nape to 7 cm under the head, with soft edges and a verified head join. Rebuilt with accepted round 4 fuzz.
+
+Inspected `side`, `rider`, `above`, and `head` in the game renderer. Validation and byte-for-byte reproducibility pass.
+
+[Updated report](tex/paint/body/REPORT.md) · [Before/after](tex/paint/body/checks/round1_before_after.png)

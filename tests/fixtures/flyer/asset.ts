@@ -1,7 +1,7 @@
-// The pteranodon's block-out with its movement and action clips, built through the art pipeline as an asset of its own
+// The pteranodon's block-out with its movement, action and life clips, built through the art pipeline as an asset of its own
 // so that flight in the pose can be tested and drawn before the model lands (planning/reference/flyers-plan.md, FL4).
 // It is not under assets/source, so the game has none of it: the content's pteranodon stays a grey box. `bun
-// tests/fixtures/flyer/build.ts` builds pteranodon.snpk beside this from rig.py, clips_move.py and clips_act.py in the
+// tests/fixtures/flyer/build.ts` builds pteranodon.snpk beside this from rig.py, clips_move.py, clips_act.py and clips_life.py in the
 // pteranodon's own folder. The zones and sockets are given outright from rig.py's joints, the zones as capsules along the wing's
 // bones only, the membrane between them uncovered.
 
@@ -17,7 +17,7 @@ function pair(zone: "arm" | "hand" | "leg" | "foot", bone: string, x: number, y:
 
 export default {
   kind: "creature",
-  source: { scripts: ["rig.py", "clips_move.py", "clips_act.py"] },
+  source: { scripts: ["rig.py", "clips_move.py", "clips_act.py", "clips_life.py"] },
   scale: 1,
   skeleton: { id: "pteranodon", root: "pelvis", drop: /^ctl_/, bones: 42 },
   zones: [
@@ -82,6 +82,14 @@ export default {
     { name: "release", source: "release", loop: false },
     { name: "flinch", source: "flinch", loop: false },
     { name: "carried", source: "carried", loop: true },
+    // And every clip clips_life.py makes.
+    { name: "torpor_in", source: "torpor_in", loop: false },
+    { name: "torpor_fall", source: "torpor_fall", loop: true },
+    { name: "torpor_idle", source: "torpor_idle", loop: true },
+    { name: "torpor_eat", source: "torpor_eat", loop: false },
+    { name: "torpor_out", source: "torpor_out", loop: false },
+    { name: "death", source: "death", loop: false },
+    { name: "death_air", source: "death_air", loop: false },
   ],
   // It walks on its feet and on the hands of its folded wings.
   feet: ["toes_l", "toes_r", "fingers_l", "fingers_r"],

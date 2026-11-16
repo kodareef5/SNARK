@@ -1,0 +1,115 @@
+{
+ "tracks": [
+  {
+   "id": "dawn",
+   "bpm": 80,
+   "seconds": 120.0,
+   "layers": [
+    "theme",
+    "full"
+   ],
+   "once": true
+  },
+  {
+   "id": "dread",
+   "bpm": 96,
+   "seconds": 107.5,
+   "layers": [
+    "calm",
+    "tense",
+    "combat",
+    "climax"
+   ]
+  },
+  {
+   "id": "primeval",
+   "bpm": 90,
+   "seconds": 104.0,
+   "layers": [
+    "calm",
+    "tense",
+    "combat",
+    "climax"
+   ]
+  },
+  {
+   "id": "nightfall",
+   "bpm": 80,
+   "seconds": 108.0,
+   "layers": [
+    "calm",
+    "tense",
+    "combat",
+    "climax"
+   ]
+  },
+  {
+   "id": "hunted",
+   "bpm": 140,
+   "seconds": 113.143,
+   "layers": [
+    "tense",
+    "combat",
+    "climax"
+   ]
+  },
+  {
+   "id": "apex",
+   "bpm": 110,
+   "seconds": 109.091,
+   "layers": [
+    "tense",
+    "combat",
+    "climax"
+   ]
+  },
+  {
+   "id": "shoreline",
+   "bpm": 84,
+   "seconds": 100.0,
+   "layers": [
+    "calm",
+    "tense",
+    "combat"
+   ]
+  },
+  {
+   "id": "ruins",
+   "bpm": 100,
+   "seconds": 110.4,
+   "layers": [
+    "calm",
+    "tense",
+    "combat",
+    "climax"
+   ]
+  },
+  {
+   "id": "deep",
+   "bpm": 60,
+   "seconds": 108.0,
+   "layers": [
+    "calm",
+    "tense"
+   ]
+  },
+  {
+   "id": "hearth",
+   "bpm": 80,
+   "seconds": 111.0,
+   "layers": [
+    "calm",
+    "tense"
+   ]
+  },
+  {
+   "id": "last_breath",
+   "bpm": 60,
+   "seconds": 45.0,
+   "layers": [
+    "lament"
+   ],
+   "once": true
+  }
+ ]
+}

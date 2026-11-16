@@ -5,7 +5,7 @@
 Each prompt entry in the brief makes `takes` files per model, seeds `seed`, `seed+1`, ...
 Takes land in tools/sound/.work/<asset>/takes/<slot>/<model>-<seed>.wav (<model>-pt-<seed>.wav from
 the torch backend) with a .json recipe beside each. Existing takes are kept unless --force. Every
-model run holds the shared render lock (/tmp/snark-render.lock: lockf on a Mac, flock on Linux), a
+model run on Linux holds the shared render lock (/tmp/snark-render.lock, flock); a Mac runs without one, a
 few takes at a time, and on Linux waits until the machine has the memory free that the model needs.
 """
 
@@ -26,7 +26,8 @@ sys.path.insert(0, str(HERE))
 import models  # noqa: E402
 
 MAC = sys.platform == "darwin"
-LOCK = ["lockf", "-t", "7200", "/tmp/snark-render.lock"] if MAC else ["flock", "-w", "7200", "/tmp/snark-render.lock"]
+# The Mac runs one job at a time without a lock now; Linux shares its GPU with other jobs and keeps the render lock.
+LOCK = [] if MAC else ["flock", "-w", "7200", "/tmp/snark-render.lock"]
 TIME = ["/usr/bin/time", "-l" if MAC else "-v"]
 CHUNK = {("stable", "mlx"): 40, ("moss", "mlx"): 4, ("moss", "torch"): 32}
 

@@ -1,0 +1,98 @@
+{
+  "version": 2,
+  "description": "Stippled living horn: dark source-derived pits, soft pigment growth bands and satin response; pigment-only crest band.",
+  "sets": {
+    "horn": {
+      "span_m": 0.4,
+      "tiles": true,
+      "cutout": false,
+      "height_mm": 0.32,
+      "regions": [
+        2
+      ],
+      "form": "tube",
+      "radius": 0.05,
+      "flat": 0.35,
+      "taper": 0.12,
+      "length": 0.8,
+      "growth_direction": "left to right",
+      "density_px_per_m": 5120.0
+    },
+    "head_side": {
+      "span_m": 1.5,
+      "tiles": false,
+      "cutout": true,
+      "height_mm": 1.2,
+      "regions": [
+        2,
+        3
+      ],
+      "form": "none",
+      "density_px_per_m": 1365.3333333333333,
+      "alpha_cutoff": 0.5,
+      "reference": "ref/concept/head_side.png",
+      "reference_px_per_m": 1000,
+      "reference_origin_px": [
+        150,
+        -200
+      ],
+      "reference_to_study_scale": 1.3653333333333333,
+      "notes": "Black region / alpha holes are the gape and face. Nostril is an opaque region-2 slit with a dark floor and shallow height groove. Fuzz overlap cuts into the horn edge. The band affects regions only; base, relief and roughness continue through it."
+    }
+  },
+  "height_encoding": "0..65535 is 0..height_mm; neutral plane at half-range. Height contains surface microrelief and shallow keel/rim placement guides, not the skull volume.",
+  "normal": "OpenGL, computed from quantized delivered height, central differences at span_m/2048.",
+  "packed": "R occlusion from height, G roughness (linear), B metalness=0.",
+  "feature_scale_mm": {
+    "pit_diameter_target": [
+      0.5,
+      1.0
+    ],
+    "pit_depth": [
+      0,
+      0.083
+    ],
+    "growth_band_width_target": [
+      2,
+      7
+    ],
+    "growth_band_length_target": [
+      12,
+      80
+    ],
+    "fine_ridge_width": [
+      0.32,
+      0.64
+    ],
+    "mottling_scale_target": [
+      5,
+      30
+    ],
+    "scratch_length": [
+      3,
+      12
+    ],
+    "scratch_location": "19 sparse strokes on beak tip and cutting edge only",
+    "keel_guide_height": 0.32,
+    "nostril_groove_depth": 0.28
+  },
+  "source": {
+    "file": "source/horn_generated.png",
+    "prompt": "source/horn_prompt.txt",
+    "method": "built-in image_gen",
+    "size_px": [
+      1254,
+      1254
+    ],
+    "reference": "ref/concept/head_side.png",
+    "sha256": "dcc56b3c5a2b94c42444842f49167f58394a797f0ef570eafdbc9f71f433acb9"
+  },
+  "parameters": {
+    "seed": 92023,
+    "grain_scale": 1.0,
+    "grain_angle_deg": 0.0,
+    "relief_scale": 1.0
+  },
+  "rebuild": "python3 tex/studies/horn/build.py && python3 tex/studies/horn/check.py",
+  "build_seconds": 13.51
+}

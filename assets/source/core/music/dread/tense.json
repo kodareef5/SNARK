@@ -1,0 +1,47 @@
+{
+  "track": "dread",
+  "layer": "tense",
+  "candidate": 2,
+  "model": "Stable Audio 3 medium",
+  "repo": "stabilityai/stable-audio-3-medium",
+  "revision": "d4d3579395a8ac0df4ab13b5b1d7138ce7290f81",
+  "code": {
+    "repo": "github.com/Stability-AI/stable-audio-3",
+    "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57"
+  },
+  "licence": {
+    "name": "Stability AI Community License",
+    "terms": "free under US$1M annual revenue, commercial users register with Stability AI; outputs are ours; not for training other foundation models"
+  },
+  "prompt": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, a theme of lurking danger, growing tension: the same dark strings joined by pounding war drums, a low brass ostinato and rising cellos, driving and tense. 96 BPM, D minor.",
+  "negative_prompt": "fade out, ending, silence, gaps, dropouts, lo-fi, pop, happy, major key, vocals with lyrics, singing words",
+  "seconds": 120,
+  "bpm": 96,
+  "key": "D minor",
+  "seed": 11102,
+  "steps": 8,
+  "cfg": 1.0,
+  "init_from": "dread/calm.wav",
+  "init_noise_level": 0.6,
+  "rate": 44100,
+  "channels": 2,
+  "seconds_to_make": 3.8,
+  "gpu_peak_gb": 5.47,
+  "torch": "2.7.1+cu128",
+  "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "date": "2026-11-15",
+  "sha256": "c2ec1372924d2cb5cc1a048d4c24edf652cd657eb1f834f186b17554d52d4508",
+  "chosen": "tense@2.wav",
+  "measures": {
+    "loudness_db": -23.5,
+    "dropouts": 0.037,
+    "stray_db": 2.3,
+    "clipped": 0,
+    "brightness": 0.002,
+    "beat_with_base": 0.045,
+    "louder_db": 0.7,
+    "brighter": 0.0,
+    "score": -2.327
+  },
+  "stored_as": "Opus 96 kb/s stereo (ffmpeg libopus); the master is made again from this recipe"
+}

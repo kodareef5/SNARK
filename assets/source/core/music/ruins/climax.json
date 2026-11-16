@@ -1,0 +1,47 @@
+{
+  "track": "ruins",
+  "layer": "climax",
+  "candidate": 1,
+  "model": "Stable Audio 3 medium",
+  "repo": "stabilityai/stable-audio-3-medium",
+  "revision": "d4d3579395a8ac0df4ab13b5b1d7138ce7290f81",
+  "code": {
+    "repo": "github.com/Stability-AI/stable-audio-3",
+    "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57"
+  },
+  "licence": {
+    "name": "Stability AI Community License",
+    "terms": "free under US$1M annual revenue, commercial users register with Stability AI; outputs are ours; not for training other foundation models"
+  },
+  "prompt": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, the overgrown ruins of a fallen city, the city's last stand: a dark choir over industrial metal and full orchestra, massive. 100 BPM, F# minor.",
+  "negative_prompt": "fade out, ending, silence, gaps, dropouts, lo-fi, pop, happy, major key, vocals with lyrics, singing words",
+  "seconds": 120,
+  "bpm": 100,
+  "key": "F# minor",
+  "seed": 17301,
+  "steps": 8,
+  "cfg": 1.0,
+  "init_from": "ruins/calm.wav",
+  "init_noise_level": 0.78,
+  "rate": 44100,
+  "channels": 2,
+  "seconds_to_make": 3.8,
+  "gpu_peak_gb": 5.47,
+  "torch": "2.7.1+cu128",
+  "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "date": "2026-11-15",
+  "sha256": "22b72ced6ec57d4f568045c0be802dee921191257dfaa1b361f71a5fce5af229",
+  "chosen": "climax@1.wav",
+  "measures": {
+    "loudness_db": -18.9,
+    "dropouts": 0.017,
+    "stray_db": 4.46,
+    "clipped": 0,
+    "brightness": 0.015,
+    "beat_with_base": 0.025,
+    "louder_db": -0.9,
+    "brighter": 0.006,
+    "score": -3.433
+  },
+  "stored_as": "Opus 96 kb/s stereo (ffmpeg libopus); the master is made again from this recipe"
+}

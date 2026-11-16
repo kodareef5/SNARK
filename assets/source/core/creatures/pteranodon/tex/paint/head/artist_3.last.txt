@@ -1,0 +1,5 @@
+The streak now curves down into the 15 mm nape join with soft, interlocking edges. Eye and horn layers are unchanged; all 1,608 sampled join pairs match.
+
+Reviewed `head`, `head_front`, and `rider` beside the concept. Rebuild checks passed.
+
+[Updated report](tex/paint/head/REPORT.md) · [Comparison](tex/paint/head/checks/occiput_feedback2_detail.png)

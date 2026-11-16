@@ -33,6 +33,8 @@ export interface Page {
   hostname: string;
   /** Goes to another address, leaving this page. */
   go(url: string): void;
+  /** Reconnects this page with its current address and browser identity. */
+  reload?(): void;
   /** Takes the ticket out of the address once the survivor has arrived, so a reload joins as anyone does. */
   arrived(): void;
   /** Asks this page's server for the cluster. */

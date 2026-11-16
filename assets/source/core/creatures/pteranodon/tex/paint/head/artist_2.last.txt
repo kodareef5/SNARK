@@ -1,0 +1,5 @@
+Revised the broader fuzz-edged streak and nape connection, subdued the horn’s long grain, and brightened the amber iris with a pale lid ring.
+
+Reviewed `head`, `head_front`, and `rider` beside the concept in the game renderer. Coverage, dye means, join agreement, and byte-identical rebuild checks pass.
+
+Updated [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/paint/head/REPORT.md) with measurements, comparisons, and remaining mesh limits.

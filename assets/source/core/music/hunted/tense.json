@@ -1,0 +1,44 @@
+{
+  "track": "hunted",
+  "layer": "tense",
+  "candidate": 2,
+  "model": "Stable Audio 3 medium",
+  "repo": "stabilityai/stable-audio-3-medium",
+  "revision": "d4d3579395a8ac0df4ab13b5b1d7138ce7290f81",
+  "code": {
+    "repo": "github.com/Stability-AI/stable-audio-3",
+    "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57"
+  },
+  "licence": {
+    "name": "Stability AI Community License",
+    "terms": "free under US$1M annual revenue, commercial users register with Stability AI; outputs are ours; not for training other foundation models"
+  },
+  "prompt": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, being chased by a pack of predators, relentless pursuit: fast driving ostinato strings, rapid war drums, snapping percussion, breathless and urgent, continuous. 140 BPM, B minor.",
+  "negative_prompt": "fade out, ending, silence, gaps, dropouts, lo-fi, pop, happy, major key, vocals with lyrics, singing words",
+  "seconds": 120,
+  "bpm": 140,
+  "key": "B minor",
+  "seed": 14002,
+  "steps": 8,
+  "cfg": 1.0,
+  "init_from": null,
+  "init_noise_level": null,
+  "rate": 44100,
+  "channels": 2,
+  "seconds_to_make": 2.6,
+  "gpu_peak_gb": 5.47,
+  "torch": "2.7.1+cu128",
+  "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "date": "2026-11-15",
+  "sha256": "59b988151872f50c97f560f63c1e8c5277ff66a0ee1ed670bca612b977ba28de",
+  "chosen": "tense@2.wav",
+  "measures": {
+    "loudness_db": -17.7,
+    "dropouts": 0.013,
+    "stray_db": 1.84,
+    "clipped": 16,
+    "brightness": 0.037,
+    "score": -1.682
+  },
+  "stored_as": "Opus 96 kb/s stereo (ffmpeg libopus); the master is made again from this recipe"
+}

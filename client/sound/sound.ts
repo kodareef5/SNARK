@@ -6,6 +6,7 @@
 // same audio context. While the page is hidden the context is suspended, unless voice chat shares it: then only the
 // world's sounds fall silent.
 
+import type { MusicPlan } from "../core/sound/music.ts";
 import { BUSES, MOVE_FIELDS, START_FIELDS, type SoundPacket, type SoundSink } from "../core/sound/packet.ts";
 
 /** Flags of a start (client/core/sound/mixer.ts). */
@@ -27,6 +28,9 @@ export class SoundIo implements SoundSink {
   private ctx: AudioContext | null = null;
   private bus: GainNode | null = null;
   private readonly buses: GainNode[] = [];
+  /** The music: the track streaming, and each of its layers as a media element through a gain into the music bus. */
+  private track = "";
+  private layers: { el: HTMLAudioElement; gain: GainNode; at: number }[] = [];
   private meter: AnalyserNode | null = null;
   /** The loudest sample `listen` has found leaving the volume, for the self-check: proof that a sound played. */
   peak = 0;
@@ -116,6 +120,7 @@ export class SoundIo implements SoundSink {
     for (const b of p.unloads) this.buffers.delete(b);
     this.bus!.gain.setTargetAtTime(p.volume, now, GLIDE);
     for (let b = 0; b < BUSES; b++) this.buses[b]!.gain.setTargetAtTime(p.buses[b]!, now, GLIDE);
+    if (p.music) this.music(ctx, p.music, now);
     const ear = ctx.listener;
     const [fx, fy, fz, ux, uy, uz] = p.ear as [number, number, number, number, number, number];
     if (ear.forwardX) {
@@ -150,6 +155,31 @@ export class SoundIo implements SoundSink {
       }
       v.low.frequency.setTargetAtTime(m[i + 5]!, now, GLIDE);
     }
+  }
+
+  /** Streams the plan's track, all its layers together, and fades each to its gain; a new track crosses the old. */
+  private music(ctx: AudioContext, plan: MusicPlan, now: number): void {
+    if (plan.track !== this.track) {
+      for (const l of this.layers) {
+        l.gain.gain.setTargetAtTime(0, now, plan.fade / 3);
+        setTimeout(() => l.el.pause(), plan.fade * 1500);
+      }
+      this.track = plan.track;
+      this.layers = plan.layers.map((name) => {
+        const el = Object.assign(new Audio(`assets/music/${plan.track}/${name}.opus`), { loop: plan.loop, preload: "auto" });
+        const gain = new GainNode(ctx, { gain: 0 });
+        ctx.createMediaElementSource(el).connect(gain).connect(this.buses[2]!);
+        return { el, gain, at: -1 };
+      });
+      for (const l of this.layers) void l.el.play().catch(() => {});
+    }
+    // The silent layers keep the heard one's clock, so a change lands in time; the heard one is never moved.
+    const lead = this.layers[plan.gains.indexOf(1)]?.el;
+    this.layers.forEach((l, k) => {
+      const g = plan.gains[k] ?? 0;
+      if (g !== l.at) l.gain.gain.setTargetAtTime((l.at = g), now, plan.fade / 3);
+      if (lead && g === 0 && Math.abs(l.el.currentTime - lead.currentTime) > 0.05) l.el.currentTime = lead.currentTime;
+    });
   }
 
   private start(ctx: AudioContext, now: number, serial: number, buffer: AudioBuffer, delay: number, rate: number, gain: number, x: number, y: number, z: number, low: number, bus: number, flags: number): void {

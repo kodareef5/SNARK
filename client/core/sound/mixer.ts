@@ -29,16 +29,18 @@ export const KIND_UI = 6;
 /** A bed of the world: wind, waves, a jungle. */
 export const KIND_BED = 7;
 export const KIND_MUSIC = 8;
+/** A vehicle: its engine, its tyres, its horn and doors. */
+export const KIND_VEHICLE = 9;
 /** The cue kinds of shared/sound/cues.ts, by kind number. */
-export const KIND_NAMES: readonly string[] = ["vocal", "step", "hit", "weapon", "build", "item", "ui", "bed", "music"];
+export const KIND_NAMES: readonly string[] = ["vocal", "step", "hit", "weapon", "build", "item", "ui", "bed", "music", "vehicle"];
 /** Voices each kind may have at once, and each sound of that kind. */
-const KIND_VOICES: readonly number[] = [16, 10, 8, 10, 6, 6, 4, 3, 1];
-const SOUND_VOICES: readonly number[] = [5, 10, 4, 4, 3, 3, 2, 1, 1];
+const KIND_VOICES: readonly number[] = [16, 10, 8, 10, 6, 6, 4, 3, 1, 10];
+const SOUND_VOICES: readonly number[] = [5, 10, 4, 4, 3, 3, 2, 1, 1, 4];
 /** The pool each kind plays in, and the voices of each pool. */
-const KIND_POOL: readonly number[] = [0, 0, 0, 0, 0, 0, 1, 2, 2];
+const KIND_POOL: readonly number[] = [0, 0, 0, 0, 0, 0, 1, 2, 2, 0];
 const POOL_VOICES: readonly number[] = [40, 4, 4];
 /** The volume each kind answers to: 0 effects, 1 ambience, 2 music, 3 interface (packet.ts). */
-export const KIND_BUS: readonly number[] = [0, 0, 0, 0, 0, 0, 3, 1, 2];
+export const KIND_BUS: readonly number[] = [0, 0, 0, 0, 0, 0, 3, 1, 2, 0];
 /** Flags of a start: not placed, at the ear; and plays until stopped. */
 export const FLAT = 1;
 export const LOOP = 2;
@@ -60,6 +62,8 @@ export class Mixer {
   /** The voices, as parallel arrays. `serial` is 0 for a free voice, otherwise the number the device knows it by. */
   readonly serial = new Uint32Array(VOICES);
   readonly sound = new Int32Array(VOICES);
+  /** The take (buffer) each voice plays, so a take is not started twice at once. */
+  readonly buffer = new Int32Array(VOICES);
   readonly kind = new Uint8Array(VOICES);
   readonly entity = new Int32Array(VOICES);
   readonly x = new Float64Array(VOICES);
@@ -168,6 +172,7 @@ export class Mixer {
     const serial = this.next++;
     this.serial[v] = serial;
     this.sound[v] = sound;
+    this.buffer[v] = buffer;
     this.kind[v] = kind;
     this.entity[v] = entity;
     this.x[v] = x;
@@ -229,6 +234,12 @@ export class Mixer {
     }
   }
 
+  /** Whether take `buffer` is playing on any voice now. */
+  playingTake(buffer: number): boolean {
+    for (let v = 0; v < VOICES; v++) if (this.serial[v] !== 0 && this.buffer[v] === buffer) return true;
+    return false;
+  }
+
   /** Stops every voice. */
   silence(p: SoundPacket): void {
     for (let v = 0; v < VOICES; v++) if (this.serial[v] !== 0) this.stop(v, p);
@@ -237,6 +248,6 @@ export class Mixer {
 
 /** A short random wait before a sound starts, so that many of one sound started together do not sound as one. Seconds. */
 export function spread(rng: Rng, crowd: number): number {
-  return crowd > 1 ? rng.range(0, Math.min(0.12, 0.02 * crowd)) : 0;
+  return crowd > 1 ? rng.range(0, Math.min(0.25, 0.04 * crowd)) : 0;
 }
 

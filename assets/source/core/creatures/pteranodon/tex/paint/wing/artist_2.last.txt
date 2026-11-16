@@ -1,0 +1,5 @@
+Replaced the repeated trees with four long, unequal trunks, irregular branches, and reconnections aligned on both faces. Accepted masks and material treatment are preserved.
+
+Reviewed `inner_wing`, `under_wing`, `below`, and all size sheets in the game renderer. Checks and byte-for-byte rebuild pass.
+
+Updated [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/paint/wing/REPORT.md) with measurements and final renders.

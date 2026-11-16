@@ -1,0 +1,3 @@
+Tidied as instructed. Clean rebuild matched all 45 delivered and patch images byte for byte.
+
+Superseded files are archived, `.gitignore` and the report are updated, `study.json` remains included, and no `.ts` files remain. Accepted pictures are unchanged.

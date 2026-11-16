@@ -1,0 +1,580 @@
+{
+  "asset": "core/sfx/vehicle",
+  "review": "../ref/sound",
+  "about": "Wheeled vehicles: engine layers by revs (looped, crossfaded and pitched by rpm), starting, stopping, shifting, tyres by surface, brakes, horn, doors, crashes. Every vehicle without its own sounds falls back here.",
+  "notes": "v2. Engine and roll layers are 20 s beds cut to loop; a car's own engine goes in its own folder.",
+  "slots": {
+    "engine/idle": {
+      "kind": "impact",
+      "range": 40,
+      "level": -22,
+      "vary": 0.0,
+      "want": "the engine idling",
+      "prompts": [
+        {
+          "id": "v2-7390",
+          "models": [
+            "moss"
+          ],
+          "seed": 7390,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A small four-cylinder car engine idles steadily at about 900 rpm, recorded from just outside the car, a smooth even burble. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/low": {
+      "kind": "impact",
+      "range": 60,
+      "level": -20,
+      "vary": 0.0,
+      "want": "the engine at low revs under load",
+      "prompts": [
+        {
+          "id": "v2-7400",
+          "models": [
+            "moss"
+          ],
+          "seed": 7400,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A small four-cylinder car engine holds steady at about 2000 rpm under light load, an even humming drone. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/mid": {
+      "kind": "impact",
+      "range": 80,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the engine at middle revs",
+      "prompts": [
+        {
+          "id": "v2-7410",
+          "models": [
+            "moss"
+          ],
+          "seed": 7410,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A small four-cylinder car engine holds steady at about 3500 rpm, a strong even growl, constant pitch. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/high": {
+      "kind": "impact",
+      "range": 100,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the engine near the redline",
+      "prompts": [
+        {
+          "id": "v2-7420",
+          "models": [
+            "moss"
+          ],
+          "seed": 7420,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A small four-cylinder car engine holds steady near its redline at about 6000 rpm, a loud straining whine, constant pitch. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/start": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the engine starting",
+      "prompts": [
+        {
+          "id": "v2-7430",
+          "models": [
+            "moss"
+          ],
+          "seed": 7430,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A small four-cylinder car engine is started with a key: the starter motor cranks briefly and it catches and settles to idle, three separate starts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "engine/stop": {
+      "kind": "impact",
+      "range": 30,
+      "level": -22,
+      "vary": 0.0,
+      "want": "the engine switched off",
+      "prompts": [
+        {
+          "id": "v2-7440",
+          "models": [
+            "moss"
+          ],
+          "seed": 7440,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A small four-cylinder car engine is switched off from idle: it shudders and dies, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "engine/rev": {
+      "kind": "impact",
+      "range": 80,
+      "level": -16,
+      "vary": 0.0,
+      "want": "a rev of the engine",
+      "prompts": [
+        {
+          "id": "v2-7450",
+          "models": [
+            "moss"
+          ],
+          "seed": 7450,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A small four-cylinder car engine is revved hard once and drops back to idle, four separate revs with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "engine/stall": {
+      "kind": "impact",
+      "range": 30,
+      "level": -20,
+      "vary": 0.0,
+      "want": "the engine stalling or out of fuel",
+      "prompts": [
+        {
+          "id": "v2-7460",
+          "models": [
+            "moss"
+          ],
+          "seed": 7460,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A small four-cylinder car engine sputters, coughs and stalls, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "shift": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 0.0,
+      "want": "a gear change",
+      "prompts": [
+        {
+          "id": "v2-7470",
+          "models": [
+            "moss"
+          ],
+          "seed": 7470,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A manual car gearbox shifts gear: a clutch thunk and the lever clicking into place, five separate shifts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "tire/roll/asphalt": {
+      "kind": "impact",
+      "range": 30,
+      "level": -26,
+      "vary": 0.0,
+      "want": "tyres rolling on a road",
+      "prompts": [
+        {
+          "id": "v2-7480",
+          "models": [
+            "moss"
+          ],
+          "seed": 7480,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Car tyres rolling on smooth asphalt at moderate speed: a steady low rumbling road noise. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "tire/roll/gravel": {
+      "kind": "impact",
+      "range": 30,
+      "level": -24,
+      "vary": 0.0,
+      "want": "tyres on gravel",
+      "prompts": [
+        {
+          "id": "v2-7490",
+          "models": [
+            "moss"
+          ],
+          "seed": 7490,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Car tyres rolling slowly over loose gravel: steady crunching and popping stones. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "tire/roll/dirt": {
+      "kind": "impact",
+      "range": 30,
+      "level": -25,
+      "vary": 0.0,
+      "want": "tyres on a dirt track",
+      "prompts": [
+        {
+          "id": "v2-7500",
+          "models": [
+            "moss"
+          ],
+          "seed": 7500,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Car tyres rolling on a dry dirt track: a soft steady rumble with small bumps. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "tire/roll/grass": {
+      "kind": "impact",
+      "range": 25,
+      "level": -27,
+      "vary": 0.0,
+      "want": "tyres on grass",
+      "prompts": [
+        {
+          "id": "v2-7510",
+          "models": [
+            "moss"
+          ],
+          "seed": 7510,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Car tyres rolling across a grass field: a soft swishing rumble. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "tire/roll/mud": {
+      "kind": "impact",
+      "range": 25,
+      "level": -24,
+      "vary": 0.0,
+      "want": "tyres in mud",
+      "prompts": [
+        {
+          "id": "v2-7520",
+          "models": [
+            "moss"
+          ],
+          "seed": 7520,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Car tyres churning slowly through wet mud: squelching sucking sloshes. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "tire/roll/sand": {
+      "kind": "impact",
+      "range": 25,
+      "level": -25,
+      "vary": 0.0,
+      "want": "tyres in sand",
+      "prompts": [
+        {
+          "id": "v2-7530",
+          "models": [
+            "moss"
+          ],
+          "seed": 7530,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Car tyres rolling through soft deep sand: a muffled hissing scrunch. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "tire/skid/asphalt": {
+      "kind": "impact",
+      "range": 80,
+      "level": -16,
+      "vary": 0.0,
+      "want": "tyres skidding on a road",
+      "prompts": [
+        {
+          "id": "v2-7540",
+          "models": [
+            "moss"
+          ],
+          "seed": 7540,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Car tyres skid and squeal loudly on asphalt during a hard turn, a long screech, three separate skids with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "tire/skid/gravel": {
+      "kind": "impact",
+      "range": 50,
+      "level": -20,
+      "vary": 0.0,
+      "want": "tyres sliding on gravel",
+      "prompts": [
+        {
+          "id": "v2-7550",
+          "models": [
+            "moss"
+          ],
+          "seed": 7550,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A car slides sideways on gravel: scraping crunching spray of stones, three separate slides with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "brake": {
+      "kind": "impact",
+      "range": 40,
+      "level": -20,
+      "vary": 0.0,
+      "want": "brakes squealing",
+      "prompts": [
+        {
+          "id": "v2-7560",
+          "models": [
+            "moss"
+          ],
+          "seed": 7560,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Car brakes squeal briefly as a car stops, four separate stops with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "handbrake": {
+      "kind": "impact",
+      "range": 15,
+      "level": -24,
+      "vary": 0.0,
+      "want": "a handbrake pulled",
+      "prompts": [
+        {
+          "id": "v2-7570",
+          "models": [
+            "moss"
+          ],
+          "seed": 7570,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A car handbrake lever is pulled up with a ratcheting click, five separate pulls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "horn": {
+      "kind": "impact",
+      "range": 120,
+      "level": -12,
+      "vary": 0.0,
+      "want": "a car horn",
+      "prompts": [
+        {
+          "id": "v2-7580",
+          "models": [
+            "moss"
+          ],
+          "seed": 7580,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A small car's horn honks, short beeps and one long honk, four separate honks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "door/open": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 0.0,
+      "want": "a car door opening",
+      "prompts": [
+        {
+          "id": "v2-7590",
+          "models": [
+            "moss"
+          ],
+          "seed": 7590,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A car door handle is pulled and the door opens with a latch click, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "door/close": {
+      "kind": "impact",
+      "range": 30,
+      "level": -18,
+      "vary": 0.0,
+      "want": "a car door shutting",
+      "prompts": [
+        {
+          "id": "v2-7600",
+          "models": [
+            "moss"
+          ],
+          "seed": 7600,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A car door is shut firmly with a solid thunk, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "crash/light": {
+      "kind": "impact",
+      "range": 60,
+      "level": -16,
+      "vary": 0.0,
+      "want": "a light collision",
+      "prompts": [
+        {
+          "id": "v2-7610",
+          "models": [
+            "moss"
+          ],
+          "seed": 7610,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A car bumps into something at low speed: a dull crunch of plastic and metal, four separate bumps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "crash/heavy": {
+      "kind": "impact",
+      "range": 150,
+      "level": -10,
+      "vary": 0.0,
+      "want": "a heavy crash",
+      "prompts": [
+        {
+          "id": "v2-7620",
+          "models": [
+            "moss"
+          ],
+          "seed": 7620,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A car crashes hard at speed: a violent bang of crumpling metal and breaking glass, two separate crashes with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "glass/break": {
+      "kind": "impact",
+      "range": 50,
+      "level": -16,
+      "vary": 0.0,
+      "want": "glass shattering",
+      "prompts": [
+        {
+          "id": "v2-7630",
+          "models": [
+            "moss"
+          ],
+          "seed": 7630,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A car window shatters: a sharp crack and tinkling falling glass, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "suspension": {
+      "kind": "impact",
+      "range": 30,
+      "level": -22,
+      "vary": 0.0,
+      "want": "the suspension taking a bump",
+      "prompts": [
+        {
+          "id": "v2-7640",
+          "models": [
+            "moss"
+          ],
+          "seed": 7640,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A car drives over a pothole: a heavy suspension thump and creak, five separate bumps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "splash": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 0.0,
+      "want": "driving into water",
+      "prompts": [
+        {
+          "id": "v2-7650",
+          "models": [
+            "moss"
+          ],
+          "seed": 7650,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A car drives fast through a deep puddle: a big rushing splash, three separate splashes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "wind": {
+      "kind": "impact",
+      "range": 1,
+      "level": -28,
+      "vary": 0.0,
+      "want": "wind rushing past at speed",
+      "prompts": [
+        {
+          "id": "v2-7660",
+          "models": [
+            "moss"
+          ],
+          "seed": 7660,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Wind rushing past a car window at high speed: a steady loud roaring buffet. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    }
+  }
+}

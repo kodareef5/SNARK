@@ -1,0 +1,59 @@
+**The lie reads as incapacitated, but not unmistakably alive and unconscious. The death pose reads more clearly as dead close up; at 40–100 pixels, the two are too similar.** The biggest problems are the arranged wing spread, the unsupported rise during waking, and the ground death finishing before its ragdoll handoff.
+
+Frame numbers below refer to the clips, not sheet columns. Ranges are approximate: sampled stills can reveal abrupt pose changes, but cannot establish a one-frame pop or prove ground penetration.
+
+`torpor_idle` reads as a flattened, motionless animal laid out with its wings spread.
+
+1. **Whole loop: the wings look arranged.** There is some asymmetry, but both shoulders and elbows still produce a broad, tidy spread. Give one arm a more gathered position and let the other lie farther out. Change the supporting limb arrangement, not merely the wingtip curl. This is a pose issue independent of membrane folding.
+
+2. **Whole loop: the neck looks tucked and held.** The tight arch between the chest and grounded skull looks like a little bridge. Some curvature is fine; the combination of that arch and the centered chest makes the animal look propped. Let the neck settle slightly sideways and distribute the bend more broadly. Preserve the useful cue of the bill lying along the ground; make the cheek or lower jaw visibly bear the head’s weight.
+
+3. **Frames 0–299: breathing does not communicate strongly enough in these sheets.** From the three-metre view, I cannot confidently distinguish quiet breathing from stillness. Increase the lower-chest/flank excursion modestly, with a slower release than intake. Keep the grounded head and hands planted. It need not show at 40 pixels, but someone standing over it for minutes should see life without studying it.
+
+4. **The resting silhouette needs the most attention.** Keep a breast-down, recoverable-looking lie, but give it a clear weight-bearing side and unequal elbows. At present the dominant impression is “wings displayed flat,” with the small body almost incidental.
+
+`torpor_in` reads as several sleepy head nods followed by a rapid wing-opening collapse.
+
+1. **Frames 0–12, especially approximately 6–9: the head recovery is too isolated and sharp.** The beak dives, then springs high while the supporting body barely participates. It suggests an alert head gesture or repeated dozing. Keep one failed recovery, but make the neck base and chest sag with it; the second effort should recover less height.
+
+2. **Frames 24–36: the collapse turns into a wing-opening gesture.** The hands lose their supporting role, the folded fingers rise into a conspicuous upright arrangement, then the wings spread flat. Make the chest fall because a support fails: one elbow buckles or one hand slips outward, the chest follows, then the other arm gives way. Let the long outer wings lag behind that failure.
+
+3. **Frames 32–40: the final wing drop is the main abrupt change.** The upright outer wing becomes a flat span over very few sampled frames. A short fall can be fast; the problem is that the chest, head and wings converge on their finished positions too neatly. Separate their arrivals by a few frames: chest contact, head settling, then the last outer-wing movement. The remaining hold can accommodate that settling.
+
+`torpor_out` reads as a convincing failed head lift followed by the animal being lifted into its crouch.
+
+1. **Frames 9–21: keep the failed head lift.** This is useful groggy character. Give the failure a little consequence in the shoulders or neck base, rather than returning only the head to what looks like the exact starting arrangement.
+
+2. **Frames 30–45: this is the strongest weight problem in the set.** The chest rises while the hands remain widely displaced and the wings are being lifted. The feet do not visibly establish enough purchase to explain it. Bring a hand into a useful position while the breast remains down; plant the other, gather the feet, then push the chest upward. Pterosaur forelimbs were weight-bearing limbs, so that hand-to-shoulder support should be legible. [Wing-joint reconstruction](https://onlinelibrary.wiley.com/doi/full/10.1111/j.1096-3642.2008.00409.x)
+
+3. **Frames 42–54: folding the wings currently appears to finish assembling the standing animal.** Establish the load-bearing arms before completing the outer-finger fold. A small unequal push, followed by one balance correction around 54–63, would give this skittish flyer more character than the very clean return to its starting posture.
+
+`death` reads as a brief startled flare, a collapse, and a sideways head fold into a corpse pose.
+
+1. **Frames 0–6: both hands lift and the wings hold a rather deliberate flare.** A short terminal reflex is believable, but this arrangement briefly resembles preparation to launch. Start losing support during the flare: one shoulder drops, one elbow gives, or the pelvis slips. The body should already be failing.
+
+2. **Frames 12–20: the head and jaw are the main wince.** Around 12–16 the lower beak points steeply toward the floor; around 16–20 the whole head sweeps sideways while the neck curls tightly and the chest rolls comparatively little. It looks mechanically folded into position. Reduce the gape before ground contact, let the skull trail the falling chest, and share the sideways movement through the neck base and torso. Check the lower-jaw tip’s clearance particularly closely here.
+
+3. **Frames 20–24: the fall is already effectively finished.** That weakens the intended frame-24 ragdoll takeover. Arrive at 24 with an unmistakably failed, slack body that still has some settling left—one shoulder lower, head trailing, an outer wing still descending. Let the non-ragdoll continuation finish those movements after 24.
+
+4. **Final pose: the sideways head helps, but the wings still say almost the same thing as torpor.** For a clearer game distinction, give death more chest roll and a different elbow arrangement: one wing gathered or trapped, the other escaped outward. The present head difference disappears at distance. A still corpse afterward is appropriate; it does not need decorative twitching.
+
+`torpor_eat` reads as a small attempt to rouse or lift the head, more than a swallow.
+
+1. **Frames 6–14: the most visible event is the head/crest lift.** It resembles the first waking attempt in `torpor_out`. Reduce that lift and give the jaw one clearer, small opening and closure. Follow the closure with a restrained throat or neck movement around 10–18.
+
+2. **Frames 14–29: let the head’s weight return gently to its support.** Keep the chest and wings inert. The feeding cue should be readable close to the animal through the beak and swallow, without requiring a larger whole-head gesture or repeated chewing.
+
+`torpor_fall` reads as a disabled glider holding a crooked spread, with little visible distinction between falling limp and simply being suspended.
+
+1. **Whole loop: the head and feet remain too neatly parked.** A little independent wrist, ankle and head slack would help. The broad wings themselves are defensible: losing consciousness does not make aerodynamic loading disappear. I would not automatically fold them shut or add a repeated flap.
+
+2. **Every frame 0–39 must survive the landing cut to idle frame 0.** This limits how much useful airborne movement you can add. Keep any variation very small, especially at the long wing tips, and revise the fall’s base pose alongside any change to the lie. Matching the loop endpoints alone is insufficient because landing can occur at any phase. These sheets do not demonstrate the actual cut, so I cannot call a specific landing pop.
+
+`death_air` reads as a struck glider making one last wing movement, then losing control of its head and holding a limp spread.
+
+1. **Frames 0–8: the down-and-back wing sweep risks reading as a purposeful final stroke.** Make the initial failure less coordinated: one shoulder releases first, with the outer wing following. The head should lag that disturbance rather than accompany it as a controlled flight adjustment.
+
+2. **Frames 12–24: the dropping head is doing useful work.** Extend that loss of tone into the feet and wrists; the rear limbs still look packaged for flight. Avoid concentrating the entire “dead” signal into a sharply bent neck and open beak.
+
+3. **Frames 24–39: the hold is consistent with the game’s requirement.** Judge the frame-24 pose as the thing the player will watch falling: it needs slack, unequal joint positions already built into it. The lack of downward travel in these isolated renders is not a clip fault; the game supplies that movement.

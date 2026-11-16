@@ -1,0 +1,82 @@
+{
+ "size": 2048,
+ "position_box": {
+  "min": [
+   -3.4793,
+   0.47028,
+   -1.0795
+  ],
+  "max": [
+   -0.08352,
+   0.97782,
+   0.12097
+  ]
+ },
+ "pieces": [
+  {
+   "number": 1,
+   "name": "arm",
+   "regions": [
+    5
+   ],
+   "box": [
+    20,
+    1548,
+    1108,
+    1864
+   ],
+   "texels": 205061,
+   "median_mm_a_texel": 1.358
+  },
+  {
+   "number": 2,
+   "name": "finger",
+   "regions": [
+    0,
+    5
+   ],
+   "box": [
+    20,
+    1901,
+    1591,
+    2027
+   ],
+   "texels": 124588,
+   "median_mm_a_texel": 1.356
+  },
+  {
+   "number": 3,
+   "name": "membrane_under",
+   "regions": [
+    0,
+    1,
+    4
+   ],
+   "box": [
+    9,
+    795,
+    2024,
+    1516
+   ],
+   "texels": 646505,
+   "median_mm_a_texel": 1.691
+  },
+  {
+   "number": 4,
+   "name": "membrane_upper",
+   "regions": [
+    0,
+    1,
+    4
+   ],
+   "box": [
+    21,
+    25,
+    2037,
+    746
+   ],
+   "texels": 646601,
+   "median_mm_a_texel": 1.695
+  }
+ ]
+}

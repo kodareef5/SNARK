@@ -1,0 +1,53 @@
+**The knockout lie now reads as out cold, and the corpse reads as dead close up.** At 100 pixels they are easier to distinguish in the supplied three-quarter view; at 40 pixels, I still would not trust a stranger to identify which is which. The biggest remaining problems are the waking hand contacts and the death gape.
+
+Frame ranges are approximate. These sampled stills show pose progression, but cannot establish a one-frame pop or prove penetration.
+
+`torpor_idle` now reads as an unconscious animal resting its weight on the ground.
+
+1. **The neck correction is met.** The head looks laid down, and the neck connects it to the shoulders without the previous conspicuous bridge. The unequal elbows and supporting side improve the lie, although the outer wings still dominate as a broad, fairly tidy spread. My first wing-arrangement and silhouette points are **partly met**.
+
+2. **The breathing correction is met close up.** There is discernible upper-body expansion in the new strip while the head stays down. That supplies life without making the animal appear to rouse. It is not an instant “alive” signal in the small rows, but I would not keep increasing its amplitude to chase that.
+
+3. **Keep this for the taming view.** The remaining weakness, throughout frames 0–299, is distant recognition: torpor and death still share the low body and wide curved span. A more visibly shortened reach on one side, using the existing safe tuck, would distinguish them better than further small neck changes.
+
+`torpor_in` now reads as a failed recovery followed by the supporting limbs giving way.
+
+1. **My first head-recovery point is met.** Around frames 4–18, the recovery belongs more clearly to the neck base and chest, and the subsequent sag does not recover the same height. The repeated sleepy-nod impression is substantially reduced.
+
+2. **The support failure is mostly met, and the separate arrivals are met.** Around 24–36, the body loses its support before reaching the floor; the head follows. The outer wings finish later. This is a much more intelligible collapse.
+
+3. **Frames 36–46 remain slightly mechanical:** the body has stopped while the wings finish opening into their display shape. Keep the permitted fold path, but make its final movement feel like a fall into contact—less evenly controlled, with unequal stopping times. **Keep the overall clip; this is a finishing adjustment, not another rebuild.**
+
+`torpor_out` now reads as a groggy animal gathering itself and attempting to push upright, but the push still lacks convincing purchase.
+
+1. **The failed-lift correction is met.** Frames 9–21 involve the shoulders sufficiently to make the failure affect the animal. Completing the outer-wing fold after the rise is also a clear improvement. Keep the later balance correction, shake and shrug.
+
+2. **My main support point is only partly met.** Around 30–42, the far hand appears raised beside the lower head while the breast is already gaining height. Across approximately 42–48, the rise becomes substantial before the plants have registered convincingly. Gathering the arms is visible; transferring weight onto them is less clear.
+
+3. Make each supporting wrist visibly stop against a grid location **before** the shoulder rises over it. Let the elbow open under that load, with the feet contributing to the same push. This can use the existing wing path. **I would revise this interval before calling the waking clip finished.**
+
+`death` now reads as a support failure and collapse into a more convincingly disordered corpse.
+
+1. **The launch-like opening is fixed.** The initial jolt no longer presents the same deliberate flare. **The frame-24 handoff point is also met:** there is residual head/wing settling through roughly 24–30. Keep the still ending.
+
+2. **The jaw correction is not fully met in these pictures.** Around 10–18, the lower beak is already hanging steeply down while the chest remains raised. Around 18–24, those long open jaws sweep close to the floor as the head turns aside. This is still the strongest wince in the set. The head trails better, but the claimed small pre-contact gape does not read as small. Delay most of the opening until the cheek is supported; check both bill tips through the sideways arrival.
+
+3. **The corpse distinction is improved but only partly solved.** Close up, the rolled body, displaced head and escaped wing read as dead. At 100 pixels, the supplied view retains useful differences; at 40, the head and trapped arm merge into the same broad fallen-wing silhouette as torpor. **Keep the final corpse pose; fix the approach into it.** More movement afterward would not help.
+
+`torpor_eat` now reads as a small feeding reflex while the animal remains unconscious.
+
+1. **The main correction is met.** Around 6–10, the beak opening and closure are identifiable, and the restrained lift no longer resembles the waking attempt. The chest and wings remain appropriately uninvolved.
+
+2. The swallow around 10–18 is subtler than the bite; I cannot confidently follow a travelling swallow through the neck from these samples. The return around 18–28 looks suitably quiet. **Good enough to keep.** It communicates close up; it need not announce itself at 40–100 pixels.
+
+`torpor_fall` still reads as a disabled glider held in a loose, crooked spread.
+
+1. **The extremity-slack point is partly met.** The wrists and feet look less deliberately parked, although the head and torso still form a rather fixed unit throughout 0–39. There is no conspicuous new broken pose. Given the landing constraint, **keep this visual loop** rather than adding conspicuous flopping.
+
+2. **The landing-cut point remains unverified.** These pictures do not show a cut from arbitrary fall frames to idle frame 0. A plausible airborne pose is not evidence that that transition is clean. Any further change to the grounded tuck needs the corresponding fall pose checked across the whole loop.
+
+`death_air` now reads as loss of control followed by a slack airborne body, although the opening still briefly resembles a bank.
+
+1. **The initial shoulder-failure point is partly met.** Around 0–8, the large visible wing still sweeps through a coherent dip, and the small underside views do not make the stagger obvious. If polishing this further, make the first shoulder’s failure interrupt the wing line more clearly before the other follows; retain the existing fold path.
+
+2. **The later slack and held-pose points are sufficiently met.** The displaced head and unequal wings carry the failure into the frame-24 pose. Keep the 24–39 hold. At small sizes, its distinction from airborne torpor depends heavily on seeing the onset, but **this clip is good enough to keep.**

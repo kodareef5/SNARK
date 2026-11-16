@@ -1,0 +1,47 @@
+{
+  "track": "dawn",
+  "layer": "full",
+  "candidate": 1,
+  "model": "Stable Audio 3 medium",
+  "repo": "stabilityai/stable-audio-3-medium",
+  "revision": "d4d3579395a8ac0df4ab13b5b1d7138ce7290f81",
+  "code": {
+    "repo": "github.com/Stability-AI/stable-audio-3",
+    "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57"
+  },
+  "licence": {
+    "name": "Stability AI Community License",
+    "terms": "free under US$1M annual revenue, commercial users register with Stability AI; outputs are ours; not for training other foundation models"
+  },
+  "prompt": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, the main theme: the same theme at full power: the melody on massed horns and a huge choir singing long vowels, heavy metal guitars and double kick drums joining, epic and overwhelming. 80 BPM, D minor.",
+  "negative_prompt": "fade out, ending, silence, gaps, dropouts, lo-fi, pop, happy, major key, vocals with lyrics, singing words",
+  "seconds": 120,
+  "bpm": 80,
+  "key": "D minor",
+  "seed": 10101,
+  "steps": 8,
+  "cfg": 1.0,
+  "init_from": "dawn/theme.wav",
+  "init_noise_level": 0.7,
+  "rate": 44100,
+  "channels": 2,
+  "seconds_to_make": 5.6,
+  "gpu_peak_gb": 5.43,
+  "torch": "2.7.1+cu128",
+  "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "date": "2026-11-15",
+  "sha256": "9f7ce3cd8abf31c2ad4d024ad204b81aab4c465077fbd253db6ccfc3a845effb",
+  "chosen": "full@1.wav",
+  "measures": {
+    "loudness_db": -19.9,
+    "dropouts": 0.021,
+    "stray_db": 2.78,
+    "clipped": 0,
+    "brightness": 0.005,
+    "beat_with_base": 0.002,
+    "louder_db": 1.9,
+    "brighter": 0.003,
+    "score": -1.671
+  },
+  "stored_as": "Opus 96 kb/s stereo (ffmpeg libopus); the master is made again from this recipe"
+}

@@ -1,0 +1,5 @@
+Created all six 2048² undyed sets, reusable elements, and build/check scripts. Numerical checks pass; all 30 maps rebuild byte for byte.
+
+[Preview](tex/studies/saddle/checks/materials_overview.png) · [Report](tex/studies/saddle/REPORT.md)
+
+Built-in imagegen originals and prompts are preserved in `source/`. The report documents the viewer winding bug and 5 m readability limits.

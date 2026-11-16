@@ -1,0 +1,7 @@
+Painted all ten body pieces with flowing fuzz, the mantle and 45 mm nape line, scutes, pebbled skin and undyed claws.
+
+Validated full coverage, dye means, flow alignment and byte-identical rebuilds; reviewed in the game renderer.
+
+[Review images](tex/paint/body/checks/review.png) · [Report](tex/paint/body/REPORT.md)
+
+The report documents existing ankle-to-toe mesh gaps.

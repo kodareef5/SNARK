@@ -1,0 +1,44 @@
+{
+  "track": "apex",
+  "layer": "tense",
+  "candidate": 2,
+  "model": "Stable Audio 3 medium",
+  "repo": "stabilityai/stable-audio-3-medium",
+  "revision": "d4d3579395a8ac0df4ab13b5b1d7138ce7290f81",
+  "code": {
+    "repo": "github.com/Stability-AI/stable-audio-3",
+    "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57"
+  },
+  "licence": {
+    "name": "Stability AI Community License",
+    "terms": "free under US$1M annual revenue, commercial users register with Stability AI; outputs are ours; not for training other foundation models"
+  },
+  "prompt": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, facing an apex predator, a giant beast, a colossal presence: deep pounding taiko drums, low brass blasts like roars, ominous choir, heavy and slow-building. 110 BPM, C minor.",
+  "negative_prompt": "fade out, ending, silence, gaps, dropouts, lo-fi, pop, happy, major key, vocals with lyrics, singing words",
+  "seconds": 120,
+  "bpm": 110,
+  "key": "C minor",
+  "seed": 15002,
+  "steps": 8,
+  "cfg": 1.0,
+  "init_from": null,
+  "init_noise_level": null,
+  "rate": 44100,
+  "channels": 2,
+  "seconds_to_make": 2.6,
+  "gpu_peak_gb": 5.47,
+  "torch": "2.7.1+cu128",
+  "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "date": "2026-11-15",
+  "sha256": "733a4798776a4aa4c7d9213167e46074a17f4bc15c066535414942cbe5801b1f",
+  "chosen": "tense@2.wav",
+  "measures": {
+    "loudness_db": -15.5,
+    "dropouts": 0.058,
+    "stray_db": 3.69,
+    "clipped": 899,
+    "brightness": 0.004,
+    "score": -9.044
+  },
+  "stored_as": "Opus 96 kb/s stereo (ffmpeg libopus); the master is made again from this recipe"
+}

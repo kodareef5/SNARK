@@ -77,6 +77,35 @@ that worked are in `recipes.json` (Stable: "TrackType: SFX, ..." in whole second
 calls with pauses). Prompts that missed: "mumble" (rumble from Stable, a human-sounding mumble from MOSS),
 "chirrup" (small-bird chirps), a squawk with wing flaps (thumps only), and MOSS "panic" (buried in wing noise).
 
+## v2 (2026-11-15): variety, 28 new creatures, vehicles, new weapons, music
+
+Asked of v2: "a pack of raptors all garggling the same audio sounds demonic", more of everything, vehicles, music.
+`planning/architecture/sound.md` "v2" says what the engine does now. What was made:
+
+**Sounds.** 446 more takes on CUDA (MOSS), picked by rule and cut.
+- **Creatures that crowd:** up to 10 calls, 8 alarms and 8 attacks each, chase calls and growls. These are the dodo,
+  raptor, direwolf, compy, dilophosaur, parasaur, trike, stego, rex, sabertooth, spider, pteranodon, megalodon and
+  mammoth.
+- **Steps and impacts:** more on every ground.
+- **28 new creatures**, heard by id the day their definitions exist: ankylo, bronto, carno, spino, allosaur, giga,
+  therizino, argentavis, quetzal, dimorph, sarco, mosasaur, plesio, ichthy, piranha, titanoboa, scorpion, phiomia,
+  ovis, gallimimus, pachy, thylacoleo, megaloceros, castoroides, doedicurus, kapro, troodon and onyc.
+- **The vehicle library** (`core:vehicle`).
+- **The shotgun, flare gun, bola, gas and spent cases.**
+
+**Music.**
+- **The collection:** 11 tracks, 32 layers, made with Stable Audio 3 Medium on CUDA. Its weights are gated on Hugging
+  Face; the owner accepted the terms. One environment holds it: `tools/sound/.venv-stable` (torch 2.7.1+cu128;
+  Medium is halved on the CPU so it fits 8 GB, and makes 2 minutes in about 5 s).
+- **Running it:** `music.py`, then `music_pick.py`, then `music_export.py`, from the brief
+  `assets/source/core/music/sound/brief.json`. Rounds of make and pick run until nothing waits.
+- **Gaps to remake:** `engine/stall` and `suspension` (vehicles), `fire/out`, `notice` and `thunder` had no usable take.
+- **Beats:** layers keep their track's bars, but beat lines only loosely (onset correlation 0.0 to 0.13), so a layer
+  change can sound like a cross into a related passage; lower `noise` keeps layers closer at some cost in intensity.
+
+**Storage.** 336 MB of cut takes, Opus music and recipes. Storing takes as 16-bit instead of 24-bit would save about
+a third, with nothing lost in the game's 16-bit pack.
+
 ## v1: sound for the whole game (2026-11-15)
 
 The design and catalogue are in `planning/reference/round9-sound-design.md`, the engine as built in
@@ -97,12 +126,22 @@ The design and catalogue are in `planning/reference/round9-sound-design.md`, the
 - `core:body` (water, thumps).
 - `core:node` (felled, crumbled, picked).
 
-**Still to slot in.** These are generating now, from the committed briefs, and need no code:
-- `core:surface` (steps, landings and impacts by ground and material);
-- `core:weapon`;
-- `core:structure`;
-- `core:ui`;
-- `core:world` (beds, shore, wind, water).
+**The shared families.** Each family's sounds and what still has none:
+- `core:surface`: steps and landings on nine grounds, impacts on eleven materials, drags. Nothing missing.
+- `core:weapon`: swings, draws, releases, shots and reloads by hold, flight, whizzes, ricochets, blasts, debris and
+  confirmation sounds. Nothing missing.
+- `core:structure`: placed and destroyed by tier, doors, chests, locks, collapse, repair, fires and grinding.
+  `fire/out` has no take: its only file is too quiet.
+- `core:ui`: 25 of 26 slots. `notice` has no take: its file is a steady tone.
+- `core:world`: beds by place and time, sea, underwater, shore, wind, rain, river, waterfall, fire and stingers,
+  looping in 12 s. `thunder` has no take: it came out as noise, and it waits on weather.
+
+**Coverage, from `bun run sounds`.** 227 of 265 occasions are heard: 184 through shared sounds and 43 by owners' own
+sounds. Of the 38 that are silent, 25 wait on a feature.
+
+**The build.** 258 sounds, 554 takes, 724.5 s of sound in 24.4 MB, fetched as they are wanted.
+
+**The sources.** About 112 MB of cut takes.
 
 **Making a brief's sounds.** These commands run from the worktree root:
 ```
