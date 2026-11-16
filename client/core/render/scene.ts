@@ -875,7 +875,8 @@ export class Scene {
   /**
    * Puts the draws in the order of the steps they are drawn in (packet.ts), each in the ranges `passOf` gives it, so a
    * draw in both is listed twice, and an opaque step's cut-out draws where `cutouts` says, each part of it by what its
-   * draws bind (`byState`). With one range they are all in the near range. "made" leaves them as they were made.
+   * draws bind (`byState`) unless they are to stay as made. With one range they are all in the near range, and stay as
+   * they were made unless a cut-out is to move: drawn flat, as low poly draws, sorting would save less than it costs.
    */
   private order(): void {
     const p = this.packet;
@@ -888,7 +889,9 @@ export class Scene {
     if (one) {
       p.drawPass.fill(PASS_NEAR, 0, n);
       p.skyAt = n;
-      if (made) return;
+      let cut = false;
+      for (let d = 0; d < n && !cut; d++) cut = cutAt !== restAt && (p.drawFlags[d]! & (DRAW_CUTOUT | DRAW_BLEND | DRAW_NEAR)) === DRAW_CUTOUT;
+      if (!cut) return;
     }
     // Each draw's place in each range, -1 where it is not drawn in that range: its step as stepOf will find it, and in
     // an opaque step the cut-outs a place after the rest, or before it, or none.

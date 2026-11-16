@@ -489,11 +489,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // whose bones the frame keeps for it and whose first bone its draw's offset names, in a draw after the rest (the order
   // of draws); and from frame 200 the frame has 66 bones, not 40, as few as leaves bones for those poses and drops
   // nothing. Every body here is near enough to be posed every frame: posing all of them every frame gives this hash too.
-  // It was 4216232697 until a step's opaque draws came by what they bind (scene.ts order), and a frame of one depth range
-  // was put in its steps as one of two is, its see-through draws after its opaque ones: only the draws' order moved.
-  // Rasterized, each of the 300 frames is the picture it was with the steps put in place alone; against before, 82 pixels
-  // of 35 frames differ, where the ghost, made before the loose tube, now goes over it.
-  expect(hash).toBe(4128384313);
+  expect(hash).toBe(4216232697);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -513,9 +509,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 2182034391 until the street wrecks' kinds, as above; without them it is that again.
   // It was 1893532195 until the pteranodon was drawn on its own art, as above.
   // It was 3121847286 until clips were stored to 0.025 degrees, as above, and 359459847 until chunks were drawn by cell.
-  // It was 1443514794, with 97 more draws on one bone, until bodies without bones stood in a pose, as above, and
-  // 2400700468 until the draws came by what they bind, as above, the pictures moving as above's.
-  expect(saddled.hash).toBe(2731922610);
+  // It was 1443514794, with 97 more draws on one bone, until bodies without bones stood in a pose, as above.
+  expect(saddled.hash).toBe(2400700468);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
