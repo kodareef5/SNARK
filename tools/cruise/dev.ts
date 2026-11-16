@@ -35,7 +35,7 @@ export async function startCruisePreview(map: string, args = process.argv.slice(
   const folder = value("--config") ?? DEV_CONFIG, { rules, report } = loadConfigFolder(folder, args);
   for (const line of formatReport(report, rules)) console.log(line);
   const dbPath = resolve(value("--db") ?? resolve(root, "var/cruise-preview/world.db")); mkdirSync(dirname(dbPath), { recursive: true });
-  const live = liveFileOf(folder), server = startServer({ dev: true, hostname: value("--host") ?? "127.0.0.1", port: Number(value("--port") ?? 8794), dbPath, config: rules, map: resolve(map), ...(live ? { live } : {}) });
+  const live = liveFileOf(folder), server = startServer({ dev: true, hostname: value("--host") ?? "127.0.0.1", port: Number(value("--port") ?? 8795), dbPath, config: rules, map: resolve(map), ...(live ? { live } : {}) });
   try { console.log(`Prepared ${seedCruisePreview(server.host)} cruise port utility launch.`); } catch (error) { server.stop(); throw error; }
   stopOnSignals(() => server.stop());
   console.log(`Cruise port: http://localhost:${server.port}\nIndependent save: ${dbPath}`);
