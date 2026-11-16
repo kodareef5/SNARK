@@ -24,4 +24,4 @@ The six native levels preserve both blade assemblies explicitly. At high speed t
 
 Texture maps use 60 MB in the largest tier; livery variants share trim/cabin maps. The instrument displays have six times the ordinary chart density, dark matte faces, original printed flight and service reference graphics. Their graphics are static artwork; the game HUD provides actual telemetry. The UV grid is quantized before tangent export, preventing microscopic Boolean cuts from changing orientation later in the native 16-bit pack.
 
-The final intact native levels have 34,208 / 18,000 / 7,000 / 2,598 / 998 / 480 triangles. Each retains both blade assemblies; all six remain within their declared budgets.
+The final civilian and rescue native levels have 34,208 / 18,000 / 7,000 / 2,598 / 998 / 480 triangles. Each retains both blade assemblies; all six remain within their declared budgets.

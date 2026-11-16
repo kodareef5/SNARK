@@ -5,14 +5,14 @@
     {
       "id": "core:helicopter_police",
       "size": [
-        9.199999809265137,
+        9.196834564208984,
         3.3199991434812546,
-        10.300999641418457
+        10.285085678100586
       ],
       "levels": [
         {
-          "triangles": 33224,
-          "vertices": 26913,
+          "triangles": 34208,
+          "vertices": 27894,
           "budget": 38000,
           "error": 0,
           "from": 0,
@@ -32,199 +32,199 @@
               "tall": 0
             }
           ],
-          "parts": 124,
+          "parts": 134,
           "openEdges": 0,
           "holes": 0,
           "flipped": 0,
           "insideOut": 0,
-          "crowded": 1656,
+          "crowded": 1664,
           "collapsed": 0,
           "materials": 3,
           "bothWays": 0
         },
         {
           "triangles": 18000,
-          "vertices": 17651,
+          "vertices": 17891,
           "budget": 18000,
-          "error": 0.00272,
-          "from": 9.535144662961848,
-          "tall": 268.52934248745436,
+          "error": 0.0031,
+          "from": 10.86726046146387,
+          "tall": 235.61284244060514,
           "starts": [
             {
               "from": 0,
               "tall": 0
             },
             {
-              "from": 9.535144662961848,
-              "tall": 268.52934248745436
+              "from": 10.86726046146387,
+              "tall": 235.61284244060514
             },
             {
-              "from": 14.983798756082903,
-              "tall": 170.88230885565278
+              "from": 17.077123582300366,
+              "tall": 149.935445189476
             },
             {
-              "from": 26.221647823145084,
-              "tall": 97.64703363180158
+              "from": 29.884966269025643,
+              "tall": 85.67739725112914
             }
           ],
-          "parts": 124,
+          "parts": 134,
           "openEdges": 0,
           "holes": 0,
           "flipped": 0,
           "insideOut": 0,
-          "crowded": 1646,
+          "crowded": 1650,
           "collapsed": 0,
           "materials": 3,
           "bothWays": 0
         },
         {
           "triangles": 7000,
-          "vertices": 4319,
+          "vertices": 4323,
           "budget": 7000,
-          "error": 0.02333,
-          "from": 81.78489889224261,
-          "tall": 31.307321541614915,
+          "error": 0.02396,
+          "from": 83.99340666344332,
+          "tall": 30.48413236919349,
           "starts": [
             {
-              "from": 40.892449446121304,
-              "tall": 62.61464308322983
+              "from": 41.99670333172166,
+              "tall": 60.96826473838698
             },
             {
-              "from": 81.78489889224261,
-              "tall": 31.307321541614915
+              "from": 83.99340666344332,
+              "tall": 30.48413236919349
             },
             {
-              "from": 128.51912683066695,
-              "tall": 19.922840981027672
+              "from": 131.9896390425538,
+              "tall": 19.3989933258504
             },
             {
-              "from": 224.90847195366717,
-              "tall": 11.38448056058724
+              "from": 230.98186832446913,
+              "tall": 11.085139043343087
             }
           ],
-          "parts": 101,
+          "parts": 103,
           "openEdges": 0,
           "holes": 0,
           "flipped": 0,
           "insideOut": 0,
-          "crowded": 1519,
+          "crowded": 1526,
           "collapsed": 0
         },
         {
           "triangles": 2600,
-          "vertices": 1745,
+          "vertices": 1766,
           "budget": 2600,
-          "error": 0.10529,
-          "from": 369.1012432217841,
-          "tall": 6.937029267412632,
+          "error": 0.09099,
+          "from": 318.97162238341855,
+          "tall": 8.02725367145704,
           "starts": [
             {
-              "from": 184.55062161089205,
-              "tall": 13.874058534825265
+              "from": 159.48581119170927,
+              "tall": 16.05450734291408
             },
             {
-              "from": 369.1012432217841,
-              "tall": 6.937029267412632
+              "from": 318.97162238341855,
+              "tall": 8.02725367145704
             },
             {
-              "from": 580.0162393485178,
-              "tall": 4.414473170171675
+              "from": 501.2411208882291,
+              "tall": 5.108252336381752
             },
             {
-              "from": 1015.0284188599062,
-              "tall": 2.5225560972409573
+              "from": 877.1719615544009,
+              "tall": 2.9190013350752873
             }
           ],
-          "parts": 51,
+          "parts": 53,
           "openEdges": 0,
           "holes": 0,
           "flipped": 0,
           "insideOut": 0,
-          "crowded": 858,
+          "crowded": 821,
           "collapsed": 0
         },
         {
-          "triangles": 1000,
-          "vertices": 719,
+          "triangles": 998,
+          "vertices": 742,
           "budget": 1000,
-          "error": 0.29542,
-          "from": 1035.6148662985988,
-          "tall": 2.47241152110851,
+          "error": 0.27242,
+          "from": 954.9868048103185,
+          "tall": 2.681153408581881,
           "starts": [
             {
-              "from": 517.8074331492994,
-              "tall": 4.94482304221702
+              "from": 477.49340240515926,
+              "tall": 5.362306817163762
             },
             {
-              "from": 1035.6148662985988,
-              "tall": 2.47241152110851
+              "from": 954.9868048103185,
+              "tall": 2.681153408581881
             },
             {
-              "from": 1627.394789897798,
-              "tall": 1.5733527861599608
+              "from": 1500.6935504162145,
+              "tall": 1.7061885327339243
             },
             {
-              "from": 2847.9408823211465,
-              "tall": 0.899058734948549
+              "from": 2626.2137132283756,
+              "tall": 0.9749648758479568
             }
           ],
-          "parts": 27,
+          "parts": 33,
           "openEdges": 0,
           "holes": 0,
           "flipped": 0,
           "insideOut": 0,
-          "crowded": 340,
+          "crowded": 328,
           "collapsed": 0
         },
         {
-          "triangles": 480,
-          "vertices": 382,
+          "triangles": 478,
+          "vertices": 378,
           "budget": 480,
-          "error": 0.49114,
-          "from": 1721.7246138849566,
-          "tall": 1.4871519557883208,
+          "error": 0.50207,
+          "from": 1760.0404709313436,
+          "tall": 1.454776846985233,
           "starts": [
             {
-              "from": 860.8623069424783,
-              "tall": 2.9743039115766416
+              "from": 880.0202354656718,
+              "tall": 2.909553693970466
             },
             {
-              "from": 1721.7246138849566,
-              "tall": 1.4871519557883208
+              "from": 1760.0404709313436,
+              "tall": 1.454776846985233
             },
             {
-              "from": 2705.5672503906458,
-              "tall": 0.9463694264107497
+              "from": 2765.7778828921114,
+              "tall": 0.9257670844451482
             },
             {
-              "from": 4734.742688183631,
-              "tall": 0.5407825293775712
+              "from": 4840.111295061195,
+              "tall": 0.5290097625400847
             }
           ],
-          "parts": 15,
+          "parts": 18,
           "openEdges": 0,
           "holes": 0,
           "flipped": 0,
           "insideOut": 0,
-          "crowded": 179,
+          "crowded": 171,
           "collapsed": 0
         }
       ],
       "materials": [
         {
           "id": "core:helicopter/body_police",
-          "span": 11.047,
-          "texels": 185.3896985606952
+          "span": 11.0469,
+          "texels": 185.39137676633263
         },
         {
           "id": "core:helicopter/cabin",
-          "span": 12.9563,
-          "texels": 158.0698193156997
+          "span": 12.7851,
+          "texels": 160.18646705931124
         },
         {
           "id": "core:helicopter/trim",
-          "span": 8.2211,
-          "texels": 249.1150819233436
+          "span": 8.2517,
+          "texels": 248.1912817964783
         }
       ],
       "strays": 0
@@ -318,16 +318,16 @@
         "mro": 1024,
         "normal": 2048
       },
-      "span": 11.047,
+      "span": 11.0469,
       "tiles": true,
       "mean": [
-        202,
-        202,
+        201,
+        201,
         201
       ],
       "nearest": {
         "colour": 1,
-        "distance": 5.744562646538029
+        "distance": 5.196152422706632
       },
       "normal": {
         "x": 0.888060539294927,
@@ -434,21 +434,21 @@
         "mro": 1024,
         "normal": 2048
       },
-      "span": 8.2211,
+      "span": 8.2517,
       "tiles": true,
       "mean": [
         65,
-        54,
+        53,
         45
       ],
       "nearest": {
         "colour": 116,
-        "distance": 9.695359714832657
+        "distance": 9.433981132056603
       },
       "normal": {
-        "x": 0.994172930249267,
-        "y": 0.9954284478528446,
-        "length": 0.9999791747713375,
+        "x": 0.9940615642626669,
+        "y": 0.9950493906621243,
+        "length": 1.0000156520575865,
         "off": 0.005041540105474418
       },
       "regions": {
@@ -550,22 +550,22 @@
         "mro": 1024,
         "normal": 2048
       },
-      "span": 12.9563,
+      "span": 12.7851,
       "tiles": true,
       "mean": [
-        113,
-        113,
-        109
+        107,
+        107,
+        104
       ],
       "nearest": {
-        "colour": 87,
-        "distance": 14.456832294800959
+        "colour": 98,
+        "distance": 8.306623862918075
       },
       "normal": {
-        "x": 0.8077643590274918,
-        "y": 0.655829155424965,
-        "length": 1.0000208753873958,
-        "off": 0.0034542417452201324
+        "x": 0.7831013530816098,
+        "y": 0.6418197459686285,
+        "length": 1.0000204509484438,
+        "off": 0.003929282294836578
       },
       "regions": {
         "sameSize": true,
@@ -574,7 +574,7 @@
         "cover": [
           0,
           0,
-          0.1552154129626704,
+          0.12847890666886871,
           0,
           0,
           0
@@ -618,1374 +618,6 @@
       "collective",
       "pedals",
       "refuel"
-    ]
-  },
-  "sheet": {
-    "file": "sheet.png",
-    "width": 1560,
-    "height": 6171,
-    "pages": [
-      {
-        "name": "views",
-        "file": "sheet.views.png",
-        "y": 0,
-        "width": 1560,
-        "height": 1471
-      },
-      {
-        "name": "levels",
-        "file": "sheet.levels.png",
-        "y": 1471,
-        "width": 1560,
-        "height": 2326
-      },
-      {
-        "name": "materials",
-        "file": "sheet.materials.png",
-        "y": 3797,
-        "width": 1560,
-        "height": 1420
-      },
-      {
-        "name": "rig",
-        "file": "sheet.rig.png",
-        "y": 5217,
-        "width": 1560,
-        "height": 954
-      }
-    ],
-    "cells": [
-      {
-        "what": "materials",
-        "mesh": "core:helicopter_police",
-        "page": "views",
-        "x": 12,
-        "y": 279,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 0,
-        "above": 12
-      },
-      {
-        "what": "materials",
-        "mesh": "core:helicopter_police",
-        "page": "views",
-        "x": 397,
-        "y": 279,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 45,
-        "above": 12
-      },
-      {
-        "what": "materials",
-        "mesh": "core:helicopter_police",
-        "page": "views",
-        "x": 782,
-        "y": 279,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 90,
-        "above": 12
-      },
-      {
-        "what": "materials",
-        "mesh": "core:helicopter_police",
-        "page": "views",
-        "x": 1167,
-        "y": 279,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 135,
-        "above": 12
-      },
-      {
-        "what": "materials",
-        "mesh": "core:helicopter_police",
-        "page": "views",
-        "x": 12,
-        "y": 569,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 180,
-        "above": 12
-      },
-      {
-        "what": "materials",
-        "mesh": "core:helicopter_police",
-        "page": "views",
-        "x": 397,
-        "y": 569,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 225,
-        "above": 12
-      },
-      {
-        "what": "materials",
-        "mesh": "core:helicopter_police",
-        "page": "views",
-        "x": 782,
-        "y": 569,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 270,
-        "above": 12
-      },
-      {
-        "what": "materials",
-        "mesh": "core:helicopter_police",
-        "page": "views",
-        "x": 1167,
-        "y": 569,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 315,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "views",
-        "x": 12,
-        "y": 879,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 0,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "views",
-        "x": 397,
-        "y": 879,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 45,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "views",
-        "x": 782,
-        "y": 879,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 90,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "views",
-        "x": 1167,
-        "y": 879,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 135,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "views",
-        "x": 12,
-        "y": 1169,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 180,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "views",
-        "x": 397,
-        "y": 1169,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 225,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "views",
-        "x": 782,
-        "y": 1169,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 270,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "views",
-        "x": 1167,
-        "y": 1169,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 315,
-        "above": 12
-      },
-      {
-        "what": "materials",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 12,
-        "y": 32,
-        "width": 186,
-        "height": 140,
-        "level": 1,
-        "around": 0,
-        "above": 12
-      },
-      {
-        "what": "materials",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 204,
-        "y": 32,
-        "width": 186,
-        "height": 140,
-        "level": 1,
-        "around": 45,
-        "above": 12
-      },
-      {
-        "what": "materials",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 396,
-        "y": 32,
-        "width": 186,
-        "height": 140,
-        "level": 1,
-        "around": 90,
-        "above": 12
-      },
-      {
-        "what": "materials",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 588,
-        "y": 32,
-        "width": 186,
-        "height": 140,
-        "level": 1,
-        "around": 135,
-        "above": 12
-      },
-      {
-        "what": "materials",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 780,
-        "y": 32,
-        "width": 186,
-        "height": 140,
-        "level": 1,
-        "around": 180,
-        "above": 12
-      },
-      {
-        "what": "materials",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 972,
-        "y": 32,
-        "width": 186,
-        "height": 140,
-        "level": 1,
-        "around": 225,
-        "above": 12
-      },
-      {
-        "what": "materials",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 1164,
-        "y": 32,
-        "width": 186,
-        "height": 140,
-        "level": 1,
-        "around": 270,
-        "above": 12
-      },
-      {
-        "what": "materials",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 1356,
-        "y": 32,
-        "width": 186,
-        "height": 140,
-        "level": 1,
-        "around": 315,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 12,
-        "y": 198,
-        "width": 186,
-        "height": 140,
-        "level": 2,
-        "around": 0,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 204,
-        "y": 198,
-        "width": 186,
-        "height": 140,
-        "level": 2,
-        "around": 45,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 396,
-        "y": 198,
-        "width": 186,
-        "height": 140,
-        "level": 2,
-        "around": 90,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 588,
-        "y": 198,
-        "width": 186,
-        "height": 140,
-        "level": 2,
-        "around": 135,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 780,
-        "y": 198,
-        "width": 186,
-        "height": 140,
-        "level": 2,
-        "around": 180,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 972,
-        "y": 198,
-        "width": 186,
-        "height": 140,
-        "level": 2,
-        "around": 225,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 1164,
-        "y": 198,
-        "width": 186,
-        "height": 140,
-        "level": 2,
-        "around": 270,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 1356,
-        "y": 198,
-        "width": 186,
-        "height": 140,
-        "level": 2,
-        "around": 315,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 12,
-        "y": 364,
-        "width": 186,
-        "height": 140,
-        "level": 3,
-        "around": 0,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 204,
-        "y": 364,
-        "width": 186,
-        "height": 140,
-        "level": 3,
-        "around": 45,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 396,
-        "y": 364,
-        "width": 186,
-        "height": 140,
-        "level": 3,
-        "around": 90,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 588,
-        "y": 364,
-        "width": 186,
-        "height": 140,
-        "level": 3,
-        "around": 135,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 780,
-        "y": 364,
-        "width": 186,
-        "height": 140,
-        "level": 3,
-        "around": 180,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 972,
-        "y": 364,
-        "width": 186,
-        "height": 140,
-        "level": 3,
-        "around": 225,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 1164,
-        "y": 364,
-        "width": 186,
-        "height": 140,
-        "level": 3,
-        "around": 270,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 1356,
-        "y": 364,
-        "width": 186,
-        "height": 140,
-        "level": 3,
-        "around": 315,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 12,
-        "y": 530,
-        "width": 186,
-        "height": 140,
-        "level": 4,
-        "around": 0,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 204,
-        "y": 530,
-        "width": 186,
-        "height": 140,
-        "level": 4,
-        "around": 45,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 396,
-        "y": 530,
-        "width": 186,
-        "height": 140,
-        "level": 4,
-        "around": 90,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 588,
-        "y": 530,
-        "width": 186,
-        "height": 140,
-        "level": 4,
-        "around": 135,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 780,
-        "y": 530,
-        "width": 186,
-        "height": 140,
-        "level": 4,
-        "around": 180,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 972,
-        "y": 530,
-        "width": 186,
-        "height": 140,
-        "level": 4,
-        "around": 225,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 1164,
-        "y": 530,
-        "width": 186,
-        "height": 140,
-        "level": 4,
-        "around": 270,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 1356,
-        "y": 530,
-        "width": 186,
-        "height": 140,
-        "level": 4,
-        "around": 315,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 12,
-        "y": 696,
-        "width": 186,
-        "height": 140,
-        "level": 5,
-        "around": 0,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 204,
-        "y": 696,
-        "width": 186,
-        "height": 140,
-        "level": 5,
-        "around": 45,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 396,
-        "y": 696,
-        "width": 186,
-        "height": 140,
-        "level": 5,
-        "around": 90,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 588,
-        "y": 696,
-        "width": 186,
-        "height": 140,
-        "level": 5,
-        "around": 135,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 780,
-        "y": 696,
-        "width": 186,
-        "height": 140,
-        "level": 5,
-        "around": 180,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 972,
-        "y": 696,
-        "width": 186,
-        "height": 140,
-        "level": 5,
-        "around": 225,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 1164,
-        "y": 696,
-        "width": 186,
-        "height": 140,
-        "level": 5,
-        "around": 270,
-        "above": 12
-      },
-      {
-        "what": "shaded",
-        "mesh": "core:helicopter_police",
-        "page": "levels",
-        "x": 1356,
-        "y": 696,
-        "width": 186,
-        "height": 140,
-        "level": 5,
-        "around": 315,
-        "above": 12
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 396,
-        "y": 938,
-        "width": 80,
-        "height": 80,
-        "level": 1,
-        "around": 290,
-        "above": 10,
-        "tier": "medium",
-        "distance": 9.535144662961848,
-        "textured": true
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 780,
-        "y": 938,
-        "width": 80,
-        "height": 80,
-        "level": 1,
-        "around": 290,
-        "above": 10,
-        "tier": "high",
-        "distance": 14.983798756082903,
-        "textured": true
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 1164,
-        "y": 938,
-        "width": 80,
-        "height": 80,
-        "level": 1,
-        "around": 290,
-        "above": 10,
-        "tier": "ultra",
-        "distance": 26.221647823145084,
-        "textured": true
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 12,
-        "y": 1164,
-        "width": 80,
-        "height": 80,
-        "level": 2,
-        "around": 290,
-        "above": 10,
-        "tier": "lowpoly",
-        "distance": 40.892449446121304,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 396,
-        "y": 1164,
-        "width": 80,
-        "height": 80,
-        "level": 2,
-        "around": 290,
-        "above": 10,
-        "tier": "medium",
-        "distance": 81.78489889224261,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 780,
-        "y": 1164,
-        "width": 80,
-        "height": 80,
-        "level": 2,
-        "around": 290,
-        "above": 10,
-        "tier": "high",
-        "distance": 128.51912683066695,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 1164,
-        "y": 1164,
-        "width": 80,
-        "height": 80,
-        "level": 2,
-        "around": 290,
-        "above": 10,
-        "tier": "ultra",
-        "distance": 224.90847195366717,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 12,
-        "y": 1390,
-        "width": 80,
-        "height": 80,
-        "level": 3,
-        "around": 290,
-        "above": 10,
-        "tier": "lowpoly",
-        "distance": 184.55062161089205,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 396,
-        "y": 1390,
-        "width": 80,
-        "height": 80,
-        "level": 3,
-        "around": 290,
-        "above": 10,
-        "tier": "medium",
-        "distance": 369.1012432217841,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 780,
-        "y": 1390,
-        "width": 80,
-        "height": 80,
-        "level": 3,
-        "around": 290,
-        "above": 10,
-        "tier": "high",
-        "distance": 580.0162393485178,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 1164,
-        "y": 1390,
-        "width": 80,
-        "height": 80,
-        "level": 3,
-        "around": 290,
-        "above": 10,
-        "tier": "ultra",
-        "distance": 1015.0284188599062,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 12,
-        "y": 1616,
-        "width": 80,
-        "height": 80,
-        "level": 4,
-        "around": 290,
-        "above": 10,
-        "tier": "lowpoly",
-        "distance": 517.8074331492994,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 396,
-        "y": 1616,
-        "width": 80,
-        "height": 80,
-        "level": 4,
-        "around": 290,
-        "above": 10,
-        "tier": "medium",
-        "distance": 1035.6148662985988,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 780,
-        "y": 1616,
-        "width": 80,
-        "height": 80,
-        "level": 4,
-        "around": 290,
-        "above": 10,
-        "tier": "high",
-        "distance": 1627.394789897798,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 1164,
-        "y": 1616,
-        "width": 80,
-        "height": 80,
-        "level": 4,
-        "around": 290,
-        "above": 10,
-        "tier": "ultra",
-        "distance": 2847.9408823211465,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 12,
-        "y": 1842,
-        "width": 80,
-        "height": 80,
-        "level": 5,
-        "around": 290,
-        "above": 10,
-        "tier": "lowpoly",
-        "distance": 860.8623069424783,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 396,
-        "y": 1842,
-        "width": 80,
-        "height": 80,
-        "level": 5,
-        "around": 290,
-        "above": 10,
-        "tier": "medium",
-        "distance": 1721.7246138849566,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 780,
-        "y": 1842,
-        "width": 80,
-        "height": 80,
-        "level": 5,
-        "around": 290,
-        "above": 10,
-        "tier": "high",
-        "distance": 2705.5672503906458,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "as seen",
-        "mesh": "core:helicopter_police",
-        "x": 1164,
-        "y": 1842,
-        "width": 80,
-        "height": 80,
-        "level": 5,
-        "around": 290,
-        "above": 10,
-        "tier": "ultra",
-        "distance": 4734.742688183631,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "handover",
-        "mesh": "core:helicopter_police",
-        "x": 12,
-        "y": 2108,
-        "width": 80,
-        "height": 80,
-        "level": 1,
-        "around": 290,
-        "above": 10,
-        "tier": "medium",
-        "distance": 81.78489889224261,
-        "textured": true
-      },
-      {
-        "page": "levels",
-        "what": "handover",
-        "mesh": "core:helicopter_police",
-        "x": 12,
-        "y": 2208,
-        "width": 80,
-        "height": 80,
-        "level": 2,
-        "around": 290,
-        "above": 10,
-        "tier": "medium",
-        "distance": 81.78489889224261,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "handover",
-        "mesh": "core:helicopter_police",
-        "x": 524,
-        "y": 2108,
-        "width": 80,
-        "height": 80,
-        "level": 1,
-        "around": 290,
-        "above": 10,
-        "tier": "high",
-        "distance": 128.51912683066695,
-        "textured": true
-      },
-      {
-        "page": "levels",
-        "what": "handover",
-        "mesh": "core:helicopter_police",
-        "x": 524,
-        "y": 2208,
-        "width": 80,
-        "height": 80,
-        "level": 2,
-        "around": 290,
-        "above": 10,
-        "tier": "high",
-        "distance": 128.51912683066695,
-        "textured": false
-      },
-      {
-        "page": "levels",
-        "what": "handover",
-        "mesh": "core:helicopter_police",
-        "x": 1036,
-        "y": 2108,
-        "width": 80,
-        "height": 80,
-        "level": 1,
-        "around": 290,
-        "above": 10,
-        "tier": "ultra",
-        "distance": 224.90847195366717,
-        "textured": true
-      },
-      {
-        "page": "levels",
-        "what": "handover",
-        "mesh": "core:helicopter_police",
-        "x": 1036,
-        "y": 2208,
-        "width": 80,
-        "height": 80,
-        "level": 2,
-        "around": 290,
-        "above": 10,
-        "tier": "ultra",
-        "distance": 224.90847195366717,
-        "textured": false
-      },
-      {
-        "what": "checker",
-        "mesh": "core:helicopter_police",
-        "page": "materials",
-        "x": 12,
-        "y": 476,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 45,
-        "above": 15,
-        "textured": true
-      },
-      {
-        "what": "checker",
-        "mesh": "core:helicopter_police",
-        "page": "materials",
-        "x": 397,
-        "y": 476,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 225,
-        "above": 15,
-        "textured": true
-      },
-      {
-        "what": "checker",
-        "mesh": "core:helicopter_police",
-        "page": "materials",
-        "x": 782,
-        "y": 476,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 270,
-        "above": 89,
-        "textured": true
-      },
-      {
-        "what": "checker",
-        "mesh": "core:helicopter_police",
-        "page": "materials",
-        "x": 1167,
-        "y": 476,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 135,
-        "above": -40,
-        "textured": true
-      },
-      {
-        "what": "regions",
-        "mesh": "core:helicopter_police",
-        "dye": "asset",
-        "page": "materials",
-        "x": 12,
-        "y": 786,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 45,
-        "above": 15,
-        "textured": true
-      },
-      {
-        "what": "regions",
-        "mesh": "core:helicopter_police",
-        "dye": "asset",
-        "page": "materials",
-        "x": 397,
-        "y": 786,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 225,
-        "above": 15,
-        "textured": true
-      },
-      {
-        "what": "regions",
-        "mesh": "core:helicopter_police",
-        "dye": "asset",
-        "page": "materials",
-        "x": 782,
-        "y": 786,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 270,
-        "above": 89,
-        "textured": true
-      },
-      {
-        "what": "regions",
-        "mesh": "core:helicopter_police",
-        "dye": "asset",
-        "page": "materials",
-        "x": 1167,
-        "y": 786,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 135,
-        "above": -40,
-        "textured": true
-      },
-      {
-        "what": "regions",
-        "mesh": "core:helicopter_police",
-        "dye": "loud",
-        "page": "materials",
-        "x": 12,
-        "y": 1118,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 45,
-        "above": 15,
-        "textured": true
-      },
-      {
-        "what": "regions",
-        "mesh": "core:helicopter_police",
-        "dye": "loud",
-        "page": "materials",
-        "x": 397,
-        "y": 1118,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 225,
-        "above": 15,
-        "textured": true
-      },
-      {
-        "what": "regions",
-        "mesh": "core:helicopter_police",
-        "dye": "loud",
-        "page": "materials",
-        "x": 782,
-        "y": 1118,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 270,
-        "above": 89,
-        "textured": true
-      },
-      {
-        "what": "regions",
-        "mesh": "core:helicopter_police",
-        "dye": "loud",
-        "page": "materials",
-        "x": 1167,
-        "y": 1118,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 135,
-        "above": -40,
-        "textured": true
-      },
-      {
-        "what": "wireframe",
-        "mesh": "core:helicopter_police",
-        "page": "rig",
-        "x": 12,
-        "y": 32,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 270,
-        "above": 0
-      },
-      {
-        "what": "wireframe",
-        "mesh": "core:helicopter_police",
-        "page": "rig",
-        "x": 397,
-        "y": 32,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 45,
-        "above": 15
-      },
-      {
-        "what": "wireframe",
-        "mesh": "core:helicopter_police",
-        "page": "rig",
-        "x": 782,
-        "y": 32,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 270,
-        "above": 89
-      },
-      {
-        "what": "wireframe",
-        "mesh": "core:helicopter_police",
-        "page": "rig",
-        "x": 1167,
-        "y": 32,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 225,
-        "above": 15
-      },
-      {
-        "what": "bones",
-        "mesh": "core:helicopter_police",
-        "page": "rig",
-        "x": 12,
-        "y": 342,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 270,
-        "above": 0
-      },
-      {
-        "what": "bones",
-        "mesh": "core:helicopter_police",
-        "page": "rig",
-        "x": 397,
-        "y": 342,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 45,
-        "above": 15
-      },
-      {
-        "what": "bones",
-        "mesh": "core:helicopter_police",
-        "page": "rig",
-        "x": 782,
-        "y": 342,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 270,
-        "above": 89
-      },
-      {
-        "what": "capsules",
-        "mesh": "core:helicopter_police",
-        "page": "rig",
-        "x": 12,
-        "y": 652,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 270,
-        "above": 0
-      },
-      {
-        "what": "capsules",
-        "mesh": "core:helicopter_police",
-        "page": "rig",
-        "x": 397,
-        "y": 652,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 0,
-        "above": 0
-      },
-      {
-        "what": "capsules",
-        "mesh": "core:helicopter_police",
-        "page": "rig",
-        "x": 782,
-        "y": 652,
-        "width": 379,
-        "height": 284,
-        "level": 0,
-        "around": 270,
-        "above": 89
-      }
     ]
   }
 }
