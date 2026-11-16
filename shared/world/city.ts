@@ -874,44 +874,34 @@ let stack = new Int32Array(1 << 16);
 let mask = new Int16Array(4096);
 /** A box takes a cell it covers at least this share of, along each axis; or, along an axis it takes none of, the one it covers most. */
 const TAKES = 0.3;
-/** A part narrower than this share of a mass cell across and longer than that is a rod, too thin to stand for whole cells; one narrower every way is a fitting. */
+/** A slanted part narrower than this share of a mass cell across, and two cells long or more, is a rod. */
 const THIN = 0.25;
+const ROD_CELLS = 2;
 const rodCorners = new Float64Array(MAX_CORNERS * 3);
-
-/** Whether the box at `b` (least corner, then most) is narrower than `wide` every way: a fitting, too small for a cell. */
-function speck(box: Float32Array | Float64Array, b: number, wide: number): boolean {
-  return box[b + 3]! - box[b]! < wide && box[b + 4]! - box[b + 1]! < wide && box[b + 5]! - box[b + 2]! < wide;
-}
 const rodAt = new Float64Array(24);
 const rodAxes = new Float64Array(9);
 
 /**
- * Whether the `n` corners in the frame (turned by `c` and `s`) are a rod: all within `wide` across of the line through the
- * two farthest apart, which are `wide` apart at least. If so its faces are put out as the box along that line that
- * holds them. A box's corners come in the order of its bits (rodCorners), and its line is its longest axis.
+ * Whether a hull's `n` corners in the frame (turned by `c` and `s`) are a rod: all within `wide` across of the line through
+ * the two farthest apart, which are `long` apart at least. If so its faces are put out as the box along that line that holds
+ * them. Cells along a slanted line make a staircase that fills the plane it crosses (a stay across a rig); a box lies along
+ * the lattice and a row of cells holds it.
  */
-function rod(p: Float64Array, n: number, box: boolean, wide: number, c: number, s: number, colour: number): boolean {
+function rod(p: Float64Array, n: number, wide: number, long: number, c: number, s: number, colour: number): boolean {
   let a = 0, b = 0, far = -1;
-  if (box) {
-    let long = 0;
-    for (let ax = 1; ax < 3; ax++) if (p[(1 << ax) * 3 + ax]! - p[ax]! > p[(1 << long) * 3 + long]! - p[long]!) long = ax;
-    b = 1 << long;
-    far = (p[b * 3 + long]! - p[long]!) * (p[b * 3 + long]! - p[long]!);
-  } else {
-    for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        const ex = p[i * 3]! - p[j * 3]!, ey = p[i * 3 + 1]! - p[j * 3 + 1]!, ez = p[i * 3 + 2]! - p[j * 3 + 2]!;
-        const d = ex * ex + ey * ey + ez * ez;
-        if (d > far) {
-          far = d;
-          a = i;
-          b = j;
-        }
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const ex = p[i * 3]! - p[j * 3]!, ey = p[i * 3 + 1]! - p[j * 3 + 1]!, ez = p[i * 3 + 2]! - p[j * 3 + 2]!;
+      const d = ex * ex + ey * ey + ez * ez;
+      if (d > far) {
+        far = d;
+        a = i;
+        b = j;
       }
     }
   }
   const len = Math.sqrt(far);
-  if (len < wide) return false;
+  if (len < long) return false;
   const dx = (p[b * 3]! - p[a * 3]!) / len, dy = (p[b * 3 + 1]! - p[a * 3 + 1]!) / len, dz = (p[b * 3 + 2]! - p[a * 3 + 2]!) / len;
   // Two directions across the line: level, and the other.
   let ux = dz, uy = 0, uz = -dx;
@@ -1213,17 +1203,9 @@ export function cellPart(city: CityStatics, chunk: number, hf: Ground, gone: Gon
     cellColour.fill(0, 0, N);
     faceReach.fill(-Infinity, 0, N * 6);
     faceArea.fill(-1, 0, N * 6);
-    // The cells each box takes: those it covers TAKES of along each axis, or along an axis it takes none of, the one it covers
-    // most. A rod (a mast, a spar, a stay, a pole) takes none and is drawn as itself; a fitting narrower than a quarter cell
-    // every way takes none and is not drawn.
+    // The cells each box takes: those it covers TAKES of along each axis, or along an axis it takes none of, the one it covers most.
     const spans = new Int32Array(nb * 6);
     for (let b = 0; b < nb; b++) {
-      const B = b * 7;
-      for (let k = 0; k < 8; k++) for (let ax = 0; ax < 3; ax++) rodCorners[k * 3 + ax] = framed[B + ((k >> ax) & 1 ? 3 : 0) + ax]!;
-      if (speck(framed, B, size * THIN) || rod(rodCorners, 8, true, size * THIN, c, s, framed[B + 6]!)) {
-        spans.fill(1, b * 6, b * 6 + 3);
-        continue;
-      }
       for (let ax = 0; ax < 3; ax++) {
         const l = (framed[b * 7 + ax]! - o[ax]!) / step[ax]!;
         const h = (framed[b * 7 + 3 + ax]! - o[ax]!) / step[ax]!;
@@ -1239,10 +1221,11 @@ export function cellPart(city: CityStatics, chunk: number, hf: Ground, gone: Gon
       }
     }
     let nt = 0;
+    // A rod (a stay, a shroud, a slanted pole) takes none and is drawn as itself.
     for (let h = 0; h < hulls.n; h++) {
       const t = hulls.table[h]!, count = t.corner[hulls.part[h]! + 1]! - t.corner[hulls.part[h]!]!;
       for (let k = 0; k < count * 3; k++) rodCorners[k] = hulls.at[h * MAX_CORNERS * 3 + k]!;
-      if (!speck(hulls.box, h * 6, size * THIN) && !rod(rodCorners, count, false, size * THIN, c, s, hulls.color[h]!)) nt = hullCells(h, o, step, n, nt);
+      if (!rod(rodCorners, count, size * THIN, size * ROD_CELLS, c, s, hulls.color[h]!)) nt = hullCells(h, o, step, n, nt);
     }
     // A face of a cell is coloured as that side of the pieces in it shows: first how far out the outermost reaches, then
     // the colour of the box showing most area that way among those within FACE_DEPTH of it, so a wall gives a front its
