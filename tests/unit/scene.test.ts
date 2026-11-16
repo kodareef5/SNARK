@@ -442,7 +442,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1344453007 until the refining forge's grey boxes (S1), as above; without the forge it is that again.
   // It was 1941699530 until the ruins' sloped parts, as above; without them it is that again.
   // It was 2182034391 until the street wrecks' kinds, as above; without them it is that again.
-  expect(saddled.hash).toBe(1893532195);
+  // It was 1893532195 until the pteranodon was drawn on its own art, as above.
+  expect(saddled.hash).toBe(3121847286);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

@@ -93,8 +93,8 @@ export const PTERANODON: readonly Def[] = [
     // Skittish: it flies from harm, and its kind turn on whoever takes their egg.
     temper: "flees",
     defendsEgg: true,
-    // Others on the ground near one that is hurt take fright with it, stand through their startle and fly off, as ARK's
-    // skittish flyers scatter. Chosen: ARK gives no distance, and the dodo's 15 m is kept.
+    // Others on the ground near one that is hurt take fright with it, stand through their startle and fly off: the
+    // dossier's "flee at the slightest sign of trouble". Chosen: ARK gives no distance, and the dodo's 15 m is kept.
     alarm: 15,
     // A rider's weight counts 0.85 on it. It takes half again from arrows, darts and stones, and does 0.4 to structures.
     riderWeight: 0.85,
