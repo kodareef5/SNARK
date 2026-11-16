@@ -13,14 +13,24 @@
 //     WELCOME   reliable     version u16, tick u32, own handle u32, species u16, session state 2 bits, admin 1 bit,
 //                            day offset u32, map id string, map hash u32, chunksX-1 u8, chunksZ-1 u8, own body,
 //                            yaw u16, tuned content hash u32, tuning string (shared/content/tuning.ts), the clock's
-//                            cycle, day and night scales (f64 each), MOTD seconds u16
+//                            cycle, day and night scales (f64 each), MOTD seconds u16, takes the map's statics 1 bit
 //     SNAPSHOT  unreliable   tick u32, baseline age u8 (0 = none), input margin s8, session state 2 bits, driven
 //                            entity index + 1 varint (0 = its own body), that body, entity delta (see view.ts)
-//     CHUNK     reliable     chunk u16, version u32, final 1 bit, row count 16 bits, rows, then removals: count u8,
-//                            and per removal: versions back varint, cause 2 bits (taken, destroyed, fell), unless
-//                            taken where it began (3 x f32) and when (tick u32), then runs of slots: count varint,
-//                            and per run: first slot minus the end of the run before svarint, length-1 varint.
-//                            Rows are read first. A removal leaves alone any row newer than itself.
+//     CHUNK     reliable     chunk u16, version u32, final 1 bit, row count 16 bits; to a client that takes statics, for
+//                            a chunk that holds map statics, from the map 1 bit, and if set first slot u16 and count
+//                            u16 of the slots it takes as the map has them; rows, in ascending slots; then removals:
+//                            count u8, and per removal: versions back varint, cause 2 bits (taken, destroyed, fell),
+//                            unless taken where it began (3 x f32) and when (tick u32), then runs of slots: count
+//                            varint, and per run: first slot minus the end of the run before svarint, length-1
+//                            varint. Slots from the map are set first, then rows, then removals. A removal leaves
+//                            alone any row newer than itself.
+//                            A row: 1 bit set if its slot follows the last row's, else the gap less one varint; in
+//                            place 1 bit, then owner (named varint) and health; else kind (named u16, 0 for an empty
+//                            slot, which ends the row), x and z 15 bits each (1/512 m from the chunk's corner),
+//                            height 1 bit set if it is the last full row's, else svarint from it (1/512 m, from 0
+//                            for the first), yaw (named u16), owner (named varint), health. Health is 1 bit set for
+//                            the kind's most, else f32. A value named is 0 and its place among those the message
+//                            named before (as few bits as their count needs), or 1 and the value; see Named.
 //     CHUNK_DROP reliable    chunk u16
 //     REJECT    reliable     reason u8, and for REJECT_TRAVEL why, as a string
 //     RESULT    reliable     command sequence u16 (0 when no command asked), code u8
@@ -43,9 +53,10 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 17: the stations wave's (planning/reference/stations-plan.md, S0), OWN_STATION's layout. 18: vehicles: a body's
  * mechanical state and seat after the flight counters, and a view entry's vehicle parts (view.ts).
  * 19: rotor state/condition, observer rotor and service parts, and vehicle maintenance/deployment commands.
- * 20: marine hull/flooding state and physical shoreline recovery.
+ * 20: marine hull/flooding state and physical shoreline recovery. 21: compact chunk rows, rows in place, and chunks
+ * taken from the map (HELLO_STATICS).
  */
-export const PROTOCOL_VERSION = 20;
+export const PROTOCOL_VERSION = 21;
 
 // Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
@@ -210,6 +221,8 @@ export const HELLO_SPECTATE = 1;
 export const HELLO_LOOK = 2;
 /** Protocol 14. A travel ticket follows the look: the survivor arrives from another server of the cluster (S_TRAVEL). */
 export const HELLO_TICKET = 4;
+/** Protocol 21. The client holds the map's statics (shared/world/mapfile.ts) and takes a chunk's from them, all but the slots CHUNK sends. */
+export const HELLO_STATICS = 8;
 export const KEY_BYTES = 16;
 /** A transfer's id (16 bytes), then the secret that lets one browser take it (16 bytes). */
 export const TICKET_BYTES = 32;

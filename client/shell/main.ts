@@ -73,6 +73,7 @@ async function boot(): Promise<void> {
     resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),
     nodes: (ground, content) => mapNodes(map, ground, content),
     city: (content) => new CityStatics(map.dims, map.statics, content),
+    statics: map.statics,
   });
   const surfaces = selfcheck ? new SelfcheckSurfaces(manifest, port) : null;
   const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });

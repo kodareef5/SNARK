@@ -73,11 +73,13 @@ export class ChunkTable {
   readonly gone: GoneBatch[] = [];
   goneFloor = 0;
   /**
-   * A ring of the last RECENT changes the authority made: the slot, and the version the change gave it. Versions ascend.
-   * A client at `recentFloor` or later finds every slot it lacks here. Null until the first change.
+   * A ring of the last RECENT changes the authority made: the slot, the version the change gave it, and 1 where it changed
+   * the slot's kind, place or yaw (0 for health or owner alone). Versions ascend. A client at `recentFloor` or later finds
+   * every slot it lacks here. Null until the first change.
    */
   recentSlot: Uint16Array | null = null;
   recentVer: Uint32Array | null = null;
+  recentShaped: Uint8Array | null = null;
   recentCount = 0;
   recentFloor = 0;
   /** Per slot, the id of the query that last counted it. Scratch for queries that cover several cells. */
@@ -113,13 +115,14 @@ export class ChunkTable {
   }
 
   /** Records that the authority changed `slot` at the current version. */
-  touch(slot: number): void {
+  touch(slot: number, shaped: number): void {
     const slots = (this.recentSlot ??= new Uint16Array(RECENT));
     const vers = (this.recentVer ??= new Uint32Array(RECENT));
     const at = this.recentCount % RECENT;
     if (this.recentCount >= RECENT) this.recentFloor = vers[at]!;
     slots[at] = slot;
     vers[at] = this.version;
+    (this.recentShaped ??= new Uint8Array(RECENT))[at] = shaped;
     this.recentCount++;
   }
 
@@ -277,7 +280,7 @@ export class StructureStore {
     }
     t.version++;
     this.write(chunk, t, slot, kind, x, y, z, yaw & 0xffff, owner, hp, t.version);
-    t.touch(slot);
+    t.touch(slot, 1);
     this.onChunkChanged?.(chunk, false);
     return chunk * 65536 + slot;
   }
@@ -305,7 +308,7 @@ export class StructureStore {
       last.count++;
     } else t.log({ version: t.version, cause, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, stamp, runs: [slot, 1], count: 1 });
     this.erase(chunk, t, slot, t.version);
-    t.touch(slot);
+    t.touch(slot, 1);
     t.free.push(slot);
     this.onChunkChanged?.(chunk, false);
     return true;
@@ -332,7 +335,7 @@ export class StructureStore {
           this.onRemove?.(sorted[k]!, cause);
           if (count === 0) t.version++;
           this.erase(chunk, t, slot, t.version);
-          t.touch(slot);
+          t.touch(slot, 1);
           t.free.push(slot);
           // Slots come in ascending order, so an adjacent slot extends the last run.
           if (runs.length > 0 && runs[runs.length - 2]! + runs[runs.length - 1]! === slot) runs[runs.length - 1]!++;
@@ -360,7 +363,7 @@ export class StructureStore {
     t.version++;
     this.erase(chunk, t, slot, t.version);
     this.write(chunk, t, slot, kind, x, y, z, yaw, owner, hp, t.version);
-    t.touch(slot);
+    t.touch(slot, 1);
     this.onChunkChanged?.(chunk, false);
     return true;
   }
@@ -374,7 +377,7 @@ export class StructureStore {
     t.version++;
     t.hp[slot] = hp;
     t.mod[slot] = t.version;
-    t.touch(slot);
+    t.touch(slot, 0);
     this.onChunkChanged?.(chunk, true);
     return true;
   }
@@ -395,7 +398,7 @@ export class StructureStore {
     t.version++;
     t.hp[slot] = left;
     t.mod[slot] = t.version;
-    t.touch(slot);
+    t.touch(slot, 0);
     this.onChunkChanged?.(chunk, true);
     return left;
   }
@@ -414,7 +417,7 @@ export class StructureStore {
         any = true;
         t.owner[slot] = to;
         t.mod[slot] = t.version;
-        t.touch(slot);
+        t.touch(slot, 0);
         n++;
       }
       if (any) this.onChunkChanged?.(chunk, false);
