@@ -26,6 +26,7 @@ export interface CruiseNode { readonly id: string; readonly at: CruisePoint; rea
 export interface CruiseRoute {
   readonly id: string; readonly kind: string; readonly from: string; readonly to: string;
   readonly anchors: readonly CruisePoint[]; readonly clearWidth: number; readonly clearHeight: number;
+  readonly family?: string; readonly requiresOpen?: string;
 }
 export interface CruiseDoor {
   readonly id: string; readonly instanceId: string; readonly closedPrototype: string; readonly openPrototype: string;
@@ -43,7 +44,7 @@ export interface CruiseLayout {
   readonly decks: readonly CruiseDeck[]; readonly prototypes: readonly CruisePrototype[]; readonly instances: readonly CruiseInstance[];
   readonly graph: { readonly nodes: readonly CruiseNode[] }; readonly routes: readonly CruiseRoute[];
   readonly stairs: readonly CruiseStair[]; readonly doors: readonly CruiseDoor[];
-  readonly rooms: readonly { readonly id: string; readonly label: string; readonly deck: string; readonly section: string; readonly bounds: CruiseBounds; readonly entry: CruisePoint; readonly routeTarget: CruisePoint }[];
+  readonly rooms: readonly { readonly id: string; readonly node: string; readonly label: string; readonly deck: string; readonly section: string; readonly bounds: CruiseBounds; readonly entry: CruisePoint; readonly routeTarget: CruisePoint }[];
   readonly portals: readonly { readonly id: string; readonly from: string; readonly to: string; readonly at: CruisePoint; readonly normal: CruisePoint; readonly clearWidth: number; readonly clearHeight: number; readonly kind: string }[];
   readonly docking: { readonly shipLanding: CruisePoint; readonly shoreLanding: CruisePoint; readonly shoreApproach: CruisePoint; readonly arrival: CruisePoint; readonly clearWidth: number; readonly deck: string; readonly seaDatum: number };
   readonly views: readonly { readonly id: string; readonly at: CruisePoint; readonly target: CruisePoint; readonly deck: string; readonly section: string; readonly mode: string }[];
@@ -91,6 +92,7 @@ export function cruiseLayoutFaults(layout: CruiseLayout): string[] {
   const decks = index(layout.decks, "decks"), prototypes = index(layout.prototypes, "prototypes"), instances = index(layout.instances, "instances");
   const nodes = index(layout.graph.nodes, "graph.nodes"), routes = index(layout.routes, "routes"), rooms = index(layout.rooms, "rooms");
   index(layout.portals, "portals"); index(layout.stairs, "stairs"); index(layout.doors, "doors"); index(layout.views, "views");
+  if (decks.size !== 18 || ["2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "14", "15", "16", "17", "18", "19", "20"].some(id => !decks.has(id))) bad("decks", "requires the complete published 2–20 label set, omitting 13");
   const deck = (id: string, label: string) => { if (!decks.has(id)) bad(label, `unknown deck ${id}`); };
   for (const deck of layout.decks) {
     if (!/^(?:[2-9]|1[0-24-9]|20)$/.test(deck.id)) bad(deck.id, "invalid published deck label");
@@ -153,6 +155,7 @@ export function cruiseLayoutFaults(layout: CruiseLayout): string[] {
     if (from && !same(r.anchors[0] ?? [], from.at)) bad(r.id, "first anchor does not meet its from node");
     if (to && !same(r.anchors.at(-1) ?? [], to.at)) bad(r.id, "last anchor does not meet its to node");
     clearance(r.clearWidth, r.clearHeight, r.id, r.kind === "stairs" ? 1.8 : 1.6);
+    if (r.requiresOpen && !doorInstances.has(r.requiresOpen)) bad(r.id, "requiresOpen must name an individual door instance");
     edges.get(r.from)?.push(r.to); edges.get(r.to)?.push(r.from);
   }
   const start = layout.graph.nodes.find(n => same(n.at, layout.docking.shoreLanding));
@@ -160,7 +163,11 @@ export function cruiseLayoutFaults(layout: CruiseLayout): string[] {
   const visited = new Set<string>(), queue = start ? [start.id] : [];
   for (let i = 0; i < queue.length; i++) { const id = queue[i]!; if (visited.has(id)) continue; visited.add(id); for (const next of edges.get(id) ?? []) if (!visited.has(next)) queue.push(next); }
   for (const node of layout.graph.nodes) if (!visited.has(node.id)) bad(node.id, "graph node is unreachable from the quay");
-  for (const r of layout.rooms) { deck(r.deck, r.id); bounds(r.bounds, r.id); point(r.entry, `${r.id}.entry`); point(r.routeTarget, `${r.id}.routeTarget`); }
+  for (const r of layout.rooms) {
+    deck(r.deck, r.id); bounds(r.bounds, r.id); point(r.entry, `${r.id}.entry`); point(r.routeTarget, `${r.id}.routeTarget`);
+    const target = nodes.get(r.node);
+    if (!target || !visited.has(r.node) || target.deck !== r.deck || !same(target.at, r.routeTarget)) bad(r.id, "room target must match its reachable graph node on the same deck");
+  }
   for (const p of layout.portals) {
     if (![p.from, p.to].every(id => nodes.has(id) || rooms.has(id))) bad(p.id, "portal names an unknown room or graph node");
     point(p.at, `${p.id}.at`); point(p.normal, `${p.id}.normal`); clearance(p.clearWidth, p.clearHeight, p.id);

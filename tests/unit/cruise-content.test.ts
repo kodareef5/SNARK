@@ -20,14 +20,14 @@ test("cruise prototypes are registered once and every transformed instance retai
     expect(reg.index.has(`${p.id}_shape`)).toBe(true);
   }
   for (const yaw of [0, 16384, 27183]) {
-    const statics = cruiseStatics(128, 7, 128, yaw), map = { ...flatMap(4), statics };
+    const statics = cruiseStatics(512, 7, 512, yaw), map = { ...flatMap(16), statics };
     const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
     placeStatics(map, structs, reg);
     const refs = assertCruisePlaced(map, structs, reg);
     expect(refs.length).toBe(CRUISE_LAYOUT.instances.filter(i => i.placed).length);
     expect(new Set(refs).size).toBe(refs.length);
     const first = CRUISE_LAYOUT.instances.find(i => i.placed)!;
-    const expected = cruisePoint(128, 7, 128, yaw, first.at).map(v => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS);
+    const expected = cruisePoint(512, 7, 512, yaw, first.at).map(v => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS);
     expect([statics[0]!.x, statics[0]!.y, statics[0]!.z]).toEqual(expected);
   }
   expect(cruisePoint(10, 20, 30, 16384, [2, 3, 4])).toEqual([14, 23, 28]);
@@ -41,6 +41,9 @@ test("cruise layout rejects lost identities, disconnected routes and native geom
   expect(check({ instances: [{ ...instance, prototype: "core:missing" }] })).toContain("unknown prototype");
   expect(check({ instances: [{ ...instance, yaw: Infinity }] })).toContain("finite degree yaw");
   expect(check({ routes: [] })).toContain("unreachable from the quay");
+  expect(check({ rooms: [{ ...base.rooms[0]!, node: "missing" }] })).toContain("reachable graph node");
+  expect(check({ rooms: [{ ...base.rooms[0]!, routeTarget: [1, 14, 1] }] })).toContain("reachable graph node");
+  expect(check({ decks: base.decks.slice(1) })).toContain("complete published");
   expect(check({ routes: [{ ...route, from: "missing" }] })).toContain("unknown graph node");
   expect(check({ routes: [{ ...route, anchors: [[0, 0, 0], ...route.anchors.slice(1)] }] })).toContain("first anchor");
   expect(check({ prototypes: [{ ...p, boxes: [{ at: [0, 0, 0], half: [17, 1, 1] }] }] })).toContain("native ±16 m");
@@ -54,7 +57,7 @@ test("repeated native door prototypes require independently named placed closed 
   const open: CruisePrototype = { ...closed, id: "core:cruise_test_open", opens: closed.id };
   const instances = [0, 1].map(i => ({ id: `test_door_${i}`, prototype: closed.id, at: [i * 4, 14, -20], yaw: 0, deck: "5", section: "test", placed: true }));
   const doors = instances.map(i => ({ id: i.id, instanceId: i.id, closedPrototype: closed.id, openPrototype: open.id, hinge: i.at, clearWidth: 1.6, clearHeight: 2.6 }));
-  const layout: CruiseLayout = { ...CRUISE_LAYOUT, prototypes: [...CRUISE_LAYOUT.prototypes, closed, open], instances: [...CRUISE_LAYOUT.instances, ...instances], doors };
+  const layout: CruiseLayout = { ...CRUISE_LAYOUT, prototypes: [...CRUISE_LAYOUT.prototypes, closed, open], instances: [...CRUISE_LAYOUT.instances, ...instances], doors: [...CRUISE_LAYOUT.doors, ...doors] };
   expect(cruiseLayoutFaults(layout)).toEqual([]);
   expect(cruiseLayoutFaults({ ...layout, doors: doors.slice(0, 1) }).join("\n")).toContain("lacks independent door record");
   expect(cruiseLayoutFaults({ ...layout, doors: [doors[0]!, { ...doors[1]!, instanceId: doors[0]!.instanceId }] }).join("\n")).toContain("appears more than once");
