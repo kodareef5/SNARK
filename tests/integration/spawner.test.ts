@@ -225,6 +225,7 @@ test("a save made before the spawner keeps its herd, counted for the region it s
 });
 
 test("-ForceRespawnDinos, or ServerAutoForceRespawnWildDinosInterval come round, replaces every wild creature at a start, and only the wild", () => {
+  const since = Date.now() / 1000;
   const db = join(dir, "forced.db");
   const open = (argv: string[] = [], server: string[] = []): Host => createHost(reg, { wild: true, dbPath: db, config: rulesOf(server, [], argv) });
   let host = open();
@@ -248,7 +249,7 @@ test("-ForceRespawnDinos, or ServerAutoForceRespawnWildDinosInterval come round,
   host.shutdown();
   const save = new Database(db);
   const last = JSON.parse(String((save.query("SELECT value FROM meta WHERE key = 'spawner'").get() as { value: string }).value)) as { forced: number };
-  expect(Math.abs(last.forced - Date.now() / 1000)).toBeLessThan(60);
+  expect([last.forced >= since, last.forced <= Date.now() / 1000]).toEqual([true, true]);
   save.query("UPDATE meta SET value = ? WHERE key = 'spawner'").run(JSON.stringify({ forced: last.forced - 3601 }));
   save.close();
   host = open([], ["ServerAutoForceRespawnWildDinosInterval=3600"]);
