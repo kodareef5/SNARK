@@ -14,7 +14,6 @@ import { compileContent } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { STAT_NAMES, type StatName } from "../../shared/sim/genome.ts";
 import { GAME_HOUR_TICKS } from "../../shared/sim/lazy.ts";
-import { hullPoint } from "../../shared/world/convex.ts";
 import type { Landmark } from "../../shared/world/landmark.ts";
 import { iconSubjects, type IconFraming } from "../pack/icons.ts";
 import type { Subject } from "./posters.ts";
@@ -62,6 +61,8 @@ export interface Entry {
   /** The owners whose sounds the entry plays. */
   owners: string[];
   picture: Omit<Subject, "key"> | null;
+  /** What it is in a line, under its name on its card, where its group says too little. */
+  line?: string;
 }
 
 const GAME_HOUR = GAME_HOUR_TICKS / TICK_RATE;
@@ -402,8 +403,9 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
 }
 
 /**
- * A landmark's entry, by its name: its size from what is walked of it, its doors and what moves when used, the vehicles it
- * brings, and its picture drawn from its own meshes where its pieces stand.
+ * A landmark's entry, by its name: its doors and what moves when used, the vehicles it brings, and its picture drawn from its
+ * own meshes where its pieces stand. No size: what is walked of it takes in its gangway and masts, and the content does not
+ * say which pieces are the thing itself.
  */
 function landmarkEntry(l: Landmark, entry: (id: string, kind: Kind, label: string, group: string, picture?: Entry["picture"]) => Entry, facts: (e: Entry) => (label: string, ...value: Cell[]) => void): void {
   const defs = new Map(l.defs.map((d) => [d.id, d]));
@@ -412,25 +414,14 @@ function landmarkEntry(l: Landmark, entry: (id: string, kind: Kind, label: strin
   const places = placed.filter(({ d }) => d.mesh !== "none").map(({ p, d }) => [meshes.indexOf(d.mesh), ...p.at, p.yaw] as [number, number, number, number, number]);
   const e = entry(l.name, "landmarks", sentence(l.name), "Landmark", meshes.length ? { meshes, colors: [], body: true, places } : null);
   const fact = facts(e);
-  const [lo, hi] = [[Infinity, Infinity, Infinity], [-Infinity, -Infinity, -Infinity]];
-  for (const { p, d } of placed) {
-    const shape = d.shape ? (defs.get(d.shape) as ShapeDef | undefined) : undefined;
-    const points = shape
-      ? [...shape.boxes.flatMap((b) => [-1, 1].flatMap((sx) => [-1, 1].flatMap((sy) => [-1, 1].map((sz) => [b.at[0] + sx * b.half[0], b.at[1] + sy * b.half[1], b.at[2] + sz * b.half[2]])))), ...(shape.hulls ?? []).flatMap((h) => h.corners.map((c) => hullPoint(c, h.sixty === true)))]
-      : [-1, 1].flatMap((sx) => [-1, 1].flatMap((sy) => [-1, 1].map((sz) => [sx * d.half[0], sy * d.half[1], sz * d.half[2]])));
-    const a = (p.yaw / 65536) * Math.PI * 2;
-    const [s, c] = [Math.sin(a), Math.cos(a)];
-    for (const [x, y, z] of points as number[][]) {
-      const at = [p.at[0] + c * x! + s * z!, p.at[1] + y!, p.at[2] - s * x! + c * z!];
-      for (let k = 0; k < 3; k++) [lo[k], hi[k]] = [Math.min(lo[k]!, at[k]!), Math.max(hi[k]!, at[k]!)];
-    }
-  }
-  if (placed.length) fact("Size", `${[0, 1, 2].map((k) => num(hi[k]! - lo[k]!, 0)).join(" × ")} m`);
   const doors = placed.filter(({ d }) => d.opens && d.shape && (defs.get(d.shape) as ShapeDef | undefined)?.role === "door").length;
   if (doors) fact("Doors", `${doors} that open and close`);
-  for (const { d } of placed) if (d.motion) fact(words(d.id), `${sentence(d.motion.say[0])} or ${d.motion.say[1]}, over ${time(d.motion.seconds)}`);
+  const moving = placed.filter(({ d }) => d.motion);
+  for (const { d } of moving) fact(words(d.id), `${sentence(d.motion!.say[0])} or ${d.motion!.say[1]}, over ${time(d.motion!.seconds)}`);
   if (placed.every(({ d }) => d.material === undefined)) fact("Harmed by", "Nothing");
   if (l.vehicles.length) fact("Brings", ...l.vehicles.flatMap((v, k): Cell[] => [...(k ? [", "] : []), { id: v.kind }]));
+  const parts = [...moving.map(({ d }) => words(d.id)), ...(doors ? [`${doors} doors`] : []), ...l.vehicles.map((v) => `a ${words(v.kind).toLowerCase()}`)];
+  e.line = parts.length ? parts.join(" · ") : "Landmark";
 }
 
 /** What each entry and node is called, for words beside a link. */

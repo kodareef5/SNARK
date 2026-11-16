@@ -3,7 +3,7 @@
 
 import type { Atlas, Mark } from "./atlas.ts";
 import type { Cell, Entry, Kind, Ref, Table } from "./catalogue.ts";
-import { KINDS, num, time } from "./catalogue.ts";
+import { KINDS, num, sentence, time } from "./catalogue.ts";
 import type { ControlGroup } from "./controls.ts";
 import { LEFT_OUT, type LeftOut } from "./coverage.ts";
 import { BASE, SOURCE, esc, heading, img, page, pager, slug, type Assets } from "./html.ts";
@@ -66,6 +66,8 @@ function groupBy<T>(list: readonly T[], key: (t: T) => string): Map<string, T[]>
 }
 
 const join = <T>(list: readonly T[], each: (t: T) => string): string => list.map(each).join("");
+/** A take's length: hundredths below a second, tenths below a minute. */
+const seconds = (s: number): string => (s < 60 ? `${num(s, s < 1 ? 2 : 1)} s` : time(s));
 const groupPath = (group: string): string => `${BASE}items/group/${slug(group.toLowerCase().replace(/ /g, "_"))}/`;
 
 export function entryPath(e: Pick<Entry, "kind" | "id">): string {
@@ -99,7 +101,7 @@ export function renderWiki(site: Site): Map<string, string> {
   if (site.levels) write("levels/", "Levels", "engrams", v.levels(site.levels));
   const running = `<p class="note" data-worlds hidden><a href="/">Which worlds are running now, and on which maps</a></p>`;
   write("maps/", "Maps", "maps", `${heading("Maps", `${site.atlases.length} worlds`)}${v.maps()}${running}`);
-  for (const a of site.atlases) write(`maps/${a.slug}/`, a.label, "maps", atlasPage(a, site.names, v.ref));
+  for (const a of site.atlases) write(`maps/${a.slug}/`, a.label, "maps", atlasPage(a, site.names, site.entries.filter((e) => e.kind === "landmarks" && a.landmarks.some((l) => l.of === e.id)), v.cards));
   write("sounds/", "Sounds", "sounds", v.soundOwners());
   for (const [o, list] of v.owners) {
     for (let at = 0; at * PAGE < list.length; at++) {
@@ -143,19 +145,28 @@ function views(site: Site) {
   const card = (e: Entry): string => {
     const p = site.pictures.get(e.id);
     const picture = p ? img(p.card, "") : `<span class="blank">${esc(e.label.charAt(0))}</span>`;
-    return `<a class="card" href="${entryPath(e)}">${picture}<b>${esc(e.label)}</b><small>${esc(e.group)}</small></a>`;
+    return `<a class="card" href="${entryPath(e)}">${picture}<b>${esc(e.label)}</b><small>${esc(e.line ?? e.group)}</small></a>`;
   };
   const cards = (list: readonly Entry[]): string => `<div class="cards">${join(list, card)}</div>`;
+  // A sound's takes are play buttons of one group, each saying what it plays and how long it is, and filling as it sounds (--d).
   const sound = (s: Sound): string => {
-    const takes = s.takes.map((_, k) => `<button type="button" data-k="${k}" aria-label="Take ${k + 1}">${k + 1}</button>`).join("");
+    const n = s.takes.length;
+    const of = `${ownerName(s.owner)} ${s.name}`.toLowerCase();
+    const takes = s.takes.map(([samples], k) => {
+      const long = samples / s.rate;
+      const said = `Play ${of}${n > 1 ? `, take ${k + 1} of ${n}` : ""}, ${seconds(long)}`;
+      return `<button type="button" class="take" data-k="${k}" aria-pressed="false" aria-label="${esc(said)}" style="--d:${long.toFixed(3)}s">${n > 1 ? `<b>${k + 1}</b>` : ""}<small>${seconds(long)}</small></button>`;
+    }).join("");
     const data = `data-file="/assets/${esc(s.file)}" data-at="${s.at}" data-rate="${s.rate}" data-takes="${s.takes.map((t) => t.join(":")).join(" ")}"`;
     const later = s.game ? "" : ' <i class="tag">Not in the game yet</i>';
-    return `<li class="sound" ${data}><span>${esc(s.name)}${later}</span><span class="takes">${takes}</span></li>`;
+    const count = n > 1 ? ` <small>${n} takes</small>` : "";
+    return `<li class="sound" ${data}><span>${esc(s.name)}${count}${later}</span><span class="takes" role="group" aria-label="${esc(`${sentence(of)}, ${n} ${n === 1 ? "take" : "takes"}`)}">${takes}</span></li>`;
   };
+  // A map's card says what it holds besides its ground: its landmarks by name.
   const maps = (atlases: readonly Atlas[] = site.atlases): string =>
     `<div class="cards">${join(atlases, (a) => {
-      const size = `${num(a.metres / 1000, 1)} km across`;
-      return `<a class="card map" href="${BASE}maps/${a.slug}/">${img(a.card, "")}<b>${esc(a.label)}</b><small>${size}</small></a>`;
+      const holds = [`${num(a.metres / 1000, 1)} km across`, ...a.landmarks.map((l) => site.names.get(l.of) ?? l.of)].join(" · ");
+      return `<a class="card map" href="${BASE}maps/${a.slug}/">${img(a.card, "")}<b>${esc(a.label)}</b><small>${esc(holds)}</small></a>`;
     })}</div>`;
 
   const front = (): string => {
@@ -293,7 +304,8 @@ ${related ? `<section><h2>Related</h2><dl class="related">${related}</dl></secti
 
 const at1 = (n: number): number => Math.round(n * 10) / 10;
 
-function atlasPage(a: Atlas, names: ReadonlyMap<string, string>, ref: (r: Ref) => string): string {
+/** A map's page: the map with its layers, and under it a card for each landmark it places, as its dot and its row lead to. */
+function atlasPage(a: Atlas, names: ReadonlyMap<string, string>, placed: readonly Entry[], cards: (list: readonly Entry[]) => string): string {
   const name = (id: string): string => names.get(id) ?? id;
   const box = (show: string, label: string, count: string, colour: string, on = false): string =>
     `<label><input type="checkbox" data-show="${esc(show)}"${on ? " checked" : ""}><i style="--c:${colour}"></i>${esc(label)} <small>${count}</small></label>`;
@@ -305,13 +317,16 @@ function atlasPage(a: Atlas, names: ReadonlyMap<string, string>, ref: (r: Ref) =
   const marks = (list: Mark[], cls: string): string =>
     join(list, (m) => `<g class="${cls}" transform="translate(${m.x} ${m.y})"><circle r="5"/>${m.name ? `<text y="-9">${esc(m.name)}</text>` : ""}</g>`);
   const districts = join(a.districts, (d) => `<polygon points="${d.points.map((p) => p.join(",")).join(" ")}"/><text x="${d.at.x}" y="${d.at.y}">${esc(d.name)}</text>`);
-  const landmarks = a.landmarks.map((l) => ({ ...l, name: name(l.of) }));
+  // A landmark with a page is a link there, as its dot and as its row of the layers.
+  const landmarks = a.landmarks.map((l) => ({ ...l, name: name(l.of), entry: placed.find((e) => e.id === l.of) }));
+  const linked = (href: string | undefined, inner: string): string => (href ? `<a href="${href}">${inner}</a>` : inner);
+  const dots = join(landmarks, (l) => linked(l.entry && entryPath(l.entry), marks([l], "landmark")));
   const svg = `<svg class="marks" viewBox="0 0 1000 1000" aria-hidden="true">
 <g data-layer="districts">${districts}</g>
 ${a.creatures.map((c) => `<g data-layer="${esc(c.id)}" class="region" style="--c:${c.colour}" hidden>${regions(c.of)}</g>`).join("\n")}
 ${a.vehicles.map((v) => `<g data-layer="${esc(slug(v.kind))}" class="parked" hidden>${join(v.at, (m) => `<circle cx="${m.x}" cy="${m.y}" r="4"/>`)}</g>`).join("\n")}
 <g data-layer="obelisks">${marks(a.obelisks, "obelisk")}</g>
-<g data-layer="landmarks">${marks(landmarks, "landmark")}</g>
+<g data-layer="landmarks">${dots}</g>
 <g data-layer="spawns">${marks(a.spawns, "spawn")}</g>
 </svg>`;
   const layers = join(a.resources, (r) => `<img class="layer" data-layer="${esc(r.id)}" data-src="${esc(r.picture!.file)}" width="${r.picture!.width}" height="${r.picture!.height}" alt="" hidden>`);
@@ -321,6 +336,7 @@ ${a.vehicles.map((v) => `<g data-layer="${esc(slug(v.kind))}" class="parked" hid
     box("spawns", "Where survivors arrive", String(a.spawns.length), "#9fe3ff", true),
     box("obelisks", "Obelisks", String(a.obelisks.length), "#d8b4ff", true),
     ...(landmarks.length ? [box("landmarks", "Landmarks", String(landmarks.length), "#ffb38a", true)] : []),
+    ...landmarks.map((l) => linked(l.entry && entryPath(l.entry), esc(l.name))),
   ].join("");
   const panel = `<aside class="layers glass">
 <fieldset><legend>Places</legend>${places}</fieldset>
@@ -330,9 +346,9 @@ ${a.vehicles.map((v) => `<g data-layer="${esc(slug(v.kind))}" class="parked" hid
 </aside>`;
   const button = (by: number, label: string, text: string): string => `<button type="button" data-zoom="${by}" aria-label="${label}">${text}</button>`;
   const zoom = `<div class="zoom">${button(1, "Zoom in", "+")}${button(-1, "Zoom out", "−")}${button(0, "Whole map", "⤢")}</div>`;
-  const standing = landmarks.length ? `<p class="note">Landmarks: ${landmarks.map((l) => ref({ id: l.of })).join(", ")}</p>` : "";
+  const standing = placed.length ? `<section><h2>Landmarks</h2>${cards(placed)}</section>` : "";
   return `${heading(a.label, "Map", `${num(a.metres / 1000, 1)} km across. North is up.`)}
-<div class="atlas"><div class="viewport" data-atlas tabindex="0" aria-label="Map of ${esc(a.label)}: drag to move, plus and minus to zoom">
-<div class="plane">${img(a.ground, `${a.label} from above`, false, "ground")}${layers}${svg}</div>${zoom}</div>
-${panel}</div>${standing}`;
+<div class="atlas"><div><div class="viewport" data-atlas tabindex="0" aria-label="Map of ${esc(a.label)}: drag to move, plus and minus to zoom">
+<div class="plane">${img(a.ground, `${a.label} from above`, false, "ground")}${layers}${svg}</div>${zoom}</div>${standing}</div>
+${panel}</div>`;
 }
