@@ -4,6 +4,7 @@
 
 import type { Def } from "../content/defs.ts";
 import { STRUCT_UNITS } from "../coords.ts";
+import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { frameAxes, HALF_SIDE } from "./frame.ts";
 import type { MapStatic, MapVehicle } from "./mapfile.ts";
 
@@ -79,7 +80,7 @@ export const GROUND_EASE = 16;
  * was `h`; and in `laid[0]` 1 where that is dug, 2 where it is paved whole, 0 elsewhere.
  */
 export function landmarkGround(l: Landmark, ox: number, oy: number, oz: number, yaw: number, x: number, z: number, h: number, laid?: Uint8Array): number {
-  const a = (yaw / 65536) * Math.PI * 2, s = Math.sin(a), c = Math.cos(a);
+  const a = (yaw / 65536) * TAU, s = detSin(a), c = detCos(a);
   // The point in the landmark's metres: its yaw undone.
   const dx = x - ox, dz = z - oz, lx = c * dx - s * dz, lz = s * dx + c * dz;
   if (laid) laid[0] = 0;

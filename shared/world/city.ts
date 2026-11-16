@@ -891,11 +891,12 @@ function rod(p: Float64Array, n: number, box: boolean, wide: number, c: number, 
     let long = 0;
     for (let ax = 1; ax < 3; ax++) if (p[(1 << ax) * 3 + ax]! - p[ax]! > p[(1 << long) * 3 + long]! - p[long]!) long = ax;
     b = 1 << long;
-    far = (p[b * 3 + long]! - p[long]!) ** 2;
+    far = (p[b * 3 + long]! - p[long]!) * (p[b * 3 + long]! - p[long]!);
   } else {
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
-        const d = (p[i * 3]! - p[j * 3]!) ** 2 + (p[i * 3 + 1]! - p[j * 3 + 1]!) ** 2 + (p[i * 3 + 2]! - p[j * 3 + 2]!) ** 2;
+        const ex = p[i * 3]! - p[j * 3]!, ey = p[i * 3 + 1]! - p[j * 3 + 1]!, ez = p[i * 3 + 2]! - p[j * 3 + 2]!;
+        const d = ex * ex + ey * ey + ez * ez;
         if (d > far) {
           far = d;
           a = i;
