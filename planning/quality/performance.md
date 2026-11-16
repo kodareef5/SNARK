@@ -377,9 +377,11 @@ same slope. Milliseconds a megapixel unless said:
 
 The phone's page clock counts whole milliseconds, so its five kinds of draw agree
 within their errors: 0.3 to 0.4 µs of main thread a draw. The young wood on medium is
-3,359 GL calls a frame (D668). The fixed probes are the same on both days and both
-iOS versions: FLAT 0.152 and 0.144, LIT 0.469 both days, far 0.565, the dome's table
-0.357, depth at 1,024 0.181 (`2026-11-15T07-35` and `2026-11-16T20-11`).
+3,359 GL calls a frame (D668). The probes whose programs did not change read the
+same on both days and both iOS versions, within 6%: FLAT 0.152 and 0.144, and LIT
+0.469, far 0.565, the dome's table 0.357 and depth at 1,024 0.181 on both
+(`2026-11-15T07-35` and `2026-11-16T20-11`), so neither the phone nor its update
+moved the ladder.
 
 On this Mac, by timer query in the bench (a GPU shared with the desktop, so a scene
 can read up to twice as much run to run), the game's frame takes 2.5 to 2.8 ms at the
