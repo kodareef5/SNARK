@@ -6,7 +6,7 @@ import { hashString } from "../shared/hash.ts";
 import { Rng } from "../shared/rng.ts";
 import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, SESSION_ALIVE, TEXT_NOTICE, VEHICLE_DEPLOY, VEHICLE_INSPECT, VEHICLE_REFUEL, VEHICLE_REPAIR } from "../shared/net/protocol.ts";
 import { stanceEye } from "../shared/sim/character.ts";
-import { F_ALIVE, F_GROUNDED } from "../shared/sim/entities.ts";
+import { F_ALIVE, F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
 import { FLAG_BLUEPRINT } from "../shared/sim/items.ts";
 import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { VEHICLE_FUEL_PER_GASOLINE as FUEL_PER_ITEM, VEHICLE_REPAIR_STEP as REPAIR_STEP, VEHICLE_REPAIR_BILL as REPAIR_BILL } from "../shared/sim/vehicle-maintenance.ts";
@@ -78,6 +78,8 @@ export class VehicleService {
     if (e >= ents.cap || !def || ents.gen[e] !== handleGen(handle) || (ents.flags[e]! & F_ALIVE) === 0) return RESULT_INVALID;
     const rec = records.byPid.get(ents.pid[e]!);
     if (!rec || rec.dead) return RESULT_INVALID;
+    // Salvage keeps the aircraft's render kind, but its record and machinery are no longer a live vehicle.
+    if (stopped && (ents.flags[e]! & F_PROP) !== 0) return RESULT_INVALID;
     if (!this.ctx.may(actor, rec)) return RESULT_NOT_YOURS;
     if (Math.hypot(ents.x[c.ent]! - ents.x[e]!, ents.y[c.ent]! - ents.y[e]!, ents.z[c.ent]! - ents.z[e]!) > REACH + def.spec.halfWidth) return RESULT_FAR;
     if (!this.visible(c, ents.x[e]!, ents.y[e]! + Math.min(1.3, def.spec.height / 2), ents.z[e]!)) return RESULT_OBSTRUCTED;
@@ -97,8 +99,11 @@ export class VehicleService {
     const target = this.target(c, handle, false);
     if (typeof target === "number") return target;
     const { e, rec, def } = target, { world, game } = this.ctx, ents = world.ents;
-    const hp = this.health(rec), engine = Math.round(ents.vehicleEngineCondition[e]! * 100), rotor = Math.round(ents.vehicleRotorCondition[e]! * 100);
-    game.sendText(c, TEXT_NOTICE, `${rec.name || "Vehicle"}: hull ${Math.round(hp * 100)}%, fuel ${ents.fuel[e]!.toFixed(1)}/${def.spec.fuelCapacity}${isRotorVehicle(def) ? `, engine ${engine}%, rotor ${rotor}%` : ""}.`);
+    if ((ents.flags[e]! & F_PROP) !== 0) game.sendText(c, TEXT_NOTICE, `${rec.name || "Vehicle"}: salvage wreck. Recover cargo or harvest the remaining materials.`);
+    else {
+      const hp = this.health(rec), engine = Math.round(ents.vehicleEngineCondition[e]! * 100), rotor = Math.round(ents.vehicleRotorCondition[e]! * 100);
+      game.sendText(c, TEXT_NOTICE, `${rec.name || "Vehicle"}: hull ${Math.round(hp * 100)}%, fuel ${ents.fuel[e]!.toFixed(1)}/${def.spec.fuelCapacity}${isRotorVehicle(def) ? `, engine ${engine}%, rotor ${rotor}%` : ""}.`);
+    }
     if (c.open !== rec.pid && !game.mayOpen(c, rec.pid)) return RESULT_DENIED;
     c.open = c.open === rec.pid ? 0 : rec.pid;
     return RESULT_OK;
