@@ -144,9 +144,13 @@ def occlusion(obj, material, size, samples, name, others=()):
     other = blank.node_tree.nodes.new("ShaderNodeTexImage")
     other.image = bpy.data.images.new("unused", 8, 8)
     blank.node_tree.nodes.active = other
+    # clearing the materials sets every face's index to the first, so the indices are put back after
+    index = [p.material_index for p in obj.data.polygons]
     copy.data.materials.clear()
     for k in range(len(obj.data.materials)):
         copy.data.materials.append(bake if k == material else blank)
+    copy.data.polygons.foreach_set("material_index", index)
+    copy.data.update()
     shadows = []
     for other in others:
         s = other.copy()

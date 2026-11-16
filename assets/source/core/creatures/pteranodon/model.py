@@ -902,6 +902,9 @@ def leg_part():
     at = _joints_along(LEG_BONES)
     pts, ds, _ = chain_points(LEG_BONES, "l", start=0.04, end=0.0, step=0.04,
                               knots=(at[1] - 0.025, at[1] + 0.025, at[2] - 0.02, at[2] + 0.02))
+    # chain_points rounds the chain's end up past itself and so stops at the ankle's last knot; the last ring goes on
+    # to the ball of the foot, so the foot is there for the toes to grow from (its rings and faces as they were)
+    pts[-1], ds[-1] = np.array(rig._TAIL["foot_l"]), at[3]
     around = 10
     radii = [(_table(LEG, d, 2), _table(LEG, d, 1)) for d in ds]
     rings = rings_along(pts, radii, around, (0.0, 1.0, 0.0))
@@ -924,10 +927,13 @@ def leg_part():
     return part
 
 
-def toes_part():
+def toes_part(leg):
     """Four long grasping toes from the ball of the foot, each ending in a long, strongly curved claw that hooks
-    toward the sole (up, in the glide)."""
+    toward the sole (up, in the glide). Each starts inside the foot, closed on the point of the foot's skin nearest
+    its root, so attach() joins it to the leg there without pulling its root out of place."""
     part = Part("toes_l", BODY_MAT, HORN_R)
+    skin = np.array(leg.points)
+    skin[leg.ball] = np.inf  # not the tip of the foot, or every toe would close on that one point
     root = np.array(rig._JOINT["toes_l"])
     d0 = np.array(rig._TAIL["toes_l"]) - root
     d0 /= np.linalg.norm(d0)
@@ -940,7 +946,7 @@ def toes_part():
         d = d0 * math.cos(a) + side * math.sin(a)
         steps = 8
         claw_at = length / (length + claw)
-        line, radii = [root + side * (0.013 * (n - 1.5)) - d * 0.010], []
+        line, radii = [root + side * (0.013 * (n - 1.5)) - d * 0.016], []
         for k in range(steps + 1):
             t = k / steps
             bend = math.radians(18) * t + math.radians(80) * max(0.0, (t - claw_at) / (1 - claw_at)) ** 1.3
@@ -951,8 +957,8 @@ def toes_part():
             radii.append((r * 0.85, r))
         rings = rings_along(line, radii, 6, sole)
         first = len(part.faces)
-        idx, s, e = tube(part, rings, line[0] - d * 0.006, line[-1] + (line[-1] - line[-2]) * 0.4, seam=3,
-                         island=f"toe_{n}")
+        start = skin[np.argmin(np.linalg.norm(skin - (line[0] - d * 0.006), axis=1))]
+        idx, s, e = tube(part, rings, start, line[-1] + (line[-1] - line[-2]) * 0.4, seam=3, island=f"toe_{n}")
         ring = _ring_of(idx)
         claw_ring = int(claw_at * steps) + 1
         for f in range(first, len(part.faces)):
@@ -1819,7 +1825,7 @@ def build():
     attach(hand, arm)
     leg = leg_part()
     attach(leg, shell, at=leg.anchor)
-    toes = toes_part()
+    toes = toes_part(leg)
     attach(toes, leg)
     membrane = membrane_part((shell, leg))
     front = front_part()
