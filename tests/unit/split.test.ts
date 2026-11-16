@@ -46,8 +46,8 @@ test("paged, the boot file holds only the meshes it is told to, and every other 
   const whole = corePackBytes();
   const pack = parsePack(whole);
   const boot = new Set(["core:missing", "core:far", "core:human_m/torso"]);
-  const rank = (id: string): number => (id.includes("ruin") ? 0 : 1);
-  const { files, manifest, blobs } = splitPack(whole, "core", { boot: (id) => boot.has(id), rank });
+  const group = (id: string): number => (id.includes("ruin") ? 0 : 1);
+  const { files, manifest, blobs } = splitPack(whole, "core", { boot: (id) => boot.has(id), place: (id) => [group(id), 0] });
   expect(files.map((f) => f.role)).toEqual(["boot", "mesh", "clip", "page"]);
   expect(parsePack(files[0]!.bytes).header.meshes.map((m) => m.id).sort()).toEqual([...boot].sort());
   // What a client reads first names every mesh, and holds the rows of the boot file's alone.
@@ -56,10 +56,10 @@ test("paged, the boot file holds only the meshes it is told to, and every other 
   expect(read.meshes.map((m) => m.id)).toEqual(pack.header.meshes.map((m) => m.id));
   expect(read.meshes.filter(meshKnown).map((m) => m.id).sort()).toEqual([...boot].sort());
   expect(wire.length).toBeLessThan(JSON.stringify(manifest).length / 4);
-  // A page is of one rank and no more than its bytes allow, but for a mesh larger than a page alone.
+  // A page is of one group and no more than its bytes allow, but for a mesh larger than a page alone.
   for (const [p, blob] of blobs.entries()) {
-    const ranks = new Set(manifest.meshes.filter((m) => m.page === p).map((m) => rank(m.id)));
-    expect([ranks.size, blob.length <= PAGE_BYTES || manifest.meshes.filter((m) => m.page === p).length === 1]).toEqual([1, true]);
+    const groups = new Set(manifest.meshes.filter((m) => m.page === p).map((m) => group(m.id)));
+    expect([groups.size, blob.length <= PAGE_BYTES || manifest.meshes.filter((m) => m.page === p).length === 1]).toEqual([1, true]);
   }
   // Each page gives back the rows the whole manifest has, and holds the first parts of the levels it says.
   const pages = files[3]!.bytes;

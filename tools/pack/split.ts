@@ -25,8 +25,8 @@ export interface SplitFile {
 export interface SplitOptions {
   /** Whether the boot file holds a mesh's smallest levels. Each mesh it does not is in a page. Every mesh where not given. */
   boot?: (id: string) => boolean;
-  /** Paged meshes go by this, least first and then as the pack has them, and meshes of two ranks share no page. */
-  rank?: (id: string) => number;
+  /** Where a paged mesh goes: meshes of two groups share no page, and in a group they go by place, then as the pack has them. */
+  place?: (id: string) => readonly [group: number, place: number];
 }
 
 const pad4 = (n: number): number => (n + 3) & ~3;
@@ -52,7 +52,7 @@ interface Placed {
 export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = {}): { files: SplitFile[]; manifest: Manifest; blobs: Uint8Array[] } {
   const pack = parsePack(whole);
   const isBoot = opts.boot ?? (() => true);
-  const rank = opts.rank ?? (() => 0);
+  const place = opts.place ?? (() => [0, 0] as const);
   const blobs = [new PackBlob(), new PackBlob()];
   const headers: PackHeader[] = blobs.map((b) => ({ paletteOffset: b.append(pack.palette), meshes: [], rigs: [], clips: [] }));
   headers[0]!.rigs = pack.header.rigs;
@@ -63,23 +63,24 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
   if (details) headers[0]!.details = { ...details, atlas: { ...details.atlas, offset: blobs[0]!.append(detailsAtlas(pack)) } };
   const held = (m: (typeof pack.header.meshes)[number], level: number, bytes: number): boolean => level === m.lods.length - 1 || bytes <= HELD_LEVEL_BYTES;
   const firstBytes = (lod: PackLod): number => pad4(lod.indexCount * lod.indexBytes) + lod.vertexCount * VERTEX_BYTES;
-  // Paged meshes by rank, each page as many as its bytes allow.
+  // Paged meshes by group and place, each page as many as its bytes allow.
   const pageOf = new Int32Array(pack.header.meshes.length).fill(-1);
   const paged = pack.header.meshes.map((m, i) => i).filter((i) => !isBoot(pack.header.meshes[i]!.id));
-  paged.sort((a, b) => rank(pack.header.meshes[a]!.id) - rank(pack.header.meshes[b]!.id) || a - b);
+  const at = paged.map((i) => place(pack.header.meshes[i]!.id));
+  const order = paged.map((_, k) => k).sort((a, b) => at[a]![0] - at[b]![0] || at[a]![1] - at[b]![1] || paged[a]! - paged[b]!);
   const pages: PackBlob[] = [];
-  let lastRank = NaN;
+  let group = NaN;
   let size = 0;
-  for (const i of paged) {
-    const m = pack.header.meshes[i]!;
+  for (const k of order) {
+    const m = pack.header.meshes[paged[k]!]!;
     const bytes = m.lods.reduce((sum, lod, l) => sum + (held(m, l, firstBytes(lod)) ? pad4(firstBytes(lod)) : 0), 0);
-    if (pages.length === 0 || rank(m.id) !== lastRank || (size > 0 && size + bytes > PAGE_BYTES)) {
+    if (pages.length === 0 || at[k]![0] !== group || (size > 0 && size + bytes > PAGE_BYTES)) {
       pages.push(new PackBlob());
       size = 0;
     }
-    lastRank = rank(m.id);
+    group = at[k]![0];
     size += bytes;
-    pageOf[i] = pages.length - 1;
+    pageOf[paged[k]!] = pages.length - 1;
   }
   const placed: Placed[][] = [];
   pack.header.meshes.forEach((m, i) => {

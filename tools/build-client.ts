@@ -46,18 +46,19 @@ export function brotli(bytes: Uint8Array, quick: boolean): Uint8Array {
 
 /**
  * What the boot file holds and how the rest is paged: the survivor's body, hair and beards and the meshes the client
- * finds by name in the boot file, and the others ranked by the kind of definition that first draws them, in the order
- * of the content, so a page holds what is seen together. A mesh no slot names goes with its nearest name that one does.
+ * finds by name in the boot file, and the others grouped by the kind of definition that first draws them and placed in
+ * the order of the content, so a page holds what is seen together: a node's living forms apart from what is left of
+ * one used up. A mesh no slot names goes with the nearest name that one does.
  */
-export function paging(reg: Registry, pack: Pack): { boot: (id: string) => boolean; rank: (id: string) => number } {
+export function paging(reg: Registry, pack: Pack): { boot: (id: string) => boolean; place: (id: string) => readonly [number, number] } {
   const has = (asset: string, id: string): boolean => asset === "mesh" && pack.meshIndex.has(id);
   const boot = new Set([MISSING_MESH, WATER_MESH, BEAM_MESH, FAR_MESH]);
-  const ranks = new Map<string, number>();
+  const places = new Map<string, readonly [number, number]>();
   const kinds = new Map<string, number>();
   const note = (id: string, kind: string): void => {
-    if (id === "" || ranks.has(id)) return;
+    if (id === "" || places.has(id)) return;
     if (!kinds.has(kind)) kinds.set(kind, kinds.size);
-    ranks.set(id, kinds.get(kind)!);
+    places.set(id, [kinds.get(kind)!, places.size]);
   };
   const kindOf = (k: number): string => `${reg.defs[k]!.type}/${(reg.defs[k] as { class?: string }).class ?? ""}`;
   for (const u of slotsOf(reg.defs.filter((d) => d !== null))) {
@@ -68,22 +69,23 @@ export function paging(reg: Registry, pack: Pack): { boot: (id: string) => boole
     note(id, kindOf(owner));
   }
   const forms = nodeForms(reg);
-  for (let f = 1; f < forms.count; f++) if (pack.meshIndex.has(forms.mesh[f]!)) note(forms.mesh[f]!, kindOf(forms.kind[f]!));
+  for (let f = 1; f < forms.count; f++) if (pack.meshIndex.has(forms.mesh[f]!)) note(forms.mesh[f]!, `${kindOf(forms.kind[f]!)}${forms.depleted[f] === 1 ? "/used" : ""}`);
   const ids = [...pack.meshIndex.keys()].sort();
   const common = (a: string, b: string): number => {
     let n = 0;
     while (n < a.length && a[n] === b[n]) n++;
     return n;
   };
+  const named = new Set(places.keys());
   ids.forEach((id, k) => {
-    if (ranks.has(id)) return;
+    if (named.has(id)) return;
     let before = k - 1, after = k + 1;
-    while (before >= 0 && !ranks.has(ids[before]!)) before--;
-    while (after < ids.length && !ranks.has(ids[after]!)) after++;
-    const near = [ids[before], ids[after]].filter((n): n is string => n !== undefined && ranks.has(n)).sort((a, b) => common(id, b) - common(id, a))[0];
-    ranks.set(id, near === undefined ? kinds.size : ranks.get(near)!);
+    while (before >= 0 && !named.has(ids[before]!)) before--;
+    while (after < ids.length && !named.has(ids[after]!)) after++;
+    const near = [ids[before], ids[after]].filter((n): n is string => n !== undefined).sort((a, b) => common(id, b) - common(id, a))[0];
+    places.set(id, near === undefined ? [kinds.size, 0] : places.get(near)!);
   });
-  return { boot: (id) => boot.has(id), rank: (id) => ranks.get(id) ?? kinds.size };
+  return { boot: (id) => boot.has(id), place: (id) => places.get(id) ?? [kinds.size, 0] };
 }
 
 /** The colour far blocks draw each palette colour in, from every piece's coarsest level in the whole pack, bound as a scene binds it. */
