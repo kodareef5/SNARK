@@ -59,9 +59,8 @@ function surface(tier: Tier, format: TextureFormat, hard: boolean, variant: Surf
 
 /**
  * The programs by name. A lit tier draws flat with LIT where low poly has FLAT, and draws the dome, "sky", where low
- * poly clears to its sky colour. The surface programs are made the first time a frame draws with materials, which low
- * poly never does, so they are lit alone, and the see-through one the first time a frame with a split draws something
- * see-through, which low poly does not either. The depth programs draw the sun's shadow maps.
+ * poly clears to its sky colour. Low poly never draws with materials, so the surface programs are lit alone, nor
+ * see-through with a split (`tierPrograms`). The depth programs draw the sun's shadow maps.
  */
 export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureFormat, hard?: boolean) => ProgramText>> = {
   flat: (tier, format, hard = false) => flatOr(tier, format, hard, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_FRAGMENT, MESH),
