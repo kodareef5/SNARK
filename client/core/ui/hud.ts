@@ -170,7 +170,7 @@ export function buildHud(f: UiFrame, m: HudModel): void {
     f.text(KEY_VEHICLE + 7, x + 10, y + 99, width - 20, S_LABEL, v.rotorCondition < .7 || v.engineCondition < .7 ? `Engine ${Math.round(v.engineCondition * 100)}% | Rotor ${Math.round(v.rotorCondition * 100)}%` : "W/S pitch | A/D bank | Q/R yaw");
     f.text(KEY_VEHICLE + 8, x + 10, y + 122, width - 20, S_LABEL, v.engineOn ? "Space/Ctrl collective | Shift agile" : "Hold Space to start and lift");
     f.text(KEY_VEHICLE + 9, x + 10, y + 144, width - 20, S_LABEL, "C flight mode | Hold X recover");
-    f.text(KEY_VEHICLE + 10, x + 10, y + 166, width - 20, S_LABEL, "V cockpit/chase | E exit");
+    f.text(KEY_VEHICLE + 10, x + 10, y + 166, width - 20, S_LABEL, v.grounded ? "V cockpit/chase | E exit" : "V cockpit/chase | Land to exit");
   }
 
   const barW = 150;
