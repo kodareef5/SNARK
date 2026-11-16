@@ -19,7 +19,7 @@ touch rule, ASTC, 24-bit depth, 16 texture units, no timer queries.
 | Code | Run | Date | Commit |
 | --- | --- | --- | --- |
 | E | `bun run bench`, three runs at the end of the cleanup round, load 3.3 to 4.3 on 10 cores. Medians are from runs 1 and 3; tails (99th percentile, worst) are ranges over all three. Run 2 overlapped a device server starting | 2026-11-16 | `b98944ce` |
-| Start | `bun run bench` once at the start of the same round | 2026-11-16 | `b9896d20` |
+| Start | `bun run bench` once at the start of the same round; its later rows ran as builders started, so times there are high, counts not | 2026-11-16 | `b9896d20` |
 | M | once on main, on a busy machine (load 7 to 39 on 10 cores) | 2026-11-15 | `1ca2026` |
 | Dnnn | the measurement its decision records | | |
 | iPhone | the device page's reports (D349), kept in `planning/reference/device-reports` and named by UTC time | 2026-11-15, 16 | |
@@ -52,10 +52,11 @@ the bases of real pieces. Run 2 also missed the dormant tick (6.17 against 5.96 
 and the collapse's whole tick (18.2 against 16).
 
 The one miss is thatch's base: 2.18 M triangles 60 m from 2,000 pieces against the
-1.5 M every base is held to (wood 0.67 M, stone 0.81 M). The five misses at the
-start are met: the collapse's whole tick (23.9 ms then), the entity store's slot and
-full store (334 bytes and 167 MB then), the 180 ms, 2% link's clock jumps (3.75 a
-minute then, 2.5 now, against 3), and a kept soak replayed through the old ladder.
+1.5 M every base is held to (wood 0.67 M, stone 0.81 M). Four of the five misses at
+the start are met: the collapse's whole tick (23.9 ms then), the entity store's slot
+and full store (334 bytes and 167 MB then), and the 180 ms, 2% link's clock jumps
+(3.75 a minute then, 2.5 now, against 3). The fifth, a kept soak replayed through
+the old ladder, is replayed through the new one and holds.
 
 | Row | Start | End | Budget |
 | --- | --- | --- | --- |
@@ -83,7 +84,8 @@ The first eleven rows got better and the rest worse. The blast's base is real pi
 now (D638), and the ASTC encoder works blocks of 4 to 8 pixels (D656), so those two
 measure more than they did. Bandwidth (the fight 19.3 KB/s, a quiet base 13.0, the
 brawl 32.0, the crowd 31.9, voice 28.7), far bases' and far nodes' counts, terrain
-pictures, voice relay, paths, collision and rays did not move.
+pictures, voice relay, paths, collision and rays moved by a few percent or not at
+all.
 
 ## The server
 
