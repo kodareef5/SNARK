@@ -82,13 +82,15 @@ export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
     sample_suite: fitting("sample_suite", [2, 1.2, 1.6]), sample_ocean: fitting("sample_ocean", [2, 1.2, 1.6]),
     pearl, main_bar: fitting("main_bar_counter"), giovanni: fitting("giovanni_table_1"), casino: fitting("casino_table_5_1"),
     absolute_zero: fitting("ice_bench_1_1"), fitness: fitting("fitness_1_1"), spa: fitting("spa_1_1"),
-    crew: fitting("crew_fit_1_13"), laundry: fitting("laundry_fit_1_-14"), galley: fitting("galley_fit_1_14"),
-    engine: fitting("engine_fit_1_13"), workshop: fitting("workshop_fit_1_12"),
+    crew: fitting("crew_fit_1_12"), laundry: fitting("laundry_fit_1_-14"), galley: fitting("galley_fit_1_14"),
+    engine: fitting("engine_fit_1_12"), workshop: fitting("workshop_fit_1_12"),
     chill: fitting("lounger_15_17"), pool_edge: fitting("prototype_pool", [0, -.18, 0]), cloud: fitting("lounger_17_2"),
     grove_upper: [0, rooms.get("grove_upper")!.bounds.min[1]! + .8, 68],
     waterpark: fitting("slide_0_0"), windjammer: fitting("windjammer_table_2"), pool_under: fitting("pool_lounge_sofa_1"),
   };
-  const localViews = views.map(view => ({ ...view, target: targets[view.id] ?? view.target }));
+  const promenadeApproach = CRUISE_LAYOUT.routes.find(route => route.id === "pearl_arrival")?.anchors[1];
+  if (!promenadeApproach) throw new Error("Cruise review requires the authored Promenade approach to the Pearl");
+  const localViews = views.map(view => ({ ...view, at: view.id === "promenade" ? promenadeApproach : view.at, target: targets[view.id] ?? view.target }));
   // One room per distinct public/service destination; repeated dining floors share the deck-five view.
   for (const id of Object.keys(targets)) if (!localViews.some(view => view.id === id)) {
     const room = CRUISE_LAYOUT.rooms.find(room => room.id === id);
@@ -106,7 +108,7 @@ export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
         (room.footprint && !cruiseFootprintContains(room.footprint, view.at[0]!, view.at[2]!)))
       throw new Error(`Cruise review feet are outside the occupied room: ${view.id}`);
   }
-  const medium = new Set(["cabin_9", "dome_inside", "promenade", "central_park", "thrill", "bridge", "engine"]);
+  const medium = new Set(["cabin_9", "dome_inside", "promenade", "central_park", "thrill", "bridge", "engine", "chill"]);
   for (const view of localViews) for (const tier of medium.has(view.id) ? ["medium", "high"] as const : ["high"] as const)
     shots.push({ name: `interior-${view.id}-${tier}`, feet: p(view.at), target: p(view.target), mode: view.mode as "walk" | "spectator", tier });
   const promenade = localViews.find(view => view.id === "promenade" && view.mode === "walk");
@@ -119,6 +121,7 @@ export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
     { name: "08-starboard-profile", feet: spectator([-400, 42, 0]), target: focus, mode: "spectator", tier: "high", framePoints },
     { name: "09-bow-quarter", feet: spectator([-140, 68, 370]), target: p([0, 32, 30]), mode: "spectator", tier: "high", framePoints },
     { name: "10-stern-quarter", feet: spectator([-140, 68, -370]), target: p([0, 32, -30]), mode: "spectator", tier: "high", framePoints });
+  shots.push({ name: "12-near-starboard-profile", feet: spectator([-185, 48, 0]), target: focus, mode: "spectator", tier: "high", framePoints });
   const lifeboat = fitting("lifeboat_1_6");
   shots.push({ name: "11-lifeboat-berth", feet: spectator([lifeboat[0]! + 19, lifeboat[1]! + 2.5, lifeboat[2]! + 2]),
     target: p(lifeboat), mode: "spectator", tier: "high" });
@@ -126,6 +129,20 @@ export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
   shots.push({ name: "06-flat-profile", feet: spectator([-400, 42, 0]), target: focus, mode: "spectator", tier: "lowpoly", framePoints });
   for (const distance of [280, 650, 900, 1300, 2000]) shots.push({ name: `far-${distance}m`, feet: spectator([-distance, 42, 0]), target: focus, mode: "spectator", tier: "high", far: true, framePoints });
   return shots;
+}
+
+/** Eight ordinary look directions at the three measured high-density destinations, on both unchanged tiers. */
+export function cruiseHeadingShots(shots: readonly CruiseShot[]): readonly CruiseShot[] {
+  return ["chill", "promenade", "casino"].flatMap(destination => {
+    const source = shots.find(shot => shot.name === `interior-${destination}-high`);
+    if (!source) throw new Error(`Cruise heading sweep lacks ${destination}`);
+    const dx = source.target[0] - source.feet[0], dz = source.target[2] - source.feet[2];
+    return (["medium", "high"] as const).flatMap(tier => Array.from({ length: 8 }, (_, i) => {
+      const angle = i * Math.PI / 4, c = Math.cos(angle), s = Math.sin(angle);
+      return { ...source, tier, name: `sweep-${destination}-${tier}-${String(i * 45).padStart(3, "0")}`,
+        target: [source.feet[0] + dx * c + dz * s, source.target[1], source.feet[2] - dx * s + dz * c] as const };
+    }));
+  });
 }
 
 const isShipMesh = (id: string): boolean => id.startsWith("core:cruise_") && !id.startsWith("core:cruise_port_");
@@ -211,6 +228,7 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, files: GameFiles, w
     const tier = app.scene.assets.tier;
     const faults: string[] = [];
     if (p.dropped || p.skipped || p.casterDropped) faults.push("native rendering dropped draws or shadow casters");
+    if (cold.dropped || cold.skipped || cold.casterDropped) faults.push("native rendering dropped draws or shadow casters during cold streaming");
     if (p.drawCount > tier.budget.draws || p.triangles > tier.budget.triangles) faults.push("frame exceeds unchanged tier submission budget");
     if (app.scene.city && (app.scene.city.stats.missing || app.scene.city.stats.behind)) faults.push("far city did not settle");
     if (session.stats.corrections !== corrections) faults.push("prediction corrected after settling");
@@ -264,7 +282,8 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, files: GameFiles, w
 /** Runs only production assets through the real App. The plan's coordinates come from the shared authored layout. */
 export async function reviewCruise(map: MapData, shots: readonly CruiseShot[], args = process.argv.slice(2)): Promise<void> {
   const value = (name: string) => { const i = args.indexOf(name); return i < 0 ? undefined : args[i + 1]; };
-  const source = resolve(value("--source") ?? SOURCE), out = resolve(value("--out") ?? "var/cruise-preview/review");
+  const sweep = args.includes("--heading-sweep"), source = resolve(value("--source") ?? SOURCE);
+  const out = resolve(value("--out") ?? (sweep ? "var/cruise-preview/heading-capacity" : "var/cruise-preview/review"));
   const [width, height] = (value("--size") ?? "1200x800").split("x").map(Number) as [number, number];
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 320 || height < 240 || width > 1920 || height > 1080) throw new Error("--size must be 320x240 through 1920x1080");
   console.log(`Loading native production packs from ${source}`);
@@ -273,7 +292,8 @@ export async function reviewCruise(map: MapData, shots: readonly CruiseShot[], a
   const named = await namedTextures(source);
   console.log("Preparing native mesh and texture streams");
   const files = splitWithTextures(bytes, t => { const texture = named.get(t.id); if (!texture) throw new Error(`Missing production texture ${t.id}`); return rgbaOf(texture.material, t.role, t.top); });
-  const only = (value("--only") ?? "").split(",").filter(Boolean), selected = shots.filter(shot => !only.length || only.some(word => shot.name.includes(word)));
+  const only = (value("--only") ?? "").split(",").filter(Boolean);
+  const selected = (sweep ? cruiseHeadingShots(shots) : shots).filter(shot => !only.length || only.some(word => shot.name.includes(word)));
   if (!selected.length) throw new Error("--only matched no review scene");
   mkdirSync(out, { recursive: true }); const report: Record<string, unknown>[] = [], packHash = hashBytes(bytes).toString(16).padStart(8, "0");
   const compiled = compileContent(CORE_CONTENT); if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
@@ -285,7 +305,7 @@ export async function reviewCruise(map: MapData, shots: readonly CruiseShot[], a
   }
   for (const shot of selected) {
     console.log(`Native cruise review ${shot.name}`);
-    report.push({ ...capture(shot, map, pack, files, shot.portrait ? 540 : width, shot.portrait ? 960 : height, out, !args.includes("--visual-only"), !args.includes("--no-images")), packHash, assetStage: graybox ? "preliminary graybox" : CRUISE_LAYOUT.phase });
+    report.push({ ...capture(shot, map, pack, files, shot.portrait ? 540 : width, shot.portrait ? 960 : height, out, !args.includes("--visual-only"), !args.includes("--no-images") && !sweep), packHash, assetStage: graybox ? "preliminary graybox" : CRUISE_LAYOUT.phase });
     report.sort((a, b) => String(a.name).localeCompare(String(b.name)));
     writeFileSync(resolve(out, "report.json"), JSON.stringify({ source, generated: new Date().toISOString(), pipeline: "native map → authoritative Harness → App → streamed production packs → native frame packet → optional Rasterizer", layout: { phase: CRUISE_LAYOUT.phase, prototypes: CRUISE_LAYOUT.prototypes.length, placedInstances: CRUISE_LAYOUT.instances.filter(instance => instance.placed).length, deckLabels: CRUISE_LAYOUT.decks.map(deck => deck.id) }, shots: report,
       limits: "Static native software-rendered views establish model, collision-camera and streaming behavior; they do not establish browser GPU performance or identical lit ocean shading." }, null, 2));
