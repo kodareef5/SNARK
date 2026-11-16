@@ -1,5 +1,5 @@
 """Distant lifeboats retain the photographed hull and canopy, in engine metres."""
-from model_exterior import _outline, _shell, _side_panel, _side_x
+from model_exterior import _outline, _shell, _side_panel, _side_x, _door
 
 
 def lifeboat(mesh, level):
@@ -24,7 +24,9 @@ def lifeboat(mesh, level):
     _shell(mesh, [_outline(y, x, z, steps, dip) for y, x, z, dip in canopy], ['yellow'] * 3, 'yellow')
     for side in (-1, 1):
         for z in (-4.80, -3.48, 2.55, 3.87):
-            if level < 4:
+            if level == 2:
+                _door(mesh, side, z)
+            elif level < 4:
                 _side_panel(mesh, side, z - .22, z + .22, .12, 1.23, 'navy', stand=.045, depth=.010)
             else:
                 # The ten-millimetre light panel keeps both visible sides at

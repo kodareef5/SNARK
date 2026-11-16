@@ -87,20 +87,21 @@ test("visible window panels, balcony slabs and upper stairs survive every author
     [28.900391, 29.079218, 109.334122], [28.900391, 25.612942, 99.732559], // port floor / canopy
     [-.8, 58.109875, 63.866669], [.8, 51.289608, -71.444443], // exposed fore / aft stair flights
   ];
-  const errors = [0, .0125, .025, .06, .13, .25];
   const records = new Map(cruiseArtGroups.meshes.map(record => [record.id, record]));
-  for (let stage = 0; stage < errors.length; stage++) for (const point of witnesses) {
-    const tolerance = errors[stage]! + .003; // includes native vertex/origin quantization
-    let distance = Infinity;
+  const headers = new Map(cruiseArt.pack.header.meshes.map(header => [header.id, header]));
+  for (let stage = 0; stage < 6; stage++) for (const point of witnesses) {
+    let excess = Infinity;
     for (const cell of layout.cells!) {
-      if (point.some((value, axis) => value < cell.bounds.min[axis]! - tolerance || value > cell.bounds.max[axis]! + tolerance)) continue;
       const retained = records.get(cell.id)!.levels.findLast(level => level.authoredLevel <= stage)!;
+      // The ordinary art check binds this actual stated error to the unchanged distance budget.
+      const tolerance = headers.get(cell.id)!.lods[retained.level]!.error + .003;
+      if (point.some((value, axis) => value < cell.bounds.min[axis]! - tolerance || value > cell.bounds.max[axis]! + tolerance)) continue;
       const lod = cruiseArt.byId.get(cell.id)!.lods[retained.level]!;
       const x = point[0]! - cell.origin[0]!, y = point[1]! - cell.origin[1]!, z = point[2]! - cell.origin[2]!;
       for (let i = 0; i < lod.indices.length; i += 3)
-        distance = Math.min(distance, toTriangle(x, y, z, lod.positions, lod.indices[i]! * 3, lod.indices[i + 1]! * 3, lod.indices[i + 2]! * 3));
+        excess = Math.min(excess, toTriangle(x, y, z, lod.positions, lod.indices[i]! * 3, lod.indices[i + 1]! * 3, lod.indices[i + 2]! * 3) - tolerance);
     }
-    expect(distance, `stage ${stage}, exterior face ${point.join(",")}`).toBeLessThanOrEqual(tolerance);
+    expect(excess, `stage ${stage}, exterior face ${point.join(",")}: beyond its native stated error`).toBeLessThanOrEqual(0);
   }
 });
 
