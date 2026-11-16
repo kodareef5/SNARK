@@ -109,7 +109,7 @@
       ]
     },
     "engine/rev": {
-      "kind": "impact",
+      "kind": "voice",
       "range": 120,
       "level": -14,
       "vary": 0.0,
@@ -125,8 +125,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "A speedboat's big V8 engine is revved hard in neutral: a loud rising roar and a falling burble, four separate revs with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v5-40130",
+          "models": [
+            "moss"
+          ],
+          "seed": 40130,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 6,
+          "text": "One quick hard rev of a big V8 boat engine in neutral: a loud rising roar that falls back, then quiet. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "whole": true
     },
     "hull/fast": {
       "kind": "impact",

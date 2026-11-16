@@ -498,7 +498,7 @@ with the catalogue and are printed, not held; each asset is held to its own budg
 | Textures to 1,024, ASTC and BC; to 2,048 | 124.8, 229.5 MB; 337.8, 572.4 MB | |
 | The world's finishes to 1,024, ASTC and BC | 1,498, 3,039 KB | |
 | The RGBA texture file; textures with a 2,048 step | 335.8 MB; 139 | |
-| The sound file; its rate | 3,615 KB; 39.1 kbit/s | ; 42 kbit/s |
+| The sound file; its rate | 3,822 KB; 39.5 kbit/s | ; 42 kbit/s |
 | Music | 39.5 MB | |
 | Sound takes and ASTC texture steps stored twice; mesh parts stored twice | 0, 0; 394 | 0, 0; none |
 

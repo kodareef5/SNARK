@@ -36,6 +36,12 @@
       "takes": [
         {"file": "takes/engine/stop/moss-pt-11050-01910.wav", "from": "moss", "start": 0.05, "end": 5.658}
       ]
+    },
+    "engine/rev": {
+      "range": 120, "level": -14, "vary": 0.0,
+      "takes": [
+        {"file": "takes/engine/rev/moss-pt-40140-00200.wav", "from": "moss", "start": 0.05, "end": 5.75}
+      ]
     }
   }
 }
