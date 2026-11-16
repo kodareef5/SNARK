@@ -247,6 +247,19 @@ test("the lattice fades out over the end of its reach exactly where the mass fad
   expect(fades.some((f) => f === -900)).toBe(true);
 });
 
+test("a tile wholly short of the last tenth of its reach draws with no fade, and one reaching into it fades there", () => {
+  // Two towers in line, one 300 m off and one 1,900 m off, on medium (reach 2,048 m).
+  const statics = [...building(...mid(2, 30), 0, 6), ...building(...mid(2, 55), 0, 6)];
+  const w = cityWorld({ chunks: 64, statics, width: 320, height: 180 });
+  const [x, z] = mid(2, 30);
+  w.look(x, 10, z, 300, 0, 2);
+  const p = w.frame();
+  const at = (d: number): number => Math.hypot(p.drawOffset[d * 3]! + 128, p.drawOffset[d * 3 + 2]! + 128);
+  const fades = cityDraws(p).map((d) => [at(d) < 1000, p.drawFade[d]!] as const);
+  expect(fades.filter(([near]) => near).map(([, f]) => f)).toEqual([0]);
+  expect(fades.filter(([near]) => !near).map(([, f]) => f)).toEqual([2048]);
+});
+
 test("tiles with nothing on the card are made first, a level at a time within the frame's budget", () => {
   const statics: MapStatic[] = [];
   for (let cx = 2; cx < 14; cx += 2) for (let cz = 2; cz < 14; cz += 2) statics.push(...building(...mid(cx, cz), 0, 4));
