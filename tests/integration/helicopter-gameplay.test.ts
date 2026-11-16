@@ -188,6 +188,21 @@ test("parking reserves the complete rotor discs of both aircraft", () => {
   } finally { h.host.shutdown(); }
 });
 
+test("an actor striking a parked hull transfers actor momentum instead of a full-aircraft crash impulse", () => {
+  const { h, actor } = setup();
+  try {
+    const e = h.host.spawnVehicle("core:helicopter", 62, 64, actor.team), ents = h.world.ents;
+    const target = h.host.spawnCreature("core:civilian", 63.9, 64.6, 1);
+    ents.setPosition(target, 63.9, .2, 64.6); h.world.history.untrack(target); h.world.history.track(target);
+    const rec = h.host.records.byPid.get(ents.pid[e]!)!, health = h.host.survival.value(rec, V_HEALTH), contacts = h.host.urban.contacts!;
+    contacts.capture(e); ents.setPosition(target, 63.3, .2, 64.6); ents.vx[target] = -36;
+    expect(contacts.step()).toContain(e); h.host.urban.step();
+    expect(h.host.survival.value(rec, V_HEALTH)).toBe(health);
+    expect(ents.vehicleEngineCondition[e]).toBe(1);
+    expect(ents.flags[e]! & F_GROUNDED).not.toBe(0);
+  } finally { h.host.shutdown(); }
+});
+
 test("a disconnected pilot releases control while the healthy aircraft lands with its remaining passenger attached", () => {
   const { h, c, actor } = setup();
   try {

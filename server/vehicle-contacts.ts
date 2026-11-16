@@ -276,7 +276,9 @@ export class VehicleContacts {
     // A death/module callback can destroy and reuse either slot during Combat.land.
     if (ents.resolve(frame.handle) !== car || ents.pid[car] !== frame.pid) return false;
     this.clip(car, frame, c.t, taken <= 0);
-    if (isRotorVehicle(def)) this.ctx.impact?.(car, c.rotor ? Math.max(0, carNormal) : c.speed, !!c.rotor);
+    // Only momentum transferred into the aircraft damages its hull. A pedestrian cannot deliver the same
+    // aircraft energy loss as a building or another full-mass vehicle at the same relative closing speed.
+    if (isRotorVehicle(def)) this.ctx.impact?.(car, c.rotor ? Math.max(0, carNormal) : impulse / mass, !!c.rotor);
     if (taken > 0) {
       const loss = Math.min(impulse / mass, Math.max(0, ents.vx[car]! * c.nx + ents.vy[car]! * ny + ents.vz[car]! * c.nz));
       ents.vx[car] = Math.fround(ents.vx[car]! - c.nx * loss);
