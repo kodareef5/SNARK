@@ -158,6 +158,9 @@ function capture(shot: Shot, pack: Pack, files: GameFiles, width: number, height
     };
     const first = draw();
     if (first.draws.length === 0) throw new Error(`${shot.name}: the actual frame drew no helicopter mesh`);
+    if (shot.moment === "wreck" && !first.draws.some(draw => draw.mesh === def.wreck)) throw new Error(`${shot.name}: native corpse did not select the authored wreck mesh ${def.wreck}`);
+    if ((airborne && shot.moment !== "wreck" || shot.moment === "rotor") && first.rotorCards !== def.rotors.length) throw new Error(`${shot.name}: full-speed aircraft did not draw every rotor's swept coverage`);
+    if (first.dropped || first.skipped) throw new Error(`${shot.name}: native frame dropped ${first.dropped} or skipped ${first.skipped} draws`);
     writeFileSync(resolve(out, `${shot.name}.png`), encodePng(width, height, first.pixels));
     if (shot.moment === "rotor") {
       const strip = new Uint8ClampedArray(width * 3 * height * 2 * 4);
