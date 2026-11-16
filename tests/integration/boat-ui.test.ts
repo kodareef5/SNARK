@@ -63,6 +63,9 @@ test("boat assembly preview targets actual water, rotates, cancels and submits o
     inventory.pointer(0, KEY_INV_DEPLOY, 0, session);
     expect(inventory.open).toBe(false);
     const length = Math.hypot(8, 1), update = (dy: number) => preview.update(session, session.world!, h.reg, 64, 4, 64, 8 / length, dy, 0, 0, h.now);
+    session.world!.hf.seaLevel = -Infinity; update(-1 / length);
+    expect(preview.problem).toBe(RESULT_NO_SUPPORT); expect(Number.isFinite(preview.pose.y)).toBe(true);
+    session.world!.hf.seaLevel = 3;
     update(0); expect(preview.active).toBe(true); expect(preview.problem).toBe(RESULT_NO_SUPPORT); expect(preview.place(session)).toBe(0);
     update(-1 / length); expect(preview.problem).toBe(RESULT_OK);
     preview.key("KeyE", true, false); update(-1 / length); expect(preview.pose.yaw).toBe(4096);

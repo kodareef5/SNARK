@@ -64,7 +64,10 @@ export class VehiclePlacement {
     const p = this.pose;
     p.x = ox + dx * distance; p.y = oy + dy * distance; p.z = oz + dz * distance;
     p.yaw = (Math.round(yaw * 65536 / (2 * Math.PI)) + this.turn * 4096) & 65535;
-    if (isBoatVehicle(def)) p.y = boatRestY(def.spec, world.hf.waterAt(p.x, p.z));
+    if (isBoatVehicle(def)) {
+      const rest = boatRestY(def.spec, world.hf.waterAt(p.x, p.z));
+      if (Number.isFinite(rest)) p.y = rest;
+    }
     const angle = p.yaw * 2 * Math.PI / 65536, frame = { ...p, yaw: angle, pitch: 0, roll: 0 };
     let problem = session.driving >= 0 || session.own.seat > 0 ? RESULT_DENIED : (isBoatVehicle(def) ? !waterHit : hit === HIT_NONE || rayHit.ny < .94) ? RESULT_NO_SUPPORT : 0;
     if (!problem && !(isBoatVehicle(def) ? boatPlacement(world, p.x, p.y, p.z, angle, def) : isRotorVehicle(def) && helicopterPlacement(world, p.x, p.y, p.z, angle, def))) problem = RESULT_NO_SUPPORT;
@@ -78,7 +81,7 @@ export class VehiclePlacement {
         if (r.id[i] === handleIndex(session.ownHandle) || Math.hypot(r.x[i]! - p.x, r.y[i]! - p.y, r.z[i]! - p.z) > 18) continue;
         const other = reg.vehicle[kind];
         const otherFrame = {
-          x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, yaw: r.yaw[i]!, pitch: r.vehiclePitch[i]!, roll: r.vehicleRoll[i]!,
+          x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, yaw: r.yaw[i]!, pitch: r.vehiclePitch[i]!, roll: r.vehicleRoll[i]!, steering: r.steering[i]!,
           ...(other && (isRotorVehicle(other) || isBoatVehicle(other)) ? { qx: r.vehicleQx[i]!, qy: r.vehicleQy[i]!, qz: r.vehicleQz[i]!, qw: r.vehicleQw[i]! } : {}),
         };
         if (other ? (isBoatVehicle(def) ? boatMeetsVehicle(def, frame, other, otherFrame) : helicopterMeetsVehicle(def, frame, other, otherFrame)) : reg.move[kind] && meetsCapsule(r.x[i]!, r.y[i]!, r.z[i]!, reg.bodyRadius[kind]!, reg.bodyHeight[kind]!)) problem = RESULT_OBSTRUCTED;
