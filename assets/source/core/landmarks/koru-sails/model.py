@@ -28,9 +28,10 @@ class Mesh:
  def weight(self,p,band,gaff=False):
   if gaff:return {'gaff':1}
   if 'gaff' not in self.s:return {band['bone']:1}
-  g=self.s['gaff'];y,z=p[1:];ht=g['throat'][1];hp=g['peak'][1];zp=g['peak'][2]
-  if z<-.001 or z>zp+.001:return {band['bone']:1}
-  edge=ht+(hp-ht)*z/zp;distance=(edge-y)/math.sqrt(1+((hp-ht)/zp)**2)
+  g=self.s['gaff'];y,z=p[1:];ht=self.s['polygon'][-1][0];hp=g['peak'][1];zp=g['peak'][2]
+  # Distance to the finite head edge stays continuous around its peak; a chord cutoff would tear neighboring leech strips.
+  dy=hp-ht;t=max(0,min(1,((y-ht)*dy+z*zp)/(dy*dy+zp*zp)))
+  distance=math.hypot(y-(ht+t*dy),z-t*zp)
   w=max(0,min(1,1-distance/2));w=w*w*(3-2*w)
   # Flat levels retain a single decisive owner on shared seams, exactly as the native pack does.
   if self.level and w>0:w=1 if w>=.5 else 0
@@ -108,8 +109,15 @@ def build(name):
   m=Mesh(s,level);axis=0 if s['bandAxis']=='y' else 1
   for band in s['bands']:
    poly=clip(clip(s['polygon'],axis,band['lower'],1),axis,band['upper'],-1);m.panel(poly,band)
+   if s['kind']=='main' and level<3 and band['index']%8==1 and band['lower']<s['polygon'][-1][0]:
+    # Compact sail cars bridge the real mast track to the outboard cloth, rather than leaving a floating luff.
+    y=band['lower'];m.tube([[.25,y,-.06],[0,y,0]],.018,2,band,n=6 if level<2 else 4)
   if 'gaff'in s:
    g=s['gaff'];m.tube([g['throat'],g['peak']],.145,2,gaff=True)
+   if level<3:m.tube([[0,s['polygon'][-1][0],0],g['throat']],.025,2,gaff=True,n=6 if level<2 else 4)
+  elif level<3:
+   # Small luff straps stay on the fixed forestay axis while the first panel hinges from this line.
+   for y in range(0,math.floor(max(p[0] for p in s['polygon'])),8):m.tube([[0,y,0],[s['anchor'][0],y,0]],.012,1,{'bone':'root'},n=6 if level<2 else 4)
   obj=m.object(s['mesh'][5:]+('' if level==0 else '_LOD'+str(level)),rig)
   report.append({'level':level,'triangles':len(obj.data.polygons),'vertices':len(obj.data.vertices)})
  (HERE/'ref'/('geometry-'+s['id']+'.json')).write_text(json.dumps(report,indent=2)+'\n')
