@@ -380,7 +380,7 @@ Reasoned from the rows, in the order a growing world meets them.
 | Draws | 4,096 in the packet; the iPhone held 256 to 2,048 on lit tiers | Far stand-ins (F4); texture arrays before multi-draw (D210) |
 | Shadow casters | 812 of 4,096 in the siege on ultra (building pieces only since the refining forge, S1) | Merged casters cached by shape (D267) |
 | Garbage collection | A worst tick of 7 to 20 ms once in some hundreds | Less garbage a tick; the simulation in a worker |
-| Textures on a phone | 1.5 GB held, the tab dropped at 2 GB | A smaller card budget on a phone |
+| Textures on a phone | 1.5 GB held, the tab dropped at 2 GB; the game's ASTC holds at most 507 MB on high and 152 on medium, its blocks sized by map ([encoders](encoders.md)) | A smaller card budget on a phone |
 
 ## Not measured
 
