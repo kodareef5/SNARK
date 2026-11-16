@@ -161,7 +161,7 @@ const GATHERED = GATHER.reduce((sum, g) => sum + g[2], 0);
 export function sunCoord(height: number): number {
   const s = Math.max(-1, Math.min(1, height / SUN_TOP));
   let along = 0.5 + 0.5 * Math.sign(s) * Math.sqrt(Math.abs(s));
-  for (const [from, to, share] of GATHER) along += share * Math.max(0, Math.min(1, (height - from) / (to - from)));
+  for (const g of GATHER) along += g[2] * Math.max(0, Math.min(1, (height - g[0]) / (g[1] - g[0])));
   return along / (1 + GATHERED);
 }
 
@@ -390,7 +390,9 @@ const unit = new Float32Array(FRAME_FLOATS);
  */
 export function cardTakes(n: Vec, v: Vec, l: Vec): { light: number; sky: number } {
   unit.fill(0);
-  unit.set([l[0]!, l[1]!, l[2]!], FRAME.sun);
+  unit[FRAME.sun] = l[0]!;
+  unit[FRAME.sun + 1] = l[1]!;
+  unit[FRAME.sun + 2] = l[2]!;
   unit.fill(1, FRAME.sunColor, FRAME.sunColor + 3);
   // A fully rough highlight mirrors nothing, so what the sky shows in the reflected direction does not matter.
   lit(takes, GREY, [0, 1, 0], n, v, unit, UP);

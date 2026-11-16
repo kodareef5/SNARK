@@ -101,7 +101,7 @@ export class Clouds {
       this.flats.push(p.flat);
       this.greys.push(Math.max(1, Math.min(255, Math.round(p.grey * 255))));
     }
-    if (this.cells.length === 0) [this.cells[0], this.flats[0], this.greys[0]] = [0, 1, 255];
+    if (this.cells.length === 0) { this.cells[0] = 0; this.flats[0] = 1; this.greys[0] = 255; }
   }
 
   /**
@@ -126,9 +126,9 @@ export class Clouds {
     let cut = 0;
     let soft = 0;
     // The camera's right and up, which a puff faces.
-    const [sy, cyw, sp, cp] = [Math.sin(cam.yaw), Math.cos(cam.yaw), Math.sin(cam.pitch), Math.cos(cam.pitch)];
-    const [rx, rz] = [-cyw, sy];
-    const [ux, uy, uz] = [-sy * sp, cp, -cyw * sp];
+    const sy = Math.sin(cam.yaw), cyw = Math.cos(cam.yaw), sp = Math.sin(cam.pitch), cp = Math.cos(cam.pitch);
+    const rx = -cyw, rz = sy;
+    const ux = -sy * sp, uy = cp, uz = -cyw * sp;
     const tick = remote.tick;
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!;

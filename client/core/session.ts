@@ -206,6 +206,8 @@ export class RemoteSample {
   readonly vehicleQy = new Float32Array(MAX_VIEW);
   readonly vehicleQz = new Float32Array(MAX_VIEW);
   readonly vehicleQw = new Float32Array(MAX_VIEW);
+  /** 1 where the vehicle columns hold what a body sent no vehicle parts has, which then need not be written again. */
+  readonly bare = new Uint8Array(MAX_VIEW);
   readonly flags = new Uint8Array(MAX_VIEW);
   readonly level = new Uint16Array(MAX_VIEW);
   /** Six colour regions per entity. Zero means the species' own colour. */
@@ -737,66 +739,16 @@ export class ClientSession {
       out.seatGen[n] = b.seatGen[j]!;
       out.span[n] = b.span[j]!;
       out.grown[n] = b.grown[j]!;
-      const vehiclePose = b.vehiclePose[j]!;
-      out.vehiclePitch[n] = unpackVehiclePitch(vehiclePose);
-      out.vehicleRoll[n] = unpackVehicleRoll(vehiclePose);
-      out.steering[n] = unpackVehicleSteering(vehiclePose);
-      out.wheelAngle[n] = unpackVehicleWheel(b.vehicleWheel[j]!);
-      const ride = b.vehicleRide[j]!;
-      out.vehicleGroundPitch[n] = unpackVehicleGroundPitch(ride);
-      out.vehicleGroundRoll[n] = unpackVehicleGroundRoll(ride);
-      out.vehicleRideOffset[n] = unpackVehicleRideOffset(ride);
-      out.vehicleGrounded[n] = vehicleRideGrounded(ride) ? 1 : 0;
-      out.vehicleDoors[n] = b.vehicleDoors[j]!;
-      out.vehicleRotorcraft[n] = this.registry.vehicle[b.kind[j]!]?.movement === "rotor" ? 1 : 0;
-      out.vehicleBoat[n] = this.registry.vehicle[b.kind[j]!]?.movement === "boat" ? 1 : 0;
-      out.vehicleHullCondition[n] = unpackBoatHullCondition(b.vehicleWater[j]!);
-      out.vehicleFlooding[n] = unpackBoatFlooding(b.vehicleWater[j]!);
-      const rotor = b.vehicleRotor[j]!, systems = b.vehicleSystems[j]!;
-      out.vehicleRotorRpm[n] = unpackRotorRpm(rotor); out.vehicleRotorPhase[n] = unpackRotorPhase(rotor);
-      out.vehicleFuel[n] = unpackVehicleFuel(systems); out.vehicleEngineCondition[n] = unpackEngineCondition(systems);
-      out.vehicleRotorCondition[n] = unpackRotorCondition(systems); out.vehicleEngineOn[n] = vehicleEngineRunning(systems) ? 1 : 0;
-      unpackVehicleQuaternion(b.vehicleAttitudeA[j]!, b.vehicleAttitudeB[j]!, this.rotorQuat);
-      const drive = b.vehicleDrive[j]!;
-      out.vehicleGear[n] = unpackVehicleGear(drive);
-      out.vehicleRpm[n] = unpackVehicleRpm(drive);
-      out.vehicleShifting[n] = vehicleShifting(drive) ? 1 : 0;
-      if (a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j]) {
-        if (out.vehicleRotorcraft[n] || out.vehicleBoat[n]) {
-          unpackVehicleQuaternion(a!.vehicleAttitudeA[i]!, a!.vehicleAttitudeB[i]!, this.rotorQuatA);
-          this.rotorQuatB.set(this.rotorQuat);
-          quatNlerp(this.rotorQuat, 0, this.rotorQuatA, 0, this.rotorQuatB, 0, k);
-        }
-        if (out.vehicleRotorcraft[n]) {
-          const oldRotor = a!.vehicleRotor[i]!, rpm = unpackRotorRpm(oldRotor);
-          out.vehicleRotorPhase[n] = interpolateRotorPhase(unpackRotorPhase(oldRotor), unpackRotorPhase(rotor), rpm, out.vehicleRotorRpm[n]!, (b.tick - a!.tick) / TICK_RATE, k);
-          out.vehicleRotorRpm[n] = rpm + (out.vehicleRotorRpm[n]! - rpm) * k;
-        }
-        const oldPose = a!.vehiclePose[i]!;
-        out.vehiclePitch[n] = unpackVehiclePitch(oldPose) + (out.vehiclePitch[n]! - unpackVehiclePitch(oldPose)) * k;
-        out.vehicleRoll[n] = unpackVehicleRoll(oldPose) + (out.vehicleRoll[n]! - unpackVehicleRoll(oldPose)) * k;
-        out.steering[n] = unpackVehicleSteering(oldPose) + (out.steering[n]! - unpackVehicleSteering(oldPose)) * k;
-        const oldRide = a!.vehicleRide[i]!;
-        out.vehicleGroundPitch[n] = unpackVehicleGroundPitch(oldRide) + (out.vehicleGroundPitch[n]! - unpackVehicleGroundPitch(oldRide)) * k;
-        out.vehicleGroundRoll[n] = unpackVehicleGroundRoll(oldRide) + (out.vehicleGroundRoll[n]! - unpackVehicleGroundRoll(oldRide)) * k;
-        out.vehicleRideOffset[n] = unpackVehicleRideOffset(oldRide) + (out.vehicleRideOffset[n]! - unpackVehicleRideOffset(oldRide)) * k;
-        out.vehicleGrounded[n] = vehicleRideGrounded(k < .5 ? oldRide : ride) ? 1 : 0;
-        let doors = 0;
-        for (let d = 0; d < MAX_VEHICLE_DOORS; d++) {
-          const was = vehicleDoor(a!.vehicleDoors[i]!, d);
-          doors = withVehicleDoor(doors, d, was + (vehicleDoor(b.vehicleDoors[j]!, d) - was) * k);
-        }
-        out.vehicleDoors[n] = doors;
-        const oldDrive = a!.vehicleDrive[i]!;
-        out.vehicleGear[n] = unpackVehicleGear(k < .5 ? oldDrive : drive);
-        out.vehicleRpm[n] = unpackVehicleRpm(oldDrive) + (out.vehicleRpm[n]! - unpackVehicleRpm(oldDrive)) * k;
-        out.vehicleShifting[n] = vehicleShifting(k < .5 ? oldDrive : drive) ? 1 : 0;
-        const oldWheel = unpackVehicleWheel(a!.vehicleWheel[i]!);
-        let wheelTurn = out.wheelAngle[n]! - oldWheel;
-        wheelTurn -= Math.floor((wheelTurn + TAU / 2) / TAU) * TAU;
-        out.wheelAngle[n] = out.vehicleBoat[n]
-          ? interpolateRotorPhase(oldWheel, out.wheelAngle[n]!, unpackVehicleRpm(oldDrive) * unpackVehicleGear(oldDrive), unpackVehicleRpm(drive) * unpackVehicleGear(drive), (b.tick - a!.tick) / TICK_RATE, k)
-          : oldWheel + wheelTurn * k;
+      const both = a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j];
+      const vehicle = this.registry.vehicle[b.kind[j]!];
+      if (vehicle || hasVehicleParts(b, j) || (both && hasVehicleParts(a!, i))) {
+        this.vehicleColumns(out, n, b, j, both ? a : null, i, k, vehicle?.movement);
+        out.bare[n] = 0;
+      } else if (out.bare[n] === 0) {
+        noVehicle(out, n);
+        out.bare[n] = 1;
+      }
+      if (both) {
         out.x[n] = dequantX(a!.qx[i]! + (b.qx[j]! - a!.qx[i]!) * k);
         out.y[n] = dequantY(a!.qy[i]! + (b.qy[j]! - a!.qy[i]!) * k);
         out.z[n] = dequantX(a!.qz[i]! + (b.qz[j]! - a!.qz[i]!) * k);
@@ -815,9 +767,74 @@ export class ClientSession {
         out.z[n] = dequantX(b.qz[j]!);
         out.yaw[n] = (b.yaw[j]! * TAU) / 1024;
       }
-      out.vehicleQx[n] = this.rotorQuat[0]!; out.vehicleQy[n] = this.rotorQuat[1]!;
-      out.vehicleQz[n] = this.rotorQuat[2]!; out.vehicleQw[n] = this.rotorQuat[3]!;
     }
+  }
+
+  /** The vehicle columns of `out` at `n`, from entity `j` of `b`, blended with entity `i` of `a` where it is given. */
+  private vehicleColumns(out: RemoteSample, n: number, b: EntityView, j: number, a: EntityView | null, i: number, k: number, movement: string | undefined): void {
+    const vehiclePose = b.vehiclePose[j]!;
+    out.vehiclePitch[n] = unpackVehiclePitch(vehiclePose);
+    out.vehicleRoll[n] = unpackVehicleRoll(vehiclePose);
+    out.steering[n] = unpackVehicleSteering(vehiclePose);
+    out.wheelAngle[n] = unpackVehicleWheel(b.vehicleWheel[j]!);
+    const ride = b.vehicleRide[j]!;
+    out.vehicleGroundPitch[n] = unpackVehicleGroundPitch(ride);
+    out.vehicleGroundRoll[n] = unpackVehicleGroundRoll(ride);
+    out.vehicleRideOffset[n] = unpackVehicleRideOffset(ride);
+    out.vehicleGrounded[n] = vehicleRideGrounded(ride) ? 1 : 0;
+    out.vehicleDoors[n] = b.vehicleDoors[j]!;
+    out.vehicleRotorcraft[n] = movement === "rotor" ? 1 : 0;
+    out.vehicleBoat[n] = movement === "boat" ? 1 : 0;
+    out.vehicleHullCondition[n] = unpackBoatHullCondition(b.vehicleWater[j]!);
+    out.vehicleFlooding[n] = unpackBoatFlooding(b.vehicleWater[j]!);
+    const rotor = b.vehicleRotor[j]!, systems = b.vehicleSystems[j]!;
+    out.vehicleRotorRpm[n] = unpackRotorRpm(rotor); out.vehicleRotorPhase[n] = unpackRotorPhase(rotor);
+    out.vehicleFuel[n] = unpackVehicleFuel(systems); out.vehicleEngineCondition[n] = unpackEngineCondition(systems);
+    out.vehicleRotorCondition[n] = unpackRotorCondition(systems); out.vehicleEngineOn[n] = vehicleEngineRunning(systems) ? 1 : 0;
+    unpackVehicleQuaternion(b.vehicleAttitudeA[j]!, b.vehicleAttitudeB[j]!, this.rotorQuat);
+    const drive = b.vehicleDrive[j]!;
+    out.vehicleGear[n] = unpackVehicleGear(drive);
+    out.vehicleRpm[n] = unpackVehicleRpm(drive);
+    out.vehicleShifting[n] = vehicleShifting(drive) ? 1 : 0;
+    if (a) {
+      if (out.vehicleRotorcraft[n] || out.vehicleBoat[n]) {
+        unpackVehicleQuaternion(a.vehicleAttitudeA[i]!, a.vehicleAttitudeB[i]!, this.rotorQuatA);
+        this.rotorQuatB.set(this.rotorQuat);
+        quatNlerp(this.rotorQuat, 0, this.rotorQuatA, 0, this.rotorQuatB, 0, k);
+      }
+      if (out.vehicleRotorcraft[n]) {
+        const oldRotor = a.vehicleRotor[i]!, rpm = unpackRotorRpm(oldRotor);
+        out.vehicleRotorPhase[n] = interpolateRotorPhase(unpackRotorPhase(oldRotor), unpackRotorPhase(rotor), rpm, out.vehicleRotorRpm[n]!, (b.tick - a.tick) / TICK_RATE, k);
+        out.vehicleRotorRpm[n] = rpm + (out.vehicleRotorRpm[n]! - rpm) * k;
+      }
+      const oldPose = a.vehiclePose[i]!;
+      out.vehiclePitch[n] = unpackVehiclePitch(oldPose) + (out.vehiclePitch[n]! - unpackVehiclePitch(oldPose)) * k;
+      out.vehicleRoll[n] = unpackVehicleRoll(oldPose) + (out.vehicleRoll[n]! - unpackVehicleRoll(oldPose)) * k;
+      out.steering[n] = unpackVehicleSteering(oldPose) + (out.steering[n]! - unpackVehicleSteering(oldPose)) * k;
+      const oldRide = a.vehicleRide[i]!;
+      out.vehicleGroundPitch[n] = unpackVehicleGroundPitch(oldRide) + (out.vehicleGroundPitch[n]! - unpackVehicleGroundPitch(oldRide)) * k;
+      out.vehicleGroundRoll[n] = unpackVehicleGroundRoll(oldRide) + (out.vehicleGroundRoll[n]! - unpackVehicleGroundRoll(oldRide)) * k;
+      out.vehicleRideOffset[n] = unpackVehicleRideOffset(oldRide) + (out.vehicleRideOffset[n]! - unpackVehicleRideOffset(oldRide)) * k;
+      out.vehicleGrounded[n] = vehicleRideGrounded(k < .5 ? oldRide : ride) ? 1 : 0;
+      let doors = 0;
+      for (let d = 0; d < MAX_VEHICLE_DOORS; d++) {
+        const was = vehicleDoor(a.vehicleDoors[i]!, d);
+        doors = withVehicleDoor(doors, d, was + (vehicleDoor(b.vehicleDoors[j]!, d) - was) * k);
+      }
+      out.vehicleDoors[n] = doors;
+      const oldDrive = a.vehicleDrive[i]!;
+      out.vehicleGear[n] = unpackVehicleGear(k < .5 ? oldDrive : drive);
+      out.vehicleRpm[n] = unpackVehicleRpm(oldDrive) + (out.vehicleRpm[n]! - unpackVehicleRpm(oldDrive)) * k;
+      out.vehicleShifting[n] = vehicleShifting(k < .5 ? oldDrive : drive) ? 1 : 0;
+      const oldWheel = unpackVehicleWheel(a.vehicleWheel[i]!);
+      let wheelTurn = out.wheelAngle[n]! - oldWheel;
+      wheelTurn -= Math.floor((wheelTurn + TAU / 2) / TAU) * TAU;
+      out.wheelAngle[n] = out.vehicleBoat[n]
+        ? interpolateRotorPhase(oldWheel, out.wheelAngle[n]!, unpackVehicleRpm(oldDrive) * unpackVehicleGear(oldDrive), unpackVehicleRpm(drive) * unpackVehicleGear(drive), (b.tick - a.tick) / TICK_RATE, k)
+        : oldWheel + wheelTurn * k;
+    }
+    out.vehicleQx[n] = this.rotorQuat[0]!; out.vehicleQy[n] = this.rotorQuat[1]!;
+    out.vehicleQz[n] = this.rotorQuat[2]!; out.vehicleQw[n] = this.rotorQuat[3]!;
   }
 
   close(): void {
@@ -1636,6 +1653,22 @@ export class ClientSession {
     world.structs.setVersion(chunk, version);
     this.whole[chunk] = 1;
   }
+}
+
+/** Whether entity `j` of a view was sent any vehicle part. */
+function hasVehicleParts(v: EntityView, j: number): boolean {
+  return (v.vehiclePose[j]! | v.vehicleWheel[j]! | v.vehicleRide[j]! | v.vehicleDoors[j]! | v.vehicleDrive[j]! | v.vehicleRotor[j]! | v.vehicleSystems[j]! | v.vehicleAttitudeA[j]! | v.vehicleAttitudeB[j]! | v.vehicleWater[j]!) !== 0;
+}
+
+/** The vehicle columns of a body that is no vehicle and was sent no vehicle part: each part as it unpacks from 0 (vehicleColumns). */
+function noVehicle(out: RemoteSample, n: number): void {
+  out.vehiclePitch[n] = 0; out.vehicleRoll[n] = 0; out.steering[n] = 0; out.wheelAngle[n] = 0;
+  out.vehicleGroundPitch[n] = 0; out.vehicleGroundRoll[n] = 0; out.vehicleRideOffset[n] = 0; out.vehicleGrounded[n] = 0;
+  out.vehicleDoors[n] = 0; out.vehicleRotorcraft[n] = 0; out.vehicleBoat[n] = 0;
+  out.vehicleHullCondition[n] = 1; out.vehicleFlooding[n] = 0;
+  out.vehicleRotorRpm[n] = 0; out.vehicleRotorPhase[n] = 0; out.vehicleFuel[n] = 0; out.vehicleEngineCondition[n] = 0; out.vehicleRotorCondition[n] = 0; out.vehicleEngineOn[n] = 0;
+  out.vehicleGear[n] = -1; out.vehicleRpm[n] = 0; out.vehicleShifting[n] = 0;
+  out.vehicleQx[n] = 0; out.vehicleQy[n] = 0; out.vehicleQz[n] = 0; out.vehicleQw[n] = 1;
 }
 
 function clamp1(v: number): number {

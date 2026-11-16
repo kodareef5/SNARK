@@ -23,6 +23,7 @@ import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { sortU32 } from "../../../shared/sort.ts";
 import { Details } from "../details/details.ts";
 import type { Falling } from "../rubble.ts";
+import type { ShotEnd } from "../occasions.ts";
 import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
@@ -117,6 +118,7 @@ const HIDDEN = 0xffff;
 const FLAT: readonly number[] = [-1, 0, 0];
 const NEAR = 1 << PASS_NEAR;
 const FAR = 1 << PASS_FAR;
+const NO_SHOTS: readonly ShotEnd[] = [];
 /** What of a draw's flags a caster keeps: how its vertices are placed. */
 const CAST_FLAGS = DRAW_SKINNED | DRAW_ONE_BONE | DRAW_SIZED;
 
@@ -283,6 +285,8 @@ export class Scene {
   readonly ghost = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, color: 0 };
   readonly characters: Characters;
   private readonly vehicleSeats: (VehicleSeatPose | undefined)[] = new Array(MAX_VIEW);
+  /** Scratch for a remote vehicle's pose, which Characters keeps none of. */
+  private readonly vehiclePose: VehicleRenderPose = { pitch: 0, roll: 0, steering: 0, wheelAngle: 0 };
   /** Small details: feathers knocked loose, dust thrown up. */
   readonly details: Details;
   /** Smoke and gas: each prop/cloud drawn as puffs over its reach, with the details (clouds.ts). */
@@ -341,7 +345,7 @@ export class Scene {
    * light as its top stands over the floor, while that shadow can fall in view.
    */
   private readonly castBox: CastTest = (minX, minY, minZ, maxX, maxY, maxZ) => {
-    const [dx, dy, dz] = [Math.max(minX, -maxX, 0), Math.max(minY, -maxY, 0), Math.max(minZ, -maxZ, 0)];
+    const dx = Math.max(minX, -maxX, 0), dy = Math.max(minY, -maxY, 0), dz = Math.max(minZ, -maxZ, 0);
     if (dx * dx + dy * dy + dz * dz > this.castRange * this.castRange) return 0;
     const stretch = this.stretch(minX, minZ, maxX, maxZ, maxY);
     return this.inView(minX, minY, minZ, maxX, maxY, maxZ, stretch) ? this.cascades.mask(minX, minY, minZ, maxX, maxY, maxZ, Infinity, stretch) : 0;
@@ -581,7 +585,7 @@ export class Scene {
     let floor = Infinity;
     let range = 0;
     for (let i = 0; i < c.count; i++) {
-      const [x, y, z, r] = [c.sphere[i * 4]!, c.sphere[i * 4 + 1]!, c.sphere[i * 4 + 2]!, c.sphere[i * 4 + 3]!];
+      const x = c.sphere[i * 4]!, y = c.sphere[i * 4 + 1]!, z = c.sphere[i * 4 + 2]!, r = c.sphere[i * 4 + 3]!;
       floor = Math.min(floor, Math.max(cam.y + y - r, this.terrain.lowest(cam.x + x - r, cam.z + z - r, cam.x + x + r, cam.z + z + r)));
       // The cube is snapped less than a texel from the sphere's middle.
       range = Math.max(range, Math.hypot(x, y, z) + (c.half[i]! + c.texel[i]!) * Math.sqrt(3));
@@ -600,14 +604,14 @@ export class Scene {
   private stretch(minX: number, minZ: number, maxX: number, maxZ: number, top: number): number {
     const p = this.packet;
     const most = reach(top + p.camY - this.floor, this.sunY);
-    const [sx, sz] = [-this.sunAt[0]! * most, -this.sunAt[2]! * most];
+    const sx = -this.sunAt[0]! * most, sz = -this.sunAt[2]! * most;
     const low = this.terrain.lowest(p.camX + Math.min(minX, minX + sx), p.camZ + Math.min(minZ, minZ + sz), p.camX + Math.max(maxX, maxX + sx), p.camZ + Math.max(maxZ, maxZ + sz));
     return low > this.floor ? reach(top + p.camY - low, this.sunY) : most;
   }
 
   /** Whether the shadow of a camera-relative box, swept `stretch` metres away from the sun, can fall in view. */
   private inView(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, stretch: number): boolean {
-    const [sx, sy, sz] = [-this.sunAt[0]! * stretch, -this.sunAt[1]! * stretch, -this.sunAt[2]! * stretch];
+    const sx = -this.sunAt[0]! * stretch, sy = -this.sunAt[1]! * stretch, sz = -this.sunAt[2]! * stretch;
     return this.camera!.boxVisible(Math.min(minX, minX + sx), Math.min(minY, minY + sy), Math.min(minZ, minZ + sz), Math.max(maxX, maxX + sx), Math.max(maxY, maxY + sy), Math.max(maxZ, maxZ + sz));
   }
 
@@ -680,7 +684,8 @@ export class Scene {
     const n = p.drawCount;
     const one = p.split <= 0;
     // A cut-out's place and the rest's within the step, -1 for left out.
-    const [cutAt, restAt] = this.cutouts === "last" ? [1, 0] : this.cutouts === "first" ? [0, 1] : this.cutouts === "none" ? [-1, 0] : [0, 0];
+    const cutAt = this.cutouts === "last" ? 1 : this.cutouts === "none" ? -1 : 0;
+    const restAt = this.cutouts === "first" ? 1 : 0;
     if (one) {
       p.drawPass.fill(PASS_NEAR, 0, n);
       p.skyAt = n;
@@ -737,7 +742,7 @@ export class Scene {
   /** Small details (client/core/details/): the cut-out ones with the near opaque, the see-through ones after the sea. */
   private showDetails(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? [], this.own, this.world.hf, this.assets.tier, this.now, this.world, this.characters.rotorBlur.count);
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, this.characters.rotorBlur.count);
     const particles = p.detailCount;
     this.characters.rotorBlur.write(p);
     const rotorPasses = this.characters.rotorBlur.passes(cam);
@@ -745,21 +750,35 @@ export class Scene {
     const seen = p.detailCount;
     const solid = this.clouds.write(p, cam, remote, this.cloudRange);
     const far = seen < p.detailCount ? cam.passesOf(this.cloudRange[0]!, this.cloudRange[1]!) : NEAR;
-    for (const [first, count, flags, passes] of [[0, cut, DRAW_CUTOUT, NEAR], [cut, particles - cut, DRAW_BLEND, NEAR], [particles, seen - particles, DRAW_BLEND, rotorPasses], [seen, solid, DRAW_CUTOUT, far], [seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far]] as const) {
-      const d = p.drawCount;
-      if (count === 0) continue;
-      const copies = passes === (NEAR | FAR) ? 2 : 1;
-      if (d + this.doubled + copies > MAX_DRAWS) {
-        p.dropped++;
-        continue;
-      }
-      [p.drawMesh[d], p.drawLod[d], p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawFlags[d]] = [0, 0, 0, 0, first, count, DRAW_DETAILS | flags];
-      p.drawOffset.fill(0, d * 3, d * 3 + 3);
-      this.passOf[d] = passes;
-      this.doubled += copies - 1;
-      p.drawCount = d + 1;
-      p.triangles += count * 2 * copies;
+    this.drawDetails(0, cut, DRAW_CUTOUT, NEAR);
+    this.drawDetails(cut, particles - cut, DRAW_BLEND, NEAR);
+    this.drawDetails(particles, seen - particles, DRAW_BLEND, rotorPasses);
+    this.drawDetails(seen, solid, DRAW_CUTOUT, far);
+    this.drawDetails(seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far);
+  }
+
+  /** `count` of the packet's details from `first`, one draw in the depth ranges `passes`. */
+  private drawDetails(first: number, count: number, flags: number, passes: number): void {
+    const p = this.packet;
+    const d = p.drawCount;
+    if (count === 0) return;
+    const copies = passes === (NEAR | FAR) ? 2 : 1;
+    if (d + this.doubled + copies > MAX_DRAWS) {
+      p.dropped++;
+      return;
     }
+    p.drawMesh[d] = 0;
+    p.drawLod[d] = 0;
+    p.drawSlot[d] = 0;
+    p.drawBuffer[d] = 0;
+    p.drawFirst[d] = first;
+    p.drawInstances[d] = count;
+    p.drawFlags[d] = DRAW_DETAILS | flags;
+    p.drawOffset.fill(0, d * 3, d * 3 + 3);
+    this.passOf[d] = passes;
+    this.doubled += copies - 1;
+    p.drawCount = d + 1;
+    p.triangles += count * 2 * copies;
   }
 
   /** Bases as blocks to the tier's reach, faded over the last of it, in place of chunks the near store does not hold whole. */
@@ -780,8 +799,16 @@ export class Scene {
       p.dropped++;
       return;
     }
-    [p.drawMesh[d], p.drawLod[d], p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawFlags[d]] = [this.far!.mesh, 0, slot, FAR_BUFFER, 0, 1, 0];
-    p.drawOffset.set([ox, oy, oz], d * 3);
+    p.drawMesh[d] = this.far!.mesh;
+    p.drawLod[d] = 0;
+    p.drawSlot[d] = slot;
+    p.drawBuffer[d] = FAR_BUFFER;
+    p.drawFirst[d] = 0;
+    p.drawInstances[d] = 1;
+    p.drawFlags[d] = 0;
+    p.drawOffset[d * 3] = ox;
+    p.drawOffset[d * 3 + 1] = oy;
+    p.drawOffset[d * 3 + 2] = oz;
     p.drawFade[d] = this.assets.tier.reach.bases;
     this.passOf[d] = passes;
     p.drawCount = d + 1;
@@ -816,9 +843,19 @@ export class Scene {
       p.dropped++;
       return;
     }
-    [p.drawMesh[d], p.drawLod[d], p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawFlags[d]] = [this.city!.mesh, 0, slot, CITY_BUFFER, 0, 1, DRAW_RANGED];
-    [p.drawFirstIndex[d], p.drawIndexCount[d], p.drawFade[d]] = [firstIndex, indexCount, fade];
-    p.drawOffset.set([ox, oy, oz], d * 3);
+    p.drawMesh[d] = this.city!.mesh;
+    p.drawLod[d] = 0;
+    p.drawSlot[d] = slot;
+    p.drawBuffer[d] = CITY_BUFFER;
+    p.drawFirst[d] = 0;
+    p.drawInstances[d] = 1;
+    p.drawFlags[d] = DRAW_RANGED;
+    p.drawFirstIndex[d] = firstIndex;
+    p.drawIndexCount[d] = indexCount;
+    p.drawFade[d] = fade;
+    p.drawOffset[d * 3] = ox;
+    p.drawOffset[d * 3 + 1] = oy;
+    p.drawOffset[d * 3 + 2] = oz;
     this.passOf[d] = passes;
     p.drawCount = d + 1;
     this.doubled += copies - 1;
@@ -842,9 +879,18 @@ export class Scene {
       p.dropped++;
       return;
     }
-    [p.drawMesh[d], p.drawLod[d], p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawFlags[d]] = [mesh, 0, slot, buffer, first, count, DRAW_PULLED];
-    p.drawOffset.set([ox, oy, oz], d * 3);
-    [p.drawFade[d], p.drawHand[d]] = [reach, hand];
+    p.drawMesh[d] = mesh;
+    p.drawLod[d] = 0;
+    p.drawSlot[d] = slot;
+    p.drawBuffer[d] = buffer;
+    p.drawFirst[d] = first;
+    p.drawInstances[d] = count;
+    p.drawFlags[d] = DRAW_PULLED;
+    p.drawOffset[d * 3] = ox;
+    p.drawOffset[d * 3 + 1] = oy;
+    p.drawOffset[d * 3 + 2] = oz;
+    p.drawFade[d] = reach;
+    p.drawHand[d] = hand;
     this.passOf[d] = passes;
     p.drawCount = d + 1;
     this.doubled += copies - 1;
@@ -895,11 +941,11 @@ export class Scene {
               const ms = this.mountState;
               ms.unpack(remote.anim[j]!, remote.cue[j]!);
               ms.seed = bodySeed(on);
-              const vehicle = remoteVehiclePose(remote, j);
+              const vehicle = ch.vehicle(remote.kind[j]!) ? remoteVehiclePose(remote, j, this.vehiclePose) : undefined;
               saddle = remote.gear[j * GEAR_COUNT + GEAR_WORN]!;
               found = held ? ch.heldAt(remote.id[i]!, kind, on, remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, at) : ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, remote.tick, at, remote.seatSlot[i]!, vehicle, saddle);
               yaw = remote.yaw[j]!;
-              if (found && !held && ch.vehicle(remote.kind[j]!)) this.vehicleSeats[i] = ch.seatPose(remote.kind[j]!, remote.seatSlot[i]!, vehicle, at, yaw, remote.yaw[i]!);
+              if (found && !held && vehicle) this.vehicleSeats[i] = ch.seatPose(remote.kind[j]!, remote.seatSlot[i]!, vehicle, at, yaw, remote.yaw[i]!);
             }
           }
           if (found) {
@@ -921,7 +967,10 @@ export class Scene {
           // Out of view, a body whose shadow may fall in it is posed after those in view, while bones are left.
           if (this.casting && this.bodyShadows.body(x, y, z, r) !== 0) {
             this.unseenFrom[unseen] = i;
-            this.unseenAt.set([x, y, z, yaw], unseen * 4);
+            this.unseenAt[unseen * 4] = x;
+            this.unseenAt[unseen * 4 + 1] = y;
+            this.unseenAt[unseen * 4 + 2] = z;
+            this.unseenAt[unseen * 4 + 3] = yaw;
             unseen++;
           }
           continue;
@@ -978,12 +1027,12 @@ export class Scene {
       const at = this.seatAt;
       if (own.attachment && remote) for (let j = 0; j < remote.count; j++) {
         if (remote.id[j] !== own.attachment.host || remote.gen[j] !== own.attachment.generation) continue;
-        const vehicle = remoteVehiclePose(remote, j), ms = this.mountState;
+        const vehicle = ch.vehicle(remote.kind[j]!) ? remoteVehiclePose(remote, j, this.vehiclePose) : undefined, ms = this.mountState;
         ms.unpack(remote.anim[j]!, remote.cue[j]!);
         ms.seed = bodySeed(remote.id[j]!);
         if (ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, remote.tick, at, own.attachment.slot, vehicle, remote.gear[j * GEAR_COUNT + GEAR_WORN]!)) {
           // A passenger in a car is posed in the car's frame; on a creature, astride in its seat's.
-          if (ch.vehicle(remote.kind[j]!)) seat = ch.seatPose(remote.kind[j]!, own.attachment.slot, vehicle, at, remote.yaw[j]!, own.yaw);
+          if (vehicle) seat = ch.seatPose(remote.kind[j]!, own.attachment.slot, vehicle, at, remote.yaw[j]!, own.yaw);
           else saddled = true;
         }
         break;
@@ -1005,7 +1054,7 @@ export class Scene {
     st.seed = bodySeed(remote.id[i]!);
     const look = remote.hasLook[i] !== 0 ? remote.look : null;
     const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
-    this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, this.own?.cockpitActor === remote.id[i]!, size, rigid, unseen, this.seated[i] !== 0 ? this.seatTurn : null, i * 9, remoteVehiclePose(remote, i), this.vehicleSeats[i], this.seated[i] !== 2);
+    this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, this.own?.cockpitActor === remote.id[i]!, size, rigid, unseen, this.seated[i] !== 0 ? this.seatTurn : null, i * 9, this.characters.vehicle(kind) ? remoteVehiclePose(remote, i, this.vehiclePose) : undefined, this.vehicleSeats[i], this.seated[i] !== 2);
   }
 
 
@@ -1049,7 +1098,7 @@ export class Scene {
     const p = this.packet;
     const g = this.ghost;
     const first = p.transientCount;
-    const [x, y, z] = [g.x - cam.x, g.y - cam.y, g.z - cam.z];
+    const x = g.x - cam.x, y = g.y - cam.y, z = g.z - cam.z;
     this.transient.set(first, x, y, z, g.yaw, g.color);
     p.transientIds[first] = 0;
     const mesh = this.meshOfKind[g.kind]!;
@@ -1064,7 +1113,7 @@ export class Scene {
     let wanted = -1;
     for (const t of this.things) {
       const r = this.radiusOfMesh[t.mesh]!;
-      const [x, y, z] = [t.x - cam.x, t.y - cam.y, t.z - cam.z];
+      const x = t.x - cam.x, y = t.y - cam.y, z = t.z - cam.z;
       if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
       if (p.transientCount === p.transientIds.length) {
         p.dropped++;
@@ -1093,7 +1142,7 @@ export class Scene {
     let to = -Infinity;
     const r = this.radiusOfMesh[this.beamMesh]!;
     for (let i = 0; i + 2 < this.beams.length && n < 16; i += 3) {
-      const [x, y, z] = [this.beams[i]! - cam.x, this.beams[i + 1]! - cam.y, this.beams[i + 2]! - cam.z];
+      const x = this.beams[i]! - cam.x, y = this.beams[i + 1]! - cam.y, z = this.beams[i + 2]! - cam.z;
       this.transient.set(first + n, x, y, z, 0, BEAM_COLOR);
       p.transientIds[first + n] = 0;
       from = Math.min(from, cam.depth(x, y, z) - r);
@@ -1117,8 +1166,9 @@ export class Scene {
     let n = 0;
     const half = WATER_TILE / 2;
     const r = Math.ceil(this.viewDistance / WATER_TILE);
-    const [cx, cz] = [Math.floor(cam.x / WATER_TILE), Math.floor(cam.z / WATER_TILE)];
-    const [ix0, iz0, ix1, iz1] = lit ? [cx - r, cz - r, cx + r, cz + r] : [0, 0, Math.ceil(hf.sizeX / WATER_TILE) - 1, Math.ceil(hf.sizeZ / WATER_TILE) - 1];
+    const cx = Math.floor(cam.x / WATER_TILE), cz = Math.floor(cam.z / WATER_TILE);
+    const ix0 = lit ? cx - r : 0, iz0 = lit ? cz - r : 0;
+    const ix1 = lit ? cx + r : Math.ceil(hf.sizeX / WATER_TILE) - 1, iz1 = lit ? cz + r : Math.ceil(hf.sizeZ / WATER_TILE) - 1;
     // The box round every tile drawn, for its depth ranges.
     let x0 = Infinity;
     let z0 = Infinity;
@@ -1137,7 +1187,10 @@ export class Scene {
         this.transient.set(first + n, x, y, z, 0, WATER_COLOR);
         p.transientIds[first + n] = 0;
         n++;
-        [x0, z0, x1, z1] = [Math.min(x0, x - half), Math.min(z0, z - half), Math.max(x1, x + half), Math.max(z1, z + half)];
+        x0 = Math.min(x0, x - half);
+        z0 = Math.min(z0, z - half);
+        x1 = Math.max(x1, x + half);
+        z1 = Math.max(z1, z + half);
       }
     }
     if (n === 0) return false;
@@ -1151,28 +1204,43 @@ export class Scene {
 
   /** The lakes' tiles to the end of the view, each a draw as the sea's is. Whether any drew with its waves. */
   private showLakes(cam: Camera, lit: boolean): boolean {
-    const p = this.packet;
-    const lakes = this.lakes!;
-    lakes.update(p, this.assets.residency, cam.x, cam.z, this.viewDistance);
-    let waves = false;
-    lakes.draw(cam, this.viewDistance, (slot, triangles, ox, oy, oz, passes) => {
-      const d = p.drawCount;
-      const copies = passes === (NEAR | FAR) ? 2 : 1;
-      if (d + this.doubled + copies > MAX_DRAWS) {
-        p.dropped++;
-        return;
-      }
-      [p.drawMesh[d], p.drawLod[d], p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawFlags[d]] = [lakes.mesh, 0, slot, LAKE_BUFFER, 0, 1, lit ? DRAW_BLEND | DRAW_WATER : DRAW_BLEND];
-      p.drawOffset.set([ox, oy, oz], d * 3);
-      p.drawMaterial[d] = this.waterMaterial;
-      this.passOf[d] = passes;
-      p.drawCount = d + 1;
-      this.doubled += copies - 1;
-      p.triangles += triangles * copies;
-      waves ||= lit;
-    });
-    return waves;
+    this.lakes!.update(this.packet, this.assets.residency, cam.x, cam.z, this.viewDistance);
+    this.lakesLit = lit;
+    this.lakesWaved = false;
+    this.lakes!.draw(cam, this.viewDistance, this.drawLake);
+    return this.lakesWaved;
   }
+
+  /** Whether the lakes are drawn with their waves this frame, and whether any was. */
+  private lakesLit = false;
+  private lakesWaved = false;
+
+  /** A lake tile, a draw as the sea's is. */
+  private readonly drawLake = (slot: number, triangles: number, ox: number, oy: number, oz: number, passes: number): void => {
+    const p = this.packet;
+    const d = p.drawCount;
+    const copies = passes === (NEAR | FAR) ? 2 : 1;
+    if (d + this.doubled + copies > MAX_DRAWS) {
+      p.dropped++;
+      return;
+    }
+    p.drawMesh[d] = this.lakes!.mesh;
+    p.drawLod[d] = 0;
+    p.drawSlot[d] = slot;
+    p.drawBuffer[d] = LAKE_BUFFER;
+    p.drawFirst[d] = 0;
+    p.drawInstances[d] = 1;
+    p.drawFlags[d] = this.lakesLit ? DRAW_BLEND | DRAW_WATER : DRAW_BLEND;
+    p.drawOffset[d * 3] = ox;
+    p.drawOffset[d * 3 + 1] = oy;
+    p.drawOffset[d * 3 + 2] = oz;
+    p.drawMaterial[d] = this.waterMaterial;
+    this.passOf[d] = passes;
+    p.drawCount = d + 1;
+    this.doubled += copies - 1;
+    p.triangles += triangles * copies;
+    this.lakesWaved ||= this.lakesLit;
+  };
 
   /**
    * Chunk `c` of the store uses instance buffer `base + c`. A slot's kind is drawn as `meshOf` and `colorOf` say, and at the
@@ -1184,16 +1252,18 @@ export class Scene {
     const chunks = store.chunks;
 
     // Chunks that no longer exist on this client free their buffers.
-    for (const [id, batch] of this.batches) {
+    for (const id of this.batches.keys()) {
       if (id < base || id >= base + NODE_BUFFERS || chunks[id - base]) continue;
-      if (batch.uploaded) p.drops.push(id);
+      if (this.batches.get(id)!.uploaded) p.drops.push(id);
       this.batches.delete(id);
     }
 
-    for (let chunk = 0; chunk < chunks.length; chunk++) {
-      const t = chunks[chunk];
+    const held = store.held;
+    for (let h = 0; h < held.length; h++) {
+      const chunk = held[h]!;
+      const t = chunks[chunk]!;
       const id = base + chunk;
-      if (!t || t.live === 0) {
+      if (t.live === 0) {
         const stale = this.batches.get(id);
         if (stale) {
           if (stale.uploaded) p.drops.push(id);
@@ -1253,18 +1323,19 @@ export class Scene {
    * ranges `passes`.
    */
   private nodeRanges(cam: Camera, b: ChunkBatch, id: number, dist: number, x0: number, z0: number, passes: number): void {
-    const [from, to] = this.assets.tier.nodes.band;
+    const band = this.assets.tier.nodes.band;
+    const from = band[0], to = band[1];
     const cells = b.cells;
     const first = b.cellFirst!;
     const box = b.cellBox!;
-    const [levels, crowns, thins] = [b.cellLevel!, b.cellCrown!, b.cellThin!];
+    const levels = b.cellLevel!, crowns = b.cellCrown!, thins = b.cellThin!;
     const fx = Math.max(Math.abs(b.minX - cam.x), Math.abs(b.maxX - cam.x));
     const fy = Math.max(Math.abs(b.minY - cam.y), Math.abs(b.maxY - cam.y));
     const fz = Math.max(Math.abs(b.minZ - cam.z), Math.abs(b.maxZ - cam.z));
     const far = Math.sqrt(fx * fx + fy * fy + fz * fz);
-    const [ox, oy, oz] = [x0 - cam.x, -cam.y, z0 - cam.z];
+    const ox = x0 - cam.x, oy = -cam.y, oz = z0 - cam.z;
     const squeeze = this.budget.squeeze;
-    const [scale, cover] = [crownScale(squeeze), coverScale(squeeze)];
+    const scale = crownScale(squeeze), cover = coverScale(squeeze);
     for (let r = 0, q = 0; r < b.ranges.length; r += 3, q++) {
       const mesh = b.ranges[r]!;
       const errors = this.assets.table.error[mesh]!;
@@ -1273,7 +1344,9 @@ export class Scene {
       const near = this.assets.choose(errors, (dist * cover) / reach, b.level[q]!);
       const crown = tree ? this.assets.choose(errors, (dist * scale) / reach, b.crown[q]!) : near;
       if (far <= from && near === this.assets.choose(errors, (far * cover) / reach, b.level[q]!) && (!tree || crown === this.assets.choose(errors, (far * scale) / reach, b.crown[q]!))) {
-        [b.level[q], b.crown[q], b.thin[q]] = [near, crown, tree ? thinning(squeeze, dist, to, b.thin[q]!) : 0];
+        b.level[q] = near;
+        b.crown[q] = crown;
+        b.thin[q] = tree ? thinning(squeeze, dist, to, b.thin[q]!) : 0;
         levels.fill(near, q * cells, (q + 1) * cells);
         crowns.fill(crown, q * cells, (q + 1) * cells);
         thins.fill(b.thin[q]!, q * cells, (q + 1) * cells);
@@ -1282,7 +1355,9 @@ export class Scene {
         this.draw(mesh, near, id, b.ranges[r + 1]!, b.ranges[r + 2]!, ox, oy, oz, DRAW_SIZED, passes, 0, 0, crown, leavesAt(b.thin[q]!));
         continue;
       }
-      [b.level[q], b.crown[q], b.thin[q]] = [-1, -1, 255];
+      b.level[q] = -1;
+      b.crown[q] = -1;
+      b.thin[q] = 255;
       // Runs of neighbouring cells, each drawn at the finest level any of its cells asks for, and its crown and leaves at
       // the finest and fullest. A cell joins the run before it when they ask for the same levels, or for levels one apart
       // and drawing the coarser at the finer costs fewer triangles than a draw does. So no node is drawn more than one
@@ -1311,14 +1386,20 @@ export class Scene {
         // its hand-over, its crown's level and the coarsest a cell asked for, and its least thinning.
         const last = runs.length - RUN;
         if (last >= 0 && runs[last + 1] === first[at]) {
-          const [finer, coarser] = [Math.min(runs[last + 2]!, level), Math.max(runs[last + 3]!, level)];
-          const [crownFiner, crownCoarser] = [Math.min(runs[last + 6]!, crown), Math.max(runs[last + 7]!, crown)];
+          const finer = Math.min(runs[last + 2]!, level), coarser = Math.max(runs[last + 3]!, level);
+          const crownFiner = Math.min(runs[last + 6]!, crown), crownCoarser = Math.max(runs[last + 7]!, crown);
           const fuller = Math.min(runs[last + 8]!, thin);
           const had = runs[last + 1]! - runs[last]!;
           const more = had * (this.cost(mesh, finer, crownFiner, fuller) - this.cost(mesh, runs[last + 2]!, runs[last + 6]!, runs[last + 8]!)) + n * (this.cost(mesh, finer, crownFiner, fuller) - this.cost(mesh, level, crown, thin));
           if (coarser - finer <= 1 && crownCoarser - crownFiner <= 1 && more <= RUN_TRIANGLES) {
-            [runs[last + 1], runs[last + 2], runs[last + 3], runs[last + 4], runs[last + 5]] = [first[at + 1]!, finer, coarser, Math.min(runs[last + 4]!, seen), runs[last + 5]! | hand];
-            [runs[last + 6], runs[last + 7], runs[last + 8]] = [crownFiner, crownCoarser, fuller];
+            runs[last + 1] = first[at + 1]!;
+            runs[last + 2] = finer;
+            runs[last + 3] = coarser;
+            runs[last + 4] = Math.min(runs[last + 4]!, seen);
+            runs[last + 5] = runs[last + 5]! | hand;
+            runs[last + 6] = crownFiner;
+            runs[last + 7] = crownCoarser;
+            runs[last + 8] = fuller;
             continue;
           }
         }
@@ -1336,7 +1417,7 @@ export class Scene {
   private cost(mesh: number, level: number, crown: number, thin: number): number {
     const tris = this.trisOfMesh[mesh]!;
     if (crown === level && thin === 0) return tris[level] ?? 0;
-    const [trunk, leaf] = [this.trunkTris[mesh]![crown] ?? 0, this.leafTris[mesh]![crown] ?? 0];
+    const trunk = this.trunkTris[mesh]![crown] ?? 0, leaf = this.leafTris[mesh]![crown] ?? 0;
     return (this.trunkTris[mesh]![level] ?? 0) + (tris[crown] ?? 0) - trunk - leaf * (1 - leavesAt(thin));
   }
 
@@ -1402,7 +1483,10 @@ export class Scene {
     };
     const box = b.cellBox;
     if (box) {
-      for (let k = 0; k < box.length; k += 6) box.set([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity], k);
+      for (let k = 0; k < box.length; k += 6) {
+        box.fill(Infinity, k, k + 3);
+        box.fill(-Infinity, k + 3, k + 6);
+      }
       for (let q = 0; q < n; q++) {
         const m = ranges[q * 3]!;
         for (let c = 0; c < cells; c++) b.cellFirst![q * (cells + 1) + c] = this.cellCursor[m * cells + c]!;
@@ -1509,7 +1593,7 @@ export class Scene {
     const far = x * x + y * y + z * z;
     const along = cam.depth(x, y, z);
     const r = this.radiusOfMesh[mesh]!;
-    if (this.counts[mesh] === 0) [this.nearest[mesh], this.from[mesh], this.to[mesh]] = [far, along - r, along + r];
+    if (this.counts[mesh] === 0) { this.nearest[mesh] = far; this.from[mesh] = along - r; this.to[mesh] = along + r; }
     else {
       if (far < this.nearest[mesh]!) this.nearest[mesh] = far;
       if (along - r < this.from[mesh]!) this.from[mesh] = along - r;
@@ -1559,10 +1643,17 @@ export class Scene {
     const sections = this.assets.table.sections[mesh]!;
     let runs = this.ready ? sections[lod]! : FLAT;
     // The crown's level and its runs; where that level is drawn flat, it draws the whole tree.
-    let [top, over] = [lod, runs];
+    let top = lod, over = runs;
     if ((crown !== wanted || leaves < 1) && this.ready) {
       const c = this.drawable(mesh, Math.max(crown, lod), flags);
-      if (c >= 0) [lod, runs, top, over] = this.ready ? [lod, runs, c, sections[c]!] : [c, FLAT, c, FLAT];
+      if (c >= 0) {
+        top = c;
+        over = this.ready ? sections[c]! : FLAT;
+        if (!this.ready) {
+          lod = c;
+          runs = FLAT;
+        }
+      }
     }
     const parts = this.parts(over, runs, top !== lod, leaves);
     const draws = parts.length / 4;
@@ -1573,10 +1664,10 @@ export class Scene {
     }
     const slot = this.assets.residency.slot(mesh, lod);
     const topSlot = top === lod ? slot : this.assets.residency.slot(mesh, top);
-    let [tris, crowns] = [0, 0];
+    let tris = 0, crowns = 0;
     for (let k = 0; k < draws; k++) {
       const d = n + k;
-      const [material, trunk, from, indices] = [parts[k * 4]!, parts[k * 4 + 1] === 1, parts[k * 4 + 2]!, parts[k * 4 + 3]!];
+      const material = parts[k * 4]!, trunk = parts[k * 4 + 1] === 1, from = parts[k * 4 + 2]!, indices = parts[k * 4 + 3]!;
       this.passOf[d] = passes;
       p.drawMesh[d] = mesh;
       p.drawLod[d] = trunk ? lod : top;
@@ -1616,8 +1707,15 @@ export class Scene {
     out.length = 0;
     for (let k = 0; k < over.length; k += 3) {
       const material = over[k]!;
-      let [trunk, from, indices] = [0, over[k + 1]!, over[k + 2]!];
-      if (split && material >= 0 && this.barkOf[material] === 1) for (let j = 0; j < runs.length; j += 3) if (runs[j] === material) [trunk, from, indices] = [1, runs[j + 1]!, runs[j + 2]!];
+      let trunk = 0, from = over[k + 1]!, indices = over[k + 2]!;
+      if (split && material >= 0 && this.barkOf[material] === 1) {
+        for (let j = 0; j < runs.length; j += 3) {
+          if (runs[j] !== material) continue;
+          trunk = 1;
+          from = runs[j + 1]!;
+          indices = runs[j + 2]!;
+        }
+      }
       if (leaves < 1 && material >= 0 && (this.materialFlags[material]! & DRAW_CUTOUT) !== 0) indices = Math.floor((indices / 3) * leaves) * 3;
       if (material < 0 || indices > 0) out.push(material, trunk, from, indices);
     }
@@ -1655,7 +1753,7 @@ export class Scene {
     const b = p.bones;
     const f32 = this.transientF32;
     const u16 = this.transientU16;
-    const [fx, fy, fz] = [cam.viewProj[3]!, cam.viewProj[7]!, cam.viewProj[11]!];
+    const fx = cam.viewProj[3]!, fy = cam.viewProj[7]!, fz = cam.viewProj[11]!;
     for (let d = from; d < p.drawCount; d++) {
       const first = p.drawFirst[d]!;
       // The sections of a level are drawn from the same instances.

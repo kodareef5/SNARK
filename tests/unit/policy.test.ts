@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { dynamicLoads, stripComments } from "../../tools/policy.ts";
+import { dynamicLoads, madeArrays, stripComments } from "../../tools/policy.ts";
 
 test("comments go and code stays where it was, whatever a string or a regular expression holds", () => {
   const src = ['const a = "/*";', 'import { x } from "../server/x.ts";', 'const b = "*/";', "// gone", "const c = 1; /* gone", "too */ const d = 2;"].join("\n");
@@ -19,4 +19,29 @@ test("a load by a name the rules cannot read is counted, and one that is only wr
   expect(dynamicLoads("const m = await import(`../server/${name}.ts`);")).toBe(1);
   expect(dynamicLoads('const text = "call import(x) or require(y)"; // import(z)')).toBe(0);
   expect(dynamicLoads("const hidden = '/*'; const m = import(file); const end = '*/';")).toBe(1);
+});
+
+test("an array made on every call is found by its line, and one only read, typed, written in a string or a comment is not", () => {
+  const made = [
+    "[a, b] = [x, y];",
+    "const [c, d] = [x, y];",
+    "let [e, f] = flag ? [x, y] : [y, x];",
+    "if (flag) [p.q[0], p.q[1]] = [x, y];",
+    "t.set([x, y, z], k * 3);",
+    "for (const [k, v] of map) use(k, v);",
+    "} else [g, h] = [y, x];",
+  ];
+  const fine = [
+    "const [i, j] = band;",
+    "const FLAT: readonly number[] = [-1, 0, 0];",
+    "const WAYS: readonly (readonly [number, number])[] = [[1, 0], [0, 1]];",
+    "const kept: { a: number }[] = [];",
+    "rows[k] = [x, y];",
+    "use([x, y]);",
+    "type Pair = [number, number];",
+    "interface Index { [key: string]: number }",
+    'const text = "[a, b] = [x, y]; t.set([1], 0)"; // for (const [k, v] of map)',
+    "for (const v of map.values()) use(v);",
+  ];
+  expect(madeArrays([...made, ...fine].join("\n")).map((m) => `${m.line} ${m.what}`)).toEqual(["1 destructured", "2 destructured", "3 destructured", "4 destructured", "5 set", "6 for", "7 destructured"]);
 });

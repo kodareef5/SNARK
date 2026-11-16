@@ -102,3 +102,68 @@ export function stripComments(src: string, blank = false): string {
 export function dynamicLoads(src: string): number {
   return (stripComments(src, true).match(/\b(?:import|require)\s*\(/g) ?? []).length;
 }
+
+/** Where the bracket that opens at `i` closes, or -1. Strings are blank (stripComments). */
+function closeOf(code: string, i: number): number {
+  let depth = 0;
+  for (let j = i; j < code.length; j++) {
+    const c = code[j]!;
+    if (c === "(" || c === "[" || c === "{") depth++;
+    else if ((c === ")" || c === "]" || c === "}") && --depth === 0) return j;
+  }
+  return -1;
+}
+
+/** Whether the `)` at `i` closes the condition of an `if`, `for` or `while`, which a statement may follow. */
+function closesCondition(code: string, i: number): boolean {
+  let depth = 0;
+  for (let j = i; j >= 0; j--) {
+    const c = code[j]!;
+    if (c === ")" || c === "]" || c === "}") depth++;
+    else if ((c === "(" || c === "[" || c === "{") && --depth === 0) return /(?:^|[^\w$])(?:if|for|while)\s*$/.test(code.slice(Math.max(0, j - 8), j));
+  }
+  return false;
+}
+
+/** Whether the right side of an assignment that begins at `i` gives an array literal: one at its own level, up to its `;` or `,`. */
+function givesLiteral(code: string, i: number): boolean {
+  let depth = 0;
+  let last = "=";
+  for (let j = i; j < code.length; j++) {
+    const c = code[j]!;
+    if (/\s/.test(c)) continue;
+    if (depth === 0 && (c === ";" || c === ",")) return false;
+    if (c === "[" && depth === 0 && "=?:|&(,".includes(last)) return true;
+    if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") {
+      if (--depth < 0) return false;
+    }
+    last = c;
+  }
+  return false;
+}
+
+/**
+ * What in the code makes an array JavaScriptCore makes every time, even in its top tier: an array literal destructured
+ * (`[a, b] = [x, y]`, `const [a, b] = c ? [x, y] : [z, w]`), a literal handed to `set` (`t.set([x, y], k)`), and a
+ * destructuring for…of head, which makes an array for each entry of a Map. Each by its line, comments and strings aside.
+ */
+export function madeArrays(src: string): { line: number; what: "destructured" | "set" | "for" }[] {
+  const code = stripComments(src, true);
+  const out: { line: number; what: "destructured" | "set" | "for" }[] = [];
+  const line = (i: number): number => code.slice(0, i).split("\n").length;
+  for (const m of code.matchAll(/\.set\(\s*\[/g)) out.push({ line: line(m.index), what: "set" });
+  for (const m of code.matchAll(/\bfor\s*\(\s*(?:const|let|var)\s*\[/g)) out.push({ line: line(m.index), what: "for" });
+  for (let i = code.indexOf("["); i >= 0; i = code.indexOf("[", i + 1)) {
+    // A pattern begins a statement, follows a condition, or is declared.
+    let j = i - 1;
+    while (j >= 0 && /\s/.test(code[j]!)) j--;
+    const starts = j < 0 || ";{}".includes(code[j]!) || (code[j] === ")" && closesCondition(code, j)) || /(?:^|[^\w$])(?:const|let|var|else)$/.test(code.slice(Math.max(0, j - 5), j + 1));
+    if (!starts) continue;
+    const end = closeOf(code, i);
+    if (end < 0 || code.slice(i + 1, end).trim() === "") continue;
+    const eq = /^\s*=(?![=>])/.exec(code.slice(end + 1, end + 64));
+    if (eq && givesLiteral(code, end + 1 + eq[0].length)) out.push({ line: line(i), what: "destructured" });
+  }
+  return out.sort((a, b) => a.line - b.line);
+}
