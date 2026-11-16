@@ -19,3 +19,4 @@ for (const asset of assets) {
   writeFileSync(asset.file, bytes);
   console.log(`${asset.id}: ${bytes.length} bytes, ${((performance.now() - start) / 1000).toFixed(1)}s`);
 }
+await import("./audit.ts");

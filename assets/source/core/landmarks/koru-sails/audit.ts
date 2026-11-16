@@ -35,12 +35,18 @@ for (const sail of data.sails) {
       }
     }
   }
-  // Two metres exceeds the derivative bound over half a1/1024 smoothstep interval for these≤80m folds/spars.
+  // Rotation/chain derivatives are bounded by4πR(1+tan(alpha)): the smoothstep slope is≤1.5,
+  // every fold angle spans<π/2, and the rigid gaff's asin derivative is≤1/cos(alpha).
+  // This deliberately loose bound also covers translations and weighted points (a convex combination).
+  const reach = Math.max(...boxes.filter((box: number[]) => box[0] !== Infinity).map((box: number[]) => Math.hypot(...[0, 1, 2].map(k => Math.max(Math.abs(box[k]!), Math.abs(box[k + 3]!))))));
+  const derivativeBound = 4 * Math.PI * reach * (1 + Math.tan(sail.gaff?.lowerAngle ?? 0));
+  const betweenSampleMargin = derivativeBound / (2 * 1024);
   const margin = 2;
+  if (betweenSampleMargin >= margin) throw new Error(`${sail.id}: increase sampled poses or swept-bound reserve`);
   const center = min.map((v, k) => +(v / 2 + max[k]! / 2).toFixed(5));
   const radius = Math.ceil((Math.hypot(...max.map((v, k) => v - center[k]!)) + margin) * 1e5) / 1e5;
   sail.bounds = { center, radius };
-  report[sail.id] = { sourceSha256: createHash("sha256").update(file).digest("hex"), boneBounds: sail.boneBounds, bounds: sail.bounds, sampledPoses: 1025, sphereMargin: margin, triangles: mesh.lods.map(l => l.indices.length / 3), errors: mesh.lods.map(l => l.error ?? 0), restBounds: { min, max } };
+  report[sail.id] = { sourceSha256: createHash("sha256").update(file).digest("hex"), boneBounds: sail.boneBounds, bounds: sail.bounds, sampledPoses: 1025, derivativeBound, betweenSampleMargin, sphereMargin: margin, triangles: mesh.lods.map(l => l.indices.length / 3), errors: mesh.lods.map(l => l.error ?? 0), sweptSampleBounds: { min, max } };
   console.log(sail.id, sail.bones.length, "bones; swept radius", radius);
 }
 writeFileSync(path, JSON.stringify(data, null, 2) + "\n");
