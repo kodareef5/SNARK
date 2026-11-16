@@ -121,7 +121,9 @@ export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
     { name: "08-starboard-profile", feet: spectator([-400, 42, 0]), target: focus, mode: "spectator", tier: "high", framePoints },
     { name: "09-bow-quarter", feet: spectator([-140, 68, 370]), target: p([0, 32, 30]), mode: "spectator", tier: "high", framePoints },
     { name: "10-stern-quarter", feet: spectator([-140, 68, -370]), target: p([0, 32, -30]), mode: "spectator", tier: "high", framePoints });
-  shots.push({ name: "12-near-starboard-profile", feet: spectator([-185, 48, 0]), target: focus, mode: "spectator", tier: "high", framePoints });
+  // Close native-mesh detail view, intentionally cropped at the ordinary FOV.
+  // Whole-envelope certification belongs to the separate 400 m profiles.
+  shots.push({ name: "12-near-starboard-profile", feet: spectator([-185, 48, 0]), target: focus, mode: "spectator", tier: "high" });
   const lifeboat = fitting("lifeboat_1_6");
   shots.push({ name: "11-lifeboat-berth", feet: spectator([lifeboat[0]! + 19, lifeboat[1]! + 2.5, lifeboat[2]! + 2]),
     target: p(lifeboat), mode: "spectator", tier: "high" });
@@ -164,6 +166,7 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, files: GameFiles, w
   app.ui.settings.tier = shot.tier; app.ui.settings.steady = false;
   let raster: Rasterizer | null = null, packet: FramePacket | null = null;
   let quietFrames = 0, measure = false, measuredUploadFrames = 0;
+  let resumedStreaming: unknown;
   const frameTimes: number[] = [], coldTimes: number[] = [];
   const cold = { frames: 0, maxDraws: 0, maxTriangles: 0, maxCasters: 0, maxCityMakeMs: 0, maxCityMissing: 0, maxCityBehind: 0, maxResidentBytes: 0, maxUploadBytes: 0, dropped: 0, skipped: 0, casterDropped: 0 };
   const frame = (now: number) => {
@@ -172,7 +175,11 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, files: GameFiles, w
     const residency = app.scene?.assets.residency;
     const streaming = !packet || !residency || residency.flying > 0 || residency.waiting > 0 || packet.assetUploads.length > 0 || packet.texUploads.length > 0 || (app.scene?.city?.stats.behind ?? 0) > 0;
     quietFrames = streaming ? 0 : quietFrames + 1;
-    if (measure) { frameTimes.push(elapsed); if (streaming) measuredUploadFrames++; }
+    if (measure) { frameTimes.push(elapsed); if (streaming) {
+      measuredUploadFrames++;
+      resumedStreaming = { now, flying: residency?.flying, waiting: residency?.waiting, cityBehind: app.scene?.city?.stats.behind,
+        meshes: packet?.assetUploads.map(upload => [files.manifest.meshes[upload.mesh]?.id, upload.level]), textures: packet?.texUploads.length };
+    } }
     else if (packet) {
       coldTimes.push(elapsed); cold.frames++;
       cold.maxDraws = Math.max(cold.maxDraws, packet.drawCount); cold.maxTriangles = Math.max(cold.maxTriangles, packet.triangles);
@@ -205,11 +212,13 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, files: GameFiles, w
     }
     if (app.view.thirdPerson !== !!shot.thirdPerson) { app.key("KeyV", true); app.key("KeyV", false); }
     run(3600);
-    for (let waits = 0; quietFrames < 30 && waits < 48; waits++) run(250);
-    if (quietFrames < 30) throw new Error(`${shot.name}: production asset streaming never settled for CPU sampling`);
+    // Cover a complete sampling-length quiet interval before timing. A short
+    // lull can precede a delayed visibility/LOD request in a dense shoulder view.
+    for (let waits = 0; quietFrames < 180 && waits < 48; waits++) run(250);
+    if (quietFrames < 180) throw new Error(`${shot.name}: production asset streaming never settled for CPU sampling`);
     const corrections = session.stats.corrections;
     if (recordCpu) { measure = true; run(3000); measure = false; } else run(600);
-    if (measuredUploadFrames) throw new Error(`${shot.name}: asset streaming resumed during settled CPU sampling`);
+    if (measuredUploadFrames) throw new Error(`${shot.name}: asset streaming resumed during settled CPU sampling (${measuredUploadFrames} frames): ${JSON.stringify(resumedStreaming)}`);
     const p = packet as FramePacket | null, render = raster as Rasterizer | null;
     if (!p || (images && !render) || !app.scene) throw new Error(`${shot.name}: native App produced no frame`);
     if (shot.arrival && Math.hypot(ents.x[me.ent]! - shot.feet[0], ents.z[me.ent]! - shot.feet[2]) > .25) throw new Error(`${shot.name}: spawn search displaced the visitor from the authored arrival`);
