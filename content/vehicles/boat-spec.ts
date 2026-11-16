@@ -21,9 +21,11 @@ export const BOAT: BoatSpec = {
     { at: [1.245, 1.045, -.55], half: [.055, .315, 2.75] },
     { at: [0, 1.045, -3.33], half: [1.16, .315, .07] },
     { at: [0, 2.125, 1.39], half: [1.04, .325, .11] },
+  ],
+  outboard: { pivot: ART.outboard.center, boxes: [
     { at: [0, 1.15, -3.70], half: [.40, .49, .38] },
     { at: [0, -.035, -3.82], half: [.065, .245, .17] },
-  ],
+  ] },
   propeller: { at: ART.propeller.center, radius: ART.propeller.radius },
   thrust: 9000, reverseThrust: 4000, idleRpm: 750, maxRpm: 5600, rpmRate: 3600, shiftDelay: .28,
   maxSteer: ART.outboard.turn, steerRate: 1.6, maxForward: 24, maxReverse: 5,

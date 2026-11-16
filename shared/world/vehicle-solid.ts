@@ -9,7 +9,8 @@ import { Found, type StructureStore } from "./structures.ts";
 export interface SolidFrame { readonly x: number; readonly y: number; readonly z: number; readonly qx: number; readonly qy: number; readonly qz: number; readonly qw: number }
 export interface SolidContact { reason: string; hazard: boolean; nx: number; ny: number; nz: number }
 export interface Bounds { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number }
-export interface Shape { solid: Solid; hazard: boolean; radius: number }
+export interface Shape { solid: Solid; hazard: boolean; radius: number; joint?: number }
+export interface SolidJoint { from: SolidFrame; to: SolidFrame }
 export interface Swept extends Shape { pad: number; bounds: Bounds }
 export const makeSolid = (): Solid => ({ corners: 0, faces: 0, edges: 0, at: new Float64Array(384), face: new Float64Array(384), edge: new Float64Array(192) });
 const square = (value: number): number => value * value;
@@ -108,12 +109,13 @@ export class StaticVehicleSolids {
   private readonly hit: SolidContact = { reason: "", hazard: false, nx: 0, ny: 1, nz: 0 };
   readonly world: CollisionWorld;
   constructor(world: CollisionWorld) { this.world = world; }
-  blocked(from: Readonly<SolidFrame>, to: Readonly<SolidFrame>, shapes: readonly Shape[]): SolidContact | null {
+  blocked(from: Readonly<SolidFrame>, to: Readonly<SolidFrame>, shapes: readonly Shape[], joints?: readonly SolidJoint[]): SolidContact | null {
     const all = bounds(), hf = this.world.hf;
     for (let i = 0; i < shapes.length; i++) {
       const local = shapes[i]!;
       if (!this.swept[i]) this.swept[i] = { ...local, solid: makeSolid(), pad: 0, bounds: bounds() };
-      const out = this.swept[i]!; out.hazard = local.hazard; sweep(local, from, to, out);
+      const out = this.swept[i]!, joint = local.joint === undefined ? undefined : joints?.[local.joint];
+      out.hazard = local.hazard; sweep(local, joint?.from ?? from, joint?.to ?? to, out);
       const b = out.bounds;
       include(all, b.minX, b.minY, b.minZ); include(all, b.maxX, b.maxY, b.maxZ);
       if (b.minX < 0 || b.maxX >= hf.sizeX || b.minZ < 0 || b.maxZ >= hf.sizeZ || b.minY < WORLD_MIN_Y || b.maxY > WORLD_MAX_Y) {

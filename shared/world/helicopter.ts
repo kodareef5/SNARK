@@ -8,25 +8,9 @@ import { boxSolid, partSolid, solidsCross, type Solid } from "./convex.ts";
 import { frame, frameOf } from "./frame.ts";
 import { castWorld, HIT_NONE, rayHit } from "./ray.ts";
 import type { PartTable } from "./structures.ts";
-import { StaticVehicleSolids, bounds, box, makeSolid, shape, sweep, tube, type Shape, type Swept } from "./vehicle-solid.ts";
+import { StaticVehicleSolids, bounds, box, makeSolid, sweep, tube, type Shape, type Swept } from "./vehicle-solid.ts";
+import { boatOutboardFrame, boatShapes, helicopterShapes as localShapes, type BoatFrame } from "./vehicle-shapes.ts";
 const q = new Float64Array(4);
-function localShapes(def: RotorVehicleDefinition): Shape[] {
-  const p = def.spec, parts: Shape[] = [];
-  for (const r of def.rotors) {
-    const n = r.axis, initial = Math.abs(n[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
-    const u = [n[1] * initial[2]! - n[2] * initial[1]!, n[2] * initial[0]! - n[0] * initial[2]!, n[0] * initial[1]! - n[1] * initial[0]!];
-    const l = len3(u[0]!, u[1]!, u[2]!); for (let i = 0; i < 3; i++) u[i] = u[i]! / l;
-    const v = [n[1] * u[2]! - n[2] * u[1]!, n[2] * u[0]! - n[0] * u[2]!, n[0] * u[1]! - n[1] * u[0]!];
-    parts.push(shape(tube(r.at.map((c, i) => c - n[i]! * 0.035), r.at.map((c, i) => c + n[i]! * 0.035), u, v, r.radius, r.radius, 24), true));
-  }
-  parts.push(box([0, (p.clearance + p.height) / 2, 0], [p.halfWidth, (p.height - p.clearance) / 2, p.halfLength]));
-  if (p.engineBox) parts.push(box(p.engineBox.at, p.engineBox.half));
-  for (const part of p.bodyBoxes ?? []) parts.push(box(part.at, part.half));
-  for (const side of [-1, 1]) parts.push(box([side * p.skidHalfWidth, 0.1, 0.05], [0.075, 0.075, p.skidHalfLength + 0.2]));
-  parts.push(shape(tube(p.tail.from, p.tail.to, [1, 0, 0], [0, 1, 0], p.tail.radius, p.tail.tipRadius ?? p.tail.radius, 8)));
-  for (const part of p.tail.boxes ?? []) parts.push(box(part.at, part.half));
-  return parts;
-}
 export class StaticHelicopterWorld implements HelicopterWorld {
   private readonly supportWorld: CollisionWorld;
   private readonly definitions = new WeakMap<RotorVehicleDefinition, Shape[]>();
@@ -130,17 +114,20 @@ export function helicopterMeetsCapsule(def: RotorVehicleDefinition, frame: Helic
 
 const otherSweep: Swept = { solid: makeSolid(), hazard: false, radius: 0, pad: 0, bounds: bounds() };
 /** The same shapes against another vehicle. Callers sweep relative motion and own authority, impulses and damage. */
-export function helicopterMeetsVehicle(def: RotorVehicleDefinition, frame: HelicopterFrame, other: VehicleDefinition, otherFrame: HelicopterFrame): {rotor:boolean;nx:number;ny:number;nz:number}|null {
+export function helicopterMeetsVehicle(def: RotorVehicleDefinition, frame: HelicopterFrame, other: VehicleDefinition, otherFrame: BoatFrame): {rotor:boolean;nx:number;ny:number;nz:number}|null {
   const source = frameState(def, frame), target = frameState(def, otherFrame);
-  let parts: Shape[];
+  let parts: readonly Shape[];
   if (other.movement === "rotor") {
-    parts = interactionShapes.get(other) ?? localShapes(other); interactionShapes.set(other, parts);
-  } else {
+    const rotorParts = interactionShapes.get(other) ?? localShapes(other); interactionShapes.set(other, rotorParts); parts = rotorParts;
+  } else if (other.movement === "boat") parts = boatShapes(other);
+  else {
     const p = other.spec;
     parts = [box([0, (p.clearance + p.height) / 2, 0], [p.halfWidth, (p.height - p.clearance) / 2, p.halfLength])];
   }
+  const mount = other.movement === "boat" ? boatOutboardFrame(otherFrame, other.spec) : target;
   for (const part of parts) {
-    sweep(part, target, target, otherSweep);
+    const pose = part.joint === undefined ? target : mount;
+    sweep(part, pose, pose, otherSweep);
     const hit = interaction(def, source, otherSweep.solid, 0);
     if (hit) return hit;
   }

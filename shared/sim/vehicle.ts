@@ -172,6 +172,8 @@ export interface BoatSpec extends VehicleHullSpec {
   readonly centerOfMass: readonly [number, number, number];
   readonly buoyancyPoints: readonly BoatFloat[];
   readonly hullBoxes: readonly VehicleCollisionBox[];
+  /** Steerable engine housing and skeg. These boxes are in the chassis frame at zero steering. */
+  readonly outboard?: { readonly pivot: readonly [number, number, number]; readonly boxes: readonly VehicleCollisionBox[] };
   readonly propeller: { readonly at: readonly [number, number, number]; readonly radius: number };
   readonly thrust: number;
   readonly reverseThrust: number;
@@ -221,6 +223,8 @@ export function validateBoatSpec(s: BoatSpec): void {
     !s.propeller || !vec(s.propeller.at) || !Number.isFinite(s.propeller.radius) || s.propeller.radius <= 0 || s.propeller.radius > 1) throw new Error("inconsistent boat specification");
   const submerged = s.buoyancyPoints.reduce((sum, v) => sum + v.weight * clamp((s.draft - v.at[1]) / s.buoyancyHeight + .5, 0, 1), 0);
   if (Math.abs(submerged * s.displacement - s.mass) > s.mass * .025) throw new Error("boat draft disagrees with float volume");
+  if (s.outboard && (!vec(s.outboard.pivot) || !Array.isArray(s.outboard.boxes) || s.outboard.boxes.length > 8 ||
+    !s.outboard.boxes.every(b => vec(b.at) && vec(b.half) && b.half.every((n: number) => n > 0 && n <= 4)))) throw new Error("invalid boat outboard geometry");
 }
 
 export function validateHelicopterSpec(s: HelicopterSpec): void {

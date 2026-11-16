@@ -29,9 +29,18 @@ const result: BoatStep = { blocked: null, impactSpeed: 0, propHit: false, water:
 const q = new Float64Array(4), turn = new Float64Array(4), q0 = new Float64Array(4), q1 = new Float64Array(4);
 const localV = new Float64Array(3), point = new Float64Array(3), buoy = new Float64Array(3), up = new Float64Array(3), ahead = new Float64Array(3), com = new Float64Array(3);
 const force = new Float64Array(3), torque = new Float64Array(3), worldForce = new Float64Array(3);
+const propellerPoint = new Float64Array(3);
 const unit = (n: number): number => Number.isFinite(n) ? clamp(n, -1, 1) : 0;
 const approach = (n: number, target: number, by: number): number => n < target ? Math.min(target, n + by) : Math.max(target, n - by);
 const square = (n: number): number => n * n;
+
+/** Physical propeller centre in the keel frame, including the steering joint used by the rendered outboard. */
+export function boatPropellerPoint(p: BoatSpec, steering: number, out: Float64Array | number[]): void {
+  const at = p.propeller.at, pivot = p.outboard?.pivot;
+  if (!pivot) { out[0] = at[0]; out[1] = at[1]; out[2] = at[2]; return; }
+  const sn = detSin(-steering), cs = detCos(-steering), x = at[0] - pivot[0], z = at[2] - pivot[2];
+  out[0] = pivot[0] + cs * x + sn * z; out[1] = at[1]; out[2] = pivot[2] - sn * x + cs * z;
+}
 
 /** Exact upright static waterline for these float volumes. Overloaded hulls have no floating placement. */
 export function boatRestY(p: BoatSpec, water: number, payloadMass = 0): number {
@@ -99,15 +108,17 @@ function motor(s: BoatState, input: Readonly<BoatInput>, p: BoatSpec, wet: numbe
 
 /** Reuses its result. Forces are bounded, and all future-controlling fields round once at the shared world tick. */
 export function stepBoat(s: BoatState, input: Readonly<BoatInput>, def: BoatVehicleDefinition, world: BoatWorld): BoatStep {
-  const p = def.spec, beforeFuel = s.fuel;
+  const p = def.spec, beforeFuel = s.fuel, beforeSteering = s.steering;
   Object.assign(result, { blocked: null, impactSpeed: 0, propHit: false, water: false, immersion: 0, propellerImmersion: 0, planing: 0, capsized: false, fuelUsed: 0, surface: "air" });
   s.hullCondition = clamp(s.hullCondition, 0, 1); s.engineCondition = clamp(s.engineCondition, 0, 1); s.flooding = clamp(s.flooding, 0, 1);
   s.payloadMass = clamp(s.payloadMass, 0, 100000); s.rideOffset = s.rideVelocity = 0;
   rotation(s); writeRotation(s);
-  quatRotate(q, 0, p.propeller.at[0], p.propeller.at[1], p.propeller.at[2], point, 0);
+  boatPropellerPoint(p, s.steering, propellerPoint);
+  quatRotate(q, 0, propellerPoint[0]!, propellerPoint[1]!, propellerPoint[2]!, point, 0);
   const propWet = immersion(world, s.x + point[0]!, s.y + point[1]!, s.z + point[2]!, p.propeller.radius * 2);
   const capsize = up[1]! < .15;
   motor(s, input, p, propWet, capsize);
+  const wantedSteering = s.steering; s.steering = beforeSteering;
   const mass = p.mass + s.payloadMass + s.flooding * p.displacement * .38;
   const ix = mass * (square(p.halfLength * 2) + square(p.height)) / 12;
   const iy = mass * (square(p.halfLength * 2) + square(p.halfWidth * 2)) / 12;
@@ -118,6 +129,7 @@ export function stepBoat(s: BoatState, input: Readonly<BoatInput>, def: BoatVehi
   s.grounded = false;
   for (let step = 0; step < count; step++) {
     const previous = { ...s }; rotation(s);
+    s.steering = beforeSteering + (wantedSteering - beforeSteering) * (step + 1) / count;
     force.fill(0); torque.fill(0); quatUnrotate(q, 0, s.vx, s.vy, s.vz, localV, 0);
     const wx = -s.pitchRate, wy = s.yawRate, wz = s.rollRate;
     let wet = 0;
@@ -147,14 +159,15 @@ export function stepBoat(s: BoatState, input: Readonly<BoatInput>, def: BoatVehi
     const lift = p.mass * p.gravity * p.planingLift * plane;
     addForce(0, -.20, p.planingTrim * 4, 0, lift, 0);
     torque[2] -= s.yawRate * Math.max(0, along) * mass * .55 * plane;
-    quatRotate(q, 0, p.propeller.at[0], p.propeller.at[1], p.propeller.at[2], point, 0);
+    boatPropellerPoint(p, s.steering, propellerPoint);
+    quatRotate(q, 0, propellerPoint[0]!, propellerPoint[1]!, propellerPoint[2]!, point, 0);
     const px = s.x + point[0]!, py = s.y + point[1]!, pz = s.z + point[2]!;
     const prop = immersion(world, px, py, pz, p.propeller.radius * 2);
     // Shallow water may surround the hull while the propeller touches bottom: no usable thrust there.
     const clearance = clamp((py - world.groundAt(px, pz) - p.propeller.radius * .6) / p.propeller.radius, 0, 1);
     const demand = clamp((s.engineRpm - p.idleRpm) / (p.maxRpm - p.idleRpm), 0, 1);
     const thrust = s.engineOn && up[1]! > .15 ? s.gear * (s.gear > 0 ? p.thrust : p.reverseThrust) * demand * (.25 + .75 * s.engineCondition) * prop * clearance : 0;
-    addForce(p.propeller.at[0] - p.centerOfMass[0], p.propeller.at[1] - p.centerOfMass[1], p.propeller.at[2] - p.centerOfMass[2], -detSin(s.steering) * thrust, 0, detCos(s.steering) * thrust);
+    addForce(propellerPoint[0]! - p.centerOfMass[0], propellerPoint[1]! - p.centerOfMass[1], propellerPoint[2]! - p.centerOfMass[2], -detSin(s.steering) * thrust, 0, detCos(s.steering) * thrust);
     const angularDamp = .1 + p.angularDrag * waterShare;
     torque[0] -= wx * ix * angularDamp; torque[1] -= wy * iy * angularDamp * .25; torque[2] -= wz * iz * angularDamp;
     s.pitchRate = clamp(s.pitchRate - torque[0]! / ix * dt, -4, 4);
@@ -178,7 +191,7 @@ export function stepBoat(s: BoatState, input: Readonly<BoatInput>, def: BoatVehi
       q0.set([previous.qx, previous.qy, previous.qz, previous.qw]); q1.set([s.qx, s.qy, s.qz, s.qw]);
       for (let probe = 0; probe < 6; probe++) {
         const t = (low + high) / 2; quatNlerp(q, 0, q0, 0, q1, 0, t);
-        const candidate = { ...next, x: previous.x + (next.x - previous.x) * t, y: previous.y + (next.y - previous.y) * t, z: previous.z + (next.z - previous.z) * t, qx: q[0]!, qy: q[1]!, qz: q[2]!, qw: q[3]! };
+        const candidate = { ...next, x: previous.x + (next.x - previous.x) * t, y: previous.y + (next.y - previous.y) * t, z: previous.z + (next.z - previous.z) * t, steering: previous.steering + (next.steering - previous.steering) * t, qx: q[0]!, qy: q[1]!, qz: q[2]!, qw: q[3]! };
         const contact = world.blocked(previous, candidate, def);
         if (contact) { high = t; nx = contact.nx; ny = contact.ny; nz = contact.nz; } else { low = t; Object.assign(safe, candidate); }
       }

@@ -6,8 +6,7 @@ import type { BoatVehicleDefinition } from "./vehicle.ts";
 const unattended = { throttle: 0, steer: 0, neutral: true, pilot: false };
 export function stepBoatWreck(s: BoatState, def: BoatVehicleDefinition, world: BoatWorld): boolean {
   s.engineOn = false; s.engineCondition = 0; s.hullCondition = 0;
-  // A wreck has open structural breaches. Water enters at a bounded rate, with neither attitude nor height reset.
-  s.flooding = Math.max(.4, s.flooding);
+  // A wreck has open structural breaches. Preserve existing water and let the same bounded ingress fill it.
   stepBoat(s, unattended, def, world);
   return s.grounded && len3(s.vx, s.vy, s.vz) < .08 && len3(s.pitchRate, s.yawRate, s.rollRate) < .05;
 }

@@ -1,11 +1,15 @@
 import { expect, test } from "bun:test";
 import { BOAT as spec } from "../../content/vehicles/boat-spec.ts";
+import { HELICOPTER_VEHICLE } from "../../content/vehicles/helicopter.ts";
 import { TICK_DT } from "../../shared/coords.ts";
-import { quatAxis } from "../../shared/math/quat.ts";
-import { boatRestY, createBoat, stepBoat, type BoatInput, type BoatState, type BoatWorld } from "../../shared/sim/boat.ts";
+import { quatAxis, quatRotate } from "../../shared/math/quat.ts";
+import { boatPropellerPoint, boatRestY, createBoat, stepBoat, type BoatInput, type BoatState, type BoatWorld } from "../../shared/sim/boat.ts";
 import { stepBoatWreck } from "../../shared/sim/boat-wreck.ts";
-import { validateBoatSpec, type BoatVehicleDefinition } from "../../shared/sim/vehicle.ts";
-import { boatMeetsCapsule, boatPlacement, StaticBoatWorld } from "../../shared/world/boat.ts";
+import { validateBoatSpec, type BoatVehicleDefinition, type RotorVehicleDefinition } from "../../shared/sim/vehicle.ts";
+import { vehiclePoint } from "../../shared/sim/vehicle-frame.ts";
+import { boatMeetsCapsule, boatMeetsVehicle, boatPlacement, StaticBoatWorld } from "../../shared/world/boat.ts";
+import { helicopterMeetsVehicle } from "../../shared/world/helicopter.ts";
+import { boatOutboardFrame } from "../../shared/world/vehicle-shapes.ts";
 import { Heightfield } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { MapWater } from "../../shared/world/water.ts";
@@ -133,6 +137,37 @@ test("the propeller meets shallows and full quaternion collision follows an inve
   expect(boatMeetsCapsule(def, inverted, 96, 6.2, 96, .3, 1.8)).toBeNull();
 });
 
+test("steering sweeps the propeller and engine joint through its actual pivot, including a stationary dock strike", () => {
+  const n = native(), straight = boat(), turned = { ...straight, steering: spec.maxSteer };
+  n.structs.add(4, 96.43, -.27, 92.29, 0, 0, 100);
+  expect(n.world.blocked(straight, straight, def)).toBeNull();
+  expect(n.world.blocked(turned, turned, def)?.propeller).toBe(true);
+  expect(n.world.blocked(straight, turned, def)?.propeller).toBe(true);
+  expect(boatMeetsCapsule(def, turned, 96.43, -.3, 92.29, .035, .06)?.propeller).toBe(true);
+  expect(boatMeetsCapsule(def, straight, 96.43, -.3, 92.29, .035, .06)).toBeNull();
+  const local = new Float64Array(3), actual = new Float64Array(3), expected = new Float64Array(3);
+  turned.qx = .2; turned.qy = .3; turned.qz = .1; turned.qw = Math.sqrt(.86);
+  boatPropellerPoint(spec, turned.steering, local); vehiclePoint(turned, local, expected);
+  const mount = boatOutboardFrame(turned, spec), pivot = spec.outboard!.pivot, at = spec.propeller.at;
+  quatRotate([mount.qx, mount.qy, mount.qz, mount.qw], 0, at[0] - pivot[0], at[1] - pivot[1], at[2] - pivot[2], actual, 0);
+  expect(actual[0]! + mount.x).toBeCloseTo(expected[0]!, 8);
+  expect(actual[1]! + mount.y).toBeCloseTo(expected[1]!, 8);
+  expect(actual[2]! + mount.z).toBeCloseTo(expected[2]!, 8);
+});
+
+test("mixed boat and rotor queries preserve open cockpit space in both directions", () => {
+  const narrow: RotorVehicleDefinition = { ...HELICOPTER_VEHICLE, rotors: [], spec: { ...HELICOPTER_VEHICLE.spec,
+    halfWidth: .1, halfLength: .1, height: .2, clearance: .01, skidHalfWidth: .05, skidHalfLength: .05, engineBox: undefined, bodyBoxes: [],
+    tail: { from: [0, .1, 0], to: [0, .1, -.1], radius: .03 },
+  } };
+  const s = boat(), rotor = { x: 96, y: .8, z: 96, yaw: 0, pitch: 0, roll: 0 };
+  expect(boatMeetsVehicle(def, s, narrow, rotor)).toBeNull();
+  expect(helicopterMeetsVehicle(narrow, rotor, def, s)).toBeNull();
+  rotor.x = 97.25;
+  expect(boatMeetsVehicle(def, s, narrow, rotor)).not.toBeNull();
+  expect(helicopterMeetsVehicle(narrow, rotor, def, s)).not.toBeNull();
+});
+
 test("a shoaling beach arrests the hull and an exposed prop cannot drive it inland", () => {
   const n = native();
   for (let z = 0; z < n.hf.nz; z++) for (let x = 0; x < n.hf.nx; x++) n.hf.setSample(x, z, Math.min(1, -3 + Math.max(0, z * 2 - 96) * .15));
@@ -160,6 +195,8 @@ test("capsize shuts the motor, floods gradually, and never secretly restores an 
 });
 
 test("overload and a flooded wreck sink to actual seabed, preserving attitude and finite collision", () => {
+  const fresh = boat(); stepBoatWreck(fresh, def, sea);
+  expect(fresh.y).toBeCloseTo(-.35, 3); expect(fresh.flooding).toBeGreaterThan(0); expect(fresh.flooding).toBeLessThan(.01);
   const overloaded = boat(); overloaded.payloadMass = 4000; run(overloaded, 180); expect(overloaded.y).toBeLessThan(-2);
   const n = native(), wreck = boat(); wreck.flooding = 1; const q = new Float64Array(4); quatAxis(q, 0, 0, 0, 1, .25);
   wreck.qx = q[0]!; wreck.qy = q[1]!; wreck.qz = q[2]!; wreck.qw = q[3]!;

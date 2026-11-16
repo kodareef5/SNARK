@@ -1,26 +1,17 @@
 // Native terrain, structure and node collision for the boat's actual rigid parts and propeller.
 import { detCos, detSin, len3 } from "../math/scalar.ts";
 import { boatRestY, createBoat, type BoatContact, type BoatState, type BoatWorld } from "../sim/boat.ts";
-import { vehicleRotation, type VehicleFrame } from "../sim/vehicle-frame.ts";
+import { vehicleRotation } from "../sim/vehicle-frame.ts";
 import type { BoatVehicleDefinition, VehicleDefinition } from "../sim/vehicle.ts";
 import type { CollisionWorld } from "./collide.ts";
 import { boxSolid, partSolid, solidsCross, type Solid } from "./convex.ts";
 import { frame, frameOf } from "./frame.ts";
-import { helicopterMeetsVehicle } from "./helicopter.ts";
 import type { PartTable } from "./structures.ts";
-import { StaticVehicleSolids, bounds, box, makeSolid, shape, sweep, tube, type Shape, type Swept } from "./vehicle-solid.ts";
+import { StaticVehicleSolids, bounds, box, makeSolid, sweep, tube, type Swept } from "./vehicle-solid.ts";
 
-const definitions = new WeakMap<BoatVehicleDefinition, Shape[]>();
-export function boatShapes(def: BoatVehicleDefinition): readonly Shape[] {
-  let parts = definitions.get(def);
-  if (!parts) {
-    const p = def.spec.propeller, at = p.at;
-    parts = [shape(tube([at[0], at[1], at[2] - .06], [at[0], at[1], at[2] + .06], [1, 0, 0], [0, 1, 0], p.radius, p.radius, 12), true),
-      ...def.spec.hullBoxes.map(b => box(b.at, b.half))];
-    definitions.set(def, parts);
-  }
-  return parts;
-}
+import { boatOutboardFrame, boatShapes, helicopterShapes, type BoatFrame } from "./vehicle-shapes.ts";
+export { boatShapes, type BoatFrame } from "./vehicle-shapes.ts";
+
 export class StaticBoatWorld implements BoatWorld {
   readonly world: CollisionWorld;
   private readonly collision: StaticVehicleSolids;
@@ -29,7 +20,7 @@ export class StaticBoatWorld implements BoatWorld {
   waterAt(x: number, z: number): number { return this.world.hf.waterAt(x, z); }
   groundAt(x: number, z: number): number { return this.world.hf.heightAt(x, z); }
   blocked(from: Readonly<BoatState>, to: Readonly<BoatState>, def: BoatVehicleDefinition): BoatContact | null {
-    const hit = this.collision.blocked(from, to, boatShapes(def));
+    const hit = this.collision.blocked(from, to, boatShapes(def), [{ from: boatOutboardFrame(from, def.spec), to: boatOutboardFrame(to, def.spec) }]);
     if (!hit) return null;
     this.hit.reason = hit.reason; this.hit.propeller = hit.hazard;
     this.hit.nx = hit.nx; this.hit.ny = hit.ny; this.hit.nz = hit.nz; return this.hit;
@@ -47,7 +38,7 @@ export function boatPlacement(world: CollisionWorld, x: number, y: number, z: nu
   if (!Number.isFinite(rest) || Math.abs(y - rest) > .08) return false;
   const sn = detSin(yaw), cs = detCos(yaw);
   // Include the extremities and outboard, not merely the centre; narrow ponds and the lake/sea seam cannot spawn boats.
-  for (const at of [[0, 0, 0], ...p.buoyancyPoints.map(b => b.at), ...p.hullBoxes.flatMap(b => [-1, 1].flatMap(sx => [-1, 1].map(sz =>
+  for (const at of [[0, 0, 0], ...p.buoyancyPoints.map(b => b.at), ...[...p.hullBoxes, ...(p.outboard?.boxes ?? [])].flatMap(b => [-1, 1].flatMap(sx => [-1, 1].map(sz =>
     [b.at[0] + sx * b.half[0], b.at[1] - b.half[1], b.at[2] + sz * b.half[2]],
   ))), p.propeller.at]) {
     const px = x + cs * at[0]! + sn * at[2]!, pz = z - sn * at[0]! + cs * at[2]!;
@@ -61,13 +52,15 @@ const q = new Float64Array(4), center = new Float64Array(3);
 const swept: Swept = { solid: makeSolid(), hazard: false, radius: 0, pad: 0, bounds: bounds() };
 const otherSweep: Swept = { solid: makeSolid(), hazard: false, radius: 0, pad: 0, bounds: bounds() };
 const obstacle = makeSolid(), contact: BoatContact = { reason: "vehicle", propeller: false, nx: 0, ny: 0, nz: 0 };
-function stateAt(def: BoatVehicleDefinition, frame: VehicleFrame): BoatState {
-  const s = createBoat(def.spec, frame.x, frame.y, frame.z, frame.yaw);
+function stateAt(def: BoatVehicleDefinition, frame: BoatFrame): BoatState {
+  const s = createBoat(def.spec, frame.x, frame.y, frame.z, frame.yaw); s.steering = frame.steering ?? 0;
   vehicleRotation(frame, q); s.qx = q[0]!; s.qy = q[1]!; s.qz = q[2]!; s.qw = q[3]!; return s;
 }
 function interaction(def: BoatVehicleDefinition, s: BoatState, target: Solid, slack: number): BoatContact | null {
+  const mount = boatOutboardFrame(s, def.spec);
   for (const part of boatShapes(def)) {
-    sweep(part, s, s, swept);
+    const pose = part.joint === undefined ? s : mount;
+    sweep(part, pose, pose, swept);
     if (!solidsCross(swept.solid, slack, slack, target, 0, 0, 0)) continue;
     center.fill(0);
     for (let i = 0; i < target.corners * 3; i += 3) for (let axis = 0; axis < 3; axis++) center[axis] = center[axis]! + target.at[i + axis]! / target.corners;
@@ -76,7 +69,7 @@ function interaction(def: BoatVehicleDefinition, s: BoatState, target: Solid, sl
   }
   return null;
 }
-export function boatMeetsKind(parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, def: BoatVehicleDefinition, at: VehicleFrame, slack = 0): boolean {
+export function boatMeetsKind(parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, def: BoatVehicleDefinition, at: BoatFrame, slack = 0): boolean {
   const s = stateAt(def, at), boxes = parts.box;
   frameOf(syaw); const cs = frame.cos, sn = frame.sin, stretch = frame.stretch;
   for (let i = parts.start[kind]! * 6, end = parts.start[kind + 1]! * 6; i < end; i += 6) {
@@ -89,17 +82,13 @@ export function boatMeetsKind(parts: PartTable, kind: number, sx: number, sy: nu
   }
   return false;
 }
-export function boatMeetsCapsule(def: BoatVehicleDefinition, frame: VehicleFrame, x: number, y: number, z: number, radius: number, height: number): BoatContact | null {
+export function boatMeetsCapsule(def: BoatVehicleDefinition, frame: BoatFrame, x: number, y: number, z: number, radius: number, height: number): BoatContact | null {
   return interaction(def, stateAt(def, frame), tube([x, y, z], [x, y + Math.max(height, radius * 2), z], [1, 0, 0], [0, 0, 1], radius, radius, 12), 0);
 }
-export function boatMeetsVehicle(def: BoatVehicleDefinition, frame: VehicleFrame, other: VehicleDefinition, otherFrame: VehicleFrame): BoatContact | null {
-  if (other.movement === "rotor") {
-    const hit = helicopterMeetsVehicle(other, otherFrame, def, frame);
-    if (!hit) return null;
-    contact.propeller = false; contact.nx = -hit.nx; contact.ny = -hit.ny; contact.nz = -hit.nz; return contact;
-  }
+export function boatMeetsVehicle(def: BoatVehicleDefinition, frame: BoatFrame, other: VehicleDefinition, otherFrame: BoatFrame): BoatContact | null {
   const s = stateAt(def, frame), target = stateAt(def, otherFrame), p = other.spec;
-  const shapes = other.movement === "boat" ? boatShapes(other) : [box([0, (p.clearance + p.height) / 2, 0], [p.halfWidth, (p.height - p.clearance) / 2, p.halfLength])];
-  for (const part of shapes) { sweep(part, target, target, otherSweep); const hit = interaction(def, s, otherSweep.solid, 0); if (hit) return hit; }
+  const shapes = other.movement === "boat" ? boatShapes(other) : other.movement === "rotor" ? helicopterShapes(other) : [box([0, (p.clearance + p.height) / 2, 0], [p.halfWidth, (p.height - p.clearance) / 2, p.halfLength])];
+  const mount = other.movement === "boat" ? boatOutboardFrame(otherFrame, other.spec) : target;
+  for (const part of shapes) { const pose = part.joint === undefined ? target : mount; sweep(part, pose, pose, otherSweep); const hit = interaction(def, s, otherSweep.solid, 0); if (hit) return hit; }
   return null;
 }
