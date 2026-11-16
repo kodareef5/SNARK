@@ -328,6 +328,8 @@ def populate(D,prototype,instance,box,node):
  finish_edges(D,p,world,place,box,ys,beam)
  from layout_enclosures import finish as finish_enclosures
  finish_enclosures(D,p,world,place,box,ys)
+ from layout_forebody import finish as finish_forebody
+ finish_forebody(D,p,world,place,box,ys)
  from layout_hull_details import finish as finish_hull_details
  finish_hull_details(D,p,world,place,box,ys)
  from layout_entries import finish as finish_entries
