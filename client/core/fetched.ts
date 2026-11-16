@@ -80,7 +80,7 @@ export async function fetchMapFile(get: Get, pause: () => Promise<void>): Promis
   const { ground, rest } = await fetchMap(get, ((await fetchJson(get, "map.json")) as { file: string }).file);
   const map = parseMap(ground, false);
   const statics = rest.then(async (bytes) => {
-    const steps = staticsSteps(bytes, map.dims);
+    const steps = staticsSteps(bytes, map.dims, false);
     let step = steps.next();
     for (; !step.done; step = steps.next()) await pause();
     return step.value;

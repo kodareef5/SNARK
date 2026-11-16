@@ -106,13 +106,13 @@ export class MapStatics {
   readonly x: Float32Array;
   readonly y: Float32Array;
   readonly z: Float32Array;
-  /** The row of the map's `i`th piece. */
+  /** The row of the map's `i`th piece. Empty where the map's order was not kept, and its pieces are then the chunks' order. */
   readonly row: Uint32Array;
 
-  private constructor(kinds: readonly string[], chunks: number, n: number) {
+  private constructor(kinds: readonly string[], chunks: number, n: number, order: boolean) {
     this.kinds = kinds;
     this.first = new Uint32Array(chunks + 1);
-    this.row = new Uint32Array(n);
+    this.row = new Uint32Array(order ? n : 0);
     this.kind = new Uint16Array(n);
     this.yaw = new Uint16Array(n);
     this.x = new Float32Array(n);
@@ -120,12 +120,16 @@ export class MapStatics {
     this.z = new Float32Array(n);
   }
 
-  /** Pieces as columns in the map's order, `kind` indexing `kinds` and centres on the lattice, grouped by chunk a slice at a time. */
-  static *group(dims: MapDims, kinds: readonly string[], kind: Uint16Array, yaw: Uint16Array, x: Float32Array, y: Float32Array, z: Float32Array): Generator<void, MapStatics> {
+  /**
+   * Pieces as columns in the map's order, `kind` indexing `kinds` and centres on the lattice, grouped by chunk a slice at a
+   * time. Without `order` the map's order is not kept, as a client never reads it.
+   */
+  static *group(dims: MapDims, kinds: readonly string[], kind: Uint16Array, yaw: Uint16Array, x: Float32Array, y: Float32Array, z: Float32Array, order = true): Generator<void, MapStatics> {
     const n = kind.length;
     const chunks = chunkCount(dims);
-    const t = new MapStatics(kinds, chunks, n);
-    const { first, row } = t;
+    const t = new MapStatics(kinds, chunks, n, order);
+    const first = t.first;
+    const row = order ? t.row : new Uint32Array(n);
     for (let i = 0; i < n; i++) {
       row[i] = chunkAt(dims, x[i]!, z[i]!);
       first[row[i]! + 1]!++;
@@ -157,17 +161,17 @@ export class MapStatics {
   }
 
   get length(): number {
-    return this.row.length;
+    return this.kind.length;
   }
 
   /** The map's `i`th piece as an object, for tools. */
   piece(i: number): MapStatic {
-    const r = this.row[i]!;
+    const r = this.row.length > 0 ? this.row[i]! : i;
     return { kind: this.kinds[this.kind[r]!]!, x: this.x[r]!, y: this.y[r]!, z: this.z[r]!, yaw: this.yaw[r]! };
   }
 
   *[Symbol.iterator](): IterableIterator<MapStatic> {
-    for (let i = 0; i < this.row.length; i++) yield this.piece(i);
+    for (let i = 0; i < this.length; i++) yield this.piece(i);
   }
 
   /** The pieces `keep` takes, as objects in the map's order, for tools written against a list. */
@@ -185,8 +189,8 @@ function eachStatic(statics: MapStatics | readonly MapStatic[], each: (kind: str
     return;
   }
   const { kinds, kind, x, y, z, yaw, row } = statics;
-  for (let i = 0; i < row.length; i++) {
-    const r = row[i]!;
+  for (let i = 0; i < kind.length; i++) {
+    const r = row.length > 0 ? row[i]! : i;
     each(kinds[kind[r]!]!, x[r]!, y[r]!, z[r]!, yaw[r]!);
   }
 }
@@ -736,7 +740,7 @@ function readNodes(r: In, dims: MapDims): NodeLayer {
   return list;
 }
 
-function* readStatics(s: In, dims: MapDims): Generator<void, MapStatics> {
+function* readStatics(s: In, dims: MapDims, order = true): Generator<void, MapStatics> {
   const ids = Array.from({ length: s.u16() }, () => s.text());
   const n = s.u32();
   const b = s.take(n * STAT_ROW);
@@ -759,7 +763,7 @@ function* readStatics(s: In, dims: MapDims): Generator<void, MapStatics> {
     zs[i] = z / STRUCT_UNITS;
     if (i % SLICE === SLICE - 1) yield;
   }
-  return yield* MapStatics.group(dims, ids, kind, yaw, xs, ys, zs);
+  return yield* MapStatics.group(dims, ids, kind, yaw, xs, ys, zs, order);
 }
 
 function read(r: In): Omit<MapFile, "hash"> {
@@ -899,12 +903,12 @@ export function parseMap(file: Uint8Array, verify = true): MapFile {
  * The statics of a file of `dims` from its bytes past `groundBytes`, read apart from the rest a slice at a time: a client
  * takes a step between frames, so a city's million pieces come in without a hitch.
  */
-export function* staticsSteps(rest: Uint8Array, dims: MapDims): Generator<void, MapStatics> {
+export function* staticsSteps(rest: Uint8Array, dims: MapDims, order = true): Generator<void, MapStatics> {
   if (rest.length === 0) return MapStatics.of(dims, []);
   const steps = within(() => {
     const r = new In(rest);
     if (String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8()) !== "STAT") throw new Error("map: what follows its ground is not its statics");
-    return readStatics(new In(r.take(r.u32())), dims);
+    return readStatics(new In(r.take(r.u32())), dims, order);
   });
   for (;;) {
     const step = within(() => steps.next());
