@@ -152,7 +152,7 @@ export function buildAtlases(reg: Registry, palette: Uint8Array, maps: string, o
       const [bx, by] = toBox(x, z);
       return { name, x: at1(bx), y: at1(by) };
     };
-    const key = createHash("sha256").update(readFileSync(import.meta.filename)).update(bytes.subarray(8, 12)).update(palette).update(colours).digest("hex").slice(0, 16);
+    const key = createHash("sha256").update(readFileSync(import.meta.filename)).update(readFileSync(join(import.meta.dir, "quantize.ts"))).update(bytes.subarray(8, 12)).update(palette).update(colours).digest("hex").slice(0, 16);
     const cached = join(CACHE, `${slug}.${key}`);
     const picture = (name: string, make: () => { rgba: Uint8Array; width: number; height: number } | Uint8Array): Picture => {
       const file = `${slug}.${key}.${name}.png`;

@@ -20,7 +20,7 @@ import { PICK_SKY } from "../snap/raster.ts";
 import { meshPack, type Built } from "./built.ts";
 
 const CACHE = resolve(import.meta.dir, "../../.cache/pages/posters");
-const DRAWN_BY = ["posters.ts", "built.ts", "../snap.ts", "../snap/raster.ts", "../pack/icons.ts"];
+const DRAWN_BY = ["posters.ts", "built.ts", "quantize.ts", "../snap.ts", "../snap/raster.ts", "../pack/icons.ts"];
 /** A body's picture, in pixels, drawn at SUPER times that and shrunk. An item's is square. */
 const BODY = [640, 480] as const;
 const ITEM = 320;
