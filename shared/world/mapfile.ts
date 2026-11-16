@@ -29,6 +29,10 @@
 //         1 a box), i32 x, i32 z, u32 radius or half width, u32 half depth, in 1/512 m.
 //   VHCL  vehicles parked in a new world: u16 count and that many content ids, a u32 count, then 12-byte rows:
 //         u16 id, u16 yaw, i32 x, z in 1/512 m. Each stands on the ground under it.
+//   VHCX  what a parked vehicle has beyond its VHCL row (found aircraft and boats): u8 version 1, a u32 count, then each a
+//         u32 row index and a u8 of bits, and what they name in this order: 1 a stable string id, 2 an f64 height it
+//         stands at (a roof, a berth), 4 and 8 two f64 fractions each, the range its condition and its fuel are rolled in.
+//         A build before it skips it, and parks those vehicles on the ground with full condition.
 //   WATR  water standing on its own surfaces (shared/world/water.ts), only in a file of version 3: u8 metres a square (1, 2,
 //         4, 8, 16, 32 or 64), u16 count of bodies, each a string name and a u16 surface in the heights' units, then a u32
 //         count of the chunks holding water, each a u32 chunk index, ascending, and its squares as u16, row by row from

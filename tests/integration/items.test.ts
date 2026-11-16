@@ -259,6 +259,9 @@ test("creatures arrive with their level and colours, players with their names, a
   h.run(300);
   expect(h.say(s, "spawn grazer 150")[0]).toBe("spawned core:grazer level 150");
   expect(h.say(s, "spawn nothing")[0]).toContain("no species");
+  // A vehicle is parked past its own reach where it fits, a boat only on water; and one at a time.
+  expect(h.say(s, "spawn boat")[0]).toBe("no room for core:boat 7 m ahead, or no water there");
+  expect(h.say(s, "spawn helicopter 1 2")[0]).toBe("a vehicle is spawned one at a time");
   expect(h.say(s, "give nothing")[0]).toContain("no item");
   h.run(300);
   const seen = new RemoteSample();

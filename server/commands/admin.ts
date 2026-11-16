@@ -168,6 +168,16 @@ export function addAdminCommands(con: Console): void {
         const count = args[2] === undefined ? 1 : parseNumber(args[2]);
         if (!Number.isInteger(count) || count < 1 || count > 64) return "count must be a whole number from 1 to 64";
         const a = (c.heldYaw / 65536) * 2 * Math.PI;
+        // A vehicle is parked nose away, four metres past its own reach (a rotor's sweep, a tail), where it fits: a
+        // boat only on water.
+        const vehicle = reg.vehicle[kind];
+        if (vehicle) {
+          if (count !== 1) return "a vehicle is spawned one at a time";
+          const reach = Math.max(vehicle.spec.halfLength, ..."rotors" in vehicle ? vehicle.rotors.map((r) => Math.hypot(r.at[0], r.at[2]) + r.radius) : []);
+          const at = 4 + reach;
+          const v = ctx.host.spawnVehicle(id, c.body.x + Math.sin(a) * at, c.body.z + Math.cos(a) * at, 0, a);
+          return v < 0 ? `no room for ${id} ${Math.round(at)} m ahead${vehicle.movement === "boat" ? ", or no water there" : ""}` : `spawned ${id} ${Math.round(at)} m ahead`;
+        }
         // A flock is a disc of them about two metres apart, its near edge four metres ahead.
         const spread = count === 1 ? 0 : 2 * Math.sqrt(count);
         let e = -1;
