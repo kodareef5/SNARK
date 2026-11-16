@@ -204,14 +204,16 @@ export const FRAME = {
   /** fHandFrom and fHandTo, in the fourth lanes of fSkySide and fSkySun: the tier's band over which near nodes hand over to far ones (hand.ts). */
   handFrom: 139,
   handTo: 143,
+  /** fLook: what every lookup of the sky table shares this frame (sky.ts SKY_GLSL): fTrueSun's way on the ground, x and z of length 1, and its slice of the table as a texture coordinate. */
+  look: 148,
 } as const;
-export const FRAME_FLOATS = FRAME.skyAlong + 4;
+export const FRAME_FLOATS = FRAME.look + 4;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
   highp vec4 fSpheres[${MAX_CASCADES}];
   highp mat4 fCascades[${MAX_CASCADES}];
-  highp vec4 fSkySide, fSkySun, fSkyAlong;
+  highp vec4 fSkySide, fSkySun, fSkyAlong, fLook;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)

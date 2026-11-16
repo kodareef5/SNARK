@@ -219,13 +219,9 @@ test("many clouds are cheap: of the most there may be, each gas looks at who is 
   expect(cut).toBeGreaterThan(0);
   expect(p.detailCount).toBeLessThanOrEqual(MAX_DETAILS);
   expect(looks.written + looks.dropped).toBeGreaterThan(cut);
-  // The see-through rim comes far to near.
-  let last = Infinity;
-  for (let k = cut; k < p.detailCount; k++) {
-    const o = k * DETAIL_FLOATS + DETAIL.middle;
-    const d = Math.hypot(p.details[o]!, p.details[o + 1]!, p.details[o + 2]!);
-    expect(d).toBeLessThanOrEqual(last + 1 / 64);
-    last = d;
-  }
+  // The cut-out core comes near to far, so a GPU skips what nearer puffs hide, and the see-through rim far to near.
+  const far = (k: number): number => Math.hypot(p.details[k * DETAIL_FLOATS + DETAIL.middle]!, p.details[k * DETAIL_FLOATS + DETAIL.middle + 1]!, p.details[k * DETAIL_FLOATS + DETAIL.middle + 2]!);
+  for (let k = 1; k < cut; k++) expect(far(k)).toBeGreaterThanOrEqual(far(k - 1) - 1 / 64);
+  for (let k = cut + 1; k < p.detailCount; k++) expect(far(k)).toBeLessThanOrEqual(far(k - 1) + 1 / 64);
   h.host.shutdown();
 });
