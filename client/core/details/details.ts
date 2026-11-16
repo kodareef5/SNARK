@@ -134,7 +134,7 @@ export class Details {
    * Reads what bodies did, makes the bursts whose moment has come, moves every particle on to the tick of `remote`, and
    * writes those in view into `p`. Returns the first particle of the blended ones; those before it are cut out.
    */
-  frame(p: FramePacket, cam: Camera, remote: RemoteSample | null, corpses: readonly Corpse[], shots: readonly ShotEnd[], viewer: Viewer | null, hf: Heightfield, tier: Tier, nowMs: number, world?: CollisionWorld): number {
+  frame(p: FramePacket, cam: Camera, remote: RemoteSample | null, corpses: readonly Corpse[], shots: readonly ShotEnd[], viewer: Viewer | null, hf: Heightfield, tier: Tier, nowMs: number, world?: CollisionWorld, reserve = 0): number {
     const tick = remote ? remote.tick : nowMs * (TICK_RATE / 1000);
     const dt = this.last === this.last ? Math.min(LONGEST_STEP, Math.max(0, (tick - this.last) / TICK_RATE)) : 0;
     this.last = tick;
@@ -177,7 +177,7 @@ export class Details {
     let fill = this.fill;
     this.posed = -1;
     for (const w of due) fill += this.burst(w, remote, hf, tier, cam, tick, fill);
-    return this.write(p, cam, hf);
+    return this.write(p, cam, hf, reserve);
   }
 
   /** Continuous machinery uses the same art cues and bounded burst/particle/fill budgets as creature details. */
@@ -428,7 +428,7 @@ export class Details {
   }
 
   /** Writes the particles in view into `p`, the cut-out ones and then the see-through ones far to near. */
-  private write(p: FramePacket, cam: Camera, hf: Heightfield): number {
+  private write(p: FramePacket, cam: Camera, hf: Heightfield, reserve: number): number {
     const pool = this.pool;
     const out = p.details;
     const words = p.detailWords;
@@ -461,7 +461,7 @@ export class Details {
           fill += area * shows;
         }
         const n = cut + blended;
-        if (n >= MAX_DETAILS) {
+        if (n >= MAX_DETAILS - reserve) {
           this.dropped++;
           continue;
         }

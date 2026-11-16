@@ -111,6 +111,8 @@ export interface VehicleRotor {
   readonly axis: readonly [number, number, number];
   readonly radius: number;
   readonly ratio: number;
+  /** Authored blade count and mean chord in metres. Enables bounded client blur; only blades may follow this bone. */
+  readonly blur?: { readonly blades: number; readonly chord: number };
 }
 
 /** Stabilized rotorcraft tuning, in metres, seconds, kilograms and radians. */
@@ -189,6 +191,7 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
       const n = rotor.axis;
       if (!bone(rotor.bone) || !vec(rotor.at) || !vec(n) || Math.abs(n[0] * n[0] + n[1] * n[1] + n[2] * n[2] - 1) > 1e-6 ||
         !Number.isFinite(rotor.radius) || rotor.radius <= 0 || rotor.radius > 16 || !Number.isFinite(rotor.ratio) || rotor.ratio === 0 || Math.abs(rotor.ratio) > 16) throw new Error("invalid helicopter rotor");
+      if (rotor.blur && (!Number.isInteger(rotor.blur.blades) || rotor.blur.blades < 2 || rotor.blur.blades > 8 || !Number.isFinite(rotor.blur.chord) || rotor.blur.chord <= 0 || rotor.blur.chord > rotor.radius)) throw new Error("invalid helicopter rotor blur");
     }
   }
   if (d.wreck !== undefined && (typeof d.wreck !== "string" || !d.wreck.includes(":"))) throw new Error("invalid vehicle wreck");

@@ -3,7 +3,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { App } from "../../client/core/app.ts";
-import type { FramePacket } from "../../client/core/render/packet.ts";
+import { DETAIL, DETAIL_FLOATS, DETAIL_ROTOR, type FramePacket } from "../../client/core/render/packet.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { HELICOPTER_ART } from "../../content/vehicles/helicopter-art.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
@@ -149,7 +149,9 @@ function capture(shot: Shot, pack: Pack, files: GameFiles, width: number, height
         const mesh = files.manifest.meshes[p.drawMesh[i]!]!.id;
         if (mesh.startsWith("core:helicopter")) draws.push({ mesh, lod: p.drawLod[i]!, layer: p.drawLayer[i]! });
       }
-      return { pixels: raster.color.slice(), draws, dropped: p.dropped, skipped: p.skipped, camera: { x: p.camX, y: p.camY, z: p.camZ, yaw: app.cam.yaw, pitch: app.cam.pitch, roll: app.cam.roll, thirdPerson: app.view.thirdPerson, cockpitEye } };
+      let rotorCards = 0;
+      for (let i = 0; i < p.detailCount; i++) if ((p.detailWords[i * DETAIL_FLOATS + DETAIL.misc]! & (DETAIL_ROTOR << 8)) !== 0) rotorCards++;
+      return { pixels: raster.color.slice(), draws, rotorCards, dropped: p.dropped, skipped: p.skipped, camera: { x: p.camX, y: p.camY, z: p.camZ, yaw: app.cam.yaw, pitch: app.cam.pitch, roll: app.cam.roll, thirdPerson: app.view.thirdPerson, cockpitEye } };
     };
     const first = draw();
     if (first.draws.length === 0) throw new Error(`${shot.name}: the actual frame drew no helicopter mesh`);
@@ -163,7 +165,7 @@ function capture(shot: Shot, pack: Pack, files: GameFiles, width: number, height
       }
       writeFileSync(resolve(out, `${shot.name}-sequence.png`), encodePng(width * 3, height * 2, strip));
     }
-    return { ...shot, width, height, seated: crew.filter(actor => ents.seat[actor] === e + 1).length, camera: first.camera, draws: first.draws, dropped: first.dropped, skipped: first.skipped,
+    return { ...shot, width, height, seated: crew.filter(actor => ents.seat[actor] === e + 1).length, camera: first.camera, draws: first.draws, rotorCards: first.rotorCards, dropped: first.dropped, skipped: first.skipped,
       damage: shot.moment === "damage" ? { engine: ents.vehicleEngineCondition[e], rotor: ents.vehicleRotorCondition[e] } : undefined };
   } finally { h.host.shutdown(); }
 }

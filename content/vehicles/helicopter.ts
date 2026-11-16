@@ -31,8 +31,8 @@ export const HELICOPTER_VEHICLE: RotorVehicleDefinition = {
   ],
   wheels: [],
   rotors: [
-    { bone: "rotor_main", at: ART.mainRotor.center, axis: ART.mainRotor.axis, radius: ART.mainRotor.radius, ratio: 1 },
-    { bone: "rotor_tail", at: ART.tailRotor.center, axis: ART.tailRotor.axis, radius: ART.tailRotor.radius, ratio: -5 },
+    { bone: "rotor_main", at: ART.mainRotor.center, axis: ART.mainRotor.axis, radius: ART.mainRotor.radius, ratio: 1, blur: { blades: 4, chord: .235 } },
+    { bone: "rotor_tail", at: ART.tailRotor.center, axis: ART.tailRotor.axis, radius: ART.tailRotor.radius, ratio: -5, blur: { blades: 2, chord: .14 } },
   ],
   actionTicks: 24, beltline: 1.35,
 };

@@ -33,6 +33,7 @@ import { anchorFrame, saddleSeat, seatFrame } from "../../../shared/anim/seat.ts
 import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { BONE_FLOATS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
 import { Layers, corpseWanted, layerWanted } from "./layers.ts";
+import { RotorBlur } from "./rotor-blur.ts";
 
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
 export const BODY_RADIUS = BODY_REACH;
@@ -152,6 +153,7 @@ const HELD_FIELDS = 10;
 const LAYERED_KEYS = 256;
 
 export class Characters {
+  readonly rotorBlur = new RotorBlur();
   readonly anim: HumanAnim;
   /** Bodies posed this frame. */
   posed = 0;
@@ -553,6 +555,10 @@ export class Characters {
           } else c.oriented.pos[b * 3 + 1]! -= droop;
         }
         writeBones(p.bones, first * BONE_FLOATS, c.oriented, rig.rest, null, x, y, z, 0, size);
+        if (!unseen && v.def.movement === "rotor") v.def.rotors.forEach((rotor, r) => {
+          const b = v.rotors[r]!;
+          if (b >= 0) this.rotorBlur.add(p, first + b, id * 4 + r, rotor, vehicle?.rotorRpm ?? 0, this.rotation, x, y, z, size);
+        });
       } else writeBones(p.bones, first * BONE_FLOATS, rig.solved, rig.rest, null, x, y, z, yaw, size);
       this.posed++;
       if (!unseen) this.keepHead(c, id, p.camX + x, p.camY + y, p.camZ + z, yaw, size);
@@ -701,6 +707,7 @@ export class Characters {
 
   begin(): void {
     this.count = 0;
+    this.rotorBlur.begin();
     this.posed = 0;
     for (const at of this.palms.values()) this.palmPool.push(at);
     this.palms.clear();

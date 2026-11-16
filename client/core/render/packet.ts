@@ -80,6 +80,8 @@ export const DETAIL = { middle: 0, along: 3, across: 6, floor: 9, colourA: 10, c
 /** The flags of a particle, in its misc word's second byte over its shape (FLAT_SHAPES): lit, and lit as a puff of something. */
 export const DETAIL_LIT = 8;
 export const DETAIL_PUFF = 16;
+/** Analytic rotor coverage instead of an atlas picture. Grey stores blade coverage at the tip; no extra asset or draw. */
+export const DETAIL_ROTOR = 32;
 /** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
 export const DRAW_RANGED = 4096;
 export const ATLAS_REGION = 4;
