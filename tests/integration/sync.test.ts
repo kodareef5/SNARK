@@ -89,3 +89,25 @@ test("a client with the map's statics is sent only the slots that differ from th
   expect(bytes[0]! - was).toBeLessThanOrEqual(16);
   expect(ada.world!.structs.chunks[chunk]!.hp[hurt]).toBe(t.hp[hurt]!);
 });
+
+test("a client whose statics come after its hello is sent rows until it says it has them, and from the answer on only what differs", () => {
+  const h = new Harness({}, 1, 30);
+  const structs = h.world.structs;
+  const cleo = h.join("cleo", {}, { statics: false });
+  let bytes = 0;
+  const end = h.ends[0]!;
+  const on = end.onMessage!;
+  end.onMessage = (ch, d) => {
+    if (d[0] === S_CHUNK) bytes += d.length;
+    on(ch, d);
+  };
+  for (let n = 0; n < 100 && bytes === 0; n++) h.run(5);
+  const c = h.client(cleo)!;
+  expect([bytes > 0, c.statics]).toEqual([true, false]);
+  cleo.staticsArrived(h.world.statics!);
+  h.run(1000);
+  const whole = c.subscribed.filter((k) => structs.chunks[k] && c.known[k] === structs.chunks[k]!.version);
+  expect([c.statics, whole.length > 4, differ(structs, cleo.world!.structs, whole)]).toEqual([true, true, 0]);
+  // The far city is made of them as well.
+  expect(cleo.world!.city!.statics.count).toBeGreaterThan(100);
+});

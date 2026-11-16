@@ -7,10 +7,9 @@ import { parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { WorkerPort } from "../assets/port.ts";
 import { DEFAULT_TIER, tierOf } from "../core/assets/tiers.ts";
-import { CityStatics } from "../../shared/world/city.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
-import { fetchBytes, fetchJson, fetchText } from "../core/fetched.ts";
+import { fetchBytes, fetchJson, fetchMap, fetchText, readStatics } from "../core/fetched.ts";
 import { loadIdentity } from "../core/identity.ts";
 import { SelfcheckSurfaces } from "../core/selfcheck-surfaces.ts";
 import { SelfcheckProgress, selfcheckReport } from "../core/selfcheck-report.ts";
@@ -43,20 +42,22 @@ const arrival = arrivalOf(location.hash);
 
 async function boot(): Promise<void> {
   // Every file the first frame needs is asked for before anything else runs, and index.html asked for most of them already.
-  // The server names its map's file. It is fetched whole, since the renderer draws the ground from it.
-  const mapBytes = fetchJson(fetch, "map.json").then((named) => fetchBytes(fetch, (named as { file: string }).file));
+  // The server names its map's file. The renderer draws from its ground, which comes first; the far city from its statics,
+  // which come after, while the world is drawn.
+  const mapFile = fetchJson(fetch, "map.json").then((named) => fetchMap(fetch, (named as { file: string }).file));
   const [manifestText, skyBytes] = [fetchText(fetch, "assets/manifest.json"), fetchBytes(fetch, SKY_FILE)];
-  // The socket opens once the map is in, so its handshake runs while the map is read. The server waits 5 s for a hello,
-  // and a socket it gave up on is opened again.
+  // The socket opens once the map's ground is in, so its handshake runs while the map is read. The server waits 5 s for a
+  // hello, and a socket it gave up on is opened again.
   const sockets = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
-  const early = mapBytes.then(() => connect(`${sockets}/ws`), () => null);
+  const early = mapFile.then(() => connect(`${sockets}/ws`), () => null);
   const reg = compileContent(CORE_CONTENT).registry!;
   // The manifest says where every level of every mesh is. The boot pack is fetched whole, and the rest as it is wanted.
   const manifest = parseManifest(await manifestText);
   const port = new WorkerPort(manifest, "assets", tierOf(DEFAULT_TIER).diskBytes, params.get("assetnet"));
   const pack = parsePack(new Uint8Array(await fetchBytes(fetch, `assets/${manifest.files[manifest.boot]!.name}`)));
   // The file is named by its SHA-256, so its body is not hashed again.
-  const map = parseMap(new Uint8Array(await mapBytes), false), hf = mapHeightfield(map);
+  const { ground: first, rest } = await mapFile;
+  const map = parseMap(first, false), hf = mapHeightfield(map);
   giveSky(new Uint8Array(await skyBytes));
   const canvas = document.querySelector<HTMLCanvasElement>("#view")!;
   // The texture variant is the best this device takes, or the one ?texfmt= names if it takes that.
@@ -77,9 +78,8 @@ async function boot(): Promise<void> {
     ...(selfcheck || bench || device || params.has("quick") ? { look: defaultLook() } : {}),
     resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),
     nodes: (ground, content) => mapNodes(map, ground, content),
-    city: (content) => new CityStatics(map.dims, map.statics, content),
-    statics: map.statics,
   });
+  void readStatics(rest, map.dims, () => new Promise((go) => setTimeout(go))).then((statics) => session.staticsArrived(statics));
   const surfaces = selfcheck ? new SelfcheckSurfaces(manifest, port) : null;
   const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });
   session.prediction.enabled = selfcheck;
