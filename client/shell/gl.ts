@@ -34,7 +34,7 @@ interface Program {
 }
 
 /** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers end `last`. */
-const WHOLE_UV = [0, 0, 1, 1] as const;
+const WHOLE_UV = [0, 0, 1, 1];
 const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, center: 25, half: 26, offset: 27 } as const;
 
 interface MeshLod {
@@ -516,8 +516,7 @@ export class GlRenderer {
     this.uniform(prog, U.cutoff, cutout ? mat.cutoff : 0);
     if (last[U.uv] !== mesh) {
       last[U.uv] = mesh;
-      const uv = this.meshes[mesh]!.uv ?? WHOLE_UV;
-      gl.uniform4f(at[U.uv]!, uv[0], uv[1], uv[2], uv[3]);
+      gl.uniform4fv(at[U.uv]!, this.meshes[mesh]!.uv ?? WHOLE_UV);
     }
     if (level > 0) this.uniform(prog, U.level, level / LAYER_LEVELS);
     this.maps(mat, roles);

@@ -47,6 +47,9 @@ export interface Site {
 
 /** Cards a list page holds, and sounds a sound page. */
 export const PAGE = 60;
+/** The front page's cards of creatures and vehicles, and of maps, however many there are. */
+export const FRONT_CARDS = 8;
+export const FRONT_MAPS = 4;
 const TITLES: Record<Kind, string> = { creatures: "Creatures", items: "Items", vehicles: "Vehicles", characters: "Characters" };
 
 function groupBy<T>(list: readonly T[], key: (t: T) => string): Map<string, T[]> {
@@ -138,8 +141,8 @@ function views(site: Site) {
     const later = s.game ? "" : ' <i class="tag">Not in the game yet</i>';
     return `<li class="sound" ${data}><span>${esc(s.name)}${later}</span><span class="takes">${takes}</span></li>`;
   };
-  const maps = (): string =>
-    `<div class="cards">${join(site.atlases, (a) => {
+  const maps = (atlases: readonly Atlas[] = site.atlases): string =>
+    `<div class="cards">${join(atlases, (a) => {
       const size = `${num(a.metres / 1000, 1)} km across`;
       return `<a class="card map" href="${BASE}maps/${a.slug}/">${img(a.card, "")}<b>${esc(a.label)}</b><small>${size}</small></a>`;
     })}</div>`;
@@ -153,14 +156,15 @@ function views(site: Site) {
       ["music/", "Music", `${site.music.length} tracks`],
       ["commands/", "Commands", String(site.commands.length)],
     ];
-    // Every creature, and the first vehicle of each way of moving.
-    const vehicles = groupBy(site.entries.filter((e) => e.kind === "vehicles"), (e) => e.group);
-    const featured = [...site.entries.filter((e) => e.kind === "creatures"), ...[...vehicles.values()].map((g) => g[0]!)];
+    // The creatures and vehicles a player meets most on the maps, by spawn regions and by vehicles parked, as many as the page holds.
+    const met = (e: Entry): number => site.atlases.reduce((n, a) => n + (a.creatures.find((l) => l.of === e.id)?.count ?? 0) + (a.vehicles.find((v) => v.kind === e.id)?.count ?? 0), 0);
+    const featured = site.entries.filter((e) => e.kind === "creatures" || e.kind === "vehicles").sort((a, b) => met(b) - met(a) || a.label.localeCompare(b.label)).slice(0, FRONT_CARDS);
+    const more = site.atlases.length > FRONT_MAPS ? `<p class="note"><a href="${BASE}maps/">Every map</a></p>` : "";
     return `${heading("Wiki", "", "Creatures, items, maps and the console, read from the game itself.")}
 <form class="find big" action="${BASE}search/" role="search"><input name="q" aria-label="Search the wiki" placeholder="Raptor, wooden foundation, pistol…"></form>
 <nav class="shelves">${join(shelves, ([path, label, n]) => `<a href="${BASE}${path}"><b>${label}</b><small>${n}</small></a>`)}</nav>
 <section><h2>Creatures and vehicles</h2>${cards(featured)}</section>
-<section><h2>Maps</h2>${maps()}</section>`;
+<section><h2>Maps</h2>${maps(site.atlases.slice(0, FRONT_MAPS))}${more}</section>`;
   };
 
   const entry = (e: Entry): string => {

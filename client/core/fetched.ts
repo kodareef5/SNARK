@@ -2,6 +2,10 @@
 // a parser's complaint about the answer.
 
 import type { MapDims } from "../../shared/coords.ts";
+import type { Def } from "../../shared/content/defs.ts";
+import { compileContent, type Registry } from "../../shared/content/registry.ts";
+import type { Manifest } from "../../shared/pack/manifest.ts";
+import { soundFault, type ManifestSound } from "../../shared/pack/sound.ts";
 import { groundBytes, staticsSteps, type MapStatics } from "../../shared/world/mapfile.ts";
 
 export interface Answer {
@@ -78,6 +82,21 @@ export async function readStatics(rest: Promise<Uint8Array>, dims: MapDims, paus
   let step = steps.next();
   for (; !step.done; step = steps.next()) await pause();
   return step.value;
+}
+
+/** The content, a file of its own beside the script, compiled. */
+export async function fetchContent(get: Get, url: string): Promise<Registry> {
+  const { registry, errors } = compileContent((await fetchJson(get, url)) as Def[]);
+  if (!registry) throw new Error(`${url}: ${errors.join("; ")}`);
+  return registry;
+}
+
+/** The sounds' rows into the manifest once they come, where it names a file of them that holds what its files can. */
+export function fetchSounds(get: Get, manifest: Manifest): void {
+  if (!manifest.soundRows) return;
+  void fetchJson(get, `assets/${manifest.soundRows}`)
+    .then((rows) => void (soundFault(rows as ManifestSound[], manifest.files) === "" && (manifest.sounds = rows as ManifestSound[])))
+    .catch(() => {});
 }
 
 export async function fetchJson(get: Get, url: string): Promise<unknown> {

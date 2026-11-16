@@ -14,7 +14,7 @@
 import type { ClipSet } from "../anim/clip.ts";
 import { checkIcons, type ManifestIcons } from "./icons.ts";
 import { CLIP_ROOT_BYTES, MOST_SECTIONS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, decodeClips, decodeUtf8, lodVertices, type Pack, type PackClip, type PackMaterial } from "./pack.ts";
-import type { ManifestSound } from "./sound.ts";
+import { soundFault, type ManifestSound } from "./sound.ts";
 import { unfilterPart } from "./stored.ts";
 import { ASTC_BLOCKS, STEP0_SIZE, TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_ROLES, blockOf, stepBytes, stepOf, topIn, type TextureFormat, type TextureRole } from "./texture.ts";
 
@@ -305,6 +305,8 @@ export function parseManifest(text: string): Manifest {
   if (m.textures) m.textures = (m.textures as (ManifestTexture | null)[]).map((x) => x ?? { ...STAND_IN_TEXTURE, in: {} });
   for (const t of m.textures ?? []) if (t.id !== "") checkTexture(m, t);
   for (const mat of m.materials ?? []) checkMaterial(m, mat);
+  const sounds = m.sounds ? soundFault(m.sounds, m.files) : "";
+  if (sounds !== "") throw new Error(`manifest: ${sounds}`);
   for (const e of m.clips ?? []) {
     const file = m.files[e.file];
     const bytes = Array.isArray(e.clips) ? e.clips.reduce((sum, c) => sum + (c.frames > 0 && c.bones > 0 ? c.frames * (clipRotBytes(c.bones) + CLIP_ROOT_BYTES) : NaN), 0) : NaN;

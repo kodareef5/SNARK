@@ -1,17 +1,14 @@
 // Browser entry point. Each frame it asks the app what to draw, and hands the world to WebGL and the interface to the DOM binder.
 
 import { defaultLook } from "../../shared/anim/look.ts";
-import type { Def } from "../../shared/content/defs.ts";
-import { compileContent } from "../../shared/content/registry.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
-import { soundFault, type ManifestSound } from "../../shared/pack/sound.ts";
 import { WorkerPort } from "../assets/port.ts";
 import { WorkerCityMaker } from "../city/maker.ts";
 import { DEFAULT_TIER, tierOf } from "../core/assets/tiers.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
-import { fetchBytes, fetchJson, fetchMap, fetchText, readStatics } from "../core/fetched.ts";
+import { fetchBytes, fetchContent, fetchJson, fetchMap, fetchSounds, fetchText, readStatics } from "../core/fetched.ts";
 import { loadIdentity } from "../core/identity.ts";
 import { SelfcheckSurfaces } from "../core/selfcheck-surfaces.ts";
 import { SelfcheckProgress, selfcheckReport } from "../core/selfcheck-report.ts";
@@ -31,7 +28,6 @@ import { VehicleSelfcheck } from "../core/vehicle-selfcheck.ts";
 import { probeProgress } from "../core/diagnostics.ts";
 import { installSkin, SKIN_URL, skinPixels } from "../core/ui/skin.ts";
 
-/** The content, a file beside the script (tools/build-client.ts). */
 declare const __CONTENT_FILE__: string;
 const params = new URLSearchParams(location.search);
 const selfcheck = params.has("selfcheck");
@@ -51,18 +47,16 @@ async function boot(): Promise<void> {
   // The server names its map's file. The renderer draws from its ground, which comes first; the far city from its statics,
   // which come after, while the world is drawn.
   const mapFile = fetchJson(fetch, "map.json").then((named) => fetchMap(fetch, (named as { file: string }).file));
-  const manifestText = fetchText(fetch, "assets/manifest.json"), skyBytes = fetchBytes(fetch, SKY_FILE), content = fetchJson(fetch, __CONTENT_FILE__);
+  const manifestText = fetchText(fetch, "assets/manifest.json"), skyBytes = fetchBytes(fetch, SKY_FILE), content = fetchContent(fetch, __CONTENT_FILE__);
   // The socket opens once the map's ground is in, so its handshake runs while the map is read. The server waits 5 s for a
   // hello, and a socket it gave up on is opened again.
   const sockets = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
   const early = mapFile.then(() => connect(`${sockets}/ws`), () => null);
-  const compiled = compileContent((await content) as Def[]);
-  if (!compiled.registry) throw new Error(`content: ${compiled.errors.join("; ")}`);
-  const reg = compiled.registry;
-  // The manifest names every mesh and says where the pages are. The boot pack is fetched whole, and the rest as it is wanted.
+  const reg = await content;
+  // The manifest names every mesh and says where the pages are. The boot pack is fetched whole, and the rest as it is
+  // wanted. The sound library starts once the sounds' rows have come.
   const manifest = parseManifest(await manifestText);
-  // The sounds' rows come while the world does. The sound library starts once they have.
-  if (manifest.soundRows) void fetchJson(fetch, `assets/${manifest.soundRows}`).then((rows) => (soundFault(rows as ManifestSound[], manifest.files) === "" ? (manifest.sounds = rows as ManifestSound[]) : undefined)).catch(() => {});
+  fetchSounds(fetch, manifest);
   const port = new WorkerPort(manifest, "assets", tierOf(DEFAULT_TIER).diskBytes, params.get("assetnet"));
   const pack = parsePack(new Uint8Array(await fetchBytes(fetch, `assets/${manifest.files[manifest.boot]!.name}`)));
   // The file is named by its SHA-256, so its body is not hashed again.
