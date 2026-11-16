@@ -27,7 +27,7 @@ import type { ShotEnd } from "../occasions.ts";
 import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
-import { Characters, showMaterials, type BodyShadows, type CastFn, type VehicleRenderPose, type VehicleSeatPose } from "./characters.ts";
+import { Characters, seatScratch, showMaterials, type BodyShadows, type CastFn, type VehicleRenderPose, type VehicleSeatPose } from "./characters.ts";
 import { Clouds } from "./clouds.ts";
 import { Dropped } from "./dropped.ts";
 import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
@@ -423,6 +423,9 @@ export class Scene {
   readonly ghost = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, color: 0 };
   readonly characters: Characters;
   private readonly vehicleSeats: (VehicleSeatPose | undefined)[] = new Array(MAX_VIEW);
+  /** What vehicleSeats points into, a pose a slot, and the own body's seat. */
+  private readonly seatPoses: VehicleSeatPose[] = [];
+  private readonly ownSeat = seatScratch();
   /** Scratch for a remote vehicle's pose, which Characters keeps none of. */
   private readonly vehiclePose: VehicleRenderPose = { pitch: 0, roll: 0, steering: 0, wheelAngle: 0 };
   /** Small details: feathers knocked loose, dust thrown up. */
@@ -1272,7 +1275,7 @@ export class Scene {
         const v = this.viewed[j]!;
         if (ch.seat(remote!.kind[j]!, remote!.x[j]! - cam.x, remote!.y[j]! - cam.y, remote!.z[j]! - cam.z, remote!.yaw[j]!, ms, remote!.tick, at, own.attachment!.slot, vehicle, remote!.gear[j * GEAR_COUNT + GEAR_WORN]!, remote!.id[j]!, v >= 0 && this.bodyRigid[v] !== 0)) {
           // A passenger in a car is posed in the car's frame; on a creature, astride in its seat's.
-          if (vehicle) seat = ch.seatPose(remote!.kind[j]!, own.attachment!.slot, vehicle, at, remote!.yaw[j]!, own.yaw);
+          if (vehicle) seat = ch.seatPose(remote!.kind[j]!, own.attachment!.slot, vehicle, at, remote!.yaw[j]!, own.yaw, this.ownSeat);
           else saddled = true;
         }
       }
@@ -1341,7 +1344,7 @@ export class Scene {
       saddle = own.gear[GEAR_WORN]!;
       found = held ? ch.heldAt(remote.id[i]!, remote.kind[i]!, own.id, own.kind, x, y, z, own.yaw, own.state, at) : ch.seat(own.kind, x, y, z, own.yaw, own.state, own.tick, at, remote.seatSlot[i]!, own.vehicle, saddle, own.id);
       yaw = own.yaw;
-      if (found && !held && ch.vehicle(own.kind)) this.vehicleSeats[i] = ch.seatPose(own.kind, remote.seatSlot[i]!, own.vehicle!, at, yaw, remote.yaw[i]!);
+      if (found && !held && ch.vehicle(own.kind)) this.vehicleSeats[i] = ch.seatPose(own.kind, remote.seatSlot[i]!, own.vehicle!, at, yaw, remote.yaw[i]!, (this.seatPoses[i] ??= seatScratch()));
     } else {
       const j = mount;
       const x = remote.x[j]! - p.camX, y = remote.y[j]! - p.camY, z = remote.z[j]! - p.camZ;
@@ -1353,7 +1356,7 @@ export class Scene {
       const v = this.viewed[j]!;
       found = held ? ch.heldAt(remote.id[i]!, remote.kind[i]!, remote.id[j]!, remote.kind[j]!, x, y, z, remote.yaw[j]!, ms, at) : ch.seat(remote.kind[j]!, x, y, z, remote.yaw[j]!, ms, remote.tick, at, remote.seatSlot[i]!, vehicle, saddle, remote.id[j]!, v >= 0 && this.bodyRigid[v] !== 0);
       yaw = remote.yaw[j]!;
-      if (found && !held && vehicle) this.vehicleSeats[i] = ch.seatPose(remote.kind[j]!, remote.seatSlot[i]!, vehicle, at, yaw, remote.yaw[i]!);
+      if (found && !held && vehicle) this.vehicleSeats[i] = ch.seatPose(remote.kind[j]!, remote.seatSlot[i]!, vehicle, at, yaw, remote.yaw[i]!, (this.seatPoses[i] ??= seatScratch()));
     }
     place[k * 4] = found ? at[0]! : remote.x[i]! - p.camX;
     place[k * 4 + 1] = found ? at[1]! : remote.y[i]! - p.camY;

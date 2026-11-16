@@ -669,7 +669,7 @@ export function deviceScenarios(reg: Registry, rigs: readonly PackRig[], clips: 
   const anim = new HumanAnim(clips);
   const built = buildRigs(rigs, clips);
   const creatures = creatureAnims(reg, (d) => built.get(d.mesh)).filter((a) => a !== null);
-  return [["sim", () => simHash(reg)], ["pose", () => poseHash(anim)], ["snap", () => snapHash(reg)], ["creature", () => creatureHash(creatures)], ["tuned", () => tunedHash(reg)], ["hull", () => hullHash(reg)], ["node", () => nodeHash(reg)]];
+  return [["sim", () => simHash(reg)], ["pose", () => poseHash(anim)], ["snap", () => snapHash(reg)], ["creature", () => creatureHash(creatures, reg)], ["tuned", () => tunedHash(reg)], ["hull", () => hullHash(reg)], ["node", () => nodeHash(reg)]];
 }
 
 /** What a step shows. The pieces are the server's to build; the rest is added on the page. */

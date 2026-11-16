@@ -60,7 +60,7 @@ export function sourceAnims(): CreatureAnim[] {
 }
 
 export function creatureHash(): string {
-  return scenarios.creatureHash(sourceAnims());
+  return scenarios.creatureHash(sourceAnims(), core());
 }
 
 export function hullHash(): string {
