@@ -32,7 +32,11 @@ export const DRAW_SKINNED = 2;
 export const DRAW_PLAIN = 4;
 /** The viewer's own body. Drawn last, over everything, with `nearViewProj`, whose near plane is close enough for arms and hands. */
 export const DRAW_NEAR = 8;
-/** A body the frame had no bones left to pose: every vertex follows the instance's first bone, so it is drawn rigid in its rest pose. */
+/**
+ * Bodies the frame had no bones left to pose, standing in a pose for what each is doing (characters.ts standIn): the x of
+ * `drawOffset` is that pose's first bone, whose rows take a vertex about the body's origin. Each vertex follows its bone
+ * there, and then the instance's first bone, which places the body.
+ */
 export const DRAW_ONE_BONE = 16;
 /**
  * Drawn with a material: `drawMaterial` names it, and `drawFirstIndex` and `drawIndexCount` the run of the level's
@@ -121,11 +125,16 @@ export const ATLAS_ROWS = 128;
 export const BONE_FLOATS = 12;
 /** Bones per row of the bone texture. A texel is four floats, so a bone is three texels. */
 export const BONES_PER_ROW = 256;
-export const BONE_ROWS = 256;
-/** 65,536, which is as many as an instance's sixteen bits can name the first of. A graphics tier poses fewer (assets/tiers.ts). */
-export const MAX_BONES = BONES_PER_ROW * BONE_ROWS;
-/** Bones the bodies leave for loose things: arrows where they landed and shots in the air. */
-export const LOOSE_BONES = 256;
+/**
+ * 65,536, which is as many as an instance's sixteen bits can name the first of. A graphics tier has fewer (assets/tiers.ts),
+ * and its texture as many rows as those take (boneRows).
+ */
+export const MAX_BONES = BONES_PER_ROW * 256;
+
+/** The rows of the bone texture a tier with `bones` bones has. */
+export function boneRows(bones: number): number {
+  return Math.ceil(Math.min(bones, MAX_BONES) / BONES_PER_ROW);
+}
 /** Skinned instances a frame may carry. Every body is several meshes. */
 export const MAX_SKINNED = MAX_VIEW * 10;
 /** Sun shadow cascades a tier may have, and shadow casters a frame may carry, in a list apart from its draws. */

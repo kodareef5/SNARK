@@ -326,13 +326,14 @@ test("a mirrored texture island lights the same as its twin", () => {
 
 test("the bent tube has no crack, and with every weight on one bone it is drawn as with one bone a vertex", () => {
   const rig = buildRig(TUBE_RIG, { clips: [], index: new Map(), hash: 0 })!;
-  const draw = (pack: Pack, bend: number, flags = 0, level = 0): Stage => {
+  const draw = (pack: Pack, bend: number, flags = 0, level = 0, stood = 0): Stage => {
     const stage = new Stage(pack, W, H);
     [stage.cam.x, stage.cam.y, stage.cam.z, stage.cam.yaw, stage.cam.pitch] = [2, 1.3, 0.5, -Math.PI / 2, -0.05];
     stage.begin();
     stage.textures(`${TUBE}/`, tubePictures());
     const bone = stage.pose(rig, { x: 0, y: 0, z: 0 }, (rot) => quatAxis(rot, 4, 1, 0, 0, bend));
-    stage.add(TUBE, level, { x: 0, y: 0, z: 0, bone, regions: [8, 9, 6, 5], flags });
+    const standIn = stage.pose(rig, { x: stage.cam.x, y: stage.cam.y, z: stage.cam.z }, (rot) => quatAxis(rot, 4, 1, 0, 0, stood));
+    stage.add(TUBE, level, { x: 0, y: 0, z: 0, bone, regions: [8, 9, 6, 5], flags, standIn });
     stage.render();
     return stage;
   };
@@ -396,8 +397,10 @@ test("the bent tube has no crack, and with every weight on one bone it is drawn 
   expect([hard.color, hard.depth, hard.pickBone]).toEqual([one.color, one.depth, one.pickBone]);
   expect(apart(smooth.color, hard.color)).toBeGreaterThan(50);
 
-  // A body the frame had no bones for is drawn in its rest pose on its first bone, however it is bent.
+  // A body the frame had no bones for is drawn on its first bone in the pose its draw stands it in, however its own are bent.
   expect(apart(draw(whole, Math.PI / 3, DRAW_ONE_BONE).raster.color, draw(whole, 0).raster.color)).toBeLessThanOrEqual(1);
+  // Stood bent, each vertex goes by its own bone alone, as where all its weight is on one.
+  expect(apart(draw(whole, 0, DRAW_ONE_BONE, 0, Math.PI / 3).raster.color, hard.color)).toBeLessThanOrEqual(1);
 });
 
 test("a far, shrunk normal-mapped surface does not sparkle more than a near one, because its roughness was raised", () => {
