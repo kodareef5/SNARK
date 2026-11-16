@@ -458,10 +458,11 @@ function shareZones(nodes: readonly NodeLayer[]): readonly NodeLayer[] {
     }
     picture[i] = code;
   }
-  const keys = [...codes.keys()];
+  const each = zoned.map(() => new Uint8Array(codes.size));
+  for (const [k, c] of codes) for (let at = zoned.length - 1, v = k; at >= 0; at--, v = Math.floor(v / 256)) each[at]![c] = v % 256;
   return nodes.map((l) => {
     const at = zoned.indexOf(l as NodeZoned);
-    return at < 0 ? l : { ...(l as NodeZoned), zone: picture, codes: Uint8Array.from(keys, (k) => Math.floor(k / 256 ** (zoned.length - 1 - at)) % 256) };
+    return at < 0 ? l : { ...(l as NodeZoned), zone: picture, codes: each[at]! };
   });
 }
 
