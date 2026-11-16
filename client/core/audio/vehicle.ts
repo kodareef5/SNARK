@@ -6,7 +6,7 @@ const unit = (n: number): number => Number.isFinite(n) ? Math.max(0, Math.min(1,
 
 export function vehicleSoundTargets(v: Readonly<VehicleTelemetry>): VehicleSoundTargets {
   const rpm = Number.isFinite(v.rpm) ? Math.max(0, Math.min(16000, v.rpm)) : 0;
-  const running = v.active && !v.rotor && v.fuel > 0 && rpm > 0;
+  const running = v.active && !v.rotor && !v.boat && v.fuel > 0 && rpm > 0;
   const load = unit(v.load), tire = v.active && v.grounded ? unit(v.slip) : 0;
   return { firing: Math.max(20, rpm / 30), engine: running ? .22 + load * .2 : 0, intake: running ? .012 + load * .065 : 0, filter: 380 + rpm * .17 + load * 600, tire: tire * tire * .14, tireHz: 650 + tire * 430 };
 }
@@ -20,7 +20,7 @@ export class VehicleSoundState {
 
   update(v: Readonly<VehicleTelemetry>, enabled: boolean, running: boolean): (VehicleSoundTargets & { shift: boolean }) | null {
     this.report.running = running;
-    if (!this.report.unlocked || !enabled || !v.active || v.rotor || !running) { this.mute(); return null; }
+    if (!this.report.unlocked || !enabled || !v.active || v.rotor || v.boat || !running) { this.mute(); return null; }
     const shift = this.previousGear > 0 && v.gear > 0 && v.gear !== this.previousGear && v.load > 0;
     this.previousGear = v.gear;
     this.report.gear = v.gear; this.report.rpm = Math.round(v.rpm);

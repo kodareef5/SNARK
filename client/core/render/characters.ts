@@ -71,12 +71,15 @@ interface VehicleRig {
   rotors: Int16Array;
   doors: Int16Array;
   steer: number;
+  outboard: number;
+  propeller: number;
 }
 
 export interface VehicleRenderPose {
   pitch: number; roll: number; steering: number; wheelAngle: number;
   qx?: number; qy?: number; qz?: number; qw?: number;
   rotorRpm?: number; rotorPhase?: number; engineCondition?: number; rotorCondition?: number;
+  engineRpm?: number; engineOn?: boolean; hullCondition?: number; flooding?: number;
   groundPitch?: number; groundRoll?: number; rideOffset?: number; grounded?: boolean;
   /** Each door's open share, 8 bits a door (shared/sim/vehicle-body.ts vehicleDoor). */
   doors?: number;
@@ -525,6 +528,11 @@ export class Characters {
           const b = v.rotors[r]!;
           if (b >= 0) quatAxis(rig.a.rot, b * 4, rotor.axis[0], rotor.axis[1], rotor.axis[2], (vehicle?.rotorPhase ?? 0) * rotor.ratio);
         });
+        if (v.def.movement === "boat") {
+          const motor = v.def.outboard, prop = v.def.propeller;
+          if (motor && v.outboard >= 0) quatAxis(rig.a.rot, v.outboard * 4, motor.axis[0], motor.axis[1], motor.axis[2], steering * motor.ratio);
+          if (prop && v.propeller >= 0) quatAxis(rig.a.rot, v.propeller * 4, prop.axis[0], prop.axis[1], prop.axis[2], (vehicle?.wheelAngle ?? 0) * prop.ratio);
+        }
         quatAxis(this.wheel, 0, 1, 0, 0, vehicle?.wheelAngle ?? 0);
         v.def.wheels.forEach((wheel, w) => {
           const b = v.wheels[w]!;
@@ -545,7 +553,7 @@ export class Characters {
         // Wheel contact follows the support plane while the sprung body and its occupants roll, pitch and heave.
         vehicleRotation({ x, y, z, yaw, pitch: vehicle?.groundPitch ?? vehicle?.pitch ?? 0, roll: vehicle?.groundRoll ?? vehicle?.roll ?? 0 }, this.groundRotation);
         // In the air a wheel hangs a quarter of its travel below the body.
-        const droop = v.def.movement === "rotor" ? 0 : (v.def.spec.suspensionTravel ?? 0.18) / 4;
+        const droop = v.def.movement !== "rotor" && v.def.movement !== "boat" ? (v.def.spec.suspensionTravel ?? 0.18) / 4 : 0;
         for (const b of v.wheels) {
           if (b < 0) continue;
           if (vehicle?.grounded !== false) {
@@ -1041,7 +1049,7 @@ function writeRigid(out: Float32Array, at: number, x: number, y: number, z: numb
 function vehicleRig(def: VehicleDefinition | null, names: readonly string[]): VehicleRig | null {
   if (!def) return null;
   const bone = (name: string): number => names.indexOf(name);
-  return { def, rotors: Int16Array.from(def.movement === "rotor" ? def.rotors : [], (r) => bone(r.bone)), wheels: Int16Array.from(def.wheels, (w) => bone(w.bone)), doors: Int16Array.from(def.doors, (d) => bone(d.bone)), steer: def.steeringWheel ? bone(def.steeringWheel.bone) : -1 };
+  return { def, outboard: def.movement === "boat" && def.outboard ? bone(def.outboard.bone) : -1, propeller: def.movement === "boat" && def.propeller ? bone(def.propeller.bone) : -1, rotors: Int16Array.from(def.movement === "rotor" ? def.rotors : [], (r) => bone(r.bone)), wheels: Int16Array.from(def.wheels, (w) => bone(w.bone)), doors: Int16Array.from(def.doors, (d) => bone(d.bone)), steer: def.steeringWheel ? bone(def.steeringWheel.bone) : -1 };
 }
 
 function orientSolved(source: Solved, rotation: Float64Array, out: Solved): void {

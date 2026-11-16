@@ -11,7 +11,7 @@ import { sortU32 } from "../../shared/sort.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../../shared/sim/items.ts";
 import { CHOOSE_DIED, CMD_MAP_ZOOM, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { MF_OUT, STAMINA_UNITS, type Body } from "../../shared/sim/character.ts";
-import type { HelicopterSpec, VehicleSpec } from "../../shared/sim/vehicle.ts";
+import type { BoatSpec, HelicopterSpec, VehicleSpec } from "../../shared/sim/vehicle.ts";
 import { DEFAULT_DRIVETRAIN, drivetrainShifting } from "../../shared/sim/vehicle-drivetrain.ts";
 import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
@@ -179,6 +179,10 @@ export interface Heads {
 export class VehicleTelemetry {
   active = false;
   rotor = false;
+  boat = false;
+  flooding = 0;
+  hullCondition = 1;
+  precision = false;
   direct = false;
   recovery = false;
   altitude = 0;
@@ -205,7 +209,7 @@ export class VehicleTelemetry {
   stop(): void { this.active = false; this.id = -1; this.rpm = this.load = this.slip = 0; }
 
   update(id: number, body: Body, throttle: number, handbrake: boolean, spec: VehicleSpec, _dt: number): void {
-    this.active = true; this.id = id; this.rotor = false;
+    this.active = true; this.id = id; this.rotor = false; this.boat = false;
     this.forward = body.vx * Math.sin(body.vehicleYaw) + body.vz * Math.cos(body.vehicleYaw);
     this.lateral = body.vx * Math.cos(body.vehicleYaw) - body.vz * Math.sin(body.vehicleYaw);
     this.speed = Math.hypot(body.vx, body.vz);
@@ -222,8 +226,19 @@ export class VehicleTelemetry {
     this.load = this.fuel > 0 ? Math.abs(this.throttle) * (this.brake > 0 ? .25 : 1) * shift : 0;
     this.slip = body.grounded && this.speed > 2 ? Math.max(0, Math.min(1, (Math.abs(this.lateral) - .4) / 4 + (handbrake ? this.speed / 28 : 0))) : 0;
   }
+  updateBoat(id: number, body: Body, spec: BoatSpec, precision: boolean): void {
+    this.active = true; this.boat = true; this.rotor = false; this.id = id; this.precision = precision;
+    this.speed = Math.hypot(body.vx, body.vz); this.vertical = body.vy;
+    this.fuel = Math.max(0, Math.min(1, body.fuel / spec.fuelCapacity));
+    this.gear = body.vehicleGear; this.rpm = body.vehicleRpm; this.redline = spec.maxRpm;
+    this.engineOn = body.vehicleEngineOn; this.engineCondition = body.vehicleEngineCondition;
+    this.hullCondition = body.vehicleHullCondition; this.flooding = body.vehicleFlooding;
+    this.grounded = body.grounded; this.handbrake = false; this.brake = this.slip = 0;
+    this.load = this.engineOn ? Math.max(0, (this.rpm - spec.idleRpm) / (spec.maxRpm - spec.idleRpm)) : 0;
+    this.throttle = this.load * this.gear;
+  }
   updateRotor(id: number, body: Body, spec: HelicopterSpec, altitude: number, direct: boolean, recovery: boolean): void {
-    this.active = true; this.rotor = true; this.id = id; this.direct = direct; this.recovery = recovery;
+    this.active = true; this.rotor = true; this.boat = false; this.id = id; this.direct = direct; this.recovery = recovery;
     this.speed = Math.hypot(body.vx, body.vz); this.vertical = body.vy; this.altitude = Math.max(0, altitude);
     this.grounded = body.grounded; this.fuel = Math.max(0, Math.min(1, body.fuel / spec.fuelCapacity));
     this.rpm = body.vehicleRotorRpm; this.redline = spec.rotorRpm; this.collective = body.vehicleCollective;

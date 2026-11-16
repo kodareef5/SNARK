@@ -144,7 +144,7 @@ test("camera target damping is frame-rate independent and snaps safely across a 
 
 test("driving instruments read mechanical gear/RPM, including neutral, and never invent a speed-based shift", () => {
   const v = new VehicleTelemetry(), b = new Body(), definition = reg.vehicle[compact]!;
-  if (definition.movement === 'rotor') throw new Error('compact telemetry requires its wheeled controller');
+  if (definition.movement === 'rotor' || definition.movement === 'boat') throw new Error('compact telemetry requires its wheeled controller');
   const spec = definition.spec;
   b.vehicle = b.grounded = true; b.fuel = spec.fuelCapacity;
   b.vehicleGear = 2; b.vehicleRpm = 3700; b.vz = 35;

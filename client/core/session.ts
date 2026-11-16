@@ -89,7 +89,7 @@ import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/tr
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { BTN_JUMP, Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { quatNlerp } from "../../shared/math/quat.ts";
-import { interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
+import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
 import { MAX_VEHICLE_DOORS } from "../../shared/sim/vehicle.ts";
 import { PredictionTrace } from "./diagnostics.ts";
 import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, vehicleDoor, withVehicleDoor, unpackVehicleGear, unpackVehicleRpm, vehicleShifting } from "../../shared/sim/vehicle-body.ts";
@@ -189,6 +189,9 @@ export class RemoteSample {
   readonly vehicleRpm = new Float32Array(MAX_VIEW);
   readonly vehicleShifting = new Uint8Array(MAX_VIEW);
   readonly vehicleRotorcraft = new Uint8Array(MAX_VIEW);
+  readonly vehicleBoat = new Uint8Array(MAX_VIEW);
+  readonly vehicleHullCondition = new Float32Array(MAX_VIEW);
+  readonly vehicleFlooding = new Float32Array(MAX_VIEW);
   readonly vehicleRotorRpm = new Float32Array(MAX_VIEW);
   readonly vehicleRotorPhase = new Float32Array(MAX_VIEW);
   readonly vehicleFuel = new Float32Array(MAX_VIEW);
@@ -724,6 +727,9 @@ export class ClientSession {
       out.vehicleGrounded[n] = vehicleRideGrounded(ride) ? 1 : 0;
       out.vehicleDoors[n] = b.vehicleDoors[j]!;
       out.vehicleRotorcraft[n] = this.registry.vehicle[b.kind[j]!]?.movement === "rotor" ? 1 : 0;
+      out.vehicleBoat[n] = this.registry.vehicle[b.kind[j]!]?.movement === "boat" ? 1 : 0;
+      out.vehicleHullCondition[n] = unpackBoatHullCondition(b.vehicleWater[j]!);
+      out.vehicleFlooding[n] = unpackBoatFlooding(b.vehicleWater[j]!);
       const rotor = b.vehicleRotor[j]!, systems = b.vehicleSystems[j]!;
       out.vehicleRotorRpm[n] = unpackRotorRpm(rotor); out.vehicleRotorPhase[n] = unpackRotorPhase(rotor);
       out.vehicleFuel[n] = unpackVehicleFuel(systems); out.vehicleEngineCondition[n] = unpackEngineCondition(systems);
@@ -734,10 +740,12 @@ export class ClientSession {
       out.vehicleRpm[n] = unpackVehicleRpm(drive);
       out.vehicleShifting[n] = vehicleShifting(drive) ? 1 : 0;
       if (a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j]) {
-        if (out.vehicleRotorcraft[n]) {
+        if (out.vehicleRotorcraft[n] || out.vehicleBoat[n]) {
           unpackVehicleQuaternion(a!.vehicleAttitudeA[i]!, a!.vehicleAttitudeB[i]!, this.rotorQuatA);
           this.rotorQuatB.set(this.rotorQuat);
           quatNlerp(this.rotorQuat, 0, this.rotorQuatA, 0, this.rotorQuatB, 0, k);
+        }
+        if (out.vehicleRotorcraft[n]) {
           const oldRotor = a!.vehicleRotor[i]!, rpm = unpackRotorRpm(oldRotor);
           out.vehicleRotorPhase[n] = interpolateRotorPhase(unpackRotorPhase(oldRotor), unpackRotorPhase(rotor), rpm, out.vehicleRotorRpm[n]!, (b.tick - a!.tick) / TICK_RATE, k);
           out.vehicleRotorRpm[n] = rpm + (out.vehicleRotorRpm[n]! - rpm) * k;
@@ -764,7 +772,9 @@ export class ClientSession {
         const oldWheel = unpackVehicleWheel(a!.vehicleWheel[i]!);
         let wheelTurn = out.wheelAngle[n]! - oldWheel;
         wheelTurn -= Math.floor((wheelTurn + TAU / 2) / TAU) * TAU;
-        out.wheelAngle[n] = oldWheel + wheelTurn * k;
+        out.wheelAngle[n] = out.vehicleBoat[n]
+          ? interpolateRotorPhase(oldWheel, out.wheelAngle[n]!, unpackVehicleRpm(oldDrive) * unpackVehicleGear(oldDrive), unpackVehicleRpm(drive) * unpackVehicleGear(drive), (b.tick - a!.tick) / TICK_RATE, k)
+          : oldWheel + wheelTurn * k;
         out.x[n] = dequantX(a!.qx[i]! + (b.qx[j]! - a!.qx[i]!) * k);
         out.y[n] = dequantY(a!.qy[i]! + (b.qy[j]! - a!.qy[i]!) * k);
         out.z[n] = dequantX(a!.qz[i]! + (b.qz[j]! - a!.qz[i]!) * k);

@@ -30,7 +30,7 @@ import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
 import { Feedback } from "./feedback.ts";
 import { Shots } from "./shots.ts";
 import { Falling } from "./rubble.ts";
-import { BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY } from "../../shared/sim/character.ts";
+import { BTN_SPRINT, BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY } from "../../shared/sim/character.ts";
 import { FISTS, HOLD_CARRY } from "../../shared/sim/weapon.ts";
 import { KICK_UNIT, scopeFitted, shotCone, sway, swayOut } from "../../shared/sim/aim.ts";
 import { AnimState, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
@@ -412,12 +412,12 @@ export class App {
   private refreshCockpitLook(): void {
     const s = this.session, r = this.remote;
     let host = -1, frame: VehicleFrame | undefined;
-    if (s.sessionState === SESSION_ALIVE && s.driving >= 0 && this.reg.vehicle[s.bodyKind]?.movement === "rotor") {
+    if (s.sessionState === SESSION_ALIVE && s.driving >= 0 && (this.reg.vehicle[s.bodyKind]?.movement === "rotor" || this.reg.vehicle[s.bodyKind]?.movement === "boat")) {
       host = s.driving;
       const b = s.own;
       frame = { x: b.x, y: b.y, z: b.z, yaw: b.vehicleYaw, pitch: b.vehiclePitch, roll: b.vehicleRoll, qx: b.vehicleQx, qy: b.vehicleQy, qz: b.vehicleQz, qw: b.vehicleQw };
     } else if (s.sessionState === SESSION_ALIVE && s.own.seat > 0) {
-      for (let i = 0; i < r.count; i++) if (r.id[i] === s.own.seat - 1 && r.gen[i] === s.own.seatGen && r.vehicleRotorcraft[i]) {
+      for (let i = 0; i < r.count; i++) if (r.id[i] === s.own.seat - 1 && r.gen[i] === s.own.seatGen && (r.vehicleRotorcraft[i] || r.vehicleBoat[i])) {
         host = r.id[i]!;
         frame = { ...remoteVehiclePose(r, i), x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, yaw: r.yaw[i]! };
         break;
@@ -890,35 +890,36 @@ export class App {
     const by = session.ownPrev.y + (session.own.y - session.ownPrev.y) * a + session.smoothY;
     const bz = session.ownPrev.z + (session.own.z - session.ownPrev.z) * a + session.smoothZ;
     const car = this.reg.vehicle[session.bodyKind];
-    const rotor = car?.movement === "rotor";
-    const vehiclePose = car ? predictedVehiclePose(session.ownPrev, session.own, a, rotor) : undefined;
+    const rotor = car?.movement === "rotor", boat = car?.movement === "boat", fullAttitude = rotor || boat;
+    const vehiclePose = car ? predictedVehiclePose(session.ownPrev, session.own, a, rotor, boat) : undefined;
     if (alive && car && session.driving >= 0) {
       if (car.movement === "rotor") {
         const altitude = castWorld(world, bx, by + .05, bz, 0, -1, 0, 2000) !== HIT_NONE ? Math.max(0, rayHit.t - .05) : by - world.hf.heightAt(bx, bz);
         this.vehicleTelemetry.updateRotor(session.driving, session.own, car.spec, altitude, c.directFlight, this.steer && (c.buttons & BTN_PRONE) !== 0);
-      } else this.vehicleTelemetry.update(session.driving, session.own, this.steer ? c.moveZ : 0, this.steer && (c.buttons & BTN_JUMP) !== 0, car.spec, dt);
+      } else if (car.movement === "boat") this.vehicleTelemetry.updateBoat(session.driving, session.own, car.spec, this.steer && (c.buttons & BTN_SPRINT) !== 0);
+      else this.vehicleTelemetry.update(session.driving, session.own, this.steer ? c.moveZ : 0, this.steer && (c.buttons & BTN_JUMP) !== 0, car.spec, dt);
       hud.vehicle = this.vehicleTelemetry;
     } else this.vehicleTelemetry.stop();
     const carYaw = session.ownPrev.vehicleYaw + Math.atan2(Math.sin(session.own.vehicleYaw - session.ownPrev.vehicleYaw), Math.cos(session.own.vehicleYaw - session.ownPrev.vehicleYaw)) * a;
     const passenger = alive && session.driving < 0 && session.own.seatSlot !== 0 && session.own.seat > 0;
     // A passenger's chase camera is third person, so it obeys the same server rule.
-    let passengerRotor = false;
-    let cockpitFrame: VehicleFrame | undefined = rotor ? { ...vehiclePose!, x: bx, y: by, z: bz, yaw: carYaw } : undefined;
+    let passengerFullAttitude = false;
+    let cockpitFrame: VehicleFrame | undefined = fullAttitude ? { ...vehiclePose!, x: bx, y: by, z: bz, yaw: carYaw } : undefined;
     if (passenger) for (let i = 0; i < this.remote.count; i++) {
       const r = this.remote;
       if (r.id[i] !== session.own.seat - 1 || r.gen[i] !== session.own.seatGen) continue;
-      passengerRotor = r.vehicleRotorcraft[i] !== 0;
-      if (passengerRotor) cockpitFrame = { ...remoteVehiclePose(r, i), x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, yaw: r.yaw[i]! };
+      passengerFullAttitude = r.vehicleRotorcraft[i] !== 0 || r.vehicleBoat[i] !== 0;
+      if (passengerFullAttitude) cockpitFrame = { ...remoteVehiclePose(r, i), x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, yaw: r.yaw[i]! };
     }
-    const helicopterHost = rotor && session.driving >= 0 ? session.driving : passengerRotor ? session.own.seat - 1 : -1;
+    const helicopterHost = fullAttitude && session.driving >= 0 ? session.driving : passengerFullAttitude ? session.own.seat - 1 : -1;
     this.cockpitLook(helicopterHost, cockpitFrame);
-    const chase = passenger && session.thirdPerson && (!passengerRotor || this.view.thirdPerson);
+    const chase = passenger && session.thirdPerson && (!passengerFullAttitude || this.view.thirdPerson);
     // A server rule can forbid third person. A rider still sees its mount from behind.
     if (!session.thirdPerson) this.view.thirdPerson = false;
     // A session without a living body looks from the eye.
     const third = this.view.thirdPerson;
     if (!alive) this.view.thirdPerson = false;
-    else if (session.driving >= 0 && !rotor) this.view.thirdPerson = true;
+    else if (session.driving >= 0 && !fullAttitude) this.view.thirdPerson = true;
     // The view turns with the kick and, through a scope, with the sway, as a shot does (shared/sim/aim.ts), so the middle of
     // the view is where the next shot is pointed. The look the input sends stays the player's own.
     const gun = alive && session.weaponsAllowed ? (this.reg.weapon[session.own.held] ?? null) : null;
@@ -937,11 +938,11 @@ export class App {
       lookPitch = lookPitch > PI / 2 ? PI / 2 : lookPitch;
     }
     // The chase camera looks at two thirds of the vehicle's height from a boom one and a half times its length.
-    if (alive && car && rotor) {
+    if (alive && car && fullAttitude) {
       const frame = { ...vehiclePose!, x: bx, y: by, z: bz, yaw: carYaw };
       if (third) {
-        vehiclePoint(frame, [0, 1.65, -.35], this.seatSpot);
-        this.view.placeVehicle(cam, world, this.seatSpot[0]!, this.seatSpot[1]!, this.seatSpot[2]!, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt, false, { vx: session.own.vx, vy: session.own.vy, vz: session.own.vz, id: session.driving, boom: Math.max(10, car.spec.halfLength * 2) });
+        vehiclePoint(frame, [0, boat ? 1.1 : 1.65, -.35], this.seatSpot);
+        this.view.placeVehicle(cam, world, this.seatSpot[0]!, this.seatSpot[1]!, this.seatSpot[2]!, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt, false, { vx: session.own.vx, vy: session.own.vy, vz: session.own.vz, id: session.driving, boom: Math.max(boat ? 8 : 10, car.spec.halfLength * 2) });
       } else {
         const slot = car.seats.findIndex(seat => seat.driver) + 1, ch = this.scene.characters;
         ch.seat(session.bodyKind, bx, by, bz, carYaw, this.body.state, session.tickClock, this.seatSpot, slot, vehiclePose);
@@ -958,7 +959,7 @@ export class App {
       this.view.placeVehicle(cam, world, bx, by + view.up, bz, lookYaw, lookPitch, lookYaw, Math.hypot(o.vx, o.vy, o.vz), dt, false, { vx: o.vx, vy: o.vy, vz: o.vz, id: session.driving, boom: view.boom });
     } else if (passenger) {
       let px = bx, py = by + eye, pz = bz, heading = c.yaw, boom: number | undefined;
-      if (!chase && passengerRotor && cockpitFrame) {
+      if (!chase && passengerFullAttitude && cockpitFrame) {
         const host = this.remote.id.subarray(0, this.remote.count).indexOf(session.own.seat - 1);
         const anchor = this.reg.vehicle[this.remote.kind[host] ?? 0]?.seats[session.own.seatSlot - 1]?.anchor;
         if (anchor) {
@@ -975,13 +976,13 @@ export class App {
         if (chase) {
           const view = vehicle ? null : this.mountView(r.kind[i]!, r.id[i]!);
           px = r.x[i]!; py = r.y[i]! + (view?.up ?? 1); pz = r.z[i]!;
-          boom = vehicle ? Math.max(6, (this.reg.vehicle[r.kind[i]!]!.spec.halfLength) * (passengerRotor ? 2 : 3)) : view?.boom;
+          boom = vehicle ? Math.max(6, (this.reg.vehicle[r.kind[i]!]!.spec.halfLength) * (passengerFullAttitude ? 2 : 3)) : view?.boom;
         } else if (vehicle) {
           const pose = remoteVehiclePose(r, i);
           if (ch.seat(r.kind[i]!, r.x[i]!, r.y[i]!, r.z[i]!, heading, this.body.state, r.tick, this.seatSpot, session.own.seatSlot, pose)) {
             const seat = ch.seatPose(r.kind[i]!, session.own.seatSlot, pose, this.seatSpot, heading)!;
-            const found = passengerRotor ? ch.seatedEye(session.ownKind, session.ownLook, seat, this.seatSpot) : ch.seatedOrigin(session.ownKind, session.ownLook, seat, this.seatSpot);
-            if (found) { px = this.seatSpot[0]!; py = this.seatSpot[1]! + (passengerRotor ? 0 : eye); pz = this.seatSpot[2]!; }
+            const found = passengerFullAttitude ? ch.seatedEye(session.ownKind, session.ownLook, seat, this.seatSpot) : ch.seatedOrigin(session.ownKind, session.ownLook, seat, this.seatSpot);
+            if (found) { px = this.seatSpot[0]!; py = this.seatSpot[1]! + (passengerFullAttitude ? 0 : eye); pz = this.seatSpot[2]!; }
           }
         } else {
           // On a saddle, the eye is over the seat's origin as the server has it, posed as its creature is drawn.
@@ -995,7 +996,7 @@ export class App {
         break;
       }
       if (chase) this.view.placeVehicle(cam, world, px, py, pz, lookYaw, lookPitch, heading, 0, dt, false, boom === undefined ? undefined : { vx: 0, vy: 0, vz: 0, id: session.own.seat - 1, boom });
-      else if (passengerRotor && cockpitFrame) this.view.placeCockpit(cam, px, py, pz, cockpitFrame, this.cockpit.yaw, this.cockpit.pitch);
+      else if (passengerFullAttitude && cockpitFrame) this.view.placeCockpit(cam, px, py, pz, cockpitFrame, this.cockpit.yaw, this.cockpit.pitch);
       else this.view.place(cam, world, px, py, pz, lookYaw, lookPitch, dt);
     } else this.view.place(cam, world, bx, by + eye, bz, lookYaw, lookPitch, dt);
     this.view.thirdPerson = third;
@@ -1032,7 +1033,7 @@ export class App {
     body.id = handleIndex(session.ownHandle);
     body.generation = handleGen(session.ownHandle);
     body.vehicle = undefined;
-    body.cockpitActor = rotor && !third ? handleIndex(session.ownHandle) : undefined;
+    body.cockpitActor = fullAttitude && !third ? handleIndex(session.ownHandle) : undefined;
     body.attachment = passenger ? { host: session.own.seat - 1, slot: session.own.seatSlot, generation: session.own.seatGen } : undefined;
     body.look = session.ownLook;
     const inv = session.inventory;

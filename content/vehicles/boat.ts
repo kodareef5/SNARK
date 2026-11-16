@@ -17,7 +17,7 @@ export const BOAT_VEHICLE: BoatVehicleDefinition = {
   ],
   doors: [], wheels: [],
   steeringWheel: { bone: "steering", axis: ART.helm.axis, ratio: ART.helm.turn / BOAT.maxSteer },
-  outboard: { bone: "outboard", axis: [0, 1, 0], ratio: 1 },
+  outboard: { bone: "outboard", axis: [0, 1, 0], ratio: -1 },
   propeller: { bone: "propeller", axis: ART.propeller.axis, ratio: 1 },
   actionTicks: 24, beltline: ART.gunwale.height,
 };

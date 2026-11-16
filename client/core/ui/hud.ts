@@ -146,7 +146,7 @@ export function buildHud(f: UiFrame, m: HudModel): void {
     f.add(KEY_MARKER + shown++, K_PANEL, mapX + u * MINIMAP_SIZE - 2, mapY + v * MINIMAP_SIZE - 2, 4, 4, MARKER_STYLE[k.kind]).tint = MARKER_TINT[k.kind] ?? -1;
   }
   f.text(KEY_CLOCK, mapX, mapY + MINIMAP_SIZE + 4, MINIMAP_SIZE, S_LABEL, m.clock);
-  if (m.vehicle?.active && !m.vehicle.rotor) {
+  if (m.vehicle?.active && !m.vehicle.rotor && !m.vehicle.boat) {
     const v = m.vehicle, width = 212, x = W - MARGIN - width, y = mapY + MINIMAP_SIZE + 28;
     f.add(KEY_VEHICLE, K_PANEL, x, y, width, 104, S_FRAME).alpha = .9;
     f.text(KEY_VEHICLE + 1, x + 10, y + 7, 132, S_TITLE, `${Math.round(v.speed * 3.6).toString().padStart(3, "0")} km/h`);
@@ -156,6 +156,21 @@ export function buildHud(f: UiFrame, m: HudModel): void {
     f.text(KEY_VEHICLE + 5, x + 118, y + 42, 84, S_LABEL, `Fuel ${Math.round(v.fuel * 100)}%`);
     f.text(KEY_VEHICLE + 6, x + 10, y + 63, width - 20, S_LABEL, v.handbrake ? "HANDBRAKE" : v.brake > 0 ? "BRAKING" : "W/S drive | A/D steer");
     f.text(KEY_VEHICLE + 7, x + 10, y + 82, width - 20, S_LABEL, "Space brake | E exit");
+  }
+
+  if (m.vehicle?.active && m.vehicle.boat) {
+    const v = m.vehicle, width = 254, x = W - MARGIN - width, y = mapY + MINIMAP_SIZE + 28;
+    f.add(KEY_VEHICLE, K_PANEL, x, y, width, 190, S_FRAME).alpha = .9;
+    f.text(KEY_VEHICLE + 1, x + 10, y + 7, 130, S_TITLE, `${Math.round(v.speed * 1.94384)} kn`);
+    f.text(KEY_VEHICLE + 2, x + 142, y + 10, 102, S_LABEL, v.gear < 0 ? "REVERSE" : v.gear > 0 ? "AHEAD" : "NEUTRAL");
+    f.add(KEY_VEHICLE + 3, K_BAR, x + 10, y + 33, width - 20, 4, S_STAMINA).value = Math.min(1, v.rpm / v.redline);
+    f.text(KEY_VEHICLE + 4, x + 10, y + 42, width - 20, S_LABEL, `${Math.round(v.rpm / 100) * 100} rpm | Fuel ${Math.round(v.fuel * 100)}%`);
+    f.text(KEY_VEHICLE + 5, x + 10, y + 61, width - 20, S_LABEL, v.flooding > .04 ? `TAKING WATER ${Math.round(v.flooding * 100)}% - repair hull` : `Hull ${Math.round(v.hullCondition * 100)}% | Engine ${Math.round(v.engineCondition * 100)}%`);
+    f.text(KEY_VEHICLE + 6, x + 10, y + 80, width - 20, S_LABEL, v.precision ? "PRECISION THROTTLE" : v.engineOn ? "ENGINE ON" : "W/S to start engine");
+    f.text(KEY_VEHICLE + 7, x + 10, y + 99, width - 20, S_LABEL, "W/S ahead/reverse | A/D steer");
+    f.text(KEY_VEHICLE + 8, x + 10, y + 122, width - 20, S_LABEL, "Space neutral | Shift precision");
+    f.text(KEY_VEHICLE + 9, x + 10, y + 144, width - 20, S_LABEL, "V helm/chase | Mouse look");
+    f.text(KEY_VEHICLE + 10, x + 10, y + 166, width - 20, S_LABEL, "E leave helm | I cargo/service");
   }
 
   if (m.vehicle?.active && m.vehicle.rotor) {
