@@ -168,6 +168,8 @@ export class StructureStore {
   count = 0;
   /** Bumped with any chunk's `shape`. */
   shapes = 0;
+  /** Entries the last query passed over for lying outside its height band. */
+  passed = 0;
   /** Called after any change to a chunk's table. `healthOnly` is true when nothing but a piece's health changed. */
   onChunkChanged: ((chunk: number, healthOnly: boolean) => void) | null = null;
 
@@ -505,6 +507,7 @@ export class StructureStore {
       this.queryId = 1;
     }
     const id = this.queryId;
+    let passed = 0;
     for (let cz = cz0; cz <= cz1; cz++) {
       for (let cx = cx0; cx <= cx1; cx++) {
         const cells = this.heads[(cz >> 4) * chunksX + (cx >> 4)];
@@ -514,7 +517,10 @@ export class StructureStore {
           const at = node - 1;
           node = this.nodeNext[at]!;
           // The grid has no height, so a tall building puts every storey in the same cells.
-          if (this.nodeTop[at]! < minY || this.nodeBottom[at]! > maxY) continue;
+          if (this.nodeTop[at]! < minY || this.nodeBottom[at]! > maxY) {
+            passed++;
+            continue;
+          }
           const ref = this.nodeRef[at]!;
           if (!single) {
             const t = this.chunks[Math.floor(ref / 65536)]!;
@@ -532,6 +538,7 @@ export class StructureStore {
         }
       }
     }
+    this.passed = passed;
     return n;
   }
 

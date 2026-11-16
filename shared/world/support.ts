@@ -130,7 +130,8 @@ export class Support {
     // A joined piece reaches into this one's own height: its socket is at most the two half heights away.
     const n = structs.query(mx - NEAR, mz - NEAR, mx + NEAR, mz + NEAR, this.near, (y - half) / STRUCT_UNITS - BAND, (y + half) / STRUCT_UNITS + BAND);
     const near = this.near.refs;
-    this.work += COST_NODE + n;
+    // An entry the query passes over for its height counts a quarter of one it returns, so that work stays a measure of time.
+    this.work += COST_NODE + n + (structs.passed >> 2);
     for (let i = 0; i < n; i++) {
       const ref = near[i]!;
       if (ref === self) continue;
