@@ -78,7 +78,12 @@ D['docking']={'shipLanding':[28.9,14,-24],'shoreLanding':[58,14,-24],'shoreAppro
               'pierConnection':{'xMinimum':58,'zMinimum':-25.6,'zMaximum':-22.4}}
 from layout_geometry import populate
 populate(D,prototype,instance,box,node)
+for p in D['prototypes']:
+ if p['category']=='facade':p['art'].setdefault('measurement','deckhouse')
 from layout_cells import finish as cells
 cells(D)
-OUT.write_text(json.dumps(clean(D),indent=2)+'\n')
+D=clean(D)
+from layout_collision_cells import finish as collision_cells
+collision_cells(D)
+OUT.write_text(json.dumps(D,indent=2)+'\n')
 print(f'Cruise layout: {len(D["prototypes"])} prototypes, {len(D["instances"])} instances, {len(D["routes"])} routes')

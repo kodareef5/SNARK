@@ -291,7 +291,9 @@ def populate(D,prototype,instance,box,node):
   for quadrant in range(4):
    angles=[quadrant*math.pi/2+i*math.pi/4 for i in range(3)]
    look.append({'points':[[0,y,shift] for y,_,_,shift in levels]+[[rx*math.cos(a),y,shift+rz*math.sin(a)] for y,rx,rz,shift in levels for a in angles]})
-  fp=p('funnel_band','funnel',[],hull,{'kind':'funnel_band','finish':finish,'profile':levels},color,{'hulls':look})
+  # The old outer AABB had inaccessible corners outside the curved funnel.
+  # Physical and far shapes now share the real bounded convex ellipse sectors.
+  fp=p('funnel_band','funnel',[],look,{'kind':'funnel_band','finish':finish,'profile':levels},color,{'hulls':look})
   for side in(-1,1):place(f'funnel_{side}_band{bi}',fp,[side*11,63+mid,-72],'17','funnel')
  pipeboxes=[box([x-.65,0,z-.65],[x+.65,4.2,z+.65]) for x in(-1.4,1.4) for z in(-1.0,2.5)]
  fp=p('funnel_pipes','funnel',pipeboxes,art={'kind':'mast','finish':'steel'},color=91)
