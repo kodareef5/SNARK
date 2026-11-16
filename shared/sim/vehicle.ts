@@ -157,8 +157,70 @@ export interface RotorVehicleDefinition extends VehicleDefinitionBase {
   readonly rotors: readonly VehicleRotor[];
 }
 
-export type VehicleDefinition = WheelVehicleDefinition | RotorVehicleDefinition;
+/** A weighted float volume. Its centre and the common buoyancyHeight describe its vertical extent. */
+export interface BoatFloat { readonly at: readonly [number, number, number]; readonly weight: number }
+
+/** Utility motorboat tuning in metres, kilograms, seconds and radians. Water geometry comes from the world. */
+export interface BoatSpec extends VehicleHullSpec {
+  readonly mass: number;
+  /** Maximum kilograms of water displaced by the intact dry hull, never an unlimited height servo. */
+  readonly displacement: number;
+  /** Nominal unladen keel depth, used by authored sites and checked against the float geometry. */
+  readonly draft: number;
+  readonly buoyancyHeight: number;
+  readonly buoyancyDamping: number;
+  readonly centerOfMass: readonly [number, number, number];
+  readonly buoyancyPoints: readonly BoatFloat[];
+  readonly hullBoxes: readonly VehicleCollisionBox[];
+  readonly propeller: { readonly at: readonly [number, number, number]; readonly radius: number };
+  readonly thrust: number;
+  readonly reverseThrust: number;
+  readonly idleRpm: number;
+  readonly maxRpm: number;
+  readonly rpmRate: number;
+  readonly shiftDelay: number;
+  readonly maxSteer: number;
+  readonly steerRate: number;
+  readonly planingSpeed: number;
+  /** Maximum fraction of unloaded weight supported by dynamic lift. */
+  readonly planingLift: number;
+  readonly planingTrim: number;
+  /** Hydrodynamic resistance coefficients; forward/side forces include linear and quadratic terms. */
+  readonly forwardDrag: number;
+  readonly sideDrag: number;
+  readonly angularDrag: number;
+  readonly gravity: number;
+}
+export interface BoatVehicleDefinition extends VehicleDefinitionBase {
+  readonly movement: "boat";
+  readonly spec: BoatSpec;
+  readonly propeller?: { readonly bone: string; readonly axis: readonly [number, number, number]; readonly ratio: number };
+}
+
+export type VehicleDefinition = WheelVehicleDefinition | RotorVehicleDefinition | BoatVehicleDefinition;
 export const isRotorVehicle = (d: VehicleDefinition): d is RotorVehicleDefinition => d.movement === "rotor";
+export const isBoatVehicle = (d: VehicleDefinition): d is BoatVehicleDefinition => d.movement === "boat";
+export const isWheelVehicle = (d: VehicleDefinition): d is WheelVehicleDefinition => d.movement === undefined || d.movement === "wheeled";
+
+export function validateBoatSpec(s: BoatSpec): void {
+  if (!s || typeof s !== "object" || Array.isArray(s)) throw new Error("invalid boat specification");
+  for (const key of ["halfWidth", "halfLength", "height", "mass", "maxForward", "maxReverse", "fuelCapacity", "fuelPerSecond", "displacement", "draft", "buoyancyHeight", "buoyancyDamping", "thrust", "reverseThrust", "idleRpm", "maxRpm", "rpmRate", "shiftDelay", "maxSteer", "steerRate", "planingSpeed", "planingLift", "planingTrim", "forwardDrag", "sideDrag", "angularDrag", "gravity"] as const) {
+    if (!Number.isFinite(s[key]) || s[key] <= 0) throw new Error(`missing or invalid boat ${key}`);
+  }
+  const vec = (v: unknown): v is readonly [number, number, number] => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
+  if (!Number.isFinite(s.clearance) || s.clearance < 0 || s.clearance >= s.height || s.mass < 50 || s.mass > 1000000 ||
+    s.displacement <= s.mass || s.displacement > s.mass * 8 || s.draft >= s.height || s.buoyancyHeight > s.height ||
+    s.maxRpm <= s.idleRpm || s.maxRpm > 20000 || s.maxSteer > .95 || s.maxForward > 70 || s.maxReverse > 15 ||
+    s.planingLift > .85 || s.planingTrim > .35 || !vec(s.centerOfMass) ||
+    !Array.isArray(s.buoyancyPoints) || s.buoyancyPoints.length < 4 || s.buoyancyPoints.length > 12 ||
+    !s.buoyancyPoints.every(v => vec(v.at) && Number.isFinite(v.weight) && v.weight > 0 && Math.abs(v.at[0]) <= s.halfWidth && Math.abs(v.at[2]) <= s.halfLength) ||
+    Math.abs(s.buoyancyPoints.reduce((sum, v) => sum + v.weight, 0) - 1) > 1e-6 ||
+    !Array.isArray(s.hullBoxes) || s.hullBoxes.length < 1 || s.hullBoxes.length > 16 ||
+    !s.hullBoxes.every(b => b && vec(b.at) && vec(b.half) && b.half.every(n => n > 0 && n <= 12)) ||
+    !s.propeller || !vec(s.propeller.at) || !Number.isFinite(s.propeller.radius) || s.propeller.radius <= 0 || s.propeller.radius > 1) throw new Error("inconsistent boat specification");
+  const submerged = s.buoyancyPoints.reduce((sum, v) => sum + v.weight * clamp((s.draft - v.at[1]) / s.buoyancyHeight + .5, 0, 1), 0);
+  if (Math.abs(submerged * s.displacement - s.mass) > s.mass * .025) throw new Error("boat draft disagrees with float volume");
+}
 
 export function validateHelicopterSpec(s: HelicopterSpec): void {
   if (!s || typeof s !== "object" || Array.isArray(s)) throw new Error("invalid helicopter specification");
@@ -182,6 +244,7 @@ export function validateHelicopterSpec(s: HelicopterSpec): void {
 /** Content checks beyond the spec's, so a definition that compiles always registers and draws. Throws on the first fault. */
 export function validateVehicleDefinition(d: VehicleDefinition): void {
   if (d.movement === "rotor") validateHelicopterSpec(d.spec);
+  else if (d.movement === "boat") validateBoatSpec(d.spec);
   else {
     if (d.movement !== undefined && d.movement !== "wheeled") throw new Error("invalid vehicle movement");
     validateVehicleSpec(d.spec);
@@ -203,6 +266,12 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
         !Number.isFinite(rotor.radius) || rotor.radius <= 0 || rotor.radius > 16 || !Number.isFinite(rotor.ratio) || rotor.ratio === 0 || Math.abs(rotor.ratio) > 16) throw new Error("invalid helicopter rotor");
       if (rotor.blur && (!Number.isInteger(rotor.blur.blades) || rotor.blur.blades < 2 || rotor.blur.blades > 8 || !Number.isFinite(rotor.blur.chord) || rotor.blur.chord <= 0 || rotor.blur.chord > rotor.radius)) throw new Error("invalid helicopter rotor blur");
     }
+  }
+  if (d.movement === "boat") {
+    if (d.wheels.length) throw new Error("invalid boat rig");
+    const p = d.propeller;
+    if (p && (!bone(p.bone) || !vec(p.axis) || Math.abs(p.axis[0] * p.axis[0] + p.axis[1] * p.axis[1] + p.axis[2] * p.axis[2] - 1) > 1e-6 ||
+      !Number.isFinite(p.ratio) || p.ratio === 0 || Math.abs(p.ratio) > 16)) throw new Error("invalid boat propeller rig");
   }
   if (d.wreck !== undefined && (typeof d.wreck !== "string" || !d.wreck.includes(":"))) throw new Error("invalid vehicle wreck");
   const s = d.steeringWheel;
