@@ -5,6 +5,16 @@ import { hullOf } from "../../shared/world/convex.ts";
 
 export type CruisePoint = readonly number[];
 export interface CruiseBounds { readonly min: CruisePoint; readonly max: CruisePoint }
+export interface CruiseFootprint {
+  readonly polygons: readonly (readonly CruisePoint[])[];
+  readonly holes: readonly (readonly CruisePoint[])[];
+}
+export interface CruiseRoom {
+  readonly id: string; readonly node: string; readonly label: string; readonly deck: string; readonly section: string;
+  readonly bounds: CruiseBounds; readonly entry: CruisePoint; readonly routeTarget: CruisePoint;
+  /** Actual occupied plan of an open neighborhood; absent means the entire rectangular room. */
+  readonly footprint?: CruiseFootprint;
+}
 export interface CruiseParts {
   readonly boxes?: readonly { readonly at: CruisePoint; readonly half: CruisePoint }[];
   readonly hulls?: readonly { readonly points: readonly CruisePoint[] }[];
@@ -44,13 +54,27 @@ export interface CruiseLayout {
   readonly decks: readonly CruiseDeck[]; readonly prototypes: readonly CruisePrototype[]; readonly instances: readonly CruiseInstance[];
   readonly graph: { readonly nodes: readonly CruiseNode[] }; readonly routes: readonly CruiseRoute[];
   readonly stairs: readonly CruiseStair[]; readonly doors: readonly CruiseDoor[];
-  readonly rooms: readonly { readonly id: string; readonly node: string; readonly label: string; readonly deck: string; readonly section: string; readonly bounds: CruiseBounds; readonly entry: CruisePoint; readonly routeTarget: CruisePoint }[];
+  readonly rooms: readonly CruiseRoom[];
   readonly portals: readonly { readonly id: string; readonly from: string; readonly to: string; readonly at: CruisePoint; readonly normal: CruisePoint; readonly clearWidth: number; readonly clearHeight: number; readonly kind: string }[];
   readonly docking: { readonly shipLanding: CruisePoint; readonly shoreLanding: CruisePoint; readonly shoreApproach: CruisePoint; readonly arrival: CruisePoint; readonly clearWidth: number; readonly deck: string; readonly seaDatum: number };
   readonly views: readonly { readonly id: string; readonly at: CruisePoint; readonly target: CruisePoint; readonly deck: string; readonly section: string; readonly mode: string }[];
 }
 
 export const cruiseTuple = (p: CruisePoint): readonly [number, number, number] => [p[0]!, p[1]!, p[2]!];
+/** -1 outside, 0 on the boundary, 1 inside. Authored plan points are X/Z pairs. */
+export function cruisePolygonSide(x: number, z: number, polygon: readonly CruisePoint[]): -1 | 0 | 1 {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[j]!, b = polygon[i]!, dx = b[0]! - a[0]!, dz = b[1]! - a[1]!;
+    const t = Math.max(0, Math.min(1, ((x - a[0]!) * dx + (z - a[1]!) * dz) / (dx * dx + dz * dz || 1)));
+    if (Math.hypot(x - a[0]! - t * dx, z - a[1]! - t * dz) <= .000001) return 0;
+    if ((a[1]! > z) !== (b[1]! > z) && x < a[0]! + (z - a[1]!) * dx / dz) inside = !inside;
+  }
+  return inside ? 1 : -1;
+}
+export function cruiseFootprintContains(footprint: CruiseFootprint, x: number, z: number): boolean {
+  return footprint.polygons.some(p => cruisePolygonSide(x, z, p) >= 0) && !footprint.holes.some(p => cruisePolygonSide(x, z, p) > 0);
+}
 export function cruiseParts(source: CruiseParts): ShapeLook {
   return { boxes: source.boxes?.map(b => ({ at: cruiseTuple(b.at), half: cruiseTuple(b.half) })),
     hulls: source.hulls?.map(h => ({ corners: h.points.map(cruiseTuple) })) };
@@ -167,6 +191,19 @@ export function cruiseLayoutFaults(layout: CruiseLayout): string[] {
     deck(r.deck, r.id); bounds(r.bounds, r.id); point(r.entry, `${r.id}.entry`); point(r.routeTarget, `${r.id}.routeTarget`);
     const target = nodes.get(r.node);
     if (!target || !visited.has(r.node) || target.deck !== r.deck || !same(target.at, r.routeTarget)) bad(r.id, "room target must match its reachable graph node on the same deck");
+    if (r.footprint) {
+      let valid = true;
+      if (!r.footprint.polygons.length) { bad(r.id, "occupied footprint needs at least one polygon"); valid = false; }
+      for (const polygon of [...r.footprint.polygons, ...r.footprint.holes]) {
+        if (polygon.length < 3 || !polygon.every(p => point(p, `${r.id}.footprint`, 2))) { bad(r.id, "footprint needs finite polygons of at least three points"); valid = false; continue; }
+        const area = polygon.reduce((sum, a, i) => { const b = polygon[(i + 1) % polygon.length]!; return sum + a[0]! * b[1]! - b[0]! * a[1]!; }, 0);
+        if (Math.abs(area) < .000001) { bad(r.id, "footprint polygon has no area"); valid = false; }
+        if (polygon.some(p => p[0]! < r.bounds.min[0]! - .002 || p[0]! > r.bounds.max[0]! + .002 || p[1]! < r.bounds.min[2]! - .002 || p[1]! > r.bounds.max[2]! + .002)) bad(r.id, "footprint exceeds its room bounds");
+      }
+      if (valid) for (const [name, p] of [["entry", r.entry], ["target", r.routeTarget]] as const) {
+        if (!cruiseFootprintContains(r.footprint, p[0]!, p[2]!)) bad(r.id, `room ${name} is outside its occupied footprint`);
+      }
+    }
   }
   for (const p of layout.portals) {
     if (![p.from, p.to].every(id => nodes.has(id) || rooms.has(id))) bad(p.id, "portal names an unknown room or graph node");

@@ -63,3 +63,18 @@ test("repeated native door prototypes require independently named placed closed 
   expect(cruiseLayoutFaults({ ...layout, doors: [doors[0]!, { ...doors[1]!, instanceId: doors[0]!.instanceId }] }).join("\n")).toContain("appears more than once");
   expect(cruiseLayoutFaults({ ...layout, instances: layout.instances.map(i => i.id === instances[0]!.id ? { ...i, prototype: open.id } : i) }).join("\n")).toContain("placed closed leaf");
 });
+
+test("advertised room footprints retain real occupied area and their reachable entry and target", () => {
+  const room = CRUISE_LAYOUT.rooms.find(r => r.id === "cabin_9_0")!, a = room.bounds.min, b = room.bounds.max;
+  const polygon = [[a[0], a[2]], [b[0], a[2]], [b[0], b[2]], [a[0], b[2]]];
+  const footprint = { polygons: [polygon], holes: [] };
+  const check = (value: typeof footprint) => cruiseLayoutFaults({ ...CRUISE_LAYOUT, rooms: [{ ...room, footprint: value }] }).join("\n");
+  expect(check(footprint)).toBe("");
+  expect(check({ polygons: [], holes: [] })).toContain("at least one polygon");
+  expect(check({ polygons: [[[NaN, 0], [1, 0], [1, 1]]], holes: [] })).toContain("finite polygons");
+  expect(check({ polygons: [[[0, 0], [1, 0], [2, 0]]], holes: [] })).toContain("no area");
+  expect(check({ polygons: [[[a[0] - 1, a[2]], ...polygon.slice(1)]], holes: [] })).toContain("exceeds its room bounds");
+  const p = room.routeTarget;
+  expect(cruiseLayoutFaults({ ...CRUISE_LAYOUT, rooms: [{ ...room, footprint: { ...footprint,
+    holes: [[[p[0] - .1, p[2] - .1], [p[0] + .1, p[2] - .1], [p[0] + .1, p[2] + .1], [p[0] - .1, p[2] + .1]]] } }] }).join("\n")).toContain("target is outside");
+});
