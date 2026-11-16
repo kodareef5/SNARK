@@ -499,7 +499,7 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
   expect(ada.tamed.at(-1)).toEqual({ handle: ents.handleOf(dolly), kind: id("parasaur"), level: 14, te: 87 });
 
   expect(ask(CMD_NAME, (w) => (w.u32(ents.handleOf(dolly)), w.string("Dolly")))).toBe(RESULT_OK);
-  expect([rec.name, ents.name[dolly]]).toEqual(["Dolly", "Dolly"]);
+  expect([rec.name, ents.names.get(dolly)]).toEqual(["Dolly", "Dolly"]);
   ada.tamed.length = 0;
 
   if (!ada.open) ask(CMD_OPEN, (w) => w.u32(dolly));
@@ -591,7 +591,7 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
   dolly = h.host.records.entOf.get(dollyPid)!;
   babyEnt = h.host.records.entOf.get(babyPid)!;
   const team = get(h.client(ada)!.pid).team;
-  expect([rec.name, rec.team, rec.saddle, rec.mating, rec.genome!.level, ents.name[dolly]]).toEqual(["Dolly", team, id("saddle_parasaur"), true, 14, "Dolly"]);
+  expect([rec.name, rec.team, rec.saddle, rec.mating, rec.genome!.level, ents.names.get(dolly)]).toEqual(["Dolly", team, id("saddle_parasaur"), true, 14, "Dolly"]);
   expect([get(matePid).team, get(matePid).mating]).toEqual([team, true]);
   expect([baby.name, baby.team, ents.team[babyEnt], ents.span[babyEnt], ents.grown[babyEnt]]).toEqual(["Pip", team, team, before.span, before.grown]);
   while (h.world.tick <= grownAt + 5) h.run(500);

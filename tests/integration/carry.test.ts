@@ -341,10 +341,10 @@ test("her hands are full: she strikes, swings, aims and loads nothing, takes not
   look(h, ada, e);
   expect(carry(h, ada, CARRY_PICK_UP, e)).toBe(RESULT_OK);
   const body = h.ent(ada);
-  expect([me.held, ents.gear[body]![GEAR_HELD], ents.hold[body]]).toEqual([-1, 0, HOLD_CARRY]);
+  expect([me.held, ents.gears.get(body)![GEAR_HELD], ents.hold[body]]).toEqual([-1, 0, HOLD_CARRY]);
   ada.command(CMD_SELECT, (w: BitWriter) => w.u8(0));
   h.run(300);
-  expect([me.held, ents.gear[body]![GEAR_HELD]]).toEqual([-1, 0]);
+  expect([me.held, ents.gears.get(body)![GEAR_HELD]]).toEqual([-1, 0]);
   // A client that sends the buttons anyway strikes with nothing.
   const victim = h.ent(sessions[1]!);
   h.say(sessions[1]!, `tp ${ents.x[body]!.toFixed(3)} ${(ents.z[body]! + 1.2).toFixed(3)}`);

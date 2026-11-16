@@ -33,7 +33,7 @@ test("a learned expensive assembly crafts at a fueled fabricator, deploys, servi
     let c = h.client(s)!, actor = h.host.records.byPid.get(c.pid)!;
     const kit = id("helicopter_assembly"), gas = id("gasoline"), cargo = id("stone"), ingot = id("ingot"), kind = id("fabricator");
     const found = [...h.host.records.byPid.values()].find(r => r.kind === id("helicopter_police"))!, foundPid = found.pid;
-    const foundEnt = h.host.records.entOf.get(foundPid)!, foundFuel = h.world.ents.fuel[foundEnt]!, foundEngine = h.world.ents.vehicleEngineCondition[foundEnt]!;
+    const foundEnt = h.host.records.entOf.get(foundPid)!, foundFuel = h.world.ents.fuel[h.world.ents.vrow[foundEnt]!]!, foundEngine = h.world.ents.vehicleEngineCondition[h.world.ents.vrow[foundEnt]!]!;
     const foundOrigin = new TextDecoder().decode(found.extra.get(VEHICLE_ORIGIN));
     h.world.ents.setPosition(c.ent, 58.8, 0, 64);
     const ref = h.world.structs.add(kind, 60, h.reg.halfY[kind]!, 64, 0, actor.team, h.reg.maxHp[kind]!), station = h.host.fixtures.ensure(ref);
@@ -56,15 +56,15 @@ test("a learned expensive assembly crafts at a fueled fabricator, deploys, servi
     expect(send(s, CMD_VEHICLE, w => { w.u8(VEHICLE_DEPLOY); w.u8(slot); w.f32(68); w.f32(0); w.f32(64); w.u16(0); })).toBe(RESULT_OK);
     const aircraft = [...h.host.records.byPid.values()].find(r => r.kind === id("helicopter"))!;
     const e = h.host.records.entOf.get(aircraft.pid)!, handle = makeHandle(e, h.world.ents.gen[e]!);
-    expect(aircraft.team).toBe(actor.team); expect(h.world.ents.fuel[e]).toBe(0); expect(h.host.items.inv(actor).total(kit)).toBe(0);
+    expect(aircraft.team).toBe(actor.team); expect(h.world.ents.fuel[h.world.ents.vrow[e]!]).toBe(0); expect(h.host.items.inv(actor).total(kit)).toBe(0);
     h.world.ents.setPosition(c.ent, 64, 0, 64); h.world.history.untrack(c.ent); h.world.history.track(c.ent);
     for (const [name, n] of [["gasoline", 2], ["ingot", 40], ["polymer", 10], ["electronics", 8], ["stone", 13]] as const) h.host.items.mint(actor, id(name), n);
     expect(send(s, CMD_VEHICLE, w => { w.u8(VEHICLE_REFUEL); w.u32(handle); w.u8(2); })).toBe(RESULT_OK);
-    expect(h.world.ents.fuel[e]).toBe(10);
+    expect(h.world.ents.fuel[h.world.ents.vrow[e]!]).toBe(10);
     h.host.urban.collision(e, 12, false); h.run(50);
     expect(h.host.survival.value(aircraft, V_HEALTH)).toBeLessThan(1400);
     expect(send(s, CMD_VEHICLE, w => { w.u8(VEHICLE_REPAIR); w.u32(handle); })).toBe(RESULT_OK);
-    expect(h.host.survival.value(aircraft, V_HEALTH)).toBe(1400); expect(h.world.ents.vehicleEngineCondition[e]).toBe(1);
+    expect(h.host.survival.value(aircraft, V_HEALTH)).toBe(1400); expect(h.world.ents.vehicleEngineCondition[h.world.ents.vrow[e]!]).toBe(1);
     expect(send(s, CMD_VEHICLE, w => { w.u8(VEHICLE_INSPECT); w.u32(handle); })).toBe(RESULT_OK);
     expect(move(BOX_SELF, s.inventory!.item.indexOf(cargo), BOX_OPEN, s.open!.inventory.free(), cargo, 13)).toBe(RESULT_OK);
     expect(h.host.items.inv(aircraft).total(cargo)).toBe(13);
@@ -84,7 +84,7 @@ test("a learned expensive assembly crafts at a fueled fabricator, deploys, servi
     expect(savedWreck).toBeDefined(); expect(h.host.items.inv(savedWreck.rec).total(cargo)).toBe(13);
     const savedFound = h.host.records.byPid.get(foundPid)!, savedFoundEnt = h.host.records.entOf.get(foundPid)!;
     expect(new TextDecoder().decode(savedFound.extra.get(VEHICLE_ORIGIN))).toBe(foundOrigin);
-    expect([h.world.ents.fuel[savedFoundEnt], h.world.ents.vehicleEngineCondition[savedFoundEnt]]).toEqual([foundFuel, foundEngine]);
+    expect([h.world.ents.fuel[h.world.ents.vrow[savedFoundEnt]!], h.world.ents.vehicleEngineCondition[h.world.ents.vrow[savedFoundEnt]!]]).toEqual([foundFuel, foundEngine]);
     expect([...h.host.records.byPid.values()].filter(r => r.kind === id("helicopter_police"))).toHaveLength(1);
     expect([...h.host.records.byPid.values()].filter(r => r.kind === id("helicopter"))).toHaveLength(0);
     expect(h.host.items.inv(actor).total(kit)).toBe(0);

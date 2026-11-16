@@ -62,7 +62,7 @@ high and are given only where no quiet run has the row, marked "busy".
 | A checkpoint between ticks; after the bench's bulk writes | 4.5 to 4.8; 29 ms | 10 | S; Q |
 | Live objects gained over 900 ticks | 2,834 | 5,000 | M |
 | Process memory, server and scripted clients | 374 to 385 MB | 2,048 | Q |
-| Entity store: a slot; full at 524,288 slots | 195 bytes; 97.5 MB | 200; 128 MB | M |
+| Entity store: a slot; full at 524,288 slots | 188 bytes; 94.0 MB | 200; 128 MB | M |
 
 The worst tick lands on a tick with no commit, a different one each run: the
 garbage collector, and noise at this sample size (Q).

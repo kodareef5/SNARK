@@ -100,8 +100,8 @@ function capture(shot: Shot, pack: Pack, files: GameFiles, width: number, height
     const centre = new Float64Array(3);
     const focus = () => {
       const wreck = shot.moment === "wreck" ? [...h.host.corpses.bodies.values()].find(b => b.kind === vessel.kind) : null;
-      const pose = wreck?.wreck ?? { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[e]!, pitch: 0, roll: 0,
-        qx: ents.vehicleQx[e]!, qy: ents.vehicleQy[e]!, qz: ents.vehicleQz[e]!, qw: ents.vehicleQw[e]! };
+      const pose = wreck?.wreck ?? { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[ents.vrow[e]!]!, pitch: 0, roll: 0,
+        qx: ents.vehicleQx[ents.vrow[e]!]!, qy: ents.vehicleQy[ents.vrow[e]!]!, qz: ents.vehicleQz[ents.vrow[e]!]!, qw: ents.vehicleQw[ents.vrow[e]!]! };
       vehiclePoint(pose, [0, .9, -.3], centre); return { x: centre[0]!, y: centre[1]!, z: centre[2]!, wreck };
     };
     follow = () => {
@@ -116,11 +116,11 @@ function capture(shot: Shot, pack: Pack, files: GameFiles, width: number, height
     if (shot.moment === "moving") { controls.moveZ = 127; run(5200); controls.moveX = -35; run(800); }
     if (shot.moment === "damage") {
       h.host.survival.hurt(vessel, 700, 0); run(100);
-      ents.vehicleEngineCondition[e] = .4; h.host.urban.changed(e); controls.moveZ = 20; run(1200);
+      ents.vehicleEngineCondition[ents.vrow[e]!] = .4; h.host.urban.changed(e); controls.moveZ = 20; run(1200);
     }
     if (shot.moment === "capsize" || shot.moment === "wreck") {
-      ents.setPosition(e, at.x, .65, at.z); ents.vehicleQx[e] = 1; ents.vehicleQy[e] = ents.vehicleQz[e] = ents.vehicleQw[e] = 0;
-      ents.vx[e] = ents.vy[e] = ents.vz[e] = 0; ents.vehicleFlooding[e] = shot.moment === "wreck" ? 1 : 0;
+      ents.setPosition(e, at.x, .65, at.z); ents.vehicleQx[ents.vrow[e]!] = 1; ents.vehicleQy[ents.vrow[e]!] = ents.vehicleQz[ents.vrow[e]!] = ents.vehicleQw[ents.vrow[e]!] = 0;
+      ents.vx[e] = ents.vy[e] = ents.vz[e] = 0; ents.vehicleFlooding[ents.vrow[e]!] = shot.moment === "wreck" ? 1 : 0;
       ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
       h.host.urban.changed(e); pilot.ownDirty = true;
       if (shot.moment === "wreck") { h.host.survival.hurt(vessel, 1e6, 0); run(4500); }
@@ -176,7 +176,7 @@ function capture(shot: Shot, pack: Pack, files: GameFiles, width: number, height
     if (first.dropped || first.skipped) throw new Error(`${shot.name}: native frame dropped ${first.dropped} or skipped ${first.skipped} draws`);
     writeFileSync(resolve(out, `${shot.name}.png`), encodePng(width, height, first.pixels));
     if (!nativeView) writeFileSync(resolve(out, `${shot.name}-scene.png`), encodePng(width, height, first.scenePixels));
-    const sequence = [], state = shot.moment === "wreck" ? { ...focus().wreck?.wreck } : { x: ents.x[e], y: ents.y[e], z: ents.z[e], speed: Math.hypot(ents.vx[e]!, ents.vz[e]!), engine: ents.vehicleEngineCondition[e], flooding: ents.vehicleFlooding[e] };
+    const sequence = [], state = shot.moment === "wreck" ? { ...focus().wreck?.wreck } : { x: ents.x[e], y: ents.y[e], z: ents.z[e], speed: Math.hypot(ents.vx[e]!, ents.vz[e]!), engine: ents.vehicleEngineCondition[ents.vrow[e]!], flooding: ents.vehicleFlooding[ents.vrow[e]!] };
     if (shot.moment === "moving") {
       const strip = new Uint8ClampedArray(width * 3 * height * 4);
       for (let i = 0; i < 3; i++) { if (i) run(100); const picture = i ? draw() : first;

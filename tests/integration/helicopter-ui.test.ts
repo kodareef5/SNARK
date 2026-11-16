@@ -42,9 +42,9 @@ test("aircraft inventory shows bounded costs and sends real service commands, wi
     for (const n of f.nodes.slice(0, f.count)) expect(n.y + n.h).toBeLessThanOrEqual(f.height);
     inventory.pointer(0, KEY_VEHICLE_TAB, 0, session); f.begin(9 / 16); inventory.build(f, session, h.reg, null);
     inventory.pointer(0, KEY_VEHICLE_REFUEL, 0, session); h.run(100);
-    expect(ents.fuel[e]).toBe(20); expect(h.host.items.inv(actor).total(h.reg.index.get("core:gasoline")!)).toBe(0);
+    expect(ents.fuel[ents.vrow[e]!]).toBe(20); expect(h.host.items.inv(actor).total(h.reg.index.get("core:gasoline")!)).toBe(0);
     inventory.pointer(0, KEY_VEHICLE_REPAIR, 0, session); h.run(100);
-    expect(ents.vehicleEngineCondition[e]).toBeCloseTo(.75, 2);
+    expect(ents.vehicleEngineCondition[ents.vrow[e]!]).toBeCloseTo(.75, 2);
     expect(h.host.items.audit()).toEqual([]);
   } finally { h.host.shutdown(); }
 });
