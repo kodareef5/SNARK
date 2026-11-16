@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { CRUISE_LAYOUT } from "../../content/landmarks/cruise.ts";
-import { cruiseTuple } from "../../content/landmarks/cruise-layout.ts";
+import { cruiseAccessRoutes, cruiseTuple } from "../../content/landmarks/cruise-layout.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import { SKIN } from "../../shared/world/collide.ts";
 import { Solid, boxSolid, hullTable, partSolid } from "../../shared/world/convex.ts";
@@ -71,30 +71,17 @@ function geometry(): Map<string, FitSolid[]> {
 
 export function cruiseFitSpots(): CruiseFitSpot[] {
   const spots: CruiseFitSpot[] = [];
-  const byNode = new Map<string, (typeof CRUISE_LAYOUT.routes)[number][]>();
-  for (const route of CRUISE_LAYOUT.routes) for (const id of [route.from, route.to]) { const list = byNode.get(id); if (list) list.push(route); else byNode.set(id, [route]); }
+  const byNode = cruiseAccessRoutes(CRUISE_LAYOUT.routes);
   for (const room of CRUISE_LAYOUT.rooms) {
     let nearest = Infinity, yaw = 0;
     // A room's explicit graph association selects its own approach, without an all-room connector search or X-facing assumption.
-    // A named room can share its entry node through a zero-length association (the Pearl). Follow only those aliases
-    // to the real walking legs, rather than inventing a doorway direction or searching unrelated ship corridors.
-    const queue = [room.node], seen = new Set<string>();
-    for (let n = 0; n < queue.length; n++) {
-      const node = queue[n]!; if (seen.has(node)) continue; seen.add(node);
-      for (const route of byNode.get(node) ?? []) {
-        let stationary = true;
-        for (let i = 1; i < route.anchors.length; i++) {
-          const a = route.anchors[i - 1]!, b = route.anchors[i]!, dx = b[0]! - a[0]!, dy = b[1]! - a[1]!, dz = b[2]! - a[2]!;
-          const length = dx * dx + dy * dy + dz * dz;
-          if (length < .000001) continue;
-          stationary = false;
-          if (dx * dx + dz * dz < .000001) continue;
-          const p = room.entry, t = Math.max(0, Math.min(1, ((p[0]! - a[0]!) * dx + (p[1]! - a[1]!) * dy + (p[2]! - a[2]!) * dz) / length));
-          const distance = Math.hypot(p[0]! - a[0]! - t * dx, p[1]! - a[1]! - t * dy, p[2]! - a[2]! - t * dz);
-          if (distance < nearest) { nearest = distance; yaw = Math.atan2(dx, dz); }
-        }
-        if (stationary) queue.push(route.from === node ? route.to : route.from);
-      }
+    for (const route of byNode.get(room.node) ?? []) for (let i = 1; i < route.anchors.length; i++) {
+      const a = route.anchors[i - 1]!, b = route.anchors[i]!, dx = b[0]! - a[0]!, dy = b[1]! - a[1]!, dz = b[2]! - a[2]!;
+      const length = dx * dx + dy * dy + dz * dz;
+      if (dx * dx + dz * dz < .000001) continue;
+      const p = room.entry, t = Math.max(0, Math.min(1, ((p[0]! - a[0]!) * dx + (p[1]! - a[1]!) * dy + (p[2]! - a[2]!) * dz) / length));
+      const distance = Math.hypot(p[0]! - a[0]! - t * dx, p[1]! - a[1]! - t * dy, p[2]! - a[2]! - t * dz);
+      if (distance < nearest) { nearest = distance; yaw = Math.atan2(dx, dz); }
     }
     if (!Number.isFinite(nearest)) throw new Error(`${room.id}: no authored approach to its entry`);
     spots.push({ id: `${room.id} jamb`, feet: room.entry, yaw }, { id: `${room.id} exit`, feet: room.entry, yaw: yaw + Math.PI });

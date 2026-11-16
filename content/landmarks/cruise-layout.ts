@@ -75,6 +75,28 @@ export function cruisePolygonSide(x: number, z: number, polygon: readonly Cruise
 export function cruiseFootprintContains(footprint: CruiseFootprint, x: number, z: number): boolean {
   return footprint.polygons.some(p => cruisePolygonSide(x, z, p) >= 0) && !footprint.holes.some(p => cruisePolygonSide(x, z, p) > 0);
 }
+/** Real access legs incident to each node, including named room aliases at the same physical point. */
+export function cruiseAccessRoutes(routes: readonly CruiseRoute[]): ReadonlyMap<string, readonly CruiseRoute[]> {
+  const adjacent = new Map<string, CruiseRoute[]>(), aliases = new Set<CruiseRoute>();
+  for (const route of routes) {
+    for (const id of [route.from, route.to]) { const list = adjacent.get(id); if (list) list.push(route); else adjacent.set(id, [route]); }
+    const first = route.anchors[0];
+    if (first && route.anchors.every(p => p.length === first.length && p.every((v, a) => Math.abs(v - first[a]!) < .000001))) aliases.add(route);
+  }
+  const result = new Map<string, readonly CruiseRoute[]>(), visited = new Set<string>();
+  for (const root of adjacent.keys()) {
+    if (visited.has(root)) continue;
+    const queue = [root], found = new Set<CruiseRoute>();
+    for (let i = 0; i < queue.length; i++) {
+      const id = queue[i]!; if (visited.has(id)) continue; visited.add(id);
+      for (const route of adjacent.get(id) ?? []) {
+        if (aliases.has(route)) queue.push(route.from === id ? route.to : route.from); else found.add(route);
+      }
+    }
+    const access = [...found]; for (const id of queue) result.set(id, access);
+  }
+  return result;
+}
 export function cruiseParts(source: CruiseParts): ShapeLook {
   return { boxes: source.boxes?.map(b => ({ at: cruiseTuple(b.at), half: cruiseTuple(b.half) })),
     hulls: source.hulls?.map(h => ({ corners: h.points.map(cruiseTuple) })) };
