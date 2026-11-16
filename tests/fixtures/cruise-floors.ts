@@ -1,4 +1,4 @@
-import { cruiseFootprintContains, cruisePolygonSide, type CruiseDeck, type CruiseFootprint, type CruiseRoom } from "../../content/landmarks/cruise-layout.ts";
+import { cruisePolygonSide, type CruiseDeck, type CruiseFootprint, type CruiseRoom } from "../../content/landmarks/cruise-layout.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { castWorld, HIT_STRUCTURE, rayHit } from "../../shared/world/ray.ts";
 
@@ -20,8 +20,8 @@ export function cruiseRoomFloors(world: CollisionWorld, rooms: readonly CruiseRo
     const footprint: CruiseFootprint = room.footprint ?? { polygons: [[[x0, z0], [x1, z0], [x1, z1], [x0, z1]]], holes: [] };
     const row: RoomFloorReport = { id: room.id, samples: 0, declaredVoids: 0, missing: 0, witnesses: [] };
     const sample = (x: number, z: number) => {
-      if (!cruiseFootprintContains(footprint, x, z)) return;
-      if (deck.voids.some(v => cruisePolygonSide(x, z, v.polygon) >= 0)) { row.declaredVoids++; return; }
+      if (!footprint.polygons.some(p => cruisePolygonSide(x, z, p) >= 0)) return;
+      if (footprint.holes.some(p => cruisePolygonSide(x, z, p) > 0) || deck.voids.some(v => cruisePolygonSide(x, z, v.polygon) >= 0)) { row.declaredVoids++; return; }
       row.samples++;
       const p = point([x, deck.floorY, z]), hit = castWorld(world, p[0]!, p[1]! + .04, p[2]!, 0, -1, 0, .08, true);
       if (hit !== HIT_STRUCTURE || rayHit.ny < .99) {

@@ -10,29 +10,51 @@ import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { RESULT_OBSTRUCTED } from "../../shared/net/protocol.ts";
 import { MODE_WALK } from "../../shared/sim/character.ts";
-import { capsuleFree, SETTLE_MARGIN, stepOnto } from "../../shared/world/collide.ts";
+import { capsuleBox, capsuleFree, SETTLE_MARGIN, SKIN, stepOnto } from "../../shared/world/collide.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
+import { Found, StructureStore } from "../../shared/world/structures.ts";
 import { CRUISE_COURSE, cruiseApproach, cruiseCourse, cruisePort, cruisePortApproach, cruiseWorldPoint } from "../../tools/cruise/course.ts";
 import { assertCruiseMap, assertCruisePlaced } from "../../tools/cruise/preflight.ts";
 import { cruiseNavigator, cruiseWalker } from "../fixtures/cruise.ts";
+import { cruiseRoomFloors } from "../fixtures/cruise-floors.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const compiled = compileContent(CORE_CONTENT);
 if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
 const reg = compiled.registry, course = cruiseCourse(), map = writeMap(course);
 
-test("every authored cruise route has physical support and headroom with public door leaves open", () => {
+test("every advertised occupied room footprint has native floor support beyond its entry and target", () => {
+  const h = new Harness({}, 79, 60, { dev: true, clips: NO_CLIPS, rigs: [], map }, reg);
+  try {
+    const kinds = new Set(CRUISE_LAYOUT.prototypes.filter(p => p.category === "floor" || p.art.kind === "floor").map(p => reg.index.get(p.id)!));
+    const floors = new StructureStore(course.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+    for (const t of h.world.structs.chunks) if (t) for (let slot = 0; slot < t.high; slot++) {
+      if (kinds.has(t.kind[slot]!)) floors.add(t.kind[slot]!, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, 0, 10000);
+    }
+    const report = cruiseRoomFloors({ hf: h.world.hf, structs: floors }, CRUISE_LAYOUT.rooms, CRUISE_LAYOUT.decks, cruiseWorldPoint);
+    expect(report.filter(r => r.missing || !r.samples)).toEqual([]);
+    expect(report.length).toBe(CRUISE_LAYOUT.rooms.length);
+  } finally { h.host.shutdown(); }
+});
+
+test("every authored cruise route retains its declared width, physical support and headroom with public door leaves open", () => {
   const h = new Harness({}, 72, 60, { dev: true, clips: NO_CLIPS, rigs: [], map }, reg);
   try {
     const refs = assertCruisePlaced(course, h.world.structs, reg), instances = CRUISE_LAYOUT.instances.filter(i => i.placed);
+    const byRef = new Map(Array.from(refs, (ref, row) => [ref, instances[row]?.id ?? `port static ${row}`]));
     // Geometric coverage includes every repeated path. Native E behavior is exercised separately below.
     for (const d of CRUISE_LAYOUT.doors) h.world.structs.swap(refs[instances.findIndex(i => i.id === d.instanceId)]!, reg.index.get(d.openPrototype)!);
     const faults: string[] = []; let samples = 0;
     for (const route of CRUISE_LAYOUT.routes) for (let segment = 1; segment < route.anchors.length; segment++) {
       const a = route.anchors[segment - 1]!, b = route.anchors[segment]!;
-      const steps = Math.max(1, Math.ceil(Math.hypot(b[0]! - a[0]!, b[2]! - a[2]!) / .25));
-      for (let n = 0; n <= steps; n++) {
-        const local = a.map((v, axis) => v + (b[axis]! - v) * n / steps), p = cruiseWorldPoint(local);
+      const dx = b[0]! - a[0]!, dz = b[2]! - a[2]!, length = Math.hypot(dx, dz);
+      const steps = Math.max(1, Math.ceil(length / .25)), edge = route.clearWidth / 2 - .4;
+      // Endpoint samples cover both perpendicular bands at authored turns; a public leaf is open in its actual collider state.
+      // Keep the full declared corridor width: no special tolerance or reduced body radius at jambs, guards or stair landings.
+      for (const offset of length > .000001 ? [0, -edge, edge] : [0]) for (let n = 0; n <= steps; n++) {
+        const local = a.map((v, axis) => v + (b[axis]! - v) * n / steps);
+        if (length) { local[0]! += dz / length * offset; local[2]! -= dx / length * offset; }
+        const p = cruiseWorldPoint(local);
         const supported = stepOnto(h.world, p[0], p[2], p[1] - .15, p[1] + .15, .4, 1.8, .71); samples++;
         // Native stepping deliberately rounds upward in seven halvings. Refine that same supported surface so an exact
         // 2.6 m lintel is not failed by the query's ~2 mm search rounding rather than actual geometry.
@@ -42,7 +64,13 @@ test("every authored cruise route has physical support and headroom with public 
           if (capsuleFree(h.world, p[0], middle - SETTLE_MARGIN, p[2], .4, 1.8)) y = middle; else low = middle;
         }
         if (!Number.isFinite(y) || !capsuleFree(h.world, p[0], y, p[2], .4, 2.6)) {
-          faults.push(`${route.id}[${segment}] has no clear supported floor at ${local}`); break;
+          const found = new Found(), feet = Number.isFinite(y) ? y : p[1] + .005, blockers: string[] = [];
+          const count = h.world.structs.query(p[0] - .4, p[2] - .4, p[0] + .4, p[2] + .4, found, feet, feet + 2.6);
+          for (let i = 0; i < count; i++) {
+            const ref = found.refs[i]!;
+            if (capsuleBox(h.world.structs, ref, p[0], feet, p[2], .4, 2.6, SKIN)) blockers.push(`${byRef.get(ref)} (${capsuleBox(h.world.structs, ref, p[0], feet, p[2], .4, 1.8, SKIN) ? "body" : "headroom"})`);
+          }
+          faults.push(`${route.id}[${segment}, lateral ${offset.toFixed(3)}] at ${local}: ${blockers.join(", ") || "unsupported floor"}`); break;
         }
       }
     }
@@ -90,7 +118,7 @@ test("a cruise at an arbitrary native yaw retains walkable stairs and independen
   } finally { h.host.shutdown(); }
 }, 15000);
 
-test("the connected cruise prototype walks every authored public deck, room and stair through normal controls", () => {
+test("the connected cruise walks every authored public deck, room and stair through normal controls", () => {
   // Visiting every route in both directions takes longer than one water ration. Isolate this exhaustive geometry test
   // with ordinary configured hunger/thirst rates only; collision, fall harm and the other user flows stay unmodified.
   const made = loadConfig({ gus: "[ServerSettings]\nPlayerCharacterFoodDrainMultiplier=0\nPlayerCharacterWaterDrainMultiplier=0" });
@@ -108,6 +136,21 @@ test("the connected cruise prototype walks every authored public deck, room and 
     expect(s.stats.corrections - before).toBe(0);
   } finally { h.host.shutdown(); }
 }, 20000);
+
+test("the Pearl connects promenade and cafe through its actual open shell and sloping stair", () => {
+  const h = new Harness({}, 78, 60, { dev: true, clips: NO_CLIPS, rigs: [], map }, reg);
+  try {
+    const refs = assertCruisePlaced(course, h.world.structs, reg), s = h.join("Pearl visitor"); h.run(900);
+    const before = s.stats.corrections, nav = cruiseNavigator(h, reg, CRUISE_COURSE.vessel, refs), approach = cruiseApproach(course);
+    for (let i = 1; i < approach.length - 2; i++) nav.world(approach[i]!, `Pearl shore approach[${i}]`, i > 1);
+    nav.visit("pearl_through");
+    expect(s.own.y).toBeCloseTo(CRUISE_LAYOUT.decks.find(d => d.id === "6")!.floorY, 2);
+    nav.visit("pearl_cafe_access"); nav.visit("pearl_through", true);
+    nav.reach(CRUISE_LAYOUT.routes.find(r => r.kind === "docking")!.from);
+    expect(s.own.y).toBeCloseTo(CRUISE_LAYOUT.decks.find(d => d.id === "5")!.floorY, 2);
+    expect(s.stats.corrections - before).toBe(0);
+  } finally { h.host.shutdown(); }
+});
 
 test("cruise peers walk to upper decks and independently saved cabin doors survive rejoin and restart", () => {
   const dir = mkdtempSync(join(tmpdir(), "snark-cruise-")), opts = { dev: true, clips: NO_CLIPS, rigs: [], map, dbPath: join(dir, "world.db") };
