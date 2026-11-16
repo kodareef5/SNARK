@@ -150,8 +150,10 @@ def finish(D,p,world,place,box,ys,beam):
  podboxes=[box([x-.4,.07,-1],[x+.4,.61,-.4]) for x in(-.6,.6)]+[box([-1.5,.04,1.53],[1.5,.31,1.93]),box([-1.52,.012,-1.46],[1.52,.065,.88])]
  podlook={'hulls':podhulls,'boxes':podboxes+[box([-2.5,.1,-.3],[-2.3,1.2,.3]),box([2.3,.1,-.3],[2.5,1.2,.3]),box([-1.5,.31,1.5],[1.5,1.6,2])]}
  pod=p('aquadome_pod','furniture',podboxes,podhulls,art={'kind':'aquadome_pod','finish':'purple'},color=32,look=podlook)
+ # Three original lounge bays run from the entry court to the stage; each
+ # mirrored C-shaped pod faces inward across the protected central aisle.
  for side in(-1,1):
-  for i,z in enumerate([100,112,124]):place(f'aquadome_pod_{side}_{i}',pod,[side*13,45.6,z],'15','aquatheater',90 if side>0 else 270)
+  for i,z in enumerate([93,109,128]):place(f'aquadome_pod_{side}_{i}',pod,[side*13,45.6,z],'15','aquatheater',90 if side>0 else 270)
  q=p('aquatheater_seating','furniture',[box([-3.5,0,-.675],[3.5,1.1,.675])],
      art={'kind':'furniture','wallCount':0,'items':[{'kind':'seating_row','at':[0,0,0],'size':[7,1.1,1.35],'finish':'purple'}]},color=32)
  for side in(-1,1):
