@@ -62,7 +62,7 @@ raptors that will come for you.
 | B | Hold to talk to those near; with Alt a whisper, with Shift a yell. The first press asks for the microphone |
 | Enter, Insert, / | Chat: to everyone, to those within 60 m, to your tribe. Tab changes channel, Enter says the line |
 | Backquote or Tab | Console. `help` lists commands; `tribe` founds and runs a tribe; `mute <name>` stops you hearing someone |
-| Escape | Close one screen, or open the glass menu; Settings, Controls, connection ping and Leave are here |
+| Escape | Close one screen, or open the glass menu; Settings, Controls, the wiki and the source code, connection ping and Leave are here |
 
 Interface preferences are kept in this browser. The play HUD hides diagnostic
 text by default; enable it under Settings → Interface. Controls shows keyboard
@@ -99,7 +99,9 @@ live file read again while it runs. `config` holds four folders to start from:
 `official`, `boosted-10x`, `boosted-50x` and `dev`. As it starts the server
 says what it applied, what waits for a feature, and what it refused and why.
 The [operator's guide](planning/reference/operators.md) has the rest, and the
-[settings reference](planning/reference/settings.md) every setting.
+[settings reference](planning/reference/settings.md) every setting. A cluster
+on Windows, every world at a path of one address and kept running, is in
+[deploy/windows](deploy/windows/README.md).
 
 Voice needs a microphone, and away from `localhost` a browser gives one only to
 a page served over TLS: start the server with `--cert cert.pem --key key.pem`.
@@ -133,6 +135,7 @@ will not be one: see the [testing policy](planning/quality/testing.md).
 | [agent](agent/README.md) | A player that is a program: observe, walk, gather, open and speak as tools for a model |
 | [tools](tools/README.md) | Check, bench, snapshot, pack build, probe, dev server |
 | `config` | Example server configurations: ARK's two ini files in a folder each |
+| [deploy](deploy/windows/README.md) | Running a cluster on a machine and keeping it running: Windows |
 | [tests](tests/README.md) | Unit and integration tests, fixtures |
 | [assets](assets/README.md) | Editable art sources and runtime exports |
 

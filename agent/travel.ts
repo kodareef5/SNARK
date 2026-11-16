@@ -1,7 +1,7 @@
 // The agent's travel between the servers of a cluster, as a player does it: it walks to an obelisk's terminal, asks there to
 // leave for a server its own lists, says hello at the other with the ticket it is handed, and chooses where to rise there.
 
-import type { ClusterList, ClusterServer } from "../client/core/travel.ts";
+import { byPath, type ClusterList, type ClusterServer } from "../client/core/travel.ts";
 import type { StructureStore } from "../shared/world/structures.ts";
 import { TRAVEL_TERMINAL } from "../shared/world/obelisks.ts";
 import type { Registry } from "../shared/content/registry.ts";
@@ -45,11 +45,13 @@ export function serverNamed(list: ClusterList, to: string): ClusterServer | unde
 }
 
 /**
- * The socket of server `to`, for an agent whose own server's socket is `url`. One that came by its server's public address
- * goes by the other's, if it has one; any other goes to the other's port on the host it came by (serverAddress's rule).
+ * The socket of server `to`, for an agent whose own server's socket is `url`. Servers reached at paths of one host go by
+ * their paths on it; one that came by its server's public address goes by the other's, if it has one; any other goes to the
+ * other's port on the host it came by (serverAddress's rule). A server's socket is ws under the path it is reached at.
  */
 export function socketOf(url: string, list: ClusterList, to: ClusterServer): string {
   const at = new URL(url);
+  if (to.url.startsWith("/") && byPath(at.protocol, at.host, at.pathname, list.url, list.port)) return new URL(`${to.url}/ws`, at).href;
   const host = (address: string): string => {
     try {
       return new URL(address).host.toLowerCase();
@@ -60,10 +62,12 @@ export function socketOf(url: string, list: ClusterList, to: ClusterServer): str
   if (to.url !== "" && host(list.url) !== "" && host(list.url) === at.host.toLowerCase()) {
     const other = new URL(to.url);
     other.protocol = other.protocol === "https:" ? "wss:" : "ws:";
-    other.pathname = at.pathname;
+    other.pathname = `${other.pathname.replace(/\/+$/, "")}/ws`;
     return other.href;
   }
   at.port = String(to.port);
+  // A server reached at a path answers its socket only under it, at its port as anywhere.
+  if (to.url.startsWith("/")) at.pathname = `${to.url}/ws`;
   return at.href;
 }
 

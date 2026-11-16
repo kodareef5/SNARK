@@ -1650,6 +1650,156 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/bats/moss-pt-40231-02930.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "bats",
+      "prompt_id": "v5-40230",
+      "prompt": "Bats flutter close past with leathery wingbeats and high squeaks, two seconds, then silence. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 40231,
+      "seconds": 6,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-40231.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Bats flutter close past with leathery wingbeats and high squeaks, two seconds, then silence. Close-miked, dry, no music, no voices, quiet background. duration: 6.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2b0dbd3a1d3417bf970010aae3270d7be94ff159cfd8e5e23ae13159c338b748",
+      "worker": {
+        "takes": 8,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 271.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 7.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "539f7e121ec9fb7c6ed7fb519fbc6cb844785a3dc3fb194f7a6ee9a2c7bfee81",
+      "cut": {
+        "source_file": "moss-pt-40231.wav",
+        "source_frames": 288000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          138240,
+          279360
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/bats/moss-pt-40230-04220.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "bats",
+      "prompt_id": "v5-40230",
+      "prompt": "Bats flutter close past with leathery wingbeats and high squeaks, two seconds, then silence. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 40230,
+      "seconds": 6,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-40230.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Bats flutter close past with leathery wingbeats and high squeaks, two seconds, then silence. Close-miked, dry, no music, no voices, quiet background. duration: 6.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2a88364648c6fd939762bcd49d51cb978c71e2b0ab3bc807221f96527221357e",
+      "worker": {
+        "takes": 8,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 271.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 7.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "0bab7a8a587d0b7097077e8f7b7f17c7f9099b73c7fb8f180222f5fd8195a4b7",
+      "cut": {
+        "source_file": "moss-pt-40230.wav",
+        "source_frames": 288000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          200160,
+          228720
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/chicken/moss-pt-26470-03190.wav": {
       "model": "moss",
       "backend": "torch",

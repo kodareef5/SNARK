@@ -900,6 +900,81 @@
         "loop_crossfade_frames": 36000
       }
     },
+    "takes/alarm/moss-pt-40112-01115.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "alarm",
+      "prompt_id": "v5-40110",
+      "prompt": "A cockpit warning alarm: a fast harsh electronic beeping, beep beep beep beep, two seconds, then silence. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 40112,
+      "seconds": 6,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-40112.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A cockpit warning alarm: a fast harsh electronic beeping, beep beep beep beep, two seconds, then silence. Close-miked, dry, no music, no voices, quiet background. duration: 6.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "6e2594148660f486cefe7a4283c5c575a30e6e0d352752b42429e7226161b686",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1071.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b8a858574aa4b444ded0c98ae6bd497215619a2856ab2b8a97a5d37352677921",
+      "cut": {
+        "source_file": "moss-pt-40112.wav",
+        "source_frames": 288000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          51120,
+          197520
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/door/open/moss-pt-9120-04090.wav": {
       "model": "moss",
       "backend": "torch",

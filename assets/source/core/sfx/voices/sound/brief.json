@@ -2707,6 +2707,54 @@
           "seconds": 8,
           "text": "Run! Run!",
           "instruction": "A woman in her thirties with a gravelly, rough voice, speaking English with a Southern United States accent. Urgent and loud, shouting a warning."
+        },
+        {
+          "id": "v5-40524",
+          "models": [
+            "voice"
+          ],
+          "seed": 40524,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Watch out!",
+          "instruction": "A woman in her thirties with a gravelly, rough voice, speaking English with a Southern United States accent. Urgent and loud, shouting a warning."
+        },
+        {
+          "id": "v5-40525",
+          "models": [
+            "voice"
+          ],
+          "seed": 40525,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Watch out!",
+          "instruction": "A woman in her thirties with a gravelly, rough voice, speaking English with a Southern United States accent. Urgent and loud, shouting a warning."
+        },
+        {
+          "id": "v5-40526",
+          "models": [
+            "voice"
+          ],
+          "seed": 40526,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Run! Run!",
+          "instruction": "A woman in her thirties with a gravelly, rough voice, speaking English with a Southern United States accent. Urgent and loud, shouting a warning."
+        },
+        {
+          "id": "v5-40527",
+          "models": [
+            "voice"
+          ],
+          "seed": 40527,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Run! Run!",
+          "instruction": "A woman in her thirties with a gravelly, rough voice, speaking English with a Southern United States accent. Urgent and loud, shouting a warning."
         }
       ],
       "words": true
@@ -3755,6 +3803,54 @@
           "seconds": 8,
           "text": "Ugh, seriously?",
           "instruction": "A man in his thirties with a deep, resonant voice, speaking English with a New York accent. Irritated and grumpy."
+        },
+        {
+          "id": "v5-40500",
+          "models": [
+            "voice"
+          ],
+          "seed": 40500,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Hey! Watch it!",
+          "instruction": "A man in his thirties with a deep, resonant voice, speaking English with a New York accent. Irritated and grumpy."
+        },
+        {
+          "id": "v5-40501",
+          "models": [
+            "voice"
+          ],
+          "seed": 40501,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Hey! Watch it!",
+          "instruction": "A man in his thirties with a deep, resonant voice, speaking English with a New York accent. Irritated and grumpy."
+        },
+        {
+          "id": "v5-40502",
+          "models": [
+            "voice"
+          ],
+          "seed": 40502,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Ugh, seriously?",
+          "instruction": "A man in his thirties with a deep, resonant voice, speaking English with a New York accent. Irritated and grumpy."
+        },
+        {
+          "id": "v5-40503",
+          "models": [
+            "voice"
+          ],
+          "seed": 40503,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Ugh, seriously?",
+          "instruction": "A man in his thirties with a deep, resonant voice, speaking English with a New York accent. Irritated and grumpy."
         }
       ],
       "words": true
@@ -4369,6 +4465,54 @@
             "voice"
           ],
           "seed": 31056,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Ouch, that hurts!",
+          "instruction": "A woman in her thirties with a lively, youthful voice, speaking English with a New York accent. In sudden sharp pain."
+        },
+        {
+          "id": "v5-40512",
+          "models": [
+            "voice"
+          ],
+          "seed": 40512,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Ow! Argh!",
+          "instruction": "A woman in her thirties with a lively, youthful voice, speaking English with a New York accent. In sudden sharp pain."
+        },
+        {
+          "id": "v5-40513",
+          "models": [
+            "voice"
+          ],
+          "seed": 40513,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Ow! Argh!",
+          "instruction": "A woman in her thirties with a lively, youthful voice, speaking English with a New York accent. In sudden sharp pain."
+        },
+        {
+          "id": "v5-40514",
+          "models": [
+            "voice"
+          ],
+          "seed": 40514,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Ouch, that hurts!",
+          "instruction": "A woman in her thirties with a lively, youthful voice, speaking English with a New York accent. In sudden sharp pain."
+        },
+        {
+          "id": "v5-40515",
+          "models": [
+            "voice"
+          ],
+          "seed": 40515,
           "takes": 1,
           "takes_voice-pt": 1,
           "seconds": 8,
@@ -23794,6 +23938,54 @@
           "seconds": 8,
           "text": "Run! Run!",
           "instruction": "A man in his thirties with a quick, energetic voice, speaking English with an Italian accent. Urgent and loud, shouting a warning."
+        },
+        {
+          "id": "v5-40516",
+          "models": [
+            "voice"
+          ],
+          "seed": 40516,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Watch out!",
+          "instruction": "A man in his thirties with a quick, energetic voice, speaking English with an Italian accent. Urgent and loud, shouting a warning."
+        },
+        {
+          "id": "v5-40517",
+          "models": [
+            "voice"
+          ],
+          "seed": 40517,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Watch out!",
+          "instruction": "A man in his thirties with a quick, energetic voice, speaking English with an Italian accent. Urgent and loud, shouting a warning."
+        },
+        {
+          "id": "v5-40518",
+          "models": [
+            "voice"
+          ],
+          "seed": 40518,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Run! Run!",
+          "instruction": "A man in his thirties with a quick, energetic voice, speaking English with an Italian accent. Urgent and loud, shouting a warning."
+        },
+        {
+          "id": "v5-40519",
+          "models": [
+            "voice"
+          ],
+          "seed": 40519,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Run! Run!",
+          "instruction": "A man in his thirties with a quick, energetic voice, speaking English with an Italian accent. Urgent and loud, shouting a warning."
         }
       ],
       "words": true
@@ -23894,6 +24086,54 @@
             "voice"
           ],
           "seed": 36056,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Ouch, that hurts!",
+          "instruction": "A man in his thirties with a quick, energetic voice, speaking English with an Italian accent. In sudden sharp pain."
+        },
+        {
+          "id": "v5-40508",
+          "models": [
+            "voice"
+          ],
+          "seed": 40508,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Ow! Argh!",
+          "instruction": "A man in his thirties with a quick, energetic voice, speaking English with an Italian accent. In sudden sharp pain."
+        },
+        {
+          "id": "v5-40509",
+          "models": [
+            "voice"
+          ],
+          "seed": 40509,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Ow! Argh!",
+          "instruction": "A man in his thirties with a quick, energetic voice, speaking English with an Italian accent. In sudden sharp pain."
+        },
+        {
+          "id": "v5-40510",
+          "models": [
+            "voice"
+          ],
+          "seed": 40510,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Ouch, that hurts!",
+          "instruction": "A man in his thirties with a quick, energetic voice, speaking English with an Italian accent. In sudden sharp pain."
+        },
+        {
+          "id": "v5-40511",
+          "models": [
+            "voice"
+          ],
+          "seed": 40511,
           "takes": 1,
           "takes_voice-pt": 1,
           "seconds": 8,
@@ -24570,6 +24810,54 @@
             "voice"
           ],
           "seed": 36241,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Run! Run!",
+          "instruction": "A woman in her thirties with a deep, resonant voice, speaking English with an Italian accent. Urgent and loud, shouting a warning."
+        },
+        {
+          "id": "v5-40520",
+          "models": [
+            "voice"
+          ],
+          "seed": 40520,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Watch out!",
+          "instruction": "A woman in her thirties with a deep, resonant voice, speaking English with an Italian accent. Urgent and loud, shouting a warning."
+        },
+        {
+          "id": "v5-40521",
+          "models": [
+            "voice"
+          ],
+          "seed": 40521,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Watch out!",
+          "instruction": "A woman in her thirties with a deep, resonant voice, speaking English with an Italian accent. Urgent and loud, shouting a warning."
+        },
+        {
+          "id": "v5-40522",
+          "models": [
+            "voice"
+          ],
+          "seed": 40522,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Run! Run!",
+          "instruction": "A woman in her thirties with a deep, resonant voice, speaking English with an Italian accent. Urgent and loud, shouting a warning."
+        },
+        {
+          "id": "v5-40523",
+          "models": [
+            "voice"
+          ],
+          "seed": 40523,
           "takes": 1,
           "takes_voice-pt": 1,
           "seconds": 8,
@@ -26836,6 +27124,54 @@
           "seconds": 8,
           "text": "See you around.",
           "instruction": "An old man in his seventies with a slow, drawling, gravelly voice, speaking English with a Southern United States accent. Friendly, saying goodbye."
+        },
+        {
+          "id": "v5-40504",
+          "models": [
+            "voice"
+          ],
+          "seed": 40504,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Goodbye!",
+          "instruction": "An old man in his seventies with a slow, drawling, gravelly voice, speaking English with a Southern United States accent. Friendly, saying goodbye."
+        },
+        {
+          "id": "v5-40505",
+          "models": [
+            "voice"
+          ],
+          "seed": 40505,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Goodbye!",
+          "instruction": "An old man in his seventies with a slow, drawling, gravelly voice, speaking English with a Southern United States accent. Friendly, saying goodbye."
+        },
+        {
+          "id": "v5-40506",
+          "models": [
+            "voice"
+          ],
+          "seed": 40506,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "See you around.",
+          "instruction": "An old man in his seventies with a slow, drawling, gravelly voice, speaking English with a Southern United States accent. Friendly, saying goodbye."
+        },
+        {
+          "id": "v5-40507",
+          "models": [
+            "voice"
+          ],
+          "seed": 40507,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "See you around.",
+          "instruction": "An old man in his seventies with a slow, drawling, gravelly voice, speaking English with a Southern United States accent. Friendly, saying goodbye."
         }
       ],
       "words": true
@@ -27507,6 +27843,54 @@
             "voice"
           ],
           "seed": 37016,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Sure, why not.",
+          "instruction": "An old woman in her seventies with a warm, crackly voice, speaking English with an Irish accent. Agreeable."
+        },
+        {
+          "id": "v5-40528",
+          "models": [
+            "voice"
+          ],
+          "seed": 40528,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Yes.",
+          "instruction": "An old woman in her seventies with a warm, crackly voice, speaking English with an Irish accent. Agreeable."
+        },
+        {
+          "id": "v5-40529",
+          "models": [
+            "voice"
+          ],
+          "seed": 40529,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Yes.",
+          "instruction": "An old woman in her seventies with a warm, crackly voice, speaking English with an Irish accent. Agreeable."
+        },
+        {
+          "id": "v5-40530",
+          "models": [
+            "voice"
+          ],
+          "seed": 40530,
+          "takes": 1,
+          "takes_voice-pt": 1,
+          "seconds": 8,
+          "text": "Sure, why not.",
+          "instruction": "An old woman in her seventies with a warm, crackly voice, speaking English with an Irish accent. Agreeable."
+        },
+        {
+          "id": "v5-40531",
+          "models": [
+            "voice"
+          ],
+          "seed": 40531,
           "takes": 1,
           "takes_voice-pt": 1,
           "seconds": 8,

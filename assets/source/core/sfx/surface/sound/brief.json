@@ -1002,6 +1002,126 @@
           "text": "A heavy sack is dragged a short way across flat stone paving three times, scraping and sliding, with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
+    },
+    "drag/dirt": {
+      "kind": "step",
+      "range": 20,
+      "level": -26,
+      "vary": 0.5,
+      "want": "a body dragged over dirt",
+      "prompts": [
+        {
+          "id": "v5-40000",
+          "models": [
+            "moss"
+          ],
+          "seed": 40000,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A heavy sack is dragged a short way across loose dry dirt and gravel three times, scraping and sliding, with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "drag/wood": {
+      "kind": "step",
+      "range": 20,
+      "level": -26,
+      "vary": 0.5,
+      "want": "a body dragged over wood",
+      "prompts": [
+        {
+          "id": "v5-40010",
+          "models": [
+            "moss"
+          ],
+          "seed": 40010,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A heavy sack is dragged a short way across a wooden plank floor three times, scraping and sliding, with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "drag/metal": {
+      "kind": "step",
+      "range": 20,
+      "level": -26,
+      "vary": 0.5,
+      "want": "a body dragged over metal",
+      "prompts": [
+        {
+          "id": "v5-40020",
+          "models": [
+            "moss"
+          ],
+          "seed": 40020,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A heavy sack is dragged a short way across a steel floor plate three times, scraping and sliding, with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "drag/thatch": {
+      "kind": "step",
+      "range": 20,
+      "level": -26,
+      "vary": 0.5,
+      "want": "a body dragged over thatch",
+      "prompts": [
+        {
+          "id": "v5-40030",
+          "models": [
+            "moss"
+          ],
+          "seed": 40030,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A heavy sack is dragged a short way across a floor of dry straw and reeds three times, scraping and sliding, with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "drag/water": {
+      "kind": "step",
+      "range": 20,
+      "level": -26,
+      "vary": 0.5,
+      "want": "a body dragged over water",
+      "prompts": [
+        {
+          "id": "v5-40040",
+          "models": [
+            "moss"
+          ],
+          "seed": 40040,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A heavy sack is dragged a short way across shallow water, sloshing three times, scraping and sliding, with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "drag/snow": {
+      "kind": "step",
+      "range": 20,
+      "level": -26,
+      "vary": 0.5,
+      "want": "a body dragged over snow",
+      "prompts": [
+        {
+          "id": "v5-40050",
+          "models": [
+            "moss"
+          ],
+          "seed": 40050,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A heavy sack is dragged a short way across deep crunchy snow three times, scraping and sliding, with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
     }
   }
 }

@@ -6,6 +6,7 @@ The Bun process that owns a world. Headless; no rendering or DOM code.
 | --- | --- |
 | `main.ts` | Process entry: static files, WebSocket adapter for the game and for voice, wall-clock tick loop |
 | `sound-board.ts` | The sound board, an admin's page, and the sound folders' briefs and recipes behind it |
+| `site.ts`, `front.ts` | Worlds at paths of one host: the site around them (the start screen, `links.json`, the source link's page), and the program that sends each path to its world |
 | `host.ts` | Assembles world, records, every system below, persistence, and the game loop |
 | `game.ts` | Connections, input buffering and validation, the body each session drives, snapshots by class, structure sync |
 | `world.ts` | The world container, made from a map file; the proving ground as one |
@@ -34,9 +35,10 @@ The Bun process that owns a world. Headless; no rendering or DOM code.
 | `persist/persistence.ts` | What each commit contains |
 | `cluster/` | The servers of a cluster: the shared folder (`folder.ts`), a transfer's sealed file (`parcel.ts`), travel, recovery and the travel list (`cluster.ts`), and whether the cluster balances (`audit.ts`) |
 
-Nothing but `main.ts` takes a socket or a clock, so tests run a whole server in
-memory. Almost nothing steps: what happens at a moment is a deadline on one
-heap, and what changes steadily is worked out when asked.
+Nothing but `main.ts`, and `front.ts`, a program of its own, takes a socket or
+a clock, so tests run a whole server in memory. Almost nothing steps: what
+happens at a moment is a deadline on one heap, and what changes steadily is
+worked out when asked.
 
 ```sh
 bun server/main.ts --config config/dev --port 8787 --db var/world.db
@@ -82,7 +84,11 @@ for the travel list and choose Tampa. The page goes to port 8799 and shows the s
 your tribe has there, and you rise there with all you carried. An obelisk's terminal there and Miami bring you back, to a
 spawn point or your bed. A survivor whose page closed on the way, or that was turned away, is back on the server it left as
 soon as its owner joins there, and by itself after ten minutes. Reached through tunnels, give each server
-`--public-url https://<its own tunnel's host>`, and a page that came by one goes by the other's. An operator's cheats, which
+`--public-url https://<its own tunnel's host>`, and a page that came by one goes by the other's. Or give them one host, each
+at a path of its own (`--public-url /miami`), with `front.ts` in front of them for a tunnel that reaches one place: the
+start screen at `/` lists every world with how many play on it
+([every world at one address](../planning/reference/operators.md#every-world-at-one-address)). On Windows,
+[deploy/windows](../deploy/windows/README.md) runs a cluster that way and keeps it running. An operator's cheats, which
 need `enablecheats` again after every arrival since an arrival is a new session: `travel [server]` lists the cluster's servers
 or sends the survivor from where it stands, `cluster` lists the cluster and who is away, and `cluster audit` says whether every
 item of it is accounted for. Now and then, `bun run cluster-trip` plays a survivor there and back through the game's agent on

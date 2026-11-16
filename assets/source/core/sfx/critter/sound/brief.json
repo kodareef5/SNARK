@@ -126,7 +126,7 @@
       ]
     },
     "bats": {
-      "kind": "impact",
+      "kind": "voice",
       "range": 40,
       "level": -16,
       "vary": 0.04,
@@ -142,6 +142,17 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A swarm of bats flutters out of a cave with high squeaks and leathery wingbeats, two separate swarms with pauses. Recorded outdoors, no music, no voices."
+        },
+        {
+          "id": "v5-40230",
+          "models": [
+            "moss"
+          ],
+          "seed": 40230,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 6,
+          "text": "Bats flutter close past with leathery wingbeats and high squeaks, two seconds, then silence. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
     },

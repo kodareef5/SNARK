@@ -1,0 +1,85 @@
+// The code as it may be shown outside: the tracked text of the code's folders and the planning documents, with no art,
+// no pictures and no history. `bun run source [dir]` writes it to `dir` (var/source/repo) and makes it the one commit
+// of a repository there, to be pushed over the last one. A document that says a name on the local list
+// (var/source/names.txt, a pattern a line, not in git) is held back and listed; code that says one stops the export.
+
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+
+const ROOT = join(import.meta.dir, "..");
+const TEXT = new Set(["ts", "js", "json", "md", "py", "css", "html", "ini", "toml", "lock", "txt", "sh", "ps1", "psd1", "yml", "overpassql", "gitignore"]);
+const PLANNING = new Set(["md", "ts", "json"]);
+/** What the tests and the Blender example read, whatever its kind. */
+const FIXTURES = /^(tests\/fixtures|tools\/blender\/example)\//;
+const MOST = 2 * 1024 * 1024;
+
+/** Whether a tracked file is part of the code as shown. */
+export function shown(path: string): boolean {
+  if (path.startsWith("assets/")) return false;
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  if (name === "LICENSE" || name === "NOTICE" || FIXTURES.test(path)) return true;
+  const ext = name.slice(name.lastIndexOf(".") + 1);
+  return (path.startsWith("planning/") ? PLANNING : TEXT).has(ext);
+}
+
+/** A document may be held back; anything else that says a name stops the export. */
+const document = (path: string): boolean => path.startsWith("planning/") || path.endsWith(".md");
+
+function git(dir: string, ...args: string[]): string {
+  const run = Bun.spawnSync(["git", "-C", dir, ...args]);
+  if (run.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${run.stderr.toString().trim()}`);
+  return run.stdout.toString();
+}
+
+if (import.meta.main) {
+  const out = resolve(process.argv[2] ?? join(ROOT, "var/source/repo"));
+  if (git(ROOT, "status", "--porcelain", "--untracked-files=no").trim() !== "") throw new Error("the working tree has changes: commit them first, the export is of what is committed");
+  const list = join(ROOT, "var/source/names.txt");
+  const names = existsSync(list) ? readFileSync(list, "utf8").split("\n").filter((l) => l.trim() !== "").map((l) => new RegExp(l.trim(), "i")) : [];
+  const files = git(ROOT, "ls-files", "-z").split("\0").filter((f) => f !== "" && shown(f));
+  const kept: string[] = [];
+  const held: string[] = [];
+  const stops: string[] = [];
+  const lines = new Map<string, number>();
+  let bytes = 0;
+  for (const file of files) {
+    const size = statSync(join(ROOT, file)).size;
+    if (size > MOST) {
+      held.push(`${file} (${(size / 1024 / 1024).toFixed(1)} MB)`);
+      continue;
+    }
+    const text = FIXTURES.test(file) ? "" : readFileSync(join(ROOT, file), "utf8");
+    const said = names.filter((n) => n.test(text) || n.test(file));
+    if (said.length > 0) {
+      (document(file) ? held : stops).push(`${file} (${said.map((n) => n.source).join(", ")})`);
+      continue;
+    }
+    kept.push(file);
+    bytes += size;
+    const zone = file.includes("/") ? file.slice(0, file.indexOf("/")) : "(root)";
+    lines.set(zone, (lines.get(zone) ?? 0) + (text === "" ? 0 : text.split("\n").length));
+  }
+  if (stops.length > 0) {
+    console.error(`source: ${stops.length} files of code say a name on the list, and nothing was written:\n  ${stops.join("\n  ")}`);
+    process.exit(1);
+  }
+
+  mkdirSync(out, { recursive: true });
+  for (const entry of readdirSync(out)) if (entry !== ".git") rmSync(join(out, entry), { recursive: true });
+  for (const file of kept) {
+    mkdirSync(dirname(join(out, file)), { recursive: true });
+    copyFileSync(join(ROOT, file), join(out, file));
+  }
+  if (!existsSync(join(out, ".git"))) git(out, "init", "-q", "-b", "main");
+  git(out, "add", "-A");
+  const from = git(ROOT, "rev-parse", "--short", "HEAD").trim();
+  const message = `Source as of ${new Date().toISOString().slice(0, 10)}, from ${from}\n\nThe code and the planning documents: no art, no pictures and no history.`;
+  const commit = git(out, "commit-tree", git(out, "write-tree").trim(), "-m", message).trim();
+  git(out, "update-ref", "refs/heads/main", commit);
+  git(out, "reset", "-q", "--hard", "main");
+
+  console.log(`source       ${kept.length} files, ${(bytes / 1024 / 1024).toFixed(1)} MB, from ${from}, one commit ${commit.slice(0, 8)} at ${out}`);
+  for (const [zone, n] of [...lines].sort((a, b) => b[1] - a[1])) console.log(`  ${zone.padEnd(10)} ${n.toLocaleString("en-US").padStart(8)} lines`);
+  console.log(names.length === 0 ? `  no list of names at ${list}: none was looked for` : `  ${names.length} names looked for`);
+  if (held.length > 0) console.log(`  held back, ${held.length}:\n    ${held.join("\n    ")}`);
+}

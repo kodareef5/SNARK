@@ -67,6 +67,12 @@
         {"file": "takes/cabin/moss-pt-9100-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
+    "alarm": {
+      "range": 10, "level": -18, "vary": 0.0,
+      "takes": [
+        {"file": "takes/alarm/moss-pt-40112-01115.wav", "from": "moss", "start": 0.05, "end": 3.0}
+      ]
+    },
     "door/open": {
       "range": 25, "level": -18, "vary": 0.0,
       "takes": [

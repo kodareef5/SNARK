@@ -1,10 +1,10 @@
-// bun server/main.ts [--dev] [--config dir] [--port 8787] [--host address] [--public-url https://name.example] [--map file.snmap] [--db var/world.db] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
+// bun server/main.ts [--dev] [--config dir] [--port 8787] [--host address] [--public-url https://name.example | /path] [--map file.snmap] [--db var/world.db] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
 // SNARK_ADMIN_PASSWORD sets the `enablecheats` password. In a terminal, typed lines run as console commands with full rights.
 
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent } from "../shared/content/registry.ts";
 import { TICK_RATE } from "../shared/coords.ts";
-import { CH_RELIABLE, type Connection } from "../shared/net/transport.ts";
+import { backlog, MESSAGE_BYTES_MAX, VOICE_BACKLOG, type Connection } from "../shared/net/transport.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../shared/world/proving.ts";
 import { createHost, type Host } from "./host.ts";
 import { LIVE_FILE, formatReport, loadConfigFolder } from "./settings/config.ts";
@@ -20,9 +20,12 @@ import { parsePack } from "../shared/pack/pack.ts";
 import { allClips } from "../shared/pack/clips.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { serveFile } from "./files.ts";
+import { clientAddress } from "./front.ts";
 import { boardOwners, soundBoard, type BoardGate } from "./sound-board.ts";
 import { CUES } from "../shared/sound/cues.ts";
 import { mapCopy } from "../shared/world/mapfile.ts";
+import { mapLabel, type Destination } from "./cluster/cluster.ts";
+import { comingSoonPage, htmlResponse, linkOf, pathOf, placeOf, startPage, worldAddress, type SiteLinks, type SiteWorld } from "./site.ts";
 
 export interface ServerOptions {
   port?: number;
@@ -57,7 +60,9 @@ export interface ServerOptions {
   routes?: (req: Request, url: URL) => Response | Promise<Response> | null;
   /**
    * The address pages reach this server at from elsewhere, such as a tunnel's: told to the other servers of its cluster, whose
-   * pages send travellers here by it when they themselves were reached by theirs.
+   * pages send travellers here by it when they themselves were reached by theirs. It may be a path alone, as /miami: the
+   * server is then reached at that path of whatever host the page came by, and answers its world under it and the site
+   * around it everywhere else (pathOf, placeOf).
    */
   publicUrl?: string;
 }
@@ -76,28 +81,13 @@ export interface RunningServer {
   stop(): void;
 }
 
-/** Unsent bytes at which a slow client is dropped. */
-const HARD_BACKLOG = 4 * 1024 * 1024;
-
-/**
- * What a socket does with a message on `channel` when `buffered` bytes wait unsent: 0 sends it, 1 skips it, 2 drops the
- * client. Unreliable traffic waits behind no more than two snapshots of `snapshotBytes`, so what a stall leaves queued is
- * not seconds of stale snapshots.
- */
-export function backlog(channel: number, buffered: number, snapshotBytes: number): number {
-  // A datagram that cannot be sent now is dropped, as an unreliable channel would drop it.
-  if (channel !== CH_RELIABLE && buffered > 2 * snapshotBytes) return 1;
-  return buffered > HARD_BACKLOG ? 2 : 0;
-}
-
-/** Unsent bytes at which a listener's voice packets are dropped. About a quarter second of everyone it can hear. */
-const VOICE_BACKLOG = 16 * 1024;
-
 interface Socket {
   conn: Connection | null;
   /** Set for a voice socket, which carries voice packets and nothing else. */
   voice: VoicePeer | null;
   isVoice: boolean;
+  /** Who it came from (clientAddress). */
+  address: string;
 }
 
 /** Returns a reader of the live file in a config folder, or undefined for no folder. */
@@ -111,7 +101,8 @@ export function liveFileOf(folder: string): (() => string | null) | undefined {
  * Answers the two requests a client makes for the map. `/map.json` names the map and its file. The file's name carries the
  * start of its SHA-256, so whoever fetched it keeps it for good, and it goes out as the copies its build made for the wire
  * (tools/map/pack.ts). A map with none, as a test's or the proving ground, is small enough to compress here. Null for any
- * other path. `link` is the header that has a page ask for the file as it is read, before it has read map.json.
+ * other path. `link` is the header that has a page ask for the file as it is read, before it has read map.json. It names the
+ * file relatively, as the page's own fetch does, so it is the same file under whatever path the server is reached at.
  */
 export function mapRoutes(file: Uint8Array<ArrayBuffer>, id: string, hash: number, copies: { br?: Blob; gz?: Blob } = {}): ((path: string, accepts: string) => Response | null) & { readonly link: string } {
   const name = `map.${new Bun.CryptoHasher("sha256").update(file).digest("hex").slice(0, 16)}.snmap`;
@@ -123,7 +114,7 @@ export function mapRoutes(file: Uint8Array<ArrayBuffer>, id: string, hash: numbe
     const headers = { "content-type": "application/octet-stream", "cache-control": "public, max-age=31536000, immutable", vary: "accept-encoding" };
     if (copies.br && accepts.includes("br")) return new Response(copies.br, { headers: { ...headers, "content-encoding": "br" } });
     return accepts.includes("gzip") ? new Response(gz, { headers: { ...headers, "content-encoding": "gzip" } }) : new Response(file, { headers });
-  }, { link: `</${name}>; rel=preload; as=fetch; crossorigin` });
+  }, { link: `<${name}>; rel=preload; as=fetch; crossorigin` });
 }
 
 /** The copies for the wire the build wrote beside the map file at `path`, if it did. */
@@ -163,20 +154,18 @@ export function clusterList(host: Host): { world: number; name: string; url: str
 }
 
 /**
- * What `settings.json` answers beside the world's `links.json`, which the wiki's pages apply to their figures for a visitor
- * who came from this world (client/core/wiki/rates.ts): its name, its map, and its public settings not at their default.
+ * What a world's `settings.json` answers under its path, beside `links.json`, which the wiki's pages apply to their figures
+ * for a visitor who came from it (client/core/wiki/rates.ts): its name, its map, and its public settings not at their default.
  */
 export function worldSettings(host: Host): { name: string; map: string; settings: Record<string, number | boolean | string> } {
-  const reg = host.world.reg;
-  const def = reg.defs[reg.index.get(host.world.mapId) ?? 0];
-  const map = (def?.type === "map" ? def.label : undefined) ?? host.world.mapId;
-  return { name: host.rules.text("SessionName") || map, map: host.world.mapId, settings: publicValues(host.rules) };
+  return { name: host.rules.text("SessionName") || mapLabel(host.world.reg, host.world.mapId), map: host.world.mapId, settings: publicValues(host.rules) };
 }
 
 /** The default settings folder of a development server. It speeds up taming, hatching and growth so raising a creature takes minutes. */
 export const DEV_CONFIG = resolve(import.meta.dir, "../config/dev");
 
 export function startServer(opts: ServerOptions = {}): RunningServer {
+  const base = pathOf(opts.publicUrl ?? "");
   const { registry, errors } = compileContent(CORE_CONTENT);
   if (!registry) throw new Error("content errors:\n" + errors.join("\n"));
   const clientDir = resolve(opts.clientDir ?? join(import.meta.dir, "../client/dist"));
@@ -246,6 +235,26 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   /** Sites whose pages were turned away, so each is logged once. */
   const refused = new Set<string>();
 
+  /** Where the game's links go, read at each request, so the live file changes them. */
+  const links = (): SiteLinks => ({ wiki: linkOf(host.rules.text("WikiUrl")), repository: linkOf(host.rules.text("RepositoryUrl")) });
+  /** The worlds the start screen lists: the cluster's running, this one among them, or this one alone outside a cluster. */
+  const worlds = (requestHost: string): SiteWorld[] => {
+    const c = host.cluster;
+    const map = mapLabel(registry, host.world.mapId);
+    const all: Omit<Destination, "world" | "why">[] = c ? [c.here(), ...c.destinations()].sort((a, b) => a.world - b.world) : [{ name: host.rules.text("SessionName") || map, map, port: server.port ?? 0, url: base, players: host.game.playerCount, max: host.game.opts.maxClients }];
+    const straight = Number(/:(\d+)$/.exec(requestHost)?.[1] ?? 0) === server.port;
+    return all.map((w) => ({ name: w.name, map: w.map, address: worldAddress(w, requestHost, straight), players: w.players, max: w.max }));
+  };
+  /**
+   * What every server answers alike, under its world's path and on the site around it: where the game's links go, and the
+   * page the source link goes to.
+   */
+  const alike = (path: string): Response | null => {
+    if (path === "/links.json") return new Response(JSON.stringify(links()), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
+    if (path === "/source" || path === "/source/") return htmlResponse(comingSoonPage());
+    return null;
+  };
+
   /** A message is a channel byte and then what the game wrote. The game's writers hold 16 KB, and a welcome a little more. */
   const outgoing = new Uint8Array(65536);
   let skipped = 0;
@@ -259,7 +268,17 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       const url = new URL(req.url);
       const answered = opts.routes?.(req, url);
       if (answered) return answered;
-      if (url.pathname === "/ws" || url.pathname === "/voice") {
+      const { at, path } = placeOf(base, url.pathname);
+      if (at === "slash") return new Response(null, { status: 308, headers: { location: `${base}/${url.search}` } });
+      const same = alike(path);
+      if (same) return same;
+      if (at === "site") {
+        if (path === "/" || path === "/index.html") return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""), links()));
+        // The sound board is a world's, behind its admin password (soundBoard), and not the site's to hand out.
+        return path === "/sounds.html" || path.startsWith("/admin/") ? new Response("not found", { status: 404 }) : serveFile(clientDir, req, path);
+      }
+      const who = clientAddress(srv.requestIP(req)?.address ?? "", req.headers.get("x-forwarded-for"));
+      if (path === "/ws" || path === "/voice") {
         // A page on another site may not use its visitor's browser, and that visitor's address, to reach this server.
         const origin = req.headers.get("origin");
         if (!originAllowed(origin, req.headers.get("host"), host.rules.text("AllowedOrigins"))) {
@@ -270,31 +289,32 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
           }
           return new Response("pages of this site may not connect to this server", { status: 403 });
         }
-        return srv.upgrade(req, { data: { conn: null, voice: null, isVoice: url.pathname === "/voice" } }) ? undefined : new Response("expected a WebSocket", { status: 400 });
+        return srv.upgrade(req, { data: { conn: null, voice: null, isVoice: path === "/voice", address: who } }) ? undefined : new Response("expected a WebSocket", { status: 400 });
       }
-      if (url.pathname === "/cluster.json") return new Response(JSON.stringify(clusterList(host)), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
-      if (url.pathname === "/settings.json") return new Response(JSON.stringify(worldSettings(host)), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
-      if (url.pathname === "/__selfcheck" && req.method === "POST" && opts.dev) {
+      if (path === "/cluster.json") return new Response(JSON.stringify(clusterList(host)), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
+      // A world's own, unlike links.json: the site around the worlds has none.
+      if (path === "/settings.json") return new Response(JSON.stringify(worldSettings(host)), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
+      if (path === "/__selfcheck" && req.method === "POST" && opts.dev) {
         report(await req.json());
         return new Response("ok");
       }
-      if (url.pathname === "/__bench" && req.method === "POST" && opts.dev) {
+      if (path === "/__bench" && req.method === "POST" && opts.dev) {
         const result = await req.json();
         console.log(`frame times from a browser:\n${JSON.stringify(result, null, 2)}`);
         measured(result);
         return new Response("ok");
       }
-      const sounds = soundBoard(req, srv.requestIP(req)?.address ?? "", board, join(clientDir, "sounds.html"), () => boardOwners(registry, families));
+      const sounds = soundBoard(req, who, board, join(clientDir, "sounds.html"), () => boardOwners(registry, families), undefined, path);
       if (sounds) return sounds;
-      const map = mapRoute(url.pathname, req.headers.get("accept-encoding") ?? "");
+      const map = mapRoute(path, req.headers.get("accept-encoding") ?? "");
       if (map) return map;
-      const file = await serveFile(clientDir, req);
+      const file = await serveFile(clientDir, req, path);
       // A device probe measures the link quiet before the game's files come, as index.html leaves its own preloads.
-      if ((url.pathname === "/" || url.pathname === "/index.html") && file.ok && !url.searchParams.has("device")) file.headers.set("link", mapRoute.link);
+      if ((path === "/" || path === "/index.html") && file.ok && !url.searchParams.has("device")) file.headers.set("link", mapRoute.link);
       return file;
     },
     websocket: {
-      maxPayloadLength: 4096,
+      maxPayloadLength: MESSAGE_BYTES_MAX,
       open(ws) {
         if (ws.data.isVoice) {
           ws.data.voice = host.voice.connect({
@@ -311,7 +331,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         }
         const conn: Connection & { open: boolean } = {
           open: true,
-          address: ws.remoteAddress,
+          address: ws.data.address,
           onMessage: null,
           onClose: null,
           send(channel, data) {
@@ -447,7 +467,7 @@ if (import.meta.main) {
     adminPassword: process.env.SNARK_ADMIN_PASSWORD,
     terminal: process.stdin.isTTY,
   });
-  console.log(`SNARK listening on ${value("--cert") && value("--key") ? "https" : "http"}://localhost:${running.port}`);
+  console.log(`SNARK listening on ${value("--cert") && value("--key") ? "https" : "http"}://localhost:${running.port}${pathOf(value("--public-url") ?? "")}/`);
   stopOnSignals(() => running.stop());
   // The tick that threw is torn, so nothing of it is saved. The last commit is whole.
   process.on("uncaughtException", (err) => {

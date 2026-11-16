@@ -11304,6 +11304,240 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/warn/southern_woman/voice-pt-40526-00000.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "warn/southern_woman",
+      "prompt_id": "v5-40526",
+      "prompt": "Run! Run!",
+      "negative_prompt": "",
+      "seed": 40526,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40526.wav",
+      "instruction": "A woman in her thirties with a gravelly, rough voice, speaking English with a Southern United States accent. Urgent and loud, shouting a warning.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.6,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "9296548fef95c10f566c150cafad2ac03930db13ad0742ca4e84fc82b8a648ca",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "c6da901de4d92aef8eee05d9e658d6cb774230a0daf9a8d464ebdf86860abd2d",
+      "cut": {
+        "source_file": "voice-pt-40526.wav",
+        "source_frames": 117120,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          74640
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/warn/southern_woman/voice-pt-40524-02700.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "warn/southern_woman",
+      "prompt_id": "v5-40524",
+      "prompt": "Watch out!",
+      "negative_prompt": "",
+      "seed": 40524,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40524.wav",
+      "instruction": "A woman in her thirties with a gravelly, rough voice, speaking English with a Southern United States accent. Urgent and loud, shouting a warning.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.8,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "828c72c9245b9c78e22b3e03eaa2b4324a553df80ab6299a7e6853a25a7b570e",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "67c3810d7eb3231628b0c45e84f95334db8d00a31fb05e07a756d695a1a846ce",
+      "cut": {
+        "source_file": "voice-pt-40524.wav",
+        "source_frames": 84480,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          63600,
+          84480
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/warn/southern_woman/voice-pt-40525-00000.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "warn/southern_woman",
+      "prompt_id": "v5-40525",
+      "prompt": "Watch out!",
+      "negative_prompt": "",
+      "seed": 40525,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40525.wav",
+      "instruction": "A woman in her thirties with a gravelly, rough voice, speaking English with a Southern United States accent. Urgent and loud, shouting a warning.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.4,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "d272828bd4b8ff58c79092979fb7731768d401f693f793dcc89cdd110925e3a2",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "8d26e1ea249ab4d36cacc41599e4b76a97fe72538ceea16386ca191245c29df9",
+      "cut": {
+        "source_file": "voice-pt-40525.wav",
+        "source_frames": 97920,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          97920
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/flee/southern_woman/voice-pt-30646-00000.wav": {
       "model": "voice",
       "backend": "torch",
@@ -15438,6 +15672,162 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/annoyed/newyork_man/voice-pt-40500-00000.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "annoyed/newyork_man",
+      "prompt_id": "v5-40500",
+      "prompt": "Hey! Watch it!",
+      "negative_prompt": "",
+      "seed": 40500,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40500.wav",
+      "instruction": "A man in his thirties with a deep, resonant voice, speaking English with a New York accent. Irritated and grumpy.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.4,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "0bcbd42d3c9f92d9ad7c59d5e904db0132353f10cde24285ac12fa208f9c0de2",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "286686119ba286bf1585a0cf496e5ce046a7e9eee306b69ec79f5bb11b763278",
+      "cut": {
+        "source_file": "voice-pt-40500.wav",
+        "source_frames": 101760,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          101760
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/annoyed/newyork_man/voice-pt-40502-00000.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "annoyed/newyork_man",
+      "prompt_id": "v5-40502",
+      "prompt": "Ugh, seriously?",
+      "negative_prompt": "",
+      "seed": 40502,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40502.wav",
+      "instruction": "A man in his thirties with a deep, resonant voice, speaking English with a New York accent. Irritated and grumpy.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.4,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "d8e431da613f94d3c5c8dfa04d920493e340adaafc39d1dd80ea220ad2e9edf9",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "3081eb80826bcd7e3bc04fb7063124a2fdabb3d6009ede7552a2d68253902033",
+      "cut": {
+        "source_file": "voice-pt-40502.wav",
+        "source_frames": 101760,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          101760
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/chatter/newyork_man/voice-pt-30881-01720.wav": {
       "model": "voice",
       "backend": "torch",
@@ -18084,6 +18474,84 @@
         "frames": [
           0,
           82560
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/newyork_woman/voice-pt-40514-00000.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "hurt/newyork_woman",
+      "prompt_id": "v5-40514",
+      "prompt": "Ouch, that hurts!",
+      "negative_prompt": "",
+      "seed": 40514,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40514.wav",
+      "instruction": "A woman in her thirties with a lively, youthful voice, speaking English with a New York accent. In sudden sharp pain.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.6,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "b384c7b5a115a0b1c3b85b37671d7a42ffca674bc1a8e2fa6d9cd3909f2c6840",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "dfcd039179f9f15d0d724bf5e69681d44070f96448a7e352828541a27e7d2929",
+      "cut": {
+        "source_file": "voice-pt-40514.wav",
+        "source_frames": 119040,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          44880
         ],
         "rate": 24000,
         "stored_as": "mono PCM_16",
@@ -100146,6 +100614,318 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/warn/italian_man/voice-pt-40516-00000.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "warn/italian_man",
+      "prompt_id": "v5-40516",
+      "prompt": "Watch out!",
+      "negative_prompt": "",
+      "seed": 40516,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40516.wav",
+      "instruction": "A man in his thirties with a quick, energetic voice, speaking English with an Italian accent. Urgent and loud, shouting a warning.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.3,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "575b3ba6e2848e5e25184d238126bad265b4cd2f6190f0248918d4cfdb71d0b3",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "eb35b4607afd77d8072ea964cdce35f119d0db35fbb625b3808c1e85dafc59c4",
+      "cut": {
+        "source_file": "voice-pt-40516.wav",
+        "source_frames": 94080,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          31920
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/warn/italian_man/voice-pt-40517-02840.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "warn/italian_man",
+      "prompt_id": "v5-40517",
+      "prompt": "Watch out!",
+      "negative_prompt": "",
+      "seed": 40517,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40517.wav",
+      "instruction": "A man in his thirties with a quick, energetic voice, speaking English with an Italian accent. Urgent and loud, shouting a warning.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.6,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "39fd1d015e4550ba234b37bcf341022f8e4f80e60e9e5e46301842fc5c930912",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "aae4e198bcfc9f9f79b79bdce414e7ec73ffa315c6c665a39f10d87e190a4be1",
+      "cut": {
+        "source_file": "voice-pt-40517.wav",
+        "source_frames": 120960,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          66960,
+          92880
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/warn/italian_man/voice-pt-40518-00000.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "warn/italian_man",
+      "prompt_id": "v5-40518",
+      "prompt": "Run! Run!",
+      "negative_prompt": "",
+      "seed": 40518,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40518.wav",
+      "instruction": "A man in his thirties with a quick, energetic voice, speaking English with an Italian accent. Urgent and loud, shouting a warning.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.2,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "f781e66e4f75bdc1283eadf4a80b9a726fa8a2fd594a27f8894606414ae5e421",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "bfaddc6206a8aa035980312ea4c49b14addffba497e40c7d7f762bf03cdfc191",
+      "cut": {
+        "source_file": "voice-pt-40518.wav",
+        "source_frames": 82560,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          82560
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/warn/italian_man/voice-pt-40519-00000.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "warn/italian_man",
+      "prompt_id": "v5-40519",
+      "prompt": "Run! Run!",
+      "negative_prompt": "",
+      "seed": 40519,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40519.wav",
+      "instruction": "A man in his thirties with a quick, energetic voice, speaking English with an Italian accent. Urgent and loud, shouting a warning.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.0,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "128ddd0d16752409d37a3eee35c66857ae0fa09b2eb131e8c0a1a2c8f0abab5b",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "5b1c8676f888dd4121ae524687e8cb2610afe47c77745eb5d07cc5a19ebeedeb",
+      "cut": {
+        "source_file": "voice-pt-40519.wav",
+        "source_frames": 65280,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          65280
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/flee/italian_man/voice-pt-36045-03060.wav": {
       "model": "voice",
       "backend": "torch",
@@ -100452,6 +101232,84 @@
         "frames": [
           0,
           109440
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/italian_man/voice-pt-40511-00000.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "hurt/italian_man",
+      "prompt_id": "v5-40511",
+      "prompt": "Ouch, that hurts!",
+      "negative_prompt": "",
+      "seed": 40511,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40511.wav",
+      "instruction": "A man in his thirties with a quick, energetic voice, speaking English with an Italian accent. In sudden sharp pain.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.6,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "c949b70273bbfbb111627f011cc01da95cd08de6004d3a9978ee34d9c5583c32",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "af626f5d6c05650631c7159914f46268b879fe181c48be40e107f0952ffc3122",
+      "cut": {
+        "source_file": "voice-pt-40511.wav",
+        "source_frames": 122880,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          122880
         ],
         "rate": 24000,
         "stored_as": "mono PCM_16",
@@ -103260,6 +104118,162 @@
         "frames": [
           0,
           49680
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/warn/italian_woman/voice-pt-40522-00000.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "warn/italian_woman",
+      "prompt_id": "v5-40522",
+      "prompt": "Run! Run!",
+      "negative_prompt": "",
+      "seed": 40522,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40522.wav",
+      "instruction": "A woman in her thirties with a deep, resonant voice, speaking English with an Italian accent. Urgent and loud, shouting a warning.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.2,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "469fbf61b4114735526a8f0948a580c7ec122eafb9ff3495f06c064046855df7",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "f5f07ee204be47696193ecbf56144d76ddc3ca2f0d7d9d530244a98c2fb78bec",
+      "cut": {
+        "source_file": "voice-pt-40522.wav",
+        "source_frames": 78720,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          78720
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/warn/italian_woman/voice-pt-40520-00000.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "warn/italian_woman",
+      "prompt_id": "v5-40520",
+      "prompt": "Watch out!",
+      "negative_prompt": "",
+      "seed": 40520,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40520.wav",
+      "instruction": "A woman in her thirties with a deep, resonant voice, speaking English with an Italian accent. Urgent and loud, shouting a warning.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.2,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "5e4cddbd631f8d7c3c95c1116b01ee750e7bd14ef73a4e25bc2fee882f236ede",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "b0f1e64a1bcedcccff0c8ff4fe13392c2d18f2ec669a31aaa7b6dcc28bea6eca",
+      "cut": {
+        "source_file": "voice-pt-40520.wav",
+        "source_frames": 84480,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          26161
         ],
         "rate": 24000,
         "stored_as": "mono PCM_16",
@@ -112392,6 +113406,318 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/bye/southern_old_man/voice-pt-40505-02600.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "bye/southern_old_man",
+      "prompt_id": "v5-40505",
+      "prompt": "Goodbye!",
+      "negative_prompt": "",
+      "seed": 40505,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40505.wav",
+      "instruction": "An old man in his seventies with a slow, drawling, gravelly voice, speaking English with a Southern United States accent. Friendly, saying goodbye.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 2.1,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "c9a850d150a57a36c5a90f7af38c645e65b8a491be465f207f1980c6fa5bb314",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "26614df495b0efc35a2ba972422e5cc57bcb2c54ad2fe2021baeffd37b685586",
+      "cut": {
+        "source_file": "voice-pt-40505.wav",
+        "source_frames": 157440,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          61200,
+          157440
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/bye/southern_old_man/voice-pt-40507-00000.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "bye/southern_old_man",
+      "prompt_id": "v5-40507",
+      "prompt": "See you around.",
+      "negative_prompt": "",
+      "seed": 40507,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40507.wav",
+      "instruction": "An old man in his seventies with a slow, drawling, gravelly voice, speaking English with a Southern United States accent. Friendly, saying goodbye.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.2,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "63826be66d013f6d8ae2ed76e03eaf3976b5ac6e927f1c2e2b45413fe57ba65a",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "d1a23892965452c38c0fcab521ce3816206d4b2fdc5d921ba96b965b9eaa5611",
+      "cut": {
+        "source_file": "voice-pt-40507.wav",
+        "source_frames": 82560,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          82560
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/bye/southern_old_man/voice-pt-40506-00000.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "bye/southern_old_man",
+      "prompt_id": "v5-40506",
+      "prompt": "See you around.",
+      "negative_prompt": "",
+      "seed": 40506,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40506.wav",
+      "instruction": "An old man in his seventies with a slow, drawling, gravelly voice, speaking English with a Southern United States accent. Friendly, saying goodbye.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.2,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "4720a942773dea6af09809517ba1e1baa0892cb5f59934b2e815174faebd7092",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "7e5ffe693d5296422cda204b11ba15daffe0149ca179e0c5772047156b553e8d",
+      "cut": {
+        "source_file": "voice-pt-40506.wav",
+        "source_frames": 76800,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          32880
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/bye/southern_old_man/voice-pt-40504-00000.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "bye/southern_old_man",
+      "prompt_id": "v5-40504",
+      "prompt": "Goodbye!",
+      "negative_prompt": "",
+      "seed": 40504,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40504.wav",
+      "instruction": "An old man in his seventies with a slow, drawling, gravelly voice, speaking English with a Southern United States accent. Friendly, saying goodbye.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.6,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "396a2922344323c2a3f89a687475fad70100269ebf494820dd18452de57caef2",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "ca7a4d24a6bfedd05110d6ff586952fb76fac4b82e1a1f3d35ed54863ea8f6a1",
+      "cut": {
+        "source_file": "voice-pt-40504.wav",
+        "source_frames": 117120,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          117120
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/help/southern_old_man/voice-pt-36836-02800.wav": {
       "model": "voice",
       "backend": "torch",
@@ -114960,6 +116286,318 @@
         "frames": [
           69360,
           92160
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/yes/irish_old_woman/voice-pt-40528-01320.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "yes/irish_old_woman",
+      "prompt_id": "v5-40528",
+      "prompt": "Yes.",
+      "negative_prompt": "",
+      "seed": 40528,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40528.wav",
+      "instruction": "An old woman in her seventies with a warm, crackly voice, speaking English with an Irish accent. Agreeable.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.3,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "234cc17d4ec046ad2f9619448109d1d3faa4a642d10f41e4bb41f5355b0da15f",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "02e1892d971743d181744320539dcda63b144303940e3693fa9285eedb63f9da",
+      "cut": {
+        "source_file": "voice-pt-40528.wav",
+        "source_frames": 90240,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          30480,
+          53520
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/yes/irish_old_woman/voice-pt-40531-01720.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "yes/irish_old_woman",
+      "prompt_id": "v5-40531",
+      "prompt": "Sure, why not.",
+      "negative_prompt": "",
+      "seed": 40531,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40531.wav",
+      "instruction": "An old woman in her seventies with a warm, crackly voice, speaking English with an Irish accent. Agreeable.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.1,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "8f37448ac2019aeb6c80dd99c48a5c7dc264dc081c1abbe54cba03b228bc345e",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "9d3bfaefa30250282c5d1fc44e427a610d2e3908644919f642d62725412babc1",
+      "cut": {
+        "source_file": "voice-pt-40531.wav",
+        "source_frames": 71040,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          40080,
+          71040
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/yes/irish_old_woman/voice-pt-40530-00000.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "yes/irish_old_woman",
+      "prompt_id": "v5-40530",
+      "prompt": "Sure, why not.",
+      "negative_prompt": "",
+      "seed": 40530,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40530.wav",
+      "instruction": "An old woman in her seventies with a warm, crackly voice, speaking English with an Irish accent. Agreeable.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.3,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "e674556db755e98f6fe51d7766f98a0cb83f23e37c36ff5f67186e71c8146e5c",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "60a716b51d43aa073f65143212f4c4d69b810ed9c2fe9710f230d46e4949ae50",
+      "cut": {
+        "source_file": "voice-pt-40530.wav",
+        "source_frames": 96000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          96000
+        ],
+        "rate": 24000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/yes/irish_old_woman/voice-pt-40529-00000.wav": {
+      "model": "voice",
+      "backend": "torch",
+      "model_name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+      "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+      "code": {
+        "repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+        "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+      "slot": "yes/irish_old_woman",
+      "prompt_id": "v5-40529",
+      "prompt": "Yes.",
+      "negative_prompt": "",
+      "seed": 40529,
+      "seconds": 8,
+      "settings": {
+        "audio_temperature": 1.5,
+        "audio_top_p": 0.6,
+        "audio_top_k": 50,
+        "audio_repetition_penalty": 1.1
+      },
+      "date": "2026-11-16",
+      "file": "voice-pt-40529.wav",
+      "instruction": "An old woman in her seventies with a warm, crackly voice, speaking English with an Irish accent. Agreeable.",
+      "writer": "soundfile, 32-bit float, mono, 24000 Hz, the codec's output unchanged",
+      "pipeline": "tools/sound/voice.py run_voice_torch",
+      "sample_seconds": 1.2,
+      "segments": 1,
+      "runtime": {
+        "torch": "2.7.1+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU"
+      },
+      "codec": {
+        "repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+        "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"
+      },
+      "sha256": "8fc1beae18a5f4176c4373234e78435dfa38a4383fd65d57289670ff4a459967",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 6.51
+        },
+        "stages": {
+          "load": {
+            "seconds": 5.3,
+            "gpu_peak_gb": 4.23
+          },
+          "lm": {
+            "seconds": 45.1,
+            "gpu_peak_gb": 4.29
+          },
+          "codec": {
+            "seconds": 6.5,
+            "gpu_peak_gb": 7.27
+          }
+        }
+      },
+      "source_sha256": "98eeb96ed12112436175a6411892d47d05749b02c7e109dc6c6831d7f4dea146",
+      "cut": {
+        "source_file": "voice-pt-40529.wav",
+        "source_frames": 84480,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          19920
         ],
         "rate": 24000,
         "stored_as": "mono PCM_16",

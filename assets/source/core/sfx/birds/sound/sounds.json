@@ -86,6 +86,12 @@
         {"file": "takes/dove/moss-pt-22110-01325.wav", "from": "moss", "start": 0.05, "end": 1.195}
       ]
     },
+    "hummingbird": {
+      "range": 15, "level": -20, "vary": 0.04,
+      "takes": [
+        {"file": "takes/hummingbird/moss-pt-40202-00485.wav", "from": "moss", "start": 0.05, "end": 5.475}
+      ]
+    },
     "loon": {
       "range": 500, "level": -16, "vary": 0.04,
       "takes": [

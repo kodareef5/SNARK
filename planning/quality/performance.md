@@ -413,7 +413,7 @@ triangles as drawn at that rung:
 | The round's start, `b9896d20` (`2026-11-16T20-38`) | 3.21 M | 1,024 | 0.94 M | 512 | 800 | 200 | none |
 | Main, `b98944ce` (`2026-11-16T20-14`) | 2.11 M | 1,024 | 1.44 M | 512 | 1,600 | 50 | none |
 | Main with the world finish off (`2026-11-16T22-10`) | 4.41 M | 1,024 | 2.70 M | 1,024 | 2,048 | 400 | 1.70 M |
-| The cheaper finish, `perf/world-finish-cost` (to be filled in) | | | | | | | |
+| The light finish under the touch rule, `cdb10415` (`2026-11-16T23-08`) | 3.19 M | 2,048 | 2.70 M | 1,024 | 2,048 | 100 | 0.55 M |
 
 The world finish landed on the evening of the 15th, after Saturday's runs. At the
 same rungs, main's frames took 20 ms on medium (3.15 M triangles) and 22 on high
@@ -424,6 +424,13 @@ held on Saturday: every rung of bodies, triangles (2.67 M) and pieces, and 2,048
 draws. In the round's start and finish-off runs a few rungs of low poly, and
 medium's first body rung with the finish off, broke on a 95th percentile of 36 to
 99 ms with their median at the display's rate.
+
+With the light finish (D687) high is back at Saturday's on every axis. Medium holds
+3.19 M triangles where main broke, and at 4.41 M takes 20 ms where the finish off
+held 17 and Saturday held 4.53 M at 18: the light finish still costs about 3 ms at
+that rung, which is past the tier's 2 M budget. The quick look (`2026-11-16T23-06`)
+puts LIT with the full finish at 1.363 ms a megapixel near (it was 1.704) and with
+the light finish at 0.852, against LIT at 0.469.
 
 Pieces hold far more than on Saturday: on main medium and high held all 4,096 (0.87
 and 1.47 M triangles) where Saturday's high never settled, and ultra 256. The rungs
@@ -491,7 +498,7 @@ with the catalogue and are printed, not held; each asset is held to its own budg
 | Textures to 1,024, ASTC and BC; to 2,048 | 124.8, 229.5 MB; 337.8, 572.4 MB | |
 | The world's finishes to 1,024, ASTC and BC | 1,498, 3,039 KB | |
 | The RGBA texture file; textures with a 2,048 step | 335.8 MB; 139 | |
-| The sound file; its rate | 3,615 KB; 39.1 kbit/s | ; 42 kbit/s |
+| The sound file; its rate | 3,822 KB; 39.5 kbit/s | ; 42 kbit/s |
 | Music | 39.5 MB | |
 | Sound takes and ASTC texture steps stored twice; mesh parts stored twice | 0, 0; 394 | 0, 0; none |
 

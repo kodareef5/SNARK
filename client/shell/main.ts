@@ -16,7 +16,7 @@ import { BenchRun, PassClock } from "../core/passes.ts";
 import { giveSky, SKY_FILE } from "../core/render/sky.ts";
 import { groundSize } from "../core/render/terrain.ts";
 import { ClientSession } from "../core/session.ts";
-import { arrivalOf, type ClusterList } from "../core/travel.ts";
+import { arrivalOf, socketAddress } from "../core/travel.ts";
 import { GlRenderer } from "./gl.ts";
 import { bindInput } from "./input.ts";
 import { connect } from "./socket.ts";
@@ -50,8 +50,7 @@ async function boot(): Promise<void> {
   const manifestText = fetchText(fetch, "assets/manifest.json"), skyBytes = fetchBytes(fetch, SKY_FILE), content = fetchContent(fetch, __CONTENT_FILE__);
   // The socket opens once the map's ground is in, so its handshake runs while the map is read. The server waits 5 s for a
   // hello, and a socket it gave up on is opened again.
-  const sockets = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
-  const early = mapFile.then(() => connect(`${sockets}/ws`), () => null);
+  const early = mapFile.then(() => connect(socketAddress(location, "ws")), () => null);
   // The manifest names every mesh and says where the pages are. The boot pack is fetched whole, and the rest as it is
   // wanted. The sound library starts once the sounds' rows have come.
   const core = parseManifest(await manifestText);
@@ -71,7 +70,7 @@ async function boot(): Promise<void> {
   const ground = groundSize(hf);
   if (Math.max(...ground.width, ...ground.height) > widest) throw new Error(`this map's ground is ${ground.width[0]} by ${ground.height[0]} texels, and this device draws ground of at most ${widest} a side`);
   const socket = await early;
-  const session = new ClientSession(socket?.open ? socket : connect(`${sockets}/ws`), {
+  const session = new ClientSession(socket?.open ? socket : connect(socketAddress(location, "ws")), {
     ...loadIdentity({ getItem: (key) => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }, (bytes) => { crypto.getRandomValues(bytes); }, arrival?.name ?? params.get("name"), arrival !== null),
     ...(arrival ? { ticket: arrival.ticket } : {}),
     spectate: params.has("spectate"),
@@ -105,11 +104,12 @@ async function boot(): Promise<void> {
   app.page = {
     origin: location.origin,
     protocol: location.protocol,
-    hostname: location.hostname,
+    hostname: location.hostname, host: location.host, pathname: location.pathname,
     go: (url) => location.assign(url),
+    open: (url) => void open(url, "_blank", "noopener"),
     reload: () => location.reload(),
     arrived: () => arrival && history.replaceState(null, "", location.pathname + location.search),
-    cluster: async () => (await fetchJson(fetch, "cluster.json")) as ClusterList,
+    json: (name) => fetchJson(fetch, name),
   };
   const clock = (renderer.passes = bench ? new PassClock(renderer.gl, params.has("passes")) : null);
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
@@ -122,7 +122,7 @@ async function boot(): Promise<void> {
   if (sound && typeof Worker !== "undefined") app.soundDecoder = new WorkerDecoder();
   // The music the build lists; without it the game has no music and plays on.
   if (sound) void fetch("assets/music/music.json").then((r) => (r.ok ? r.json() : null)).then((m) => (app.musicTracks = m?.tracks ?? null)).catch(() => {});
-  const voice = new VoiceIo(`${sockets}/voice`, sound ? () => sound.shared() : null);
+  const voice = new VoiceIo(socketAddress(location, "voice"), sound ? () => sound.shared() : null);
   app.voice = voice;
   for (const gesture of ["pointerdown", "pointerup", "keydown"]) addEventListener(gesture, () => (voice.unlock(), sound?.unlock()));
   /** With ?voice=1 the self-check talks to itself. Its own voice must come back from the server and play. */

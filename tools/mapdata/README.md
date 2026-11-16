@@ -8,7 +8,7 @@ San Francisco the second; Miami can move onto them once its paintings are no lon
 canopy.
 
 ```sh
-/home/user/.local/bin/python3.12 -m venv tools/mapdata/.venv       # any Python 3.12 with OpenSSL; not in git
+python3.12 -m venv tools/mapdata/.venv                          # any Python 3.12 with OpenSSL; not in git
 tools/mapdata/.venv/bin/pip install -r tools/mapart/requirements.txt
 bun tools/mapdata/city.ts san-francisco                            # every step below, then the map file
 bun tools/mapdata/city.ts san-francisco labels build               # from one step to another

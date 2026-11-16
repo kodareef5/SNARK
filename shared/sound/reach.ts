@@ -9,6 +9,7 @@ import { KEYS, candidates, vehicleFamilies, type CueKey } from "./cues.ts";
 
 const FIRED = KEYS.filter((k) => k.cue.status === "built" || k.cue.status === "fire");
 const SHARED = FIRED.filter((k) => !k.cue.on.includes("species/vehicle"));
+const VEHICLE = FIRED.filter((k) => k.cue.on.includes("species/vehicle"));
 /** Keys whose fallbacks name the asking owner's name, so that one with no sounds of its own may still find its own. */
 const NAMED = SHARED.filter((k) => k.cue.falls.some((f) => f.includes("{name}")));
 
@@ -29,7 +30,7 @@ export function soundsHeard(ids: readonly string[], reg: Registry): Set<string> 
     const d = reg.defs[kind];
     if (!d) continue;
     const v = reg.vehicle[kind];
-    if (v) ask(d.id, FIRED, vehicleFamilies(d.id, "aliases" in d ? (d.aliases ?? []) : []));
+    if (v) ask(d.id, VEHICLE, vehicleFamilies(d.id, "aliases" in d ? (d.aliases ?? []) : []));
     else ask(d.id, owners.has(d.id) ? SHARED : NAMED);
     if (d.type === "species" && d.class === "creature") for (const id of have) if (id.startsWith(`${d.id}/sound/`)) out.add(id);
   }

@@ -52,6 +52,13 @@
         {"file": "takes/howl/moss-pt-26450-02255.wav", "from": "moss", "start": 0.05, "end": 4.785}
       ]
     },
+    "bats": {
+      "range": 40, "level": -16, "vary": 0.04,
+      "takes": [
+        {"file": "takes/bats/moss-pt-40231-02930.wav", "from": "moss", "start": 0.05, "end": 2.89},
+        {"file": "takes/bats/moss-pt-40230-04220.wav", "from": "moss", "start": 0.05, "end": 0.545}
+      ]
+    },
     "chicken": {
       "range": 30, "level": -16, "vary": 0.04,
       "takes": [

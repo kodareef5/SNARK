@@ -486,6 +486,14 @@
         {"file": "takes/help/southern_woman/voice-pt-30635-02880.wav", "from": "voice", "start": 0.05, "end": 1.05}
       ]
     },
+    "warn/southern_woman": {
+      "range": 25, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/warn/southern_woman/voice-pt-40526-00000.wav", "from": "voice", "start": 0.0, "end": 3.06},
+        {"file": "takes/warn/southern_woman/voice-pt-40524-02700.wav", "from": "voice", "start": 0.05, "end": 0.87},
+        {"file": "takes/warn/southern_woman/voice-pt-40525-00000.wav", "from": "voice", "start": 0.0, "end": 4.08}
+      ]
+    },
     "flee/southern_woman": {
       "range": 25, "level": -16, "vary": 0.0,
       "takes": [
@@ -669,6 +677,13 @@
         {"file": "takes/deal/newyork_man/voice-pt-30870-02360.wav", "from": "voice", "start": 0.05, "end": 0.59}
       ]
     },
+    "annoyed/newyork_man": {
+      "range": 25, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/annoyed/newyork_man/voice-pt-40500-00000.wav", "from": "voice", "start": 0.0, "end": 4.24},
+        {"file": "takes/annoyed/newyork_man/voice-pt-40502-00000.wav", "from": "voice", "start": 0.0, "end": 4.24}
+      ]
+    },
     "chatter/newyork_man": {
       "range": 25, "level": -16, "vary": 0.0,
       "takes": [
@@ -776,6 +791,12 @@
       "takes": [
         {"file": "takes/surprise/newyork_woman/voice-pt-31050-00000.wav", "from": "voice", "start": 0.0, "end": 4.32},
         {"file": "takes/surprise/newyork_woman/voice-pt-31051-00000.wav", "from": "voice", "start": 0.0, "end": 3.44}
+      ]
+    },
+    "hurt/newyork_woman": {
+      "range": 25, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/hurt/newyork_woman/voice-pt-40514-00000.wav", "from": "voice", "start": 0.0, "end": 1.82}
       ]
     },
     "laugh/newyork_woman": {
@@ -4310,6 +4331,15 @@
         {"file": "takes/help/italian_man/voice-pt-36035-02140.wav", "from": "voice", "start": 0.05, "end": 0.55}
       ]
     },
+    "warn/italian_man": {
+      "range": 25, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/warn/italian_man/voice-pt-40516-00000.wav", "from": "voice", "start": 0.0, "end": 1.28},
+        {"file": "takes/warn/italian_man/voice-pt-40517-02840.wav", "from": "voice", "start": 0.05, "end": 1.03},
+        {"file": "takes/warn/italian_man/voice-pt-40518-00000.wav", "from": "voice", "start": 0.0, "end": 3.44},
+        {"file": "takes/warn/italian_man/voice-pt-40519-00000.wav", "from": "voice", "start": 0.0, "end": 2.72}
+      ]
+    },
     "flee/italian_man": {
       "range": 25, "level": -16, "vary": 0.0,
       "takes": [
@@ -4322,6 +4352,12 @@
       "takes": [
         {"file": "takes/surprise/italian_man/voice-pt-36051-00000.wav", "from": "voice", "start": 0.0, "end": 4.72},
         {"file": "takes/surprise/italian_man/voice-pt-36050-00000.wav", "from": "voice", "start": 0.0, "end": 4.56}
+      ]
+    },
+    "hurt/italian_man": {
+      "range": 25, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/hurt/italian_man/voice-pt-40511-00000.wav", "from": "voice", "start": 0.0, "end": 5.12}
       ]
     },
     "laugh/italian_man": {
@@ -4438,6 +4474,13 @@
       "takes": [
         {"file": "takes/help/italian_woman/voice-pt-36237-02980.wav", "from": "voice", "start": 0.05, "end": 2.59},
         {"file": "takes/help/italian_woman/voice-pt-36236-00000.wav", "from": "voice", "start": 0.0, "end": 2.02}
+      ]
+    },
+    "warn/italian_woman": {
+      "range": 25, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/warn/italian_woman/voice-pt-40522-00000.wav", "from": "voice", "start": 0.0, "end": 3.28},
+        {"file": "takes/warn/italian_woman/voice-pt-40520-00000.wav", "from": "voice", "start": 0.0, "end": 1.04}
       ]
     },
     "flee/italian_woman": {
@@ -4842,6 +4885,15 @@
         {"file": "takes/sorry/southern_old_man/voice-pt-36826-00000.wav", "from": "voice", "start": 0.0, "end": 1.22}
       ]
     },
+    "bye/southern_old_man": {
+      "range": 25, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/bye/southern_old_man/voice-pt-40505-02600.wav", "from": "voice", "start": 0.05, "end": 4.01},
+        {"file": "takes/bye/southern_old_man/voice-pt-40507-00000.wav", "from": "voice", "start": 0.0, "end": 3.44},
+        {"file": "takes/bye/southern_old_man/voice-pt-40506-00000.wav", "from": "voice", "start": 0.0, "end": 1.32},
+        {"file": "takes/bye/southern_old_man/voice-pt-40504-00000.wav", "from": "voice", "start": 0.0, "end": 4.88}
+      ]
+    },
     "help/southern_old_man": {
       "range": 25, "level": -16, "vary": 0.0,
       "takes": [
@@ -4953,6 +5005,15 @@
         {"file": "takes/decline/irish_old_woman/voice-pt-37012-00000.wav", "from": "voice", "start": 0.0, "end": 1.76},
         {"file": "takes/decline/irish_old_woman/voice-pt-37010-00000.wav", "from": "voice", "start": 0.0, "end": 1.98},
         {"file": "takes/decline/irish_old_woman/voice-pt-37011-02940.wav", "from": "voice", "start": 0.05, "end": 0.95}
+      ]
+    },
+    "yes/irish_old_woman": {
+      "range": 25, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/yes/irish_old_woman/voice-pt-40528-01320.wav", "from": "voice", "start": 0.05, "end": 0.91},
+        {"file": "takes/yes/irish_old_woman/voice-pt-40531-01720.wav", "from": "voice", "start": 0.05, "end": 1.29},
+        {"file": "takes/yes/irish_old_woman/voice-pt-40530-00000.wav", "from": "voice", "start": 0.0, "end": 4.0},
+        {"file": "takes/yes/irish_old_woman/voice-pt-40529-00000.wav", "from": "voice", "start": 0.0, "end": 0.78}
       ]
     },
     "no/irish_old_woman": {

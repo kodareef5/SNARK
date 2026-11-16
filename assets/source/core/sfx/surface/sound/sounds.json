@@ -323,6 +323,70 @@
         {"file": "takes/drag/stone/moss-pt-1320-07472.wav", "from": "moss", "start": 0.05, "end": 0.553},
         {"file": "takes/drag/stone/moss-pt-1320-01777.wav", "from": "moss", "start": 0.05, "end": 0.823}
       ]
+    },
+    "drag/dirt": {
+      "range": 20, "level": -26, "vary": 0.5,
+      "takes": [
+        {"file": "takes/drag/dirt/moss-pt-40002-06092.wav", "from": "moss", "start": 0.05, "end": 0.653},
+        {"file": "takes/drag/dirt/moss-pt-40000-06337.wav", "from": "moss", "start": 0.05, "end": 0.633},
+        {"file": "takes/drag/dirt/moss-pt-40001-03455.wav", "from": "moss", "start": 0.05, "end": 0.79},
+        {"file": "takes/drag/dirt/moss-pt-40002-03182.wav", "from": "moss", "start": 0.05, "end": 0.633},
+        {"file": "takes/drag/dirt/moss-pt-40000-04942.wav", "from": "moss", "start": 0.05, "end": 0.718},
+        {"file": "takes/drag/dirt/moss-pt-40001-03067.wav", "from": "moss", "start": 0.05, "end": 0.438}
+      ]
+    },
+    "drag/wood": {
+      "range": 20, "level": -26, "vary": 0.5,
+      "takes": [
+        {"file": "takes/drag/wood/moss-pt-40012-06332.wav", "from": "moss", "start": 0.05, "end": 0.333},
+        {"file": "takes/drag/wood/moss-pt-40010-05672.wav", "from": "moss", "start": 0.05, "end": 0.718},
+        {"file": "takes/drag/wood/moss-pt-40012-06642.wav", "from": "moss", "start": 0.05, "end": 0.648},
+        {"file": "takes/drag/wood/moss-pt-40010-06577.wav", "from": "moss", "start": 0.05, "end": 0.818},
+        {"file": "takes/drag/wood/moss-pt-40012-02572.wav", "from": "moss", "start": 0.05, "end": 0.648},
+        {"file": "takes/drag/wood/moss-pt-40010-01392.wav", "from": "moss", "start": 0.05, "end": 0.783}
+      ]
+    },
+    "drag/metal": {
+      "range": 20, "level": -26, "vary": 0.5,
+      "takes": [
+        {"file": "takes/drag/metal/moss-pt-40021-02712.wav", "from": "moss", "start": 0.05, "end": 0.576},
+        {"file": "takes/drag/metal/moss-pt-40022-04547.wav", "from": "moss", "start": 0.05, "end": 0.753},
+        {"file": "takes/drag/metal/moss-pt-40021-00707.wav", "from": "moss", "start": 0.05, "end": 0.781},
+        {"file": "takes/drag/metal/moss-pt-40022-07232.wav", "from": "moss", "start": 0.05, "end": 0.713}
+      ]
+    },
+    "drag/thatch": {
+      "range": 20, "level": -26, "vary": 0.5,
+      "takes": [
+        {"file": "takes/drag/thatch/moss-pt-40032-03607.wav", "from": "moss", "start": 0.05, "end": 0.713},
+        {"file": "takes/drag/thatch/moss-pt-40031-06562.wav", "from": "moss", "start": 0.05, "end": 0.283},
+        {"file": "takes/drag/thatch/moss-pt-40030-07117.wav", "from": "moss", "start": 0.05, "end": 0.505},
+        {"file": "takes/drag/thatch/moss-pt-40032-06922.wav", "from": "moss", "start": 0.05, "end": 0.703},
+        {"file": "takes/drag/thatch/moss-pt-40031-02417.wav", "from": "moss", "start": 0.05, "end": 0.218},
+        {"file": "takes/drag/thatch/moss-pt-40030-02702.wav", "from": "moss", "start": 0.05, "end": 0.743}
+      ]
+    },
+    "drag/water": {
+      "range": 20, "level": -26, "vary": 0.5,
+      "takes": [
+        {"file": "takes/drag/water/moss-pt-40042-00542.wav", "from": "moss", "start": 0.05, "end": 0.593},
+        {"file": "takes/drag/water/moss-pt-40040-06477.wav", "from": "moss", "start": 0.05, "end": 0.653},
+        {"file": "takes/drag/water/moss-pt-40042-07052.wav", "from": "moss", "start": 0.05, "end": 0.818},
+        {"file": "takes/drag/water/moss-pt-40040-01487.wav", "from": "moss", "start": 0.05, "end": 0.613},
+        {"file": "takes/drag/water/moss-pt-40040-02050.wav", "from": "moss", "start": 0.05, "end": 0.505},
+        {"file": "takes/drag/water/moss-pt-40042-01085.wav", "from": "moss", "start": 0.05, "end": 0.387}
+      ]
+    },
+    "drag/snow": {
+      "range": 20, "level": -26, "vary": 0.5,
+      "takes": [
+        {"file": "takes/drag/snow/moss-pt-40051-02087.wav", "from": "moss", "start": 0.05, "end": 0.653},
+        {"file": "takes/drag/snow/moss-pt-40052-05977.wav", "from": "moss", "start": 0.05, "end": 0.405},
+        {"file": "takes/drag/snow/moss-pt-40051-05987.wav", "from": "moss", "start": 0.05, "end": 0.543},
+        {"file": "takes/drag/snow/moss-pt-40052-00002.wav", "from": "moss", "start": 0.002, "end": 0.51},
+        {"file": "takes/drag/snow/moss-pt-40051-06480.wav", "from": "moss", "start": 0.05, "end": 0.7},
+        {"file": "takes/drag/snow/moss-pt-40052-04132.wav", "from": "moss", "start": 0.05, "end": 0.593}
+      ]
     }
   }
 }
