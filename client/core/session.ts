@@ -937,11 +937,11 @@ export class ClientSession {
       const seq = r.u16();
       const code = r.u8();
       if (r.overflow) return;
-      // The newest view or far request, refused, is forgotten so that it is asked again.
       if (seq !== 0 && seq === this.staticsSeq) {
         if (code === RESULT_OK) this.staticKinds = staticKinds(this.arrived!, this.registry);
         else if (code === RESULT_BUSY) this.staticsSeq = 0;
       }
+      // The newest view or far request, refused, is forgotten so that it is asked again.
       if (code === RESULT_BUSY && seq !== 0 && (seq === this.viewSeq || seq === this.farSeq)) {
         if (seq === this.viewSeq) this.viewCap = this.viewBytes = -1;
         else this.farAsked = -1;
