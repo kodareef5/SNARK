@@ -212,6 +212,8 @@ async function sharedPack(dir: string): Promise<Record<string, string>> {
 
 /** Each test file's milliseconds in the last check that passed, as `bun test --timings` reads them. */
 const TEST_TIMES = join(ROOT, ".cache/test-times.json");
+/** Measured ordering for a clean checkout, before it has a successful local check to learn from. */
+const SEED_TIMES = join(ROOT, "tools/test-times.json");
 
 function keepTimes(junit: string): void {
   const files: Record<string, number> = {};
@@ -238,7 +240,7 @@ async function checkTests(dir: string, env: Record<string, string>): Promise<voi
   const hung = Math.round(underLoad(20000, workers));
   const report = join(dir, "junit.xml");
   // The slowest files start first, by their times in the last check, or the last of them may start when the rest are done.
-  const timed = existsSync(TEST_TIMES) ? ["--timings", TEST_TIMES] : [];
+  const timed = ["--timings", existsSync(TEST_TIMES) ? TEST_TIMES : SEED_TIMES];
   const r = await run(["bun", "test", `--parallel=${workers}`, "--timeout", String(hung), ...timed, "--reporter=junit", `--reporter-outfile=${report}`], true, { ...process.env, ...env });
   if (r.ok) keepTimes(readFileSync(report, "utf8"));
   if (!r.ok) fail(`tests failed:\n${r.out.trim()}`);
