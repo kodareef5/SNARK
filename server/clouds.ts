@@ -52,8 +52,9 @@ interface Cloud {
 }
 
 export class Clouds {
-  /** Counters for tests and measurement: clouds made, and buffs given. */
+  /** Counters for tests and measurement: clouds made, looks at who is inside one, and buffs given. */
   made = 0;
+  looked = 0;
   gave = 0;
 
   private readonly ctx: CloudsContext;
@@ -119,6 +120,7 @@ export class Clouds {
 
   /** Gives `c`'s buff to every survivor inside it that the rules do not spare. */
   private look(c: Cloud): void {
+    this.looked++;
     const { world, records, buffs, rules } = this.ctx;
     const ents = world.ents;
     const reg = world.reg;

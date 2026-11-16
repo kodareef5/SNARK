@@ -1,16 +1,24 @@
 // `bun run check`, the one command every change must pass. It enforces the rules that keep this project fast to change.
 // Raising a budget or widening an allow-list is a decision. Record it in planning/decisions.md in the same change.
+//
+//   bun run check                policy, types and the tests of the fast tier
+//   bun run check -- --slow      the same, then the slow tier (`*.slow.test.ts`): before a merge to main
+//   bun run slow                 the slow tier alone
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { cpus, loadavg, tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-import { underLoad } from "../tests/fixtures/load.ts";
+import { SLOW_TEST, TEST_WATCH, TEST_WORKERS, hungAfter } from "../tests/fixtures/load.ts";
 import { dynamicLoads, stripComments } from "./policy.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 
-/** Wall-clock budget for the whole check. */
-const BUDGET_SECONDS = 45;
+/**
+ * CPU-seconds the fast tier's tests may take, theirs and their workers'. On the development machine they took about 220 on
+ * a quiet day and up to 371 beside other teams' work, which competes for caches and memory. The clock is shown but not
+ * held to a budget: on a busy machine it times the neighbours.
+ */
+const TEST_CPU_BUDGET = 440;
 /** Non-blank, non-comment lines allowed in client/shell, which has no tests. D250 shares the last 250 among round 8's phases. */
 const SHELL_MAX_LINES = 1150;
 /** And in client/voice, which also has no tests. */
@@ -78,6 +86,9 @@ function zoneOf(rel: string): Zone | undefined {
   return best;
 }
 
+/** A test given a time limit of its own: a number or `{ timeout }` after its body, or a default set outside the preload. */
+const OWN_TIMEOUT = /^\s*\}\s*,\s*(\d[\d_]*\s*\)|\{\s*timeout\b)|\b(setDefaultTimeout|jest\.setTimeout)\s*\(/m;
+
 /** The one file that may load a file it is given the name of: an operator's modules. */
 const MAY_LOAD_BY_NAME = new Set(["server/main.ts"]);
 
@@ -115,6 +126,9 @@ function checkPolicy(): void {
     const src = stripComments(readFileSync(file, "utf8"));
 
     if (/\.(spec|e2e)\.ts$/.test(rel)) fail(`${rel}: spec/e2e files are not used here`);
+    if (zone.dir === "tests" && rel !== "tests/fixtures/preload.ts" && OWN_TIMEOUT.test(src)) {
+      fail(`${rel}: a test sets its own time limit; every test has the one in tests/fixtures/load.ts`);
+    }
     if (zone.dir === "client/shell") {
       if (rel.endsWith(".test.ts")) fail(`${rel}: client/shell has no tests; move the logic into client/core`);
       shellLines += src.split("\n").filter((l) => l.trim().length > 0).length;
@@ -210,37 +224,99 @@ async function sharedPack(dir: string): Promise<Record<string, string>> {
   }
 }
 
-/** Each test file's milliseconds in the last check that passed, as `bun test --timings` reads them. */
-const TEST_TIMES = join(ROOT, ".cache/test-times.json");
+type Tier = "fast" | "slow";
 
-function keepTimes(junit: string): void {
+const args = process.argv.slice(2);
+if (args.some((a) => a !== "--slow" && a !== "--slow-only")) {
+  console.error("usage: bun run check -- [--slow | --slow-only]");
+  process.exit(2);
+}
+const slowOnly = args.includes("--slow-only");
+
+/** Each test file's milliseconds in the tier's last passing run, as `bun test --timings` reads them. */
+const timesOf = (tier: Tier): string => join(ROOT, `.cache/${tier === "fast" ? "test-times" : "slow-test-times"}.json`);
+
+function keepTimes(file: string, junit: string): void {
   const files: Record<string, number> = {};
   for (const m of junit.matchAll(/<testsuite name="([^"]+)"[^>]*? time="([\d.]+)"/g)) files[m[1]!] = Math.round(Number(m[2]) * 1000);
-  mkdirSync(dirname(TEST_TIMES), { recursive: true });
+  mkdirSync(dirname(file), { recursive: true });
   // Whole or not at all, for a check started beside this one.
-  writeFileSync(`${TEST_TIMES}.${process.pid}`, JSON.stringify({ version: 1, files }));
-  renameSync(`${TEST_TIMES}.${process.pid}`, TEST_TIMES);
+  writeFileSync(`${file}.${process.pid}`, JSON.stringify({ version: 1, files }));
+  renameSync(`${file}.${process.pid}`, file);
 }
 
-const hasTests = walk(join(ROOT, "tests")).some((f) => f.endsWith(".test.ts"));
+const testFiles = walk(join(ROOT, "tests")).filter((f) => f.endsWith(".test.ts"));
 
-/** Runs every test, with `env` from sharedPack, leaving a report in `dir`. */
-async function checkTests(dir: string, env: Record<string, string>): Promise<void> {
-  if (!hasTests) return;
+/** Each test file's CPU-seconds, from what the preload wrote in `dir`. */
+function fileCpu(dir: string): [string, number][] {
+  const out: [string, number][] = [];
+  for (const name of readdirSync(dir).filter((n) => n.endsWith(".tsv"))) {
+    for (const line of readFileSync(join(dir, name), "utf8").split("\n")) {
+      const [file, seconds] = line.split("\t");
+      if (file && seconds) out.push([relative(ROOT, file), Number(seconds)]);
+    }
+  }
+  return out.sort((a, b) => b[1] - a[1]);
+}
+
+/**
+ * Stops each worker in `dir` whose test has run a quarter past its hang limit, and says which. Bun's own timeout ends a test
+ * that waits, but not one that never yields, such as a loop with no end. The limit is the greatest the load has given it
+ * while the test ran, kept in `most` by what the worker wrote.
+ */
+function stopHung(dir: string, workers: number, most: Map<string, number>, stopped: string[]): void {
+  for (const name of readdirSync(dir).filter((n) => n.endsWith(".now"))) {
+    let line = "";
+    try {
+      line = readFileSync(join(dir, name), "utf8");
+    } catch {
+      continue;
+    }
+    const [file, n, since, limit] = line.split("\t");
+    const ran = Date.now() - Number(since);
+    const allowed = Math.max(most.get(line) ?? Number(limit), hungAfter(file!, workers));
+    most.set(line, allowed);
+    if (ran < 1.25 * allowed) continue;
+    rmSync(join(dir, name), { force: true });
+    const pid = Number(name.slice(0, -".now".length));
+    // Only a test worker of this run: a worker that crashed leaves its file, and its number may since be another's.
+    if (!Bun.spawnSync(["ps", "-o", "command=", "-p", String(pid)]).stdout.toString().includes("--test-worker")) continue;
+    process.kill(pid, "SIGKILL");
+    stopped.push(`${relative(ROOT, file!)}: ${n === "0" ? "loading it" : `its test number ${n}`} ran ${(ran / 1000).toFixed(0)} s, past its hang limit of ${(allowed / 1000).toFixed(0)} s, without yielding; its worker was stopped`);
+  }
+}
+
+/** Runs the tests of `tier`, with `env` from sharedPack, leaving its reports in `dir`. */
+async function checkTests(tier: Tier, dir: string, env: Record<string, string>): Promise<void> {
+  const files = testFiles.filter((f) => SLOW_TEST.test(f) === (tier === "slow")).length;
+  if (files === 0) return;
   // Each test file in a worker of its own: about half the time, and one file cannot lean on what another left behind.
-  // A busy machine can make a one-second test take five, so a test is called hung at 20 s, and later in step with the load
-  // when more work waits than there are cores, up to two minutes. The load is counted with the check's own workers in it,
-  // a worker a core, which the minute's average does not yet hold when the check starts: on a machine already half busy
-  // they take it past its cores, and a test of three seconds alone has taken twenty.
-  const hung = Math.round(underLoad(20000, cpus().length));
-  const report = join(dir, "junit.xml");
-  // The slowest files start first, by their times in the last check, or the last of them may start when the rest are done.
-  const timed = existsSync(TEST_TIMES) ? ["--timings", TEST_TIMES] : [];
-  const r = await run(["bun", "test", "--parallel", "--timeout", String(hung), ...timed, "--reporter=junit", `--reporter-outfile=${report}`], true, { ...process.env, ...env });
-  if (r.ok) keepTimes(readFileSync(report, "utf8"));
-  if (!r.ok) fail(`tests failed:\n${r.out.trim()}`);
+  const workers = Math.min(cpus().length, files);
+  const report = join(dir, `${tier}.xml`);
+  const watch = join(dir, `${tier}-watch`);
+  mkdirSync(watch);
+  const times = timesOf(tier);
+  // The slowest files start first, by their times in the last run, or the last of them may start when the rest are done.
+  const timed = existsSync(times) ? ["--timings", times] : [];
+  const only = tier === "slow" ? [".slow.test.ts"] : ["--path-ignore-patterns=**/*.slow.test.ts"];
+  const stopped: string[] = [];
+  const most = new Map<string, number>();
+  const watching = setInterval(() => stopHung(watch, workers, most, stopped), 1000);
+  const r = await run(["bun", "test", `--parallel=${workers}`, ...timed, "--reporter=junit", `--reporter-outfile=${report}`, ...only], true, { ...process.env, ...env, [TEST_WORKERS]: String(workers), [TEST_WATCH]: watch });
+  clearInterval(watching);
+  stopped.forEach(fail);
+  if (!r.ok) {
+    fail(`${tier} tests failed:\n${r.out.trim()}`);
+    return;
+  }
+  keepTimes(times, readFileSync(report, "utf8"));
+  const counts = r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim());
+  console.log(`  ${counts.join(", ")}, ${r.cpu.toFixed(0)} CPU-seconds${tier === "fast" ? ` of ${TEST_CPU_BUDGET}` : ""}`);
   // CPU-seconds move far less with the machine's load than the clock does, so a slow change shows on a busy day too.
-  else console.log("  " + [...r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim()), `${r.cpu.toFixed(0)} CPU-seconds`].join(", "));
+  if (tier === "fast" && r.cpu > TEST_CPU_BUDGET) {
+    const costliest = fileCpu(watch).slice(0, 5).map(([f, s]) => `${f} ${s.toFixed(1)}`);
+    fail(`the tests took ${r.cpu.toFixed(0)} CPU-seconds, over their budget of ${TEST_CPU_BUDGET}. The costliest files, in CPU-seconds: ${costliest.join(", ")}. Make them cheaper; a test that is slow by nature belongs in the slow tier (planning/quality/testing.md)`);
+  }
 }
 
 const t0 = performance.now();
@@ -253,23 +329,22 @@ const step = async (name: string, fn: () => void | Promise<void>) => {
 const dir = mkdtempSync(join(tmpdir(), "snark-check-"));
 try {
   let env: Record<string, string> = {};
-  if (hasTests) await step("pack", async () => void (env = await sharedPack(dir)));
-  const types = step("types", checkTypes);
-  const tests = step("tests", () => checkTests(dir, env));
-  // The type check and the tests have started in processes of their own; the policy runs here beside them.
-  await step("policy", checkPolicy);
-  await Promise.all([types, tests]);
+  if (testFiles.length > 0) await step("pack", async () => void (env = await sharedPack(dir)));
+  if (!slowOnly) {
+    const types = step("types", checkTypes);
+    const tests = step("tests", () => checkTests("fast", dir, env));
+    // The type check and the tests have started in processes of their own; the policy runs here beside them.
+    await step("policy", checkPolicy);
+    await Promise.all([types, tests]);
+  }
+  if (slowOnly || args.includes("--slow")) await step("slow tests", () => checkTests("slow", dir, env));
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
 
 const seconds = (performance.now() - t0) / 1000;
-// With more work waiting than there are cores, the clock times the neighbours and not the tests, so the budget is not counted.
-const busy = loadavg()[0]! > cpus().length;
-if (seconds > BUDGET_SECONDS && busy) console.log(`\nover the ${BUDGET_SECONDS}s budget at ${seconds.toFixed(1)}s, not counted: load ${loadavg()[0]!.toFixed(0)} on ${cpus().length} cores`);
-else if (seconds > BUDGET_SECONDS) fail(`check took ${seconds.toFixed(1)}s (budget ${BUDGET_SECONDS}s); make tests faster or remove them`);
 if (problems.length > 0) {
   console.error(`\nFAILED (${problems.length})\n` + problems.map((p) => " - " + p).join("\n"));
   process.exit(1);
 }
-console.log(`\nOK in ${seconds.toFixed(2)}s (budget ${BUDGET_SECONDS}s)`);
+console.log(`\nOK in ${seconds.toFixed(2)}s, at load ${loadavg()[0]!.toFixed(0)} on ${cpus().length} cores`);
