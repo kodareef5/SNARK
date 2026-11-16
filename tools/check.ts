@@ -313,7 +313,7 @@ function stopHung(dir: string, workers: number, most: Map<string, number>, stopp
     // Only a test worker of this run: a worker that crashed leaves its file, and its number may since be another's.
     if (!Bun.spawnSync(["ps", "-o", "command=", "-p", String(pid)]).stdout.toString().includes("--test-worker")) continue;
     process.kill(pid, "SIGKILL");
-    stopped.push(`${repoPath(file!)}:${n === "0" ? "loading it" : `its test number ${n}`} ran ${(ran / 1000).toFixed(0)} s, past its hang limit of ${(allowed / 1000).toFixed(0)} s, without yielding; its worker was stopped`);
+    stopped.push(`${repoPath(file!)}: ${n === "0" ? "loading it" : `its test number ${n}`} ran ${(ran / 1000).toFixed(0)} s, past its hang limit of ${(allowed / 1000).toFixed(0)} s, without yielding; its worker was stopped`);
   }
 }
 

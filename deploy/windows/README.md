@@ -115,10 +115,13 @@ is none. `-Config` names another, and `install` keeps the name it is given.
   world at once, without saving. `cluster.ps1 stop` stops them the way they
   save, and then the task ends by itself.
 - **The account.** The task runs as SYSTEM unless `install -User <account>`
-  names another. That account needs to read the repository and `bun.exe`, and
-  to write `var\`. Bun installed for one user lives in that user's profile,
-  which other accounts cannot read. Give `Bun` its whole path in the cluster's
-  file either way, since a task does not see one user's `PATH`.
+  names another. SYSTEM is the whole machine: whoever may change the
+  repository or `var\cluster.psd1` runs programs as it, and so would anyone who
+  broke into a world. An account of its own is safer. It needs to read the
+  repository and `bun.exe`, and to write `var\`. Bun installed for one user
+  lives in that user's profile, which other accounts cannot read. Give `Bun`
+  its whole path in the cluster's file either way, since a task does not see
+  one user's `PATH`.
 - **The tunnel.** A named Cloudflare tunnel sends its public hostname to the
   front, `http://127.0.0.1:8787`, with nothing else in front of the worlds. It
   can be the `Tunnel` entry of the cluster's file, or cloudflared's own Windows
