@@ -20,6 +20,7 @@ import { vehiclePoint, vehicleRotation } from '../shared/sim/vehicle-frame.ts';
 import { isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition, type VehicleState } from '../shared/sim/vehicle.ts';
 import { V_HEALTH } from '../shared/sim/vitals.ts';
 import { groundUnder } from '../shared/world/collide.ts';
+import { boatMeetsCapsule } from '../shared/world/boat.ts';
 import type { Connection } from '../shared/net/transport.ts';
 import type { Items } from './items.ts';
 import type { VehicleContacts } from './vehicle-contacts.ts';
@@ -758,8 +759,14 @@ export class Urban {
 
   private boatAction(action: Readonly<OccupancyAction>, host: HostSeat, ae: number): OccupancyApproval {
     const { world } = this.ctx, ents = world.ents, state = this.state(host.entity);
+    const tilted = Math.abs(state.pitch) > .35 || Math.abs(state.roll) > .45 ||
+      1 - 2 * ((state.qx ?? 0) ** 2 + (state.qz ?? 0) ** 2) < .7;
+    const flooded = ents.vehicleFlooding[host.entity]! >= .5;
+    // An overturned or sinking open boat must not hold its crew underwater until the hull dies.
+    // The ordinary action still commits against a fresh, bounded route and a clear exterior landing.
+    if (action.kind === 'exit' && (tilted || flooded)) return this.boatEscape(action, host, ae);
     if (Math.hypot(state.vx, state.vy, state.vz) > .55 || Math.hypot(state.yawRate, state.pitchRate, state.rollRate) > .2 ||
-      Math.abs(state.pitch) > .35 || Math.abs(state.roll) > .45) return { ok: false, reason: 'boat-moving' };
+      tilted || flooded) return { ok: false, reason: 'boat-moving' };
     const seat = host.definition.seats.find(s => s.id === action.seat)!;
     const entry = this.boatPoint(ae, host, BOAT_ART.anchors.boarding_water), point = [0, 0, 0];
     const at = (anchor: readonly number[]): Point => { vehiclePoint(state, anchor, point); return { x: point[0]!, y: point[1]!, z: point[2]! }; };
@@ -780,6 +787,29 @@ export class Urban {
       const anchor = BOAT_ART.anchors.boarding_water;
       const landing = this.boatPoint(ae, host, [anchor[0] + offset, anchor[1], anchor[2] - .25]);
       if (this.seating.free(landing, landed, [landed]) && this.seating.corridor(entry, landing, landed, ignored, action.host)) return { ok: true, landing: { ...landing, yaw: state.yaw } };
+    }
+    return { ok: false, reason: 'landing-blocked' };
+  }
+
+  private boatEscape(action: Readonly<OccupancyAction>, host: HostSeat, ae: number): OccupancyApproval {
+    if (!isBoatVehicle(host.definition)) return { ok: false, reason: 'missing' };
+    const { world } = this.ctx, ents = world.ents, state = this.state(host.entity), spec = host.definition.spec;
+    const move = world.reg.move[ents.kind[ae]!]!, seat = host.definition.seats.find(s => s.id === action.seat)!;
+    const ignored = [action.actor, ...host.definition.seats.map(s => this.occupancy.occupant(action.host, s.id))];
+    const start = { x: ents.x[ae]!, y: ents.y[ae]!, z: ents.z[ae]! };
+    const w = spec.halfWidth + move.radius + .2, l = spec.halfLength + move.radius + .4;
+    const spots = [[w, 0, seat.anchor[2]], [-w, 0, seat.anchor[2]], [0, spec.height + move.radius + .2, seat.anchor[2]],
+      [w, 0, 0], [-w, 0, 0], [w, 0, l], [-w, 0, l], [w, 0, -l], [-w, 0, -l]]
+      .map(local => this.boatPoint(ae, host, local))
+      .sort((a, b) => Math.hypot(a.x - start.x, a.y - start.y, a.z - start.z) - Math.hypot(b.x - start.x, b.y - start.y, b.z - start.z));
+    for (const landing of spots) {
+      const water = world.hf.waterAt(landing.x, landing.z);
+      if (!Number.isFinite(water) || water - groundUnder(world.hf, landing.x, landing.z, move.radius) < move.height * .25) continue;
+      // Seating's ordinary chassis envelope is upright. Check this tilted boat's actual hull and steered motor instead.
+      if (!this.seating.free(landing, action.actor, ignored, action.host) ||
+        boatMeetsCapsule(host.definition, state, landing.x, landing.y, landing.z, move.radius, move.height) ||
+        !this.seating.corridor(start, landing, action.actor, ignored, action.host)) continue;
+      return { ok: true, landing: { ...landing, yaw: state.yaw } };
     }
     return { ok: false, reason: 'landing-blocked' };
   }
@@ -811,7 +841,8 @@ export class Urban {
         ents.setPosition(e, effect.landing.x, effect.landing.y, effect.landing.z);
         ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
         if (isBoatVehicle(host.definition)) {
-          ents.vx[e] = ents.vx[host.entity]!; ents.vy[e] = ents.vy[host.entity]!; ents.vz[e] = ents.vz[host.entity]!;
+          const inherit = (v: number): number => Number.isFinite(v) ? v : 0;
+          ents.vx[e] = inherit(ents.vx[host.entity]!); ents.vy[e] = inherit(ents.vy[host.entity]!); ents.vz[e] = inherit(ents.vz[host.entity]!);
           this.waterExit(e);
         }
         ents.pose(e, world.tick);

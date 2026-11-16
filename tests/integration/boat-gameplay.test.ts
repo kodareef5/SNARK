@@ -10,6 +10,7 @@ import { RESULT_BUSY, RESULT_FAR, RESULT_INVALID, RESULT_NO_SUPPORT, RESULT_NOT_
 import { boatRestY } from "../../shared/sim/boat.ts";
 import { MODE_SWIM } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
+import { boatMeetsCapsule } from "../../shared/world/boat.ts";
 import { isBoatVehicle } from "../../shared/sim/vehicle.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
@@ -108,6 +109,50 @@ test("four swimmers share the ladder, fill distinct seats, and leave safely at t
       // Clear the shared landing before the next passenger climbs down.
       ents.setPosition(client.ent, 90, 1.65, 90);
     }
+  } finally { h.host.shutdown(); }
+});
+
+for (const inverted of [true, false]) test(`crew can escape a moving ${inverted ? "capsized" : "flooding"} boat into clear water, while new boarding is refused`, () => {
+  const { h, c, actor, def } = setup();
+  try {
+    const visitor = h.join("boat-rescuer"); h.run(400);
+    const ents = h.world.ents, guest = h.client(visitor)!;
+    ents.setPosition(guest.ent, 95, 1.65, 95);
+    const e = h.host.spawnVehicle("core:boat", 62, 64, actor.team), anchor = BOAT_ART.anchors.boarding_water;
+    ents.setPosition(c.ent, 62 + anchor[0], 1.65, 64 + anchor[2]);
+    expect(h.host.urban.mount(c, e)).toBe(RESULT_OK); h.run(1400); expect(c.drive).toBe(e);
+    ents.vehicleQz[e] = inverted ? 1 : 0; ents.vehicleQw[e] = inverted ? 0 : 1;
+    ents.vehicleRoll[e] = inverted ? Math.PI : 0; ents.vehicleFlooding[e] = inverted ? 0 : .65;
+    h.host.urban.syncAfterContact(e);
+    ents.setPosition(guest.ent, 62 + anchor[0], 1.65, 64 + anchor[2]);
+    expect(h.host.urban.mount(guest, e)).not.toBe(RESULT_OK);
+    ents.vx[e] = 2; ents.vy[e] = -.1;
+    // Commit through the real seat authority before motion changes this deliberately distressed pose.
+    h.host.urban.dismount(c); h.world.tick += 45; h.host.urban.beforeStep();
+    expect(c.drive).toBe(-1); expect(ents.seat[c.ent]).toBe(0); expect(ents.mode[c.ent]).toBe(MODE_SWIM);
+    expect([ents.vx[c.ent], ents.vy[c.ent], ents.vz[c.ent]]).toEqual([2, Math.fround(-.1), 0]);
+    expect(ents.y[c.ent]!).toBeGreaterThan(1); expect(ents.y[c.ent]!).toBeLessThan(2);
+    const move = h.reg.move[ents.kind[c.ent]!]!;
+    expect(boatMeetsCapsule(def, { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: 0, pitch: 0, roll: ents.vehicleRoll[e]!,
+      qx: 0, qy: 0, qz: ents.vehicleQz[e]!, qw: ents.vehicleQw[e]! }, ents.x[c.ent]!, ents.y[c.ent]!, ents.z[c.ent]!, move.radius, move.height)).toBeNull();
+    expect(ents.seat[guest.ent]).toBe(0);
+    h.run(1200); expect(c.drive).toBe(-1); expect(ents.seat[c.ent]).toBe(0);
+  } finally { h.host.shutdown(); }
+});
+
+test("an emergency boat exit rechecks its path at commit and cannot place the swimmer through new obstructions", () => {
+  const { h, c, actor } = setup();
+  try {
+    const ents = h.world.ents, e = h.host.spawnVehicle("core:boat", 62, 64, actor.team), anchor = BOAT_ART.anchors.boarding_water;
+    ents.setPosition(c.ent, 62 + anchor[0], 1.65, 64 + anchor[2]);
+    expect(h.host.urban.mount(c, e)).toBe(RESULT_OK); h.run(1400);
+    ents.vehicleQz[e] = 1; ents.vehicleQw[e] = 0; ents.vehicleRoll[e] = Math.PI;
+    h.host.urban.syncAfterContact(e); h.host.urban.dismount(c);
+    const before = [ents.x[c.ent], ents.y[c.ent], ents.z[c.ent]], ceiling = h.reg.index.get("core:ceiling")!;
+    for (let x = -6; x <= 6; x += 3) for (let z = -6; z <= 6; z += 3) h.world.structs.add(ceiling, 62 + x, 3, 64 + z, 0, 0, 100);
+    h.world.tick += 45; h.host.urban.beforeStep();
+    expect(c.drive).toBe(e); expect(ents.seat[c.ent]).toBe(e + 1);
+    expect([ents.x[c.ent], ents.y[c.ent], ents.z[c.ent]]).toEqual(before);
   } finally { h.host.shutdown(); }
 });
 
