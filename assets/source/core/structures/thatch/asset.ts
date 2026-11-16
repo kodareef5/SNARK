@@ -4,9 +4,14 @@
 
 import type { MaterialSpec, PiecesAsset } from "../../../../../tools/art/spec.ts";
 
-/** The foundation and the door are lighter than a wall, so their levels start lower and stop at four with materials. */
+/**
+ * The foundation and the door are lighter than a wall, so their levels start lower and stop at four with materials. A
+ * ceiling is mostly its eaves, which are hidden in the walls under a floor and seen from below or afar, so it starts
+ * lower too.
+ */
 const FOUNDATION = [1900, 1300, 800, 250, 24];
 const DOOR = [1900, 1100, 600, 300, 24];
+const CEILING = [2600, 1800, 1200, 800, 60];
 
 /** A whole layer set under tex/<name>/. */
 const picture = (name: string, more: Partial<MaterialSpec> = {}): MaterialSpec => ({
@@ -24,7 +29,7 @@ export default {
     { id: "core:foundation_thatch", object: "foundation", triangles: FOUNDATION },
     { id: "core:wall_thatch", object: "wall" },
     { id: "core:doorframe_thatch", object: "doorframe" },
-    { id: "core:ceiling_thatch", object: "ceiling" },
+    { id: "core:ceiling_thatch", object: "ceiling", triangles: CEILING },
     { id: "core:door_thatch", object: "door", triangles: DOOR },
     { id: "core:door_open_thatch", object: "door_open", triangles: DOOR },
   ],

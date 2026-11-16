@@ -403,9 +403,16 @@ def ceiling(level):
     top, bottom = 0.125, -0.125
     soffit = -0.005
     m = Mesh()
-    if level == 2:
+    if level == 3:
         # As deep as the slab and half the beams, which is nearer the finest than the whole depth would be.
         m.box((-H, -0.065, -H), (H, top, H), lambda n: "flags" if n[1] > 0.5 else "masonry")
+        return m
+    if level == 2:
+        # The slab whole and the beams square, each way run through.
+        m.box((-H, soffit, -H), (H, top, H), lambda n: "flags" if n[1] > 0.5 else "masonry")
+        for centre, half in ((-0.5, 0.08), (0.5, 0.08), (H - 0.04, 0.04), (-H + 0.04, 0.04)):
+            m.box((-H, bottom, centre - half), (H, soffit, centre + half), "timber", grain="x")
+            m.box((centre - half, bottom + 0.02, -H), (centre + half, soffit, H), "timber", grain="z")
         return m
     bed = top - 0.012
     m.box((-H, soffit, -H), (H, bed, H), lambda n: "flags" if n[1] > 0.5 else "masonry")
@@ -715,7 +722,7 @@ PIECES = {
     "wall": (wall, 4),
     "doorframe": (lambda level: opening("door", level), 4),
     "windowframe": (lambda level: opening("window", level), 4),
-    "ceiling": (ceiling, 3),
+    "ceiling": (ceiling, 4),
     "pillar": (pillar, 3),
     "stairs": (stairs, 4),
     "door": (door, 3),
