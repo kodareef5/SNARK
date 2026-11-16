@@ -82,7 +82,7 @@ def populate(D,prototype,instance,box,node):
     return min(w,waterwidth(z)+(4.65 if n>=5 else -.25))
    outlines.append([[-dw(z),z] for z in zcuts]+[[dw(z),z] for z in reversed(zcuts)])
   if n==17:
-   outlines += [rect(10,-80,27.5,76),rect(-27.5,-80,-20,76),rect(-26,-142,26,-80)]
+   outlines += [rect(10,-72,27.5,76),rect(-27.5,-72,-20,76),rect(-26,-142,26,-72)]
   if n==16:
    # Dome volume is open above its deck15 floor, not bisected by an upper slab.
    pass
@@ -148,7 +148,10 @@ def populate(D,prototype,instance,box,node):
  for i,d in enumerate(D['decks'][:15]):
   label=d['id'];y=d['floorY'];a=f'fore_{label}';b=f'aft_{label}'
   if any(n['id']==a for n in D['graph']['nodes']) and any(n['id']==b for n in D['graph']['nodes']):
-   route('spine_'+label,'corridor',b,a,[[-1.1,y,-76.6],[15.5,y,-76.6],[15.5,y,77.4],[-1.1,y,77.4]],2.4)
+   aisle=25 if int(label)>=15 else 15.5
+   anchors=[[-1.1,y,-76.6],[aisle,y,-76.6],[aisle,y,77.4],[-1.1,y,77.4]]
+   if int(label)>=16:anchors=[[-1.1,y,-76.6],[-1.1,y,-88],[aisle,y,-88],[aisle,y,77.4],[-1.1,y,77.4]]
+   route('spine_'+label,'corridor',b,a,anchors,2.4)
  # Exterior arrival, clear of the outer white hull, opens directly to the promenade.
  gp=p('gangway','gangway',[box([-14.8,-.24,-1.4],[14.8,0,1.4]),box([-14.8,0,-1.48],[14.8,1.15,-1.4]),
                          box([-14.8,0,1.4],[14.8,1.15,1.48])],art={'kind':'gangway','finish':'deck'},color=101)
@@ -156,7 +159,7 @@ def populate(D,prototype,instance,box,node):
  node('quay',[58,14,-24],'5','docking');node('arrival',[20,14,-24],'5','lobby')
  route('board','docking','quay','arrival',[[58,14,-24],[28.9,14,-24],[20,14,-24]],2.8)
  route('arrival_fore','corridor','arrival','fore_5',[[20,14,-24],[15.5,14,-24],[15.5,14,77.4],[-1.1,14,77.4]],2.4)
- route('launch_access','corridor','aft_16','launch_16',[[-1.1,49.6,-76.6],[15.5,49.6,-76.6],[15.5,49.6,-132.6],[14.9,49.6,-132.6]],2.0)
+ route('launch_access','corridor','aft_16','launch_16',[[-1.1,49.6,-76.6],[-1.1,49.6,-88],[20.5,49.6,-88],[20.5,49.6,-132.6],[14.9,49.6,-132.6]],2.0)
  D['rooms'].append({'id':'arrival','node':'arrival','label':'Royal Promenade arrival','deck':'5','section':'arrival',
                    'bounds':{'min':[10,14,-35],'max':[28.9,18.16,-10]},'entry':[28.9,14,-24],
                    'routeTarget':[20,14,-24],'evidence':'original-fit-within-public-plan'})
@@ -225,6 +228,15 @@ def populate(D,prototype,instance,box,node):
    a,b,c=dome(t0,a0),dome(t0,a1),dome(t1,a0)
    hs=[beam(a,b,.11),beam(a,c,.11)];q,o=world('dome_cell','dome',hs=hs,art={'kind':'dome','finish':'steel'})
    place(f'dome_{ai}_{ti}',q,o,'15','aquadome')
+ # Side-by-side aft funnel housings are a distinctive photographed feature, not two longitudinal stacks.
+ funnelh=[{'points':[[x,y,z] for y,rx,rz,shift in[(-11.5,7.2,10.2,0),(8,4.6,7.2,1.5)] for x in(-rx,rx) for z in(-rz+shift,rz+shift)]}]
+ funnelboxes=[box([x-.65,7.8,z-.65],[x+.65,12,z+.65]) for x in(-1.4,1.4) for z in(-1.0,2.5)]
+ fp=p('funnel','funnel',funnelboxes,funnelh,{'kind':'funnel','finish':'blue'},232)
+ for side in(-1,1):place('funnel_'+str(side),fp,[side*11,63,-72],'17','funnel')
+ mast=p('signal_mast','mast',[box([-.22,-13.4,-.22],[.22,13.4,.22]),
+                             box([-3.2,7.4,-.1],[3.2,7.6,.1]),box([-2.4,10.4,-.1],[2.4,10.6,.1])],
+        art={'kind':'mast','finish':'enamel'})
+ place('forward_signal_mast',mast,[0,66.6,102],'17','aerial')
  # Pool prototype: real recessed basin and shallow stair-out above an occupied dry room; no map-water semantics.
  basin=[box([-5,-.94,-8],[5,-.74,8]),box([-5.2,-.74,-8.2],[-5,0.18,8.2]),box([5,-.74,-8.2],[5.2,.18,8.2]),
         box([-5,-.74,-8.2],[5,.18,-8]),box([-5,-.74,8],[5,.18,8.2])]
@@ -232,7 +244,7 @@ def populate(D,prototype,instance,box,node):
  q=p('pool_basin','pool',basin,art={'kind':'pool','waterY':-.18,'finish':'tile','decorativeWater':True},color=87)
  place('prototype_pool',q,[18,ys['15'],-6],'15','pool-prototype')
  for ident,label,title,at,anchors,bounds in [
-  ('aquadome','15','AquaDome',[0,45.6,130],[[-1.1,45.6,77.4],[-1.1,45.6,105],[0,45.6,130]],([-22,45.6,108],[22,65,174])),
+  ('aquadome','15','AquaDome',[0,45.6,130],[[-1.1,45.6,77.4],[5,45.6,77.4],[5,45.6,100],[0,45.6,130]],([-22,45.6,108],[22,65,174])),
   ('pool_under','14','Pool service lounge',[18,42,-6],[[-1.1,42,77.4],[15.5,42,77.4],[15.5,42,-6],[18,42,-6]],([12,42,-18],[27,44.66,6])),
   ('pool_edge','15','Pool terrace',[25,45.6,-6],[[-1.1,45.6,77.4],[25,45.6,77.4],[25,45.6,-6]],([23,45.6,-18],[28.9,48.6,6]))]:
   node(ident,at,label,'room');route(ident+'_access','room',f'fore_{label}',ident,anchors,2.0)
