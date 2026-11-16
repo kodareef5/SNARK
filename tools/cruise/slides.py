@@ -9,7 +9,9 @@ from pathlib import Path
 
 import bmesh
 
-source, helper, output = map(Path, sys.argv[sys.argv.index('--') + 1:])
+arguments = sys.argv[sys.argv.index('--') + 1:]
+source, helper, output = map(Path, arguments[:3])
+candidate = '--candidate' in arguments[3:]
 sys.path.insert(0, str(source))
 from model_cells import append_solid, clipped, orient
 from parts import Mesh
@@ -25,7 +27,7 @@ layout = {'waterpark': {'courses': courses}}
 # Exact persisted paths, if the authoring integration has already generated them.
 layout_path = source.parents[3]/'content/landmarks/cruise-layout.json'
 persisted = json.loads(layout_path.read_text()).get('waterpark', {}).get('courses')
-if persisted is not None:
+if persisted is not None and not candidate:
     assert persisted == courses, 'persisted course source differs from generator'
 
 def geometry(obj):
@@ -119,5 +121,5 @@ for grid in sorted(grids):
         rows[','.join(map(str, grid))] = by_course
 paths = [helper/'slide_courses.py', helper/'model_far_slides.py', source/'model_cells.py', source/'parts.py', layout_path]
 output.write_text(json.dumps({'sources': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in paths},
-                             'persistedCoursesMatched': persisted is not None, 'courses': courses,
+                             'persistedCoursesMatched': persisted == courses, 'courses': courses,
                              'separation': separation, 'grids': rows}))

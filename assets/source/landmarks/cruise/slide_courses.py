@@ -89,7 +89,7 @@ def courses():
         course=dict(number=number,id=ident,name=name,finish=finish,radius=radius,
                     outerRadius=radius+.08 if opened else radius,open=opened,
                     shape='open_trough' if opened else 'closed_tube',points=points)
-        course['lodPoints']=[points]+[_simplify(points,t) for t in (.004,.008,.018,.09,.13)]
+        course['lodPoints']=[points]+[_simplify(points,t) for t in (.004,.004,.018,.09,.13)]
         course['visualRadius']=max(_profile_radius(course,level) for level in range(6))
         result.append(course)
     return result
@@ -108,13 +108,13 @@ def course_frames(points):
 
 
 def _sides(course,level):
-    if course['open']:return (8,8,6,4,3,2)[level]  # Lower semicircle segments.
-    return (16,16,12,10,6,5)[level] if course['radius']>.8 else (16,16,10,8,5,4)[level]
+    if course['open']:return (8,8,8,4,3,2)[level]  # Lower semicircle segments.
+    return (16,16,16,10,6,5)[level] if course['radius']>.8 else (16,16,16,8,5,4)[level]
 
 
 def _profile_radius(course,level):
     sides=_sides(course,level)*(2 if course['open'] else 1)
-    fit=1 if level<2 else 2/(1+math.cos(math.pi/sides))
+    fit=1 if level<3 else 2/(1+math.cos(math.pi/sides))
     return course['outerRadius']*fit
 
 

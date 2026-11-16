@@ -1,4 +1,4 @@
-// Manual bounded source audit: bun tools/cruise/slides.ts [source-directory] [report.json].
+// Manual source audit: bun tools/cruise/slides.ts [source-directory] [report.json] [--candidate].
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -75,7 +75,7 @@ function samples(from: SourceLod, to: SourceLod): { p95: number; maximum: number
 
 try {
   const raw = join(dir, "geometry.json"), helper = join(root, "assets/source/landmarks/cruise");
-  const run = Bun.spawnSync([process.env.BLENDER ?? "blender", "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1", "--python", join(import.meta.dir, "slides.py"), "--", source, helper, raw], { stdout: "pipe", stderr: "pipe" });
+  const run = Bun.spawnSync([process.env.BLENDER ?? "blender", "--background", "--factory-startup", "--disable-autoexec", "--python-exit-code", "1", "--python", join(import.meta.dir, "slides.py"), "--", source, helper, raw, ...(process.argv.includes("--candidate") ? ["--candidate"] : [])], { stdout: "pipe", stderr: "pipe" });
   if (run.exitCode !== 0) throw new Error(new TextDecoder().decode(run.stdout) + new TextDecoder().decode(run.stderr));
   const data = JSON.parse(readFileSync(raw, "utf8")) as Data;
   const pieces = new Map<string, SourceLod>(), assemblies = new Map<string, SourceLod[]>();
@@ -100,14 +100,16 @@ try {
     }
     rows.push({ grid, authoredLevel: stage, triangles: details.reduce((sum, c) => sum + c.triangles, 0), exteriorP95: Math.max(...details.map(c => c.exteriorP95)), courses: details });
   }
+  const errors = [.0125, .025, .06, .13, .25], budgets = [10000, 4000, 1250, 300, 300];
   const report = {
     scope: "Slide courses only, not the complete ship or final packed artifact. Continuous source at all six stages, independently clipped to every occupied 16 m cell and Blender-triangulated. Exterior error uses native vertex/centroid sampling and toTriangle at P95 in both directions, after signed 16-bit cell quantization. Artificial clipping caps are excluded only after matching opposite-cell area checks; exterior targets include neighboring pieces of the same course. Raw cap-inclusive native surfaceError is retained separately.",
     sources: data.sources, persistedCoursesMatched: data.persistedCoursesMatched, cellCount: Object.keys(data.grids).length,
+    stageLimits: errors.map((error, i) => ({ authoredLevel: i + 1, exteriorP95: error, triangles: budgets[i] })),
     capPairMaximumAreaDifference: capMismatch, noFarOnlyCells: true, separation: data.separation,
     courses: data.courses.map(({ points, lodPoints, ...course }) => ({ ...course, endpoints: [points[0], points.at(-1)], ringCounts: lodPoints.map(p => p.length) })), rows,
   };
   mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, JSON.stringify(report, null, 2) + "\n");
   const far = rows.filter(r => r.authoredLevel === 4);
-  if (far.some(r => r.exteriorP95 > .13 || r.triangles > 292) || rows.some(r => r.courses.some(c => c.badEdges || c.signedVolume <= 0))) throw new Error(`Slide diagnostic failed; see ${out}`);
+  if (rows.some(r => r.exteriorP95 > errors[r.authoredLevel - 1]! || r.triangles > budgets[r.authoredLevel - 1]! || r.courses.some(c => c.badEdges || c.signedVolume <= 0))) throw new Error(`Slide diagnostic failed; see ${out}`);
   console.log(JSON.stringify({ out, cells: report.cellCount, stage4MaxTriangles: Math.max(...far.map(r => r.triangles)), stage4MaxExteriorP95: Math.max(...far.map(r => r.exteriorP95)), capPairMaximumAreaDifference: capMismatch }));
 } finally { rmSync(dir, { recursive: true, force: true }); }
