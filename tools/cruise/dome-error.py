@@ -265,8 +265,8 @@ report = dict(
     reverse=reverse, boundaryProbes=probes,
     supportsSampledP95=all(b['visibleGoodLower'] >= 40 and b['badShareUpper'] < .05 for b in bounds) and all(not r['overThreshold'] for r in reverse),
     limitations=['Unused GLTF vertices can change final native shared bounds; final packed-art and visual gates remain required.',
-                 'A real small visible boundary patch exceeds0.06m (about0.0693m); this is a P95 bound, not a maximum bound.',
-                 'Earlier full visible-P95 attempts stopped at a grazing ray skip bound after about35.5k/39k samples. They supply no full-P95 result. This diagnostic uses complete over-threshold classification and positive good-sample lower bounds instead; unresolved bad rays count conservatively.',
+                 'Visible witnesses and boundary probes may exceed0.06m; their recorded errors are retained. This is a sampled P95 bound, not a maximum bound.',
+                 'This diagnostic uses complete over-threshold classification and positive good-sample lower bounds rather than an exhaustive all-visible-sample percentile; unresolved bad rays count conservatively.',
                  'Observed model source hashes may postdate frozen raw generation; raw/index hashes identify the measured artifact.'],
     elapsedSeconds=time.time()-STARTED)
 Path(CONFIG['out']).write_text(json.dumps(report, indent=2) + '\n')
