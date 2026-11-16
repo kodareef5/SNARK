@@ -14,6 +14,7 @@ import { MODE_GHOST, MODE_WALK, stanceEye } from "../../shared/sim/character.ts"
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
 import { mapHeightfield, writeMap, type MapData } from "../../shared/world/mapfile.ts";
+import { HIT_NONE, HIT_STRUCTURE, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { FakeNet } from "../../tests/fixtures/assetnet.ts";
 import { Harness } from "../../tests/fixtures/net.ts";
 import { SOURCE } from "../art/source.ts";
@@ -141,7 +142,13 @@ function capture(shot: KoruShot, map: MapData, pack: Pack, files: GameFiles, wid
     const framing = (shot.framePoints ?? []).map(point => {
       const projected = new Float32Array(3);
       if (!app.cam.project(...point, projected) || projected[0]! < .02 || projected[0]! > .98 || projected[1]! < .02 || projected[1]! > .98) throw new Error(`${shot.name}: authored silhouette point ${point.join(",")} is clipped by the camera`);
-      return { point, screen: [...projected] };
+      const dx = point[0] - p.camX, dy = point[1] - p.camY, dz = point[2] - p.camZ, distance = Math.hypot(dx, dy, dz);
+      const hit = castWorld(h.world, p.camX, p.camY, p.camZ, dx / distance, dy / distance, dz / distance, distance);
+      if (hit !== HIT_NONE) {
+        const kind = hit === HIT_STRUCTURE ? h.world.structs.chunks[Math.floor(rayHit.ref / 65536)]?.kind[rayHit.ref % 65536] : undefined;
+        if (kind === undefined || !reg.defs[kind]!.id.startsWith("core:koru")) throw new Error(`${shot.name}: terrain or another object hides the authored silhouette point ${point.join(",")}`);
+      }
+      return { point, screen: [...projected], shoreSightlineClear: true };
     });
     render.render(p); const scene = render.color.slice(); drawUi(render.color, width, height, app.ui.frame);
     writeFileSync(resolve(out, `${shot.name}-scene.png`), encodePng(width, height, scene));
