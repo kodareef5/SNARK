@@ -1,6 +1,6 @@
 // Actual native App, streamed production packs and authoritative map collision; no separate cruise renderer.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import { App } from "../../client/core/app.ts";
 import { DRAW_RANGED, DRAW_TEXTURED, type FramePacket } from "../../client/core/render/packet.ts";
@@ -15,6 +15,8 @@ import { chunkAt } from "../../shared/coords.ts";
 import { hashBytes, hashString } from "../../shared/hash.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { allClips } from "../../shared/pack/clips.ts";
+import { joinLandmark } from "../../shared/pack/join.ts";
+import { defaultPalette } from "../../shared/pack/palette.ts";
 import { MODE_GHOST, MODE_WALK, stanceEye } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { hourOfDay } from "../../shared/sim/clock.ts";
@@ -23,8 +25,9 @@ import { mapHeightfield, parseMap, writeMap, type MapData } from "../../shared/w
 import { HIT_NONE, HIT_STRUCTURE, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { FakeNet } from "../../tests/fixtures/assetnet.ts";
 import { Harness } from "../../tests/fixtures/net.ts";
-import { SOURCE } from "../art/source.ts";
-import { gameFiles, type GameFiles } from "../snap/files.ts";
+import { LANDMARKS, SOURCE, readPacks } from "../art/source.ts";
+import { buildPack } from "../pack/write.ts";
+import { gameFiles, namedTextures, rgbaOf, splitWithTextures, type GameFiles } from "../snap/files.ts";
 import { encodePng } from "../snap/png.ts";
 import { Rasterizer } from "../snap/raster.ts";
 import { drawUi } from "../snap/ui.ts";
@@ -156,6 +159,26 @@ export function cruiseHeadingShots(shots: readonly CruiseShot[]): readonly Cruis
 
 const isShipMesh = (id: string): boolean => id.startsWith("cruise:") && !id.startsWith("cruise:port_");
 
+/** Source art through the same separate manifest/boot join as the browser, with native rgba textures. */
+async function cruiseFiles(names: readonly string[]): Promise<GameFiles & { boot: Pack }> {
+  const core = await gameFiles(SOURCE), files = [...core.files], named = await namedTextures(SOURCE);
+  let joined = { manifest: core.manifest, boot: parsePack(core.files[core.manifest.boot]!) };
+  for (const name of names) {
+    const art = readPacks(join(LANDMARKS, name));
+    const own = splitWithTextures(buildPack(art.meshes, defaultPalette(), [], art.rigs), texture => {
+      const source = named.get(texture.id);
+      if (!source) throw new Error(`No authored texture for ${texture.id}`);
+      return rgbaOf(source.material, source.role, source.top);
+    });
+    // splitWithTextures uses the core stem. Give each separate source file its landmark's name,
+    // as buildLandmarks does, before the native join rewrites file indices and boot offsets.
+    for (const file of own.manifest.files) file.name = file.name.replace(/^core\./, `${name}.`);
+    joined = joinLandmark(joined, { manifest: own.manifest, boot: parsePack(own.files[own.manifest.boot]!) }, "landmarks");
+    files.push(...own.files.filter((_, index) => index !== own.manifest.boot));
+  }
+  return { ...joined, files };
+}
+
 function uploadOnly(raster: Rasterizer, packet: FramePacket): void {
   if (!(packet.uploads.length + packet.drops.length + packet.assetUploads.length + packet.assetDrops.length + packet.texUploads.length + packet.texDrops.length)) return;
   const counts = [packet.drawCount, packet.tileCount, packet.casterCount, packet.cascadeCount] as const;
@@ -168,7 +191,7 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, fil
   const h = new Harness({}, 629, 60, { dev: true, map: writeMap(map), clips, rigs: pack.header.rigs }, built.registry);
   const reg = h.reg, placement = assertCruiseMap(map, reg);
   const placed = assertCruisePlaced(map, h.world.structs, reg);
-  const boot = parsePack(files.files[files.manifest.boot]!), port = new FakeNet(files.files, { keep: true });
+  const boot = pack, port = new FakeNet(files.files, { keep: true });
   const session = h.join("Cruise visitor", {}, { manual: true, look: defaultLook() });
   session.staticsArrived(h.world.statics!);
   const app = new App(session, reg, boot, { manifest: files.manifest, port });
@@ -332,7 +355,7 @@ export async function reviewCruise(map: MapData, shots: readonly CruiseShot[], a
   if (source !== resolve(SOURCE)) throw new Error("Sync the matching assets into this checkout before review; --source must be its assets/source directory");
   if (!map.content?.landmarks.includes("cruise") || !map.content.landmarks.includes("koru")) throw new Error("Cruise review requires both map-local landmark packs");
   console.log(`Preparing native core + ${map.content.landmarks.join(" + ")} streams from ${source}`);
-  const files = await gameFiles(SOURCE, undefined, [], map.content.landmarks), pack = parsePack(files.files[files.manifest.boot]!);
+  const files = await cruiseFiles(map.content.landmarks), pack = files.boot;
   const native = files.manifest.meshes.filter(m => isShipMesh(m.id)), graybox = args.includes("--graybox");
   const cellIds = new Set(CRUISE_LAYOUT.cells.map(cell => cell.id));
   const standaloneIds = new Set(CRUISE_LAYOUT.prototypes.filter(prototype => prototype.mesh !== "none" && !cellIds.has(prototype.mesh)).map(prototype => prototype.mesh));
@@ -353,7 +376,7 @@ export async function reviewCruise(map: MapData, shots: readonly CruiseShot[], a
   const selected = (sweep ? cruiseHeadingShots(shots) : shots).filter(shot => !only.length || only.some(word => shot.name.includes(word)));
   if (!selected.length) throw new Error("--only matched no review scene");
   mkdirSync(out, { recursive: true }); const report: Record<string, unknown>[] = [];
-  const packHash = files.files.reduce((hash, bytes) => hashBytes(bytes, hash), hashString(JSON.stringify(files.manifest))).toString(16).padStart(8, "0");
+  const packHash = files.files.reduce((hash, bytes) => hashBytes(bytes, hash), hashBytes(pack.blob, hashString(JSON.stringify(files.manifest)))).toString(16).padStart(8, "0");
   const compiled = compileContent(CORE_CONTENT); if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
   const registryHash = withContent(compiled.registry, map.content.defs).hash.toString(16).padStart(8, "0"), mapHash = parseMap(writeMap(map)).hash.toString(16).padStart(8, "0");
   if (only.length && existsSync(resolve(out, "report.json"))) {
@@ -365,7 +388,7 @@ export async function reviewCruise(map: MapData, shots: readonly CruiseShot[], a
     console.log(`Native cruise review ${shot.name}`);
     report.push({ ...capture(shot, map, pack, clips, files, shot.portrait ? 540 : width, shot.portrait ? 960 : height, out, !args.includes("--visual-only"), !args.includes("--no-images") && !sweep), packHash, assetStage: graybox ? "preliminary graybox" : CRUISE_LAYOUT.phase });
     report.sort((a, b) => String(a.name).localeCompare(String(b.name)));
-    writeFileSync(resolve(out, "report.json"), JSON.stringify({ source, generated: new Date().toISOString(), pipeline: "native LAND map → authoritative Harness → App → core + map-local streamed packs and world surfaces → native frame packet → optional Rasterizer", packIdentity: "FNV-1a of manifest and every source stream file, including textures and world surfaces", landmarks: map.content.landmarks, authoritativeAnimation: { clips: clips.clips.length, hash: clips.hash, rigs: pack.header.rigs.length }, standaloneAssets, layout: { phase: CRUISE_LAYOUT.phase, prototypes: CRUISE_LAYOUT.prototypes.length, cells: cellIds.size, placedInstances: CRUISE_LAYOUT.instances.filter(instance => instance.placed).length, deckLabels: CRUISE_LAYOUT.decks.map(deck => deck.id) }, shots: report,
+    writeFileSync(resolve(out, "report.json"), JSON.stringify({ source, generated: new Date().toISOString(), pipeline: "native LAND map → authoritative Harness → App → separate core/landmark manifest and boot joins, streamed assets and world surfaces → native frame packet → optional Rasterizer", packIdentity: "FNV-1a of joined manifest/boot blob and every source stream file, including textures and world surfaces", landmarks: map.content.landmarks, authoritativeAnimation: { clips: clips.clips.length, hash: clips.hash, rigs: pack.header.rigs.length }, standaloneAssets, layout: { phase: CRUISE_LAYOUT.phase, prototypes: CRUISE_LAYOUT.prototypes.length, cells: cellIds.size, placedInstances: CRUISE_LAYOUT.instances.filter(instance => instance.placed).length, deckLabels: CRUISE_LAYOUT.decks.map(deck => deck.id) }, shots: report,
       limits: "Static native software-rendered views establish model, collision-camera and streaming behavior; they do not establish browser GPU performance or identical lit ocean shading." }, null, 2));
   }
   console.log(`${out}: ${report.length} native cruise views`);
