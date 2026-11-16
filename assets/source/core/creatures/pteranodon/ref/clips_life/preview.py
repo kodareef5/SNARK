@@ -1,14 +1,19 @@
 """Renders and measures clips_life.py's clips on the animal as the asset's scripts build it. Not one of its scripts.
 
     blender --background --factory-startup --disable-autoexec --python ref/clips_life/preview.py -- \
-        [--clips torpor_in,death] [--out DIR] [--model PATH] [--films] [--measure]
+        [--clips torpor_in,death] [--out DIR] [--model PATH] [--films] [--measure] \
+        [--still CLIP:FRAME] [--strip CLIP:VIEW[:EVERY]]
 
 For each clip, into DIR (default: this folder):
 - <clip>.jpg, a contact sheet: a column a frame (every second or third frame of a long clip), rows from the side, from
   above or below, from the front, as a survivor standing over it sees it, and as a player sees it far off;
 - <clip>.mp4 with --films, a short film from the survivor's eye (from behind and below in the air);
-- with --measure, measures.json: on every third frame, the membrane through itself, into the body and into the other
-  wing (triangle pairs of the block-out), and how far the lowest point of the mesh is under the ground.
+- with --measure, measures.json: on every third frame, triangle pairs of each wing's skin through itself, of its skin
+  away from the root into the body, and of the two wings into each other, counting on the ground only what is above
+  it, and how far the lowest point of the mesh is under the ground.
+--still draws one frame large from four sides and prints its measures; --strip draws one view (side, top, front,
+tamer, close; in the air side, below, front, three) of every EVERY-th frame. torpor_eat is drawn over the lie, as the
+engine layers it.
 
 --model runs that model.py after rig.py (the block-out otherwise). The ground's lines are 25 cm apart.
 """
