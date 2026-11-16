@@ -1,10 +1,9 @@
-// What `bun run build` wrote, weighed against what a client may be sent. Each budget is today's size with a little room
-// (D-new): raising one is a decision, recorded with its reason. A row pinned at today's number is one another change is
-// bringing down; it fails until the pin comes down with it.
+// What `bun run build` wrote, weighed against what a client may be sent. Raising a budget is a decision. A row pinned at
+// today's number is one another change is bringing down; it fails until the pin comes down with it.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { storedBytes, storedStep, type Manifest } from "../shared/pack/manifest.ts";
+import { storedStep, type Manifest } from "../shared/pack/manifest.ts";
 import { STEP0_SIZE, stepOf, topIn, type TextureFormat } from "../shared/pack/texture.ts";
 
 const KB = 1024;
@@ -31,17 +30,11 @@ const BUDGETS: Record<string, number> = {
   "mesh parts stored twice": -401,
 };
 
-/** Copies past the first of each hash, and their bytes. */
-function twice(items: Iterable<[string, number]>): { copies: number; bytes: number } {
-  const seen = new Set<string>();
-  let [copies, bytes] = [0, 0];
-  for (const [hash, size] of items) {
-    if (!hash) continue;
-    if (seen.has(hash)) [copies, bytes] = [copies + 1, bytes + size];
-    seen.add(hash);
-  }
-  return { copies, bytes };
-}
+/** Copies past the first of each hash. */
+const twice = (hashes: string[]): number => {
+  const named = hashes.filter((h) => h !== "");
+  return named.length - new Set(named).size;
+};
 
 /** Prints each row against its budget; false if any is over, or a pinned row is not at its pin. */
 export function weigh(dist: string): boolean {
@@ -75,9 +68,9 @@ export function weigh(dist: string): boolean {
     ["sound file", fileOf("sound")],
     ["sound, kbit/s", (sounds.reduce((s, x) => s + x.takes.reduce((a, t) => a + t.bytes, 0), 0) * 8) / Math.max(1, seconds) / 1000],
     ["music", readdirSync(music, { recursive: true }).reduce((s: number, n) => s + (statSync(join(music, String(n))).isFile() ? statSync(join(music, String(n))).size : 0), 0)],
-    ["sound takes stored twice", twice(sounds.flatMap((x) => x.takes.map((t): [string, number] => [t.hash, t.bytes]))).copies],
-    ["texture steps stored twice, astc", twice((m.textures ?? []).flatMap((t) => (t.in.astc?.hash ?? []).map((h, s): [string, number] => [h, storedStep(t.in.astc!, "astc", t.role, s)]))).copies],
-    ["mesh parts stored twice", twice(m.meshes.flatMap((x) => x.levels.flatMap((l) => l.parts.map((p): [string, number] => [p.hash, storedBytes(p)])))).copies],
+    ["sound takes stored twice", twice(sounds.flatMap((x) => x.takes.map((t) => t.hash)))],
+    ["texture steps stored twice, astc", twice((m.textures ?? []).flatMap((t) => t.in.astc?.hash ?? []))],
+    ["mesh parts stored twice", twice(m.meshes.flatMap((x) => x.levels.flatMap((l) => l.parts.map((p) => p.hash))))],
   ];
   let ok = true;
   for (const [name, value] of rows) {
