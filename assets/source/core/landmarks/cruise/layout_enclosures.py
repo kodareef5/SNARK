@@ -6,6 +6,7 @@ open neighborhoods. Unadvertised cabin fronts use opaque dark panels; public
 glazing keeps real clear near apertures and a separate blue far-proxy kind.
 """
 import math
+from collections import defaultdict
 
 
 def finish(D, p, world, place, box, ys):
@@ -263,7 +264,131 @@ def finish(D, p, world, place, box, ys):
             else:
                 wall(f'upper_{deck}_{i}', a, b, deck, 'upper-accommodation')
 
-    D['enclosures'] = {'instances': placed,
+    # Exact visual batches use the already supported vertical frontages. Near
+    # frames and far look boxes are retained verbatim; only redundant collision
+    # edges and regions already occupied by the intervening floor are compacted.
+    original = {q['id']: q for q in D['prototypes']}
+    groups = defaultdict(list)
+    for inst in D['instances']:
+        # Outer pane groups already share five heavily instanced kinds; stacking
+        # them creates extra combinations and measurably increases submissions.
+        if inst['id'] not in placed or inst['section'] in ('accommodation-facade', 'upper-accommodation', 'pearl-panorama'):
+            continue
+        proto = original[inst['prototype']]
+        art = proto['art']
+        groups[(round(inst['at'][0], 6), round(inst['at'][2], 6), round(inst['yaw'], 6),
+                inst['section'], art['kind'], art.get('finish', 'enamel'), proto['color'])].append(inst)
+
+    def planar_union(bs):
+        """Cover a plane's exact rectangle union; overlapping cover is harmless."""
+        yy = sorted({round(b['at'][1] + sign * b['half'][1], 6) for b in bs for sign in (-1, 1)})
+        zz = sorted({round(b['at'][2] + sign * b['half'][2], 6) for b in bs for sign in (-1, 1)})
+        cells = {(i, j) for i in range(len(yy) - 1) for j in range(len(zz) - 1)
+                 if any(abs((yy[i] + yy[i + 1]) / 2 - b['at'][1]) < b['half'][1] + 1e-7 and
+                        abs((zz[j] + zz[j + 1]) / 2 - b['at'][2]) < b['half'][2] + 1e-7 for b in bs)}
+        candidates = []
+        for a in range(len(yy) - 1):
+            for b in range(a + 1, len(yy)):
+                run = []
+                for j in range(len(zz)):
+                    if j < len(zz) - 1 and all((i, j) in cells for i in range(a, b)):
+                        run.append(j)
+                        continue
+                    if run:
+                        # Only maximal rectangles are useful to the cover.
+                        if not (a > 0 and all((a - 1, z) in cells for z in run)) and not (b < len(yy) - 1 and all((b, z) in cells for z in run)):
+                            occupied = {(i, z) for i in range(a, b) for z in run}
+                            candidates.append((occupied, box([-.1, yy[a], zz[run[0]]], [.1, yy[b], zz[run[-1] + 1]])))
+                        run = []
+        left, result = set(cells), []
+        while left:
+            occupied, shape = max(candidates, key=lambda item: sum((yy[i + 1] - yy[i]) * (zz[j + 1] - zz[j]) for i, j in item[0] & left))
+            assert occupied & left, 'Facade collision cover left an uncovered region'
+            result.append(shape)
+            left -= occupied
+        return result
+
+    def batch_shapes(items):
+        visuals, collisions, look = [], [], []
+        for inst in items:
+            proto = original[inst['prototype']]
+            art = proto['art']
+            def lift(b):
+                return {'at': [b['at'][0], b['at'][1] + inst['at'][1], b['at'][2]], 'half': b['half']}
+            bs = [lift(b) for b in proto['boxes']]
+            if art['kind'] == 'window_wall':
+                panes = [bs[k] for k in art.get('glassBoxes', [])]
+                # Edge cues are wholly inside the physical panes. Dropping
+                # their duplicate colliders changes no occupied space.
+                assert all(any(all(abs(b['at'][k] - q['at'][k]) + b['half'][k] <= q['half'][k] + 1e-7 for k in range(3)) for q in panes) for b in bs)
+                collisions += panes
+                visuals += [b for k, b in enumerate(bs) if k not in art['glassBoxes']]
+            else:
+                collisions += bs
+                visuals += bs
+            look += [lift(b) for b in proto.get('look', {}).get('boxes', proto['boxes'])]
+        if len(visuals) > 64 or len(look) > 64:
+            return None
+        lo = min(b['at'][1] - b['half'][1] for b in collisions)
+        hi = max(b['at'][1] + b['half'][1] for b in collisions)
+        if hi - lo > 30:
+            return None
+        # Pure pale front planes can span existing solid floor strips. Verify
+        # those strips against the same authoritative outline/void contract.
+        if all(abs(b['at'][0]) < 1e-7 and abs(b['half'][0] - .1) < 1e-7 for b in collisions):
+            for lower, upper in zip(items, items[1:]):
+                top = max(b['at'][1] + b['half'][1] for b in original[lower['prototype']]['boxes']) + lower['at'][1]
+                bottom = min(b['at'][1] - b['half'][1] for b in original[upper['prototype']]['boxes']) + upper['at'][1]
+                if abs(bottom - top - .24) > 1e-6 or abs(bottom - ys[upper['deck']]) > 1e-6:
+                    continue
+                za = min(b['at'][2] - b['half'][2] for b in collisions)
+                zb = max(b['at'][2] + b['half'][2] for b in collisions)
+                c, s = math.cos(math.radians(upper['yaw'])), math.sin(math.radians(upper['yaw']))
+                if all(supported(upper['deck'], upper['at'][0] + c * x + s * z, upper['at'][2] - s * x + c * z)
+                       for x in (-.1, 0, .1) for z in (za, (za + zb) / 2, zb)):
+                    collisions.append(box([-.1, top, za], [.1, bottom, zb]))
+            collisions = planar_union(collisions)
+        if len(collisions) > 16:
+            return None
+        origin = round((lo + hi) * 256) / 512
+        def local(bs):
+            return [{'at': [b['at'][0], b['at'][1] - origin, b['at'][2]], 'half': b['half']} for b in bs]
+        return local(collisions), local(visuals), local(look), origin
+
+    removed, retired, batches = set(), set(), []
+    def emit(items):
+        if len(items) == 1:
+            return
+        shapes = batch_shapes(items)
+        assert shapes
+        collision, visual, look, y = shapes
+        first = items[0]
+        before = original[first['prototype']]
+        finish = before['art'].get('finish', 'enamel')
+        proto = p('enclosure_vertical', 'facade', collision,
+                  art={'kind': 'solids', 'finish': finish, 'visualBoxes': visual}, color=before['color'], look={'boxes': look})
+        name = first['id'] + '_vertical'
+        ident = place(name, proto, [first['at'][0], y, first['at'][2]], first['deck'], first['section'], first['yaw'])
+        sources = [q['id'] for q in items]
+        D['instances'][-1]['sourceInstances'] = sources
+        D['instances'][-1]['decks'] = [q['deck'] for q in items]
+        removed.update(sources)
+        retired.update(q['prototype'] for q in items)
+        batches.append({'instance': ident, 'sources': sources})
+        placed.append(ident)
+    for entries in groups.values():
+        pending = []
+        for inst in sorted(entries, key=lambda q: q['at'][1]):
+            if pending and batch_shapes(pending + [inst]) is None:
+                emit(pending)
+                pending = []
+            pending.append(inst)
+        emit(pending)
+    D['instances'][:] = [q for q in D['instances'] if q['id'] not in removed]
+    used = {q['prototype'] for q in D['instances']}
+    D['prototypes'][:] = [q for q in D['prototypes'] if q['id'] not in retired or q['id'] in used]
+    placed = [q for q in placed if q not in removed]
+    D['enclosures'] = {'instances': placed, 'batches': batches,
         'interpretation': 'Original supported tier and inward accommodation facades informed by archived ship photographs.',
         'glazing': 'Public near apertures remain clear; separate blue pane kinds preserve far window rhythm.',
         'routes': 'Existing declared width/headroom bands and occupied room footprints retained; no route edits.'}
