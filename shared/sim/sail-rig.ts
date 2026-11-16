@@ -83,7 +83,7 @@ export function validateSailVisualRig(value: unknown): readonly string[] {
       else {
         used.add(bones.indexOf(gaff.bone));
         const dy = gaff.peak[1]! - gaff.throat[1]!, dz = gaff.peak[2]! - gaff.throat[2]!;
-        if (dy <= 0 || dz <= 0 || Math.abs(gaff.peak[0]! - gaff.throat[0]!) > 1e-6 || Math.abs(detSin(gaff.lowerAngle) * dz - detCos(gaff.lowerAngle) * dy) > 1e-5 * Math.hypot(dy, dz)) bad("gaff must rise aft within its local YZ plane");
+        if (dy <= 0 || dz <= 0 || Math.abs(gaff.peak[0]! - gaff.throat[0]!) > 1e-6 || Math.abs(detSin(gaff.lowerAngle) * dz - detCos(gaff.lowerAngle) * dy) > 1e-5 * Math.sqrt(dy * dy + dz * dz)) bad("gaff must rise aft within its local YZ plane");
       }
     }
     if (used.size !== bones.length) bad("every non-root bone must have a fold or gaff pose");
