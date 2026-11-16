@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { CRUISE_LAYOUT } from "../../content/landmarks/cruise.ts";
 import type { CruiseRoom } from "../../content/landmarks/cruise-layout.ts";
-import { compileContent } from "../../shared/content/registry.ts";
+import { compileContent, withContent } from "../../shared/content/registry.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { cruiseRoomFloors } from "../../tests/fixtures/cruise-floors.ts";
@@ -15,7 +15,7 @@ import { assertCruiseMap } from "./preflight.ts";
 export function auditCruiseDeckFloors() {
   const began = performance.now(), compiled = compileContent(CORE_CONTENT);
   if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
-  const reg = compiled.registry, map = cruiseCourse(); assertCruiseMap(map, reg);
+  const map = cruiseCourse(), reg = withContent(compiled.registry, map.content?.defs ?? []); assertCruiseMap(map, reg);
   const floors = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   const kinds = new Set(CRUISE_LAYOUT.prototypes.filter(p => p.category === "floor" || p.art.kind === "floor").map(p => p.id));
   let expected = 0;

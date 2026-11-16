@@ -1,14 +1,47 @@
 // Feedback pilots use ordinary client movement and E; graph edges select destinations, never positions or server state.
-import { CRUISE_LAYOUT, cruisePoint } from "../../content/landmarks/cruise.ts";
+import { CRUISE_LAYOUT, cruisePoint, cruiseStatics } from "../../content/landmarks/cruise.ts";
 import type { CruiseLayout, CruiseRoute } from "../../content/landmarks/cruise-layout.ts";
 import type { Registry } from "../../shared/content/registry.ts";
-import { YAW_UNITS } from "../../shared/coords.ts";
+import { join } from "node:path";
+import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import { BTN_USE, MODE_WALK, stanceEye } from "../../shared/sim/character.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
+import type { MapData } from "../../shared/world/mapfile.ts";
+import type { StructureStore } from "../../shared/world/structures.ts";
+import { joinPacks } from "../../shared/pack/join.ts";
+import { parsePack, type Pack } from "../../shared/pack/pack.ts";
+import { defaultPalette } from "../../shared/pack/palette.ts";
+import { LANDMARKS, readPacks } from "../../tools/art/source.ts";
+import { buildPack } from "../../tools/pack/write.ts";
+import { assertCruisePlaced } from "../../tools/cruise/preflight.ts";
+import { corePack } from "./pack.ts";
 import type { Harness } from "./net.ts";
 
 export interface CruisePlacement { readonly x: number; readonly y: number; readonly z: number; readonly yaw: number }
 const layout: CruiseLayout = CRUISE_LAYOUT;
+
+const landmarkBytes = new Map<string, Uint8Array>(), joined = new Map<string, Pack>();
+/** Separate landmark packs, joined in exactly the map's declared order after the unchanged core meshes. */
+export function cruisePack(names: readonly string[] = ["cruise", "koru"]): Pack {
+  const key = names.join("|"); const cached = joined.get(key); if (cached) return cached;
+  let pack = corePack();
+  for (const name of names) {
+    let bytes = landmarkBytes.get(name);
+    if (!bytes) { const art = readPacks(join(LANDMARKS, name)); bytes = buildPack(art.meshes, defaultPalette(), [], art.rigs); landmarkBytes.set(name, bytes); }
+    pack = joinPacks(pack, parsePack(bytes));
+  }
+  joined.set(key, pack); return pack;
+}
+
+/** Resolve authored instances independently of other map rows. Ordinary port statics precede landmarks in real maps. */
+export function cruiseRefs(map: Pick<MapData, "id" | "dims" | "statics">, structs: StructureStore, reg: Registry, placement: CruisePlacement): Uint32Array {
+  const all = assertCruisePlaced(map, structs, reg), byPlacement = new Map<string, number>();
+  const key = (s: { kind: string; x: number; y: number; z: number; yaw: number }) => `${s.kind}|${[s.x, s.y, s.z].map(v => Math.round(v * STRUCT_UNITS)).join(",")}|${s.yaw}`;
+  let row = 0; for (const s of map.statics) byPlacement.set(key(s), all[row++]!);
+  return Uint32Array.from(cruiseStatics(placement.x, placement.y, placement.z, placement.yaw), s => {
+    const ref = byPlacement.get(key(s)); if (ref === undefined) throw new Error(`missing authored cruise instance ${key(s)}`); return ref;
+  });
+}
 
 export function cruiseWalker(h: Harness, reg: Registry, placement: CruisePlacement, index = 0) {
   const s = h.sessions[index]!, pilot = h.pilots[index]!;

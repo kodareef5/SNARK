@@ -1,5 +1,5 @@
-// Actual native body/armor/hair vertices at authored cruise bottlenecks. The full creator interval was already certified
-// by koru-fit; this reuses its limiting feasible profiles against the new architecture, without a second dense gait sweep.
+// Actual native body/armor/hair vertices at authored cruise bottlenecks, using selected feasible profiles
+// and walking poses. This is sampled coverage, not a proof over all creator parameters or animation states.
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -9,12 +9,12 @@ import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import { SKIN } from "../../shared/world/collide.ts";
 import { Solid, boxSolid, hullTable, partSolid } from "../../shared/world/convex.ts";
 import { frame, frameOf } from "../../shared/world/frame.ts";
-import { actualKoruFit, type KoruFitExtreme, type KoruFitVertex } from "./koru-fit.ts";
+import { cruiseBodyVertices, type CruiseBodyPose, type CruiseBodyVertex } from "./cruise-body.ts";
 
 interface FitSolid { id: string; support: boolean; min: number[]; max: number[]; planes: number[][] }
 export interface CruiseFitSpot { readonly id: string; readonly feet: readonly number[]; readonly yaw: number }
-export interface CruiseFitCase { readonly pose: KoruFitExtreme; readonly profile: number }
-const sideways: KoruFitExtreme = { value: 0, mesh: "", sex: "m", speed: 4.5, direction: 11, pitch: 25, phase: 31 / 32 };
+export interface CruiseFitCase { readonly pose: CruiseBodyPose; readonly profile: number }
+const sideways: CruiseBodyPose = { value: 0, mesh: "", sex: "m", speed: 4.5, direction: 11, pitch: 25, phase: 31 / 32 };
 export const CRUISE_FIT_CASES: readonly CruiseFitCase[] = [
   { pose: sideways, profile: 34 }, { pose: sideways, profile: 41 }, { pose: { ...sideways, sex: "f" }, profile: 2 },
   { pose: { ...sideways, speed: 7.2, direction: 4, pitch: -31, phase: 13 / 32 }, profile: 31 },
@@ -22,12 +22,13 @@ export const CRUISE_FIT_CASES: readonly CruiseFitCase[] = [
 ];
 const CELL = 8;
 let cells: Map<string, FitSolid[]> | undefined;
-const poses = new Map<string, readonly KoruFitVertex[]>();
+const poses = new Map<string, readonly CruiseBodyVertex[]>();
 
 export function cruiseFitSources(): Record<string, string> {
-  const files = ["content/landmarks/cruise-layout.json", "assets/source/core/landmarks/cruise/cruise.snpk",
+  const files = ["content/landmarks/cruise-layout.json", "assets/source/landmarks/cruise/cruise.snpk",
     "assets/source/core/humans/human-bodies/human-bodies.snpk", "assets/source/core/humans/human-clips/human-clips.snpk",
-    "tools/art/koru-fit.evidence.json"];
+    "tools/art/cruise-body.ts", "tools/art/cruise-fit.ts", "client/core/render/characters.ts",
+    "shared/anim/pose.ts", "shared/anim/look.ts", "shared/anim/gait.ts", "shared/anim/skeleton.ts"];
   return Object.fromEntries(files.map(path => [path, createHash("sha256").update(readFileSync(resolve(import.meta.dir, "../..", path))).digest("hex")]));
 }
 
@@ -55,7 +56,7 @@ function geometry(): Map<string, FitSolid[]> {
   for (const instance of CRUISE_LAYOUT.instances) {
     if (!instance.placed) continue;
     const index = byId.get(open.get(instance.id) ?? instance.prototype)!, p = prototypes[index]!;
-    const yaw = Math.round(instance.yaw * YAW_UNITS / 360), origin = instance.at.map(v => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS);
+    const yaw = Math.round(instance.yaw * YAW_UNITS / 360), origin = instance.at.map((v: number) => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS);
     frameOf(yaw); const c = frame.cos, s = frame.sin, stretch = frame.stretch;
     p.boxes.forEach((b, part) => {
       const solid = new Solid(); boxSolid(origin[0]! + (c * b.at[0]! + s * b.at[2]!) * stretch, origin[1]! + b.at[1]!, origin[2]! + (-s * b.at[0]! + c * b.at[2]!) * stretch, c, s, b.half[0]! * stretch, b.half[1]!, b.half[2]! * stretch, solid);
@@ -110,7 +111,7 @@ export function cruiseFitSpots(): CruiseFitSpot[] {
 
 /** Sole/tread contact is excluded; overhead slabs, guards, jambs, open door leaves and furnishings remain solid. */
 export function auditCruiseFit(spots: readonly CruiseFitSpot[] = cruiseFitSpots(), cases: readonly CruiseFitCase[] = CRUISE_FIT_CASES) {
-  const grid = geometry(), collisions: { spot: string; solid: string; pose: KoruFitExtreme; vertex: KoruFitVertex }[] = [];
+  const grid = geometry(), collisions: { spot: string; solid: string; pose: CruiseBodyPose; vertex: CruiseBodyVertex }[] = [];
   let points = 0;
   for (const spot of spots) {
     const feet = spot.feet, near = new Set<FitSolid>();
@@ -121,7 +122,7 @@ export function auditCruiseFit(spots: readonly CruiseFitSpot[] = cruiseFitSpots(
     const c = Math.cos(spot.yaw), s = Math.sin(spot.yaw);
     for (const sample of cases) {
       const key = JSON.stringify(sample); let vertices = poses.get(key);
-      if (!vertices) { const made: KoruFitVertex[] = []; actualKoruFit(sample.pose, v => made.push(v), [sample.profile]); poses.set(key, vertices = made); }
+      if (!vertices) { const made: CruiseBodyVertex[] = []; cruiseBodyVertices(sample.pose, v => made.push(v), [sample.profile]); poses.set(key, vertices = made); }
       const hit = new Set<string>();
       for (const vertex of vertices) {
         points++; const p = vertex.at, at = [feet[0]! + c * p[0]! + s * p[2]!, feet[1]! + p[1]!, feet[2]! - s * p[0]! + c * p[2]!];
@@ -134,7 +135,7 @@ export function auditCruiseFit(spots: readonly CruiseFitSpot[] = cruiseFitSpots(
       }
     }
   }
-  return { scope: "Limiting feasible actual body/armor/hair profiles at centred authored paths; no combat/jump/wall-pressed claim",
+  return { scope: "Selected feasible actual body/armor/hair profiles at centred authored paths on the current native rig and poses; sampled coverage, no full creator/animation interval or combat/jump/wall-pressed claim",
     sources: cruiseFitSources(), cases, spots: spots.length, poses: cases.length, points, collisions };
 }
 

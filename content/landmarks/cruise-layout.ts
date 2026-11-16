@@ -26,6 +26,13 @@ export interface CruisePrototype extends CruiseParts {
 export interface CruiseInstance {
   readonly id: string; readonly prototype: string; readonly at: CruisePoint; readonly yaw: number;
   readonly deck: string; readonly section: string; readonly placed: boolean;
+  /** A cell anchor changes only the drawn mesh; collision remains this original reusable prototype. */
+  readonly sourcePrototype?: string;
+}
+export interface CruiseCell {
+  readonly id: string; readonly grid: CruisePoint; readonly bounds: CruiseBounds;
+  readonly anchor: string; readonly origin: CruisePoint; readonly yaw: number;
+  readonly members: readonly { readonly instance: string; readonly prototype: string; readonly category: string; readonly measurement?: string }[];
 }
 export interface CruiseDeck {
   readonly id: string; readonly index: number; readonly floorY: number; readonly ceilingY: number | null;
@@ -55,6 +62,8 @@ export interface CruiseLayout {
   readonly graph: { readonly nodes: readonly CruiseNode[] }; readonly routes: readonly CruiseRoute[];
   readonly stairs: readonly CruiseStair[]; readonly doors: readonly CruiseDoor[];
   readonly rooms: readonly CruiseRoom[];
+  /** Visible 16 m cells are independent of the bounded native collision prototypes. */
+  readonly cells?: readonly CruiseCell[];
   readonly portals: readonly { readonly id: string; readonly from: string; readonly to: string; readonly at: CruisePoint; readonly normal: CruisePoint; readonly clearWidth: number; readonly clearHeight: number; readonly kind: string }[];
   readonly docking: { readonly shipLanding: CruisePoint; readonly shoreLanding: CruisePoint; readonly shoreApproach: CruisePoint; readonly arrival: CruisePoint; readonly clearWidth: number; readonly deck: string; readonly seaDatum: number };
   readonly views: readonly { readonly id: string; readonly at: CruisePoint; readonly target: CruisePoint; readonly deck: string; readonly section: string; readonly mode: string }[];
@@ -113,8 +122,8 @@ export function cruiseRoomEntryFaults(rooms: readonly CruiseRoom[], routes: read
   return faults;
 }
 export function cruiseParts(source: CruiseParts): ShapeLook {
-  return { boxes: source.boxes?.map(b => ({ at: cruiseTuple(b.at), half: cruiseTuple(b.half) })),
-    hulls: source.hulls?.map(h => ({ corners: h.points.map(cruiseTuple) })) };
+  return { boxes: (source.boxes ?? []).map(b => ({ at: cruiseTuple(b.at), half: cruiseTuple(b.half) })),
+    hulls: (source.hulls ?? []).map(h => ({ corners: h.points.map(cruiseTuple) })) };
 }
 
 /** Linear instance/graph validation; native bounds and convex-part checks run once per reusable prototype. */
@@ -164,7 +173,7 @@ export function cruiseLayoutFaults(layout: CruiseLayout): string[] {
     }
   }
   for (const p of layout.prototypes) {
-    if (!/^core:cruise_[a-z0-9_]+$/.test(p.id) || !p.mesh) bad(p.id, "prototype needs a stable cruise content id and mesh");
+    if (!/^cruise:[a-z0-9_]+$/.test(p.id) || !p.mesh) bad(p.id, "prototype needs a stable cruise content id and mesh");
     if (!Number.isInteger(p.color) || p.color < 0 || p.color > 255) bad(p.id, "invalid palette index");
     bounds(p.visualBounds, `${p.id}.visualBounds`);
     const forms: [CruiseParts, number, string][] = [[p, MAX_SHAPE_BOXES, "collision"]];
@@ -197,6 +206,34 @@ export function cruiseLayoutFaults(layout: CruiseLayout): string[] {
       placements.add(key);
     }
   }
+  const drawnCells = index(layout.cells ?? [], "cells"), anchors = new Set<string>(), grids = new Set<string>();
+  for (const cell of layout.cells ?? []) {
+    if (!/^cruise:cell_[0-9]+$/.test(cell.id)) bad(cell.id, "requires a cruise cell mesh id");
+    if (!point(cell.grid, `${cell.id}.grid`) || !cell.grid.every(Number.isInteger)) bad(cell.id, "requires three integer grid coordinates");
+    const grid = cell.grid.join(","); if (grids.has(grid)) bad(cell.id, "duplicate render grid cell"); grids.add(grid);
+    bounds(cell.bounds, `${cell.id}.bounds`); point(cell.origin, `${cell.id}.origin`);
+    if (cell.bounds.max.some((v, a) => Math.abs(v - cell.bounds.min[a]! - 16) > .000001)) bad(cell.id, "requires a 16 m render cube");
+    const anchor = instances.get(cell.anchor), prototype = anchor && prototypes.get(anchor.prototype);
+    if (!anchor?.placed || anchor.yaw !== 0 || cell.yaw !== 0 || !same(anchor.at, cell.origin) || prototype?.mesh !== cell.id) bad(cell.id, "requires its own placed unturned anchor at the authored origin");
+    if (anchors.has(cell.anchor)) bad(cell.id, "render anchor appears more than once"); anchors.add(cell.anchor);
+    if (prototype?.opens || prototype?.category === "door") bad(cell.id, "moving door leaves cannot anchor static cell art");
+    const members = new Set<string>();
+    for (const member of cell.members) {
+      const instance = instances.get(member.instance), original = prototypes.get(member.prototype);
+      if (!instance?.placed || (instance.sourcePrototype ?? instance.prototype) !== member.prototype || original?.category !== member.category) bad(cell.id, `invalid source member ${member.instance}`);
+      if (original?.opens || original?.category === "door") bad(cell.id, "moving door leaves cannot be baked into static cell art");
+      if (members.has(member.instance)) bad(cell.id, `duplicate source member ${member.instance}`); members.add(member.instance);
+    }
+    if (!members.size) bad(cell.id, "render cell needs source members");
+  }
+  const placementCounts = new Map<string, number>();
+  for (const i of layout.instances) if (i.placed) placementCounts.set(i.prototype, (placementCounts.get(i.prototype) ?? 0) + 1);
+  for (const i of layout.instances) if (i.sourcePrototype) {
+    const p = prototypes.get(i.prototype), source = prototypes.get(i.sourcePrototype);
+    if (!source || !p || !anchors.has(i.id) || i.sourcePrototype === i.prototype) bad(i.id, "sourcePrototype requires an original prototype and unique cell anchor");
+    else if (["boxes", "hulls", "look", "visualBounds", "category", "color", "opens"].some(key => JSON.stringify(p[key as keyof CruisePrototype]) !== JSON.stringify(source[key as keyof CruisePrototype]))) bad(i.id, "render anchor must preserve its original collision, look and category");
+  }
+  for (const p of layout.prototypes) if (/^cruise:cell_[0-9]+$/.test(p.mesh) && (!drawnCells.has(p.mesh) || placementCounts.get(p.id) !== 1)) bad(p.id, "cell mesh requires exactly one placed anchor");
   const doorInstances = new Set<string>();
   for (const door of layout.doors) {
     const i = instances.get(door.instanceId);

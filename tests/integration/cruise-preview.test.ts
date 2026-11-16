@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CRUISE_LAYOUT } from "../../content/landmarks/cruise.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { BTN_USE, MODE_SWIM, stanceEye } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
@@ -18,6 +19,8 @@ test("the cruise port launch is usable from its real dry berth and the independe
   let h: Harness | null = null;
   try {
     h = new Harness({}, 629, 60, options);
+    expect(map.content?.landmarks).toEqual(["cruise", "koru"]);
+    expect(h.reg.index.has(CRUISE_LAYOUT.doors[0]!.closedPrototype)).toBe(true);
     expect(assertCruisePlaced(map, h.world.structs, h.reg).length).toBe(map.statics.length);
     expect(seedCruisePreview(h.host)).toBe(1); expect(seedCruisePreview(h.host)).toBe(0);
     const s = h.join("marina-visitor"); h.run(400);

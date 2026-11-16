@@ -15,7 +15,7 @@ function cruiseRouteFaults(reg: Registry): readonly string[] {
   let radius = 0; for (const value of reg.bodyRadius) radius = Math.max(radius, value);
   for (let kind = 1; kind < reg.defs.length; kind++) {
     const def = reg.defs[kind];
-    if (def?.type !== "structure" || !def.id.startsWith("core:cruise_")) continue;
+    if (def?.type !== "structure" || !def.id.startsWith("cruise:")) continue;
     const spread = native.spread[kind]!;
     if (spread + radius > ROUTE_MARGIN) faults.push(`${def.id}: native collision spread ${spread.toFixed(6)} m plus largest body radius ${radius.toFixed(6)} m exceeds route invalidation margin ${ROUTE_MARGIN} m; split the prototype`);
   }

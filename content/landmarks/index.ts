@@ -2,6 +2,7 @@
 // art; nothing of it is in the core content or the core pack.
 
 import type { Landmark } from "../../shared/world/landmark.ts";
+import { CRUISE } from "./cruise.ts";
 import { KORU } from "./koru.ts";
 
-export const LANDMARKS: readonly Landmark[] = [KORU];
+export const LANDMARKS: readonly Landmark[] = [KORU, CRUISE];
