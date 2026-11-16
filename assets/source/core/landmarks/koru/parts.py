@@ -75,12 +75,13 @@ class Mesh:
     sign=tag.startswith('sign:');poly.material_index=1 if sign else 0;cell=SIGNS[tag[5:]] if sign else LOOK[tag]['cell'];grid=8 if sign else 4;cx=cell%grid;cy=cell//grid
     points=[Vector(self.v[i]) for i in self.f[poly.index]]
     normal=(points[1]-points[0]).cross(points[2]-points[0])
-    axis=max(range(3),key=lambda k:abs(normal[k]));axes=[k for k in range(3) if k!=axis]
-    if axis==1:axes=[0,2]
+    axis=max(range(3),key=lambda k:abs(normal[k]));axes={0:[2,1],1:[0,2],2:[0,1]}[axis]
     lo=[min(p[k] for p in points) for k in axes];hi=[max(p[k] for p in points) for k in axes]
     for j,li in enumerate(poly.loop_indices):
      uv=custom[j] if custom else [(.04+.92*(points[j][k]-lo[t])/max(hi[t]-lo[t],1e-7)) for t,k in enumerate(axes)]
-     if sign:uv=[.03+.94*(uv[0]-.04)/.92,.29+.42*(uv[1]-.04)/.92]
+     if sign:
+      if axis in(0,2) and normal[axis]*(-1 if axis==0 else 1)<0:uv[0]=1-uv[0]
+      uv=[.03+.94*(uv[0]-.04)/.92,.29+.42*(uv[1]-.04)/.92]
      layer.data[li].uv=((cx+uv[0])/grid,1-(cy+1-uv[1])/grid)
   else:
    tags=list(LOOK);[me.materials.append(MATS[t]) for t in tags]

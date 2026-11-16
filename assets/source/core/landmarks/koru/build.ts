@@ -14,7 +14,7 @@ const start = performance.now();
 const built = buildAsset(asset);
 if (built.faults.length) throw new Error(built.faults.join("\n"));
 // Geometry-identical flat levels still lose real textile grain, plank joints, chart detail and lettering.
-// Preserve an8mm visual-error floor without ever understating the native geometric difference.
+// Preserve an 8 mm visual-error floor without ever understating the native geometric difference.
 const errors: Record<string, number[]> = {};
 for (const mesh of built.meshes) {
   let previous = .008;

@@ -117,13 +117,16 @@ def facade(m,mod):
   part(lo,hi,y,y+2.8);return
  part(lo,hi,y,y+.06,depth=.15);part(lo,hi,y+.06,y+.12,'mahogany',.15);part(lo,hi,y+.12,y+.73,depth=.15);part(lo,hi,y+.73,y+.75,'mahogany',.15)
  part(lo,hi,y+2.35,y+2.38,'mahogany');part(lo,hi,y+2.38,y+2.52);part(lo,hi,y+2.52,y+2.57,'mahogany');part(lo,hi,y+2.57,y+2.8)
+ def jamb(a,b,left,right):
+  # Disjoint spans: wood must not retain a coincident side face under its brass reveal.
+  trim=.025 if m.level<3 else 0
+  if left and trim:part(a,a+trim,y+.75,y+2.35,'brass')
+  if right and trim:part(b-trim,b,y+.75,y+2.35,'brass')
+  part(a+(trim if left else 0),b-(trim if right else 0),y+.75,y+2.35,'mahogany',.15)
  cursor=lo
  for w in windows:
-  l,r=w['range'];part(cursor,l,y+.75,y+2.35,'mahogany',.15);cursor=r
-  # Deep polished jambs and glass edge cues never obscure the actual view aperture.
-  if m.level<3:
-   part(l-.025,l,y+.75,y+2.35,'brass');part(r,r+.025,y+.75,y+2.35,'brass')
- part(cursor,hi,y+.75,y+2.35,'mahogany',.15)
+  l,r=w['range'];jamb(cursor,l,cursor>lo,True);cursor=r
+ jamb(cursor,hi,True,False)
  # Frame/wood/enamel faces are partitioned, with no coplanar overlays.
 def wall(m,mod):
  o=mod['origin']
