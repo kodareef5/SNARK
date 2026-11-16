@@ -20,6 +20,7 @@ import { parseManifest } from "../shared/pack/manifest.ts";
 import { serveFile } from "./files.ts";
 import { boardOwners, soundBoard, type BoardGate } from "./sound-board.ts";
 import { CUES } from "../shared/sound/cues.ts";
+import { mapCopy } from "../shared/world/mapfile.ts";
 
 export interface ServerOptions {
   port?: number;
@@ -108,18 +109,29 @@ export function liveFileOf(folder: string): (() => string | null) | undefined {
 
 /**
  * Answers the two requests a client makes for the map. `/map.json` names the map and its file. The file's name carries the
- * start of its SHA-256, so whoever fetched it keeps it for good, and it goes out compressed. Null for any other path.
+ * start of its SHA-256, so whoever fetched it keeps it for good, and it goes out as the copies its build made for the wire
+ * (tools/map/pack.ts). A map with none, as a test's or the proving ground, is small enough to compress here. Null for any
+ * other path.
  */
-export function mapRoutes(file: Uint8Array<ArrayBuffer>, id: string, hash: number): (path: string, accepts: string) => Response | null {
+export function mapRoutes(file: Uint8Array<ArrayBuffer>, id: string, hash: number, copies: { br?: Blob; gz?: Blob } = {}): (path: string, accepts: string) => Response | null {
   const name = `map.${new Bun.CryptoHasher("sha256").update(file).digest("hex").slice(0, 16)}.snmap`;
   const json = JSON.stringify({ id, hash, file: name });
-  const packed = Bun.gzipSync(file);
+  const gz = copies.gz ?? Bun.gzipSync(file);
   return (path, accepts) => {
     if (path === "/map.json") return new Response(json, { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
     if (path !== `/${name}`) return null;
     const headers = { "content-type": "application/octet-stream", "cache-control": "public, max-age=31536000, immutable", vary: "accept-encoding" };
-    return accepts.includes("gzip") ? new Response(packed, { headers: { ...headers, "content-encoding": "gzip" } }) : new Response(file, { headers });
+    if (copies.br && accepts.includes("br")) return new Response(copies.br, { headers: { ...headers, "content-encoding": "br" } });
+    return accepts.includes("gzip") ? new Response(gz, { headers: { ...headers, "content-encoding": "gzip" } }) : new Response(file, { headers });
   };
+}
+
+/** The copies for the wire the build wrote beside the map file at `path`, if it did. */
+export function mapCopies(path: string, hash: number): { br?: Blob; gz?: Blob } {
+  const [br, gz] = [mapCopy(path, hash, "br"), mapCopy(path, hash, "gz")];
+  if (existsSync(br) && existsSync(gz)) return { br: Bun.file(br), gz: Bun.file(gz) };
+  console.log(`map: ${path} has no copies for the wire beside it, so it is compressed now: bun tools/map.ts pack ${path} writes them`);
+  return {};
 }
 
 /**
@@ -171,7 +183,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   for (const m of host.lists.unclear) console.log(`settings: ${m.setting} names ${m.name}, which could be ${m.could.join(" or ")}, so write the one meant in full`);
   for (const line of host.passed) console.log(`settings: passed over: ${line}`);
   if (!opts.probeScene && host.spawner === null && host.world.zones.every((z) => z.spawns === undefined)) console.log(`map: neither the content nor the map file gives ${host.world.mapId} a spawn region, so no wild creature lives on it`);
-  const mapRoute = mapRoutes(host.mapFile!, host.world.mapId, host.world.mapHash);
+  const mapRoute = mapRoutes(host.mapFile!, host.world.mapId, host.world.mapHash, opts.map ? mapCopies(opts.map, host.world.mapHash) : {});
   // The shared families of sounds are the owners the catalogue's fallbacks name.
   const families = [...new Set(CUES.flatMap((c) => c.falls.map((f) => f.slice(0, f.indexOf("/")))).filter((o) => o !== "{owner}"))];
   const board: BoardGate = { dev: opts.dev ?? false, password: host.adminPassword, guesses: host.game.cheatGuesses, tick: () => host.world.tick };

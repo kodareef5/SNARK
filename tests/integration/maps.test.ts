@@ -1,8 +1,8 @@
-import { Database } from "bun:sqlite";
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 import { CORE_PACK } from "../../content/core.ts";
 import { createHost, type Host } from "../../server/host.ts";
 import { mapRoutes } from "../../server/main.ts";
@@ -37,6 +37,11 @@ test("a new map is a file: a flat one made here runs a server, is served as a br
   expect(parseMap(Bun.gunzipSync(await packed.arrayBuffer())).hash).toBe(h.world.mapHash);
   expect(new Uint8Array(await route(`/${named.file}`, "")!.arrayBuffer())).toEqual(file);
   expect(route("/index.html", "gzip")).toBeNull();
+  // With the copies its build wrote, the file goes out as Brotli to whoever takes it, and as their gzip to the rest.
+  const copied = mapRoutes(h.host.mapFile!, h.world.mapId, h.world.mapHash, { br: new Blob([brotliCompressSync(file)]), gz: new Blob([Bun.gzipSync(file)]) });
+  const br = copied(`/${named.file}`, "gzip, deflate, br")!;
+  expect([br.headers.get("content-encoding"), new Uint8Array(brotliDecompressSync(await br.arrayBuffer()))]).toEqual(["br", file]);
+  expect(copied(`/${named.file}`, "gzip, deflate")!.headers.get("content-encoding")).toBe("gzip");
 
   const ada = h.join("ada");
   h.run(500);
@@ -141,13 +146,6 @@ test("a save records the map it was made on, and loads onto another only when th
   // Told to, it loads, and the save is that map's from then on.
   expect([restart(other, true), restart(other)]).toEqual([false, false]);
   expect(() => restart(flat)).toThrow('save is for map "test:other", not "test:flat"');
-  // A save from before maps were files has no hash. It loads onto the map of its id and takes that map's hash.
-  const save = new Database(db);
-  save.run("DELETE FROM meta WHERE key = 'map_hash'");
-  save.close();
-  const renamed = writeMap(flatMap(2, { id: "test:other", tint: flatMap(2).tint.fill(7) }));
-  expect(restart(renamed)).toBe(false);
-  expect(() => restart(other)).toThrow('save is for other bytes of map "test:other"');
 });
 
 test("the proving ground loaded from its file is the one its functions build: every height, piece and node slot, and the same simulation", () => {

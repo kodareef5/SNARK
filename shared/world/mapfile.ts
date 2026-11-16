@@ -2,28 +2,30 @@
 // serves it, and each client fetches it, so both stand on the same bytes. Little-endian:
 //
 //   0   "SNMP"
-//   4   u16 version (3 with water standing apart from the sea, else 2; 1 is still read: it had no zoned nodes), u16 reserved
+//   4   u16 version 4, u16 reserved
 //   8   u32 hash        FNV-1a of every byte after it
-//   12  u16 chunksX, u16 chunksZ
-//   16  f32 cell        metres between samples, which is 2
-//   20  f64 minY, f64 stepY, f64 seaLevel
+//   12  u32 ground      bytes before the STAT section, which is last: all a client needs to draw. The whole file if none.
+//   16  u16 chunksX, u16 chunksZ
+//   20  f32 cell        metres between samples, which is 2
+//   24  f64 minY, f64 stepY, f64 seaLevel
 //                       a height is minY + sample * stepY metres; a sea level of -Infinity is no sea
-//   44  string id
+//   48  string id
 //   ..  sections, each a 4-byte tag, a u32 byte length and its bytes. A tag this build does not know is skipped.
 //
-//   HGTS  u16 per sample, row by row from z = 0: the sample less (left + above - above left), modulo 65,536
+//   HGTS  per sample, row by row from z = 0, the sample less (left + above - above left) as an i16, zigzagged (0, -1, 1, -2
+//         ...): every sample's low byte, then every sample's high byte
 //   TINT  u8 per sample, a palette index. Without it every sample is 0.
-//   STAT  u16 count and that many content ids, a u32 count, then 16-byte rows:
-//         u16 id, u16 yaw, i32 x, y, z in 1/512 m
 //   NODE  one layer of resource nodes. A file may hold several, and a chunk's slots are the first layer's, then the next's.
 //         u8 0, scattered by a hash (shared/world/nodes.ts): u32 seed, u16 slots a chunk, u8 count of kinds, each a
 //               u8 weight and a content id, then u8 metres a bit and a bit per square, row by row from z = 0, lowest bit
-//               first, set where a node may stand. 0 metres has no bits: a node may stand anywhere.
+//               first, set where a node may stand. 0 metres has no bits: a node may stand anywhere. Then the slots taken
+//               out: u8 0 for none, or u8 1 and a bit per slot, chunk by chunk, lowest bit first, set where none stands.
 //         u8 1, listed: u8 count of kinds, each a content id, then for each chunk a u16 count and 7-byte rows:
 //               u8 kind, u16 x, u16 z in 1/1024 m from the chunk's corner, u16 yaw
 //         u8 2, zoned, scattered as by 0: u32 seed, u16 slots a chunk, u8 count of zones, each a u8 weight of bare ground,
 //               a u8 count of kinds and each a u8 weight and a content id, then u8 metres a square and a byte per square,
-//               row by row from z = 0: the number of its zone counting from 1, or 0 where nothing grows
+//               row by row from z = 0: the number of its zone counting from 1, or 0 where nothing grows. Then the slots
+//               taken out, as by 0.
 //   SPWN  u8 count, then each a string name, i32 x, i32 z in 1/512 m, u16 yaw. The first is where a new survivor arrives.
 //   WILD  where wild creatures live: u16 count, then each a string spawns id, u16 count it holds at 1x, u8 shape (0 a circle,
 //         1 a box), i32 x, i32 z, u32 radius or half width, u32 half depth, in 1/512 m.
@@ -33,10 +35,13 @@
 //         u32 row index and a u8 of bits, and what they name in this order: 1 a stable string id, 2 an f64 height it
 //         stands at (a roof, a berth), 4 and 8 two f64 fractions each, the range its condition and its fuel are rolled in.
 //         A build before it skips it, and parks those vehicles on the ground with full condition.
-//   WATR  water standing on its own surfaces (shared/world/water.ts), only in a file of version 3: u8 metres a square (1, 2,
-//         4, 8, 16, 32 or 64), u16 count of bodies, each a string name and a u16 surface in the heights' units, then a u32
-//         count of the chunks holding water, each a u32 chunk index, ascending, and its squares as u16, row by row from
-//         z = 0: the number of its body counting from 1, or 0 for the sea's.
+//   WATR  water standing on its own surfaces (shared/world/water.ts): u8 metres a square (1, 2, 4, 8, 16, 32 or 64), u16
+//         count of bodies, each a string name and a u16 surface in the heights' units, then a u32 count of the chunks
+//         holding water, each a u32 chunk index, ascending, and its squares as u16, row by row from z = 0: the number of
+//         its body counting from 1, or 0 for the sea's.
+//   STAT  u16 count and that many content ids, a u32 count n, then columns of n in the map's order, each as byte planes
+//         (every value's low byte, then the next): u16 id; u16 yaw less the piece before's, modulo 65,536; and x, y, z in
+//         1/512 m as 24-bit zigzagged differences from the piece before's (the first's from 0).
 //
 // A string is a varint byte length and UTF-8, as on the wire. A yaw is in 1/65,536 turns.
 
@@ -50,11 +55,13 @@ import { formOf, mix, nodeForms, scatterNodes, type NodeSource } from "./nodes.t
 import type { StructureStore } from "./structures.ts";
 import { MAX_WATER_BODIES, MapWater } from "./water.ts";
 
-/** The version of a file with water standing apart from the sea. One without is written at 2, as it always was. */
-export const MAP_VERSION = 3;
-const MAP_VERSION_DRY = 2;
+export const MAP_VERSION = 4;
 const MAGIC = 0x504d4e53;
-const HEADER_BYTES = 44;
+const HEADER_BYTES = 48;
+/** Where the header says how many bytes come before the statics. */
+const GROUND_AT = 12;
+/** A static's bytes in STAT's columns: id, yaw, x, y, z. */
+const STAT_ROW = 2 + 2 + 3 + 3 + 3;
 /** Slots a chunk's nodes may take over every layer (shared/world/nodes.ts). */
 const NODE_SLOTS = 256;
 /** A listed node's place in its chunk is a u16 of this many steps a metre. */
@@ -92,7 +99,10 @@ export class MapStatics {
   /** The row of the map's `i`th piece. */
   readonly row: Uint32Array;
 
-  /** `n` pieces in the map's order, `read` putting the `i`th in `p` as [its index in `kinds`, yaw, x, y, z on the lattice]. */
+  /**
+   * `n` pieces in the map's order, `read` putting the `i`th in `p` as [its index in `kinds`, yaw, x, y, z on the lattice].
+   * It is called for every `i` in order, and then again.
+   */
   constructor(dims: MapDims, kinds: readonly string[], n: number, read: (i: number, p: Float64Array) => void) {
     this.kinds = kinds;
     const chunks = chunkCount(dims);
@@ -205,6 +215,8 @@ export interface NodeScatter {
   readonly allowCell: number;
   /** A bit per square, row by row from z = 0, lowest bit first, set where a node may stand. */
   readonly allow: Uint8Array | null;
+  /** Bit `chunk * perChunk + slot`, lowest bit first, set where that slot's node is taken out: the map's build froze it. */
+  readonly out?: Uint8Array;
 }
 
 /** Kinds that grow in a zone, each with its weight, and the weight of bare ground among them. */
@@ -222,6 +234,8 @@ export interface NodeZoned {
   readonly zoneCell: number;
   /** A byte per square, row by row from z = 0: the number of its zone counting from 1, or 0 where nothing grows. */
   readonly zone: Uint8Array;
+  /** As NodeScatter's. */
+  readonly out?: Uint8Array;
 }
 
 export type NodeLayer = NodeScatter | NodeList | NodeZoned;
@@ -268,11 +282,20 @@ export interface MapFile extends MapData {
   readonly statics: MapStatics;
 }
 
+const outBytes = (dims: MapDims, perChunk: number): number => Math.ceil((chunkCount(dims) * perChunk) / 8);
+
 function slotsOf(layer: NodeLayer, chunks: number): number {
   if (!("first" in layer)) return layer.perChunk;
   let most = 0;
   for (let c = 0; c < chunks; c++) most = Math.max(most, layer.first[c + 1]! - layer.first[c]!);
   return most;
+}
+
+function checkStatics(dims: MapDims, statics: MapStatics | readonly MapStatic[]): void {
+  const [sizeX, sizeZ] = [dims.chunksX * CHUNK_SIZE, dims.chunksZ * CHUNK_SIZE];
+  eachStatic(statics, (kind, x, y, z) => {
+    if (!(x >= 0 && x <= sizeX && z >= 0 && z <= sizeZ && y >= WORLD_MIN_Y && y <= WORLD_MAX_Y)) throw new Error(`map: a ${kind} at ${x}, ${y}, ${z} is off the map`);
+  });
 }
 
 /** Throws, saying what is wrong, if nothing could be played on `m`. */
@@ -292,9 +315,7 @@ function check(m: MapData): void {
   const inside = (x: number, z: number): boolean => x >= 0 && x <= sizeX && z >= 0 && z <= sizeZ;
   if (!whole(m.spawns.length, 1, MAX_SPAWNS)) fail(`it has ${m.spawns.length} spawn points, and a map has 1 to ${MAX_SPAWNS}`);
   for (const s of m.spawns) if (!inside(s.x, s.z)) fail(`spawn point "${s.name}" is off the map`);
-  eachStatic(m.statics, (kind, x, y, z) => {
-    if (!inside(x, z) || !(y >= WORLD_MIN_Y && y <= WORLD_MAX_Y)) fail(`a ${kind} at ${x}, ${y}, ${z} is off the map`);
-  });
+  checkStatics(m.dims, m.statics);
   let slots = 0;
   for (const layer of m.nodes) {
     slots += slotsOf(layer, chunksX * chunksZ);
@@ -304,6 +325,7 @@ function check(m: MapData): void {
       if (layer.kinds.length > 255 || layer.kind.some((k) => k >= layer.kinds.length)) fail("a listed node is of a kind its list does not name");
       continue;
     }
+    if (layer.out && layer.out.length !== outBytes(m.dims, layer.perChunk)) fail("the slots taken out of scattered nodes are not a bit per slot of every chunk");
     if ("zone" in layer) {
       const cell = layer.zoneCell;
       const weighed = (z: NodeZone): boolean => whole(z.bare, 0, 255) && whole(z.kinds.length, 0, 255) && z.kinds.every(([, weight]) => whole(weight, 1, 255)) && z.bare + z.kinds.length > 0;
@@ -409,8 +431,9 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
     o.view.setUint32(at, o.at - at - 4, true);
   };
   o.u32(MAGIC);
-  o.u16(m.water ? MAP_VERSION : MAP_VERSION_DRY);
+  o.u16(MAP_VERSION);
   o.u16(0);
+  o.u32(0);
   o.u32(0);
   o.u16(m.dims.chunksX);
   o.u16(m.dims.chunksZ);
@@ -422,34 +445,25 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
   o.text(m.id);
   section("HGTS", () => {
     const h = m.heights;
+    const n = h.length;
     const nx = (m.dims.chunksX * CHUNK_SIZE) / TERRAIN_CELL + 1;
-    const at = o.take(h.length * 2);
-    for (let k = 0; k < h.length; k++) {
+    const at = o.take(n * 2);
+    const b = o.bytes;
+    for (let k = 0; k < n; k++) {
       const left = k % nx > 0 ? h[k - 1]! : 0;
       const above = k >= nx ? h[k - nx]! : 0;
       const corner = k % nx > 0 && k >= nx ? h[k - nx - 1]! : 0;
-      o.view.setUint16(at + k * 2, h[k]! - (left + above - corner), true);
+      const r = ((h[k]! - (left + above - corner)) << 16) >> 16;
+      const z = (r << 1) ^ (r >> 31);
+      b[at + k] = z;
+      b[at + n + k] = z >> 8;
     }
   });
   section("TINT", () => o.put(m.tint));
-  if (m.statics.length > 0) {
-    section("STAT", () => {
-      const ids = new Map<string, number>();
-      eachStatic(m.statics, (kind) => {
-        if (!ids.has(kind)) ids.set(kind, ids.size);
-      });
-      o.u16(ids.size);
-      for (const id of ids.keys()) o.text(id);
-      o.u32(m.statics.length);
-      eachStatic(m.statics, (kind, x, y, z, yaw) => {
-        o.u16(ids.get(kind)!);
-        o.u16(yaw);
-        o.i32(Math.round(x * STRUCT_UNITS));
-        o.i32(Math.round(y * STRUCT_UNITS));
-        o.i32(Math.round(z * STRUCT_UNITS));
-      });
-    });
-  }
+  const slotsOut = (layer: NodeScatter | NodeZoned): void => {
+    o.u8(layer.out ? 1 : 0);
+    if (layer.out) o.put(layer.out);
+  };
   for (const layer of m.nodes) {
     section("NODE", () => {
       if ("zone" in layer) {
@@ -467,6 +481,7 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
         }
         o.u8(layer.zoneCell);
         o.put(layer.zone);
+        slotsOut(layer);
         return;
       }
       if ("first" in layer) {
@@ -494,6 +509,7 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
       }
       o.u8(layer.allowCell);
       if (layer.allow) o.put(layer.allow);
+      slotsOut(layer);
     });
   }
   section("SPWN", () => {
@@ -570,8 +586,42 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
       }
     });
   }
+  const ground = o.at;
+  if (m.statics.length > 0) {
+    section("STAT", () => {
+      const ids = new Map<string, number>();
+      eachStatic(m.statics, (kind) => {
+        if (!ids.has(kind)) ids.set(kind, ids.size);
+      });
+      o.u16(ids.size);
+      for (const id of ids.keys()) o.text(id);
+      const n = m.statics.length;
+      o.u32(n);
+      const at = o.take(n * STAT_ROW);
+      const b = o.bytes;
+      const plane = (column: number, i: number, v: number, bytes: number): void => {
+        for (let k = 0; k < bytes; k++) b[at + (column + k) * n + i] = v >>> (8 * k);
+      };
+      // A difference is taken modulo 2^24, which the reader undoes: a map's widest is 2^23 units.
+      const zigzag = (d: number): number => (d = (d << 8) >> 8, (d << 1) ^ (d >> 31));
+      let i = 0;
+      let [px, py, pz, pyaw] = [0, 0, 0, 0];
+      eachStatic(m.statics, (kind, x, y, z, yaw) => {
+        const [ux, uy, uz] = [Math.round(x * STRUCT_UNITS), Math.round(y * STRUCT_UNITS), Math.round(z * STRUCT_UNITS)];
+        plane(0, i, ids.get(kind)!, 2);
+        plane(2, i, yaw - pyaw, 2);
+        plane(4, i, zigzag(ux - px), 3);
+        plane(7, i, zigzag(uy - py), 3);
+        plane(10, i, zigzag(uz - pz), 3);
+        [px, py, pz, pyaw] = [ux, uy, uz, yaw];
+        i++;
+      });
+    });
+  }
   const file = o.bytes.slice(0, o.at);
-  new DataView(file.buffer).setUint32(8, hashBytes(file.subarray(12)), true);
+  const view = new DataView(file.buffer);
+  view.setUint32(GROUND_AT, ground, true);
+  view.setUint32(8, hashBytes(file.subarray(12)), true);
   return file;
 }
 
@@ -628,6 +678,11 @@ class In {
 
 function readNodes(r: In, dims: MapDims): NodeLayer {
   const type = r.u8();
+  const squares = (cell: number): number => {
+    if (!(cell >= 1 && cell <= CHUNK_SIZE && CHUNK_SIZE % cell === 0)) throw new Error(`map: nodes are placed by squares of ${cell} m, and a square is 1, 2, 4, 8, 16, 32 or 64 m`);
+    return ((dims.chunksX * CHUNK_SIZE) / cell) * ((dims.chunksZ * CHUNK_SIZE) / cell);
+  };
+  const out = (perChunk: number): { out?: Uint8Array } => (r.u8() === 1 ? { out: r.take(outBytes(dims, perChunk)).slice() } : {});
   if (type === 2) {
     const seed = r.u32();
     const perChunk = r.u16();
@@ -640,7 +695,8 @@ function readNodes(r: In, dims: MapDims): NodeLayer {
       return { bare, kinds };
     });
     const zoneCell = r.u8();
-    return { seed, perChunk, zones, zoneCell, zone: r.take(r.bytes.length - r.at).slice() };
+    const zone = r.take(squares(zoneCell)).slice();
+    return { seed, perChunk, zones, zoneCell, zone, ...out(perChunk) };
   }
   if (type > 2) throw new Error(`map: nodes of type ${type} are not ones this build reads`);
   if (type === 0) {
@@ -651,7 +707,8 @@ function readNodes(r: In, dims: MapDims): NodeLayer {
       return [r.text(), weight];
     });
     const allowCell = r.u8();
-    return { seed, perChunk, kinds, allowCell, allow: allowCell === 0 ? null : r.take(r.bytes.length - r.at).slice() };
+    const allow = allowCell === 0 ? null : r.take(Math.ceil(squares(allowCell) / 8)).slice();
+    return { seed, perChunk, kinds, allowCell, allow, ...out(perChunk) };
   }
   const kinds = Array.from({ length: r.u8() }, () => r.text());
   const chunks = chunkCount(dims);
@@ -670,6 +727,32 @@ function readNodes(r: In, dims: MapDims): NodeLayer {
     list.first[c + 1] = n;
   }
   return list;
+}
+
+function readStatics(s: In, dims: MapDims): MapStatics {
+  const ids = Array.from({ length: s.u16() }, () => s.text());
+  const n = s.u32();
+  const b = s.take(n * STAT_ROW);
+  const at = (column: number, i: number, bytes: number): number => {
+    let v = 0;
+    for (let k = 0; k < bytes; k++) v |= b[(column + k) * n + i]! << (8 * k);
+    return v;
+  };
+  const unzig = (z: number): number => (z >>> 1) ^ -(z & 1);
+  let [x, y, z, yaw] = [0, 0, 0, 0];
+  return new MapStatics(dims, ids, n, (i, p) => {
+    if (i === 0) [x, y, z, yaw] = [0, 0, 0, 0];
+    p[0] = at(0, i, 2);
+    if (p[0] >= ids.length) throw new Error("map: a static piece is of a kind its table does not name");
+    yaw = (yaw + at(2, i, 2)) & 0xffff;
+    x = (x + unzig(at(4, i, 3))) & 0xffffff;
+    y = ((y + unzig(at(7, i, 3))) << 8) >> 8;
+    z = (z + unzig(at(10, i, 3))) & 0xffffff;
+    p[1] = yaw;
+    p[2] = x / STRUCT_UNITS;
+    p[3] = y / STRUCT_UNITS;
+    p[4] = z / STRUCT_UNITS;
+  });
 }
 
 function read(r: In): Omit<MapFile, "hash"> {
@@ -695,32 +778,22 @@ function read(r: In): Omit<MapFile, "hash"> {
     const s = new In(r.take(r.u32()));
     if (tag === "HGTS") {
       const nx = (dims.chunksX * CHUNK_SIZE) / TERRAIN_CELL + 1;
-      const h = (heights = new Uint16Array(s.bytes.length >> 1));
-      for (let k = 0; k < h.length; k++) {
+      const n = s.bytes.length >> 1;
+      const b = s.bytes;
+      const h = (heights = new Uint16Array(n));
+      for (let k = 0; k < n; k++) {
         const left = k % nx > 0 ? h[k - 1]! : 0;
         const above = k >= nx ? h[k - nx]! : 0;
         const corner = k % nx > 0 && k >= nx ? h[k - nx - 1]! : 0;
-        h[k] = s.view.getUint16(k * 2, true) + left + above - corner;
+        const z = b[k]! | (b[n + k]! << 8);
+        h[k] = ((z >>> 1) ^ -(z & 1)) + left + above - corner;
       }
     } else if (tag === "TINT") {
       // Copied, as the nodes' bytes are: a view would keep the whole file, statics and all, for as long as the map is held.
       tint = s.bytes.slice();
     } else if (tag === "STAT") {
       if (statics) throw new Error("map: it has two STAT sections");
-      const ids = Array.from({ length: s.u16() }, () => s.text());
-      const n = s.u32();
-      const at = s.at;
-      if (n * 16 > s.bytes.length - at) throw new RangeError();
-      const v = s.view;
-      statics = new MapStatics(dims, ids, n, (i, p) => {
-        const o = at + i * 16;
-        p[0] = v.getUint16(o, true);
-        if (p[0] >= ids.length) throw new Error("map: a static piece is of a kind its table does not name");
-        p[1] = v.getUint16(o + 2, true);
-        p[2] = v.getInt32(o + 4, true) / STRUCT_UNITS;
-        p[3] = v.getInt32(o + 8, true) / STRUCT_UNITS;
-        p[4] = v.getInt32(o + 12, true) / STRUCT_UNITS;
-      });
+      statics = readStatics(s, dims);
     } else if (tag === "NODE") nodes.push(readNodes(s, dims));
     else if (tag === "SPWN") {
       for (let n = s.u8(); n > 0; n--) spawns.push({ name: s.text(), x: s.i32() / STRUCT_UNITS, z: s.i32() / STRUCT_UNITS, yaw: s.u16() });
@@ -781,23 +854,53 @@ function read(r: In): Omit<MapFile, "hash"> {
   return { id, dims, minY, stepY, seaLevel, heights, tint: tint ?? new Uint8Array(heights.length), statics, nodes, spawns, ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(water ? { water } : {}) };
 }
 
-/** Throws with a reason if the file is not a map this build can play on. */
-export function parseMap(file: Uint8Array): MapFile {
-  const r = new In(file);
-  if (file.length < HEADER_BYTES || r.u32() !== MAGIC) throw new Error("map: this is not a map file");
-  const version = r.u16();
-  if (version !== MAP_VERSION && version !== MAP_VERSION_DRY && version !== 1) throw new Error(`map: version ${version} is not one this build reads`);
-  r.at += 2;
-  const hash = r.u32();
-  if (hash !== hashBytes(file.subarray(12))) throw new Error("map: the file is damaged: its hash is not that of its bytes");
-  let map: Omit<MapFile, "hash">;
+/** How many of a file's bytes come before its statics, from its first 16. */
+export function groundBytes(head: Uint8Array): number {
+  const v = new DataView(head.buffer, head.byteOffset, head.byteLength);
+  if (head.length < 16 || v.getUint32(0, true) !== MAGIC) throw new Error("map: this is not a map file");
+  const version = v.getUint16(4, true);
+  if (version !== MAP_VERSION) throw new Error(`map: version ${version} is not one this build reads: build the map again`);
+  return v.getUint32(GROUND_AT, true);
+}
+
+/** Runs `read`, saying so if a section runs past its end. */
+function within<T>(read: () => T): T {
   try {
-    map = read(r);
+    return read();
   } catch (err) {
     throw err instanceof RangeError ? new Error("map: a section runs past its end") : err;
   }
+}
+
+/**
+ * Throws with a reason if the file is not a map this build can play on. Without `verify` its hash is taken on trust, and
+ * its first `groundBytes` alone read as the map with no statics, which a client draws from while they arrive.
+ */
+export function parseMap(file: Uint8Array, verify = true): MapFile {
+  const ground = groundBytes(file);
+  if (file.length < HEADER_BYTES || ground > file.length) throw new Error("map: it is cut short");
+  const hash = new DataView(file.buffer, file.byteOffset).getUint32(8, true);
+  if (verify && hash !== hashBytes(file.subarray(12))) throw new Error("map: the file is damaged: its hash is not that of its bytes");
+  const r = new In(file);
+  r.at = 16;
+  const map = within(() => read(r));
   check(map);
   return { ...map, hash };
+}
+
+/** The statics of a file of `dims` from its bytes past `groundBytes`, read apart from the rest. */
+export function parseStatics(rest: Uint8Array, dims: MapDims): MapStatics {
+  if (rest.length === 0) return new MapStatics(dims, [], 0, () => {});
+  const r = new In(rest);
+  if (String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8()) !== "STAT") throw new Error("map: what follows its ground is not its statics");
+  const statics = within(() => readStatics(new In(r.take(r.u32())), dims));
+  checkStatics(dims, statics);
+  return statics;
+}
+
+/** Where a map's build puts the file at `path` compressed for the wire, `br` or `gz`: beside it, named by its hash. */
+export function mapCopy(path: string, hash: number, encoding: "br" | "gz"): string {
+  return `${path}.${hash.toString(16).padStart(8, "0")}.${encoding}`;
 }
 
 export function mapHeightfield(map: MapData): Heightfield {
@@ -819,6 +922,21 @@ function weighed(reg: Registry, kinds: readonly (readonly [id: string, weight: n
 }
 
 function layerSource(dims: MapDims, hf: Heightfield, reg: Registry, layer: NodeLayer): NodeSource {
+  const source = sourceOf(dims, hf, reg, layer);
+  const out = "first" in layer ? null : layer.out;
+  if (!out) return source;
+  const per = source.perChunk;
+  return {
+    perChunk: per,
+    at(chunk, index, spot) {
+      const bit = chunk * per + index;
+      if ((out[bit >> 3]! >> (bit & 7)) & 1) spot.kind = 0;
+      else source.at(chunk, index, spot);
+    },
+  };
+}
+
+function sourceOf(dims: MapDims, hf: Heightfield, reg: Registry, layer: NodeLayer): NodeSource {
   const forms = nodeForms(reg);
   const wide = (cell: number): number => (dims.chunksX * CHUNK_SIZE) / cell;
   if ("zone" in layer) {

@@ -136,13 +136,12 @@ export class Persistence {
     const world = this.world;
     if (!store.fresh) {
       const mapId = store.meta("map_id");
-      // A save from before maps were files has no hash. It takes this map's at its next commit.
-      const mapHash = store.meta("map_hash");
+      const mapHash = Number(store.meta("map_hash"));
       const hex = (hash: number): string => hash.toString(16).padStart(8, "0");
       if (!this.opts.allowMapMismatch) {
         const onto = "start with the map file it was made on, or with --allow-map-mismatch to load it onto this one";
         if (mapId !== world.mapId) throw new Error(`save is for map "${mapId}", not "${world.mapId}": ${onto}`);
-        if (mapHash !== null && Number(mapHash) !== world.mapHash) throw new Error(`save is for other bytes of map "${mapId}" (hash ${hex(Number(mapHash))}, and this file's is ${hex(world.mapHash)}): ${onto}`);
+        if (mapHash !== world.mapHash) throw new Error(`save is for other bytes of map "${mapId}" (hash ${hex(mapHash)}, and this file's is ${hex(world.mapHash)}): ${onto}`);
       }
       world.tick = Number(store.meta("tick") ?? 0);
       world.dayOffset = Number(store.meta("day_offset") ?? 0);

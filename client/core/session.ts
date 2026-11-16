@@ -129,7 +129,7 @@ export interface SessionOptions {
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
   /** The map's resource nodes, from the same pure function the server uses. */
   nodes?(hf: Heightfield, registry: Registry): NodeSource | null;
-  /** The map's static pieces by chunk, which the far city draws past the near rows (render/farcity.ts). */
+  /** The map's static pieces by chunk, which the far city draws past the near rows (render/farcity.ts), or null until they arrive (cityArrived). */
   city?(registry: Registry): CityStatics | null;
 }
 
@@ -1304,6 +1304,13 @@ export class ClientSession {
     this.simTick = tick + INITIAL_LEAD;
     this.renderClock = tick;
     this.state = "active";
+  }
+
+  /** Call when the map's statics arrive after the welcome: the far city starts with them. */
+  cityArrived(): void {
+    const world = this.world;
+    const statics = world && !world.city ? this.opts.city?.(this.registry) ?? null : null;
+    if (world && statics && statics.count > 0) world.city = { statics, complete: world.far.complete };
   }
 
   private snapshot(r: BitReader): void {

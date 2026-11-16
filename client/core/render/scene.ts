@@ -58,7 +58,7 @@ export interface RenderWorld {
   readonly far?: FarSource;
   /** Trees, rocks and bushes past the near node field (farnodes.ts). */
   readonly farNodes?: FarNodeSource;
-  /** The map's own buildings past the near rows (farcity.ts). */
+  /** The map's own buildings past the near rows (farcity.ts). It may come after the first frame, and is drawn from then on. */
   readonly city?: CitySource;
 }
 
@@ -314,7 +314,9 @@ export class Scene {
   /** Nodes past the near node field, given a source of them. */
   readonly nodesFar: FarNodes | null;
   /** The map's own buildings where the near store does not hold their chunks whole, given a source of them. */
-  readonly city: FarCity | null;
+  city: FarCity | null = null;
+  private readonly farMesh: number;
+  private readonly farBounds: { center: readonly number[]; half: readonly number[] } | undefined;
   /** Water on its own surfaces apart from the sea, and the sea round those whose beds go under it (lakes.ts), given the far mesh. */
   private readonly lakes: Lakes | null;
   /** Sun shadows: the cascades fitted this frame. */
@@ -444,10 +446,11 @@ export class Scene {
     for (let k = 1; k < reg.defs.length; k++) if (this.characters.has(k)) reach = Math.max(reach, this.characters.reach(k));
     this.bodySlack = reach * 2;
 
-    const far = table.find(FAR_MESH);
+    const far = (this.farMesh = table.find(FAR_MESH));
+    this.farBounds = pack.header.meshes[far];
     const shown = (k: number): number => (this.meshOfKind[k] === missing ? -1 : this.meshOfKind[k]!);
-    this.city = world.city && far >= 0 ? new FarCity(world.city, world.dims, world.hf, far, pack.header.meshes[far]!) : null;
-    this.far = world.far && far >= 0 ? new FarBlocks(world.far, world.dims, world.hf, far, pack.header.meshes[far]!, farColours(reg, pack, shown), this.city) : null;
+    this.far = world.far && far >= 0 ? new FarBlocks(world.far, world.dims, world.hf, far, pack.header.meshes[far]!, farColours(reg, pack, shown)) : null;
+    this.startCity();
     const last = (mesh: number): ReturnType<NodeLooks["last"]> => this.assets.residency.bootLevel(mesh, table.tris[mesh]!.length - 1);
     const looks: NodeLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, side: table.side, low: table.low, high: table.high, tris: table.tris, last };
     this.nodesFar = world.farNodes ? new FarNodes(world.farNodes, world.far?.cells ?? null, world.dims, reg, looks) : null;
@@ -523,7 +526,7 @@ export class Scene {
     this.terrain.select(cam, p, this.viewDistance, this.assets.residency, this.casting ? this.castBox : undefined);
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
-    if (this.city) this.farCity(cam);
+    if (this.city ?? this.startCity()) this.farCity(cam);
     if (this.far) this.farBlocks(cam);
     if (this.nodesFar) this.farNodes(cam);
     if (this.casting && !this.terrain.casters(cam, p, this.viewDistance, this.castBox)) p.casterDropped++;
@@ -785,6 +788,15 @@ export class Scene {
     this.doubled += copies - 1;
     p.triangles += triangles * copies;
   };
+
+  /** The far city once the world has the map's statics, which the far blocks then leave their cells to. */
+  private startCity(): FarCity | null {
+    const source = this.world.city;
+    if (!source || !this.farBounds) return null;
+    this.city = new FarCity(source, this.world.dims, this.world.hf, this.farMesh, this.farBounds);
+    this.far?.leaveTo(this.city);
+    return this.city;
+  }
 
   /** The map's buildings to the tier's reach, in place of chunks the near store does not hold whole, faded over the last of it. */
   private farCity(cam: Camera): void {
