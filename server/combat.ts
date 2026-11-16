@@ -695,7 +695,7 @@ export class Combat {
     const world = this.ctx.world, ents = world.ents;
     const host = ents.seat[i]! - 1;
     if (host < 0 || ents.seatSlot[i] === 0 || ents.gen[host] !== ents.seatGen[i] || world.reg.vehicle[ents.kind[host]!]) return 0;
-    const seat = saddleSeat(world.reg, ents.gear[host]?.[GEAR_WORN] ?? 0, ents.seatSlot[i]!);
+    const seat = saddleSeat(world.reg, ents.gears.get(host)?.[GEAR_WORN] ?? 0, ents.seatSlot[i]!);
     const was = this.mountPast;
     if (!seat || !this.where(host, tick, was)) return 0;
     const st = this.mountSt;

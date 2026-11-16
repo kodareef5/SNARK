@@ -32,10 +32,10 @@ test("all four native boat cameras follow the real helm and passenger eye positi
     for (const attitude of [{ yaw: Math.PI / 2, pitch: 0, roll: 0 }, { yaw: .6, pitch: .4, roll: Math.PI / 2 }, { yaw: 0, pitch: 0, roll: Math.PI }]) {
       vehicleRotation({ x: 0, y: 0, z: 0, ...attitude }, q);
       ents.setPosition(e, 62, 70, 64); ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
-      ents.vehicleQx[e] = q[0]!; ents.vehicleQy[e] = q[1]!; ents.vehicleQz[e] = q[2]!; ents.vehicleQw[e] = q[3]!;
-      ents.vehicleYaw[e] = attitude.yaw; ents.vehiclePitch[e] = attitude.pitch; ents.vehicleRoll[e] = attitude.roll;
-      ents.vx[e] = ents.vy[e] = ents.vz[e] = ents.vehicleYawRate[e] = ents.vehiclePitchRate[e] = ents.vehicleRollRate[e] = 0;
-      ents.vehicleEngineOn[e] = 0; ents.vehicleFlooding[e] = 0;
+      ents.vehicleQx[ents.vrow[e]!] = q[0]!; ents.vehicleQy[ents.vrow[e]!] = q[1]!; ents.vehicleQz[ents.vrow[e]!] = q[2]!; ents.vehicleQw[ents.vrow[e]!] = q[3]!;
+      ents.vehicleYaw[ents.vrow[e]!] = attitude.yaw; ents.vehiclePitch[ents.vrow[e]!] = attitude.pitch; ents.vehicleRoll[ents.vrow[e]!] = attitude.roll;
+      ents.vx[e] = ents.vy[e] = ents.vz[e] = ents.vehicleYawRate[ents.vrow[e]!] = ents.vehiclePitchRate[ents.vrow[e]!] = ents.vehicleRollRate[ents.vrow[e]!] = 0;
+      ents.vehicleEngineOn[ents.vrow[e]!] = 0; ents.vehicleFlooding[ents.vrow[e]!] = 0;
       h.host.urban.syncAfterContact(e); run(250);
       for (let i = 0; i < crew.length; i++) {
         const app = crew[i]!, s = app.session, r = app.remote;

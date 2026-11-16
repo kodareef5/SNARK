@@ -404,6 +404,9 @@ export class FramePacket {
   readonly casterFirstIndex = new Uint32Array(MAX_CASTERS);
   readonly casterIndexCount = new Uint32Array(MAX_CASTERS);
   readonly casterCascades = new Uint8Array(MAX_CASTERS);
+  /** What the sun's maps take this frame, the ground's tiles among it, and which `triangles` leaves out: a caster's triangles once for each cascade it is drawn into, and its draws. */
+  castTriangles = 0;
+  castDraws = 0;
 
   triangles = 0;
 
@@ -449,6 +452,8 @@ export class FramePacket {
     this.boneCount = 0;
     this.casterCount = 0;
     this.casterDropped = 0;
+    this.castTriangles = 0;
+    this.castDraws = 0;
     this.cascadeCount = 0;
     this.cascadesDrawn = 0;
     this.triangles = 0;

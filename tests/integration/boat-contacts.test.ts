@@ -43,15 +43,15 @@ test("an engaged stationary propeller harms an unprotected swimmer, while neutra
   const { h, ents, boat, contacts, health, victim } = setup();
   try {
     const y = ents.y[boat]!, prop = BOAT_ART.propeller.center, target = victim(62 + prop[0], y - .15, 64 + prop[2]), before = health(target);
-    ents.vehicleEngineOn[boat] = 1; ents.vehicleRpm[boat] = 2800; ents.vehicleGear[boat] = 0;
+    ents.vehicleEngineOn[ents.vrow[boat]!] = 1; ents.vehicleRpm[ents.vrow[boat]!] = 2800; ents.vehicleGear[ents.vrow[boat]!] = 0;
     contacts.capture(boat); contacts.step(); expect(health(target)).toBe(before);
-    ents.vehicleGear[boat] = 1; contacts.capture(boat); contacts.step();
+    ents.vehicleGear[ents.vrow[boat]!] = 1; contacts.capture(boat); contacts.step();
     expect(health(target)).toBeLessThan(before); h.host.urban.step();
-    expect(ents.vehicleEngineCondition[boat]!).toBeLessThan(1);
+    expect(ents.vehicleEngineCondition[ents.vrow[boat]!]!).toBeLessThan(1);
     // A standing body's feet above the deck and inside the gunwales do not meet an invented full cabin box.
     const cabin = victim(62, y + .8, 64 - 1.8), cabinHealth = health(cabin);
-    ents.vehicleGear[boat] = 0; ents.vehicleEngineOn[boat] = 0;
-    contacts.capture(boat); ents.vehicleRollRate[boat] = .1; contacts.step();
+    ents.vehicleGear[ents.vrow[boat]!] = 0; ents.vehicleEngineOn[ents.vrow[boat]!] = 0;
+    contacts.capture(boat); ents.vehicleRollRate[ents.vrow[boat]!] = .1; contacts.step();
     expect(health(cabin)).toBe(cabinHealth);
   } finally { h.host.shutdown(); }
 });
@@ -73,8 +73,8 @@ test("boat collisions include another vehicle's real hull and cargo mass", () =>
     const other = h.host.spawnVehicle("core:boat_rescue", 80, 64, 0), rec = h.host.records.byPid.get(ents.pid[other]!)!;
     expect(other).toBeGreaterThanOrEqual(0);
     h.host.items.mint(rec, h.reg.index.get("core:ingot")!, 100);
-    ents.vehiclePayloadMass[other] = h.host.urban.payloadMass(other);
-    expect(ents.vehiclePayloadMass[other]!).toBeGreaterThan(0);
+    ents.vehiclePayloadMass[ents.vrow[other]!] = h.host.urban.payloadMass(other);
+    expect(ents.vehiclePayloadMass[ents.vrow[other]!]!).toBeGreaterThan(0);
     const y = ents.y[boat]!, before = health(other);
     ents.setPosition(other, 64.9, y, 64); contacts.capture(boat); contacts.capture(other);
     ents.setPosition(boat, 63, y, 64); ents.vx[boat] = 30;
@@ -95,7 +95,7 @@ test("a protected moving boat is clipped on its captured rigid path and reported
     expect(changed).toContain(boat); expect(changed).toContain(other);
     expect(ents.x[other]!).toBeGreaterThan(64.5); expect(ents.x[other]!).toBeLessThanOrEqual(65.1);
     expect(ents.vx[other]!).toBeGreaterThan(-3); expect(health(other)).toBe(before);
-    expect(Number.isFinite(ents.vehicleQw[other])).toBe(true);
+    expect(Number.isFinite(ents.vehicleQw[ents.vrow[other]!])).toBe(true);
   } finally { h.host.shutdown(); }
 });
 
@@ -115,10 +115,10 @@ test("rewound boat targeting uses its remembered quaternion and steering, with n
   const { h, ents, boat } = setup();
   try {
     const history = h.world.history, tick = h.world.tick, past = new Past(), q = Math.SQRT1_2;
-    ents.setPosition(boat, 62, 3, 64); ents.vehicleQx[boat] = ents.vehicleQy[boat] = 0;
-    ents.vehicleQz[boat] = ents.vehicleQw[boat] = q; ents.vehicleRoll[boat] = Math.PI / 2; ents.steering[boat] = .4;
+    ents.setPosition(boat, 62, 3, 64); ents.vehicleQx[ents.vrow[boat]!] = ents.vehicleQy[ents.vrow[boat]!] = 0;
+    ents.vehicleQz[ents.vrow[boat]!] = ents.vehicleQw[ents.vrow[boat]!] = q; ents.vehicleRoll[ents.vrow[boat]!] = Math.PI / 2; ents.steering[ents.vrow[boat]!] = .4;
     history.record(tick);
-    ents.vehicleQz[boat] = ents.vehicleRoll[boat] = ents.steering[boat] = 0; ents.vehicleQw[boat] = 1;
+    ents.vehicleQz[ents.vrow[boat]!] = ents.vehicleRoll[ents.vrow[boat]!] = ents.steering[ents.vrow[boat]!] = 0; ents.vehicleQw[ents.vrow[boat]!] = 1;
     history.record(tick + 1); h.world.tick += 2;
     expect(history.at(tick, boat, past)).toBe(true); expect(past.qz).toBeCloseTo(q, 6); expect(past.steering).toBeCloseTo(.4, 6);
     expect(history.sample(tick + .5, boat, past)).toBe(true);

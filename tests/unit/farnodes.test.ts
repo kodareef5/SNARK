@@ -90,6 +90,12 @@ test("across the hand-over band both stores draw a node, each fading the other w
       else near++;
       continue;
     }
+    // The near store leaves out a node out of view, where the far store may draw it among the cells it bridges.
+    if (draws.length === 0) {
+      const n = all[0]!, t = w.scene.assets.table, k = n.size / SIZE_UNITS, r = t.side[n.mesh]! * k;
+      expect(w.cam.boxVisible(n.x - r - w.cam.x, n.y + t.low[n.mesh]! * k - w.cam.y, n.z - r - w.cam.z, n.x + r - w.cam.x, n.y + t.high[n.mesh]! * k - w.cam.y, n.z + r - w.cam.z)).toBe(false);
+      continue;
+    }
     expect(draws.length).toBe(2);
     const [a, b] = draws.sort((p, q) => Number(p.far) - Number(q.far)) as [Drawn, Drawn];
     expect([a.far, a.hand, b.far, b.hand]).toEqual([false, HAND_NEAR, true, HAND_FAR]);

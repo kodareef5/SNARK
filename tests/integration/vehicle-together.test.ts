@@ -83,7 +83,7 @@ test("two players drive, pull each other out and ride together, and neither clie
     // stopped by the server and corrected: clients do not predict cars as obstacles), and pulls Ada out of the driver's seat.
     use(h, 1, car);
     expect(bob.own.seatSlot).toBe(0);
-    const yaw = ents.vehicleYaw[car]!, side = [Math.cos(yaw), -Math.sin(yaw)], back = [-Math.sin(yaw), -Math.cos(yaw)];
+    const yaw = ents.vehicleYaw[ents.vrow[car]!]!, side = [Math.cos(yaw), -Math.sin(yaw)], back = [-Math.sin(yaw), -Math.cos(yaw)];
     const at = (s: number, f: number): [number, number] => [ents.x[car]! + side[0]! * s + back[0]! * f, ents.z[car]! + side[1]! * s + back[1]! * f];
     walk(h, 1, ...at(-2, 3.4));
     walk(h, 1, ...at(2, 3.4));

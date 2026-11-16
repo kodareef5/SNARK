@@ -144,11 +144,15 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // grazer's flag changes in these medium-tier frames: clearing it reproduces the previous entire 300-frame pin.
   // It was b8ace535, and 49a5944d, until the pteranodon's mesh became its own (content/creatures/pteranodon.ts) and no longer
   // a grey box, which numbers the meshes after it anew; with its mesh a box again they are those again.
-  expect(beforePlain).toBe("aca29c81");
-  expect(hash).toBe("291b6419");
+  // They were aca29c81 and 291b6419, with 37,800 draws and 34,572,000 triangles, until chunks were drawn and cast by 16 m
+  // cell: a chunk's instances go up in the order of their cells, pieces and nodes in cells out of view are not drawn,
+  // and each casts at what the shadow filter blurs into the cascades its cells reach. Each of the 300 frames draws the
+  // picture it did (the rasterizer, which draws no shadows).
+  expect(beforePlain).toBe("48ed7779");
+  expect(hash).toBe("2d1c4611");
   // What the hash cannot say: the 300 frames' draws, triangles and bytes put on the card. A change that moves the hash
   // and leaves the frames as they were leaves these.
-  expect(counts).toEqual([37800, 34572000, 0]);
+  expect(counts).toEqual([32700, 33985200, 0]);
 
   // The same scene with the raptor's box saddle in the pack and on the raptor (FL5), drawn on its bones wherever it is
   // seen. The saddle's mesh numbers the meshes after it on, so the pack that holds it is the frozen one with it added:
@@ -161,8 +165,9 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // It was e48a2ec9 until the preserving bin's grey box (S3), as above; without the bin it is that again.
   // It was 32d21d3d until the refining forge's grey boxes (S1), as above; without the forge it is that again.
   // It was c7cb77a9 until the street wrecks' kinds, as above; without them it is that again.
-  // They were d122e6e1 and c0721ce1 until the pteranodon's mesh became its own, as above.
-  expect(saddled.beforePlain).toBe("a49f75cd");
-  expect(saddled.hash).toBe("40c252f5");
-  expect(saddled.counts).toEqual([38100, 34590000, 0]);
+  // They were d122e6e1 and c0721ce1 until the pteranodon's mesh became its own, as above, and a49f75cd and 40c252f5, with
+  // 38,100 draws and 34,590,000 triangles, until chunks were drawn by cell, as above.
+  expect(saddled.beforePlain).toBe("9343af55");
+  expect(saddled.hash).toBe("6a13306d");
+  expect(saddled.counts).toEqual([33000, 34003200, 0]);
 });

@@ -702,18 +702,18 @@ export class Build {
         if (cx + ox < 0 || cz + oz < 0 || cx + ox >= dims.chunksX || cz + oz >= dims.chunksZ) continue;
         for (let i = ents.chunkHead[(cz + oz) * dims.chunksX + cx + ox]!; i >= 0; i = ents.next[i]!) {
           if ((ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
-          const k = ents.kind[i]!, car = reg.vehicle[k];
+          const k = ents.kind[i]!, car = reg.vehicle[k], v = ents.vrow[i]!;
           // A vehicle is its whole hull, nose to boot, not a body of its half width.
           if (car && (isRotorVehicle(car) || isBoatVehicle(car))) {
             const frame = {
-              x: ents.x[i]!, y: ents.y[i]!, z: ents.z[i]!, yaw: ents.vehicleYaw[i]!, pitch: ents.vehiclePitch[i]!, roll: ents.vehicleRoll[i]!,
-              qx: ents.vehicleQx[i]!, qy: ents.vehicleQy[i]!, qz: ents.vehicleQz[i]!, qw: ents.vehicleQw[i]!, steering: ents.steering[i]!,
+              x: ents.x[i]!, y: ents.y[i]!, z: ents.z[i]!, yaw: ents.vehicleYaw[v]!, pitch: ents.vehiclePitch[v]!, roll: ents.vehicleRoll[v]!,
+              qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!, steering: ents.steering[v]!,
             };
             if (isBoatVehicle(car) ? boatMeetsKind(reg.parts, kind, x, y, z, yaw, car, frame, BODY_SLACK)
               : helicopterMeetsKind(reg.parts, kind, x, y, z, yaw, car, frame, BODY_SLACK)) return true;
             continue;
           }
-          if (car ? vehicleMeetsKind(reg.parts, kind, x, y, z, yaw, car.spec, ents.x[i]!, ents.y[i]!, ents.z[i]!, ents.vehicleYaw[i]!, BODY_SLACK) : capsuleKind(reg.parts, kind, x, y, z, yaw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, BODY_SLACK)) return true;
+          if (car ? vehicleMeetsKind(reg.parts, kind, x, y, z, yaw, car.spec, ents.x[i]!, ents.y[i]!, ents.z[i]!, ents.vehicleYaw[v]!, BODY_SLACK) : capsuleKind(reg.parts, kind, x, y, z, yaw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, BODY_SLACK)) return true;
         }
       }
     }
