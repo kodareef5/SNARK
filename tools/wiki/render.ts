@@ -6,7 +6,7 @@ import type { Cell, Entry, Kind, Ref, Table } from "./catalogue.ts";
 import { KINDS, num, time } from "./catalogue.ts";
 import type { ControlGroup } from "./controls.ts";
 import { LEFT_OUT, type LeftOut } from "./coverage.ts";
-import { BASE, esc, heading, img, page, pager, slug, type Assets } from "./html.ts";
+import { BASE, SOURCE, esc, heading, img, page, pager, slug, type Assets } from "./html.ts";
 import type { Drawn } from "./posters.ts";
 import type { Command, Setting } from "./reference.ts";
 
@@ -177,7 +177,7 @@ function views(site: Site) {
     const missing = left.length ? `<p class="note">Not in the wiki: ${esc(left.join("; "))}.</p>` : "";
     return `${heading("Wiki", "", "Creatures, items, maps and the console, read from the game itself.")}
 <form class="find big" action="${BASE}search/" role="search"><input name="q" aria-label="Search the wiki" placeholder="Raptor, wooden foundation, pistol…"></form>
-<nav class="shelves">${join(shelves, ([path, label, n]) => `<a href="${BASE}${path}"><b>${label}</b><small>${n}</small></a>`)}</nav>
+<nav class="shelves">${join(shelves, ([path, label, n]) => `<a href="${BASE}${path}"><b>${label}</b><small>${n}</small></a>`)}<a href="${SOURCE}"><b>Source code</b></a></nav>
 <section><h2>Creatures and vehicles</h2>${cards(featured)}</section>
 <section><h2>Maps</h2>${maps(site.atlases.slice(0, FRONT_MAPS))}${more}</section>
 ${missing}`;

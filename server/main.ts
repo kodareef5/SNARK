@@ -154,8 +154,8 @@ export function clusterList(host: Host): { world: number; name: string; url: str
 }
 
 /**
- * What a world's `settings.json` answers under its path, beside `links.json`, which the wiki's pages apply to their figures
- * for a visitor who came from it (client/core/wiki/rates.ts): its name, its map, and its public settings not at their default.
+ * What `settings.json` answers beside `links.json`, which the wiki's pages apply to their figures for a visitor who came
+ * from this world (client/core/wiki/rates.ts): its name, its map, and its public settings not at their default.
  */
 export function worldSettings(host: Host): { name: string; map: string; settings: Record<string, number | boolean | string> } {
   return { name: host.rules.text("SessionName") || mapLabel(host.world.reg, host.world.mapId), map: host.world.mapId, settings: publicValues(host.rules) };
@@ -246,11 +246,13 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     return all.map((w) => ({ name: w.name, map: w.map, address: worldAddress(w, requestHost, straight), players: w.players, max: w.max }));
   };
   /**
-   * What every server answers alike, under its world's path and on the site around it: where the game's links go, and the
+   * What every server answers alike, under its world's path and on the site around it: where the game's links go, what the
+   * world runs for the wiki's figures (the site's is that of whichever world answers it, which the page names), and the
    * page the source link goes to.
    */
   const alike = (path: string): Response | null => {
     if (path === "/links.json") return new Response(JSON.stringify(links()), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
+    if (path === "/settings.json") return new Response(JSON.stringify(worldSettings(host)), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
     if (path === "/source" || path === "/source/") return htmlResponse(comingSoonPage());
     return null;
   };
@@ -292,8 +294,6 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         return srv.upgrade(req, { data: { conn: null, voice: null, isVoice: path === "/voice", address: who } }) ? undefined : new Response("expected a WebSocket", { status: 400 });
       }
       if (path === "/cluster.json") return new Response(JSON.stringify(clusterList(host)), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
-      // A world's own, unlike links.json: the site around the worlds has none.
-      if (path === "/settings.json") return new Response(JSON.stringify(worldSettings(host)), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
       if (path === "/__selfcheck" && req.method === "POST" && opts.dev) {
         report(await req.json());
         return new Response("ok");

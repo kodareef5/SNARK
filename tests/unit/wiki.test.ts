@@ -208,6 +208,9 @@ test("every page is whole HTML, names only what it has, and writes what the cont
     expect(pages.get("")).toContain("Not in the wiki: maps still being made: Tampa.");
     expect(pages.get("controls/")).toContain("get in or out of a seat");
     expect(() => checkLinks(new Map([["a/", '<a href="/wiki/b/">b</a>']]), dist)).toThrow("names /wiki/b/");
+    // The site's own pages are answered by the server; any other page outside the wiki is not there.
+    expect(pages.get("")).toContain('<a href="/source/">');
+    expect(() => checkLinks(new Map([["a/", '<a href="/sauce/">b</a>']]), dist)).toThrow("names /sauce/");
   } finally {
     rmSync(dist, { recursive: true, force: true });
   }

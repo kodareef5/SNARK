@@ -82,8 +82,10 @@ test("a server reached at /miami answers its world under it, sends /miami on wit
   expect([page.status, await page.text(), /^<map\.[0-9a-f]{16}\.snmap>; rel=preload/.test(page.headers.get("link") ?? "")]).toEqual([200, "<!doctype html><title>the game</title>", true]);
   expect([(await get(`${at}/miami/map.json`)).status, (await get(`${at}/miami/assets/manifest.json`)).status]).toEqual([200, 200]);
   expect(await (await get(`${at}/miami/links.json`)).json()).toEqual({ wiki: "https://wiki.example/snark", repository: "" });
-  // What the world runs, for the wiki's figures, is its own: under its path, and nowhere on the site.
-  expect([await (await get(`${at}/miami/settings.json`)).json(), (await get(`${at}/settings.json`)).status]).toEqual([{ name: "Miami", map: "proving:1", settings: {} }, 404]);
+  // What the world runs, for the wiki's figures: its public settings not at their default, beside its links, and on the site
+  // as the world that answers it, which the page names.
+  const said = { name: "Miami", map: "proving:1", settings: {} };
+  expect([await (await get(`${at}/miami/settings.json`)).json(), await (await get(`${at}/settings.json`)).json()]).toEqual([said, said]);
   // Its sockets are under its path, and not at the root, which is the site's.
   expect([await opens(`ws://127.0.0.1:${s.port}/miami/ws`, null), await opens(`ws://127.0.0.1:${s.port}/ws`, null)]).toEqual([true, false]);
   // The site: the start screen with this world alone, at its port since the page came straight to it, the wiki at /wiki/, and

@@ -34,8 +34,11 @@ const NAV: readonly (readonly [string, string])[] = [
   ["commands", "Commands"],
 ];
 
+/** The game's code, which the site around the worlds answers (server/main.ts). */
+export const SOURCE = "/source/";
+
 export function page(a: Assets, title: string, here: string, body: string): string {
-  const nav = NAV.map(([path, label]) => `<a href="${BASE}${path}/"${path === here ? ' aria-current="page"' : ""}>${label}</a>`).join("");
+  const nav = NAV.map(([path, label]) => `<a href="${BASE}${path}/"${path === here ? ' aria-current="page"' : ""}>${label}</a>`).join("") + `<a href="${SOURCE}">Source</a>`;
   return `<!doctype html>
 <html lang="en">
 <head>
