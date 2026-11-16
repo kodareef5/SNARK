@@ -7,10 +7,10 @@ import { join } from "node:path";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { MATERIAL_CUTOUT } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
-import { MAP_ROLES, TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, pictureBytes, stepBytes, type TextureFormat, type TextureRole } from "../../shared/pack/texture.ts";
+import { MAP_ROLES, TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, blockOf, pictureBytes, stepBytes, type TextureFormat, type TextureRole } from "../../shared/pack/texture.ts";
 import { decodeAstc, encodeAstc } from "../../tools/pack/astc.ts";
 import { decodeBc5, decodeBc7, encodeBc5, encodeBc7 } from "../../tools/pack/bc.ts";
-import { buildTextures, encodeTextures, encodingOf, type TextureSource } from "../../tools/pack/encode.ts";
+import { astcBlock, buildTextures, encodeTextures, encodingOf, type TextureSource } from "../../tools/pack/encode.ts";
 import { partHash } from "../../tools/pack/manifest.ts";
 import { splitPack } from "../../tools/pack/split.ts";
 import { materialMips, pictureOffset } from "../../tools/pack/texture.ts";
@@ -26,13 +26,14 @@ const PICTURES = 5 * 7 * 2;
 interface Variant {
   format: TextureFormat;
   bytes: Uint8Array;
-  placed: { at: number }[];
+  placed: { at: number; block?: number }[];
 }
 
 /** The picture `size` pixels across of texture `i`, as a variant's file holds it. */
 function pictureOf(v: Variant, i: number, role: TextureRole, size: number): Uint8Array {
-  const at = v.placed[i]!.at + pictureOffset(v.format, role, size);
-  return v.bytes.subarray(at, at + pictureBytes(v.format, role, size));
+  const block = blockOf(v.format, v.placed[i]!);
+  const at = v.placed[i]!.at + pictureOffset(v.format, role, size, block);
+  return v.bytes.subarray(at, at + pictureBytes(v.format, role, size, block));
 }
 
 /** A picture of a block variant as pixels again. A normal comes back as the red and green the rgba variant keeps. */
@@ -40,7 +41,7 @@ function decoded(v: Variant, i: number, role: TextureRole, size: number): Uint8A
   const blocks = pictureOf(v, i, role, size);
   const how = encodingOf(v.format as "bc" | "astc", role, true);
   if (how.with === "bc7") return decodeBc7(blocks, size, size);
-  const back = how.with === "bc5" ? decodeBc5(blocks, size, size) : decodeAstc(blocks, size, size, how.kind);
+  const back = how.with === "bc5" ? decodeBc5(blocks, size, size) : decodeAstc(blocks, size, size, how.kind, blockOf(v.format, v.placed[i]!));
   if (role !== "normal") return back;
   // BC5 has x in red and y in green. ASTC has x in red and y in alpha.
   return Uint8Array.from({ length: size * size * 2 }, (_, k) => back[(k >> 1) * 4 + (k & 1) * (how.with === "bc5" ? 1 : 3)]!);
@@ -57,14 +58,14 @@ test("the same textures give the same three files on one thread or three, howeve
     mips[s.role].forEach((mip, k) => {
       const size = 1 << k;
       expect(pictureOf(bc!, i, s.role, size)).toEqual(s.role === "normal" ? encodeBc5(mip, size, size) : encodeBc7(mip, size, size, 3));
-      expect(pictureOf(astc!, i, s.role, size)).toEqual(encodeAstc(mip, size, size, s.role === "base" ? "srgb" : s.role === "normal" ? "normal" : "linear"));
+      expect(pictureOf(astc!, i, s.role, size)).toEqual(encodeAstc(mip, size, size, s.role === "base" ? "srgb" : s.role === "normal" ? "normal" : "linear", astcBlock(s.role, false)));
     });
   });
   // Each file is its header and the one step of each texture.
-  for (const v of one.variants) expect(v.bytes.length).toBe(MAP_ROLES.reduce((sum, role) => sum + stepBytes(v.format, role, 0), TEXTURE_HEADER_BYTES));
+  for (const v of one.variants) expect(v.bytes.length).toBe(MAP_ROLES.reduce((sum, role, i) => sum + stepBytes(v.format, role, 0, blockOf(v.format, v.placed[i]!)), TEXTURE_HEADER_BYTES));
 });
 
-test("each block variant decodes to within a few levels of the rgba one, and to over 50 dB", async () => {
+test("each block variant decodes to within a few levels of the rgba one, and to over 50 dB in bc and 45 in astc", async () => {
   const { variants } = await encodeTextures(tube(), { workers: 2, cache: null });
   const rgba = variants[2]!;
   for (const v of variants.slice(0, 2)) {
@@ -84,10 +85,12 @@ test("each block variant decodes to within a few levels of the rgba one, and to 
           count++;
         }
         // The mask four pixels across is the hardest picture here, four regions side by side in one block: BC7 has a channel of it 20 levels off.
-        expect([v.format, role, size, worst <= (size < 8 ? 20 : 6)]).toEqual([v.format, role, size, true]);
+        // ASTC blocks larger than 4 by 4 hold fewer bits a pixel.
+        const most = size < 8 ? 20 : blockOf(v.format, v.placed[i]!) > 4 ? 16 : 6;
+        expect([v.format, role, size, worst <= most]).toEqual([v.format, role, size, true]);
       }
     });
-    expect(10 * Math.log10((255 * 255 * count) / squares)).toBeGreaterThan(50);
+    expect(10 * Math.log10((255 * 255 * count) / squares)).toBeGreaterThan(v.format === "bc" ? 50 : 45);
   }
 });
 
@@ -181,7 +184,7 @@ test("a build's manifest lists the three files and where each texture is in them
     let at = TEXTURE_HEADER_BYTES;
     for (const t of parsed.textures!) {
       const v = t.in[format]!;
-      const bytes = stepBytes(format, t.role, 0);
+      const bytes = stepBytes(format, t.role, 0, blockOf(format, v));
       expect([v.file, v.at, v.hash]).toEqual([2 + k, at, [partHash(files[k]!.bytes.subarray(at, at + bytes))]]);
       at += bytes;
     }

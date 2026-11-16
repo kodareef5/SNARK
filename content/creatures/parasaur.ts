@@ -45,6 +45,6 @@ export const PARASAUR: readonly Def[] = [
   { type: "item", class: "egg", id: "core:parasaur_egg_fertile", label: "fertilised parasaur egg", color: 9, stack: 1, weight: 5, eat: { food: 25, health: 25 }, spoilHours: (8 * 3600) / 140 },
   // One seat, ARK's: the rider's, on the rig's `seat` socket, got onto and off from its left.
   { type: "item", class: "saddle", id: "core:saddle_parasaur", stack: 1, weight: 10, label: "parasaur saddle", color: 3, saddle: { fits: "core:parasaur", armor: 25, seats: [{ id: "rider", driver: true, socket: "seat", anchor: [0, 2.57, 0.7], entry: [1.7, 0, 0.7] }] } },
-  crafting("core:saddle_parasaur", { needs: [{ item: "core:hide", count: 80 }, { item: "core:fiber", count: 50 }, { item: "core:wood", count: 15 }], seconds: 10, xp: 6 }),
+  ...crafting("core:saddle_parasaur", { needs: [{ item: "core:hide", count: 80 }, { item: "core:fiber", count: 50 }, { item: "core:wood", count: 15 }], seconds: 10, xp: 6 }),
   { type: "engram", id: "core:engram-saddle_parasaur", label: "Parasaur saddle", level: 9, cost: 9, item: "core:saddle_parasaur" },
 ];

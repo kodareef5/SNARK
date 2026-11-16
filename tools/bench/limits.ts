@@ -136,7 +136,8 @@ export function fullViewRows(b: Bench, scene: Scene, cam: Camera, reg: Registry,
       for (let k = 0; k < packet.drawInstances[d]!; k++) rigid.add(packet.transientIds[packet.drawFirst[d]! + k]!);
     }
     b.record(`${name}: bodies posed in the frame`, scene.characters.posed, "");
-    b.record(`${name}: bodies left in their rest pose on one bone, for want of bones`, rigid.size, "");
+    b.record(`${name}: of them posed anew, the rest drawn as they last were`, scene.characters.fresh, "");
+    b.record(`${name}: bodies standing in a pose on one bone, for want of bones`, rigid.size, "");
     b.record(`${name}: bones used, of the ${Math.min(tier.bones, MAX_BONES).toLocaleString("en-US")} it has`, packet.boneCount, "", Math.min(tier.bones, MAX_BONES));
     b.record(`${name}: things the full frame left out`, packet.dropped, "", 0);
     b.record(`${name}: triangles submitted`, packet.triangles, "");

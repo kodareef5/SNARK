@@ -105,7 +105,7 @@ export interface PackMaterial {
 /** The texture a material names in a role, -1 for none. */
 export const textureOf = (m: PackMaterial, role: TextureRole): number => (role === "layer" ? (m.layer ?? -1) : m[role]);
 
-/** Names `t` in a role; a material with no layer leaves the field out, as packs before layers did. */
+/** Names `t` in a role; a material with no layer leaves the field out. */
 export function setTexture(m: PackMaterial, role: TextureRole, t: number): void {
   if (role !== "layer") m[role] = t;
   else if (t >= 0) m.layer = t;
@@ -219,7 +219,6 @@ export function parsePack(file: Uint8Array): Pack {
   const materials = header.materials ?? [];
   for (const t of textures) if (stepOf(t.top) < 0) throw new Error(`pack: texture ${t.id} is ${t.top} pixels across`);
   for (const m of materials) {
-    m.mask2 ??= -1;
     for (const t of [m.base, m.normal, m.mro, m.mask, m.mask2, m.layer ?? -1]) if (!(t >= -1 && t < textures.length)) throw new Error(`pack: material ${m.id} names a texture that is not there`);
   }
   header.meshes.forEach((m, i) => {
@@ -251,8 +250,6 @@ export function parsePack(file: Uint8Array): Pack {
   const d = header.details;
   if (d && !(d.atlas.side >= CELL && d.atlas.side <= ATLAS_MOST && (d.atlas.side & (d.atlas.side - 1)) === 0)) throw new Error(`pack: the details atlas is ${d.atlas.side} pixels across`);
   if (d && d.atlas.offset + atlasBytes(d.atlas.side) > blob.length) throw new Error("pack: the details atlas is outside the file");
-  header.rigs ??= [];
-  header.clips ??= [];
   return { header, blob, blobAt: 12 + jsonLength, palette: blob.subarray(header.paletteOffset, header.paletteOffset + 1024), meshIndex, clips: decodeClips(header.clips, blob) };
 }
 

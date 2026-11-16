@@ -10,53 +10,24 @@ import { validLook } from "../../shared/anim/look.ts";
 import type { Lane } from "../../shared/sim/station.ts";
 import { EntityRecord, type FireState, type Job } from "../records.ts";
 
-/**
- * The revision of a record's parts, in its first byte. Raise it whenever a part gains a field, or a part is added that a build
- * without it must not pass over. A build reads every revision up to its own and refuses a later one: it would write a part it
- * knows back without what was added. Revision 1 grew without being raised (a tame's stance and saddle, a bed's wait, a fire,
- * the slot in hand), so builds from before each of those read newer saves and dropped them. 2 is all of that.
- * 3 saves buffs. A build without them would keep the part unread and leave a buff's rates in the vitals with no end.
- * 4 saves what a one of a kind in a slot stands for (a fertilised egg's record). A build without it would keep the part
- * unread, and an egg taken up would never hatch.
- * 5 saves slots as COMP_SLOTS3, with each slot's flags (a blueprint), and a job's blueprint quality. A build without them
- * would keep the slots unread and the record empty-handed.
- * 6 saves whether a creature flies, a bit at the end of COMP_STATE. A build without it would write the part back without
- * the bit, and a flyer parked in the air would load walking and fall.
- * 7 saves, behind a fire's cooking, the piece burning and what it makes by itself (its lanes, by item id), and behind a
- * job's blueprint, the ticks left of a unit paused for want of fuel (planning/reference/stations-plan.md, S0). A build
- * without them would write the fire and the queue back without them, and a forge's refining or a fabricator's paused unit
- * would start again from nothing.
- */
+/** The revision of a record's parts, in its first byte. Raise it whenever a part changes: a build reads only its own. */
 const RECORD_FORMAT = 7;
-/** The first revision whose vitals hold, beyond a body's own rates, only what its saved buffs give. */
-const FORMAT_BUFFS = 3;
 // A record is a list of components, each an id and a length-prefixed blob. A build that does not know a
 // component keeps its bytes and writes them back, so a save survives a server that lacks a content pack.
-const COMP_INVENTORY = 1;
-const COMP_VITALS = 2;
 const COMP_GENOME = 3;
 const COMP_IDENTITY = 6;
-// Components 1 and 2 are the oldest inventory (item and count pairs) and food. They are read and never written.
-const COMP_SLOTS = 7;
-const COMP_VITALS4 = 8;
 const COMP_MARKERS = 5;
 /** Dead flag, expiry tick, the hotbar slot in hand, and whether it flies. */
 const COMP_STATE = 9;
 /** The bytes of shared/anim/look.ts. */
 const COMP_LOOK = 10;
-/** COMP_SLOTS plus the bag's size and, for weapons, what each holds. Read and no longer written. */
-const COMP_SLOTS2 = 11;
-/** COMP_SLOTS2 with each slot's flags (FLAG_ bits, shared/sim/items.ts) at its end. */
+/** The inventory's size and bag, then each slot with what a weapon holds and its flags (FLAG_ bits, shared/sim/items.ts). */
 const COMP_SLOTS3 = 22;
-/** Eight vitals and whether the body is unconscious. COMP_VITALS4 held four. Both are read and no longer written. */
-const COMP_VITALS8 = 12;
-/** The same with 53-bit values and tick. COMP_VITALS8 wrote a value in 32 bits of millionths, which cut off anything above 4,294 points. */
+/** The vitals with 53-bit values and tick, and whether the body is unconscious. */
 const COMP_VITALS53 = 17;
 const COMP_TEAM = 13;
 /** How well a tamed creature was tamed and, for one being tamed, what it has been given so far and for whom. */
 const COMP_TAME = 15;
-/** The first breeding form. It stored the ticks a young one was born and an egg was laid, where COMP_BREED2 stores spans. Still read. */
-const COMP_BREED = 16;
 /**
  * Breeding: mating state, a young one's growing and an egg's hatching. Each timer is a span and an end tick, never a
  * start, because growing made slower part way through would put the start before the world began (D92).
@@ -74,8 +45,6 @@ const COMP_REFS = 20;
 const COMP_CORPSE = 21;
 /** The most bytes of one part that a save holds. */
 const MAX_PART = 1 << 20;
-/** The most slots a converted COMP_INVENTORY may be laid out in. */
-const MAX_INVENTORY_SLOTS = 255;
 /** How an operator goes on from a save that uses content the build lacks. */
 export const WITHOUT = "start with the content it was made with, or with --allow-missing-content to go on without what is made of it, which is then dropped for good";
 
@@ -133,11 +102,10 @@ export class RecordCodec {
    */
   readonly dropped = { count: new Map<string, number>(), burn: new Map<number, number>(), pids: [] as number[], changed: new Set<number>(), chunks: new Set<number>() };
   /**
-   * Records read whose vitals' rates may hold what a buff gave with no buff to end it: one saved before buffs were, or
-   * one whose buff this build lacks. Their rates are worked out again (Buffs.restore).
+   * Records read whose vitals' rates may hold what a buff gave with no buff to end it, because this build lacks the buff.
+   * Their rates are worked out again (Buffs.restore).
    */
   readonly unrated = new Set<number>();
-  private readonly reg: Registry;
   private readonly lost: Map<number, string>;
   private readonly split: Map<number, readonly number[]>;
   private readonly allowMissing: boolean;
@@ -152,8 +120,7 @@ export class RecordCodec {
   private readonly r = new BitReader();
   private readonly cr = new BitReader();
 
-  constructor(reg: Registry, toSaved: Uint16Array, map: IdMap, allowMissing: boolean, subject = "save", without = WITHOUT) {
-    this.reg = reg;
+  constructor(toSaved: Uint16Array, map: IdMap, allowMissing: boolean, subject = "save", without = WITHOUT) {
     this.toSaved = toSaved;
     this.toRuntime = map.runtime;
     this.lost = map.lost;
@@ -195,9 +162,10 @@ export class RecordCodec {
     const hasState = rec.dead || rec.expiresAt !== 0 || rec.held >= 0 || rec.flying;
     const hasProgress = rec.xp > 0 || rec.engrams.length > 0 || rec.jobs.length > 0;
     const hasBreed = rec.mating || rec.mateReadyAt !== 0 || rec.grown !== 0 || rec.egg !== null;
+    const hasTame = !!rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 || rec.wander;
     let refs = 0;
     for (let slot = 0; inv?.ref && slot < inv.cap; slot++) if (inv.item[slot] !== 0 && inv.ref[slot] !== 0) refs++;
-    w.varint((refs > 0 ? 1 : 0) + (used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 ? 1 : 0) + (hasBreed ? 1 : 0) + (rec.buffs.length > 0 ? 1 : 0) + (rec.corpse ? 1 : 0) + rec.extra.size);
+    w.varint((refs > 0 ? 1 : 0) + (used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (hasTame ? 1 : 0) + (hasBreed ? 1 : 0) + (rec.buffs.length > 0 ? 1 : 0) + (rec.corpse ? 1 : 0) + rec.extra.size);
     if (rec.buffs.length > 0) {
       c.reset();
       c.varint(rec.buffs.length);
@@ -207,7 +175,7 @@ export class RecordCodec {
         c.uint53(b.by);
         c.f64(b.torpor);
       }
-      // The health a second each adds follows them all, and only when one adds some, so a save without any reads as before.
+      // The health a second each adds follows them all, and only when one adds some.
       if (rec.buffs.some((b) => b.health !== 0)) for (const b of rec.buffs) c.f64(b.health);
       this.part(COMP_BUFFS);
     }
@@ -226,7 +194,7 @@ export class RecordCodec {
       }
       this.part(COMP_BREED2);
     }
-    if (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 || rec.wander) {
+    if (hasTame) {
       c.reset();
       c.f32(rec.te);
       c.bool(rec.tame !== null);
@@ -235,10 +203,8 @@ export class RecordCodec {
         c.f64(rec.tame.sum);
         c.uint53(rec.tame.by);
       }
-      // Older saves end before the stance and the follow target.
       c.u8(rec.stance);
       c.uint53(rec.follow);
-      // Some saves have those two and end before the saddle, and some end before the wander.
       c.varint(rec.saddle === 0 ? 0 : this.toSaved[rec.saddle]!);
       c.bool(rec.wander);
       this.part(COMP_TAME);
@@ -248,14 +214,13 @@ export class RecordCodec {
       c.u32(rec.at);
       c.bits(rec.lock, 2);
       c.varint(rec.pin + 1);
-      // Older saves end before a bed's wait and a burning fire.
       c.uint53(rec.readyAt);
       c.bool(rec.fire !== null);
       if (rec.fire) {
         c.uint53(rec.fire.at);
         c.varint(rec.fire.fuel);
         c.varint(rec.fire.cook);
-        // Then, since format 7, the piece burning (0 for none known) and each lane's item and ticks under way.
+        // Then the piece burning (0 for none known) and each lane's item and ticks under way.
         const piece = rec.fire.piece ?? 0;
         c.varint(piece === 0 ? 0 : this.toSaved[piece]!);
         const lanes = rec.fire.lanes ?? [];
@@ -278,7 +243,7 @@ export class RecordCodec {
         c.varint(j.left);
         c.uint53(j.doneAt);
       }
-      // Older saves end before who queued each job at a station. A job made in the hands has none.
+      // Then who queued each job at a station. A job made in the hands has none.
       const queued = rec.jobs.some((j) => j.by !== undefined);
       c.bool(queued);
       if (queued) for (const j of rec.jobs) c.uint53(j.by ?? 0);
@@ -286,7 +251,7 @@ export class RecordCodec {
       const fromBlueprint = rec.jobs.some((j) => j.bp !== undefined);
       c.bool(fromBlueprint);
       if (fromBlueprint) for (const j of rec.jobs) c.u8(j.bp === undefined ? 0 : j.bp + 1);
-      // Then, since format 7, a bit and the ticks plus one each job's unit has left while its station is out, 0 for none.
+      // Then a bit and the ticks plus one each job's unit has left while its station is out, 0 for none.
       const resting = rec.jobs.some((j) => j.rest !== undefined);
       c.bool(resting);
       if (resting) for (const j of rec.jobs) c.varint(j.rest === undefined ? 0 : j.rest + 1);
@@ -308,9 +273,8 @@ export class RecordCodec {
       c.reset();
       c.bool(rec.dead);
       c.uint53(rec.expiresAt);
-      // The hotbar slot in hand plus one, or 0 for none. Older saves end before this.
+      // The hotbar slot in hand plus one, or 0 for none, then whether it flies.
       c.u8(rec.held + 1);
-      // Whether it flies. Saves before revision 6 end before it, and their padding reads as 0.
       c.bool(rec.flying);
       this.part(COMP_STATE);
     }
@@ -429,9 +393,8 @@ export class RecordCodec {
     const r = this.r;
     r.reset(row.data);
     const format = r.u8();
-    if (format > RECORD_FORMAT) throw new Error(`entity ${row.pid} was saved by a newer build (record format ${format}, and this build reads up to ${RECORD_FORMAT}): start the save with that build or a newer one`);
-    if (format === 0) throw new Error(`entity ${row.pid}: unknown record format`);
-    let stale = format < FORMAT_BUFFS;
+    if (format !== RECORD_FORMAT) throw new Error(`entity ${row.pid} was saved in record format ${format}, and this build reads ${RECORD_FORMAT}`);
+    let stale = false;
     rec.name = r.string(256);
     const c = this.cr;
     /** Slot and pid pairs, put on the inventory once every part is read. */
@@ -440,37 +403,7 @@ export class RecordCodec {
       const component = r.varint();
       const blob = r.blob(MAX_PART);
       c.reset(blob);
-      if (component === COMP_INVENTORY) {
-        // The oldest form is a list of items and counts. The inventory is sized to hold all of them, so converting loses nothing.
-        const pairs: [number, number][] = [];
-        let need = 0;
-        for (let k = c.varint(); k > 0 && !c.overflow; k--) {
-          const saved = c.varint();
-          const count = c.varint();
-          const item = this.item(saved, row.pid, count);
-          if (item === 0) continue;
-          pairs.push([item, count]);
-          need += Math.ceil(count / (this.reg.stack[item] || 1));
-        }
-        if (need > MAX_INVENTORY_SLOTS) throw new Error(`entity ${row.pid}: its round 1 inventory needs ${need} slots and at most ${MAX_INVENTORY_SLOTS} can be represented`);
-        const inv = (rec.inv = new Inventory(Math.max(40, need)));
-        for (const [item, count] of pairs) {
-          if (inv.add(item, count, 0, 0, 0, this.reg) !== 0) throw new Error(`entity ${row.pid}: could not convert its round 1 inventory`);
-        }
-      } else if (component === COMP_SLOTS) {
-        const inv = (rec.inv = new Inventory(c.varint()));
-        for (let k = c.varint(); k > 0 && !c.overflow; k--) {
-          const slot = c.varint();
-          const saved = c.varint();
-          const count = c.varint();
-          const item = this.item(saved, row.pid, count);
-          const quality = c.u8();
-          const dur = c.varint();
-          const spoilAt = c.varint();
-          if (item !== 0 && slot < inv.cap) inv.set(slot, item, count, quality, dur, spoilAt);
-        }
-      } else if (component === COMP_SLOTS2 || component === COMP_SLOTS3) {
-        const flagged = component === COMP_SLOTS3;
+      if (component === COMP_SLOTS3) {
         const cap = c.varint();
         const inv = (rec.inv = new Inventory(cap, c.varint()));
         for (let k = c.varint(); k > 0 && !c.overflow; k--) {
@@ -488,7 +421,7 @@ export class RecordCodec {
           const savedAttach = holds ? c.varint() : 0;
           const ammo = savedAmmo === 0 ? 0 : this.item(savedAmmo, row.pid, loaded);
           const attach = savedAttach === 0 ? 0 : this.item(savedAttach, row.pid, 1);
-          const flags = flagged ? c.u8() : 0;
+          const flags = c.u8();
           if (item === 0) {
             // The rounds in a weapon that is gone, and what was fixed to it, go with it.
             if (ammo !== 0 && loaded > 0) this.burn(ammo, loaded);
@@ -499,25 +432,19 @@ export class RecordCodec {
           inv.set(slot, item, count, quality, dur, spoilAt, flags);
           if (holds) inv.setGear(slot, ammo, ammo === 0 ? 0 : loaded, attach);
         }
-      } else if (component === COMP_VITALS) {
-        // The oldest food is dropped. The survival system starts this body full.
-      } else if (component === COMP_VITALS4 || component === COMP_VITALS8 || component === COMP_VITALS53) {
-        // COMP_VITALS4 has a four-bit mask, and a body saved in it has no torpor. The two older forms hold each value in 32 bits.
-        const whole = component === COMP_VITALS53;
+      } else if (component === COMP_VITALS53) {
         const v = (rec.vitals = new Vitals());
-        const mask = component === COMP_VITALS4 ? c.bits(4) : c.u8();
-        v.tick = whole ? c.uint53() : c.varint();
-        for (let i = 0; i < 8; i++) {
+        const mask = c.u8();
+        v.tick = c.uint53();
+        for (let i = 0; i < V_COUNT; i++) {
           if ((mask & (1 << i)) === 0) continue;
-          const value = whole ? c.uint53() : c.varint();
-          const rate = c.svarint();
-          if (i >= V_COUNT) continue;
+          const value = c.uint53();
           v.value[i] = value;
-          v.rate[i] = rate;
+          v.rate[i] = c.svarint();
           // A placeholder until the survival system sets the true maximum from the body's stats.
           v.max[i] = value > 0 ? value : 1;
         }
-        if (component !== COMP_VITALS4) rec.out = c.bool();
+        rec.out = c.bool();
       } else if (component === COMP_GENOME) {
         const g = (rec.genome = new Genome());
         if (blob.length < STAT_COUNT * 3 + COLOR_REGIONS) throw new Error(`entity ${row.pid}: short genome`);
@@ -542,28 +469,24 @@ export class RecordCodec {
         }
         const jobs: Job[] = [];
         for (let k = c.varint(); k > 0 && !c.overflow; k--) {
-          // A job saved when recipes were definitions of their own names the recipe. Its rename leads to the item.
           const item = this.toRuntime[c.varint()] ?? 0;
           const left = c.varint();
           const doneAt = c.uint53();
           jobs.push({ item, left, doneAt });
         }
-        // A 1 bit here says who queued each job at a station. Padding reads as 0.
-        if (c.pos + 1 <= blob.length * 8 && c.bool()) {
+        if (c.bool()) {
           for (const j of jobs) {
             const by = c.uint53();
             if (by !== 0) j.by = by;
           }
         }
-        // Then a 1 bit says which are made from a blueprint, and of what quality. Older saves end before it.
-        if (c.pos + 1 <= blob.length * 8 && c.bool()) {
+        if (c.bool()) {
           for (const j of jobs) {
             const bp = c.u8();
             if (bp !== 0) j.bp = bp - 1;
           }
         }
-        // Then a 1 bit says which wait for their station's fuel, and with how long left. Saves before format 7 end before it.
-        if (c.pos + 1 <= blob.length * 8 && c.bool()) {
+        if (c.bool()) {
           for (const j of jobs) {
             const rest = c.varint();
             if (rest !== 0) j.rest = rest - 1;
@@ -573,64 +496,48 @@ export class RecordCodec {
       } else if (component === COMP_STATE) {
         rec.dead = c.bool();
         rec.expiresAt = c.uint53();
-        rec.held = c.pos + 8 <= blob.length * 8 ? c.u8() - 1 : -1;
-        rec.flying = c.pos + 1 <= blob.length * 8 && c.bool();
+        rec.held = c.u8() - 1;
+        rec.flying = c.bool();
       } else if (component === COMP_TEAM) {
         rec.team = c.varint();
         rec.rank = c.u8();
       } else if (component === COMP_TAME) {
         rec.te = c.f32();
         if (c.bool()) rec.tame = { affinity: c.f64(), sum: c.f64(), by: c.uint53(), seen: -1, due: 0 };
-        if (c.pos + 61 <= blob.length * 8) {
-          rec.stance = c.u8();
-          rec.follow = c.uint53();
-          if (c.pos + 8 <= blob.length * 8) {
-            const saved = c.varint();
-            rec.saddle = saved === 0 ? 0 : (this.toRuntime[saved] ?? 0);
-            if (c.pos + 1 <= blob.length * 8) rec.wander = c.bool();
-          }
-        }
-      } else if (component === COMP_BREED || component === COMP_BREED2) {
-        // COMP_BREED stored a start tick where COMP_BREED2 stores a span, so the span is the end minus that start.
-        const began = component === COMP_BREED;
+        rec.stance = c.u8();
+        rec.follow = c.uint53();
+        const saddle = c.varint();
+        rec.saddle = saddle === 0 ? 0 : (this.toRuntime[saddle] ?? 0);
+        rec.wander = c.bool();
+      } else if (component === COMP_BREED2) {
         rec.mating = c.bool();
         rec.mateReadyAt = c.uint53();
-        const first = c.uint53();
+        rec.span = c.uint53();
         rec.grown = c.uint53();
-        rec.span = !began ? first : rec.grown > first ? rec.grown - first : 0;
-        if (c.bool()) {
-          const species = this.toRuntime[c.varint()] ?? 0;
-          const laid = c.uint53();
-          const hatchAt = c.uint53();
-          rec.egg = { species, span: !began ? laid : hatchAt > laid ? hatchAt - laid : 1, hatchAt, carrier: c.uint53() };
-        }
+        if (c.bool()) rec.egg = { species: this.toRuntime[c.varint()] ?? 0, span: c.uint53(), hatchAt: c.uint53(), carrier: c.uint53() };
       } else if (component === COMP_FIXTURE) {
         rec.at = c.u32();
         rec.lock = c.bits(2);
         rec.pin = c.varint() - 1;
-        if (c.pos + 54 <= blob.length * 8) {
-          rec.readyAt = c.uint53();
-          if (c.bool()) {
-            const fire: FireState = { at: c.uint53(), fuel: c.varint(), cook: c.varint(), due: 0, out: 0 };
-            // Saves before format 7 end here. A piece or a lane whose content is gone is dropped: it is no item anyone holds.
-            if (c.pos + 16 <= blob.length * 8) {
-              const piece = this.toRuntime[c.varint()] ?? 0;
-              if (piece !== 0) fire.piece = piece;
-              const lanes: Lane[] = [];
-              for (let k = c.varint(); k > 0 && !c.overflow; k--) {
-                const item = this.toRuntime[c.varint()] ?? 0;
-                const ticks = c.varint();
-                if (item !== 0) lanes.push({ item, ticks });
-              }
-              if (lanes.length > 0) fire.lanes = lanes;
-            }
-            rec.fire = fire;
+        rec.readyAt = c.uint53();
+        if (c.bool()) {
+          const fire: FireState = { at: c.uint53(), fuel: c.varint(), cook: c.varint(), due: 0, out: 0 };
+          // A piece or a lane whose content is gone is dropped: it is no item anyone holds.
+          const piece = this.toRuntime[c.varint()] ?? 0;
+          if (piece !== 0) fire.piece = piece;
+          const lanes: Lane[] = [];
+          for (let k = c.varint(); k > 0 && !c.overflow; k--) {
+            const item = this.toRuntime[c.varint()] ?? 0;
+            const ticks = c.varint();
+            if (item !== 0) lanes.push({ item, ticks });
           }
+          if (lanes.length > 0) fire.lanes = lanes;
+          rec.fire = fire;
         }
       } else if (component === COMP_BUFFS) {
         const read: { buff: number; until: number; by: number; torpor: number; health: number }[] = [];
         for (let k = c.varint(); k > 0 && !c.overflow; k--) read.push({ buff: this.toRuntime[c.varint()] ?? 0, until: c.uint53(), by: c.uint53(), torpor: c.f64(), health: 0 });
-        // A save from before an instance could carry health has none after the list.
+        // The healths follow only when one is not 0.
         if (c.pos + 64 * read.length <= blob.length * 8) for (const on of read) on.health = c.f64();
         for (const on of read) {
           // A buff whose content is gone is dropped, and what it gave the vitals with it.
@@ -641,9 +548,7 @@ export class RecordCodec {
         for (let k = c.varint(); k > 0 && !c.overflow; k--) refs.push(c.varint(), c.uint53());
       } else if (component === COMP_CORPSE) {
         // A body of a species this build lacks keeps 0, and Corpses lets it go with what it held.
-        // A body saved before one could die in its own flight has nothing after its time, or padding that reads false.
-        rec.corpse = { species: this.toRuntime[c.varint()] ?? 0, max: c.f64(), left: c.f64(), span: c.varint(), young: c.bool(), out: c.bool(), life: c.uint53(), air: false };
-        if (c.pos < blob.length * 8) rec.corpse.air = c.bool();
+        rec.corpse = { species: this.toRuntime[c.varint()] ?? 0, max: c.f64(), left: c.f64(), span: c.varint(), young: c.bool(), out: c.bool(), life: c.uint53(), air: c.bool() };
       } else rec.extra.set(component, blob.slice());
       if (c.overflow) throw new Error(`entity ${row.pid}: unreadable component ${component}`);
     }

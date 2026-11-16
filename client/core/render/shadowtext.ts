@@ -229,7 +229,10 @@ void main() {
     mat3x4 m;
     if (uSkin > 2.5) m = bone(first + int(aBones.x)) * aWeights.x + bone(first + int(aBones.y)) * aWeights.y + bone(first + int(aBones.z)) * aWeights.z + bone(first + int(aBones.w)) * aWeights.w;
     else m = bone(first + (uSkin > 1.5 ? 0 : int(aBone)));
-    p = vec4(l + iPos, 1.0) * m;
+    vec4 v = vec4(l + iPos, 1.0);
+    // Standing in a pose: first its bone of that pose, whose first bone is uOffset.x, about the body's origin.
+    if (uSkin > 1.5 && uSkin < 2.5) v = vec4(v * bone(int(uOffset.x) + int(aBone)), 1.0);
+    p = v * m;
   } else {
     float a = iYaw * 6.283185307;
     float s = sin(a), c = cos(a);

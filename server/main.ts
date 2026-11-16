@@ -1,4 +1,4 @@
-// bun server/main.ts [--dev] [--config dir] [--port 8787] [--host address] [--public-url https://name.example] [--map file.snmap] [--db var/world.db] [--allow-map-mismatch] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
+// bun server/main.ts [--dev] [--config dir] [--port 8787] [--host address] [--public-url https://name.example] [--map file.snmap] [--db var/world.db] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
 // SNARK_ADMIN_PASSWORD sets the `enablecheats` password. In a terminal, typed lines run as console commands with full rights.
 
 import { CORE_CONTENT } from "../content/core.ts";
@@ -34,8 +34,6 @@ export interface ServerOptions {
   terminal?: boolean;
   /** Path of the map file to run (shared/world/mapfile.ts). Without one, the proving ground. */
   map?: string;
-  /** See `HostOptions.allowMapMismatch`. */
-  allowMapMismatch?: boolean;
   /** See `StoreOptions.allowMissingContent`. */
   allowMissingContent?: boolean;
   dbPath?: string;
@@ -175,7 +173,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const manifest = parseManifest(readFileSync(manifestFile, "utf8"));
   const pack = parsePack(new Uint8Array(readFileSync(join(clientDir, "assets", manifest.files[manifest.boot]!.name))));
   const clips = pack.clips;
-  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: new Uint8Array(readFileSync(opts.map)) } : {}), allowMapMismatch: opts.allowMapMismatch ?? false, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
+  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: new Uint8Array(readFileSync(opts.map)) } : {}), ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, backups: !opts.noBackups, store: { allowMissingContent: opts.allowMissingContent ?? false } } : {}), wild: true });
   // Settings problems are logged at startup and do not stop the server.
   for (const m of host.lists.missing) console.log(`settings: ${m.setting} names ${m.name}, which this build does not have`);
@@ -424,7 +422,6 @@ if (import.meta.main) {
     config: rules,
     ...(live ? { live } : {}),
     map: value("--map"),
-    allowMapMismatch: args.includes("--allow-map-mismatch"),
     allowMissingContent: args.includes("--allow-missing-content"),
     dbPath: value("--db"),
     noBackups: args.includes("--no-backups"),

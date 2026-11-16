@@ -6,8 +6,8 @@ the footprints: Miami built 100 blocks a footprint and Tampa 66; a city gets 130
 Miami's 1.5 M, and a height cap above its tallest label. Its seed, recipes and label tables (categories, styles,
 materials, eras, character, periods), surge direction (event), sight corridors (sightlines) and choices of its own
 stay as its vocabulary has them; a new city takes the reference map's seed, recipes and label tables (Miami's unless
-city.json's "ruins" names another) and the library's surge. A vocabulary made before the library, by copying the
-reference's rule sections, loses those copies. Run after world.py. python tools/mapdata/vocabulary.py <map folder>"""
+city.json's "ruins" names another) and the library's surge. Run after world.py.
+python tools/mapdata/vocabulary.py <map folder>"""
 import json
 import math
 import sys
@@ -38,8 +38,6 @@ def main():
     rules = json.loads(reference.read_text())
     path = m.root / 'ruins/vocabulary.json'
     before = json.loads(path.read_text()) if path.exists() else {}
-    if 'composed' in before and 'extends' not in before['composed']:
-        before = {k: v for k, v in before.items() if k not in library and k != 'version'}
     world = json.loads((m.root / 'world/world.json').read_text())
     table_path = m.root / 'ruins/districts.json'
     if table_path.exists():

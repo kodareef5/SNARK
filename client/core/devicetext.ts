@@ -85,7 +85,7 @@ function phaseRow(p: PhaseReport, tier = p.tier): string {
  */
 export function materialsLacking(r: DeviceReport): { drawn: string[]; lacking: string[] } {
   const shown = [...r.phases, ...(r.ladder?.rungs ?? []), ...(r.trees?.rungs ?? [])].map((p) => ("textured" in p ? { tier: p.tier, mat: p.textured } : { tier: p.tier, mat: p.mat }));
-  if (r.soak && !r.soak.wood) shown.push({ tier: r.soak.tier, mat: Math.max(0, ...r.soak.minutes.map((m) => m.mat ?? 0)) });
+  if (r.soak && !r.soak.wood) shown.push({ tier: r.soak.tier, mat: Math.max(0, ...r.soak.minutes.map((m) => m.mat)) });
   const drawn = [...new Set(shown.filter((p) => p.mat > 0).map((p) => p.tier))];
   const textured = new Set<string>(TIERS.filter((t) => t.texture > 0).map((t) => t.name));
   return { drawn, lacking: [...new Set(shown.map((p) => p.tier))].filter((t) => textured.has(t) && !drawn.includes(t)) };
@@ -244,10 +244,10 @@ function soakLines(r: DeviceReport): string[] {
   const widths = [6, 7, 7, 7, 7, 7, 6, 6, 5, 5, 5, 6];
   out.push(row(["minute", "frames", "median", "p95", "p99", "worst", "build", "draw", "mat", "long", "miss", ...(s.governed ? ["level"] : [])], widths));
   for (const m of s.minutes) {
-    out.push(row([String(m.minute), String(m.frames), String(m.frameMs.median), String(m.frameMs.p95), String(m.frameMs.p99), String(m.frameMs.worst), String(m.buildMs), String(m.drawMs), String(m.mat ?? "?"), String(m.long ?? "?"), String(m.missed), ...(s.governed ? [`${m.level ?? "?"}${m.most !== m.level ? ` (${m.most})` : ""}`] : [])], widths));
-    for (const step of m.steps ?? []) out.push(`          to ${step}`);
+    out.push(row([String(m.minute), String(m.frames), String(m.frameMs.median), String(m.frameMs.p95), String(m.frameMs.p99), String(m.frameMs.worst), String(m.buildMs), String(m.drawMs), String(m.mat), String(m.long), String(m.missed), ...(s.governed ? [`${m.level ?? "?"}${m.most !== m.level ? ` (${m.most})` : ""}`] : [])], widths));
+    for (const step of m.steps ?? []) out.push(`          ${step}`);
   }
-  if (s.governed) out.push("level: the governor's at the minute's end, and the deepest in it in brackets where deeper; its steps under the minute");
+  if (s.governed) out.push("level: the governor's at the minute's end, and the deepest in it in brackets where deeper; under the minute each step it took, minutes and seconds into the soak");
   out.push(`mat: the most draws with materials in a frame. long: frames of ${LONG} display intervals or more while the page was shown;`);
   out.push("time it was hidden is left out, a stall is not");
   const [first, final] = [s.minutes[0], s.minutes.at(-1)];

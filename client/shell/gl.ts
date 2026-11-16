@@ -1,7 +1,7 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, BONE_ROWS, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
@@ -43,6 +43,8 @@ interface MeshLod {
   /** UNSIGNED_SHORT, or UNSIGNED_INT for a level of more than 65,535 vertices, and the bytes of one index. */
   type: number;
   indexBytes: number;
+  /** The bounds its vertices are stored within where they are not its mesh's. */
+  bounds: AssetUpload["bounds"] | null;
   /** Its surface and skin entries once they have come, and whether there are skin entries. */
   surface: WebGLBuffer | null;
   skin: boolean;
@@ -53,12 +55,15 @@ interface MeshLod {
 
 /**
  * The formats of each variant for a base colour, a normal map and the rest: the sRGB and linear BC7 of
- * EXT_texture_compression_bptc and the BC5 of EXT_texture_compression_rgtc, the ASTC 4x4 of
- * WEBGL_compressed_texture_astc, and SRGB8_ALPHA8, RG8 and RGBA8.
+ * EXT_texture_compression_bptc and the BC5 of EXT_texture_compression_rgtc, the ASTC of WEBGL_compressed_texture_astc
+ * under the side of its blocks, and SRGB8_ALPHA8, RG8 and RGBA8.
  */
-const FORMATS: Readonly<Record<TextureFormat, readonly number[]>> = {
+const FORMATS: Readonly<Record<string | number, readonly number[]>> = {
   bc: [0x8e8d, 0x8dbd, 0x8e8c],
-  astc: [0x93d0, 0x93b0, 0x93b0],
+  4: [0x93d0, 0x93b0, 0x93b0],
+  5: [0x93d2, 0x93b2, 0x93b2],
+  6: [0x93d4, 0x93b4, 0x93b4],
+  8: [0x93d7, 0x93b7, 0x93b7],
   rgba: [0x8c43, 0x822b, 0x8058],
 };
 /** Frames that upload a frame that asks the card for an error: a want of memory is known within about 130 ms at 60 a second. */
@@ -78,6 +83,7 @@ export class GlRenderer {
   shadowLookup = "";
   /** The sun's shadow maps: a 16-bit depth layer a cascade, a target on each, and their side. */
   private shadow = { texture: null as WebGLTexture | null, targets: [] as WebGLFramebuffer[], size: 0 };
+  private boneRows = 0;
   /**
    * Each tier's programs by number, as client/core/render/programs.ts numbers them, all begun when a frame of that tier
    * first comes, `warmed`, whose are `made`; one linked for each name and text, which copies of a tier share.
@@ -128,6 +134,8 @@ export class GlRenderer {
   private readonly unaskedTextures: number[] = [];
   private uploading = 0;
   private readonly buffers = new Map<number, WebGLBuffer>();
+  /** The indices levels of quads share (packet.ts quadIndices), by the bytes of one. */
+  private readonly quads: WebGLBuffer[] = [];
   private transient!: WebGLBuffer;
   private tileVao!: WebGLVertexArrayObject;
   /** Small details: their atlas, bound to its unit for their draws alone, and their particles' buffer and vertex array. */
@@ -186,6 +194,7 @@ export class GlRenderer {
     // Where the browser can, programs compile and link away from the page, which asks after one only to draw with it.
     gl.getExtension("KHR_parallel_shader_compile");
     this.buffers.clear();
+    this.quads.length = 0;
     this.textures.clear();
     this.making.clear();
     this.surfaces.clear();
@@ -208,8 +217,8 @@ export class GlRenderer {
     texture(UNIT.heights, gl.R16UI, g.width[SOURCE_MAP]!, g.height[SOURCE_MAP]!, gl.RED_INTEGER, gl.UNSIGNED_SHORT, coarse.heights);
     texture(UNIT.tint, gl.R8UI, g.width[SOURCE_MAP]!, g.height[SOURCE_MAP]!, gl.RED_INTEGER, gl.UNSIGNED_BYTE, coarse.tint);
     this.windows = [0, 1, 0, 1].map((k) => texture(UNIT.windowHeights + k, k ? gl.R8UI : gl.R16UI, g.width[SOURCE_WINDOW]!, g.height[SOURCE_WINDOW]!, gl.RED_INTEGER, k ? gl.UNSIGNED_BYTE : gl.UNSIGNED_SHORT, null));
-    // Each bone is three texels of four floats, read by exact texel. The texture stays bound on its unit.
-    texture(UNIT.bones, gl.RGBA32F, BONES_PER_ROW * 3, BONE_ROWS, gl.RGBA, gl.FLOAT, null);
+    // Each bone is three texels of four floats, read by exact texel. The texture stays bound on its unit, as tall as the tier's bones.
+    texture(UNIT.bones, gl.RGBA32F, BONES_PER_ROW * 3, (this.boneRows = 1), gl.RGBA, gl.FLOAT, null);
     texture(UNIT.atlas, gl.RGBA32F, ATLAS_WIDTH, ATLAS_ROWS, gl.RGBA, gl.FLOAT, null);
     // The sky table, filtered between its texels and held at its edges, stays bound on its unit too.
     gl.activeTexture(gl.TEXTURE0 + UNIT.sky);
@@ -288,11 +297,11 @@ export class GlRenderer {
    */
   private take(u: AssetUpload): void {
     const gl = this.gl;
-    const indexBytes = u.indexCount * u.indexBytes, vertices = (indexBytes + 3) & ~3;
+    const indexBytes = u.quads ? 0 : u.indexCount * u.indexBytes, vertices = (indexBytes + 3) & ~3;
     const at = u.at ?? 0, end = at + u.data.length, from = Math.max(at, vertices);
     let lod = this.levels.get(u.slot);
     if (at === 0) {
-      lod = { vao: gl.createVertexArray()!, buffers: [gl.createBuffer()!, gl.createBuffer()!], indexCount: u.indexCount, type: u.indexBytes === 4 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, indexBytes: u.indexBytes, surface: null, skin: false, buffer: null, first: 0 };
+      lod = { vao: gl.createVertexArray()!, buffers: u.quads ? [gl.createBuffer()!] : [gl.createBuffer()!, gl.createBuffer()!], indexCount: u.indexCount, type: u.indexBytes === 4 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, indexBytes: u.indexBytes, bounds: u.bounds ?? null, surface: null, skin: false, buffer: null, first: 0 };
       this.levels.set(u.slot, lod);
       this.vertexArray(lod.vao);
       this.array(lod.buffers[0]!);
@@ -303,8 +312,9 @@ export class GlRenderer {
       gl.vertexAttribIPointer(1, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 6);
       gl.enableVertexAttribArray(6);
       gl.vertexAttribIPointer(6, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 7);
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, lod.buffers[1]!);
-      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexBytes, gl.STATIC_DRAW);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, u.quads ? (this.quads[u.indexBytes] ??= gl.createBuffer()!) : lod.buffers[1]!);
+      if (!u.quads) gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexBytes, gl.STATIC_DRAW);
+      else if (gl.getBufferParameter(gl.ELEMENT_ARRAY_BUFFER, gl.BUFFER_SIZE) < u.indexCount * u.indexBytes) gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, quadIndices(u.indexCount, u.indexBytes), gl.STATIC_DRAW);
       for (let a = 2; a <= 5; a++) {
         gl.enableVertexAttribArray(a);
         gl.vertexAttribDivisor(a, 1);
@@ -372,7 +382,7 @@ export class GlRenderer {
    */
   private fill(u: TextureUpload): void {
     const gl = this.gl;
-    const internal = FORMATS[u.format][u.role === "base" || u.role === "layer" ? 0 : u.role === "normal" ? 1 : 2]!;
+    const internal = FORMATS[u.format === "astc" ? u.block! : u.format]![u.role === "base" || u.role === "layer" ? 0 : u.role === "normal" ? 1 : 2]!;
     let copy = this.making.get(u.slot);
     gl.activeTexture(gl.TEXTURE0 + UNIT.maps);
     if (u.size === 1 && u.row === 0) {
@@ -383,10 +393,10 @@ export class GlRenderer {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     } else if (copy) gl.bindTexture(gl.TEXTURE_2D, copy);
     else return;
-    // The picture `size` across is as many halvings below the top as `size` is below `top`. A block row is four pixel rows.
+    // The picture `size` across is as many halvings below the top as `size` is below `top`.
     const level = Math.clz32(u.size) - Math.clz32(u.top);
     if (u.format === "rgba") gl.texSubImage2D(gl.TEXTURE_2D, level, 0, u.row, u.size, u.rows, u.role === "normal" ? gl.RG : gl.RGBA, gl.UNSIGNED_BYTE, u.data);
-    else gl.compressedTexSubImage2D(gl.TEXTURE_2D, level, 0, u.row * 4, u.size, Math.min(u.rows * 4, u.size - u.row * 4), internal, u.data);
+    else gl.compressedTexSubImage2D(gl.TEXTURE_2D, level, 0, u.row, u.size, u.rows, internal, u.data);
     if (!u.last) return;
     gl.deleteTexture(this.textures.get(u.slot) ?? null);
     this.textures.set(u.slot, copy);
@@ -615,11 +625,9 @@ export class GlRenderer {
       gl.activeTexture(gl.TEXTURE0 + UNIT.atlas);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, ATLAS_WIDTH, p.atlasRows, gl.RGBA, gl.FLOAT, p.atlas);
     }
-    if (p.boneCount > 0) {
-      const rows = Math.ceil(p.boneCount / BONES_PER_ROW);
-      gl.activeTexture(gl.TEXTURE0 + UNIT.bones);
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BONES_PER_ROW * 3, rows, gl.RGBA, gl.FLOAT, p.bones);
-    }
+    gl.activeTexture(gl.TEXTURE0 + UNIT.bones);
+    if (boneRows(p.tier.bones) !== this.boneRows) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, BONES_PER_ROW * 3, (this.boneRows = boneRows(p.tier.bones)), 0, gl.RGBA, gl.FLOAT, null);
+    if (p.boneCount > 0) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BONES_PER_ROW * 3, Math.ceil(p.boneCount / BONES_PER_ROW), gl.RGBA, gl.FLOAT, p.bones);
 
     this.bound.length = 0;
     this.mapped = null;
@@ -682,9 +690,9 @@ export class GlRenderer {
   private bind(prog: Program, lod: MeshLod, buffer: WebGLBuffer, mesh: number, first: number, offsets: Float32Array, i: number): void {
     const gl = this.gl;
     const u = prog.at, last = prog.last;
-    if (last[U.center] !== mesh && u[U.center]) {
-      last[U.center] = mesh;
-      const info = this.pack.header.meshes[mesh]!;
+    if ((lod.bounds || last[U.center] !== mesh) && u[U.center]) {
+      last[U.center] = lod.bounds ? NaN : mesh;
+      const info = lod.bounds ?? this.pack.header.meshes[mesh]!;
       gl.uniform3f(u[U.center]!, info.center[0], info.center[1], info.center[2]);
       gl.uniform3f(u[U.half]!, info.half[0], info.half[1], info.half[2]);
     }

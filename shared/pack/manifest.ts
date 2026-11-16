@@ -4,12 +4,9 @@
 import { checkIcons, type ManifestIcons } from "./icons.ts";
 import { MOST_SECTIONS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, lodVertices, type Pack, type PackMaterial } from "./pack.ts";
 import { soundFault, type ManifestSound } from "./sound.ts";
-import { TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_ROLES, stepBytes, stepOf, topIn, type TextureFormat, type TextureRole } from "./texture.ts";
+import { ASTC_BLOCKS, TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_ROLES, blockOf, stepBytes, stepOf, topIn, type TextureFormat, type TextureRole } from "./texture.ts";
 
-/**
- * Versions 1 to 3 are still read. Version 3 had no inventory pictures. Version 2 had no part stored deflated. Version 1
- * had flat levels only, and no materials or textures.
- */
+/** Raised whenever the form changes: a build reads only its own. */
 export const MANIFEST_VERSION = 4;
 
 export interface ManifestFile {
@@ -65,6 +62,7 @@ export interface ManifestTexture {
   /**
    * Per variant: index into `files`, where in that file the texture starts, and the hash of each step. Where any step
    * is stored deflated, `stored` gives the bytes each step is stored in, and the steps follow one another as stored.
+   * `block` is the side of an astc texture's blocks in pixels, where it is not 4.
    */
   in: Partial<Record<TextureFormat, ManifestVariant>>;
 }
@@ -74,10 +72,11 @@ export interface ManifestVariant {
   at: number;
   hash: string[];
   stored?: number[];
+  block?: number;
 }
 
 /** Bytes of a step of a texture in its file. */
-export const storedStep = (v: ManifestVariant, format: TextureFormat, role: TextureRole, step: number): number => v.stored?.[step] ?? stepBytes(format, role, step);
+export const storedStep = (v: ManifestVariant, format: TextureFormat, role: TextureRole, step: number): number => v.stored?.[step] ?? stepBytes(format, role, step, blockOf(format, v));
 
 export interface ManifestMesh {
   id: string;
@@ -108,7 +107,7 @@ export interface Manifest {
   textures?: ManifestTexture[];
   /** Sounds, in a file of their own (shared/pack/sound.ts). */
   sounds?: ManifestSound[];
-  /** The inventory pictures, from version 4. A build adds them; a manifest without them has none. */
+  /** The inventory pictures. A manifest without them has none. */
   icons?: ManifestIcons;
 }
 
@@ -152,7 +151,7 @@ export function describePack(pack: Pack, file: { name: string; bytes: number }, 
 /** Throws with a reason if the text is not a manifest this build can use. */
 export function parseManifest(text: string): Manifest {
   const m = JSON.parse(text) as Manifest;
-  if (m.version !== MANIFEST_VERSION && m.version !== 3 && m.version !== 2 && m.version !== 1) throw new Error(`manifest: version ${String(m.version)} is not supported`);
+  if (m.version !== MANIFEST_VERSION) throw new Error(`manifest: version ${String(m.version)} is not supported`);
   if (!Array.isArray(m.files) || !Array.isArray(m.meshes) || m.files[m.boot]?.role !== "boot") throw new Error("manifest: no boot pack");
   if (m.icons) checkIcons(m.icons, (file) => m.files[file]?.role);
   const textures = m.textures ?? [];
@@ -166,13 +165,13 @@ export function parseManifest(text: string): Manifest {
       const top = topIn(format, t.top);
       if (file?.role !== "tex" || file.format !== format) throw new Error(`manifest: texture ${t.id} names a file that does not hold ${format}`);
       if (!Array.isArray(v.hash) || v.hash.length !== stepOf(top) + 1) throw new Error(`manifest: texture ${t.id} does not have a hash for every step`);
-      if (v.stored && (v.stored.length !== v.hash.length || v.stored.some((s, k) => !(s > 0 && s <= stepBytes(format, t.role, k))))) throw new Error(`manifest: texture ${t.id} says it is stored in more bytes than it has`);
+      if (v.block !== undefined && (format !== "astc" || !ASTC_BLOCKS.includes(v.block))) throw new Error(`manifest: texture ${t.id} has ${format} blocks of a side there are not`);
+      if (v.stored && (v.stored.length !== v.hash.length || v.stored.some((s, k) => !(s > 0 && s <= stepBytes(format, t.role, k, blockOf(format, v)))))) throw new Error(`manifest: texture ${t.id} says it is stored in more bytes than it has`);
       const bytes = v.hash.reduce((sum, _, k) => sum + storedStep(v, format, t.role, k), 0);
       if (!(v.at >= TEXTURE_HEADER_BYTES) || !(v.at + bytes <= file.bytes)) throw new Error(`manifest: texture ${t.id} lies outside its file`);
     }
   }
   for (const mat of materials) {
-    mat.mask2 ??= -1;
     for (const t of [mat.base, mat.normal, mat.mro, mat.mask, mat.mask2, mat.layer ?? -1]) if (!(t >= -1 && t < textures.length)) throw new Error(`manifest: material ${mat.id} names a texture that is not there`);
   }
   const sounds = m.sounds ? soundFault(m.sounds, m.files) : "";

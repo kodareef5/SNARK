@@ -10,6 +10,8 @@ import { checkMasks, maskMips, readMasks, readRegions } from "./mask.ts";
 
 export interface EncodedTexture {
   role: TextureRole;
+  /** Pixels a block holds on a side (shared/pack/texture.ts `blockOf`). */
+  block: number;
   /** One picture for every side from 1 pixel up to the top, each in the variant's encoding. */
   pictures: readonly Uint8Array[];
 }
@@ -18,12 +20,13 @@ export interface EncodedTexture {
 export interface PlacedTexture {
   at: number;
   hash: string[];
+  block?: number;
 }
 
 /** Where the picture `size` pixels across starts in its texture. */
-export function pictureOffset(format: TextureFormat, role: TextureRole, size: number): number {
+export function pictureOffset(format: TextureFormat, role: TextureRole, size: number, block: number): number {
   let at = 0;
-  for (let s = 1; s < size; s <<= 1) at += pictureBytes(format, role, s);
+  for (let s = 1; s < size; s <<= 1) at += pictureBytes(format, role, s, block);
   return at;
 }
 
@@ -33,11 +36,12 @@ export function writeTextureFile(format: TextureFormat, textures: readonly Encod
     const top = 1 << (t.pictures.length - 1);
     if (stepOf(top) < 0 || topIn(format, top) !== top) throw new Error(`texture file: texture ${i} is ${top} pixels across, which ${format} does not hold`);
     t.pictures.forEach((p, k) => {
-      if (p.length !== pictureBytes(format, t.role, 1 << k)) throw new Error(`texture file: the ${1 << k}-pixel picture of texture ${i} is ${p.length} bytes, not ${pictureBytes(format, t.role, 1 << k)}`);
+      const want = pictureBytes(format, t.role, 1 << k, t.block);
+      if (p.length !== want) throw new Error(`texture file: the ${1 << k}-pixel picture of texture ${i} is ${p.length} bytes, not ${want}`);
     });
     return top;
   });
-  const bytes = new Uint8Array(tops.reduce((sum, top, i) => sum + textureBytes(format, textures[i]!.role, top), TEXTURE_HEADER_BYTES));
+  const bytes = new Uint8Array(tops.reduce((sum, top, i) => sum + textureBytes(format, textures[i]!.role, top, textures[i]!.block), TEXTURE_HEADER_BYTES));
   const view = new DataView(bytes.buffer);
   view.setUint32(0, TEXTURE_MAGIC, true);
   view.setUint16(4, TEXTURE_VERSION, true);
@@ -52,10 +56,10 @@ export function writeTextureFile(format: TextureFormat, textures: readonly Encod
     }
     const hash: string[] = [];
     for (let s = 0; s <= stepOf(tops[i]!); s++) {
-      const from = start + stepOffset(format, t.role, s);
-      hash.push(partHash(bytes.subarray(from, from + stepBytes(format, t.role, s))));
+      const from = start + stepOffset(format, t.role, s, t.block);
+      hash.push(partHash(bytes.subarray(from, from + stepBytes(format, t.role, s, t.block))));
     }
-    return { at: start, hash };
+    return format === "astc" && t.block !== 4 ? { at: start, hash, block: t.block } : { at: start, hash };
   });
   return { bytes, placed };
 }
@@ -73,7 +77,7 @@ export function rgbaPicture(role: TextureRole, mip: Uint8Array): Uint8Array {
 
 /** A texture in the rgba variant from its mips. It stops at 1024 however large they go. */
 export function rgbaTexture(role: TextureRole, mips: readonly Uint8Array[]): EncodedTexture {
-  return { role, pictures: mips.slice(0, Math.log2(RGBA_TOP) + 1).map((m) => rgbaPicture(role, m)) };
+  return { role, block: 1, pictures: mips.slice(0, Math.log2(RGBA_TOP) + 1).map((m) => rgbaPicture(role, m)) };
 }
 
 /** A material's source pictures. Its colour regions come as a painted region map, or as the two masks where those were made by hand. */

@@ -116,7 +116,7 @@ function bed(b: (typeof BEDS)[number]): Def[] {
     { type: "item", class: "structure", id: item, stack: b.stack, weight: b.weight, label: b.label.toLowerCase(), color: b.color, places: [`core:${b.name}`] },
     ...(b.make
       ? [
-          crafting(item, { needs: b.make.needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: b.make.xp }),
+          ...crafting(item, { needs: b.make.needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: b.make.xp }),
           { type: "engram", id: `core:engram-piece_${b.name}`, label: b.label, level: b.make.level, cost: b.make.cost, item, ...(b.make.requires ? { requires: [`core:engram-piece_${b.make.requires}`] } : {}) } as Def,
         ]
       : []),
@@ -131,7 +131,7 @@ function store(s: (typeof STORES)[number]): Def[] {
     { type: "structure", class: s.fire ? "station" : "container", id: `core:${s.name}`, mesh: "shape", shape: shapeId, half: s.half, color: s.color, hp: s.hp, material: `core:mat_${s.material}`, decayDays: s.decayDays ?? 16, ...(s.slots ? { slots: s.slots } : {}), ...(s.falls ? { falls: true } : {}), ...(s.fire ? { lights: `core:${s.name}_lit` } : {}) },
     ...(s.fire ? [{ type: "structure", class: "station", id: `core:${s.name}_lit`, mesh: "shape", shape: shapeId, half: s.half, color: 8, hp: s.hp, material: `core:mat_${s.material}`, decayDays: s.decayDays ?? 16, slots: s.slots!, lights: `core:${s.name}`, lit: true } as StructureDef] : []),
     { type: "item", class: "structure", id: item, stack: s.stack, weight: s.weight, label: s.label.toLowerCase(), color: s.color, places: [`core:${s.name}`] },
-    crafting(item, { needs: s.needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: s.xp ?? Math.max(1, Math.round(s.level / 3)), ...(s.at ? { at: s.at } : {}) }),
+    ...crafting(item, { needs: s.needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: s.xp ?? Math.max(1, Math.round(s.level / 3)), ...(s.at ? { at: s.at } : {}) }),
     { type: "engram", id: `core:engram-piece_${s.name}`, label: s.label, level: s.level, cost: s.cost, item: `core:piece_${s.name}` },
   ];
 }
@@ -217,7 +217,7 @@ function kit(tier: Tier, name: string): Def[] {
   const { level, needs, cost, xp } = m.pieces[name]!;
   return [
     { type: "item", class: "structure", id: item, stack: 100, weight: m.weight, label: label.toLowerCase(), color: tier.color, places: forms.map((f) => `core:${f}_${tier.name}`) },
-    crafting(item, { needs: needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: xp ?? Math.max(1, Math.round(level / 3)), ...(m.at ? { at: m.at } : {}) }),
+    ...crafting(item, { needs: needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: xp ?? Math.max(1, Math.round(level / 3)), ...(m.at ? { at: m.at } : {}) }),
     { type: "engram", id: `core:engram-piece_${name}_${tier.name}`, label, level, cost: cost ?? m.cost!, item: `core:piece_${name}_${tier.name}` },
   ];
 }

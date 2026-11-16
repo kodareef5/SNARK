@@ -290,7 +290,7 @@ export function rgbaTextures(manifest: Manifest, read: (file: number, at: number
       const steps: Uint8Array[] = [];
       for (let k = 0, at = v.at; k <= stepOf(top); k++) {
         const length = storedStep(v, "rgba", t.role, k);
-        const bytes = stepBytes("rgba", t.role, k);
+        const bytes = stepBytes("rgba", t.role, k, 1);
         const stored = read(v.file, at, length);
         steps.push(length < bytes ? unfilterPart(new Uint8Array(inflateRawSync(stored)), bytes)! : stored);
         at += length;
@@ -298,7 +298,7 @@ export function rgbaTextures(manifest: Manifest, read: (file: number, at: number
       const all = new Uint8Array(steps.reduce((sum, p) => sum + p.length, 0));
       steps.reduce((at, p) => (all.set(p, at), at + p.length), 0);
       const pictures: Uint8Array[] = [];
-      for (let size = 1, at = 0; size <= top; size <<= 1) pictures.push(all.subarray(at, (at += pictureBytes("rgba", t.role, size))));
+      for (let size = 1, at = 0; size <= top; size <<= 1) pictures.push(all.subarray(at, (at += pictureBytes("rgba", t.role, size, 1))));
       out = { role: t.role, top, pictures };
     }
     made.set(slot, out);

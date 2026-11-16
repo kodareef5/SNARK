@@ -9,7 +9,7 @@ import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.t
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { nearKeeps } from "../../client/core/render/hand.ts";
 import { MOST_LOD, detailKeeps, rotorOf, shapeOf } from "../../client/core/render/detailtext.ts";
-import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
+import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { LAYER_LEVELS, NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyFrom, srgbToLinear, wounded } from "../../client/core/render/surface.ts";
@@ -97,6 +97,22 @@ function turned(m: Float64Array, from: Float32Array, at: number, out: Float32Arr
 }
 
 /** Numbers a corner of a textured triangle carries to its pixels: position, texture coordinate, normal, tangent and the bitangent's side. */
+/**
+ * Into `m` the rows a vertex of a DRAW_ONE_BONE draw goes by: those of its bone `bone` of the pose at `stand`, then those of
+ * the instance's first bone `place` (packet.ts DRAW_ONE_BONE).
+ */
+function standing(bones: Float32Array, stand: number, bone: number, place: number, m: Float64Array): void {
+  const s = (stand + bone) * BONE_FLOATS, q = place * BONE_FLOATS;
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 4; c++) {
+      let v = c === 3 ? bones[q + r * 4 + 3]! : 0;
+      for (let k = 0; k < 3; k++) v += bones[q + r * 4 + k]! * bones[s + k * 4 + c]!;
+      m[r * 4 + c] = v;
+    }
+  }
+}
+const stood = new Float64Array(BONE_FLOATS);
+
 const CARRIED = 12;
 // Scratch for one pixel of a textured draw: what is carried to it, sampled at it and worked out for it.
 const carried = new Float64Array(CARRIED);
@@ -541,15 +557,20 @@ export class Rasterizer {
       const inst = p.drawFirst[d]! + k;
       const at = inst * INSTANCE_BYTES;
       if (skinned) {
-        // Each vertex follows one bone of this instance's body, or with DRAW_ONE_BONE all of them its first.
+        // Each vertex follows one bone of this instance's body, or with DRAW_ONE_BONE its bone of the pose it stands in and then its first.
         const first = view.getUint16(at + 12, true);
         const px = view.getFloat32(at, true), py = view.getFloat32(at + 4, true), pz = view.getFloat32(at + 8, true);
         for (let v = 0; v < n; v++) {
-          const b = (first + (one ? 0 : lod.bones[v]!)) * BONE_FLOATS;
+          let m: ArrayLike<number> = bones, b = (first + lod.bones[v]!) * BONE_FLOATS;
+          if (one) {
+            standing(bones, ox, lod.bones[v]!, first, stood);
+            m = stood;
+            b = 0;
+          }
           const lx = lod.positions[v * 3]! + px, ly = lod.positions[v * 3 + 1]! + py, lz = lod.positions[v * 3 + 2]! + pz;
-          out[v * 3] = bones[b]! * lx + bones[b + 1]! * ly + bones[b + 2]! * lz + bones[b + 3]!;
-          out[v * 3 + 1] = bones[b + 4]! * lx + bones[b + 5]! * ly + bones[b + 6]! * lz + bones[b + 7]!;
-          out[v * 3 + 2] = bones[b + 8]! * lx + bones[b + 9]! * ly + bones[b + 10]! * lz + bones[b + 11]!;
+          out[v * 3] = m[b]! * lx + m[b + 1]! * ly + m[b + 2]! * lz + m[b + 3]!;
+          out[v * 3 + 1] = m[b + 4]! * lx + m[b + 5]! * ly + m[b + 6]! * lz + m[b + 7]!;
+          out[v * 3 + 2] = m[b + 8]! * lx + m[b + 9]! * ly + m[b + 10]! * lz + m[b + 11]!;
         }
       } else {
         const yaw = (view.getUint16(at + 12, true) / 65536) * Math.PI * 2;
@@ -799,13 +820,13 @@ export class Rasterizer {
     return lod;
   }
 
-  /** A level from the bytes a packet uploads: its indices, padded to a multiple of 4, and then its vertices. */
+  /** A level from the bytes a packet uploads: its indices, padded to a multiple of 4, and then its vertices; or of quads, its vertices alone. */
   private decodeUpload(u: AssetUpload): DecodedLod {
     const view = new DataView(u.data.buffer, u.data.byteOffset, u.data.byteLength);
-    const indices = new Uint32Array(u.indexCount);
-    for (let i = 0; i < indices.length; i++) indices[i] = u.indexBytes === 4 ? view.getUint32(i * 4, true) : view.getUint16(i * 2, true);
-    const verts = u.data.subarray((u.indexCount * u.indexBytes + 3) & ~3);
-    return { ...vertices(verts, verts.length / VERTEX_BYTES, (this.manifest ?? this.pack.header).meshes[u.mesh]!), indices };
+    const indices = u.quads ? Uint32Array.from(quadIndices(u.indexCount, 4).subarray(0, u.indexCount)) : new Uint32Array(u.indexCount);
+    for (let i = 0; !u.quads && i < indices.length; i++) indices[i] = u.indexBytes === 4 ? view.getUint32(i * 4, true) : view.getUint16(i * 2, true);
+    const verts = u.data.subarray(u.quads ? 0 : (u.indexCount * u.indexBytes + 3) & ~3);
+    return { ...vertices(verts, verts.length / VERTEX_BYTES, u.bounds ?? (this.manifest ?? this.pack.header).meshes[u.mesh]!), indices };
   }
 
   /**
@@ -816,7 +837,7 @@ export class Rasterizer {
     if (u.format !== "rgba") throw new Error(`texture ${u.slot} comes as ${u.format}, and only the rgba variant is read here`);
     if (u.size === 1 && u.row === 0) {
       const pictures: Uint8Array[] = [];
-      for (let size = 1; size <= u.top; size <<= 1) pictures.push(new Uint8Array(pictureBytes("rgba", u.role, size)));
+      for (let size = 1; size <= u.top; size <<= 1) pictures.push(new Uint8Array(pictureBytes("rgba", u.role, size, 1)));
       this.making.set(u.slot, { role: u.role, top: u.top, pictures, left: pictures.reduce((sum, p) => sum + p.length, 0) });
     }
     const t = this.making.get(u.slot);
@@ -909,8 +930,9 @@ export class Rasterizer {
           const b = (first + skin!.joints[v * 4 + j]!) * BONE_FLOATS;
           if (w > 0) for (let i = 0; i < BONE_FLOATS; i++) m[i]! += p.bones[b + i]! * w;
         }
-      } else if (mode > 0) {
-        const b = (first + (mode === 2 ? 0 : lod.bones[v]!)) * BONE_FLOATS;
+      } else if (mode === 2) standing(p.bones, p.drawOffset[d * 3]!, lod.bones[v]!, first, m);
+      else if (mode > 0) {
+        const b = (first + lod.bones[v]!) * BONE_FLOATS;
         for (let i = 0; i < BONE_FLOATS; i++) m[i] = p.bones[b + i]!;
       }
       const lx = positions[v * 3]! * k + px, ly = positions[v * 3 + 1]! * k + py, lz = positions[v * 3 + 2]! * k + pz;
@@ -1255,9 +1277,14 @@ export class Rasterizer {
         if ((flags & DRAW_SKINNED) !== 0) {
           const first = view.getUint16(at + 12, true);
           for (let v = 0; v < n; v++) {
-            const b = (first + ((flags & DRAW_ONE_BONE) !== 0 ? 0 : lod.bones[v]!)) * BONE_FLOATS;
+            let m: ArrayLike<number> = p.bones, b = (first + lod.bones[v]!) * BONE_FLOATS;
+            if ((flags & DRAW_ONE_BONE) !== 0) {
+              standing(p.bones, p.casterOffset[e * 3]!, lod.bones[v]!, first, stood);
+              m = stood;
+              b = 0;
+            }
             const [lx, ly, lz] = [lod.positions[v * 3]! + px, lod.positions[v * 3 + 1]! + py, lod.positions[v * 3 + 2]! + pz];
-            for (let r = 0; r < 3; r++) place[v * 3 + r] = p.bones[b + r * 4]! * lx + p.bones[b + r * 4 + 1]! * ly + p.bones[b + r * 4 + 2]! * lz + p.bones[b + r * 4 + 3]!;
+            for (let r = 0; r < 3; r++) place[v * 3 + r] = m[b + r * 4]! * lx + m[b + r * 4 + 1]! * ly + m[b + r * 4 + 2]! * lz + m[b + r * 4 + 3]!;
           }
         } else {
           const yaw = (view.getUint16(at + 12, true) / 65536) * Math.PI * 2;

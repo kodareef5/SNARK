@@ -2,7 +2,9 @@
 // results, and how they were taken, are in planning/quality/encoders.md.
 //
 //   bun tools/bench/refenc.ts --astcenc <astcenc> --bc7enc <bc7enc_rdo folder> [--bc7e <folder>] [--repeats 3]
-//     [--work <folder>] [--only quality|speed] [--pick <part of a picture's name>]
+//     [--work <folder>] [--only quality|speed] [--pick <part of a picture's name>] [--block <side>]
+//
+// ASTC is encoded in the blocks the build gives each role, or in blocks of `--block` pixels a side for every role.
 //
 // --astcenc is Arm's astcenc program. --bc7enc is a copy of bc7enc_rdo's source: its BC7 encoder (bc7enc.cpp), its BC4
 // and BC5 encoder (rgbcx.cpp) and its BC7 decoders are compiled with this machine's clang++ around the harness below,
@@ -39,6 +41,7 @@ const BC7E = option("--bc7e");
 const REPEATS = Number(option("--repeats") ?? 3);
 const WORK = resolve(option("--work") ?? join(tmpdir(), "snark-refenc"));
 const ONLY = option("--only");
+const BLOCK = option("--block");
 const PICK = option("--pick");
 
 const sha = (data: string | Uint8Array): string => createHash("sha256").update(data).digest("hex");
@@ -103,7 +106,13 @@ interface Run {
 }
 
 const codecsOf = (role: TextureRole): Codec[] => [role === "normal" ? "bc5" : "bc7", "astc"];
-const astcKind = (role: TextureRole): AstcKind => (encodingOf("astc", role, false) as { kind: AstcKind }).kind;
+const astcHow = (role: TextureRole): { kind: AstcKind; block: number } => {
+  const how = encodingOf("astc", role, false) as { kind: AstcKind; block: number };
+  return BLOCK ? { ...how, block: Number(BLOCK) } : how;
+};
+const astcKind = (role: TextureRole): AstcKind => astcHow(role).kind;
+/** The side of a codec's blocks for a role. */
+const sideOf = (codec: Codec, role: TextureRole): number => (codec === "astc" ? astcHow(role).block : 4);
 
 /** Blocks in each range a thread of ours is sent, as the build sends them. */
 const CUT = 1024;
@@ -117,7 +126,7 @@ function pool(count: number) {
   });
   return {
     async encode(rgba: Uint8Array, size: number, how: Encoding): Promise<Uint8Array> {
-      const blocks = (size >> 2) ** 2;
+      const blocks = Math.ceil(size / (how.with === "astc" ? how.block : 4)) ** 2;
       const out = new Uint8Array(new SharedArrayBuffer(blocks * 16));
       let next = 0;
       await Promise.all(
@@ -160,7 +169,7 @@ function ours(codec: Codec, name: string, how: (role: TextureRole) => Encoding):
       const t0 = performance.now();
       let blocks: Uint8Array;
       if (threads > 1) blocks = await (workers ??= pool(CORES)).encode(input, s.size, e);
-      else if (e.with === "astc") blocks = encodeAstc(input, s.size, s.size, e.kind);
+      else if (e.with === "astc") blocks = encodeAstc(input, s.size, s.size, e.kind, e.block);
       else if (e.with === "bc5") blocks = encodeBc5(input, s.size, s.size);
       else blocks = encodeBc7(input, s.size, s.size, e.channels);
       const wall = (performance.now() - t0) / 1000;
@@ -195,7 +204,7 @@ function astcencRun(tier: Tier, version: string): Run {
     async encode(s, threads) {
       const to = join(WORK, "tmp", "out.astc");
       const profile = astcKind(s.role) === "srgb" ? "-cs" : "-cl";
-      const { out, cpu } = await spawn([ASTCENC!, profile, inputFile(s, "png"), to, "4x4", ASTC_PRESETS[tier], "-j", String(threads), ...(s.role === "normal" ? ["-normal"] : [])]);
+      const { out, cpu } = await spawn([ASTCENC!, profile, inputFile(s, "png"), to, `${astcHow(s.role).block}x${astcHow(s.role).block}`, ASTC_PRESETS[tier], "-j", String(threads), ...(s.role === "normal" ? ["-normal"] : [])]);
       // Its coding time leaves out reading and writing the files. Processor time is shared out in the same proportion.
       const coding = Number(/Coding time:\s+([\d.]+)/.exec(out)?.[1]);
       const total = Number(/Total time:\s+([\d.]+)/.exec(out)?.[1]);
@@ -419,10 +428,10 @@ async function harnessDecode(format: string, blocks: Uint8Array, size: number): 
   return new Uint8Array(readFileSync(to));
 }
 
-/** An ASTC file of one 4 by 4 image: its 16-byte header, then the blocks. */
-function astcFile(blocks: Uint8Array, size: number): Uint8Array {
+/** An ASTC file of one image in blocks `side` pixels across: its 16-byte header, then the blocks. */
+function astcFile(blocks: Uint8Array, size: number, side: number): Uint8Array {
   const header = new Uint8Array(16);
-  header.set([0x13, 0xab, 0xa1, 0x5c, 4, 4, 1, size & 255, size >> 8, size >> 16, size & 255, size >> 8, size >> 16, 1, 0, 0]);
+  header.set([0x13, 0xab, 0xa1, 0x5c, side, side, 1, size & 255, size >> 8, size >> 16, size & 255, size >> 8, size >> 16, 1, 0, 0]);
   const out = new Uint8Array(16 + blocks.length);
   out.set(header);
   out.set(blocks, 16);
@@ -441,15 +450,18 @@ function rgbaOf(png: Uint8Array): Uint8Array {
 }
 
 /** What astcenc writes to an 8-bit file: the top 8 bits of each 16-bit result. */
-function astcTop8(blocks: Uint8Array, size: number, srgb: boolean): Uint8Array {
+function astcTop8(blocks: Uint8Array, size: number, srgb: boolean, side: number): Uint8Array {
   const out = new Uint8Array(size * size * 4);
-  const d16 = new Uint16Array(64);
-  const across = size >> 2;
+  const d16 = new Uint16Array(side * side * 4);
+  const across = Math.ceil(size / side);
   for (let b = 0; b * 16 < blocks.length; b++) {
-    decodeAstcBlock16(blocks, b * 16, srgb, d16);
-    const x0 = (b % across) * 4;
-    const y0 = ((b / across) | 0) * 4;
-    for (let i = 0; i < 64; i++) out[((y0 + (i >> 4)) * size + x0 + ((i >> 2) & 3)) * 4 + (i & 3)] = d16[i]! >> 8;
+    decodeAstcBlock16(blocks, b * 16, side, srgb, d16);
+    const x0 = (b % across) * side;
+    const y0 = ((b / across) | 0) * side;
+    for (let i = 0; i < side * side; i++) {
+      const [x, y] = [x0 + (i % side), y0 + ((i / side) | 0)];
+      if (x < size && y < size) for (let c = 0; c < 4; c++) out[(y * size + x) * 4 + c] = d16[i * 4 + c]! >> 8;
+    }
   }
   return out;
 }
@@ -457,16 +469,16 @@ function astcTop8(blocks: Uint8Array, size: number, srgb: boolean): Uint8Array {
 async function decode(codec: Codec, blocks: Uint8Array, s: Sample): Promise<Decoded> {
   const n = s.size;
   if (codec === "astc") {
-    const kind = astcKind(s.role);
+    const { kind, block } = astcHow(s.role);
     let theirs: Uint8Array | null = null;
     if (ASTCENC) {
       const from = join(WORK, "tmp", "dec.astc");
       const to = join(WORK, "tmp", "dec.png");
-      writeFileSync(from, astcFile(blocks, n));
+      writeFileSync(from, astcFile(blocks, n, block));
       await spawn([ASTCENC, kind === "srgb" ? "-ds" : "-dl", from, to, "-j", String(CORES)]);
       theirs = rgbaOf(new Uint8Array(readFileSync(to)));
     }
-    return { ours: decodeAstc(blocks, n, n, kind), theirs, exact: astcTop8(blocks, n, kind === "srgb"), unrounded: null };
+    return { ours: decodeAstc(blocks, n, n, kind, block), theirs, exact: astcTop8(blocks, n, kind === "srgb", block), unrounded: null };
   }
   if (codec === "bc5") return { ours: decodeBc5(blocks, n, n), theirs: harness ? await harnessDecode("bc5", blocks, n) : null, exact: null, unrounded: unroundedBc5(blocks, n) };
   return { ours: decodeBc7(blocks, n, n), theirs: harness ? await harnessDecode("bc7", blocks, n) : null, exact: harness ? await harnessDecode("bc7ref", blocks, n) : null, unrounded: null };
@@ -484,15 +496,15 @@ function pairsOf(codec: Codec, role: TextureRole): (readonly [number, number])[]
 }
 
 /** Squared error of each block over the channels compared. */
-function blockErrors(want: Uint8Array, got: ArrayLike<number>, size: number, pairs: readonly (readonly [number, number])[]): Float64Array {
-  const across = size >> 2;
+function blockErrors(want: Uint8Array, got: ArrayLike<number>, size: number, pairs: readonly (readonly [number, number])[], side: number): Float64Array {
+  const across = Math.ceil(size / side);
   const out = new Float64Array(across * across);
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const p = (y * size + x) * 4;
       let e = 0;
       for (const [w, g] of pairs) e += (want[p + w]! - got[p + g]!) ** 2;
-      out[(y >> 2) * across + (x >> 2)]! += e;
+      out[Math.floor(y / side) * across + Math.floor(x / side)]! += e;
     }
   }
   return out;
@@ -542,7 +554,7 @@ interface Quality {
 
 function measure(s: Sample, codec: Codec, d: Decoded): Quality {
   const pairs = pairsOf(codec, s.role);
-  const db = (got: ArrayLike<number>) => decibels(blockErrors(s.rgba, got, s.size, pairs), s.size, pairs.length);
+  const db = (got: ArrayLike<number>) => decibels(blockErrors(s.rgba, got, s.size, pairs, sideOf(codec, s.role)), s.size, pairs.length);
   const q: Quality = { db: db(d.ours), dbTheirs: d.theirs ? db(d.theirs) : NaN, dbUnrounded: d.unrounded ? db(d.unrounded) : NaN, angleMean: NaN, angle99: NaN, flips: NaN };
   if (s.role === "normal") {
     const a = angles(s.rgba, measured(d), pairs);
@@ -585,9 +597,10 @@ function compare(key: string, s: Sample, codec: Codec, blocks: Uint8Array, ours:
     if (c.example) continue;
     const x = (p / 4) % s.size;
     const y = Math.floor(p / 4 / s.size);
-    const block = (y >> 2) * (s.size >> 2) + (x >> 2);
+    const side = sideOf(codec, s.role);
+    const block = Math.floor(y / side) * Math.ceil(s.size / side) + Math.floor(x / side);
     const bytes = Buffer.from(blocks.subarray(block * 16, block * 16 + 16)).toString("hex");
-    c.example = `${s.name}, block ${block} (${describe(codec, blocks, block)}) ${bytes}: texel ${x},${y} ours ${ours.subarray(p, p + 4).join(",")}, theirs ${theirs.subarray(p, p + 4).join(",")}`;
+    c.example = `${s.name}, block ${block} (${describe(codec, blocks, block, side)}) ${bytes}: texel ${x},${y} ours ${ours.subarray(p, p + 4).join(",")}, theirs ${theirs.subarray(p, p + 4).join(",")}`;
   }
 }
 
@@ -611,8 +624,8 @@ function bc7Shape(blocks: Uint8Array, block: number): { mode: number; shape: num
 const CEM_CLASS: Record<number, string> = { 0: "l", 1: "l", 4: "la", 5: "la", 6: "rgb scale", 8: "rgb", 9: "rgb", 10: "rgba scale", 12: "rgba", 13: "rgba" };
 
 /** What an ASTC block is, in the terms the gap is told in. */
-function astcShape(blocks: Uint8Array, block: number): { key: string; feature: string; shape: string } {
-  const b = astcBlockInfo(blocks, block * 16);
+function astcShape(blocks: Uint8Array, block: number, side: number): { key: string; feature: string; shape: string } {
+  const b = astcBlockInfo(blocks, block * 16, side);
   if (b.solid) return { key: "solid", feature: "", shape: "solid" };
   const classes = b.modes.map((m) => CEM_CLASS[m] ?? "hdr");
   const mixed = classes.some((c) => c !== classes[0]) || b.modes.some((m) => m !== b.modes[0]);
@@ -631,13 +644,13 @@ function astcShape(blocks: Uint8Array, block: number): { key: string; feature: s
   };
 }
 
-function describe(codec: Codec, blocks: Uint8Array, block: number): string {
+function describe(codec: Codec, blocks: Uint8Array, block: number, side: number): string {
   if (codec === "bc5") return "bc5";
   if (codec === "bc7") {
     const { mode, shape } = bc7Shape(blocks, block);
     return `mode ${mode}${[0, 1, 2, 3, 7].includes(mode) ? ` partition ${shape}` : mode === 4 || mode === 5 ? ` rotation ${shape & 3}${mode === 4 ? ` selection ${shape >> 2}` : ""}` : ""}`;
   }
-  return astcShape(blocks, block).shape;
+  return astcShape(blocks, block, side).shape;
 }
 
 // ---- Where ours falls short ----
@@ -660,7 +673,7 @@ interface Gap {
 
 const gaps = new Map<string, Gap>();
 
-function reasonOf(codec: Codec, ourBlocks: Uint8Array, theirBlocks: Uint8Array, block: number): string {
+function reasonOf(codec: Codec, ourBlocks: Uint8Array, theirBlocks: Uint8Array, block: number, side: number): string {
   if (codec === "bc5") return "endpoints";
   if (codec === "bc7") {
     const a = bc7Shape(ourBlocks, block);
@@ -668,8 +681,8 @@ function reasonOf(codec: Codec, ourBlocks: Uint8Array, theirBlocks: Uint8Array, 
     if (a.mode !== b.mode) return `mode ${b.mode} where ours took another`;
     return a.shape !== b.shape ? `mode ${b.mode}, another ${[4, 5].includes(b.mode) ? "rotation" : "partition"}` : `mode ${b.mode}, same partition: the fit`;
   }
-  const a = astcShape(ourBlocks, block);
-  const b = astcShape(theirBlocks, block);
+  const a = astcShape(ourBlocks, block, side);
+  const b = astcShape(theirBlocks, block, side);
   if (b.feature) return b.feature;
   const [ap, apat, apl] = a.shape.split("/");
   const [bp, bpat, bpl] = b.shape.split("/");
@@ -689,7 +702,7 @@ function gapOf(s: Sample, codec: Codec, label: string, ourBlocks: Uint8Array, ou
   const either = new Float64Array(ourErr.length);
   let worse = 0;
   const count = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1 / ourErr.length);
-  const kindOf = (blocks: Uint8Array, b: number) => (codec === "bc7" ? `mode ${bc7Shape(blocks, b).mode}` : codec === "astc" ? astcShape(blocks, b).key : "bc5");
+  const kindOf = (blocks: Uint8Array, b: number) => (codec === "bc7" ? `mode ${bc7Shape(blocks, b).mode}` : codec === "astc" ? astcShape(blocks, b, sideOf(codec, s.role)).key : "bc5");
   const ourKinds = new Map<string, number>();
   const theirKinds = new Map<string, number>();
   for (let b = 0; b < ourErr.length; b++) {
@@ -698,7 +711,7 @@ function gapOf(s: Sample, codec: Codec, label: string, ourBlocks: Uint8Array, ou
     count(theirKinds, kindOf(theirBlocks, b));
     if (theirErr[b]! >= ourErr[b]!) continue;
     worse++;
-    const why = reasonOf(codec, ourBlocks, theirBlocks, b);
+    const why = reasonOf(codec, ourBlocks, theirBlocks, b, sideOf(codec, s.role));
     const r = saved.get(why) ?? { sse: 0, blocks: 0 };
     r.sse += ourErr[b]! - theirErr[b]!;
     r.blocks++;
@@ -811,7 +824,7 @@ async function encoded(run: Run, s: Sample): Promise<Uint8Array> {
 /** How many blocks of each kind the files the decoders were held to hold, by format: what the comparison covered. */
 const covered = new Map<string, Map<string, number>>();
 
-function cover(codec: Codec, blocks: Uint8Array): void {
+function cover(codec: Codec, blocks: Uint8Array, side: number): void {
   const tally = covered.get(codec) ?? new Map<string, number>();
   covered.set(codec, tally);
   const add = (k: string) => tally.set(k, (tally.get(k) ?? 0) + 1);
@@ -822,7 +835,7 @@ function cover(codec: Codec, blocks: Uint8Array): void {
       if (mode === 4 || mode === 5) add(`mode ${mode} rotation ${shape & 3}${mode === 4 ? ` selection ${shape >> 2}` : ""}`);
       else if (mode !== 6 && mode !== 8) add(`mode ${mode} partition ${shape}`);
     } else if (codec === "astc") {
-      const i = astcBlockInfo(blocks, b * 16);
+      const i = astcBlockInfo(blocks, b * 16, side);
       if (i.solid || !i.valid) {
         add(i.solid ? "solid" : "invalid");
         continue;
@@ -839,7 +852,7 @@ function cover(codec: Codec, blocks: Uint8Array): void {
 
 /** Holds the decoders to each other on a file. */
 function checkDecoders(set: string, run: Run, s: Sample, blocks: Uint8Array, d: Decoded): void {
-  if (d.theirs) cover(run.codec, blocks);
+  if (d.theirs) cover(run.codec, blocks, sideOf(run.codec, s.role));
   const key = (how: string) => `${set}|${run.codec}|${run.tier === "ours" ? "ours" : "theirs"}|${how}`;
   if (d.theirs) compare(key("reference decoder"), s, run.codec, blocks, run.codec === "astc" ? d.exact! : d.ours, d.theirs);
   if (run.codec === "astc" && d.theirs) compare(key("as a GPU shows it"), s, run.codec, blocks, d.ours, d.theirs);
@@ -887,7 +900,7 @@ async function randomBlocks(): Promise<void> {
     compare("random bits|bc5|-|reference decoder", picture("random bits", bc5), "bc5", bc5, decodeBc5(bc5, 256, 256), await harnessDecode("bc5", bc5, 256));
   }
   if (!ASTCENC) return;
-  const built = builtBlocks(0x5eed, 4);
+  const built = builtBlocks(0x5eed, 4, 4);
   for (const valid of [true, false]) {
     const chosen = built.filter((b) => (b.set === "built") === valid);
     // As many blocks as make a square, the last repeated to fill it.
@@ -898,9 +911,9 @@ async function randomBlocks(): Promise<void> {
     for (const srgb of [false, true]) {
       const from = join(WORK, "tmp", "dec.astc");
       const to = join(WORK, "tmp", "dec.png");
-      writeFileSync(from, astcFile(blocks, s.size));
+      writeFileSync(from, astcFile(blocks, s.size, 4));
       await spawn([ASTCENC, srgb ? "-ds" : "-dl", from, to]);
-      compare(`random bits|astc|-|reference decoder${valid ? "" : ", blocks not allowed"}`, s, "astc", blocks, astcTop8(blocks, s.size, srgb), rgbaOf(new Uint8Array(readFileSync(to))));
+      compare(`random bits|astc|-|reference decoder${valid ? "" : ", blocks not allowed"}`, s, "astc", blocks, astcTop8(blocks, s.size, srgb, 4), rgbaOf(new Uint8Array(readFileSync(to))));
     }
   }
 }
@@ -919,7 +932,7 @@ async function quality(samples: Sample[], runs: Run[]): Promise<void> {
         const key = `${roleKey}|${codec}|${run.name}`;
         results.set(key, [...(results.get(key) ?? []), measure(s, codec, d)]);
         checkDecoders("test set", run, s, blocks, d);
-        made.push({ run, blocks, errors: blockErrors(s.rgba, measured(d), s.size, pairsOf(codec, s.role)) });
+        made.push({ run, blocks, errors: blockErrors(s.rgba, measured(d), s.size, pairsOf(codec, s.role), sideOf(codec, s.role)) });
       }
       const mine = made.find((m) => m.run.tier === "ours" && m.run.name === "ours")!;
       for (const m of made) {

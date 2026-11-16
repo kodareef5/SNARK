@@ -6,7 +6,7 @@ import { CreatureAnim } from "../../shared/anim/creature.ts";
 import { AnimState, CUE_STARTLE, LAYER_FLINCH, bodySeed } from "../../shared/anim/pose.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { parseManifest } from "../../shared/pack/manifest.ts";
+import { MANIFEST_VERSION, parseManifest } from "../../shared/pack/manifest.ts";
 import { buildProvingHeightfield } from "../../shared/world/proving.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import type { SoundSink } from "../../client/core/sound/packet.ts";
@@ -27,7 +27,7 @@ export function benchSound(section: (title: string) => void, record: (name: stri
   if (!rig) return;
   const anim = new CreatureAnim(rig, reg.runAt[kind]!, reg.move[kind]?.swimSpeed ?? 0);
   const made = builtSounds();
-  const manifest = parseManifest(JSON.stringify({ version: 3, files: [{ name: "boot", bytes: 0, role: "boot" }, { name: "sounds", bytes: made.file.length, role: "sound" }], boot: 0, clipHash: 0, meshes: [], sounds: made.sounds }));
+  const manifest = parseManifest(JSON.stringify({ version: MANIFEST_VERSION, files: [{ name: "boot", bytes: 0, role: "boot" }, { name: "sounds", bytes: made.file.length, role: "sound" }], boot: 0, clipHash: 0, meshes: [], sounds: made.sounds }));
   const net = new FakeNet([new Uint8Array(0), made.file], { latencyMs: 5, bytesPerSecond: 1e8 });
   const sounds = new Sounds(manifest, net, reg, (k) => (k === kind ? anim : null));
   const hf = buildProvingHeightfield();

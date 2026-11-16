@@ -14,7 +14,7 @@ export const CONSUMABLES: readonly Def[] = [
   // (its craftable class is "Waterskin (Empty)") of 4 hide and 12 fiber for 2 experience, engram at level 3 for 6 points.
   // The crafting time is chosen. It does not leak as ARK's does (deviations.md).
   { type: "item", class: "consumable", id: "core:waterskin", stack: 1, weight: 0.3, use: { holds: { water: 100, each: 100 } }, label: "water skin", color: 14 },
-  crafting("core:waterskin", { needs: [{ item: "core:hide", count: 4 }, { item: "core:fiber", count: 12 }], seconds: 4, xp: 2 }),
+  ...crafting("core:waterskin", { needs: [{ item: "core:hide", count: 4 }, { item: "core:fiber", count: 12 }], seconds: 4, xp: 2 }),
   { type: "engram", id: "core:engram-waterskin", label: "Water skin", level: 3, cost: 6, item: "core:waterskin" },
 
   // Spoiled Meat: what every meat becomes when it spoils (Spoilage: "All forms of Meat spoil and become Spoiled Meat").
@@ -31,9 +31,9 @@ export const CONSUMABLES: readonly Def[] = [
   // under way stops its lane at the tick it spoils (D535). Wild carnivores eat them as meat in ARK; which creature eats what
   // is the creature team's. The colours are chosen.
   { type: "item", class: "consumable", id: "core:jerky", stack: 50, weight: 0.1, spoilHours: minutes(2880), decomposeHours: minutes(2), eat: { food: 20, health: 8 }, spoilsInto: "core:spoiled_meat", label: "cooked meat jerky", color: 4 },
-  crafting("core:jerky", { needs: [{ item: "core:meat_cooked", count: 1 }, { item: "core:oil", count: 1 }, { item: "core:sparkpowder", count: 3 }], seconds: 2160, xp: 0, at: "core:preserving_bin", fired: true }),
+  ...crafting("core:jerky", { needs: [{ item: "core:meat_cooked", count: 1 }, { item: "core:oil", count: 1 }, { item: "core:sparkpowder", count: 3 }], seconds: 2160, xp: 0, at: "core:preserving_bin", fired: true }),
   { type: "item", class: "consumable", id: "core:jerky_prime", stack: 30, weight: 0.1, spoilHours: minutes(2880), decomposeHours: minutes(2), eat: { food: 35, health: 25 }, spoilsInto: "core:spoiled_meat", label: "prime meat jerky", color: 2 },
-  crafting("core:jerky_prime", { needs: [{ item: "core:meat_prime_cooked", count: 1 }, { item: "core:oil", count: 1 }, { item: "core:sparkpowder", count: 3 }], seconds: 2160, xp: 0, at: "core:preserving_bin", fired: true }),
+  ...crafting("core:jerky_prime", { needs: [{ item: "core:meat_prime_cooked", count: 1 }, { item: "core:oil", count: 1 }, { item: "core:sparkpowder", count: 3 }], seconds: 2160, xp: 0, at: "core:preserving_bin", fired: true }),
 
   // What a used item mends over time, as a meal's health is core:fed. Each use's health is carried on its one instance
   // and runs after what it still had to give (server/use.ts). Chosen: ARK shows no buff for this.
