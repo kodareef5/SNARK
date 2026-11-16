@@ -10,6 +10,8 @@ export const WORLD_CORE = 1 - 2 * WORLD_PAD;
 /** The smallest mip sampled has eight texels per cell; smaller ones mix unrelated atlas cells. */
 export const WORLD_MIN_MIP = 5;
 export const WORLD_ASKED = 2048;
+/** A finish this smooth or smoother, less its wetness's share, mirrors the sky table; a rougher one mirrors the sky's light in that direction. */
+export const WORLD_SHARP = 0.6;
 /**
  * Each finish's mean in the atlas's 4 x 4 mip, which a distant finish fades to without reading it: base red, green and
  * blue (sRGB), then the packed map's occlusion and roughness. The normal map's mean is flat in every finish.
@@ -51,6 +53,11 @@ export function surfaceHash(x: number, y: number): number {
 }
 const fract = (x: number): number => x - Math.floor(x);
 const clamp = (x: number, a = 0, b = 1): number => Math.max(a, Math.min(b, x));
+/** Whether finish `index` mirrors the sky as a picture in `city` (citySurface), as LIT decides it. */
+export function worldSharp(index: number, city: Numbers): boolean {
+  const f = finishes[index]!;
+  return f.rough - clamp(f.wetness + city[5]!) * 0.35 < WORLD_SHARP;
+}
 export function surfaceNoise(x: number, y: number): number {
   const ix = Math.floor(x), iy = Math.floor(y), fx = fract(x), fy = fract(y);
   const a = fx * fx * (3 - 2 * fx), b = fy * fy * (3 - 2 * fy);
@@ -63,9 +70,12 @@ const b = new Float64Array(4), n = new Float64Array(4), m = new Float64Array(4);
 const sum = new Float64Array(7);
 const weights = new Float64Array(3), corners = new Int32Array(6);
 
-/** Writes linear albedo, ORM and the bumped normal. footprint is metres covered by one screen pixel on the projection. */
+/**
+ * Writes linear albedo, ORM and the bumped normal. footprint is metres covered by one screen pixel on the projection.
+ * `light` is the touch rule's finish (assets/tiers.ts `finish`): one cell of the tile and its base map alone, no stain.
+ */
 export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Numbers, index: number, x: number, y: number, z: number,
-  nx: number, ny: number, nz: number, footprint: number, city: Numbers, sample: WorldSample): void {
+  nx: number, ny: number, nz: number, footprint: number, city: Numbers, sample: WorldSample, light = false): void {
   const f = finishes[index]!;
   const axis = Math.abs(ny) >= Math.max(Math.abs(nx), Math.abs(nz)) ? 1 : Math.abs(nx) > Math.abs(nz) ? 0 : 2;
   const metres = f.metres * city[3]!;
@@ -79,7 +89,8 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
   if (fade < 1) {
     let taps = 1;
     corners[0] = corners[1] = 0; weights[0] = 1; weights[1] = weights[2] = 0;
-    if (!f.directional) {
+    const plain = f.directional || light;
+    if (!plain) {
       taps = 3;
       const a = u * 0.35, c = v * 0.35, ix = Math.floor(a), iy = Math.floor(c), fx = fract(a), fy = fract(c), low = fx + fy < 1;
       corners[0] = low ? ix : ix + 1; corners[1] = low ? iy : iy + 1;
@@ -93,7 +104,7 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
     const heaviest = weights[2]! > Math.max(weights[0]!, weights[1]!) ? 2 : weights[1]! > weights[0]! ? 1 : 0;
     let hu = 0, hv = 0, turned = 0, r = 0, g = 0, bl = 0;
     for (let k = 0; k < taps; k++) {
-      const h = f.directional ? 0 : surfaceHash(corners[k * 2]!, corners[k * 2 + 1]!);
+      const h = plain ? 0 : surfaceHash(corners[k * 2]!, corners[k * 2 + 1]!);
       const rot = Math.floor(h * 4);
       const ru = rot === 0 ? u : rot === 1 ? -v : rot === 2 ? -u : v;
       const rv = rot === 0 ? v : rot === 1 ? u : rot === 2 ? -v : -u;
@@ -105,9 +116,11 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
     }
     sum[0] = r * (1 - fade) + sum[0]! * fade; sum[1] = g * (1 - fade) + sum[1]! * fade; sum[2] = bl * (1 - fade) + sum[2]! * fade;
     // Normal and packed maps from the heaviest cell alone.
-    sample(2, hu, hv, spread, m);
-    sum[3] = m[0]! * (1 - fade) + sum[3]! * fade; sum[4] = m[1]! * (1 - fade) + sum[4]! * fade;
-    if (relief > 0) {
+    if (!light) {
+      sample(2, hu, hv, spread, m);
+      sum[3] = m[0]! * (1 - fade) + sum[3]! * fade; sum[4] = m[1]! * (1 - fade) + sum[4]! * fade;
+    }
+    if (relief > 0 && !light) {
       sample(1, hu, hv, spread, n);
       const bx = (n[0]! * 255 - 128) / 127, by = (n[1]! * 255 - 128) / 127;
       sum[5] = (turned === 0 ? bx : turned === 1 ? by : turned === 2 ? -bx : -by) * (1 - fade);
@@ -115,7 +128,7 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
     }
   }
   const macro = surfaceNoise(x / 37 + y / 53, z / 37);
-  const stain = surfaceNoise(x / 8 + z / 19, y / 17 + z / 11);
+  const stain = light ? 0 : surfaceNoise(x / 8 + z / 19, y / 17 + z / 11);
   const weather = f.weather * city[4]!;
   const wet = clamp(f.wetness + city[5]!);
   const growth = clamp((f.growth + city[6]!) * clamp((macro - 0.42) * 3) * (ny > 0.2 ? 1 : 0.4));
@@ -183,6 +196,13 @@ vec2 worldLod(sampler2D tex, float spread) {
 vec4 worldRead(sampler2D tex, vec2 lod, vec2 cell, vec2 uv) {
   return textureLod(tex,clamp(uv,cell+lod.y,cell+0.25-lod.y),lod.x);
 }
+// A cell's place in its finish's tile, turned and moved by its hash h, and the turn.
+vec2 worldPlace(vec2 q, float h, int id, out int r) {
+  r = int(floor(h*4.0));
+  return (vec2(id%4,id/4) + ${fl(WORLD_PAD)} + fract(turn(q,r)+h*vec2(13.0,29.0))*${fl(WORLD_CORE)})/4.0;
+}
+// Whether the finish is smooth enough to mirror the sky as a picture (worldSharp's twin), set by worldSurface.
+bool worldSharp = false;
 void worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n) {
   int id = vSurface;
   vec4 f = WF[id], tint = WT[id], w = WW[id];
@@ -195,38 +215,52 @@ void worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n) {
   float spread = log2(max(rho * ${fl(WORLD_CORE / 4)}, 1e-9));
   float fade = clamp((spread + ${fl(WORLD_MIN_MIP)}) / ${fl(WORLD_MIN_MIP - 2)},0.0,1.0);
   float relief = max(0.0,1.0-rho/0.4);
+  float wet = clamp(w.y+uSurfaceCity[1].y,0.0,1.0);
+  worldSharp = f.z - wet*0.35 < ${fl(WORLD_SHARP)};
   vec3 base = WB[id]; vec2 finishMap = WO[id]; vec2 bump = vec2(0.0);
   if (fade < 1.0) {
-    ivec2 cells[3]; vec3 weights = vec3(1.0,0.0,0.0); int taps = 1;
-    if (w.w < 0.5) {
+    vec2 cell = vec2(id%4,id/4)/4.0, lod = worldLod(uWorldBase,spread), at;
+    vec3 detail; int turned;
+#ifdef WORLD_LIGHT
+    at = worldPlace(q,0.0,id,turned);
+    detail = worldRead(uWorldBase,lod,cell,at).rgb;
+#else
+    if (w.w > 0.5) {
+      at = worldPlace(q,0.0,id,turned);
+      detail = worldRead(uWorldBase,lod,cell,at).rgb;
+    } else {
+      // Three cells of a triangular grid, written out so that no array is indexed as it runs.
       vec2 grid = q * 0.35; ivec2 i = ivec2(floor(grid)); vec2 ff = fract(grid);
-      if (ff.x + ff.y < 1.0) { cells[0]=i; cells[1]=i+ivec2(1,0); cells[2]=i+ivec2(0,1); weights=vec3(1.0-ff.x-ff.y,ff); }
-      else { cells[0]=i+ivec2(1,1); cells[1]=i+ivec2(0,1); cells[2]=i+ivec2(1,0); weights=vec3(ff.x+ff.y-1.0,1.0-ff); }
+      bool low = ff.x + ff.y < 1.0;
+      vec3 weights = low ? vec3(1.0-ff.x-ff.y,ff) : vec3(ff.x+ff.y-1.0,1.0-ff);
       weights = weights * weights * weights; weights /= dot(weights,vec3(1.0));
-      taps = 3;
+      int r0, r1, r2;
+      vec2 a0 = worldPlace(q,surfaceHash(low ? i : i+ivec2(1,1)),id,r0);
+      vec2 a1 = worldPlace(q,surfaceHash(low ? i+ivec2(1,0) : i+ivec2(0,1)),id,r1);
+      vec2 a2 = worldPlace(q,surfaceHash(low ? i+ivec2(0,1) : i+ivec2(1,0)),id,r2);
+      detail = worldRead(uWorldBase,lod,cell,a0).rgb * weights.x + worldRead(uWorldBase,lod,cell,a1).rgb * weights.y + worldRead(uWorldBase,lod,cell,a2).rgb * weights.z;
+      bool third = weights.z > max(weights.x,weights.y), second = !third && weights.y > weights.x;
+      at = third ? a2 : second ? a1 : a0;
+      turned = third ? r2 : second ? r1 : r0;
     }
-    int heaviest = weights.z > max(weights.x,weights.y) ? 2 : weights.y > weights.x ? 1 : 0;
-    vec2 cell = vec2(id%4,id/4)/4.0, lod = worldLod(uWorldBase,spread), at = vec2(0.0);
-    vec3 detail = vec3(0.0); int turned = 0;
-    for (int k=0; k<3; k++) {
-      if (k == taps) break;
-      float h = w.w > 0.5 ? 0.0 : surfaceHash(cells[k]); int r = int(floor(h*4.0));
-      vec2 uv = (vec2(id%4,id/4) + ${fl(WORLD_PAD)} + fract(turn(q,r)+h*vec2(13.0,29.0))*${fl(WORLD_CORE)})/4.0;
-      detail += worldRead(uWorldBase,lod,cell,uv).rgb * weights[k];
-      if (k == heaviest) { at = uv; turned = r; }
-    }
+#endif
     base = mix(detail,base,fade);
+#ifndef WORLD_LIGHT
     // Normal and packed maps from the heaviest cell alone.
     finishMap = mix(worldRead(uWorldOrm,worldLod(uWorldOrm,spread),cell,at).rg,finishMap,fade);
     if (relief > 0.0) {
       vec4 nn = worldRead(uWorldNormal,worldLod(uWorldNormal,spread),cell,at);
       bump = turn((nn.WORLD_NORMAL * 255.0 - 128.0) / 127.0,(4-turned)%4)*(1.0-fade);
     }
+#endif
   }
   float macro = surfaceNoise(vec2(p.x/37.0+p.y/53.0,p.z/37.0));
+#ifdef WORLD_LIGHT
+  float stain = 0.0;
+#else
   float stain = surfaceNoise(vec2(p.x/8.0+p.z/19.0,p.y/17.0+p.z/11.0));
+#endif
   float weather = w.x*uSurfaceCity[1].x;
-  float wet = clamp(w.y+uSurfaceCity[1].y,0.0,1.0);
   float growth = clamp((w.z+uSurfaceCity[1].z)*clamp((macro-0.42)*3.0,0.0,1.0)*(n.y>0.2?1.0:0.4),0.0,1.0);
   albedo = base*mix(vec3(1.0),clamp(albedo/0.3,0.18,2.2),tint.w)*tint.rgb*uSurfaceCity[0].rgb;
   albedo *= (1.0+(macro-0.5)*0.5-stain*weather*0.5)*(1.0-wet*0.28)*mix(vec3(1.0),vec3(0.55,0.75,0.35),growth);
