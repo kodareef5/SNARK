@@ -8,7 +8,7 @@ import { createHost } from "../../server/host.ts";
 import { WorldStore } from "../../server/persist/store.ts";
 import { EntityRecord } from "../../server/records.ts";
 import { compileContent } from "../../shared/content/registry.ts";
-import { BitReader, BitWriter } from "../../shared/net/codec.ts";
+import { BitReader } from "../../shared/net/codec.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { Vitals } from "../../shared/sim/vitals.ts";
 import { HOLDERS, OP_BURN, OP_MINT, OP_TRANSFER, START } from "../fixtures/crash-child.ts";
@@ -111,7 +111,7 @@ test("an item whose content is gone stops the load, and a ledger that does not b
   const full = coreRegistry();
   // With its engram gone too, nothing else refers to the waterskin.
   const meat = full.index.get("core:waterskin")!;
-  const gone = new Set(["core:waterskin", "core:make-waterskin", "core:engram-waterskin"]); // The middle one is the rename of its old recipe.
+  const gone = new Set(["core:waterskin", "core:engram-waterskin"]);
   const stone = full.index.get("core:stone")!;
   const host = createHost(full, { dbPath: db });
   const rec = host.records.create(full.index.get("core:grazer")!, "mule");
@@ -151,7 +151,7 @@ test("an operator goes on without removed content by one start: what was made of
   host.shutdown();
 
   // A species, an item with its engram, and a piece of building.
-  const gone = new Set(["core:grazer", "core:waterskin", "core:make-waterskin", "core:engram-waterskin", "core:wall"]);
+  const gone = new Set(["core:grazer", "core:waterskin", "core:engram-waterskin", "core:wall"]);
   const without = compileContent(CORE_CONTENT.filter((d) => !gone.has(d.id))).registry!;
   expect(() => createHost(without, { dbPath: db })).toThrow(/core:grazer[^]*--allow-missing-content/);
   // The server reads the flag its refusal names.
@@ -181,48 +181,6 @@ test("an operator goes on without removed content by one start: what was made of
   expect(back.items.audit()).toEqual([]);
   expect(back.world.structs.count).toBe(forced.world.structs.count);
   back.shutdown();
-});
-
-test("a round 1 inventory is converted whole: nothing is dropped for want of slots", () => {
-  const db = join(dir, "legacy.db");
-  const reg = coreRegistry();
-  const stone = reg.index.get("core:stone")!;
-  const host = createHost(reg, { dbPath: db });
-  const pid = host.records.create(reg.index.get("core:grazer")!, "mule").pid;
-  host.shutdown();
-
-  // Rewrites the record in the round 1 layout, a list of items and counts. 5,000 stone is fifty stacks,
-  // more than a fresh inventory's forty slots.
-  const legacy = (count: number): void => {
-    const store = new WorldStore(db, reg);
-    const c = new BitWriter(64);
-    c.varint(1);
-    c.varint(store.toSaved[stone]!);
-    c.varint(count);
-    const w = new BitWriter(256);
-    w.u8(1);
-    w.string("mule");
-    w.varint(1);
-    w.varint(1); // component 1 is round 1's inventory
-    w.blob(c.bytes());
-    store.db.query("UPDATE entities SET data = ? WHERE pid = ?").run(w.bytes().slice(), pid);
-    store.db.query("DELETE FROM meta WHERE key = 'ledger'").run();
-    store.close();
-  };
-  legacy(5000);
-  const back = createHost(reg, { dbPath: db });
-  const inv = back.records.byPid.get(pid)!.inv!;
-  expect(inv.total(stone)).toBe(5000);
-  expect(inv.cap).toBe(50);
-  expect(back.items.audit()).toEqual([]); // the ledger opens at what the save holds
-  back.shutdown();
-  // The shutdown saved it in the new form.
-  const again = createHost(reg, { dbPath: db });
-  expect(again.records.byPid.get(pid)!.inv!.total(stone)).toBe(5000);
-  again.shutdown();
-  // More than an inventory can hold is refused, never trimmed.
-  legacy(30000);
-  expect(() => createHost(reg, { dbPath: db })).toThrow(/needs 300 slots/);
 });
 
 test("a record larger than the writer is saved whole, and one larger than a save can hold is refused, never cut short", () => {
@@ -260,7 +218,7 @@ test("a record larger than the writer is saved whole, and one larger than a save
   store.close();
 });
 
-test("a record carries the revision of its parts: a build from before the saddle refuses it, and this one refuses a later", () => {
+test("a record carries the revision of its parts, and a build refuses any other", () => {
   const db = join(dir, "revision.db");
   const reg = coreRegistry();
   const saddle = reg.index.get("core:saddle_raptor")!;
@@ -280,18 +238,16 @@ test("a record carries the revision of its parts: a build from before the saddle
     store.close();
     return was;
   };
-  // Every build before this one reads revision 1 alone. One from before the saddle wrote a tame's part back without it.
   const ours = revision();
-  expect(ours).toBeGreaterThan(1);
-  revision(ours + 1);
-  expect(() => createHost(reg, { dbPath: db })).toThrow(new RegExp(`${rec.pid} was saved by a newer build[^]*start the save with that build or a newer one`));
-  // What older builds wrote still loads, and the refusal changed nothing.
-  for (const old of [1, ours]) {
-    revision(old);
-    const back = createHost(reg, { dbPath: db });
-    expect(back.records.byPid.get(rec.pid)!.saddle).toBe(saddle);
-    back.persistence!.store.close();
+  for (const other of [ours - 1, ours + 1]) {
+    revision(other);
+    expect(() => createHost(reg, { dbPath: db })).toThrow(`entity ${rec.pid} was saved in record format ${other}, and this build reads ${ours}`);
   }
+  // The refusal changed nothing.
+  revision(ours);
+  const back = createHost(reg, { dbPath: db });
+  expect(back.records.byPid.get(rec.pid)!.saddle).toBe(saddle);
+  back.persistence!.store.close();
 });
 
 test("commit callbacks run only after the transaction is durable", () => {

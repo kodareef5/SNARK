@@ -9,7 +9,7 @@ import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.t
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { nearKeeps } from "../../client/core/render/hand.ts";
 import { MOST_LOD, detailKeeps, rotorOf, shapeOf } from "../../client/core/render/detailtext.ts";
-import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
+import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { LAYER_LEVELS, NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyFrom, srgbToLinear, wounded } from "../../client/core/render/surface.ts";
@@ -820,13 +820,13 @@ export class Rasterizer {
     return lod;
   }
 
-  /** A level from the bytes a packet uploads: its indices, padded to a multiple of 4, and then its vertices. */
+  /** A level from the bytes a packet uploads: its indices, padded to a multiple of 4, and then its vertices; or of quads, its vertices alone. */
   private decodeUpload(u: AssetUpload): DecodedLod {
     const view = new DataView(u.data.buffer, u.data.byteOffset, u.data.byteLength);
-    const indices = new Uint32Array(u.indexCount);
-    for (let i = 0; i < indices.length; i++) indices[i] = u.indexBytes === 4 ? view.getUint32(i * 4, true) : view.getUint16(i * 2, true);
-    const verts = u.data.subarray((u.indexCount * u.indexBytes + 3) & ~3);
-    return { ...vertices(verts, verts.length / VERTEX_BYTES, (this.manifest ?? this.pack.header).meshes[u.mesh]!), indices };
+    const indices = u.quads ? Uint32Array.from(quadIndices(u.indexCount, 4).subarray(0, u.indexCount)) : new Uint32Array(u.indexCount);
+    for (let i = 0; !u.quads && i < indices.length; i++) indices[i] = u.indexBytes === 4 ? view.getUint32(i * 4, true) : view.getUint16(i * 2, true);
+    const verts = u.data.subarray(u.quads ? 0 : (u.indexCount * u.indexBytes + 3) & ~3);
+    return { ...vertices(verts, verts.length / VERTEX_BYTES, u.bounds ?? (this.manifest ?? this.pack.header).meshes[u.mesh]!), indices };
   }
 
   /**
@@ -837,7 +837,7 @@ export class Rasterizer {
     if (u.format !== "rgba") throw new Error(`texture ${u.slot} comes as ${u.format}, and only the rgba variant is read here`);
     if (u.size === 1 && u.row === 0) {
       const pictures: Uint8Array[] = [];
-      for (let size = 1; size <= u.top; size <<= 1) pictures.push(new Uint8Array(pictureBytes("rgba", u.role, size)));
+      for (let size = 1; size <= u.top; size <<= 1) pictures.push(new Uint8Array(pictureBytes("rgba", u.role, size, 1)));
       this.making.set(u.slot, { role: u.role, top: u.top, pictures, left: pictures.reduce((sum, p) => sum + p.length, 0) });
     }
     const t = this.making.get(u.slot);

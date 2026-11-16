@@ -11,8 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 44 classes: 31 built, 5 partly built, and 8 stubs that
-wait for a feature. The core pack holds 802 definitions, and 91 renames of ids
-that are no longer defined.
+wait for a feature. The core pack holds 802 definitions.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
 several values: `core:raptor#clip/walk`. Levels of detail are inside the asset
@@ -334,7 +333,7 @@ Packs may add to: `buffs`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `rename` | a redirect for a class that was renamed | built | `to` |  | 91 |
+| `rename` | a redirect for a class that was renamed | built | `to` |  | 0 |
 
 - **`rename`** on shelf `renames`. An id that is no longer defined, and what it is called now. Saves and settings that use it still read.
 
@@ -423,5 +422,3 @@ built.
 **`spawns`** (4): spawns_beach, spawns_jungle, spawns_proving_herd, spawns_proving_hunters.
 
 **`map`** (5): miami, tampa, san-francisco, los-angeles, las-vegas.
-
-**`rename`** (91): 87 of `make-<item>`, the recipe id an item had before recipes were folded into items; and engram-cloth, engram-hide, engram-chitin, engram-flak.

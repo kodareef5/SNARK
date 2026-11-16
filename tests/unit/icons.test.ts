@@ -114,7 +114,7 @@ test("a vehicle assembly is pictured from its authored deployment model and live
   expect(subjects(["core:bag"])).toEqual([]);
 });
 
-test("a sheet of pictures is a file of the manifest, which still reads version 3 and refuses a picture outside its sheet", () => {
+test("a sheet of pictures is a file of the manifest, which refuses a picture outside its sheet", () => {
   expect(MANIFEST_VERSION).toBe(4);
   expect([sheet.role, [...sheet.bytes.subarray(0, 8)]]).toEqual(["icon", [137, 80, 78, 71, 13, 10, 26, 10]]);
   // One picture, alone on its sheet: one cell across and down.
@@ -134,12 +134,7 @@ test("a sheet of pictures is a file of the manifest, which still reads version 3
   expect(bad((c) => (c.icons!.cells["core:pick/icon"] = 1))).toThrow("lies outside its sheet");
   expect(bad((c) => (c.icons!.cells["core:pick/icon"] = ICONS_A_SHEET))).toThrow("lies outside its sheet");
   expect(bad((c) => (c.icons!.sheets[0]!.file = 0))).toThrow("does not hold one");
-  const old = bad((c) => {
-    c.version = 3;
-    c.files.pop();
-    delete c.icons;
-  })();
-  expect([old.version, new AssetTable(old, pack).has("icon", "core:pick/icon")]).toEqual([3, false]);
+  expect(bad((c) => (c.version = 3))).toThrow("manifest: version 3 is not supported");
 });
 
 test("the bag, the hotbar and the crafting list show an item's picture where it has one, and its swatch where not", () => {

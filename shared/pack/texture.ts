@@ -14,8 +14,11 @@
 //
 //   variant   base, layer     normal                        mro, mask, mask2
 //   bc        BC7, sRGB       BC5 (x in red, y in green)    BC7
-//   astc      ASTC 4x4, sRGB  ASTC 4x4 (x in rgb, y alpha)  ASTC 4x4
+//   astc      ASTC, sRGB      ASTC (x in rgb, y alpha)      ASTC
 //   rgba      RGBA8, sRGB     RG8                           RGBA8
+//
+// A block of BC holds 4 by 4 pixels in 16 bytes. A block of ASTC holds a square of 4, 5, 6 or 8 pixels a side in 16
+// bytes, chosen texture by texture; the manifest gives the side (`block`) where it is not 4.
 //
 // The two masks say how much of each colour region a pixel has: regions 0, 1 and 2 in the red, green and blue of
 // `mask`, and regions 3, 4 and 5 in those of `mask2`. The six never sum to more than 1, and what is left of 1 is not
@@ -63,29 +66,37 @@ export function topIn(format: TextureFormat, top: number): number {
   return format === "rgba" && top > RGBA_TOP ? RGBA_TOP : top;
 }
 
-/** Bytes of one picture `size` pixels across. Block formats hold 4 x 4 pixels in 16 bytes, and nothing is less than a block. */
-export function pictureBytes(format: TextureFormat, role: TextureRole, size: number): number {
+/** The sides an ASTC block may have. */
+export const ASTC_BLOCKS: readonly number[] = [4, 5, 6, 8];
+
+/** The side of a texture's blocks in a variant, from its entry in the manifest: 1, a pixel, in rgba. */
+export function blockOf(format: TextureFormat, v: { block?: number }): number {
+  return format === "rgba" ? 1 : (v.block ?? 4);
+}
+
+/** Bytes of one picture `size` pixels across, in blocks `block` pixels a side. A block format holds a block in 16 bytes, and nothing is less than a block. */
+export function pictureBytes(format: TextureFormat, role: TextureRole, size: number, block: number): number {
   if (format === "rgba") return size * size * (role === "normal" ? 2 : 4);
-  const blocks = (size + 3) >> 2;
+  const blocks = Math.ceil(size / block);
   return blocks * blocks * 16;
 }
 
 /** Bytes of a step. Step 0 holds the pictures 1, 2, 4 .. 64 across, in that order. */
-export function stepBytes(format: TextureFormat, role: TextureRole, step: number): number {
-  if (step > 0) return pictureBytes(format, role, stepSize(step));
+export function stepBytes(format: TextureFormat, role: TextureRole, step: number, block: number): number {
+  if (step > 0) return pictureBytes(format, role, stepSize(step), block);
   let bytes = 0;
-  for (let size = 1; size <= STEP0_SIZE; size <<= 1) bytes += pictureBytes(format, role, size);
+  for (let size = 1; size <= STEP0_SIZE; size <<= 1) bytes += pictureBytes(format, role, size, block);
   return bytes;
 }
 
 /** Where a step starts, from the start of its texture. */
-export function stepOffset(format: TextureFormat, role: TextureRole, step: number): number {
+export function stepOffset(format: TextureFormat, role: TextureRole, step: number, block: number): number {
   let at = 0;
-  for (let s = 0; s < step; s++) at += stepBytes(format, role, s);
+  for (let s = 0; s < step; s++) at += stepBytes(format, role, s, block);
   return at;
 }
 
 /** Bytes of a whole texture whose top side is `top`. */
-export function textureBytes(format: TextureFormat, role: TextureRole, top: number): number {
-  return stepOffset(format, role, stepOf(top) + 1);
+export function textureBytes(format: TextureFormat, role: TextureRole, top: number, block: number): number {
+  return stepOffset(format, role, stepOf(top) + 1, block);
 }

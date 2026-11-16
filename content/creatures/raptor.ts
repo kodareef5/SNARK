@@ -47,6 +47,6 @@ export const RAPTOR: readonly Def[] = [
   { type: "item", class: "egg", id: "core:raptor_egg_fertile", label: "fertilised raptor egg", color: 5, stack: 1, weight: 7, eat: { food: 35, health: 35 }, spoilHours: (8 * 3600) / 140 },
   // One seat, ARK's: the rider's, on the rig's `seat` socket, got onto and off from its left.
   { type: "item", class: "saddle", id: "core:saddle_raptor", stack: 1, weight: 10, label: "raptor saddle", color: 3, saddle: { fits: "core:raptor", armor: 25, seats: [{ id: "rider", driver: true, socket: "seat", anchor: [0, 1.182, 0.326], entry: [1.2, 0, 0.326] }] } },
-  crafting("core:saddle_raptor", { needs: [{ item: "core:hide", count: 110 }, { item: "core:fiber", count: 65 }, { item: "core:wood", count: 20 }], seconds: 10, xp: 8 }),
+  ...crafting("core:saddle_raptor", { needs: [{ item: "core:hide", count: 110 }, { item: "core:fiber", count: 65 }, { item: "core:wood", count: 20 }], seconds: 10, xp: 8 }),
   { type: "engram", id: "core:engram-saddle_raptor", label: "Raptor saddle", level: 18, cost: 9, item: "core:saddle_raptor" },
 ];

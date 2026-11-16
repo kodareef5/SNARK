@@ -1,4 +1,3 @@
-import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -68,7 +67,7 @@ test("the server's day: its three scales reach the client, both tell the same ho
   expect(CLOCK_HOUR_TICKS).not.toBe(GAME_HOUR_TICKS);
 });
 
-test("a world stopped at an hour starts again at that hour, whatever pace its clock then keeps; and one saved before the clock had a pace is read by the hour it had", () => {
+test("a world stopped at an hour starts again at that hour, whatever pace its clock then keeps", () => {
   const dir = mkdtempSync(join(tmpdir(), "snark-clock-"));
   const dbPath = join(dir, "world.db");
   let h = new Harness({}, 1, 60, { dev: true, dbPath });
@@ -97,26 +96,6 @@ test("a world stopped at an hour starts again at that hour, whatever pace its cl
   h.host.shutdown();
   h = new Harness({}, 1, 60, { dev: true, dbPath });
   expect(Math.abs(hour(h) - again)).toBeLessThan(1 / CLOCK_HOUR_TICKS);
-  const last = h.world.tick;
-  h.host.shutdown();
-
-  // Rewrites the save as an older build left it: no clock scales in settings_at, and a day offset that means 15:30
-  // on a clock of 140 seconds to the hour.
-  const db = new Database(dbPath);
-  const was = JSON.parse((db.query("SELECT value FROM meta WHERE key = 'settings_at'").get() as { value: string }).value) as { timers: Record<string, number> };
-  for (const name of ["DayCycleSpeedScale", "DayTimeSpeedScale", "NightTimeSpeedScale"]) delete was.timers[name];
-  const day = 24 * GAME_HOUR_TICKS;
-  db.query("UPDATE meta SET value = ? WHERE key = 'settings_at'").run(JSON.stringify(was));
-  db.query("UPDATE meta SET value = ? WHERE key = 'day_offset'").run((15.5 * GAME_HOUR_TICKS - (last % day) + day) % day);
-  db.close();
-  h = new Harness({}, 1, 60, { dev: true, dbPath });
-  expect([h.world.tick, formatHour(hour(h))]).toEqual([last, "15:30"]);
-  // The next save writes the current layout, and reads back the same hour.
-  h.run(1000);
-  const then = hour(h);
-  h.host.shutdown();
-  h = new Harness({}, 1, 60, { dev: true, dbPath, config: rulesOf(FAST) });
-  expect(Math.abs(hour(h) - then)).toBeLessThan(20 / CLOCK_HOUR_TICKS);
   h.host.shutdown();
   rmSync(dir, { recursive: true, force: true });
 });

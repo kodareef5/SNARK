@@ -7,7 +7,7 @@
   "spacing_m": 2,
   "tiger": {
     "year": 2025,
-    "county": "12057",
+    "counties": ["12057"],
     "layers": ["roads", "areawater"],
     "source": "Census TIGER/Line 2025, Hillsborough County, FL",
     "licence": "https://creativecommons.org/publicdomain/zero/1.0/ (catalog.data.gov); \"These products are free to use in a product or publication, however acknowledgement must be given to the U.S. Census Bureau as the source.\""

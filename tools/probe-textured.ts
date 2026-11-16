@@ -6,8 +6,8 @@
 //   draws every picture of each a texel to a pixel and reads it back. What comes back must be what our decoders
 //   (tools/pack/bc.ts, tools/pack/astc.ts) make of the same blocks: BC7 and ASTC exactly, BC5 within 2 of 255, since
 //   Apple silicon blends it in 64ths where the specification has sevenths. The cards are random blocks of each BC7
-//   mode and of BC5, ASTC blocks built bit by bit over every grid, weight range, endpoint mode and partition count,
-//   and what our encoders make of the test card. A base colour is read through an sRGB target, so a texture made in
+//   mode and of BC5, ASTC blocks of each side the build uses built bit by bit over every grid, weight range, endpoint
+//   mode and partition count, and what our encoders make of the test card. A base colour is read through an sRGB target, so a texture made in
 //   the wrong colour space does not pass either.
 // - Draws a thatch house on the proving ground, and nodes about it, from the frames core builds for it here, at the
 //   medium and the high tier: its levels, surfaces and textures streamed in, then the context lost and restored and
@@ -43,6 +43,7 @@ import { FakeNet } from "../tests/fixtures/assetnet.ts";
 import { PINNED, builtBlocks } from "../tests/fixtures/astc.ts";
 import { card, randomBc5, randomBc7 } from "../tests/fixtures/bc.ts";
 import { describeAstcBlock, decodeAstc, encodeAstc } from "./pack/astc.ts";
+import { ASTC_BLOCKS } from "../shared/pack/texture.ts";
 import { bc7Mode, decodeBc5, decodeBc7, encodeBc5, encodeBc7 } from "./pack/bc.ts";
 import { encodePng } from "./snap/png.ts";
 import { PICK_STRUCTURE, Rasterizer } from "./snap/raster.ts";
@@ -95,10 +96,12 @@ interface Card {
   /** The most a channel may be off by, and what each block is, for the report. */
   slack: number;
   kinds?: string[];
+  /** Pixels a block holds on a side: 1 in rgba. */
+  block: number;
 }
 
 const sizes = (top: number): number[] => Array.from({ length: Math.log2(top) + 1 }, (_, k) => 1 << k);
-const blocksOf = (size: number): number => ((size + 3) >> 2) ** 2;
+const blocksOf = (size: number, side = 4): number => Math.ceil(size / side) ** 2;
 
 /** The test card `size` across: tests/fixtures/bc.ts's card where it has room for its bands, else a corner of the smallest. */
 function cardAt(size: number, alpha: boolean): Uint8Array {
@@ -116,38 +119,41 @@ function bcCards(): Card[] {
     // The 64-pixel picture holds the blocks tests/unit/bc.test.ts pins the decoding of.
     const pictures = sizes(256).map((size) => randomBc7(mode, blocksOf(size), size === 64 ? 100 + mode : 200 + mode * 16 + Math.log2(size)));
     const kinds = pictures.flatMap((p) => Array.from({ length: p.length / 16 }, (_, b) => `mode ${bc7Mode(p, b * 16)}`));
-    cards.push({ name: `BC7 mode ${mode}, random bits`, role: "mro", pictures, want: bc7(pictures), slack: 0, kinds });
-    cards.push({ name: `BC7 mode ${mode}, random bits, sRGB`, role: "base", pictures, want: bc7(pictures), slack: 0, kinds });
+    cards.push({ name: `BC7 mode ${mode}, random bits`, role: "mro", pictures, want: bc7(pictures), slack: 0, kinds, block: 4 });
+    cards.push({ name: `BC7 mode ${mode}, random bits, sRGB`, role: "base", pictures, want: bc7(pictures), slack: 0, kinds, block: 4 });
   }
   const bc5 = sizes(256).map((size) => randomBc5(blocksOf(size), 400 + size));
-  cards.push({ name: "BC5, random bits", role: "normal", pictures: bc5, want: bc5.map((p, k) => decodeBc5(p, 1 << k, 1 << k)), slack: 2 });
+  cards.push({ name: "BC5, random bits", role: "normal", pictures: bc5, want: bc5.map((p, k) => decodeBc5(p, 1 << k, 1 << k)), slack: 2, block: 4 });
   for (const [name, role, alpha] of [["BC7 encoder, the card", "mro", false], ["BC7 encoder, the card with alpha, sRGB", "base", true]] as const) {
     const pictures = sizes(256).map((size) => encodeBc7(cardAt(size, alpha), size, size, 4));
-    cards.push({ name, role, pictures, want: bc7(pictures), slack: 0 });
+    cards.push({ name, role, pictures, want: bc7(pictures), slack: 0, block: 4 });
   }
   const normals = sizes(256).map((size) => encodeBc5(cardAt(size, false), size, size));
-  cards.push({ name: "BC5 encoder, the card", role: "normal", pictures: normals, want: normals.map((p, k) => decodeBc5(p, 1 << k, 1 << k)), slack: 2 });
+  cards.push({ name: "BC5 encoder, the card", role: "normal", pictures: normals, want: normals.map((p, k) => decodeBc5(p, 1 << k, 1 << k)), slack: 2, block: 4 });
   return cards;
 }
 
 function astcCards(): Card[] {
   const cards: Card[] = [];
-  // Every valid block built, the set the unit test pins among them, laid over a texture's pictures and repeated to fill it.
-  const built = [...builtBlocks(0x1d2c3b4a, 12), ...builtBlocks(PINNED.seed, PINNED.each)].filter((s) => s.set === "built");
-  let top = 64;
-  while (sizes(top).reduce((sum, size) => sum + blocksOf(size), 0) < built.length) top *= 2;
-  let n = 0;
-  const pictures = sizes(top).map((size) => {
-    const out = new Uint8Array(blocksOf(size) * 16);
-    for (let at = 0; at < out.length; at += 16) out.set(built[n++ % built.length]!.block, at);
-    return out;
-  });
-  const kinds = pictures.flatMap((p) => Array.from({ length: p.length / 16 }, (_, b) => describeAstcBlock(p, b * 16)));
-  cards.push({ name: `ASTC, ${built.length} blocks built bit by bit`, role: "mro", pictures, want: pictures.map((p, k) => decodeAstc(p, 1 << k, 1 << k, "linear")), slack: 0, kinds });
-  cards.push({ name: `ASTC, ${built.length} blocks built bit by bit, sRGB`, role: "base", pictures, want: pictures.map((p, k) => decodeAstc(p, 1 << k, 1 << k, "srgb")), slack: 0, kinds });
-  for (const [name, role, alpha, kind] of [["ASTC encoder, the card", "mro", false, "linear"], ["ASTC encoder, the card with alpha, sRGB", "base", true, "srgb"], ["ASTC encoder, the card as a normal", "normal", false, "normal"]] as const) {
-    const pictures = sizes(256).map((size) => encodeAstc(cardAt(size, alpha), size, size, kind));
-    cards.push({ name, role, pictures, want: pictures.map((p, k) => decodeAstc(p, 1 << k, 1 << k, kind)), slack: 0, kinds: pictures.flatMap((p) => Array.from({ length: p.length / 16 }, (_, b) => describeAstcBlock(p, b * 16))) });
+  for (const side of ASTC_BLOCKS) {
+    // Every valid block built, the set the unit test pins among them, laid over a texture's pictures and repeated to fill it.
+    const built = [...builtBlocks(0x1d2c3b4a, side === 4 ? 12 : 4, side), ...builtBlocks(PINNED.seed, PINNED.each, side)].filter((s) => s.set === "built");
+    let top = 64;
+    while (sizes(top).reduce((sum, size) => sum + blocksOf(size, side), 0) < built.length) top *= 2;
+    let n = 0;
+    const pictures = sizes(top).map((size) => {
+      const out = new Uint8Array(blocksOf(size, side) * 16);
+      for (let at = 0; at < out.length; at += 16) out.set(built[n++ % built.length]!.block, at);
+      return out;
+    });
+    const kindsOf = (p: Uint8Array): string[] => Array.from({ length: p.length / 16 }, (_, b) => describeAstcBlock(p, b * 16, side));
+    const kinds = pictures.flatMap(kindsOf);
+    cards.push({ name: `ASTC ${side}x${side}, ${built.length} blocks built bit by bit`, role: "mro", pictures, want: pictures.map((p, k) => decodeAstc(p, 1 << k, 1 << k, "linear", side)), slack: 0, kinds, block: side });
+    cards.push({ name: `ASTC ${side}x${side}, ${built.length} blocks built bit by bit, sRGB`, role: "base", pictures, want: pictures.map((p, k) => decodeAstc(p, 1 << k, 1 << k, "srgb", side)), slack: 0, kinds, block: side });
+    for (const [name, role, alpha, kind] of [["the card", "mro", false, "linear"], ["the card with alpha, sRGB", "base", true, "srgb"], ["the card as a normal", "normal", false, "normal"]] as const) {
+      const pictures = sizes(256).map((size) => encodeAstc(cardAt(size, alpha), size, size, kind, side));
+      cards.push({ name: `ASTC ${side}x${side} encoder, ${name}`, role, pictures, want: pictures.map((p, k) => decodeAstc(p, 1 << k, 1 << k, kind, side)), slack: 0, kinds: pictures.flatMap(kindsOf), block: side });
+    }
   }
   return cards;
 }
@@ -158,11 +164,11 @@ function rgbaCards(): Card[] {
     const pictures = sizes(256).map((size) => Uint8Array.from({ length: size * size * (role === "normal" ? 2 : 4) }, () => rng.int(256)));
     // Red and green of a normal map come back with no blue and full alpha.
     const want = pictures.map((p) => (role === "normal" ? Uint8Array.from({ length: p.length * 2 }, (_, i) => ((i & 3) < 2 ? p[(i >> 2) * 2 + (i & 3)]! : (i & 3) === 3 ? 255 : 0)) : p));
-    return { name: `random bytes, ${role}`, role, pictures, want, slack: 0 };
+    return { name: `random bytes, ${role}`, role, pictures, want, slack: 0, block: 1 };
   });
 }
 
-/** What the page is sent of the cards: for each, its role and top, and its rows in bands, each band as where its bytes are and whether it ends the texture. */
+/** What the page is sent of the cards: for each, its role, top and block, and its rows of pixels in bands, each band as where its bytes are and whether it ends the texture. */
 function cardJob(format: TextureFormat, cards: Card[]): { json: unknown; bytes: Uint8Array } {
   const blob = new Bytes();
   const json = cards.map((c) => {
@@ -170,15 +176,15 @@ function cardJob(format: TextureFormat, cards: Card[]): { json: unknown; bytes: 
     const bands: number[][] = [];
     c.pictures.forEach((picture, k) => {
       const size = 1 << k;
-      const rows = format === "rgba" ? size : (size + 3) >> 2;
+      const rows = Math.ceil(size / c.block);
       const rowBytes = picture.length / rows;
       for (let row = 0; row < rows; row += BAND) {
         const n = Math.min(BAND, rows - row);
         const at = blob.add(picture.subarray(row * rowBytes, (row + n) * rowBytes));
-        bands.push([size, row, n, at, n * rowBytes, size === top && row + n === rows ? 1 : 0]);
+        bands.push([size, row * c.block, Math.min(n * c.block, size - row * c.block), at, n * rowBytes, size === top && row + n === rows ? 1 : 0]);
       }
     });
-    return { role: c.role, top, bands };
+    return { role: c.role, top, block: c.block, bands };
   });
   return { json, bytes: blob.join() };
 }
@@ -195,11 +201,12 @@ function judgeCards(cards: Card[], got: Uint8Array): { ok: boolean; lines: strin
       const size = 1 << k;
       const shown = got.subarray(at, at + want.length);
       at += want.length;
-      for (let b = 0; b < blocksOf(size); b++, blocks++) {
-        const across = (size + 3) >> 2;
+      const side = Math.max(4, c.block);
+      for (let b = 0; b < blocksOf(size, side); b++, blocks++) {
+        const across = Math.ceil(size / side);
         let most = 0;
-        for (let y = (b / across | 0) * 4; y < Math.min(size, (b / across | 0) * 4 + 4); y++) {
-          for (let x = (b % across) * 4; x < Math.min(size, (b % across) * 4 + 4); x++) {
+        for (let y = (b / across | 0) * side; y < Math.min(size, (b / across | 0) * side + side); y++) {
+          for (let x = (b % across) * side; x < Math.min(size, (b % across) * side + side); x++) {
             for (let ch = 0; ch < 4; ch++) most = Math.max(most, Math.abs((shown[(y * size + x) * 4 + ch] ?? -999) - want[(y * size + x) * 4 + ch]!));
           }
         }
@@ -265,13 +272,14 @@ function packFrame(p: FramePacket, out: Bytes): Frame {
 /** Rows of a compressed texture as the rgba variant would send them, decoded by our decoders, for the rasterizer, which reads that variant alone. */
 function decoded(u: TextureUpload): TextureUpload {
   if (u.format === "rgba") return u;
-  const height = Math.min(u.rows * 4, u.size - u.row * 4);
-  const kind = u.role === "base" ? "srgb" : u.role === "normal" ? "normal" : "linear";
-  const rgba = u.format === "astc" ? decodeAstc(u.data, u.size, height, kind) : u.role === "normal" ? decodeBc5(u.data, u.size, height) : decodeBc7(u.data, u.size, height);
+  const height = u.rows;
+  const kind = u.role === "base" || u.role === "layer" ? "srgb" : u.role === "normal" ? "normal" : "linear";
+  const rgba = u.format === "astc" ? decodeAstc(u.data, u.size, height, kind, u.block!) : u.role === "normal" ? decodeBc5(u.data, u.size, height) : decodeBc7(u.data, u.size, height);
   // A normal map in the rgba variant is x and y alone: red and green, where astc keeps y in alpha.
   const y = u.format === "astc" ? 3 : 1;
   const data = u.role === "normal" ? Uint8Array.from({ length: u.size * height * 2 }, (_, i) => rgba[(i >> 1) * 4 + (i & 1 ? y : 0)]!) : rgba;
-  return { ...u, format: "rgba", row: u.row * 4, rows: height, data };
+  const { block: _, ...rest } = u;
+  return { ...rest, format: "rgba", data };
 }
 
 /**
@@ -553,7 +561,7 @@ async function cards(format) {
   const p = new FramePacket();
   list.forEach((card, slot) => {
     p.beginFrame();
-    for (const [size, row, rows, at, n, last] of card.bands) p.texUploads.push({ slot, role: card.role, format, top: card.top, size, row, rows, data: blob.subarray(at, at + n), last: last === 1 });
+    for (const [size, row, rows, at, n, last] of card.bands) p.texUploads.push({ slot, role: card.role, format, block: card.block, top: card.top, size, row, rows, data: blob.subarray(at, at + n), last: last === 1 });
     r.draw(p);
   });
   // Each picture a texel to a pixel, a base colour through an sRGB target so that it reads back as the bytes it decoded to.

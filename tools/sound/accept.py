@@ -1,14 +1,13 @@
 """Turn picked candidates into an asset's accepted takes, sounds.json and recipes.json.
 
     tools/sound/.venv/bin/python tools/sound/accept.py <brief.json> <picks.json> [--replace]
-    tools/sound/.venv/bin/python tools/sound/accept.py <brief.json> --compact
 
 picks.json: {"call": [{"take": "stable-0007"}, {"take": "moss-0031", "event": 1},
                       {"take": "moss-0040", "start": 0.10, "end": 1.30}], ...}
 Without start/end a pick takes the bounds review.py measured for its event (default: the loudest).
 Each pick is stored as its cut (cut.py): takes/<slot>/<take>-<start ms>.wav. Picks are added to the
-takes already accepted; --replace starts the picked slots afresh. --compact cuts every accepted
-take still stored whole. Files under takes/ that no take names are removed.
+takes already accepted; --replace starts the picked slots afresh. Files under takes/ that no take names are
+removed.
 """
 
 import argparse
@@ -53,7 +52,6 @@ def main():
     ap.add_argument("brief")
     ap.add_argument("picks", nargs="?")
     ap.add_argument("--replace", action="store_true")
-    ap.add_argument("--compact", action="store_true")
     a = ap.parse_args()
     brief = generate.load_brief(a.brief)
     home = brief["_dir"]
@@ -67,17 +65,6 @@ def main():
     sounds, keep_recipes = {}, {}
     for slot, spec in brief["slots"].items():
         entries = [] if (a.replace and slot in picks) else list(old_sounds.get(slot, {}).get("takes", []))
-        if a.compact:
-            done = []
-            for t in entries:
-                r = recipes[t["file"]]
-                if "cut" in r:
-                    done.append(t)
-                    continue
-                rel, entry, rr = store(home, slot, home / t["file"], r, t["start"], t["end"])
-                keep_recipes[rel] = rr
-                done.append(entry)
-            entries = done
         for p in picks.get(slot, []):
             src = generate.work_dir(brief) / "takes" / slot / f"{p['take']}.wav"
             rec = json.loads(src.with_suffix(".json").read_text())

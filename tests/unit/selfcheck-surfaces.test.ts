@@ -91,7 +91,7 @@ test("self-check fetches independent RGBA maps, keeps GPU arrivals separate and 
   const pack = corePack(), manifest = describePack(pack, { name: "boot", bytes: corePackBytes().length });
   const material = manifest.materials!.find((m) => m.id === SURFACE_MATERIAL)!;
   const roles = ["base", "normal", "mro"] as const;
-  const encoded = writeTextureFile("rgba", roles.map((role) => ({ role, pictures: Array.from({ length: 7 }, (_, k) => new Uint8Array(4 ** k * (role === "normal" ? 2 : 4)).fill(128)) })));
+  const encoded = writeTextureFile("rgba", roles.map((role) => ({ role, block: 1, pictures: Array.from({ length: 7 }, (_, k) => new Uint8Array(4 ** k * (role === "normal" ? 2 : 4)).fill(128)) })));
   manifest.files.push({ name: "reference", bytes: encoded.bytes.length, role: "tex", format: "rgba" });
   roles.forEach((role, k) => { manifest.textures![material[role]] = { id: `reference/${role}`, role, top: 64, in: { rgba: { file: 1, ...encoded.placed[k]! } } }; });
   const port = new FakeNet([new Uint8Array(0), encoded.bytes], { keep: true });

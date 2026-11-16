@@ -562,7 +562,7 @@ export class FarCity {
       if (made.data.length > 0) {
         slot = CITY_SLOTS + this.next;
         this.next = (this.next + 1) % CITY_SLOT_SPAN;
-        p.assetUploads.push({ slot, mesh: this.mesh, level: 0, data: made.data, indexCount: made.first.at(-1)! + made.count.at(-1)!, indexBytes: made.indexBytes });
+        p.assetUploads.push({ slot, mesh: this.mesh, level: 0, data: made.data, indexCount: made.first.at(-1)! + made.count.at(-1)!, indexBytes: made.indexBytes, quads: true });
         budget.spend(made.data.length);
       }
       tile.held[a.level] = { level: a.level, bytes: made.data.length, first: made.first, count: made.count, slot, stale: a.version !== tile.version };
