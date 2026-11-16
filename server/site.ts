@@ -115,7 +115,7 @@ function linkLine(links: SiteLinks): string {
 export function startPage(worlds: readonly SiteWorld[], links: SiteLinks): string {
   const list = worlds.length === 0 ? `<ul id="worlds"><li class="none">No world is running.</li></ul>` : `<ul id="worlds">${worlds.map(worldLine).join("")}</ul>`;
   const refresh = `<script>setInterval(()=>fetch(location.href,{cache:"no-store"}).then(r=>r.ok?r.text():"").then(t=>{const n=t&&new DOMParser().parseFromString(t,"text/html").getElementById("worlds");if(n)document.getElementById("worlds").replaceWith(n)}).catch(()=>{}),5000)</script>`;
-  return page("SNARK", `<h1>SNARK</h1><p class="sub">Survival Unstable</p><h2>Choose a world</h2>${list}${linkLine(links)}`, refresh);
+  return page("SNARK", `<h1>SNARK</h1><p class="sub">Miami Devolved</p><h2>Choose a world</h2>${list}${linkLine(links)}`, refresh);
 }
 
 /** Where RepositoryUrl goes until the operator names the code's home. */

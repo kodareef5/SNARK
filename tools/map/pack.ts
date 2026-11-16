@@ -7,10 +7,13 @@ import { basename, dirname, join } from "node:path";
 import { constants, createBrotliCompress, gzipSync } from "node:zlib";
 import { groundBytes, mapCopy } from "../../shared/world/mapfile.ts";
 
-/** Brotli bytes before a client can draw: 3.4 s at 20 Mbit/s, the phone link the asset bench takes. Raising it is a decision. */
-export const GROUND_BUDGET = 8 << 20;
-/** Brotli bytes of the whole map, the statics the far city draws from among them: 6.7 s at 20 Mbit/s. */
-export const MAP_BUDGET = 16 << 20;
+/**
+ * Brotli bytes before a client can draw. There to catch a mistake, with room for a city with relief: Miami's ground is
+ * 6.2 MB (2.5 s at 20 Mbit/s, the phone link the asset bench takes), a hilly city's about 11.
+ */
+export const GROUND_BUDGET = 16 << 20;
+/** Brotli bytes of the whole map, the statics the far city draws from among them. */
+export const MAP_BUDGET = 32 << 20;
 
 export interface Packed {
   readonly br: Uint8Array;

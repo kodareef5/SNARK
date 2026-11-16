@@ -1,4 +1,4 @@
-# SNARK: Survival Unstable
+# SNARK: Miami Devolved
 
 A browser survival parody with persistent multiplayer worlds.
 
