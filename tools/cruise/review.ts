@@ -116,7 +116,8 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, files: GameFiles, w
   try {
     frame(0); run(1200); seedCruisePreview(h.host); run(300);
     if (shot.hour !== undefined) {
-      session.text("enablecheats"); run(100); session.text(`settime ${shot.hour}`); run(150);
+      const response = h.host.exec(`settime ${shot.hour}`); run(300);
+      if (!response.startsWith("time is ")) throw new Error(`${shot.name}: world clock command failed: ${response}`);
       if (Math.abs(hourOfDay(h.world.tick, h.world.dayOffset, h.world.clock) - shot.hour) > .1) throw new Error(`${shot.name}: authoritative world time command did not take effect`);
     }
     const me = h.client(session)!, ents = h.world.ents, move = reg.move[ents.kind[me.ent]!]!;
@@ -139,6 +140,7 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, files: GameFiles, w
     if (measuredUploadFrames) throw new Error(`${shot.name}: asset streaming resumed during settled CPU sampling`);
     const p = packet as FramePacket | null, render = raster as Rasterizer | null;
     if (!p || (images && !render) || !app.scene) throw new Error(`${shot.name}: native App produced no frame`);
+    if (shot.arrival && Math.hypot(ents.x[me.ent]! - shot.feet[0], ents.z[me.ent]! - shot.feet[2]) > .25) throw new Error(`${shot.name}: spawn search displaced the visitor from the authored arrival`);
     if (shot.mode === "walk") {
       if (!(ents.flags[me.ent]! & F_GROUNDED) || ents.mode[me.ent] !== MODE_WALK) throw new Error(`${shot.name}: visitor is not standing on the authored floor`);
       if (Math.abs(ents.y[me.ent]! - shot.feet[1]) > .15) throw new Error(`${shot.name}: requested floor and real support disagree`);

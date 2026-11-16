@@ -22,6 +22,7 @@ test("the cruise port launch is usable from its real dry berth and the independe
     expect(seedCruisePreview(h.host)).toBe(1); expect(seedCruisePreview(h.host)).toBe(0);
     const s = h.join("marina-visitor"); h.run(400);
     const c = h.client(s)!, ents = h.world.ents, berth = CRUISE_COURSE.utility;
+    expect(ents.x[c.ent]!).toBeCloseTo(CRUISE_COURSE.spawn.x, 2); expect(ents.z[c.ent]!).toBeCloseTo(CRUISE_COURSE.spawn.z, 2);
     const rec = [...h.host.records.byPid.values()].find(r => r.name === "Cruise port utility launch")!;
     const boat = h.host.records.entOf.get(rec.pid)!, gas = h.reg.index.get("core:gasoline")!;
     expect(h.world.hf.waterAt(berth.x, berth.z)).toBe(0);

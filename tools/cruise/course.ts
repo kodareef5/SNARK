@@ -13,11 +13,12 @@ export const CRUISE_COURSE = {
   id: "preview:cruise-port", water: 0,
   vessel: { x: 2048, y: 0, z: 2048, yaw: 0 },
   // A genuine hill above the terminal, facing the whole ship from 400 m broadside.
-  spawn: { x: 2448, z: 2024, yaw: 49152 },
+  spawn: { x: 2456, z: 2024, yaw: 49152 },
   scenic: { x: 2448, z: 2200, yaw: 45056 },
   quayX: 2188,
   koru: { x: 2118, y: 0, z: 1705, yaw: 0 },
   utility: { x: 2164, z: 1740, yaw: 0 },
+  terraces: [2448, 2368, 2288],
 } as const;
 
 export interface CruisePortPlacement {
@@ -41,15 +42,23 @@ export function cruisePort(placement: CruisePortPlacement): MapData {
   // The real arrival eye must see the waterline over the real quay, not merely fit it into the frustum.
   const nearestHullX = c.vessel.x + CRUISE_LAYOUT.dimensions.waterlineBeam / 2;
   const arrivalFloor = Math.max(deck + 16, (deck + 1.2) * (c.spawn.x - nearestHullX) / (c.quayX - nearestHullX));
+  const hill = (x: number, z: number) => quayY(z) + (arrivalFloor - deck) * Math.max(0, Math.min(1, (x - c.quayX - 12) / (c.spawn.x - c.quayX - 12)));
+  const terraces = c.terraces.map(x => ({ x, z: landingZ, y: Math.round(hill(x, landingZ) / hf.stepY) * hf.stepY }));
   for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) {
     const x = i * hf.cell, z = j * hf.cell, quay = quayY(z);
     let y = x >= c.quayX ? quay : Math.max(-24, quay - (c.quayX - x) * 1.5);
-    if (x >= c.quayX) y += (arrivalFloor - deck) * Math.max(0, Math.min(1, (x - c.quayX - 12) / (c.spawn.x - c.quayX - 12)));
+    if (x >= c.quayX) y = hill(x, z);
     if (x > 2490) y += 15 * (1 - Math.exp(-(x - 2490) / 160)) * (.6 + .4 * Math.sin(z / 185) ** 2);
     // Distant headlands stay outside the ship's arrival cone and leave the western harbour mouth open.
     if ((z < 1100 || z > 2900) && x > 1950) y = Math.max(y, 18 * Math.max(0, 1 - Math.abs(x - 2200) / 400) - 3);
+    // Native flagstone terraces sit on flat ground, with a continuous terrain approach on each side.
+    for (const terrace of terraces) {
+      const edge = Math.max(Math.abs(x - terrace.x) - 6, Math.abs(z - terrace.z) - 6, 0);
+      const blend = Math.max(0, 1 - edge / 8);
+      y += (terrace.y - y) * blend;
+    }
     hf.setSample(i, j, y);
-    hf.tint[j * hf.nx + i] = y < 0 ? sand : x < c.quayX + 25 || Math.abs(z - landingZ) < 6 ? stone : grass;
+    hf.tint[j * hf.nx + i] = y < 0 ? sand : x < c.quayX + 25 || Math.abs(z - landingZ) < 3 ? stone : grass;
   }
   const add = (kind: string, x: number, y: number, z: number, yaw = 0) => statics.push({ kind, x, y, z, yaw });
   const floor = (x: number, y: number, z: number, timber = false) => add(timber ? "core:ceiling_wood" : "core:ceiling_stone", x, y - .125, z);
@@ -61,6 +70,17 @@ export function cruisePort(placement: CruisePortPlacement): MapData {
     for (let x = x0 + 1.5; x < c.quayX + 3; x += 3) floor(x, y, z);
     for (let x = x0 + 3; x < c.quayX; x += 12) for (const side of [-1, 1]) pile(x, z + side * 1.12, y - .2);
   };
+  for (const terrace of terraces) {
+    for (let dx = -4.5; dx <= 4.5; dx += 3) for (let dz = -4.5; dz <= 4.5; dz += 3) floor(terrace.x + dx, terrace.y + .03125, terrace.z + dz);
+    // Paving has a three-centimetre curb above terrain to avoid coincident ground faces.
+    // Existing authored stainless rails guard only the sides; the twelve-metre walking axis stays open.
+    for (const side of [-1, 1]) {
+      add("core:koru_rail_sun_fore", terrace.x, terrace.y + .55, terrace.z + side * 6.08);
+      const z = terrace.z + side * 9;
+      add(ruinKind("zcounter", "limestone"), terrace.x + 3, hf.heightAt(terrace.x + 3, z) + .35, z);
+      add(ruinKind("zshrub"), terrace.x + 3, hf.heightAt(terrace.x + 3, z) + .85, z);
+    }
+  }
   pier(placement.landing);
   const koruLanding = cruiseKoruPoint(KORU_LAYOUT.docking.shoreLanding); pier(koruLanding);
   // Restrained terminal waterfront. Its two boarding axes remain clear of railings and furniture.
@@ -104,7 +124,8 @@ export function cruiseCourse(): MapData {
 }
 
 export function cruiseApproach(map = cruiseCourse()): readonly (readonly [number, number, number])[] {
-  return [...cruisePortApproach(map, cruiseWorldPoint(CRUISE_LAYOUT.docking.shoreLanding)), cruiseWorldPoint(CRUISE_LAYOUT.docking.shipLanding), cruiseWorldPoint(CRUISE_LAYOUT.docking.arrival)];
+  const route = cruisePortApproach(map, cruiseWorldPoint(CRUISE_LAYOUT.docking.shoreLanding)), hf = mapHeightfield(map), z = CRUISE_COURSE.spawn.z;
+  return [route[0]!, ...CRUISE_COURSE.terraces.map(x => [x, hf.heightAt(x, z), z] as const), ...route.slice(1), cruiseWorldPoint(CRUISE_LAYOUT.docking.shipLanding), cruiseWorldPoint(CRUISE_LAYOUT.docking.arrival)];
 }
 
 export function writeCruiseCourse(path = "var/cruise-preview/port.snmp"): string {
