@@ -509,7 +509,7 @@ function addBar(m: OverheadModel, kind: number, fraction: number): void {
 function describe(m: OverheadModel, session: ClientSession, remote: RemoteSample, i: number): void {
   const reg = session.registry;
   const id = reg.ids[remote.kind[i]!] ?? "";
-  const species = id.slice(id.indexOf(":") + 1);
+  const species = id.slice(id.indexOf(":") + 1).replace(/_/g, " ");
   const named = remote.name[i] !== "";
   const team = session.tribe.team;
   m.owner = remote.team[i] === 0 ? OWNER_WILD : team !== 0 && remote.team[i] === team ? OWNER_TRIBE : OWNER_OTHER;
