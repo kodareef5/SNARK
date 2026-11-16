@@ -154,8 +154,46 @@ def collision_hulls(course):
     return out
 
 
+def look_hulls(course,segment_range):
+    """Actual profile sectors at all stages, restricted to a fine source group.
+
+    Two fine segments require at most 62 open-shell parts before deduplication;
+    closed tubes need fewer. No broad box or filled trough substitutes for them.
+    """
+    dense_index={tuple(p):i for i,p in enumerate(course['points'])}
+    length=[0]
+    for a,b in zip(course['points'],course['points'][1:]):length.append(length[-1]+_length(_sub(b,a)))
+    out=[];seen=set()
+    for stage in range(6):
+        rings=course_rings(course,stage);path=course['lodPoints'][stage]
+        for i,(pa,pb) in enumerate(zip(path,path[1:])):
+            a,b=dense_index[tuple(pa)],dense_index[tuple(pb)]
+            if a>=segment_range[1] or b<=segment_range[0]:continue
+            ts=[(length[max(a,segment_range[0])]-length[a])/(length[b]-length[a]),
+                (length[min(b,segment_range[1])]-length[a])/(length[b]-length[a])]
+            ends=[[_mix(x,y,t) for x,y in zip(rings[i],rings[i+1])] for t in ts]
+            centers=[_mix(pa,pb,t) for t in ts]
+            sides=_sides(course,stage)
+            if course['open']:
+                groups=[[j,j+1,2*sides-j,2*sides+1-j] for j in range(sides)]
+            elif sides<=6:
+                groups=[list(range(sides))]
+            else:
+                groups=[[(j+k)%sides for k in range(min(4,sides-j)+1)]+[-1]
+                        for j in range(0,sides,4)]
+            for group in groups:
+                points=[centers[e] if j<0 else ends[e][j] for e in range(2) for j in group]
+                key=tuple(sorted(tuple(round(v,8) for v in p) for p in points))
+                if key not in seen:
+                    seen.add(key);out.append({'points':points})
+    return out
+
+
 def course_bounds(course,stage=None,segment_range=None):
     """Actual ring-vertex union; optional range is [first,last) fine segments."""
+    if stage is None and segment_range is not None:
+        points=[p for hull in look_hulls(course,segment_range) for p in hull['points']]
+        return dict(min=[min(p[k] for p in points) for k in range(3)],max=[max(p[k] for p in points) for k in range(3)])
     stages=range(6) if stage is None else (stage,)
     dense_index={tuple(p):i for i,p in enumerate(course['points'])};points=[]
     length=[0]
