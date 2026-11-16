@@ -342,7 +342,10 @@ export interface PiecesAsset {
    */
   readonly flat?: number;
   readonly budgets: {
-    /** The most triangles any one piece may have at each level, finest first. */
+    /**
+     * The most triangles any one piece may have at each level, finest first. With `flat`, a piece whose model has more
+     * than the first is not drawn as modelled: its finest level is made from it to that budget, as a city's wrecks are.
+     */
     readonly triangles: readonly number[];
     readonly texture?: TextureBudget;
   };

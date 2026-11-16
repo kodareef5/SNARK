@@ -67,12 +67,24 @@ export class Mason {
   readonly wings: { tiles: number; height: number; u: number; v: number }[] = [];
   readonly frame: Frame;
   readonly base: number;
+  /** The kind of a car of a family (street.cars.looks) standing at x, z; set by the pass that sets cars down. */
+  pick?: (x: number, z: number, family: string) => string;
   constructor(frame: Frame, base: number) { this.frame = frame; this.base = base; }
   point(u: number, v: number): Point { return worldPoint(this.frame, u, v); }
   put(shape: RuinShape, u: number, y: number, v: number, finish: RuinFinish = "concrete", turn = 0): void {
     const [x, z] = worldPoint(this.frame, u, v);
     // A shape the kit has in no such finish (a floor plate is concrete) is concrete.
     this.pieces.push({ kind: ruinKind(shape, finished(shape, finish) ? finish : "concrete"), x, y: this.base + y, z, yaw: ((this.frame.yaw + turn) % 360 + 360) % 360 });
+  }
+  /** A car standing on y, nose along v turned by `turn`, so 90 puts it along +u; its kind is `pick`'s for the family there. */
+  car(family: string, u: number, y: number, v: number, turn = 0): void {
+    if (!this.pick) throw new Error(`a car of "${family}" where no pass picks cars`);
+    const [x, z] = worldPoint(this.frame, u, v);
+    this.pieces.push({ kind: this.pick(x, z, family), x, y: this.base + y, z, yaw: ((this.frame.yaw + turn) % 360 + 360) % 360 });
+  }
+  /** An assembly's part: a box of the kit in a finish, or a car of the family its finish names. */
+  part(shape: RuinShape | "car", u: number, y: number, v: number, finish: string, turn = 0): void {
+    if (shape === "car") this.car(finish, u, y, v, turn); else this.put(shape, u, y, v, finish as RuinFinish, turn);
   }
   cover(u: number, v: number, radius: number): void {
     const [x, z] = worldPoint(this.frame, u, v); this.clear.push({ x, z, radius });

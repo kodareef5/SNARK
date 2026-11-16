@@ -193,9 +193,11 @@ export function convertPieces(asset: Asset & { spec: PiecesAsset }, files: Reado
     const errors = pieces.find((p) => p.id === mesh.id)?.errors;
     if (spec.flat === undefined || !maps.has(mesh.id)) return withStated(mesh, errors, out.faults);
     const own = mesh.lods.slice(1, 1 + brought.get(mesh.id)!);
-    const budgets = spec.budgets.triangles.slice(1, spec.budgets.triangles.length - own.length);
-    const made = withSurfaceLevels({ ...mesh, lods: [mesh.lods[0]!] }, { budgets, flat: spec.flat, maps: maps.get(mesh.id)!, palette });
-    return withStated({ ...made, lods: [...made.lods, ...own] }, errors, out.faults);
+    // A model finer than the first budget is not itself a level: the finest is made from it, as the rest are.
+    const over = mesh.lods[0]!.indices.length / 3 > spec.budgets.triangles[0]! ? 1 : 0;
+    const budgets = spec.budgets.triangles.slice(1 - over, spec.budgets.triangles.length - own.length);
+    const made = withSurfaceLevels({ ...mesh, lods: [mesh.lods[0]!] }, { budgets, flat: spec.flat + over, maps: maps.get(mesh.id)!, palette });
+    return withStated({ ...made, flat: made.flat! - over, lods: [...made.lods.slice(over), ...own] }, errors, out.faults);
   });
   // The lying piece is made from the held one as it is drawn, every level, before it goes on the hand.
   for (const p of spec.pieces) {

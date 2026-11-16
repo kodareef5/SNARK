@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RuinFinish, RuinShape } from "../../content/ruins.ts";
 import type { Footprint } from "./statics.ts";
+import type { Cars } from "./street-cars.ts";
 import type { Facts } from "./labels.ts";
 import { rand3 } from "./raster.ts";
 
@@ -10,7 +11,11 @@ export interface Recipe {
 }
 interface Modifier { match: string; accent?: RuinFinish; finish?: RuinFinish; feature?: string; retain?: number; holes?: number; meaning: string; }
 export interface Form { plan?: string; marker?: string; terrace?: number; setbacks?: number; shell: string; inside: string; roof: string; front: string; windowEvery: number; }
-export interface Assembly { role: string; clearance?: string; passage?: [number, number][]; parts: [RuinShape, number, number, number, RuinFinish | "finish", number?][]; }
+/**
+ * A part is a box of the kit in a finish ("finish" for the building's), or "car" and the family of cars it is one of. A
+ * street assembly with `kerb` is set that far in from the kerb along the street (ruins.ts makeStreetPieces).
+ */
+export interface Assembly { role: string; clearance?: string; passage?: [number, number][]; kerb?: number; parts: [RuinShape | "car", number, number, number, RuinFinish | "finish" | string, number?][]; }
 export interface Damage { radius: number; retain: number; layers: number; plates?: RuinShape[]; front?: RuinShape; }
 interface Choice { id: string; when: { kind?: string[]; recipe?: string[]; district?: string[]; name?: string; areaAbove?: number; areaBelow?: number; heightAbove?: number; heightBelow?: number; waterBelow?: number; waterAbove?: number; builtBefore?: number; neighboursAbove?: number; trades?: string[] }; form?: string; finish?: RuinFinish; collapse?: string[]; }
 export interface Composition { operations: ({ op: "stack" | "parts" | "front" | "ribs" | "tower" | "arena" | "portal" | "ring" | "dome" | "pyramid" | "wheel" | "vault" | "lattice"; rect?: number[]; exclude?: number[]; height?: number | null; offset?: number; feature?: string; form?: Form; playable?: number; coreU?: number; hall?: boolean; fromTop?: boolean; parts?: Assembly["parts"]; finish?: RuinFinish; rear?: boolean; width?: number } & Round)[]; }
@@ -33,7 +38,7 @@ export interface Vocabulary {
   damage: Record<string, Damage>;
   compositions: Record<string, Composition>;
   forms: Record<string, Form>; choices: Choice[]; assemblies: Record<string, Assembly>;
-  street: { spacing: number; chance: number; assemblies: string[]; yardAssemblies: string[]; clusterSpacing: number; clusterChance: number; junctionAssemblies: string[]; edgeAssemblies: string[]; yardClusters: string[] };
+  street: { spacing: number; chance: number; assemblies: string[]; yardAssemblies: string[]; clusterSpacing: number; clusterChance: number; junctionAssemblies: string[]; edgeAssemblies: string[]; yardClusters: string[]; cars: Cars };
   version: number; seed: number; budgets: { maxChunk: number; maxCity: number; maxPlayableFloors: number; maxHeight: number };
   categories: Record<string, string>; recipes: Record<string, Recipe>;
   styles: Modifier[]; periods: Modifier[]; materials: Modifier[]; character: Modifier[];

@@ -687,25 +687,21 @@
     },
     "car": {
       "role": "street",
+      "kerb": 1.15,
       "parts": [
         [
-          "zcar",
+          "car",
           0,
-          0.7,
           0,
-          "rust"
-        ],
-        [
-          "zcab",
-          -0.2,
-          1.6,
           0,
-          "steel"
+          "any",
+          90
         ]
       ]
     },
     "bus": {
       "role": "street",
+      "kerb": 1.5,
       "parts": [
         [
           "zbus",
@@ -1236,69 +1232,45 @@
     },
     "pile-up": {
       "role": "street cluster",
-      "clearance": "Separated wrecks leave a central pedestrian gap; every piece is checked against movement routes.",
+      "clearance": "Separated wrecks leave a central pedestrian gap; every piece is checked against movement routes. One car slewed across the lane with another run into its tail; on the far side one met head on, and one thrown over against it.",
       "parts": [
         [
-          "zcar",
-          -5,
-          0.7,
+          "car",
+          -4.6,
           0,
-          "rust",
-          25
+          -0.4,
+          "upright",
+          105
         ],
         [
-          "zcab",
-          -5,
-          1.6,
+          "car",
+          -8.4,
           0,
-          "steel",
-          25
+          0.9,
+          "any",
+          75
         ],
         [
-          "zcar",
-          -7,
-          0.7,
-          3,
-          "mint",
-          -32
+          "car",
+          5.2,
+          0,
+          0.8,
+          "upright",
+          250
         ],
         [
-          "zcab",
-          -7,
-          1.6,
-          3,
-          "steel",
-          -32
-        ],
-        [
-          "zcar",
-          5,
-          0.7,
-          1,
-          "clay",
-          -15
-        ],
-        [
-          "zcab",
-          5,
-          1.6,
-          1,
-          "steel",
-          -15
-        ],
-        [
-          "zwreck",
-          -5,
-          2.3,
-          1,
-          "steel",
-          65
+          "car",
+          6.4,
+          0,
+          -1.9,
+          "thrown",
+          160
         ],
         [
           "rubble",
-          7,
+          9.6,
           0.35,
-          -1,
+          1.8,
           "concrete",
           31
         ]
@@ -1402,20 +1374,12 @@
           118
         ],
         [
-          "zcar",
+          "car",
           5,
-          0.7,
+          0,
           2,
-          "rust",
-          -40
-        ],
-        [
-          "zcab",
-          5,
-          1.6,
-          2,
-          "steel",
-          -40
+          "any",
+          50
         ],
         [
           "zcover",
@@ -1697,7 +1661,21 @@
     "yardClusters": [
       "fallen-crane",
       "pile-up"
-    ]
+    ],
+    "cars": {
+      "about": "A car part's family picks a look by these weights, and a painted look a paint by its weight (1 where unlisted). Cells of `cell` metres where a fire went through, a share `fires` of them, take `fire` in place of any family. A share `slewed` of kerbside cars stand out of line. `parked`: drivable cars per kilometre of street of the classes, at least and at most so many a district, `apart` metres from each other, `junction` metres from one, `clear` metres of margin round body and doors, and `fromSpawn` metres from a spawn point or an obelisk.",
+      "cell": 160,
+      "fires": 0.18,
+      "slewed": 0.15,
+      "looks": {
+        "any": [["core:compact_abandoned", 10], ["core:compact_abandoned_stripped", 4], ["core:compact_wreck", 3], ["core:compact_abandoned_roof", 0.5], ["core:compact_wreck_tipped", 0.5]],
+        "upright": [["core:compact_abandoned", 6], ["core:compact_abandoned_stripped", 3], ["core:compact_wreck", 2]],
+        "thrown": [["core:compact_wreck", 2], ["core:compact_abandoned_stripped", 1], ["core:compact_abandoned_roof", 1], ["core:compact_wreck_tipped", 1]],
+        "fire": [["core:compact_wreck", 8], ["core:compact_wreck_tipped", 1], ["core:compact_abandoned_stripped", 2]]
+      },
+      "paints": { "white": 4, "silver": 4, "black": 3, "red": 2, "blue": 2 },
+      "parked": { "perKm": 0.4, "least": 2, "most": 4, "apart": 150, "junction": 15, "clear": 1, "fromSpawn": 40, "classes": ["S1400", "S1200", "S1780"] }
+    }
   },
   "damage": {
     "shear": {

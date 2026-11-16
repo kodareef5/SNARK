@@ -176,9 +176,13 @@ as a creature's do, so a damaged car looks damaged and a dead one burnt out.
   the pictures were painted for.
 - A glass pane is a closed slab whose inside face is cut out of the picture,
   so from within the cabin the glass is not there, and from outside it is.
-- Its wrecks are a pieces asset built from the same model on the same layout
-  (`core/vehicles/compact_wreck/`), painted as the car's last stage of decay,
-  for a map to set in its streets as statics.
+- Its wrecks are pieces assets built from the same model on the same layout,
+  posed, for a map to set in its streets as statics: burnt out
+  (`core/vehicles/compact_wreck/`), painted as the car's last stage of decay, and
+  abandoned (`core/vehicles/compact_abandoned/`), painted with the first third of
+  its hurt and decay pictures, dust and sun, its paint still dyed by the
+  static's colour. Their finest level is made from the model to 6,000 triangles,
+  as a street holds many.
 
 ## Rigid pieces
 

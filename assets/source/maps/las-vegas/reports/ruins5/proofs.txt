@@ -1,9 +1,9 @@
 chunk-report
-{"mapHash":91454379,"total":2251935,"maximum":1991,"cap":2000,"passed":true}
+{"mapHash":1732898916,"total":2234083,"maximum":1991,"cap":2000,"passed":true}
 
 ruin-walk
 {
-  "mapHash": 91454379,
+  "mapHash": 1732898916,
   "includes": "terrain and resource-node collision; ascent, landing turns, roof exit, descent and independent stair exits in both directions",
   "sampledBuildings": 1820,
   "stairRoutes": 9258,
@@ -18,8 +18,8 @@ ruin-walk
 
 room-walk
 {
-  "mapHash": 91454379,
-  "routes": 20580,
+  "mapHash": 1732898916,
+  "routes": 20381,
   "kinds": {
     "suites": 6337,
     "rooms": 3465,
@@ -30,16 +30,16 @@ room-walk
     "storage": 4336,
     "wards": 76,
     "domestic": 128,
-    "street-gap": 2486
+    "street-gap": 2287
   },
-  "passed": 20580,
+  "passed": 20381,
   "failed": 0,
   "failures": []
 }
 
 access-walk
 {
-  "mapHash": 91454379,
+  "mapHash": 1732898916,
   "routes": 28503,
   "buildingsWithApproach": 15086,
   "coresWithoutStreetApproach": [
@@ -759,7 +759,7 @@ access-walk
 
 bridge-walk
 {
-  "mapHash": 91454379,
+  "mapHash": 1732898916,
   "ways": 661,
   "built": 661,
   "deckRuns": 661,
@@ -785,7 +785,7 @@ bridge-walk
 }
 
 walk
-host on core:las-vegas in 1812 ms, 155 spawn regions; 1542 MB resident, 940 MB of heap
+host on core:las-vegas in 1614 ms, 155 spawn regions; 1500 MB resident, 969 MB of heap
 ok   Welcome to Fabulous Las Vegas Sign arrived 0.0 m from its point at y 663.1; walked 27 m to y 663.0, 27 m to y 663.2, 27 m to y 663.5, 27 m to y 663.1
 ok   Allegiant Stadium arrived 0.0 m from its point at y 662.4; walked 27 m to y 662.4, 25 m to y 662.8, 27 m to y 662.3, 27 m to y 662.3
 ok   Siegfried and Roy Park arrived 0.0 m from its point at y 625.9; walked 27 m to y 626.3, 27 m to y 626.4, 27 m to y 626.0, 26 m to y 625.9
@@ -796,22 +796,22 @@ ok   University of Nevada, Las Vegas arrived 0.0 m from its point at y 618.1; wa
 ok   Las Vegas Convention Center arrived 0.0 m from its point at y 624.8; walked 27 m to y 624.9, 27 m to y 624.7, 27 m to y 624.3, 27 m to y 624.8
 ok   Chester Stupak Park arrived 0.0 m from its point at y 623.6; walked 27 m to y 623.6, 26 m to y 623.7, 27 m to y 623.8, 27 m to y 623.6
 ok   Chinatown Plaza arrived 0.0 m from its point at y 663.0; walked 27 m to y 662.8, 27 m to y 662.3, 27 m to y 662.5, 27 m to y 663.0
-475 wild creatures after 391 s of virtual time; 1547 MB resident, 940 MB of heap, server and client in one process
+474 wild creatures after 391 s of virtual time; 1620 MB resident, 969 MB of heap, server and client in one process
 
 obelisk-walk
-core:las-vegas: 2251935 static pieces and 88712 standing nodes in the way, 25.0% of samples closed, in 0.9 s
-ok   Welcome to Fabulous Las Vegas terminal at 4116.9, 320.7 facing 11 degrees: from Welcome to Fabulous Las Vegas Sign, 97 m of way, walked in 22 s to 0.08 m of its front at y 663.0
-ok   Sphere                 terminal at 3002.8, 4775.5 facing 96 degrees: from Sphere, 74 m of way, walked in 17 s to 0.09 m of its front at y 628.9
-ok   The Strat              terminal at 2911.3, 7713.3 facing 261 degrees: from Chester Stupak Park, 154 m of way, walked in 33 s to 0.07 m of its front at y 623.0
-3 of 3 reached in 1.0 s
+core:las-vegas: 2234083 static pieces and 88848 standing nodes in the way, 24.8% of samples closed, in 0.8 s
+ok   Welcome to Fabulous Las Vegas terminal at 4115.0, 320.7 facing 12 degrees: from Welcome to Fabulous Las Vegas Sign, 97 m of way, walked in 22 s to 0.12 m of its front at y 662.9
+ok   Sphere                 terminal at 3002.8, 4775.5 facing 96 degrees: from Sphere, 74 m of way, walked in 17 s to 0.08 m of its front at y 628.9
+ok   The Strat              terminal at 3007.5, 7816.4 facing 250 degrees: from Chester Stupak Park, 160 m of way, walked in 35 s to 0.09 m of its front at y 623.4
+3 of 3 reached in 0.9 s
 
 server-bench
 {
-  "milliseconds": 1514.9,
-  "residentMiB": 1248.9,
-  "heapMiB": 827.1,
-  "peakResidentMiB": 1271.6,
-  "mapBytes": 88856624,
+  "milliseconds": 1373.4,
+  "residentMiB": 1234.5,
+  "heapMiB": 853.6,
+  "peakResidentMiB": 1291.5,
+  "mapBytes": 88574758,
   "spawnRegions": 155,
   "scope": "createHost, real pack clips, wild spawner; no HTTP listener, persistence or clients"
 }
