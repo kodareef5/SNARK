@@ -42,8 +42,8 @@ export interface Page {
   reload?(): void;
   /** Takes the ticket out of the address once the survivor has arrived, so a reload joins as anyone does. */
   arrived(): void;
-  /** Asks this page's server for the cluster. */
-  cluster(): Promise<ClusterList>;
+  /** A file of this page's server, beside the page: cluster.json, links.json. */
+  json(name: string): Promise<unknown>;
 }
 
 const hex = (bytes: Uint8Array): string => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
@@ -86,17 +86,10 @@ export interface SiteLink {
   url: string;
 }
 
-/**
- * The links of what links.json answers, in the order the menu shows them, without those the operator hid. A value that is
- * not an http(s) address or a path of the site is not a link, whatever sent it.
- */
+/** The links of what links.json answers (server/site.ts linkOf), in the order the menu shows them, without those the operator hid. */
 export function siteLinks(answer: unknown): SiteLink[] {
   const a = (answer ?? {}) as Record<string, unknown>;
-  const out: SiteLink[] = [];
-  for (const [label, url] of [["Wiki", a.wiki], ["Source code", a.repository]] as const) {
-    if (typeof url === "string" && /^(https?:\/\/[^\s"'<>]+|\/[^\s"'<>]*)$/i.test(url.trim())) out.push({ label, url: url.trim() });
-  }
-  return out;
+  return ([["Wiki", a.wiki], ["Source code", a.repository]] as const).flatMap(([label, url]) => (typeof url === "string" && url !== "" ? [{ label, url }] : []));
 }
 
 /** The page at `address` that a survivor named `name` arrives at with its ticket. */

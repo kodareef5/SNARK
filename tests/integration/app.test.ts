@@ -475,7 +475,7 @@ test("Leave disconnects deliberately and Reconnect asks the page to reload once 
   const h=new Harness(),app=client(h,"hud-return");
   h.run(500,now=>app.frame(now,1280,720));
   let reloads=0;
-  app.page={origin:"http://localhost:8788",protocol:"http:",hostname:"localhost",host:"localhost:8788",pathname:"/",go(){},arrived(){},reload(){reloads++;},cluster:async()=>({world:0,name:"",url:"",port:8788,servers:[]})};
+  app.page={origin:"http://localhost:8788",protocol:"http:",hostname:"localhost",host:"localhost:8788",pathname:"/",go(){},arrived(){},reload(){reloads++;},json:async()=>({world:0,name:"",url:"",port:8788,servers:[]})};
   app.key("Escape",true); app.frame(600,1280,720);
   app.pointer(0,5405,0,0,2); expect(app.session.state).toBe("active");
   app.pointer(0,5405,0,0,0); app.frame(620,1280,720);

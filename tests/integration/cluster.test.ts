@@ -151,7 +151,7 @@ test("the page at an obelisk's terminal lists the other servers on E, leaves for
   beat(a, b);
   const app = new App(a.h.join("ada", { latencyMs: 20 }, { manual: true, key: keyAt("ada", 1) }), a.h.reg, parsePack(corePackBytes()));
   const went: string[] = [];
-  app.page = { origin: "http://localhost:8811", protocol: "http:", hostname: "localhost", host: "localhost:8811", pathname: "/", go: (url) => void went.push(url), arrived: () => {}, cluster: async () => clusterList(a.h.host) };
+  app.page = { origin: "http://localhost:8811", protocol: "http:", hostname: "localhost", host: "localhost:8811", pathname: "/", go: (url) => void went.push(url), arrived: () => {}, json: async () => clusterList(a.h.host) };
   const run = (ms: number): void => a.h.run(ms, (now) => app.frame(now, 1280, 720));
   run(500);
   a.h.host.items.mint(rec(a, "ada")!, id("stone"), 40);

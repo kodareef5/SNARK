@@ -161,18 +161,18 @@ test("sliders accept pointer values, reject invalid input, and support repeated 
 });
 
 test("the menu's links are buttons beneath Controls that open where the server says, once a press, by pointer or by key", () => {
-  const ui=new Ui(),hud=new HudModel();ui.openMenu();
+  const ui=new Ui(),hud=new HudModel(),opened:string[]=[];ui.openMenu();ui.openLink=(url)=>void opened.push(url);
   ui.links=siteLinks({wiki:"/wiki/",repository:"https://snark.dev/code"});ui.build(16/9,hud,null);
   const buttons=()=>ui.frame.nodes.slice(0,ui.frame.count).filter(n=>n.interactive).map(n=>n.text);
   expect(buttons()).toEqual(["Reconnect","Settings","Controls","Wiki","Source code"]);
   ui.pointer(0,KEY_MENU_LINK+1,0,0,0,null);
-  expect([ui.takeOpening(),ui.takeOpening(),ui.menu]).toEqual(["https://snark.dev/code",null,true]);
+  expect([opened,ui.menu]).toEqual([["https://snark.dev/code"],true]);
   // Chosen with the keyboard: Tab moves the focus down to the button, and Enter presses it.
   ui.pointer(2,KEY_MENU_CONTROLS,0,0,0,null);ui.build(16/9,hud,null);ui.key("Tab",true,false,null);ui.key("Enter",true,false,null);
-  expect(ui.takeOpening()).toBe("/wiki/");
+  expect(opened.at(-1)).toBe("/wiki/");
   // A link the server hid has no button, and its key opens nothing; the settings beneath the menu show none.
   ui.links=siteLinks({wiki:"/wiki/",repository:""});ui.build(16/9,hud,null);ui.pointer(0,KEY_MENU_LINK+1,0,0,0,null);
-  expect([buttons().includes("Source code"),ui.takeOpening()]).toEqual([false,null]);
+  expect([buttons().includes("Source code"),opened.length]).toEqual([false,2]);
   ui.pointer(0,KEY_MENU_SETTINGS,0,0,0,null);ui.build(16/9,hud,null);
   for(let tab=0;tab<SETTING_GROUPS.length;tab++){ui.settings.tab=tab;ui.build(16/9,hud,null);expect(buttons().includes("Wiki")).toBe(false);}
 });

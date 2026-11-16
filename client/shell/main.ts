@@ -16,7 +16,7 @@ import { BenchRun, PassClock } from "../core/passes.ts";
 import { giveSky, SKY_FILE } from "../core/render/sky.ts";
 import { groundSize } from "../core/render/terrain.ts";
 import { ClientSession } from "../core/session.ts";
-import { arrivalOf, siteLinks, socketAddress, type ClusterList } from "../core/travel.ts";
+import { arrivalOf, socketAddress } from "../core/travel.ts";
 import { GlRenderer } from "./gl.ts";
 import { bindInput } from "./input.ts";
 import { connect } from "./socket.ts";
@@ -109,9 +109,8 @@ async function boot(): Promise<void> {
     open: (url) => void open(url, "_blank", "noopener"),
     reload: () => location.reload(),
     arrived: () => arrival && history.replaceState(null, "", location.pathname + location.search),
-    cluster: async () => (await fetchJson(fetch, "cluster.json")) as ClusterList,
+    json: (name) => fetchJson(fetch, name),
   };
-  void fetchJson(fetch, "links.json").then((answer) => (app.ui.links = siteLinks(answer))).catch(() => {});
   const clock = (renderer.passes = bench ? new PassClock(renderer.gl, params.has("passes")) : null);
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
   // A device probe runs by itself, and a touch must not move or open anything.

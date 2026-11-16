@@ -70,7 +70,7 @@ import { mapPointer } from "./ui/screens.ts";
 import { Ui } from "./ui/ui.ts";
 import { TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
 import { TRAVEL_REFRESH_MS } from "./ui/travel.ts";
-import { arrivalAddress, joinAddress, serverAddress, type Page } from "./travel.ts";
+import { arrivalAddress, joinAddress, serverAddress, siteLinks, type ClusterList, type Page } from "./travel.ts";
 
 /** Metres. Matches the server's REACH. */
 const REACH = 3.5;
@@ -206,6 +206,8 @@ export class App {
         if (press && n) this.pointer(press === 1 ? 0 : 1, key, n.x+n.w/2, n.y+n.h/2, 0);
       },
     };
+    // Within the press that chose it, which is when a browser lets a page open another.
+    this.ui.openLink = (url) => this.page?.open?.(url);
     this.ui.local = (line) => (this.sounds ? soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null);
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
@@ -316,7 +318,6 @@ export class App {
     if (down && !repeat) this.ui.inputDevice = source;
     if (!this.ui.captureKeyboard && this.vehiclePlacement.key(code, down, repeat)) return true;
     if (this.ui.key(code, down, repeat, this.session)) {
-      this.openChosen();
       // A screen that captures the keyboard releases the body's keys and a push-to-talk microphone.
       if (this.ui.captureKeyboard) {
         this.blur();
@@ -501,14 +502,7 @@ export class App {
       if (Number.isInteger(slot) && slot >= 0 && slot < this.hud.hotbar.length) this.session.command(CMD_SELECT, (w) => w.u8(this.session.held === slot ? 255 : slot));
     }
     this.ui.pointer(kind, key, x, y, button, this.session);
-    this.openChosen();
     if (this.ui.menu) this.blur();
-  }
-
-  /** Opens a link the interface chose, now, while the click or key that chose it lets a page open one. */
-  private openChosen(): void {
-    const url = this.ui.takeOpening();
-    if (url !== null) this.page?.open?.(url);
   }
 
   private zoomMini(turn: number): void {
@@ -849,6 +843,8 @@ export class App {
     if (session.state === "active" && !this.arrived) {
       this.arrived = true;
       page.arrived();
+      // Asked for once the world is in, so the first frame waits for nothing more.
+      page.json("links.json").then((answer) => (this.ui.links = siteLinks(answer)), () => {});
     }
     if (session.state === "closed" && (session.closeReason === REJECT_TRAVEL || session.closeReason === REJECT_FULL) && !this.turnedAway) {
       this.turnedAway = t.open = true;
@@ -857,9 +853,9 @@ export class App {
     const trip = session.travelled;
     if ((t.open || trip) && nowMs - t.askedAt >= TRAVEL_REFRESH_MS) {
       t.askedAt = nowMs;
-      page.cluster().then(
+      page.json("cluster.json").then(
         (list) => {
-          t.list = list;
+          t.list = list as ClusterList;
           t.note = "";
         },
         () => {
