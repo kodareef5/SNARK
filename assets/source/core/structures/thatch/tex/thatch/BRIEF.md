@@ -41,7 +41,7 @@ Keep the generated source pictures at full size in `source/`, and the scripts th
 
 ## What excellent looks like
 
-The bar is the concept pictures, and the example of a complete layer set to beat is the wood plank wall in `../../../../../../../planning/artist-test/wood/` (start with `checks/layers.jpg`). A first attempt at this tier's thatch, in a folder that no longer exists, was sent back because it looked like a pattern printed on a box: same-width bundles cut square, ruler-straight courses, stripes. That is what this must not be. The geometry now does the big shapes; your picture must make them read as thousands of real reeds.
+The bar is the concept pictures, and the example of a complete layer set to beat is the wood plank wall in `../../../../../../../planning/art-trial/wood/` (start with `checks/layers.jpg`). A first attempt at this tier's thatch, in a folder that no longer exists, was sent back because it looked like a pattern printed on a box: same-width bundles cut square, ruler-straight courses, stripes. That is what this must not be. The geometry now does the big shapes; your picture must make them read as thousands of real reeds.
 
 - Real detail at full size: individual reeds a few pixels wide, each with its own light and dark, tapering tips, broken stems. The image tool returns about 1254 pixels a side; reach 2048 by composing generated elements (reeds, bundles, tip clusters) in a larger master laid out on the guides, and by adding fine detail by script.
 - Every bundle in `bundles.png` is visibly its own sheaf, with its edges where the guide puts them.

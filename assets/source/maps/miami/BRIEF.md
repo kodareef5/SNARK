@@ -20,7 +20,7 @@ Painted in the manner of ARK's in-game maps, by description: aged parchment, con
 
 ## The bar
 
-A map someone would frame. Better than our test map, which is the example to beat: `planning/artist-test/map/map_1024.png` and its two double-zoom quarters, with the brief that made them in `planning/artist-test/briefs/map.md` and the report in `planning/artist-test/map/REPORT.md`.
+A map someone would frame. Better than our test map, which is the example to beat: `planning/art-trial/map/map_1024.png` and its two double-zoom quarters, with the brief that made them in `planning/art-trial/briefs/map.md` and the report in `planning/art-trial/map/REPORT.md`.
 
 - One hand across all four zooms: the same palette, line weight and symbols, so zooming feels like leaning closer to one drawing.
 - Each zoom drawn for its scale. The far zoom broad and bold: the bay, the islands, the districts as shapes. The near zoom rich: individual ruined blocks, causeway spans, mangrove edges, sandbars, wrecks, the grid of streets.

@@ -39,7 +39,7 @@ Keep the generated source pictures at full size in `source/`, and the scripts th
 
 ## What excellent looks like
 
-The example to beat is the wood plank wall in `../../../../../../../planning/artist-test/wood/` (start with `checks/layers.jpg`, then `checks/tilings.jpg`, `checks/relighting.jpg` and `REPORT.md`): a complete, aligned, tileable set with its own build and check scripts. Beat it.
+The example to beat is the wood plank wall in `../../../../../../../planning/art-trial/wood/` (start with `checks/layers.jpg`, then `checks/tilings.jpg`, `checks/relighting.jpg` and `REPORT.md`): a complete, aligned, tileable set with its own build and check scripts. Beat it.
 
 A first attempt at this material, in `../pole/`, was grey-brown, even and anonymous: it read as generic wood, not as poles cut by hand. Do better: these poles should look picked one by one from the forest edge, with character, and be a pleasure to see up close.
 

@@ -340,7 +340,7 @@ def main():
     crop = (620, 390, 1388, 1158)
     contact([i.crop(crop) for i in layers], labels, 'detail_1to1.png', size=768)
     ims[0].crop(crop).save(CHECK/'base_1to1.png')
-    wood_path = ROOT/'../../../../../../../planning/artist-test/wood/wood_base.png'
+    wood_path = ROOT/'../../../../../../../planning/art-trial/wood/wood_base.png'
     wood_crop = (128, 128, 896, 896)
     paired(ims[0].crop(crop), Image.open(wood_path).crop(wood_crop),
            ['ROOF / base 1:1 / 1.465 mm per pixel', 'WOOD BENCHMARK / native base 1:1 / 1.953 mm per pixel'],

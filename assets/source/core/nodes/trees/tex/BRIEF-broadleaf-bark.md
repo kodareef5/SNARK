@@ -26,7 +26,7 @@ Keep the generated source pictures at full size in each folder's `source/`, and 
 
 ## What excellent looks like
 
-The bar is the concept pictures, and the bar for a complete layer set is the wood plank wall in `../../../../../../planning/artist-test/wood/` (start with `checks/layers.jpg`). Three barks that a player could tell apart with their eyes shut: the fig's smooth pale skin, the oak's deep dark plates, the mangrove's fine grey-brown, and the wet band where the tide reaches. The image tool returns about 1254 pixels a side; reach 2048 by composing generated pictures in a larger master and by adding fine detail by script.
+The bar is the concept pictures, and the bar for a complete layer set is the wood plank wall in `../../../../../../planning/art-trial/wood/` (start with `checks/layers.jpg`). Three barks that a player could tell apart with their eyes shut: the fig's smooth pale skin, the oak's deep dark plates, the mangrove's fine grey-brown, and the wet band where the tide reaches. The image tool returns about 1254 pixels a side; reach 2048 by composing generated pictures in a larger master and by adding fine detail by script.
 
 ## Checks to leave in each `checks/`
 

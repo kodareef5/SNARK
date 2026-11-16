@@ -27,7 +27,7 @@ Keep the generated source pictures at full size in `source/`, and the scripts th
 
 ## What excellent looks like
 
-The concept pictures are the bar, and the example of a complete layer set to beat is the wood plank wall in `../../../../../../../planning/artist-test/wood/` (start with `checks/layers.jpg`). Individual reeds a few pixels wide with their own light and dark, real ends, bundles that differ. The image tool returns about 1254 pixels a side; reach 2048 by composing generated elements in a larger master laid out on the guide, and by adding fine detail by script. Check it composited over the guide, and relit from two directions with the alpha cut out over a dark background.
+The concept pictures are the bar, and the example of a complete layer set to beat is the wood plank wall in `../../../../../../../planning/art-trial/wood/` (start with `checks/layers.jpg`). Individual reeds a few pixels wide with their own light and dark, real ends, bundles that differ. The image tool returns about 1254 pixels a side; reach 2048 by composing generated elements in a larger master laid out on the guide, and by adding fine detail by script. Check it composited over the guide, and relit from two directions with the alpha cut out over a dark background.
 
 ## Checks to leave in `checks/`
 

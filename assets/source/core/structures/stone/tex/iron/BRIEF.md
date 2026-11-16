@@ -8,7 +8,7 @@ The stone tier's door is thick oak bound with iron: straps across it, strap hing
 
 ## What excellent looks like
 
-The bar to beat is the wood plank wall in `/home/user/dev/SNARK/.claude/worktrees/agent-a2517e755af91bae1/planning/artist-test/wood/` (start with `checks/layers.jpg`, then its `REPORT.md`): a complete, aligned, tileable layer set with its own build and checks, in which the layers agree to the pixel, and whose metal is marked in the packed map. Yours should be better.
+The bar to beat is the wood plank wall in `/home/user/dev/SNARK/.claude/worktrees/agent-a2517e755af91bae1/planning/art-trial/wood/` (start with `checks/layers.jpg`, then its `REPORT.md`): a complete, aligned, tileable layer set with its own build and checks, in which the layers agree to the pixel, and whose metal is marked in the packed map. Yours should be better.
 
 - Wrought iron worked by a smith: overlapping hammer dimples 5 to 20 mm across, a little forge scale, the faint fibrous streak wrought iron has, along u. Mostly near black with a dull oily sheen where hands and weather have polished it; rust in patches, in pits and spreading in soft blooms, from dark brown to a little orange, never covering more than about a fifth of it.
 - A strip 30 to 80 mm wide cut from anywhere must look like a forged strap. No feature so striking that it marks a repeat.

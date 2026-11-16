@@ -34,7 +34,7 @@ One low tile spans 8 km and one high tile 16 km. The lighting script puts the lo
 
 ## Examples
 
-For craft, the best materials made so far: `../../../../../planning/artist-test/` (start with `wood/checks/layers.jpg` and `feather/qa/layers_contact.png`, then their reports) and the stone masonry in `../../structures/stone/tex/masonry/`, whose `FEEDBACK-*.md` files show what was sent back and why. Each is a complete set with its own build and checks.
+For craft, the best materials made so far: `../../../../../planning/art-trial/` (start with `wood/checks/layers.jpg` and `feather/qa/layers_contact.png`, then their reports) and the stone masonry in `../../structures/stone/tex/masonry/`, whose `FEEDBACK-*.md` files show what was sent back and why. Each is a complete set with its own build and checks.
 
 Sky photographs may be looked at for how cloud is shaped; none is given to the image tool.
 
