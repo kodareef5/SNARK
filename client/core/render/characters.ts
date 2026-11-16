@@ -57,6 +57,8 @@ interface Creature {
   worn: ReadonlyMap<number, number>;
   /** A vehicle poses its rig from its definition, not from a gait; null for a creature. */
   vehicle: VehicleRig | null;
+  wreck: number;
+  wreckError: readonly number[];
   oriented: Solved;
 }
 
@@ -298,7 +300,8 @@ export class Characters {
         const m = fits === i ? on(bind.own(reg.ids[item]!, "worn")) : -1;
         if (m >= 0) worn.set(item, m);
       });
-      return { anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0), mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), oriented: new Solved(rig.bones) };
+      const wreck = bind.own(d.id, "wreck");
+      return { wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0), mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), oriented: new Solved(rig.bones) };
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
@@ -664,7 +667,7 @@ export class Characters {
       const first = this.room(p, c.anim.rig.bones, 1);
       if (first < 0) return;
       writeBones(p.bones, first * BONE_FLOATS, d.solved, c.anim.rig.rest, null, x, y, z, d.yaw, d.size);
-      this.queueCreature(c, c.mesh, c.error, first, x, y, z, d.colors, 0, d.id, d.size, false, false, lit ? this.layers.level(d.id, corpseWanted(d.decay), remote.tick, this.last.has(d.id)) : 0);
+      this.queueCreature(c, c.wreck >= 0 ? c.wreck : c.mesh, c.wreck >= 0 ? c.wreckError : c.error, first, x, y, z, d.colors, 0, d.id, d.size, false, false, lit ? this.layers.level(d.id, corpseWanted(d.decay), remote.tick, this.last.has(d.id)) : 0);
     }
   }
 
