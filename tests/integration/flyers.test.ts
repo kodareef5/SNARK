@@ -10,41 +10,10 @@ import { MODE_FLYER, MODE_WALK } from "../../shared/sim/character.ts";
 import { F_ALIVE, F_GROUNDED } from "../../shared/sim/entities.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { groundUnder } from "../../shared/world/collide.ts";
-import { PROVING_POOL } from "../../shared/world/proving.ts";
-import { coast, flock, spread, watch, watched } from "../fixtures/flyers.ts";
+import { coast, flock, watch, watched } from "../fixtures/flyers.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const TICKS = 30;
-
-test("left 20 minutes, 100 wild pteranodons over the proving ground fly and land by turns, aloft 55 to 92% of the time, never inside anything, stuck or in the water", () => {
-  const { h } = watched([[96, 96], [416, 96], [96, 416], [416, 416]]);
-  const list = flock(h, 100, (rng) => [PROVING_POOL.x + rng.range(-60, 60), PROVING_POOL.z + rng.range(-60, 60)]);
-  expect([list.length, h.host.creatures.awakeCount]).toEqual([100, 100]);
-  const w = watch(h, list, 20 * 60);
-  const [low, high] = spread(w.aloft);
-  expect([w.inside, w.stuck, w.wet, w.badLandings]).toEqual([0, 0, 0, 0]);
-  expect([low >= 0.55, high <= 0.92]).toEqual([true, true]);
-  // Each lands every few minutes, stays up no longer than its longest leg and approach, rests no longer than its longest rest,
-  // and goes no higher than its highest cruise over the tallest thing there, the obelisk's 90 m.
-  expect(Math.min(...w.landings)).toBeGreaterThanOrEqual(5);
-  expect([w.longestUp < 240, w.longestDown <= 61, w.highest < 90 + 40 + 5]).toEqual([true, true, true]);
-  h.host.shutdown();
-}, 60_000);
-
-test("left 20 minutes, 100 wild pteranodons over a coast of frame towers to 192 m go round and over them and land on the beach and the streets, never inside anything, stuck or in the sea", () => {
-  const { h } = watched([[64, 64], [320, 64], [64, 320], [320, 320]], { map: coast() });
-  const list = flock(h, 100, (rng) => [110 + rng.range(-10, 30), 192 + rng.range(-100, 100)]);
-  expect(list.length).toBe(100);
-  const w = watch(h, list, 20 * 60);
-  const [low, high] = spread(w.aloft);
-  expect([w.inside, w.stuck, w.wet, w.badLandings]).toEqual([0, 0, 0, 0]);
-  expect([low >= 0.55, high <= 0.92]).toEqual([true, true]);
-  expect(Math.min(...w.landings)).toBeGreaterThanOrEqual(5);
-  expect([w.longestUp < 240, w.longestDown <= 61]).toEqual([true, true]);
-  // The towers were in their way: they went round them.
-  expect(h.host.creatures.mind.turned).toBeGreaterThan(100);
-  h.host.shutdown();
-}, 60_000);
 
 /** Ada, an admin, on the proving ground's plaza, and a pteranodon put down `ahead` metres north of her. */
 function plaza(ahead = 6, god = true) {

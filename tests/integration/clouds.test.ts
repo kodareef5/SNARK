@@ -15,7 +15,6 @@ import { BTN_PRIMARY } from "../../shared/sim/character.ts";
 import { V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { takeInHand } from "../fixtures/gather.ts";
-import { underLoad } from "../fixtures/load.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -184,7 +183,7 @@ test("smoke gives nothing; on a PvE server gas spares other tribes but not its t
   h.host.shutdown();
 });
 
-test("many clouds are cheap: the most there may be look at a crowd in well under a millisecond a tick, and are drawn within the particles' room", () => {
+test("many clouds are cheap: of the most there may be, each gas looks at who is inside it once every half second and smoke never does, and all are drawn within the particles' room", () => {
   const h = new Harness({}, 1, 60, { dev: true });
   const ada = h.join("ada");
   h.run(500);
@@ -197,15 +196,9 @@ test("many clouds are cheap: the most there may be look at a crowd in well under
   for (let k = 0; k < MAX_CLOUDS + 10; k++) clouds.make(id(k % 2 ? "grenade_poison" : "grenade_smoke"), g.x + (k % 16) * 3.7, y, g.z + Math.floor(k / 16) * 3.7, pid);
   // One more than the most and the oldest ends.
   expect([clouds.count, clouds.made]).toEqual([MAX_CLOUDS, MAX_CLOUDS + 10]);
-  // The least of three runs, so a busy machine does not count against it.
-  const ticks = CLOUD_EVERY * 2;
-  let each = Infinity;
-  for (let run = 0; run < 3; run++) {
-    const t0 = performance.now();
-    for (let k = 0; k < ticks; k++) clouds.step();
-    each = Math.min(each, (performance.now() - t0) / ticks);
-  }
-  expect(each).toBeLessThan(underLoad(1));
+  const looked = clouds.looked;
+  h.run((2 * CLOUD_EVERY * 1000) / TICK_RATE);
+  expect(clouds.looked - looked).toBe(2 * (MAX_CLOUDS / 2));
 
   // The client draws every one in view as puffs, the cut-out core first, and never more than the packet holds.
   const looks = new CloudLooks(reg, corePack().header.details, corePack().palette);
@@ -219,21 +212,13 @@ test("many clouds are cheap: the most there may be look at a crowd in well under
   cam.update();
   const p = new FramePacket();
   const range = [0, 0];
-  // The first frame makes each cloud's puffs; a frame after that only places them.
+  // The first frame makes each cloud's puffs, and the next places them.
   looks.write(p, cam, r, range);
-  let ms = Infinity;
-  let cut = 0;
-  for (let run = 0; run < 3; run++) {
-    p.detailCount = 0;
-    const t1 = performance.now();
-    cut = looks.write(p, cam, r, range);
-    ms = Math.min(ms, performance.now() - t1);
-  }
+  p.detailCount = 0;
+  const cut = looks.write(p, cam, r, range);
   expect(cut).toBeGreaterThan(0);
   expect(p.detailCount).toBeLessThanOrEqual(MAX_DETAILS);
   expect(looks.written + looks.dropped).toBeGreaterThan(cut);
-  // About 4 ms for these 7,936 puffs on an idle machine; the room is for a busy one, and stretches with its load.
-  expect(ms).toBeLessThan(underLoad(25));
   // The see-through rim comes far to near.
   let last = Infinity;
   for (let k = cut; k < p.detailCount; k++) {

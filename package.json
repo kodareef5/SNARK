@@ -7,6 +7,7 @@
   },
   "scripts": {
     "check": "bun tools/check.ts",
+    "slow": "bun tools/check.ts --slow-only",
     "ci": "bun tools/ci.ts",
     "test": "bun test",
     "bench": "bun tools/bench.ts",

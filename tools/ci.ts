@@ -4,6 +4,7 @@
 //
 //   bun run ci                  HEAD
 //   bun run ci -- main          any commit
+//   --slow                      the check with its slow tier, as before a merge to main
 //   --build                     also a client build in the copy, which starts with no texture cache
 //   --probe                     also `bun run probe` in the copy; --probe-slow, --probe-lose, --probe-twice and
 //                               --probe-stress run it with that flag. --all runs every option
@@ -16,7 +17,7 @@ import { dirname, join, resolve, sep } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 const PROBES = ["probe", "probe-slow", "probe-lose", "probe-twice", "probe-stress"];
-const OPTIONS = ["build", ...PROBES, "all"];
+const OPTIONS = ["slow", "build", ...PROBES, "all"];
 
 /**
  * Tools that write committed files without Blender. In the copy each writes its files again, and they must come out as
@@ -149,7 +150,7 @@ try {
     })) === 0;
 
   if (installed) {
-    checkStatus = await step("check", async () => exited(await bun(["run", "check"])));
+    checkStatus = await step("check", async () => exited(await bun(["run", "check", ...(wants("slow") ? ["--slow"] : [])])));
     await step("tree after check", async () => {
       const left = changed();
       return left.length === 0 ? { status: 0, note: "as committed" } : { status: 1, note: `the check changed or left files that are not ignored:\n${left.join("\n")}` };

@@ -68,7 +68,8 @@ test("the keeper thread backs up a world that goes on committing, and the copy i
   h.host.items.mint(rec, stone, 7);
   h.run(100);
   p.keeper.backup();
-  for (let n = 0; n < 400 && reports.length === 0; n++) {
+  // Until the thread reports, however long a busy machine makes that: the hang limit is the only bound.
+  while (reports.length === 0) {
     h.host.items.mint(rec, stone, 1);
     h.run(34);
     await Bun.sleep(5);
@@ -79,7 +80,7 @@ test("the keeper thread backs up a world that goes on committing, and the copy i
   // Its checkpoints arrive too, without a tick waiting for one.
   h.run(6000);
   h.host.idle();
-  for (let n = 0; n < 400 && p.keeper.last.ms === 0; n++) await Bun.sleep(5);
+  while (p.keeper.last.ms === 0) await Bun.sleep(5);
   expect(p.keeper.last.ms).toBeGreaterThan(0);
   h.host.shutdown();
   expect(!existsSync(`${p.store.path}-wal`) || statSync(`${p.store.path}-wal`).size === 0).toBe(true);
