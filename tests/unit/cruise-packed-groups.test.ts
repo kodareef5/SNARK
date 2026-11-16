@@ -33,10 +33,12 @@ test("cruise cell ownership follows actual quantized faces through export reorde
 test("cruise packed ownership rejects stale source and pack hashes or incomplete triangle coverage", () => {
   const { bytes, pack, raw } = fixture(), layout = new TextEncoder().encode("layout");
   const groups: CruisePackedGroups = { version: 1, layoutSHA256: cruiseHash(layout), packSHA256: cruiseHash(bytes), meshes: [{ id: pack.header.meshes[0]!.id, origin: [0,0,0], yaw: 0,
-    levels: [{ level: 0, triangles: 2, ranges: matchTriangleOwners(pack, pack.header.meshes[0]!, 0, raw, 6) }] }] };
+    levels: [{ level: 0, authoredLevel: 0, triangles: 2, ranges: matchTriangleOwners(pack, pack.header.meshes[0]!, 0, raw, 6) }] }] };
   expect(() => verifyCruiseGroups(groups, layout, bytes)).not.toThrow();
   expect(() => verifyCruiseGroups(groups, new Uint8Array(), bytes)).toThrow("does not match");
   expect(() => verifyCruiseGroups(groups, layout, bytes.slice(1))).toThrow("does not match");
-  const incomplete: CruisePackedGroups = { ...groups, meshes: [{ ...groups.meshes[0]!, levels: [{ level: 0, triangles: 2, ranges: [[0,1,4]] }] }] };
+  const incomplete: CruisePackedGroups = { ...groups, meshes: [{ ...groups.meshes[0]!, levels: [{ level: 0, authoredLevel: 0, triangles: 2, ranges: [[0,1,4]] }] }] };
   expect(() => verifyCruiseGroups(incomplete, layout, bytes)).toThrow("incomplete ownership coverage");
+  const invalidStage: CruisePackedGroups = { ...groups, meshes: [{ ...groups.meshes[0]!, levels: [{ ...groups.meshes[0]!.levels[0]!, authoredLevel: 2 }] }] };
+  expect(() => verifyCruiseGroups(invalidStage, layout, bytes)).toThrow("invalid authored level mapping");
 });

@@ -104,7 +104,7 @@ test("cell scale reads each exported triangle once, excludes gangway owners, and
     members: base.layout.instances.map(i => ({ instance: i.id, prototype: i.prototype, category: base.layout.prototypes.find(p => p.id === i.prototype)!.category })) };
   const layout: CruiseLayout = { ...base.layout, cells: [cell], prototypes: base.layout.prototypes.map(p => ({ ...p, mesh: "none", visualBounds: { min: [-999,-999,-999], max: [999,999,999] } })) };
   const groups: CruisePackedGroups = { version: 1, layoutSHA256: "synthetic", packSHA256: cruiseHash(bytes), meshes: [{ id, origin: [0,0,0], yaw: 0,
-    levels: lods.map((_, level) => ({ level, triangles: raw[level]!.length / 40, ranges: matchTriangleOwners(pack, pack.header.meshes[0]!, level, raw[level]!, layout.instances.length) })) }] };
+    levels: lods.map((_, level) => ({ level, authoredLevel: level, triangles: raw[level]!.length / 40, ranges: matchTriangleOwners(pack, pack.header.meshes[0]!, level, raw[level]!, layout.instances.length) })) }] };
   const report = cruiseScale(layout, bytes, false, groups);
   expect(report.pass).toBe(true);
   for (const level of report.levels) {
@@ -113,4 +113,13 @@ test("cell scale reads each exported triangle once, excludes gangway owners, and
     expect(level.bounds.max[2]).toBeCloseTo(182.5, 2);
   }
   expect(() => cruiseScale(layout, bytes)).toThrow("require ownership evidence");
+  // A simple cell keeps three real levels covering six ship-wide candidates.
+  // Stage 1 still uses its finest geometry; stages 3/4 use its retained middle level.
+  const retained = [0, 2, 5], fewer = buildPack([{ id, lods: retained.map(level => lods[level]!) }], defaultPalette()), fewerPack = parsePack(fewer);
+  const fewerGroups: CruisePackedGroups = { ...groups, packSHA256: cruiseHash(fewer), meshes: [{ ...groups.meshes[0]!,
+    levels: retained.map((authoredLevel, level) => ({ level, authoredLevel, triangles: raw[authoredLevel]!.length / 40,
+      ranges: matchTriangleOwners(fewerPack, fewerPack.header.meshes[0]!, level, raw[authoredLevel]!, layout.instances.length) })) }] };
+  const collapsed = cruiseScale(layout, fewer, false, fewerGroups);
+  expect(collapsed.pass).toBe(true);
+  expect(collapsed.levels.map(l => l.metrics)).toEqual(report.levels.map(l => l.metrics));
 });

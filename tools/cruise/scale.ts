@@ -32,7 +32,7 @@ export function cruiseScale(layout: CruiseLayout, bytes: Uint8Array, features = 
   for (const id of ids) {
     const mesh = geometry.byId.get(id);
     if (!mesh) faults.push(`missing native mesh ${id}`);
-    else if (mesh.lods.length !== 6) faults.push(`${id}: requires six native levels, found ${mesh.lods.length}`);
+    else if (mesh.lods.length < 1 || mesh.lods.length > 6) faults.push(`${id}: requires one to six retained native levels, found ${mesh.lods.length}`);
   }
   if (faults.length) throw new Error(faults.join("; "));
   for (let level = 0; level < 6; level++) {
@@ -94,7 +94,7 @@ export function cruiseScale(layout: CruiseLayout, bytes: Uint8Array, features = 
     levels.push({ level, vertices, triangles, waterlineTriangles, coverage, bounds, metrics });
   }
   return { pass: faults.length === 0, phase: layout.phase, toleranceMetres: TOLERANCE, features,
-    scope: "All placed ship geometry in all six delivered native LODs, excluding the gangway. Native origin/yaw quantization in the canonical yaw-zero ship frame. Hull beam is measured by clipping actual triangles at waterline Y0; deckhouse and bridge use explicit semantic groups matched to actual packed triangles. Cell geometry is counted once, independently of collision-only modules. Height and draft are reported as geometry bounds, not certified published measurements. This does not certify visual resemblance, interior accuracy, collision or frame cost.",
+    scope: "All placed ship geometry across six authored detail stages, excluding the gangway. Identical consecutive cell candidates share one native level through the hash-bound authored-stage mapping; every retained native level is measured. Native origin/yaw quantization in the canonical yaw-zero ship frame. Hull beam is measured by clipping actual triangles at waterline Y0; deckhouse and bridge use explicit semantic groups matched to actual packed triangles. Cell geometry is counted once, independently of collision-only modules. Height and draft are reported as geometry bounds, not certified published measurements. This does not certify visual resemblance, interior accuracy, collision or frame cost.",
     featureScope: features ? "Outer AquaDome category measures the architect's 57 m width and 17 m height; separate inner theater, furniture and decks are excluded. The unverified overall ship height/draft and discrepant Pearl figures are not certified." : "Outer dome dimensions are not included in this prototype envelope run; final acceptance requires --features.",
     faults, levels };
 }

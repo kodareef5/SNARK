@@ -15,7 +15,8 @@ export interface CruisePackedGroups {
     readonly id: string;
     readonly origin: readonly [number, number, number];
     readonly yaw: number;
-    readonly levels: readonly { readonly level: number; readonly triangles: number; readonly ranges: readonly OwnerRun[] }[];
+    /** Native levels retained from six authored stages; identical consecutive candidates share one level. */
+    readonly levels: readonly { readonly level: number; readonly authoredLevel: number; readonly triangles: number; readonly ranges: readonly OwnerRun[] }[];
   }[];
 }
 
@@ -76,7 +77,11 @@ export function verifyCruiseGroups(groups: CruisePackedGroups, layout: Uint8Arra
   for (const mesh of groups.meshes) {
     if (ids.has(mesh.id)) throw new Error(`Duplicate cruise audit mesh ${mesh.id}`);
     ids.add(mesh.id);
-    for (const lod of mesh.levels) {
+    if (!mesh.levels.length || mesh.levels.length > 6) throw new Error(`${mesh.id}: invalid retained level count`);
+    let previous = -1;
+    for (const [level, lod] of mesh.levels.entries()) {
+      if (lod.level !== level || !Number.isInteger(lod.authoredLevel) || lod.authoredLevel <= previous || lod.authoredLevel > 5 || (level === 0 && lod.authoredLevel !== 0)) throw new Error(`${mesh.id}: invalid authored level mapping`);
+      previous = lod.authoredLevel;
       let end = 0;
       for (const [first, count, owner] of lod.ranges) {
         if (first !== end || !Number.isInteger(count) || count < 1 || !Number.isInteger(owner) || owner < 0) throw new Error(`${mesh.id} L${lod.level}: invalid ownership coverage`);
@@ -90,7 +95,7 @@ export function verifyCruiseGroups(groups: CruisePackedGroups, layout: Uint8Arra
 interface RawIndex {
   version: 1;
   layoutSHA256: string;
-  meshes: { id: string; origin: [number, number, number]; yaw: number; levels: { level: number; file: string; triangles: number }[] }[];
+  meshes: { id: string; origin: [number, number, number]; yaw: number; levels: { level: number; authoredLevel: number; file: string; triangles: number }[] }[];
 }
 
 if (import.meta.main) {
@@ -115,7 +120,7 @@ if (import.meta.main) {
     return { id: cell.id, origin: cell.origin, yaw: cell.yaw, levels: cell.levels.map(l => {
       const bytes = readFileSync(resolve(dirname(rawPath), l.file));
       if (bytes.length / 40 !== l.triangles) throw new Error(`${cell.id} L${l.level}: raw byte count differs from index`);
-      return { level: l.level, triangles: l.triangles, ranges: matchTriangleOwners(pack, mesh, l.level, bytes, layout.instances.length) };
+      return { level: l.level, authoredLevel: l.authoredLevel, triangles: l.triangles, ranges: matchTriangleOwners(pack, mesh, l.level, bytes, layout.instances.length) };
     }) };
   });
   const result: CruisePackedGroups = { version: 1, layoutSHA256: cruiseHash(layoutBytes), packSHA256: cruiseHash(packBytes), meshes };

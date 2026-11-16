@@ -3,20 +3,22 @@ import { expect, test } from "bun:test";
 import { CRUISE_LAYOUT } from "../../content/landmarks/cruise.ts";
 import type { CruiseLayout } from "../../content/landmarks/cruise-layout.ts";
 import type { SourceLod } from "../../tools/pack/write.ts";
-import { cruiseArt, cruiseArtSections, cruiseOwnerLod } from "../fixtures/cruise-art.ts";
+import { cruiseArt, cruiseArtGroups, cruiseArtSections, cruiseOwnerLod } from "../fixtures/cruise-art.ts";
 
 const layout: CruiseLayout = CRUISE_LAYOUT;
 
-test("rendered cruise cells stay inside their actual 16 m cubes with six useful levels and shared native materials", () => {
+test("rendered cruise cells stay inside their actual 16 m cubes with retained authored stages and shared native materials", () => {
   const expected = new Set([...layout.cells!.map(c => c.id), ...layout.prototypes.filter(p => p.mesh !== "none").map(p => p.mesh)]);
   expect([...cruiseArt.byId.keys()].sort()).toEqual([...expected].sort());
   const totals = new Array<number>(6).fill(0), faults: string[] = [];
   for (const cell of layout.cells!) {
     const mesh = cruiseArt.byId.get(cell.id)!, header = cruiseArt.pack.header.meshes[cruiseArt.pack.meshIndex.get(cell.id)!]!;
-    expect(mesh.lods.length, cell.id).toBe(6); expect(mesh.flat, cell.id).toBe(2);
+    const retained = cruiseArtGroups.meshes.find(m => m.id === cell.id)!.levels;
+    expect(mesh.lods.length, cell.id).toBe(retained.length);
+    expect(mesh.lods.length, cell.id).toBeGreaterThanOrEqual(2); expect(mesh.lods.length, cell.id).toBeLessThanOrEqual(6);
+    expect(mesh.flat, cell.id).toBe(retained.filter(l => l.authoredLevel < 2).length);
     expect(cell.yaw).toBe(0); expect(mesh.materials!.length, cell.id).toBeLessThanOrEqual(3);
     for (const [level, lod] of mesh.lods.entries()) {
-      totals[level]! += lod.indices.length / 3;
       if (!lod.indices.length || !lod.positions.every(Number.isFinite)) faults.push(`${cell.id} L${level}: absent or non-finite geometry`);
       for (let axis = 0; axis < 3; axis++) {
         const tolerance = header.half[axis]! / 32767 + .000004;
@@ -26,6 +28,7 @@ test("rendered cruise cells stay inside their actual 16 m cubes with six useful 
         }
       }
     }
+    for (let stage = 0; stage < 6; stage++) totals[stage]! += retained.findLast(l => l.authoredLevel <= stage)!.triangles;
   }
   expect(faults.slice(0, 30)).toEqual([]);
   for (let i = 1; i < 6; i++) expect(totals[i]!).toBeLessThanOrEqual(totals[i - 1]!);
