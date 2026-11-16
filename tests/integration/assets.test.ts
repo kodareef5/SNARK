@@ -135,7 +135,9 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // without the forge, its item and engram and the two recipes fired at it it is that again.
   // Koru's bounded static meshes renumber the pack. Removing only those meshes restores e73ea001 exactly.
   // The sail control adds one grey-box mesh; removing only core:koru_sail_control restores d802fd91.
-  expect(hash).toBe("71fd49c1");
+  // Cruise static meshes renumber the frozen pack; excluding only those restores 71fd49c1.
+  // See planning/evidence/cruise-mesh-number-proof.json for all four independently restored pins.
+  expect(hash).toBe("a36b5221");
 
   // The same scene with the raptor's box saddle in the pack and on the raptor (FL5), drawn on its bones wherever it is
   // seen. The saddle's mesh numbers the meshes after it on, so the pack that holds it is the frozen one with it added:
@@ -149,5 +151,6 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // It was 32d21d3d until the refining forge's grey boxes (S1), as above; without the forge it is that again.
   // The same Koru mesh-number change; excluding those meshes restores c7cb77a9.
   // Removing only the new sail-control mesh also restores the saddled scene's d4e844a9 exactly.
-  expect(saddled.hash).toBe("f8aeaf69");
+  // The same cruise mesh-number change; excluding only cruise meshes restores f8aeaf69.
+  expect(saddled.hash).toBe("f36d65a9");
 });

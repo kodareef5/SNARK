@@ -422,7 +422,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // forge, its item and engram and the two recipes fired at it it is that again.
   // Koru's bounded static meshes renumber the pack. Removing only those meshes restores 1588438482 exactly.
   // The sail control adds one grey-box mesh; removing only core:koru_sail_control restores 2398637633.
-  expect(hash).toBe(1161318704);
+  // Cruise static meshes renumber the frozen pack; excluding only those restores 1161318704.
+  // See planning/evidence/cruise-mesh-number-proof.json for all four independently restored pins.
+  expect(hash).toBe(2881042045);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -440,7 +442,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1344453007 until the refining forge's grey boxes (S1), as above; without the forge it is that again.
   // The same Koru mesh-number change; excluding those meshes restores 1941699530.
   // Removing only the new sail-control mesh also restores the saddled scene's 2395641891 exactly.
-  expect(saddled.hash).toBe(3746450364);
+  // The same cruise mesh-number change; excluding only cruise meshes restores 3746450364.
+  expect(saddled.hash).toBe(1372766523);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
