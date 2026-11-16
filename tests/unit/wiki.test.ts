@@ -5,10 +5,22 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inflateSync } from "node:zlib";
+import { CONTROL_GROUPS } from "../../client/core/ui/controls-guide.ts";
 import { findRows, mapTransform, type SearchRow } from "../../client/core/wiki/filter.ts";
+import { RATE_DEFAULTS, changed, rated, tamingLevels, tamingRows } from "../../client/core/wiki/rates.ts";
+import { worldPath, type ServerSaid } from "../../client/core/wiki/world.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { LANDMARKS } from "../../content/landmarks/index.ts";
+import type { Host } from "../../server/host.ts";
+import { worldSettings } from "../../server/main.ts";
+import { CATALOG } from "../../server/settings/catalog.ts";
+import { Rules, publicValues } from "../../server/settings/rules.ts";
 import type { Def } from "../../shared/content/defs.ts";
+import { compileContent } from "../../shared/content/registry.ts";
+import type { Landmark } from "../../shared/world/landmark.ts";
 import { buildCatalogue, namesOf, time } from "../../tools/wiki/catalogue.ts";
+import { controlGroups } from "../../tools/wiki/controls.ts";
+import { coverage, leftOut, unruled } from "../../tools/wiki/coverage.ts";
 import { checkLinks } from "../../tools/wiki/links.ts";
 import { indexedPng } from "../../tools/wiki/quantize.ts";
 import { commands, consoleLine, publicSettings } from "../../tools/wiki/reference.ts";
@@ -20,13 +32,14 @@ const byId = (id: string) => entries.find((e) => e.id === id)!;
 test("the wiki is of what a player meets: no scenery, no target, no creature without art, and a made thing is one entry", () => {
   const ids = new Set(entries.map((e) => e.id));
   for (const d of CORE_CONTENT) {
-    if (d.type === "item") expect(ids.has(d.id)).toBe(true);
+    if (d.type === "item" || d.type === "node" || d.type === "buff") expect(ids.has(d.id)).toBe(true);
     if (d.type === "structure" || d.type === "engram") expect(ids.has(d.id)).toBe(false);
   }
-  expect([...ids].filter((id) => !CORE_CONTENT.some((d) => d.id === id && d.type === "item")).sort()).toEqual([
+  expect(entries.filter((e) => ["creatures", "vehicles", "characters"].includes(e.kind)).map((e) => e.id).sort()).toEqual([
     "core:boat", "core:boat_police", "core:boat_rescue", "core:civilian", "core:compact", "core:dodo", "core:helicopter",
     "core:helicopter_police", "core:helicopter_rescue", "core:parasaur", "core:pteranodon", "core:raptor", "core:survivor",
   ]);
+  expect(entries.filter((e) => e.kind === "landmarks").map((e) => e.id)).toEqual(LANDMARKS.map((l) => l.name));
   const foundation = byId("core:piece_foundation_wood");
   expect([foundation.label, foundation.group, foundation.console]).toEqual(["Wooden foundation", "Building", "give core:piece_foundation_wood 1"]);
   expect(foundation.facts.map((f) => [f.label, f.value.join("")])).toContainEqual(["Engram", "Level 11, 6 points"]);
@@ -48,10 +61,10 @@ test("a creature's page has its stats by level, the wiki's taming table, its dro
   const raptor = byId("core:raptor");
   expect(raptor.tables.find((t) => t.title === "Stats")!.rows[0]).toEqual(["Health", "200", "+40 (20%)", "+5.4%"]);
   expect(raptor.tables.find((t) => t.title === "Harvesting")!.rows).toEqual([
-    [{ id: "core:hide" }, "1", "55.6%", { id: "core:hatchet" }],
-    [{ id: "core:meat" }, "1", "44.4%", { id: "core:pick" }],
+    [{ id: "core:hide" }, { rate: "body", v: "1 1", text: "1" }, "55.6%", { id: "core:hatchet" }],
+    [{ id: "core:meat" }, { rate: "body", v: "1 1", text: "1" }, "44.4%", { id: "core:pick" }],
   ]);
-  expect(raptor.facts.find((f) => f.label === "Maturation")!.value).toEqual(["1 d 13 h"]);
+  expect(raptor.facts.find((f) => f.label === "Maturation")!.value).toEqual([{ rate: "mature", v: "133333", text: "1 d 13 h" }]);
   expect(raptor.console).toBe("spawn core:raptor");
   expect([time(7199), time(59), time(3600)]).toEqual(["1 h 59 min", "59 s", "1 h"]);
 });
@@ -74,9 +87,85 @@ test("an item and its engram added to the content get their entry, and the links
   expect(list.find((e) => e.id === "core:wood")!.related.find((r) => r.relation === "Used to craft")!.refs).toContainEqual({ id: "wiki:alloy" });
 });
 
+test("a node, a status and a landmark added get their entries, and the links run both ways", () => {
+  const added: Def[] = [
+    { type: "node", id: "wiki:cactus", mesh: "box", color: 3, half: [0.5, 1, 0.5], hits: 6, respawnHours: 2, material: "wood", yields: [{ item: "core:fiber", min: 1, max: 2 }, { item: "core:wood", min: 1, max: 1, tool: true }], xp: 2 },
+    { type: "buff", id: "wiki:prickled", label: "Prickled", color: 3, seconds: 4, health: -2 },
+    { type: "item", class: "consumable", id: "wiki:needle", stack: 10, eat: { food: 1 }, use: { buffs: ["wiki:prickled"] } },
+  ];
+  const piece = LANDMARKS[0]!.defs.find((d) => d.type === "structure" && d.mesh !== "none")!;
+  const hut: Landmark = { name: "hut", defs: LANDMARKS[0]!.defs, pieces: [{ kind: piece.id, at: [0, 0, 0], yaw: 0 }], vehicles: [{ kind: "core:compact", id: "hut/car", at: [4, 0, 0], yaw: 0 }], ground: [] };
+  const list = buildCatalogue({ defs: [...CORE_CONTENT, ...added], landmarks: [...LANDMARKS, hut] });
+  const of = (id: string) => list.find((e) => e.id === id)!;
+  expect(of("wiki:cactus").tables[0]!.rows.map((r) => r.map((c) => (typeof c === "string" ? c : "rate" in c ? c.text : c.id)))).toEqual([["core:fiber", "1 to 2", "3 to 6"], ["core:wood", "", "3"]]);
+  expect(of("core:hatchet").related.find((r) => r.relation === "Works")!.refs).toContainEqual({ id: "wiki:cactus" });
+  expect(of("core:fiber").related.find((r) => r.relation === "Gathered from")!.refs).toContainEqual({ id: "wiki:cactus" });
+  expect(of("wiki:prickled").related).toContainEqual({ relation: "Given by", refs: [{ id: "wiki:needle" }] });
+  expect(of("wiki:needle").facts.find((f) => f.label === "Gives")!.value).toEqual([{ id: "wiki:prickled" }]);
+  expect([of("hut").kind, of("hut").picture!.places]).toEqual(["landmarks", [[0, 0, 0, 0, 0]]]);
+  expect(of("core:compact").related.find((r) => r.relation === "Moored at")!.refs).toEqual([{ id: "hut" }]);
+});
+
+test("every class of definition is ruled on: each has its entry, is shown within a page, or is left out for a reason given once", () => {
+  expect(unruled()).toEqual([]);
+  const ids = new Set(entries.map((e) => e.id));
+  const pages = new Set(["items/", "levels/", "maps/", "maps/miami/", "maps/las-vegas/"]);
+  const rulings = coverage({ defs: CORE_CONTENT, landmarks: LANDMARKS, has: (m) => m !== "box" && m !== "shape" && m !== "none", maps: new Set(["core:miami", "core:las-vegas"]) });
+  for (const { def, ruling } of rulings) {
+    if ("entry" in ruling) expect([def.id, ids.has(ruling.entry)]).toEqual([def.id, true]);
+    else if ("within" in ruling) expect([def.id, ids.has(ruling.within) || pages.has(ruling.within)]).toEqual([def.id, true]);
+  }
+  for (const l of LANDMARKS) expect(ids.has(l.name)).toBe(true);
+  expect(leftOut(rulings).map((l) => l.why)).toEqual(["scenery", "form", "standIn", "target", "unmade", "remains", "flight", "noFile"]);
+  expect(leftOut(rulings).find((l) => l.why === "noFile")!.names).toEqual(["Tampa", "San Francisco", "Los Angeles"]);
+  expect(() => coverage({ defs: [{ type: "prop", class: "seat", id: "wiki:chair" } as unknown as Def], landmarks: [], has: () => true, maps: new Set() })).toThrow("no ruling on prop/seat");
+});
+
+test("a world's settings change the figures they rule, worked out on the page as the build works them at the defaults", () => {
+  const fifty: ServerSaid = { name: "A 50x server", map: "core:miami", settings: { TamingSpeedMultiplier: 50, HarvestAmountMultiplier: 50, ResourcesRespawnPeriodMultiplier: 0.2, XPMultiplier: 50, ItemStackSizeMultiplier: 10, OverrideOfficialDifficulty: 5 } };
+  const taming = byId("core:pteranodon").tables.find((t) => t.title === "Taming")!;
+  expect(tamingRows(taming.taming!)).toEqual(taming.rows as string[][]);
+  expect(tamingRows(taming.taming!, fifty).at(-1)!.slice(0, 4)).toEqual(["150", "1,193", "19 min 12 s", "1 in 2 min 30 s"]);
+  expect(tamingLevels({ ...fifty, settings: { OverrideOfficialDifficulty: 1 } })).toEqual([1, 6, 12, 18, 24, 30]);
+  const banyan = byId("core:banyan");
+  const cells = banyan.tables[0]!.rows.flat().filter((c): c is { rate: string; v: string; text: string } => typeof c === "object" && "rate" in c);
+  for (const c of cells) expect(rated(c.rate, c.v)).toBe(c.text);
+  expect(cells.map((c) => rated(c.rate, c.v, fifty))).toEqual(["100 to 200", "300 to 600", "0 to 50", "150 to 450"]);
+  const fact = (e: string, label: string) => byId(e).facts.find((f) => f.label === label)!.value.find((c) => typeof c === "object" && "rate" in c) as { rate: string; v: string };
+  expect(rated(fact("core:banyan", "Grows back").rate, fact("core:banyan", "Grows back").v, fifty)).toBe("12 min");
+  expect(rated(fact("core:wood", "Stack").rate, fact("core:wood", "Stack").v, fifty)).toBe("1,000");
+  expect(changed(["node", "taming", "spoil"], fifty)).toEqual([["HarvestAmountMultiplier", 50, 1], ["TamingSpeedMultiplier", 50, 1], ["OverrideOfficialDifficulty", 5, 0]]);
+  // Each setting a figure reads is a public row that takes effect, at the default the page assumes of it.
+  for (const [name, def] of Object.entries(RATE_DEFAULTS)) expect([name, publicSettings().find((s) => s.name === name)?.def]).toEqual([name, String(def)]);
+});
+
+test("a world tells the wiki its public settings and nothing else, and the page asks the world it was opened from", () => {
+  const rules = new Rules();
+  for (const [name, value] of [["ServerAdminPassword", "hunter2"], ["ServerPassword", "letmein"], ["PlayerDamageMultiplier", "3"], ["TamingSpeedMultiplier", "50"], ["SessionName", "Isle"], ["serverPVE", "True"]]) expect(rules.assign(name!, value!, "file")).toBe("");
+  expect(publicValues(rules)).toEqual({ TamingSpeedMultiplier: 50, serverPVE: true });
+  const host = { rules, world: { mapId: "core:miami", reg: compileContent(CORE_CONTENT).registry! } } as unknown as Host;
+  const said: ServerSaid = worldSettings(host);
+  expect(said).toEqual({ name: "Isle", map: "core:miami", settings: { TamingSpeedMultiplier: 50, serverPVE: true } });
+  expect(JSON.stringify(said)).not.toMatch(/hunter2|letmein/);
+  // A row that holds a password or a key is never one a player may know.
+  for (const r of CATALOG) if (/password|key|token|secret/i.test(r.name)) expect([r.name, r.public]).toEqual([r.name, false]);
+  expect(worldPath("?world=/miami", "", "https://play.example", null)).toBe("/miami");
+  expect(worldPath("", "https://play.example/miami/", "https://play.example", null)).toBe("/miami");
+  expect(worldPath("", "https://play.example/wiki/items/", "https://play.example", "/miami")).toBe("/miami");
+  expect(worldPath("", "https://elsewhere.example/vegas/", "https://play.example", null)).toBe("");
+  expect(worldPath("?world=../x", "", "https://play.example", null)).toBe("");
+});
+
+test("the controls page is the controls screen's own tables, and says how to get out of a seat", () => {
+  const world = controlGroups().find((g) => g.name === "World")!;
+  expect(world.keys.find((c) => c.keys.includes("E"))!.detail).toContain("get in or out of a seat");
+  expect(world.pad.find((c) => c.title === "Use / ride")!.keys).toEqual(["Y / △"]);
+  expect(controlGroups().map((g) => g.name)).toEqual([...CONTROL_GROUPS]);
+});
+
 test("the settings the wiki lists are the rows marked public, and every command family is registered", () => {
   expect(publicSettings().map((s) => s.name)).toContain("TamingSpeedMultiplier");
-  expect(publicSettings().length).toBe(22);
+  expect(publicSettings().length).toBe(24);
   expect(commands().filter((c) => c.examples.length > 0).length).toBeGreaterThan(10);
 });
 
@@ -96,10 +185,13 @@ test("every page is whole HTML, names only what it has, and writes what the cont
       commands: commands(),
       settings: publicSettings(),
       engrams: [],
+      levels: { xp: [0, 5, 20], points: [0, 8, 8] },
+      controls: controlGroups(),
+      left: [{ why: "noFile", count: 1, names: ["Tampa"] }],
       names: namesOf(entries),
     };
     const pages = renderWiki(site);
-    for (const f of ["wiki/a.css", "wiki/a.js", "wiki/s.json", "assets/f.ttf", "wiki/media/raptor.card.png", "assets/core.snsd"]) {
+    for (const f of ["wiki/a.css", "wiki/a.js", "wiki/s.json", "assets/f.ttf", "wiki/media/raptor.card.png", "assets/core.snsd", "assets/hud-font-license.txt"]) {
       const file = join(dist, f);
       mkdirSync(join(file, ".."), { recursive: true });
       writeFileSync(file, "");
@@ -110,6 +202,11 @@ test("every page is whole HTML, names only what it has, and writes what the cont
     expect(raptor).not.toContain("<img src=x");
     expect(raptor).toContain('data-file="/assets/core.snsd" data-at="8" data-rate="32000" data-takes="100:20"');
     for (const html of pages.values()) expect(html).toStartWith("<!doctype html>");
+    expect(pages.get("creatures/pteranodon/")).toContain('<span data-figure="hatch" data-v="');
+    expect(pages.get("creatures/pteranodon/")).toContain("<table data-taming=");
+    expect(pages.get("settings/")).toContain('<td data-setting="TamingSpeedMultiplier">1</td>');
+    expect(pages.get("")).toContain("Not in the wiki: maps still being made: Tampa.");
+    expect(pages.get("controls/")).toContain("get in or out of a seat");
     expect(() => checkLinks(new Map([["a/", '<a href="/wiki/b/">b</a>']]), dist)).toThrow("names /wiki/b/");
   } finally {
     rmSync(dist, { recursive: true, force: true });

@@ -745,6 +745,8 @@ export interface ModelShot {
   level: number;
   /** More meshes drawn with it, at the same level, with its rig and colours: the parts of a body. */
   also?: readonly number[];
+  /** In place of `mesh` and `also`, rigid meshes each where it stands, x, y, z in metres and its yaw in 1/65,536 turns: a landmark's pieces. */
+  placed?: readonly (readonly [mesh: number, x: number, y: number, z: number, yaw: number])[];
   /** Degrees the camera stands around the model from its front, toward its left, and above its middle. */
   around: number;
   above: number;
@@ -836,20 +838,25 @@ export class ModelView {
       writeBones(p.bones, 0, shot.rig.solved, shot.rig.rest, null, -cam.x, -cam.y, -cam.z, 0);
       p.boneCount = shot.rig.bones;
       this.writer.setSkinned(0, 0, shot.colors[0] ?? 0);
-    } else this.writer.set(0, -cam.x, -cam.y, -cam.z, 0, shot.colors[0] ?? 0);
-    this.writer.regions(0, Uint8Array.from({ length: 6 }, (_, q) => shot.colors[q] ?? 0), 0);
-    p.transientCount = 1;
-    p.transientIds[0] = 1;
+    }
+    const parts = shot.placed ?? [shot.mesh, ...(shot.also ?? [])].map((m) => [m, 0, 0, 0, 0] as const);
+    const colors = Uint8Array.from({ length: 6 }, (_, q) => shot.colors[q] ?? 0);
+    parts.forEach(([, x, y, z, yaw], k) => {
+      if (!shot.rig && (k === 0 || shot.placed)) this.writer.set(k, x - cam.x, y - cam.y, z - cam.z, yaw, shot.colors[0] ?? 0);
+      if (k === 0 || shot.placed) this.writer.regions(k, colors, 0);
+      p.transientIds[k] = 1;
+    });
+    p.transientCount = shot.placed ? parts.length : 1;
     const sections = shot.textured ? this.pack.header.meshes[shot.mesh]!.lods[shot.level]!.sections : undefined;
     p.drawCount = 0;
-    for (const mesh of [shot.mesh, ...(shot.also ?? [])]) {
+    for (const [k, [mesh]] of parts.entries()) {
       const runs = (shot.textured ? this.pack.header.meshes[mesh]!.lods[shot.level]!.sections : undefined) ?? [-1, 0, 0];
       for (let r = 0; r < runs.length; r += 3) {
         const d = p.drawCount++;
         p.drawMesh[d] = mesh;
         p.drawLod[d] = shot.level;
         p.drawBuffer[d] = TRANSIENT_BUFFER;
-        p.drawFirst[d] = 0;
+        p.drawFirst[d] = shot.placed ? k : 0;
         p.drawInstances[d] = 1;
         p.drawOffset.fill(0, d * 3, d * 3 + 3);
         p.drawFlags[d] = DRAW_PLAIN | (shot.rig ? DRAW_SKINNED : 0);

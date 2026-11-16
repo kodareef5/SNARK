@@ -25,9 +25,11 @@ export interface Assets {
 const NAV: readonly (readonly [string, string])[] = [
   ["creatures", "Creatures"],
   ["items", "Items"],
+  ["resources", "Resources"],
   ["engrams", "Engrams"],
   ["vehicles", "Vehicles"],
   ["maps", "Maps"],
+  ["controls", "Controls"],
   ["sounds", "Sounds"],
   ["commands", "Commands"],
 ];

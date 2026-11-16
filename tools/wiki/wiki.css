@@ -435,6 +435,10 @@ tbody th {
   fill: #d8b4ff;
 }
 
+.marks .landmark circle {
+  fill: #ffb38a;
+}
+
 .marks .parked {
   fill: #ffd479;
 }

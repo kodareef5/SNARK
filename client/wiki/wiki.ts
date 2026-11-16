@@ -1,7 +1,8 @@
 // The wiki's pages read whole without this. It plays a sound from the game's sound files, moves and layers a map,
-// copies a console line, and searches.
+// copies a console line, searches, and works the figures out again for the world the visitor came from.
 
 import { findRows, mapTransform, type SearchRow } from "../core/wiki/filter.ts";
+import { worldPath, type ServerSaid } from "../core/wiki/world.ts";
 
 const all = <T extends Element>(selector: string, root: ParentNode = document): T[] => [...root.querySelectorAll<T>(selector)];
 
@@ -80,6 +81,34 @@ for (const list of all<HTMLOListElement>("[data-search]")) {
   input.addEventListener("input", () => void show());
   if (input.value) void show();
 }
+
+// The world says what it runs beside its links.json; with no world behind the page, or one at its defaults, nothing changes.
+const kept = ((): string | null => { try { return sessionStorage.getItem("world"); } catch { return null; } })();
+const world = worldPath(location.search, document.referrer, location.origin, kept);
+try { sessionStorage.setItem("world", world); } catch { /* Without storage each page asks by its own address. */ }
+void fetch(`${world}/settings.json`, { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).then(async (said: ServerSaid | null) => {
+  if (!said?.settings || Object.keys(said.settings).length === 0) return;
+  const { changed, rated, settingText, settingsLine, tamingRows } = await import("../core/wiki/rates.ts");
+  const kinds = new Set<string>();
+  for (const el of all<HTMLElement>("[data-figure]")) el.textContent = rated(kinds.add(el.dataset.figure!) && el.dataset.figure!, el.dataset.v!, said);
+  for (const t of all<HTMLTableElement>("[data-taming]")) {
+    kinds.add("taming");
+    t.tBodies[0]!.replaceChildren(...tamingRows(JSON.parse(t.dataset.taming!), said).map((row) => {
+      const tr = document.createElement("tr");
+      row.forEach((text, k) => (tr.appendChild(document.createElement(k ? "td" : "th")).textContent = text));
+      return tr;
+    }));
+  }
+  for (const td of all<HTMLElement>("[data-setting]")) {
+    const v = said.settings[td.dataset.setting!];
+    if (v !== undefined) td.appendChild(document.createElement("b")).textContent = ` · ${said.name}: ${settingText(v)}`;
+  }
+  const differ = changed(kinds, said);
+  if (differ.length === 0) return;
+  const note = Object.assign(document.createElement("p"), { className: "note" });
+  note.append("Figures here are for ", Object.assign(document.createElement("a"), { href: `${world}/`, textContent: said.name }), `: ${settingsLine(differ)}.`);
+  document.querySelector("main .heading")?.after(note);
+}, () => {});
 
 // A map moves under a drag and zooms by its buttons, the wheel with ctrl, and the keys; its layers show by their boxes.
 for (const view of all<HTMLElement>("[data-atlas]")) {

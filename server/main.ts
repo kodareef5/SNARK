@@ -8,7 +8,7 @@ import { CH_RELIABLE, type Connection } from "../shared/net/transport.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../shared/world/proving.ts";
 import { createHost, type Host } from "./host.ts";
 import { LIVE_FILE, formatReport, loadConfigFolder } from "./settings/config.ts";
-import type { Rules } from "./settings/rules.ts";
+import { publicValues, type Rules } from "./settings/rules.ts";
 import type { ModuleDef } from "./api/module.ts";
 import { restoreBackup } from "./persist/backup.ts";
 import { stopOnSignals } from "./signals.ts";
@@ -162,6 +162,17 @@ export function clusterList(host: Host): { world: number; name: string; url: str
   return { world: c.world, name: c.serverName(c.world), url: c.url, port: c.port, servers: c.destinations() };
 }
 
+/**
+ * What `settings.json` answers beside the world's `links.json`, which the wiki's pages apply to their figures for a visitor
+ * who came from this world (client/core/wiki/rates.ts): its name, its map, and its public settings not at their default.
+ */
+export function worldSettings(host: Host): { name: string; map: string; settings: Record<string, number | boolean | string> } {
+  const reg = host.world.reg;
+  const def = reg.defs[reg.index.get(host.world.mapId) ?? 0];
+  const map = (def?.type === "map" ? def.label : undefined) ?? host.world.mapId;
+  return { name: host.rules.text("SessionName") || map, map: host.world.mapId, settings: publicValues(host.rules) };
+}
+
 /** The default settings folder of a development server. It speeds up taming, hatching and growth so raising a creature takes minutes. */
 export const DEV_CONFIG = resolve(import.meta.dir, "../config/dev");
 
@@ -262,6 +273,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         return srv.upgrade(req, { data: { conn: null, voice: null, isVoice: url.pathname === "/voice" } }) ? undefined : new Response("expected a WebSocket", { status: 400 });
       }
       if (url.pathname === "/cluster.json") return new Response(JSON.stringify(clusterList(host)), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
+      if (url.pathname === "/settings.json") return new Response(JSON.stringify(worldSettings(host)), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
       if (url.pathname === "/__selfcheck" && req.method === "POST" && opts.dev) {
         report(await req.json());
         return new Response("ok");

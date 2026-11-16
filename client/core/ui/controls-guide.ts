@@ -7,7 +7,7 @@ const KEYS: Readonly<Record<string,Binding>>={
   Space:b(0,"Jump","From a crouch or prone stance, the first press stands up."),KeyC:b(0,"Crouch","Press again to stand."),KeyX:b(0,"Prone","Press again to stand."),
   Mouse0:b(1,"Attack","Hold to use the equipped weapon. While building, place the preview."),Mouse2:b(1,"Aim / alternate attack"),MouseMove:b(0,"Look","Move the mouse to aim and steer the camera."),
   KeyR:b(1,"Reload"),KeyG:b(1,"Melee / lower bow"),KeyN:b(0,"Movement modifier","Used by movement and mount abilities."),
-  KeyE:b(2,"Use / ride","Tap to interact. Hold on a structure to open its actions."),KeyF:b(2,"Creature inventory","Opens the owned creature you are riding or looking at."),
+  KeyE:b(2,"Use / ride","Tap to interact, or to get in or out of a seat or saddle. Hold on a structure to open its actions."),KeyF:b(2,"Creature inventory","Opens the owned creature you are riding or looking at."),
   KeyI:b(2,"Inventory"),KeyP:b(2,"Character","Stats, engrams and crafting."),KeyM:b(2,"Map"),KeyL:b(2,"Minimap","Toggle visibility."),KeyH:b(2,"Inspect HUD","Hold for values and minimap controls. Release to return to play."),
   Minus:b(2,"Zoom out","Zoom the open map, or the minimap during play."),Equal:b(2,"Zoom in","Zoom the open map, or the minimap during play."),
   KeyV:b(2,"View","Switch first / third person when the server allows it."),KeyO:b(2,"Settings"),Escape:b(5,"Back / menu","Close one layer at a time."),Tab:b(2,"Console"),Slash:b(2,"Tribe chat"),Backquote:b(2,"Console"),Enter:b(2,"Chat"),KeyB:b(2,"Voice","Hold to talk, or use the toggle preference in Audio."),
@@ -28,7 +28,7 @@ export function keyBinding(code:string,group:number):Binding|undefined {
   return KEYS[code];
 }
 const PAD_MENU:Readonly<Record<number,Binding>>={0:b(5,"Select / drag","Hold to pick up an inventory stack; release over its destination."),1:b(5,"Back"),9:b(5,"Menu / back"),12:b(5,"Previous control"),13:b(5,"Next control"),14:b(5,"Decrease / previous"),15:b(5,"Increase / next"),10:b(5,"Navigate","Left stick: move focus. Horizontal movement adjusts the focused slider.")};
-const PAD_DEFAULT:Readonly<Record<number,Binding>>={0:b(0,"Jump"),1:b(2,"Inventory"),2:b(1,"Reload","Tap to reload. Hold to open the owned creature's inventory."),3:b(2,"Use / ride","Tap to interact. Hold on a structure to open its actions."),
+const PAD_DEFAULT:Readonly<Record<number,Binding>>={0:b(0,"Jump"),1:b(2,"Inventory"),2:b(1,"Reload","Tap to reload. Hold to open the owned creature's inventory."),3:b(2,"Use / ride","Tap to interact, or to get in or out of a seat or saddle. Hold on a structure to open its actions."),
     4:b(2,"Hotbar modifier","Hold with the D-pad for slots 5–8; with X / □ for 9; with Y / △ for 0. With RB / R1, switch view."),5:b(1,"Melee / lower bow"),6:b(1,"Aim / alternate attack"),7:b(1,"Attack"),
     8:b(2,"Map / inspect","Tap to open the map. Hold to inspect the HUD; release to return to play."),9:b(5,"Menu"),10:b(0,"Move / sprint","Move with the left stick. Hold its button to sprint."),11:b(0,"Look / crouch / prone","Look with the right stick. Tap its button to toggle crouch; hold to toggle prone."),
     12:b(2,"Hotbar 1 / 5","Hold LB / L1 for slot 5."),15:b(2,"Hotbar 2 / 6","Hold LB / L1 for slot 6."),13:b(2,"Hotbar 3 / 7","Hold LB / L1 for slot 7."),14:b(2,"Hotbar 4 / 8","Hold LB / L1 for slot 8.") };

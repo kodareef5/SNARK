@@ -1,9 +1,11 @@
 // Every page of the wiki as complete HTML, by path under BASE. A page needs no script to be read; the script plays
-// sounds, moves the map, copies a console line and searches.
+// sounds, moves the map, copies a console line, searches, and works a figure out again for the world a visitor came from.
 
 import type { Atlas, Mark } from "./atlas.ts";
 import type { Cell, Entry, Kind, Ref, Table } from "./catalogue.ts";
 import { KINDS, num, time } from "./catalogue.ts";
+import type { ControlGroup } from "./controls.ts";
+import { LEFT_OUT, type LeftOut } from "./coverage.ts";
 import { BASE, esc, heading, img, page, pager, slug, type Assets } from "./html.ts";
 import type { Drawn } from "./posters.ts";
 import type { Command, Setting } from "./reference.ts";
@@ -31,7 +33,7 @@ export interface Site {
   assets: Assets;
   entries: Entry[];
   pictures: ReadonlyMap<string, Drawn>;
-  /** Who made each entry's model and its motion. */
+  /** What each entry's model and its motion are. */
   credits: ReadonlyMap<string, string>;
   atlases: Atlas[];
   sounds: Sound[];
@@ -41,6 +43,11 @@ export interface Site {
   commands: Command[];
   settings: Setting[];
   engrams: { item: string; level: number; cost: number }[];
+  /** Experience to reach each level from the first, and the engram points reaching it gives. */
+  levels: { xp: readonly number[]; points: readonly number[] } | null;
+  controls: ControlGroup[];
+  /** What the wiki leaves out (coverage.ts), each reason with how many. */
+  left: { why: LeftOut; count: number; names: string[] }[];
   /** What each id is called: entries, nodes and structures. */
   names: ReadonlyMap<string, string>;
 }
@@ -50,7 +57,7 @@ export const PAGE = 60;
 /** The front page's cards of creatures and vehicles, and of maps, however many there are. */
 export const FRONT_CARDS = 8;
 export const FRONT_MAPS = 4;
-const TITLES: Record<Kind, string> = { creatures: "Creatures", items: "Items", vehicles: "Vehicles", characters: "Characters" };
+const TITLES: Record<Kind, string> = { creatures: "Creatures", items: "Items", resources: "Resources", vehicles: "Vehicles", landmarks: "Landmarks", statuses: "Statuses", characters: "Characters" };
 
 function groupBy<T>(list: readonly T[], key: (t: T) => string): Map<string, T[]> {
   const out = new Map<string, T[]>();
@@ -89,8 +96,9 @@ export function renderWiki(site: Site): Map<string, string> {
   }
   for (const e of site.entries) write(entryPath(e).slice(BASE.length), e.label, e.kind, v.entry(e));
   write("engrams/", "Engrams", "engrams", v.engrams());
+  if (site.levels) write("levels/", "Levels", "engrams", v.levels(site.levels));
   write("maps/", "Maps", "maps", `${heading("Maps", `${site.atlases.length} worlds`)}${v.maps()}`);
-  for (const a of site.atlases) write(`maps/${a.slug}/`, a.label, "maps", atlasPage(a, site.names));
+  for (const a of site.atlases) write(`maps/${a.slug}/`, a.label, "maps", atlasPage(a, site.names, v.ref));
   write("sounds/", "Sounds", "sounds", v.soundOwners());
   for (const [o, list] of v.owners) {
     for (let at = 0; at * PAGE < list.length; at++) {
@@ -98,6 +106,7 @@ export function renderWiki(site: Site): Map<string, string> {
     }
   }
   write("music/", "Music", "sounds", v.music());
+  write("controls/", "Controls", "controls", v.controls());
   write("commands/", "Commands", "commands", v.commands());
   write("settings/", "Server settings", "", v.settings());
   write("search/", "Search", "", v.search());
@@ -108,7 +117,7 @@ export function renderWiki(site: Site): Map<string, string> {
 /** The parts pages are made of, over one site. */
 function views(site: Site) {
   const byId = new Map(site.entries.map((e) => [e.id, e]));
-  // A node has no page: a link to it shows the first map it grows on.
+  // A link to a thing with no page of its own shows the first map it grows on.
   const grows = new Map<string, string>();
   for (const a of site.atlases) for (const r of a.resources) if (!grows.has(r.of)) grows.set(r.of, `${BASE}maps/${a.slug}/?show=${r.id}`);
   const owners = groupBy(site.sounds, (s) => s.owner);
@@ -122,12 +131,13 @@ function views(site: Site) {
     const href = e ? entryPath(e) : grows.get(r.id);
     return `${href ? `<a href="${href}">${name}</a>` : name}${r.note ? ` <small>${esc(r.note)}</small>` : ""}`;
   };
-  const cell = (c: Cell): string => (typeof c === "string" ? esc(c) : ref(c));
+  const cell = (c: Cell): string => (typeof c === "string" ? esc(c) : "rate" in c ? `<span data-figure="${c.rate}" data-v="${esc(c.v)}">${esc(c.text)}</span>` : ref(c));
   const row = (r: readonly Cell[]): string => `<tr>${r.map((c, k) => (k === 0 ? `<th>${cell(c)}</th>` : `<td>${cell(c)}</td>`)).join("")}</tr>`;
   const table = (t: Table): string => {
     const head = `<thead><tr>${join(t.head, (h) => `<th>${cell(h)}</th>`)}</tr></thead>`;
-    const note = t.note ? `<p class="note">${esc(t.note)}</p>` : "";
-    return `<section><h2>${esc(t.title)}</h2><div class="wide"><table>${head}<tbody>${join(t.rows, row)}</tbody></table></div>${note}</section>`;
+    const note = t.note?.length ? `<p class="note">${t.note.map(cell).join("")}</p>` : "";
+    const data = t.taming ? ` data-taming="${esc(JSON.stringify(t.taming))}"` : "";
+    return `<section><h2>${esc(t.title)}</h2><div class="wide"><table${data}>${head}<tbody>${join(t.rows, row)}</tbody></table></div>${note}</section>`;
   };
   const card = (e: Entry): string => {
     const p = site.pictures.get(e.id);
@@ -151,20 +161,25 @@ function views(site: Site) {
     const shelves: [string, string, string][] = [
       ...KINDS.map((k): [string, string, string] => [`${k}/`, TITLES[k], String(site.entries.filter((e) => e.kind === k).length)]),
       ["engrams/", "Engrams", String(site.engrams.length)],
+      ...(site.levels ? [["levels/", "Levels", String(site.levels.xp.length)] as [string, string, string]] : []),
       ["maps/", "Maps", String(site.atlases.length)],
       ["sounds/", "Sounds", `${owners.size} owners`],
       ["music/", "Music", `${site.music.length} tracks`],
+      ["controls/", "Controls", `${site.controls.length} groups`],
       ["commands/", "Commands", String(site.commands.length)],
     ];
     // The creatures and vehicles a player meets most on the maps, by spawn regions and by vehicles parked, as many as the page holds.
     const met = (e: Entry): number => site.atlases.reduce((n, a) => n + (a.creatures.find((l) => l.of === e.id)?.count ?? 0) + (a.vehicles.find((v) => v.kind === e.id)?.count ?? 0), 0);
     const featured = site.entries.filter((e) => e.kind === "creatures" || e.kind === "vehicles").sort((a, b) => met(b) - met(a) || a.label.localeCompare(b.label)).slice(0, FRONT_CARDS);
     const more = site.atlases.length > FRONT_MAPS ? `<p class="note"><a href="${BASE}maps/">Every map</a></p>` : "";
+    const left = site.left.map((l) => `${LEFT_OUT[l.why]}${l.names.length ? `: ${l.names.join(", ")}` : ""}`);
+    const missing = left.length ? `<p class="note">Not in the wiki: ${esc(left.join("; "))}.</p>` : "";
     return `${heading("Wiki", "", "Creatures, items, maps and the console, read from the game itself.")}
 <form class="find big" action="${BASE}search/" role="search"><input name="q" aria-label="Search the wiki" placeholder="Raptor, wooden foundation, pistol…"></form>
 <nav class="shelves">${join(shelves, ([path, label, n]) => `<a href="${BASE}${path}"><b>${label}</b><small>${n}</small></a>`)}</nav>
 <section><h2>Creatures and vehicles</h2>${cards(featured)}</section>
-<section><h2>Maps</h2>${maps(site.atlases.slice(0, FRONT_MAPS))}${more}</section>`;
+<section><h2>Maps</h2>${maps(site.atlases.slice(0, FRONT_MAPS))}${more}</section>
+${missing}`;
   };
 
   const entry = (e: Entry): string => {
@@ -177,13 +192,17 @@ function views(site: Site) {
       ? `<p class="console"><code id="console">${esc(e.console)}</code><button type="button" data-copy="console">Copy</button></p><p class="note">In the console, with cheats on.</p>`
       : "";
     const lives = site.atlases.flatMap((a) => {
+      const link = (show: string): string => `<a href="${BASE}maps/${a.slug}/?show=${esc(show)}">${esc(a.label)}</a>`;
       const layer = a.creatures.find((l) => l.of === e.id);
       const parked = a.vehicles.find((v) => v.kind === e.id);
-      const link = `<a href="${BASE}maps/${a.slug}/?show=${slug(e.id)}">${esc(a.label)}</a>`;
-      if (layer) return [`<li>${link}: ${layer.count} spawn ${layer.count === 1 ? "region" : "regions"}</li>`];
-      return parked ? [`<li>${link}: ${parked.count} parked</li>`] : [];
+      const grown = a.resources.find((r) => r.of === e.id);
+      if (layer) return [`<li>${link(slug(e.id))}: ${layer.count} spawn ${layer.count === 1 ? "region" : "regions"}</li>`];
+      if (grown) return [`<li>${link(grown.id)}: ${num(grown.count)} grow</li>`];
+      if (a.landmarks.some((l) => l.of === e.id)) return [`<li>${link("landmarks")}</li>`];
+      return parked ? [`<li>${link(slug(e.id))}: ${parked.count} parked</li>`] : [];
     });
-    const where = lives.length ? `<section><h2>${e.kind === "vehicles" ? "Where to find one" : "Where it lives"}</h2><ul class="places">${lives.join("")}</ul></section>` : "";
+    const title = e.kind === "vehicles" ? "Where to find one" : e.kind === "resources" ? "Where it grows" : e.kind === "landmarks" ? "Where it stands" : "Where it lives";
+    const where = lives.length ? `<section><h2>${title}</h2><ul class="places">${lives.join("")}</ul></section>` : "";
     const heard = (site.heard.get(e.id) ?? []).map((id) => soundById.get(id)!).sort((a, b) => a.name.localeCompare(b.name));
     const every = owners.has(e.id) ? `<p class="note"><a href="${BASE}sounds/${slug(e.id)}/">Every sound of the ${esc(e.label.toLowerCase())}</a></p>` : "";
     const sounds = heard.length ? `<section><h2>What it sounds like</h2><ul class="sounds">${join(heard, sound)}</ul>${every}</section>` : "";
@@ -201,7 +220,14 @@ ${related ? `<section><h2>Related</h2><dl class="related">${related}</dl></secti
     const rows = [...site.engrams].sort((a, b) => a.level - b.level || name(a.item).localeCompare(name(b.item)));
     const lines = join(rows, (r) => `<tr><td>${r.level}</td><th>${ref({ id: r.item })}</th><td>${r.cost}</td></tr>`);
     const lede = "What a survivor may learn at each level, and the points it costs.";
-    return `${heading("Engrams", `${rows.length} to learn`, lede)}<div class="wide"><table><thead><tr><th>Level</th><th>Engram</th><th>Points</th></tr></thead><tbody>${lines}</tbody></table></div>`;
+    const levels = site.levels ? `<p><a href="${BASE}levels/">The experience each level takes, and the points it gives</a></p>` : "";
+    return `${heading("Engrams", `${rows.length} to learn`, lede)}${levels}<div class="wide"><table><thead><tr><th>Level</th><th>Engram</th><th>Points</th></tr></thead><tbody>${lines}</tbody></table></div>`;
+  };
+
+  const levels = (l: NonNullable<Site["levels"]>): string => {
+    const lines = l.xp.map((xp, i) => `<tr><th>${i + 1}</th><td>${num(xp)}</td><td>${l.points[i] ? `+${l.points[i]}` : ""}</td></tr>`).join("");
+    const lede = "The experience a survivor has in all on reaching each level, and the engram points that level gives to spend.";
+    return `${heading("Levels", `${l.xp.length} levels`, lede)}<p><a href="${BASE}engrams/">What the points learn</a></p><div class="wide"><table><thead><tr><th>Level</th><th>Experience</th><th>Engram points</th></tr></thead><tbody>${lines}</tbody></table></div>`;
   };
 
   const soundOwners = (): string => {
@@ -224,6 +250,13 @@ ${related ? `<section><h2>Related</h2><dl class="related">${related}</dl></secti
     return `${heading("Music", `${site.music.length} tracks`, "Each track in its layers, from calm to the height of a fight.")}${join(site.music, track)}`;
   };
 
+  const controls = (): string => {
+    const rows = (list: ControlGroup["keys"], what: string): string =>
+      list.length ? `<table><thead><tr><th>${what}</th><th>Does</th></tr></thead><tbody>${join(list, (c) => `<tr><th>${esc(c.keys.join(" or "))}</th><td>${esc(c.title)}${c.detail ? `<br><small>${esc(c.detail)}</small>` : ""}</td></tr>`)}</tbody></table>` : "";
+    const groups = join(site.controls, (g) => `<section id="${slug(g.name.toLowerCase())}"><h2>${esc(g.name)}</h2>${rows(g.keys, "Key")}${rows(g.pad, "Gamepad")}</section>`);
+    return `${heading("Controls", `${site.controls.length} groups`, "Each key and gamepad button, as the game's own controls screen gives them.")}${groups}`;
+  };
+
   const commands = (): string => {
     const command = (c: Command): string => {
       const examples = c.examples.length ? `<br>${c.examples.map((x) => `<code>${esc(x)}</code>`).join(" ")}` : "";
@@ -236,7 +269,7 @@ ${related ? `<section><h2>Related</h2><dl class="related">${related}</dl></secti
 
   const settings = (): string => {
     const lede = "What a server may change of the game, as ARK names it, and its value if the server says nothing.";
-    const rows = join(site.settings, (s) => `<tr><th><code>${esc(s.name)}</code><br><small>${esc(s.where)}</small></th><td>${esc(s.def)}</td><td>${esc(s.doc)}</td></tr>`);
+    const rows = join(site.settings, (s) => `<tr><th><code>${esc(s.name)}</code><br><small>${esc(s.where)}</small></th><td data-setting="${esc(s.name)}">${esc(s.def)}</td><td>${esc(s.doc)}</td></tr>`);
     const head = "<thead><tr><th>Setting</th><th>Default</th><th>What it does</th></tr></thead>";
     return `${heading("Server settings", `${site.settings.length} settings`, lede)}<div class="wide"><table>${head}<tbody>${rows}</tbody></table></div>`;
   };
@@ -247,19 +280,19 @@ ${related ? `<section><h2>Related</h2><dl class="related">${related}</dl></secti
 
   const credits = (): string => {
     const by = groupBy([...site.credits], ([, c]) => c);
-    const models = join([...by].sort(([a], [b]) => a.localeCompare(b)), ([c, list]) => `<li>${esc(c)}: ${list.map(([id]) => ref({ id })).join(", ")}</li>`);
+    const models = join([...by].sort(([a], [b]) => a.localeCompare(b)), ([c, list]) => `<li>${esc(c.replace(/\.$/, ""))}: ${list.map(([id]) => ref({ id })).join(", ")}</li>`);
     const sources = join(site.atlases, (a) => `<dt>${esc(a.label)}</dt><dd>${a.sources.map(esc).join("; ")}</dd>`);
     return `${heading("Credits")}<section><h2>Models and motion</h2><ul class="list">${models}</ul></section>
 <section><h2>Maps</h2><dl class="related">${sources}</dl></section>
-<section><h2>Type</h2><p>Barlow Semi Condensed by Jeremy Tribby, under the SIL Open Font License.</p></section>`;
+<section><h2>Type</h2><p>Barlow Semi Condensed, under the <a href="/assets/hud-font-license.txt">SIL Open Font License</a>.</p></section>`;
   };
 
-  return { owners: sortedOwners, ownerName, cards, maps, front, entry, engrams, soundOwners, soundPage, music, commands, settings, search, credits };
+  return { owners: sortedOwners, ownerName, ref, cards, maps, front, entry, engrams, levels, soundOwners, soundPage, music, controls, commands, settings, search, credits };
 }
 
 const at1 = (n: number): number => Math.round(n * 10) / 10;
 
-function atlasPage(a: Atlas, names: ReadonlyMap<string, string>): string {
+function atlasPage(a: Atlas, names: ReadonlyMap<string, string>, ref: (r: Ref) => string): string {
   const name = (id: string): string => names.get(id) ?? id;
   const box = (show: string, label: string, count: string, colour: string, on = false): string =>
     `<label><input type="checkbox" data-show="${esc(show)}"${on ? " checked" : ""}><i style="--c:${colour}"></i>${esc(label)} <small>${count}</small></label>`;
@@ -271,11 +304,13 @@ function atlasPage(a: Atlas, names: ReadonlyMap<string, string>): string {
   const marks = (list: Mark[], cls: string): string =>
     join(list, (m) => `<g class="${cls}" transform="translate(${m.x} ${m.y})"><circle r="5"/>${m.name ? `<text y="-9">${esc(m.name)}</text>` : ""}</g>`);
   const districts = join(a.districts, (d) => `<polygon points="${d.points.map((p) => p.join(",")).join(" ")}"/><text x="${d.at.x}" y="${d.at.y}">${esc(d.name)}</text>`);
+  const landmarks = a.landmarks.map((l) => ({ ...l, name: name(l.of) }));
   const svg = `<svg class="marks" viewBox="0 0 1000 1000" aria-hidden="true">
 <g data-layer="districts">${districts}</g>
 ${a.creatures.map((c) => `<g data-layer="${esc(c.id)}" class="region" style="--c:${c.colour}" hidden>${regions(c.of)}</g>`).join("\n")}
 ${a.vehicles.map((v) => `<g data-layer="${esc(slug(v.kind))}" class="parked" hidden>${join(v.at, (m) => `<circle cx="${m.x}" cy="${m.y}" r="4"/>`)}</g>`).join("\n")}
 <g data-layer="obelisks">${marks(a.obelisks, "obelisk")}</g>
+<g data-layer="landmarks">${marks(landmarks, "landmark")}</g>
 <g data-layer="spawns">${marks(a.spawns, "spawn")}</g>
 </svg>`;
   const layers = join(a.resources, (r) => `<img class="layer" data-layer="${esc(r.id)}" data-src="${esc(r.picture!.file)}" width="${r.picture!.width}" height="${r.picture!.height}" alt="" hidden>`);
@@ -284,6 +319,7 @@ ${a.vehicles.map((v) => `<g data-layer="${esc(slug(v.kind))}" class="parked" hid
     box("districts", "Districts", String(a.districts.length), "#e9eef5", true),
     box("spawns", "Where survivors arrive", String(a.spawns.length), "#9fe3ff", true),
     box("obelisks", "Obelisks", String(a.obelisks.length), "#d8b4ff", true),
+    ...(landmarks.length ? [box("landmarks", "Landmarks", String(landmarks.length), "#ffb38a", true)] : []),
   ].join("");
   const panel = `<aside class="layers glass">
 <fieldset><legend>Places</legend>${places}</fieldset>
@@ -293,8 +329,9 @@ ${a.vehicles.map((v) => `<g data-layer="${esc(slug(v.kind))}" class="parked" hid
 </aside>`;
   const button = (by: number, label: string, text: string): string => `<button type="button" data-zoom="${by}" aria-label="${label}">${text}</button>`;
   const zoom = `<div class="zoom">${button(1, "Zoom in", "+")}${button(-1, "Zoom out", "−")}${button(0, "Whole map", "⤢")}</div>`;
+  const standing = landmarks.length ? `<p class="note">Landmarks: ${landmarks.map((l) => ref({ id: l.of })).join(", ")}</p>` : "";
   return `${heading(a.label, "Map", `${num(a.metres / 1000, 1)} km across. North is up.`)}
 <div class="atlas"><div class="viewport" data-atlas tabindex="0" aria-label="Map of ${esc(a.label)}: drag to move, plus and minus to zoom">
 <div class="plane">${img(a.ground, `${a.label} from above`, false, "ground")}${layers}${svg}</div>${zoom}</div>
-${panel}</div>`;
+${panel}</div>${standing}`;
 }
