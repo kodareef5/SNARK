@@ -8,7 +8,8 @@ export function routeId(id: string): string {
 }
 export function localUrl(url: string): string {
   if (!url) return "";
-  if (!url.startsWith("/") || url.startsWith("//") || /[\\\x00-\x1f]/.test(url) || url.split("/").some((p) => p === ".." || p === ".")) throw new Error("Guide media must use a local absolute URL");
+  const path = decodeURIComponent(url.split(/[?#]/)[0]!);
+  if (!path.startsWith("/") || path.startsWith("//") || /[\\\x00-\x1f]/.test(path) || path.split("/").some((p) => p === ".." || p === ".")) throw new Error("Guide media must use a local absolute URL");
   return escape(url);
 }
 export const entryPath = (e: GuideEntry): string => `/${e.kind}/${routeId(e.id)}/`;

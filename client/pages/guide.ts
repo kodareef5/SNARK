@@ -76,6 +76,7 @@ async function activateModel(frame: HTMLElement): Promise<HTMLElement> {
     button.setAttribute("aria-busy", "true");
     feedback.hidden = false;
     feedback.textContent = "Loading model…";
+    host.classList.add("is-loading");
     host.hidden = false;
     pending = import("./viewer.ts").then(({ mountViewer }) => mountViewer(host, frame.dataset.modelUrl!));
     viewers.set(frame, pending);
@@ -83,9 +84,11 @@ async function activateModel(frame: HTMLElement): Promise<HTMLElement> {
   try {
     await pending;
     one<HTMLElement>(".model-preview", frame)!.hidden = true;
+    host.classList.remove("is-loading");
     feedback.hidden = true;
   } catch {
     host.hidden = true;
+    host.classList.remove("is-loading");
     host.replaceChildren();
     viewers.delete(frame);
     feedback.textContent = "The model could not be loaded. Please try again.";
@@ -132,6 +135,7 @@ for (const atlas of all<HTMLElement>("[data-atlas]")) {
     marker.style.left = `${Math.max(0, Math.min(1, Number(marker.dataset.x) || 0)) * 100}%`;
     marker.style.top = `${Math.max(0, Math.min(1, Number(marker.dataset.y) || 0)) * 100}%`;
   }
+  one<HTMLElement>(".map-marker-layer", atlas)!.hidden = false;
   for (const toggle of all<HTMLInputElement>("[data-layer-toggle]", aside)) toggle.addEventListener("change", () => {
     const layer = all<HTMLElement>("[data-map-layer]", atlas).find((el) => el.dataset.mapLayer === toggle.dataset.layerToggle);
     if (layer) layer.hidden = !toggle.checked;

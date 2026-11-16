@@ -107,7 +107,7 @@ test("model activation uses a data URL and shows the real animation names withou
 
 test("guide paths and asset URLs reject traversal and executable sources", () => {
   for (const id of ["../secret", "core:../secret", "core:%2e%2e", "core:x\\y", "core:"]) expect(() => routeId(id)).toThrow();
-  for (const url of ["javascript:alert(1)", "//elsewhere/model", "/../private", "/x\\private"]) expect(() => localUrl(url)).toThrow();
+  for (const url of ["javascript:alert(1)", "//elsewhere/model", "/../private", "/x\\private", "/%2e%2e/private", "/%2felsewhere/model", "/x%5cprivate"]) expect(() => localUrl(url)).toThrow();
   expect(routeId("core:stone-wall/left")).toBe("core/stone-wall/left");
   expect(localUrl('/media/image.png?label="x"')).toBe("/media/image.png?label=&quot;x&quot;");
 });
