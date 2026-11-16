@@ -53,6 +53,8 @@ const FORMATS: Readonly<Record<TextureFormat, readonly number[]>> = {
   astc: [0x93d0, 0x93b0, 0x93b0],
   rgba: [0x8c43, 0x822b, 0x8058],
 };
+/** Frames that upload a frame that asks the card for an error: a want of memory is known within about 130 ms at 60 a second. */
+const ASK_EVERY = 8;
 
 export class GlRenderer {
   readonly gl: WebGL2RenderingContext;
@@ -98,9 +100,13 @@ export class GlRenderer {
   private blending = false;
   private culling = false;
   private covering = false;
-  /** Slots, and textures, this frame's uploads could not be given memory for. The shell tells core. */
+  /** Slots, and textures, this frame found uploads could not be given memory for. The shell tells core. */
   readonly failed: number[] = [];
   readonly failedTextures: number[] = [];
+  /** What was uploaded since the card was last asked for an error, and the frames that uploaded. */
+  private readonly unaskedSlots: number[] = [];
+  private readonly unaskedTextures: number[] = [];
+  private uploading = 0;
   private readonly buffers = new Map<number, WebGLBuffer>();
   private transient!: WebGLBuffer;
   private tileVao!: WebGLVertexArrayObject;
@@ -481,20 +487,23 @@ export class GlRenderer {
     }
     for (const t of p.texDrops) this.forget(t);
     for (const u of p.texUploads) this.fill(u);
-    // Running out of memory shows as an error after the fact. It is asked for only in a frame that uploaded, since
-    // asking makes the card catch up.
-    const error = p.assetUploads.length + p.texUploads.length > 0 ? gl.getError() : gl.NO_ERROR;
+    // Running out of memory shows as an error after the fact, and asking makes the page wait for the card, so it is
+    // asked in one of every ASK_EVERY frames that upload, and a want of memory fails all they uploaded.
+    for (const u of p.assetUploads) this.unaskedSlots.push(u.slot);
+    for (const u of p.texUploads) if (!this.unaskedTextures.includes(u.slot)) this.unaskedTextures.push(u.slot);
+    const asked = p.assetUploads.length + p.texUploads.length > 0 && ++this.uploading % ASK_EVERY === 0;
+    const error = asked ? gl.getError() : gl.NO_ERROR;
     if (error === gl.OUT_OF_MEMORY) {
-      for (const u of p.assetUploads) {
-        this.drop(u.slot);
-        this.failed.push(u.slot);
+      for (const slot of this.unaskedSlots) {
+        this.drop(slot);
+        this.failed.push(slot);
       }
-      for (const u of p.texUploads) {
-        if (this.failedTextures.includes(u.slot)) continue;
-        this.forget(u.slot);
-        this.failedTextures.push(u.slot);
+      for (const t of this.unaskedTextures) {
+        this.forget(t);
+        this.failedTextures.push(t);
       }
     } else if (error !== gl.NO_ERROR) this.errors++;
+    if (asked) this.unaskedSlots.length = this.unaskedTextures.length = 0;
     // Rows of a copy of the terrain window, from the heightfield as it lies, and the copy drawn with on its units.
     const [drawn, , , copy, i, j, row, rows] = p.groundWindow;
     gl.pixelStorei(gl.UNPACK_ROW_LENGTH, this.hf.nx);
