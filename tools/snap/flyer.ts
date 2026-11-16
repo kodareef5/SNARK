@@ -169,7 +169,7 @@ function nearShots(view: ProvingView): Shot[] {
     const e = (up * Math.PI) / 180;
     return [b.x + far * Math.sin(a) * Math.cos(e), b.y + lift + far * Math.sin(e), b.z + far * Math.cos(a) * Math.cos(e)];
   };
-  const shot = (label: string, b: Put, far: number, around: number, up: number, fov = 50, lift = 0.9): Shot => ({ label, bodies: [b], eye: side(b, far, around, up, lift), at: [b.x, b.y + lift, b.z], fov });
+  const shot = (label: string, b: Put, far: number, around: number, up: number, fov = 34, lift = 0.9): Shot => ({ label, bodies: [b], eye: side(b, far, around, up, lift), at: [b.x, b.y + lift, b.z], fov });
   const onGround = (set?: Put["set"], extra: Partial<Put> = {}): Put => ({ x: g.x, y: g.y, z: g.z, yaw: 0.6, set, ...extra });
   const aloft = (set?: Put["set"], extra: Partial<Put> = {}): Put => ({ x: g.x, y: g.y + 12, z: g.z, yaw: 0.6, flying: true, set, ...extra });
   const dead = (air: boolean): Put => ({ x: g.x, y: g.y, z: g.z, yaw: 0.6, dead: (CUE_DEAD | (air ? FELL : 0)) >>> 0 });
@@ -187,9 +187,9 @@ function nearShots(view: ProvingView): Shot[] {
     shot("ridden, banking", aloft((s) => ((s.speed = 4), (s.bank = 6)), { saddled: true, rider: true }), 9, 200, 5),
     shot("saddled, from above", onGround(undefined, { saddled: true }), 4.5, 160, 45, 50, 1),
     shot("knocked out in the air", aloft((s) => ((s.out = true), (s.grounded = false))), 9, 70, 0),
-    shot("knocked out, lying", onGround((s) => (s.out = true)), 7, 60, 25, 50, 0.5),
-    shot("dead, on the ground", dead(false), 7, 60, 30, 50, 0.4),
-    shot("dead, from the air", dead(true), 7, 60, 30, 50, 0.4),
+    shot("knocked out, lying", onGround((s) => (s.out = true)), 6, 60, 25, 34, 0.5),
+    shot("dead, on the ground", dead(false), 6, 60, 30, 34, 0.4),
+    shot("dead, from the air", dead(true), 6, 60, 30, 34, 0.4),
   ];
 }
 
@@ -242,6 +242,41 @@ for (const name of tiers) {
   console.log(`${file}  ${((performance.now() - t0) / 1000).toFixed(1)} s`);
 }
 
+if (args.includes("--close")) {
+  // Near at full size on one tier: the head, the animal standing, its saddle and rider, and its underside 12 m up.
+  const name = tierArg === "all" ? "high" : tierArg;
+  const view = provingView(960, 540, {}, files);
+  view.scene.assets.tier = tierOf(name);
+  view.scene.viewHeight = 540;
+  const g = ground(view);
+  const body: Put = { x: g.x, y: g.y, z: g.z, yaw: 0.6 };
+  const aloft: Put = { x: g.x, y: g.y + 12, z: g.z, yaw: Math.PI / 2, flying: true, set: (s) => ((s.speed = 4), (s.pitch = -7)) };
+  const at = (b: Put, around: number, up: number, far: number, lift: number): Shot["eye"] => {
+    const a = b.yaw + (around * Math.PI) / 180;
+    const e = (up * Math.PI) / 180;
+    return [b.x + far * Math.sin(a) * Math.cos(e), b.y + lift + far * Math.sin(e), b.z + far * Math.cos(a) * Math.cos(e)];
+  };
+  const shots: Shot[] = [
+    { label: "the head", bodies: [body], eye: at(body, 70, 5, 2.2, 1.45), at: [body.x + 0.4 * Math.sin(body.yaw), body.y + 1.4, body.z + 0.4 * Math.cos(body.yaw)], fov: 34 },
+    { label: "standing", bodies: [body], eye: at(body, 45, 12, 5.5, 0.9), at: [body.x, body.y + 0.9, body.z], fov: 34 },
+    { label: "ridden, its saddle", bodies: [{ ...body, saddled: true, rider: true }], eye: at(body, 120, 25, 3.6, 1.1), at: [body.x, body.y + 1.1, body.z], fov: 34 },
+    { label: "from below, 12 m", bodies: [aloft], eye: [g.x - 3, g.y + 1.7, g.z - 6], at: [aloft.x, aloft.y + 0.8, aloft.z], fov: 40 },
+  ];
+  const sheet = new Uint8Array(1920 * 1104 * 4).fill(236);
+  shots.forEach((s, i) => {
+    stage(view, s.bodies, SEED_FROM * (i + 1));
+    aim(view, s, 960 / 540);
+    settle(view);
+    const [ox, oy] = [(i % 2) * 960, Math.floor(i / 2) * 540];
+    for (let y = 0; y < 540; y++) sheet.set(view.raster.color.subarray(y * 960 * 4, (y + 1) * 960 * 4), ((oy + y) * 1920 + ox) * 4);
+    label(sheet, 1920, s.label, ox + 6, oy + 6);
+  });
+  label(sheet, 1920, `core:pteranodon near on ${name}, as a client draws it`, 6, 1084);
+  const file = join(out, `flyer-close-${name}.png`);
+  writeFileSync(file, encodePng(1920, 1104, sheet));
+  console.log(file);
+}
+
 if (args.includes("--levels")) {
   // Each level of its mesh in turn, on one tier: in flight from below and three quarters, and ridden on the ground.
   const name = tierArg === "all" ? "medium" : tierArg;
@@ -251,14 +286,14 @@ if (args.includes("--levels")) {
   const levels = files.manifest.meshes[mesh]!.levels.length;
   const g = ground(view);
   const poses: [string, Put, Shot["eye"]][] = [
-    ["from below", { x: g.x, y: g.y + 10, z: g.z, yaw: 0.6, flying: true, set: (s) => ((s.speed = 4), (s.pitch = -7)) }, [g.x - 1, g.y + 1.7, g.z - 4]],
+    ["from below", { x: g.x, y: g.y + 10, z: g.z, yaw: 0.6, flying: true, set: (s) => ((s.speed = 4), (s.pitch = -7)) }, [g.x - 2, g.y + 1.7, g.z - 6]],
     ["ridden", { x: g.x, y: g.y, z: g.z, yaw: 0.6, saddled: true, rider: true }, [g.x + 4.5, g.y + 2.6, g.z - 3]],
   ];
-  const [SW, SH] = [levels * 320, poses.length * 180 + 24];
+  const [SW, SH] = [levels * TW, poses.length * TH + 24];
   const sheet = new Uint8Array(SW * SH * 4).fill(236);
   poses.forEach(([what, body, eye], j) => {
     for (let level = 0; level < levels; level++) {
-      const shot: Shot = { label: what, bodies: [body], eye, at: [body.x, body.y + 0.9, body.z], fov: 70 };
+      const shot: Shot = { label: what, bodies: [body], eye, at: [body.x, body.y + 0.9, body.z], fov: 34 };
       stage(view, shot.bodies);
       aim(view, shot, 960 / 540);
       view.scene.assets.tier = tierOf(name);
@@ -266,14 +301,8 @@ if (args.includes("--levels")) {
       settle(view);
       const p = view.scene.packet;
       const drawn = [...Array(p.drawCount).keys()].filter((k) => p.drawMesh[k] === mesh).map((k) => p.drawLod[k]!);
-      // The 960 by 540 picture at a third of its size.
-      for (let y = 0; y < 180; y++) {
-        for (let x = 0; x < 320; x++) {
-          const s = (y * 3 * 960 + x * 3) * 4;
-          sheet.set(view.raster.color.subarray(s, s + 4), ((j * 180 + y) * SW + level * 320 + x) * 4);
-        }
-      }
-      label(sheet, SW, `${what}, level ${drawn[0] ?? "-"}`, level * 320 + 6, j * 180 + 6);
+      shrink(view, 960, 540, sheet, SW, level * TW, j * TH, 2);
+      label(sheet, SW, `${what}, level ${drawn[0] ?? "-"}`, level * TW + 6, j * TH + 6);
     }
   });
   label(sheet, SW, `core:pteranodon at each level of its mesh, ${name}`, 6, SH - 20);
