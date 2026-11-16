@@ -27,7 +27,7 @@ def finish(D,p,world,place,box,ys):
    for z in(za,zb):
     lower=water(z)+min(1.5,water(z)*.08);upper=width(z)
     for inset in(0,.20):points.extend([[sign*max(.005,lower-inset),12.8,z],[sign*max(.005,upper-inset),sheer(z),z]])
-   if sheer(zb)-12.8>1e-5:emit(f'side_{sign}_{j}','hull_side',[points],measurement='hull')
+   if sheer(zb)-12.8>1e-5:emit(f"side_{'port' if sign>0 else 'starboard'}_{j}",'hull_side',[points],measurement='hull')
  # Real roof/foredeck closes the exposed lower bow and covers the entire fitness
  # room. Start at the old deck7 edge: no overlapping coplanar floor-top faces.
  def clip(poly,axis,bound,keep):

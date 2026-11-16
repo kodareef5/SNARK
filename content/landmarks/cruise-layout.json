@@ -177638,7 +177638,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_-1_0_a9b6e5b990",
+      "id": "cruise:forebody_side_starboard_0_a9b6e5b990",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -177708,7 +177708,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_-1_1_7ec87ab5dc",
+      "id": "cruise:forebody_side_starboard_1_7ec87ab5dc",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -177778,7 +177778,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_-1_2_4f045e516a",
+      "id": "cruise:forebody_side_starboard_2_4f045e516a",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -177848,7 +177848,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_-1_3_318a35f41d",
+      "id": "cruise:forebody_side_starboard_3_318a35f41d",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -177918,7 +177918,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_-1_4_864d5fae6d",
+      "id": "cruise:forebody_side_starboard_4_864d5fae6d",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -177988,7 +177988,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_-1_5_c8f7f97f32",
+      "id": "cruise:forebody_side_starboard_5_c8f7f97f32",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -178058,7 +178058,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_-1_6_688c9092ae",
+      "id": "cruise:forebody_side_starboard_6_688c9092ae",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -178128,7 +178128,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_-1_7_5c9269be40",
+      "id": "cruise:forebody_side_starboard_7_5c9269be40",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -178198,7 +178198,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_-1_8_7d88bfd4f4",
+      "id": "cruise:forebody_side_starboard_8_7d88bfd4f4",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -178268,7 +178268,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_-1_9_99fc603a9f",
+      "id": "cruise:forebody_side_starboard_9_99fc603a9f",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -178338,7 +178338,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_-1_10_389ea824bf",
+      "id": "cruise:forebody_side_starboard_10_389ea824bf",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -178408,7 +178408,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_1_0_6a6e15e826",
+      "id": "cruise:forebody_side_port_0_6a6e15e826",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -178478,7 +178478,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_1_1_d0898eb861",
+      "id": "cruise:forebody_side_port_1_d0898eb861",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -178548,7 +178548,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_1_2_2092afcc96",
+      "id": "cruise:forebody_side_port_2_2092afcc96",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -178618,7 +178618,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_1_3_48a285327a",
+      "id": "cruise:forebody_side_port_3_48a285327a",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -178688,7 +178688,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_1_4_9c0033741a",
+      "id": "cruise:forebody_side_port_4_9c0033741a",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -178758,7 +178758,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_1_5_34a2a01690",
+      "id": "cruise:forebody_side_port_5_34a2a01690",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -178828,7 +178828,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_1_6_05852b29d1",
+      "id": "cruise:forebody_side_port_6_05852b29d1",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -178898,7 +178898,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_1_7_e686fe1eb7",
+      "id": "cruise:forebody_side_port_7_e686fe1eb7",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -178968,7 +178968,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_1_8_5e675df6bf",
+      "id": "cruise:forebody_side_port_8_5e675df6bf",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -179038,7 +179038,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_1_9_bc70801a4d",
+      "id": "cruise:forebody_side_port_9_bc70801a4d",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -179108,7 +179108,7 @@
       }
     },
     {
-      "id": "cruise:forebody_side_1_10_4a12fbd126",
+      "id": "cruise:forebody_side_port_10_4a12fbd126",
       "mesh": "none",
       "category": "hull_side",
       "color": 232,
@@ -269859,7 +269859,7 @@
         "finish": "enamel",
         "measurement": "hull"
       },
-      "sourcePrototype": "cruise:forebody_side_-1_7_5c9269be40"
+      "sourcePrototype": "cruise:forebody_side_starboard_7_5c9269be40"
     },
     {
       "id": "cruise:anchor_0047",
@@ -271544,7 +271544,7 @@
         "finish": "enamel",
         "measurement": "hull"
       },
-      "sourcePrototype": "cruise:forebody_side_-1_2_4f045e516a"
+      "sourcePrototype": "cruise:forebody_side_starboard_2_4f045e516a"
     },
     {
       "id": "cruise:anchor_0067",
@@ -308241,7 +308241,7 @@
         "finish": "enamel",
         "measurement": "hull"
       },
-      "sourcePrototype": "cruise:forebody_side_-1_10_389ea824bf"
+      "sourcePrototype": "cruise:forebody_side_starboard_10_389ea824bf"
     },
     {
       "id": "cruise:anchor_0188",
@@ -342585,7 +342585,7 @@
         "finish": "enamel",
         "measurement": "hull"
       },
-      "sourcePrototype": "cruise:forebody_side_1_10_4a12fbd126"
+      "sourcePrototype": "cruise:forebody_side_port_10_4a12fbd126"
     },
     {
       "id": "cruise:anchor_0286",
@@ -382681,7 +382681,7 @@
         "finish": "enamel",
         "measurement": "hull"
       },
-      "sourcePrototype": "cruise:forebody_side_1_4_9c0033741a"
+      "sourcePrototype": "cruise:forebody_side_port_4_9c0033741a"
     },
     {
       "id": "cruise:anchor_0403",
@@ -385263,7 +385263,7 @@
         "finish": "enamel",
         "measurement": "hull"
       },
-      "sourcePrototype": "cruise:forebody_side_1_2_2092afcc96"
+      "sourcePrototype": "cruise:forebody_side_port_2_2092afcc96"
     },
     {
       "id": "cruise:anchor_0425",
@@ -482726,8 +482726,8 @@
       ]
     },
     {
-      "id": "forebody_side_-1_0",
-      "prototype": "cruise:forebody_side_-1_0_a9b6e5b990",
+      "id": "forebody_side_starboard_0",
+      "prototype": "cruise:forebody_side_starboard_0_a9b6e5b990",
       "at": [
         -26.6,
         14.732353,
@@ -482739,8 +482739,8 @@
       "placed": true
     },
     {
-      "id": "forebody_side_-1_1",
-      "prototype": "cruise:forebody_side_-1_1_7ec87ab5dc",
+      "id": "forebody_side_starboard_1",
+      "prototype": "cruise:forebody_side_starboard_1_7ec87ab5dc",
       "at": [
         -25.85,
         16.664706,
@@ -482752,7 +482752,7 @@
       "placed": true
     },
     {
-      "id": "forebody_side_-1_2",
+      "id": "forebody_side_starboard_2",
       "prototype": "cruise:anchor_0066",
       "at": [
         -24.537109,
@@ -482763,11 +482763,11 @@
       "deck": "7",
       "section": "raised-forebody",
       "placed": true,
-      "sourcePrototype": "cruise:forebody_side_-1_2_4f045e516a"
+      "sourcePrototype": "cruise:forebody_side_starboard_2_4f045e516a"
     },
     {
-      "id": "forebody_side_-1_3",
-      "prototype": "cruise:forebody_side_-1_3_318a35f41d",
+      "id": "forebody_side_starboard_3",
+      "prototype": "cruise:forebody_side_starboard_3_318a35f41d",
       "at": [
         -23.0375,
         18.275,
@@ -482779,8 +482779,8 @@
       "placed": true
     },
     {
-      "id": "forebody_side_-1_4",
-      "prototype": "cruise:forebody_side_-1_4_864d5fae6d",
+      "id": "forebody_side_starboard_4",
+      "prototype": "cruise:forebody_side_starboard_4_864d5fae6d",
       "at": [
         -21.695,
         18.275,
@@ -482792,8 +482792,8 @@
       "placed": true
     },
     {
-      "id": "forebody_side_-1_5",
-      "prototype": "cruise:forebody_side_-1_5_c8f7f97f32",
+      "id": "forebody_side_starboard_5",
+      "prototype": "cruise:forebody_side_starboard_5_c8f7f97f32",
       "at": [
         -19.457,
         18.275,
@@ -482805,8 +482805,8 @@
       "placed": true
     },
     {
-      "id": "forebody_side_-1_6",
-      "prototype": "cruise:forebody_side_-1_6_688c9092ae",
+      "id": "forebody_side_starboard_6",
+      "prototype": "cruise:forebody_side_starboard_6_688c9092ae",
       "at": [
         -16.591222,
         18.275,
@@ -482818,7 +482818,7 @@
       "placed": true
     },
     {
-      "id": "forebody_side_-1_7",
+      "id": "forebody_side_starboard_7",
       "prototype": "cruise:anchor_0046",
       "at": [
         -13.359375,
@@ -482829,11 +482829,11 @@
       "deck": "7",
       "section": "raised-forebody",
       "placed": true,
-      "sourcePrototype": "cruise:forebody_side_-1_7_5c9269be40"
+      "sourcePrototype": "cruise:forebody_side_starboard_7_5c9269be40"
     },
     {
-      "id": "forebody_side_-1_8",
-      "prototype": "cruise:forebody_side_-1_8_7d88bfd4f4",
+      "id": "forebody_side_starboard_8",
+      "prototype": "cruise:forebody_side_starboard_8_7d88bfd4f4",
       "at": [
         -10.163286,
         18.275,
@@ -482845,8 +482845,8 @@
       "placed": true
     },
     {
-      "id": "forebody_side_-1_9",
-      "prototype": "cruise:forebody_side_-1_9_99fc603a9f",
+      "id": "forebody_side_starboard_9",
+      "prototype": "cruise:forebody_side_starboard_9_99fc603a9f",
       "at": [
         -6.936072,
         18.275,
@@ -482858,7 +482858,7 @@
       "placed": true
     },
     {
-      "id": "forebody_side_-1_10",
+      "id": "forebody_side_starboard_10",
       "prototype": "cruise:anchor_0187",
       "at": [
         -2.363281,
@@ -482869,11 +482869,11 @@
       "deck": "7",
       "section": "raised-forebody",
       "placed": true,
-      "sourcePrototype": "cruise:forebody_side_-1_10_389ea824bf"
+      "sourcePrototype": "cruise:forebody_side_starboard_10_389ea824bf"
     },
     {
-      "id": "forebody_side_1_0",
-      "prototype": "cruise:forebody_side_1_0_6a6e15e826",
+      "id": "forebody_side_port_0",
+      "prototype": "cruise:forebody_side_port_0_6a6e15e826",
       "at": [
         26.6,
         14.732353,
@@ -482885,8 +482885,8 @@
       "placed": true
     },
     {
-      "id": "forebody_side_1_1",
-      "prototype": "cruise:forebody_side_1_1_d0898eb861",
+      "id": "forebody_side_port_1",
+      "prototype": "cruise:forebody_side_port_1_d0898eb861",
       "at": [
         25.85,
         16.664706,
@@ -482898,7 +482898,7 @@
       "placed": true
     },
     {
-      "id": "forebody_side_1_2",
+      "id": "forebody_side_port_2",
       "prototype": "cruise:anchor_0424",
       "at": [
         24.537109,
@@ -482909,11 +482909,11 @@
       "deck": "7",
       "section": "raised-forebody",
       "placed": true,
-      "sourcePrototype": "cruise:forebody_side_1_2_2092afcc96"
+      "sourcePrototype": "cruise:forebody_side_port_2_2092afcc96"
     },
     {
-      "id": "forebody_side_1_3",
-      "prototype": "cruise:forebody_side_1_3_48a285327a",
+      "id": "forebody_side_port_3",
+      "prototype": "cruise:forebody_side_port_3_48a285327a",
       "at": [
         23.0375,
         18.275,
@@ -482925,7 +482925,7 @@
       "placed": true
     },
     {
-      "id": "forebody_side_1_4",
+      "id": "forebody_side_port_4",
       "prototype": "cruise:anchor_0402",
       "at": [
         21.695312,
@@ -482936,11 +482936,11 @@
       "deck": "7",
       "section": "raised-forebody",
       "placed": true,
-      "sourcePrototype": "cruise:forebody_side_1_4_9c0033741a"
+      "sourcePrototype": "cruise:forebody_side_port_4_9c0033741a"
     },
     {
-      "id": "forebody_side_1_5",
-      "prototype": "cruise:forebody_side_1_5_34a2a01690",
+      "id": "forebody_side_port_5",
+      "prototype": "cruise:forebody_side_port_5_34a2a01690",
       "at": [
         19.457,
         18.275,
@@ -482952,8 +482952,8 @@
       "placed": true
     },
     {
-      "id": "forebody_side_1_6",
-      "prototype": "cruise:forebody_side_1_6_05852b29d1",
+      "id": "forebody_side_port_6",
+      "prototype": "cruise:forebody_side_port_6_05852b29d1",
       "at": [
         16.591222,
         18.275,
@@ -482965,8 +482965,8 @@
       "placed": true
     },
     {
-      "id": "forebody_side_1_7",
-      "prototype": "cruise:forebody_side_1_7_e686fe1eb7",
+      "id": "forebody_side_port_7",
+      "prototype": "cruise:forebody_side_port_7_e686fe1eb7",
       "at": [
         13.360302,
         18.275,
@@ -482978,8 +482978,8 @@
       "placed": true
     },
     {
-      "id": "forebody_side_1_8",
-      "prototype": "cruise:forebody_side_1_8_5e675df6bf",
+      "id": "forebody_side_port_8",
+      "prototype": "cruise:forebody_side_port_8_5e675df6bf",
       "at": [
         10.163286,
         18.275,
@@ -482991,8 +482991,8 @@
       "placed": true
     },
     {
-      "id": "forebody_side_1_9",
-      "prototype": "cruise:forebody_side_1_9_bc70801a4d",
+      "id": "forebody_side_port_9",
+      "prototype": "cruise:forebody_side_port_9_bc70801a4d",
       "at": [
         6.936072,
         18.275,
@@ -483004,7 +483004,7 @@
       "placed": true
     },
     {
-      "id": "forebody_side_1_10",
+      "id": "forebody_side_port_10",
       "prototype": "cruise:anchor_0285",
       "at": [
         2.363281,
@@ -483015,7 +483015,7 @@
       "deck": "7",
       "section": "raised-forebody",
       "placed": true,
-      "sourcePrototype": "cruise:forebody_side_1_10_4a12fbd126"
+      "sourcePrototype": "cruise:forebody_side_port_10_4a12fbd126"
     },
     {
       "id": "forebody_roof_0_0",
@@ -518908,8 +518908,8 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_-1_0",
-          "prototype": "cruise:forebody_side_-1_0_a9b6e5b990",
+          "instance": "forebody_side_starboard_0",
+          "prototype": "cruise:forebody_side_starboard_0_a9b6e5b990",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -519076,14 +519076,14 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_-1_0",
-          "prototype": "cruise:forebody_side_-1_0_a9b6e5b990",
+          "instance": "forebody_side_starboard_0",
+          "prototype": "cruise:forebody_side_starboard_0_a9b6e5b990",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_1",
-          "prototype": "cruise:forebody_side_-1_1_7ec87ab5dc",
+          "instance": "forebody_side_starboard_1",
+          "prototype": "cruise:forebody_side_starboard_1_7ec87ab5dc",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -519254,14 +519254,14 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_-1_1",
-          "prototype": "cruise:forebody_side_-1_1_7ec87ab5dc",
+          "instance": "forebody_side_starboard_1",
+          "prototype": "cruise:forebody_side_starboard_1_7ec87ab5dc",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_2",
-          "prototype": "cruise:forebody_side_-1_2_4f045e516a",
+          "instance": "forebody_side_starboard_2",
+          "prototype": "cruise:forebody_side_starboard_2_4f045e516a",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -519432,20 +519432,20 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_-1_3",
-          "prototype": "cruise:forebody_side_-1_3_318a35f41d",
+          "instance": "forebody_side_starboard_3",
+          "prototype": "cruise:forebody_side_starboard_3_318a35f41d",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_4",
-          "prototype": "cruise:forebody_side_-1_4_864d5fae6d",
+          "instance": "forebody_side_starboard_4",
+          "prototype": "cruise:forebody_side_starboard_4_864d5fae6d",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_5",
-          "prototype": "cruise:forebody_side_-1_5_c8f7f97f32",
+          "instance": "forebody_side_starboard_5",
+          "prototype": "cruise:forebody_side_starboard_5_c8f7f97f32",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -519582,20 +519582,20 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_-1_5",
-          "prototype": "cruise:forebody_side_-1_5_c8f7f97f32",
+          "instance": "forebody_side_starboard_5",
+          "prototype": "cruise:forebody_side_starboard_5_c8f7f97f32",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_6",
-          "prototype": "cruise:forebody_side_-1_6_688c9092ae",
+          "instance": "forebody_side_starboard_6",
+          "prototype": "cruise:forebody_side_starboard_6_688c9092ae",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_7",
-          "prototype": "cruise:forebody_side_-1_7_5c9269be40",
+          "instance": "forebody_side_starboard_7",
+          "prototype": "cruise:forebody_side_starboard_7_5c9269be40",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -519647,7 +519647,7 @@
           176
         ]
       },
-      "anchor": "forebody_side_-1_7",
+      "anchor": "forebody_side_starboard_7",
       "origin": [
         -13.359375,
         18.275391,
@@ -519681,8 +519681,8 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_-1_7",
-          "prototype": "cruise:forebody_side_-1_7_5c9269be40",
+          "instance": "forebody_side_starboard_7",
+          "prototype": "cruise:forebody_side_starboard_7_5c9269be40",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -526088,8 +526088,8 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_-1_0",
-          "prototype": "cruise:forebody_side_-1_0_a9b6e5b990",
+          "instance": "forebody_side_starboard_0",
+          "prototype": "cruise:forebody_side_starboard_0_a9b6e5b990",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -526453,14 +526453,14 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_-1_0",
-          "prototype": "cruise:forebody_side_-1_0_a9b6e5b990",
+          "instance": "forebody_side_starboard_0",
+          "prototype": "cruise:forebody_side_starboard_0_a9b6e5b990",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_1",
-          "prototype": "cruise:forebody_side_-1_1_7ec87ab5dc",
+          "instance": "forebody_side_starboard_1",
+          "prototype": "cruise:forebody_side_starboard_1_7ec87ab5dc",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -526530,7 +526530,7 @@
           128
         ]
       },
-      "anchor": "forebody_side_-1_2",
+      "anchor": "forebody_side_starboard_2",
       "origin": [
         -24.537109,
         18.275391,
@@ -526769,14 +526769,14 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_-1_1",
-          "prototype": "cruise:forebody_side_-1_1_7ec87ab5dc",
+          "instance": "forebody_side_starboard_1",
+          "prototype": "cruise:forebody_side_starboard_1_7ec87ab5dc",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_2",
-          "prototype": "cruise:forebody_side_-1_2_4f045e516a",
+          "instance": "forebody_side_starboard_2",
+          "prototype": "cruise:forebody_side_starboard_2_4f045e516a",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -527104,20 +527104,20 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_-1_3",
-          "prototype": "cruise:forebody_side_-1_3_318a35f41d",
+          "instance": "forebody_side_starboard_3",
+          "prototype": "cruise:forebody_side_starboard_3_318a35f41d",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_4",
-          "prototype": "cruise:forebody_side_-1_4_864d5fae6d",
+          "instance": "forebody_side_starboard_4",
+          "prototype": "cruise:forebody_side_starboard_4_864d5fae6d",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_5",
-          "prototype": "cruise:forebody_side_-1_5_c8f7f97f32",
+          "instance": "forebody_side_starboard_5",
+          "prototype": "cruise:forebody_side_starboard_5_c8f7f97f32",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -527323,20 +527323,20 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_-1_5",
-          "prototype": "cruise:forebody_side_-1_5_c8f7f97f32",
+          "instance": "forebody_side_starboard_5",
+          "prototype": "cruise:forebody_side_starboard_5_c8f7f97f32",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_6",
-          "prototype": "cruise:forebody_side_-1_6_688c9092ae",
+          "instance": "forebody_side_starboard_6",
+          "prototype": "cruise:forebody_side_starboard_6_688c9092ae",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_7",
-          "prototype": "cruise:forebody_side_-1_7_5c9269be40",
+          "instance": "forebody_side_starboard_7",
+          "prototype": "cruise:forebody_side_starboard_7_5c9269be40",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -527457,8 +527457,8 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_-1_7",
-          "prototype": "cruise:forebody_side_-1_7_5c9269be40",
+          "instance": "forebody_side_starboard_7",
+          "prototype": "cruise:forebody_side_starboard_7_5c9269be40",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -542130,14 +542130,14 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_-1_6",
-          "prototype": "cruise:forebody_side_-1_6_688c9092ae",
+          "instance": "forebody_side_starboard_6",
+          "prototype": "cruise:forebody_side_starboard_6_688c9092ae",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_7",
-          "prototype": "cruise:forebody_side_-1_7_5c9269be40",
+          "instance": "forebody_side_starboard_7",
+          "prototype": "cruise:forebody_side_starboard_7_5c9269be40",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -542233,20 +542233,20 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_-1_7",
-          "prototype": "cruise:forebody_side_-1_7_5c9269be40",
+          "instance": "forebody_side_starboard_7",
+          "prototype": "cruise:forebody_side_starboard_7_5c9269be40",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_8",
-          "prototype": "cruise:forebody_side_-1_8_7d88bfd4f4",
+          "instance": "forebody_side_starboard_8",
+          "prototype": "cruise:forebody_side_starboard_8_7d88bfd4f4",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_9",
-          "prototype": "cruise:forebody_side_-1_9_99fc603a9f",
+          "instance": "forebody_side_starboard_9",
+          "prototype": "cruise:forebody_side_starboard_9_99fc603a9f",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -542321,14 +542321,14 @@
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_9",
-          "prototype": "cruise:forebody_side_-1_9_99fc603a9f",
+          "instance": "forebody_side_starboard_9",
+          "prototype": "cruise:forebody_side_starboard_9_99fc603a9f",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_10",
-          "prototype": "cruise:forebody_side_-1_10_389ea824bf",
+          "instance": "forebody_side_starboard_10",
+          "prototype": "cruise:forebody_side_starboard_10_389ea824bf",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -544932,14 +544932,14 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_-1_6",
-          "prototype": "cruise:forebody_side_-1_6_688c9092ae",
+          "instance": "forebody_side_starboard_6",
+          "prototype": "cruise:forebody_side_starboard_6_688c9092ae",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_7",
-          "prototype": "cruise:forebody_side_-1_7_5c9269be40",
+          "instance": "forebody_side_starboard_7",
+          "prototype": "cruise:forebody_side_starboard_7_5c9269be40",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -545135,20 +545135,20 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_-1_7",
-          "prototype": "cruise:forebody_side_-1_7_5c9269be40",
+          "instance": "forebody_side_starboard_7",
+          "prototype": "cruise:forebody_side_starboard_7_5c9269be40",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_8",
-          "prototype": "cruise:forebody_side_-1_8_7d88bfd4f4",
+          "instance": "forebody_side_starboard_8",
+          "prototype": "cruise:forebody_side_starboard_8_7d88bfd4f4",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_9",
-          "prototype": "cruise:forebody_side_-1_9_99fc603a9f",
+          "instance": "forebody_side_starboard_9",
+          "prototype": "cruise:forebody_side_starboard_9_99fc603a9f",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -545231,7 +545231,7 @@
           192
         ]
       },
-      "anchor": "forebody_side_-1_10",
+      "anchor": "forebody_side_starboard_10",
       "origin": [
         -2.363281,
         18.275391,
@@ -545240,14 +545240,14 @@
       "yaw": 0,
       "members": [
         {
-          "instance": "forebody_side_-1_9",
-          "prototype": "cruise:forebody_side_-1_9_99fc603a9f",
+          "instance": "forebody_side_starboard_9",
+          "prototype": "cruise:forebody_side_starboard_9_99fc603a9f",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_-1_10",
-          "prototype": "cruise:forebody_side_-1_10_389ea824bf",
+          "instance": "forebody_side_starboard_10",
+          "prototype": "cruise:forebody_side_starboard_10_389ea824bf",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -555522,14 +555522,14 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_1_6",
-          "prototype": "cruise:forebody_side_1_6_05852b29d1",
+          "instance": "forebody_side_port_6",
+          "prototype": "cruise:forebody_side_port_6_05852b29d1",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_7",
-          "prototype": "cruise:forebody_side_1_7_e686fe1eb7",
+          "instance": "forebody_side_port_7",
+          "prototype": "cruise:forebody_side_port_7_e686fe1eb7",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -555640,20 +555640,20 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_1_7",
-          "prototype": "cruise:forebody_side_1_7_e686fe1eb7",
+          "instance": "forebody_side_port_7",
+          "prototype": "cruise:forebody_side_port_7_e686fe1eb7",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_8",
-          "prototype": "cruise:forebody_side_1_8_5e675df6bf",
+          "instance": "forebody_side_port_8",
+          "prototype": "cruise:forebody_side_port_8_5e675df6bf",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_9",
-          "prototype": "cruise:forebody_side_1_9_bc70801a4d",
+          "instance": "forebody_side_port_9",
+          "prototype": "cruise:forebody_side_port_9_bc70801a4d",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -555713,7 +555713,7 @@
           192
         ]
       },
-      "anchor": "forebody_side_1_10",
+      "anchor": "forebody_side_port_10",
       "origin": [
         2.363281,
         18.275391,
@@ -555728,14 +555728,14 @@
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_9",
-          "prototype": "cruise:forebody_side_1_9_bc70801a4d",
+          "instance": "forebody_side_port_9",
+          "prototype": "cruise:forebody_side_port_9_bc70801a4d",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_10",
-          "prototype": "cruise:forebody_side_1_10_4a12fbd126",
+          "instance": "forebody_side_port_10",
+          "prototype": "cruise:forebody_side_port_10_4a12fbd126",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -558599,14 +558599,14 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_1_6",
-          "prototype": "cruise:forebody_side_1_6_05852b29d1",
+          "instance": "forebody_side_port_6",
+          "prototype": "cruise:forebody_side_port_6_05852b29d1",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_7",
-          "prototype": "cruise:forebody_side_1_7_e686fe1eb7",
+          "instance": "forebody_side_port_7",
+          "prototype": "cruise:forebody_side_port_7_e686fe1eb7",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -558812,20 +558812,20 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_1_7",
-          "prototype": "cruise:forebody_side_1_7_e686fe1eb7",
+          "instance": "forebody_side_port_7",
+          "prototype": "cruise:forebody_side_port_7_e686fe1eb7",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_8",
-          "prototype": "cruise:forebody_side_1_8_5e675df6bf",
+          "instance": "forebody_side_port_8",
+          "prototype": "cruise:forebody_side_port_8_5e675df6bf",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_9",
-          "prototype": "cruise:forebody_side_1_9_bc70801a4d",
+          "instance": "forebody_side_port_9",
+          "prototype": "cruise:forebody_side_port_9_bc70801a4d",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -558922,14 +558922,14 @@
       "yaw": 0,
       "members": [
         {
-          "instance": "forebody_side_1_9",
-          "prototype": "cruise:forebody_side_1_9_bc70801a4d",
+          "instance": "forebody_side_port_9",
+          "prototype": "cruise:forebody_side_port_9_bc70801a4d",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_10",
-          "prototype": "cruise:forebody_side_1_10_4a12fbd126",
+          "instance": "forebody_side_port_10",
+          "prototype": "cruise:forebody_side_port_10_4a12fbd126",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -569678,8 +569678,8 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_1_0",
-          "prototype": "cruise:forebody_side_1_0_6a6e15e826",
+          "instance": "forebody_side_port_0",
+          "prototype": "cruise:forebody_side_port_0_6a6e15e826",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -569846,14 +569846,14 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_1_0",
-          "prototype": "cruise:forebody_side_1_0_6a6e15e826",
+          "instance": "forebody_side_port_0",
+          "prototype": "cruise:forebody_side_port_0_6a6e15e826",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_1",
-          "prototype": "cruise:forebody_side_1_1_d0898eb861",
+          "instance": "forebody_side_port_1",
+          "prototype": "cruise:forebody_side_port_1_d0898eb861",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -570039,14 +570039,14 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_1_1",
-          "prototype": "cruise:forebody_side_1_1_d0898eb861",
+          "instance": "forebody_side_port_1",
+          "prototype": "cruise:forebody_side_port_1_d0898eb861",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_2",
-          "prototype": "cruise:forebody_side_1_2_2092afcc96",
+          "instance": "forebody_side_port_2",
+          "prototype": "cruise:forebody_side_port_2_2092afcc96",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -570128,7 +570128,7 @@
           144
         ]
       },
-      "anchor": "forebody_side_1_4",
+      "anchor": "forebody_side_port_4",
       "origin": [
         21.695312,
         18.275391,
@@ -570217,20 +570217,20 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_1_3",
-          "prototype": "cruise:forebody_side_1_3_48a285327a",
+          "instance": "forebody_side_port_3",
+          "prototype": "cruise:forebody_side_port_3_48a285327a",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_4",
-          "prototype": "cruise:forebody_side_1_4_9c0033741a",
+          "instance": "forebody_side_port_4",
+          "prototype": "cruise:forebody_side_port_4_9c0033741a",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_5",
-          "prototype": "cruise:forebody_side_1_5_34a2a01690",
+          "instance": "forebody_side_port_5",
+          "prototype": "cruise:forebody_side_port_5_34a2a01690",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -570357,20 +570357,20 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_1_5",
-          "prototype": "cruise:forebody_side_1_5_34a2a01690",
+          "instance": "forebody_side_port_5",
+          "prototype": "cruise:forebody_side_port_5_34a2a01690",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_6",
-          "prototype": "cruise:forebody_side_1_6_05852b29d1",
+          "instance": "forebody_side_port_6",
+          "prototype": "cruise:forebody_side_port_6_05852b29d1",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_7",
-          "prototype": "cruise:forebody_side_1_7_e686fe1eb7",
+          "instance": "forebody_side_port_7",
+          "prototype": "cruise:forebody_side_port_7_e686fe1eb7",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -570461,8 +570461,8 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_1_7",
-          "prototype": "cruise:forebody_side_1_7_e686fe1eb7",
+          "instance": "forebody_side_port_7",
+          "prototype": "cruise:forebody_side_port_7_e686fe1eb7",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -576704,8 +576704,8 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_1_0",
-          "prototype": "cruise:forebody_side_1_0_6a6e15e826",
+          "instance": "forebody_side_port_0",
+          "prototype": "cruise:forebody_side_port_0_6a6e15e826",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -577009,14 +577009,14 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_1_0",
-          "prototype": "cruise:forebody_side_1_0_6a6e15e826",
+          "instance": "forebody_side_port_0",
+          "prototype": "cruise:forebody_side_port_0_6a6e15e826",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_1",
-          "prototype": "cruise:forebody_side_1_1_d0898eb861",
+          "instance": "forebody_side_port_1",
+          "prototype": "cruise:forebody_side_port_1_d0898eb861",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -577091,7 +577091,7 @@
           128
         ]
       },
-      "anchor": "forebody_side_1_2",
+      "anchor": "forebody_side_port_2",
       "origin": [
         24.537109,
         18.275391,
@@ -577350,14 +577350,14 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_1_1",
-          "prototype": "cruise:forebody_side_1_1_d0898eb861",
+          "instance": "forebody_side_port_1",
+          "prototype": "cruise:forebody_side_port_1_d0898eb861",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_2",
-          "prototype": "cruise:forebody_side_1_2_2092afcc96",
+          "instance": "forebody_side_port_2",
+          "prototype": "cruise:forebody_side_port_2_2092afcc96",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -577684,20 +577684,20 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_1_3",
-          "prototype": "cruise:forebody_side_1_3_48a285327a",
+          "instance": "forebody_side_port_3",
+          "prototype": "cruise:forebody_side_port_3_48a285327a",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_4",
-          "prototype": "cruise:forebody_side_1_4_9c0033741a",
+          "instance": "forebody_side_port_4",
+          "prototype": "cruise:forebody_side_port_4_9c0033741a",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_5",
-          "prototype": "cruise:forebody_side_1_5_34a2a01690",
+          "instance": "forebody_side_port_5",
+          "prototype": "cruise:forebody_side_port_5_34a2a01690",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -577898,20 +577898,20 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_1_5",
-          "prototype": "cruise:forebody_side_1_5_34a2a01690",
+          "instance": "forebody_side_port_5",
+          "prototype": "cruise:forebody_side_port_5_34a2a01690",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_6",
-          "prototype": "cruise:forebody_side_1_6_05852b29d1",
+          "instance": "forebody_side_port_6",
+          "prototype": "cruise:forebody_side_port_6_05852b29d1",
           "category": "hull_side",
           "measurement": "hull"
         },
         {
-          "instance": "forebody_side_1_7",
-          "prototype": "cruise:forebody_side_1_7_e686fe1eb7",
+          "instance": "forebody_side_port_7",
+          "prototype": "cruise:forebody_side_port_7_e686fe1eb7",
           "category": "hull_side",
           "measurement": "hull"
         },
@@ -578037,8 +578037,8 @@
           "category": "facade"
         },
         {
-          "instance": "forebody_side_1_7",
-          "prototype": "cruise:forebody_side_1_7_e686fe1eb7",
+          "instance": "forebody_side_port_7",
+          "prototype": "cruise:forebody_side_port_7_e686fe1eb7",
           "category": "hull_side",
           "measurement": "hull"
         },
