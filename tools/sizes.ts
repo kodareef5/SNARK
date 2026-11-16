@@ -15,12 +15,12 @@ const KB = 1024;
 const MB = 1024 * KB;
 
 /**
- * The rows that fail a build. The first is 0.3 s at 20 Mbit/s and holds no art past the survivor's: it was 647 KB with
- * 660 meshes and is 658 with ten times as many, a mesh adding 4 bytes of its name and page, so its room is for the
- * script and the content. The rest are waste the build can always avoid.
+ * The rows that fail a build. The first is 0.4 s at 20 Mbit/s and holds no art past the survivor's: it was 647 KB with
+ * 660 meshes and is 658 with ten times as many, a mesh adding 4 bytes of its name and page, so its room, about a third
+ * of it, is for the script and the content as the game is built. The rest are waste the build can always avoid.
  */
 const BUDGETS: Record<string, number> = {
-  "everything before the first frame, Brotli": 768 * KB,
+  "everything before the first frame, Brotli": 1024 * KB,
   "sound, kbit/s": 42,
   "sound takes stored twice": 0,
   "texture steps stored twice, astc": 0,
