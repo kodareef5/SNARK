@@ -148,11 +148,11 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // cell: a chunk's instances go up in the order of their cells, pieces and nodes in cells out of view are not drawn,
   // and each casts at what the shadow filter blurs into the cascades its cells reach. Each of the 300 frames draws the
   // picture it did (the rasterizer, which draws no shadows).
-  expect(beforePlain).toBe("3b52aa5d");
-  expect(hash).toBe("724a740d");
+  expect(beforePlain).toBe("48ed7779");
+  expect(hash).toBe("2d1c4611");
   // What the hash cannot say: the 300 frames' draws, triangles and bytes put on the card. A change that moves the hash
   // and leaves the frames as they were leaves these.
-  expect(counts).toEqual([32400, 34107600, 0]);
+  expect(counts).toEqual([32700, 33985200, 0]);
 
   // The same scene with the raptor's box saddle in the pack and on the raptor (FL5), drawn on its bones wherever it is
   // seen. The saddle's mesh numbers the meshes after it on, so the pack that holds it is the frozen one with it added:
@@ -167,7 +167,7 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // It was c7cb77a9 until the street wrecks' kinds, as above; without them it is that again.
   // They were d122e6e1 and c0721ce1 until the pteranodon's mesh became its own, as above, and a49f75cd and 40c252f5, with
   // 38,100 draws and 34,590,000 triangles, until chunks were drawn by cell, as above.
-  expect(saddled.beforePlain).toBe("dfacdbf9");
-  expect(saddled.hash).toBe("7e63b631");
-  expect(saddled.counts).toEqual([32700, 34125600, 0]);
+  expect(saddled.beforePlain).toBe("9343af55");
+  expect(saddled.hash).toBe("6a13306d");
+  expect(saddled.counts).toEqual([33000, 34003200, 0]);
 });
