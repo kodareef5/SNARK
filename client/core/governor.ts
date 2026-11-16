@@ -79,7 +79,7 @@ export function workMs(triangles: number, draws: number, cast: number, castDraws
 }
 
 /** What a step changes. Steps add up: a level is every step before it. */
-export interface Knobs {
+interface Knobs {
   levels?: number;
   leaves?: number;
   everyOther?: boolean;
@@ -118,7 +118,7 @@ export const STEPS: readonly { readonly name: string; readonly knobs: Knobs }[] 
 ];
 
 /** `base` with `knobs`, for a screen of `dpr` device pixels a CSS pixel. */
-export function governed(base: Tier, knobs: Knobs, dpr: number): Tier {
+function governed(base: Tier, knobs: Knobs, dpr: number): Tier {
   const s = base.shadows;
   const ratio = base.pixelRatio > 0 ? Math.min(dpr, base.pixelRatio) : dpr;
   const far = knobs.farReach ?? 1;
