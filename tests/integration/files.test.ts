@@ -60,3 +60,18 @@ test("nothing outside the folder is served, and nothing that is not there", asyn
   expect((await get("/..%2f..%2fetc/passwd")).status).toBe(404);
   expect((await serveFile(dir, new Request("http://localhost/../../etc/passwd"))).status).toBe(404);
 });
+
+test("HUD images and the locally hosted font use typed immutable responses and compressed font delivery",async()=>{
+  for (const [suffix,type] of [["png","image/png"],["ttf","font/ttf"],["txt","text/plain"]]) {
+    const name=`hud.0123456789abcdef.${suffix}`;
+    writeFileSync(join(dir,name),bytes);
+    const response=await get(`/${name}`);
+    expect(response.headers.get("content-type")).toContain(type!);
+    expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+  }
+  const name="hud.0123456789abcdef.ttf";
+  writeFileSync(join(dir,`${name}.br`),brotliCompressSync(bytes));
+  const response=await get(`/${name}`,{"accept-encoding":"br"});
+  expect(response.headers.get("content-encoding")).toBe("br");
+  expect(brotliDecompressSync(await body(response))).toEqual(Buffer.from(bytes));
+});

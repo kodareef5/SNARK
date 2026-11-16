@@ -1,0 +1,227 @@
+chunk-report
+{"mapHash":3644417512,"total":3006090,"maximum":1830,"cap":2000,"passed":true}
+
+ruin-walk
+{
+  "mapHash": 3644417512,
+  "includes": "terrain and resource-node collision; ascent, landing turns, roof exit, descent and independent stair exits in both directions",
+  "sampledBuildings": 1951,
+  "stairRoutes": 4348,
+  "passed": 4348,
+  "failed": 0,
+  "escapeRoutes": 3420,
+  "escapePassed": 3420,
+  "escapeFailed": 0,
+  "results": [],
+  "escapeResults": []
+}
+
+room-walk
+{
+  "mapHash": 3644417512,
+  "routes": 19520,
+  "kinds": {
+    "suites": 6554,
+    "storage": 1335,
+    "rubble": 168,
+    "refuge": 106,
+    "classrooms": 1533,
+    "rooms": 6144,
+    "lobby": 246,
+    "wards": 126,
+    "shops": 1303,
+    "breach": 5,
+    "street-gap": 2000
+  },
+  "passed": 19520,
+  "failed": 0,
+  "failures": []
+}
+
+access-walk
+{
+  "mapHash": 3644417512,
+  "routes": 23834,
+  "buildingsWithApproach": 14594,
+  "coresWithoutStreetApproach": [
+    {
+      "part": 2000120308,
+      "name": "Alcatraz Main Prison"
+    },
+    {
+      "part": 2000121764,
+      "name": "Four Fifty Sutter Building"
+    },
+    {
+      "part": 54916528,
+      "name": "388 Beale"
+    },
+    {
+      "part": 54305352,
+      "name": "Medical Sciences"
+    },
+    {
+      "part": 2000057344,
+      "name": "Gramercy Towers"
+    },
+    {
+      "part": 51408000,
+      "name": "Pier 2 - Herbst Pavillion"
+    },
+    {
+      "part": 68458896,
+      "name": "Building 64"
+    },
+    {
+      "part": 75384936,
+      "name": "Pier 3 - Festival Pavillion"
+    },
+    {
+      "part": 2000058872,
+      "name": "Plaza Building"
+    },
+    {
+      "part": 2000029960,
+      "name": null
+    },
+    {
+      "part": 2000030716,
+      "name": null
+    },
+    {
+      "part": 2000048456,
+      "name": null
+    },
+    {
+      "part": 2000068600,
+      "name": null
+    },
+    {
+      "part": 79309532,
+      "name": null
+    },
+    {
+      "part": 2000016620,
+      "name": null
+    },
+    {
+      "part": 2000049344,
+      "name": null
+    },
+    {
+      "part": 2000086992,
+      "name": null
+    },
+    {
+      "part": 2000098472,
+      "name": null
+    },
+    {
+      "part": 2000113636,
+      "name": null
+    },
+    {
+      "part": 2000115228,
+      "name": null
+    },
+    {
+      "part": 2000115248,
+      "name": null
+    },
+    {
+      "part": 2000123596,
+      "name": null
+    },
+    {
+      "part": 2000144376,
+      "name": null
+    },
+    {
+      "part": 50906860,
+      "name": null
+    },
+    {
+      "part": 58301500,
+      "name": null
+    },
+    {
+      "part": 61212764,
+      "name": null
+    },
+    {
+      "part": 73976104,
+      "name": null
+    },
+    {
+      "part": 2000037284,
+      "name": null
+    },
+    {
+      "part": 2000061244,
+      "name": null
+    },
+    {
+      "part": 2000084528,
+      "name": null
+    },
+    {
+      "part": 2000084536,
+      "name": null
+    }
+  ],
+  "passed": 23834,
+  "failed": 0,
+  "failures": []
+}
+
+bridge-walk
+{
+  "mapHash": 3644417512,
+  "ways": 1281,
+  "built": 1281,
+  "deckRuns": 1237,
+  "accessRuns": 0,
+  "swimCrossings": 833,
+  "gapAudit": {
+    "authored": 0,
+    "intersectedByWays": 0,
+    "floorCentresInGap": 0
+  },
+  "passed": 2070,
+  "failed": 0,
+  "steps": 729495,
+  "failures": []
+}
+
+walk
+host on core:san-francisco in 1615 ms, 281 spawn regions; 1563 MB resident, 975 MB of heap
+ok   Golden Gate Bridge Vista Point arrived 0.0 m from its point at y 75.1; walked 3 m to y 75.1, 27 m to y 70.3, 27 m to y 72.8, 27 m to y 75.3
+ok   Presidio Tunnel Tops arrived 0.0 m from its point at y 11.0; walked 27 m to y 10.0, 27 m to y 11.5, 27 m to y 11.5, 27 m to y 11.0
+ok   Marina Green   arrived 0.0 m from its point at y 2.4; walked 27 m to y 2.4, 27 m to y 2.4, 24 m to y 2.4, 27 m to y 2.4
+ok   Alcatraz Island arrived 0.0 m from its point at y 36.7; walked 22 m to y 38.1, 14 m to y 38.1, 27 m to y 36.1, 21 m to y 36.8
+ok   Washington Square Park arrived 0.0 m from its point at y 23.0; walked 18 m to y 23.4, 23 m to y 23.6, 23 m to y 22.5, 26 m to y 22.8
+ok   Union Square   arrived 0.0 m from its point at y 18.3; walked 26 m to y 17.8, 16 m to y 17.8, 8 m to y 17.8, 9 m to y 17.8
+ok   Embarcadero Plaza arrived 0.0 m from its point at y 2.6; walked 27 m to y 1.9, 27 m to y 1.8, 26 m to y 3.2, 27 m to y 2.7
+ok   Alamo Square   arrived 0.0 m from its point at y 75.6; walked 27 m to y 75.4, 25 m to y 74.0, 23 m to y 72.7, 27 m to y 75.7
+ok   Lafayette Park arrived 0.0 m from its point at y 113.0; walked 26 m to y 112.5, 27 m to y 111.2, 24 m to y 109.9, 27 m to y 113.4
+ok   Panhandle      arrived 0.0 m from its point at y 71.9; walked 27 m to y 72.5, 22 m to y 73.4, 21 m to y 72.1, 27 m to y 72.0
+1029 wild creatures after 391 s of virtual time; 1555 MB resident, 975 MB of heap, server and client in one process
+
+obelisk-walk
+core:san-francisco: 3006090 static pieces and 256299 standing nodes in the way, 65.4% of samples closed, in 0.9 s
+ok   Marina Green           terminal at 4136.6, 4907.3 facing 74 degrees: from Marina Green, 223 m of way, walked in 48 s to 0.07 m of its front at y 2.6
+ok   Embarcadero            terminal at 568.2, 3550.9 facing 307 degrees: from Embarcadero Plaza, 227 m of way, walked in 50 s to 0.10 m of its front at y 2.4
+ok   Panhandle              terminal at 4904.7, 1189.1 facing 101 degrees: from Panhandle, 182 m of way, walked in 40 s to 0.07 m of its front at y 69.6
+3 of 3 reached in 1.0 s
+
+server-bench
+{
+  "milliseconds": 1386.4,
+  "residentMiB": 1211.6,
+  "heapMiB": 580.9,
+  "peakResidentMiB": 1214.4,
+  "mapBytes": 101566434,
+  "spawnRegions": 281,
+  "scope": "createHost, real pack clips, wild spawner; no HTTP listener, persistence or clients"
+}
+

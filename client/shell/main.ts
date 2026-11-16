@@ -27,6 +27,7 @@ import { WorkerDecoder } from "../sound/decoder.ts";
 import { UiView } from "./ui.ts";
 import { VehicleSelfcheck } from "../core/vehicle-selfcheck.ts";
 import { probeProgress } from "../core/diagnostics.ts";
+import { installSkin, SKIN_URL } from "../core/ui/skin.ts";
 
 const params = new URLSearchParams(location.search);
 const selfcheck = params.has("selfcheck");
@@ -74,17 +75,26 @@ async function boot(): Promise<void> {
   });
   const app = new App(session, reg, pack, { manifest, port });
   session.prediction.enabled = selfcheck;
+  const skin = installSkin(app.ui.frame), skinImage = new Image();
+  skinImage.src = SKIN_URL;
+  void skinImage.decode().then(() => { skin.url = SKIN_URL; }).catch(() => {});
+  // A measurement run neither reads nor writes the player's saved interface preferences.
+  const measured = selfcheck || bench !== null || device !== null;
+  const save = (): void => { if (!measured) try { localStorage.setItem("snark.interface", app.ui.settings.interfacePreferences()); } catch {} };
+  if (!measured) try { app.ui.settings.restoreInterface(localStorage.getItem("snark.interface")); } catch {}
+  addEventListener("pagehide", save);
   app.stress = params.has("stress");
   app.debug = app.stress || params.has("debug");
   app.steer = driveCheck || !selfcheck && !device;
   app.plainSky = selfcheck;
   [app.ui.settings.touchFirst, app.dpr] = [matchMedia("(pointer: coarse)").matches, devicePixelRatio];
-  app.address((name) => params.get(name), selfcheck || bench !== null || device !== null);
+  app.address((name) => params.get(name), measured);
   app.page = {
     origin: location.origin,
     protocol: location.protocol,
     hostname: location.hostname,
     go: (url) => location.assign(url),
+    reload: () => location.reload(),
     arrived: () => arrival && history.replaceState(null, "", location.pathname + location.search),
     cluster: async () => (await fetchJson(fetch, "cluster.json")) as ClusterList,
   };
@@ -122,11 +132,14 @@ async function boot(): Promise<void> {
   const loser = params.has("lose") ? renderer.gl.getExtension("WEBGL_lose_context") : null;
   device?.attach({ app, pack, reg, hf }, renderer);
 
+  let savedRevision = app.ui.settings.revision, savedAt = 0;
   const frame = (now: number): void => {
     requestAnimationFrame(frame);
     const cssWidth = canvas.clientWidth;
     const cssHeight = canvas.clientHeight;
     const t0 = performance.now();
+    app.gamepads(document.hasFocus() ? navigator.getGamepads?.() ?? [] : [], now);
+    if (!app.ui.wantsPointerLock && document.pointerLockElement) document.exitPointerLock();
     if (bench) app.autopilot(bench.since(now));
     drivingCheck?.step(app, now);
     voice.sync(session.voice);
@@ -134,6 +147,10 @@ async function boot(): Promise<void> {
     if (app.scene) app.scene.assets.format = renderer.format;
     const packet = app.frame(now, cssWidth, cssHeight);
     drivingCheck?.observe(app);
+    if (savedRevision !== app.ui.settings.revision && now - savedAt > 250) {
+      savedRevision = app.ui.settings.revision; savedAt = now;
+      save();
+    }
     view.apply(app.ui.frame, cssHeight);
     if (!packet) return;
     const built = performance.now();

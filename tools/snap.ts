@@ -5,6 +5,7 @@
 // --saddles worn|saddled|both|own (--species ID, --close MOMENT, --levels) draws a creature in its saddle (tools/snap/saddles.ts).
 // --ride SPECIES (--moment ground|run|air|bank|dive, --watch, --passenger) draws riding it in the whole client (tools/snap/ride.ts).
 // --flight draws the block-out pteranodon ridden through a flight, a picture at each moment (tools/snap/flight.ts), with --each DIR each on its own too.
+// --hud MODE draws the HUD or one of its screens in the whole client (tools/snap/hud.ts).
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
@@ -65,6 +66,7 @@ import { DETAIL_SEQUENCES, MOMENTS, playDetails } from "./snap/details.ts";
 import { slopesScene } from "./snap/slopes.ts";
 import { atLevel, saddlesScene } from "./snap/saddles.ts";
 import { RIDE_MOMENTS, rideGame, rideScene, type Game, type RideMoment } from "./snap/ride.ts";
+import { HUD_MODES, hudScene, type HudMode } from "./snap/hud.ts";
 import { saddleMeshes, type Ways } from "../tests/fixtures/saddles.ts";
 import { flyerPackBytes, flyerRegistry } from "../tests/fixtures/flyer/flyer.ts";
 import { frame as frameFlight, moments, recordFlight, stage } from "./snap/flight.ts";
@@ -1024,6 +1026,16 @@ if (import.meta.main) {
       }
     });
     const out = resolve(arg("out") ?? `artifacts/fight-${what}.png`);
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, encodePng(w!, h!, pixels));
+    console.log(out);
+    process.exit(0);
+  }
+  if (args.includes("--hud")) {
+    const mode = (arg("hud") ?? "play") as HudMode;
+    if (!HUD_MODES.includes(mode)) throw new Error(`--hud takes ${HUD_MODES.join(", ")}, not "${mode}"`);
+    const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => hudScene(app, run, hh, mode));
+    const out = resolve(arg("out") ?? `artifacts/hud-${mode}.png`);
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, encodePng(w!, h!, pixels));
     console.log(out);
