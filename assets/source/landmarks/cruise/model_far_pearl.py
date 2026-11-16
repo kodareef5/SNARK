@@ -20,7 +20,7 @@ def pearl(mesh, layout, level):
     angle = math.asin(end / radius)
     zs = ([-5.6,-4.95,-4.3,-3.65,-3,-2.25,-1.5,-.75,0,.75,1.5,2.25,3,3.65,4.3,4.95,5.6]
           if level == 3 else [radius * math.sin(-angle + j * 2 * angle / 5) for j in range(6)])
-    sides = 32 if level == 3 else 16
+    sides = 28 if level == 3 else 16
     vertices = []
     faces = []
     layer = sides * len(zs)
