@@ -96,6 +96,8 @@ test("the self-check probes pass on the reference renderer and fail on a wrong p
   const W = 320;
   const H = 180;
   const view = provingView(W, H);
+  // Low poly: the lit tiers' ground and statics are held to the world surfaces (selfcheck-surfaces.test.ts).
+  view.scene.assets.tier = tierOf("lowpoly");
   view.cam.pitch = 0;
   // Put the grazer and the survivor's body at the probe's spots, as the probe server does.
   const r = view.remote;
@@ -107,7 +109,7 @@ test("the self-check probes pass on the reference renderer and fail on a wrong p
   r.z[0] = PROBE_BODY.z;
   r.y[0] = view.hf.heightAt(PROBE_BODY.x, PROBE_BODY.z);
   const packet = view.render();
-  const probes = provingProbes(view.cam, view.reg, view.pack.palette, SKY_COLOR, view.hf, true, packet);
+  const probes = provingProbes(view.cam, view.reg, view.pack.palette, SKY_COLOR, view.hf, true, packet, { width: W, height: H, sample: null });
   expect(probes.map((p) => p.name)).toEqual(["sky", "plaza", "block", "slope", "creature", "body"]);
   for (const p of probes) {
     const o = (Math.floor(p.sy * H) * W + Math.floor(p.sx * W)) * 4;
@@ -140,12 +142,12 @@ test("on a lit tier the creature probe holds its colour to the facing nearest it
   for (const [hour, got] of Object.entries(gpu)) {
     view.scene.hour = Number(hour);
     const packet = view.scene.build(view.cam, r);
-    const creature = provingProbes(view.cam, view.reg, pal, SKY_COLOR, view.hf, true, packet).find((p) => p.name === "creature")!;
+    const creature = provingProbes(view.cam, view.reg, pal, SKY_COLOR, view.hf, true, packet, { width: 320, height: 180, sample: null }).find((p) => p.name === "creature")!;
     expect(creature.facings!.length).toBeGreaterThan(32);
     expect(probePasses(creature, got[0]!, got[1]!, got[2]!)).toBe(true);
     expect(dot(heldTo(creature, got[0]!, got[1]!, got[2]!), got)).toBeGreaterThan(0.9995);
     // The grazer in its species' own colour, lit from any facing, is not taken for the region's.
-    const own = provingProbes(view.cam, view.reg, Uint8Array.from(pal, (c, i) => (i >> 2 === PROBE_CREATURE.color ? pal[9 * 4 + (i & 3)]! : c)), SKY_COLOR, view.hf, true, packet).find((p) => p.name === "creature")!;
+    const own = provingProbes(view.cam, view.reg, Uint8Array.from(pal, (c, i) => (i >> 2 === PROBE_CREATURE.color ? pal[9 * 4 + (i & 3)]! : c)), SKY_COLOR, view.hf, true, packet, { width: 320, height: 180, sample: null }).find((p) => p.name === "creature")!;
     for (const c of [own.rgb, ...own.facings!]) expect(probePasses(creature, c[0], c[1], c[2])).toBe(false);
   }
 });

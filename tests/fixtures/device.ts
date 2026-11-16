@@ -2,8 +2,10 @@
 // numbers, a whole client the probe watches, and a run of virtual time until the probe says it is done.
 
 import { App } from "../../client/core/app.ts";
+import type { AssetPort } from "../../client/core/assets/port.ts";
 import { deviceScenarios, type DeviceBrowser, type DeviceProbe, type DeviceReport, type RendererLike, type Timing } from "../../client/core/device.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
+import type { Manifest } from "../../shared/pack/manifest.ts";
 import { fakeGl } from "./gl.ts";
 import { Harness } from "./net.ts";
 import { corePack } from "./pack.ts";
@@ -87,11 +89,13 @@ export interface Driven {
   tamper?: (p: FramePacket) => void;
   /** The page's clock from the harness's, for a test that stalls it. */
   clock?: (now: number) => number;
+  /** Ends the run before the probe is done. */
+  until?: () => boolean;
 }
 
 /** A whole client on the harness with a probe on it, run until the probe says it is done, or `ms` of virtual time. */
 export async function run(probe: DeviceProbe, h: Harness, app: App, gpu: RendererLike, ms = 30000, o: Driven = {}): Promise<void> {
-  for (let t = 0; t < ms && !probe.report.done; t += 100) {
+  for (let t = 0; t < ms && !probe.report.done && !o.until?.(); t += 100) {
     h.run(100, (harness) => {
       const now = o.clock?.(harness) ?? harness;
       const p = app.frame(harness, 390, 844);
@@ -112,10 +116,11 @@ export async function run(probe: DeviceProbe, h: Harness, app: App, gpu: Rendere
 /** The hashes the server expects of each scenario: the same for every client of the core content and pack, so made once. */
 let hashes: Record<string, string> | null = null;
 
-export function client() {
+/** With `stream` the game streams its assets through that port, as a page's does; without, it has only the pack. */
+export function client(stream?: { manifest: Manifest; port: AssetPort }) {
   const h = new Harness();
   const pack = corePack();
-  const app = new App(h.join("phone", { latencyMs: 20 }, { manual: true }), h.reg, pack);
+  const app = new App(h.join("phone", { latencyMs: 20 }, { manual: true }), h.reg, pack, stream);
   hashes ??= Object.fromEntries(deviceScenarios(h.reg, pack.header.rigs, pack.clips).map(([name, f]) => [name, f()]));
   return { h, pack, app, expected: { ...hashes } };
 }

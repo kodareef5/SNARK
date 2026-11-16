@@ -143,7 +143,8 @@ export class App {
   marks: Mark[] = [];
   /** Show the asset library's state on the status line. */
   debug = false;
-  private readonly stream: { manifest: Manifest; port: AssetPort } | undefined;
+  /** The manifest and the asset port the scene is made with once the session has a world. */
+  stream: { manifest: Manifest; port: AssetPort } | undefined;
   /** Smoothed. */
   fps = 60;
   /** False while the self-check holds the body still. */

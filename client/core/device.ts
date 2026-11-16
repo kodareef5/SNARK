@@ -36,6 +36,7 @@ import { groundSize } from "./render/terrain.ts";
 import { CUTOUTS, type Cutouts, type Thing } from "./render/scene.ts";
 import { effectsOff } from "./passes.ts";
 import { heldTo, probePasses, provingProbes } from "./selfcheck.ts";
+import { NO_REFERENCE, SelfcheckSurfaces, type SurfaceReference } from "./selfcheck-surfaces.ts";
 import { stressThings } from "./stress.ts";
 
 /** The terrain flight and the tree order run on a server of their own, on the 8 km map (tools/device.ts --terrain); the others on the proving ground. */
@@ -543,6 +544,8 @@ export interface DeviceReport {
     cache: string;
   } | null;
   probes: { name: string; ok: boolean; expected: number[]; got: number[] }[] | null;
+  /** The world surfaces' reference atlas the lit probes are held to, as the self-check's; null on a picture not lit. */
+  surfaceReference: SurfaceReference | null;
   hashes: { name: string; got: string; want: string | null; ms: number }[] | null;
   phases: PhaseReport[];
   /** The first phase once more at the end. A phone that has grown warm runs slower. */
@@ -569,7 +572,7 @@ export function newReport(run: string, mode: Mode = "quick"): DeviceReport {
   return {
     run, mode, seq: 0, stage: "starting", done: false, device: null, gpu: null, idleFrameMs: null, wakeLock: "not asked",
     link: { httpMs: null, gameMs: null, snapshots: 0, missed: 0, missedLoading: 0, missedHidden: 0, server: null, longestGapMs: 0, bytesIn: 0, clockJumps: 0, corrections: 0, undecodable: 0 },
-    load: null, probes: null, hashes: null, phases: [], again: null, ladder: null, soak: null, terrain: null, trees: null, gpuTests: null, skipped: [], texturesMade: 0, hidden: [], errors: [], reloadedDuring: null,
+    load: null, probes: null, surfaceReference: null, hashes: null, phases: [], again: null, ladder: null, soak: null, terrain: null, trees: null, gpuTests: null, skipped: [], texturesMade: 0, hidden: [], errors: [], reloadedDuring: null,
   };
 }
 
@@ -891,6 +894,8 @@ export interface DeviceSide {
   pack: Pack;
   reg: Registry;
   hf: Heightfield;
+  /** The self-check's reference for the world surfaces, round the game's asset port; null where the game streams no assets. */
+  surfaces: Pick<SelfcheckSurfaces, "start" | "done" | "sample" | "state"> | null;
   /** The browser's device pixels for one CSS pixel. */
   dpr: number;
   /** The widest texture the device takes. A tier with wider ones is not tried. */
@@ -1049,7 +1054,7 @@ export class DeviceRun {
     this.listen(now);
     let news = false;
     if (this.stage === "load") news = this.load(now);
-    else if (this.stage === "probes") news = this.probes(p, read);
+    else if (this.stage === "probes") news = this.probes(now, p, read);
     else if (this.stage === "hashes") news = this.hashes();
     else if (this.stage === "gpu") news = this.gpu();
     else if (this.stage === "steps") news = this.measure(now, gap, p, buildMs, drawMs, drawCalls);
@@ -1139,6 +1144,7 @@ export class DeviceRun {
     // The probes look at the proving ground, which the terrain server's map is not.
     this.stage = this.side.terrainMap ? "hashes" : "probes";
     this.report.stage = this.stage;
+    this.at = now;
     return true;
   }
 
@@ -1146,16 +1152,22 @@ export class DeviceRun {
    * The self-check's probes that are on this screen, read off the picture of the default tier once it has settled. A
    * narrow screen leaves the slope out. The picture is drawn with a plain sky, as the self-check draws it (no haze,
    * nothing over the table), so its colours are the twins'; the frame after the sky is made plain is read, or after
-   * PLAIN_FRAMES whatever was drawn.
+   * PLAIN_FRAMES whatever was drawn. A lit picture waits up to loadMs for the self-check's reference atlas, fetched only
+   * now so the load is measured without it; without it the ground and the statics are not judged, and the report says why.
    */
-  private probes(p: FramePacket, read: (sx: number, sy: number) => [number, number, number]): boolean {
-    const { app, reg, pack, hf } = this.side;
+  private probes(now: number, p: FramePacket, read: (sx: number, sy: number) => [number, number, number]): boolean {
+    const { app, reg, pack, hf, surfaces } = this.side;
     const scene = app.scene!;
     const plain = !p.lit || (p.frame[FRAME.haze] === 0 && p.frame[FRAME.skyDetail] === 0);
     scene.plainSky = true;
+    if (p.lit) surfaces?.start();
     if (!plain && ++this.plainWait < PLAIN_FRAMES) return false;
+    if (p.lit && surfaces && !surfaces.done && now - this.at < this.timing.loadMs) return false;
     scene.plainSky = app.plainSky;
-    const shown = provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, true, scene.packet).filter((q) => q.sx >= 0 && q.sx < 1 && q.sy >= 0 && q.sy < 1);
+    const sample = p.lit ? (surfaces?.sample ?? null) : null;
+    const reference = !surfaces ? NO_REFERENCE : surfaces.done ? surfaces.state : { ...surfaces.state, error: `not in after ${tenth(this.timing.loadMs / 1000)} s` };
+    this.report.surfaceReference = p.lit ? reference : null;
+    const shown = provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, true, scene.packet, { width: this.canvas[0]!, height: this.canvas[1]!, sample }).filter((q) => q.sx >= 0 && q.sx < 1 && q.sy >= 0 && q.sy < 1);
     this.report.probes = shown.map((q) => {
       const got = read(q.sx, q.sy);
       return { name: q.name, ok: probePasses(q, got[0], got[1], got[2]), expected: heldTo(q, got[0], got[1], got[2]), got };
@@ -1299,7 +1311,12 @@ export class DeviceRun {
     s.casterTris.push(p.castTriangles);
     this.dropped += p.dropped;
     this.skipped += p.skipped;
-    if (s.frame.length % 30 === 0) this.rtt.push(tenth((this.side.app.session.stats.rttTicks * 1000) / TICK_RATE));
+    this.roundTrip();
+  }
+
+  /** The game's own round trip, every 30th frame sampled. */
+  private roundTrip(): void {
+    if (this.samples.frame.length % 30 === 0) this.rtt.push(tenth((this.side.app.session.stats.rttTicks * 1000) / TICK_RATE));
   }
 
   private result(): PhaseReport {
@@ -1879,6 +1896,7 @@ export class DeviceRun {
     s.build.push(buildMs);
     s.draw.push(drawMs);
     s.textured.push(texturedDraws(p));
+    this.roundTrip();
     const minute = report.minutes.length;
     if (this.soakMs < (minute + 1) * 60000 && this.soakMs < this.timing.soakMs) return false;
     const long = s.frame.filter((g) => g >= this.side.display * LONG).length;
@@ -2163,8 +2181,13 @@ export class DeviceProbe {
     canvas.addEventListener("webglcontextrestored", () => (this.counting = true));
     this.renderer = renderer;
     const b = this.b;
+    // The self-check's reference takes its maps through the game's port, so it goes round it before the scene is made.
+    const stream = side.app.scene ? undefined : side.app.stream;
+    const surfaces = stream ? new SelfcheckSurfaces(stream.manifest, stream.port) : null;
+    if (stream) side.app.stream = { manifest: stream.manifest, port: surfaces! };
     this.side = {
       ...side,
+      surfaces,
       dpr: b.dpr,
       maxTexture: gpu.maxTexture,
       bootAt: this.bootAt,
