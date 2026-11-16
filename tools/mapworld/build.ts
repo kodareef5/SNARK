@@ -82,7 +82,7 @@ export async function buildMap(name: string): Promise<{ file: string; stats: Rec
   }
   const obelisks = placeObelisks(ground, world, toSample, size, occupied);
   // Then the landmarks, on the ground they ask for, so no piece before them changes its slot.
-  layLandmarkGround(ground, sited, size, 0);
+  const berths = layLandmarkGround(ground, sited, size, 0);
   const brought = placeLandmarks(sited, reg, 0);
   const statics = [...layered, ...obelisks.flatMap((o) => obeliskStatics(reg, o, site.groundAt).map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 }))), ...brought.statics.map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 }))];
   pieceCounts.fill(0);
@@ -103,7 +103,7 @@ export async function buildMap(name: string): Promise<{ file: string; stats: Rec
   // so none stands in it or before its terminal, nor within 6 m of a parked car.
   const clearings = [...spawns.map((s) => [(size - s.x) / 2, (size - s.z) / 2, 16] as const), ...obelisks.map((o) => [(size - o.x) / 2, (size - o.z) / 2, 49] as const), ...vehicles.map((c) => [(size - c.x) / 2, (size - c.z) / 2, 9] as const)];
   const growth = world.heaps === false ? vocabulary(source).growth : undefined;
-  const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1) || clearings.some(([c, r, d2]) => (c - col) ** 2 + (r - row) ** 2 < d2), (col, row) => site.lowPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1, growth);
+  const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1) || berths[row * n + col] === 1 || clearings.some(([c, r, d2]) => (c - col) ** 2 + (r - row) ** 2 < d2), (col, row) => site.lowPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1, growth);
   lap("nodes");
 
   const layers = join(ROOT, "var/maps", name, "layers");

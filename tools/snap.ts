@@ -39,7 +39,7 @@ import { DOOR_HEIGHT, FLOOR_THICK, FOUNDATION_THICK, WALL_HEIGHT } from "../cont
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent, withContent, type Registry } from "../shared/content/registry.ts";
 import { MOTION_STEPS, type MotionState } from "../shared/sim/motion.ts";
-import { movingOf } from "../client/core/render/motion.ts";
+import { movingOf, type MotionSource } from "../client/core/render/motion.ts";
 import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type Pack } from "../shared/pack/pack.ts";
 import { SKY_COLOR } from "../shared/pack/palette.ts";
 import type { TextureRole } from "../shared/pack/texture.ts";
@@ -271,6 +271,8 @@ export interface ProvingView {
   cam: Camera;
   remote: RemoteSample;
   raster: Rasterizer;
+  /** The map's moving statics, where it has any. */
+  motion?: MotionSource;
   /** The network the scene's levels come over, when they stream. */
   port: FakeNet | null;
   render(): FramePacket;
@@ -324,7 +326,7 @@ export function provingView(width = 640, height = 360, net?: NetOptions, files?:
   }
   const raster = new Rasterizer(width, height, pack, hf, split?.manifest);
   return {
-    reg, hf, structs, nodes, pack, scene, cam, remote, raster, port,
+    reg, hf, structs, nodes, pack, scene, cam, remote, raster, port, ...motion,
     render() {
       const packet = scene.build(cam, remote);
       raster.render(packet);

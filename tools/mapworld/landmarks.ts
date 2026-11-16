@@ -40,10 +40,10 @@ export const landmarkDefs = (placed: readonly { landmark: Landmark }[]): Def[] =
 
 /**
  * The ground each landmark asks for, laid on the map's samples (x is size less twice the column, z size less twice the
- * row): dug ground made deep water, paved ground deck.
+ * row): dug ground made deep water, paved ground deck. The samples it laid, 1 each, where nothing is to grow.
  */
-export function layLandmarkGround(ground: Ground, placed: readonly Sited[], size: number, sea: number): void {
-  const n = ground.n, laid = new Uint8Array(1);
+export function layLandmarkGround(ground: Ground, placed: readonly Sited[], size: number, sea: number): Uint8Array {
+  const n = ground.n, laid = new Uint8Array(1), kept = new Uint8Array(n * n);
   for (const { site, landmark } of placed) {
     const reach = Math.max(...landmark.ground.flatMap((g) => [...g.from, ...g.to].map(Math.abs))) * Math.SQRT2 + GROUND_EASE;
     const [c0, c1] = [Math.floor((size - site.x - reach) / 2), Math.ceil((size - site.x + reach) / 2)];
@@ -54,9 +54,11 @@ export function layLandmarkGround(ground: Ground, placed: readonly Sited[], size
         ground.height[i] = landmarkGround(landmark, site.x, site.y ?? sea, site.z, yawUnits(site.yaw), size - col * 2, size - row * 2, ground.height[i]!, laid);
         if (laid[0] === 1) [ground.surface[i], ground.water[i]] = [S.DEEP, 1];
         else if (laid[0] === 2) [ground.surface[i], ground.water[i]] = [S.DECK, 0];
+        kept[i] = laid[0] === 0 ? 0 : 1;
       }
     }
   }
+  return kept;
 }
 
 /** The landmarks' statics, vehicles and content as the map file has them. A boat floats at the sea under it. */

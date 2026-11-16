@@ -694,8 +694,9 @@ export class Scene {
       if (!this.terrain.casters(cam, p, this.viewDistance, this.castBox)) p.casterDropped++;
       this.groundCast();
     }
-    this.structures(cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);
+    // Before the statics, so a full frame leaves out pieces of a chunk rather than a yacht's sails.
     if (this.world.motion && this.motionReg) this.showMotion(cam, this.world.motion);
+    this.structures(cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);
     if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS, this.meshOfForm, this.colorOfForm, this.sizeOfForm);
     if (this.instanceBytes !== this.instancesReserved) this.assets.residency.reserve(INSTANCES, (this.instancesReserved = this.instanceBytes));
     if (remote) this.entities(cam, remote);
