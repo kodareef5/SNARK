@@ -1,6 +1,6 @@
 // What `bun run build` wrote, weighed. Two kinds of row. What every player waits for before the first frame has a
-// budget, with room in it, and raising it is a decision. What is streamed when wanted (meshes, textures, sounds, clips,
-// music) grows with the catalogue and is shown, not held: an asset is held to its own budget by the art check.
+// budget, with room in it, and raising it is a decision. What is streamed when wanted (pages, meshes, textures, sounds,
+// clips, music) grows with the catalogue and is shown, not held: an asset is held to its own budget by the art check.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -14,9 +14,13 @@ import { STEP0_SIZE, TEXTURE_ROLES, stepOf, topIn, type TextureFormat } from "..
 const KB = 1024;
 const MB = 1024 * KB;
 
-/** The rows that fail a build. The first is 0.6 s at 20 Mbit/s; the rest are waste the build can always avoid. */
+/**
+ * The rows that fail a build. The first is 0.3 s at 20 Mbit/s and holds no art past the survivor's: it was 647 KB with
+ * 660 meshes and is 658 with ten times as many, a mesh adding 4 bytes of its name and page, so its room is for the
+ * script and the content. The rest are waste the build can always avoid.
+ */
 const BUDGETS: Record<string, number> = {
-  "everything before the first frame, Brotli": 1536 * KB,
+  "everything before the first frame, Brotli": 768 * KB,
   "sound, kbit/s": 42,
   "sound takes stored twice": 0,
   "texture steps stored twice, astc": 0,
