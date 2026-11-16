@@ -7,6 +7,8 @@
 // --textured holds the shell's textures and materials to our decoders and the software rasterizer (tools/probe-textured.ts).
 // --lit holds what the shell draws at the lit tiers to the rasterizer and to each check under tools/probe-lit/ (tools/probe-lit.ts).
 // --drive has the page get into a car and drive it, and writes what it saw under artifacts/urban-drive/.
+// --software selects Chrome's software WebGL backend on machines without an available headless GPU.
+// --built checks the already prepared client/dist output without rebuilding it.
 
 import { existsSync, mkdtempSync, readFileSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,6 +21,7 @@ import { texturedProbe } from "./probe-textured.ts";
 // --drive puts a car with a seated civilian by the spawn and has the page drive it with the real player controls, on
 // the ordinary build: the car is in the core pack. --medium draws it on the medium tier rather than low poly.
 const drive = process.argv.includes("--drive");
+const software = drive || process.argv.includes("--software");
 const driveTier = process.argv.includes("--medium") ? "medium" : "lowpoly";
 const CANDIDATES = [
   process.env.CHROME,
@@ -35,7 +38,12 @@ if (!chrome) {
 }
 
 // The lit probe builds the core pack itself and needs no client.
-if (!process.argv.includes("--lit")) await buildClient({ stress: process.argv.includes("--stress") });
+if (!process.argv.includes("--lit")) {
+  if (process.argv.includes("--built")) {
+    const dist = join(import.meta.dir, "../client/dist");
+    if (!existsSync(join(dist, "main.js")) || !existsSync(join(dist, "assets/manifest.json"))) throw new Error("No prepared client build. Run without --built first.");
+  } else await buildClient({ stress: process.argv.includes("--stress") });
+}
 for (const [flag, run] of [["--textured", texturedProbe], ["--lit", litProbe]] as const) {
   if (!process.argv.includes(flag)) continue;
   const passed = await run(chrome);
@@ -55,8 +63,9 @@ const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
 // Unless --no-voice is given, the page talks to itself through the server. VOICE_FLAGS give Chrome a fake microphone, grant it
 // without a prompt, and let sound start without a gesture.
 const url = `http://localhost:${server.port}/?selfcheck=1&creature=1&name=probe${drive ? `&urban=1&tier=${driveTier}&urbanDrive=1` : ""}${process.argv.includes("--no-voice") ? "" : "&voice=1"}${process.argv.includes("--lose") ? "&lose=1" : ""}${process.argv.includes("--slow") ? "&assetnet=300,1500,2" : ""}${process.argv.includes("--stress") ? "&stress=1" : ""}`;
+const GRAPHICS_FLAGS = software ? ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : [];
 const VOICE_FLAGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"];
-const browser = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", drive ? "--window-size=800,600" : "--window-size=1280,720", ...(drive ? ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--remote-debugging-port=0"] : []), ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: drive ? Bun.file(join(profile, "chrome.log")) : "ignore" });
+const browser = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", drive ? "--window-size=800,600" : "--window-size=1280,720", ...GRAPHICS_FLAGS, ...(software ? ["--remote-debugging-port=0"] : []), ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: software ? Bun.file(join(profile, "chrome.log")) : "ignore" });
 
 async function pageTarget(): Promise<string | null> {
   if (!existsSync(join(profile, "DevToolsActivePort"))) return null;
@@ -83,7 +92,7 @@ let finished = false;
 // Preserve progress even when expensive shader compilation or a stalled main thread prevents the final report.
 // This observes the real page. It changes no graphics settings, controls, deadlines or pass criteria.
 const progress: unknown[] = [];
-const observing = drive ? (async () => {
+const observing = software ? (async () => {
   while (!finished) {
     await Bun.sleep(2000);
     if (finished) break;
@@ -117,15 +126,15 @@ let second: { ok?: boolean } | null | undefined;
 if (report && process.argv.includes("--voice")) {
   // The first page keeps talking. A second page with its own profile joins and must hear it.
   const profile2 = mkdtempSync(join(tmpdir(), "snark-probe-"));
-  const listener = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...VOICE_FLAGS, `--user-data-dir=${profile2}`, `http://localhost:${server.port}/?selfcheck=1&voice=listen&name=listener`], { stdout: "ignore", stderr: "ignore" });
+  const listener = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...GRAPHICS_FLAGS, ...VOICE_FLAGS, `--user-data-dir=${profile2}`, `http://localhost:${server.port}/?selfcheck=1&voice=listen&name=listener`], { stdout: "ignore", stderr: "ignore" });
   second = (await Promise.race([server.nextSelfcheck(), new Promise<null>((r) => setTimeout(() => r(null), 30000))])) as { ok?: boolean } | null;
   listener.kill();
   await listener.exited;
   rmSync(profile2, { recursive: true, force: true });
 }
-if (drive) {
-  const dir = join(import.meta.dir, "../artifacts/urban-drive"); mkdirSync(dir, { recursive: true });
-  const name = `driving-${driveTier}`;
+if (software) {
+  const dir = join(import.meta.dir, drive ? "../artifacts/urban-drive" : "../artifacts/boot-software"); mkdirSync(dir, { recursive: true });
+  const name = drive ? `driving-${driveTier}` : "boot";
   // Write evidence before a screenshot request, which can itself time out behind a busy renderer.
   writeFileSync(join(dir, `${name}-diagnostics.json`), JSON.stringify({ url, report, progress }, null, 2) + "\n");
   writeFileSync(join(dir, `${name}-chrome.log`), readFileSync(join(profile, "chrome.log")));
@@ -133,16 +142,16 @@ if (drive) {
     const target = await pageTarget();
     if (!target) throw new Error("native probe has no browser target");
     const screenshot = await pageCommand(target, "Page.captureScreenshot", { format: "png" });
-    writeFileSync(join(dir, "driving.png"), Buffer.from(screenshot.data, "base64"));
-    writeFileSync(join(dir, "driving.json"), JSON.stringify(report, null, 2) + "\n");
-  } catch (error) { console.error("drive screenshot:", error); }
+    writeFileSync(join(dir, drive ? "driving.png" : "boot.png"), Buffer.from(screenshot.data, "base64"));
+    writeFileSync(join(dir, drive ? "driving.json" : "boot.json"), JSON.stringify(report, null, 2) + "\n");
+  } catch (error) { console.error("probe screenshot:", error); }
 }
-if (drive && !report) console.error(readFileSync(join(profile, "chrome.log"), "utf8").slice(-6000));
+if (software && !report) console.error(readFileSync(join(profile, "chrome.log"), "utf8").slice(-6000));
 browser.kill();
 await browser.exited;
 let again: { ok?: boolean; assets?: { fetched: number; cached: number } } | null | undefined;
 if (report && process.argv.includes("--twice")) {
-  const revisit = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: "ignore" });
+  const revisit = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...GRAPHICS_FLAGS, ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: "ignore" });
   again = (await Promise.race([server.nextSelfcheck(), new Promise<null>((r) => setTimeout(() => r(null), 30000))])) as typeof again;
   revisit.kill();
   await revisit.exited;
@@ -150,7 +159,7 @@ if (report && process.argv.includes("--twice")) {
 if (report && process.argv.includes("--bench")) {
   // A second page load flies the camera through the same fixed scene. Headless frame times say little about a player's.
   // For a real number, run `bun run dev` and open http://localhost:8787/?bench=1 on the device in question.
-  const flying = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", `--user-data-dir=${profile}`, `http://localhost:${server.port}/?bench=1&name=bench`], { stdout: "ignore", stderr: "ignore" });
+  const flying = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...GRAPHICS_FLAGS, `--user-data-dir=${profile}`, `http://localhost:${server.port}/?bench=1&name=bench`], { stdout: "ignore", stderr: "ignore" });
   await Promise.race([server.bench, new Promise((r) => setTimeout(r, 40000))]);
   flying.kill();
   await flying.exited;

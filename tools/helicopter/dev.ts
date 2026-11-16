@@ -1,5 +1,5 @@
 // The real game and native asset pack in an isolated preview save. No remote state or production save is touched.
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DEV_CONFIG, liveFileOf, startServer } from "../../server/main.ts";
 import { formatReport, loadConfigFolder } from "../../server/settings/config.ts";
@@ -43,7 +43,9 @@ export function seedHelicopterPreview(host: Host): number {
 if (import.meta.main) {
   const args = process.argv.slice(2), value = (key: string): string | undefined => { const at = args.indexOf(key); return at >= 0 ? args[at + 1] : undefined; };
   const root = resolve(import.meta.dir, "../..");
-  console.log(JSON.stringify(await buildClient({ quick: true })));
+  if (args.includes("--built")) {
+    if (!existsSync(resolve(root, "client/dist/assets/manifest.json")) || !existsSync(resolve(root, "client/dist/main.js"))) throw new Error("No prepared client build. Run without --built first.");
+  } else console.log(JSON.stringify(await buildClient({ quick: true })));
   const folder = value("--config") ?? DEV_CONFIG, { rules, report } = loadConfigFolder(folder, args);
   for (const line of formatReport(report, rules)) console.log(line);
   const dbPath = resolve(value("--db") ?? resolve(root, "var/helicopter-preview/world.db")); mkdirSync(dirname(dbPath), { recursive: true });
