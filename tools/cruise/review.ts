@@ -240,8 +240,8 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, fil
       cold.dropped += packet.dropped; cold.skipped += packet.skipped; cold.casterDropped += packet.casterDropped;
     }
     if (images && packet && session.world) { raster ??= new Rasterizer(width, height, boot, session.world.hf, files.manifest); uploadOnly(raster, packet); }
-    if (shot.coldFallback && !fallback && coldSetup && packet &&
-        Math.hypot(session.own.x-shot.feet[0], session.own.z-shot.feet[2]) < 1) {
+    if (shot.coldFallback && !fallback && coldSetup && streaming && packet &&
+        Math.hypot(session.own.x-shot.feet[0], session.own.y-shot.feet[1], session.own.z-shot.feet[2]) < 1) {
       const meshes: { id: string; lod: number; distance: number }[] = [];
       for (let i = 0; i < packet.drawCount; i++) {
         const mesh = files.manifest.meshes[packet.drawMesh[i]!], center = mesh && cellCenters.get(mesh.id), lod = packet.drawLod[i]!;
