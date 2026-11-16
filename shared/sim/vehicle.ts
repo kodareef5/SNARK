@@ -195,6 +195,7 @@ export interface BoatVehicleDefinition extends VehicleDefinitionBase {
   readonly movement: "boat";
   readonly spec: BoatSpec;
   readonly propeller?: { readonly bone: string; readonly axis: readonly [number, number, number]; readonly ratio: number };
+  readonly outboard?: { readonly bone: string; readonly axis: readonly [number, number, number]; readonly ratio: number };
 }
 
 export type VehicleDefinition = WheelVehicleDefinition | RotorVehicleDefinition | BoatVehicleDefinition;
@@ -269,9 +270,8 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   }
   if (d.movement === "boat") {
     if (d.wheels.length) throw new Error("invalid boat rig");
-    const p = d.propeller;
-    if (p && (!bone(p.bone) || !vec(p.axis) || Math.abs(p.axis[0] * p.axis[0] + p.axis[1] * p.axis[1] + p.axis[2] * p.axis[2] - 1) > 1e-6 ||
-      !Number.isFinite(p.ratio) || p.ratio === 0 || Math.abs(p.ratio) > 16)) throw new Error("invalid boat propeller rig");
+    for (const p of [d.propeller, d.outboard]) if (p && (!bone(p.bone) || !vec(p.axis) || Math.abs(p.axis[0] * p.axis[0] + p.axis[1] * p.axis[1] + p.axis[2] * p.axis[2] - 1) > 1e-6 ||
+      !Number.isFinite(p.ratio) || p.ratio === 0 || Math.abs(p.ratio) > 16)) throw new Error("invalid boat propulsion rig");
   }
   if (d.wreck !== undefined && (typeof d.wreck !== "string" || !d.wreck.includes(":"))) throw new Error("invalid vehicle wreck");
   const s = d.steeringWheel;
