@@ -59,14 +59,40 @@ export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
   const shots: CruiseShot[] = [{ name: "01-authentic-arrival", feet: [c.spawn.x, hf.heightAt(c.spawn.x, c.spawn.z), c.spawn.z], target: focus,
     mode: "walk", tier: "high", arrival: true, framePoints, sightlinePoints },
     { name: "02-shore-comparison", feet: [c.scenic.x, hf.heightAt(c.scenic.x, c.scenic.z), c.scenic.z], target: p([0, 28, -100]), mode: "walk", tier: "high" }];
-  for (const tier of ["medium", "high"] as const) {
-    shots.push({ name: `03-port-profile-${tier}`, feet: spectator([400, 60, 0]), target: focus, mode: "spectator", tier, framePoints });
-    for (const view of views) shots.push({ name: `interior-${view.id}-${tier}`, feet: p(view.at), target: p(view.target), mode: view.mode as "walk" | "spectator", tier });
+  for (const tier of ["medium", "high"] as const) shots.push({ name: `03-port-profile-${tier}`, feet: spectator([400, 60, 0]), target: focus, mode: "spectator", tier, framePoints });
+  // Eye origins stay on the source's real route/floor anchors. Look directions are composed toward the
+  // actual furniture or architectural feature, rather than blindly aiming seven metres down every aisle.
+  const targets: Readonly<Record<string, readonly number[]>> = {
+    promenade: [14, 17.8, -8], pearl_cafe: [23, 19.15, 26], central_park: [5.5, 28, 32], surfside: [7, 24, -143],
+    theater: [0, 13.5, 150], dining_5: [12, 15, -135], bridge: [6, 40, 139], grove: [20, 57.5, 53],
+    thrill: [3, 57, -148], hideaway: [0, 45.9, -171], medical: [-14, 7.2, 110],
+    sample_interior: [9, 11, 45.6], sample_suite: [17, 54.4, 44.6], sample_ocean: [24, 15.2, 88.6],
+    pearl: [14, 20, -8], main_bar: [-10, 15, -26], giovanni: [-10, 19.2, 23], casino: [10, 11.1, 11],
+    absolute_zero: [14.3, 11, -166], fitness: [7, 19.5, 164], spa: [9, 42.7, 96], crew: [10, 3.8, -16],
+    laundry: [-14, 4.2, 21], galley: [14, 7, -81], engine: [13, 4.2, 48], workshop: [14, 4, 21],
+    chill: [25, 46.3, 35], pool_edge: [18, 45.8, -7], cloud: [20, 54, -15],
+    grove_upper: [0, 60.8, 68], waterpark: [14, 64.3, -128], windjammer: [22, 46.5, -125],
+  };
+  const localViews = views.map(view => ({ ...view, target: targets[view.id] ?? view.target }));
+  // One room per distinct public/service destination; repeated dining floors share the deck-five view.
+  for (const id of Object.keys(targets)) if (!localViews.some(view => view.id === id)) {
+    const room = CRUISE_LAYOUT.rooms.find(room => room.id === id);
+    if (!room) throw new Error(`Cruise review destination is missing: ${id}`);
+    localViews.push({ id, at: room.routeTarget, target: targets[id]!, deck: room.deck, section: room.section, mode: "walk" });
   }
-  const first = views.find(view => view.id === "arrival" && view.mode === "walk") ?? views.find(view => view.mode === "walk");
-  if (first) shots.push({ name: "04-portrait-boarding", feet: p(first.at), target: p(first.target), mode: "walk", tier: "high", portrait: true },
-    { name: "05-shoulder-boarding", feet: p(first.at), target: p(first.target), mode: "walk", tier: "high", thirdPerson: true });
-  if (first) shots.push({ name: "night-public-arrival", feet: p(first.at), target: p(first.target), mode: "walk", tier: "high", hour: 21 });
+  const medium = new Set(["cabin_9", "dome_inside", "promenade", "central_park", "thrill", "bridge", "engine"]);
+  for (const view of localViews) for (const tier of medium.has(view.id) ? ["medium", "high"] as const : ["high"] as const)
+    shots.push({ name: `interior-${view.id}-${tier}`, feet: p(view.at), target: p(view.target), mode: view.mode as "walk" | "spectator", tier });
+  const promenade = localViews.find(view => view.id === "promenade" && view.mode === "walk");
+  if (!promenade) throw new Error("Cruise review requires the authored Royal Promenade anchor");
+  shots.push({ name: "04-portrait-promenade", feet: p(promenade.at), target: p(promenade.target), mode: "walk", tier: "high", portrait: true },
+    { name: "05-shoulder-promenade", feet: p(promenade.at), target: p(promenade.target), mode: "walk", tier: "high", thirdPerson: true },
+    { name: "night-public-promenade", feet: p(promenade.at), target: p(promenade.target), mode: "walk", tier: "high", hour: 21 });
+  const park = localViews.find(view => view.id === "central_park")!;
+  shots.push({ name: "07-open-canyon", feet: p(park.at), target: p([0, 46, 45]), mode: "walk", tier: "high" },
+    { name: "08-starboard-profile", feet: spectator([-400, 42, 0]), target: focus, mode: "spectator", tier: "high", framePoints },
+    { name: "09-bow-quarter", feet: spectator([-140, 68, 370]), target: p([0, 32, 30]), mode: "spectator", tier: "high", framePoints },
+    { name: "10-stern-quarter", feet: spectator([-140, 68, -370]), target: p([0, 32, -30]), mode: "spectator", tier: "high", framePoints });
   shots.push({ name: "night-exterior", feet: spectator([-400, 42, 0]), target: focus, mode: "spectator", tier: "high", far: true, framePoints, hour: 21 });
   shots.push({ name: "06-flat-profile", feet: spectator([-400, 42, 0]), target: focus, mode: "spectator", tier: "lowpoly", framePoints });
   for (const distance of [280, 650, 900, 1300, 2000]) shots.push({ name: `far-${distance}m`, feet: spectator([-distance, 42, 0]), target: focus, mode: "spectator", tier: "high", far: true, framePoints });

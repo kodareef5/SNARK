@@ -82,6 +82,18 @@ export function cruisePort(placement: CruisePortPlacement): MapData {
       add(ruinKind("zshrub"), terrace.x + 3, hf.heightAt(terrace.x + 3, z) + .85, z);
     }
   }
+  // The shared source supplies the boards and their fronts; this separate port owns their placements.
+  // The first board is outside the arrival silhouette cone, with the boarding axis kept open.
+  const portSigns = new Map(CRUISE_LAYOUT.portSigns.map(sign => [sign.id, sign]));
+  for (const [id, x, z, yaw] of [
+    ["core:cruise_port_arrival", c.terraces[0], landingZ - 10, 49152],
+    ["core:cruise_port_boarding", c.quayX + 14, landingZ - 4.3, 49152],
+    ["core:cruise_port_lower_berths", c.quayX + 8, landingZ - 26, 32768],
+  ] as const) {
+    const sign = portSigns.get(id);
+    if (!sign?.groundOrigin || sign.front.join(",") !== "0,0,-1") throw new Error(`Cruise port sign contract changed: ${id}`);
+    add(id, x, hf.heightAt(x, z), z, yaw);
+  }
   pier(placement.landing);
   const koruLanding = cruiseKoruPoint(KORU_LAYOUT.docking.shoreLanding); pier(koruLanding);
   // Restrained terminal waterfront. Its two boarding axes remain clear of railings and furniture.
