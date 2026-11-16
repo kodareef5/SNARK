@@ -5,7 +5,7 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FAR_BUFFER, FAR_SLOTS, farPart } from "../../client/core/render/far.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { CHUNK_SIZE, chunkAt } from "../../shared/coords.ts";
-import { VERTEX_BYTES } from "../../shared/pack/pack.ts";
+import { INSTANCE_BYTES, VERTEX_BYTES } from "../../shared/pack/pack.ts";
 import { Rng } from "../../shared/rng.ts";
 import { FarCells, farTopByte } from "../../shared/world/tactical.ts";
 import { castle, farWorld, type FarWorld } from "../fixtures/farworld.ts";
@@ -237,10 +237,11 @@ test("tiles a tile past the tier's reach are let go, what is on the card is rese
   expect(q.assetDrops).toEqual([onCard[0]!.slot]);
   expect(q.assetUploads.filter((u) => u.slot >= FAR_SLOTS).length).toBe(1);
   expect(residency.reserved - before).toBe(q.assetUploads.find((u) => u.slot >= FAR_SLOTS)!.data.length - onCard[0]!.data.length);
-  // A tier that draws no far bases lets go of every tile, and the near store draws whatever rows it has.
+  // A tier that draws no far bases lets go of every tile, and the near store draws whatever rows it has, whose instances
+  // are held on the card in the tile's place.
   w.scene.assets.tier = { ...w.scene.assets.tier, reach: { ...w.scene.assets.tier.reach, bases: 0 } };
   w.rows(near, 0, 50, false);
   w.look(400, 10, 400, 300, 0);
   const none = w.frame();
-  expect([none.assetDrops.length, farDraws(none), nearDraws(none, near) > 0, residency.reserved]).toEqual([1, 0, true, before - onCard[0]!.data.length]);
+  expect([none.assetDrops.length, farDraws(none), nearDraws(none, near) > 0, residency.reserved]).toEqual([1, 0, true, before - onCard[0]!.data.length + 50 * INSTANCE_BYTES]);
 });

@@ -1499,7 +1499,15 @@ export class Scene {
         const at = q * (cells + 1) + c;
         const n = first[at + 1]! - first[at]!;
         if (n === 0) continue;
-        const qc = q * cells + c;
+        const qc = q * cells + c, k = qc * 6;
+        const dx = Math.max(box[k]! - cam.x, cam.x - box[k + 3]!, 0);
+        const dy = Math.max(box[k + 1]! - cam.y, cam.y - box[k + 4]!, 0);
+        const dz = Math.max(box[k + 2]! - cam.z, cam.z - box[k + 5]!, 0);
+        const d = one ? 0 : Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (d >= to) {
+          next = -1;
+          continue;
+        }
         if (!this.cellShows(cam, b, q, c, mesh)) {
           if (next === first[at]) {
             next = first[at + 1]!;
@@ -1509,15 +1517,6 @@ export class Scene {
         }
         let seen = dist / reach, hand = 0, level = near, crown = b.crown[q]!, thin = b.thin[q]!;
         if (!one) {
-          const k = qc * 6;
-          const dx = Math.max(box[k]! - cam.x, cam.x - box[k + 3]!, 0);
-          const dy = Math.max(box[k + 1]! - cam.y, cam.y - box[k + 4]!, 0);
-          const dz = Math.max(box[k + 2]! - cam.z, cam.z - box[k + 5]!, 0);
-          const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-          if (d >= to) {
-            next = -1;
-            continue;
-          }
           if (sized) {
             const most = Math.hypot(Math.max(Math.abs(box[k]! - cam.x), Math.abs(box[k + 3]! - cam.x)), Math.max(Math.abs(box[k + 1]! - cam.y), Math.abs(box[k + 4]! - cam.y)), Math.max(Math.abs(box[k + 2]! - cam.z), Math.abs(box[k + 5]! - cam.z)));
             hand = most > from ? HAND_NEAR : 0;
