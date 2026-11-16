@@ -1,0 +1,110 @@
+{
+  "description": "Object-space painting of the accepted horn, fuzz_face, eye and mouth studies. Metres unless labelled mm. x is absolute distance from symmetry plane.",
+  "seed": 15112026,
+  "nostril": {
+    "z": 0.837,
+    "y": 1.327,
+    "length_mm": 60,
+    "half_width_mm": 1.65,
+    "slope_dy_dz": -0.1,
+    "depth_mm": 0.3,
+    "rim_mm": 0.12
+  },
+  "eye_centre": [
+    0.0705,
+    1.371,
+    0.694
+  ],
+  "eye_look": [
+    0.83,
+    0.02,
+    0.56
+  ],
+  "streak_depth_mm": 30,
+  "crest_origin_yz": [
+    1.395,
+    0.575
+  ],
+  "crest_tip_yz": [
+    1.948,
+    0.21
+  ],
+  "band_from_tip_mm": [
+    99,
+    185
+  ],
+  "height_range_mm": 1.8,
+  "height_plane_mm": 0.4,
+  "nape_join": {
+    "description": "Round 2: reshape only the rear streak behind z=0.52 m. Ease its inner cheek edge into a rounded, descending occiput ribbon. Read body/source/joins.json nape.profile.depth_stations[0] for 15 mm profile depth at the neck top ring. Body categorical fibre tips take precedence within 1.5 mm of the geometric cut; interleave to 4 mm.",
+    "body_contract": "../body/source/joins.json",
+    "region": 0,
+    "base_linear": 0.5,
+    "height_mm": 0.4,
+    "roughness": 0.86,
+    "occlusion": 1.0,
+    "maximum_head_width_mm": 136,
+    "head_interleave_mm": 4,
+    "live_cut_blend_mm": 4,
+    "upper_boundary": "Falls from y=1.400 at z=0.50 to y=1.379 at z=0.39; charcoal continues down to the body cut. The ivory crown stays above it.",
+    "profile_depth_mm": 15,
+    "profile_measurement": "Perpendicular YZ inset from live head/neck rear silhouette; abs(normal.x) < 0.04 and normal.z < -0.2; 2 mm bins, resampled every 0.5 mm. Mirrored in x.",
+    "turn_maximum_z_m": 0.52,
+    "rear_cut_midline_xyz_m": [
+      0,
+      1.35175,
+      0.40098
+    ],
+    "turn_union_mm": 12,
+    "turn_maximum_rounding_mm": 3,
+    "turn_transition_m": 0.08,
+    "inner_corner_y_m": 1.358
+  },
+  "streak_rear_depth_mm": 50,
+  "streak_description": "Accepted eye and anterior cheek unchanged. Behind z=0.52 m the inner edge rises gently into a rounded turn, then descends as a 15 mm profile ribbon to the body nape.",
+  "horn_surface": {
+    "long_streak_removal": 0.94,
+    "directional_filter_sigma_mm": [
+      1,
+      12
+    ],
+    "mottling_filter_sigma_mm": [
+      7,
+      12
+    ],
+    "description": "Subtract the elongated component from the accepted base, height and packed tile. Keep source pits and soft isotropic mottling at their original scale."
+  },
+  "eye_iris_linear_gain": [
+    2.4,
+    4.3,
+    2.2
+  ],
+  "eye_pale_lid_mm": 0.65,
+  "streak_centres_z_y_m": [
+    [
+      0.39,
+      1.354
+    ],
+    [
+      0.43,
+      1.364
+    ],
+    [
+      0.5,
+      1.375
+    ],
+    [
+      0.694,
+      1.378
+    ],
+    [
+      0.76,
+      1.378
+    ]
+  ],
+  "accepted_fuzz_calibration_means": {
+    "(0,)": 0.5074875950813293,
+    "(5,)": 0.49832087755203247
+  },
+  "fuzz_calibration_note": "Retain accepted round-one feedback material gains before the round-two colour-only occiput reshape; moving the dye boundary must not rebalance the eye or face material."
+}

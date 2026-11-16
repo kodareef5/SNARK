@@ -5,15 +5,16 @@
 // var/maps/<name>/layers, then the map file var/maps/<name>.snmap, and says what it holds. The same inputs give the same
 // bytes.
 
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { chunkCount } from "../../shared/coords.ts";
-import { mapHeightfield, mapNodes, parseMap, writeMap } from "../../shared/world/mapfile.ts";
+import { MapStatics, mapHeightfield, mapNodes, parseMap, writeMap } from "../../shared/world/mapfile.ts";
 import { obeliskStatics } from "../../shared/world/obelisks.ts";
 import { describe } from "../map.ts";
 import { readLayers, waterLayer } from "../map/layers.ts";
+import { writeMapFile } from "../map/pack.ts";
 import { lakeSquares } from "./lakes.ts";
 import { writeGrey } from "../map/png.ts";
 import { Base } from "./base.ts";
@@ -27,14 +28,12 @@ import { helicopterSites, type HelicopterSite } from "../helicopter/sites.ts";
 import { boatSites, mappedBoatSites } from "../boat/sites.ts";
 import type { BuildingLabel, PublicPlace } from "./labels.ts";
 import { growRuins } from "./ruin-growth.ts";
+import { landmarkDefs, landmarksOf, layLandmarkGround, placeLandmarks } from "./landmarks.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 
-export function buildMap(name: string): { file: string; stats: Record<string, unknown> } {
+export async function buildMap(name: string): Promise<{ file: string; stats: Record<string, unknown> }> {
   const t0 = performance.now();
-  const compiled = compileContent(CORE_CONTENT);
-  if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
-  const reg = compiled.registry;
   const lap = (what: string): void => console.log(`${((performance.now() - t0) / 1000).toFixed(1).padStart(5)} s  ${what}`);
   const source = join(ROOT, "assets/source/maps", name);
   const base = new Base(source);
@@ -42,14 +41,19 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   const n = base.n;
   const size = base.info.size_m;
   const chunks = base.info.chunks;
-
-  const ground = makeGround(base, world, lap);
-  lap("ground");
   const half = size / 2;
   const toSample = (lon: number, lat: number): [number, number] => {
     const [e, no] = base.tm.forward(lon, lat);
     return [(e + half) / 2, (half - no) / 2];
   };
+  // The core's content and what the map's landmarks bring.
+  const sited = landmarksOf(world.landmarks ?? [], toSample, size);
+  const compiled = compileContent([...CORE_CONTENT, ...landmarkDefs(sited)]);
+  if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
+  const reg = compiled.registry;
+
+  const ground = makeGround(base, world, lap);
+  lap("ground");
   const site = siteOf(world, ground, size, source);
   const layered = STATIC_LAYERS.flatMap((layer) => {
     const pieces = layer.make(site);
@@ -60,19 +64,46 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   const unknown = [...new Set(layered.map((p) => p.kind))].filter((kind) => !reg.index.has(kind));
   if (unknown.length) throw new Error(`static pieces of kinds the content does not have: ${unknown.join(", ")}`);
   // The obelisks come last, so every other piece keeps its slot in its chunk.
-  const obelisks = placeObelisks(ground, world, toSample, size, staticCover(layered, reg, n, size));
-  const statics = [...layered, ...obelisks.flatMap((o) => obeliskStatics(reg, o, site.groundAt).map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 })))];
+  const occupied = staticCover(layered, reg, n, size);
+  const budget = world.heaps === false ? vocabulary(source).budgets.maxChunk : Infinity;
+  const pieceCounts = new Uint32Array(chunks * chunks);
+  for (const p of layered) pieceCounts[Math.floor(p.z / 64) * chunks + Math.floor(p.x / 64)]!++;
+  for (let k = 0; k < pieceCounts.length; k++) if (pieceCounts[k]! > budget - 4) {
+    const x = k % chunks; const z = Math.floor(k / chunks);
+    for (let row = Math.max(0, n - 1 - (z + 1) * 32); row <= Math.min(n - 1, n - 1 - z * 32); row++) for (let col = Math.max(0, n - 1 - (x + 1) * 32); col <= Math.min(n - 1, n - 1 - x * 32); col++) occupied[row * n + col] = 1;
+  }
+  for (const route of site.growthRoutes) for (let i = 1; i < route.points.length; i++) {
+    const a = route.points[i - 1]!; const b = route.points[i]!; const length = Math.hypot(b.x - a.x, b.z - a.z);
+    for (let d = 0; d <= length; d += 1) {
+      const t = length ? d / length : 0; const x = a.x + (b.x - a.x) * t; const z = a.z + (b.z - a.z) * t;
+      const row = Math.round((size - z) / 2); const col = Math.round((size - x) / 2);
+      if (row >= 0 && col >= 0 && row < n && col < n) occupied[row * n + col] = 1;
+    }
+  }
+  const obelisks = placeObelisks(ground, world, toSample, size, occupied);
+  // Then the landmarks, on the ground they ask for, so no piece before them changes its slot.
+  const berths = layLandmarkGround(ground, sited, size, 0);
+  const brought = placeLandmarks(sited, reg, 0);
+  const statics = [...layered, ...obelisks.flatMap((o) => obeliskStatics(reg, o, site.groundAt).map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 }))), ...brought.statics.map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 }))];
+  pieceCounts.fill(0);
+  for (const p of statics) pieceCounts[Math.floor(p.z / 64) * chunks + Math.floor(p.x / 64)]!++;
+  const maxChunk = Math.max(...pieceCounts);
+  if (maxChunk > budget) throw new Error(`Static chunk budget ${budget} exceeded after obelisks: ${maxChunk}`);
   lap(`${obelisks.length} obelisks`);
   const tint = makeTint(ground, world);
   lap("colour");
   const spawns = placeSpawns(ground, world, toSample, size);
   const regions = placeRegions(ground, size, spawns, world.easyAroundSpawns ?? 0);
   lap(`${spawns.length} spawn points, ${regions.length} spawn regions`);
+  // A parked car stands well off where survivors arrive and where they leave, so neither's walk meets it.
+  const apart = world.heaps === false ? vocabulary(source).street.cars.parked.fromSpawn : 0;
+  const vehicles = [...site.vehicles.filter((c) => ![...spawns, ...obelisks].some((s) => Math.hypot(s.x - c.x, s.z - c.z) < apart)), ...brought.vehicles.map((v) => ({ ...v, yaw: (v.yaw * 360) / 65536 }))];
+  lap(`${vehicles.length} parked vehicles`);
   // Nothing grows within 8 m of a spawn point, so nobody arrives inside a tree, nor within 14 m of an obelisk's middle,
-  // so none stands in it or before its terminal.
-  const clearings = [...spawns.map((s) => [(size - s.x) / 2, (size - s.z) / 2, 16] as const), ...obelisks.map((o) => [(size - o.x) / 2, (size - o.z) / 2, 49] as const)];
+  // so none stands in it or before its terminal, nor within 6 m of a parked car.
+  const clearings = [...spawns.map((s) => [(size - s.x) / 2, (size - s.z) / 2, 16] as const), ...obelisks.map((o) => [(size - o.x) / 2, (size - o.z) / 2, 49] as const), ...vehicles.map((c) => [(size - c.x) / 2, (size - c.z) / 2, 9] as const)];
   const growth = world.heaps === false ? vocabulary(source).growth : undefined;
-  const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1) || clearings.some(([c, r, d2]) => (c - col) ** 2 + (r - row) ** 2 < d2), (col, row) => site.lowPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1, growth);
+  const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1) || berths[row * n + col] === 1 || clearings.some(([c, r, d2]) => (c - col) ** 2 + (r - row) ** 2 < d2), (col, row) => site.lowPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1, growth);
   lap("nodes");
 
   const layers = join(ROOT, "var/maps", name, "layers");
@@ -102,6 +133,7 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   put("spawns.json", lines(spawns));
   put("regions.json", lines(regions));
   if (statics.length > 0) put("statics.json", lines(statics));
+  if (vehicles.length > 0) put("vehicles.json", lines(vehicles));
   // Lakes above the sea as bodies of water, in squares of a sample.
   if (ground.lakes) {
     const water = waterLayer({ chunksX: chunks, chunksZ: chunks }, world.minY, world.stepY, 2, ground.lakes.bodies, lakeSquares(ground.lakes, n, 2));
@@ -111,9 +143,11 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   lap(`layers in ${layers}`);
 
   let map = readLayers(layers);
+  map = { ...map, statics: MapStatics.of(map.dims, map.statics), ...(sited.length > 0 ? { content: brought.content } : {}) };
+  Bun.gc(true);
   if (growth) {
     const grown = growRuins(map, compiled.registry, site, growth);
-    map = { ...map, nodes: [grown.layer] };
+    map = { ...map, nodes: grown.layers };
     writeFileSync(join(source, "reports", world.ruins?.report ?? "ruins", "growth.json"), JSON.stringify(grown.summary, null, 2) + "\n");
     lap("growth placed around structures and routes");
   }
@@ -130,23 +164,29 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
     const radius = Math.max(...building.rings[0]!.map(point => Math.hypot(point[0]! - building.e, point[1]! - building.n)));
     aircraftSites.push({ id: `building-${building.id}`, kind, x, z, radius });
   }
+  // After the parked cars, which keep their places in the list, and clear of them; the boats clear of both.
+  const parked = map.vehicles ?? [];
   const aircraft = helicopterSites(map, reg, aircraftSites);
   const waterfrontPlaces = JSON.parse(readFileSync(join(source, "blocks/places.json"), "utf8")) as PublicPlace[];
   const waterfrontLabels = JSON.parse(readFileSync(join(source, "blocks/labels.json"), "utf8")) as Record<string, BuildingLabel>;
-  const boats = boatSites({ ...map, vehicles: aircraft }, reg, mappedBoatSites(waterfrontPlaces, waterfrontLabels, site.toEngine));
-  const vehicles = [...aircraft, ...boats];
-  if (vehicles.length) { map = { ...map, vehicles }; put("vehicles.json", lines(vehicles.map(v => ({ ...v, yaw: v.yaw * 360 / 65536 })))); }
+  const boats = boatSites({ ...map, vehicles: [...parked, ...aircraft] }, reg, mappedBoatSites(waterfrontPlaces, waterfrontLabels, site.toEngine));
+  if (aircraft.length + boats.length > 0) {
+    const all = [...parked, ...aircraft, ...boats];
+    map = { ...map, vehicles: all };
+    put("vehicles.json", lines(all.map(v => ({ ...v, yaw: v.yaw * 360 / 65536 }))));
+  }
   lap(`${aircraft.length} found aircraft at surveyed service sites and industrial yards; ${boats.length} boats at mapped waterfronts`);
   const bytes = writeMap(map);
   const file = join(ROOT, "var/maps", `${name}.snmap`);
-  writeFileSync(`${file}.tmp`, bytes);
-  renameSync(`${file}.tmp`, file);
   const built = (performance.now() - t0) / 1000;
-  lap(`map file ${file}`);
+  const packed = await writeMapFile(file, bytes);
+  lap(`map file ${file} and its copies for the wire`);
   for (const line of describe(bytes)) console.log(`        ${line}`);
 
   // The numbers: nodes by kind, how much land is walkable, the deepest water and the tallest heap.
   const parsed = parseMap(bytes);
+  const packedMax = Math.max(...parsed.statics.first.slice(1).map((end, i) => end - parsed.statics.first[i]!));
+  if (packedMax > budget) throw new Error(`Packed static chunk budget ${budget} exceeded: ${packedMax}`);
   const hf = mapHeightfield(parsed);
   const placed = mapNodes(parsed, hf, reg)!;
   const byKind = new Map<string, number>();
@@ -206,11 +246,15 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   const stats = {
     id: world.id,
     bytes: bytes.length,
-    gzipped: Bun.gzipSync(bytes).length,
+    groundBrotli: packed.ground,
+    brotli: packed.br.length,
     buildSeconds: Number(built.toFixed(1)),
     totalSeconds: Number(((performance.now() - t0) / 1000).toFixed(2)),
     peakResidentMiB: Number((process.resourceUsage().maxRSS / 1024).toFixed(1)),
     staticTotal: statics.length,
+    staticMaxChunk: packedMax,
+    staticMaxChunkBeforePacking: maxChunk,
+    vehicles: vehicles.length,
     deepestWater: Number(deepest.toFixed(2)),
     highestGround: Number(highest.toFixed(2)),
     landmarks: statics.length === 0 ? landmarks : [],
@@ -233,6 +277,6 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
 }
 
 if (import.meta.main) {
-  const { stats } = buildMap(process.argv[2] ?? (() => { throw new Error("Map name required"); })());
+  const { stats } = await buildMap(process.argv[2] ?? (() => { throw new Error("Map name required"); })());
   console.log(JSON.stringify({ ...stats, spawns: undefined, surfaceSquareMetres: undefined }, null, 2));
 }

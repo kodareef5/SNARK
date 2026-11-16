@@ -40,6 +40,7 @@ export function addCombatCommands(con: Console): void {
     {
       name: "dummy",
       usage: "[cloth|hide|chitin|flak]",
+      examples: ["dummy cloth"],
       help: "Stand a target three metres in front of you, bare or in a full set of armor. It takes hits by zone as a survivor does.",
       admin: true,
       run(ctx, args) {
@@ -64,6 +65,7 @@ export function addCombatCommands(con: Console): void {
     {
       name: "kit",
       usage: `<${[...Object.keys(KITS), ...TIERS].join("|")}>`,
+      examples: ["kit tools", "kit bow"],
       help: "Give yourself a set of things: a weapon with what it fires, or five pieces of armor.",
       admin: true,
       run(ctx, args) {
@@ -87,6 +89,7 @@ export function addCombatCommands(con: Console): void {
     {
       name: "armor",
       usage: `<${TIERS.join("|")}|off>`,
+      examples: ["armor hide", "armor off"],
       help: "Put a full set of armor on yourself, in place of whatever you wear; or take off what you wear.",
       admin: true,
       run(ctx, args) {
@@ -165,6 +168,7 @@ export function addCombatCommands(con: Console): void {
     {
       name: "buff",
       usage: "<name> [seconds] | off <name>",
+      examples: ["buff burning 10", "buff off burning"],
       help: "Put something on yourself that acts for a time (burning, stunned, tranquilized, injured, god), or take it off.",
       admin: true,
       run(ctx, args) {

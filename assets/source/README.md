@@ -176,9 +176,13 @@ as a creature's do, so a damaged car looks damaged and a dead one burnt out.
   the pictures were painted for.
 - A glass pane is a closed slab whose inside face is cut out of the picture,
   so from within the cabin the glass is not there, and from outside it is.
-- Its wrecks are a pieces asset built from the same model on the same layout
-  (`core/vehicles/compact_wreck/`), painted as the car's last stage of decay,
-  for a map to set in its streets as statics.
+- Its wrecks are pieces assets built from the same model on the same layout,
+  posed, for a map to set in its streets as statics: burnt out
+  (`core/vehicles/compact_wreck/`), painted as the car's last stage of decay, and
+  abandoned (`core/vehicles/compact_abandoned/`), painted with the first third of
+  its hurt and decay pictures, dust and sun, its paint still dyed by the
+  static's colour. Their finest level is made from the model to 6,000 triangles,
+  as a street holds many.
 
 ## Rigid pieces
 
@@ -206,7 +210,8 @@ leaves in the same outline, and its points lie far from the finest's however
 alike the two look. A piece whose levels a measure of points cannot judge may
 state their errors in metres, for its levels after the finest in turn:
 `pieces: [{ id, object, errors: [0.012, 0.04] }]`. A level it leaves out is
-measured. State an error as the size of the difference a player would see, at
+measured. A piece may give its own `triangles` in place of the asset's
+budgets, where its pieces differ in size. State an error as the size of the difference a player would see, at
 the size the piece is modelled: a node drawn larger has its errors scaled with
 it. `--check` and the sheet print each stated error beside the one measured on
 its points, and where each level is first drawn on each tier and how tall the
@@ -392,7 +397,8 @@ materials: {
   colour is used, so no palette index is written down anywhere.
 - Every picture is square. Base colour and normal are stored as large as they
   come, up to `budgets.texture.top`, and the packed map and masks one size
-  under the base colour.
+  under the base colour. A material's `tops` stores a map smaller where its
+  content needs less than its picture, as `--check` notes.
 - A material that several assets use is said once, beside its pictures:
   `export const POLE = shared(import.meta.dir, "core:pole", { ... })`, and
   `materials: { Pole: POLE }` in each asset. It must say how far it `tiles`.
@@ -403,6 +409,9 @@ converted from a raw file must bring its own if any part of it is mirrored.
 The game's build finds the pictures through the packs: `gameTextures()` in
 `tools/art/materials.ts` lists every texture the packs name, and
 `bun run build` encodes them. Nothing but the source pictures is committed.
+Textures that come out the same, under any materials, are stored and held
+once, and a map that is everywhere what a material without one draws (masks
+that dye nothing) is left out.
 
 ## The check
 
@@ -423,15 +432,20 @@ prints numbers and fails only on what would draw wrong:
   normal map that leans against its height, a region map with more than 2% of
   it no region's colour, masks that sum past 1, a large picture that is not
   its small one when shrunk (under 30 dB);
-- budgets: triangles a level, megabytes of textures in one variant.
+- budgets: triangles a level, megabytes of textures in one variant; and a building piece of any tier (content/building.ts) against `PIECE_TRIANGLES`, what it may be drawn with from each distance on medium, kept to its pictures to 80 m and with no level that is never drawn or drawn over a sliver.
 
 It also says how tall the creature stands when each level is first drawn, the
 stride each gait holds best at, a loop that walks and has no stride, a loop
 that stands still, a hit capsule buried in others, how many pixels a metre each
 material has on each mesh, and how far each material's mean colour is from the
-palette colour it is drawn flat in. A test runs the check over every asset
-here, so a pack with a fault does not pass `bun run check`. That test reads
-only the sizes of the pictures. `--check` reads and measures them.
+palette colour it is drawn flat in. Of the maps, it notes one the build leaves
+out, a picture another material names too, and a map larger than its content
+needs, with the `tops` that stores it at the side it needs: the smallest that,
+stored that many steps smaller and so drawn that much coarser at every
+distance, turns no normal more than 3 degrees and moves no other channel more
+than 4 levels. A test runs the check over every asset here, so a pack with a
+fault does not pass `bun run check`. That test reads only the sizes of the
+pictures. `--check` reads and measures them.
 
 ## Looking at an asset
 

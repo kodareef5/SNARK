@@ -36,6 +36,7 @@ export function soundView(session: ClientSession): SoundView {
       level: session.progress.level,
       engrams: session.progress.engrams.length,
     },
+    vehicle: !alive ? -1 : session.driving >= 0 ? session.driving : own.seat > 0 ? own.seat - 1 : -1,
     hour: hourOfDay(session.serverTick, session.dayOffset, session.clock),
     trees: (x, z, r) => (field ? field.store.query(x - r, z - r, x + r, z + r, found) : 0),
     lit: (x, z, r, out) => {

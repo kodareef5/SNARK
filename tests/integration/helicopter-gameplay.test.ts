@@ -37,8 +37,8 @@ test("an assembly consumes exactly once after legal placement, while unsupported
     expect(inv.total(kit)).toBe(0);
     const heli = [...h.host.records.byPid.values()].find(r => h.reg.ids[r.kind] === "core:helicopter")!;
     const e = h.host.records.entOf.get(heli.pid)!;
-    expect(heli.team).toBe(actor.team); expect(h.world.ents.fuel[e]).toBe(0);
-    expect(h.world.ents.vehicleEngineCondition[e]).toBe(1);
+    expect(heli.team).toBe(actor.team); expect(h.world.ents.fuel[h.world.ents.vrow[e]!]).toBe(0);
+    expect(h.world.ents.vehicleEngineCondition[h.world.ents.vrow[e]!]).toBe(1);
     expect(h.host.vehicles.deploy(c, slot, 66, 0, 64, 0)).toBe(RESULT_INVALID);
     h.host.items.mint(actor, kit, 1);
     expect(h.host.vehicles.deploy(c, slot, 67, 0, 64, 0)).toBe(RESULT_NO_SUPPORT);
@@ -55,12 +55,12 @@ test("maintenance requires a stopped authorized nearby aircraft and preserves th
     const fuel = h.reg.index.get("core:gasoline")!, ingot = h.reg.index.get("core:ingot")!;
     h.host.items.mint(actor, fuel, 2);
     expect(h.host.vehicles.refuel(c, handle, 1)).toBe(RESULT_OK);
-    expect(ents.fuel[e]).toBe(15); expect(h.host.items.inv(actor).total(fuel)).toBe(1);
-    ents.vehicleEngineOn[e] = 1;
+    expect(ents.fuel[ents.vrow[e]!]).toBe(15); expect(h.host.items.inv(actor).total(fuel)).toBe(1);
+    ents.vehicleEngineOn[ents.vrow[e]!] = 1;
     expect(h.host.vehicles.refuel(c, handle)).toBe(RESULT_BUSY);
-    ents.vehicleEngineOn[e] = 0; ents.vehicleRotorRpm[e] = 60;
+    ents.vehicleEngineOn[ents.vrow[e]!] = 0; ents.vehicleRotorRpm[ents.vrow[e]!] = 60;
     expect(h.host.vehicles.repair(c, handle)).toBe(RESULT_BUSY);
-    ents.vehicleRotorRpm[e] = 0;
+    ents.vehicleRotorRpm[ents.vrow[e]!] = 0;
     h.host.items.mint(actor, ingot, 40);
     expect(h.host.vehicles.repair(c, handle)).toBe(RESULT_SHORT);
     expect(h.host.items.inv(actor).total(ingot)).toBe(40);
@@ -68,8 +68,8 @@ test("maintenance requires a stopped authorized nearby aircraft and preserves th
     h.host.items.mint(actor, h.reg.index.get("core:electronics")!, 8);
     expect(h.host.vehicles.repair(c, handle)).toBe(RESULT_OK);
     expect(h.host.survival.value(rec, V_HEALTH)).toBeCloseTo(1050, 4);
-    expect(ents.vehicleEngineCondition[e]).toBeCloseTo(.65, 5);
-    expect(ents.vehicleRotorCondition[e]).toBeCloseTo(.55, 5);
+    expect(ents.vehicleEngineCondition[ents.vrow[e]!]).toBeCloseTo(.65, 5);
+    expect(ents.vehicleRotorCondition[ents.vrow[e]!]).toBeCloseTo(.55, 5);
     expect(h.host.items.inv(actor).total(ingot)).toBe(0);
     expect(h.host.vehicles.refuel(c, makeHandle(e, ents.gen[e]! + 1))).toBe(RESULT_INVALID);
     h.host.setSetting("serverPVE", "True"); rec.team = actor.team + 20;
@@ -90,24 +90,24 @@ test("found condition and full inverted attitude survive SQLite reload without r
     const record = [...h.host.records.byPid.values()].find(r => h!.reg.ids[r.kind] === placement.kind)!, pid = record.pid;
     const e = h.host.records.entOf.get(pid)!, ents = h.world.ents;
     const rolled = foundVehicle("test:flat", placement, 1);
-    expect(ents.vehicleEngineCondition[e]).toBeCloseTo(rolled.engine!, 6);
-    expect(ents.fuel[e]).toBeCloseTo(rolled.fuel! * 100, 5);
+    expect(ents.vehicleEngineCondition[ents.vrow[e]!]).toBeCloseTo(rolled.engine!, 6);
+    expect(ents.fuel[ents.vrow[e]!]).toBeCloseTo(rolled.fuel! * 100, 5);
     expect(new TextDecoder().decode(record.extra.get(VEHICLE_ORIGIN))).toBe("test:flat/police-yard");
     ents.setPosition(e, 42, 25, 42); ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
-    ents.vehicleQx[e] = 1; ents.vehicleQy[e] = ents.vehicleQz[e] = ents.vehicleQw[e] = 0;
-    ents.vehiclePitch[e] = Math.PI; ents.vx[e] = 75; ents.vy[e] = -85; ents.vz[e] = 64;
-    ents.vehicleRotorRpm[e] = 250; ents.vehicleRotorPhase[e] = .8; ents.vehicleCollective[e] = .7;
+    ents.vehicleQx[ents.vrow[e]!] = 1; ents.vehicleQy[ents.vrow[e]!] = ents.vehicleQz[ents.vrow[e]!] = ents.vehicleQw[ents.vrow[e]!] = 0;
+    ents.vehiclePitch[ents.vrow[e]!] = Math.PI; ents.vx[e] = 75; ents.vy[e] = -85; ents.vz[e] = 64;
+    ents.vehicleRotorRpm[ents.vrow[e]!] = 250; ents.vehicleRotorPhase[ents.vrow[e]!] = .8; ents.vehicleCollective[ents.vrow[e]!] = .7;
     h.host.urban.changed(e);
-    const fuel = ents.fuel[e]!, engine = ents.vehicleEngineCondition[e]!;
+    const fuel = ents.fuel[ents.vrow[e]!]!, engine = ents.vehicleEngineCondition[ents.vrow[e]!]!;
     h.host.shutdown(); h = null;
     h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], dbPath, map });
     const restored = h.host.records.entOf.get(pid)!, out = h.world.ents;
     expect([...h.host.records.byPid.values()].filter(r => h!.reg.ids[r.kind] === placement.kind)).toHaveLength(1);
-    expect(out.vehicleQx[restored]).toBe(1); expect(out.vehicleQw[restored]).toBe(0);
-    expect(Math.abs(out.vehiclePitch[restored]!)).toBeCloseTo(Math.PI, 6);
+    expect(out.vehicleQx[out.vrow[restored]!]).toBe(1); expect(out.vehicleQw[out.vrow[restored]!]).toBe(0);
+    expect(Math.abs(out.vehiclePitch[out.vrow[restored]!]!)).toBeCloseTo(Math.PI, 6);
     expect([out.vx[restored], out.vy[restored], out.vz[restored]]).toEqual([75, -85, 64]);
-    expect(out.vehicleCollective[restored]).toBeCloseTo(.7, 6);
-    expect(out.vehicleEngineCondition[restored]).toBe(engine); expect(out.fuel[restored]).toBe(fuel);
+    expect(out.vehicleCollective[out.vrow[restored]!]).toBeCloseTo(.7, 6);
+    expect(out.vehicleEngineCondition[out.vrow[restored]!]).toBe(engine); expect(out.fuel[out.vrow[restored]!]).toBe(fuel);
   } finally { h?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -145,10 +145,10 @@ test("an authored rooftop height is respected, and harmless brushing does not co
     expect(ents.y[e]).toBeCloseTo(y, 4);
     h.host.urban.collision(e, 2, false); h.host.urban.step();
     expect(h.host.survival.value(rec, V_HEALTH)).toBe(health);
-    expect(ents.vehicleEngineCondition[e]).toBe(1); expect(ents.vehicleRotorCondition[e]).toBe(1);
+    expect(ents.vehicleEngineCondition[ents.vrow[e]!]).toBe(1); expect(ents.vehicleRotorCondition[ents.vrow[e]!]).toBe(1);
     h.host.urban.collision(e, 12, false); h.host.urban.step();
     expect(h.host.survival.value(rec, V_HEALTH)).toBeLessThan(health);
-    expect(ents.vehicleEngineCondition[e]).toBeLessThan(1);
+    expect(ents.vehicleEngineCondition[ents.vrow[e]!]).toBeLessThan(1);
   } finally { h.host.shutdown(); }
 });
 
@@ -198,7 +198,7 @@ test("an actor striking a parked hull transfers actor momentum instead of a full
     contacts.capture(e); ents.setPosition(target, 63.3, .2, 64.6); ents.vx[target] = -36;
     expect(contacts.step()).toContain(e); h.host.urban.step();
     expect(h.host.survival.value(rec, V_HEALTH)).toBe(health);
-    expect(ents.vehicleEngineCondition[e]).toBe(1);
+    expect(ents.vehicleEngineCondition[ents.vrow[e]!]).toBe(1);
     expect(ents.flags[e]! & F_GROUNDED).not.toBe(0);
   } finally { h.host.shutdown(); }
 });
@@ -213,13 +213,13 @@ test("a disconnected pilot releases control while the healthy aircraft lands wit
     expect(h.host.urban.seatNpc(passenger, e, "front")).toBe(RESULT_OK); h.run(1000);
     expect(c.drive).toBe(e); expect(ents.seatSlot[passenger]).toBe(2);
     ents.setPosition(e, 62, 12, 64); ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
-    ents.vehicleRotorRpm[e] = 410; ents.vehicleEngineOn[e] = 1; ents.vehicleCollective[e] = .6;
+    ents.vehicleRotorRpm[ents.vrow[e]!] = 410; ents.vehicleEngineOn[ents.vrow[e]!] = 1; ents.vehicleCollective[ents.vrow[e]!] = .6;
     h.host.urban.syncAfterContact(e);
     h.ends[0]!.close(); h.run(250);
     expect(c.drive).toBe(-1);
     h.run(16000);
     expect(ents.y[e]!).toBeLessThan(.08); expect(ents.flags[e]! & F_GROUNDED).not.toBe(0);
-    expect(ents.vehicleEngineOn[e]).toBe(0); expect(ents.vehicleRotorRpm[e]).toBe(0);
+    expect(ents.vehicleEngineOn[ents.vrow[e]!]).toBe(0); expect(ents.vehicleRotorRpm[ents.vrow[e]!]).toBe(0);
     expect(ents.seat[passenger]).toBe(e + 1); expect(ents.seatSlot[passenger]).toBe(2);
     expect(h.host.survival.value(h.host.records.byPid.get(ents.pid[e]!)!, V_HEALTH)).toBeGreaterThan(1300);
   } finally { h.host.shutdown(); }
@@ -232,7 +232,7 @@ test("a failed rotor crash enters native wreck recovery without leaving an occup
     ents.setPosition(c.ent, 63.85, 0, 64.65);
     expect(h.host.urban.mount(c, e)).toBe(RESULT_OK); h.run(1000);
     ents.setPosition(e, 62, 30, 64); ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
-    ents.vehicleEngineCondition[e] = 0; ents.vehicleRotorCondition[e] = 0; ents.fuel[e] = 0;
+    ents.vehicleEngineCondition[ents.vrow[e]!] = 0; ents.vehicleRotorCondition[ents.vrow[e]!] = 0; ents.fuel[ents.vrow[e]!] = 0;
     h.host.urban.syncAfterContact(e); h.run(6000);
     expect(h.host.records.entOf.has(pid)).toBe(false);
     expect(c.drive).toBe(-1); if (c.ent >= 0) expect(ents.seat[c.ent]).toBe(0);

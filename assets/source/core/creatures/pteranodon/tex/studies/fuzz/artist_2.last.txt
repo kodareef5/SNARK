@@ -1,0 +1,3 @@
+Rebuilt all three sets and the aligned patch library. The pile now retains lock contrast at 1.5 m; mantle interleaving measures 19.5 mm. Means, normals and seams pass.
+
+[Round-two report](tex/studies/fuzz/REPORT.md) includes sources, prompts and limitations. [Concept/game comparison](tex/studies/fuzz/checks/concept_at_scale.png) shows both requested scales.

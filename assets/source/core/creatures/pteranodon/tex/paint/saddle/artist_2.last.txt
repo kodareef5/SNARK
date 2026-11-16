@@ -1,0 +1,5 @@
+Updated the cantle grain, warmed and softened both chitin faces, and added the boss’s growth rings, paler crown and darker seating edge. The other 18 pieces remain byte-identical.
+
+Inspected `saddled_front`, `saddled_seat` and `saddled_rider`; rebuild checks pass. White strap patches are confirmed mesh intersections and were left unchanged.
+
+[Comparison](tex/paint/saddle/checks/round1_front_comparison.png) · [Updated report](tex/paint/saddle/REPORT.md)

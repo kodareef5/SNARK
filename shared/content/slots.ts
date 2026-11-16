@@ -33,7 +33,7 @@ function fill(template: string, d: Def, vars: Vars): string {
     let v: unknown = vars[name];
     if (v === undefined && name === "id") v = d.id;
     // A generated mesh is named after its definition.
-    else if (v === undefined && name === "mesh") v = "mesh" in d ? (d.mesh === "box" || d.mesh === "shape" ? d.id : d.mesh) : undefined;
+    else if (v === undefined && name === "mesh") v = "mesh" in d ? (d.mesh === "box" || d.mesh === "shape" || d.mesh === "none" ? d.id : d.mesh) : undefined;
     else if (v === undefined) v = name.split(".").reduce<unknown>((at, part) => (at as Record<string, unknown> | undefined)?.[part], d);
     if (typeof v !== "string" || v === "") whole = false;
     return String(v);
@@ -53,14 +53,13 @@ export function slotsOf(defs: readonly Def[]): SlotUse[] {
     if (!row) continue;
     for (const [slot, s] of Object.entries(row.slots)) {
       if (s.when !== undefined && (d as unknown as Record<string, unknown>)[s.when] === undefined) continue;
-      const sails = d.type === "structure" ? d.sails?.rig.sails : undefined;
-      const keys = s.keys === undefined ? [""] : s.keys === "hair" ? styles(HAIR_STYLES) : s.keys === "beard" ? styles(BEARD_STYLES) : s.keys === "sails" ? sails?.map(s => s.id) ?? [] : s.keys === "any" ? [] : s.keys;
+      const keys = s.keys === undefined ? [""] : s.keys === "hair" ? styles(HAIR_STYLES) : s.keys === "beard" ? styles(BEARD_STYLES) : s.keys === "any" ? [] : s.keys;
       const sexes = s.from.includes("{sex}") ? SEX_IDS : [""];
       const cut = s.from.includes("{body}") ? bodies : [""];
       for (const body of cut) {
         for (const sex of sexes) {
           for (const k of keys) {
-            const vars: Vars = { key: k, sex, body, sail: sails?.find(s => s.id === k)?.mesh ?? "" };
+            const vars: Vars = { key: k, sex, body };
             const id = fill(s.from, d, vars);
             const key = [body.slice(body.indexOf(":") + 1), sex, k].filter((part) => part !== "").join("/");
             out.push({ owner: d.id, slot, key, asset: s.asset, need: s.need, id, fallback: s.fallback.map((f) => (f.includes("{") ? fill(f, d, vars) : f)) });

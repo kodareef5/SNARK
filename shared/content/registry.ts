@@ -2,7 +2,6 @@
 // Index 0 is reserved. It marks an empty structure slot and stands in for content that no longer exists.
 
 import { validVehicleSurface } from "../world/vehicle-surface.ts";
-import { validateSailControl, type SailControlDefinition } from "../sim/sails.ts";
 import { validateVehicleDefinition, type VehicleDefinition } from "../sim/vehicle.ts";
 import { validateSeats, type Seat } from "../sim/seats.ts";
 import { BIRTH_SCALE } from "../sim/breeding.ts";
@@ -20,7 +19,7 @@ import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, 
 import { hullOf, hullTable, type HullDef } from "../world/convex.ts";
 import type { PartTable } from "../world/structures.ts";
 import { defFaults, refFaults } from "./classes.ts";
-import { PIECE_ROLES, shapeHalf, type Def, type NodeShape, type RenameDef, type SpeciesDef, type StructureDef, type WeaponFacet } from "./defs.ts";
+import { PIECE_ROLES, shapeHalf, type Def, type NodeShape, type PartPlacement, type RenameDef, type SpeciesDef, type StructureDef, type MotionFacet, type WeaponFacet } from "./defs.ts";
 
 export const MISSING = 0;
 export const MAX_STRUCTURE_HALF = 16;
@@ -127,7 +126,8 @@ export interface Registry {
   /** Per structure: the stacks it holds, the structure it becomes when used (0 for none), whether it starts locked, and whether it drops whole. */
   readonly structSlots: Uint16Array;
   readonly opens: Uint16Array;
-  readonly sails: readonly (SailControlDefinition | null)[];
+  /** Per static: what using it moves, and over how long (StructureDef.motion), or null. */
+  readonly motion: readonly (MotionFacet | null)[];
   readonly lockedAtFirst: Uint8Array;
   readonly fallsWhole: Uint8Array;
   /** Per structure: the structure it becomes when lit or put out (0 if it is no fire), whether it is the burning one, and whether it is a bed. */
@@ -312,6 +312,14 @@ export interface CompileResult {
   errors: string[];
 }
 
+/** `reg` with a map's own definitions compiled after it (shared/world/mapfile.ts MapContent), or `reg` where there are none. */
+export function withContent(reg: Registry, defs: readonly Def[]): Registry {
+  if (defs.length === 0) return reg;
+  const { registry, errors } = compileContent([...(reg.defs.slice(1) as Def[]), ...reg.renames, ...defs]);
+  if (!registry) throw new Error("the map's content:\n" + errors.join("\n"));
+  return registry;
+}
+
 export function compileContent(all: readonly Def[]): CompileResult {
   const errors: string[] = [];
   const seen = new Set<string>();
@@ -471,10 +479,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (!(Number.isInteger(d.color) && d.color >= 0 && d.color < 256)) errors.push(`${d.id}: color must be a palette index`);
       if (d.damage !== undefined && !DAMAGE_TYPES.includes(d.damage)) errors.push(`${d.id}: damage must name a kind of damage`);
     } else if (d.type === "structure") {
-      if (d.sails !== undefined) {
-        for (const error of validateSailControl(d.sails)) errors.push(`${d.id}: ${error}`);
-        if (d.class !== "static" || d.opens !== undefined || d.slots !== undefined || d.locked !== undefined || d.material !== undefined) errors.push(`${d.id}: sails requires a public indestructible static control without door, lock or container behavior`);
-      }
+      if (d.motion !== undefined) errors.push(...motionFaults(d));
       if (d.vehicleSurface !== undefined && !validVehicleSurface(d.vehicleSurface)) errors.push(`${d.id}: invalid vehicleSurface grip/resistance`);
       positive(d, "half[0]", d.half[0], MAX_STRUCTURE_HALF);
       positive(d, "half[1]", d.half[1], MAX_STRUCTURE_HALF);
@@ -483,6 +488,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       // A mesh of the pack may come with a shape, which it is walked and seen far off as, its origin the mesh's.
       if (d.mesh === "shape" && d.shape === undefined) errors.push(`${d.id}: a mesh of "shape" needs a shape`);
       if (d.mesh === "box" && d.shape !== undefined) errors.push(`${d.id}: a mesh of "box" is its half extents, and takes no shape`);
+      if (d.mesh === "none" && (d.class !== "static" || d.shape === undefined)) errors.push(`${d.id}: only a static with a shape is drawn as nothing`);
       if (d.burns !== undefined) {
         if (!Array.isArray(d.burns) || d.burns.length === 0) errors.push(`${d.id}: burns names at least one fuel`);
         for (const b of Array.isArray(d.burns) ? d.burns : []) positive(d, "a fuel's seconds", b?.seconds, MAX_BURN_SECONDS);
@@ -995,8 +1001,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
     for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
-  const sails = defs.map(d => d?.type === "structure" && d.sails ? d.sails : null);
-  return { registry: { defs, ids, index, hash, sails, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, vehicleDeploy, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, vehicle, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry }, errors };
+  const motion = defs.map((d) => (d?.type === "structure" && d.motion ? d.motion : null));
+  return { registry: { defs, ids, index, hash, motion, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, vehicleDeploy, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, vehicle, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;
@@ -1135,6 +1141,22 @@ function flight(f: SpeciesDef["fly"]) {
  * cook, need power and stay dry alike; a fired recipe is made at a fire; what a fuel leaves is another item, and only a
  * fuel leaves anything.
  */
+/** Parts a moving static may move, and the farthest one may stand from it in metres. */
+export const MAX_MOVING_PARTS = 16;
+export const MAX_MOVING_REACH = 128;
+
+function motionFaults(d: StructureDef): string[] {
+  const t = d.motion!, out: string[] = [];
+  const at = (v: unknown, n: number, ok: (x: number) => boolean): boolean => Array.isArray(v) && v.length === n && v.every((x) => typeof x === "number" && ok(x));
+  const placed = (p: PartPlacement | undefined): boolean => !!p && at(p.at, 3, (x) => Math.abs(x) <= MAX_MOVING_REACH) && (p.turn === undefined || (at(p.turn, 4, Number.isFinite) && Math.abs(Math.hypot(...p.turn) - 1) < 1e-4)) && (p.scale === undefined || at(p.scale, 3, (x) => x > 0 && x <= 16));
+  if (d.class !== "static" || d.opens !== undefined || d.slots !== undefined || d.locked !== undefined || d.material !== undefined) out.push(`${d.id}: a moving static is a public one that nothing harms, with no door, lock or slots`);
+  if (!(t.seconds >= 0.5 && t.seconds <= 600)) out.push(`${d.id}: a motion takes 0.5 to 600 seconds`);
+  if (!Array.isArray(t.say) || t.say.length !== 2 || t.say.some((w) => typeof w !== "string" || w.length < 1 || w.length > 40)) out.push(`${d.id}: a motion says what it does toward each state, in at most 40 characters`);
+  if (!Array.isArray(t.parts) || t.parts.length < 1 || t.parts.length > MAX_MOVING_PARTS) out.push(`${d.id}: a motion moves 1 to ${MAX_MOVING_PARTS} parts`);
+  else for (const p of t.parts) if (typeof p?.mesh !== "string" || !ID.test(p.mesh) || !placed(p.from) || !placed(p.to)) out.push(`${d.id}: a moving part is a mesh with two placements within ${MAX_MOVING_REACH} m, each turn a unit quaternion and each scale from 0 to 16`);
+  return out;
+}
+
 function stationFaults(input: readonly Def[]): string[] {
   const out: string[] = [];
   const structures = new Map(input.flatMap((d) => (d.type === "structure" ? [[d.id, d] as const] : [])));

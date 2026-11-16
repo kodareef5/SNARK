@@ -55,8 +55,9 @@ export class Creatures {
   private readonly records: Records;
   private readonly survival: Survival;
   private readonly rng: Rng;
-  /** Entity indices of the awake creatures, in the first `awakeCount` entries. Both columns grow with the entity store. */
-  awake: Int32Array;
+  /** Entity indices of the awake creatures, in the first `awakeCount` entries. It doubles as more wake. */
+  awake = new Int32Array(1024);
+  /** By entity index, its place in `awake`, or -1. It grows with the entity store. */
   private awakeSlot: Int32Array;
   /** The slot being stepped, or -1 outside a step. Those above it have been stepped this tick and those below have not. */
   private cursor = -1;
@@ -83,11 +84,9 @@ export class Creatures {
     this.survival = survival;
     this.rng = new Rng(seed);
     this.wakeRadius = wakeRadius;
-    this.awake = new Int32Array(world.ents.cap);
     this.awakeSlot = new Int32Array(world.ents.cap).fill(-1);
     this.wet = new Uint8Array(world.ents.cap);
     world.ents.onGrow.push((cap) => {
-      this.awake = wider(this.awake, cap);
       this.awakeSlot = wider(this.awakeSlot, cap, -1);
       this.wet = wider(this.wet, cap);
     });
@@ -338,13 +337,15 @@ export class Creatures {
       }
       ents.loadBody(e, b);
       let buttons = mind.buttons[e]! | pressed;
-      // In water it swims at its swim speed and comes up for air.
-      if (swims) buttons = (buttons & ~BTN_SPRINT) | (this.under(e, p) ? BTN_JUMP : 0);
+      // In water it swims at its swim speed and comes up for air. A flyer floats up by itself, and its jump would take it off.
+      if (swims) buttons = (buttons & ~BTN_SPRINT) | (!p.flies && this.under(e, p) ? BTN_JUMP : 0);
       const x0 = b.x;
       const z0 = b.z;
       stepBody(world, b, 0, move, this.still[kind] ? ents.yaw[e]! : mind.look[e]!, mind.pitch[e]!, buttons, p, TICK_DT);
       const landing = stepOut.landSpeed;
       if (landing >= LAND_SPEED && (b.mflags & MF_OUT) === 0 && world.anims[kind]?.land) this.cue(e, CUE_LAND, false);
+      // Knocked out, it lies down from its limp fall as it comes to the ground.
+      else if (landing > 0 && (b.mflags & MF_OUT) !== 0 && world.anims[kind]?.torporFall) this.cue(e, CUE_LAND, false);
       if (p.flies) this.flew(e);
       mind.moved(e, b.x - x0, b.z - z0, p.walkSpeed * (b.speedQ / 1000) * TICK_DT);
       // A bite goes through the same action step as any blow.
@@ -436,6 +437,7 @@ export class Creatures {
     const flags = ents.flags[e]!;
     if ((flags & F_ALIVE) === 0 || (flags & (F_PLAYER | F_PROP)) !== 0 || this.awakeSlot[e]! >= 0) return;
     if (ents.team[e] !== 0) this.mind.owned.add(e);
+    if (this.awakeCount === this.awake.length) this.awake = wider(this.awake, this.awakeCount * 2);
     this.awakeSlot[e] = this.awakeCount;
     this.awake[this.awakeCount++] = e;
     ents.flags[e] = flags | F_AWAKE;

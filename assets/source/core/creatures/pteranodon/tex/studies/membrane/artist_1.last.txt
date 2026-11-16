@@ -1,0 +1,5 @@
+Created all three 2048² sets: 15 maps, mirrored veins, reusable sources, and rebuild/check scripts.
+
+Python and engine checks pass; means are 0.40/0.60/0.40. Rebuild verified byte-for-byte. Near-black underside detail remains subdued.
+
+[Report](tex/studies/membrane/REPORT.md) · [Underside preview](tex/studies/membrane/checks/look/membrane_under.png) · [Built-in imagegen prompt](tex/studies/membrane/source/skin_prompt.txt)

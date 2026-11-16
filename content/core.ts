@@ -9,8 +9,6 @@ import { EGGS } from "./eggs.ts";
 import { FOODS } from "./foods.ts";
 import { ITEMS } from "./items/index.ts";
 import { KNOCKOUT } from "./knockout.ts";
-import { KORU_CONTENT } from "./landmarks/koru.ts";
-import { CRUISE_CONTENT } from "./landmarks/cruise.ts";
 import { MAPS } from "./maps.ts";
 import { RUIN_BLOCKS } from "./miami-ruins.ts";
 import { SLOPE_BLOCKS } from "./slopes.ts";
@@ -19,6 +17,7 @@ import { TERMINALS } from "./terminals.ts";
 import { SPAWNS } from "./spawns.ts";
 import { ROADS } from "./vehicles/roads.ts";
 import { COMPACT_SPECIES } from "./vehicles/compact.ts";
+import { WRECKS } from "./vehicles/wrecks.ts";
 import { BOATS } from "./vehicles/boat.ts";
 import { BOAT_ITEMS } from "./vehicles/boat-items.ts";
 import { HELICOPTERS } from "./vehicles/helicopter.ts";
@@ -263,25 +262,18 @@ const MAKING: Def[] = [
   // chemistry bench's 20 and 4 for 6 waits for the bench.
   ...making("narcotic", "Narcotic", 6, 6, 1, 5, [["narcoberry", 5], ["spoiled_meat", 1]], 8, "mortar"),
   // The metal ingot has no engram and is not made in the hand, as in ARK, where the refining forge makes it (by the user,
-  // 2026-11-15, on planning/reference/stations-plan.md's question 2: no rename, no refund); the forge refines it (S1, in
-  // GEAR above). A save that knew the engram "Smelting" loads without it, and a job of ingots it was making is dropped
-  // (server/progression.ts). Its recipe's old id still reads as the ingot.
-  { type: "rename", id: id("make-ingot"), to: [id("ingot")] },
+  // 2026-11-15, on planning/reference/stations-plan.md's question 2); the forge refines it (S1, in GEAR above).
   // ark.wiki.gg, Gunpowder, infobox, 2026-11-15: at the mortar and pestle, 1 sparkpowder and 1 charcoal, in 1 s, craftingxp
   // 0.05 (our 0.2, D465's four times); level 15, 2 engram points (moved from the hand and its flint, stone and wood by S6,
   // once the forge's wood left charcoal, S1). The chemistry bench's recipe waits for the bench.
   ...making("gunpowder", "Gunpowder", 15, 2, 1, 1, [["sparkpowder", 1], ["charcoal", 1]], 0.2, "mortar"),
-  // Each piece of an armor tier has its own engram, at the tier's level and the piece's cost. They were one engram for all
-  // five once, and a save that knew the set knows every piece.
+  // Each piece of an armor tier has its own engram, at the tier's level and the piece's cost.
   ...ARMOR_TIERS.flatMap((t): Def[] => {
     const m = ARMOR_MAKING[t.tier]!;
-    return [
-      ...ARMOR_PIECES.flatMap((p): Def[] => [
-        crafting(id(`${t.tier}_${p.name}`), { needs: m.needs[p.name]!.map(([item, n]) => ({ item: id(item), count: n })), seconds: 5, xp: m.xp?.[p.name] ?? Math.round(m.level / 3), ...(m.at ? { at: id(m.at) } : {}) }),
-        { type: "engram", id: id(`engram-${t.tier}_${p.name}`), label: `${t.tier[0]!.toUpperCase()}${t.tier.slice(1)} ${p.label}`, level: m.level, cost: typeof m.cost === "number" ? m.cost : m.cost[p.name]!, item: id(`${t.tier}_${p.name}`) },
-      ]),
-      { type: "rename", id: id(`engram-${t.tier}`), to: ARMOR_PIECES.map((p) => id(`engram-${t.tier}_${p.name}`)) },
-    ];
+    return ARMOR_PIECES.flatMap((p): Def[] => [
+      ...crafting(id(`${t.tier}_${p.name}`), { needs: m.needs[p.name]!.map(([item, n]) => ({ item: id(item), count: n })), seconds: 5, xp: m.xp?.[p.name] ?? Math.round(m.level / 3), ...(m.at ? { at: id(m.at) } : {}) }),
+      { type: "engram", id: id(`engram-${t.tier}_${p.name}`), label: `${t.tier[0]!.toUpperCase()}${t.tier.slice(1)} ${p.label}`, level: m.level, cost: typeof m.cost === "number" ? m.cost : m.cost[p.name]!, item: id(`${t.tier}_${p.name}`) },
+    ]);
   }),
 ];
 
@@ -396,6 +388,7 @@ const ALL: readonly Def[] = [
   ...BOAT_ITEMS,
   ...HELICOPTER_ITEMS,
   ...ROADS,
+  ...WRECKS,
   CIVILIAN,
   ...SPAWNS,
   ...KNOCKOUT,
@@ -444,15 +437,15 @@ const ALL: readonly Def[] = [
 
   ...NODES,
 
-  crafting("core:pick", { needs: [{ item: "core:stone", count: 1 }, { item: "core:wood", count: 1 }, { item: "core:thatch", count: 10 }], seconds: 2, xp: 2 }),
-  crafting("core:hatchet", { needs: [{ item: "core:flint", count: 1 }, { item: "core:wood", count: 1 }, { item: "core:thatch", count: 10 }], seconds: 2, xp: 2 }),
+  ...crafting("core:pick", { needs: [{ item: "core:stone", count: 1 }, { item: "core:wood", count: 1 }, { item: "core:thatch", count: 10 }], seconds: 2, xp: 2 }),
+  ...crafting("core:hatchet", { needs: [{ item: "core:flint", count: 1 }, { item: "core:wood", count: 1 }, { item: "core:thatch", count: 10 }], seconds: 2, xp: 2 }),
   { type: "engram", id: "core:engram-pick", label: "Stone pick", level: 1, cost: 0, item: "core:pick" },
   { type: "engram", id: "core:engram-hatchet", label: "Stone hatchet", level: 2, cost: 3, item: "core:hatchet" },
   ...MAKING,
   LEVELS,
 ];
 
-export const CORE_CONTENT: readonly Def[] = crafted([...ALL, ...RUIN_BLOCKS, ...TERMINALS, ...SLOPE_BLOCKS, ...LETTER_BLOCKS, ...KORU_CONTENT, ...CRUISE_CONTENT]);
+export const CORE_CONTENT: readonly Def[] = crafted([...ALL, ...RUIN_BLOCKS, ...TERMINALS, ...SLOPE_BLOCKS, ...LETTER_BLOCKS]);
 
 /** CORE_CONTENT as a pack, for stacking other packs on top. */
 export const CORE_PACK: ContentPack = { name: "core", defs: CORE_CONTENT as readonly Def[] as unknown as ContentPack["defs"] };

@@ -25,11 +25,11 @@ const root = join(import.meta.dir, "../..");
 test("protocol 13 is the weapons program's, and it took no command, own component, event, button or saved component", () => {
   // 14 is the cluster's, which took CMD_TRAVEL (31), 15 the beds', 16 the flyers' (tests/unit/contracts.test.ts), 17 the
   // stations wave's, for OWN_STATION's layout (tests/unit/stations-contracts.test.ts), and 18 the vehicles'
-  // (tests/integration/vehicle-contracts.test.ts); 19 adds rotorcraft state and CMD_VEHICLE (32).
-  expect(P.PROTOCOL_VERSION).toBe(20);
+  // (tests/integration/vehicle-contracts.test.ts); 19 adds rotorcraft state and CMD_VEHICLE (32); 21 the compact chunk rows; 22 CMD_STATICS (33).
+  expect(P.PROTOCOL_VERSION).toBe(23);
   // EVENT_NAME_BYTES is a size, not a kind of event.
   const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));
-  expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([32, 16, 7, 10]);
+  expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([33, 16, 7, 10]);
   // FLAG_ON, W7's: the next slot flag after the blueprint's, the same bit on the slot and on the wire.
   expect([P.SLOT_BLUEPRINT, P.SLOT_ON, FLAG_BLUEPRINT, FLAG_ON]).toEqual([1, 2, 1, 2]);
   const store = readFileSync(join(root, "server/persist/codec.ts"), "utf8");
@@ -82,7 +82,7 @@ test("the ranged gear lives in content/items, each piece once, and is in the cor
     expect(all.has(`${d.type} ${d.id}`)).toBe(true);
     expect(CORE_CONTENT.filter((o) => o.type === d.type && o.id === d.id).length).toBe(1);
   }
-  // Each moved item brought its engram (W3 added the shotgun's and its shell's, W5 the two grenades', W6 the flare gun's) and the rename of its old recipe id, and is made as before.
+  // Each moved item brought its engram (W3 added the shotgun's and its shell's, W5 the two grenades', W6 the flare gun's), and is made as before.
   expect([...WEAPONS, ...AMMO, ...EXPLOSIVES].filter((d) => d.type === "engram").length).toBe(22);
   const pistol = CORE_CONTENT.find((d) => d.id === "core:pistol" && d.type === "item")!;
   // W8 brought its numbers to the wiki's since (tests/unit/ark-weapons.test.ts).

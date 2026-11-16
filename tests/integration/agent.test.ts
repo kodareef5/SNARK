@@ -6,7 +6,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileUrl, loadKey, parseArgs } from "../../agent/main.ts";
-import { INVALID_PARAMS, INVALID_REQUEST, NO_METHOD, PARSE_ERROR, type Answer } from "../../agent/mcp.ts";
+import { INVALID_PARAMS, INVALID_REQUEST, LEGACY, MODERN, NO_METHOD, PARSE_ERROR, UNSUPPORTED_VERSION, type Answer } from "../../agent/mcp.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { play } from "../fixtures/agent.ts";
 
@@ -22,14 +22,66 @@ test("the protocol: a malformed line gets the parse error, a notification gets n
   expect(await p.line("")).toBeNull();
   expect(JSON.parse((await p.line('{"jsonrpc":"2.0","id":"a","method":"ping"}'))!)).toEqual({ jsonrpc: "2.0", id: "a", result: {} });
 
+  expect(await p.line('{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":99}}')).toBeNull();
+
+  // The handshake of the revisions before 2026-07-28.
   const hello = await p.ask("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "0" } });
-  expect(hello!.result).toMatchObject({ protocolVersion: "2025-03-26", capabilities: { tools: {} }, serverInfo: { name: "snark" } });
-  expect((await p.ask("initialize", { protocolVersion: "1999-01-01" }))!.result.protocolVersion).toBe("2025-06-18");
-  expect((await p.ask("resources/list"))!.error!.code).toBe(NO_METHOD);
+  expect(hello!.result).toMatchObject({ protocolVersion: "2025-03-26", capabilities: { tools: {}, resources: {} }, serverInfo: { name: "snark" } });
+  expect((await p.ask("initialize", { protocolVersion: "1999-01-01" }))!.result.protocolVersion).toBe(LEGACY[0]);
+  expect((await p.ask("prompts/list"))!.error!.code).toBe(NO_METHOD);
   expect((await p.ask("tools/call", { name: "fly", arguments: {} }))!.error!.code).toBe(INVALID_PARAMS);
   expect((await p.ask("tools/call", { name: "say" }))!.result.isError).toBe(true);
-  // Every tool says what it takes.
-  for (const tool of (await p.ask("tools/list"))!.result.tools) expect([typeof tool.name, tool.description.length > 20, tool.inputSchema.type]).toEqual(["string", true, "object"]);
+  // Every tool says what it takes, what it answers, and whether it only looks.
+  const tools = (await p.ask("tools/list"))!.result.tools;
+  for (const tool of tools) {
+    expect([typeof tool.name, tool.description.length > 20, tool.inputSchema.type, tool.outputSchema.type, tool.outputSchema.required]).toEqual(["string", true, "object", "object", ["state"]]);
+    expect(typeof tool.annotations.readOnlyHint).toBe("boolean");
+  }
+  expect(tools.filter((t: { annotations: { readOnlyHint: boolean } }) => t.annotations.readOnlyHint).map((t: { name: string }) => t.name)).toEqual(["observe", "status"]);
+
+  // A request of 2026-07-28 carries its version in _meta and is answered on its own, saying what kind of result it is and who answered.
+  const meta = { "io.modelcontextprotocol/protocolVersion": MODERN[0], "io.modelcontextprotocol/clientCapabilities": {} };
+  const found = await p.ask("server/discover", { _meta: meta });
+  expect(found!.result).toMatchObject({ resultType: "complete", supportedVersions: [...MODERN, ...LEGACY], capabilities: { tools: {}, resources: {} }, cacheScope: "public", _meta: { "io.modelcontextprotocol/serverInfo": { name: "snark" } } });
+  expect((await p.ask("tools/list", { _meta: meta }))!.result).toMatchObject({ resultType: "complete", ttlMs: 3600000, tools });
+  expect((await p.ask("tools/list", { _meta: { ...meta, "io.modelcontextprotocol/protocolVersion": "1900-01-01" } }))!.error).toEqual({ code: UNSUPPORTED_VERSION, message: "Unsupported protocol version", data: { supported: [...MODERN, ...LEGACY], requested: "1900-01-01" } });
+  expect((await p.ask("tools/list", { _meta: { "io.modelcontextprotocol/protocolVersion": MODERN[0] } }))!.error!.code).toBe(INVALID_PARAMS);
+
+  // An answer is the same object as structured content and as text.
+  const said = (await p.ask("tools/call", { name: "status", arguments: {}, _meta: meta }))!.result;
+  expect([said.resultType, said.isError, JSON.parse(said.content[0].text)]).toEqual(["complete", false, said.structuredContent]);
+
+  // Resources: the guide, and what is made of what and where.
+  const listed = (await p.ask("resources/list"))!.result.resources.map((r: { uri: string }) => r.uri);
+  expect(listed).toEqual(["snark://guide", "snark://recipes", "snark://items", "snark://creatures"]);
+  const recipes = JSON.parse((await p.ask("resources/read", { uri: "snark://recipes" }))!.result.contents[0].text);
+  expect(recipes.pick).toMatchObject({ needs: { stone: 1, wood: 1, thatch: 10 }, at: "hands", level: 1, known: false });
+  expect((await p.ask("resources/read", { uri: "snark://nothing" }))!.error).toMatchObject({ code: INVALID_PARAMS, data: { uri: "snark://nothing" } });
+  const creatures = JSON.parse((await p.ask("resources/read", { uri: "snark://creatures" }))!.result.contents[0].text);
+  expect(creatures.raptor).toMatchObject({ temper: "hunts", tames: true });
+});
+
+test("a long call tells its progress each second when asked, and a cancelled one stops and is owed no answer", async () => {
+  const p = play();
+  const reply = (await p.ask("tools/call", { name: "go_to", arguments: { x: 256, z: 180, wait_s: 3 }, _meta: { progressToken: "w" } }))!;
+  expect(reply.result.structuredContent).toMatchObject({ state: "running", task: "go_to" });
+  const told = p.notes.filter((n) => n.method === "notifications/progress");
+  expect(told.length).toBeGreaterThanOrEqual(2);
+  for (const n of told) expect(n.params).toMatchObject({ progressToken: "w", total: 3 });
+  expect(told.map((n) => n.params.progress)).toEqual([...told.map((n) => n.params.progress)].sort((a, b) => a - b));
+  expect(told[0].params.message).toContain("go_to");
+  await p.call("cancel");
+
+  // The client gives up on a walk: the walk stops where it is, and the request gets no answer.
+  let answered: string | null | undefined;
+  void p.line(JSON.stringify({ jsonrpc: "2.0", id: 77, method: "tools/call", params: { name: "go_to", arguments: { x: 256, z: 180, wait_s: 50 } } })).then((r) => (answered = r));
+  p.run(1000);
+  expect(p.agent.controller.busy).toBe("go_to");
+  expect(await p.line(JSON.stringify({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 77, reason: "test" } }))).toBeNull();
+  p.run(200);
+  await new Promise((r) => setImmediate(r));
+  expect([p.agent.controller.busy, answered]).toEqual([null, null]);
+  expect(await p.call("status")).toMatchObject({ state: "blocked", reason: "cancelled", task: "go_to" });
 });
 
 test("the key that owns the name is made once, for its owner alone, and the arguments are checked", () => {
@@ -87,10 +139,10 @@ test("status tells what is carried, eat feeds, craft makes what is known, and mo
   expect(status.inventory).toEqual([[0, "berry", 10], [1, "stone", 3], [2, "wood", 3], [3, "thatch", 30]]);
 
   p.h.host.survival.add(p.rec, V_FOOD, -30);
-  const ate = await p.call("eat");
-  expect(ate).toMatchObject({ state: "done", ate: "berry", self: { food: [71, 100] } });
-  expect(await p.call("eat", { item: "stone" })).toMatchObject({ state: "blocked" });
-  expect(await p.call("eat", { item: "meat" })).toEqual({ state: "refused", reason: "you carry no meat" });
+  const ate = await p.call("use_item", { item: "berry" });
+  expect(ate).toMatchObject({ state: "done", used: "berry", self: { food: [71, 100] } });
+  expect(await p.call("use_item", { item: "stone" })).toMatchObject({ state: "blocked" });
+  expect(await p.call("use_item", { item: "meat" })).toEqual({ state: "refused", reason: "you carry no meat" });
 
   // Nothing is made before its engram is learned. A pick's costs nothing, and a hatchet's takes a level this survivor has not reached.
   expect(await p.call("craft", { recipe: "pick" })).toEqual({ state: "refused", reason: "you have not learned pick: it takes level 1 and 0 engram points, and learn: true spends them" });
@@ -175,12 +227,12 @@ test("observe shows the house with its doorway, the pool and the slopes, and lis
 
 test("commands go out no faster than ten a second", async () => {
   const p = play();
-  const answers = await Promise.all(Array.from({ length: 12 }, () => p.call("eat")));
+  const answers = await Promise.all(Array.from({ length: 12 }, () => p.call("use_item", { item: "berry" })));
   // None carries food, so each is refused before anything is sent, and the pace is not spent.
-  expect(answers.every((a) => a.reason === "you carry nothing to eat")).toBe(true);
+  expect(answers.every((a) => a.reason === "you carry no berry")).toBe(true);
   p.h.host.items.mint(p.rec, p.id("berry"), 30);
   p.run(100);
-  const eaten = await Promise.all(Array.from({ length: 12 }, () => p.call("eat")));
+  const eaten = await Promise.all(Array.from({ length: 12 }, () => p.call("use_item", { item: "berry" })));
   expect(eaten.filter((a) => a.state === "done").length).toBe(10);
   expect(eaten.filter((a) => a.state === "refused").length).toBe(2);
   expect(p.h.host.items.inv(p.rec).total(p.id("berry"))).toBe(20);
@@ -188,10 +240,10 @@ test("commands go out no faster than ten a second", async () => {
 
 test("a call left waiting when the server goes is answered, and so is every call after", async () => {
   const p = play();
-  const walking = p.call("walk_to", { x: 256, z: 200 });
+  const walking = p.call("go_to", { x: 256, z: 200 });
   p.run(500);
   p.h.ends[0]!.peer.close();
   expect(await walking).toEqual({ state: "refused", reason: "not connected (reason -1)" });
   expect(await p.call("status")).toEqual({ state: "refused", reason: "not connected (reason -1)" });
-  expect((await p.ask("tools/list"))!.result.tools.length).toBe(18);
+  expect((await p.ask("tools/list"))!.result.tools.length).toBe(19);
 });

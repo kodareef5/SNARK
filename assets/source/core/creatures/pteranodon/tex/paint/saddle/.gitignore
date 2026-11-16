@@ -1,0 +1,6 @@
+/layers/
+/checks/
+/superseded/
+/__pycache__/
+
+# paint.py writes only layers/ and checks/; no local source/ files are regenerated.

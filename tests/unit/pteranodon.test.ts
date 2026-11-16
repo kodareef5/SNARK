@@ -1,4 +1,4 @@
-// The pteranodon's stand-in against the ARK wiki (ark.wiki.gg), read on 2026-11-15: its Pteranodon page, the page's taming
+// The pteranodon against the ARK wiki (ark.wiki.gg), read on 2026-11-15: its Pteranodon page, the page's taming
 // table, its items' pages and the spawn data (assets/source/core/creatures/pteranodon/ref/FUNCTIONS.md).
 
 import { expect, test } from "bun:test";
@@ -156,10 +156,13 @@ test("its beach entry is ARK's Ptero (1-2), weight 0.15, one certain and one at 
   expect(compileContent(CORE_CONTENT.map((d): Def => (d === beach ? ({ ...beach, entries: [{ ...beach.entries[0]!, waits: "wings" }] } as unknown as Def) : d))).errors).toEqual(['core:spawns_beach: "wings" is not a feature an entry or limit may wait for']);
 });
 
-test("the stand-in: a grey box under the id its art will take, too wide for a doorway, and the rest of its numbers waiting for their packages", () => {
-  expect([ptera.mesh, ptera.skeleton, ptera.tag, ptera.temper]).toEqual(["box", undefined, "pteranodon", "flees"]);
+test("drawn on its own art, too wide for a doorway, flying from harm with its kind, and its other numbers", () => {
+  expect([ptera.mesh, ptera.skeleton, ptera.tag, ptera.temper, ptera.alarm]).toEqual(["core:pteranodon", "pteranodon", "pteranodon", "flees", 15]);
   expect(2 * ptera.radius).toBeGreaterThan(DOOR_WIDTH);
-  expect(ptera.eyeHeight).toBeLessThan(ptera.height);
+  // As tall as it crouches, to the crest's top, with the eye where the model has it.
+  expect([ptera.height, ptera.eyeHeight]).toEqual([2.06, 1.48]);
+  // Six regions under ARK's names, the concept's colours first.
+  expect(ptera.regions!.map((r) => r!.name)).toEqual(["Patterning", "Wing Base", "Face, Crest and Hands", "Inner Crest", "Wing Membrane", "Body"]);
   // Its egg rule, a rider's weight, missiles, its blows on structures, and carried as 149 of drag weight; its mass is 190.
   expect([reg.defendsEgg[kind], reg.riderWeight[kind], reg.missileMul[kind], reg.biteStructureMul[kind], reg.drag[kind], reg.mass[kind], reg.carriable[kind]]).toEqual([1, Math.fround(0.85), 1.5, Math.fround(0.4), 149, 190, 0]);
   // ARK's taming bonuses and a tame's base health of 0.9, for the package that builds them.

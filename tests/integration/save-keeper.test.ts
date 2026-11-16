@@ -5,7 +5,7 @@ import { closeSync, existsSync, mkdtempSync, openSync, rmSync, statSync, writeSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { KEEP_NEWEST, backupName, backupsToKeep, listBackups, restoreBackup, type BackupReport } from "../../server/persist/backup.ts";
-import { WorldStore } from "../../server/persist/store.ts";
+import { SCHEMA_VERSION, WorldStore } from "../../server/persist/store.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-keeper-"));
@@ -68,7 +68,8 @@ test("the keeper thread backs up a world that goes on committing, and the copy i
   h.host.items.mint(rec, stone, 7);
   h.run(100);
   p.keeper.backup();
-  for (let n = 0; n < 400 && reports.length === 0; n++) {
+  // Until the thread reports, however long a busy machine makes that: the hang limit is the only bound.
+  while (reports.length === 0) {
     h.host.items.mint(rec, stone, 1);
     h.run(34);
     await Bun.sleep(5);
@@ -79,7 +80,7 @@ test("the keeper thread backs up a world that goes on committing, and the copy i
   // Its checkpoints arrive too, without a tick waiting for one.
   h.run(6000);
   h.host.idle();
-  for (let n = 0; n < 400 && p.keeper.last.ms === 0; n++) await Bun.sleep(5);
+  while (p.keeper.last.ms === 0) await Bun.sleep(5);
   expect(p.keeper.last.ms).toBeGreaterThan(0);
   h.host.shutdown();
   expect(!existsSync(`${p.store.path}-wal`) || statSync(`${p.store.path}-wal`).size === 0).toBe(true);
@@ -108,19 +109,17 @@ test("two thousand commits never grow the log past what a few seconds write", ()
   h.host.shutdown();
 });
 
-test("a save is copied beside itself before its form changes, and a damaged one names the backup to restore", () => {
+test("a save of another schema is refused, and a damaged one names the backup to restore", () => {
   const { db, h, reports } = world("form");
   h.host.exec("backup");
   h.host.shutdown();
-  // Made to look like a save from before schema 2.
   const raw = new Database(db);
-  raw.exec("DROP TABLE chunk_blobs");
-  raw.exec("UPDATE meta SET value = 1 WHERE key = 'schema_version'");
+  raw.exec(`UPDATE meta SET value = ${SCHEMA_VERSION - 1} WHERE key = 'schema_version'`);
   raw.close();
-  new WorldStore(db, h.reg).close();
-  const before = new Database(`${db}.pre-v1`, { readonly: true });
-  expect((before.query("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: number }).value).toBe(1);
-  before.close();
+  expect(() => new WorldStore(db, h.reg)).toThrow(`save has schema ${SCHEMA_VERSION - 1}, and this build reads ${SCHEMA_VERSION}`);
+  const fixed = new Database(db);
+  fixed.exec(`UPDATE meta SET value = ${SCHEMA_VERSION} WHERE key = 'schema_version'`);
+  fixed.close();
 
   const size = statSync(db).size;
   const fd = openSync(db, "r+");

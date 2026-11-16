@@ -14,7 +14,7 @@ import { Characters } from "../../client/core/render/characters.ts";
 import { detailKeeps, shapeOf } from "../../client/core/render/detailtext.ts";
 import { DETAIL, DETAIL_FLOATS, DETAIL_PUFF, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, FramePacket } from "../../client/core/render/packet.ts";
 import { RemoteSample } from "../../client/core/session.ts";
-import { AnimState, CUE_HELD, CUE_LAND, CUE_TORPOR, LAYER_FLINCH } from "../../shared/anim/pose.ts";
+import { AnimState, CUE_HELD, CUE_LAND, CUE_TAKEOFF, CUE_TORPOR, LAYER_FLINCH } from "../../shared/anim/pose.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { hashBytes } from "../../shared/hash.ts";
@@ -109,7 +109,12 @@ test("a client reads each occasion from what it already has of a body, once, and
   // Into the water from the air.
   run(330, (s) => (s.grounded = false));
   run(331, (s) => (s.mode = MODE_SWIM));
-  expect(seen).toEqual(["struck@110 from the side", "down@119", "up@200", "thrown@301", "land@320", "splash@331"]);
+  // Taking off; then knocked out in the air, it goes down only as it reaches the ground, once.
+  run(340, (s) => ((s.cue = CUE_TAKEOFF), (s.cueStart = 340)));
+  run(350, (s) => (s.grounded = false));
+  run(351, (s) => ((s.grounded = false), (s.out = true), (s.cue = CUE_TORPOR), (s.cueStart = 351)));
+  run(380, (s) => ((s.out = true), (s.cue = CUE_LAND), (s.cueStart = 380)));
+  expect(seen).toEqual(["struck@110 from the side", "down@119", "up@200", "thrown@301", "land@320", "splash@331", "take_off@340", "land@380"]);
 });
 
 /** A client's details, fed `frames` frames a sixtieth of a second apart from tick 1000, `set` saying each bird's state at each tick. */
@@ -224,7 +229,6 @@ test("the rasterizer draws a landing on low poly and on medium from the same num
     view.raster.render(p);
     let changed = 0;
     for (let i = 0; i < frame.length; i += 4) if (frame[i] !== view.raster.color[i] || frame[i + 1] !== view.raster.color[i + 1]) changed++;
-X
     // The picture is held to what they changed, which other work on the ground may move.
     const places = new Float32Array(p.detailCount * DETAIL.colourA);
     for (let k = 0; k < p.detailCount; k++) places.set(p.details.subarray(k * DETAIL_FLOATS, k * DETAIL_FLOATS + DETAIL.colourA), k * DETAIL.colourA);
@@ -232,7 +236,9 @@ X
     expect(changed).toBeGreaterThan(400);
     expect(changed).toBeLessThan(4000);
   }
-  expect(seen).toEqual(["lowpoly: 2 draws, 5 particles 1909612026", "medium: 2 draws, 10 particles 3919961625"]);
+  // They were 1909612026 and 3919961625 until clips were stored to 0.025 degrees and roots to 1/4096 m (pack version 5):
+  // the dust starts at most 0.07 mm from where it did.
+  expect(seen).toEqual(["lowpoly: 2 draws, 5 particles 1852344675", "medium: 2 draws, 10 particles 325987692"]);
 });
 
 test("the ground's kind and the dust it gives: sand at the shore, soil from grass, pale stone, none on water", () => {

@@ -1,0 +1,125 @@
+{
+  "sameMapCamerasDrawsTriangles": true,
+  "pairs": [
+    {
+      "city": "miami",
+      "camera": "best-downtown-street",
+      "draws": 1239,
+      "triangles": 1548413,
+      "drawBudget": 1024,
+      "triangleBudget": 2000000
+    },
+    {
+      "city": "miami",
+      "camera": "spawn-south-beach",
+      "draws": 206,
+      "triangles": 274842,
+      "drawBudget": 1024,
+      "triangleBudget": 2000000
+    },
+    {
+      "city": "miami",
+      "camera": "flyer-150m",
+      "draws": 954,
+      "triangles": 1045432,
+      "drawBudget": 1024,
+      "triangleBudget": 2000000
+    },
+    {
+      "city": "san-francisco",
+      "camera": "painted-ladies",
+      "draws": 1423,
+      "triangles": 1994834,
+      "drawBudget": 1024,
+      "triangleBudget": 2000000
+    },
+    {
+      "city": "san-francisco",
+      "camera": "spawn-presidio-tunnel-tops",
+      "draws": 860,
+      "triangles": 818762,
+      "drawBudget": 1024,
+      "triangleBudget": 2000000
+    },
+    {
+      "city": "san-francisco",
+      "camera": "flyer-150m",
+      "draws": 990,
+      "triangles": 1384518,
+      "drawBudget": 1024,
+      "triangleBudget": 2000000
+    },
+    {
+      "city": "las-vegas",
+      "camera": "the-boulevard-north-from-harmon",
+      "draws": 696,
+      "triangles": 1233284,
+      "drawBudget": 1024,
+      "triangleBudget": 2000000
+    },
+    {
+      "city": "las-vegas",
+      "camera": "welcome-sign",
+      "draws": 522,
+      "triangles": 571284,
+      "drawBudget": 1024,
+      "triangleBudget": 2000000
+    },
+    {
+      "city": "las-vegas",
+      "camera": "flyer-150m",
+      "draws": 693,
+      "triangles": 1251234,
+      "drawBudget": 1024,
+      "triangleBudget": 2000000
+    },
+    {
+      "city": "los-angeles",
+      "camera": "hollywood-boulevard",
+      "draws": 1299,
+      "triangles": 1269864,
+      "drawBudget": 1024,
+      "triangleBudget": 2000000
+    },
+    {
+      "city": "los-angeles",
+      "camera": "steep-street-innsdale-drive",
+      "draws": 791,
+      "triangles": 1062874,
+      "drawBudget": 1024,
+      "triangleBudget": 2000000
+    },
+    {
+      "city": "los-angeles",
+      "camera": "flyer-150m",
+      "draws": 994,
+      "triangles": 1067324,
+      "drawBudget": 1024,
+      "triangleBudget": 2000000
+    },
+    {
+      "city": "tampa",
+      "camera": "downtown-street",
+      "draws": 908,
+      "triangles": 1458010,
+      "drawBudget": 1024,
+      "triangleBudget": 2000000
+    },
+    {
+      "city": "tampa",
+      "camera": "spawn-ybor-city",
+      "draws": 1012,
+      "triangles": 1020778,
+      "drawBudget": 1024,
+      "triangleBudget": 2000000
+    },
+    {
+      "city": "tampa",
+      "camera": "flyer-150m",
+      "draws": 756,
+      "triangles": 532994,
+      "drawBudget": 1024,
+      "triangleBudget": 2000000
+    }
+  ]
+}

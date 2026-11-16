@@ -7,13 +7,13 @@ import { HUMAN_BONES } from "../../shared/anim/human.ts";
 import { LOOK_BYTES } from "../../shared/anim/look.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
-import { EntityView, MAX_VIEW, SentView, readViewDelta, writeViewDelta, type Looks } from "../../shared/net/view.ts";
+import { EntityView, MAX_VIEW, SentView, readViewDelta, writeViewDelta } from "../../shared/net/view.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { provingView } from "../../tools/snap.ts";
 import { PICK_ENTITY } from "../../tools/snap/raster.ts";
 
-function looksFor(n: number): Looks {
-  return { level: new Uint16Array(n), colors: new Uint8Array(n * 6), name: new Array<string>(n).fill(""), look: new Array<Uint8Array | null>(n).fill(null), gear: new Array<Uint16Array | null>(n).fill(null), team: new Uint32Array(n), seat: new Uint32Array(n), span: new Uint32Array(n), grown: new Uint32Array(n) };
+function looksFor(n: number) {
+  return { level: new Uint16Array(n), colors: new Uint8Array(n * 6), names: new Map<number, string>(), looks: new Map<number, Uint8Array>(), gears: new Map<number, Uint16Array>(), team: new Uint32Array(n), seat: new Uint32Array(n), span: new Uint32Array(n), grown: new Uint32Array(n) };
 }
 
 test("a view starts small, doubles as it fills, keeps what it held, and stops at 2,048 entities", () => {
@@ -98,9 +98,9 @@ test("2,048 bodies that all change their looks in one tick are sent again within
   const player = (id: number): boolean => id % 16 === 0;
   for (let id = 0; id < N; id++) {
     if (!player(id)) continue;
-    looks.look[id] = new Uint8Array(LOOK_BYTES);
-    looks.gear[id] = new Uint16Array(GEAR_COUNT);
-    looks.name[id] = `survivor ${id}`;
+    looks.looks.set(id, new Uint8Array(LOOK_BYTES));
+    looks.gears.set(id, new Uint16Array(GEAR_COUNT));
+    looks.names.set(id, `survivor ${id}`);
   }
   const scene = (rev: number): SentView => {
     const v = new SentView();
@@ -115,7 +115,7 @@ test("2,048 bodies that all change their looks in one tick are sent again within
   let held = new EntityView();
   for (let id = 0; id < N; id++) {
     held.push(id, 1, 7, 1000 + id, 200, 300, 5, 1, 0);
-    held.appear(0, 0, looks.colors, 0, looks.name[id]!, looks.look[id]!, looks.gear[id]!);
+    held.appear(0, 0, looks.colors, 0, looks.names.get(id) ?? "", looks.looks.get(id) ?? null, looks.gears.get(id) ?? null);
   }
   const cur = scene(1);
   // Sent all at once they are 47 KB, more than the server's 16 KB writer holds.
@@ -166,7 +166,7 @@ test("a budget smaller than one create still carries one of each kind a snapshot
   const w = new BitWriter(4096);
   const r = new BitReader();
   const looks = looksFor(N);
-  for (let id = 0; id < N; id++) looks.name[id] = `a name of some length ${id}`;
+  for (let id = 0; id < N; id++) looks.names.set(id, `a name of some length ${id}`);
   // Two players and four creatures, each named, and each sent again for a new look.
   const scene = (rev: number): SentView => {
     const v = new SentView();
@@ -180,7 +180,7 @@ test("a budget smaller than one create still carries one of each kind a snapshot
   let held = new EntityView();
   for (let id = 0; id < N; id++) {
     held.push(id, 1, 7, 1000 + id, 200, 300, 5, 1, 0);
-    held.appear(0, 0, looks.colors, 0, looks.name[id]!, null, null);
+    held.appear(0, 0, looks.colors, 0, looks.names.get(id)!, null, null);
   }
   const cur = scene(1);
   let rotate = 0;
@@ -202,7 +202,7 @@ test("a budget smaller than one create still carries one of each kind a snapshot
   expect(fresh).toEqual([2, 4, 5, 6]);
 });
 
-test("a frame short of bones poses survivors first, then the nearest, and draws every other body rigid on one bone where it stands", () => {
+test("a frame short of bones poses survivors first, then the nearest, and stands every other body on one bone where it is, in a pose for what it does", () => {
   const view = provingView(320, 180);
   const { remote, cam, scene, reg, hf, raster, pack } = view;
   const raptor = reg.index.get("core:raptor")!;
@@ -255,21 +255,24 @@ test("a frame short of bones poses survivors first, then the nearest, and draws 
   };
   // With the tier's own bones every body is posed.
   expect(frame(tier.bones)).toEqual({ rigid: [], posed: 8, used: 2 * HUMAN_BONES + 6 * each });
-  // With enough for the survivors and two raptors, and one bone each for the rest, the four farther raptors are rigid.
-  const short = 2 * HUMAN_BONES + 2 * each + 4;
+  // With enough for the survivors and two raptors, one bone each for the rest and the bones of the one pose they stand in,
+  // the four farther raptors stand in it.
+  const short = 2 * HUMAN_BONES + 2 * each + 4 + each;
   expect(frame(short)).toEqual({ rigid: [202, 203, 204, 205], posed: 4, used: short });
   for (let k = 2; k < 6; k++) {
     const [pixels, off] = shown(k);
     expect(pixels).toBeGreaterThan(8);
     expect(off).toBeLessThan(3);
   }
-  // One bone less and a raptor more is rigid. With hardly any, all are, and none is left out.
+  // One bone less and a raptor more stands. With only enough for a bone each and the raptors' and the survivors' poses,
+  // all stand, and none is left out.
   expect(frame(short - 1).rigid).toEqual([201, 202, 203, 204, 205]);
-  expect(frame(3)).toEqual({ rigid: [200, 201, 202, 203, 204, 205, 206, 207], posed: 0, used: 8 });
+  const least = 8 + each + HUMAN_BONES;
+  expect(frame(least)).toEqual({ rigid: [200, 201, 202, 203, 204, 205, 206, 207], posed: 0, used: least });
   for (let k = 0; k < 8; k++) expect(shown(k)[0]).toBeGreaterThan(8);
   // The viewer's own body is posed whatever is left.
   scene.own = { kind: survivor, x: cam.x, y: hf.heightAt(cam.x, cam.z + 3), z: cam.z + 3, yaw: 0, state: new AnimState(), tick: 0, firstPerson: false, colors: new Uint8Array(6), look: null, gear: new Uint16Array(6), id: 7 };
-  expect(frame(3)).toEqual({ rigid: [200, 201, 202, 203, 204, 205, 206, 207], posed: 1, used: 8 + HUMAN_BONES });
+  expect(frame(least + HUMAN_BONES)).toEqual({ rigid: [200, 201, 202, 203, 204, 205, 206, 207], posed: 1, used: least + HUMAN_BONES });
 });
 
 test("what a full frame leaves out is counted: draws past 4,096 and beams past sixteen", () => {

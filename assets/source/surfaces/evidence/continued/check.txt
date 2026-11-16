@@ -1,0 +1,81 @@
+$ bun tools/check.ts
+pack         5.08s
+  shell size   1128/1150 lines
+  voice size   470/600 lines
+  assets size  281/500 lines
+  sound size   282/300 lines
+policy       3.99s
+types        4.25s
+tests        60.13s
+
+FAILED (1)
+ - fast tests failed:
+bun test v1.4.3 (c6da4a4d3) 10x PARALLEL
+
+tests/integration/item-exploits.test.ts:
+the world has no place for more bodies (1 refused): it holds 441 of the 512 that MaxEntities allows, with 70 kept for survivors
+
+tests/integration/retime.test.ts:
+DynamicConfig.ini read again: 1 applied, 0 not yet effective, 0 of no meaning here, 1 unknown, 1 refused
+  applied   EggHatchSpeedMultiplier=8  (DynamicConfig.ini:1)
+  unknown   Gravity  (DynamicConfig.ini:3)
+  refused   ServerPassword  (DynamicConfig.ini:2): is read at start only
+
+tests/integration/listen.test.ts:
+224 |   /** A message is a channel byte and then what the game wrote. The game's writers hold 16 KB, and a welcome a little more. */
+225 |   const outgoing = new Uint8Array(65536);
+226 |   let skipped = 0;
+227 |   // A development server gives cheats without a password, so nothing off this machine reaches it unless it is asked to listen there.
+228 |   const hostname = opts.hostname ?? (opts.dev ? "127.0.0.1" : undefined);
+229 |   const server = Bun.serve<Socket>({
+                           ^
+error: Failed to start server. Is port 0 in use?
+ syscall: "listen",
+   errno: 0,
+    code: "EADDRINUSE"
+
+      at startServer (/home/user/dev/SNARK/.claude/worktrees/artist-surfaces/server/main.ts:229:22)
+      at answers (/home/user/dev/SNARK/.claude/worktrees/artist-surfaces/tests/integration/listen.test.ts:27:18)
+      at <anonymous> (/home/user/dev/SNARK/.claude/worktrees/artist-surfaces/tests/integration/listen.test.ts:47:16)
+(fail) a development server answers this machine and no other, unless it is given an address to listen on [474.90ms]
+
+tests/integration/modules.test.ts:
+backup of tick 174 in /var/folders/q6/zvp5ryyj7tl5k_frk3522n_w0000gn/T/snark-modules-yZqvy4/script.db.backups/2026-11-16T02-47-03Z-t174 (0.1 MB, 3 ms)
+backup of tick 354 in /var/folders/q6/zvp5ryyj7tl5k_frk3522n_w0000gn/T/snark-modules-yZqvy4/script.db.backups/2026-11-16T02-47-03Z-t354 (0.1 MB, 2 ms)
+the world could not be saved (SQLITE_FULL: database or disk is full); trying again, and the world runs on
+saving again
+backup of tick 534 in /var/folders/q6/zvp5ryyj7tl5k_frk3522n_w0000gn/T/snark-modules-yZqvy4/script.db.backups/2026-11-16T02-47-03Z-t534 (0.1 MB, 2 ms)
+
+tests/integration/vehicle-lifecycle.test.ts:
+vehicle 1099511627780: preserved unreadable version 9 (90 bytes); using parked defaults
+
+tests/integration/renames.test.ts:
+set down 4 pieces of the map's obelisks, which this save was made without
+
+tests/integration/sockets.test.ts:
+224 |   /** A message is a channel byte and then what the game wrote. The game's writers hold 16 KB, and a welcome a little more. */
+225 |   const outgoing = new Uint8Array(65536);
+226 |   let skipped = 0;
+227 |   // A development server gives cheats without a password, so nothing off this machine reaches it unless it is asked to listen there.
+228 |   const hostname = opts.hostname ?? (opts.dev ? "127.0.0.1" : undefined);
+229 |   const server = Bun.serve<Socket>({
+                           ^
+error: Failed to start server. Is port 0 in use?
+ syscall: "listen",
+   errno: 0,
+    code: "EADDRINUSE"
+
+      at startServer (/home/user/dev/SNARK/.claude/worktrees/artist-surfaces/server/main.ts:229:22)
+      at <anonymous> (/home/user/dev/SNARK/.claude/worktrees/artist-surfaces/tests/integration/sockets.test.ts:21:18)
+(fail) a page on another site may not open a socket, the server's own page and a program that is no browser may, and an operator lists the rest [234.09ms]
+
+tests/integration/spawner.test.ts:
+set down 4 pieces of the map's obelisks, which this save was made without
+destroyed 41 wild creatures at the start, to be replaced
+destroyed 41 wild creatures at the start, to be replaced
+
+ 1694 pass
+ 2 fail
+ 5895109 expect() calls
+Ran 1696 tests across 286 files. [60.12s]
+error: script "check" exited with code 1

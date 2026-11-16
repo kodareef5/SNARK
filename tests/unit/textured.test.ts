@@ -8,7 +8,7 @@ import { DIELECTRIC, KNEE, NEUTRAL, SMOOTHEST, SURFACE_VERTEX, dyed, lit, linear
 import { buildRig } from "../../shared/anim/rigs.ts";
 import { quatAxis } from "../../shared/math/quat.ts";
 import { describePack } from "../../shared/pack/manifest.ts";
-import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type Pack } from "../../shared/pack/pack.ts";
+import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, SKIN_BYTES, VERTEX_BYTES, lodSkin, lodVertices, parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { Rng } from "../../shared/rng.ts";
 import { SIZE_UNITS } from "../../shared/world/nodes.ts";
@@ -326,13 +326,14 @@ test("a mirrored texture island lights the same as its twin", () => {
 
 test("the bent tube has no crack, and with every weight on one bone it is drawn as with one bone a vertex", () => {
   const rig = buildRig(TUBE_RIG, { clips: [], index: new Map(), hash: 0 })!;
-  const draw = (pack: Pack, bend: number, flags = 0, level = 0): Stage => {
+  const draw = (pack: Pack, bend: number, flags = 0, level = 0, stood = 0): Stage => {
     const stage = new Stage(pack, W, H);
     [stage.cam.x, stage.cam.y, stage.cam.z, stage.cam.yaw, stage.cam.pitch] = [2, 1.3, 0.5, -Math.PI / 2, -0.05];
     stage.begin();
     stage.textures(`${TUBE}/`, tubePictures());
     const bone = stage.pose(rig, { x: 0, y: 0, z: 0 }, (rot) => quatAxis(rot, 4, 1, 0, 0, bend));
-    stage.add(TUBE, level, { x: 0, y: 0, z: 0, bone, regions: [8, 9, 6, 5], flags });
+    const standIn = stage.pose(rig, { x: stage.cam.x, y: stage.cam.y, z: stage.cam.z }, (rot) => quatAxis(rot, 4, 1, 0, 0, stood));
+    stage.add(TUBE, level, { x: 0, y: 0, z: 0, bone, regions: [8, 9, 6, 5], flags, standIn });
     stage.render();
     return stage;
   };
@@ -369,11 +370,12 @@ test("the bent tube has no crack, and with every weight on one bone it is drawn 
     expect(new Set(raster.pickBone)).toEqual(new Set([0, 1, 2]));
   }
 
-  // The same tube with each vertex wholly on its own bone, and with no skin entries at all.
-  const variant = (change: (lod: SourceMesh["lods"][number]) => void): Pack => {
+  // The same tube with each vertex wholly on its own bone is written with no skin entries, as with none given, and
+  // draws as it would with entries that say so.
+  const variant = (change: (lod: SourceMesh["lods"][number]) => void): Uint8Array => {
     const mesh = tubeMesh();
     mesh.lods.forEach(change);
-    return parsePack(buildPack([mesh], defaultPalette(), tubeClips(), [TUBE_RIG]));
+    return buildPack([mesh], defaultPalette(), tubeClips(), [TUBE_RIG]);
   };
   const snapped = variant((lod) => {
     lod.joints = Uint8Array.from(lod.joints!, (_, i) => (i % 4 === 0 ? lod.bones![i >> 2]! : 0));
@@ -383,13 +385,22 @@ test("the bent tube has no crack, and with every weight on one bone it is drawn 
     delete lod.joints;
     delete lod.weights;
   });
-  expect([whole, snapped, boneless].map((p) => p.header.meshes[0]!.lods[0]!.skinOffset !== undefined)).toEqual([true, true, false]);
-  const [smooth, hard, rigid] = [draw(whole, Math.PI / 3).raster, draw(snapped, Math.PI / 3).raster, draw(boneless, Math.PI / 3).raster];
-  expect([hard.color, hard.depth, hard.pickBone]).toEqual([rigid.color, rigid.depth, rigid.pickBone]);
+  expect(snapped).toEqual(boneless);
+  const entries = parsePack(tubePack().slice());
+  for (const lod of entries.header.meshes[0]!.lods) {
+    const [skin, verts] = [lodSkin(entries, lod), lodVertices(entries, lod)];
+    for (let v = 0; skin && v < lod.vertexCount; v++) skin.set([verts[v * VERTEX_BYTES + 7]!, 0, 0, 0, 255, 0, 0, 0], v * SKIN_BYTES);
+  }
+  const rigid = parsePack(boneless);
+  expect([whole, entries, rigid].map((p) => p.header.meshes[0]!.lods[0]!.skinOffset !== undefined)).toEqual([true, true, false]);
+  const [smooth, hard, one] = [whole, entries, rigid].map((p) => draw(p, Math.PI / 3).raster);
+  expect([hard.color, hard.depth, hard.pickBone]).toEqual([one.color, one.depth, one.pickBone]);
   expect(apart(smooth.color, hard.color)).toBeGreaterThan(50);
 
-  // A body the frame had no bones for is drawn in its rest pose on its first bone, however it is bent.
+  // A body the frame had no bones for is drawn on its first bone in the pose its draw stands it in, however its own are bent.
   expect(apart(draw(whole, Math.PI / 3, DRAW_ONE_BONE).raster.color, draw(whole, 0).raster.color)).toBeLessThanOrEqual(1);
+  // Stood bent, each vertex goes by its own bone alone, as where all its weight is on one.
+  expect(apart(draw(whole, 0, DRAW_ONE_BONE, 0, Math.PI / 3).raster.color, hard.color)).toBeLessThanOrEqual(1);
 });
 
 test("a far, shrunk normal-mapped surface does not sparkle more than a near one, because its roughness was raised", () => {

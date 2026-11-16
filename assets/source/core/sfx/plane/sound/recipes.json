@@ -1,0 +1,754 @@
+{
+  "takes": {
+    "takes/engine/idle/moss-pt-9202-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/idle",
+      "prompt_id": "v3-9200",
+      "prompt": "A small single-engine propeller plane idles on the ground: the piston engine putters and the propeller hums steadily, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9202,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9202.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A small single-engine propeller plane idles on the ground: the piston engine putters and the propeller hums steadily, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2c306e7e126392e88f735b7266e5ce3936eeda70e3040eb237dad017a9915795",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1112.5,
+            "gpu_peak_gb": 5.87
+          },
+          "vae": {
+            "seconds": 19.1,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "25cdd8052da01cd40c2eaaa4a97d8905fb5f35db4f6145c66dbaa5eee343139e",
+      "cut": {
+        "source_file": "moss-pt-9202.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/low/moss-pt-9211-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/low",
+      "prompt_id": "v3-9210",
+      "prompt": "A small propeller plane taxis at low power: a steady droning buzz of the propeller and engine, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9211,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9211.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A small propeller plane taxis at low power: a steady droning buzz of the propeller and engine, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "71162e8aeb8a3b299854f0edbebe371a38441de4129c50f7ae277bc2f0ee0e45",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1112.5,
+            "gpu_peak_gb": 5.87
+          },
+          "vae": {
+            "seconds": 19.1,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "e10ea4a906587ba1f114585431ea728ee7395b8b29d3d2f7a50cb5bab4c884ee",
+      "cut": {
+        "source_file": "moss-pt-9211.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/mid/moss-pt-9220-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/mid",
+      "prompt_id": "v3-9220",
+      "prompt": "A small propeller plane runs at cruise power: a loud steady droning propeller roar, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9220,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9220.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A small propeller plane runs at cruise power: a loud steady droning propeller roar, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "7af047c2e73aaf5be43f68e871645b15cc7a3df4b4f068aa08ffc4357b934c72",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1112.5,
+            "gpu_peak_gb": 5.87
+          },
+          "vae": {
+            "seconds": 19.1,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "ca0c9176975bd582752a671cf13f7b665a5b3c0a36cbd06953efd595b3fef172",
+      "cut": {
+        "source_file": "moss-pt-9220.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/high/moss-pt-9231-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/high",
+      "prompt_id": "v3-9230",
+      "prompt": "A small propeller plane at full throttle for take-off: a loud straining propeller roar and engine snarl, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9231,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9231.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A small propeller plane at full throttle for take-off: a loud straining propeller roar and engine snarl, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "328ddb0dcbfd4a988a6a10867c2303318ca9402307d1f004e7f655a570db6cfd",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1061.2,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.9,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "28d255d7ef7dd8c5d294fc99ed3f3270b3c8fe742f592ad1ab18b56a630d377f",
+      "cut": {
+        "source_file": "moss-pt-9231.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/start/moss-pt-9240-00200.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/start",
+      "prompt_id": "v3-9240",
+      "prompt": "A small propeller plane's engine is started: the starter whirs, the propeller turns over, the engine coughs, sputters and catches into a rough idle, one start. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9240,
+      "seconds": 10,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9240.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A small propeller plane's engine is started: the starter whirs, the propeller turns over, the engine coughs, sputters and catches into a rough idle, one start. Recorded from just outside, steady, no music, no voices, quiet background. duration: 10.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "17a62c2aba75579ae0925101f32a7e98d32444b3a494548115161bce65fd0976",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1061.2,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.9,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "2a991a50ca617983f12e7546bf56d468cda372e787d8b084417c6ad654fbab57",
+      "cut": {
+        "source_file": "moss-pt-9240.wav",
+        "source_frames": 480000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          7200,
+          429601
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/engine/stop/moss-pt-9250-00200.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/stop",
+      "prompt_id": "v3-9250",
+      "prompt": "A small propeller plane's engine is shut off: the engine cuts with a last cough and the propeller winds down and stops, one shutdown. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9250,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9250.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A small propeller plane's engine is shut off: the engine cuts with a last cough and the propeller winds down and stops, one shutdown. Recorded from just outside, steady, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "3861693306dfa46f793110b85890e359e09b3734b8c295b64659287c9beeaf5f",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1061.2,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.9,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "bc753436dc85d50bb18cc89952712c3ffed7a8016392cbe3d555719da2f2248a",
+      "cut": {
+        "source_file": "moss-pt-9250.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          7200,
+          381600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/flyby/moss-pt-9261-00200.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "flyby",
+      "prompt_id": "v3-9260",
+      "prompt": "A small propeller plane flies low overhead and away: the engine drone grows loud, passes with a Doppler sweep and fades into the distance, one pass. Recorded outdoors from the ground, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9261,
+      "seconds": 10,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9261.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A small propeller plane flies low overhead and away: the engine drone grows loud, passes with a Doppler sweep and fades into the distance, one pass. Recorded outdoors from the ground, no music, no voices, quiet background. duration: 10.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "27f7b0b1703626e753c054288048934fc19a9affecc188515dd45e9825ab7752",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1061.2,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.9,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "d39cd93da1c8361f80a1f813bc5dc50217c280475185822ad68420ed7cd8bb63",
+      "cut": {
+        "source_file": "moss-pt-9261.wav",
+        "source_frames": 480000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          7200,
+          429601
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/gear/moss-pt-9270-05165.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "gear",
+      "prompt_id": "v3-9270",
+      "prompt": "An airplane's landing gear lowers with a hydraulic whine and locks with a heavy clunk, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9270,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9270.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "An airplane's landing gear lowers with a hydraulic whine and locks with a heavy clunk, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "9e266fad1af2d839b4eac2a1095843cda403864611df9c6770fd00c45e8886eb",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1061.2,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.9,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "d25fa543961d064fb984436b72e02126e02f8e58d6166ca66b7c1ef3ec978ea6",
+      "cut": {
+        "source_file": "moss-pt-9270.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          245520,
+          384000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/stall/moss-pt-9290-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "stall",
+      "prompt_id": "v3-9290",
+      "prompt": "A light airplane's stall warning horn blares a harsh buzzing tone, three separate warnings with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9290,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9290.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A light airplane's stall warning horn blares a harsh buzzing tone, three separate warnings with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f6c864fb93171a5eab9ae549b5a8294ea33e4a695af2860b0117886de8e268d1",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1061.2,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.9,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "8e8ccabf6ea2c48c417dfa7d27845a5eead4cba97dbfeac0bbe302b052cd7db0",
+      "cut": {
+        "source_file": "moss-pt-9290.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          104880
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/cabin/moss-pt-9300-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "cabin",
+      "prompt_id": "v3-9300",
+      "prompt": "Inside the cockpit of a small propeller plane in flight: a loud steady engine drone and propeller buzz through the cabin with wind noise, constant. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9300,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9300.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Inside the cockpit of a small propeller plane in flight: a loud steady engine drone and propeller buzz through the cabin with wind noise, constant. Close-miked, dry, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "b8489ed61711f1d5821c8c84ae4ee063183304a36f42165d40c079ca6dec28f1",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1061.2,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.9,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "20e4a1211d4607afdf5127cfb7e265db7607802c91a47264730975faeb15846d",
+      "cut": {
+        "source_file": "moss-pt-9300.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    }
+  }
+}

@@ -97,6 +97,32 @@ MODELS = {
             "memory_gb": 10,
         },
     },
+    "voice": {
+        "name": "MOSS-VoiceGenerator",
+        "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+        "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+        "licence": {
+            "name": "Apache License 2.0",
+            "link": "https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator",
+            "terms": "commercial use, modification and distribution allowed; keep the licence and notices when redistributing the model; no trademark rights; no warranty. Outputs carry no licence condition. Voices are designed from text: no reference recording of anyone.",
+        },
+        "rate": 24000,
+        "torch": {
+            "name": "MOSS-VoiceGenerator (PyTorch on CUDA)",
+            "repo": "OpenMOSS-Team/MOSS-VoiceGenerator",
+            "revision": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+            "codec": {"repo": "OpenMOSS-Team/MOSS-Audio-Tokenizer", "revision": "3cd226ba2947efa357ef453bcad111b6eafba782"},
+            # Its code is written for transformers 5 (MOSS-SoundEffect's venv pins 4.57.1), so its worker runs in the
+            # Stable Audio venv: torch 2.7.1+cu128, transformers 5.
+            "python": ".venv-stable/bin/python",
+            "files": None,
+            "code": {"repo": "huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator", "commit": "97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4",
+                     "path": "modeling_moss_tts.py, processing_moss_tts.py (trust_remote_code, the pinned snapshot)", "licence": "Apache-2.0"},
+            # The model card's recommended decoding (it is sensitive to these).
+            "defaults": {"audio_temperature": 1.5, "audio_top_p": 0.6, "audio_top_k": 50, "audio_repetition_penalty": 1.1},
+            "memory_gb": 14,
+        },
+    },
 }
 
 

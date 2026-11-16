@@ -111,7 +111,7 @@ export function saddlesScene(view: View, species: string, saddle: string, tick: 
 
 /**
  * Makes the body nearest the camera be drawn at `level` of its mesh (`mesh`, by the pack's index) by how coarse the
- * tier lets a body be, as the governor's last step does (Tier.bodyError), so a picture shows that level near.
+ * tier lets a body be, as the governor's bodies step does (Tier.bodyError), so a picture shows that level near.
  */
 export function atLevel(assets: Assets, view: View, mesh: number, level: number, height: number): void {
   const errors = assets.table.error[mesh]!;

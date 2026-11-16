@@ -1,0 +1,44 @@
+{
+  "track": "shoreline",
+  "layer": "calm",
+  "candidate": 2,
+  "model": "Stable Audio 3 medium",
+  "repo": "stabilityai/stable-audio-3-medium",
+  "revision": "d4d3579395a8ac0df4ab13b5b1d7138ce7290f81",
+  "code": {
+    "repo": "github.com/Stability-AI/stable-audio-3",
+    "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57"
+  },
+  "licence": {
+    "name": "Stability AI Community License",
+    "terms": "free under US$1M annual revenue, commercial users register with Stability AI; outputs are ours; not for training other foundation models"
+  },
+  "prompt": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, a lonely beach where survivors wash ashore, melancholic and open: a slow clean electric guitar with reverb, soft strings, a gentle low piano, wide and hopeful yet sad, continuous. 84 BPM, A minor.",
+  "negative_prompt": "fade out, ending, silence, gaps, dropouts, lo-fi, pop, happy, major key, vocals with lyrics, singing words",
+  "seconds": 120,
+  "bpm": 84,
+  "key": "A minor",
+  "seed": 16002,
+  "steps": 8,
+  "cfg": 1.0,
+  "init_from": null,
+  "init_noise_level": null,
+  "rate": 44100,
+  "channels": 2,
+  "seconds_to_make": 2.6,
+  "gpu_peak_gb": 5.47,
+  "torch": "2.7.1+cu128",
+  "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "date": "2026-11-15",
+  "sha256": "ef4f639f96a88779585b766b3c6e2457fd36937ca4499cc3550714db3d2b3f3d",
+  "chosen": "calm@2.wav",
+  "measures": {
+    "loudness_db": -24.1,
+    "dropouts": 0.021,
+    "stray_db": 5.06,
+    "clipped": 0,
+    "brightness": 0.026,
+    "score": -3.871
+  },
+  "stored_as": "Opus 96 kb/s stereo (ffmpeg libopus); the master is made again from this recipe"
+}

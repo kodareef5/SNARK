@@ -1,0 +1,5 @@
+Rebuilt all three sets from new imagegen paintings, with stronger branching vessels and visible creases. Means, mirror, scale and names are preserved. Deleted `check_engine.ts`; checks and byte-for-byte rebuild pass.
+
+[Updated report and prompts](tex/studies/membrane/REPORT.md) · [Slate previews](tex/studies/membrane/checks/round2_slate_review.png) · [400 px/m underside comparison](tex/studies/membrane/checks/underside_concept_game_400ppm.png)
+
+The underside remains darker, with quieter fine creases than the concept under the game’s lighting.

@@ -1,0 +1,7 @@
+/layers/
+/checks/
+/superseded/
+/__pycache__/
+
+# paint.py writes only layers/ and checks/; no source/ files are regenerated.
+# source/joins.json is an authored build input and stays in the repository.

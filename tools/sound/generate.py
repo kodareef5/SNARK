@@ -5,7 +5,7 @@
 Each prompt entry in the brief makes `takes` files per model, seeds `seed`, `seed+1`, ...
 Takes land in tools/sound/.work/<asset>/takes/<slot>/<model>-<seed>.wav (<model>-pt-<seed>.wav from
 the torch backend) with a .json recipe beside each. Existing takes are kept unless --force. Every
-model run holds the shared render lock (/tmp/snark-render.lock: lockf on a Mac, flock on Linux), a
+model run on Linux holds the shared render lock (/tmp/snark-render.lock, flock); a Mac runs without one, a
 few takes at a time, and on Linux waits until the machine has the memory free that the model needs.
 """
 
@@ -26,9 +26,10 @@ sys.path.insert(0, str(HERE))
 import models  # noqa: E402
 
 MAC = sys.platform == "darwin"
-LOCK = ["lockf", "-t", "7200", "/tmp/snark-render.lock"] if MAC else ["flock", "-w", "7200", "/tmp/snark-render.lock"]
+# The Mac runs one job at a time without a lock now; Linux shares its GPU with other jobs and keeps the render lock.
+LOCK = [] if MAC else ["flock", "-w", "7200", "/tmp/snark-render.lock"]
 TIME = ["/usr/bin/time", "-l" if MAC else "-v"]
-CHUNK = {("stable", "mlx"): 40, ("moss", "mlx"): 4, ("moss", "torch"): 32}
+CHUNK = {("stable", "mlx"): 40, ("moss", "mlx"): 4, ("moss", "torch"): 32, ("voice", "torch"): 120}
 
 
 def load_brief(path):
@@ -82,6 +83,7 @@ def jobs_for(brief, slots=None, model_filter=None, prompt_ids=None, back="mlx"):
                         "prompt_id": p["id"],
                         "prompt": text,
                         "negative": p.get("negative_" + model, p.get("negative", "")),
+                        **({"instruction": p["instruction"]} if "instruction" in p else {}),
                         "seconds": p.get("seconds_" + model, p["seconds"]),
                         "seed": seed,
                         "settings": settings,
@@ -461,7 +463,11 @@ def wait_for_memory(need_gb, model):
 
 def worker(jobfile):
     jobs = json.loads(Path(jobfile).read_text())
-    by = {("stable", "mlx"): run_stable, ("moss", "mlx"): run_moss, ("moss", "torch"): run_moss_torch}
+    def run_voice_torch(jobs):
+        import voice
+        return voice.run_voice_torch(jobs)
+
+    by = {("stable", "mlx"): run_stable, ("moss", "mlx"): run_moss, ("moss", "torch"): run_moss_torch, ("voice", "torch"): run_voice_torch}
     stages = by[(jobs[0]["model"], jobs[0].get("backend", "mlx"))](jobs)
     if stages:
         Path(jobfile).with_suffix(".stages").write_text(json.dumps(stages))
@@ -488,7 +494,9 @@ def run_jobs(jobs):
                 if back == "torch":
                     wait_for_memory(models.spec(model, back)["memory_gb"], model)
                 t = time.time()
-                res = subprocess.run(LOCK + TIME + [sys.executable, str(Path(__file__).resolve()), "--worker", f.name],
+                py = models.spec(model, back).get("python")
+                py = str(Path(__file__).resolve().parent / py) if py else sys.executable
+                res = subprocess.run(LOCK + TIME + [py, str(Path(__file__).resolve()), "--worker", f.name],
                                      stderr=subprocess.PIPE, text=True, env=env)
                 peaks = rusage(res.stderr)
                 if res.returncode != 0:
@@ -519,8 +527,8 @@ def main():
     if a.worker:
         return worker(a.worker)
     back = models.backend()
-    if back == "torch" and a.model != "moss":
-        raise SystemExit("on the torch backend only moss is ported: pass --model moss")
+    if back == "torch" and a.model not in ("moss", "voice"):
+        raise SystemExit("on the torch backend moss and voice are ported: pass --model moss or --model voice")
     jobs = [j for b in a.brief for j in jobs_for(load_brief(b), a.slot, a.model, a.prompt, back)]
     if not a.force:
         jobs = [j for j in jobs if not Path(j["out"]).exists()]

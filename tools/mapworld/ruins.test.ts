@@ -9,10 +9,24 @@ import { Mason, tilesOf, worldPoint, type Frame } from "./ruin-geometry.ts";
 import { stack, tower } from "./ruin-layouts.ts";
 import { extendRules, vocabulary, type Rule } from "./ruin-vocabulary.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
+import { RUIN_SHAPES } from "../../content/ruins.ts";
+import { WRECK_KINDS } from "../../content/vehicles/wrecks.ts";
+import { extentOf, meets, type Box } from "./ruin-obstacles.ts";
+import { carPicker } from "./street-cars.ts";
+import { CityStatics, cellPart } from "../../shared/world/city.ts";
 
 const source = process.env.MAPWORLD_TEST_SOURCE ?? readdirSync("assets/source/maps").map((name) => `assets/source/maps/${name}`).find((path) => existsSync(`${path}/ruins/vocabulary.json`))!;
 const rule: Rule = { recipe: "tower", height: 24, finish: "concrete", feature: "frame", holes: .35, wall: .35, bay: 8, matched: [], provisional: true };
 const frame = (degrees: number): Frame => ({ x: 128, z: 128, yaw: degrees, c: Math.cos(degrees * Math.PI / 180), s: Math.sin(degrees * Math.PI / 180), width: 40, depth: 40, rings: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]] });
+
+test("a thin far fin takes the cell it mostly covers, not its last sliver", () => {
+  const w = flatWorld(4);
+  const city = new CityStatics(w.dims, [
+    { kind: "core:zruin_zcore_concrete", x: 96, y: 20, z: 96, yaw: 0 },
+    { kind: "core:zruin_fin4_concrete", x: 97.9, y: 20, z: 96, yaw: 0 },
+  ], w.reg);
+  expect(cellPart(city, 5, w.hf, null, 4, 4).faces).toBe(6);
+});
 
 test("every survey category has a recipe and the block library compiles", async () => {
   const v = vocabulary(source);
@@ -61,6 +75,72 @@ test("survivor climbs every flight, turns on landings and exits onto the deck at
     go(1.5, -5.5);
     expect(b.y).toBeCloseTo(24, 1);
   }
+});
+
+test("a sixteen-floor refuge's independent stair exit is walked in both directions", () => {
+  const f = frame(17); const m = new Mason(f, 0); const tiles = tilesOf(f, 8);
+  const core = tiles.find((t) => t.u === 0 && t.v === 0)!; const exit = tiles.find((t) => t.u === 8 && t.v === 0)!;
+  m.stairs(core, 16); m.stairExit(exit, 16, core);
+  m.floor([0, -8], 64, 8); m.floor([8, -8], 64, 8);
+  const w = flatWorld(4);
+  for (const p of m.pieces) w.structs.add(w.kind(p.kind), p.x, p.y, p.z, Math.round(p.yaw * 65536 / 360) & 65535, 0, 1);
+  const params = w.reg.move[w.kind("core:survivor")]!;
+  for (const points of [m.escapes[0]!.points, [...m.escapes[0]!.points].reverse()]) {
+    const b = new Body(); Object.assign(b, points[0]); b.y += .2;
+    for (let tick = 0; tick < 60; tick++) stepBody(w, b, 0, 0, 0, 0, 0, params, TICK_DT);
+    for (const p of points.slice(1)) {
+      for (let tick = 0; tick < 220 && Math.hypot(b.x - p.x, b.z - p.z) > .15; tick++) {
+        const yaw = Math.round(Math.atan2(p.x - b.x, p.z - b.z) * 65536 / (Math.PI * 2)) & 65535;
+        stepBody(w, b, 0, 90, yaw, 0, 0, params, TICK_DT);
+      }
+      for (let tick = 0; tick < 16; tick++) stepBody(w, b, 0, 0, 0, 0, 0, params, TICK_DT);
+      expect(Math.hypot(b.x - p.x, b.z - p.z)).toBeLessThan(.25);
+      expect(Math.abs(b.y - p.y)).toBeLessThan(.15);
+    }
+  }
+  expect(m.pieces.filter((p) => p.kind.includes("_flight_")).length).toBe(32);
+});
+
+test("pitched roofs on a four-metre house grid fit their tile groups", () => {
+  const f = frame(0); f.width = f.depth = 16; f.rings = [[[-8, -8], [8, -8], [8, 8], [-8, 8], [-8, -8]]];
+  const m = new Mason(f, 0);
+  stack(m, tilesOf(f, 4), 4, 4, { ...rule, form: vocabulary(source).forms.house! }, { seed: 11, playable: 1, detail: 0 });
+  const roofs = m.pieces.filter((p) => p.kind.includes("_zpitch")); expect(roofs.length).toBeGreaterThan(0);
+  for (const p of roofs) {
+    const shape = RUIN_SHAPES[p.kind.split("_")[1] as keyof typeof RUIN_SHAPES];
+    expect(Math.abs(p.x - f.x) + shape[0] / 2).toBeLessThanOrEqual(8);
+    expect(Math.abs(p.z - f.z) + shape[2] / 2).toBeLessThanOrEqual(8);
+  }
+});
+
+test("the dropped floor palette is climbable, and the steep fallen frame slides a survivor", () => {
+  for (const [shape, degrees, halfRun] of [["plate15", 15, 4], ["plate30", 30, 4], ["plate4", 24, 2]] as const) {
+    const f = frame(157); const m = new Mason(f, 0); const size = RUIN_SHAPES[shape];
+    m.put(shape, 0, size[1] / 2, 0);
+    const w = flatWorld(4); const p = m.pieces[0]!;
+    w.structs.add(w.kind(p.kind), p.x, p.y, p.z, Math.round(p.yaw * 65536 / 360) & 65535, 0, 1);
+    const params = w.reg.move[w.kind("core:survivor")]!; const b = new Body();
+    [b.x, b.z] = m.point(0, -size[2] / 2 - 1); b.y = 0; b.grounded = true;
+    const go = (v: number): void => {
+      const [x, z] = m.point(0, v);
+      for (let tick = 0; tick < 300 && Math.hypot(b.x - x, b.z - z) > .15; tick++) {
+        const yaw = Math.round(Math.atan2(x - b.x, z - b.z) * 65536 / (2 * Math.PI)) & 65535;
+        stepBody(w, b, 0, 90, yaw, 0, 0, params, TICK_DT);
+      }
+      for (let tick = 0; tick < 30; tick++) stepBody(w, b, 0, 0, 0, 0, 0, params, TICK_DT);
+      expect(Math.hypot(b.x - x, b.z - z)).toBeLessThan(.25);
+    };
+    go(size[2] / 2 - .6);
+    expect(b.y).toBeGreaterThan(2 * halfRun * Math.sin(degrees * Math.PI / 180) - .6);
+    go(-size[2] / 2 - 1);
+    expect(b.y).toBeCloseTo(0, 1);
+  }
+  const w = flatWorld(4); const top = RUIN_SHAPES.front60[1] / 2;
+  w.structs.add(w.kind("core:zruin_front60_concrete"), 128, top, 128, 0, 0, 1);
+  const b = new Body(); b.x = 131.5; b.y = top + 1.5; b.z = 128;
+  for (let tick = 0; tick < 120; tick++) stepBody(w, b, 0, 0, 0, 0, 0, w.reg.move[w.kind("core:survivor")]!, TICK_DT);
+  expect(b.z).toBeLessThan(127);
+  expect(b.y).toBeLessThan(1);
 });
 
 test("a tower podium does not cap the shaft stair, and identical seeds emit identical pieces", () => {
@@ -157,14 +237,33 @@ test("mapped water on both sides removes a wide earth bridge bank but keeps its 
 
 test("every assembly refers to an available box and every choice resolves a form and damage rule", () => {
   const v = vocabulary(source); const reg = flatWorld().reg;
+  // A car part names a family of street.cars.looks, and every look a family names has kinds the content has.
+  const looks = v.street.cars.looks;
   for (const a of Object.values(v.assemblies)) for (const [shape, x, y, z, finish, yaw] of a.parts) {
-    expect(reg.index.has(`core:zruin_${shape}_${finish === "finish" ? "concrete" : finish}`)).toBe(true);
+    if (shape === "car") expect(looks[finish]?.length).toBeGreaterThan(0);
+    else expect(reg.index.has(`core:zruin_${shape}_${finish === "finish" ? "concrete" : finish}`)).toBe(true);
     expect([x, y, z, yaw ?? 0].every(Number.isFinite)).toBe(true);
   }
+  for (const rows of Object.values(looks)) for (const [look] of rows) expect(WRECK_KINDS[look]?.every((k) => reg.index.has(k))).toBe(true);
   for (const c of v.choices) {
     if (c.form) expect(v.forms[c.form]).toBeDefined();
     for (const mode of c.collapse ?? []) expect(v.damage[mode]).toBeDefined();
   }
+});
+
+test("a wreck stands on its origin, cars nose to tail meet only when closer than their length, and a place's car is the same every time", () => {
+  for (const kinds of Object.values(WRECK_KINDS)) for (const kind of kinds) { const e = extentOf(kind); expect(e.at[1] - e.size[1] / 2).toBeCloseTo(0); }
+  const car = (z: number, yaw: number): Box => ({ x: 0, y: .75, z, yaw, size: [1.84, 1.5, 4] });
+  expect(meets(car(0, 0), car(4.1, 0))).toBe(false);
+  expect(meets(car(0, 0), car(3.9, 0))).toBe(true);
+  expect(meets(car(0, 30), { x: 1.5, y: .75, z: 1.2, yaw: 30, size: [1.84, 1.5, 4] })).toBe(true);
+  const v = vocabulary(source); const pick = carPicker(v.street.cars, v.seed);
+  const places = Array.from({ length: 400 }, (_, i) => [100 + i * 7.3, 200 + i * 3.1] as const);
+  const kinds = places.map(([x, z]) => pick(x, z, "upright"));
+  expect(places.map(([x, z]) => pick(x, z, "upright"))).toEqual(kinds);
+  const allowed = new Set([...v.street.cars.looks.upright!, ...v.street.cars.looks.fire!].flatMap(([look]) => WRECK_KINDS[look]!));
+  expect(kinds.every((k) => allowed.has(k))).toBe(true);
+  expect(new Set(kinds).size).toBeGreaterThan(12);
 });
 
 test("a neighbouring facade yields to a room route while its floor and stair support survive", async () => {
@@ -206,7 +305,7 @@ test("a crowded tower fallback keeps a reachable stump when its footprint centre
   const f = frame(0); f.width = 160; f.depth = 48; f.rings = [[[-80, -24], [-24, -24], [-24, 24], [-80, 24]]];
   const m = new Mason(f, 0); const tiles = tilesOf(f, 8);
   tower(m, tiles, { ...rule, height: 8 }, { seed: 17, playable: 1, detail: 3 });
-  expect(m.routes.length).toBe(1);
+  expect(m.routes.length).toBe(2);
   expect(m.entries.length).toBe(2);
   expect(m.pieces.length).toBeLessThan(150);
   expect(m.routes[0]!.x).toBeLessThan(104);

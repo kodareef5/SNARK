@@ -9,7 +9,7 @@
 // it sinks. It lies, and its ragdoll is laid, only where it came to rest.
 
 import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT, hurtStage } from "../shared/anim/pose.ts";
-import { FALLING, Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16 } from "../shared/anim/corpse.ts";
+import { FALLING, FELL, Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16 } from "../shared/anim/corpse.ts";
 import { WET_DAMP, WET_GRAVITY } from "../shared/anim/ragdoll.ts";
 import { Solved, rayZones, zoneHit } from "../shared/anim/skeleton.ts";
 import type { ItemDef, SpeciesDef } from "../shared/content/defs.ts";
@@ -19,7 +19,7 @@ import { detCos, detSin } from "../shared/math/scalar.ts";
 import { quatNormalize } from "../shared/math/quat.ts";
 import { Rng } from "../shared/rng.ts";
 import { GROWN, growthStep, leftAtPeriod, youngScale } from "../shared/sim/breeding.ts";
-import { Body as Mover, MF_OUT, MF_ROOTED, MODE_WALK, STANCE_STAND, stepBody, type MoveParams } from "../shared/sim/character.ts";
+import { Body as Mover, MF_OUT, MF_ROOTED, MODE_FLYER, MODE_WALK, STANCE_STAND, stepBody, type MoveParams } from "../shared/sim/character.ts";
 import { F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
 import { Inventory } from "../shared/sim/items.ts";
 import { createBoat, type BoatState } from "../shared/sim/boat.ts";
@@ -99,6 +99,8 @@ export interface Body {
   readonly size: number;
   /** It died knocked out. */
   readonly out: boolean;
+  /** It died in its own flight, and goes limp from its death in the air. */
+  readonly air: boolean;
   /** Ticks its whole time lasts under the rules now. It ends at rec.expiresAt. */
   life: number;
   /** The tick of its next deadline. */
@@ -214,13 +216,14 @@ export class Corpses {
     const max = (of.corpse?.health ?? HEALTH) * size * rules.num("HarvestHealthMultiplier");
     // Survival clears rec.out as health runs out, so the body asks what the entity still shows.
     const out = rec.out || (ents.mflags[e]! & MF_OUT) !== 0 || (ents.cue[e]! & CUE_OUT) !== 0;
-    const b = this.make(body, rec.kind, max, max, young, size, out, life);
+    const b = this.make(body, rec.kind, max, max, young, size, out, !out && ents.mode[e] === MODE_FLYER, life);
     if (b.wreck) {
-      Object.assign(b.wreck, { qx: ents.vehicleQx[e]!, qy: ents.vehicleQy[e]!, qz: ents.vehicleQz[e]!, qw: ents.vehicleQw[e]!,
+      const v = ents.vrow[e]!;
+      Object.assign(b.wreck, { qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!,
         vx: ents.vx[e]!, vy: ents.vy[e]!, vz: ents.vz[e]!,
-        pitchRate: ents.vehiclePitchRate[e]!, yawRate: ents.vehicleYawRate[e]!, rollRate: ents.vehicleRollRate[e]! });
+        pitchRate: ents.vehiclePitchRate[v]!, yawRate: ents.vehicleYawRate[v]!, rollRate: ents.vehicleRollRate[v]! });
       if ("flooding" in b.wreck) {
-        b.wreck.flooding = ents.vehicleFlooding[e]!; b.wreck.steering = ents.steering[e]!;
+        b.wreck.flooding = ents.vehicleFlooding[v]!; b.wreck.steering = ents.steering[v]!;
         b.wreck.payloadMass = body.inv ? items.inv(body).weight(items.table) : 0;
       }
     }
@@ -255,20 +258,20 @@ export class Corpses {
     rec.y = wireY(rec.y);
     rec.z = wireX(rec.z);
     rec.yaw &= 0xffc0;
-    const b = this.make(rec, s.species, s.max, s.left, s.young, corpseSize(s.span), s.out, s.life);
+    const b = this.make(rec, s.species, s.max, s.left, s.young, corpseSize(s.span), s.out, s.air, s.life);
     this.place(b);
     // A body saved while it fell lies where it was in the air until it is found to hang there, when the world is whole.
     this.loaded.push(b);
   }
 
-  private make(rec: EntityRecord, kind: number, max: number, left: number, young: boolean, size: number, out: boolean, life: number): Body {
+  private make(rec: EntityRecord, kind: number, max: number, left: number, young: boolean, size: number, out: boolean, air: boolean, life: number): Body {
     const anim = this.ctx.world.anims[kind];
     const def = this.ctx.world.reg.vehicle[kind];
     const wreck = def?.movement === "rotor" ? createHelicopter(def.spec, rec.x, rec.y, rec.z, yawOf16(rec.yaw), 0) : def?.movement === "boat" ? createBoat(def.spec, rec.x, rec.y, rec.z, yawOf16(rec.yaw), 0) : null;
     if (wreck && "flooding" in wreck) { wreck.hullCondition = 0; wreck.engineCondition = 0; }
     const saved = rec.extra.get(WRECK_COMPONENT);
-    const marine = saved?.[0] === 2 && wreck && "flooding" in wreck;
-    if (wreck && saved?.length === 1 + (WRECK_FIELDS.length + (marine ? BOAT_WRECK_FIELDS.length : 0)) * 4 && (saved[0] === 1 || marine)) {
+    const marine = wreck !== null && "flooding" in wreck;
+    if (wreck && saved?.[0] === (marine ? 2 : 1) && saved.length === 1 + (WRECK_FIELDS.length + (marine ? BOAT_WRECK_FIELDS.length : 0)) * 4) {
       const view = new DataView(saved.buffer, saved.byteOffset, saved.byteLength);
       const values = WRECK_FIELDS.map((_, i) => view.getFloat32(1 + i * 4, true));
       if (values.every(Number.isFinite)) {
@@ -278,19 +281,17 @@ export class Corpses {
         for (const field of ["vx", "vy", "vz"] as const) wreck[field] = Math.max(-120, Math.min(120, wreck[field]));
         for (const field of ["pitchRate", "yawRate", "rollRate"] as const) wreck[field] = Math.max(-5, Math.min(5, wreck[field]));
         if ("flooding" in wreck) {
-          if (marine) {
-            const fields = BOAT_WRECK_FIELDS.map((_, i) => view.getFloat32(1 + (WRECK_FIELDS.length + i) * 4, true));
-            if (fields.every(Number.isFinite)) {
-              wreck.flooding = Math.max(0, Math.min(1, fields[0]!));
-              wreck.steering = Math.max(-1, Math.min(1, fields[1]!));
-              wreck.payloadMass = Math.max(0, Math.min(1e6, fields[2]!));
-            }
-          } else wreck.flooding = 1; // Version 1 boat wrecks were already fully flooded.
+          const fields = BOAT_WRECK_FIELDS.map((_, i) => view.getFloat32(1 + (WRECK_FIELDS.length + i) * 4, true));
+          if (fields.every(Number.isFinite)) {
+            wreck.flooding = Math.max(0, Math.min(1, fields[0]!));
+            wreck.steering = Math.max(-1, Math.min(1, fields[1]!));
+            wreck.payloadMass = Math.max(0, Math.min(1e6, fields[2]!));
+          }
         }
       }
     }
     const b: Body = {
-      rec, kind, e: -1, max, left, young, size, out, life, next: 0, stage: 0,
+      rec, kind, e: -1, max, left, young, size, out, air, life, next: 0, stage: 0,
       x: rec.x, y: rec.y, z: rec.z, yaw: yawOf16(rec.yaw),
       fall: null, pose: !wreck && anim?.rig.ragdoll ? new Solved(anim.rig.bones) : null, moving: false, drop: null, dropped: 0, wreck,
     };
@@ -359,7 +360,7 @@ export class Corpses {
   private lay(b: Body): void {
     if (b.wreck) return;
     const anim = this.ctx.world.anims[b.kind];
-    const r = anim && b.pose ? layCorpse(anim, b.out, b.x, b.y, b.z, b.yaw, b.size, b.pose) : null;
+    const r = anim && b.pose ? layCorpse(anim, b.out, b.air, b.x, b.y, b.z, b.yaw, b.size, b.pose) : null;
     if (r) {
       b.fall = new Fall(r);
       this.wake(b);
@@ -436,12 +437,12 @@ export class Corpses {
 
   private wreckPose(b: Body): void {
     if (!b.wreck || b.e < 0) return;
-    const s = b.wreck, ents = this.ctx.world.ents, e = b.e;
-    ents.vehicleQx[e] = s.qx; ents.vehicleQy[e] = s.qy; ents.vehicleQz[e] = s.qz; ents.vehicleQw[e] = s.qw;
-    ents.steering[e] = s.steering;
-    ents.vehicleRotorRpm[e] = ents.vehicleEngineOn[e] = ents.vehicleRpm[e] = ents.vehicleCollective[e] = 0;
-    ents.vehicleEngineCondition[e] = ents.vehicleRotorCondition[e] = 0;
-    if ("flooding" in s) { ents.vehicleHullCondition[e] = 0; ents.vehicleFlooding[e] = s.flooding; }
+    const s = b.wreck, ents = this.ctx.world.ents, v = ents.vrow[b.e]!;
+    ents.vehicleQx[v] = s.qx; ents.vehicleQy[v] = s.qy; ents.vehicleQz[v] = s.qz; ents.vehicleQw[v] = s.qw;
+    ents.steering[v] = s.steering;
+    ents.vehicleRotorRpm[v] = ents.vehicleEngineOn[v] = ents.vehicleRpm[v] = ents.vehicleCollective[v] = 0;
+    ents.vehicleEngineCondition[v] = ents.vehicleRotorCondition[v] = 0;
+    if ("flooding" in s) { ents.vehicleHullCondition[v] = 0; ents.vehicleFlooding[v] = s.flooding; }
   }
 
   private wake(b: Body): void {
@@ -455,7 +456,7 @@ export class Corpses {
     b.stage = Math.max(hurtStage(b.rec.expiresAt - tick, b.life), hurtStage(b.left, b.max));
     if (b.e < 0) return;
     const ents = this.ctx.world.ents;
-    const cue = (CUE_DEAD | (b.stage << CUE_DECAY_SHIFT) | (b.out ? CUE_OUT : 0)) >>> 0;
+    const cue = (CUE_DEAD | (b.stage << CUE_DECAY_SHIFT) | (b.out ? CUE_OUT : 0) | (b.air ? FELL : 0)) >>> 0;
     if (ents.cue[b.e] === cue) return;
     ents.cue[b.e] = cue;
     this.ctx.world.history.cued(b.e);
@@ -708,7 +709,7 @@ export class Corpses {
 
   /** Writes a body's own state into its record, for the store. */
   private save(b: Body): void {
-    b.rec.corpse = { species: b.kind, max: b.max, left: b.left, span: sizeSpan(b.size), young: b.young, out: b.out, life: b.life };
+    b.rec.corpse = { species: b.kind, max: b.max, left: b.left, span: sizeSpan(b.size), young: b.young, out: b.out, air: b.air, life: b.life };
     if (b.wreck) {
       const marine = "flooding" in b.wreck;
       const bytes = new Uint8Array(1 + (WRECK_FIELDS.length + (marine ? BOAT_WRECK_FIELDS.length : 0)) * 4), view = new DataView(bytes.buffer); bytes[0] = marine ? 2 : 1;

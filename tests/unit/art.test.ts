@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { Clip } from "../../shared/anim/clip.ts";
 import { ZONE_TORSO } from "../../shared/anim/human.ts";
-import { parsePack, type PackRig } from "../../shared/pack/pack.ts";
+import { CLIP_ROOT_STEPS, parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { REGION_BASE, defaultPalette } from "../../shared/pack/palette.ts";
 import { main } from "../../tools/art.ts";
 import { findAssets, isNode, type Asset } from "../../tools/art/assets.ts";
@@ -22,12 +22,12 @@ import { ASSETS } from "../fixtures/assets.ts";
 const EXAMPLES = await findAssets(join(import.meta.dir, "../../tools/blender/example"));
 
 /**
- * Piece packs can contain hundreds of meshes (crowns, cards or a full landmark). Recomputing every stated surface
- * distance belongs in `bun run art -- <id> --check`, as the testing policy requires. This inventory check still validates
- * every mesh's geometry, budgets and materials; error.test.ts verifies the distance algorithm on small mesh pairs.
+ * A node pack (trees, rocks, plants) is many meshes of crowns and cards, whose errors are stated rather than measured on
+ * their points, and that measure takes seconds on such a pack. Its maker sees it in `bun run art -- <id> --check`. Here a
+ * node pack is checked without it, and its stated errors are held to rise level by level while its triangles fall.
  */
 function unmeasured(asset: Asset): Asset {
-  if (asset.spec.kind !== "pieces") return asset;
+  if (!isNode(asset) || asset.spec.kind !== "pieces") return asset;
   return { ...asset, spec: { ...asset.spec, pieces: asset.spec.pieces.map(({ errors: _, ...p }) => p) } };
 }
 
@@ -142,11 +142,11 @@ test("the check faults what would draw wrong: a level over its budget, a hole, a
   expect(report.faults).toEqual([]);
   expect(report.meshes[0]!.levels.map((l) => [l.triangles, l.budget, l.parts, l.holes])).toEqual([[24, 24, 2, 0]]);
   expect(report.rig).toEqual({ skeleton: "hop", bones: 2, capsules: 1, buried: [], sockets: ["seat"] });
-  // The foot is down for eleven frames of twenty, holds at the stride given, and that stride is the one measured.
+  // The foot is down for eleven frames of twenty, holds at the stride given within a step of the root, and that stride is the one measured.
   const gait = report.gaits[0]!;
   expect([gait.clip, gait.stride, gait.feet[0]!.bone, gait.feet[0]!.planted]).toEqual(["hop", 1, "body", 11 / 20]);
   expect(gait.measured).toBeCloseTo(1, 5);
-  expect(gait.feet[0]!.slide).toBeLessThan(1e-5);
+  expect(gait.feet[0]!.slide).toBeLessThan(1 / CLIP_ROOT_STEPS);
   expect(report.clips.map((c) => [c.name, c.loop, c.wrap === undefined])).toEqual([["hop", true, false], ["once", false, true]]);
   expect(report.clips[0]!.wrap!).toBeLessThan(report.clips[0]!.step * 1.01);
 

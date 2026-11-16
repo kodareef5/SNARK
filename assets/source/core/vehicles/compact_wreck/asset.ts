@@ -27,9 +27,10 @@ export default {
     trim: burnt("trim"),
     cabin: burnt("cabin", { cutout: true }),
   },
-  flat: 2,
+  // A street holds many: the finest level is made from the model to the first budget, and only it has its materials.
+  flat: 1,
   budgets: {
-    triangles: [30000, 14000, 6000, 2400, 960, 400],
+    triangles: [6000, 2400, 960, 440],
     texture: { top: 2048, megabytes: 80 },
   },
 } satisfies PiecesAsset;

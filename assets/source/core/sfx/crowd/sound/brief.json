@@ -1,0 +1,581 @@
+{
+  "asset": "core/sfx/crowd",
+  "review": "../ref/sound",
+  "about": "People without words: murmuring groups, a market, a tavern, panic, cheering, applause, gasps, laughter, booing, screams near and far, laughs and giggles, a muted trombone talking, mumbling, whistling, sighs, effort, humming, crying and an indistinct shout.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "murmur": {
+      "kind": "impact",
+      "range": 30,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a few people talking",
+      "prompts": [
+        {
+          "id": "v4-26000",
+          "models": [
+            "moss"
+          ],
+          "seed": 26000,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A small group of people chatting quietly, indistinct murmuring voices, no clear words, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true
+    },
+    "market": {
+      "kind": "impact",
+      "range": 60,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a busy market",
+      "prompts": [
+        {
+          "id": "v4-26010",
+          "models": [
+            "moss"
+          ],
+          "seed": 26010,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A busy outdoor market: many people talking at once, indistinct, footsteps and bustle, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true
+    },
+    "tavern": {
+      "kind": "impact",
+      "range": 30,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a lively tavern",
+      "prompts": [
+        {
+          "id": "v4-26020",
+          "models": [
+            "moss"
+          ],
+          "seed": 26020,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A lively crowded tavern: indistinct chatter, laughter and clinking mugs, steady."
+        }
+      ],
+      "loop": true
+    },
+    "panic": {
+      "kind": "impact",
+      "range": 100,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a crowd fleeing in panic",
+      "prompts": [
+        {
+          "id": "v4-26030",
+          "models": [
+            "moss"
+          ],
+          "seed": 26030,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A crowd panics and flees: people screaming and shouting, running footsteps, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true
+    },
+    "cheer": {
+      "kind": "impact",
+      "range": 150,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a crowd cheering",
+      "prompts": [
+        {
+          "id": "v4-26040",
+          "models": [
+            "moss"
+          ],
+          "seed": 26040,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A crowd cheers and whoops loudly, three separate cheers with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "applause": {
+      "kind": "impact",
+      "range": 80,
+      "level": -16,
+      "vary": 0.04,
+      "want": "applause",
+      "prompts": [
+        {
+          "id": "v4-26050",
+          "models": [
+            "moss"
+          ],
+          "seed": 26050,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A crowd applauds and claps, two separate rounds of applause with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "gasp": {
+      "kind": "impact",
+      "range": 50,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a crowd gasping",
+      "prompts": [
+        {
+          "id": "v4-26060",
+          "models": [
+            "moss"
+          ],
+          "seed": 26060,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A crowd gasps in shock all at once, three separate gasps with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "laugh/crowd": {
+      "kind": "impact",
+      "range": 50,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a crowd laughing",
+      "prompts": [
+        {
+          "id": "v4-26070",
+          "models": [
+            "moss"
+          ],
+          "seed": 26070,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A crowd bursts out laughing, three separate laughs with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "boo": {
+      "kind": "impact",
+      "range": 80,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a crowd booing",
+      "prompts": [
+        {
+          "id": "v4-26080",
+          "models": [
+            "moss"
+          ],
+          "seed": 26080,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A crowd boos and jeers, two separate rounds with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "scream/man": {
+      "kind": "impact",
+      "range": 120,
+      "level": -10,
+      "vary": 0.04,
+      "want": "a man screaming",
+      "prompts": [
+        {
+          "id": "v4-26090",
+          "models": [
+            "moss"
+          ],
+          "seed": 26090,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A man screams in terror, four separate screams with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "scream/woman": {
+      "kind": "impact",
+      "range": 120,
+      "level": -10,
+      "vary": 0.04,
+      "want": "a woman screaming",
+      "prompts": [
+        {
+          "id": "v4-26100",
+          "models": [
+            "moss"
+          ],
+          "seed": 26100,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A woman screams in terror, four separate screams with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "scream/far": {
+      "kind": "impact",
+      "range": 400,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a scream far away",
+      "prompts": [
+        {
+          "id": "v4-26110",
+          "models": [
+            "moss"
+          ],
+          "seed": 26110,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A distant terrified scream echoing far away, three separate screams with long pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "laugh/man": {
+      "kind": "impact",
+      "range": 30,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a man laughing",
+      "prompts": [
+        {
+          "id": "v4-26120",
+          "models": [
+            "moss"
+          ],
+          "seed": 26120,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A man laughs heartily, a deep belly laugh, three separate laughs with pauses. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-26122",
+          "models": [
+            "moss"
+          ],
+          "seed": 26122,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A man chuckles warmly, four separate chuckles with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "laugh/woman": {
+      "kind": "impact",
+      "range": 30,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a woman laughing",
+      "prompts": [
+        {
+          "id": "v4-26130",
+          "models": [
+            "moss"
+          ],
+          "seed": 26130,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woman laughs heartily, three separate laughs with pauses. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-26132",
+          "models": [
+            "moss"
+          ],
+          "seed": 26132,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woman giggles, four separate giggles with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "laugh/evil": {
+      "kind": "impact",
+      "range": 60,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a sinister laugh",
+      "prompts": [
+        {
+          "id": "v4-26140",
+          "models": [
+            "moss"
+          ],
+          "seed": 26140,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A villain laughs a slow sinister evil laugh, three separate laughs with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "wahwah": {
+      "kind": "impact",
+      "range": 20,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a muted trombone talking",
+      "prompts": [
+        {
+          "id": "v4-26150",
+          "models": [
+            "moss"
+          ],
+          "seed": 26150,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A muted trombone imitates an adult talking: wah-wah-wah mumbling phrases with the rhythm of speech, four separate phrases with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "mumble": {
+      "kind": "impact",
+      "range": 20,
+      "level": -18,
+      "vary": 0.04,
+      "want": "mumbling",
+      "prompts": [
+        {
+          "id": "v4-26160",
+          "models": [
+            "moss"
+          ],
+          "seed": 26160,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A person mumbles cheerfully in a made-up nonsense language, playful babbling phrases, four separate phrases with pauses. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-26162",
+          "models": [
+            "moss"
+          ],
+          "seed": 26162,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A person grumbles and mutters irritably in a made-up nonsense language, four separate phrases with pauses. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-26164",
+          "models": [
+            "moss"
+          ],
+          "seed": 26164,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A person asks a question in a made-up nonsense language with a rising tone, four separate phrases with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "whistle": {
+      "kind": "impact",
+      "range": 30,
+      "level": -18,
+      "vary": 0.04,
+      "want": "whistling a tune",
+      "prompts": [
+        {
+          "id": "v4-26170",
+          "models": [
+            "moss"
+          ],
+          "seed": 26170,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A person whistles a casual cheerful little tune, two separate tunes with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "whistle/call": {
+      "kind": "impact",
+      "range": 150,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a loud whistle",
+      "prompts": [
+        {
+          "id": "v4-26180",
+          "models": [
+            "moss"
+          ],
+          "seed": 26180,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A person whistles loudly through their fingers to get attention, four separate whistles with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "sigh": {
+      "kind": "impact",
+      "range": 6,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a sigh",
+      "prompts": [
+        {
+          "id": "v4-26190",
+          "models": [
+            "moss"
+          ],
+          "seed": 26190,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A man sighs wearily, four separate sighs with pauses. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-26192",
+          "models": [
+            "moss"
+          ],
+          "seed": 26192,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woman sighs wearily, four separate sighs with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "effort": {
+      "kind": "impact",
+      "range": 10,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a grunt of effort",
+      "prompts": [
+        {
+          "id": "v4-26200",
+          "models": [
+            "moss"
+          ],
+          "seed": 26200,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A man grunts with effort lifting something heavy, four separate grunts with pauses. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-26202",
+          "models": [
+            "moss"
+          ],
+          "seed": 26202,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woman grunts with effort lifting something heavy, four separate grunts with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "hum": {
+      "kind": "impact",
+      "range": 8,
+      "level": -20,
+      "vary": 0.04,
+      "want": "humming",
+      "prompts": [
+        {
+          "id": "v4-26210",
+          "models": [
+            "moss"
+          ],
+          "seed": 26210,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A person hums a gentle wordless melody to themselves, two separate hums with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "cry": {
+      "kind": "impact",
+      "range": 15,
+      "level": -18,
+      "vary": 0.04,
+      "want": "crying",
+      "prompts": [
+        {
+          "id": "v4-26220",
+          "models": [
+            "moss"
+          ],
+          "seed": 26220,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A man sobs and cries, three separate times with pauses. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-26222",
+          "models": [
+            "moss"
+          ],
+          "seed": 26222,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woman sobs and cries, three separate times with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "shout": {
+      "kind": "impact",
+      "range": 150,
+      "level": -14,
+      "vary": 0.04,
+      "want": "an indistinct shout",
+      "prompts": [
+        {
+          "id": "v4-26230",
+          "models": [
+            "moss"
+          ],
+          "seed": 26230,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A man shouts something indistinct from a distance, four separate shouts with pauses. Recorded outdoors, no music, no voices."
+        },
+        {
+          "id": "v4-26232",
+          "models": [
+            "moss"
+          ],
+          "seed": 26232,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woman shouts something indistinct from a distance, four separate shouts with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    }
+  }
+}

@@ -12,6 +12,8 @@ export const LOAD_REACH = 5;
 const FOOT = STRUCT_UNITS / 4;
 /** Metres. A joined piece is at most two half-sides away, plus a little. */
 const NEAR = 3.1;
+/** Metres a neighbour's box may fall short of a piece's height band by lattice rounding and still be looked at. */
+const BAND = 0.05;
 /** Work units to build one node. A search step costs 1. */
 export const COST_NODE = 24;
 
@@ -125,9 +127,11 @@ export class Support {
     const root = role === ROLE_FOUNDATION || (role === ROLE_PILLAR && y - half <= ground + FOOT) || (role === ROLE_THING && y - half <= ground);
     const mx = x / STRUCT_UNITS;
     const mz = z / STRUCT_UNITS;
-    const n = structs.query(mx - NEAR, mz - NEAR, mx + NEAR, mz + NEAR, this.near);
+    // A joined piece reaches into this one's own height: its socket is at most the two half heights away.
+    const n = structs.query(mx - NEAR, mz - NEAR, mx + NEAR, mz + NEAR, this.near, (y - half) / STRUCT_UNITS - BAND, (y + half) / STRUCT_UNITS + BAND);
     const near = this.near.refs;
-    this.work += COST_NODE + n;
+    // An entry the query passes over for its height counts a quarter of one it returns, so that work stays a measure of time.
+    this.work += COST_NODE + n + (structs.passed >> 2);
     for (let i = 0; i < n; i++) {
       const ref = near[i]!;
       if (ref === self) continue;

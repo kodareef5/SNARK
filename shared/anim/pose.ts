@@ -64,16 +64,19 @@ const SIN_45 = 0.7071067811865476;
 export const CUE_BITS = 31;
 export const CUE_NONE = 0;
 export const CUE_STARTLE = 1;
+/** Landing from a fall or setting down from flight; knocked out, coming to the ground from its limp fall. */
 export const CUE_LAND = 2;
 /** Going down when knocked out, getting up when not. */
 export const CUE_TORPOR = 3;
 /**
- * The flyers' contracts (planning/reference/flyers-plan.md): a flyer taking off, and its barrel roll. 6 and 7 are free.
+ * The flyers' contracts (planning/reference/flyers-plan.md): a flyer taking off, and its barrel roll. 7 is free.
  * A creature that carries in its feet has HOLD_CARRY as its hold, as a survivor carrying in her arms does, so its grab
  * and its letting go can begin at its action's start and need no cue.
  */
 export const CUE_TAKEOFF = 4;
 export const CUE_ROLL = 5;
+/** On a body (CUE_DEAD), for as long as it lies: it died in its own flight, and goes limp from its death in the air. */
+export const CUE_FELL = 6;
 export const LAYER_NONE = 0;
 export const LAYER_FLINCH = 1;
 export const LAYER_EAT = 2;

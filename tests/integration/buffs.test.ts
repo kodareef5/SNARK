@@ -274,7 +274,7 @@ test("what acts on a body: a stun roots it, an injury slows it and mends, god mo
   expect(rec.buffs.length).toBe(0);
 });
 
-test("torpor and being out survive a restart; a save from before torpor loads with none", () => {
+test("torpor and being out survive a restart", () => {
   const dbPath = join(dir, "torpor.db");
   let host = createHost(reg, { dbPath, clips: corePack().clips, startingCreatures: 0, dev: true });
   const e = host.spawnCreature("core:grazer", 256, 250, 5);

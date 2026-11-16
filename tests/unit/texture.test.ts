@@ -1,14 +1,14 @@
 // Texture files: a painted region map into the two masks of weights, the file's layout, a material's maps together,
 // and the stress cards.
 import { expect, test } from "bun:test";
-import { parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
+import { MANIFEST_VERSION, parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
 import { TEXTURE_HEADER_BYTES, TEXTURE_MAGIC, pictureBytes, stepBytes, stepOf, stepOffset, stepSize, textureBytes, type TextureRole } from "../../shared/pack/texture.ts";
 import { Rng } from "../../shared/rng.ts";
-import { asPicture, packedMips, type Picture } from "../../tools/pack/image.ts";
+import { asPicture, baseMips, normalMips, packedMips, type Picture } from "../../tools/pack/image.ts";
 import { partHash } from "../../tools/pack/manifest.ts";
 import { REGION_COLOURS, checkMasks, maskMips, readMasks, readRegions, regionMasks } from "../../tools/pack/mask.ts";
 import { MASK_BANDS, STEP_COLOURS, STRESS_CARDS, cardPicture, stressTextures } from "../../tools/pack/stress.ts";
-import { materialMips, pictureOffset, rgbaPicture, rgbaTexture, writeTextureFile } from "../../tools/pack/texture.ts";
+import { SMALLER_MOVE, SMALLER_TURN, isNeutral, materialMips, neededSide, pictureOffset, rgbaPicture, rgbaTexture, smallerBy, writeTextureFile } from "../../tools/pack/texture.ts";
 
 const [BLACK, RED, GREEN, CYAN] = [[0, 0, 0], [255, 0, 0], [0, 255, 0], [0, 255, 255]] as const;
 
@@ -101,43 +101,43 @@ test("a texture file's sizes are the contract's, each step hashes as listed, and
     expect(placed[t]!.at).toBe(at);
     expect(placed[t]!.hash.length).toBe(stepOf(top) + 1);
     placed[t]!.hash.forEach((hash, step) => {
-      const from = at + stepOffset("rgba", role, step);
-      expect(partHash(bytes.subarray(from, from + stepBytes("rgba", role, step)))).toBe(hash);
+      const from = at + stepOffset("rgba", role, step, 1);
+      expect(partHash(bytes.subarray(from, from + stepBytes("rgba", role, step, 1)))).toBe(hash);
     });
     // Each picture lies where the layout says, as the variant holds it: a normal keeps red and green only.
     m.forEach((mip, i) => {
-      const from = at + pictureOffset("rgba", role, 1 << i);
-      expect(bytes.subarray(from, from + pictureBytes("rgba", role, 1 << i))).toEqual(rgbaPicture(role, mip));
+      const from = at + pictureOffset("rgba", role, 1 << i, 1);
+      expect(bytes.subarray(from, from + pictureBytes("rgba", role, 1 << i, 1))).toEqual(rgbaPicture(role, mip));
     });
-    at += textureBytes("rgba", role, top);
+    at += textureBytes("rgba", role, top, 1);
   });
   expect(bytes.length).toBe(at);
-  expect([64, 256].map((size) => pictureOffset("rgba", "base", size))).toEqual([stepBytes("rgba", "base", 0) - 64 * 64 * 4, stepOffset("rgba", "base", 2)]);
+  expect([64, 256].map((size) => pictureOffset("rgba", "base", size, 1))).toEqual([stepBytes("rgba", "base", 0, 1) - 64 * 64 * 4, stepOffset("rgba", "base", 2, 1)]);
   expect([...rgbaPicture("normal", Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8]))]).toEqual([1, 2, 5, 6]);
 
   // Steps 0 to k of a texture are the whole texture at 64 << k.
   const whole = writeTextureFile("rgba", [textures[0]!]);
   for (const k of [0, 1]) {
-    const cut = writeTextureFile("rgba", [{ role: "base", pictures: textures[0]!.pictures.slice(0, 7 + k) }]);
-    expect(cut.bytes.length).toBe(TEXTURE_HEADER_BYTES + textureBytes("rgba", "base", stepSize(k)));
+    const cut = writeTextureFile("rgba", [{ role: "base", block: 1, pictures: textures[0]!.pictures.slice(0, 7 + k) }]);
+    expect(cut.bytes.length).toBe(TEXTURE_HEADER_BYTES + textureBytes("rgba", "base", stepSize(k), 1));
     expect(cut.bytes.subarray(TEXTURE_HEADER_BYTES)).toEqual(whole.bytes.subarray(TEXTURE_HEADER_BYTES, cut.bytes.length));
     expect(cut.placed[0]!.hash).toEqual(whole.placed[0]!.hash.slice(0, k + 1));
   }
 
   // The manifest takes the file and what the writer returned.
-  const manifest: Manifest = { version: 2, files: [{ name: "t.boot.snpk", bytes: 0, role: "boot" }, { name: "t.tex.rgba.sntx", bytes: bytes.length, role: "tex", format: "rgba" }], boot: 0, clipHash: 0, meshes: [] };
+  const manifest: Manifest = { version: MANIFEST_VERSION, files: [{ name: "t.boot.snpk", bytes: 0, role: "boot" }, { name: "t.tex.rgba.sntx", bytes: bytes.length, role: "tex", format: "rgba" }], boot: 0, clipHash: 0, meshes: [] };
   manifest.textures = sources.map(([role, m], t) => ({ id: `t:${role}`, role, top: 1 << (m.length - 1), in: { rgba: { file: 1, ...placed[t]! } } }));
   expect(parseManifest(JSON.stringify(manifest))).toEqual(manifest);
 
   // Block pictures plug in the same way: a block is 16 bytes whatever it holds.
-  const blocks = Array.from({ length: 9 }, (_, i) => noise(rng, pictureBytes("bc", "normal", 1 << i)));
-  const bc = writeTextureFile("bc", [{ role: "normal", pictures: blocks }]);
-  expect([bc.bytes.length, bc.placed[0]!.hash.length, new DataView(bc.bytes.buffer).getUint16(6, true)]).toEqual([TEXTURE_HEADER_BYTES + textureBytes("bc", "normal", 256), 3, 0]);
+  const blocks = Array.from({ length: 9 }, (_, i) => noise(rng, pictureBytes("bc", "normal", 1 << i, 4)));
+  const bc = writeTextureFile("bc", [{ role: "normal", block: 4, pictures: blocks }]);
+  expect([bc.bytes.length, bc.placed[0]!.hash.length, new DataView(bc.bytes.buffer).getUint16(6, true)]).toEqual([TEXTURE_HEADER_BYTES + textureBytes("bc", "normal", 256, 4), 3, 0]);
 
   const empty = (n: number): Uint8Array[] => Array.from({ length: n }, () => new Uint8Array(0));
-  expect(() => writeTextureFile("rgba", [{ role: "base", pictures: empty(6) }])).toThrow("32 pixels across");
-  expect(() => writeTextureFile("rgba", [{ role: "base", pictures: empty(12) }])).toThrow("2048 pixels across, which rgba does not hold");
-  expect(() => writeTextureFile("bc", [{ role: "base", pictures: textures[0]!.pictures }])).toThrow("the 1-pixel picture of texture 0 is 4 bytes, not 16");
+  expect(() => writeTextureFile("rgba", [{ role: "base", block: 1, pictures: empty(6) }])).toThrow("32 pixels across");
+  expect(() => writeTextureFile("rgba", [{ role: "base", block: 1, pictures: empty(12) }])).toThrow("2048 pixels across, which rgba does not hold");
+  expect(() => writeTextureFile("bc", [{ role: "base", block: 4, pictures: textures[0]!.pictures }])).toThrow("the 1-pixel picture of texture 0 is 4 bytes, not 16");
   // The rgba variant stops at 1024 however large the mips go.
   expect(rgbaTexture("mask", empty(13)).pictures.length).toBe(11);
 });
@@ -165,6 +165,20 @@ test("a material's maps become mips together: the packed map hears of its normal
   expect(() => materialMips({ mask, mask2: paint(16, () => BLACK) })).toThrow("not one size");
 });
 
+test("a map that is its role's neutral everywhere is known, and one stored smaller is held at every step to what it loses", () => {
+  // Masks that dye nothing, a normal map that leans nowhere, white: what a material without the map draws. Alpha counts where it is read.
+  const white = baseMips(paint(256, () => [255, 255, 255, 0]));
+  expect([isNeutral("mask", false, materialMips({ regions: paint(256, () => BLACK) }).mask!), isNeutral("normal", false, normalMips(paint(256, () => [128, 128, 255])).pictures), isNeutral("base", false, white), isNeutral("base", true, white)]).toEqual([true, true, true, false]);
+  expect(isNeutral("mask", false, materialMips({ regions: paint(256, (x, y) => (x === 200 && y === 9 ? RED : BLACK)) }).mask!)).toBe(false);
+
+  // Texel-sized detail needs every step. A soft ramp, and a normal map that leans a degree or so in soft waves, need no more than step 0's.
+  const checker = baseMips(paint(256, (x, y) => ((x + y) & 1 ? [200, 200, 200] : [40, 40, 40])));
+  expect([smallerBy("base", false, checker, 1) > SMALLER_MOVE, neededSide("base", false, checker)]).toEqual([true, { side: 256, change: 0 }]);
+  expect(neededSide("base", false, baseMips(paint(256, (x) => [x >> 1, x >> 1, x >> 1]))).side).toBe(64);
+  const waves = neededSide("normal", false, normalMips(paint(256, (x) => [128 + Math.round(3 * Math.sin((x * Math.PI) / 32)), 128, 255])).pictures);
+  expect([waves.side, waves.change > 0 && waves.change < SMALLER_TURN]).toEqual([64, true]);
+});
+
 test("the stress cards: a flat colour names each step of a base colour card, and the two mask cards hold every region in bands", () => {
   expect([STRESS_CARDS.length, STRESS_CARDS.filter((c) => c.top === 4096).length, STRESS_CARDS.map((c) => c.role).join(" ")]).toEqual([8, 1, "mask base base base base base base mask2"]);
   expect(new Set(STEP_COLOURS.map(String)).size).toBe(7);
@@ -189,12 +203,12 @@ test("the stress cards: a flat colour names each step of a base colour card, and
   const cards = [{ ...mask, top: 64 }, { ...base, top: 256 }, { ...STRESS_CARDS[6]!, top: 128 }, { ...mask2, top: 64 }];
   const { file, textures } = stressTextures(1, cards);
   expect([file.name, file.role, textures.map((t) => t.id)]).toEqual(["stress.tex.rgba.sntx", "tex", ["stress:card_0", "stress:card_1", "stress:card_6", "stress:card_7"]]);
-  const manifest: Manifest = { version: 2, files: [{ name: "stress.boot.snpk", bytes: 0, role: "boot" }, { name: file.name, bytes: file.bytes.length, role: "tex", format: "rgba" }], boot: 0, clipHash: 0, meshes: [], textures };
+  const manifest: Manifest = { version: MANIFEST_VERSION, files: [{ name: "stress.boot.snpk", bytes: 0, role: "boot" }, { name: file.name, bytes: file.bytes.length, role: "tex", format: "rgba" }], boot: 0, clipHash: 0, meshes: [], textures };
   expect(parseManifest(JSON.stringify(manifest))).toEqual(manifest);
   for (const t of textures.slice(1, 3)) {
     for (let step = 0; step <= stepOf(t.top); step++) {
-      const from = t.in.rgba!.at + stepOffset("rgba", "base", step);
-      const got = file.bytes.subarray(from, from + stepBytes("rgba", "base", step));
+      const from = t.in.rgba!.at + stepOffset("rgba", "base", step, 1);
+      const got = file.bytes.subarray(from, from + stepBytes("rgba", "base", step, 1));
       expect(partHash(got)).toBe(t.in.rgba!.hash[step]!);
       expect([pixel(got), pixel(got, got.length / 4 - 1)]).toEqual([[...STEP_COLOURS[step]!, 255], [...STEP_COLOURS[step]!, 255]]);
     }

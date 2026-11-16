@@ -5,7 +5,7 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { VARIANTS, CUES, KEYS, candidates, cueFaults, cueKey } from "../../shared/sound/cues.ts";
+import { VARIANTS, CUES, KEYS, candidates, cueFaults, cueKey, vehicleFamilies } from "../../shared/sound/cues.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { MODE_SWIM } from "../../shared/sim/character.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
@@ -39,6 +39,23 @@ test("the catalogue is sound: no name twice, every variable known, every fallbac
   // The owner's own sound first, then the fallbacks with their variables filled and their rates.
   expect(candidates("core:rex", KEYS[cueKey("step/sand")]!).map((c) => c.id)).toEqual(["core:rex/sound/step/sand", "core:rex/sound/step", "core:rex/sound/step/grass", "core:surface/sound/step/sand"]);
   expect(candidates("core:rex", KEYS[cueKey("death")]!).at(-1)).toEqual({ id: "core:rex/sound/hurt", rate: 0.88 });
+  // A weapon's sound is its own, else its shared family's under its name, before that of how it is held.
+  expect(candidates("core:shotgun", KEYS[cueKey("fire/rifle")]!).map((c) => c.id)).toEqual(["core:shotgun/sound/fire/rifle", "core:shotgun/sound/fire", "core:weapon/sound/fire/shotgun", "core:weapon/sound/fire/rifle"]);
+});
+
+test("a vehicle is heard by its own sounds, then its families' nearest first, then the shared car's", () => {
+  // A family is found by the vehicle's id or an alias; the compact names none and is heard by core:vehicle.
+  expect(vehicleFamilies("core:compact", ["compact", "car"])).toEqual([]);
+  expect(vehicleFamilies("core:heli")).toEqual(["core:helicopter"]);
+  expect(vehicleFamilies("core:runabout", ["Speed-boat", "speedboat"])).toEqual(["core:speedboat", "core:boat"]);
+  const jet = vehicleFamilies("core:runabout", ["speedboat"]);
+  expect(candidates("core:runabout", KEYS[cueKey("vehicle/horn")]!, jet).map((c) => c.id)).toEqual(["core:runabout/sound/vehicle/horn", "core:runabout/sound/horn", "core:speedboat/sound/horn", "core:boat/sound/horn", "core:vehicle/sound/horn"]);
+  expect(candidates("core:compact", KEYS[cueKey("engine/idle")]!).map((c) => c.id)).toEqual(["core:compact/sound/engine/idle", "core:compact/sound/engine/idle", "core:vehicle/sound/engine/idle"]);
+  // A family's own occasion has no shared car's sound behind it.
+  expect(candidates("core:heli", KEYS[cueKey("vehicle/flyby")]!, ["core:helicopter"]).at(-1)!.id).toBe("core:helicopter/sound/flyby");
+  const r = new Resolver(new Map([["core:boat/sound/horn", 4], ["core:vehicle/sound/horn", 9]]));
+  expect(r.find(r.owner("core:runabout", jet), cueKey("vehicle/horn"))).toBe(4);
+  expect(r.find(r.owner("core:compact"), cueKey("vehicle/horn"))).toBe(9);
 });
 
 test("every occasion the client fires by a literal name is in the catalogue, and so is every screen the interface names", () => {
@@ -238,6 +255,10 @@ test("a looping bed fades in when it is wanted and out when it is not, and the i
     expect(bed[4]!).toBeLessThan(0.1);
     for (let k = 0; k < 60; k++) frame();
     expect(gains.at(-1)!).toBeCloseTo(1, 5);
+    // Once it is up, a scene standing still asks nothing more of the device.
+    const sent = gains.length;
+    for (let k = 0; k < 10; k++) frame();
+    expect([gains.length - sent, sounds.packet.turned, sounds.packet.mixed]).toEqual([0, false, false]);
     sounds.hearUi(cueKey("click"));
     frame();
     const click = starts.find((s) => s[9] === 3)!;
@@ -312,7 +333,7 @@ function ownState(): OwnState {
 }
 
 test("a kill is heard once: the blow that killed and the kill the server credits are one occasion", () => {
-  const a = new ActionSounds(reg);
+  const a = new ActionSounds(reg, () => -1);
   const heard: string[] = [];
   const hear: Hear = (_o, key) => heard.push(KEYS[key]!.key);
   const own = ownState();
@@ -326,7 +347,7 @@ test("a kill is heard once: the blow that killed and the kill the server credits
 });
 
 test("with the button held, every swing of a combo is heard, the player's own and another survivor's", () => {
-  const a = new ActionSounds(reg);
+  const a = new ActionSounds(reg, () => -1);
   const heard: string[] = [];
   const hear: Hear = (_o, key, entity) => heard.push(`${KEYS[key]!.key} ${entity}`);
   const own = ownState();

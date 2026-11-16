@@ -6,16 +6,14 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import { RUIN_BLOCKS } from "../../content/miami-ruins.ts";
 import { SLOPE_BLOCKS, SLOPE_SHAPES } from "../../content/slopes.ts";
 import { LETTER_BLOCKS } from "../../content/lettering.ts";
-import { KORU_LAYOUT } from "../../content/landmarks/koru.ts";
-import { CRUISE_LAYOUT } from "../../content/landmarks/cruise.ts";
 import { TERMINALS } from "../../content/terminals.ts";
+import { WRECKS } from "../../content/vehicles/wrecks.ts";
 import { EVENTS } from "../../server/events/catalog.ts";
 import { CATALOG } from "../../server/settings/catalog.ts";
 import { CLASSES, FIELDS, classFaults, classOf, defFaults, type Field } from "../../shared/content/classes.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compilePacks, type ContentPack } from "../../shared/content/packs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
-import { fillSlot, slotAddress, slotsOf } from "../../shared/content/slots.ts";
 import { FEATURES } from "../../shared/features.ts";
 import { CORE_PACK } from "../../content/core.ts";
 import { CREATURES } from "../../content/creatures/index.ts";
@@ -40,28 +38,11 @@ test("the class table is sound: parents exist, stubs name what they wait for, sl
   expect(Object.keys(FIELDS).filter((type) => !CLASSES.some((r) => r.type === type))).toEqual([]);
 });
 
-test("the public sail control requires all five named cloth meshes, with no substitute when one is missing", () => {
-  const owner = "core:koru_sail_control";
-  const uses = slotsOf(CORE_CONTENT).filter(use => use.owner === owner && use.slot === "sails");
-  const names = ["fore", "main", "mizzen", "outer", "inner"];
-  expect(uses.map(use => [use.key, use.id, use.need, use.fallback])).toEqual(names.map(name => [name, `core:koru_sail_${name}`, "must", ["none"]]));
-  const available = new Set([owner, ...names.map(name => `core:koru_sail_${name}`)]);
-  const missing = () => uses.filter(use => use.need === "must" && fillSlot(use, (asset, id) => asset === "mesh" && available.has(id)).id === "").map(slotAddress);
-  expect(missing()).toEqual([]);
-  // The normal required-slot gate still reports each absent mesh, even though the control's own mesh exists.
-  for (const name of names) {
-    const id = `core:koru_sail_${name}`;
-    available.delete(id);
-    expect(missing()).toEqual([`${owner}#sails/${name}`]);
-    available.add(id);
-  }
-});
-
-test("the core pack's definitions fall into the classes, each passing its row, and old ids are renamed", () => {
+test("the core pack's definitions fall into the classes, each passing its row", () => {
   const counts: Record<string, number> = {};
   for (const d of rest) counts[classOf(d)] = (counts[classOf(d)] ?? 0) + 1;
-  // The stations wave moved cementing paste, its engram and its recipe's old id to content/items/resources.ts, and took the
-  // ingot's engram out (planning/reference/stations-plan.md, S0): a resource, two engrams and a rename fewer here.
+  // The stations wave moved cementing paste and its engram to content/items/resources.ts, and took the ingot's engram out
+  // (planning/reference/stations-plan.md, S0): a resource and two engrams fewer here.
   expect(counts).toEqual({
     "item/resource": 10,
     "item/consumable": 4,
@@ -81,9 +62,9 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     "structure/container": 3,
     "structure/station": 2,
     "structure/bed": 3,
-    // Each bounded cruise prototype contributes one shape and one reusable static kind, including door states.
-    "structure/static": 8 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + KORU_LAYOUT.modules.length + CRUISE_LAYOUT.prototypes.length,
-    shape: 17 + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + KORU_LAYOUT.modules.length + CRUISE_LAYOUT.prototypes.length,
+    // And the street wrecks, a shape each look and a static each of its kinds (content/vehicles/wrecks.ts).
+    "structure/static": 8 + RUIN_BLOCKS.filter((d) => d.type === "structure").length + TERMINALS.length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "structure").length,
+    shape: 17 + RUIN_BLOCKS.filter((d) => d.type === "shape").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "shape").length,
     material: 4,
     node: 14,
     "prop/container": 2,
@@ -91,14 +72,13 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     buff: 7,
     spawns: 4,
     map: 5,
-    rename: 58,
   });
-  expect(rest.length).toBe(299 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + (KORU_LAYOUT.modules.length + CRUISE_LAYOUT.prototypes.length) * 2);
+  expect(rest.length).toBe(241 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};
   for (const d of CREATURES) brought[classOf(d)] = (brought[classOf(d)] ?? 0) + 1;
-  expect(Object.keys(brought).filter((c) => !["species/creature", "prop/egg", "item/egg", "item/saddle", "engram", "rename"].includes(c))).toEqual([]);
+  expect(Object.keys(brought).filter((c) => !["species/creature", "prop/egg", "item/egg", "item/saddle", "engram"].includes(c))).toEqual([]);
   const files = readdirSync(join(import.meta.dir, "../../content/creatures")).filter((f) => f !== "index.ts");
   expect(brought["species/creature"], "every file in content/creatures has one species and is listed in index.ts").toBe(files.length);
   expect(CORE_CONTENT.flatMap(defFaults)).toEqual([]);
@@ -109,7 +89,7 @@ test("a class that is built has content, a stub has none, and each kind of fault
   const used = new Set(classes);
   for (const r of CLASSES) {
     if (r.abstract) continue;
-    // A rename is not content, so the core pack has one only when something of its has been renamed.
+    // A rename is not content: the core pack has none.
     if (r.status === "built" && r.id !== "rename") expect([r.id, used.has(r.id)]).toEqual([r.id, true]);
     if (r.status === "stub") expect([r.id, used.has(r.id)]).toEqual([r.id, false]);
   }

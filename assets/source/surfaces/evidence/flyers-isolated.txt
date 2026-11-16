@@ -1,0 +1,10 @@
+bun test v1.4.3 (c6da4a4d3)
+
+tests/integration/flyers.test.ts:
+(fail) left 20 minutes, 100 wild pteranodons over the proving ground fly and land by turns, aloft 55 to 92% of the time, never inside anything, stuck or in the water [78842.31ms]
+  ^ this test timed out after 60000ms.
+
+ 6 pass
+ 1 fail
+ 37 expect() calls
+Ran 7 tests across 1 file. [116.93s]

@@ -1,0 +1,233 @@
+{
+  "asset": "core/sfx/truck",
+  "review": "../ref/sound",
+  "about": "Trucks: a big diesel by revs, its start and stop, the engine brake, air brakes, the air horn, the reversing alarm and the heavy cab door.",
+  "notes": "v3 (vehicle round). Engine layers are 20 s beds cut to loop, played faster or slower by rpm; slot names match core:vehicle's, so a vehicle of this family is heard by them first and by core:vehicle for the rest.",
+  "slots": {
+    "engine/idle": {
+      "kind": "impact",
+      "range": 80,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the diesel idling",
+      "prompts": [
+        {
+          "id": "v3-10800",
+          "models": [
+            "moss"
+          ],
+          "seed": 10800,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A big diesel truck idles: a deep heavy diesel clatter and rumble with a faint turbo whistle, constant. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/low": {
+      "kind": "impact",
+      "range": 100,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the diesel at low revs",
+      "prompts": [
+        {
+          "id": "v3-10810",
+          "models": [
+            "moss"
+          ],
+          "seed": 10810,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A heavy diesel truck pulls away at low revs: a deep labouring diesel growl, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/mid": {
+      "kind": "impact",
+      "range": 120,
+      "level": -15,
+      "vary": 0.0,
+      "want": "the diesel at middle revs",
+      "prompts": [
+        {
+          "id": "v3-10820",
+          "models": [
+            "moss"
+          ],
+          "seed": 10820,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A heavy diesel truck at middle revs: a loud steady diesel roar with a turbo whistle, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/high": {
+      "kind": "impact",
+      "range": 150,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the diesel at full power",
+      "prompts": [
+        {
+          "id": "v3-10830",
+          "models": [
+            "moss"
+          ],
+          "seed": 10830,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A heavy diesel truck at high revs: a loud straining diesel roar and turbo whine, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/start": {
+      "kind": "impact",
+      "range": 60,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the starter grinding and the diesel catching",
+      "prompts": [
+        {
+          "id": "v3-10840",
+          "models": [
+            "moss"
+          ],
+          "seed": 10840,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A big diesel truck engine starts: the starter grinds, the engine fires with a heavy clatter and settles into a rumbling idle, two separate starts with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "engine/stop": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the diesel shuddering off",
+      "prompts": [
+        {
+          "id": "v3-10850",
+          "models": [
+            "moss"
+          ],
+          "seed": 10850,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A big diesel truck engine is switched off: it shudders, knocks and dies, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "engine/brake": {
+      "kind": "impact",
+      "range": 150,
+      "level": -12,
+      "vary": 0.0,
+      "want": "the engine brake barking",
+      "prompts": [
+        {
+          "id": "v3-10860",
+          "models": [
+            "moss"
+          ],
+          "seed": 10860,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy truck slows on its engine brake: a loud rapid barking rattle from the exhaust, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "brake": {
+      "kind": "impact",
+      "range": 60,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the air brakes hissing",
+      "prompts": [
+        {
+          "id": "v3-10870",
+          "models": [
+            "moss"
+          ],
+          "seed": 10870,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy truck's air brakes release a loud sharp hiss of air, five separate hisses with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "horn": {
+      "kind": "impact",
+      "range": 300,
+      "level": -8,
+      "vary": 0.0,
+      "want": "the air horn",
+      "prompts": [
+        {
+          "id": "v3-10880",
+          "models": [
+            "moss"
+          ],
+          "seed": 10880,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A big truck's loud air horn blasts, short and long blasts, four separate blasts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "reverse": {
+      "kind": "impact",
+      "range": 60,
+      "level": -20,
+      "vary": 0.0,
+      "want": "the reversing alarm",
+      "prompts": [
+        {
+          "id": "v3-10890",
+          "models": [
+            "moss"
+          ],
+          "seed": 10890,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A truck's reversing alarm beeps steadily, beep, beep, beep, constant. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "door/close": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the heavy cab door shutting",
+      "prompts": [
+        {
+          "id": "v3-10900",
+          "models": [
+            "moss"
+          ],
+          "seed": 10900,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy truck's cab door slams shut with a solid metal bang, five separate slams with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

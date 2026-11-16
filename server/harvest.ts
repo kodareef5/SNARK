@@ -24,7 +24,8 @@ import type { ServerWorld } from "./world.ts";
 import { event } from "./events/bus.ts";
 
 export const DEADLINE_NODE = 3;
-export const TAG_NODES = 1;
+/** The chunk blobs that hold used-up nodes. */
+export const TAG_NODES = 2;
 /** Metres from the eye, for picking with the use key. */
 const REACH = 3.5;
 /**

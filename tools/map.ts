@@ -4,6 +4,7 @@
 //   bun tools/map.ts unpack <file.snmap> <folder>   the folder a map is built from
 //   bun tools/map.ts proving <out.snmap>            the proving ground, as the server runs it with no --map
 //   bun tools/map.ts info <file.snmap>              what a file holds
+//   bun tools/map.ts pack <file.snmap>              its copies for the wire (tools/map/pack.ts), which a build writes too
 //
 // A folder of layers. A chunk is 64 m and the ground has a sample every 2 m, so a map of 8 chunks a side is 257 samples
 // a side. Pictures are north up, as the map screen shows them: the first pixel is the north-west corner, which is the
@@ -30,6 +31,8 @@
 //                   the number of the zone counting from 1, or 0 where nothing grows. This is how a map says what grows where.
 //                 { "list": [{ "kind": "core:rock", "x": 12.5, "z": 40, "yaw": 0 }] }
 //                   stands each node on the ground where it says.
+//                 A scattered layer may name "out": a file of a bit per slot, chunk by chunk, lowest bit first, set where
+//                 that slot's node is taken out, as a city's build leaves out what would stand in its ruins' way.
 //                 A node's variant and size, and a scattered node's turn, come from its place, by the rule of nodes.ts.
 //   spawns.json   [{ "name": "Plaza", "x": 256, "z": 240, "yaw": 0 }]
 //                 Up to 16. The first is where a new survivor arrives, and a dead one chooses among them.
@@ -44,13 +47,14 @@
 //                 counting from 1, or 0 for the sea's water. A body's water is wherever the ground of one of its squares is
 //                 under its surface, which stands on the heights' lattice. Optional.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { CORE_CONTENT } from "../content/core.ts";
 import { provingFile } from "../server/world.ts";
-import { compileContent } from "../shared/content/registry.ts";
+import { compileContent, withContent } from "../shared/content/registry.ts";
 import { CHUNK_SIZE } from "../shared/coords.ts";
 import { parseMap, writeMap, type MapData } from "../shared/world/mapfile.ts";
 import { readLayers, writeLayers } from "./map/layers.ts";
+import { writeMapFile } from "./map/pack.ts";
 
 const registry = () => compileContent(CORE_CONTENT).registry!;
 
@@ -66,13 +70,16 @@ export function describe(file: Uint8Array): string[] {
   }
   const at = (h: number): string => (map.minY + h * map.stepY).toFixed(1);
   const lines = [
-    `${map.id}, hash ${map.hash.toString(16).padStart(8, "0")}, ${file.length} bytes (${Bun.gzipSync(file as Uint8Array<ArrayBuffer>).length} compressed)`,
+    `${map.id}, hash ${map.hash.toString(16).padStart(8, "0")}, ${file.length} bytes`,
     `${chunksX} by ${chunksZ} chunks, ${chunksX * CHUNK_SIZE} by ${chunksZ * CHUNK_SIZE} m, ground from ${at(low)} to ${at(high)} m, ${map.seaLevel === -Infinity ? "no sea" : `sea at ${map.seaLevel} m`}`,
     `${map.statics.length} static pieces`,
     ...map.nodes.map((layer) => {
       if ("first" in layer) return `${layer.kind.length} listed nodes`;
-      if ("zone" in layer) return `${layer.perChunk} node slots a chunk, by zones of ${layer.zoneCell} m: ${layer.zones.map((z, i) => `${i + 1} ${[...z.kinds.map(([id, weight]) => `${id} x${weight}`), ...(z.bare > 0 ? [`bare x${z.bare}`] : [])].join(", ")}`).join("; ")}`;
-      return `${layer.perChunk} node slots a chunk, scattered${layer.allow ? ` where a picture of ${layer.allowCell} m a pixel allows` : ""}: ${layer.kinds.map(([id, weight]) => `${id} x${weight}`).join(", ")}`;
+      let out = 0;
+      for (const b of layer.out ?? []) for (let v = b; v; v &= v - 1) out++;
+      const taken = out > 0 ? `; ${out} slots taken out` : "";
+      if ("zone" in layer) return `${layer.perChunk} node slots a chunk, by zones of ${layer.zoneCell} m: ${layer.zones.map((z, i) => `${i + 1} ${[...z.kinds.map(([id, weight]) => `${id} x${weight}`), ...(z.bare > 0 ? [`bare x${z.bare}`] : [])].join(", ")}`).join("; ")}${taken}`;
+      return `${layer.perChunk} node slots a chunk, scattered${layer.allow ? ` where a picture of ${layer.allowCell} m a pixel allows` : ""}: ${layer.kinds.map(([id, weight]) => `${id} x${weight}`).join(", ")}${taken}`;
     }),
     `spawn points: ${map.spawns.map((s) => `${s.name} (${s.x}, ${s.z})`).join(", ")}`,
   ];
@@ -89,25 +96,29 @@ export function describe(file: Uint8Array): string[] {
     const names = [...new Set(w.bodies.map((b) => b.name).filter((n) => n !== ""))];
     lines.push(`${w.bodies.length} bodies of water in ${squares} squares of ${w.cell} m over ${w.chunks().length} chunks, surfaces ${Math.min(...w.surface.subarray(1)).toFixed(2)} to ${Math.max(...w.surface.subarray(1)).toFixed(2)} m${names.length > 0 ? `: ${names.join(", ")}` : ""}`);
   }
-  const known = registry().index;
+  if (map.content) lines.push(`landmarks ${map.content.landmarks.join(", ")}, ${map.content.defs.length} definitions of their own`);
+  const known = withContent(registry(), map.content?.defs ?? []).index;
   const named = new Set([...map.statics.kinds, ...map.nodes.flatMap((layer) => ("first" in layer ? layer.kinds : "zone" in layer ? layer.zones.flatMap((z) => z.kinds.map(([id]) => id)) : layer.kinds.map(([id]) => id))), ...(map.regions ?? []).map((r) => r.spawns!), ...(map.vehicles ?? []).map((v) => v.kind)]);
   const lacking = [...named].filter((id) => !known.has(id));
   if (lacking.length > 0) lines.push(`not in the core content: ${lacking.join(", ")}`);
   return lines;
 }
 
-function save(path: string, map: MapData | Uint8Array): void {
+/** Writes the map and its copies for the wire, and says what it holds and what a client fetches of it. */
+export async function save(path: string, map: MapData | Uint8Array): Promise<void> {
   const file = map instanceof Uint8Array ? map : writeMap(map);
-  writeFileSync(path, file);
+  const packed = await writeMapFile(path, file);
   for (const line of describe(file)) console.log(line);
+  console.log(`on the wire: ${packed.ground} bytes before a client draws and ${packed.br.length} in all (Brotli), ${packed.gz.length} gzip`);
 }
 
 /** `args` are the words after the command's name. Another tool adds its command here. */
-export const COMMANDS: Record<string, { usage: string; run(args: string[]): void }> = {
+export const COMMANDS: Record<string, { usage: string; run(args: string[]): void | Promise<void> }> = {
   build: { usage: "<folder> <out.snmap>", run: ([folder, out]) => save(out!, readLayers(folder!)) },
   unpack: { usage: "<file.snmap> <folder>", run: ([file, folder]) => writeLayers(parseMap(new Uint8Array(readFileSync(file!))), folder!) },
   proving: { usage: "<out.snmap>", run: ([out]) => save(out!, provingFile(registry())) },
   info: { usage: "<file.snmap>", run: ([file]) => describe(new Uint8Array(readFileSync(file!))).forEach((line) => console.log(line)) },
+  pack: { usage: "<file.snmap>", run: ([file]) => save(file!, new Uint8Array(readFileSync(file!))) },
 };
 
 if (import.meta.main) {
@@ -118,7 +129,7 @@ if (import.meta.main) {
     process.exit(2);
   }
   try {
-    command.run(args);
+    await command.run(args);
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);

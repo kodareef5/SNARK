@@ -1,0 +1,294 @@
+{
+  "asset": "core/sfx/cooking",
+  "review": "../ref/sound",
+  "about": "Food and drink: meat sizzling, a stew bubbling, chopping, crunching, slurping, pouring, an egg into the pan, frying, sharpening a knife, a kettle, plates, a pot lid, stirring embers and a spit roast.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "sizzle": {
+      "kind": "impact",
+      "range": 10,
+      "level": -20,
+      "vary": 0.04,
+      "want": "meat sizzling",
+      "prompts": [
+        {
+          "id": "v4-24200",
+          "models": [
+            "moss"
+          ],
+          "seed": 24200,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A thick piece of meat sizzles and spits on a hot stone over a fire, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "stew": {
+      "kind": "impact",
+      "range": 8,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a stew bubbling",
+      "prompts": [
+        {
+          "id": "v4-24210",
+          "models": [
+            "moss"
+          ],
+          "seed": 24210,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A thick stew bubbles and blurps in a pot over the fire, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "chop": {
+      "kind": "impact",
+      "range": 8,
+      "level": -18,
+      "vary": 0.04,
+      "want": "chopping",
+      "prompts": [
+        {
+          "id": "v4-24220",
+          "models": [
+            "moss"
+          ],
+          "seed": 24220,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A knife chops vegetables on a wooden board, quick crisp chops, four separate bursts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "crunch": {
+      "kind": "impact",
+      "range": 5,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a crunchy bite",
+      "prompts": [
+        {
+          "id": "v4-24230",
+          "models": [
+            "moss"
+          ],
+          "seed": 24230,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "Someone bites into a crisp fruit with a loud crunch and chews, five separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "slurp": {
+      "kind": "impact",
+      "range": 5,
+      "level": -20,
+      "vary": 0.04,
+      "want": "slurping",
+      "prompts": [
+        {
+          "id": "v4-24240",
+          "models": [
+            "moss"
+          ],
+          "seed": 24240,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Someone slurps hot soup from a bowl, four separate slurps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "pour": {
+      "kind": "impact",
+      "range": 5,
+      "level": -20,
+      "vary": 0.04,
+      "want": "pouring water",
+      "prompts": [
+        {
+          "id": "v4-24250",
+          "models": [
+            "moss"
+          ],
+          "seed": 24250,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Water pours from a flask into a cup, three separate pours with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "egg": {
+      "kind": "impact",
+      "range": 6,
+      "level": -20,
+      "vary": 0.04,
+      "want": "an egg into the pan",
+      "prompts": [
+        {
+          "id": "v4-24260",
+          "models": [
+            "moss"
+          ],
+          "seed": 24260,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "An egg is cracked and drops into a hot pan with a sizzle, four separate eggs with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "fry": {
+      "kind": "impact",
+      "range": 8,
+      "level": -20,
+      "vary": 0.04,
+      "want": "frying",
+      "prompts": [
+        {
+          "id": "v4-24270",
+          "models": [
+            "moss"
+          ],
+          "seed": 24270,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Oil fries and crackles loudly in a hot pan, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "sharpen": {
+      "kind": "impact",
+      "range": 8,
+      "level": -20,
+      "vary": 0.04,
+      "want": "sharpening a knife",
+      "prompts": [
+        {
+          "id": "v4-24280",
+          "models": [
+            "moss"
+          ],
+          "seed": 24280,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A knife is sharpened on a whetstone, long scraping strokes, four separate strokes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "kettle": {
+      "kind": "impact",
+      "range": 15,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a kettle boiling",
+      "prompts": [
+        {
+          "id": "v4-24290",
+          "models": [
+            "moss"
+          ],
+          "seed": 24290,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 10,
+          "text": "A kettle comes to the boil, rumbling and then whistling, one boil. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "plate": {
+      "kind": "impact",
+      "range": 8,
+      "level": -20,
+      "vary": 0.04,
+      "want": "plates and cups",
+      "prompts": [
+        {
+          "id": "v4-24300",
+          "models": [
+            "moss"
+          ],
+          "seed": 24300,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Clay plates and cups clink and clatter as they are set down, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "lid": {
+      "kind": "impact",
+      "range": 8,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a pot lid",
+      "prompts": [
+        {
+          "id": "v4-24310",
+          "models": [
+            "moss"
+          ],
+          "seed": 24310,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A metal pot lid is lifted and clanks back down, rattling, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "embers": {
+      "kind": "impact",
+      "range": 10,
+      "level": -20,
+      "vary": 0.04,
+      "want": "stirring the embers",
+      "prompts": [
+        {
+          "id": "v4-24320",
+          "models": [
+            "moss"
+          ],
+          "seed": 24320,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A stick pokes and stirs a campfire: embers crackle, pop and flare, four separate stirs with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "roast": {
+      "kind": "impact",
+      "range": 10,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a spit roast",
+      "prompts": [
+        {
+          "id": "v4-24330",
+          "models": [
+            "moss"
+          ],
+          "seed": 24330,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Meat roasts on a turning spit over a fire, fat dripping and hissing into the flames, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    }
+  }
+}

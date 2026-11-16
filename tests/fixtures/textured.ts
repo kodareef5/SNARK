@@ -177,7 +177,7 @@ export function writeGlb(gltf: Record<string, unknown>, data: readonly [Data, st
  * two bones. With `far`, a level of its own follows it, tube_LOD1: a tetrahedron in one flat colour of a material of no
  * pictures, rgb 32, 64, 96.
  */
-export function tubeGlb(far = false, skinnedFar = false): Uint8Array {
+export function tubeGlb(far = false): Uint8Array {
   const source = tubeMesh();
   const lod = source.lods[0]!;
   const data: [Data, string][] = [];
@@ -210,9 +210,9 @@ export function tubeGlb(far = false, skinnedFar = false): Uint8Array {
         { name: "tube", mesh: 0, skin: 0 },
         { name: "lower", children: [2] },
         { name: "upper", translation: [rest[3]! - rest[0]!, rest[4]! - rest[1]!, rest[5]! - rest[2]!] },
-        ...(far ? [{ name: "tube_LOD1", mesh: 1, ...(skinnedFar ? { skin: 0 } : {}) }] : []),
+        ...(far ? [{ name: "tube_LOD1", mesh: 1 }] : []),
       ],
-      meshes: [{ primitives }, ...(far ? [{ primitives: [{ material: source.materials!.length, indices: add(Uint16Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]), "SCALAR"), attributes: { POSITION: add(Float32Array.from([0, 0, 0, 0.2, 0, 0, 0, 0, 0.2, 0, 0.6, 0]), "VEC3"), ...(skinnedFar ? { JOINTS_0: add(Uint8Array.from([1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0]), "VEC4"), WEIGHTS_0: add(Float32Array.from([1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0]), "VEC4") } : {}) } }] }] : [])],
+      meshes: [{ primitives }, ...(far ? [{ primitives: [{ material: source.materials!.length, indices: add(Uint16Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]), "SCALAR"), attributes: { POSITION: add(Float32Array.from([0, 0, 0, 0.2, 0, 0, 0, 0, 0.2, 0, 0.6, 0]), "VEC3") } }] }] : [])],
       skins: [{ joints: [1, 2], inverseBindMatrices: inverse }],
       materials: [
         ...source.materials!.map((m) => ({ name: m.id.slice(TUBE.length + 1), doubleSided: (m.flags & MATERIAL_TWO_SIDED) !== 0, pbrMetallicRoughness: { baseColorFactor: [...m.tint, 1] } })),

@@ -13,7 +13,6 @@ import { KEY_BYTES } from "../../shared/net/protocol.ts";
 import type { Connection } from "../../shared/net/transport.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { mapHeightfield, mapNodes, parseMap, type MapFile } from "../../shared/world/mapfile.ts";
-import { CityStatics } from "../../shared/world/city.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
 import { corePack } from "./pack.ts";
 import { coreRegistry } from "./world.ts";
@@ -72,8 +71,8 @@ export interface JoinOptions {
   registry?: Registry;
   /** A travel ticket another server gave (S_TRAVEL). */
   ticket?: Uint8Array;
-  /** Supply the map's native far-city geometry, exactly as the browser shell does, for rendering/streaming tests. */
-  city?: boolean;
+  /** False joins without the map's statics, so every chunk's rows come whole. */
+  statics?: boolean;
 }
 
 export class Harness {
@@ -97,11 +96,12 @@ export class Harness {
   private readonly hf: Heightfield;
 
   constructor(opts: Partial<GameOptions> = {}, seed = 1, clientFps = 60, host: HostOptions = {}, reg: Registry = coreRegistry()) {
-    this.reg = reg;
     // The host uses the real pack's clips and rigs, as a server started from the built client does, unless given others.
     this.host = createHost(reg, { ...host, clips: host.clips ?? corePack().clips, rigs: host.rigs ?? corePack().header.rigs, game: opts });
     this.world = this.host.world;
     this.map = parseMap(this.host.mapFile!);
+    // A map with landmarks adds their definitions, as a browser compiles them from the map it fetched.
+    this.reg = this.map.content?.defs.length ? (this.world.reg.source ?? this.world.reg) : reg;
     this.hf = mapHeightfield(this.map);
     this.server = this.host.game;
     this.net = new LoopbackNet(seed);
@@ -137,7 +137,7 @@ export class Harness {
       ...(opts.ticket ? { ticket: opts.ticket } : {}),
       resolveMap: (id, hash) => (id === this.map.id && hash === this.map.hash ? this.hf : null),
       nodes: (hf, reg) => mapNodes(this.map, hf, reg),
-      ...(opts.city ? { city: (reg: Registry) => new CityStatics(this.map.dims, this.map.statics, reg) } : {}),
+      ...(opts.statics === false ? {} : { statics: this.map.statics }),
     });
     this.sessions.push(session);
     if (opts.manual) this.manual.add(session);

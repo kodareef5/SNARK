@@ -1,0 +1,351 @@
+{
+  "asset": "core/sfx/click",
+  "review": "../ref/sound",
+  "about": "Small mechanisms: switches, buttons, latches, a bolt, a ratchet, a counter, a shutter, a safety catch, typing, terminal beeps, bleeps, levers, a dial, a padlock, an electric hum, sparks and a servo.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "switch": {
+      "kind": "impact",
+      "range": 5,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a switch",
+      "prompts": [
+        {
+          "id": "v4-24800",
+          "models": [
+            "moss"
+          ],
+          "seed": 24800,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A heavy wall switch flips on and off with a solid click, six separate clicks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "button": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a button",
+      "prompts": [
+        {
+          "id": "v4-24810",
+          "models": [
+            "moss"
+          ],
+          "seed": 24810,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A plastic button is pressed with a short click, six separate presses with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "latch": {
+      "kind": "impact",
+      "range": 6,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a latch",
+      "prompts": [
+        {
+          "id": "v4-24820",
+          "models": [
+            "moss"
+          ],
+          "seed": 24820,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A metal latch clicks open and shut, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "bolt": {
+      "kind": "impact",
+      "range": 8,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a bolt slid",
+      "prompts": [
+        {
+          "id": "v4-24830",
+          "models": [
+            "moss"
+          ],
+          "seed": 24830,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A heavy door bolt slides and locks with a clack, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "ratchet": {
+      "kind": "impact",
+      "range": 6,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a ratchet",
+      "prompts": [
+        {
+          "id": "v4-24840",
+          "models": [
+            "moss"
+          ],
+          "seed": 24840,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A ratchet wrench clicks rapidly as it turns, four separate turns with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "counter": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a mechanical counter",
+      "prompts": [
+        {
+          "id": "v4-24850",
+          "models": [
+            "moss"
+          ],
+          "seed": 24850,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A mechanical tally counter clicks as it is pressed, six separate clicks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "shutter": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a camera shutter",
+      "prompts": [
+        {
+          "id": "v4-24860",
+          "models": [
+            "moss"
+          ],
+          "seed": 24860,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "An old camera's shutter clicks and the film winds on, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "safety": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a safety catch",
+      "prompts": [
+        {
+          "id": "v4-24870",
+          "models": [
+            "moss"
+          ],
+          "seed": 24870,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A gun's safety catch is flicked on and off, five separate clicks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "typing": {
+      "kind": "impact",
+      "range": 6,
+      "level": -22,
+      "vary": 0.04,
+      "want": "typing on a keyboard",
+      "prompts": [
+        {
+          "id": "v4-24880",
+          "models": [
+            "moss"
+          ],
+          "seed": 24880,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Fast typing on a mechanical keyboard, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "terminal": {
+      "kind": "impact",
+      "range": 8,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a terminal beeping",
+      "prompts": [
+        {
+          "id": "v4-24890",
+          "models": [
+            "moss"
+          ],
+          "seed": 24890,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "An old computer terminal beeps and chirps as it processes, short electronic tones, four separate sequences with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "bleep": {
+      "kind": "impact",
+      "range": 8,
+      "level": -20,
+      "vary": 0.04,
+      "want": "sci-fi bleeps",
+      "prompts": [
+        {
+          "id": "v4-24900",
+          "models": [
+            "moss"
+          ],
+          "seed": 24900,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Futuristic control panel bleeps and bloops, short synthetic chirps, five separate sequences with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "lever": {
+      "kind": "impact",
+      "range": 15,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a lever",
+      "prompts": [
+        {
+          "id": "v4-24910",
+          "models": [
+            "moss"
+          ],
+          "seed": 24910,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A heavy iron lever is pulled with a grinding clunk, four separate pulls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "dial": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a dial turned",
+      "prompts": [
+        {
+          "id": "v4-24920",
+          "models": [
+            "moss"
+          ],
+          "seed": 24920,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A combination dial is turned with fine clicking ticks, three separate turns with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "padlock": {
+      "kind": "impact",
+      "range": 6,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a padlock",
+      "prompts": [
+        {
+          "id": "v4-24930",
+          "models": [
+            "moss"
+          ],
+          "seed": 24930,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A padlock is snapped shut and unlocked with a key, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hum": {
+      "kind": "impact",
+      "range": 10,
+      "level": -24,
+      "vary": 0.04,
+      "want": "an electric hum",
+      "prompts": [
+        {
+          "id": "v4-24940",
+          "models": [
+            "moss"
+          ],
+          "seed": 24940,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A transformer hums with a steady electrical buzz. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "spark": {
+      "kind": "impact",
+      "range": 15,
+      "level": -16,
+      "vary": 0.04,
+      "want": "sparks",
+      "prompts": [
+        {
+          "id": "v4-24950",
+          "models": [
+            "moss"
+          ],
+          "seed": 24950,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Electric sparks crackle and snap from a broken cable, four separate bursts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "servo": {
+      "kind": "impact",
+      "range": 6,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a servo",
+      "prompts": [
+        {
+          "id": "v4-24960",
+          "models": [
+            "moss"
+          ],
+          "seed": 24960,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A small servo motor whirs as it moves and stops, five separate moves with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

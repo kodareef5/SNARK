@@ -54,8 +54,8 @@ def wall():
     xs = -P.H + (np.arange(N) + 0.5) / N * P.SPAN
     ys = P.WALL_V0 + (N - 1 - np.arange(N) + 0.5) / N * P.SPAN  # row 0 at the top
     X, Y = np.meshgrid(xs, ys)
-    ur, _ = P.upper_rows(0)
-    lr, _ = P.lower_rows(0)
+    ur, _ = P.upper_rows()
+    lr, _ = P.lower_rows()
     up_foot = foot_line(P.UPPER, xs, P.UPPER_FOOT, 0.13, 0.03)
     lo_foot = foot_line(P.LOWER, xs, P.LOWER_FOOT, 0.10, 0.03)
     up_tips, lo_tips = ur[-1][0], lr[-1][0]

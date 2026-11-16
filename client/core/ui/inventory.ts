@@ -9,7 +9,7 @@ import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LO
 import { VEHICLE_FUEL_PER_GASOLINE, VEHICLE_REPAIR_BILL, VEHICLE_REPAIR_STEP } from "../../../shared/sim/vehicle-maintenance.ts";
 import { ARMOR_SLOTS, FLAG_BLUEPRINT, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, blueprintCost, type Inventory } from "../../../shared/sim/items.ts";
 import { RemoteSample, type ClientSession } from "../session.ts";
-import { K_BUTTON, K_PANEL, columns, lineHeight, wrap, type UiFrame } from "./nodes.ts";
+import { K_BUTTON, K_PANEL, fitText, lineHeight, wrapText, type UiFrame } from "./nodes.ts";
 import { KEY_STATION_VIEW, StationPanel } from "./station.ts";
 import { S_BUTTON, S_LABEL, S_PANEL, S_SLOT, S_SLOT_HELD, S_SLOT_TEXT, S_SWATCH, S_TITLE } from "./style.ts";
 
@@ -197,11 +197,12 @@ export class InventoryScreen {
     const inv = this.box(session, box);
     if (kind !== 0 || slot < 0 || !inv) return;
     if (button === 2) {
-      // Only a carried item can be used, but a torpor dose in an open creature's inventory can be fed to it.
+      // Only a carried item can be used, but in an open creature's inventory a torpor dose is fed to it and a saddle put on.
+      const onCreature = (this.registry?.doseTorpor[inv.item[slot]!] ?? 0) > 0 || (this.registry?.saddleFits[inv.item[slot]!] ?? 0) !== 0;
       if (box === BOX_SELF && this.registry?.vehicleDeploy[inv.item[slot]!] && !(inv.flags[slot]! & FLAG_BLUEPRINT)) {
         this.onDeploy?.(slot); if (this.onDeploy) this.close(session);
       } else if (box === BOX_SELF && inv.item[slot] !== 0) session.command(CMD_USE, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
-      else if (box === BOX_OPEN && session.subject && inv.item[slot] !== 0 && (this.registry?.doseTorpor[inv.item[slot]!] ?? 0) > 0) session.command(CMD_FEED, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
+      else if (box === BOX_OPEN && session.subject && inv.item[slot] !== 0 && onCreature) session.command(CMD_FEED, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
       this.held = -1;
       return;
     }
@@ -292,7 +293,7 @@ export class InventoryScreen {
         lines.push(`Materials: ${repairItems[0]} ingots, ${repairItems[1]} polymer, ${repairItems[2]} electronics`);
         this.service = { handle: makeHandle(subject.id, r.gen[index]!), fuel: stopped && fuel < .9999 && haveFuel > 0,
           repair: stopped && repairItems.every(n => n > 0), boat, recover: boat && stopped, lines: [] };
-        for (const line of lines) wrap(line, columns(w - PAD * 2, S_LABEL), this.service.lines);
+        for (const line of lines) wrapText(line, w - PAD * 2, S_LABEL, this.service.lines);
       }
     }
     // An owned one has a row of buttons under that, and a second row when it has levels to spend.
@@ -354,14 +355,14 @@ export class InventoryScreen {
         f.text(key + 2, x + 2, yy + CELL - lineHeight(S_SLOT_TEXT), CELL - 4, S_SLOT_TEXT, number);
       }
     };
-    const fit = (text: string): string => text.slice(0, Math.floor((w - PAD * 2) / (18 * 0.6)));
+    const fit = (text: string): string => fitText(text, w - PAD * 2, S_TITLE);
 
     if (other && !(vehicleNarrow && this.vehicleBag)) {
       f.add(KEY_OPEN_PANEL, K_PANEL, x0, y, w, otherH, S_PANEL);
       const pagerW = this.pages > 1 ? 120 : 0;
       const viewW = narrow ? 84 : 0;
       const titleW = w - PAD * 2 - pagerW - (viewW > 0 ? viewW + GAP : 0);
-      f.text(KEY_OPEN_TITLE, x0 + PAD, y + PAD, titleW, S_TITLE, fit(session.open!.name).slice(0, Math.floor(titleW / (18 * 0.6))));
+      f.text(KEY_OPEN_TITLE, x0 + PAD, y + PAD, titleW, S_TITLE, fitText(session.open!.name, titleW, S_TITLE));
       if (viewW > 0) {
         const b = f.add(KEY_STATION_VIEW, K_BUTTON, x0 + w - PAD - pagerW - (pagerW > 0 ? GAP : 0) - viewW, y + PAD - 2, viewW, 22, S_BUTTON);
         b.text = "Crafting";

@@ -1,0 +1,36 @@
+{
+  "sounds": {
+    "roll": {
+      "range": 20, "level": -26, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/roll/moss-pt-10400-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "pedal": {
+      "range": 20, "level": -24, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/pedal/moss-pt-10410-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "horn": {
+      "range": 60, "level": -14, "vary": 0.0,
+      "takes": [
+        {"file": "takes/horn/moss-pt-10420-02750.wav", "from": "moss", "start": 0.05, "end": 0.915}
+      ]
+    },
+    "shift": {
+      "range": 10, "level": -24, "vary": 0.0,
+      "takes": [
+        {"file": "takes/shift/moss-pt-10440-07210.wav", "from": "moss", "start": 0.05, "end": 0.335},
+        {"file": "takes/shift/moss-pt-10440-05285.wav", "from": "moss", "start": 0.05, "end": 0.425}
+      ]
+    },
+    "crash/light": {
+      "range": 30, "level": -14, "vary": 0.0,
+      "takes": [
+        {"file": "takes/crash/light/moss-pt-10450-03395.wav", "from": "moss", "start": 0.05, "end": 0.51},
+        {"file": "takes/crash/light/moss-pt-10450-04200.wav", "from": "moss", "start": 0.05, "end": 0.435}
+      ]
+    }
+  }
+}

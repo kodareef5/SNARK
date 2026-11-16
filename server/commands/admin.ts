@@ -101,6 +101,7 @@ export function addAdminCommands(con: Console): void {
     {
       name: "setstat",
       usage: "<stat> <points>",
+      examples: ["setstat health 10"],
       help: `Set your level-up points in a stat (0 to ${POINT_CAP}). Stats: ${STAT_NAMES.join(", ")}.`,
       admin: true,
       run(ctx, args) {
@@ -123,6 +124,7 @@ export function addAdminCommands(con: Console): void {
     {
       name: "give",
       usage: "<item> [count] [quality] [bp]",
+      examples: ["give core:spear 1", "give core:spear 1 apprentice bp"],
       help: `Create items in your inventory. The item may be named without its pack: spear for core:spear. The quality is a name or its number from 0: ${QUALITY_NAMES.join(", ")}. bp makes each a blueprint of the item.`,
       admin: true,
       run(ctx, args) {
@@ -153,6 +155,7 @@ export function addAdminCommands(con: Console): void {
     {
       name: "spawn",
       usage: "<species> [level] [count]",
+      examples: ["spawn core:raptor 30 3"],
       help: "Put a wild creature four metres in front of you, or up to 64 of them in a flock from there. It may be named without its pack: raptor for core:raptor.",
       admin: true,
       run(ctx, args) {
@@ -168,6 +171,16 @@ export function addAdminCommands(con: Console): void {
         const count = args[2] === undefined ? 1 : parseNumber(args[2]);
         if (!Number.isInteger(count) || count < 1 || count > 64) return "count must be a whole number from 1 to 64";
         const a = (c.heldYaw / 65536) * 2 * Math.PI;
+        // A vehicle is parked nose away, four metres past its own reach (a rotor's sweep, a tail), where it fits: a
+        // boat only on water.
+        const vehicle = reg.vehicle[kind];
+        if (vehicle) {
+          if (count !== 1) return "a vehicle is spawned one at a time";
+          const reach = Math.max(vehicle.spec.halfLength, ..."rotors" in vehicle ? vehicle.rotors.map((r) => Math.hypot(r.at[0], r.at[2]) + r.radius) : []);
+          const at = 4 + reach;
+          const v = ctx.host.spawnVehicle(id, c.body.x + Math.sin(a) * at, c.body.z + Math.cos(a) * at, 0, a);
+          return v < 0 ? `no room for ${id} ${Math.round(at)} m ahead${vehicle.movement === "boat" ? ", or no water there" : ""}` : `spawned ${id} ${Math.round(at)} m ahead`;
+        }
         // A flock is a disc of them about two metres apart, its near edge four metres ahead.
         const spread = count === 1 ? 0 : 2 * Math.sqrt(count);
         let e = -1;
@@ -205,6 +218,7 @@ export function addAdminCommands(con: Console): void {
     {
       name: "addxp",
       usage: "<amount>",
+      examples: ["addxp 100"],
       help: "Give yourself experience.",
       admin: true,
       run(ctx, args) {

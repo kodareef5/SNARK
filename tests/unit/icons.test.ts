@@ -114,8 +114,8 @@ test("a vehicle assembly is pictured from its authored deployment model and live
   expect(subjects(["core:bag"])).toEqual([]);
 });
 
-test("a sheet of pictures is a file of the manifest, which still reads version 3 and refuses a picture outside its sheet", () => {
-  expect(MANIFEST_VERSION).toBe(4);
+test("a sheet of pictures is a file of the manifest, which refuses a picture outside its sheet", () => {
+  expect(MANIFEST_VERSION).toBe(5);
   expect([sheet.role, [...sheet.bytes.subarray(0, 8)]]).toEqual(["icon", [137, 80, 78, 71, 13, 10, 26, 10]]);
   // One picture, alone on its sheet: one cell across and down.
   const m = parseManifest(JSON.stringify(manifest));
@@ -134,12 +134,7 @@ test("a sheet of pictures is a file of the manifest, which still reads version 3
   expect(bad((c) => (c.icons!.cells["core:pick/icon"] = 1))).toThrow("lies outside its sheet");
   expect(bad((c) => (c.icons!.cells["core:pick/icon"] = ICONS_A_SHEET))).toThrow("lies outside its sheet");
   expect(bad((c) => (c.icons!.sheets[0]!.file = 0))).toThrow("does not hold one");
-  const old = bad((c) => {
-    c.version = 3;
-    c.files.pop();
-    delete c.icons;
-  })();
-  expect([old.version, new AssetTable(old, pack).has("icon", "core:pick/icon")]).toEqual([3, false]);
+  expect(bad((c) => (c.version = 3))).toThrow("manifest: version 3 is not supported");
 });
 
 test("the bag, the hotbar and the crafting list show an item's picture where it has one, and its swatch where not", () => {
@@ -177,7 +172,7 @@ test("the bag, the hotbar and the crafting list show an item's picture where it 
   const pages = Array.from({ length: frame(true, true).sheet.pages }, (_, page) => frame(true, true, page).frame);
   const page = pages.find((f) => f.find(key) !== null)!;
   expect(page.find(key)!.kind).toBe(K_IMAGE);
-  expect(pages.flatMap((f) => f.nodes.slice(0, f.count)).filter((n) => n.kind === K_IMAGE && n.key >= KEY_CHAR_RECIPE_PICTURE).length).toBe(1);
+  expect(pages.flatMap((f) => f.nodes.slice(0, f.count)).filter((n) => n.kind === K_IMAGE && n.key >= KEY_CHAR_RECIPE_PICTURE && n.key < KEY_CHAR_RECIPE_PICTURE + made.length).length).toBe(1);
   // An engram has no picture of its own, and its row shows its item's: the pick's engram shows the pick, and no other row
   // shows one.
   const order = engramOrder(reg, engrams);
@@ -185,7 +180,7 @@ test("the bag, the hotbar and the crafting list show an item's picture where it 
   const learned = Array.from({ length: frame(true, true, 0, TAB_ENGRAMS).sheet.pages }, (_, page) => frame(true, true, page, TAB_ENGRAMS).frame);
   const shows = learned.find((f) => f.find(KEY_CHAR_ENGRAM_PICTURE + pickEngram) !== null)!.find(KEY_CHAR_ENGRAM_PICTURE + pickEngram)!;
   expect([shows.kind, shows.image, shows.sx, shows.sy]).toEqual([K_IMAGE, IMAGE_ICONS, 0, 0]);
-  expect(learned.flatMap((f) => f.nodes.slice(0, f.count)).filter((n) => n.kind === K_IMAGE && n.key >= KEY_CHAR_ENGRAM_PICTURE).length).toBe(1);
+  expect(learned.flatMap((f) => f.nodes.slice(0, f.count)).filter((n) => n.kind === K_IMAGE && n.key >= KEY_CHAR_ENGRAM_PICTURE && n.key < KEY_CHAR_ENGRAM_PICTURE + order.length).length).toBe(1);
 });
 
 test("the session bun run snap -- --ui draws the interface from builds the bag, the chat and every tab of the character sheet", () => {
@@ -206,4 +201,5 @@ test("the session bun run snap -- --ui draws the interface from builds the bag, 
   chat.chat.edit("on my way");
   chat.build(16 / 9, new HudModel(), session);
   expect(chat.frame.count).toBeGreaterThan(0);
+
 });

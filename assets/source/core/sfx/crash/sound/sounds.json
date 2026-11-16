@@ -1,0 +1,74 @@
+{
+  "sounds": {
+    "hit": {
+      "range": 200, "level": -8, "vary": 0.04,
+      "takes": [
+        {"file": "takes/hit/moss-pt-20400-04415.wav", "from": "moss", "start": 0.05, "end": 4.045},
+        {"file": "takes/hit/moss-pt-20402-00280.wav", "from": "moss", "start": 0.05, "end": 5.385},
+        {"file": "takes/hit/moss-pt-20400-00465.wav", "from": "moss", "start": 0.05, "end": 1.325}
+      ]
+    },
+    "tree": {
+      "range": 150, "level": -8, "vary": 0.04,
+      "takes": [
+        {"file": "takes/tree/moss-pt-20411-03475.wav", "from": "moss", "start": 0.05, "end": 3.815},
+        {"file": "takes/tree/moss-pt-20410-01985.wav", "from": "moss", "start": 0.05, "end": 4.163},
+        {"file": "takes/tree/moss-pt-20411-09165.wav", "from": "moss", "start": 0.05, "end": 0.225},
+        {"file": "takes/tree/moss-pt-20410-00620.wav", "from": "moss", "start": 0.05, "end": 0.795}
+      ]
+    },
+    "rollover": {
+      "range": 200, "level": -8, "vary": 0.04,
+      "takes": [
+        {"file": "takes/rollover/moss-pt-20421-00200.wav", "from": "moss", "start": 0.05, "end": 8.75}
+      ]
+    },
+    "glance": {
+      "range": 120, "level": -12, "vary": 0.04,
+      "takes": [
+        {"file": "takes/glance/moss-pt-20430-01310.wav", "from": "moss", "start": 0.05, "end": 4.45},
+        {"file": "takes/glance/moss-pt-20431-00870.wav", "from": "moss", "start": 0.05, "end": 2.57}
+      ]
+    },
+    "scrape": {
+      "range": 80, "level": -14, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/scrape/moss-pt-20440-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "crumple": {
+      "range": 100, "level": -12, "vary": 0.04,
+      "takes": [
+        {"file": "takes/crumple/moss-pt-20450-06550.wav", "from": "moss", "start": 0.05, "end": 0.72},
+        {"file": "takes/crumple/moss-pt-20450-05095.wav", "from": "moss", "start": 0.05, "end": 0.77}
+      ]
+    },
+    "bits": {
+      "range": 30, "level": -18, "vary": 0.04,
+      "takes": [
+        {"file": "takes/bits/moss-pt-20460-00200.wav", "from": "moss", "start": 0.05, "end": 5.75}
+      ]
+    },
+    "blowout": {
+      "range": 150, "level": -10, "vary": 0.04,
+      "takes": [
+        {"file": "takes/blowout/moss-pt-20470-07100.wav", "from": "moss", "start": 0.05, "end": 0.555},
+        {"file": "takes/blowout/moss-pt-20471-00160.wav", "from": "moss", "start": 0.05, "end": 1.42},
+        {"file": "takes/blowout/moss-pt-20470-03685.wav", "from": "moss", "start": 0.05, "end": 0.5},
+        {"file": "takes/blowout/moss-pt-20471-05910.wav", "from": "moss", "start": 0.05, "end": 1.52}
+      ]
+    },
+    "alarm": {
+      "range": 200, "level": -14, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/alarm/moss-pt-20480-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "pileup": {
+      "range": 300, "level": -8, "vary": 0.04,
+      "takes": [
+        {"file": "takes/pileup/moss-pt-20490-00200.wav", "from": "moss", "start": 0.05, "end": 8.75}
+      ]
+    }
+  }
+}

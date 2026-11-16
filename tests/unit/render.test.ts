@@ -283,9 +283,10 @@ test("a body with bones is drawn where its skeleton is, standing and running", (
   const seen = (): void => {
     const packet = view.render();
     for (const bone of [B_HEAD, B_UPPER_CHEST, B_HAND_L, B_HAND_R, B_FOOT_L, B_FOOT_R, B_LOWER_LEG_R]) {
+      // A hand is a few pixels across and its edge may pass by the centre's pixel, so that pixel or one beside it will do.
       const at = px(boneCentre(view, 0, bone));
-      expect(raster.pickKind[at]).toBe(PICK_ENTITY);
-      expect(raster.pickId[at]).toBe(101);
+      const hit = [0, -1, 1, -W * 2, W * 2].map((d) => at + d).find((k) => raster.pickKind[k] === PICK_ENTITY);
+      expect([bone, hit !== undefined && raster.pickId[hit]]).toEqual([bone, 101]);
     }
     // The chest shows skin in the plain look's tone, which is warm: its red against its blue is half again what a grey
     // standing in the same light, facing the camera, shows.

@@ -1,0 +1,320 @@
+{
+  "canvas": [
+    1280,
+    577
+  ],
+  "hour": 9,
+  "camera": [
+    256,
+    1.62,
+    240,
+    0,
+    0
+  ],
+  "creatureYaw": 3.9399337768554688,
+  "reference": "RGBA, same source/mips as the software renderer; no GPU readback used",
+  "before": {
+    "note": "Reproduction of the previous rigid entity draw, DRAW_PLAIN cleared",
+    "probes": [
+      {
+        "name": "sky",
+        "pixel": [
+          640,
+          17
+        ],
+        "expected": [
+          90,
+          146,
+          211
+        ],
+        "got": [
+          90,
+          146,
+          211
+        ],
+        "ok": true,
+        "pick": {
+          "kind": 0,
+          "id": 0,
+          "draw": -1,
+          "flags": null
+        }
+      },
+      {
+        "name": "plaza",
+        "pixel": [
+          640,
+          559
+        ],
+        "expected": [
+          126,
+          125,
+          122
+        ],
+        "got": [
+          126,
+          125,
+          122
+        ],
+        "ok": true,
+        "pick": {
+          "kind": 1,
+          "id": 0,
+          "draw": -1,
+          "flags": null
+        }
+      },
+      {
+        "name": "block",
+        "pixel": [
+          698,
+          300
+        ],
+        "expected": [
+          50,
+          55,
+          59
+        ],
+        "got": [
+          50,
+          55,
+          59
+        ],
+        "ok": true,
+        "pick": {
+          "kind": 2,
+          "id": 2293787,
+          "draw": 0,
+          "flags": 0
+        }
+      },
+      {
+        "name": "slope",
+        "pixel": [
+          816,
+          247
+        ],
+        "expected": [
+          66,
+          77,
+          45
+        ],
+        "got": [
+          66,
+          77,
+          45
+        ],
+        "ok": true,
+        "pick": {
+          "kind": 1,
+          "id": 0,
+          "draw": -1,
+          "flags": null
+        }
+      },
+      {
+        "name": "creature",
+        "pixel": [
+          551,
+          312
+        ],
+        "expected": [
+          117,
+          120,
+          60
+        ],
+        "got": [
+          98,
+          96,
+          65
+        ],
+        "ok": false,
+        "pick": {
+          "kind": 3,
+          "id": 102,
+          "draw": 287,
+          "flags": 0
+        }
+      },
+      {
+        "name": "body",
+        "pixel": [
+          787,
+          313
+        ],
+        "expected": [
+          108,
+          91,
+          79
+        ],
+        "got": [
+          108,
+          91,
+          78
+        ],
+        "ok": true,
+        "pick": {
+          "kind": 3,
+          "id": 101,
+          "draw": 293,
+          "flags": 6
+        }
+      }
+    ]
+  },
+  "after": {
+    "probes": [
+      {
+        "name": "sky",
+        "pixel": [
+          640,
+          17
+        ],
+        "expected": [
+          90,
+          146,
+          211
+        ],
+        "got": [
+          90,
+          146,
+          211
+        ],
+        "ok": true,
+        "pick": {
+          "kind": 0,
+          "id": 0,
+          "draw": -1,
+          "flags": null
+        }
+      },
+      {
+        "name": "plaza",
+        "pixel": [
+          640,
+          559
+        ],
+        "expected": [
+          126,
+          125,
+          122
+        ],
+        "got": [
+          126,
+          125,
+          122
+        ],
+        "ok": true,
+        "pick": {
+          "kind": 1,
+          "id": 0,
+          "draw": -1,
+          "flags": null
+        }
+      },
+      {
+        "name": "block",
+        "pixel": [
+          698,
+          300
+        ],
+        "expected": [
+          50,
+          55,
+          59
+        ],
+        "got": [
+          50,
+          55,
+          59
+        ],
+        "ok": true,
+        "pick": {
+          "kind": 2,
+          "id": 2293787,
+          "draw": 0,
+          "flags": 0
+        }
+      },
+      {
+        "name": "slope",
+        "pixel": [
+          816,
+          247
+        ],
+        "expected": [
+          66,
+          77,
+          45
+        ],
+        "got": [
+          66,
+          77,
+          45
+        ],
+        "ok": true,
+        "pick": {
+          "kind": 1,
+          "id": 0,
+          "draw": -1,
+          "flags": null
+        }
+      },
+      {
+        "name": "creature",
+        "pixel": [
+          551,
+          312
+        ],
+        "expected": [
+          183,
+          166,
+          63
+        ],
+        "got": [
+          175,
+          159,
+          60
+        ],
+        "ok": true,
+        "pick": {
+          "kind": 3,
+          "id": 102,
+          "draw": 287,
+          "flags": 4
+        }
+      },
+      {
+        "name": "body",
+        "pixel": [
+          787,
+          313
+        ],
+        "expected": [
+          108,
+          91,
+          79
+        ],
+        "got": [
+          108,
+          91,
+          78
+        ],
+        "ok": true,
+        "pick": {
+          "kind": 3,
+          "id": 101,
+          "draw": 293,
+          "flags": 6
+        }
+      }
+    ]
+  },
+  "creatureWithoutAtlas": [
+    175,
+    159,
+    60
+  ],
+  "draws": 296,
+  "triangles": 263795
+}

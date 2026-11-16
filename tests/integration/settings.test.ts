@@ -210,9 +210,7 @@ test("a folder is read from disk, any of its files missing; a server started on 
   // The save keeps the rules its timers were last computed under, so they can be retimed. Here that is the console's 80.
   expect(h.host.loadedUnder).toMatchObject({ EggHatchSpeedMultiplier: 80, BabyMatureSpeedMultiplier: 200, MatingIntervalMultiplier: 1 });
   h.host.shutdown();
-  // An older save stores three of them under their old names.
-  expect(timersOf(null, '{"hatchSpeed":50,"matureSpeed":300,"matingInterval":0.002,"playerDamage":1}')).toEqual({ EggHatchSpeedMultiplier: 50, BabyMatureSpeedMultiplier: 300, MatingIntervalMultiplier: 0.002 });
-  expect([timersOf(null, null), timersOf("not json", null), timersOf('{"timers":{"EggHatchSpeedMultiplier":4,"Bad":"x"}}', '{"hatchSpeed":50}')]).toEqual([null, null, { EggHatchSpeedMultiplier: 4 }]);
+  expect([timersOf(null), timersOf("not json"), timersOf('{"timers":{"EggHatchSpeedMultiplier":4,"Bad":"x"}}')]).toEqual([null, null, { EggHatchSpeedMultiplier: 4 }]);
 });
 
 test("ARK's single-player settings are its own fixed factors on top of what the files and the command line give; what is set afterwards is set outright", () => {

@@ -1,37 +1,26 @@
 import { expect, test } from "bun:test";
-import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
-import { Governor, JOIN_MS, ladder, middleMean } from "../../client/core/governor.ts";
+import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
+import { Governor, JOIN_MS, PHONE_MS, TARGET_MS, ladder, middleMean, workMs } from "../../client/core/governor.ts";
 import { HudModel } from "../../client/core/hud.ts";
-import { curve, leaves, phoneSoaks, run } from "../fixtures/frames.ts";
+import { levels, replay, sceneOf } from "../../tools/bench/governor.ts";
+import { phoneSoaks, run } from "../fixtures/frames.ts";
 
 /** Each step leaves this share of the GPU's time: a made-up card on which every step buys a little. */
 const leave = (level: number): number => 0.88 ** level;
-/**
- * The share of the GPU's time each of high's steps left of the level before on this Mac, in tools/bench/gpu.ts's base
- * scene at the iPhone's pixel ratio, frame by frame the least of three runs at a load of 5 to 17 (a step that measured
- * slower is taken as buying nothing). A louder run in this order gave 0.73 and 0.58 for the first two and nothing past.
- */
-const MAC_SHARES: Readonly<Record<string, number>> = {
-  "the farther cascade every other frame": 0.894,
-  "shadows to 60% as far": 0.704,
-  "85% of the pixels a side": 1,
-  "far trees, rocks and bushes to 70% as far": 0.99,
-  "one cascade fewer": 0.772,
-  "70% of the pixels a side": 0.937,
-  "no sun shadows": 1,
-};
 
-test("a tier's levels are its steps that change something, in the frame's order from its foot, and none touches the near nodes or the far bases", () => {
+test("a tier's levels are its steps that change something, levels and leaves first and the sun's shadows last, and none touches the near nodes or the far bases", () => {
   const names = (tier: string, dpr: number) => ladder(tierOf(tier), dpr).map((l) => l.name);
   const details = "small details: half the pool, of each burst and of the fill";
-  expect(names("high", 3)).toEqual(["the tier", "leaves: the frame's triangles to 75%", "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", "the farther cascade every other frame", "shadows to 60% as far", "one cascade fewer", "no sun shadows", "85% of the pixels a side", "70% of the pixels a side", details, "bodies a level coarser"]);
+  const levels = ["levels: half again the error", "levels: twice the error", "levels: three times the error"];
+  expect(names("high", 3)).toEqual(["the tier", levels[0], "leaves: the frame's triangles to 75%", "the farther cascade every other frame", levels[1], "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", levels[2], "one cascade fewer", "bodies a level coarser", "85% of the pixels a side", "70% of the pixels a side", details, "no sun shadows"]);
   // A screen of one device pixel a CSS pixel has no pixels to spare; low poly casts nothing.
   expect(names("medium", 1)).not.toContain("85% of the pixels a side");
-  expect(names("lowpoly", 1)).toEqual(["the tier", "leaves: the frame's triangles to 75%", "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", details, "bodies a level coarser"]);
-  expect(ladder(tierOf("medium"), 3).map((l) => [l.tier.budget.triangles, l.tier.details.pool, l.tier.bodyError])).toEqual([[2e6, 1536, 1], [1.5e6, 1536, 1], [1.5e6, 1536, 1], ...Array(7).fill([1e6, 1536, 1]), [1e6, 768, 1], [1e6, 768, 2]]);
+  expect(names("lowpoly", 1)).toEqual(["the tier", levels[0], "leaves: the frame's triangles to 75%", levels[1], "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", levels[2], "bodies a level coarser", details]);
+  const medium = ladder(tierOf("medium"), 3).map((l) => [l.tier.budget.triangles, Math.round(l.tier.threshold * 100) / 100, l.tier.shadows.cascades, l.tier.bodyError, l.tier.pixelRatio, l.tier.details.pool]);
+  expect(medium).toEqual([[2e6, 0.22, 2, 1, 1.5, 1536], [2e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.44, 2, 1, 1.5, 1536], [1.5e6, 0.44, 2, 1, 1.5, 1536], [1e6, 0.44, 2, 1, 1.5, 1536], [1e6, 0.66, 2, 1, 1.5, 1536], [1e6, 0.66, 1, 1, 1.5, 1536], [1e6, 0.66, 1, 2, 1.5, 1536], [1e6, 0.66, 1, 2, 1.27, 1536], [1e6, 0.66, 1, 2, 1.05, 1536], [1e6, 0.66, 1, 2, 1.05, 768], [1e6, 0.66, 0, 2, 1.05, 768]]);
   for (const t of TIERS) {
     for (const { tier } of ladder(t, 3)) {
-      expect([tier.nodes, tier.reach.bases, tier.split, tier.view, tier.texture, tier.name]).toEqual([t.nodes, t.reach.bases, t.split, t.view, t.texture, t.name]);
+      expect([tier.nodes, tier.reach.bases, tier.split, tier.view, tier.texture, tier.name, tier.shadows.distance, tier.shadows.size]).toEqual([t.nodes, t.reach.bases, t.split, t.view, t.texture, t.name, t.shadows.distance, t.shadows.size]);
       expect(tier.pixelRatio === t.pixelRatio || tier.pixelRatio >= 1).toBe(true);
     }
   }
@@ -39,22 +28,32 @@ test("a tier's levels are its steps that change something, in the frame's order 
   expect(ladder(tierOf("high"), 3)[3]!.tier).toBe(ladder(tierOf("high"), 3)[3]!.tier);
 });
 
+test("a frame's work counts what it casts into the sun's maps beside what it draws, at the iPhone's costs", () => {
+  expect(workMs(1e6, 0, 0, 0, 1024)).toBeCloseTo(6.5, 5);
+  // A triangle cast into the touch rule's 1,024 maps asks a quarter of what drawing it does, into a 2,048 one three fifths.
+  expect(workMs(0, 0, 1e6, 0, 1024) / workMs(1e6, 0, 0, 0, 1024)).toBeCloseTo(0.28, 2);
+  expect(workMs(0, 0, 1e6, 0, 2048) / workMs(1e6, 0, 0, 0, 1024)).toBeCloseTo(0.58, 2);
+  expect(workMs(0, 1024, 0, 1024, 1024)).toBeCloseTo(2048 * PHONE_MS.draw, 5);
+});
+
 test("the mean of the middle eight tenths is not moved by a hitch", () => {
   expect(middleMean([...Array(19).fill(16.7), 400])).toBeCloseTo(16.7, 5);
   expect(middleMean([...Array(10).fill(16.7), ...Array(10).fill(33.3)])).toBeCloseTo(25, 5);
 });
 
-test("the iPhone's kept soaks, replayed with what each step left on this Mac's GPU, end no slower than their first minute", () => {
+test("the iPhone's kept soaks, replayed with what each step leaves of the phone's GPU in the soak's own scene, hold 60 a second at minute 10 and never step back while the phone warms", () => {
   const soaks = phoneSoaks();
   expect(soaks.length).toBe(3);
-  for (const { points, tier } of soaks) {
-    const left = leaves(tier, 3, MAC_SHARES);
-    const { minutes, governor } = run(10, (t, level) => ({ gpu: curve(points)(t) * left[level]! }), { tier });
-    expect(minutes.at(-1)!.median).toBeLessThanOrEqual(Math.min(points[0]!, minutes[0]!.median) + 0.5);
-    for (const m of minutes.slice(1)) expect(m.median).toBeLessThan(17.8);
-    // It went down as the phone warmed, and never tried back up while it did.
-    expect(governor.steps.length).toBeGreaterThanOrEqual(2);
-    expect(governor.steps.filter((s) => s.why.startsWith("the try missed")).length).toBe(0);
+  for (const soak of soaks) {
+    const rows = levels(sceneOf(soak), forTouch(tierOf(soak.tier), true), 4);
+    const left = rows.map((r) => r.ms / rows[0]!.ms);
+    // Every level leaves less than the one before it, or the same where its step has nothing to take in the scene.
+    for (let l = 1; l < left.length; l++) expect(left[l]!).toBeLessThanOrEqual(left[l - 1]! + 0.005);
+    const { minutes, steps } = replay(soak, left);
+    expect(minutes[9]!.median, soak.name).toBeLessThanOrEqual(TARGET_MS + 0.5);
+    for (const m of minutes.slice(1)) expect(m.median, soak.name).toBeLessThan(17.8);
+    expect(steps.length).toBeGreaterThanOrEqual(2);
+    expect(steps.filter((s) => s.name.startsWith("back from")), soak.name).toEqual([]);
   }
 });
 
@@ -91,37 +90,35 @@ test("nothing counts in the first seconds after a join, or after a tier the play
 test("main-thread load is not the GPU's, and steps that buy nothing are undone", () => {
   // Our code takes 22 of 25 ms: no GPU step would help.
   expect(run(5, () => ({ gpu: 8, ours: 25 })).governor.steps).toEqual([]);
-  // A display held at 30 a second (an iPhone saving power): every frame 33 ms, the GPU idle. Not a reason to step.
-  expect(run(5, () => ({ gpu: 5, display: 1000 / 30 })).governor.steps).toEqual([]);
-  // Frames slowed by something no step touches, the GPU idle as far as our code can tell. A step buys nothing, so does
-  // the next, and both are undone and passed over; the governor rests 1, 2, 4 and 8 minutes, tries the steps not passed
-  // over, and ends at the tier. With no crowns near to give, the leaves steps (1 and 3) are passed by.
-  const { governor } = run(20, () => ({ gpu: 24 }));
+  // Frames slowed by something no step touches, and not paced by the display. A step buys nothing, so does the next,
+  // and both are undone and passed over; the governor rests 1, 2, 4 and 8 minutes, tries the steps not passed over, and
+  // ends at the tier. With no crowns near to give, the leaves steps (2 and 6) are passed by.
+  const { governor } = run(20, (t) => ({ gpu: 24 + 3 * Math.sin(t / 37) }));
   expect(governor.level).toBe(0);
   const rests = governor.steps.filter((s) => s.why.includes("not what is slow")).length;
   expect(rests).toBeLessThanOrEqual(5);
   expect(governor.steps.length).toBeLessThanOrEqual(rests * 3);
-  expect(governor.steps.filter((s) => s.why.endsWith("ms a frame")).map((s) => s.level)).toEqual([2, 5, 7, 9, 11]);
+  expect(governor.steps.filter((s) => s.why.endsWith("ms a frame")).map((s) => s.level)).toEqual([1, 4, 7, 9, 11]);
   // A step this card does not need is passed for the next, which it does.
-  const passed = run(2, (_, level) => ({ gpu: 20 * [1, 0.95, 0.95, 0.8][Math.min(level, 3)]!, crowns: 1e6 })).governor;
+  const passed = run(2, (_, level) => ({ gpu: 20 * [1, 0.95, 0.95, 0.8][Math.min(level, 3)]!, crowns: 1 })).governor;
   expect(passed.steps.map((s) => s.level)).toEqual([1, 2, 3]);
   expect(passed.steps[2]!.why).toBe("the step before took 19 ms to 19");
   // Two that buy nothing are undone and passed over, and the next miss goes to the step past them.
-  const over = run(3, (_, level) => ({ gpu: 22 * [1, 0.9, 0.9, 0.9, 0.7][Math.min(level, 4)]!, crowns: 1e6 })).governor;
+  const over = run(3, (_, level) => ({ gpu: 22 * [1, 0.9, 0.9, 0.9, 0.7][Math.min(level, 4)]!, crowns: 1 })).governor;
   expect(over.steps.map((s) => s.level)).toEqual([1, 2, 3, 1, 4]);
 });
 
-test("leaves go first where crowns near can give, and are passed by where they cannot", () => {
-  // A wood: crowns near take a third of the frame, and the first step buys enough.
-  const wood = run(3, (_, level) => ({ gpu: 19 * leave(level), work: 3e6, crowns: 1e6 })).governor;
-  expect(wood.steps.map((s) => s.name)).toEqual(["leaves: the frame's triangles to 75%"]);
-  // A base with no trees: the first step taken is the far trees', then the shadows'.
-  const base = run(3, (_, level) => ({ gpu: 24 * leave(level), work: 3e6 })).governor;
-  expect(base.steps.map((s) => s.name).slice(0, 2)).toEqual(["far trees, rocks and bushes to 70% as far", "the farther cascade every other frame"]);
+test("leaves give where crowns near can, and are passed by where they cannot", () => {
+  // A wood: crowns near take a third of the frame. Levels give first, then leaves.
+  const wood = run(3, (_, level) => ({ gpu: 21 * leave(level), work: 20, crowns: 7 })).governor;
+  expect(wood.steps.map((s) => s.name)).toEqual(["levels: half again the error", "leaves: the frame's triangles to 75%"]);
+  // A base with no trees: from levels to the farther cascade, the leaves' step passed by.
+  const base = run(3, (_, level) => ({ gpu: 21 * leave(level), work: 20 })).governor;
+  expect(base.steps.map((s) => s.name)).toEqual(["levels: half again the error", "the farther cascade every other frame"]);
 });
 
 test("a scene too heavy for good goes to the last step and stays there, trying the level above rarely", () => {
-  const { minutes, governor } = run(40, (_, level) => ({ gpu: 75 * leave(level) }));
+  const { minutes, governor } = run(40, (_, level) => ({ gpu: 95 * leave(level) }));
   expect(minutes.at(-1)!.level).toBe(ladder(tierOf("high"), 3).length - 1);
   const tries = governor.steps.filter((s) => s.why.includes("with no missed frame")).length;
   expect(tries).toBeLessThanOrEqual(5);
@@ -131,24 +128,42 @@ test("a scene too heavy for good goes to the last step and stays there, trying t
 
 test("a scene that lightens is drawn at its tier again, and one that lightens and comes back does not flap", () => {
   // Heavy for two minutes, then a fifth of the work and of the GPU's time.
-  const { minutes } = run(10, (t, level) => (t < 120000 ? { gpu: 26 * leave(level), work: 3e6 } : { gpu: 6 * leave(level), work: 6e5 }));
+  const { minutes } = run(10, (t, level) => (t < 120000 ? { gpu: 26 * leave(level), work: 20 } : { gpu: 6 * leave(level), work: 4 }));
   expect(minutes[1]!.most).toBeGreaterThan(1);
   expect(minutes.at(-1)!.level).toBe(0);
-  // A camera that turns from a heavy base to the sea and back every 20 s for twenty minutes.
-  const turning = run(12, (t, level) => (Math.floor(t / 20000) % 2 === 0 ? { gpu: 24 * leave(level), work: 3e6 } : { gpu: 9 * leave(level), work: 6e5 }));
+  // A camera that turns from a heavy base to the sea and back every 20 s for twelve minutes.
+  const turning = run(12, (t, level) => (Math.floor(t / 20000) % 2 === 0 ? { gpu: 24 * leave(level), work: 20 } : { gpu: 9 * leave(level), work: 4 }));
   const tries = turning.governor.steps.filter((s) => s.level < (turning.governor.steps[turning.governor.steps.indexOf(s) - 1]?.level ?? 0)).length;
   expect(tries).toBeLessThanOrEqual(8);
 });
 
-test("where the GPU is timed, a desktop whose frames come in whole display intervals steps only when the GPU is full", () => {
-  // The GPU takes 12 ms but frames come at 16.7 and 33.3 by turns, as a busy compositor may give them.
-  const idle = run(5, (t) => ({ gpu: 12, timed: true, display: Math.floor(t / 16.7) % 2 ? 1000 / 30 : 1000 / 60 }), { quantized: true });
-  expect(idle.governor.steps).toEqual([]);
-  // A GPU at 22 ms is stepped down until it fits, and the step up is tried only where the steps say it would fit.
-  const full = run(10, (_, level) => ({ gpu: 22 * leave(level), timed: true }), { quantized: true });
-  expect(full.governor.level).toBeGreaterThan(0);
-  expect(full.minutes.at(-1)!.median).toBeLessThan(17.2);
-  expect(full.governor.steps.filter((s) => s.why.startsWith("the try missed")).length).toBe(0);
+test("with no GPU timer and a display that shows only whole intervals, a GPU at 22 ms that reads as a steady 33.3 is stepped down until frames come at 16.7, and a try back up that finds 33.3 again is undone", () => {
+  const { minutes, governor } = run(30, (_, level) => ({ gpu: 22 * leave(level) }), { quantized: true });
+  expect(governor.steps[0]!.why).toBe("33 ms a frame, 2 display intervals");
+  expect(governor.level).toBeGreaterThan(0);
+  for (const m of minutes.slice(2)) expect(m.median).toBeLessThan(17.2);
+  const tries = governor.steps.filter((s) => s.why.includes("with no missed frame"));
+  expect(tries.length).toBeGreaterThan(0);
+  expect(governor.steps.filter((s) => s.why.startsWith("the try missed")).length).toBe(tries.length);
+  expect(governor.paced).toBe(0);
+});
+
+test("a display at half rate, saving power, is told from a slow GPU by stepping once through the ladder, which moves nothing: the tier comes back and is kept", () => {
+  for (const quantized of [true, false]) {
+    const { minutes, governor } = run(20, () => ({ gpu: 5, display: 1000 / 30 }), { quantized });
+    // Every level but the leaves', passed by with no crowns near to give, and then back to the tier.
+    const every = ladder(tierOf("high"), 3).flatMap((l, k) => (k > 0 && !l.leaves ? [k] : []));
+    expect(governor.steps.map((s) => s.level)).toEqual([...every, 0]);
+    expect(governor.steps.at(-1)!.why).toBe("frames stayed at 33 ms at every level: the display's rate");
+    expect([governor.level, Math.round(governor.paced)]).toEqual([0, 33]);
+    expect(minutes.at(-1)!.level).toBe(0);
+    expect(minutes.slice(2).every((m) => m.most === 0)).toBe(true);
+  }
+  // Shown faster again, as when the phone leaves its power saving, it is a 60 a second display once more, and a GPU that
+  // then falls behind it is stepped down.
+  const back = run(12, (t, level) => (t < 300000 ? { gpu: 5, display: 1000 / 30 } : { gpu: (t < 420000 ? 5 : 22) * leave(level) })).governor;
+  expect(back.paced).toBe(0);
+  expect(back.level).toBeGreaterThan(0);
 });
 
 test("the frame numbers say what the governor did", () => {

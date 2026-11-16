@@ -1,0 +1,7 @@
+Repainted all four layers: dark crimson blood, concentrated membrane tears and punctures, and elongated, ragged fuzz wounds. Reviewed every stage in all three dyes at close range, 20 m, and 60 m.
+
+Rebuilds are byte-identical; overlap is zero; unhurt views are unchanged.
+
+512 storage works, but the current setting affects both materials. Production remains at 256. Mirroring and weak contrast beneath the black dye remain documented limits.
+
+[Updated report and review sheets](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/layers/REPORT.md)

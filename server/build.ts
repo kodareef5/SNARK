@@ -50,8 +50,8 @@ export interface BuildContext {
   readonly tribes: Tribes;
   readonly rules: Rules;
   readonly fixtures: Fixtures;
-  /** A public moored-landmark sail control; it has no lock, container or door behavior. */
-  sails?(c: Client, ref: number): number;
+  /** Throws the moving static at a ref (server/motion.ts). Returns a RESULT code. */
+  motion(ref: number): number;
   /** Lights the fire at a ref, or puts it out. Returns a RESULT code. */
   light(ref: number): number;
   /** Names the bed at a ref, or travels from it (STRUCT_NAME, STRUCT_TRAVEL; server/beds.ts). Returns a RESULT code. */
@@ -315,10 +315,14 @@ export class Build {
     if (!t || slot >= t.high || t.kind[slot] === 0) return -1;
     const kind = t.kind[slot]!;
     const opens = reg.opens[kind]!;
-    if (reg.sails[kind]) return this.ctx.sails?.(c, ref) ?? RESULT_INVALID;
-    if (opens === 0 && reg.structSlots[kind] === 0) return -1;
+    if (opens === 0 && reg.structSlots[kind] === 0 && !reg.motion[kind]) return -1;
     const rec = records.byPid.get(c.pid);
     if (!rec || c.state !== SESSION_ALIVE || c.ent < 0 || rec.out) return RESULT_DENIED;
+    if (reg.motion[kind]) {
+      const done = this.ctx.motion(ref);
+      if (done === RESULT_OK) this.used++;
+      return done;
+    }
     const state = fixtures.find(ref);
     // The owning tribe may always use it. Others may only if it is unlocked or they give its PIN.
     const byPin = !tribes.may(rec, t.owner[slot]!) && fixtures.locked(ref);
@@ -705,18 +709,18 @@ export class Build {
         if (cx + ox < 0 || cz + oz < 0 || cx + ox >= dims.chunksX || cz + oz >= dims.chunksZ) continue;
         for (let i = ents.chunkHead[(cz + oz) * dims.chunksX + cx + ox]!; i >= 0; i = ents.next[i]!) {
           if ((ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
-          const k = ents.kind[i]!, car = reg.vehicle[k];
+          const k = ents.kind[i]!, car = reg.vehicle[k], v = ents.vrow[i]!;
           // A vehicle is its whole hull, nose to boot, not a body of its half width.
           if (car && (isRotorVehicle(car) || isBoatVehicle(car))) {
             const frame = {
-              x: ents.x[i]!, y: ents.y[i]!, z: ents.z[i]!, yaw: ents.vehicleYaw[i]!, pitch: ents.vehiclePitch[i]!, roll: ents.vehicleRoll[i]!,
-              qx: ents.vehicleQx[i]!, qy: ents.vehicleQy[i]!, qz: ents.vehicleQz[i]!, qw: ents.vehicleQw[i]!, steering: ents.steering[i]!,
+              x: ents.x[i]!, y: ents.y[i]!, z: ents.z[i]!, yaw: ents.vehicleYaw[v]!, pitch: ents.vehiclePitch[v]!, roll: ents.vehicleRoll[v]!,
+              qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!, steering: ents.steering[v]!,
             };
             if (isBoatVehicle(car) ? boatMeetsKind(reg.parts, kind, x, y, z, yaw, car, frame, BODY_SLACK)
               : helicopterMeetsKind(reg.parts, kind, x, y, z, yaw, car, frame, BODY_SLACK)) return true;
             continue;
           }
-          if (car ? vehicleMeetsKind(reg.parts, kind, x, y, z, yaw, car.spec, ents.x[i]!, ents.y[i]!, ents.z[i]!, ents.vehicleYaw[i]!, BODY_SLACK) : capsuleKind(reg.parts, kind, x, y, z, yaw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, BODY_SLACK)) return true;
+          if (car ? vehicleMeetsKind(reg.parts, kind, x, y, z, yaw, car.spec, ents.x[i]!, ents.y[i]!, ents.z[i]!, ents.vehicleYaw[v]!, BODY_SLACK) : capsuleKind(reg.parts, kind, x, y, z, yaw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, BODY_SLACK)) return true;
         }
       }
     }

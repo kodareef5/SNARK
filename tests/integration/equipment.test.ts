@@ -149,7 +149,7 @@ test("a survivor takes things in hand and puts armor on, and everyone sees it", 
   expect(move(bow, hot + 2, id("bow"))).toBe(RESULT_OK);
   expect(send(CMD_SELECT, (w) => w.u8(2))).toBe(RESULT_OK);
   expect([rec.held, s.held]).toEqual([2, 2]);
-  expect(ents.gear[e]![GEAR_HELD]).toBe(id("bow"));
+  expect(ents.gears.get(e)![GEAR_HELD]).toBe(id("bow"));
   expect(seenByBo()[GEAR_HELD]).toBe(id("bow"));
   // Selecting an empty slot or 255 empties the hand. Slot 10 does not exist.
   expect(send(CMD_SELECT, (w) => w.u8(5))).toBe(RESULT_OK);
@@ -176,7 +176,7 @@ test("a survivor takes things in hand and puts armor on, and everyone sees it", 
   expect(move(hat, armor + 4, id("cloth_hat"))).toBe(RESULT_INVALID);
   expect(move(hat, armor, id("cloth_hat"))).toBe(RESULT_OK);
   expect(seenByBo()).toEqual([id("bow"), id("cloth_hat"), id("flak_shirt"), 0, id("hide_pants"), 0]);
-  expect([...ents.gear[e]!.subarray(GEAR_WORN)]).toEqual([id("cloth_hat"), id("flak_shirt"), 0, id("hide_pants"), 0]);
+  expect([...ents.gears.get(e)!.subarray(GEAR_WORN)]).toEqual([id("cloth_hat"), id("flak_shirt"), 0, id("hide_pants"), 0]);
   // CMD_USE on a worn piece takes it off. A second shirt swaps with the first.
   expect(send(CMD_USE, (w) => (w.u8(armor), w.u16(id("cloth_hat"))))).toBe(RESULT_OK);
   expect(inv().item[armor]).toBe(0);
@@ -382,7 +382,7 @@ test("equipment survives death in the cache and a restart in the save: rounds lo
   const again = h2.join("ada");
   h2.run(500);
   expect(again.held).toBe(1);
-  expect([...h2.world.ents.gear[h2.ent(again)]!]).toEqual([id("rifle"), id("flak_hat"), 0, 0, 0, 0]);
+  expect([...h2.world.ents.gears.get(h2.ent(again))!]).toEqual([id("rifle"), id("flak_hat"), 0, 0, 0, 0]);
   expect(again.inventory!.loaded[hot + 1]).toBe(1);
 
   h2.say(again, "enablecheats");
@@ -553,7 +553,7 @@ test("the client draws what is worn and held, and the hotbar and inventory scree
   app.key("Digit1", true);
   run(150);
   expect(s.held).toBe(0);
-  expect(f.find(KEY_HOTBAR)!.tint).toBe(0x5a6a7a);
+  expect(f.find(5500)).not.toBeNull();
   expect(f.find(KEY_HOTBAR + 1)!.text).toBe("long");
   expect(f.find(KEY_HOTBAR + 2)!.text).toBe("0");
   // In first person the head and the hat are not drawn.

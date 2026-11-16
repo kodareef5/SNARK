@@ -71,7 +71,7 @@ export async function main(args: readonly string[], say: (line: string) => void 
     } else file = new Uint8Array(readFileSync(asset.file));
 
     const pack = parsePack(file);
-    const report = checkAsset(asset, pack, !only || has("check"));
+    const report = checkAsset(asset, pack, !only || has("check"), found);
     report.faults.unshift(...faults);
     if (!only || has("check")) say(reportLines(report).join("\n"));
     if (!only || has("sheet")) sheet(asset, pack, report, outDir, say);

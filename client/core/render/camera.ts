@@ -96,6 +96,16 @@ export class Camera {
     return true;
   }
 
+  /** Whether a camera-relative box is wholly in view. */
+  boxInside(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): boolean {
+    const p = this.planes;
+    for (let i = 0; i < 24; i += 4) {
+      const a = p[i]!, b = p[i + 1]!, c = p[i + 2]!;
+      if (a * (a >= 0 ? minX : maxX) + b * (b >= 0 ? minY : maxY) + c * (c >= 0 ? minZ : maxZ) + p[i + 3]! < 0) return false;
+    }
+    return true;
+  }
+
   /** The depth ranges, a bit each by PASS_, that something from view depth `from` to `to` is drawn in. With no split, the near one. */
   passesOf(from: number, to: number): number {
     if (this.split <= 0) return 1 << PASS_NEAR;

@@ -1,0 +1,679 @@
+{
+  "takes": {
+    "takes/engine/idle/moss-pt-9600-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/idle",
+      "prompt_id": "v3-9600",
+      "prompt": "A powerful speedboat's big V8 inboard engine idles at the dock: a deep lumpy rumbling burble through wet exhausts with water gurgling, constant. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9600,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9600.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A powerful speedboat's big V8 inboard engine idles at the dock: a deep lumpy rumbling burble through wet exhausts with water gurgling, constant. Recorded from just outside, steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "75dcb9ca835924d4b8b3c6ae1f06ab7b446f46fc465d53d5d0b844a2542284d6",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "ebb47a6a5f8b6e1f458de8874bb00cd82239674b41aaf9d87c5599fbba390af0",
+      "cut": {
+        "source_file": "moss-pt-9600.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/low/moss-pt-9612-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/low",
+      "prompt_id": "v3-9610",
+      "prompt": "A powerful speedboat cruises slowly: a deep throaty V8 rumble with water gurgling at the exhaust, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9612,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9612.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A powerful speedboat cruises slowly: a deep throaty V8 rumble with water gurgling at the exhaust, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "9134bff3cefe804905e67575bdc0f0c6ce267cdcd1a41a29f7ec502ae4f45aed",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "eda82a501521d2f42df223013e1ec040de62783befec7451e8c73271ac897090",
+      "cut": {
+        "source_file": "moss-pt-9612.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/mid/moss-pt-9620-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/mid",
+      "prompt_id": "v3-9620",
+      "prompt": "A powerful speedboat runs at speed: a loud deep V8 roar and rushing water, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9620,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9620.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A powerful speedboat runs at speed: a loud deep V8 roar and rushing water, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "923aa0e69b6c32a557d35765cfd72a9b41e958e4c979ae92a8a6a3f9cd78f673",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "41fc619793d4f10e0dac62831d279f6658dd5d5e31c673e5c654134262917b9c",
+      "cut": {
+        "source_file": "moss-pt-9620.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/high/moss-pt-9631-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/high",
+      "prompt_id": "v3-9630",
+      "prompt": "A powerful speedboat runs flat out: a thunderous howling V8 roar with water hissing past, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9631,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9631.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A powerful speedboat runs flat out: a thunderous howling V8 roar with water hissing past, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "36b1fa5174bce285de7caef8a2785684c3d75f6d3d202009b8a54074106f67b8",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "7b290737510ea8424516af25e2825ed8883b5931cf31f1b799c382d1f3e105e5",
+      "cut": {
+        "source_file": "moss-pt-9631.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/start/moss-pt-9641-01820.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/start",
+      "prompt_id": "v3-9640",
+      "prompt": "A speedboat's big V8 engine is started: the starter cranks, the engine fires with a loud rumbling bark and settles into a lumpy burbling idle, two separate starts with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9641,
+      "seconds": 10,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9641.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A speedboat's big V8 engine is started: the starter cranks, the engine fires with a loud rumbling bark and settles into a lumpy burbling idle, two separate starts with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 10.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "96219d55506b6ded5c730b6137644564518c1711a8de00f96912c4991d65c687",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "89b0227dd0e8a6e0a478db9a701c1ce4f7959eff49aa8f342240148770403907",
+      "cut": {
+        "source_file": "moss-pt-9641.wav",
+        "source_frames": 480000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          84960,
+          480000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/engine/start/moss-pt-9640-01890.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/start",
+      "prompt_id": "v3-9640",
+      "prompt": "A speedboat's big V8 engine is started: the starter cranks, the engine fires with a loud rumbling bark and settles into a lumpy burbling idle, two separate starts with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9640,
+      "seconds": 10,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9640.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A speedboat's big V8 engine is started: the starter cranks, the engine fires with a loud rumbling bark and settles into a lumpy burbling idle, two separate starts with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 10.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "09801448082ad07f7b73289212223ff95c24883a6ecb8b286dd1a5b35442154c",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "ece6b1efcf08512f5e1e5b8462835307d7797daa1d4a2695861edec2747f8d5e",
+      "cut": {
+        "source_file": "moss-pt-9640.wav",
+        "source_frames": 480000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          88320,
+          480000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hull/fast/moss-pt-9660-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hull/fast",
+      "prompt_id": "v3-9660",
+      "prompt": "A speedboat planes fast over the sea: a roaring rush of water and hissing spray against the hull with wind, steady. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9660,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9660.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A speedboat planes fast over the sea: a roaring rush of water and hissing spray against the hull with wind, steady. Close-miked, dry, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f1a7f6b5a92787ddb7d1b518b13d7afb157a8bf6bb9e47b8a66a9ea6655ad125",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "eba81a02ffa7a5e3d3dee607a0c29e84a88998e9be04ec17a3fc67cabbe61679",
+      "cut": {
+        "source_file": "moss-pt-9660.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/slam/moss-pt-9670-05995.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "slam",
+      "prompt_id": "v3-9670",
+      "prompt": "A speedboat at speed jumps a wave and slams down hard: a loud hollow bang of the hull and a heavy burst of spray, four separate slams with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9670,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9670.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A speedboat at speed jumps a wave and slams down hard: a loud hollow bang of the hull and a heavy burst of spray, four separate slams with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "fdefcfed025f706b3a24fb558b260c2b49eec5fb334a1632b0d92dd17686d239",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "8cf51a2408d18852379ce5f1db4dab2518ae47b1a24ac45c6f62c3cf26d939e9",
+      "cut": {
+        "source_file": "moss-pt-9670.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          285360,
+          373920
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/slam/moss-pt-9670-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "slam",
+      "prompt_id": "v3-9670",
+      "prompt": "A speedboat at speed jumps a wave and slams down hard: a loud hollow bang of the hull and a heavy burst of spray, four separate slams with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9670,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9670.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A speedboat at speed jumps a wave and slams down hard: a loud hollow bang of the hull and a heavy burst of spray, four separate slams with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "680019ad0ba6d5be1458a1fc0891899a2a6faebe15cc64a3bcb5a3cf12af0fff",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "8cf51a2408d18852379ce5f1db4dab2518ae47b1a24ac45c6f62c3cf26d939e9",
+      "cut": {
+        "source_file": "moss-pt-9670.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          59040
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    }
+  }
+}

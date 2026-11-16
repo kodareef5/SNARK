@@ -21,8 +21,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "A woolly mammoth rumbles a deep low rumble and a soft trunk trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6850",
+          "models": [
+            "moss"
+          ],
+          "seed": 6850,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woolly mammoth rumbles a deep low rumble and a soft trunk trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "startled": {
       "kind": "voice",
@@ -41,8 +53,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A mammoth trumpets a loud blaring alarm through its trunk, three separate trumpets with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6860",
+          "models": [
+            "moss"
+          ],
+          "seed": 6860,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A mammoth trumpets a loud blaring alarm through its trunk, three separate trumpets with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "hurt": {
       "kind": "voice",
@@ -61,8 +85,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A mammoth trumpets and bellows in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6880",
+          "models": [
+            "moss"
+          ],
+          "seed": 6880,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A mammoth trumpets and bellows in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "death": {
       "kind": "voice",
@@ -101,8 +137,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A mammoth swings its tusks and trumpets angrily with a heavy impact, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6870",
+          "models": [
+            "moss"
+          ],
+          "seed": 6870,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A mammoth swings its tusks and trumpets angrily with a heavy impact, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "step": {
       "kind": "step",
@@ -121,8 +169,62 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "Huge heavy footsteps of a giant four-legged animal: deep booming thuds, slow and well spaced. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6890",
+          "models": [
+            "moss"
+          ],
+          "seed": 6890,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Huge heavy footsteps of a giant four-legged animal: deep booming thuds, slow and well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
+    },
+    "chase": {
+      "kind": "voice",
+      "range": 120,
+      "level": -16,
+      "vary": 0.6,
+      "want": "barks, calls and hisses while chasing",
+      "prompts": [
+        {
+          "id": "v2-6900",
+          "models": [
+            "moss"
+          ],
+          "seed": 6900,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woolly mammoth charges: thundering steps, an angry trumpet and heavy snorts, three separate charges with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 8
+    },
+    "growl": {
+      "kind": "voice",
+      "range": 72,
+      "level": -18,
+      "vary": 0.5,
+      "want": "a warning growl, aggressive and near",
+      "prompts": [
+        {
+          "id": "v2-6910",
+          "models": [
+            "moss"
+          ],
+          "seed": 6910,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A woolly mammoth rumbles a deep warning growl through its trunk, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
     }
   }
 }

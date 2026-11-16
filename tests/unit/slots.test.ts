@@ -17,9 +17,10 @@ test("every asset the core content must have is in the pack, its own or the one 
   const must = uses.filter((u) => u.need === "must");
   expect(must.length).toBeGreaterThan(120);
   expect(must.filter((u) => fillSlot(u, has).id === "").map(slotAddress)).toEqual([]);
-  // The practice dummy has no body of its own. The mannequin stands in, part for part.
+  // The practice dummy has no body of its own. The mannequin stands in, part for part. The pteranodon has no run on the
+  // ground (ARK's speed table), and walks at every speed on foot.
   const stood = must.filter((u) => fillSlot(u, has).id !== u.id);
-  expect(stood.every((u) => u.owner === "core:dummy")).toBe(true);
+  expect(stood.filter((u) => u.owner !== "core:dummy").map(slotAddress)).toEqual(["core:pteranodon#clip/run"]);
   expect(fillSlot(at("core:dummy#body/f/torso")!, has)).toEqual({ id: "core:mannequin/torso", word: "" });
   expect(new Set(uses.map(slotAddress)).size).toBe(uses.length);
 });

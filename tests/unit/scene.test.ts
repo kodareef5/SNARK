@@ -4,6 +4,7 @@ import { expect, test } from "bun:test";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import type { AssetRequest } from "../../client/core/assets/port.ts";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, SIZE_REGION, TRANSIENT_BUFFER, stepOf, type FramePacket } from "../../client/core/render/packet.ts";
+import { drawProgram } from "../../client/core/render/programs.ts";
 import type { Cutouts, OwnBody } from "../../client/core/render/scene.ts";
 import { Falling } from "../../client/core/rubble.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
@@ -30,9 +31,20 @@ const BODY = DRAW_SKINNED | DRAW_PLAIN;
 /** Yaw, in a structure's units, of a piece that faces the camera. */
 const FACING = 32768;
 
-/** What a frame draws of a mesh, a row a draw: its level, flags and instances, and for a draw with a material that and its run of indices. */
+/**
+ * What a frame draws of a mesh, a row a draw: its level, flags and instances, and for a draw with a material that and its
+ * run of indices. The rows are in `rows` order, as a step's draws come by what they bind (scene.ts order).
+ */
 function drawn(w: World, p: FramePacket, id: string): number[][] {
-  return w.draws(p, id).map((d) => [p.drawLod[d]!, p.drawFlags[d]!, p.drawInstances[d]!, ...((p.drawFlags[d]! & DRAW_TEXTURED) === 0 ? [] : [p.drawMaterial[d]!, p.drawFirstIndex[d]!, p.drawIndexCount[d]!])]);
+  return rows(w.draws(p, id).map((d) => [p.drawLod[d]!, p.drawFlags[d]!, p.drawInstances[d]!, ...((p.drawFlags[d]! & DRAW_TEXTURED) === 0 ? [] : [p.drawMaterial[d]!, p.drawFirstIndex[d]!, p.drawIndexCount[d]!])]));
+}
+
+/** Rows of numbers in order, by their first number, then their second, and so on. */
+function rows(r: number[][]): number[][] {
+  return r.sort((a, b) => {
+    for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i]! - b[i]!;
+    return a.length - b.length;
+  });
 }
 
 const textured = (p: FramePacket, d: number): boolean => (p.drawFlags[d]! & DRAW_TEXTURED) !== 0;
@@ -91,7 +103,7 @@ test("a scene streamed over a slow, lossy link draws with no material the card l
   let p = slow.frame();
   expect([p.drawCount, p.skipped, p.texUploads.length]).toEqual([18, 0, 0]);
   for (let d = 0; d < p.drawCount; d++) expect(textured(p, d)).toBe(false);
-  expect(drawn(slow, p, TUBE)).toEqual([[1, 0, 1], [1, BODY, 1], [1, 0, 1]]);
+  expect(drawn(slow, p, TUBE)).toEqual(rows([[1, 0, 1], [1, BODY, 1], [1, 0, 1]]));
   const before = slow.raster.color.slice();
   expect(before).not.toEqual(whole.raster.color);
 
@@ -122,15 +134,15 @@ test("a scene streamed over a slow, lossy link draws with no material the card l
   // materials, their cut-out lattices after every opaque draw. The one about to be built is see-through, and flat.
   const planks = (pieces: number, flags = 0): number[] => [0, flags | DRAW_TEXTURED, pieces, plank, 0, 3];
   const lattices = (pieces: number, flags = 0): number[] => [0, flags | DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT, pieces, lattice, 3, 3];
-  expect(drawn(slow, p, PANEL)).toEqual([planks(3), planks(1, BODY), planks(1), lattices(3), lattices(1, BODY), lattices(1), [0, DRAW_BLEND, 1]]);
+  expect(drawn(slow, p, PANEL)).toEqual(rows([planks(3), planks(1, BODY), planks(1), lattices(3), lattices(1, BODY), lattices(1), [0, DRAW_BLEND, 1]]));
   // The post is the tube on no bones and the creature is the tube on its own, both now at its finest level. The loose
   // thing is far enough off for the second.
   const tube = (flags: number, level = 0): number[][] => [[level, flags | DRAW_TEXTURED, 1, hide, 0, 1152 >> (level * 2)], [level, flags | DRAW_TEXTURED | DRAW_TWO_SIDED, 1, horn, 1152 >> (level * 2), 384 >> (level * 2)]];
-  expect(drawn(slow, p, TUBE)).toEqual([...tube(0), ...tube(BODY), ...tube(0, 1)]);
+  expect(drawn(slow, p, TUBE)).toEqual(rows([...tube(0), ...tube(BODY), ...tube(0, 1)]));
   // What is held hangs on the hand's bone as it did, and the viewer's own is drawn last, over everything. The bodies
   // they hang on have no materials, and are drawn flat.
-  expect(drawn(slow, p, CLUB)).toEqual([[0, BODY | DRAW_TEXTURED, 1, wood, 0, 36], [0, BODY | DRAW_NEAR | DRAW_TEXTURED, 1, wood, 0, 36]]);
-  expect(drawn(slow, p, "core:mannequin/torso")).toEqual([[0, BODY, 1], [0, BODY | DRAW_NEAR, 1]]);
+  expect(drawn(slow, p, CLUB)).toEqual(rows([[0, BODY | DRAW_TEXTURED, 1, wood, 0, 36], [0, BODY | DRAW_NEAR | DRAW_TEXTURED, 1, wood, 0, 36]]));
+  expect(drawn(slow, p, "core:mannequin/torso")).toEqual(rows([[0, BODY, 1], [0, BODY | DRAW_NEAR, 1]]));
   expect(textured(p, p.drawCount - 1)).toBe(true);
   expect(slow.raster.color).toEqual(whole.raster.color);
   expect(slow.raster.color).not.toEqual(before);
@@ -168,6 +180,49 @@ test("a step's cut-out draws come after all its opaque ones; as they were made, 
   const none = shot("none");
   expect(none.draws.map((d) => d.what).sort()).toEqual(made.draws.filter((d) => !d.cut).map((d) => d.what).sort());
   expect(none.picture).not.toEqual(made.picture);
+});
+
+test("an opaque step's draws come by what they bind, a program, a material and a level at a time, so neighbours change less than as made; see-through draws keep their order, and the picture is the same", () => {
+  // Panels in two chunks, each a plank and a cut-out lattice, tubes and posts among them, each a hide and a horn, and a
+  // see-through panel about to be built.
+  const w = sceneWorld();
+  for (let i = 0; i < 12; i++) w.structs.add(w.kind(PANEL), 26 + (i % 6) * 2.5, 0, i < 6 ? 30 : 70, FACING, 0, 1);
+  for (let i = 0; i < 6; i++) w.place(i % 2 ? TUBE : POST, 27 + i * 2, 25 + (i % 3), { colors: [8, 7, 14, 6], yaw: Math.PI / 2 });
+  Object.assign(w.scene.ghost, { kind: w.kind(PANEL), x: 31, y: 0, z: 27, yaw: FACING, color: 9 });
+  for (let f = 0; f < 8; f++) w.frame();
+  const materials = w.manifest.materials!;
+  const shot = (cutouts: Cutouts) => {
+    w.scene.cutouts = cutouts;
+    const p = w.frame();
+    const draws = Array.from({ length: p.drawCount }, (_, d) => ({
+      step: stepOf(p, d),
+      cut: (p.drawFlags[d]! & DRAW_CUTOUT) !== 0,
+      see: (p.drawFlags[d]! & DRAW_BLEND) !== 0,
+      state: [drawProgram(p, d, materials[p.drawMaterial[d]!]), textured(p, d) ? p.drawMaterial[d] : -1, p.drawSlot[d]].join(),
+      what: [p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawFlags[d], p.drawMaterial[d], p.drawPass[d]].join(),
+    }));
+    return { draws, picture: w.raster.color.slice() };
+  };
+  /** Programs, materials and levels changed from one draw to the next, and the instances a level is drawn from. */
+  const changes = (draws: { state: string; what: string }[]): number => {
+    const from = new Map<string, string>();
+    let n = 0;
+    draws.forEach((d, i) => {
+      const [program, material, slot] = d.state.split(","), [, buffer, first] = d.what.split(",");
+      const was = i > 0 ? draws[i - 1]!.state.split(",") : [];
+      n += Number(program !== was[0]) + Number(material !== "-1" && material !== was[1]) + Number(slot !== was[2]) + Number(from.get(slot!) !== `${buffer} ${first}`);
+      from.set(slot!, `${buffer} ${first}`);
+    });
+    return n;
+  };
+  const [made, last] = [shot("made"), shot("last")];
+  // Each state is drawn in one run of its step's part, its cut-outs or the rest.
+  const runs = last.draws.filter((d, i) => !d.see && (i === 0 || d.state !== last.draws[i - 1]!.state || d.step !== last.draws[i - 1]!.step));
+  expect(new Set(runs.map((d) => `${d.step} ${d.cut} ${d.state}`)).size).toBe(runs.length);
+  expect(changes(last.draws)).toBeLessThan(changes(made.draws));
+  expect(last.draws.filter((d) => d.see).map((d) => d.what)).toEqual(made.draws.filter((d) => d.see).map((d) => d.what));
+  expect(last.draws.map((d) => d.what).sort()).toEqual(made.draws.map((d) => d.what).sort());
+  expect(last.picture).toEqual(made.picture);
 });
 
 test("a body drawn with its materials and the same body drawn flat agree in mean colour, as near as the palette and the two ways of lighting allow", () => {
@@ -214,7 +269,7 @@ test("a wall of one piece whose material tiles is the same two draws at 10 piece
   const [few, many] = [wall(10, true), wall(1000, false)];
   const [plank, lattice] = [material(few.w, PANEL), material(few.w, `${PANEL}/lattice`)];
   for (const [{ w, p }, pieces] of [[few, 10], [many, 1000]] as const) {
-    expect(drawn(w, p, PANEL)).toEqual([[0, DRAW_TEXTURED, pieces, plank, 0, 3], [0, DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT, pieces, lattice, 3, 3]]);
+    expect(drawn(w, p, PANEL)).toEqual(rows([[0, DRAW_TEXTURED, pieces, plank, 0, 3], [0, DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT, pieces, lattice, 3, 3]]));
     expect([p.drawCount, p.dropped]).toEqual([2, 0]);
   }
   expect(many.p.triangles - few.p.triangles).toBe(990 * 2);
@@ -235,7 +290,7 @@ test("a body that steps back to a level whose surface has not come keeps its mat
   for (let f = 0; f < 5; f++) p = w.frame();
   const [hide, horn] = [material(w, "test:tube/hide"), material(w, "test:tube/horn")];
   const flags = BODY | DRAW_TEXTURED;
-  const finest = [[0, flags, 1, hide, 0, 1152], [0, flags | DRAW_TWO_SIDED, 1, horn, 1152, 384]];
+  const finest = rows([[0, flags, 1, hide, 0, 1152], [0, flags | DRAW_TWO_SIDED, 1, horn, 1152, 384]]);
   expect(drawn(w, p, TUBE)).toEqual(finest);
   // Eight metres off the second level is wanted. The card has it, flat, from the boot pack.
   w.remote.z[body] = 28;
@@ -244,23 +299,24 @@ test("a body that steps back to a level whose surface has not come keeps its mat
   w.port.request = ask;
   ask(held[0]!);
   for (let f = 0; f < 3; f++) p = w.frame();
-  expect(drawn(w, p, TUBE)).toEqual([[1, flags, 1, hide, 0, 288], [1, flags | DRAW_TWO_SIDED, 1, horn, 288, 96]]);
+  expect(drawn(w, p, TUBE)).toEqual(rows([[1, flags, 1, hide, 0, 288], [1, flags | DRAW_TWO_SIDED, 1, horn, 288, 96]]));
 });
 
-test("a body the frame has no bones to pose is drawn rigid on one bone, with its materials", () => {
-  // Six bodies of two bones each, and bones for eight: the nearest two are posed and the rest stand as they were made.
+test("a body the frame has no bones to pose is drawn on one bone in the pose it stands in, with its materials", () => {
+  // Six bodies of two bones each, and bones for ten: the nearest two are posed, and the rest stand in the tube's still pose,
+  // which takes two bones of the frame's and is the pose it was made in.
   const at = [[32, 22.5], [31, 23], [33, 23.4], [30, 23.8], [34, 24.2], [32, 24.6]] as const;
-  const w = sceneWorld({}, { bones: 8 });
+  const w = sceneWorld({}, { bones: 10 });
   at.forEach(([x, z]) => w.place(TUBE, x, z, { colors: [8, 7, 14, 6] }));
   let p = w.frame();
   for (let f = 0; f < 4; f++) p = w.frame();
   const [hide, horn] = [material(w, "test:tube/hide"), material(w, "test:tube/horn")];
   const flags = BODY | DRAW_TEXTURED;
-  expect(drawn(w, p, TUBE)).toEqual([
+  expect(drawn(w, p, TUBE)).toEqual(rows([
     [0, flags, 2, hide, 0, 1152], [0, flags | DRAW_TWO_SIDED, 2, horn, 1152, 384],
     [0, flags | DRAW_ONE_BONE, 4, hide, 0, 1152], [0, flags | DRAW_ONE_BONE | DRAW_TWO_SIDED, 4, horn, 1152, 384],
-  ]);
-  expect([p.boneCount, w.scene.characters.posed, p.dropped]).toEqual([8, 2, 0]);
+  ]));
+  expect([p.boneCount, w.scene.characters.posed, p.dropped]).toEqual([10, 2, 0]);
   const bodies = w.raster.color.slice();
   const ids = w.raster.pickId.slice();
 
@@ -348,9 +404,9 @@ function lowPoly(saddled: boolean) {
     remote.tick = own.tick = f / 2;
     scene.hour = 6 + f / 30;
     own.firstPerson = f >= 150;
-    // A piece is added, and later the frame has bones for few of the bodies.
+    // A piece is added, and later the frame has bones for few of the bodies and the poses the rest stand in.
     if (f === 100) structs.add(kind(PANEL), 42, 0, 34, 0, 0, 1);
-    if (f === 200) scene.assets.tier = { ...tierOf("lowpoly"), bones: 40 };
+    if (f === 200) scene.assets.tier = { ...tierOf("lowpoly"), bones: 66 };
     const p = w.frame(1000 / 60, false);
     hash = hashPacket(p, hash);
     draws += p.drawCount;
@@ -372,7 +428,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   expect(log).toEqual([`17 ask ${post} 0.0000`, `1167 ask ${post} 0.0000`, `2733 ask ${post} 0.0000`]);
   // The far wood is about a draw a frame, every mesh of a tile in one, and the pulled draws' three levels are uploads in
   // place of the palm's last level.
-  expect([draws, rigid, uploads, texLedger, worn]).toEqual([7900, 767, 23, 0, []]);
+  expect([draws, rigid, uploads, texLedger, worn]).toEqual([7554, 108, 23, 0, []]);
   // Taken from the scene as it was before it drew anything with a material. A change here changes what low poly draws.
   // It was 3323304581 before the dodo's grey box joined the pack, which numbers the meshes after it one on, 289722570
   // before the palette was refitted and the horn's flat colour became 177, and 3173910610 until a loose thing's up
@@ -420,11 +476,20 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // without the bin, its lit kind, its piece and its engram it is that again.
   // It was 4019050983 until the refining forge's grey boxes (content/items/stations.ts, S1) took mesh numbers; without the
   // forge, its item and engram and the two recipes fired at it it is that again.
-  // Koru's bounded static meshes renumber the pack. Removing only those meshes restores 1588438482 exactly.
-  // The sail control adds one grey-box mesh; removing only core:koru_sail_control restores 2398637633.
-  // Cruise static meshes renumber the frozen pack; excluding only those restores 1161318704.
-  // See planning/evidence/cruise-mesh-number-proof.json for all four independently restored pins.
-  expect(hash).toBe(2881042045);
+  // It was 1588438482 until the ruins' sloped parts (content/ruins.ts, round five's flights, ramps, pitched roofs and
+  // fallen plates) took mesh numbers; without them it is that again.
+  // It was 1425549560 until the street wrecks' kinds (content/vehicles/wrecks.ts) took mesh numbers; without them it is that again.
+  // It was 3505982741 until the pteranodon was drawn on its own art in place of its grey box; with its mesh a box again it is that again.
+  // It was 818617635 until clips were stored to 0.025 degrees (pack version 5): only the bone rows moved.
+  // It was 1504947198 (and 7,900 draws) until chunks were drawn by 16 m cell: a chunk's instances are uploaded in the
+  // order of their cells, and the pieces' and nodes' draws whose cells are out of view are left out. Each of the 300
+  // frames draws the picture it did.
+  // It was 3243977566, with 7,613 draws of which 767 were on one bone, until bodies were thinned by distance: loose things
+  // and the dead take their bones before the living (the order of the rows); a body left on one bone stands in a pose,
+  // whose bones the frame keeps for it and whose first bone its draw's offset names, in a draw after the rest (the order
+  // of draws); and from frame 200 the frame has 66 bones, not 40, as few as leaves bones for those poses and drops
+  // nothing. Every body here is near enough to be posed every frame: posing all of them every frame gives this hash too.
+  expect(hash).toBe(4216232697);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -433,17 +498,19 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // pin moved only for this: without the saddles it is the hash above.
   const saddled = lowPoly(true);
   expect(saddled.log).toEqual(log);
-  expect([saddled.draws - draws, saddled.rigid - rigid, saddled.uploads - uploads, saddled.texLedger, saddled.worn[0] ?? 0, saddled.worn[1]]).toEqual([273, 97, 1, 0, 0, 273]);
+  expect([saddled.draws - draws, saddled.rigid - rigid, saddled.uploads - uploads, saddled.texLedger, saddled.worn[0] ?? 0, saddled.worn[1]]).toEqual([273, 71, 1, 0, 0, 273]);
   // It was 1277817829 until the sign letters' and the four resource nodes' grey boxes took mesh numbers, as above:
   // 1675711496 with the letters alone, 3184345957 with the nodes alone.
   // It was 295710133 until the smithy's and the fabricator's grey boxes (S2), as above; without them it is that again.
   // It was 738198866 until the vehicles' three road pieces' grey boxes (content/vehicles/roads.ts) numbered the meshes after them on; without the roads it is that again.
   // It was 850823663 until the preserving bin's grey box (S3), as above; without the bin it is that again.
   // It was 1344453007 until the refining forge's grey boxes (S1), as above; without the forge it is that again.
-  // The same Koru mesh-number change; excluding those meshes restores 1941699530.
-  // Removing only the new sail-control mesh also restores the saddled scene's 2395641891 exactly.
-  // The same cruise mesh-number change; excluding only cruise meshes restores 3746450364.
-  expect(saddled.hash).toBe(1372766523);
+  // It was 1941699530 until the ruins' sloped parts, as above; without them it is that again.
+  // It was 2182034391 until the street wrecks' kinds, as above; without them it is that again.
+  // It was 1893532195 until the pteranodon was drawn on its own art, as above.
+  // It was 3121847286 until clips were stored to 0.025 degrees, as above, and 359459847 until chunks were drawn by cell.
+  // It was 1443514794, with 97 more draws on one bone, until bodies without bones stood in a pose, as above.
+  expect(saddled.hash).toBe(2400700468);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

@@ -7,14 +7,19 @@ import { DRAW_ONE_BONE, MAX_BONES } from "../../client/core/render/packet.ts";
 import type { Scene } from "../../client/core/render/scene.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import type { Host } from "../../server/host.ts";
+import { SLOT_NAMES } from "../../shared/anim/human.ts";
+import { LOOK_BYTES, randomLook } from "../../shared/anim/look.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import type { LoopbackEnd } from "../../shared/net/loopback.ts";
 import { MAX_VIEW, VIEW_DEFAULT } from "../../shared/net/view.ts";
 import { Rng } from "../../shared/rng.ts";
+import { MODE_FLYER } from "../../shared/sim/character.ts";
+import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ACT_NONE } from "../../shared/sim/weapon.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
+import { perCascade } from "./shadow.ts";
 
 export interface Bench {
   section(title: string): void;
@@ -72,23 +77,44 @@ export function crowdRows(b: Bench, host: Host, run: (ticks: number, times: numb
 export function fullViewRows(b: Bench, scene: Scene, cam: Camera, reg: Registry, hf: Heightfield): void {
   b.section("Client frame build (headless): 2,048 bodies in sight, as many as a view holds, on ultra and on medium");
   const view = new RemoteSample();
-  const kinds = { survivor: reg.index.get("core:survivor")!, parasaur: reg.index.get("core:parasaur")!, raptor: reg.index.get("core:raptor")! };
+  const id = (name: string): number => reg.index.get(`core:${name}`)!;
+  const [survivor, pteranodon, saddle] = [id("survivor"), id("pteranodon"), id("saddle_pteranodon")];
+  const creatures = ["dodo", "pteranodon", "raptor", "parasaur"].map(id);
+  const vehicles = ["compact", "helicopter", "boat"].map(id);
+  const armour = ["hide", "chitin", "flak"].map((set) => {
+    const worn = new Array<number>(SLOT_NAMES.length).fill(0);
+    reg.defs.forEach((d, k) => d?.type === "item" && d.wear && d.id.startsWith(`core:${set}_`) && (worn[SLOT_NAMES.indexOf(d.wear.slot)] = k));
+    return worn;
+  });
+  const held = [id("rifle"), id("hatchet"), id("spear")];
   const st = new AnimState();
   const rng = new Rng(11);
-  // A hundred survivors and the rest creatures, in a wedge 14 to 160 m ahead. A third of them walk.
+  // In a wedge 14 to 160 m ahead: 100 survivors dressed, armed and with looks of their own; 64 more riding saddled
+  // pteranodons; 16 each of the car, the helicopter and the boat; and dodos, pteranodons (half of them flying), raptors and
+  // parasaurs. A third of them walk.
   cam.yaw = Math.PI / 2 + Math.PI;
   for (let i = 0; i < MAX_VIEW; i++) {
+    const rider = i >= 100 && i < 228 && i % 2 === 1;
     const ahead = 14 + rng.float() * 146;
     view.id[i] = i + 1;
-    view.kind[i] = i < 100 ? kinds.survivor : i % 3 === 0 ? kinds.raptor : kinds.parasaur;
-    view.x[i] = cam.x - ahead;
-    view.z[i] = cam.z + (rng.float() - 0.5) * ahead * 1.2;
+    view.kind[i] = i < 100 || rider ? survivor : i < 228 ? pteranodon : i < 276 ? vehicles[i % 3]! : creatures[i % 4]!;
+    view.x[i] = rider ? view.x[i - 1]! : cam.x - ahead;
+    view.z[i] = rider ? view.z[i - 1]! : cam.z + (rng.float() - 0.5) * ahead * 1.2;
     view.y[i] = hf.heightAt(view.x[i]!, view.z[i]!);
     view.yaw[i] = rng.float() * Math.PI * 2;
     view.flags[i] = 1;
+    [st.mode, st.grounded] = [0, true];
+    if (view.kind[i] === pteranodon && i >= 276 && i % 8 === 1) [st.mode, st.grounded, view.y[i]] = [MODE_FLYER, false, view.y[i]! + 20];
     st.setMotion(i % 3 === 1 ? 2 + rng.float() * 4 : 0, 0, 0, 0);
     st.setAction(ACT_NONE, 0, 0);
     view.anim[i] = st.pack();
+    if (i < 228 && i >= 100 && !rider) view.gear[i * GEAR_COUNT + GEAR_WORN] = saddle;
+    if (rider) [view.seat[i], view.seatSlot[i]] = [i + 1, 0];
+    if (view.kind[i] !== survivor) continue;
+    view.hasLook[i] = 1;
+    randomLook(rng, view.look.subarray(i * LOOK_BYTES, (i + 1) * LOOK_BYTES));
+    armour[i % 3]!.forEach((item, slot) => (view.gear[i * GEAR_COUNT + GEAR_WORN + slot] = item));
+    view.gear[i * GEAR_COUNT + GEAR_HELD] = held[i % 3]!;
   }
   view.count = MAX_VIEW;
   view.tick = 3000;
@@ -110,13 +136,16 @@ export function fullViewRows(b: Bench, scene: Scene, cam: Camera, reg: Registry,
       for (let k = 0; k < packet.drawInstances[d]!; k++) rigid.add(packet.transientIds[packet.drawFirst[d]! + k]!);
     }
     b.record(`${name}: bodies posed in the frame`, scene.characters.posed, "");
-    b.record(`${name}: bodies left in their rest pose on one bone, for want of bones`, rigid.size, "");
+    b.record(`${name}: of them posed anew, the rest drawn as they last were`, scene.characters.fresh, "");
+    b.record(`${name}: bodies standing in a pose on one bone, for want of bones`, rigid.size, "");
     b.record(`${name}: bones used, of the ${Math.min(tier.bones, MAX_BONES).toLocaleString("en-US")} it has`, packet.boneCount, "", Math.min(tier.bones, MAX_BONES));
     b.record(`${name}: things the full frame left out`, packet.dropped, "", 0);
     b.record(`${name}: triangles submitted`, packet.triangles, "");
     b.record(`${name}: frame build, median`, b.percentile(built, 0.5), "ms", 6);
     b.record(`${name}: frame build, 99th percentile`, b.percentile(built, 0.99), "ms", 12);
     b.record(`${name}: draw calls`, packet.drawCount, "");
+    const cast = perCascade(scene, packet);
+    b.record(`${name}: triangles cast into the sun's maps, and their draws`, cast.triangles.reduce((a, v) => a + v, 0), `(${cast.draws.reduce((a, v) => a + v, 0)} draws)`);
   }
   scene.assets.tier = before;
 }

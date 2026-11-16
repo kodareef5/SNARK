@@ -1,8 +1,8 @@
 // How the asset library asks for bytes and hears of them. Core decides what is wanted and in what order. A browser zone
 // fetches, inflates, checks and caches. Tests and the benchmark use a network made of numbers (tests/fixtures/assetnet.ts).
 
-import { storedBytes, storedStep, type ManifestLevel, type ManifestTexture } from "../../../shared/pack/manifest.ts";
-import { stepBytes, type TextureFormat } from "../../../shared/pack/texture.ts";
+import { storedBytes, storedStep, type ManifestClips, type ManifestLevel, type ManifestTexture } from "../../../shared/pack/manifest.ts";
+import { blockOf, stepBytes, type TextureFormat } from "../../../shared/pack/texture.ts";
 
 /** Why a part did not come: the network, bytes that do not have the hash listed, or a range the file does not have. */
 export const FAIL_NET = 1;
@@ -33,13 +33,19 @@ export function levelParts(level: ManifestLevel, from: number, to: number): Asse
   return out;
 }
 
+/** A skeleton's clips, where its file has them. */
+export function clipPart(e: ManifestClips): AssetPart {
+  const p = e.part;
+  return p.stored === undefined ? { offset: e.at, length: p.bytes, hash: p.hash } : { offset: e.at, length: p.stored, hash: p.hash, inflated: p.bytes };
+}
+
 /** Steps 0 to `last` of a texture in a variant it has, where its file has them. */
 export function textureParts(tex: ManifestTexture, format: TextureFormat, last: number): AssetPart[] {
   const v = tex.in[format]!;
   const out: AssetPart[] = [];
   for (let k = 0, at = v.at; k <= last; k++) {
     const length = storedStep(v, format, tex.role, k);
-    const bytes = stepBytes(format, tex.role, k);
+    const bytes = stepBytes(format, tex.role, k, blockOf(format, v));
     out.push(length < bytes ? { offset: at, length, hash: v.hash[k]!, inflated: bytes } : { offset: at, length, hash: v.hash[k]! });
     at += length;
   }
@@ -47,7 +53,7 @@ export function textureParts(tex: ManifestTexture, format: TextureFormat, last: 
 }
 
 export interface AssetRequest {
-  /** The level of a mesh, its surface, or the step of a texture, the bytes are for. */
+  /** The level of a mesh, its surface, the step of a texture, or the skeleton's clips, the bytes are for. */
   slot: number;
   /** Index of the pack file in the manifest. */
   file: number;
@@ -79,4 +85,6 @@ export interface AssetPort {
   fill(parts: readonly { file: number; part: AssetPart }[]): void;
   /** Bytes kept between visits and the most that may be, where they are kept, and how many parts asked for with `fill` are still to come. */
   readonly cache: { used: number; limit: number; mode: "disk" | "memory" | "none"; filling: number };
+  /** How the files come, as the browser names it: "http/1.1", "h2", "h3", or "" while not known. */
+  readonly protocol: string;
 }

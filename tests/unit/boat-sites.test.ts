@@ -45,4 +45,9 @@ test("direct map labels select real marina, beach, police and Coast Guard sites 
   expect(sites.map(s => s.kind)).toEqual(["civilian", "rescue", "police", "rescue"]);
   expect(sites[0]!.x).toBe(90); expect(sites[0]!.z).toBe(120);
   expect(sites.some(s => s.id === "building/3")).toBe(false);
+  // A place's name with spaces, accents or great length still makes an id a map file takes: plain ASCII, 80 at most.
+  const [long] = mappedBoatSites([{ name: "Muelle de la Bahía Vizcaína para embarcaciones de recreo y pesca deportiva", kind: "pier", e: 519.6, n: 1614.4, in_footprint: null }], {}, (e, n) => [e, n]);
+  expect(`boat/${long!.id}`).toMatch(/^[\x21-\x7e]{1,80}$/);
+  expect(long!.id).toStartWith("place/pier/Muelle_de_la_Bahia_Vizcaina");
+  expect(long!.id).toEndWith("@519.6,1614.4");
 });

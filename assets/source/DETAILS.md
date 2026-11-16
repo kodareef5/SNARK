@@ -26,9 +26,10 @@ them back: they never change what happens.
 | Occasion | When |
 | --- | --- |
 | `thrown` | it leaves a survivor's arms in the air, fast |
-| `land` | it lands hard, alive (its `land` clip plays); or knocked out, it reaches the ground |
+| `land` | it lands hard, alive (its `land` clip plays), or sets down from flight; or knocked out, or dead after dying in its own flight, it reaches the ground |
+| `take_off` | it takes off from the ground or the water |
 | `struck` | it flinches from a blow |
-| `down` | it is knocked out and goes down |
+| `down` | it is knocked out on the ground or in the water and goes down |
 | `death` | it dies in view and falls |
 | `up` | it comes round and gets up |
 | `splash` | it falls into water |

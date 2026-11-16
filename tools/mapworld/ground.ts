@@ -11,6 +11,8 @@ import { carveLakes, readLakes, type LakeRules, type Lakes } from "./lakes.ts";
 import { blur, distanceField, fbm, fillPolygon, hash3, regions, share } from "./raster.ts";
 
 /** What a sample's ground is, for its colour and for what lives on it. */
+import type { LandmarkSite } from "./landmarks.ts";
+
 export const S = {
   CHANNEL: 1,
   DEEP: 2,
@@ -74,6 +76,8 @@ export interface World {
   readonly containerHeaps?: boolean;
   /** How the perched lakes are made water standing above the sea (lakes.ts); false leaves them marsh. */
   readonly lakes?: LakeRules | false;
+  /** The landmarks it places (tools/mapworld/landmarks.ts). */
+  readonly landmarks?: readonly LandmarkSite[];
 }
 
 export interface Ground {

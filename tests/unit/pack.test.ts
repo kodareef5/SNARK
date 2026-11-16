@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { AssetTable } from "../../client/core/assets/table.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { describePack, parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
-import { VERTEX_BYTES, lodIndices, lodVertices, parsePack, readIndices } from "../../shared/pack/pack.ts";
+import { CLIP_ROOT_STEPS, PACK_VERSION, VERTEX_BYTES, lodIndices, lodVertices, parsePack, readIndices } from "../../shared/pack/pack.ts";
 import { HUMAN, SLOT_NAMES } from "../../shared/anim/human.ts";
 import { REGION_BASE, defaultPalette } from "../../shared/pack/palette.ts";
 import { MISSING_MESH, buildCorePack, coreClips } from "../../tools/pack/build.ts";
@@ -116,7 +116,7 @@ test("the pack carries bodies cut into slots, each vertex on one bone, and the c
   const broken = new Uint8Array(12 + header.length + pack.blob.length);
   const view = new DataView(broken.buffer);
   view.setUint32(0, 0x4b504e53, true);
-  view.setUint16(4, 2, true);
+  view.setUint16(4, PACK_VERSION, true);
   view.setUint32(8, header.length, true);
   broken.set(new TextEncoder().encode(header), 12);
   broken.set(pack.blob, 12 + header.length);
@@ -159,30 +159,27 @@ test("a level is one run of bytes, and says how wide its indices are and how far
   expect(back[1]!.lods[0]!.indices).toEqual(wide.indices);
 });
 
-/** The same file as the version before wrote its header. */
-function asVersion2(file: Uint8Array): Uint8Array {
-  const length = new DataView(file.buffer, file.byteOffset).getUint32(8, true);
-  const header = JSON.parse(new TextDecoder().decode(file.subarray(12, 12 + length)));
-  for (const m of header.meshes) {
-    for (const l of m.lods) {
-      delete l.indexBytes;
-      delete l.error;
-    }
-  }
-  const out = file.slice();
-  out.set(new TextEncoder().encode(JSON.stringify(header).padEnd(length, " ")), 12);
-  new DataView(out.buffer).setUint16(4, 2, true);
-  return out;
-}
-
-test("a version 2 pack is still read, and the clips hash the same with or without meshes", () => {
+test("a pack of another version is refused, clips come back within a step, and they hash the same with or without meshes", () => {
   const file = corePackBytes();
-  const [now, old] = [parsePack(file), parsePack(asVersion2(file))];
-  const body = old.header.meshes[old.meshIndex.get("core:human_f/torso")!]!;
-  expect(body.lods.map((l) => [l.indexBytes, l.error])).toEqual([[2, NaN], [2, NaN], [2, NaN]]);
-  expect(readIndices(old, body.lods[1]!)).toEqual(readIndices(now, now.header.meshes[now.meshIndex.get("core:human_f/torso")!]!.lods[1]!));
-  expect(unpackMeshes(old).every((m) => m.lods.every((l) => l.error === undefined))).toBe(true);
-  expect(old.clips.hash).toBe(now.clips.hash);
+  const now = parsePack(file);
+  const older = file.slice();
+  new DataView(older.buffer).setUint16(4, PACK_VERSION - 1, true);
+  expect(() => parsePack(older)).toThrow(/version/);
+  // A bone turns at most 0.025 degrees from its clip, and the root moves at most half a step.
+  const clips = coreClips();
+  const back = parsePack(buildPack([], defaultPalette(), clips)).clips;
+  let [turn, moved] = [0, 0];
+  for (const c of clips) {
+    const d = back.clips[back.index.get(c.id)!]!;
+    for (let k = 0; k < c.rot.length; k += 4) {
+      const [a, b] = [c.rot.subarray(k, k + 4), d.rot.subarray(k, k + 4)];
+      const side = a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]! + a[3]! * b[3]! < 0 ? -1 : 1;
+      const [la, lb] = [Math.hypot(...a), Math.hypot(...b)];
+      turn = Math.max(turn, 4 * Math.asin(Math.hypot(...[0, 1, 2, 3].map((i) => a[i]! / la - (side * b[i]!) / lb)) / 2));
+    }
+    for (let k = 0; k < c.root.length; k++) moved = Math.max(moved, Math.abs(c.root[k]! - d.root[k]!));
+  }
+  expect([(turn * 180) / Math.PI < 0.025, moved <= 0.5 / CLIP_ROOT_STEPS + 1e-6]).toEqual([true, true]);
   // The handshake hashes the clips alone, so a pack split into files answers as the whole one does.
   expect(parsePack(buildPack([], defaultPalette(), coreClips())).clips.hash).toBe(now.clips.hash);
   // Every body's levels lie further from the finest as they get coarser, and none by more than a hand's width. A shape

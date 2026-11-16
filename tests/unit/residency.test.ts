@@ -2,7 +2,7 @@
 // within its budget, and what cannot be had is given up on without the scene going bare.
 import { expect, test } from "bun:test";
 import { Assets } from "../../client/core/assets/assets.ts";
-import { IN_FLIGHT, OVERFLOW, SMALL_LANES, SMALL_PART } from "../../client/core/assets/residency.ts";
+import { IN_FLIGHT, IN_FLIGHT_SHARED, OVERFLOW, SMALL_LANES, SMALL_LANES_SHARED, SMALL_PART } from "../../client/core/assets/residency.ts";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -49,6 +49,16 @@ test("flying through a field of rocks on a slow, lossy link: nothing is drawn th
   for (const times of w.switches) for (let i = 2; i < times.length; i++) expect(times[i]! - times[i - 2]!).toBeGreaterThan(1000);
   // Most of what was fetched was drawn.
   expect(w.r.stats.fetched / w.r.stats.used).toBeLessThan(1.6);
+});
+
+test("over HTTP/2 or 3 more requests are under way at once, and the flight settles as it does over HTTP/1.1", () => {
+  const [one, shared] = ["http/1.1", "h2"].map((protocol) => {
+    const w = world({ latencyMs: 300, bytesPerSecond: 1.5e6, protocol });
+    w.run(8, 0);
+    return w;
+  });
+  expect([one!.port.mostAtOnce, shared!.port.mostAtOnce > IN_FLIGHT, shared!.port.mostAtOnce <= IN_FLIGHT_SHARED]).toEqual([IN_FLIGHT, true, true]);
+  expect([one!.settled(), shared!.settled(), shared!.r.stats.skipped, shared!.r.stats.used]).toEqual([true, true, 0, one!.r.stats.used]);
 });
 
 test("the same flight twice asks for the same things in the same order", () => {
@@ -154,11 +164,14 @@ test("a slot given up on its way is not taken when it comes, and a card that los
   expect(w.card.held.size).toBeGreaterThan(ROCKS.length);
 });
 
-test("a large part waits its turn without holding up small ones, and one part at least goes up each frame", () => {
+test.each([
+  ["http/1.1", IN_FLIGHT - SMALL_LANES],
+  ["h3", IN_FLIGHT_SHARED - SMALL_LANES_SHARED],
+])("over %s a large part waits its turn without holding up small ones, and goes onto the card in pieces of a frame's bytes", (protocol, lanes) => {
   const plate = meshOf("stress:plate");
   const big = stressSet({ rocks: 2, detail: 3, plate: 512 });
   const boot = parsePack(big.files[0]!.bytes);
-  const port = new FakeNet(big.files.map((f) => f.bytes), { bytesPerSecond: 40e6 });
+  const port = new FakeNet(big.files.map((f) => f.bytes), { bytesPerSecond: 40e6, protocol });
   const assets = new Assets(REG, boot, big.manifest, port);
   const packet = new FramePacket();
   const mesh = big.manifest.meshes.findIndex((m) => m.id === "stress:plate");
@@ -168,7 +181,9 @@ test("a large part waits its turn without holding up small ones, and one part at
   expect(big.manifest.meshes[mesh]!.levels.map((l) => l.index)).toEqual([4, 4, 2, 2, 2]);
   let now = 0;
   let largeAtOnce = 0;
+  let mostSent = 0;
   const seen: number[] = [];
+  const pieces: number[] = [];
   for (let f = 0; f < 240; f++) {
     now += FRAME;
     port.advance(now);
@@ -180,13 +195,17 @@ test("a large part waits its turn without holding up small ones, and one part at
       assets.level(mesh, l);
     }
     assets.end(packet, now);
-    for (const u of packet.assetUploads) seen.push(u.level);
+    for (const u of packet.assetUploads) if ((u.at ?? 0) === 0) seen.push(u.level);
+    for (const u of packet.assetUploads) if (u.whole !== undefined) pieces.push(u.data.length);
+    mostSent = Math.max(mostSent, packet.assetUploads.reduce((sum, u) => sum + (u.level === sizes.length - 1 ? 0 : u.data.length), 0));
     largeAtOnce = Math.max(largeAtOnce, port.log.filter((line) => line.includes(" ask ")).length - seen.filter((l) => sizes[l]! > SMALL_PART && l !== sizes.length - 1).length);
   }
-  // The coarsest came from the boot pack in the first frame. The finest is larger than a frame's bytes and went up alone.
+  // The coarsest came from the boot pack in the first frame. The finest is larger than a frame's bytes and went up in
+  // pieces of the frame's bytes, as did any other the frame had no room left for.
   expect(seen[0]).toBe(sizes.length - 1);
   expect([...seen].sort()).toEqual([0, 1, 2, 3, 4]);
-  expect(largeAtOnce).toBeLessThanOrEqual(IN_FLIGHT - SMALL_LANES);
+  expect([pieces.length > sizes[0]! / tierOf("medium").uploadBytes, mostSent]).toEqual([true, tierOf("medium").uploadBytes]);
+  expect(largeAtOnce).toBeLessThanOrEqual(lanes);
   expect(assets.residency.ledger).toBe(sizes.reduce((a, b) => a + b, 0));
 });
 

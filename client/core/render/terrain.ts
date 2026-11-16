@@ -39,6 +39,11 @@ export interface GroundSize {
   readonly bytes: number;
 }
 
+/** The cell, of `n` cells `size` metres wide, that `v` metres falls in, held to the row. */
+function cellOf(v: number, size: number, n: number): number {
+  return Math.max(0, Math.min(n - 1, Math.floor(v / size)));
+}
+
 export function groundSize(hf: Pick<Heightfield, "nx" | "nz" | "cell">): GroundSize {
   const width = [Math.ceil((hf.nx - 1) / COARSE) + 1, Math.min(WINDOW, hf.nx)];
   const height = [Math.ceil((hf.nz - 1) / COARSE) + 1, Math.min(WINDOW, hf.nz)];
@@ -48,7 +53,7 @@ export function groundSize(hf: Pick<Heightfield, "nx" | "nz" | "cell">): GroundS
 /** The whole map's pair: the height and tint of every COARSE-th sample. A map's side is whole chunks, so its last sample is one. */
 export function coarseGround(hf: Heightfield): { heights: Uint16Array; tint: Uint8Array } {
   const size = groundSize(hf);
-  const [w, h] = [size.width[SOURCE_MAP]!, size.height[SOURCE_MAP]!];
+  const w = size.width[SOURCE_MAP]!, h = size.height[SOURCE_MAP]!;
   const heights = new Uint16Array(w * h);
   const tint = new Uint8Array(w * h);
   for (let j = 0; j < h; j++) {
@@ -87,14 +92,18 @@ export function tileMesh(): { vertices: Uint8Array; indices: Uint16Array; ground
   }
   const ground = index.length;
   const edge = (x: number, z: number): number => (verts.push(x, z, 1, 0), verts.length / 4 - 1);
+  const side = (x0: number, z0: number, x1: number, z1: number): void => {
+    const a = z0 * row + x0;
+    const b = z1 * row + x1;
+    const c = edge(x0, z0);
+    const d = edge(x1, z1);
+    index.push(a, b, c, b, d, c);
+  };
   for (let i = 0; i < TILE_QUADS; i++) {
-    for (const [x0, z0, x1, z1] of [[i, 0, i + 1, 0], [i, TILE_QUADS, i + 1, TILE_QUADS], [0, i, 0, i + 1], [TILE_QUADS, i, TILE_QUADS, i + 1]] as const) {
-      const a = z0 * row + x0;
-      const b = z1 * row + x1;
-      const c = edge(x0, z0);
-      const d = edge(x1, z1);
-      index.push(a, b, c, b, d, c);
-    }
+    side(i, 0, i + 1, 0);
+    side(i, TILE_QUADS, i + 1, TILE_QUADS);
+    side(0, i, 0, i + 1);
+    side(TILE_QUADS, i, TILE_QUADS, i + 1);
   }
   return { vertices: Uint8Array.from(verts), indices: Uint16Array.from(index), ground };
 }
@@ -207,10 +216,11 @@ export class TerrainLod {
     while (level < this.levels - 1 && (CHUNK_SIZE << level) * 2 < Math.max(x1 - x0, z1 - z0)) level++;
     const size = CHUNK_SIZE << level;
     const w = this.width[level]!;
-    const d = this.minY[level]!.length / w;
-    const at = (v: number, n: number): number => Math.max(0, Math.min(n - 1, Math.floor(v / size)));
+    const lows = this.minY[level]!;
+    const d = lows.length / w;
+    const i0 = cellOf(x0, size, w), i1 = cellOf(x1, size, w), j1 = cellOf(z1, size, d);
     let low = Infinity;
-    for (let j = at(z0, d); j <= at(z1, d); j++) for (let i = at(x0, w); i <= at(x1, w); i++) low = Math.min(low, this.minY[level]![j * w + i]!);
+    for (let j = cellOf(z0, size, d); j <= j1; j++) for (let i = i0; i <= i1; i++) low = Math.min(low, lows[j * w + i]!);
     return low;
   }
 
@@ -296,7 +306,7 @@ export class TerrainLod {
   /** Whether a node's samples, as far as the map has them, lie inside the window drawn. */
   private inside(i0: number, j0: number, span: number): boolean {
     const hf = this.hf;
-    const [w, h] = [this.size.width[SOURCE_WINDOW]!, this.size.height[SOURCE_WINDOW]!];
+    const w = this.size.width[SOURCE_WINDOW]!, h = this.size.height[SOURCE_WINDOW]!;
     return this.drawn >= 0 && i0 >= this.drawnI && j0 >= this.drawnJ && Math.min(i0 + span, hf.nx - 1) < this.drawnI + w && Math.min(j0 + span, hf.nz - 1) < this.drawnJ + h;
   }
 
@@ -307,14 +317,17 @@ export class TerrainLod {
    */
   private follow(cam: Camera, p: FramePacket, budget?: GroundBudget): void {
     const hf = this.hf;
-    const [w, h] = [this.size.width[SOURCE_WINDOW]!, this.size.height[SOURCE_WINDOW]!];
+    const w = this.size.width[SOURCE_WINDOW]!, h = this.size.height[SOURCE_WINDOW]!;
     const corner = (at: number, n: number, side: number): number => Math.max(0, Math.min(n - side, Math.round((at / hf.cell - (side - 1) / 2) / SNAP) * SNAP));
-    const [i, j] = [corner(cam.x, hf.nx, w), corner(cam.z, hf.nz, h)];
+    const i = corner(cam.x, hf.nx, w), j = corner(cam.z, hf.nz, h);
     const off = Math.max(Math.abs(cam.x / hf.cell - this.drawnI - (w - 1) / 2), Math.abs(cam.z / hf.cell - this.drawnJ - (h - 1) / 2)) * hf.cell;
     const wanted = this.drawn < 0 || (off >= WINDOW_MOVE && (i !== this.drawnI || j !== this.drawnJ));
     if (wanted && (this.fill < 0 || i !== this.fillI || j !== this.fillJ)) {
       if (this.drawn < 0) budget?.reserve("terrain", this.size.bytes);
-      [this.fill, this.fillI, this.fillJ, this.row] = [this.drawn < 0 ? 0 : 1 - this.drawn, i, j, 0];
+      this.fill = this.drawn < 0 ? 0 : 1 - this.drawn;
+      this.fillI = i;
+      this.fillJ = j;
+      this.row = 0;
     }
     const g = p.groundWindow;
     g[3] = -1;
@@ -322,10 +335,16 @@ export class TerrainLod {
       const bytes = w * SAMPLE_BYTES;
       const rows = this.drawn < 0 || !budget ? h - this.row : Math.min(h - this.row, Math.max(1, Math.floor(budget.left / bytes)));
       budget?.spend(rows * bytes);
-      g.set([this.fill, this.fillI, this.fillJ, this.row, rows], 3);
+      g[3] = this.fill;
+      g[4] = this.fillI;
+      g[5] = this.fillJ;
+      g[6] = this.row;
+      g[7] = rows;
       this.row += rows;
-      if (this.row === h) [this.drawn, this.drawnI, this.drawnJ, this.fill] = [this.fill, this.fillI, this.fillJ, -1];
+      if (this.row === h) { this.drawn = this.fill; this.drawnI = this.fillI; this.drawnJ = this.fillJ; this.fill = -1; }
     }
-    g.set([this.drawn, this.drawnI, this.drawnJ]);
+    g[0] = this.drawn;
+    g[1] = this.drawnI;
+    g[2] = this.drawnJ;
   }
 }

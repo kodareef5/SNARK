@@ -1,0 +1,28 @@
+{
+  "map": "core:tampa",
+  "mapHash": 779721272,
+  "tier": "high",
+  "seconds": 19.9,
+  "peakResidentMiB": 4589.4,
+  "views": [
+    {
+      "name": "flyer-150m",
+      "frames": 63,
+      "milliseconds": 16968,
+      "eye": [
+        3120,
+        152.140625,
+        4290
+      ],
+      "draws": 1133,
+      "triangles": 694166,
+      "budget": {
+        "draws": 2048,
+        "triangles": 4000000
+      },
+      "buildMs": 3.37,
+      "dropped": 0,
+      "casterDropped": 0
+    }
+  ]
+}

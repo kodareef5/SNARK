@@ -56,3 +56,17 @@ reports/ruins4/roof-gardens.json
 # The far city's review pictures of each Miami round, before and after, are evidence and kept.
 !reports/farcity/round*/
 !reports/farcity/round*/**
+
+# Regenerated round five inventories.
+reports/ruins5/buildings.json
+reports/ruins5/labels.json
+reports/ruins5/circulation.json
+reports/ruins5/places.json
+reports/ruins5/bridges.json
+reports/ruins5/bridge-walk.json
+reports/ruins5/room-walk.json
+reports/ruins5/street-clusters.json
+reports/ruins5/roof-gardens.json
+reports/ruins5/remnants.json
+!reports/ruins5/references/
+!reports/ruins5/references/**

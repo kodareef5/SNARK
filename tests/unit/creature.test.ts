@@ -35,10 +35,14 @@ test("the pack carries each creature as its asset describes it: a rig that is a 
     // What the asset drops is gone, and what it hangs elsewhere hangs there.
     expect(rig.names.filter((n) => spec.skeleton.drop?.test(n))).toEqual([]);
     for (const [bone, parent] of Object.entries(spec.skeleton.reparent ?? {})) expect([bone, rig.names[rig.parent[rig.names.indexOf(bone)]!]]).toEqual([bone, parent]);
-    // It stands on its feet, its left is at +X and it faces +Z.
+    // It stands on its feet in its idle (a flyer rests in its glide), its left is at +X and it faces +Z.
     const at = (name: string): number[] => Array.from(rig.rest.subarray(rig.names.indexOf(name) * 3, rig.names.indexOf(name) * 3 + 3));
+    const idle = rig.clips.get("idle");
+    if (idle) sampleClip(idle, 0, rig.a);
+    else rig.a.rest();
+    solve(rig, rig.a, rig.solved);
     for (const foot of spec.feet) {
-      expect([foot, Math.abs(at(foot)[1]!) < rig.mid * 0.2]).toEqual([foot, true]);
+      expect([foot, Math.abs(rig.solved.pos[rig.names.indexOf(foot) * 3 + 1]!) < rig.mid * 0.2]).toEqual([foot, true]);
       if (/[._]L$/i.test(foot)) expect(at(foot)[0]!).toBeGreaterThan(0);
       if (/[._]R$/i.test(foot)) expect(at(foot)[0]!).toBeLessThan(0);
     }
@@ -61,12 +65,10 @@ test("the pack carries each creature as its asset describes it: a rig that is a 
     }
     expect(mesh.lods.length).toBeLessThanOrEqual(spec.budgets.triangles.length);
     mesh.lods.forEach((lod, l) => expect([l, lod.indexCount / 3 <= spec.budgets.triangles[l]!]).toEqual([l, true]));
-    // Authored tessellation can get smaller while retaining the same maximum geometric deviation.
-    // Automatically simplified levels still require their existing strict error progression.
+    // Each coarser level has fewer triangles and lies further from the finest.
     for (let l = 1; l < mesh.lods.length; l++) {
       expect(mesh.lods[l]!.indexCount).toBeLessThan(mesh.lods[l - 1]!.indexCount);
-      if (spec.authoredLevels) expect(mesh.lods[l]!.error).toBeGreaterThanOrEqual(mesh.lods[l - 1]!.error);
-      else expect(mesh.lods[l]!.error).toBeGreaterThan(mesh.lods[l - 1]!.error);
+      expect(mesh.lods[l]!.error).toBeGreaterThan(mesh.lods[l - 1]!.error);
     }
   }
   // A species that is drawn on a skeleton of its own has that rig in the pack.
@@ -168,8 +170,8 @@ test("a creature is hit where it is: its head from in front, every zone from som
   }
 });
 
-// A flyer in its own flight, on the pteranodon's block-out and its blocked movement clips (tests/fixtures/flyer). Clips
-// the block-out does not have yet, the bite in the air, the grab, the carry, the release and the limp fall, are made here.
+// A flyer in its own flight, on the pteranodon's rig and clips. Clips that stand in for its own where a test needs a
+// simpler one are made here.
 
 const flyer = flyerAnim();
 const frig = flyer.rig;
@@ -263,18 +265,30 @@ test("in flight its body pitches with its look and rolls into its turns about it
   expect(posed(flyer, state((s) => ((s.speed = 0), (s.pitch = 10), (s.bank = 4))), T).rot).toEqual(hovering);
 });
 
-test("a barrel roll turns it over once about its own length and back", () => {
-  const level = posed(flyer, state((s) => (s.speed = 3)), T);
-  const rolled = (k: number) => posed(flyer, state((s) => ((s.speed = 3), (s.cue = CUE_ROLL), (s.cueStart = (T - k) & 255))), T);
-  const chestUp = (turn: Float32Array): number => {
-    const o = [0, 0, 0];
-    quatRotate(turn, named("chest") * 4, 0, 1, 0, o, 0);
-    return o[1]!;
-  };
+/** How far up its chest's up points, in model space. */
+function chestUp(turn: Float32Array): number {
+  const o = [0, 0, 0];
+  quatRotate(turn, named("chest") * 4, 0, 1, 0, o, 0);
+  return o[1]!;
+}
+
+test("a barrel roll without a clip of its own turns it over once about its own length and back", () => {
+  const a = new CreatureAnim({ ...frig, clips: new Map([...frig.clips].filter(([name]) => name !== "barrel_roll")) }, flyer.runAt, 3);
+  const level = posed(a, state((s) => (s.speed = 3)), T);
+  const rolled = (k: number) => posed(a, state((s) => ((s.speed = 3), (s.cue = CUE_ROLL), (s.cueStart = (T - k) & 255))), T);
   expect([chestUp(level.turn) > 0.9, chestUp(rolled(15).turn) < -0.9]).toEqual([true, true]);
   expect(rolled(0).pos).toEqual(level.pos);
   expect(rolled(30).pos).toEqual(level.pos);
   fromPivot(rolled(8).pos).forEach((d, b) => expect(d).toBeCloseTo(fromPivot(level.pos)[b]!, 4));
+});
+
+test("its own barrel roll turns it over about its own length, coming in from its flight and going back into it", () => {
+  const roll = frig.clips.get("barrel_roll")!;
+  const level = posed(flyer, state((s) => (s.speed = 3)), T);
+  const rolled = (k: number) => posed(flyer, state((s) => ((s.speed = 3), (s.cue = CUE_ROLL), (s.cueStart = (T - k) & 255))), T);
+  rolled(0).pos.forEach((p, i) => expect(p).toBeCloseTo(level.pos[i]!, 5));
+  expect(chestUp(rolled(13).turn)).toBeLessThan(-0.9);
+  expect(rolled(roll.frames - 1 + FADE).pos).toEqual(level.pos);
 });
 
 test("a take-off starts on the crouch it stood in and ends at the top of its hover's stroke, its beat coming to its clock with no bone turning faster than the clips turn it", () => {
@@ -336,7 +350,7 @@ test("a client's gait eases a step of a flyer's speed or bank over a few ticks, 
   expect(overClips(flyer, T, steps)).toBeGreaterThan(SLACK);
 });
 
-/** A clip on the block-out's bones that turns `bones` about their own x axis by `angle(frame)` radians, and the rest not. */
+/** A clip on the pteranodon's bones that turns `bones` about their own x axis by `angle(frame)` radians, and the rest not. */
 function madeClip(name: string, frames: number, loop: boolean, bones: readonly string[], angle: (f: number) => number): Clip {
   const n = frig.bones;
   const rot = new Float32Array(frames * n * 4);
@@ -351,7 +365,7 @@ function madeClip(name: string, frames: number, loop: boolean, bones: readonly s
 
 const LEGS = ["shin_l", "foot_l", "toes_l", "shin_r", "foot_r", "toes_r"];
 
-/** The block-out with what PA3b and PA3c will make: the bite in the air on the neck and head, the feet's grab, carry and release, and the limp fall. */
+/** Its rig with plain clips, which a test can name the bones of, in place of its own bite in the air, grab, carry, release and limp fall. */
 function withActs(): CreatureAnim {
   const bump = (n: number) => (f: number) => 0.5 * Math.sin((Math.PI * f) / (n - 1));
   const clips = new Map(frig.clips);
@@ -390,4 +404,12 @@ test("knocked out in the air it goes limp from its flight and falls so", () => {
   const out = state((s) => ((s.out = true), (s.grounded = false), (s.cue = CUE_TORPOR), (s.cueStart = start & 255)), false);
   expect(posed(a, out, start).rot).toEqual(posed(a, hovering, start).rot);
   expect(posed(a, out, start + FADE + 4).rot).toEqual(frameOf("torpor_fall", start + FADE + 4 + SEED, a));
+  // Come to the ground, it lies down from its fall over FADE ticks.
+  const land = start + 40;
+  const down = state((s) => ((s.out = true), (s.cue = CUE_LAND), (s.cueStart = land & 255)), false);
+  expect(posed(a, down, land).rot).toEqual(frameOf("torpor_fall", land + SEED, a));
+  const half = posed(a, down, land + FADE / 2).rot;
+  const same = (p: number[], q: number[]): boolean => p.every((x, k) => x === q[k]);
+  expect([same(half, frameOf("torpor_fall", land + FADE / 2 + SEED, a)), same(half, frameOf("torpor_idle", land + FADE / 2 + SEED, a))]).toEqual([false, false]);
+  expect(posed(a, down, land + FADE).rot).toEqual(frameOf("torpor_idle", land + FADE + SEED, a));
 });

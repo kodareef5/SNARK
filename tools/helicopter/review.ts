@@ -105,8 +105,8 @@ function capture(shot: Shot, pack: Pack, files: GameFiles, width: number, height
     const centre = new Float64Array(3);
     const focus = () => {
       const wreck = shot.moment === "wreck" ? [...h.host.corpses.bodies.values()].find(b => b.kind === vehicle.kind) : null;
-      const state = wreck?.wreck ?? { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[e]!, pitch: 0, roll: 0,
-        qx: ents.vehicleQx[e]!, qy: ents.vehicleQy[e]!, qz: ents.vehicleQz[e]!, qw: ents.vehicleQw[e]! };
+      const state = wreck?.wreck ?? { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[ents.vrow[e]!]!, pitch: 0, roll: 0,
+        qx: ents.vehicleQx[ents.vrow[e]!]!, qy: ents.vehicleQy[ents.vrow[e]!]!, qz: ents.vehicleQz[ents.vrow[e]!]!, qw: ents.vehicleQw[ents.vrow[e]!]! };
       vehiclePoint(state, [0, 1.4, -.8], centre);
       return { x: centre[0]!, y: centre[1]!, z: centre[2]!, id: wreck?.e ?? e };
     };
@@ -122,15 +122,15 @@ function capture(shot: Shot, pack: Pack, files: GameFiles, width: number, height
     if (airborne) {
       ents.setPosition(e, 128, 30, 128); ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
       ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
-      if (shot.moment === "bank") { ents.vehicleQz[e] = Math.sin(.7 / 2); ents.vehicleQw[e] = Math.cos(.7 / 2); }
-      else { ents.vehicleQx[e] = 1; ents.vehicleQw[e] = 0; }
+      if (shot.moment === "bank") { ents.vehicleQz[ents.vrow[e]!] = Math.sin(.7 / 2); ents.vehicleQw[ents.vrow[e]!] = Math.cos(.7 / 2); }
+      else { ents.vehicleQx[ents.vrow[e]!] = 1; ents.vehicleQw[ents.vrow[e]!] = 0; }
     }
     if (airborne || shot.moment === "rotor" || shot.moment === "damage") {
-      ents.vehicleEngineOn[e] = 1; ents.vehicleRotorRpm[e] = 410;
-      ents.vehicleCollective[e] = airborne ? (def.spec.mass + ents.vehiclePayloadMass[e]!) / def.spec.liftMass : 0;
+      ents.vehicleEngineOn[ents.vrow[e]!] = 1; ents.vehicleRotorRpm[ents.vrow[e]!] = 410;
+      ents.vehicleCollective[ents.vrow[e]!] = airborne ? (def.spec.mass + ents.vehiclePayloadMass[ents.vrow[e]!]!) / def.spec.liftMass : 0;
     }
     if (shot.moment === "damage") {
-      h.host.survival.hurt(vehicle, 950, 0); ents.vehicleEngineCondition[e] = .25; ents.vehicleRotorCondition[e] = .45;
+      h.host.survival.hurt(vehicle, 950, 0); ents.vehicleEngineCondition[ents.vrow[e]!] = .25; ents.vehicleRotorCondition[ents.vrow[e]!] = .45;
     }
     h.host.urban.changed(e); pilot.ownDirty = true;
     if (shot.moment === "wreck") h.host.survival.hurt(vehicle, 1e6, 0);
@@ -172,7 +172,7 @@ function capture(shot: Shot, pack: Pack, files: GameFiles, width: number, height
       writeFileSync(resolve(out, `${shot.name}-sequence.png`), encodePng(width * 3, height * 2, strip));
     }
     return { ...shot, width, height, seated: crew.filter(actor => ents.seat[actor] === e + 1).length, camera: first.camera, draws: first.draws, rotorCards: first.rotorCards, dropped: first.dropped, skipped: first.skipped,
-      damage: shot.moment === "damage" ? { engine: ents.vehicleEngineCondition[e], rotor: ents.vehicleRotorCondition[e] } : undefined };
+      damage: shot.moment === "damage" ? { engine: ents.vehicleEngineCondition[ents.vrow[e]!], rotor: ents.vehicleRotorCondition[ents.vrow[e]!] } : undefined };
   } finally { h.host.shutdown(); }
 }
 

@@ -1,7 +1,6 @@
 // Eggs as things (P6): taken up, carried, kept, set down and eaten; laid in place of feces; and what a modified client
 // cannot do with them.
 
-import { Database } from "bun:sqlite";
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,7 +10,7 @@ import { DEADLINE_BREED, fertile, held } from "../../server/breeding.ts";
 import { createHost } from "../../server/host.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { BitReader, BitWriter } from "../../shared/net/codec.ts";
+import { BitWriter } from "../../shared/net/codec.ts";
 import { CMD_DROP, CMD_OPEN, CMD_TAKE, CMD_USE, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_STALE } from "../../shared/net/protocol.ts";
 import { EGG_LIMIT, EGG_LIMIT_RANGE, leftAtSpeed } from "../../shared/sim/breeding.ts";
 import { F_AWAKE, F_PROP } from "../../shared/sim/entities.ts";
@@ -424,63 +423,6 @@ test("a pair mates within a range set by its adults' size: dodos 2.5 m apart do 
   const big = both("parasaur", at.x, at.z + 22, 6);
   h.run(1200);
   expect([pairs.has(close), pairs.has(apart), pairs.has(big)]).toEqual([true, false, true]);
-});
-
-test("a world saved before eggs were things loads as it was: an egg lying hatches on its tick, may be taken up, and is saved in the new form", () => {
-  const dbPath = join(dir, "before.db");
-  let { h, ada, at } = pen({ dbPath });
-  const rng = new Rng(12);
-  const egg = laidFertile(h, at.x, at.z + 1.5, rollWild(rng, 5, reg.colorSet[id("dodo")]!), 40 * TICK_RATE);
-  const other = laidFertile(h, at.x + 3, at.z + 1.5, rollWild(rng, 5, reg.colorSet[id("dodo")]!), 400 * TICK_RATE);
-  h.run(500);
-  const info = { ...egg.egg! };
-  h.host.shutdown();
-  // A build from before wrote revision 3, with no part for what a slot stands for, and nothing held.
-  const db = new Database(dbPath);
-  for (const row of db.query("SELECT pid, data FROM entities").all() as { pid: number; data: Uint8Array }[]) {
-    const r = new BitReader(row.data);
-    const w = new BitWriter(row.data.length + 16);
-    // This build writes revision 7. What 6 and 7 added, a creature's flying bit and a job's paused bit, is 0 here and reads as
-    // the padding of 3 does; a fire's piece and lanes are a burning fire's, and nothing here burns.
-    expect(r.u8()).toBe(7);
-    w.u8(3);
-    w.string(r.string(256));
-    const n = r.varint();
-    const parts: [number, Uint8Array][] = [];
-    for (let k = 0; k < n; k++) parts.push([r.varint(), r.blob(1 << 20)]);
-    const kept = parts.filter(([c]) => c !== 20);
-    w.varint(kept.length);
-    for (const [c, blob] of kept) {
-      w.varint(c);
-      w.blob(blob);
-    }
-    db.query("UPDATE entities SET data = ? WHERE pid = ?").run(w.bytes().slice(), row.pid);
-  }
-  db.close();
-  h = new Harness({}, 1, 60, { dev: true, dbPath });
-  ada = h.join("ada");
-  h.run(1000);
-  const again = h.host.records.byPid.get(egg.pid)!;
-  expect([again.egg, fertile(again), held(again), h.host.records.entOf.has(egg.pid), h.host.eggs.mended]).toEqual([info, true, false, true, 0]);
-  // Laid by a tribe's creature or not, a fertilised egg angers nobody: one from before has no team.
-  const late = h.host.records.byPid.get(other.pid)!;
-  expect(late.team).toBe(0);
-  h.say(ada, `tp ${(late.x + 1).toFixed(3)} ${late.z.toFixed(3)}`);
-  expect(take(h, ada, h.host.records.entOf.get(late.pid)!)).toBe(RESULT_OK);
-  expect(h.host.eggs.angered).toBe(0);
-  while (h.world.tick < info.hatchAt + 5) h.run(500);
-  const baby = young(h).find((r) => r.genome === again.genome)!;
-  expect(baby.grown - baby.span).toBe(info.hatchAt);
-  const holder = h.client(ada)!.pid;
-  h.host.shutdown();
-  // What changed is saved in the new form, this build's revision 7: the egg held, and Ada, whose slot stands for it.
-  const store = new Database(dbPath, { readonly: true });
-  const form = (pid: number): number => (store.query("SELECT data FROM entities WHERE pid = ?").get(pid) as { data: Uint8Array }).data[0]!;
-  expect([form(late.pid), form(holder)]).toEqual([7, 7]);
-  store.close();
-  h = new Harness({}, 1, 60, { dev: true, dbPath });
-  expect([held(h.host.records.byPid.get(late.pid)!), h.host.eggs.mended, h.host.items.audit()]).toEqual([true, 0, []]);
-  h.host.shutdown();
 });
 
 /** Kills the child, without warning, once it has printed `minAcks` acknowledgements. */

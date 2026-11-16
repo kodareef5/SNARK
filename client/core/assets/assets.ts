@@ -3,6 +3,7 @@
 // and is resident when first drawn. Given a manifest and a port, only the boot pack is here at start and the rest is
 // asked for as it is wanted.
 
+import type { ClipSet } from "../../../shared/anim/clip.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { describePack, type Manifest } from "../../../shared/pack/manifest.ts";
 import type { Pack } from "../../../shared/pack/pack.ts";
@@ -17,6 +18,13 @@ import { DEFAULT_TIER, TIERS, tierOf, type Tier } from "./tiers.ts";
 /** A level is left only when another is right by this margin, so that a body at the edge of a switch does not flicker. */
 export const HYSTERESIS = 0.15;
 
+/** The coarsest level, but none finer than `finest`, whose error is within `limit`. */
+function within(errors: readonly number[], finest: number, limit: number): number {
+  let level = errors.length - 1;
+  while (level > finest && errors[level]! > limit) level--;
+  return level;
+}
+
 export class Assets {
   readonly table: AssetTable;
   readonly bind: Binding;
@@ -26,7 +34,7 @@ export class Assets {
   /** The variant of the textures the device takes. The shell says which. */
   format: TextureFormat = "rgba";
   /** The pixels a metre covers on screen from a metre away. */
-  private scale = 0;
+  scale = 0;
   /** The share of the tier's budget in use: less each time the graphics card runs out of memory or is lost. */
   private squeeze = 1;
   private pressures = 0;
@@ -87,14 +95,9 @@ export class Assets {
   choose(errors: readonly number[], distance: number, was: number): number {
     const allowed = (this.tier.threshold * this.residency.relax * distance) / this.scale;
     const finest = Math.min(this.tier.finest, errors.length - 1);
-    const within = (limit: number): number => {
-      let level = errors.length - 1;
-      while (level > finest && errors[level]! > limit) level--;
-      return level;
-    };
-    const want = within(allowed);
+    const want = within(errors, finest, allowed);
     if (was < 0 || was >= errors.length || want === was) return want;
-    if (want > was) return Math.max(was, within(allowed * (1 - HYSTERESIS)));
+    if (want > was) return Math.max(was, within(errors, finest, allowed * (1 - HYSTERESIS)));
     return errors[was]! > allowed * (1 + HYSTERESIS) || was < finest ? want : was;
   }
 
@@ -158,6 +161,16 @@ export class Assets {
   material(material: number, distance: number, size = 1): void {
     const d = distance > 0.01 ? distance : 0.01;
     this.residency.material(material, (this.table.materials[material]!.span * size * this.scale) / (d * this.residency.relax), d > 1 ? d : 1);
+  }
+
+  /** Says the clips of the manifest's skeleton `c` are wanted, which asks for them at once: a body without them stands at rest. */
+  wantClips(c: number): void {
+    this.residency.wantClips(c);
+  }
+
+  /** The clips of the manifest's skeleton `c`, or null until they have come. */
+  clips(c: number): ClipSet | null {
+    return this.residency.clips(c);
   }
 
   /**

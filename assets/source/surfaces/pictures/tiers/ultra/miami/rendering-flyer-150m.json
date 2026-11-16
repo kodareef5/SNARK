@@ -1,0 +1,28 @@
+{
+  "map": "core:miami",
+  "mapHash": 2569618600,
+  "tier": "ultra",
+  "seconds": 27,
+  "peakResidentMiB": 4236.3,
+  "views": [
+    {
+      "name": "flyer-150m",
+      "frames": 68,
+      "milliseconds": 17902,
+      "eye": [
+        7276,
+        152.046875,
+        4324
+      ],
+      "draws": 2309,
+      "triangles": 2615770,
+      "budget": {
+        "draws": 4096,
+        "triangles": 8000000
+      },
+      "buildMs": 6.91,
+      "dropped": 0,
+      "casterDropped": 0
+    }
+  ]
+}

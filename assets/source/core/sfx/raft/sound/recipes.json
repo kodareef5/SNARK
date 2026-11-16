@@ -1,0 +1,1129 @@
+{
+  "takes": {
+    "takes/paddle/moss-pt-9800-02105.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "paddle",
+      "prompt_id": "v3-9800",
+      "prompt": "A wooden paddle dips and pulls through calm water: a splashy stroke and drips, six separate strokes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9800,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9800.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A wooden paddle dips and pulls through calm water: a splashy stroke and drips, six separate strokes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e2b7a22660edc90e1c8c6e21cd58e9d02c0b94536b11c0d0c5e95b35d18149f7",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "74c67e3abe255bae3e45575b706ef928f13e43df1951d17b70a8b6d820ab42c3",
+      "cut": {
+        "source_file": "moss-pt-9800.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          98640,
+          160800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/paddle/moss-pt-9801-06330.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "paddle",
+      "prompt_id": "v3-9800",
+      "prompt": "A wooden paddle dips and pulls through calm water: a splashy stroke and drips, six separate strokes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9801,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9801.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A wooden paddle dips and pulls through calm water: a splashy stroke and drips, six separate strokes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "dd2b5c09fd3c4350a200d1241f00e0515d28c90415c1bbca0b0ab6b22ae03254",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "03b1daa5842405baf769aacb82778d5a518045e474e34044ed677d5be5404380",
+      "cut": {
+        "source_file": "moss-pt-9801.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          301440,
+          341520
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/paddle/moss-pt-9800-00080.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "paddle",
+      "prompt_id": "v3-9800",
+      "prompt": "A wooden paddle dips and pulls through calm water: a splashy stroke and drips, six separate strokes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9800,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9800.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A wooden paddle dips and pulls through calm water: a splashy stroke and drips, six separate strokes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f4fee1f496bb835e97dd0d43ed6fa7f7ed9a2c602787bdfaa693fcf51e705bb3",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "74c67e3abe255bae3e45575b706ef928f13e43df1951d17b70a8b6d820ab42c3",
+      "cut": {
+        "source_file": "moss-pt-9800.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          1440,
+          47041
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/paddle/moss-pt-9801-04430.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "paddle",
+      "prompt_id": "v3-9800",
+      "prompt": "A wooden paddle dips and pulls through calm water: a splashy stroke and drips, six separate strokes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9801,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9801.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A wooden paddle dips and pulls through calm water: a splashy stroke and drips, six separate strokes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "0945d1411f7c06c69ab4634965b895d400b4551107aaf6aa685cf2ecf7032733",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "03b1daa5842405baf769aacb82778d5a518045e474e34044ed677d5be5404380",
+      "cut": {
+        "source_file": "moss-pt-9801.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          210240,
+          245280
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/paddle/moss-pt-9800-04655.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "paddle",
+      "prompt_id": "v3-9800",
+      "prompt": "A wooden paddle dips and pulls through calm water: a splashy stroke and drips, six separate strokes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9800,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9800.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A wooden paddle dips and pulls through calm water: a splashy stroke and drips, six separate strokes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "adda47b01e49f0a78d81ff334a7541ac0b9f21285ebeedc90a8aa68e50a7f279",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "74c67e3abe255bae3e45575b706ef928f13e43df1951d17b70a8b6d820ab42c3",
+      "cut": {
+        "source_file": "moss-pt-9800.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          221040,
+          282240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/paddle/moss-pt-9801-00150.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "paddle",
+      "prompt_id": "v3-9800",
+      "prompt": "A wooden paddle dips and pulls through calm water: a splashy stroke and drips, six separate strokes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9801,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9801.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A wooden paddle dips and pulls through calm water: a splashy stroke and drips, six separate strokes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "64175db1354d5e826598a8cf3646d9c2365f44f06d995ae723b86d170775d1b7",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "03b1daa5842405baf769aacb82778d5a518045e474e34044ed677d5be5404380",
+      "cut": {
+        "source_file": "moss-pt-9801.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          4800,
+          48240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/creak/moss-pt-9810-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "creak",
+      "prompt_id": "v3-9810",
+      "prompt": "A log raft drifts on a gentle swell: wooden logs and rope lashings creak and groan slowly, water lapping between the logs, steady. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9810,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9810.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A log raft drifts on a gentle swell: wooden logs and rope lashings creak and groan slowly, water lapping between the logs, steady. Close-miked, dry, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "17429ca6a6796a0fe99f74980a81b1e68500c1366a043bbd67b99ae69f35bc13",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "3e3c67829e900e7052e07a7b38be41159ab87f0ef7030cbee81394efc10246d5",
+      "cut": {
+        "source_file": "moss-pt-9810.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/hull/slow/moss-pt-9820-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hull/slow",
+      "prompt_id": "v3-9820",
+      "prompt": "Calm water laps and gurgles gently between floating wooden logs, steady and slow. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9820,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9820.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Calm water laps and gurgles gently between floating wooden logs, steady and slow. Close-miked, dry, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "0883c26b8288ab47b85b45b018f8540d7b35f13efcb6bf474386316735302b3c",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "857375fbe3d72eb11f3b6e0600394bbccbe005029b89cd4499d4ce2275321bba",
+      "cut": {
+        "source_file": "moss-pt-9820.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/hull/fast/moss-pt-9830-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hull/fast",
+      "prompt_id": "v3-9830",
+      "prompt": "A wooden log raft moves quickly downriver: water rushing and splashing between the logs, steady. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9830,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9830.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A wooden log raft moves quickly downriver: water rushing and splashing between the logs, steady. Close-miked, dry, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "8cce2d35134719a7d1c0c88250cadb1a7efd229ea96a8f415ae9cdb524099ad4",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "73b26240c39a255798b3839c47eaf78f2d1abf742e24e52f2856f1a4c21afc3e",
+      "cut": {
+        "source_file": "moss-pt-9830.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/sail/flap/moss-pt-9840-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "sail/flap",
+      "prompt_id": "v3-9840",
+      "prompt": "A canvas sail luffs and flaps in the wind with ropes rattling and slapping, steady gusty flapping. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9840,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9840.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A canvas sail luffs and flaps in the wind with ropes rattling and slapping, steady gusty flapping. Close-miked, dry, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "de2631a82e7c7741f6432e9ea20db97dda72069a408907006ba2e8e64c820905",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "e962a8867e69819c1be242d87ba2e45cbd0da1b45a198d80c2b3ac22bc88b81f",
+      "cut": {
+        "source_file": "moss-pt-9840.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/sail/fill/moss-pt-9850-07040.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "sail/fill",
+      "prompt_id": "v3-9850",
+      "prompt": "A canvas sail catches the wind and fills with a sudden heavy whump and a creak of the mast, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9850,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9850.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A canvas sail catches the wind and fills with a sudden heavy whump and a creak of the mast, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "43c7b1f2e546af538f2893ca0bc20d16f2ec840c6421f298438a63f31043c272",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "83f6d40c3bd2cb57f17c687b88c2a856fdef16c4f9e48e29df94684e25e4899d",
+      "cut": {
+        "source_file": "moss-pt-9850.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          335520,
+          383280
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/sail/fill/moss-pt-9850-05090.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "sail/fill",
+      "prompt_id": "v3-9850",
+      "prompt": "A canvas sail catches the wind and fills with a sudden heavy whump and a creak of the mast, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9850,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9850.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A canvas sail catches the wind and fills with a sudden heavy whump and a creak of the mast, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "4b48b8d927acdb81b48344ba8489c642dfbfc4df5f51968b5ea48b1d946c33d4",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "83f6d40c3bd2cb57f17c687b88c2a856fdef16c4f9e48e29df94684e25e4899d",
+      "cut": {
+        "source_file": "moss-pt-9850.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          241920,
+          277440
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/bump/moss-pt-9860-00025.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "bump",
+      "prompt_id": "v3-9860",
+      "prompt": "A heavy wooden log raft bumps against a rock: a hollow wooden knock and creak, five separate bumps with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9860,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9860.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A heavy wooden log raft bumps against a rock: a hollow wooden knock and creak, five separate bumps with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "6bc8ddd067e87a84e7b338072ea3ff2a632173db6159842ad084190b1e08f2a0",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "56fd77eb092220caf2ad9cfcfbb883ad879b8cf18817dd5c02d4c577057877b6",
+      "cut": {
+        "source_file": "moss-pt-9860.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          27841
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/beach/moss-pt-9870-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "beach",
+      "prompt_id": "v3-9870",
+      "prompt": "A wooden log raft runs aground on a sandy shore: the logs scrape and grind on sand and pebbles, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9870,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9870.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A wooden log raft runs aground on a sandy shore: the logs scrape and grind on sand and pebbles, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "49c91928732e0b229c321aa60e6f75a12a0f65b09db167a2477f47a8bd7fae35",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f0044e19fe552d4f7d0fd897b336e9cabde3d3fdbefbad17461a68e64bdfc014",
+      "cut": {
+        "source_file": "moss-pt-9870.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          48720
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/beach/moss-pt-9870-01980.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "beach",
+      "prompt_id": "v3-9870",
+      "prompt": "A wooden log raft runs aground on a sandy shore: the logs scrape and grind on sand and pebbles, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 9870,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-9870.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A wooden log raft runs aground on a sandy shore: the logs scrape and grind on sand and pebbles, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "9a3925deaeffdab86b465323a9361370efa045c30966d4bd879a9f3ecbfe4b07",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.29
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.3,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1062.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 34.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f0044e19fe552d4f7d0fd897b336e9cabde3d3fdbefbad17461a68e64bdfc014",
+      "cut": {
+        "source_file": "moss-pt-9870.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          92640,
+          120480
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    }
+  }
+}

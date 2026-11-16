@@ -66,7 +66,7 @@ test("a raptor its tribe saddles is drawn with the saddle by every client, one t
   const withSaddle = (list: string[]): string[] => [`${RAPTOR} on ${body(list)}`, `${WORN} on ${body(list)}`];
   expect([sees(bob), drawn(own!, meshes).get(e)].map((l) => l!.length)).toEqual([1, 1]);
   // Wild or tame, a creature with no saddle has no gear on the wire.
-  expect(ents.gear[e]).toBe(null);
+  expect(ents.gears.get(e)).toBeUndefined();
 
   // She puts the saddle on it from its inventory, as a player does.
   h.host.items.mint(me, saddle, 1);
@@ -79,7 +79,7 @@ test("a raptor its tribe saddles is drawn with the saddle by every client, one t
   run(300);
   ada.command(CMD_CLOSE);
   run(300);
-  expect([rec.saddle, [...ents.gear[e]!]]).toEqual([saddle, [0, saddle, 0, 0, 0, 0]]);
+  expect([rec.saddle, [...ents.gears.get(e)!]]).toEqual([saddle, [0, saddle, 0, 0, 0, 0]]);
   // Each client draws it on the raptor's own bones: hers, Bob's, and Carol's, who joins after it was put on.
   const carol = h.join("carol");
   run(1200);
@@ -96,7 +96,7 @@ test("a raptor its tribe saddles is drawn with the saddle by every client, one t
   expect(ada.driving).toBe(-1);
   ada.command(CMD_ORDER, (w: BitWriter) => (w.u32(e), w.u8(ORDER_UNSADDLE)));
   run(400);
-  expect([rec.saddle, ents.gear[e]![GEAR_WORN]]).toEqual([0, 0]);
+  expect([rec.saddle, ents.gears.get(e)![GEAR_WORN]]).toEqual([0, 0]);
   for (const list of [drawn(own!, meshes).get(e)!, sees(bob), sees(carol)]) expect(list).toEqual([`${RAPTOR} on ${body(list)}`]);
   // Each client's copy of its gear says so.
   for (const s of [bob, carol]) {

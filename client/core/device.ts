@@ -10,13 +10,14 @@
 // devicescene.ts, and the table and pages it shows in devicetext.ts. What only a browser can say comes from the shell
 // (client/shell/device.ts).
 
+import { joinClips, type ClipSet } from "../../shared/anim/clip.ts";
 import { HumanAnim } from "../../shared/anim/pose.ts";
 import { creatureAnims } from "../../shared/anim/creature.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
-import type { Pack } from "../../shared/pack/pack.ts";
+import type { Pack, PackRig } from "../../shared/pack/pack.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
 import { creatureHash, hullHash, nodeHash, poseHash, simHash, snapHash, tunedHash } from "../../shared/sim/scenarios.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -25,8 +26,9 @@ import { FarCells, writeFar } from "../../shared/world/tactical.ts";
 import type { App } from "./app.ts";
 import { DEFAULT_TIER, TIERS, tierOf, type Tier } from "./assets/tiers.ts";
 import { FrameTimer, GPU_PLAN, GpuQuestions, type Gl2, type GpuReport, type PassTime } from "./devicegpu.ts";
-import { BodyCopies, LOOK, TextureMemory, farBases, farSpots, rocks } from "./devicescene.ts";
+import { BodyCopies, LOOK, TextureMemory, boxBase, farBases, farSpots, rocks } from "./devicescene.ts";
 import { CITY_BUFFER } from "./render/farcity.ts";
+import { FAR_BUFFER } from "./render/far.ts";
 import { FAR_NODE_BUFFERS } from "./render/farnodes.ts";
 import { donePage, progressText, startPage } from "./devicetext.ts";
 import { DRAW_TEXTURED, FRAME, SOURCE_WINDOW, type FramePacket } from "./render/packet.ts";
@@ -34,6 +36,7 @@ import { groundSize } from "./render/terrain.ts";
 import { CUTOUTS, type Cutouts, type Thing } from "./render/scene.ts";
 import { effectsOff } from "./passes.ts";
 import { heldTo, probePasses, provingProbes } from "./selfcheck.ts";
+import { NO_REFERENCE, SelfcheckSurfaces, type SurfaceReference } from "./selfcheck-surfaces.ts";
 import { stressThings } from "./stress.ts";
 
 /** The terrain flight and the tree order run on a server of their own, on the 8 km map (tools/device.ts --terrain); the others on the proving ground. */
@@ -51,13 +54,15 @@ export const SCENES: readonly SceneName[] = ["plain", "stress", "crowd"];
 export const scenesOf = (tier: Tier): readonly SceneName[] => [...SCENES, ...(tier.split > 0 ? ["crowd1" as const] : []), ...(tier.lit && tier.shadows.cascades > 0 ? ["crowd0" as const] : [])];
 
 /**
- * What the ladder adds, a rung at a time. Bodies: copies of the crowd, posed. Pieces: stone and wood houses the server
- * builds, with their materials near. Triangles: rocks near, each a draw. Draws: rocks far, each a draw of few triangles.
+ * What the ladder adds, a rung at a time. Bodies: copies of the crowd, dressed, some riding. Pieces: stone and wood houses
+ * the server builds, with their materials near. Triangles: rocks near, each a draw. Draws: rocks far, each a draw of few
+ * triangles. Base: the compact base up close, a storey a rung (devicescene.ts boxBase). Vehicles: parked cars,
+ * helicopters and boats.
  */
-export type Axis = "bodies" | "triangles" | "draws" | "pieces";
-export const AXES: readonly Axis[] = ["bodies", "triangles", "draws", "pieces"];
-/** Each axis's last rung is the most the engine takes: a view of 2,048 bodies, 4,096 draws a frame, the base's 4,096 pieces. */
-export const RUNGS: Readonly<Record<Axis, readonly number[]>> = { bodies: [25, 50, 100, 200, 400, 800, 1600, 2048], triangles: [8, 16, 32, 64, 128, 256, 512, 1024], draws: [256, 512, 1024, 2048, 3600], pieces: [64, 128, 256, 512, 1024, 2048, 4096] };
+export type Axis = "bodies" | "triangles" | "draws" | "pieces" | "base" | "vehicles";
+export const AXES: readonly Axis[] = ["bodies", "triangles", "draws", "pieces", "base", "vehicles"];
+/** The last rung of bodies, draws and pieces is the most the engine takes: a view of 2,048 bodies, 4,096 draws a frame, the houses' 4,096 pieces. */
+export const RUNGS: Readonly<Record<Axis, readonly number[]>> = { bodies: [25, 50, 100, 200, 400, 800, 1600, 2048], triangles: [8, 16, 32, 64, 128, 256, 512, 1024], draws: [256, 512, 1024, 2048, 3600], pieces: [64, 128, 256, 512, 1024, 2048, 4096], base: [1, 2, 3].map((s) => boxBase(s).length), vehicles: [3, 12, 48, 192] };
 /** Texture memory the ladder takes at the end, in megabytes, until the device refuses it or it is all held. */
 export const MEMORY_MB: readonly number[] = [128, 256, 512, 768, 1024, 1536, 2048, 3072, 4096];
 
@@ -195,11 +200,16 @@ export interface PhaseReport {
    */
   gpuMs: number | null;
   gpuOff: number | null;
-  /** Medians a frame: WebGL draw calls, triangles, draws the frame asked to have drawn with their materials, and bones posed. */
+  /**
+   * Medians a frame: WebGL draw calls, triangles, draws the frame asked to have drawn with their materials, and bones
+   * posed; and of the calls, those into the shadow maps, with their triangles, which `triangles` leaves out.
+   */
   drawCalls: number;
   triangles: number;
   textured: number;
   bones: number;
+  casterDraws: number;
+  casterTris: number;
   /** Totals over the measured frames, as the frame packet counted them. */
   dropped: number;
   skipped: number;
@@ -230,13 +240,15 @@ export interface RungReport {
   canvas: number[];
   settled: boolean;
   frameMs: Spread;
-  /** Medians: our code's ms, draw calls, triangles, bones posed and draws with materials. */
+  /** Medians: our code's ms, draw calls, triangles, bones posed, draws with materials, and draws and triangles into the shadow maps. */
   buildMs: number;
   drawMs: number;
   calls: number;
   tris: number;
   bones: number;
   mat: number;
+  casterDraws: number;
+  casterTris: number;
   fetched: number;
   failed: number;
   refused: number;
@@ -452,7 +464,7 @@ export interface DeviceInfo {
   memoryGB: number | null;
   touch: number;
   /** Whether the page took the device for touch-first, which draws each tier as its touch rule says (tiers.ts forTouch). */
-  touchFirst?: boolean;
+  touchFirst: boolean;
   features: Record<string, boolean | string | number>;
 }
 
@@ -532,6 +544,8 @@ export interface DeviceReport {
     cache: string;
   } | null;
   probes: { name: string; ok: boolean; expected: number[]; got: number[] }[] | null;
+  /** The world surfaces' reference atlas the lit probes are held to, as the self-check's; null on a picture not lit. */
+  surfaceReference: SurfaceReference | null;
   hashes: { name: string; got: string; want: string | null; ms: number }[] | null;
   phases: PhaseReport[];
   /** The first phase once more at the end. A phone that has grown warm runs slower. */
@@ -558,7 +572,7 @@ export function newReport(run: string, mode: Mode = "quick"): DeviceReport {
   return {
     run, mode, seq: 0, stage: "starting", done: false, device: null, gpu: null, idleFrameMs: null, wakeLock: "not asked",
     link: { httpMs: null, gameMs: null, snapshots: 0, missed: 0, missedLoading: 0, missedHidden: 0, server: null, longestGapMs: 0, bytesIn: 0, clockJumps: 0, corrections: 0, undecodable: 0 },
-    load: null, probes: null, hashes: null, phases: [], again: null, ladder: null, soak: null, terrain: null, trees: null, gpuTests: null, skipped: [], texturesMade: 0, hidden: [], errors: [], reloadedDuring: null,
+    load: null, probes: null, surfaceReference: null, hashes: null, phases: [], again: null, ladder: null, soak: null, terrain: null, trees: null, gpuTests: null, skipped: [], texturesMade: 0, hidden: [], errors: [], reloadedDuring: null,
   };
 }
 
@@ -648,13 +662,13 @@ export function formatsOf(extensions: readonly string[]): string[] {
 }
 
 /**
- * The scenarios of shared/sim/scenarios.ts on a client's content and boot pack. The server runs the same on the pack it
- * serves, so equal hashes mean this JavaScript engine simulates, poses and builds exactly as the server's does.
+ * The scenarios of shared/sim/scenarios.ts on a client's content, rigs and every clip of its build. The server runs the
+ * same on what it serves, so equal hashes mean this JavaScript engine simulates, poses and builds exactly as the server's does.
  */
-export function deviceScenarios(reg: Registry, pack: Pack): [string, () => string][] {
-  const anim = new HumanAnim(pack.clips);
-  const rigs = buildRigs(pack.header.rigs, pack.clips);
-  const creatures = creatureAnims(reg, (d) => rigs.get(d.mesh)).filter((a) => a !== null);
+export function deviceScenarios(reg: Registry, rigs: readonly PackRig[], clips: ClipSet): [string, () => string][] {
+  const anim = new HumanAnim(clips);
+  const built = buildRigs(rigs, clips);
+  const creatures = creatureAnims(reg, (d) => built.get(d.mesh)).filter((a) => a !== null);
   return [["sim", () => simHash(reg)], ["pose", () => poseHash(anim)], ["snap", () => snapHash(reg)], ["creature", () => creatureHash(creatures)], ["tuned", () => tunedHash(reg)], ["hull", () => hullHash(reg)], ["node", () => nodeHash(reg)]];
 }
 
@@ -667,6 +681,9 @@ export interface Load {
   pieces: number;
   near: number;
   far: number;
+  /** Pieces of the compact base the server is to stand, and vehicles parked on the page. */
+  base?: number;
+  vehicles?: number;
   /** Drawn in one depth range on a tier of two, with no shadows on a tier that casts, and with no far trees, rocks or bushes. */
   oneRange?: boolean;
   noShadows?: boolean;
@@ -689,7 +706,7 @@ const bare = (tier: Tier, yaw: number): Load => ({ tier, yaw, stress: false, bod
 
 /** The rung of `axis` with `n` on `tier`. */
 export function rungLoad(tier: Tier, axis: Axis, n: number): Load {
-  const load = bare(tier, axis === "bodies" ? LOOK.bodies : axis === "pieces" ? LOOK.pieces : LOOK.rocks);
+  const load = bare(tier, axis === "bodies" || axis === "vehicles" ? LOOK.bodies : axis === "pieces" || axis === "base" ? LOOK.pieces : LOOK.rocks);
   if (axis === "triangles") load.near = n;
   else if (axis === "draws") load.far = n;
   else load[axis] = n;
@@ -877,6 +894,8 @@ export interface DeviceSide {
   pack: Pack;
   reg: Registry;
   hf: Heightfield;
+  /** The self-check's reference for the world surfaces, round the game's asset port; null where the game streams no assets. */
+  surfaces: Pick<SelfcheckSurfaces, "start" | "done" | "sample" | "state"> | null;
   /** The browser's device pixels for one CSS pixel. */
   dpr: number;
   /** The widest texture the device takes. A tier with wider ones is not tried. */
@@ -890,8 +909,8 @@ export interface DeviceSide {
   expected: Record<string, string> | null;
   /** Bodies added on the page, which the run sets the number of. */
   bodies: BodyCopies;
-  /** Asks the probe's server to stand `n` pieces in its base. Resolves with how many stand, or null if it would not. */
-  base(n: number): Promise<number | null>;
+  /** Asks the probe's server to stand `n` pieces in its houses, or with `box` in the compact base. Resolves with how many stand, or null if it would not. */
+  base(n: number, box: boolean): Promise<number | null>;
   /** Texture memory for the ladder's last step, in the renderer's variant. Null where the renderer gives none. */
   memory: TextureMemory | null;
   /** The GPU questions, or those named, made when a test comes to them, once the canvas has its size. Null where the renderer gives none. */
@@ -902,6 +921,8 @@ export interface DeviceSide {
   display: number;
   /** Whether the page's server is the terrain flight's, on its 8 km map, where the soak turns through the wood. */
   terrainMap: boolean;
+  /** The tier the page's link names for the soaks (`soaktier`), or null for high. */
+  soakTier?: string | null;
   /** Asks the server to stand the body at the tree order's spot `k` (WOODS). Resolves with where, x and z, or null if it would not. */
   stand(k: number): Promise<number[] | null>;
   /** Asks the server to count the view `w` by `h` CSS pixels, `fov` degrees high, or how its count goes. Null for no answer. */
@@ -943,13 +964,13 @@ export class DeviceRun {
   private failedAt: Failures = { net: 0, hash: 0, range: 0, status: 0, refused: 0 };
   private dropped = 0;
   private skipped = 0;
-  private readonly samples = { frame: [] as number[], build: [] as number[], draw: [] as number[], calls: [] as number[], tris: [] as number[], textured: [] as number[], bones: [] as number[], gpu: [] as number[], gpuOff: [] as number[] };
+  private readonly samples = { frame: [] as number[], build: [] as number[], draw: [] as number[], calls: [] as number[], tris: [] as number[], textured: [] as number[], bones: [] as number[], casterDraws: [] as number[], casterTris: [] as number[], gpu: [] as number[], gpuOff: [] as number[] };
   /** Tiers above this index are not tried in the quick look, for `stopWhy`. */
   private stopAbove = TIERS.length;
   private stopWhy = "";
-  /** The base's pieces as the server last said, and whether it is still to say; the client's count of structures, and how long it has stood. */
-  private pieces = 0;
-  private asking = false;
+  /** The pieces of each base as the server was last asked, and how many answers are still to come; the client's count of structures, and how long it has stood. */
+  private readonly stood = { pieces: 0, base: 0 };
+  private asking = 0;
   private structs = -1;
   private structsStill = 0;
   /** Snapshot counts: from the first snapshot, at the step's start, and when the page was hidden. */
@@ -1026,14 +1047,14 @@ export class DeviceRun {
     const count = app.session.world?.structs.count ?? 0;
     this.structsStill = count === this.structs ? this.structsStill + 1 : 0;
     this.structs = count;
-    const quiet = r.flying === 0 && r.waiting === 0 && p.assetUploads.length === 0 && p.texUploads.length === 0 && p.skipped === 0 && !this.asking && this.structsStill >= STILL;
+    const quiet = r.flying === 0 && r.waiting === 0 && p.assetUploads.length === 0 && p.texUploads.length === 0 && p.skipped === 0 && this.asking === 0 && this.structsStill >= STILL;
     if (quiet && this.still === 0) this.stillSince = now;
     this.still = quiet ? this.still + 1 : 0;
     if (r.stats.fetched + r.stats.cached !== this.got) [this.got, this.gotAt] = [r.stats.fetched + r.stats.cached, now];
     this.listen(now);
     let news = false;
     if (this.stage === "load") news = this.load(now);
-    else if (this.stage === "probes") news = this.probes(p, read);
+    else if (this.stage === "probes") news = this.probes(now, p, read);
     else if (this.stage === "hashes") news = this.hashes();
     else if (this.stage === "gpu") news = this.gpu();
     else if (this.stage === "steps") news = this.measure(now, gap, p, buildMs, drawMs, drawCalls);
@@ -1123,6 +1144,7 @@ export class DeviceRun {
     // The probes look at the proving ground, which the terrain server's map is not.
     this.stage = this.side.terrainMap ? "hashes" : "probes";
     this.report.stage = this.stage;
+    this.at = now;
     return true;
   }
 
@@ -1130,16 +1152,22 @@ export class DeviceRun {
    * The self-check's probes that are on this screen, read off the picture of the default tier once it has settled. A
    * narrow screen leaves the slope out. The picture is drawn with a plain sky, as the self-check draws it (no haze,
    * nothing over the table), so its colours are the twins'; the frame after the sky is made plain is read, or after
-   * PLAIN_FRAMES whatever was drawn.
+   * PLAIN_FRAMES whatever was drawn. A lit picture waits up to loadMs for the self-check's reference atlas, fetched only
+   * now so the load is measured without it; without it the ground and the statics are not judged, and the report says why.
    */
-  private probes(p: FramePacket, read: (sx: number, sy: number) => [number, number, number]): boolean {
-    const { app, reg, pack, hf } = this.side;
+  private probes(now: number, p: FramePacket, read: (sx: number, sy: number) => [number, number, number]): boolean {
+    const { app, reg, pack, hf, surfaces } = this.side;
     const scene = app.scene!;
     const plain = !p.lit || (p.frame[FRAME.haze] === 0 && p.frame[FRAME.skyDetail] === 0);
     scene.plainSky = true;
+    if (p.lit) surfaces?.start();
     if (!plain && ++this.plainWait < PLAIN_FRAMES) return false;
+    if (p.lit && surfaces && !surfaces.done && now - this.at < this.timing.loadMs) return false;
     scene.plainSky = app.plainSky;
-    const shown = provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, true, scene.packet).filter((q) => q.sx >= 0 && q.sx < 1 && q.sy >= 0 && q.sy < 1);
+    const sample = p.lit ? (surfaces?.sample ?? null) : null;
+    const reference = !surfaces ? NO_REFERENCE : surfaces.done ? surfaces.state : { ...surfaces.state, error: `not in after ${tenth(this.timing.loadMs / 1000)} s` };
+    this.report.surfaceReference = p.lit ? reference : null;
+    const shown = provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, true, scene.packet, { width: this.canvas[0]!, height: this.canvas[1]!, sample }).filter((q) => q.sx >= 0 && q.sx < 1 && q.sy >= 0 && q.sy < 1);
     this.report.probes = shown.map((q) => {
       const got = read(q.sx, q.sy);
       return { name: q.name, ok: probePasses(q, got[0], got[1], got[2]), expected: heldTo(q, got[0], got[1], got[2]), got };
@@ -1151,7 +1179,16 @@ export class DeviceRun {
 
   private hashes(): boolean {
     const side = this.side;
-    this.report.hashes = deviceScenarios(side.reg, side.pack).map(([name, run]) => {
+    // The scenarios pose every creature, so they wait for each skeleton's clips, asked for here.
+    const assets = side.app.scene!.assets;
+    const sets = [side.pack.clips];
+    for (let c = 0; c < assets.table.skeletons.size; c++) {
+      const set = assets.clips(c);
+      if (set) sets.push(set);
+      else assets.wantClips(c);
+    }
+    if (sets.length <= assets.table.skeletons.size) return false;
+    this.report.hashes = deviceScenarios(side.reg, side.pack.header.rigs, joinClips(sets)).map(([name, run]) => {
       const t = side.now();
       const got = run();
       return { name, got, want: side.expected?.[name] ?? null, ms: tenth(side.now() - t) };
@@ -1161,14 +1198,15 @@ export class DeviceRun {
   }
 
   /**
-   * The quick look asks the GPU questions first, where the renderer gives them, and the tree order the SURFACE pass's
-   * cost alone. The other tests begin at once.
+   * The quick look asks the GPU questions first, where the renderer gives them, facing the crowd, whose thatch and bodies
+   * give the executor draws of every kind to copy; the tree order the SURFACE pass's cost alone. The other tests begin
+   * at once.
    */
   private ask(): void {
     const make = this.side.questions;
     if ((this.mode !== "quick" && this.mode !== "trees") || !make) return this.begin();
     this.questions = make(this.mode === "trees" ? ["surface"] : undefined);
-    if (this.mode === "quick") this.report.gpuTests = this.questions.report;
+    if (this.mode === "quick") [this.report.gpuTests, this.side.app.controls.yaw] = [this.questions.report, LOOK.crowd];
     this.stage = "gpu";
     this.report.stage = "gpu questions";
   }
@@ -1254,7 +1292,7 @@ export class DeviceRun {
       this.next(phase);
     } else {
       const { held, limit, invalid } = judgeRung(phase, this.side.display);
-      this.report.ladder!.rungs.push({ tier: phase.tier, axis: step.axis!, n: step.n!, held, limit, invalid, canvas: phase.canvas, settled: phase.settled, frameMs: phase.frameMs, buildMs: phase.buildMs.median, drawMs: phase.drawMs.median, calls: phase.drawCalls, tris: phase.triangles, bones: phase.bones, mat: phase.textured, fetched: phase.fetched, failed: phase.failed, refused: phase.refused, missed: phase.missed });
+      this.report.ladder!.rungs.push({ tier: phase.tier, axis: step.axis!, n: step.n!, held, limit, invalid, canvas: phase.canvas, settled: phase.settled, frameMs: phase.frameMs, buildMs: phase.buildMs.median, drawMs: phase.drawMs.median, calls: phase.drawCalls, tris: phase.triangles, bones: phase.bones, mat: phase.textured, casterDraws: phase.casterDraws, casterTris: phase.casterTris, fetched: phase.fetched, failed: phase.failed, refused: phase.refused, missed: phase.missed });
       this.nextRung(held, phase.lost > 0);
     }
     return true;
@@ -1269,9 +1307,16 @@ export class DeviceRun {
     s.tris.push(p.triangles);
     s.bones.push(p.boneCount);
     s.textured.push(texturedDraws(p));
+    s.casterDraws.push(p.castDraws);
+    s.casterTris.push(p.castTriangles);
     this.dropped += p.dropped;
     this.skipped += p.skipped;
-    if (s.frame.length % 30 === 0) this.rtt.push(tenth((this.side.app.session.stats.rttTicks * 1000) / TICK_RATE));
+    this.roundTrip();
+  }
+
+  /** The game's own round trip, every 30th frame sampled. */
+  private roundTrip(): void {
+    if (this.samples.frame.length % 30 === 0) this.rtt.push(tenth((this.side.app.session.stats.rttTicks * 1000) / TICK_RATE));
   }
 
   private result(): PhaseReport {
@@ -1281,7 +1326,7 @@ export class DeviceRun {
     return {
       tier: load.tier.name, scene: this.step!.scene ?? "plain", ratio: this.ratio(), canvas: this.canvas, settleMs: this.settleMs, settled: this.settled, frames: s.frame.length,
       frameMs: spread(s.frame), buildMs: spread(s.build), drawMs: spread(s.draw), gpuMs: s.gpu.length > 0 ? spread(s.gpu).median : null, gpuOff: s.gpuOff.length > 0 ? spread(s.gpuOff).median : null,
-      drawCalls: spread(s.calls).median, triangles: spread(s.tris).median, textured: spread(s.textured).median, bones: spread(s.bones).median,
+      drawCalls: spread(s.calls).median, triangles: spread(s.tris).median, textured: spread(s.textured).median, bones: spread(s.bones).median, casterDraws: spread(s.casterDraws).median, casterTris: spread(s.casterTris).median,
       dropped: this.dropped, skipped: this.skipped, fetched: app.scene!.assets.residency.stats.fetched - this.fetchedAt, ...this.failedSince(), missed: this.missedSince(this.stepBase),
       lost: this.lostCount - this.lostAt, fellTo: app.ui.settings.tier === load.tier.name ? null : app.ui.settings.tier,
     };
@@ -1558,7 +1603,7 @@ export class DeviceRun {
     this.sample(gap, buildMs, drawMs, drawCalls, p);
     // The far bases' draws, or the far trees', rocks' and bushes'.
     let draws = 0;
-    for (let d = 0; d < p.drawCount; d++) if (g.wood ? p.drawBuffer[d]! >= FAR_NODE_BUFFERS && p.drawBuffer[d]! < FAR_NODE_BUFFERS * 2 : p.drawFade[d]! > 0) draws++;
+    for (let d = 0; d < p.drawCount; d++) if (g.wood ? p.drawBuffer[d]! >= FAR_NODE_BUFFERS && p.drawBuffer[d]! < FAR_NODE_BUFFERS * 2 : p.drawBuffer[d] === FAR_BUFFER) draws++;
     g.draws.push(draws);
     g.gpu.push(...(frames?.take() ?? []).map((t) => t.ms));
     if (now - this.at < this.timing.rungMs) return false;
@@ -1612,9 +1657,9 @@ export class DeviceRun {
     this.step = { kind: "rung", load };
     this.apply(load);
     t.at = null;
-    this.asking = true;
+    this.asking++;
     void this.side.stand(step.wood).then((at) => {
-      this.asking = false;
+      this.asking--;
       if (this.trees !== t || t.k !== k) return;
       if (!at) return void (this.report.errors.length < 10 && this.report.errors.push(`${this.report.stage}: the server would not stand the body in the wood`));
       t.at = at;
@@ -1762,14 +1807,16 @@ export class DeviceRun {
     app.controls.pitch = 0;
     const assets = app.scene!.assets;
     app.scene!.things = [...(load.stress ? this.stressed() : []), ...(load.near + load.far > 0 ? rocks(assets.table, hf, load.near, load.far) : [])];
-    bodies.n = load.bodies;
+    [bodies.n, bodies.vehicles] = [load.bodies, load.vehicles ?? 0];
     this.variant(load);
-    if (load.pieces !== this.pieces) {
-      this.asking = true;
-      this.pieces = load.pieces;
-      void this.side.base(load.pieces).then((n) => {
-        this.asking = false;
-        if (n === null) this.report.errors.length < 10 && this.report.errors.push(`${this.report.stage}: the server would not build the base`);
+    for (const what of ["pieces", "base"] as const) {
+      const n = load[what] ?? 0;
+      if (n === this.stood[what]) continue;
+      this.stood[what] = n;
+      this.asking++;
+      void this.side.base(n, what === "base").then((got) => {
+        this.asking--;
+        if (got === null) this.report.errors.length < 10 && this.report.errors.push(`${this.report.stage}: the server would not build the ${what === "base" ? "compact base" : "houses"}`);
       });
     }
     this.fetchedAt = assets.residency.stats.fetched;
@@ -1849,6 +1896,7 @@ export class DeviceRun {
     s.build.push(buildMs);
     s.draw.push(drawMs);
     s.textured.push(texturedDraws(p));
+    this.roundTrip();
     const minute = report.minutes.length;
     if (this.soakMs < (minute + 1) * 60000 && this.soakMs < this.timing.soakMs) return false;
     const long = s.frame.filter((g) => g >= this.side.display * LONG).length;
@@ -1856,7 +1904,8 @@ export class DeviceRun {
     const taken = report.governed ? g.steps.slice(Math.max(0, g.steps.length - (g.moved - this.governedFrom))).map((x) => ({ ...x, at: Math.round(x.at - this.soakAt) })) : [];
     report.governed?.push(...taken);
     this.governedFrom = g.moved;
-    report.minutes.push({ minute: minute + 1, frames: s.frame.length, frameMs: spread(s.frame), long, buildMs: spread(s.build).median, drawMs: spread(s.draw).median, missed: this.missedSince(this.stepBase), mat: Math.max(0, ...s.textured), ...(report.governed ? { level: g.level, most: Math.max(this.most, g.level), steps: taken.map((x) => `${x.level}: ${x.name} (${x.why})`) } : {}) });
+    const clock = (ms: number): string => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
+    report.minutes.push({ minute: minute + 1, frames: s.frame.length, frameMs: spread(s.frame), long, buildMs: spread(s.build).median, drawMs: spread(s.draw).median, missed: this.missedSince(this.stepBase), mat: Math.max(0, ...s.textured), ...(report.governed ? { level: g.level, most: Math.max(this.most, g.level), steps: taken.map((x) => `at ${clock(x.at)} to ${x.level}: ${x.name} (${x.why})`) } : {}) });
     this.most = g.level;
     for (const list of Object.values(s)) list.length = 0;
     this.stepBase = { snapshots: this.side.app.session.stats.snapshots, latest: this.side.app.session.latestSnapshot };
@@ -1865,10 +1914,10 @@ export class DeviceRun {
     return true;
   }
 
-  /** The soak's tier: high, or the finest under it the device can take. */
+  /** The soak's tier: the one the link names, else high, or the finest under it the device can take. */
   private soakTier(): Tier {
     const can = takes(this.side.maxTexture);
-    return can.find((t) => t.name === "high") ?? can.at(-1) ?? tierOf(DEFAULT_TIER);
+    return can.find((t) => t.name === (this.side.soakTier ?? "high")) ?? can.at(-1) ?? tierOf(DEFAULT_TIER);
   }
 
   /** Device pixels the page draws for one CSS pixel, as client/shell/main.ts works it out from the tier in use. */
@@ -1996,6 +2045,8 @@ export interface RendererLike {
   format?: string;
   drawCalls: number;
   readPixel(sx: number, sy: number): [number, number, number];
+  /** The renderer's executor, which the GPU questions time a draw of each kind through. */
+  draw?(p: FramePacket): void;
 }
 
 /** A line of progress over the bottom of the game, and the whole page before and after. */
@@ -2130,21 +2181,27 @@ export class DeviceProbe {
     canvas.addEventListener("webglcontextrestored", () => (this.counting = true));
     this.renderer = renderer;
     const b = this.b;
+    // The self-check's reference takes its maps through the game's port, so it goes round it before the scene is made.
+    const stream = side.app.scene ? undefined : side.app.stream;
+    const surfaces = stream ? new SelfcheckSurfaces(stream.manifest, stream.port) : null;
+    if (stream) side.app.stream = { manifest: stream.manifest, port: surfaces! };
     this.side = {
       ...side,
+      surfaces,
       dpr: b.dpr,
       maxTexture: gpu.maxTexture,
       bootAt: this.bootAt,
       now: () => b.now(),
       pageBytes: () => b.entries().reduce((sum, e) => sum + (e.transferSize || e.encodedBodySize || 0), 0),
       expected: this.expected,
-      bodies: new BodyCopies(side.app.session, side.hf),
-      base: (n) => this.within(() => b.fetch(`base/${n}`, "").then((res) => (res.ok ? (res.json() as Promise<{ pieces: number }>) : null)).then((r) => r?.pieces ?? null), 20000, null),
+      bodies: new BodyCopies(side.app.session, side.hf, side.reg),
+      base: (n, box) => this.within(() => b.fetch(`${box ? "box" : "base"}/${n}`, "").then((res) => (res.ok ? (res.json() as Promise<{ pieces: number }>) : null)).then((r) => r?.pieces ?? null), 20000, null),
       memory: new TextureMemory(gl, create, gpu.variant),
-      questions: (only) => new GpuQuestions(gl, create, () => b.now(), gpu.variant, [gl.drawingBufferWidth, gl.drawingBufferHeight], only ? { ...GPU_PLAN, only } : GPU_PLAN),
+      questions: (only) => new GpuQuestions(gl, create, () => b.now(), gpu.variant, [gl.drawingBufferWidth, gl.drawingBufferHeight], only ? { ...GPU_PLAN, only } : GPU_PLAN, renderer.draw ? { draw: (p) => renderer.draw!(p), frame: () => side.app.scene!.packet } : null),
       frames: new FrameTimer(gl),
       display: this.report.idleFrameMs ?? 16.7,
       terrainMap: this.offered.includes("terrain"),
+      soakTier: b.query("soaktier"),
       stand: (k) => this.within(() => b.fetch(`stand/${k}`, "").then((res) => (res.ok ? (res.json() as Promise<number[] | null>) : null)), 20000, null),
       layers: (w, h, fov) => this.within(() => b.fetch(`layers/${w}/${h}/${fov}`, "").then((res) => (res.ok ? (res.json() as Promise<LayerAnswer | null>) : null)), 10000, null),
     };

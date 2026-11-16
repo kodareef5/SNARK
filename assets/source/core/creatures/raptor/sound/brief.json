@@ -21,8 +21,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "A feathered hunting dinosaur gives sharp chirping barks and clicking trills, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6010",
+          "models": [
+            "moss"
+          ],
+          "seed": 6010,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A feathered hunting dinosaur gives sharp chirping barks and clicking trills, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "startled": {
       "kind": "voice",
@@ -41,8 +53,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A feathered predator dinosaur shrieks a sharp piercing screech, three separate screeches with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6020",
+          "models": [
+            "moss"
+          ],
+          "seed": 6020,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A feathered predator dinosaur shrieks a sharp piercing screech, three separate screeches with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "hurt": {
       "kind": "voice",
@@ -61,8 +85,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A feathered predator dinosaur yelps and squeals in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6040",
+          "models": [
+            "moss"
+          ],
+          "seed": 6040,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A feathered predator dinosaur yelps and squeals in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "death": {
       "kind": "voice",
@@ -101,8 +137,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A predator dinosaur snarls and snaps its jaws shut in a fast bite, five separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6030",
+          "models": [
+            "moss"
+          ],
+          "seed": 6030,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A predator dinosaur snarls and snaps its jaws shut in a fast bite, five separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "step": {
       "kind": "step",
@@ -121,8 +169,62 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "Quick light footsteps of a running clawed animal on earth: fast scratchy taps, separate bursts. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6050",
+          "models": [
+            "moss"
+          ],
+          "seed": 6050,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Quick light footsteps of a running clawed animal on earth: fast scratchy taps, separate bursts. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
+    },
+    "chase": {
+      "kind": "voice",
+      "range": 60,
+      "level": -20,
+      "vary": 0.6,
+      "want": "barks, calls and hisses while chasing",
+      "prompts": [
+        {
+          "id": "v2-6060",
+          "models": [
+            "moss"
+          ],
+          "seed": 6060,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A pack of feathered predator dinosaurs chasing prey: one of them gives short sharp barking chirps and hisses while running, panting between, five separate barks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 8
+    },
+    "growl": {
+      "kind": "voice",
+      "range": 36,
+      "level": -22,
+      "vary": 0.5,
+      "want": "a warning growl, aggressive and near",
+      "prompts": [
+        {
+          "id": "v2-6070",
+          "models": [
+            "moss"
+          ],
+          "seed": 6070,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A feathered predator dinosaur growls low and clicks its teeth, a menacing rattling growl, four separate growls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
     }
   }
 }

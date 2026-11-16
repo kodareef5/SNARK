@@ -11,7 +11,7 @@
 // a phone; each report says if what it serves changed all the same. With --self the local headless Chrome opens the
 // link and runs a test without a tap, which must finish: `--self` for the quick look, `--self ladder`, `--self soak`
 // or `--self governed` (with --soak-minutes n), or `--self terrain` or `--self trees`, the test that the probe works,
-// not part of the check. With `--texfmt astc` the page takes that texture variant, with `--assetnet 500,0,0` its asset fetches go over a
+// not part of the check. The soaks run on high, or with `--soak-tier medium` on that tier. With `--texfmt astc` the page takes that texture variant, with `--assetnet 500,0,0` its asset fetches go over a
 // made-up link (delay ms, KB/s, % lost), and with `--rebuild` a plain build of client/dist starts once the page has the
 // game, as `bun run build` in another terminal would. With --flock forty dodos stand round the spawn point, hurt and
 // dead (tools/bench/gpu.ts `flock`). --port n, and --minutes n before it stops by itself (30). CHROME and CLOUDFLARED
@@ -19,26 +19,30 @@
 //
 // While the tunnel is up anyone may reach the server. The short path has four letters nobody is told and closes after
 // 64 wrong guesses, the probe's routes need a 128-bit token, joining needs a random password, and cheats are off. What a
-// page may change is the size of the base in front of it, up to BASE_MOST pieces.
+// page may change is the size of the two bases in front of it: the houses up to BASE_MOST pieces, the compact base up to
+// all of its own.
 
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { inflateRawSync } from "node:zlib";
 import { TIERS } from "../client/core/assets/tiers.ts";
 import { AXES, FAR_CHUNKS, FLIGHT_TIER_COUNT, MEMORY_MB, MODES, TREE_TIERS, WOODS, deviceScenarios, scenesOf, type DeviceReport, type LayerAnswer, type LayerCount, type Mode } from "../client/core/device.ts";
-import { BASE_MOST, STAND, basePieces, crowdScene, terrainWood } from "../client/core/devicescene.ts";
+import { BASE_MOST, STAND, basePieces, boxBase, crowdScene, terrainWood } from "../client/core/devicescene.ts";
 import { deviceTable, materialsLacking } from "../client/core/devicetext.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { startServer } from "../server/main.ts";
 import { loadConfig } from "../server/settings/config.ts";
 import { stopOnSignals } from "../server/signals.ts";
 import { compileContent } from "../shared/content/registry.ts";
+import { allClips } from "../shared/pack/clips.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { parsePack } from "../shared/pack/pack.ts";
 import { writeMap } from "../shared/world/mapfile.ts";
 import { groundUnder } from "../shared/world/collide.ts";
 import { placeFree } from "../server/place.ts";
+import type { ServerWorld } from "../server/world.ts";
 import { flock } from "./bench/gpu.ts";
 import { benchHills } from "./bench/terrain.ts";
 import { buildClient } from "./build-client.ts";
@@ -49,6 +53,7 @@ export const MAX_RUNS = 16;
 export const MAX_POSTS = 2000;
 /** Wrong guesses at the short path, after which it leads nowhere. */
 export const MAX_WRONG = 64;
+const BOX_MOST = boxBase().length;
 /** Letters for the short path, none easily taken for another. */
 const LETTERS = "abcdefghjkmnpqrstuvwxyz";
 
@@ -64,13 +69,15 @@ export interface DeviceOptions {
   password: string;
   /** The tests the page is to offer, as its link names them, or "" for all but the terrain flight. */
   tests?: string;
+  /** The tier the soaks run on, where not high. */
+  soakTier?: string;
   /** The server's hashes of the scenarios, for the page to compare its own with. */
   expected: Record<string, string>;
   say(line: string): void;
   /** Each run the page says is done, once. */
   done?(report: DeviceReport, file: string): void;
-  /** Stands `n` pieces in the base, from 0 to BASE_MOST, and says how many stand. */
-  base(n: number): number;
+  /** Stands `n` pieces in the houses, from 0 to BASE_MOST, or with `box` in the compact base, and says how many stand. */
+  base(n: number, box: boolean): number;
   /** What the server has held back so far, which each report's answer tells the page. */
   held(): { skipped: number; overflows: number };
   /** What has changed of the files the server serves since it started, or "" for nothing. */
@@ -185,7 +192,7 @@ export function deviceRoutes(o: DeviceOptions): { routes: (req: Request, url: UR
     }
     if (path === `/d/${o.code}` && wrong < MAX_WRONG) {
       o.say("the short path was opened");
-      return new Response(null, { status: 302, headers: { location: `/?device=${o.token}&password=${o.password}${o.tests ? `&tests=${o.tests}` : ""}`, "cache-control": "no-store" } });
+      return new Response(null, { status: 302, headers: { location: `/?device=${o.token}&password=${o.password}${o.tests ? `&tests=${o.tests}` : ""}${o.soakTier ? `&soaktier=${o.soakTier}` : ""}`, "cache-control": "no-store" } });
     }
     if (path.startsWith("/d/")) {
       if (++wrong === MAX_WRONG) o.say(`${MAX_WRONG} wrong guesses at the short path, so it is closed; the whole link still works`);
@@ -198,10 +205,10 @@ export function deviceRoutes(o: DeviceOptions): { routes: (req: Request, url: UR
     if (path === "/__device/ping") return json(true);
     if (path === "/__device/hashes") return json(o.expected);
     if (path === "/__device/report" && req.method === "POST") return receive(req);
-    const base = /^\/__device\/base\/(\d{1,5})$/.exec(path);
+    const base = /^\/__device\/(base|box)\/(\d{1,5})$/.exec(path);
     if (base && req.method === "POST") {
-      const n = Number(base[1]);
-      return n > BASE_MOST ? answer("too many pieces", 400) : json({ pieces: o.base(n) });
+      const [box, n] = [base[1] === "box", Number(base[2])];
+      return n > (box ? BOX_MOST : BASE_MOST) ? answer("too many pieces", 400) : json({ pieces: o.base(n, box) });
     }
     const spot = /^\/__device\/stand\/(\d)$/.exec(path);
     if (spot && req.method === "POST" && o.stand) {
@@ -218,6 +225,29 @@ export function deviceRoutes(o: DeviceOptions): { routes: (req: Request, url: UR
   return { routes, unfinished: () => [...runs.values()].filter((r) => !r.told) };
 }
 
+/**
+ * Stands the first `n` pieces of the houses (devicescene.ts basePieces) in `world`, or with `box` of the compact base
+ * (boxBase), and says how many stand: each base grows from where it stood and shrinks from its far end or its top.
+ */
+export function bases(world: ServerWorld): (n: number, box: boolean) => number {
+  const built: [number[], number[]] = [[], []];
+  return (n, box) => {
+    const mine = built[box ? 1 : 0];
+    while (mine.length > n) world.structs.remove(mine.pop()!);
+    const plan = box ? boxBase().slice(0, n) : basePieces(n);
+    for (let i = mine.length; i < plan.length; i++) {
+      const p = plan[i]!;
+      const kind = world.reg.index.get(p.id) ?? 0;
+      const def = world.reg.defs[kind];
+      const ref = def?.type === "structure" ? world.structs.add(kind, p.x, world.hf.heightAt(p.house.x, p.house.z) + p.y, p.z, p.yaw, 0, def.hp) : -1;
+      // A piece the store will not take is left out, and the base is smaller than asked.
+      if (ref < 0) break;
+      mine.push(ref);
+    }
+    return mine.length;
+  };
+}
+
 /** What a report of `mode` lacks of a whole run on a desktop, which can run every tier and hold the screen on. Empty if nothing. */
 export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
   const out: string[] = [];
@@ -228,6 +258,7 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
   // The picture probes look at the proving ground, which the terrain server's map is not.
   for (const [part, value] of [["device", r.device], ["gpu", r.gpu], ["load", r.load], ["link", r.link.httpMs], ["probes", mode === "terrain" || mode === "trees" || r.soak?.wood || r.probes], ["hashes", r.hashes]] as const) if (!value) out.push(`no ${part}`);
   for (const p of r.probes ?? []) if (!p.ok) out.push(`probe ${p.name} is wrong`);
+  if (r.surfaceReference && !r.surfaceReference.ready) out.push(`ground and statics not judged: no world-surface reference (${r.surfaceReference.error})`);
   for (const h of r.hashes ?? []) if (h.got !== h.want) out.push(`hash ${h.name} differs from the server's`);
   if (r.link.missed > 0) out.push(`${r.link.missed} snapshots missed on this machine's own link`);
   if (r.served) out.push(`the server's files ${r.served}`);
@@ -318,6 +349,7 @@ if (import.meta.main) {
   const self = process.argv.includes("--self");
   const mode = MODES.find((m) => m === value("--self")) ?? "quick";
   const soakMinutes = Number(value("--soak-minutes") ?? 10);
+  const soakTier = TIERS.find((t) => t.name === value("--soak-tier"))?.name;
   const tunnel = process.argv.includes("--tunnel");
   const rebuild = self && process.argv.includes("--rebuild");
   // Only what a page's address may hold.
@@ -340,8 +372,10 @@ if (import.meta.main) {
   await buildClient({ stress: true, dist });
   const servedAtStart = servedFiles(dist);
   const manifest = parseManifest(readFileSync(join(dist, "assets/manifest.json"), "utf8"));
-  const pack = parsePack(new Uint8Array(readFileSync(join(dist, "assets", manifest.files[manifest.boot]!.name))));
-  const expected = Object.fromEntries(deviceScenarios(compileContent(CORE_CONTENT).registry!, pack).map(([name, run]) => [name, run()]));
+  const served = (file: number): Uint8Array => new Uint8Array(readFileSync(join(dist, "assets", manifest.files[file]!.name)));
+  const pack = parsePack(served(manifest.boot));
+  const clips = allClips(manifest, pack, served, (stored) => new Uint8Array(inflateRawSync(stored)));
+  const expected = Object.fromEntries(deviceScenarios(compileContent(CORE_CONTENT).registry!, pack.header.rigs, clips).map(([name, run]) => [name, run()]));
 
   const token = randomBytes(16).toString("hex");
   const password = randomBytes(8).toString("hex");
@@ -360,24 +394,9 @@ if (import.meta.main) {
     }
     console.log(`\n${table.join("\n")}\n\nkept in ${file}\n`);
   };
-  /** The base's pieces as they stand, in the order basePieces gives them, so that it shrinks from the far end. */
-  const built: number[] = [];
   let server: ReturnType<typeof startServer> | null = null;
-  const base = (n: number): number => {
-    const world = server!.host.world;
-    while (built.length > n) world.structs.remove(built.pop()!);
-    const plan = basePieces(n);
-    for (let i = built.length; i < plan.length; i++) {
-      const p = plan[i]!;
-      const kind = world.reg.index.get(p.id) ?? 0;
-      const def = world.reg.defs[kind];
-      const ref = def?.type === "structure" ? world.structs.add(kind, p.x, world.hf.heightAt(p.house.x, p.house.z) + p.y, p.z, p.yaw, 0, def.hp) : -1;
-      // A piece the store will not take is left out, and the base is smaller than asked.
-      if (ref < 0) break;
-      built.push(ref);
-    }
-    return built.length;
-  };
+  let stood: ((n: number, box: boolean) => number) | null = null;
+  const base = (n: number, box: boolean): number => (stood ??= bases(server!.host.world))(n, box);
   /** Where the tree order stands the body for each wood (WOODS), x, y and z: open ground nearest the map's middle and the elders' stand's. */
   let spots: number[][] = [];
   const stand = (k: number): number[] | null => {
@@ -427,7 +446,7 @@ if (import.meta.main) {
     );
     return answer;
   };
-  const probe = deviceRoutes({ dir, token, code, password, tests: terrain ? "terrain,trees,soak,governed" : "", expected, say, base, done: (report, file) => (print(report, file), finished({ report, file })), held: () => ({ skipped: server!.skipped, overflows: server!.host.game.stats.overflows }), changed: () => filesChanged(servedAtStart, servedFiles(dist)), ...(terrain ? { stand, layers } : {}) });
+  const probe = deviceRoutes({ dir, token, code, password, tests: terrain ? "terrain,trees,soak,governed" : "", soakTier, expected, say, base, done: (report, file) => (print(report, file), finished({ report, file })), held: () => ({ skipped: server!.skipped, overflows: server!.host.game.stats.overflows }), changed: () => filesChanged(servedAtStart, servedFiles(dist)), ...(terrain ? { stand, layers } : {}) });
   // With --rebuild, once a page has the game, another process builds client/dist as a person might in another terminal.
   let builder: ReturnType<typeof Bun.spawn> | null = null;
   let besideDone: Promise<unknown> = Promise.resolve();
@@ -531,7 +550,7 @@ if (import.meta.main) {
   }
 
   console.log(terrain ? `\nSNARK device probe on the bench's 8 km map, for the terrain flight; reports go to ${dir}` : `\nSNARK device probe: ${crowd} bodies in the crowd${flocked > 0 ? `, ${flocked} hurt and dead dodos round the spawn point` : ""} and ${pieces} pieces of thatch; reports go to ${dir}`);
-  const tests = terrain ? "&tests=terrain,trees,soak,governed" : "";
+  const tests = `${terrain ? "&tests=terrain,trees,soak,governed" : ""}${soakTier ? `&soaktier=${soakTier}` : ""}`;
   console.log(`  open on the device:  ${base0}/d/${code}`);
   console.log(`  where that leads:    ${base0}/?device=${token}&password=${password}${tests}`);
   if (tunnel) console.log(`  on this machine:     http://127.0.0.1:${running.port}/d/${code}`);

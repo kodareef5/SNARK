@@ -2,7 +2,9 @@
 // as a fault only what would draw wrong: a hole, a face turned inward, a vertex on no bone, a loop that jumps as it
 // wraps, a planted foot that slides, a level over its budget. A wanted opening in a mesh is two faces back to back.
 
+import { HYSTERESIS } from "../../client/core/assets/assets.ts";
 import { TIERS, tierOf, type Tier } from "../../client/core/assets/tiers.ts";
+import { BUILDING_CONTENT } from "../../content/building.ts";
 import { Pose, sampleClip, type Clip } from "../../shared/anim/clip.ts";
 import { buildRig, type Rig } from "../../shared/anim/rigs.ts";
 import { Ragdoll } from "../../shared/anim/ragdoll.ts";
@@ -19,7 +21,7 @@ import { SLOW_MOST, slowSurfaceError, surfaceError } from "../pack/error.ts";
 import { boundsOf } from "../pack/lying.ts";
 import { spanOf } from "../pack/surface.ts";
 import { unpackMeshes, type SourceLod, type SourceMesh } from "../pack/write.ts";
-import type { Asset } from "./assets.ts";
+import { landmarkOf, type Asset } from "./assets.ts";
 import { HOLD_BONES } from "./build.ts";
 import type { CreatureAsset, PieceSpec } from "./spec.ts";
 import { measureTextures, type MaterialFacts } from "./textures.ts";
@@ -52,6 +54,21 @@ const DENSITY = 2;
 export const GRIP_SLACK = 0.01;
 /** Metres a lying piece's lowest point may be from y = 0. Chosen: under what shows against the ground. */
 export const REST_SLACK = 0.002;
+/**
+ * What any tier's building piece may cost: the most triangles it is drawn with from each distance on, on medium on
+ * SCREEN, where a phone's 669 rows switch at 0.62 of these distances. Medium draws 2 M a frame and what is built may
+ * take half: a whole 1,000-piece base is 0.8 M from 100 m, four of them are 1 M from 250 m and sixteen from 500 m, and
+ * from 50 m its shell of about 450 pieces is 0.9 M. Nearer, only what stands round the eye should be drawn finest,
+ * and the finest is held to what the look at arm's length needs.
+ */
+export const PIECE_TRIANGLES = [[0, 3200], [50, 2000], [100, 800], [250, 250], [500, 60]] as const;
+/** Metres on medium a building piece keeps its materials to at least, so a base does not go flat across a yard. */
+export const PIECE_TEXTURED = 80;
+/** What a landmark's 16 m cell of its ship or building may draw from each distance on medium: five building pieces' worth. */
+export const LANDMARK_TRIANGLES = PIECE_TRIANGLES.map(([metres, most]) => [metres, most * 5] as const);
+/** A landmark's piece that is one of its cells (assets/source/landmarks); its others are held as building pieces are. */
+const LANDMARK_CELL = /:cell_\d+$/;
+const PIECES = new Set(BUILDING_CONTENT.flatMap((d) => (d.type === "structure" && d.class === "piece" ? [d.id] : [])));
 
 export interface LevelFacts {
   triangles: number;
@@ -578,9 +595,9 @@ function checkRagdoll(rig: Rig, spec: CreatureAsset, pack: Pack, faults: string[
 
 /**
  * Measures the pack an asset was converted to. With `pictures`, the pictures its materials name are read and measured
- * too, which takes seconds. Without, only their sizes are.
+ * too, which takes seconds, and held against those the `others` assets name. Without, only their sizes are.
  */
-export function checkAsset(asset: Asset, pack: Pack, pictures = false): Report {
+export function checkAsset(asset: Asset, pack: Pack, pictures = false, others: readonly Asset[] = []): Report {
   const report: Report = { id: asset.id, kind: asset.spec.kind, meshes: [], clips: [], gaits: [], textures: [], megabytes: { textures: 0, budget: null }, pictures, notes: [], faults: [] };
   const meshes = unpackMeshes(pack);
   const spec = asset.spec;
@@ -595,8 +612,10 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false): Report {
   else if (spec.kind === "pieces") {
     for (const piece of spec.pieces) {
       const mesh = meshes.find((m) => m.id === piece.id);
-      if (mesh) report.meshes.push(measureMesh(mesh, pack, spec.budgets.triangles, report.faults, undefined, piece.errors));
+      if (mesh) report.meshes.push(measureMesh(mesh, pack, piece.triangles ?? spec.budgets.triangles, report.faults, undefined, piece.errors));
       else report.faults.push(`${piece.id}: not in the pack`);
+      if (mesh && PIECES.has(piece.id)) report.faults.push(...pieceFaults(mesh, report.meshes[report.meshes.length - 1]!));
+      else if (mesh && landmarkOf(asset) !== null) report.faults.push(...pieceFaults(mesh, report.meshes[report.meshes.length - 1]!, LANDMARK_CELL.test(piece.id) ? LANDMARK_TRIANGLES : PIECE_TRIANGLES));
       if (mesh && piece.hold) report.faults.push(...heldFaults(mesh, piece.hold));
       if (piece.dropped === undefined) continue;
       const lying = meshes.find((m) => m.id === `${piece.id}/dropped`);
@@ -613,7 +632,7 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false): Report {
     for (const clip of pack.clips.clips) report.clips.push({ name: clip.id, frames: clip.frames, seconds: clip.frames / TICK_RATE, loop: clip.loop, step: 0, still: 0 });
     return report;
   }
-  const textures = measureTextures(asset, pack, pictures, report.faults, report.notes);
+  const textures = measureTextures(asset, pack, pictures, report.faults, report.notes, others);
   report.textures = textures.materials;
   report.megabytes = { textures: textures.megabytes, budget: textures.budget };
   // One material drawn much finer on one mesh than on another shows as a blurred mesh beside a sharp one.
@@ -623,6 +642,30 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false): Report {
     report.notes.push(`texel density runs from ${least.texels.toFixed(0)} pixels a metre (${least.id} on ${least.mesh}) to ${most.texels.toFixed(0)} (${most.id} on ${most.mesh}), more than ${DENSITY} times apart`);
   }
   return report;
+}
+
+/**
+ * What is wrong with a building piece's levels on medium, or a landmark's piece's: one never drawn or drawn over a sliver,
+ * one over `most` (PIECE_TRIANGLES, or LANDMARK_TRIANGLES for a landmark's cell), or flat too near. A piece with no
+ * materials is flat by design.
+ */
+export function pieceFaults(mesh: SourceMesh, facts: MeshFacts, most: readonly (readonly [number, number])[] = PIECE_TRIANGLES): string[] {
+  const faults: string[] = [];
+  const at = TIERS.indexOf(tierOf(TIER));
+  const from = facts.levels.map((l) => l.starts[at]?.from ?? null);
+  from.forEach((d, l) => {
+    const next = from.slice(l + 1).find((n) => n !== null);
+    if (d === null) faults.push(`${mesh.id} level ${l}: never drawn on ${TIER}`);
+    else if (next !== undefined && next! < d * (1 + HYSTERESIS)) faults.push(`${mesh.id} level ${l}: drawn only from ${d.toFixed(0)} to ${next!.toFixed(0)} m on ${TIER}, within the ${HYSTERESIS * 100}% a level waits before it changes`);
+  });
+  for (const [metres, limit] of most) {
+    const l = from.findLastIndex((d) => d !== null && d <= metres);
+    const n = facts.levels[l]!.triangles;
+    if (n > limit) faults.push(`${mesh.id}: ${n} triangles drawn from ${metres} m on ${TIER}, and it may draw ${limit}`);
+  }
+  const flat = mesh.flat ? from[mesh.flat] : undefined;
+  if (flat !== undefined && flat !== null && flat < PIECE_TEXTURED) faults.push(`${mesh.id}: drawn flat from ${flat.toFixed(0)} m on ${TIER}, and it keeps its materials to ${PIECE_TEXTURED} m`);
+  return faults;
 }
 
 /**

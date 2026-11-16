@@ -18,7 +18,7 @@ import type { Tier } from "../assets/tiers.ts";
  * is what a player aims at, what a fight shows says who is hit, walls, trunks, stones and bushes are cover, and the
  * ground is what everything stands on. Far trees and the far city are below crowns near but do not give to the squeeze:
  * a reach that grows makes every far tile again, which no frame can do at no cost. Far trees give by the governor's
- * second step, which takes their reach in; the far city keeps its levels, as changing them lets go of every tile made
+ * far trees' step, which takes their reach in; the far city keeps its levels, as changing them lets go of every tile made
  * (farcity.ts). Ambient details come last, and take what the frame leaves.
  */
 export const ORDER = ["own", "bodies", "fight", "built", "ground", "cover", "crowns", "far", "ambient"] as const;
@@ -92,7 +92,8 @@ export class FrameBudget {
   /** Starts again from no squeeze, as a new scene does. */
   reset(): void {
     this.squeeze = this.floor = this.under = this.floorUntil = 0;
-    [this.forget, this.fellAt] = [FORGET_MS, -Infinity];
+    this.forget = FORGET_MS;
+    this.fellAt = -Infinity;
   }
 
   begin(tier: Tier): void {
@@ -118,7 +119,8 @@ export class FrameBudget {
       this.under = 0;
       if (now - this.fellAt < FELL_MS) this.forget = Math.min(this.forget * 2, FORGET_MOST);
       this.squeeze = Math.min(SQUEEZE_MOST, this.squeeze + UP);
-      [this.floor, this.floorUntil] = [Math.max(this.floor, this.squeeze), now + this.forget];
+      this.floor = Math.max(this.floor, this.squeeze);
+      this.floorUntil = now + this.forget;
     } else if (this.crowns < room * LOW) {
       if (++this.under < WAIT || this.squeeze <= this.floor) return;
       this.squeeze = Math.max(0, this.floor, this.squeeze - DOWN);

@@ -1,0 +1,49 @@
+{
+  "tool": "built-in image_gen",
+  "native_dimensions": [
+    1254,
+    1254
+  ],
+  "requested_dimensions": [
+    2048,
+    2048
+  ],
+  "notes": "Original bytes preserved. Generation returned 1254-square images; build resamples them to the required 2048-square maps. No external reference images were downloaded.",
+  "sources": {
+    "hide": {
+      "file": "hide_original.png",
+      "sha256": "7cb81d8bf5edd38bb95bde1251c30cd922522a360dce01c1f64aebbe21174c31",
+      "prompt": "hide_prompt.txt"
+    },
+    "wood": {
+      "file": "wood_original.png",
+      "sha256": "9204e66a64b7783d41d4931016498a6b20a372b79da0b07157a7c80999cdabbc",
+      "prompt": "wood_prompt.txt"
+    },
+    "fibre": {
+      "file": "fibre_original.png",
+      "sha256": "730955a0997b2782b57922129d81e933deaf9c3182fc2de4c2f22027e2137aec",
+      "prompt": "fibre_prompt.txt"
+    },
+    "hide_supple": {
+      "file": "hide_supple_original.png",
+      "prompt": "hide_supple_prompt.txt",
+      "sha256": "c6aadac8e2da58f5d4d99c2705a870f88a8c88f2b1c041e9710381411b723331",
+      "native_dimensions": [
+        1254,
+        1254
+      ],
+      "round": 2
+    },
+    "chitin_layers": {
+      "file": "chitin_layers_original.png",
+      "prompt": "chitin_layers_prompt.txt",
+      "sha256": "385fc4ab1da3893255578d2be423ddb647cefa33301872a61b37234550a7df24",
+      "native_dimensions": [
+        1254,
+        1254
+      ],
+      "round": 2
+    }
+  }
+}

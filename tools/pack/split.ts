@@ -1,12 +1,16 @@
-// Splits a whole pack into the file a client fetches at start and the file it fetches a level at a time, and writes
-// the manifest that says where every level is.
+// Splits a whole pack into the file a client fetches at start, the file it fetches a level at a time and the file it
+// fetches a creature skeleton's clips from, and writes the manifest that says where every level and clip is.
 
-import { MANIFEST_VERSION, type Manifest, type ManifestFile, type ManifestLevel, type ManifestMesh } from "../../shared/pack/manifest.ts";
-import { CLIP_ROOT_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, parsePack, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
+import { MANIFEST_VERSION, type Manifest, type ManifestClips, type ManifestFile, type ManifestLevel, type ManifestMesh } from "../../shared/pack/manifest.ts";
+import { CLIP_ROOT_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, parsePack, type PackClip, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
+import { PARTS_HEADER_BYTES, PARTS_MAGIC, PARTS_VERSION } from "../../shared/pack/stored.ts";
 import { partsAt } from "./manifest.ts";
 import { PackBlob } from "./write.ts";
 
-/** A level of no more bytes than this goes in the boot file with the coarsest: asking for it alone would cost more than it weighs. */
+/**
+ * A level of no more bytes than this goes in the boot file with the coarsest, and a skeleton's clips of no more stay
+ * in it: asking for either alone would cost more than it weighs.
+ */
 export const BOOT_LEVEL_BYTES = 4096;
 
 export interface SplitFile {
@@ -26,10 +30,12 @@ interface Placed {
 }
 
 /**
- * The boot file holds the palette, the rigs, the clips, the coarsest level of every mesh and every small level, so a
- * client that has it can draw everything, coarsely. It holds them flat: the surface and the skin of a level are always
- * in the mesh file, with every other level. Both are packs, though only the manifest says where the mesh file has the
- * surface of a level that is in the boot file. The bytes of a part are what they were in the whole pack.
+ * The boot file holds the palette, the rigs, the survivor's clips, the coarsest level of every mesh and every small
+ * level, so a client that has it can draw everything, coarsely, and pose its own body. It holds them flat: the surface
+ * and the skin of a level are always in the mesh file, with every other level. Both are packs, though only the manifest
+ * says where the mesh file has the surface of a level that is in the boot file. Each creature skeleton's clips are one
+ * part of the clip file, a file of parts none of which is yet deflated. The bytes of a part are what they were in the
+ * whole pack.
  */
 export function splitPack(whole: Uint8Array, name: string): { files: SplitFile[]; manifest: Manifest } {
   const pack = parsePack(whole);
@@ -68,17 +74,46 @@ export function splitPack(whole: Uint8Array, name: string): { files: SplitFile[]
       if (lods.length > 0) headers[file]!.meshes.push(surfaced > 0 ? { ...mesh, lods, flat: surfaced } : { ...mesh, lods });
     }
   }
-  for (const c of pack.header.clips) {
-    const rot = pack.blob.subarray(c.rotOffset, c.rotOffset + c.frames * clipRotBytes(c.bones));
-    const root = pack.blob.subarray(c.rootOffset, c.rootOffset + c.frames * CLIP_ROOT_BYTES);
-    headers[0]!.clips.push({ ...c, rotOffset: blobs[0]!.append(rot), rootOffset: blobs[0]!.append(root) });
+  const rot = (c: PackClip): Uint8Array => pack.blob.subarray(c.rotOffset, c.rotOffset + c.frames * clipRotBytes(c.bones));
+  const root = (c: PackClip): Uint8Array => pack.blob.subarray(c.rootOffset, c.rootOffset + c.frames * CLIP_ROOT_BYTES);
+  const rigOf = (c: PackClip): string => c.id.slice(0, c.id.lastIndexOf("/"));
+  const skeletons = new Map<string, PackClip[]>();
+  for (const r of pack.header.rigs) if (r.names) skeletons.set(r.id, []);
+  for (const c of pack.header.clips) skeletons.get(rigOf(c))?.push(c);
+  const parts: Uint8Array[] = [];
+  const streamed: ManifestClips[] = [];
+  let end = PARTS_HEADER_BYTES;
+  for (const [rig, list] of skeletons) {
+    const bytes = list.reduce((sum, c) => sum + c.frames * (clipRotBytes(c.bones) + CLIP_ROOT_BYTES), 0);
+    if (bytes <= BOOT_LEVEL_BYTES) continue;
+    const part = new Uint8Array(bytes);
+    let at = 0;
+    for (const c of list) {
+      for (const run of [rot(c), root(c)]) {
+        part.set(run, at);
+        at += run.length;
+      }
+    }
+    streamed.push({ rig, file: 2, at: end, part: { bytes, hash: "" }, clips: list.map(({ id, bones, frames, loop }) => ({ id, bones, frames, loop })) });
+    parts.push(part);
+    end += bytes;
   }
+  const away = new Set(streamed.map((e) => e.rig));
+  for (const c of pack.header.clips) if (!away.has(rigOf(c))) headers[0]!.clips.push({ ...c, rotOffset: blobs[0]!.append(rot(c)), rootOffset: blobs[0]!.append(root(c)) });
 
   const files: SplitFile[] = [
     { name: `${name}.boot.snpk`, role: "boot", bytes: blobs[0]!.file(headers[0]!) },
     { name: `${name}.mesh.snpk`, role: "mesh", bytes: blobs[1]!.file(headers[1]!) },
   ];
-  const blobAt = files.map((f) => parsePack(f.bytes).blobAt);
+  if (streamed.length > 0) {
+    const bytes = new Uint8Array(end);
+    new DataView(bytes.buffer).setUint32(0, PARTS_MAGIC, true);
+    new DataView(bytes.buffer).setUint16(4, PARTS_VERSION, true);
+    parts.forEach((p, k) => bytes.set(p, streamed[k]!.at));
+    for (const e of streamed) e.part.hash = partsAt(bytes, e.at, [e.part.bytes])[0]!.hash;
+    files.push({ name: `${name}.clip.snpt`, role: "clip", bytes });
+  }
+  const blobAt = files.slice(0, 2).map((f) => parsePack(f.bytes).blobAt);
   const meshes = pack.header.meshes.map((m, i): ManifestMesh => {
     const out: ManifestMesh = { id: m.id, center: m.center, half: m.half, levels: [] };
     if (m.skeleton !== undefined) out.skeleton = m.skeleton;
@@ -100,6 +135,7 @@ export function splitPack(whole: Uint8Array, name: string): { files: SplitFile[]
     return out;
   });
   const manifest: Manifest = { version: MANIFEST_VERSION, files: files.map((f) => ({ name: f.name, bytes: f.bytes.length, role: f.role })), boot: 0, clipHash: pack.clips.hash, meshes };
+  if (streamed.length > 0) manifest.clips = streamed;
   if (pack.header.materials) manifest.materials = pack.header.materials;
   if (pack.header.textures) manifest.textures = pack.header.textures.map((t) => ({ ...t, in: {} }));
   return { files, manifest };

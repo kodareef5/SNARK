@@ -58,11 +58,11 @@ test("food keeps four times as long in a creature as in a survivor's hands, and 
   expect(items.audit()).toEqual([]);
 });
 
-test("a survivor saved before ARK's level table keeps what it spent and learned, is never short of points below nothing, and stops at level 105", () => {
+test("a survivor who spent more than the level table gives keeps what it spent and learned, is never short of points below nothing, and stops at level 105", () => {
   const { h, me } = world();
   const prog = h.host.progression;
-  // The old table's last level took 157,980 experience, which is level 78 now. She had placed its 99 stat points and
-  // learned every engram: she keeps both, and has no stat point to place until level 101.
+  // 157,980 experience is level 78. With 99 stat points placed and every engram learned, she keeps both, and has no stat
+  // point to place until level 101.
   me.xp = 157980;
   me.genome!.tamed[STAT_HEALTH] = 99;
   me.engrams.push(...h.reg.defs.flatMap((d, k) => (d?.type === "engram" ? [k] : [])));

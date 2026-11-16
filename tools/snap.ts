@@ -1,10 +1,12 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
 // Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --station ID, --chat, --cone DEGREES, --sight scope|holo|dot).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
-// --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise.
+// --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise,
+// with its landmarks; --moved 1 draws their moving statics at their second state (a yacht's sails set).
 // --saddles worn|saddled|both|own (--species ID, --close MOMENT, --levels) draws a creature in its saddle (tools/snap/saddles.ts).
 // --ride SPECIES (--moment ground|run|air|bank|dive, --watch, --passenger) draws riding it in the whole client (tools/snap/ride.ts).
-// --flight draws the block-out pteranodon ridden through a flight, a picture at each moment (tools/snap/flight.ts), with --each DIR each on its own too.
+// --flight draws the pteranodon ridden through a flight, a picture at each moment (tools/snap/flight.ts), with --each DIR each on its own too.
+// --hud MODE draws the HUD or one of its screens in the whole client (tools/snap/hud.ts).
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
@@ -35,7 +37,9 @@ import { V_TORPOR } from "../shared/sim/vitals.ts";
 import { ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL } from "../shared/sim/weapon.ts";
 import { DOOR_HEIGHT, FLOOR_THICK, FOUNDATION_THICK, WALL_HEIGHT } from "../content/building.ts";
 import { CORE_CONTENT } from "../content/core.ts";
-import { compileContent, type Registry } from "../shared/content/registry.ts";
+import { compileContent, withContent, type Registry } from "../shared/content/registry.ts";
+import { MOTION_STEPS, type MotionState } from "../shared/sim/motion.ts";
+import { movingOf, type MotionSource } from "../client/core/render/motion.ts";
 import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type Pack } from "../shared/pack/pack.ts";
 import { SKY_COLOR } from "../shared/pack/palette.ts";
 import type { TextureRole } from "../shared/pack/texture.ts";
@@ -65,8 +69,8 @@ import { DETAIL_SEQUENCES, MOMENTS, playDetails } from "./snap/details.ts";
 import { slopesScene } from "./snap/slopes.ts";
 import { atLevel, saddlesScene } from "./snap/saddles.ts";
 import { RIDE_MOMENTS, rideGame, rideScene, type Game, type RideMoment } from "./snap/ride.ts";
+import { HUD_MODES, hudScene, type HudMode } from "./snap/hud.ts";
 import { saddleMeshes, type Ways } from "../tests/fixtures/saddles.ts";
-import { flyerPackBytes, flyerRegistry } from "../tests/fixtures/flyer/flyer.ts";
 import { frame as frameFlight, moments, recordFlight, stage } from "./snap/flight.ts";
 import { frozenPack } from "../tests/fixtures/pack.ts";
 
@@ -267,6 +271,8 @@ export interface ProvingView {
   cam: Camera;
   remote: RemoteSample;
   raster: Rasterizer;
+  /** The map's moving statics, where it has any. */
+  motion?: MotionSource;
   /** The network the scene's levels come over, when they stream. */
   port: FakeNet | null;
   render(): FramePacket;
@@ -278,8 +284,8 @@ export interface ProvingView {
  * With `files` as well (tools/snap/files.ts) those are fetched instead, textures among them. `game` is content and a pack
  * of its own in place of the core's.
  */
-export function provingView(width = 640, height = 360, net?: NetOptions, files?: GameFiles, map?: MapFile, game?: { reg: Registry; pack: Uint8Array }): ProvingView {
-  const reg = game?.reg ?? compileContent(CORE_CONTENT).registry!;
+export function provingView(width = 640, height = 360, net?: NetOptions, files?: GameFiles, map?: MapFile, game?: { reg: Registry; pack: Uint8Array }, moved = 0): ProvingView {
+  const reg = game?.reg ?? withContent(compileContent(CORE_CONTENT).registry!, map?.content?.defs ?? []);
   const dims = map?.dims ?? PROVING_DIMS;
   const hf = map ? mapHeightfield(map) : buildProvingHeightfield();
   const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
@@ -292,7 +298,11 @@ export function provingView(width = 640, height = 360, net?: NetOptions, files?:
   const nodes = new NodeField(dims, reg, map ? (mapNodes(map, hf, reg) ?? { perChunk: 0, at: (_c, _i, out) => void (out.kind = 0) }) : provingNodes(hf, reg));
   if (!map) nodes.retain(0, 64, 1, () => false);
   const farNodes = map ? { farNodes: { nodes: nodes.source, held: (c: number) => nodes.isLoaded(c), gone: () => undefined, changes: new NodeChanges(dims) } } : {};
-  const scene = new Scene({ dims, hf, structs, nodes: nodes.store, ...farNodes }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
+  // A map's moving statics stand as `moved` says, all at their first state where it is 0 and their second where 1.
+  const states = new Map<number, MotionState>();
+  if (map) for (const t of movingOf(reg, map.statics)) states.set(t.ref, { from: moved * MOTION_STEPS, to: moved as 0 | 1, at: 0 });
+  const motion = map ? { motion: { states: () => states, tick: () => 0, statics: () => map.statics } } : {};
+  const scene = new Scene({ mapId: map?.id, dims, hf, structs, nodes: nodes.store, ...farNodes, ...motion }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
   const cam = new Camera();
   cam.x = map?.spawns[0]!.x ?? PROVING_SPAWN.x;
   cam.z = map?.spawns[0]!.z ?? PROVING_SPAWN.z;
@@ -316,7 +326,7 @@ export function provingView(width = 640, height = 360, net?: NetOptions, files?:
   }
   const raster = new Rasterizer(width, height, pack, hf, split?.manifest);
   return {
-    reg, hf, structs, nodes, pack, scene, cam, remote, raster, port,
+    reg, hf, structs, nodes, pack, scene, cam, remote, raster, port, ...motion,
     render() {
       const packet = scene.build(cam, remote);
       raster.render(packet);
@@ -733,6 +743,8 @@ export interface ModelShot {
   /** Index of the mesh in the pack, and the level of it to draw. */
   mesh: number;
   level: number;
+  /** More meshes drawn with it, at the same level, with its rig and colours: the parts of a body. */
+  also?: readonly number[];
   /** Degrees the camera stands around the model from its front, toward its left, and above its middle. */
   around: number;
   above: number;
@@ -829,23 +841,26 @@ export class ModelView {
     p.transientCount = 1;
     p.transientIds[0] = 1;
     const sections = shot.textured ? this.pack.header.meshes[shot.mesh]!.lods[shot.level]!.sections : undefined;
-    const runs = sections ?? [-1, 0, 0];
-    p.drawCount = runs.length / 3;
-    for (let d = 0; d < p.drawCount; d++) {
-      p.drawMesh[d] = shot.mesh;
-      p.drawLod[d] = shot.level;
-      p.drawBuffer[d] = TRANSIENT_BUFFER;
-      p.drawFirst[d] = 0;
-      p.drawInstances[d] = 1;
-      p.drawOffset.fill(0, d * 3, d * 3 + 3);
-      p.drawFlags[d] = DRAW_PLAIN | (shot.rig ? DRAW_SKINNED : 0);
-      const material = this.pack.header.materials?.[runs[d * 3]!];
-      if (!material) continue;
-      p.drawFlags[d]! |= DRAW_TEXTURED | ((material.flags & MATERIAL_TWO_SIDED) !== 0 ? DRAW_TWO_SIDED : 0) | ((material.flags & MATERIAL_CUTOUT) !== 0 ? DRAW_CUTOUT : 0);
-      p.drawMaterial[d] = runs[d * 3]!;
-      p.drawFirstIndex[d] = runs[d * 3 + 1]!;
-      p.drawIndexCount[d] = runs[d * 3 + 2]!;
-      if (material.layer !== undefined) p.drawLayer[d] = shot.layer ?? 0;
+    p.drawCount = 0;
+    for (const mesh of [shot.mesh, ...(shot.also ?? [])]) {
+      const runs = (shot.textured ? this.pack.header.meshes[mesh]!.lods[shot.level]!.sections : undefined) ?? [-1, 0, 0];
+      for (let r = 0; r < runs.length; r += 3) {
+        const d = p.drawCount++;
+        p.drawMesh[d] = mesh;
+        p.drawLod[d] = shot.level;
+        p.drawBuffer[d] = TRANSIENT_BUFFER;
+        p.drawFirst[d] = 0;
+        p.drawInstances[d] = 1;
+        p.drawOffset.fill(0, d * 3, d * 3 + 3);
+        p.drawFlags[d] = DRAW_PLAIN | (shot.rig ? DRAW_SKINNED : 0);
+        const material = this.pack.header.materials?.[runs[r]!];
+        if (!material) continue;
+        p.drawFlags[d]! |= DRAW_TEXTURED | ((material.flags & MATERIAL_TWO_SIDED) !== 0 ? DRAW_TWO_SIDED : 0) | ((material.flags & MATERIAL_CUTOUT) !== 0 ? DRAW_CUTOUT : 0);
+        p.drawMaterial[d] = runs[r]!;
+        p.drawFirstIndex[d] = runs[r + 1]!;
+        p.drawIndexCount[d] = runs[r + 2]!;
+        if (material.layer !== undefined) p.drawLayer[d] = shot.layer ?? 0;
+      }
     }
     p.texUploads.push(...this.sending);
     this.sending.length = 0;
@@ -927,7 +942,7 @@ if (import.meta.main) {
     process.exit(0);
   }
   if (args.includes("--flight")) {
-    // The block-out pteranodon ridden through a flight (tools/snap/flight.ts), a picture at each moment, four across.
+    // The pteranodon ridden through a flight (tools/snap/flight.ts), a picture at each moment, four across.
     const t0 = performance.now();
     const f = recordFlight();
     const shots = moments(f);
@@ -935,7 +950,7 @@ if (import.meta.main) {
     const across = 4;
     const [W, H] = [across * fw, Math.ceil(shots.length / across) * fh];
     const pixels = new Uint8ClampedArray(W * H * 4);
-    const view = provingView(fw, fh, undefined, undefined, undefined, { reg: flyerRegistry(), pack: flyerPackBytes() });
+    const view = provingView(fw, fh);
     let next = 0;
     for (let i = 0; i < f.ticks.length && next < shots.length; i++) {
       stage(f, i, view.remote);
@@ -964,7 +979,7 @@ if (import.meta.main) {
         next++;
       }
     }
-    label(pixels, W, "the block-out pteranodon ridden, as a client draws it from what the server sends", 6, H - 22);
+    label(pixels, W, "the pteranodon ridden, as a client draws it from what the server sends", 6, H - 22);
     const out = resolve(arg("out") ?? "artifacts/flight.png");
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, encodePng(W, H, pixels));
@@ -1024,6 +1039,16 @@ if (import.meta.main) {
       }
     });
     const out = resolve(arg("out") ?? `artifacts/fight-${what}.png`);
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, encodePng(w!, h!, pixels));
+    console.log(out);
+    process.exit(0);
+  }
+  if (args.includes("--hud")) {
+    const mode = (arg("hud") ?? "play") as HudMode;
+    if (!HUD_MODES.includes(mode)) throw new Error(`--hud takes ${HUD_MODES.join(", ")}, not "${mode}"`);
+    const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => hudScene(app, run, hh, mode));
+    const out = resolve(arg("out") ?? `artifacts/hud-${mode}.png`);
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, encodePng(w!, h!, pixels));
     console.log(out);
@@ -1278,14 +1303,14 @@ if (import.meta.main) {
     const names = graphics === "all" ? TIERS.map((t) => t.name) : [graphics];
     for (const name of names) if (!TIERS.some((t) => t.name === name)) throw new Error(`--graphics takes ${TIERS.map((t) => t.name).join(", ")} or all, not "${name}"`);
     const t0 = performance.now();
-    const files = await gameFiles(source, undefined, extra);
+    const files = await gameFiles(source, undefined, extra, mapFile?.content?.landmarks);
     console.log(`asset files from ${relative(process.cwd(), source) || "."}: ${files.manifest.textures?.length ?? 0} textures, ${(files.files.reduce((n, f) => n + f.length, 0) / 1048576).toFixed(1)} MB, ${(performance.now() - t0).toFixed(0)} ms`);
     const across = names.length > 1 ? 2 : 1;
     const [W, H] = [w! * across, h! * Math.ceil(names.length / across)];
     const pixels = new Uint8ClampedArray(W * H * 4);
     for (const [i, name] of names.entries()) {
       const t1 = performance.now();
-      const view = provingView(w, h, {}, files, mapFile);
+      const view = provingView(w, h, {}, files, mapFile, undefined, Number(arg("moved") ?? 0));
       view.scene.assets.tier = tierOf(name);
       view.scene.viewHeight = h!;
       await setup(view);

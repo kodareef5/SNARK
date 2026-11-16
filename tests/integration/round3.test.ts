@@ -6,7 +6,7 @@ import { App } from "../../client/core/app.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { FOV_MAX, SENSITIVITY_MIN, Settings, VOLUME_MAX } from "../../client/core/settings.ts";
 import { KEY_DAMAGE, KEY_HIT_MARK } from "../../client/core/ui/combat.ts";
-import { KEY_SETTINGS_MIC, KEY_SETTINGS_PANEL, KEY_SETTINGS_ROW, buildSettings, settingsClick } from "../../client/core/ui/settings.ts";
+import { KEY_SETTINGS_MIC, KEY_SETTINGS_PANEL, KEY_SETTINGS_ROW, KEY_SETTINGS_TAB, buildSettings, settingsClick } from "../../client/core/ui/settings.ts";
 import { UiFrame } from "../../client/core/ui/nodes.ts";
 import { createHost } from "../../server/host.ts";
 import type { Rules } from "../../server/settings/rules.ts";
@@ -50,8 +50,8 @@ test("round 3: two survivors made in the creator, one in flak and one bare, figh
   expect([ada.sessionState, bob.sessionState]).toEqual([SESSION_ALIVE, SESSION_ALIVE]);
   const ents = h.world.ents;
   const [ea, eb] = [h.ent(ada), h.ent(bob)];
-  expect([...ents.look[ea]!]).toEqual([...looks[0]!]);
-  expect([...ents.look[eb]!]).toEqual([...looks[1]!]);
+  expect([...ents.looks.get(ea)!]).toEqual([...looks[0]!]);
+  expect([...ents.looks.get(eb)!]).toEqual([...looks[1]!]);
   const arec = h.host.records.byPid.get(ents.pid[ea]!)!;
   const brec = h.host.records.byPid.get(ents.pid[eb]!)!;
   const [pa, pb] = [h.pilots[0]!, h.pilots[1]!];
@@ -74,8 +74,8 @@ test("round 3: two survivors made in the creator, one in flak and one bare, figh
   h.say(ada, "kit grenades");
   const ainv = items.inv(arec);
   const binv = items.inv(brec);
-  expect([...ents.gear[ea]!.subarray(1)]).toEqual(["hat", "shirt", "gloves", "pants", "boots"].map((p) => id(`flak_${p}`)));
-  expect([...ents.gear[eb]!.subarray(1)]).toEqual([0, 0, 0, 0, 0]);
+  expect([...ents.gears.get(ea)!.subarray(1)]).toEqual(["hat", "shirt", "gloves", "pants", "boots"].map((p) => id(`flak_${p}`)));
+  expect([...ents.gears.get(eb)!.subarray(1)]).toEqual([0, 0, 0, 0, 0]);
 
   const health = (rec: typeof arec): number => survival.value(rec, V_HEALTH);
   const drop = (far: number): number => 0.5 * 9.81 * (far / launchSpeed(70, 1)) ** 2;
@@ -333,12 +333,14 @@ test("the console's combat tools: armor on and off the books, what each part of 
 test("settings: a player's own, stepped from a screen, and what they change", () => {
   const s = new Settings();
   const f = new UiFrame();
-  for (const aspect of [9 / 16, 4 / 3, 16 / 9, 32 / 9]) {
+  for (const aspect of [9 / 16, 4 / 3, 16 / 9, 32 / 9]) for (const tab of [0,1,2,3]) {
+    s.tab = tab;
     f.begin(aspect);
     buildSettings(f, s);
     const panel = f.find(KEY_SETTINGS_PANEL)!;
     for (let i = 0; i < f.count; i++) {
       const n = f.nodes[i]!;
+      if (n.key === 5400) continue; // The full-screen menu dimmer surrounds the glass field.
       expect(n.x).toBeGreaterThanOrEqual(panel.x);
       expect(n.x + n.w).toBeLessThanOrEqual(panel.x + panel.w + 0.5);
       expect(n.y + n.h).toBeLessThanOrEqual(panel.y + panel.h + 0.5);
@@ -346,6 +348,7 @@ test("settings: a player's own, stepped from a screen, and what they change", ()
     expect(panel.x).toBeGreaterThanOrEqual(0);
     expect(panel.x + panel.w).toBeLessThanOrEqual(f.width);
   }
+  s.tab = 0; f.begin(16/9); buildSettings(f,s);
   expect(f.find(KEY_SETTINGS_ROW + 1)!.text).toBe("on");
   // Rows are four keys apart. In a row, +1 is the value text, +2 steps down and +3 steps up or toggles.
   expect(settingsClick(KEY_SETTINGS_ROW + 3, s)).toBe(true);
@@ -357,7 +360,10 @@ test("settings: a player's own, stepped from a screen, and what they change", ()
   expect(s.fov).toBe(FOV_MAX);
   f.begin(16 / 9);
   buildSettings(f, s);
-  expect([f.find(KEY_SETTINGS_ROW + 1)!.text, f.find(KEY_SETTINGS_ROW + 5)!.text, f.find(KEY_SETTINGS_ROW + 9)!.text]).toEqual(["off", "20%", "100 degrees"]);
+  expect([f.find(KEY_SETTINGS_ROW + 1)!.text, f.find(KEY_SETTINGS_ROW + 9)!.text]).toEqual(["off", "100 degrees"]);
+  s.tab = 2; f.begin(16/9); buildSettings(f,s);
+  expect(f.find(KEY_SETTINGS_ROW + 5)!.text).toBe("20%");
+  s.tab = 1; f.begin(16/9); buildSettings(f,s);
   expect([f.find(KEY_SETTINGS_ROW + 13)!.text, f.find(KEY_SETTINGS_ROW + 17)!.text]).toEqual(["100%", "hold"]);
   for (let n = 0; n < 40; n++) settingsClick(KEY_SETTINGS_ROW + 12 + 3, s);
   expect(s.voiceVolume).toBe(VOLUME_MAX);
@@ -369,10 +375,10 @@ test("settings: a player's own, stepped from a screen, and what they change", ()
   const meter = (level: number): number => {
     f.begin(16 / 9);
     buildSettings(f, s, level);
-    return f.find(KEY_SETTINGS_MIC + 1)!.value;
+    return Array.from({length:16},(_,i)=>f.find(KEY_SETTINGS_MIC+1+i)!).filter(n=>n.alpha>.5 && !n.interactive).length/16;
   };
   expect([meter(0), meter(1), meter(2)]).toEqual([0, 1, 1]);
-  expect(meter(0.03)).toBeCloseTo(0.49, 1);
+  expect(meter(0.03)).toBe(8/16);
   expect(meter(0.0001)).toBe(0);
   expect([f.find(KEY_SETTINGS_ROW + 13)!.text, f.find(KEY_SETTINGS_ROW + 17)!.text]).toEqual(["0%", "on and off"]);
 
@@ -389,6 +395,8 @@ test("settings: a player's own, stepped from a screen, and what they change", ()
   expect(app.ui.wantsPointerLock).toBe(false);
   expect(app.ui.frame.find(KEY_SETTINGS_PANEL)).not.toBeNull();
   app.pointer(0, KEY_SETTINGS_ROW + 8 + 3, 0, 0, 0);
+  app.pointer(0, KEY_SETTINGS_TAB + 2, 0, 0, 0);
+  run(50);
   app.pointer(0, KEY_SETTINGS_ROW + 4 + 2, 0, 0, 0);
   run(400);
   expect(app.ui.settings.fov).toBe(75);
@@ -397,6 +405,9 @@ test("settings: a player's own, stepped from a screen, and what they change", ()
   app.key("Escape", true);
   run(50);
   expect(app.ui.frame.find(KEY_SETTINGS_PANEL)).toBeNull();
+  expect(app.ui.menu).toBe(true);
+  app.key("Escape", true); // Settings -> menu -> play, one layer at a time.
+  run(50);
   expect(app.ui.wantsPointerLock).toBe(true);
   // The number needs both the server's ShowFloatingDamageText and the player's own setting. The mark needs neither.
   app.session.text("setting ShowFloatingDamageText True");

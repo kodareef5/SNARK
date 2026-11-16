@@ -3,7 +3,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { hashString } from "../../shared/hash.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
-import { helicopterPlacement } from "../../shared/world/helicopter.ts";
+import { vehicleFitsWorld } from "../../server/vehicle-service.ts";
 import { mapHeightfield, mapNodes, placeStatics, type MapData, type MapVehicle } from "../../shared/world/mapfile.ts";
 import { NodeField } from "../../shared/world/nodes.ts";
 import { castWorld, HIT_NONE, rayHit } from "../../shared/world/ray.ts";
@@ -11,6 +11,7 @@ import { StructureStore } from "../../shared/world/structures.ts";
 
 export interface HelicopterSite { id: string; kind: "hospital" | "police" | "civilian"; x: number; z: number; radius: number }
 const TYPES = { hospital: "core:helicopter_rescue", police: "core:helicopter_police", civilian: "core:helicopter" } as const;
+const PARKED_CLEAR = 8;
 
 /** Stable sparse placements, with persistent condition ranges consumed once by the host's normal parked-vehicle path. */
 export function helicopterSites(map: MapData, reg: Registry, sites: readonly HelicopterSite[], limit = 12): MapVehicle[] {
@@ -31,12 +32,14 @@ export function helicopterSites(map: MapData, reg: Registry, sites: readonly Hel
     for (const radius of [Math.max(12, site.radius + 8), Math.max(24, site.radius + 18)]) for (let k = 0; k < 8; k++) candidates.push([site.x + Math.cos(k * Math.PI / 4) * radius, site.z + Math.sin(k * Math.PI / 4) * radius]);
     for (const [x, z] of candidates) {
       if (x < 8 || z < 8 || x > hf.sizeX - 8 || z > hf.sizeZ - 8) continue;
+      // The rotor's sweep and the car's own length clear of a parked car.
+      if ((map.vehicles ?? []).some(v => Math.hypot(v.x - x, v.z - z) < PARKED_CLEAR)) continue;
       const chunk = chunkAt(map.dims, x, z); nodes?.retain(chunk, 1, 1, () => false);
       try {
         const top = hf.heightAt(x, z) + 180;
         if (castWorld(world, x, top, z, 0, -1, 0, 200) === HIT_NONE) continue;
         const y = top - rayHit.t;
-        if (!helicopterPlacement(world, x, y, z, yaw, def)) continue;
+        if (!vehicleFitsWorld(world, x, y, z, yaw, def)) continue;
         found.push({ id: `helicopter/${site.id}`, kind, x, y, z, yaw: Math.round(yaw * 65536 / (Math.PI * 2)) & 65535, condition: [.28, .88], fuel: [.08, .55] });
         counts[site.kind]++; break;
       } finally { nodes?.retain(chunk, 1, -1, () => false); }

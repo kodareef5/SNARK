@@ -80,6 +80,8 @@ export interface Row {
   readonly game: "" | "E" | "A";
   /** Quirks, and what the research could not verify. */
   readonly note: string;
+  /** A player may know its value: the wiki lists it (tools/wiki). */
+  readonly public: boolean;
 }
 
 export interface Extra {
@@ -90,6 +92,7 @@ export interface Extra {
   retime?: "speed" | "period" | "rate" | "clock";
   game?: "E" | "A";
   note?: string;
+  public?: boolean;
 }
 
 interface Standing extends Extra {
@@ -128,7 +131,7 @@ export class Sheet {
   }
 
   private add(name: string, kind: Kind, def: Row["def"], doc: string, s: Standing, min: number, max: number): void {
-    this.rows.push({ name, at: this.at, kind, def, min: s.min ?? min, max: s.max ?? max, status: s.status, waits: s.waits, live: s.live ?? false, client: s.client ?? false, retime: s.retime ?? "", group: this.group, doc, game: s.game ?? "", note: s.note ?? "" });
+    this.rows.push({ name, at: this.at, kind, def, min: s.min ?? min, max: s.max ?? max, status: s.status, waits: s.waits, live: s.live ?? false, client: s.client ?? false, retime: s.retime ?? "", group: this.group, doc, game: s.game ?? "", note: s.note ?? "", public: s.public ?? false });
   }
 
   f(name: string, def: number, doc: string, s: Standing): this {

@@ -32,6 +32,15 @@ export async function findAssets(source: string = SOURCE): Promise<Asset[]> {
 }
 
 /**
+ * A landmark is under assets/source/landmarks/<name>/: a map's own great structure, which ships with the maps that place
+ * it in files of its own and never in the core pack. Every asset in its folder is its.
+ */
+export function landmarkOf(asset: Pick<Asset, "dir">, source: string = SOURCE): string | null {
+  const parts = relative(source, asset.dir).split(sep);
+  return parts[0] === "landmarks" && parts.length > 1 ? parts[1]! : null;
+}
+
+/**
  * A node (a tree, a rock, a bush) stands on its origin, the rest of it carried below the ground. An asset is one when its
  * group folder is `nodes`: assets/source/<pack>/nodes/<name>/.
  */

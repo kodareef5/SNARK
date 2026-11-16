@@ -20,11 +20,12 @@
     "hotel": {
       "shell": "masonry",
       "inside": "rooms",
-      "roof": "stepped",
-      "front": "deco",
+      "roof": "terrace",
+      "front": "hotel-porch",
       "windowEvery": 2,
       "plan": "block",
-      "marker": "deco-crown"
+      "marker": "hotel-sign",
+      "terrace": 1
     },
     "office": {
       "shell": "curtain",
@@ -34,7 +35,8 @@
       "windowEvery": 3,
       "plan": "block",
       "marker": "office-services",
-      "terrace": 1
+      "terrace": 1,
+      "setbacks": 2
     },
     "garage": {
       "shell": "open",
@@ -132,6 +134,14 @@
       "front": "porch",
       "windowEvery": 3,
       "plan": "block"
+    },
+    "older-block": {
+      "shell": "masonry",
+      "inside": "rooms",
+      "roof": "pitched",
+      "front": "balconies",
+      "windowEvery": 2,
+      "plan": "block"
     }
   },
   "choices": [
@@ -182,7 +192,8 @@
           "hostel"
         ]
       },
-      "form": "hotel"
+      "form": "hotel",
+      "finish": "limestone"
     },
     {
       "id": "hotel fallback",
@@ -191,7 +202,8 @@
           "hotel"
         ]
       },
-      "form": "hotel"
+      "form": "hotel",
+      "finish": "limestone"
     },
     {
       "id": "office curtain wall",
@@ -231,7 +243,8 @@
           "hotel"
         ]
       },
-      "form": "hotel"
+      "form": "hotel",
+      "finish": "limestone"
     },
     {
       "id": "parking only has open bands",
@@ -441,6 +454,20 @@
         ]
       },
       "finish": "clay"
+    },
+    {
+      "id": "older low residential pitched roofs",
+      "when": {
+        "kind": [
+          "apartment_block",
+          "house",
+          "apartments",
+          "residential"
+        ],
+        "builtBefore": 1940,
+        "heightBelow": 24
+      },
+      "form": "older-block"
     }
   ],
   "assemblies": {
@@ -660,25 +687,21 @@
     },
     "car": {
       "role": "street",
+      "kerb": 1.15,
       "parts": [
         [
-          "zcar",
+          "car",
           0,
-          0.7,
           0,
-          "rust"
-        ],
-        [
-          "zcab",
-          -0.2,
-          1.6,
           0,
-          "steel"
+          "any",
+          90
         ]
       ]
     },
     "bus": {
       "role": "street",
+      "kerb": 1.5,
       "parts": [
         [
           "zbus",
@@ -1182,7 +1205,7 @@
         [
           "zsign",
           3,
-          5,
+          3.9,
           0,
           "clay"
         ]
@@ -1209,69 +1232,45 @@
     },
     "pile-up": {
       "role": "street cluster",
-      "clearance": "Separated wrecks leave a central pedestrian gap; every piece is checked against movement routes.",
+      "clearance": "Separated wrecks leave a central pedestrian gap; every piece is checked against movement routes. One car slewed across the lane with another run into its tail; on the far side one met head on, and one thrown over against it.",
       "parts": [
         [
-          "zcar",
-          -5,
-          0.7,
+          "car",
+          -4.6,
           0,
-          "rust",
-          25
+          -0.4,
+          "upright",
+          105
         ],
         [
-          "zcab",
-          -5,
-          1.6,
+          "car",
+          -8.4,
           0,
-          "steel",
-          25
+          0.9,
+          "any",
+          75
         ],
         [
-          "zcar",
-          -7,
-          0.7,
-          3,
-          "mint",
-          -32
+          "car",
+          5.2,
+          0,
+          0.8,
+          "upright",
+          250
         ],
         [
-          "zcab",
-          -7,
-          1.6,
-          3,
-          "steel",
-          -32
-        ],
-        [
-          "zcar",
-          5,
-          0.7,
-          1,
-          "clay",
-          -15
-        ],
-        [
-          "zcab",
-          5,
-          1.6,
-          1,
-          "steel",
-          -15
-        ],
-        [
-          "zwreck",
-          -5,
-          2.3,
-          1,
-          "steel",
-          65
+          "car",
+          6.4,
+          0,
+          -1.9,
+          "thrown",
+          160
         ],
         [
           "rubble",
-          7,
+          9.6,
           0.35,
-          -1,
+          1.8,
           "concrete",
           31
         ]
@@ -1375,20 +1374,12 @@
           118
         ],
         [
-          "zcar",
+          "car",
           5,
-          0.7,
+          0,
           2,
-          "rust",
-          -40
-        ],
-        [
-          "zcab",
-          5,
-          1.6,
-          2,
-          "steel",
-          -40
+          "any",
+          50
         ],
         [
           "zcover",
@@ -1551,6 +1542,72 @@
           -8
         ]
       ]
+    },
+    "hotel-sign": {
+      "role": "roof identity",
+      "parts": [
+        [
+          "zpanel8",
+          0,
+          2,
+          0,
+          "finish"
+        ],
+        [
+          "zsign",
+          -2.5,
+          4.5,
+          0,
+          "blue"
+        ],
+        [
+          "zsign",
+          0,
+          4.5,
+          0,
+          "blue"
+        ],
+        [
+          "zsign",
+          2.5,
+          4.5,
+          0,
+          "blue"
+        ]
+      ]
+    },
+    "hotel-porch": {
+      "role": "front",
+      "parts": [
+        [
+          "zroof16",
+          0,
+          3.5,
+          -2,
+          "finish"
+        ],
+        [
+          "fin4",
+          -6,
+          2,
+          -4,
+          "finish"
+        ],
+        [
+          "fin4",
+          6,
+          2,
+          -4,
+          "finish"
+        ],
+        [
+          "trim8",
+          0,
+          4.15,
+          -4,
+          "clay"
+        ]
+      ]
     }
   },
   "street": {
@@ -1604,7 +1661,21 @@
     "yardClusters": [
       "fallen-crane",
       "pile-up"
-    ]
+    ],
+    "cars": {
+      "about": "A car part's family picks a look by these weights, and a painted look a paint by its weight (1 where unlisted). Cells of `cell` metres where a fire went through, a share `fires` of them, take `fire` in place of any family. A share `slewed` of kerbside cars stand out of line. `parked`: drivable cars per kilometre of street of the classes, at least and at most so many a district, `apart` metres from each other, `junction` metres from one, `clear` metres of margin round body and doors, and `fromSpawn` metres from a spawn point or an obelisk.",
+      "cell": 160,
+      "fires": 0.18,
+      "slewed": 0.15,
+      "looks": {
+        "any": [["core:compact_abandoned", 10], ["core:compact_abandoned_stripped", 4], ["core:compact_wreck", 3], ["core:compact_abandoned_roof", 0.5], ["core:compact_wreck_tipped", 0.5]],
+        "upright": [["core:compact_abandoned", 6], ["core:compact_abandoned_stripped", 3], ["core:compact_wreck", 2]],
+        "thrown": [["core:compact_wreck", 2], ["core:compact_abandoned_stripped", 1], ["core:compact_abandoned_roof", 1], ["core:compact_wreck_tipped", 1]],
+        "fire": [["core:compact_wreck", 8], ["core:compact_wreck_tipped", 1], ["core:compact_abandoned_stripped", 2]]
+      },
+      "paints": { "white": 4, "silver": 4, "black": 3, "red": 2, "blue": 2 },
+      "parked": { "perKm": 0.4, "least": 2, "most": 4, "apart": 150, "junction": 15, "clear": 1, "fromSpawn": 40, "classes": ["S1400", "S1200", "S1780"] }
+    }
   },
   "damage": {
     "shear": {
@@ -1615,7 +1686,15 @@
     "pancake": {
       "radius": 0.65,
       "retain": 0.72,
-      "layers": 5
+      "layers": 5,
+      "plates": [
+        "plate15",
+        "plate4",
+        "plate15",
+        "plate30",
+        "plate4",
+        "plate30"
+      ]
     },
     "lost-top": {
       "radius": 0.55,
@@ -1630,12 +1709,16 @@
     "facade": {
       "radius": 0.6,
       "retain": 0.72,
-      "layers": 3
+      "layers": 3,
+      "front": "front60"
     },
     "hanging": {
       "radius": 0.55,
       "retain": 0.72,
-      "layers": 3
+      "layers": 3,
+      "plates": [
+        "plate30"
+      ]
     }
   },
   "interiors": {
@@ -1849,10 +1932,25 @@
         3,
         6
       ]
+    },
+    "canopyBase": {
+      "core:tree": 0.28,
+      "core:oak": 0.25,
+      "core:fig": 0.25,
+      "core:banyan": 0.15,
+      "core:palm": 0.65,
+      "core:mangrove": 0.1
     }
   },
   "frontage": {
     "gap": 6,
     "angle": 8
+  },
+  "circulation": {
+    "ordinary": 8,
+    "tower": 12,
+    "tall": 16,
+    "towerAbove": 48,
+    "tallAbove": 128
   }
 }

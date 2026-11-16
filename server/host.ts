@@ -1,18 +1,11 @@
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
-import type { Registry } from "../shared/content/registry.ts";
+import { withContent, type Registry } from "../shared/content/registry.ts";
 import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
-import { addAdminCommands } from "./commands/admin.ts";
-import { addCombatCommands } from "./commands/combat.ts";
-import { addCoreCommands } from "./commands/core.ts";
-import { addSocialCommands } from "./commands/social.ts";
-import { addCreatureCommands } from "./commands/creatures.ts";
-import { addSettingsCommands } from "./commands/settings.ts";
-import { addClusterCommands } from "./commands/cluster.ts";
 import { Build } from "./build.ts";
-import { Sails } from "./sails.ts";
+import { Motion } from "./motion.ts";
 import { Fixtures } from "./fixtures.ts";
 import { Beds } from "./beds.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
@@ -55,6 +48,7 @@ import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { ACT_EQUIP, ACT_NONE, FISTS, HOLD_CARRY } from "../shared/sim/weapon.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
 import { Items } from "./items.ts";
+import { COMMAND_FAMILIES } from "./commands/families.ts";
 import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { Projectiles } from "./projectiles.ts";
@@ -73,7 +67,6 @@ import { LIVE_FILE, applyLive, emptyReport, formatReport } from "./settings/conf
 import { difficultyOf, tuningOf, wildLevel } from "./settings/tune.ts";
 import { deriveRegistry } from "../shared/content/tuning.ts";
 import { hourOfDay, offsetForHour } from "../shared/sim/clock.ts";
-import { GAME_HOUR_TICKS } from "../shared/sim/lazy.ts";
 import { CAUSE_WORDS, DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
 import { createMapWorld, provingFile, type ServerWorld } from "./world.ts";
 import { settle, settleNear } from "./place.ts";
@@ -87,7 +80,6 @@ import { F_ALIVE, GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entitie
 import { ARMOR_SLOTS, FLAG_ON } from "../shared/sim/items.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
 import { Cluster } from "./cluster/cluster.ts";
-import { restoreObelisks } from "../shared/world/obelisks.ts";
 import { dirname, join, resolve } from "node:path";
 
 export interface HostOptions {
@@ -130,8 +122,6 @@ export interface HostOptions {
   dev?: boolean;
   /** Load a save whose item ledger does not match its contents, instead of refusing. */
   allowLedgerMismatch?: boolean;
-  /** Load a save made on another map, or on other bytes of this one, instead of refusing. */
-  allowMapMismatch?: boolean;
   /** The animation clips of the asset pack the clients are served. They decide where hit zones are. */
   clips?: ClipSet;
   /** The rigs of that pack. Creatures are posed and hit on the rigs that have their own bones. */
@@ -173,7 +163,7 @@ export interface Host {
   readonly voice: Voice;
   readonly build: Build;
   readonly fixtures: Fixtures;
-  readonly sails: Sails;
+  readonly motion: Motion;
   readonly stations: Stations;
   readonly taming: Taming;
   readonly riding: Riding;
@@ -291,7 +281,10 @@ export function clusterRoot(rules: Rules, dbPath: string, id: string): string {
   return join(typeof over === "string" && over !== "" ? resolve(over) : join(dirname(resolve(dbPath)), "clusters"), id);
 }
 
-function makeHost(content: Registry, opts: HostOptions, opened: { close(): void }[]): Host {
+function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]): Host {
+  // A map's landmarks bring their own definitions, compiled after the core's.
+  const given = opts.world || !opts.map ? null : parseMap(opts.map);
+  const content = withContent(core, given?.content?.defs ?? []);
   // The config files are the truth at every start (D88). No rule is read from the save.
   const rules = opts.config ?? new Rules();
   const lists = new Lists(rules, content);
@@ -306,7 +299,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   if (store) opened.push(store);
   // A save supplies its own structures. Only a new world gets the map's.
   const mapFile = opts.world ? null : (opts.map ?? provingFile(reg));
-  const parsed = mapFile ? parseMap(mapFile) : null;
+  const parsed = given ?? (mapFile ? parseMap(mapFile) : null);
   const world = opts.world ?? createMapWorld(reg, parsed!, { populate: !store || store.fresh, entityMax: opts.entityMax ?? rules.num("MaxEntities"), entityStart: opts.entityStart });
   world.clock.cycle = rules.num("DayCycleSpeedScale");
   world.clock.day = rules.num("DayTimeSpeedScale");
@@ -357,12 +350,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   /** Creates the entity store had refused when the log last said so, and the tick from which it may say so again. */
   let refusedTold = 0;
   let refusedNext = 0;
-  const persistence = store ? new Persistence(world, records, store, { allowMapMismatch: opts.allowMapMismatch ?? false }) : null;
+  const persistence = store ? new Persistence(world, records, store) : null;
   const loaded = persistence ? persistence.load() : null;
-  if (loaded && !loaded.fresh && parsed) {
-    const set = restoreObelisks(parsed, world.structs, reg);
-    if (set > 0) say(`set down ${set} pieces of the map's obelisks, which this save was made without`);
-  }
   const commitEvery = opts.commitEvery ?? 6;
   const survivor = reg.index.get("core:survivor")!;
   const survivorMove = reg.move[survivor]!;
@@ -426,11 +415,12 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     world.ents.yaw[e] = rec.yaw;
     // Registered once turned, so the parked state it saves at once has its yaw.
     urban.register(e);
-    world.ents.vehicleYaw[e] = Math.fround(yaw);
-    world.ents.vehicleQy[e] = Math.fround(Math.sin(yaw / 2)); world.ents.vehicleQw[e] = Math.fround(Math.cos(yaw / 2));
-    world.ents.fuel[e] = Math.fround((start.fuel ?? 1) * def.spec.fuelCapacity);
-    world.ents.vehicleEngineCondition[e] = start.engine ?? 1; world.ents.vehicleRotorCondition[e] = start.rotor ?? 1;
-    world.ents.vehicleHullCondition[e] = Math.max(.01, start.hull ?? 1); world.ents.vehicleFlooding[e] = 0;
+    const ents = world.ents, v = ents.vrow[e]!;
+    ents.vehicleYaw[v] = Math.fround(yaw);
+    ents.vehicleQy[v] = Math.fround(Math.sin(yaw / 2)); ents.vehicleQw[v] = Math.fround(Math.cos(yaw / 2));
+    ents.fuel[v] = Math.fround((start.fuel ?? 1) * def.spec.fuelCapacity);
+    ents.vehicleEngineCondition[v] = start.engine ?? 1; ents.vehicleRotorCondition[v] = start.rotor ?? 1;
+    ents.vehicleHullCondition[v] = Math.max(.01, start.hull ?? 1); ents.vehicleFlooding[v] = 0;
     if (start.origin) rec.extra.set(VEHICLE_ORIGIN, new TextEncoder().encode(start.origin));
     if (persistence) persistence.attach(rec, e);
     records.dirty.add(rec.pid);
@@ -457,7 +447,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   const stocked = opts.wild && !quiet ? new Spawner({ world, game, records, creatures, items, survival, buffs, persistence, rules, deadlines, tables: spawns.tables }, (opts.seed ?? 1) + 101) : null;
   const spawner = stocked && stocked.regions.length > 0 ? stocked : null;
   // The save keeps the setting values its timers were computed under, so they can be re-timed under other rules.
-  const loadedUnder = persistence && !loaded!.fresh ? timersOf(persistence.store.meta("settings_at"), persistence.store.meta("rules")) : null;
+  const loadedUnder = persistence && !loaded!.fresh ? timersOf(persistence.store.meta("settings_at")) : null;
   if (persistence) {
     const at = { dirty: true, version: rules.version, serialize: () => JSON.stringify({ timers: rules.timers() }) };
     persistence.sidecar("settings_at", at);
@@ -583,7 +573,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   const fixtures = new Fixtures(world, records, items);
   fixtures.rules = rules;
   fixtures.index();
-  const sails = new Sails(world, records, fixtures, game);
+  const motion = new Motion(world, records, fixtures, game);
   const stations = new Stations(world, records, items, fixtures, deadlines);
   // A powered station (the fabricator) makes things only while it burns; why it refuses is told as a notice.
   wirePower(world, stations, progression);
@@ -612,7 +602,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   });
   if (persistence && !loaded!.fresh) beds.restore(persistence.store.meta("beds"));
   persistence?.sidecar("beds", beds.saved);
-  const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, sails: (c, ref) => sails.use(c, ref), light: (ref) => stations.toggle(ref), bed: (c, ref, action, name) => beds.act(c, ref, action, name), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
+  const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, motion: (ref) => motion.throw(ref), light: (ref) => stations.toggle(ref), bed: (c, ref, action, name) => beds.act(c, ref, action, name), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
   build.onPlaced = (by, ref) => beds.placed(by, ref);
   death.onUseBuilt = (c, ref) => build.use(c, ref);
   death.keepsBuilt = (c, ref) => build.keeps(c, ref);
@@ -796,13 +786,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     if (bodiless > 0) say(`no body for ${bodiless} of the creatures and things in the save, which stay in it without one: the world holds ${world.ents.count} of the ${world.ents.max} that MaxEntities allows, with ${world.ents.reserve} kept for survivors`);
     refusedTold = world.ents.refused;
     survival.rerate = false;
-    // The hour of day survives a change of clock pace, so the offset is recomputed for the new pace. A save from before
-    // the clock had a pace counted 140 seconds to the hour.
-    const paced = loadedUnder !== null && loadedUnder.DayCycleSpeedScale !== undefined;
+    // The hour of day survives a change of clock pace, so the offset is recomputed for the new pace.
     const pace = { cycle: wasAt("DayCycleSpeedScale"), day: wasAt("DayTimeSpeedScale"), night: wasAt("NightTimeSpeedScale") };
-    if (!paced || pace.cycle !== world.clock.cycle || pace.day !== world.clock.day || pace.night !== world.clock.night) {
-      const hour = paced ? hourOfDay(world.tick, world.dayOffset, pace) : ((world.tick + world.dayOffset) % (24 * GAME_HOUR_TICKS)) / GAME_HOUR_TICKS;
-      world.dayOffset = offsetForHour(world.tick, hour, world.clock);
+    if (pace.cycle !== world.clock.cycle || pace.day !== world.clock.day || pace.night !== world.clock.night) {
+      world.dayOffset = offsetForHour(world.tick, hourOfDay(world.tick, world.dayOffset, pace), world.clock);
       if (settingsAt) settingsAt.dirty = true;
     }
     retime(true);
@@ -881,7 +868,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
       rec.keyHash = hashKey(c.key);
       records.dirty.add(rec.pid);
     }
-    // A survivor from before looks existed gets the default look.
+    // A survivor without a look takes the one it came with, or the default.
     if (!rec.look) {
       rec.look = c.look ?? defaultLook();
       records.dirty.add(rec.pid);
@@ -1002,7 +989,6 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     for (const e of urban.contacts!.step()) urban.syncAfterContact(e);
     spawner?.step(tick);
     build.step();
-    sails.step();
     taming.step();
     breeding.step(tick);
     feces.step(tick);
@@ -1103,7 +1089,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   };
   const tactical = new Tactical(world, game, records, rules);
   game.onReplicate = (c) => {
-    sails.sync(c);
+    motion.sync(c);
     syncOwn(own, c);
     harvest?.sync(c);
     tactical.sync(c);
@@ -1129,7 +1115,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     for (const rider of riding.riders(e)) if (rider.inv) carried += items.inv(rider).weight(items.table);
     const arms = carry.heldBy(rec.pid);
     const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + carried * reg.riderWeight[rec.kind]! + (arms >= 0 ? carry.load(rec) : 0);
-    if (reg.vehicle[rec.kind]) world.ents.vehiclePayloadMass[e] = Math.fround(urban.payloadMass(e));
+    if (reg.vehicle[rec.kind]) world.ents.vehiclePayloadMass[world.ents.vrow[e]!] = Math.fround(urban.payloadMass(e));
     // A creature in someone's arms weighs on them.
     const carrier = carry.carrierOf(e);
     if (carrier && carrier !== rec) refreshBody(carrier);
@@ -1153,7 +1139,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
       }
       const slot = rec.held >= 0 && inv.item[inv.hotbar + rec.held] !== 0 ? inv.hotbar + rec.held : -1;
       const item = slot >= 0 ? inv.item[slot]! : 0;
-      const was = ents.gear[e]?.[GEAR_HELD] ?? 0;
+      const was = ents.gears.get(e)?.[GEAR_HELD] ?? 0;
       gear[GEAR_HELD] = item;
       for (let k = 0; k < ARMOR_SLOTS; k++) gear[GEAR_WORN + k] = inv.item[inv.armor + k]!;
       ents.setGear(e, gear);
@@ -1179,7 +1165,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
         if (session) session.did = 0;
       }
       inHand.set(rec.pid, slot);
-    } else if (rec.saddle !== 0 || world.ents.gear[e]) {
+    } else if (rec.saddle !== 0 || world.ents.gears.has(e)) {
       // A creature's gear names the saddle it wears, which every client draws on it (D491).
       gear.fill(0);
       gear[GEAR_WORN] = rec.saddle;
@@ -1193,13 +1179,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
 
   const con = new Console();
   con.bus = bus;
-  addCoreCommands(con);
-  addAdminCommands(con);
-  addCombatCommands(con);
-  addSocialCommands(con);
-  addCreatureCommands(con);
-  addSettingsCommands(con);
-  addClusterCommands(con);
+  for (const [, add] of COMMAND_FAMILIES) add(con);
   // After the server's own commands, so a module can take no name of theirs.
   const modules = new Modules(
     {
@@ -1241,7 +1221,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     voice,
     build,
     fixtures,
-    sails,
+    motion,
     stations,
     taming,
     riding,

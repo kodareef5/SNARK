@@ -11,7 +11,7 @@ import { convertCreature, planOf, withMotion } from "../pack/creature.ts";
 import { importGlb } from "../pack/glb.ts";
 import { readGltf } from "../pack/gltf.ts";
 import { lying } from "../pack/lying.ts";
-import { withLevels, withSurfaceLevels } from "../pack/simplify.ts";
+import { simplifySurface, withLevels, withSurfaceLevels } from "../pack/simplify.ts";
 import { spanOf, tangentsOf } from "../pack/surface.ts";
 import type { MaterialMaps } from "../pack/texture.ts";
 import { buildDetails } from "../pack/details.ts";
@@ -121,14 +121,6 @@ export function convertModel(asset: Asset & { spec: CreatureAsset }, glb: string
   measureSpans(textured.map((t) => t.mesh));
   for (const t of textured) {
     out.faults.push(...surfaceFaults(t.mesh));
-    if (spec.authoredLevels) {
-      if (spec.flat !== 1) out.faults.push(`${asset.id}: authored creature levels require flat:1`);
-      if (t.mesh.lods.length !== t.budgets.length + 1) out.faults.push(`${asset.id}: authored creature has ${t.mesh.lods.length} levels for ${t.budgets.length + 1} budgets`);
-      // Retain the normal finest-surface tangent/fallback-colour bake without asking it to simplify any coarse level.
-      const fine = withSurfaceLevels({ ...t.mesh, lods: [t.mesh.lods[0]!] }, { budgets: [], flat: 1, maps: t.maps, palette });
-      meshes[meshes.indexOf(t.mesh)] = { ...fine, lods: [fine.lods[0]!, ...t.mesh.lods.slice(1)] };
-      continue;
-    }
     const preserveBones = spec.preserveBones?.map(name => {
       const bone = made.rig.names!.indexOf(name);
       if (bone < 0) out.faults.push(`${asset.id}: preserved LOD bone "${name}" does not exist`);
@@ -206,8 +198,11 @@ export function convertPieces(asset: Asset & { spec: PiecesAsset }, files: Reado
     const errors = pieces.find((p) => p.id === mesh.id)?.errors;
     if (spec.flat === undefined || !maps.has(mesh.id)) return withStated(mesh, errors, out.faults);
     const own = mesh.lods.slice(1, 1 + brought.get(mesh.id)!);
-    const budgets = spec.budgets.triangles.slice(1, spec.budgets.triangles.length - own.length);
-    const made = withSurfaceLevels({ ...mesh, lods: [mesh.lods[0]!] }, { budgets, flat: spec.flat, maps: maps.get(mesh.id)!, palette });
+    const plan = pieces.find((p) => p.id === mesh.id)?.triangles ?? spec.budgets.triangles;
+    // A model finer than the first budget is not itself a level: the finest is made from it, and the rest from that.
+    const model = mesh.lods[0]!;
+    const fine = model.indices.length / 3 > plan[0]! ? simplifySurface(model, [plan[0]!])[0]!.lod : model;
+    const made = withSurfaceLevels({ ...mesh, lods: [fine] }, { budgets: plan.slice(1, plan.length - own.length), flat: spec.flat, maps: maps.get(mesh.id)!, palette });
     return withStated({ ...made, lods: [...made.lods, ...own] }, errors, out.faults);
   });
   // The lying piece is made from the held one as it is drawn, every level, before it goes on the hand.
@@ -361,7 +356,6 @@ export function repack(file: Uint8Array, levels: boolean, asset?: Asset): Uint8A
     if (!m.flat) return withLevels({ ...measured, lods: [measured.lods[0]!] });
     const spec = asset?.spec;
     if (!asset || spec?.kind !== "creature") throw new Error(`${m.id} is drawn with materials: its levels are made again only from its asset's pictures`);
-    if (spec.authoredLevels) return measured;
     const pictures = new Map(materialsOf(asset).map((d) => [d.id, describe(d, spec.budgets.texture?.top ?? stepSize(LAST_STEP), palette).maps]));
     // The body's plan, or a worn saddle's or the saddled model's own.
     const plan = planOf(asset.id, spec, m.id);

@@ -1,0 +1,47 @@
+{
+  "track": "hearth",
+  "layer": "tense",
+  "candidate": 3,
+  "model": "Stable Audio 3 medium",
+  "repo": "stabilityai/stable-audio-3-medium",
+  "revision": "d4d3579395a8ac0df4ab13b5b1d7138ce7290f81",
+  "code": {
+    "repo": "github.com/Stability-AI/stable-audio-3",
+    "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57"
+  },
+  "licence": {
+    "name": "Stability AI Community License",
+    "terms": "free under US$1M annual revenue, commercial users register with Stability AI; outputs are ours; not for training other foundation models"
+  },
+  "prompt": "TrackType: Music, VocalType: Instrumental, Genre: Folk, Genre: Orchestral, Genre: Cinematic. For a dark survival game, at the survivors' camp by the fire, the camp is threatened: the theme on strings with a building war drum and low brass. 80 BPM, D minor.",
+  "negative_prompt": "fade out, ending, silence, gaps, dropouts, lo-fi, pop, happy, major key, vocals with lyrics, singing words",
+  "seconds": 120,
+  "bpm": 80,
+  "key": "D minor",
+  "seed": 19103,
+  "steps": 8,
+  "cfg": 1.0,
+  "init_from": "hearth/calm.wav",
+  "init_noise_level": 0.6,
+  "rate": 44100,
+  "channels": 2,
+  "seconds_to_make": 3.8,
+  "gpu_peak_gb": 5.47,
+  "torch": "2.7.1+cu128",
+  "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "date": "2026-11-15",
+  "sha256": "7a9e5be45cb7a52b44cca6323760c8eb85e042a95a67a1bb37f52f115286742c",
+  "chosen": "tense@3.wav",
+  "measures": {
+    "loudness_db": -23.8,
+    "dropouts": 0.017,
+    "stray_db": 4.26,
+    "clipped": 0,
+    "brightness": 0.004,
+    "beat_with_base": 0.025,
+    "louder_db": 0.6,
+    "brighter": 0.001,
+    "score": -2.809
+  },
+  "stored_as": "Opus 96 kb/s stereo (ffmpeg libopus); the master is made again from this recipe"
+}

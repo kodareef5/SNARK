@@ -1,0 +1,130 @@
+{
+  "asset": "core/sfx/bicycle",
+  "review": "../ref/sound",
+  "about": "Bicycles: coasting and pedalling, the bell, brakes, gear clicks and a fall.",
+  "notes": "v3 (vehicle round). Engine layers are 20 s beds cut to loop, played faster or slower by rpm; slot names match core:vehicle's, so a vehicle of this family is heard by them first and by core:vehicle for the rest.",
+  "slots": {
+    "roll": {
+      "kind": "impact",
+      "range": 20,
+      "level": -26,
+      "vary": 0.0,
+      "want": "coasting: the freewheel ticking and tyres humming",
+      "prompts": [
+        {
+          "id": "v3-10400",
+          "models": [
+            "moss"
+          ],
+          "seed": 10400,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A bicycle coasts along a paved road: the freewheel hub ticks fast and the thin tyres hum, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "pedal": {
+      "kind": "impact",
+      "range": 20,
+      "level": -24,
+      "vary": 0.0,
+      "want": "pedalling: the chain whirring",
+      "prompts": [
+        {
+          "id": "v3-10410",
+          "models": [
+            "moss"
+          ],
+          "seed": 10410,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A bicycle is pedalled steadily along a road: the chain whirs over the sprockets, the tyres hum and the pedals creak softly in rhythm, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "horn": {
+      "kind": "impact",
+      "range": 60,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the bell",
+      "prompts": [
+        {
+          "id": "v3-10420",
+          "models": [
+            "moss"
+          ],
+          "seed": 10420,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A bicycle bell rings, a bright double ring, five separate rings with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "brake": {
+      "kind": "impact",
+      "range": 30,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the brakes squealing",
+      "prompts": [
+        {
+          "id": "v3-10430",
+          "models": [
+            "moss"
+          ],
+          "seed": 10430,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A bicycle's rim brakes squeal as it stops, four separate stops with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "shift": {
+      "kind": "impact",
+      "range": 10,
+      "level": -24,
+      "vary": 0.0,
+      "want": "a gear click",
+      "prompts": [
+        {
+          "id": "v3-10440",
+          "models": [
+            "moss"
+          ],
+          "seed": 10440,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A bicycle's derailleur shifts gear: a quick metallic click and the chain clattering onto the next sprocket, six separate shifts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "crash/light": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the bike falling over",
+      "prompts": [
+        {
+          "id": "v3-10450",
+          "models": [
+            "moss"
+          ],
+          "seed": 10450,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A bicycle falls over onto a road: a clattering metal crash with the bell pinging and the wheel spinning, three separate falls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

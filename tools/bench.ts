@@ -49,6 +49,10 @@ import { benchAgent } from "./bench/agent.ts";
 import { benchCollide } from "./bench/collide.ts";
 import { benchDenseWood, benchNodes } from "./bench/nodes.ts";
 import { benchFrameBudget } from "./bench/budget.ts";
+import { benchGovernor } from "./bench/governor.ts";
+import { BASE_TIERS, asTextured, benchBases, boxBase } from "./bench/base.ts";
+import { benchHelicopters } from "./bench/helicopter.ts";
+import { perCascade } from "./bench/shadow.ts";
 import { benchHunt } from "./bench/hunt.ts";
 import { benchFlock } from "./bench/flock.ts";
 import { benchFlyers } from "./bench/flyers.ts";
@@ -68,6 +72,7 @@ import { benchTextures } from "./bench/textures.ts";
 import { benchParts } from "./bench/parts.ts";
 import { benchTransport } from "./bench/transport.ts";
 import { benchGpu } from "./bench/gpu.ts";
+import { benchUi } from "./bench/ui.ts";
 
 const PLAYERS = 100;
 const STRUCTURES = 500000;
@@ -93,6 +98,14 @@ const section = (title: string): void => console.log(`\n${title}`);
 const percentile = (sorted: number[], q: number): number => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))]!;
 const mb = (bytes: number): number => bytes / 1048576;
 
+benchUi(section, record);
+// Focused HUD rows avoid rebuilding the unrelated world sizing target.
+if (process.argv.includes("--ui")) {
+  mkdirSync(resolve("artifacts"), { recursive: true });
+  writeFileSync(resolve("artifacts/bench-ui.json"), JSON.stringify({ machine: `${cpus()[0]!.model}, ${cpus().length} cores`, bun: Bun.version, rows }, null, 2));
+  process.exit(rows.some(r => r.budget !== null && r.value > r.budget) ? 1 : 0);
+}
+
 function buildTerrain(): Heightfield {
   const hf = new Heightfield(DIMS, TERRAIN_CELL, -32, 1 / 64);
   for (let j = 0; j < hf.nz; j++) {
@@ -106,24 +119,10 @@ function buildTerrain(): Heightfield {
   return hf;
 }
 
-/** Bases of mixed pieces on a 3 m lattice, four floors high, 42 m square. Returns their centres. */
-function buildBases(world: ServerWorld, reg: Registry, rng: Rng): [number, number][] {
-  const kinds = ["core:foundation", "core:wall", "core:wall", "core:ceiling", "core:ceiling", "core:pillar", "core:crate", "core:block"].map((id) => reg.index.get(id)!);
-  const each = STRUCTURES / BASES;
-  const centers: [number, number][] = [];
-  for (let b = 0; b < BASES; b++) {
-    const cx = Math.round(rng.range(400, 7790) / 3) * 3;
-    const cz = Math.round(rng.range(400, 7790) / 3) * 3;
-    centers.push([cx, cz]);
-    const y0 = world.hf.heightAt(cx, cz);
-    for (let n = 0; n < each; n++) {
-      const kind = kinds[rng.int(kinds.length)]!;
-      const x = cx + (rng.int(15) - 7) * 3;
-      const z = cz + (rng.int(15) - 7) * 3;
-      const y = y0 + rng.int(4) * 3.3 + world.structs.halfYOf(kind);
-      world.structs.add(kind, x, y, z, rng.int(4) * 16384, 1 + b, 1000);
-    }
-  }
+/** The bench map's box bases (bench/base.ts), each owned by a tribe of its own. Returns their centres. */
+function buildBases(world: ServerWorld, reg: Registry): [number, number][] {
+  const { centers, pieces } = benchBases(reg, world.hf);
+  pieces.forEach((base, b) => base.forEach(([kind, x, y, z, yaw]) => world.structs.add(kind, x, y, z, yaw, 1 + b, 1000)));
   return centers;
 }
 
@@ -218,7 +217,7 @@ const world = createWorld(reg, DIMS, hf, MAP_ID, mapHash, { x: 4096, z: 4096, ya
 record("terrain build, 8 km at 2 m", performance.now() - t0, "ms");
 const rng = new Rng(2026);
 t0 = performance.now();
-const centers = buildBases(world, reg, rng);
+const centers = buildBases(world, reg);
 record(`place ${STRUCTURES} structures in ${BASES} bases`, performance.now() - t0, "ms");
 record("structures placed", world.structs.count, "");
 
@@ -762,15 +761,14 @@ section("Siege: a 20,000-piece chunk beside that crowd, 50 of its pieces damaged
 let siegeChunk = -1;
 {
   const crowd = centers[0]!;
-  const wall = reg.index.get("core:wall")!;
   siegeChunk = chunkAt(DIMS, crowd[0] + 70, crowd[1]);
   const x0 = (siegeChunk % DIMS.chunksX) * 64;
   const z0 = Math.floor(siegeChunk / DIMS.chunksX) * 64;
   const pieces = new Rng(79);
   const refs: number[] = [];
-  // High in the air, so no body touches them. It is the count that is measured.
-  for (let n = 0; n < 20000; n++) {
-    const ref = world.structs.add(wall, x0 + 1 + pieces.range(0, 62), 200 + pieces.range(0, 60), z0 + 1 + pieces.range(0, 62), 0, 1, 1e9);
+  // A wooden box base of a room a cell, 15 storeys, high in the air, so no body touches it.
+  for (const [kind, x, y, z, yaw] of boxBase(reg, "wood", x0 + 0.5, 200, z0 + 0.5, 21, 1, 20000)) {
+    const ref = world.structs.add(kind, x, y, z, yaw, 1, 1e9);
     if (ref >= 0) refs.push(ref);
   }
   record("pieces in the chunk", world.structs.chunks[siegeChunk]!.live, "");
@@ -799,7 +797,7 @@ let siegeChunk = -1;
   record("tick time before the damage, median", percentile(quiet, 0.5), "ms");
   record("tick time under it, median", percentile(fire, 0.5), "ms", 8);
   record("tick time under it, 99th percentile", percentile(fire, 0.99), "ms", 16);
-  // About 17 bytes a damaged piece. 1,500 pieces a second is far more than a raid does, and it is still under a snapshot's share.
+  // About 6.5 bytes a damaged piece, its health alone. 1,500 pieces a second is far more than a raid does.
   record("sent to each client for the damage", (host.game.stats.chunkBytes - bytes) / host.game.playerCount / 10 / 1024, "KB/s", 30);
   store.saveChunk = saveChunk;
   // The chunk is saved whole, 570 KB of it, but a chunk in which only health changes is written a second apart at most.
@@ -987,30 +985,43 @@ section("Restart under other settings: the save of the sizing target, every time
 storeRows(section, record);
 
 // ---------------------------------------------------------------- client frame
-section("Client frame build (headless): standing 60 m from a 2,000-piece base");
+section("Client frame build (headless): standing 60 m from a 2,000-piece base of wood, of stone and of thatch, on medium, levels drawn with their materials");
 const scene = new Scene({ dims: DIMS, hf, structs: restored }, reg, pack);
+asTextured(scene);
 const cam = new Camera();
-cam.x = centers[0]![0] + 60;
-cam.z = centers[0]![1];
-cam.y = hf.heightAt(cam.x, cam.z) + 8;
-cam.yaw = Math.PI / 2 + Math.PI; // facing -X, toward the base
 scene.structureDistance = 256;
-t0 = performance.now();
-let packet = scene.build(cam, null);
-record("first frame, building instance buffers", performance.now() - t0, "ms");
-const frame: number[] = [];
-for (let i = 0; i < 300; i++) {
-  cam.yaw += 0.002;
-  const t = performance.now();
+let packet = scene.packet;
+const sum = (xs: number[]): number => xs.reduce((a, v) => a + v, 0);
+const standOff = (b: number): void => {
+  cam.x = centers[b]![0] + 60;
+  cam.z = centers[b]![1];
+  cam.y = hf.heightAt(cam.x, cam.z) + 8;
+  cam.yaw = Math.PI / 2 + Math.PI; // facing -X, toward the base
+};
+// The first base reaches into the siege's chunk, which is then seen and drawn whole, so the wooden one is the fourth.
+for (const b of [3, 1, 2]) {
+  const tier = BASE_TIERS[b % 3]!;
+  standOff(b);
+  t0 = performance.now();
   packet = scene.build(cam, null);
-  frame.push(performance.now() - t);
+  record(`${tier}: first frame, building instance buffers`, performance.now() - t0, "ms");
+  const frame: number[] = [];
+  for (let i = 0; i < 300; i++) {
+    cam.yaw += 0.002;
+    const t = performance.now();
+    packet = scene.build(cam, null);
+    frame.push(performance.now() - t);
+  }
+  frame.sort((a, b) => a - b);
+  const cast = perCascade(scene, packet);
+  record(`${tier}: frame build, median`, percentile(frame, 0.5), "ms", 1);
+  record(`${tier}: frame build, 99th percentile`, percentile(frame, 0.99), "ms", 2);
+  record(`${tier}: draw calls, structures within 256 m`, packet.drawCount, "", 300);
+  record(`${tier}: triangles submitted`, packet.triangles, "", 1500000);
+  record(`${tier}: triangles cast into the sun's maps, and their draws`, sum(cast.triangles), `(${sum(cast.draws)} draws)`);
 }
-frame.sort((a, b) => a - b);
-record("frame build, median", percentile(frame, 0.5), "ms", 1);
-record("frame build, 99th percentile", percentile(frame, 0.99), "ms", 2);
 record("terrain tiles (8 km map, 4 km view)", packet.tileCount, "", 200);
-record("draw calls, structures within 256 m", packet.drawCount, "", 300);
-record("triangles submitted", packet.triangles, "", 1500000);
+standOff(0);
 scene.structureDistance = Infinity;
 packet = scene.build(cam, null);
 record("draw calls if every base to the horizon were instanced", packet.drawCount, "");
@@ -1046,6 +1057,7 @@ section("Client frame build (headless): the 20,000-piece chunk told of 50 damage
 
 section("Client frame build (headless): 300 survivors in view, posed every frame");
 {
+  standOff(3);
   scene.structureDistance = 256;
   const crowd = new RemoteSample();
   const survivor = reg.index.get("core:survivor")!;
@@ -1229,10 +1241,12 @@ benchCollide(section, record);
 benchNodes(section, record);
 benchDenseWood(section, record);
 benchFrameBudget(section, record);
+benchGovernor(section, record);
 benchHunt(section, record);
 benchFlock(section, record);
 benchFlyers(section, record);
 benchBoats(section, record);
+benchHelicopters(section, record);
 benchSpawn(section, record);
 benchLatency(section, record);
 benchPoses(section, record);

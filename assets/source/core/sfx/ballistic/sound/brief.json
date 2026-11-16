@@ -1,0 +1,311 @@
+{
+  "asset": "core/sfx/ballistic",
+  "review": "../ref/sound",
+  "about": "Bullets: ricochets off stone and metal, close whizzes, impacts on flesh, wood, metal, dirt, water, glass and concrete, casings, bursts, suppressed shots, a distant firefight and arrows striking.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "ricochet/stone": {
+      "kind": "impact",
+      "range": 80,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a bullet ricocheting off stone",
+      "prompts": [
+        {
+          "id": "v4-20600",
+          "models": [
+            "moss"
+          ],
+          "seed": 20600,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A bullet ricochets off rock: a sharp crack and a high whining zing flying away, five separate ricochets with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "ricochet/metal": {
+      "kind": "impact",
+      "range": 80,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a bullet ricocheting off metal",
+      "prompts": [
+        {
+          "id": "v4-20610",
+          "models": [
+            "moss"
+          ],
+          "seed": 20610,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A bullet ricochets off steel: a loud metallic ping and a whining whizz, five separate ricochets with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "whiz": {
+      "kind": "impact",
+      "range": 10,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a bullet passing close",
+      "prompts": [
+        {
+          "id": "v4-20620",
+          "models": [
+            "moss"
+          ],
+          "seed": 20620,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "Bullets whiz past very close: sharp supersonic snaps and zips, six separate bullets with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/flesh": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a bullet hitting a body",
+      "prompts": [
+        {
+          "id": "v4-20630",
+          "models": [
+            "moss"
+          ],
+          "seed": 20630,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A bullet hits a body: a short wet thwack, five separate hits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/wood": {
+      "kind": "impact",
+      "range": 40,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a bullet into wood",
+      "prompts": [
+        {
+          "id": "v4-20640",
+          "models": [
+            "moss"
+          ],
+          "seed": 20640,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A bullet slams into wood: a sharp splintering thock, five separate hits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/metal": {
+      "kind": "impact",
+      "range": 60,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a bullet on metal",
+      "prompts": [
+        {
+          "id": "v4-20650",
+          "models": [
+            "moss"
+          ],
+          "seed": 20650,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A bullet hits sheet metal: a loud sharp clang and ring, five separate hits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/dirt": {
+      "kind": "impact",
+      "range": 30,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a bullet into dirt",
+      "prompts": [
+        {
+          "id": "v4-20660",
+          "models": [
+            "moss"
+          ],
+          "seed": 20660,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Bullets strike the dirt: short puffing thuds and sprays of soil, five separate hits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/water": {
+      "kind": "impact",
+      "range": 30,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a bullet into water",
+      "prompts": [
+        {
+          "id": "v4-20670",
+          "models": [
+            "moss"
+          ],
+          "seed": 20670,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Bullets hit water: sharp little plunging splashes, five separate hits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/glass": {
+      "kind": "impact",
+      "range": 50,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a bullet through glass",
+      "prompts": [
+        {
+          "id": "v4-20680",
+          "models": [
+            "moss"
+          ],
+          "seed": 20680,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A bullet punches through a window: a sharp crack and a tinkling spray of glass, four separate hits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/concrete": {
+      "kind": "impact",
+      "range": 40,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a bullet on concrete",
+      "prompts": [
+        {
+          "id": "v4-20690",
+          "models": [
+            "moss"
+          ],
+          "seed": 20690,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Bullets hit a concrete wall: hard chipping cracks and crumbling dust, five separate hits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "casings": {
+      "kind": "impact",
+      "range": 10,
+      "level": -22,
+      "vary": 0.04,
+      "want": "spent casings on the ground",
+      "prompts": [
+        {
+          "id": "v4-20700",
+          "models": [
+            "moss"
+          ],
+          "seed": 20700,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Spent brass bullet casings fall and bounce tinkling on concrete, six separate small clatters with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "burst": {
+      "kind": "impact",
+      "range": 500,
+      "level": -6,
+      "vary": 0.04,
+      "want": "an automatic burst",
+      "prompts": [
+        {
+          "id": "v4-20710",
+          "models": [
+            "moss"
+          ],
+          "seed": 20710,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "An automatic rifle fires short bursts: rapid loud cracks, four separate bursts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "suppressed": {
+      "kind": "impact",
+      "range": 40,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a suppressed shot",
+      "prompts": [
+        {
+          "id": "v4-20720",
+          "models": [
+            "moss"
+          ],
+          "seed": 20720,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A pistol with a silencer fires: a muffled sharp thup and the click of the slide, five separate shots with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "firefight": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.04,
+      "want": "a distant firefight",
+      "prompts": [
+        {
+          "id": "v4-20730",
+          "models": [
+            "moss"
+          ],
+          "seed": 20730,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A distant gun battle: scattered rifle shots and bursts echoing far away, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "arrow/hit": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.04,
+      "want": "an arrow striking",
+      "prompts": [
+        {
+          "id": "v4-20740",
+          "models": [
+            "moss"
+          ],
+          "seed": 20740,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Arrows thunk into a wooden target and quiver, five separate hits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

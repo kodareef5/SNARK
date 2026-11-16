@@ -67,7 +67,7 @@
     "seaNavd88": 0,
     "sea_source": "No sea in the frame, and none within 350 km; heights are NAVD88 (GEOID18) as the survey gives them",
     "minY": 500,
-    "report": "ruins4",
+    "report": "ruins5",
     "easy_around_spawns_m": 400,
     "places": [
       {"name": "South Strip", "at": [-115.1755, 36.0935], "why": "the resorts from Mandalay Bay to Excalibur; OpenStreetMap maps the Strip as no place"},

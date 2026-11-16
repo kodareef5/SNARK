@@ -139,8 +139,20 @@
           "takes": 4,
           "seconds": 3,
           "text": "TrackType: SFX, a large hen clucks softly and contentedly to itself, low throaty murmurs. Close-miked, dry."
+        },
+        {
+          "id": "v2-6920",
+          "models": [
+            "moss"
+          ],
+          "seed": 6920,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "TrackType: SFX, a large hen clucks softly and contentedly to itself, low throaty murmurs. Close-miked, dry."
         }
-      ]
+      ],
+      "keep": 10
     },
     "startled": {
       "kind": "voice",
@@ -238,8 +250,20 @@
           "takes": 6,
           "seconds": 2,
           "text": "TrackType: SFX, a big bird screeches once in fright, a loud raw squawk that cracks at the top. Close, dry."
+        },
+        {
+          "id": "v2-6930",
+          "models": [
+            "moss"
+          ],
+          "seed": 6930,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "TrackType: SFX, a big bird screeches once in fright, a loud raw squawk that cracks at the top. Close, dry."
         }
-      ]
+      ],
+      "keep": 10
     },
     "hurt": {
       "kind": "voice",
@@ -308,8 +332,20 @@
           "takes": 6,
           "seconds": 2,
           "text": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry."
+        },
+        {
+          "id": "v2-6940",
+          "models": [
+            "moss"
+          ],
+          "seed": 6940,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry."
         }
-      ]
+      ],
+      "keep": 10
     },
     "peck": {
       "kind": "impact",

@@ -1,6 +1,8 @@
 // Boot self-check decisions, testable against the software rasterizer. The shell only reads pixels back from WebGL.
 // A probe that fails in the browser but passes here points at the shell: a shader, a buffer layout, a missing upload.
 
+import { surfaceIndex } from "../../content/surfaces.ts";
+import { worldSurface, type WorldSample } from "./render/world-surfaces.ts";
 import { B_CHEST, HUMAN } from "../../shared/anim/human.ts";
 import { LOOK_SKIN, defaultLook } from "../../shared/anim/look.ts";
 import { SKIN_BASE } from "../../shared/pack/palette.ts";
@@ -31,34 +33,70 @@ export interface Probe {
   facings?: [number, number, number][];
 }
 
+/** The reference atlas and the drawing-buffer size, for the exact pixel read by WebGL. */
+export interface ProbeSurfaces {
+  width: number;
+  height: number;
+  sample: WorldSample | null;
+}
+
 /** Normals spread over the half of the sphere that faces the camera, for a probe's `facings`. */
 const FACINGS = 64;
 
 /**
  * Probes for the proving ground seen from its spawn point looking north, in frame `p`. The slope probe lands where
  * expected only if terrain heights reach the GPU correctly. `withCreature` adds the creature and the body the probe
- * server places. On a lit frame each colour is the one surface.ts lights it to, facing as the probe's point does (a
- * body's facing the camera), the checker aside, and the sky is the dome, as the sky table gives it.
+ * server places. Lit ground and statics use world-surfaces.ts at the readback pixel's intersection with their
+ * plane, including the projected pixel footprint, and are left out on a lit frame without the reference atlas. Species
+ * keep palette lighting. The sky is the same dome table.
  */
-export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, skyIndex: number, hf: Heightfield, withCreature: boolean, p: FramePacket): Probe[] {
+export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, skyIndex: number, hf: Heightfield, withCreature: boolean, p: FramePacket, surfaces: ProbeSurfaces): Probe[] {
   const ray = [0, 0, 0];
   const out = [0, 0, 0];
   const rgb = [0, 0, 0];
   const at = [0, 0, 0];
-  /** A palette colour at screen point `at` on a face with normal `n`, or facing the camera. */
-  const color = (index: number, n?: readonly number[]): [number, number, number] => {
+  // gl.readPixel floors bottom-up coordinates. In particular, a probe exactly on a row boundary reads the row
+  // ABOVE floor(sy * height). Sample its centre, not the projected landmark or the pixel's corner.
+  const screen = (): [number, number] => [(Math.floor(at[0]! * surfaces.width) + 0.5) / surfaces.width, 1 - (Math.floor((1 - at[1]!) * surfaces.height) + 0.5) / surfaces.height];
+  const finished = !p.lit || surfaces.sample !== null;
+  const sun = [0, 0, 0];
+  trueSun(p.frame, sun);
+  const look = (view: ArrayLike<number>, light: Float64Array | Float32Array | number[]): void => domeLight(theSky().table, sun, view, light);
+  /** Palette lighting, or a world finish on a known plane. The two species intentionally have no plane finish. */
+  const color = (index: number, n?: readonly number[], plane?: { point: readonly number[]; ground: boolean }): [number, number, number] => {
     const raw: [number, number, number] = [palette[index * 4]!, palette[index * 4 + 1]!, palette[index * 4 + 2]!];
     if (!p.lit) return raw;
-    cam.ray(at[0]!, at[1]!, ray);
+    const [sx, sy] = screen();
+    cam.ray(sx, sy, ray);
     const v = ray.map((c) => -c);
-    lit(out, raw.map((c) => srgbToLinear(c / 255)), [1, 1, 0], n ?? v, v, p.frame, [0, 0, 0]);
-    shown(rgb, out, at[2]!, p);
+    const albedo = Float64Array.from(raw, (c) => srgbToLinear(c / 255));
+    const normal = Float64Array.from(n ?? v), orm = Float64Array.of(1, 1, 0), mirrored = new Float64Array(3);
+    let distance = at[2]!;
+    if (plane && surfaces.sample && n) {
+      const eye = [cam.x, cam.y, cam.z];
+      const numerator = n.reduce((sum, c, k) => sum + c * (plane.point[k]! - eye[k]!), 0);
+      const hit = (x: number, y: number): number[] => {
+        const r = [0, 0, 0]; cam.ray(x, y, r);
+        const t = numerator / n.reduce((sum, c, k) => sum + c * r[k]!, 0);
+        return r.map((c, k) => eye[k]! + c * t);
+      };
+      const point = hit(sx, sy), right = hit(sx + 1 / surfaces.width, sy), down = hit(sx, sy + 1 / surfaces.height);
+      const axis = Math.abs(n[1]!) >= Math.max(Math.abs(n[0]!), Math.abs(n[2]!)) ? 1 : Math.abs(n[0]!) > Math.abs(n[2]!) ? 0 : 2;
+      const u = axis === 0 ? 2 : 0, w = axis === 1 ? 2 : 1;
+      const footprint = Math.max(...[right, down].map((next) => Math.hypot(next[u]! - point[u]!, next[w]! - point[w]!)));
+      distance = Math.hypot(...point.map((c, k) => c - eye[k]!));
+      worldSurface(albedo, orm, normal, albedo, surfaceIndex(index, plane.ground, p.surfaceCity[7] ? "las-vegas" : "default"), point[0]!, point[1]!, point[2]!, n[0]!, n[1]!, n[2]!, footprint, p.surfaceCity, surfaces.sample);
+      const twice = 2 * normal.reduce((sum, c, k) => sum + c * v[k]!, 0);
+      skyFrom(mirrored, p.frame, normal.map((c, k) => twice * c - v[k]!), look);
+    }
+    lit(out, albedo, orm, normal, v, p.frame, mirrored);
+    shown(rgb, out, distance, p);
     return rgb.map((c) => Math.round(c * 255)) as [number, number, number];
   };
   /** The same colour on FACINGS faces turned toward the camera, spread evenly (a Fibonacci spiral round the view). */
   const facings = (index: number): [number, number, number][] | undefined => {
     if (!p.lit) return undefined;
-    cam.ray(at[0]!, at[1]!, ray);
+    cam.ray(...screen(), ray);
     const v = ray.map((c) => -c);
     const [a, b] = [Math.abs(v[1]!) < 0.9 ? [0, 1, 0] : [1, 0, 0], [0, 0, 0]];
     const u = [a[1]! * v[2]! - a[2]! * v[1]!, a[2]! * v[0]! - a[0]! * v[2]!, a[0]! * v[1]! - a[1]! * v[0]!].map((c, _, all) => c / Math.hypot(...all));
@@ -71,30 +109,28 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
   };
   const sky = (): [number, number, number] => {
     if (!p.lit) return color(skyIndex);
-    cam.ray(at[0]!, at[1]!, ray);
-    const sun = [0, 0, 0];
-    trueSun(p.frame, sun);
-    skyFrom(out, p.frame, ray, (view, light) => domeLight(theSky().table, sun, view, light));
+    cam.ray(...screen(), ray);
+    skyFrom(out, p.frame, ray, look);
     shown(rgb, out, 0, p);
     return rgb.map((c) => Math.round(c * 255)) as [number, number, number];
   };
   [at[0], at[1], at[2]] = [0.5, 0.03, 0];
   const probes: Probe[] = [{ name: "sky", sx: 0.5, sy: 0.03, rgb: sky(), mode: "exact" }];
-  // On a lit frame the twins say how bright each is too, the checker and a body's facing aside.
+  // Lit twins also hold brightness, allowing for compression and a body's unknown facing.
   const hue: Probe["mode"] = p.lit ? "lit" : "hue";
   // The plaza is level, and far nearer than the fog.
   [at[0], at[1]] = [0.5, 0.97];
-  probes.push({ name: "plaza", sx: 0.5, sy: 0.97, rgb: color(1, [0, 1, 0]), mode: hue });
+  if (finished) probes.push({ name: "plaza", sx: 0.5, sy: 0.97, rgb: color(1, [0, 1, 0], { point: [256, hf.heightAt(256, 240), 240], ground: true }), mode: hue });
   const block = reg.defs[reg.index.get("core:block") ?? 0];
   // South face of the block at (253, 1, 262).
-  if (block && block.type === "structure" && cam.project(253, 1, 260.99, at)) {
-    probes.push({ name: "block", sx: at[0]!, sy: at[1]!, rgb: color(block.color, [0, 0, -1]), mode: hue });
+  if (finished && block && block.type === "structure" && cam.project(253, 1, 260.99, at)) {
+    probes.push({ name: "block", sx: at[0]!, sy: at[1]!, rgb: color(block.color, [0, 0, -1], { point: [253, 1, 261], ground: false }), mode: hue });
   }
-  if (cam.project(232, hf.heightAt(232, 296), 296, at)) {
+  if (finished && cam.project(232, hf.heightAt(232, 296), 296, at)) {
     // The slope is one plane there: its normal from the heights a sample either side.
     const [dx, dz] = [hf.heightAt(232 + hf.cell, 296) - hf.heightAt(232 - hf.cell, 296), hf.heightAt(232, 296 + hf.cell) - hf.heightAt(232, 296 - hf.cell)];
     const n = [-dx, 2 * hf.cell, -dz].map((c, _, all) => c / Math.hypot(...all));
-    probes.push({ name: "slope", sx: at[0]!, sy: at[1]!, rgb: color(hf.tint[Math.round(296 / hf.cell) * hf.nx + Math.round(232 / hf.cell)]!, n), mode: hue });
+    probes.push({ name: "slope", sx: at[0]!, sy: at[1]!, rgb: color(hf.tint[Math.round(296 / hf.cell) * hf.nx + Math.round(232 / hf.cell)]!, n, { point: [232, hf.heightAt(232, 296), 296], ground: true }), mode: hue });
   }
   // The probe server stands a grazer at a known spot in a colour not its species' own, which checks the entity path and the colour regions.
   const grazer = reg.defs[reg.index.get("core:grazer") ?? 0];

@@ -31,6 +31,28 @@ test("vehicle observers blend engine speed but select actual gears and shift sta
   expect(remote.vehicleRpm[0]).toBe(3900);
 });
 
+test("a body that is no vehicle samples the vehicle columns a car sent no vehicle parts does, blended and new", () => {
+  const conn: Connection = { send() {}, close() {}, open: true, onMessage: null, onClose: null };
+  const registry = coreRegistry();
+  const s = new ClientSession(conn, { registry, name: "observer", key: new Uint8Array(32), spectate: true, resolveMap: () => null });
+  const views = (s as unknown as { drawn: ViewRing<EntityView> }).drawn;
+  for (const tick of [100, 102]) {
+    const view = views.alloc(tick);
+    view.push(4, 1, registry.index.get("core:compact")!, 0, 0, 0, 0, 0, 0);
+    view.push(5, 1, registry.index.get("core:raptor")!, 0, 0, 0, 0, 0, 0);
+    if (tick === 102) view.push(6, 1, registry.index.get("core:raptor")!, 0, 0, 0, 0, 0, 0);
+  }
+  const remote = new RemoteSample();
+  s.renderClock = 100.5; s.sampleRemote(remote, 0);
+  expect(remote.count).toBe(3);
+  const columns = Object.keys(remote).filter((c) => /^vehicle|^steering$|^wheelAngle$/.test(c)) as (keyof RemoteSample)[];
+  expect(columns.length).toBeGreaterThan(20);
+  for (const c of columns) {
+    const column = remote[c] as unknown as ArrayLike<number>;
+    expect([c, column[1], column[2]]).toEqual([c, column[0], column[0]]);
+  }
+});
+
 test("prediction evidence is opt-in, captures tiny state differences and keeps only a bounded history", () => {
   const trace = new PredictionTrace(), predicted = new Body(), actual = new Body();
   actual.x = Math.fround(.00001); actual.vehicleRpm = 1500;

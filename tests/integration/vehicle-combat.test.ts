@@ -45,7 +45,7 @@ test("a piece cannot be built through a car's nose or boot, and one already thro
     const build = (h.host as unknown as { build: { bodyIn(kind: number, x: number, y: number, z: number, yaw: number): boolean } }).build;
     for (const along of [-1.7, 0, 1.7]) expect(build.bodyIn(pillar, x, py, z + along, 0)).toBe(true);
     expect(build.bodyIn(pillar, x, py, z - 2.6, 0)).toBe(false);
-    // Through the boot anyway, as a map or an older build could leave one.
+    // Through the boot anyway, as a map could leave one.
     expect(h.world.structs.add(pillar, x, py, z - 1.7, 0, 0, 10000)).toBeGreaterThanOrEqual(0);
     expect(h.host.urban.mount(me, car)).toBe(RESULT_OK);
     h.run(800);
@@ -60,7 +60,7 @@ test("a piece cannot be built through a car's nose or boot, and one already thro
   } finally {
     h.host.shutdown();
   }
-}, 60000);
+});
 
 test("a passenger shooting out of the window does not hit the car it sits in", () => {
   const { h, sessions: [driver, passenger] } = setup(["driver", "passenger"]);
@@ -85,7 +85,7 @@ test("a passenger shooting out of the window does not hit the car it sits in", (
   } finally {
     h.host.shutdown();
   }
-}, 60000);
+});
 
 test("a shot through the open cabin reaches the passenger, and one at the door hits the car", () => {
   const { h, sessions: [driver, passenger, shooter] } = setup(["driver", "passenger", "shooter"]);
@@ -120,4 +120,4 @@ test("a shot through the open cabin reaches the passenger, and one at the door h
   } finally {
     h.host.shutdown();
   }
-}, 60000);
+});

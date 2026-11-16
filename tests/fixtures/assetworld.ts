@@ -2,12 +2,13 @@
 // only what packets upload. The residency tests and the benchmark both fly a camera through it.
 
 import { Assets } from "../../client/core/assets/assets.ts";
+import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { PULL_SLOTS } from "../../client/core/render/farnodes.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
-import { pictureBytes, textureBytes, type TextureFormat } from "../../shared/pack/texture.ts";
+import { blockOf, pictureBytes, textureBytes, type TextureFormat } from "../../shared/pack/texture.ts";
 import { partHash } from "../../tools/pack/manifest.ts";
 import type { SplitFile } from "../../tools/pack/split.ts";
 import { FakeNet, type NetOptions } from "./assetnet.ts";
@@ -38,6 +39,8 @@ export class Card {
   readonly held = new Map<number, number>();
   /** The slot of the surface the card holds for the level in a slot. */
   readonly surfaces = new Map<number, number>();
+  /** Levels and surfaces going up in pieces: the whole as far as it has come, and a surface's level. */
+  readonly coming = new Map<number, { bytes: Uint8Array; at: number; of: number | undefined }>();
   /** The copy of each texture the card draws with, and the copy it is being sent. */
   readonly textures = new Map<number, Copy>();
   readonly making = new Map<number, Copy>();
@@ -57,7 +60,11 @@ export class Card {
   }
 
   take(p: FramePacket): void {
-    for (const u of p.assetUploads) {
+    for (const piece of p.assetUploads) {
+      // The card holds the whole of a level or a surface from its first piece, and takes it as uploaded once its last is in.
+      if ((piece.at ?? 0) === 0) this.bytes += piece.whole ?? piece.data.length;
+      const u = this.joined(piece);
+      if (!u) continue;
       const level = this.manifest.meshes[u.mesh]!.levels[u.level]!;
       if (this.held.has(u.slot)) throw new Error(`slot ${u.slot} uploaded twice`);
       // The far nodes' pulled draws name levels core makes, which no file holds.
@@ -73,9 +80,14 @@ export class Card {
         this.surfaces.set(u.of, u.slot);
       }
       this.held.set(u.slot, u.data.length);
-      this.bytes += u.data.length;
     }
     for (const slot of p.assetDrops) {
+      // What had come of a level's surface goes with the level.
+      for (const [s, had] of this.coming) {
+        if (had.of !== slot) continue;
+        this.bytes -= had.bytes.length;
+        this.coming.delete(s);
+      }
       if (!this.held.has(slot)) throw new Error(`slot ${slot} dropped and never held`);
       if (this.surfaces.has(slot)) throw new Error(`level ${slot} dropped before its surface`);
       for (const [level, surface] of this.surfaces) if (surface === slot) this.surfaces.delete(level);
@@ -89,23 +101,26 @@ export class Card {
     }
     for (const u of p.texUploads) {
       const tex = this.manifest.textures![u.slot]!;
-      const rows = u.format === "rgba" ? u.size : (u.size + 3) >> 2;
-      const rowBytes = pictureBytes(u.format, tex.role, u.size) / rows;
+      const v = tex.in[u.format]!;
+      const block = blockOf(u.format, v);
+      // Rows of blocks: the upload's rows are pixels, whole blocks but for the picture's edge.
+      const rows = Math.ceil(u.size / block);
+      const rowBytes = pictureBytes(u.format, tex.role, u.size, block) / rows;
+      const [row, n] = [u.row / block, Math.ceil(u.rows / block)];
       if (u.size === 1 && u.row === 0) {
         if (this.making.has(u.slot)) throw new Error(`texture ${u.slot} begun twice`);
-        this.making.set(u.slot, { top: u.top, format: u.format, bytes: textureBytes(u.format, tex.role, u.top), size: 1, row: 0 });
-        this.texBytes += textureBytes(u.format, tex.role, u.top);
+        this.making.set(u.slot, { top: u.top, format: u.format, bytes: textureBytes(u.format, tex.role, u.top, block), size: 1, row: 0 });
+        this.texBytes += textureBytes(u.format, tex.role, u.top, block);
       }
       const copy = this.making.get(u.slot);
-      if (!copy || copy.top !== u.top || copy.format !== u.format || tex.role !== u.role) throw new Error(`texture ${u.slot} sent rows of a copy that was not begun`);
-      if (copy.size !== u.size || copy.row !== u.row || u.rows < 1 || u.row + u.rows > rows || u.data.length !== u.rows * rowBytes) throw new Error(`texture ${u.slot} sent rows out of order`);
+      if (!copy || copy.top !== u.top || copy.format !== u.format || tex.role !== u.role || (u.format !== "rgba" && u.block !== block)) throw new Error(`texture ${u.slot} sent rows of a copy that was not begun`);
+      if (copy.size !== u.size || copy.row !== row || n < 1 || row + n > rows || u.rows !== Math.min(n * block, u.size - u.row) || u.data.length !== n * rowBytes) throw new Error(`texture ${u.slot} sent rows out of order`);
       // The rows are the ones the file holds there.
-      const v = tex.in[u.format]!;
-      let at = v.at + u.row * rowBytes;
-      for (let size = 1; size < u.size; size <<= 1) at += pictureBytes(u.format, tex.role, size);
+      let at = v.at + row * rowBytes;
+      for (let size = 1; size < u.size; size <<= 1) at += pictureBytes(u.format, tex.role, size, block);
       if (Buffer.compare(u.data, this.files[v.file]!.subarray(at, at + u.data.length)) !== 0) throw new Error(`texture ${u.slot} sent the wrong bytes`);
       this.mostBand = Math.max(this.mostBand, u.data.length);
-      copy.row += u.rows;
+      copy.row += n;
       if (copy.row === rows) [copy.size, copy.row] = [u.size * 2, 0];
       if (u.last !== (copy.size > u.top)) throw new Error(`texture ${u.slot} completed at the wrong rows`);
       if (!u.last) continue;
@@ -119,6 +134,22 @@ export class Card {
     this.mostTex = Math.max(this.mostTex, this.texBytes);
   }
 
+  /** An upload whole, once the last of its pieces is in, in order; null while more are to come. */
+  private joined(u: AssetUpload): AssetUpload | null {
+    if (u.whole === undefined) return u;
+    let had = this.coming.get(u.slot);
+    if (u.at === 0) {
+      if (had || this.held.has(u.slot)) throw new Error(`slot ${u.slot} begun twice`);
+      this.coming.set(u.slot, (had = { bytes: new Uint8Array(u.whole), at: 0, of: u.of }));
+    }
+    if (!had || had.at !== u.at || had.at + u.data.length > u.whole) throw new Error(`slot ${u.slot} sent a piece out of order`);
+    had.bytes.set(u.data, had.at);
+    had.at += u.data.length;
+    if (had.at < u.whole) return null;
+    this.coming.delete(u.slot);
+    return { ...u, data: had.bytes };
+  }
+
   /** The card loses a texture: what it draws with, and a copy being made. */
   forget(t: number): void {
     this.texBytes -= (this.textures.get(t)?.bytes ?? 0) + (this.making.get(t)?.bytes ?? 0);
@@ -128,7 +159,7 @@ export class Card {
 
   /** The card loses everything. */
   clear(): void {
-    for (const map of [this.held, this.surfaces, this.textures, this.making]) map.clear();
+    for (const map of [this.held, this.surfaces, this.textures, this.making, this.coming]) map.clear();
     this.bytes = this.texBytes = 0;
   }
 }

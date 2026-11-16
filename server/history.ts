@@ -23,9 +23,10 @@ export class Past {
   pitch = 0; roll = 0; qx = 0; qy = 0; qz = 0; qw = 1; steering = 0;
 
   vehicleFrom(ents: EntityStore, e: number): void {
-    this.pitch = ents.vehiclePitch[e]!; this.roll = ents.vehicleRoll[e]!;
-    this.qx = ents.vehicleQx[e]!; this.qy = ents.vehicleQy[e]!; this.qz = ents.vehicleQz[e]!; this.qw = ents.vehicleQw[e]!;
-    this.steering = ents.steering[e]!;
+    const v = ents.vrow[e]!;
+    this.pitch = ents.vehiclePitch[v]!; this.roll = ents.vehicleRoll[v]!;
+    this.qx = ents.vehicleQx[v]!; this.qy = ents.vehicleQy[v]!; this.qz = ents.vehicleQz[v]!; this.qw = ents.vehicleQw[v]!;
+    this.steering = ents.steering[v]!;
   }
 
   blendVehicle(other: Past, k: number): void {
@@ -214,7 +215,7 @@ export class History {
     this.yaw[i] = ents.yaw[e]!;
     this.anim[i] = ents.anim[e]!;
     this.gen[i] = ents.gen[e]!;
-    if (ents.vehicle[e]) {
+    if (ents.vehicle[ents.vrow[e]!]) {
       let ring = this.vehicles.get(e);
       current.vehicleFrom(ents, e);
       if (!ring) {

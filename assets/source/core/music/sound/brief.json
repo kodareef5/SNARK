@@ -1,0 +1,286 @@
+{
+  "asset": "core/music",
+  "about": "The game's music: tracks in layers by intensity, one dark symphonic metal voice. A track's base comes from its prompt or from another track's theme (dawn's), and its further layers from its base, so all keep its bars and key and the director moves between them on a bar.",
+  "notes": "v2. Each layer is made three times (four for the themes) and music_pick.py keeps one by measure; the owner listens before anything merges.",
+  "candidates": 3,
+  "tracks": {
+    "dawn": {
+      "bpm": 80,
+      "key": "D minor",
+      "seconds": 120,
+      "seed": 10000,
+      "base": "theme",
+      "style": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, the main theme:",
+      "layers": {
+        "theme": {
+          "prompt": "a slow, memorable heroic-tragic melody carried by solo French horn and cellos over low strings, a rising four-note motif that returns, a deep choir humming beneath, timpani swells, grand and sorrowful.",
+          "noise": 0,
+          "seed": 0,
+          "candidates": 4
+        },
+        "full": {
+          "prompt": "the same theme at full power: the melody on massed horns and a huge choir singing long vowels, heavy metal guitars and double kick drums joining, epic and overwhelming.",
+          "noise": 0.7,
+          "seed": 1
+        }
+      }
+    },
+    "dread": {
+      "bpm": 96,
+      "key": "D minor",
+      "seconds": 120,
+      "seed": 11000,
+      "base": "calm",
+      "style": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, a theme of lurking danger,",
+      "layers": {
+        "calm": {
+          "prompt": "continuous and ominous with no gaps: low sustained strings, deep drones, a slow distant timpani pulse, sparse dark piano notes, unbroken from start to end.",
+          "noise": 0,
+          "seed": 0
+        },
+        "tense": {
+          "prompt": "growing tension: the same dark strings joined by pounding war drums, a low brass ostinato and rising cellos, driving and tense.",
+          "noise": 0.6,
+          "seed": 1
+        },
+        "combat": {
+          "prompt": "full battle: heavy down-tuned distorted metal guitars, thundering double kick drums, aggressive staccato strings and brass, relentless and continuous.",
+          "noise": 0.72,
+          "seed": 2
+        },
+        "climax": {
+          "prompt": "the climax: a massive dark choir chanting long powerful notes over the full orchestra and metal band, epic and overwhelming.",
+          "noise": 0.78,
+          "seed": 3
+        }
+      }
+    },
+    "primeval": {
+      "bpm": 90,
+      "key": "E minor",
+      "seconds": 120,
+      "seed": 12000,
+      "base": "calm",
+      "style": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, exploring a primeval jungle by day,",
+      "layers": {
+        "calm": {
+          "prompt": "mysterious and wide: tribal hand drums and frame drums, low cello ostinato, breathy bamboo flute phrases, deep horn calls, a feeling of ancient wilderness.",
+          "noise": 0,
+          "seed": 0
+        },
+        "tense": {
+          "prompt": "something stalks nearby: the tribal drums grow heavier, tense tremolo strings, low brass stabs, darker and urgent.",
+          "noise": 0.6,
+          "seed": 1
+        },
+        "combat": {
+          "prompt": "a fight in the jungle: pounding tribal war drums with metal guitars and double kick, fierce strings and horns.",
+          "noise": 0.72,
+          "seed": 2
+        },
+        "climax": {
+          "prompt": "overwhelming: a primal choir shouting rhythmic chants over the drums, full orchestra and metal band at full force.",
+          "noise": 0.78,
+          "seed": 3
+        }
+      }
+    },
+    "nightfall": {
+      "bpm": 80,
+      "key": "D minor",
+      "seconds": 120,
+      "seed": 13000,
+      "base": "calm",
+      "from": "dawn/theme",
+      "from_noise": 0.82,
+      "style": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, night falls on the island,",
+      "layers": {
+        "calm": {
+          "prompt": "eerie and still: a soft wordless choir pad, a lonely solo cello echoing the main theme, distant low drums, cold shimmering strings, continuous.",
+          "noise": 0,
+          "seed": 0
+        },
+        "tense": {
+          "prompt": "night terrors: the choir darkens, dissonant strings, a slow heavy heartbeat drum, low brass growls.",
+          "noise": 0.6,
+          "seed": 1
+        },
+        "combat": {
+          "prompt": "violence in the dark: heavy doom metal guitars, slow crushing drums, screaming strings and brass.",
+          "noise": 0.72,
+          "seed": 2
+        },
+        "climax": {
+          "prompt": "a nightmare: a huge dark choir and full orchestra with crushing metal, terrifying and grand.",
+          "noise": 0.78,
+          "seed": 3
+        }
+      }
+    },
+    "hunted": {
+      "bpm": 140,
+      "key": "B minor",
+      "seconds": 120,
+      "seed": 14000,
+      "base": "tense",
+      "style": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, being chased by a pack of predators,",
+      "layers": {
+        "tense": {
+          "prompt": "relentless pursuit: fast driving ostinato strings, rapid war drums, snapping percussion, breathless and urgent, continuous.",
+          "noise": 0,
+          "seed": 0
+        },
+        "combat": {
+          "prompt": "caught: fast thrash metal guitars and blast-beat drums with racing strings and brass hits.",
+          "noise": 0.7,
+          "seed": 1
+        },
+        "climax": {
+          "prompt": "fighting for life: a frantic choir over thrash metal and full orchestra, desperate and huge.",
+          "noise": 0.78,
+          "seed": 2
+        }
+      }
+    },
+    "apex": {
+      "bpm": 110,
+      "key": "C minor",
+      "seconds": 120,
+      "seed": 15000,
+      "base": "tense",
+      "style": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, facing an apex predator, a giant beast,",
+      "layers": {
+        "tense": {
+          "prompt": "a colossal presence: deep pounding taiko drums, low brass blasts like roars, ominous choir, heavy and slow-building.",
+          "noise": 0,
+          "seed": 0
+        },
+        "combat": {
+          "prompt": "the beast attacks: crushing heavy metal riffs, massive drums, brass and strings in violent unison.",
+          "noise": 0.7,
+          "seed": 1
+        },
+        "climax": {
+          "prompt": "the final battle: a full choir singing a dark Latin-like chant, metal band and orchestra at maximum, epic and terrifying.",
+          "noise": 0.78,
+          "seed": 2
+        }
+      }
+    },
+    "shoreline": {
+      "bpm": 84,
+      "key": "A minor",
+      "seconds": 120,
+      "seed": 16000,
+      "base": "calm",
+      "style": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, a lonely beach where survivors wash ashore,",
+      "layers": {
+        "calm": {
+          "prompt": "melancholic and open: a slow clean electric guitar with reverb, soft strings, a gentle low piano, wide and hopeful yet sad, continuous.",
+          "noise": 0,
+          "seed": 0
+        },
+        "tense": {
+          "prompt": "danger on the sand: the guitar darkens, tense strings and a building drum pulse.",
+          "noise": 0.6,
+          "seed": 1
+        },
+        "combat": {
+          "prompt": "a fight on the shore: heavy guitars, driving drums and strings, fierce.",
+          "noise": 0.72,
+          "seed": 2
+        }
+      }
+    },
+    "ruins": {
+      "bpm": 100,
+      "key": "F# minor",
+      "seconds": 120,
+      "seed": 17000,
+      "base": "calm",
+      "style": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, the overgrown ruins of a fallen city,",
+      "layers": {
+        "calm": {
+          "prompt": "desolate and industrial: metallic percussion, distorted low bass drones, cold strings, an eerie music-box melody, echoing, continuous.",
+          "noise": 0,
+          "seed": 0
+        },
+        "tense": {
+          "prompt": "something moves in the ruins: industrial drums, grinding guitars, tense strings.",
+          "noise": 0.6,
+          "seed": 1
+        },
+        "combat": {
+          "prompt": "battle in the streets: industrial metal guitars, mechanical drums, aggressive brass and strings.",
+          "noise": 0.72,
+          "seed": 2
+        },
+        "climax": {
+          "prompt": "the city's last stand: a dark choir over industrial metal and full orchestra, massive.",
+          "noise": 0.78,
+          "seed": 3
+        }
+      }
+    },
+    "deep": {
+      "bpm": 60,
+      "key": "D minor",
+      "seconds": 120,
+      "seed": 18000,
+      "base": "calm",
+      "style": "TrackType: Music, VocalType: Instrumental, Genre: Ambient, Genre: Cinematic, Genre: Orchestral. For a dark survival game, swimming in the deep sea,",
+      "layers": {
+        "calm": {
+          "prompt": "vast and cold: deep slow drones, distant whale-like synth calls, a faint far-away choir, slow swelling low strings, continuous and immersive.",
+          "noise": 0,
+          "seed": 0
+        },
+        "tense": {
+          "prompt": "something huge below: pulsing low drums, dissonant swelling brass, a heartbeat-like pulse.",
+          "noise": 0.6,
+          "seed": 1
+        }
+      }
+    },
+    "hearth": {
+      "bpm": 80,
+      "key": "D minor",
+      "seconds": 120,
+      "seed": 19000,
+      "base": "calm",
+      "from": "dawn/theme",
+      "from_noise": 0.8,
+      "style": "TrackType: Music, VocalType: Instrumental, Genre: Folk, Genre: Orchestral, Genre: Cinematic. For a dark survival game, at the survivors' camp by the fire,",
+      "layers": {
+        "calm": {
+          "prompt": "warm but somber: a fingerpicked acoustic guitar playing the main theme, a soft cello, a quiet frame drum, a fire-side folk feeling, continuous.",
+          "noise": 0,
+          "seed": 0
+        },
+        "tense": {
+          "prompt": "the camp is threatened: the theme on strings with a building war drum and low brass.",
+          "noise": 0.6,
+          "seed": 1
+        }
+      }
+    },
+    "last_breath": {
+      "bpm": 60,
+      "key": "D minor",
+      "seconds": 45,
+      "seed": 20000,
+      "base": "lament",
+      "from": "dawn/theme",
+      "from_noise": 0.85,
+      "style": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, the survivor dies,",
+      "layers": {
+        "lament": {
+          "prompt": "a solemn lament: a mournful solo choir voice-like pad singing the main theme slowly, sustained strings and a single deep bell, grief and stillness.",
+          "noise": 0,
+          "seed": 0,
+          "candidates": 4
+        }
+      }
+    }
+  }
+}

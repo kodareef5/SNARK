@@ -32,11 +32,11 @@ const id = (r: Registry, name: string): number => r.index.get(name.includes(":")
 
 test("protocol 17 and record format 7 are the stations wave's, and it took no command, own component, event, saved component or deadline", () => {
   // 16 is the flyers', and 18, after this wave's 17, the vehicles' (tests/integration/vehicle-contracts.test.ts).
-  expect([P.PROTOCOL_VERSION, P.OWN_STATION]).toEqual([20, 16]);
-  // 19 adds rotorcraft state and CMD_VEHICLE (32).
+  expect([P.PROTOCOL_VERSION, P.OWN_STATION]).toEqual([23, 16]);
+  // 19 adds rotorcraft state and CMD_VEHICLE (32), 22 CMD_STATICS (33).
   // EVENT_NAME_BYTES is a size, not a kind of event.
   const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));
-  expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([32, 16, 7, 10]);
+  expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([33, 16, 7, 10]);
   const store = readFileSync(join(root, "server/persist/codec.ts"), "utf8");
   expect([/const RECORD_FORMAT = (\d+);/.exec(store)?.[1], Math.max(...[...store.matchAll(/const COMP_\w+ = (\d+);/g)].map((m) => Number(m[1])))]).toEqual(["7", 22]);
   // A lane ends on the fire's own deadline, a powered job on the craft deadline: no deadline of its own.
@@ -71,10 +71,10 @@ test("the eight resources are plain items at their pages' weights and stacks, an
   const paste = CORE_CONTENT.find((d) => d.id === "core:paste" && d.type === "item") as ItemDef;
   // S0 moved it unchanged; S6 made it at the mortar and pestle at ARK's numbers (tests/unit/ark-stations.test.ts).
   expect(paste).toMatchObject({ class: "resource", stack: 100, weight: 0.01, label: "cementing paste", color: 15, craft: { needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 1, xp: 4.8, at: "core:mortar" } });
-  expect(RESOURCES.filter((d) => d.id === "core:paste" || d.id === "core:engram-paste" || d.id === "core:make-paste").map((d) => d.type).sort()).toEqual(["engram", "item", "rename"]);
+  expect(RESOURCES.filter((d) => d.id === "core:paste" || d.id === "core:engram-paste").map((d) => d.type).sort()).toEqual(["engram", "item"]);
   expect(BUILDING_CONTENT.some((d) => d.id.includes("paste"))).toBe(false);
-  // The ingot: no engram and no hand recipe; since S1 the forge makes it by itself. Its recipe's old id still reads as it.
-  expect([reg.index.has("core:engram-ingot"), reg.firedAt[id(reg, "ingot")], reg.craftAt[id(reg, "ingot")], reg.redirects.get("core:make-ingot")]).toEqual([false, id(reg, "forge"), id(reg, "forge"), [id(reg, "ingot")]]);
+  // The ingot: no engram and no hand recipe; since S1 the forge makes it by itself.
+  expect([reg.index.has("core:engram-ingot"), reg.firedAt[id(reg, "ingot")], reg.craftAt[id(reg, "ingot")]]).toEqual([false, id(reg, "forge"), id(reg, "forge")]);
   expect(CORE_CONTENT.some((d) => d.type === "engram" && d.item === "core:ingot")).toBe(false);
 });
 
@@ -264,9 +264,9 @@ test("a lit station and the same station out are one station to what is made at 
   }
 });
 
-test("a fire's piece and lanes and a job's paused unit are saved and loaded, one whose content is gone is dropped, and a record of format 6 loads with none", () => {
+test("a fire's piece and lanes and a job's paused unit are saved and loaded, and one whose content is gone is dropped", () => {
   const ids = reg.ids.map((s, i): [string, number] => [s, i]);
-  const codec = new RecordCodec(reg, Uint16Array.from(reg.ids, (_, i) => i), idMap(reg, ids, reg.ids.length), false);
+  const codec = new RecordCodec(Uint16Array.from(reg.ids, (_, i) => i), idMap(reg, ids, reg.ids.length), false);
   const rec = new EntityRecord(77, id(reg, "campfire_lit"));
   rec.at = 0x30005;
   const [wood, ingot, spark, spear] = ["wood", "ingot", "sparkpowder", "spear"].map((n) => id(reg, n)) as [number, number, number, number];
@@ -279,36 +279,17 @@ test("a fire's piece and lanes and a job's paused unit are saved and loaded, one
   const back = codec.decode(row)!;
   expect([back.fire, back.jobs]).toEqual([{ at: 1000, fuel: 300, cook: 12, due: 0, out: 0, piece: wood, lanes: [{ item: ingot, ticks: 450 }, { item: spark, ticks: 3 }] }, [{ item: spark, left: 3, doneAt: 4000, by: 99, rest: 120 }, { item: spear, left: 1, doneAt: 0 }]]);
   // Read by a build that lacks the ingot (its saved row names something else), the ingot's lane alone is dropped.
-  const without = new RecordCodec(reg, Uint16Array.from(reg.ids, (_, i) => i), idMap(reg, ids.map(([s, i]): [string, number] => [i === ingot ? "gone:thing" : s, i]), reg.ids.length), false);
+  const without = new RecordCodec(Uint16Array.from(reg.ids, (_, i) => i), idMap(reg, ids.map(([s, i]): [string, number] => [i === ingot ? "gone:thing" : s, i]), reg.ids.length), false);
   expect(without.decode(row)!.fire!.lanes).toEqual([{ item: spark, ticks: 3 }]);
-  // A record as format 6 wrote it: the fire ends at its cooking, the queue at its blueprint bit.
-  const w = new BitWriter(256);
-  const c = new BitWriter(256);
-  w.u8(6);
-  w.string("");
-  w.varint(2);
-  c.u32(rec.at);
-  c.bits(0, 2);
-  c.varint(0);
-  c.uint53(0);
-  c.bool(true);
-  c.uint53(1000);
-  c.varint(300);
-  c.varint(12);
-  w.varint(14);
-  w.blob(c.bytes());
-  c.reset();
-  c.f64(5);
-  c.varint(0);
-  c.varint(1);
-  c.varint(spark);
-  c.varint(3);
-  c.uint53(4000);
-  c.bool(true);
-  c.uint53(99);
-  c.bool(false);
-  w.varint(4);
-  w.blob(c.bytes());
-  const old = codec.decode({ ...row, data: w.bytes().slice() })!;
-  expect([old.fire, old.jobs, old.xp]).toEqual([{ at: 1000, fuel: 300, cook: 12, due: 0, out: 0 }, [{ item: spark, left: 3, doneAt: 4000, by: 99 }], 5]);
+});
+
+test("a creature told only to wander keeps every part of its record", () => {
+  const ids = reg.ids.map((s, i): [string, number] => [s, i]);
+  const codec = new RecordCodec(Uint16Array.from(reg.ids, (_, i) => i), idMap(reg, ids, reg.ids.length), false);
+  const rec = new EntityRecord(78, id(reg, "dodo"));
+  rec.wander = true;
+  rec.team = 2;
+  rec.xp = 5;
+  const back = codec.decode({ pid: 78, kind: rec.kind, x: 0, y: 0, z: 0, yaw: 0, data: codec.encode(rec).slice() })!;
+  expect([back.wander, back.team, back.xp]).toEqual([true, 2, 5]);
 });

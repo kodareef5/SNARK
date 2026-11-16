@@ -120,6 +120,16 @@ test("native placement requires true lake level, a deep footprint, and clear sol
   n.structs.add(2, 96, 10, 96, 0, 0, 100); expect(boatPlacement(n.raw, 96, 9.65, 96, 0, def)).toBe(false);
 });
 
+test("a boat floats on a raised lake as on the sea, at the lake's own surface", () => {
+  const n = native();
+  const grid = new Uint16Array(256 * 256); for (let z = 30; z < 70; z++) for (let x = 30; x < 70; x++) grid[z * 256 + x] = 1;
+  n.hf.water = MapWater.fromGrid(n.hf.dims, n.hf.minY, n.hf.stepY, 2, [{ name: "Raised lake", level: 10752 }], grid);
+  const s = createBoat(spec, 96, boatRestY(spec, 10) + .4, 96);
+  run(s, 300, command(), n.world);
+  expect(s.y).toBeCloseTo(boatRestY(spec, 10), 1);
+  expect(Math.hypot(s.vx, s.vy, s.vz)).toBeLessThan(.1);
+});
+
 test("swept hull catches a thin wall and a glancing touch retains tangential travel", () => {
   const n = native(); n.structs.add(1, 96, 0, 108, 0, 0, 100);
   const s = boat(); s.vz = 60; const hit = run(s, 30, command(), n.world);

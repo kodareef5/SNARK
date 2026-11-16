@@ -124,7 +124,7 @@ function downloads(set: Set): Map<string, number> {
   const out = new Map<string, number>();
   for (const tier of TIERS) {
     for (const format of tier.texture === 0 ? (["rgba"] as TextureFormat[]) : TEXTURE_FORMATS) {
-      const assets = new Assets(coreRegistry(), parsePack(set.files[0]!.bytes), set.manifest, { request() {}, cancel() {}, take: () => 0, fill() {}, cache: { used: 0, limit: 0, mode: "none", filling: 0 } });
+      const assets = new Assets(coreRegistry(), parsePack(set.files[0]!.bytes), set.manifest, { request() {}, cancel() {}, take: () => 0, fill() {}, cache: { used: 0, limit: 0, mode: "none", filling: 0 }, protocol: "" });
       assets.tier = tier;
       assets.format = format;
       assets.begin(0, 720, 1.2217);

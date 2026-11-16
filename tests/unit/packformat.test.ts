@@ -5,7 +5,7 @@ import { DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKI
 import { hashString } from "../../shared/hash.ts";
 import { describePack, parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
 import { SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, lodSkin, lodSurface, parsePack, type PackHeader, type PackMaterial } from "../../shared/pack/pack.ts";
-import { TEXTURE_HEADER_BYTES, stepBytes, stepOf, stepOffset, stepSize, textureBytes, topIn } from "../../shared/pack/texture.ts";
+import { TEXTURE_HEADER_BYTES, blockOf, pictureBytes, stepBytes, stepOf, stepOffset, stepSize, textureBytes, topIn } from "../../shared/pack/texture.ts";
 import { PackBlob } from "../../tools/pack/write.ts";
 
 const material = (id: string, over: Partial<PackMaterial> = {}): PackMaterial => ({ id, base: 0, normal: 1, mro: -1, mask: -1, mask2: -1, tint: [1, 1, 1], grey: 0.5, emissive: 0, flags: 0, cutoff: 0, span: 1, ...over });
@@ -37,17 +37,21 @@ test("a texture's steps are a prefix of its bytes, and the sizes are the ones th
   expect([0, 2, 4, 6].map(stepSize)).toEqual([64, 256, 1024, 4096]);
   expect([64, 100, 4096, 8192].map(stepOf)).toEqual([0, -1, 6, -1]);
   // Step 0 is the pictures from 1 to 64 across. A picture smaller than a block still takes one.
-  expect(stepBytes("bc", "base", 0)).toBe(16 * 3 + 64 + 256 + 1024 + 4096);
-  expect([64, 256, 1024, 2048, 4096].map((top) => textureBytes("bc", "base", top))).toEqual([5488, 87408, 1398128, 5592432, 22369648]);
-  expect(textureBytes("astc", "mask", 1024)).toBe(textureBytes("bc", "normal", 1024));
-  expect(stepOffset("bc", "base", 3) + stepBytes("bc", "base", 3)).toBe(textureBytes("bc", "base", 512));
+  expect(stepBytes("bc", "base", 0, 4)).toBe(16 * 3 + 64 + 256 + 1024 + 4096);
+  expect([64, 256, 1024, 2048, 4096].map((top) => textureBytes("bc", "base", top, 4))).toEqual([5488, 87408, 1398128, 5592432, 22369648]);
+  expect(textureBytes("astc", "mask", 1024, 4)).toBe(textureBytes("bc", "normal", 1024, 4));
+  expect(stepOffset("bc", "base", 3, 4) + stepBytes("bc", "base", 3, 4)).toBe(textureBytes("bc", "base", 512, 4));
+  // A larger ASTC block holds more pixels in its 16 bytes; a picture's last row and column of blocks hang over its edge.
+  expect([5, 6, 8].map((block) => pictureBytes("astc", "base", 1024, block))).toEqual([205 * 205 * 16, 171 * 171 * 16, 128 * 128 * 16]);
+  expect([4, 5, 6, 8].map((block) => stepBytes("astc", "base", 0, block))).toEqual([16 * 3 + 64 + 256 + 1024 + 4096, 16 * 3 + 16 * 4 + 16 * 16 + 16 * 49 + 16 * 169, 16 * 3 + 16 * 4 + 16 * 9 + 16 * 36 + 16 * 121, 16 * 4 + 16 * 4 + 16 * 16 + 16 * 64]);
+  expect([blockOf("astc", { block: 6 }), blockOf("astc", {}), blockOf("bc", {}), blockOf("rgba", { block: 6 })]).toEqual([6, 4, 4, 1]);
   // Uncompressed costs four times as much, half that for a normal's two channels, and stops at 1024.
-  expect(textureBytes("rgba", "base", 1024)).toBe(4 * (1024 * 1024 * 4 - 1) / 3);
-  expect(textureBytes("rgba", "normal", 1024) * 2).toBe(textureBytes("rgba", "base", 1024));
+  expect(textureBytes("rgba", "base", 1024, 1)).toBe(4 * (1024 * 1024 * 4 - 1) / 3);
+  expect(textureBytes("rgba", "normal", 1024, 1) * 2).toBe(textureBytes("rgba", "base", 1024, 1));
   expect([topIn("rgba", 4096), topIn("bc", 4096), topIn("rgba", 512)]).toEqual([1024, 4096, 512]);
 });
 
-test("a version 4 pack carries a surface, a skin, sections and materials, and says where a mesh turns flat", () => {
+test("a pack carries a surface, a skin, sections and materials, and says where a mesh turns flat", () => {
   const pack = parsePack(quadPack());
   const [fine, coarse] = pack.header.meshes[0]!.lods;
   expect(lodSurface(pack, fine!)!.length).toBe(4 * SURFACE_BYTES);
@@ -78,8 +82,8 @@ test("the manifest lists a level's surface and skin as parts of their own, and w
 
   // The build adds a file for each variant and says where in it each texture is.
   const at = TEXTURE_HEADER_BYTES;
-  const size = textureBytes("bc", "base", 2048);
-  manifest.files.push({ name: "t.tex.bc.sntx", bytes: at + 2 * size, role: "tex", format: "bc" }, { name: "t.tex.rgba.sntx", bytes: at + textureBytes("rgba", "base", 1024), role: "tex", format: "rgba" });
+  const size = textureBytes("bc", "base", 2048, 4);
+  manifest.files.push({ name: "t.tex.bc.sntx", bytes: at + 2 * size, role: "tex", format: "bc" }, { name: "t.tex.rgba.sntx", bytes: at + textureBytes("rgba", "base", 1024, 1), role: "tex", format: "rgba" });
   manifest.textures![0]!.in = { bc: { file: 1, at, hash: ["a", "b", "c", "d", "e", "f"] }, rgba: { file: 2, at, hash: ["a", "b", "c", "d", "e"] } };
   manifest.textures![1]!.in = { bc: { file: 1, at: at + size, hash: ["a", "b", "c", "d", "e", "f"] } };
   const text = JSON.stringify(manifest);
@@ -93,7 +97,8 @@ test("the manifest lists a level's surface and skin as parts of their own, and w
     ["lies outside its file", (m) => (m.textures![1]!.in.bc!.at += 4)],
     ["does not hold bc", (m) => (m.textures![0]!.in.bc!.file = 2)],
     ["a texture that is not there", (m) => (m.materials![0]!.normal = 5)],
-    ["is not supported", (m) => (m.version = 5)],
+    ["are not described", (m) => (m.clips = [{ rig: "t:rig", file: 0, at: 0, part: { bytes: 6 * 2 + 12, hash: "" }, clips: [{ id: "t:rig/idle", bones: 1, frames: 2, loop: true }] }])],
+    ["is not supported", (m) => (m.version = 4)],
   ];
   for (const [reason, change] of spoiled) {
     const m = JSON.parse(text) as Manifest;
@@ -102,25 +107,16 @@ test("the manifest lists a level's surface and skin as parts of their own, and w
   }
 });
 
-test("a version 1 manifest, which had flat levels only, is still read", () => {
-  const bytes = quadPack((h) => {
-    const mesh = h.meshes[0]!;
-    delete mesh.flat;
-    mesh.lods = [mesh.lods[1]!];
-    delete h.materials;
-    delete h.textures;
-  });
-  const manifest = describePack(parsePack(bytes), { name: "t.snpk", bytes: bytes.length });
-  expect(parseManifest(JSON.stringify({ ...manifest, version: 1 })).meshes[0]!.levels.length).toBe(1);
-});
-
 test("the flat renderer's shader text is the text low poly was always drawn with", () => {
   // A change here changes how low poly is drawn on every device. Change the number only when that is meant. It was 4159497701
   // until a node was drawn at its size, which added one line and nothing else: a draw that is not sized never runs it.
+  // They were 4159497701 and 3915806831 until a body on one bone stood in a pose (DRAW_ONE_BONE): the bones are read by a
+  // function, and such a vertex follows its bone of that pose before the body's one bone. A body on its own bones is placed
+  // by the same rows as before.
   const sizing = "    if (uSkin < -0.5) l *= float(iRegB.y) / 64.0;\n";
   expect(FLAT_MESH_VERTEX).toContain(sizing);
-  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX.replace(sizing, "") + FLAT_TERRAIN_VERTEX)).toBe(4159497701);
-  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + FLAT_TERRAIN_VERTEX)).toBe(3915806831);
+  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX.replace(sizing, "") + FLAT_TERRAIN_VERTEX)).toBe(2880639374);
+  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + FLAT_TERRAIN_VERTEX)).toBe(3218886244);
 });
 
 test("draw flags are one bit each, a frame starts with no texture work, and the tiers ask for more as they go up", () => {

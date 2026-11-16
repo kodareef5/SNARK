@@ -1,0 +1,182 @@
+{
+  "sounds": {
+    "engine/idle": {
+      "range": 40, "level": -22, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/idle/moss-pt-7391-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
+      ]
+    },
+    "engine/low": {
+      "range": 60, "level": -20, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/low/moss-pt-7400-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
+      ]
+    },
+    "engine/mid": {
+      "range": 80, "level": -18, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/mid/moss-pt-7410-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
+      ]
+    },
+    "engine/high": {
+      "range": 100, "level": -16, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/high/moss-pt-7420-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
+      ]
+    },
+    "engine/start": {
+      "range": 40, "level": -18, "vary": 0.0,
+      "takes": [
+        {"file": "takes/engine/start/moss-pt-7430-02015.wav", "from": "moss", "start": 0.05, "end": 6.035}
+      ]
+    },
+    "engine/stop": {
+      "range": 30, "level": -22, "vary": 0.0,
+      "takes": [
+        {"file": "takes/engine/stop/moss-pt-7440-00220.wav", "from": "moss", "start": 0.05, "end": 7.65}
+      ]
+    },
+    "engine/rev": {
+      "range": 80, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/engine/rev/moss-pt-7450-00095.wav", "from": "moss", "start": 0.05, "end": 7.047}
+      ]
+    },
+    "engine/stall": {
+      "range": 30, "level": -20, "vary": 0.0,
+      "takes": [
+        {"file": "takes/engine/stall/moss-pt-7700-06030.wav", "from": "moss", "start": 0.05, "end": 4.02},
+        {"file": "takes/engine/stall/moss-pt-7701-01245.wav", "from": "moss", "start": 0.05, "end": 8.575}
+      ]
+    },
+    "shift": {
+      "range": 20, "level": -22, "vary": 0.0,
+      "takes": [
+        {"file": "takes/shift/moss-pt-7470-00040.wav", "from": "moss", "start": 0.04, "end": 0.27},
+        {"file": "takes/shift/moss-pt-7470-02575.wav", "from": "moss", "start": 0.05, "end": 0.22}
+      ]
+    },
+    "tire/roll/asphalt": {
+      "range": 30, "level": -26, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/tire/roll/asphalt/moss-pt-7480-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
+      ]
+    },
+    "tire/roll/gravel": {
+      "range": 30, "level": -24, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/tire/roll/gravel/moss-pt-7490-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
+      ]
+    },
+    "tire/roll/dirt": {
+      "range": 30, "level": -25, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/tire/roll/dirt/moss-pt-7500-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
+      ]
+    },
+    "tire/roll/grass": {
+      "range": 25, "level": -27, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/tire/roll/grass/moss-pt-7510-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
+      ]
+    },
+    "tire/roll/mud": {
+      "range": 25, "level": -24, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/tire/roll/mud/moss-pt-7520-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
+      ]
+    },
+    "tire/roll/sand": {
+      "range": 25, "level": -25, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/tire/roll/sand/moss-pt-7530-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
+      ]
+    },
+    "tire/skid/asphalt": {
+      "range": 80, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/tire/skid/asphalt/moss-pt-7540-05295.wav", "from": "moss", "start": 0.05, "end": 2.225},
+        {"file": "takes/tire/skid/asphalt/moss-pt-7541-00520.wav", "from": "moss", "start": 0.05, "end": 2.52}
+      ]
+    },
+    "tire/skid/gravel": {
+      "range": 50, "level": -20, "vary": 0.0,
+      "takes": [
+        {"file": "takes/tire/skid/gravel/moss-pt-7550-02235.wav", "from": "moss", "start": 0.05, "end": 1.25},
+        {"file": "takes/tire/skid/gravel/moss-pt-7550-03820.wav", "from": "moss", "start": 0.05, "end": 1.365}
+      ]
+    },
+    "brake": {
+      "range": 40, "level": -20, "vary": 0.0,
+      "takes": [
+        {"file": "takes/brake/moss-pt-7560-02115.wav", "from": "moss", "start": 0.05, "end": 1.24}
+      ]
+    },
+    "handbrake": {
+      "range": 15, "level": -24, "vary": 0.0,
+      "takes": [
+        {"file": "takes/handbrake/moss-pt-7570-00405.wav", "from": "moss", "start": 0.05, "end": 0.82}
+      ]
+    },
+    "horn": {
+      "range": 120, "level": -12, "vary": 0.0,
+      "takes": [
+        {"file": "takes/horn/moss-pt-7580-00995.wav", "from": "moss", "start": 0.05, "end": 0.755}
+      ]
+    },
+    "door/open": {
+      "range": 20, "level": -22, "vary": 0.0,
+      "takes": [
+        {"file": "takes/door/open/moss-pt-7590-07160.wav", "from": "moss", "start": 0.05, "end": 0.42},
+        {"file": "takes/door/open/moss-pt-7590-02780.wav", "from": "moss", "start": 0.05, "end": 0.275}
+      ]
+    },
+    "door/close": {
+      "range": 30, "level": -18, "vary": 0.0,
+      "takes": [
+        {"file": "takes/door/close/moss-pt-7600-06750.wav", "from": "moss", "start": 0.05, "end": 0.58},
+        {"file": "takes/door/close/moss-pt-7600-01250.wav", "from": "moss", "start": 0.05, "end": 0.345}
+      ]
+    },
+    "crash/light": {
+      "range": 60, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/crash/light/moss-pt-7610-06640.wav", "from": "moss", "start": 0.05, "end": 0.32},
+        {"file": "takes/crash/light/moss-pt-7610-02025.wav", "from": "moss", "start": 0.05, "end": 0.33}
+      ]
+    },
+    "crash/heavy": {
+      "range": 150, "level": -10, "vary": 0.0,
+      "takes": [
+        {"file": "takes/crash/heavy/moss-pt-7620-00250.wav", "from": "moss", "start": 0.05, "end": 6.12},
+        {"file": "takes/crash/heavy/moss-pt-7621-04040.wav", "from": "moss", "start": 0.05, "end": 3.185}
+      ]
+    },
+    "glass/break": {
+      "range": 50, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/glass/break/moss-pt-7630-03980.wav", "from": "moss", "start": 0.05, "end": 0.705},
+        {"file": "takes/glass/break/moss-pt-7630-00000.wav", "from": "moss", "start": 0.0, "end": 0.65}
+      ]
+    },
+    "suspension": {
+      "range": 30, "level": -22, "vary": 0.0,
+      "takes": [
+        {"file": "takes/suspension/moss-pt-7710-02125.wav", "from": "moss", "start": 0.05, "end": 5.81},
+        {"file": "takes/suspension/moss-pt-7711-00415.wav", "from": "moss", "start": 0.05, "end": 1.81}
+      ]
+    },
+    "splash": {
+      "range": 40, "level": -18, "vary": 0.0,
+      "takes": [
+        {"file": "takes/splash/moss-pt-7650-00410.wav", "from": "moss", "start": 0.05, "end": 7.485}
+      ]
+    },
+    "wind": {
+      "range": 1, "level": -28, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/wind/moss-pt-7660-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    }
+  }
+}

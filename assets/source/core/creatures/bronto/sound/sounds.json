@@ -1,0 +1,42 @@
+{
+  "sounds": {
+    "call": {
+      "range": 60, "level": -20, "vary": 0.6,
+      "takes": [
+        {"file": "takes/call/moss-pt-7730-05725.wav", "from": "moss", "start": 0.05, "end": 2.08},
+        {"file": "takes/call/moss-pt-7731-00515.wav", "from": "moss", "start": 0.05, "end": 2.585}
+      ]
+    },
+    "startled": {
+      "range": 80, "level": -16, "vary": 0.5,
+      "takes": [
+        {"file": "takes/startled/moss-pt-7740-04325.wav", "from": "moss", "start": 0.05, "end": 3.725}
+      ]
+    },
+    "hurt": {
+      "range": 50, "level": -18, "vary": 0.5,
+      "takes": [
+        {"file": "takes/hurt/moss-pt-7750-00060.wav", "from": "moss", "start": 0.05, "end": 1.7},
+        {"file": "takes/hurt/moss-pt-7750-05905.wav", "from": "moss", "start": 0.05, "end": 1.93}
+      ]
+    },
+    "death": {
+      "range": 50, "level": -18, "vary": 0.3,
+      "takes": [
+        {"file": "takes/death/moss-pt-7760-03815.wav", "from": "moss", "start": 0.05, "end": 4.04}
+      ]
+    },
+    "attack": {
+      "range": 40, "level": -16, "vary": 0.5,
+      "takes": [
+        {"file": "takes/attack/moss-pt-7770-00105.wav", "from": "moss", "start": 0.05, "end": 3.43}
+      ]
+    },
+    "step": {
+      "range": 30, "level": -24, "vary": 0.6,
+      "takes": [
+        {"file": "takes/step/moss-pt-7780-04502.wav", "from": "moss", "start": 0.05, "end": 0.748}
+      ]
+    }
+  }
+}

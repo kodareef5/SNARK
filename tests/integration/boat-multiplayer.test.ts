@@ -34,8 +34,8 @@ test("four players stay grouped through planing and docking over delayed links w
     h.pilots[0]!.moveX = 35;
     for (let k = 0; k < 20; k++) {
       h.run(100);
-      const qx = ents.vehicleQx[e]!, qy = ents.vehicleQy[e]!, qz = ents.vehicleQz[e]!, qw = ents.vehicleQw[e]!;
-      const frame = { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[e]!, pitch: ents.vehiclePitch[e]!, roll: ents.vehicleRoll[e]!, qx, qy, qz, qw };
+      const qx = ents.vehicleQx[ents.vrow[e]!]!, qy = ents.vehicleQy[ents.vrow[e]!]!, qz = ents.vehicleQz[ents.vrow[e]!]!, qw = ents.vehicleQw[ents.vrow[e]!]!;
+      const frame = { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[ents.vrow[e]!]!, pitch: ents.vehiclePitch[ents.vrow[e]!]!, roll: ents.vehicleRoll[ents.vrow[e]!]!, qx, qy, qz, qw };
       for (let i = 0; i < crew.length; i++) {
         const c = h.client(crew[i]!)!, anchor = [0, 0, 0]; vehiclePoint(frame, def.seats[i]!.anchor, anchor);
         expect(ents.seat[c.ent]).toBe(e + 1);
@@ -48,16 +48,16 @@ test("four players stay grouped through planing and docking over delayed links w
     expect(remote.vehicleRpm[at]!).toBeGreaterThan(4000);
     expect(Math.hypot(remote.vehicleQx[at]!, remote.vehicleQy[at]!, remote.vehicleQz[at]!, remote.vehicleQw[at]!)).toBeCloseTo(1, 5);
     h.pilots[0]!.moveX = 0; h.pilots[0]!.buttons = BTN_SPRINT; h.run(1000);
-    expect(ents.vehicleRpm[e]!).toBeLessThan(4000);
+    expect(ents.vehicleRpm[ents.vrow[e]!]!).toBeLessThan(4000);
     h.pilots[0]!.buttons = BTN_JUMP; h.run(300);
-    expect(ents.vehicleGear[e]).toBe(0); expect(Math.hypot(ents.vx[e]!, ents.vz[e]!)).toBeGreaterThan(2);
+    expect(ents.vehicleGear[ents.vrow[e]!]).toBe(0); expect(Math.hypot(ents.vx[e]!, ents.vz[e]!)).toBeGreaterThan(2);
     expect(pilot.drive).toBe(e);
     expect(crew.map((s, i) => s.stats.corrections - before[i]!)).toEqual([0, 0, 0, 0]);
     // Lost pilot control cannot leave the motor driving forever or detach remaining passengers.
     h.pilots[0]!.buttons = 0; h.pilots[0]!.moveZ = 127; h.run(300);
-    expect(ents.vehicleEngineOn[e]).toBe(1);
+    expect(ents.vehicleEngineOn[ents.vrow[e]!]).toBe(1);
     h.ends[0]!.close(); h.run(500);
-    expect(pilot.drive).toBe(-1); expect(ents.vehicleEngineOn[e]).toBe(0); expect(ents.vehicleGear[e]).toBe(0);
+    expect(pilot.drive).toBe(-1); expect(ents.vehicleEngineOn[ents.vrow[e]!]).toBe(0); expect(ents.vehicleGear[ents.vrow[e]!]).toBe(0);
     for (const session of crew.slice(1)) expect(ents.seat[h.client(session)!.ent]).toBe(e + 1);
     expect([ents.x[e], ents.y[e], ents.z[e], ents.vx[e], ents.vz[e]].every(Number.isFinite)).toBe(true);
   } finally { h.host.shutdown(); }

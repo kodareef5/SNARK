@@ -1,11 +1,16 @@
 // What a renderer is handed besides draws: the programs it compiles, the units their samplers read, and the frame
 // block every lit program shares.
 import { expect, test } from "bun:test";
-import { TIERS } from "../../client/core/assets/tiers.ts";
+import { TIERS, forTouch } from "../../client/core/assets/tiers.ts";
 import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
-import { FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES } from "../../client/core/render/packet.ts";
-import { PROGRAMS, UNIT } from "../../client/core/render/programs.ts";
+import { HAND_FAR, HAND_NEAR } from "../../client/core/render/hand.ts";
+import { DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES } from "../../client/core/render/packet.ts";
+import { PROGRAMS, UNIT, drawProgram, tierPrograms } from "../../client/core/render/programs.ts";
+import type { PackMaterial } from "../../shared/pack/pack.ts";
 import { TEXTURE_FORMATS } from "../../shared/pack/texture.ts";
+
+/** A program's name, from its number. */
+const named = (n: number): string => Object.keys(PROGRAMS)[n]!;
 
 test("low poly's programs are the pinned flat texts, and every sampler a program declares reads a unit of its own", () => {
   const low = TIERS[0]!;
@@ -51,4 +56,54 @@ test("the frame block: each value inside its slot, a GLSL slot for every four fl
   [p.casterCount, p.casterDropped, p.cascadeCount, p.cascadesDrawn] = [5, 1, 2, 3];
   p.beginFrame();
   expect([p.drawFade[2], p.casterCount, p.casterDropped, p.cascadeCount, p.cascadesDrawn, p.split]).toEqual([0, 0, 0, 0, 0, 384]);
+});
+
+/** Floats a vertex text writes for each vertex: gl_Position and its outputs. */
+const outputs = (vertex: string): number => {
+  const size: Record<string, number> = { float: 1, int: 1, vec2: 2, vec3: 3, vec4: 4, mat3: 9 };
+  return 4 + [...vertex.matchAll(/^(?:flat )?out (\w+) ([^;]+);/gm)].reduce((sum, m) => sum + size[m[1]!]! * m[2]!.split(",").length, 0);
+};
+
+test("a textured draw is drawn undyed where its material has no masks, and by a program that drops nothing unless it is cut out or handed over", () => {
+  const p = new FramePacket();
+  p.split = 384;
+  const draw = (flags: number, hand = 0, layer = 0, fade = 0): number => {
+    const d = p.drawCount++;
+    [p.drawFlags[d], p.drawHand[d], p.drawLayer[d], p.drawFade[d]] = [flags, hand, layer, fade];
+    return d;
+  };
+  const masks = (mask: number, mask2: number): PackMaterial => ({ mask, mask2 }) as PackMaterial;
+  const [none, one, second] = [masks(-1, -1), masks(3, -1), masks(-1, 4)];
+  expect([
+    drawProgram(p, draw(DRAW_TEXTURED), none),
+    drawProgram(p, draw(DRAW_TEXTURED | DRAW_CUTOUT), none),
+    drawProgram(p, draw(DRAW_TEXTURED, HAND_FAR), none),
+    drawProgram(p, draw(DRAW_TEXTURED | DRAW_BLEND), one),
+    drawProgram(p, draw(DRAW_TEXTURED, HAND_NEAR), second),
+    drawProgram(p, draw(DRAW_TEXTURED, 0, 5), none),
+  ].map(named)).toEqual(["surfaceUndyedWhole", "surfaceUndyed", "surfaceUndyed", "surfaceWhole", "surface", "surfaceLayer"]);
+  expect([draw(DRAW_PULLED, 0, 0, 900), draw(0, 0, 0, 900), draw(0, HAND_NEAR), draw(DRAW_WATER | DRAW_BLEND), draw(DRAW_BLEND), draw(0)].map((d) => named(drawProgram(p, d, undefined)))).toEqual(["pulled", "far", "far", "water", "seeThrough", "flat"]);
+  p.split = 0;
+  expect(named(drawProgram(p, draw(DRAW_BLEND), undefined))).toBe("flat");
+
+  // Undyed, a vertex writes neither dye nor the hand-over's distance where it drops nothing: 35 floats become 16.
+  const tier = TIERS[2]!;
+  const [any, undyed, whole] = [PROGRAMS.surface!(tier, "astc"), PROGRAMS.surfaceUndyed!(tier, "astc"), PROGRAMS.surfaceUndyedWhole!(tier, "astc")];
+  expect([any, PROGRAMS.surfaceWhole!(tier, "astc"), undyed, whole].map((t) => outputs(t.vertex))).toEqual([35, 34, 17, 16]);
+  expect([any, undyed, whole].map((t) => [t.fragment.split("discard").length - 1, t.fragment.split("texture(uMask").length - 1])).toEqual([[2, 2], [2, 0], [0, 0]]);
+  expect(whole.fragment).toContain("o = vec4(shown(lit(base.rgb * uTint, mro, n, v, skyFrom(reflect(-v, n)), shade), vRel), cover);");
+});
+
+test("a tier's programs are every one its frames may draw with, each once, the same down the governor's steps", () => {
+  for (const base of TIERS) {
+    for (const touch of [false, true]) {
+      const tier = forTouch(base, touch);
+      const names = tierPrograms(tier).map(named);
+      expect(new Set(names).size).toBe(names.length);
+      if (!tier.lit) expect(names).toEqual(["flat", "terrain", "terrainWindow", "far", "pulled", "details"]);
+      else expect(names).toEqual(Object.keys(PROGRAMS));
+      const texts = new Set(names.map((n) => JSON.stringify(PROGRAMS[n]!(tier, "astc"))));
+      expect(texts.size).toBe(names.length);
+    }
+  }
 });

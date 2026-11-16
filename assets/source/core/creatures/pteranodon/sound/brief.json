@@ -21,8 +21,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "A large flying reptile gives raspy screeching cries like a giant seabird, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6780",
+          "models": [
+            "moss"
+          ],
+          "seed": 6780,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A large flying reptile gives raspy screeching cries like a giant seabird, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "startled": {
       "kind": "voice",
@@ -41,8 +53,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A large flying reptile shrieks a loud alarmed squawk, three separate shrieks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6790",
+          "models": [
+            "moss"
+          ],
+          "seed": 6790,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A large flying reptile shrieks a loud alarmed squawk, three separate shrieks with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "hurt": {
       "kind": "voice",
@@ -61,8 +85,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A large flying reptile squawks in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6810",
+          "models": [
+            "moss"
+          ],
+          "seed": 6810,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large flying reptile squawks in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "death": {
       "kind": "voice",
@@ -101,8 +137,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A large flying reptile snaps its long beak shut with a hiss, five separate snaps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6800",
+          "models": [
+            "moss"
+          ],
+          "seed": 6800,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A large flying reptile snaps its long beak shut with a hiss, five separate snaps with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "step": {
       "kind": "step",
@@ -121,8 +169,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "Huge leathery wings flapping: deep slow whooshing wingbeats, several separate takeoffs. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6820",
+          "models": [
+            "moss"
+          ],
+          "seed": 6820,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Huge leathery wings flapping: deep slow whooshing wingbeats, several separate takeoffs. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "flap": {
       "kind": "voice",
@@ -143,6 +203,48 @@
           "text": "Huge leathery wings beat slowly in flight: deep rhythmic whooshing flaps. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
+    },
+    "chase": {
+      "kind": "voice",
+      "range": 120,
+      "level": -20,
+      "vary": 0.6,
+      "want": "barks, calls and hisses while chasing",
+      "prompts": [
+        {
+          "id": "v2-6830",
+          "models": [
+            "moss"
+          ],
+          "seed": 6830,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A large flying reptile dives screeching: sharp rasping screeches with wingbeats, four separate dives with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 8
+    },
+    "growl": {
+      "kind": "voice",
+      "range": 72,
+      "level": -22,
+      "vary": 0.5,
+      "want": "a warning growl, aggressive and near",
+      "prompts": [
+        {
+          "id": "v2-6840",
+          "models": [
+            "moss"
+          ],
+          "seed": 6840,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large flying reptile clacks its beak and hisses, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
     }
   }
 }

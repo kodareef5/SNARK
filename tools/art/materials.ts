@@ -1,16 +1,18 @@
 // The materials an asset names in its asset.ts: where their pictures are, what a pack says of each, the colour each is
 // drawn flat in, and the mips of each of their textures for the texture build.
 
+import { worldMaterial, worldSurfaceMesh } from "../surfaces/build.ts";
+import { resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type PackMaterial, type PackTexture } from "../../shared/pack/pack.ts";
 import { REGION_BASE, nearestColour } from "../../shared/pack/palette.ts";
-import { LAST_STEP, STEP0_SIZE, stepSize, type TextureRole } from "../../shared/pack/texture.ts";
+import { LAST_STEP, STEP0_SIZE, stepOf, stepSize, type TextureRole } from "../../shared/pack/texture.ts";
 import type { TextureSource } from "../pack/encode.ts";
 import { baseMips, layerPicture, packMro, packedMips, readPicture, type Picture } from "../pack/image.ts";
 import { checkMasks, maskMips, readMasks, readRegions } from "../pack/mask.ts";
 import { materialMips, type MaterialMaps } from "../pack/texture.ts";
-import { findAssets, type Asset } from "./assets.ts";
+import { findAssets, landmarkOf, type Asset } from "./assets.ts";
 import { SOURCE } from "./source.ts";
 import type { MaterialSpec } from "./spec.ts";
 
@@ -81,7 +83,7 @@ export interface Described {
 /**
  * Reads a material's pictures and says what the pack holds of it. Base colour and normal are stored as large as they
  * come, up to `top`, the packed map and the masks one size under the base colour, and the layer its pictures make as
- * large as they are up to `layer`. The layer comes after the five maps.
+ * large as they are up to `layer`, each no wider than the material's `tops` says. The layer comes after the five maps.
  */
 export function describe(m: Material, top: number, palette: Uint8Array, layer = top): Described {
   if (m.spec.data) return describeData(m);
@@ -107,12 +109,17 @@ export function describe(m: Material, top: number, palette: Uint8Array, layer = 
   if (maps.normal) tops.normal = Math.min(sideOf(maps.normal), most);
   if (maps.mro) tops.mro = Math.min(sideOf(maps.mro), under);
   if (masks) tops.mask = Math.min(1 << (masks.mask.length - 1), under);
+  const told = m.spec.tops ?? {};
+  for (const [role, side] of Object.entries(told) as [TextureRole, number][]) {
+    if (stepOf(side) < 0) throw new Error(`${m.id}: it stores its ${role} at ${side} pixels, and a texture is a power of two from ${STEP0_SIZE} to ${stepSize(LAST_STEP)}`);
+    if (tops[role] !== undefined) tops[role] = Math.min(tops[role]!, side);
+  }
   if (masks?.mask2) tops.mask2 = tops.mask;
   const textures = (Object.keys(tops) as TextureRole[]).sort().map((role): PackTexture => ({ id: `${m.id}/${role}`, role, top: tops[role]! }));
   const layered = maps.hurt ?? maps.decay;
   if (layered) {
     if (maps.hurt && maps.decay && maps.hurt.width !== maps.decay.width) throw new Error(`${m.id}: its hurt and decay pictures are not one size`);
-    textures.push({ id: `${m.id}/layer`, role: "layer", top: Math.max(STEP0_SIZE, Math.min(sideOf(layered), most, layer)) });
+    textures.push({ id: `${m.id}/layer`, role: "layer", top: Math.max(STEP0_SIZE, Math.min(sideOf(layered), most, layer, told.layer ?? Infinity)) });
     const { hidden } = layerPicture(maps.hurt, maps.decay);
     if (hidden > 0) faults.push(`${m.id}: ${hidden} texels of its decay picture lie under its hurt picture's, where only the hurt picture shows`);
   }
@@ -183,12 +190,12 @@ export function mipsOf(m: Material, role: TextureRole, top: number): Uint8Array[
 /**
  * Every texture the packs under `source` name, for the texture build (tools/pack/encode.ts): its id, role and top as
  * its pack has them, and a way to its mips, which reads its pictures only when asked. A texture several packs name
- * is listed once.
+ * is listed once. A landmark's are its own (tools/art/assets.ts landmarkOf), and the core's are every other.
  */
-export async function gameTextures(source: string = SOURCE): Promise<TextureSource[]> {
+export async function gameTextures(source: string = SOURCE, landmark: string | null = null): Promise<TextureSource[]> {
   const out = new Map<string, TextureSource>();
   for (const asset of await findAssets(source)) {
-    if (!existsSync(asset.file)) continue;
+    if (!existsSync(asset.file) || landmarkOf(asset, source) !== landmark) continue;
     const named = parsePack(new Uint8Array(readFileSync(asset.file))).header.textures ?? [];
     const materials = materialsOf(asset);
     for (const t of named) {
@@ -198,6 +205,10 @@ export async function gameTextures(source: string = SOURCE): Promise<TextureSour
       if (had && had.top !== t.top) throw new Error(`texture ${t.id} is ${had.top} pixels across in one pack and ${t.top} in ${asset.id}: assets that share a material give it one size`);
       out.set(t.id, { id: t.id, role: t.role, top: t.top, mips: () => mipsOf(m, t.role, t.top) });
     }
+  }
+  if (resolve(source) === resolve(SOURCE) && landmark === null) {
+    let material: Material | undefined;
+    for (const t of worldSurfaceMesh().textures!) out.set(t.id, { id: t.id, role: t.role, top: t.top, mips: () => mipsOf(material ??= worldMaterial(), t.role, t.top) });
   }
   return [...out.values()];
 }

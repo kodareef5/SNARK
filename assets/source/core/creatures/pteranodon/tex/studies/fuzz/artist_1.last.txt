@@ -1,0 +1,5 @@
+Created all three sets with 15 aligned maps, preserved sources/prompts, reusable patches, and build/check scripts.
+
+Numerical checks passed; game renders reviewed. Near-black shadow detail remains weaker.
+
+[Report and previews](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/studies/fuzz/REPORT.md)

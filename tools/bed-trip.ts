@@ -127,7 +127,7 @@ try {
   const a = await play(url, value("--name") ?? "Sleeper", started.length > 0 ? dir : (process.env.HOME ?? dir));
   started.push(a);
   const tools = await a.tools();
-  hold("the agent offers place, bed and rise", ["place", "bed", "rise"].every((t) => tools.includes(t)));
+  hold("the agent offers place, structure and rise", ["place", "structure", "rise"].every((t) => tools.includes(t)));
   for (let i = 0; i < 120 && !(await a.tool("status")).self; i++) await Bun.sleep(500);
   await say(a, "enablecheats");
   // A level square of the proving ground south of the plaza, as tests/fixtures/arena.ts finds it.
@@ -142,10 +142,10 @@ try {
   const fb = await a.tool("place", { item: "piece_foundation_wood", x: gx + 30, z: gz + 30 });
   const outpost = await a.tool("place", { item: "piece_bed", on: fb.id });
   hold("it sets two beds down on two foundations", [fa, home, fb, outpost].every((r) => r.state === "done" && typeof r.id === "string"), brief([fa.id, home.id, fb.id, outpost.id]));
-  const named = [await a.tool("bed", { id: home.id, do: "name", name: "Home" }), await a.tool("bed", { id: outpost.id, do: "name", name: "Outpost" })];
+  const named = [await a.tool("structure", { id: home.id, do: "name", name: "Home" }), await a.tool("structure", { id: outpost.id, do: "name", name: "Outpost" })];
   hold("and names them", named.every((r) => r.state === "done"), brief(named.map((r) => r.state)));
 
-  const left = await a.tool("bed", { id: home.id, do: "travel" });
+  const left = await a.tool("structure", { id: home.id, do: "travel" });
   const t = await choosing(a);
   hold("it travels from Home: no body, choosing among its beds, Home first", left.state === "done" && t.self?.alive === false && t.choosing?.why === "travelling from a bed" && brief(t.choosing.places.map((r: any[]) => r[1])) === brief(["Home", "Outpost"]), brief(t.choosing));
   const arrived = await a.tool("rise", { place: "Outpost" });

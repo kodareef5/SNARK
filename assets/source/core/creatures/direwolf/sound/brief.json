@@ -21,8 +21,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "A large wolf howls a long mournful howl, two separate howls with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6080",
+          "models": [
+            "moss"
+          ],
+          "seed": 6080,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A large wolf howls a long mournful howl, two separate howls with long pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "startled": {
       "kind": "voice",
@@ -41,8 +53,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A large wolf barks sharply and snarls in alarm, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6090",
+          "models": [
+            "moss"
+          ],
+          "seed": 6090,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A large wolf barks sharply and snarls in alarm, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "hurt": {
       "kind": "voice",
@@ -61,8 +85,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A large wolf yelps in pain, five separate yelps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6110",
+          "models": [
+            "moss"
+          ],
+          "seed": 6110,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large wolf yelps in pain, five separate yelps with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "death": {
       "kind": "voice",
@@ -101,8 +137,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A large wolf snarls and snaps its jaws in a vicious bite, five separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6100",
+          "models": [
+            "moss"
+          ],
+          "seed": 6100,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A large wolf snarls and snaps its jaws in a vicious bite, five separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "step": {
       "kind": "step",
@@ -121,8 +169,62 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "Paws of a large wolf trotting on earth: light quick padded steps, separate bursts. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6120",
+          "models": [
+            "moss"
+          ],
+          "seed": 6120,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Paws of a large wolf trotting on earth: light quick padded steps, separate bursts. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
+    },
+    "chase": {
+      "kind": "voice",
+      "range": 80,
+      "level": -20,
+      "vary": 0.6,
+      "want": "barks, calls and hisses while chasing",
+      "prompts": [
+        {
+          "id": "v2-6130",
+          "models": [
+            "moss"
+          ],
+          "seed": 6130,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A large wolf runs after prey: short excited yips and snarling barks while running, five separate barks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 8
+    },
+    "growl": {
+      "kind": "voice",
+      "range": 48,
+      "level": -22,
+      "vary": 0.5,
+      "want": "a warning growl, aggressive and near",
+      "prompts": [
+        {
+          "id": "v2-6140",
+          "models": [
+            "moss"
+          ],
+          "seed": 6140,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large wolf growls low and menacing with bared teeth, four separate growls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
     }
   }
 }

@@ -1,0 +1,3 @@
+Repainted in animal-space units; every texel outside the orange band remains unchanged. Reviewed `feet` and `three_quarter`; two clean rebuilds matched byte for byte.
+
+The distal scutes still blur where the pinned layout reaches 5.9 mm per texel. This limitation and the verification results are documented in [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/paint/body/REPORT.md).
