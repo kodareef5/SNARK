@@ -124,7 +124,7 @@ test("a squeezed elder oak draws its bark at the trunk's level, its crown coarse
   expect(scene.budget.squeeze).toBe(SQUEEZE_MOST);
   const p = w.frame();
   let [split, thinned, counted] = [0, 0, 0];
-  /** The level each run of instances is drawn at, by its mesh, buffer and first instance, for the draws of a material. */
+  /** The level each run of instances is drawn at with bark, or with its other materials, by its mesh, buffer and first instance. */
   const at = (bark: boolean) => new Map(Array.from({ length: p.drawCount }, (_, d) => d).filter((d) => (p.drawFlags[d]! & DRAW_TEXTURED) !== 0 && materials[p.drawMaterial[d]!]!.id.endsWith("bark") === bark).map((d) => [`${p.drawMesh[d]} ${p.drawBuffer[d]} ${p.drawFirst[d]}`, p.drawLod[d]!]));
   const crowns = at(false);
   for (const [run, level] of at(true)) if ((crowns.get(run) ?? -1) > level) split++;
