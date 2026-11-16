@@ -23,11 +23,17 @@ export function chirp(seconds: number, rate: number, amp = 0.5): Float32Array {
 
 /**
  * The dodo's sounds, made of chirps: two makers' calls, a startle, pain, a peck, a landing and steps on two grounds.
- * With `beds`, the world's grass beds by day and by night as well, which loop.
+ * With `beds`, the world's grass beds by day and by night as well, which loop; with `flap`, the pteranodon's wingbeat.
  */
-export function builtSounds(file = 1, beds = false): { sounds: NonNullable<Manifest["sounds"]>; file: Uint8Array } {
+export function builtSounds(file = 1, beds = false, flap = false): { sounds: NonNullable<Manifest["sounds"]>; file: Uint8Array } {
   const root = mkdtempSync(join(tmpdir(), "snark-sound-"));
   try {
+    if (flap) {
+      const flyer = join(root, "core", "creatures", "pteranodon", "sound");
+      mkdirSync(join(flyer, "takes"), { recursive: true });
+      writeFileSync(join(flyer, "takes", "flap.wav"), writeWav(chirp(0.3, 44100), 44100));
+      writeFileSync(join(flyer, "sounds.json"), JSON.stringify({ sounds: { flap: { range: 120, level: -20, takes: [{ file: "takes/flap.wav", from: "moss" }] } } }));
+    }
     if (beds) {
       const world = join(root, "core", "world", "sound");
       mkdirSync(join(world, "takes"), { recursive: true });

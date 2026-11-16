@@ -7,7 +7,7 @@
 import { CreatureAnim, advanceCreature, idleOf } from "../../shared/anim/creature.ts";
 import { Gait } from "../../shared/anim/gait.ts";
 import { socketDips } from "../../shared/anim/moments.ts";
-import { AnimState, CUE_DEAD, CUE_LAND, CUE_NONE, CUE_TORPOR, LAYER_FLINCH, SPEED_STEP, bodySeed } from "../../shared/anim/pose.ts";
+import { AnimState, CUE_DEAD, CUE_LAND, CUE_NONE, CUE_TAKEOFF, CUE_TORPOR, LAYER_FLINCH, SPEED_STEP, bodySeed } from "../../shared/anim/pose.ts";
 import type { Occasion } from "../../shared/pack/details.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { MODE_SWIM } from "../../shared/sim/character.ts";
@@ -145,7 +145,9 @@ export class Occasions {
         const cueChanged = (remote.cue[i]! & 0xffe) !== (b.cue & 0xffe);
         const landed = cueChanged && st.cue === CUE_LAND;
         if (landed) happen("land", started(tick, st.cueStart));
-        else if (cueChanged && st.cue === CUE_TORPOR) happen(st.out ? "down" : "up", started(tick, st.cueStart));
+        else if (cueChanged && st.cue === CUE_TAKEOFF) happen("take_off", started(tick, st.cueStart));
+        // Knocked out off the ground, it goes down where it lands.
+        else if (cueChanged && st.cue === CUE_TORPOR && !(st.out && !st.grounded && st.mode !== MODE_SWIM)) happen(st.out ? "down" : "up", started(tick, st.cueStart));
         // One knocked out has a landing cue only where its kind falls limp on a clip, so its landing is read from its state.
         if (!landed && st.out && st.grounded && !was.grounded && was.out) happen("land", tick);
         if (((remote.cue[i]! >>> 12) & 0x3ff) !== ((b.cue >>> 12) & 0x3ff) && st.layer === LAYER_FLINCH) {

@@ -3,7 +3,9 @@
 
 import { expect, test } from "bun:test";
 import { CreatureAnim } from "../../shared/anim/creature.ts";
-import { AnimState, CUE_DEAD, CUE_HELD, CUE_LAND, CUE_STARTLE, CUE_TORPOR, LAYER_FLINCH, bodySeed } from "../../shared/anim/pose.ts";
+import { AnimState, CUE_DEAD, CUE_HELD, CUE_LAND, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, LAYER_FLINCH, bodySeed } from "../../shared/anim/pose.ts";
+import { MODE_FLYER } from "../../shared/sim/character.ts";
+import { flyerAnim } from "../fixtures/flyer/flyer.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
@@ -527,4 +529,56 @@ test("a voice taken over in the frame it was started never reaches the device, w
   expect(p.stops.length).toBe(5);
   apply();
   expect(device.size).toBe(m.playing);
+});
+
+test("a pteranodon is heard flapping once a beat of its flight, twice flying fast, and as it takes off; never on still wings or standing", () => {
+  const flaps = builtSounds(1, false, true);
+  const manifest = parseManifest(JSON.stringify({ version: 3, files: [{ name: "boot", bytes: 0, role: "boot" }, { name: "sounds", bytes: flaps.file.length, role: "sound" }], boot: 0, clipHash: 0, meshes: [], sounds: flaps.sounds }));
+  const net = new FakeNet([new Uint8Array(0), flaps.file], { latencyMs: 1, bytesPerSecond: 1e8 });
+  const ptera = reg.index.get("core:pteranodon")!;
+  const flyer = flyerAnim();
+  const sounds = new Sounds(manifest, net, reg, (k) => (k === ptera ? flyer : null));
+  const lib = sounds.library;
+  const hf = buildProvingHeightfield();
+  const remote = new RemoteSample();
+  const ears = new Ears();
+  const st = new AnimState();
+  let tick = 1000;
+  let now = 0;
+  remote.count = 1;
+  remote.id[0] = 91;
+  remote.kind[0] = ptera;
+  [remote.x[0], remote.y[0], remote.z[0]] = [380, hf.heightAt(380, 380) + 10, 380];
+  st.seed = bodySeed(91);
+  const run = (ticks: number): string[] => {
+    const heard: string[] = [];
+    for (let k = 0; k < ticks; k++) {
+      now += 1000 / 30;
+      tick += 1;
+      net.advance(now);
+      remote.anim[0] = st.pack();
+      remote.cue[0] = st.packCue();
+      remote.tick = tick;
+      ears.starts.length = 0;
+      sounds.frame(ears, now, remote, hf, { x: 377, y: remote.y[0]! + 1.6, z: 380, yaw: 0, pitch: 0 }, { master: 1, effects: 1, ambience: 1, music: 1, interface: 1 });
+      for (const s of ears.starts) heard.push(lib.sounds[[...lib.first].findLastIndex((f) => f <= s[1]!)]!.id);
+    }
+    return heard;
+  };
+  // Standing until its sounds are held, then taking off.
+  run(30);
+  expect(run(30)).toEqual([]);
+  st.mode = MODE_FLYER;
+  st.grounded = false;
+  st.cue = CUE_TAKEOFF;
+  st.cueStart = tick & 255;
+  expect(run(1)).toEqual(["core:pteranodon/sound/flap"]);
+  st.cue = 0;
+  // A beat is 30 ticks: hovering and flying, a flap a beat; flying fast, two; gliding, none.
+  const flapped = (vz: number, pitch: number): number => {
+    st.setMotion(0, vz, 0, pitch);
+    run(2);
+    return run(6 * TICK_RATE).length;
+  };
+  expect([flapped(0, 0), flapped(6, 0), flapped(16, 0), flapped(6, -0.4)]).toEqual([6, 6, 12, 0]);
 });

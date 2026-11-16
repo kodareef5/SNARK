@@ -8,11 +8,11 @@
 
 import { CreatureAnim, advanceCreature, idleOf } from "../../../shared/anim/creature.ts";
 import { Gait } from "../../../shared/anim/gait.ts";
-import { AnimState, CUE_DEAD, CUE_LAND, CUE_NONE, CUE_STARTLE, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH, SPEED_STEP, bodySeed } from "../../../shared/anim/pose.ts";
+import { AnimState, CUE_DEAD, CUE_LAND, CUE_NONE, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, FLY_SPEED_STEP, LAYER_EAT, LAYER_FLINCH, SPEED_STEP, bodySeed } from "../../../shared/anim/pose.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
-import { MODE_SWIM } from "../../../shared/sim/character.ts";
+import { MODE_FLYER, MODE_SWIM } from "../../../shared/sim/character.ts";
 import { ACT_NONE } from "../../../shared/sim/weapon.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { RemoteSample } from "../session.ts";
@@ -39,6 +39,8 @@ export const O_THUMP = 8;
 /** Calls while running, and a growl while stalking near: a pack talks as it hunts, a herd as it flees. */
 export const O_CHASE = 9;
 export const O_GROWL = 10;
+/** A flyer's wingbeat, and its take-off. */
+export const O_FLAP = 11;
 /** The occasions of a creature's sheet (shared/pack/details.ts) and the sound occasion each names. */
 const SHEET: readonly (readonly [Occasion, number])[] = [["struck", O_HURT], ["peck", O_ATTACK], ["land", O_LAND], ["death", O_DEATH], ["down", O_TORPOR_IN], ["up", O_TORPOR_OUT]];
 /** Seconds between a running body's calls, and a stalking hunter's growls, at random within these. */
@@ -49,13 +51,17 @@ const GROWL_NEAR = 15;
 /** The registry's temper of a hunter (shared/content/registry.ts: 0 flees, 1 defends, 2 hunts). */
 const TEMPER_HUNTS = 2;
 /** The cue of each occasion; what stands in for a species without it is the catalogue's to say. */
-const OCCASIONS: readonly string[] = ["startled", "hurt", "attack", "land", "death", "torpor_in", "torpor_out", "eat", "thump", "chase", "growl"];
+const OCCASIONS: readonly string[] = ["startled", "hurt", "attack", "land", "death", "torpor_in", "torpor_out", "eat", "thump", "chase", "growl", "flap"];
 /**
  * How each occasion is heard: from its mouth, its feet or its body, and how much it weighs when voices are short. A
  * startle outweighs the pain of the blow that startled it, which comes in the same snapshot, so the alarm is heard.
  */
-const KIND: readonly number[] = [KIND_VOCAL, KIND_VOCAL, KIND_HIT, KIND_HIT, KIND_VOCAL, KIND_VOCAL, KIND_VOCAL, KIND_HIT, KIND_HIT, KIND_VOCAL, KIND_VOCAL];
-const WEIGHT: readonly number[] = [0.95, 0.9, 0.5, 0.6, 1, 0.8, 0.5, 0.3, 0.6, 0.7, 0.55];
+const KIND: readonly number[] = [KIND_VOCAL, KIND_VOCAL, KIND_HIT, KIND_HIT, KIND_VOCAL, KIND_VOCAL, KIND_VOCAL, KIND_HIT, KIND_HIT, KIND_VOCAL, KIND_VOCAL, KIND_STEP];
+const WEIGHT: readonly number[] = [0.95, 0.9, 0.5, 0.6, 1, 0.8, 0.5, 0.3, 0.6, 0.7, 0.55, 0.35];
+/** Flying at least this fast it strokes twice a beat, as its fly_fast does (shared/anim/creature.ts). */
+const FAST_STROKES = 12;
+/** Looking this many steps of the pose's pitch below level or further, it glides or dives on still wings. */
+const STILL_WINGS = -4;
 const CALL_WEIGHT = 0.4;
 const STEP_WEIGHT = 0.25;
 /** An idle's sound under the clip's word alone (`peck` for `idle_peck`) is this much quieter. */
@@ -147,6 +153,8 @@ class Heard {
   /** Seconds at which it next calls while running, and growls while stalking; 0 while it does neither. */
   nextCall = 0;
   nextGrowl = 0;
+  /** The stroke of its flight it was last heard in, or -1 while it was not flapping. */
+  stroke = -1;
   readonly gait = new Gait();
   x = 0;
   y = 0;
@@ -237,9 +245,11 @@ export class CreatureSounds {
         if (cue !== b.cue && st.cue !== CUE_NONE) {
           if (st.cue === CUE_STARTLE) play(O_STARTLED);
           else if (st.cue === CUE_LAND) play(O_LAND);
+          else if (st.cue === CUE_TAKEOFF) play(O_FLAP);
           else if (st.cue === CUE_TORPOR && st.out) {
             play(O_TORPOR_IN);
-            play(O_THUMP, book.down, 0.8);
+            // Knocked out off the ground, its body is heard as it lands.
+            if (st.grounded || st.mode === MODE_SWIM) play(O_THUMP, book.down, 0.8);
           } else if (st.cue === CUE_TORPOR) play(O_TORPOR_OUT);
         }
         if (layer !== b.layer && st.layer === LAYER_FLINCH) play(O_HURT);
@@ -261,6 +271,7 @@ export class CreatureSounds {
       b.lastD = d;
       this.calls(book, b, st, remote.tick / TICK_RATE, first, d, this.reg.temper[kind] === TEMPER_HUNTS, play);
       if (book.anim) this.idles(book, book.anim, b, st, remote.tick, first, id, x, y, z, size, pitch, quiet, emit);
+      if (book.anim?.flies && book.sound[O_FLAP]! >= 0) this.flaps(book.anim, b, st, remote.tick, first, play);
       if (ground >= 0 && book.anim) this.steps(book, book.anim, b, st, remote.tick, remote.yaw[i]!, size, ground, d, id, x, y, z, pitch, quiet, emit);
     }
     // Those that left the view because they died are heard dying where they were last.
@@ -297,6 +308,18 @@ export class CreatureSounds {
       play(O_GROWL);
       b.nextGrowl = t + this.rng.range(GROWL_EVERY[0], GROWL_EVERY[1]);
     }
+  }
+
+  /** A flyer's wingbeat at the top of each stroke: one a beat of its flight, two flying fast, none on still wings. */
+  private flaps(anim: CreatureAnim, b: Heard, st: AnimState, tick: number, first: boolean, play: (o: number) => void): void {
+    const speed = st.speed * FLY_SPEED_STEP;
+    if (st.mode !== MODE_FLYER || st.out || (speed > 0 && st.pitch <= STILL_WINGS)) {
+      b.stroke = -1;
+      return;
+    }
+    const stroke = Math.floor(((Math.floor(tick) + st.seed) * (speed >= FAST_STROKES ? 2 : 1)) / anim.beat);
+    if (stroke !== b.stroke && b.stroke >= 0 && !first) play(O_FLAP);
+    b.stroke = stroke;
   }
 
   /** At the start of each turn of its idle that it stands through, the idle chosen for the turn may have a sound. */

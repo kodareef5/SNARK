@@ -87,7 +87,7 @@ cue("eat", CREATURE, "item", "body", "built", "LAYER_EAT in the cue word");
 cue("chase", CREATURE, "vocal", "body", "fire", "running (the pose's speed near its run): a call now and then, each body on its own time, so a pack talks as it hunts");
 cue("growl", CREATURE, "vocal", "body", "fire", "a hunter (temper 2) walking within 15 m of the ear, now and then");
 cue("roar", CREATURE, "vocal", "body", "waits:riding", "a rider's roar key", { falls: ["{owner}/startled"] });
-cue("flap", CREATURE, "step", "body", "waits:flyers", "a flyer's wingbeat, by its gait");
+cue("flap", CREATURE, "step", "body", "built", "a flyer's wingbeat at the top of each stroke of its flight, none on still wings, and CUE_TAKEOFF");
 cue("graze", CREATURE, "item", "body", "waits:behaviour", "grazing; there is no cue for it yet");
 cue("sleep", CREATURE, "vocal", "body", "waits:behaviour", "sleeping; there is no cue for it yet", { loop: true });
 cue("tamed", CREATURE, "vocal", "body", "fire", "EVENT_TAMED for the owner", { falls: ["{owner}/call"] });

@@ -14,7 +14,7 @@ import { Characters } from "../../client/core/render/characters.ts";
 import { detailKeeps, shapeOf } from "../../client/core/render/detailtext.ts";
 import { DETAIL, DETAIL_FLOATS, DETAIL_PUFF, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, FramePacket } from "../../client/core/render/packet.ts";
 import { RemoteSample } from "../../client/core/session.ts";
-import { AnimState, CUE_HELD, CUE_LAND, CUE_TORPOR, LAYER_FLINCH } from "../../shared/anim/pose.ts";
+import { AnimState, CUE_HELD, CUE_LAND, CUE_TAKEOFF, CUE_TORPOR, LAYER_FLINCH } from "../../shared/anim/pose.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { hashBytes } from "../../shared/hash.ts";
@@ -109,7 +109,12 @@ test("a client reads each occasion from what it already has of a body, once, and
   // Into the water from the air.
   run(330, (s) => (s.grounded = false));
   run(331, (s) => (s.mode = MODE_SWIM));
-  expect(seen).toEqual(["struck@110 from the side", "down@119", "up@200", "thrown@301", "land@320", "splash@331"]);
+  // Taking off; then knocked out in the air, it goes down only as it reaches the ground, once.
+  run(340, (s) => ((s.cue = CUE_TAKEOFF), (s.cueStart = 340)));
+  run(350, (s) => (s.grounded = false));
+  run(351, (s) => ((s.grounded = false), (s.out = true), (s.cue = CUE_TORPOR), (s.cueStart = 351)));
+  run(380, (s) => ((s.out = true), (s.cue = CUE_LAND), (s.cueStart = 380)));
+  expect(seen).toEqual(["struck@110 from the side", "down@119", "up@200", "thrown@301", "land@320", "splash@331", "take_off@340", "land@380"]);
 });
 
 /** A client's details, fed `frames` frames a sixtieth of a second apart from tick 1000, `set` saying each bird's state at each tick. */
