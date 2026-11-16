@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { KORU } from "../../content/landmarks/koru.ts";
 import { withLandmarks } from "../../client/core/fetched.ts";
-import { compileContent } from "../../shared/content/registry.ts";
+import { compileContent, withContent } from "../../shared/content/registry.ts";
 import { joinLandmark } from "../../shared/pack/join.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
@@ -9,7 +9,12 @@ import { landmarkGround, placeLandmark, type Landmark } from "../../shared/world
 import { groundBytes, parseMap, writeMap } from "../../shared/world/mapfile.ts";
 import { splitPack } from "../../tools/pack/split.ts";
 import { boxMesh, buildPack } from "../../tools/pack/write.ts";
-import { koruMap } from "../fixtures/koru.ts";
+import { Assets } from "../../client/core/assets/assets.ts";
+import { FramePacket } from "../../client/core/render/packet.ts";
+import { FakeNet } from "../fixtures/assetnet.ts";
+import { koruMap, koruPackBytes } from "../fixtures/koru.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
+import { coreRegistry } from "../fixtures/world.ts";
 
 test("a map carries its landmarks' names and definitions before its statics, so a client has them from its ground alone", () => {
   const bytes = writeMap(koruMap());
@@ -77,4 +82,27 @@ test("a client on a map with a landmark fetches its manifest and boot file, and 
   // A map with none asks for nothing and keeps the core's as they are.
   const bare = await withLandmarks(get, undefined, reg, core.manifest, parsePack(core.files[core.manifest.boot]!.bytes));
   expect([bare.reg, bare.manifest, asked.length]).toEqual([reg, core.manifest, 2]);
+});
+
+test("Koru's levels stream from its own files joined after the core's: its coarsest drawn from the boot at once, its finest fetched", () => {
+  const core = splitPack(corePackBytes(), "core");
+  const more = splitPack(koruPackBytes(), "koru");
+  const boots = [core, more].map((s) => parsePack(s.files[s.manifest.boot]!.bytes));
+  const { manifest, boot } = joinLandmark({ manifest: core.manifest, boot: boots[0]! }, { manifest: more.manifest, boot: boots[1]! }, "landmarks");
+  const files = [...core.files.map((f) => f.bytes), ...more.files.filter((_, i) => i !== more.manifest.boot).map((f) => f.bytes)];
+  const port = new FakeNet(files);
+  const assets = new Assets(withContent(coreRegistry(), KORU.defs), boot, manifest, port);
+  const cells = manifest.meshes.flatMap((m, i) => (m.id.startsWith("koru:cell_") ? [i] : []));
+  expect(cells.length).toBe(8);
+  for (const mesh of cells) expect(assets.level(mesh, 0)).toBe(manifest.meshes[mesh]!.levels.length - 1);
+  const packet = new FramePacket();
+  for (let f = 0, now = 0; f < 120; f++) {
+    now += 1000 / 60;
+    port.advance(now);
+    packet.beginFrame();
+    assets.begin(now, 669, 1.2217);
+    for (const mesh of cells) assets.want(mesh, 0, 5);
+    assets.end(packet, now);
+  }
+  expect(cells.map((mesh) => assets.level(mesh, 0))).toEqual(cells.map(() => 0));
 });
