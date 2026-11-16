@@ -27,7 +27,7 @@ Keep the generated source pictures at full size in `source/` of each folder, and
 
 ## What excellent looks like
 
-The concept pictures are the bar. The example of a complete layer set to beat is the wood plank wall in `../../../../../../../planning/artist-test/wood/` (start with `checks/layers.jpg`). Real detail at full size, not a blurred enlargement: the image tool returns about 1254 pixels a side, so reach 2048 by composing generated elements in a larger master and adding fine detail by script. No visible seam when tiled, no motif the eye finds in a 3 by 3 tiling beyond the intended mat seams. Check each tiled 3 by 3 and relit from two directions.
+The concept pictures are the bar. The example of a complete layer set to beat is the wood plank wall in `../../../../../../../planning/art-trial/wood/` (start with `checks/layers.jpg`). Real detail at full size, not a blurred enlargement: the image tool returns about 1254 pixels a side, so reach 2048 by composing generated elements in a larger master and adding fine detail by script. No visible seam when tiled, no motif the eye finds in a 3 by 3 tiling beyond the intended mat seams. Check each tiled 3 by 3 and relit from two directions.
 
 ## Checks to leave in `checks/` of each folder
 

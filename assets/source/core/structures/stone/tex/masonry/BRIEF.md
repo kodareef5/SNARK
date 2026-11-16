@@ -18,7 +18,7 @@ The stones are already decided, because the game models every stone as real geom
 
 ## What excellent looks like
 
-The bar to beat is the wood plank wall in `/home/user/dev/SNARK/.claude/worktrees/agent-a2517e755af91bae1/planning/artist-test/wood/` (start with `checks/layers.jpg`, then its `REPORT.md`): a complete, aligned, tileable layer set with its own build and checks, in which the layers agree to the pixel. Yours should be better: richer stone, more convincing mortar, and it must read as a built wall at arm's length and from across a valley.
+The bar to beat is the wood plank wall in `/home/user/dev/SNARK/.claude/worktrees/agent-a2517e755af91bae1/planning/art-trial/wood/` (start with `checks/layers.jpg`, then its `REPORT.md`): a complete, aligned, tileable layer set with its own build and checks, in which the layers agree to the pixel. Yours should be better: richer stone, more convincing mortar, and it must read as a built wall at arm's length and from across a valley.
 
 - Colour: weathered limestone, warm grey. Stones vary from a cool blue-grey to a pale buff, within one family, roughly sRGB 115 to 190 in value. Lime mortar a little lighter and warmer than the stone but dulled with grime in the recess. Faint weathering that a wall that has stood for years has: lichen specks, a few rain streak stains running down from joints, slightly darker lower edges where dirt collects. No moss carpets, no cracks through the wall, no graffiti, no bricks.
 - The mean of the whole base colour picture must be within 8 levels of sRGB (150, 151, 152) in each channel: the game draws distant walls in that one flat colour, so the textured wall must average to it.

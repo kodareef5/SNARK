@@ -31,7 +31,7 @@ All PNG, pixel-aligned with one another, at **2,048 x 2,048** and the same set a
 
 ## The examples to beat
 
-Two finished materials of this game are in the main checkout: `/home/user/Desktop/SNARK/assets/source/core/structures/wood/tex/timber/` (heavy hewn timber: look at `timber_base.png`, `timber_normal.png` and `REPORT.md`) and `/home/user/Desktop/SNARK/planning/artist-test/wood/` (an earlier test: `checks/layers.jpg`, `REPORT.md`). Read them only. They are good: aligned, seamless, honest, with native detail. Beat them at a much smaller scale: this is a stick in a hand, not a beam in a wall.
+Two finished materials of this game are in the main checkout: `/home/user/Desktop/SNARK/assets/source/core/structures/wood/tex/timber/` (heavy hewn timber: look at `timber_base.png`, `timber_normal.png` and `REPORT.md`) and `/home/user/Desktop/SNARK/planning/art-trial/wood/` (an earlier test: `checks/layers.jpg`, `REPORT.md`). Read them only. They are good: aligned, seamless, honest, with native detail. Beat them at a much smaller scale: this is a stick in a hand, not a beam in a wall.
 
 ## How
 

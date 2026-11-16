@@ -1,6 +1,6 @@
 // Rows for the texture build: how close each block variant comes to the picture it was given, how long a megapixel
 // takes on one core, and how long the test set takes on all of them. The set is the feather and the wood under
-// planning/artist-test, each map at 1,024. `bun tools/bench/textures.ts` runs these alone.
+// planning/art-trial, each map at 1,024. `bun tools/bench/textures.ts` runs these alone.
 
 import { availableParallelism } from "node:os";
 import { join } from "node:path";
@@ -29,7 +29,7 @@ function decibels(want: Uint8Array, got: Uint8Array, channels: readonly (readonl
 
 export async function benchTextures(section: Section, record: Row): Promise<void> {
   section("Textures: the feather and the wood at 1,024, as bc and astc against the pictures given (99 dB is exact)");
-  const art = (name: string) => readPicture(join(import.meta.dir, "../../planning/artist-test", name));
+  const art = (name: string) => readPicture(join(import.meta.dir, "../../planning/art-trial", name));
   const sets: Record<string, Partial<Record<TextureRole, Uint8Array[]>>> = {
     feather: materialMips({ base: art("feather/feather_base.png"), normal: art("feather/feather_normal.png"), mro: packMro(art("feather/feather_ao.png"), art("feather/feather_rough.png")), regions: art("feather/feather_mask.png") }),
     wood: materialMips({ base: art("wood/wood_base.png"), normal: art("wood/wood_normal.png"), mro: art("wood/wood_orm.png"), regions: art("wood/wood_mask.png") }),

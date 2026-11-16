@@ -3,7 +3,7 @@
 
 import { decodeTexture, sample, sampleWorldTexture, type Texture } from "../../client/core/render/cpu-texture.ts";
 import { SURFACE_MATERIAL, surfaceIndex } from "../../content/surfaces.ts";
-import { worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
 import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
@@ -12,7 +12,7 @@ import { MOST_LOD, detailKeeps, rotorOf, shapeOf } from "../../client/core/rende
 import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
-import { LAYER_LEVELS, NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyFrom, srgbToLinear, wounded } from "../../client/core/render/surface.ts";
+import { LAYER_LEVELS, NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyFrom, skyLight, srgbToLinear, wounded } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { CELL, mipOffset } from "../../shared/pack/details.ts";
@@ -144,11 +144,14 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
   eye[1] = -ry / dist;
   eye[2] = -rz / dist;
   if (sample) {
-    worldSurface(albedo, worldOrm, normal, albedo, surfaceIndex(colorIndex, ground, p.surfaceCity[7] ? "las-vegas" : "default"), rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample);
+    const index = surfaceIndex(colorIndex, ground, p.surfaceCity[7] ? "las-vegas" : "default");
+    worldSurface(albedo, worldOrm, normal, albedo, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, p.tier.finish === "light");
     const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
     for (let c = 0; c < 3; c++) reflected[c] = twice * normal[c]! - eye[c]!;
-    if (look) skyFrom(mirrored, p.frame, reflected, look);
-    lit(light, albedo, worldOrm, normal, eye, p.frame, look ? mirrored : NOTHING);
+    const sharp = worldSharp(index, p.surfaceCity);
+    if (!sharp) skyLight(mirrored, p.frame, reflected);
+    else if (look) skyFrom(mirrored, p.frame, reflected, look);
+    lit(light, albedo, worldOrm, normal, eye, p.frame, sharp && !look ? NOTHING : mirrored);
   } else lit(light, albedo, ROUGH, normal, eye, p.frame, NOTHING);
   shown(rgb, light, dist, p);
 }

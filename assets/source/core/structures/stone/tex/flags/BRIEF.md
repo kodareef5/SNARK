@@ -19,7 +19,7 @@ The flags are already decided, because the game models every flag as real geomet
 
 ## What excellent looks like
 
-The bar to beat is the wood plank wall in `/home/user/dev/SNARK/.claude/worktrees/agent-a2517e755af91bae1/planning/artist-test/wood/` (start with `checks/layers.jpg`, then its `REPORT.md`): a complete, aligned, tileable layer set with its own build and checks, in which the layers agree to the pixel. Yours should be better, and should read as a laid floor both underfoot and from a cliff above a base.
+The bar to beat is the wood plank wall in `/home/user/dev/SNARK/.claude/worktrees/agent-a2517e755af91bae1/planning/art-trial/wood/` (start with `checks/layers.jpg`, then its `REPORT.md`): a complete, aligned, tileable layer set with its own build and checks, in which the layers agree to the pixel. Yours should be better, and should read as a laid floor both underfoot and from a cliff above a base.
 
 - Colour: the same limestone family as the walls but greyer and a little darker, polished smooth where feet go and duller at the edges, with dirt packed into the joints. Mostly cool to neutral grey, a few flags warmer. No moss carpets, no tiles, no bricks, no pattern painted on.
 - The mean of the whole base colour picture must be within 8 levels of sRGB (128, 128, 128) in each channel: the game draws distant floors in that one flat colour, so the textured floor must average to it.
