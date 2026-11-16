@@ -84,8 +84,15 @@ function capture(shot: KoruShot, map: MapData, pack: Pack, files: GameFiles, wid
   const app = new App(session, reg, boot, { manifest: files.manifest, port });
   app.ui.settings.tier = shot.tier; app.ui.settings.steady = false;
   let raster: Rasterizer | null = null, packet: FramePacket | null = null;
+  let quietFrames = 0, measure = false, measuredUploadFrames = 0;
+  const frameTimes: number[] = [];
   const frame = (now: number) => {
-    port.advance(now); packet = app.frame(now, width, height);
+    port.advance(now);
+    const started = performance.now(); packet = app.frame(now, width, height); const elapsed = performance.now() - started;
+    const residency = app.scene?.assets.residency;
+    const streaming = !packet || !residency || residency.flying > 0 || residency.waiting > 0 || packet.assetUploads.length > 0 || packet.texUploads.length > 0 || (app.scene?.city?.stats.behind ?? 0) > 0;
+    quietFrames = streaming ? 0 : quietFrames + 1;
+    if (measure) { frameTimes.push(elapsed); if (streaming) measuredUploadFrames++; }
     if (packet && session.world) { raster ??= new Rasterizer(width, height, boot, session.world.hf, files.manifest); uploadOnly(raster, packet); }
   };
   const run = (ms: number) => h.run(ms, frame);
@@ -103,7 +110,11 @@ function capture(shot: KoruShot, map: MapData, pack: Pack, files: GameFiles, wid
       app.controls.yaw = Math.atan2(dx, dz); app.controls.pitch = Math.atan2(shot.target[1] - eye, Math.hypot(dx, dz));
     }
     if (app.view.thirdPerson !== !!shot.thirdPerson) { app.key("KeyV", true); app.key("KeyV", false); }
-    run(3600); const corrections = session.stats.corrections; run(600);
+    run(3600);
+    for (let waits = 0; quietFrames < 30 && waits < 48; waits++) run(250);
+    if (quietFrames < 30) throw new Error(`${shot.name}: production asset streaming never settled for CPU sampling`);
+    const corrections = session.stats.corrections; measure = true; run(3000); measure = false;
+    if (measuredUploadFrames) throw new Error(`${shot.name}: asset streaming resumed during settled CPU sampling`);
     const p = packet as FramePacket | null, render = raster as Rasterizer | null;
     if (!p || !render || !app.scene) throw new Error(`${shot.name}: native App produced no frame`);
     if (shot.mode === "walk") {
@@ -132,7 +143,11 @@ function capture(shot: KoruShot, map: MapData, pack: Pack, files: GameFiles, wid
     render.render(p); const scene = render.color.slice(); drawUi(render.color, width, height, app.ui.frame);
     writeFileSync(resolve(out, `${shot.name}-scene.png`), encodePng(width, height, scene));
     writeFileSync(resolve(out, `${shot.name}.png`), encodePng(width, height, render.color));
+    frameTimes.sort((a, b) => a - b);
+    const percentile = (p: number) => frameTimes[Math.max(0, Math.ceil(frameTimes.length * p) - 1)]!;
     return { ...shot, width, height, draws, submittedTriangles: p.triangles, drawCount: p.drawCount,
+      cpu: { samples: frameTimes.length, medianMs: percentile(.5), p95Ms: percentile(.95), p99Ms: percentile(.99), maxMs: percentile(1),
+        scope: "Settled App.frame wall time only; excludes authoritative server stepping, network delivery, image encoding, software rasterization and browser GPU work." },
       dropped: p.dropped, skipped: p.skipped, casterDropped: p.casterDropped,
       city: app.scene.city?.stats, handover, assets: app.scene.assets.line(),
       camera: { x: p.camX, y: p.camY, z: p.camZ, yaw: app.cam.yaw, pitch: app.cam.pitch, thirdPerson: app.view.thirdPerson },
