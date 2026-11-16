@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { KORU } from "../../content/landmarks/koru.ts";
+import { withLandmarks } from "../../client/core/fetched.ts";
+import { compileContent } from "../../shared/content/registry.ts";
 import { joinLandmark } from "../../shared/pack/join.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
@@ -52,4 +54,27 @@ test("a landmark's files join the core's after them: its meshes, materials and b
   const at = level.at - joined.boot.blobAt, ownAt = own.at - boots[1]!.blobAt;
   expect(joined.boot.blob.subarray(at, at + own.parts[0]!.bytes)).toEqual(boots[1]!.blob.subarray(ownAt, ownAt + own.parts[0]!.bytes));
   expect(joined.boot.meshIndex.get("test:c")).toBe(2);
+});
+
+test("a client on a map with a landmark fetches its manifest and boot file, and compiles the core's content with the map's", async () => {
+  const box = (id: string) => ({ id, lods: [boxMesh([1, 1, 1], 3)] });
+  const core = splitPack(buildPack([box("core:a")], defaultPalette()), "core");
+  const more = splitPack(buildPack([box("koru:cell_00")], defaultPalette()), "koru");
+  const served: Record<string, Uint8Array | string> = { "assets/landmarks/koru.json": JSON.stringify(more.manifest) };
+  for (const f of more.files) served[`assets/landmarks/${f.name}`] = f.bytes;
+  const asked: string[] = [];
+  const get = async (url: string) => {
+    asked.push(url);
+    const body = served[url]!;
+    return { ok: true, status: 200, body: null, text: async () => body as string, arrayBuffer: async () => (body as Uint8Array).slice().buffer };
+  };
+  const reg = compileContent([]).registry!;
+  const shape = { type: "shape", id: "koru:a_shape", role: "thing", boxes: [{ at: [0, 0.5, 0], half: [0.5, 0.5, 0.5] }] } as const;
+  const piece = { type: "structure", class: "static", id: "koru:a", mesh: "koru:cell_00", shape: shape.id, half: [0.5, 1, 0.5], color: 3, hp: 10 } as const;
+  const got = await withLandmarks(get, { landmarks: ["koru"], defs: [shape, piece] }, reg, core.manifest, parsePack(core.files[core.manifest.boot]!.bytes));
+  expect(asked).toEqual(["assets/landmarks/koru.json", `assets/landmarks/${more.files[more.manifest.boot]!.name}`]);
+  expect([got.reg.index.has("koru:a"), got.manifest.meshes.map((m) => m.id), got.pack.meshIndex.get("koru:cell_00")]).toEqual([true, ["core:a", "koru:cell_00"], 1]);
+  // A map with none asks for nothing and keeps the core's as they are.
+  const bare = await withLandmarks(get, undefined, reg, core.manifest, parsePack(core.files[core.manifest.boot]!.bytes));
+  expect([bare.reg, bare.manifest, asked.length]).toEqual([reg, core.manifest, 2]);
 });

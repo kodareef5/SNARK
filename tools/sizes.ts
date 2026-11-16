@@ -50,14 +50,7 @@ export function weigh(dist: string): boolean {
   const script = [...page.matchAll(/rel="modulepreload" href="([^"]+)"/g)].map((x) => `${x[1]}.br`);
   const fetched = (JSON.parse(/for \(const href of (\[[^\]]*\])\)/.exec(page)![1]!) as string[]).filter((n) => existsSync(join(dist, n))).map((n) => `${n}.br`);
   const hud = readdirSync(join(dist, "assets")).filter((n) => /^hud\.\w+\.png$|^hud-font\.\w+\.ttf\.br$/.test(n)).map((n) => `assets/${n}`);
-  const textures = (format: TextureFormat, widest: number): number => {
-    let bytes = 0;
-    for (const t of m.textures ?? []) {
-      const v = t.in[format];
-      if (v) for (let s = 0; s <= stepOf(Math.min(widest, topIn(format, t.top))); s++) bytes += storedStep(v, format, t.role, s);
-    }
-    return bytes;
-  };
+  const textures = (format: TextureFormat, widest: number): number => texturesOf(m, format, widest);
   const sounds = m.sounds ?? [];
   const seconds = sounds.reduce((s, x) => s + x.takes.reduce((a, t) => a + t.samples, 0) / x.rate, 0);
   const music = join(dist, "assets/music");
@@ -81,13 +74,61 @@ export function weigh(dist: string): boolean {
     ["texture steps stored twice, astc", twice((m.textures ?? []).flatMap((t) => t.in.astc?.hash ?? []))],
     ["mesh parts stored twice", twice(m.meshes.flatMap((x) => x.levels.flatMap((l) => l.parts.map((p) => p.hash))))],
   ];
+  return held(rows, BUDGETS);
+}
+
+/** Bytes of every step of a manifest's textures in `format` up to `widest` pixels across. */
+function texturesOf(m: Manifest, format: TextureFormat, widest: number): number {
+  let bytes = 0;
+  for (const t of m.textures ?? []) {
+    const v = t.in[format];
+    if (v) for (let s = 0; s <= stepOf(Math.min(widest, topIn(format, t.top))); s++) bytes += storedStep(v, format, t.role, s);
+  }
+  return bytes;
+}
+
+/** Prints each row against its budget; false if any is over, or a pinned row is not at its pin. */
+function held(rows: readonly [string, number][], budgets: Record<string, number>, of = (name: string): string => name): boolean {
   let ok = true;
   for (const [name, value] of rows) {
-    const budget = BUDGETS[name]!;
+    const budget = budgets[of(name)]!;
     const pass = budget < 0 ? value === -budget : value <= budget;
     ok &&= pass;
     const shown = (n: number): string => (Math.abs(n) >= 10 * MB ? `${(n / MB).toFixed(1)} MB` : Math.abs(n) >= 10 * KB ? `${(n / KB).toFixed(0)} KB` : n.toFixed(n % 1 === 0 ? 0 : 1));
     console.log(`  ${name.padEnd(52)} ${shown(value).padStart(10)}  ${pass ? "ok" : "MISS"} (${budget < 0 ? `pinned at ${shown(-budget)}` : `budget ${shown(budget)}`})`);
+  }
+  return ok;
+}
+
+/**
+ * What each landmark may add for a client on a map that places it (assets/landmarks): its files fetched before the first
+ * frame, which its map's own ground wait (tools/map/pack.ts) leaves room for, what it streams, and its textures.
+ */
+const LANDMARK_BUDGETS: Record<string, number> = {
+  "before the first frame, Brotli": 64 * KB,
+  "mesh file": 2 * MB,
+  "textures to 1,024, astc": 8 * MB,
+  "textures to 2,048, astc": 16 * MB,
+  "texture file, rgba": 24 * MB,
+  "mesh parts stored twice": 0,
+};
+
+/** Prints every landmark's rows against LANDMARK_BUDGETS; false if any is over. */
+export function weighLandmarks(dist: string): boolean {
+  const dir = join(dist, "assets/landmarks");
+  let ok = true;
+  for (const file of existsSync(dir) ? readdirSync(dir).filter((n) => n.endsWith(".json")).sort() : []) {
+    const name = file.slice(0, -5), m = JSON.parse(readFileSync(join(dir, file), "utf8")) as Manifest;
+    const fileOf = (role: string, format?: TextureFormat): number => m.files.filter((f) => f.role === role && (!format || f.format === format)).reduce((s, f) => s + f.bytes, 0);
+    const rows: [string, number][] = [
+      ["before the first frame, Brotli", statSync(join(dir, `${file}.br`)).size + statSync(join(dir, `${m.files[m.boot]!.name}.br`)).size],
+      ["mesh file", fileOf("mesh")],
+      ["textures to 1,024, astc", texturesOf(m, "astc", 1024)],
+      ["textures to 2,048, astc", texturesOf(m, "astc", 2048)],
+      ["texture file, rgba", fileOf("tex", "rgba")],
+      ["mesh parts stored twice", twice(m.meshes.flatMap((x) => x.levels.flatMap((l) => l.parts.map((p) => p.hash))))],
+    ];
+    ok = held(rows.map(([row, v]) => [`landmark ${name}: ${row}`, v]), LANDMARK_BUDGETS, (row) => row.slice(row.indexOf(": ") + 2)) && ok;
   }
   return ok;
 }
