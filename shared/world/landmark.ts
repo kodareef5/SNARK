@@ -85,7 +85,9 @@ export function landmarkGround(l: Landmark, ox: number, oy: number, oz: number, 
   const dx = x - ox, dz = z - oz, lx = c * dx - s * dz, lz = s * dx + c * dz;
   if (laid) laid[0] = 0;
   for (const g of l.ground) {
-    const out = Math.hypot(Math.max(Math.min(g.from[0], g.to[0]) - lx, 0, lx - Math.max(g.from[0], g.to[0])), Math.max(Math.min(g.from[1], g.to[1]) - lz, 0, lz - Math.max(g.from[1], g.to[1])));
+    const ex = Math.max(Math.min(g.from[0], g.to[0]) - lx, 0, lx - Math.max(g.from[0], g.to[0]));
+    const ez = Math.max(Math.min(g.from[1], g.to[1]) - lz, 0, lz - Math.max(g.from[1], g.to[1]));
+    const out = Math.sqrt(ex * ex + ez * ez);
     const y = oy + g.y;
     if (g.dig) {
       if (out === 0 && h > y) {
