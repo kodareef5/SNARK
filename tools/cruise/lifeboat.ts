@@ -9,7 +9,7 @@ import { surfaceError } from "../pack/error.ts";
 import { buildPack, unpackMeshes, type SourceLod } from "../pack/write.ts";
 
 type Raw = { positions: number[]; indices: number[] };
-type Row = { stage: number; fine: Raw; envelope: Raw; full: Raw };
+type Row = { stage: number; fine: Raw; fineExterior: Raw; envelope: Raw; exterior: Raw; full: Raw };
 const root = resolve(import.meta.dir, "../.."), source = resolve(process.argv[2] ?? join(root, "assets/source/landmarks/cruise"));
 const out = resolve(process.argv[3] ?? join(root, "var/cruise-preview/lifeboat.json"));
 const dir = mkdtempSync(join(tmpdir(), "snark-lifeboat-"));
@@ -21,11 +21,15 @@ try {
   const data = JSON.parse(readFileSync(raw, "utf8")) as { sources: Record<string, string>; rows: Row[] };
   const lod = (v: Raw): SourceLod => ({ positions: Float32Array.from(v.positions), colors: new Uint8Array(v.positions.length / 3), indices: Uint32Array.from(v.indices), error: 0 });
   const rows = data.rows.map(row => {
-    const native = unpackMeshes(parsePack(buildPack([{ id: "cruise:lifeboat-audit", lods: [lod(row.fine), lod(row.envelope), lod(row.full)] }], defaultPalette())))[0]!;
-    return { stage: row.stage, triangles: native.lods[2]!.indices.length / 3, p95Envelope: surfaceError(native.lods[0]!, native.lods[1]!), ...measureSurface(native.lods[2]!) };
+    const native = unpackMeshes(parsePack(buildPack([{ id: "cruise:lifeboat-audit", lods: [lod(row.fine), lod(row.envelope), lod(row.full), lod(row.fineExterior), lod(row.exterior)] }], defaultPalette())))[0]!;
+    return { stage: row.stage, triangles: native.lods[2]!.indices.length / 3,
+      p95EnvelopeIncludingAssemblyCaps: surfaceError(native.lods[0]!, native.lods[1]!),
+      p95Exterior: surfaceError(native.lods[3]!, native.lods[4]!), ...measureSurface(native.lods[2]!) };
   });
-  const report = { scope: "Actual original lifeboat hull/canopy compared with near stage1 and fitted stages2–5 after ordinary native geometry serialization. Reports full-model topology and triangle count. Narrow fittings are separate from the envelope comparison. Cell clipping, surrounding-cell budgets, material appearance and final packed artifact still require ordinary export/review.", sources: data.sources, rows };
+  const report = { scope: "Actual original lifeboat hull/canopy compared with near stage1 and fitted stages2–5 after ordinary native geometry serialization. Exterior error excludes only the two opposing hull-top/canopy-bottom assembly caps; their original 10 mm seam is closed at its midpoint at stages4–5, preserving the white/yellow boundary. Cap-inclusive error is retained separately. Reports full-model topology and triangle count. Narrow fittings are separate from the envelope comparison. Cell clipping, surrounding-cell budgets, material appearance and final packed artifact still require ordinary export/review.", sources: data.sources, rows };
   mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, JSON.stringify(report, null, 2) + "\n");
-  if (rows.some(row => row.p95Envelope > [0, .0125, .025, .06, .13, .25][row.stage]! || row.holes || row.flipped || row.insideOut || row.collapsed)) throw new Error(`Lifeboat diagnostic failed; see ${out}`);
+  if (rows.some(row => [row.p95Exterior, row.p95EnvelopeIncludingAssemblyCaps].some(error =>
+    !Number.isFinite(error) || error > [0, .0125, .025, .06, .13, .25][row.stage]!) ||
+    row.holes || row.flipped || row.insideOut || row.collapsed)) throw new Error(`Lifeboat diagnostic failed; see ${out}`);
   console.log(JSON.stringify({ out, rows }));
 } finally { rmSync(dir, { recursive: true, force: true }); }

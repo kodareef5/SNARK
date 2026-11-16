@@ -33,12 +33,20 @@ def lifeboat(mesh, level):
                     (-1.14, 2.48, 7.25), (-.475, 2.70, 7.48),
                     (.45, 2.60, 7.32)]
         bands = ['enamel'] * 4
-    _shell(mesh, [outline(y, x, z, steps) for y, x, z in stations], bands)
     canopy = [(.46, 2.60, 7.31, 0), (1.30, 2.54, 7.20, 0),
               (1.75, 2.38, 6.98, .20), (2.00, 2.06, 6.76, .45)]
     if level >= 4:
-        canopy = [canopy[0], canopy[2], canopy[3]]
-    _shell(mesh, [outline(y, x, z, steps, dip) for y, x, z, dip in canopy], ['yellow'] * (len(canopy)-1), 'yellow')
+        # Close the 10 mm hull/canopy assembly seam at its midpoint. One
+        # continuous exterior keeps the white/yellow boundary and removes
+        # only the two broad, opposing assembly caps inside the craft.
+        stations[-1] = (.455, 2.60, 7.315)
+        rings = [outline(y, x, z, steps) for y, x, z in stations]
+        rings.extend(outline(y, x, z, steps, dip) for y, x, z, dip in canopy[2:])
+        _shell(mesh, rings, bands + ['yellow', 'yellow'])
+        mesh.tags[-1] = 'yellow'
+    else:
+        _shell(mesh, [outline(y, x, z, steps) for y, x, z in stations], bands)
+        _shell(mesh, [outline(y, x, z, steps, dip) for y, x, z, dip in canopy], ['yellow'] * 3, 'yellow')
     for side in (-1, 1):
         for z in (-4.80, -3.48, 2.55, 3.87):
             if level == 2:
