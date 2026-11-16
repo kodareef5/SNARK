@@ -36,7 +36,7 @@ import { CITY_BUFFER, FarCity, type CitySource } from "./farcity.ts";
 import { FarNodes, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
 import { LAKE_BUFFER, Lakes } from "./lakes.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
 import { SURFACE_MATERIAL } from "../../../content/surfaces.ts";
 import { citySurface, WORLD_ASKED } from "./world-surfaces.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
@@ -121,6 +121,22 @@ const FAR = 1 << PASS_FAR;
 const NO_SHOTS: readonly ShotEnd[] = [];
 /** What of a draw's flags a caster keeps: how its vertices are placed. */
 const CAST_FLAGS = DRAW_SKINNED | DRAW_ONE_BONE | DRAW_SIZED;
+/** A body in the viewer's own body's seat or arms (Scene.mountOf). */
+const MOUNT_OWN = -2;
+
+/** The index among the remote entities, which are sorted by id, of the one with this id, or -1. */
+function indexOfId(remote: RemoteSample, id: number): number {
+  let lo = 0;
+  let hi = remote.count - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const at = remote.id[mid]!;
+    if (at === id) return mid;
+    if (at < id) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return -1;
+}
 
 /** Where an opaque step's cut-out draws go among its others (Scene.cutouts). */
 export type Cutouts = "last" | "made" | "first" | "none";
@@ -303,16 +319,24 @@ export class Scene {
   private readonly seated = new Uint8Array(MAX_VIEW);
   private readonly saddleSeats: Registry["saddleSeats"];
   private readonly seatTurn = new Float64Array(MAX_VIEW * 9);
-  /** The bodies in view this frame: which remote entity each is, its place (x, y, z, yaw), and whether it gets only one bone. */
+  /**
+   * The bodies in view this frame: which remote entity each is, its place (x, y, z, yaw), whether it gets only one bone,
+   * the remote entity whose seat or arms it is in (-1 for none, MOUNT_OWN for the viewer's own body), and whether it
+   * sits astride a saddle there. A body in a seat stands at its mount's place until the seat is found.
+   */
   private readonly bodyFrom = new Uint16Array(MAX_VIEW);
   private readonly bodyAt = new Float64Array(MAX_VIEW * 4);
   private readonly bodyRigid = new Uint8Array(MAX_VIEW);
-  /** Scratch for sorting them: survivors before the rest, then by distance, with the body's number in the low bits. */
+  private readonly bodyMount = new Int16Array(MAX_VIEW);
+  private readonly bodyRides = new Uint8Array(MAX_VIEW);
+  /** By remote entity: its number among the bodies in view, or -1. */
+  private readonly viewed = new Int16Array(MAX_VIEW);
+  /** Scratch for sorting them: survivors and the viewer's mount before the rest, then by distance, with the body's number in the low bits. */
   private readonly bodyOrder = new Uint32Array(MAX_VIEW);
   private readonly mountState = new AnimState();
   private readonly state = new AnimState();
-  /** The characters' draws, given their depth ranges once their instances are written (bodyPasses). */
-  private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number): void => this.draw(mesh, lod, TRANSIENT_BUFFER, first, count, 0, 0, 0, flags, NEAR, 0, layer);
+  /** The characters' draws, given their depth ranges once their instances are written (bodyPasses). A one-bone draw's offset holds its stand-in's first bone. */
+  private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number): void => this.draw(mesh, lod, TRANSIENT_BUFFER, first, count, standIn, 0, 0, flags, NEAR, 0, layer);
   /** Bases drawn as blocks where the near store does not hold their chunks whole, given a far source and the far mesh. */
   private readonly far: FarBlocks | null;
   /** Nodes past the near node field, given a source of them. */
@@ -336,6 +360,7 @@ export class Scene {
   /** Bodies out of view whose shadows may fall in it: which remote entity each is, and its place (x, y, z, yaw). */
   private readonly unseenFrom = new Uint16Array(MAX_VIEW);
   private readonly unseenAt = new Float64Array(MAX_VIEW * 4);
+  private readonly unseenMount = new Int16Array(MAX_VIEW);
   /** The camera of the frame being built. */
   private camera: Camera | null = null;
   /**
@@ -360,7 +385,7 @@ export class Scene {
    * The characters' casters: in each cascade the coarsest held level within its texel, but none finer than the held
    * level nearest the one the view draws.
    */
-  private readonly castBody: CastFn = (mesh, lod, first, count, flags, cascades) => {
+  private readonly castBody: CastFn = (mesh, lod, first, count, flags, cascades, standIn) => {
     const view = this.assets.heldLevel(mesh, lod);
     if (view < 0) return;
     const out = this.pairs;
@@ -368,10 +393,10 @@ export class Scene {
     let left = cascades;
     for (let e = 0; e < n; e++) {
       if (out[e * 2]! <= view) continue;
-      this.cast(mesh, out[e * 2]!, TRANSIENT_BUFFER, first, count, 0, 0, 0, flags, out[e * 2 + 1]!);
+      this.cast(mesh, out[e * 2]!, TRANSIENT_BUFFER, first, count, standIn, 0, 0, flags, out[e * 2 + 1]!);
       left &= ~out[e * 2 + 1]!;
     }
-    if (left !== 0) this.cast(mesh, view, TRANSIENT_BUFFER, first, count, 0, 0, 0, flags, left);
+    if (left !== 0) this.cast(mesh, view, TRANSIENT_BUFFER, first, count, standIn, 0, 0, flags, left);
   };
   /** Linear RGB of the open sky and of deep water. */
   private readonly skyColor = new Float32Array(3);
@@ -890,109 +915,10 @@ export class Scene {
     const ch = this.characters;
     const st = this.state;
     const own = this.own;
-    ch.begin();
+    ch.begin(p);
     let unseen = 0;
     if (remote) {
-      this.vehicleSeats.fill(undefined, 0, remote.count);
-      // First which bodies are in view and where, then which of them the frame has the bones to pose.
-      const from = this.bodyFrom;
-      const place = this.bodyAt;
-      const rigid = this.bodyRigid;
-      let n = 0;
-      let wanted = 0;
-      this.seated.fill(0, 0, remote.count);
-      for (let i = 0; i < remote.count; i++) {
-        const kind = remote.kind[i]!;
-        // A dead creature's body is drawn where it lies, by ch.corpses.
-        if (!ch.has(kind) || remote.id[i] === this.skip || (remote.cue[i]! & CUE_DEAD) !== 0) continue;
-        let x = remote.x[i]! - cam.x;
-        let y = remote.y[i]! - cam.y;
-        let z = remote.z[i]! - cam.z;
-        let yaw = remote.yaw[i]!;
-        // A rider is drawn on its mount's seat, and a creature held in someone's arms in them. The viewer's own body is
-        // placed as predicted, any other as the server sent it.
-        const on = remote.seat[i]! - 1;
-        if (on >= 0) {
-          const at = this.seatAt;
-          const held = (remote.cue[i]! & CUE_HELD) !== 0;
-          let found = false;
-          let saddle = 0;
-          if (own && own.id === on && (remote.seatSlot[i] === 0 || own.generation === remote.seatGen[i])) {
-            saddle = own.gear[GEAR_WORN]!;
-            found = held ? ch.heldAt(remote.id[i]!, kind, on, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, at) : ch.seat(own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, at, remote.seatSlot[i]!, own.vehicle, saddle);
-            yaw = own.yaw;
-            if (found && !held && ch.vehicle(own.kind)) this.vehicleSeats[i] = ch.seatPose(own.kind, remote.seatSlot[i]!, own.vehicle!, at, yaw, remote.yaw[i]!);
-          } else {
-            for (let j = 0; j < remote.count && !found; j++) {
-              if (remote.id[j] !== on) continue;
-              if (remote.seatSlot[i] !== 0 && remote.seatGen[i] !== remote.gen[j]) continue;
-              const ms = this.mountState;
-              ms.unpack(remote.anim[j]!, remote.cue[j]!);
-              ms.seed = bodySeed(on);
-              const vehicle = ch.vehicle(remote.kind[j]!) ? remoteVehiclePose(remote, j, this.vehiclePose) : undefined;
-              saddle = remote.gear[j * GEAR_COUNT + GEAR_WORN]!;
-              found = held ? ch.heldAt(remote.id[i]!, kind, on, remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, at) : ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, remote.tick, at, remote.seatSlot[i]!, vehicle, saddle);
-              yaw = remote.yaw[j]!;
-              if (found && !held && vehicle) this.vehicleSeats[i] = ch.seatPose(remote.kind[j]!, remote.seatSlot[i]!, vehicle, at, yaw, remote.yaw[i]!);
-            }
-          }
-          if (found) {
-            x = at[0]!;
-            y = at[1]!;
-            z = at[2]!;
-            // A rider sits in its seat's whole frame; one in a vehicle's seat is posed in the vehicle's (vehicleSeats).
-            if (!held && !this.vehicleSeats[i]) {
-              const steers = remote.seatSlot[i] === 0 || this.saddleSeats[saddle]?.[remote.seatSlot[i]! - 1]?.driver === true;
-              this.seated[i] = steers ? 1 : 2;
-              for (let q = 0; q < 9; q++) this.seatTurn[i * 9 + q] = at[3 + q]!;
-              // A passenger looks and aims as it will: its own facing turns it within the seat.
-              if (!steers) yaw = remote.yaw[i]!;
-            }
-          }
-        }
-        const r = ch.reach(kind);
-        if (!cam.boxVisible(x - r, y - 0.3, z - r, x + r, y + (r > 2.2 ? r : 2.2), z + r)) {
-          // Out of view, a body whose shadow may fall in it is posed after those in view, while bones are left.
-          if (this.casting && this.bodyShadows.body(x, y, z, r) !== 0) {
-            this.unseenFrom[unseen] = i;
-            this.unseenAt[unseen * 4] = x;
-            this.unseenAt[unseen * 4 + 1] = y;
-            this.unseenAt[unseen * 4 + 2] = z;
-            this.unseenAt[unseen * 4 + 3] = yaw;
-            unseen++;
-          }
-          continue;
-        }
-        from[n] = i;
-        place[n * 4] = x;
-        place[n * 4 + 1] = y;
-        place[n * 4 + 2] = z;
-        place[n * 4 + 3] = yaw;
-        wanted += ch.bones(kind);
-        n++;
-      }
-      // The tier's bones, less those of the viewer's own body, which comes last, and at the top tier those of loose things.
-      const budget = Math.min(this.assets.tier.bones, MAX_BONES - LOOSE_BONES) - (own && ch.has(own.kind) ? ch.bones(own.kind) : 0);
-      rigid.fill(0, 0, n);
-      if (wanted > budget) {
-        // Survivors are posed first, then whatever is nearest, while one bone is left for each body still waiting. Those get that one.
-        const order = this.bodyOrder;
-        for (let k = 0; k < n; k++) {
-          const far = Math.sqrt(place[k * 4]! * place[k * 4]! + place[k * 4 + 1]! * place[k * 4 + 1]! + place[k * 4 + 2]! * place[k * 4 + 2]!);
-          order[k] = (ch.human(remote.kind[from[k]!]!) ? 0 : 0x80000000) + Math.min(Math.floor(far * 256), 0xfffff) * MAX_VIEW + k;
-        }
-        sortU32(order, n);
-        let left = budget - n;
-        let k = 0;
-        for (; k < n; k++) {
-          const more = ch.bones(remote.kind[from[order[k]! % MAX_VIEW]!]!) - 1;
-          if (more > left) break;
-          left -= more;
-        }
-        for (; k < n; k++) rigid[order[k]! % MAX_VIEW] = 1;
-      }
-      for (let k = 0; k < n; k++) this.addRemote(remote, from[k]!, place, k, rigid[k] !== 0, false);
-      // Pitched props, such as an arrow where it landed.
+      // Loose things and the dead first: they keep their bones, and the living share what is left.
       for (let i = 0; i < remote.count; i++) {
         const kind = remote.kind[i]!;
         if (this.pitched[kind] === 0) continue;
@@ -1009,21 +935,78 @@ export class Scene {
     }
     // Then the shots in the air.
     this.shots?.draw(ch, p, cam, this.shotTick);
+    if (remote) {
+      this.vehicleSeats.fill(undefined, 0, remote.count);
+      this.seated.fill(0, 0, remote.count);
+      this.viewed.fill(-1, 0, remote.count);
+      // First which bodies are in view and where, then which of them the frame has the bones to pose, then where those in
+      // a seat or in arms are, as their mounts are drawn.
+      const from = this.bodyFrom;
+      const place = this.bodyAt;
+      let n = 0;
+      let wanted = 0;
+      for (let i = 0; i < remote.count; i++) {
+        const kind = remote.kind[i]!;
+        // A dead creature's body is drawn where it lies, by ch.corpses.
+        if (!ch.has(kind) || remote.id[i] === this.skip || (remote.cue[i]! & CUE_DEAD) !== 0) continue;
+        let x = remote.x[i]! - cam.x;
+        let y = remote.y[i]! - cam.y;
+        let z = remote.z[i]! - cam.z;
+        let r = ch.reach(kind);
+        // A rider is drawn on its mount's seat, and a creature held in someone's arms in them, so it is culled about its mount.
+        const mount = this.mountOf(remote, i);
+        if (mount !== -1) {
+          x = (mount === MOUNT_OWN ? own!.x : remote.x[mount]!) - cam.x;
+          y = (mount === MOUNT_OWN ? own!.y : remote.y[mount]!) - cam.y;
+          z = (mount === MOUNT_OWN ? own!.z : remote.z[mount]!) - cam.z;
+          r += ch.reach(mount === MOUNT_OWN ? own!.kind : remote.kind[mount]!);
+        }
+        if (!cam.boxVisible(x - r, y - 0.3, z - r, x + r, y + (r > 2.2 ? r : 2.2), z + r)) {
+          // Out of view, a body whose shadow may fall in it is posed after those in view, while bones are left.
+          if (this.casting && this.bodyShadows.body(x, y, z, r) !== 0) {
+            this.unseenFrom[unseen] = i;
+            this.unseenMount[unseen] = mount;
+            this.unseenAt[unseen * 4] = x;
+            this.unseenAt[unseen * 4 + 1] = y;
+            this.unseenAt[unseen * 4 + 2] = z;
+            this.unseenAt[unseen * 4 + 3] = remote.yaw[i]!;
+            unseen++;
+          }
+          continue;
+        }
+        from[n] = i;
+        place[n * 4] = x;
+        place[n * 4 + 1] = y;
+        place[n * 4 + 2] = z;
+        place[n * 4 + 3] = remote.yaw[i]!;
+        this.bodyMount[n] = mount;
+        this.bodyRides[n] = mount !== -1 && (remote.cue[i]! & CUE_HELD) === 0 && !ch.vehicle(mount === MOUNT_OWN ? own!.kind : remote.kind[mount]!) ? 1 : 0;
+        this.viewed[i] = n;
+        wanted += ch.bones(kind);
+        n++;
+      }
+      // The tier's bones less those taken, and those of the viewer's own body, which comes last.
+      const budget = Math.min(p.tier.bones, MAX_BONES) - p.boneCount - (own && ch.has(own.kind) ? ch.bones(own.kind) : 0);
+      this.bodyRigid.fill(0, 0, n);
+      if (wanted > budget) this.thin(remote, n, wanted, budget);
+      for (let k = 0; k < n; k++) if (this.bodyMount[k] !== -1) this.seatIn(remote, from[k]!, this.bodyMount[k]!, place, k);
+      for (let k = 0; k < n; k++) this.addRemote(remote, from[k]!, place, k, this.bodyRigid[k] !== 0, false);
+    }
     if (own && ch.has(own.kind)) {
       let seat: VehicleSeatPose | undefined;
       let saddled = false;
       const at = this.seatAt;
-      if (own.attachment && remote) for (let j = 0; j < remote.count; j++) {
-        if (remote.id[j] !== own.attachment.host || remote.gen[j] !== own.attachment.generation) continue;
-        const vehicle = ch.vehicle(remote.kind[j]!) ? remoteVehiclePose(remote, j, this.vehiclePose) : undefined, ms = this.mountState;
-        ms.unpack(remote.anim[j]!, remote.cue[j]!);
-        ms.seed = bodySeed(remote.id[j]!);
-        if (ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, remote.tick, at, own.attachment.slot, vehicle, remote.gear[j * GEAR_COUNT + GEAR_WORN]!)) {
+      const j = own.attachment && remote ? indexOfId(remote, own.attachment.host) : -1;
+      if (j >= 0 && remote!.gen[j] === own.attachment!.generation) {
+        const vehicle = ch.vehicle(remote!.kind[j]!) ? remoteVehiclePose(remote!, j, this.vehiclePose) : undefined, ms = this.mountState;
+        ms.unpack(remote!.anim[j]!, remote!.cue[j]!);
+        ms.seed = bodySeed(remote!.id[j]!);
+        const v = this.viewed[j]!;
+        if (ch.seat(remote!.kind[j]!, remote!.x[j]! - cam.x, remote!.y[j]! - cam.y, remote!.z[j]! - cam.z, remote!.yaw[j]!, ms, remote!.tick, at, own.attachment!.slot, vehicle, remote!.gear[j * GEAR_COUNT + GEAR_WORN]!, remote!.id[j]!, v >= 0 && this.bodyRigid[v] !== 0)) {
           // A passenger in a car is posed in the car's frame; on a creature, astride in its seat's.
-          if (vehicle) seat = ch.seatPose(remote.kind[j]!, own.attachment.slot, vehicle, at, remote.yaw[j]!, own.yaw);
+          if (vehicle) seat = ch.seatPose(remote!.kind[j]!, own.attachment!.slot, vehicle, at, remote!.yaw[j]!, own.yaw);
           else saddled = true;
         }
-        break;
       }
       if (saddled) ch.add(p, own.kind, at[0]!, at[1]!, at[2]!, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.gear, 0, own.id, own.firstPerson, own.firstPerson, 1, false, false, at, 3, undefined, undefined, false);
       else ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.gear, 0, own.id, own.firstPerson, own.firstPerson, 1, false, false, null, 0, own.vehicle, seat);
@@ -1032,6 +1015,89 @@ export class Scene {
     const from = p.drawCount;
     ch.flush(p, this.transient, false, this.drawBody, this.casting ? this.castBody : null);
     if (cam.split > 0) this.bodyPasses(cam, from);
+  }
+
+  /** The remote entity in whose seat or arms entity `i` is, MOUNT_OWN for the viewer's own body, or -1. */
+  private mountOf(remote: RemoteSample, i: number): number {
+    const on = remote.seat[i]! - 1;
+    if (on < 0) return -1;
+    const own = this.own;
+    if (own && own.id === on && (remote.seatSlot[i] === 0 || own.generation === remote.seatGen[i])) return MOUNT_OWN;
+    const j = indexOfId(remote, on);
+    return j >= 0 && (remote.seatSlot[i] === 0 || remote.seatGen[i] === remote.gen[j]) ? j : -1;
+  }
+
+  /**
+   * Leaves on one bone those of the `n` bodies in view, which want `wanted` bones, that `budget` has no room to pose:
+   * survivors and the viewer's mount are posed first, then the nearest, and those left take a bone each and the bones of
+   * the poses they stand in (Characters.standInBones).
+   */
+  private thin(remote: RemoteSample, n: number, wanted: number, budget: number): void {
+    const ch = this.characters;
+    const st = this.state;
+    const place = this.bodyAt;
+    const from = this.bodyFrom;
+    const order = this.bodyOrder;
+    const host = this.own?.attachment?.host ?? -1;
+    for (let k = 0; k < n; k++) {
+      const far = Math.sqrt(place[k * 4]! * place[k * 4]! + place[k * 4 + 1]! * place[k * 4 + 1]! + place[k * 4 + 2]! * place[k * 4 + 2]!);
+      const first = ch.human(remote.kind[from[k]!]!) || remote.id[from[k]!] === host;
+      order[k] = (first ? 0 : 0x80000000) + Math.min(Math.floor(far * 256), 0xfffff) * MAX_VIEW + k;
+    }
+    sortU32(order, n);
+    let need = wanted;
+    for (let o = n - 1; o >= 0 && need > budget; o--) {
+      const k = order[o]! % MAX_VIEW;
+      const i = from[k]!;
+      st.unpack(remote.anim[i]!, remote.cue[i]!);
+      need -= ch.bones(remote.kind[i]!) - 1 - ch.standInBones(remote.kind[i]!, remote.hasLook[i] !== 0 ? remote.look : null, i * LOOK_BYTES, st, this.bodyRides[k] !== 0);
+      this.bodyRigid[k] = 1;
+    }
+  }
+
+  /**
+   * Puts body `i`, in the seat or arms of `mount` (mountOf), at `k` of `place`, where its mount holds it as that is drawn
+   * this frame; or where it is, facing its mount's way, if there is no such seat.
+   */
+  private seatIn(remote: RemoteSample, i: number, mount: number, place: Float64Array, k: number): void {
+    const ch = this.characters;
+    const p = this.packet;
+    const at = this.seatAt;
+    const held = (remote.cue[i]! & CUE_HELD) !== 0;
+    let found: boolean;
+    let saddle: number;
+    let yaw: number;
+    if (mount === MOUNT_OWN) {
+      const own = this.own!;
+      const x = own.x - p.camX, y = own.y - p.camY, z = own.z - p.camZ;
+      saddle = own.gear[GEAR_WORN]!;
+      found = held ? ch.heldAt(remote.id[i]!, remote.kind[i]!, own.id, own.kind, x, y, z, own.yaw, own.state, at) : ch.seat(own.kind, x, y, z, own.yaw, own.state, own.tick, at, remote.seatSlot[i]!, own.vehicle, saddle, own.id);
+      yaw = own.yaw;
+      if (found && !held && ch.vehicle(own.kind)) this.vehicleSeats[i] = ch.seatPose(own.kind, remote.seatSlot[i]!, own.vehicle!, at, yaw, remote.yaw[i]!);
+    } else {
+      const j = mount;
+      const x = remote.x[j]! - p.camX, y = remote.y[j]! - p.camY, z = remote.z[j]! - p.camZ;
+      const ms = this.mountState;
+      ms.unpack(remote.anim[j]!, remote.cue[j]!);
+      ms.seed = bodySeed(remote.id[j]!);
+      const vehicle = ch.vehicle(remote.kind[j]!) ? remoteVehiclePose(remote, j, this.vehiclePose) : undefined;
+      saddle = remote.gear[j * GEAR_COUNT + GEAR_WORN]!;
+      const v = this.viewed[j]!;
+      found = held ? ch.heldAt(remote.id[i]!, remote.kind[i]!, remote.id[j]!, remote.kind[j]!, x, y, z, remote.yaw[j]!, ms, at) : ch.seat(remote.kind[j]!, x, y, z, remote.yaw[j]!, ms, remote.tick, at, remote.seatSlot[i]!, vehicle, saddle, remote.id[j]!, v >= 0 && this.bodyRigid[v] !== 0);
+      yaw = remote.yaw[j]!;
+      if (found && !held && vehicle) this.vehicleSeats[i] = ch.seatPose(remote.kind[j]!, remote.seatSlot[i]!, vehicle, at, yaw, remote.yaw[i]!);
+    }
+    place[k * 4] = found ? at[0]! : remote.x[i]! - p.camX;
+    place[k * 4 + 1] = found ? at[1]! : remote.y[i]! - p.camY;
+    place[k * 4 + 2] = found ? at[2]! : remote.z[i]! - p.camZ;
+    place[k * 4 + 3] = yaw;
+    // A rider sits in its seat's whole frame; one in a vehicle's seat is posed in the vehicle's (vehicleSeats).
+    if (!found || held || this.vehicleSeats[i]) return;
+    const steers = remote.seatSlot[i] === 0 || this.saddleSeats[saddle]?.[remote.seatSlot[i]! - 1]?.driver === true;
+    this.seated[i] = steers ? 1 : 2;
+    for (let q = 0; q < 9; q++) this.seatTurn[i * 9 + q] = at[3 + q]!;
+    // A passenger looks and aims as it will: its own facing turns it within the seat.
+    if (!steers) place[k * 4 + 3] = remote.yaw[i]!;
   }
 
   /** Poses remote entity `i` at the place `at` holds at `k` (x, y, z camera-relative, and yaw), for the view or, `unseen`, for its shadow alone. */
@@ -1045,12 +1111,10 @@ export class Scene {
     this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, this.own?.cockpitActor === remote.id[i]!, size, rigid, unseen, this.seated[i] !== 0 ? this.seatTurn : null, i * 9, this.characters.vehicle(kind) ? remoteVehiclePose(remote, i, this.vehiclePose) : undefined, this.vehicleSeats[i], this.seated[i] !== 2);
   }
 
-
-
   /**
    * Poses the bodies out of view whose shadows may fall in it, nearest first, by the same call as a body in view, so a
-   * shadow matches its body when it walks in. They take the tier's bones those in view leave, and stand rigid when one
-   * bone is all that is left.
+   * shadow matches its body when it walks in. They take the tier's bones those in view leave, and stand in a pose on one
+   * bone when there are too few for theirs.
    */
   private poseUnseen(remote: RemoteSample, count: number): void {
     const p = this.packet;
@@ -1058,12 +1122,13 @@ export class Scene {
     const order = this.bodyOrder;
     for (let k = 0; k < count; k++) order[k] = Math.min(Math.floor(Math.hypot(place[k * 4]!, place[k * 4 + 1]!, place[k * 4 + 2]!) * 256), 0xfffff) * MAX_VIEW + k;
     sortU32(order, count);
-    const limit = Math.min(this.assets.tier.bones, MAX_BONES);
+    const limit = Math.min(p.tier.bones, MAX_BONES);
     for (let o = 0; o < count; o++) {
       const k = order[o]! % MAX_VIEW;
       const i = this.unseenFrom[k]!;
       const rigid = p.boneCount + this.characters.bones(remote.kind[i]!) > limit;
       if (rigid && p.boneCount >= limit) break;
+      if (this.unseenMount[k] !== -1) this.seatIn(remote, i, this.unseenMount[k]!, place, k);
       this.addRemote(remote, i, place, k, rigid, true);
     }
   }

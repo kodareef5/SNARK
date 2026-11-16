@@ -117,10 +117,13 @@ test("a version 1 manifest, which had flat levels only, is still read", () => {
 test("the flat renderer's shader text is the text low poly was always drawn with", () => {
   // A change here changes how low poly is drawn on every device. Change the number only when that is meant. It was 4159497701
   // until a node was drawn at its size, which added one line and nothing else: a draw that is not sized never runs it.
+  // They were 4159497701 and 3915806831 until a body on one bone stood in a pose (DRAW_ONE_BONE): the bones are read by a
+  // function, and such a vertex follows its bone of that pose before the body's one bone. A body on its own bones is placed
+  // by the same rows as before.
   const sizing = "    if (uSkin < -0.5) l *= float(iRegB.y) / 64.0;\n";
   expect(FLAT_MESH_VERTEX).toContain(sizing);
-  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX.replace(sizing, "") + FLAT_TERRAIN_VERTEX)).toBe(4159497701);
-  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + FLAT_TERRAIN_VERTEX)).toBe(3915806831);
+  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX.replace(sizing, "") + FLAT_TERRAIN_VERTEX)).toBe(2880639374);
+  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + FLAT_TERRAIN_VERTEX)).toBe(3218886244);
 });
 
 test("draw flags are one bit each, a frame starts with no texture work, and the tiers ask for more as they go up", () => {

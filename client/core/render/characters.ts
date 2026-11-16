@@ -16,7 +16,7 @@ import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX,
 import { AnimState, HumanAnim, PITCH_STEPS, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";
 import { ACT_NONE, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
-import { STANCE_CROUCH, STANCE_STAND } from "../../../shared/sim/character.ts";
+import { MODE_FLYER, STANCE_CROUCH, STANCE_STAND } from "../../../shared/sim/character.ts";
 import { Solved, boneToModel, solve } from "../../../shared/anim/skeleton.ts";
 import { CreatureAnim, advanceCreature, creaturePose } from "../../../shared/anim/creature.ts";
 import { Gait } from "../../../shared/anim/gait.ts";
@@ -125,10 +125,13 @@ interface BodyKind {
   color: number;
 }
 
-/** `layer` is the level of the bodies' hurt and decay layer (layers.ts), 0 for none. */
-export type DrawFn = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number) => void;
+/**
+ * `layer` is the level of the bodies' hurt and decay layer (layers.ts), 0 for none. `standIn`, on a DRAW_ONE_BONE draw, is
+ * the first bone of the pose its bodies stand in.
+ */
+export type DrawFn = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number) => void;
 /** Puts instances into the shadow caster list for `cascades`, a bit each. `lod` is the level the view would draw them at. */
-export type CastFn = (mesh: number, lod: number, first: number, count: number, flags: number, cascades: number) => void;
+export type CastFn = (mesh: number, lod: number, first: number, count: number, flags: number, cascades: number, standIn: number) => void;
 
 /** What a body's shadow takes, while the sun casts: the cascades a body within `radius` of a camera-relative point can shade, and those a mesh is large enough for. */
 export interface BodyShadows {
@@ -140,28 +143,54 @@ export interface BodyShadows {
 const SEEN = 0;
 const OWN = 1;
 const CASTS = 2;
+/** One the frame had no draw left for, counted dropped. */
+const NONE = 3;
 /** Cascade masks an instance may have: a bit each for up to four. */
 const MASKS = 16;
 
-/** A body's gait, the frame it was last drawn in, and a survivor's look with the bone scales it gives, kept while it is the same. */
+/**
+ * A body's gait, the frame it was last drawn in and the frame its gait last moved, a survivor's look with the bone scales
+ * it gives, kept while it is the same, and its pose as last worked out, in frame `posedAt` as `form`, drawn until it is due.
+ */
 class Stride extends Gait {
   seen = 0;
+  moved = -1;
   look: Uint8Array | null = null;
   scales: Float32Array | null = null;
+  solved: Solved | null = null;
+  posedAt = -1;
+  form = -1;
+}
+
+/** A pose a body stands in while the frame has no bones to pose it: its rows about its origin, and its bones this frame. */
+interface StandIn {
+  rows: Float32Array;
+  solved: Solved;
+  counted: number;
+  written: number;
+  first: number;
 }
 
 /** Frames a body may go undrawn before its gait is forgotten. */
 const FORGET_GAIT = 600;
 /** Numbers kept for each held creature posed in a frame (Characters.inArms). */
 const HELD_FIELDS = 10;
-/** Draws a frame may have of bodies whose layer shows, each a mesh, level and layer level of its own. */
-const LAYERED_KEYS = 256;
+/** Draws a frame may have of bodies whose layer shows or that stand in a pose, each a mesh, level, layer and pose of its own. */
+const EXTRA_KEYS = 1024;
+/**
+ * A body is posed every frame while a metre of it covers FULL_RATE_PIXELS, then every 2nd, 4th or 8th frame as that halves,
+ * and no less often than a planted foot slides SLIDE_PIXELS between poses at 60 frames a second.
+ */
+const FULL_RATE_PIXELS = 32;
+const SLIDE_PIXELS = 2;
+const POSE_EVERY = 8;
 
 export class Characters {
   readonly rotorBlur = new RotorBlur();
   readonly anim: HumanAnim;
-  /** Bodies posed this frame. */
+  /** Bodies drawn on bones of their own this frame, and those of them whose pose was worked out anew. */
   posed = 0;
+  fresh = 0;
   /** Set while the sun casts. Null leaves every body out of the shadows. */
   shadows: BodyShadows | null = null;
   private readonly kinds: (BodyKind | null)[];
@@ -190,19 +219,21 @@ export class Characters {
   private readonly turnFrame: VehicleFrame = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, qx: undefined, qy: undefined, qz: undefined, qw: undefined };
   private readonly seatPlace = new Float64Array(3);
   private readonly seating: { role: MountMotionRole; tick: number; startTick: number; durationTicks: number; steering: number | undefined; upper: Pose | undefined } = { role: "ride", tick: 0, startTick: 0, durationTicks: 1, steering: undefined, upper: undefined };
-  /** What the meshes of the survivor being added share (queuePart). */
-  private readonly part = { lod: 0, far: 0, rigid: false, first: 0, color: 0, id: 0, own: false, casts: 0, rest: null as Float32Array | null };
+  /** What the meshes of the survivor being added share (queuePart). `stand` is its stand-in's first bone, or -1 posed. */
+  private readonly part = { lod: 0, far: 0, stand: -1, first: 0, color: 0, id: 0, own: false, casts: 0, rest: null as Float32Array | null };
 
   // Instances queued this frame, one per mesh of each body.
   private count = 0;
   /**
-   * Twice (pack mesh * levels + level of detail), and one more for a body on one bone. A body whose layer shows takes a
-   * key from `plain` on, for that key and its layer level, which `layered` holds.
+   * Pack mesh * levels + level of detail. A body whose layer shows or that stands in a pose takes a key from `plain` on,
+   * for that key, its layer level and its stand-in's first bone (-1 for none), which `extra` holds.
    */
   private readonly key = new Uint32Array(MAX_SKINNED);
   private readonly plain: number;
-  private readonly layered = new Uint32Array(LAYERED_KEYS * 2);
-  private layeredKeys = 0;
+  private readonly extra = new Int32Array(EXTRA_KEYS * 3);
+  private extraKeys = 0;
+  /** Stand-ins made so far, by body set and what they do (standIn). */
+  private readonly standIns = new Map<number, StandIn>();
   private readonly layers = new Layers();
   /** The most levels of detail any mesh of the pack has, so that a body can be drawn at every level its mesh has. */
   private readonly levels: number;
@@ -227,11 +258,7 @@ export class Characters {
   /** Each body's gait, by its id, so its legs go by the ground it covers (shared/anim/gait.ts). */
   private readonly gaits = new Map<number, Stride>();
   private frame = 0;
-  /**
-   * The id of the creature last drawn of each mesh and body clock (bodySeed), for seat(), which is not told whose seat it
-   * is. The packet is the same one every frame, and holds the camera by the time seat() is asked.
-   */
-  private readonly bySeed = new Map<number, number>();
+  /** The packet is the same one every frame, and holds the camera by the time seat() is asked. */
   private packet: FramePacket | null = null;
   /** Bodies that died, as their death clips and ragdolls pose them. */
   private readonly dead: Corpses;
@@ -265,9 +292,9 @@ export class Characters {
     this.assets = assets;
     this.anim = new HumanAnim(pack.clips);
     this.levels = table.error.reduce((most, e) => Math.max(most, e.length), 1);
-    this.plain = table.count * this.levels * 2;
-    this.counts = new Uint32Array(this.plain + LAYERED_KEYS);
-    this.cursor = new Uint32Array(this.plain + LAYERED_KEYS);
+    this.plain = table.count * this.levels;
+    this.counts = new Uint32Array(this.plain + EXTRA_KEYS);
+    this.cursor = new Uint32Array(this.plain + EXTRA_KEYS);
     this.maskCounts = new Uint32Array(this.counts.length * MASKS);
     this.maskCursor = new Uint32Array(this.counts.length * MASKS);
     /** Only a mesh on the human skeleton is drawn as part of a body. */
@@ -427,9 +454,10 @@ export class Characters {
    * Writes where a rider sits in seat `seatSlot` (1 for its first) of the saddle item `saddle` on a creature of this kind
    * at (x, y, z) facing `yaw` radians, posed as it is drawn: the rider's origin and the rows of its turn, in the seat
    * socket's whole frame (shared/anim/seat.ts), or at the seat's anchor where the rig has no such socket. False for a kind
-   * without that seat. A vehicle's seat is its anchor alone, at out[0..2]; its turn is the car's.
+   * without that seat. A vehicle's seat is its anchor alone, at out[0..2]; its turn is the car's. Given the mount's `id`, it
+   * is posed once this frame for its seat and its own draw, or `rigid`, stands in the pose it is drawn in.
    */
-  seat(kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, out: Float64Array, seatSlot = 0, vehicle?: VehicleRenderPose, saddle = 0): boolean {
+  seat(kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, out: Float64Array, seatSlot = 0, vehicle?: VehicleRenderPose, saddle = 0, id = -1, rigid = false): boolean {
     const c = this.creatures[kind];
     const rig = c?.anim.rig;
     if (c?.vehicle) {
@@ -450,16 +478,136 @@ export class Characters {
       anchorFrame(def.anchor, x, y, z, yaw, out);
       return true;
     }
-    // The mount's legs are where they will be drawn: its gait, found by its mesh and clock, if that body was drawn here.
-    const id = this.bySeed.get(c.mesh * 1024 + st.seed);
-    let g = id === undefined ? undefined : this.gaits.get(id);
-    const p = this.packet;
-    if (g && p && Math.abs(g.x - x - p.camX) < 3 && Math.abs(g.z - z - p.camZ) < 3) advanceCreature(c.anim, g, st, tick, x + p.camX, z + p.camZ, yaw, 1);
-    else g = undefined;
-    creaturePose(c.anim, st, tick, rig.a, g ?? null);
-    solve(rig, rig.a, rig.solved);
-    seatFrame(rig.solved, socket, x, y, z, yaw, out);
+    let solved = rig.solved;
+    if (rigid) solved = this.standIn(kind, 0, st, false).solved;
+    else if (id >= 0) solved = this.creatureSolved(kind, c, id, x, y, z, yaw, st, tick, 1, false);
+    else {
+      creaturePose(c.anim, st, tick, rig.a, null);
+      solve(rig, rig.a, rig.solved);
+    }
+    seatFrame(solved, socket, x, y, z, yaw, out);
     return true;
+  }
+
+  /**
+   * The pose creature `id` is drawn in this frame: worked out anew when it is due, and otherwise as it last was. Its gait
+   * moves once a frame, whether it is posed for its seat or for itself.
+   */
+  private creatureSolved(kind: number, c: Creature, id: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, size: number, unseen: boolean): Solved {
+    const rig = c.anim.rig;
+    const g = this.gaitOf(id);
+    if (g.moved !== this.frame) {
+      g.moved = this.frame;
+      advanceCreature(c.anim, g, st, tick, x + (this.packet?.camX ?? 0), z + (this.packet?.camZ ?? 0), yaw, size);
+    }
+    const solved = this.kept(g, rig.bones);
+    const aloft = st.mode === MODE_FLYER && !st.grounded;
+    if (this.due(g, kind * 4, id, Math.sqrt(x * x + y * y + z * z) / size, unseen, aloft ? 0 : g.speed)) {
+      creaturePose(c.anim, st, tick, rig.a, g);
+      solve(rig, rig.a, solved);
+    }
+    return solved;
+  }
+
+  /** The body's kept pose, made for `bones` bones. */
+  private kept(g: Stride, bones: number): Solved {
+    if (g.solved === null || g.solved.pos.length !== bones * 3) {
+      g.solved = new Solved(bones);
+      g.form = -1;
+    }
+    return g.solved;
+  }
+
+  /**
+   * Whether a body is posed anew this frame (and counted so), `distance` metres off as it is drawn and walking at `speed`
+   * metres a second: when it is first posed as `form`, and then as often as its size on screen and its feet ask, staggered by
+   * its `id`; and every frame `always`. One `unseen`, posed for its shadow alone, is posed half as often.
+   */
+  private due(g: Stride, form: number, id: number, distance: number, unseen: boolean, speed: number, always = false): boolean {
+    if (!always && g.form === form && this.frame - g.posedAt < POSE_EVERY) {
+      if (g.posedAt === this.frame) return false;
+      // A metre's pixels there.
+      const pixels = this.assets.scale / (distance > 1 ? distance : 1);
+      let every = FULL_RATE_PIXELS / pixels;
+      if (speed > 0) every = Math.min(every, 1 + (SLIDE_PIXELS * 60) / (speed * pixels));
+      if (unseen) every *= 2;
+      every = every >= POSE_EVERY ? POSE_EVERY : every >= 4 ? 4 : every >= 2 ? 2 : 1;
+      if (((this.frame + id) & (every - 1)) !== 0) return false;
+    }
+    g.form = form;
+    g.posedAt = this.frame;
+    this.fresh++;
+    return true;
+  }
+
+  /**
+   * The pose a body of `kind`, a survivor of body set `set`, stands in while the frame has no bones to pose it, for what
+   * `st` says it is doing and whether it is `seated` astride: as it is posed doing that, standing still, at tick 0. Made
+   * once, the first time it is asked for. A vehicle stands in its rest pose.
+   */
+  private standIn(kind: number, set: number, st: AnimState, seated: boolean): StandIn {
+    const c = this.creatures[kind];
+    const doing = c?.vehicle ? 0 : (st.mode & 7) | (st.grounded ? 8 : 0) | ((st.stance & 3) << 4) | (st.out ? 64 : 0) | (st.held ? 128 : 0) | (seated ? 256 : 0);
+    const key = (kind * 2 + set) * 512 + doing;
+    let s = this.standIns.get(key);
+    if (s) return s;
+    const like = new AnimState();
+    like.mode = st.mode;
+    like.grounded = st.grounded;
+    like.stance = st.stance;
+    like.out = st.out;
+    like.held = st.held;
+    let solved: Solved;
+    let rest: Float32Array;
+    if (c) {
+      const rig = c.anim.rig;
+      if (c.vehicle) rig.a.rest();
+      else creaturePose(c.anim, like, 0, rig.a, null);
+      solve(rig, rig.a, (solved = new Solved(rig.bones)));
+      rest = rig.rest;
+    } else {
+      const body = this.kinds[kind]!.sets[set]!;
+      if (seated) this.seatedPose("ride", 0, undefined, undefined);
+      else humanPose(this.anim, like, 0, this.pose, null);
+      solve(HUMAN, this.pose, (solved = new Solved(HUMAN_BONES)), body.rest, null);
+      rest = body.rest;
+    }
+    const rows = new Float32Array((solved.pos.length / 3) * BONE_FLOATS);
+    writeBones(rows, 0, solved, rest, null, 0, 0, 0, 0);
+    s = { rows, solved, counted: -1, written: -1, first: 0 };
+    this.standIns.set(key, s);
+    return s;
+  }
+
+  /** The body set a survivor of this kind with `look` at `lookAt` (null for none) is drawn as. */
+  private setOf(k: BodyKind, look: Uint8Array | null, lookAt: number): number {
+    if (k.sets.length < 2) return 0;
+    const sex = look ? look[lookAt + LOOK_SEX]! : PLAIN[LOOK_SEX]!;
+    return sex < k.sets.length ? sex : 0;
+  }
+
+  /**
+   * The bones the pose a body would stand in takes, the first time this frame it is asked for, and 0 after: what a frame
+   * short of bones keeps for those it leaves unposed (Scene). `seated` as add() is given a saddle seat.
+   */
+  standInBones(kind: number, look: Uint8Array | null, lookAt: number, st: AnimState, seated: boolean): number {
+    const k = this.kinds[kind];
+    if (!k && !this.creatures[kind]) return 0;
+    const s = this.standIn(kind, k ? this.setOf(k, look, lookAt) : 0, st, seated && k !== null);
+    if (s.counted === this.frame || s.written === this.frame) return 0;
+    s.counted = this.frame;
+    return s.rows.length / BONE_FLOATS;
+  }
+
+  /** The first bone of stand-in `s` this frame, put in the packet the first time it is asked for, or -1 without room. */
+  private standInAt(p: FramePacket, s: StandIn): number {
+    if (s.written === this.frame) return s.first;
+    const first = this.room(p, s.rows.length / BONE_FLOATS, 0, false);
+    if (first < 0) return -1;
+    p.bones.set(s.rows, first * BONE_FLOATS);
+    s.written = this.frame;
+    s.first = first;
+    return first;
   }
 
   /**
@@ -522,8 +670,14 @@ export class Characters {
     const saddle = gear ? gear[gearAt + GEAR_WORN]! : 0;
     const saddled = saddle !== 0 && this.saddle[saddle] === 1 && c.saddled >= 0;
     const worn = saddle === 0 || saddled ? -1 : (c.worn.get(saddle) ?? -1);
-    const first = this.room(p, rigid ? 1 : rig.bones, worn >= 0 ? 2 : 1, !unseen);
-    if (first < 0) return false;
+    this.packet = p;
+    const stand = rigid ? this.standInAt(p, this.standIn(kind, 0, st, false)) : -1;
+    const first = rigid && stand < 0 ? -1 : this.room(p, rigid ? 1 : rig.bones, worn >= 0 ? 2 : 1, !unseen);
+    if (first < 0) {
+      if (rigid && stand < 0 && !unseen) p.dropped++;
+      return false;
+    }
+    let solved = rig.solved;
     if (rigid) {
       if (c.vehicle && vehicle?.qw !== undefined) {
         this.turn(vehicle, yaw, vehicle.pitch, vehicle.roll, this.rotation);
@@ -531,7 +685,6 @@ export class Characters {
       } else writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, size);
     }
     else {
-      this.packet = p;
       const v = c.vehicle;
       if (v) {
         rig.a.rest();
@@ -559,13 +712,9 @@ export class Characters {
           quatAxis(this.steer, 0, 0, 1, 0, v.def.wheels[w]!.steers ? steering : 0);
           quatMul(rig.a.rot, b * 4, this.steer, 0, this.wheel, 0);
         }
-      } else {
-        const g = this.gaitOf(id);
-        advanceCreature(c.anim, g, st, tick, x + p.camX, z + p.camZ, yaw, size);
-        this.bySeed.set(c.mesh * 1024 + st.seed, id);
-        creaturePose(c.anim, st, tick, rig.a, g);
-      }
-      solve(rig, rig.a, rig.solved);
+        solve(rig, rig.a, rig.solved);
+        this.fresh++;
+      } else solved = this.creatureSolved(kind, c, id, x, y, z, yaw, st, tick, size, unseen);
       if (v) {
         this.turn(vehicle, yaw, vehicle?.pitch ?? 0, vehicle?.roll ?? 0, this.rotation);
         orientSolved(rig.solved, this.rotation, c.oriented);
@@ -588,15 +737,15 @@ export class Characters {
             if (b >= 0) this.rotorBlur.add(p, first + b, id * 4 + r, v.def.rotors[r]!, vehicle?.rotorRpm ?? 0, this.rotation, x, y, z, size);
           }
         }
-      } else writeBones(p.bones, first * BONE_FLOATS, rig.solved, rig.rest, null, x, y, z, yaw, size);
+      } else writeBones(p.bones, first * BONE_FLOATS, solved, rig.rest, null, x, y, z, yaw, size);
       this.posed++;
-      if (!unseen) this.keepHead(c, id, p.camX + x, p.camY + y, p.camZ + z, yaw, size);
+      if (!unseen) this.keepHead(c, solved, id, p.camX + x, p.camY + y, p.camZ + z, yaw, size);
     }
     const carrier = st.held ? this.carriedBy.get(id) : undefined;
     if (carrier !== undefined) this.inArms.push(first, rigid ? 1 : rig.bones, x, y, z, yaw, size, carrier, kind, id);
     const layer = unseen || !this.assets.tier.lit ? 0 : this.layers.level(id, layerWanted(st), tick, this.last.has(id));
-    const lod = saddled ? this.queueCreature(c, c.saddled, c.saddledError, first, x, y, z, colors, colorAt, id, size, rigid, unseen, layer) : this.queueCreature(c, c.mesh, c.error, first, x, y, z, colors, colorAt, id, size, rigid, unseen, layer);
-    if (worn >= 0) this.queueWorn(c, worn, lod, x, y, z, size, rigid);
+    const lod = saddled ? this.queueCreature(c, c.saddled, c.saddledError, first, x, y, z, colors, colorAt, id, size, stand, unseen, layer) : this.queueCreature(c, c.mesh, c.error, first, x, y, z, colors, colorAt, id, size, stand, unseen, layer);
+    if (worn >= 0) this.queueWorn(c, worn, lod, x, y, z, size, stand);
     return true;
   }
 
@@ -604,13 +753,13 @@ export class Characters {
    * Keeps where the pose just solved puts its `overhead` socket, or a little above its highest joint on a rig without one.
    * A head turned over, as on a body lying on its back, takes the socket below it, so the socket is held at its bone's height.
    */
-  private keepHead(c: Creature, id: number, x: number, y: number, z: number, yaw: number, size: number): void {
+  private keepHead(c: Creature, solved: Solved, id: number, x: number, y: number, z: number, yaw: number, size: number): void {
     const rig = c.anim.rig;
     const out = this.socketAt;
     const socket = rig.sockets.get("overhead");
-    const pos = rig.solved.pos;
+    const pos = solved.pos;
     if (socket) {
-      boneToModel(rig.solved, socket.bone, socket.x, socket.y, socket.z, out);
+      boneToModel(solved, socket.bone, socket.x, socket.y, socket.z, out);
       out[1] = Math.max(out[1]!, pos[socket.bone * 3 + 1]!);
     } else {
       let top = 0;
@@ -656,21 +805,21 @@ export class Characters {
   /**
    * Queues a creature's `mesh`, whose levels lie `error` from its finest, on the bones from `first`, at the level its
    * distance and size call for, and with its layer at `layer` where that level is drawn with materials. One `unseen`
-   * only casts, and asks for nothing. Returns the level.
+   * only casts, and asks for nothing. `stand` is the first bone of the pose it stands in on one bone, or -1. Returns the level.
    */
-  private queueCreature(c: Creature, mesh: number, error: readonly number[], first: number, x: number, y: number, z: number, colors: Uint8Array, colorAt: number, id: number, size: number, rigid: boolean, unseen: boolean, layer = 0): number {
+  private queueCreature(c: Creature, mesh: number, error: readonly number[], first: number, x: number, y: number, z: number, colors: Uint8Array, colorAt: number, id: number, size: number, stand: number, unseen: boolean, layer = 0): number {
     const n = this.count++;
     // A young one is the same mesh drawn smaller, and so are its errors.
     const far = Math.sqrt(x * x + y * y + z * z) / size;
     const lod = this.levelOf(id, error, far);
     if (!unseen) this.assets.wantTextured(mesh, lod, far);
-    this.key[n] = (mesh * this.levels + lod) * 2 + (rigid ? 1 : 0);
-    if (layer > 0 && this.assets.wantLayers(mesh, lod, far)) this.key[n] = this.layeredKey(this.key[n]!, layer);
+    const key = this.keyOf(mesh * this.levels + lod, layer > 0 && this.assets.wantLayers(mesh, lod, far) ? layer : 0, stand);
+    this.key[n] = key < 0 ? 0 : key;
     this.firstBone[n] = first;
     this.region0[n] = c.color;
     for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = colors[colorAt + q]!;
     this.id[n] = id;
-    this.near[n] = unseen ? CASTS : SEEN;
+    this.near[n] = key < 0 ? NONE : unseen ? CASTS : SEEN;
     const s = this.shadows;
     this.mask[n] = s ? s.body(x, y, z, c.anim.rig.reach * size) & s.mesh(mesh) : 0;
     this.offset.fill(0, n * 3, n * 3 + 3);
@@ -682,17 +831,18 @@ export class Characters {
    * saddle's coarsest where it has fewer. Nothing in ARK dyes a saddle, so the saddle is drawn in its own colours, but
    * where it names a colour region it takes the creature's.
    */
-  private queueWorn(c: Creature, mesh: number, lod: number, x: number, y: number, z: number, size: number, rigid: boolean): void {
+  private queueWorn(c: Creature, mesh: number, lod: number, x: number, y: number, z: number, size: number, stand: number): void {
     const body = this.count - 1;
     const n = this.count++;
     const level = Math.min(lod, this.assets.table.error[mesh]!.length - 1);
     if (this.near[body] !== CASTS) this.assets.wantTextured(mesh, level, Math.sqrt(x * x + y * y + z * z) / size);
-    this.key[n] = (mesh * this.levels + level) * 2 + (rigid ? 1 : 0);
+    const key = this.keyOf(mesh * this.levels + level, 0, stand);
+    this.key[n] = key < 0 ? 0 : key;
     this.firstBone[n] = this.firstBone[body]!;
     this.region0[n] = this.region0[body]!;
     this.colors.copyWithin(n * 6, body * 6, body * 6 + 6);
     this.id[n] = this.id[body]!;
-    this.near[n] = this.near[body]!;
+    this.near[n] = key < 0 ? NONE : this.near[body]!;
     const s = this.shadows;
     this.mask[n] = s ? s.body(x, y, z, c.anim.rig.reach * size) & s.mesh(mesh) : 0;
     this.offset.fill(0, n * 3, n * 3 + 3);
@@ -720,24 +870,36 @@ export class Characters {
         orientSolved(d.solved, this.rotation, c.oriented);
         writeBones(p.bones, first * BONE_FLOATS, c.oriented, c.anim.rig.rest, null, x, y, z, 0, d.size);
       } else writeBones(p.bones, first * BONE_FLOATS, d.solved, c.anim.rig.rest, null, x, y, z, d.yaw, d.size);
-      this.queueCreature(c, c.wreck >= 0 ? c.wreck : c.mesh, c.wreck >= 0 ? c.wreckError : c.error, first, x, y, z, d.colors, 0, d.id, d.size, false, false, lit ? this.layers.level(d.id, corpseWanted(d.decay), remote.tick, this.last.has(d.id)) : 0);
+      this.queueCreature(c, c.wreck >= 0 ? c.wreck : c.mesh, c.wreck >= 0 ? c.wreckError : c.error, first, x, y, z, d.colors, 0, d.id, d.size, -1, false, lit ? this.layers.level(d.id, corpseWanted(d.decay), remote.tick, this.last.has(d.id)) : 0);
     }
   }
 
-  /** The key of `key`'s bodies whose layer is at `layer`. With no key left they are drawn as `key`'s, without it. */
-  private layeredKey(key: number, layer: number): number {
-    const l = this.layered;
-    for (let k = 0; k < this.layeredKeys; k++) if (l[k * 2] === key && l[k * 2 + 1] === layer) return this.plain + k;
-    if (this.layeredKeys === LAYERED_KEYS) return key;
-    l[this.layeredKeys * 2] = key;
-    l[this.layeredKeys * 2 + 1] = layer;
-    return this.plain + this.layeredKeys++;
+  /**
+   * The key of `key`'s bodies whose layer is at `layer` and that stand in the pose at bone `stand` (-1 for none). With no
+   * key left those with a layer are drawn as `key`'s, without it, and those standing in a pose not at all: -1, counted dropped.
+   */
+  private keyOf(key: number, layer: number, stand: number): number {
+    if (layer === 0 && stand < 0) return key;
+    const l = this.extra;
+    for (let k = 0; k < this.extraKeys; k++) if (l[k * 3] === key && l[k * 3 + 1] === layer && l[k * 3 + 2] === stand) return this.plain + k;
+    if (this.extraKeys === EXTRA_KEYS) {
+      if (stand < 0) return key;
+      if (this.packet) this.packet.dropped++;
+      return -1;
+    }
+    l[this.extraKeys * 3] = key;
+    l[this.extraKeys * 3 + 1] = layer;
+    l[this.extraKeys * 3 + 2] = stand;
+    return this.plain + this.extraKeys++;
   }
 
-  /** Takes `bones` bones for a body of `parts` meshes and returns the first, or returns -1, counting the body as dropped if `counted`. */
+  /**
+   * Takes `bones` bones for a body of `parts` meshes and returns the first, or returns -1, counting the body as dropped if
+   * `counted`. A frame has the bones its tier has, and the texture holds no more.
+   */
   private room(p: FramePacket, bones: number, parts: number, counted = true): number {
     const first = p.boneCount;
-    if (first + bones > MAX_BONES || this.count + parts > MAX_SKINNED) {
+    if (first + bones > Math.min(p.tier.bones, MAX_BONES) || this.count + parts > MAX_SKINNED) {
       if (counted) p.dropped++;
       return -1;
     }
@@ -745,10 +907,13 @@ export class Characters {
     return first;
   }
 
-  begin(): void {
+  /** Begins a frame, in `p` where one is drawn. */
+  begin(p: FramePacket | null = null): void {
+    this.packet = p ?? this.packet;
     this.count = 0;
     this.rotorBlur.begin();
     this.posed = 0;
+    this.fresh = 0;
     for (const at of this.palms.values()) this.palmPool.push(at);
     this.palms.clear();
     this.carriedBy.clear();
@@ -756,12 +921,11 @@ export class Characters {
     this.placed = false;
     this.headCount = 0;
     if (this.heads.size > 4096) this.heads.clear();
-    this.layeredKeys = 0;
+    this.extraKeys = 0;
     this.layers.begin();
     // Ids of bodies long gone would otherwise be kept for good.
     if (this.last.size > 4096) this.last.clear();
     if (++this.frame % FORGET_GAIT === 0) for (const id of this.gaits.keys()) if (this.frame - this.gaits.get(id)!.seen > FORGET_GAIT) this.gaits.delete(id);
-    if (this.bySeed.size > 4096) this.bySeed.clear();
   }
 
   /** The level a body `distance` off is drawn at: as the tier asks, but at the governor's last step coarser (Tier.bodyError). */
@@ -775,8 +939,8 @@ export class Characters {
    * `x, y, z` is the origin relative to the camera, `yaw` is in radians, and `tick` may fall between ticks. `look` holds a
    * 28-byte look at `lookAt`, or is null for a body drawn in the six colour regions of `colors` at `colorAt`. `gear` is
    * laid out as EntityStore.gear, at `gearAt`, or is null. `own` draws it in the near pass. `headless` leaves out the head
-   * and what is on it. `size` scales a creature, below 1 for a young one. `rigid` leaves it in its rest pose on one bone, for
-   * a frame without the bones to pose it. `unseen` poses it as a body in view is posed, for its shadow alone: none of it is
+   * and what is on it. `size` scales a creature, below 1 for a young one. `rigid` draws it on one bone, standing in a pose
+   * for what it is doing (standIn), for a frame without the bones to pose it. `unseen` poses it as a body in view is posed, for its shadow alone: none of it is
    * drawn in the view and it asks for nothing. Returns false when the frame has no room left even for that, and counts a
    * body in view dropped. While the sun casts, what `headless` leaves out still casts. `seat` holds, at `seatAt`, the rows
    * of the turn of the saddle seat a survivor rides in (seat()), which turns it in place of `yaw`; it sits astride, its hands
@@ -789,15 +953,21 @@ export class Characters {
     if (!k) return false;
     // An enclosed passenger must retain a seated pose even under the distant-body budget.
     if (vehicleSeat) rigid = false;
-    const first = this.room(p, rigid ? 1 : HUMAN_BONES, PARTS, !unseen);
-    if (first < 0) return false;
+    this.packet = p;
+    const at = this.setOf(k, look, lookAt);
+    const set = k.sets[at]!;
+    const stand = rigid ? this.standInAt(p, this.standIn(kind, at, st, seat !== null)) : -1;
+    const first = rigid && stand < 0 ? -1 : this.room(p, rigid ? 1 : HUMAN_BONES, PARTS, !unseen);
+    if (first < 0) {
+      if (rigid && stand < 0 && !unseen) p.dropped++;
+      return false;
+    }
     // A modelled body without a look gets the plain one, so its regions have colours.
     let view: Uint8Array | null = k.sets.length > 1 ? PLAIN : null;
     if (look) {
       for (let q = 0; q < LOOK_BYTES; q++) this.lookView[q] = look[lookAt + q]!;
       view = this.lookView;
     }
-    const set = k.sets[view && view[LOOK_SEX]! < k.sets.length ? view[LOOK_SEX]! : 0]!;
     if (view) lookColors(view, this.lookColor);
     if (rigid) {
       if (seat) {
@@ -805,68 +975,31 @@ export class Characters {
         inFrame(p.bones, first * BONE_FLOATS, 1, seat, seatAt, x, y, z);
       } else writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, 1);
     } else {
-      this.packet = p;
       const g = this.gaitOf(id);
       advanceHuman(this.anim, g, st, tick, x + p.camX, z + p.camZ, yaw);
-      humanPose(this.anim, st, tick, this.pose, g);
-      const enclosed = vehicleSeat?.role === "pilot" || vehicleSeat?.role === "cabin";
-      if (vehicleSeat) this.seatedPose(vehicleSeat.role ?? (vehicleSeat.driver ? "drive" : "passenger"), tick, vehicleSeat.steer, !enclosed && !vehicleSeat.driver ? this.pose : undefined);
-      else if (seat) {
-        this.seatedPose("ride", 0, undefined, steers ? undefined : this.pose);
-        if (!steers) {
-          // A passenger turns at the waist toward where it looks, from the way its seat faces.
-          const facing = Math.atan2(seat[seatAt + 2]!, seat[seatAt + 8]!);
-          const turn = Math.atan2(Math.sin(yaw - facing), Math.cos(yaw - facing));
-          quatAxis(this.steer, 0, 0, 1, 0, Math.max(-1.2, Math.min(1.2, turn)));
-          quatMul(this.pose.rot, B_SPINE * 4, this.steer, 0, this.pose.rot, B_SPINE * 4);
-        }
-      }
-      if (vehicleSeat && (!vehicleSeat.driver || vehicleSeat.role === "pilot") && vehicleSeat.aimYaw !== undefined) {
-        let turn = Math.atan2(Math.sin(vehicleSeat.aimYaw - vehicleSeat.yaw), Math.cos(vehicleSeat.aimYaw - vehicleSeat.yaw));
-        if (enclosed) {
-          // Inputs/observer look are in world space. Only after unrotating by the complete cabin attitude may
-          // those angles turn a seated neck; subtracting world yaw reverses the gaze through a loop or bank.
-          const pitch = st.pitch / PITCH_STEPS * Math.PI / 2, cp = Math.cos(pitch);
-          vehicleRotation(vehicleSeat, this.rotation);
-          quatUnrotate(this.rotation, 0, Math.sin(vehicleSeat.aimYaw) * cp, Math.sin(pitch), Math.cos(vehicleSeat.aimYaw) * cp, this.localLook, 0);
-          turn = Math.atan2(this.localLook[0]!, this.localLook[2]!);
-          const tilt = Math.max(-.75, Math.min(.75, Math.atan2(this.localLook[1]!, Math.hypot(this.localLook[0]!, this.localLook[2]!))));
-          quatAxis(this.steer, 0, 1, 0, 0, -tilt * .35);
-          quatMul(this.pose.rot, B_NECK * 4, this.steer, 0, this.pose.rot, B_NECK * 4);
-          quatAxis(this.steer, 0, 1, 0, 0, -tilt * .65);
-          quatMul(this.pose.rot, B_HEAD * 4, this.steer, 0, this.pose.rot, B_HEAD * 4);
-        }
-        const joint = enclosed ? B_HEAD : B_SPINE, limit = enclosed ? .8 : 1.2;
-        quatAxis(this.steer, 0, 0, 1, 0, Math.max(-limit, Math.min(limit, turn)));
-        quatMul(this.pose.rot, joint * 4, this.steer, 0, this.pose.rot, joint * 4);
-      }
-      let scales: Float32Array | null = null;
-      if (view) {
-        scales = scalesOf(g, view);
-        // Longer legs lift the hips, so the feet stay on the ground.
-        if (!seat && !vehicleSeat) this.pose.root[1]! += lookLift(scales, set.rest);
-      }
-      solve(HUMAN, this.pose, this.solved, set.rest, scales);
-      if (vehicleSeat?.definition) fitSeatControls(this.pose, this.solved, set.rest, scales, vehicleSeat.definition, vehicleSeat.steering);
+      const solved = this.kept(g, HUMAN_BONES);
+      const scales = view ? scalesOf(g, view) : null;
+      const form = kind * 4 + at * 2 + (seat ? 1 : 0);
+      if (this.due(g, form, id, Math.sqrt(x * x + y * y + z * z), unseen, seat || !st.grounded ? 0 : g.speed, own || vehicleSeat !== undefined)) this.posing(st, tick, g, seat, seatAt, yaw, vehicleSeat, steers, scales, set, solved);
       if (seat) {
         // A rider sits in its seat's whole frame, and leans, pitches and banks as the seat does.
-        writeBones(p.bones, first * BONE_FLOATS, this.solved, set.rest, scales, 0, 0, 0, 0);
+        writeBones(p.bones, first * BONE_FLOATS, solved, set.rest, scales, 0, 0, 0, 0);
         inFrame(p.bones, first * BONE_FLOATS, HUMAN_BONES, seat, seatAt, x, y, z);
       } else if (vehicleSeat) {
         vehicleRotation(vehicleSeat, this.rotation);
         this.seatPlace[0] = vehicleSeat.x;
         this.seatPlace[1] = vehicleSeat.y;
         this.seatPlace[2] = vehicleSeat.z;
-        mountOrigin(this.solved, this.seatPlace, this.rotation, this.origin);
-        orientSolved(this.solved, this.rotation, this.mounted);
+        mountOrigin(solved, this.seatPlace, this.rotation, this.origin);
+        orientSolved(solved, this.rotation, this.mounted);
         x = this.origin[0]!; y = this.origin[1]!; z = this.origin[2]!; yaw = 0;
         writeBones(p.bones, first * BONE_FLOATS, this.mounted, set.rest, scales, x, y, z, 0);
-      } else writeBones(p.bones, first * BONE_FLOATS, this.solved, set.rest, scales, x, y, z, yaw);
+      } else writeBones(p.bones, first * BONE_FLOATS, solved, set.rest, scales, x, y, z, yaw);
       this.posed++;
       if (st.action >>> 3 === HOLD_CARRY) {
         // Where the palms are drawn, for the creature in them.
         const at = this.palmPool.pop() ?? new Float64Array(3);
-        handsAt(seat ? this.mounted : this.solved, at);
+        handsAt(seat ? this.mounted : solved, at);
         const s = Math.sin(yaw);
         const co = Math.cos(yaw);
         const mx = at[0]!, my = at[1]!, mz = at[2]!;
@@ -886,7 +1019,7 @@ export class Characters {
     const part = this.part;
     part.lod = lod;
     part.far = far;
-    part.rigid = rigid;
+    part.stand = stand;
     part.first = first;
     part.color = k.color;
     part.id = id;
@@ -927,17 +1060,61 @@ export class Characters {
     return true;
   }
 
+  /**
+   * Works out a survivor's pose into `solved`: from its state at `tick` and its gait, seated in a saddle `seat` or a
+   * vehicle's, aiming from there, and stretched by its look's `scales`.
+   */
+  private posing(st: AnimState, tick: number, g: Stride, seat: Float64Array | null, seatAt: number, yaw: number, vehicleSeat: VehicleSeatPose | undefined, steers: boolean, scales: Float32Array | null, set: BodySet, solved: Solved): void {
+    humanPose(this.anim, st, tick, this.pose, g);
+    const enclosed = vehicleSeat?.role === "pilot" || vehicleSeat?.role === "cabin";
+    if (vehicleSeat) this.seatedPose(vehicleSeat.role ?? (vehicleSeat.driver ? "drive" : "passenger"), tick, vehicleSeat.steer, !enclosed && !vehicleSeat.driver ? this.pose : undefined);
+    else if (seat) {
+      this.seatedPose("ride", 0, undefined, steers ? undefined : this.pose);
+      if (!steers) {
+        // A passenger turns at the waist toward where it looks, from the way its seat faces.
+        const facing = Math.atan2(seat[seatAt + 2]!, seat[seatAt + 8]!);
+        const turn = Math.atan2(Math.sin(yaw - facing), Math.cos(yaw - facing));
+        quatAxis(this.steer, 0, 0, 1, 0, Math.max(-1.2, Math.min(1.2, turn)));
+        quatMul(this.pose.rot, B_SPINE * 4, this.steer, 0, this.pose.rot, B_SPINE * 4);
+      }
+    }
+    if (vehicleSeat && (!vehicleSeat.driver || vehicleSeat.role === "pilot") && vehicleSeat.aimYaw !== undefined) {
+      let turn = Math.atan2(Math.sin(vehicleSeat.aimYaw - vehicleSeat.yaw), Math.cos(vehicleSeat.aimYaw - vehicleSeat.yaw));
+      if (enclosed) {
+        // Inputs/observer look are in world space. Only after unrotating by the complete cabin attitude may
+        // those angles turn a seated neck; subtracting world yaw reverses the gaze through a loop or bank.
+        const pitch = st.pitch / PITCH_STEPS * Math.PI / 2, cp = Math.cos(pitch);
+        vehicleRotation(vehicleSeat, this.rotation);
+        quatUnrotate(this.rotation, 0, Math.sin(vehicleSeat.aimYaw) * cp, Math.sin(pitch), Math.cos(vehicleSeat.aimYaw) * cp, this.localLook, 0);
+        turn = Math.atan2(this.localLook[0]!, this.localLook[2]!);
+        const tilt = Math.max(-.75, Math.min(.75, Math.atan2(this.localLook[1]!, Math.hypot(this.localLook[0]!, this.localLook[2]!))));
+        quatAxis(this.steer, 0, 1, 0, 0, -tilt * .35);
+        quatMul(this.pose.rot, B_NECK * 4, this.steer, 0, this.pose.rot, B_NECK * 4);
+        quatAxis(this.steer, 0, 1, 0, 0, -tilt * .65);
+        quatMul(this.pose.rot, B_HEAD * 4, this.steer, 0, this.pose.rot, B_HEAD * 4);
+      }
+      const joint = enclosed ? B_HEAD : B_SPINE, limit = enclosed ? .8 : 1.2;
+      quatAxis(this.steer, 0, 0, 1, 0, Math.max(-limit, Math.min(limit, turn)));
+      quatMul(this.pose.rot, joint * 4, this.steer, 0, this.pose.rot, joint * 4);
+    }
+    // Longer legs lift the hips, so the feet stay on the ground.
+    if (scales && !seat && !vehicleSeat) this.pose.root[1]! += lookLift(scales, set.rest);
+    solve(HUMAN, this.pose, solved, set.rest, scales);
+    if (vehicleSeat?.definition) fitSeatControls(this.pose, solved, set.rest, scales, vehicleSeat.definition, vehicleSeat.steering);
+  }
+
   /** Queues mesh `m` of the survivor `add` is adding, tinted from `tint` at `tintAt`, hung on `bone` for a held item, and for its shadow `only`. */
   private queuePart(m: number, tint: Uint8Array | null, tintAt: number, bone: number, only: boolean): void {
     const part = this.part;
     const n = this.count++;
     if (!only) this.assets.wantTextured(m, part.lod, part.far);
-    this.key[n] = (m * this.levels + part.lod) * 2 + (part.rigid ? 1 : 0);
+    const key = this.keyOf(m * this.levels + part.lod, 0, part.stand);
+    this.key[n] = key < 0 ? 0 : key;
     this.firstBone[n] = part.first;
     this.region0[n] = part.color;
     for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = tint ? tint[tintAt + q]! : 0;
     this.id[n] = part.id;
-    this.near[n] = only ? CASTS : part.own ? OWN : SEEN;
+    this.near[n] = key < 0 ? NONE : only ? CASTS : part.own ? OWN : SEEN;
     this.mask[n] = part.casts === 0 ? 0 : part.casts & this.shadows!.mesh(m);
     // A held item is modelled around its grip, so it is offset to where its bone rests on this body.
     for (let a = 0; a < 3; a++) this.offset[n * 3 + a] = bone < 0 ? 0 : part.rest![bone * 3 + a]!;
@@ -1005,7 +1182,7 @@ export class Characters {
     b[o + 11] = z;
     showMaterials(this.assets, mesh, Math.sqrt(x * x + y * y + z * z), wide);
     const n = this.count++;
-    this.key[n] = mesh * this.levels * 2;
+    this.key[n] = mesh * this.levels;
     this.firstBone[n] = first;
     this.region0[n] = 0;
     this.colors.fill(0, n * 6, n * 6 + 6);
@@ -1043,16 +1220,18 @@ export class Characters {
     for (let k = 0; k < counts.length; k++) {
       this.cursor[k] = total;
       if (counts[k] === 0) continue;
-      const key = k < this.plain ? k : this.layered[(k - this.plain) * 2]!;
-      const mesh = Math.floor(key / (this.levels * 2)), lod = (key >> 1) % this.levels;
-      // An odd key is the bodies on one bone, which are a draw of their own.
-      const f = (key & 1) !== 0 ? flags | DRAW_ONE_BONE : flags;
-      draw?.(mesh, lod, total, counts[k]!, f, k < this.plain ? 0 : this.layered[(k - this.plain) * 2 + 1]!);
+      const x = (k - this.plain) * 3;
+      const key = x < 0 ? k : this.extra[x]!;
+      const stand = x < 0 ? -1 : this.extra[x + 2]!;
+      const mesh = Math.floor(key / this.levels), lod = key % this.levels;
+      // Bodies standing in a pose on one bone are a draw of their own.
+      const f = stand >= 0 ? flags | DRAW_ONE_BONE : flags;
+      draw?.(mesh, lod, total, counts[k]!, f, x < 0 ? 0 : this.extra[x + 1]!, stand < 0 ? 0 : stand);
       if (byMask) {
         for (let m = 0, at = total; m < MASKS; m++) {
           const n = byMask[k * MASKS + m]!;
           this.maskCursor[k * MASKS + m] = at;
-          if (n > 0 && m > 0) cast!(mesh, lod, at, n, f, m);
+          if (n > 0 && m > 0) cast!(mesh, lod, at, n, f, m, stand < 0 ? 0 : stand);
           byMask[k * MASKS + m] = 0;
           at += n;
         }

@@ -1,7 +1,7 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, BONE_ROWS, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
@@ -70,6 +70,7 @@ export class GlRenderer {
   shadowLookup = "";
   /** The sun's shadow maps: a 16-bit depth layer a cascade, a target on each, and their side. */
   private shadow = { texture: null as WebGLTexture | null, targets: [] as WebGLFramebuffer[], size: 0 };
+  private boneRows = 0;
   /** The program, level, buffer and first instance the last draw bound, which the next may share. */
   private readonly held: unknown[] = [];
   /**
@@ -188,8 +189,8 @@ export class GlRenderer {
     texture(UNIT.heights, gl.R16UI, g.width[SOURCE_MAP]!, g.height[SOURCE_MAP]!, gl.RED_INTEGER, gl.UNSIGNED_SHORT, coarse.heights);
     texture(UNIT.tint, gl.R8UI, g.width[SOURCE_MAP]!, g.height[SOURCE_MAP]!, gl.RED_INTEGER, gl.UNSIGNED_BYTE, coarse.tint);
     this.windows = [0, 1, 0, 1].map((k) => texture(UNIT.windowHeights + k, k ? gl.R8UI : gl.R16UI, g.width[SOURCE_WINDOW]!, g.height[SOURCE_WINDOW]!, gl.RED_INTEGER, k ? gl.UNSIGNED_BYTE : gl.UNSIGNED_SHORT, null));
-    // Each bone is three texels of four floats, read by exact texel. The texture stays bound on its unit.
-    texture(UNIT.bones, gl.RGBA32F, BONES_PER_ROW * 3, BONE_ROWS, gl.RGBA, gl.FLOAT, null);
+    // Each bone is three texels of four floats, read by exact texel. The texture stays bound on its unit, as tall as the tier's bones.
+    texture(UNIT.bones, gl.RGBA32F, BONES_PER_ROW * 3, (this.boneRows = 1), gl.RGBA, gl.FLOAT, null);
     texture(UNIT.atlas, gl.RGBA32F, ATLAS_WIDTH, ATLAS_ROWS, gl.RGBA, gl.FLOAT, null);
     // The sky table, filtered between its texels and held at its edges, stays bound on its unit too.
     gl.activeTexture(gl.TEXTURE0 + UNIT.sky);
@@ -543,11 +544,9 @@ export class GlRenderer {
       gl.activeTexture(gl.TEXTURE0 + UNIT.atlas);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, ATLAS_WIDTH, p.atlasRows, gl.RGBA, gl.FLOAT, p.atlas);
     }
-    if (p.boneCount > 0) {
-      const rows = Math.ceil(p.boneCount / BONES_PER_ROW);
-      gl.activeTexture(gl.TEXTURE0 + UNIT.bones);
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BONES_PER_ROW * 3, rows, gl.RGBA, gl.FLOAT, p.bones);
-    }
+    gl.activeTexture(gl.TEXTURE0 + UNIT.bones);
+    if (boneRows(p.tier.bones) !== this.boneRows) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, BONES_PER_ROW * 3, (this.boneRows = boneRows(p.tier.bones)), 0, gl.RGBA, gl.FLOAT, null);
+    if (p.boneCount > 0) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BONES_PER_ROW * 3, Math.ceil(p.boneCount / BONES_PER_ROW), gl.RGBA, gl.FLOAT, p.bones);
 
     this.bound.length = 0;
     this.shadows(p);
