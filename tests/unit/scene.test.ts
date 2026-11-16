@@ -425,7 +425,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1425549560 until the street wrecks' kinds (content/vehicles/wrecks.ts) took mesh numbers; without them it is that again.
   // It was 3505982741 until the pteranodon was drawn on its own art in place of its grey box; with its mesh a box again it is that again.
   // It was 818617635 until clips were stored to 0.025 degrees (pack version 5): only the bone rows moved.
-  expect(hash).toBe(1504947198);
+  // It was 1504947198 (and 7,900 draws) until chunks were drawn by 16 m cell: a chunk's instances are uploaded in the
+  // order of their cells, and the pieces' and nodes' draws whose cells are out of view are left out. Each of the 300
+  // frames draws the picture it did.
+  expect(hash).toBe(566791180);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -444,8 +447,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1941699530 until the ruins' sloped parts, as above; without them it is that again.
   // It was 2182034391 until the street wrecks' kinds, as above; without them it is that again.
   // It was 1893532195 until the pteranodon was drawn on its own art, as above.
-  // It was 3121847286 until clips were stored to 0.025 degrees, as above.
-  expect(saddled.hash).toBe(359459847);
+  // It was 3121847286 until clips were stored to 0.025 degrees, as above, and 359459847 until chunks were drawn by cell.
+  expect(saddled.hash).toBe(778212124);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
