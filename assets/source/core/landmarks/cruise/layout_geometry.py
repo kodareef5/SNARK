@@ -63,6 +63,10 @@ def populate(D,prototype,instance,box,node):
                             [sign*max(.01,w+min(1.5,w*.08)-.24),12.8,z],[sign*max(.01,w-.24),0,z]]
    q,o=world('hull_side','hull_side',hs=[side],art={'kind':'solids','finish':'enamel'},color=232)
    place(f'hull_side_{j}_{sign}',q,o)
+ # Closed above-water transom: three bounded sections preserve the published stern station without a dry-shell gap.
+ for i in range(3):
+  pts=[[(-1+2*(i+edge)/3)*(17+1.36*y/12.8),y,z] for edge in(0,1) for y in(0,12.8) for z in(-182.5,-182.26)]
+  q,o=world('transom','hull_side',hs=[pts],art={'kind':'solids','finish':'enamel'},color=232);place('transom_'+str(i),q,o)
  # Actual floor outlines remain stepped and retain the two open neighborhoods through their upper decks.
  cores=[('fore',0,64,0,16),('aft',0,-72,0,14),('launch',16,-128,13,17)]
  for i,d in enumerate(D['decks']):
@@ -97,7 +101,7 @@ def populate(D,prototype,instance,box,node):
   if n in(15,16,17):voids.append({'id':'aft_canyon','kind':'atrium','polygon':rect(-7,-151,7,-96)})
   if n>=16 and n<=18:voids.append({'id':'aquadome','kind':'atrium','polygon':rect(-29,77,29,174)})
   if n in(6,7,8):voids.append({'id':'pearl','kind':'atrium','polygon':rect(6,-23,28.9,7)})
-  if n in(5,6):voids.append({'id':'royal_theater','kind':'atrium','polygon':rect(-18,100,18,148)})
+  if n in(5,6):voids.append({'id':'royal_theater','kind':'atrium','polygon':rect(-18,100,18,140)})
   if n==5:voids.append({'id':'absolute_zero','kind':'atrium','polygon':rect(-18,-178,18,-156)})
   if n==7:voids.append({'id':'waters_edge','kind':'basin','polygon':rect(-6,-176,6,-166)})
   if n==15:
@@ -170,7 +174,7 @@ def populate(D,prototype,instance,box,node):
  for i,x in enumerate([35.8,50.6]):place('port_gangway_'+str(i),gp,[x,14,-24],'5','arrival')
  node('quay',[58,14,-24],'5','docking');node('arrival',[20,14,-24],'5','lobby')
  route('board','docking','quay','arrival',[[58,14,-24],[28.9,14,-24],[20,14,-24]],2.8)
- route('arrival_fore','corridor','arrival','fore_5',[[20,14,-24],[-15.5,14,-24],[-15.5,14,59.4],[-1.1,14,59.4]],2.4)
+ route('arrival_fore','corridor','arrival','fore_5',[[20,14,-24],[0,14,-24],[0,14,-12],[-15.5,14,-12],[-15.5,14,59.4],[-1.1,14,59.4]],2.4)
  route('launch_access','corridor','aft_16','launch_16',[[-1.1,49.6,-76.6],[-1.1,49.6,-88],[20.5,49.6,-88],[20.5,49.6,-132.6],[14.9,49.6,-132.6]],2.0)
  D['rooms'].append({'id':'arrival','node':'arrival','label':'Royal Promenade arrival','deck':'5','section':'arrival',
                    'bounds':{'min':[10,14,-35],'max':[28.9,18.16,-10]},'entry':[28.9,14,-24],
@@ -190,16 +194,17 @@ def populate(D,prototype,instance,box,node):
  fbs=[box([f['at'][k]-f['size'][k]/2 if k!=1 else 0 for k in range(3)],
           [f['at'][k]+f['size'][k]/2 if k!=1 else f['size'][k] for k in range(3)]) for f in furniture]
  cabin=p('cabin_balcony','cabin',walls+fbs,art={'kind':'cabin','wallCount':len(walls),'items':furniture},color=232)
- for label in ['3','4','7','8','9','10','11','12','14']:
+ for label in ['7','8','9','10','11','12','14']:
   y=ys[label]
-  for ci,z in enumerate([94.4,100.8,107.2]):
-   ident=f'cabin_{label}_{ci}';place(ident,cabin,[23,y,z],label,'prototype-cabins')
-   entry=[19,y,z];target=[22,y,z-.5];outside=[17.6,y,z]
+  x=19.25 if label in('3','4') else 23
+  for ci,z in enumerate([76,82.4,88.8] if label in('3','4') else [94.4,100.8,107.2]):
+   ident=f'cabin_{label}_{ci}';place(ident,cabin,[x,y,z],label,'playable-cabins')
+   entry=[x-4,y,z];target=[x-1,y,z-.5];outside=[x-5.4,y,z]
    node(ident,target,label,'room');node(ident+'_entry',outside,label,'corridor')
-   route(ident+'_door','room',ident+'_entry',ident,[outside,entry,[21,y,z],target],family='balcony-cabin-ingress')
-   route(ident+'_access','corridor',f'fore_{label}',ident+'_entry',[[-1.1,y,59.4],[17.6,y,59.4],outside],2.4)
+   route(ident+'_door','room',ident+'_entry',ident,[outside,entry,[x-2,y,z],target],family='balcony-cabin-ingress')
+   route(ident+'_access','corridor',f'fore_{label}',ident+'_entry',[[-1.1,y,59.4],[x-5.4,y,59.4],outside],2.4)
    D['rooms'].append({'id':ident,'node':ident,'label':'Balcony stateroom','deck':label,'section':'prototype-cabins',
-                     'bounds':{'min':[19,y,z-3.2],'max':[27,y+2.96,z+3.2]},'entry':entry,'routeTarget':target,'evidence':'original-fitted-room'})
+                     'bounds':{'min':[x-4,y,z-3.2],'max':[x+4,y+2.96,z+3.2]},'entry':entry,'routeTarget':target,'evidence':'original-fitted-room'})
    D['portals'].append({'id':ident+'_portal','from':ident+'_entry','to':ident,'at':entry,'normal':[-1,0,0],
                        'clearWidth':1.8,'clearHeight':2.6,'kind':'open'})
  # Two independent physical cabin leaves share a reciprocal prototype pair, rather than swapping entire rooms.
@@ -267,3 +272,5 @@ def populate(D,prototype,instance,box,node):
                {'id':'profile','at':[260,40,0],'target':[0,32,0],'deck':'5','section':'envelope','mode':'spectator'}]
  D['prototypeScope']={'complete':False,'notes':'Full envelope, repeated cabin slice, continuous stair cores, framed dome and decorative basin. Funnels, public-room finishes, lifesaving equipment and final neighborhoods follow native prototype acceptance.'}
  production_finish(D,p,prototype,world,place,box,node,route,rect,ys,beam)
+ from layout_edges import finish as finish_edges
+ finish_edges(D,p,world,place,box,ys,beam)

@@ -52,15 +52,28 @@ def finish(D,p,raw,world,place,box,node,route,rect,ys,beam):
   return p('furniture_'+kind,'furniture',bs,art=art,color=COLORS[finish])
  def furnish(name,kind,at,size,deck,finish='oak',yaw=0,extra=None):
   return place(name,furniture(kind,size,finish,extra),at,deck,'furnished-'+deck,yaw)
- def wall(name,a,b,y,height,gap=None,finish='enamel'):
+ def wall(name,a,b,y,height,gap=None,finish='enamel',label=None):
   axis=0 if a[0]!=b[0] else 2;start=min(a[axis],b[axis]);end=max(a[axis],b[axis]);fixed=a[2-axis]
-  cuts=sorted(set([start,end]+[start+i*12 for i in range(1,math.ceil((end-start)/12))]+([gap[0]-gap[1]/2,gap[0]+gap[1]/2] if gap else [])))
+  glazed=name.startswith('bridge_') and not name.endswith('_aft')
+  if name in('bridge_port','bridge_starboard'):gap=(128,4.4)
+  span=3.2 if glazed else 12
+  cuts=sorted(set([start,end]+[start+i*span for i in range(1,math.ceil((end-start)/span))]+([gap[0]-gap[1]/2,gap[0]+gap[1]/2] if gap else [])))
+  labelPlaced=False
   for i,(lo,hi) in enumerate(zip(cuts,cuts[1:])):
    if hi<=start or lo>=end:continue
    if gap and gap[0]-gap[1]/2<(lo+hi)/2<gap[0]+gap[1]/2:continue
    lower=[lo,y,fixed-.10] if axis==0 else [fixed-.10,y,lo]
    upper=[hi,y+height,fixed+.10] if axis==0 else [fixed+.10,y+height,hi]
-   q,o=world('room_wall','wall',[box(lower,upper)],art={'kind':'wall','finish':finish},color=COLORS[finish])
+   if glazed:
+    def pane(aa,bb,ya,yb,depth=.1):return box([aa,ya,fixed-depth] if axis==0 else [fixed-depth,ya,aa],[bb,yb,fixed+depth] if axis==0 else [fixed+depth,yb,bb])
+    boxes=[pane(lo,hi,y,y+.65),pane(lo,hi,y+height-.35,y+height),pane(lo,lo+.10,y+.65,y+height-.35),pane(hi-.10,hi,y+.65,y+height-.35),pane(lo+.1,hi-.1,y+.65,y+height-.35,.025)]
+    q,o=world('bridge_glazing','wall',boxes,art={'kind':'window_wall','glassBoxes':[4],'finish':finish,'measurement':'bridge'},color=232)
+   else:
+    art={'kind':'wall','finish':finish}
+    if name.startswith('bridge_'):art['measurement']='bridge'
+    if label and not labelPlaced and hi-lo>=1.8:
+     art.update(label=label,labelFace=4 if axis==0 else 0);labelPlaced=True
+    q,o=world('room_wall','wall',[box(lower,upper)],art=art,color=COLORS[finish])
    place(f'{name}_{i}',q,o,str(next(d['id'] for d in D['decks'] if abs(d['floorY']-y)<.001)),'public-interior')
  def room(ident,label,deck,bounds,target,start,via=(),enclosed=False,height=None,entry=None):
   y=ys[deck];x0,z0,x1,z1=bounds;entry=entry or [target[0],y,z0]
@@ -71,7 +84,7 @@ def finish(D,p,raw,world,place,box,node,route,rect,ys,beam):
                      'routeTarget':target,'evidence':'original-fitted-interior-informed-by-public-plan'})
   if enclosed:
    h=height or next(d for d in D['decks'] if d['id']==deck)['ceilingY']-y
-   wall(ident+'_aft',[x0,y,z0],[x1,y,z0],y,h,(entry[0],4.4) if abs(entry[2]-z0)<.01 else None)
+   wall(ident+'_aft',[x0,y,z0],[x1,y,z0],y,h,(entry[0],4.4) if abs(entry[2]-z0)<.01 else None,label=label)
    wall(ident+'_fore',[x0,y,z1],[x1,y,z1],y,h,(entry[0],4.4) if abs(entry[2]-z1)<.01 else None)
    wall(ident+'_port',[x1,y,z0],[x1,y,z1],y,h,(entry[2],4.4) if abs(entry[0]-x1)<.01 else None)
    wall(ident+'_starboard',[x0,y,z0],[x0,y,z1],y,h,(entry[2],4.4) if abs(entry[0]-x0)<.01 else None)
@@ -146,24 +159,30 @@ def finish(D,p,raw,world,place,box,node,route,rect,ys,beam):
     furnish(f'dining_table_{deck}_{i}_{x}','table',[x,y,z],[3,.76,2],deck,'marble')
     for dz in(-1.6,1.6):furnish(f'dining_chair_{deck}_{i}_{x}_{dz}','chair',[x,y,z+dz],[.8,1,.8],deck,'carpet')
  # Theater and ice arena are genuine multi-deck voids, not stacks of intervening opaque floors.
- room('theater','Royal Theater','4',[-18,100,18,156],[0,9.8,116],'fore_4',[[5,9.8,59.4],[5,9.8,96],[0,9.8,96]],True,12.56,entry=[0,9.8,100])
- for row,z in enumerate(range(106,144,3)):
+ room('theater','Royal Theater','4',[-18,100,18,140],[0,9.8,116],'fore_4',[[5,9.8,59.4],[5,9.8,96],[0,9.8,96]],True,12.56,entry=[0,9.8,100])
+ for row,z in enumerate(range(106,129,3)):
   for side in(-1,1):furnish(f'theater_bench_{row}_{side}','seating_row',[side*9,9.8,z],[12,1.1,1.35],'4','red')
- furnish('theater_stage','stage',[0,9.8,150],[26,.8,10],'4','oak')
- furnish('theater_screen','screen',[0,11,155],[26,7,.20],'4','navy')
- room('absolute_zero','Absolute Zero','4',[-18,-178,18,-156],[0,9.8,-166],'aft_4',[[-22,9.8,-76.6],[-22,9.8,-154],[0,9.8,-154]],True,8.36,entry=[0,9.8,-156])
+ furnish('theater_stage','stage',[0,9.8,134],[26,.8,10],'4','oak')
+ furnish('theater_screen','screen',[0,11,139.3],[26,7,.20],'4','navy')
+ room('absolute_zero','Absolute Zero','4',[-18,-175.7,18,-156],[0,9.8,-166],'aft_4',[[-22,9.8,-76.6],[-22,9.8,-155],[0,9.8,-155]],True,8.36,entry=[0,9.8,-156])
  furnish('ice_arena','stage',[0,9.8,-167],[20,.02,16],'4','ivory')
  for side in(-1,1):
   for j,z in enumerate([-161,-166,-171]):furnish(f'ice_bench_{side}_{j}','seating_row',[side*14.3,9.8,z],[4.2,1.1,1.4],'4','blue',90)
- room('fitness','Fitness Center','6',[-12,157,12,170],[0,18.4,162],'fore_6',[[22,18.4,59.4],[22,18.4,96],[19,18.4,149],[0,18.4,149],[0,18.4,156]],True,entry=[0,18.4,157])
+ room('fitness','Fitness Center','6',[-8,160,8,171],[0,18.4,164],'fore_6',[[22,18.4,59.4],[22,18.4,96],[19,18.4,152],[8,18.4,158],[0,18.4,158]],True,entry=[0,18.4,160])
  for side in(-1,1):
-  for i,z in enumerate([160,164,168]):furnish(f'fitness_{side}_{i}','gym',[side*7,18.4,z],[2,1.7,2],'6','rubber')
+  for i,z in enumerate([163,166,169]):furnish(f'fitness_{side}_{i}','gym',[side*5,18.4,z],[2,1.7,2],'6','rubber')
  room('spa','Vitality Spa','14',[-16,80,16,106],[0,42,94],'fore_14',[[5,42,59.4],[5,42,76],[0,42,76]],True,entry=[0,42,80])
  for side in(-1,1):
   for i,z in enumerate([86,96,102]):furnish(f'spa_{side}_{i}','lounger',[side*9,42,z],[1.2,.85,2.5],'14','linen')
  room('bridge','Bridge and lookout','12',[-20,119,20,143],[0,38.8,131],'fore_12',[[5,38.8,59.4],[5,38.8,114],[0,38.8,114]],True,entry=[0,38.8,119])
  for x in[-12,-6,0,6,12]:furnish('bridge_console_'+str(x),'console',[x,38.8,139],[4.5,1.25,2],'12','navy')
  for side in(-1,1):furnish('bridge_chart_'+str(side),'table',[side*12,38.8,124],[4,.9,2.3],'12','oak')
+ for side in(-1,1):
+  ident='bridge_lookout_'+str(side);target=[side*28,38.8,128]
+  node(ident,target,'12','lookout');route(ident,'room','bridge',ident,[[0,38.8,131],[0,38.8,128],target],2.0)
+  D['rooms'].append({'id':ident,'node':ident,'label':'Bridge lookout','deck':'12','section':'bridge',
+    'bounds':{'min':[24 if side>0 else -32.9,38.8,120],'max':[32.9 if side>0 else -24,41.76,134]},
+    'entry':[side*20,38.8,128],'routeTarget':target,'evidence':'original-fitted-public-lookout'})
  # Service and medical spaces remain fitted and connected, with no below-water inhabited fiction.
  for ident,label,deck,bounds,target,start,via,kind in[
   ('medical','Medical Center','3',[-17,91,1,114],[-8,6.2,102],'fore_3',[[-8,6.2,59.4],[-8,6.2,87]],'medical'),
@@ -175,14 +194,14 @@ def finish(D,p,raw,world,place,box,node,route,rect,ys,beam):
   room(ident,label,deck,bounds,target,start,via,False)
   y=ys[deck];x0,z0,x1,z1=bounds
   for i,z in enumerate([z0+4,z1-4]):
-   for x in[x0+3,x1-3]:furnish(f'{ident}_fit_{i}_{x}',kind,[x,y,z],[3,1.6 if kind not in('table','counter') else .9,2.2],deck,'enamel' if ident in('medical','laundry','galley') else 'steel')
+   for x in[x0+3,x1-(5 if ident=='workshop' else 3)]:furnish(f'{ident}_fit_{i}_{x}',kind,[x,y,z],[3,1.6 if kind not in('table','counter') else .9,2.2],deck,'enamel' if ident in('medical','laundry','galley') else 'steel')
  # Neighborhood parks and terraces: clear central circulation, planted edges and recognizable grouped seating.
  room('central_park','Central Park','8',[-8.6,-66,8.6,58],[0,26,12],'fore_8',[[0,26,59.4]])
  room('surfside','Surfside','7',[-11,-165,11,-86],[0,22.6,-128],'aft_7',[[-1.1,22.6,-92]])
  for deck,x,zs in [('8',5.5,range(-55,56,11)),('7',8,range(-155,-94,12))]:
   for i,z in enumerate(zs):
    for side in(-1,1):furnish(f'plant_{deck}_{i}_{side}','planter_tree',[side*x,ys[deck],z],[2.8,3.7,2.8],deck,'leaf')
-   if i%2==0:furnish(f'park_bench_{deck}_{i}','sofa',[x-1.4,ys[deck],z+4.5],[2.5,.9,.85],deck,'oak')
+   if i%2==0:furnish(f'park_bench_{deck}_{i}','sofa',[x-1.4,ys[deck],z+(2 if z==55 else 4.5)],[2.5,.9,.85],deck,'oak')
  for i,x in enumerate([-7,7]):furnish('surfside_play_'+str(i),'play_structure',[x,22.6,-143],[4,3,5],'7','coral')
  room('chill','Chill Island','15',[-28,-45,28,58],[19,45.6,45],'fore_15',[[19,45.6,59.4]])
  room('hideaway','The Hideaway','15',[-23,-180,23,-156],[12,45.6,-169],'aft_15',[[25,45.6,-76.6],[25,45.6,-158],[12,45.6,-158]])
@@ -192,7 +211,7 @@ def finish(D,p,raw,world,place,box,node,route,rect,ys,beam):
  room('grove_upper','The Grove','19',[-22,48,22,76],[12,60,55],'fore_19',[[12,60,59.4]])
  room('waterpark','Category 6','20',[10,-142,26,-116],[21,63.2,-130],'launch_20',[[21,63.2,-132.6]])
  room('windjammer','Windjammer','15',[8,-152,27,-97],[17,45.6,-120],'aft_15',[[23,45.6,-76.6],[23,45.6,-94],[17,45.6,-94]])
- for deck,spots in [('15',[(x,z) for x in(-25,25) for z in range(-40,55,10)]+[(x,-162) for x in(-17,-12,12,17)]),
+ for deck,spots in [('15',[(x,z) for x in(-27,27) for z in range(-40,55,10)]+[(x,-162) for x in(-19,-17,17,19)]),
                     ('17',[(20,z) for z in(-45,-30,-15,12)]),('18',[(x,53) for x in(-20,-14,18,23)])]:
   for i,(x,z) in enumerate(spots):furnish(f'lounger_{deck}_{i}','lounger',[x,ys[deck],z],[1.0,.85,2.4],deck,'linen')
  for i,z in enumerate([-105,-115,-125,-138]):
@@ -207,7 +226,7 @@ def finish(D,p,raw,world,place,box,node,route,rect,ys,beam):
   place(ident,q,[x,ys[deck],z],deck,'pool')
  # Lifeboats and davits preserve the conspicuous yellow rhythm below the accommodation banks.
  D['lifeboats']={'length':15,'beam':5.5,'height':4.2,'basis':'Palfinger Marine MPC49 published product-family envelope',
-                  'authority':'https://www.palfinger.com/sv-se/wp-content/uploads/2020/08/Palfinger-Marine-product-brochure.pdf',
+                  'authority':'https://assets.palfinger.com/cache-buster-1574941498/importdata/marine/events/marintec/palfinger-marine-boats-and-davits-brochure.pdf',
                   'fitting':'Original interpretation of public close photographs; not a manufacturer fitting drawing.'}
  life=p('lifeboat','lifeboat',[box([-2.75,-2.1,-7.5],[2.75,2.1,7.5])],art={'kind':'lifeboat','finish':'yellow'},color=6)
  for side in(-1,1):
@@ -222,12 +241,12 @@ def finish(D,p,raw,world,place,box,node,route,rect,ys,beam):
   path=[]
   for j in range(17):
    t=j/16;angle=t*math.tau*(1.25+si*.10)+si*.8
-   path.append([(-4 if si<3 else 8)+8*math.sin(angle),64.3-12.6*t,-128-39*t+6*math.cos(angle)])
-  path[0]=[14+si*.9,64.3,-128]
+   path.append([(-4 if si<3 else 8)+8*math.sin(angle),68.4-12.6*t,-128-39*t+6*math.cos(angle)])
+  path[0]=[12+si*2.3,68.4,-117.3]
   for j,(a,b) in enumerate(zip(path,path[1:])):
    hs=[beam(a,b,.78)];q,o=world('slide_'+finish,'waterpark',hs=hs,art={'kind':'slide','finish':finish},color=COLORS[finish])
    place(f'slide_{si}_{j}',q,o,'16','category-6')
-   if j%4==0:
+   if j and j%4==0:
     q,o=world('slide_support','fitting',hs=[beam([a[0],49.6,a[2]],a,.10)],art={'kind':'solids','finish':'enamel'})
     place(f'slide_support_{si}_{j}',q,o,'16','category-6')
  # Strong photographed stern arch, kept outside the protected routes and within the published hull length.
