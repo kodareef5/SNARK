@@ -13,7 +13,8 @@ def linear(x):
  return x/12.92 if x<=.04045 else ((x+.055)/1.055)**2.4
 
 def material(name,rgb):
- m=bpy.data.materials.get(name) or bpy.data.materials.new(name);m.diffuse_color=(*[linear(c) for c in rgb],1)
+ m=bpy.data.materials.get(name) or bpy.data.materials.new(name);color=(*[linear(c) for c in rgb],1);m.diffuse_color=color;m.use_nodes=True
+ m.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value=color
  return m
 MATS={tag:material('flat_'+tag,p['rgb']) for tag,p in LOOK.items()}
 SIGNS=json.loads((HERE/'signs.json').read_text())

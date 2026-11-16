@@ -66,7 +66,7 @@ for i,(za,zb) in enumerate(zip(zs,zs[1:])):
 cores=[('grand',0,0,0,3),('aft',-3.6,-24,0,3),('forward',-2.4,33.2,0,2)]
 holes={i:[] for i in range(4)}
 for name,cx,cz,low,high in cores:
- for upper in range(low+1,high+1):holes[upper].append({'id':f'{name}_{upper}','x0':cx-2,'x1':cx+2,'z0':cz-2.3,'z1':cz+2.4,'kind':'stair'})
+ for upper in range(low+1,high+1):holes[upper].append({'id':f'{name}_{upper}','x0':cx-2.1,'x1':cx+2.1,'z0':cz-2.3,'z1':cz+2.8,'kind':'stair'})
 # Pool sits beyond the aft inhabited lower deck. Its own shallow basin has a real stair exit.
 holes[1].append({'id':'pool','x0':-2,'x1':2,'z0':-50,'z1':-43,'kind':'pool'})
 profiles=[ [(-46,4.8),(-38,6.5),(26,6.5),(40,4.4)], [(-53.5,.8),(-49,5.3),(-42,7.1),(-32,7.9),(-20,8.25),(6,7.95),(20,7.2),(40,4.7)], [(-40,6.0),(-30,7.2),(19,7.2),(20,7.3),(34,5.9),(44,3.9),(53.5,.6)], [(-28,5.6),(7,5.6)] ]
@@ -100,7 +100,7 @@ for name,cx,cz,low,high in cores:
    for x in (x0-.08,x1):hs.append(ramp_points(x,x+.08,z0,z1,y0+1.1,y1+1.1,1.1))
    ident=add(prefix+f'_flight{n}','stairs',hulls=hs,meta={'steps':10,'clearWidth':1.6,'treadRun':.3,'riser':.15,'flight':[[x0,y0,z0],[x1,y1,z1]],'slab':.3},color=101)
    flight.append(ident)
-  lid=add(prefix+'_landing','stairs',boxes=[slab(cx-1.8,cx+1.8,cz+.7,cz+2.3,y+1.5),box([cx-1.88,y+1.5,cz+.7],[cx-1.8,y+2.6,cz+2.38]),box([cx+1.8,y+1.5,cz+.7],[cx+1.88,y+2.6,cz+2.38]),box([cx-1.8,y+1.5,cz+2.3],[cx+1.8,y+2.6,cz+2.38])],meta={'landing':True,'clearDepth':1.6},color=101)
+  lid=add(prefix+'_landing','stairs',boxes=[slab(cx-2,cx+2,cz+.7,cz+2.7,y+1.5),box([cx-2.08,y+1.5,cz+.7],[cx-2,y+2.6,cz+2.78]),box([cx+2,y+1.5,cz+.7],[cx+2.08,y+2.6,cz+2.78]),box([cx-2,y+1.5,cz+2.7],[cx+2,y+2.6,cz+2.78])],meta={'landing':True,'clearDepth':2.0,'clearWidth':4.0},color=101)
   route=[[cx-1,y,cz-3.1],[cx-1,y,cz-2.3],[cx-1,y+1.5,cz+.7],[cx-1,y+1.5,cz+1.5],[cx+1,y+1.5,cz+1.5],[cx+1,y+1.5,cz+.7],[cx+1,y+3,cz-2.3],[cx+1,y+3,cz-3.1]]
   D['stairs'].append({'id':prefix,'fromDeck':d,'toDeck':d+1,'modules':flight+[lid],'opening':holes[d+1][[h['id'] for h in holes[d+1]].index(f'{name}_{d+1}')],'route':route,'clearHeadroom':2.7})
   D['routes'].append({'id':prefix,'kind':'stairs','anchors':route})
@@ -142,7 +142,7 @@ room('crew_mess','Crew mess',0,[-6.2,-13,6.2,4],[0,0])
 for i,(z0,z1) in enumerate([(5,11),(11,17)]):
  for side in(-1,1):room(f'crew_{i}_{"port" if side>0 else "starboard"}','Crew cabin',0,[1.2 if side>0 else -6.2,z0,6.2 if side>0 else -1.2,z1],[3 if side>0 else 1,(z0+z1)/2],True)
 room('crew_forelobby','Forward service lobby',0,[-6,17,6,24],[0,0])
-room('cold_store','Cold stores',0,[1.2,24,5.7,30],[3,27],True)
+room('cold_store','Cold stores',0,[1.6,24,5.7,30],[3,27],True)
 room('fore_workshop','Forepeak workshop',0,[-4.2,35,4.2,39],[0,0])
 room('aft_pool_deck','Aft pool deck',1,[-5.3,-52,5.3,-40],[0,0])
 room('main_salon','Main salon',1,[-6.1,-39,6.1,-28],[0,0])
@@ -237,7 +237,11 @@ for d in(1,2,3):
  y=.75+d*3
  for h in holes[d]:
   if h['kind']!='stair':continue
-  add('well_guard_'+h['id'],'rail',boxes=[box([h['x0']-.08,y,h['z0']],[h['x0'],y+1.1,h['z1']]),box([h['x1'],y,h['z0']],[h['x1']+.08,y+1.1,h['z1']]),box([h['x0'],y,h['z1']],[h['x1'],y+1.1,h['z1']+.08])],meta={'deck':d,'stairOpening':h['id'],'openMetalRail':True},color=230)
+  edge=min(width(profiles[d],h['z0']),width(profiles[d],h['z1']));bs=[]
+  if h['x0']>-edge+.02:bs.append(box([h['x0']-.08,y,h['z0']],[h['x0'],y+1.1,h['z1']]))
+  if h['x1']<edge-.02:bs.append(box([h['x1'],y,h['z0']],[h['x1']+.08,y+1.1,h['z1']]))
+  bs.append(box([max(-edge,h['x0']),y,h['z1']],[min(edge,h['x1']),y+1.1,h['z1']+.08]))
+  add('well_guard_'+h['id'],'rail',boxes=bs,meta={'deck':d,'stairOpening':h['id'],'openMetalRail':True},color=230)
 
 # Additional exterior/furnishing modules are authored in a separate readable source fragment.
 exec(compile((HERE/'layout_details.py').read_text(), str(HERE/'layout_details.py'), 'exec'))

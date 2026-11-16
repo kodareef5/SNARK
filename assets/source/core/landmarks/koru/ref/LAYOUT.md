@@ -18,7 +18,7 @@ Initial modules define the closed hull, floors and real openings, stairs, interi
 
 Main circulation remains open. Three independent optional door modules have paired closed/open states, the same hinge origin, reciprocal `opens` IDs and `placed:false` on the open state. Tests using a route's `requiresOpen` must first operate that public door. Door clear openings are 1.6 m wide and 2.6 m high. General floor-to-ceiling clearance is 2.8 m; required unobstructed visual headroom is at least 2.6 m.
 
-Each dogleg stair has two 1.5 m rises with 3 m runs, ten 0.15 m risers per flight and a 1.6 m turning landing. The exact collider follows the stair nosings; the source model authors the treads underneath. Each flight has 1.6 m clear width between guards. Three cores connect the occupied levels, with the forward core ending at the raised foredeck. Stairs and their floor holes are shared geometry rather than teleport destinations.
+Each dogleg stair has two 1.5 m rises with 3 m runs, ten 0.15 m risers per flight and a 4.0 m wide, 2.0 m deep turning landing. The exact collider follows the stair nosings; the source model authors the treads underneath. Each flight has 1.6 m clear width between guards. Three cores connect the occupied levels, with the forward core ending at the raised foredeck. Stairs and their floor holes are shared geometry rather than teleport destinations.
 
 The port gangway has 2 m clear width and a 3.75 m walking datum. It meets the ship at `[8.4,3.75,-24]`, the marina pier at `[20.4,3.75,-24]`, and the arrival corridor at `[0,3.75,-24]`. The port hull gate and side-rail gap match that corridor. Pier generation must use `docking` directly.
 
@@ -29,3 +29,5 @@ Six authored/reviewed levels are required per piece. Near-flat level 1 must reta
 The initial total fine-detail target is 260,000 triangles, hard review ceiling 360,000, with shared restrained material sets and at most three materials per piece. The renderer does not portal-cull rooms, so furnishings must be economical. Appearance notes and reconstruction provenance stay in review documents; in-world plaques use room/deck names only. The moored rig uses coherent furled sails, not sailing simulation.
 
 The original 1.2 m door estimate was widened to 1.6 m after the native posed-survivor audit found an actual armored glove reaching 0.678 m from the travel centre during a valid walk/strafe/head-look combination. The full creator interval bound was about 0.702 m on either side. Door leaves, hinge origins, open states and plaques follow the wider aperture; actor proportions are unchanged.
+
+The dogleg turning landings were expanded to 4.0×2.0 m after a real boot vertex in the native walk/strafe/head-look pose reached 0.847 m ahead of the travel centre and intersected the earlier side guard during a turn. Flight width stays 1.6 m. Floor holes and sparse guard geometry were updated with the landing solids.

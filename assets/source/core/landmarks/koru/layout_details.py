@@ -120,3 +120,41 @@ add('bow_scroll','ornament',boxes=[box([-.12,6.7,52.8],[.12,7.2,53.4])],look=[bo
 add('stern_flag','flag',boxes=[box([-.025,3.7,-51.5],[.025,6.0,-51.45])],look=[box([0,4.6,-53.1],[.85,5.9,-51.4])],meta={'kind':'maritime_ensign'},color=232)
 
 D['routes'].append({'id':'aft_pool_access','kind':'circulation','deck':1,'anchors':[[2.5,3.75,-34],[3.2,3.75,-36],[3.2,3.75,-38],[3.2,3.75,-40],[3.2,3.75,-46]]})
+
+# Sparse look-only coverage for the real round handrail/post end caps and proud mast fittings.
+# Collision stays exactly on its authored solids: these are visual bounds, not filled room envelopes.
+def extend_look(module,world_boxes):
+ o=module['origin'];look=module.setdefault('look',{'boxes':[]})
+ for b in world_boxes:
+  local={'at':[b['at'][k]-o[k] for k in range(3)],'half':b['half']};look['boxes'].append(clean(local))
+  for k in range(3):
+   module['visualBounds']['min'][k]=min(module['visualBounds']['min'][k],local['at'][k]-local['half'][k])
+   module['visualBounds']['max'][k]=max(module['visualBounds']['max'][k],local['at'][k]+local['half'][k])
+ assert len(look['boxes'])<=64 and max(abs(v) for s in module['visualBounds'].values() for v in s)<=16
+for module in mods:
+ o=module['origin'];a=module['art'];parts=[]
+ if module['category']=='rail' and module['hulls']:
+  for h in module['hulls']:
+   ps=[[p[k]+o[k] for k in range(3)] for p in h['points']]
+   for z in(min(p[2] for p in ps),max(p[2] for p in ps)):
+    end=[p for p in ps if abs(p[2]-z)<1e-5];x=(min(p[0] for p in end)+max(p[0] for p in end))/2
+    parts.append(box([x-.025,min(p[1] for p in end),z-.025],[x+.025,max(p[1] for p in end),z+.025]))
+ if module['category']=='stairs' and 'flight' in a:
+  (x0,y0,z0),(x1,y1,z1)=a['flight']
+  for x in(x0-.04,x1+.04):
+   for y,z in((y0,z0),(y1,z1)):parts.append(box([x-.025,y,z-.025],[x+.025,y+1.1,z+.025]))
+ if module['category']=='mast':
+  p,q=a['ends'];r=a['radius'];rr=r*.96+.019
+  for y in(p[1]+.12,q[1]-.12):parts.append(box([-rr,y-.019,p[2]-rr],[rr,y+.019,p[2]+rr]))
+  parts.append(box([-.017,p[1]+.03,p[2]-r*.96-.017],[.017,q[1]-.03,p[2]-r*.96+.017]))
+ if parts:extend_look(module,parts)
+
+# Working deck fittings make the moored craft legible at human scale. Their occupied solids avoid every route.
+for name,y,z,x in [('fore_1',6.75,25,5.4),('fore_2',6.75,37,4.6),('aft',3.75,-46,5.0)]:
+ items=[]
+ for sign in(-1,1):
+  items.append(('winch' if name!='aft' else 'cleat',sign*x,y,z,.75,.75 if name!='aft' else .30,.75))
+ furnish('fittings_'+name,'foredeck' if name!='aft' else 'aft_pool_deck',items)
+furnish('fore_hatch','foredeck',[('deck_hatch',-1.6,6.88,42,1.1,.10,1.8)])
+
+D['routes'].append({'id':'lower_workshop_access','kind':'circulation','deck':0,'anchors':[[0,.75,22],[.6,.75,30.4],[.6,.75,36.8],[0,.75,37]]})

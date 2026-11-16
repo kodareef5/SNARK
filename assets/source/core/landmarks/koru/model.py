@@ -82,12 +82,12 @@ def rail_segment(m,a,b,bottomA,bottomB,thickness=.023):
 def rails(m,mod):
  o=mod['origin']
  for b in mod['boxes']:
-  lo,hi=worldbox(b,o);axis=0 if hi[0]-lo[0]>hi[2]-lo[2] else 2;a=[(lo[k]+hi[k])/2 for k in range(3)];b=a[:];a[axis]=lo[axis]+.025;b[axis]=hi[axis]-.025;a[1]=b[1]=hi[1]-.025;qa=a[:];qb=b[:];qa[1]=qb[1]=lo[1]+.025;rail_segment(m,a,b,qa,qb)
+  lo,hi=worldbox(b,o);axis=0 if hi[0]-lo[0]>hi[2]-lo[2] else 2;a=[(lo[k]+hi[k])/2 for k in range(3)];b=a[:];a[axis]=lo[axis]+.025;b[axis]=hi[axis]-.025;a[1]=b[1]=hi[1]-.025;qa=a[:];qb=b[:];qa[1]=qb[1]=lo[1];rail_segment(m,a,b,qa,qb)
  for h in mod['hulls']:
   ps=worldhull(h,o);z0=min(p[2] for p in ps);z1=max(p[2] for p in ps);a=[];b=[]
   for z in(z0,z1):
    ends=[p for p in ps if abs(p[2]-z)<1e-4];x=(min(p[0] for p in ends)+max(p[0] for p in ends))/2;lo=min(p[1] for p in ends);hi=max(p[1] for p in ends)
-   a.append([x,hi-.025,z]);b.append([x,lo+.025,z])
+   a.append([x,hi-.025,z]);b.append([x,lo,z])
   rail_segment(m,a[0],a[1],b[0],b[1])
 def staircase(m,mod):
  art=mod['art'];o=mod['origin']
@@ -142,12 +142,25 @@ def furniture(m,mod):
   def feet():
    if m.level>3:return
    for a in(-.39,.39):
-    for c in(-.39,.39):b(a-.035,0,c-.035,a+.035,.19,c+.035,'brass',.008)
+    for c in(-.39,.39):b(a-.035,0,c-.035,a+.035,.22,c+.035,'brass',.008)
   def cushion(ax,az,bx,bz,ay=.28,by=.54):b(ax,ay,az,bx,by,bz,'fabric',.06)
-  if m.level==5 and kind not in('tub','bed','bunk','sofa','lounger','helm'):
+  if m.level==5 and kind not in('tub','bed','bunk','sofa','lounger','helm','winch','cleat','deck_hatch'):
    b(-.5,0,-.5,.5,1,.5,'cream' if kind in('cold_store','laundry','galley') else 'mahogany',0);continue
-  if kind in('table','dining','desk','chart','workbench','vanity'):
+  if kind in('winch','cleat','deck_hatch'):
+   if kind=='deck_hatch':
+    b(-.5,0,-.5,.5,.7,.5,'steel',.025);b(-.46,.7,-.46,.46,1,.46,'teak',.018)
+   elif kind=='winch':
+    for ya,yb,r,tag in[(0,.15,.49,'steel'),(.15,.78,.30,'navy'),(.78,1,.42,'steel')]:m.tube([[x,y+sy*ya,z],[x,y+sy*yb,z]],min(sx,sz)*r,tag,[20,12,8,6,4,4][m.level])
+    if m.level<3:
+     for dy in(.3,.45,.6):m.ring([x,y+sy*dy,z],[1,0,0],[0,0,1],sx*.31,sz*.31,.02,'mahogany')
+   else:
+    b(-.4,0,-.25,.4,.12,.25,'steel',.015)
+    for ax in(-.24,.24):m.tube([[x+ax*sx,y+sy*.1,z],[x+ax*sx,y+sy*.7,z]],.045,'steel')
+    m.tube([[x-sx*.45,y+sy*.7,z],[x+sx*.45,y+sy*.7,z]],.055,'steel')
+  elif kind in('table','dining','desk','chart','workbench','vanity'):
    feet();b(-.5,.88,-.5,.5,.96 if kind in('chart','dining') else 1,.5,'slate' if kind=='workbench' else 'mahogany',.025)
+   for ax in(-.39,.39):
+    for az in(-.39,.39):b(ax-.035,.16,az-.035,ax+.035,.9,az+.035,'mahogany',.01)
    if kind in('desk','workbench','vanity'):
     b(-.48,.15,-.45,-.18,.86,.45,'mahogany');b(.18,.15,-.45,.48,.86,.45,'mahogany')
    if kind=='chart':b(-.44,.96,-.43,.44,1,.43,'screen',0)
@@ -220,7 +233,7 @@ def furniture(m,mod):
    m.tube([[x,y+sy*.35,z],[x,y+sy*.96,z]],.025,'mahogany')
    n=10 if m.level<2 else 5
    for i in range(n):
-    ang=i*2.4;yy=y+sy*(.45+.045*i);r=sx*.38
+    ang=i*2.4;yy=y+sy*(.4+.035*i);r=sx*.38
     m.tube([[x,yy,z],[x+r*math.cos(ang),yy+sy*.16,z+r*math.sin(ang)]],.08 if m.level<3 else .12,'green',6 if m.level<2 else 4)
   elif kind=='compass':
    b(-.3,0,-.3,.3,.85,.3,'mahogany');m.tube([[x,y+sy*.82,z],[x,y+sy,z]],sx*.48,'brass');m.tube([[x,y+sy-.02,z],[x,y+sy-.005,z]],sx*.36,'screen')
@@ -231,7 +244,7 @@ def furniture(m,mod):
     if kind=='books':
      for shelf in range(4):
       for i in range(max(3,int(sz*5))):
-       zz=-.46+i*.92/max(3,int(sz*5));b(.48,.08+shelf*.23,zz,.5,.25+shelf*.23,zz+.02,['navy','red','teak','green','cream'][i%5],0)
+       zz=-.46+i*.92/max(3,int(sz*5));b(.47,.08+shelf*.23,zz,.5,.25+shelf*.23,zz+.02,['navy','red','teak','green','cream'][i%5],0)
     else:
      for zz in(-.28,.28):
       front=-1 if x>0 else 1;a,bx=(-.5,-.47) if front<0 else(.47,.5);b(a,.42,zz-.025,bx,.60,zz+.025,'brass',.004)
@@ -338,7 +351,7 @@ def plaques(m,mod):
  if mod['category']=='facade':
   a=mod['art'];lo,hi=a['range']
   if a['deck']==2 and a['axis']=='z' and lo<=-20<hi:
-   p=[a['fixed'],a['floorY']+.42,-20]
+   center=max(lo+.77,min(hi-.77,-20));p=[a['fixed'],a['floorY']+.42,center]
    m.box([p[0]-.088,p[1]-.15,p[2]-.75],[p[0]+.088,p[1]+.15,p[2]+.75],'sign:KORU')
  if mod['category']=='mast' and mod['art']['mast']=='main' and mod['art']['ends'][0][1]<1:
   for deck in D['decks']:
