@@ -43,7 +43,7 @@ document.addEventListener("keydown", (event) => {
   if (target?.matches("input,select,textarea") || target?.isContentEditable) return;
   if (event.key === "/" || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k")) {
     event.preventDefault();
-    one<HTMLInputElement>(".global-search input")?.focus();
+    one<HTMLInputElement>(".wiki-search input,.global-search input")?.focus();
   }
 });
 
@@ -109,7 +109,7 @@ for (const button of all<HTMLButtonElement>("[data-preview-clip]")) button.addEv
   try {
     const host = await activateModel(frame);
     host.dispatchEvent(new CustomEvent("guide:clip", { detail: { id: button.dataset.previewClip } }));
-    frame.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
+    for (const clip of all<HTMLButtonElement>("[data-preview-clip]")) clip.setAttribute("aria-pressed", String(clip === button));
   } catch { /* The frame carries the retry message. */ }
   finally { button.disabled = false; }
 });
@@ -163,4 +163,26 @@ for (const atlas of all<HTMLElement>("[data-atlas]")) {
   });
   new ResizeObserver(draw).observe(viewport);
   draw();
+}
+
+for (const button of all<HTMLButtonElement>("[data-copy-target]")) {
+  const feedback = document.createElement("span");
+  feedback.className = "copy-feedback";
+  feedback.setAttribute("role", "status");
+  button.after(feedback);
+  button.addEventListener("click", async () => {
+    const target = document.getElementById(button.dataset.copyTarget ?? "");
+    if (!target) return;
+    button.disabled = true;
+    try {
+      await navigator.clipboard.writeText(target.textContent ?? "");
+      button.textContent = "Copied";
+      feedback.textContent = "Copied to clipboard";
+      feedback.classList.add("sr-only");
+      setTimeout(() => { button.textContent = "Copy"; feedback.textContent = ""; }, 2400);
+    } catch {
+      feedback.classList.remove("sr-only");
+      feedback.textContent = "Copy unavailable. Select the example to copy it.";
+    } finally { button.disabled = false; }
+  });
 }
