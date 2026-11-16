@@ -1,0 +1,49 @@
+{
+  "sounds": {
+    "call": {
+      "range": 60, "level": -20, "vary": 0.6,
+      "takes": [
+        {"file": "takes/call/moss-pt-9111-05335.wav", "from": "moss", "start": 0.05, "end": 0.945},
+        {"file": "takes/call/moss-pt-9110-04825.wav", "from": "moss", "start": 0.05, "end": 0.72},
+        {"file": "takes/call/moss-pt-9111-02555.wav", "from": "moss", "start": 0.05, "end": 1.13},
+        {"file": "takes/call/moss-pt-9110-06945.wav", "from": "moss", "start": 0.05, "end": 0.965},
+        {"file": "takes/call/moss-pt-9111-00220.wav", "from": "moss", "start": 0.05, "end": 0.935},
+        {"file": "takes/call/moss-pt-9110-00280.wav", "from": "moss", "start": 0.05, "end": 0.785}
+      ]
+    },
+    "startled": {
+      "range": 80, "level": -16, "vary": 0.5,
+      "takes": [
+        {"file": "takes/startled/moss-pt-9120-06250.wav", "from": "moss", "start": 0.05, "end": 0.92},
+        {"file": "takes/startled/moss-pt-9120-00435.wav", "from": "moss", "start": 0.05, "end": 0.915}
+      ]
+    },
+    "hurt": {
+      "range": 50, "level": -18, "vary": 0.5,
+      "takes": [
+        {"file": "takes/hurt/moss-pt-9130-00150.wav", "from": "moss", "start": 0.05, "end": 0.78},
+        {"file": "takes/hurt/moss-pt-9130-06330.wav", "from": "moss", "start": 0.05, "end": 1.08}
+      ]
+    },
+    "death": {
+      "range": 50, "level": -18, "vary": 0.3,
+      "takes": [
+        {"file": "takes/death/moss-pt-9140-04540.wav", "from": "moss", "start": 0.05, "end": 2.67},
+        {"file": "takes/death/moss-pt-9140-00255.wav", "from": "moss", "start": 0.05, "end": 2.51}
+      ]
+    },
+    "attack": {
+      "range": 40, "level": -16, "vary": 0.5,
+      "takes": [
+        {"file": "takes/attack/moss-pt-9150-06350.wav", "from": "moss", "start": 0.05, "end": 0.66},
+        {"file": "takes/attack/moss-pt-9150-03460.wav", "from": "moss", "start": 0.05, "end": 0.715}
+      ]
+    },
+    "step": {
+      "range": 30, "level": -24, "vary": 0.6,
+      "takes": [
+        {"file": "takes/step/moss-pt-9160-00292.wav", "from": "moss", "start": 0.05, "end": 0.398}
+      ]
+    }
+  }
+}
