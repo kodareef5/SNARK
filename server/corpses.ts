@@ -22,6 +22,9 @@ import { GROWN, growthStep, leftAtPeriod, youngScale } from "../shared/sim/breed
 import { Body as Mover, MF_OUT, MF_ROOTED, MODE_WALK, STANCE_STAND, stepBody, type MoveParams } from "../shared/sim/character.ts";
 import { F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
 import { Inventory } from "../shared/sim/items.ts";
+import { createBoat, type BoatState } from "../shared/sim/boat.ts";
+import { stepBoatWreck } from "../shared/sim/boat-wreck.ts";
+import { boatWorld } from "../shared/world/boat.ts";
 import { createHelicopter, type HelicopterState } from "../shared/sim/helicopter.ts";
 import { helicopterWreckDefinition, stepHelicopterWreck } from "../shared/sim/helicopter-wreck.ts";
 import { rayVehicle, vehiclePoint } from "../shared/sim/vehicle-frame.ts";
@@ -115,7 +118,7 @@ export interface Body {
   drop: Mover | null;
   dropped: number;
   /** Rigid rotorcraft salvage, carrying its complete crash orientation independently of creature ragdolls. */
-  readonly wreck: HelicopterState | null;
+  readonly wreck: HelicopterState | BoatState | null;
 }
 
 /** What one blow gave, for tests and the console. */
@@ -256,7 +259,8 @@ export class Corpses {
   private make(rec: EntityRecord, kind: number, max: number, left: number, young: boolean, size: number, out: boolean, life: number): Body {
     const anim = this.ctx.world.anims[kind];
     const def = this.ctx.world.reg.vehicle[kind];
-    const wreck = def?.movement === "rotor" ? createHelicopter(def.spec, rec.x, rec.y, rec.z, yawOf16(rec.yaw), 0) : null;
+    const wreck = def?.movement === "rotor" ? createHelicopter(def.spec, rec.x, rec.y, rec.z, yawOf16(rec.yaw), 0) : def?.movement === "boat" ? createBoat(def.spec, rec.x, rec.y, rec.z, yawOf16(rec.yaw), 0) : null;
+    if (wreck && "flooding" in wreck) { wreck.hullCondition = 0; wreck.engineCondition = 0; wreck.flooding = 1; }
     const saved = rec.extra.get(WRECK_COMPONENT);
     if (wreck && saved?.length === 1 + WRECK_FIELDS.length * 4 && saved[0] === 1) {
       const view = new DataView(saved.buffer, saved.byteOffset, saved.byteLength);
@@ -283,8 +287,10 @@ export class Corpses {
     const world = this.ctx.world;
     if (b.wreck) {
       const def = world.reg.vehicle[b.kind]!;
-      if (def.movement !== "rotor") return false;
-      const hit = helicopterWorld(world).blocked(b.wreck, { ...b.wreck, y: b.wreck.y - .035 }, helicopterWreckDefinition(def));
+      const hit = def.movement === "boat" && "flooding" in b.wreck
+        ? boatWorld(world).blocked(b.wreck, { ...b.wreck, y: b.wreck.y - .035 }, def)
+        : def.movement === "rotor" && "rotorRpm" in b.wreck
+          ? helicopterWorld(world).blocked(b.wreck, { ...b.wreck, y: b.wreck.y - .035 }, helicopterWreckDefinition(def)) : null;
       return !!hit && (hit.ny ?? 0) > .45;
     }
     const p = world.reg.move[b.kind]!;
@@ -353,8 +359,10 @@ export class Corpses {
     const world = this.ctx.world;
     const m = b.drop!;
     const def = world.reg.vehicle[b.kind];
-    if (b.wreck && def?.movement === "rotor") {
-      const stopped = stepHelicopterWreck(b.wreck, def, helicopterWorld(world));
+    if (b.wreck && (def?.movement === "rotor" || def?.movement === "boat")) {
+      const stopped = def.movement === "boat" && "flooding" in b.wreck
+        ? stepBoatWreck(b.wreck, def, boatWorld(world))
+        : def.movement === "rotor" && "rotorRpm" in b.wreck && stepHelicopterWreck(b.wreck, def, helicopterWorld(world));
       m.x = b.wreck.x; m.y = b.wreck.y; m.z = b.wreck.z;
       b.x = b.rec.x = m.x; b.y = b.rec.y = m.y; b.z = b.rec.z = m.z; b.dropped++;
       if (b.e >= 0) world.ents.setPosition(b.e, b.x, b.y, b.z);
@@ -415,6 +423,7 @@ export class Corpses {
     ents.vehicleQx[e] = s.qx; ents.vehicleQy[e] = s.qy; ents.vehicleQz[e] = s.qz; ents.vehicleQw[e] = s.qw;
     ents.vehicleRotorRpm[e] = ents.vehicleEngineOn[e] = ents.vehicleRpm[e] = ents.vehicleCollective[e] = 0;
     ents.vehicleEngineCondition[e] = ents.vehicleRotorCondition[e] = 0;
+    if ("flooding" in s) { ents.vehicleHullCondition[e] = 0; ents.vehicleFlooding[e] = s.flooding; }
   }
 
   private wake(b: Body): void {

@@ -1,17 +1,19 @@
 // Maintenance and deployment share inventory transactions with every other item use. No client owns a vehicle by naming it.
 import type { BitReader } from "../shared/net/codec.ts";
 import { handleGen, handleIndex } from "../shared/ids.ts";
-import { CHUNK_SIZE, WORLD_MAX_Y, WORLD_MIN_Y } from "../shared/coords.ts";
+import { CHUNK_SIZE, TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y } from "../shared/coords.ts";
 import { hashString } from "../shared/hash.ts";
 import { Rng } from "../shared/rng.ts";
-import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, SESSION_ALIVE, TEXT_NOTICE, VEHICLE_DEPLOY, VEHICLE_INSPECT, VEHICLE_REFUEL, VEHICLE_REPAIR } from "../shared/net/protocol.ts";
-import { stanceEye } from "../shared/sim/character.ts";
+import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, SESSION_ALIVE, TEXT_NOTICE, VEHICLE_DEPLOY, VEHICLE_INSPECT, VEHICLE_REFUEL, VEHICLE_REPAIR, VEHICLE_RECOVER } from "../shared/net/protocol.ts";
+import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { F_ALIVE, F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
 import { FLAG_BLUEPRINT } from "../shared/sim/items.ts";
 import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { VEHICLE_FUEL_PER_GASOLINE as FUEL_PER_ITEM, VEHICLE_REPAIR_STEP as REPAIR_STEP, VEHICLE_REPAIR_BILL as REPAIR_BILL } from "../shared/sim/vehicle-maintenance.ts";
-import { isRotorVehicle, type VehicleDefinition } from "../shared/sim/vehicle.ts";
-import { groundUnder } from "../shared/world/collide.ts";
+import { isBoatVehicle, isRotorVehicle, type VehicleDefinition } from "../shared/sim/vehicle.ts";
+import { boatRestY } from "../shared/sim/boat.ts";
+import { boatPlacement, boatMeetsCapsule, boatMeetsVehicle } from "../shared/world/boat.ts";
+import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
 import { helicopterPlacement, helicopterMeetsCapsule, helicopterMeetsVehicle } from "../shared/world/helicopter.ts";
 import type { MapVehicle } from "../shared/world/mapfile.ts";
 import { castWorld, HIT_NONE, rayHit } from "../shared/world/ray.ts";
@@ -50,6 +52,7 @@ const DEPLOY_REACH = 12;
 
 export class VehicleService {
   readonly ctx: VehicleServiceContext;
+  private readonly pushedAt = new Map<number, number>();
   constructor(ctx: VehicleServiceContext) { this.ctx = ctx; }
 
   command(c: Client, r: BitReader): number {
@@ -63,6 +66,7 @@ export class VehicleService {
     if (action === VEHICLE_INSPECT) return this.inspect(c, handle);
     if (action === VEHICLE_REFUEL) return this.refuel(c, handle, count);
     if (action === VEHICLE_REPAIR) return this.repair(c, handle);
+    if (action === VEHICLE_RECOVER) return this.recover(c, handle);
     return RESULT_INVALID;
   }
 
@@ -83,8 +87,16 @@ export class VehicleService {
     if (!this.ctx.may(actor, rec)) return RESULT_NOT_YOURS;
     if (Math.hypot(ents.x[c.ent]! - ents.x[e]!, ents.y[c.ent]! - ents.y[e]!, ents.z[c.ent]! - ents.z[e]!) > REACH + def.spec.halfWidth) return RESULT_FAR;
     if (!this.visible(c, ents.x[e]!, ents.y[e]! + Math.min(1.3, def.spec.height / 2), ents.z[e]!)) return RESULT_OBSTRUCTED;
-    if (stopped && ((ents.flags[e]! & F_GROUNDED) === 0 || Math.hypot(ents.vx[e]!, ents.vy[e]!, ents.vz[e]!) > .1 ||
-      (isRotorVehicle(def) && (ents.vehicleEngineOn[e] !== 0 || ents.vehicleRotorRpm[e]! > 30)))) return RESULT_BUSY;
+    if (stopped) {
+      const grounded = (ents.flags[e]! & F_GROUNDED) !== 0;
+      const water = world.hf.waterAt(ents.x[e]!, ents.z[e]!);
+      const floating = isBoatVehicle(def) && Number.isFinite(water) && water > world.hf.heightAt(ents.x[e]!, ents.z[e]!) + .1 &&
+        Math.abs(ents.y[e]! - boatRestY(def.spec, water, ents.vehiclePayloadMass[e]!)) < .45 &&
+        Math.abs(ents.vehiclePitch[e]!) < .35 && Math.abs(ents.vehicleRoll[e]!) < .45;
+      if ((!grounded && !floating) || Math.hypot(ents.vx[e]!, ents.vy[e]!, ents.vz[e]!) > .15 ||
+        (isBoatVehicle(def) && (ents.vehicleEngineOn[e] !== 0 || Math.hypot(ents.vehicleYawRate[e]!, ents.vehiclePitchRate[e]!, ents.vehicleRollRate[e]!) > .12)) ||
+        (isRotorVehicle(def) && (ents.vehicleEngineOn[e] !== 0 || ents.vehicleRotorRpm[e]! > 30))) return RESULT_BUSY;
+    }
     return { e, rec, actor, def };
   }
 
@@ -102,7 +114,7 @@ export class VehicleService {
     if ((ents.flags[e]! & F_PROP) !== 0) game.sendText(c, TEXT_NOTICE, `${rec.name || "Vehicle"}: salvage wreck. Recover cargo or harvest the remaining materials.`);
     else {
       const hp = this.health(rec), engine = Math.round(ents.vehicleEngineCondition[e]! * 100), rotor = Math.round(ents.vehicleRotorCondition[e]! * 100);
-      game.sendText(c, TEXT_NOTICE, `${rec.name || "Vehicle"}: hull ${Math.round(hp * 100)}%, fuel ${ents.fuel[e]!.toFixed(1)}/${def.spec.fuelCapacity}${isRotorVehicle(def) ? `, engine ${engine}%, rotor ${rotor}%` : ""}.`);
+      game.sendText(c, TEXT_NOTICE, `${rec.name || "Vehicle"}: hull ${Math.round(hp * 100)}%, fuel ${ents.fuel[e]!.toFixed(1)}/${def.spec.fuelCapacity}${isRotorVehicle(def) ? `, engine ${engine}%, rotor ${rotor}%` : isBoatVehicle(def) ? `, propulsion ${engine}%, flooding ${Math.round(ents.vehicleFlooding[e]! * 100)}%` : ""}.`);
     }
     if (c.open !== rec.pid && !game.mayOpen(c, rec.pid)) return RESULT_DENIED;
     c.open = c.open === rec.pid ? 0 : rec.pid;
@@ -132,9 +144,10 @@ export class VehicleService {
     if (typeof target === "number") return target;
     const { e, rec, actor, def } = target, { world, items, survival, urban, game } = this.ctx, ents = world.ents;
     const hull = Math.min(REPAIR_STEP, 1 - this.health(rec));
-    const engine = isRotorVehicle(def) ? Math.min(REPAIR_STEP, 1 - ents.vehicleEngineCondition[e]!) : 0;
+    const engine = isRotorVehicle(def) || isBoatVehicle(def) ? Math.min(REPAIR_STEP, 1 - ents.vehicleEngineCondition[e]!) : 0;
     const rotor = isRotorVehicle(def) ? Math.min(REPAIR_STEP, 1 - ents.vehicleRotorCondition[e]!) : 0;
-    const fraction = Math.max(hull, engine, rotor);
+    const flooding = isBoatVehicle(def) ? Math.min(REPAIR_STEP, ents.vehicleFlooding[e]!) : 0;
+    const fraction = Math.max(hull, engine, rotor, flooding);
     if (fraction < .00001) return RESULT_FULL;
     const costs = REPAIR_BILL.map(([id, full]) => [world.reg.index.get(id) ?? 0, Math.ceil(full * fraction)] as const);
     const inv = items.inv(actor);
@@ -145,9 +158,11 @@ export class VehicleService {
     // Every cost was checked before any is spent. All edits join the same ordinary persistence commit.
     for (const [item, n] of costs) items.burnItem(actor, item, n);
     survival.add(rec, V_HEALTH, hull * (rec.vitals?.max[V_HEALTH] ?? 0) / 1e6);
-    if (isRotorVehicle(def)) {
-      ents.vehicleEngineCondition[e] = Math.fround(Math.min(1, ents.vehicleEngineCondition[e]! + engine));
-      ents.vehicleRotorCondition[e] = Math.fround(Math.min(1, ents.vehicleRotorCondition[e]! + rotor));
+    if (isRotorVehicle(def) || isBoatVehicle(def)) ents.vehicleEngineCondition[e] = Math.fround(Math.min(1, ents.vehicleEngineCondition[e]! + engine));
+    if (isRotorVehicle(def)) ents.vehicleRotorCondition[e] = Math.fround(Math.min(1, ents.vehicleRotorCondition[e]! + rotor));
+    if (isBoatVehicle(def)) {
+      ents.vehicleFlooding[e] = Math.fround(Math.max(0, ents.vehicleFlooding[e]! - flooding));
+      ents.vehicleHullCondition[e] = Math.fround(this.health(rec));
     }
     urban.changed(e);
     game.sendText(c, TEXT_NOTICE, "Repaired the hull and mechanical systems by up to 25%.");
@@ -156,6 +171,47 @@ export class VehicleService {
 
   private health(rec: EntityRecord): number {
     return rec.vitals ? rec.vitals.at(V_HEALTH, this.ctx.world.tick) / Math.max(1, rec.vitals.max[V_HEALTH]!) : 1;
+  }
+
+  /** A nearby survivor can shove a stranded hull toward deeper water. The solver still owns every centimetre moved. */
+  recover(c: Client, handle: number): number {
+    const target = this.target(c, handle, true);
+    if (typeof target === "number") return target;
+    const { e, rec, def } = target, { world, urban, game } = this.ctx, ents = world.ents;
+    if (!isBoatVehicle(def) || c.drive >= 0 || ents.seat[c.ent] !== 0) return RESULT_DENIED;
+    const tick = world.tick;
+    if (tick - (this.pushedAt.get(rec.pid) ?? -10000) < 3 * TICK_RATE) return RESULT_BUSY;
+    const dx = ents.x[e]! - ents.x[c.ent]!, dz = ents.z[e]! - ents.z[c.ent]!, distance = Math.hypot(dx, dz);
+    if (distance < .01) return RESULT_OBSTRUCTED;
+    const sn = Math.sin(ents.vehicleYaw[e]!), cs = Math.cos(ents.vehicleYaw[e]!);
+    const lx = cs * dx - sn * dz, lz = sn * dx + cs * dz;
+    const outside = Math.hypot(Math.max(0, Math.abs(lx) - def.spec.halfWidth), Math.max(0, Math.abs(lz) - def.spec.halfLength));
+    if (outside < .05 || outside > 1.5 || Math.abs(ents.y[c.ent]! - ents.y[e]!) > 2) return RESULT_FAR;
+    const nx = dx / distance, nz = dz / distance, x = ents.x[e]!, z = ents.z[e]!;
+    const move = world.reg.move[ents.kind[c.ent]!]!, height = stanceHeight(move, ents.stance[c.ent]!);
+    for (let reach = 0; reach <= Math.max(0, outside - move.radius); reach += .15) {
+      const px = ents.x[c.ent]! + nx * reach, pz = ents.z[c.ent]! + nz * reach;
+      if (!capsuleFree(world, px, ents.y[c.ent]!, pz, move.radius, height)) return RESULT_OBSTRUCTED;
+    }
+    const water = world.hf.waterAt(x, z), ground = world.hf.heightAt(x, z);
+    const depth = Number.isFinite(water) ? water - ground : -Infinity;
+    let deeper = false;
+    for (const reach of [2, 4, 6, 8]) {
+      const px = x + nx * reach, pz = z + nz * reach;
+      if (px < 0 || pz < 0 || px >= world.hf.sizeX || pz >= world.hf.sizeZ) return RESULT_NO_SUPPORT;
+      const floor = world.hf.heightAt(px, pz), surface = world.hf.waterAt(px, pz);
+      // Never launch uphill, over a seawall, or toward an unrelated raised lake.
+      if (floor > ground + .2 || (Number.isFinite(water) && Math.abs(surface - water) > .1)) return RESULT_NO_SUPPORT;
+      if (Number.isFinite(surface) && surface - floor > Math.max(def.spec.draft + .15, depth + .1)) deeper = true;
+    }
+    if (!deeper) return RESULT_NO_SUPPORT;
+    const push = Math.min(1.25, Math.sqrt(1800 / Math.max(50, def.spec.mass + urban.payloadMass(e))));
+    ents.vx[e] = Math.fround(ents.vx[e]! + nx * push); ents.vz[e] = Math.fround(ents.vz[e]! + nz * push);
+    for (const [pid, at] of this.pushedAt) if (tick - at >= 3 * TICK_RATE) this.pushedAt.delete(pid);
+    this.pushedAt.set(rec.pid, tick);
+    urban.changed(e); ents.pose(e, tick);
+    game.sendText(c, TEXT_NOTICE, "Pushed toward deeper water. Move around the hull to change direction.");
+    return RESULT_OK;
   }
 
   deploy(c: Client, slot: number, x: number, y: number, z: number, yaw: number): number {
@@ -171,7 +227,7 @@ export class VehicleService {
     const e = this.ctx.spawn(world.reg.ids[kind]!, x, z, actor.team, yaw, { y, fuel: 0, hull: 1, engine: 1, rotor: 1 });
     if (e < 0) return RESULT_OBSTRUCTED;
     if (inv.item[slot] !== item || !items.burn(actor, slot, 1)) { this.ctx.discard(e); return RESULT_INVALID; }
-    this.ctx.game.sendText(c, TEXT_NOTICE, "Helicopter assembled. Add gasoline before starting.");
+    this.ctx.game.sendText(c, TEXT_NOTICE, `${isBoatVehicle(def) ? "Motorboat" : "Helicopter"} assembled. Add gasoline before starting.`);
     return RESULT_OK;
   }
 }
@@ -182,18 +238,24 @@ export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: nu
   if (![x, y, z, yaw].every(Number.isFinite)) return false;
   if (isRotorVehicle(def)) {
     if (!helicopterPlacement(world, x, y, z, yaw, def)) return false;
+  } else if (isBoatVehicle(def)) {
+    if (!boatPlacement(world, x, y, z, yaw, def)) return false;
   } else if (Math.abs(y - groundUnder(world.hf, x, z, spec.halfWidth)) > .2) return false;
-  if (isRotorVehicle(def)) {
+  if (isRotorVehicle(def) || isBoatVehicle(def)) {
     const posed = { x, y, z, yaw, pitch: 0, roll: 0 }, ents = world.ents, pad = 15;
     for (let cz = Math.max(0, Math.floor((z - pad) / CHUNK_SIZE)); cz <= Math.min(world.dims.chunksZ - 1, Math.floor((z + pad) / CHUNK_SIZE)); cz++) {
       for (let cx = Math.max(0, Math.floor((x - pad) / CHUNK_SIZE)); cx <= Math.min(world.dims.chunksX - 1, Math.floor((x + pad) / CHUNK_SIZE)); cx++) {
         for (let e = ents.chunkHead[cz * world.dims.chunksX + cx]!; e >= 0; e = ents.next[e]!) {
           if (!(ents.flags[e]! & F_ALIVE)) continue;
           const kind = ents.kind[e]!, other = world.reg.vehicle[kind];
-          if (other ? helicopterMeetsVehicle(def, posed, other, {
+          const frame = {
             x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[e]!, pitch: ents.vehiclePitch[e]!, roll: ents.vehicleRoll[e]!,
-            ...(isRotorVehicle(other) ? { qx: ents.vehicleQx[e]!, qy: ents.vehicleQy[e]!, qz: ents.vehicleQz[e]!, qw: ents.vehicleQw[e]! } : {}),
-          }) : helicopterMeetsCapsule(def, posed, ents.x[e]!, ents.y[e]!, ents.z[e]!, world.reg.bodyRadius[kind]!, world.reg.bodyHeight[kind]!)) return false;
+            ...(other && (isRotorVehicle(other) || isBoatVehicle(other)) ? { qx: ents.vehicleQx[e]!, qy: ents.vehicleQy[e]!, qz: ents.vehicleQz[e]!, qw: ents.vehicleQw[e]! } : {}),
+          };
+          const hit = isBoatVehicle(def)
+            ? other ? boatMeetsVehicle(def, posed, other, frame) : boatMeetsCapsule(def, posed, ents.x[e]!, ents.y[e]!, ents.z[e]!, world.reg.bodyRadius[kind]!, world.reg.bodyHeight[kind]!)
+            : other ? helicopterMeetsVehicle(def, posed, other, frame) : helicopterMeetsCapsule(def, posed, ents.x[e]!, ents.y[e]!, ents.z[e]!, world.reg.bodyRadius[kind]!, world.reg.bodyHeight[kind]!);
+          if (hit) return false;
         }
       }
     }
@@ -218,9 +280,19 @@ export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: nu
     }
     parts.push({ x: x + cs * main.at[0] + sn * main.at[2], y: y + main.at[1] - .08, z: z - sn * main.at[0] + cs * main.at[2], radius: main.radius, height: .16 });
   }
+  if (isBoatVehicle(def)) {
+    const prop = def.spec.propeller;
+    add(prop.at[0], prop.at[1] - prop.radius, prop.at[2], prop.radius, prop.radius * 2);
+    for (const box of def.spec.hullBoxes) {
+      if (Math.abs(box.at[2]) + box.half[2] <= spec.halfLength) continue;
+      const radius = Math.min(box.half[0], box.half[2]);
+      const steps = Math.max(1, Math.ceil(box.half[2] / radius));
+      for (let i = -steps; i <= steps; i++) add(box.at[0], box.at[1] - box.half[1], box.at[2] + i / steps * Math.max(0, box.half[2] - radius), radius, box.half[1] * 2);
+    }
+  }
   for (const part of parts) {
     if (part.height > .2 && !placeFree(world, part.x, part.y, part.z, part.radius, part.height)) return false;
-    if (isRotorVehicle(def)) continue; // Whole aircraft/actor envelopes were checked above, including adjacent rotor discs.
+    if (isRotorVehicle(def) || isBoatVehicle(def)) continue; // Whole rigid vehicle/actor envelopes were checked above, including adjacent rotor discs.
     // Dynamic bodies are separate from the static collision world. Test only nearby chunks and vertical overlap.
     const pad = part.radius + 8;
     for (let cz = Math.max(0, Math.floor((part.z - pad) / CHUNK_SIZE)); cz <= Math.min(world.dims.chunksZ - 1, Math.floor((part.z + pad) / CHUNK_SIZE)); cz++) {

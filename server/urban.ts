@@ -1,5 +1,6 @@
 // Vehicle seats in the normal game world. The surviving actor, its record, inventory,
 // team and connection stay the same; only the body its inputs drive changes.
+import { BOAT_ART } from '../content/vehicles/boat-art.ts';
 import { Pose } from '../shared/anim/clip.ts';
 import { HUMAN, HUMAN_BONES } from '../shared/anim/human.ts';
 import { defaultLook, lookScales, LOOK_SEX, SEX_IDS } from '../shared/anim/look.ts';
@@ -12,11 +13,11 @@ import { makeHandle } from '../shared/ids.ts';
 import { detAtan2, detCos, detSin, TAU } from '../shared/math/scalar.ts';
 import { quatRotate } from '../shared/math/quat.ts';
 import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, SESSION_ALIVE, TEXT_NOTICE } from '../shared/net/protocol.ts';
-import { BTN_JUMP, Body, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceHeight } from '../shared/sim/character.ts';
+import { BTN_JUMP, Body, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceHeight } from '../shared/sim/character.ts';
 import { F_ALIVE, F_GROUNDED, F_PLAYER } from '../shared/sim/entities.ts';
 import { stepVehicleBody, vehicleDoor, withVehicleDoor, vehicleStep } from '../shared/sim/vehicle-body.ts';
 import { vehiclePoint, vehicleRotation } from '../shared/sim/vehicle-frame.ts';
-import { isRotorVehicle, type VehicleDefinition, type VehicleState } from '../shared/sim/vehicle.ts';
+import { isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition, type VehicleState } from '../shared/sim/vehicle.ts';
 import { V_HEALTH } from '../shared/sim/vitals.ts';
 import { groundUnder } from '../shared/world/collide.ts';
 import type { Connection } from '../shared/net/transport.ts';
@@ -61,6 +62,7 @@ const VEHICLE_QUARANTINE = 0x757263;
  */
 const VEHICLE_FIELDS = ["vehicleYaw", "vehiclePitch", "vehicleRoll", "steering", "wheelAngle", "fuel", "vehicleYawRate", "vehiclePitchRate", "vehicleRollRate", "vehicleGroundPitch", "vehicleGroundRoll", "vehicleRideOffset", "vehicleRideVelocity", "vx", "vy", "vz", "vehicleGear", "vehicleRpm", "vehicleShiftTime", "vehiclePayloadMass"] as const;
 const ROTOR_FIELDS = ["vehicleRotorRpm", "vehicleRotorPhase", "vehicleEngineCondition", "vehicleRotorCondition", "vehicleQx", "vehicleQy", "vehicleQz", "vehicleQw", "vehicleCollective"] as const;
+const BOAT_FIELDS = ["vehicleEngineCondition", "vehicleQx", "vehicleQy", "vehicleQz", "vehicleQw", "vehicleFlooding"] as const;
 const V4_BYTES = 2 + VEHICLE_FIELDS.length * 4;
 const PLAIN = defaultLook();
 /** How often a car at rest that nobody drives is stepped, to find the ground gone from under it. */
@@ -90,7 +92,7 @@ export class Urban {
   private readonly scales = new Float32Array(HUMAN_BONES * 3);
   private readonly rests = new Map<string, Float32Array>();
   private readonly seating: Seating;
-  private readonly impacts = new Map<number, { speed: number; rotor: boolean; water: boolean; landing: number }>();
+  private readonly impacts = new Map<number, { speed: number; rotor: boolean; prop: boolean; water: boolean; landing: number }>();
   private readonly hurtAt = new Map<number, number>();
   private readonly health = new Map<number, number>();
 
@@ -140,12 +142,13 @@ export class Urban {
       this.body.vehicle = true;
       for (const field of VEHICLE_FIELDS) this.body[field] = 0;
       this.body.vehicleYaw = this.body.yaw * TAU / 65536;
-      this.body.grounded = true;
+      this.body.grounded = !isBoatVehicle(definition);
       this.body.fuel = definition.spec.fuelCapacity;
-      this.body.vehicleRpm = isRotorVehicle(definition) ? 0 : definition.spec.drivetrain?.idleRpm ?? 0;
+      this.body.vehicleRpm = isWheelVehicle(definition) ? definition.spec.drivetrain?.idleRpm ?? 0 : 0;
       this.body.vehicleRotorRpm = this.body.vehicleRotorPhase = 0;
       this.body.vehicleEngineCondition = this.body.vehicleRotorCondition = 1;
       this.body.vehicleEngineOn = false;
+      this.body.vehicleHullCondition = 1; this.body.vehicleFlooding = 0;
       this.body.vehicleQx = this.body.vehicleQz = this.body.vehicleCollective = 0;
       this.body.vehicleQy = Math.fround(Math.sin(this.body.vehicleYaw / 2)); this.body.vehicleQw = Math.fround(Math.cos(this.body.vehicleYaw / 2));
       const saved = this.ctx.records.byPid.get(pid)?.extra.get(VEHICLE_COMPONENT);
@@ -153,6 +156,10 @@ export class Urban {
       ents.storeBody(e, this.body);
     }
     ents.vehiclePayloadMass[e] = Math.fround(this.payloadMass(e));
+    if (isBoatVehicle(definition)) {
+      const rec = this.ctx.records.byPid.get(pid);
+      ents.vehicleHullCondition[e] = Math.fround(rec?.vitals ? Math.max(0, Math.min(1, rec.vitals.at(V_HEALTH, world.tick) / Math.max(1, rec.vitals.max[V_HEALTH]!))) : 1);
+    }
     this.note(this.hosts.get(pid)!);
     world.history.track(e);
     this.save(e);
@@ -165,16 +172,17 @@ export class Urban {
    */
   private restoreSaved(pid: number, saved: Uint8Array, definition: VehicleDefinition): void {
     const b = this.body, version = saved[0]!;
-    const count = version === 1 ? 6 : version === 2 ? 13 : version === 3 ? 16 : version === 4 || version === 5 ? VEHICLE_FIELDS.length : 0;
-    const size = 1 + count * 4 + (version >= 3 ? 1 : 0) + (version === 5 ? ROTOR_FIELDS.length * 4 + 1 : 0);
+    const count = version === 1 ? 6 : version === 2 ? 13 : version === 3 ? 16 : version === 4 || version === 5 || version === 6 ? VEHICLE_FIELDS.length : 0;
+    const extraFields = version === 5 ? ROTOR_FIELDS : version === 6 ? BOAT_FIELDS : [];
+    const size = 1 + count * 4 + (version >= 3 ? 1 : 0) + (extraFields.length ? extraFields.length * 4 + 1 : 0);
     if (!count || saved.length !== size) {
       this.quarantine(pid, saved, `version ${version} (${saved.length} bytes)`);
       return;
     }
     const view = new DataView(saved.buffer, saved.byteOffset, saved.byteLength);
     const values = Array.from({ length: count }, (_, i) => view.getFloat32(1 + i * 4, true));
-    const rotor = version === 5 ? ROTOR_FIELDS.map((_, i) => view.getFloat32(V4_BYTES + i * 4, true)) : [];
-    if (!values.every(Number.isFinite) || !rotor.every(Number.isFinite) || (version >= 3 && saved[1 + count * 4]! > 1) || (version === 5 && saved[saved.length - 1]! > 1)) {
+    const rotor = extraFields.map((_, i) => view.getFloat32(V4_BYTES + i * 4, true));
+    if (!values.every(Number.isFinite) || !rotor.every(Number.isFinite) || (version >= 3 && saved[1 + count * 4]! > 1) || (version >= 5 && saved[saved.length - 1]! > 1)) {
       this.quarantine(pid, saved, 'invalid numeric or contact state');
       return;
     }
@@ -184,13 +192,14 @@ export class Urban {
     // Earlier components stored a parked pose without translational velocity.
     else b.vehicleYawRate = b.vehiclePitchRate = b.vehicleRollRate = b.vehicleRideVelocity = 0;
     const clampTo = (v: number, lo: number, hi: number): number => Math.fround(Math.min(hi, Math.max(lo, v)));
-    const train = isRotorVehicle(definition) ? undefined : definition.spec.drivetrain;
-    const spec = definition.spec, travel = isRotorVehicle(definition) ? 0 : definition.spec.suspensionTravel ?? 0.18;
-    const grade = detAtan2(Math.sqrt(1 - spec.minGroundNormal * spec.minGroundNormal), spec.minGroundNormal);
+    const train = isWheelVehicle(definition) ? definition.spec.drivetrain : undefined;
+    const spec = definition.spec, travel = isWheelVehicle(definition) ? definition.spec.suspensionTravel ?? .18 : 0;
+    const normal = isBoatVehicle(definition) ? .9 : definition.spec.minGroundNormal;
+    const grade = detAtan2(Math.sqrt(1 - normal * normal), normal);
     const wrapped = (v: number): number => { const a = v % TAU; return Math.fround(a - Math.floor((a + TAU / 2) / TAU) * TAU); };
     b.vehicleYaw = wrapped(b.vehicleYaw); b.wheelAngle = wrapped(b.wheelAngle);
-    b.vehiclePitch = isRotorVehicle(definition) ? wrapped(b.vehiclePitch) : clampTo(b.vehiclePitch, -grade - 0.35, grade + 0.35);
-    b.vehicleRoll = isRotorVehicle(definition) ? wrapped(b.vehicleRoll) : clampTo(b.vehicleRoll, -grade - 0.35, grade + 0.35);
+    b.vehiclePitch = !isWheelVehicle(definition) ? wrapped(b.vehiclePitch) : clampTo(b.vehiclePitch, -grade - 0.35, grade + 0.35);
+    b.vehicleRoll = !isWheelVehicle(definition) ? wrapped(b.vehicleRoll) : clampTo(b.vehicleRoll, -grade - 0.35, grade + 0.35);
     b.vehicleGroundPitch = clampTo(b.vehicleGroundPitch, -grade, grade);
     b.vehicleGroundRoll = clampTo(b.vehicleGroundRoll, -grade, grade);
     const steer = isRotorVehicle(definition) ? 0 : definition.spec.maxSteer;
@@ -210,9 +219,9 @@ export class Urban {
     }
     b.fuel = clampTo(b.fuel, 0, definition.spec.fuelCapacity);
     if (version >= 4) {
-      b.vehicleGear = Math.round(clampTo(b.vehicleGear, -1, train?.forwardRatios.length ?? 12));
-      b.vehicleRpm = clampTo(b.vehicleRpm, 0, train?.redlineRpm ?? 32767);
-      b.vehicleShiftTime = clampTo(b.vehicleShiftTime, 0, train?.shiftCooldown ?? 1);
+      b.vehicleGear = Math.round(clampTo(b.vehicleGear, -1, isBoatVehicle(definition) ? 1 : train?.forwardRatios.length ?? 12));
+      b.vehicleRpm = clampTo(b.vehicleRpm, 0, isBoatVehicle(definition) ? definition.spec.maxRpm : train?.redlineRpm ?? 32767);
+      b.vehicleShiftTime = clampTo(b.vehicleShiftTime, 0, isBoatVehicle(definition) ? definition.spec.shiftDelay : train?.shiftCooldown ?? 1);
       // Payload is recomputed from records right after loading.
       b.vehiclePayloadMass = 0;
     }
@@ -229,7 +238,14 @@ export class Urban {
       } else { b.vehicleQx = b.vehicleQz = 0; b.vehicleQy = Math.fround(Math.sin(b.vehicleYaw / 2)); b.vehicleQw = Math.fround(Math.cos(b.vehicleYaw / 2)); }
       b.vehicleCollective = clampTo(rotor[8]!, 0, 1);
     }
-    if (version < 5 && isRotorVehicle(definition)) { b.vehicleQx = b.vehicleQz = 0; b.vehicleQy = Math.fround(Math.sin(b.vehicleYaw / 2)); b.vehicleQw = Math.fround(Math.cos(b.vehicleYaw / 2)); }
+    if (version === 6) {
+      b.vehicleEngineCondition = clampTo(rotor[0]!, 0, 1);
+      b.vehicleFlooding = clampTo(rotor[5]!, 0, 1);
+      b.vehicleEngineOn = isBoatVehicle(definition) && saved[saved.length - 1] === 1;
+      const norm = Math.hypot(rotor[1]!, rotor[2]!, rotor[3]!, rotor[4]!);
+      if (norm > 1e-6) { b.vehicleQx = Math.fround(rotor[1]! / norm); b.vehicleQy = Math.fround(rotor[2]! / norm); b.vehicleQz = Math.fround(rotor[3]! / norm); b.vehicleQw = Math.fround(rotor[4]! / norm); }
+    }
+    if (version < 5 && !isWheelVehicle(definition)) { b.vehicleQx = b.vehicleQz = 0; b.vehicleQy = Math.fround(Math.sin(b.vehicleYaw / 2)); b.vehicleQw = Math.fround(Math.cos(b.vehicleYaw / 2)); }
     b.yaw = Math.round(b.vehicleYaw * 65536 / TAU) & 65535;
   }
 
@@ -264,9 +280,9 @@ export class Urban {
       const e = this.entity(effect.actor);
       if (e < 0 || makeHandle(e, ents.gen[e]!) !== effect.actorHandle) continue;
       this.recover(e, host?.last);
-      ents.vx[e] = host && isRotorVehicle(host.definition) ? host.last.vx : 0;
-      ents.vy[e] = host && isRotorVehicle(host.definition) ? host.last.vy : 0;
-      ents.vz[e] = host && isRotorVehicle(host.definition) ? host.last.vz : 0;
+      ents.vx[e] = host && !isWheelVehicle(host.definition) ? host.last.vx : 0;
+      ents.vy[e] = host && !isWheelVehicle(host.definition) ? host.last.vy : 0;
+      ents.vz[e] = host && !isWheelVehicle(host.definition) ? host.last.vz : 0;
       ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
       ents.pose(e, world.tick);
       records.dirty.add(effect.actor);
@@ -304,6 +320,18 @@ export class Urban {
   private standBeside(e: number, host: HostSeat): boolean {
     const { world } = this.ctx, ents = world.ents, p = world.reg.move[ents.kind[e]!]!;
     const state = this.state(host.entity), spec = host.definition.spec, out = [0, 0, 0];
+    if (isBoatVehicle(host.definition)) {
+      const actor = ents.pid[e]!, pid = ents.pid[host.entity]!, ignored = [actor, ...host.definition.seats.map(s => this.occupancy.occupant(pid, s.id))];
+      const from = { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]! };
+      const w = spec.halfWidth + p.radius + .15, l = spec.halfLength + p.radius + .4;
+      for (const local of [BOAT_ART.anchors.boarding_water, [w, 0, 0], [-w, 0, 0], [w, 0, -l], [-w, 0, -l], [w, 0, l], [-w, 0, l]]) {
+        const point = this.boatPoint(e, host, local);
+        if (!this.seating.free(point, actor, ignored) || !this.seating.corridor(from, point, actor, ignored, pid)) continue;
+        ents.setPosition(e, point.x, point.y, point.z); ents.stance[e] = STANCE_STAND; this.waterExit(e); return true;
+      }
+      ents.stance[e] = STANCE_CROUCH;
+      return false;
+    }
     const at = (x: number, z: number): Point => {
       vehiclePoint(state, [x, 0, z], out);
       return { x: out[0]!, y: Math.max(isRotorVehicle(host.definition) ? out[1]! : state.y - state.rideOffset, groundUnder(world.hf, out[0]!, out[2]!, p.radius)), z: out[2]! };
@@ -326,7 +354,7 @@ export class Urban {
     const host = place ? this.hosts.get(place.host) : undefined, e = this.entity(pid);
     for (const effect of this.occupancy.remove(pid, world.tick)) this.apply(effect);
     if (!host || e < 0 || makeHandle(host.entity, ents.gen[host.entity]!) !== host.handle) return;
-    const flying = isRotorVehicle(host.definition) && (ents.flags[host.entity]! & F_GROUNDED) === 0;
+    const flying = !isWheelVehicle(host.definition) && (ents.flags[host.entity]! & F_GROUNDED) === 0;
     const vx = flying ? ents.vx[host.entity]! : 0, vy = flying ? ents.vy[host.entity]! : 0, vz = flying ? ents.vz[host.entity]! : 0;
     this.standBeside(e, host);
     ents.vx[e] = vx; ents.vy[e] = vy; ents.vz[e] = vz;
@@ -335,8 +363,24 @@ export class Urban {
     records.dirty.add(pid);
   }
 
+  private waterExit(e: number): void {
+    const { world } = this.ctx, ents = world.ents, p = world.reg.move[ents.kind[e]!]!;
+    ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
+    ents.mode[e] = world.hf.waterAt(ents.x[e]!, ents.z[e]!) - ents.y[e]! > p.height * .7 ? MODE_SWIM : MODE_WALK;
+  }
+
   standDownAll(): void {
     for (const pid of [...this.scopes.keys()]) if (this.occupancy.seatOf(pid)) this.standDown(pid);
+  }
+
+  /** Release a doomed boat's crew while its live hull can still be excluded from the ladder corridor. */
+  releaseHost(pid: number): void {
+    const host = this.hosts.get(pid);
+    if (!host) return;
+    for (const seat of host.definition.seats) {
+      const actor = this.occupancy.occupant(pid, seat.id);
+      if (actor) this.standDown(actor);
+    }
   }
 
   /** A body coming into the world inside a vehicle's hull, saved so by a server that stopped without standing it down, is
@@ -391,11 +435,11 @@ export class Urban {
    * Damage is applied in step(), after all driving inputs, so a fatal impact cannot recycle a body under game.take. */
   impact(e: number): void {
     const { world } = this.ctx, ents = world.ents, def = world.reg.vehicle[ents.kind[e]!];
-    if (!def || !isRotorVehicle(def)) return;
-    if (!(vehicleStep.impactSpeed > 0 || vehicleStep.landSpeed > 0 || vehicleStep.rotorHit || vehicleStep.water)) return;
+    if (!def || isWheelVehicle(def)) return;
+    if (!(vehicleStep.impactSpeed > 0 || vehicleStep.landSpeed > 0 || vehicleStep.rotorHit || vehicleStep.propHit || vehicleStep.water)) return;
     const pid = ents.pid[e]!, old = this.impacts.get(pid);
     this.impacts.set(pid, {
-      speed: Math.max(old?.speed ?? 0, vehicleStep.impactSpeed), rotor: !!old?.rotor || vehicleStep.rotorHit,
+      speed: Math.max(old?.speed ?? 0, vehicleStep.impactSpeed), rotor: !!old?.rotor || vehicleStep.rotorHit, prop: !!old?.prop || vehicleStep.propHit,
       water: !!old?.water || vehicleStep.water, landing: Math.max(old?.landing ?? 0, vehicleStep.landSpeed),
     });
   }
@@ -406,24 +450,29 @@ export class Urban {
   /** Actor contacts arrive after aircraft stepping; apply their damage at the next safe lifecycle point. */
   collision(e: number, speed: number, rotor: boolean): void {
     const pid = this.ctx.world.ents.pid[e]!, old = this.impacts.get(pid);
-    this.impacts.set(pid, { speed: Math.max(old?.speed ?? 0, speed), rotor: !!old?.rotor || rotor, water: !!old?.water, landing: old?.landing ?? 0 });
+    this.impacts.set(pid, { speed: Math.max(old?.speed ?? 0, speed), rotor: !!old?.rotor || rotor, prop: !!old?.prop, water: !!old?.water, landing: old?.landing ?? 0 });
   }
 
   private applyImpact(host: HostSeat): boolean {
     const { world, records } = this.ctx, ents = world.ents, e = host.entity, pid = ents.pid[e]!;
     const report = this.impacts.get(pid);
     this.impacts.delete(pid);
-    if (!report || !isRotorVehicle(host.definition)) return true;
+    if (!report || isWheelVehicle(host.definition)) return true;
     const rec = records.byPid.get(pid);
     if (!rec || rec.dead) return false;
-    const speed = Math.max(0, report.speed - 5, report.landing - 6);
+    const boat = isBoatVehicle(host.definition);
+    const speed = Math.max(0, report.speed - (boat ? 3 : 5), report.landing - 6);
     const fresh = world.tick - (this.hurtAt.get(pid) ?? -1000) >= 12;
     let damage = fresh ? speed * speed * 7 : 0;
-    if (report.rotor && fresh && ents.vehicleRotorRpm[e]! > 30) {
+    if (!boat && report.rotor && fresh && ents.vehicleRotorRpm[e]! > 30) {
       ents.vehicleRotorCondition[e] = Math.fround(Math.max(0, ents.vehicleRotorCondition[e]! - .2 - speed * .025));
       damage += 45 + speed * 8;
     }
-    if (report.water) {
+    if (boat && report.prop && fresh) {
+      ents.vehicleEngineCondition[e] = Math.fround(Math.max(0, ents.vehicleEngineCondition[e]! - .12 - speed * .025));
+      damage += 20 + speed * 6;
+    }
+    if (!boat && report.water) {
       ents.vehicleEngineOn[e] = 0;
       ents.vehicleEngineCondition[e] = 0;
       if (fresh) damage += 110;
@@ -459,6 +508,18 @@ export class Urban {
     if (!this.register(e)) return RESULT_INVALID;
     const pid = ents.pid[e]!, host = this.hosts.get(pid)!;
     const state = this.state(e);
+    if (isBoatVehicle(host.definition)) {
+      const ladder = [0, 0, 0]; vehiclePoint(state, BOAT_ART.anchors.boarding_water, ladder);
+      if (Math.hypot(ents.x[c.ent]! - ladder[0]!, ents.z[c.ent]! - ladder[2]!) > 2) return RESULT_FAR;
+      if (!this.allowed(c.pid, pid, 0)) return RESULT_NOT_YOURS;
+      // One ladder serves the whole crew. A second press must find a free passenger seat, not displace the pilot.
+      for (const seat of host.definition.seats) {
+        if (this.occupancy.occupant(pid, seat.id)) continue;
+        const result = this.begin(c.pid, pid, seat.id, 'enter');
+        if (result !== RESULT_BUSY) return result;
+      }
+      return RESULT_BUSY;
+    }
     let nearest = host.definition.seats[0]!, best = Infinity;
     for (const seat of host.definition.seats) {
       const entry = [0, 0, 0]; vehiclePoint(state, seat.entry, entry);
@@ -496,14 +557,15 @@ export class Urban {
     for (const [pid, host] of this.hosts) {
       // Destroyed, removed or recycled: nobody may stay seated in a slot that is no longer this car.
       if (this.entity(pid) !== host.entity || makeHandle(host.entity, ents.gen[host.entity]!) !== host.handle) { this.evict(pid); continue; }
-      if (isRotorVehicle(host.definition)) {
+      if (!isWheelVehicle(host.definition)) {
         const rec = this.ctx.records.byPid.get(pid), hp = rec?.vitals?.at(V_HEALTH, world.tick) ?? 0;
         const before = this.health.get(pid), maximum = rec?.vitals?.max[V_HEALTH] ?? 1;
         if (before !== undefined && hp < before) {
           const lost = (before - hp) / Math.max(1, maximum);
           ents.vehicleEngineCondition[host.entity] = Math.fround(Math.max(0, ents.vehicleEngineCondition[host.entity]! - lost * .45));
-          ents.vehicleRotorCondition[host.entity] = Math.fround(Math.max(0, ents.vehicleRotorCondition[host.entity]! - lost * .2));
+          if (isRotorVehicle(host.definition)) ents.vehicleRotorCondition[host.entity] = Math.fround(Math.max(0, ents.vehicleRotorCondition[host.entity]! - lost * .2));
         }
+        if (isBoatVehicle(host.definition)) ents.vehicleHullCondition[host.entity] = Math.fround(Math.max(0, Math.min(1, hp / Math.max(1, maximum))));
         this.health.set(pid, hp);
       }
     }
@@ -582,7 +644,7 @@ export class Urban {
       const driven = this.drivers.has(e);
       if (!driven && (!this.resting(e) || (world.tick + e) % REST_TICKS === 0)) {
         ents.loadBody(e, this.body);
-        stepVehicleBody(world, this.body, 0, 0, isRotorVehicle(host.definition) ? 0 : BTN_JUMP, host.definition, TICK_DT, this.body.yaw, false);
+        stepVehicleBody(world, this.body, 0, 0, isWheelVehicle(host.definition) ? BTN_JUMP : 0, host.definition, TICK_DT, this.body.yaw, false);
         ents.storeBody(e, this.body);
         this.impact(e);
         ents.pose(e, world.tick);
@@ -638,7 +700,7 @@ export class Urban {
   }
   private state(e: number): VehicleState & { qx?: number; qy?: number; qz?: number; qw?: number } {
     const ents = this.ctx.world.ents;
-    const rotor = this.ctx.world.reg.vehicle[ents.kind[e]!]?.movement === 'rotor';
+    const rotor = !isWheelVehicle(this.ctx.world.reg.vehicle[ents.kind[e]!]!);
     return { ...(rotor ? { qx: ents.vehicleQx[e]!, qy: ents.vehicleQy[e]!, qz: ents.vehicleQz[e]!, qw: ents.vehicleQw[e]! } : {}), x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[e]!, pitch: ents.vehiclePitch[e]!, roll: ents.vehicleRoll[e]!,
       vx: ents.vx[e]!, vy: ents.vy[e]!, vz: ents.vz[e]!, grounded: (ents.flags[e]! & F_GROUNDED) !== 0, yawRate: ents.vehicleYawRate[e]!, pitchRate: ents.vehiclePitchRate[e]!, rollRate: ents.vehicleRollRate[e]!, groundPitch: ents.vehicleGroundPitch[e]!, groundRoll: ents.vehicleGroundRoll[e]!, rideOffset: ents.vehicleRideOffset[e]!, rideVelocity: ents.vehicleRideVelocity[e]!, steering: ents.steering[e]!, wheelAngle: ents.wheelAngle[e]!, fuel: ents.fuel[e]!, gear: ents.vehicleGear[e]!, engineRpm: ents.vehicleRpm[e]!, shiftTime: ents.vehicleShiftTime[e]!, payloadMass: ents.vehiclePayloadMass[e]! };
   }
@@ -657,6 +719,7 @@ export class Urban {
       if (driver && driver.pid !== action.victim) return { ok: false, reason: 'driver-changed' };
     }
     const state = this.state(host.entity), out = [0, 0, 0];
+    if (isBoatVehicle(host.definition)) return this.boatAction(action, host, ae);
     // Ordinary door actions are grounded. Forced loss of a seat uses standDown/evict and inherits aircraft velocity.
     if (isRotorVehicle(host.definition) && !state.grounded) return { ok: false, reason: 'airborne' };
     const move = world.reg.move[ents.kind[ae]!]!;
@@ -681,6 +744,42 @@ export class Urban {
       vehiclePoint(state, [seat.entry[0] + (seat.entry[0] >= 0 ? 1.1 : -1.1), 0, seat.entry[2] + offset], out);
       const landing = { x: out[0]!, y: Math.max(state.y, groundUnder(world.hf, out[0]!, out[2]!, move.radius)), z: out[2]!, yaw: state.yaw };
       if (seating.free(landing, landed, [landed]) && seating.corridor(entry, landing, landed, ignored, action.host)) return { ok: true, landing };
+    }
+    return { ok: false, reason: 'landing-blocked' };
+  }
+
+  /** The stern ladder has one reachable water approach for all four seats. Terrain still wins in shallow water. */
+  private boatPoint(e: number, host: HostSeat, local: readonly number[]): Point {
+    const { world } = this.ctx, ents = world.ents, move = world.reg.move[ents.kind[e]!]!, out = [0, 0, 0];
+    vehiclePoint(this.state(host.entity), local, out);
+    const ground = groundUnder(world.hf, out[0]!, out[2]!, move.radius), water = world.hf.waterAt(out[0]!, out[2]!);
+    return { x: out[0]!, y: Math.max(ground, Number.isFinite(water) ? water - move.height * .75 : out[1]!), z: out[2]! };
+  }
+
+  private boatAction(action: Readonly<OccupancyAction>, host: HostSeat, ae: number): OccupancyApproval {
+    const { world } = this.ctx, ents = world.ents, state = this.state(host.entity);
+    if (Math.hypot(state.vx, state.vy, state.vz) > .55 || Math.hypot(state.yawRate, state.pitchRate, state.rollRate) > .2 ||
+      Math.abs(state.pitch) > .35 || Math.abs(state.roll) > .45) return { ok: false, reason: 'boat-moving' };
+    const seat = host.definition.seats.find(s => s.id === action.seat)!;
+    const entry = this.boatPoint(ae, host, BOAT_ART.anchors.boarding_water), point = [0, 0, 0];
+    const at = (anchor: readonly number[]): Point => { vehiclePoint(state, anchor, point); return { x: point[0]!, y: point[1]!, z: point[2]! }; };
+    const ladder = at(BOAT_ART.anchors.boarding_ladder), deck = at(BOAT_ART.anchors.boarding_deck);
+    const occupied = host.definition.seats.map(s => this.occupancy.occupant(action.host, s.id));
+    const ignored = [action.actor, ...occupied];
+    const start = { x: ents.x[ae]!, y: ents.y[ae]!, z: ents.z[ae]! };
+    if (action.kind !== 'exit' && (Math.hypot(start.x - entry.x, start.z - entry.z) > 2 || Math.abs(start.y - entry.y) > 1.3)) return { ok: false, reason: 'too-far' };
+    if (!this.seating.free(entry, action.actor, ignored)) return { ok: false, reason: 'ladder-blocked' };
+    if (action.kind !== 'exit' && !this.seating.corridor(start, entry, action.actor, ignored)) return { ok: false, reason: 'corridor-blocked' };
+    const seatFoot = at([seat.anchor[0], BOAT_ART.deck.height, seat.anchor[2]]);
+    if (!this.seating.corridor(entry, ladder, action.actor, ignored, action.host) ||
+      !this.seating.corridor(ladder, deck, action.actor, ignored, action.host) ||
+      !this.seating.corridor(deck, seatFoot, action.actor, ignored, action.host)) return { ok: false, reason: 'ladder-blocked' };
+    if (action.kind === 'enter') return { ok: true };
+    const landed = action.victim || action.actor;
+    for (const offset of [0, .8, -.8, 1.4, -1.4]) {
+      const anchor = BOAT_ART.anchors.boarding_water;
+      const landing = this.boatPoint(ae, host, [anchor[0] + offset, anchor[1], anchor[2] - .25]);
+      if (this.seating.free(landing, landed, [landed]) && this.seating.corridor(entry, landing, landed, ignored, action.host)) return { ok: true, landing: { ...landing, yaw: state.yaw } };
     }
     return { ok: false, reason: 'landing-blocked' };
   }
@@ -711,6 +810,10 @@ export class Urban {
         ents.setSeat(e, -1); ents.driven[e] = 0; ents.stance[e] = STANCE_STAND;
         ents.setPosition(e, effect.landing.x, effect.landing.y, effect.landing.z);
         ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
+        if (isBoatVehicle(host.definition)) {
+          ents.vx[e] = ents.vx[host.entity]!; ents.vy[e] = ents.vy[host.entity]!; ents.vz[e] = ents.vz[host.entity]!;
+          this.waterExit(e);
+        }
         ents.pose(e, world.tick);
         records.dirty.add(removed);
         if (action.victim) this.ctx.creatures.provoke(e, effect.landing.x - 1, effect.landing.z, this.entity(action.actor));
@@ -742,13 +845,14 @@ export class Urban {
     const { world, records } = this.ctx, ents = world.ents;
     const rec = records.byPid.get(ents.pid[e]!);
     if (!rec || this.preserveComponent.has(rec.pid)) return;
-    const rotor = world.reg.vehicle[rec.kind]?.movement === 'rotor';
-    const bytes = rotor ? this.saving : this.saving.subarray(0, V4_BYTES), view = this.savingView;
-    bytes[0] = rotor ? 5 : 4;
+    const movement = world.reg.vehicle[rec.kind]?.movement;
+    const extra = movement === 'rotor' ? ROTOR_FIELDS : movement === 'boat' ? BOAT_FIELDS : [];
+    const bytes = this.saving.subarray(0, V4_BYTES + (extra.length ? extra.length * 4 + 1 : 0)), view = this.savingView;
+    bytes[0] = movement === 'rotor' ? 5 : movement === 'boat' ? 6 : 4;
     for (let i = 0; i < VEHICLE_FIELDS.length; i++) view.setFloat32(1 + i * 4, ents[VEHICLE_FIELDS[i]!][e]!, true);
     bytes[V4_BYTES - 1] = (ents.flags[e]! & F_GROUNDED) !== 0 ? 1 : 0;
-    if (rotor) {
-      for (let i = 0; i < ROTOR_FIELDS.length; i++) view.setFloat32(V4_BYTES + i * 4, ents[ROTOR_FIELDS[i]!][e]!, true);
+    if (extra.length) {
+      for (let i = 0; i < extra.length; i++) view.setFloat32(V4_BYTES + i * 4, ents[extra[i]!][e]!, true);
       bytes[bytes.length - 1] = ents.vehicleEngineOn[e]!;
     }
     const old = rec.extra.get(VEHICLE_COMPONENT);
@@ -782,12 +886,12 @@ export class Urban {
     const rest = this.rests.get(mesh + '_' + SEX_IDS[look[LOOK_SEX]!]) ?? HUMAN.rest;
     lookScales(look, this.scales);
     solve(HUMAN, this.pose, this.solved, rest, this.scales);
-    if (seatDefinition) fitSeatControls(this.pose, this.solved, rest, this.scales, seatDefinition);
+    if (seatDefinition) fitSeatControls(this.pose, this.solved, rest, this.scales, seatDefinition, state.steering);
     mountOrigin(this.solved, seat, rotation, origin);
     ents.loadBody(actor, this.body);
     this.body.x = origin[0]!; this.body.y = origin[1]!; this.body.z = origin[2]!;
     const client = this.client(ents.pid[actor]!);
-    if (isRotorVehicle(def)) {
+    if (!isWheelVehicle(def)) {
       // The cabin owns the seated body's orientation; yaw/pitch carry the occupant's world gaze.
       if (client) { this.body.yaw = client.heldYaw; ents.pitch[actor] = client.heldPitch; }
       else {

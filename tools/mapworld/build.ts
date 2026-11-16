@@ -24,6 +24,8 @@ import { STATIC_LAYERS, siteOf } from "./statics.ts";
 import { makeTint } from "./tint.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
 import { helicopterSites, type HelicopterSite } from "../helicopter/sites.ts";
+import { boatSites, mappedBoatSites } from "../boat/sites.ts";
+import type { BuildingLabel, PublicPlace } from "./labels.ts";
 import { growRuins } from "./ruin-growth.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
@@ -128,9 +130,13 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
     const radius = Math.max(...building.rings[0]!.map(point => Math.hypot(point[0]! - building.e, point[1]! - building.n)));
     aircraftSites.push({ id: `building-${building.id}`, kind, x, z, radius });
   }
-  const vehicles = helicopterSites(map, reg, aircraftSites);
+  const aircraft = helicopterSites(map, reg, aircraftSites);
+  const waterfrontPlaces = JSON.parse(readFileSync(join(source, "blocks/places.json"), "utf8")) as PublicPlace[];
+  const waterfrontLabels = JSON.parse(readFileSync(join(source, "blocks/labels.json"), "utf8")) as Record<string, BuildingLabel>;
+  const boats = boatSites({ ...map, vehicles: aircraft }, reg, mappedBoatSites(waterfrontPlaces, waterfrontLabels, site.toEngine));
+  const vehicles = [...aircraft, ...boats];
   if (vehicles.length) { map = { ...map, vehicles }; put("vehicles.json", lines(vehicles.map(v => ({ ...v, yaw: v.yaw * 360 / 65536 })))); }
-  lap(`${vehicles.length} found aircraft at surveyed service sites and industrial yards`);
+  lap(`${aircraft.length} found aircraft at surveyed service sites and industrial yards; ${boats.length} boats at mapped waterfronts`);
   const bytes = writeMap(map);
   const file = join(ROOT, "var/maps", `${name}.snmap`);
   writeFileSync(`${file}.tmp`, bytes);
