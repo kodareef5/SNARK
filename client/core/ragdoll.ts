@@ -47,7 +47,7 @@ export interface Corpse {
   y: number;
   z: number;
   readonly yaw: number;
-  /** Rotorcraft salvage is rigid and retains its replicated full attitude, including inversion. */
+  /** Vehicle salvage with full attitude is rigid and retains its replicated full attitude, including inversion. */
   readonly rigid: boolean;
   qx: number;
   qy: number;
