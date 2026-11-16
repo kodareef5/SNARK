@@ -108,7 +108,7 @@ test("the pack carries bodies cut into slots, each vertex on one bone, and the c
   const jog = clips.clips[clips.index.get("human/jog")!]!;
   expect([jog.bones, jog.frames, jog.loop]).toEqual([HUMAN.bones, 28, true]);
   for (let k = 0; k < jog.rot.length; k += 4) expect(Math.hypot(jog.rot[k]!, jog.rot[k + 1]!, jog.rot[k + 2]!, jog.rot[k + 3]!)).toBeCloseTo(1, 3);
-  expect(clips.clips[clips.index.get("human/death")!]!.loop).toBe(false);
+  expect(clips.clips[clips.index.get("human/punch")!]!.loop).toBe(false);
   expect(clips.hash).not.toBe(0);
   expect(parsePack(buildCorePack()).clips.hash).toBe(clips.hash);
   // A clip pointing outside the file is refused.

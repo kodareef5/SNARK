@@ -34,8 +34,10 @@ test("the board opens on a development server, and elsewhere only to the admin p
     // The URL resolves dots before the board sees them: this is a request for /package.json, not the board's.
     expect(ask(dev, "/admin/source/%2e%2e/%2e%2e/package.json")).toBeNull();
     expect(ask(dev, "/admin/source/core%2f..%2f..%2fsecret.txt")!.status).toBe(404);
-    // A server with no password and no --dev keeps it shut.
+    // A server with no password and no --dev keeps it shut, in any case of the path: a file system may ignore case.
     expect(ask({ ...dev, dev: false }, "/sounds.html")!.status).toBe(404);
+    for (const path of ["/Sounds.html", "/SOUNDS.HTML", "//sounds.html", "/%53ounds.html", "/Admin/sounds.json"]) expect([path, ask({ ...dev, dev: false }, path)?.status]).toEqual([path, 404]);
+    expect(ask(dev, "/Sounds.html")!.status).toBe(200);
     const gate: BoardGate = { dev: false, password: "kiwi", guesses: new Guesses(), tick: () => 0 };
     const shut = ask(gate, "/sounds.html")!;
     expect(shut.status).toBe(401);

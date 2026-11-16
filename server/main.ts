@@ -21,7 +21,7 @@ import { allClips } from "../shared/pack/clips.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { serveFile } from "./files.ts";
 import { clientAddress } from "./front.ts";
-import { boardOwners, soundBoard, type BoardGate } from "./sound-board.ts";
+import { boardAsked, boardOwners, soundBoard, type BoardGate } from "./sound-board.ts";
 import { CUES } from "../shared/sound/cues.ts";
 import { mapCopy } from "../shared/world/mapfile.ts";
 import { mapLabel, type Destination } from "./cluster/cluster.ts";
@@ -267,7 +267,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       if (at === "site") {
         if (path === "/" || path === "/index.html") return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""), links()));
         // The sound board is a world's, behind its admin password (soundBoard), and not the site's to hand out.
-        return path === "/sounds.html" || path.startsWith("/admin/") ? new Response("not found", { status: 404 }) : serveFile(clientDir, req, path);
+        return boardAsked(path) ? new Response("not found", { status: 404 }) : serveFile(clientDir, req, path);
       }
       const who = clientAddress(srv.requestIP(req)?.address ?? "", req.headers.get("x-forwarded-for"));
       if (path === "/ws" || path === "/voice") {

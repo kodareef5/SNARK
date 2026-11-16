@@ -265,7 +265,7 @@ test("sampling a clip between frames and blending poses stay on the short way ro
   sampleClip(clip, clip.frames, a);
   sampleClip(clip, 0, b);
   expect([...a.rot]).toEqual([...b.rot]);
-  const once = coreAnim().set.clips[coreAnim().set.index.get("human/death")!]!;
+  const once = coreAnim().set.clips[coreAnim().set.index.get("human/punch")!]!;
   expect(once.loop).toBe(false);
   sampleClip(once, once.frames + 50, a);
   sampleClip(once, once.frames - 1, b);
