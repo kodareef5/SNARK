@@ -19,7 +19,7 @@ import { stepVehicleBody, vehicleDoor, withVehicleDoor, vehicleStep } from '../s
 import { vehiclePoint, vehicleRotation } from '../shared/sim/vehicle-frame.ts';
 import { isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition, type VehicleState } from '../shared/sim/vehicle.ts';
 import { V_HEALTH } from '../shared/sim/vitals.ts';
-import { groundUnder } from '../shared/world/collide.ts';
+import { capsuleFree, groundUnder } from '../shared/world/collide.ts';
 import { boatMeetsCapsule } from '../shared/world/boat.ts';
 import type { Connection } from '../shared/net/transport.ts';
 import type { Items } from './items.ts';
@@ -774,12 +774,24 @@ export class Urban {
     const occupied = host.definition.seats.map(s => this.occupancy.occupant(action.host, s.id));
     const ignored = [action.actor, ...occupied];
     const start = { x: ents.x[ae]!, y: ents.y[ae]!, z: ents.z[ae]! };
-    if (action.kind !== 'exit' && (Math.hypot(start.x - entry.x, start.z - entry.z) > 2 || Math.abs(start.y - entry.y) > 1.3)) return { ok: false, reason: 'too-far' };
-    if (!this.seating.free(entry, action.actor, ignored)) return { ok: false, reason: 'ladder-blocked' };
-    if (action.kind !== 'exit' && !this.seating.corridor(start, entry, action.actor, ignored)) return { ok: false, reason: 'corridor-blocked' };
+    const move = world.reg.move[ents.kind[ae]!]!;
+    const dock = action.kind !== 'exit' && (ents.flags[ae]! & F_GROUNDED) !== 0 && ents.mode[ae] !== MODE_SWIM &&
+      start.y >= world.hf.waterAt(start.x, start.z) - .05 &&
+      this.seating.free(start, action.actor, ignored) && !capsuleFree(world, start.x, start.y - .08, start.z, move.radius, move.height);
+    if (action.kind !== 'exit' && (Math.hypot(start.x - entry.x, start.z - entry.z) > 2 || Math.abs(start.y - (dock ? ladder.y : entry.y)) > 1.3)) return { ok: false, reason: 'too-far' };
+    if (dock) {
+      // Walk clear of the dock edge at its own height, then step onto the physical ladder. Routing a dry actor
+      // through the swimming foot position would first ask them to descend through the dock's floor.
+      const approach = { ...ladder, y: Math.max(start.y, ladder.y) };
+      if (!this.seating.corridor(start, approach, action.actor, ignored, action.host) ||
+        !this.seating.corridor(approach, ladder, action.actor, ignored, action.host)) return { ok: false, reason: 'corridor-blocked' };
+    } else {
+      if (!this.seating.free(entry, action.actor, ignored)) return { ok: false, reason: 'ladder-blocked' };
+      if (action.kind !== 'exit' && !this.seating.corridor(start, entry, action.actor, ignored)) return { ok: false, reason: 'corridor-blocked' };
+      if (!this.seating.corridor(entry, ladder, action.actor, ignored, action.host)) return { ok: false, reason: 'ladder-blocked' };
+    }
     const seatFoot = at([seat.anchor[0], BOAT_ART.deck.height, seat.anchor[2]]);
-    if (!this.seating.corridor(entry, ladder, action.actor, ignored, action.host) ||
-      !this.seating.corridor(ladder, deck, action.actor, ignored, action.host) ||
+    if (!this.seating.corridor(ladder, deck, action.actor, ignored, action.host) ||
       !this.seating.corridor(deck, seatFoot, action.actor, ignored, action.host)) return { ok: false, reason: 'ladder-blocked' };
     if (action.kind === 'enter') return { ok: true };
     const landed = action.victim || action.actor;
