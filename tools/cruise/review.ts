@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { App } from "../../client/core/app.ts";
 import { DRAW_RANGED, DRAW_TEXTURED, type FramePacket } from "../../client/core/render/packet.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { CRUISE_LAYOUT } from "../../content/landmarks/cruise.ts";
+import { CRUISE_LAYOUT, cruiseStatics } from "../../content/landmarks/cruise.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { chunkAt } from "../../shared/coords.ts";
@@ -12,6 +12,7 @@ import { hashBytes } from "../../shared/hash.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { MODE_GHOST, MODE_WALK, stanceEye } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
+import { hourOfDay } from "../../shared/sim/clock.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
 import { mapHeightfield, parseMap, writeMap, type MapData } from "../../shared/world/mapfile.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, rayHit } from "../../shared/world/ray.ts";
@@ -35,10 +36,14 @@ export interface CruiseShot {
   readonly tier: "medium" | "high" | "lowpoly";
   readonly thirdPerson?: boolean;
   readonly portrait?: boolean;
+  /** Authoritative world time, changed through the ordinary dev command before the review settles. */
+  readonly hour?: number;
   /** Captures the genuine map spawn and its authored facing, without a setup placement or look adjustment. */
   readonly arrival?: boolean;
   /** Important authored silhouette points that must all fit the ordinary camera. */
   readonly framePoints?: readonly (readonly [number, number, number])[];
+  /** Real hull witnesses, separate from conservative virtual envelope corners. */
+  readonly sightlinePoints?: readonly (readonly [number, number, number])[];
   /** Far shots intentionally let the native map proxy take over after structure rows leave interest. */
   readonly far?: boolean;
 }
@@ -47,11 +52,12 @@ export interface CruiseShot {
 export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
   const p = cruiseWorldPoint, { dimensions, views } = CRUISE_LAYOUT, c = CRUISE_COURSE;
   const hf = mapHeightfield(map), focus = p([0, 32, 0]);
-  const framePoints = [p([-dimensions.waterlineBeam / 2, 0, dimensions.minZ]), p([dimensions.waterlineBeam / 2, 0, dimensions.maxZ]),
-    p([-dimensions.bridgeBeam / 2, dimensions.provisionalHighestY, 0]), p([dimensions.bridgeBeam / 2, dimensions.provisionalHighestY, 0])];
+  const framePoints: (readonly [number, number, number])[] = [];
+  for (const x of [-dimensions.bridgeBeam / 2, dimensions.bridgeBeam / 2]) for (const y of [0, dimensions.provisionalHighestY]) for (const z of [dimensions.minZ, dimensions.maxZ]) framePoints.push(p([x, y, z]));
+  const sightlinePoints = [p([dimensions.waterlineBeam / 2, 0, 0]), p([0, 3, dimensions.minZ]), p([0, 3, dimensions.maxZ])];
   const spectator = (at: readonly number[]): readonly [number, number, number] => p([at[0]!, at[1]! - 1.62, at[2]!]);
   const shots: CruiseShot[] = [{ name: "01-authentic-arrival", feet: [c.spawn.x, hf.heightAt(c.spawn.x, c.spawn.z), c.spawn.z], target: focus,
-    mode: "walk", tier: "high", arrival: true, framePoints },
+    mode: "walk", tier: "high", arrival: true, framePoints, sightlinePoints },
     { name: "02-shore-comparison", feet: [c.scenic.x, hf.heightAt(c.scenic.x, c.scenic.z), c.scenic.z], target: p([0, 28, -100]), mode: "walk", tier: "high" }];
   for (const tier of ["medium", "high"] as const) {
     shots.push({ name: `03-port-profile-${tier}`, feet: spectator([400, 60, 0]), target: focus, mode: "spectator", tier, framePoints });
@@ -60,10 +66,14 @@ export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
   const first = views.find(view => view.id === "arrival" && view.mode === "walk") ?? views.find(view => view.mode === "walk");
   if (first) shots.push({ name: "04-portrait-boarding", feet: p(first.at), target: p(first.target), mode: "walk", tier: "high", portrait: true },
     { name: "05-shoulder-boarding", feet: p(first.at), target: p(first.target), mode: "walk", tier: "high", thirdPerson: true });
+  if (first) shots.push({ name: "night-public-arrival", feet: p(first.at), target: p(first.target), mode: "walk", tier: "high", hour: 21 });
+  shots.push({ name: "night-exterior", feet: spectator([-400, 42, 0]), target: focus, mode: "spectator", tier: "high", far: true, framePoints, hour: 21 });
   shots.push({ name: "06-flat-profile", feet: spectator([-400, 42, 0]), target: focus, mode: "spectator", tier: "lowpoly", framePoints });
   for (const distance of [280, 650, 900, 1300, 2000]) shots.push({ name: `far-${distance}m`, feet: spectator([-distance, 42, 0]), target: focus, mode: "spectator", tier: "high", far: true, framePoints });
   return shots;
 }
+
+const isShipMesh = (id: string): boolean => id.startsWith("core:cruise_") && !id.startsWith("core:cruise_port_");
 
 function uploadOnly(raster: Rasterizer, packet: FramePacket): void {
   if (!(packet.uploads.length + packet.drops.length + packet.assetUploads.length + packet.assetDrops.length + packet.texUploads.length + packet.texDrops.length)) return;
@@ -105,6 +115,10 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, files: GameFiles, w
   const run = (ms: number) => h.run(ms, frame);
   try {
     frame(0); run(1200); seedCruisePreview(h.host); run(300);
+    if (shot.hour !== undefined) {
+      session.text("enablecheats"); run(100); session.text(`settime ${shot.hour}`); run(150);
+      if (Math.abs(hourOfDay(h.world.tick, h.world.dayOffset, h.world.clock) - shot.hour) > .1) throw new Error(`${shot.name}: authoritative world time command did not take effect`);
+    }
     const me = h.client(session)!, ents = h.world.ents, move = reg.move[ents.kind[me.ent]!]!;
     if (!shot.arrival) {
       if (shot.mode === "spectator") { session.text("enablecheats"); run(100); session.text("fly"); run(150); }
@@ -135,7 +149,7 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, files: GameFiles, w
     for (let i = 0; i < p.drawCount; i++) {
       const mesh = files.manifest.meshes[p.drawMesh[i]!]!, lod = p.drawLod[i]!, count = p.drawInstances[i]!;
       const triangles = ((p.drawFlags[i]! & (DRAW_RANGED | DRAW_TEXTURED)) !== 0 ? p.drawIndexCount[i]! / 3 : mesh.levels[lod]?.tris ?? 0) * count;
-      if (mesh.id.startsWith("core:cruise") || mesh.id === "core:far") draws.push({ mesh: mesh.id, lod, instances: count, triangles });
+      if (isShipMesh(mesh.id) || mesh.id === "core:far") draws.push({ mesh: mesh.id, lod, instances: count, triangles });
     }
     const tier = app.scene.assets.tier;
     const faults: string[] = [];
@@ -143,21 +157,25 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, files: GameFiles, w
     if (p.drawCount > tier.budget.draws || p.triangles > tier.budget.triangles) faults.push("frame exceeds unchanged tier submission budget");
     if (app.scene.city && (app.scene.city.stats.missing || app.scene.city.stats.behind)) faults.push("far city did not settle");
     if (session.stats.corrections !== corrections) faults.push("prediction corrected after settling");
-    const shipChunks = [...new Set(map.statics.filter(s => s.kind.startsWith("core:cruise")).map(s => chunkAt(map.dims, s.x, s.z)))];
+    const origin = CRUISE_COURSE.vessel, shipRows = cruiseStatics(origin.x, origin.y, origin.z, origin.yaw);
+    const shipChunks = [...new Set(shipRows.map(s => chunkAt(map.dims, s.x, s.z)))];
     const handover = shipChunks.map(chunk => ({ chunk, complete: session.world!.city?.complete(chunk) ?? false, far: app.scene!.city?.isFar(chunk) ?? false }));
-    if (!draws.some(draw => draw.mesh.startsWith("core:cruise")) && !(handover.some(chunk => chunk.far) && draws.some(draw => draw.mesh === "core:far"))) throw new Error(`${shot.name}: ship has neither native mesh nor map proxy draws`);
+    if (!draws.some(draw => isShipMesh(draw.mesh)) && !(handover.some(chunk => chunk.far) && draws.some(draw => draw.mesh === "core:far"))) throw new Error(`${shot.name}: ship has neither native mesh nor map proxy draws`);
     for (const row of handover) if (row.complete === row.far) faults.push(`chunk ${row.chunk} has inconsistent near/far ownership`);
     if (shot.far && !handover.some(chunk => chunk.far)) throw new Error(`${shot.name}: requested distant review never exercised the native far handover`);
     const framing = (shot.framePoints ?? []).map(point => {
       const projected = new Float32Array(3);
       if (!app.cam.project(...point, projected) || projected[0]! < .02 || projected[0]! > .98 || projected[1]! < .02 || projected[1]! > .98) throw new Error(`${shot.name}: authored silhouette point ${point.join(",")} is clipped by the camera`);
+      return { point, screen: [...projected] };
+    });
+    const sightlines = (shot.sightlinePoints ?? []).map(point => {
       const dx = point[0] - p.camX, dy = point[1] - p.camY, dz = point[2] - p.camZ, distance = Math.hypot(dx, dy, dz);
       const hit = castWorld(h.world, p.camX, p.camY, p.camZ, dx / distance, dy / distance, dz / distance, distance);
       if (hit !== HIT_NONE) {
         const kind = hit === HIT_STRUCTURE ? h.world.structs.chunks[Math.floor(rayHit.ref / 65536)]?.kind[rayHit.ref % 65536] : undefined;
-        if (kind === undefined || !reg.defs[kind]!.id.startsWith("core:cruise")) throw new Error(`${shot.name}: terrain or another object hides the authored silhouette point ${point.join(",")}`);
+        if (kind === undefined || !isShipMesh(reg.defs[kind]!.id)) throw new Error(`${shot.name}: terrain or another object hides the authored silhouette point ${point.join(",")}`);
       }
-      return { point, screen: [...projected], shoreSightlineClear: true };
+      return { point, shoreSightlineClear: true };
     });
     if (images && render) {
       render.render(p); const scene = render.color.slice(); drawUi(render.color, width, height, app.ui.frame);
@@ -170,16 +188,17 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, files: GameFiles, w
       cpu: recordCpu ? { samples: frameTimes.length, medianMs: percentile(.5), p95Ms: percentile(.95), p99Ms: percentile(.99), maxMs: percentile(1),
         scope: "Settled App.frame wall time only; excludes authoritative server stepping, network delivery, image encoding, software rasterization and browser GPU work." } : { samples: 0, scope: "Visual-only review; CPU timing deliberately omitted." },
       dropped: p.dropped, skipped: p.skipped, casterDropped: p.casterDropped, faults,
-      placement: { ...placement, actualPlaced: placed.length, cruiseInstances: map.statics.filter(row => row.kind.startsWith("core:cruise")).length },
+      placement: { ...placement, actualPlaced: placed.length, cruiseInstances: shipRows.length, auxiliaryPortAndKoruInstances: map.statics.length - shipRows.length },
       budget: { tier: tier.name, ...tier.budget, gpuBytes: tier.gpuBytes, uploadBytes: tier.uploadBytes },
       cold: { ...cold, assetTransport: "Zero latency, unlimited bandwidth, no loss; native per-frame upload budgets remain enabled.", medianMs: coldTimes[Math.floor(coldTimes.length / 2)], p95Ms: coldTimes[Math.ceil(coldTimes.length * .95) - 1], maxMs: coldTimes.at(-1),
         scope: "App.frame from cold client arrival through placement and streaming; excludes server/network/raster/GPU work." },
-      shipTarget: { triangles: draws.filter(draw => draw.mesh.startsWith("core:cruise")).reduce((sum, draw) => sum + draw.triangles, 0), draws: draws.filter(draw => draw.mesh.startsWith("core:cruise")).length, targetTriangles: 1000000, targetDraws: 600, note: "Near cruise meshes only; shared far-city draws are reported separately and include port/Koru geometry." },
+      shipTarget: { triangles: draws.filter(draw => isShipMesh(draw.mesh)).reduce((sum, draw) => sum + draw.triangles, 0), draws: draws.filter(draw => isShipMesh(draw.mesh)).length, targetTriangles: 1000000, targetDraws: 600, note: "Near cruise meshes only; shared far-city draws are reported separately and include port/Koru geometry." },
       residency: { ...app.scene.assets.residency?.stats }, casterCount: p.casterCount,
       city: app.scene.city?.stats, handover, assets: app.scene.assets.line(),
       camera: { x: p.camX, y: p.camY, z: p.camZ, yaw: app.cam.yaw, pitch: app.cam.pitch, thirdPerson: app.view.thirdPerson },
+      lighting: { worldHour: hourOfDay(h.world.tick, h.world.dayOffset, h.world.clock), clientHour: app.scene.hour, scope: "Native world clock, sky and supported ambient/sun shading; software RGB does not composite GPU shadow maps." },
       state: { x: ents.x[me.ent], y: ents.y[me.ent], z: ents.z[me.ent], mode: ents.mode[me.ent], grounded: !!(ents.flags[me.ent]! & F_GROUNDED) },
-      framing,
+      framing, sightlines,
       settledCorrections: session.stats.corrections - corrections,
       fixture: shot.arrival ? "Genuine map arrival, authored spawn facing and ordinary first-person camera; no setup placement or look adjustment." : "One authoritative setup placement before settling; walking views then use ordinary player movement and camera collision. Exterior views use an identified spectator." };
   } finally { h.host.shutdown(); }
@@ -192,7 +211,7 @@ export async function reviewCruise(map: MapData, shots: readonly CruiseShot[], a
   const [width, height] = (value("--size") ?? "1200x800").split("x").map(Number) as [number, number];
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 320 || height < 240 || width > 1920 || height > 1080) throw new Error("--size must be 320x240 through 1920x1080");
   console.log(`Loading native production packs from ${source}`);
-  const bytes = corePack(source), pack = parsePack(bytes), native = pack.header.meshes.filter(m => m.id.startsWith("core:cruise")), graybox = args.includes("--graybox");
+  const bytes = corePack(source), pack = parsePack(bytes), native = pack.header.meshes.filter(m => isShipMesh(m.id)), graybox = args.includes("--graybox");
   if (!native.length || (!graybox && native.some(m => m.lods.length !== 6))) throw new Error("Build the authored cruise production meshes with all six LODs before native review; --graybox is an explicitly preliminary collision-mesh audit");
   const named = await namedTextures(source);
   console.log("Preparing native mesh and texture streams");
