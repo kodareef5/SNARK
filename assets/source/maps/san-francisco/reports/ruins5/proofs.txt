@@ -1,9 +1,9 @@
 chunk-report
-{"mapHash":3644417512,"total":3006090,"maximum":1830,"cap":2000,"passed":true}
+{"mapHash":336809092,"total":2988860,"maximum":1830,"cap":2000,"passed":true}
 
 ruin-walk
 {
-  "mapHash": 3644417512,
+  "mapHash": 336809092,
   "includes": "terrain and resource-node collision; ascent, landing turns, roof exit, descent and independent stair exits in both directions",
   "sampledBuildings": 1951,
   "stairRoutes": 4348,
@@ -18,8 +18,8 @@ ruin-walk
 
 room-walk
 {
-  "mapHash": 3644417512,
-  "routes": 19520,
+  "mapHash": 336809092,
+  "routes": 19391,
   "kinds": {
     "suites": 6554,
     "storage": 1335,
@@ -31,16 +31,16 @@ room-walk
     "wards": 126,
     "shops": 1303,
     "breach": 5,
-    "street-gap": 2000
+    "street-gap": 1871
   },
-  "passed": 19520,
+  "passed": 19391,
   "failed": 0,
   "failures": []
 }
 
 access-walk
 {
-  "mapHash": 3644417512,
+  "mapHash": 336809092,
   "routes": 23834,
   "buildingsWithApproach": 14594,
   "coresWithoutStreetApproach": [
@@ -176,7 +176,7 @@ access-walk
 
 bridge-walk
 {
-  "mapHash": 3644417512,
+  "mapHash": 336809092,
   "ways": 1281,
   "built": 1281,
   "deckRuns": 1237,
@@ -194,33 +194,33 @@ bridge-walk
 }
 
 walk
-host on core:san-francisco in 1615 ms, 281 spawn regions; 1563 MB resident, 975 MB of heap
+host on core:san-francisco in 2784 ms, 281 spawn regions; 1346 MB resident, 809 MB of heap
 ok   Golden Gate Bridge Vista Point arrived 0.0 m from its point at y 75.1; walked 3 m to y 75.1, 27 m to y 70.3, 27 m to y 72.8, 27 m to y 75.3
-ok   Presidio Tunnel Tops arrived 0.0 m from its point at y 11.0; walked 27 m to y 10.0, 27 m to y 11.5, 27 m to y 11.5, 27 m to y 11.0
-ok   Marina Green   arrived 0.0 m from its point at y 2.4; walked 27 m to y 2.4, 27 m to y 2.4, 24 m to y 2.4, 27 m to y 2.4
+ok   Presidio Tunnel Tops arrived 0.0 m from its point at y 11.0; walked 27 m to y 10.0, 25 m to y 11.4, 3 m to y 11.4, 25 m to y 10.0
+ok   Marina Green   arrived 0.0 m from its point at y 2.4; walked 27 m to y 2.4, 27 m to y 2.4, 23 m to y 2.3, 27 m to y 2.4
 ok   Alcatraz Island arrived 0.0 m from its point at y 36.7; walked 22 m to y 38.1, 14 m to y 38.1, 27 m to y 36.1, 21 m to y 36.8
 ok   Washington Square Park arrived 0.0 m from its point at y 23.0; walked 18 m to y 23.4, 23 m to y 23.6, 23 m to y 22.5, 26 m to y 22.8
 ok   Union Square   arrived 0.0 m from its point at y 18.3; walked 26 m to y 17.8, 16 m to y 17.8, 8 m to y 17.8, 9 m to y 17.8
-ok   Embarcadero Plaza arrived 0.0 m from its point at y 2.6; walked 27 m to y 1.9, 27 m to y 1.8, 26 m to y 3.2, 27 m to y 2.7
+ok   Embarcadero Plaza arrived 0.0 m from its point at y 2.6; walked 27 m to y 1.9, 1 m to y 1.9, 25 m to y 2.7, 26 m to y 2.2
 ok   Alamo Square   arrived 0.0 m from its point at y 75.6; walked 27 m to y 75.4, 25 m to y 74.0, 23 m to y 72.7, 27 m to y 75.7
 ok   Lafayette Park arrived 0.0 m from its point at y 113.0; walked 26 m to y 112.5, 27 m to y 111.2, 24 m to y 109.9, 27 m to y 113.4
-ok   Panhandle      arrived 0.0 m from its point at y 71.9; walked 27 m to y 72.5, 22 m to y 73.4, 21 m to y 72.1, 27 m to y 72.0
-1029 wild creatures after 391 s of virtual time; 1555 MB resident, 975 MB of heap, server and client in one process
+ok   Panhandle      arrived 0.0 m from its point at y 71.9; walked 27 m to y 72.5, 21 m to y 73.4, 22 m to y 72.1, 26 m to y 72.0
+1037 wild creatures after 391 s of virtual time; 2277 MB resident, 1244 MB of heap, server and client in one process
 
 obelisk-walk
-core:san-francisco: 3006090 static pieces and 256299 standing nodes in the way, 65.4% of samples closed, in 0.9 s
-ok   Marina Green           terminal at 4136.6, 4907.3 facing 74 degrees: from Marina Green, 223 m of way, walked in 48 s to 0.07 m of its front at y 2.6
-ok   Embarcadero            terminal at 568.2, 3550.9 facing 307 degrees: from Embarcadero Plaza, 227 m of way, walked in 50 s to 0.10 m of its front at y 2.4
-ok   Panhandle              terminal at 4904.7, 1189.1 facing 101 degrees: from Panhandle, 182 m of way, walked in 40 s to 0.07 m of its front at y 69.6
-3 of 3 reached in 1.0 s
+core:san-francisco: 2988860 static pieces and 256653 standing nodes in the way, 65.3% of samples closed, in 1.6 s
+ok   Marina Green           terminal at 4160.8, 4944.5 facing 84 degrees: from Marina Green, 186 m of way, walked in 42 s to 0.06 m of its front at y 2.5
+ok   Embarcadero            terminal at 568.2, 3550.9 facing 307 degrees: from Embarcadero Plaza, 233 m of way, walked in 50 s to 0.07 m of its front at y 2.4
+ok   Panhandle              terminal at 4904.7, 1189.1 facing 101 degrees: from Panhandle, 181 m of way, walked in 40 s to 0.09 m of its front at y 69.5
+3 of 3 reached in 1.7 s
 
 server-bench
 {
-  "milliseconds": 1386.4,
-  "residentMiB": 1211.6,
-  "heapMiB": 580.9,
-  "peakResidentMiB": 1214.4,
-  "mapBytes": 101566434,
+  "milliseconds": 2349.6,
+  "residentMiB": 1112.6,
+  "heapMiB": 576.8,
+  "peakResidentMiB": 1114.3,
+  "mapBytes": 101299782,
   "spawnRegions": 281,
   "scope": "createHost, real pack clips, wild spawner; no HTTP listener, persistence or clients"
 }
