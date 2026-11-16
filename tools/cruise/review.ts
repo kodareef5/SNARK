@@ -6,7 +6,7 @@ import { App } from "../../client/core/app.ts";
 import { DRAW_RANGED, DRAW_TEXTURED, type FramePacket } from "../../client/core/render/packet.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
-import { CRUISE_LAYOUT, cruisePoint, cruiseStatics } from "../../content/landmarks/cruise.ts";
+import { CRUISE_COLLISION_INSTANCES, CRUISE_COLLISION_PROTOTYPES, CRUISE_LAYOUT, cruisePoint, cruiseStatics } from "../../content/landmarks/cruise.ts";
 import { cruiseFootprintContains, type CruiseRoom } from "../../content/landmarks/cruise-layout.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
 import type { ClipSet } from "../../shared/anim/clip.ts";
@@ -358,7 +358,7 @@ export async function reviewCruise(map: MapData, shots: readonly CruiseShot[], a
   const files = await cruiseFiles(map.content.landmarks), pack = files.boot;
   const native = files.manifest.meshes.filter(m => isShipMesh(m.id)), graybox = args.includes("--graybox");
   const cellIds = new Set(CRUISE_LAYOUT.cells.map(cell => cell.id));
-  const standaloneIds = new Set(CRUISE_LAYOUT.prototypes.filter(prototype => prototype.mesh !== "none" && !cellIds.has(prototype.mesh)).map(prototype => prototype.mesh));
+  const standaloneIds = new Set(CRUISE_COLLISION_PROTOTYPES.filter(prototype => prototype.mesh !== "none" && !cellIds.has(prototype.mesh)).map(prototype => prototype.mesh));
   const meshes = new Map(files.manifest.meshes.map(mesh => [mesh.id, mesh]));
   if (!native.length || [...cellIds].some(id => !meshes.has(id) || (!graybox && meshes.get(id)!.levels.length !== 6))) throw new Error("Build every authored cruise cell with six LODs before native review; --graybox is an explicitly preliminary collision-mesh audit");
   // Doors and the independent port signs follow building-piece schedules, which need not have six levels.
@@ -388,7 +388,7 @@ export async function reviewCruise(map: MapData, shots: readonly CruiseShot[], a
     console.log(`Native cruise review ${shot.name}`);
     report.push({ ...capture(shot, map, pack, clips, files, shot.portrait ? 540 : width, shot.portrait ? 960 : height, out, !args.includes("--visual-only"), !args.includes("--no-images") && !sweep), packHash, assetStage: graybox ? "preliminary graybox" : CRUISE_LAYOUT.phase });
     report.sort((a, b) => String(a.name).localeCompare(String(b.name)));
-    writeFileSync(resolve(out, "report.json"), JSON.stringify({ source, generated: new Date().toISOString(), pipeline: "native LAND map → authoritative Harness → App → separate core/landmark manifest and boot joins, streamed assets and world surfaces → native frame packet → optional Rasterizer", packIdentity: "FNV-1a of joined manifest/boot blob and every source stream file, including textures and world surfaces", landmarks: map.content.landmarks, authoritativeAnimation: { clips: clips.clips.length, hash: clips.hash, rigs: pack.header.rigs.length }, standaloneAssets, layout: { phase: CRUISE_LAYOUT.phase, prototypes: CRUISE_LAYOUT.prototypes.length, cells: cellIds.size, placedInstances: CRUISE_LAYOUT.instances.filter(instance => instance.placed).length, deckLabels: CRUISE_LAYOUT.decks.map(deck => deck.id) }, shots: report,
+    writeFileSync(resolve(out, "report.json"), JSON.stringify({ source, generated: new Date().toISOString(), pipeline: "native LAND map → authoritative Harness → App → separate core/landmark manifest and boot joins, streamed assets and world surfaces → native frame packet → optional Rasterizer", packIdentity: "FNV-1a of joined manifest/boot blob and every source stream file, including textures and world surfaces", landmarks: map.content.landmarks, authoritativeAnimation: { clips: clips.clips.length, hash: clips.hash, rigs: pack.header.rigs.length }, standaloneAssets, layout: { phase: CRUISE_LAYOUT.phase, logicalPrototypes: CRUISE_LAYOUT.prototypes.length, logicalInstances: CRUISE_LAYOUT.instances.filter(instance => instance.placed).length, collisionPrototypes: CRUISE_COLLISION_PROTOTYPES.length, cells: cellIds.size, placedInstances: CRUISE_COLLISION_INSTANCES.filter(instance => instance.placed).length, deckLabels: CRUISE_LAYOUT.decks.map(deck => deck.id) }, shots: report,
       limits: "Static native software-rendered views establish model, collision-camera and streaming behavior; they do not establish browser GPU performance or identical lit ocean shading." }, null, 2));
   }
   console.log(`${out}: ${report.length} native cruise views`);

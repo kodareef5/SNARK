@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
-import { cruiseStatics } from "../../content/landmarks/cruise.ts";
+import { CRUISE_COLLISION_INSTANCES, CRUISE_LAYOUT, cruiseStatics } from "../../content/landmarks/cruise.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { landmarkPoint } from "../../shared/world/landmark.ts";
 import { MODE_GHOST } from "../../shared/sim/character.ts";
@@ -13,8 +13,46 @@ import { assertCruisePlaced } from "../../tools/cruise/preflight.ts";
 import { Harness } from "../fixtures/net.ts";
 import { cruisePack } from "../fixtures/cruise.ts";
 
+test("cruise visual and physical cells keep the same owner after arbitrary native placement", () => {
+  const instances = CRUISE_COLLISION_INSTANCES.filter(instance => instance.placed);
+  const byId = new Map(instances.map(instance => [instance.id, instance]));
+  const cells = new Map(CRUISE_LAYOUT.cells.map(cell => [cell.id, cell]));
+  const doors = new Set(CRUISE_LAYOUT.doors.map(door => door.instanceId));
+  expect(cells.size).toBeGreaterThan(0);
+  expect(instances.length).toBeGreaterThan(cells.size);
+  const faults: string[] = [];
+  for (const cell of cells.values()) {
+    const anchor = byId.get(cell.anchor);
+    if (!anchor || anchor.cell !== cell.id || anchor.yaw !== 0 || anchor.at.some((v, axis) => v !== cell.origin[axis])) faults.push(`${cell.id}: anchor does not share the exact cell frame`);
+  }
+  for (const instance of instances) {
+    const cell = instance.cell ? cells.get(instance.cell) : undefined;
+    if (!cell && !doors.has(instance.id)) faults.push(`${instance.id}: non-door physical module has no visual cell`);
+    if (cell && (instance.yaw !== 0 || instance.at.some((v, axis) => v !== cell.origin[axis]))) faults.push(`${instance.id}: physical/far owner differs from its visual cell`);
+  }
+  expect(faults).toEqual([]);
+  // Identical local frames prove equality for any transform. These boundary-adjacent placements
+  // additionally exercise the actual frameAxes rounding and 1/512 m native placement quantization.
+  for (const [x, z] of [[2048, 2048], [2063.998046875, 2056.001953125], [2111.9990234375, 2048.0009765625]]) {
+    for (const yaw of [0, 1, 8192, 12345, 16384, 32768, 49152, 65535]) {
+      const rows = cruiseStatics(x!, 0, z!, yaw);
+      expect(rows.length).toBe(instances.length);
+      const placed = new Map(instances.map((instance, i) => [instance.id, rows[i]!]));
+      const mismatches: string[] = [];
+      for (const instance of instances) {
+        const cell = instance.cell ? cells.get(instance.cell) : undefined;
+        if (!cell) continue;
+        const row = placed.get(instance.id)!, anchor = placed.get(cell.anchor)!;
+        if (row.x !== anchor.x || row.y !== anchor.y || row.z !== anchor.z || row.yaw !== anchor.yaw ||
+            chunkAt({ chunksX: 64, chunksZ: 64 }, row.x, row.z) !== chunkAt({ chunksX: 64, chunksZ: 64 }, anchor.x, anchor.z)) mismatches.push(instance.id);
+      }
+      expect(mismatches, `native placement ${x},${z} yaw${yaw}`).toEqual([]);
+    }
+  }
+});
+
 // Collision-only modules do not own draws. The map's cell anchors own near meshes; the complete
-// original collision/look rows still supply the far proxy after their chunks leave interest.
+// cell-clipped collision/look rows supply the far proxy after their shared chunk leaves interest.
 test("native cruise cell anchors retain one render owner from near through 2 km and back", () => {
   const map = cruiseCourse(), pack = cruisePack(map.content!.landmarks), origin = CRUISE_COURSE.vessel;
   const rows = cruiseStatics(origin.x, origin.y, origin.z, origin.yaw);
@@ -36,6 +74,12 @@ test("native cruise cell anchors retain one render owner from near through 2 km 
     });
     expect(anchors.length).toBeGreaterThan(0);
     expect(new Set(anchors.map(anchor => anchor.mesh)).size).toBe(anchors.length);
+    const anchorChunks = new Map(anchors.map(anchor => [anchor.mesh, anchor.chunk]));
+    const physical = CRUISE_COLLISION_INSTANCES.filter(instance => instance.placed).flatMap((instance, i) => {
+      const anchorChunk = instance.cell ? anchorChunks.get(instance.cell) : undefined;
+      return anchorChunk === undefined ? [] : [{ id: instance.id, anchorChunk, chunk: chunkAt(map.dims, rows[i]!.x, rows[i]!.z) }];
+    });
+    expect(physical.length).toBeGreaterThanOrEqual(anchors.length);
     const session = h.join("ship-observer", {}, { manual: true }), app = new App(session, h.reg, pack);
     session.staticsArrived(h.world.statics!);
     app.ui.settings.tier = "high"; app.ui.settings.steady = false;
@@ -61,6 +105,8 @@ test("native cruise cell anchors retain one render owner from near through 2 km 
       for (const chunk of chunks) {
         expect(source.complete(chunk)).toBe(!far.includes(chunk));
       }
+      const badOwners = physical.filter(module => Number(source.complete(module.anchorChunk)) + Number(city.isFar(module.chunk)) !== 1).map(module => module.id);
+      expect(badOwners, `physical/far and visual ownership at ${distance} m`).toEqual([]);
       let visibleNear = 0;
       for (const anchor of anchors) {
         const visible = app.cam.boxVisible(anchor.lo[0]! - p!.camX, anchor.lo[1]! - p!.camY, anchor.lo[2]! - p!.camZ,
