@@ -47,10 +47,9 @@ export function boatPlacement(world: CollisionWorld, x: number, y: number, z: nu
   if (!Number.isFinite(rest) || Math.abs(y - rest) > .08) return false;
   const sn = detSin(yaw), cs = detCos(yaw);
   // Include the extremities and outboard, not merely the centre; narrow ponds and the lake/sea seam cannot spawn boats.
-  for (const at of [[0, 0, 0], ...p.buoyancyPoints.map(b => b.at), ...p.hullBoxes.flatMap(b => [
-    [b.at[0] - b.half[0], b.at[1] - b.half[1], b.at[2] - b.half[2]],
-    [b.at[0] + b.half[0], b.at[1] - b.half[1], b.at[2] + b.half[2]],
-  ]), p.propeller.at]) {
+  for (const at of [[0, 0, 0], ...p.buoyancyPoints.map(b => b.at), ...p.hullBoxes.flatMap(b => [-1, 1].flatMap(sx => [-1, 1].map(sz =>
+    [b.at[0] + sx * b.half[0], b.at[1] - b.half[1], b.at[2] + sz * b.half[2]],
+  ))), p.propeller.at]) {
     const px = x + cs * at[0]! + sn * at[2]!, pz = z - sn * at[0]! + cs * at[2]!;
     if (px < 0 || pz < 0 || px >= world.hf.sizeX || pz >= world.hf.sizeZ || Math.abs(w.waterAt(px, pz) - water) > .02 || w.groundAt(px, pz) > y - .35) return false;
   }

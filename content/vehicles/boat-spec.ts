@@ -28,6 +28,6 @@ export const BOAT: BoatSpec = {
   thrust: 9000, reverseThrust: 4000, idleRpm: 750, maxRpm: 5600, rpmRate: 3600, shiftDelay: .28,
   maxSteer: ART.outboard.turn, steerRate: 1.6, maxForward: 24, maxReverse: 5,
   planingSpeed: 8, planingLift: .44, planingTrim: .085,
-  forwardDrag: 19, sideDrag: 1250, angularDrag: 2.8, gravity: 18,
+  forwardDrag: 32, sideDrag: 1250, angularDrag: 2.8, gravity: 18,
   fuelCapacity: 90, fuelPerSecond: .045,
 };

@@ -79,6 +79,7 @@ function motor(s: BoatState, input: Readonly<BoatInput>, p: BoatSpec, wet: numbe
   if (!usable || !input.pilot) s.engineOn = false;
   const wanted = request > .01 ? 1 : request < -.01 ? -1 : 0;
   s.shiftTime = Math.max(0, s.shiftTime - TICK_DT);
+  if (wanted === 0) s.gear = 0;
   // Reversing unloads the engine, crosses neutral, then engages. Neither shift ever cancels hull momentum.
   if (s.gear !== 0 && s.gear !== wanted) {
     s.engineRpm = approach(s.engineRpm, p.idleRpm, p.rpmRate * 1.5 * TICK_DT);
@@ -138,9 +139,9 @@ export function stepBoat(s: BoatState, input: Readonly<BoatInput>, def: BoatVehi
     }
     wetTotal = Math.max(wetTotal, wet);
     const waterShare = clamp(wet / .35, 0, 1), along = localV[2]!;
-    const plane = clamp((along - p.planingSpeed) / (p.planingSpeed * .8), 0, 1) * clamp(up[1]!, 0, 1) * waterShare * (1 - s.flooding);
+    const plane = clamp((along - p.planingSpeed) / (p.planingSpeed * .8), 0, 1) * clamp(up[1]!, 0, 1) * clamp(wet / .12, 0, 1) * (1 - s.flooding);
     result.planing = Math.max(result.planing, plane);
-    const resistance = p.forwardDrag * (1 - .32 * plane) * (along < 0 ? square(p.maxForward / p.maxReverse) : 1);
+    const resistance = along < 0 ? p.reverseThrust / square(p.maxReverse) * .88 : p.forwardDrag * (1 - .32 * plane);
     addForce(0, 0, 0, 0, -localV[1]! * mass * .65 * waterShare, -along * (90 + Math.abs(along) * resistance) * waterShare);
     // Dynamic pressure supports part of the hull, with a small forward centre of pressure giving genuine bow trim.
     const lift = p.mass * p.gravity * p.planingLift * plane;
