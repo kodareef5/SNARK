@@ -78,13 +78,14 @@ test("the packed elevated basin retains dry-room headroom at both playable textu
   }
 });
 
-test("exterior window panels and projecting balcony slabs survive every authored distance stage", () => {
+test("visible window panels, balcony slabs and upper stairs survive every authored distance stage", () => {
   // Whole-ship exterior rays exposed these broad faces after the old far rule removed them.
   // Test actual surfaces, independently of which logical owner a merged far panel receives.
   const witnesses = [
     [-27.050781, 24.532944, 108.352951], [-27.050781, 27.266668, 106.046280], // navy cabin panes
     [-28.900391, 29.079220, 109.334122], [-28.900391, 25.612944, 99.732559], // starboard floor / canopy
     [28.900391, 29.079218, 109.334122], [28.900391, 25.612942, 99.732559], // port floor / canopy
+    [-.8, 58.109875, 63.866669], [.8, 51.289608, -71.444443], // exposed fore / aft stair flights
   ];
   const errors = [0, .0125, .025, .06, .13, .25];
   const records = new Map(cruiseArtGroups.meshes.map(record => [record.id, record]));
