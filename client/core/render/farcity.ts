@@ -40,7 +40,7 @@ export const CITY_BUFFER = FAR_BUFFER + 1;
 const RESERVE = "far city";
 /** Levels are made, nearest first and tiles with nothing on the card before the rest; here, until this much of a frame is spent. */
 export const MAKE_MS = 2;
-/** Levels a worker is asked for ahead of what it has made: it never waits on the page, and a nearer tile soon goes first. */
+/** Levels asked for ahead of what is made: a worker never waits on the page, and a tile come nearer soon goes first. */
 const FLIGHTS = 3;
 /** Milliseconds from some fixed moment: the page's clock in a browser and under Bun. */
 const clock = (): number => (globalThis as { performance?: { now(): number } }).performance?.now() ?? Date.now();
@@ -312,11 +312,13 @@ export class FarCity {
     work.sort((a, b) => tiles[Math.floor(a / LEVELS)]!.rank - tiles[Math.floor(b / LEVELS)]!.rank);
     this.fed = 0;
     const asking = clock();
-    if (this.maker.inline) {
-      // A level at a time, so no frame takes more than the budget and one of those.
+    if (this.maker.run) {
+      // A chunk at a time, so no frame takes more than the budget and one of those.
       let made = 0;
-      while (this.fed < work.length && (made === 0 || clock() - asking < this.makeMs)) {
-        this.post(work[this.fed++]!);
+      for (let once = true; once || clock() - asking < this.makeMs; once = false) {
+        while (this.out < FLIGHTS && this.fed < work.length) this.post(work[this.fed++]!);
+        if (this.out === 0) break;
+        this.maker.run(this.makeMs - (clock() - asking));
         this.collect();
         made += this.take(p, budget);
       }

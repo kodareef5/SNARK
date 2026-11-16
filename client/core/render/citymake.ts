@@ -5,7 +5,7 @@
 
 import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { VERTEX_BYTES } from "../../../shared/pack/pack.ts";
-import { cellPart, mergedPart, type CityForm, type CityStatics, type Gone } from "../../../shared/world/city.ts";
+import { cellPart, mergedPart, type CityForm, type CityPart, type CityStatics, type Gone } from "../../../shared/world/city.ts";
 import { HeightWindow, type Heightfield } from "../../../shared/world/heightfield.ts";
 
 /** What every level of a map's city is made with: its kinds, the ground's scale, and FAR_MESH's bounds its vertices are stored within. */
@@ -63,14 +63,15 @@ export interface CityMade {
 
 /** Where levels are made. */
 export interface CityMaker {
-  /** Whether make() has made the level when it returns. If not, `onMade` is called as each one is. */
-  readonly inline: boolean;
+  /** Called as each level asked for is made, where they are made on another thread. */
   onMade: (() => void) | null;
   /** Makes for a city of these kinds from now on, forgetting what was asked before. */
   start(kinds: CityKinds): void;
   make(job: CityJob): void;
   /** Levels made since the last call, into `out`. Returns how many. */
   take(out: CityMade[]): number;
+  /** Where levels are made on this thread: makes what was asked a chunk at a time until `ms` are spent, the first chunk whatever it takes. */
+  run?(ms: number): void;
 }
 
 export function cityKinds(city: CityStatics, hf: Heightfield, bounds: { center: readonly number[]; half: readonly number[] }): CityKinds {
@@ -127,74 +128,122 @@ export function buffersOf(m: CityJob | CityMade): ArrayBuffer[] {
 
 /** The level `job` asks for: every chunk of its tile in order, its faces quantized within FAR_MESH's bounds from the job's origin. */
 export function makeLevel(k: CityKinds, job: CityJob): CityMade {
-  const dims = k.dims;
-  const first = new Uint32Array(chunkCount(dims) + 1);
-  let at = 0;
-  let c = 0;
-  for (let a = 0; a < job.area.length; a++) {
-    for (const end = job.area[a]!; c <= end; c++) first[c] = at;
-    at += job.counts[a]!;
-  }
-  first.fill(at, c);
-  const { kind, yaw, x, y, z } = job;
-  const city: CityStatics = { dims, first, kind, yaw, x, y, z, halfX: k.halfX, halfY: k.halfY, halfZ: k.halfZ, color: k.color, plain: k.plain, walked: k.walked, look: k.look, count: kind.length, in: (chunk: number) => first[chunk + 1]! - first[chunk]! };
-  const ground = new HeightWindow({ ...k.ground, i0: job.i0, j0: job.j0, w: job.w, heights: job.heights });
-  const gone = (chunk: number): Gone => (job.gone ? job.gone.subarray(first[chunk]!, first[chunk + 1]!) : null);
-  const parts = Array.from(job.chunks, (chunk) => (job.cell > 0 ? cellPart(city, chunk, ground, gone(chunk), job.cell, job.tall) : mergedPart(city, chunk, ground, gone, job.gap, job.least)));
-  const faces = parts.reduce((n, part) => n + part.faces, 0);
-  const verts = faces * 4;
-  const indexBytes = verts > 65535 ? 4 : 2;
-  const start = (faces * 6 * indexBytes + 3) & ~3;
-  const data = new Uint8Array(start + verts * VERTEX_BYTES);
-  const index = indexBytes === 4 ? new Uint32Array(data.buffer, 0, faces * 6) : new Uint16Array(data.buffer, 0, faces * 6);
-  const view = new DataView(data.buffer);
-  const [ce, h] = [k.center, k.half];
-  const q = (v: number, a: number): number => Math.max(-32767, Math.min(32767, Math.round(((v - ce[a]!) / h[a]!) * 32767)));
-  const runFirst = new Uint32Array(parts.length);
-  const runCount = new Uint32Array(parts.length);
-  let v = 0;
-  let n = 0;
-  parts.forEach((part, r) => {
-    const chunk = job.chunks[r]!;
-    const dx = chunkCx(dims, chunk) * CHUNK_SIZE - job.ox;
-    const dz = chunkCz(dims, chunk) * CHUNK_SIZE - job.oz;
-    runFirst[r] = n;
-    runCount[r] = part.faces * 6;
-    const { pos, color } = part;
-    for (let f = 0; f < part.faces; f++, v += 4) {
-      index[n++] = v;
-      index[n++] = v + 1;
-      index[n++] = v + 2;
-      index[n++] = v;
-      index[n++] = v + 2;
-      index[n++] = v + 3;
-      for (let e = 0; e < 4; e++) {
-        const o = start + (v + e) * VERTEX_BYTES;
-        const p = (f * 4 + e) * 3;
-        view.setInt16(o, q(pos[p]! + dx, 0), true);
-        view.setInt16(o + 2, q(pos[p + 1]! - job.oy, 1), true);
-        view.setInt16(o + 4, q(pos[p + 2]! + dz, 2), true);
-        data[o + 6] = color[f]!;
-      }
-    }
-  });
-  return { id: job.id, data, indexBytes, first: runFirst, count: runCount };
+  const making = new LevelMaking(k, job);
+  while (!making.done) making.step();
+  return making.finish();
 }
 
-/** Makes each level as it is asked for: for tests, tools, and where there are no workers. */
+/** A level being made, a chunk's faces at a time, then put together. */
+export class LevelMaking {
+  private readonly k: CityKinds;
+  private readonly job: CityJob;
+  private readonly city: CityStatics;
+  private readonly ground: HeightWindow;
+  private readonly gone: (chunk: number) => Gone;
+  private readonly parts: CityPart[] = [];
+
+  constructor(k: CityKinds, job: CityJob) {
+    this.k = k;
+    this.job = job;
+    // The pieces sent, as the map's columns hold them: chunk c's from first[c], and none in a chunk not sent.
+    const first = new Uint32Array(chunkCount(k.dims) + 1);
+    let at = 0;
+    let c = 0;
+    for (let a = 0; a < job.area.length; a++) {
+      for (const end = job.area[a]!; c <= end; c++) first[c] = at;
+      at += job.counts[a]!;
+    }
+    first.fill(at, c);
+    const { kind, yaw, x, y, z } = job;
+    this.city = { dims: k.dims, first, kind, yaw, x, y, z, halfX: k.halfX, halfY: k.halfY, halfZ: k.halfZ, color: k.color, plain: k.plain, walked: k.walked, look: k.look, count: kind.length, in: (chunk: number) => first[chunk + 1]! - first[chunk]! };
+    this.ground = new HeightWindow({ ...k.ground, i0: job.i0, j0: job.j0, w: job.w, heights: job.heights });
+    this.gone = (chunk) => (job.gone ? job.gone.subarray(first[chunk]!, first[chunk + 1]!) : null);
+  }
+
+  get done(): boolean {
+    return this.parts.length === this.job.chunks.length;
+  }
+
+  /** Makes the faces of the next chunk. */
+  step(): void {
+    const job = this.job;
+    const chunk = job.chunks[this.parts.length]!;
+    this.parts.push(job.cell > 0 ? cellPart(this.city, chunk, this.ground, this.gone(chunk), job.cell, job.tall) : mergedPart(this.city, chunk, this.ground, this.gone, job.gap, job.least));
+  }
+
+  /** The level, once every chunk's faces are made. */
+  finish(): CityMade {
+    const { k, job, parts } = this;
+    const faces = parts.reduce((n, part) => n + part.faces, 0);
+    const verts = faces * 4;
+    const indexBytes = verts > 65535 ? 4 : 2;
+    const start = (faces * 6 * indexBytes + 3) & ~3;
+    const data = new Uint8Array(start + verts * VERTEX_BYTES);
+    const index = indexBytes === 4 ? new Uint32Array(data.buffer, 0, faces * 6) : new Uint16Array(data.buffer, 0, faces * 6);
+    const view = new DataView(data.buffer);
+    const [ce, h] = [k.center, k.half];
+    const q = (v: number, a: number): number => Math.max(-32767, Math.min(32767, Math.round(((v - ce[a]!) / h[a]!) * 32767)));
+    const first = new Uint32Array(parts.length);
+    const count = new Uint32Array(parts.length);
+    let v = 0;
+    let n = 0;
+    parts.forEach((part, r) => {
+      const chunk = job.chunks[r]!;
+      const dx = chunkCx(k.dims, chunk) * CHUNK_SIZE - job.ox;
+      const dz = chunkCz(k.dims, chunk) * CHUNK_SIZE - job.oz;
+      first[r] = n;
+      count[r] = part.faces * 6;
+      const { pos, color } = part;
+      for (let f = 0; f < part.faces; f++, v += 4) {
+        index[n++] = v;
+        index[n++] = v + 1;
+        index[n++] = v + 2;
+        index[n++] = v;
+        index[n++] = v + 2;
+        index[n++] = v + 3;
+        for (let e = 0; e < 4; e++) {
+          const o = start + (v + e) * VERTEX_BYTES;
+          const p = (f * 4 + e) * 3;
+          view.setInt16(o, q(pos[p]! + dx, 0), true);
+          view.setInt16(o + 2, q(pos[p + 1]! - job.oy, 1), true);
+          view.setInt16(o + 4, q(pos[p + 2]! + dz, 2), true);
+          data[o + 6] = color[f]!;
+        }
+      }
+    });
+    return { id: job.id, data, indexBytes, first, count };
+  }
+}
+
+/** Milliseconds from some fixed moment: the page's clock in a browser and under Bun. */
+const clock = (): number => (globalThis as { performance?: { now(): number } }).performance?.now() ?? Date.now();
+
+/** Makes levels on this thread in the order asked, a chunk at a time: for tests, tools, and where there are no workers. */
 export class InlineCityMaker implements CityMaker {
-  readonly inline = true;
   onMade: (() => void) | null = null;
   private kinds: CityKinds | null = null;
+  private readonly making: LevelMaking[] = [];
   private readonly done: CityMade[] = [];
 
   start(kinds: CityKinds): void {
     this.kinds = kinds;
-    this.done.length = 0;
+    this.making.length = this.done.length = 0;
   }
 
   make(job: CityJob): void {
-    this.done.push(makeLevel(this.kinds!, job));
+    this.making.push(new LevelMaking(this.kinds!, job));
+  }
+
+  run(ms: number): void {
+    const start = clock();
+    do {
+      const m = this.making[0];
+      if (!m) return;
+      m.step();
+      if (!m.done) continue;
+      this.done.push(m.finish());
+      this.making.shift();
+    } while (clock() - start < ms);
   }
 
   take(out: CityMade[]): number {

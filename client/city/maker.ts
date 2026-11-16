@@ -3,7 +3,6 @@
 import { buffersOf, type CityJob, type CityKinds, type CityMade, type CityMaker } from "../core/render/citymake.ts";
 
 export class WorkerCityMaker implements CityMaker {
-  readonly inline = false;
   onMade: (() => void) | null = null;
   private readonly worker: Worker;
   private readonly done: CityMade[] = [];
