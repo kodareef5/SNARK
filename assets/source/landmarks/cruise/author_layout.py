@@ -82,7 +82,12 @@ for p in D['prototypes']:
  if p['category']=='facade':p['art'].setdefault('measurement','deckhouse')
 from layout_cells import finish as cells
 cells(D)
+waterpark=D.get('waterpark')
 D=clean(D)
+# The shared course helper already defines its numerical stations. Preserve
+# those exact values so model, collision-envelope audit and persisted course
+# certificate consume one authority rather than a second rounded path.
+if waterpark is not None:D['waterpark']=waterpark
 from layout_collision_cells import finish as collision_cells
 collision_cells(D)
 from layout_json import dumps

@@ -1,8 +1,8 @@
 """Map-local rendering ownership, separate from the exact walked prototype instances.
 
 Every cell is a genuine 16 m cube in ship metres. The model clips its members' visual
-solids to that cube; an existing, uniquely selected collision instance draws it.
-Cloning that instance's kind changes no physical part and never repeats a cell mesh.
+solids to that cube. Temporary logical anchors below are normalized by the physical
+partition helper, which installs a real same-cell collision module as the anchor.
 """
 import copy,math
 from collections import defaultdict
@@ -40,6 +40,14 @@ def finish(D):
     parts.append(([min(q[k] for q in points) for k in range(3)],[max(q[k] for q in points) for k in range(3)]))
   member={'instance':inst['id'],'prototype':proto['id'],'category':proto['category']}
   if 'measurement' in proto['art']:member['measurement']=proto['art']['measurement']
+  if proto['art']['kind']=='slide':
+   # A curved course's grouped AABB has empty corner cubes. Use the same
+   # exact convex partition as physical ownership for its actual six-stage
+   # look sectors, rather than inventing render-only corner anchors.
+   from layout_collision_cells import fragments
+   for h in proto.get('look',proto).get('hulls',[]):
+    for grid,_,_,_ in fragments([worldpoint(q,inst) for q in h['points']]):ownership[grid][inst['id']]=member
+   continue
   for lo,hi in parts:
    corners=[worldpoint([x,y,z],inst) for x in(lo[0],hi[0]) for y in(lo[1],hi[1]) for z in(lo[2],hi[2])]
    bounds=[[min(p[k] for p in corners),max(p[k] for p in corners)] for k in range(3)]

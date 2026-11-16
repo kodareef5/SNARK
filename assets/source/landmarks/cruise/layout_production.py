@@ -1,5 +1,7 @@
 """Reference-led public neighborhoods and reusable accommodation, authored in the shared metre frame."""
 import math
+from slide_courses import courses,collision_hulls,look_hulls
+from layout_collision_cells import corners,hull_poly
 
 COLORS={'enamel':232,'navy':29,'teal':9,'deck':122,'carpet':85,'linen':105,'oak':172,'stone':1,
         'steel':91,'tile':9,'glass':5,'coral':58,'blue':53,'yellow':6,'leaf':196,'rubber':82,
@@ -244,29 +246,48 @@ def finish(D,p,raw,world,place,box,node,route,rect,ys,beam):
     hs=[beam([side*25,14.4,z+dz],[side*27.8,18.6,z+dz],.17),beam([side*27.8,18.6,z+dz],[side*29.2,18.6,z+dz],.17)]
     q,o=world('davit','fitting',hs=hs,art={'kind':'solids','finish':'enamel'})
     place(f'davit_{side}_{i}_{dz}',q,o,'5','lifesaving')
- # Six colored enclosed slide courses are decorative; their launch decks and surrounding paths are walkable.
- for si,finish in enumerate(['coral','leaf','blue','yellow','purple','orange']):
-  path=[]
-  for j in range(17):
-   t=j/16;angle=t*math.tau*(1.25+si*.10)+si*.8
-   path.append([(-4 if si<3 else 8)+8*math.sin(angle),68.4-12.6*t,-128-39*t+6*math.cos(angle)])
-  path[0]=[12+si*2.3,68.4,-117.3]
-  groups=[];group=[]
-  def fits(hs):
-   points=[v for h in hs for v in h];lo=[min(v[k] for v in points) for k in range(3)];hi=[max(v[k] for v in points) for k in range(3)]
-   mid=[(a+b)/2 for a,b in zip(lo,hi)]
-   return max((b-a)/2 for a,b in zip(lo,hi))<=16 and max(math.hypot(v[0]-mid[0],v[2]-mid[2]) for v in points)<=14.5 and len(hs)<=16
-  for j,(a,b) in enumerate(zip(path,path[1:])):
-   h=beam(a,b,.78)
-   if group and (j==8 or not fits([v for _,v in group]+[h])):groups.append(group);group=[]
-   group.append((j,h))
-   if j and j%4==0:
-    q,o=world('slide_support','fitting',hs=[beam([a[0],49.6,a[2]],a,.10)],art={'kind':'solids','finish':'enamel'})
-    place(f'slide_support_{si}_{j}',q,o,'16','category-6')
-  if group:groups.append(group)
-  for group in groups:
-   q,o=world('slide_'+finish,'waterpark',hs=[v for _,v in group],art={'kind':'slide','finish':finish,'sourceSegments':[j for j,_ in group]},color=COLORS[finish])
-   place(f'slide_{si}_{group[0][0]}',q,o,'16','category-6')
+ # Operator-photograph ride types; original inferred continuous paths are
+ # one shared authority for geometry, collision and all distance candidates.
+ D['waterpark']={'basis':'Original inferred paths guided by the operator Category Six award photographs; decorative, not operational rides.',
+                 'courses':courses(),'supports':[]}
+ def clear_support(a):
+  # A column spans the occupied public levels. Keep the full authored route
+  # band and headroom clear, including turns, rather than only the centerline.
+  for r in D['routes']:
+   for b,c in zip(r['anchors'],r['anchors'][1:]):
+    if max(b[1],c[1])+r['clearHeight']<49.6 or min(b[1],c[1])>a[1]:continue
+    dx,dz=c[0]-b[0],c[2]-b[2];length=dx*dx+dz*dz
+    t=max(0,min(1,((a[0]-b[0])*dx+(a[2]-b[2])*dz)/length)) if length else 0
+    if math.hypot(a[0]-b[0]-t*dx,a[2]-b[2]-t*dz)<r['clearWidth']/2+.25:return False
+  return True
+ for course in D['waterpark']['courses']:
+  si=course['number'];finish=course['finish'];path=course['points'];parts=collision_hulls(course)
+  for first in range(0,len(path)-1,2):
+   last=min(first+2,len(path)-1)
+   hs=[v['points'] for v in parts if first<=v['segment']<last]
+   look=[h['points'] for h in look_hulls(course,(first,last))];points=[v for h in hs+look for v in h]
+   lo=[min(v[k] for v in points) for k in range(3)];hi=[max(v[k] for v in points) for k in range(3)]
+   origin=[round((lo[k]+hi[k])/2*512)/512 for k in range(3)]
+   # Curving two sector rings can put a construction center inside their
+   # convex union. Native hulls require boundary corners only. Remove those
+   # redundant points after the ordinary source precision, keeping the same
+   # convex volume and every exterior corner.
+   local=lambda h:{'points':corners(hull_poly([[round(v[k]-origin[k],6) for k in range(3)] for v in h]))}
+   q=p('slide_'+finish,'waterpark',[],[local(h) for h in hs],
+       {'kind':'slide','finish':finish,'course':si,'sourceSegments':list(range(first,last))},COLORS[finish],
+       {'hulls':[local(h) for h in look]})
+   place(f'slide_{si}_{first}',q,origin,'16','category-6')
+  distance=[0]
+  for a,b in zip(path,path[1:]):distance.append(distance[-1]+math.dist(a,b))
+  available=[i for i in range(1,len(path)-1) if clear_support(path[i])];chosen=[]
+  for fraction in(.25,.5,.75):
+   assert available,('no clear support station',si)
+   index=min(available,key=lambda i:abs(distance[i]-fraction*distance[-1]));chosen.append(index)
+   available=[i for i in available if abs(distance[i]-distance[index])>=3]
+  for support,index in enumerate(sorted(chosen)):
+   a=path[index];q,o=world('slide_support','fitting',hs=[beam([a[0],49.6,a[2]],a,.10)],art={'kind':'solids','finish':'enamel'})
+   place(f'slide_support_{si}_{support}',q,o,'16','category-6')
+   D['waterpark']['supports'].append({'course':si,'at':a,'arcLength':distance[index]})
  # Strong photographed stern arch, kept outside the protected routes and within the published hull length.
  arch=[[-16,23,-178],[-12,36,-178],[0,42,-176],[12,36,-178],[16,23,-178]]
  for j,(a,b) in enumerate(zip(arch,arch[1:])):
