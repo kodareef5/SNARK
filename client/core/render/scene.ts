@@ -1073,7 +1073,8 @@ export class Scene {
   private showSails(cam: Camera, source: SailSource): void {
     const p = this.packet, tier = this.assets.tier, reach = Math.min(this.viewDistance, tier.reach.city);
     const groups = this.sails.prepare(source, cam, reach, this.casting ? this.castBox : null), stats = this.sails.stats;
-    p.skipped += stats.missing; p.frame[FRAME.fade] = tier.fade;
+    p.skipped += stats.missing;
+    if (groups.length) p.frame[FRAME.fade] = tier.fade;
     for (const group of groups) {
       // Pose an assembly whole. At the raised endpoint every matrix is identical, so one bone per sail is exact.
       const active = group.sails.filter(sail => sail.mesh >= 0 && (sail.seen || sail.casts));

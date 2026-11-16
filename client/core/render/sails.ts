@@ -127,6 +127,7 @@ export class SailVisuals {
       this.states = states;
     }
     this.shown.length = 0;
+    if (reach <= 0) return this.shown;
     for (const group of this.groups) {
       const state = group.state; group.progress = sailsProgress(state, tick); group.distance = Infinity; group.bones = 0;
       frameAxes(state.yaw, axes);
