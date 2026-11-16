@@ -177,7 +177,7 @@ test("every page is whole HTML, names only what it has, and writes what the cont
       assets: { css: "/wiki/a.css", js: "/wiki/a.js", search: "/wiki/s.json", font: "/assets/f.ttf", revision: "abc" },
       entries: entries.map((e) => (e.id === "core:raptor" ? { ...e, label: '<img src=x onerror="bad()">' } : e)),
       pictures: new Map([["core:raptor", { views: [card], card }]]),
-      credits: new Map([["core:raptor", "Model and motion: Quaternius, CC0 1.0."]]),
+      credits: new Map([["core:raptor", "Model and motion: from a CC0 1.0 pack."]]),
       atlases: [],
       sounds: [{ id: "core:raptor/sound/call", owner: "core:raptor", name: "Call", file: "core.snsd", at: 8, rate: 32000, takes: [[100, 20]], game: true }],
       heard: new Map([["core:raptor", ["core:raptor/sound/call"]]]),

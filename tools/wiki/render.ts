@@ -97,7 +97,8 @@ export function renderWiki(site: Site): Map<string, string> {
   for (const e of site.entries) write(entryPath(e).slice(BASE.length), e.label, e.kind, v.entry(e));
   write("engrams/", "Engrams", "engrams", v.engrams());
   if (site.levels) write("levels/", "Levels", "engrams", v.levels(site.levels));
-  write("maps/", "Maps", "maps", `${heading("Maps", `${site.atlases.length} worlds`)}${v.maps()}`);
+  const running = `<p class="note" data-worlds hidden><a href="/">Which worlds are running now, and on which maps</a></p>`;
+  write("maps/", "Maps", "maps", `${heading("Maps", `${site.atlases.length} worlds`)}${v.maps()}${running}`);
   for (const a of site.atlases) write(`maps/${a.slug}/`, a.label, "maps", atlasPage(a, site.names, v.ref));
   write("sounds/", "Sounds", "sounds", v.soundOwners());
   for (const [o, list] of v.owners) {

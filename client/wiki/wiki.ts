@@ -87,6 +87,8 @@ const kept = ((): string | null => { try { return sessionStorage.getItem("world"
 const world = worldPath(location.search, document.referrer, location.origin, kept);
 try { sessionStorage.setItem("world", world); } catch { /* Without storage each page asks by its own address. */ }
 void fetch(`${world}/settings.json`, { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).then(async (said: ServerSaid | null) => {
+  // A world reached at a path is one of a site whose start screen lists every world running.
+  if (said?.settings && world) for (const p of all<HTMLElement>("[data-worlds]")) p.hidden = false;
   if (!said?.settings || Object.keys(said.settings).length === 0) return;
   const { changed, rated, settingText, settingsLine, tamingRows } = await import("../core/wiki/rates.ts");
   const kinds = new Set<string>();
