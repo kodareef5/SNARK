@@ -42,7 +42,7 @@
 //         its body counting from 1, or 0 for the sea's.
 //   STAT  u16 count and that many content ids, a u32 count n, then columns of n in the map's order, each as byte planes
 //         (every value's low byte, then the next): u16 id; u16 yaw less the piece before's, modulo 65,536; and x, y, z in
-//         1/512 m as 24-bit zigzagged differences from the piece before's (the first's from 0).
+//         1/512 m as zigzagged differences from the piece before's modulo 2^24, in 3 bytes (the first's from 0).
 //
 // A string is a varint byte length and UTF-8, as on the wire. A yaw is in 1/65,536 turns.
 
