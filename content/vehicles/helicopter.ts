@@ -8,14 +8,15 @@ export const HELICOPTER: HelicopterSpec = {
   mass: 1050, liftMass: 2050, fuelCapacity: 100, fuelPerSecond: 0.055,
   maxForward: 28, maxReverse: 10, maxSide: 12, cruiseMultiplier: 1.5,
   climbSpeed: 7, descendSpeed: 5, acceleration: 7, brake: 11,
-  turnRate: 1.75, turnAcceleration: 4, bankAngle: 0.48, pitchAngle: 0.34, attitudeResponse: 5,
+  turnRate: 1.75, turnAcceleration: 4.5, pitchRate: 1.8, rollRate: 2.5, bankAngle: 0.48, pitchAngle: 0.34, attitudeResponse: 5,
   gravity: 18, rotorRpm: 410, spoolUp: 105, spoolDown: 70,
   skidHalfWidth: ART.skids.halfWidth, skidHalfLength: 1.75, minGroundNormal: 0.94,
-  tail: { from: [0, 1.65, -1.65], to: [0, 1.9, -5.75], radius: 0.26 },
+  tail: { from: [0, 1.65, -1.65], to: [0, 1.91, -5.65], radius: 0.48, tipRadius: 0.09,
+    boxes: [{ at: [0, 2.11, -5.475], half: [0.065, 0.84, 0.375] }, { at: [0, 1.775, -4.635], half: [0.70, 0.045, 0.185] }] },
 };
 
 export const HELICOPTER_VEHICLE: RotorVehicleDefinition = {
-  id: "core:helicopter", movement: "rotor", spec: HELICOPTER,
+  id: "core:helicopter", movement: "rotor", spec: HELICOPTER, wreck: "core:helicopter_wreck",
   seats: [
     { id: "pilot", driver: true, anchor: ART.anchors.seat_driver, entry: ART.anchors.approach_front_left, door: 0, pose: "pilot", weapons: false },
     { id: "front", anchor: ART.anchors.seat_front_passenger, entry: ART.anchors.approach_front_right, door: 1, pose: "cabin", weapons: false },
@@ -46,9 +47,9 @@ export const HELICOPTER_SPECIES: SpeciesDef = {
   corpse: { health: 600, roll: 40 },
   drops: [{ item: "core:ingot", min: 2, max: 5, weight: 4, favoured: "stone" }, { item: "core:polymer", min: 1, max: 2, weight: 1 }],
   regions: [
-    { name: "Paint", colors: [[41, 1], [232, 1], [230, 1], [22, 1], [124, 1]] },
-    { name: "Stripe", colors: [[230, 1]] },
-    { name: "Upholstery", colors: [[220, 1], [97, 1]] },
+    { name: "Paint", colors: [[103, 1], [232, 1], [86, 1], [124, 1]] },
+    { name: "Stripe", colors: [[86, 1]] },
+    { name: "Upholstery", colors: [[101, 1]] },
     null, null, null,
   ],
   vehicle: HELICOPTER_VEHICLE,
@@ -57,12 +58,12 @@ export const HELICOPTER_SPECIES: SpeciesDef = {
 /** Liveries share mechanics and rig. Their meshes only replace the aircraft's authored paint scheme. */
 export const HELICOPTER_RESCUE: SpeciesDef = {
   ...HELICOPTER_SPECIES, id: "core:helicopter_rescue", aliases: ["rescue_heli"], mesh: "core:helicopter_rescue",
-  regions: [{ name: "Paint", colors: [[230, 1]] }, { name: "Stripe", colors: [[232, 1]] }, { name: "Upholstery", colors: [[220, 1]] }, null, null, null],
+  regions: [{ name: "Paint", colors: [[232, 1]] }, { name: "Stripe", colors: [[46, 1]] }, { name: "Upholstery", colors: [[101, 1]] }, null, null, null],
   vehicle: { ...HELICOPTER_VEHICLE, id: "core:helicopter_rescue" },
 };
 export const HELICOPTER_POLICE: SpeciesDef = {
   ...HELICOPTER_SPECIES, id: "core:helicopter_police", aliases: ["police_heli"], mesh: "core:helicopter_police",
-  regions: [{ name: "Paint", colors: [[22, 1]] }, { name: "Stripe", colors: [[230, 1]] }, { name: "Upholstery", colors: [[220, 1]] }, null, null, null],
+  regions: [{ name: "Paint", colors: [[83, 1]] }, { name: "Stripe", colors: [[232, 1]] }, { name: "Upholstery", colors: [[101, 1]] }, null, null, null],
   vehicle: { ...HELICOPTER_VEHICLE, id: "core:helicopter_police" },
 };
 export const HELICOPTERS = [HELICOPTER_SPECIES, HELICOPTER_RESCUE, HELICOPTER_POLICE] as const;
