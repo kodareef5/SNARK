@@ -39,16 +39,20 @@
 //         count of bodies, each a string name and a u16 surface in the heights' units, then a u32 count of the chunks
 //         holding water, each a u32 chunk index, ascending, and its squares as u16, row by row from z = 0: the number of
 //         its body counting from 1, or 0 for the sea's.
+//   LAND  what the map adds to the content: u8 count of its landmarks and each a name, whose files a client fetches
+//         (assets/landmarks/<name>.json), then a u32 byte length and that many bytes of UTF-8 JSON, the definitions they
+//         add, compiled after the core's. Before STAT, so a client has them before it says hello.
 //   STAT  u16 count and that many content ids, a u32 count n, then columns of n in the map's order, each as byte planes
 //         (every value's low byte, then the next): u16 id; u16 yaw less the piece before's, modulo 65,536; and x, y, z in
 //         1/512 m as zigzagged differences from the piece before's modulo 2^24, in 3 bytes (the first's from 0).
 //
 // A string is a varint byte length and UTF-8, as on the wire. A yaw is in 1/65,536 turns.
 
-import type { MapZone } from "../content/defs.ts";
+import type { Def, MapZone } from "../content/defs.ts";
 import type { Registry } from "../content/registry.ts";
 import { CHUNK_SIZE, MAX_CHUNKS_PER_AXIS, STRUCT_UNITS, WORLD_MAX_Y, WORLD_MIN_Y, chunkAt, chunkCount, chunkCx, chunkCz, type MapDims } from "../coords.ts";
 import { hashBytes } from "../hash.ts";
+import { decodeUtf8 } from "../pack/pack.ts";
 import { BitReader, BitWriter } from "../net/codec.ts";
 import { Heightfield, TERRAIN_CELL } from "./heightfield.ts";
 import { formOf, mix, nodeForms, scatterNodes, type NodeSource } from "./nodes.ts";
@@ -287,6 +291,13 @@ export interface MapData {
   readonly vehicles?: readonly MapVehicle[];
   /** Lakes, ponds, reservoirs and the reaches of rivers, each on its own surface. Without it the sea is the only water. */
   readonly water?: MapWater;
+  readonly content?: MapContent;
+}
+
+/** What a map adds to the content: its landmarks, each named by its files, and the definitions they bring. */
+export interface MapContent {
+  readonly landmarks: readonly string[];
+  readonly defs: readonly Def[];
 }
 
 /** A map read from a file, with the hash that names those bytes. */
@@ -330,6 +341,8 @@ function check(m: MapData): void {
     return top;
   };
   if (!/^[\x21-\x7e]{1,64}$/.test(m.id)) fail("its id must be 1 to 64 characters of plain text with no space");
+  const landmarks = m.content?.landmarks ?? [];
+  if (landmarks.length > 255 || landmarks.some((n) => !/^[a-z][a-z0-9-]{0,31}$/.test(n)) || new Set(landmarks).size !== landmarks.length) fail("its landmarks are each named once, in lower case, at most 255 of them");
   if (!whole(chunksX, 1, MAX_CHUNKS_PER_AXIS) || !whole(chunksZ, 1, MAX_CHUNKS_PER_AXIS)) fail(`it is ${chunksX} by ${chunksZ} chunks, and a side is 1 to ${MAX_CHUNKS_PER_AXIS}`);
   if (!(m.stepY > 0 && Number.isFinite(m.stepY) && Number.isFinite(m.minY) && m.seaLevel < Infinity)) fail("its height range or its sea level is not a number");
   const sizeX = chunksX * CHUNK_SIZE;
@@ -646,6 +659,18 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
       }
     });
   }
+  const land = m.content;
+  if (land && land.landmarks.length + land.defs.length > 0) {
+    section("LAND", () => {
+      o.u8(land.landmarks.length);
+      for (const name of land.landmarks) o.text(name);
+      // Written as ASCII, every other character escaped, which UTF-8 reads as it is.
+      const json = JSON.stringify(land.defs).replace(/[\u0080-\uffff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+      o.u32(json.length);
+      const at = o.take(json.length);
+      for (let i = 0; i < json.length; i++) o.bytes[at + i] = json.charCodeAt(i);
+    });
+  }
   const ground = o.at;
   if (m.statics.length > 0) {
     section("STAT", () => {
@@ -838,6 +863,7 @@ function read(r: In): Omit<MapFile, "hash"> {
   const vehicles: MapVehicle[] = [];
   const vehicleExtras = new Map<number, Partial<MapVehicle>>();
   let water: MapWater | null = null;
+  let content: MapContent | null = null;
   while (r.at < r.bytes.length) {
     const tag = String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8());
     const s = new In(r.take(r.u32()));
@@ -892,6 +918,10 @@ function read(r: In): Omit<MapFile, "hash"> {
           ...(flags & 8 ? { fuel: [s.f64(), s.f64()] as const } : {}),
         });
       }
+    } else if (tag === "LAND") {
+      if (content) throw new Error("map: it has two LAND sections");
+      const landmarks = Array.from({ length: s.u8() }, () => s.text());
+      content = { landmarks, defs: JSON.parse(decodeUtf8(s.take(s.u32()))) as Def[] };
     } else if (tag === "WATR") {
       if (water) throw new Error("map: it has two WATR sections");
       const cell = s.u8();
@@ -916,7 +946,7 @@ function read(r: In): Omit<MapFile, "hash"> {
     vehicles[index] = { ...vehicles[index]!, ...extra };
   }
   statics ??= MapStatics.of(dims, []);
-  return { id, dims, minY, stepY, seaLevel, heights, tint: tint ?? new Uint8Array(heights.length), statics, nodes, spawns, ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(water ? { water } : {}) };
+  return { id, dims, minY, stepY, seaLevel, heights, tint: tint ?? new Uint8Array(heights.length), statics, nodes, spawns, ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(water ? { water } : {}), ...(content ? { content } : {}) };
 }
 
 /** How many of a file's bytes come before its statics, from its first 16. */

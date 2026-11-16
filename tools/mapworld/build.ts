@@ -28,14 +28,12 @@ import { helicopterSites, type HelicopterSite } from "../helicopter/sites.ts";
 import { boatSites, mappedBoatSites } from "../boat/sites.ts";
 import type { BuildingLabel, PublicPlace } from "./labels.ts";
 import { growRuins } from "./ruin-growth.ts";
+import { landmarkDefs, landmarksOf, layLandmarkGround, placeLandmarks } from "./landmarks.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 
 export async function buildMap(name: string): Promise<{ file: string; stats: Record<string, unknown> }> {
   const t0 = performance.now();
-  const compiled = compileContent(CORE_CONTENT);
-  if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
-  const reg = compiled.registry;
   const lap = (what: string): void => console.log(`${((performance.now() - t0) / 1000).toFixed(1).padStart(5)} s  ${what}`);
   const source = join(ROOT, "assets/source/maps", name);
   const base = new Base(source);
@@ -43,14 +41,19 @@ export async function buildMap(name: string): Promise<{ file: string; stats: Rec
   const n = base.n;
   const size = base.info.size_m;
   const chunks = base.info.chunks;
-
-  const ground = makeGround(base, world, lap);
-  lap("ground");
   const half = size / 2;
   const toSample = (lon: number, lat: number): [number, number] => {
     const [e, no] = base.tm.forward(lon, lat);
     return [(e + half) / 2, (half - no) / 2];
   };
+  // The core's content and what the map's landmarks bring.
+  const sited = landmarksOf(world.landmarks ?? [], toSample, size);
+  const compiled = compileContent([...CORE_CONTENT, ...landmarkDefs(sited)]);
+  if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
+  const reg = compiled.registry;
+
+  const ground = makeGround(base, world, lap);
+  lap("ground");
   const site = siteOf(world, ground, size, source);
   const layered = STATIC_LAYERS.flatMap((layer) => {
     const pieces = layer.make(site);
@@ -78,7 +81,10 @@ export async function buildMap(name: string): Promise<{ file: string; stats: Rec
     }
   }
   const obelisks = placeObelisks(ground, world, toSample, size, occupied);
-  const statics = [...layered, ...obelisks.flatMap((o) => obeliskStatics(reg, o, site.groundAt).map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 })))];
+  // Then the landmarks, on the ground they ask for, so no piece before them changes its slot.
+  const berths = layLandmarkGround(ground, sited, size, 0);
+  const brought = placeLandmarks(sited, reg, 0);
+  const statics = [...layered, ...obelisks.flatMap((o) => obeliskStatics(reg, o, site.groundAt).map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 }))), ...brought.statics.map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 }))];
   pieceCounts.fill(0);
   for (const p of statics) pieceCounts[Math.floor(p.z / 64) * chunks + Math.floor(p.x / 64)]!++;
   const maxChunk = Math.max(...pieceCounts);
@@ -91,13 +97,13 @@ export async function buildMap(name: string): Promise<{ file: string; stats: Rec
   lap(`${spawns.length} spawn points, ${regions.length} spawn regions`);
   // A parked car stands well off where survivors arrive and where they leave, so neither's walk meets it.
   const apart = world.heaps === false ? vocabulary(source).street.cars.parked.fromSpawn : 0;
-  const vehicles = site.vehicles.filter((c) => ![...spawns, ...obelisks].some((s) => Math.hypot(s.x - c.x, s.z - c.z) < apart));
+  const vehicles = [...site.vehicles.filter((c) => ![...spawns, ...obelisks].some((s) => Math.hypot(s.x - c.x, s.z - c.z) < apart)), ...brought.vehicles.map((v) => ({ ...v, yaw: (v.yaw * 360) / 65536 }))];
   lap(`${vehicles.length} parked vehicles`);
   // Nothing grows within 8 m of a spawn point, so nobody arrives inside a tree, nor within 14 m of an obelisk's middle,
   // so none stands in it or before its terminal, nor within 6 m of a parked car.
   const clearings = [...spawns.map((s) => [(size - s.x) / 2, (size - s.z) / 2, 16] as const), ...obelisks.map((o) => [(size - o.x) / 2, (size - o.z) / 2, 49] as const), ...vehicles.map((c) => [(size - c.x) / 2, (size - c.z) / 2, 9] as const)];
   const growth = world.heaps === false ? vocabulary(source).growth : undefined;
-  const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1) || clearings.some(([c, r, d2]) => (c - col) ** 2 + (r - row) ** 2 < d2), (col, row) => site.lowPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1, growth);
+  const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1) || berths[row * n + col] === 1 || clearings.some(([c, r, d2]) => (c - col) ** 2 + (r - row) ** 2 < d2), (col, row) => site.lowPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1, growth);
   lap("nodes");
 
   const layers = join(ROOT, "var/maps", name, "layers");
@@ -137,7 +143,7 @@ export async function buildMap(name: string): Promise<{ file: string; stats: Rec
   lap(`layers in ${layers}`);
 
   let map = readLayers(layers);
-  map = { ...map, statics: MapStatics.of(map.dims, map.statics) };
+  map = { ...map, statics: MapStatics.of(map.dims, map.statics), ...(sited.length > 0 ? { content: brought.content } : {}) };
   Bun.gc(true);
   if (growth) {
     const grown = growRuins(map, compiled.registry, site, growth);

@@ -10,7 +10,7 @@ import { WorkerCityMaker } from "../city/maker.ts";
 import { DEFAULT_TIER, tierOf } from "../core/assets/tiers.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
-import { fetchBytes, fetchJson, fetchMap, fetchText, readStatics } from "../core/fetched.ts";
+import { fetchBytes, fetchJson, fetchMap, fetchText, readStatics, withLandmarks } from "../core/fetched.ts";
 import { loadIdentity } from "../core/identity.ts";
 import { SelfcheckSurfaces } from "../core/selfcheck-surfaces.ts";
 import { SelfcheckProgress, selfcheckReport } from "../core/selfcheck-report.ts";
@@ -53,14 +53,14 @@ async function boot(): Promise<void> {
   // hello, and a socket it gave up on is opened again.
   const sockets = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
   const early = mapFile.then(() => connect(`${sockets}/ws`), () => null);
-  const reg = compileContent(CORE_CONTENT).registry!;
   // The manifest says where every level of every mesh is. The boot pack is fetched whole, and the rest as it is wanted.
-  const manifest = parseManifest(await manifestText);
-  const port = new WorkerPort(manifest, "assets", tierOf(DEFAULT_TIER).diskBytes, params.get("assetnet"));
-  const pack = parsePack(new Uint8Array(await fetchBytes(fetch, `assets/${manifest.files[manifest.boot]!.name}`)));
+  const core = parseManifest(await manifestText);
+  const bootBytes = fetchBytes(fetch, `assets/${core.files[core.boot]!.name}`);
   // The file is named by its SHA-256, so its body is not hashed again.
   const { ground: first, rest } = await mapFile;
   const map = parseMap(first, false), hf = mapHeightfield(map);
+  const { reg, manifest, pack } = await withLandmarks(fetch, map.content, compileContent(CORE_CONTENT).registry!, core, parsePack(new Uint8Array(await bootBytes)));
+  const port = new WorkerPort(manifest, "assets", tierOf(DEFAULT_TIER).diskBytes, params.get("assetnet"));
   giveSky(new Uint8Array(await skyBytes));
   const canvas = document.querySelector<HTMLCanvasElement>("#view")!;
   // The texture variant is the best this device takes, or the one ?texfmt= names if it takes that.

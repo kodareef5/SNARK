@@ -12,6 +12,7 @@ import { stressThings, type Mark } from "./stress.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
+import { motionProgress, motionTicks } from "../../shared/sim/motion.ts";
 import { MODE_FLYER, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
@@ -168,6 +169,8 @@ export class App {
   private readonly padTarget: PadTarget;
   private readonly pack: Pack;
   private last = -1;
+  /** Adopt the welcome's authored/saved facing once, before the first input overwrites it. */
+  private facing = false;
   /** Eased eye height above the feet, or -1 before the first frame and while there is no living body. */
   private eye = -1;
   private helicopterViewHost = -1;
@@ -642,6 +645,13 @@ export class App {
     const ref = rayHit.ref;
     const t = world.structs.chunks[Math.floor(ref / 65536)]!;
     const kind = t.kind[ref & 0xffff]!;
+    const motion = this.reg.motion[kind];
+    if (motion && rayHit.t <= REACH) {
+      const state = s.motions.get(ref);
+      const p = state ? motionProgress(state, motionTicks(motion), s.tickClock) : 0;
+      const word = `E ${motion.say[state?.to === 1 ? 1 : 0]}`;
+      return p > 0 && p < 1 ? `${word}  ${Math.round(p * 100)}%` : word;
+    }
     if (kind === this.reg.index.get(TRAVEL_TERMINAL)) {
       this.terminalAimed = ref;
       return "E travel to another server";
@@ -867,6 +877,12 @@ export class App {
     const c = this.controls;
     this.nowMs = nowMs;
     hud.vehicle = null;
+    if (!this.facing && session.state === "active") {
+      // Mouse movement while connecting is an offset from the arrival view, not a reason to face +Z.
+      c.yaw += session.ownYaw;
+      c.pitch += session.ownPitch;
+      this.facing = true;
+    }
 
     this.travel(nowMs);
     if (this.ui.reconnectRequested) { this.ui.reconnectRequested = false; this.page?.reload?.(); }

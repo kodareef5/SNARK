@@ -33,7 +33,7 @@ function fill(template: string, d: Def, vars: Vars): string {
     let v: unknown = vars[name];
     if (v === undefined && name === "id") v = d.id;
     // A generated mesh is named after its definition.
-    else if (v === undefined && name === "mesh") v = "mesh" in d ? (d.mesh === "box" || d.mesh === "shape" ? d.id : d.mesh) : undefined;
+    else if (v === undefined && name === "mesh") v = "mesh" in d ? (d.mesh === "box" || d.mesh === "shape" || d.mesh === "none" ? d.id : d.mesh) : undefined;
     else if (v === undefined) v = name.split(".").reduce<unknown>((at, part) => (at as Record<string, unknown> | undefined)?.[part], d);
     if (typeof v !== "string" || v === "") whole = false;
     return String(v);
