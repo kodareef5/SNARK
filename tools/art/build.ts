@@ -8,6 +8,7 @@ import { MOST_SECTIONS, detailsAtlas, parsePack, setTexture, textureOf, type Pac
 import { RAMP_BASE, SKIN_BASE, defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
 import { LAST_STEP, TEXTURE_ROLES, stepSize } from "../../shared/pack/texture.ts";
 import { convertCreature, planOf, withMotion } from "../pack/creature.ts";
+import { baker, painted } from "../pack/bake.ts";
 import { importGlb } from "../pack/glb.ts";
 import { readGltf } from "../pack/gltf.ts";
 import { lying } from "../pack/lying.ts";
@@ -176,6 +177,7 @@ export function convertPieces(asset: Asset & { spec: PiecesAsset }, files: Reado
   const palette = defaultPalette();
   const pictured = described(asset, palette, out);
   const maps = new Map<string, MaterialMaps[]>();
+  const flatColours = new Map<string, (number | undefined)[]>();
   const brought = new Map<string, number>();
   const pieces = piecesOf(spec);
   for (const p of pieces) {
@@ -186,9 +188,11 @@ export function convertPieces(asset: Asset & { spec: PiecesAsset }, files: Reado
       out.meshes.push(report.mesh);
       continue;
     }
-    const made = withMaterials(report.mesh, report.mesh.materials!.map((m) => m.id.slice(p.id.length + 1)), pictured);
+    const names = report.mesh.materials!.map((m) => m.id.slice(p.id.length + 1));
+    const made = withMaterials(report.mesh, names, pictured);
     out.meshes.push(made.mesh);
     maps.set(p.id, made.maps);
+    flatColours.set(p.id, names.map(name => spec.materials?.[name]?.flat ? pictured.get(name)?.flat : undefined));
   }
   measureSpans(out.meshes);
   out.meshes = out.meshes.map((mesh) => {
@@ -196,7 +200,24 @@ export function convertPieces(asset: Asset & { spec: PiecesAsset }, files: Reado
     // Asked for, a piece's levels are made from its finest as a creature's are, and any its script brought follow them
     // as its last, each taking the last of the budgets. Otherwise it keeps its own.
     const errors = pieces.find((p) => p.id === mesh.id)?.errors;
-    if (spec.flat === undefined || !maps.has(mesh.id)) return withStated(mesh, errors, out.faults);
+    if (spec.flat === undefined || !maps.has(mesh.id)) {
+      // Authored levels keep their exact surfaces. Their textured levels still need
+      // the pictures' local colours while those pictures are streaming, as generated
+      // levels do; one atlas-wide mean would turn wood, steel and enamel the same shade.
+      if (maps.has(mesh.id) && mesh.flat) {
+        const colour = baker(mesh.lods[0]!, mesh.materials ?? [], maps.get(mesh.id)!, palette), stated = flatColours.get(mesh.id)!;
+        mesh = { ...mesh, lods: mesh.lods.map((lod, level) => {
+          if (level >= mesh.flat!) return lod;
+          const colors = colour(lod);
+          for (let triangle = 0; triangle < colors.length; triangle++) {
+            const flat = stated[lod.sections?.[triangle] ?? 0];
+            if (flat !== undefined) colors[triangle] = flat;
+          }
+          return painted(lod, colors);
+        }) };
+      }
+      return withStated(mesh, errors, out.faults);
+    }
     const own = mesh.lods.slice(1, 1 + brought.get(mesh.id)!);
     const plan = pieces.find((p) => p.id === mesh.id)?.triangles ?? spec.budgets.triangles;
     // A model finer than the first budget is not itself a level: the finest is made from it, and the rest from that.
@@ -304,11 +325,15 @@ function recolour(was: Uint8Array, now: Uint8Array, asset?: Asset): (mesh: Sourc
   };
   return (mesh, lod) => {
     const colors = lod.colors.map(again);
-    // A piece's vertex drawn with a material has the material's flat colour, so it is known by its triangle.
+    // Older pieces used one mean colour per material. Resolve that known colour
+    // by its triangle, while preserving local fallback colours painted from an atlas.
     if (spec?.kind === "pieces" && lod.sections && mesh.materials) {
       for (let t = 0; t < lod.indices.length / 3; t++) {
-        const flat = flats.get(mesh.materials[lod.sections[t]!]!.id)?.[1];
-        if (flat !== undefined) for (let k = 0; k < 3; k++) colors[lod.indices[t * 3 + k]!] = flat;
+        const flat = flats.get(mesh.materials[lod.sections[t]!]!.id);
+        if (flat) for (let k = 0; k < 3; k++) {
+          const vertex = lod.indices[t * 3 + k]!;
+          if (lod.colors[vertex] === flat[0]) colors[vertex] = flat[1];
+        }
       }
     }
     return { ...lod, colors };

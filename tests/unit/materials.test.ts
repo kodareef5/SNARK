@@ -19,6 +19,7 @@ import { encodePng, readPicture, type Picture } from "../../tools/pack/image.ts"
 import { splitPack } from "../../tools/pack/split.ts";
 import { tangentsOf } from "../../tools/pack/surface.ts";
 import { buildPack, unpackMeshes, type SourceLod } from "../../tools/pack/write.ts";
+import { importGlb } from "../../tools/pack/glb.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { tubeGlb, tubeMesh, tubePictures } from "../fixtures/textured.ts";
 
@@ -153,10 +154,19 @@ test("pieces take their materials by name: one of the asset's own, one that seve
     // The shared material keeps its own id and the span it says it tiles at. The other is the asset's, measured on the mesh.
     expect(mesh.materials!.map((m) => [m.id, m.span, m.tint, m.flags, m.cutoff])).toEqual([["t:hide", 2, [1, 1, 1], 0, 0], ["t:posts/horn", tubeMesh().materials![1]!.span, [1, 1, 1], MATERIAL_CUTOUT, 0.5]]);
     expect(mesh.textures!.map((t) => [t.id, t.top])).toEqual([["t:hide/base", 64], ["t:hide/mro", 64], ["t:hide/normal", 64], ["t:posts/horn/base", 64]]);
-    // It keeps the levels it came with. On every one a material is one flat colour: the mean of its base colour, or what its asset says.
+    // It keeps the authored geometry. Coarse flat levels keep their material colour;
+    // textured levels use local picture colours while streaming, honoring explicit flat overrides.
     const mean = describe(materialsOf(asset)[0]!, 64, palette);
     expect([mesh.flat, mesh.lods.length > 2, mean.flat, palette[mean.flat * 4]! > 150]).toEqual([1, true, mean.flat, true]);
-    for (const lod of mesh.lods) expect([...new Set(lod.colors)].sort((a, b) => a - b)).toEqual([mean.flat, nearestColour(palette, 200, 40, 40)].sort((a, b) => a - b));
+    for (const lod of mesh.lods.slice(mesh.flat)) expect([...new Set(lod.colors)].sort((a, b) => a - b)).toEqual([mean.flat, nearestColour(palette, 200, 40, 40)].sort((a, b) => a - b));
+    const fine = mesh.lods[0]!, imported = importGlb(tubeGlb(), "t:post", palette).mesh.lods[0]!;
+    expect(fine.positions).toEqual(imported.positions); expect(fine.uvs).toEqual(imported.uvs);
+    expect(new Set(fine.colors).size).toBeGreaterThan(2);
+    for (let triangle = 0; triangle < fine.indices.length / 3; triangle++) {
+      const got = Array.from(fine.indices.subarray(triangle * 3, triangle * 3 + 3)), original = Array.from(imported.indices.subarray(triangle * 3, triangle * 3 + 3));
+      expect([0, 1, 2].some(turn => got.every((v, k) => v === original[(k + turn) % 3]))).toBe(true);
+      if (fine.sections?.[triangle] === 1) expect(fine.colors[got[2]!]).toBe(nearestColour(palette, 200, 40, 40));
+    }
     expect(parsePack(packOf(out)).header.materials!.map((m) => m.id)).toEqual(["t:hide", "t:posts/horn"]);
 
     // Made with another palette, here the block made by rule in reverse, and written again, it has today's colours:
