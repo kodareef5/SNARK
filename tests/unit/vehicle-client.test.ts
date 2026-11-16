@@ -208,3 +208,18 @@ test("vehicle chase camera keeps mouse look, eases idle heading, and collision p
   expect(cam.z).toBeGreaterThan(63);
   expect(cam.z).toBeLessThan(64);
 });
+
+test("an inverted enclosed passenger keeps a seated pelvis and stows held equipment even when a rigid LOD is requested", () => {
+  const { characters, packet } = fixture(), look = defaultLook(), gear = new Uint16Array(GEAR_COUNT);
+  gear[GEAR_HELD] = reg.index.get("core:rifle")!;
+  const enclosed: VehicleSeatPose = { ...seat, role: "cabin", weapons: false, qx: 0, qy: 0, qz: 1, qw: 0 };
+  expect(characters.add(packet, survivor, 0, 0, 0, 0, new AnimState(), 3, look, 0, colors, 0, gear, 0, 7, false, false, 1, true, false, null, 0, undefined, enclosed)).toBe(true);
+  expect(packet.boneCount).toBe(HUMAN_BONES);
+  close(transform(packet, B_HIPS, rest.subarray(0, 3)), [seat.x, seat.y, seat.z]);
+  const eye = new Float64Array(3);
+  expect(characters.seatedEye(survivor, look, enclosed, eye)).toBe(true);
+  expect(eye[1]).toBeLessThan(seat.y - .5);
+  const drawn: string[] = [];
+  characters.flush(packet, new InstanceWriter(packet.transient), false, m => drawn.push(pack.header.meshes[m]!.id));
+  expect(drawn).not.toContain("core:rifle"); expect(drawn).toContain("core:human_m/head");
+});

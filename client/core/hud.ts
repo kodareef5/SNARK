@@ -11,7 +11,7 @@ import { sortU32 } from "../../shared/sort.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../../shared/sim/items.ts";
 import { CHOOSE_DIED, CMD_MAP_ZOOM, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { MF_OUT, STAMINA_UNITS, type Body } from "../../shared/sim/character.ts";
-import type { VehicleSpec } from "../../shared/sim/vehicle.ts";
+import type { HelicopterSpec, VehicleSpec } from "../../shared/sim/vehicle.ts";
 import { DEFAULT_DRIVETRAIN, drivetrainShifting } from "../../shared/sim/vehicle-drivetrain.ts";
 import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
@@ -107,7 +107,7 @@ export function fillAction(m: HudModel, session: ClientSession | null, reg: Regi
   m.actionKind = ACTION_NONE;
   m.actionFraction = 0;
   m.ammo = "";
-  if (!session) return;
+  if (!session || !session.weaponsAllowed) return;
   const b = session.own;
   const w = reg.weapon[b.held];
   if (!w || w.clip === 0) return;
@@ -178,6 +178,15 @@ export interface Heads {
 /** Instruments read the predicted mechanical state; audio load and tire slip remain presentation only. */
 export class VehicleTelemetry {
   active = false;
+  rotor = false;
+  direct = false;
+  recovery = false;
+  altitude = 0;
+  vertical = 0;
+  collective = 0;
+  engineCondition = 1;
+  rotorCondition = 1;
+  engineOn = false;
   id = -1;
   speed = 0;
   forward = 0;
@@ -196,7 +205,7 @@ export class VehicleTelemetry {
   stop(): void { this.active = false; this.id = -1; this.rpm = this.load = this.slip = 0; }
 
   update(id: number, body: Body, throttle: number, handbrake: boolean, spec: VehicleSpec, _dt: number): void {
-    this.active = true; this.id = id;
+    this.active = true; this.id = id; this.rotor = false;
     this.forward = body.vx * Math.sin(body.vehicleYaw) + body.vz * Math.cos(body.vehicleYaw);
     this.lateral = body.vx * Math.cos(body.vehicleYaw) - body.vz * Math.sin(body.vehicleYaw);
     this.speed = Math.hypot(body.vx, body.vz);
@@ -213,6 +222,15 @@ export class VehicleTelemetry {
     this.load = this.fuel > 0 ? Math.abs(this.throttle) * (this.brake > 0 ? .25 : 1) * shift : 0;
     this.slip = body.grounded && this.speed > 2 ? Math.max(0, Math.min(1, (Math.abs(this.lateral) - .4) / 4 + (handbrake ? this.speed / 28 : 0))) : 0;
   }
+  updateRotor(id: number, body: Body, spec: HelicopterSpec, altitude: number, direct: boolean, recovery: boolean): void {
+    this.active = true; this.rotor = true; this.id = id; this.direct = direct; this.recovery = recovery;
+    this.speed = Math.hypot(body.vx, body.vz); this.vertical = body.vy; this.altitude = Math.max(0, altitude);
+    this.grounded = body.grounded; this.fuel = Math.max(0, Math.min(1, body.fuel / spec.fuelCapacity));
+    this.rpm = body.vehicleRotorRpm; this.redline = spec.rotorRpm; this.collective = body.vehicleCollective;
+    this.engineCondition = body.vehicleEngineCondition; this.rotorCondition = body.vehicleRotorCondition; this.engineOn = body.vehicleEngineOn;
+    this.gear = 0; this.load = this.collective; this.slip = 0; this.handbrake = false; this.brake = 0;
+  }
+
 }
 
 export class HudModel {

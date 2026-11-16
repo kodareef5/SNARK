@@ -5,7 +5,7 @@
 
 import { creaturePose, type CreatureAnim } from "../../../shared/anim/creature.ts";
 import { bodyDown, bodyUp } from "../../../shared/anim/moments.ts";
-import { AnimState, bodySeed } from "../../../shared/anim/pose.ts";
+import { AnimState, CUE_DEAD, bodySeed } from "../../../shared/anim/pose.ts";
 import { boneToModel, solve, type Solved } from "../../../shared/anim/skeleton.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
@@ -14,6 +14,10 @@ import { OCCASIONS, type DetailEffect, type DetailEntry, type DetailPicture, typ
 import { Rng } from "../../../shared/rng.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
 import { sortU32 } from "../../../shared/sort.ts";
+import { vehiclePoint, vehicleRotation } from "../../../shared/sim/vehicle-frame.ts";
+import { quatRotate } from "../../../shared/math/quat.ts";
+import type { CollisionWorld } from "../../../shared/world/collide.ts";
+import { castWorld, HIT_NONE, rayHit } from "../../../shared/world/ray.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { Occasions, type Happening, type ShotEnd, type Viewer } from "../occasions.ts";
@@ -61,6 +65,8 @@ interface Waiting {
   /** The tick it is made at, and its place among the answers, for its seed. */
   due: number;
   index: number;
+  /** Sustained emitters already resolved their complete vehicle frame and supporting surface. */
+  origin?: { x: number; y: number; z: number; floor: number };
 }
 
 export class Details {
@@ -87,11 +93,18 @@ export class Details {
   private posed = -1;
   private posedAt = 0;
   private readonly birth: Float32Array;
+  private readonly rotorKinds: Uint8Array;
+  private readonly emissions = new Map<number, { wash: number; smoke: number; seen: number }>();
+  private emissionFrame = 0;
+  private readonly rotation = new Float64Array(4);
+  private readonly up = new Float64Array(3);
+  private readonly emitter = new Float64Array(3);
 
   /** `animOf` gives what a species of a kind plays, or null for one not drawn on a rig of its own. */
   constructor(reg: Registry, details: PackDetails | undefined, palette: Uint8Array, animOf: (kind: number) => CreatureAnim | null) {
     this.palette = palette;
     this.birth = reg.birthScale;
+    this.rotorKinds = Uint8Array.from(reg.vehicle, v => v?.movement === "rotor" ? 1 : 0);
     this.effects = details?.effects ?? [];
     this.pictures = details?.pictures ?? [];
     this.pool = new Pool(MAX_DETAILS);
@@ -119,7 +132,7 @@ export class Details {
    * Reads what bodies did, makes the bursts whose moment has come, moves every particle on to the tick of `remote`, and
    * writes those in view into `p`. Returns the first particle of the blended ones; those before it are cut out.
    */
-  frame(p: FramePacket, cam: Camera, remote: RemoteSample | null, corpses: readonly Corpse[], shots: readonly ShotEnd[], viewer: Viewer | null, hf: Heightfield, tier: Tier, nowMs: number): number {
+  frame(p: FramePacket, cam: Camera, remote: RemoteSample | null, corpses: readonly Corpse[], shots: readonly ShotEnd[], viewer: Viewer | null, hf: Heightfield, tier: Tier, nowMs: number, world?: CollisionWorld): number {
     const tick = remote ? remote.tick : nowMs * (TICK_RATE / 1000);
     const dt = this.last === this.last ? Math.min(LONGEST_STEP, Math.max(0, (tick - this.last) / TICK_RATE)) : 0;
     this.last = tick;
@@ -129,6 +142,7 @@ export class Details {
     const ez = cam.z;
     if (remote) {
       this.occasions.update(remote, corpses, shots, viewer, ex, ey, ez, nowMs);
+      this.sustained(remote, hf, world, cam);
       for (const h of this.occasions.happened) {
         const book = this.books[h.kind];
         book?.answers[h.occasion]?.forEach((answer, k) => {
@@ -164,6 +178,51 @@ export class Details {
     return this.write(p, cam, hf);
   }
 
+  /** Continuous machinery uses the same art cues and bounded burst/particle/fill budgets as creature details. */
+  private sustained(r: RemoteSample, hf: Heightfield, world: CollisionWorld | undefined, cam: Camera): void {
+    const frameNumber = ++this.emissionFrame;
+    for (let i = 0; i < r.count; i++) {
+      const kind = r.kind[i]!, book = this.books[kind];
+      if (!this.rotorKinds[kind] || !book || (r.cue[i]! & CUE_DEAD) !== 0 || Math.hypot(r.x[i]! - cam.x, r.y[i]! - cam.y, r.z[i]! - cam.z) > 90) continue;
+      const key = r.id[i]! + r.gen[i]! * 1048576;
+      let seen = this.emissions.get(key);
+      if (!seen) this.emissions.set(key, seen = { wash: -1, smoke: -1, seen: frameNumber });
+      seen.seen = frameNumber;
+      const frame = { x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, yaw: r.yaw[i]!, pitch: r.vehiclePitch[i]!, roll: r.vehicleRoll[i]!, qx: r.vehicleQx[i]!, qy: r.vehicleQy[i]!, qz: r.vehicleQz[i]!, qw: r.vehicleQw[i]! };
+      const emit = (occasion: "rotor_wash" | "engine_smoke", x: number, y: number, z: number, floor: number): void => {
+        const h: Happening = { occasion, id: r.id[i]!, kind, tick: r.tick, x: frame.x, y: frame.y, z: frame.z, yaw: frame.yaw, size: 1, anim: r.anim[i]!, cue: r.cue[i]!, grounded: Number.isFinite(floor), colours: r.colors.slice(i * 6, i * 6 + 6), fromX: NaN, fromY: NaN, fromZ: NaN, foot: -1, corpse: null };
+        book.answers[occasion]?.forEach((answer, index) => {
+          if (this.waiting.length < MOST_WAITING) this.waiting.push({ h, answer, due: r.tick, index, origin: { x, y, z, floor } });
+        });
+      };
+      const wash = Math.floor(r.tick / (TICK_RATE / 4));
+      if (r.vehicleRotorRpm[i]! > 220 && wash !== seen.wash) {
+        seen.wash = wash;
+        const anchor = book.anim.rig.sockets.get("rotor_main");
+        if (anchor) {
+          vehicleRotation(frame, this.rotation); quatRotate(this.rotation, 0, 0, 1, 0, this.up, 0);
+          vehiclePoint(frame, [anchor.x, anchor.y, anchor.z], this.emitter);
+          if (this.up[1]! > .45) {
+            const [x, y, z] = this.emitter as unknown as [number, number, number];
+            let distance = (y - Math.max(hf.heightAt(x, z), hf.waterAt(x, z))) / this.up[1]!;
+            if (world && castWorld(world, x, y, z, -this.up[0]!, -this.up[1]!, -this.up[2]!, 7.2) !== HIT_NONE) distance = rayHit.t;
+            if (distance >= 0 && distance <= 7.2) {
+              const gx = x - this.up[0]! * distance, gy = y - this.up[1]! * distance, gz = z - this.up[2]! * distance;
+              emit("rotor_wash", gx, gy + .04, gz, gy);
+            }
+          }
+        }
+      }
+      const smoke = Math.floor(r.tick / (TICK_RATE / 3));
+      if (r.vehicleEngineCondition[i]! < .65 && r.vehicleRotorRpm[i]! > 30 && smoke !== seen.smoke) {
+        seen.smoke = smoke;
+        const anchor = book.anim.rig.sockets.get("exhaust");
+        if (anchor) { vehiclePoint(frame, [anchor.x, anchor.y, anchor.z], this.emitter); emit("engine_smoke", this.emitter[0]!, this.emitter[1]!, this.emitter[2]!, NaN); }
+      }
+    }
+    for (const [key, state] of this.emissions) if (state.seen !== frameNumber) this.emissions.delete(key);
+  }
+
   /** Makes one burst. Returns the share of the screen it is expected to cover, if it is see-through. */
   private burst(w: Waiting, remote: RemoteSample | null, hf: Heightfield, tier: Tier, cam: Camera, tick: number, fill: number): number {
     const { h, answer } = w;
@@ -177,6 +236,10 @@ export class Details {
     let y = h.y;
     let z = h.z;
     let yaw = h.yaw;
+    const from = answer.entry.from;
+    let [ox, oy, oz] = [0, 0, 0];
+    if (w.origin) { at[0] = w.origin.x; at[1] = w.origin.y; at[2] = w.origin.z; }
+    else {
     let solved: Solved | null = null;
     const rig = book.anim.rig;
     if (h.corpse) solved = h.corpse.solved;
@@ -204,8 +267,6 @@ export class Details {
       at[1] = y + my * size;
       at[2] = z + (c * mz - s * mx) * size;
     };
-    const from = answer.entry.from;
-    let [ox, oy, oz] = [0, 0, 0];
     if (from === "body" || from === "ground") world(solved.pos[0]!, solved.pos[1]!, solved.pos[2]!);
     else if (from === "hit") {
       world(solved.pos[0]!, book.height * 0.55, solved.pos[2]!);
@@ -235,11 +296,12 @@ export class Details {
       world(at[0]!, at[1]!, at[2]!);
     }
     if (from === "ground" || from === "foot") at[1] = y;
+    }
     const [px, py, pz] = [at[0]!, at[1]!, at[2]!];
     const d = Math.hypot(px - cam.x, py - cam.y, pz - cam.z);
     if (d > e.reach * tier.details.reach) return 0;
     // What the ground is, for the dust's colour and whether there is any.
-    const kind = groundAt(hf, px, y, pz);
+    const kind = groundAt(hf, px, w.origin?.floor ?? y, pz);
     if (answer.entry.on && !answer.entry.on.includes(kind)) return 0;
     const colour = this.colour;
     if (e.colour === "ground" && !dustColour(hf, this.palette, kind, px, pz, colour)) return 0;
@@ -261,7 +323,7 @@ export class Details {
       }
     }
     // A body on a floor above the ground lands its particles on that floor; one on the ground or in the air on the ground.
-    const onFloor = h.grounded && y > hf.heightAt(x, z) + 0.25 ? y : Number.NaN;
+    const onFloor = w.origin ? w.origin.floor : h.grounded && y > hf.heightAt(x, z) + 0.25 ? y : Number.NaN;
     const pool = this.pool;
     const age = Math.max(0, (tick - w.due) / TICK_RATE);
     for (let k = 0; k < n; k++) {
