@@ -7,7 +7,7 @@ from PIL import Image,ImageDraw,ImageFont
 HERE=Path(__file__).resolve().parent
 LOOK=json.loads((HERE.parent/'materials.json').read_text())
 N=2048;C=N//8;rng=np.random.default_rng(365485)
-base=np.zeros((N,N,3),np.float32);height=np.full((N,N),.5,np.float32)
+base=np.zeros((N,N,3),np.float32);alpha=np.full((N,N),255,np.uint8);height=np.full((N,N),.5,np.float32)
 rough=np.zeros((N,N),np.float32);metal=np.zeros((N,N),np.float32)
 y,x=np.mgrid[0:C,0:C];u=x/C;v=y/C
 for tag,prop in LOOK.items():
@@ -34,8 +34,9 @@ for tag,prop in LOOK.items():
   wave=np.sin(u*52+np.sin(v*23)*1.4)+np.sin(v*61+np.sin(u*19)*1.2)
   tone=wave*5+np.maximum(0,np.cos(u*73+v*41+wave)-.65)*32;h+=wave*.008
  base[yy:yy+C,xx:xx+C]=np.array(prop['rgb'])[None,None,:]+tone[:,:,None]
+ alpha[yy:yy+C,xx:xx+C]=prop.get('alpha',255)
  height[yy:yy+C,xx:xx+C]=h;rough[yy:yy+C,xx:xx+C]=prop['roughness'];metal[yy:yy+C,xx:xx+C]=prop['metal']
-Image.fromarray(np.clip(base,0,255).astype('uint8')).save(HERE/'surfaces_base.png')
+Image.fromarray(np.dstack([np.clip(base,0,255).astype('uint8'),alpha])).save(HERE/'surfaces_base.png')
 Image.fromarray(np.clip(height*255,0,255).astype('uint8')).save(HERE/'surfaces_height.png')
 dx=np.roll(height,-1,axis=1)-np.roll(height,1,axis=1);dy=np.roll(height,-1,axis=0)-np.roll(height,1,axis=0)
 normal=np.stack([-dx*2,dy*2,np.ones_like(height)],axis=-1);normal/=np.linalg.norm(normal,axis=-1,keepdims=True)
