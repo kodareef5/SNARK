@@ -262,11 +262,7 @@ def mast(m,mod):
 def boom(m,mod):
  lo,hi=worldbox(mod['boxes'][0],mod['origin']);y=(lo[1]+hi[1])/2
  m.tube([[0,y,lo[2]+.12],[0,y,hi[2]-.12]],.25,'white',[16,10,8,6,4,4][m.level])
- # Original stitched sail bundles lashed along the boom, kept inside the measured .76m beam.
- z0=lo[2]+.25;z1=hi[2]-.25;n=max(3,int((z1-z0)/1.4)) if m.level<3 else 2
- for i in range(n):
-  za=z0+(z1-z0)*i/n;zb=z0+(z1-z0)*(i+1)/n;m.box([-.31,y+.08,za],[.31,hi[1]-.015,zb-.035],'fabric',.1)
-  if m.level<2:m.box([-.32,y+.06,za+.08],[.32,hi[1]-.005,za+.15],'dark',.015)
+ # The movable sail rig now owns all folded cloth; no permanently lashed duplicate remains on the boom.
 def door(m,mod):
  lo,hi=worldbox(mod['boxes'][0],mod['origin']);axis=0 if hi[0]-lo[0]<hi[2]-lo[2] else 2;a=lo[:];b=hi[:];a[axis]+=.006;b[axis]-=.006;m.box(a,b,'mahogany',.008)
  if m.level<3:
@@ -279,6 +275,13 @@ def door(m,mod):
 
 def smallparts(m,mod):
  cat=mod['category'];o=mod['origin'];a=mod['art']
+ if cat=='sail_control':
+  x,y,z=o;m.box([x-.25,y,z-.25],[x+.25,y+.66,z+.25],'cream',.055)
+  m.tube([[x,y+.66,z],[x,y+.87,z]],.31,'brass');m.tube([[x,y+.87,z],[x,y+.90,z]],.28,'white')
+  if m.level<3:
+   for xx,tag in [(-.12,'green'),(.12,'red')]:m.tube([[x+xx,y+.90,z-.10],[x+xx,y+.92,z-.10]],.055,tag,12)
+   m.box([x-.24,y+.69,z-.316],[x+.24,y+.84,z-.310],'sign:SAILS')
+  return
  if cat in('rigging','spreader'):m.tube(a['ends'],a['radius'],'steel' if cat=='rigging' else 'white');return
  if cat=='bowsprit':
   n=[20,12,8,6,4,4][m.level];m.loft([[[.245*math.cos(k*math.tau/n),p[1]+.245*math.sin(k*math.tau/n),p[2]] for k in range(n)] for p in(a['heel'],a['tip'])],'white');return

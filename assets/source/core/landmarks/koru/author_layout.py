@@ -245,6 +245,7 @@ for d in(1,2,3):
 
 # Additional exterior/furnishing modules are authored in a separate readable source fragment.
 exec(compile((HERE/'layout_details.py').read_text(), str(HERE/'layout_details.py'), 'exec'))
+add('sail_control','sail_control',boxes=[box([7.10,3.75,-22.15],[7.80,4.67,-21.45])],origin=[7.45,3.75,-21.8],meta={'label':'SAILS','aim':[7.45,4.58,-21.8],'approach':[7.45,3.75,-24]},color=230)
 D['views']={'arrival':[4,5.37,-24],'lowerInterior':[0,2.37,-12],'mainSalon':[3.2,5.37,-34],'upperBridge':[3,8.37,12],'sunTerrace':[3,11.37,-18],'stairs':[3,5.37,-3.2],'profile':[115,35,-10],'bowQuarter':[75,32,92],'sternQuarter':[65,28,-90]}
 D['notes']=['All interior room names/bounds are original interpretation, not an authenticated private layout.','Modules are collision authority. Fine visual bevels/trim must remain within their stated visualBounds or explicitly update this contract.','Window apertures are geometrically clear in near flat artwork; collision may retain a thin glazing pane.','All occupied floor datums remain above seaY0; below-floor tanks/keel volume is closed and inaccessible.','Pools and tubs are visual architectural features; only the surrounding circulation is required for first-delivery traversal.','No individual room portal culling is assumed. Furnishings must leave the published route envelopes clear.']
 OUT.write_text(json.dumps(clean(D),indent=2)+'\n')

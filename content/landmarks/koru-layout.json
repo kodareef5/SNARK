@@ -50127,6 +50127,59 @@
           }
         ]
       }
+    },
+    {
+      "id": "core:koru_sail_control",
+      "mesh": "core:koru_sail_control",
+      "category": "sail_control",
+      "origin": [
+        7.45,
+        3.75,
+        -21.8
+      ],
+      "yaw": 0,
+      "color": 230,
+      "placed": true,
+      "boxes": [
+        {
+          "at": [
+            -0.0,
+            0.46,
+            0.0
+          ],
+          "half": [
+            0.35,
+            0.46,
+            0.35
+          ]
+        }
+      ],
+      "hulls": [],
+      "visualBounds": {
+        "min": [
+          -0.35,
+          0.0,
+          -0.35
+        ],
+        "max": [
+          0.35,
+          0.92,
+          0.35
+        ]
+      },
+      "art": {
+        "label": "SAILS",
+        "aim": [
+          7.45,
+          4.58,
+          -21.8
+        ],
+        "approach": [
+          7.45,
+          3.75,
+          -24
+        ]
+      }
     }
   ],
   "stairs": [
