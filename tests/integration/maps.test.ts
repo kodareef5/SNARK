@@ -3,6 +3,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 import { CORE_PACK } from "../../content/core.ts";
 import { createHost, type Host } from "../../server/host.ts";
 import { mapRoutes } from "../../server/main.ts";
@@ -37,6 +38,13 @@ test("a new map is a file: a flat one made here runs a server, is served as a br
   expect(parseMap(Bun.gunzipSync(await packed.arrayBuffer())).hash).toBe(h.world.mapHash);
   expect(new Uint8Array(await route(`/${named.file}`, "")!.arrayBuffer())).toEqual(file);
   expect(route("/index.html", "gzip")).toBeNull();
+  // The page is sent with a header that has it ask for the file while it is read.
+  expect(route.link).toBe(`</${named.file}>; rel=preload; as=fetch; crossorigin`);
+  // With the copies its build wrote, the file goes out as Brotli to whoever takes it, and as their gzip to the rest.
+  const copied = mapRoutes(h.host.mapFile!, h.world.mapId, h.world.mapHash, { br: new Blob([brotliCompressSync(file)]), gz: new Blob([Bun.gzipSync(file)]) });
+  const br = copied(`/${named.file}`, "gzip, deflate, br")!;
+  expect([br.headers.get("content-encoding"), new Uint8Array(brotliDecompressSync(await br.arrayBuffer()))]).toEqual(["br", file]);
+  expect(copied(`/${named.file}`, "gzip, deflate")!.headers.get("content-encoding")).toBe("gzip");
 
   const ada = h.join("ada");
   h.run(500);

@@ -167,7 +167,7 @@ test("a slot given up on its way is not taken when it comes, and a card that los
 test.each([
   ["http/1.1", IN_FLIGHT - SMALL_LANES],
   ["h3", IN_FLIGHT_SHARED - SMALL_LANES_SHARED],
-])("over %s a large part waits its turn without holding up small ones, and one part at least goes up each frame", (protocol, lanes) => {
+])("over %s a large part waits its turn without holding up small ones, and goes onto the card in pieces of a frame's bytes", (protocol, lanes) => {
   const plate = meshOf("stress:plate");
   const big = stressSet({ rocks: 2, detail: 3, plate: 512 });
   const boot = parsePack(big.files[0]!.bytes);
@@ -181,7 +181,9 @@ test.each([
   expect(big.manifest.meshes[mesh]!.levels.map((l) => l.index)).toEqual([4, 4, 2, 2, 2]);
   let now = 0;
   let largeAtOnce = 0;
+  let mostSent = 0;
   const seen: number[] = [];
+  const pieces: number[] = [];
   for (let f = 0; f < 240; f++) {
     now += FRAME;
     port.advance(now);
@@ -193,12 +195,16 @@ test.each([
       assets.level(mesh, l);
     }
     assets.end(packet, now);
-    for (const u of packet.assetUploads) seen.push(u.level);
+    for (const u of packet.assetUploads) if ((u.at ?? 0) === 0) seen.push(u.level);
+    for (const u of packet.assetUploads) if (u.whole !== undefined) pieces.push(u.data.length);
+    mostSent = Math.max(mostSent, packet.assetUploads.reduce((sum, u) => sum + (u.level === sizes.length - 1 ? 0 : u.data.length), 0));
     largeAtOnce = Math.max(largeAtOnce, port.log.filter((line) => line.includes(" ask ")).length - seen.filter((l) => sizes[l]! > SMALL_PART && l !== sizes.length - 1).length);
   }
-  // The coarsest came from the boot pack in the first frame. The finest is larger than a frame's bytes and went up alone.
+  // The coarsest came from the boot pack in the first frame. The finest is larger than a frame's bytes and went up in
+  // pieces of the frame's bytes, as did any other the frame had no room left for.
   expect(seen[0]).toBe(sizes.length - 1);
   expect([...seen].sort()).toEqual([0, 1, 2, 3, 4]);
+  expect([pieces.length > sizes[0]! / tierOf("medium").uploadBytes, mostSent]).toEqual([true, tierOf("medium").uploadBytes]);
   expect(largeAtOnce).toBeLessThanOrEqual(lanes);
   expect(assets.residency.ledger).toBe(sizes.reduce((a, b) => a + b, 0));
 });

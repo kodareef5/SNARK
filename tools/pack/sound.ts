@@ -1,28 +1,36 @@
-// Builds the sound file (shared/pack/sound.ts) from every asset's cue sheet: `<asset folder>/sound/sounds.json` names its
+// Builds the sound files (shared/pack/sound.ts) from every asset's cue sheet: `<asset folder>/sound/sounds.json` names its
 // sounds, and for each the takes, as files of the asset's own and the seconds of each file that hold the sound. A take is
-// read from its WAV file, mixed to mono, cut, rid of rumble, brought to the sound's rate, faded at its ends, levelled
-// and coded losslessly (shared/pack/rice.ts), all here; nothing outside the repository touches it. What is coded is
-// kept under .cache by what went in.
+// read from its WAV file, mixed to mono, rid of rumble, cut, faded at its ends and levelled. A sound is stored at the
+// lowest rate that holds what its takes have, and coded to what is heard of it (tools/pack/transform.ts), all here;
+// nothing outside the repository touches it. What is coded is kept under .cache by what went in.
 //
 // The cue sheet:
 //
-//   { "sounds": { "<name>": { "range": metres, "level": dB, "vary": semitones, "rate"?: Hz, "highpass"?: Hz, "loop"?: true,
-//       "takes": [ { "file": "takes/...wav", "from": "<model>", "start"?: s, "end"?: s, "gain"?: dB } ] } } }
+//   { "sounds": { "<name>": { "range": metres, "level": dB, "vary": semitones, "highpass"?: Hz, "loop"?: true,
+//       "takes": [ { "file": "takes/...wav", "from": "<model>", "start"?: s, "end"?: s, "gain"?: dB, "crossfade"?: s } ] } } }
 //
 // `level` is the loudness, in dB of full scale, of the loud part of each take (the 10 ms windows within 30 dB of its
 // loudest), so that takes of one sound play alike. A take whose peak would then pass -1 dB is made quieter to fit. A
-// sound that loops is not faded at its ends: its takes are cut to join their ends seamlessly (tools/sound/cut.py).
+// sound that loops is not faded at its ends: its takes are cut to join their ends seamlessly (tools/sound/cut.py), or
+// joined here, where a take says `crossfade`: that many seconds after its end fade into its start, as cut.py does.
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
-import { SOUND_HEADER_BYTES, SOUND_MAGIC, SOUND_VERSION, encodeTake, takeFits, type ManifestSound } from "../../shared/pack/sound.ts";
+import { SOUND_HEADER_BYTES, SOUND_MAGIC, SOUND_VERSION, takeFits, type ManifestSound } from "../../shared/pack/sound.ts";
+import { fft } from "../../shared/pack/transform.ts";
 import { SOURCE, filesUnder } from "../art/source.ts";
 import { partHash } from "./manifest.ts";
+import { codeTake, encodeTransform } from "./transform.ts";
 
 export const SOUND_CACHE = resolve(import.meta.dir, "../../.cache/sounds");
-/** Samples a second of a sound whose sheet does not say. */
-export const SOUND_RATE = 32000;
+/** Samples a second a sound may be stored at: the lowest whose pass band holds all its takes have, but a ten-thousandth. */
+export const SOUND_RATES = [8000, 12000, 16000, 24000, 32000];
+const KEPT_SHARE = 1e-4;
+/** Of a rate, the share the resampler passes whole (resample's cut-off, less its slope). */
+const PASSED = 0.47 * 0.94;
+/** The frame a sound no cue reaches is coded with, at once: it is only for the sound board. */
+const LOOSE_LOG = 9;
 const PEAK = 10 ** (-1 / 20);
 const FADE_IN_MS = 3;
 const FADE_OUT_MS = 25;
@@ -34,13 +42,13 @@ export interface TakeCue {
   start?: number;
   end?: number;
   gain?: number;
+  crossfade?: number;
 }
 
 export interface SoundCue {
   range: number;
   level: number;
   vary?: number;
-  rate?: number;
   highpass?: number;
   loop?: boolean;
   takes: TakeCue[];
@@ -219,26 +227,34 @@ export function loudness(x: Float32Array, rate: number): number {
   return 10 * Math.log10(loud.reduce((a, b) => a + b, 0) / loud.length);
 }
 
+
 export interface PreparedTake {
-  /** At the sound's rate, from -1 to 1, before coding. */
+  /** At its file's rate, from -1 to 1, before coding. */
   samples: Float32Array;
   /** dB of gain applied to bring it to its level, and whether its peak then had to be brought down to -1 dB. */
   gain: number;
   limited: boolean;
 }
 
-/** One take as it goes into the build, before coding. */
-export function prepareTake(wav: Wav, take: TakeCue, cue: Pick<SoundCue, "level" | "rate" | "highpass" | "loop">): PreparedTake {
+/** One take as it goes into the build, at its file's rate, before it is brought to its sound's rate and coded. */
+export function prepareTake(wav: Wav, take: TakeCue, cue: Pick<SoundCue, "level" | "highpass" | "loop">): PreparedTake {
+  const rate = wav.rate;
   const frames = wav.channels[0]!.length;
   const mono = new Float32Array(frames);
   for (const ch of wav.channels) for (let i = 0; i < frames; i++) mono[i]! += ch[i]! / wav.channels.length;
   // Rumble is taken off the whole file, so a cut starts from where the filter has settled.
-  highpass(mono, wav.rate, cue.highpass ?? HIGHPASS_HZ);
-  const from = Math.max(0, Math.round((take.start ?? 0) * wav.rate));
-  const to = Math.min(frames, take.end === undefined ? frames : Math.round(take.end * wav.rate));
-  if (to - from < wav.rate / 100) throw new Error(`sound: take ${take.file} from ${take.start} to ${take.end} s is under 10 ms`);
-  const rate = cue.rate ?? SOUND_RATE;
-  const x = resample(mono.subarray(from, to), wav.rate, rate);
+  highpass(mono, rate, cue.highpass ?? HIGHPASS_HZ);
+  const from = Math.max(0, Math.round((take.start ?? 0) * rate));
+  const join = cue.loop && take.crossfade ? Math.round(take.crossfade * rate) : 0;
+  const to = Math.min(frames - join, take.end === undefined ? frames : Math.round(take.end * rate));
+  if (to - from < rate / 100) throw new Error(`sound: take ${take.file} from ${take.start} to ${take.end} s is under 10 ms`);
+  if (to - from < 4 * join) throw new Error(`sound: take ${take.file} is too short to loop with a ${take.crossfade} s crossfade`);
+  const x = mono.slice(from, to);
+  // What follows the end fades out over the start as the start fades in, at equal power.
+  for (let i = 0; i < join; i++) {
+    const t = ((i + 0.5) / join) * (Math.PI / 2);
+    x[i] = x[i]! * Math.sin(t) + mono[to + i]! * Math.cos(t);
+  }
   const fadeIn = cue.loop ? 0 : Math.min(x.length >> 2, Math.round((rate * FADE_IN_MS) / 1000));
   const fadeOut = cue.loop ? 0 : Math.min(x.length >> 1, Math.round((rate * FADE_OUT_MS) / 1000));
   for (let i = 0; i < fadeIn; i++) x[i]! *= Math.sin(((i + 0.5) / fadeIn) * (Math.PI / 2)) ** 2;
@@ -254,11 +270,32 @@ export function prepareTake(wav: Wav, take: TakeCue, cue: Pick<SoundCue, "level"
   return { samples: x, gain, limited };
 }
 
-/** 16-bit values of floats from -1 to 1. */
-export function toPcm16(x: Float32Array): Int16Array {
-  const out = new Int16Array(x.length);
-  for (let i = 0; i < x.length; i++) out[i] = Math.max(-32768, Math.min(32767, Math.round(x[i]! * 32767)));
-  return out;
+/** Hz above which a ten-thousandth of `x`'s energy lies. */
+export function bandwidth(x: Float32Array, rate: number): number {
+  const n = 1024;
+  const sum = new Float64Array(n / 2);
+  const re = new Float64Array(n);
+  const im = new Float64Array(n);
+  for (let at = 0; ; at += n) {
+    for (let i = 0; i < n; i++) {
+      re[i] = (x[at + i] ?? 0) * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / n));
+      im[i] = 0;
+    }
+    fft(re, im);
+    for (let k = 0; k < n / 2; k++) sum[k]! += re[k]! * re[k]! + im[k]! * im[k]!;
+    if (at + n >= x.length) break;
+  }
+  let total = 0;
+  for (const v of sum) total += v;
+  let above = 0;
+  for (let k = n / 2 - 1; k >= 0; k--) if ((above += sum[k]!) >= total * KEPT_SHARE) return ((k + 1) * rate) / n;
+  return 0;
+}
+
+/** The lowest rate whose pass band holds `hz`, and none above the lowest that holds all of a source at `source`. */
+export function rateFor(hz: number, source: number): number {
+  const top = SOUND_RATES.find((r) => r >= source) ?? SOUND_RATES[SOUND_RATES.length - 1]!;
+  return Math.min(top, SOUND_RATES.find((r) => r * PASSED >= hz) ?? top);
 }
 
 /** A sound sheet found under the asset folders, and the id of the definition that owns its sounds. */
@@ -287,25 +324,44 @@ export interface SoundReport {
   /** Takes coded anew rather than taken from the cache, and takes whose peak was brought down. */
   made: number;
   limited: string[];
-  /** Bytes the takes would be as 16-bit samples, against `bytes`. */
-  raw: number;
+  /** Seconds stored at each of SOUND_RATES, and the bytes the takes take decoded. */
+  rates: number[];
+  decoded: number;
+}
+
+/** A file of sounds and its manifest entries. */
+export interface SoundFile {
+  bytes: Uint8Array;
+  sounds: ManifestSound[];
+  report: SoundReport;
 }
 
 const sha = (data: string | Uint8Array): string => createHash("sha256").update(data).digest("hex");
+const TOOLS = ["sound.ts", "transform.ts", "../../shared/pack/sound.ts", "../../shared/pack/transform.ts"];
+
+/** A file kept under `cache` by `key`, written whole or not at all. */
+function kept(cache: string | null, key: string): { read: () => Uint8Array | null; write: (b: Uint8Array) => void } {
+  const path = cache ? join(cache, key.slice(0, 2), key) : "";
+  return {
+    read: () => (path && existsSync(path) ? new Uint8Array(readFileSync(path)) : null),
+    write: (b) => {
+      if (!path) return;
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(`${path}.${process.pid}.tmp`, b);
+      renameSync(`${path}.${process.pid}.tmp`, path);
+    },
+  };
+}
 
 /**
- * The sound file of every sheet under `root` and its manifest entries, which say it is file `file`. Null when there is
- * no sheet. `cache` is where coded takes are kept, or null for nowhere.
+ * The sounds of every sheet under `root`, in a file the manifest lists as file `file`. Null when there is no sheet. With
+ * `heard`, that file holds only the sounds it names, and `loose` the rest, coded at once for the sound board. `cache` is
+ * where coded takes are kept, or null for nowhere.
  */
-export function buildSounds(file: number, root: string = SOURCE, cache: string | null = SOUND_CACHE): { bytes: Uint8Array; sounds: ManifestSound[]; report: SoundReport } | null {
+export function buildSounds(file: number, root: string = SOURCE, cache: string | null = SOUND_CACHE, heard: ReadonlySet<string> | null = null): (SoundFile & { loose: SoundFile | null }) | null {
   const sheets = findSheets(root);
   if (sheets.length === 0) return null;
-  const tools = sha(readFileSync(import.meta.path, "utf8") + readFileSync(resolve(import.meta.dir, "../../shared/pack/sound.ts"), "utf8"));
-  const report: SoundReport = { sounds: 0, takes: 0, seconds: 0, bytes: 0, made: 0, limited: [], raw: 0 };
-  const chunks: Uint8Array[] = [];
-  let at = SOUND_HEADER_BYTES;
-  const sounds: ManifestSound[] = [];
-  const wavs = new Map<string, { bytes: Uint8Array; hash: string }>();
+  const tools = sha(TOOLS.map((f) => readFileSync(resolve(import.meta.dir, f), "utf8")).join(""));
   // A client refuses a manifest whose sounds it cannot name (shared/pack/sound.ts soundFault), and then has no game.
   const folders = new Map<string, string>();
   for (const { owner, dir } of sheets) {
@@ -313,67 +369,89 @@ export function buildSounds(file: number, root: string = SOURCE, cache: string |
     if (other) throw new Error(`sound: ${relative(root, other)} and ${relative(root, dir)} are both owner ${owner}; rename one folder`);
     folders.set(owner, dir);
   }
+  const wavs = new Map<string, { bytes: Uint8Array; hash: string }>();
+  const wavOf = (path: string): { bytes: Uint8Array; hash: string } => {
+    let w = wavs.get(path);
+    if (!w) {
+      const bytes = new Uint8Array(readFileSync(path));
+      wavs.set(path, (w = { bytes, hash: sha(bytes) }));
+    }
+    return w;
+  };
+  const out = [file, -1].map((index) => ({ index, chunks: [] as Uint8Array[], at: SOUND_HEADER_BYTES, sounds: [] as ManifestSound[], report: { sounds: 0, takes: 0, seconds: 0, bytes: 0, made: 0, limited: [] as string[], rates: SOUND_RATES.map(() => 0), decoded: 0 } }));
   for (const { owner, dir, sheet } of sheets) {
     for (const [name, cue] of Object.entries(sheet.sounds).sort(([a], [b]) => (a < b ? -1 : 1))) {
       const id = `${owner}/sound/${name}`;
       if (!/^[a-z0-9_]+:[a-z0-9_]+\/sound\/[a-z0-9_/]+$/.test(id)) throw new Error(`sound: ${id} is not named <owner>/sound/<name> in lower case, digits, _ and /`);
       if (!(cue.range > 0) || !Number.isFinite(cue.level) || !Array.isArray(cue.takes) || cue.takes.length === 0) throw new Error(`sound: ${id} needs a range, a level and a take`);
-      const rate = cue.rate ?? SOUND_RATE;
-      const entry: ManifestSound = { id, file, at, rate, range: cue.range, vary: cue.vary ?? 0, takes: [] };
-      for (const take of cue.takes) {
+      const loose = heard !== null && !heard.has(id);
+      const to = out[loose ? 1 : 0]!;
+      const takes = cue.takes.map((take) => {
         const path = join(dir, take.file);
         if (!existsSync(path)) throw new Error(`sound: ${id} names ${take.file}, which is not in ${dir}`);
-        let wav = wavs.get(path);
-        if (!wav) {
-          const bytes = new Uint8Array(readFileSync(path));
-          wavs.set(path, (wav = { bytes, hash: sha(bytes) }));
+        const wav = wavOf(path);
+        const key = sha(tools + wav.hash + JSON.stringify([take.start, take.end, take.gain, take.crossfade, cue.level, cue.highpass, cue.loop === true]));
+        let ready: { take: PreparedTake; rate: number } | null = null;
+        const prepare = (): { take: PreparedTake; rate: number } => {
+          if (ready) return ready;
+          const w = readWav(wav.bytes);
+          return (ready = { take: prepareTake(w, take, cue), rate: w.rate });
+        };
+        // What the take holds, and its file's rate, are kept to choose the sound's rate without preparing it again.
+        const band = kept(cache, `${key}.band`);
+        let held = band.read();
+        if (held?.length !== 16) {
+          const p = prepare();
+          held = new Uint8Array(new Float64Array([bandwidth(p.take.samples, p.rate), p.rate]).buffer);
+          band.write(held);
         }
-        const key = sha(tools + wav.hash + JSON.stringify([take.start, take.end, take.gain, cue.level, rate, cue.highpass, cue.loop === true]));
-        const kept = cache ? join(cache, key.slice(0, 2), key) : "";
-        let coded: Uint8Array | null = null;
-        let samples = 0;
-        if (kept && existsSync(kept)) {
-          const k = new Uint8Array(readFileSync(kept));
-          samples = new DataView(k.buffer, k.byteOffset).getUint32(0, true);
-          coded = k.subarray(4);
-          if (!takeFits(samples, coded.length)) coded = null;
+        const [hz, source] = new Float64Array(held.slice().buffer);
+        return { take, key, hz: hz!, source: source!, prepare };
+      });
+      const rate = Math.max(...takes.map((t) => rateFor(t.hz, t.source)));
+      const entry: ManifestSound = { id, file: to.index, at: to.at, rate, range: cue.range, vary: cue.vary ?? 0, takes: [] };
+      for (const t of takes) {
+        const store = kept(cache, sha(`${t.key} ${rate} ${loose ? "loose" : "heard"}`));
+        let coded = store.read();
+        let samples = coded && coded.length > 4 ? new DataView(coded.buffer, coded.byteOffset).getUint32(0, true) : 0;
+        if (coded && takeFits(samples, coded.length - 4)) coded = coded.subarray(4);
+        else {
+          const p = t.prepare();
+          const x = resample(p.take.samples, p.rate, rate);
+          const opts = { looser: 0, loop: cue.loop === true, noise: true };
+          coded = loose ? encodeTransform(x, rate, LOOSE_LOG, opts) : codeTake(x, rate, opts).bytes;
+          samples = x.length;
+          const k = new Uint8Array(4 + coded.length);
+          new DataView(k.buffer).setUint32(0, samples, true);
+          k.set(coded, 4);
+          store.write(k);
+          to.report.made++;
+          if (p.take.limited) to.report.limited.push(`${id} ${t.take.file}`);
         }
-        if (!coded) {
-          const prepared = prepareTake(readWav(wav.bytes), take, { ...cue, rate });
-          const pcm = toPcm16(prepared.samples);
-          samples = pcm.length;
-          coded = encodeTake(pcm);
-          report.made++;
-          if (prepared.limited) report.limited.push(`${id} ${take.file}`);
-          if (kept) {
-            mkdirSync(dirname(kept), { recursive: true });
-            const k = new Uint8Array(4 + coded.length);
-            new DataView(k.buffer).setUint32(0, samples, true);
-            k.set(coded, 4);
-            writeFileSync(`${kept}.${process.pid}.tmp`, k);
-            renameSync(`${kept}.${process.pid}.tmp`, kept);
-          }
-        }
-        entry.takes.push({ samples, bytes: coded.length, hash: partHash(coded), ...(take.from ? { from: take.from } : {}) });
-        report.raw += samples * 2;
-        chunks.push(coded);
-        at += coded.length;
-        report.takes++;
-        report.seconds += samples / rate;
+        entry.takes.push({ samples, bytes: coded.length, hash: partHash(coded), ...(t.take.from ? { from: t.take.from } : {}) });
+        to.chunks.push(coded);
+        to.at += coded.length;
+        to.report.takes++;
+        to.report.seconds += samples / rate;
+        to.report.rates[SOUND_RATES.indexOf(rate)]! += samples / rate;
+        to.report.decoded += samples * 4;
       }
-      sounds.push(entry);
-      report.sounds++;
+      to.sounds.push(entry);
+      to.report.sounds++;
     }
   }
-  const bytes = new Uint8Array(at);
-  const view = new DataView(bytes.buffer);
-  view.setUint32(0, SOUND_MAGIC, true);
-  view.setUint16(4, SOUND_VERSION, true);
-  let w = SOUND_HEADER_BYTES;
-  for (const c of chunks) {
-    bytes.set(c, w);
-    w += c.length;
-  }
-  report.bytes = bytes.length;
-  return { bytes, sounds, report };
+  const [main, rest] = out.map((f): SoundFile => {
+    const bytes = new Uint8Array(f.at);
+    const view = new DataView(bytes.buffer);
+    view.setUint32(0, SOUND_MAGIC, true);
+    view.setUint16(4, SOUND_VERSION, true);
+    let w = SOUND_HEADER_BYTES;
+    for (const c of f.chunks) {
+      bytes.set(c, w);
+      w += c.length;
+    }
+    f.report.bytes = bytes.length;
+    return { bytes, sounds: f.sounds, report: f.report };
+  });
+  return { ...main!, loose: heard ? rest! : null };
 }
