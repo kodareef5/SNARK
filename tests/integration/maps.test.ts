@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -148,6 +149,13 @@ test("a save records the map it was made on, and loads onto another only when th
   // Told to, it loads, and the save is that map's from then on.
   expect([restart(other, true), restart(other)]).toEqual([false, false]);
   expect(() => restart(flat)).toThrow('save is for map "test:other", not "test:flat"');
+  // A save from before maps were files has no hash. It loads onto the map of its id and takes that map's hash.
+  const save = new Database(db);
+  save.run("DELETE FROM meta WHERE key = 'map_hash'");
+  save.close();
+  const renamed = writeMap(flatMap(2, { id: "test:other", tint: flatMap(2).tint.fill(7) }));
+  expect(restart(renamed)).toBe(false);
+  expect(() => restart(other)).toThrow('save is for other bytes of map "test:other"');
 });
 
 test("the proving ground loaded from its file is the one its functions build: every height, piece and node slot, and the same simulation", () => {
