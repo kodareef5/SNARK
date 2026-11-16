@@ -21,7 +21,7 @@ try {
   const report = { scope: "Pearl only; actual fine source solids and fitted candidates 4/5, clipped independently to authored 16 m cells and Blender-triangulated. Native bidirectional surfaceError samples all corners and triangle centroids at P95. Does not certify the surrounding cell triangle budget or a final packed artifact.",
     sources: data.sources, portal: "64 rays at authored portal radius minus 3 mm, after simulated signed 16-bit cell quantization; both stages clear.", rows };
   mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, JSON.stringify(report, null, 2) + "\n");
-  if (rows.length !== 8 || rows.some(row => row.p95SurfaceError > .13 || row.triangles > 252 || row.badEdges || row.signedVolume <= 0)) throw new Error(`Pearl diagnostic failed; see ${out}`);
+  if (rows.length !== 8 || rows.some(row => row.p95SurfaceError > .13 || row.triangles > 220 || row.badEdges || row.signedVolume <= 0)) throw new Error(`Pearl diagnostic failed; see ${out}`);
   console.log(JSON.stringify({ out, cells: rows.length / 2, maxTriangles: Math.max(...rows.map(row => row.triangles)), maxP95: Math.max(...rows.map(row => row.p95SurfaceError)) }));
 } finally {
   rmSync(dir, { recursive: true, force: true });

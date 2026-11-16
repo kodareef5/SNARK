@@ -18,24 +18,27 @@ def pearl(mesh, layout, level):
     # collapses a duplicate candidate when the rest of its cell also matches.
     # Equal angular spacing controls curvature error along the portal axis.
     angle = math.asin(end / radius)
-    zs = [radius * math.sin(-angle + j * angle / 3) for j in range(7)]
+    zs = [radius * math.sin(-angle + j * 2 * angle / 5) for j in range(6)]
     sides = 16
     vertices = []
     faces = []
     layer = sides * len(zs)
     for inner in (False, True):
-        for z in zs:
-            r = math.sqrt(radius * radius - z * z)
+        for j, z in enumerate(zs):
+            # A short central belt replaces the equator ring. Its cardinal
+            # vertices retain the exact diameter without another strip.
+            central = j in (2, 3)
+            r = radius if central else math.sqrt(radius * radius - z * z)
             if inner:
                 # Circumscribe the inner polygon so its coarse chords do not
                 # narrow the authored circular opening. Sixteen facets keep
                 # this surface strictly inside the outer shell at every ring.
-                r = (r - .20) / math.cos(math.pi / sides)
+                r = r - .20 if central else (r - .20) / math.cos(math.pi / sides)
             for i in range(sides):
                 angle = i * math.tau / sides
                 # Balance the coarse outer chords around the fine sphere,
                 # while its four cardinal extrema keep the exact 15 m span.
-                vr = r + (.08 if not inner and i % 4 else 0)
+                vr = r + ((.02 if central else .10) if not inner and i % 4 else 0)
                 vertices.append((origin[0] + vr * math.cos(angle),
                                  origin[1] + vr * math.sin(angle), origin[2] + z))
     for inner in (False, True):
