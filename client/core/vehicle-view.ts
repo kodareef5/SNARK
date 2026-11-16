@@ -29,18 +29,22 @@ export function predictedVehiclePose(a: Body, b: Body, t: number, rotor: boolean
   return pose;
 }
 
-export function remoteVehiclePose(r: RemoteSample, i: number): VehicleRenderPose {
-  const pose: VehicleRenderPose = {
-    pitch: r.vehiclePitch[i]!, roll: r.vehicleRoll[i]!, steering: r.steering[i]!, wheelAngle: r.wheelAngle[i]!,
-    groundPitch: r.vehicleGroundPitch[i]!, groundRoll: r.vehicleGroundRoll[i]!, rideOffset: r.vehicleRideOffset[i]!, grounded: r.vehicleGrounded[i] !== 0,
-    doors: r.vehicleDoors[i]!,
-  };
+/** Remote entity `i`'s vehicle pose; into `out` when given, for a caller that keeps none of it past its own use. */
+export function remoteVehiclePose(r: RemoteSample, i: number, out?: VehicleRenderPose): VehicleRenderPose {
+  const pose: VehicleRenderPose = out ?? { pitch: 0, roll: 0, steering: 0, wheelAngle: 0 };
+  pose.pitch = r.vehiclePitch[i]!; pose.roll = r.vehicleRoll[i]!; pose.steering = r.steering[i]!; pose.wheelAngle = r.wheelAngle[i]!;
+  pose.groundPitch = r.vehicleGroundPitch[i]!; pose.groundRoll = r.vehicleGroundRoll[i]!; pose.rideOffset = r.vehicleRideOffset[i]!; pose.grounded = r.vehicleGrounded[i] !== 0;
+  pose.doors = r.vehicleDoors[i]!;
   if (r.vehicleRotorcraft[i] || r.vehicleBoat[i]) {
     pose.qx = r.vehicleQx[i]!; pose.qy = r.vehicleQy[i]!; pose.qz = r.vehicleQz[i]!; pose.qw = r.vehicleQw[i]!;
     pose.engineRpm = r.vehicleRpm[i]!; pose.engineOn = r.vehicleEngineOn[i] !== 0;
     pose.hullCondition = r.vehicleHullCondition[i]!; pose.flooding = r.vehicleFlooding[i]!;
     pose.rotorRpm = r.vehicleRotorRpm[i]!; pose.rotorPhase = r.vehicleRotorPhase[i]!;
     pose.engineCondition = r.vehicleEngineCondition[i]!; pose.rotorCondition = r.vehicleRotorCondition[i]!;
+  } else if (out) {
+    pose.qx = pose.qy = pose.qz = pose.qw = undefined;
+    pose.engineRpm = pose.engineOn = pose.hullCondition = pose.flooding = undefined;
+    pose.rotorRpm = pose.rotorPhase = pose.engineCondition = pose.rotorCondition = undefined;
   }
   return pose;
 }

@@ -158,7 +158,8 @@ export class FarCity {
       byTile.set(t, [...(byTile.get(t) ?? []), c]);
     }
     const cb = (this.chunkBox = new Float64Array(chunks * 6));
-    for (const [t, list] of byTile) {
+    for (const t of byTile.keys()) {
+      const list = byTile.get(t)!;
       const box = Float64Array.from([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
       for (const c of list) {
         cb.fill(Infinity, c * 6, c * 6 + 3).fill(-Infinity, c * 6 + 3, c * 6 + 6);
@@ -228,7 +229,10 @@ export class FarCity {
     this.share = share;
     this.standing(near, cells);
     const stats = this.stats;
-    [stats.makeMs, stats.made, stats.missing, stats.behind] = [0, 0, 0, 0];
+    stats.makeMs = 0;
+    stats.made = 0;
+    stats.missing = 0;
+    stats.behind = 0;
     const work = this.work;
     work.length = 0;
     for (let n = 0; n < this.tiles.length; n++) {
@@ -272,7 +276,7 @@ export class FarCity {
       let made = 0;
       let k = 0;
       next: for (; k < work.length; k++) {
-        const [tile, level] = [this.tiles[Math.floor(work[k]! / LEVELS)]!, work[k]! % LEVELS];
+        const tile = this.tiles[Math.floor(work[k]! / LEVELS)]!, level = work[k]! % LEVELS;
         for (const c of tile.chunks) {
           if (this.pieces.has(c * LEVELS + level)) continue;
           if (made > 0 && clock() - start >= this.makeMs) break next;
@@ -317,10 +321,13 @@ export class FarCity {
     const levels = this.levels;
     const stats = this.stats;
     this.drawn.fill(0);
-    [stats.unseen, stats.unseenAt, stats.unseenFrames, stats.coarse] = [0, Infinity, 0, 0];
+    stats.unseen = 0;
+    stats.unseenAt = Infinity;
+    stats.unseenFrames = 0;
+    stats.coarse = 0;
     for (const tile of this.tiles) {
       const b = tile.box;
-      const [ax, ay, az, bx, by, bz] = [b[0]! - cam.x, b[1]! - cam.y, b[2]! - cam.z, b[3]! - cam.x, b[4]! - cam.y, b[5]! - cam.z];
+      const ax = b[0]! - cam.x, ay = b[1]! - cam.y, az = b[2]! - cam.z, bx = b[3]! - cam.x, by = b[4]! - cam.y, bz = b[5]! - cam.z;
       const near = Math.hypot(Math.max(ax, -bx, 0), Math.max(ay, -by, 0), Math.max(az, -bz, 0));
       if (near >= reach || !cam.boxVisible(ax, ay, az, bx, by, bz)) {
         tile.unseen = 0;
@@ -349,11 +356,11 @@ export class FarCity {
       tile.chunks.forEach((c, n) => {
         const k = c * 6;
         const cb = this.chunkBox;
-        const [cx0, cy0, cz0, cx1, cy1, cz1] = [cb[k]! - cam.x, cb[k + 1]! - cam.y, cb[k + 2]! - cam.z, cb[k + 3]! - cam.x, cb[k + 4]! - cam.y, cb[k + 5]! - cam.z];
+        const cx0 = cb[k]! - cam.x, cy0 = cb[k + 1]! - cam.y, cz0 = cb[k + 2]! - cam.z, cx1 = cb[k + 3]! - cam.x, cy1 = cb[k + 4]! - cam.y, cz1 = cb[k + 5]! - cam.z;
         ways[n] = this.source.complete(c) || !cam.boxVisible(cx0, cy0, cz0, cx1, cy1, cz1) ? 0 : cam.passes(cx0, cy0, cz0, cx1, cy1, cz1);
       });
-      const [tx, tz] = this.corner(tile.t);
-      const [ox, oy, oz] = [tx - LOCAL - cam.x, tile.base - cam.y, tz - LOCAL - cam.z];
+      const tx = this.cornerX(tile.t), tz = this.cornerZ(tile.t);
+      const ox = tx - LOCAL - cam.x, oy = tile.base - cam.y, oz = tz - LOCAL - cam.z;
       for (let l = 0; l < tile.held.length; l++) {
         const h = tile.held[l];
         if ((drawn & (1 << l)) === 0 || !h || h.slot < 0) continue;
@@ -415,8 +422,13 @@ export class FarCity {
     return Math.floor(cz / CITY_TILE) * this.tilesX + Math.floor(cx / CITY_TILE);
   }
 
-  private corner(t: number): [number, number] {
-    return [(t % this.tilesX) * TILE_METRES, Math.floor(t / this.tilesX) * TILE_METRES];
+  /** Tile `t`'s corner nearest the map's origin, in metres. */
+  private cornerX(t: number): number {
+    return (t % this.tilesX) * TILE_METRES;
+  }
+
+  private cornerZ(t: number): number {
+    return Math.floor(t / this.tilesX) * TILE_METRES;
   }
 
   /** Lets go of every level of `tile` on the card and the pieces made for it. */
@@ -490,12 +502,12 @@ export class FarCity {
     const city = this.source.statics;
     const gone = (c: number): Gone => this.gone.get(c) ?? null;
     const part: CityPart = l.cell > 0 ? cellPart(city, chunk, this.hf, gone(chunk), l.cell, l.tall) : mergedPart(city, chunk, this.hf, gone, l.gap, l.least);
-    const [tx, tz] = this.corner(tile.t);
+    const tx = this.cornerX(tile.t), tz = this.cornerZ(tile.t);
     const dx = (chunk % this.dims.chunksX) * CHUNK_SIZE - tx + LOCAL;
     const dz = Math.floor(chunk / this.dims.chunksX) * CHUNK_SIZE - tz + LOCAL;
     const verts = new Uint8Array(part.faces * 4 * VERTEX_BYTES);
     const view = new DataView(verts.buffer);
-    const [c, h] = [this.center, this.half];
+    const c = this.center, h = this.half;
     const q = (v: number, a: number): number => Math.max(-32767, Math.min(32767, Math.round(((v - c[a]!) / h[a]!) * 32767)));
     const { pos, color } = part;
     for (let v = 0; v < part.faces * 4; v++) {

@@ -32,6 +32,8 @@ const SEA = 65536;
 /** The sea's tiles a side of a tile here. */
 const PER_SEA = WATER_TILE / FAR_TILE_METRES;
 const WAYS: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+/** A face's two triangles, by its corners. */
+const QUAD = [0, 1, 2, 0, 2, 3];
 
 interface Tile {
   /** Its corner in the world. */
@@ -76,7 +78,8 @@ export class Lakes {
     const { cell, side, surface } = water;
     const sea = hf.seaLevel;
     const dims = hf.dims;
-    [this.seaX, this.seaZ] = [Math.ceil(hf.sizeX / WATER_TILE), Math.ceil(hf.sizeZ / WATER_TILE)];
+    this.seaX = Math.ceil(hf.sizeX / WATER_TILE);
+    this.seaZ = Math.ceil(hf.sizeZ / WATER_TILE);
     this.holes = new Uint8Array(this.seaX * this.seaZ);
     // The body squares whose ground goes under their surface, the sea's tiles where a body's ground goes under the sea,
     // and the tiles here that hold a body's squares.
@@ -84,12 +87,12 @@ export class Lakes {
     const tilesX = Math.ceil(dims.chunksX / FAR_TILE);
     const made = new Set<number>();
     for (const c of water.chunks()) {
-      const [x0, z0] = [(c % dims.chunksX) * CHUNK_SIZE, Math.floor(c / dims.chunksX) * CHUNK_SIZE];
+      const x0 = (c % dims.chunksX) * CHUNK_SIZE, z0 = Math.floor(c / dims.chunksX) * CHUNK_SIZE;
       const at = water.block[c]!;
       for (let s = 0; s < side * side; s++) {
         const b = water.squares[at + s]!;
         if (b === 0) continue;
-        const [x, z] = [x0 + (s % side) * cell, z0 + Math.floor(s / side) * cell];
+        const x = x0 + (s % side) * cell, z = z0 + Math.floor(s / side) * cell;
         const low = lowest(hf, x, z, cell);
         if (low < surface[b]!) wet[at + s] = 1;
         if (low < sea) this.holes[Math.floor(z / WATER_TILE) * this.seaX + Math.floor(x / WATER_TILE)] = 1;
@@ -99,16 +102,16 @@ export class Lakes {
     const tiles: [number, number][] = [...made].map((t) => [(t % tilesX) * FAR_TILE_METRES, Math.floor(t / tilesX) * FAR_TILE_METRES]);
     for (let k = 0; k < this.holes.length; k++) {
       if (this.holes[k] === 0) continue;
-      const [sx, sz] = [(k % this.seaX) * WATER_TILE, Math.floor(k / this.seaX) * WATER_TILE];
+      const sx = (k % this.seaX) * WATER_TILE, sz = Math.floor(k / this.seaX) * WATER_TILE;
       for (let j = 0; j < PER_SEA; j++) {
         for (let i = 0; i < PER_SEA; i++) {
-          const [x, z] = [sx + i * FAR_TILE_METRES, sz + j * FAR_TILE_METRES];
+          const x = sx + i * FAR_TILE_METRES, z = sz + j * FAR_TILE_METRES;
           if (x >= hf.sizeX || z >= hf.sizeZ || !made.has((z / FAR_TILE_METRES) * tilesX + x / FAR_TILE_METRES)) tiles.push([x, z]);
         }
       }
     }
-    for (const [x, z] of tiles) {
-      const tile = this.make(hf, water, wet, bounds, x, z);
+    for (const at of tiles) {
+      const tile = this.make(hf, water, wet, bounds, at[0], at[1]);
       if (tile) this.tiles.push(tile);
     }
   }
@@ -159,7 +162,7 @@ export class Lakes {
     for (const tile of this.tiles) {
       if (tile.slot < 0) continue;
       const b = tile.box;
-      const [ax, ay, az, bx, by, bz] = [b[0]! - cam.x, b[1]! - cam.y, b[2]! - cam.z, b[3]! - cam.x, b[4]! - cam.y, b[5]! - cam.z];
+      const ax = b[0]! - cam.x, ay = b[1]! - cam.y, az = b[2]! - cam.z, bx = b[3]! - cam.x, by = b[4]! - cam.y, bz = b[5]! - cam.z;
       const near = Math.hypot(Math.max(ax, -bx, 0), Math.max(ay, -by, 0), Math.max(az, -bz, 0));
       if (near >= reach || !cam.boxVisible(ax, ay, az, bx, by, bz)) continue;
       put(tile.slot, tile.indexCount / 3, tile.x - cam.x, tile.base - cam.y, tile.z - cam.z, cam.passes(ax, ay, az, bx, by, bz));
@@ -178,7 +181,7 @@ export class Lakes {
       for (let cx = ox / CHUNK_SIZE; cx < Math.min(ox / CHUNK_SIZE + FAR_TILE, dims.chunksX); cx++) {
         const at = water.block[cz * dims.chunksX + cx]!;
         if (at < 0) continue;
-        const [i0, j0] = [(cx * CHUNK_SIZE - ox) / cell, (cz * CHUNK_SIZE - oz) / cell];
+        const i0 = (cx * CHUNK_SIZE - ox) / cell, j0 = (cz * CHUNK_SIZE - oz) / cell;
         for (let s = 0; s < side * side; s++) {
           if (water.squares[at + s] === 0) continue;
           grid[(j0 + Math.floor(s / side)) * n + i0 + (s % side)] = wet[at + s] === 1 ? water.squares[at + s]! : 0;
@@ -217,7 +220,8 @@ export class Lakes {
       }
     }
     // A sheet down each side of a body's square that has lower water beside it, merged along its row.
-    for (const [di, dj] of WAYS) {
+    for (const way of WAYS) {
+      const di = way[0], dj = way[1];
       for (let line = 0; line < n; line++) {
         let from = -1;
         let top = 0;
@@ -241,7 +245,7 @@ export class Lakes {
           }
           if (from >= 0 && t === top && f === foot) continue;
           if (from >= 0) {
-            const [a, e] = [from * cell, step * cell];
+            const a = from * cell, e = step * cell;
             if (di !== 0) face((line + (di > 0 ? 1 : 0)) * cell, foot, a, 0, top - foot, 0, 0, 0, e - a);
             else face(a, foot, (line + (dj > 0 ? 1 : 0)) * cell, 0, top - foot, 0, e - a, 0, 0);
           }
@@ -259,16 +263,20 @@ export class Lakes {
       box[(k % 3) + 3] = Math.max(box[(k % 3) + 3]!, pos[k]!);
     }
     const base = box[1]!;
-    [box[0], box[2], box[3], box[5]] = [box[0]! + ox, box[2]! + oz, box[3]! + ox, box[5]! + oz];
+    box[0] = box[0]! + ox;
+    box[2] = box[2]! + oz;
+    box[3] = box[3]! + ox;
+    box[5] = box[5]! + oz;
     const verts = faces * 4;
     const indexBytes = verts > 65535 ? 4 : 2;
     const at = (faces * 6 * indexBytes + 3) & ~3;
     const data = new Uint8Array(at + verts * VERTEX_BYTES);
     const view = new DataView(data.buffer);
-    const [c, h] = [bounds.center, bounds.half];
+    const c = bounds.center, h = bounds.half;
     const q = (v: number, a: number): number => Math.max(-32767, Math.min(32767, Math.round(((v - c[a]!) / h[a]!) * 32767)));
     for (let f = 0; f < faces; f++) {
-      for (const [k, i] of [0, 1, 2, 0, 2, 3].entries()) {
+      for (let k = 0; k < 6; k++) {
+        const i = QUAD[k]!;
         if (indexBytes === 4) view.setUint32((f * 6 + k) * 4, f * 4 + i, true);
         else view.setUint16((f * 6 + k) * 2, f * 4 + i, true);
       }
