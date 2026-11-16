@@ -9,7 +9,7 @@ import { FAR_BUFFER, fadeKeeps } from "../../client/core/render/far.ts";
 import { cityJob, cityKinds, makeLevel } from "../../client/core/render/citymake.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
-import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
+import { NODE_BUFFERS, Scene } from "../../client/core/render/scene.ts";
 import { PICK_STRUCTURE } from "../../tools/snap/raster.ts";
 import type { ShapeBox, ShapeDef } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
@@ -52,6 +52,22 @@ test("two touching plates and a pier on them show only the faces nothing holds, 
   expect(mergedPart(city, chunk, w.hf, none, -1, 0).faces).toBe(2 * 5 - 2 + 5);
   // Merged, the plates are one: its top and four sides, and the pier's five.
   expect(mergedPart(city, chunk, w.hf, none, 0.01, 0).faces).toBe(5 + 5);
+});
+
+test("the far city starts when the map's statics come, after frames drawn without them", () => {
+  const statics = building(...mid(5, 8), 0, 6);
+  const w = cityWorld({ chunks: 16, statics });
+  let come: CityStatics | null = null;
+  const scene = new Scene({ dims: w.dims, hf: w.hf, structs: w.structs, far: { cells: w.cells, complete: (c) => w.whole[c] === 1 }, city: { get statics() { return come; }, complete: (c) => w.whole[c] === 1 } }, w.reg, w.pack);
+  scene.assets.tier = tierOf("medium");
+  scene.viewHeight = 180;
+  w.cam.aspect = 16 / 9;
+  const [x, z] = mid(5, 8);
+  w.look(x, 12, z, 300, Math.PI, 30);
+  for (let f = 0; f < 3; f++) expect(cityDraws(scene.build(w.cam, null)).length).toBe(0);
+  come = w.statics;
+  scene.city!.makeMs = Infinity;
+  expect(cityDraws(scene.build(w.cam, null)).length).toBeGreaterThan(0);
 });
 
 test("a chunk's statics are drawn far until the near store holds it whole, then near, never both or neither, and alike either way", () => {

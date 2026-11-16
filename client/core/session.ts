@@ -132,7 +132,10 @@ export interface SessionOptions {
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
   /** The map's resource nodes, from the same pure function the server uses. */
   nodes?(hf: Heightfield, registry: Registry): NodeSource | null;
-  /** The map's static pieces by chunk, which the far city draws past the near rows (render/farcity.ts), and where its levels are made, here if not given. */
+  /**
+   * The map's static pieces by chunk, which the far city draws past the near rows (render/farcity.ts), or null while they
+   * have not come, asked again each frame until they have; and where its levels are made, here if not given.
+   */
   city?(registry: Registry): CityStatics | null;
   cityMaker?: CityMaker;
   /** The statics of the map file resolveMap accepts. With them the server sends a chunk's only where they differ (HELLO_STATICS). */
@@ -1332,8 +1335,9 @@ export class ClientSession {
     const field = this.nodeField;
     this.nodeChanges = field ? new NodeChanges(dims) : null;
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges! } } : {};
-    const statics = this.opts.city?.(reg) ?? null;
-    const city = statics && statics.count > 0 ? { city: { statics, complete: far.complete, maker: this.opts.cityMaker } } : {};
+    const made = this.opts.city;
+    let statics: CityStatics | null = null;
+    const city = made ? { city: { get statics(): CityStatics | null { return (statics ??= made(reg)); }, complete: far.complete, maker: this.opts.cityMaker } } : {};
     this.world = { mapId, dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...city };
     this.recenterNodes();
     this.move = move;
