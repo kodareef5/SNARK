@@ -232,8 +232,10 @@ export class Characters {
   private readonly plain: number;
   private readonly extra = new Int32Array(EXTRA_KEYS * 3);
   private extraKeys = 0;
-  /** Stand-ins made so far, by body set and what they do (standIn). */
-  private readonly standIns = new Map<number, StandIn>();
+  /** An open hash of those keys: one more than each one's place in `extra`, and 0 where there is none. */
+  private readonly extraAt = new Int32Array(EXTRA_KEYS * 4);
+  /** Stand-ins made so far, by body set and then by what they do (standIn). */
+  private readonly standIns: (StandIn | undefined)[][] = [];
   private readonly layers = new Layers();
   /** The most levels of detail any mesh of the pack has, so that a body can be drawn at every level its mesh has. */
   private readonly levels: number;
@@ -528,7 +530,7 @@ export class Characters {
       if (g.posedAt === this.frame) return false;
       // A metre's pixels there.
       const pixels = this.assets.scale / (distance > 1 ? distance : 1);
-      let every = FULL_RATE_PIXELS / pixels;
+      let every = (2 * FULL_RATE_PIXELS) / pixels;
       if (speed > 0) every = Math.min(every, 1 + (SLIDE_PIXELS * 60) / (speed * pixels));
       if (unseen) every *= 2;
       every = every >= POSE_EVERY ? POSE_EVERY : every >= 4 ? 4 : every >= 2 ? 2 : 1;
@@ -548,8 +550,8 @@ export class Characters {
   private standIn(kind: number, set: number, st: AnimState, seated: boolean): StandIn {
     const c = this.creatures[kind];
     const doing = c?.vehicle ? 0 : (st.mode & 7) | (st.grounded ? 8 : 0) | ((st.stance & 3) << 4) | (st.out ? 64 : 0) | (st.held ? 128 : 0) | (seated ? 256 : 0);
-    const key = (kind * 2 + set) * 512 + doing;
-    let s = this.standIns.get(key);
+    const of = (this.standIns[kind * 2 + set] ??= []);
+    let s = of[doing];
     if (s) return s;
     const like = new AnimState();
     like.mode = st.mode;
@@ -575,7 +577,7 @@ export class Characters {
     const rows = new Float32Array((solved.pos.length / 3) * BONE_FLOATS);
     writeBones(rows, 0, solved, rest, null, 0, 0, 0, 0);
     s = { rows, solved, counted: -1, written: -1, first: 0 };
-    this.standIns.set(key, s);
+    of[doing] = s;
     return s;
   }
 
@@ -881,7 +883,12 @@ export class Characters {
   private keyOf(key: number, layer: number, stand: number): number {
     if (layer === 0 && stand < 0) return key;
     const l = this.extra;
-    for (let k = 0; k < this.extraKeys; k++) if (l[k * 3] === key && l[k * 3 + 1] === layer && l[k * 3 + 2] === stand) return this.plain + k;
+    const at = this.extraAt;
+    let h = (Math.imul(key, 0x9e3779b1) ^ Math.imul(stand + 1, 0x85ebca6b) ^ layer) & (at.length - 1);
+    for (; at[h] !== 0; h = (h + 1) & (at.length - 1)) {
+      const k = at[h]! - 1;
+      if (l[k * 3] === key && l[k * 3 + 1] === layer && l[k * 3 + 2] === stand) return this.plain + k;
+    }
     if (this.extraKeys === EXTRA_KEYS) {
       if (stand < 0) return key;
       if (this.packet) this.packet.dropped++;
@@ -890,6 +897,7 @@ export class Characters {
     l[this.extraKeys * 3] = key;
     l[this.extraKeys * 3 + 1] = layer;
     l[this.extraKeys * 3 + 2] = stand;
+    at[h] = this.extraKeys + 1;
     return this.plain + this.extraKeys++;
   }
 
@@ -921,6 +929,7 @@ export class Characters {
     this.placed = false;
     this.headCount = 0;
     if (this.heads.size > 4096) this.heads.clear();
+    if (this.extraKeys > 0) this.extraAt.fill(0);
     this.extraKeys = 0;
     this.layers.begin();
     // Ids of bodies long gone would otherwise be kept for good.
