@@ -1,0 +1,269 @@
+{
+  "asset": "core/sfx/critter",
+  "review": "../ref/sound",
+  "about": "Small and other animals: rats, a snake's hiss and rattle, monkeys, a boar, a far howl, bats, a chicken, lizards and crabs skittering, whales and dolphins far off, and a seal.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "rat": {
+      "kind": "impact",
+      "range": 10,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a rat",
+      "prompts": [
+        {
+          "id": "v4-26400",
+          "models": [
+            "moss"
+          ],
+          "seed": 26400,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A rat squeaks and scurries, four separate squeaks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hiss": {
+      "kind": "impact",
+      "range": 10,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a snake hissing",
+      "prompts": [
+        {
+          "id": "v4-26410",
+          "models": [
+            "moss"
+          ],
+          "seed": 26410,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A snake hisses sharply, four separate hisses with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "rattle": {
+      "kind": "impact",
+      "range": 12,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a rattlesnake",
+      "prompts": [
+        {
+          "id": "v4-26420",
+          "models": [
+            "moss"
+          ],
+          "seed": 26420,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A rattlesnake shakes its rattle, a dry buzzing rattle, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "monkey": {
+      "kind": "impact",
+      "range": 150,
+      "level": -14,
+      "vary": 0.04,
+      "want": "monkeys",
+      "prompts": [
+        {
+          "id": "v4-26430",
+          "models": [
+            "moss"
+          ],
+          "seed": 26430,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "Monkeys screech, hoot and chatter in the trees, three separate outbursts with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "boar": {
+      "kind": "impact",
+      "range": 40,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a boar",
+      "prompts": [
+        {
+          "id": "v4-26440",
+          "models": [
+            "moss"
+          ],
+          "seed": 26440,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A wild boar grunts and squeals, four separate grunts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "howl": {
+      "kind": "impact",
+      "range": 800,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a far howl",
+      "prompts": [
+        {
+          "id": "v4-26450",
+          "models": [
+            "moss"
+          ],
+          "seed": 26450,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A lone wild animal howls far away at night, two separate howls with long pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "bats": {
+      "kind": "impact",
+      "range": 40,
+      "level": -16,
+      "vary": 0.04,
+      "want": "bats",
+      "prompts": [
+        {
+          "id": "v4-26460",
+          "models": [
+            "moss"
+          ],
+          "seed": 26460,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A swarm of bats flutters out of a cave with high squeaks and leathery wingbeats, two separate swarms with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "chicken": {
+      "kind": "impact",
+      "range": 30,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a chicken",
+      "prompts": [
+        {
+          "id": "v4-26470",
+          "models": [
+            "moss"
+          ],
+          "seed": 26470,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A chicken clucks and squawks, four separate bursts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "lizard": {
+      "kind": "impact",
+      "range": 6,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a lizard skittering",
+      "prompts": [
+        {
+          "id": "v4-26480",
+          "models": [
+            "moss"
+          ],
+          "seed": 26480,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A small lizard skitters quickly over dry leaves and rock, four separate dashes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "crab": {
+      "kind": "impact",
+      "range": 6,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a crab skittering",
+      "prompts": [
+        {
+          "id": "v4-26490",
+          "models": [
+            "moss"
+          ],
+          "seed": 26490,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A crab scuttles over wet pebbles, clicking legs, four separate scuttles with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "whale": {
+      "kind": "impact",
+      "range": 1000,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a whale far off",
+      "prompts": [
+        {
+          "id": "v4-26500",
+          "models": [
+            "moss"
+          ],
+          "seed": 26500,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 12,
+          "text": "A whale's long deep moaning song heard far under the sea, two separate calls with long pauses."
+        }
+      ]
+    },
+    "dolphin": {
+      "kind": "impact",
+      "range": 60,
+      "level": -16,
+      "vary": 0.04,
+      "want": "dolphins",
+      "prompts": [
+        {
+          "id": "v4-26510",
+          "models": [
+            "moss"
+          ],
+          "seed": 26510,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Dolphins click and whistle playfully, three separate bursts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "seal": {
+      "kind": "impact",
+      "range": 80,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a seal",
+      "prompts": [
+        {
+          "id": "v4-26520",
+          "models": [
+            "moss"
+          ],
+          "seed": 26520,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A seal barks loudly, four separate barks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

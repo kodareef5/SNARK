@@ -1,0 +1,61 @@
+{
+  "sounds": {
+    "engine/idle": {
+      "range": 80, "level": -18, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/idle/moss-pt-10802-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "engine/low": {
+      "range": 100, "level": -16, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/low/moss-pt-10812-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "engine/mid": {
+      "range": 120, "level": -15, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/mid/moss-pt-10820-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "engine/high": {
+      "range": 150, "level": -14, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/high/moss-pt-10831-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "engine/start": {
+      "range": 60, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/engine/start/moss-pt-10840-01485.wav", "from": "moss", "start": 0.05, "end": 8.565},
+        {"file": "takes/engine/start/moss-pt-10841-06190.wav", "from": "moss", "start": 0.05, "end": 3.86}
+      ]
+    },
+    "brake": {
+      "range": 60, "level": -14, "vary": 0.0,
+      "takes": [
+        {"file": "takes/brake/moss-pt-10870-01860.wav", "from": "moss", "start": 0.05, "end": 1.3},
+        {"file": "takes/brake/moss-pt-10870-06655.wav", "from": "moss", "start": 0.05, "end": 1.28}
+      ]
+    },
+    "horn": {
+      "range": 300, "level": -8, "vary": 0.0,
+      "takes": [
+        {"file": "takes/horn/moss-pt-10880-00000.wav", "from": "moss", "start": 0.0, "end": 1.705}
+      ]
+    },
+    "reverse": {
+      "range": 60, "level": -20, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/reverse/moss-pt-10890-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "door/close": {
+      "range": 30, "level": -14, "vary": 0.0,
+      "takes": [
+        {"file": "takes/door/close/moss-pt-10900-00090.wav", "from": "moss", "start": 0.05, "end": 0.59},
+        {"file": "takes/door/close/moss-pt-10900-06740.wav", "from": "moss", "start": 0.05, "end": 0.58}
+      ]
+    }
+  }
+}

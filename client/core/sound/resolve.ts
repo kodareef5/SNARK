@@ -7,6 +7,8 @@ import { KEYS, candidates } from "../../../shared/sound/cues.ts";
 
 export class Resolver {
   readonly owners: string[] = [];
+  /** By owner: the shared families its `{family}` fallbacks stand for (a vehicle's, from vehicleFamilies). */
+  private readonly families: (readonly string[])[] = [];
   private readonly ownerIndex = new Map<string, number>();
   private readonly found = new Map<number, number>();
   private readonly index: ReadonlyMap<string, number>;
@@ -22,12 +24,13 @@ export class Resolver {
     this.index = index;
   }
 
-  /** The number of an owner id, made the first time it is asked for. */
-  owner(id: string): number {
+  /** The number of an owner id, made the first time it is asked for, with the families it falls back to (the first asking names them). */
+  owner(id: string, families: readonly string[] = []): number {
     let o = this.ownerIndex.get(id);
     if (o === undefined) {
       o = this.owners.length;
       this.owners.push(id);
+      this.families.push(families);
       this.ownerIndex.set(id, o);
     }
     return o;
@@ -40,7 +43,7 @@ export class Resolver {
       e = this.sound.length;
       let sound = -1;
       let rate = 1;
-      for (const c of candidates(this.owners[owner]!, KEYS[key]!)) {
+      for (const c of candidates(this.owners[owner]!, KEYS[key]!, this.families[owner])) {
         const s = this.index.get(c.id);
         if (s === undefined) continue;
         sound = s;

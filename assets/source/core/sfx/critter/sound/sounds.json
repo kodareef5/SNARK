@@ -1,0 +1,99 @@
+{
+  "sounds": {
+    "rat": {
+      "range": 10, "level": -20, "vary": 0.04,
+      "takes": [
+        {"file": "takes/rat/moss-pt-26401-06275.wav", "from": "moss", "start": 0.05, "end": 0.425},
+        {"file": "takes/rat/moss-pt-26400-03175.wav", "from": "moss", "start": 0.05, "end": 0.375},
+        {"file": "takes/rat/moss-pt-26401-04150.wav", "from": "moss", "start": 0.05, "end": 0.39},
+        {"file": "takes/rat/moss-pt-26400-04055.wav", "from": "moss", "start": 0.05, "end": 0.32}
+      ]
+    },
+    "hiss": {
+      "range": 10, "level": -18, "vary": 0.04,
+      "takes": [
+        {"file": "takes/hiss/moss-pt-26411-05220.wav", "from": "moss", "start": 0.05, "end": 1.23},
+        {"file": "takes/hiss/moss-pt-26410-04105.wav", "from": "moss", "start": 0.05, "end": 0.905},
+        {"file": "takes/hiss/moss-pt-26411-03245.wav", "from": "moss", "start": 0.05, "end": 0.985},
+        {"file": "takes/hiss/moss-pt-26410-02280.wav", "from": "moss", "start": 0.05, "end": 0.98}
+      ]
+    },
+    "rattle": {
+      "range": 12, "level": -18, "vary": 0.04,
+      "takes": [
+        {"file": "takes/rattle/moss-pt-26420-06870.wav", "from": "moss", "start": 0.05, "end": 0.945},
+        {"file": "takes/rattle/moss-pt-26421-01555.wav", "from": "moss", "start": 0.05, "end": 1.725},
+        {"file": "takes/rattle/moss-pt-26420-03565.wav", "from": "moss", "start": 0.05, "end": 1.11},
+        {"file": "takes/rattle/moss-pt-26421-05440.wav", "from": "moss", "start": 0.05, "end": 1.838}
+      ]
+    },
+    "monkey": {
+      "range": 150, "level": -14, "vary": 0.04,
+      "takes": [
+        {"file": "takes/monkey/moss-pt-26432-00315.wav", "from": "moss", "start": 0.05, "end": 1.095},
+        {"file": "takes/monkey/moss-pt-26431-00220.wav", "from": "moss", "start": 0.05, "end": 1.055},
+        {"file": "takes/monkey/moss-pt-26432-01450.wav", "from": "moss", "start": 0.05, "end": 0.953},
+        {"file": "takes/monkey/moss-pt-26431-01905.wav", "from": "moss", "start": 0.05, "end": 0.995}
+      ]
+    },
+    "boar": {
+      "range": 40, "level": -16, "vary": 0.04,
+      "takes": [
+        {"file": "takes/boar/moss-pt-26440-04630.wav", "from": "moss", "start": 0.05, "end": 0.315},
+        {"file": "takes/boar/moss-pt-26441-04495.wav", "from": "moss", "start": 0.05, "end": 1.0},
+        {"file": "takes/boar/moss-pt-26440-02480.wav", "from": "moss", "start": 0.05, "end": 0.36},
+        {"file": "takes/boar/moss-pt-26441-07035.wav", "from": "moss", "start": 0.05, "end": 0.895}
+      ]
+    },
+    "howl": {
+      "range": 800, "level": -16, "vary": 0.04,
+      "takes": [
+        {"file": "takes/howl/moss-pt-26451-01400.wav", "from": "moss", "start": 0.05, "end": 4.165},
+        {"file": "takes/howl/moss-pt-26450-02255.wav", "from": "moss", "start": 0.05, "end": 4.785}
+      ]
+    },
+    "chicken": {
+      "range": 30, "level": -16, "vary": 0.04,
+      "takes": [
+        {"file": "takes/chicken/moss-pt-26470-03190.wav", "from": "moss", "start": 0.05, "end": 0.66},
+        {"file": "takes/chicken/moss-pt-26470-00505.wav", "from": "moss", "start": 0.05, "end": 0.715}
+      ]
+    },
+    "lizard": {
+      "range": 6, "level": -22, "vary": 0.04,
+      "takes": [
+        {"file": "takes/lizard/moss-pt-26480-04345.wav", "from": "moss", "start": 0.05, "end": 1.225},
+        {"file": "takes/lizard/moss-pt-26481-06275.wav", "from": "moss", "start": 0.05, "end": 0.89},
+        {"file": "takes/lizard/moss-pt-26480-00735.wav", "from": "moss", "start": 0.05, "end": 1.795},
+        {"file": "takes/lizard/moss-pt-26481-04355.wav", "from": "moss", "start": 0.05, "end": 0.7}
+      ]
+    },
+    "crab": {
+      "range": 6, "level": -22, "vary": 0.04,
+      "takes": [
+        {"file": "takes/crab/moss-pt-26491-04585.wav", "from": "moss", "start": 0.05, "end": 0.745},
+        {"file": "takes/crab/moss-pt-26491-00585.wav", "from": "moss", "start": 0.05, "end": 0.7}
+      ]
+    },
+    "whale": {
+      "range": 1000, "level": -14, "vary": 0.04,
+      "takes": [
+        {"file": "takes/whale/moss-pt-26501-00175.wav", "from": "moss", "start": 0.05, "end": 5.095},
+        {"file": "takes/whale/moss-pt-26500-00520.wav", "from": "moss", "start": 0.05, "end": 3.255}
+      ]
+    },
+    "dolphin": {
+      "range": 60, "level": -16, "vary": 0.04,
+      "takes": [
+        {"file": "takes/dolphin/moss-pt-26510-00000.wav", "from": "moss", "start": 0.0, "end": 2.48},
+        {"file": "takes/dolphin/moss-pt-26510-05485.wav", "from": "moss", "start": 0.05, "end": 0.795}
+      ]
+    },
+    "seal": {
+      "range": 80, "level": -14, "vary": 0.04,
+      "takes": [
+        {"file": "takes/seal/moss-pt-26520-02040.wav", "from": "moss", "start": 0.05, "end": 0.68}
+      ]
+    }
+  }
+}

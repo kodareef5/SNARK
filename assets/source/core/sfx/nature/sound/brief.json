@@ -1,0 +1,322 @@
+{
+  "asset": "core/sfx/nature",
+  "review": "../ref/sound",
+  "about": "The land itself: streams, rustling bushes, snapping branches, creaking trees, rockfalls, sliding pebbles, mud, cave drips, a geyser, a volcano's rumble, bubbling lava, waves on rocks, wind in grass, an earthquake and a fish jumping.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "stream": {
+      "kind": "impact",
+      "range": 30,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a stream",
+      "prompts": [
+        {
+          "id": "v4-22400",
+          "models": [
+            "moss"
+          ],
+          "seed": 22400,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A small clear stream babbling over stones, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true
+    },
+    "rustle": {
+      "kind": "impact",
+      "range": 15,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a bush brushed past",
+      "prompts": [
+        {
+          "id": "v4-22410",
+          "models": [
+            "moss"
+          ],
+          "seed": 22410,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "Someone brushes through a leafy bush: a crisp rustle of leaves and twigs, five separate rustles with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "snap": {
+      "kind": "impact",
+      "range": 30,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a branch snapping",
+      "prompts": [
+        {
+          "id": "v4-22420",
+          "models": [
+            "moss"
+          ],
+          "seed": 22420,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A dry branch snaps underfoot with a sharp crack, five separate snaps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "creak": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a tree creaking",
+      "prompts": [
+        {
+          "id": "v4-22430",
+          "models": [
+            "moss"
+          ],
+          "seed": 22430,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A tall tree creaks and groans slowly as it sways in the wind, three separate creaks with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "rockfall": {
+      "kind": "impact",
+      "range": 200,
+      "level": -10,
+      "vary": 0.04,
+      "want": "a rockfall",
+      "prompts": [
+        {
+          "id": "v4-22440",
+          "models": [
+            "moss"
+          ],
+          "seed": 22440,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Rocks tumble and crash down a cliff in a rockfall, one rockfall. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "whole": true
+    },
+    "pebbles": {
+      "kind": "impact",
+      "range": 20,
+      "level": -20,
+      "vary": 0.04,
+      "want": "pebbles sliding",
+      "prompts": [
+        {
+          "id": "v4-22450",
+          "models": [
+            "moss"
+          ],
+          "seed": 22450,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Loose pebbles and gravel slide and trickle down a slope, four separate slides with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "mud": {
+      "kind": "impact",
+      "range": 15,
+      "level": -18,
+      "vary": 0.04,
+      "want": "mud squelching",
+      "prompts": [
+        {
+          "id": "v4-22460",
+          "models": [
+            "moss"
+          ],
+          "seed": 22460,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Feet squelch and suck in deep mud, five separate steps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "cave": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.04,
+      "want": "a cave dripping",
+      "prompts": [
+        {
+          "id": "v4-22470",
+          "models": [
+            "moss"
+          ],
+          "seed": 22470,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "Inside a cave: water drips echoing into pools, slow and steady."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "geyser": {
+      "kind": "impact",
+      "range": 200,
+      "level": -10,
+      "vary": 0.04,
+      "want": "a geyser",
+      "prompts": [
+        {
+          "id": "v4-22480",
+          "models": [
+            "moss"
+          ],
+          "seed": 22480,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A geyser erupts: a rising gurgle and a roaring hissing blast of steam and water, one eruption. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "whole": true
+    },
+    "volcano": {
+      "kind": "impact",
+      "range": 1,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a volcano rumbling",
+      "prompts": [
+        {
+          "id": "v4-22490",
+          "models": [
+            "moss"
+          ],
+          "seed": 22490,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A volcano rumbles deep under the ground: a low heavy roaring rumble, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "lava": {
+      "kind": "impact",
+      "range": 30,
+      "level": -20,
+      "vary": 0.04,
+      "want": "lava bubbling",
+      "prompts": [
+        {
+          "id": "v4-22500",
+          "models": [
+            "moss"
+          ],
+          "seed": 22500,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Molten lava bubbles, pops and hisses slowly, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "waves": {
+      "kind": "impact",
+      "range": 60,
+      "level": -20,
+      "vary": 0.04,
+      "want": "waves on rocks",
+      "prompts": [
+        {
+          "id": "v4-22510",
+          "models": [
+            "moss"
+          ],
+          "seed": 22510,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Ocean waves crash and spray against rocks, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true
+    },
+    "grass": {
+      "kind": "impact",
+      "range": 1,
+      "level": -26,
+      "vary": 0.04,
+      "want": "wind in tall grass",
+      "prompts": [
+        {
+          "id": "v4-22520",
+          "models": [
+            "moss"
+          ],
+          "seed": 22520,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A soft breeze sighing through tall dry grass, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "quake": {
+      "kind": "impact",
+      "range": 1,
+      "level": -10,
+      "vary": 0.04,
+      "want": "an earthquake",
+      "prompts": [
+        {
+          "id": "v4-22530",
+          "models": [
+            "moss"
+          ],
+          "seed": 22530,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 12,
+          "text": "An earthquake: a deep rumbling roar, the ground shaking and rocks rattling, one quake. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "whole": true,
+      "space": "ear"
+    },
+    "fish": {
+      "kind": "impact",
+      "range": 25,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a fish jumping",
+      "prompts": [
+        {
+          "id": "v4-22540",
+          "models": [
+            "moss"
+          ],
+          "seed": 22540,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A fish leaps out of a pond and falls back with a splash, four separate splashes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

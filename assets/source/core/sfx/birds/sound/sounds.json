@@ -1,0 +1,96 @@
+{
+  "sounds": {
+    "song": {
+      "range": 60, "level": -18, "vary": 0.04,
+      "takes": [
+        {"file": "takes/song/moss-pt-22002-01000.wav", "from": "moss", "start": 0.05, "end": 1.46},
+        {"file": "takes/song/moss-pt-22000-01135.wav", "from": "moss", "start": 0.05, "end": 1.445},
+        {"file": "takes/song/moss-pt-22001-05515.wav", "from": "moss", "start": 0.05, "end": 2.535},
+        {"file": "takes/song/moss-pt-22001-04670.wav", "from": "moss", "start": 0.05, "end": 0.882}
+      ]
+    },
+    "crow": {
+      "range": 120, "level": -16, "vary": 0.04,
+      "takes": [
+        {"file": "takes/crow/moss-pt-22011-05585.wav", "from": "moss", "start": 0.05, "end": 0.805},
+        {"file": "takes/crow/moss-pt-22010-02755.wav", "from": "moss", "start": 0.05, "end": 1.235},
+        {"file": "takes/crow/moss-pt-22011-06395.wav", "from": "moss", "start": 0.05, "end": 0.73},
+        {"file": "takes/crow/moss-pt-22010-01265.wav", "from": "moss", "start": 0.05, "end": 1.01}
+      ]
+    },
+    "gull": {
+      "range": 150, "level": -16, "vary": 0.04,
+      "takes": [
+        {"file": "takes/gull/moss-pt-22020-01950.wav", "from": "moss", "start": 0.05, "end": 1.08},
+        {"file": "takes/gull/moss-pt-22020-03595.wav", "from": "moss", "start": 0.05, "end": 0.965}
+      ]
+    },
+    "parrot": {
+      "range": 150, "level": -14, "vary": 0.04,
+      "takes": [
+        {"file": "takes/parrot/moss-pt-22030-05690.wav", "from": "moss", "start": 0.05, "end": 1.64},
+        {"file": "takes/parrot/moss-pt-22031-02020.wav", "from": "moss", "start": 0.05, "end": 1.845},
+        {"file": "takes/parrot/moss-pt-22030-00000.wav", "from": "moss", "start": 0.0, "end": 1.73},
+        {"file": "takes/parrot/moss-pt-22031-05745.wav", "from": "moss", "start": 0.05, "end": 1.035}
+      ]
+    },
+    "owl": {
+      "range": 150, "level": -18, "vary": 0.04,
+      "takes": [
+        {"file": "takes/owl/moss-pt-22040-00490.wav", "from": "moss", "start": 0.05, "end": 1.27},
+        {"file": "takes/owl/moss-pt-22041-02955.wav", "from": "moss", "start": 0.05, "end": 1.24}
+      ]
+    },
+    "woodpecker": {
+      "range": 100, "level": -16, "vary": 0.04,
+      "takes": [
+        {"file": "takes/woodpecker/moss-pt-22050-02760.wav", "from": "moss", "start": 0.05, "end": 0.65},
+        {"file": "takes/woodpecker/moss-pt-22050-03380.wav", "from": "moss", "start": 0.05, "end": 0.62}
+      ]
+    },
+    "hawk": {
+      "range": 400, "level": -14, "vary": 0.04,
+      "takes": [
+        {"file": "takes/hawk/moss-pt-22061-02425.wav", "from": "moss", "start": 0.05, "end": 2.135},
+        {"file": "takes/hawk/moss-pt-22061-06350.wav", "from": "moss", "start": 0.05, "end": 1.61}
+      ]
+    },
+    "chorus": {
+      "range": 1, "level": -24, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/chorus/moss-pt-22071-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "flock": {
+      "range": 80, "level": -14, "vary": 0.04,
+      "takes": [
+        {"file": "takes/flock/moss-pt-22081-00080.wav", "from": "moss", "start": 0.05, "end": 7.4}
+      ]
+    },
+    "duck": {
+      "range": 80, "level": -16, "vary": 0.04,
+      "takes": [
+        {"file": "takes/duck/moss-pt-22090-05555.wav", "from": "moss", "start": 0.05, "end": 0.48},
+        {"file": "takes/duck/moss-pt-22090-04710.wav", "from": "moss", "start": 0.05, "end": 0.475}
+      ]
+    },
+    "tropical": {
+      "range": 1, "level": -24, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/tropical/moss-pt-22100-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "dove": {
+      "range": 40, "level": -20, "vary": 0.04,
+      "takes": [
+        {"file": "takes/dove/moss-pt-22110-01325.wav", "from": "moss", "start": 0.05, "end": 1.195}
+      ]
+    },
+    "loon": {
+      "range": 500, "level": -16, "vary": 0.04,
+      "takes": [
+        {"file": "takes/loon/moss-pt-22130-05160.wav", "from": "moss", "start": 0.05, "end": 3.355}
+      ]
+    }
+  }
+}

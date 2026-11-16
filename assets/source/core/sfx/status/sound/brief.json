@@ -1,0 +1,497 @@
+{
+  "asset": "core/sfx/status",
+  "review": "../ref/sound",
+  "about": "The body's states: shivering and freezing breath, panting in the heat, a growling stomach, gulping, chewing, burping, retching, sneezing, coughing, heartbeats, gasping up from water, drowning, held breath, yawning, snoring and burning.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "shiver": {
+      "kind": "impact",
+      "range": 8,
+      "level": -20,
+      "vary": 0.04,
+      "want": "shivering with cold",
+      "prompts": [
+        {
+          "id": "v4-22800",
+          "models": [
+            "moss"
+          ],
+          "seed": 22800,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A man shivers with cold: chattering teeth and shaky breaths, four separate shivers with pauses. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-22802",
+          "models": [
+            "moss"
+          ],
+          "seed": 22802,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woman shivers with cold: chattering teeth and shaky breaths, four separate shivers with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "cold": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "breathing in freezing air",
+      "prompts": [
+        {
+          "id": "v4-22810",
+          "models": [
+            "moss"
+          ],
+          "seed": 22810,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A man breathes hard in freezing air, sharp cold gasps and blowing out, steady. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-22811",
+          "models": [
+            "moss"
+          ],
+          "seed": 22811,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A woman breathes hard in freezing air, sharp cold gasps and blowing out, steady. Close-miked, dry, no music, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "pant": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "panting in the heat",
+      "prompts": [
+        {
+          "id": "v4-22820",
+          "models": [
+            "moss"
+          ],
+          "seed": 22820,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A man pants heavily, exhausted by the heat, steady. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-22821",
+          "models": [
+            "moss"
+          ],
+          "seed": 22821,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A woman pants heavily, exhausted by the heat, steady. Close-miked, dry, no music, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "stomach": {
+      "kind": "impact",
+      "range": 3,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a growling stomach",
+      "prompts": [
+        {
+          "id": "v4-22830",
+          "models": [
+            "moss"
+          ],
+          "seed": 22830,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A hungry stomach growls and gurgles loudly, four separate growls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "gulp": {
+      "kind": "impact",
+      "range": 5,
+      "level": -20,
+      "vary": 0.04,
+      "want": "gulping water",
+      "prompts": [
+        {
+          "id": "v4-22840",
+          "models": [
+            "moss"
+          ],
+          "seed": 22840,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A man drinks water in big gulps, four separate drinks with pauses. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-22842",
+          "models": [
+            "moss"
+          ],
+          "seed": 22842,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woman drinks water in big gulps, four separate drinks with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "chew": {
+      "kind": "impact",
+      "range": 5,
+      "level": -20,
+      "vary": 0.04,
+      "want": "chewing",
+      "prompts": [
+        {
+          "id": "v4-22850",
+          "models": [
+            "moss"
+          ],
+          "seed": 22850,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "Someone chews food noisily with crunching bites, four separate mouthfuls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "burp": {
+      "kind": "impact",
+      "range": 8,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a burp",
+      "prompts": [
+        {
+          "id": "v4-22860",
+          "models": [
+            "moss"
+          ],
+          "seed": 22860,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A man burps loudly, four separate burps with pauses. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-22862",
+          "models": [
+            "moss"
+          ],
+          "seed": 22862,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woman burps, four separate burps with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "retch": {
+      "kind": "impact",
+      "range": 8,
+      "level": -18,
+      "vary": 0.04,
+      "want": "retching",
+      "prompts": [
+        {
+          "id": "v4-22870",
+          "models": [
+            "moss"
+          ],
+          "seed": 22870,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A man retches and vomits, three separate times with pauses. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-22872",
+          "models": [
+            "moss"
+          ],
+          "seed": 22872,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woman retches and vomits, three separate times with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "sneeze": {
+      "kind": "impact",
+      "range": 10,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a sneeze",
+      "prompts": [
+        {
+          "id": "v4-22880",
+          "models": [
+            "moss"
+          ],
+          "seed": 22880,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A man sneezes, four separate sneezes with pauses. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-22882",
+          "models": [
+            "moss"
+          ],
+          "seed": 22882,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woman sneezes, four separate sneezes with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "cough": {
+      "kind": "impact",
+      "range": 10,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a cough",
+      "prompts": [
+        {
+          "id": "v4-22890",
+          "models": [
+            "moss"
+          ],
+          "seed": 22890,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A sick man coughs harshly, four separate coughing fits with pauses. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-22892",
+          "models": [
+            "moss"
+          ],
+          "seed": 22892,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A sick woman coughs harshly, four separate coughing fits with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "heartbeat": {
+      "kind": "impact",
+      "range": 1,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a heartbeat",
+      "prompts": [
+        {
+          "id": "v4-22900",
+          "models": [
+            "moss"
+          ],
+          "seed": 22900,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A slow heavy heartbeat thumping in the chest, steady."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "heartbeat/fast": {
+      "kind": "impact",
+      "range": 1,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a racing heartbeat",
+      "prompts": [
+        {
+          "id": "v4-22910",
+          "models": [
+            "moss"
+          ],
+          "seed": 22910,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A fast pounding heartbeat racing with fear, steady."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "gasp": {
+      "kind": "impact",
+      "range": 10,
+      "level": -16,
+      "vary": 0.04,
+      "want": "gasping up from water",
+      "prompts": [
+        {
+          "id": "v4-22920",
+          "models": [
+            "moss"
+          ],
+          "seed": 22920,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A man bursts up out of the water gasping for air, four separate times with pauses. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-22922",
+          "models": [
+            "moss"
+          ],
+          "seed": 22922,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woman bursts up out of the water gasping for air, four separate times with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "drown": {
+      "kind": "impact",
+      "range": 5,
+      "level": -18,
+      "vary": 0.04,
+      "want": "drowning",
+      "prompts": [
+        {
+          "id": "v4-22930",
+          "models": [
+            "moss"
+          ],
+          "seed": 22930,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A person struggles under water: muffled thrashing and bursts of bubbles, two separate struggles with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "breath": {
+      "kind": "impact",
+      "range": 5,
+      "level": -20,
+      "vary": 0.04,
+      "want": "letting out a held breath",
+      "prompts": [
+        {
+          "id": "v4-22940",
+          "models": [
+            "moss"
+          ],
+          "seed": 22940,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A man lets out a long held breath, four separate times with pauses. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-22942",
+          "models": [
+            "moss"
+          ],
+          "seed": 22942,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woman lets out a long held breath, four separate times with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "yawn": {
+      "kind": "impact",
+      "range": 5,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a yawn",
+      "prompts": [
+        {
+          "id": "v4-22950",
+          "models": [
+            "moss"
+          ],
+          "seed": 22950,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A man yawns long and loud, three separate yawns with pauses. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-22952",
+          "models": [
+            "moss"
+          ],
+          "seed": 22952,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woman yawns long and loud, three separate yawns with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "snore": {
+      "kind": "impact",
+      "range": 8,
+      "level": -20,
+      "vary": 0.04,
+      "want": "snoring",
+      "prompts": [
+        {
+          "id": "v4-22960",
+          "models": [
+            "moss"
+          ],
+          "seed": 22960,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A person snores deeply and steadily in their sleep. Close-miked, dry, no music, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "burn": {
+      "kind": "impact",
+      "range": 8,
+      "level": -18,
+      "vary": 0.04,
+      "want": "burning",
+      "prompts": [
+        {
+          "id": "v4-22970",
+          "models": [
+            "moss"
+          ],
+          "seed": 22970,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Flesh sizzles and hisses as it burns, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

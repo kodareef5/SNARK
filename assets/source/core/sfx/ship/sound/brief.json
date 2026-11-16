@@ -1,0 +1,257 @@
+{
+  "asset": "core/sfx/ship",
+  "review": "../ref/sound",
+  "about": "Ships and yachts: big marine diesels by power, the start, a deep foghorn and a yacht's air horn, the anchor chain out and in, the hull creaking and the bow wave, and the ship's bell.",
+  "notes": "v3 (vehicle round). Engine layers are 20 s beds cut to loop, played faster or slower by rpm; slot names match core:vehicle's, so a vehicle of this family is heard by them first and by core:vehicle for the rest.",
+  "slots": {
+    "engine/idle": {
+      "kind": "impact",
+      "range": 60,
+      "level": -20,
+      "vary": 0.0,
+      "want": "the marine diesel idling",
+      "prompts": [
+        {
+          "id": "v3-10000",
+          "models": [
+            "moss"
+          ],
+          "seed": 10000,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A motor yacht's big marine diesel engines idle at anchor: a deep low throbbing rumble felt through the hull, constant pitch. Recorded on deck. Steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/low": {
+      "kind": "impact",
+      "range": 80,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the marine diesel at low revs",
+      "prompts": [
+        {
+          "id": "v3-10010",
+          "models": [
+            "moss"
+          ],
+          "seed": 10010,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A ship's big marine diesel engine runs at slow ahead: a deep steady pounding throb and hum, constant pitch. Recorded on deck. Steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/mid": {
+      "kind": "impact",
+      "range": 100,
+      "level": -17,
+      "vary": 0.0,
+      "want": "the marine diesel at middle revs",
+      "prompts": [
+        {
+          "id": "v3-10020",
+          "models": [
+            "moss"
+          ],
+          "seed": 10020,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A ship's big marine diesel engine runs at cruising speed: a deep loud steady rumble and drone with water rushing along the hull, constant pitch. Recorded on deck. Steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/high": {
+      "kind": "impact",
+      "range": 120,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the marine diesel at full power",
+      "prompts": [
+        {
+          "id": "v3-10030",
+          "models": [
+            "moss"
+          ],
+          "seed": 10030,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A ship's big marine diesel engine runs at full power: a heavy roaring drone and vibration with water rushing along the hull, constant pitch. Recorded on deck. Steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/start": {
+      "kind": "impact",
+      "range": 80,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the big diesel starting on air",
+      "prompts": [
+        {
+          "id": "v3-10040",
+          "models": [
+            "moss"
+          ],
+          "seed": 10040,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 10,
+          "text": "A ship's big diesel engine starts: a hiss of compressed air, a few heavy slow chugs, and it rumbles into a steady throbbing idle, one start. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "horn": {
+      "kind": "impact",
+      "range": 800,
+      "level": -8,
+      "vary": 0.0,
+      "want": "a ship's deep foghorn",
+      "prompts": [
+        {
+          "id": "v3-10050",
+          "models": [
+            "moss"
+          ],
+          "seed": 10050,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 12,
+          "text": "A big ship sounds its deep foghorn: a long, loud, low blast over the sea, two separate blasts with long pauses. No music, no voices, quiet background."
+        }
+      ]
+    },
+    "horn/small": {
+      "kind": "impact",
+      "range": 300,
+      "level": -10,
+      "vary": 0.0,
+      "want": "a yacht's air horn",
+      "prompts": [
+        {
+          "id": "v3-10060",
+          "models": [
+            "moss"
+          ],
+          "seed": 10060,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A motor yacht's twin air horn sounds a loud bright blast, three separate blasts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "anchor/drop": {
+      "kind": "impact",
+      "range": 80,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the anchor chain roaring out",
+      "prompts": [
+        {
+          "id": "v3-10070",
+          "models": [
+            "moss"
+          ],
+          "seed": 10070,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 10,
+          "text": "A ship's anchor is dropped: the heavy chain rattles and roars out through the hawse pipe and the anchor splashes into the sea, one drop. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "anchor/raise": {
+      "kind": "impact",
+      "range": 60,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the windlass hauling the chain in",
+      "prompts": [
+        {
+          "id": "v3-10080",
+          "models": [
+            "moss"
+          ],
+          "seed": 10080,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 10,
+          "text": "A ship's anchor is raised: an electric windlass grinds and the heavy chain clanks in link by link, steady, one haul. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "hull/slow": {
+      "kind": "impact",
+      "range": 30,
+      "level": -24,
+      "vary": 0.0,
+      "want": "the hull creaking and water sloshing at anchor",
+      "prompts": [
+        {
+          "id": "v3-10090",
+          "models": [
+            "moss"
+          ],
+          "seed": 10090,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Aboard a wooden yacht at sea: the hull and timbers creak and groan slowly with the swell and water sloshes against the side, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "hull/fast": {
+      "kind": "impact",
+      "range": 60,
+      "level": -20,
+      "vary": 0.0,
+      "want": "the bow wave rushing along the hull",
+      "prompts": [
+        {
+          "id": "v3-10100",
+          "models": [
+            "moss"
+          ],
+          "seed": 10100,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "The bow of a large ship cuts through the sea: a heavy steady rushing wash of water and foam along the hull, constant. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "bell": {
+      "kind": "impact",
+      "range": 120,
+      "level": -12,
+      "vary": 0.0,
+      "want": "the ship's bell",
+      "prompts": [
+        {
+          "id": "v3-10110",
+          "models": [
+            "moss"
+          ],
+          "seed": 10110,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A ship's brass bell rings, two sharp clangs at a time, four separate rings with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

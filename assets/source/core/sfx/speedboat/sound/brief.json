@@ -1,0 +1,173 @@
+{
+  "asset": "core/sfx/speedboat",
+  "review": "../ref/sound",
+  "about": "Speedboats: a big V8 inboard by throttle, its start and revs, spray at speed and the hull slamming on waves; the rest falls back to core:boat.",
+  "notes": "v3 (vehicle round). Engine layers are 20 s beds cut to loop, played faster or slower by rpm; slot names match core:vehicle's, so a vehicle of this family is heard by them first and by core:vehicle for the rest.",
+  "slots": {
+    "engine/idle": {
+      "kind": "impact",
+      "range": 80,
+      "level": -20,
+      "vary": 0.0,
+      "want": "the V8 inboard idling",
+      "prompts": [
+        {
+          "id": "v3-9600",
+          "models": [
+            "moss"
+          ],
+          "seed": 9600,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A powerful speedboat's big V8 inboard engine idles at the dock: a deep lumpy rumbling burble through wet exhausts with water gurgling, constant. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/low": {
+      "kind": "impact",
+      "range": 120,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the V8 inboard at low revs",
+      "prompts": [
+        {
+          "id": "v3-9610",
+          "models": [
+            "moss"
+          ],
+          "seed": 9610,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A powerful speedboat cruises slowly: a deep throaty V8 rumble with water gurgling at the exhaust, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/mid": {
+      "kind": "impact",
+      "range": 160,
+      "level": -15,
+      "vary": 0.0,
+      "want": "the V8 inboard at middle revs",
+      "prompts": [
+        {
+          "id": "v3-9620",
+          "models": [
+            "moss"
+          ],
+          "seed": 9620,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A powerful speedboat runs at speed: a loud deep V8 roar and rushing water, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/high": {
+      "kind": "impact",
+      "range": 200,
+      "level": -12,
+      "vary": 0.0,
+      "want": "the V8 inboard at full power",
+      "prompts": [
+        {
+          "id": "v3-9630",
+          "models": [
+            "moss"
+          ],
+          "seed": 9630,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A powerful speedboat runs flat out: a thunderous howling V8 roar with water hissing past, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/start": {
+      "kind": "impact",
+      "range": 80,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the starter and the V8 barking into life",
+      "prompts": [
+        {
+          "id": "v3-9640",
+          "models": [
+            "moss"
+          ],
+          "seed": 9640,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A speedboat's big V8 engine is started: the starter cranks, the engine fires with a loud rumbling bark and settles into a lumpy burbling idle, two separate starts with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "engine/rev": {
+      "kind": "impact",
+      "range": 120,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the V8 revved in neutral",
+      "prompts": [
+        {
+          "id": "v3-9650",
+          "models": [
+            "moss"
+          ],
+          "seed": 9650,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A speedboat's big V8 engine is revved hard in neutral: a loud rising roar and a falling burble, four separate revs with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hull/fast": {
+      "kind": "impact",
+      "range": 60,
+      "level": -18,
+      "vary": 0.0,
+      "want": "spray and water roaring past at speed",
+      "prompts": [
+        {
+          "id": "v3-9660",
+          "models": [
+            "moss"
+          ],
+          "seed": 9660,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A speedboat planes fast over the sea: a roaring rush of water and hissing spray against the hull with wind, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "slam": {
+      "kind": "impact",
+      "range": 80,
+      "level": -12,
+      "vary": 0.0,
+      "want": "the hull slamming down off a wave",
+      "prompts": [
+        {
+          "id": "v3-9670",
+          "models": [
+            "moss"
+          ],
+          "seed": 9670,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A speedboat at speed jumps a wave and slams down hard: a loud hollow bang of the hull and a heavy burst of spray, four separate slams with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

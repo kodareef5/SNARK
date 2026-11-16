@@ -29,7 +29,12 @@ def mono24(src, a, b):
     return np.clip(np.round(m * FULL), -FULL, FULL - 1).astype(np.int32), rate
 
 
-def write24(dst, q, rate):
+def write24(dst, q, rate, bits=24):
+    """Store 24-bit values as 24-bit PCM, or rounded to 16 bits (a brief's `"bits": 16`: a library kept small)."""
+    if bits == 16:
+        q = np.clip((q + 128) >> 8, -32768, 32767) << 8
+        sf.write(str(dst), (q << 8).astype(np.int32), rate, subtype="PCM_16", format="WAV")
+        return
     # soundfile scales floats by 2^23 - 1; int32 holding the 24-bit value in its top bits is stored as is
     sf.write(str(dst), (q << 8).astype(np.int32), rate, subtype="PCM_24", format="WAV")
 
@@ -39,20 +44,20 @@ def read24(path):
     return x[:, 0] >> 8, rate
 
 
-def write_cut(src, dst, start, end):
+def write_cut(src, dst, start, end, bits=24):
     """Write the cut of src around start..end seconds to dst; return the recipe's "cut" and the new bounds."""
     info = sf.info(str(src))
     a, b = cut_frames(info, start, end)
     q, rate = mono24(src, a, b)
     Path(dst).parent.mkdir(parents=True, exist_ok=True)
-    write24(dst, q, rate)
+    write24(dst, q, rate, bits)
     cut = {"source_file": Path(src).name, "source_frames": info.frames, "source_channels": info.channels,
-           "source_subtype": info.subtype, "frames": [a, b], "rate": rate, "stored_as": "mono PCM_24",
+           "source_subtype": info.subtype, "frames": [a, b], "rate": rate, "stored_as": f"mono PCM_{bits}",
            "margin_seconds": MARGIN}
     return cut, round(start - a / rate, 3), round(end - a / rate, 3)
 
 
-def write_loop(src, dst, start, end, xfade=0.75):
+def write_loop(src, dst, start, end, xfade=0.75, bits=24):
     """Cut start..end seconds of src to loop seamlessly: the stretch after `end` is crossfaded into its head, equal power."""
     info = sf.info(str(src))
     a = max(0, int(round(start * info.samplerate)))
@@ -67,9 +72,9 @@ def write_loop(src, dst, start, end, xfade=0.75):
     body[:n] = body[:n] * np.sin(t * np.pi / 2) + m[b - a:] * np.cos(t * np.pi / 2)
     q = np.clip(np.round(body * FULL), -FULL, FULL - 1).astype(np.int32)
     Path(dst).parent.mkdir(parents=True, exist_ok=True)
-    write24(dst, q, rate)
+    write24(dst, q, rate, bits)
     cut = {"source_file": Path(src).name, "source_frames": info.frames, "source_channels": info.channels,
-           "source_subtype": info.subtype, "frames": [a, b], "rate": rate, "stored_as": "mono PCM_24",
+           "source_subtype": info.subtype, "frames": [a, b], "rate": rate, "stored_as": f"mono PCM_{bits}",
            "loop_crossfade_frames": n}
     return cut, 0.0, round((b - a) / rate, 3)
 
@@ -84,6 +89,8 @@ def same_cut(made_source, kept, cut):
         tmp.unlink(missing_ok=True)
     else:
         y, _ = mono24(made_source, a, b)
+        if cut.get("stored_as") == "mono PCM_16":
+            y = np.clip((y + 128) >> 8, -32768, 32767) << 8
     k, _ = read24(kept)
     if y.shape != k.shape:
         return False, {"same_shape": False}

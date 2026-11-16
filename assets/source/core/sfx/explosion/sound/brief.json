@@ -1,0 +1,317 @@
+{
+  "asset": "core/sfx/explosion",
+  "review": "../ref/sound",
+  "about": "Explosions by size and kind, far and under water, fuses, rockets, debris after, the shockwave and the ringing ears.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "small": {
+      "kind": "impact",
+      "range": 150,
+      "level": -10,
+      "vary": 0.04,
+      "want": "a small explosion",
+      "prompts": [
+        {
+          "id": "v4-20000",
+          "models": [
+            "moss"
+          ],
+          "seed": 20000,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 10,
+          "text": "A small explosion: a sharp loud bang with a short crackle of debris, three separate explosions with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "medium": {
+      "kind": "impact",
+      "range": 250,
+      "level": -8,
+      "vary": 0.04,
+      "want": "a grenade-sized explosion",
+      "prompts": [
+        {
+          "id": "v4-20010",
+          "models": [
+            "moss"
+          ],
+          "seed": 20010,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 12,
+          "text": "A medium explosion: a heavy booming blast and a burst of flying dirt and debris, two separate explosions with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "large": {
+      "kind": "impact",
+      "range": 400,
+      "level": -6,
+      "vary": 0.04,
+      "want": "a big explosion",
+      "prompts": [
+        {
+          "id": "v4-20020",
+          "models": [
+            "moss"
+          ],
+          "seed": 20020,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 10,
+          "text": "A big explosion: a deep thunderous blast that rolls and rumbles away, debris falling after, one explosion. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "whole": true
+    },
+    "huge": {
+      "kind": "impact",
+      "range": 800,
+      "level": -4,
+      "vary": 0.04,
+      "want": "a huge explosion",
+      "prompts": [
+        {
+          "id": "v4-20030",
+          "models": [
+            "moss"
+          ],
+          "seed": 20030,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 12,
+          "text": "A huge explosion: an enormous earth-shaking boom with a long deep rumbling roar and a rain of debris, one explosion. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "whole": true
+    },
+    "distant": {
+      "kind": "impact",
+      "range": 2000,
+      "level": -14,
+      "vary": 0.04,
+      "want": "explosions far away",
+      "prompts": [
+        {
+          "id": "v4-20040",
+          "models": [
+            "moss"
+          ],
+          "seed": 20040,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 12,
+          "text": "Distant explosions far away: deep muffled booms echoing across a valley, three separate booms with long pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "fuse": {
+      "kind": "impact",
+      "range": 15,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a fuse burning down",
+      "prompts": [
+        {
+          "id": "v4-20050",
+          "models": [
+            "moss"
+          ],
+          "seed": 20050,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A lit fuse hisses and fizzes and sparks as it burns down, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "dynamite": {
+      "kind": "impact",
+      "range": 250,
+      "level": -8,
+      "vary": 0.04,
+      "want": "a stick of dynamite",
+      "prompts": [
+        {
+          "id": "v4-20060",
+          "models": [
+            "moss"
+          ],
+          "seed": 20060,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 12,
+          "text": "A short fuse fizzes for a moment, then a stick of dynamite explodes with a sharp cracking bang, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "fireball": {
+      "kind": "impact",
+      "range": 300,
+      "level": -8,
+      "vary": 0.04,
+      "want": "a fuel tank going up in flames",
+      "prompts": [
+        {
+          "id": "v4-20070",
+          "models": [
+            "moss"
+          ],
+          "seed": 20070,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A fuel tank explodes in a huge whooshing fireball, flames roaring and crackling after, one explosion. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "rocket/launch": {
+      "kind": "impact",
+      "range": 200,
+      "level": -10,
+      "vary": 0.04,
+      "want": "a rocket launched",
+      "prompts": [
+        {
+          "id": "v4-20080",
+          "models": [
+            "moss"
+          ],
+          "seed": 20080,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A rocket launcher fires: a sharp thump and a loud rushing whoosh of the rocket speeding away, three separate launches with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "rocket/hit": {
+      "kind": "impact",
+      "range": 400,
+      "level": -8,
+      "vary": 0.04,
+      "want": "a rocket striking",
+      "prompts": [
+        {
+          "id": "v4-20090",
+          "models": [
+            "moss"
+          ],
+          "seed": 20090,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 12,
+          "text": "A rocket streaks in with a whistling whoosh and hits with a violent explosion, two separate strikes with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "debris": {
+      "kind": "impact",
+      "range": 60,
+      "level": -16,
+      "vary": 0.04,
+      "want": "debris raining down after a blast",
+      "prompts": [
+        {
+          "id": "v4-20100",
+          "models": [
+            "moss"
+          ],
+          "seed": 20100,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Debris rains down after an explosion: rocks, dirt and twisted metal pieces clattering and pattering onto the ground, one shower. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "underwater": {
+      "kind": "impact",
+      "range": 200,
+      "level": -10,
+      "vary": 0.04,
+      "want": "an explosion under water",
+      "prompts": [
+        {
+          "id": "v4-20110",
+          "models": [
+            "moss"
+          ],
+          "seed": 20110,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A muffled underwater explosion: a deep thud and a rushing boil of bubbles, three separate explosions with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "firework": {
+      "kind": "impact",
+      "range": 400,
+      "level": -12,
+      "vary": 0.04,
+      "want": "fireworks",
+      "prompts": [
+        {
+          "id": "v4-20120",
+          "models": [
+            "moss"
+          ],
+          "seed": 20120,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "Fireworks: a whistling rocket shoots up and bursts with a crackling bang and fizzing sparkles, three separate fireworks with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "shockwave": {
+      "kind": "impact",
+      "range": 200,
+      "level": -10,
+      "vary": 0.04,
+      "want": "the rush of a blast wave",
+      "prompts": [
+        {
+          "id": "v4-20130",
+          "models": [
+            "moss"
+          ],
+          "seed": 20130,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 6,
+          "text": "The rushing roaring whoosh of an explosion's shockwave blowing past, one blast wave. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "ringing": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.04,
+      "want": "the ears ringing after a blast",
+      "prompts": [
+        {
+          "id": "v4-20140",
+          "models": [
+            "moss"
+          ],
+          "seed": 20140,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 10,
+          "text": "Ears ringing after a nearby explosion: a high thin steady whine with muffled dull silence, slowly fading, one ringing."
+        }
+      ],
+      "whole": true,
+      "space": "ear"
+    }
+  }
+}

@@ -37,10 +37,10 @@ def write_sounds(home, sounds):
     (home / "sounds.json").write_text(text)
 
 
-def store(home, slot, src, rec, start, end, loop=False):
+def store(home, slot, src, rec, start, end, loop=False, bits=24):
     """Cut src into the asset (to loop seamlessly if `loop`); return its sounds.json entry and its recipe."""
     rel = f"takes/{slot}/{Path(rec['file']).stem}-{int(round(start * 1000)):05d}.wav"
-    c, s, e = (cut.write_loop if loop else cut.write_cut)(src, home / rel, start, end)
+    c, s, e = cut.write_loop(src, home / rel, start, end, bits=bits) if loop else cut.write_cut(src, home / rel, start, end, bits)
     r = dict(rec)
     r["source_sha256"] = rec.get("source_sha256", rec["sha256"])
     r["cut"] = c
@@ -92,7 +92,7 @@ def main():
             rel = f"takes/{slot}/{Path(rec['file']).stem}-{int(round(start * 1000)):05d}.wav"
             if any(t["file"] == rel for t in entries):
                 continue  # accepted already: picks may be given again
-            rel, entry, rr = store(home, slot, src, rec, start, end, spec.get("loop", False))
+            rel, entry, rr = store(home, slot, src, rec, start, end, spec.get("loop", False), brief.get("bits", 24))
             keep_recipes[rel] = rr
             entries.append(entry)
         if entries:

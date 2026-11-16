@@ -1,0 +1,64 @@
+{
+  "sounds": {
+    "engine/idle": {
+      "range": 100, "level": -18, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/idle/moss-pt-9202-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "engine/low": {
+      "range": 200, "level": -16, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/low/moss-pt-9211-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "engine/mid": {
+      "range": 300, "level": -14, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/mid/moss-pt-9220-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "engine/high": {
+      "range": 350, "level": -12, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/high/moss-pt-9231-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "engine/start": {
+      "range": 100, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/engine/start/moss-pt-9240-00200.wav", "from": "moss", "start": 0.05, "end": 8.75}
+      ]
+    },
+    "engine/stop": {
+      "range": 100, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/engine/stop/moss-pt-9250-00200.wav", "from": "moss", "start": 0.05, "end": 7.75}
+      ]
+    },
+    "flyby": {
+      "range": 500, "level": -12, "vary": 0.0,
+      "takes": [
+        {"file": "takes/flyby/moss-pt-9261-00200.wav", "from": "moss", "start": 0.05, "end": 8.75}
+      ]
+    },
+    "gear": {
+      "range": 40, "level": -18, "vary": 0.0,
+      "takes": [
+        {"file": "takes/gear/moss-pt-9270-05165.wav", "from": "moss", "start": 0.05, "end": 2.885}
+      ]
+    },
+    "stall": {
+      "range": 5, "level": -18, "vary": 0.0,
+      "takes": [
+        {"file": "takes/stall/moss-pt-9290-00000.wav", "from": "moss", "start": 0.0, "end": 2.135}
+      ]
+    },
+    "cabin": {
+      "range": 1, "level": -24, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/cabin/moss-pt-9300-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    }
+  }
+}

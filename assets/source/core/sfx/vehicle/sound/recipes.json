@@ -525,6 +525,156 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/engine/stall/moss-pt-7700-06030.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/stall",
+      "prompt_id": "v3-7700",
+      "prompt": "A car engine runs roughly, coughs and splutters, and dies into silence, two separate stalls with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7700,
+      "seconds": 10,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7700.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A car engine runs roughly, coughs and splutters, and dies into silence, two separate stalls with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 10.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 40.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "9707bd1f8b508f0053a734f83b069e6344d16e7a89f151be5993c09aeaccdd0d",
+      "worker": {
+        "takes": 4,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 140.3,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 5.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a61245118528b75c517b339f7a9554c73cce8dc10f44f88d73f8b550312a1571",
+      "cut": {
+        "source_file": "moss-pt-7700.wav",
+        "source_frames": 480000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          287040,
+          480000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/engine/stall/moss-pt-7701-01245.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/stall",
+      "prompt_id": "v3-7700",
+      "prompt": "A car engine runs roughly, coughs and splutters, and dies into silence, two separate stalls with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7701,
+      "seconds": 10,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7701.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A car engine runs roughly, coughs and splutters, and dies into silence, two separate stalls with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 10.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "050bb2cd0761aae7a4eb7269cb46f8ab007ef1f58d6eaa2de802ce26887e46d4",
+      "worker": {
+        "takes": 4,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 140.3,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 5.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a012b60a46701c9739020c9911d2fc66429ac9863119b12ae6d32d0262bcddac",
+      "cut": {
+        "source_file": "moss-pt-7701.wav",
+        "source_frames": 480000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          57360,
+          471360
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/shift/moss-pt-7470-00040.wav": {
       "model": "moss",
       "backend": "torch",
@@ -2394,6 +2544,156 @@
         "frames": [
           0,
           33600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/suspension/moss-pt-7710-02125.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "suspension",
+      "prompt_id": "v3-7710",
+      "prompt": "A car's suspension bottoms out over a bump: a deep metallic clunk and a spring creak, five separate bumps with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7710,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7710.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A car's suspension bottoms out over a bump: a deep metallic clunk and a spring creak, five separate bumps with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "82e83e6862c7573e0aafc6005d5c660d53dfaf82acf287739dc0bca5fb51c7ff",
+      "worker": {
+        "takes": 4,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 140.3,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 5.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "90d9b6cc78f31617c27237cb6e555174b2d7d61939d5174c78d2b603dba1d1bb",
+      "cut": {
+        "source_file": "moss-pt-7710.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          99600,
+          380880
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/suspension/moss-pt-7711-00415.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "suspension",
+      "prompt_id": "v3-7710",
+      "prompt": "A car's suspension bottoms out over a bump: a deep metallic clunk and a spring creak, five separate bumps with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7711,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7711.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A car's suspension bottoms out over a bump: a deep metallic clunk and a spring creak, five separate bumps with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "884cf273d6733f0b6e772d7f00bfb6748c13bb78c19a117fad155fde6d529a20",
+      "worker": {
+        "takes": 4,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 140.3,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 5.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "e654a27b6d782f470e15120fcca8b1a2847a875738fb018023efb6bca1db4b07",
+      "cut": {
+        "source_file": "moss-pt-7711.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          17520,
+          106800
         ],
         "rate": 48000,
         "stored_as": "mono PCM_24",

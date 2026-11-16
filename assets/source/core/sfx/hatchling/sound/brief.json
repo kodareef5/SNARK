@@ -1,0 +1,250 @@
+{
+  "asset": "core/sfx/hatchling",
+  "review": "../ref/sound",
+  "about": "Baby dinosaurs and eggs: small chirps, hungry peeps, happy trills, scared squeals, a calf's bleat, a baby predator's squeak, a baby flyer's squawk, a sleepy purr, eggs cracking, hatching and laid, and nibbling.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "chirp": {
+      "kind": "impact",
+      "range": 20,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a baby dinosaur chirping",
+      "prompts": [
+        {
+          "id": "v4-22600",
+          "models": [
+            "moss"
+          ],
+          "seed": 22600,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A tiny baby dinosaur chirps and cheeps, high bird-like little calls, five separate chirps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hungry": {
+      "kind": "impact",
+      "range": 20,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a hatchling begging for food",
+      "prompts": [
+        {
+          "id": "v4-22610",
+          "models": [
+            "moss"
+          ],
+          "seed": 22610,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A hungry baby reptile hatchling peeps insistently, begging for food, four separate bursts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "happy": {
+      "kind": "impact",
+      "range": 15,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a hatchling's happy trill",
+      "prompts": [
+        {
+          "id": "v4-22620",
+          "models": [
+            "moss"
+          ],
+          "seed": 22620,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A happy baby dinosaur makes a soft bubbling trill and chirrups, four separate trills with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "scared": {
+      "kind": "impact",
+      "range": 30,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a hatchling's scared squeal",
+      "prompts": [
+        {
+          "id": "v4-22630",
+          "models": [
+            "moss"
+          ],
+          "seed": 22630,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A frightened baby dinosaur squeals in alarm, a shrill squeaky cry, four separate squeals with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "bleat": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a baby herbivore's bleat",
+      "prompts": [
+        {
+          "id": "v4-22640",
+          "models": [
+            "moss"
+          ],
+          "seed": 22640,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A baby plant-eating dinosaur calf bleats and lows softly, a gentle honking moo, four separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "squeak": {
+      "kind": "impact",
+      "range": 25,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a baby predator trying to roar",
+      "prompts": [
+        {
+          "id": "v4-22650",
+          "models": [
+            "moss"
+          ],
+          "seed": 22650,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A baby predator dinosaur tries to roar but only makes a squeaky little growl, four separate tries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "squawk": {
+      "kind": "impact",
+      "range": 30,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a baby flyer's squawk",
+      "prompts": [
+        {
+          "id": "v4-22660",
+          "models": [
+            "moss"
+          ],
+          "seed": 22660,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A baby pterosaur squawks and screeches for its mother, four separate squawks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "sleepy": {
+      "kind": "impact",
+      "range": 10,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a hatchling dozing",
+      "prompts": [
+        {
+          "id": "v4-22670",
+          "models": [
+            "moss"
+          ],
+          "seed": 22670,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A sleepy baby dinosaur purrs and coos softly as it dozes, four separate purrs with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "egg/crack": {
+      "kind": "impact",
+      "range": 10,
+      "level": -20,
+      "vary": 0.04,
+      "want": "an egg cracking",
+      "prompts": [
+        {
+          "id": "v4-22680",
+          "models": [
+            "moss"
+          ],
+          "seed": 22680,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "An eggshell cracks: small sharp crackles and pecks from inside, four separate cracks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "egg/hatch": {
+      "kind": "impact",
+      "range": 15,
+      "level": -16,
+      "vary": 0.04,
+      "want": "an egg hatching",
+      "prompts": [
+        {
+          "id": "v4-22690",
+          "models": [
+            "moss"
+          ],
+          "seed": 22690,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A large egg hatches: the shell cracks open, breaks apart wetly and a baby creature chirps, one hatching. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "egg/lay": {
+      "kind": "impact",
+      "range": 10,
+      "level": -20,
+      "vary": 0.04,
+      "want": "an egg laid",
+      "prompts": [
+        {
+          "id": "v4-22700",
+          "models": [
+            "moss"
+          ],
+          "seed": 22700,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A large egg drops softly onto a nest of straw with a dull thud, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "nibble": {
+      "kind": "impact",
+      "range": 8,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a hatchling eating",
+      "prompts": [
+        {
+          "id": "v4-22710",
+          "models": [
+            "moss"
+          ],
+          "seed": 22710,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A baby dinosaur nibbles and chews little bites of food with tiny smacks, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

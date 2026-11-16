@@ -1,0 +1,96 @@
+{
+  "sounds": {
+    "thunder/near": {
+      "range": 3000, "level": -6, "vary": 0.04,
+      "takes": [
+        {"file": "takes/thunder/near/moss-pt-20202-00200.wav", "from": "moss", "start": 0.05, "end": 8.75}
+      ]
+    },
+    "thunder/far": {
+      "range": 5000, "level": -14, "vary": 0.04,
+      "takes": [
+        {"file": "takes/thunder/far/moss-pt-20210-00200.wav", "from": "moss", "start": 0.05, "end": 8.75}
+      ]
+    },
+    "thunder/roll": {
+      "range": 4000, "level": -10, "vary": 0.04,
+      "takes": [
+        {"file": "takes/thunder/roll/moss-pt-20220-00200.wav", "from": "moss", "start": 0.05, "end": 8.75}
+      ]
+    },
+    "lightning": {
+      "range": 1500, "level": -8, "vary": 0.04,
+      "takes": [
+        {"file": "takes/lightning/moss-pt-20231-00400.wav", "from": "moss", "start": 0.05, "end": 6.328},
+        {"file": "takes/lightning/moss-pt-20230-02300.wav", "from": "moss", "start": 0.05, "end": 6.41},
+        {"file": "takes/lightning/moss-pt-20230-00430.wav", "from": "moss", "start": 0.05, "end": 0.79}
+      ]
+    },
+    "rain/drizzle": {
+      "range": 1, "level": -26, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/rain/drizzle/moss-pt-20240-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "rain/leaves": {
+      "range": 1, "level": -24, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/rain/leaves/moss-pt-20251-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "rain/roof": {
+      "range": 1, "level": -24, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/rain/roof/moss-pt-20260-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "rain/canvas": {
+      "range": 1, "level": -24, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/rain/canvas/moss-pt-20270-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "rain/water": {
+      "range": 1, "level": -24, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/rain/water/moss-pt-20280-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "rain/storm": {
+      "range": 1, "level": -20, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/rain/storm/moss-pt-20291-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "rain/drips": {
+      "range": 1, "level": -28, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/rain/drips/moss-pt-20300-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "hail": {
+      "range": 1, "level": -22, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/hail/moss-pt-20310-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "wind/gale": {
+      "range": 1, "level": -20, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/wind/gale/moss-pt-20330-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "blizzard": {
+      "range": 1, "level": -20, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/blizzard/moss-pt-20340-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "sandstorm": {
+      "range": 1, "level": -20, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/sandstorm/moss-pt-20350-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    }
+  }
+}

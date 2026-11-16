@@ -1,0 +1,101 @@
+{
+  "sounds": {
+    "dive": {
+      "range": 30, "level": -14, "vary": 0.04,
+      "takes": [
+        {"file": "takes/dive/moss-pt-23201-04980.wav", "from": "moss", "start": 0.05, "end": 2.315},
+        {"file": "takes/dive/moss-pt-23202-00235.wav", "from": "moss", "start": 0.05, "end": 2.245},
+        {"file": "takes/dive/moss-pt-23200-04320.wav", "from": "moss", "start": 0.05, "end": 2.92},
+        {"file": "takes/dive/moss-pt-23201-00480.wav", "from": "moss", "start": 0.05, "end": 1.54}
+      ]
+    },
+    "underwater": {
+      "range": 1, "level": -22, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/underwater/moss-pt-23210-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "tread": {
+      "range": 8, "level": -22, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/tread/moss-pt-23220-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "wade": {
+      "range": 15, "level": -20, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/wade/moss-pt-23230-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "fall": {
+      "range": 1, "level": -18, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/fall/moss-pt-23240-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "splat": {
+      "range": 40, "level": -12, "vary": 0.04,
+      "takes": [
+        {"file": "takes/splat/moss-pt-23251-00580.wav", "from": "moss", "start": 0.05, "end": 0.6},
+        {"file": "takes/splat/moss-pt-23250-03220.wav", "from": "moss", "start": 0.05, "end": 0.235},
+        {"file": "takes/splat/moss-pt-23250-04700.wav", "from": "moss", "start": 0.05, "end": 0.235},
+        {"file": "takes/splat/moss-pt-23251-05355.wav", "from": "moss", "start": 0.05, "end": 0.32}
+      ]
+    },
+    "ladder": {
+      "range": 15, "level": -20, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/ladder/moss-pt-23260-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "rock": {
+      "range": 10, "level": -20, "vary": 0.04,
+      "takes": [
+        {"file": "takes/rock/moss-pt-23270-06765.wav", "from": "moss", "start": 0.05, "end": 0.26},
+        {"file": "takes/rock/moss-pt-23270-00335.wav", "from": "moss", "start": 0.05, "end": 0.17}
+      ]
+    },
+    "rope": {
+      "range": 10, "level": -22, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/rope/moss-pt-23280-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "mantle": {
+      "range": 10, "level": -18, "vary": 0.04,
+      "takes": [
+        {"file": "takes/mantle/moss-pt-23290-04950.wav", "from": "moss", "start": 0.05, "end": 0.88},
+        {"file": "takes/mantle/moss-pt-23291-03005.wav", "from": "moss", "start": 0.05, "end": 0.62},
+        {"file": "takes/mantle/moss-pt-23293-04280.wav", "from": "moss", "start": 0.05, "end": 1.445},
+        {"file": "takes/mantle/moss-pt-23291-01030.wav", "from": "moss", "start": 0.05, "end": 0.595}
+      ]
+    },
+    "parachute": {
+      "range": 40, "level": -14, "vary": 0.04,
+      "takes": [
+        {"file": "takes/parachute/moss-pt-23300-06500.wav", "from": "moss", "start": 0.05, "end": 0.715},
+        {"file": "takes/parachute/moss-pt-23301-00550.wav", "from": "moss", "start": 0.05, "end": 0.53},
+        {"file": "takes/parachute/moss-pt-23300-02555.wav", "from": "moss", "start": 0.05, "end": 0.615},
+        {"file": "takes/parachute/moss-pt-23301-04580.wav", "from": "moss", "start": 0.05, "end": 0.51}
+      ]
+    },
+    "zipline": {
+      "range": 30, "level": -18, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/zipline/moss-pt-23310-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "crawl": {
+      "range": 6, "level": -22, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/crawl/moss-pt-23320-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "slide": {
+      "range": 15, "level": -18, "vary": 0.04,
+      "takes": [
+        {"file": "takes/slide/moss-pt-23331-00860.wav", "from": "moss", "start": 0.05, "end": 5.27}
+      ]
+    }
+  }
+}

@@ -1,0 +1,590 @@
+{
+  "asset": "core/sfx/item",
+  "review": "../ref/sound",
+  "about": "Things in the hand: picked up and dropped by what they are made of, bags, pouches, coins, keys, paper, books, a bottle, pills, bandages, a syringe, a flashlight, a lighter, a radio, a battery, a map, a chain, rummaging and putting on armour and clothes.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "pick/cloth": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "picking up cloth",
+      "prompts": [
+        {
+          "id": "v4-24400",
+          "models": [
+            "moss"
+          ],
+          "seed": 24400,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A piece of cloth is picked up with a soft rustle, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "pick/metal": {
+      "kind": "impact",
+      "range": 4,
+      "level": -20,
+      "vary": 0.04,
+      "want": "picking up metal",
+      "prompts": [
+        {
+          "id": "v4-24410",
+          "models": [
+            "moss"
+          ],
+          "seed": 24410,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A small metal tool is picked up with a light clink, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "pick/wood": {
+      "kind": "impact",
+      "range": 4,
+      "level": -20,
+      "vary": 0.04,
+      "want": "picking up wood",
+      "prompts": [
+        {
+          "id": "v4-24420",
+          "models": [
+            "moss"
+          ],
+          "seed": 24420,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A piece of wood is picked up with a hollow knock, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "pick/stone": {
+      "kind": "impact",
+      "range": 4,
+      "level": -20,
+      "vary": 0.04,
+      "want": "picking up stone",
+      "prompts": [
+        {
+          "id": "v4-24430",
+          "models": [
+            "moss"
+          ],
+          "seed": 24430,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A stone is picked up off rocky ground with a gritty scrape, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "pick/glass": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "picking up glass",
+      "prompts": [
+        {
+          "id": "v4-24440",
+          "models": [
+            "moss"
+          ],
+          "seed": 24440,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A glass bottle is picked up with a faint clink, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "pick/bits": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "picking up small bits",
+      "prompts": [
+        {
+          "id": "v4-24450",
+          "models": [
+            "moss"
+          ],
+          "seed": 24450,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A handful of small seeds and pebbles is scooped up, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "drop/metal": {
+      "kind": "impact",
+      "range": 10,
+      "level": -18,
+      "vary": 0.04,
+      "want": "dropping metal",
+      "prompts": [
+        {
+          "id": "v4-24460",
+          "models": [
+            "moss"
+          ],
+          "seed": 24460,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A metal object is dropped on the ground with a clank, five separate drops with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "drop/wood": {
+      "kind": "impact",
+      "range": 10,
+      "level": -18,
+      "vary": 0.04,
+      "want": "dropping wood",
+      "prompts": [
+        {
+          "id": "v4-24470",
+          "models": [
+            "moss"
+          ],
+          "seed": 24470,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A wooden object is dropped on the ground with a clunk, five separate drops with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "drop/soft": {
+      "kind": "impact",
+      "range": 8,
+      "level": -20,
+      "vary": 0.04,
+      "want": "dropping something soft",
+      "prompts": [
+        {
+          "id": "v4-24480",
+          "models": [
+            "moss"
+          ],
+          "seed": 24480,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A soft bundle of hide is dropped on the ground with a dull thump, five separate drops with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "zip": {
+      "kind": "impact",
+      "range": 4,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a bag zip",
+      "prompts": [
+        {
+          "id": "v4-24490",
+          "models": [
+            "moss"
+          ],
+          "seed": 24490,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A backpack zipper is zipped open and closed, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "pouch": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a leather pouch",
+      "prompts": [
+        {
+          "id": "v4-24500",
+          "models": [
+            "moss"
+          ],
+          "seed": 24500,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A leather pouch is opened and its drawstring pulled, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "coins": {
+      "kind": "impact",
+      "range": 5,
+      "level": -20,
+      "vary": 0.04,
+      "want": "coins",
+      "prompts": [
+        {
+          "id": "v4-24510",
+          "models": [
+            "moss"
+          ],
+          "seed": 24510,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A handful of coins jingles and clinks, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "keys": {
+      "kind": "impact",
+      "range": 5,
+      "level": -20,
+      "vary": 0.04,
+      "want": "keys",
+      "prompts": [
+        {
+          "id": "v4-24520",
+          "models": [
+            "moss"
+          ],
+          "seed": 24520,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A ring of keys jangles, five separate jangles with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "paper": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "paper",
+      "prompts": [
+        {
+          "id": "v4-24530",
+          "models": [
+            "moss"
+          ],
+          "seed": 24530,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A sheet of paper rustles and is folded, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "book": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a book's pages",
+      "prompts": [
+        {
+          "id": "v4-24540",
+          "models": [
+            "moss"
+          ],
+          "seed": 24540,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A book's pages are flipped and turned, four separate turns with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "bottle": {
+      "kind": "impact",
+      "range": 5,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a bottle opened",
+      "prompts": [
+        {
+          "id": "v4-24550",
+          "models": [
+            "moss"
+          ],
+          "seed": 24550,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A cork is pulled from a bottle with a pop, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "pills": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "pills rattling",
+      "prompts": [
+        {
+          "id": "v4-24560",
+          "models": [
+            "moss"
+          ],
+          "seed": 24560,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Pills rattle in a plastic bottle, five separate shakes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "bandage": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a bandage wrapped",
+      "prompts": [
+        {
+          "id": "v4-24570",
+          "models": [
+            "moss"
+          ],
+          "seed": 24570,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A cloth bandage is unrolled, torn and wrapped tight, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "syringe": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a syringe",
+      "prompts": [
+        {
+          "id": "v4-24580",
+          "models": [
+            "moss"
+          ],
+          "seed": 24580,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A syringe cap is popped off and the plunger pushed with a hiss, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "flashlight": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a flashlight clicked",
+      "prompts": [
+        {
+          "id": "v4-24590",
+          "models": [
+            "moss"
+          ],
+          "seed": 24590,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A flashlight's switch clicks on and off, five separate clicks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "lighter": {
+      "kind": "impact",
+      "range": 4,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a lighter",
+      "prompts": [
+        {
+          "id": "v4-24600",
+          "models": [
+            "moss"
+          ],
+          "seed": 24600,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A lighter's flint wheel is flicked and a flame catches with a soft whoosh, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "radio": {
+      "kind": "impact",
+      "range": 10,
+      "level": -22,
+      "vary": 0.04,
+      "want": "radio static",
+      "prompts": [
+        {
+          "id": "v4-24610",
+          "models": [
+            "moss"
+          ],
+          "seed": 24610,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "An old radio hisses with static and faint warbling interference, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "radio/tune": {
+      "kind": "impact",
+      "range": 10,
+      "level": -20,
+      "vary": 0.04,
+      "want": "tuning a radio",
+      "prompts": [
+        {
+          "id": "v4-24620",
+          "models": [
+            "moss"
+          ],
+          "seed": 24620,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A radio dial is turned through static, squeals and snatches of noise, three separate tunings with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "battery": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a battery put in",
+      "prompts": [
+        {
+          "id": "v4-24630",
+          "models": [
+            "moss"
+          ],
+          "seed": 24630,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A battery is pushed into a device with a click and the cover snapped shut, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "map": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "a map unfolded",
+      "prompts": [
+        {
+          "id": "v4-24640",
+          "models": [
+            "moss"
+          ],
+          "seed": 24640,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A large paper map is unfolded and spread out with crisp crackling, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "chain": {
+      "kind": "impact",
+      "range": 8,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a chain",
+      "prompts": [
+        {
+          "id": "v4-24650",
+          "models": [
+            "moss"
+          ],
+          "seed": 24650,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy metal chain rattles and clinks as it is lifted, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "rummage": {
+      "kind": "impact",
+      "range": 5,
+      "level": -22,
+      "vary": 0.04,
+      "want": "rummaging in a bag",
+      "prompts": [
+        {
+          "id": "v4-24660",
+          "models": [
+            "moss"
+          ],
+          "seed": 24660,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Someone rummages through a full backpack, rustling and clinking things inside, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "armor": {
+      "kind": "impact",
+      "range": 6,
+      "level": -20,
+      "vary": 0.04,
+      "want": "putting on armour",
+      "prompts": [
+        {
+          "id": "v4-24670",
+          "models": [
+            "moss"
+          ],
+          "seed": 24670,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Heavy armour is put on: straps pulled tight and metal plates clinking, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "clothes": {
+      "kind": "impact",
+      "range": 4,
+      "level": -22,
+      "vary": 0.04,
+      "want": "putting on clothes",
+      "prompts": [
+        {
+          "id": "v4-24680",
+          "models": [
+            "moss"
+          ],
+          "seed": 24680,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A jacket is pulled on with a cloth rustle and a zip, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}
