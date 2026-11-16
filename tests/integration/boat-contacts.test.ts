@@ -83,6 +83,22 @@ test("boat collisions include another vehicle's real hull and cargo mass", () =>
   } finally { h.host.shutdown(); }
 });
 
+test("a protected moving boat is clipped on its captured rigid path and reported for crew repinning", () => {
+  const { h, ents, boat, contacts, health } = setup();
+  try {
+    h.host.setSetting("serverPVE", "True");
+    const other = h.host.spawnVehicle("core:boat_rescue", 80, 64, 0), y = ents.y[boat]!;
+    ents.setPosition(other, 65.1, y, 64); contacts.capture(boat); contacts.capture(other);
+    const before = health(other);
+    ents.setPosition(other, 64, y, 64); ents.vx[other] = -30;
+    const changed = contacts.step();
+    expect(changed).toContain(boat); expect(changed).toContain(other);
+    expect(ents.x[other]!).toBeGreaterThan(64.5); expect(ents.x[other]!).toBeLessThanOrEqual(65.1);
+    expect(ents.vx[other]!).toBeGreaterThan(-3); expect(health(other)).toBe(before);
+    expect(Number.isFinite(ents.vehicleQw[other])).toBe(true);
+  } finally { h.host.shutdown(); }
+});
+
 test("construction reserves the boat's deck and motor while leaving clear air above its open cockpit", () => {
   const { h, ents, boat } = setup();
   try {

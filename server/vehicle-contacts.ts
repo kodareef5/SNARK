@@ -123,7 +123,7 @@ export class VehicleContacts {
         const contact = !isWheelVehicle(def) ? this.rigidContact(e, frame, target, def) : this.contact(e, frame, target, def.spec);
         if (contact && (!first || contact.t < first.t || (contact.t === first.t && target < first.entity))) first = contact;
       }
-      if (first && this.resolve(e, frame, first)) this.changed.push(e);
+      if (first && this.resolve(e, frame, first) && !this.changed.includes(e)) this.changed.push(e);
     }
     // A contact must separate for half a second before it can harm the same body
     // again. Both sides are generation handles, so recycled slots inherit nothing.
@@ -294,7 +294,7 @@ export class VehicleContacts {
       ents.vy[car] = Math.fround(ents.vy[car]! - ny * loss);
       ents.vz[car] = Math.fround(ents.vz[car]! - c.nz * loss);
     }
-    if (taken <= 0) this.clipActor(car, c);
+    if (taken <= 0 || ents.vehicle[c.entity]) this.clipActor(car, c);
     if (taken > 0 && ents.resolve(c.handle) === c.entity && ents.pid[c.entity] === c.pid && this.target(car, c.entity)) {
       const kick = Math.min(12, impulse / c.mass);
       ents.vx[c.entity] = Math.fround(ents.vx[c.entity]! + c.nx * kick);
@@ -305,6 +305,8 @@ export class VehicleContacts {
       ents.flags[c.entity] = ents.flags[c.entity]! & ~F_GROUNDED;
       ents.pose(c.entity, world.tick); world.history.track(c.entity);
     }
+    // A clipped or accelerated vehicle needs the same attachment/persistence refresh as the striking vehicle.
+    if (ents.vehicle[c.entity] && ents.resolve(c.handle) === c.entity && !this.changed.includes(c.entity)) this.changed.push(c.entity);
     ents.pose(car, world.tick);
     return true;
   }
@@ -314,14 +316,26 @@ export class VehicleContacts {
    */
   private clipActor(car: number, contact: Contact): void {
     const { world } = this.ctx, ents = world.ents, e = contact.entity, past = this.past;
-    if (ents.resolve(contact.handle) !== e || ents.pid[e] !== contact.pid || !this.target(car, e) ||
-      !world.history.at(world.tick - 1, e, past)) return;
+    if (ents.resolve(contact.handle) !== e || ents.pid[e] !== contact.pid || !this.target(car, e)) return;
+    const captured = ents.vehicle[e] ? this.frames.get(e) : undefined;
+    if (captured?.handle === contact.handle) { past.x = captured.body.x; past.y = captured.body.y; past.z = captured.body.z; }
+    else if (!world.history.at(world.tick - 1, e, past)) return;
     const dx = ents.x[e]! - past.x, dz = ents.z[e]! - past.z;
     const ny = contact.ny ?? 0;
     if (dx * contact.nx + (ents.y[e]! - past.y) * ny + dz * contact.nz >= -0.00001) return;
     const distance = length(dx, dz), b = this.body, p = world.reg.move[ents.kind[e]!]!;
     const at = Math.max(0, contact.t - SKIN / Math.max(distance, SKIN));
     const dy = ents.y[e]! - past.y;
+    if (captured?.handle === contact.handle) {
+      // This whole rigid-frame path already passed its native terrain/structure sweep. Rewind to contact on it;
+      // a pedestrian capsule test could miss a motor or place an aircraft's tail through a wall.
+      this.clip(e, captured, contact.t, false);
+      const inward = Math.min(0, ents.vx[e]! * contact.nx + ents.vy[e]! * ny + ents.vz[e]! * contact.nz);
+      ents.vx[e] = Math.fround(ents.vx[e]! - contact.nx * inward);
+      ents.vy[e] = Math.fround(ents.vy[e]! - ny * inward);
+      ents.vz[e] = Math.fround(ents.vz[e]! - contact.nz * inward);
+      ents.pose(e, world.tick); world.history.track(e); return;
+    }
     ents.loadBody(e, b);
     // A chord of a stepped terrain path may be obstructed. Try progressively earlier
     // points, including the prior authority position; never force a capsule into a wall.
