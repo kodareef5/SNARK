@@ -84,7 +84,7 @@ test("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draws a
   // Pinned at its draws, triangles and triangles cast, to fall again as shell is drawn before interior (review B4). It was
   // 15 draws and 8,676,500 and 8,680,596 triangles while the chunk was drawn whole at the level of its box's nearest
   // point; by its 16 m cells, each at its own level, it is this. What it casts is cascade 1's, which holds every cell.
-  expect(frames).toEqual([[27, 5784668, 256408], [27, 4311372, 250264]]);
+  expect(frames).toEqual([[21, 5783676, 256408], [27, 4311372, 250264]]);
 });
 
 test("the HUD holds at most 500 nodes in every mode, the vehicles' dashes and the menus among them, and grows none after warming up", () => {

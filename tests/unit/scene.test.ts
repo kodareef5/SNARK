@@ -372,7 +372,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   expect(log).toEqual([`17 ask ${post} 0.0000`, `1167 ask ${post} 0.0000`, `2733 ask ${post} 0.0000`]);
   // The far wood is about a draw a frame, every mesh of a tile in one, and the pulled draws' three levels are uploads in
   // place of the palm's last level.
-  expect([draws, rigid, uploads, texLedger, worn]).toEqual([7628, 767, 23, 0, []]);
+  expect([draws, rigid, uploads, texLedger, worn]).toEqual([7613, 767, 23, 0, []]);
   // Taken from the scene as it was before it drew anything with a material. A change here changes what low poly draws.
   // It was 3323304581 before the dodo's grey box joined the pack, which numbers the meshes after it one on, 289722570
   // before the palette was refitted and the horn's flat colour became 177, and 3173910610 until a loose thing's up
@@ -428,7 +428,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1504947198 (and 7,900 draws) until chunks were drawn by 16 m cell: a chunk's instances are uploaded in the
   // order of their cells, and the pieces' and nodes' draws whose cells are out of view are left out. Each of the 300
   // frames draws the picture it did.
-  expect(hash).toBe(566791180);
+  expect(hash).toBe(3243977566);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -448,7 +448,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 2182034391 until the street wrecks' kinds, as above; without them it is that again.
   // It was 1893532195 until the pteranodon was drawn on its own art, as above.
   // It was 3121847286 until clips were stored to 0.025 degrees, as above, and 359459847 until chunks were drawn by cell.
-  expect(saddled.hash).toBe(778212124);
+  expect(saddled.hash).toBe(1443514794);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

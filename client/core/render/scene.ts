@@ -1449,7 +1449,6 @@ export class Scene {
     const first = b.cellFirst;
     const box = b.cellBox;
     const levels = b.cellLevel, crowns = b.cellCrown, thins = b.cellThin;
-    const shown = this.cellSeen;
     const fx = Math.max(Math.abs(b.minX - cam.x), Math.abs(b.maxX - cam.x));
     const fy = Math.max(Math.abs(b.minY - cam.y), Math.abs(b.maxY - cam.y));
     const fz = Math.max(Math.abs(b.minZ - cam.z), Math.abs(b.maxZ - cam.z));
@@ -1475,7 +1474,7 @@ export class Scene {
         crowns.fill(crown, q * cells, (q + 1) * cells);
         thins.fill(b.thin[q]!, q * cells, (q + 1) * cells);
         let whole = this.wholeView;
-        for (let c = 0; light && !whole && c < cells; c++) whole = shown[c] !== 0 && first[q * (cells + 1) + c + 1] !== first[q * (cells + 1) + c];
+        for (let c = 0; light && !whole && c < cells; c++) whole = first[q * (cells + 1) + c + 1] !== first[q * (cells + 1) + c] && this.cellShows(cam, b, q, c, mesh);
         if (whole) {
           this.assets.wantTextured(mesh, near, dist / reach);
           if (crown !== near) this.assets.wantTextured(mesh, crown, dist / reach);
@@ -1501,9 +1500,7 @@ export class Scene {
         const n = first[at + 1]! - first[at]!;
         if (n === 0) continue;
         const qc = q * cells + c;
-        // A cell is seen where its mesh's own instances in it are: a node's reach sideways from its trunk, a piece whole.
-        const k = qc * 6, spread = sized ? this.assets.table.side[mesh]! * b.cellReach[qc]! : 0;
-        if (shown[c] === 0 || (shown[c] === 1 && !cam.boxVisible(box[k]! - spread - cam.x, box[k + 1]! - cam.y, box[k + 2]! - spread - cam.z, box[k + 3]! + spread - cam.x, box[k + 4]! - cam.y, box[k + 5]! + spread - cam.z))) {
+        if (!this.cellShows(cam, b, q, c, mesh)) {
           if (next === first[at]) {
             next = first[at + 1]!;
             gap += n;
@@ -1512,6 +1509,7 @@ export class Scene {
         }
         let seen = dist / reach, hand = 0, level = near, crown = b.crown[q]!, thin = b.thin[q]!;
         if (!one) {
+          const k = qc * 6;
           const dx = Math.max(box[k]! - cam.x, cam.x - box[k + 3]!, 0);
           const dy = Math.max(box[k + 1]! - cam.y, cam.y - box[k + 4]!, 0);
           const dz = Math.max(box[k + 2]! - cam.z, cam.z - box[k + 5]!, 0);
@@ -1562,6 +1560,15 @@ export class Scene {
         this.draw(mesh, runs[k + 2]!, id, runs[k]!, runs[k + 1]! - runs[k]!, ox, oy, oz, flags, passes, runs[k + 5]!, 0, runs[k + 6]!, leavesAt(runs[k + 8]!));
       }
     }
+  }
+
+  /** Whether range `q`'s instances in cell `c` of a chunk may be in view: a node's reach sideways from its trunk, a piece whole. */
+  private cellShows(cam: Camera, b: ChunkBatch, q: number, c: number, mesh: number): boolean {
+    const shown = this.cellSeen[c]!;
+    if (shown !== 1) return shown === 2;
+    const k = (q * b.cells + c) * 6, box = b.cellBox;
+    const spread = b.sized ? this.assets.table.side[mesh]! * b.cellReach[q * b.cells + c]! : 0;
+    return cam.boxVisible(box[k]! - spread - cam.x, box[k + 1]! - cam.y, box[k + 2]! - spread - cam.z, box[k + 3]! + spread - cam.x, box[k + 4]! - cam.y, box[k + 5]! + spread - cam.z);
   }
 
   /** The triangles of one node of `mesh` drawn at `level`, its crown at `crown` and its leaves at a thinning (budget.ts). */
