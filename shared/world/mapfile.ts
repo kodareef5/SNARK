@@ -23,9 +23,10 @@
 //         u8 1, listed: u8 count of kinds, each a content id, then for each chunk a u16 count and 7-byte rows:
 //               u8 kind, u16 x, u16 z in 1/1024 m from the chunk's corner, u16 yaw
 //         u8 2, zoned, scattered as by 0: u32 seed, u16 slots a chunk, u8 count of zones, each a u8 weight of bare ground,
-//               a u8 count of kinds and each a u8 weight and a content id, then u8 metres a square and a byte per square,
-//               row by row from z = 0: the number of its zone counting from 1, or 0 where nothing grows. Then the slots
-//               taken out, as by 0.
+//               a u8 count of kinds and each a u8 weight and a content id, then u8 metres a square, a u8 count of codes and
+//               that many bytes, and u8 1 to take the picture of the zoned layer before, or 0 and a byte per square, row by
+//               row from z = 0: the number of its zone counting from 1, or 0 where nothing grows; with codes, a value of
+//               a picture the zoned layers share, whose zone in this layer is its code. Then the slots taken out, as by 0.
 //   SPWN  u8 count, then each a string name, i32 x, i32 z in 1/512 m, u16 yaw. The first is where a new survivor arrives.
 //   WILD  where wild creatures live: u16 count, then each a string spawns id, u16 count it holds at 1x, u8 shape (0 a circle,
 //         1 a box), i32 x, i32 z, u32 radius or half width, u32 half depth, in 1/512 m.
@@ -245,6 +246,8 @@ export interface NodeZoned {
   readonly zoneCell: number;
   /** A byte per square, row by row from z = 0: the number of its zone counting from 1, or 0 where nothing grows. */
   readonly zone: Uint8Array;
+  /** Where `zone` is a picture the map's zoned layers share, each of its values' zone in this layer. */
+  readonly codes?: Uint8Array;
   /** As NodeScatter's. */
   readonly out?: Uint8Array;
 }
@@ -342,7 +345,8 @@ function check(m: MapData): void {
       const weighed = (z: NodeZone): boolean => whole(z.bare, 0, 255) && whole(z.kinds.length, 0, 255) && z.kinds.every(([, weight]) => whole(weight, 1, 255)) && z.bare + z.kinds.length > 0;
       if (!whole(layer.perChunk, 1, NODE_SLOTS) || !whole(layer.zones.length, 1, 255) || !layer.zones.every(weighed)) fail("zoned nodes need 1 to 256 slots a chunk and 1 to 255 zones, each of 0 to 255 kinds of weight 1 to 255 and bare ground of weight 0 to 255");
       if (!whole(cell, 1, CHUNK_SIZE) || CHUNK_SIZE % cell !== 0 || layer.zone.length !== (sizeX / cell) * (sizeZ / cell)) fail("the zones of zoned nodes are not a byte per square of 1, 2, 4, 8, 16, 32 or 64 m");
-      if (layer.zone.some((z) => z > layer.zones.length)) fail("a square is in a zone the list of zones does not have");
+      const codes = layer.codes;
+      if (codes ? codes.length > 255 || codes.some((z) => z > layer.zones.length) || layer.zone.some((v) => v >= codes.length) : layer.zone.some((z) => z > layer.zones.length)) fail("a square is in a zone the list of zones does not have");
       continue;
     }
     const cell = layer.allowCell;
@@ -432,6 +436,35 @@ class Out {
   }
 }
 
+/**
+ * The map's zoned layers on one picture, each value of it standing for a zone of every layer, so the squares are held and
+ * sent once: a city's plants, stones and sea floor make 16 to 24 such values. Left as they are where there is one, where
+ * their squares differ, or where they would make more than 255 values.
+ */
+function shareZones(nodes: readonly NodeLayer[]): readonly NodeLayer[] {
+  const zoned = nodes.filter((l): l is NodeZoned => "zone" in l);
+  if (zoned.length < 2 || zoned.some((l) => l.zoneCell !== zoned[0]!.zoneCell)) return nodes;
+  const picture = new Uint8Array(zoned[0]!.zone.length);
+  const codes = new Map<number, number>();
+  let [key, code] = [-1, 0];
+  for (let i = 0; i < picture.length; i++) {
+    let k = 0;
+    for (const l of zoned) k = k * 256 + (l.codes ? l.codes[l.zone[i]!]! : l.zone[i]!);
+    if (k !== key) {
+      key = k;
+      if (!codes.has(k)) codes.set(k, codes.size);
+      if (codes.size > 255) return nodes;
+      code = codes.get(k)!;
+    }
+    picture[i] = code;
+  }
+  const keys = [...codes.keys()];
+  return nodes.map((l) => {
+    const at = zoned.indexOf(l as NodeZoned);
+    return at < 0 ? l : { ...(l as NodeZoned), zone: picture, codes: Uint8Array.from(keys, (k) => Math.floor(k / 256 ** (zoned.length - 1 - at)) % 256) };
+  });
+}
+
 export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
   check(m);
   const o = new Out();
@@ -475,7 +508,8 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
     o.u8(layer.out ? 1 : 0);
     if (layer.out) o.put(layer.out);
   };
-  for (const layer of m.nodes) {
+  let picture: Uint8Array | null = null;
+  for (const layer of shareZones(m.nodes)) {
     section("NODE", () => {
       if ("zone" in layer) {
         o.u8(2);
@@ -491,7 +525,11 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
           }
         }
         o.u8(layer.zoneCell);
-        o.put(layer.zone);
+        o.u8(layer.codes?.length ?? 0);
+        if (layer.codes) o.put(layer.codes);
+        o.u8(layer.zone === picture ? 1 : 0);
+        if (layer.zone !== picture) o.put(layer.zone);
+        picture = layer.zone;
         slotsOut(layer);
         return;
       }
@@ -687,7 +725,8 @@ class In {
   }
 }
 
-function readNodes(r: In, dims: MapDims): NodeLayer {
+/** `picture` is the zone picture of the zoned layer read before this one, which this one may share. */
+function readNodes(r: In, dims: MapDims, picture: Uint8Array | null): NodeLayer {
   const type = r.u8();
   const squares = (cell: number): number => {
     if (!(cell >= 1 && cell <= CHUNK_SIZE && CHUNK_SIZE % cell === 0)) throw new Error(`map: nodes are placed by squares of ${cell} m, and a square is 1, 2, 4, 8, 16, 32 or 64 m`);
@@ -706,8 +745,12 @@ function readNodes(r: In, dims: MapDims): NodeLayer {
       return { bare, kinds };
     });
     const zoneCell = r.u8();
-    const zone = r.take(squares(zoneCell)).slice();
-    return { seed, perChunk, zones, zoneCell, zone, ...out(perChunk) };
+    const codes = r.u8();
+    const coded = codes > 0 ? { codes: r.take(codes).slice() } : {};
+    const shared = r.u8() === 1;
+    if (shared && picture?.length !== squares(zoneCell)) throw new Error("map: zoned nodes share a picture of zones no layer before them has");
+    const zone = shared ? picture! : r.take(squares(zoneCell)).slice();
+    return { seed, perChunk, zones, zoneCell, zone, ...coded, ...out(perChunk) };
   }
   if (type > 2) throw new Error(`map: nodes of type ${type} are not ones this build reads`);
   if (type === 0) {
@@ -805,7 +848,7 @@ function read(r: In): Omit<MapFile, "hash"> {
     } else if (tag === "STAT") {
       if (statics) throw new Error("map: it has two STAT sections");
       statics = finish(readStatics(s, dims));
-    } else if (tag === "NODE") nodes.push(readNodes(s, dims));
+    } else if (tag === "NODE") nodes.push(readNodes(s, dims, nodes.findLast((l): l is NodeZoned => "zone" in l)?.zone ?? null));
     else if (tag === "SPWN") {
       for (let n = s.u8(); n > 0; n--) spawns.push({ name: s.text(), x: s.i32() / STRUCT_UNITS, z: s.i32() / STRUCT_UNITS, yaw: s.u16() });
     } else if (tag === "WILD") {
@@ -963,7 +1006,8 @@ function sourceOf(dims: MapDims, hf: Heightfield, reg: Registry, layer: NodeLaye
   const forms = nodeForms(reg);
   const wide = (cell: number): number => (dims.chunksX * CHUNK_SIZE) / cell;
   if ("zone" in layer) {
-    const zones: (readonly number[] | null)[] = [null, ...layer.zones.map((z) => weighed(reg, z.kinds, z.bare))];
+    const own: (readonly number[] | null)[] = [null, ...layer.zones.map((z) => weighed(reg, z.kinds, z.bare))];
+    const zones = layer.codes ? Array.from(layer.codes, (c) => own[c]!) : own;
     const { zone, zoneCell: cell } = layer;
     const across = wide(cell);
     return scatterNodes(dims, hf, layer.seed, layer.perChunk, forms, (x, z) => zones[zone[Math.floor(z / cell) * across + Math.floor(x / cell)]!]!);

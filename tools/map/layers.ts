@@ -188,7 +188,8 @@ export function writeLayers(map: MapData, folder: string): void {
     if ("zone" in layer) {
       const wide = (chunksX * CHUNK_SIZE) / layer.zoneCell;
       const high = (chunksZ * CHUNK_SIZE) / layer.zoneCell;
-      put(`zones-${i}.png`, writeGrey(wide, high, layer.zone.slice().reverse()));
+      const codes = layer.codes;
+      put(`zones-${i}.png`, writeGrey(wide, high, (codes ? layer.zone.map((v) => codes[v]!) : layer.zone.slice()).reverse()));
       return { seed: layer.seed, perChunk: layer.perChunk, zones: layer.zones.map((z) => ({ kinds: Object.fromEntries(z.kinds), ...(z.bare > 0 ? { bare: z.bare } : {}) })), zone: `zones-${i}.png` };
     }
     const scatter = { seed: layer.seed, perChunk: layer.perChunk, kinds: Object.fromEntries(layer.kinds) };

@@ -188,6 +188,25 @@ test("zoned nodes are refused where a square names a zone the layer lacks, or th
   expect(refused({ zones: [{ bare: 0, kinds: [] }, zoned.zones[1]!] })).toThrow("map: zoned nodes need");
 });
 
+test("zoned layers of the same squares share one picture in the file and in memory, and grow as they did apart", () => {
+  const zoned = busyMap().nodes[2] as NodeZoned;
+  const other: NodeZoned = { ...zoned, seed: 5, zone: zoned.zone.map((z, i) => (i % 3 === 0 ? 0 : (z % 2) + 1)) };
+  const apart = { ...busyMap(), nodes: [zoned, other] };
+  const file = writeMap(apart);
+  const [a, b] = parseMap(file).nodes as NodeZoned[];
+  expect([a!.zone === b!.zone, a!.codes!.length, b!.codes!.length]).toEqual([true, 6, 6]);
+  expect(writeMap(parseMap(file))).toEqual(file);
+  const [shared, alone] = [mapNodes(parseMap(file), mapHeightfield(parseMap(file)), reg)!, mapNodes(apart, mapHeightfield(apart), reg)!];
+  const [s, t] = [spot(), spot()];
+  for (let chunk = 0; chunk < 6; chunk++) {
+    for (let i = 0; i < shared.perChunk; i++) {
+      shared.at(chunk, i, s);
+      alone.at(chunk, i, t);
+      expect(s.kind === 0 ? [0] : s).toEqual(t.kind === 0 ? [0] : t);
+    }
+  }
+});
+
 test("a map's static pieces are set down in the file's order, and a piece the content lacks stops the load", () => {
   const map = parseMap(writeMap(busyMap()));
   const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
