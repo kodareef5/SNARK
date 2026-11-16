@@ -1,0 +1,1930 @@
+{
+  "schema": 1,
+  "id": "koru",
+  "frame": "ship-local metres; +Y up, +Z bow, +X port",
+  "duration": 18,
+  "control": {
+    "id": "core:koru_sail_control",
+    "origin": [
+      7.45,
+      3.75,
+      -21.8
+    ],
+    "aim": [
+      7.45,
+      4.58,
+      -21.8
+    ],
+    "approach": [
+      7.45,
+      3.75,
+      -24
+    ],
+    "half": [
+      0.35,
+      0.46,
+      0.35
+    ]
+  },
+  "sails": [
+    {
+      "id": "fore",
+      "mesh": "core:koru_sail_fore",
+      "skeleton": "koru_sail_fore",
+      "kind": "main",
+      "anchor": [
+        0.62,
+        13.22,
+        19.38
+      ],
+      "basis": [
+        [
+          -1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          -1
+        ]
+      ],
+      "polygon": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          19
+        ],
+        [
+          44.28,
+          11
+        ],
+        [
+          29.28,
+          0
+        ]
+      ],
+      "bandAxis": "y",
+      "bandSize": 0.75,
+      "foldSign": 1,
+      "billow": -0.09,
+      "gaff": {
+        "bone": "gaff",
+        "throat": [
+          0,
+          29.28,
+          0
+        ],
+        "peak": [
+          0,
+          44.28,
+          11
+        ],
+        "lowerThroatY": 0.12,
+        "lowerAngle": 0.9380474917927135
+      },
+      "stackStep": 0.006,
+      "bones": [
+        "root",
+        "fold_000",
+        "fold_001",
+        "fold_002",
+        "fold_003",
+        "fold_004",
+        "fold_005",
+        "fold_006",
+        "fold_007",
+        "fold_008",
+        "fold_009",
+        "fold_010",
+        "fold_011",
+        "fold_012",
+        "fold_013",
+        "fold_014",
+        "fold_015",
+        "fold_016",
+        "fold_017",
+        "fold_018",
+        "fold_019",
+        "fold_020",
+        "fold_021",
+        "fold_022",
+        "fold_023",
+        "fold_024",
+        "fold_025",
+        "fold_026",
+        "fold_027",
+        "fold_028",
+        "fold_029",
+        "fold_030",
+        "fold_031",
+        "fold_032",
+        "fold_033",
+        "fold_034",
+        "fold_035",
+        "fold_036",
+        "fold_037",
+        "fold_038",
+        "fold_039",
+        "fold_040",
+        "fold_041",
+        "fold_042",
+        "fold_043",
+        "fold_044",
+        "fold_045",
+        "fold_046",
+        "fold_047",
+        "fold_048",
+        "fold_049",
+        "fold_050",
+        "fold_051",
+        "fold_052",
+        "fold_053",
+        "fold_054",
+        "fold_055",
+        "fold_056",
+        "fold_057",
+        "fold_058",
+        "fold_059",
+        "gaff"
+      ],
+      "bands": [
+        {
+          "bone": "fold_000",
+          "index": 1,
+          "lower": 0.0,
+          "upper": 0.738
+        },
+        {
+          "bone": "fold_001",
+          "index": 2,
+          "lower": 0.738,
+          "upper": 1.476
+        },
+        {
+          "bone": "fold_002",
+          "index": 3,
+          "lower": 1.476,
+          "upper": 2.214
+        },
+        {
+          "bone": "fold_003",
+          "index": 4,
+          "lower": 2.214,
+          "upper": 2.952
+        },
+        {
+          "bone": "fold_004",
+          "index": 5,
+          "lower": 2.952,
+          "upper": 3.69
+        },
+        {
+          "bone": "fold_005",
+          "index": 6,
+          "lower": 3.69,
+          "upper": 4.428
+        },
+        {
+          "bone": "fold_006",
+          "index": 7,
+          "lower": 4.428,
+          "upper": 5.166
+        },
+        {
+          "bone": "fold_007",
+          "index": 8,
+          "lower": 5.166,
+          "upper": 5.904
+        },
+        {
+          "bone": "fold_008",
+          "index": 9,
+          "lower": 5.904,
+          "upper": 6.642
+        },
+        {
+          "bone": "fold_009",
+          "index": 10,
+          "lower": 6.642,
+          "upper": 7.38
+        },
+        {
+          "bone": "fold_010",
+          "index": 11,
+          "lower": 7.38,
+          "upper": 8.118
+        },
+        {
+          "bone": "fold_011",
+          "index": 12,
+          "lower": 8.118,
+          "upper": 8.856
+        },
+        {
+          "bone": "fold_012",
+          "index": 13,
+          "lower": 8.856,
+          "upper": 9.594
+        },
+        {
+          "bone": "fold_013",
+          "index": 14,
+          "lower": 9.594,
+          "upper": 10.332
+        },
+        {
+          "bone": "fold_014",
+          "index": 15,
+          "lower": 10.332,
+          "upper": 11.07
+        },
+        {
+          "bone": "fold_015",
+          "index": 16,
+          "lower": 11.07,
+          "upper": 11.808
+        },
+        {
+          "bone": "fold_016",
+          "index": 17,
+          "lower": 11.808,
+          "upper": 12.546
+        },
+        {
+          "bone": "fold_017",
+          "index": 18,
+          "lower": 12.546,
+          "upper": 13.284
+        },
+        {
+          "bone": "fold_018",
+          "index": 19,
+          "lower": 13.284,
+          "upper": 14.022
+        },
+        {
+          "bone": "fold_019",
+          "index": 20,
+          "lower": 14.022,
+          "upper": 14.76
+        },
+        {
+          "bone": "fold_020",
+          "index": 21,
+          "lower": 14.76,
+          "upper": 15.498
+        },
+        {
+          "bone": "fold_021",
+          "index": 22,
+          "lower": 15.498,
+          "upper": 16.236
+        },
+        {
+          "bone": "fold_022",
+          "index": 23,
+          "lower": 16.236,
+          "upper": 16.974
+        },
+        {
+          "bone": "fold_023",
+          "index": 24,
+          "lower": 16.974,
+          "upper": 17.712
+        },
+        {
+          "bone": "fold_024",
+          "index": 25,
+          "lower": 17.712,
+          "upper": 18.45
+        },
+        {
+          "bone": "fold_025",
+          "index": 26,
+          "lower": 18.45,
+          "upper": 19.188
+        },
+        {
+          "bone": "fold_026",
+          "index": 27,
+          "lower": 19.188,
+          "upper": 19.926
+        },
+        {
+          "bone": "fold_027",
+          "index": 28,
+          "lower": 19.926,
+          "upper": 20.664
+        },
+        {
+          "bone": "fold_028",
+          "index": 29,
+          "lower": 20.664,
+          "upper": 21.402
+        },
+        {
+          "bone": "fold_029",
+          "index": 30,
+          "lower": 21.402,
+          "upper": 22.14
+        },
+        {
+          "bone": "fold_030",
+          "index": 31,
+          "lower": 22.14,
+          "upper": 22.878
+        },
+        {
+          "bone": "fold_031",
+          "index": 32,
+          "lower": 22.878,
+          "upper": 23.616
+        },
+        {
+          "bone": "fold_032",
+          "index": 33,
+          "lower": 23.616,
+          "upper": 24.354
+        },
+        {
+          "bone": "fold_033",
+          "index": 34,
+          "lower": 24.354,
+          "upper": 25.092
+        },
+        {
+          "bone": "fold_034",
+          "index": 35,
+          "lower": 25.092,
+          "upper": 25.83
+        },
+        {
+          "bone": "fold_035",
+          "index": 36,
+          "lower": 25.83,
+          "upper": 26.568
+        },
+        {
+          "bone": "fold_036",
+          "index": 37,
+          "lower": 26.568,
+          "upper": 27.306
+        },
+        {
+          "bone": "fold_037",
+          "index": 38,
+          "lower": 27.306,
+          "upper": 28.044
+        },
+        {
+          "bone": "fold_038",
+          "index": 39,
+          "lower": 28.044,
+          "upper": 28.782
+        },
+        {
+          "bone": "fold_039",
+          "index": 40,
+          "lower": 28.782,
+          "upper": 29.52
+        },
+        {
+          "bone": "fold_040",
+          "index": 41,
+          "lower": 29.52,
+          "upper": 30.258
+        },
+        {
+          "bone": "fold_041",
+          "index": 42,
+          "lower": 30.258,
+          "upper": 30.996
+        },
+        {
+          "bone": "fold_042",
+          "index": 43,
+          "lower": 30.996,
+          "upper": 31.734
+        },
+        {
+          "bone": "fold_043",
+          "index": 44,
+          "lower": 31.734,
+          "upper": 32.472
+        },
+        {
+          "bone": "fold_044",
+          "index": 45,
+          "lower": 32.472,
+          "upper": 33.21
+        },
+        {
+          "bone": "fold_045",
+          "index": 46,
+          "lower": 33.21,
+          "upper": 33.948
+        },
+        {
+          "bone": "fold_046",
+          "index": 47,
+          "lower": 33.948,
+          "upper": 34.686
+        },
+        {
+          "bone": "fold_047",
+          "index": 48,
+          "lower": 34.686,
+          "upper": 35.424
+        },
+        {
+          "bone": "fold_048",
+          "index": 49,
+          "lower": 35.424,
+          "upper": 36.162
+        },
+        {
+          "bone": "fold_049",
+          "index": 50,
+          "lower": 36.162,
+          "upper": 36.9
+        },
+        {
+          "bone": "fold_050",
+          "index": 51,
+          "lower": 36.9,
+          "upper": 37.638
+        },
+        {
+          "bone": "fold_051",
+          "index": 52,
+          "lower": 37.638,
+          "upper": 38.376
+        },
+        {
+          "bone": "fold_052",
+          "index": 53,
+          "lower": 38.376,
+          "upper": 39.114
+        },
+        {
+          "bone": "fold_053",
+          "index": 54,
+          "lower": 39.114,
+          "upper": 39.852
+        },
+        {
+          "bone": "fold_054",
+          "index": 55,
+          "lower": 39.852,
+          "upper": 40.59
+        },
+        {
+          "bone": "fold_055",
+          "index": 56,
+          "lower": 40.59,
+          "upper": 41.328
+        },
+        {
+          "bone": "fold_056",
+          "index": 57,
+          "lower": 41.328,
+          "upper": 42.066
+        },
+        {
+          "bone": "fold_057",
+          "index": 58,
+          "lower": 42.066,
+          "upper": 42.804
+        },
+        {
+          "bone": "fold_058",
+          "index": 59,
+          "lower": 42.804,
+          "upper": 43.542
+        },
+        {
+          "bone": "fold_059",
+          "index": 60,
+          "lower": 43.542,
+          "upper": 44.28
+        }
+      ],
+      "bounds": {
+        "center": [
+          0.62,
+          35.36,
+          19.38
+        ],
+        "radius": 100
+      }
+    },
+    {
+      "id": "main",
+      "mesh": "core:koru_sail_main",
+      "skeleton": "koru_sail_main",
+      "kind": "main",
+      "anchor": [
+        0.62,
+        13.22,
+        -8.62
+      ],
+      "basis": [
+        [
+          -1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          -1
+        ]
+      ],
+      "polygon": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          21
+        ],
+        [
+          43.28,
+          11
+        ],
+        [
+          28.28,
+          0
+        ]
+      ],
+      "bandAxis": "y",
+      "bandSize": 0.75,
+      "foldSign": 1,
+      "billow": -0.09,
+      "gaff": {
+        "bone": "gaff",
+        "throat": [
+          0,
+          28.28,
+          0
+        ],
+        "peak": [
+          0,
+          43.28,
+          11
+        ],
+        "lowerThroatY": 0.12,
+        "lowerAngle": 0.9380474917927135
+      },
+      "stackStep": 0.006,
+      "bones": [
+        "root",
+        "fold_000",
+        "fold_001",
+        "fold_002",
+        "fold_003",
+        "fold_004",
+        "fold_005",
+        "fold_006",
+        "fold_007",
+        "fold_008",
+        "fold_009",
+        "fold_010",
+        "fold_011",
+        "fold_012",
+        "fold_013",
+        "fold_014",
+        "fold_015",
+        "fold_016",
+        "fold_017",
+        "fold_018",
+        "fold_019",
+        "fold_020",
+        "fold_021",
+        "fold_022",
+        "fold_023",
+        "fold_024",
+        "fold_025",
+        "fold_026",
+        "fold_027",
+        "fold_028",
+        "fold_029",
+        "fold_030",
+        "fold_031",
+        "fold_032",
+        "fold_033",
+        "fold_034",
+        "fold_035",
+        "fold_036",
+        "fold_037",
+        "fold_038",
+        "fold_039",
+        "fold_040",
+        "fold_041",
+        "fold_042",
+        "fold_043",
+        "fold_044",
+        "fold_045",
+        "fold_046",
+        "fold_047",
+        "fold_048",
+        "fold_049",
+        "fold_050",
+        "fold_051",
+        "fold_052",
+        "fold_053",
+        "fold_054",
+        "fold_055",
+        "fold_056",
+        "fold_057",
+        "gaff"
+      ],
+      "bands": [
+        {
+          "bone": "fold_000",
+          "index": 1,
+          "lower": 0.0,
+          "upper": 0.746206897
+        },
+        {
+          "bone": "fold_001",
+          "index": 2,
+          "lower": 0.746206897,
+          "upper": 1.492413793
+        },
+        {
+          "bone": "fold_002",
+          "index": 3,
+          "lower": 1.492413793,
+          "upper": 2.23862069
+        },
+        {
+          "bone": "fold_003",
+          "index": 4,
+          "lower": 2.23862069,
+          "upper": 2.984827586
+        },
+        {
+          "bone": "fold_004",
+          "index": 5,
+          "lower": 2.984827586,
+          "upper": 3.731034483
+        },
+        {
+          "bone": "fold_005",
+          "index": 6,
+          "lower": 3.731034483,
+          "upper": 4.477241379
+        },
+        {
+          "bone": "fold_006",
+          "index": 7,
+          "lower": 4.477241379,
+          "upper": 5.223448276
+        },
+        {
+          "bone": "fold_007",
+          "index": 8,
+          "lower": 5.223448276,
+          "upper": 5.969655172
+        },
+        {
+          "bone": "fold_008",
+          "index": 9,
+          "lower": 5.969655172,
+          "upper": 6.715862069
+        },
+        {
+          "bone": "fold_009",
+          "index": 10,
+          "lower": 6.715862069,
+          "upper": 7.462068966
+        },
+        {
+          "bone": "fold_010",
+          "index": 11,
+          "lower": 7.462068966,
+          "upper": 8.208275862
+        },
+        {
+          "bone": "fold_011",
+          "index": 12,
+          "lower": 8.208275862,
+          "upper": 8.954482759
+        },
+        {
+          "bone": "fold_012",
+          "index": 13,
+          "lower": 8.954482759,
+          "upper": 9.700689655
+        },
+        {
+          "bone": "fold_013",
+          "index": 14,
+          "lower": 9.700689655,
+          "upper": 10.446896552
+        },
+        {
+          "bone": "fold_014",
+          "index": 15,
+          "lower": 10.446896552,
+          "upper": 11.193103448
+        },
+        {
+          "bone": "fold_015",
+          "index": 16,
+          "lower": 11.193103448,
+          "upper": 11.939310345
+        },
+        {
+          "bone": "fold_016",
+          "index": 17,
+          "lower": 11.939310345,
+          "upper": 12.685517241
+        },
+        {
+          "bone": "fold_017",
+          "index": 18,
+          "lower": 12.685517241,
+          "upper": 13.431724138
+        },
+        {
+          "bone": "fold_018",
+          "index": 19,
+          "lower": 13.431724138,
+          "upper": 14.177931034
+        },
+        {
+          "bone": "fold_019",
+          "index": 20,
+          "lower": 14.177931034,
+          "upper": 14.924137931
+        },
+        {
+          "bone": "fold_020",
+          "index": 21,
+          "lower": 14.924137931,
+          "upper": 15.670344828
+        },
+        {
+          "bone": "fold_021",
+          "index": 22,
+          "lower": 15.670344828,
+          "upper": 16.416551724
+        },
+        {
+          "bone": "fold_022",
+          "index": 23,
+          "lower": 16.416551724,
+          "upper": 17.162758621
+        },
+        {
+          "bone": "fold_023",
+          "index": 24,
+          "lower": 17.162758621,
+          "upper": 17.908965517
+        },
+        {
+          "bone": "fold_024",
+          "index": 25,
+          "lower": 17.908965517,
+          "upper": 18.655172414
+        },
+        {
+          "bone": "fold_025",
+          "index": 26,
+          "lower": 18.655172414,
+          "upper": 19.40137931
+        },
+        {
+          "bone": "fold_026",
+          "index": 27,
+          "lower": 19.40137931,
+          "upper": 20.147586207
+        },
+        {
+          "bone": "fold_027",
+          "index": 28,
+          "lower": 20.147586207,
+          "upper": 20.893793103
+        },
+        {
+          "bone": "fold_028",
+          "index": 29,
+          "lower": 20.893793103,
+          "upper": 21.64
+        },
+        {
+          "bone": "fold_029",
+          "index": 30,
+          "lower": 21.64,
+          "upper": 22.386206897
+        },
+        {
+          "bone": "fold_030",
+          "index": 31,
+          "lower": 22.386206897,
+          "upper": 23.132413793
+        },
+        {
+          "bone": "fold_031",
+          "index": 32,
+          "lower": 23.132413793,
+          "upper": 23.87862069
+        },
+        {
+          "bone": "fold_032",
+          "index": 33,
+          "lower": 23.87862069,
+          "upper": 24.624827586
+        },
+        {
+          "bone": "fold_033",
+          "index": 34,
+          "lower": 24.624827586,
+          "upper": 25.371034483
+        },
+        {
+          "bone": "fold_034",
+          "index": 35,
+          "lower": 25.371034483,
+          "upper": 26.117241379
+        },
+        {
+          "bone": "fold_035",
+          "index": 36,
+          "lower": 26.117241379,
+          "upper": 26.863448276
+        },
+        {
+          "bone": "fold_036",
+          "index": 37,
+          "lower": 26.863448276,
+          "upper": 27.609655172
+        },
+        {
+          "bone": "fold_037",
+          "index": 38,
+          "lower": 27.609655172,
+          "upper": 28.355862069
+        },
+        {
+          "bone": "fold_038",
+          "index": 39,
+          "lower": 28.355862069,
+          "upper": 29.102068966
+        },
+        {
+          "bone": "fold_039",
+          "index": 40,
+          "lower": 29.102068966,
+          "upper": 29.848275862
+        },
+        {
+          "bone": "fold_040",
+          "index": 41,
+          "lower": 29.848275862,
+          "upper": 30.594482759
+        },
+        {
+          "bone": "fold_041",
+          "index": 42,
+          "lower": 30.594482759,
+          "upper": 31.340689655
+        },
+        {
+          "bone": "fold_042",
+          "index": 43,
+          "lower": 31.340689655,
+          "upper": 32.086896552
+        },
+        {
+          "bone": "fold_043",
+          "index": 44,
+          "lower": 32.086896552,
+          "upper": 32.833103448
+        },
+        {
+          "bone": "fold_044",
+          "index": 45,
+          "lower": 32.833103448,
+          "upper": 33.579310345
+        },
+        {
+          "bone": "fold_045",
+          "index": 46,
+          "lower": 33.579310345,
+          "upper": 34.325517241
+        },
+        {
+          "bone": "fold_046",
+          "index": 47,
+          "lower": 34.325517241,
+          "upper": 35.071724138
+        },
+        {
+          "bone": "fold_047",
+          "index": 48,
+          "lower": 35.071724138,
+          "upper": 35.817931034
+        },
+        {
+          "bone": "fold_048",
+          "index": 49,
+          "lower": 35.817931034,
+          "upper": 36.564137931
+        },
+        {
+          "bone": "fold_049",
+          "index": 50,
+          "lower": 36.564137931,
+          "upper": 37.310344828
+        },
+        {
+          "bone": "fold_050",
+          "index": 51,
+          "lower": 37.310344828,
+          "upper": 38.056551724
+        },
+        {
+          "bone": "fold_051",
+          "index": 52,
+          "lower": 38.056551724,
+          "upper": 38.802758621
+        },
+        {
+          "bone": "fold_052",
+          "index": 53,
+          "lower": 38.802758621,
+          "upper": 39.548965517
+        },
+        {
+          "bone": "fold_053",
+          "index": 54,
+          "lower": 39.548965517,
+          "upper": 40.295172414
+        },
+        {
+          "bone": "fold_054",
+          "index": 55,
+          "lower": 40.295172414,
+          "upper": 41.04137931
+        },
+        {
+          "bone": "fold_055",
+          "index": 56,
+          "lower": 41.04137931,
+          "upper": 41.787586207
+        },
+        {
+          "bone": "fold_056",
+          "index": 57,
+          "lower": 41.787586207,
+          "upper": 42.533793103
+        },
+        {
+          "bone": "fold_057",
+          "index": 58,
+          "lower": 42.533793103,
+          "upper": 43.28
+        }
+      ],
+      "bounds": {
+        "center": [
+          0.62,
+          34.86,
+          -8.62
+        ],
+        "radius": 100
+      }
+    },
+    {
+      "id": "mizzen",
+      "mesh": "core:koru_sail_mizzen",
+      "skeleton": "koru_sail_mizzen",
+      "kind": "main",
+      "anchor": [
+        0.62,
+        11.22,
+        -30.62
+      ],
+      "basis": [
+        [
+          -1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          -1
+        ]
+      ],
+      "polygon": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          17
+        ],
+        [
+          40.28,
+          9
+        ],
+        [
+          25.28,
+          0
+        ]
+      ],
+      "bandAxis": "y",
+      "bandSize": 0.75,
+      "foldSign": 1,
+      "billow": -0.09,
+      "gaff": {
+        "bone": "gaff",
+        "throat": [
+          0,
+          25.28,
+          0
+        ],
+        "peak": [
+          0,
+          40.28,
+          9
+        ],
+        "lowerThroatY": 0.12,
+        "lowerAngle": 1.0303768265243125
+      },
+      "stackStep": 0.006,
+      "bones": [
+        "root",
+        "fold_000",
+        "fold_001",
+        "fold_002",
+        "fold_003",
+        "fold_004",
+        "fold_005",
+        "fold_006",
+        "fold_007",
+        "fold_008",
+        "fold_009",
+        "fold_010",
+        "fold_011",
+        "fold_012",
+        "fold_013",
+        "fold_014",
+        "fold_015",
+        "fold_016",
+        "fold_017",
+        "fold_018",
+        "fold_019",
+        "fold_020",
+        "fold_021",
+        "fold_022",
+        "fold_023",
+        "fold_024",
+        "fold_025",
+        "fold_026",
+        "fold_027",
+        "fold_028",
+        "fold_029",
+        "fold_030",
+        "fold_031",
+        "fold_032",
+        "fold_033",
+        "fold_034",
+        "fold_035",
+        "fold_036",
+        "fold_037",
+        "fold_038",
+        "fold_039",
+        "fold_040",
+        "fold_041",
+        "fold_042",
+        "fold_043",
+        "fold_044",
+        "fold_045",
+        "fold_046",
+        "fold_047",
+        "fold_048",
+        "fold_049",
+        "fold_050",
+        "fold_051",
+        "fold_052",
+        "fold_053",
+        "gaff"
+      ],
+      "bands": [
+        {
+          "bone": "fold_000",
+          "index": 1,
+          "lower": 0.0,
+          "upper": 0.745925926
+        },
+        {
+          "bone": "fold_001",
+          "index": 2,
+          "lower": 0.745925926,
+          "upper": 1.491851852
+        },
+        {
+          "bone": "fold_002",
+          "index": 3,
+          "lower": 1.491851852,
+          "upper": 2.237777778
+        },
+        {
+          "bone": "fold_003",
+          "index": 4,
+          "lower": 2.237777778,
+          "upper": 2.983703704
+        },
+        {
+          "bone": "fold_004",
+          "index": 5,
+          "lower": 2.983703704,
+          "upper": 3.72962963
+        },
+        {
+          "bone": "fold_005",
+          "index": 6,
+          "lower": 3.72962963,
+          "upper": 4.475555556
+        },
+        {
+          "bone": "fold_006",
+          "index": 7,
+          "lower": 4.475555556,
+          "upper": 5.221481481
+        },
+        {
+          "bone": "fold_007",
+          "index": 8,
+          "lower": 5.221481481,
+          "upper": 5.967407407
+        },
+        {
+          "bone": "fold_008",
+          "index": 9,
+          "lower": 5.967407407,
+          "upper": 6.713333333
+        },
+        {
+          "bone": "fold_009",
+          "index": 10,
+          "lower": 6.713333333,
+          "upper": 7.459259259
+        },
+        {
+          "bone": "fold_010",
+          "index": 11,
+          "lower": 7.459259259,
+          "upper": 8.205185185
+        },
+        {
+          "bone": "fold_011",
+          "index": 12,
+          "lower": 8.205185185,
+          "upper": 8.951111111
+        },
+        {
+          "bone": "fold_012",
+          "index": 13,
+          "lower": 8.951111111,
+          "upper": 9.697037037
+        },
+        {
+          "bone": "fold_013",
+          "index": 14,
+          "lower": 9.697037037,
+          "upper": 10.442962963
+        },
+        {
+          "bone": "fold_014",
+          "index": 15,
+          "lower": 10.442962963,
+          "upper": 11.188888889
+        },
+        {
+          "bone": "fold_015",
+          "index": 16,
+          "lower": 11.188888889,
+          "upper": 11.934814815
+        },
+        {
+          "bone": "fold_016",
+          "index": 17,
+          "lower": 11.934814815,
+          "upper": 12.680740741
+        },
+        {
+          "bone": "fold_017",
+          "index": 18,
+          "lower": 12.680740741,
+          "upper": 13.426666667
+        },
+        {
+          "bone": "fold_018",
+          "index": 19,
+          "lower": 13.426666667,
+          "upper": 14.172592593
+        },
+        {
+          "bone": "fold_019",
+          "index": 20,
+          "lower": 14.172592593,
+          "upper": 14.918518519
+        },
+        {
+          "bone": "fold_020",
+          "index": 21,
+          "lower": 14.918518519,
+          "upper": 15.664444444
+        },
+        {
+          "bone": "fold_021",
+          "index": 22,
+          "lower": 15.664444444,
+          "upper": 16.41037037
+        },
+        {
+          "bone": "fold_022",
+          "index": 23,
+          "lower": 16.41037037,
+          "upper": 17.156296296
+        },
+        {
+          "bone": "fold_023",
+          "index": 24,
+          "lower": 17.156296296,
+          "upper": 17.902222222
+        },
+        {
+          "bone": "fold_024",
+          "index": 25,
+          "lower": 17.902222222,
+          "upper": 18.648148148
+        },
+        {
+          "bone": "fold_025",
+          "index": 26,
+          "lower": 18.648148148,
+          "upper": 19.394074074
+        },
+        {
+          "bone": "fold_026",
+          "index": 27,
+          "lower": 19.394074074,
+          "upper": 20.14
+        },
+        {
+          "bone": "fold_027",
+          "index": 28,
+          "lower": 20.14,
+          "upper": 20.885925926
+        },
+        {
+          "bone": "fold_028",
+          "index": 29,
+          "lower": 20.885925926,
+          "upper": 21.631851852
+        },
+        {
+          "bone": "fold_029",
+          "index": 30,
+          "lower": 21.631851852,
+          "upper": 22.377777778
+        },
+        {
+          "bone": "fold_030",
+          "index": 31,
+          "lower": 22.377777778,
+          "upper": 23.123703704
+        },
+        {
+          "bone": "fold_031",
+          "index": 32,
+          "lower": 23.123703704,
+          "upper": 23.86962963
+        },
+        {
+          "bone": "fold_032",
+          "index": 33,
+          "lower": 23.86962963,
+          "upper": 24.615555556
+        },
+        {
+          "bone": "fold_033",
+          "index": 34,
+          "lower": 24.615555556,
+          "upper": 25.361481481
+        },
+        {
+          "bone": "fold_034",
+          "index": 35,
+          "lower": 25.361481481,
+          "upper": 26.107407407
+        },
+        {
+          "bone": "fold_035",
+          "index": 36,
+          "lower": 26.107407407,
+          "upper": 26.853333333
+        },
+        {
+          "bone": "fold_036",
+          "index": 37,
+          "lower": 26.853333333,
+          "upper": 27.599259259
+        },
+        {
+          "bone": "fold_037",
+          "index": 38,
+          "lower": 27.599259259,
+          "upper": 28.345185185
+        },
+        {
+          "bone": "fold_038",
+          "index": 39,
+          "lower": 28.345185185,
+          "upper": 29.091111111
+        },
+        {
+          "bone": "fold_039",
+          "index": 40,
+          "lower": 29.091111111,
+          "upper": 29.837037037
+        },
+        {
+          "bone": "fold_040",
+          "index": 41,
+          "lower": 29.837037037,
+          "upper": 30.582962963
+        },
+        {
+          "bone": "fold_041",
+          "index": 42,
+          "lower": 30.582962963,
+          "upper": 31.328888889
+        },
+        {
+          "bone": "fold_042",
+          "index": 43,
+          "lower": 31.328888889,
+          "upper": 32.074814815
+        },
+        {
+          "bone": "fold_043",
+          "index": 44,
+          "lower": 32.074814815,
+          "upper": 32.820740741
+        },
+        {
+          "bone": "fold_044",
+          "index": 45,
+          "lower": 32.820740741,
+          "upper": 33.566666667
+        },
+        {
+          "bone": "fold_045",
+          "index": 46,
+          "lower": 33.566666667,
+          "upper": 34.312592593
+        },
+        {
+          "bone": "fold_046",
+          "index": 47,
+          "lower": 34.312592593,
+          "upper": 35.058518519
+        },
+        {
+          "bone": "fold_047",
+          "index": 48,
+          "lower": 35.058518519,
+          "upper": 35.804444444
+        },
+        {
+          "bone": "fold_048",
+          "index": 49,
+          "lower": 35.804444444,
+          "upper": 36.55037037
+        },
+        {
+          "bone": "fold_049",
+          "index": 50,
+          "lower": 36.55037037,
+          "upper": 37.296296296
+        },
+        {
+          "bone": "fold_050",
+          "index": 51,
+          "lower": 37.296296296,
+          "upper": 38.042222222
+        },
+        {
+          "bone": "fold_051",
+          "index": 52,
+          "lower": 38.042222222,
+          "upper": 38.788148148
+        },
+        {
+          "bone": "fold_052",
+          "index": 53,
+          "lower": 38.788148148,
+          "upper": 39.534074074
+        },
+        {
+          "bone": "fold_053",
+          "index": 54,
+          "lower": 39.534074074,
+          "upper": 40.28
+        }
+      ],
+      "bounds": {
+        "center": [
+          0.62,
+          31.36,
+          -30.62
+        ],
+        "radius": 100
+      }
+    },
+    {
+      "id": "outer",
+      "mesh": "core:koru_sail_outer",
+      "skeleton": "koru_sail_outer",
+      "kind": "jib",
+      "anchor": [
+        0.48,
+        9,
+        69.5
+      ],
+      "basis": [
+        [
+          -1,
+          0,
+          0
+        ],
+        [
+          0.0,
+          0.7734960546684182,
+          -0.6338011150293059
+        ],
+        [
+          -0.0,
+          -0.6338011150293059,
+          -0.7734960546684182
+        ]
+      ],
+      "polygon": [
+        [
+          0,
+          0
+        ],
+        [
+          30.718658532308133,
+          9.089225378185576
+        ],
+        [
+          77.31131870560739,
+          0
+        ]
+      ],
+      "bandAxis": "z",
+      "bandSize": 0.5,
+      "foldSign": 1,
+      "billow": -0.09,
+      "stackStep": 0.006,
+      "bones": [
+        "root",
+        "fold_000",
+        "fold_001",
+        "fold_002",
+        "fold_003",
+        "fold_004",
+        "fold_005",
+        "fold_006",
+        "fold_007",
+        "fold_008",
+        "fold_009",
+        "fold_010",
+        "fold_011",
+        "fold_012",
+        "fold_013",
+        "fold_014",
+        "fold_015",
+        "fold_016",
+        "fold_017",
+        "fold_018"
+      ],
+      "bands": [
+        {
+          "bone": "fold_000",
+          "index": 1,
+          "lower": 0.0,
+          "upper": 0.478380283
+        },
+        {
+          "bone": "fold_001",
+          "index": 2,
+          "lower": 0.478380283,
+          "upper": 0.956760566
+        },
+        {
+          "bone": "fold_002",
+          "index": 3,
+          "lower": 0.956760566,
+          "upper": 1.435140849
+        },
+        {
+          "bone": "fold_003",
+          "index": 4,
+          "lower": 1.435140849,
+          "upper": 1.913521132
+        },
+        {
+          "bone": "fold_004",
+          "index": 5,
+          "lower": 1.913521132,
+          "upper": 2.391901415
+        },
+        {
+          "bone": "fold_005",
+          "index": 6,
+          "lower": 2.391901415,
+          "upper": 2.870281698
+        },
+        {
+          "bone": "fold_006",
+          "index": 7,
+          "lower": 2.870281698,
+          "upper": 3.348661981
+        },
+        {
+          "bone": "fold_007",
+          "index": 8,
+          "lower": 3.348661981,
+          "upper": 3.827042264
+        },
+        {
+          "bone": "fold_008",
+          "index": 9,
+          "lower": 3.827042264,
+          "upper": 4.305422548
+        },
+        {
+          "bone": "fold_009",
+          "index": 10,
+          "lower": 4.305422548,
+          "upper": 4.783802831
+        },
+        {
+          "bone": "fold_010",
+          "index": 11,
+          "lower": 4.783802831,
+          "upper": 5.262183114
+        },
+        {
+          "bone": "fold_011",
+          "index": 12,
+          "lower": 5.262183114,
+          "upper": 5.740563397
+        },
+        {
+          "bone": "fold_012",
+          "index": 13,
+          "lower": 5.740563397,
+          "upper": 6.21894368
+        },
+        {
+          "bone": "fold_013",
+          "index": 14,
+          "lower": 6.21894368,
+          "upper": 6.697323963
+        },
+        {
+          "bone": "fold_014",
+          "index": 15,
+          "lower": 6.697323963,
+          "upper": 7.175704246
+        },
+        {
+          "bone": "fold_015",
+          "index": 16,
+          "lower": 7.175704246,
+          "upper": 7.654084529
+        },
+        {
+          "bone": "fold_016",
+          "index": 17,
+          "lower": 7.654084529,
+          "upper": 8.132464812
+        },
+        {
+          "bone": "fold_017",
+          "index": 18,
+          "lower": 8.132464812,
+          "upper": 8.610845095
+        },
+        {
+          "bone": "fold_018",
+          "index": 19,
+          "lower": 8.610845095,
+          "upper": 9.089225378
+        }
+      ],
+      "bounds": {
+        "center": [
+          0.48,
+          47.655659352803696,
+          69.5
+        ],
+        "radius": 100
+      }
+    },
+    {
+      "id": "inner",
+      "mesh": "core:koru_sail_inner",
+      "skeleton": "koru_sail_inner",
+      "kind": "jib",
+      "anchor": [
+        -0.48,
+        8.6,
+        51.2
+      ],
+      "basis": [
+        [
+          -1,
+          0,
+          0
+        ],
+        [
+          0.0,
+          0.8486773408351703,
+          -0.5289109293188639
+        ],
+        [
+          -0.0,
+          -0.5289109293188639,
+          -0.8486773408351703
+        ]
+      ],
+      "polygon": [
+        [
+          0,
+          0
+        ],
+        [
+          18.44758355043912,
+          13.718843287594192
+        ],
+        [
+          57.854731872164095,
+          0
+        ]
+      ],
+      "bandAxis": "z",
+      "bandSize": 0.5,
+      "foldSign": -1,
+      "billow": 0.09,
+      "stackStep": 0.006,
+      "bones": [
+        "root",
+        "fold_000",
+        "fold_001",
+        "fold_002",
+        "fold_003",
+        "fold_004",
+        "fold_005",
+        "fold_006",
+        "fold_007",
+        "fold_008",
+        "fold_009",
+        "fold_010",
+        "fold_011",
+        "fold_012",
+        "fold_013",
+        "fold_014",
+        "fold_015",
+        "fold_016",
+        "fold_017",
+        "fold_018",
+        "fold_019",
+        "fold_020",
+        "fold_021",
+        "fold_022",
+        "fold_023",
+        "fold_024",
+        "fold_025",
+        "fold_026",
+        "fold_027"
+      ],
+      "bands": [
+        {
+          "bone": "fold_000",
+          "index": 1,
+          "lower": 0.0,
+          "upper": 0.489958689
+        },
+        {
+          "bone": "fold_001",
+          "index": 2,
+          "lower": 0.489958689,
+          "upper": 0.979917378
+        },
+        {
+          "bone": "fold_002",
+          "index": 3,
+          "lower": 0.979917378,
+          "upper": 1.469876067
+        },
+        {
+          "bone": "fold_003",
+          "index": 4,
+          "lower": 1.469876067,
+          "upper": 1.959834755
+        },
+        {
+          "bone": "fold_004",
+          "index": 5,
+          "lower": 1.959834755,
+          "upper": 2.449793444
+        },
+        {
+          "bone": "fold_005",
+          "index": 6,
+          "lower": 2.449793444,
+          "upper": 2.939752133
+        },
+        {
+          "bone": "fold_006",
+          "index": 7,
+          "lower": 2.939752133,
+          "upper": 3.429710822
+        },
+        {
+          "bone": "fold_007",
+          "index": 8,
+          "lower": 3.429710822,
+          "upper": 3.919669511
+        },
+        {
+          "bone": "fold_008",
+          "index": 9,
+          "lower": 3.919669511,
+          "upper": 4.4096282
+        },
+        {
+          "bone": "fold_009",
+          "index": 10,
+          "lower": 4.4096282,
+          "upper": 4.899586888
+        },
+        {
+          "bone": "fold_010",
+          "index": 11,
+          "lower": 4.899586888,
+          "upper": 5.389545577
+        },
+        {
+          "bone": "fold_011",
+          "index": 12,
+          "lower": 5.389545577,
+          "upper": 5.879504266
+        },
+        {
+          "bone": "fold_012",
+          "index": 13,
+          "lower": 5.879504266,
+          "upper": 6.369462955
+        },
+        {
+          "bone": "fold_013",
+          "index": 14,
+          "lower": 6.369462955,
+          "upper": 6.859421644
+        },
+        {
+          "bone": "fold_014",
+          "index": 15,
+          "lower": 6.859421644,
+          "upper": 7.349380333
+        },
+        {
+          "bone": "fold_015",
+          "index": 16,
+          "lower": 7.349380333,
+          "upper": 7.839339021
+        },
+        {
+          "bone": "fold_016",
+          "index": 17,
+          "lower": 7.839339021,
+          "upper": 8.32929771
+        },
+        {
+          "bone": "fold_017",
+          "index": 18,
+          "lower": 8.32929771,
+          "upper": 8.819256399
+        },
+        {
+          "bone": "fold_018",
+          "index": 19,
+          "lower": 8.819256399,
+          "upper": 9.309215088
+        },
+        {
+          "bone": "fold_019",
+          "index": 20,
+          "lower": 9.309215088,
+          "upper": 9.799173777
+        },
+        {
+          "bone": "fold_020",
+          "index": 21,
+          "lower": 9.799173777,
+          "upper": 10.289132466
+        },
+        {
+          "bone": "fold_021",
+          "index": 22,
+          "lower": 10.289132466,
+          "upper": 10.779091155
+        },
+        {
+          "bone": "fold_022",
+          "index": 23,
+          "lower": 10.779091155,
+          "upper": 11.269049843
+        },
+        {
+          "bone": "fold_023",
+          "index": 24,
+          "lower": 11.269049843,
+          "upper": 11.759008532
+        },
+        {
+          "bone": "fold_024",
+          "index": 25,
+          "lower": 11.759008532,
+          "upper": 12.248967221
+        },
+        {
+          "bone": "fold_025",
+          "index": 26,
+          "lower": 12.248967221,
+          "upper": 12.73892591
+        },
+        {
+          "bone": "fold_026",
+          "index": 27,
+          "lower": 12.73892591,
+          "upper": 13.228884599
+        },
+        {
+          "bone": "fold_027",
+          "index": 28,
+          "lower": 13.228884599,
+          "upper": 13.718843288
+        }
+      ],
+      "bounds": {
+        "center": [
+          -0.48,
+          37.52736593608205,
+          51.2
+        ],
+        "radius": 100
+      }
+    }
+  ],
+  "notes": [
+    "Photo-informed original cloth; published ship dimensions remain authoritative.",
+    "All five sails are dynamic meshes, excluded from static and far-city geometry.",
+    "Rigid fold matrices preserve normals; shared straight hinges have identical rest coordinates.",
+    "Gaff-edge cloth follows the separate rigid head spar through a short weighted transition."
+  ]
+}
