@@ -1,5 +1,5 @@
-// Decodes a sound's takes off the page's thread (client/core/sound/library.ts SoundDecoder): a long bed takes about
-// 90 ms, which would stop a frame. Answers each request with every take's samples, transferred, or null takes.
+// Decodes a sound's takes off the page's thread (client/core/sound/library.ts SoundDecoder): a long bed takes tens of
+// milliseconds, which would stop a frame. Answers each request with every take's samples, transferred, or null takes.
 
 import { decodeTake } from "../../shared/pack/sound.ts";
 

@@ -1,5 +1,6 @@
 // The sound board, sounds.html: every sound the build has, by owner and then by occasion as client/core/sound/listing.ts
-// lists them, each take playable as the game plays it, decoded from the same file when first played. An admin's page:
+// lists them, each take playable as the game plays it, decoded from the same file when first played: the game's file, or
+// for a sound no cue reaches yet, the build's loose file (assets/loose.json). An admin's page:
 // server/sound-board.ts serves it and the owners' folders, briefs and recipes. A distance and a direction place what is
 // played by the game's own rules.
 
@@ -17,11 +18,17 @@ const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt
 const decoded = new Map<string, AudioBuffer[]>();
 const next = new Map<string, number>();
 
-async function buffers(manifest: ReturnType<typeof parseManifest>, s: ManifestSound): Promise<AudioBuffer[]> {
+async function buffers(name: string, s: ManifestSound): Promise<AudioBuffer[]> {
   const kept = decoded.get(s.id);
   if (kept) return kept;
   const bytes = s.takes.reduce((n, t) => n + t.bytes, 0);
-  const data = new Uint8Array(await (await fetch(`assets/${manifest.files[s.file]!.name}`, { headers: { range: `bytes=${s.at}-${s.at + bytes - 1}` } })).arrayBuffer());
+  const answer = await fetch(`assets/${name}`, { headers: { range: `bytes=${s.at}-${s.at + bytes - 1}` } });
+  // A server that ignores the range would send the whole file for one sound.
+  if (answer.status !== 206 && Number(answer.headers.get("content-length")) !== bytes) {
+    void answer.body?.cancel();
+    throw new Error(`the server sent ${answer.status} for a range of ${name}`);
+  }
+  const data = new Uint8Array(await answer.arrayBuffer());
   let at = 0;
   const out = s.takes.map((t) => {
     const samples = new Float32Array(t.samples);
@@ -56,8 +63,10 @@ async function boot(): Promise<void> {
   const answer = await fetch("admin/sounds.json");
   if (!answer.ok) throw new Error(await answer.text());
   const owners = (await answer.json()) as ListedOwner[];
-  const sounds = manifest.sounds ?? [];
+  const loose = await fetch("assets/loose.json").then((r) => (r.ok ? (r.json() as Promise<{ file: string; sounds: ManifestSound[] }>) : null));
+  const sounds = [...(manifest.sounds ?? []), ...(loose?.sounds ?? [])];
   const byId = new Map(sounds.map((s) => [s.id, s]));
+  const fileOf = (s: ManifestSound): string => (s.file < 0 ? loose!.file : manifest.files[s.file]!.name);
   const ownerOf = new Map(owners.map((o) => [o.id, o]));
   const takes = (id: string): string => {
     const s = byId.get(id)!;
@@ -65,7 +74,8 @@ async function boot(): Promise<void> {
   };
   const seconds = sounds.reduce((n, s) => n + s.takes.reduce((m, t) => m + t.samples / s.rate, 0), 0);
   const bytes = sounds.reduce((n, s) => n + s.takes.reduce((m, t) => m + t.bytes, 0), 0);
-  note.textContent = `${sounds.length} sounds, ${sounds.reduce((n, s) => n + s.takes.length, 0)} takes, ${seconds.toFixed(0)} s, ${(bytes / 1048576).toFixed(1)} MB as the game fetches them.`;
+  const heard = manifest.sounds ?? [];
+  note.textContent = `${sounds.length} sounds, ${sounds.reduce((n, s) => n + s.takes.length, 0)} takes, ${seconds.toFixed(0)} s, ${(bytes / 1048576).toFixed(1)} MB; the game holds ${heard.length} of them, ${(heard.reduce((n, s) => n + s.takes.reduce((m, t) => m + t.bytes, 0), 0) / 1048576).toFixed(1)} MB, the rest wait for a cue that reaches them.`;
   list.innerHTML = listSounds(sounds, owners).map((g) => `<h2>${esc(g.title)}</h2>${g.cards.map((c) => `<details class="card" open><summary><b>${esc(c.title)}</b> <code>${esc(c.id)}</code> <span class="count"><i class="own">${c.count.own} own</i> <i class="stand-in">${c.count["stand-in"]} stand-in</i> <i class="shared">${c.count.shared} shared</i> <i class="none">${c.count.none} none</i></span>${c.files.map((f) => ` <a href="admin/source/${esc(f)}" target="_blank">${esc(f.split("/").pop()!)}</a>`).join("")}</summary>
     ${c.occasions.map((o) => `<div class="occ${o.status.startsWith("waits:") ? " later" : ""}${o.variants.every((v) => v.by === "own") ? "" : " gap"}" data-text="${esc(`${c.id} ${o.name} ${o.label} ${o.status} ${o.when}`.toLowerCase())}"><div class="what"><b>${esc(o.label)}</b> <code>${esc(o.name)}</code> <i>${esc(o.status)}${o.loop ? ", loops" : ""}</i><small>${esc(o.when)}</small>${o.want ? `<small class="want">the brief asks for: ${esc(o.want)}</small>` : ""}</div><div class="how">${o.variants.map(chip).join("")}</div>${o.variants.filter((v) => v.by === "own").map((v) => `<div class="takes">${v.word ? `<span>${esc(v.word)}</span>` : ""}${takes(v.sound!)}</div>`).join("")}</div>`).join("")}
     ${c.loose.length > 0 ? `<div class="occ"><div class="what"><b>its own, heard by no occasion</b></div>${c.loose.map((n) => `<div class="takes"><span>${esc(n)}</span>${takes(`${c.id}/sound/${n}`)}</div>`).join("")}</div>` : ""}</details>`).join("")}`).join("");
@@ -76,7 +86,7 @@ async function boot(): Promise<void> {
     // A take as asked, or the next take round, as the game never plays one twice running.
     const k = b.dataset.k !== undefined ? Number(b.dataset.k) : (next.get(s.id) ?? 0);
     next.set(s.id, (k + 1) % s.takes.length);
-    void buffers(manifest, s).then((all) => play(all[k]!, s.range, s.vary, Number(b.dataset.rate ?? 1)));
+    buffers(fileOf(s), s).then((all) => play(all[k]!, s.range, s.vary, Number(b.dataset.rate ?? 1)), (err: unknown) => (note.textContent = String(err)));
   });
   const filter = (): void => {
     const q = find.value.toLowerCase();
