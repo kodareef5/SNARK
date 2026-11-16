@@ -112,9 +112,10 @@ export interface Looks {
   readonly level: Uint16Array;
   /** Six bytes for each entity. */
   readonly colors: Uint8Array;
-  readonly name: string[];
-  readonly look: (Uint8Array | null)[];
-  readonly gear: (Uint16Array | null)[];
+  /** Only for the entities that have one. */
+  readonly names: ReadonlyMap<number, string>;
+  readonly looks: ReadonlyMap<number, Uint8Array>;
+  readonly gears: ReadonlyMap<number, Uint16Array>;
   /** The gear's "on" bit: 1 while the laser in hand is switched on. Absent, 0. */
   readonly on?: Uint8Array;
   readonly team: Uint32Array;
@@ -129,9 +130,9 @@ export interface Looks {
 
 /** An upper bound on the bits a create for entity `id` takes. */
 function createBits(v: Looks, id: number): number {
-  const name = v.name[id]!;
+  const name = v.names.get(id) ?? "";
   // The optional fields: a look, gear, a team, a seat, an age.
-  const look = (v.look[id] ? LOOK_BYTES * 8 : 0) + (v.gear[id] ? GEAR_COUNT * 16 + 1 : 0) + (v.team[id] !== 0 ? 40 : 0) + (v.seat[id] !== 0 ? 60 : 0) + (v.span[id] !== 0 || v.grown[id] !== 0 ? 64 : 0);
+  const look = (v.looks.has(id) ? LOOK_BYTES * 8 : 0) + (v.gears.has(id) ? GEAR_COUNT * 16 + 1 : 0) + (v.team[id] !== 0 ? 40 : 0) + (v.seat[id] !== 0 ? 60 : 0) + (v.span[id] !== 0 || v.grown[id] !== 0 ? 64 : 0);
   if (name === "") return CREATE_BITS + look;
   let bytes = 1;
   for (let i = 0; i < name.length; i++) {
@@ -843,14 +844,14 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       const coloured = (colors[c0]! | colors[c0 + 1]! | colors[c0 + 2]! | colors[c0 + 3]! | colors[c0 + 4]! | colors[c0 + 5]!) !== 0;
       w.bool(coloured);
       if (coloured) for (let q = 0; q < 6; q++) w.u8(colors[c0 + q]!);
-      const name = looks.name[id]!;
+      const name = looks.names.get(id) ?? "";
       w.bool(name !== "");
       if (name !== "") w.string(name);
-      const look = looks.look[id]!;
-      w.bool(look !== null);
+      const look = looks.looks.get(id);
+      w.bool(look !== undefined);
       if (look) for (let q = 0; q < LOOK_BYTES; q++) w.u8(look[q]!);
-      const gear = looks.gear[id]!;
-      w.bool(gear !== null);
+      const gear = looks.gears.get(id);
+      w.bool(gear !== undefined);
       if (gear) {
         for (let q = 0; q < GEAR_COUNT; q++) w.u16(gear[q]!);
         w.bool((looks.on?.[id] ?? 0) !== 0);

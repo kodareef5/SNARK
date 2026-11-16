@@ -50,8 +50,8 @@ test("round 3: two survivors made in the creator, one in flak and one bare, figh
   expect([ada.sessionState, bob.sessionState]).toEqual([SESSION_ALIVE, SESSION_ALIVE]);
   const ents = h.world.ents;
   const [ea, eb] = [h.ent(ada), h.ent(bob)];
-  expect([...ents.look[ea]!]).toEqual([...looks[0]!]);
-  expect([...ents.look[eb]!]).toEqual([...looks[1]!]);
+  expect([...ents.looks.get(ea)!]).toEqual([...looks[0]!]);
+  expect([...ents.looks.get(eb)!]).toEqual([...looks[1]!]);
   const arec = h.host.records.byPid.get(ents.pid[ea]!)!;
   const brec = h.host.records.byPid.get(ents.pid[eb]!)!;
   const [pa, pb] = [h.pilots[0]!, h.pilots[1]!];
@@ -74,8 +74,8 @@ test("round 3: two survivors made in the creator, one in flak and one bare, figh
   h.say(ada, "kit grenades");
   const ainv = items.inv(arec);
   const binv = items.inv(brec);
-  expect([...ents.gear[ea]!.subarray(1)]).toEqual(["hat", "shirt", "gloves", "pants", "boots"].map((p) => id(`flak_${p}`)));
-  expect([...ents.gear[eb]!.subarray(1)]).toEqual([0, 0, 0, 0, 0]);
+  expect([...ents.gears.get(ea)!.subarray(1)]).toEqual(["hat", "shirt", "gloves", "pants", "boots"].map((p) => id(`flak_${p}`)));
+  expect([...ents.gears.get(eb)!.subarray(1)]).toEqual([0, 0, 0, 0, 0]);
 
   const health = (rec: typeof arec): number => survival.value(rec, V_HEALTH);
   const drop = (far: number): number => 0.5 * 9.81 * (far / launchSpeed(70, 1)) ** 2;

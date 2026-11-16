@@ -300,7 +300,7 @@ test("reach is a caster's height over the sine of the sun's elevation, up to 192
   expect(reach(0, 0.5)).toBe(0);
 });
 
-test("a caster's level is the coarsest the card holds within a texel, grouped into one entry per level", () => {
+test("a caster's level is the coarsest the card holds within what the shadow filter blurs, grouped into one entry per level", () => {
   const errors = [0, 0.004, 0.012, 0.05, 0.2];
   const all = 0b11111;
   expect(casterLevel(errors, 0.0134, all)).toBe(2);
@@ -314,8 +314,8 @@ test("a caster's level is the coarsest the card holds within a texel, grouped in
   const c = new Cascades();
   c.fit(camera(500, 2, 500), ...sun(45, 10), ULTRA, 0);
   const out = new Uint8Array(8);
-  // Ultra's texels are 0.8, 2.2, 6.6 and 26.8 cm.
-  expect(Array.from(out.subarray(0, 2 * c.entries(0b1111, errors, all, out)))).toEqual([1, 0b0001, 2, 0b0010, 3, 0b0100, 4, 0b1000]);
+  // Ultra's texels are 0.8, 2.2, 6.6 and 26.8 cm, and its nine taps blur three of them either way.
+  expect(Array.from(out.subarray(0, 2 * c.entries(0b1111, errors, all, out)))).toEqual([2, 0b0001, 3, 0b0110, 4, 0b1000]);
   expect(Array.from(out.subarray(0, 2 * c.entries(0b1110, errors, 0b00111, out)))).toEqual([2, 0b1110]);
   expect(Array.from(out.subarray(0, 2 * c.entries(0b0101, [0, 0.001], 0b11, out)))).toEqual([1, 0b0101]);
   expect(c.entries(0b1111, errors, 0, out)).toBe(0);

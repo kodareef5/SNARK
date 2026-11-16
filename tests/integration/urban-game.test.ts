@@ -118,14 +118,14 @@ test('normal record codec restores vehicle fuel and wheel state without changing
     h.run(800); h.pilots[0]!.moveZ = 127; h.run(700);
     h.pilots[0]!.moveZ = 0; h.pilots[0]!.buttons = BTN_JUMP; h.run(500);
     h.host.urban.dismount(me); h.run(800);
-    const pid = ents.pid[car]!, fuel = ents.fuel[car]!, wheel = ents.wheelAngle[car]!;
+    const pid = ents.pid[car]!, fuel = ents.fuel[ents.vrow[car]!]!, wheel = ents.wheelAngle[ents.vrow[car]!]!;
     expect(fuel).toBeLessThan(40);
     h.host.shutdown(); host = null;
     const restored = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], dbPath }); host = restored;
     const e = restored.host.records.entOf.get(pid)!;
     expect(e).toBeGreaterThanOrEqual(0);
-    expect(restored.world.ents.fuel[e]).toBe(fuel);
-    expect(restored.world.ents.wheelAngle[e]).toBe(wheel);
+    expect(restored.world.ents.fuel[restored.world.ents.vrow[e]!]).toBe(fuel);
+    expect(restored.world.ents.wheelAngle[restored.world.ents.vrow[e]!]).toBe(wheel);
     const record = restored.host.records.byPid.get(pid)!;
     expect(record.team).toBe(owner);
     expect(restored.host.items.inv(record).total(item)).toBe(4);
@@ -145,10 +145,10 @@ test('the upgraded suspension loads the first playable build vehicle save withou
     h.host.shutdown(); active = null;
     const restored = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], dbPath }); active = restored;
     const e = restored.host.records.entOf.get(pid)!;
-    expect(restored.world.ents.fuel[e]).toBe(17.5);
-    expect(restored.world.ents.wheelAngle[e]).toBe(1.25);
-    expect(restored.world.ents.vehicleGroundPitch[e]).toBe(Math.fround(.04));
-    expect(restored.world.ents.vehicleYawRate[e]).toBe(0);
+    expect(restored.world.ents.fuel[restored.world.ents.vrow[e]!]).toBe(17.5);
+    expect(restored.world.ents.wheelAngle[restored.world.ents.vrow[e]!]).toBe(1.25);
+    expect(restored.world.ents.vehicleGroundPitch[restored.world.ents.vrow[e]!]).toBe(Math.fround(.04));
+    expect(restored.world.ents.vehicleYawRate[restored.world.ents.vrow[e]!]).toBe(0);
     expect(restored.host.records.byPid.get(pid)!.extra.get(0x757262)![0]).toBe(4);
   } finally { active?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
 });
@@ -165,12 +165,14 @@ test('a real SQLite restart retains airborne velocity, suspension and transmissi
     body.vehicleGear = 3; body.vehicleRpm = 4300; body.vehicleShiftTime = .6;
     ents.storeBody(car, body); h.run(100);
     const fields = ['y', 'vx', 'vy', 'vz', 'vehicleYawRate', 'vehiclePitchRate', 'vehicleRollRate', 'vehicleRideOffset', 'vehicleRideVelocity', 'vehicleGear', 'vehicleRpm', 'vehicleShiftTime'] as const;
-    const expected = fields.map(field => ents[field][car]);
+    ents.loadBody(car, body);
+    const expected = fields.map(field => body[field]);
     expect(ents.flags[car]! & F_GROUNDED).toBe(0);
     h.host.shutdown(); active = null;
     const restored = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], dbPath }); active = restored;
     const e = restored.host.records.entOf.get(pid)!;
-    expect(fields.map(field => restored.world.ents[field][e])).toEqual(expected);
+    restored.world.ents.loadBody(e, body);
+    expect(fields.map(field => body[field])).toEqual(expected);
     expect(restored.world.ents.flags[e]! & F_GROUNDED).toBe(0);
   } finally { active?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
 });
@@ -183,15 +185,15 @@ test('vehicle payload follows cargo and every occupant, and a dead passenger rel
     const passenger = h.host.spawnCreature('core:civilian', x - 1.25, z + .12, 1);
     expect(h.host.urban.seatNpc(passenger, car, 'passenger')).toBe(RESULT_OK); h.run(800);
     const ents = h.world.ents, cargo = h.host.records.byPid.get(ents.pid[car]!)!, rec = h.host.records.byPid.get(ents.pid[passenger]!)!;
-    const before = ents.vehiclePayloadMass[car]!, stone = h.reg.index.get('core:stone')!;
+    const before = ents.vehiclePayloadMass[ents.vrow[car]!]!, stone = h.reg.index.get('core:stone')!;
     expect(before).toBeGreaterThanOrEqual(160);
     h.host.items.mint(cargo, stone, 40); h.host.items.mint(rec, stone, 20); h.run(100);
-    expect(ents.vehiclePayloadMass[car]).toBeCloseTo(before + 30, 3);
+    expect(ents.vehiclePayloadMass[ents.vrow[car]!]).toBeCloseTo(before + 30, 3);
     const lost = (h.reg.mass[rec.kind]! || 80) + h.host.items.inv(rec).weight(h.host.items.table);
     h.host.survival.hurt(rec, 10000, me.pid); h.run(100);
     expect(h.host.records.entOf.has(rec.pid)).toBe(false);
     expect(h.host.urban.occupancy.occupant(cargo.pid, 'passenger')).toBe(0);
-    expect(ents.vehiclePayloadMass[car]).toBeCloseTo(before + 30 - lost, 3);
+    expect(ents.vehiclePayloadMass[ents.vrow[car]!]).toBeCloseTo(before + 30 - lost, 3);
   } finally { h.host.shutdown(); }
 });
 
@@ -204,12 +206,12 @@ test('a seat opens its own door while someone gets in by it, and the door swings
     let most = 0;
     for (let t = 0; t <= def.actionTicks; t++) {
       h.run(1000 / TICK_RATE);
-      most = Math.max(most, vehicleDoor(ents.vehicleDoors[car]!, driverDoor));
-      expect(vehicleDoor(ents.vehicleDoors[car]!, other)).toBe(0);
+      most = Math.max(most, vehicleDoor(ents.vehicleDoors[ents.vrow[car]!]!, driverDoor));
+      expect(vehicleDoor(ents.vehicleDoors[ents.vrow[car]!]!, other)).toBe(0);
     }
     expect(most).toBe(1);
     expect(me.drive).toBe(car);
     h.run(1000);
-    expect(vehicleDoor(ents.vehicleDoors[car]!, driverDoor)).toBe(0);
+    expect(vehicleDoor(ents.vehicleDoors[ents.vrow[car]!]!, driverDoor)).toBe(0);
   } finally { h.host.shutdown(); }
 });

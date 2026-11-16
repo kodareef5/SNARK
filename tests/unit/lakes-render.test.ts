@@ -60,19 +60,17 @@ function lakes(o: { sea?: number; bodies?: boolean; tier?: string } = {}) {
   };
 }
 
-/** Each face of a level made for FAR_MESH's bounds, its four corners in the world, from where a draw puts its corner. */
-function faces(pack: ReturnType<typeof farPack>, mesh: number, data: Uint8Array, indexCount: number, indexBytes: number, at: readonly number[]): number[][][] {
-  const m = pack.header.meshes[mesh]!;
+/** Each face of a level of quads made within `m`, its four corners in the world, from where a draw puts its corner. */
+function faces(m: { center: readonly number[]; half: readonly number[] }, data: Uint8Array, at: readonly number[]): number[][][] {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const from = (indexCount * indexBytes + 3) & ~3;
-  const corner = (v: number): number[] => [0, 1, 2].map((a) => m.center[a]! + (view.getInt16(from + v * VERTEX_BYTES + a * 2, true) / 32767) * m.half[a]! + at[a]!);
-  return Array.from({ length: (data.length - from) / VERTEX_BYTES / 4 }, (_, f) => [0, 1, 2, 3].map((k) => corner(f * 4 + k)));
+  const corner = (v: number): number[] => [0, 1, 2].map((a) => m.center[a]! + (view.getInt16(v * VERTEX_BYTES + a * 2, true) / 32767) * m.half[a]! + at[a]!);
+  return Array.from({ length: data.length / VERTEX_BYTES / 4 }, (_, f) => [0, 1, 2, 3].map((k) => corner(f * 4 + k)));
 }
 
 /** Every face of the lakes' tiles of the lakes map, in the world. */
 function lakeFaces(): number[][][] {
-  const { hf, pack, far } = lakes();
-  const made = new Lakes(hf, hf.water!, far, pack.header.meshes[far]!);
+  const { hf, far } = lakes();
+  const made = new Lakes(hf, hf.water!, far);
   const p = new FramePacket();
   made.update(p, { spend: () => {}, reserve: () => {} }, 128, 128, 1e5);
   const cam = new Camera();
@@ -81,7 +79,8 @@ function lakeFaces(): number[][][] {
   const out: number[][][] = [];
   made.draw(cam, 1e5, (slot, _t, ox, oy, oz) => {
     const u = p.assetUploads.find((a) => a.slot === slot)!;
-    out.push(...faces(pack, far, u.data, u.indexCount, u.indexBytes, [ox + cam.x, oy + cam.y, oz + cam.z]));
+    expect([u.quads, u.data.length / VERTEX_BYTES]).toEqual([true, (u.indexCount / 6) * 4]);
+    out.push(...faces(u.bounds!, u.data, [ox + cam.x, oy + cam.y, oz + cam.z]));
   });
   expect(out.length).toBeGreaterThan(0);
   return out;

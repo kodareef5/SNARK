@@ -38,7 +38,7 @@ export function recordFlight(): Flight {
     ticks.push({
       tick: h.world.tick,
       part,
-      bodies: [e, rider].map((i) => ({ id: i, kind: ents.kind[i]!, x: ents.x[i]!, y: ents.y[i]!, z: ents.z[i]!, yaw: ((ents.yaw[i]! >>> 6) * TAU) / 1024, flags: (ents.flags[i]! >>> 1) & 0xf, anim: ents.anim[i]!, cue: ents.cue[i]!, seat: ents.seat[i]!, look: ents.look[i] ?? null })),
+      bodies: [e, rider].map((i) => ({ id: i, kind: ents.kind[i]!, x: ents.x[i]!, y: ents.y[i]!, z: ents.z[i]!, yaw: ((ents.yaw[i]! >>> 6) * TAU) / 1024, flags: (ents.flags[i]! >>> 1) & 0xf, anim: ents.anim[i]!, cue: ents.cue[i]!, seat: ents.seat[i]!, look: ents.looks.get(i) ?? null })),
     });
   };
   h.run(1000);

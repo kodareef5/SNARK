@@ -1,7 +1,7 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, BONE_ROWS, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, BONE_ROWS, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
@@ -43,6 +43,8 @@ interface MeshLod {
   /** UNSIGNED_SHORT, or UNSIGNED_INT for a level of more than 65,535 vertices, and the bytes of one index. */
   type: number;
   indexBytes: number;
+  /** The bounds its vertices are stored within where they are not its mesh's. */
+  bounds: AssetUpload["bounds"] | null;
   /** Its surface and skin entries once they have come, and whether there are skin entries. */
   surface: WebGLBuffer | null;
   skin: boolean;
@@ -131,6 +133,8 @@ export class GlRenderer {
   private readonly unaskedTextures: number[] = [];
   private uploading = 0;
   private readonly buffers = new Map<number, WebGLBuffer>();
+  /** The indices levels of quads share (packet.ts quadIndices), by the bytes of one. */
+  private readonly quads: WebGLBuffer[] = [];
   private transient!: WebGLBuffer;
   private tileVao!: WebGLVertexArrayObject;
   /** Small details: their atlas, bound to its unit for their draws alone, and their particles' buffer and vertex array. */
@@ -189,6 +193,7 @@ export class GlRenderer {
     // Where the browser can, programs compile and link away from the page, which asks after one only to draw with it.
     gl.getExtension("KHR_parallel_shader_compile");
     this.buffers.clear();
+    this.quads.length = 0;
     this.textures.clear();
     this.making.clear();
     this.surfaces.clear();
@@ -291,11 +296,11 @@ export class GlRenderer {
    */
   private take(u: AssetUpload): void {
     const gl = this.gl;
-    const indexBytes = u.indexCount * u.indexBytes, vertices = (indexBytes + 3) & ~3;
+    const indexBytes = u.quads ? 0 : u.indexCount * u.indexBytes, vertices = (indexBytes + 3) & ~3;
     const at = u.at ?? 0, end = at + u.data.length, from = Math.max(at, vertices);
     let lod = this.levels.get(u.slot);
     if (at === 0) {
-      lod = { vao: gl.createVertexArray()!, buffers: [gl.createBuffer()!, gl.createBuffer()!], indexCount: u.indexCount, type: u.indexBytes === 4 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, indexBytes: u.indexBytes, surface: null, skin: false, buffer: null, first: 0 };
+      lod = { vao: gl.createVertexArray()!, buffers: u.quads ? [gl.createBuffer()!] : [gl.createBuffer()!, gl.createBuffer()!], indexCount: u.indexCount, type: u.indexBytes === 4 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, indexBytes: u.indexBytes, bounds: u.bounds ?? null, surface: null, skin: false, buffer: null, first: 0 };
       this.levels.set(u.slot, lod);
       this.vertexArray(lod.vao);
       this.array(lod.buffers[0]!);
@@ -306,8 +311,9 @@ export class GlRenderer {
       gl.vertexAttribIPointer(1, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 6);
       gl.enableVertexAttribArray(6);
       gl.vertexAttribIPointer(6, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 7);
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, lod.buffers[1]!);
-      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexBytes, gl.STATIC_DRAW);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, u.quads ? (this.quads[u.indexBytes] ??= gl.createBuffer()!) : lod.buffers[1]!);
+      if (!u.quads) gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexBytes, gl.STATIC_DRAW);
+      else if (gl.getBufferParameter(gl.ELEMENT_ARRAY_BUFFER, gl.BUFFER_SIZE) < u.indexCount * u.indexBytes) gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, quadIndices(u.indexCount, u.indexBytes), gl.STATIC_DRAW);
       for (let a = 2; a <= 5; a++) {
         gl.enableVertexAttribArray(a);
         gl.vertexAttribDivisor(a, 1);
@@ -685,9 +691,9 @@ export class GlRenderer {
   private bind(prog: Program, lod: MeshLod, buffer: WebGLBuffer, mesh: number, first: number, offsets: Float32Array, i: number): void {
     const gl = this.gl;
     const u = prog.at, last = prog.last;
-    if (last[U.center] !== mesh && u[U.center]) {
-      last[U.center] = mesh;
-      const info = this.pack.header.meshes[mesh]!;
+    if ((lod.bounds || last[U.center] !== mesh) && u[U.center]) {
+      last[U.center] = lod.bounds ? NaN : mesh;
+      const info = lod.bounds ?? this.pack.header.meshes[mesh]!;
       gl.uniform3f(u[U.center]!, info.center[0], info.center[1], info.center[2]);
       gl.uniform3f(u[U.half]!, info.half[0], info.half[1], info.half[2]);
     }

@@ -95,19 +95,20 @@ test("vehicle-only visual changes travel in entity deltas and preserve the occup
 });
 
 test("growing and recycling entity slots cannot retain a vehicle's fuel or seat claim", () => {
-  const store = new EntityStore({ chunksX: 2, chunksZ: 2 }, 2, 4);
+  // Kind 1 is a vehicle's, and kind 2 a body's.
+  const store = new EntityStore({ chunksX: 2, chunksZ: 2 }, 2, 4, [null, true]);
   const a = store.create(1, 10, 0, 10, 0), b = store.create(2, 10, 0, 10, 0);
-  store.vehicle[a] = 1; store.fuel[a] = 17; store.vehicleRoll[a] = 0.25;
-  store.vehicleGear[a] = 3; store.vehicleRpm[a] = 4300;
-  store.vehicleShiftTime[a] = .5; store.vehiclePayloadMass[a] = 380;
+  store.vehicle[store.vrow[a]!] = 1; store.fuel[store.vrow[a]!] = 17; store.vehicleRoll[store.vrow[a]!] = 0.25;
+  store.vehicleGear[store.vrow[a]!] = 3; store.vehicleRpm[store.vrow[a]!] = 4300;
+  store.vehicleShiftTime[store.vrow[a]!] = .5; store.vehiclePayloadMass[store.vrow[a]!] = 380;
   store.setSeat(b, a, 2);
   store.create(1, 12, 0, 10, 0);
-  expect(store.fuel[a]).toBe(17); expect(store.seatGen[b]).toBe(store.gen[a]!);
-  expect([store.vehicleGear[a], store.vehicleRpm[a], store.vehicleShiftTime[a], store.vehiclePayloadMass[a]]).toEqual([3, 4300, .5, 380]);
+  expect(store.fuel[store.vrow[a]!]).toBe(17); expect(store.seatGen[b]).toBe(store.gen[a]!);
+  expect([store.vehicleGear[store.vrow[a]!], store.vehicleRpm[store.vrow[a]!], store.vehicleShiftTime[store.vrow[a]!], store.vehiclePayloadMass[store.vrow[a]!]]).toEqual([3, 4300, .5, 380]);
   store.create(1, 14, 0, 10, 0); store.destroy(a);
   const recycled = store.create(2, 16, 0, 10, 0);
   expect(recycled).toBe(a);
-  expect([store.vehicle[a], store.fuel[a], store.vehicleRoll[a], store.seatSlot[a], store.seatGen[a]]).toEqual([0, 0, 0, 0, 0]);
-  expect([store.vehicleGear[a], store.vehicleRpm[a], store.vehicleShiftTime[a], store.vehiclePayloadMass[a]]).toEqual([0, 0, 0, 0]);
+  expect([store.vehicle[store.vrow[a]!], store.fuel[store.vrow[a]!], store.vehicleRoll[store.vrow[a]!], store.seatSlot[a], store.seatGen[a]]).toEqual([0, 0, 0, 0, 0]);
+  expect([store.vehicleGear[store.vrow[a]!], store.vehicleRpm[store.vrow[a]!], store.vehicleShiftTime[store.vrow[a]!], store.vehiclePayloadMass[store.vrow[a]!]]).toEqual([0, 0, 0, 0]);
   expect(store.seatGen[b]).not.toBe(store.gen[a]!);
 });

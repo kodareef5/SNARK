@@ -31,6 +31,10 @@ export interface AssetUpload {
   /** How many indices the data starts with, and the bytes of each. The vertices follow, from the next multiple of 4. */
   indexCount: number;
   indexBytes: 2 | 4;
+  /** Its indices are those every level of quads shares (packet.ts quadIndices), and `data` holds its vertices alone. */
+  quads?: boolean;
+  /** The bounds its vertices are stored within, where they are not its mesh's. */
+  bounds?: { readonly center: readonly number[]; readonly half: readonly number[] };
   of?: number;
   skinAt?: number;
   /**

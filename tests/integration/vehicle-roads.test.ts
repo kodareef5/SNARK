@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { COMPACT } from "../../content/vehicles/compact.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
+import { Body } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { StaticVehicleWorld } from "../../shared/world/vehicle.ts";
 import { OFFROAD } from "../../shared/world/vehicle-surface.ts";
@@ -95,10 +96,11 @@ test("a v3 moving vehicle component migrates to v4 without losing its existing p
     const restored = new Harness({}, 1, 60, { ...hostOptions, dbPath }); active = restored;
     const e = restored.host.records.entOf.get(pid)!, ents = restored.world.ents;
     expect(e).toBeGreaterThanOrEqual(0);
-    expect(fields.map(field => ents[field][e])).toEqual(values.map(Math.fround));
+    const b = new Body(); ents.loadBody(e, b);
+    expect(fields.map(field => b[field])).toEqual(values.map(Math.fround));
     expect(ents.flags[e]! & F_GROUNDED).toBe(0);
-    expect([ents.vehicleGear[e], ents.vehicleShiftTime[e], ents.vehiclePayloadMass[e]]).toEqual([0, 0, 0]);
-    expect(ents.vehicleRpm[e]).toBe(COMPACT.drivetrain!.idleRpm);
+    expect([ents.vehicleGear[ents.vrow[e]!], ents.vehicleShiftTime[ents.vrow[e]!], ents.vehiclePayloadMass[ents.vrow[e]!]]).toEqual([0, 0, 0]);
+    expect(ents.vehicleRpm[ents.vrow[e]!]).toBe(COMPACT.drivetrain!.idleRpm);
     const upgraded = restored.host.records.byPid.get(pid)!.extra.get(0x757262)!;
     expect(upgraded[0]).toBe(4); expect(upgraded.length).toBe(82);
   } finally { active?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
