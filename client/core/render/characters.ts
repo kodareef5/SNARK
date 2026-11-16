@@ -666,7 +666,11 @@ export class Characters {
       if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
       const first = this.room(p, c.anim.rig.bones, 1);
       if (first < 0) return;
-      writeBones(p.bones, first * BONE_FLOATS, d.solved, c.anim.rig.rest, null, x, y, z, d.yaw, d.size);
+      if (d.rigid) {
+        this.rotation[0] = d.qx; this.rotation[1] = d.qy; this.rotation[2] = d.qz; this.rotation[3] = d.qw;
+        orientSolved(d.solved, this.rotation, c.oriented);
+        writeBones(p.bones, first * BONE_FLOATS, c.oriented, c.anim.rig.rest, null, x, y, z, 0, d.size);
+      } else writeBones(p.bones, first * BONE_FLOATS, d.solved, c.anim.rig.rest, null, x, y, z, d.yaw, d.size);
       this.queueCreature(c, c.wreck >= 0 ? c.wreck : c.mesh, c.wreck >= 0 ? c.wreckError : c.error, first, x, y, z, d.colors, 0, d.id, d.size, false, false, lit ? this.layers.level(d.id, corpseWanted(d.decay), remote.tick, this.last.has(d.id)) : 0);
     }
   }

@@ -26,7 +26,7 @@ import { LOW } from "../render/atmosphere.ts";
 import type { Camera } from "../render/camera.ts";
 import { DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, MAX_DETAILS, type FramePacket } from "../render/packet.ts";
 import type { RemoteSample } from "../session.ts";
-import { dustColour, groundAt } from "./ground.ts";
+import { GROUND_WATER, dustColour, groundAt } from "./ground.ts";
 import { Pool } from "./pool.ts";
 
 /** A burst keeps its whole count within this many metres of the eye, and this many over the distance beyond. */
@@ -203,9 +203,11 @@ export class Details {
           vehicleRotation(frame, this.rotation); quatRotate(this.rotation, 0, 0, 1, 0, this.up, 0);
           vehiclePoint(frame, [anchor.x, anchor.y, anchor.z], this.emitter);
           if (this.up[1]! > .45) {
-            const [x, y, z] = this.emitter as unknown as [number, number, number];
-            let distance = (y - Math.max(hf.heightAt(x, z), hf.waterAt(x, z))) / this.up[1]!;
+            const x = this.emitter[0]!, y = this.emitter[1]!, z = this.emitter[2]!;
+            let distance = world ? Infinity : (y - hf.heightAt(x, z)) / this.up[1]!;
             if (world && castWorld(world, x, y, z, -this.up[0]!, -this.up[1]!, -this.up[2]!, 7.2) !== HIT_NONE) distance = rayHit.t;
+            // Water is a surface for spray, even though the solid-world ray deliberately passes through it.
+            distance = Math.min(distance, (y - hf.waterAt(x, z)) / this.up[1]!);
             if (distance >= 0 && distance <= 7.2) {
               const gx = x - this.up[0]! * distance, gy = y - this.up[1]! * distance, gz = z - this.up[2]! * distance;
               emit("rotor_wash", gx, gy + .04, gz, gy);
@@ -301,7 +303,8 @@ export class Details {
     const d = Math.hypot(px - cam.x, py - cam.y, pz - cam.z);
     if (d > e.reach * tier.details.reach) return 0;
     // What the ground is, for the dust's colour and whether there is any.
-    const kind = groundAt(hf, px, w.origin?.floor ?? y, pz);
+    const wet = w.origin && Number.isFinite(w.origin.floor) && w.origin.floor <= hf.waterAt(px, pz) + .08 && hf.waterAt(px, pz) > hf.heightAt(px, pz) + .1;
+    const kind = wet ? GROUND_WATER : groundAt(hf, px, w.origin?.floor ?? y, pz);
     if (answer.entry.on && !answer.entry.on.includes(kind)) return 0;
     const colour = this.colour;
     if (e.colour === "ground" && !dustColour(hf, this.palette, kind, px, pz, colour)) return 0;

@@ -13,7 +13,7 @@ import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { MODE_FLYER, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CARRY_THROW, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
@@ -34,7 +34,8 @@ import { BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY 
 import { FISTS, HOLD_CARRY } from "../../shared/sim/weapon.ts";
 import { KICK_UNIT, scopeFitted, shotCone, sway, swayOut } from "../../shared/sim/aim.ts";
 import { AnimState, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
-import { handleGen, handleIndex } from "../../shared/ids.ts";
+import { handleGen, handleIndex, makeHandle } from "../../shared/ids.ts";
+import { VehiclePlacement } from "./vehicle-placement.ts";
 import { predictedVehiclePose, remoteVehiclePose } from "./vehicle-view.ts";
 import { vehiclePoint } from "../../shared/sim/vehicle-frame.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
@@ -185,14 +186,17 @@ export class App {
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
     this.shots = new Shots(reg, pack);
+    this.ui.inventory.onDeploy = slot => this.vehiclePlacement.begin(slot);
     session.onResult = (seq, code) => {
       this.ui.creator.result(seq, code === RESULT_OK);
       this.builder.result(seq, code, this.nowMs);
+      this.vehiclePlacement.result(seq, code, this.nowMs);
       this.ui.structure.result(seq, code, this.nowMs, this.session, this.aimed);
     };
   }
 
   readonly builder = new Builder();
+  readonly vehiclePlacement = new VehiclePlacement();
   /** The page, for travel between the servers of a cluster. The shell sets it; without one nobody travels. */
   page: Page | null = null;
   /** The page is on its way to another server, or has said it arrived. */
@@ -283,6 +287,7 @@ export class App {
 
   /** Returns true if the page should not also act on the key. */
   key(code: string, down: boolean, repeat = false): boolean {
+    if (!this.ui.captureKeyboard && this.vehiclePlacement.key(code, down, repeat)) return true;
     if (this.ui.key(code, down, repeat, this.session)) {
       // A screen that captures the keyboard releases the body's keys and a push-to-talk microphone.
       if (this.ui.captureKeyboard) {
@@ -329,7 +334,11 @@ export class App {
     // F opens the tribe creature that is ridden or looked at.
     if (code === "KeyF") {
       const which = this.session.driving >= 0 ? this.session.driving : this.lookedAt;
-      if (down && !repeat && which >= 0) this.session.command(CMD_OPEN, (w) => w.u32(which >>> 0));
+      if (down && !repeat && which >= 0) {
+        const r = this.remote, at = r.id.subarray(0, r.count).indexOf(which);
+        if (at >= 0 && this.reg.vehicle[r.kind[at]!]) this.session.command(CMD_VEHICLE, w => { w.u8(VEHICLE_INSPECT); w.u32(makeHandle(which, r.gen[at]!)); });
+        else this.session.command(CMD_OPEN, (w) => w.u32(which >>> 0));
+      }
       return true;
     }
     // Whistles. T and Y tell the creature looked at to follow or stay. J and U tell every tribe creature that hears.
@@ -375,6 +384,10 @@ export class App {
 
   mouseButton(button: number, down: boolean): void {
     if (!this.ui.wantsPointerLock) return;
+    if (button === 0 && this.vehiclePlacement.active) {
+      if (down) this.vehiclePlacement.place(this.session);
+      return;
+    }
     if (button === 0 && this.builder.active) {
       if (down) this.builder.place(this.session, this.reg);
       return;
@@ -1064,11 +1077,12 @@ export class App {
     if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, { master: vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, soundView(session));
     const ghost = this.scene.ghost;
     ghost.kind = 0;
-    const b = this.builder;
+    const b = this.builder, v = this.vehiclePlacement;
     if (alive && session.driving < 0) {
       lookDirection(Math.round((c.yaw / TAU) * 65536) & 0xffff, Math.round((c.pitch / (PI / 2)) * 16384), this.aim);
       b.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.aim[0]!, this.aim[1]!, this.aim[2]!, c.yaw, nowMs);
-    } else b.active = false;
+      v.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.aim[0]!, this.aim[1]!, this.aim[2]!, c.yaw, nowMs);
+    } else { b.active = false; v.active = false; }
     if (b.active && b.problem !== RESULT_NO_SNAP) {
       ghost.kind = b.kind;
       ghost.x = b.pose.x / STRUCT_UNITS;
@@ -1077,9 +1091,13 @@ export class App {
       ghost.yaw = b.pose.yaw;
       ghost.color = b.problem === 0 ? GHOST_OK : GHOST_BAD;
     }
+    if (v.active) {
+      ghost.kind = v.kind; ghost.x = v.pose.x; ghost.y = v.pose.y; ghost.z = v.pose.z; ghost.yaw = v.pose.yaw;
+      ghost.color = v.problem === RESULT_OK ? GHOST_OK : GHOST_BAD;
+    }
     const menu = this.ui.structure;
     menu.tick(nowMs);
-    const built = alive && !b.active && session.driving < 0 ? this.builtAt(world, eyeNow) : ((this.aimed = this.terminalAimed = -1), "");
+    const built = alive && !b.active && !v.active && session.driving < 0 ? this.builtAt(world, eyeNow) : ((this.aimed = this.terminalAimed = -1), "");
     if (this.aimed >= 0 && this.useDownAt >= 0 && nowMs - this.useDownAt >= STRUCT_HOLD_MS && !menu.open && this.ui.wantsPointerLock) {
       menu.begin(this.aimed);
       this.useDownAt = -1;
@@ -1088,7 +1106,7 @@ export class App {
     }
     const whom = alive ? this.who(world, eyeNow) : ((this.lookedAt = this.target = -1), "");
     this.eggAimed = -1;
-    hud.prompt = !alive ? "" : b.active ? b.notice : menu.notice || this.prompt(world, eyeNow) || whom || built;
+    hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || this.prompt(world, eyeNow) || whom || built;
     if (b.active) hud.ammo = "E turn   Q next place   R form";
     this.ui.build(aspect, hud, session);
     return packet;
