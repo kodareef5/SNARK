@@ -165,7 +165,7 @@ export function buildHud(f: UiFrame, m: HudModel): void {
     f.text(KEY_VEHICLE + 2, x + 142, y + 10, 102, S_LABEL, v.gear < 0 ? "REVERSE" : v.gear > 0 ? "AHEAD" : "NEUTRAL");
     f.add(KEY_VEHICLE + 3, K_BAR, x + 10, y + 33, width - 20, 4, S_STAMINA).value = Math.min(1, v.rpm / v.redline);
     f.text(KEY_VEHICLE + 4, x + 10, y + 42, width - 20, S_LABEL, `${Math.round(v.rpm / 100) * 100} rpm | Fuel ${Math.round(v.fuel * 100)}%`);
-    f.text(KEY_VEHICLE + 5, x + 10, y + 61, width - 20, S_LABEL, v.flooding > .04 ? `TAKING WATER ${Math.round(v.flooding * 100)}% - repair hull` : `Hull ${Math.round(v.hullCondition * 100)}% | Engine ${Math.round(v.engineCondition * 100)}%`);
+    f.text(KEY_VEHICLE + 5, x + 10, y + 61, width - 20, S_LABEL, v.capsized ? "CAPSIZED - E to escape" : v.flooding >= .5 ? `FLOODING ${Math.round(v.flooding * 100)}% - E to escape` : v.flooding > .04 ? `TAKING WATER ${Math.round(v.flooding * 100)}% - repair hull` : `Hull ${Math.round(v.hullCondition * 100)}% | Engine ${Math.round(v.engineCondition * 100)}%`);
     f.text(KEY_VEHICLE + 6, x + 10, y + 80, width - 20, S_LABEL, v.precision ? "PRECISION THROTTLE" : v.engineOn ? "ENGINE ON" : "W/S to start engine");
     f.text(KEY_VEHICLE + 7, x + 10, y + 99, width - 20, S_LABEL, "W/S ahead/reverse | A/D steer");
     f.text(KEY_VEHICLE + 8, x + 10, y + 122, width - 20, S_LABEL, "Space neutral | Shift precision");

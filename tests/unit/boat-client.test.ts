@@ -39,4 +39,8 @@ test("marine instruments fit wide and portrait views and do not emit placeholder
     }
     expect(gauges.map(n => n.text)).toContain("REVERSE"); expect(gauges.map(n => n.text)).toContain("PRECISION THROTTLE");
   }
+  b.vehicleQz = 1; b.vehicleQw = 0; v.updateBoat(4, b, BOAT, false);
+  expect(v.capsized).toBe(true);
+  const f = new UiFrame(); f.begin(9 / 16); buildHud(f, hud);
+  expect(f.nodes.slice(0, f.count).map(n => n.text)).toContain("CAPSIZED - E to escape");
 });

@@ -183,6 +183,7 @@ export class VehicleTelemetry {
   flooding = 0;
   hullCondition = 1;
   precision = false;
+  capsized = false;
   direct = false;
   recovery = false;
   altitude = 0;
@@ -233,6 +234,7 @@ export class VehicleTelemetry {
     this.gear = body.vehicleGear; this.rpm = body.vehicleRpm; this.redline = spec.maxRpm;
     this.engineOn = body.vehicleEngineOn; this.engineCondition = body.vehicleEngineCondition;
     this.hullCondition = body.vehicleHullCondition; this.flooding = body.vehicleFlooding;
+    this.capsized = 1 - 2 * (body.vehicleQx * body.vehicleQx + body.vehicleQz * body.vehicleQz) < .15;
     this.grounded = body.grounded; this.handbrake = false; this.brake = this.slip = 0;
     this.load = this.engineOn ? Math.max(0, (this.rpm - spec.idleRpm) / (spec.maxRpm - spec.idleRpm)) : 0;
     this.throttle = this.load * this.gear;
