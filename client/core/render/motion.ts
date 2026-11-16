@@ -1,14 +1,14 @@
-// The parts of statics that travel when used (StructureDef.travel): each drawn as one piece on a bone of its own, its
+// The parts of statics that move when used (StructureDef.motion): each drawn as one piece on a bone of its own, its
 // placement eased between the two its content gives. A static at rest keeps the pose it was last given.
 
-import type { PartPlacement, TravelFacet } from "../../../shared/content/defs.ts";
+import type { MotionFacet, PartPlacement } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { travelProgress, travelTicks, type TravelState } from "../../../shared/sim/travel.ts";
+import { motionProgress, motionTicks, type MotionState } from "../../../shared/sim/motion.ts";
 import type { MapStatics } from "../../../shared/world/mapfile.ts";
 
-/** What the scene draws travelling parts from: every static's state as the server told it, the clock, and the map's statics. */
-export interface TravelSource {
-  states(): ReadonlyMap<number, TravelState>;
+/** What the scene draws moving parts from: every static's state as the server told it, the clock, and the map's statics. */
+export interface MotionSource {
+  states(): ReadonlyMap<number, MotionState>;
   tick(): number;
   statics(): MapStatics | null;
 }
@@ -16,10 +16,10 @@ export interface TravelSource {
 /** Floats a part's pose takes: its 3x4 matrix from the static's origin, row by row, and how much it is scaled at most. */
 export const PART_FLOATS = 13;
 
-/** A static of the map that travels. `pose` holds each part's at `posed`, the progress it was last given, -1 for none. */
-export interface Travelling {
+/** A static of the map that moves when used. `pose` holds each part's at `posed`, the progress it was last given, -1 for none. */
+export interface Moving {
   readonly ref: number;
-  readonly facet: TravelFacet;
+  readonly facet: MotionFacet;
   readonly ticks: number;
   readonly x: number;
   readonly y: number;
@@ -36,24 +36,24 @@ export interface Travelling {
 const ONE: readonly [number, number, number] = [1, 1, 1];
 const NONE: readonly [number, number, number, number] = [0, 0, 0, 1];
 
-/** The map's travelling statics, once its statics have come. */
-export function travellingOf(reg: Registry, statics: MapStatics): Travelling[] {
-  const out: Travelling[] = [];
+/** The map's moving statics, once its statics have come. */
+export function movingOf(reg: Registry, statics: MapStatics): Moving[] {
+  const out: Moving[] = [];
   const kinds = statics.kinds.map((id) => reg.index.get(id) ?? 0);
   for (let c = 0; c + 1 < statics.first.length; c++) {
     for (let row = statics.first[c]!; row < statics.first[c + 1]!; row++) {
-      const kind = kinds[statics.kind[row]!]!, facet = reg.travel[kind];
+      const kind = kinds[statics.kind[row]!]!, facet = reg.motion[kind];
       if (!facet) continue;
       const d = reg.defs[kind]!;
-      out.push({ ref: c * 65536 + row - statics.first[c]!, facet, ticks: travelTicks(facet), x: statics.x[row]!, y: statics.y[row]!, z: statics.z[row]!, yaw: statics.yaw[row]!, color: d.type === "structure" ? d.color : 0, pose: new Float32Array(facet.parts.length * PART_FLOATS), level: new Int8Array(facet.parts.length).fill(-1), posed: -1, progress: 0 });
+      out.push({ ref: c * 65536 + row - statics.first[c]!, facet, ticks: motionTicks(facet), x: statics.x[row]!, y: statics.y[row]!, z: statics.z[row]!, yaw: statics.yaw[row]!, color: d.type === "structure" ? d.color : 0, pose: new Float32Array(facet.parts.length * PART_FLOATS), level: new Int8Array(facet.parts.length).fill(-1), posed: -1, progress: 0 });
     }
   }
   return out;
 }
 
 /** Its progress now, and its parts posed at it where they are not already. */
-export function poseTravelling(t: Travelling, state: TravelState | undefined, tick: number): void {
-  const p = state ? travelProgress(state, t.ticks, tick) : 0;
+export function poseMoving(t: Moving, state: MotionState | undefined, tick: number): void {
+  const p = state ? motionProgress(state, t.ticks, tick) : 0;
   t.progress = p;
   if (p === t.posed) return;
   t.posed = p;

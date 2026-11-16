@@ -7,7 +7,7 @@ D={'schema':2,'id':'koru','frame':{'units':'metres','up':'+Y','forward':'+Z','po
  'evidence':{'published':{'lengthOverall':125,'beam':17.2,'source':'https://www.oceancoyacht.com/fleet/koru/'},'discrepancy':'Lateral title says125m; text says127m/16m. Builder baseline is used.','inferred':['hull stations','draft','mast stations and heights','deck datums','bowsprit proportion'],'original':['all room identities and positions','circulation and stairs','dock access','furniture layout']},
  'dimensions':{'hullMinZ':-54.5,'hullMaxZ':54.5,'bowspritTip':[0,8.5,70.5],'beam':17.2,'lowestKeel':-6.2,'highestMast':70},
  'clearances':{'floorSpacing':3,'floorThickness':.2,'doorWidth':1.6,'doorHeight':2.6,'corridorWidth':1.8,'stairWidth':1.6,'ceilingClear':2.8,'railHeight':1.1},
- 'decks':[],'hullStations':[],'rooms':[],'modules':[],'stairs':[],'doors':[],'routes':[],'docking':{},'rig':{},'cells':[],'travel':{}}
+ 'decks':[],'hullStations':[],'rooms':[],'modules':[],'stairs':[],'doors':[],'routes':[],'docking':{},'rig':{},'cells':[],'motion':{}}
 mods=D['modules']
 def clean(v):
  if isinstance(v,float):return round(v,6)
@@ -297,7 +297,7 @@ for s in D['rig']['sails']:
   q=qframe(chord,luff,normal)
   parts.append({'mesh':s['sheet'],'from':{'at':local(t),'turn':q,'scale':[.015,1,.3]},'to':{'at':local(t),'turn':q}})
 assert len(parts)<=16
-D['travel']={'static':'koru:sail_control','seconds':18,'parts':parts}
+D['motion']={'static':'koru:sail_control','seconds':18,'parts':parts}
 # Cells: 16 m of the ship's length, the whole beam wide. A cell is one mesh, modelled in its anchor's frame and drawn by
 # the anchor's static; its other modules draw nothing and are collision alone. A door draws itself.
 for m in mods:

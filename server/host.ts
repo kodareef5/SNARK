@@ -5,7 +5,7 @@ import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_CLO
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { Build } from "./build.ts";
-import { Travel } from "./travel.ts";
+import { Motion } from "./motion.ts";
 import { Fixtures } from "./fixtures.ts";
 import { Beds } from "./beds.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
@@ -163,7 +163,7 @@ export interface Host {
   readonly voice: Voice;
   readonly build: Build;
   readonly fixtures: Fixtures;
-  readonly travel: Travel;
+  readonly motion: Motion;
   readonly stations: Stations;
   readonly taming: Taming;
   readonly riding: Riding;
@@ -573,7 +573,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const fixtures = new Fixtures(world, records, items);
   fixtures.rules = rules;
   fixtures.index();
-  const travel = new Travel(world, records, fixtures, game);
+  const motion = new Motion(world, records, fixtures, game);
   const stations = new Stations(world, records, items, fixtures, deadlines);
   // A powered station (the fabricator) makes things only while it burns; why it refuses is told as a notice.
   wirePower(world, stations, progression);
@@ -602,7 +602,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   });
   if (persistence && !loaded!.fresh) beds.restore(persistence.store.meta("beds"));
   persistence?.sidecar("beds", beds.saved);
-  const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, travel: (ref) => travel.throw(ref), light: (ref) => stations.toggle(ref), bed: (c, ref, action, name) => beds.act(c, ref, action, name), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
+  const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, motion: (ref) => motion.throw(ref), light: (ref) => stations.toggle(ref), bed: (c, ref, action, name) => beds.act(c, ref, action, name), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
   build.onPlaced = (by, ref) => beds.placed(by, ref);
   death.onUseBuilt = (c, ref) => build.use(c, ref);
   death.keepsBuilt = (c, ref) => build.keeps(c, ref);
@@ -1089,7 +1089,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   };
   const tactical = new Tactical(world, game, records, rules);
   game.onReplicate = (c) => {
-    travel.sync(c);
+    motion.sync(c);
     syncOwn(own, c);
     harvest?.sync(c);
     tactical.sync(c);
@@ -1221,7 +1221,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     voice,
     build,
     fixtures,
-    travel,
+    motion,
     stations,
     taming,
     riding,

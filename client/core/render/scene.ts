@@ -3,7 +3,7 @@ import { remoteVehiclePose } from "../vehicle-view.ts";
 // piece is added, removed or replaced, and uploaded once. Damage changes nothing that is drawn. Resource nodes are drawn
 // the same way, each as the mesh of its form (shared/world/nodes.ts) at its size.
 
-import { MAX_TRAVEL_REACH, type Registry } from "../../../shared/content/registry.ts";
+import { MAX_MOVING_REACH, type Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { Assets } from "../assets/assets.ts";
 import type { AssetPort } from "../assets/port.ts";
@@ -47,7 +47,7 @@ import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sk
 import { TerrainLod, type CastTest } from "./terrain.ts";
 import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
 import type { MapStatics } from "../../../shared/world/mapfile.ts";
-import { PART_FLOATS, poseTravelling, travellingOf, type TravelSource, type Travelling } from "./travel.ts";
+import { PART_FLOATS, movingOf, poseMoving, type MotionSource, type Moving } from "./motion.ts";
 
 export interface RenderWorld {
   /** Chooses the data-defined city surface palette; no terrain or geometry changes. */
@@ -63,8 +63,8 @@ export interface RenderWorld {
   readonly farNodes?: FarNodeSource;
   /** The map's own buildings past the near rows (farcity.ts). It may come after the first frame, and is drawn from then on. */
   readonly city?: CitySource;
-  /** The map's statics that travel when used, where it has any (travel.ts). */
-  readonly travel?: TravelSource;
+  /** The map's statics that move when used, where it has any (motion.ts). */
+  readonly motion?: MotionSource;
 }
 
 /** The viewer's own body, which is not among the remote entities. */
@@ -210,10 +210,10 @@ interface ChunkBatch {
 
 export class Scene {
   readonly packet = new FramePacket();
-  /** The registry where it has travelling statics, else null, and those of the map once its statics have come. */
-  private readonly travelReg: Registry | null;
-  private travelFrom: MapStatics | null = null;
-  private travelling: Travelling[] = [];
+  /** The registry where it has moving statics, else null, and those of the map once its statics have come. */
+  private readonly motionReg: Registry | null;
+  private movingFrom: MapStatics | null = null;
+  private moving: Moving[] = [];
   readonly terrain: TerrainLod;
   /** Metres. Terrain beyond this is not drawn and fog reaches full strength here. */
   viewDistance = 4000;
@@ -440,7 +440,7 @@ export class Scene {
     // The renderer holds the sky table on every tier.
     this.assets.residency.reserve("sky table", SKY_SIZE * SKY_SIZE * SKY_SLICES * 4);
     const { table, bind } = this.assets;
-    this.travelReg = reg.travel.some((t) => t !== null) ? reg : null;
+    this.motionReg = reg.motion.some((t) => t !== null) ? reg : null;
     const missing = Math.max(0, table.find(MISSING_MESH));
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
     this.colorOfKind = new Uint8Array(reg.defs.length);
@@ -600,7 +600,7 @@ export class Scene {
       this.groundCast();
     }
     this.structures(cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);
-    if (this.world.travel && this.travelReg) this.showTravel(cam, this.world.travel);
+    if (this.world.motion && this.motionReg) this.showMotion(cam, this.world.motion);
     if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS, this.meshOfForm, this.colorOfForm, this.sizeOfForm);
     if (this.instanceBytes !== this.instancesReserved) this.assets.residency.reserve(INSTANCES, (this.instancesReserved = this.instanceBytes));
     if (remote) this.entities(cam, remote);
@@ -1321,20 +1321,20 @@ export class Scene {
     }
   }
 
-  /** The map's travelling statics' parts, to their own reach: posed while they move, and as they were while they rest. */
-  private showTravel(cam: Camera, source: TravelSource): void {
+  /** The map's moving statics' parts, to their own reach: posed while they move, and as they were while they rest. */
+  private showMotion(cam: Camera, source: MotionSource): void {
     const p = this.packet, tier = this.assets.tier, table = this.assets.table;
     const statics = source.statics();
-    if (statics !== this.travelFrom) {
-      this.travelFrom = statics;
-      this.travelling = statics ? travellingOf(this.travelReg!, statics) : [];
+    if (statics !== this.movingFrom) {
+      this.movingFrom = statics;
+      this.moving = statics ? movingOf(this.motionReg!, statics) : [];
     }
     const reach = Math.min(this.viewDistance, tier.reach.parts), states = source.states(), tick = source.tick();
     const bones = Math.min(tier.bones, MAX_BONES), draws = Math.min(MAX_DRAWS, tier.budget.draws);
-    for (const t of this.travelling) {
+    for (const t of this.moving) {
       const x = t.x - cam.x, y = t.y - cam.y, z = t.z - cam.z;
-      if (Math.sqrt(x * x + y * y + z * z) > reach + MAX_TRAVEL_REACH) continue;
-      poseTravelling(t, states.get(t.ref), tick);
+      if (Math.sqrt(x * x + y * y + z * z) > reach + MAX_MOVING_REACH) continue;
+      poseMoving(t, states.get(t.ref), tick);
       const parts = t.facet.parts, pose = t.pose;
       for (let i = 0; i < parts.length; i++) {
         const mesh = table.find(parts[i]!.mesh);

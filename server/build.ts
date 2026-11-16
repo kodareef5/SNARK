@@ -50,8 +50,8 @@ export interface BuildContext {
   readonly tribes: Tribes;
   readonly rules: Rules;
   readonly fixtures: Fixtures;
-  /** Throws the travelling static at a ref (server/travel.ts). Returns a RESULT code. */
-  travel(ref: number): number;
+  /** Throws the moving static at a ref (server/motion.ts). Returns a RESULT code. */
+  motion(ref: number): number;
   /** Lights the fire at a ref, or puts it out. Returns a RESULT code. */
   light(ref: number): number;
   /** Names the bed at a ref, or travels from it (STRUCT_NAME, STRUCT_TRAVEL; server/beds.ts). Returns a RESULT code. */
@@ -315,11 +315,11 @@ export class Build {
     if (!t || slot >= t.high || t.kind[slot] === 0) return -1;
     const kind = t.kind[slot]!;
     const opens = reg.opens[kind]!;
-    if (opens === 0 && reg.structSlots[kind] === 0 && !reg.travel[kind]) return -1;
+    if (opens === 0 && reg.structSlots[kind] === 0 && !reg.motion[kind]) return -1;
     const rec = records.byPid.get(c.pid);
     if (!rec || c.state !== SESSION_ALIVE || c.ent < 0 || rec.out) return RESULT_DENIED;
-    if (reg.travel[kind]) {
-      const done = this.ctx.travel(ref);
+    if (reg.motion[kind]) {
+      const done = this.ctx.motion(ref);
       if (done === RESULT_OK) this.used++;
       return done;
     }

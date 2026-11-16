@@ -247,15 +247,15 @@ export interface PartPlacement {
  * world has each at `from`. `say` is what using it does toward each state, the second and then the first, which the
  * prompt shows.
  */
-export interface TravelFacet {
+export interface MotionFacet {
   readonly seconds: number;
   readonly parts: readonly { readonly mesh: string; readonly from: PartPlacement; readonly to: PartPlacement }[];
   readonly say: readonly [string, string];
 }
 
 export interface StructureDef extends Named {
-  /** A static whose parts travel between two placements when it is used. */
-  readonly travel?: TravelFacet;
+  /** A static whose parts move between two placements when it is used. */
+  readonly motion?: MotionFacet;
   /** Grip/resistance of its supporting faces; shared vehicle prediction reads this independently of artwork. */
   readonly vehicleSurface?: VehicleSurface;
   readonly type: "structure";

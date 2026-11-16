@@ -3,7 +3,7 @@
 // sail control sets and strikes the sails. Its layout is the art's, written by author_layout.py.
 
 import layout from "./koru-layout.json" with { type: "json" };
-import { shapeHalf, type Def, type ShapeLook, type StructureDef, type TravelFacet } from "../../shared/content/defs.ts";
+import { shapeHalf, type Def, type MotionFacet, type ShapeLook, type StructureDef } from "../../shared/content/defs.ts";
 import { YAW_UNITS } from "../../shared/coords.ts";
 import type { Landmark } from "../../shared/world/landmark.ts";
 
@@ -34,7 +34,7 @@ const v3 = (p: readonly number[]): Vec3 => [p[0]!, p[1]!, p[2]!];
 const partsOf = (p: Parts): ShapeLook => ({ boxes: (p.boxes ?? []).map((b) => ({ at: v3(b.at), half: v3(b.half) })), hulls: (p.hulls ?? []).map((h) => ({ corners: h.points.map(v3) })) });
 const yawOf = (degrees: number): number => Math.round((degrees * YAW_UNITS) / 360) & (YAW_UNITS - 1);
 
-const travel: TravelFacet = { seconds: layout.travel.seconds, parts: layout.travel.parts as unknown as TravelFacet["parts"], say: ["set the sails", "strike the sails"] };
+const motion: MotionFacet = { seconds: layout.motion.seconds, parts: layout.motion.parts as unknown as MotionFacet["parts"], say: ["set the sails", "strike the sails"] };
 
 const defs: Def[] = MODULES.flatMap((m): Def[] => {
   const walked = partsOf(m), look = m.look ? partsOf(m.look) : undefined;
@@ -49,7 +49,7 @@ const defs: Def[] = MODULES.flatMap((m): Def[] => {
     color: m.color,
     hp: 10000,
     ...(m.opens ? { opens: m.opens } : {}),
-    ...(m.id === layout.travel.static ? { travel } : {}),
+    ...(m.id === layout.motion.static ? { motion } : {}),
   };
   return [{ type: "shape", id: shape, role: m.category === "door" ? "door" : "thing", boxes: walked.boxes!, hulls: walked.hulls, ...(look ? { look } : {}) }, structure];
 });

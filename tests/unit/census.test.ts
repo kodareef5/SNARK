@@ -96,7 +96,7 @@ test("Koru moored in its bay on medium at the iPhone's view: its eight cells, th
   const reg = withContent(coreRegistry(), map.content!.defs);
   const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   placeStatics(map, structs, reg);
-  const scene = new Scene({ dims: map.dims, hf: mapHeightfield(map), structs, travel: { states: () => new Map(), tick: () => 0, statics: () => map.statics } }, reg, koruPack());
+  const scene = new Scene({ dims: map.dims, hf: mapHeightfield(map), structs, motion: { states: () => new Map(), tick: () => 0, statics: () => map.statics } }, reg, koruPack());
   asTextured(scene);
   [scene.assets.tier, scene.viewHeight] = [MEDIUM, VIEW[1]];
   const cam = new Camera();

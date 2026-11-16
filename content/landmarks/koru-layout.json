@@ -48393,7 +48393,7 @@
       "anchor": "koru:bowsprit"
     }
   ],
-  "travel": {
+  "motion": {
     "static": "koru:sail_control",
     "seconds": 18,
     "parts": [

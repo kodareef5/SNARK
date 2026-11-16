@@ -7,7 +7,7 @@ import type { PieceSpec, PiecesAsset } from "../../../../tools/art/spec.ts";
 
 const piece = (id: string, triangles: readonly (readonly [number, number])[]): PieceSpec => ({ id, object: id.slice("koru:".length), triangles: triangles.map(([, n]) => n) });
 const doors = layout.modules.filter((m) => m.category === "door").map((m) => m.id);
-const sails = layout.travel.parts.map((p) => p.mesh);
+const sails = layout.motion.parts.map((p) => p.mesh);
 
 export default {
   kind: "pieces",

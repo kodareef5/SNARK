@@ -6,14 +6,14 @@ import { KORU_LAYOUT } from "../../content/landmarks/koru.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { RESULT_BUSY } from "../../shared/net/protocol.ts";
 import { BTN_USE, stanceEye } from "../../shared/sim/character.ts";
-import { THROW_TICKS, TRAVEL_STEPS, travelProgress } from "../../shared/sim/travel.ts";
+import { THROW_TICKS, MOTION_STEPS, motionProgress } from "../../shared/sim/motion.ts";
 import { KORU_QUAY, koruMapFile, koruPoint } from "../fixtures/koru.ts";
 import { Harness } from "../fixtures/net.ts";
 
-// Koru's sail control, a static that travels when used: thrown with E as a door is, its state on its record, told to every
+// Koru's sail control, a static that moves when used: thrown with E as a door is, its state on its record, told to every
 // client, refused while just thrown, and as it was after a restart.
 
-const control = KORU_LAYOUT.modules.find((m) => m.id === KORU_LAYOUT.travel.static)!;
+const control = KORU_LAYOUT.modules.find((m) => m.id === KORU_LAYOUT.motion.static)!;
 const aim = koruPoint(control.origin.map((v, a) => v + control.boxes[0]!.at[a]!));
 
 function walkTo(h: Harness, index: number, p: readonly number[]): void {
@@ -42,7 +42,7 @@ function throwAt(h: Harness, index: number): number {
 }
 
 test("the sail control is thrown with E, told to a guest who joins after, refused again within two seconds, and as it was after a restart", () => {
-  const dir = mkdtempSync(join(tmpdir(), "snark-travel-"));
+  const dir = mkdtempSync(join(tmpdir(), "snark-motion-"));
   const opts = { dev: true, clips: NO_CLIPS, rigs: [], map: koruMapFile(), dbPath: join(dir, "world.db") };
   let h = new Harness({}, 41, 60, opts);
   try {
@@ -50,32 +50,32 @@ test("the sail control is thrown with E, told to a guest who joins after, refuse
     h.run(800);
     for (const p of [KORU_QUAY, ...KORU_LAYOUT.routes.find((r) => r.id === "shore_to_arrival")!.anchors.map(koruPoint), koruPoint([control.origin[0]!, control.origin[1]!, control.origin[2]! - 2.2])]) walkTo(h, 0, p);
     const ref = [...h.world.structs.chunks.entries()].flatMap(([c, t]) => (t ? Array.from(t.kind.subarray(0, t.high), (k, slot) => (k === h.reg.index.get(control.id) ? c * 65536 + slot : -1)) : [])).find((r) => r >= 0)!;
-    expect(h.host.travel.get(ref)).toBeNull();
+    expect(h.host.motion.get(ref)).toBeNull();
     expect(throwAt(h, 0)).toBe(-1);
-    const set = h.host.travel.get(ref)!;
+    const set = h.host.motion.get(ref)!;
     expect([set.from, set.to]).toEqual([0, 1]);
     h.run(200);
-    expect(h.sessions[0]!.travels.get(ref)).toEqual(set);
+    expect(h.sessions[0]!.motions.get(ref)).toEqual(set);
     // A public control is no strobe: thrown again at once it is busy, and two seconds on it turns back from where it is.
     expect(throwAt(h, 0)).toBe(RESULT_BUSY);
     h.run(((THROW_TICKS + 30) * 1000) / 30);
     const late = h.join("late guest");
     h.run(800);
-    expect(late.travels.get(ref)).toEqual(set);
+    expect(late.motions.get(ref)).toEqual(set);
     const before = h.world.tick;
     expect(throwAt(h, 0)).toBe(-1);
-    const back = h.host.travel.get(ref)!;
+    const back = h.host.motion.get(ref)!;
     expect(back.to).toBe(0);
-    expect(back.from / TRAVEL_STEPS).toBeCloseTo(travelProgress(set, KORU_LAYOUT.travel.seconds * 30, back.at), 3);
+    expect(back.from / MOTION_STEPS).toBeCloseTo(motionProgress(set, KORU_LAYOUT.motion.seconds * 30, back.at), 3);
     expect(back.at).toBeGreaterThanOrEqual(before);
     h.run(500);
-    for (const s of h.sessions) expect(s.travels.get(ref)).toEqual(back);
+    for (const s of h.sessions) expect(s.motions.get(ref)).toEqual(back);
     h.host.shutdown();
     h = new Harness({}, 41, 60, opts);
-    expect(h.host.travel.get(ref)).toEqual(back);
+    expect(h.host.motion.get(ref)).toEqual(back);
     const again = h.join("deckhand");
     h.run(800);
-    expect(again.travels.get(ref)).toEqual(back);
+    expect(again.motions.get(ref)).toEqual(back);
   } finally {
     h.host.shutdown();
     rmSync(dir, { recursive: true, force: true });

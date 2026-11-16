@@ -38,7 +38,7 @@ export interface Tier {
   readonly split: number;
   /**
    * How far off far things are drawn, in metres: bases as blocks, the map's own buildings (render/farcity.ts), and trees,
-   * rocks and bushes at their coarsest level, and the moving parts of statics that travel (render/travel.ts), as far as
+   * rocks and bushes at their coarsest level, and the moving parts of statics that move when used (render/motion.ts), as far as
    * trees. 0 for none.
    */
   readonly reach: { readonly bases: number; readonly city: number; readonly trees: number; readonly rocks: number; readonly bushes: number; readonly parts: number };
