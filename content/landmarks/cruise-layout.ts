@@ -242,6 +242,7 @@ export function cruiseLayoutFaults(layout: CruiseLayout): string[] {
       }
     }
   }
+  faults.push(...cruiseRoomEntryFaults(layout.rooms, layout.routes));
   for (const p of layout.portals) {
     if (![p.from, p.to].every(id => nodes.has(id) || rooms.has(id))) bad(p.id, "portal names an unknown room or graph node");
     point(p.at, `${p.id}.at`); point(p.normal, `${p.id}.normal`); clearance(p.clearWidth, p.clearHeight, p.id);

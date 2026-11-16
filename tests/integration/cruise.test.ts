@@ -12,6 +12,7 @@ import { RESULT_OBSTRUCTED } from "../../shared/net/protocol.ts";
 import { MODE_WALK } from "../../shared/sim/character.ts";
 import { capsuleBox, capsuleFree, SETTLE_MARGIN, SKIN, stepOnto } from "../../shared/world/collide.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
+import { castWorld, HIT_STRUCTURE, rayHit } from "../../shared/world/ray.ts";
 import { Found, StructureStore } from "../../shared/world/structures.ts";
 import { CRUISE_COURSE, cruiseApproach, cruiseCourse, cruisePort, cruisePortApproach, cruiseWorldPoint } from "../../tools/cruise/course.ts";
 import { assertCruiseMap, assertCruisePlaced } from "../../tools/cruise/preflight.ts";
@@ -34,6 +35,13 @@ test("every advertised occupied room footprint has native floor support beyond i
     const report = cruiseRoomFloors({ hf: h.world.hf, structs: floors }, CRUISE_LAYOUT.rooms, CRUISE_LAYOUT.decks, cruiseWorldPoint);
     expect(report.filter(r => r.missing || !r.samples)).toEqual([]);
     expect(report.length).toBe(CRUISE_LAYOUT.rooms.length);
+    // Exact witnesses from the full-deck audit: independently rounded module centres formerly opened 0.4–1 mm seams.
+    // These plain native rays retain the same tolerance as gameplay; floor world points must survive placement intact.
+    for (const local of [[0, 3, 161.352205882], [-27.35, 56.8, 60.4002118644], [27.25, 14, 116.3943965517]]) {
+      const p = cruiseWorldPoint(local);
+      expect(castWorld({ hf: h.world.hf, structs: floors }, p[0], p[1] + .04, p[2], 0, -1, 0, .08, true)).toBe(HIT_STRUCTURE);
+      expect(rayHit.ny).toBeGreaterThanOrEqual(.99);
+    }
   } finally { h.host.shutdown(); }
 });
 
