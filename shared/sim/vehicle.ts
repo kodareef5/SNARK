@@ -5,7 +5,20 @@ import { clamp, detAtan2, detCos, detSin, TAU } from "../math/scalar.ts";
 import { validateSeats, type Seat } from "./seats.ts";
 import { DEFAULT_DRIVETRAIN, stepDrivetrain, validateDrivetrainSpec, vehicleMass, type VehicleDrivetrainSpec, type VehicleDrivetrainState } from "./vehicle-drivetrain.ts";
 
-export interface VehicleSpec {
+/** Physical dimensions and resources every mechanical vehicle shares. Motion-specific tuning stays in its controller. */
+export interface VehicleHullSpec {
+  readonly halfWidth: number;
+  readonly halfLength: number;
+  readonly height: number;
+  readonly clearance: number;
+  readonly mass?: number;
+  readonly maxForward: number;
+  readonly maxReverse: number;
+  readonly fuelCapacity: number;
+  readonly fuelPerSecond: number;
+}
+
+export interface VehicleSpec extends VehicleHullSpec {
   readonly halfWidth: number;
   readonly halfLength: number;
   readonly height: number;
@@ -70,9 +83,8 @@ export interface VehicleWheel {
 export const MAX_VEHICLE_DOORS = 4;
 
 /** One kind of vehicle: its mechanics, its seats and the parts of its rig that move. Content, never code, says each. */
-export interface VehicleDefinition {
+interface VehicleDefinitionBase {
   readonly id: string;
-  readonly spec: VehicleSpec;
   readonly seats: readonly VehicleSeat[];
   readonly doors: readonly VehicleDoor[];
   readonly wheels: readonly VehicleWheel[];
@@ -84,9 +96,77 @@ export interface VehicleDefinition {
   readonly beltline: number;
 }
 
+/** Existing packs omit movement; their controller remains the wheeled one. */
+export interface WheelVehicleDefinition extends VehicleDefinitionBase {
+  readonly movement?: "wheeled";
+  readonly spec: VehicleSpec;
+}
+
+/** A spinning rigid part, with its physical disc in the chassis frame. Phase is main-rotor phase times ratio. */
+export interface VehicleRotor {
+  readonly bone: string;
+  readonly at: readonly [number, number, number];
+  readonly axis: readonly [number, number, number];
+  readonly radius: number;
+  readonly ratio: number;
+}
+
+/** Stabilized rotorcraft tuning, in metres, seconds, kilograms and radians. */
+export interface HelicopterSpec extends VehicleHullSpec {
+  readonly mass: number;
+  /** Total mass the healthy rotor can support at nominal speed; includes occupants and cargo. */
+  readonly liftMass: number;
+  readonly maxSide: number;
+  readonly climbSpeed: number;
+  readonly descendSpeed: number;
+  readonly cruiseMultiplier: number;
+  readonly acceleration: number;
+  readonly brake: number;
+  readonly turnRate: number;
+  readonly turnAcceleration: number;
+  readonly bankAngle: number;
+  readonly pitchAngle: number;
+  readonly attitudeResponse: number;
+  readonly gravity: number;
+  readonly rotorRpm: number;
+  readonly spoolUp: number;
+  readonly spoolDown: number;
+  readonly skidHalfWidth: number;
+  readonly skidHalfLength: number;
+  readonly minGroundNormal: number;
+  /** Tail boom is a separate capsule: rotor radius never expands the cabin's interaction hull. */
+  readonly tail: { readonly from: readonly [number, number, number]; readonly to: readonly [number, number, number]; readonly radius: number };
+}
+
+export interface RotorVehicleDefinition extends VehicleDefinitionBase {
+  readonly movement: "rotor";
+  readonly spec: HelicopterSpec;
+  readonly rotors: readonly VehicleRotor[];
+}
+
+export type VehicleDefinition = WheelVehicleDefinition | RotorVehicleDefinition;
+export const isRotorVehicle = (d: VehicleDefinition): d is RotorVehicleDefinition => d.movement === "rotor";
+
+export function validateHelicopterSpec(s: HelicopterSpec): void {
+  if (!s || typeof s !== "object" || Array.isArray(s)) throw new Error("invalid helicopter specification");
+  for (const key of ["halfWidth", "halfLength", "height", "clearance", "mass", "maxForward", "maxReverse", "fuelCapacity", "fuelPerSecond", "liftMass", "maxSide", "climbSpeed", "descendSpeed", "cruiseMultiplier", "acceleration", "brake", "turnRate", "turnAcceleration", "bankAngle", "pitchAngle", "attitudeResponse", "gravity", "rotorRpm", "spoolUp", "spoolDown", "skidHalfWidth", "skidHalfLength", "minGroundNormal"] as const) {
+    if (!Number.isFinite(s[key]) || s[key] <= 0) throw new Error(`missing or invalid helicopter ${key}`);
+  }
+  const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
+  if (s.mass < 50 || s.mass > 1000000 || s.liftMass <= s.mass || s.liftMass > s.mass * 4 || s.clearance >= s.height ||
+    s.minGroundNormal > 1 || s.bankAngle > 0.8 || s.pitchAngle > 0.8 || s.turnRate > 4 || s.attitudeResponse > 12 ||
+    s.cruiseMultiplier < 1 || s.cruiseMultiplier > 2 || s.rotorRpm > 3000 || s.maxForward * s.cruiseMultiplier > 100 ||
+    s.climbSpeed > 30 || s.descendSpeed > 30 || !s.tail || !vec(s.tail.from) || !vec(s.tail.to) ||
+    !Number.isFinite(s.tail.radius) || s.tail.radius <= 0 || s.tail.radius > 2) throw new Error("inconsistent helicopter specification");
+}
+
 /** Content checks beyond the spec's, so a definition that compiles always registers and draws. Throws on the first fault. */
 export function validateVehicleDefinition(d: VehicleDefinition): void {
-  validateVehicleSpec(d.spec);
+  if (d.movement === "rotor") validateHelicopterSpec(d.spec);
+  else {
+    if (d.movement !== undefined && d.movement !== "wheeled") throw new Error("invalid vehicle movement");
+    validateVehicleSpec(d.spec);
+  }
   const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
   const bone = (n: unknown): boolean => typeof n === "string" && n.length > 0 && n.length <= 64;
   if (!Array.isArray(d.doors) || d.doors.length > MAX_VEHICLE_DOORS) throw new Error("a vehicle has at most 4 doors");
@@ -95,6 +175,14 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
     if (!bone(door.bone) || !vec(door.axis) || !Number.isFinite(door.open) || Math.abs(door.open) > Math.PI ||
       !Number.isInteger(door.openTicks) || door.openTicks < 1 || door.openTicks > 255 ||
       !Number.isInteger(door.closeTicks) || door.closeTicks < 1 || door.closeTicks > 255) throw new Error("invalid vehicle door");
+  }
+  if (d.movement === "rotor") {
+    if (d.wheels.length || d.steeringWheel || !Array.isArray(d.rotors) || d.rotors.length < 1 || d.rotors.length > 4) throw new Error("invalid helicopter rig");
+    for (const rotor of d.rotors) {
+      const n = rotor.axis;
+      if (!bone(rotor.bone) || !vec(rotor.at) || !vec(n) || Math.abs(n[0] * n[0] + n[1] * n[1] + n[2] * n[2] - 1) > 1e-6 ||
+        !Number.isFinite(rotor.radius) || rotor.radius <= 0 || rotor.radius > 16 || !Number.isFinite(rotor.ratio) || rotor.ratio === 0 || Math.abs(rotor.ratio) > 16) throw new Error("invalid helicopter rotor");
+    }
   }
   const s = d.steeringWheel;
   if (s !== undefined && (!bone(s.bone) || !vec(s.axis) || !Number.isFinite(s.ratio) || Math.abs(s.ratio) > 50)) throw new Error("invalid steering wheel");
