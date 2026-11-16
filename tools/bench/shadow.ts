@@ -23,6 +23,7 @@ import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { buildCorePack } from "../pack/build.ts";
+import { asTextured, boxBase, type Piece } from "./base.ts";
 import { bases, held, terrain } from "./depth.ts";
 
 type Section = (title: string) => void;
@@ -88,13 +89,13 @@ function casters(c: Cascades, s: { boxes: Float64Array; radius: Float64Array }, 
 /** The sun 10 degrees up in the morning, in the east (-x). */
 const MORNING = hourOfSun(10, false);
 const SIEGE = { chunksX: 16, chunksZ: 16 };
-const BASE_KINDS = ["core:foundation", "core:wall", "core:wall", "core:ceiling", "core:ceiling", "core:pillar", "core:crate", "core:block"];
 
 /**
  * The siege scene: a base under siege seen from inside the fight, the camera at eye height looking west at it with the
- * morning sun behind. The bench's base of 2,000 pieces 60 m ahead; every kind of building piece the content has
+ * morning sun behind. A stone box base of 2,000 pieces 60 m ahead (base.ts); every kind of building piece the content has
  * (`structure/piece`: no station, container, bed or static, so a new station never moves it), 20 of each in each of the
- * nine chunks round the camera; a chunk beside the base holding 20,000 walls up to 60 m; 300 survivors
+ * nine chunks round the camera; in a chunk beside the base a wooden box base of 20,000 pieces, 15 storeys of a room a
+ * cell; 300 survivors
  * in armour with rifles and 100 raptors, running and fighting within 80 m all round. A map 1 km square, the bench's hills.
  */
 export function siegeScene(reg: Registry, pack: Pack, tier: Tier): { scene: Scene; cam: Camera; remote: RemoteSample } {
@@ -110,15 +111,12 @@ export function siegeScene(reg: Registry, pack: Pack, tier: Tier): { scene: Scen
   const [cx, cz] = [480, 480];
   const ground = (x: number, z: number): number => hf.heightAt(x, z);
   const put = (kind: number, x: number, z: number, storey: number): void => void structs.add(kind, x, ground(x, z) + storey * 3.3 + structs.halfYOf(kind), z, rng.int(4) * 16384, 1, 1000);
-  const baseKinds = BASE_KINDS.map((id) => reg.index.get(id)!);
-  for (let n = 0; n < 2000; n++) put(baseKinds[rng.int(baseKinds.length)]!, cx + 60 + (rng.int(15) - 7) * 3, cz + (rng.int(15) - 7) * 3, rng.int(4));
+  const lay = (pieces: Piece[]): void => void pieces.forEach(([kind, x, y, z, yaw]) => structs.add(kind, x, y, z, yaw, 1, 1000));
+  lay(boxBase(reg, "stone", cx + 39, ground(cx + 60, cz), cz - 21, 14, 3, 2000));
   const all = reg.defs.flatMap((d, k) => (d?.type === "structure" && d.class === "piece" ? [k] : []));
   for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) for (const kind of all) for (let n = 0; n < 20; n++) put(kind, cx + dx * 64 + rng.range(-31, 31), cz + dz * 64 + rng.range(-31, 31), rng.int(3));
-  const wall = reg.index.get("core:wall")!;
-  for (let n = 0; n < 20000; n++) {
-    const [x, z] = [cx + 96 + rng.range(-31, 31), cz + 64 + rng.range(-31, 31)];
-    structs.add(wall, x, ground(x, z) + 1.5 + rng.range(0, 58), z, 0, 1, 1000);
-  }
+  const [x0, z0] = [Math.floor((cx + 96) / 64) * 64, Math.floor((cz + 64) / 64) * 64];
+  lay(boxBase(reg, "wood", x0 + 0.5, ground(x0 + 32, z0 + 32), z0 + 0.5, 21, 1, 20000));
   const remote = new RemoteSample();
   const st = new AnimState();
   const survivor = reg.index.get("core:survivor")!;
@@ -146,6 +144,7 @@ export function siegeScene(reg: Registry, pack: Pack, tier: Tier): { scene: Scen
   remote.count = 400;
   remote.tick = 100;
   const scene = new Scene({ dims: SIEGE, hf, structs }, reg, pack);
+  asTextured(scene);
   scene.assets.tier = tier;
   scene.viewHeight = 1080;
   scene.hour = MORNING;
@@ -158,7 +157,7 @@ export function siegeScene(reg: Registry, pack: Pack, tier: Tier): { scene: Scen
 }
 
 /** A frame's casters per cascade: entries, draws (an entry each, and one for the ground) and triangles; and tiles only shadows need. */
-function perCascade(scene: Scene, p: FramePacket): { draws: number[]; triangles: number[]; only: number } {
+export function perCascade(scene: Scene, p: FramePacket): { draws: number[]; triangles: number[]; only: number } {
   const draws = new Array<number>(MAX_CASCADES).fill(0);
   const triangles = new Array<number>(MAX_CASCADES).fill(0);
   const tris = scene.assets.table.tris;
@@ -256,8 +255,7 @@ export function benchCasters(section: Section, record: Row): void {
 
   section("Shadow casters (headless): the chunks a client holds round five bench bases, from 60 m off each, turning, sun 10 degrees up");
   const hf = terrain();
-  const probe = new StructureStore({ chunksX: 128, chunksZ: 128 }, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
-  const { centers, byChunk } = bases(reg, hf, (kind) => probe.halfYOf(kind));
+  const { centers, byChunk } = bases(reg, hf);
   const views = centers.slice(0, 5).map(([bx, bz]) => {
     const cam = new Camera();
     [cam.x, cam.z, cam.aspect] = [bx + 60, bz, 16 / 9];

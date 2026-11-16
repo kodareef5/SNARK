@@ -1,22 +1,25 @@
 // The device probe's GPU questions, which round 8's depth ranges, sky table and shadow maps lean on: the depth the
 // screen has and whether depthRange is honoured; whether compared lookups filter or give a hard 0 or 1; whether a
 // 16-bit depth array renders and an RGBA8 3D texture filters; what share of the far blocks' dithered edge is kept; and
-// what a pass costs the GPU. They are asked of the page's own WebGL 2 context after the game's frame, into targets of
-// their own, and the context's state is put back as it was. The full-screen passes draw the game's own programs, from
-// the table the renderer links (programs.ts), so a change to one changes the probe with it. Times come from timer
-// queries where the browser has them, and otherwise from the slope of time against a pass drawn k times, timed across a
-// readback that waits for the GPU; the fit's standard error says how noisy it was. Each question has a deadline and
+// what a pass costs the GPU, and a draw of each kind the main thread. They are asked of the page's own WebGL 2 context
+// after the game's frame, into targets of their own, and the context's state is put back as it was, but for draws timed
+// through the renderer's own executor, which keeps its state itself. The full-screen passes draw the game's own
+// programs, from the table the renderer links (programs.ts), so a change to one changes the probe with it. Times come
+// from timer queries where the browser has them, and otherwise from the slope of time against a pass drawn k times,
+// timed across a readback that waits for the GPU; the fit's standard error says how noisy it was. Each question has a deadline and
 // says "did not finish" past it, and a lost context ends them, naming the one it hit.
 
 import { tierOf, type Tier } from "./assets/tiers.ts";
 import { airFrame } from "./render/atmosphere.ts";
 import { FAR_FROM } from "./render/camera.ts";
 import { fadeKeeps } from "./render/far.ts";
-import { FRAME, FRAME_FLOATS } from "./render/packet.ts";
+import { DRAW_BLEND, DRAW_DETAILS, DRAW_NEAR, DRAW_PULLED, DRAW_RANGED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_DRAWS } from "./render/packet.ts";
 import { PROGRAMS, withDefines } from "./render/programs.ts";
 import { SKY_SIZE, SKY_SLICES, skyFrame, theSky, trueSun } from "./render/sky.ts";
 import { groundSize } from "./render/terrain.ts";
 import { seaFrame } from "./render/water.ts";
+import { WORLD_CORE, citySurface } from "./render/world-surfaces.ts";
+import { SURFACE_FINISHES, SURFACE_GROUPS, SURFACE_NAMES } from "../../content/surfaces.ts";
 import { Heightfield } from "../../shared/world/heightfield.ts";
 import type { TextureFormat } from "../../shared/pack/texture.ts";
 import { FULL_SCREEN, GL, PROBE_BLOCK, PROBE_UNITS, compareKind, compile, framebuffer, saveState, texture2d, type Gl2 } from "./probegl.ts";
@@ -119,12 +122,15 @@ export function newGpuReport(): GpuReport {
  * up toward the sun; under noon's frame block with `layers` of cloud, or plain (no haze, nothing over the table). A
  * lit program looks the sun's shadow up only when `shadowed`, in the depth passes' array, whose first cascade the frame
  * block puts the wall in. With `sea` it is drawn on the sea from 10 m up, 2 m deep, calm or with its waves' pictures.
+ * With `world` LIT draws the wall's finish (world-surfaces.ts) from maps of the probe's, the wall as far off as reads
+ * the finish at that spread, which says how many reads a pixel takes.
  */
 export interface ScreenPass {
   name: string;
   program: string;
   tier: Tier["name"];
   wall?: number;
+  world?: number;
   layers: number;
   plain: boolean;
   shadowed?: boolean;
@@ -135,16 +141,22 @@ export interface ScreenPass {
 export const SHADOWED_PASS: ScreenPass = { name: "lit shadowed", program: "flat", tier: "medium", wall: 12, layers: 0, plain: true, shadowed: true };
 
 /**
- * The full-screen passes. LIT is hazed at 500 m and 3.5 km, where haze costs most (D266); the far blocks' program has
- * its fade's discard, against LIT; the dome is timed with the table alone and with 0, 1 and 2 cloud layers (D265); the
- * sea calm and with its waves, against LIT drawn where it is (D270).
+ * The full-screen passes. LIT plain, with the world's finish near (9 reads a pixel) and in its fade band (18), and hazed
+ * at 500 m and 3.5 km, where haze costs most (D266); the far blocks' program has its fade's discard, against LIT; SURFACE
+ * in each of the four texts drawProgram chooses among and with the hurt layer; the dome is timed with the table alone and with 0, 1 and 2 cloud layers (D265); the sea calm and with its waves, against
+ * LIT drawn where it is (D270).
  */
 export const SCREEN_PASSES: readonly ScreenPass[] = [
   { name: "flat", program: "flat", tier: "lowpoly", wall: 12, layers: 0, plain: true },
   { name: "lit", program: "flat", tier: "medium", wall: 12, layers: 0, plain: true },
+  { name: "lit world near", program: "flat", tier: "medium", world: -6, layers: 0, plain: true },
+  { name: "lit world fade", program: "flat", tier: "medium", world: -3.5, layers: 0, plain: true },
   { name: "lit haze 500 m", program: "flat", tier: "medium", wall: 500, layers: 0, plain: false },
   { name: "lit haze 3.5 km", program: "flat", tier: "medium", wall: 3500, layers: 0, plain: false },
   { name: "far", program: "far", tier: "medium", wall: 12, layers: 0, plain: true },
+  { name: "surface undyed whole", program: "surfaceUndyedWhole", tier: "medium", layers: 0, plain: true },
+  { name: "surface undyed", program: "surfaceUndyed", tier: "medium", layers: 0, plain: true },
+  { name: "surface whole", program: "surfaceWhole", tier: "medium", layers: 0, plain: true },
   { name: "surface", program: "surface", tier: "medium", layers: 0, plain: true },
   { name: "surface layered", program: "surfaceLayer", tier: "medium", layers: 0, plain: true },
   { name: "sky table", program: "sky", tier: "medium", layers: 0, plain: true },
@@ -279,8 +291,44 @@ const SEA_MAP = { chunks: 32, cell: 2, at: 1024, floor: 3968 };
 const SEA_HEIGHTS = 1024;
 const WAVE_MAP = 256;
 /** The samplers the probe binds a texture of its own for. One the renderer's units hold is moved to a unit of the probe's. */
-const PROVIDED = ["uSkyTable", "uShadow", "uBase", "uNormal", "uMro", "uMask", "uMask2", "uLayer", "uMoon", "uLow", "uHigh", "uMapHeight", "uWindowHeight", "uWaveLong", "uWaveShort"];
+const PROVIDED = ["uSkyTable", "uShadow", "uBase", "uNormal", "uMro", "uMask", "uMask2", "uLayer", "uWorldBase", "uWorldNormal", "uWorldOrm", "uMoon", "uLow", "uHigh", "uMapHeight", "uWindowHeight", "uWaveLong", "uWaveShort"];
 const SPARE_UNIT = 13;
+/** What the probe times a draw through: the renderer's executor, and the frame it drew last, whose draws it copies. */
+export interface Executor {
+  draw(p: FramePacket): void;
+  frame(): FramePacket;
+}
+
+/**
+ * The executor's kinds of draw, as the last frame asked for them: with materials and not posed, posed on bones, far (a
+ * run of a level, the far nodes pulled from their atlas, or fading out), in palette colours alone, and the sun's casters.
+ * Particles, water, see-through draws and the viewer's own body are none of them.
+ */
+interface DrawKind {
+  name: string;
+  of: ((p: FramePacket, d: number) => boolean) | null;
+}
+const DRAW_KINDS: readonly DrawKind[] = [
+  { name: "textured", of: (p, d) => (p.drawFlags[d]! & (DRAW_TEXTURED | DRAW_SKINNED)) === DRAW_TEXTURED },
+  { name: "skinned", of: (p, d) => (p.drawFlags[d]! & DRAW_SKINNED) !== 0 },
+  { name: "far", of: (p, d) => (p.drawFlags[d]! & (DRAW_TEXTURED | DRAW_SKINNED)) === 0 && ((p.drawFlags[d]! & (DRAW_RANGED | DRAW_PULLED)) !== 0 || p.drawFade[d] !== 0 || p.drawHand[d] !== 0) },
+  { name: "flat", of: (p, d) => (p.drawFlags[d]! & (DRAW_TEXTURED | DRAW_SKINNED | DRAW_RANGED | DRAW_PULLED)) === 0 && p.drawFade[d] === 0 && p.drawHand[d] === 0 },
+  { name: "caster", of: null },
+];
+const NONE_OF_THEM = DRAW_DETAILS | DRAW_WATER | DRAW_BLEND | DRAW_NEAR;
+/** A draw's and a caster's rows in a packet, but for their offsets and instances. */
+const DRAW_ROWS = ["drawMesh", "drawLod", "drawSlot", "drawBuffer", "drawFirst", "drawFlags", "drawMaterial", "drawFirstIndex", "drawIndexCount", "drawPass", "drawFade", "drawHand", "drawLayer"] as const;
+const CASTER_ROWS = ["casterMesh", "casterLod", "casterSlot", "casterBuffer", "casterFirst", "casterFlags", "casterMaterial", "casterFirstIndex", "casterIndexCount"] as const;
+
+/** The finish of the probe's walls (linked's vSurface, concrete) and the default city's dials, which LIT's finishes read. */
+const WALL_FINISH = 8;
+const CITY = new Float32Array(12);
+citySurface(CITY, "default");
+/** How far off a wall of WALL_FINISH filling a target `w` by `h` is read at `spread`, as worldSurface works it out. */
+function worldWall(spread: number, w: number, h: number): number {
+  const f = SURFACE_FINISHES[SURFACE_NAMES[WALL_FINISH]];
+  return (12 * 2 ** spread * Math.min(w, h) * f.metres * SURFACE_GROUPS[f.group].scale * CITY[3]!) / (16 * (WORLD_CORE / 4));
+}
 const COLOUR_FRAGMENT = `#version 300 es
 precision highp float;
 uniform vec3 uColour;
@@ -338,8 +386,8 @@ export class GpuQuestions {
   private readonly now: () => number;
   private readonly variant: TextureFormat;
   private readonly plan: GpuPlan;
-  /** Each question: how it is asked, how long it may take, and what it says if it is not answered, or `over` an answer it gave. */
-  private readonly tasks: { name: string; run: () => Generator<void, void, void>; ms: number; fail: (why: string, over?: boolean) => void }[] = [];
+  /** Each question: how it is asked, how long it may take, what it says if it is not answered, or `over` an answer it gave, and whether it draws through the executor. */
+  private readonly tasks: { name: string; run: () => Generator<void, void, void>; ms: number; fail: (why: string, over?: boolean) => void; own?: boolean }[] = [];
   private index = -1;
   private task: Generator<void, void, void> | null = null;
   private startedAt = 0;
@@ -350,11 +398,13 @@ export class GpuQuestions {
   private empty: Obj = null;
   private timer: { TIME_ELAPSED_EXT?: number } | null = null;
   private readonly create: () => Obj;
+  private readonly exec: Executor | null;
 
-  /** `create` makes a texture without the probe counting it among the renderer's. `screen` is the canvas in pixels. */
-  constructor(gl: Gl2, create: () => Obj, now: () => number, variant: string, screen: number[], plan: GpuPlan = GPU_PLAN) {
+  /** `create` makes a texture without the probe counting it among the renderer's. `screen` is the canvas in pixels. With `exec`, a draw of each kind is timed through it. */
+  constructor(gl: Gl2, create: () => Obj, now: () => number, variant: string, screen: number[], plan: GpuPlan = GPU_PLAN, exec: Executor | null = null) {
     this.gl = gl;
     this.create = create;
+    this.exec = exec;
     this.now = now;
     this.variant = variant === "astc" || variant === "bc" ? variant : "rgba";
     this.plan = plan;
@@ -380,9 +430,11 @@ export class GpuQuestions {
     }
     this.addPass(SHADOWED_PASS.name, "megapixel", () => this.screenPass(SHADOWED_PASS));
     for (const taps of [1, 4, 9]) this.addPass(`${taps} ${taps === 1 ? "tap" : "taps"}`, "megapixel", () => this.tapsPass(taps));
-    const draw: PassTime = { name: "draw", per: "draw", timer: null, slope: null, error: null, k: 0, note: "did not finish" };
-    r.passes.push(draw);
-    this.tasks.push({ name: "draw", run: () => this.drawCost(draw), ms: plan.checkMs, fail: failPass(draw) });
+    for (const kind of exec ? DRAW_KINDS : []) {
+      const pass: PassTime = { name: `draw ${kind.name}`, per: "draw", timer: null, slope: null, error: null, k: 0, note: "did not finish" };
+      r.passes.push(pass);
+      this.tasks.push({ name: pass.name, run: () => this.drawCost(pass, kind.of), ms: plan.passMs, fail: failPass(pass), own: true });
+    }
     if (plan.only) {
       const asked = new Set(plan.only);
       this.tasks.splice(0, this.tasks.length, ...this.tasks.filter((t) => asked.has(t.name)));
@@ -406,10 +458,11 @@ export class GpuQuestions {
     // The question under way, which a lost context is put on even if it ended in the frame the context went.
     const ran = Math.max(0, this.index);
     if (this.lostFlag || gl.isContextLost()) return this.end(ran);
-    const restore = saveState(gl);
+    // The executor keeps the state it leaves as its own, which putting the probe's back behind it would undo.
+    const restore = this.tasks[this.index]?.own ? null : saveState(gl);
     try {
       // Every texture the probe makes or binds goes on a unit of its own.
-      gl.activeTexture(GL.TEXTURE0 + 15);
+      if (restore) gl.activeTexture(GL.TEXTURE0 + 15);
       if (this.index < 0) this.begin();
       else this.step();
     } catch (e) {
@@ -417,7 +470,7 @@ export class GpuQuestions {
       for (const t of this.tasks) t.fail(`failed: ${message(e)}`);
       this.index = this.tasks.length;
     } finally {
-      restore();
+      restore?.();
     }
     if (gl.isContextLost()) return this.end(ran);
     if (this.index >= this.tasks.length) this.free();
@@ -1030,7 +1083,7 @@ void main() {}`);
     const made = PROGRAMS[name];
     if (!made) throw new Error(`the renderer has no program "${name}"`);
     const text = made(tier, this.variant, this.report.compareArray === "hard");
-    if (vertex && text.fragment.includes("flat in int vSurface;")) vertex = vertex.replace("void main() {", "flat out int vSurface;\nvoid main() {\n  vSurface = 8;");
+    if (vertex && text.fragment.includes("flat in int vSurface;")) vertex = vertex.replace("void main() {", `flat out int vSurface;\nvoid main() {\n  vSurface = ${WALL_FINISH};`);
     const prog = this.program(withDefines(vertex ?? text.vertex, text.defines), withDefines(text.fragment, text.defines));
     gl.useProgram(prog);
     const units: Record<string, number> = {};
@@ -1048,11 +1101,11 @@ void main() {}`);
   private screenPass(spec: ScreenPass): { bind(): void; draw(): void; scale: number } {
     const gl = this.gl;
     const tier = tierOf(spec.tier);
-    const vertex = spec.program === "sky" ? undefined : spec.sea ? SEA_VERTEX : spec.program.startsWith("surface") ? SURFACE_VERTEX : wallVertex(spec.wall ?? 12);
+    const [w, h] = this.report.screen;
+    const vertex = spec.program === "sky" ? undefined : spec.sea ? SEA_VERTEX : spec.program.startsWith("surface") ? SURFACE_VERTEX : wallVertex(spec.world === undefined ? (spec.wall ?? 12) : worldWall(spec.world, w!, h!));
     const { prog, units } = this.linked(spec.program, tier, vertex);
     const frame = this.frameBlock(spec.layers, spec.plain, spec.shadowed === true, spec.sea !== undefined);
     const inputs = this.inputs(units, spec.sea === "waves");
-    const [w, h] = this.report.screen;
     const at = (n: string): Obj => gl.getUniformLocation(prog, n);
     // The dome looks 14 degrees up toward the sun, as the lit probe times it.
     const sun = [0, 0, 0];
@@ -1074,6 +1127,8 @@ void main() {}`);
       gl.uniform1f(at("uCutoff"), 0);
       gl.uniform1f(at("uLevel"), 0.75);
       gl.uniform1i(at("uCascades"), spec.shadowed ? tier.shadows.cascades : 0);
+      gl.uniform1f(at("uWorldReady"), spec.world === undefined ? 0 : 1);
+      gl.uniform4fv(at("uSurfaceCity"), CITY);
       gl.uniformMatrix4fv(at("uViewProj"), false, look);
     });
   }
@@ -1123,20 +1178,22 @@ void main() {}`);
 
   /**
    * The probe's textures for a program's samplers, by name, on the units `linked` gave them: the sky table, SURFACE's
-   * five maps, the sky's moon and cloud layers, the depth passes' largest array as the shadow maps, and the sea's
-   * ground and its waves, or with no `waves` a calm sea's black. A function that binds each; a sampler the probe has
-   * nothing for reads what the renderer left there.
+   * five maps and the first three of them as LIT's world maps, the sky's moon and cloud layers, the depth passes'
+   * largest array as the shadow maps, and the sea's ground and its waves, or with no `waves` a calm sea's black. A
+   * function that binds each; a sampler the probe has nothing for reads what the renderer left there.
    */
   private inputs(units: Record<string, number>, waves: boolean): () => void {
     const gl = this.gl;
     const bound: [number, number, Obj][] = [];
     const surface = ["uBase", "uNormal", "uMro", "uMask", "uMask2", "uLayer"];
+    const world = ["uWorldBase", "uWorldNormal", "uWorldOrm"];
     const sky = ["uMoon", "uLow", "uHigh"];
     for (const [name, unit] of Object.entries(units)) {
       if (!PROBE_UNITS.includes(unit)) continue;
       if (name === "uSkyTable") bound.push([unit, GL.TEXTURE_3D, this.table()]);
       else if (name === "uShadow") bound.push([unit, GL.TEXTURE_2D_ARRAY, this.depthMap(Math.max(...this.plan.depthSizes)).texture]);
       else if (surface.includes(name)) bound.push([unit, GL.TEXTURE_2D, this.surfaceTextures()[surface.indexOf(name)]]);
+      else if (world.includes(name)) bound.push([unit, GL.TEXTURE_2D, this.surfaceTextures()[world.indexOf(name)]]);
       else if (sky.includes(name)) bound.push([unit, GL.TEXTURE_2D, this.skyMaps()[sky.indexOf(name)]]);
       else if (name === "uMapHeight" || name === "uWindowHeight") bound.push([unit, GL.TEXTURE_2D, this.seaFloor()]);
       else if (name === "uWaveLong" || name === "uWaveShort") bound.push([unit, GL.TEXTURE_2D, this.waveMaps()[waves ? (name === "uWaveLong" ? 1 : 2) : 0]]);
@@ -1302,54 +1359,61 @@ void main() {
   }
 
   /**
-   * The main thread's time for a draw as the renderer issues one, by the clock with no readback inside: a uniform, a
-   * vertex array, a buffer and two pointers into it, and the draw. The count doubles from 1,000 until a block takes
-   * half of AIM_MS, as a coarse clock needs, and then five blocks are timed; the error is half their spread.
+   * The main thread's time for a draw of a kind as the renderer issues it: its executor handed a frame of k of the last
+   * frame's draws of that kind by turns, so each binds afresh, one instance each, or as many casters into its first
+   * shadow map, timed by the clock between readbacks. k doubles from 64 until a frame takes half of AIM_MS, then four ks
+   * up to it are timed five times over, and the slope of a line through each k's median is the cost, in µs a draw.
    */
-  private *drawCost(pass: PassTime): Generator<void, void, void> {
-    const gl = this.gl;
-    const prog = this.program(`#version 300 es
-layout(location=0) in vec3 aPos;
-uniform vec3 uOffset;
-void main() { gl_Position = vec4(aPos * 0.001 + uOffset, 1.0); }`, COLOUR_FRAGMENT);
-    const vaos = [0, 1].map(() => {
-      const vao = this.keep("vao", gl.createVertexArray());
-      gl.bindVertexArray(vao);
-      gl.enableVertexAttribArray(0);
-      return vao;
-    });
-    const buf = this.keep("buffer", gl.createBuffer());
-    gl.bindBuffer(GL.ARRAY_BUFFER, buf);
-    gl.bufferData(GL.ARRAY_BUFFER, new Float32Array(9 * 64), GL.STATIC_DRAW);
-    gl.bindVertexArray(null);
-    const at = gl.getUniformLocation(prog, "uOffset");
-    const block = (n: number): number => {
+  private *drawCost(pass: PassTime, of: DrawKind["of"]): Generator<void, void, void> {
+    const exec = this.exec!;
+    const block = (k: number): number => {
+      const q = this.copies(exec.frame(), of, k);
+      if (!q) return NaN;
       this.sync();
-      gl.useProgram(prog);
       const t0 = this.now();
-      for (let i = 0; i < n; i++) {
-        gl.uniform3f(at, (i % 7) * 0.01, 0, 0);
-        gl.bindVertexArray(vaos[i & 1]);
-        gl.bindBuffer(GL.ARRAY_BUFFER, buf);
-        gl.vertexAttribPointer(0, 3, GL.FLOAT, false, 12, (i % 64) * 36);
-        gl.vertexAttribPointer(0, 3, GL.FLOAT, false, 12, (i % 64) * 36);
-        gl.drawArrays(GL.TRIANGLES, 0, 3);
-      }
+      exec.draw(q);
       const ms = this.now() - t0;
       this.sync();
       return ms;
     };
-    let n = 1000;
-    while (n < 64000 && block(n) < AIM_MS / 2) {
-      n *= 2;
-      yield;
-    }
-    const each: number[] = [];
+    let k = 64;
+    let ms = block(k);
+    if (Number.isNaN(ms)) return void (pass.note = "none in the frame");
+    for (; ms < AIM_MS / 2 && k < MAX_DRAWS; ms = block((k *= 2))) yield;
+    const ks = [k / 4, k / 2, (3 * k) / 4, k];
+    const times: number[][] = ks.map(() => []);
     for (let r = 0; r < 5; r++) {
-      each.push((block(n) * 1000) / n);
+      ks.forEach((kk, i) => times[i]!.push(block(kk)));
       yield;
     }
-    [pass.slope, pass.error, pass.k, pass.note] = [round(median(each)), round((Math.max(...each) - Math.min(...each)) / 2), n, ""];
+    if (times.some((t) => t.some(Number.isNaN))) return void (pass.note = "none in the frame");
+    const fit = fitLine(ks.map((kk, i) => [kk, median(times[i]!)]));
+    if (fit) [pass.slope, pass.error] = [round(fit.slope * 1000), round(fit.error * 1000)];
+    [pass.k, pass.note] = [k, ""];
+  }
+
+  private copied: FramePacket | null = null;
+
+  /** A frame of `k` of `p`'s draws that `of` picks, or with `of` null of its casters into the first cascade, one instance each; null if it has none. */
+  private copies(p: FramePacket, of: DrawKind["of"], k: number): FramePacket | null {
+    const from: number[] = [];
+    if (of) for (let d = 0; d < p.drawCount; d++) (p.drawFlags[d]! & NONE_OF_THEM) === 0 && of(p, d) && from.push(d);
+    else for (let e = 0; e < (p.cascadeCount > 0 ? p.casterCount : 0); e++) from.push(e);
+    if (from.length === 0) return null;
+    const q = (this.copied ??= new FramePacket());
+    // What the draws read besides their own rows. A packet of its own uploads, drops and moves nothing, and has no tiles.
+    Object.assign(q, { camX: p.camX, camY: p.camY, camZ: p.camZ, light: p.light, fogStart: p.fogStart, fogEnd: p.fogEnd, tier: p.tier, lit: p.lit, cascadeCount: p.cascadeCount });
+    for (const a of ["viewProj", "nearViewProj", "farViewProj", "frame", "surfaceCity", "sky", "sun", "groundWindow"] as const) q[a].set(p[a]);
+    q.groundWindow[3] = -1;
+    for (let i = 0; i < k; i++) {
+      const s = from[i % from.length]!;
+      for (const a of of ? DRAW_ROWS : CASTER_ROWS) q[a][i] = p[a][s]!;
+      (of ? q.drawOffset : q.casterOffset).set((of ? p.drawOffset : p.casterOffset).subarray(s * 3, s * 3 + 3), i * 3);
+    }
+    (of ? q.drawInstances : q.casterInstances).fill(1, 0, k);
+    q.casterCascades.fill(1, 0, k);
+    [q.drawCount, q.casterCount, q.cascadesDrawn] = of ? [k, 0, 0] : [0, k, 1];
+    return q;
   }
 }
 

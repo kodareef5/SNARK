@@ -31,6 +31,7 @@ export interface Gl2 {
   uniform1f(at: Obj, x: number): void;
   uniform2f(at: Obj, x: number, y: number): void;
   uniform3f(at: Obj, x: number, y: number, z: number): void;
+  uniform4fv(at: Obj, value: Float32Array): void;
   uniformMatrix4fv(at: Obj, transpose: boolean, value: Float32Array): void;
   createFramebuffer(): Obj;
   bindFramebuffer(target: number, framebuffer: Obj): void;
