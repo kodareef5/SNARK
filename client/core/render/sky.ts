@@ -310,9 +310,32 @@ function fromBase64(text: string): Uint8Array {
   return out;
 }
 
+declare const __SKY_FILE__: string;
+/** A page's build writes the table to a file of its own, named here, and leaves it out of the script. */
+export const SKY_FILE = typeof __SKY_FILE__ === "string" ? __SKY_FILE__ : "";
+
+/** The table as its file holds it: each byte less the one four before it, which the next texel mostly repeats. */
+export function skyFile(table: Uint8Array): Uint8Array {
+  const file = new Uint8Array(table.length);
+  for (let i = 0; i < table.length; i++) file[i] = table[i]! - (i >= 4 ? table[i - 4]! : 0);
+  return file;
+}
+
+/** The page's table, from its file. Given before anything asks for the sky. */
+export function giveSky(file: Uint8Array): void {
+  const table = file.slice();
+  for (let i = 4; i < table.length; i++) table[i] = table[i]! + table[i - 4]!;
+  if (table.length !== SKY_SIZE * SKY_SIZE * SKY_SLICES * 4) throw new Error(`the sky's table is ${table.length} bytes`);
+  made = { table, lights: Float32Array.from(SKY_LIGHTS) };
+}
+
 /** The table and its light, as tools/sky/build.ts made them. */
 export function theSky(): Sky {
-  return (made ??= { table: fromBase64(SKY_TABLE), lights: Float32Array.from(SKY_LIGHTS) });
+  return (made ??= typeof __SKY_FILE__ === "string" ? notGiven() : { table: fromBase64(SKY_TABLE), lights: Float32Array.from(SKY_LIGHTS) });
+}
+
+function notGiven(): never {
+  throw new Error("the sky's table was asked for before the page gave it");
 }
 
 /** Light after exposure as the screen shows it, 0 to 255: the tone curve, then sRGB. */
