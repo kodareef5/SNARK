@@ -1,188 +1,142 @@
-import { mapTransform, matchesGuideQuery, searchTerms } from "../core/pages/filter.ts";
+// The guide's pages read whole without this. It plays a sound from the game's sound files, moves and layers a map,
+// copies a console line, and searches.
+
+import { findRows, mapTransform, type SearchRow } from "../core/pages/filter.ts";
 
 const all = <T extends Element>(selector: string, root: ParentNode = document): T[] => [...root.querySelectorAll<T>(selector)];
-const one = <T extends Element>(selector: string, root: ParentNode = document): T | null => root.querySelector<T>(selector);
 
-for (const area of all<HTMLElement>("[data-filter-area]")) {
-  const query = one<HTMLInputElement>("[data-filter-query]", area)!;
-  const kind = one<HTMLSelectElement>("[data-filter-kind]", area);
-  const sort = one<HTMLSelectElement>("[data-filter-sort]", area);
-  const changed = one<HTMLInputElement>("[data-changes-only]", area);
-  const models = one<HTMLInputElement>("[data-models-only]", area);
-  const list = one<HTMLElement>("[data-record-list]", area)!;
-  const records = all<HTMLElement>("[data-record]", list);
-  const params = new URLSearchParams(location.search);
-  if (location.pathname.replace(/\/$/, "") === "/search") {
-    query.value = params.get("q") ?? "";
-    if (models) models.checked = params.get("media") === "models";
-    const globalQuery = one<HTMLInputElement>(".global-search input");
-    if (globalQuery) globalQuery.value = query.value;
-  }
-  const apply = (): void => {
-    const terms = searchTerms(query.value);
-    let visible = 0;
-    for (const record of records) {
-      record.hidden = !matchesGuideQuery(record.dataset.query ?? "", terms) || Boolean(kind?.value && record.dataset.kind !== kind.value) || Boolean(changed?.checked && record.dataset.changed !== "true") || Boolean(models?.checked && record.dataset.model !== "true");
-      if (!record.hidden) visible++;
-    }
-    const ordered = [...records].sort((a, b) => (a.dataset.name ?? "").localeCompare(b.dataset.name ?? "") * (sort?.value === "reverse" ? -1 : 1));
-    list.append(...ordered);
-    const count = one<HTMLElement>("[data-result-count]", area);
-    if (count) count.textContent = `${visible} ${visible === 1 ? "entry" : "entries"}`;
-    const empty = one<HTMLElement>("[data-no-results]", area);
-    if (empty) empty.hidden = visible !== 0;
-  };
-  area.addEventListener("input", apply);
-  area.addEventListener("change", apply);
-  one<HTMLButtonElement>("[data-clear-filter]", area)?.addEventListener("click", () => { query.value = ""; if (kind) kind.value = ""; if (changed) changed.checked = false; if (models) models.checked = false; apply(); query.focus(); });
-  apply();
+// A sound's takes are fetched by range from the game's file and decoded as the game decodes them, once.
+let audio: AudioContext | null = null;
+let playing: AudioBufferSourceNode | null = null;
+const decoded = new Map<string, Promise<AudioBuffer[]>>();
+
+async function takes(row: HTMLElement): Promise<AudioBuffer[]> {
+  const { file, at, rate } = row.dataset;
+  const sizes = row.dataset.takes!.split(" ").map((t) => t.split(":").map(Number) as [number, number]);
+  const bytes = sizes.reduce((n, t) => n + t[1], 0);
+  const answer = await fetch(file!, { headers: { range: `bytes=${at}-${Number(at) + bytes - 1}` } });
+  if (answer.status !== 206) throw new Error(`the server sent ${answer.status} for a range of ${file}`);
+  const { decodeTakes } = await import("../../shared/pack/sound.ts");
+  const samples = decodeTakes(new Uint8Array(await answer.arrayBuffer()), sizes.map(([samples, bytes]) => ({ samples, bytes })));
+  if (!samples) throw new Error(`${file} at ${at} does not decode`);
+  return samples.map((s) => {
+    const b = new AudioBuffer({ length: s.length, numberOfChannels: 1, sampleRate: Number(rate) });
+    b.copyToChannel(s, 0);
+    return b;
+  });
 }
 
-document.addEventListener("keydown", (event) => {
-  const target = event.target as HTMLElement | null;
-  if (target?.matches("input,select,textarea") || target?.isContentEditable) return;
-  if (event.key === "/" || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k")) {
-    event.preventDefault();
-    (one<HTMLInputElement>(".wiki-search input") ?? one<HTMLInputElement>(".global-search input"))?.focus();
+document.addEventListener("click", (event) => {
+  const button = (event.target as Element).closest<HTMLElement>("[data-k]");
+  const row = button?.closest<HTMLElement>("[data-takes]");
+  if (button && row) {
+    audio ??= new AudioContext();
+    void audio.resume();
+    const key = `${row.dataset.file}@${row.dataset.at}`;
+    if (!decoded.has(key)) decoded.set(key, takes(row));
+    decoded.get(key)!.then(
+      (list) => {
+        playing?.stop();
+        playing = new AudioBufferSourceNode(audio!, { buffer: list[Number(button.dataset.k)]! });
+        playing.connect(audio!.destination);
+        playing.start();
+      },
+      () => {
+        decoded.delete(key);
+        button.classList.add("failed");
+      },
+    );
+  }
+  const copy = (event.target as Element).closest<HTMLButtonElement>("[data-copy]");
+  if (copy) {
+    const text = document.getElementById(copy.dataset.copy!)?.textContent ?? "";
+    navigator.clipboard.writeText(text).then(() => (copy.textContent = "Copied"), () => (copy.textContent = "Select it to copy"));
   }
 });
-
 document.addEventListener("play", (event) => {
-  if (!(event.target instanceof HTMLMediaElement)) return;
-  for (const media of all<HTMLMediaElement>("audio,video")) if (media !== event.target) media.pause();
+  for (const a of all<HTMLAudioElement>("audio")) if (a !== event.target) a.pause();
+  playing?.stop();
 }, true);
-document.addEventListener("visibilitychange", () => { if (document.hidden) for (const media of all<HTMLMediaElement>("audio,video")) media.pause(); });
 
-for (const gallery of all<HTMLElement>(".gallery")) {
-  for (const link of all<HTMLAnchorElement>("[data-gallery-image]", gallery)) link.addEventListener("click", (event) => {
-    event.preventDefault();
-    const image = one<HTMLImageElement>(".gallery-main", gallery)!;
-    image.src = link.href;
-    image.alt = link.dataset.label ?? "Model image";
-    const caption = one<HTMLElement>("[data-gallery-caption]", gallery);
-    if (caption) caption.textContent = image.alt;
-    for (const thumb of all<HTMLElement>("[data-gallery-image]", gallery)) thumb.classList.toggle("selected", thumb === link);
-  });
-}
-
-const viewers = new Map<HTMLElement, Promise<() => void>>();
-async function activateModel(frame: HTMLElement): Promise<HTMLElement> {
-  const host = one<HTMLElement>(".model-live", frame)!;
-  const button = one<HTMLButtonElement>("[data-view-model]", frame)!;
-  const feedback = one<HTMLElement>(".model-feedback", frame)!;
-  let pending = viewers.get(frame);
-  if (!pending) {
-    button.disabled = true;
-    button.setAttribute("aria-busy", "true");
-    feedback.hidden = false;
-    feedback.textContent = "Loading model…";
-    host.classList.add("is-loading");
-    host.hidden = false;
-    pending = import("./viewer.ts").then(({ mountViewer }) => mountViewer(host, frame.dataset.modelUrl!));
-    viewers.set(frame, pending);
-  }
-  try {
-    await pending;
-    one<HTMLElement>(".model-preview", frame)!.hidden = true;
-    host.classList.remove("is-loading");
-    feedback.hidden = true;
-  } catch {
-    host.hidden = true;
-    host.classList.remove("is-loading");
-    host.replaceChildren();
-    viewers.delete(frame);
-    feedback.textContent = "The model could not be loaded. Please try again.";
-    throw new Error("Model preview unavailable");
-  } finally {
-    button.disabled = false;
-    button.removeAttribute("aria-busy");
-  }
-  return host;
-}
-for (const frame of all<HTMLElement>("[data-model-url]")) {
-  one<HTMLButtonElement>("[data-view-model]", frame)!.addEventListener("click", () => { void activateModel(frame).catch(() => {}); });
-}
-for (const button of all<HTMLButtonElement>("[data-preview-clip]")) button.addEventListener("click", async () => {
-  const frame = one<HTMLElement>("[data-model-url]");
-  if (!frame) return;
-  button.disabled = true;
-  try {
-    const host = await activateModel(frame);
-    host.dispatchEvent(new CustomEvent("guide:clip", { detail: { id: button.dataset.previewClip } }));
-    for (const clip of all<HTMLButtonElement>("[data-preview-clip]")) clip.setAttribute("aria-pressed", String(clip === button));
-  } catch { /* The frame carries the retry message. */ }
-  finally { button.disabled = false; }
-});
-window.addEventListener("pagehide", () => { for (const pending of viewers.values()) void pending.then((dispose) => dispose()).catch(() => {}); viewers.clear(); });
-
-for (const atlas of all<HTMLElement>("[data-atlas]")) {
-  const viewport = one<HTMLElement>(".map-viewport", atlas)!;
-  const plane = one<HTMLElement>(".map-plane", atlas)!;
-  const aside = atlas.parentElement!;
-  const scale = one<HTMLOutputElement>("[data-map-scale]", atlas)!;
-  let state = { zoom: 1, x: 0, y: 0 };
-  let drag: { id: number; x: number; y: number; panX: number; panY: number } | null = null;
-  const draw = (): void => {
-    state = mapTransform(state.zoom, state.x, state.y, viewport.clientWidth, viewport.clientHeight);
-    plane.style.transform = `translate(${state.x}px,${state.y}px) scale(${state.zoom})`;
-    scale.value = `${Math.round(state.zoom * 100)}%`;
+// The search page asks for the index once, as the first letter is typed or a query arrives in its address.
+for (const list of all<HTMLOListElement>("[data-search]")) {
+  const input = document.querySelector<HTMLInputElement>("main .find input")!;
+  let rows: Promise<SearchRow[]> | null = null;
+  const show = async (): Promise<void> => {
+    rows ??= fetch(list.dataset.search!).then((r) => r.json() as Promise<SearchRow[]>);
+    const found = findRows(await rows, input.value, 60);
+    list.replaceChildren(...found.map(([label, path, group, picture]) => {
+      const li = document.createElement("li");
+      const a = li.appendChild(document.createElement("a"));
+      a.href = path;
+      if (picture) Object.assign(a.appendChild(document.createElement("img")), { src: picture, alt: "", loading: "lazy", width: 48, height: 36 });
+      a.append(label);
+      li.appendChild(document.createElement("small")).textContent = group;
+      return li;
+    }));
+    if (input.value && found.length === 0) list.textContent = "Nothing in the guide is called that.";
   };
-  const zoom = (by: number): void => { const old = state.zoom; state.zoom = Math.max(1, Math.min(5, state.zoom * by)); state.x *= state.zoom / old; state.y *= state.zoom / old; draw(); };
-  const reset = (): void => { state = { zoom: 1, x: 0, y: 0 }; draw(); };
-  for (const button of all<HTMLButtonElement>("[data-map-zoom]", atlas)) button.addEventListener("click", () => zoom(button.dataset.mapZoom === "in" ? 1.35 : 1 / 1.35));
-  one<HTMLButtonElement>("[data-map-reset]", atlas)!.addEventListener("click", reset);
-  for (const marker of all<HTMLElement>("[data-map-marker]", atlas)) {
-    marker.style.left = `${Math.max(0, Math.min(1, Number(marker.dataset.x) || 0)) * 100}%`;
-    marker.style.top = `${Math.max(0, Math.min(1, Number(marker.dataset.y) || 0)) * 100}%`;
-  }
-  one<HTMLElement>(".map-marker-layer", atlas)!.hidden = false;
-  for (const toggle of all<HTMLInputElement>("[data-layer-toggle]", aside)) toggle.addEventListener("change", () => {
-    const layer = all<HTMLElement>("[data-map-layer]", atlas).find((el) => el.dataset.mapLayer === toggle.dataset.layerToggle);
-    if (layer) layer.hidden = !toggle.checked;
-  });
-  one<HTMLInputElement>("[data-places-toggle]", aside)?.addEventListener("change", (event) => { one<HTMLElement>(".map-marker-layer", atlas)!.hidden = !(event.target as HTMLInputElement).checked; });
-  viewport.addEventListener("pointerdown", (event) => {
-    if ((event.target as Element).closest("a") || drag) return;
-    drag = { id: event.pointerId, x: event.clientX, y: event.clientY, panX: state.x, panY: state.y };
-    viewport.setPointerCapture(event.pointerId);
-    viewport.classList.add("dragging");
-  });
-  viewport.addEventListener("pointermove", (event) => { if (drag?.id === event.pointerId) { state.x = drag.panX + event.clientX - drag.x; state.y = drag.panY + event.clientY - drag.y; draw(); } });
-  const end = (): void => { drag = null; viewport.classList.remove("dragging"); };
-  viewport.addEventListener("pointerup", end);
-  viewport.addEventListener("pointercancel", end);
-  viewport.addEventListener("lostpointercapture", end);
-  viewport.addEventListener("wheel", (event) => { if (!event.ctrlKey && !event.metaKey) return; event.preventDefault(); zoom(event.deltaY < 0 ? 1.1 : 1 / 1.1); }, { passive: false });
-  viewport.addEventListener("keydown", (event) => {
-    if (!["+", "=", "-", "0", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
-    event.preventDefault();
-    if (event.key === "+" || event.key === "=") zoom(1.35);
-    else if (event.key === "-") zoom(1 / 1.35);
-    else if (event.key === "0") reset();
-    else { state.x += event.key === "ArrowLeft" ? 40 : event.key === "ArrowRight" ? -40 : 0; state.y += event.key === "ArrowUp" ? 40 : event.key === "ArrowDown" ? -40 : 0; draw(); }
-  });
-  new ResizeObserver(draw).observe(viewport);
-  draw();
+  input.value = new URLSearchParams(location.search).get("q") ?? "";
+  input.addEventListener("input", () => void show());
+  if (input.value) void show();
 }
 
-for (const button of all<HTMLButtonElement>("[data-copy-target]")) {
-  const feedback = document.createElement("span");
-  feedback.className = "copy-feedback";
-  feedback.setAttribute("role", "status");
-  button.after(feedback);
-  button.addEventListener("click", async () => {
-    const target = document.getElementById(button.dataset.copyTarget ?? "");
-    if (!target) return;
-    button.disabled = true;
-    try {
-      await navigator.clipboard.writeText(target.textContent ?? "");
-      button.textContent = "Copied";
-      feedback.textContent = "Copied to clipboard";
-      feedback.classList.add("sr-only");
-      setTimeout(() => { button.textContent = "Copy"; feedback.textContent = ""; }, 2400);
-    } catch {
-      feedback.classList.remove("sr-only");
-      feedback.textContent = "Copy unavailable. Select the example to copy it.";
-    } finally { button.disabled = false; }
+// A map moves under a drag and zooms by its buttons, the wheel with ctrl, and the keys; its layers show by their boxes.
+for (const view of all<HTMLElement>("[data-atlas]")) {
+  const plane = view.querySelector<HTMLElement>(".plane")!;
+  let at = { zoom: 1, x: 0, y: 0 };
+  let drag: { id: number; x: number; y: number; from: typeof at } | null = null;
+  const draw = (): void => {
+    at = mapTransform(at.zoom, at.x, at.y, view.clientWidth, view.clientHeight);
+    plane.style.transform = `translate(${at.x}px, ${at.y}px) scale(${at.zoom})`;
+    view.style.setProperty("--zoom", String(at.zoom));
+  };
+  const zoom = (by: number): void => {
+    const z = Math.max(1, Math.min(8, at.zoom * by));
+    at = { zoom: z, x: (at.x * z) / at.zoom, y: (at.y * z) / at.zoom };
+    draw();
+  };
+  for (const b of all<HTMLButtonElement>("[data-zoom]", view)) {
+    b.addEventListener("click", () => (b.dataset.zoom === "0" ? ((at = { zoom: 1, x: 0, y: 0 }), draw()) : zoom(b.dataset.zoom === "1" ? 1.5 : 1 / 1.5)));
+  }
+  view.addEventListener("pointerdown", (e) => {
+    if ((e.target as Element).closest("button")) return;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, from: { ...at } };
+    view.setPointerCapture(e.pointerId);
   });
+  view.addEventListener("pointermove", (e) => {
+    if (drag?.id !== e.pointerId) return;
+    at = { ...at, x: drag.from.x + e.clientX - drag.x, y: drag.from.y + e.clientY - drag.y };
+    draw();
+  });
+  for (const end of ["pointerup", "pointercancel"]) view.addEventListener(end, () => (drag = null));
+  view.addEventListener("wheel", (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    zoom(e.deltaY < 0 ? 1.15 : 1 / 1.15);
+  }, { passive: false });
+  view.addEventListener("keydown", (e) => {
+    const step: Record<string, [number, number]> = { ArrowLeft: [60, 0], ArrowRight: [-60, 0], ArrowUp: [0, 60], ArrowDown: [0, -60] };
+    if (e.key === "+" || e.key === "=") zoom(1.5);
+    else if (e.key === "-") zoom(1 / 1.5);
+    else if (step[e.key]) at = { ...at, x: at.x + step[e.key]![0], y: at.y + step[e.key]![1] };
+    else return;
+    e.preventDefault();
+    draw();
+  });
+  new ResizeObserver(draw).observe(view);
+  const atlas = view.closest(".atlas")!;
+  const show = (box: HTMLInputElement): void => {
+    for (const layer of all<HTMLElement | SVGElement>(`[data-layer="${box.dataset.show}"]`, atlas)) {
+      if (layer instanceof HTMLImageElement && box.checked && !layer.src) layer.src = layer.dataset.src!;
+      if (box.checked) layer.removeAttribute("hidden");
+      else layer.setAttribute("hidden", "");
+    }
+  };
+  const asked = new URLSearchParams(location.search).get("show");
+  for (const box of all<HTMLInputElement>("[data-show]", atlas)) {
+    if (box.dataset.show === asked) box.checked = true;
+    box.addEventListener("change", () => show(box));
+    show(box);
+  }
 }

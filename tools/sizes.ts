@@ -88,3 +88,55 @@ export function weigh(dist: string): boolean {
   }
   return ok;
 }
+
+/** The field guide's budgets (tools/pages.ts): what a visitor's browser fetches for a page before it scrolls, Brotli where the server has it. */
+const GUIDE_BUDGETS: Record<string, number> = {
+  "guide: the front page, every picture": 300 * KB,
+  "guide: its heaviest page": 300 * KB,
+  "guide: a list page with every card's picture": 300 * KB,
+};
+
+/** Prints the guide's rows against their budgets; false if any is over. */
+export function weighGuide(dist: string): boolean {
+  const sent = (address: string): number => {
+    const file = join(dist, address.split(/[?#]/)[0]!);
+    return existsSync(`${file}.br`) ? statSync(`${file}.br`).size : statSync(file).size;
+  };
+  const shared = new Map<string, number>();
+  // A page's stylesheet with its font, and its script with the modules it imports before it runs.
+  const fixed = (html: string): number => {
+    let bytes = 0;
+    for (const m of html.matchAll(/<link rel="stylesheet" href="([^"]+)"|<script type="module" src="([^"]+)"/g)) {
+      const address = (m[1] ?? m[2])!;
+      if (!shared.has(address)) {
+        let n = sent(address);
+        const text = readFileSync(join(dist, address), "utf8");
+        for (const f of text.matchAll(/url\("(\/[^"]+)"\)/g)) n += sent(f[1]!);
+        for (const f of text.matchAll(/\bimport\s*(?:\{[^}]*\}\s*from\s*)?"\.\/([^"]+\.js)"/g)) n += sent(address.replace(/[^/]+$/, f[1]!));
+        shared.set(address, n);
+      }
+      bytes += shared.get(address)!;
+    }
+    return bytes;
+  };
+  const pictures = (html: string, lazy: boolean): number =>
+    [...html.matchAll(/<img\b[^>]*?\ssrc="([^"]+)"[^>]*>/g)].filter((m) => lazy || !m[0].includes('loading="lazy"')).reduce((n, m) => n + sent(m[1]!), 0);
+  const pages = [...new Bun.Glob("guide/**/index.html").scanSync({ cwd: dist })];
+  const weigh = (path: string, lazy: boolean): number => {
+    const html = readFileSync(join(dist, path), "utf8");
+    return sent(path) + fixed(html) + pictures(html, lazy);
+  };
+  const lists = pages.filter((p) => /^guide\/(creatures|items|vehicles|characters)\/(page\/\d+\/|group\/\w+\/)?index\.html$/.test(p));
+  const rows: [string, number][] = [
+    ["guide: the front page, every picture", weigh("guide/index.html", true)],
+    ["guide: its heaviest page", Math.max(...pages.map((p) => weigh(p, false)))],
+    ["guide: a list page with every card's picture", Math.max(...lists.map((p) => weigh(p, true)))],
+  ];
+  let ok = true;
+  for (const [name, value] of rows) {
+    const pass = value <= GUIDE_BUDGETS[name]!;
+    ok &&= pass;
+    console.log(`  ${name.padEnd(52)} ${`${(value / KB).toFixed(0)} KB`.padStart(10)}  ${pass ? "ok" : "MISS"} (budget ${(GUIDE_BUDGETS[name]! / KB).toFixed(0)} KB)`);
+  }
+  return ok;
+}

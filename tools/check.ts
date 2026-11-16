@@ -30,8 +30,8 @@ const VOICE_MAX_LINES = 600;
 const SOUND_MAX_LINES = 300;
 /** The asset worker and its port: fetching, hashing and caching, with no decisions of their own. */
 const ASSETS_MAX_LINES = 500;
-/** The isolated static guide's DOM and model renderer; tested decisions stay in client/core/pages. */
-const PAGES_MAX_LINES = 800;
+/** The field guide's script: sounds, the map, search. Its decisions are in client/core/pages. */
+const PAGES_MAX_LINES = 160;
 const ALLOWED_DEV_PACKAGES = new Set(["typescript", "@types/bun"]);
 
 interface Zone {
