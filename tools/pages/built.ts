@@ -92,6 +92,7 @@ export function meshPack(b: Built, ids: readonly string[]): Pack {
   });
   const blob = new Uint8Array(size);
   parts.reduce((at, p) => (blob.set(p, at), at + p.length), 0);
-  const header = { paletteOffset: 0, meshes, rigs: b.boot.header.rigs, clips: [], materials: b.manifest.materials ?? [], textures: (b.manifest.textures ?? []).map(({ id, role, top }) => ({ id, role, top })) };
+  const textures = (b.manifest.textures ?? []).map(({ id, role, top }) => ({ id, role, top }));
+  const header = { paletteOffset: 0, meshes, rigs: b.boot.header.rigs, clips: [], materials: b.manifest.materials ?? [], textures };
   return { header, blob, blobAt: 0, palette: blob.subarray(0, 1024), meshIndex: new Map(ids.map((id, k) => [id, k])), clips: b.boot.clips };
 }

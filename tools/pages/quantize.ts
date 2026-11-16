@@ -72,7 +72,8 @@ export function indexedPng(width: number, height: number, rgba: Uint8Array): Uin
   new DataView(header.buffer).setUint32(4, height);
   header.set([8, 3, 0, 0, 0], 8);
   const seeThrough = alpha.some((a) => a < 255) ? [chunk("tRNS", alpha.subarray(0, alpha.findLastIndex((a) => a < 255) + 1))] : [];
-  const parts = [Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", header), chunk("PLTE", palette), ...seeThrough, chunk("IDAT", deflateSync(raw, { level: 9 })), chunk("IEND", new Uint8Array(0))];
+  const signature = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const parts = [signature, chunk("IHDR", header), chunk("PLTE", palette), ...seeThrough, chunk("IDAT", deflateSync(raw, { level: 9 })), chunk("IEND", new Uint8Array(0))];
   const png = new Uint8Array(parts.reduce((s, x) => s + x.length, 0));
   parts.reduce((at, x) => (png.set(x, at), at + x.length), 0);
   return png;

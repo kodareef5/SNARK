@@ -28,7 +28,6 @@ export const BOX = 1000;
 
 export interface Layer {
   id: string;
-  label: string;
   /** What the layer is of: a node kind, a species or a vehicle kind. */
   of: string;
   picture?: Picture;
@@ -81,6 +80,14 @@ function hsl(h: number, s: number, l: number): [number, number, number] {
 }
 
 const hex = (palette: Uint8Array, k: number): string => `#${[0, 1, 2].map((c) => palette[k * 4 + c]!.toString(16).padStart(2, "0")).join("")}`;
+
+/** What the guide reads of a map's world.json. */
+interface WorldPlaces {
+  obelisks?: { name: string; at: [number, number] }[];
+  districts?: { name: string; ring: [number, number][] }[];
+}
+
+const at1 = (n: number): number => Math.round(n * 10) / 10;
 
 /** The species each spawn table may add, those that wait for a feature left out. */
 function speciesOf(def: SpawnsDef): string[] {
@@ -143,7 +150,7 @@ export function buildAtlases(reg: Registry, palette: Uint8Array, maps: string, o
     const toBox = (x: number, z: number): [number, number] => [((size - x) / size) * BOX, ((size - z) / size) * BOX];
     const mark = (name: string, x: number, z: number): Mark => {
       const [bx, by] = toBox(x, z);
-      return { name, x: Math.round(bx * 10) / 10, y: Math.round(by * 10) / 10 };
+      return { name, x: at1(bx), y: at1(by) };
     };
     const key = createHash("sha256").update(readFileSync(import.meta.filename)).update(bytes.subarray(8, 12)).update(palette).update(colours).digest("hex").slice(0, 16);
     const cached = join(CACHE, `${slug}.${key}`);
@@ -195,28 +202,33 @@ export function buildAtlases(reg: Registry, palette: Uint8Array, maps: string, o
         return { rgba: px, width: GRID, height: GRID };
       };
       const slugOf = node.id.slice(node.id.indexOf(":") + 1);
-      return { id: slugOf, label: "", of: node.id, picture: picture(`node-${slugOf}`, made), count: grid.reduce((n, x) => n + x, 0), colour };
+      return { id: slugOf, of: node.id, picture: picture(`node-${slugOf}`, made), count: grid.reduce((n, x) => n + x, 0), colour };
     });
 
     const regions: Region[] = (map.regions ?? []).filter((z) => z.kind === "spawn" && z.spawns).map((z) => {
       const [x, y] = toBox(z.at[0], z.at[1]);
       const scale = BOX / size;
-      return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, r: Math.round((z.radius ?? 0) * scale * 10) / 10, ...(z.half ? { half: [z.half[0] * scale, z.half[1] * scale] as [number, number] } : {}), species: spawns.get(z.spawns!) ?? [], count: z.count ?? 0 };
+      const half: [number, number] | undefined = z.half ? [z.half[0] * scale, z.half[1] * scale] : undefined;
+      return { x: at1(x), y: at1(y), r: at1((z.radius ?? 0) * scale), ...(half ? { half } : {}), species: spawns.get(z.spawns!) ?? [], count: z.count ?? 0 };
     });
     const held = new Map<string, number>();
     for (const r of regions) for (const s of r.species) held.set(s, (held.get(s) ?? 0) + 1);
-    const creatures: Layer[] = [...held].map(([id, count]) => ({ id: id.slice(id.indexOf(":") + 1), label: "", of: id, count, colour: hex(palette, (reg.defs[reg.index.get(id)!] as { color?: number }).color ?? 15) }));
+    const creatures: Layer[] = [...held].map(([id, count]) => {
+      const colour = hex(palette, (reg.defs[reg.index.get(id)!] as { color?: number }).color ?? 15);
+      return { id: id.slice(id.indexOf(":") + 1), of: id, count, colour };
+    });
 
     const parked = new Map<string, Mark[]>();
     for (const v of map.vehicles ?? []) parked.set(v.kind, [...(parked.get(v.kind) ?? []), mark("", v.x, v.z)]);
 
     const source = join(ROOT, "assets/source/maps", slug);
-    const world = existsSync(join(source, "world/world.json")) ? (JSON.parse(readFileSync(join(source, "world/world.json"), "utf8")) as { obelisks?: { name: string; at: [number, number] }[]; districts?: { name: string; ring: [number, number][] }[] }) : {};
+    const worldFile = join(source, "world/world.json");
+    const world: WorldPlaces = existsSync(worldFile) ? JSON.parse(readFileSync(worldFile, "utf8")) : {};
     const base = new Base(source);
     const half = base.info.size_m / 2;
     const fromLonLat = (lon: number, lat: number): [number, number] => {
       const [e, n] = base.tm.forward(lon, lat);
-      return [Math.round(((half + e) / base.info.size_m) * BOX * 10) / 10, Math.round(((half - n) / base.info.size_m) * BOX * 10) / 10];
+      return [at1(((half + e) / base.info.size_m) * BOX), at1(((half - n) / base.info.size_m) * BOX)];
     };
     const districts = (world.districts ?? []).map((d) => {
       const points = d.ring.map(([lon, lat]) => fromLonLat(lon, lat));

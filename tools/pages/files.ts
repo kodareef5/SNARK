@@ -1,6 +1,6 @@
 // Writing the guide's files: media linked in from the caches rather than copied, and a Brotli copy of each text file.
 
-import { copyFileSync, existsSync, linkSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, linkSync, unlinkSync, writeFileSync } from "node:fs";
 import { brotli } from "../build-client.ts";
 
 /** Puts `from` at `to` as a hard link, or a copy where the two are on different disks. */
@@ -21,5 +21,3 @@ export function writeText(file: string, text: string): number {
   writeFileSync(`${file}.br`, packed);
   return packed.length;
 }
-
-export const brotliSize = (file: string): number => brotli(readFileSync(file), false).length;

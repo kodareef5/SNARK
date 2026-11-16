@@ -51,12 +51,14 @@ export async function buildGuide(dist = join(ROOT, "client/dist"), maps = join(R
     const subjects: Subject[] = entries.flatMap((e) => (e.picture ? [{ key: e.id.replace(/[:/]/g, "-"), ...e.picture }] : []));
     const posters = drawPosters(built, subjects, media, `${BASE}media/`);
     const pictures = new Map(entries.flatMap((e) => (e.picture ? [[e.id, posters.drawn.get(e.id.replace(/[:/]/g, "-"))!] as const] : [])));
-    const credits = new Map(entries.flatMap((e) => (e.picture ? [[e.id, entryCredit(art.credits, e.picture.meshes, e.picture.body && e.kind !== "vehicles", e.kind === "characters")] as const] : [])));
+    const credits = new Map<string, string>();
+    for (const e of entries) if (e.picture) credits.set(e.id, entryCredit(art.credits, e.picture.meshes, e.picture.body && e.kind !== "vehicles", e.kind === "characters"));
     const atlases = buildAtlases(reg, built.boot.palette, maps, media, `${BASE}media/`);
 
     const soundRow = (file: string, game: boolean) => (s: ManifestSound): Sound => {
       const name = s.id.slice(s.id.indexOf("/sound/") + 7);
-      return { id: s.id, owner: s.id.slice(0, s.id.indexOf("/sound/")), name: sentence(name.replace(/[_/]+/g, " ")), file, at: s.at, rate: s.rate, takes: s.takes.map((t) => [t.samples, t.bytes] as const), game };
+      const owner = s.id.slice(0, s.id.indexOf("/sound/"));
+      return { id: s.id, owner, name: sentence(name.replace(/[_/]+/g, " ")), file, at: s.at, rate: s.rate, takes: s.takes.map((t) => [t.samples, t.bytes] as const), game };
     };
     const sounds = [
       ...(built.manifest.sounds ?? []).map((s) => soundRow(built.manifest.files[s.file]!.name, true)(s)),
@@ -76,7 +78,10 @@ export async function buildGuide(dist = join(ROOT, "client/dist"), maps = join(R
     );
     const musicFile = join(dist, "assets/music/music.json");
     const music: Track[] = existsSync(musicFile)
-      ? (JSON.parse(readFileSync(musicFile, "utf8")) as { tracks: { id: string; bpm: number; seconds: number; layers: string[] }[] }).tracks.map((t) => ({ id: t.id, bpm: t.bpm, seconds: t.seconds, layers: t.layers.map((name) => ({ name, file: `${name}.opus` })) }))
+      ? (JSON.parse(readFileSync(musicFile, "utf8")) as { tracks: (Omit<Track, "layers"> & { layers: string[] })[] }).tracks.map((t) => ({
+          ...t,
+          layers: t.layers.map((name) => ({ name, file: `${name}.opus` })),
+        }))
       : [];
 
     // The script and the stylesheet, named by their bytes: the chunks first, then what imports them.

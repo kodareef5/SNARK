@@ -4,7 +4,8 @@
 
 import { CORE_CONTENT } from "../../content/core.ts";
 import { torporDrain, torporMax } from "../../server/survival.ts";
-import { defaultLook, lookColors } from "../../shared/anim/look.ts";
+import { SLOT_NAMES } from "../../shared/anim/human.ts";
+import { HAIR_STYLES, LOOK_HAIR, LOOK_SEX, SEX_IDS, defaultLook, lookColors } from "../../shared/anim/look.ts";
 import type { Def, EngramDef, ItemDef, NodeDef, SpeciesDef, StructureDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -139,7 +140,10 @@ function dropTable(d: SpeciesDef | NodeDef, tools: readonly ItemDef[]): Table | 
       const favoured = tools.filter((t) => t.tool!.on === x.favoured);
       return [{ id: x.item }, x.min === x.max ? String(x.min) : `${x.min} to ${x.max}`, pct((x.weight ?? 1) / total), ...(favoured.length ? favoured.map((t): Cell => ({ id: t.id })) : [""])];
     });
-    const note = d.corpse ? `A grown body takes ${num(d.corpse.health)} harvest damage before it is used up, a roll for every ${num(d.corpse.roll)}. A favoured tool picks its drop half as often again.` : undefined;
+    const note = d.corpse
+      ? `A grown body takes ${num(d.corpse.health)} harvest damage before it is used up, a roll for every ${num(d.corpse.roll)}. ` +
+        "A favoured tool picks its drop half as often again."
+      : undefined;
     return { title: "Harvesting", head: ["Gives", "A roll", "Share", "More with"], rows, ...(note ? { note } : {}) };
   }
   return null;
@@ -180,18 +184,22 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
 
   for (const d of of("species")) {
     const creature = d.class === "creature";
-    if (!["creature", "survivor", "civilian", "vehicle"].includes(d.class) || !has(d.mesh === "core:human" ? "core:human_m/head" : d.mesh)) continue;
+    if (!["creature", "survivor", "civilian", "vehicle"].includes(d.class)) continue;
     const kind: Kind = creature ? "creatures" : d.class === "vehicle" ? "vehicles" : "characters";
-    const e: Entry = { id: d.id, kind, label: labelOf(d), group: creature ? (d.fly ? "Flyer" : "Creature") : kind === "vehicles" ? sentence(d.vehicle?.movement ?? "car") : "Human", facts: [], tables: [], related: [], console: null, owners: [d.id], picture: null };
-    const fact = (label: string, ...value: Cell[]): void => void e.facts.push({ label, value });
-    if (d.mesh === "core:human") {
+    let picture: Entry["picture"];
+    if (d.skeleton === "human") {
+      // A new survivor as the game makes one: its body's parts and its hair.
+      const look = defaultLook();
       const colors = new Uint8Array(6);
-      lookColors(defaultLook(), colors);
-      e.picture = { meshes: ["head", "torso", "hands", "legs", "feet", "hair/buzzed"].map((p) => `core:human_m/${p}`), colors: [...colors], body: true };
-    } else {
-      const regions = d.regions?.map((r) => r?.colors[0]?.[0] ?? 0);
-      e.picture = { meshes: [d.mesh], colors: regions ?? [], body: true };
-    }
+      lookColors(look, colors);
+      const body = `${d.mesh}_${SEX_IDS[look[LOOK_SEX]!]}`;
+      picture = { meshes: [...SLOT_NAMES, `hair/${HAIR_STYLES[look[LOOK_HAIR]!]!.id}`].map((p) => `${body}/${p}`), colors: [...colors], body: true };
+    } else picture = { meshes: [d.mesh], colors: d.regions?.map((r) => r?.colors[0]?.[0] ?? 0) ?? [], body: true };
+    // A species with no art of its own is a stand-in, and not in the guide.
+    if (!picture.meshes.every(has)) continue;
+    const group = creature ? (d.fly ? "Flyer" : "Creature") : kind === "vehicles" ? sentence(d.vehicle?.movement ?? "car") : "Human";
+    const e: Entry = { id: d.id, kind, label: labelOf(d), group, facts: [], tables: [], related: [], console: null, owners: [d.id], picture };
+    const fact = (label: string, ...value: Cell[]): void => void e.facts.push({ label, value });
     if (kind === "vehicles") {
       const v = d.vehicle!;
       const spec = v.spec as unknown as Record<string, number>;
@@ -241,7 +249,8 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
     const placed = (d.places ?? []).map((s) => byId.get(s)).filter((s): s is StructureDef => s?.type === "structure");
     const first = placed[0];
     const group = first ? (STRUCTURE_GROUPS[first.class] ?? "Structure") : (ITEM_GROUPS[d.class] ?? sentence(d.class));
-    const e: Entry = { id: d.id, kind: "items", label: labelOf(engram ?? d), group, facts: [], tables: [], related: [], console: line("give", d.id), owners: [d.id, ...placed.map((s) => s.id)], picture: null };
+    const owners = [d.id, ...placed.map((s) => s.id)];
+    const e: Entry = { id: d.id, kind: "items", label: labelOf(engram ?? d), group, facts: [], tables: [], related: [], console: line("give", d.id), owners, picture: null };
     const fact = (label: string, ...value: Cell[]): void => void e.facts.push({ label, value });
     const icon = icons.get(d.id);
     if (icon) e.picture = { meshes: [icon.mesh], colors: icon.colors, body: false, framing: input.framing?.get(icon.mesh) ?? input.framing?.get(icon.mesh.replace(/\/dropped$/, "")) ?? null };
@@ -264,7 +273,8 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
       fact("Durability", `${w.uses} uses`);
       if (w.melee) fact("Strikes for", `${num(w.melee.damage)} damage`);
       const ammo = (w.ammo ?? []).map((a) => byId.get(a)).filter((a): a is ItemDef => a?.type === "item" && a.ammo !== undefined);
-      if (ammo.length) e.tables.push({ title: "Ammunition", head: ["Fires", "Damage"], rows: ammo.map((a): Cell[] => [{ id: a.id }, `${num(a.ammo!.damage * (w.power ?? 1))}${a.ammo!.pellets ? ` × ${a.ammo!.pellets} pellets` : ""} ${a.ammo!.type}`]) });
+      const hit = (a: ItemDef): string => `${num(a.ammo!.damage * (w.power ?? 1))}${a.ammo!.pellets ? ` × ${a.ammo!.pellets} pellets` : ""} ${a.ammo!.type}`;
+      if (ammo.length) e.tables.push({ title: "Ammunition", head: ["Fires", "Damage"], rows: ammo.map((a): Cell[] => [{ id: a.id }, hit(a)]) });
       if (w.fits?.length) e.related.push({ relation: "Takes", refs: w.fits.map((id) => ({ id })) });
     }
     if (d.ammo && !w) fact("Damage", `${num(d.ammo.damage)}${d.ammo.pellets ? ` × ${d.ammo.pellets} pellets` : ""} ${d.ammo.type}`);

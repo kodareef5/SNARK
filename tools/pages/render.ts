@@ -233,7 +233,8 @@ ${related ? `<section><h2>Related</h2><dl class="related">${related}</dl></secti
   const settings = (): string => {
     const lede = "What a server may change of the game, as ARK names it, and its value if the server says nothing.";
     const rows = join(site.settings, (s) => `<tr><th><code>${esc(s.name)}</code><br><small>${esc(s.where)}</small></th><td>${esc(s.def)}</td><td>${esc(s.doc)}</td></tr>`);
-    return `${heading("Server settings", `${site.settings.length} settings`, lede)}<div class="wide"><table><thead><tr><th>Setting</th><th>Default</th><th>What it does</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    const head = "<thead><tr><th>Setting</th><th>Default</th><th>What it does</th></tr></thead>";
+    return `${heading("Server settings", `${site.settings.length} settings`, lede)}<div class="wide"><table>${head}<tbody>${rows}</tbody></table></div>`;
   };
 
   const search = (): string =>
@@ -275,13 +276,19 @@ ${a.vehicles.map((v) => `<g data-layer="${esc(slug(v.kind))}" class="parked" hid
 </svg>`;
   const layers = join(a.resources, (r) => `<img class="layer" data-layer="${esc(r.id)}" data-src="${esc(r.picture!.file)}" width="${r.picture!.width}" height="${r.picture!.height}" alt="" hidden>`);
   const resources = [...a.resources].sort((p, q) => name(p.of).localeCompare(name(q.of)));
+  const places = [
+    box("districts", "Districts", String(a.districts.length), "#e9eef5", true),
+    box("spawns", "Where survivors arrive", String(a.spawns.length), "#9fe3ff", true),
+    box("obelisks", "Obelisks", String(a.obelisks.length), "#d8b4ff", true),
+  ].join("");
   const panel = `<aside class="layers glass">
-<fieldset><legend>Places</legend>${box("districts", "Districts", String(a.districts.length), "#e9eef5", true)}${box("spawns", "Where survivors arrive", String(a.spawns.length), "#9fe3ff", true)}${box("obelisks", "Obelisks", String(a.obelisks.length), "#d8b4ff", true)}</fieldset>
+<fieldset><legend>Places</legend>${places}</fieldset>
 <fieldset><legend>Creatures</legend>${join(a.creatures, (c) => box(c.id, name(c.of), `${c.count} regions`, c.colour))}</fieldset>
 <fieldset><legend>Resources</legend>${join(resources, (r) => box(r.id, name(r.of), num(r.count), r.colour))}</fieldset>
 <fieldset><legend>Vehicles</legend>${join(a.vehicles, (v) => box(slug(v.kind), name(v.kind), `${v.count} parked`, "#ffd479"))}</fieldset>
 </aside>`;
-  const zoom = `<div class="zoom"><button type="button" data-zoom="1" aria-label="Zoom in">+</button><button type="button" data-zoom="-1" aria-label="Zoom out">−</button><button type="button" data-zoom="0" aria-label="Whole map">⤢</button></div>`;
+  const button = (by: number, label: string, text: string): string => `<button type="button" data-zoom="${by}" aria-label="${label}">${text}</button>`;
+  const zoom = `<div class="zoom">${button(1, "Zoom in", "+")}${button(-1, "Zoom out", "−")}${button(0, "Whole map", "⤢")}</div>`;
   return `${heading(a.label, "Map", `${num(a.metres / 1000, 1)} km across. North is up.`)}
 <div class="atlas"><div class="viewport" data-atlas tabindex="0" aria-label="Map of ${esc(a.label)}: drag to move, plus and minus to zoom">
 <div class="plane">${img(a.ground, `${a.label} from above`, false, "ground")}${layers}${svg}</div>${zoom}</div>

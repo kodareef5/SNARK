@@ -10,7 +10,17 @@ import { join, resolve } from "node:path";
 import { serveFile } from "../server/files.ts";
 
 const DIST = resolve(import.meta.dir, "../client/dist");
-const PAGES = ["/guide/", "/guide/creatures/raptor/", "/guide/items/piece_foundation_wood/", "/guide/items/pistol/", "/guide/vehicles/compact/", "/guide/maps/miami/", "/guide/items/", "/guide/search/?q=raptor", "/guide/commands/"];
+const PAGES = [
+  "/guide/",
+  "/guide/creatures/raptor/",
+  "/guide/items/piece_foundation_wood/",
+  "/guide/items/pistol/",
+  "/guide/vehicles/compact/",
+  "/guide/maps/miami/",
+  "/guide/items/",
+  "/guide/search/?q=raptor",
+  "/guide/commands/",
+];
 const WIDTHS = [1280, 390];
 
 export async function pagesProbe(chrome: string): Promise<boolean> {
@@ -20,11 +30,13 @@ export async function pagesProbe(chrome: string): Promise<boolean> {
   if (shots) mkdirSync(shots, { recursive: true });
   const server = Bun.serve({ port: 0, fetch: (req) => serveFile(DIST, req) });
   const profile = mkdtempSync(join(tmpdir(), "snark-pages-"));
-  const browser = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--disable-extensions", "--remote-debugging-port=0", "--autoplay-policy=no-user-gesture-required", `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
+  const flags = ["--headless=new", "--no-first-run", "--disable-extensions", "--remote-debugging-port=0", "--autoplay-policy=no-user-gesture-required"];
+  const browser = Bun.spawn([chrome, ...flags, `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
   const faults: string[] = [];
   try {
     let port = 0;
-    for (let k = 0; k < 100 && !port; k++, await Bun.sleep(100)) if (existsSync(join(profile, "DevToolsActivePort"))) port = Number(readFileSync(join(profile, "DevToolsActivePort"), "utf8").split("\n")[0]);
+    const active = join(profile, "DevToolsActivePort");
+    for (let k = 0; k < 100 && !port; k++, await Bun.sleep(100)) if (existsSync(active)) port = Number(readFileSync(active, "utf8").split("\n")[0]);
     const targets = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as { type: string; webSocketDebuggerUrl: string }[];
     const ws = new WebSocket(targets.find((t) => t.type === "page")!.webSocketDebuggerUrl);
     await new Promise((r) => (ws.onopen = r));
@@ -54,7 +66,11 @@ export async function pagesProbe(chrome: string): Promise<boolean> {
         await send("Page.navigate", { url: `http://localhost:${server.port}${path}` });
         await Bun.sleep(300);
         await run(`${settled}.then(() => document.fonts.ready).then(() => Promise.all([...document.images].filter((i) => i.loading !== 'lazy').map((i) => i.decode().catch(() => i.src))))`);
-        const page = await run(`({ wide: document.documentElement.scrollWidth > innerWidth, broken: [...document.images].filter((i) => i.getAttribute('src') && i.complete && i.loading !== 'lazy' && i.naturalWidth === 0).map((i) => i.src), bytes: performance.getEntriesByType('resource').reduce((n, r) => n + r.transferSize, 0) + performance.getEntriesByType('navigation')[0].transferSize })`);
+        const page = await run(`({
+          wide: document.documentElement.scrollWidth > innerWidth,
+          broken: [...document.images].filter((i) => i.getAttribute('src') && i.complete && i.loading !== 'lazy' && !i.naturalWidth).map((i) => i.src),
+          bytes: [...performance.getEntriesByType('resource'), ...performance.getEntriesByType('navigation')].reduce((n, r) => n + r.transferSize, 0),
+        })`);
         if (page.wide) faults.push(`${path} at ${width}: wider than the screen`);
         if (page.broken.length) faults.push(`${path} at ${width}: pictures that do not decode: ${page.broken.join(", ")}`);
         if (width > 500 && path.includes("raptor")) {
