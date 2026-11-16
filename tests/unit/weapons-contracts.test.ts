@@ -82,7 +82,7 @@ test("the ranged gear lives in content/items, each piece once, and is in the cor
     expect(all.has(`${d.type} ${d.id}`)).toBe(true);
     expect(CORE_CONTENT.filter((o) => o.type === d.type && o.id === d.id).length).toBe(1);
   }
-  // Each moved item brought its engram (W3 added the shotgun's and its shell's, W5 the two grenades', W6 the flare gun's) and the rename of its old recipe id, and is made as before.
+  // Each moved item brought its engram (W3 added the shotgun's and its shell's, W5 the two grenades', W6 the flare gun's), and is made as before.
   expect([...WEAPONS, ...AMMO, ...EXPLOSIVES].filter((d) => d.type === "engram").length).toBe(22);
   const pistol = CORE_CONTENT.find((d) => d.id === "core:pistol" && d.type === "item")!;
   // W8 brought its numbers to the wiki's since (tests/unit/ark-weapons.test.ts).

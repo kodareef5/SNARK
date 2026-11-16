@@ -71,10 +71,10 @@ test("the eight resources are plain items at their pages' weights and stacks, an
   const paste = CORE_CONTENT.find((d) => d.id === "core:paste" && d.type === "item") as ItemDef;
   // S0 moved it unchanged; S6 made it at the mortar and pestle at ARK's numbers (tests/unit/ark-stations.test.ts).
   expect(paste).toMatchObject({ class: "resource", stack: 100, weight: 0.01, label: "cementing paste", color: 15, craft: { needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 1, xp: 4.8, at: "core:mortar" } });
-  expect(RESOURCES.filter((d) => d.id === "core:paste" || d.id === "core:engram-paste" || d.id === "core:make-paste").map((d) => d.type).sort()).toEqual(["engram", "item", "rename"]);
+  expect(RESOURCES.filter((d) => d.id === "core:paste" || d.id === "core:engram-paste").map((d) => d.type).sort()).toEqual(["engram", "item"]);
   expect(BUILDING_CONTENT.some((d) => d.id.includes("paste"))).toBe(false);
-  // The ingot: no engram and no hand recipe; since S1 the forge makes it by itself. Its recipe's old id still reads as it.
-  expect([reg.index.has("core:engram-ingot"), reg.firedAt[id(reg, "ingot")], reg.craftAt[id(reg, "ingot")], reg.redirects.get("core:make-ingot")]).toEqual([false, id(reg, "forge"), id(reg, "forge"), [id(reg, "ingot")]]);
+  // The ingot: no engram and no hand recipe; since S1 the forge makes it by itself.
+  expect([reg.index.has("core:engram-ingot"), reg.firedAt[id(reg, "ingot")], reg.craftAt[id(reg, "ingot")]]).toEqual([false, id(reg, "forge"), id(reg, "forge")]);
   expect(CORE_CONTENT.some((d) => d.type === "engram" && d.item === "core:ingot")).toBe(false);
 });
 

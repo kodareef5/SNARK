@@ -4,13 +4,10 @@ import type { CraftFacet, Def } from "../shared/content/defs.ts";
 
 const CRAFTS = new Map<string, CraftFacet>();
 
-/**
- * Says how `item` is made. Returns the rename of the recipe id ("core:make-spear") that said it before recipes were
- * folded into items, so a save with a crafting job under that id still reads.
- */
-export function crafting(item: string, craft: CraftFacet): Def {
+/** Says how `item` is made, for `crafted` to put onto it. Spread into a list beside the engram, and adds nothing to it. */
+export function crafting(item: string, craft: CraftFacet): Def[] {
   CRAFTS.set(item, craft);
-  return { type: "rename", id: item.replace(":", ":make-"), to: [item] };
+  return [];
 }
 
 /** `defs` with each item given the way it is made. */
@@ -28,7 +25,7 @@ type Needs = readonly (readonly [item: string, count: number])[];
 export function making(name: string, label: string, level: number, cost: number, count: number, seconds: number, needs: Needs, xp = Math.max(1, Math.round(level / 3)), at?: string): Def[] {
   const id = (n: string): string => `core:${n}`;
   return [
-    crafting(id(name), { needs: needs.map(([item, n]) => ({ item: id(item), count: n })), seconds, xp, count, ...(at ? { at: id(at) } : {}) }),
+    ...crafting(id(name), { needs: needs.map(([item, n]) => ({ item: id(item), count: n })), seconds, xp, count, ...(at ? { at: id(at) } : {}) }),
     { type: "engram", id: id(`engram-${name}`), label, level, cost, item: id(name) },
   ];
 }

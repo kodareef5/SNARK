@@ -111,7 +111,7 @@ test("an item whose content is gone stops the load, and a ledger that does not b
   const full = coreRegistry();
   // With its engram gone too, nothing else refers to the waterskin.
   const meat = full.index.get("core:waterskin")!;
-  const gone = new Set(["core:waterskin", "core:make-waterskin", "core:engram-waterskin"]); // The middle one is the rename of its old recipe.
+  const gone = new Set(["core:waterskin", "core:engram-waterskin"]);
   const stone = full.index.get("core:stone")!;
   const host = createHost(full, { dbPath: db });
   const rec = host.records.create(full.index.get("core:grazer")!, "mule");
@@ -151,7 +151,7 @@ test("an operator goes on without removed content by one start: what was made of
   host.shutdown();
 
   // A species, an item with its engram, and a piece of building.
-  const gone = new Set(["core:grazer", "core:waterskin", "core:make-waterskin", "core:engram-waterskin", "core:wall"]);
+  const gone = new Set(["core:grazer", "core:waterskin", "core:engram-waterskin", "core:wall"]);
   const without = compileContent(CORE_CONTENT.filter((d) => !gone.has(d.id))).registry!;
   expect(() => createHost(without, { dbPath: db })).toThrow(/core:grazer[^]*--allow-missing-content/);
   // The server reads the flag its refusal names.
