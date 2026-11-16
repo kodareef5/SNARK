@@ -48,6 +48,6 @@ test("rotor instruments show physical flight state in wide and portrait views an
     expect(gauges.length).toBe(11);
     for (const n of gauges) { expect(n.x).toBeGreaterThanOrEqual(0); expect(n.x + n.w).toBeLessThanOrEqual(f.width); expect(n.y + n.h).toBeLessThan(f.height); }
     expect(gauges.map(n => n.text)).toContain("DIRECT");
-    expect(gauges.map(n => n.text)).toContain("12.6 m AGL  ·  -2.4 m/s");
+    expect(gauges.map(n => n.text)).toContain("12.6 m AGL  |  -2.4 m/s");
   }
 });
