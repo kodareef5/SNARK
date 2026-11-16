@@ -142,7 +142,7 @@ interface Level {
 }
 
 /**
- * A level drawn with materials: inside each run, triangles for the cache, but for a cut-out run's, which are best seen
+ * A level drawn with materials: triangles for the cache inside each run but a cut-out one, which the writer put best seen
  * first (sprays.ts); then vertices, surfaces and skins in the order those first use them.
  */
 function orderRuns(pack: Pack, lod: PackLod, cutout: (material: number) => boolean): Level {
@@ -154,7 +154,7 @@ function orderRuns(pack: Pack, lod: PackLod, cutout: (material: number) => boole
   return { indices, vertices: permuted(lodVertices(pack, lod), from, VERTEX_BYTES), surface: permuted(lodSurface(pack, lod)!, from, SURFACE_BYTES), skin: skin && permuted(skin, from, SKIN_BYTES) };
 }
 
-/** A flat level: vertices of the same bytes made one, which with no normals are those split for their faces; then ordered as one run. */
+/** A flat level: vertices of the same bytes made one (with no normals, those a source split for its faces), then ordered as one run. */
 function weldFlat(pack: Pack, lod: PackLod): Level {
   const vertices = lodVertices(pack, lod).slice();
   const first = new Map<bigint, number>();
