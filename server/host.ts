@@ -534,7 +534,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     return !!actor && (reg.vehicle[rec.kind] ? urbanMay(actor, rec, null) : rec.team !== 0 && tribes.may(actor, rec.team));
   };
   game.onVehicleStep = e => urban.impact(e);
-  urban.contacts = new VehicleContacts({ world, records, combat, driverOf: e => urban.riderOf(e), impact: (e, speed, rotor) => urban.collision(e, speed, rotor) });
+  urban.contacts = new VehicleContacts({ world, records, combat, driverOf: e => urban.riderOf(e), impact: (e, speed, rotor, propeller) => urban.collision(e, speed, rotor, propeller) });
   // The use button gets off a mount, and sets down what is in the arms.
   death.riding = (c) => urban.riding(c) || riding.riding(c) || carry.holding(c) >= 0;
   death.offMount = (c) => (urban.riding(c) ? urban.dismount(c) : riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
@@ -664,7 +664,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     if (taker) taming.meal(taker);
     buffs.died(rec);
     spawner?.left(rec);
-    if (isBoatVehicle(reg.vehicle[rec.kind])) urban.releaseHost(rec.pid);
+    if (reg.vehicle[rec.kind]?.movement === "boat") urban.releaseHost(rec.pid);
     corpses.fell(rec, cause, by);
     if (rec.kind === survivor) beds.died(rec, by !== 0 ? (records.byPid.get(by)?.team ?? 0) : 0);
     death.die(rec, cause);
