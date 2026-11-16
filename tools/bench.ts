@@ -991,12 +991,16 @@ const cam = new Camera();
 scene.structureDistance = 256;
 let packet = scene.packet;
 const sum = (xs: number[]): number => xs.reduce((a, v) => a + v, 0);
-for (const b of [1, 2, 0]) {
-  const tier = BASE_TIERS[b]!;
+const standOff = (b: number): void => {
   cam.x = centers[b]![0] + 60;
   cam.z = centers[b]![1];
   cam.y = hf.heightAt(cam.x, cam.z) + 8;
   cam.yaw = Math.PI / 2 + Math.PI; // facing -X, toward the base
+};
+// The first base reaches into the siege's chunk, which is then seen and drawn whole, so the wooden one is the fourth.
+for (const b of [3, 1, 2]) {
+  const tier = BASE_TIERS[b % 3]!;
+  standOff(b);
   t0 = performance.now();
   packet = scene.build(cam, null);
   record(`${tier}: first frame, building instance buffers`, performance.now() - t0, "ms");
@@ -1016,7 +1020,7 @@ for (const b of [1, 2, 0]) {
   record(`${tier}: triangles cast into the sun's maps, and their draws`, sum(cast.triangles), `(${sum(cast.draws)} draws)`);
 }
 record("terrain tiles (8 km map, 4 km view)", packet.tileCount, "", 200);
-cam.yaw = Math.PI / 2 + Math.PI;
+standOff(0);
 scene.structureDistance = Infinity;
 packet = scene.build(cam, null);
 record("draw calls if every base to the horizon were instanced", packet.drawCount, "");
@@ -1052,6 +1056,7 @@ section("Client frame build (headless): the 20,000-piece chunk told of 50 damage
 
 section("Client frame build (headless): 300 survivors in view, posed every frame");
 {
+  standOff(3);
   scene.structureDistance = 256;
   const crowd = new RemoteSample();
   const survivor = reg.index.get("core:survivor")!;
