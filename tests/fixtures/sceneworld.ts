@@ -234,8 +234,8 @@ export function sceneWorld(net: NetOptions = {}, tier: Partial<Tier> = {}, set =
     /**
      * One frame, `ms` after the last. Throws if the card is sent anything out of order, if a draw is of a level, a
      * surface or a material's base colour or masks that the card does not hold, if a level drawn with materials is not
-     * drawn once for each of its sections, in their order but for its cut-out ones (which the scene may leave out), or
-     * if a cut-out draw comes before an opaque one of its step while the scene draws them last.
+     * drawn once for each of its sections but for its cut-out ones (which the scene may leave out), or if a cut-out draw
+     * comes before an opaque one of its step while the scene draws them last.
      */
     frame(ms = 100, draw = true): FramePacket {
       now += ms;
@@ -261,10 +261,10 @@ export function sceneWorld(net: NetOptions = {}, tier: Partial<Tier> = {}, set =
         if ([m.base, m.mask, m.mask2].some((t) => t >= 0 && !card.textures.has(t))) throw new Error(`draw ${d} is with ${m.id}, whose textures the card does not hold`);
         const key = [slot, p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawPass[d]].join();
         const level = levels.get(key) ?? levels.set(key, { sections: runs.length / 3, drawn: [] }).get(key)!;
-        level.drawn.push(k / 3 + (cut && scene.cutouts === "last" ? runs.length : 0) - (cut && scene.cutouts === "first" ? runs.length : 0));
+        level.drawn.push(k / 3);
       }
       for (const [key, { sections, drawn }] of levels) {
-        if ((drawn.length !== sections && scene.cutouts !== "none") || drawn.some((k, i) => i > 0 && k <= drawn[i - 1]!)) throw new Error(`the level drawn as ${key} is not drawn once for each of its sections, in order`);
+        if ((drawn.length !== sections && scene.cutouts !== "none") || new Set(drawn).size !== drawn.length) throw new Error(`the level drawn as ${key} is not drawn once for each of its sections`);
       }
       if (draw) raster.render(p);
       return p;

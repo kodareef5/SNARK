@@ -18,3 +18,33 @@ export function sortU32(a: Uint32Array, n: number): void {
     }
   }
 }
+
+/** Sort a[from..to) ascending (quicksort, median of three, insertion sort under 16; recursion on the smaller side). */
+export function sortF64(a: Float64Array, from: number, to: number): void {
+  while (to - from > 16) {
+    const x = a[from]!, y = a[(from + to) >> 1]!, z = a[to - 1]!;
+    const pivot = x < y ? (y < z ? y : x < z ? z : x) : x < z ? x : y < z ? z : y;
+    let i = from, j = to - 1;
+    while (i <= j) {
+      while (a[i]! < pivot) i++;
+      while (a[j]! > pivot) j--;
+      if (i > j) break;
+      const t = a[i]!;
+      a[i++] = a[j]!;
+      a[j--] = t;
+    }
+    if (j + 1 - from < to - i) {
+      sortF64(a, from, j + 1);
+      from = i;
+    } else {
+      sortF64(a, i, to);
+      to = j + 1;
+    }
+  }
+  for (let i = from + 1; i < to; i++) {
+    const v = a[i]!;
+    let j = i - 1;
+    for (; j >= from && a[j]! > v; j--) a[j + 1] = a[j]!;
+    a[j + 1] = v;
+  }
+}
