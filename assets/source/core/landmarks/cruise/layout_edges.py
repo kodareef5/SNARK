@@ -166,4 +166,7 @@ def finish(D,p,world,place,box,ys,beam):
     if poly:poly=clip(poly,axis,limit,keep)
    if len(poly)>2 and abs(sum(a[0]*b[1]-b[0]*a[1] for a,b in zip(poly,poly[1:]+poly[:1])))>.001:holes.append(poly)
   if r['id']=='thrill':r['entry']=[24,49.6,-94]
+  if r['id']=='hideaway':r['entry']=[12,45.6,-158]
+  if r['id'] in('grove','grove_upper'):r['entry']=[12,ys[r['deck']],59]
+  if r['id']=='waterpark':r['entry']=[21,63.2,-133]
   r['footprint']={'polygons':polys,'holes':holes}
