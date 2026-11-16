@@ -129,7 +129,7 @@ def populate(D,prototype,instance,box,node):
     x0,x1=(-2,-.2) if side<0 else(.2,2);ya,yb=(0,dy/2) if side<0 else(dy,dy/2)
     def ramp(a,b):return [[x,yy,z] for z,yy in [(z0,ya),(z1,yb)] for x in(a,b) for yy in(yy-.26,yy)]
     hs=[{'points':ramp(x0,x1)}]
-    for x in(x0-.08,x1):hs.append({'points':[[x+dx,yy,z] for z,yy in[(z0,ya),(z1,yb)] for dx in(0,.08) for yy in(yy,yy+1.15)]})
+    for x in(x0-.08,x1):hs.append({'points':[[x+dx,yy,z] for z,base in[(z0,ya),(z1,yb)] for dx in(0,.08) for yy in(base,base+1.15)]})
     q=p('stair_flight','stairs',[],hs,{'kind':'stair','x0':x0,'x1':x1,'z0':z0,'z1':z1,'y0':ya,'y1':yb,'steps':math.ceil(dy/.32)},101)
     names.append(place(f'stair_{cname}_{label}_flight{side}',q,[cx,y,cz],label,cname))
    bs=[box([-2.2,dy/2-.24,.8],[2.2,dy/2,3]),box([-2.28,dy/2,.8],[-2.2,dy/2+1.15,3.08]),
@@ -148,10 +148,10 @@ def populate(D,prototype,instance,box,node):
  for i,d in enumerate(D['decks'][:15]):
   label=d['id'];y=d['floorY'];a=f'fore_{label}';b=f'aft_{label}'
   if any(n['id']==a for n in D['graph']['nodes']) and any(n['id']==b for n in D['graph']['nodes']):
-   aisle=25 if int(label)>=15 else 15.5
+   aisle=24 if label=='17' else 25 if int(label)>=15 else 15.5
    anchors=[[-1.1,y,-76.6],[aisle,y,-76.6],[aisle,y,77.4],[-1.1,y,77.4]]
    if int(label)>=16:anchors=[[-1.1,y,-76.6],[-1.1,y,-88],[aisle,y,-88],[aisle,y,77.4],[-1.1,y,77.4]]
-   route('spine_'+label,'corridor',b,a,anchors,2.4)
+   route('spine_'+label,'corridor',b,a,anchors,1.8 if label=='17' else 2.4)
  # Exterior arrival, clear of the outer white hull, opens directly to the promenade.
  gp=p('gangway','gangway',[box([-14.8,-.24,-1.4],[14.8,0,1.4]),box([-14.8,0,-1.48],[14.8,1.15,-1.4]),
                          box([-14.8,0,1.4],[14.8,1.15,1.48])],art={'kind':'gangway','finish':'deck'},color=101)
@@ -233,10 +233,10 @@ def populate(D,prototype,instance,box,node):
  funnelboxes=[box([x-.65,7.8,z-.65],[x+.65,12,z+.65]) for x in(-1.4,1.4) for z in(-1.0,2.5)]
  fp=p('funnel','funnel',funnelboxes,funnelh,{'kind':'funnel','finish':'blue'},232)
  for side in(-1,1):place('funnel_'+str(side),fp,[side*11,63,-72],'17','funnel')
- mast=p('signal_mast','mast',[box([-.22,-13.4,-.22],[.22,13.4,.22]),
-                             box([-3.2,7.4,-.1],[3.2,7.6,.1]),box([-2.4,10.4,-.1],[2.4,10.6,.1])],
+ mast=p('signal_mast','mast',[box([-.22,-8.65,-.22],[.22,8.65,.22]),
+                             box([-3.2,4.4,-.1],[3.2,4.6,.1]),box([-2.4,6.4,-.1],[2.4,6.6,.1])],
         art={'kind':'mast','finish':'enamel'})
- place('forward_signal_mast',mast,[0,66.6,102],'17','aerial')
+ place('forward_signal_mast',mast,[0,61.85,102],'17','aerial')
  # Pool prototype: real recessed basin and shallow stair-out above an occupied dry room; no map-water semantics.
  basin=[box([-5,-.94,-8],[5,-.74,8]),box([-5.2,-.74,-8.2],[-5,0.18,8.2]),box([5,-.74,-8.2],[5.2,.18,8.2]),
         box([-5,-.74,-8.2],[5,.18,-8]),box([-5,-.74,8],[5,.18,8.2])]

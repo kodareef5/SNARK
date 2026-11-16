@@ -34,7 +34,7 @@
     "deckhouseBeam": 57.8,
     "bridgeBeam": 65.8,
     "provisionalKeelY": -9.3,
-    "provisionalHighestY": 80,
+    "provisionalHighestY": 75,
     "published": [
       "lengthOverall",
       "waterlineBeam",
@@ -25380,8 +25380,8 @@
       }
     },
     {
-      "id": "core:cruise_stair_flight_e50cb63f56",
-      "mesh": "core:cruise_stair_flight_e50cb63f56",
+      "id": "core:cruise_stair_flight_146bd6b7de",
+      "mesh": "core:cruise_stair_flight_146bd6b7de",
       "category": "stairs",
       "color": 101,
       "boxes": [],
@@ -25444,12 +25444,12 @@
             ],
             [
               -2.0,
-              1.15,
+              0,
               -3.6
             ],
             [
               -2.0,
-              2.3,
+              1.15,
               -3.6
             ],
             [
@@ -25464,12 +25464,12 @@
             ],
             [
               -2.0,
-              2.75,
+              1.6,
               0.8
             ],
             [
               -2.0,
-              3.9,
+              2.75,
               0.8
             ]
           ]
@@ -25488,12 +25488,12 @@
             ],
             [
               -0.12,
-              1.15,
+              0,
               -3.6
             ],
             [
               -0.12,
-              2.3,
+              1.15,
               -3.6
             ],
             [
@@ -25508,12 +25508,12 @@
             ],
             [
               -0.12,
-              2.75,
+              1.6,
               0.8
             ],
             [
               -0.12,
-              3.9,
+              2.75,
               0.8
             ]
           ]
@@ -25527,7 +25527,7 @@
         ],
         "max": [
           -0.12,
-          3.9,
+          2.75,
           0.8
         ]
       },
@@ -25543,8 +25543,8 @@
       }
     },
     {
-      "id": "core:cruise_stair_flight_7e45891477",
-      "mesh": "core:cruise_stair_flight_7e45891477",
+      "id": "core:cruise_stair_flight_ea25fb94eb",
+      "mesh": "core:cruise_stair_flight_ea25fb94eb",
       "category": "stairs",
       "color": 101,
       "boxes": [],
@@ -25607,12 +25607,12 @@
             ],
             [
               0.2,
-              4.35,
+              3.2,
               -3.6
             ],
             [
               0.2,
-              5.5,
+              4.35,
               -3.6
             ],
             [
@@ -25627,12 +25627,12 @@
             ],
             [
               0.2,
-              2.75,
+              1.6,
               0.8
             ],
             [
               0.2,
-              3.9,
+              2.75,
               0.8
             ]
           ]
@@ -25651,12 +25651,12 @@
             ],
             [
               2.08,
-              4.35,
+              3.2,
               -3.6
             ],
             [
               2.08,
-              5.5,
+              4.35,
               -3.6
             ],
             [
@@ -25671,12 +25671,12 @@
             ],
             [
               2.08,
-              2.75,
+              1.6,
               0.8
             ],
             [
               2.08,
-              3.9,
+              2.75,
               0.8
             ]
           ]
@@ -25690,7 +25690,7 @@
         ],
         "max": [
           2.08,
-          5.5,
+          4.35,
           0.8
         ]
       },
@@ -25779,8 +25779,8 @@
       }
     },
     {
-      "id": "core:cruise_stair_flight_af2a00923f",
-      "mesh": "core:cruise_stair_flight_af2a00923f",
+      "id": "core:cruise_stair_flight_0529047302",
+      "mesh": "core:cruise_stair_flight_0529047302",
       "category": "stairs",
       "color": 101,
       "boxes": [],
@@ -25843,12 +25843,12 @@
             ],
             [
               -2.0,
-              1.15,
+              0,
               -3.6
             ],
             [
               -2.0,
-              2.3,
+              1.15,
               -3.6
             ],
             [
@@ -25863,12 +25863,12 @@
             ],
             [
               -2.0,
-              2.95,
+              1.8,
               0.8
             ],
             [
               -2.0,
-              4.1,
+              2.95,
               0.8
             ]
           ]
@@ -25887,12 +25887,12 @@
             ],
             [
               -0.12,
-              1.15,
+              0,
               -3.6
             ],
             [
               -0.12,
-              2.3,
+              1.15,
               -3.6
             ],
             [
@@ -25907,12 +25907,12 @@
             ],
             [
               -0.12,
-              2.95,
+              1.8,
               0.8
             ],
             [
               -0.12,
-              4.1,
+              2.95,
               0.8
             ]
           ]
@@ -25926,7 +25926,7 @@
         ],
         "max": [
           -0.12,
-          4.1,
+          2.95,
           0.8
         ]
       },
@@ -25942,8 +25942,8 @@
       }
     },
     {
-      "id": "core:cruise_stair_flight_4722f1e4be",
-      "mesh": "core:cruise_stair_flight_4722f1e4be",
+      "id": "core:cruise_stair_flight_cc7aa5eb67",
+      "mesh": "core:cruise_stair_flight_cc7aa5eb67",
       "category": "stairs",
       "color": 101,
       "boxes": [],
@@ -26006,12 +26006,12 @@
             ],
             [
               0.2,
-              4.75,
+              3.6,
               -3.6
             ],
             [
               0.2,
-              5.9,
+              4.75,
               -3.6
             ],
             [
@@ -26026,12 +26026,12 @@
             ],
             [
               0.2,
-              2.95,
+              1.8,
               0.8
             ],
             [
               0.2,
-              4.1,
+              2.95,
               0.8
             ]
           ]
@@ -26050,12 +26050,12 @@
             ],
             [
               2.08,
-              4.75,
+              3.6,
               -3.6
             ],
             [
               2.08,
-              5.9,
+              4.75,
               -3.6
             ],
             [
@@ -26070,12 +26070,12 @@
             ],
             [
               2.08,
-              2.95,
+              1.8,
               0.8
             ],
             [
               2.08,
-              4.1,
+              2.95,
               0.8
             ]
           ]
@@ -26089,7 +26089,7 @@
         ],
         "max": [
           2.08,
-          5.9,
+          4.75,
           0.8
         ]
       },
@@ -26178,8 +26178,8 @@
       }
     },
     {
-      "id": "core:cruise_stair_flight_46c04f0811",
-      "mesh": "core:cruise_stair_flight_46c04f0811",
+      "id": "core:cruise_stair_flight_f0829b5602",
+      "mesh": "core:cruise_stair_flight_f0829b5602",
       "category": "stairs",
       "color": 101,
       "boxes": [],
@@ -26242,12 +26242,12 @@
             ],
             [
               -2.0,
-              1.15,
+              0,
               -3.6
             ],
             [
               -2.0,
-              2.3,
+              1.15,
               -3.6
             ],
             [
@@ -26262,12 +26262,12 @@
             ],
             [
               -2.0,
-              3.25,
+              2.1,
               0.8
             ],
             [
               -2.0,
-              4.4,
+              3.25,
               0.8
             ]
           ]
@@ -26286,12 +26286,12 @@
             ],
             [
               -0.12,
-              1.15,
+              0,
               -3.6
             ],
             [
               -0.12,
-              2.3,
+              1.15,
               -3.6
             ],
             [
@@ -26306,12 +26306,12 @@
             ],
             [
               -0.12,
-              3.25,
+              2.1,
               0.8
             ],
             [
               -0.12,
-              4.4,
+              3.25,
               0.8
             ]
           ]
@@ -26325,7 +26325,7 @@
         ],
         "max": [
           -0.12,
-          4.4,
+          3.25,
           0.8
         ]
       },
@@ -26341,8 +26341,8 @@
       }
     },
     {
-      "id": "core:cruise_stair_flight_f02f576159",
-      "mesh": "core:cruise_stair_flight_f02f576159",
+      "id": "core:cruise_stair_flight_6bda9312ab",
+      "mesh": "core:cruise_stair_flight_6bda9312ab",
       "category": "stairs",
       "color": 101,
       "boxes": [],
@@ -26405,12 +26405,12 @@
             ],
             [
               0.2,
-              5.35,
+              4.2,
               -3.6
             ],
             [
               0.2,
-              6.5,
+              5.35,
               -3.6
             ],
             [
@@ -26425,12 +26425,12 @@
             ],
             [
               0.2,
-              3.25,
+              2.1,
               0.8
             ],
             [
               0.2,
-              4.4,
+              3.25,
               0.8
             ]
           ]
@@ -26449,12 +26449,12 @@
             ],
             [
               2.08,
-              5.35,
+              4.2,
               -3.6
             ],
             [
               2.08,
-              6.5,
+              5.35,
               -3.6
             ],
             [
@@ -26469,12 +26469,12 @@
             ],
             [
               2.08,
-              3.25,
+              2.1,
               0.8
             ],
             [
               2.08,
-              4.4,
+              3.25,
               0.8
             ]
           ]
@@ -26488,7 +26488,7 @@
         ],
         "max": [
           2.08,
-          6.5,
+          5.35,
           0.8
         ]
       },
@@ -26577,8 +26577,8 @@
       }
     },
     {
-      "id": "core:cruise_stair_flight_9caf4ba760",
-      "mesh": "core:cruise_stair_flight_9caf4ba760",
+      "id": "core:cruise_stair_flight_7a67720ae2",
+      "mesh": "core:cruise_stair_flight_7a67720ae2",
       "category": "stairs",
       "color": 101,
       "boxes": [],
@@ -26641,12 +26641,12 @@
             ],
             [
               -2.0,
-              1.15,
+              0,
               -3.6
             ],
             [
               -2.0,
-              2.3,
+              1.15,
               -3.6
             ],
             [
@@ -26661,12 +26661,12 @@
             ],
             [
               -2.0,
-              3.35,
+              2.2,
               0.8
             ],
             [
               -2.0,
-              4.5,
+              3.35,
               0.8
             ]
           ]
@@ -26685,12 +26685,12 @@
             ],
             [
               -0.12,
-              1.15,
+              0,
               -3.6
             ],
             [
               -0.12,
-              2.3,
+              1.15,
               -3.6
             ],
             [
@@ -26705,12 +26705,12 @@
             ],
             [
               -0.12,
-              3.35,
+              2.2,
               0.8
             ],
             [
               -0.12,
-              4.5,
+              3.35,
               0.8
             ]
           ]
@@ -26724,7 +26724,7 @@
         ],
         "max": [
           -0.12,
-          4.5,
+          3.35,
           0.8
         ]
       },
@@ -26740,8 +26740,8 @@
       }
     },
     {
-      "id": "core:cruise_stair_flight_c1ff3df0a0",
-      "mesh": "core:cruise_stair_flight_c1ff3df0a0",
+      "id": "core:cruise_stair_flight_bb80617cb1",
+      "mesh": "core:cruise_stair_flight_bb80617cb1",
       "category": "stairs",
       "color": 101,
       "boxes": [],
@@ -26804,12 +26804,12 @@
             ],
             [
               0.2,
-              5.55,
+              4.4,
               -3.6
             ],
             [
               0.2,
-              6.7,
+              5.55,
               -3.6
             ],
             [
@@ -26824,12 +26824,12 @@
             ],
             [
               0.2,
-              3.35,
+              2.2,
               0.8
             ],
             [
               0.2,
-              4.5,
+              3.35,
               0.8
             ]
           ]
@@ -26848,12 +26848,12 @@
             ],
             [
               2.08,
-              5.55,
+              4.4,
               -3.6
             ],
             [
               2.08,
-              6.7,
+              5.55,
               -3.6
             ],
             [
@@ -26868,12 +26868,12 @@
             ],
             [
               2.08,
-              3.35,
+              2.2,
               0.8
             ],
             [
               2.08,
-              4.5,
+              3.35,
               0.8
             ]
           ]
@@ -26887,7 +26887,7 @@
         ],
         "max": [
           2.08,
-          6.7,
+          5.55,
           0.8
         ]
       },
@@ -26976,8 +26976,8 @@
       }
     },
     {
-      "id": "core:cruise_stair_flight_fd175f13d7",
-      "mesh": "core:cruise_stair_flight_fd175f13d7",
+      "id": "core:cruise_stair_flight_e1a93687ee",
+      "mesh": "core:cruise_stair_flight_e1a93687ee",
       "category": "stairs",
       "color": 101,
       "boxes": [],
@@ -27040,12 +27040,12 @@
             ],
             [
               -2.0,
-              1.15,
+              0,
               -3.6
             ],
             [
               -2.0,
-              2.3,
+              1.15,
               -3.6
             ],
             [
@@ -27060,12 +27060,12 @@
             ],
             [
               -2.0,
-              2.85,
+              1.7,
               0.8
             ],
             [
               -2.0,
-              4.0,
+              2.85,
               0.8
             ]
           ]
@@ -27084,12 +27084,12 @@
             ],
             [
               -0.12,
-              1.15,
+              0,
               -3.6
             ],
             [
               -0.12,
-              2.3,
+              1.15,
               -3.6
             ],
             [
@@ -27104,12 +27104,12 @@
             ],
             [
               -0.12,
-              2.85,
+              1.7,
               0.8
             ],
             [
               -0.12,
-              4.0,
+              2.85,
               0.8
             ]
           ]
@@ -27123,7 +27123,7 @@
         ],
         "max": [
           -0.12,
-          4.0,
+          2.85,
           0.8
         ]
       },
@@ -27139,8 +27139,8 @@
       }
     },
     {
-      "id": "core:cruise_stair_flight_5f553d04f7",
-      "mesh": "core:cruise_stair_flight_5f553d04f7",
+      "id": "core:cruise_stair_flight_f47fbc7af6",
+      "mesh": "core:cruise_stair_flight_f47fbc7af6",
       "category": "stairs",
       "color": 101,
       "boxes": [],
@@ -27203,12 +27203,12 @@
             ],
             [
               0.2,
-              4.55,
+              3.4,
               -3.6
             ],
             [
               0.2,
-              5.7,
+              4.55,
               -3.6
             ],
             [
@@ -27223,12 +27223,12 @@
             ],
             [
               0.2,
-              2.85,
+              1.7,
               0.8
             ],
             [
               0.2,
-              4.0,
+              2.85,
               0.8
             ]
           ]
@@ -27247,12 +27247,12 @@
             ],
             [
               2.08,
-              4.55,
+              3.4,
               -3.6
             ],
             [
               2.08,
-              5.7,
+              4.55,
               -3.6
             ],
             [
@@ -27267,12 +27267,12 @@
             ],
             [
               2.08,
-              2.85,
+              1.7,
               0.8
             ],
             [
               2.08,
-              4.0,
+              2.85,
               0.8
             ]
           ]
@@ -27286,7 +27286,7 @@
         ],
         "max": [
           2.08,
-          5.7,
+          4.55,
           0.8
         ]
       },
@@ -27375,8 +27375,8 @@
       }
     },
     {
-      "id": "core:cruise_stair_flight_6f4f96f1cb",
-      "mesh": "core:cruise_stair_flight_6f4f96f1cb",
+      "id": "core:cruise_stair_flight_f4000ec355",
+      "mesh": "core:cruise_stair_flight_f4000ec355",
       "category": "stairs",
       "color": 101,
       "boxes": [],
@@ -27439,12 +27439,12 @@
             ],
             [
               -2.0,
-              1.15,
+              0,
               -3.6
             ],
             [
               -2.0,
-              2.3,
+              1.15,
               -3.6
             ],
             [
@@ -27459,12 +27459,12 @@
             ],
             [
               -2.0,
-              2.75,
+              1.6,
               0.8
             ],
             [
               -2.0,
-              3.9,
+              2.75,
               0.8
             ]
           ]
@@ -27483,12 +27483,12 @@
             ],
             [
               -0.12,
-              1.15,
+              0,
               -3.6
             ],
             [
               -0.12,
-              2.3,
+              1.15,
               -3.6
             ],
             [
@@ -27503,12 +27503,12 @@
             ],
             [
               -0.12,
-              2.75,
+              1.6,
               0.8
             ],
             [
               -0.12,
-              3.9,
+              2.75,
               0.8
             ]
           ]
@@ -27522,7 +27522,7 @@
         ],
         "max": [
           -0.12,
-          3.9,
+          2.75,
           0.8
         ]
       },
@@ -27538,8 +27538,8 @@
       }
     },
     {
-      "id": "core:cruise_stair_flight_885637ea60",
-      "mesh": "core:cruise_stair_flight_885637ea60",
+      "id": "core:cruise_stair_flight_4b8b37dd0c",
+      "mesh": "core:cruise_stair_flight_4b8b37dd0c",
       "category": "stairs",
       "color": 101,
       "boxes": [],
@@ -27602,12 +27602,12 @@
             ],
             [
               0.2,
-              4.35,
+              3.2,
               -3.6
             ],
             [
               0.2,
-              5.5,
+              4.35,
               -3.6
             ],
             [
@@ -27622,12 +27622,12 @@
             ],
             [
               0.2,
-              2.75,
+              1.6,
               0.8
             ],
             [
               0.2,
-              3.9,
+              2.75,
               0.8
             ]
           ]
@@ -27646,12 +27646,12 @@
             ],
             [
               2.08,
-              4.35,
+              3.2,
               -3.6
             ],
             [
               2.08,
-              5.5,
+              4.35,
               -3.6
             ],
             [
@@ -27666,12 +27666,12 @@
             ],
             [
               2.08,
-              2.75,
+              1.6,
               0.8
             ],
             [
               2.08,
-              3.9,
+              2.75,
               0.8
             ]
           ]
@@ -27685,7 +27685,7 @@
         ],
         "max": [
           2.08,
-          5.5,
+          4.35,
           0.8
         ]
       },
@@ -27701,8 +27701,8 @@
       }
     },
     {
-      "id": "core:cruise_stair_flight_aaaa62a7bd",
-      "mesh": "core:cruise_stair_flight_aaaa62a7bd",
+      "id": "core:cruise_stair_flight_325ad566af",
+      "mesh": "core:cruise_stair_flight_325ad566af",
       "category": "stairs",
       "color": 101,
       "boxes": [],
@@ -27765,12 +27765,12 @@
             ],
             [
               -2.0,
-              1.15,
+              0,
               -3.6
             ],
             [
               -2.0,
-              2.3,
+              1.15,
               -3.6
             ],
             [
@@ -27785,12 +27785,12 @@
             ],
             [
               -2.0,
-              3.15,
+              2.0,
               0.8
             ],
             [
               -2.0,
-              4.3,
+              3.15,
               0.8
             ]
           ]
@@ -27809,12 +27809,12 @@
             ],
             [
               -0.12,
-              1.15,
+              0,
               -3.6
             ],
             [
               -0.12,
-              2.3,
+              1.15,
               -3.6
             ],
             [
@@ -27829,12 +27829,12 @@
             ],
             [
               -0.12,
-              3.15,
+              2.0,
               0.8
             ],
             [
               -0.12,
-              4.3,
+              3.15,
               0.8
             ]
           ]
@@ -27848,7 +27848,7 @@
         ],
         "max": [
           -0.12,
-          4.3,
+          3.15,
           0.8
         ]
       },
@@ -27864,8 +27864,8 @@
       }
     },
     {
-      "id": "core:cruise_stair_flight_3e52a497e5",
-      "mesh": "core:cruise_stair_flight_3e52a497e5",
+      "id": "core:cruise_stair_flight_3fe196b55b",
+      "mesh": "core:cruise_stair_flight_3fe196b55b",
       "category": "stairs",
       "color": 101,
       "boxes": [],
@@ -27928,12 +27928,12 @@
             ],
             [
               0.2,
-              5.15,
+              4.0,
               -3.6
             ],
             [
               0.2,
-              6.3,
+              5.15,
               -3.6
             ],
             [
@@ -27948,12 +27948,12 @@
             ],
             [
               0.2,
-              3.15,
+              2.0,
               0.8
             ],
             [
               0.2,
-              4.3,
+              3.15,
               0.8
             ]
           ]
@@ -27972,12 +27972,12 @@
             ],
             [
               2.08,
-              5.15,
+              4.0,
               -3.6
             ],
             [
               2.08,
-              6.3,
+              5.15,
               -3.6
             ],
             [
@@ -27992,12 +27992,12 @@
             ],
             [
               2.08,
-              3.15,
+              2.0,
               0.8
             ],
             [
               2.08,
-              4.3,
+              3.15,
               0.8
             ]
           ]
@@ -28011,7 +28011,7 @@
         ],
         "max": [
           2.08,
-          6.3,
+          5.15,
           0.8
         ]
       },
@@ -36863,8 +36863,8 @@
       }
     },
     {
-      "id": "core:cruise_signal_mast_f94a2a9a19",
-      "mesh": "core:cruise_signal_mast_f94a2a9a19",
+      "id": "core:cruise_signal_mast_17c9286cc7",
+      "mesh": "core:cruise_signal_mast_17c9286cc7",
       "category": "mast",
       "color": 232,
       "boxes": [
@@ -36876,14 +36876,14 @@
           ],
           "half": [
             0.22,
-            13.4,
+            8.65,
             0.22
           ]
         },
         {
           "at": [
             0.0,
-            7.5,
+            4.5,
             0.0
           ],
           "half": [
@@ -36895,7 +36895,7 @@
         {
           "at": [
             0.0,
-            10.5,
+            6.5,
             0.0
           ],
           "half": [
@@ -36909,12 +36909,12 @@
       "visualBounds": {
         "min": [
           -3.2,
-          -13.4,
+          -8.65,
           -0.22
         ],
         "max": [
           3.2,
-          13.4,
+          8.65,
           0.22
         ]
       },
@@ -91024,7 +91024,7 @@
     },
     {
       "id": "stair_fore_2_flight-1",
-      "prototype": "core:cruise_stair_flight_e50cb63f56",
+      "prototype": "core:cruise_stair_flight_146bd6b7de",
       "at": [
         0,
         3.0,
@@ -91037,7 +91037,7 @@
     },
     {
       "id": "stair_fore_2_flight1",
-      "prototype": "core:cruise_stair_flight_7e45891477",
+      "prototype": "core:cruise_stair_flight_ea25fb94eb",
       "at": [
         0,
         3.0,
@@ -91063,7 +91063,7 @@
     },
     {
       "id": "stair_fore_3_flight-1",
-      "prototype": "core:cruise_stair_flight_af2a00923f",
+      "prototype": "core:cruise_stair_flight_0529047302",
       "at": [
         0,
         6.2,
@@ -91076,7 +91076,7 @@
     },
     {
       "id": "stair_fore_3_flight1",
-      "prototype": "core:cruise_stair_flight_4722f1e4be",
+      "prototype": "core:cruise_stair_flight_cc7aa5eb67",
       "at": [
         0,
         6.2,
@@ -91102,7 +91102,7 @@
     },
     {
       "id": "stair_fore_4_flight-1",
-      "prototype": "core:cruise_stair_flight_46c04f0811",
+      "prototype": "core:cruise_stair_flight_f0829b5602",
       "at": [
         0,
         9.8,
@@ -91115,7 +91115,7 @@
     },
     {
       "id": "stair_fore_4_flight1",
-      "prototype": "core:cruise_stair_flight_f02f576159",
+      "prototype": "core:cruise_stair_flight_6bda9312ab",
       "at": [
         0,
         9.8,
@@ -91141,7 +91141,7 @@
     },
     {
       "id": "stair_fore_5_flight-1",
-      "prototype": "core:cruise_stair_flight_9caf4ba760",
+      "prototype": "core:cruise_stair_flight_7a67720ae2",
       "at": [
         0,
         14.0,
@@ -91154,7 +91154,7 @@
     },
     {
       "id": "stair_fore_5_flight1",
-      "prototype": "core:cruise_stair_flight_c1ff3df0a0",
+      "prototype": "core:cruise_stair_flight_bb80617cb1",
       "at": [
         0,
         14.0,
@@ -91180,7 +91180,7 @@
     },
     {
       "id": "stair_fore_6_flight-1",
-      "prototype": "core:cruise_stair_flight_46c04f0811",
+      "prototype": "core:cruise_stair_flight_f0829b5602",
       "at": [
         0,
         18.4,
@@ -91193,7 +91193,7 @@
     },
     {
       "id": "stair_fore_6_flight1",
-      "prototype": "core:cruise_stair_flight_f02f576159",
+      "prototype": "core:cruise_stair_flight_6bda9312ab",
       "at": [
         0,
         18.4,
@@ -91219,7 +91219,7 @@
     },
     {
       "id": "stair_fore_7_flight-1",
-      "prototype": "core:cruise_stair_flight_fd175f13d7",
+      "prototype": "core:cruise_stair_flight_e1a93687ee",
       "at": [
         0,
         22.6,
@@ -91232,7 +91232,7 @@
     },
     {
       "id": "stair_fore_7_flight1",
-      "prototype": "core:cruise_stair_flight_5f553d04f7",
+      "prototype": "core:cruise_stair_flight_f47fbc7af6",
       "at": [
         0,
         22.6,
@@ -91258,7 +91258,7 @@
     },
     {
       "id": "stair_fore_8_flight-1",
-      "prototype": "core:cruise_stair_flight_e50cb63f56",
+      "prototype": "core:cruise_stair_flight_146bd6b7de",
       "at": [
         0,
         26.0,
@@ -91271,7 +91271,7 @@
     },
     {
       "id": "stair_fore_8_flight1",
-      "prototype": "core:cruise_stair_flight_7e45891477",
+      "prototype": "core:cruise_stair_flight_ea25fb94eb",
       "at": [
         0,
         26.0,
@@ -91297,7 +91297,7 @@
     },
     {
       "id": "stair_fore_9_flight-1",
-      "prototype": "core:cruise_stair_flight_e50cb63f56",
+      "prototype": "core:cruise_stair_flight_146bd6b7de",
       "at": [
         0,
         29.2,
@@ -91310,7 +91310,7 @@
     },
     {
       "id": "stair_fore_9_flight1",
-      "prototype": "core:cruise_stair_flight_7e45891477",
+      "prototype": "core:cruise_stair_flight_ea25fb94eb",
       "at": [
         0,
         29.2,
@@ -91336,7 +91336,7 @@
     },
     {
       "id": "stair_fore_10_flight-1",
-      "prototype": "core:cruise_stair_flight_6f4f96f1cb",
+      "prototype": "core:cruise_stair_flight_f4000ec355",
       "at": [
         0,
         32.4,
@@ -91349,7 +91349,7 @@
     },
     {
       "id": "stair_fore_10_flight1",
-      "prototype": "core:cruise_stair_flight_885637ea60",
+      "prototype": "core:cruise_stair_flight_4b8b37dd0c",
       "at": [
         0,
         32.4,
@@ -91375,7 +91375,7 @@
     },
     {
       "id": "stair_fore_11_flight-1",
-      "prototype": "core:cruise_stair_flight_e50cb63f56",
+      "prototype": "core:cruise_stair_flight_146bd6b7de",
       "at": [
         0,
         35.6,
@@ -91388,7 +91388,7 @@
     },
     {
       "id": "stair_fore_11_flight1",
-      "prototype": "core:cruise_stair_flight_7e45891477",
+      "prototype": "core:cruise_stair_flight_ea25fb94eb",
       "at": [
         0,
         35.6,
@@ -91414,7 +91414,7 @@
     },
     {
       "id": "stair_fore_12_flight-1",
-      "prototype": "core:cruise_stair_flight_6f4f96f1cb",
+      "prototype": "core:cruise_stair_flight_f4000ec355",
       "at": [
         0,
         38.8,
@@ -91427,7 +91427,7 @@
     },
     {
       "id": "stair_fore_12_flight1",
-      "prototype": "core:cruise_stair_flight_885637ea60",
+      "prototype": "core:cruise_stair_flight_4b8b37dd0c",
       "at": [
         0,
         38.8,
@@ -91453,7 +91453,7 @@
     },
     {
       "id": "stair_fore_14_flight-1",
-      "prototype": "core:cruise_stair_flight_af2a00923f",
+      "prototype": "core:cruise_stair_flight_0529047302",
       "at": [
         0,
         42.0,
@@ -91466,7 +91466,7 @@
     },
     {
       "id": "stair_fore_14_flight1",
-      "prototype": "core:cruise_stair_flight_4722f1e4be",
+      "prototype": "core:cruise_stair_flight_cc7aa5eb67",
       "at": [
         0,
         42.0,
@@ -91492,7 +91492,7 @@
     },
     {
       "id": "stair_fore_15_flight-1",
-      "prototype": "core:cruise_stair_flight_aaaa62a7bd",
+      "prototype": "core:cruise_stair_flight_325ad566af",
       "at": [
         0,
         45.6,
@@ -91505,7 +91505,7 @@
     },
     {
       "id": "stair_fore_15_flight1",
-      "prototype": "core:cruise_stair_flight_3e52a497e5",
+      "prototype": "core:cruise_stair_flight_3fe196b55b",
       "at": [
         0,
         45.6,
@@ -91531,7 +91531,7 @@
     },
     {
       "id": "stair_fore_16_flight-1",
-      "prototype": "core:cruise_stair_flight_af2a00923f",
+      "prototype": "core:cruise_stair_flight_0529047302",
       "at": [
         0,
         49.6,
@@ -91544,7 +91544,7 @@
     },
     {
       "id": "stair_fore_16_flight1",
-      "prototype": "core:cruise_stair_flight_4722f1e4be",
+      "prototype": "core:cruise_stair_flight_cc7aa5eb67",
       "at": [
         0,
         49.6,
@@ -91570,7 +91570,7 @@
     },
     {
       "id": "stair_fore_17_flight-1",
-      "prototype": "core:cruise_stair_flight_af2a00923f",
+      "prototype": "core:cruise_stair_flight_0529047302",
       "at": [
         0,
         53.2,
@@ -91583,7 +91583,7 @@
     },
     {
       "id": "stair_fore_17_flight1",
-      "prototype": "core:cruise_stair_flight_4722f1e4be",
+      "prototype": "core:cruise_stair_flight_cc7aa5eb67",
       "at": [
         0,
         53.2,
@@ -91609,7 +91609,7 @@
     },
     {
       "id": "stair_fore_18_flight-1",
-      "prototype": "core:cruise_stair_flight_6f4f96f1cb",
+      "prototype": "core:cruise_stair_flight_f4000ec355",
       "at": [
         0,
         56.8,
@@ -91622,7 +91622,7 @@
     },
     {
       "id": "stair_fore_18_flight1",
-      "prototype": "core:cruise_stair_flight_885637ea60",
+      "prototype": "core:cruise_stair_flight_4b8b37dd0c",
       "at": [
         0,
         56.8,
@@ -91648,7 +91648,7 @@
     },
     {
       "id": "stair_aft_2_flight-1",
-      "prototype": "core:cruise_stair_flight_e50cb63f56",
+      "prototype": "core:cruise_stair_flight_146bd6b7de",
       "at": [
         0,
         3.0,
@@ -91661,7 +91661,7 @@
     },
     {
       "id": "stair_aft_2_flight1",
-      "prototype": "core:cruise_stair_flight_7e45891477",
+      "prototype": "core:cruise_stair_flight_ea25fb94eb",
       "at": [
         0,
         3.0,
@@ -91687,7 +91687,7 @@
     },
     {
       "id": "stair_aft_3_flight-1",
-      "prototype": "core:cruise_stair_flight_af2a00923f",
+      "prototype": "core:cruise_stair_flight_0529047302",
       "at": [
         0,
         6.2,
@@ -91700,7 +91700,7 @@
     },
     {
       "id": "stair_aft_3_flight1",
-      "prototype": "core:cruise_stair_flight_4722f1e4be",
+      "prototype": "core:cruise_stair_flight_cc7aa5eb67",
       "at": [
         0,
         6.2,
@@ -91726,7 +91726,7 @@
     },
     {
       "id": "stair_aft_4_flight-1",
-      "prototype": "core:cruise_stair_flight_46c04f0811",
+      "prototype": "core:cruise_stair_flight_f0829b5602",
       "at": [
         0,
         9.8,
@@ -91739,7 +91739,7 @@
     },
     {
       "id": "stair_aft_4_flight1",
-      "prototype": "core:cruise_stair_flight_f02f576159",
+      "prototype": "core:cruise_stair_flight_6bda9312ab",
       "at": [
         0,
         9.8,
@@ -91765,7 +91765,7 @@
     },
     {
       "id": "stair_aft_5_flight-1",
-      "prototype": "core:cruise_stair_flight_9caf4ba760",
+      "prototype": "core:cruise_stair_flight_7a67720ae2",
       "at": [
         0,
         14.0,
@@ -91778,7 +91778,7 @@
     },
     {
       "id": "stair_aft_5_flight1",
-      "prototype": "core:cruise_stair_flight_c1ff3df0a0",
+      "prototype": "core:cruise_stair_flight_bb80617cb1",
       "at": [
         0,
         14.0,
@@ -91804,7 +91804,7 @@
     },
     {
       "id": "stair_aft_6_flight-1",
-      "prototype": "core:cruise_stair_flight_46c04f0811",
+      "prototype": "core:cruise_stair_flight_f0829b5602",
       "at": [
         0,
         18.4,
@@ -91817,7 +91817,7 @@
     },
     {
       "id": "stair_aft_6_flight1",
-      "prototype": "core:cruise_stair_flight_f02f576159",
+      "prototype": "core:cruise_stair_flight_6bda9312ab",
       "at": [
         0,
         18.4,
@@ -91843,7 +91843,7 @@
     },
     {
       "id": "stair_aft_7_flight-1",
-      "prototype": "core:cruise_stair_flight_fd175f13d7",
+      "prototype": "core:cruise_stair_flight_e1a93687ee",
       "at": [
         0,
         22.6,
@@ -91856,7 +91856,7 @@
     },
     {
       "id": "stair_aft_7_flight1",
-      "prototype": "core:cruise_stair_flight_5f553d04f7",
+      "prototype": "core:cruise_stair_flight_f47fbc7af6",
       "at": [
         0,
         22.6,
@@ -91882,7 +91882,7 @@
     },
     {
       "id": "stair_aft_8_flight-1",
-      "prototype": "core:cruise_stair_flight_e50cb63f56",
+      "prototype": "core:cruise_stair_flight_146bd6b7de",
       "at": [
         0,
         26.0,
@@ -91895,7 +91895,7 @@
     },
     {
       "id": "stair_aft_8_flight1",
-      "prototype": "core:cruise_stair_flight_7e45891477",
+      "prototype": "core:cruise_stair_flight_ea25fb94eb",
       "at": [
         0,
         26.0,
@@ -91921,7 +91921,7 @@
     },
     {
       "id": "stair_aft_9_flight-1",
-      "prototype": "core:cruise_stair_flight_e50cb63f56",
+      "prototype": "core:cruise_stair_flight_146bd6b7de",
       "at": [
         0,
         29.2,
@@ -91934,7 +91934,7 @@
     },
     {
       "id": "stair_aft_9_flight1",
-      "prototype": "core:cruise_stair_flight_7e45891477",
+      "prototype": "core:cruise_stair_flight_ea25fb94eb",
       "at": [
         0,
         29.2,
@@ -91960,7 +91960,7 @@
     },
     {
       "id": "stair_aft_10_flight-1",
-      "prototype": "core:cruise_stair_flight_6f4f96f1cb",
+      "prototype": "core:cruise_stair_flight_f4000ec355",
       "at": [
         0,
         32.4,
@@ -91973,7 +91973,7 @@
     },
     {
       "id": "stair_aft_10_flight1",
-      "prototype": "core:cruise_stair_flight_885637ea60",
+      "prototype": "core:cruise_stair_flight_4b8b37dd0c",
       "at": [
         0,
         32.4,
@@ -91999,7 +91999,7 @@
     },
     {
       "id": "stair_aft_11_flight-1",
-      "prototype": "core:cruise_stair_flight_e50cb63f56",
+      "prototype": "core:cruise_stair_flight_146bd6b7de",
       "at": [
         0,
         35.6,
@@ -92012,7 +92012,7 @@
     },
     {
       "id": "stair_aft_11_flight1",
-      "prototype": "core:cruise_stair_flight_7e45891477",
+      "prototype": "core:cruise_stair_flight_ea25fb94eb",
       "at": [
         0,
         35.6,
@@ -92038,7 +92038,7 @@
     },
     {
       "id": "stair_aft_12_flight-1",
-      "prototype": "core:cruise_stair_flight_6f4f96f1cb",
+      "prototype": "core:cruise_stair_flight_f4000ec355",
       "at": [
         0,
         38.8,
@@ -92051,7 +92051,7 @@
     },
     {
       "id": "stair_aft_12_flight1",
-      "prototype": "core:cruise_stair_flight_885637ea60",
+      "prototype": "core:cruise_stair_flight_4b8b37dd0c",
       "at": [
         0,
         38.8,
@@ -92077,7 +92077,7 @@
     },
     {
       "id": "stair_aft_14_flight-1",
-      "prototype": "core:cruise_stair_flight_af2a00923f",
+      "prototype": "core:cruise_stair_flight_0529047302",
       "at": [
         0,
         42.0,
@@ -92090,7 +92090,7 @@
     },
     {
       "id": "stair_aft_14_flight1",
-      "prototype": "core:cruise_stair_flight_4722f1e4be",
+      "prototype": "core:cruise_stair_flight_cc7aa5eb67",
       "at": [
         0,
         42.0,
@@ -92116,7 +92116,7 @@
     },
     {
       "id": "stair_aft_15_flight-1",
-      "prototype": "core:cruise_stair_flight_aaaa62a7bd",
+      "prototype": "core:cruise_stair_flight_325ad566af",
       "at": [
         0,
         45.6,
@@ -92129,7 +92129,7 @@
     },
     {
       "id": "stair_aft_15_flight1",
-      "prototype": "core:cruise_stair_flight_3e52a497e5",
+      "prototype": "core:cruise_stair_flight_3fe196b55b",
       "at": [
         0,
         45.6,
@@ -92155,7 +92155,7 @@
     },
     {
       "id": "stair_aft_16_flight-1",
-      "prototype": "core:cruise_stair_flight_af2a00923f",
+      "prototype": "core:cruise_stair_flight_0529047302",
       "at": [
         0,
         49.6,
@@ -92168,7 +92168,7 @@
     },
     {
       "id": "stair_aft_16_flight1",
-      "prototype": "core:cruise_stair_flight_4722f1e4be",
+      "prototype": "core:cruise_stair_flight_cc7aa5eb67",
       "at": [
         0,
         49.6,
@@ -92194,7 +92194,7 @@
     },
     {
       "id": "stair_launch_16_flight-1",
-      "prototype": "core:cruise_stair_flight_af2a00923f",
+      "prototype": "core:cruise_stair_flight_0529047302",
       "at": [
         16,
         49.6,
@@ -92207,7 +92207,7 @@
     },
     {
       "id": "stair_launch_16_flight1",
-      "prototype": "core:cruise_stair_flight_4722f1e4be",
+      "prototype": "core:cruise_stair_flight_cc7aa5eb67",
       "at": [
         16,
         49.6,
@@ -92233,7 +92233,7 @@
     },
     {
       "id": "stair_launch_17_flight-1",
-      "prototype": "core:cruise_stair_flight_af2a00923f",
+      "prototype": "core:cruise_stair_flight_0529047302",
       "at": [
         16,
         53.2,
@@ -92246,7 +92246,7 @@
     },
     {
       "id": "stair_launch_17_flight1",
-      "prototype": "core:cruise_stair_flight_4722f1e4be",
+      "prototype": "core:cruise_stair_flight_cc7aa5eb67",
       "at": [
         16,
         53.2,
@@ -92272,7 +92272,7 @@
     },
     {
       "id": "stair_launch_18_flight-1",
-      "prototype": "core:cruise_stair_flight_6f4f96f1cb",
+      "prototype": "core:cruise_stair_flight_f4000ec355",
       "at": [
         16,
         56.8,
@@ -92285,7 +92285,7 @@
     },
     {
       "id": "stair_launch_18_flight1",
-      "prototype": "core:cruise_stair_flight_885637ea60",
+      "prototype": "core:cruise_stair_flight_4b8b37dd0c",
       "at": [
         16,
         56.8,
@@ -92311,7 +92311,7 @@
     },
     {
       "id": "stair_launch_19_flight-1",
-      "prototype": "core:cruise_stair_flight_6f4f96f1cb",
+      "prototype": "core:cruise_stair_flight_f4000ec355",
       "at": [
         16,
         60.0,
@@ -92324,7 +92324,7 @@
     },
     {
       "id": "stair_launch_19_flight1",
-      "prototype": "core:cruise_stair_flight_885637ea60",
+      "prototype": "core:cruise_stair_flight_4b8b37dd0c",
       "at": [
         16,
         60.0,
@@ -101554,10 +101554,10 @@
     },
     {
       "id": "forward_signal_mast",
-      "prototype": "core:cruise_signal_mast_f94a2a9a19",
+      "prototype": "core:cruise_signal_mast_17c9286cc7",
       "at": [
         0,
-        66.6,
+        61.85,
         102
       ],
       "yaw": 0,
@@ -107140,12 +107140,12 @@
           -88
         ],
         [
-          25,
+          24,
           53.2,
           -88
         ],
         [
-          25,
+          24,
           53.2,
           77.4
         ],
@@ -107155,7 +107155,7 @@
           77.4
         ]
       ],
-      "clearWidth": 2.4,
+      "clearWidth": 1.8,
       "clearHeight": 2.6
     },
     {

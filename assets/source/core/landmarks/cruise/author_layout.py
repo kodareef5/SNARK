@@ -20,7 +20,7 @@ D = {
  'sources':[{'id':'builder-delivery','url':BUILDER,'kind':'published-dimensions-and-photograph','date':'2023-11-26'},
             {'id':'operator-plan-2250','url':PLAN,'kind':'public-visitor-plan','profile':'2250','pdfCreated':'2022-10-20'}],
  'dimensions':{'lengthOverall':365,'minZ':-182.5,'maxZ':182.5,'waterlineBeam':48.5,'deckhouseBeam':57.8,'bridgeBeam':65.8,
-               'provisionalKeelY':-9.3,'provisionalHighestY':80,
+               'provisionalKeelY':-9.3,'provisionalHighestY':75,
                'published':['lengthOverall','waterlineBeam','deckhouseBeam','bridgeBeam'],
                'inferred':['hull stations','deck elevations','provisionalKeelY','provisionalHighestY','room dimensions'],
                'authority':'builder-delivery'},
