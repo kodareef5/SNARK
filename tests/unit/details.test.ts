@@ -237,7 +237,9 @@ X
     expect(changed).toBeGreaterThan(400);
     expect(changed).toBeLessThan(4000);
   }
-  expect(seen).toEqual(["lowpoly: 2 draws, 5 particles 1909612026", "medium: 2 draws, 10 particles 3919961625"]);
+  // They were 1909612026 and 3919961625 until clips were stored to 0.025 degrees and roots to 1/4096 m (pack version 5):
+  // the dust starts at most 0.07 mm from where it did.
+  expect(seen).toEqual(["lowpoly: 2 draws, 5 particles 1852344675", "medium: 2 draws, 10 particles 325987692"]);
 });
 
 test("the ground's kind and the dust it gives: sand at the shore, soil from grass, pale stone, none on water", () => {
