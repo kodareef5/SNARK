@@ -2,9 +2,25 @@
 import type { Registry } from "../../shared/content/registry.ts";
 import { CHUNK_SIZE, MAX_CHUNKS_PER_AXIS, STRUCT_UNITS, WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS, chunkAt } from "../../shared/coords.ts";
 import type { MapData } from "../../shared/world/mapfile.ts";
-import { MAX_SLOTS_PER_CHUNK, type StructureStore } from "../../shared/world/structures.ts";
+import { ROUTE_MARGIN } from "../../shared/world/path.ts";
+import { MAX_SLOTS_PER_CHUNK, StructureStore } from "../../shared/world/structures.ts";
 
 type StaticMap = Pick<MapData, "id" | "dims" | "statics">;
+const routeFaults = new WeakMap<Registry, readonly string[]>();
+
+/** Registry geometry is immutable. Measure every cruise state once, including door kinds not initially placed. */
+function cruiseRouteFaults(reg: Registry): readonly string[] {
+  const cached = routeFaults.get(reg); if (cached) return cached;
+  const faults: string[] = [], native = new StructureStore({ chunksX: 1, chunksZ: 1 }, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  let radius = 0; for (const value of reg.bodyRadius) radius = Math.max(radius, value);
+  for (let kind = 1; kind < reg.defs.length; kind++) {
+    const def = reg.defs[kind];
+    if (def?.type !== "structure" || !def.id.startsWith("core:cruise_")) continue;
+    const spread = native.spread[kind]!;
+    if (spread + radius > ROUTE_MARGIN) faults.push(`${def.id}: native collision spread ${spread.toFixed(6)} m plus largest body radius ${radius.toFixed(6)} m exceeds route invalidation margin ${ROUTE_MARGIN} m; split the prototype`);
+  }
+  routeFaults.set(reg, faults); return faults;
+}
 export interface CruiseMapReport {
   readonly statics: number;
   readonly kinds: number;
@@ -20,6 +36,7 @@ export function cruiseMapPreflight(map: StaticMap, reg?: Registry): CruiseMapRep
   if (![chunksX, chunksZ].every(n => Number.isInteger(n) && n >= 1 && n <= MAX_CHUNKS_PER_AXIS)) {
     return { statics: map.statics.length, kinds: 0, occupiedChunks: 0, mostInChunk: 0, faults: ["invalid map dimensions"] };
   }
+  if (reg) faults.push(...cruiseRouteFaults(reg));
   const counts = new Uint32Array(chunksX * chunksZ);
   let row = 0, occupiedChunks = 0, mostInChunk = 0;
   for (const s of map.statics) {

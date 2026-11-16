@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { compileContent } from "../../shared/content/registry.ts";
-import type { Def } from "../../shared/content/defs.ts";
+import { shapeHalf, type Def, type ShapeDef } from "../../shared/content/defs.ts";
 import { MapStatics, placeStatics, type MapStatic } from "../../shared/world/mapfile.ts";
 import { MAX_SLOTS_PER_CHUNK, StructureStore } from "../../shared/world/structures.ts";
+import { ROUTE_MARGIN } from "../../shared/world/path.ts";
 import { assertCruiseMap, assertCruisePlaced, cruiseMapPreflight } from "../../tools/cruise/preflight.ts";
 import { flatMap } from "../fixtures/map.ts";
 
@@ -47,4 +48,29 @@ test("cruise preflight catches a full vertical chunk before native add can silen
   expect(report.mostInChunk).toBe(65536);
   expect(report.faults).toEqual(["chunk 0: exceeds 65535 native structure slots"]);
   expect(() => assertCruiseMap(map, reg)).toThrow("65535 native structure slots");
+});
+
+test("cruise preflight enforces exact native collision spread with lattice stretch and the largest body", () => {
+  const make = (halfX: number, radius = 1, visual = false) => {
+    const shape: ShapeDef = { id: "core:cruise_margin_shape", type: "shape", role: "thing",
+      boxes: [{ at: [0, 0, 0], half: [halfX, 1, .1] }], ...(visual ? { look: { boxes: [{ at: [0, 0, 0], half: [15, 1, 1] as const }] } } : {}) };
+    const made = compileContent([shape,
+      { id: "core:cruise_margin", type: "structure", class: "static", mesh: "shape", shape: shape.id, half: shapeHalf(shape.boxes, shape.hulls, shape.look), hp: 10000, color: 1 },
+      { id: "test:walker", type: "species", class: "creature", mesh: "box", color: 1, radius, height: 3, eyeHeight: 2.7, walkSpeed: 3, sprintMul: 1.6, jumpSpeed: 5, stats: { health: [100, 0, 0] } },
+    ]);
+    expect(made.errors).toEqual([]); return made.registry!;
+  };
+  const map = { ...flatMap(1), statics: [] }; // Even an unplaced state must not invalidate the global native route assumption.
+  const edge = make(14.99), native = new StructureStore(map.dims, edge.halfX, edge.halfY, edge.halfZ, null, edge.parts);
+  expect(Math.hypot(14.99, .1) + 1).toBeLessThan(ROUTE_MARGIN);
+  expect(native.spread[edge.index.get("core:cruise_margin")!]! + 1).toBeGreaterThan(ROUTE_MARGIN);
+  const report = cruiseMapPreflight(map, edge);
+  expect(report.faults).toHaveLength(1);
+  expect(report.faults[0]).toContain("native collision spread");
+  expect(report.faults[0]).toContain("route invalidation margin 16 m");
+  expect(cruiseMapPreflight(map, edge)).toEqual(report); // Cached registry validation preserves the same refusal.
+  expect(cruiseMapPreflight(map, make(14.96)).faults).toEqual([]);
+  expect(cruiseMapPreflight(map, make(14.96, 1.05)).faults).toHaveLength(1);
+  // A distant visual proxy does not enlarge actual collision or require a larger route invalidation region.
+  expect(cruiseMapPreflight(map, make(.2, 1, true)).faults).toEqual([]);
 });

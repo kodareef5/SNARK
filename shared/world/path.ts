@@ -58,6 +58,8 @@ export const PATH_SHORT = 3;
 /** Cells each way from the start, so the grid is 193 cells square. */
 export const PATH_REACH = 96;
 export const PATH_BUDGET = 20000;
+/** Metres around a cached route checked for shape changes: must contain every solid's native spread plus a body's radius. */
+export const ROUTE_MARGIN = 16;
 const SIDE = 2 * PATH_REACH + 1;
 /** A start or a goal that cannot be stood on moves to a free cell at most this many metres off. */
 const NEAR = 3;

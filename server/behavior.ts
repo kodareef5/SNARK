@@ -13,7 +13,7 @@ import { BTN_BRAKE, BTN_JUMP, BTN_PRIMARY, BTN_SPRINT, MF_OUT, MODE_FLY, MODE_FL
 import { F_ALIVE, F_AWAKE, F_GROUNDED, F_HELD, F_PLAYER, wider } from "../shared/sim/entities.ts";
 import { ACT_NONE } from "../shared/sim/weapon.ts";
 import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
-import { GROUND_FREE, PATH_FOUND, PATH_LEG, PATH_NONE, PATH_REACH, PATH_SHORT, PathFinder, groundAt, shapeStamp } from "../shared/world/path.ts";
+import { GROUND_FREE, PATH_FOUND, PATH_LEG, PATH_NONE, PATH_REACH, PATH_SHORT, ROUTE_MARGIN, PathFinder, groundAt, shapeStamp } from "../shared/world/path.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, rayHit } from "../shared/world/ray.ts";
 import { BodyGrid } from "./bodies.ts";
 import type { GameServer } from "./game.ts";
@@ -75,11 +75,7 @@ const SHORT_OF = 1.5;
 const ROUTE_POINTS = 32;
 /** Metres. A point of a way is reached within this, or once passed. */
 const ARRIVE = 0.5;
-/**
- * Metres. A way holds while no chunk within this of it changes shape: further than any piece or node reaches from its middle
- * (a banyan's outer trunks, 13 m), with a body's radius.
- */
-export const ROUTE_MARGIN = 16;
+export { ROUTE_MARGIN } from "../shared/world/path.ts";
 
 /** Where a creature is with its way: heading straight, on a way, or told that no way was found. */
 const WAY_STRAIGHT = 0;
