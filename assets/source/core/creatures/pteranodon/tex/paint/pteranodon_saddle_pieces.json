@@ -41,7 +41,7 @@
     1017
    ],
    "texels": 41613,
-   "median_mm_a_texel": 0.862
+   "median_mm_a_texel": 0.879
   },
   {
    "number": 3,
@@ -56,7 +56,7 @@
     652
    ],
    "texels": 13049,
-   "median_mm_a_texel": 0.867
+   "median_mm_a_texel": 0.869
   },
   {
    "number": 4,
@@ -71,7 +71,7 @@
     323
    ],
    "texels": 11943,
-   "median_mm_a_texel": 0.865
+   "median_mm_a_texel": 0.866
   },
   {
    "number": 5,
@@ -86,7 +86,7 @@
     511
    ],
    "texels": 1680,
-   "median_mm_a_texel": 1.043
+   "median_mm_a_texel": 1.051
   },
   {
    "number": 6,
@@ -101,7 +101,7 @@
     705
    ],
    "texels": 2223,
-   "median_mm_a_texel": 1.04
+   "median_mm_a_texel": 1.044
   },
   {
    "number": 7,
@@ -116,7 +116,7 @@
     999
    ],
    "texels": 2792,
-   "median_mm_a_texel": 2.974
+   "median_mm_a_texel": 2.984
   },
   {
    "number": 8,
@@ -131,7 +131,7 @@
     678
    ],
    "texels": 22958,
-   "median_mm_a_texel": 1.041
+   "median_mm_a_texel": 1.044
   },
   {
    "number": 9,
@@ -146,7 +146,7 @@
     704
    ],
    "texels": 2885,
-   "median_mm_a_texel": 1.04
+   "median_mm_a_texel": 1.044
   },
   {
    "number": 10,
@@ -161,7 +161,7 @@
     713
    ],
    "texels": 3062,
-   "median_mm_a_texel": 1.04
+   "median_mm_a_texel": 1.046
   },
   {
    "number": 11,
@@ -176,7 +176,7 @@
     689
    ],
    "texels": 4262,
-   "median_mm_a_texel": 2.969
+   "median_mm_a_texel": 3.004
   },
   {
    "number": 12,
@@ -191,7 +191,7 @@
     1017
    ],
    "texels": 36129,
-   "median_mm_a_texel": 1.039
+   "median_mm_a_texel": 1.045
   },
   {
    "number": 13,
@@ -206,7 +206,7 @@
     690
    ],
    "texels": 47070,
-   "median_mm_a_texel": 0.865
+   "median_mm_a_texel": 0.882
   },
   {
    "number": 14,
@@ -326,7 +326,7 @@
     680
    ],
    "texels": 1605,
-   "median_mm_a_texel": 2.969
+   "median_mm_a_texel": 2.971
   },
   {
    "number": 22,
@@ -341,7 +341,7 @@
     1016
    ],
    "texels": 12885,
-   "median_mm_a_texel": 1.039
+   "median_mm_a_texel": 1.041
   }
  ]
 }

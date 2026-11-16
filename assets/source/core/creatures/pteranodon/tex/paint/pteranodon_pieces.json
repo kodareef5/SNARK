@@ -3,8 +3,8 @@
  "position_box": {
   "min": [
    -1.57117,
-   0.40902,
-   -1.30253
+   0.41082,
+   -1.29694
   ],
   "max": [
    -0.0,
@@ -188,7 +188,7 @@
     2034
    ],
    "texels": 24105,
-   "median_mm_a_texel": 0.529
+   "median_mm_a_texel": 0.526
   },
   {
    "number": 12,
@@ -236,7 +236,7 @@
     604
    ],
    "texels": 21711,
-   "median_mm_a_texel": 0.53
+   "median_mm_a_texel": 0.525
   },
   {
    "number": 15,
