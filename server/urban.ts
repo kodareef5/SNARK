@@ -17,7 +17,7 @@ import { BTN_JUMP, Body, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STAN
 import { F_ALIVE, F_GROUNDED, F_PLAYER } from '../shared/sim/entities.ts';
 import { stepVehicleBody, vehicleDoor, withVehicleDoor, vehicleStep } from '../shared/sim/vehicle-body.ts';
 import { vehiclePoint, vehicleRotation } from '../shared/sim/vehicle-frame.ts';
-import { isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition, type VehicleState } from '../shared/sim/vehicle.ts';
+import { isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition, type VehicleSeat, type VehicleState } from '../shared/sim/vehicle.ts';
 import { V_HEALTH } from '../shared/sim/vitals.ts';
 import { capsuleFree, groundUnder } from '../shared/world/collide.ts';
 import { boatMeetsCapsule } from '../shared/world/boat.ts';
@@ -512,6 +512,16 @@ export class Urban {
     if (result !== RESULT_OK) this.ctx.game.notify(c, result);
   }
 
+  /**
+   * Where a body of `radius` stands to take `seat`: at its door, outside the chassis for a survivor's capsule or a
+   * civilian's, by the named door and seat anchors.
+   */
+  door(vehicle: number, seat: VehicleSeat, radius: number, out: number[]): void {
+    const spec = this.ctx.world.reg.vehicle[this.ctx.world.ents.kind[vehicle]!]!.spec;
+    const side = seat.entry[0] >= 0 ? 1 : -1;
+    vehiclePoint(this.state(vehicle), [side * Math.max(Math.abs(seat.entry[0]), spec.halfWidth + radius + 0.08), seat.entry[1], seat.entry[2]], out);
+  }
+
   /** For authored NPC setup/schedules: a real humanoid record takes a seat without a fake Client. */
   seatNpc(actor: number, vehicle: number, seat = 'driver'): number {
     const { world, records } = this.ctx, ents = world.ents;
@@ -694,11 +704,7 @@ export class Urban {
     // Ordinary door actions are grounded. Forced loss of a seat uses standDown/evict and inherits aircraft velocity.
     if (isRotorVehicle(host.definition) && !state.grounded) return { ok: false, reason: 'airborne' };
     const move = world.reg.move[ents.kind[ae]!]!;
-    const side = seat.entry[0] >= 0 ? 1 : -1;
-    // Current survivor and civilian capsules differ: keep the standing approach outside
-    // the chassis for either body, while retaining the named visual door/seat anchors.
-    const approachX = side * Math.max(Math.abs(seat.entry[0]), host.definition.spec.halfWidth + move.radius + 0.08);
-    vehiclePoint(state, [approachX, seat.entry[1], seat.entry[2]], out);
+    this.door(host.entity, seat, move.radius, out);
     const entry = { x: out[0]!, y: Math.max(state.y, groundUnder(world.hf, out[0]!, out[2]!, move.radius)), z: out[2]! };
     const ignored = action.victim ? [action.actor, action.victim] : [action.actor];
     const start = { x: ents.x[ae]!, y: action.kind === 'exit' ? entry.y : ents.y[ae]!, z: ents.z[ae]! };
