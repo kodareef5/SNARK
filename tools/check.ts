@@ -232,11 +232,14 @@ async function checkTests(dir: string, env: Record<string, string>): Promise<voi
   // when more work waits than there are cores, up to two minutes. The load is counted with the check's own workers in it,
   // a worker a core, which the minute's average does not yet hold when the check starts: on a machine already half busy
   // they take it past its cores, and a test of three seconds alone has taken twenty.
-  const hung = Math.round(underLoad(20000, cpus().length));
+  // More independent JS heaps contend for cache and memory on high-thread-count machines; sixteen keeps the
+  // long simulation files progressing and avoids timing out otherwise fast files. Coverage and budgets stay fixed.
+  const workers = Math.min(16, cpus().length);
+  const hung = Math.round(underLoad(20000, workers));
   const report = join(dir, "junit.xml");
   // The slowest files start first, by their times in the last check, or the last of them may start when the rest are done.
   const timed = existsSync(TEST_TIMES) ? ["--timings", TEST_TIMES] : [];
-  const r = await run(["bun", "test", "--parallel", "--timeout", String(hung), ...timed, "--reporter=junit", `--reporter-outfile=${report}`], true, { ...process.env, ...env });
+  const r = await run(["bun", "test", `--parallel=${workers}`, "--timeout", String(hung), ...timed, "--reporter=junit", `--reporter-outfile=${report}`], true, { ...process.env, ...env });
   if (r.ok) keepTimes(readFileSync(report, "utf8"));
   if (!r.ok) fail(`tests failed:\n${r.out.trim()}`);
   // CPU-seconds move far less with the machine's load than the clock does, so a slow change shows on a busy day too.
