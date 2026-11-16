@@ -187,3 +187,41 @@ test("parking reserves the complete rotor discs of both aircraft", () => {
     expect(h.host.spawnVehicle("core:helicopter_police", 72, 64, actor.team)).toBeGreaterThanOrEqual(0);
   } finally { h.host.shutdown(); }
 });
+
+test("a disconnected pilot releases control while the healthy aircraft lands with its remaining passenger attached", () => {
+  const { h, c, actor } = setup();
+  try {
+    const e = h.host.spawnVehicle("core:helicopter", 62, 64, actor.team), ents = h.world.ents;
+    ents.setPosition(c.ent, 63.85, 0, 64.65);
+    const passenger = h.host.spawnCreature("core:civilian", 60.25, 64.65, 1);
+    expect(h.host.urban.mount(c, e)).toBe(RESULT_OK);
+    expect(h.host.urban.seatNpc(passenger, e, "front")).toBe(RESULT_OK); h.run(1000);
+    expect(c.drive).toBe(e); expect(ents.seatSlot[passenger]).toBe(2);
+    ents.setPosition(e, 62, 12, 64); ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
+    ents.vehicleRotorRpm[e] = 410; ents.vehicleEngineOn[e] = 1; ents.vehicleCollective[e] = .6;
+    h.host.urban.syncAfterContact(e);
+    h.ends[0]!.close(); h.run(250);
+    expect(c.drive).toBe(-1);
+    h.run(16000);
+    expect(ents.y[e]!).toBeLessThan(.08); expect(ents.flags[e]! & F_GROUNDED).not.toBe(0);
+    expect(ents.vehicleEngineOn[e]).toBe(0); expect(ents.vehicleRotorRpm[e]).toBe(0);
+    expect(ents.seat[passenger]).toBe(e + 1); expect(ents.seatSlot[passenger]).toBe(2);
+    expect(h.host.survival.value(h.host.records.byPid.get(ents.pid[e]!)!, V_HEALTH)).toBeGreaterThan(1300);
+  } finally { h.host.shutdown(); }
+});
+
+test("a failed rotor crash enters native wreck recovery without leaving an occupant attached to its recycled entity", () => {
+  const { h, c, actor } = setup();
+  try {
+    const e = h.host.spawnVehicle("core:helicopter", 62, 64, actor.team), ents = h.world.ents, pid = ents.pid[e]!;
+    ents.setPosition(c.ent, 63.85, 0, 64.65);
+    expect(h.host.urban.mount(c, e)).toBe(RESULT_OK); h.run(1000);
+    ents.setPosition(e, 62, 30, 64); ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
+    ents.vehicleEngineCondition[e] = 0; ents.vehicleRotorCondition[e] = 0; ents.fuel[e] = 0;
+    h.host.urban.syncAfterContact(e); h.run(6000);
+    expect(h.host.records.entOf.has(pid)).toBe(false);
+    expect(c.drive).toBe(-1); if (c.ent >= 0) expect(ents.seat[c.ent]).toBe(0);
+    expect([...h.host.corpses.bodies.values()].some(b => h.reg.ids[b.kind] === "core:helicopter")).toBe(true);
+    expect(h.host.urban.occupancy.seatOf(c.pid)).toBeNull();
+  } finally { h.host.shutdown(); }
+});
