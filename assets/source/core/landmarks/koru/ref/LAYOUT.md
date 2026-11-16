@@ -10,7 +10,7 @@ Each module has a stable native `id`/`mesh`, semantic `category`, ship-local `or
 
 The art agent owns this JSON and the editable model/material source. The gameplay agent owns `content/landmarks/koru.ts`, static registration, and native traversal tests. The preview agent owns the marina and native review runner. Layout updates must remain shared; no branch should copy room coordinates into a second authority.
 
-Initial modules define the closed hull, floors and real openings, stairs, interior bulkheads, optional door leaves, guards, gangway, mast trunks, booms and bowsprit. Exterior framed window walls, fine fittings, original furniture and rigging are added through subsequent bounded modules during the art pass. This first contract is suitable for native compilation and circulation testing, not final visual acceptance.
+The 451 modules define the closed hull, floors and real openings, stairs, interior bulkheads, optional door leaves, guards, gangway, mast trunks, booms, bowsprit, framed window walls, fittings, original furniture and rigging. The shared contract contains 35 room areas, 63 route sets and eight stairways; native traversal and packed-art checks validate the complete assembly.
 
 ## Circulation and doors
 
@@ -26,7 +26,7 @@ The port gangway has 2 m clear width and a 3.75 m walking datum. It meets the sh
 
 Six authored/reviewed levels are required per piece. Near-flat level 1 must retain all walkable openings and the clear window apertures. Window frames and edge-glass cues may be modeled, but broad opaque glass planes are forbidden at flat fallback. Furniture, trim, rails and signs must stay outside the declared clear route envelopes; actual largest survivor/hair/armor walking poses must be checked in addition to the physics capsule.
 
-The initial total fine-detail target is 260,000 triangles, hard review ceiling 360,000, with shared restrained material sets and at most three materials per piece. The renderer does not portal-cull rooms, so furnishings must be economical. Appearance notes and reconstruction provenance stay in review documents; in-world plaques use room/deck names only. The moored rig uses coherent furled sails, not sailing simulation.
+The total fine-detail target is 260,000 triangles, hard review ceiling 360,000, with shared restrained material sets and at most three materials per piece. The renderer does not portal-cull rooms, so furnishings remain economical. Appearance notes and reconstruction provenance stay in review documents; in-world plaques use room/deck names only. The moored rig uses coherent furled sails, not sailing simulation.
 
 The original 1.2 m door estimate was widened to 1.6 m after the native posed-survivor audit found an actual armored glove reaching 0.678 m from the travel centre during a valid walk/strafe/head-look combination. The final audit certifies lateral reach of ±0.775000150 m: 24.999850 mm to each 1.6 m jamb, or 21.999850 mm after reserving 3 mm for native lattice and pack quantization. Maximum height is 2.113215920 m; the sloped-stair ceiling support bound is 2.261178201 m against 2.7 m available. Door leaves, hinge origins, open states and plaques follow the wider aperture; actor proportions are unchanged.
 
