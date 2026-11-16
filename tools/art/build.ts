@@ -124,6 +124,9 @@ export function convertModel(asset: Asset & { spec: CreatureAsset }, glb: string
     if (spec.authoredLevels) {
       if (spec.flat !== 1) out.faults.push(`${asset.id}: authored creature levels require flat:1`);
       if (t.mesh.lods.length !== t.budgets.length + 1) out.faults.push(`${asset.id}: authored creature has ${t.mesh.lods.length} levels for ${t.budgets.length + 1} budgets`);
+      // Retain the normal finest-surface tangent/fallback-colour bake without asking it to simplify any coarse level.
+      const fine = withSurfaceLevels({ ...t.mesh, lods: [t.mesh.lods[0]!] }, { budgets: [], flat: 1, maps: t.maps, palette });
+      meshes[meshes.indexOf(t.mesh)] = { ...fine, lods: [fine.lods[0]!, ...t.mesh.lods.slice(1)] };
       continue;
     }
     const preserveBones = spec.preserveBones?.map(name => {

@@ -129,6 +129,8 @@ test("authored skinned levels preserve their silhouette, palette and dominant bo
     expect(generated.meshes[0]!.lods[1]!.indices.length).toBeGreaterThan(12);
     expect(Math.max(...generated.meshes[0]!.lods[1]!.positions)).toBeGreaterThan(1.8);
     expect(new Set(generated.meshes[0]!.lods[1]!.bones!).size).toBe(2);
+    expect(authored.meshes[0]!.lods[0]!.colors).toEqual(generated.meshes[0]!.lods[0]!.colors);
+    expect([...new Set(authored.meshes[0]!.lods[0]!.colors)].sort((a, b) => a - b)).toEqual([nearestColour(palette, 214, 194, 137), 240, 241, 242, 243]);
   });
 });
 
