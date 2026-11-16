@@ -80,9 +80,9 @@ test("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draws a
     const [f] = headings(base.scene, base.cam, [1.5 * Math.PI]);
     return [f!.draws, f!.triangles, f!.cast];
   });
-  // Five times medium's triangles. Pinned at today's draws, triangles and triangles cast, to fall as a chunk's pieces are
-  // drawn by cell, shell before interior, at lighter levels (review B2, B4, B8): lower it with them.
-  expect(frames).toEqual([[11, 10872680, 2987080], [7, 10459196, 2980936]]);
+  // Four times medium's triangles. Pinned at today's draws, triangles and triangles cast, to fall as a chunk's pieces are
+  // drawn by cell and shell before interior (review B2, B4): lower it with them.
+  expect(frames).toEqual([[15, 8676500, 256408], [15, 8680596, 250264]]);
 });
 
 test("the HUD holds at most 500 nodes in every mode, the vehicles' dashes and the menus among them, and grows none after warming up", () => {
