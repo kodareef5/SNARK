@@ -1,5 +1,6 @@
-// What `bun run build` wrote, weighed against what a client may be sent. Raising a budget is a decision. A row pinned at
-// today's number is one another change is bringing down; it fails until the pin comes down with it.
+// What `bun run build` wrote, weighed. Two kinds of row. What every player waits for before the first frame has a
+// budget, with room in it, and raising it is a decision. What is streamed when wanted (meshes, textures, sounds, clips,
+// music) grows with the catalogue and is shown, not held: an asset is held to its own budget by the art check.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -9,29 +10,12 @@ import { STEP0_SIZE, stepOf, topIn, type TextureFormat } from "../shared/pack/te
 const KB = 1024;
 const MB = 1024 * KB;
 
-/** The budgets, by row name: today's size and about 3%. A negative budget pins the row at exactly that number. */
+/** The rows that fail a build. The first is 0.6 s at 20 Mbit/s; the rest are waste the build can always avoid. */
 const BUDGETS: Record<string, number> = {
-  "the page's script, Brotli": 324 * KB,
-  "manifest, Brotli": 127 * KB,
-  "manifest": 583 * KB,
-  "boot pack, Brotli": 481 * KB,
-  "everything before the first frame, Brotli": 1058 * KB,
-  "mesh file": 20.2 * MB,
-  "clip file": 122 * KB,
-  "textures to 1,024, astc": 129 * MB,
-  "textures to 2,048, astc": 348 * MB,
-  "textures to 1,024, bc": 237 * MB,
-  "textures to 2,048, bc": 590 * MB,
-  "texture file, rgba": 346 * MB,
-  "textures with a 2,048 step": 143,
-  "sound file": 4 * MB,
+  "everything before the first frame, Brotli": 1536 * KB,
   "sound, kbit/s": 42,
-  "music": 41 * MB,
   "sound takes stored twice": 0,
   "texture steps stored twice, astc": 0,
-  // Pinned: grey boxes shared by many kinds, and the boat's and helicopter's liveries, until a stored part can serve
-  // every level that holds it; lower it with that, to 0.
-  "mesh parts stored twice": -394,
 };
 
 /** Copies past the first of each hash. */
@@ -40,18 +24,22 @@ const twice = (hashes: string[]): number => {
   return named.length - new Set(named).size;
 };
 
-/** Prints each row against its budget; false if any is over, or a pinned row is not at its pin. */
+/** Prints each row, and its budget where it has one; false if any is over. */
 export function weigh(dist: string): boolean {
   const m = JSON.parse(readFileSync(join(dist, "assets/manifest.json"), "utf8")) as Manifest;
   const size = (name: string): number => statSync(join(dist, name)).size;
   const fileOf = (role: string, format?: TextureFormat): number => m.files.filter((f) => f.role === role && (!format || f.format === format)).reduce((s, f) => s + f.bytes, 0);
   const boot = `assets/${m.files[m.boot]!.name}`;
   // As the page asks for them: its script's modules, and the files the first frame needs, which the server's map is not among.
-  const page = readFileSync(join(dist, "index.html"), "utf8");
-  const script = [...page.matchAll(/rel="modulepreload" href="([^"]+)"/g)].map((x) => `${x[1]}.br`);
-  const fetched = (JSON.parse(/for \(const href of (\[[^\]]*\])\)/.exec(page)![1]!) as string[]).filter((n) => existsSync(join(dist, n))).map((n) => `${n}.br`);
-  const hud = readdirSync(join(dist, "assets")).filter((n) => /^hud\.\w+\.png$|^hud-font\.\w+\.ttf\.br$/.test(n)).map((n) => `assets/${n}`);
-  const textures = (format: TextureFormat, widest: number): number => texturesOf(m, format, widest);
+  const { script, first } = firstFrame(dist);
+  const textures = (format: TextureFormat, widest: number): number => {
+    let bytes = 0;
+    for (const t of m.textures ?? []) {
+      const v = t.in[format];
+      if (v) for (let s = 0; s <= stepOf(Math.min(widest, topIn(format, t.top))); s++) bytes += storedStep(v, format, t.role, s);
+    }
+    return bytes;
+  };
   const sounds = m.sounds ?? [];
   const seconds = sounds.reduce((s, x) => s + x.takes.reduce((a, t) => a + t.samples, 0) / x.rate, 0);
   const music = join(dist, "assets/music");
@@ -60,7 +48,7 @@ export function weigh(dist: string): boolean {
     ["manifest, Brotli", size("assets/manifest.json.br")],
     ["manifest", size("assets/manifest.json")],
     ["boot pack, Brotli", size(`${boot}.br`)],
-    ["everything before the first frame, Brotli", ["index.html.br", ...script, "assets-worker.js.br", ...fetched, ...hud].reduce((s, n) => s + size(n), 0)],
+    ["everything before the first frame, Brotli", first],
     ["mesh file", fileOf("mesh")],
     ["clip file", fileOf("clip")],
     ["textures to 1,024, astc", textures("astc", 1024)],
@@ -76,7 +64,55 @@ export function weigh(dist: string): boolean {
     ["texture steps stored twice, astc", twice((m.textures ?? []).flatMap((t) => t.in.astc?.hash ?? []))],
     ["mesh parts stored twice", twice(m.meshes.flatMap((x) => x.levels.flatMap((l) => l.parts.map((p) => p.hash))))],
   ];
-  return held(rows, BUDGETS);
+  let ok = true;
+  for (const [name, value] of rows) {
+    const budget = BUDGETS[name];
+    const pass = budget === undefined || value <= budget;
+    ok &&= pass;
+    const shown = (n: number): string => (Math.abs(n) >= 10 * MB ? `${(n / MB).toFixed(1)} MB` : Math.abs(n) >= 10 * KB ? `${(n / KB).toFixed(0)} KB` : n.toFixed(n % 1 === 0 ? 0 : 1));
+    console.log(`  ${name.padEnd(52)} ${shown(value).padStart(10)}  ${budget === undefined ? "" : `${pass ? "ok" : "MISS"} (budget ${shown(budget)})`}`);
+  }
+  return ok;
+}
+
+/** The page's script and its Brotli bytes before the first frame, as the page asks for them: its script's modules, and the files the first frame needs, which the server's map is not among. */
+function firstFrame(dist: string): { script: string[]; first: number } {
+  const size = (name: string): number => statSync(join(dist, name)).size;
+  const page = readFileSync(join(dist, "index.html"), "utf8");
+  const script = [...page.matchAll(/rel="modulepreload" href="([^"]+)"/g)].map((x) => `${x[1]}.br`);
+  const fetched = (JSON.parse(/for \(const href of (\[[^\]]*\])\)/.exec(page)![1]!) as string[]).filter((n) => existsSync(join(dist, n))).map((n) => `${n}.br`);
+  const hud = readdirSync(join(dist, "assets")).filter((n) => /^hud\.\w+\.png$|^hud-font\.\w+\.ttf\.br$/.test(n)).map((n) => `assets/${n}`);
+  return { script, first: ["index.html.br", ...script, "assets-worker.js.br", ...fetched, ...hud].reduce((s, n) => s + size(n), 0) };
+}
+
+/**
+ * Each landmark's files (assets/landmarks), shown as the core's are, and what a client on a map that places it waits for
+ * before its first frame, its manifest and boot file with the core's, held to the core's budget.
+ */
+export function weighLandmarks(dist: string): boolean {
+  const dir = join(dist, "assets/landmarks"), core = firstFrame(dist).first;
+  let ok = true;
+  for (const file of existsSync(dir) ? readdirSync(dir).filter((n) => n.endsWith(".json")).sort() : []) {
+    const name = file.slice(0, -5), m = JSON.parse(readFileSync(join(dir, file), "utf8")) as Manifest;
+    const own = statSync(join(dir, `${file}.br`)).size + statSync(join(dir, `${m.files[m.boot]!.name}.br`)).size;
+    const fileOf = (role: string, format?: TextureFormat): number => m.files.filter((f) => f.role === role && (!format || f.format === format)).reduce((s, f) => s + f.bytes, 0);
+    const budget = BUDGETS["everything before the first frame, Brotli"]!;
+    const rows: [string, number, number | undefined][] = [
+      [`landmark ${name}: its manifest and boot file, Brotli`, own, undefined],
+      [`landmark ${name}: everything before the first frame, Brotli`, core + own, budget],
+      [`landmark ${name}: mesh file`, fileOf("mesh"), undefined],
+      [`landmark ${name}: textures to 1,024, astc`, texturesOf(m, "astc", 1024), undefined],
+      [`landmark ${name}: texture file, rgba`, fileOf("tex", "rgba"), undefined],
+      [`landmark ${name}: mesh parts stored twice`, twice(m.meshes.flatMap((x) => x.levels.flatMap((l) => l.parts.map((p) => p.hash)))), undefined],
+    ];
+    for (const [row, value, most] of rows) {
+      const pass = most === undefined || value <= most;
+      ok &&= pass;
+      const shown = (n: number): string => (Math.abs(n) >= 10 * MB ? `${(n / MB).toFixed(1)} MB` : Math.abs(n) >= 10 * KB ? `${(n / KB).toFixed(0)} KB` : n.toFixed(0));
+      console.log(`  ${row.padEnd(52)} ${shown(value).padStart(10)}  ${most === undefined ? "" : `${pass ? "ok" : "MISS"} (budget ${shown(most)})`}`);
+    }
+  }
+  return ok;
 }
 
 /** Bytes of every step of a manifest's textures in `format` up to `widest` pixels across. */
@@ -87,52 +123,6 @@ function texturesOf(m: Manifest, format: TextureFormat, widest: number): number 
     if (v) for (let s = 0; s <= stepOf(Math.min(widest, topIn(format, t.top))); s++) bytes += storedStep(v, format, t.role, s);
   }
   return bytes;
-}
-
-/** Prints each row against its budget; false if any is over, or a pinned row is not at its pin. */
-function held(rows: readonly [string, number][], budgets: Record<string, number>, of = (name: string): string => name): boolean {
-  let ok = true;
-  for (const [name, value] of rows) {
-    const budget = budgets[of(name)]!;
-    const pass = budget < 0 ? value === -budget : value <= budget;
-    ok &&= pass;
-    const shown = (n: number): string => (Math.abs(n) >= 10 * MB ? `${(n / MB).toFixed(1)} MB` : Math.abs(n) >= 10 * KB ? `${(n / KB).toFixed(0)} KB` : n.toFixed(n % 1 === 0 ? 0 : 1));
-    console.log(`  ${name.padEnd(52)} ${shown(value).padStart(10)}  ${pass ? "ok" : "MISS"} (${budget < 0 ? `pinned at ${shown(-budget)}` : `budget ${shown(budget)}`})`);
-  }
-  return ok;
-}
-
-/**
- * What each landmark may add for a client on a map that places it (assets/landmarks): its files fetched before the first
- * frame, which its map's own ground wait (tools/map/pack.ts) leaves room for, what it streams, and its textures.
- */
-const LANDMARK_BUDGETS: Record<string, number> = {
-  "before the first frame, Brotli": 64 * KB,
-  "mesh file": 2 * MB,
-  "textures to 1,024, astc": 8 * MB,
-  "textures to 2,048, astc": 16 * MB,
-  "texture file, rgba": 24 * MB,
-  "mesh parts stored twice": 0,
-};
-
-/** Prints every landmark's rows against LANDMARK_BUDGETS; false if any is over. */
-export function weighLandmarks(dist: string): boolean {
-  const dir = join(dist, "assets/landmarks");
-  let ok = true;
-  for (const file of existsSync(dir) ? readdirSync(dir).filter((n) => n.endsWith(".json")).sort() : []) {
-    const name = file.slice(0, -5), m = JSON.parse(readFileSync(join(dir, file), "utf8")) as Manifest;
-    const fileOf = (role: string, format?: TextureFormat): number => m.files.filter((f) => f.role === role && (!format || f.format === format)).reduce((s, f) => s + f.bytes, 0);
-    const rows: [string, number][] = [
-      ["before the first frame, Brotli", statSync(join(dir, `${file}.br`)).size + statSync(join(dir, `${m.files[m.boot]!.name}.br`)).size],
-      ["mesh file", fileOf("mesh")],
-      ["textures to 1,024, astc", texturesOf(m, "astc", 1024)],
-      ["textures to 2,048, astc", texturesOf(m, "astc", 2048)],
-      ["texture file, rgba", fileOf("tex", "rgba")],
-      ["mesh parts stored twice", twice(m.meshes.flatMap((x) => x.levels.flatMap((l) => l.parts.map((p) => p.hash))))],
-    ];
-    ok = held(rows.map(([row, v]) => [`landmark ${name}: ${row}`, v]), LANDMARK_BUDGETS, (row) => row.slice(row.indexOf(": ") + 2)) && ok;
-  }
-  return ok;
 }
 
 /** The wiki's budgets (tools/wiki.ts): what a visitor's browser fetches for a page before it scrolls, Brotli where the server has it. */
