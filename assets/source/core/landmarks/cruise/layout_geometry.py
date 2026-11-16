@@ -67,6 +67,8 @@ def populate(D,prototype,instance,box,node):
  for i in range(3):
   pts=[[(-1+2*(i+edge)/3)*(17+1.36*y/12.8),y,z] for edge in(0,1) for y in(0,12.8) for z in(-182.5,-182.26)]
   q,o=world('transom','hull_side',hs=[pts],art={'kind':'solids','finish':'enamel'},color=232);place('transom_'+str(i),q,o)
+ pts=[[sign*(waterwidth(z)+min(1.5,waterwidth(z)*.08)*y/12.8),y,z] for z in(182.26,182.5) for sign in(-1,1) for y in(0,12.8)]
+ q,o=world('stem','hull_side',hs=[pts],art={'kind':'solids','finish':'enamel'},color=232);place('stem_closure',q,o)
  # Actual floor outlines remain stepped and retain the two open neighborhoods through their upper decks.
  cores=[('fore',0,64,0,16),('aft',0,-72,0,14),('launch',16,-128,13,17)]
  for i,d in enumerate(D['decks']):
@@ -77,8 +79,8 @@ def populate(D,prototype,instance,box,node):
   elif n==15:spans=[(-180,147,28.9)]
   elif n==16:spans=[(-178,112,28.9)]
   elif n==17:spans=[(30,100,25.0)]
-  elif n==18:spans=[(48,100,27.5),(-134,-122,12.0)]
-  elif n==19:spans=[(48,76,22.0),(-134,-122,12.0)]
+  elif n==18:spans=[(48,100,27.5),(-136,-122,12.0)]
+  elif n==19:spans=[(48,76,22.0),(-136,-122,12.0)]
   else:spans=[(-142,-116,14.0)]
   outlines=[]
   for z0,z1,w in spans:
@@ -96,13 +98,13 @@ def populate(D,prototype,instance,box,node):
    # Dome volume is open above its deck15 floor, not bisected by an upper slab.
    pass
   voids=[]
-  if n>=9 and n<=17:voids.append({'id':'central_park','kind':'atrium','polygon':rect(-8.6,-66,8.6,58)})
+  if n>=9 and n<=17:voids.append({'id':'central_park','kind':'atrium','polygon':rect(-8.6,-66,8.6,57.5)})
   if n>=8 and n<=14:voids.append({'id':'surfside','kind':'atrium','polygon':rect(-11,-174,11,-86)})
   if n in(15,16,17):voids.append({'id':'aft_canyon','kind':'atrium','polygon':rect(-7,-151,7,-96)})
   if n>=16 and n<=18:voids.append({'id':'aquadome','kind':'atrium','polygon':rect(-29,77,29,174)})
   if n in(6,7,8):voids.append({'id':'pearl','kind':'atrium','polygon':rect(6,-23,28.9,7)})
   if n in(5,6):voids.append({'id':'royal_theater','kind':'atrium','polygon':rect(-18,100,18,140)})
-  if n==5:voids.append({'id':'absolute_zero','kind':'atrium','polygon':rect(-18,-178,18,-156)})
+  if n==5:voids.append({'id':'absolute_zero','kind':'atrium','polygon':rect(-18,-178,18,-157)})
   if n==7:voids.append({'id':'waters_edge','kind':'basin','polygon':rect(-6,-176,6,-166)})
   if n==15:
    voids.append({'id':'royal_bay','kind':'basin','polygon':rect(-24,-19,-12,5)})
@@ -167,10 +169,10 @@ def populate(D,prototype,instance,box,node):
    q=p('stair_landing','stairs',bs,art={'kind':'landing','finish':'deck'},color=101)
    names.append(place(f'stair_{cname}_{label}_landing',q,[cx,y,cz],label,cname))
    foot=f'{cname}_{label}';top=f'{cname}_{ulabel}'
-   if not any(n['id']==foot for n in D['graph']['nodes']):node(foot,[cx-1.1,y,cz-4.6],label,'stair-lobby')
-   if not any(n['id']==top for n in D['graph']['nodes']):node(top,[cx-1.1,y+dy,cz-4.6],ulabel,'stair-lobby')
-   anchors=[[cx-1.1,y,cz-4.6],[cx-1.1,y,cz-3.6],[cx-1.1,y+dy/2,cz+.8],[cx-1.1,y+dy/2,cz+1.9],
-            [cx+1.1,y+dy/2,cz+1.9],[cx+1.1,y+dy/2,cz+.8],[cx+1.1,y+dy,cz-3.6],[cx+1.1,y+dy,cz-4.6],[cx-1.1,y+dy,cz-4.6]]
+   if not any(n['id']==foot for n in D['graph']['nodes']):node(foot,[cx-1.1,y,cz-5.0],label,'stair-lobby')
+   if not any(n['id']==top for n in D['graph']['nodes']):node(top,[cx-1.1,y+dy,cz-5.0],ulabel,'stair-lobby')
+   anchors=[[cx-1.1,y,cz-5.0],[cx-1.1,y,cz-3.6],[cx-1.1,y+dy/2,cz+.8],[cx-1.1,y+dy/2,cz+1.9],
+            [cx+1.1,y+dy/2,cz+1.9],[cx+1.1,y+dy/2,cz+.8],[cx+1.1,y+dy,cz-3.6],[cx+1.1,y+dy,cz-5.0],[cx-1.1,y+dy,cz-5.0]]
    rid=f'stair_{cname}_{label}';route(rid,'stairs',foot,top,anchors)
    D['stairs'].append({'id':rid,'fromDeck':label,'toDeck':ulabel,'instances':names,'route':rid,
                        'opening':{'min':[cx-2.4,y+dy-.24,cz-3.6],'max':[cx+2.4,y+dy,cz+3.4]},'clearHeadroom':2.6})
@@ -179,8 +181,8 @@ def populate(D,prototype,instance,box,node):
   label=d['id'];y=d['floorY'];a=f'fore_{label}';b=f'aft_{label}'
   if any(n['id']==a for n in D['graph']['nodes']) and any(n['id']==b for n in D['graph']['nodes']):
    aisle=-15.5 if label in('4','5','6','7','8') else 24 if label=='17' else 25 if int(label)>=15 else 15.5
-   anchors=[[-1.1,y,-76.6],[aisle,y,-76.6],[aisle,y,59.4],[-1.1,y,59.4]]
-   if int(label)>=16:anchors=[[-1.1,y,-76.6],[-1.1,y,-88],[aisle,y,-88],[aisle,y,59.4],[-1.1,y,59.4]]
+   anchors=[[-1.1,y,-77.0],[aisle,y,-77.0],[aisle,y,59.0],[-1.1,y,59.0]]
+   if int(label)>=16:anchors=[[-1.1,y,-77.0],[-1.1,y,-88],[aisle,y,-88],[aisle,y,59.0],[-1.1,y,59.0]]
    route('spine_'+label,'corridor',b,a,anchors,1.8 if label=='17' else 2.4)
  # Exterior arrival, clear of the outer white hull, opens directly to the promenade.
  gp=p('gangway','gangway',[box([-7.4,-.24,-1.4],[7.4,0,1.4]),box([-7.4,0,-1.48],[7.4,1.15,-1.4]),
@@ -188,8 +190,8 @@ def populate(D,prototype,instance,box,node):
  for i,x in enumerate([35.8,50.6]):place('port_gangway_'+str(i),gp,[x,14,-24],'5','arrival')
  node('quay',[58,14,-24],'5','docking');node('arrival',[20,14,-24],'5','lobby')
  route('board','docking','quay','arrival',[[58,14,-24],[28.9,14,-24],[20,14,-24]],2.8)
- route('arrival_fore','corridor','arrival','fore_5',[[20,14,-24],[0,14,-24],[0,14,-12],[-15.5,14,-12],[-15.5,14,59.4],[-1.1,14,59.4]],2.4)
- route('launch_access','corridor','aft_16','launch_16',[[-1.1,49.6,-76.6],[-1.1,49.6,-88],[20.5,49.6,-88],[20.5,49.6,-132.6],[14.9,49.6,-132.6]],2.0)
+ route('arrival_fore','corridor','arrival','fore_5',[[20,14,-24],[0,14,-24],[0,14,-12],[-15.5,14,-12],[-15.5,14,59.0],[-1.1,14,59.0]],2.4)
+ route('launch_access','corridor','aft_16','launch_16',[[-1.1,49.6,-77.0],[-1.1,49.6,-88],[20.5,49.6,-88],[20.5,49.6,-133.0],[14.9,49.6,-133.0]],2.0)
  D['rooms'].append({'id':'arrival','node':'arrival','label':'Royal Promenade arrival','deck':'5','section':'arrival',
                    'bounds':{'min':[10,14,-35],'max':[28.9,18.16,-10]},'entry':[28.9,14,-24],
                    'routeTarget':[20,14,-24],'evidence':'original-fit-within-public-plan'})
@@ -197,7 +199,7 @@ def populate(D,prototype,instance,box,node):
                      'clearWidth':2.8,'clearHeight':4.16,'kind':'open'})
  # Reusable furnished cabin prototype: open entry and balcony glazing, actual furniture collision.
  walls=[box([-4,0,-3.2],[4,2.96,-3.06]),box([-4,0,3.06],[4,2.96,3.2]),
-        box([-4,0,-3.06],[-3.86,2.96,-.9]),box([-4,0,.9],[-3.86,2.96,3.06]),box([-4,2.6,-.9],[-3.86,2.96,.9]),
+        box([-4,0,-3.06],[-3.86,2.96,-1]),box([-4,0,1],[-3.86,2.96,3.06]),box([-4,2.64,-1],[-3.86,2.96,1]),
         box([3.86,0,-3.06],[4,.55,3.06]),box([3.86,2.6,-3.06],[4,2.96,3.06]),
         box([3.86,.55,-3.06],[4,2.6,-2.84]),box([3.86,.55,2.84],[4,2.6,3.06])]
  furniture=[{'kind':'bed','at':[2.1,0,1.6],'size':[2.3,.68,2.0]},
@@ -216,19 +218,19 @@ def populate(D,prototype,instance,box,node):
    entry=[x-4,y,z];target=[x-1,y,z-.5];outside=[x-5.4,y,z]
    node(ident,target,label,'room');node(ident+'_entry',outside,label,'corridor')
    route(ident+'_door','room',ident+'_entry',ident,[outside,entry,[x-2,y,z],target],family='balcony-cabin-ingress')
-   route(ident+'_access','corridor',f'fore_{label}',ident+'_entry',[[-1.1,y,59.4],[x-5.4,y,59.4],outside],2.4)
+   route(ident+'_access','corridor',f'fore_{label}',ident+'_entry',[[-1.1,y,59.0],[x-5.4,y,59.0],outside],2.4)
    D['rooms'].append({'id':ident,'node':ident,'label':'Balcony stateroom','deck':label,'section':'prototype-cabins',
                      'bounds':{'min':[x-4,y,z-3.2],'max':[x+4,y+2.96,z+3.2]},'entry':entry,'routeTarget':target,'evidence':'original-fitted-room'})
    D['portals'].append({'id':ident+'_portal','from':ident+'_entry','to':ident,'at':entry,'normal':[-1,0,0],
                        'clearWidth':1.8,'clearHeight':2.6,'kind':'open'})
  # Two independent physical cabin leaves share a reciprocal prototype pair, rather than swapping entire rooms.
- closed=p('door_cabin_closed','door',[box([-.03,.02,0],[.03,2.58,1.8])],art={'kind':'door','finish':'oak'},color=101)
- opened=p('door_cabin_open','door',[box([0,.02,-.03],[1.8,2.58,.03])],art={'kind':'door','finish':'oak'},color=101)
+ closed=p('door_cabin_closed','door',[box([-.03,.02,0],[.03,2.58,2.08])],art={'kind':'door','finish':'oak'},color=101)
+ opened=p('door_cabin_open','door',[box([0,.02,-.03],[2.08,2.58,.03])],art={'kind':'door','finish':'oak'},color=101)
  for proto in D['prototypes']:
   if proto['id']==closed:proto['opens']=opened
   if proto['id']==opened:proto['opens']=closed
  for i,z in enumerate([94.4,100.8]):
-  door=f'door_cabin_9_{i}';hinge=[19.07,ys['9'],z-.9];place(door,closed,hinge,'9','prototype-cabins')
+  door=f'door_cabin_9_{i}';hinge=[19.07,ys['9'],z-1.04];place(door,closed,hinge,'9','prototype-cabins')
   D['doors'].append({'id':door,'instanceId':door,'closedPrototype':closed,'openPrototype':opened,
                      'hinge':hinge,'clearWidth':1.8,'clearHeight':2.6})
   next(r for r in D['routes'] if r['id']==f'cabin_9_{i}_door')['requiresOpen']=door
@@ -269,9 +271,9 @@ def populate(D,prototype,instance,box,node):
  q=p('pool_basin','pool',basin,art={'kind':'pool','waterY':-.18,'finish':'tile','decorativeWater':True},color=87)
  place('prototype_pool',q,[18,ys['15'],-6],'15','pool-prototype')
  for ident,label,title,at,anchors,bounds in [
-  ('aquadome','15','AquaDome',[0,45.6,112],[[-1.1,45.6,59.4],[5,45.6,59.4],[5,45.6,90],[0,45.6,112]],([-24,45.6,78],[24,62.6,147])),
-  ('pool_under','14','Pool service lounge',[18,42,-6],[[-1.1,42,59.4],[15.5,42,59.4],[15.5,42,-6],[18,42,-6]],([12,42,-18],[27,44.66,6])),
-  ('pool_edge','15','Pool terrace',[25,45.6,-6],[[-1.1,45.6,59.4],[25,45.6,59.4],[25,45.6,-6]],([23,45.6,-18],[28.9,48.6,6]))]:
+  ('aquadome','15','AquaDome',[0,45.6,112],[[-1.1,45.6,59.0],[5,45.6,59.0],[5,45.6,90],[0,45.6,112]],([-24,45.6,78],[24,62.6,147])),
+  ('pool_under','14','Pool service lounge',[18,42,-6],[[-1.1,42,59.0],[15.5,42,59.0],[15.5,42,-6],[18,42,-6]],([12,42,-18],[27,44.66,6])),
+  ('pool_edge','15','Pool terrace',[25,45.6,-6],[[-1.1,45.6,59.0],[25,45.6,59.0],[25,45.6,-6]],([23,45.6,-18],[28.9,48.6,6]))]:
   node(ident,at,label,'room');route(ident+'_access','room',f'fore_{label}',ident,anchors,2.0)
   D['rooms'].append({'id':ident,'node':ident,'label':title,'deck':label,'section':ident,
                      'bounds':{'min':bounds[0],'max':bounds[1]},'entry':at,'routeTarget':at,'evidence':'original-fit-within-public-plan'})

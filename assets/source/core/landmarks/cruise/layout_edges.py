@@ -39,6 +39,8 @@ def finish(D,p,world,place,box,ys,beam):
    if v['kind']=='basin':continue
    for a,b in zip(v['polygon'],v['polygon'][1:]+v['polygon'][:1]):
     if v['kind']=='stair' and a[1]==b[1] and a[1]==min(q[1] for q in v['polygon']):continue
+    if v['id']=='pearl' and d['id']=='6' and a[1]==b[1]==7:
+     edges.extend([(a,[16.4,7],v['id']),([11.6,7],b,v['id'])]);continue
     edges.append((a,b,v['id']))
   for ei,(a,b,role) in enumerate(edges):
    dx=b[0]-a[0];dz=b[1]-a[1];ln=math.hypot(dx,dz);n=max(1,math.ceil(ln/1.5));pending=None
@@ -98,7 +100,13 @@ def finish(D,p,world,place,box,ys,beam):
   q,o=world('funnel_support','superstructure',[box([side*11-7,49.6,-82],[side*11+7,51.5,-60])],art={'kind':'solids','finish':'enamel'},color=232)
   place(f'funnel_support_{side}',q,o,'16','machinery-casing')
  # Inner AquaTheater uses its own semantic group, separate from the published outer dome envelope.
- pod=p('aquadome_pod','furniture',[box([-2.5,0,-2],[2.5,1.6,2])],art={'kind':'aquadome_pod','finish':'purple'},color=32)
+ podhulls=[]
+ for i in range(12):
+  a=-2.57+5.14*i/12;b=-2.57+5.14*(i+1)/12
+  podhulls.append({'points':[[rx*math.sin(t),y,-.12+rz*math.cos(t)] for t in(a,b) for rx,rz in[(1.12,.43),(2.4,1.61)] for y in(.08,1.16)]})
+ podboxes=[box([x-.4,.07,-1],[x+.4,.61,-.4]) for x in(-.6,.6)]+[box([-1.5,.04,1.53],[1.5,.31,1.93])]
+ podlook={'hulls':podhulls,'boxes':podboxes+[box([-2.5,.1,-.3],[-2.3,1.2,.3]),box([2.3,.1,-.3],[2.5,1.2,.3]),box([-1.5,.31,1.5],[1.5,1.6,2])]}
+ pod=p('aquadome_pod','furniture',podboxes,podhulls,art={'kind':'aquadome_pod','finish':'purple'},color=32,look=podlook)
  for side in(-1,1):
   for i,z in enumerate([100,112,124]):place(f'aquadome_pod_{side}_{i}',pod,[side*13,45.6,z],'15','aquatheater',90 if side>0 else 270)
  q=p('aquatheater_stage','furniture',[box([-7,0,-4],[7,.55,4])],art={'kind':'furniture','wallCount':0,'items':[{'kind':'stage','at':[0,0,0],'size':[14,.55,8],'finish':'navy'}]},color=29)
@@ -124,6 +132,13 @@ def finish(D,p,world,place,box,ys,beam):
  q=p('ship_name','sign',[box([-2.3,1.4,-.06],[2.3,2.3,.06]),box([-2,0,-.05],[-1.92,1.4,.05]),box([1.92,0,-.05],[2,1.4,.05])],
      art={'kind':'sign','board':0,'label':'ICON OF THE SEAS'},color=29)
  place('arrival_ship_name',q,[24,14,-34],'5','wayfinding')
+ # Both sides of the broad Pearl stair and its elevated bridge have real lateral protection.
+ for side,x in enumerate([11.62,16.38]):
+  for j,(a,b) in enumerate([([x,14,-18],[x,18.4,-3]),([x,18.4,-3],[x,18.4,7])]):
+   pts=[[q[0]+s*.04,q[1]+h,q[2]] for q in(a,b) for s in(-1,1) for h in(0,1.15)]
+   q,o=world('pearl_guard','guard',hs=[pts],art={'kind':'guard','finish':'steel'},color=91)
+   proto=next(t for t in D['prototypes'] if t['id']==q);proto['art']['ends']=[[v[k]-o[k] for k in range(3)] for v in(a,b)]
+   place(f'pearl_guard_{side}_{j}',q,o,'5' if j==0 else '6','pearl')
  # Public outdoor destinations have explicit usable polygons and genuine deck holes, not advertised rectangular overhangs.
  def clip(poly,axis,limit,keep):
   out=[]
