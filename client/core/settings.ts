@@ -9,8 +9,7 @@ export class Settings {
   /**
    * "Steady frame: automatic": under the tier chosen, the game may draw coarser levels, thinner crowns, the far shadows
    * every other frame, far trees less far, fewer pixels, and at the last no sun shadows, to keep 60 frames a second
-   * (client/core/governor.ts).
-   * It never changes the tier. Off draws the tier exactly.
+   * (client/core/governor.ts). It never changes the tier. Off draws the tier exactly.
    */
   steady = true;
   /** A touch-first device, which draws a tier as its touch rule says and is offered the tiers it allows (tiers.ts). The shell sets it. */
