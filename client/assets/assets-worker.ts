@@ -31,7 +31,7 @@ const MB = 1024 * 1024;
 const KEEP_DISK = 8 * MB;
 const KEEP_MEMORY = 64 * MB;
 const KEEP_MEMORY_TOUCH = 16 * MB;
-let keepBytes = KEEP_MEMORY;
+let keepMemory = KEEP_MEMORY;
 const kept = new Map<string, Bytes>();
 let keptBytes = 0;
 const under = new Map<number, AbortController>();
@@ -87,7 +87,7 @@ new PerformanceObserver((list, watch) => {
 /** Finds what earlier visits left. In a private window, or a browser without the file system, parts are kept in memory alone. */
 function openDisk(limit: number, touch: boolean): void {
   diskLimit = limit;
-  keepBytes = touch ? KEEP_MEMORY_TOUCH : KEEP_MEMORY;
+  keepMemory = touch ? KEEP_MEMORY_TOUCH : KEEP_MEMORY;
   const storage = navigator.storage as unknown as { getDirectory(): Promise<{ getDirectoryHandle(name: string, o: { create: boolean }): Promise<Folder> }> };
   found = Promise.resolve()
     .then(() => storage.getDirectory())
@@ -100,7 +100,6 @@ function openDisk(limit: number, touch: boolean): void {
 async function count(folder: Folder | null): Promise<void> {
   disk = folder;
   if (folder) {
-    keepBytes = KEEP_DISK;
     trim();
     try {
       for await (const entry of folder.values()) {
@@ -222,7 +221,7 @@ function keep(hash: string, data: Bytes): void {
 
 function trim(): void {
   for (const old of kept.keys()) {
-    if (keptBytes <= keepBytes) break;
+    if (keptBytes <= (disk ? KEEP_DISK : keepMemory)) break;
     unkeep(old);
   }
 }

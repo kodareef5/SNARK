@@ -95,10 +95,9 @@ const mass = (to: number, size: number): CityLevel => ({ to, gap: -1, least: 0, 
 // megapixel against 0.19 for 4 and 0.49 for 9 (the quick look of 07-35-24). Ultra draws at the phone's own three pixels
 // a side and broke the ladder at 256 to 512 draws and 64 to 128 near rocks where high held 1,024 and 128 (the ladders of
 // 07-43-00 and 08-19-25), and its textures may take 2.4 GB where the phone's tab was dropped at 2 GB, so a phone is not
-// offered it. iOS ends a tab short of memory without the card saying so, so D123 never hears of it. The device page's
-// memory step lost the iPhone's tab between 1.5 and 2 GB of textures on 2026-11-15 (it held 4 GB the day before), and
-// high's card may hold 1.9 GB with its overflow. High's card on a phone is a first guess for the phone to confirm: 1.25
-// GB at most with the overflow.
+// offered it. iOS ends a tab short of memory without the card saying so (D123 never hears of it): the device page's
+// memory step lost the iPhone's tab between 1.5 and 2 GB of textures, where high's card may hold 1.9 GB with its
+// overflow. High's card on a phone is a first guess, 1.25 GB with the overflow, for the phone to confirm.
 const PHONE_HIGH_CARD = 1024 * MB;
 
 export const TIERS: readonly Tier[] = [
