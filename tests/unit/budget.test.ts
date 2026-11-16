@@ -124,6 +124,10 @@ test("a squeezed elder oak draws its bark at the trunk's level, its crown coarse
   expect(scene.budget.squeeze).toBe(SQUEEZE_MOST);
   const p = w.frame();
   let [split, thinned, counted] = [0, 0, 0];
+  /** The level each run of instances is drawn at with bark, or with its other materials, by its mesh, buffer and first instance. */
+  const at = (bark: boolean) => new Map(Array.from({ length: p.drawCount }, (_, d) => d).filter((d) => (p.drawFlags[d]! & DRAW_TEXTURED) !== 0 && materials[p.drawMaterial[d]!]!.id.endsWith("bark") === bark).map((d) => [`${p.drawMesh[d]} ${p.drawBuffer[d]} ${p.drawFirst[d]}`, p.drawLod[d]!]));
+  const crowns = at(false);
+  for (const [run, level] of at(true)) if ((crowns.get(run) ?? -1) > level) split++;
   for (let d = 0; d < p.drawCount; d++) {
     // A flat level draws the whole tree, and counts as its crown.
     const node = p.drawBuffer[d]! >= NODE_BUFFERS && p.drawBuffer[d]! < 2 * NODE_BUFFERS;
@@ -136,9 +140,8 @@ test("a squeezed elder oak draws its bark at the trunk's level, its crown coarse
     expect(p.drawFirstIndex[d]).toBe(runs[k + 1]!);
     if ((p.drawFlags[d]! & DRAW_CUTOUT) !== 0 && p.drawIndexCount[d]! < runs[k + 2]!) thinned++;
     if (!id.endsWith("bark")) counted += (p.drawIndexCount[d]! / 3) * p.drawInstances[d]!;
-    // A run whose bark is finer than its crown: the next draws are its crown's, at their own level.
-    if (id.endsWith("bark") && d + 1 < p.drawCount && p.drawMesh[d + 1] === p.drawMesh[d] && p.drawFirst[d + 1] === p.drawFirst[d] && p.drawLod[d + 1]! > p.drawLod[d]!) split++;
   }
+  // Runs whose bark is finer than their crown, drawn at its own level.
   expect(split).toBeGreaterThan(0);
   expect(thinned).toBeGreaterThan(0);
   expect(scene.budget.last.crowns).toBe(counted);

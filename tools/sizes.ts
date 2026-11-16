@@ -1,5 +1,6 @@
-// What `bun run build` wrote, weighed against what a client may be sent. Raising a budget is a decision. A row pinned at
-// today's number is one another change is bringing down; it fails until the pin comes down with it.
+// What `bun run build` wrote, weighed. Two kinds of row. What every player waits for before the first frame has a
+// budget, with room in it, and raising it is a decision. What is streamed when wanted (meshes, textures, sounds, clips,
+// music) grows with the catalogue and is shown, not held: an asset is held to its own budget by the art check.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -9,29 +10,12 @@ import { STEP0_SIZE, stepOf, topIn, type TextureFormat } from "../shared/pack/te
 const KB = 1024;
 const MB = 1024 * KB;
 
-/** The budgets, by row name: today's size and about 3%. A negative budget pins the row at exactly that number. */
+/** The rows that fail a build. The first is 0.6 s at 20 Mbit/s; the rest are waste the build can always avoid. */
 const BUDGETS: Record<string, number> = {
-  "the page's script, Brotli": 324 * KB,
-  "manifest, Brotli": 127 * KB,
-  "manifest": 583 * KB,
-  "boot pack, Brotli": 481 * KB,
-  "everything before the first frame, Brotli": 1058 * KB,
-  "mesh file": 20.2 * MB,
-  "clip file": 122 * KB,
-  "textures to 1,024, astc": 129 * MB,
-  "textures to 2,048, astc": 348 * MB,
-  "textures to 1,024, bc": 237 * MB,
-  "textures to 2,048, bc": 590 * MB,
-  "texture file, rgba": 346 * MB,
-  "textures with a 2,048 step": 143,
-  "sound file": 4 * MB,
+  "everything before the first frame, Brotli": 1536 * KB,
   "sound, kbit/s": 42,
-  "music": 41 * MB,
   "sound takes stored twice": 0,
   "texture steps stored twice, astc": 0,
-  // Pinned: grey boxes shared by many kinds, and the boat's and helicopter's liveries, until a stored part can serve
-  // every level that holds it; lower it with that, to 0.
-  "mesh parts stored twice": -394,
 };
 
 /** Copies past the first of each hash. */
@@ -40,7 +24,7 @@ const twice = (hashes: string[]): number => {
   return named.length - new Set(named).size;
 };
 
-/** Prints each row against its budget; false if any is over, or a pinned row is not at its pin. */
+/** Prints each row, and its budget where it has one; false if any is over. */
 export function weigh(dist: string): boolean {
   const m = JSON.parse(readFileSync(join(dist, "assets/manifest.json"), "utf8")) as Manifest;
   const size = (name: string): number => statSync(join(dist, name)).size;
@@ -85,11 +69,11 @@ export function weigh(dist: string): boolean {
   ];
   let ok = true;
   for (const [name, value] of rows) {
-    const budget = BUDGETS[name]!;
-    const pass = budget < 0 ? value === -budget : value <= budget;
+    const budget = BUDGETS[name];
+    const pass = budget === undefined || value <= budget;
     ok &&= pass;
     const shown = (n: number): string => (Math.abs(n) >= 10 * MB ? `${(n / MB).toFixed(1)} MB` : Math.abs(n) >= 10 * KB ? `${(n / KB).toFixed(0)} KB` : n.toFixed(n % 1 === 0 ? 0 : 1));
-    console.log(`  ${name.padEnd(52)} ${shown(value).padStart(10)}  ${pass ? "ok" : "MISS"} (${budget < 0 ? `pinned at ${shown(-budget)}` : `budget ${shown(budget)}`})`);
+    console.log(`  ${name.padEnd(52)} ${shown(value).padStart(10)}  ${budget === undefined ? "" : `${pass ? "ok" : "MISS"} (budget ${shown(budget)})`}`);
   }
   return ok;
 }

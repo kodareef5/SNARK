@@ -20,7 +20,7 @@ import { GEAR_COUNT, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { AnimState, CUE_DEAD, CUE_HELD, PITCH_STEPS, bodySeed } from "../../../shared/anim/pose.ts";
 import { SEAT_FLOATS } from "../../../shared/anim/seat.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
-import { sortU32 } from "../../../shared/sort.ts";
+import { sortF64, sortU32 } from "../../../shared/sort.ts";
 import { Details } from "../details/details.ts";
 import type { Falling } from "../rubble.ts";
 import type { ShotEnd } from "../occasions.ts";
@@ -35,6 +35,7 @@ import { FrameBudget, coverScale, crownScale, leavesAt, thinning } from "./budge
 import { CITY_BUFFER, FarCity, type CitySource } from "./farcity.ts";
 import { FarNodes, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
+import { PROGRAM, drawProgram } from "./programs.ts";
 import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER } from "./packet.ts";
@@ -143,6 +144,70 @@ function indexOfId(remote: RemoteSample, id: number): number {
     else hi = mid - 1;
   }
   return -1;
+}
+
+/** A draw's key for `sortRuns`, whole in a double: its program, its material, the low 16 bits of its level's slot, and its place as made. */
+function stateKey(program: number, material: number, slot: number, made: number): number {
+  return ((program * 65536 + material) * 65536 + (slot & 0xffff)) * MAX_DRAWS + made;
+}
+
+/**
+ * Sorts keys `from` to `to`, turns every other run of one program and material round, counting on from `turns`, and
+ * puts each one's place as made in `out`. The runs counted so far.
+ */
+function sortRuns(keys: Float64Array, from: number, to: number, turns: number, out: Uint16Array): number {
+  sortF64(keys, from, to);
+  for (let k = from; k < to; turns++) {
+    const run = Math.floor(keys[k]! / (65536 * MAX_DRAWS));
+    let end = k + 1;
+    while (end < to && Math.floor(keys[end]! / (65536 * MAX_DRAWS)) === run) end++;
+    for (let a = k, b = end - 1; turns % 2 === 1 && a < b; a++, b--) {
+      const t = keys[a]!;
+      keys[a] = keys[b]!;
+      keys[b] = t;
+    }
+    k = end;
+  }
+  for (let k = from; k < to; k++) out[k] = keys[k]! - Math.floor(keys[k]! / MAX_DRAWS) * MAX_DRAWS;
+  return turns;
+}
+
+/** A column of rows as its bits, an element of one, two or four bytes. */
+type Bits = Uint8Array | Uint16Array | Uint32Array;
+
+function bitsOf(a: Uint8Array | Int8Array | Uint16Array | Uint32Array | Float32Array): Bits {
+  const n = a.length;
+  return a.BYTES_PER_ELEMENT === 1 ? new Uint8Array(a.buffer, a.byteOffset, n) : a.BYTES_PER_ELEMENT === 2 ? new Uint16Array(a.buffer, a.byteOffset, n) : new Uint32Array(a.buffer, a.byteOffset, n);
+}
+
+/**
+ * Puts the first `count` rows of each column (a row as many elements as its length is `capacity`) in the order `order`
+ * names them from the first `rows` as they were, by way of `copy`. A loop for each width of element, since
+ * JavaScriptCore is many times slower at one loop over arrays of several kinds.
+ */
+function reorder(columns: readonly Bits[], capacity: number, rows: number, count: number, order: Uint16Array, copy: Float64Array): void {
+  for (let c = 0; c < columns.length; c++) {
+    const a = columns[c]!;
+    const w = a.length / capacity;
+    if (a instanceof Uint8Array) reorder8(a, w, rows, count, order, copy);
+    else if (a instanceof Uint16Array) reorder16(a, w, rows, count, order, copy);
+    else reorder32(a, w, rows, count, order, copy);
+  }
+}
+
+function reorder8(a: Uint8Array, w: number, rows: number, count: number, order: Uint16Array, copy: Float64Array): void {
+  for (let k = 0; k < rows * w; k++) copy[k] = a[k]!;
+  for (let k = 0; k < count; k++) for (let j = 0; j < w; j++) a[k * w + j] = copy[order[k]! * w + j]!;
+}
+
+function reorder16(a: Uint16Array, w: number, rows: number, count: number, order: Uint16Array, copy: Float64Array): void {
+  for (let k = 0; k < rows * w; k++) copy[k] = a[k]!;
+  for (let k = 0; k < count; k++) for (let j = 0; j < w; j++) a[k * w + j] = copy[order[k]! * w + j]!;
+}
+
+function reorder32(a: Uint32Array, w: number, rows: number, count: number, order: Uint16Array, copy: Float64Array): void {
+  for (let k = 0; k < rows * w; k++) copy[k] = a[k]!;
+  for (let k = 0; k < count; k++) for (let j = 0; j < w; j++) a[k * w + j] = copy[order[k]! * w + j]!;
 }
 
 /** Where an opaque step's cut-out draws go among its others (Scene.cutouts). */
@@ -320,16 +385,17 @@ export class Scene {
   private readonly passOf = new Uint8Array(MAX_DRAWS);
   private doubled = 0;
   /**
-   * For putting the draws in order: the packet's columns of draws, room for one of them as made and as ordered, each
+   * For putting the draws in order: the packet's columns of draws as their bits, room for one of them as made, each
    * draw's place in each range (its step, an opaque step's cut-outs a place after its other draws), where each place
-   * begins, and the draw and range each place in the order takes.
+   * begins, the draw and range each place in the order takes, and the keys an opaque place is sorted by (`stateKey`).
    */
-  private readonly columns: (Uint8Array | Uint16Array | Uint32Array | Float32Array)[];
-  private readonly scratch = [new Float64Array(MAX_DRAWS * 3), new Float64Array(MAX_DRAWS * 3)] as const;
+  private readonly columns: Bits[];
+  private readonly copy = new Float64Array(MAX_DRAWS * 3);
   private readonly steps = new Int8Array(MAX_DRAWS * 2);
   private readonly starts = new Int32Array(STEP_BODY + 4);
   private readonly source = new Uint16Array(MAX_DRAWS);
   private readonly sourcePass = new Uint8Array(MAX_DRAWS);
+  private readonly keys = new Float64Array(MAX_DRAWS);
   /** The farthest any body's posed vertex gets from where its first bone puts its origin, short of its own mesh and offset. */
   private readonly bodySlack: number;
   private readonly transient: InstanceWriter;
@@ -518,7 +584,7 @@ export class Scene {
     this.clouds = new Clouds(reg, pack.header.details, pack.palette);
     this.dropped = new Dropped(reg, bind);
     const p = this.packet as unknown as Record<string, unknown>;
-    this.columns = Object.keys(p).filter((k) => k.startsWith("draw") && k !== "drawPass" && ArrayBuffer.isView(p[k])).map((k) => p[k] as Uint8Array);
+    this.columns = Object.keys(p).filter((k) => k.startsWith("draw") && k !== "drawPass" && ArrayBuffer.isView(p[k])).map((k) => bitsOf(p[k] as Uint8Array));
     let reach = 0;
     for (let k = 1; k < reg.defs.length; k++) if (this.characters.has(k)) reach = Math.max(reach, this.characters.reach(k));
     this.bodySlack = reach * 2;
@@ -841,13 +907,15 @@ export class Scene {
 
   /**
    * Puts the draws in the order of the steps they are drawn in (packet.ts), each in the ranges `passOf` gives it, so a
-   * draw in both is listed twice, and an opaque step's cut-out draws where `cutouts` says. With one range they are all
-   * in the near range, and stay as they were made unless a cut-out is to move.
+   * draw in both is listed twice, and an opaque step's cut-out draws where `cutouts` says, each part of it by what its
+   * draws bind (`byState`) unless they are to stay as made. With one range they are all in the near range, and stay as
+   * they were made unless a cut-out is to move: drawn flat, as low poly draws, sorting would save less than it costs.
    */
   private order(): void {
     const p = this.packet;
     const n = p.drawCount;
     const one = p.split <= 0;
+    const made = this.cutouts === "made";
     // A cut-out's place and the rest's within the step, -1 for left out.
     const cutAt = this.cutouts === "last" ? 1 : this.cutouts === "none" ? -1 : 0;
     const restAt = this.cutouts === "first" ? 1 : 0;
@@ -890,18 +958,30 @@ export class Scene {
         moved ||= at !== d;
       }
     }
-    if (moved) {
-      // By way of float64 copies, since JavaScriptCore is many times slower at one loop that writes typed arrays of several kinds.
-      const [from, to] = this.scratch;
-      for (const a of this.columns) {
-        const w = a.length / MAX_DRAWS;
-        from.set(a.subarray(0, n * w));
-        for (let k = 0; k < total; k++) for (let j = 0; j < w; j++) to[k * w + j] = from[source[k]! * w + j]!;
-        a.set(to.subarray(0, total * w));
-      }
-    }
-    p.drawPass.set(pass.subarray(0, total));
+    // The opaque steps' places, near then far, two a step.
+    if (!made) for (let s = 0, turns = 0; s < STEP_FAR * 2 + 2; s++) turns = this.byState(s === 0 ? 0 : starts[s - 1]!, starts[s]!, s % 2 === 0 ? 0 : turns);
+    if (moved || !made) reorder(this.columns, MAX_DRAWS, n, total, source, this.copy);
+    for (let k = 0; k < total; k++) p.drawPass[k] = pass[k]!;
     p.drawCount = total;
+  }
+
+  /**
+   * Sorts places `from` to `to` of the order by what their draws bind, so that each changes as little as it can of what
+   * the one before it bound: by program, material and level, and then as made, which keeps a level's instances in the
+   * same order in each of its runs. Every other run of a program and material, counted on from `turns`, is turned
+   * round, so that a level ends a run on the instances it begins the next with. The runs counted so far.
+   */
+  private byState(from: number, to: number, turns: number): number {
+    const p = this.packet;
+    const keys = this.keys, source = this.source;
+    const materials = this.assets.table.materials;
+    for (let k = from; k < to; k++) {
+      const d = source[k]!;
+      const flags = p.drawFlags[d]!;
+      const program = (flags & DRAW_DETAILS) !== 0 ? PROGRAM.details : drawProgram(p, d, materials[p.drawMaterial[d]!]);
+      keys[k] = stateKey(program, (flags & DRAW_TEXTURED) !== 0 ? p.drawMaterial[d]! : 0, p.drawSlot[d]!, d);
+    }
+    return sortRuns(keys, from, to, turns, source);
   }
 
   /** Small details (client/core/details/): the cut-out ones with the near opaque, the see-through ones after the sea. */
