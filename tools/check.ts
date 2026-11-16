@@ -66,8 +66,8 @@ const DETERMINISTIC_FILES = ["tools/pack/simplify.ts", "tools/pack/error.ts", "t
 const NONDETERMINISTIC = /\bMath\.(sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|asinh|acosh|atanh|exp|expm1|log|log2|log10|log1p|pow|hypot|cbrt|random)\b|\*\*|\bDate\.now\b|\bperformance\.now\b/;
 /** Seeded randomness only, wherever game state is produced. */
 const SEEDED_ONLY_DIRS = ["shared", "server", "client/core", "content"];
-/** The frame's build, where an array made on every call is garbage every frame (madeArrays). */
-const FRAME_DIRS = ["client/core/render", "client/core/details"];
+/** The frame's build and the shell's work each frame, where an array made on every call is garbage every frame (madeArrays). */
+const FRAME_DIRS = ["client/core/render", "client/core/details", "client/shell/gl.ts", "client/shell/ui.ts"];
 const MADE_ARRAY = {
   destructured: "`[a, b] = [x, y]` makes an array each time it runs, even in Safari's top tier; write a plain assignment each (`a = x; b = y;`, `const a = x, b = y;`)",
   set: "`t.set([x, y], k)` makes an array each time it runs; write the elements (`t[k] = x; t[k + 1] = y;`)",
@@ -184,7 +184,7 @@ function checkPolicy(): void {
     if (SEEDED_ONLY_DIRS.some((d) => rel.startsWith(d + "/")) && /\bMath\.random\b/.test(src)) {
       fail(`${rel}: Math.random is not allowed; use the seeded Rng in shared/rng.ts`);
     }
-    if (FRAME_DIRS.some((d) => rel.startsWith(d + "/"))) for (const hit of madeArrays(src)) fail(`${rel}:${hit.line}: ${MADE_ARRAY[hit.what]}`);
+    if (FRAME_DIRS.some((d) => rel === d || rel.startsWith(d + "/"))) for (const hit of madeArrays(src)) fail(`${rel}:${hit.line}: ${MADE_ARRAY[hit.what]}`);
   }
 
   if (shellLines > SHELL_MAX_LINES) {

@@ -215,7 +215,7 @@ export class GlRenderer {
     gl.activeTexture(gl.TEXTURE0 + UNIT.sky);
     gl.bindTexture(gl.TEXTURE_3D, gl.createTexture());
     gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, SKY_SIZE, SKY_SIZE, SKY_SLICES, 0, gl.RGBA, gl.UNSIGNED_BYTE, theSky().table);
-    for (const [name, value] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_3D, name, value);
+    for (const p of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_3D, p[0], p[1]);
 
     // A lost context took every level with it. Core sends them again.
     this.levels.clear();
@@ -255,7 +255,7 @@ export class GlRenderer {
       gl.bindTexture(gl.TEXTURE_2D, (this.detailAtlas = gl.createTexture()));
       const atlas = detailsAtlas(this.pack);
       for (let level = 0, side = d.atlas.side; side >= 1; level++, side >>= 1) gl.texImage2D(gl.TEXTURE_2D, level, gl.RGBA8, side, side, 0, gl.RGBA, gl.UNSIGNED_BYTE, atlas.subarray(mipOffset(d.atlas.side, level), mipOffset(d.atlas.side, level + 1)));
-      for (const [name, value] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_MAX_LOD, MOST_LOD]] as const) gl.texParameterf(gl.TEXTURE_2D, name, value);
+      for (const p of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_MAX_LOD, MOST_LOD]] as const) gl.texParameterf(gl.TEXTURE_2D, p[0], p[1]);
       gl.bindTexture(gl.TEXTURE_2D, null);
     }
     gl.enable(gl.DEPTH_TEST);
@@ -663,10 +663,13 @@ export class GlRenderer {
     }
     // The terrain and the dome are drawn when there is no draw after them.
     while (step < STEP_FAR_SEE) this.step(p, ++step);
-    // The next frame's clear writes depth.
-    this.set(false, this.culling, false);
+    // Every draw ends in the state the next begins from, as the mirror of it says, whatever another user of the context
+    // (the device page) puts back between. The next frame's clear writes depth.
+    this.set(false, false, false);
     gl.depthRange(0, 1);
     this.vertexArray(null);
+    this.array(null);
+    gl.useProgram((this.current = null));
     this.passes?.end();
   }
 
@@ -723,7 +726,7 @@ export class GlRenderer {
       if (cascades > 0) {
         gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.DEPTH_COMPONENT16, size, size, cascades);
         const filter = this.shadowLookup === "hard" ? gl.NEAREST : gl.LINEAR;
-        for (const [name, value] of [[gl.TEXTURE_MIN_FILTER, filter], [gl.TEXTURE_MAG_FILTER, filter], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE], [gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL]] as const) gl.texParameteri(gl.TEXTURE_2D_ARRAY, name, value);
+        for (const p of [[gl.TEXTURE_MIN_FILTER, filter], [gl.TEXTURE_MAG_FILTER, filter], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE], [gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL]] as const) gl.texParameteri(gl.TEXTURE_2D_ARRAY, p[0], p[1]);
       }
       for (let k = 0; k < cascades; k++) {
         const target = gl.createFramebuffer()!;
@@ -853,9 +856,9 @@ export class GlRenderer {
   private link(text: ProgramText): Program {
     const gl = this.gl;
     const program = gl.createProgram()!;
-    for (const [type, source] of [[gl.VERTEX_SHADER, text.vertex], [gl.FRAGMENT_SHADER, text.fragment]] as const) {
+    for (const type of [gl.VERTEX_SHADER, gl.FRAGMENT_SHADER]) {
       const shader = gl.createShader(type)!;
-      gl.shaderSource(shader, source.replace("\n", "\n" + text.defines));
+      gl.shaderSource(shader, (type === gl.VERTEX_SHADER ? text.vertex : text.fragment).replace("\n", "\n" + text.defines));
       gl.compileShader(shader);
       gl.attachShader(program, shader);
     }
