@@ -88,8 +88,9 @@ class Mesh:
    for poly,tag in zip(me.polygons,self.tags):poly.material_index=tags.index('steel' if tag.startswith('sign:') else tag)
   # Triangulate every solid without merging touching-but-independent parts; recalc its outward winding.
   bm=bmesh.new();bm.from_mesh(me)
-  # face() writes disconnected quads intentionally; merge coincident vertices only where their primitive surface meets.
-  bmesh.ops.remove_doubles(bm,verts=bm.verts,dist=1e-7)
+  # Every authored primitive already has its own indexed closed surface. Keep
+  # touching solids as separate islands: merging their internal cap vertices
+  # creates non-manifold edges and can reverse otherwise visible floor panels.
   bmesh.ops.recalc_face_normals(bm,faces=bm.faces)
   bmesh.ops.triangulate(bm,faces=bm.faces,quad_method='BEAUTY',ngon_method='BEAUTY')
   bm.to_mesh(me);bm.free();me.update()

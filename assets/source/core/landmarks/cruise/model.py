@@ -37,11 +37,30 @@ def floor(m,p):
   m.box(lo,hi,'enamel');m.tags[-3]=tag
  for h in p['hulls']:
   pts=h['points'];xs=sorted(set(q[0] for q in pts));zs=sorted(set(q[2] for q in pts));ys=sorted(set(q[1] for q in pts))
-  if len(xs)==2 and len(zs)==2 and m.level==0:
+  if m.level==0:
    nx=max(1,math.ceil((xs[-1]-xs[0])/4));nz=max(1,math.ceil((zs[-1]-zs[0])/4))
+   plan=[[q[0],q[2]] for q in pts if abs(q[1]-ys[-1])<1e-5]
+   def clip(poly,axis,bound,sign):
+    result=[]
+    for a,b in zip(poly,poly[1:]+poly[:1]):
+     ia=(a[axis]-bound)*sign>=-1e-8;ib=(b[axis]-bound)*sign>=-1e-8
+     if ia:result.append(a)
+     if ia!=ib:
+      t=(bound-a[axis])/(b[axis]-a[axis]);result.append([a[k]+t*(b[k]-a[k]) for k in range(2)])
+    return result
    for i in range(nx):
-    for j in range(nz):slab([xs[0]+(xs[-1]-xs[0])*i/nx,ys[0],zs[0]+(zs[-1]-zs[0])*j/nz],
-                           [xs[0]+(xs[-1]-xs[0])*(i+1)/nx,ys[-1],zs[0]+(zs[-1]-zs[0])*(j+1)/nz])
+    for j in range(nz):
+     x0=xs[0]+(xs[-1]-xs[0])*i/nx;x1=xs[0]+(xs[-1]-xs[0])*(i+1)/nx
+     z0=zs[0]+(zs[-1]-zs[0])*j/nz;z1=zs[0]+(zs[-1]-zs[0])*(j+1)/nz;tile=plan
+     for axis,bound,sign in[(0,x0,1),(0,x1,-1),(1,z0,1),(1,z1,-1)]:
+      if tile:tile=clip(tile,axis,bound,sign)
+     unique=[]
+     for a in tile:
+      if not any(math.dist(a,b)<1e-7 for b in unique):unique.append(a)
+     if len(unique)<3 or abs(sum(a[0]*b[1]-b[0]*a[1] for a,b in zip(unique,unique[1:]+unique[:1])))<1e-8:continue
+     start=len(m.f);m.convex([[x,y,z] for x,z in unique for y in(ys[0],ys[-1])],'enamel')
+     for k in range(start,len(m.f)):
+      if all(abs(m.v[v][1]-ys[-1])<1e-5 for v in m.f[k]):m.tags[k]=tag
   else:
    start=len(m.f);m.convex(pts,'enamel')
    for i in range(start,len(m.f)):
@@ -124,7 +143,7 @@ def build(m,p):
    aa[1]=a[1]+.54;bb[1]=b[1]+.54;m.tube([aa,bb],.012,'glass')
  elif kind=='window_wall':
   for i,b in enumerate(p['boxes']):
-   if i not in p['art'].get('glassBoxes',[]):drawbox(m,b,'enamel')
+   if i not in p['art'].get('glassBoxes',[]):drawbox(m,b,finish)
  elif kind=='grand_stair':
   a=p['art']['start'];b=p['art']['end'];n=p['art']['steps'] if m.level<3 else 1
   if n==1:m.convex(p['hulls'][0]['points'],'marble')
@@ -134,14 +153,28 @@ def build(m,p):
     m.box([a[0],y-.28,z0],[b[0],y,z1],'marble')
     if m.level==0:m.box([a[0]+.01,y-.012,z0],[b[0]-.01,y-.002,z0+.025],'brass')
  elif kind=='pearl':
-  lo,hi=p['art']['angles'];na=[4,3,2,1,1,1][m.level];nz=[4,3,2,1,1,1][m.level]
-  for j,(za,zb) in enumerate(zip([-5.6,-3,0,3],[-3,0,3,5.6])):
+  # One manifold shell per sector: internal tile caps previously merged into a
+  # non-manifold lattice and reversed visible faces during normal recalculation.
+  lo,hi=p['art']['angles'];na=[4,3,2,1,1,1][m.level]
+  zs=[-5.6,-4.95,-4.3,-3.65,-3,-2.25,-1.5,-.75,0,.75,1.5,2.25,3,3.65,4.3,4.95,5.6]
+  nv=(na+1)*len(zs);verts=[];faces=[];tags=[]
+  for inner in(0,1):
+   for z in zs:
+    r=math.sqrt(7.5**2-z*z)-inner*.20
+    for i in range(na+1):
+     a=lo+(hi-lo)*i/na;verts.append([r*math.cos(a),r*math.sin(a),z])
+  for inner in(0,1):
+   for j in range(len(zs)-1):
+    for i in range(na):
+     a=inner*nv+j*(na+1)+i;b=a+1;c=b+na+1;d=a+na+1
+     faces.append((a,b,c,d) if inner==0 else(d,c,b,a));tags.append('marble' if (i+j)%5==0 else 'ivory')
+  for j in range(len(zs)-1):
+   for i in(0,na):
+    a=j*(na+1)+i;b=(j+1)*(na+1)+i;faces.append((a,b,b+nv,a+nv));tags.append('ivory')
+  for j in(0,len(zs)-1):
    for i in range(na):
-    a=lo+(hi-lo)*i/na;b=lo+(hi-lo)*(i+1)/na
-    for k in range(nz):
-     z0=za+(zb-za)*k/nz;z1=za+(zb-za)*(k+1)/nz
-     points=[[r*math.cos(t),r*math.sin(t),z] for z in(z0,z1) for t in(a,b) for r in(math.sqrt(7.5**2-z*z)-.20,math.sqrt(7.5**2-z*z))]
-     m.convex(points,'ivory' if (i+k+j)%5 else 'marble')
+    a=j*(na+1)+i;b=a+1;faces.append((a,a+nv,b+nv,b));tags.append('ivory')
+  start=len(m.f);m.indexed(verts,faces,'ivory');m.tags[start:]=tags
  elif kind=='dome_dense':
   for a,b in p['art']['beams']:m.tube([a,b],.105,'steel',n=[8,6,6,4,4,4][m.level])
   for h in p['art']['roof']:m.convex(h,'dome_glaze')
@@ -179,11 +212,15 @@ def build(m,p):
   for b in p['boxes']:
    lo,hi=extents(b);c=[b['at'][0],lo[1],b['at'][2]];e=[c[0],hi[1],c[2]]
    m.tube([c,e],.55,'steel')
+ elif kind=='funnel_band':
+  n=[32,24,16,12,8,8][m.level]
+  rings=[[[rx*math.cos(k*math.tau/n),y,shift+rz*math.sin(k*math.tau/n)] for k in range(n)] for y,rx,rz,shift in p['art']['profile']]
+  m.loft(rings,finish)
  elif kind=='mast':
   for b in p['boxes']:
    lo,hi=extents(b);axis=max(range(3),key=lambda k:hi[k]-lo[k]);a=b['at'][:];c=a[:]
    a[axis]=lo[axis];c[axis]=hi[axis];radius=min(b['half'][k] for k in range(3) if k!=axis)
-   m.tube([a,c],radius,'enamel')
+   m.tube([a,c],radius,finish)
  else:
   for b in p['boxes']:drawbox(m,b,finish)
   for h in p['hulls']:m.convex(h['points'],finish)

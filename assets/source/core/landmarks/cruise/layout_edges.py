@@ -21,6 +21,16 @@ def finish(D,p,world,place,box,ys,beam):
  def guard(name,a,b,y,deck):
   dx=b[0]-a[0];dz=b[1]-a[1];ln=math.hypot(dx,dz)
   if ln<.08:return
+  if abs(dx)<1e-7 or abs(dz)<1e-7:
+   axis=0 if abs(dx)>abs(dz) else 1;start=min(a[axis],b[axis]);end=max(a[axis],b[axis]);fixed=a[1-axis]
+   cuts=[start,end]
+   for i,(lo,hi) in enumerate(zip(cuts,cuts[1:])):
+    length=hi-lo;art={'kind':'guard','finish':'steel','ends':[[-length/2,-.575,0],[length/2,-.575,0]]}
+    if name.startswith('bridge_'):art['measurement']='bridge'
+    q=p('cardinal_guard','guard',[box([-length/2,-.575,-.04],[length/2,.575,.04])],art=art,color=91)
+    at=[(lo+hi)/2,y+.575,fixed] if axis==0 else [fixed,y+.575,(lo+hi)/2]
+    place(name+'_'+str(i),q,at,deck,'edge-protection',0 if axis==0 else 90)
+   return
   nx=-dz/ln*.04;nz=dx/ln*.04
   pts=[[x+sign*nx,yy,z+sign*nz] for x,z in(a,b) for sign in(-1,1) for yy in(y,y+1.15)]
   art={'kind':'guard','finish':'steel'}
@@ -64,6 +74,7 @@ def finish(D,p,world,place,box,ys,beam):
   for side in(-1,1):
    for j in range(83):
     z=-153.6+j*3.2
+    if side>0 and -24<z<8:continue
     if deck=='5' and side>0 and abs(z+24)<3.3:continue
     # Author same-height side panels from the true polygon boundary, with a restrained inset.
     hits=[]

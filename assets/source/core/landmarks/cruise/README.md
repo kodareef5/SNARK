@@ -8,7 +8,9 @@ The builder supplies 365 m overall length, 48.5 m waterline beam, 57.8 m deckhou
 
 The architect publishes AquaDome's 57 m width and 17 m height. Its inferred 70 m longitudinal extent and center at Z112 follow the actual broadside photograph, keeping the crown low and well behind the stem. Pearl retains the builder's 15 m diameter; the architect's conflicting 53 ft statement is documented rather than silently substituted. Lifeboats use the published Palfinger MPC49 family envelope of 15×5.5×4.2 m, with original fittings guided by actual photographs; see [lifeboat sources](ref/LIFEBOATS.md). The vessel is static. Slides, performance machinery and pools are decorative, and interiors are original fitted interpretations rather than authenticated construction plans.
 
-`tex/paint.py` authors the original marine enamel, wood, textile, tile, metal and wayfinding atlases. Reference pixels are never sampled. Fine rectangular deck surfaces repeat the finish within 4 m spans. Intentional semantic materials provide native flat colours; actual Principled base colours preserve fallback appearance. Far proxies also use representative per-kind colours, including blue funnels, yellow lifeboats and six colored slide courses. `build.ts` keeps native measured surface errors and adds the accepted cumulative 8 mm appearance-loss floor for nearby finishes. The shared texture budget remains 64 MiB of decoded RGBA mip data.
+The enclosure, hull-detail and entry helpers add supported tier walls, inward cabin fronts, sealed porthole rhythm and actual route-crossing metadata. Bounded 24×12 m floor groups retain each clipped void, with X/Z origins snapped before local geometry is derived. Cardinal guards and contiguous slide runs reuse or batch geometry without changing their physical paths. The Pearl uses continuous indexed inner and outer sector surfaces, capped only at sector and portal boundaries. Touching closed primitives remain independent mesh islands so internal caps cannot reverse adjacent visible faces during normal recalculation.
+
+`tex/paint.py` authors the original marine enamel, wood, textile, tile, metal and wayfinding atlases. Reference pixels are never sampled. Fine deck surfaces repeat the finish within 4 m spans, including tapered fragments. Intentional semantic materials provide native flat colours; actual Principled base colours preserve fallback appearance. Far proxies also use representative per-kind colours, including pale/blue funnel bands, dark accommodation glazing, yellow lifeboats and six colored slide courses. `build.ts` keeps native measured surface errors and adds the accepted cumulative 8 mm appearance-loss floor for nearby finishes. The shared texture budget remains 64 MiB of decoded RGBA mip data.
 
 Rebuild from the repository root:
 
@@ -16,7 +18,7 @@ Rebuild from the repository root:
 python3 assets/source/core/landmarks/cruise/author_layout.py
 python3 assets/source/core/landmarks/cruise/tex/paint.py
 bun assets/source/core/landmarks/cruise/build.ts
-bun test tests/unit/cruise-art.test.ts
+bun test tests/unit/cruise-art.test.ts tests/unit/cruise-floor-facing.test.ts
 ```
 
 The ordinary Blender/native pack pipeline writes `cruise.snpk`, `lod-errors.json`, `ref/geometry-report.json` and `ref/native-check.json`. App/Harness reviews measure the complete placed ship alongside the port and comparison vessels; prototype triangle totals alone do not certify frame cost. No renderer budgets or runtime dependencies are increased.

@@ -88,6 +88,8 @@ def finish(D,p,raw,world,place,box,node,route,rect,ys,beam):
    wall(ident+'_fore',[x0,y,z1],[x1,y,z1],y,h,(entry[0],4.4) if abs(entry[2]-z1)<.01 else None)
    wall(ident+'_port',[x1,y,z0],[x1,y,z1],y,h,(entry[2],4.4) if abs(entry[0]-x1)<.01 else None)
    wall(ident+'_starboard',[x0,y,z0],[x0,y,z1],y,h,(entry[2],4.4) if abs(entry[0]-x0)<.01 else None)
+   normal=[0,0,-1] if abs(entry[2]-z0)<.01 else [0,0,1] if abs(entry[2]-z1)<.01 else [-1,0,0] if abs(entry[0]-x0)<.01 else [1,0,0]
+   D['portals'].append({'id':ident+'_opening','from':start,'to':ident,'at':entry,'normal':normal,'clearWidth':4.4,'clearHeight':2.6,'kind':'open'})
   return ident
  # Opaque accommodation banks behind the balcony openings. These closed facade cells are NOT advertised rooms.
  facadeboxes=[box([-4.05,0,-1.6],[-3.91,2.96,1.6]),box([-4.05,0,-1.6],[4.05,2.96,-1.49]),
@@ -99,6 +101,7 @@ def finish(D,p,raw,world,place,box,node,route,rect,ys,beam):
   for side in(-1,1):
    for j in range(-48,35):
     z=j*3.2
+    if deck in('7','8') and side==1 and -24<z<8:continue
     if side==1 and 91.2<z<110.4:continue
     place(f'facade_{deck}_{side}_{j+48}',facade,[side*23.05,ys[deck],z],deck,'accommodation-facade',0 if side>0 else 180)
  # Furnished cabin types remain honest playable samples, with generous original fitting for native bodies.
@@ -248,12 +251,22 @@ def finish(D,p,raw,world,place,box,node,route,rect,ys,beam):
    t=j/16;angle=t*math.tau*(1.25+si*.10)+si*.8
    path.append([(-4 if si<3 else 8)+8*math.sin(angle),68.4-12.6*t,-128-39*t+6*math.cos(angle)])
   path[0]=[12+si*2.3,68.4,-117.3]
+  groups=[];group=[]
+  def fits(hs):
+   points=[v for h in hs for v in h];lo=[min(v[k] for v in points) for k in range(3)];hi=[max(v[k] for v in points) for k in range(3)]
+   mid=[(a+b)/2 for a,b in zip(lo,hi)]
+   return max((b-a)/2 for a,b in zip(lo,hi))<=16 and max(math.hypot(v[0]-mid[0],v[2]-mid[2]) for v in points)<=14.5 and len(hs)<=16
   for j,(a,b) in enumerate(zip(path,path[1:])):
-   hs=[beam(a,b,.78)];q,o=world('slide_'+finish,'waterpark',hs=hs,art={'kind':'slide','finish':finish},color=COLORS[finish])
-   place(f'slide_{si}_{j}',q,o,'16','category-6')
+   h=beam(a,b,.78)
+   if group and (j==8 or not fits([v for _,v in group]+[h])):groups.append(group);group=[]
+   group.append((j,h))
    if j and j%4==0:
     q,o=world('slide_support','fitting',hs=[beam([a[0],49.6,a[2]],a,.10)],art={'kind':'solids','finish':'enamel'})
     place(f'slide_support_{si}_{j}',q,o,'16','category-6')
+  if group:groups.append(group)
+  for group in groups:
+   q,o=world('slide_'+finish,'waterpark',hs=[v for _,v in group],art={'kind':'slide','finish':finish,'sourceSegments':[j for j,_ in group]},color=COLORS[finish])
+   place(f'slide_{si}_{group[0][0]}',q,o,'16','category-6')
  # Strong photographed stern arch, kept outside the protected routes and within the published hull length.
  arch=[[-16,23,-178],[-12,36,-178],[0,42,-176],[12,36,-178],[16,23,-178]]
  for j,(a,b) in enumerate(zip(arch,arch[1:])):

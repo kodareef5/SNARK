@@ -27,6 +27,10 @@ def populate(D,prototype,instance,box,node):
   for b in bs:
    points += [[b['at'][k]+s[k]*b['half'][k] for k in range(3)] for s in [(x,y,z) for x in(-1,1) for y in(-1,1) for z in(-1,1)]]
   lo=[min(q[k] for q in points) for k in range(3)];hi=[max(q[k] for q in points) for k in range(3)];o=[(a+b)/2 for a,b in zip(lo,hi)]
+  if art and art.get('kind')=='floor':
+   # Native placements live on this lattice. Derive local corners AFTER snapping,
+   # so adjoining world floor edges remain identical instead of drifting by a millimetre.
+   for k in(0,2):o[k]=round(o[k]*512)/512
   localbs=[{'at':[b['at'][k]-o[k] for k in range(3)],'half':b['half']} for b in bs]
   localhs=[{'points':[[q[k]-o[k] for k in range(3)] for q in h]} for h in hs]
   return p(name,cat,localbs,localhs,art,color),o
@@ -115,7 +119,9 @@ def populate(D,prototype,instance,box,node):
   if label=='15':voids.append({'id':'prototype_basin','kind':'basin','polygon':rect(13,-14,23,2)})
   d['outlines']=outlines;d['voids']=voids
   if n>=15:d['ceilingY']=None
-  # Slabs are segmented on a shared 12 m lattice, plus precise opening edges. Equal rectangles instance one mesh.
+  # Exact fragments are batched inside bounded24×12m tiles. Holes remain real;
+  # a convex union is merged only when its area exactly equals the source fragments.
+  floor_groups={}
   for oi,poly in enumerate(outlines):
    z0=min(q[1] for q in poly);z1=max(q[1] for q in poly)
    cuts=sorted(set([z0,z1]+[q[1] for q in poly]+[z for z in range(-180,181,12) if z0<z<z1]+
@@ -129,7 +135,7 @@ def populate(D,prototype,instance,box,node):
     return min(xs),max(xs)
    for zi,(za,zb) in enumerate(zip(cuts,cuts[1:])):
     la,ra=edges(za);lb,rb=edges(zb);active=[h for h in voids if min(q[1] for q in h['polygon'])<(za+zb)/2<max(q[1] for q in h['polygon'])]
-    xcuts=sorted(set([min(la,lb),max(ra,rb)]+[x for x in range(-24,25,12) if min(la,lb)<x<max(ra,rb)]+[q[0] for h in active for q in h['polygon']]))
+    xcuts=sorted(set([min(la,lb),max(ra,rb)]+[x for x in range(-24,25,24) if min(la,lb)<x<max(ra,rb)]+[q[0] for h in active for q in h['polygon']]))
     for xi,(xl,xr) in enumerate(zip(xcuts,xcuts[1:])):
      mid=(xl+xr)/2
      if any(min(q[0] for q in h['polygon'])<mid<max(q[0] for q in h['polygon']) for h in active):continue
@@ -149,9 +155,27 @@ def populate(D,prototype,instance,box,node):
      for a in plan:
       if not any(math.dist(a,b)<1e-7 for b in unique):unique.append(a)
      if len(unique)<3 or abs(sum(a[0]*b[1]-b[0]*a[1] for a,b in zip(unique,unique[1:]+unique[:1])))<1e-7:continue
-     pts=[[x,yy,z] for x,z in unique for yy in(y-.24,y)]
-     q,o=world('deck','floor',hs=[pts],art={'kind':'floor','finish':'deck' if n>=7 else 'stone'},color=101 if n>=7 else 232)
-     place(f'd{label}_floor_{oi}_{zi}_{xi}',q,o,label,section((za+zb)/2))
+     key=(math.floor(sum(v[0] for v in unique)/len(unique)/24),math.floor((za+zb)/2/12))
+     floor_groups.setdefault(key,[]).append(unique)
+  def area(poly):return abs(sum(a[0]*b[1]-b[0]*a[1] for a,b in zip(poly,poly[1:]+poly[:1])))/2
+  def convex_plan(points):
+   points=sorted(set(tuple(v) for v in points))
+   def cross(a,b,c):return (b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])
+   lower=[];upper=[]
+   for v in points:
+    while len(lower)>=2 and cross(lower[-2],lower[-1],v)<=1e-8:lower.pop()
+    lower.append(v)
+   for v in reversed(points):
+    while len(upper)>=2 and cross(upper[-2],upper[-1],v)<=1e-8:upper.pop()
+    upper.append(v)
+   return lower[:-1]+upper[:-1]
+  for (gx,gz),plans in sorted(floor_groups.items()):
+   whole=convex_plan([v for poly in plans for v in poly])
+   if len(whole)<=6 and abs(area(whole)-sum(area(poly) for poly in plans))<1e-6:plans=[whole]
+   for chunk in range(0,len(plans),16):
+    hs=[[[x,yy,z] for x,z in poly for yy in(y-.24,y)] for poly in plans[chunk:chunk+16]]
+    q,o=world('deck','floor',hs=hs,art={'kind':'floor','finish':'deck' if n>=7 else 'stone'},color=101 if n>=7 else 232)
+    place(f'd{label}_floor_{gx}_{gz}_{chunk//16}',q,o,label,section(o[2]))
  # Continuous repeated doglegs with 1.8 m flights, 4.4×2.2 m clear turn landings and genuine upper floor holes.
  for cname,cx,cz,low,high in cores:
   for i in range(low,high):
@@ -241,6 +265,7 @@ def populate(D,prototype,instance,box,node):
  for label in ['7','8','9','10','11','12','14']:
   for side in(-1,1):
    for j,z in enumerate(i*3.2 for i in range(-48,35)):
+    if label in('7','8') and side==1 and -24<z<8:continue
     place(f'balcony_{label}_{side}_{j}',balcony,[side*28.9,ys[label],z],label,section(z),0 if side>0 else 180)
  # Independently measured bridge wing envelope, clear framed front rather than an opaque dark plane.
  for side in(-1,1):
@@ -256,10 +281,20 @@ def populate(D,prototype,instance,box,node):
  from layout_production import dome as production_dome,finish as production_finish
  production_dome(D,p,place,beam)
  # Side-by-side aft funnel housings are a distinctive photographed feature, not two longitudinal stacks.
- funnelh=[{'points':[[x,y,z] for y,rx,rz,shift in[(-11.5,7.2,10.2,0),(8,4.6,7.2,1.5)] for x in(-rx,rx) for z in(-rz+shift,rz+shift)]}]
- funnelboxes=[box([x-.65,7.8,z-.65],[x+.65,12,z+.65]) for x in(-1.4,1.4) for z in(-1.0,2.5)]
- fp=p('funnel','funnel',funnelboxes,funnelh,{'kind':'funnel','finish':'blue'},53)
- for side in(-1,1):place('funnel_'+str(side),fp,[side*11,63,-72],'17','funnel')
+ for bi,(ya,yb,finish,color) in enumerate([(-11.5,-7.2,'enamel',232),(-7.2,-5.7,'blue',53),(-5.7,-1.2,'enamel',232),(-1.2,.3,'blue',53),(.3,5.6,'enamel',232),(5.6,8,'blue',53)]):
+  mid=(ya+yb)/2;levels=[]
+  for yy in(ya,yb):
+   t=(yy+11.5)/19.5;levels.append([yy-mid,6.95-2.6*t,9.95-3*t,1.5*t])
+  hull=[{'points':[[x,y,z+shift] for y,rx,rz,shift in levels for x in(-rx,rx) for z in(-rz,rz)]}]
+  look=[]
+  for quadrant in range(4):
+   angles=[quadrant*math.pi/2+i*math.pi/4 for i in range(3)]
+   look.append({'points':[[0,y,shift] for y,_,_,shift in levels]+[[rx*math.cos(a),y,shift+rz*math.sin(a)] for y,rx,rz,shift in levels for a in angles]})
+  fp=p('funnel_band','funnel',[],hull,{'kind':'funnel_band','finish':finish,'profile':levels},color,{'hulls':look})
+  for side in(-1,1):place(f'funnel_{side}_band{bi}',fp,[side*11,63+mid,-72],'17','funnel')
+ pipeboxes=[box([x-.65,0,z-.65],[x+.65,4.2,z+.65]) for x in(-1.4,1.4) for z in(-1.0,2.5)]
+ fp=p('funnel_pipes','funnel',pipeboxes,art={'kind':'mast','finish':'steel'},color=91)
+ for side in(-1,1):place(f'funnel_{side}_pipes',fp,[side*11,70.8,-72],'17','funnel')
  mast=p('signal_mast','mast',[box([-.22,-8.65,-.22],[.22,8.65,.22]),
                              box([-3.2,4.4,-.1],[3.2,4.6,.1]),box([-2.4,6.4,-.1],[2.4,6.6,.1])],
         art={'kind':'mast','finish':'enamel'})
@@ -290,3 +325,9 @@ def populate(D,prototype,instance,box,node):
  production_finish(D,p,prototype,world,place,box,node,route,rect,ys,beam)
  from layout_edges import finish as finish_edges
  finish_edges(D,p,world,place,box,ys,beam)
+ from layout_enclosures import finish as finish_enclosures
+ finish_enclosures(D,p,world,place,box,ys)
+ from layout_hull_details import finish as finish_hull_details
+ finish_hull_details(D,p,world,place,box,ys)
+ from layout_entries import finish as finish_entries
+ finish_entries(D)

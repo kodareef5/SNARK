@@ -84,3 +84,49 @@ test("elevated decorative basin retains real dry-room headroom in every delivere
     expect(bottom - room.bounds.min[1]!).toBeGreaterThanOrEqual(2.6);
   }
 });
+
+/** A one-sided interior ray models the native backface rule; a two-sided hit hid the original Pearl fault. */
+function pearlFrontHit(lods: readonly SourceLod[], z: number, angle: number): boolean {
+  const dx = Math.cos(angle), dy = Math.sin(angle);
+  for (const lod of lods) {
+    const p = lod.positions;
+    for (let i = 0; i < lod.indices.length; i += 3) {
+      const a = lod.indices[i]! * 3, b = lod.indices[i + 1]! * 3, c = lod.indices[i + 2]! * 3;
+      const ax = p[a]!, ay = p[a + 1]!, az = p[a + 2]!;
+      const ux = p[b]! - ax, uy = p[b + 1]! - ay, uz = p[b + 2]! - az;
+      const vx = p[c]! - ax, vy = p[c + 1]! - ay, vz = p[c + 2]! - az;
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, facing = nx * dx + ny * dy;
+      if (facing >= -1e-9) continue;
+      const t = (nx * ax + ny * ay + nz * (az - z)) / facing;
+      if (t < 4 || t > 8) continue;
+      const qx = t * dx - ax, qy = t * dy - ay, qz = z - az;
+      const uu = ux * ux + uy * uy + uz * uz, vv = vx * vx + vy * vy + vz * vz, uv = ux * vx + uy * vy + uz * vz;
+      const qu = qx * ux + qy * uy + qz * uz, qv = qx * vx + qy * vy + qz * vz, d = uu * vv - uv * uv;
+      if (d <= 1e-16) continue;
+      const s = (qu * vv - qv * uv) / d, r = (qv * uu - qu * uv) / d;
+      if (s >= -1e-6 && r >= -1e-6 && s + r <= 1.000001) return true;
+    }
+  }
+  return false;
+}
+
+test("assembled Pearl retains a visible inner shell at every level and across adjacent mixed levels", () => {
+  const shells = CRUISE_LAYOUT.prototypes.filter(p => p.category === "pearl").map(p => byId.get(p.mesh)!);
+  expect(shells.length).toBe(16);
+  const faults: string[] = [], zs = [-4.7, -1.8, .3, 2.6, 4.8];
+  for (let level = 0; level < 6; level++) {
+    const lods = shells.map(m => m.lods[level]!);
+    for (const z of zs) for (let i = 0; i < 80; i++) {
+      const angle = (i + .23) * Math.PI * 2 / 80;
+      if (!pearlFrontHit(lods, z, angle)) faults.push(`L${level} z${z} angle${angle.toFixed(4)}`);
+    }
+  }
+  for (let level = 1; level < 6; level++) {
+    const lods = shells.map((m, i) => m.lods[i % 2 ? level : 0]!);
+    for (const z of zs) for (let seam = 0; seam < 16; seam++) for (const side of [-1, 1]) {
+      const angle = seam * Math.PI / 8 + side * .003;
+      if (!pearlFrontHit(lods, z, angle)) faults.push(`L0/${level} z${z} seam${seam} side${side}`);
+    }
+  }
+  expect(faults.slice(0, 20)).toEqual([]);
+});
