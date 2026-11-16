@@ -213,16 +213,16 @@ cue("crate/land", "prop", "build", "world", "waits:loot", "a supply crate lands"
 // or an outboard alike.
 const VEHICLE = "species/vehicle";
 const WAITS_VEHICLES = "waits:vehicles";
-// A rotorcraft and a boat fire these from their snapshot state (client/core/sound/vehicles.ts); a car waits for them still.
+// Every vehicle fires these from its snapshot state (client/core/sound/vehicles.ts).
 const FIRED = new Set(["engine/{revs}", "engine/start", "engine/stop", "vehicle/cabin", "vehicle/wash", "vehicle/wash/water", "vehicle/hull/slow", "vehicle/hull/fast"]);
 const vstatus = (name: string): CueStatus => (FIRED.has(name) ? "fire" : WAITS_VEHICLES);
 const vfalls = (n: string, shared = true): string[] => [`{owner}/${n}`, `{family}/${n}`, ...(shared ? [`core:vehicle/${n}`] : [])];
 cue("engine/{revs}", VEHICLE, "vehicle", "body", vstatus("engine/{revs}"), "a running engine (a rotor, a propeller, an outboard): four layers looped, faded across by rpm and each played faster or slower to meet it", { loop: true, falls: vfalls("engine/{revs}") });
-for (const n of ["start", "stop", "rev", "stall"]) cue(`engine/${n}`, VEHICLE, "vehicle", "body", vstatus(`engine/${n}`), `the engine: ${n} (the telemetry's engine state)`, { falls: vfalls(`engine/${n}`) });
+for (const n of ["start", "stop", "rev", "stall"]) cue(`engine/${n}`, VEHICLE, "vehicle", "body", vstatus(`engine/${n}`), `the engine: ${n} (the snapshot's engine state)`, { falls: vfalls(`engine/${n}`) });
 cue("engine/brake", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "a truck slowing on its engine brake", { falls: vfalls("engine/brake", false) });
 cue("shift", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "the gear changes", { falls: vfalls("shift") });
 cue("tire/roll/{road}", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "wheels on the ground at speed, by the surface under them (urban:asphalt, gravel, mud)", { loop: true, falls: ["core:vehicle/tire/roll/{road}", "core:vehicle/tire/roll/dirt"] });
-cue("tire/skid/{road}", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "the wheels slip (the telemetry's slip)", { loop: true, falls: ["core:vehicle/tire/skid/{road}", "core:vehicle/tire/skid/asphalt"] });
+cue("tire/skid/{road}", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "the wheels slip", { loop: true, falls: ["core:vehicle/tire/skid/{road}", "core:vehicle/tire/skid/asphalt"] });
 for (const n of ["brake", "handbrake", "horn", "door/open", "door/close", "crash/light", "crash/heavy", "glass/break", "suspension", "splash"]) cue(`vehicle/${n}`, VEHICLE, "vehicle", "body", WAITS_VEHICLES, `the vehicle: ${n.replace("/", " ")}`, { falls: vfalls(n) });
 cue("vehicle/wind", VEHICLE, "bed", "ear", WAITS_VEHICLES, "wind past the cabin at speed, for the driver and passengers", { loop: true, falls: ["{family}/wind", "core:vehicle/wind"] });
 cue("vehicle/cabin", VEHICLE, "bed", "ear", vstatus("vehicle/cabin"), "the engine as heard inside, for the pilot and passengers of a helicopter or plane", { loop: true, falls: vfalls("cabin", false) });

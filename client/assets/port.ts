@@ -7,6 +7,8 @@ import type { Ask } from "./assets-worker.ts";
 
 export class WorkerPort implements AssetPort {
   cache: AssetPort["cache"] = { used: 0, limit: 0, mode: "memory", filling: 0 };
+  /** The page's own until the worker's first fetch says. */
+  protocol = (performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)?.nextHopProtocol ?? "";
   private readonly worker = new Worker("assets-worker.js", { type: "module" });
   private readonly manifest: Manifest;
   private readonly folder: string;
@@ -20,11 +22,14 @@ export class WorkerPort implements AssetPort {
     this.manifest = manifest;
     this.folder = folder;
     this.worker.onmessage = (e) => {
-      const m = e.data as AssetArrival & { cache?: AssetPort["cache"] };
-      if (m.cache) this.cache = m.cache;
-      else this.arrived.push(m);
+      const m = e.data as AssetArrival & { cache?: AssetPort["cache"] & { protocol: string } };
+      if (m.cache) {
+        const { protocol, ...cache } = m.cache;
+        this.cache = cache;
+        if (protocol) this.protocol = protocol;
+      } else this.arrived.push(m);
     };
-    this.worker.postMessage({ open: keep, ...(net ? { net: net.split(",").map(Number) } : {}) });
+    this.worker.postMessage({ open: { keep, touch: matchMedia("(pointer: coarse)").matches }, ...(net ? { net: net.split(",").map(Number) } : {}) });
   }
 
   private url(file: number): string {

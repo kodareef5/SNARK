@@ -39,7 +39,7 @@ void main() {
   o = vec4(mix(vColor * light * shade, uSky, fog * fog), uAlpha);
 }`;
 
-/** Palette geometry on textured tiers: world-projected finishes share SURFACE's lighting. */
+/** Palette geometry on textured tiers: world-projected finishes share SURFACE's lighting. Its vertex text gives the colour as light (world-surfaces.ts `worldVertex`). */
 export const LIT_FRAGMENT = `#version 300 es
 precision highp float;
 precision highp int;
@@ -50,7 +50,7 @@ out vec4 o;
 ${LIGHT}${SHADOW_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}void main() {
   vec3 geometric = normalize(cross(dFdx(vRel), dFdy(vRel)));
   vec3 n = geometric;
-  vec3 albedo = mix(vColor / 12.92, pow((vColor + 0.055) / 1.055, vec3(2.4)), step(0.04045, vColor));
+  vec3 albedo = vColor;
   vec3 orm = vec3(1.0, 1.0, 0.0);
   if (uSolid < 1.5 && uWorldReady > 0.5) worldSurface(albedo, orm, n);
   vec3 v = -normalize(vRel);

@@ -17,7 +17,14 @@ export function surfaceCity(id: string): string {
 /** Three vec4s: tint and scale; weather, wetness, growth, desert; bump and reserved. */
 export function citySurface(out: Float32Array, id: string): void {
   const key = surfaceCity(id), d = SURFACE_CITIES[key]!;
-  out.set([...d.tint, d.scale, d.weather, d.wetness, d.growth, key === "las-vegas" ? 1 : 0, d.bump, 0, 0, 0]);
+  out.set(d.tint);
+  out[3] = d.scale;
+  out[4] = d.weather;
+  out[5] = d.wetness;
+  out[6] = d.growth;
+  out[7] = key === "las-vegas" ? 1 : 0;
+  out[8] = d.bump;
+  out.fill(0, 9, 12);
 }
 const finishes = SURFACE_NAMES.map((name) => {
   const f = SURFACE_FINISHES[name], g = SURFACE_GROUPS[f.group];
@@ -92,19 +99,24 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
   let ox = nx, oy = ny, oz = nz;
   if (axis === 1) { ox += bx; oz += by; } else if (axis === 0) { oz += bx; oy -= by; } else { ox += bx; oy -= by; }
   const length = Math.sqrt(ox * ox + oy * oy + oz * oz);
-  normal.set([ox / length, oy / length, oz / length]);
-  orm.set([sum[5]!, clamp(f.rough * (0.8 + 0.2 * sum[6]!) - wet * 0.35, 0.12, 1), f.metal]);
+  normal[0] = ox / length;
+  normal[1] = oy / length;
+  normal[2] = oz / length;
+  orm[0] = sum[5]!;
+  orm[1] = clamp(f.rough * (0.8 + 0.2 * sum[6]!) - wet * 0.35, 0.12, 1);
+  orm[2] = f.metal;
 }
 
 const fl = (n: number): string => Number.isInteger(n) ? n.toFixed(1) : String(n);
 const vectors = (name: string, rows: readonly (readonly number[])[]): string => `const vec4 ${name}[16] = vec4[16](${rows.map((a) => `vec4(${a.map(fl).join(",")})`).join(",")});\n`;
-/** Adds a material index to FLAT's vertex texts, keeping the low-poly texts byte-for-byte. */
+/** Adds a material index to FLAT's vertex texts, and gives the colour as light, keeping the low-poly texts byte-for-byte. */
 export function worldVertex(vertex: string, ground: boolean): string {
   const table = Array.from({ length: 256 }, (_, i) => surfaceIndex(i, ground));
   const lookup = `flat out int vSurface;\n${ground ? "uniform vec4 uSurfaceCity[3];\n" : ""}const int SURFACE_IDS[256] = int[256](${table.join(",")});\n`;
   const colour = ground ? "int(texelFetch(uTint, at, 0).r)" : "int(i)";
   const desert = ground ? `  if (uSurfaceCity[1].w > 0.5 && (${[100, 101, 122, 123, 124, 158, 167].map((c) => `${colour} == ${c}`).join(" || ")})) vSurface = 5;\n` : "";
-  return vertex.replace("out vec3 vRel;", lookup + "out vec3 vRel;").replace("  vRel = p;", `  vSurface = SURFACE_IDS[${colour}];\n${desert}  vRel = p;`);
+  const light = "  vColor = mix(vColor / 12.92, pow((vColor + 0.055) / 1.055, vec3(2.4)), step(0.04045, vColor));\n";
+  return vertex.replace("out vec3 vRel;", lookup + "out vec3 vRel;").replace("  vRel = p;", `  vSurface = SURFACE_IDS[${colour}];\n${desert}${light}  vRel = p;`);
 }
 
 /** Same operations as worldSurface. All texture reads use explicit derivatives taken before wrapping or random rotation. */

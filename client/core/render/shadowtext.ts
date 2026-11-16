@@ -10,7 +10,7 @@
 
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import type { Tier } from "../assets/tiers.ts";
-import { BONES_PER_ROW } from "./packet.ts";
+import { BONES_PER_ROW, MAX_CASCADES } from "./packet.ts";
 
 /** Texels of the receiver's cascade the lookup is moved along its normal, at most, where the surface runs along the light. */
 export const NORMAL_OFFSET = 0.5;
@@ -60,7 +60,8 @@ export function axisWeights(m: number, s: number, out: Float64Array): void {
   const rows = TAP_AXIS[m]!;
   const total = rows.reduce((sum, [a, b]) => sum + a + b * s, 0);
   out.fill(0, 0, 2 * m);
-  for (const [a, b, c, d, e] of rows) {
+  for (const row of rows) {
+    const a = row[0], b = row[1], c = row[2], d = row[3], e = row[4];
     const w = a + b * s;
     const at = (c + d * s) / w + e + m - 1;
     const j = Math.min(Math.floor(at), 2 * m - 2);
@@ -71,7 +72,7 @@ export function axisWeights(m: number, s: number, out: Float64Array): void {
 
 /** The step of the 4 by 4 pattern a pixel hands over to the next cascade by, 0 to 1: Bayer's ordered dither. */
 export function handOver(x: number, y: number): number {
-  const [qx, qy] = [x & 3, y & 3];
+  const qx = x & 3, qy = y & 3;
   return ((((qx ^ qy) & 1) * 8 + (qy & 1) * 4 + (((qx ^ qy) >> 1) & 1) * 2 + ((qy >> 1) & 1)) + 0.5) / 16;
 }
 
@@ -94,10 +95,15 @@ export function shadowBytes(shadows: Tier["shadows"]): number {
   return shadows.cascades * shadows.size * shadows.size * 2;
 }
 
-/** The lines put before a lit program's texts for a tier's shadows, and with `hard` for a device whose compared lookups do not filter. */
+/**
+ * The lines put before a lit program's texts for a tier's shadows, and with `hard` for a device whose compared lookups
+ * do not filter. A lookup runs over the frame's cascades (`uCascades`), up to MAX_CASCADES, so the texts are the same
+ * with fewer cascades or none, as the governor's steps and the effects turned off have them, and nothing is compiled
+ * again for them.
+ */
 export function shadowDefines(shadows: Tier["shadows"], hard: boolean): string {
-  if (shadows.cascades <= 0) return "";
-  return `#define SHADOW_CASCADES ${shadows.cascades}\n#define SHADOW_TAPS ${Math.round(Math.sqrt(shadows.taps))}\n#define SHADOW_SIZE ${shadows.size.toFixed(1)}\n${hard ? "#define SHADOW_HARD\n" : ""}`;
+  if (shadows.size <= 0) return "";
+  return `#define SHADOW_CASCADES ${MAX_CASCADES}\n#define SHADOW_TAPS ${Math.round(Math.sqrt(shadows.taps))}\n#define SHADOW_SIZE ${shadows.size.toFixed(1)}\n${hard ? "#define SHADOW_HARD\n" : ""}`;
 }
 
 /** A number as GLSL writes it. */

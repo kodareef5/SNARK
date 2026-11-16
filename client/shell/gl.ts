@@ -5,7 +5,7 @@ import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, BONE_ROWS, DETAIL_FLOATS, DRAW_
 import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
-import { PROGRAMS, UNIT, type ProgramText } from "../core/render/programs.ts";
+import { PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../core/render/programs.ts";
 import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
@@ -14,7 +14,7 @@ import { SKY_SIZE, SKY_SLICES, theSky } from "../core/render/sky.ts";
 import { LAYER_LEVELS, NEUTRAL, skinMode } from "../core/render/surface.ts";
 import { SKIRT_BEHIND, coarseGround, groundSize, tileMesh, type GroundSize } from "../core/render/terrain.ts";
 import type { AssetUpload } from "../core/assets/residency.ts";
-import { DEFAULT_TIER, tierOf, type Tier } from "../core/assets/tiers.ts";
+import type { Tier } from "../core/assets/tiers.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { CELL, mipOffset } from "../../shared/pack/details.ts";
 import { INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, detailsAtlas, textureOf, type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
@@ -27,6 +27,8 @@ interface Program {
   /** The step its shared uniforms were last set for, and the alpha a flat draw last gave it. */
   pass: number;
   alpha: number;
+  /** Its texts until its link is checked, the first time it is drawn with, and null after. */
+  text: ProgramText | null;
 }
 
 interface MeshLod {
@@ -51,6 +53,8 @@ const FORMATS: Readonly<Record<TextureFormat, readonly number[]>> = {
   astc: [0x93d0, 0x93b0, 0x93b0],
   rgba: [0x8c43, 0x822b, 0x8058],
 };
+/** Frames that upload a frame that asks the card for an error: a want of memory is known within about 130 ms at 60 a second. */
+const ASK_EVERY = 8;
 
 export class GlRenderer {
   readonly gl: WebGL2RenderingContext;
@@ -68,9 +72,13 @@ export class GlRenderer {
   private shadow = { texture: null as WebGLTexture | null, targets: [] as WebGLFramebuffer[], size: 0 };
   /** The program, level, buffer and first instance the last draw bound, which the next may share. */
   private readonly held: unknown[] = [];
-  /** Each tier's programs by name, as client/core/render/programs.ts lists them, made as a frame of that tier first asks; one linked for each name and text, which copies of a tier share. */
+  /**
+   * Each tier's programs by name, as client/core/render/programs.ts lists them, all begun when a frame of that tier
+   * first comes, `warmed`; one linked for each name and text, which copies of a tier share.
+   */
   private readonly programs = new Map<Tier, Map<string, Program>>();
   private readonly linked = new Map<string, Program>();
+  private warmed: Tier | null = null;
   /** Where the frame's GPU time goes (passes.ts), if anything times it. */
   passes: PassClock | null = null;
   /** A pixel for each map a material lacks or has not been sent, made the first time a frame draws with materials. */
@@ -92,9 +100,13 @@ export class GlRenderer {
   private blending = false;
   private culling = false;
   private covering = false;
-  /** Slots, and textures, this frame's uploads could not be given memory for. The shell tells core. */
+  /** Slots, and textures, this frame found uploads could not be given memory for. The shell tells core. */
   readonly failed: number[] = [];
   readonly failedTextures: number[] = [];
+  /** What was uploaded since the card was last asked for an error, and the frames that uploaded. */
+  private readonly unaskedSlots: number[] = [];
+  private readonly unaskedTextures: number[] = [];
+  private uploading = 0;
   private readonly buffers = new Map<number, WebGLBuffer>();
   private transient!: WebGLBuffer;
   private tileVao!: WebGLVertexArrayObject;
@@ -123,7 +135,7 @@ export class GlRenderer {
   private readonly forced: string | null;
 
   constructor(canvas: HTMLCanvasElement, pack: Pack, hf: Heightfield, manifest: Manifest, forced: string | null = null) {
-    const gl = canvas.getContext("webgl2", { antialias: true, powerPreference: "high-performance" });
+    const gl = canvas.getContext("webgl2", { alpha: false, antialias: true, powerPreference: "high-performance" });
     if (!gl) throw new Error("WebGL2 is not available in this browser");
     this.gl = gl;
     this.pack = pack;
@@ -150,10 +162,9 @@ export class GlRenderer {
     this.programs.clear();
     this.linked.clear();
     this.neutral = [];
-    this.current = null;
-    // The flat programs are made at once, so a device that cannot compile them says so at boot.
-    this.program("flat", tierOf(DEFAULT_TIER));
-    this.program("terrain", tierOf(DEFAULT_TIER));
+    this.current = this.warmed = null;
+    // Where the browser can, programs compile and link away from the page, which asks after one only to draw with it.
+    gl.getExtension("KHR_parallel_shader_compile");
     this.buffers.clear();
     this.textures.clear();
     this.making.clear();
@@ -357,7 +368,7 @@ export class GlRenderer {
     this.making.delete(t);
   }
 
-  /** The tier's program of this name, made the first time it is asked for. */
+  /** The tier's program of this name, begun the first time it is asked for. */
   private program(name: string, tier: Tier): Program {
     const made = this.programs.get(tier) ?? this.programs.set(tier, new Map()).get(tier)!;
     let prog = made.get(name);
@@ -365,8 +376,6 @@ export class GlRenderer {
     const text = PROGRAMS[name]!(tier, this.format, this.shadowLookup === "hard");
     const key = name + text.defines + text.vertex + text.fragment;
     made.set(name, (prog = this.linked.get(key) ?? this.linked.set(key, this.link(text)).get(key)!));
-    // A hurt body's program is made with the surface program, so the first one hurt in view waits on no compile.
-    if (name === "surface") this.program("surfaceLayer", tier);
     return prog;
   }
 
@@ -385,15 +394,25 @@ export class GlRenderer {
     if (cover !== this.covering) {
       if ((this.covering = cover)) gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE);
       else gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
-      // The coverage is in alpha, which would show through the page.
-      gl.colorMask(true, true, true, !cover);
     }
   }
 
-  /** Makes a program current, and the first time a step of the frame uses it sets what all its draws share: the frame's uniforms are set here and nowhere else. */
+  /**
+   * Makes a program current, the first time after checking its link, which waits for it, and pointing its samplers at
+   * their units; and the first time a step of the frame uses it sets what all its draws share: the frame's uniforms are
+   * set here and nowhere else.
+   */
   private use(name: string, p: FramePacket): Program {
     const gl = this.gl;
     const prog = this.program(name, p.tier);
+    if (prog.text) {
+      if (!gl.getProgramParameter(prog.program, gl.LINK_STATUS)) throw new Error("program: " + gl.getProgramInfoLog(prog.program) + gl.getAttachedShaders(prog.program)!.map((s) => gl.getShaderInfoLog(s)).join(""));
+      gl.useProgram((this.current = prog).program);
+      for (const s in prog.text.samplers) gl.uniform1i(prog.uniform(s), prog.text.samplers[s]!);
+      const block = gl.getUniformBlockIndex(prog.program, "Frame");
+      if (block !== gl.INVALID_INDEX) gl.uniformBlockBinding(prog.program, block, 0);
+      prog.text = null;
+    }
     if (this.current !== prog) gl.useProgram((this.current = prog).program);
     if (p.lit && prog.uniform("uWorldReady")) {
       this.maps(this.worldMaterial);
@@ -459,6 +478,7 @@ export class GlRenderer {
     const gl = this.gl;
     this.drawCalls = 0;
     this.failed.length = this.failedTextures.length = 0;
+    if (p.tier !== this.warmed) for (const name of tierPrograms((this.warmed = p.tier))) this.program(name, p.tier);
     this.passes?.mark(PASS_UPLOADS);
     for (const slot of p.assetDrops) this.drop(slot);
     for (const u of p.assetUploads) {
@@ -467,20 +487,23 @@ export class GlRenderer {
     }
     for (const t of p.texDrops) this.forget(t);
     for (const u of p.texUploads) this.fill(u);
-    // Running out of memory shows as an error after the fact. It is asked for only in a frame that uploaded, since
-    // asking makes the card catch up.
-    const error = p.assetUploads.length + p.texUploads.length > 0 ? gl.getError() : gl.NO_ERROR;
+    // Running out of memory shows as an error after the fact, and asking makes the page wait for the card, so it is
+    // asked in one of every ASK_EVERY frames that upload, and a want of memory fails all they uploaded.
+    for (const u of p.assetUploads) this.unaskedSlots.push(u.slot);
+    for (const u of p.texUploads) if (!this.unaskedTextures.includes(u.slot)) this.unaskedTextures.push(u.slot);
+    const asked = p.assetUploads.length + p.texUploads.length > 0 && ++this.uploading % ASK_EVERY === 0;
+    const error = asked ? gl.getError() : gl.NO_ERROR;
     if (error === gl.OUT_OF_MEMORY) {
-      for (const u of p.assetUploads) {
-        this.drop(u.slot);
-        this.failed.push(u.slot);
+      for (const slot of this.unaskedSlots) {
+        this.drop(slot);
+        this.failed.push(slot);
       }
-      for (const u of p.texUploads) {
-        if (this.failedTextures.includes(u.slot)) continue;
-        this.forget(u.slot);
-        this.failedTextures.push(u.slot);
+      for (const t of this.unaskedTextures) {
+        this.forget(t);
+        this.failedTextures.push(t);
       }
     } else if (error !== gl.NO_ERROR) this.errors++;
+    if (asked) this.unaskedSlots.length = this.unaskedTextures.length = 0;
     // Rows of a copy of the terrain window, from the heightfield as it lies, and the copy drawn with on its units.
     const [drawn, , , copy, i, j, row, rows] = p.groundWindow;
     gl.pixelStorei(gl.UNPACK_ROW_LENGTH, this.hf.nx);
@@ -550,7 +573,7 @@ export class GlRenderer {
       const water = (flags & DRAW_WATER) !== 0;
       const hand = p.drawHand[d]!;
       const layer = p.drawLayer[d]!;
-      const prog = this.use(textured ? (layer > 0 ? "surfaceLayer" : "surface") : (flags & DRAW_PULLED) !== 0 ? "pulled" : fade !== 0 || hand !== 0 ? "far" : water ? "water" : blend && p.split > 0 ? "seeThrough" : "flat", p);
+      const prog = this.use(drawProgram(p, d, this.materials[p.drawMaterial[d]!]), p);
       this.set(blend, !blend && (flags & DRAW_TWO_SIDED) === 0, (flags & DRAW_CUTOUT) !== 0);
       gl.uniform1f(prog.uniform("uSkin"), skinMode(flags, textured && lod.skin));
       const fades = prog.uniform("uHand");
@@ -572,7 +595,7 @@ export class GlRenderer {
     }
     // The terrain and the dome are drawn when there is no draw after them.
     while (step < STEP_FAR_SEE) this.step(p, ++step);
-    // The next frame's clear writes depth and every channel.
+    // The next frame's clear writes depth.
     this.set(false, this.culling, false);
     gl.depthRange(0, 1);
     gl.bindVertexArray(null);
@@ -696,7 +719,7 @@ export class GlRenderer {
   /**
    * The terrain tiles whose `tilePass` has `bit`, with the program of that name and its twin on the window's units: a
    * draw for the tiles that read each pair of pictures, with corner and stride in its samples, and spacing and size. The
-   * view draws both faces; a cascade the faces turned from the sun.
+   * view draws the ground's faces turned to it and both of its skirts'; a cascade the faces turned from the sun.
    */
   private tiles(p: FramePacket, bit: number, name: string): void {
     const gl = this.gl;
@@ -717,7 +740,7 @@ export class GlRenderer {
       gl.uniform1f(prog.uniform("uSolid"), 0);
       gl.uniform4f(prog.uniform("uField"), this.hf.minY, this.hf.stepY, g.cell[source]!, p.camY);
       gl.uniform2f(prog.uniform("uLast"), g.width[source]! - 1, g.height[source]! - 1);
-      this.set(false, name !== "terrain", false);
+      this.set(false, true, false);
       gl.bindVertexArray(this.tileVao);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.tileBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, data.subarray(0, n * 6), gl.DYNAMIC_DRAW);
@@ -725,6 +748,7 @@ export class GlRenderer {
       this.drawCalls++;
       // The skirts hide gaps between tiles from the view. Cast, they would stand under the ground.
       if (name !== "terrain") continue;
+      this.set(false, false, false);
       gl.enable(gl.POLYGON_OFFSET_FILL);
       gl.polygonOffset(0, SKIRT_BEHIND);
       gl.drawElementsInstanced(gl.TRIANGLES, this.tileIndexCount - this.tileGround, gl.UNSIGNED_SHORT, this.tileGround * 2, n);
@@ -741,7 +765,7 @@ export class GlRenderer {
     return [out[0]!, out[1]!, out[2]!];
   }
 
-  /** Compiles the texts as given, with the defines after their first line, the #version line, and points each sampler at its unit. */
+  /** Compiles and links the texts as given, with the defines after their first line, the #version line, asking nothing of either until `use`. */
   private link(text: ProgramText): Program {
     const gl = this.gl;
     const program = gl.createProgram()!;
@@ -749,20 +773,15 @@ export class GlRenderer {
       const shader = gl.createShader(type)!;
       gl.shaderSource(shader, source.replace("\n", "\n" + text.defines));
       gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error("shader: " + gl.getShaderInfoLog(shader));
       gl.attachShader(program, shader);
     }
     gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error("program: " + gl.getProgramInfoLog(program));
-    gl.useProgram(program);
-    for (const name in text.samplers) gl.uniform1i(gl.getUniformLocation(program, name), text.samplers[name]!);
-    const block = gl.getUniformBlockIndex(program, "Frame");
-    if (block !== gl.INVALID_INDEX) gl.uniformBlockBinding(program, block, 0);
     const cache = new Map<string, WebGLUniformLocation | null>();
     return {
       program,
       pass: -1,
       alpha: 1,
+      text,
       uniform(name) {
         if (!cache.has(name)) cache.set(name, gl.getUniformLocation(program, name));
         return cache.get(name)!;

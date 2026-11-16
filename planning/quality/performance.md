@@ -25,6 +25,7 @@ ASTC, 24-bit depth, 16 texture units, no timer queries.
 | P2 | `bun tools/bench/corpses.ts`, three runs on a busy machine, ranges | 2026-11-15 | branch `r9/p2-corpses` |
 | P10 | the hurt and decay layers' rows, once each on a busy machine (load 9 to 14) | 2026-11-15 | `r9/p10-layers` |
 | B | `bun tools/bench/budget.ts`, two runs after merging main, counts alike (load 2.3 on 10 cores) | 2026-11-15 | branch `r9/frame-budget` |
+| W | the bench through its siege, twice on a busy machine (load 10 to 44), for counts and bytes: protocol 21 | 2026-11-16 | branch `perf/built-wire` |
 | Dnnn | the measurement its decision records | | |
 | iPhone | the device page's reports (D349), kept in `planning/reference/device-reports`, named by UTC time | 2026-11-15 | |
 
@@ -79,8 +80,8 @@ garbage collector, and noise at this sample size (Q).
 | Crowd: every survivor and 2,000 creatures | 31.6 KB/s | 36 | M |
 | Crowd: bodies shown to a client that asked for 2,048; that never asked | 982 of 1,024; 452 of 512 | | M |
 | Breeding base, each survivor there | 32.3 KB/s | 34 | M |
-| Siege: 50 pieces of a 20,000-piece chunk damaged a tick | 26.0 KB/s | 30 | M |
-| A 1,512-piece house collapsing, each watcher, all of it | 2,843 bytes | 3,024 | M |
+| Siege: 50 pieces of a 20,000-piece chunk damaged a tick | 9.5 KB/s | 30 | W |
+| A 1,512-piece house collapsing, each watcher, all of it | 2,466 bytes | 3,024 | W |
 | Voice, 100 talking, each listener | 28.7 KB/s | 31 | M |
 | The map's feeds | 0.008 KB/s | 0.5 | M |
 | Far feed: first 20 s, mean and most; after; a siege watched | 27.9, 29.1 KB; 0.006 KB/s; 0.28 KB/s | none; 0.2; 2 | M |
@@ -104,7 +105,7 @@ the far feed delays no near chunk at any of six links, 50 ms clean to 180 ms wit
 | Fly 2,000 arrows, median, 99th; a blast in a 2,000-piece base, median, worst | 0.82, 1.50; 0.05, 0.45 ms | 2, 4; 1, 4 | R4 |
 | Brawl, median; siege, added to the tick | 2.0; 0.25 ms | 8; none | Q |
 | Siege: chunk writes in 10 s; commit median; commit writing the chunk | 10; 0.10 to 0.11; 4.9 to 5.1 ms (0.71 busy on M) | 11; 4; 10 | S, M |
-| Collapse of 1,512 pieces: ticks to the last; work a tick, median, worst | 32; 0.57, 1.6 to 4.3 ms | 60; 1.5, 3 | M; R4, S |
+| Collapse of 1,512 pieces: ticks to the last; work a tick, median, worst | 29; 0.57, 1.6 to 4.3 ms | 60; 1.5, 3 | W; R4, S |
 | The same: whole tick, worst; ask whether a piece stands | 7.5 to 8.5; 0.047 ms | 16; 0.1 | Q; R4 |
 | Voice: relay for a second of 100 talking; who hears whom, median, worst | 4.2; 0.19, 0.29 ms | 20; 0.5, 2 | R4 |
 | Breeding base: tick median before and with it; 99th; look for pairs, median, worst | 3.78, 4.13; 11.7; 0.11, 0.14 ms | 1.5 × before + 0.5; 16; 0.5, 2 | R4 |

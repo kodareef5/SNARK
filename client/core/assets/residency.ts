@@ -35,9 +35,15 @@ export interface AssetUpload {
   skinAt?: number;
 }
 
-/** Requests under way at once, and how many of them are kept for small parts so a large one never holds them up. */
+/**
+ * Requests under way at once, and how many of them are kept for small parts so a large one never holds them up. Over
+ * HTTP/1.1 a browser opens six connections to a host. HTTP/2 and 3 carry many requests on one, and there a first view
+ * of small parts is bound by round trips unless many are under way (D124).
+ */
 export const IN_FLIGHT = 6;
 export const SMALL_LANES = 2;
+export const IN_FLIGHT_SHARED = 24;
+export const SMALL_LANES_SHARED = 20;
 export const SMALL_PART = 256 * 1024;
 /** Nothing more is asked for while this many bytes have arrived and wait to go on the card. */
 export const WAITING_LIMIT = 16 * 1024 * 1024;
@@ -123,6 +129,8 @@ export class Residency {
   private readonly retryAt: Float64Array;
   private readonly rehashed: Uint8Array;
   private readonly drawn: Uint8Array;
+  /** Set on a level put on the card in a frame before its surface: it is kept, and drawn once the surface follows. */
+  private readonly apart: Uint8Array;
   private readonly data: (Uint8Array | null)[];
   /**
    * Two rings, one of levels and surfaces through `root` and one of textures through `texRoot`: what is resident and
@@ -172,6 +180,9 @@ export class Residency {
   /** Bytes of this frame's allowance spent on what is not an asset. */
   private spent = 0;
   private flyingLarge = 0;
+  /** How many requests may be under way, and how many of them are kept for small parts: more where the port's files come over HTTP/2 or 3. */
+  private inFlight = IN_FLIGHT;
+  private smallLanes = SMALL_LANES;
   /** Set in a frame in which something waited because the card was over-full, and in which a texture waited for room in the textures' share. */
   private full = false;
   private short = false;
@@ -223,6 +234,7 @@ export class Residency {
     this.retryAt = new Float64Array(slots);
     this.rehashed = new Uint8Array(slots);
     this.drawn = new Uint8Array(slots);
+    this.apart = new Uint8Array(this.levels);
     this.data = new Array<Uint8Array | null>(slots).fill(null);
     this.prev = new Int32Array(slots + 4);
     this.next = new Int32Array(slots + 4);
@@ -368,6 +380,9 @@ export class Residency {
     this.texMarked = 0;
     if (this.format !== this.made) this.remake();
     if (!this.port) return;
+    const shared = this.port.protocol === "h2" || this.port.protocol.startsWith("h3");
+    this.inFlight = shared ? IN_FLIGHT_SHARED : IN_FLIGHT;
+    this.smallLanes = shared ? SMALL_LANES_SHARED : SMALL_LANES;
     const n = this.port.take(this.arrivals);
     for (let i = 0; i < n; i++) {
       const a = this.arrivals[i]!;
@@ -524,6 +539,7 @@ export class Residency {
       this.ledger += this.size[slot]!;
       this.fromBoot.push(slot);
     } else return false;
+    if (slot < this.levels && this.apart[slot] === 1) return false;
     if (this.drawn[slot] === 0) {
       this.drawn[slot] = 1;
       if (this.inBoot[slot] === 0) this.stats.used += this.size[slot]!;
@@ -591,7 +607,7 @@ export class Residency {
   held(mesh: number): number {
     let bits = 0;
     const base = this.first[mesh]!;
-    for (let s = base; s < this.first[mesh + 1]!; s++) if (this.state[s] === RESIDENT || this.inBoot[s] === 1) bits |= 1 << (s - base);
+    for (let s = base; s < this.first[mesh + 1]!; s++) if ((this.state[s] === RESIDENT && this.apart[s] === 0) || this.inBoot[s] === 1) bits |= 1 << (s - base);
     return bits;
   }
 
@@ -749,6 +765,7 @@ export class Residency {
         this.state[slot] = ABSENT;
         this.stats.cancelled++;
       } else if (this.state[slot] === ARRIVED && idle && (slot < this.texBase || this.gone[slot - this.texBase] === 0)) {
+        if (slot >= this.levels && slot < this.texBase) this.apart[slot - this.levels] = 0;
         this.data[slot] = null;
         this.waiting -= this.size[slot]!;
         this.undo(slot);
@@ -775,8 +792,9 @@ export class Residency {
         if (this.state[slot] === ARRIVED) this.under[kept++] = slot;
         continue;
       }
-      // A surface goes up with its level, or after it.
-      const pair = slot < this.levels && this.state[this.levels + slot] === ARRIVED ? this.levels + slot : -1;
+      // A surface goes up with its level, or in a later frame where the two would pass what this one has left.
+      let pair = slot < this.levels && this.state[this.levels + slot] === ARRIVED ? this.levels + slot : -1;
+      if (pair >= 0 && sent + this.size[slot]! + this.size[pair]! > this.uploadBytes) pair = -1;
       const bytes = this.size[slot]! + (pair < 0 ? 0 : this.size[pair]!);
       if ((slot >= this.levels && this.state[slot - this.levels] !== RESIDENT) || (sent > this.spent && sent + bytes > this.uploadBytes)) {
         this.under[kept++] = slot;
@@ -791,12 +809,13 @@ export class Residency {
       }
       this.take(slot, uploads);
       if (pair >= 0) this.take(pair, uploads);
+      else if (slot < this.levels && this.state[this.levels + slot] === ARRIVED) this.apart[slot] = 1;
       sent += bytes;
     }
     this.under.length = kept;
 
     for (const slot of this.wants.sort(byUrgency)) {
-      if (this.flying >= IN_FLIGHT || this.waiting >= WAITING_LIMIT) break;
+      if (this.flying >= this.inFlight || this.waiting >= WAITING_LIMIT) break;
       if (this.state[slot] !== ABSENT || this.retryAt[slot]! > nowMs) continue;
       let bytes = this.size[slot]!;
       let rider = -1;
@@ -821,10 +840,10 @@ export class Residency {
           bytes += this.size[s]!;
         }
       }
-      if (bytes > SMALL_PART && this.flyingLarge >= IN_FLIGHT - SMALL_LANES) continue;
+      if (bytes > SMALL_PART && this.flyingLarge >= this.inFlight - this.smallLanes) continue;
       this.ask(slot, rider, goal);
     }
-    if ((this.short || this.texLedger > this.texBudget) && this.shrinking === 0 && this.flying < IN_FLIGHT && this.waiting < WAITING_LIMIT) this.shrink(nowMs);
+    if ((this.short || this.texLedger > this.texBudget) && this.shrinking === 0 && this.flying < this.inFlight && this.waiting < WAITING_LIMIT) this.shrink(nowMs);
 
     this.texRoom(0, this.texBudget, texDrops);
     this.makeRoom(0, drops);
@@ -860,6 +879,7 @@ export class Residency {
 
   /** A level or a surface that has arrived goes on the card. */
   private take(slot: number, uploads: AssetUpload[]): void {
+    this.apart[slot < this.levels ? slot : slot - this.levels] = 0;
     this.upload(slot, this.data[slot]!, uploads);
     this.data[slot] = null;
     this.state[slot] = RESIDENT;
@@ -967,7 +987,7 @@ export class Residency {
     }
     if (best < 0) return;
     const bytes = this.through[best * STEPS + to]!;
-    if (this.texMarked + this.texComing + bytes > this.texBudget * OVERFLOW || (bytes > SMALL_PART && this.flyingLarge >= IN_FLIGHT - SMALL_LANES)) return;
+    if (this.texMarked + this.texComing + bytes > this.texBudget * OVERFLOW || (bytes > SMALL_PART && this.flyingLarge >= this.inFlight - this.smallLanes)) return;
     this.down[best] = 1;
     this.shrinking++;
     this.ask(this.texBase + best, -1, to);

@@ -51,6 +51,18 @@ export function decodeTake(data: Uint8Array, samples: number, out: Float32Array)
   return out.length >= samples && samples > 0 && decodeTransform(data, samples, out);
 }
 
+/** Takes one after another in `data`, as the manifest gives them, decoded; null if any is not such a take. */
+export function decodeTakes(data: Uint8Array, takes: readonly { samples: number; bytes: number }[]): Float32Array<ArrayBuffer>[] | null {
+  const out: Float32Array<ArrayBuffer>[] = [];
+  let at = 0;
+  for (const t of takes) {
+    const samples = new Float32Array(t.samples);
+    if (!decodeTake(data.subarray(at, (at += t.bytes)), t.samples, samples)) return null;
+    out.push(samples);
+  }
+  return out;
+}
+
 /** What is wrong with a manifest's sounds against its files, or "" if nothing. */
 export function soundFault(sounds: readonly ManifestSound[], files: readonly { role: string; bytes: number }[]): string {
   const seen = new Set<string>();

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { BitReader, BitWriter, fitBytes } from "../../shared/net/codec.ts";
+import { BitReader, BitWriter, Named, fitBytes } from "../../shared/net/codec.ts";
 import { MAX_PLACE_NAME_BYTES } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
 
@@ -76,4 +76,21 @@ test("a place a survivor rises at keeps a long name: San Francisco's 30-byte spa
   expect(new TextEncoder().encode(b).length).toBeLessThanOrEqual(MAX_PLACE_NAME_BYTES);
   expect(longer.startsWith(b) && b.length > 0).toBe(true);
   expect(fitBytes("ab", 1)).toBe("a");
+});
+
+test("a value named again goes as its place among those named before, in as few bits as their count needs", () => {
+  const w = new BitWriter(64);
+  const out = new Named();
+  const values = [7, 300, 7, 7, 12, 300, 65535, 12];
+  for (const v of values) out.write(w, v, 16);
+  // Each new one is 17 bits. Named among two, 2 bits; among three or four, 3.
+  expect(w.pos).toBe(17 + 17 + 2 + 2 + 17 + 3 + 17 + 3);
+  const r = new BitReader(w.bytes());
+  const back = new Named();
+  expect(values.map(() => back.read(r, 16))).toEqual(values);
+  const v = new BitWriter(16);
+  out.reset();
+  out.write(v, 70000, 0);
+  out.write(v, 70000, 0);
+  expect(v.pos).toBe(1 + 24 + 1);
 });

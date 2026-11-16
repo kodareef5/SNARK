@@ -1,11 +1,10 @@
 // Which sounds of a build the game can play with its content, so that the client's file holds those and no others. A
 // sound is heard when a cue the client fires (status built or fire, shared/sound/cues.ts) finds it first for an owner
 // that asks: any definition, the interface or the world. A creature's own sounds are all heard, since its idles and its
-// cue sheet name them by its clips. A vehicle is asked its vehicle cues only when the client hears its kind: a rotor or
-// a boat (client/core/sound/vehicles.ts); a car hears nothing yet.
+// cue sheet name them by its clips. Every vehicle is asked the vehicle cues the client fires (client/core/sound/vehicles.ts),
+// falling back through its families to the shared car's.
 
 import type { Registry } from "../content/registry.ts";
-import { isBoatVehicle, isRotorVehicle } from "../sim/vehicle.ts";
 import { KEYS, candidates, vehicleFamilies, type CueKey } from "./cues.ts";
 
 const FIRED = KEYS.filter((k) => k.cue.status === "built" || k.cue.status === "fire");
@@ -30,7 +29,7 @@ export function soundsHeard(ids: readonly string[], reg: Registry): Set<string> 
     const d = reg.defs[kind];
     if (!d) continue;
     const v = reg.vehicle[kind];
-    if (v && (isRotorVehicle(v) || isBoatVehicle(v))) ask(d.id, FIRED, vehicleFamilies(d.id, "aliases" in d ? (d.aliases ?? []) : []));
+    if (v) ask(d.id, FIRED, vehicleFamilies(d.id, "aliases" in d ? (d.aliases ?? []) : []));
     else ask(d.id, owners.has(d.id) ? SHARED : NAMED);
     if (d.type === "species" && d.class === "creature") for (const id of have) if (id.startsWith(`${d.id}/sound/`)) out.add(id);
   }

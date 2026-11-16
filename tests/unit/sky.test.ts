@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME as F, FRAME_FLOATS } from "../../client/core/render/packet.ts";
-import { SKY_SIZE, SKY_SLICES, aroundOf, cardTakes, decodeTexel, domeLight, elevationOf, encodeTexel, flatCard, hourOfSun, luminance, sampleSky, shownSky, skyFrame, sliceHeight, sunDirection, sunHeight, sunTravel, texelAt, theSky, trueSun } from "../../client/core/render/sky.ts";
+import { SKY_SIZE, SKY_SLICES, aroundOf, cardTakes, decodeTexel, domeLight, elevationOf, encodeTexel, flatCard, giveSky, hourOfSun, luminance, sampleSky, shownSky, skyFile, skyFrame, sliceHeight, sunDirection, sunHeight, sunTravel, texelAt, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { linearToSrgb, skyLight, srgbToLinear } from "../../client/core/render/surface.ts";
 import { SkyBuilder } from "../../tools/sky/build.ts";
 import { apart, basePoints, cardColours, domeApart, hueApart, keyCards } from "../../tools/sky/fit.ts";
@@ -128,6 +128,14 @@ test("the committed table is what the tool makes, and its bytes hold the sky to 
     }
     expect(step).toBeLessThanOrEqual(1);
   }
+});
+
+test("a page's build stores the table as a file a page gives back byte for byte", () => {
+  const table = sky.table.slice();
+  giveSky(skyFile(table));
+  expect(theSky().table).toEqual(table);
+  expect(theSky().lights).toEqual(sky.lights);
+  expect(() => giveSky(skyFile(table).subarray(4))).toThrow("the sky's table is 262140 bytes");
 });
 
 test("the morning and the evening have skies of their own: with the sun 2 degrees up the morning shows dawn's key and the evening the way from golden hour to sunset", () => {

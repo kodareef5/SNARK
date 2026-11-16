@@ -5,7 +5,7 @@
 // played by the game's own rules.
 
 import { parseManifest } from "../../shared/pack/manifest.ts";
-import { decodeTake, type ManifestSound } from "../../shared/pack/sound.ts";
+import { decodeTakes, type ManifestSound } from "../../shared/pack/sound.ts";
 import { listSounds, takesOf, type ListedOwner, type Variant } from "../core/sound/listing.ts";
 import { distanceGain, lowpassAt, semitones } from "../core/sound/place.ts";
 
@@ -28,12 +28,10 @@ async function buffers(name: string, s: ManifestSound): Promise<AudioBuffer[]> {
     void answer.body?.cancel();
     throw new Error(`the server sent ${answer.status} for a range of ${name}`);
   }
-  const data = new Uint8Array(await answer.arrayBuffer());
-  let at = 0;
-  const out = s.takes.map((t) => {
-    const samples = new Float32Array(t.samples);
-    decodeTake(data.subarray(at, (at += t.bytes)), t.samples, samples);
-    const b = new AudioBuffer({ length: t.samples, numberOfChannels: 1, sampleRate: s.rate });
+  const takes = decodeTakes(new Uint8Array(await answer.arrayBuffer()), s.takes);
+  if (!takes) throw new Error(`${s.id} does not decode`);
+  const out = takes.map((samples) => {
+    const b = new AudioBuffer({ length: samples.length, numberOfChannels: 1, sampleRate: s.rate });
     b.copyToChannel(samples, 0);
     return b;
   });

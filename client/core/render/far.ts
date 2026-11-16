@@ -113,7 +113,7 @@ export function farColours(reg: Registry, pack: Pack, meshOf: (kind: number) => 
     const index = readIndices(pack, lod);
     const own = shapes.tint[k]!;
     for (let t = 0; t < index.length; t += 3) {
-      const [a, b, c] = [index[t]!, index[t + 1]!, index[t + 2]!];
+      const a = index[t]!, b = index[t + 1]!, c = index[t + 2]!;
       const u = [0, 1, 2].map((i) => at(b, i) - at(a, i));
       const v = [0, 1, 2].map((i) => at(c, i) - at(a, i));
       const area = Math.hypot(u[1]! * v[2]! - u[2]! * v[1]!, u[2]! * v[0]! - u[0]! * v[2]!, u[0]! * v[1]! - u[1]! * v[0]!);
@@ -127,8 +127,10 @@ export function farColours(reg: Registry, pack: Pack, meshOf: (kind: number) => 
   for (let c = 0; c < 256; c++) {
     const area = sums[c * 4 + 3]!;
     if (area === 0) continue;
-    const [r, g, b] = [0, 1, 2].map((i) => Math.round(linearToSrgb(sums[c * 4 + i]! / area) * 255));
-    if (r !== pal[c * 4] || g !== pal[c * 4 + 1] || b !== pal[c * 4 + 2]) out[c] = nearestColour(pal, r!, g!, b!);
+    const r = Math.round(linearToSrgb(sums[c * 4]! / area) * 255);
+    const g = Math.round(linearToSrgb(sums[c * 4 + 1]! / area) * 255);
+    const b = Math.round(linearToSrgb(sums[c * 4 + 2]! / area) * 255);
+    if (r !== pal[c * 4] || g !== pal[c * 4 + 1] || b !== pal[c * 4 + 2]) out[c] = nearestColour(pal, r, g, b);
   }
   return out;
 }
@@ -231,7 +233,8 @@ export function farPart(cells: FarCells, x0: number, z0: number, ox: number, oz:
       face(x0 + i * C, tops[c]!, z0 + j * C, 0, 0, d * C, w * C, 0, 0, tint[c]!);
     }
   }
-  for (const [di, dj] of WAYS) {
+  for (const way of WAYS) {
+    const di = way[0], dj = way[1];
     for (let line = 0; line < SIDE; line++) {
       // The run of sides being merged: where it began, the top, the neighbour's top and the colour each of it has, and
       // its bottom. A side down to the ground goes to the lowest foot of its run, which is under the ground everywhere.
@@ -393,12 +396,15 @@ export class FarBlocks {
     // both ways or neither. Any other waits its turn, nearest first, a few a frame.
     const waiting = this.waiting;
     waiting.length = 0;
-    for (const [t, tile] of this.tiles) {
+    for (const t of this.tiles.keys()) {
+      const tile = this.tiles.get(t)!;
       const off = this.off(t, x, z);
       if (!this.on || off > reach + FAR_TILE_METRES) {
         // Out of reach by a tile: let go of it, and make it again if it comes back.
         if (tile.slot >= 0) p.assetDrops.push(tile.slot);
-        [tile.slot, tile.data, tile.dirty] = [-1, null, true];
+        tile.slot = -1;
+        tile.data = null;
+        tile.dirty = true;
         this.forget(t);
       } else if (off <= reach && tile.dirty) {
         if (off < FAR_NOW) this.remake(p, t, tile);
@@ -408,7 +414,8 @@ export class FarBlocks {
     waiting.sort((a, b) => this.off(a, x, z) - this.off(b, x, z));
     for (let k = 0; k < Math.min(FAR_MAKES, waiting.length); k++) this.remake(p, waiting[k]!, this.tiles.get(waiting[k]!)!);
     let bytes = 0;
-    for (const [t, tile] of this.tiles) {
+    for (const t of this.tiles.keys()) {
+      const tile = this.tiles.get(t)!;
       if (!tile.data) continue;
       if (tile.slot < 0 && this.off(t, x, z) <= reach) {
         tile.slot = FAR_SLOTS + this.next;
@@ -431,20 +438,21 @@ export class FarBlocks {
    * tile's slot and triangles, where its corner is from the camera, and the depth ranges its box is in.
    */
   draw(cam: Camera, reach: number, put: (slot: number, triangles: number, ox: number, oy: number, oz: number, passes: number) => void): void {
-    for (const [t, tile] of this.tiles) {
+    for (const t of this.tiles.keys()) {
+      const tile = this.tiles.get(t)!;
       if (tile.slot < 0) continue;
       const b = tile.box;
-      const [ax, ay, az, bx, by, bz] = [b[0]! - cam.x, b[1]! - cam.y, b[2]! - cam.z, b[3]! - cam.x, b[4]! - cam.y, b[5]! - cam.z];
+      const ax = b[0]! - cam.x, ay = b[1]! - cam.y, az = b[2]! - cam.z, bx = b[3]! - cam.x, by = b[4]! - cam.y, bz = b[5]! - cam.z;
       const near = Math.hypot(Math.max(ax, -bx, 0), Math.max(ay, -by, 0), Math.max(az, -bz, 0));
       if (near >= reach || !cam.boxVisible(ax, ay, az, bx, by, bz)) continue;
-      const [ox, oz] = this.corner(t);
+      const ox = this.cornerX(t), oz = this.cornerZ(t);
       put(tile.slot, tile.indexCount / 3, ox - cam.x, tile.base - cam.y, oz - cam.z, cam.passes(ax, ay, az, bx, by, bz));
     }
   }
 
   /** Metres from (x, z) to tile `t`'s square. */
   private off(t: number, x: number, z: number): number {
-    const [ox, oz] = this.corner(t);
+    const ox = this.cornerX(t), oz = this.cornerZ(t);
     return Math.hypot(Math.max(ox - x, x - ox - FAR_TILE_METRES, 0), Math.max(oz - z, z - oz - FAR_TILE_METRES, 0));
   }
 
@@ -463,8 +471,13 @@ export class FarBlocks {
     return Math.floor(cz / FAR_TILE) * this.tilesX + Math.floor(cx / FAR_TILE);
   }
 
-  private corner(t: number): [number, number] {
-    return [(t % this.tilesX) * FAR_TILE_METRES, Math.floor(t / this.tilesX) * FAR_TILE_METRES];
+  /** Tile `t`'s corner nearest the map's origin, in metres. */
+  private cornerX(t: number): number {
+    return (t % this.tilesX) * FAR_TILE_METRES;
+  }
+
+  private cornerZ(t: number): number {
+    return Math.floor(t / this.tilesX) * FAR_TILE_METRES;
   }
 
   private touch(chunk: number): void {
@@ -476,8 +489,8 @@ export class FarBlocks {
 
   /** The chunks of tile `t`, by calling `each` with each that is on the map. */
   private chunks(t: number, each: (chunk: number, x0: number, z0: number) => void): void {
-    const [ox, oz] = this.corner(t);
-    const [cx0, cz0] = [ox / CHUNK_SIZE, oz / CHUNK_SIZE];
+    const ox = this.cornerX(t), oz = this.cornerZ(t);
+    const cx0 = ox / CHUNK_SIZE, cz0 = oz / CHUNK_SIZE;
     for (let cz = cz0; cz < Math.min(cz0 + FAR_TILE, this.dims.chunksZ); cz++) for (let cx = cx0; cx < Math.min(cx0 + FAR_TILE, this.dims.chunksX); cx++) each(cz * this.dims.chunksX + cx, cx * CHUNK_SIZE, cz * CHUNK_SIZE);
   }
 
@@ -487,7 +500,7 @@ export class FarBlocks {
 
   /** Makes tile `t`'s mesh of the parts of its chunks drawn far, or none if it has none. */
   private make(t: number, tile: Tile): void {
-    const [ox, oz] = this.corner(t);
+    const ox = this.cornerX(t), oz = this.cornerZ(t);
     const list = this.list;
     list.length = 0;
     let faces = 0;
@@ -510,13 +523,16 @@ export class FarBlocks {
       return;
     }
     const base = (tile.base = Math.floor(box[1]!));
-    [box[0], box[2], box[3], box[5]] = [box[0]! + ox, box[2]! + oz, box[3]! + ox, box[5]! + oz];
+    box[0] = box[0]! + ox;
+    box[2] = box[2]! + oz;
+    box[3] = box[3]! + ox;
+    box[5] = box[5]! + oz;
     const verts = faces * 4;
     const indexBytes = verts > 65535 ? 4 : 2;
     const at = (faces * 6 * indexBytes + 3) & ~3;
     const data = new Uint8Array(at + verts * VERTEX_BYTES);
     const view = new DataView(data.buffer);
-    const [c, h] = [this.center, this.half];
+    const c = this.center, h = this.half;
     const q = (v: number, a: number): number => Math.max(-32767, Math.min(32767, Math.round(((v - c[a]!) / h[a]!) * 32767)));
     let v = 0;
     let k = 0;
@@ -537,6 +553,8 @@ export class FarBlocks {
         data[o + 6] = color[i]!;
       }
     }
-    [tile.data, tile.indexCount, tile.indexBytes] = [data, faces * 6, indexBytes];
+    tile.data = data;
+    tile.indexCount = faces * 6;
+    tile.indexBytes = indexBytes;
   }
 }

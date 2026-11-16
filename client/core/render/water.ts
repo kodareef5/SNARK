@@ -96,7 +96,7 @@ type Vec = ArrayLike<number>;
 
 /** Where the camera is over a layer's tiles after `seconds` of its wind, a share of a tile along each of the picture's axes. */
 function over(layer: WaveLayer, x: number, z: number, seconds: number, out: Out, at: number): void {
-  const [c, s] = [Math.cos(layer.turn), Math.sin(layer.turn)];
+  const c = Math.cos(layer.turn), s = Math.sin(layer.turn);
   const u = (c * x + s * z - layer.speed * seconds) / layer.span;
   const v = (c * z - s * x) / layer.span;
   out[at] = u - Math.floor(u);
@@ -137,8 +137,8 @@ function floorAt(sample: (i: number, j: number) => number, last: [number, number
   const cv = Math.max(0, Math.min(last[1], v));
   const i = Math.min(Math.floor(cu), last[0] - 1);
   const j = Math.min(Math.floor(cv), last[1] - 1);
-  const [fu, fv] = [cu - i, cv - j];
-  const [h00, h11] = [sample(i, j), sample(i + 1, j + 1)];
+  const fu = cu - i, fv = cv - j;
+  const h00 = sample(i, j), h11 = sample(i + 1, j + 1);
   if (fu >= fv) {
     const h10 = sample(i + 1, j);
     return h00 + (h10 - h00) * fu + (h11 - h10) * fv;
@@ -187,10 +187,10 @@ const sun = [0, 0, 0];
  * Smith's term and Schlick's edge from SEA_F0, as surface.ts `direct` has them.
  */
 function glint(out: Out, frame: Vec, way: number, colour: number, a2: number, n: Vec, v: Vec, nv: number): void {
-  const [lx, ly, lz] = [frame[way]!, frame[way + 1]!, frame[way + 2]!];
+  const lx = frame[way]!, ly = frame[way + 1]!, lz = frame[way + 2]!;
   const nl = Math.max(n[0]! * lx + n[1]! * ly + n[2]! * lz, 0);
   if (nl === 0) return;
-  const [hx, hy, hz] = [lx + v[0]!, ly + v[1]!, lz + v[2]!];
+  const hx = lx + v[0]!, hy = ly + v[1]!, hz = lz + v[2]!;
   const hl = Math.max(Math.hypot(hx, hy, hz), 1e-6);
   const nh = Math.min(Math.max((n[0]! * hx + n[1]! * hy + n[2]! * hz) / hl, 1e-4), 1);
   const vh = Math.min(Math.max((v[0]! * hx + v[1]! * hy + v[2]! * hz) / hl, 0), 1);
@@ -284,13 +284,13 @@ const vec3 = (c: readonly number[]): string => `vec3(${c.map(g).join(", ")})`;
 
 /** Where a layer's picture is read for the camera-relative point `rel`: in its turned tiles, moved by `at`. */
 const tiles = (layer: WaveLayer, at: string): string => {
-  const [c, s] = [Math.cos(layer.turn) / layer.span, Math.sin(layer.turn) / layer.span];
+  const c = Math.cos(layer.turn) / layer.span, s = Math.sin(layer.turn) / layer.span;
   return `vec2(${g(c)} * rel.x + ${g(s)} * rel.y, ${g(c)} * rel.y - ${g(s)} * rel.x) + ${at}`;
 };
 
 /** A layer's slopes from its texel `t`, turned back to the world's x and z and drawn at its strength. */
 const slopes = (layer: WaveLayer, t: string): string => {
-  const [c, s] = [Math.cos(layer.turn), Math.sin(layer.turn)].map((v) => (v * SLOPE_MOST * layer.gain) / 127) as [number, number];
+  const c = (Math.cos(layer.turn) * SLOPE_MOST * layer.gain) / 127, s = (Math.sin(layer.turn) * SLOPE_MOST * layer.gain) / 127;
   return `mat2(${g(c)}, ${g(s)}, ${g(-s)}, ${g(c)}) * (${t}.xy * 255.0 - 128.0)`;
 };
 
@@ -320,6 +320,7 @@ ${LIGHT}${SHADOW_GLSL}${AIR}${SEE_THROUGH_SPLIT}float floorAt(highp usampler2D h
 }
 // The twin of glint: a light's glint off facets whose slopes spread by Gauss with variance a2.
 vec3 glint(vec3 l, vec3 colour, float a2, vec3 n, vec3 v, float nv) {
+  if (colour.r + colour.g + colour.b <= 0.0) return vec3(0.0);
   float nl = max(dot(n, l), 0.0);
   vec3 h = normalize(l + v);
   float c2 = max(dot(n, h), 0.0001);

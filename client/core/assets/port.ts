@@ -79,4 +79,6 @@ export interface AssetPort {
   fill(parts: readonly { file: number; part: AssetPart }[]): void;
   /** Bytes kept between visits and the most that may be, where they are kept, and how many parts asked for with `fill` are still to come. */
   readonly cache: { used: number; limit: number; mode: "disk" | "memory" | "none"; filling: number };
+  /** How the files come, as the browser names it: "http/1.1", "h2", "h3", or "" while not known. */
+  readonly protocol: string;
 }

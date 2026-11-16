@@ -26,7 +26,7 @@ export class RotorBlur {
   begin(): void {
     this.count = 0;
     this.frame++;
-    for (const [id, state] of this.previous) if (state.frame < this.frame - 2) this.previous.delete(id);
+    for (const id of this.previous.keys()) if (this.previous.get(id)!.frame < this.frame - 2) this.previous.delete(id);
   }
 
   /** Add only after the body's bones are posed, and only for bodies the frame actually draws. */
@@ -36,7 +36,10 @@ export class RotorBlur {
     const previous = this.previous.get(key);
     // Hysteresis keeps an interpolated RPM near the transition from blinking the discrete blades on and off.
     const blurred = hz >= (previous?.blurred ? 10 : 12);
-    this.previous.set(key, { frame: this.frame, blurred });
+    if (previous) {
+      previous.frame = this.frame;
+      previous.blurred = blurred;
+    } else this.previous.set(key, { frame: this.frame, blurred });
     const n = this.count++, o = n * DETAIL_FLOATS;
     this.order[n] = n;
     const out = this.cards, r = rotor.radius * size;
@@ -44,8 +47,9 @@ export class RotorBlur {
     out[o] = this.point[0]! + x; out[o + 1] = this.point[1]! + y; out[o + 2] = this.point[2]! + z;
     // Pick a stable basis of the local rotor plane, then turn it with the full vehicle attitude.
     const [nx, ny, nz] = rotor.axis;
-    const [tx, ty, tz] = Math.abs(ny) < .9 ? [-nz, 0, nx] : [ny, -nx, 0];
-    const length = Math.hypot(tx!, ty!, tz!), ax = tx! / length, ay = ty! / length, az = tz! / length;
+    const tilted = Math.abs(ny) < .9;
+    const tx = tilted ? -nz : ny, ty = tilted ? 0 : -nx, tz = tilted ? nx : 0;
+    const length = Math.hypot(tx, ty, tz), ax = tx / length, ay = ty / length, az = tz / length;
     quatRotate(q, 0, ax * r, ay * r, az * r, this.point, 0);
     out.set(this.point, o + DETAIL.across);
     quatRotate(q, 0, (ny * az - nz * ay) * r, (nz * ax - nx * az) * r, (nx * ay - ny * ax) * r, this.point, 0);
@@ -72,12 +76,14 @@ export class RotorBlur {
 
   /** The caller reserves `count` entries before cosmetic particles; cards are kept far to near. */
   write(p: FramePacket): void {
+    if (this.count === 0) return;
     const cards = this.cards, order = this.order.subarray(0, this.count);
     const distance = (i: number) => { const o = i * DETAIL_FLOATS; return cards[o]! ** 2 + cards[o + 1]! ** 2 + cards[o + 2]! ** 2; };
     order.sort((a, b) => distance(b) - distance(a));
+    // As words, so that every bit of the colours is kept.
     for (const n of order) {
-      const o = n * DETAIL_FLOATS;
-      p.details.set(cards.subarray(o, o + DETAIL_FLOATS), p.detailCount++ * DETAIL_FLOATS);
+      const from = n * DETAIL_FLOATS, to = p.detailCount++ * DETAIL_FLOATS;
+      for (let f = 0; f < DETAIL_FLOATS; f++) p.detailWords[to + f] = this.words[from + f]!;
     }
   }
 
