@@ -47,7 +47,8 @@ const ZONES: Zone[] = [
   { dir: "client/voice", may: ["shared", "client/core", "client/voice"], builtins: false },
   { dir: "client/assets", may: ["shared", "client/core", "client/assets"], builtins: false },
   { dir: "client/sound", may: ["shared", "client/core", "client/sound"], builtins: false },
-  { dir: "client/shell", may: ["shared", "content", "client/core", "client/voice", "client/assets", "client/sound", "client/shell"], builtins: false },
+  { dir: "client/city", may: ["shared", "client/core", "client/city"], builtins: false },
+  { dir: "client/shell", may: ["shared", "content", "client/core", "client/voice", "client/assets", "client/sound", "client/city", "client/shell"], builtins: false },
   { dir: "server", may: ["shared", "content", "server", "server/api"], builtins: true },
   // What a module is written against. It names nothing of the server's own.
   { dir: "server/api", may: ["shared", "server/api"], builtins: false },

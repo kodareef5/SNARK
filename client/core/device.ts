@@ -27,6 +27,7 @@ import { DEFAULT_TIER, TIERS, tierOf, type Tier } from "./assets/tiers.ts";
 import { FrameTimer, GPU_PLAN, GpuQuestions, type Gl2, type GpuReport, type PassTime } from "./devicegpu.ts";
 import { BodyCopies, LOOK, TextureMemory, boxBase, farBases, farSpots, rocks } from "./devicescene.ts";
 import { CITY_BUFFER } from "./render/farcity.ts";
+import { FAR_BUFFER } from "./render/far.ts";
 import { FAR_NODE_BUFFERS } from "./render/farnodes.ts";
 import { donePage, progressText, startPage } from "./devicetext.ts";
 import { DRAW_TEXTURED, FRAME, SOURCE_WINDOW, TILE_CASTS, TILE_QUADS, type FramePacket } from "./render/packet.ts";
@@ -1595,7 +1596,7 @@ export class DeviceRun {
     this.sample(gap, buildMs, drawMs, drawCalls, p);
     // The far bases' draws, or the far trees', rocks' and bushes'.
     let draws = 0;
-    for (let d = 0; d < p.drawCount; d++) if (g.wood ? p.drawBuffer[d]! >= FAR_NODE_BUFFERS && p.drawBuffer[d]! < FAR_NODE_BUFFERS * 2 : p.drawFade[d]! > 0) draws++;
+    for (let d = 0; d < p.drawCount; d++) if (g.wood ? p.drawBuffer[d]! >= FAR_NODE_BUFFERS && p.drawBuffer[d]! < FAR_NODE_BUFFERS * 2 : p.drawBuffer[d] === FAR_BUFFER) draws++;
     g.draws.push(draws);
     g.gpu.push(...(frames?.take() ?? []).map((t) => t.ms));
     if (now - this.at < this.timing.rungMs) return false;

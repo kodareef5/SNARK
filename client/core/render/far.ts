@@ -441,9 +441,10 @@ export class FarBlocks {
 
   /**
    * Calls `put` for each tile on the card whose nearest point is within `reach` of the camera and in its view: the
-   * tile's slot and triangles, where its corner is from the camera, and the depth ranges its box is in.
+   * tile's slot and triangles, where its corner is from the camera, the depth ranges its box is in, and where it is gone:
+   * the reach, or 0 for a tile wholly short of the last `share` of it, where nothing fades.
    */
-  draw(cam: Camera, reach: number, put: (slot: number, triangles: number, ox: number, oy: number, oz: number, passes: number) => void): void {
+  draw(cam: Camera, reach: number, share: number, put: (slot: number, triangles: number, ox: number, oy: number, oz: number, passes: number, fade: number) => void): void {
     for (const t of this.tiles.keys()) {
       const tile = this.tiles.get(t)!;
       if (tile.slot < 0) continue;
@@ -452,7 +453,8 @@ export class FarBlocks {
       const near = Math.hypot(Math.max(ax, -bx, 0), Math.max(ay, -by, 0), Math.max(az, -bz, 0));
       if (near >= reach || !cam.boxVisible(ax, ay, az, bx, by, bz)) continue;
       const ox = this.cornerX(t), oz = this.cornerZ(t);
-      put(tile.slot, tile.indexCount / 3, ox - cam.x, tile.base - cam.y, oz - cam.z, cam.passes(ax, ay, az, bx, by, bz));
+      const most = Math.hypot(Math.max(-ax, bx), Math.max(-ay, by), Math.max(-az, bz));
+      put(tile.slot, tile.indexCount / 3, ox - cam.x, tile.base - cam.y, oz - cam.z, cam.passes(ax, ay, az, bx, by, bz), most < reach * (1 - share) ? 0 : reach);
     }
   }
 

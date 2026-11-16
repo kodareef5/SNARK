@@ -7,7 +7,8 @@ Zones with hard lines between them.
 | `core/` | ECMAScript, `shared`, `content` | `session.ts` (handshake, input, prediction, reconciliation, interpolation), `render/` (camera, terrain selection, structure batches, frame packet), `hud.ts` (HUD model, minimap), `selfcheck.ts` |
 | `sound/` | DOM, Web Audio, and `core` | `sound.ts` (the page's audio context, and each frame's sound packet played), `board.ts` and `sounds.html` (the sound board, an admin's page that `server/sound-board.ts` serves) |
 | `voice/` | DOM, Web Audio, WebCodecs, and `core` | `voice.ts` (the microphone, on the page's audio context), `voice-worker.ts` (the voice socket, Opus encode and decode), `voice-capture.ts` and `voice-playback.ts` (audio worklets) |
-| `shell/` | DOM, WebGL2, WebSocket, `core`, `voice` and `sound` | `gl.ts` (executes frame packets), `input.ts`, `socket.ts`, `hud.ts` (DOM binding), `main.ts` |
+| `city/` | DOM, and `core` | `maker.ts` and `city-worker.ts` (the far city's levels, made on a worker of their own: `core/render/citymake.ts`) |
+| `shell/` | DOM, WebGL2, WebSocket, `core`, `voice`, `sound` and `city` | `gl.ts` (executes frame packets), `input.ts`, `socket.ts`, `hud.ts` (DOM binding), `main.ts` |
 
 `core` is tested in Bun and never names a DOM type; its type check enforces
 that. `shell`, `voice` and `sound` have no tests and are limited to 1,150, 600 and

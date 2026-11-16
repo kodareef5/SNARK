@@ -6,6 +6,7 @@ import { compileContent } from "../../shared/content/registry.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { WorkerPort } from "../assets/port.ts";
+import { WorkerCityMaker } from "../city/maker.ts";
 import { DEFAULT_TIER, tierOf } from "../core/assets/tiers.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
@@ -78,6 +79,7 @@ async function boot(): Promise<void> {
     ...(selfcheck || bench || device || params.has("quick") ? { look: defaultLook() } : {}),
     resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),
     nodes: (ground, content) => mapNodes(map, ground, content),
+    cityMaker: new WorkerCityMaker(),
   });
   void readStatics(rest, map.dims, () => new Promise((go) => setTimeout(go))).then((statics) => session.staticsArrived(statics));
   const surfaces = selfcheck ? new SelfcheckSurfaces(manifest, port) : null;

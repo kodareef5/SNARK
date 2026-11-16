@@ -5,7 +5,8 @@ import { decodeTexture, sample, sampleWorldTexture, type Texture } from "../../c
 import { SURFACE_MATERIAL, surfaceIndex } from "../../content/surfaces.ts";
 import { worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
-import { FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
+import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
+import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { nearKeeps } from "../../client/core/render/hand.ts";
 import { MOST_LOD, detailKeeps, rotorOf, shapeOf } from "../../client/core/render/detailtext.ts";
 import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
@@ -533,6 +534,8 @@ export class Rasterizer {
     this.plain = (p.drawFlags[d]! & DRAW_PLAIN) !== 0 || (p.lit && (p.drawFlags[d]! & (DRAW_SIZED | DRAW_PULLED)) !== 0);
     this.fade = p.drawFade[d]!;
     this.fadeShare = p.frame[FRAME.fade]!;
+    // Far blocks and the far city short of where their reach fades draw with no fade, and are far all the same.
+    const far = this.fade !== 0 || p.drawBuffer[d] === FAR_BUFFER || p.drawBuffer[d] === CITY_BUFFER;
     const bones = p.bones;
     for (let k = 0; k < p.drawInstances[d]!; k++) {
       const inst = p.drawFirst[d]! + k;
@@ -565,8 +568,8 @@ export class Rasterizer {
           out[v * 3 + 2] = -s * lx + c * lz + iz;
         }
       }
-      const kind = this.fade !== 0 ? PICK_FAR : transient ? PICK_ENTITY : PICK_STRUCTURE;
-      const id = this.fade !== 0 ? p.drawSlot[d]! : transient ? p.transientIds[inst]! : p.drawBuffer[d]! * 65536 + buffer!.slots[inst]!;
+      const kind = far ? PICK_FAR : transient ? PICK_ENTITY : PICK_STRUCTURE;
+      const id = far ? p.drawSlot[d]! : transient ? p.transientIds[inst]! : p.drawBuffer[d]! * 65536 + buffer!.slots[inst]!;
       const ranged = (p.drawFlags[d]! & DRAW_RANGED) !== 0;
       const [from, end] = ranged ? [p.drawFirstIndex[d]!, p.drawFirstIndex[d]! + p.drawIndexCount[d]!] : [0, lod.indices.length];
       if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
