@@ -189,9 +189,9 @@ for name,cx,z,y,sign in [('vip_port',3.5,23,3.75,1),('vip_starboard',-3.5,23,3.7
 add('gangway','gangway',boxes=[slab(7.8,20.4,-25,-23,3.75),box([7.8,3.75,-25.08],[20.4,4.85,-25]),box([7.8,3.75,-23],[20.4,4.85,-22.92])],meta={'clearWidth':2,'surface':'teak'},color=101)
 D['docking']={'shipLanding':[8.4,3.75,-24],'shoreLanding':[20.4,3.75,-24],'arrival':[0,3.75,-24],'clearWidth':2,'shoreApproach':[23,3.75,-24],'pierConnection':{'xMinimum':20.4,'zMinimum':-25.2,'zMaximum':-22.8},'hullGate':{'side':'port','zMin':-25.2,'zMax':-22.8,'sillY':3.75}}
 D['routes'].append({'id':'shore_to_arrival','kind':'boarding','anchors':[[20.3,3.75,-24],[14,3.75,-24],[8.4,3.75,-24],[6,3.75,-24],[0,3.75,-24]]})
-# Stern steps: a swimmer walks out of the sea up a convex ramp of 34 degrees, guarded from just above the water, to a
-# landing on the stern between the main deck's rails.
-SY0,SY1,SZ0,SZ1,SDECK=-1.0,3.75,-62.6,-55.6,-53.3
+# Stern steps: a convex ramp of 34 degrees from 2 m under the sea, where a swimmer's feet reach it, guarded from just
+# above the water, to a landing on the stern between the main deck's rails.
+SY0,SY1,SZ0,SZ1,SDECK=-2.0,3.75,-64.1,-55.6,-53.3
 def stern_y(z):return SY0+(SY1-SY0)*(z-SZ0)/(SZ1-SZ0)
 zg=SZ0+(SZ1-SZ0)*(.3-SY0)/(SY1-SY0)
 add('stern_steps','steps',boxes=[slab(-.8,.8,SZ1,SDECK,SY1),box([-.88,SY1,SZ1],[-.8,SY1+1.1,-53.5]),box([.8,SY1,SZ1],[.88,SY1+1.1,-53.5])],
