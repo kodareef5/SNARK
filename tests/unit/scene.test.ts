@@ -213,11 +213,12 @@ test("a wall of one piece whose material tiles is the same two draws at 10 piece
   };
   const [few, many] = [wall(10, true), wall(1000, false)];
   const [plank, lattice] = [material(few.w, PANEL), material(few.w, `${PANEL}/lattice`)];
-  for (const [{ w, p }, pieces] of [[few, 10], [many, 1000]] as const) {
+  // Of the 1,000, the 15 in the 16 m cell to the near right are out of view and left out.
+  for (const [{ w, p }, pieces] of [[few, 10], [many, 985]] as const) {
     expect(drawn(w, p, PANEL)).toEqual([[0, DRAW_TEXTURED, pieces, plank, 0, 3], [0, DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT, pieces, lattice, 3, 3]]);
     expect([p.drawCount, p.dropped]).toEqual([2, 0]);
   }
-  expect(many.p.triangles - few.p.triangles).toBe(990 * 2);
+  expect(many.p.triangles - few.p.triangles).toBe(975 * 2);
   // The picture is laid a metre wide on a piece two metres wide. The mesh says so, the packet need not, and the row is drawn.
   expect(few.w.manifest.meshes[few.w.mesh(PANEL)]!.uv).toEqual([0, 0, 2, 2]);
   expect(few.w.raster.pickKind.filter((kind) => kind === PICK_STRUCTURE).length).toBeGreaterThan(600);
@@ -372,7 +373,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   expect(log).toEqual([`17 ask ${post} 0.0000`, `1167 ask ${post} 0.0000`, `2733 ask ${post} 0.0000`]);
   // The far wood is about a draw a frame, every mesh of a tile in one, and the pulled draws' three levels are uploads in
   // place of the palm's last level.
-  expect([draws, rigid, uploads, texLedger, worn]).toEqual([7900, 767, 23, 0, []]);
+  expect([draws, rigid, uploads, texLedger, worn]).toEqual([7628, 767, 23, 0, []]);
   // Taken from the scene as it was before it drew anything with a material. A change here changes what low poly draws.
   // It was 3323304581 before the dodo's grey box joined the pack, which numbers the meshes after it one on, 289722570
   // before the palette was refitted and the horn's flat colour became 177, and 3173910610 until a loose thing's up

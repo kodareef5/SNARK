@@ -29,7 +29,7 @@ import { BodyCopies, LOOK, TextureMemory, boxBase, farBases, farSpots, rocks } f
 import { CITY_BUFFER } from "./render/farcity.ts";
 import { FAR_NODE_BUFFERS } from "./render/farnodes.ts";
 import { donePage, progressText, startPage } from "./devicetext.ts";
-import { DRAW_TEXTURED, FRAME, SOURCE_WINDOW, TILE_CASTS, TILE_QUADS, type FramePacket } from "./render/packet.ts";
+import { DRAW_TEXTURED, FRAME, SOURCE_WINDOW, type FramePacket } from "./render/packet.ts";
 import { groundSize } from "./render/terrain.ts";
 import { CUTOUTS, type Cutouts, type Thing } from "./render/scene.ts";
 import { effectsOff } from "./passes.ts";
@@ -168,27 +168,6 @@ function texturedDraws(p: FramePacket): number {
   let n = 0;
   for (let d = 0; d < p.drawCount; d++) if ((p.drawFlags[d]! & DRAW_TEXTURED) !== 0) n++;
   return n;
-}
-
-/** The draws a frame makes into its shadow maps and their triangles: one a caster and cascade drawn, and one for each of the ground's two sources a cascade casts from. */
-function casterLoad(p: FramePacket, tris: readonly (readonly number[])[]): [number, number] {
-  let [draws, triangles] = [0, 0];
-  for (let k = 0; k < p.cascadeCount; k++) {
-    if ((p.cascadesDrawn & (1 << k)) === 0) continue;
-    for (let e = 0; e < p.casterCount; e++) {
-      if ((p.casterCascades[e]! & (1 << k)) === 0) continue;
-      draws++;
-      triangles += ((p.casterFlags[e]! & DRAW_TEXTURED) !== 0 ? p.casterIndexCount[e]! / 3 : tris[p.casterMesh[e]!]![p.casterLod[e]!]!) * p.casterInstances[e]!;
-    }
-    let sources = 0;
-    for (let t = 0; t < p.tileCount; t++) {
-      if ((p.tilePass[t]! & (TILE_CASTS << k)) === 0) continue;
-      sources |= 1 << p.tileSource[t * 4 + 3]!;
-      triangles += TILE_QUADS * TILE_QUADS * 2;
-    }
-    draws += (sources & 1) + (sources >> 1);
-  }
-  return [draws, triangles];
 }
 
 /** Rounded to a tenth. Nothing gives zeros. */
@@ -1303,9 +1282,8 @@ export class DeviceRun {
     s.tris.push(p.triangles);
     s.bones.push(p.boneCount);
     s.textured.push(texturedDraws(p));
-    const [draws, tris] = casterLoad(p, this.side.app.scene!.assets.table.tris);
-    s.casterDraws.push(draws);
-    s.casterTris.push(tris);
+    s.casterDraws.push(p.castDraws);
+    s.casterTris.push(p.castTriangles);
     this.dropped += p.dropped;
     this.skipped += p.skipped;
     if (s.frame.length % 30 === 0) this.rtt.push(tenth((this.side.app.session.stats.rttTicks * 1000) / TICK_RATE));

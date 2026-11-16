@@ -93,7 +93,7 @@ test("in the chunk a player stands in, nodes near him are drawn finest and those
   expect(draws).toBeLessThan(3 * 16 + 8 * 3);
 
   // Chosen by the chunk, every palm of it is drawn finest.
-  w.scene.nodeCells = 1;
+  w.scene.chunkCells = 1;
   for (const t of w.field.store.chunks) if (t) t.shape++;
   const whole = drawn(w.scene.build(w.cam, null), w);
   expect(whole.length).toBeGreaterThan(10);
