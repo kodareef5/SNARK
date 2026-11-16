@@ -35,7 +35,7 @@ function overview(data: GuideData): string {
 
 function collection(data: GuideData, kind?: EntryKind): string {
   const entries = data.entries.filter((e) => !kind || e.kind === kind).sort((a, b) => a.label.localeCompare(b.label));
-  return `${heading(kind ? words(kind) : "Search the guide", kind ? "Content catalogue" : "Everything in this build", kind ? DESCRIPTIONS[kind] : "Find a creature, item, structure or unlock.")}<section data-filter-area>${filterBar(entries.length, kind ? [] : KINDS.map((k) => ({ value: k, label: words(k) })), kind ? `Find ${kind}` : "Search by name, class or material")}${!kind ? '<label class="changes-toggle"><input type="checkbox" data-models-only> Models available</label>' : ""}<div class="entry-grid" data-record-list>${entries.map((e) => entryCard(data, e)).join("")}</div>${noResults}</section>`;
+  return `${heading(kind ? words(kind) : "Search the wiki", kind ? "Content catalogue" : "Everything in this build", kind ? DESCRIPTIONS[kind] : "Find a creature, item, structure or unlock.")}<section data-filter-area>${filterBar(entries.length, kind ? [] : KINDS.map((k) => ({ value: k, label: words(k) })), kind ? `Find ${kind}` : "Search by name, class or material")}${!kind ? '<label class="changes-toggle"><input type="checkbox" data-models-only> Models available</label>' : ""}<div class="entry-grid" data-record-list>${entries.map((e) => entryCard(data, e)).join("")}</div>${noResults}</section>`;
 }
 
 function detail(data: GuideData, entry: GuideEntry): string {

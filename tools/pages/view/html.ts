@@ -31,6 +31,8 @@ const shapes: Record<string, string> = {
   sounds: '<path d="M3 10v4M7 6v12M12 3v18M17 6v12M21 10v4"/>',
   music: '<path d="M9 18V5l12-2v13M9 8l12-2"/><ellipse cx="6" cy="18" rx="3" ry="3"/><ellipse cx="18" cy="16" rx="3" ry="3"/>',
   servers: '<rect x="3" y="3" width="18" height="7" rx="1"/><rect x="3" y="14" width="18" height="7" rx="1"/><path d="M7 6.5h.01M7 17.5h.01M13 6.5h5M13 17.5h5"/>',
+  commands: '<path d="m4 5 6 7-6 7M13 19h7"/>',
+  mcp: '<path d="M8 3v5M16 3v5M5 8h14v3a7 7 0 0 1-14 0ZM12 18v4"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
   arrow: '<path d="M4 12h16m-6-6 6 6-6 6"/>',
   cube: '<path d="m12 3 8 5v8l-8 5-8-5V8ZM4 8l8 5 8-5M12 13v8"/>',
