@@ -6,7 +6,7 @@ import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { PULL_SLOTS } from "../../client/core/render/farnodes.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
-import type { Manifest } from "../../shared/pack/manifest.ts";
+import { meshKnown, type Manifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { blockOf, pictureBytes, textureBytes, type TextureFormat } from "../../shared/pack/texture.ts";
 import { partHash } from "../../tools/pack/manifest.ts";
@@ -175,8 +175,8 @@ export function assetWorld(set: { files: SplitFile[]; manifest: Manifest }, thin
   if (format) assets.format = format;
   const card = new Card(set.manifest, set.files.map((f) => f.bytes));
   const packet = new FramePacket();
-  /** The finest level of a mesh that the boot pack holds. */
-  const inBoot = (mesh: number): number => set.manifest.meshes[mesh]!.levels.findIndex((l) => l.file === 0);
+  /** The finest level of a mesh that the boot pack or its page holds. */
+  const inBoot = (mesh: number): number => set.manifest.meshes[mesh]!.levels.findIndex((l) => l.file === 0 || set.manifest.files[l.file]?.role === "page");
   const last = new Int8Array(things.length).fill(-1);
   /** The level each thing was drawn at in the last frame, and the level it wanted. */
   const drawn = new Int8Array(things.length).fill(-1);
@@ -222,13 +222,13 @@ export function assetWorld(set: { files: SplitFile[]; manifest: Manifest }, thin
     dropped.levels += packet.assetDrops.length;
     dropped.textures += packet.texDrops.length;
     let up = 0;
-    for (const u of packet.assetUploads) if (set.manifest.meshes[u.mesh]!.levels[u.level]!.file !== 0) up += u.data.length;
+    for (const u of packet.assetUploads) if (set.manifest.files[set.manifest.meshes[u.mesh]!.levels[u.level]!.file]!.role === "mesh") up += u.data.length;
     mostUploaded = Math.max(mostUploaded, packet.assetUploads.length > 1 ? up : 0);
     mostRows = Math.max(mostRows, packet.texUploads.reduce((sum, u) => sum + u.data.length, 0));
-    // Every draw of this frame is of something the card holds.
+    // Every draw of this frame is of something the card holds. A mesh whose page has not come is not drawn.
     for (let i = 0; i < things.length; i++) {
       const slot = assets.residency.slot(things[i]!.mesh, drawn[i]!);
-      if (sight < Infinity && drawn[i]! < 0) continue;
+      if ((sight < Infinity || !meshKnown(set.manifest.meshes[things[i]!.mesh]!)) && drawn[i]! < 0) continue;
       if (drawn[i]! < 0 || !card.held.has(slot)) throw new Error(`thing ${i} drawn at level ${drawn[i]}, which the card does not hold`);
       if (shown[i] === 0) continue;
       const runs = assets.table.sections[things[i]!.mesh]![drawn[i]!]!;

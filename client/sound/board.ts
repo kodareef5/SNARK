@@ -58,6 +58,7 @@ const chip = (v: Variant): string =>
 
 async function boot(): Promise<void> {
   const manifest = parseManifest(await (await fetch("assets/manifest.json")).text());
+  if (manifest.soundRows) manifest.sounds = (await (await fetch(`assets/${manifest.soundRows}`)).json()) as ManifestSound[];
   const answer = await fetch("admin/sounds.json");
   if (!answer.ok) throw new Error(await answer.text());
   const owners = (await answer.json()) as ListedOwner[];

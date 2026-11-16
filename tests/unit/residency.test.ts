@@ -5,9 +5,13 @@ import { Assets } from "../../client/core/assets/assets.ts";
 import { IN_FLIGHT, IN_FLIGHT_SHARED, OVERFLOW, SMALL_LANES, SMALL_LANES_SHARED, SMALL_PART } from "../../client/core/assets/residency.ts";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
+import { meshKnown, parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
+import { defaultPalette } from "../../shared/pack/palette.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
-import { stressSet } from "../../tools/pack/stress.ts";
+import { bootManifest, splitPack } from "../../tools/pack/split.ts";
+import { stressMeshes, stressSet } from "../../tools/pack/stress.ts";
+import { buildPack } from "../../tools/pack/write.ts";
 import { FakeNet, type NetOptions } from "../fixtures/assetnet.ts";
 import { stressThings } from "../../client/core/stress.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -59,6 +63,27 @@ test("over HTTP/2 or 3 more requests are under way at once, and the flight settl
   });
   expect([one!.port.mostAtOnce, shared!.port.mostAtOnce > IN_FLIGHT, shared!.port.mostAtOnce <= IN_FLIGHT_SHARED]).toEqual([IN_FLIGHT, true, true]);
   expect([one!.settled(), shared!.settled(), shared!.r.stats.skipped, shared!.r.stats.used]).toEqual([true, true, 0, one!.r.stats.used]);
+});
+
+test("paged, a rock is drawn only once its page has come: pages are asked for first and at once, and then every rock is drawn from them", () => {
+  const split = splitPack(buildPack(stressMeshes({ rocks: 24, detail: 4, plate: 64 }), defaultPalette()), "stress", { boot: () => false });
+  const manifest = parseManifest(JSON.stringify(bootManifest(split.manifest)));
+  const rocks = ROCKS.map((r) => ({ ...r, mesh: manifest.meshes.findIndex((m) => m.id === SET.manifest.meshes[r.mesh]!.id) }));
+  const w = assetWorld({ files: split.files, manifest }, rocks, { latencyMs: 100, bytesPerSecond: 2.5e6 });
+  w.frame(0);
+  // The first frame draws none of them, and asks for every page they are on, before any level or texture.
+  const pages = new Set(rocks.map((r) => split.manifest.meshes[r.mesh]!.page));
+  const asked = w.port.log.map((l) => Number(l.split(" ")[3]));
+  expect([w.drawn.every((l) => l < 0), asked.length, asked.every((u) => u >= 4e6)]).toEqual([true, pages.size, true]);
+  // A round trip and the pages' bytes later, every rock is drawn at a level its page holds, and nothing more is left out.
+  let frames = 1;
+  while (w.drawn.some((l) => l < 0)) (w.frame(0), frames++);
+  expect(frames * FRAME).toBeLessThan(100 + 2 * FRAME + (split.files[2]!.bytes.length / 2.5e6) * 1000);
+  expect(w.coarse()).toBe(true);
+  const skipped = w.r.stats.skipped;
+  w.run(8, 0);
+  expect([w.settled(), w.r.stats.skipped - skipped, w.r.stats.dead]).toEqual([true, 0, 0]);
+  expect(manifest.meshes.every(meshKnown)).toBe(true);
 });
 
 test("the same flight twice asks for the same things in the same order", () => {

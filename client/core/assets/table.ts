@@ -1,20 +1,22 @@
 // What the client knows of every asset without its bytes: its levels, its size, what it hangs on, what it is drawn
 // with. Meshes, materials, inventory pictures and the clips that come later are read from the manifest, and rigs and
-// the clips the first frame poses with from the boot pack, which is whole at start.
+// the clips the first frame poses with from the boot pack, which is whole at start. A mesh whose page has not come is
+// known by its id and what it hangs on alone, with as many levels as it has, each of no triangles and no error, and
+// its bounds a point, until `learn`.
 
 import type { Slot } from "../../../shared/content/classes.ts";
-import type { Manifest } from "../../../shared/pack/manifest.ts";
+import { meshKnown, type Manifest } from "../../../shared/pack/manifest.ts";
 import type { Pack, PackMaterial } from "../../../shared/pack/pack.ts";
 
 export class AssetTable {
   /** Meshes. A mesh is known by its index here, which is its index in the manifest. */
   readonly count: number;
-  /** Triangles of each level of each mesh, finest first. */
-  readonly tris: readonly (readonly number[])[];
-  /** How far, in metres, each level's surface lies from the finest level's (see PackLod). */
-  readonly error: readonly (readonly number[])[];
+  /** Triangles of each level of each mesh, finest first. Each mesh's array is filled in place when it is learned. */
+  readonly tris: readonly number[][];
+  /** How far, in metres, each level's surface lies from the finest level's (see PackLod). Filled in place as `tris`. */
+  readonly error: readonly number[][];
   /** The sections of each level of each mesh: a material, its first index and how many indices, for each. None on a flat level. */
-  readonly sections: readonly (readonly (readonly number[])[])[];
+  readonly sections: readonly (readonly number[])[][];
   /** The first level of each mesh that is flat. Every level from it on is drawn in palette colours on any tier. */
   readonly flat: Uint8Array;
   /** The materials that sections name. */
@@ -33,6 +35,7 @@ export class AssetTable {
   readonly bone: Uint8Array;
   /** By a rig's id, the manifest's skeleton whose clips it plays, where the boot pack does not hold them. */
   readonly skeletons: ReadonlyMap<string, number>;
+  private readonly manifest: Manifest;
   private readonly index: ReadonlyMap<string, number>;
   private readonly rigs: ReadonlySet<string>;
   private readonly clips: ReadonlySet<string>;
@@ -41,17 +44,18 @@ export class AssetTable {
 
   constructor(manifest: Manifest, boot: Pack) {
     const meshes = manifest.meshes;
+    this.manifest = manifest;
     this.count = meshes.length;
     this.index = new Map(meshes.map((m, i) => [m.id, i]));
-    this.tris = meshes.map((m) => m.levels.map((l) => l.tris));
-    this.error = meshes.map((m) => m.levels.map((l) => l.error));
-    this.sections = meshes.map((m) => m.levels.map((l) => l.sections ?? []));
-    this.flat = Uint8Array.from(meshes, (m) => m.flat ?? 0);
+    this.tris = meshes.map((m) => m.levels.map(() => 0));
+    this.error = meshes.map((m) => m.levels.map(() => 0));
+    this.sections = meshes.map((m) => m.levels.map(() => []));
+    this.flat = new Uint8Array(this.count);
     this.materials = manifest.materials ?? [];
-    this.radius = Float32Array.from(meshes, (m) => Math.hypot(m.half[0], m.half[1], m.half[2]) + Math.hypot(m.center[0], m.center[1], m.center[2]));
-    this.side = Float32Array.from(meshes, (m) => Math.hypot(Math.abs(m.center[0]) + m.half[0], Math.abs(m.center[2]) + m.half[2]));
-    this.low = Float32Array.from(meshes, (m) => m.center[1] - m.half[1]);
-    this.high = Float32Array.from(meshes, (m) => m.center[1] + m.half[1]);
+    this.radius = new Float32Array(this.count);
+    this.side = new Float32Array(this.count);
+    this.low = new Float32Array(this.count);
+    this.high = new Float32Array(this.count);
     this.skeleton = meshes.map((m) => m.skeleton ?? "");
     this.rig = Int16Array.from(meshes, (m) => m.rig ?? -1);
     this.bone = Uint8Array.from(meshes, (m) => m.bone ?? 0);
@@ -60,6 +64,22 @@ export class AssetTable {
     this.skeletons = new Map(streamed.map((e, c) => [e.rig, c]));
     this.clips = new Set([...boot.clips.index.keys(), ...streamed.flatMap((e) => e.clips.map((c) => c.id))]);
     this.icons = new Set(Object.keys(manifest.icons?.cells ?? {}));
+    meshes.forEach((m, i) => meshKnown(m) && this.learn(i));
+  }
+
+  /** Takes in what the manifest now says of a mesh whose page has come. */
+  learn(mesh: number): void {
+    const m = this.manifest.meshes[mesh]!;
+    m.levels.forEach((l, k) => {
+      this.tris[mesh]![k] = l.tris;
+      this.error[mesh]![k] = l.error;
+      this.sections[mesh]![k] = l.sections ?? [];
+    });
+    this.flat[mesh] = m.flat ?? 0;
+    this.radius[mesh] = Math.hypot(m.half[0], m.half[1], m.half[2]) + Math.hypot(m.center[0], m.center[1], m.center[2]);
+    this.side[mesh] = Math.hypot(Math.abs(m.center[0]) + m.half[0], Math.abs(m.center[2]) + m.half[2]);
+    this.low[mesh] = m.center[1] - m.half[1];
+    this.high[mesh] = m.center[1] + m.half[1];
   }
 
   /** The index of the mesh with this id, or -1. */

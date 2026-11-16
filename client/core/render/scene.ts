@@ -222,6 +222,8 @@ export interface Thing {
 interface ChunkBatch {
   /** The table's `shape` when the instances were built. */
   shape: number;
+  /** Its meshes whose pages had not come when it was built, held as points: it is built again when one comes. */
+  unknown: number[];
   /** A chunk of nodes, drawn sized, handed to the far store over the tier's band, its trees' crowns giving to the budget. */
   sized: boolean;
   data: Uint8Array;
@@ -491,10 +493,10 @@ export class Scene {
   private readonly cloudRange = [0, 0];
 
   /** With `stream`, `pack` is the boot pack and other levels are asked of the port as they are wanted. */
-  constructor(world: RenderWorld, reg: Registry, pack: Pack, stream?: { manifest: Manifest; port: AssetPort }) {
+  constructor(world: RenderWorld, reg: Registry, pack: Pack, stream?: { manifest: Manifest; port: AssetPort; pages?: readonly Uint8Array[] }) {
     this.world = world;
     this.terrain = new TerrainLod(world.hf);
-    this.assets = new Assets(reg, pack, stream?.manifest, stream?.port);
+    this.assets = new Assets(reg, pack, stream?.manifest, stream?.port, stream?.pages);
     // The renderer holds the sky table on every tier.
     this.assets.residency.reserve("sky table", SKY_SIZE * SKY_SIZE * SKY_SLICES * 4);
     const { table, bind } = this.assets;
@@ -534,11 +536,11 @@ export class Scene {
     }
     this.trisOfMesh = table.tris;
     this.radiusOfMesh = table.radius;
-    this.materialFlags = Uint8Array.from(table.materials, (m) => DRAW_TEXTURED | ((m.flags & MATERIAL_TWO_SIDED) !== 0 ? DRAW_TWO_SIDED : 0) | ((m.flags & MATERIAL_CUTOUT) !== 0 ? DRAW_CUTOUT : 0));
-    this.barkOf = Uint8Array.from(table.materials, (m) => (m.id.endsWith("bark") ? 1 : 0));
-    const part = (keep: (material: number) => boolean) => table.sections.map((levels) => levels.map((runs) => runs.reduce((n, _, k) => (k % 3 === 0 && keep(runs[k]!) ? n + runs[k + 2]! / 3 : n), 0)));
-    this.trunkTris = part((m) => this.barkOf[m] === 1);
-    this.leafTris = part((m) => (this.materialFlags[m]! & DRAW_CUTOUT) !== 0);
+    this.materialFlags = new Uint8Array(table.materials.length);
+    this.barkOf = new Uint8Array(table.materials.length);
+    this.trunkTris = table.sections.map(() => []);
+    this.leafTris = table.sections.map(() => []);
+    this.learn(table.sections.map((_, mesh) => mesh));
     this.counts = new Uint32Array(table.count);
     this.cursor = new Uint32Array(table.count);
     this.fallLevel = new Int8Array(table.count).fill(-1);
@@ -561,12 +563,14 @@ export class Scene {
     this.bodySlack = reach * 2;
 
     const far = (this.farMesh = table.find(FAR_MESH));
-    this.farBounds = pack.header.meshes[far];
-    const shown = (k: number): number => (this.meshOfKind[k] === missing ? -1 : this.meshOfKind[k]!);
-    this.far = world.far && far >= 0 ? new FarBlocks(world.far, world.dims, world.hf, far, pack.header.meshes[far]!, farColours(reg, pack, shown)) : null;
+    this.farBounds = far >= 0 ? this.assets.manifest.meshes[far] : undefined;
+    // A build works the colours out from every piece. Without them, they are worked out from the pieces the pack holds.
+    const shown = (k: number): number => (this.meshOfKind[k] === missing ? -1 : (pack.meshIndex.get(this.assets.manifest.meshes[this.meshOfKind[k]!]!.id) ?? -1));
+    const colours = this.assets.manifest.farColours;
+    this.far = world.far && this.farBounds ? new FarBlocks(world.far, world.dims, world.hf, far, this.farBounds, colours ? Uint8Array.from(colours) : farColours(reg, pack, shown)) : null;
     this.startCity();
-    const last = (mesh: number): ReturnType<NodeLooks["last"]> => this.assets.residency.bootLevel(mesh, table.tris[mesh]!.length - 1);
-    const looks: NodeLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, side: table.side, low: table.low, high: table.high, tris: table.tris, last };
+    const last = (mesh: number): ReturnType<NodeLooks["last"]> => this.assets.residency.heldGeometry(mesh, table.tris[mesh]!.length - 1);
+    const looks: NodeLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, side: table.side, low: table.low, high: table.high, tris: table.tris, last, known: (mesh) => this.assets.known(mesh) };
     this.nodesFar = world.farNodes ? new FarNodes(world.farNodes, world.far?.cells ?? null, world.dims, reg, looks) : null;
     this.lakes = world.hf.water && far >= 0 ? new Lakes(world.hf, world.hf.water, far) : null;
     this.waterMesh = table.find(WATER_MESH);
@@ -579,6 +583,21 @@ export class Scene {
       this.skyColor[k] = pack.palette[SKY_COLOR * 4 + k]! / 255;
       this.deepColor[k] = (pack.palette[WATER_COLOR * 4 + k]! / 255) * UNDERWATER_DIM;
     }
+  }
+
+  /** Works out what the scene keeps of the materials, and of each mesh given, whose row is here. */
+  private learn(meshes: readonly number[]): void {
+    const table = this.assets.table;
+    table.materials.forEach((m, k) => {
+      this.materialFlags[k] = DRAW_TEXTURED | ((m.flags & MATERIAL_TWO_SIDED) !== 0 ? DRAW_TWO_SIDED : 0) | ((m.flags & MATERIAL_CUTOUT) !== 0 ? DRAW_CUTOUT : 0);
+      this.barkOf[k] = m.id.endsWith("bark") ? 1 : 0;
+    });
+    const part = (mesh: number, keep: (material: number) => boolean): number[] => table.sections[mesh]!.map((runs) => runs.reduce((n, _, k) => (k % 3 === 0 && keep(runs[k]!) ? n + runs[k + 2]! / 3 : n), 0));
+    for (const mesh of meshes) {
+      this.trunkTris[mesh] = part(mesh, (m) => this.barkOf[m] === 1);
+      this.leafTris[mesh] = part(mesh, (m) => (this.materialFlags[m]! & DRAW_CUTOUT) !== 0);
+    }
+    this.nodesFar?.learn();
   }
 
   /** Call after a lost graphics context. Every buffer and every level is uploaded again. */
@@ -604,6 +623,7 @@ export class Scene {
     cam.split = p.split = this.assets.tier.split;
     cam.update();
     this.assets.begin(this.now, this.viewHeight, cam.fovY);
+    if (this.assets.residency.learned.length > 0) this.learn(this.assets.residency.learned);
     this.budget.begin(this.assets.tier);
     p.tier = this.assets.tier;
     p.lit = p.tier.lit;
@@ -1519,7 +1539,10 @@ export class Scene {
       // Until the near store holds it whole, a chunk the far feed has cells of is drawn as blocks.
       if (base === 0 && (this.far?.isFar(chunk) || this.city?.isFar(chunk))) continue;
       let batch = this.batches.get(id);
-      if (!batch || batch.shape !== t.shape) batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf);
+      // A mesh not yet known has its page asked for while it is near.
+      let learnt = false;
+      if (batch) for (const m of batch.unknown) learnt = this.assets.known(m) || learnt;
+      if (!batch || batch.shape !== t.shape || learnt) batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf);
       const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
       const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
       const ax = batch.minX - cam.x;
@@ -1762,6 +1785,7 @@ export class Scene {
     const w = new InstanceWriter(data);
     const b: ChunkBatch = {
       shape: t.shape,
+      unknown: ranges.filter((m, k) => k % 3 === 0 && !this.assets.known(m)),
       sized: sizeOf !== null,
       data,
       slots,

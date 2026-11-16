@@ -109,6 +109,8 @@ export interface NodeLooks {
   readonly tris: readonly (readonly number[])[];
   /** A mesh's last level: its vertices in metres from its origin, their palette colours and its triangles' corners, or null where there is none to hand. */
   last(mesh: number): { positions: Float32Array; colors: Uint8Array; indices: Uint32Array } | null;
+  /** Whether a mesh's row is here. Where not, its page is asked for. */
+  known(mesh: number): boolean;
 }
 
 /**
@@ -187,6 +189,8 @@ export class FarNodes {
   /** Per form, its group. */
   private readonly formGroup: Uint8Array;
   private readonly rowMesh: number[] = [];
+  /** Meshes of nodes a tile left out for want of a row, whose pages are asked for each frame until they come. */
+  private readonly missing = new Set<number>();
   private readonly atlas: Float32Array;
   /** Whether the card holds the atlas as it is, and the pulled draws' levels. */
   private atlasSent = false;
@@ -222,8 +226,50 @@ export class FarNodes {
     this.formReach = new Float32Array(f.count);
     for (let k = 1; k < reg.defs.length; k++) {
       const d = reg.defs[k];
-      if (d?.type !== "node") continue;
-      this.family[k] = familyOf(d);
+      if (d?.type === "node") this.family[k] = familyOf(d);
+    }
+    this.meshRow = new Int16Array(meshes).fill(-1);
+    this.meshSize = new Int8Array(meshes).fill(-1);
+    this.atlas = new Float32Array(ATLAS_WIDTH * ATLAS_ROWS * 4);
+    this.formGroup = new Uint8Array(f.count);
+    this.learn();
+    this.counts = new Uint32Array(GROUPS * CELLS);
+    this.gone = new Uint8Array(256);
+    this.keep = new Uint8Array(CELLS * this.perChunk);
+    this.rangeOf = new Int16Array(GROUPS);
+  }
+
+  /**
+   * Takes in the meshes whose rows have come: a row of the atlas for the last level of each mesh a standing node is
+   * drawn as, in its first texel its reach and its vertices, then each corner of each triangle, and each kind's
+   * triangles weighed again. A mesh whose last level will not fit is not drawn far. Every tile is made again.
+   */
+  learn(): void {
+    const f = this.forms, looks = this.looks;
+    let added = false;
+    for (let form = 1; form < f.count; form++) {
+      const mesh = looks.meshOfForm[form]!;
+      if (mesh === NO_MESH || f.depleted[form] === 1 || this.meshRow[mesh]! >= 0 || this.rowMesh.length === ATLAS_ROWS) continue;
+      const level = looks.last(mesh);
+      if (!level || level.indices.length > PULL_VERTICES << (SIZES - 1)) continue;
+      const row = (this.meshRow[mesh] = this.rowMesh.length);
+      this.rowMesh.push(mesh);
+      this.missing.delete(mesh);
+      this.meshSize[mesh] = level.indices.length <= PULL_VERTICES ? 0 : level.indices.length <= PULL_VERTICES * 2 ? 1 : 2;
+      const at = row * ATLAS_WIDTH * 4;
+      this.atlas[at + 1] = level.indices.length;
+      level.indices.forEach((v, i) => {
+        const o = at + (i + 1) * 4;
+        this.atlas[o] = level.positions[v * 3]!;
+        this.atlas[o + 1] = level.positions[v * 3 + 1]!;
+        this.atlas[o + 2] = level.positions[v * 3 + 2]!;
+        this.atlas[o + 3] = level.colors[v]!;
+      });
+      added = true;
+    }
+    if (!added) return;
+    for (let k = 1; k < this.family.length; k++) {
+      if (this.family[k]! < 0) continue;
       const sums = f.sums[k]!;
       let sum = 0, weights = 0;
       for (let v = 0; v < sums.length; v++) {
@@ -235,37 +281,14 @@ export class FarNodes {
       }
       this.triangles[k] = weights > 0 ? sum / weights : 0;
     }
-    // A row of the atlas for the last level of each mesh a standing node is drawn as: in its first texel its reach and
-    // its vertices, then each corner of each triangle. A mesh whose last level will not fit is not drawn far.
-    this.meshRow = new Int16Array(meshes).fill(-1);
-    this.meshSize = new Int8Array(meshes).fill(-1);
-    this.atlas = new Float32Array(ATLAS_WIDTH * ATLAS_ROWS * 4);
     for (let form = 1; form < f.count; form++) {
       const mesh = looks.meshOfForm[form]!;
-      if (mesh === NO_MESH || f.depleted[form] === 1 || this.meshRow[mesh]! >= 0 || this.rowMesh.length === ATLAS_ROWS) continue;
-      const level = looks.last(mesh);
-      if (!level || level.indices.length > PULL_VERTICES << (SIZES - 1)) continue;
-      const row = (this.meshRow[mesh] = this.rowMesh.length);
-      this.rowMesh.push(mesh);
-      this.meshSize[mesh] = level.indices.length <= PULL_VERTICES ? 0 : level.indices.length <= PULL_VERTICES * 2 ? 1 : 2;
-      const at = row * ATLAS_WIDTH * 4;
-      this.atlas[at + 1] = level.indices.length;
-      level.indices.forEach((v, i) => {
-        const o = at + (i + 1) * 4;
-        this.atlas[o] = level.positions[v * 3]!;
-        this.atlas[o + 1] = level.positions[v * 3 + 1]!;
-        this.atlas[o + 2] = level.positions[v * 3 + 2]!;
-        this.atlas[o + 3] = level.colors[v]!;
-      });
+      this.formGroup[form] = mesh === NO_MESH ? 0 : Math.max(0, this.meshSize[mesh]!) + SIZES * Math.max(0, this.family[f.kind[form]!]!);
     }
-    this.formGroup = Uint8Array.from({ length: f.count }, (_, form) => {
-      const mesh = looks.meshOfForm[form]!;
-      return form === 0 || mesh === NO_MESH ? 0 : Math.max(0, this.meshSize[mesh]!) + SIZES * Math.max(0, this.family[f.kind[form]!]!);
-    });
-    this.counts = new Uint32Array(GROUPS * CELLS);
-    this.gone = new Uint8Array(256);
-    this.keep = new Uint8Array(CELLS * this.perChunk);
-    this.rangeOf = new Int16Array(GROUPS);
+    // Every reach is set again from the tier on the next update, and every tile made again.
+    this.reach.fill(0);
+    this.tier = null;
+    this.atlasSent = false;
   }
 
   /** How far nodes of a kind are drawn on the tier last set, 0 for not at all. */
@@ -296,6 +319,7 @@ export class FarNodes {
    * reach. Uploads and drops go into the packet, and what they weigh is spent and reserved in `budget`.
    */
   update(p: FramePacket, budget: { spend(bytes: number): void; reserve(name: string, bytes: number): void }, x: number, z: number, tier: Tier): void {
+    for (const mesh of this.missing) if (this.looks.known(mesh)) this.missing.delete(mesh);
     this.setTier(tier);
     const rows = this.rowMesh.length;
     if (rows > 0 && !this.levelsSent) {
@@ -542,7 +566,10 @@ export class FarNodes {
         const form = s.form[at]!;
         if (form === 0 || gone[i]) continue;
         const reach = formReach[form]!;
-        if (reach <= 0) continue;
+        if (reach <= 0) {
+          if (meshOfForm[form] !== NO_MESH && this.meshRow[meshOfForm[form]!]! < 0 && this.forms.depleted[form] === 0) this.missing.add(meshOfForm[form]!);
+          continue;
+        }
         if (reach + MARGIN < off) {
           if (reach + MARGIN > next) next = reach + MARGIN;
           continue;

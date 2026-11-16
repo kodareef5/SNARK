@@ -15,7 +15,7 @@ import { LAYER_LEVELS, NEUTRAL, skinMode } from "../core/render/surface.ts";
 import { SKIRT_BEHIND, coarseGround, groundSize, tileMesh, type GroundSize } from "../core/render/terrain.ts";
 import type { AssetUpload } from "../core/assets/residency.ts";
 import type { Tier } from "../core/assets/tiers.ts";
-import type { Manifest } from "../../shared/pack/manifest.ts";
+import type { Manifest, ManifestMesh } from "../../shared/pack/manifest.ts";
 import { CELL, mipOffset } from "../../shared/pack/details.ts";
 import { INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, detailsAtlas, textureOf, type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
 import { MAP_ROLES, TEXTURE_ROLES, type TextureFormat } from "../../shared/pack/texture.ts";
@@ -34,6 +34,7 @@ interface Program {
 }
 
 /** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers end `last`. */
+const WHOLE_UV = [0, 0, 1, 1] as const;
 const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, center: 25, half: 26, offset: 27 } as const;
 
 interface MeshLod {
@@ -155,8 +156,8 @@ export class GlRenderer {
   private readonly ground: GroundSize;
   private windows: WebGLTexture[] = [];
   private readonly materials: readonly PackMaterial[];
-  /** What each mesh's stored texture coordinates span, four numbers a mesh. */
-  private readonly uv: Float32Array;
+  /** Each mesh's bounds and what its stored texture coordinates span, as the manifest has them once its page has come. */
+  private readonly meshes: readonly ManifestMesh[];
   /** The material whose pictures the dome draws over the sky, if the pack has it. */
   private readonly sky: PackMaterial | undefined;
   private readonly worldMaterial: PackMaterial | undefined;
@@ -172,7 +173,7 @@ export class GlRenderer {
     this.materials = manifest.materials ?? [];
     this.worldMaterial = this.materials.find((m) => m.id === SURFACE_MATERIAL);
     this.sky = this.materials.find((m) => m.id === SKY_MATERIAL);
-    this.uv =Float32Array.from(manifest.meshes.flatMap((m) => m.uv ?? [0, 0, 1, 1]));
+    this.meshes = manifest.meshes;
     this.forced = forced;
     this.init();
   }
@@ -515,7 +516,8 @@ export class GlRenderer {
     this.uniform(prog, U.cutoff, cutout ? mat.cutoff : 0);
     if (last[U.uv] !== mesh) {
       last[U.uv] = mesh;
-      gl.uniform4fv(at[U.uv]!, this.uv, mesh * 4, 4);
+      const uv = this.meshes[mesh]!.uv ?? WHOLE_UV;
+      gl.uniform4f(at[U.uv]!, uv[0], uv[1], uv[2], uv[3]);
     }
     if (level > 0) this.uniform(prog, U.level, level / LAYER_LEVELS);
     this.maps(mat, roles);
@@ -692,7 +694,7 @@ export class GlRenderer {
     const u = prog.at, last = prog.last;
     if ((lod.bounds || last[U.center] !== mesh) && u[U.center]) {
       last[U.center] = lod.bounds ? NaN : mesh;
-      const info = lod.bounds ?? this.pack.header.meshes[mesh]!;
+      const info = lod.bounds ?? this.meshes[mesh]!;
       gl.uniform3f(u[U.center]!, info.center[0], info.center[1], info.center[2]);
       gl.uniform3f(u[U.half]!, info.half[0], info.half[1], info.half[2]);
     }

@@ -4,7 +4,9 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { storedStep, type Manifest } from "../shared/pack/manifest.ts";
+import { inflateRawSync } from "node:zlib";
+import { parseManifest, readPages, storedStep } from "../shared/pack/manifest.ts";
+import type { ManifestSound } from "../shared/pack/sound.ts";
 import { STEP0_SIZE, stepOf, topIn, type TextureFormat } from "../shared/pack/texture.ts";
 
 const KB = 1024;
@@ -26,7 +28,10 @@ const twice = (hashes: string[]): number => {
 
 /** Prints each row, and its budget where it has one; false if any is over. */
 export function weigh(dist: string): boolean {
-  const m = JSON.parse(readFileSync(join(dist, "assets/manifest.json"), "utf8")) as Manifest;
+  // The manifest as a tool sees it, every page and the sounds' rows read into it.
+  const m = parseManifest(readFileSync(join(dist, "assets/manifest.json"), "utf8"));
+  readPages(m, (f) => new Uint8Array(readFileSync(join(dist, "assets", m.files[f]!.name))), (stored) => new Uint8Array(inflateRawSync(stored)));
+  if (m.soundRows) m.sounds = JSON.parse(readFileSync(join(dist, "assets", m.soundRows), "utf8")) as ManifestSound[];
   const size = (name: string): number => statSync(join(dist, name)).size;
   const fileOf = (role: string, format?: TextureFormat): number => m.files.filter((f) => f.role === role && (!format || f.format === format)).reduce((s, f) => s + f.bytes, 0);
   const boot = `assets/${m.files[m.boot]!.name}`;
@@ -48,10 +53,12 @@ export function weigh(dist: string): boolean {
   const music = join(dist, "assets/music");
   const rows: [string, number][] = [
     ["the page's script, Brotli", script.reduce((s, n) => s + size(n), 0)],
+    ["the content, Brotli", fetched.filter((n) => n.includes("/content.")).reduce((s, n) => s + size(n), 0)],
     ["manifest, Brotli", size("assets/manifest.json.br")],
     ["manifest", size("assets/manifest.json")],
     ["boot pack, Brotli", size(`${boot}.br`)],
     ["everything before the first frame, Brotli", ["index.html.br", ...script, "assets-worker.js.br", ...fetched, ...hud].reduce((s, n) => s + size(n), 0)],
+    ["page file", fileOf("page")],
     ["mesh file", fileOf("mesh")],
     ["clip file", fileOf("clip")],
     ["textures to 1,024, astc", textures("astc", 1024)],

@@ -6,14 +6,17 @@ import { join } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import type { ClipSet } from "../../shared/anim/clip.ts";
 import { allClips } from "../../shared/pack/clips.ts";
-import { parseManifest, storedBytes, type Manifest } from "../../shared/pack/manifest.ts";
+import { parseManifest, readPages, storedBytes, type Manifest } from "../../shared/pack/manifest.ts";
 import { parsePack, type Pack, type PackLod, type PackMesh } from "../../shared/pack/pack.ts";
 import type { ManifestSound } from "../../shared/pack/sound.ts";
 import { unfilterPart } from "../../shared/pack/stored.ts";
 
 export interface Built {
   readonly dist: string;
+  /** With every page read into it. */
   readonly manifest: Manifest;
+  /** The pages' blobs, by page. */
+  readonly pages: readonly Uint8Array[];
   readonly boot: Pack;
   /** Every clip of the build: the boot pack's, and each creature skeleton's from the clip file. */
   readonly clips: ClipSet;
@@ -29,15 +32,19 @@ export function readBuilt(dist: string): Built {
   const at = (name: string): string => join(dist, "assets", name);
   if (!existsSync(at("manifest.json"))) throw new Error(`${at("manifest.json")} is missing: build the game first (bun run build)`);
   const manifest = parseManifest(readFileSync(at("manifest.json"), "utf8"));
+  if (manifest.soundRows) manifest.sounds = JSON.parse(readFileSync(at(manifest.soundRows), "utf8")) as ManifestSound[];
   const whole = (file: number): Uint8Array => new Uint8Array(readFileSync(at(manifest.files[file]!.name)));
   const boot = parsePack(whole(manifest.boot));
-  const clips = allClips(manifest, boot, whole, (stored) => new Uint8Array(inflateRawSync(stored)));
+  const inflate = (stored: Uint8Array): Uint8Array => new Uint8Array(inflateRawSync(stored));
+  const pages = readPages(manifest, whole, inflate);
+  const clips = allClips(manifest, boot, whole, inflate);
   const loose = existsSync(at("loose.json")) ? (JSON.parse(readFileSync(at("loose.json"), "utf8")) as Built["loose"]) : null;
   const open = new Map<number, number>();
   const names = readdirSync(join(dist, "assets"));
   return {
     dist,
     manifest,
+    pages,
     boot,
     clips,
     loose,
@@ -79,7 +86,8 @@ export function meshPack(b: Built, ids: readonly string[]): Pack {
     const offsets: number[] = [];
     level.parts.forEach((p, k) => {
       if (k === 1 && level.surface) [file, from] = [level.surface.file, level.surface.at];
-      const stored = b.read(file, from, storedBytes(p));
+      // A level a page holds is in the page's blob, as it is.
+      const stored = b.manifest.files[file]!.role === "page" ? b.pages[m.page!]!.subarray(from, from + p.bytes) : b.read(file, from, storedBytes(p));
       from += stored.length;
       const bytes = p.stored === undefined ? stored : unfilterPart(new Uint8Array(inflateRawSync(stored)), p.bytes);
       if (!bytes) throw new Error(`a part of ${id} does not inflate`);
