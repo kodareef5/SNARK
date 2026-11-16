@@ -73,9 +73,10 @@ export function cruisePort(placement: CruisePortPlacement): MapData {
   for (const terrace of terraces) {
     for (let dx = -4.5; dx <= 4.5; dx += 3) for (let dz = -4.5; dz <= 4.5; dz += 3) floor(terrace.x + dx, terrace.y + .03125, terrace.z + dz);
     // Paving has a three-centimetre curb above terrain to avoid coincident ground faces.
-    // Existing authored stainless rails guard only the sides; the twelve-metre walking axis stays open.
+    // The arrival terrace stays open to the full ship silhouette; lower terraces have side rails.
+    // Their twelve-metre walking axis stays open.
     for (const side of [-1, 1]) {
-      add("core:koru_rail_sun_fore", terrace.x, terrace.y + .55, terrace.z + side * 6.08);
+      if (terrace.x !== c.terraces[0]) add("core:koru_rail_sun_fore", terrace.x, terrace.y + .55, terrace.z + side * 6.08);
       const z = terrace.z + side * 9;
       add(ruinKind("zcounter", "limestone"), terrace.x + 3, hf.heightAt(terrace.x + 3, z) + .35, z);
       add(ruinKind("zshrub"), terrace.x + 3, hf.heightAt(terrace.x + 3, z) + .85, z);
