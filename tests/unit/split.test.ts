@@ -1,5 +1,6 @@
-// A pack split into the file fetched at start and the file fetched a level at a time, and the meshes made to load both.
+// A pack split into the file fetched at start, the file fetched a level at a time and the file of creature clips, and the meshes made to load them.
 import { expect, test } from "bun:test";
+import { allClips } from "../../shared/pack/clips.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { lodIndices, lodVertices, parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
@@ -12,11 +13,11 @@ test("a split pack holds every level once, byte for byte, with the coarsest of e
   const whole = corePackBytes();
   const pack = parsePack(whole);
   const { files, manifest } = splitPack(whole, "core");
-  expect(files.map((f) => [f.name, f.role])).toEqual([["core.boot.snpk", "boot"], ["core.mesh.snpk", "mesh"]]);
+  expect(files.map((f) => [f.name, f.role])).toEqual([["core.boot.snpk", "boot"], ["core.mesh.snpk", "mesh"], ["core.clip.snpt", "clip"]]);
   expect(parseManifest(JSON.stringify(manifest))).toEqual(manifest);
-  const [boot, rest] = files.map((f) => parsePack(f.bytes));
-  // The boot file is a pack with the palette, every rig, every clip, and some level of every mesh.
-  expect([boot!.header.meshes.length, boot!.header.rigs, boot!.clips.hash, [...boot!.palette]]).toEqual([pack.header.meshes.length, pack.header.rigs, pack.clips.hash, [...pack.palette]]);
+  const [boot, rest] = files.slice(0, 2).map((f) => parsePack(f.bytes));
+  // The boot file is a pack with the palette, every rig, and some level of every mesh.
+  expect([boot!.header.meshes.length, boot!.header.rigs, [...boot!.palette]]).toEqual([pack.header.meshes.length, pack.header.rigs, [...pack.palette]]);
   expect(rest!.header.clips.length + rest!.header.rigs.length).toBe(0);
   let streamed = 0;
   manifest.meshes.forEach((m, i) => {
@@ -35,9 +36,23 @@ test("a split pack holds every level once, byte for byte, with the coarsest of e
     });
   });
   expect(streamed).toBeGreaterThan(40);
-  // The two files together are little more than the one.
-  expect(files[0]!.bytes.length + files[1]!.bytes.length).toBeLessThan(whole.length * 1.06);
+  // The three files together are little more than the one.
+  expect(files.reduce((sum, f) => sum + f.bytes.length, 0)).toBeLessThan(whole.length * 1.06);
   expect(files[0]!.bytes.length).toBeLessThan(whole.length * 0.6);
+});
+
+test("the boot file holds the survivor's clips, and the clip file each creature skeleton's as the whole pack had them", () => {
+  const whole = corePackBytes();
+  const pack = parsePack(whole);
+  const { files, manifest } = splitPack(whole, "core");
+  const boot = parsePack(files[0]!.bytes);
+  expect([...new Set(boot.header.clips.map((c) => c.id.slice(0, c.id.indexOf("/"))))]).toEqual(["human"]);
+  expect(manifest.clips!.map((e) => [e.rig, e.file, e.clips.length])).toEqual([["core:dodo", 2, 21], ["core:parasaur", 2, 6], ["core:pteranodon", 2, 32], ["core:raptor", 2, 6]]);
+  for (const e of manifest.clips!) expect(partHash(files[2]!.bytes.subarray(e.at, e.at + e.part.bytes))).toBe(e.part.hash);
+  // Every clip comes back as it was, and so does the hash of them all, which the manifest gives the client to send.
+  const all = allClips(manifest, boot, (f) => files[f]!.bytes, () => new Uint8Array(0));
+  expect([all.clips.length, all.hash, manifest.clipHash]).toEqual([pack.clips.clips.length, pack.clips.hash, pack.clips.hash]);
+  for (const c of pack.clips.clips) expect(all.clips[all.index.get(c.id)!]).toEqual(c);
 });
 
 test("the stress meshes: rocks of four times fewer triangles a level, each level its own colour, and a plate past 16 bits", () => {

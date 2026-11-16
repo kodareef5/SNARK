@@ -1,6 +1,6 @@
 // What the client knows of every asset without its bytes: its levels, its size, what it hangs on, what it is drawn
-// with. Meshes, materials and inventory pictures are read from the manifest, and rigs and clips from the boot pack, which
-// is whole at start.
+// with. Meshes, materials, inventory pictures and the clips that come later are read from the manifest, and rigs and
+// the clips the first frame poses with from the boot pack, which is whole at start.
 
 import type { Slot } from "../../../shared/content/classes.ts";
 import type { Manifest } from "../../../shared/pack/manifest.ts";
@@ -31,9 +31,11 @@ export class AssetTable {
   readonly rig: Int16Array;
   /** For a mesh whose every vertex follows one bone (a held item), that bone. */
   readonly bone: Uint8Array;
+  /** By a rig's id, the manifest's skeleton whose clips it plays, where the boot pack does not hold them. */
+  readonly skeletons: ReadonlyMap<string, number>;
   private readonly index: ReadonlyMap<string, number>;
   private readonly rigs: ReadonlySet<string>;
-  private readonly clips: ReadonlyMap<string, number>;
+  private readonly clips: ReadonlySet<string>;
   /** The ids of the inventory pictures, as `#icon` slots name them (shared/pack/icons.ts). */
   private readonly icons: ReadonlySet<string>;
 
@@ -54,7 +56,9 @@ export class AssetTable {
     this.rig = Int16Array.from(meshes, (m) => m.rig ?? -1);
     this.bone = Uint8Array.from(meshes, (m) => m.bone ?? 0);
     this.rigs = new Set(boot.header.rigs.map((r) => r.id));
-    this.clips = boot.clips.index;
+    const streamed = manifest.clips ?? [];
+    this.skeletons = new Map(streamed.map((e, c) => [e.rig, c]));
+    this.clips = new Set([...boot.clips.index.keys(), ...streamed.flatMap((e) => e.clips.map((c) => c.id))]);
     this.icons = new Set(Object.keys(manifest.icons?.cells ?? {}));
   }
 

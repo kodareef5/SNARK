@@ -97,7 +97,8 @@ test("the manifest lists a level's surface and skin as parts of their own, and w
     ["lies outside its file", (m) => (m.textures![1]!.in.bc!.at += 4)],
     ["does not hold bc", (m) => (m.textures![0]!.in.bc!.file = 2)],
     ["a texture that is not there", (m) => (m.materials![0]!.normal = 5)],
-    ["is not supported", (m) => (m.version = 5)],
+    ["are not described", (m) => (m.clips = [{ rig: "t:rig", file: 0, at: 0, part: { bytes: 6 * 2 + 12, hash: "" }, clips: [{ id: "t:rig/idle", bones: 1, frames: 2, loop: true }] }])],
+    ["is not supported", (m) => (m.version = 4)],
   ];
   for (const [reason, change] of spoiled) {
     const m = JSON.parse(text) as Manifest;

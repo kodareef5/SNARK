@@ -1,7 +1,7 @@
 // How the asset library asks for bytes and hears of them. Core decides what is wanted and in what order. A browser zone
 // fetches, inflates, checks and caches. Tests and the benchmark use a network made of numbers (tests/fixtures/assetnet.ts).
 
-import { storedBytes, storedStep, type ManifestLevel, type ManifestTexture } from "../../../shared/pack/manifest.ts";
+import { storedBytes, storedStep, type ManifestClips, type ManifestLevel, type ManifestTexture } from "../../../shared/pack/manifest.ts";
 import { blockOf, stepBytes, type TextureFormat } from "../../../shared/pack/texture.ts";
 
 /** Why a part did not come: the network, bytes that do not have the hash listed, or a range the file does not have. */
@@ -33,6 +33,12 @@ export function levelParts(level: ManifestLevel, from: number, to: number): Asse
   return out;
 }
 
+/** A skeleton's clips, where its file has them. */
+export function clipPart(e: ManifestClips): AssetPart {
+  const p = e.part;
+  return p.stored === undefined ? { offset: e.at, length: p.bytes, hash: p.hash } : { offset: e.at, length: p.stored, hash: p.hash, inflated: p.bytes };
+}
+
 /** Steps 0 to `last` of a texture in a variant it has, where its file has them. */
 export function textureParts(tex: ManifestTexture, format: TextureFormat, last: number): AssetPart[] {
   const v = tex.in[format]!;
@@ -47,7 +53,7 @@ export function textureParts(tex: ManifestTexture, format: TextureFormat, last: 
 }
 
 export interface AssetRequest {
-  /** The level of a mesh, its surface, or the step of a texture, the bytes are for. */
+  /** The level of a mesh, its surface, the step of a texture, or the skeleton's clips, the bytes are for. */
   slot: number;
   /** Index of the pack file in the manifest. */
   file: number;

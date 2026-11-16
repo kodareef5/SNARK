@@ -10,13 +10,14 @@
 // devicescene.ts, and the table and pages it shows in devicetext.ts. What only a browser can say comes from the shell
 // (client/shell/device.ts).
 
+import { joinClips, type ClipSet } from "../../shared/anim/clip.ts";
 import { HumanAnim } from "../../shared/anim/pose.ts";
 import { creatureAnims } from "../../shared/anim/creature.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
-import type { Pack } from "../../shared/pack/pack.ts";
+import type { Pack, PackRig } from "../../shared/pack/pack.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
 import { creatureHash, hullHash, nodeHash, poseHash, simHash, snapHash, tunedHash } from "../../shared/sim/scenarios.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -658,13 +659,13 @@ export function formatsOf(extensions: readonly string[]): string[] {
 }
 
 /**
- * The scenarios of shared/sim/scenarios.ts on a client's content and boot pack. The server runs the same on the pack it
- * serves, so equal hashes mean this JavaScript engine simulates, poses and builds exactly as the server's does.
+ * The scenarios of shared/sim/scenarios.ts on a client's content, rigs and every clip of its build. The server runs the
+ * same on what it serves, so equal hashes mean this JavaScript engine simulates, poses and builds exactly as the server's does.
  */
-export function deviceScenarios(reg: Registry, pack: Pack): [string, () => string][] {
-  const anim = new HumanAnim(pack.clips);
-  const rigs = buildRigs(pack.header.rigs, pack.clips);
-  const creatures = creatureAnims(reg, (d) => rigs.get(d.mesh)).filter((a) => a !== null);
+export function deviceScenarios(reg: Registry, rigs: readonly PackRig[], clips: ClipSet): [string, () => string][] {
+  const anim = new HumanAnim(clips);
+  const built = buildRigs(rigs, clips);
+  const creatures = creatureAnims(reg, (d) => built.get(d.mesh)).filter((a) => a !== null);
   return [["sim", () => simHash(reg)], ["pose", () => poseHash(anim)], ["snap", () => snapHash(reg)], ["creature", () => creatureHash(creatures)], ["tuned", () => tunedHash(reg)], ["hull", () => hullHash(reg)], ["node", () => nodeHash(reg)]];
 }
 
@@ -1164,7 +1165,16 @@ export class DeviceRun {
 
   private hashes(): boolean {
     const side = this.side;
-    this.report.hashes = deviceScenarios(side.reg, side.pack).map(([name, run]) => {
+    // The scenarios pose every creature, so they wait for each skeleton's clips, asked for here.
+    const assets = side.app.scene!.assets;
+    const sets = [side.pack.clips];
+    for (let c = 0; c < assets.table.skeletons.size; c++) {
+      const set = assets.clips(c);
+      if (set) sets.push(set);
+      else assets.wantClips(c);
+    }
+    if (sets.length <= assets.table.skeletons.size) return false;
+    this.report.hashes = deviceScenarios(side.reg, side.pack.header.rigs, joinClips(sets)).map(([name, run]) => {
       const t = side.now();
       const got = run();
       return { name, got, want: side.expected?.[name] ?? null, ms: tenth(side.now() - t) };

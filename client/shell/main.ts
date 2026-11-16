@@ -76,7 +76,7 @@ async function boot(): Promise<void> {
     spectate: params.has("spectate"),
     password: params.get("password") ?? "",
     registry: reg,
-    clipHash: pack.clips.hash,
+    clipHash: manifest.clipHash,
     // The self-check, the bench, the device probe and ?quick skip the creator.
     ...(selfcheck || bench || device || params.has("quick") ? { look: defaultLook() } : {}),
     resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),

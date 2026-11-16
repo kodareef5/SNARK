@@ -116,6 +116,6 @@ export function client() {
   const h = new Harness();
   const pack = corePack();
   const app = new App(h.join("phone", { latencyMs: 20 }, { manual: true }), h.reg, pack);
-  hashes ??= Object.fromEntries(deviceScenarios(h.reg, pack).map(([name, f]) => [name, f()]));
+  hashes ??= Object.fromEntries(deviceScenarios(h.reg, pack.header.rigs, pack.clips).map(([name, f]) => [name, f()]));
   return { h, pack, app, expected: { ...hashes } };
 }
