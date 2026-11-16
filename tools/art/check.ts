@@ -578,9 +578,9 @@ function checkRagdoll(rig: Rig, spec: CreatureAsset, pack: Pack, faults: string[
 
 /**
  * Measures the pack an asset was converted to. With `pictures`, the pictures its materials name are read and measured
- * too, which takes seconds. Without, only their sizes are.
+ * too, which takes seconds, and held against those the `others` assets name. Without, only their sizes are.
  */
-export function checkAsset(asset: Asset, pack: Pack, pictures = false): Report {
+export function checkAsset(asset: Asset, pack: Pack, pictures = false, others: readonly Asset[] = []): Report {
   const report: Report = { id: asset.id, kind: asset.spec.kind, meshes: [], clips: [], gaits: [], textures: [], megabytes: { textures: 0, budget: null }, pictures, notes: [], faults: [] };
   const meshes = unpackMeshes(pack);
   const spec = asset.spec;
@@ -613,7 +613,7 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false): Report {
     for (const clip of pack.clips.clips) report.clips.push({ name: clip.id, frames: clip.frames, seconds: clip.frames / TICK_RATE, loop: clip.loop, step: 0, still: 0 });
     return report;
   }
-  const textures = measureTextures(asset, pack, pictures, report.faults, report.notes);
+  const textures = measureTextures(asset, pack, pictures, report.faults, report.notes, others);
   report.textures = textures.materials;
   report.megabytes = { textures: textures.megabytes, budget: textures.budget };
   // One material drawn much finer on one mesh than on another shows as a blurred mesh beside a sharp one.

@@ -4,11 +4,11 @@ import { expect, test } from "bun:test";
 import { parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
 import { TEXTURE_HEADER_BYTES, TEXTURE_MAGIC, pictureBytes, stepBytes, stepOf, stepOffset, stepSize, textureBytes, type TextureRole } from "../../shared/pack/texture.ts";
 import { Rng } from "../../shared/rng.ts";
-import { asPicture, packedMips, type Picture } from "../../tools/pack/image.ts";
+import { asPicture, baseMips, normalMips, packedMips, type Picture } from "../../tools/pack/image.ts";
 import { partHash } from "../../tools/pack/manifest.ts";
 import { REGION_COLOURS, checkMasks, maskMips, readMasks, readRegions, regionMasks } from "../../tools/pack/mask.ts";
 import { MASK_BANDS, STEP_COLOURS, STRESS_CARDS, cardPicture, stressTextures } from "../../tools/pack/stress.ts";
-import { materialMips, pictureOffset, rgbaPicture, rgbaTexture, writeTextureFile } from "../../tools/pack/texture.ts";
+import { SMALLER_MOVE, SMALLER_TURN, isNeutral, materialMips, neededSide, pictureOffset, rgbaPicture, rgbaTexture, smallerBy, writeTextureFile } from "../../tools/pack/texture.ts";
 
 const [BLACK, RED, GREEN, CYAN] = [[0, 0, 0], [255, 0, 0], [0, 255, 0], [0, 255, 255]] as const;
 
@@ -163,6 +163,20 @@ test("a material's maps become mips together: the packed map hears of its normal
   expect([given.mask, given.mask2]).toEqual([packedMips(mask), packedMips(mask2)]);
   expect(() => materialMips({ mask, mask2: paint(8, () => [200, 0, 0]) })).toThrow("the weights of 50.00% of the pixels sum past 1, to as much as 1.78");
   expect(() => materialMips({ mask, mask2: paint(16, () => BLACK) })).toThrow("not one size");
+});
+
+test("a map that is its role's neutral everywhere is known, and one stored smaller is held at every step to what it loses", () => {
+  // Masks that dye nothing, a normal map that leans nowhere, white: what a material without the map draws. Alpha counts where it is read.
+  const white = baseMips(paint(256, () => [255, 255, 255, 0]));
+  expect([isNeutral("mask", false, materialMips({ regions: paint(256, () => BLACK) }).mask!), isNeutral("normal", false, normalMips(paint(256, () => [128, 128, 255])).pictures), isNeutral("base", false, white), isNeutral("base", true, white)]).toEqual([true, true, true, false]);
+  expect(isNeutral("mask", false, materialMips({ regions: paint(256, (x, y) => (x === 200 && y === 9 ? RED : BLACK)) }).mask!)).toBe(false);
+
+  // Texel-sized detail needs every step. A soft ramp, and a normal map that leans a degree or so in soft waves, need no more than step 0's.
+  const checker = baseMips(paint(256, (x, y) => ((x + y) & 1 ? [200, 200, 200] : [40, 40, 40])));
+  expect([smallerBy("base", false, checker, 1) > SMALLER_MOVE, neededSide("base", false, checker)]).toEqual([true, { side: 256, change: 0 }]);
+  expect(neededSide("base", false, baseMips(paint(256, (x) => [x >> 1, x >> 1, x >> 1]))).side).toBe(64);
+  const waves = neededSide("normal", false, normalMips(paint(256, (x) => [128 + Math.round(3 * Math.sin((x * Math.PI) / 32)), 128, 255])).pictures);
+  expect([waves.side, waves.change > 0 && waves.change < SMALLER_TURN]).toEqual([64, true]);
 });
 
 test("the stress cards: a flat colour names each step of a base colour card, and the two mask cards hold every region in bands", () => {

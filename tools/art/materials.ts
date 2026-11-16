@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type PackMaterial, type PackTexture } from "../../shared/pack/pack.ts";
 import { REGION_BASE, nearestColour } from "../../shared/pack/palette.ts";
-import { LAST_STEP, STEP0_SIZE, stepSize, type TextureRole } from "../../shared/pack/texture.ts";
+import { LAST_STEP, STEP0_SIZE, stepOf, stepSize, type TextureRole } from "../../shared/pack/texture.ts";
 import type { TextureSource } from "../pack/encode.ts";
 import { baseMips, layerPicture, packMro, packedMips, readPicture, type Picture } from "../pack/image.ts";
 import { checkMasks, maskMips, readMasks, readRegions } from "../pack/mask.ts";
@@ -84,7 +84,7 @@ export interface Described {
 /**
  * Reads a material's pictures and says what the pack holds of it. Base colour and normal are stored as large as they
  * come, up to `top`, the packed map and the masks one size under the base colour, and the layer its pictures make as
- * large as they are up to `layer`. The layer comes after the five maps.
+ * large as they are up to `layer`, each no wider than the material's `tops` says. The layer comes after the five maps.
  */
 export function describe(m: Material, top: number, palette: Uint8Array, layer = top): Described {
   if (m.spec.data) return describeData(m);
@@ -110,12 +110,17 @@ export function describe(m: Material, top: number, palette: Uint8Array, layer = 
   if (maps.normal) tops.normal = Math.min(sideOf(maps.normal), most);
   if (maps.mro) tops.mro = Math.min(sideOf(maps.mro), under);
   if (masks) tops.mask = Math.min(1 << (masks.mask.length - 1), under);
+  const told = m.spec.tops ?? {};
+  for (const [role, side] of Object.entries(told) as [TextureRole, number][]) {
+    if (stepOf(side) < 0) throw new Error(`${m.id}: it stores its ${role} at ${side} pixels, and a texture is a power of two from ${STEP0_SIZE} to ${stepSize(LAST_STEP)}`);
+    if (tops[role] !== undefined) tops[role] = Math.min(tops[role]!, side);
+  }
   if (masks?.mask2) tops.mask2 = tops.mask;
   const textures = (Object.keys(tops) as TextureRole[]).sort().map((role): PackTexture => ({ id: `${m.id}/${role}`, role, top: tops[role]! }));
   const layered = maps.hurt ?? maps.decay;
   if (layered) {
     if (maps.hurt && maps.decay && maps.hurt.width !== maps.decay.width) throw new Error(`${m.id}: its hurt and decay pictures are not one size`);
-    textures.push({ id: `${m.id}/layer`, role: "layer", top: Math.max(STEP0_SIZE, Math.min(sideOf(layered), most, layer)) });
+    textures.push({ id: `${m.id}/layer`, role: "layer", top: Math.max(STEP0_SIZE, Math.min(sideOf(layered), most, layer, told.layer ?? Infinity)) });
     const { hidden } = layerPicture(maps.hurt, maps.decay);
     if (hidden > 0) faults.push(`${m.id}: ${hidden} texels of its decay picture lie under its hurt picture's, where only the hurt picture shows`);
   }
