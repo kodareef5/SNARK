@@ -62,11 +62,12 @@ export function koruReviewShots(map = koruCourse()): readonly KoruShot[] {
     walk("09-upper-bridge", 2, views.upperBridge, [0, decks[2]!.floorY + 1.45, 20]),
     walk("10-sun-terrace", 3, views.sunTerrace, [0, decks[3]!.floorY + 1.3, -26]),
     walk("11-grand-stair", 1, views.stairs, [-1, decks[1]!.floorY + 1.5, 1.5]),
-    walk("12-portrait-arrival-lobby", 1, views.arrival, [0, decks[1]!.floorY + 1.4, -29], { portrait: true }),
+    walk("12-portrait-arrival-lobby", 1, views.arrival, [1.5, decks[1]!.floorY + 1.4, -36], { portrait: true }),
     { name: "13-flat-profile", feet: spectator(views.profile), target: focus, mode: "spectator", tier: "lowpoly", framePoints },
     walk("14-flat-main-salon", 1, views.mainSalon, [-2.5, decks[1]!.floorY + 1.3, -37], { tier: "lowpoly" }),
     walk("15-shoulder-stair", 1, views.stairs, [-1, decks[1]!.floorY + 1.5, 1.5], { thirdPerson: true }),
-    ...[280, 650, 900].map((distance, index): KoruShot => ({ name: `${16 + index}-far-${distance}m`, feet: spectator([distance, 35, -10]), target: focus, mode: "spectator", tier: "high", far: true, framePoints })),
+    // The open-water side keeps real shore terrain out of the distant silhouette; distance and native handover stay genuine.
+    ...[280, 650, 900].map((distance, index): KoruShot => ({ name: `${16 + index}-far-${distance}m`, feet: spectator([-distance, 35, -10]), target: focus, mode: "spectator", tier: "high", far: true, framePoints })),
   ];
 }
 

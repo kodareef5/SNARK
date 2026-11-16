@@ -23,10 +23,10 @@ test("native Koru rows hand over to map geometry and return without a missing or
     run(1000); s.text("enablecheats"); run(100); s.text("fly"); run(100);
     const c = h.client(s)!, ents = h.world.ents, origin = KORU_COURSE.vessel;
     for (const distance of [115, 280, 650, 900, 115]) {
-      ents.setPosition(c.ent, origin.x + distance, 33.38, origin.z - 10);
+      ents.setPosition(c.ent, origin.x - distance, 33.38, origin.z - 10);
       ents.vx[c.ent] = ents.vy[c.ent] = ents.vz[c.ent] = 0;
       ents.mode[c.ent] = MODE_GHOST; ents.flags[c.ent] = ents.flags[c.ent]! & ~F_GROUNDED; c.ownDirty = true;
-      app.controls.yaw = Math.atan2(-distance, 10); app.controls.pitch = -.05; run(1300);
+      app.controls.yaw = Math.atan2(distance, 10); app.controls.pitch = -.05; run(1300);
       const p = packet as FramePacket | null;
       expect(p).not.toBeNull(); expect(app.scene?.city).not.toBeNull(); expect(s.world?.city).toBeDefined();
       const far = chunks.filter(chunk => app.scene!.city!.isFar(chunk));
