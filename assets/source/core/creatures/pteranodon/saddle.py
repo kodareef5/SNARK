@@ -24,6 +24,8 @@ import os
 
 import bpy
 import numpy as np
+from mathutils import Vector
+from mathutils.bvhtree import BVHTree
 
 import model
 import rig
@@ -158,7 +160,35 @@ def seat_part():
         a, b = ring[k], ring[(k + 1) % len(ring)]
         part.face((idx_t[a[0]][a[1]], mid[k], mid[(k + 1) % len(ring)], idx_t[b[0]][b[1]]), island="seat_edge")
         part.face((mid[k], idx_u[a[0]][a[1]], idx_u[b[0]][b[1]], mid[(k + 1) % len(ring)]), island="seat_edge")
+    part.top = top
     return part
+
+
+def seat_top_at(seat, x, z):
+    """How high the seat's top stands at (x, z), seen from above; the nearest of its edge where (x, z) is off it."""
+    top = seat.top
+    for i in range(top.shape[0] - 1):
+        for j in range(top.shape[1] - 1):
+            quad = (top[i, j], top[i, j + 1], top[i + 1, j + 1], top[i + 1, j])
+            for a, b, c in ((quad[0], quad[1], quad[2]), (quad[0], quad[2], quad[3])):
+                m = np.array([[b[0] - a[0], c[0] - a[0]], [b[2] - a[2], c[2] - a[2]]])
+                if abs(np.linalg.det(m)) < 1e-12:
+                    continue
+                s, t = np.linalg.solve(m, [x - a[0], z - a[2]])
+                if s >= -1e-9 and t >= -1e-9 and s + t <= 1 + 1e-9:
+                    return float(a[1] + s * (b[1] - a[1]) + t * (c[1] - a[1]))
+    flat = top.reshape(-1, 3)
+    return float(flat[np.argmin((flat[:, 0] - x) ** 2 + (flat[:, 2] - z) ** 2), 1])
+
+
+def set_into_seat(seat, points, radius):
+    """`points` with the first brought in over the seat, `radius` inside its edge, and down into its top by more than
+    half of `radius`, so a bent piece of that radius stands in the seat."""
+    x, y, z = points[0]
+    rows = seat.top[::-1]  # from the back, so z rises
+    edge = float(np.interp(z, rows[:, -1, 2], rows[:, -1, 0]))
+    x = min(x, edge - 1.5 * radius)
+    return [(x, seat_top_at(seat, x, z) - 0.6 * radius, z)] + list(points[1:])
 
 
 def tube_part(name, points, radius, around=8, closed_ends=True, island=None, up=(0, 1, 0)):
@@ -177,16 +207,17 @@ def band(part, centre, axis, side_out, rays, half_width, thick, island):
     u = np.array([1.0, 0.0, 0.0])
     v = np.cross(axis, u)
     angles = np.linspace(0, 2 * math.pi, rays, endpoint=False)
-    rings = []
+    inner, normals = [], []
     for off in (-half_width, half_width):
         c = np.asarray(centre, float) + axis * off
         dirs = np.array([u * math.sin(a) + v * math.cos(a) for a in angles])
         hits = model.cast(model.shell_field, np.repeat(c[None], rays, 0), dirs, far=0.5, step=0.002)
         n = model.outward(model.shell_field, hits)
-        inner = hits + n * 0.004
-        outer = hits + n * (0.004 + thick)
-        rings.append((inner, outer))
-    (i0, o0), (i1, o1) = rings
+        inner.append(hits + n * 0.004)
+        normals.append(n)
+    normals = np.array(normals)
+    inner = clear_of_body(inner, normals, 0.003, cyclic=True)
+    (i0, i1), (o0, o1) = inner, inner + normals * thick
     # a closed flat ring: outer face, inner face and the two edges
     loops = [o0, o1, i1, i0]
     idx = [[part.point(p) for p in loop] for loop in loops]
@@ -199,11 +230,11 @@ def band(part, centre, axis, side_out, rays, half_width, thick, island):
     return part
 
 
-def cantle_part():
+def cantle_part(seat):
     """The bow across the back of the seat: a bent rod, its ends set into the seat's rim, and the chitin plate on its
     front face."""
     C = CANTLE
-    half = C["path"]
+    half = set_into_seat(seat, C["path"], C["radius"])
     pts = [tuple(p) for p in half] + [(-x, y, z) for x, y, z in reversed(half[:-1])]
     part = tube_part("cantle", pts, C["radius"], around=8, island="cantle", up=(0, 0, 1))
     # the plate: a thin shield on the bow's front, wider at its foot, as the concept draws it
@@ -221,9 +252,9 @@ def cantle_part():
     return [part, plate]
 
 
-def grip_part(side):
+def grip_part(side, seat):
     s = 1.0 if side == "l" else -1.0
-    pts = [(x * s, y, z) for x, y, z in GRIP]
+    pts = [(x * s, y, z) for x, y, z in set_into_seat(seat, GRIP, GRIP_RADIUS)]
     return tube_part("grip_" + side, pts, GRIP_RADIUS, around=6, island="grip", up=(s, 0, 0))
 
 
@@ -274,8 +305,41 @@ def strap_part(side, upper):
     rows = np.array([left, right]).transpose(1, 0, 2)
     flat = np.stack([rows[:, 0], (rows[:, 0] + rows[:, 1]) / 2, rows[:, 1]], 1)
     nrm = np.array([on_shell(c + np.array([0, 0, 0.25]), (0, 0, 1), 0.0)[1] for c in flat[:, 1]])
+    flat = clear_of_body(flat, np.repeat(nrm[:, None, :], 3, 1), 0.004)
     model.pillow(part, flat + nrm[:, None, :] * 0.004, flat, island="strap")
     return part
+
+
+def signed_off_body(p):
+    """How far p stands off the body's faces as built (BODY), less than 0 inside."""
+    loc, fn, _, _ = BODY.find_nearest(Vector(p))
+    return float(np.dot(np.asarray(p) - np.array(loc), np.array(fn)))
+
+
+def clear_of_body(grid, nrm, clearance, cyclic=False, rounds=10):
+    """`grid` (rows of points) lifted along its points' normals `nrm` until its whole surface, each cell sampled
+    between its corners, stands `clearance` off the body's faces as built (BODY): the shell's field is a little inside
+    them where the body curves in between two rings, as at the foot of the neck. `cyclic`: each row closes on itself."""
+    g = np.array(grid, float)
+    n_r, n_c = g.shape[:2]
+    cells = [(i, j) for i in range(n_r - 1) for j in range(n_c if cyclic else n_c - 1)]
+    for _ in range(rounds):
+        lift = np.zeros((n_r, n_c))
+        for i, j in cells:
+            cs = [(i, j), (i, (j + 1) % n_c), (i + 1, (j + 1) % n_c), (i + 1, j)]
+            for a in np.linspace(0, 1, 6):
+                for b in np.linspace(0, 1, 6):
+                    w = np.array([(1 - a) * (1 - b), (1 - a) * b, a * b, a * (1 - b)])
+                    p = sum(w[k] * g[cs[k]] for k in range(4))
+                    s = signed_off_body(p)
+                    if s < clearance:
+                        for k, c in enumerate(cs):
+                            if w[k] > 0.2:
+                                lift[c] = max(lift[c], (clearance - s) * min(1.0, w[k] * 2))
+        if lift.max() < 1e-4:
+            break
+        g += lift[:, :, None] * nrm
+    return g
 
 
 def boss_part():
@@ -288,6 +352,10 @@ def boss_part():
     e1 = np.array([1.0, 0.0, 0.0])
     e2 = np.cross(n, e1)
     around = 16
+    # standing on the faces as built, not only on the field: lifted until its foot clears them
+    foot = [q + (e1 * math.cos(2 * math.pi * j / around) + e2 * math.sin(2 * math.pi * j / around)) * BREAST["boss"] * f
+            for j in range(around) for f in (0.0, 0.5, 1.0)]
+    q = q + n * max(0.0, max(0.002 - signed_off_body(p) for p in foot))
     rings = []
     for lift in (0.0, 0.010):
         r = BREAST["boss"] * (1.0 if lift == 0 else 0.85)
@@ -418,24 +486,32 @@ class Shell:
 
 
 SHELL = None
+BODY = None
+
+
+def body_faces(obj):
+    """The body's faces as built, in the animal's frame, to measure the saddle against."""
+    pts = [tuple(rig.to_animal(v.co)) for v in obj.data.vertices]
+    return BVHTree.FromPolygons(pts, [tuple(p.vertices) for p in obj.data.polygons])
 
 
 def build():
-    global SHELL
+    global SHELL, BODY
     r = rig.find()
     SHELL = Shell(bpy.data.objects["pteranodon_model"])
+    BODY = body_faces(bpy.data.objects["pteranodon_model"])
     parts = []
     seat = seat_part()
     skin_weights(seat)
     parts.append(seat)
-    for p in cantle_part():
+    for p in cantle_part(seat):
         skin_weights(p)
         parts.append(p)
     for part in (girth_part(), collar_part()):
         skin_weights(part)
         parts.append(part)
     left = []
-    grip = grip_part("l")
+    grip = grip_part("l", seat)
     grip.weigh(lambda p: {"chest": 1.0})
     left.append(grip)
     for upper in (True, False):
