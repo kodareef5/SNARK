@@ -1,0 +1,214 @@
+{
+  "asset": "core/sfx/crash",
+  "review": "../ref/sound",
+  "about": "Car crashes and their aftermath: hits, a tree, rolling over, scraping, glass and plastic bits, a blowout, crumpling metal, a car alarm and a pile-up.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "hit": {
+      "kind": "impact",
+      "range": 200,
+      "level": -8,
+      "vary": 0.04,
+      "want": "a car hitting something hard",
+      "prompts": [
+        {
+          "id": "v4-20400",
+          "models": [
+            "moss"
+          ],
+          "seed": 20400,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 10,
+          "text": "A car slams into a concrete wall at speed: a violent crunch of metal and shattering glass, two separate crashes with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "tree": {
+      "kind": "impact",
+      "range": 150,
+      "level": -8,
+      "vary": 0.04,
+      "want": "a car into a tree",
+      "prompts": [
+        {
+          "id": "v4-20410",
+          "models": [
+            "moss"
+          ],
+          "seed": 20410,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A car crashes into a big tree: a heavy thud, crumpling metal and a creaking crack of wood, two separate crashes with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "rollover": {
+      "kind": "impact",
+      "range": 200,
+      "level": -8,
+      "vary": 0.04,
+      "want": "a car rolling over",
+      "prompts": [
+        {
+          "id": "v4-20420",
+          "models": [
+            "moss"
+          ],
+          "seed": 20420,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A car rolls over and over down a slope: repeated heavy crunching bangs, glass breaking and metal scraping, ending in a last thud, one rollover. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "glance": {
+      "kind": "impact",
+      "range": 120,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a glancing hit",
+      "prompts": [
+        {
+          "id": "v4-20430",
+          "models": [
+            "moss"
+          ],
+          "seed": 20430,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Two cars sideswipe each other: a short scraping bang and a screech of metal, four separate hits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "scrape": {
+      "kind": "impact",
+      "range": 80,
+      "level": -14,
+      "vary": 0.04,
+      "want": "metal scraping along a road",
+      "prompts": [
+        {
+          "id": "v4-20440",
+          "models": [
+            "moss"
+          ],
+          "seed": 20440,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A wrecked car's body scrapes along asphalt: a harsh grinding metal screech with sparks, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "crumple": {
+      "kind": "impact",
+      "range": 100,
+      "level": -12,
+      "vary": 0.04,
+      "want": "metal crumpling",
+      "prompts": [
+        {
+          "id": "v4-20450",
+          "models": [
+            "moss"
+          ],
+          "seed": 20450,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A car's sheet metal crumples and crunches under a heavy impact, four separate crunches with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "bits": {
+      "kind": "impact",
+      "range": 30,
+      "level": -18,
+      "vary": 0.04,
+      "want": "glass and plastic bits after",
+      "prompts": [
+        {
+          "id": "v4-20460",
+          "models": [
+            "moss"
+          ],
+          "seed": 20460,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 6,
+          "text": "After a car crash: broken glass and plastic bits tinkle and skitter onto the road, one shower. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "blowout": {
+      "kind": "impact",
+      "range": 150,
+      "level": -10,
+      "vary": 0.04,
+      "want": "a tyre bursting",
+      "prompts": [
+        {
+          "id": "v4-20470",
+          "models": [
+            "moss"
+          ],
+          "seed": 20470,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A car tyre blows out with a loud bang and a flapping rubber slap, three separate blowouts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "alarm": {
+      "kind": "impact",
+      "range": 200,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a car alarm",
+      "prompts": [
+        {
+          "id": "v4-20480",
+          "models": [
+            "moss"
+          ],
+          "seed": 20480,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A car alarm wailing: a loud repeating siren pattern of rising tones and honks, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "pileup": {
+      "kind": "impact",
+      "range": 300,
+      "level": -8,
+      "vary": 0.04,
+      "want": "a pile-up",
+      "prompts": [
+        {
+          "id": "v4-20490",
+          "models": [
+            "moss"
+          ],
+          "seed": 20490,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 12,
+          "text": "A multi-car pile-up: tyres screeching, then crash after crash of metal and glass, one pile-up. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "whole": true
+    }
+  }
+}
