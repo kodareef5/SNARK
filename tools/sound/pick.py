@@ -31,10 +31,69 @@ LOOP_MAX = 12.0
 LOOP_TAIL = 1.75
 
 
-def pick_slot(slot, spec, cands):
+LINE_LEAD, LINE_TAIL = 0.06, 0.2  # around a spoken line, kept with its first sound and its last
+
+
+def spoken_span(wav, drop_opening=False, frame=0.02, floor_db=40.0, gap=0.35, keep_db=12.0):
+    """Where a spoken line is in its take. The voice model often opens with a short quiet sound and a second or more of
+    near silence before the line, or trails one after it. The take is split into sounds (20 ms frames within
+    `floor_db` of its loudest, joined across pauses shorter than `gap`); the loudest sound is kept, with any other whose
+    own peak is within `keep_db` of it, and the span runs from the first kept to the last. With `drop_opening`, a short
+first sound a second or more before the next goes too: it is the model's opening mumble as often as a first word said
+alone, so transcribe.py hears that cut before it is used. None if the take cannot be read."""
+    import numpy as np
+    import soundfile as sf
+
+    try:
+        x, rate = sf.read(str(wav), dtype="float32", always_2d=True)
+    except Exception:
+        return None
+    x = x.mean(axis=1)
+    h = max(1, int(rate * frame))
+    n = len(x) // h
+    if n == 0:
+        return None
+    db = 10 * np.log10(np.mean(x[: n * h].reshape(n, h) ** 2, axis=1) + 1e-12)
+    top = db.max()
+    on = np.flatnonzero(db > top - floor_db)
+    sounds = []  # [first frame, last frame, peak dB]
+    for i in on:
+        if sounds and (i - sounds[-1][1]) * frame <= gap:
+            sounds[-1][1] = i
+            sounds[-1][2] = max(sounds[-1][2], db[i])
+        else:
+            sounds.append([i, i, db[i]])
+    kept = [snd for snd in sounds if snd[2] >= top - keep_db]
+    while drop_opening and len(kept) > 1 and (kept[0][1] - kept[0][0] + 1) * frame < 0.4 and (kept[1][0] - kept[0][1]) * frame >= 1.0:
+        kept.pop(0)
+    return kept[0][0] * frame - LINE_LEAD, (kept[-1][1] + 1) * frame + LINE_TAIL
+WORDS_FLOOR = 0.6  # a spoken take whose letters match its line less than this (transcribe.py) says something else
+
+
+def pick_slot(slot, spec, cands, heard=None, brief=None):
     kind = spec.get("kind", "voice")
     if not cands:
         return [], "no candidates"
+    if spec.get("trim"):
+        # A spoken line, or anything else wanted whole: each clean file from its first sound to its last, quietest
+        # floor first, as many as `keep` (default every one: a library keeps its versions).
+        ok = [(t, m) for t, m in cands.items() if not m.get("clipped") and m["events"] and max(e["peak_db"] for e in m["events"]) > -40]
+        wrong = 0
+        if spec.get("words") and heard is not None:
+            # Lines with words to check keep only the takes heard saying them; a take not yet heard is kept.
+            n = len(ok)
+            ok = [(t, m) for t, m in ok if heard.get(t, {}).get("match", 1.0) >= spec.get("words_floor", WORDS_FLOOR)]
+            wrong = n - len(ok)
+        ok.sort(key=lambda kv: -kv[1].get("snr_db", 0))
+        ok = ok[: spec.get("keep", len(ok))]
+        out = []
+        for t, m in ok:
+            # Where transcribe.py heard the line said whole; else by loudness, the opening sound kept.
+            span = (heard or {}).get(t, {}).get("span") or (spoken_span(generate.work_dir(brief) / "takes" / slot / f"{t}.wav") if brief else None)
+            if span is None:
+                span = (min(e["start"] for e in m["events"]) - 0.03, max(e["end"] for e in m["events"]) + 0.08)
+            out.append({"take": t, "start": round(max(0.0, span[0]), 3), "end": round(min(m["seconds"], span[1]), 3)})
+        return out, f"trimmed {len(out)} of {len(cands)}" + (f", {wrong} saying other words" if wrong else "")
     if spec.get("loop") or spec.get("whole"):
         best = max(cands.items(), key=lambda kv: (kv[1].get("snr_db", 0), -len(kv[1].get("faults", []))))
         take, m = best
@@ -99,10 +158,12 @@ def main():
     a = ap.parse_args()
     brief = generate.load_brief(a.brief)
     meas = json.loads((generate.work_dir(brief) / "measures.json").read_text())
+    heard_file = generate.work_dir(brief) / "heard.json"
+    heard = json.loads(heard_file.read_text()) if heard_file.exists() else None
     picks = {}
     for slot, spec in brief["slots"].items():
         cands = {t: m for t, m in meas.get(slot, {}).items() if t.startswith(a.prefix)}
-        chosen, why = pick_slot(slot, spec, cands)
+        chosen, why = pick_slot(slot, spec, cands, None if heard is None else heard.get(slot, {}), brief)
         if chosen:
             picks[slot] = chosen
         print(f"{slot}: {why}")
