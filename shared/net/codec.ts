@@ -328,3 +328,35 @@ export class BitReader {
     return s;
   }
 }
+
+/** The values one message names: each goes whole the first time, then as its place among those named before it. */
+export class Named {
+  private readonly seen: number[] = [];
+
+  reset(): void {
+    this.seen.length = 0;
+  }
+
+  /** `bits` of the value, or 0 for a varint. */
+  write(w: BitWriter, v: number, bits: number): void {
+    const i = this.seen.indexOf(v);
+    w.bool(i < 0);
+    if (i >= 0) w.bits(i, widthOf(this.seen.length));
+    else {
+      this.seen.push(v);
+      if (bits > 0) w.bits(v, bits);
+      else w.varint(v);
+    }
+  }
+
+  read(r: BitReader, bits: number): number {
+    if (!r.bool()) return this.seen[r.bits(widthOf(this.seen.length))] ?? 0;
+    const v = bits > 0 ? r.bits(bits) : r.varint();
+    this.seen.push(v);
+    return v;
+  }
+}
+
+function widthOf(n: number): number {
+  return n <= 1 ? 0 : 32 - Math.clz32(n - 1);
+}
