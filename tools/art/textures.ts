@@ -9,7 +9,7 @@ import { relative, resolve } from "node:path";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { nearestColour } from "../../shared/pack/palette.ts";
 import { STEP0_SIZE, TEXTURE_FORMATS, blockOf, textureBytes, topIn, type TextureRole } from "../../shared/pack/texture.ts";
-import { ASTC_BLOCK } from "../pack/encode.ts";
+import { astcBlock } from "../pack/encode.ts";
 import { asPicture, baseMips, normalAgainstHeight, normalMips, readPicture, seam, shrunkAgainst, type Picture } from "../pack/image.ts";
 import { checkMasks, readRegions, regionMasks } from "../pack/mask.ts";
 import { isNeutral, materialMips, neededSide } from "../pack/texture.ts";
@@ -220,7 +220,7 @@ export function measureTextures(asset: Asset, pack: Pack, deep: boolean, faults:
   const materials = own.map((m) => measure(asset, m, pack, deep, faults, notes, pool));
   const named = pack.header.textures ?? [];
   for (const t of named) if (!materials.some((m) => t.id === `${m.id}/${t.role}`)) faults.push(`the pack names the texture ${t.id}, which no material in asset.ts has. Build the asset again`);
-  const megabytes = Math.max(...TEXTURE_FORMATS.map((format) => named.reduce((sum, t) => sum + textureBytes(format, t.role, topIn(format, t.top), format === "astc" ? ASTC_BLOCK[t.role] : blockOf(format, {})), 0))) / 2 ** 20;
+  const megabytes = Math.max(...TEXTURE_FORMATS.map((format) => named.reduce((sum, t) => sum + textureBytes(format, t.role, topIn(format, t.top), format === "astc" ? astcBlock(t.role, t.role === "layer") : blockOf(format, {})), 0))) / 2 ** 20;
   const budget = (spec.kind === "creature" || spec.kind === "pieces" ? spec.budgets.texture?.megabytes : undefined) ?? null;
   if (budget !== null && megabytes > budget) faults.push(`its textures take ${megabytes.toFixed(1)} MB in one variant, and its budget is ${budget} MB`);
   return { materials, megabytes, budget };

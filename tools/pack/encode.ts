@@ -30,12 +30,20 @@ const BLOCK_FORMATS: readonly BlockFormat[] = ["bc", "astc"];
 /** The encoder a picture goes through, and what it is told of the picture. */
 export type Encoding = { with: "bc5" } | { with: "bc7"; channels: 3 | 4 } | { with: "astc"; kind: AstcKind; block: number };
 
-/** The side of each role's ASTC blocks. */
-export const ASTC_BLOCK: Readonly<Record<TextureRole, number>> = { base: 6, layer: 6, normal: 5, mro: 8, mask: 4, mask2: 4 };
+/**
+ * The side of a role's ASTC blocks: the coarsest at which the rasterizer's close views of real assets move no more
+ * than about a thousandth of the pixels by over 8 levels from 4 by 4 (planning/quality/encoders.md). Base colour 6,
+ * normals 5, the packed map 8, and the masks 4, which must stay exact (D149). Where its alpha is read a base colour is
+ * 5, as is the layer: a cut-out's edge moves with its alpha.
+ */
+export function astcBlock(role: TextureRole, alpha: boolean): number {
+  if (role === "base") return alpha ? 5 : 6;
+  return role === "normal" || role === "layer" ? 5 : role === "mro" ? 8 : 4;
+}
 
 /** How a role is stored in a block variant. `alpha` is whether anything reads the alpha of a base colour. A layer is a base colour whose alpha is always read. */
 export function encodingOf(format: BlockFormat, role: TextureRole, alpha: boolean): Encoding {
-  if (format === "astc") return { with: "astc", kind: role === "base" || role === "layer" ? "srgb" : role === "normal" ? "normal" : "linear", block: ASTC_BLOCK[role] };
+  if (format === "astc") return { with: "astc", kind: role === "base" || role === "layer" ? "srgb" : role === "normal" ? "normal" : "linear", block: astcBlock(role, alpha) };
   return role === "normal" ? { with: "bc5" } : { with: "bc7", channels: (role === "base" && alpha) || role === "layer" ? 4 : 3 };
 }
 
@@ -212,7 +220,7 @@ export async function encodeTextures(sources: readonly TextureSource[], opts: En
       });
       const [bc, astc] = await Promise.all(pictures.map((p) => Promise.all(p)));
       textures.bc.push({ role: s.role, block: 4, pictures: bc! });
-      textures.astc.push({ role: s.role, block: (encodingOf("astc", s.role, alpha) as { block: number }).block, pictures: astc! });
+      textures.astc.push({ role: s.role, block: astcBlock(s.role, alpha), pictures: astc! });
       textures.rgba.push(rgbaTexture(s.role, mips));
     }
   } finally {

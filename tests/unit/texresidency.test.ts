@@ -7,7 +7,7 @@ import { MANIFEST_VERSION, parseManifest, type Manifest, type ManifestLevel, typ
 import { SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, parsePack, type PackHeader, type PackMaterial } from "../../shared/pack/pack.ts";
 import { TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_MAGIC, TEXTURE_VERSION, blockOf, pictureBytes, stepBytes, stepOf, textureBytes, topIn, type TextureFormat, type TextureRole } from "../../shared/pack/texture.ts";
 import { Rng } from "../../shared/rng.ts";
-import { ASTC_BLOCK } from "../../tools/pack/encode.ts";
+import { astcBlock } from "../../tools/pack/encode.ts";
 import { partHash } from "../../tools/pack/manifest.ts";
 import { splitPack, type SplitFile } from "../../tools/pack/split.ts";
 import { writeTextureFile } from "../../tools/pack/texture.ts";
@@ -79,7 +79,7 @@ function texturedSet(bodies: number, top: number, formats: readonly TextureForma
     let at = head.length;
     for (const tex of manifest.textures!) {
       // ASTC in the blocks the build gives each role.
-      const block = format === "astc" ? ASTC_BLOCK[tex.role] : blockOf(format, {});
+      const block = format === "astc" ? astcBlock(tex.role, false) : blockOf(format, {});
       const hash: string[] = [];
       for (let k = 0; k <= stepOf(topIn(format, tex.top)); k++) {
         runs.push(noise(stepBytes(format, tex.role, k, block), rng));
@@ -338,7 +338,7 @@ test("the variant is the one the device takes, the tier caps how wide, and a car
   w.assets.format = "astc";
   w.frame(-1);
   w.run(3, -1);
-  const astc = set.manifest.textures!.reduce((sum, tex, t) => sum + textureBytes("astc", tex.role, tops(w, 0)[t]!, ASTC_BLOCK[tex.role]), 0);
+  const astc = set.manifest.textures!.reduce((sum, tex, t) => sum + textureBytes("astc", tex.role, tops(w, 0)[t]!, astcBlock(tex.role, false)), 0);
   expect([tops(w, 0), formats(), w.shown[0], w.card.texBytes, astc < held]).toEqual([wide, ["astc"], 1, astc, true]);
   w.assets.format = "bc";
   w.frame(-1);

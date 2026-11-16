@@ -466,7 +466,7 @@ interface Footprint {
   over: number[][];
   /** The block mode for a grid, a weight range and one or two planes, at (grid * 12 + range) * 2 + planes - 1, or -1. */
   mode: Int16Array;
-  /** See CONFIGS below. */
+  /** By partitions, end colour channels and planes, and then by grid: the ways of spending the bits (configsFor). */
   configs: Int32Array[][];
 }
 
@@ -948,7 +948,7 @@ export function decodeAstc(blocks: Uint8Array, width: number, height: number, ki
 
 // ---- The encoder ----
 
-/** CONFIGS: which ways of spending the bits are worth trying, for a number of partitions, a kind of end colour (1 to 4
+/** Which ways of spending the bits are worth trying, for a number of partitions, a kind of end colour (1 to 4
  *  channels), one or two planes of weights and a grid: pairs of a weight range and the colour range it leaves room
  *  for. A pair is left out when no block mode has it, or another has finer weights and colours at least as fine. */
 function configsFor(fp: Footprint, parts: number, channels: number, planes: number, g: number): Int32Array {
