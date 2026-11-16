@@ -15,6 +15,7 @@ import { skyFile, theSky } from "../client/core/render/sky.ts";
 import { WATER_MATERIAL } from "../client/core/render/water.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { SURFACE_MATERIAL } from "../content/surfaces.ts";
+import { HUMAN } from "../shared/anim/human.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
 import { fillSlot, slotsOf } from "../shared/content/slots.ts";
 import { describePack } from "../shared/pack/manifest.ts";
@@ -48,8 +49,8 @@ export function brotli(bytes: Uint8Array, quick: boolean): Uint8Array {
 }
 
 /**
- * What the boot file holds and how the rest is paged: the survivor's body, hair and beards and the meshes the client
- * finds by name in the boot file, and the others grouped by the kind of definition that first draws them and placed in
+ * What the boot file holds and how the rest is paged: the bodies, hair and beards of the species on the human skeleton
+ * (the survivor's among them) and the meshes the client finds by name in the boot file, and the others grouped by the kind of definition that first draws them and placed in
  * the order of the content, so a page holds what is seen together: a node's living forms apart from what is left of
  * one used up. A mesh no slot names goes with the nearest name that one does.
  */
@@ -68,11 +69,15 @@ export function paging(reg: Registry, pack: Pack): { boot: (id: string) => boole
     if (u.asset !== "mesh") continue;
     const owner = reg.index.get(u.owner)!;
     const id = fillSlot(u, has).id;
-    if (kindOf(owner) === "species/survivor" && ["body", "hair", "beard"].includes(u.slot) && id !== "") boot.add(id);
+    // A body on the human skeleton is drawn at one level for all its parts, worked out as the scene starts.
+    const d = reg.defs[owner]!;
+    if (d.type === "species" && d.skeleton === HUMAN.id && ["body", "hair", "beard"].includes(u.slot) && id !== "") boot.add(id);
     note(id, kindOf(owner));
   }
   const forms = nodeForms(reg);
   for (let f = 1; f < forms.count; f++) if (pack.meshIndex.has(forms.mesh[f]!)) note(forms.mesh[f]!, `${kindOf(forms.kind[f]!)}${forms.depleted[f] === 1 ? "/used" : ""}`);
+  // The stress scene places its meshes by their rows as it starts (client/core/stress.ts).
+  for (const id of pack.meshIndex.keys()) if (id.startsWith("stress:")) boot.add(id);
   const ids = [...pack.meshIndex.keys()].sort();
   const common = (a: string, b: string): number => {
     let n = 0;
