@@ -162,9 +162,16 @@ test("a build's manifest lists the three files and where each texture is in them
   for (let p = 3; p < TUBE_PIXELS * 16 * 4; p += 4) holed[6]![p] = 0;
   manifest.materials![1]!.flags |= MATERIAL_CUTOUT;
   const extra: TextureSource = { id: "test:unnamed", role: "mask", top: TUBE_PIXELS, mips: () => mips.mro };
-  const sources = [extra, ...tube().map((s) => (s.role === "base" ? { ...s, mips: () => holed } : s))];
+  // A third material names a texture that is the tube's normal again, and masks that dye nothing anywhere.
+  manifest.textures!.push({ id: `${TUBE}/normal_again`, role: "normal", top: TUBE_PIXELS, in: {} }, { id: `${TUBE}/blank`, role: "mask", top: TUBE_PIXELS, in: {} });
+  manifest.materials!.push({ ...manifest.materials![0]!, id: `${TUBE}/again`, normal: 5, mask: 6, mask2: -1 });
+  const blank = mips.mask.map((m) => m.map((_, k) => ((k & 3) === 3 ? 255 : 0)));
+  const again: TextureSource[] = [{ id: `${TUBE}/normal_again`, role: "normal", top: TUBE_PIXELS, mips: () => mips.normal }, { id: `${TUBE}/blank`, role: "mask", top: TUBE_PIXELS, mips: () => blank }];
+  const sources = [extra, ...tube().map((s) => (s.role === "base" ? { ...s, mips: () => holed } : s)), ...again];
   const { files, report } = await buildTextures(manifest, sources, "tube", { workers: 2, cache: null });
-  expect(report.encoded).toBe(PICTURES + 14);
+  expect([report.pictures, report.encoded]).toEqual([PICTURES + 14, PICTURES + 14]);
+  // The one is listed once and the other not at all, and the materials name what is left.
+  expect(manifest.materials!.map((m) => [m.normal, m.mask, m.mask2])).toEqual([[4, 1, 2], [4, -1, -1], [4, -1, -1]]);
   expect(files.map((f) => [f.name, f.role, f.format])).toEqual([["tube.tex.bc.sntx", "tex", "bc"], ["tube.tex.astc.sntx", "tex", "astc"], ["tube.tex.rgba.sntx", "tex", "rgba"]]);
   const parsed = parseManifest(JSON.stringify(manifest));
   expect(parsed.files.slice(2)).toEqual(files.map((f) => ({ name: f.name, bytes: f.bytes.length, role: "tex", format: f.format })));
@@ -190,17 +197,6 @@ test("a build's manifest lists the three files and where each texture is in them
   await expect(buildTextures(fresh(), tube().map((s) => ({ ...s, top: 32 })), "tube", { cache: null })).rejects.toThrow("is base at 64 to its mesh, and its pictures are base at 32");
   await expect(buildTextures(fresh(), [...tube(), ...tube()], "tube", { cache: null })).rejects.toThrow("two sources have one id");
   await expect(encodeTextures([{ ...extra, top: 128 }], { cache: null })).rejects.toThrow("texture test:unnamed: its pictures are not the sizes from 1 to 128 pixels across");
-
-  // A texture that is another's pictures under its role is listed once, one that dyes nothing anywhere not at all, and
-  // the materials name what is left: the third names the tube's normal and no mask.
-  const shared = fresh();
-  shared.textures!.push({ id: `${TUBE}/normal_again`, role: "normal", top: TUBE_PIXELS, in: {} }, { id: `${TUBE}/blank`, role: "mask", top: TUBE_PIXELS, in: {} });
-  shared.materials!.push({ ...shared.materials![0]!, id: `${TUBE}/again`, normal: 5, mask: 6, mask2: -1 });
-  const blank = mips.mask.map((m) => m.map((v, k) => ((k & 3) === 3 ? 255 : 0)));
-  const sharing = await buildTextures(shared, [...tube(), { id: `${TUBE}/normal_again`, role: "normal", top: TUBE_PIXELS, mips: () => mips.normal }, { id: `${TUBE}/blank`, role: "mask", top: TUBE_PIXELS, mips: () => blank }], "tube", { workers: 2, cache: null });
-  expect([sharing.report.pictures, sharing.report.encoded]).toEqual([PICTURES, PICTURES]);
-  expect([parseManifest(JSON.stringify(shared)).textures!.map((t) => t.id), shared.materials!.map((m) => [m.normal, m.mask, m.mask2])]).toEqual([named, [[4, 1, 2], [4, -1, -1], [4, -1, -1]]]);
-  expect(sharing.files.map((f) => f.bytes)).toEqual((await buildTextures(fresh(), tube(), "tube", { workers: 2, cache: null })).files.map((f) => f.bytes));
 
   // With no textures there are no files, and the manifest is as it was.
   const bare = splitPack(buildPack([{ id: "test:box", lods: [boxMesh([1, 1, 1], 0)] }], defaultPalette()), "bare").manifest;
