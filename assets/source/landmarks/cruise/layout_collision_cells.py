@@ -97,6 +97,17 @@ def clip(poly,axis,bound,keep):
 
 def corners(poly):return unique([p for face in poly for p in face])
 
+def face_pyramids(face,center):
+ # Balance the fan before splitting a long cap. A maximum-size first group
+ # can leave one almost-collinear triangle as a native-invalid final solid.
+ # Every original triangle remains exactly once; no corner or volume is lost.
+ count=len(face)-2;groups=(count+8)//9;first=1
+ for group in range(groups):
+  size=count//groups+(group<count%groups)
+  base=[face[0]]+face[first:first+size+1];first+=size
+  v=abs(sum(dot(sub(base[0],center),cross(sub(base[i],center),sub(base[i+1],center)))/6 for i in range(1,len(base)-1)))
+  if v>1e-12:yield [center]+base,v
+
 def bounded_parts(poly):
  points=corners(poly);v=volume(poly)
  if len(points)<=12 and abs(volume(hull_poly(points))-v)<max(1e-10,v*1e-9):return [(points,v)]
@@ -106,10 +117,7 @@ def bounded_parts(poly):
  center=[sum(p[k] for p in points)/len(points) for k in range(3)]
  out=[]
  for face in poly:
-  for first in range(1,len(face)-1,9):
-   base=[face[0]]+face[first:min(len(face),first+10)]
-   v=abs(sum(dot(sub(base[0],center),cross(sub(base[i],center),sub(base[i+1],center)))/6 for i in range(1,len(base)-1)))
-   if v>1e-12:out.append(([center]+base,v))
+  out.extend(face_pyramids(face,center))
  return out
 
 def grids(lo,hi):
@@ -228,6 +236,20 @@ def self_test():
    assert all(grid[k]*SIDE-EPS<=p[k]<=(grid[k]+1)*SIDE+EPS for p in points for k in range(3))
    parts.append({'grid':list(grid),'points':[[p[k]-center[k] for k in range(3)] for p in points]})
   cases.append({'name':name,'volume':before,'clippedVolume':after,'parts':parts})
+ # Actual slide cell cap: a 9+1 fan left a 6.3e-12 m3 tetrahedron whose
+ # corners are all on one plane at the unchanged native 1e-9 tolerance.
+ center=[-2.72143433680494,-7.77206376388888,-4.655159296768687]
+ face=[[-2.4679029117322813,-8,-4.920015426629334],[-2.437386845859791,-8,-4.933166625253477],
+  [-2.415469367992465,-8,-4.876224674095994],[-2.3003556378286447,-8,-4.576723326838703],
+  [-2.4990150964286393,-8,-4.4914554216449005],[-2.642170862215245,-8,-4.430010884513138],
+  [-2.873801397012233,-8,-4.330591786028151],[-3.195239610812603,-8,-4.192625979984058],
+  [-3.257020572101677,-8,-4.353251983747526],[-3.3316873575682955,-8,-4.547757991120903],
+  [-3.0511276600878254,-8,-4.668668485814408],[-2.7789792428492213,-8,-4.78595375616581]]
+ before=abs(sum(dot(sub(face[0],center),cross(sub(face[i],center),sub(face[i+1],center)))/6 for i in range(1,len(face)-1)))
+ out=list(face_pyramids(face,center));after=sum(v for _,v in out)
+ assert abs(before-after)<1e-16
+ cases.append({'name':'slide-cap','volume':before,'clippedVolume':after,
+  'parts':[{'grid':[0,0,0],'points':p} for p,_ in out]})
  return cases
 
 if __name__=='__main__':
