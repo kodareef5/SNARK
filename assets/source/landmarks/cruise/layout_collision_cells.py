@@ -168,6 +168,8 @@ def finish(D):
  # Diagnose look-only groups explicitly; do not create a token/phantom collider.
  missing=[{'grid':list(k[0]),'color':k[1],'floor':k[2],'support':k[3],'parts':len(v)} for k,v in looks.items() if k not in physical]
  if missing:raise ValueError('look groups without real collision: '+json.dumps(missing[:30])+f' ({len(missing)} groups)')
+ empty=[{'grid':list(k[0]),'color':k[1],'sources':sorted({q['instance'] for _,_,q in v})} for k,v in physical.items() if not looks.get(k)]
+ if empty:raise ValueError('physical groups without original far look: '+json.dumps(empty))
  standalone={p['id'] for p in D['prototypes'] if p['category']=='door' or p['category']=='sign' and not any(i['placed'] and i['prototype']==p['id'] for i in D['instances'])}
  D['collisionPrototypes']=[copy.deepcopy(p) for p in D['prototypes'] if p['id'] in standalone]
  D['collisionInstances']=[copy.deepcopy(i) for i in D['instances'] if i['prototype'] in standalone]
@@ -181,6 +183,7 @@ def finish(D):
    assert len(parts)>=count,('not enough real parts for far groups',key,len(parts),len(far))
    for section in range(count):
     batch=parts[section*len(parts)//count:(section+1)*len(parts)//count];drawn=far[section*len(far)//count:(section+1)*len(far)//count]
+    assert drawn,('physical module lacks original far look',key,section)
     name=f'collision_{number:04}_{group:02}_{section:02}';ident='cruise:'+name
     def forms(items):return {'boxes':[v for k,v,_ in items if k=='box'],'hulls':[v for k,v,_ in items if k=='hull']}
     forms_here=forms(batch);look=forms(drawn) if drawn else None
@@ -201,7 +204,34 @@ def finish(D):
  D['collisionAudit']=stats
  return stats
 
+def self_test():
+ cases=[]
+ # Eight adjacent owners share exact faces, with no overlap or missing volume.
+ box=[[x,y,z] for x in(-1,1) for y in(-1,1) for z in(-1,1)]
+ # Regression: a thin, slightly non-planar authored dome rib crossing Z112.
+ # Splitting its cap into skinny tetrahedra made native hullOf call them planar.
+ rib=[[27.7176445,48.8968435,112.0110295],[27.7874935,49.0625845,111.8843375],
+  [27.9103045,48.8968435,112.1172485],[27.9801535,49.0625845,111.9905555],
+  [25.9754845,52.0465315,115.1709825],[26.0453335,52.2122725,115.0442895],
+  [26.1681435,52.0465315,115.2772005],[26.2379925,52.2122725,115.1505075]]
+ phi=(1+math.sqrt(5))/2
+ ico=[[15+3*p[k] for k in range(3)] for p in [(0,a,b) for a in(-1,1) for b in(-phi,phi)]+[(a,b,0) for a in(-1,1) for b in(-phi,phi)]+[(b,0,a) for a in(-1,1) for b in(-phi,phi)]]
+ for name,points,isbox in [('box',box,True),('thin-rib',rib,False),('twelve-corner',ico,False)]:
+  out=list(fragments(points,isbox));before=8 if isbox else volume(hull_poly(points));after=sum(v for _,_,_,v in out)
+  assert abs(before-after)<1e-8,(name,before,after)
+  if isbox:assert len(out)==8
+  parts=[]
+  for grid,kind,part,_ in out:
+   center=[(v+.5)*SIDE for v in grid]
+   points=part.get('points',[[part['at'][k]+s[k]*part['half'][k] for k in range(3)] for s in itertools.product((-1,1),repeat=3)] if kind=='box' else [])
+   assert all(grid[k]*SIDE-EPS<=p[k]<=(grid[k]+1)*SIDE+EPS for p in points for k in range(3))
+   parts.append({'grid':list(grid),'points':[[p[k]-center[k] for k in range(3)] for p in points]})
+  cases.append({'name':name,'volume':before,'clippedVolume':after,'parts':parts})
+ return cases
+
 if __name__=='__main__':
- D=json.load(open(sys.argv[1]));report=finish(D)
- with open(sys.argv[2],'w') as f:json.dump(D,f,indent=2);f.write('\n')
- print(json.dumps(report))
+ if sys.argv[1:] == ['--self-test']:print(json.dumps(self_test()))
+ else:
+  D=json.load(open(sys.argv[1]));report=finish(D)
+  with open(sys.argv[2],'w') as f:json.dump(D,f,indent=2);f.write('\n')
+  print(json.dumps(report))
