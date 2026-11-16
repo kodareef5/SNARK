@@ -319,6 +319,17 @@ function check(m: MapData): void {
   };
   const { chunksX, chunksZ } = m.dims;
   const whole = (n: number, lo: number, hi: number): boolean => Number.isInteger(n) && n >= lo && n <= hi;
+  // Each picture of zones once, where layers share one.
+  const tops = new Map<Uint8Array, number>();
+  const highest = (zone: Uint8Array): number => {
+    let top = tops.get(zone);
+    if (top === undefined) {
+      top = 0;
+      for (let i = 0; i < zone.length; i++) if (zone[i]! > top) top = zone[i]!;
+      tops.set(zone, top);
+    }
+    return top;
+  };
   if (!/^[\x21-\x7e]{1,64}$/.test(m.id)) fail("its id must be 1 to 64 characters of plain text with no space");
   if (!whole(chunksX, 1, MAX_CHUNKS_PER_AXIS) || !whole(chunksZ, 1, MAX_CHUNKS_PER_AXIS)) fail(`it is ${chunksX} by ${chunksZ} chunks, and a side is 1 to ${MAX_CHUNKS_PER_AXIS}`);
   if (!(m.stepY > 0 && Number.isFinite(m.stepY) && Number.isFinite(m.minY) && m.seaLevel < Infinity)) fail("its height range or its sea level is not a number");
@@ -346,7 +357,7 @@ function check(m: MapData): void {
       if (!whole(layer.perChunk, 1, NODE_SLOTS) || !whole(layer.zones.length, 1, 255) || !layer.zones.every(weighed)) fail("zoned nodes need 1 to 256 slots a chunk and 1 to 255 zones, each of 0 to 255 kinds of weight 1 to 255 and bare ground of weight 0 to 255");
       if (!whole(cell, 1, CHUNK_SIZE) || CHUNK_SIZE % cell !== 0 || layer.zone.length !== (sizeX / cell) * (sizeZ / cell)) fail("the zones of zoned nodes are not a byte per square of 1, 2, 4, 8, 16, 32 or 64 m");
       const codes = layer.codes;
-      if (codes ? codes.length > 255 || codes.some((z) => z > layer.zones.length) || layer.zone.some((v) => v >= codes.length) : layer.zone.some((z) => z > layer.zones.length)) fail("a square is in a zone the list of zones does not have");
+      if (codes ? codes.length > 255 || codes.some((z) => z > layer.zones.length) || highest(layer.zone) >= codes.length : highest(layer.zone) > layer.zones.length) fail("a square is in a zone the list of zones does not have");
       continue;
     }
     const cell = layer.allowCell;
