@@ -21,14 +21,16 @@ import { NodeField } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { corePack } from "../../tests/fixtures/pack.ts";
 import { coreRegistry } from "../../tests/fixtures/world.ts";
+import { asTextured } from "./base.ts";
+import { perCascade } from "./shadow.ts";
 import { benchHills } from "./terrain.ts";
 
 type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
 
 /** The device page's tree order's view on the iPhone, in CSS pixels, and its height in degrees; its spots, young and elder. */
-const VIEW = [390, 669, 70] as const;
-const SPOTS = { young: [4096, 4096], elder: [STAND.x, STAND.z] } as const;
+export const VIEW = [390, 669, 70] as const;
+export const SPOTS = { young: [4096, 4096], elder: [STAND.x, STAND.z] } as const;
 const BODIES = 40;
 const HEADINGS = 8;
 /** Frames a heading is built before it is counted, for the squeeze to settle. */
@@ -39,16 +41,19 @@ const EYE = 1.7;
 const PARTS = ["bodies", "fight", "built", "trunks", "rocks", "bushes", "crowns", "ground and far"] as const;
 type Part = (typeof PARTS)[number];
 
-/** What a frame drew: all of it, by part, its draws, the squeeze, and each body draw's mesh and level. */
-interface Counted {
+/** What a frame drew: all of it, by part, its draws, the squeeze, each body draw's mesh and level, what it cast into every cascade, and the bytes it put on the card. */
+export interface Counted {
   triangles: number;
   parts: Record<Part, number>;
   draws: number;
   squeeze: number;
   levels: string;
+  cast: number;
+  casterDraws: number;
+  uploads: number;
 }
 
-function count(scene: Scene, p: FramePacket): Counted {
+export function count(scene: Scene, p: FramePacket): Counted {
   const { tris, materials } = scene.assets.table;
   const ids = corePack().header.meshes.map((m) => m.id);
   const parts = Object.fromEntries(PARTS.map((k) => [k, 0])) as Record<Part, number>;
@@ -69,11 +74,13 @@ function count(scene: Scene, p: FramePacket): Counted {
     if (part === "bodies") levels.push(`${mesh}:${p.drawLod[d]}`);
   }
   parts["ground and far"] = p.triangles - PARTS.reduce((s, k) => s + parts[k], 0);
-  return { triangles: p.triangles, parts, draws: p.drawCount, squeeze: scene.budget.squeeze, levels: levels.join(" ") };
+  const cast = perCascade(scene, p);
+  const uploads = [...p.uploads, ...p.assetUploads, ...p.texUploads].reduce((s, u) => s + u.data.length, 0);
+  return { triangles: p.triangles, parts, draws: p.drawCount, squeeze: scene.budget.squeeze, levels: levels.join(" "), cast: cast.triangles.reduce((s, v) => s + v, 0), casterDraws: cast.draws.reduce((s, v) => s + v, 0), uploads };
 }
 
 /** The wood at `spot` on the device page's map, a scene on medium over it, and the camera at eye height there. */
-function wood(spot: readonly number[]): { scene: Scene; cam: Camera; ground: (x: number, z: number) => number } {
+export function wood(spot: readonly number[]): { scene: Scene; cam: Camera; ground: (x: number, z: number) => number } {
   const reg = coreRegistry();
   const hills = benchHills();
   const map = parseMap(writeMap({ id: "bench:budget", dims: hills.dims, minY: hills.minY, stepY: hills.stepY, seaLevel: -Infinity, heights: hills.heights, tint: hills.tint.fill(12), statics: [], nodes: [terrainWood(hills.dims)], spawns: [{ name: "Middle", x: 4096, z: 4096, yaw: 0 }] }));
@@ -87,9 +94,7 @@ function wood(spot: readonly number[]): { scene: Scene; cam: Camera; ground: (x:
   scene.assets.tier = tier;
   scene.viewHeight = VIEW[1];
   if (scene.nodesFar) scene.nodesFar.makes = Infinity;
-  // Every level is held whole here; take each as drawn with its materials, as a phone holding the wood's textures does.
-  const sections = scene.assets.table.sections;
-  (scene.assets as unknown as { textured: (mesh: number, level: number) => boolean }).textured = (mesh, level) => (sections[mesh]![level]?.length ?? 0) > 0;
+  asTextured(scene);
   const cam = new Camera();
   cam.aspect = VIEW[0] / VIEW[1];
   cam.fovY = (VIEW[2] * Math.PI) / 180;
@@ -122,15 +127,15 @@ function fight(remote: RemoteSample, scene: Scene, cam: Camera, ground: (x: numb
 }
 
 /** Each heading's frame once the squeeze has settled. */
-function turn(scene: Scene, cam: Camera, ground: (x: number, z: number) => number, bodies: number, on: boolean): { frames: Counted[]; ms: number[] } {
+export function turn(scene: Scene, cam: Camera, ground: (x: number, z: number) => number, bodies: number, on: boolean, headings = HEADINGS): { frames: Counted[]; ms: number[] } {
   const remote = new RemoteSample();
   remote.tick = 3000;
   scene.budget.on = on;
   scene.budget.reset();
   const frames: Counted[] = [];
   const ms: number[] = [];
-  for (let k = 0; k < HEADINGS; k++) {
-    cam.yaw = (k / HEADINGS) * Math.PI * 2;
+  for (let k = 0; k < headings; k++) {
+    cam.yaw = (k / headings) * Math.PI * 2;
     fight(remote, scene, cam, ground, bodies);
     let p: FramePacket | null = null;
     for (let f = 0; f < SETTLE; f++) {
@@ -167,6 +172,7 @@ export function benchFrameBudget(section: Section, record: Row): void {
         record(`${what}: headings whose bodies' levels the budget changed`, on.frames.filter((f, k) => f.levels !== off.frames[k]!.levels).length, "", 0);
       }
       record(`${what}: draws a heading, off and on`, mean(off.frames.map((f) => f.draws)), `, ${mean(on.frames.map((f) => f.draws)).toFixed(0)}`, tierOf("medium").budget.draws);
+      record(`${what}: triangles cast into the sun's maps, and their draws, on`, mean(on.frames.map((f) => f.cast)) / 1e6, `M (${mean(on.frames.map((f) => f.casterDraws)).toFixed(0)} draws)`);
       record(`${what}: frame build, median, off and on`, median(off.ms), `ms, ${median(on.ms).toFixed(2)} ms`);
     }
   }
