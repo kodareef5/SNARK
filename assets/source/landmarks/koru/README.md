@@ -29,5 +29,5 @@ bun run art -- landmarks:koru --check
 
 `ref/pictures/` holds the accepted pictures, drawn by the software rasterizer on medium at its Miami berth
 (`bun tools/map/cityviews.ts var/maps/miami.snmap <views.json> <folder>`, `--moved 1` for the sails set): from the quay,
-on the sun deck, from 1 km over the bay, and with its sails set.
+on the sun deck, from 1 km off and 150 m up (its far form: the hull and three masts), and with its sails set.
 
