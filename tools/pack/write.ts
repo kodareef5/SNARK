@@ -2,7 +2,7 @@
 
 import type { Clip } from "../../shared/anim/clip.ts";
 import {
-  CLIP_ROOT_BYTES, MATERIAL_CUTOUT, MOST_SECTIONS, PACK_MAGIC, PACK_VERSION, SKIN_BYTES, VERTEX_BYTES, clipRotBytes, lodSkin, lodSurface, lodVertices, readIndices,
+  CLIP_ROOT_BYTES, CLIP_ROOT_STEPS, CLIP_ROT_STEPS, MATERIAL_CUTOUT, MOST_SECTIONS, PACK_MAGIC, PACK_VERSION, SKIN_BYTES, VERTEX_BYTES, clipRotBytes, lodSkin, lodSurface, lodVertices, readIndices,
   setTexture, textureOf, type Pack, type PackHeader, type PackLod, type PackMaterial, type PackMesh, type PackRig, type PackTexture,
 } from "../../shared/pack/pack.ts";
 import type { PackDetails } from "../../shared/pack/details.ts";
@@ -249,20 +249,46 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
   }
 
   for (const clip of [...clips].sort(byId)) {
-    const rot = new Uint8Array(clip.frames * clipRotBytes(clip.bones));
-    const rv = new DataView(rot.buffer);
-    for (let k = 0; k < clip.frames * clip.bones; k++) {
-      // Stored with w >= 0, so three numbers are enough.
-      const sign = clip.rot[k * 4 + 3]! < 0 ? -1 : 1;
-      for (let a = 0; a < 3; a++) rv.setInt16(k * 6 + a * 2, Math.round(clip.rot[k * 4 + a]! * sign * 32767), true);
-    }
-    const root = new Uint8Array(clip.frames * CLIP_ROOT_BYTES);
-    const tv = new DataView(root.buffer);
-    for (let k = 0; k < clip.frames * 3; k++) tv.setFloat32(k * 4, clip.root[k]!, true);
+    const { rot, root } = encodeClip(clip);
     header.clips.push({ id: clip.id, bones: clip.bones, frames: clip.frames, loop: clip.loop, rotOffset: append(rot), rootOffset: append(root) });
   }
 
   return blob.file(header);
+}
+
+const zig = (d: number): number => ((d << 1) ^ (d >> 31)) >>> 0;
+
+/** A clip's rotations and root as a pack stores them (shared/pack/pack.ts). */
+export function encodeClip(clip: Clip): { rot: Uint8Array; root: Uint8Array } {
+  const { bones, frames, rot: q } = clip;
+  const n = frames * bones * 3;
+  const rot = new Uint8Array(frames * clipRotBytes(bones));
+  for (let b = 0, at = 0; b < bones; b++) {
+    for (let a = 0; a < 3; a++) {
+      for (let f = 0, last = 0, before = 0; f < frames; f++, at++) {
+        const k = (f * bones + b) * 4;
+        const l = Math.sqrt(q[k]! * q[k]! + q[k + 1]! * q[k + 1]! + q[k + 2]! * q[k + 2]! + q[k + 3]! * q[k + 3]!) || 1;
+        const x = Math.round(((q[k + 3]! < 0 ? -q[k + a]! : q[k + a]!) / (l + Math.abs(q[k + 3]!))) * CLIP_ROT_STEPS);
+        const d = zig(((x - (2 * last - before)) << 16) >> 16);
+        rot[at] = d & 255;
+        rot[at + n] = d >> 8;
+        before = f === 0 ? x : last;
+        last = x;
+      }
+    }
+  }
+  const m = frames * 3;
+  const root = new Uint8Array(frames * CLIP_ROOT_BYTES);
+  for (let a = 0, at = 0; a < 3; a++) {
+    for (let f = 0, last = 0, before = 0; f < frames; f++, at++) {
+      const x = Math.round(clip.root[f * 3 + a]! * CLIP_ROOT_STEPS);
+      const d = zig((x - (2 * last - before)) | 0);
+      for (let k = 0; k < 4; k++) root[at + k * m] = (d >>> (8 * k)) & 255;
+      before = f === 0 ? x : last;
+      last = x;
+    }
+  }
+  return { rot, root };
 }
 
 /** The meshes of a pack back in authoring form, to put them into another pack. */
@@ -281,7 +307,7 @@ export function unpackMeshes(pack: Pack): SourceMesh[] {
       }
       const out: SourceLod = { positions, colors, indices: readIndices(pack, lod) };
       if (m.skeleton) out.bones = bones;
-      if (level > 0 && !Number.isNaN(lod.error)) out.error = lod.error;
+      if (level > 0) out.error = lod.error;
       const surface = lodSurface(pack, lod);
       const skin = lodSkin(pack, lod);
       if (surface) Object.assign(out, decodeSurface(surface, m.uv), skin ? decodeSkin(skin) : {});
