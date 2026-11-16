@@ -3,6 +3,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { App } from "../../client/core/app.ts";
+import { LOOK_SPEED } from "../../client/core/controls.ts";
 import { DETAIL, DETAIL_FLOATS, DETAIL_ROTOR, type FramePacket } from "../../client/core/render/packet.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { HELICOPTER_ART } from "../../content/vehicles/helicopter-art.ts";
@@ -25,12 +26,13 @@ import { drawUi } from "../snap/ui.ts";
 import { SOURCE } from "../art/source.ts";
 
 type Moment = "exterior" | "cockpit" | "bank" | "inverted" | "damage" | "wreck" | "distant" | "rotor";
-interface Shot { name: string; kind: string; moment: Moment; tier: "high" | "lowpoly"; fps?: number }
+interface Shot { name: string; kind: string; moment: Moment; tier: "high" | "lowpoly"; fps?: number; lookPitch?: number }
 const SHOTS: readonly Shot[] = [
   { name: "01-civilian-occupied", kind: "core:helicopter", moment: "exterior", tier: "high" },
   { name: "02-rescue-occupied", kind: "core:helicopter_rescue", moment: "exterior", tier: "high" },
   { name: "03-police-occupied", kind: "core:helicopter_police", moment: "exterior", tier: "high" },
   { name: "04-pilot-cockpit", kind: "core:helicopter", moment: "cockpit", tier: "high" },
+  { name: "04a-pilot-controls", kind: "core:helicopter", moment: "cockpit", tier: "high", lookPitch: -.3 },
   { name: "05-banked-flight", kind: "core:helicopter", moment: "bank", tier: "high" },
   { name: "06-inverted-flight", kind: "core:helicopter", moment: "inverted", tier: "high" },
   { name: "07-worn-rescue", kind: "core:helicopter_rescue", moment: "damage", tier: "high" },
@@ -94,7 +96,8 @@ function capture(shot: Shot, pack: Pack, files: GameFiles, width: number, height
     if (crew.some(actor => ents.seat[actor] !== e + 1)) throw new Error(`${shot.name}: native seat transaction did not commit`);
     if (cockpit) {
       if (app.view.thirdPerson) { app.key("KeyV", true); app.key("KeyV", false); }
-      app.controls.yaw = 0; app.controls.pitch = -.06;
+      // Use the actual cockpit mouse-look mapping: controls.pitch alone is world gaze, not cabin-relative look.
+      if (shot.lookPitch) app.look(0, -shot.lookPitch / LOOK_SPEED);
     }
     else { session.text("fly"); run(100); }
     if (!cockpit) h.pilots[h.sessions.indexOf(pilotSession)]!.buttons = BTN_MOD;
