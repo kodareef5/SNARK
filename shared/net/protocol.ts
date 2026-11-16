@@ -86,7 +86,7 @@ function writeVehicle(w: BitWriter, b: Body): void {
     w.f32(b.vehicleRpm);
     w.f32(b.vehicleShiftTime);
     w.f32(b.vehiclePayloadMass);
-    const rotor = b.vehicleRotorRpm !== 0 || b.vehicleRotorPhase !== 0 || b.vehicleEngineCondition !== 1 || b.vehicleRotorCondition !== 1 || b.vehicleEngineOn;
+    const rotor = b.vehicleRotorRpm !== 0 || b.vehicleRotorPhase !== 0 || b.vehicleEngineCondition !== 1 || b.vehicleRotorCondition !== 1 || b.vehicleEngineOn || b.vehicleQx !== 0 || b.vehicleQy !== 0 || b.vehicleQz !== 0 || b.vehicleQw !== 1 || b.vehicleCollective !== 0;
     w.bool(rotor);
     if (rotor) {
       w.f32(b.vehicleRotorRpm);
@@ -94,6 +94,11 @@ function writeVehicle(w: BitWriter, b: Body): void {
       w.f32(b.vehicleEngineCondition);
       w.f32(b.vehicleRotorCondition);
       w.bool(b.vehicleEngineOn);
+      w.f32(b.vehicleQx);
+      w.f32(b.vehicleQy);
+      w.f32(b.vehicleQz);
+      w.f32(b.vehicleQw);
+      w.f32(b.vehicleCollective);
     }
     // A new vehicle field goes here, in readVehicle at the same place, in Body.copy and equals, and in VEHICLE_FIELDS.
   }
@@ -126,6 +131,11 @@ function readVehicle(r: BitReader, b: Body): void {
   b.vehicleEngineCondition = rotor ? r.f32() : 1;
   b.vehicleRotorCondition = rotor ? r.f32() : 1;
   b.vehicleEngineOn = rotor && r.bool();
+  b.vehicleQx = rotor ? r.f32() : 0;
+  b.vehicleQy = rotor ? r.f32() : 0;
+  b.vehicleQz = rotor ? r.f32() : 0;
+  b.vehicleQw = rotor ? r.f32() : 1;
+  b.vehicleCollective = rotor ? r.f32() : 0;
   b.seat = r.bool() ? r.varint() + 1 : 0;
   b.seatSlot = b.seat !== 0 ? r.u8() : 0;
   b.seatGen = b.seat !== 0 ? r.bits(12) : 0;

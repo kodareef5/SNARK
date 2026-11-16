@@ -186,6 +186,11 @@ export class Body {
   vehicleEngineCondition = 1;
   vehicleRotorCondition = 1;
   vehicleEngineOn = false;
+  vehicleQx = 0;
+  vehicleQy = 0;
+  vehicleQz = 0;
+  vehicleQw = 1;
+  vehicleCollective = 0;
   vehiclePitchRate = 0;
   vehicleRollRate = 0;
   vehicleGroundPitch = 0;
@@ -255,6 +260,11 @@ export class Body {
     this.vehicleEngineCondition = o.vehicleEngineCondition;
     this.vehicleRotorCondition = o.vehicleRotorCondition;
     this.vehicleEngineOn = o.vehicleEngineOn;
+    this.vehicleQx = o.vehicleQx;
+    this.vehicleQy = o.vehicleQy;
+    this.vehicleQz = o.vehicleQz;
+    this.vehicleQw = o.vehicleQw;
+    this.vehicleCollective = o.vehicleCollective;
     this.vehiclePitchRate = o.vehiclePitchRate;
     this.vehicleRollRate = o.vehicleRollRate;
     this.vehicleGroundPitch = o.vehicleGroundPitch;
@@ -311,6 +321,11 @@ export class Body {
       this.vehicleEngineCondition === o.vehicleEngineCondition &&
       this.vehicleRotorCondition === o.vehicleRotorCondition &&
       this.vehicleEngineOn === o.vehicleEngineOn &&
+      this.vehicleQx === o.vehicleQx &&
+      this.vehicleQy === o.vehicleQy &&
+      this.vehicleQz === o.vehicleQz &&
+      this.vehicleQw === o.vehicleQw &&
+      this.vehicleCollective === o.vehicleCollective &&
       this.vehiclePitchRate === o.vehiclePitchRate &&
       this.vehicleRollRate === o.vehicleRollRate &&
       this.vehicleGroundPitch === o.vehicleGroundPitch &&
