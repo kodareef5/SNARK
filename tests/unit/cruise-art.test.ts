@@ -2,6 +2,7 @@
 import { expect, test } from "bun:test";
 import { CRUISE_LAYOUT } from "../../content/landmarks/cruise.ts";
 import type { CruiseLayout } from "../../content/landmarks/cruise-layout.ts";
+import { toTriangle } from "../../tools/pack/error.ts";
 import type { SourceLod } from "../../tools/pack/write.ts";
 import { cruiseArt, cruiseArtGroups, cruiseArtSections, cruiseOwnerLod } from "../fixtures/cruise-art.ts";
 
@@ -74,6 +75,31 @@ test("the packed elevated basin retains dry-room headroom at both playable textu
     let bottom = Infinity;
     for (const part of parts) for (const v of part.indices) bottom = Math.min(bottom, part.positions[v * 3 + 1]!);
     expect(bottom - room.bounds.min[1]!).toBeGreaterThanOrEqual(2.6);
+  }
+});
+
+test("exterior window panels and projecting balcony slabs survive every authored distance stage", () => {
+  // Whole-ship exterior rays exposed these broad faces after the old far rule removed them.
+  // Test actual surfaces, independently of which logical owner a merged far panel receives.
+  const witnesses = [
+    [-27.050781, 24.532944, 108.352951], [-27.050781, 27.266668, 106.046280], // navy cabin panes
+    [-28.900391, 29.079220, 109.334122], [-28.900391, 25.612944, 99.732559], // starboard floor / canopy
+    [28.900391, 29.079218, 109.334122], [28.900391, 25.612942, 99.732559], // port floor / canopy
+  ];
+  const errors = [0, .0125, .025, .06, .13, .25];
+  const records = new Map(cruiseArtGroups.meshes.map(record => [record.id, record]));
+  for (let stage = 0; stage < errors.length; stage++) for (const point of witnesses) {
+    const tolerance = errors[stage]! + .003; // includes native vertex/origin quantization
+    let distance = Infinity;
+    for (const cell of layout.cells!) {
+      if (point.some((value, axis) => value < cell.bounds.min[axis]! - tolerance || value > cell.bounds.max[axis]! + tolerance)) continue;
+      const retained = records.get(cell.id)!.levels.findLast(level => level.authoredLevel <= stage)!;
+      const lod = cruiseArt.byId.get(cell.id)!.lods[retained.level]!;
+      const x = point[0]! - cell.origin[0]!, y = point[1]! - cell.origin[1]!, z = point[2]! - cell.origin[2]!;
+      for (let i = 0; i < lod.indices.length; i += 3)
+        distance = Math.min(distance, toTriangle(x, y, z, lod.positions, lod.indices[i]! * 3, lod.indices[i + 1]! * 3, lod.indices[i + 2]! * 3));
+    }
+    expect(distance, `stage ${stage}, exterior face ${point.join(",")}`).toBeLessThanOrEqual(tolerance);
   }
 });
 
