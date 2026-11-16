@@ -43,9 +43,9 @@
  },
  "dive": {
   "self": 0,
-  "body": 23,
+  "body": 81,
   "wings": 0,
-  "inverted": 1
+  "inverted": 3
  },
  "air_0.25": {
   "self": 0,
@@ -54,19 +54,19 @@
   "inverted": 0
  },
  "air_0.4": {
-  "self": 0,
+  "self": 2,
   "body": 0,
   "wings": 0,
-  "inverted": 1
+  "inverted": 2
  },
  "tuck": {
-  "self": 18,
+  "self": 36,
   "body": 4,
   "wings": 0,
-  "inverted": 9
+  "inverted": 8
  },
  "air_0.7": {
-  "self": 14,
+  "self": 40,
   "body": 0,
   "wings": 0,
   "inverted": 2
@@ -75,52 +75,52 @@
   "self": 0,
   "body": 0,
   "wings": 0,
-  "inverted": 0
- },
- "land_0.6": {
-  "self": 28,
-  "body": 4,
-  "wings": 0,
   "inverted": 2
  },
+ "land_0.6": {
+  "self": 35,
+  "body": 4,
+  "wings": 0,
+  "inverted": 6
+ },
  "land_0.75": {
-  "self": 48,
+  "self": 62,
   "body": 0,
   "wings": 0,
-  "inverted": 0
+  "inverted": 4
  },
  "land_0.9": {
   "self": 0,
   "body": 0,
   "wings": 0,
-  "inverted": 0
+  "inverted": 2
  },
  "ground_0.6": {
-  "self": 28,
-  "body": 2,
+  "self": 35,
+  "body": 4,
+  "wings": 0,
+  "inverted": 1
+ },
+ "ground_0.8": {
+  "self": 8,
+  "body": 0,
   "wings": 0,
   "inverted": 2
  },
- "ground_0.8": {
-  "self": 61,
-  "body": 107,
-  "wings": 0,
-  "inverted": 0
- },
  "ground_open": {
-  "self": 33,
+  "self": 12,
   "body": 6,
   "wings": 0,
   "inverted": 2
  },
  "stance": {
-  "self": 1,
+  "self": 4,
   "body": 0,
   "wings": 0,
   "inverted": 2
  },
  "stance_call": {
-  "self": 1,
+  "self": 4,
   "body": 0,
   "wings": 0,
   "inverted": 2

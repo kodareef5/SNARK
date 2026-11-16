@@ -160,4 +160,5 @@ def main():
     print("check: wrote", out)
 
 
-main()
+if __name__ == "__main__":
+    main()

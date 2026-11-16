@@ -133,8 +133,8 @@ ROOT_IN = 0.030
 # (v0 to v1, as fractions of the chord, nearer the body and further out), how much at most (rib_max), how far out
 # the body's own bones reach before the first batten (root_reach, a fraction of the span), how the change between two
 # battens is eased across the span, and how many rounds of smoothing. Searched with rig.py's fold (ref/wing/).
-MEMBRANE_FIT = {"v0": 0.0, "v1_inner": 0.153, "v1_outer": 0.852, "rib_max": 0.895, "root_reach": 0.0913,
-                "span_ease": 0.0, "smooth": 5}
+MEMBRANE_FIT = {"v0": 0.0, "v1_inner": 0.120, "v1_outer": 0.759, "rib_max": 0.826, "root_reach": 0.0913,
+                "span_ease": 0.0, "smooth": 6}
 # The front membrane: columns from the shoulder to the wrist, rows from the arm to its free edge.
 FRONT_COLUMNS, FRONT_ROWS = 10, 3
 
