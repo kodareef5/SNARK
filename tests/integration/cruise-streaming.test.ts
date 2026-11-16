@@ -37,6 +37,7 @@ test("native cruise cell anchors retain one render owner from near through 2 km 
     expect(anchors.length).toBeGreaterThan(0);
     expect(new Set(anchors.map(anchor => anchor.mesh)).size).toBe(anchors.length);
     const session = h.join("ship-observer", {}, { manual: true }), app = new App(session, h.reg, pack);
+    session.staticsArrived(h.world.statics!);
     app.ui.settings.tier = "high"; app.ui.settings.steady = false;
     let packet: FramePacket | null = null;
     const run = (ms: number) => h.run(ms, now => { packet = app.frame(now, 1920, 600); });
@@ -60,12 +61,15 @@ test("native cruise cell anchors retain one render owner from near through 2 km 
       for (const chunk of chunks) {
         expect(source.complete(chunk)).toBe(!far.includes(chunk));
       }
+      let visibleNear = 0;
       for (const anchor of anchors) {
-        const visible = app.cam.boxVisible(anchor.lo[0]!, anchor.lo[1]!, anchor.lo[2]!, anchor.hi[0]!, anchor.hi[1]!, anchor.hi[2]!);
+        const visible = app.cam.boxVisible(anchor.lo[0]! - p!.camX, anchor.lo[1]! - p!.camY, anchor.lo[2]! - p!.camZ,
+          anchor.hi[0]! - p!.camX, anchor.hi[1]! - p!.camY, anchor.hi[2]! - p!.camZ);
         const drawn = nearDraws.has(`${anchor.chunk}:${anchor.mesh}`);
         if (far.includes(anchor.chunk)) expect(drawn, `far-owned ${anchor.mesh} at ${distance} m`).toBe(false);
-        else if (visible) expect(drawn, `visible near cell ${anchor.mesh} at ${distance} m`).toBe(true);
+        else if (visible) { visibleNear++; expect(drawn, `visible near cell ${anchor.mesh} at ${distance} m`).toBe(true); }
       }
+      if (!far.length) expect(visibleNear).toBeGreaterThan(0);
       if (far.length) expect(cityDraws).toBeGreaterThan(0);
       if (distance >= 650) expect(far.length).toBe(chunks.length);
       expect(city.stats.missing).toBe(0); expect(city.stats.unseen).toBe(0); expect(city.stats.behind).toBe(0);
