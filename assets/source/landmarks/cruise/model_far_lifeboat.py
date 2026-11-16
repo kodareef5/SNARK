@@ -36,7 +36,9 @@ def lifeboat(mesh, level):
     _shell(mesh, [outline(y, x, z, steps) for y, x, z in stations], bands)
     canopy = [(.46, 2.60, 7.31, 0), (1.30, 2.54, 7.20, 0),
               (1.75, 2.38, 6.98, .20), (2.00, 2.06, 6.76, .45)]
-    _shell(mesh, [outline(y, x, z, steps, dip) for y, x, z, dip in canopy], ['yellow'] * 3, 'yellow')
+    if level >= 4:
+        canopy = [canopy[0], canopy[2], canopy[3]]
+    _shell(mesh, [outline(y, x, z, steps, dip) for y, x, z, dip in canopy], ['yellow'] * (len(canopy)-1), 'yellow')
     for side in (-1, 1):
         for z in (-4.80, -3.48, 2.55, 3.87):
             if level == 2:
