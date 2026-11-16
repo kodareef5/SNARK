@@ -334,8 +334,11 @@ export function filterPart(data: Uint8Array, filter: number, numbers: readonly n
   return out;
 }
 
-/** A part's bytes from what its stream inflated to, the filter undone. Null if the stream names no filter this build knows or does not come to `bytes`. */
-export function unfilterPart(inflated: Uint8Array, bytes: number): Uint8Array | null {
+/**
+ * A part's bytes from what its stream inflated to, the filter undone, written into `out`, which must be `bytes` long.
+ * Null if the stream names no filter this build knows or does not come to `bytes`.
+ */
+export function unfilterPart(inflated: Uint8Array, bytes: number, out: Uint8Array = new Uint8Array(bytes)): Uint8Array | null {
   const filter = inflated[0];
   const head = filter === undefined ? 0 : (HEAD[filter] ?? 0);
   const body = inflated.subarray(head);
@@ -345,23 +348,24 @@ export function unfilterPart(inflated: Uint8Array, bytes: number): Uint8Array | 
     const size = inflated[5]!;
     const ix = pad4(count * size);
     if ((size !== 2 && size !== 4) || ix > bytes || (bytes - ix) % 8 !== 0) return null;
-    const out = new Uint8Array(bytes);
-    decodeIndices(fromPlanes(body.subarray(0, count * size), size), count, size, out);
+    // Each index is read before it is written, so the planes are decoded where they land.
+    decodeIndices(fromPlanes(body.subarray(0, count * size), size, out.subarray(0, count * size)), count, size, out);
     out.set(body.subarray(count * size, ix), count * size);
     delta16(fromPlanes(body.subarray(ix), 8, out.subarray(ix)), 8, [0, 2, 4], true);
     return out;
   }
-  if (filter === FILTER_SURFACE) return bytes % 12 === 0 ? decodeSurface(fromPlanes(body, 12)) : null;
+  if (filter === FILTER_SURFACE) return bytes % 12 === 0 ? decodeSurface(fromPlanes(body, 12, out)) : null;
   if (filter === FILTER_PLANES) {
     const n = inflated[1]!;
-    return n > 0 && bytes % n === 0 ? fromPlanes(body, n) : null;
+    return n > 0 && bytes % n === 0 ? fromPlanes(body, n, out) : null;
   }
   if (filter === FILTER_PIXELS) {
     const [channels, pictures, log2, planar] = [inflated[1]!, inflated[2]!, inflated[3]!, inflated[4]!];
     if (channels === 0 || log2 > 12 || pictureBytes(channels, pictures, 1 << log2) !== bytes) return null;
-    const out = body.slice();
+    out.set(body);
     pixels(out, channels, pictures, 1 << log2, planar === 1, true);
     return out;
   }
-  return body.slice();
+  out.set(body);
+  return out;
 }

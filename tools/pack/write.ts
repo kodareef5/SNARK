@@ -2,7 +2,7 @@
 
 import type { Clip } from "../../shared/anim/clip.ts";
 import {
-  CLIP_ROOT_BYTES, CLIP_ROOT_STEPS, CLIP_ROT_STEPS, MATERIAL_CUTOUT, MOST_SECTIONS, PACK_MAGIC, PACK_VERSION, VERTEX_BYTES, clipRotBytes, lodSkin, lodSurface, lodVertices, readIndices,
+  CLIP_ROOT_BYTES, CLIP_ROOT_STEPS, CLIP_ROT_STEPS, MATERIAL_CUTOUT, MOST_SECTIONS, PACK_MAGIC, PACK_VERSION, SKIN_BYTES, VERTEX_BYTES, clipRotBytes, lodSkin, lodSurface, lodVertices, readIndices,
   setTexture, textureOf, type Pack, type PackHeader, type PackLod, type PackMaterial, type PackMesh, type PackRig, type PackTexture,
 } from "../../shared/pack/pack.ts";
 import type { PackDetails } from "../../shared/pack/details.ts";
@@ -238,7 +238,9 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
         const runs = textured.sections.length / 3;
         if (runs < 1 || runs > MOST_SECTIONS) throw new Error(`${mesh.id}: a level is drawn with ${runs} materials, and may be with 1 to ${MOST_SECTIONS}`);
         made.surfaceOffset = append(encodeSurface(uvs, normals, lod.tangents ?? tangentsOf({ positions: lod.positions, indices, uvs, normals }), out.uv));
-        if (mesh.skeleton && lod.joints && lod.weights) made.skinOffset = append(encodeSkin(lod.joints, lod.weights, lod.bones!, mesh.id));
+        const skin = mesh.skeleton && lod.joints && lod.weights ? encodeSkin(lod.joints, lod.weights, lod.bones!, mesh.id) : null;
+        // A skin whose every vertex is wholly on its own bone says no more than the vertices do.
+        if (skin?.some((w, k) => k % SKIN_BYTES === 4 && w !== 255)) made.skinOffset = append(skin);
         made.sections = textured.sections;
       }
       out.lods.push(made);

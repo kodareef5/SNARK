@@ -3,6 +3,7 @@
 // See assets/source/README.md.
 
 import { ZONE_ARM_L, ZONE_ARM_R, ZONE_FOOT_L, ZONE_FOOT_R, ZONE_HAND_L, ZONE_HAND_R, ZONE_HEAD, ZONE_LEG_L, ZONE_LEG_R, ZONE_TORSO } from "../../shared/anim/human.ts";
+import type { TextureRole } from "../../shared/pack/texture.ts";
 import type { ClipSpec } from "../pack/anim.ts";
 
 export type AssetSpec = CreatureAsset | PiecesAsset | HumanClipsAsset | HumanBodiesAsset | SkyAsset | WaterAsset | DetailsAsset;
@@ -105,6 +106,8 @@ export interface MaterialSpec {
   readonly decay?: string;
   /** The same pictures at a smaller size, where the set was made small first. `--check` holds each large one, shrunk, against its small one. */
   readonly small?: { readonly base?: string; readonly normal?: string };
+  /** The widest a map is stored, where its content needs less than its picture: `--check` notes the side each needs. */
+  readonly tops?: Readonly<Partial<Record<TextureRole, number>>>;
   readonly twoSided?: boolean;
   /** Nothing is drawn where the base colour's alpha is under this. `true` is 0.5. */
   readonly cutout?: boolean | number;

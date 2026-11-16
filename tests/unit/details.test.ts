@@ -229,7 +229,6 @@ test("the rasterizer draws a landing on low poly and on medium from the same num
     view.raster.render(p);
     let changed = 0;
     for (let i = 0; i < frame.length; i += 4) if (frame[i] !== view.raster.color[i] || frame[i + 1] !== view.raster.color[i + 1]) changed++;
-X
     // The picture is held to what they changed, which other work on the ground may move.
     const places = new Float32Array(p.detailCount * DETAIL.colourA);
     for (let k = 0; k < p.detailCount; k++) places.set(p.details.subarray(k * DETAIL_FLOATS, k * DETAIL_FLOATS + DETAIL.colourA), k * DETAIL.colourA);
