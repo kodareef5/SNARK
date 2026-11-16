@@ -106,7 +106,7 @@ test("visible window panels, balcony slabs and upper stairs survive every author
 
 test("the AquaDome entrance remains open between its glazed sides at every distance stage", () => {
   for (let stage = 0; stage < 6; stage++) {
-    const shell = cruiseArtSections(stage).filter(section => section.prototype.art.kind === "dome_dense");
+    const shell = cruiseArtSections(stage).filter(section => section.prototype.art?.kind === "dome_dense");
     expect(shell.length).toBeGreaterThan(0);
     const hits = (x: number): boolean => {
       const y = 47.2;
