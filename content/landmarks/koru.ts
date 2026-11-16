@@ -1,5 +1,5 @@
 // The authored JSON is shared with the mesh exporter; these are native structures, not a vehicle-sized collision box.
-import layout from "./koru-layout.json";
+import layout from "./koru-layout.json" with { type: "json" };
 import { shapeHalf, type Def, type ShapeDef, type ShapeLook, type StructureDef } from "../../shared/content/defs.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import { frameAxes, HALF_SIDE } from "../../shared/world/frame.ts";
