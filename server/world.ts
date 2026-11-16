@@ -9,7 +9,7 @@ import { ENTITY_LIMIT, EntityStore } from "../shared/sim/entities.ts";
 import { offsetForHour } from "../shared/sim/clock.ts";
 import type { CollisionWorld } from "../shared/world/collide.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
-import { mapHeightfield, mapNodes, parseMap, placeStatics, writeMap, type MapFile, type MapStatic } from "../shared/world/mapfile.ts";
+import { mapHeightfield, mapNodes, parseMap, placeStatics, writeMap, type MapFile, type MapStatic, type MapStatics } from "../shared/world/mapfile.ts";
 import { PROVING_DIMS, PROVING_ID, PROVING_POOL, PROVING_SEA_LEVEL, PROVING_SPAWNS, buildProvingHeightfield, populateProving, provingNodeLayers } from "../shared/world/proving.ts";
 import { NodeField, type NodeSource } from "../shared/world/nodes.ts";
 import { StructureStore } from "../shared/world/structures.ts";
@@ -27,6 +27,8 @@ export interface ServerWorld extends CollisionWorld {
   readonly ents: EntityStore;
   readonly mapId: string;
   readonly mapHash: number;
+  /** The map file's statics, which a client holding the file takes chunks from (HELLO_STATICS). Null for a world of no file. */
+  statics: MapStatics | null;
   readonly spawn: { readonly x: number; readonly z: number; readonly yaw: number };
   /** Respawn choices for a dead survivor. The first is `spawn`. */
   readonly spawns: readonly { readonly name: string; readonly x: number; readonly z: number; readonly yaw: number }[];
@@ -82,6 +84,7 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
     anims: [],
     mapId,
     mapHash,
+    statics: null,
     spawn,
     spawns: spawns ?? [{ name: "Spawn", ...spawn }],
     zones,
@@ -123,6 +126,7 @@ export function createMapWorld(reg: Registry, map: MapFile, opts: WorldOptions =
   const zones = [...(defOf(reg, map)?.zones ?? []).filter((z) => z.kind === "spawn"), ...(map.regions ?? [])];
   const world = createWorld(reg, map.dims, hf, map.id, map.hash, map.spawns[0]!, opts.entityMax ?? ENTITY_LIMIT, map.spawns, mapNodes(map, hf, reg) ?? undefined, zones, opts.entityStart);
   if (opts.populate !== false) placeStatics(map, world.structs, reg);
+  world.statics = map.statics;
   return world;
 }
 

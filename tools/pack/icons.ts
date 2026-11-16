@@ -461,7 +461,8 @@ export function iconSheets(drawn: DrawnIcons, firstFile: number): { sheets: { wi
 export function buildIcons(pack: Pack, defs: readonly (Def | null)[], manifest: Manifest, files: readonly Uint8Array[], opts: IconOptions = {}): { files: SplitFile[]; report: IconReport } {
   const subjects = iconSubjects(defs, (id) => pack.meshIndex.has(id));
   const textureKey = (slot: number): string => (manifest.textures?.[slot]?.in.rgba?.hash ?? []).join(",");
-  const drawn = drawIcons(pack, subjects, rgbaTextures(manifest, files), { textureKey, ...opts });
+  // The manifest's materials name its textures, which a build may have shared out or left out.
+  const drawn = drawIcons({ ...pack, header: { ...pack.header, materials: manifest.materials } }, subjects, rgbaTextures(manifest, files), { textureKey, ...opts });
   const { sheets, icons } = iconSheets(drawn, manifest.files.length);
   const out = sheets.map((s, k): SplitFile => ({ name: `core.icons.${k}.png`, role: "icon", bytes: iconPng(s.width, s.height, s.rgba) }));
   for (const f of out) manifest.files.push({ name: f.name, bytes: f.bytes.length, role: "icon" });

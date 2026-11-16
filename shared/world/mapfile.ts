@@ -781,15 +781,15 @@ function read(r: In): Omit<MapFile, "hash"> {
   return { id, dims, minY, stepY, seaLevel, heights, tint: tint ?? new Uint8Array(heights.length), statics, nodes, spawns, ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(water ? { water } : {}) };
 }
 
-/** Throws with a reason if the file is not a map this build can play on. */
-export function parseMap(file: Uint8Array): MapFile {
+/** Throws with a reason if the file is not a map this build can play on. Without `verify`, the body is taken to match the header's hash. */
+export function parseMap(file: Uint8Array, verify = true): MapFile {
   const r = new In(file);
   if (file.length < HEADER_BYTES || r.u32() !== MAGIC) throw new Error("map: this is not a map file");
   const version = r.u16();
   if (version !== MAP_VERSION && version !== MAP_VERSION_DRY && version !== 1) throw new Error(`map: version ${version} is not one this build reads`);
   r.at += 2;
   const hash = r.u32();
-  if (hash !== hashBytes(file.subarray(12))) throw new Error("map: the file is damaged: its hash is not that of its bytes");
+  if (verify && hash !== hashBytes(file.subarray(12))) throw new Error("map: the file is damaged: its hash is not that of its bytes");
   let map: Omit<MapFile, "hash">;
   try {
     map = read(r);
@@ -877,11 +877,19 @@ export function mapNodes(map: MapData, hf: Heightfield, reg: Registry): NodeSour
 }
 
 /** Server side: sets the map's static pieces down in `structs`. Clients receive them by replication. */
+/** Each of the table's kinds as a content index, 0 for one this content lacks. */
+export function staticKinds(statics: MapStatics, reg: Registry): Uint16Array {
+  return Uint16Array.from(statics.kinds, (id) => reg.index.get(id) ?? 0);
+}
+
+/**
+ * Sets the map's statics down in the map's order, so that slot s of a chunk holds the s-th static of that chunk in the map's
+ * order (MapStatics row first[chunk] + s), with no owner and its kind's most health (Registry.maxHp).
+ */
 export function placeStatics(map: MapData, structs: StructureStore, reg: Registry): void {
   eachStatic(map.statics, (id, x, y, z, yaw) => {
     const kind = reg.index.get(id);
     if (kind === undefined) throw new Error(`map "${map.id}" needs content "${id}"`);
-    const def = reg.defs[kind]!;
-    structs.add(kind, x, y, z, yaw, 0, def.type === "structure" ? def.hp : 0);
+    structs.add(kind, x, y, z, yaw, 0, reg.maxHp[kind]!);
   });
 }

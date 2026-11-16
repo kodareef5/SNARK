@@ -12,7 +12,7 @@ import { HOTBAR_SLOTS, type Inventory } from "../../shared/sim/items.ts";
 import { CHOOSE_DIED, CMD_MAP_ZOOM, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { MF_OUT, STAMINA_UNITS, type Body } from "../../shared/sim/character.ts";
 import type { BoatSpec, HelicopterSpec, VehicleSpec } from "../../shared/sim/vehicle.ts";
-import { DEFAULT_DRIVETRAIN, drivetrainShifting } from "../../shared/sim/vehicle-drivetrain.ts";
+import { DEFAULT_DRIVETRAIN } from "../../shared/sim/vehicle-drivetrain.ts";
 import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Camera } from "./render/camera.ts";
@@ -175,7 +175,7 @@ export interface Heads {
   overhead(id: number, out: number[]): boolean;
 }
 
-/** Instruments read the predicted mechanical state; audio load and tire slip remain presentation only. */
+/** What the dash shows, read from the predicted mechanical state. */
 export class VehicleTelemetry {
   active = false;
   rotor = false;
@@ -194,9 +194,6 @@ export class VehicleTelemetry {
   engineOn = false;
   id = -1;
   speed = 0;
-  forward = 0;
-  lateral = 0;
-  throttle = 0;
   brake = 0;
   handbrake = false;
   grounded = true;
@@ -204,28 +201,20 @@ export class VehicleTelemetry {
   gear = 1;
   rpm = 0;
   redline = DEFAULT_DRIVETRAIN.redlineRpm;
-  load = 0;
-  slip = 0;
 
-  stop(): void { this.active = false; this.id = -1; this.rpm = this.load = this.slip = 0; }
+  stop(): void { this.active = false; this.id = -1; this.rpm = 0; }
 
   update(id: number, body: Body, throttle: number, handbrake: boolean, spec: VehicleSpec, _dt: number): void {
     this.active = true; this.id = id; this.rotor = false; this.boat = false;
-    this.forward = body.vx * Math.sin(body.vehicleYaw) + body.vz * Math.cos(body.vehicleYaw);
-    this.lateral = body.vx * Math.cos(body.vehicleYaw) - body.vz * Math.sin(body.vehicleYaw);
+    const forward = body.vx * Math.sin(body.vehicleYaw) + body.vz * Math.cos(body.vehicleYaw), pedal = Math.max(-1, Math.min(1, throttle));
     this.speed = Math.hypot(body.vx, body.vz);
-    this.throttle = Math.max(-1, Math.min(1, throttle));
     this.handbrake = handbrake;
-    this.brake = handbrake ? 1 : this.forward * this.throttle < -.2 ? Math.abs(this.throttle) : 0;
+    this.brake = handbrake ? 1 : forward * pedal < -.2 ? Math.abs(pedal) : 0;
     this.grounded = body.grounded;
     this.fuel = Math.max(0, Math.min(1, body.fuel / spec.fuelCapacity));
     this.gear = body.vehicleGear;
     this.rpm = body.vehicleRpm;
-    const drivetrain = spec.drivetrain ?? DEFAULT_DRIVETRAIN;
-    this.redline = drivetrain.redlineRpm;
-    const shift = drivetrainShifting(body.vehicleShiftTime, drivetrain) ? .35 : 1;
-    this.load = this.fuel > 0 ? Math.abs(this.throttle) * (this.brake > 0 ? .25 : 1) * shift : 0;
-    this.slip = body.grounded && this.speed > 2 ? Math.max(0, Math.min(1, (Math.abs(this.lateral) - .4) / 4 + (handbrake ? this.speed / 28 : 0))) : 0;
+    this.redline = (spec.drivetrain ?? DEFAULT_DRIVETRAIN).redlineRpm;
   }
   updateBoat(id: number, body: Body, spec: BoatSpec, precision: boolean): void {
     this.active = true; this.boat = true; this.rotor = false; this.id = id; this.precision = precision;
@@ -235,9 +224,7 @@ export class VehicleTelemetry {
     this.engineOn = body.vehicleEngineOn; this.engineCondition = body.vehicleEngineCondition;
     this.hullCondition = body.vehicleHullCondition; this.flooding = body.vehicleFlooding;
     this.capsized = 1 - 2 * (body.vehicleQx * body.vehicleQx + body.vehicleQz * body.vehicleQz) < .15;
-    this.grounded = body.grounded; this.handbrake = false; this.brake = this.slip = 0;
-    this.load = this.engineOn ? Math.max(0, (this.rpm - spec.idleRpm) / (spec.maxRpm - spec.idleRpm)) : 0;
-    this.throttle = this.load * this.gear;
+    this.grounded = body.grounded; this.handbrake = false; this.brake = 0;
   }
   updateRotor(id: number, body: Body, spec: HelicopterSpec, altitude: number, direct: boolean, recovery: boolean): void {
     this.active = true; this.rotor = true; this.boat = false; this.id = id; this.direct = direct; this.recovery = recovery;
@@ -245,7 +232,7 @@ export class VehicleTelemetry {
     this.grounded = body.grounded; this.fuel = Math.max(0, Math.min(1, body.fuel / spec.fuelCapacity));
     this.rpm = body.vehicleRotorRpm; this.redline = spec.rotorRpm; this.collective = body.vehicleCollective;
     this.engineCondition = body.vehicleEngineCondition; this.rotorCondition = body.vehicleRotorCondition; this.engineOn = body.vehicleEngineOn;
-    this.gear = 0; this.load = this.collective; this.slip = 0; this.handbrake = false; this.brake = 0;
+    this.gear = 0; this.handbrake = false; this.brake = 0;
   }
 
 }

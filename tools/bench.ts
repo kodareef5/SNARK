@@ -796,7 +796,7 @@ let siegeChunk = -1;
   record("tick time before the damage, median", percentile(quiet, 0.5), "ms");
   record("tick time under it, median", percentile(fire, 0.5), "ms", 8);
   record("tick time under it, 99th percentile", percentile(fire, 0.99), "ms", 16);
-  // About 17 bytes a damaged piece. 1,500 pieces a second is far more than a raid does, and it is still under a snapshot's share.
+  // About 6.5 bytes a damaged piece, its health alone. 1,500 pieces a second is far more than a raid does.
   record("sent to each client for the damage", (host.game.stats.chunkBytes - bytes) / host.game.playerCount / 10 / 1024, "KB/s", 30);
   store.saveChunk = saveChunk;
   // The chunk is saved whole, 570 KB of it, but a chunk in which only health changes is written a second apart at most.

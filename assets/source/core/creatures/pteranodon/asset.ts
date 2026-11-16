@@ -86,6 +86,8 @@ export default {
       height: "tex/pteranodon_wing_height.png",
       hurt: "tex/pteranodon_wing_hurt.png",
       decay: "tex/pteranodon_wing_decay.png",
+      // Its veins are soft: from 512 up no texel turns more than 2.8 degrees.
+      tops: { normal: 512 },
     },
   },
   // Every clip rig.py's CLIPS lists, each from the action of its name.

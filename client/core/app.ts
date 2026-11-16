@@ -118,7 +118,7 @@ export class App {
   readonly ui = new Ui();
   readonly cam = new Camera();
   readonly hud = new HudModel();
-  /** Read-only to the shell: native sound follows this state and never drives simulation. */
+  /** The dash's readings of the vehicle driven. */
   readonly vehicleTelemetry = new VehicleTelemetry();
   readonly feedback = new Feedback();
   /** Laser dots this frame (client/core/render/laser.ts). */
@@ -903,7 +903,7 @@ export class App {
       const split = this.sound && this.stream ? new SplitPort(this.stream.port) : null;
       this.scene = new Scene(world, this.reg, this.pack, split ? { manifest: this.stream!.manifest, port: split.assets } : this.stream);
       if (split) {
-        this.sounds = new Sounds(this.stream!.manifest, split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.ui.settings.touchFirst, this.soundDecoder ?? undefined, this.pack.header.details?.sheets ?? []);
+        this.sounds = new Sounds(this.stream!.manifest, split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.soundDecoder ?? undefined, this.pack.header.details?.sheets ?? []);
         hearSession(session, this.sounds);
         this.ui.hear = (key) => this.sounds?.hearUi(cueKey(key));
       }
@@ -1171,6 +1171,7 @@ export class App {
     this.listen(hud);
     const vol = this.ui.settings;
     if (this.sounds && this.musicTracks && !this.sounds.music) this.sounds.setMusic(this.musicTracks);
+    if (this.sounds) this.sounds.assetsIdle = this.scene.assets.residency.flying === 0 && this.scene.assets.residency.waiting === 0;
     if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, { master: vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, soundView(session));
     const ghost = this.scene.ghost;
     ghost.kind = 0;
