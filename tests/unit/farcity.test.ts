@@ -9,6 +9,7 @@ import { ladder } from "../../client/core/governor.ts";
 import { FAR_BUFFER, fadeKeeps } from "../../client/core/render/far.ts";
 import { ThreadedCityMaker, cityJob, cityKinds, cityThreads, makeLevel, type CityJob, type CityKinds, type CityMade, type CityMaker, type CityThread } from "../../client/core/render/citymake.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
+import { doSweep, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
 import { PICK_STRUCTURE } from "../../tools/snap/raster.ts";
@@ -388,12 +389,16 @@ test("levels made on threads are each asked of the one with the fewest in hand, 
   const asked: number[] = [];
   let started = 0;
   class Turn implements CityThread {
-    onmessage: ((m: { data: CityMade }) => void) | null = null;
+    onmessage: ((m: { data: CityMade | SweepMade }) => void) | null = null;
     private kinds: CityKinds | null = null;
     private readonly n = started++;
-    postMessage(m: { kinds: CityKinds | null } | { job: CityJob }): void {
+    postMessage(m: { kinds: CityKinds | null } | { job: CityJob } | { sweep: SweepJob }): void {
       if ("kinds" in m) this.kinds = m.kinds;
-      else {
+      else if ("sweep" in m) {
+        // The far shadow's map (farshadow.ts) is swept where levels are made.
+        const made = doSweep(this.kinds!, m.sweep);
+        setTimeout(() => this.onmessage!({ data: made }));
+      } else {
         asked.push(this.n);
         const made = makeLevel(this.kinds!, m.job);
         setTimeout(() => this.onmessage!({ data: made }));

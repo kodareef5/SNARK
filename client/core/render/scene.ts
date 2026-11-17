@@ -45,6 +45,7 @@ import { SURFACE_MATERIAL } from "../../../content/surfaces.ts";
 import { citySurface, WORLD_ASKED } from "./world-surfaces.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
+import { FarShadow } from "./farshadow.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowBytes } from "./shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
@@ -508,8 +509,9 @@ export class Scene {
   private readonly farBounds: { center: readonly number[]; half: readonly number[] } | undefined;
   /** Water on its own surfaces apart from the sea, and the sea round those whose beds go under it (lakes.ts), given the far mesh. */
   private readonly lakes: Lakes | null;
-  /** Sun shadows: the cascades fitted this frame. */
+  /** Sun shadows: the cascades fitted this frame, and past them the far map of the city's outline, with the far city. */
   readonly cascades = new Cascades();
+  farShadow: FarShadow | null = null;
   /** Whether anything casts this frame, how far the true sun climbs (its unit vector's y), and frames fitted, for a cascade drawn every other frame. */
   private casting = false;
   private sunY = 1;
@@ -716,6 +718,7 @@ export class Scene {
     this.landmarks?.reset();
     this.lakes?.reset();
     this.cascades.clear();
+    this.farShadow?.reset();
   }
 
   build(cam: Camera, remote: RemoteSample | null): FramePacket {
@@ -767,6 +770,7 @@ export class Scene {
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
     if (this.city ?? this.startCity()) this.farCity(cam);
+    this.farShadow?.update(p, this.assets.residency, cam.x, cam.y, cam.z, p.cascadeCount > 0 ? this.sunAt : null);
     if (this.far) this.farBlocks(cam);
     if (this.nodesFar) this.farNodes(cam);
     if (this.casting) {
@@ -1166,6 +1170,7 @@ export class Scene {
     const source = this.world.city;
     if (!source || !this.farBounds) return null;
     this.city = new FarCity(source, this.world.dims, this.world.hf, this.farMesh, this.farBounds, this.landmarkKinds);
+    this.farShadow = new FarShadow(source.statics, this.world.hf, this.city, source.maker ?? null, source.complete);
     this.far?.leaveTo(this.city);
     const placed = this.world.landmarks ?? [];
     if (placed.length > 0) this.landmarks = new FarLandmarks(source, this.world.dims, placed, landmarkFars(this.assets.manifest));
