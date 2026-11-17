@@ -110,6 +110,8 @@ export interface ManifestMesh {
   flat?: number;
   /** What a stored texture coordinate spans (see PackMesh). */
   uv?: [number, number, number, number];
+  /** Drawn see-through (see PackMesh). */
+  seeThrough?: boolean;
   /** The page that holds its row and its smallest levels. Absent for a mesh the boot pack holds. */
   page?: number;
 }
@@ -222,6 +224,7 @@ export function describePack(pack: Pack, file: { name: string; bytes: number }, 
     if (m.skeleton !== undefined && m.lods[0]!.vertexCount > 0) out.bone = lodVertices(pack, m.lods[0]!)[7]!;
     if (m.flat !== undefined) out.flat = m.flat;
     if (m.uv !== undefined) out.uv = m.uv;
+    if (m.seeThrough) out.seeThrough = true;
     for (const lod of m.lods) {
       const sizes = [pad4(lod.indexCount * lod.indexBytes) + lod.vertexCount * VERTEX_BYTES];
       if (lod.surfaceOffset !== undefined) sizes.push(lod.vertexCount * SURFACE_BYTES);

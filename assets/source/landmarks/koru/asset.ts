@@ -2,26 +2,48 @@
 // mesh, drawn by its anchor's static; the doors and the sail parts are meshes of their own.
 
 import layout from "../../../../content/landmarks/koru-layout.json" with { type: "json" };
-import { LANDMARK_TRIANGLES, PIECE_TRIANGLES } from "../../../../tools/art/check.ts";
-import type { PieceSpec, PiecesAsset } from "../../../../tools/art/spec.ts";
+import { PIECE_TRIANGLES } from "../../../../tools/art/check.ts";
+import type { FinishSpec, PieceSpec, PiecesAsset } from "../../../../tools/art/spec.ts";
+import look from "./materials.json" with { type: "json" };
 
 const budget = (rule: readonly (readonly [number, number])[]): number[] => rule.map(([, n]) => n);
 const name = (id: string): string => id.slice("koru:".length);
-// A cell's finest level is drawn past 50 m, so it is held to that distance's budget. Its three far levels are model.py's:
-// they show what is seen from outside, the hull, decks, deckhouse walls and rig, and leave the rooms behind the white
-// walls and the glass, which is dark from outside. What they leave or thin that shows is under 2.5, 6 and 13 cm across
-// (rail posts and port rims, then rails, rigging and ports, then the rig's facets), which a measure of points cannot
-// judge: it counts the rooms.
-const cell = (id: string): PieceSpec => ({ id, object: name(id), triangles: budget(LANDMARK_TRIANGLES).slice(1), errors: [0.025, 0.06, 0.13] });
+// What a cell may draw from each distance on medium, in place of LANDMARK_TRIANGLES. Its far levels carry the deckhouse's
+// windows, the ports and the boot stripe to the horizon, which five building pieces' worth cannot: from 250 m on the
+// whole yacht is at most 20 thousand triangles, its far mesh, a sixth of the cruise ship's. Near it is at most 112
+// thousand, a twentieth of medium's frame.
+const CELLS = [[0, 22000], [50, 22000], [100, 4000], [250, 2500], [500, 2500]] as const;
+// A cell's five levels are model.py's: 0 and 1 drawn with the atlas, 2 to 4 flat. Levels 1 to 3 show what is seen from
+// outside, the hull, decks, deckhouse walls with their windows, and rig, and leave the rooms behind the white walls and
+// the glass, which is dark from outside. What they leave or thin that shows is under 2.5, 8 and 13 cm across (rail posts
+// and port rims; then the wires and rails, a third of a pixel where level 2 is first drawn, and the cove line; then the
+// cap rail's face and the spars' facets), which a measure of points cannot judge: it counts the rooms. Level 4 is a
+// stand-in of blocks for the boot file to hold, drawn only until the others come: no client is near enough a cell to
+// want a level past 0.13 m, and the far mesh takes levels 2 and 3.
+const cell = (id: string): PieceSpec => ({ id, object: name(id), triangles: [...budget(CELLS).slice(1), 400], errors: [0.025, 0.06, 0.13, 0.3] });
 const part = (id: string): PieceSpec => ({ id, object: name(id), triangles: budget(PIECE_TRIANGLES) });
+// The rig's parts (model.py): six flat levels, each first drawn on high where the one before was last drawn at its part's
+// nearest (RIG_ENDS: 25, 50, 100, 200 and 400 m), the error a level states being what the high tier's pixel threshold
+// takes there. Drawn see-through, its wires showing their share. A part is a few wires, as many triangles from 500 m as
+// from near, and a hundred at most.
+const RIG_ERRORS = [25, 50, 100, 200, 400].map((metres) => Number(((metres * 0.14) / 771).toFixed(5)));
+const rig = (id: string): PieceSpec => ({ id, object: name(id), triangles: [300, 300, 200, 200, 120, 120], errors: RIG_ERRORS, seeThrough: true, budget: [[0, 300], [100, 200], [250, 120]] });
+// Every finish of the pictures is one of the yacht's finishes: its flat faces are lit as its part of the pictures is, so
+// a flat level is its textured level without the picture (shared/pack/finish.ts).
+const finish = (f: { picture?: string; rect: number[]; share?: number }): FinishSpec => ({ material: f.picture ?? "surfaces", rect: f.rect as unknown as FinishSpec["rect"], ...(f.share ? { share: f.share } : {}) });
+const pictures = (name: string, more: object = {}) => ({ base: `tex/${name}_base.png`, normal: `tex/${name}_normal.png`, packed: `tex/${name}_packed.png`, height: `tex/${name}_height.png`, ...more });
 
 export default {
   kind: "pieces",
   source: { scripts: ["model.py"] },
-  pieces: [...layout.cells.map((c) => cell(c.id)), ...layout.modules.filter((m) => m.category === "door").map((m) => part(m.id)), ...layout.motion.parts.map((p) => part(p.mesh))],
+  pieces: [...layout.cells.map((c) => cell(c.id)), ...layout.modules.filter((m) => m.category === "door").map((m) => part(m.id)), ...layout.motion.parts.map((p) => (/^koru:(rig|roll)_/.test(p.mesh) ? rig(p.mesh) : part(p.mesh)))],
   materials: {
-    surfaces: { base: "tex/surfaces_base.png", normal: "tex/surfaces_normal.png", packed: "tex/surfaces_packed.png", height: "tex/surfaces_height.png" },
+    surfaces: pictures("surfaces"),
+    // Sailcloth passes light: from the side the sun is not on, a sail shows most of what its other side takes.
+    sails: pictures("sails", { sheet: 0.7, tops: { normal: 128 } }),
+    // The plaques and the name, in a picture of their own that medium shows whole, as sharp as high showed them in the atlas.
+    signs: pictures("signs", { tops: { normal: 512 } }),
   },
-  flat: 1,
-  budgets: { triangles: budget(LANDMARK_TRIANGLES), texture: { top: 2048, megabytes: 64 } },
+  finishes: Object.fromEntries(Object.entries(look.finishes).map(([n, f]) => [n, finish(f)])),
+  budgets: { triangles: budget(CELLS), texture: { top: 2048, megabytes: 64 }, cells: CELLS },
 } satisfies PiecesAsset;

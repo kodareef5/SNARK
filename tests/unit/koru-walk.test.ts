@@ -71,6 +71,23 @@ test("a hundred survivors walking and jumping at random from every route and roo
   expect(trapped).toEqual([]);
 });
 
+test("a swimmer meets the bow where it is drawn, the raked stem, and not the plumb end the decks keep", () => {
+  const [, end, rake] = KORU_LAYOUT.rakes[0]!;
+  const b = new Body();
+  [b.x, b.y, b.z] = koruPoint([0, -0.3, end + 8]);
+  // Swimming aft at the surface until the stem turns the swimmer down along it.
+  let near = Infinity, surface = -Infinity;
+  for (let t = 0; t < 12 * TICK_RATE; t++) {
+    stepBody(world, b, 0, 127, 32768, 0, 0, move, TICK_DT);
+    surface = t < TICK_RATE ? b.y : surface;
+    if (b.y < surface - 0.3) break;
+    near = Math.min(near, b.z - KORU_AT.z);
+  }
+  // At the waterline the stem is `rake` metres aft of the plumb end, and more where the swimmer is, a little under it.
+  expect(near).toBeLessThan(end - rake / 2);
+  expect(near).toBeGreaterThan(end - 1.5 * rake);
+});
+
 test("a swimmer astern swims onto the stern steps and up them to the deck", () => {
   const { sea, deck } = KORU_LAYOUT.docking.sternSteps;
   for (const dx of [-0.6, 0, 0.6]) {

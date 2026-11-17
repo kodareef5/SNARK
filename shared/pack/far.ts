@@ -2,7 +2,7 @@
 // at two coarse levels in one mesh, so one draw of a run of it stands for many of them.
 //
 // - It holds every placed piece whose kind draws a mesh of the landmark's pack, except a kind that opens or moves, which
-//   is drawn as itself. A piece is its mesh's vertices turned by its yaw and moved to where it stands, in the landmark's
+//   is drawn as itself, and a see-through mesh (PackMesh `seeThrough`), which is drawn as itself where it is drawn. A piece is its mesh's vertices turned by its yaw and moved to where it stands, in the landmark's
 //   metres: a plain turn, x' = c x + s z and z' = c z - s x, not the lattice frame its static stands by. A colour region
 //   becomes the colour a static of its kind is drawn in.
 // - Both levels are flat. Level l holds each piece at the coarsest level of its own mesh that errs FAR_ERRORS[l] metres
@@ -31,6 +31,8 @@ export interface LandmarkFarRow {
   pieces: number[];
   /** For each level, each piece's count of indices. A piece's first index is the sum of the counts before it. */
   counts: [number[], number[]];
+  /** The finishes its art states, which every flat draw of its meshes is lit with (shared/pack/finish.ts). */
+  finishes?: number[];
 }
 
 /** What the draw side reads of a landmark's far mesh. */

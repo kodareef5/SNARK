@@ -1,23 +1,22 @@
-// Koru's one atlas, painted from numbers: teak decking, joinery, cloth, water, a chart, the flat finishes, and brass
-// plaques lettered in the repo's Barlow face. Nothing of a photograph. From the repo's root:
+// Koru's pictures, painted from numbers: the atlas of teak decking, joinery, cloth, water, a chart and the flat finishes;
+// the sailcloth; and brass plaques lettered in the repo's Barlow face. Nothing of a photograph. From the repo's root:
 //   bun assets/source/landmarks/koru/tex/paint.ts
-// It writes surfaces_{base,height,normal,packed}.png beside itself, and ../signs.json: where each plaque's lettering is.
+// It writes <picture>_{base,height,normal,packed}.png beside itself for each of materials.json's pictures, and
+// ../signs.json: where each plaque's lettering is in the signs picture.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { encodePng } from "../../../../../tools/pack/image.ts";
 
-interface Finish { rect: [number, number, number, number]; tile?: [number, number] | null; rgb: [number, number, number]; roughness: number; metal: number }
+interface Finish { picture?: string; rect: [number, number, number, number]; tile?: [number, number] | null; rgb: [number, number, number]; roughness: number; metal: number }
 const HERE = import.meta.dir;
 const ROOT = resolve(HERE, "../../../../..");
-const LOOK = JSON.parse(readFileSync(join(HERE, "../materials.json"), "utf8")) as { size: number; inset: number; signs: [number, number, number, number]; finishes: Record<string, Finish> };
+const LOOK = JSON.parse(readFileSync(join(HERE, "../materials.json"), "utf8")) as { pictures: Record<string, number>; inset: number; signs: [number, number, number, number]; finishes: Record<string, Finish> };
 const LAYOUT = JSON.parse(readFileSync(join(ROOT, "content/landmarks/koru-layout.json"), "utf8")) as { signs: { label: string }[] };
-const N = LOOK.size;
 
-const base = new Float32Array(N * N * 3).fill(140);
-const height = new Float32Array(N * N).fill(0.5);
-const rough = new Float32Array(N * N);
-const metal = new Float32Array(N * N);
+/** A picture being painted, `n` a side. */
+interface Canvas { n: number; base: Float32Array; height: Float32Array; rough: Float32Array; metal: Float32Array }
+const canvases: Record<string, Canvas> = Object.fromEntries(Object.entries(LOOK.pictures).map(([name, n]) => [name, { n, base: new Float32Array(n * n * 3).fill(140), height: new Float32Array(n * n).fill(0.5), rough: new Float32Array(n * n), metal: new Float32Array(n * n) }]));
 const TAU = Math.PI * 2;
 const frac = (x: number): number => x - Math.floor(x);
 
@@ -76,10 +75,27 @@ const PATTERNS: Record<string, Pattern> = {
   },
   steel: (_u, v, px, py) => [Math.sin(v * 2400) * 2 + noise(px / 4, py / 64, 128, 19) * 0.6, Math.sin(v * 2400) * 0.0015],
   canvas: (_u, _v, px, py) => [weave(px, py, 5) * 2 + noise(px / 16, py / 16, 32, 23), weave(px, py, 5) * 0.008],
+  // A panel of sailcloth, one row of a sail: its seams at the top and bottom edges, which meet the next panel's.
+  sail: (_u, v, px, py) => cloth(v, px, py),
+  // The same with a batten across its middle.
+  batten: (_u, v, px, py) => {
+    const [tone, relief] = cloth(v, px, py);
+    return Math.abs(v - 0.5) < 0.03 ? [tone - 9, relief + 0.03] : [tone, relief];
+  },
 };
+function cloth(v: number, px: number, py: number): [number, number] {
+  const seam = Math.min(v, 1 - v) < 0.025;
+  return [(seam ? -7 : 0) + weave(px, py, 4) * 1.2 + noise(px / 24, py / 24, 32, 31) * 1.5, seam ? -0.02 : weave(px, py, 4) * 0.004];
+}
 
+// A line's finishes (`share`) are drawn in another's part of a picture, which that one paints.
+const painted = new Set<string>();
 for (const [name, f] of Object.entries(LOOK.finishes)) {
+  const { n: N, base, height, rough, metal } = canvases[f.picture ?? "surfaces"]!;
   const [x0, y0, w, h] = f.rect;
+  const where = `${f.picture ?? "surfaces"} ${f.rect.join(" ")}`;
+  if (painted.has(where)) continue;
+  painted.add(where);
   const pattern = PATTERNS[name];
   // A face takes its picture from within the inset, so a tiling picture repeats over that window and runs on into the inset.
   const inner = f.tile ? LOOK.inset : 0;
@@ -216,8 +232,12 @@ const font = readFont(join(ROOT, "assets/raw/fonts/barlow/BarlowSemiCondensed-Me
 const labels = [...new Set(LAYOUT.signs.map((s) => s.label))].sort();
 const wide = ["KORU"];
 const plaques = [...wide, "LOWER DECK", "MAIN DECK", "UPPER DECK", "SUN DECK", "SAILS", ...labels];
-const [sx, sy, , sh] = LOOK.signs;
-const SLOT_W = 256, SLOT_H = sh / 5;
+const [sx, sy, sw, sh] = LOOK.signs;
+const { n: N, base, height, rough, metal } = canvases.signs!;
+// Four plaques across, ten down.
+const SLOT_W = sw / 4, SLOT_H = sh / 10;
+// The plaque's rim, margins and grain were drawn for a slot 256 pixels wide.
+const K = SLOT_W / 256;
 const signs: Record<string, [number, number, number, number]> = {};
 let slot = 0;
 for (const label of plaques) {
@@ -229,9 +249,9 @@ for (const label of plaques) {
   signs[label] = [x0, y0, w, h];
   slot += span;
   const rim = (x: number, y: number): number => {
-    const r = 9, dx = Math.max(0, Math.abs(x + 0.5 - w / 2) - (w / 2 - 5 - r)), dy = Math.max(0, Math.abs(y + 0.5 - h / 2) - (h / 2 - 5 - r));
+    const r = 9 * K, dx = Math.max(0, Math.abs(x + 0.5 - w / 2) - (w / 2 - 5 * K - r)), dy = Math.max(0, Math.abs(y + 0.5 - h / 2) - (h / 2 - 5 * K - r));
     const d = Math.hypot(dx, dy);
-    return d > r ? 0 : d > r - 3 ? 2 : 1;
+    return d > r ? 0 : d > r - 3 * K ? 2 : 1;
   };
   // One line, or two split at the space nearest the middle, whichever letters larger.
   const words = label.toUpperCase();
@@ -239,7 +259,7 @@ for (const label of plaques) {
   const splits = [[words]];
   const at = words.split("").map((c, i) => (c === " " ? i : -1)).filter((i) => i > 0).sort((a, b) => Math.abs(a - words.length / 2) - Math.abs(b - words.length / 2))[0];
   if (at !== undefined) splits.push([words.slice(0, at), words.slice(at + 1)]);
-  const size = (lines: string[]): number => Math.min((w - 34) / Math.max(...lines.map(widthOf)), (h - 26) / (lines.length * 0.82 + (lines.length - 1) * 0.22) / font.units) * font.units;
+  const size = (lines: string[]): number => Math.min((w - 34 * K) / Math.max(...lines.map(widthOf)), (h - 26 * K) / (lines.length * 0.82 + (lines.length - 1) * 0.22) / font.units) * font.units;
   const lines = splits.reduce((a, b) => (size(b) > size(a) * 1.08 ? b : a));
   const scale = Math.min(size(lines), 0.62 * h) / font.units, cap = 0.7 * font.units * scale, gap = 0.3 * cap;
   const rings: [number, number][][] = [];
@@ -255,7 +275,7 @@ for (const label of plaques) {
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = (y0 + y) * N + x0 + x, edge = rim(x, y), ink = Math.min(1, letters[y * w + x]!);
-      const plate = [158, 123, 67].map((c) => c + noise(x / 3, y / 40, 512, 29) * 2);
+      const plate = [158, 123, 67].map((c) => c + noise(x / (3 * K), y / (40 * K), 512, 29) * 2);
       const colour = edge === 2 ? [213, 186, 124] : edge === 0 ? [118, 92, 50] : plate.map((c, k) => c + ([240, 224, 183][k]! - c) * ink);
       for (let c = 0; c < 3; c++) base[i * 3 + c] = colour[c]!;
       height[i] = edge === 0 ? 0.47 : 0.5 + (edge === 2 ? 0.03 : 0) + ink * 0.04;
@@ -271,25 +291,27 @@ const picture = (side: number, channels: number, fill: (i: number, c: number) =>
   for (let i = 0; i < side * side; i++) for (let c = 0; c < channels; c++) data[i * channels + c] = byte(fill(i, c));
   return encodePng({ width: side, height: side, channels, depth: 8, data });
 };
-writeFileSync(join(HERE, "surfaces_base.png"), picture(N, 3, (i, c) => base[i * 3 + c]!));
-writeFileSync(join(HERE, "surfaces_height.png"), picture(N, 1, (i) => height[i]! * 255));
-// The normal is the saved height's own slope, as the check measures it: x to the right, y up the picture.
-const h8 = (x: number, y: number): number => byte(height[((y + N) % N) * N + ((x + N) % N)]! * 255) / 255;
-writeFileSync(join(HERE, "surfaces_normal.png"), picture(N, 3, (i, c) => {
-  const x = i % N, y = Math.floor(i / N);
-  const nx = -(h8(x + 1, y) - h8(x - 1, y)) * 2, ny = (h8(x, y + 1) - h8(x, y - 1)) * 2, len = Math.hypot(nx, ny, 1);
-  return ([nx, ny, 1][c]! / len * 0.5 + 0.5) * 255;
-}));
-// Occlusion, roughness and metalness at half the side, a mean of each two by two.
-const half = N / 2;
-writeFileSync(join(HERE, "surfaces_packed.png"), picture(half, 3, (i, c) => {
-  const x = (i % half) * 2, y = Math.floor(i / half) * 2;
-  let sum = 0;
-  for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) {
-    const j = (y + dy) * N + x + dx;
-    sum += c === 0 ? 0.97 - Math.max(0, 0.5 - height[j]!) * 2.5 : c === 1 ? rough[j]! : metal[j]!;
-  }
-  return (sum / 4) * 255;
-}));
+for (const [name, { n: N, base, height, rough, metal }] of Object.entries(canvases)) {
+  writeFileSync(join(HERE, `${name}_base.png`), picture(N, 3, (i, c) => base[i * 3 + c]!));
+  writeFileSync(join(HERE, `${name}_height.png`), picture(N, 1, (i) => height[i]! * 255));
+  // The normal is the saved height's own slope, as the check measures it: x to the right, y up the picture.
+  const h8 = (x: number, y: number): number => byte(height[((y + N) % N) * N + ((x + N) % N)]! * 255) / 255;
+  writeFileSync(join(HERE, `${name}_normal.png`), picture(N, 3, (i, c) => {
+    const x = i % N, y = Math.floor(i / N);
+    const nx = -(h8(x + 1, y) - h8(x - 1, y)) * 2, ny = (h8(x, y + 1) - h8(x, y - 1)) * 2, len = Math.hypot(nx, ny, 1);
+    return ([nx, ny, 1][c]! / len * 0.5 + 0.5) * 255;
+  }));
+  // Occlusion, roughness and metalness at half the side, a mean of each two by two.
+  const half = N / 2;
+  writeFileSync(join(HERE, `${name}_packed.png`), picture(half, 3, (i, c) => {
+    const x = (i % half) * 2, y = Math.floor(i / half) * 2;
+    let sum = 0;
+    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) {
+      const j = (y + dy) * N + x + dx;
+      sum += c === 0 ? 0.97 - Math.max(0, 0.5 - height[j]!) * 2.5 : c === 1 ? rough[j]! : metal[j]!;
+    }
+    return (sum / 4) * 255;
+  }));
+}
 writeFileSync(join(HERE, "../signs.json"), `{\n${Object.entries(signs).map(([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(",\n")}\n}\n`);
-console.log(`painted a ${N} atlas and ${Object.keys(signs).length} plaques`);
+console.log(`painted ${Object.entries(LOOK.pictures).map(([name, n]) => `${name} ${n}`).join(", ")} and ${Object.keys(signs).length} plaques`);

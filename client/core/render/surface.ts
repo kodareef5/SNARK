@@ -223,6 +223,22 @@ export function lit(out: Out, albedo: Numbers, mro: Numbers, n: Numbers, v: Numb
   direct(out, frame, FRAME.moon, FRAME.moonColor, albedo, metal, a * a, n, v, nv);
 }
 
+const behind = new Float64Array(3);
+
+/**
+ * A thin sheet's light from behind, added to `out`: `sheet` of what its other face, facing away from `n`, takes from the
+ * sky, the sun and the moon, as a face that is not metal and fully rough would show it (shared/pack/finish.ts). `shade`
+ * is how much of the sun reaches that face.
+ */
+export function through(out: Out, albedo: Numbers, mro: Numbers, n: Numbers, frame: Numbers, sheet: number, shade = 1): void {
+  if (sheet <= 0) return;
+  for (let c = 0; c < 3; c++) behind[c] = -n[c]!;
+  skyLight(sky, frame, behind);
+  const sun = Math.max(behind[0]! * frame[FRAME.sun]! + behind[1]! * frame[FRAME.sun + 1]! + behind[2]! * frame[FRAME.sun + 2]!, 0) * shade;
+  const moon = Math.max(behind[0]! * frame[FRAME.moon]! + behind[1]! * frame[FRAME.moon + 1]! + behind[2]! * frame[FRAME.moon + 2]!, 0);
+  for (let c = 0; c < 3; c++) out[c]! += sheet * mro[0]! * albedo[c]! * (1 - mro[2]!) * (sky[c]! + frame[FRAME.sunColor + c]! * sun + frame[FRAME.moonColor + c]! * moon);
+}
+
 /**
  * The tone curve. Light under KNEE is kept as it is. A colour whose brightest channel is over it is brought under 1,
  * keeping its hue, and turned toward white the further over it was. It meets the line with slope 1 at the knee.
@@ -414,6 +430,20 @@ vec3 shown(vec3 light, vec3 rel) {
 `;
 
 /**
+ * `through` as GLSL, after LIGHT, and `sunward`, the face of a sheet the sun's shadow is looked up from: the one the sun
+ * is on, which for a sheet lit from behind is its far face.
+ */
+export const THROUGH = `vec3 through(vec3 albedo, vec3 mro, vec3 n, float sheet, float shade) {
+  if (sheet <= 0.0) return vec3(0.0);
+  vec3 b = -n;
+  return sheet * mro.r * albedo * (1.0 - mro.b) * (skyLight(b) + fSunColor.rgb * max(dot(b, fSun.xyz), 0.0) * shade + fMoonColor.rgb * max(dot(b, fMoon.xyz), 0.0));
+}
+vec3 sunward(vec3 n, float sheet) {
+  return sheet > 0.0 && dot(n, fTrueSun) < 0.0 ? -n : n;
+}
+`;
+
+/**
  * The sky's light from direction `r` into `out`: the sky table read by `look` (sky.ts domeLight on the table, at
  * where the sun is, sky.ts trueSun) and scaled to light. It is what a smooth surface mirrors, and the dome. The GLSL
  * twin is below.
@@ -453,9 +483,9 @@ in vec4 vTangent;
 in vec2 vUv;
 ${dyed ? "flat in mat3 vDye, vDye2;\n" : ""}uniform sampler2D uBase, uNormal, uMro${dyed ? ", uMask, uMask2" : ""};
 uniform vec3 uTint;
-uniform float uCutoff;
+uniform float uCutoff, uSheet;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${air}${dyed ? DYED : ""}${layered ? WOUNDED : ""}vec3 bumped(vec2 b) {
+${LIGHT}${THROUGH}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${air}${dyed ? DYED : ""}${layered ? WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
@@ -466,8 +496,9 @@ ${dyed ? "  vec3 mask = texture(uMask, vUv).rgb;\n  vec3 mask2 = texture(uMask2,
   vec2 bump = texture(uNormal, vUv).${format === "astc" ? "ra" : "rg"};
 ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth(base.a), 0.0001) + 0.5, 0.0, 1.0) : 1.0;\n  if (cover == 0.0) discard;\n" : "  float cover = 1.0;\n"}  vec3 v = -normalize(vRel);
   vec3 n = bumped(bump);
-  float shade = sunShadow(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal));
-${layered ? `  vec3 albedo = wounded(${albedo}, mro);\n` : ""}  o = vec4(shown(lit(${layered ? "albedo" : albedo}, mro, n, v, skyFrom(reflect(-v, n)), shade), vRel), cover);
+  float shade = sunShadow(vRel, sunward(normalize(gl_FrontFacing ? vNormal : -vNormal), uSheet));
+  vec3 albedo = ${layered ? `wounded(${albedo}, mro)` : albedo};
+  o = vec4(shown(lit(albedo, mro, n, v, skyFrom(reflect(-v, n)), shade) + through(albedo, mro, n, uSheet, shade), vRel), cover);
 }`;
 }
 

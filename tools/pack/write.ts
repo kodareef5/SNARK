@@ -55,6 +55,8 @@ export interface SourceMesh {
    */
   materials?: PackMaterial[];
   textures?: PackTexture[];
+  /** Drawn see-through, its finishes showing their share (shared/pack/finish.ts): a landmark's wires. */
+  seeThrough?: boolean;
 }
 
 /** The blob of a pack as it is put together: runs of bytes, each padded to a multiple of 4. */
@@ -125,7 +127,7 @@ function pool(meshes: readonly SourceMesh[]): { materials: PackMaterial[]; textu
         textures.set(t.id, { id: t.id, role: t.role, top: t.top });
         return t.id;
       });
-      const material: PackMaterial = { id: m.id, base: -1, normal: -1, mro: -1, mask: -1, mask2: -1, tint: m.tint, grey: m.grey, emissive: m.emissive, flags: m.flags, cutoff: m.cutoff, span: m.span };
+      const material: PackMaterial = { id: m.id, base: -1, normal: -1, mro: -1, mask: -1, mask2: -1, tint: m.tint, grey: m.grey, emissive: m.emissive, flags: m.flags, cutoff: m.cutoff, span: m.span, ...(m.sheet ? { sheet: m.sheet } : {}) };
       const text = JSON.stringify([material, names]);
       const had = materials.get(m.id);
       if (had && had.text !== text) throw new Error(`${mesh.id}: material ${m.id} is described twice, and differently`);
@@ -171,13 +173,14 @@ export interface SourceDetails {
   atlas: Uint8Array;
 }
 
-/** `landmarks` are the rows of the far meshes among `meshes` (tools/pack/far.ts). */
-export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: readonly Clip[] = [], rigs: readonly PackRig[] = [], details: SourceDetails | null = null, landmarks: readonly LandmarkFarRow[] = []): Uint8Array {
+/** `landmarks` are the rows of the far meshes among `meshes` (tools/pack/far.ts), and `finishes` an asset's (shared/pack/finish.ts). */
+export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: readonly Clip[] = [], rigs: readonly PackRig[] = [], details: SourceDetails | null = null, landmarks: readonly LandmarkFarRow[] = [], finishes: readonly number[] = []): Uint8Array {
   const blob = new PackBlob();
   const append = (bytes: Uint8Array): number => blob.append(bytes);
 
   const header: PackHeader = { paletteOffset: append(palette), meshes: [], rigs: [...rigs].sort(byId), clips: [] };
   if (landmarks.length > 0) header.landmarks = [...landmarks];
+  if (finishes.length > 0) header.finishes = [...finishes];
   if (details) header.details = { ...details.header, atlas: { ...details.header.atlas, offset: append(details.atlas) } };
   const sorted = [...meshes].sort(byId);
   const { materials, textures } = pool(sorted);
@@ -208,6 +211,7 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
     if (flat > 0) out.flat = flat;
     const range = uvRange(mesh.lods.slice(0, flat).map((lod) => lod.uvs));
     if (range) out.uv = range;
+    if (mesh.seeThrough) out.seeThrough = true;
     const place = (mesh.materials ?? []).map((m) => materials.findIndex((p) => p.id === m.id));
     mesh.lods.forEach((lod, level) => {
       const n = lod.positions.length / 3;
@@ -317,6 +321,7 @@ export function unpackMeshes(pack: Pack): SourceMesh[] {
       return out;
     });
     const out: SourceMesh = { id: m.id, lods };
+    if (m.seeThrough) out.seeThrough = true;
     if (m.collider) out.collider = m.collider;
     if (m.skeleton) out.skeleton = m.skeleton;
     if (m.rig !== undefined) out.rig = pack.header.rigs[m.rig]!.id;

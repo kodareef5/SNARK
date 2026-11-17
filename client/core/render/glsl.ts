@@ -9,7 +9,7 @@ import { ATLAS_REGION, ATLAS_WIDTH, BONES_PER_ROW, FRAME_BLOCK } from "./packet.
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE } from "./shading.ts";
 import { AIR } from "./atmosphere.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
-import { LIGHT } from "./surface.ts";
+import { LIGHT, THROUGH } from "./surface.ts";
 import { GROUND_GLSL, WORLD_GLSL } from "./world-surfaces.ts";
 
 const f = (n: number): string => n.toFixed(4);
@@ -67,6 +67,49 @@ ${LIGHT}${SHADOW_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}void main
   vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : worldSharp ? skyFrom(r) : skyLight(r);
   o = vec4(shown(lit(albedo, orm, n, v, mirrored, sunShadow(vRel, geometric)), vRel), uAlpha);
 }`;
+
+/** `text` with `from` put as `to`, which it must hold. */
+function swap(text: string, from: string, to: string): string {
+  if (!text.includes(from)) throw new Error(`glsl: no ${JSON.stringify(from)} to replace`);
+  return text.replace(from, to);
+}
+
+/**
+ * LIT's fragment text for a flat mesh: a vertex in one of its landmark's finishes (shared/pack/finish.ts, `finishVertex`)
+ * is lit with the finish's occlusion, roughness and metalness, mirroring the sky as SURFACE does, and with its sheet's
+ * light from behind. A line's finish, one with a share, is lit as if it faced the eye, and shows its share where it is
+ * drawn see-through. Any other is fully rough, as before.
+ */
+export const LIT_MESH_FRAGMENT = [
+  ["flat in vec3 vColor;\n", "flat in vec3 vColor;\nflat in vec4 vFinish;\nflat in float vShare;\n"],
+  ["void main() {\n", `${THROUGH}void main() {\n`],
+  ["  vec3 orm = vec3(1.0, 1.0, 0.0);\n", "  vec3 orm = vFinish.xyz;\n"],
+  ["  vec3 v = -normalize(vRel);\n", "  vec3 v = -normalize(vRel);\n  if (vShare < 1.0) n = v;\n"],
+  ["worldSharp ? skyFrom(r)", "worldSharp || vFinish.y < 1.0 ? skyFrom(r)"],
+  ["  o = vec4(shown(lit(albedo, orm, n, v, mirrored, sunShadow(vRel, geometric)), vRel), uAlpha);", "  float shade = sunShadow(vRel, sunward(geometric, vFinish.w));\n  o = vec4(shown(lit(albedo, orm, n, v, mirrored, shade) + through(albedo, orm, n, vFinish.w, shade), vRel), uAlpha * vShare);"],
+].reduce((text, [from, to]) => swap(text, from!, to!), LIT_FRAGMENT);
+
+/**
+ * A flat mesh program's vertex text on a lit tier, after `worldVertex`: where `uSolid` is past 2 the draw is of a
+ * landmark whose finishes are in row uSolid - 2 of them on the palette's unit (shared/pack/finish.ts `finishTable`), and
+ * a vertex in a colour the landmark states takes the finish's own colour and gives its occlusion, roughness,
+ * metalness, sheet and share. Any other vertex gives a fully rough surface that is not metal, all of which shows.
+ */
+export function finishVertex(vertex: string): string {
+  const fetch = "  vColor = texelFetch(uPalette, ivec2(int(i), 0), 0).rgb;\n";
+  return swap(swap(vertex, "flat out vec3 vColor;\n", "flat out vec3 vColor;\nflat out vec4 vFinish;\nflat out float vShare;\nuniform float uSolid;\n"), fetch, `${fetch}  vFinish = vec4(1.0, 1.0, 0.0, 0.0);
+  vShare = 1.0;
+  if (uSolid > 2.5) {
+    int row = int(uSolid) * 2 - 5;
+    vec4 own = texelFetch(uPalette, ivec2(int(i), row), 0);
+    if (own.a > 0.0) {
+      vColor = own.rgb;
+      vFinish = texelFetch(uPalette, ivec2(int(i), row + 1), 0);
+      vShare = own.a;
+    }
+  }
+`);
+}
 
 export const FLAT_MESH_VERTEX = `#version 300 es
 layout(location=0) in vec3 aPos;
@@ -212,7 +255,7 @@ void dropNearer() {
 export const FLAT_SPLIT_FRAGMENT = FLAT_FRAGMENT.replace("out vec4 o;\nvoid main() {\n", `out vec4 o;\n${SEE_THROUGH_SPLIT}void main() {\n  dropNearer();\n`);
 
 /** LIT's fragment text with SEE_THROUGH_SPLIT, which the lit tiers draw see-through flat draws with. */
-export const LIT_SPLIT_FRAGMENT = LIT_FRAGMENT.replace("void main() {\n", `${SEE_THROUGH_SPLIT}void main() {\n  dropNearer();\n`);
+export const LIT_SPLIT_FRAGMENT = LIT_MESH_FRAGMENT.replace("void main() {\n", `${SEE_THROUGH_SPLIT}void main() {\n  dropNearer();\n`);
 
 /**
  * The far fade, whose twin is far.ts `fadeKeeps`: a far draw is gone at `vGone` metres, and over the last share of that,
@@ -275,4 +318,4 @@ ${FRAME_BLOCK}${HAND_VERTEX}void main() {
 export const FLAT_FAR_FRAGMENT = FLAT_FRAGMENT.replace("out vec4 o;\nvoid main() {\n", `out vec4 o;\n${FRAME_BLOCK}${FAR_FADE}void main() {\n  fadeOut();\n`);
 
 /** LIT's fragment text with the far fade, which the lit tiers draw far blocks with. */
-export const LIT_FAR_FRAGMENT = LIT_FRAGMENT.replace("void main() {\n", `${FAR_FADE}void main() {\n  fadeOut();\n`);
+export const LIT_FAR_FRAGMENT = LIT_MESH_FRAGMENT.replace("void main() {\n", `${FAR_FADE}void main() {\n  fadeOut();\n`);

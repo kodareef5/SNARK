@@ -245,9 +245,9 @@ artTest("the cruise ship's far mesh is its 475 cells at 112,964 and 48,898 trian
   expect(runs / cases).toBeLessThan(4);
 });
 
-artTest("the yacht's far mesh comes by the same code: its eight cells, without its doors or its sails", () => {
+artTest("the yacht's far mesh comes by the same code: its eight cells, without its doors, its sails or its see-through rig", () => {
   const art = landmarkArt(KORU);
   const [far] = landmarkFars(describePack(parsePack(landmarkPack(art)), { name: "", bytes: 0 }));
-  expect([far!.name, far!.pieces, Array.from(far!.count, (c) => c.reduce((a, b) => a + b, 0) / 3), art.far!.otherwise]).toEqual(["koru", 8, [4328, 1224], []]);
+  expect([far!.name, far!.pieces, Array.from(far!.count, (c) => c.reduce((a, b) => a + b, 0) / 3), art.far!.otherwise]).toEqual(["koru", 8, [10444, 9188], []]);
   expect(farMeshId(KORU.name)).toBe("koru:far");
 });

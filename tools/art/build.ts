@@ -9,13 +9,14 @@ import { RAMP_BASE, SKIN_BASE, defaultPalette, nearestColour } from "../../share
 import { LAST_STEP, TEXTURE_ROLES, stepSize } from "../../shared/pack/texture.ts";
 import { convertCreature, planOf, withMotion } from "../pack/creature.ts";
 import { baker, painted } from "../pack/bake.ts";
-import { importGlb } from "../pack/glb.ts";
+import { glbMaterials, importGlb } from "../pack/glb.ts";
 import { readGltf } from "../pack/gltf.ts";
 import { lying } from "../pack/lying.ts";
 import { simplifySurface, withLevels, withSurfaceLevels } from "../pack/simplify.ts";
 import { spanOf, tangentsOf } from "../pack/surface.ts";
 import type { MaterialMaps } from "../pack/texture.ts";
 import { buildDetails } from "../pack/details.ts";
+import { stateFinishes } from "./finishes.ts";
 import { buildPack, unpackMeshes, type SourceDetails, type SourceLod, type SourceMesh } from "../pack/write.ts";
 import type { Asset } from "./assets.ts";
 import { RAW, blender, withScratch } from "./blender.ts";
@@ -34,6 +35,8 @@ export interface Built {
   faults: string[];
   /** The details' atlas, effects and sheets, for the details asset alone. */
   details?: SourceDetails;
+  /** A landmark's finishes, where its asset states them (shared/pack/finish.ts). */
+  finishes?: number[];
 }
 
 const triangles = (m: SourceMesh): string => m.lods.map((l, i) => `${String(l.indices.length / 3).padStart(5)}${i < (m.flat ?? 0) ? "*" : " "}`).join("");
@@ -176,14 +179,18 @@ export function convertPieces(asset: Asset & { spec: PiecesAsset }, files: Reado
   const spec = asset.spec;
   const palette = defaultPalette();
   const pictured = described(asset, palette, out);
+  const pieces = piecesOf(spec);
+  const glbs = new Map(pieces.map((p) => [p.object, new Uint8Array(readFileSync(files[p.object]!))]));
+  const finishes = spec.finishes ? stateFinishes(spec.finishes, pictured, palette, new Set([...glbs.values()].flatMap(glbMaterials))) : null;
+  if (finishes) out.finishes = finishes.numbers;
   const maps = new Map<string, MaterialMaps[]>();
   const flatColours = new Map<string, (number | undefined)[]>();
   const brought = new Map<string, number>();
-  const pieces = piecesOf(spec);
   for (const p of pieces) {
-    const report = importGlb(readFileSync(files[p.object]!), p.id, palette, { flat: (name) => pictured.get(name)?.flat });
+    const report = importGlb(glbs.get(p.object)!, p.id, palette, { flat: (name) => pictured.get(name)?.flat ?? finishes?.colour.get(name) });
     out.warnings.push(...report.warnings.map((w) => `${p.id}: ${w}`));
     brought.set(p.id, report.levels - 1);
+    if (p.seeThrough) report.mesh.seeThrough = true;
     if (!report.mesh.flat || pictured.size === 0) {
       out.meshes.push(report.mesh);
       continue;
@@ -299,7 +306,7 @@ export function buildAsset(asset: Asset): Built {
 }
 
 export function packOf(built: Built): Uint8Array {
-  return buildPack(built.meshes, defaultPalette(), built.clips, built.rigs, built.details ?? null);
+  return buildPack(built.meshes, defaultPalette(), built.clips, built.rigs, built.details ?? null, [], built.finishes ?? []);
 }
 
 /**
@@ -398,5 +405,5 @@ export function repack(file: Uint8Array, levels: boolean, asset?: Asset): Uint8A
   const rigs = pack.header.rigs.map((r) => (spec?.kind === "creature" && r.id === asset!.id ? withMotion(r, spec, pack.clips.clips, faults) : r));
   if (spec?.kind === "creature" && spec.materials) withLayers(meshes, asset as Asset & { spec: CreatureAsset }, palette, faults);
   if (faults.length > 0) throw new Error(`${asset!.id}: ${faults.join("; ")}`);
-  return buildPack(meshes, palette, pack.clips.clips, rigs, pack.header.details ? { header: pack.header.details, atlas: detailsAtlas(pack).slice() } : null);
+  return buildPack(meshes, palette, pack.clips.clips, rigs, pack.header.details ? { header: pack.header.details, atlas: detailsAtlas(pack).slice() } : null, [], pack.header.finishes ?? []);
 }

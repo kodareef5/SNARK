@@ -88,7 +88,7 @@ test("a page's statics read with a message to itself between steps are the same,
   let steps = 0;
   const pause = nextTask({ port1: channel.port1, port2: { postMessage: (m) => (posted++, channel.port2.postMessage(m)) } });
   const part = head.parts.find((p) => p.kind === "statics")!;
-  const t = await readStatics(Promise.resolve({ head, parts: [{ part, bytes: file.subarray(part.at, part.at + part.length) }] }), () => (steps++, pause()));
+  const t = await readStatics({ head, parts: [{ part, bytes: file.subarray(part.at, part.at + part.length) }] }, () => (steps++, pause()));
   channel.port1.close();
   expect([steps, posted]).toEqual([8, 8]);
   expect([t.first, t.kind, t.x, t.y, t.z, t.yaw]).toEqual([whole.statics.first, whole.statics.kind, whole.statics.x, whole.statics.y, whole.statics.z, whole.statics.yaw]);

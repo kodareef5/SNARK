@@ -8,7 +8,7 @@ import { WorkerCityMaker } from "../city/maker.ts";
 import { DEFAULT_TIER, canvasRatio, tierOf } from "../core/assets/tiers.ts";
 import { nodeLayers } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
-import { fetchBytes, fetchContent, fetchJson, fetchSounds, fetchText, nextTask, readStatics, withLandmarks } from "../core/fetched.ts";
+import { fetchBytes, fetchContent, fetchJson, fetchSounds, fetchText, nextTask, withLandmarks } from "../core/fetched.ts";
 import { MapLoader } from "../core/mapload.ts";
 import { loadIdentity } from "../core/identity.ts";
 import { SelfcheckSurfaces } from "../core/selfcheck-surfaces.ts";
@@ -47,7 +47,8 @@ async function boot(): Promise<void> {
   // Every file the first frame needs is asked for before anything else runs, and index.html asked for most of them already.
   // The server names its map's head. Its landmarks' definitions and overviews come first, then the ground round the body
   // once the welcome says where that is, and the rest while the world is drawn (client/core/mapload.ts).
-  const loading = fetchJson(fetch, "map.json").then((named) => MapLoader.start(fetch, (named as { head: string }).head));
+  // Until the first frame the page's one line says what it waits for when a part has failed (client/core/mapload.ts).
+  const loading = fetchJson(fetch, "map.json").then((named) => MapLoader.start(fetch, (named as { head: string }).head, { say: (line) => (root.textContent = line || "loading"), wait: (ms) => new Promise((go) => setTimeout(go, ms)), pause: nextTask(new MessageChannel()) }));
   const manifestText = fetchText(fetch, "assets/manifest.json"), skyBytes = fetchBytes(fetch, SKY_FILE), content = fetchContent(fetch, __CONTENT_FILE__);
   // The socket opens once the overviews are in, so its handshake runs while the landmarks are read. The server waits 5 s for
   // a hello, and a socket it gave up on is opened again.
@@ -84,15 +85,18 @@ async function boot(): Promise<void> {
     cityMaker: new WorkerCityMaker(),
     ...(land ? { landmarks: land.landmarks } : {}),
   });
-  void readStatics(loader.statics, nextTask(new MessageChannel())).then((statics) => session.staticsArrived(statics));
   const surfaces = selfcheck ? new SelfcheckSurfaces(manifest, port) : null;
   const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });
+  if (params.has("trip")) void import("../core/trip.ts").then(({ TripProbe }) => TripProbe.watch(app, head.counts, globalThis as unknown as Record<string, unknown>, (go) => void requestAnimationFrame(go)));
   void silent.then((why) => why && app.ui.console.print(`no sounds: ${why}`));
   session.prediction.enabled = selfcheck;
   const skin = installSkin(app.ui.frame);
   void Object.assign(new Image(), { src: SKIN_URL }).decode().catch(() => Object.assign(skin, { ...skinPixels(), url: "" }));
+  // A tool's look at a place takes its orders from the server the tool started for it, which alone answers /__look; on
+  // any other server the address does nothing.
+  const orders = params.has("look") ? await fetch(`/__look?view=${encodeURIComponent(params.get("look")!)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
   // A measurement run neither reads nor writes the player's saved interface preferences.
-  const measured = selfcheck || bench !== null || device !== null;
+  const measured = selfcheck || bench !== null || device !== null || orders !== null;
   const save = (): void => { if (!measured) try { localStorage.setItem("snark.interface", app.ui.settings.interfacePreferences()); } catch {} };
   if (!measured) try { app.ui.settings.restoreInterface(localStorage.getItem("snark.interface")); } catch {}
   addEventListener("pagehide", save);
@@ -102,7 +106,7 @@ async function boot(): Promise<void> {
   app.plainSky = selfcheck;
   app.ui.settings.touchFirst = matchMedia("(pointer: coarse)").matches;
   app.dpr = devicePixelRatio;
-  app.address((name) => params.get(name), measured);
+  app.address((name) => params.get(name), measured, orders);
   app.page = {
     origin: location.origin,
     protocol: location.protocol,
@@ -114,7 +118,6 @@ async function boot(): Promise<void> {
     json: (name) => fetchJson(fetch, name),
   };
   const clock = (renderer.passes = bench ? new PassClock(renderer.gl, params.has("passes")) : null);
-  const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
   // A device probe runs by itself, and a touch must not move or open anything.
   if (!device) bindInput(canvas, app);
   // Voice plays once the session has its token and the viewer has touched the page.
@@ -215,8 +218,11 @@ async function boot(): Promise<void> {
       void fetch("__selfcheck", { method: "POST", body: JSON.stringify(report) });
     }
   };
-  // The first frame waits for the ground within reach of the body, where the welcome puts it.
-  await session.welcomed.then(() => loader.follow(() => session.place));
+  // The first frame waits for the ground within reach of the body, where the welcome puts it. From then on the console
+  // says when the map comes slowly, and the statics are handed over once every part has come.
+  await session.welcomed.then(() => loader.follow(() => session.place, { say: (line) => app.ui.console.print(line), arrived: (statics) => session.staticsArrived(statics) }));
+  // The interface takes the page's line from here.
+  const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
   requestAnimationFrame(frame);
 }
 

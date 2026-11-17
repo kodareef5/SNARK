@@ -10,7 +10,8 @@
 | `held.test.ts` | Prediction only on ground the client holds as the map's own: a client holding only its body's sector, every other sample poisoned, predicts the body and its car as one holding the whole map, and the seeded simulation hashes the same; one whose body's sector has not come draws it from the snapshots and predicts again once it comes |
 | `persistence.test.ts` | Restart round trip; removed content; commit callbacks; three process kills with conservation |
 | `save-buffs.test.ts` | Buffs across a restart: a fire burns for what was left of it, a dose wears off, a stun is shown again; a save from before buffs were saved |
-| `maps.test.ts` | A map made in the test run by a server, its head and parts served by their names from memory or from its build's folder, and walked on; where its definition starts creatures; a save refused on another map; the proving ground from its file equal to the one its functions build |
+| `maps.test.ts` | A map made in the test run by a server, its head and parts served by their names from memory or from its build's folder, and walked on; a map built again beside a running server, whose fresh client still gets the map it holds, and a server started after the new one; where its definition starts creatures; a save refused on another map; the proving ground from its file equal to the one its functions build |
+| `trip.test.ts` | The map trip's page option: a page told ?trip watches, and draws and sends what one not told does |
 | `tactical.test.ts` | The map on an 8 km map: a far base with no chunk sent, whose bases show, cells by zoom within a kilobyte a second, mates and tames as marks, the minimap and the map screen |
 | `determinism.test.ts` | The same scenario under Bun and Node produces the same hashes |
 | `items.test.ts`, `equipment.test.ts` | Inventories and the ledger under random moves; hotbar, armor, weapons that hold rounds and attachments |

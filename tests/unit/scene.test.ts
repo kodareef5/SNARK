@@ -495,7 +495,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // that again.
   // It was 3496737782 until the four native road bridge slabs added meshes ahead of the test meshes. Only drawMesh,
   // drawSlot and assetUploads' mesh/slot indices rise by four; all other packet bytes and rendered pixels are identical.
-  expect(hash).toBe(4205793695);
+  // It was 4205793695 until the sea was made ahead of the statics, the first of the see-through draws, which go as made:
+  // its tiles take the first of the frame's transient instances and its draw goes after the opaque ones all the same.
+  expect(hash).toBe(366790760);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -518,8 +520,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1443514794, with 97 more draws on one bone, until bodies without bones stood in a pose, as above, and
   // 2400700468 until the sea's draw went after the opaque ones, as above, and 3112331256 until nodes were scattered by
   // their chunks' frame keys, as above.
-  // It was 2005316451 until the road bridge meshes changed those same indices, as above.
-  expect(saddled.hash).toBe(207021915);
+  // It was 2005316451 until the road bridge meshes changed those same indices, as above, and 207021915 until the sea was
+  // made ahead of the statics, as above.
+  expect(saddled.hash).toBe(3258779310);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
