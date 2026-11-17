@@ -1,5 +1,5 @@
 // A map's own buildings past the near rows (shared/world/city.ts). The client makes them from the map's statics, which
-// it holds from the map file, in tiles of 3 by 3 chunks, each level of a tile a level of its own on the card. A
+// it holds from the map file, in tiles of 4 by 4 chunks, each level of a tile a level of its own on the card. A
 // landmark's pieces are left out, as its far mesh draws them (farlandmarks.ts). A chunk is drawn here while the near
 // store does not hold it whole, and then the near store draws none of it, so its pieces are drawn one way or the other
 // and never both or neither. A tile's mesh holds every chunk of it in order and a draw takes the runs of chunks drawn
@@ -27,14 +27,17 @@ import type { StructureStore } from "../../../shared/world/structures.ts";
 import type { FarStore } from "../farcells.ts";
 import type { Camera } from "./camera.ts";
 import { InlineCityMaker, cityJob, cityKinds, type CityMade, type CityMaker } from "./citymake.ts";
-import { FAR_BUFFER, FAR_HEIGHT, FAR_TILE_METRES } from "./far.ts";
+import { FAR_BUFFER, FAR_HEIGHT } from "./far.ts";
 import type { FramePacket } from "./packet.ts";
 
-/** Chunks along a tile's side, and its side in metres. */
-export const CITY_TILE = 3;
+/** Chunks along a tile's side, a whole number of tiles to a sector of 16, and its side in metres. */
+export const CITY_TILE = 4;
 const TILE_METRES = CITY_TILE * CHUNK_SIZE;
-/** A tile's vertices are stored from its corner less this, so faces reaching past its edges stay within FAR_MESH's square. */
-const LOCAL = (FAR_TILE_METRES - TILE_METRES) / 2;
+/**
+ * A tile's vertices are stored from its corner less this across, within bounds of the city's own: a square this much
+ * wider than the tile each way, so faces reaching past its edges stay within it, and FAR_MESH's heights.
+ */
+const LOCAL = 32;
 /**
  * How far past its pieces a tile's box reaches, by which its levels are chosen, and its stored heights begin below them;
  * and how much farther across a face of its may lie, for what is in view: a cell's face may lie a cell past a box along
@@ -134,8 +137,9 @@ interface Asked {
 }
 
 export class FarCity {
-  /** The pack mesh of the tiles' bounds (far.ts FAR_MESH), as a draw names it. */
+  /** The pack mesh a draw names (far.ts FAR_MESH), and the bounds the tiles' vertices are stored within in place of its. */
   readonly mesh: number;
+  private readonly bounds: { readonly center: readonly number[]; readonly half: readonly number[] };
   /** Bytes of tiles on the card. */
   bytes = 0;
   /**
@@ -211,7 +215,9 @@ export class FarCity {
     this.hf = hf;
     this.mesh = mesh;
     this.maker = source.maker ?? new InlineCityMaker();
-    this.maker.start(cityKinds(source.statics, hf, bounds));
+    const across = TILE_METRES / 2 + LOCAL;
+    this.bounds = { center: [across, bounds.center[1]!, across], half: [across, bounds.half[1]!, across] };
+    this.maker.start(cityKinds(source.statics, hf, this.bounds));
     this.maker.onMade = () => this.feed();
     this.tilesX = Math.ceil(dims.chunksX / CITY_TILE);
     const chunks = chunkCount(dims);
@@ -649,7 +655,7 @@ export class FarCity {
       if (made.data.length > 0) {
         slot = CITY_SLOTS + this.next;
         this.next = (this.next + 1) % CITY_SLOT_SPAN;
-        p.assetUploads.push({ slot, mesh: this.mesh, level: 0, data: made.data, indexCount: made.first.at(-1)! + made.count.at(-1)!, indexBytes: made.indexBytes, quads: true });
+        p.assetUploads.push({ slot, mesh: this.mesh, level: 0, data: made.data, indexCount: made.first.at(-1)! + made.count.at(-1)!, indexBytes: made.indexBytes, quads: true, bounds: this.bounds });
         budget.spend(made.data.length);
       }
       tile.held[a.form] = { bytes: made.data.length, first: made.first, count: made.count, slot, stale: a.version !== tile.version };

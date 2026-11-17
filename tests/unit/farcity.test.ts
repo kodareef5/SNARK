@@ -266,9 +266,9 @@ test("the lattice fades out over the end of its reach exactly where the mass fad
 test("across a fade between levels a chunk wholly past the one's end draws none of it and one wholly short of the fade none of the other, for the picture both drawn whole give", () => {
   // Rows of towers in three rows of tiles, one in every chunk across the fade: the lattice into the mass on medium from
   // 810 to 900 m, and the mass in 4 m cells into that in 8 m cells on high from 1,800 to 2,000 m.
-  for (const { tier, end, from, off } of [{ tier: "medium", end: 900, from: 10, off: 880 }, { tier: "high", end: 2000, from: 26, off: 1900 }]) {
+  for (const { tier, end, from, off } of [{ tier: "medium", end: 900, from: 10, off: 820 }, { tier: "high", end: 2000, from: 26, off: 1900 }]) {
     const statics: MapStatic[] = [];
-    for (let k = 0; k < 18; k++) for (const cz of [28, 31, 34]) statics.push(...building(...mid(from + k, cz), 0, 4 + ((k * 5) % 7), 2, (k * 2300 + cz * 700) % 16384));
+    for (let k = 0; k < 18; k++) for (const cz of [27, 31, 35]) statics.push(...building(...mid(from + k, cz), 0, 4 + ((k * 5) % 7), 2, (k * 2300 + cz * 700) % 16384));
     const w = cityWorld({ chunks: 64, statics, width: 480, height: 270, tier: tierOf(tier) });
     w.look((from + 6) * CHUNK_SIZE, 10, 31 * CHUNK_SIZE, off, Math.PI / 2, 30);
     // Each level's indices on the card, by its slot.
@@ -311,7 +311,7 @@ test("a tile wholly short of the last tenth of its reach draws with no fade, and
   const [x, z] = mid(2, 30);
   w.look(x, 10, z, 300, 0, 2);
   const p = w.frame();
-  const at = (d: number): number => Math.hypot(p.drawOffset[d * 3]! + 128, p.drawOffset[d * 3 + 2]! + 128);
+  const at = (d: number): number => Math.hypot(p.drawOffset[d * 3]! + 160, p.drawOffset[d * 3 + 2]! + 160);
   const fades = cityDraws(p).map((d) => [at(d) < 1000, p.drawFade[d]!] as const);
   expect(fades.filter(([near]) => near).map(([, f]) => f)).toEqual([0]);
   expect(fades.filter(([near]) => !near).map(([, f]) => f)).toEqual([2048]);

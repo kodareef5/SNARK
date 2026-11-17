@@ -15,7 +15,7 @@ import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { MapStatics, type MapData, type MapStatic } from "../../shared/world/mapfile.ts";
 
-/** Downtown Miami's 9 by 9 chunks from chunk (99, 48), whose corner is on the far city's tiles of 3 by 3 chunks. */
+/** Downtown Miami's 9 by 9 chunks from chunk (99, 48), which hold the near windows of its three views whole. */
 export const MIAMI_SLICE = new URL("./miami-slice.gz", import.meta.url).pathname;
 export const MIAMI_CUT = { cx: 99, cz: 48, side: 9 } as const;
 
