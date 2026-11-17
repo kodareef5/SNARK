@@ -79,7 +79,8 @@ Every answer has a `state`: `done`, `running` (still going; `status` waits for
 it), `blocked` (it stopped short, and `reason` says why), `danger` (it stopped
 because the survivor is in danger) or `refused` (nothing was done). An answer
 also lists `dangers` while there are any. Places are x and z, or `lat` and `lon`
-as the map screen gives them; a storey is chosen with `y`.
+as the map screen gives them (units of 102.4 m south and east of the map's top
+left, ten a sector); a storey is chosen with `y`.
 
 | Tool | Does |
 | --- | --- |

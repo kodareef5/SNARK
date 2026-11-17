@@ -2,7 +2,7 @@
 
 import { expect, test } from "bun:test";
 import { MapPicture, MapStore, ReliefTiles, ZOOMS, paintRelief } from "../../client/core/tactical.ts";
-import { latOf, lonOf } from "../../shared/world/coords.ts";
+import { lonOf, mapU, mapV } from "../../shared/world/coords.ts";
 import { PROVING_POOL, buildProvingHeightfield } from "../../shared/world/proving.ts";
 import { CELL_FILLED, Cells } from "../../shared/world/tactical.ts";
 import { corePack } from "../fixtures/pack.ts";
@@ -17,14 +17,14 @@ function picture(zoom: number, x: number, z: number, store: MapStore | null = nu
   const p = new MapPicture();
   for (let frame = 0; frame < 6; frame++) {
     tiles.step();
-    p.draw(hf, palette, tiles, store, team, zoom, lonOf(hf, x) / 100, latOf(hf, z) / 100, N);
+    p.draw(hf, palette, tiles, store, team, zoom, mapU(hf, x), mapV(hf, z), N);
   }
   return p;
 }
 
 /** Where a place falls in a picture, in pixels from its top left. */
-const column = (p: MapPicture, x: number): number => ((lonOf(hf, x) / 100 - p.view.u0) / p.view.du) * N;
-const row = (p: MapPicture, z: number): number => ((latOf(hf, z) / 100 - p.view.v0) / p.view.dv) * N;
+const column = (p: MapPicture, x: number): number => ((mapU(hf, x) - p.view.u0) / p.view.du) * N;
+const row = (p: MapPicture, z: number): number => ((mapV(hf, z) - p.view.v0) / p.view.dv) * N;
 const pixel = (p: MapPicture, px: number, py: number): number[] => [...p.image.data.subarray((py * N + px) * 4, (py * N + px) * 4 + 3)];
 
 test("tiles are made one a frame, hold what the painter paints, and only so many are kept", () => {
@@ -89,14 +89,16 @@ test("each zoom lines up with the next to within a pixel: the shore of the pool,
     // Its west edge is x = 216 and its north edge z = 168.
     for (const [got, want] of [[x0, column(built, 216)], [x1 + 1, column(built, 212)], [y0, row(built, 168)], [y1 + 1, row(built, 164)]] as const) expect(Math.abs(got - want)).toBeLessThanOrEqual(1);
 
-    // The line of longitude 50 runs down the column its coordinate gives, darker than the ground beside it.
-    const mid = picture(zoom, 256, 250);
-    const line = Math.round(column(mid, 256));
+    // The line of longitude 8 runs down the column its coordinate gives, darker than the ground beside it. The proving ground
+    // reads 5 to 10 each way, so its lines inside are a unit's, which are fainter than a sector's (this was longitude 50).
+    expect(lonOf(hf.dims, 204.8)).toBeCloseTo(8, 12);
+    const mid = picture(zoom, 204.8, 250);
+    const line = Math.round(column(mid, 204.8));
     let [on, beside] = [0, 0];
     for (let y = 100; y < 200; y++) {
       on += pixel(mid, line, y)[1]!;
       beside += pixel(mid, line + 3, y)[1]!;
     }
-    expect(on).toBeLessThan(beside * 0.75);
+    expect(on).toBeLessThan(beside * 0.85);
   }
 });

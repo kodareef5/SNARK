@@ -179,7 +179,7 @@ test("every page is whole HTML, names only what it has, and writes what the cont
       entries: entries.map((e) => (e.id === "core:raptor" ? { ...e, label: '<img src=x onerror="bad()">' } : e)),
       pictures: new Map([["core:raptor", { views: [card], card }]]),
       credits: new Map([["core:raptor", "Model and motion: from a CC0 1.0 pack."]]),
-      atlases: [{ id: "core:miami", slug: "miami", label: "Miami", metres: 8128, ground: card, card, resources: [], creatures: [], vehicles: [], regions: [], spawns: [], obelisks: [], landmarks: [{ of: "koru", name: "koru", x: 400, y: 500 }], districts: [], sources: [] }],
+      atlases: [{ id: "core:miami", slug: "miami", label: "Miami", metres: [8128, 8128], ground: card, card, resources: [], creatures: [], vehicles: [], regions: [], spawns: [], obelisks: [], landmarks: [{ of: "koru", name: "koru", x: 400, y: 500 }], districts: [], sources: [] }],
       sounds: [{ id: "core:raptor/sound/call", owner: "core:raptor", name: "Call", file: "core.snsd", at: 8, rate: 32000, takes: [[16000, 20], [24000, 30]], game: true }],
       heard: new Map([["core:raptor", ["core:raptor/sound/call"]]]),
       music: [],
@@ -231,7 +231,7 @@ test("every page is whole HTML, names only what it has, and writes what the cont
 test("the front page and the maps page list every map, and read from a server say which its cluster runs, those first", () => {
   const card = { file: "/wiki/media/m.card.png", width: 240, height: 240 };
   const atlases = [["miami", "Miami"], ["tampa", "Tampa"], ["san-francisco", "San Francisco"], ["los-angeles", "Los Angeles"], ["las-vegas", "Las Vegas"], ["reno", "Reno"]].map(([slug, label]) => ({
-    id: `core:${slug}`, slug: slug!, label: label!, metres: 8128, ground: card, card, resources: [], creatures: [], vehicles: [], regions: [], spawns: [], obelisks: [], landmarks: [], districts: [], sources: [],
+    id: `core:${slug}`, slug: slug!, label: label!, metres: [8128, 8128] as [number, number], ground: card, card, resources: [], creatures: [], vehicles: [], regions: [], spawns: [], obelisks: [], landmarks: [], districts: [], sources: [],
   }));
   const pages = renderWiki({
     assets: { css: "/wiki/a.css", js: "/wiki/a.js", search: "/wiki/s.json", font: "/assets/f.ttf", revision: "abc" },

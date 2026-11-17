@@ -4,10 +4,10 @@
 
 import { CHOOSE_ARRIVED, CHOOSE_TRAVEL, CMD_RESPAWN, MAX_NAME_BYTES, SESSION_DEAD } from "../../../shared/net/protocol.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
-import { latLonText, latOf, lonOf } from "../../../shared/world/coords.ts";
+import { latLonText, latOf, lonOf, mapU, mapV } from "../../../shared/world/coords.ts";
 import type { HudModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
-import { WHOLE_MAP } from "../tactical.ts";
+import { wholeMap } from "../tactical.ts";
 import { IMAGE_MAP } from "./hud.ts";
 import { K_BUTTON, K_IMAGE, K_INPUT, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
 import { S_BUTTON, S_FRAME, S_INPUT, S_LABEL, S_MARK_DEATH, S_MARK_SELF, S_MARK_SPAWN, S_PANEL, S_TITLE } from "./style.ts";
@@ -92,20 +92,20 @@ export class ChoosingScreen {
     picture.image = IMAGE_MAP;
     picture.interactive = true;
     const chart = hud?.chart ?? null;
-    const view = chart ? chart.full.view : WHOLE_MAP;
+    const hf = session.world?.hf ?? null;
     if (chart && hud) {
       // The whole map, so that every place is on it.
       chart.fullZoom = 0;
       chart.look(0.5, 0.5);
       chart.drawFull(session.tactical, session.tribe.team, Math.min(1024, Math.round(size * hud.scale)));
     }
-    Object.assign(this.box, { x: mx, y: my, size, u0: view.u0, v0: view.v0, du: view.du, dv: view.dv });
-    const hf = session.world?.hf ?? null;
     if (hf) {
+      const view = chart ? chart.full.view : wholeMap(hf);
+      Object.assign(this.box, { x: mx, y: my, size, u0: view.u0, v0: view.v0, du: view.du, dv: view.dv });
       for (let i = 0; i < points.length; i++) {
         const p = points[i]!;
-        const px = (lonOf(hf, p.x) / 100 - view.u0) / view.du;
-        const py = (latOf(hf, p.z) / 100 - view.v0) / view.dv;
+        const px = (mapU(hf, p.x) - view.u0) / view.du;
+        const py = (mapV(hf, p.z) - view.v0) / view.dv;
         if (px < 0 || px > 1 || py < 0 || py > 1) continue;
         const half = i === this.picked ? 5 : 3;
         const style = i === this.picked ? S_MARK_DEATH : p.kind === 0 ? S_MARK_SPAWN : S_MARK_SELF;
@@ -145,7 +145,7 @@ export class ChoosingScreen {
     ly += rowH + 4;
     const p = points[this.picked];
     const wait = p ? waitText(p.readyAt, tick) : "";
-    const note = !p ? "Pick a place in the list or on the map" : hf ? `${latLonText(latOf(hf, p.z), lonOf(hf, p.x))}${wait !== "" ? `, ready in ${wait}` : ""}` : wait;
+    const note = !p ? "Pick a place in the list or on the map" : hf ? `${latLonText(latOf(hf.dims, p.z), lonOf(hf.dims, p.x))}${wait !== "" ? `, ready in ${wait}` : ""}` : wait;
     f.text(KEY_CHOOSE_NOTE, lx, ly, lw, S_LABEL, note);
     ly += labelH + 8;
     const go = f.add(KEY_CHOOSE_RISE, K_BUTTON, lx, ly, lw, rowH, S_BUTTON);
@@ -197,8 +197,8 @@ export class ChoosingScreen {
       let best = -1;
       let near = 12;
       for (let i = 0; hf && i < points.length; i++) {
-        const px = b.x + ((lonOf(hf, points[i]!.x) / 100 - b.u0) / b.du) * b.size;
-        const py = b.y + ((latOf(hf, points[i]!.z) / 100 - b.v0) / b.dv) * b.size;
+        const px = b.x + ((mapU(hf, points[i]!.x) - b.u0) / b.du) * b.size;
+        const py = b.y + ((mapV(hf, points[i]!.z) - b.v0) / b.dv) * b.size;
         const d = Math.hypot(px - x, py - y);
         if (d < near) {
           near = d;

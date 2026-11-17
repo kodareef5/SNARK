@@ -69,7 +69,8 @@ test("a headless client boots, draws, walks, and its interface says where it is"
   expect(packet!.drawCount).toBeGreaterThan(5);
   expect(app.ui.frame.find(KEY_STATUS)).toBeNull();
   expect(app.ui.frame.find(KEY_CROSS)).not.toBeNull();
-  expect(app.ui.frame.find(KEY_READOUT)!.text).toBe("53.1 lat  50.0 lon  N 0");
+  // The proving ground reads 5 to 10 each way, a unit 102.4 m (this was "53.1 lat  50.0 lon" when a map read 0 to 100).
+  expect(app.ui.frame.find(KEY_READOUT)!.text).toBe("7.7 lat  7.5 lon  N 0");
   expect(app.ui.frame.find(KEY_VITAL + 3)!.value).toBe(1); // stamina, from the predicted body
 
   app.key("KeyW", true);

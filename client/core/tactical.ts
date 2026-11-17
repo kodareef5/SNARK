@@ -3,7 +3,7 @@
 
 import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz } from "../../shared/coords.ts";
 import type { BitReader } from "../../shared/net/codec.ts";
-import type { MapExtent } from "../../shared/world/coords.ts";
+import { COORD_UNIT, SECTOR_UNITS, latOf, lonOf, xOfLon, zOfLat, type MapExtent } from "../../shared/world/coords.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { Cells, Marks, OWNER_OTHER, TACTICAL_CELL, levelSide, readCells, readMarks } from "../../shared/world/tactical.ts";
 import type { UiImage } from "./ui/nodes.ts";
@@ -80,9 +80,10 @@ export interface Tile {
 }
 
 /**
- * Where the terrain's picture comes from: a pyramid of tiles. At zoom z the map's square (its longer side each way, from its
- * north-west corner) is 2^z tiles a side, and tile (col, row) counts east and south from that corner. Tiles may be any size.
- * The pictures hold terrain only. Pictures baked ahead of time will replace the ones made here.
+ * Where the terrain's picture comes from: a pyramid of tiles. At zoom z a square as wide as the map's longer side, centred on
+ * the map, is 2^z tiles a side, and tile (col, row) counts east and south from its north-west corner. On a map that is not
+ * square the square reaches past the shorter sides, and what lies there is not ground. Tiles may be any size. The pictures
+ * hold terrain only. Pictures baked ahead of time will replace the ones made here.
  */
 export interface TileSource {
   /** Counts the tiles that have come, so a picture knows to be drawn again. */
@@ -100,15 +101,16 @@ const RELIEF_KEPT = 24;
 
 /** Paints one tile of the pyramid from the heightfield: each sample's colour, shaded by its slope with the light from the north-west, and water over what lies under the sea or a lake. */
 export function paintRelief(hf: Heightfield, palette: Uint8Array, zoom: number, col: number, row: number, size: number, out: Uint32Array): void {
-  const side = Math.max(hf.sizeX, hf.sizeZ) / (1 << zoom);
+  const whole = Math.max(hf.sizeX, hf.sizeZ);
+  const side = whole / (1 << zoom);
   // The slope is taken over about a pixel, so a far zoom shows the broad shape of the land.
   const reach = Math.max(1, Math.round(side / size / hf.cell));
   for (let py = 0; py < size; py++) {
-    const z = hf.sizeZ - (row + (py + 0.5) / size) * side;
+    const z = (hf.sizeZ + whole) / 2 - (row + (py + 0.5) / size) * side;
     const j = Math.max(0, Math.min(hf.nz - 1 - reach, Math.floor(z / hf.cell)));
     for (let px = 0; px < size; px++) {
-      const x = hf.sizeX - (col + (px + 0.5) / size) * side;
-      if (x < 0 || z < 0) {
+      const x = (hf.sizeX + whole) / 2 - (col + (px + 0.5) / size) * side;
+      if (x < 0 || z < 0 || x > hf.sizeX || z > hf.sizeZ) {
         out[py * size + px] = VOID;
         continue;
       }
@@ -183,8 +185,9 @@ export class ReliefTiles implements TileSource {
 }
 
 /**
- * A square window on the map. (u0, v0) is its north-west corner and (du, dv) its size, as fractions of the map: longitude
- * and latitude over 100. A new one shows the whole of a square map.
+ * A window on the map as square on the ground as the picture it is drawn into. (u0, v0) is its north-west corner and (du, dv)
+ * its size, as shares of the map's picture (mapU and mapV in shared/world/coords.ts). Along a side of the map shorter than
+ * the window it reaches past the map's edges, with the map at its middle.
  */
 export class MapView {
   zoom = 0;
@@ -193,25 +196,34 @@ export class MapView {
   du = 1;
   dv = 1;
 
-  /** One tile of `zoom` wide, with (u, v) at its middle where the map's square allows, on whole pixels of a picture `px` wide. */
+  /** One tile of `zoom` wide, with (u, v) at its middle as near as the map's edges allow, on whole pixels of a picture `px` wide. */
   place(map: MapExtent, zoom: number, u: number, v: number, px: number): void {
     const whole = Math.max(map.sizeX, map.sizeZ);
     const side = whole / (1 << zoom);
     const pixel = side / px;
-    const fit = (middle: number): number => Math.round(Math.min(whole - side, Math.max(0, middle - side / 2)) / pixel) * pixel;
+    // The corner is placed in metres from the pyramid's square (TileSource), so the edges of its tiles fall on whole pixels.
+    const fit = (middle: number, size: number): number => {
+      const margin = (whole - size) / 2;
+      const from = side >= size ? (whole - side) / 2 : margin + Math.min(size - side, Math.max(0, middle - side / 2));
+      return Math.round(from / pixel) * pixel - margin;
+    };
     this.zoom = zoom;
-    this.u0 = fit(u * map.sizeX) / map.sizeX;
-    this.v0 = fit(v * map.sizeZ) / map.sizeZ;
+    this.u0 = fit(u * map.sizeX, map.sizeX) / map.sizeX;
+    this.v0 = fit(v * map.sizeZ, map.sizeZ) / map.sizeZ;
     this.du = side / map.sizeX;
     this.dv = side / map.sizeZ;
   }
 }
 
-/** The whole of a square map, for a screen with no picture of its own. */
-export const WHOLE_MAP = new MapView();
+/** The whole map at the middle of a square window, for a screen with no picture of its own. */
+export function wholeMap(map: MapExtent): MapView {
+  const view = new MapView();
+  view.place(map, 0, 0.5, 0.5, 1);
+  return view;
+}
 
-/** Degrees between the grid's lines at each zoom. Every tenth is drawn stronger. */
-const GRID_STEP: readonly number[] = [10, 10, 5, 1];
+/** The fewest pixels between two of the map screen's lines a unit apart for them to be drawn. */
+const UNIT_PIXELS = 24;
 /** The digits 0 to 9, three pixels by five, a bit to a pixel from the top left. */
 const DIGITS: readonly number[] = [0x7b6f, 0x2c97, 0x73e7, 0x73cf, 0x5bc9, 0x79cf, 0x79ef, 0x7249, 0x7bef, 0x7bcf];
 
@@ -270,7 +282,7 @@ export class MapPicture {
     this.tilesAt = tiles.version;
     this.team = team;
     if (store) this.cells(hf, palette, store, team);
-    this.grid();
+    this.grid(hf);
     image.version++;
   }
 
@@ -283,8 +295,9 @@ export class MapPicture {
     const n = 1 << view.zoom;
     const side = whole / n;
     const pixel = side / N;
-    const e0 = view.u0 * hf.sizeX;
-    const s0 = view.v0 * hf.sizeZ;
+    // The window's corner in metres east and south of the pyramid square's.
+    const e0 = view.u0 * hf.sizeX + (whole - hf.sizeX) / 2;
+    const s0 = view.v0 * hf.sizeZ + (whole - hf.sizeZ) / 2;
     const col0 = Math.min(n - 1, Math.floor(e0 / side + 1e-6));
     const row0 = Math.min(n - 1, Math.floor(s0 / side + 1e-6));
     for (let row = row0; row <= Math.min(n - 1, row0 + 1); row++) {
@@ -358,33 +371,44 @@ export class MapPicture {
     }
   }
 
-  /** Lines of latitude and longitude across the map, and their numbers along the picture's top and left. */
-  private grid(): void {
+  /**
+   * Lines of latitude and longitude across the map, and their numbers along the picture's top and left. A line every ten
+   * units is a sector's edge and is numbered, so a numbered square is a sector, 1,024 m a side. The map screen draws one
+   * every unit as well, faintly, where they stand far enough apart.
+   */
+  private grid(hf: Heightfield): void {
     const N = this.image.width;
     const out = this.rgba;
     const view = this.view;
-    const step = GRID_STEP[view.zoom]!;
+    const d = hf.dims;
     const big = Math.max(1, Math.round(N / 320));
-    const edge = (f: number): number => Math.max(0, Math.min(N, Math.round(f * N)));
-    // The map's own rectangle. One that is not square leaves part of the picture empty.
-    const left = edge(-view.u0 / view.du);
-    const right = edge((1 - view.u0) / view.du);
-    const top = edge(-view.v0 / view.dv);
-    const bottom = edge((1 - view.v0) / view.dv);
-    // Where the lines stand close, as on a small minimap, every second one is numbered.
-    const sparse = ((step / 100 / view.du) * N < 20 * big ? 2 : 1) * step;
-    for (let k = Math.max(0, Math.ceil((view.u0 * 100) / step - 1e-6)); k * step <= 100; k++) {
-      const px = Math.round((((k * step) / 100 - view.u0) / view.du) * N);
+    // Pixels to a metre, the same both ways, and the place at the picture's top left in the map's metres.
+    const scale = N / (view.du * hf.sizeX);
+    const west = (1 - view.u0) * hf.sizeX;
+    const north = (1 - view.v0) * hf.sizeZ;
+    const edge = (p: number): number => Math.max(0, Math.min(N, Math.round(p)));
+    // The map's own rectangle, which no line leaves.
+    const left = edge((west - hf.sizeX) * scale);
+    const right = edge(west * scale);
+    const top = edge((north - hf.sizeZ) * scale);
+    const bottom = edge(north * scale);
+    const step = this.coordinates && COORD_UNIT * scale >= UNIT_PIXELS ? 1 : SECTOR_UNITS;
+    const darkness = (k: number): number => (!this.coordinates ? 26 : k % SECTOR_UNITS === 0 ? 110 : 56);
+    // Where the sectors stand close, as on a small picture, every second is numbered.
+    const numbered = SECTOR_UNITS * (SECTOR_UNITS * COORD_UNIT * scale < 20 * big ? 2 : 1);
+    // Longitude grows east, which is rightward, from the map's west edge or the picture's left, whichever is further east.
+    for (let k = Math.ceil(lonOf(d, Math.min(hf.sizeX, west)) / step - 1e-6) * step; k <= lonOf(d, 0) + 1e-6; k += step) {
+      const px = Math.round((west - xOfLon(d, k)) * scale);
       if (px >= N) break;
-      for (let py = top; py < bottom; py++) darken(out, py * N + px, this.coordinates ? (k * step) % 10 === 0 ? 110 : 56 : 26);
-      if (this.coordinates && (k * step) % sparse === 0) this.number(k * step, px + 2, top + 2, big);
+      for (let py = top; py < bottom; py++) darken(out, py * N + px, darkness(k));
+      if (this.coordinates && k % numbered === 0) this.number(k, px + 2, top + 2, big);
     }
-    for (let k = Math.max(0, Math.ceil((view.v0 * 100) / step - 1e-6)); k * step <= 100; k++) {
-      const py = Math.round((((k * step) / 100 - view.v0) / view.dv) * N);
+    for (let k = Math.ceil(latOf(d, Math.min(hf.sizeZ, north)) / step - 1e-6) * step; k <= latOf(d, 0) + 1e-6; k += step) {
+      const py = Math.round((north - zOfLat(d, k)) * scale);
       if (py >= N) break;
-      for (let px = left; px < right; px++) darken(out, py * N + px, this.coordinates ? (k * step) % 10 === 0 ? 110 : 56 : 26);
+      for (let px = left; px < right; px++) darken(out, py * N + px, darkness(k));
       // The top row belongs to the longitudes.
-      if (this.coordinates && (k * step) % sparse === 0 && py - top > 7 * big) this.number(k * step, left + 2, py + 2, big);
+      if (this.coordinates && k % numbered === 0 && py - top > 7 * big) this.number(k, left + 2, py + 2, big);
     }
   }
 

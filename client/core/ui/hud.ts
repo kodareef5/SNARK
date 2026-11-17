@@ -4,7 +4,6 @@ import { filledVital } from "./vitals.ts";
 import { glass } from "./skin.ts";
 import { KEY_MENU_OPEN, menuButton } from "./menu.ts";
 import { MAX_DOTS } from "../render/laser.ts";
-import { WHOLE_MAP } from "../tactical.ts";
 import { K_BAR, K_BUTTON, K_IMAGE, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
 import { S_BUFF, S_DARK, S_BANNER, S_CROSS, S_FRAME, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_PROMPT, S_SLOT_TEXT, S_STAMINA, S_TEXT } from "./style.ts";
 import { S_HUD_COUNT, S_HUD_HIT, S_HUD_KEY, S_ICE, S_MENU_FOCUS, S_MENU_MAIN, S_MENU_NOTE, S_WARNING } from "./style.ts";
@@ -153,10 +152,11 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     const picture = f.add(KEY_MINIMAP, K_IMAGE, mapX, mapTop, MINIMAP_SIZE, MINIMAP_SIZE, S_FRAME);
     picture.image = IMAGE_MINIMAP;
     picture.alpha = .82;
-    // The minimap is a window on the map. The model lists the most important marker first, so drawing from the last keeps those on top.
-    const view = m.chart ? m.chart.mini.view : WHOLE_MAP;
+    // The minimap is a window on the map, and its markers are put on its picture. The model lists the most important marker
+    // first, so drawing from the last keeps those on top.
+    const view = m.chart?.mini.view;
     let shown = 0;
-    for (let i = Math.min(m.markers.length, MAX_MARKERS) - 1; i >= 0; i--) {
+    for (let i = Math.min(m.markers.length, MAX_MARKERS) - 1; view && i >= 0; i--) {
       const k = m.markers[i]!;
       const u = (k.u - view.u0) / view.du;
       const v = (k.v - view.v0) / view.dv;
