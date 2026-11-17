@@ -20,7 +20,7 @@ test("the native development road strips are continuous and normal restarts do n
     const world = new StaticVehicleWorld(h.world);
     for (const [lane, surface] of ["asphalt", "gravel", "mud"].entries()) {
       for (let z = h.world.spawn.z - 5; z >= h.world.spawn.z - 40; z--) {
-        expect(world.support(h.world.spawn.x + 12 + lane * 9, 0, z, COMPACT)!.surface.id).toBe(`${surface}`);
+        expect(world.wheelRay(h.world.spawn.x + 12 + lane * 9, .5, z, 0, -1, 0, .7, COMPACT)!.surface.id).toBe(`${surface}`);
       }
     }
     let removed = false;
@@ -42,7 +42,7 @@ test("native road kinds replicate, update existing wheel adapters and persist th
     const ground = flatGround(h, 16, 16), x = ground.x + 8, z = ground.z + 8;
     h.say(reader, "enablecheats"); h.say(reader, `tp ${x + 4} ${z}`);
     const local = new StaticVehicleWorld(h.world), remote = new StaticVehicleWorld(reader.world!);
-    const sample = (adapter: StaticVehicleWorld) => adapter.support(x, ground.y, z, COMPACT)!.surface;
+    const sample = (adapter: StaticVehicleWorld) => adapter.wheelRay(x, ground.y + .5, z, 0, -1, 0, .7, COMPACT)!.surface;
     const seen = (ref: number) => reader.world!.structs.chunks[Math.floor(ref / 65536)]?.kind[ref & 65535] ?? 0;
     const asphalt = h.reg.index.get("core:road_asphalt")!, gravel = h.reg.index.get("core:road_gravel")!;
     expect([sample(local), sample(remote)]).toEqual([OFFROAD, OFFROAD]);
@@ -53,7 +53,7 @@ test("native road kinds replicate, update existing wheel adapters and persist th
     expect(h.server.stats.chunkBytes).toBeGreaterThan(before);
     expect(seen(first)).toBe(asphalt);
     expect([sample(local), sample(remote)]).toEqual([authoredAsphalt, authoredAsphalt]);
-    expect(remote.support(x, ground.y, z, COMPACT)!.y).toBeCloseTo(ground.y + 1 / 16, 5);
+    expect(ground.y + .5 - remote.wheelRay(x, ground.y + .5, z, 0, -1, 0, .7, COMPACT)!.distance).toBeCloseTo(ground.y + 1 / 16, 5);
 
     h.world.structs.remove(first); h.run(400);
     expect(seen(first)).toBe(0);
@@ -71,6 +71,6 @@ test("native road kinds replicate, update existing wheel adapters and persist th
     expect(kindAt(restored, second)).toBe(gravel);
     expect(joined.world!.structs.chunks[Math.floor(second / 65536)]!.kind[second & 65535]).toBe(gravel);
     const authority = new StaticVehicleWorld(restored.world), predicted = new StaticVehicleWorld(joined.world!);
-    expect([authority.support(x, ground.y, z, COMPACT)!.surface, predicted.support(x, ground.y, z, COMPACT)!.surface]).toEqual([authoredGravel, authoredGravel]);
+    expect([authority.wheelRay(x, ground.y + .5, z, 0, -1, 0, .7, COMPACT)!.surface, predicted.wheelRay(x, ground.y + .5, z, 0, -1, 0, .7, COMPACT)!.surface]).toEqual([authoredGravel, authoredGravel]);
   } finally { active?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
 });

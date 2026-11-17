@@ -7,6 +7,8 @@ import { writeMap } from "../../shared/world/mapfile.ts";
 import { Harness } from "../fixtures/net.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Past } from "../../server/history.ts";
+import { isBoatVehicle } from "../../shared/sim/vehicle.ts";
+import { boatMeetsCapsule, boatMeetsVehicle } from "../../shared/world/boat.ts";
 
 function setup() {
   const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(2, { seaLevel: 3 })) });
@@ -18,7 +20,9 @@ function setup() {
   expect(h.host.urban.mount(c, boat)).toBe(RESULT_OK); h.run(1400);
   const health = (e: number) => h.host.survival.value(h.host.records.byPid.get(ents.pid[e]!)!, V_HEALTH);
   const victim = (x: number, y: number, z: number) => {
-    const e = h.host.spawnCreature("core:dummy", 95, 95, 1);
+    const e = h.host.spawnCreature("core:civilian", 95, 95, 1), rec = h.host.records.byPid.get(ents.pid[e]!)!;
+    rec.vitals!.max[V_HEALTH] = rec.vitals!.value[V_HEALTH] = 100000 * 1e6;
+    h.host.creatures.mind.stay(e, 0xffffffff);
     ents.setPosition(e, x, y, z); h.world.history.untrack(e); h.world.history.track(e); return e;
   };
   return { h, c, actor, ents, boat, contacts: h.host.urban.contacts!, health, victim };
@@ -45,8 +49,10 @@ test("an engaged stationary propeller harms an unprotected swimmer, while neutra
     const y = ents.y[boat]!, prop = BOAT_ART.propeller.center, target = victim(62 + prop[0], y - .15, 64 + prop[2]), before = health(target);
     ents.vehicleEngineOn[ents.vrow[boat]!] = 1; ents.vehicleRpm[ents.vrow[boat]!] = 2800; ents.vehicleGear[ents.vrow[boat]!] = 0;
     contacts.capture(boat); contacts.step(); expect(health(target)).toBe(before);
-    ents.vehicleGear[ents.vrow[boat]!] = 1; contacts.capture(boat); contacts.step();
-    expect(health(target)).toBeLessThan(before); h.host.urban.step();
+    h.world.tick++; ents.vehicleGear[ents.vrow[boat]!] = 1;
+    ents.setPosition(target, 62 + prop[0], y - .15, 64 + prop[2]); h.world.history.discontinuity(target);
+    contacts.capture(boat); contacts.step();
+    expect(health(target)).toBeLessThan(before); h.host.urban.beforeStep();
     expect(ents.vehicleEngineCondition[ents.vrow[boat]!]!).toBeLessThan(1);
     // A standing body's feet above the deck and inside the gunwales do not meet an invented full cabin box.
     const cabin = victim(62, y + .8, 64 - 1.8), cabinHealth = health(cabin);
@@ -63,7 +69,12 @@ test("stationary boats block a swimmer crossing the real hull without fabricatin
     contacts.capture(boat); ents.setPosition(target, 63, y + .1, 64); ents.vx[target] = -30;
     expect(contacts.step()).toContain(boat); h.host.urban.step();
     expect(health(boat)).toBe(hull); expect(health(target)).toBe(before);
-    expect(ents.x[target]!).toBeGreaterThan(63.4); expect(ents.vx[target]!).toBeGreaterThan(-3);
+    expect(ents.x[target]!).toBeGreaterThan(ents.x[boat]! + 1.59); expect(ents.vx[target]!).toBeGreaterThan(-3);
+    const def = h.reg.vehicle[ents.kind[boat]!]!; if (!isBoatVehicle(def)) throw new Error("expected boat");
+    const v = ents.vrow[boat]!;
+    expect(boatMeetsCapsule(def, { x: ents.x[boat]!, y: ents.y[boat]!, z: ents.z[boat]!, yaw: 0, pitch: 0, roll: 0,
+      qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]! },
+      ents.x[target]!, ents.y[target]!, ents.z[target]!, .3, 1.8)?.depth ?? 0).toBeLessThan(.005);
   } finally { h.host.shutdown(); }
 });
 
@@ -79,11 +90,12 @@ test("boat collisions include another vehicle's real hull and cargo mass", () =>
     ents.setPosition(other, 64.9, y, 64); contacts.capture(boat); contacts.capture(other);
     ents.setPosition(boat, 63, y, 64); ents.vx[boat] = 30;
     expect(contacts.step()).toContain(boat); expect(ents.x[boat]!).toBeLessThan(63);
+    h.host.urban.beforeStep();
     expect(health(other)).toBeLessThan(before);
   } finally { h.host.shutdown(); }
 });
 
-test("a protected moving boat is clipped on its captured rigid path and reported for crew repinning", () => {
+test("owned boats exchange finite momentum and are clipped on their captured rigid paths for crew repinning", () => {
   const { h, ents, boat, contacts, health } = setup();
   try {
     h.host.setSetting("serverPVE", "True");
@@ -93,8 +105,14 @@ test("a protected moving boat is clipped on its captured rigid path and reported
     ents.setPosition(other, 64, y, 64); ents.vx[other] = -30;
     const changed = contacts.step();
     expect(changed).toContain(boat); expect(changed).toContain(other);
-    expect(ents.x[other]!).toBeGreaterThan(64.5); expect(ents.x[other]!).toBeLessThanOrEqual(65.1);
-    expect(ents.vx[other]!).toBeGreaterThan(-3); expect(health(other)).toBe(before);
+    expect(ents.x[other]! - ents.x[boat]!).toBeGreaterThan(2.59); expect(ents.x[other]!).toBeLessThanOrEqual(65.1);
+    const definition = h.reg.vehicle[ents.kind[boat]!]!, otherDef = h.reg.vehicle[ents.kind[other]!]!;
+    if (!isBoatVehicle(definition)) throw new Error("expected boat");
+    const pose = (e: number) => { const v = ents.vrow[e]!; return { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: 0, pitch: 0, roll: 0,
+      qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]! }; };
+    expect(boatMeetsVehicle(definition, pose(boat), otherDef, pose(other))?.depth ?? 0).toBeLessThan(.005);
+    expect(ents.vx[other]!).toBeGreaterThan(-20); expect(ents.vx[other]!).toBeLessThan(-5);
+    expect(ents.vx[boat]!).toBeLessThan(-5); expect(health(other)).toBe(before);
     expect(Number.isFinite(ents.vehicleQw[ents.vrow[other]!])).toBe(true);
   } finally { h.host.shutdown(); }
 });
@@ -130,4 +148,35 @@ test("rewound boat targeting uses its remembered quaternion and steering, with n
     const bytes = history.bytes; history.untrack(boat);
     expect(bytes - history.bytes).toBe(16 * 7 * 4);
   } finally { h.host.shutdown(); }
+});
+
+test("native propeller engagement has its own cooldown and preserves protected swimmers and seated crew", () => {
+  for (const protectedTarget of [false, true]) {
+    const { h, c, actor, ents, boat, health, victim } = setup();
+    try {
+      const y = ents.y[boat]!, prop = BOAT_ART.propeller.center, target = victim(62, y - .15, 64 + prop[2]);
+      const targetRec = h.host.records.byPid.get(ents.pid[target]!)!, boatHP = health(boat), crewHP = health(c.ent), before = health(target);
+      if (protectedTarget) { h.host.setSetting("serverPVE", "True"); targetRec.team = actor.team + 1; ents.setTeam(target, targetRec.team); }
+      const hits: number[] = [], base = h.world.tick, hurt = h.host.survival.hurt.bind(h.host.survival);
+      h.host.survival.hurt = (rec, points, by, cause, impact) => {
+        const taken = hurt(rec, points, by, cause, impact); if (rec === targetRec && taken > 0) hits.push(h.world.tick - base); return taken;
+      };
+      for (let i = 0; i < 35; i++) {
+        // Repeat the same physical encounter. Each sample still runs the real input/controller/contact/Combat host tick.
+        const active = i !== 0 && i !== 8, v = ents.vrow[boat]!;
+        ents.setPosition(boat, 62, y, 64); ents.vx[boat] = ents.vy[boat] = ents.vz[boat] = 0;
+        ents.vehicleQx[v] = ents.vehicleQy[v] = ents.vehicleQz[v] = 0; ents.vehicleQw[v] = 1;
+        ents.vehicleYaw[v] = ents.vehiclePitch[v] = ents.vehicleRoll[v] = 0;
+        ents.vehicleYawRate[v] = ents.vehiclePitchRate[v] = ents.vehicleRollRate[v] = 0;
+        ents.vehicleEngineOn[v] = 1; ents.vehicleRpm[v] = 2800; ents.vehicleGear[v] = active ? 1 : 0;
+        ents.setPosition(target, 62, y - .15, 64 + prop[2]); ents.vx[target] = ents.vy[target] = ents.vz[target] = 0;
+        h.world.history.discontinuity(boat); h.world.history.discontinuity(target);
+        c.inputs.set(h.world.tick + 1, 0, active ? 127 : 0, 0, 0, 0); h.server.tick();
+      }
+      expect(hits).toEqual(protectedTarget ? [] : [2, 17, 32]);
+      expect(health(c.ent)).toBe(crewHP); expect(c.drive).toBe(boat); expect(ents.seat[c.ent]).toBe(boat + 1);
+      if (protectedTarget) { expect(health(target)).toBe(before); expect(health(boat)).toBe(boatHP); }
+      else { expect(health(target)).toBeLessThan(before - 500); expect(health(boat)).toBeLessThan(boatHP); }
+    } finally { h.host.shutdown(); }
+  }
 });

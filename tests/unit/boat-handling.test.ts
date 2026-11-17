@@ -16,7 +16,7 @@ import { MapWater } from "../../shared/world/water.ts";
 
 const def: BoatVehicleDefinition = { id: "test:boat", movement: "boat", spec, seats: [], doors: [], wheels: [], actionTicks: 1, beltline: 1.36 };
 const command = (change: Partial<BoatInput> = {}): BoatInput => ({ throttle: 0, steer: 0, neutral: false, pilot: true, ...change });
-const sea: BoatWorld = { waterAt: () => 0, groundAt: () => -20, blocked: () => null };
+const sea: BoatWorld = { waterAt: () => 0, groundAt: () => -20, blocked: () => null, penetration: () => null };
 function boat(payload = 0): BoatState { const s = createBoat(spec, 96, boatRestY(spec, 0, payload), 96); s.payloadMass = payload; return s; }
 function run(s: BoatState, ticks: number, input = command(), world = sea) {
   let impact = 0, blocked: string | null = null, prop = false, plane = 0;
@@ -183,7 +183,8 @@ test("a shoaling beach arrests the hull and an exposed prop cannot drive it inla
   for (let z = 0; z < n.hf.nz; z++) for (let x = 0; x < n.hf.nx; x++) n.hf.setSample(x, z, Math.min(1, -3 + Math.max(0, z * 2 - 96) * .15));
   const s = boat(); s.vz = 10;
   const report = run(s, 360, command({ throttle: 1 }), n.world);
-  expect(report.blocked).toBe("terrain"); expect(s.z).toBeGreaterThan(100); expect(s.z).toBeLessThan(122);
+  expect(report.blocked).toBe("terrain"); expect(s.z).toBeGreaterThan(100);
+  expect(stepBoat(s, command({ throttle: 1 }), def, n.world).propellerImmersion).toBe(0);
   expect(n.world.blocked(s, s, def)).toBeNull();
   const stranded = s.z; run(s, 180, command({ throttle: 1 }), n.world);
   expect(s.z - stranded).toBeLessThan(.1);
@@ -210,9 +211,10 @@ test("overload and a flooded wreck sink to actual seabed, preserving attitude an
   const overloaded = boat(); overloaded.payloadMass = 4000; run(overloaded, 180); expect(overloaded.y).toBeLessThan(-2);
   const n = native(), wreck = boat(); wreck.flooding = 1; const q = new Float64Array(4); quatAxis(q, 0, 0, 0, 1, .25);
   wreck.qx = q[0]!; wreck.qy = q[1]!; wreck.qz = q[2]!; wreck.qw = q[3]!;
+  stepBoatWreck(wreck, def, n.world); expect(Math.abs(wreck.qz)).toBeGreaterThan(.11);
   let settled = false; for (let i = 0; i < 1800; i++) settled ||= stepBoatWreck(wreck, def, n.world);
   expect(settled).toBe(true); expect(wreck.y).toBeLessThan(-14); expect(n.world.blocked(wreck, wreck, def)).toBeNull();
-  expect(Math.abs(wreck.qz)).toBeGreaterThan(.01); expect(wreck.engineOn).toBe(false);
+  expect(Math.hypot(wreck.qx, wreck.qy, wreck.qz, wreck.qw)).toBeCloseTo(1, 5); expect(wreck.engineOn).toBe(false);
 });
 
 test("a tilted splash and hostile controls stay finite and keep a normalized quaternion", () => {
@@ -223,4 +225,47 @@ test("a tilted splash and hostile controls stay finite and keep a normalized qua
     expect(Math.abs(s.qx * s.qx + s.qy * s.qy + s.qz * s.qz + s.qw * s.qw - 1)).toBeLessThan(2e-6);
   }
   expect(TICK_DT).toBeGreaterThan(0);
+});
+
+
+test("head-on and oblique wall contacts settle under buoyancy and reverse out without a hidden velocity freeze", () => {
+  for (const yaw of [0, 34 * Math.PI / 180]) {
+    const n = native(); n.structs.add(1, 100, 0, 116, 0, 0, 100);
+    const s = createBoat(spec, 96, boatRestY(spec, 0), 104, yaw); s.vx = 12 * Math.sin(yaw); s.vz = 12 * Math.cos(yaw);
+    let hit = false;
+    for (let tick = 0; tick < 120; tick++) {
+      const tangent = s.vx, report = stepBoat(s, command({ throttle: .5 }), def, n.world);
+      if (report.blocked) {
+        hit = true;
+        if (yaw > 0) expect(s.vx).toBeGreaterThan(tangent * .5);
+        break;
+      }
+    }
+    expect(hit).toBe(true);
+    run(s, 90, command({ neutral: true }), n.world);
+    expect(Math.abs(s.y - boatRestY(spec, 0))).toBeLessThan(.05);
+    const x = s.x, z = s.z;
+    run(s, 150, command({ throttle: -1 }), n.world);
+    expect(Math.hypot(s.x - x, s.z - z)).toBeGreaterThan(3);
+    expect(n.world.blocked(s, s, def)).toBeNull();
+  }
+});
+
+test("boat initial overlap escapes its original face, preserves the far side and checks a second obstacle", () => {
+  const n = native(); n.structs.add(1, 96, 0, 108, 0, 0, 100);
+  const s = createBoat(spec, 96, boatRestY(spec, 0), 104.7);
+  expect(n.world.penetration(s, def)!.depth!).toBeGreaterThan(.05);
+  expect(n.world.blocked(s, { ...s, z: 104.2 }, def)).toBeNull();
+  expect(n.world.blocked(s, { ...s, z: 110 }, def)).not.toBeNull();
+  n.structs.add(1, 96, 0, 100, 0, 0, 100);
+  expect(n.world.blocked(s, { ...s, z: 103.5 }, def)).not.toBeNull();
+});
+
+test("an embedded outboard recovers through a bounded clear path before steering away", () => {
+  const n = native(), straight = boat(), turned = { ...straight, steering: spec.maxSteer };
+  n.structs.add(4, 96.43, -.27, 92.29, 0, 0, 100);
+  expect(n.world.blocked(turned, turned, def)?.propeller).toBe(true);
+  run(turned, 30, command(), n.world);
+  expect(n.world.blocked(turned, turned, def)).toBeNull();
+  expect(Math.hypot(turned.x - straight.x, turned.z - straight.z)).toBeLessThan(.3);
 });

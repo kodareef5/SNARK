@@ -20,14 +20,14 @@ test("only the wheel's actual supporting structure supplies its physical road su
   const asphalt = reg!.index.get("core:road_asphalt")!, gravel = reg!.index.get("core:road_gravel")!;
   world.structs.add(asphalt, 36, 1 / 32, 32, 0, 0, 1500);
   world.structs.add(asphalt, 32, 2 + 1 / 32, 32, 0, 0, 1500);
-  expect(adapter.support(32, 0, 32, spec)!.surface.id).toBe("ground");
+  expect(adapter.wheelRay(32, .5, 32, 0, -1, 0, .7, spec)!.surface.id).toBe("ground");
   const ref = world.structs.add(asphalt, 32, 1 / 32, 32, 0, 0, 1500);
-  expect(adapter.support(32, 0, 32, spec)!.surface.id).toBe("asphalt");
-  expect(adapter.support(32, 0, 32, spec)!.y).toBeCloseTo(1 / 16, 5);
+  expect(adapter.wheelRay(32, .5, 32, 0, -1, 0, .7, spec)!.surface.id).toBe("asphalt");
+  expect(.5 - adapter.wheelRay(32, .5, 32, 0, -1, 0, .7, spec)!.distance).toBeCloseTo(1 / 16, 5);
   world.structs.remove(ref);
-  expect(adapter.support(32, 0, 32, spec)!.surface.id).toBe("ground");
+  expect(adapter.wheelRay(32, .5, 32, 0, -1, 0, .7, spec)!.surface.id).toBe("ground");
   world.structs.add(gravel, 32, 1 / 32, 32, 0, 0, 1500);
-  expect(adapter.support(32, 0, 32, spec)!.surface.id).toBe("gravel");
+  expect(adapter.wheelRay(32, .5, 32, 0, -1, 0, .7, spec)!.surface.id).toBe("gravel");
 });
 
 test("native paving changes acceleration through the same fixed-tick Body adapter used by driving", () => {

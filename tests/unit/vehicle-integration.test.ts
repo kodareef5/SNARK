@@ -17,7 +17,7 @@ test("a vehicle restores through the real Body wire and replays exactly from a m
   authority.vehiclePayloadMass = 380;
   const store = new EntityStore(world.dims, 4);
   const e = store.create(kind, 40, 0, 40, 0);
-  const w = new BitWriter(128), r = new BitReader();
+  const w = new BitWriter(256), r = new BitReader();
   for (let tick = 0; tick < 120; tick++) {
     const steer = tick < 50 ? 60 : -45;
     const throttle = tick < 95 ? 127 : -127;
@@ -25,7 +25,7 @@ test("a vehicle restores through the real Body wire and replays exactly from a m
     stepVehicleBody(world, authority, steer, throttle, buttons, COMPACT_VEHICLE);
     store.storeBody(e, authority); store.loadBody(e, authority);
     if (tick === 31) {
-      writeBody(w, authority); r.reset(w.bytes()); readBody(r, predicted);
+      writeBody(w, authority); expect(w.overflow).toBe(false); r.reset(w.bytes()); readBody(r, predicted);
       expect(r.overflow).toBe(false); expect(predicted.equals(authority)).toBe(true);
     } else if (tick > 31) {
       stepVehicleBody(world, predicted, steer, throttle, buttons, COMPACT_VEHICLE);

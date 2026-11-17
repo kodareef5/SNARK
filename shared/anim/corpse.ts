@@ -18,9 +18,22 @@ import { AnimState, CUE_FELL } from "./pose.ts";
 import { Ragdoll } from "./ragdoll.ts";
 import { Solved, solve } from "./skeleton.ts";
 
+/** The already-decided root motion of a lethal physical impact. Never add its impulse twice. */
+export interface CorpseImpact {
+  readonly victimHandle: number;
+  readonly victimPid: number;
+  readonly vx: number;
+  readonly vy: number;
+  readonly vz: number;
+  /** Angular velocity in world coordinates, radians per second. */
+  readonly wx: number;
+  readonly wy: number;
+  readonly wz: number;
+}
+
 /** A corpse's size is sent as its entity's span, in these parts of a grown one's. 0 is grown. */
 export const SIZE_UNITS = 65536;
-/** The most ticks a body is stepped from going limp, or from waking, before it is left as it is, still or not. */
+/** The most consecutive supported ticks spent settling. Freefall and sinking do not consume this budget. */
 export const SETTLE_TICKS = 10 * TICK_RATE;
 /** Steps of a turn in the yaw a view sends. */
 const YAW_STEPS = 1024;
@@ -110,24 +123,27 @@ export function limpPose(anim: CreatureAnim, out: boolean, air: boolean, now: So
  * The ragdoll of a body that went limp at (x, y, z) facing `yaw` radians, `size` times as large as it was made, or null for
  * a rig without one. `now` is filled with its first pose. Every argument must be as the wire has it.
  */
-export function layCorpse(anim: CreatureAnim, out: boolean, air: boolean, x: number, y: number, z: number, yaw: number, size: number, now: Solved): Ragdoll | null {
+export function layCorpse(anim: CreatureAnim, out: boolean, air: boolean, x: number, y: number, z: number, yaw: number, size: number, now: Solved, standing = false): Ragdoll | null {
   const rig = anim.rig;
   if (!rig.ragdoll) return null;
   let was = before.get(rig.bones);
   if (!was) before.set(rig.bones, (was = new Solved(rig.bones)));
-  limpPose(anim, out, air, now, was);
+  if (standing) {
+    // An impact starts upright, before the death clip has already laid the body on the floor.
+    rig.a.rest(); solve(rig, rig.a, now); was.pos.set(now.pos); was.rot.set(now.rot);
+  } else limpPose(anim, out, air, now, was);
   const r = new Ragdoll(rig, rig.ragdoll);
   r.start(now, was, x, y, z, yaw, size);
   return r;
 }
 
 /**
- * A body's fall, a tick at a time, until its ragdoll sleeps or SETTLE_TICKS have passed since it went limp or last woke.
- * Asleep, it wakes when something is built or taken where it lies. Stopped by the count, it stays as it is.
+ * A body's fall, a tick at a time, until its ragdoll sleeps. SETTLE_TICKS limits supported settling, not time aloft.
+ * Asleep, including after the settling limit, it wakes when something is built or taken where it lies.
  */
 export class Fall {
   readonly ragdoll: Ragdoll;
-  /** Ticks stepped since it went limp or last woke. */
+  /** Consecutive ticks with solid support, bounded by SETTLE_TICKS for checkpoint persistence. */
   ticks = 0;
 
   constructor(ragdoll: Ragdoll) {
@@ -136,20 +152,16 @@ export class Fall {
 
   /** Whether a tick would do nothing unless the world changed under it. */
   get still(): boolean {
-    return !this.ragdoll.awake || this.ticks >= SETTLE_TICKS;
+    return !this.ragdoll.awake;
   }
 
   /** One tick. Returns whether it moved. */
   tick(world: CollisionWorld): boolean {
     const r = this.ragdoll;
-    if (!r.awake) {
-      if (!r.step(world, 1 / TICK_RATE)) return false;
-      this.ticks = 0;
-      return true;
-    }
-    if (this.ticks >= SETTLE_TICKS) return false;
-    this.ticks++;
-    r.step(world, 1 / TICK_RATE);
+    const wasAwake = r.awake;
+    if (!r.step(world, 1 / TICK_RATE) && !wasAwake) return false;
+    this.ticks = r.supported ? Math.min(SETTLE_TICKS, (wasAwake ? this.ticks : 0) + 1) : 0;
+    if (this.ticks === SETTLE_TICKS) r.settle(world);
     return true;
   }
 }

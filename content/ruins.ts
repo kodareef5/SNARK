@@ -1,7 +1,7 @@
 import { shapeHalf, type Def, type StructureDef } from "../shared/content/defs.ts";
 import { leaning, pitchedRoof, slopeShape, slopedSlab, stairFlight, staticOf, wedge } from "../shared/content/slopes.ts";
 
-const shaped = (name: string): string => `core:zruinshape_${name}`;
+const shaped = (name: string): string => `core:${name.startsWith("floorroad") ? "zzruinshape" : "zruinshape"}_${name}`;
 const fallenFrame = [[0, -3.5, 4, .5], [0, 3.5, 4, .5], [-3.5, 0, .5, 3], [3.5, 0, .5, 3]].map(([x, z, w, d]) => ({
   corners: leaning([w!, .25, d!], 60).corners.map(([u, y, v]) => [u + x!, y + z! * Math.sin(Math.PI / 3), v + z! * .5] as const),
 }));
@@ -16,6 +16,7 @@ export const RUIN_SLOPES = {
   front60: slopeShape(shaped("front60"), "thing", fallenFrame),
   mound: slopeShape(shaped("mound"), "thing", [wedge(4, 6, 2)]),
   ...Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`ramp${i + 1}`, slopeShape(shaped(`ramp${i + 1}`), "stairs", [slopedSlab(2, 4, (i + 1) / 4, .4)])])) as Record<`ramp${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12}`, ReturnType<typeof slopeShape>>,
+  ...Object.fromEntries(Array.from({ length: 4 }, (_, i) => [`floorroad${i + 1}`, slopeShape(shaped(`floorroad${i + 1}`), "ceiling", [slopedSlab(4, 4, (i + 1) / 8, .4)])])) as Record<`floorroad${1 | 2 | 3 | 4}`, ReturnType<typeof slopeShape>>,
 };
 const slopeSizes = Object.fromEntries(Object.entries(RUIN_SLOPES).map(([name, shape]) => {
   const [x, y, z] = shapeHalf(shape.boxes, shape.hulls, shape.look); return [name, [x * 2, y * 2, z * 2] as const];
@@ -59,8 +60,8 @@ export const RUIN_FINISHES = {
 
 export type RuinShape = keyof typeof RUIN_SHAPES;
 export type RuinFinish = keyof typeof RUIN_FINISHES;
-// Sorting after the existing core ids preserves their numeric registry indices.
-export const ruinKind = (shape: RuinShape, finish: RuinFinish = "concrete"): string => `core:zruin_${shape}_${finish}`;
+// New road pieces sort after all existing definitions, including ztype, preserving every prior numeric index.
+export const ruinKind = (shape: RuinShape, finish: RuinFinish = "concrete"): string => `core:${shape.startsWith("floorroad") ? "zzruin" : "zruin"}_${shape}_${finish}`;
 
 // Keep structural meshes shared across districts. Only the facade and salvage pieces vary in finish.
 const PAINTED = new Set<RuinShape>(["wall4", "wall8", "sill4", "sill8", "fin4", "fin8", "fin16", "trim4", "trim8", "container", "crown"]);

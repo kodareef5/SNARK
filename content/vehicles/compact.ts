@@ -18,7 +18,7 @@ export const COMPACT: VehicleSpec = {
   frontGrip: 1.2, rearGrip: 1.25, corneringStiffness: 8.5,
   yawInertia: 1.35, yawDamping: 1.1, steerSpeed: 22, handbrakeGrip: 0.23,
   suspensionFrequency: 10, suspensionDamping: 0.9, suspensionTravel: 0.19,
-  pitchResponse: 0.0095, rollResponse: 0.014, gravity: 18, airDrag: 0.035, dragScale: 0.25,
+  gravity: 18, airDrag: 0.035, dragScale: 0.25,
 };
 
 export const ASPHALT: VehicleSurface = { id: "asphalt", grip: 7, rolling: 0.15, drag: 0.009 };

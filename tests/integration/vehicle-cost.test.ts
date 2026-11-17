@@ -24,9 +24,9 @@ test("a parked car at rest is stepped once a second, not every tick, and wakes w
   try {
     h.run(2000);
     const ents = h.world.ents;
-    const own = StaticVehicleWorld.prototype.support;
+    const own = StaticVehicleWorld.prototype.wheelRay;
     let probes = 0;
-    StaticVehicleWorld.prototype.support = function (this: StaticVehicleWorld, ...args: Parameters<typeof own>) { probes++; return own.apply(this, args); };
+    StaticVehicleWorld.prototype.wheelRay = function (this: StaticVehicleWorld, ...args: Parameters<typeof own>) { probes++; return own.apply(this, args); };
     try {
       h.run(3000);
       // Stepped every tick, 90 ticks of four substeps of eight wheel probes would be some 2,900.
@@ -36,7 +36,7 @@ test("a parked car at rest is stepped once a second, not every tick, and wakes w
       h.run(100);
       expect(ents.z[car]!).toBeGreaterThan(z + 0.05);
     } finally {
-      StaticVehicleWorld.prototype.support = own;
+      StaticVehicleWorld.prototype.wheelRay = own;
     }
   } finally {
     h.host.shutdown();

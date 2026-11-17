@@ -70,7 +70,7 @@ test("impact and wreck socket effects follow the same inverted frame as the rend
   expect(details.pool.count).toBe(1);
   expect(details.pool.y[0]).toBeCloseTo(17.45, 4); expect(details.pool.z[0]).toBeCloseTo(62.35, 4);
   const solved = new Solved(rig.bones); solve(rig, rig.a, solved);
-  const corpse: Corpse = { kind: helicopter, id: 99, x: 66, y: 22, z: 64, yaw: 0, rigid: true, qx: 0, qy: 0, qz: 1, qw: 0, size: 1, colors: new Uint8Array(6), born: 2, watched: true, lying: false, air: false, falling: true, landed: 0, decay: 0, alive: null, limp: true, fall: null, clock: 2, settling: false, solved, seen: 1 };
+  const corpse: Corpse = { kind: helicopter, id: 99, handle: 99, x: 66, y: 22, z: 64, yaw: 0, rigid: true, qx: 0, qy: 0, qz: 1, qw: 0, size: 1, colors: new Uint8Array(6), born: 2, watched: true, lying: false, air: false, falling: true, landed: 0, decay: 0, alive: null, limp: true, fall: null, clock: 2, settling: false, settledTicks: 0, solved, seen: 1, motionRevision: 0, motionTick: -1 };
   frame(2, [corpse]);
   expect(details.pool.count).toBe(2);
   expect(details.pool.x[1]).toBeCloseTo(66, 4); expect(details.pool.y[1]).toBeCloseTo(19.45, 4); expect(details.pool.z[1]).toBeCloseTo(62.35, 4);

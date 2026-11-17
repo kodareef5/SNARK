@@ -5,7 +5,7 @@ import { CUE_HURT_SHIFT } from "../../../shared/anim/pose.ts";
 import { makeHandle } from "../../../shared/ids.ts";
 import type { ItemDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_FEED, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_UNSADDLE, ORDER_WANDER, ORDER_YOURS, CMD_USE, CMD_CRAFT_BLUEPRINT, CMD_VEHICLE, VEHICLE_REFUEL, VEHICLE_REPAIR, VEHICLE_RECOVER } from "../../../shared/net/protocol.ts";
+import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_NO_SUPPORT, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_FEED, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_UNSADDLE, ORDER_WANDER, ORDER_YOURS, CMD_USE, CMD_CRAFT_BLUEPRINT, CMD_VEHICLE, VEHICLE_REFUEL, VEHICLE_REPAIR, VEHICLE_RECOVER, VEHICLE_FLIP, VEHICLE_PULL } from "../../../shared/net/protocol.ts";
 import { VEHICLE_FUEL_PER_GASOLINE, VEHICLE_REPAIR_BILL, VEHICLE_REPAIR_STEP } from "../../../shared/sim/vehicle-maintenance.ts";
 import { ARMOR_SLOTS, FLAG_BLUEPRINT, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, blueprintCost, type Inventory } from "../../../shared/sim/items.ts";
 import { RemoteSample, type ClientSession } from "../session.ts";
@@ -38,6 +38,15 @@ const LEVEL_STATS: readonly [stat: number, mark: string][] = [[0, "health"], [1,
 const STANCE_WORDS: readonly string[] = ["passive", "neutral", "aggressive", "attack your target"];
 const STAGE_WORDS: readonly string[] = ["baby", "juvenile", "adolescent"];
 
+const SERVICE_REFUSAL: Readonly<Partial<Record<number, string>>> = {
+  [RESULT_BUSY]: "Wait for the vehicle to settle or the recovery cooldown to end.",
+  [RESULT_DENIED]: "Check occupancy and recovery conditions.",
+  [RESULT_FAR]: "Stand beside the hull.", [RESULT_OBSTRUCTED]: "Clear the recovery path.",
+  [RESULT_NO_SUPPORT]: "Push toward deeper water on a clear shore.",
+  [RESULT_NOT_YOURS]: "Access requires the owner's tribe.", [RESULT_SHORT]: "Missing supplies.",
+  [RESULT_FULL]: "Already serviced.",
+};
+
 /** Formats seconds as "45s", "12m" or "5h 12m". */
 export function waitWords(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
@@ -63,6 +72,8 @@ export const KEY_VEHICLE_REPAIR = 2899;
 export const KEY_INV_DEPLOY = 2900;
 export const KEY_VEHICLE_TAB = 2901;
 export const KEY_VEHICLE_RECOVER = 2902;
+export const KEY_VEHICLE_FLIP = 2903;
+export const KEY_VEHICLE_PULL = 2904;
 /** A slot's colour by quality: none for primitive, then green, blue, purple, gold and cyan, as ARK's tiers read. */
 const QUALITY_TINT: readonly number[] = [-1, 0x3f7a42, 0x31579a, 0x6c4290, 0x8f7426, 0x2b8790];
 
@@ -85,7 +96,17 @@ export class InventoryScreen {
   onDeploy: ((slot: number) => void) | null = null;
   private readonly vehicleSample = new RemoteSample();
   private vehicleBag = false;
-  private service: { handle: number; fuel: boolean; repair: boolean; boat: boolean; recover: boolean; lines: string[] } | null = null;
+  private serviceSeq = 0;
+  private serviceHandle = 0;
+  private serviceFeedback = "";
+
+  serviceResult(seq: number, code: number): void {
+    if (!this.serviceSeq || seq !== this.serviceSeq) return;
+    this.serviceSeq = 0;
+    this.serviceFeedback = code === RESULT_OK ? "" : SERVICE_REFUSAL[code] ?? "Service unavailable.";
+  }
+
+  private service: { handle: number; fuel: boolean; repair: boolean; boat: boolean; car: boolean; recover: boolean; lines: string[] } | null = null;
   /** Box and slot of the picked-up stack. `held` is -1 for none. */
   heldBox = BOX_SELF;
   held = -1;
@@ -123,6 +144,7 @@ export class InventoryScreen {
   /** Also closes the open container. */
   close(session: ClientSession | null): void {
     this.open = false;
+    this.serviceSeq = 0; this.serviceFeedback = "";
     this.held = -1;
     if (session?.open) session.command(CMD_CLOSE);
   }
@@ -139,14 +161,14 @@ export class InventoryScreen {
     }
     if (kind === 0 && this.registry && this.station.click(key, session, this.registry)) return;
     if (kind === 0 && key === KEY_VEHICLE_TAB) { this.vehicleBag = !this.vehicleBag; return; }
-    if (kind === 0 && key === KEY_VEHICLE_RECOVER) {
+    if (kind === 0 && (key === KEY_VEHICLE_RECOVER || key === KEY_VEHICLE_FLIP || key === KEY_VEHICLE_PULL)) {
       const service = this.service;
-      if (service?.recover) session.command(CMD_VEHICLE, w => { w.u8(VEHICLE_RECOVER); w.u32(service.handle); });
+      if (service && (key === KEY_VEHICLE_FLIP ? service.car : service.recover)) this.serviceSeq = session.command(CMD_VEHICLE, w => { w.u8(key === KEY_VEHICLE_FLIP ? VEHICLE_FLIP : key === KEY_VEHICLE_PULL ? VEHICLE_PULL : VEHICLE_RECOVER); w.u32(service.handle); });
       return;
     }
     if (kind === 0 && (key === KEY_VEHICLE_REFUEL || key === KEY_VEHICLE_REPAIR)) {
       const service = this.service, refuel = key === KEY_VEHICLE_REFUEL;
-      if (service && (refuel ? service.fuel : service.repair)) session.command(CMD_VEHICLE, w => { w.u8(refuel ? VEHICLE_REFUEL : VEHICLE_REPAIR); w.u32(service.handle); if (refuel) w.u8(0); });
+      if (service && (refuel ? service.fuel : service.repair)) this.serviceSeq = session.command(CMD_VEHICLE, w => { w.u8(refuel ? VEHICLE_REFUEL : VEHICLE_REPAIR); w.u32(service.handle); if (refuel) w.u8(0); });
       return;
     }
     if (kind === 0 && key === KEY_INV_DEPLOY && this.heldBox === BOX_SELF && this.held >= 0 && this.registry?.vehicleDeploy[session.inventory?.item[this.held] ?? 0]) {
@@ -277,28 +299,36 @@ export class InventoryScreen {
       const r = this.vehicleSample, index = r.id.subarray(0, r.count).indexOf(subject.id);
       const def = index >= 0 ? reg.vehicle[r.kind[index]!] : null;
       if (def && index >= 0) {
-        const hull = session.looked?.id === subject.id && session.looked.health >= 0 ? `${Math.round(session.looked.health * 100)}%` : ["75–100%", "50–75%", "25–50%", "under 25%"][(r.cue[index]! >>> CUE_HURT_SHIFT) & 3]!;
+        const health = session.looked?.id === subject.id && session.looked.health >= 0 ? `${Math.round(session.looked.health * 100)}%` : ["75–100%", "50–75%", "25–50%", "under 25%"][(r.cue[index]! >>> CUE_HURT_SHIFT) & 3]!;
         const fuel = r.vehicleFuel[index]!, engine = r.vehicleEngineCondition[index]!, rotor = r.vehicleRotorCondition[index]!;
-        const boat = def.movement === "boat";
+        const boat = def.movement === "boat", car = def.movement === undefined || def.movement === "wheeled";
         const stopped = boat ? !r.vehicleEngineOn[index] && r.vehicleRpm[index]! <= 30 : r.vehicleGrounded[index] !== 0 && (def.movement !== "rotor" || (!r.vehicleEngineOn[index] && r.vehicleRotorRpm[index]! <= 30));
         const gasoline = reg.index.get("core:gasoline")!, haveFuel = own.total(gasoline);
         const repairItems = VEHICLE_REPAIR_BILL.map(([id]) => own.total(reg.index.get(id)!));
         const maxCost = VEHICLE_REPAIR_BILL.map(([, n]) => Math.ceil(n * VEHICLE_REPAIR_STEP));
+        const handle = makeHandle(subject.id, r.gen[index]!);
+        if (this.serviceHandle !== handle) {
+          this.serviceHandle = handle; this.serviceSeq = 0; this.serviceFeedback = "";
+        }
+        const hull = boat || car ? Math.round(r.vehicleHullCondition[index]! * 100) + "%" : health;
         const lines = [`Hull ${hull} | Fuel ${(fuel * def.spec.fuelCapacity).toFixed(1)}/${def.spec.fuelCapacity}`];
+        if (boat || car) lines.push(`Health ${health}`);
         if (def.movement === "rotor") lines.push(`Engine ${Math.round(engine * 100)}% | Rotor ${Math.round(rotor * 100)}%`);
-        if (boat) lines.push(`Engine ${Math.round(engine * 100)}% | Bilge ${Math.round(r.vehicleFlooding[index]! * 100)}%`);
-        lines.push(boat ? "To service: release throttle, exit and let boat settle" : stopped ? "Service available when stationary" : "To service: land, exit and wait for rotors");
+        if (boat || car) lines.push(`Engine ${Math.round(engine * 100)}% | ${boat ? "Bilge" : "Flooding"} ${Math.round(r.vehicleFlooding[index]! * 100)}%`);
+        lines.push(boat ? "To service: release throttle, exit and let boat settle" : car ? "To service: stop and get out; recover from water before repair" : stopped ? "Service available when stationary" : "To service: land, exit and wait for rotors");
+        if (car) lines.push("Stand beside a stopped car to flip it. Push or pull a flooded car.");
         lines.push(`Refuel: ${VEHICLE_FUEL_PER_GASOLINE} fuel per gasoline | carrying ${haveFuel}`);
         lines.push(`Repair: up to ${VEHICLE_REPAIR_STEP * 100}%; at most ${maxCost[0]} ingots, ${maxCost[1]} polymer, ${maxCost[2]} electronics`);
         lines.push(`Materials: ${repairItems[0]} ingots, ${repairItems[1]} polymer, ${repairItems[2]} electronics`);
-        this.service = { handle: makeHandle(subject.id, r.gen[index]!), fuel: stopped && fuel < .9999 && haveFuel > 0,
-          repair: stopped && repairItems.every(n => n > 0), boat, recover: boat && stopped, lines: [] };
+        if (this.serviceFeedback) lines.push(this.serviceFeedback);
+        this.service = { handle, fuel: stopped && fuel < .9999 && haveFuel > 0,
+          repair: stopped && repairItems.every(n => n > 0), boat, car, recover: (boat && stopped) || (car && r.vehicleFlooding[index]! > 0), lines: [] };
         for (const line of lines) wrapText(line, w - PAD * 2, S_LABEL, this.service.lines);
       }
     }
     // An owned one has a row of buttons under that, and a second row when it has levels to spend.
     const orderH = !this.service && subject?.owned ? 28 + (subject.points > 0 ? 28 : 0) : 0;
-    const subjectH = this.service ? this.service.lines.length * infoH + (this.service.boat ? 58 : 30) : subject ? infoH + 2 + orderH : 0;
+    const subjectH = this.service ? this.service.lines.length * infoH + (this.service.boat || this.service.car ? 58 : 30) : subject ? infoH + 2 + orderH : 0;
     if (this.service && other) {
       const roomRows = Math.max(1, Math.min(OPEN_ROWS, Math.floor((f.height - titleH - subjectH - PAD * 2 - 48) / (CELL + GAP))));
       this.pageSize = cols * roomRows; this.pages = Math.max(1, Math.ceil(other.bag / this.pageSize));
@@ -385,7 +415,13 @@ export class InventoryScreen {
           const b = f.add(key, K_BUTTON, x0 + PAD + i * (bw + GAP), sy + service.lines.length * infoH + 3, bw, 24, S_BUTTON);
           b.text = label; b.interactive = enabled; b.alpha = enabled ? 1 : .45;
         }
-        if (service.boat) {
+        if (service.car) {
+          const width = (w - PAD * 2 - GAP * 2) / 3;
+          for (const [i, key, label] of [[0, KEY_VEHICLE_RECOVER, "Push"], [1, KEY_VEHICLE_PULL, "Pull"], [2, KEY_VEHICLE_FLIP, "Flip"]] as const) {
+            const b = f.add(key, K_BUTTON, x0 + PAD + i * (width + GAP), sy + service.lines.length * infoH + 31, width, 24, S_BUTTON);
+            b.text = label; b.interactive = key === KEY_VEHICLE_FLIP || service.recover; b.alpha = b.interactive ? 1 : .45;
+          }
+        } else if (service.boat) {
           const b = f.add(KEY_VEHICLE_RECOVER, K_BUTTON, x0 + PAD, sy + service.lines.length * infoH + 31, w - PAD * 2, 24, S_BUTTON);
           b.text = "Push toward water"; b.interactive = service.recover; b.alpha = service.recover ? 1 : .45;
         }

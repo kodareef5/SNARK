@@ -1,9 +1,10 @@
 // Finite displaced volume, stern thrust and hydrodynamic resistance on the same fixed tick on both runtimes.
 // The keel origin follows a rigid body: attitude never substitutes for actual translation or a water-height snap.
 import { TICK_DT } from "../coords.ts";
-import { quatAxis, quatMul, quatNlerp, quatNormalize, quatRotate, quatUnrotate } from "../math/quat.ts";
+import { quatAxis, quatMul, quatNormalize, quatRotate, quatUnrotate } from "../math/quat.ts";
 import { clamp, detAtan2, detCos, detSin, len3, TAU } from "../math/scalar.ts";
-import { validateBoatSpec, type BoatSpec, type BoatVehicleDefinition, type VehicleState } from "./vehicle.ts";
+import { resolveVehicleContacts, separateVehicleOverlap, type VehicleContactQueries } from "./vehicle-contact.ts";
+import { validateBoatSpec, type BoatSpec, type BoatVehicleDefinition, type VehicleContact, type VehicleState } from "./vehicle.ts";
 
 export interface BoatState extends VehicleState {
   qx: number; qy: number; qz: number; qw: number;
@@ -14,11 +15,12 @@ export interface BoatState extends VehicleState {
   flooding: number;
 }
 export interface BoatInput { throttle: number; steer: number; neutral: boolean; pilot: boolean }
-export interface BoatContact { reason: string; propeller: boolean; nx: number; ny: number; nz: number }
+export interface BoatContact extends VehicleContact { propeller: boolean }
 export interface BoatWorld {
   waterAt(x: number, z: number): number;
   groundAt(x: number, z: number): number;
   blocked(from: Readonly<BoatState>, to: Readonly<BoatState>, def: BoatVehicleDefinition): BoatContact | null;
+  penetration(at: Readonly<BoatState>, def: BoatVehicleDefinition): BoatContact | null;
 }
 export interface BoatStep {
   blocked: string | null; impactSpeed: number; propHit: boolean; water: boolean;
@@ -26,7 +28,7 @@ export interface BoatStep {
   fuelUsed: number; surface: string;
 }
 const result: BoatStep = { blocked: null, impactSpeed: 0, propHit: false, water: false, immersion: 0, propellerImmersion: 0, planing: 0, capsized: false, fuelUsed: 0, surface: "air" };
-const q = new Float64Array(4), turn = new Float64Array(4), q0 = new Float64Array(4), q1 = new Float64Array(4);
+const q = new Float64Array(4), turn = new Float64Array(4);
 const localV = new Float64Array(3), point = new Float64Array(3), buoy = new Float64Array(3), up = new Float64Array(3), ahead = new Float64Array(3), com = new Float64Array(3);
 const force = new Float64Array(3), torque = new Float64Array(3), worldForce = new Float64Array(3);
 const propellerPoint = new Float64Array(3);
@@ -108,6 +110,11 @@ function motor(s: BoatState, input: Readonly<BoatInput>, p: BoatSpec, wet: numbe
 
 /** Reuses its result. Forces are bounded, and all future-controlling fields round once at the shared world tick. */
 export function stepBoat(s: BoatState, input: Readonly<BoatInput>, def: BoatVehicleDefinition, world: BoatWorld): BoatStep {
+  const contacts: VehicleContactQueries<BoatState, BoatContact> = {
+    contact: (from, to) => world.blocked(from, to, def),
+    penetration: at => world.penetration(at, def),
+    steeringJoint: true, onContact: hit => { result.propHit ||= hit.propeller; },
+  };
   const p = def.spec, beforeFuel = s.fuel, beforeSteering = s.steering;
   Object.assign(result, { blocked: null, impactSpeed: 0, propHit: false, water: false, immersion: 0, propellerImmersion: 0, planing: 0, capsized: false, fuelUsed: 0, surface: "air" });
   s.hullCondition = clamp(s.hullCondition, 0, 1); s.engineCondition = clamp(s.engineCondition, 0, 1); s.flooding = clamp(s.flooding, 0, 1);
@@ -128,6 +135,7 @@ export function stepBoat(s: BoatState, input: Readonly<BoatInput>, def: BoatVehi
   let touching = false, wetTotal = 0;
   s.grounded = false;
   for (let step = 0; step < count; step++) {
+    if (step === 0 || result.blocked) separateVehicleOverlap(s, contacts);
     const previous = { ...s }; rotation(s);
     s.steering = beforeSteering + (wantedSteering - beforeSteering) * (step + 1) / count;
     force.fill(0); torque.fill(0); quatUnrotate(q, 0, s.vx, s.vy, s.vz, localV, 0);
@@ -183,31 +191,10 @@ export function stepBoat(s: BoatState, input: Readonly<BoatInput>, def: BoatVehi
     quatRotate(q, 0, p.centerOfMass[0], p.centerOfMass[1], p.centerOfMass[2], point, 0);
     s.x += s.vx * dt + com[0]! - point[0]!; s.y += s.vy * dt + com[1]! - point[1]!; s.z += s.vz * dt + com[2]! - point[2]!;
     writeRotation(s);
-    const hit = world.blocked(previous, s, def);
-    if (hit) {
-      result.blocked ??= hit.reason; result.propHit ||= hit.propeller;
-      let nx = hit.nx, ny = hit.ny, nz = hit.nz, low = 0, high = 1;
-      const next = { ...s }, safe = { ...previous };
-      q0.set([previous.qx, previous.qy, previous.qz, previous.qw]); q1.set([s.qx, s.qy, s.qz, s.qw]);
-      for (let probe = 0; probe < 6; probe++) {
-        const t = (low + high) / 2; quatNlerp(q, 0, q0, 0, q1, 0, t);
-        const candidate = { ...next, x: previous.x + (next.x - previous.x) * t, y: previous.y + (next.y - previous.y) * t, z: previous.z + (next.z - previous.z) * t, steering: previous.steering + (next.steering - previous.steering) * t, qx: q[0]!, qy: q[1]!, qz: q[2]!, qw: q[3]! };
-        const contact = world.blocked(previous, candidate, def);
-        if (contact) { high = t; nx = contact.nx; ny = contact.ny; nz = contact.nz; } else { low = t; Object.assign(safe, candidate); }
-      }
-      const into = Math.min(0, next.vx * nx + next.vy * ny + next.vz * nz);
-      result.impactSpeed = Math.max(result.impactSpeed, -into + rate * (hit.propeller ? p.propeller.radius : .3));
-      let vx = next.vx - into * nx, vy = next.vy - into * ny, vz = next.vz - into * nz;
-      if (ny > .45) {
-        touching = true;
-        const speed = len3(vx, vy, vz), keep = speed > 0 ? Math.max(0, 1 - (-into * .35 + p.gravity * .38 * dt) / speed) : 0;
-        vx *= keep; vy *= keep; vz *= keep;
-      }
-      Object.assign(s, safe, { vx, vy, vz, yawRate: 0, pitchRate: 0, rollRate: 0 });
-      const slide = { ...s, x: s.x + vx * dt, y: s.y + vy * dt, z: s.z + vz * dt };
-      if (!world.blocked(s, slide, def)) Object.assign(s, slide);
-      else { s.vx = s.vy = s.vz = 0; }
-    }
+    resolveVehicleContacts(s, previous, p, contacts, dt, result);
+    touching ||= s.grounded;
+    s.vx = clamp(s.vx, -100, 100); s.vy = clamp(s.vy, -80, 80); s.vz = clamp(s.vz, -100, 100);
+    s.pitchRate = clamp(s.pitchRate, -4, 4); s.yawRate = clamp(s.yawRate, -4, 4); s.rollRate = clamp(s.rollRate, -4, 4);
   }
   rotation(s); writeRotation(s);
   result.water = wetTotal > .001; result.immersion = wetTotal; result.capsized = result.water && up[1]! < .15;
