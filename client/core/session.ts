@@ -104,7 +104,7 @@ import { Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
-import { staticKinds, type MapStatics } from "../../shared/world/mapfile.ts";
+import { staticKinds, type MapLandmark, type MapStatics } from "../../shared/world/mapfile.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
 import { CMD_FAR, CMD_STATICS, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
@@ -143,6 +143,8 @@ export interface SessionOptions {
   cityMaker?: CityMaker;
   /** The statics of the map file resolveMap accepts. With them the server sends a chunk's only where they differ (HELLO_STATICS). */
   statics?: MapStatics;
+  /** The landmarks that map file sets down (MapContent), which the far city's scene draws far from their far meshes. */
+  landmarks?: readonly MapLandmark[];
 }
 
 /** Null if the tuning does not parse or the derived content does not compile. */
@@ -361,7 +363,7 @@ export class ClientSession {
   /** Every moving static's state as the server last told it (S_MOTION), by ref: all after a welcome, then each as it is thrown. */
   readonly motions = new Map<number, MotionState>();
   private readonly motionSource: MotionSource = { states: () => this.motions, tick: () => this.tickClock, statics: () => this.arrived ?? this.opts.statics ?? null };
-  world: (CollisionWorld & { mapId: string; dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource; motion?: MotionSource }) | null = null;
+  world: (CollisionWorld & { mapId: string; dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource; motion?: MotionSource; landmarks?: readonly MapLandmark[] }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
   ownHandle = 0;
   ownKind = 0;
@@ -1356,7 +1358,7 @@ export class ClientSession {
     const field = this.nodeField;
     this.nodeChanges = field ? new NodeChanges(dims) : null;
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges! } } : {};
-    this.world = { mapId, dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...(reg.motion.some((t) => t !== null) ? { motion: this.motionSource } : {}) };
+    this.world = { mapId, dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...(reg.motion.some((t) => t !== null) ? { motion: this.motionSource } : {}), ...(this.opts.landmarks?.length ? { landmarks: this.opts.landmarks } : {}) };
     this.startCity(this.arrived);
     this.recenterNodes();
     this.move = move;

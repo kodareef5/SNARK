@@ -7,6 +7,7 @@ import { worldSharp, worldSurface, type WorldSample } from "../../client/core/re
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
 import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
+import { LANDMARK_BUFFER } from "../../client/core/render/farlandmarks.ts";
 import { nearKeeps } from "../../client/core/render/hand.ts";
 import { MOST_LOD, detailKeeps, rotorOf, shapeOf } from "../../client/core/render/detailtext.ts";
 import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
@@ -554,8 +555,8 @@ export class Rasterizer {
     this.plain = (p.drawFlags[d]! & DRAW_PLAIN) !== 0 || (p.lit && (p.drawFlags[d]! & (DRAW_SIZED | DRAW_PULLED)) !== 0);
     this.fade = p.drawFade[d]!;
     this.fadeShare = p.frame[FRAME.fade]!;
-    // Far blocks and the far city short of where their reach fades draw with no fade, and are far all the same.
-    const far = this.fade !== 0 || p.drawBuffer[d] === FAR_BUFFER || p.drawBuffer[d] === CITY_BUFFER;
+    // Far blocks, the far city and a landmark's far mesh short of where their reach fades draw with no fade, and are far all the same.
+    const far = this.fade !== 0 || p.drawBuffer[d] === FAR_BUFFER || p.drawBuffer[d] === CITY_BUFFER || p.drawBuffer[d] === LANDMARK_BUFFER;
     const bones = p.bones;
     for (let k = 0; k < p.drawInstances[d]!; k++) {
       const inst = p.drawFirst[d]! + k;

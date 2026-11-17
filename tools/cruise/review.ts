@@ -11,7 +11,6 @@ import { cruiseFootprintContains, type CruiseRoom } from "../../content/landmark
 import { defaultLook } from "../../shared/anim/look.ts";
 import type { ClipSet } from "../../shared/anim/clip.ts";
 import { compileContent, withContent } from "../../shared/content/registry.ts";
-import { chunkAt } from "../../shared/coords.ts";
 import { hashBytes, hashString } from "../../shared/hash.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { allClips } from "../../shared/pack/clips.ts";
@@ -54,7 +53,7 @@ export interface CruiseShot {
   readonly framePoints?: readonly (readonly [number, number, number])[];
   /** Real hull witnesses, separate from conservative virtual envelope corners. */
   readonly sightlinePoints?: readonly (readonly [number, number, number])[];
-  /** Far shots intentionally let the native map proxy take over after structure rows leave interest. */
+  /** Far shots let the ship's far mesh take over the chunks whose structure rows have left interest. */
   readonly far?: boolean;
   /** Save a genuine nearby flat fallback while the production fine levels stream. */
   readonly coldFallback?: boolean;
@@ -336,9 +335,11 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, fil
     if (app.scene.city && (app.scene.city.stats.missing || app.scene.city.stats.behind)) faults.push("far city did not settle");
     if (session.stats.corrections !== corrections) faults.push("prediction corrected after settling");
     const origin = CRUISE_COURSE.vessel, shipRows = cruiseStatics(origin.x, origin.y, origin.z, origin.yaw);
-    const shipChunks = [...new Set(shipRows.map(s => chunkAt(map.dims, s.x, s.z)))];
-    const handover = shipChunks.map(chunk => ({ chunk, complete: session.world!.city?.complete(chunk) ?? false, far: app.scene!.city?.isFar(chunk) ?? false }));
-    if (!draws.some(draw => isShipMesh(draw.mesh)) && !(handover.some(chunk => chunk.far) && draws.some(draw => draw.mesh === "core:far"))) throw new Error(`${shot.name}: ship has neither native mesh nor map proxy draws`);
+    // The chunks the ship's far pieces belong to, each drawn near while held whole and by the far mesh otherwise.
+    const ship = app.scene.landmarks?.placed.find(l => l.far.name === "cruise");
+    if (!ship) throw new Error(`${shot.name}: the ship has no far mesh to draw`);
+    const handover = [...new Set(ship.chunk)].map(chunk => ({ chunk, complete: session.world!.city?.complete(chunk) ?? false, far: app.scene!.landmarks!.isFar(chunk) }));
+    if (!draws.some(draw => isShipMesh(draw.mesh))) throw new Error(`${shot.name}: the ship has neither near nor far draws`);
     for (const row of handover) if (row.complete === row.far) faults.push(`chunk ${row.chunk} has inconsistent near/far ownership`);
     if (shot.far && !handover.some(chunk => chunk.far)) throw new Error(`${shot.name}: requested distant review never exercised the native far handover`);
     const framing = (shot.framePoints ?? []).map(point => {
@@ -371,7 +372,7 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, fil
       cold: { ...cold, assetLatencyMs, assetTransport: `${assetLatencyMs}ms fixed asset-request latency, unlimited bandwidth, no loss; native per-frame upload budgets remain enabled.`, medianMs: coldTimes[Math.floor(coldTimes.length / 2)], p95Ms: coldTimes[Math.ceil(coldTimes.length * .95) - 1], maxMs: coldTimes.at(-1),
         retries: rejectedSamples.length, rejectedSamples, fallback: capturedFallback,
         scope: "App.frame from cold client arrival through placement and streaming, including every discarded sample; excludes the accepted window and server/network/raster/GPU work." },
-      shipTarget: { triangles: draws.filter(draw => isShipMesh(draw.mesh)).reduce((sum, draw) => sum + draw.triangles, 0), draws: draws.filter(draw => isShipMesh(draw.mesh)).length, targetTriangles: 1000000, targetDraws: 600, note: "Near cruise meshes only; shared far-city draws are reported separately and include port/Koru geometry." },
+      shipTarget: { triangles: draws.filter(draw => isShipMesh(draw.mesh)).reduce((sum, draw) => sum + draw.triangles, 0), draws: draws.filter(draw => isShipMesh(draw.mesh)).length, targetTriangles: 1000000, targetDraws: 600, note: "The ship's own draws: its near meshes and the runs of its far mesh. The far city's draws are reported separately and hold none of the ship." },
       residency: { ...app.scene.assets.residency?.stats }, worldSurfaces, casterCount: p.casterCount,
       city: app.scene.city?.stats, handover, assets: app.scene.assets.line(),
       camera: { x: p.camX, y: p.camY, z: p.camZ, yaw: app.cam.yaw, pitch: app.cam.pitch, thirdPerson: app.view.thirdPerson },

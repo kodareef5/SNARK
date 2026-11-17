@@ -1,7 +1,8 @@
 // A map's own buildings past the near rows (shared/world/city.ts). The client makes them from the map's statics, which
-// it holds from the map file, in tiles of 3 by 3 chunks, each level of a tile a level of its own on the card. A chunk is
-// drawn here while the near store does not hold it whole, and then the near store draws none of it, so its pieces are
-// drawn one way or the other and never both or neither. A tile's mesh holds every chunk of it in order and a draw takes
+// it holds from the map file, in tiles of 3 by 3 chunks, each level of a tile a level of its own on the card. A
+// landmark's pieces are left out, as its far mesh draws them (farlandmarks.ts). A chunk is drawn here while the near
+// store does not hold it whole, and then the near store draws none of it, so its pieces are drawn one way or the other
+// and never both or neither. A tile's mesh holds every chunk of it in order and a draw takes
 // the runs of chunks drawn far, so a chunk changing hands remakes nothing. Nearest the near rows a tile is every box, the
 // near drawing in one mesh, so the hand-over shows nothing; farther off it takes the lattice (boxes merged, the least
 // left out), then a building's mass in cells. The lattice fades out over the last share of its reach as the mass fades in,
@@ -12,7 +13,8 @@
 //
 // What stands: a chunk the near store holds whole says exactly which of the map's pieces stand, and that is kept when it
 // is let go. Past that, the far feed's cells (farcells.ts) show a piece gone when its top stands over the top sent for a
-// cell it fills. A piece gone either way is left out of every level of its chunk.
+// cell it fills. A piece gone either way is left out of every level of its chunk. What stands is followed for a
+// landmark's pieces too, so the far blocks leave their cells alone.
 
 import { CHUNK_SIZE, chunkCount, type MapDims } from "../../../shared/coords.ts";
 import { INSTANCE_BYTES } from "../../../shared/pack/pack.ts";
@@ -136,6 +138,8 @@ export class FarCity {
   private readonly tilesX: number;
   private readonly tiles: Tile[] = [];
   private readonly tileOfChunk: Int32Array;
+  /** Per chunk with any, a byte a piece: 1 for a landmark's, which no level holds. */
+  private readonly left = new Map<number, Uint8Array>();
   /** Per chunk: which of its pieces are gone, as last seen near and as the far feed shows; and a count of changes to that. */
   private readonly gone = new Map<number, Uint8Array>();
   private readonly seenNear = new Map<number, Uint8Array>();
@@ -171,8 +175,8 @@ export class FarCity {
   private readonly chunkBox: Float64Array;
   private readonly ways = new Uint8Array(CITY_TILE * CITY_TILE);
 
-  /** `bounds` is FAR_MESH's centre and half extent, as the pack has them. */
-  constructor(source: CitySource, dims: MapDims, hf: Heightfield, mesh: number, bounds: { center: readonly number[]; half: readonly number[] }) {
+  /** `bounds` is FAR_MESH's centre and half extent, as the pack has them. `landmark` is 1 by content index for a kind a landmark brings. */
+  constructor(source: CitySource, dims: MapDims, hf: Heightfield, mesh: number, bounds: { center: readonly number[]; half: readonly number[] }, landmark: Uint8Array = new Uint8Array(0)) {
     this.source = source;
     this.dims = dims;
     this.hf = hf;
@@ -189,7 +193,15 @@ export class FarCity {
     const { first, x, y, z, kind, halfX, halfY, halfZ } = source.statics;
     const byTile = new Map<number, number[]>();
     for (let c = 0; c < chunks; c++) {
-      if (first[c + 1] === first[c]) continue;
+      let drawn = 0;
+      for (let i = first[c]!; i < first[c + 1]!; i++) {
+        if (landmark[kind[i]!] !== 1) drawn++;
+        else {
+          if (!this.left.has(c)) this.left.set(c, new Uint8Array(first[c + 1]! - first[c]!));
+          this.left.get(c)![i - first[c]!] = 1;
+        }
+      }
+      if (drawn === 0) continue;
       const t = this.tileOf(c);
       byTile.set(t, [...(byTile.get(t) ?? []), c]);
     }
@@ -201,6 +213,7 @@ export class FarCity {
         cb.fill(Infinity, c * 6, c * 6 + 3).fill(-Infinity, c * 6 + 3, c * 6 + 6);
         for (let i = first[c]!; i < first[c + 1]!; i++) {
           const k = kind[i]!;
+          if (landmark[k] === 1) continue;
           // A turned piece reaches no farther than its half diagonal.
           const r = Math.hypot(halfX[k]!, halfZ[k]!);
           cb[c * 6] = Math.min(cb[c * 6]!, x[i]! - r);
@@ -244,7 +257,7 @@ export class FarCity {
 
   /** The far feed's top byte of each cell of `chunk` as its standing pieces give it, or null for a chunk with none. */
   topsOf(chunk: number): Uint8Array | null {
-    if (this.tileOfChunk[chunk]! < 0) return null;
+    if (this.source.statics.in(chunk) === 0) return null;
     let tops = this.tops.get(chunk);
     if (!tops) this.tops.set(chunk, (tops = cityTops(this.source.statics, chunk, this.hf, this.goneOf(chunk))));
     return tops;
@@ -521,7 +534,13 @@ export class FarCity {
     this.asked.set(id, { tile: n, level, epoch: tile.epoch, version: tile.version });
     tile.making |= 1 << level;
     this.out++;
-    this.maker.make(cityJob(id, this.source.statics, this.hf, (c) => this.gone.get(c) ?? null, tile.chunks, this.levels[level]!, this.cornerX(tile.t) - LOCAL, tile.base, this.cornerZ(tile.t) - LOCAL));
+    this.maker.make(cityJob(id, this.source.statics, this.hf, (c) => this.leftOut(c), tile.chunks, this.levels[level]!, this.cornerX(tile.t) - LOCAL, tile.base, this.cornerZ(tile.t) - LOCAL));
+  }
+
+  /** Which pieces of `chunk` no level holds: those gone, and a landmark's. */
+  private leftOut(chunk: number): Gone {
+    const gone = this.gone.get(chunk) ?? null, left = this.left.get(chunk);
+    return !left ? gone : !gone ? left : left.map((l, i) => l | gone[i]!);
   }
 
   /** Keeps a worker making a few levels ahead, in this frame's order: in update, and as each level comes back. */
@@ -586,7 +605,7 @@ export class FarCity {
     const tables = near?.chunks;
     for (let c = 0; tables && c < tables.length; c++) {
       const table = tables[c];
-      if (!table || table.shape === this.seenShape[c] || this.tileOfChunk[c]! < 0 || !this.source.complete(c)) continue;
+      if (!table || table.shape === this.seenShape[c] || city.in(c) === 0 || !this.source.complete(c)) continue;
       this.seenShape[c] = table.shape;
       this.whole.add(c);
       const g = new Uint8Array(city.in(c));
@@ -597,7 +616,7 @@ export class FarCity {
     if (cells && cells.version !== this.cellsSeen) {
       this.cellsSeen = cells.version;
       for (let c = 0; c < cells.changed.length; c++) {
-        if (cells.changed[c] === this.seenCells[c] || this.tileOfChunk[c]! < 0) continue;
+        if (cells.changed[c] === this.seenCells[c] || city.in(c) === 0) continue;
         this.seenCells[c] = cells.changed[c]!;
         changed.add(c);
       }

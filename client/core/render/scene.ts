@@ -33,6 +33,7 @@ import { Dropped } from "./dropped.ts";
 import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
 import { FrameBudget, coverScale, crownScale, leavesAt, thinning } from "./budget.ts";
 import { CITY_BUFFER, FarCity, type CitySource } from "./farcity.ts";
+import { FarLandmarks, LANDMARK_BUFFER } from "./farlandmarks.ts";
 import { FarNodes, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
 import { PROGRAM, drawProgram } from "./programs.ts";
@@ -48,7 +49,8 @@ import { shadowBytes } from "./shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
 import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
-import type { MapStatics } from "../../../shared/world/mapfile.ts";
+import type { MapLandmark, MapStatics } from "../../../shared/world/mapfile.ts";
+import { landmarkFars } from "../../../shared/pack/far.ts";
 import { PART_FLOATS, movingOf, poseMoving, type MotionSource, type Moving } from "./motion.ts";
 
 export interface RenderWorld {
@@ -67,6 +69,8 @@ export interface RenderWorld {
   readonly city?: CitySource;
   /** The map's statics that move when used, where it has any (motion.ts). */
   readonly motion?: MotionSource;
+  /** The map's landmarks, drawn far from their far meshes with the far city (farlandmarks.ts). */
+  readonly landmarks?: readonly MapLandmark[];
 }
 
 /** The viewer's own body, which is not among the remote entities. */
@@ -488,6 +492,10 @@ export class Scene {
   readonly nodesFar: FarNodes | null;
   /** The map's own buildings where the near store does not hold their chunks whole, given a source of them. */
   city: FarCity | null = null;
+  /** The map's landmarks where the near store does not hold their pieces' chunks whole, with the far city. */
+  landmarks: FarLandmarks | null = null;
+  /** Per content index, 1 for a kind a landmark brings, which the far city leaves to the landmark's far mesh. */
+  private readonly landmarkKinds: Uint8Array;
   private readonly farMesh: number;
   private readonly farBounds: { center: readonly number[]; half: readonly number[] } | undefined;
   /** Water on its own surfaces apart from the sea, and the sea round those whose beds go under it (lakes.ts), given the far mesh. */
@@ -602,6 +610,7 @@ export class Scene {
     }
     // A landmark's definitions and meshes are in its namespace, and its definitions are the map's own (withContent).
     const landmarks = new Set([...reg.own].map((k) => reg.defs[k]!.id.split(":")[0]));
+    this.landmarkKinds = Uint8Array.from(reg.defs, (_, k) => (reg.own.has(k) ? 1 : 0));
     this.flatFlags = Uint16Array.from(this.assets.manifest.meshes, (m) => (landmarks.has(m.id.split(":")[0]) ? DRAW_PLAIN : 0));
     this.trisOfMesh = table.tris;
     this.radiusOfMesh = table.radius;
@@ -693,6 +702,7 @@ export class Scene {
     this.far?.reset();
     this.nodesFar?.reset();
     this.city?.reset();
+    this.landmarks?.reset();
     this.lakes?.reset();
     this.cascades.clear();
   }
@@ -1144,8 +1154,10 @@ export class Scene {
   private startCity(): FarCity | null {
     const source = this.world.city;
     if (!source || !this.farBounds) return null;
-    this.city = new FarCity(source, this.world.dims, this.world.hf, this.farMesh, this.farBounds);
+    this.city = new FarCity(source, this.world.dims, this.world.hf, this.farMesh, this.farBounds, this.landmarkKinds);
     this.far?.leaveTo(this.city);
+    const placed = this.world.landmarks ?? [];
+    if (placed.length > 0) this.landmarks = new FarLandmarks(source, this.world.dims, placed, landmarkFars(this.assets.manifest));
     return this.city;
   }
 
@@ -1156,6 +1168,7 @@ export class Scene {
     p.frame[FRAME.fade] = tier.fade;
     this.city!.update(p, this.assets.residency, cam, tier.city.levels, tier.reach.city, tier.fade, this.world.structs, this.world.far?.cells ?? null);
     this.city!.draw(cam, tier.reach.city, this.drawCity);
+    this.landmarks?.draw(p, cam, this.assets, tier.reach.city, tier.fade, this.drawLandmark);
   }
 
   /** A run of a far city tile's chunks at one of its levels: one instance, gone or come at `fade` (farcity.ts). */
@@ -1174,6 +1187,34 @@ export class Scene {
     p.drawFirst[d] = 0;
     p.drawInstances[d] = 1;
     p.drawFlags[d] = DRAW_RANGED;
+    p.drawFirstIndex[d] = firstIndex;
+    p.drawIndexCount[d] = indexCount;
+    p.drawFade[d] = fade;
+    p.drawOffset[d * 3] = ox;
+    p.drawOffset[d * 3 + 1] = oy;
+    p.drawOffset[d * 3 + 2] = oz;
+    this.passOf[d] = passes;
+    p.drawCount = d + 1;
+    this.doubled += copies - 1;
+    p.triangles += (indexCount / 3) * copies;
+  };
+
+  /** A run of a landmark's far mesh: its one instance, gone at `fade` (farlandmarks.ts), in its own colours as its flat draws are. */
+  private readonly drawLandmark = (mesh: number, level: number, instance: number, firstIndex: number, indexCount: number, ox: number, oy: number, oz: number, passes: number, fade: number): void => {
+    const p = this.packet;
+    const d = p.drawCount;
+    const copies = passes === (NEAR | FAR) ? 2 : 1;
+    if (d + this.doubled + copies > MAX_DRAWS) {
+      p.dropped++;
+      return;
+    }
+    p.drawMesh[d] = mesh;
+    p.drawLod[d] = level;
+    p.drawSlot[d] = this.assets.residency.slot(mesh, level);
+    p.drawBuffer[d] = LANDMARK_BUFFER;
+    p.drawFirst[d] = instance;
+    p.drawInstances[d] = 1;
+    p.drawFlags[d] = DRAW_RANGED | this.flatFlags[mesh]!;
     p.drawFirstIndex[d] = firstIndex;
     p.drawIndexCount[d] = indexCount;
     p.drawFade[d] = fade;
@@ -1686,7 +1727,7 @@ export class Scene {
         continue;
       }
       // Until the near store holds it whole, a chunk the far feed has cells of is drawn as blocks.
-      if (base === 0 && (this.far?.isFar(chunk) || this.city?.isFar(chunk))) continue;
+      if (base === 0 && (this.far?.isFar(chunk) || this.city?.isFar(chunk) || this.landmarks?.isFar(chunk))) continue;
       let batch = this.batches.get(id);
       // A piece that took another kind in place is moved in place; a chunk whose doors have stood a while other than its
       // rooms were found with has them found again. A mesh not yet known has its page asked for while it is near.

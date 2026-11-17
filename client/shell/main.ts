@@ -82,6 +82,7 @@ async function boot(): Promise<void> {
     resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),
     nodes: (ground, content) => mapNodes(map, ground, content),
     cityMaker: new WorkerCityMaker(),
+    ...(map.content ? { landmarks: map.content.landmarks } : {}),
   });
   void readStatics(rest, map.dims, () => new Promise((go) => setTimeout(go))).then((statics) => session.staticsArrived(statics));
   const surfaces = selfcheck ? new SelfcheckSurfaces(manifest, port) : null;

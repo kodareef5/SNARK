@@ -1,5 +1,6 @@
 // A server and any number of clients in one process, on virtual time.
 
+import type { CityMaker } from "../../client/core/render/citymake.ts";
 import { ClientSession } from "../../client/core/session.ts";
 import type { GameOptions, GameServer } from "../../server/game.ts";
 import { createHost, type Host, type HostOptions } from "../../server/host.ts";
@@ -73,6 +74,8 @@ export interface JoinOptions {
   ticket?: Uint8Array;
   /** False joins without the map's statics, so every chunk's rows come whole. */
   statics?: boolean;
+  /** Where the far city's levels are made, here by default. */
+  cityMaker?: CityMaker;
 }
 
 export class Harness {
@@ -138,6 +141,8 @@ export class Harness {
       resolveMap: (id, hash) => (id === this.map.id && hash === this.map.hash ? this.hf : null),
       nodes: (hf, reg) => mapNodes(this.map, hf, reg),
       ...(opts.statics === false ? {} : { statics: this.map.statics }),
+      ...(this.map.content ? { landmarks: this.map.content.landmarks } : {}),
+      ...(opts.cityMaker ? { cityMaker: opts.cityMaker } : {}),
     });
     this.sessions.push(session);
     if (opts.manual) this.manual.add(session);
