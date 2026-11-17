@@ -10,14 +10,15 @@
 // those moments, into --out. The client must be built (bun run build). --dist names another, --chrome the browser, and
 // --no-fail fails no request.
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readSync, openSync, closeSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { startServer } from "../../server/main.ts";
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
 import { MODE_GHOST, MODE_WALK } from "../../shared/sim/character.ts";
 import { groundUnder } from "../../shared/world/collide.ts";
-import { readHead, type MapHead } from "../../shared/world/mapfile.ts";
+import { partsFolder, readHead, type MapHead } from "../../shared/world/mapfile.ts";
+import { firstFrameParts, handOverParts } from "../../client/core/mapload.ts";
 import type { TripMark } from "../../client/core/trip.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
@@ -309,7 +310,7 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
       await measure();
     };
     let shots = 0;
-    const shot = async (name: string, when: number | undefined): Promise<void> => void (when !== undefined && (await page!.shot(join(opts.out, `${opts.mbit}mbit-${++shots}-${name}.png`))));
+    const shot = async (name: string, when: number | undefined): Promise<void> => void (when !== undefined && (await page!.shot(join(opts.out, `${opts.mbit}mbit${fails ? "" : "-whole"}-${++shots}-${name}.png`))));
     const came = (name: string): boolean => seen.parts.some((p) => p.name === name && p.status === 200);
     const s = (ms: number | undefined): string => (ms === undefined ? "never" : `${(ms / 1000).toFixed(2)} s`);
     const later = (ms: number | undefined, from: number | undefined): string => (ms === undefined || from === undefined ? "never" : `${((ms - from) / 1000).toFixed(2)} s after it`);
@@ -339,11 +340,9 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     await shot("jumped", jump);
     // The session sees the body's new place a frame after the probe may: prediction stops at the first frame it is off
     // after the jump, if it is, and runs again at the first after that it is on.
-    const again = (): number | undefined => {
-      if (jump === undefined) return undefined;
-      const stop = seen.marks.find((m) => m.what === "-predicting" && m.at >= jump);
-      return stop === undefined ? jump : on("predicting", stop.at);
-    };
+    const stop = (): TripMark | undefined => seen.marks.find((m) => m.what === "-predicting" && m.at >= jump!);
+    await until(jump === undefined ? 0 : PATIENCE.jump, () => stop() !== undefined || seen.now > jump! + 1000);
+    const again = (): number | undefined => (jump === undefined ? undefined : stop() === undefined ? jump : on("predicting", stop()!.at));
     await until(jump === undefined ? 0 : PATIENCE.after, () => again() !== undefined);
     const predicted = again();
     await shot("predicted", predicted);
@@ -355,6 +354,7 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     seen = await look();
     await shot("end", seen.now);
     const whole = await page.value<{ ground: boolean; pieces: number }>("globalThis.snarkTrip?.whole() ?? {ground: false, pieces: 0}");
+    writeFileSync(join(opts.out, `${opts.mbit}mbit${fails ? "" : "-whole"}.json`), JSON.stringify({ marks: seen.marks, parts: seen.parts, up: upAt, jump: jumpAt }));
     const statics = head.counts.reduce((n, c) => n + c, 0);
     const lastPart = [...parts].every(came) ? Math.max(...seen.parts.filter((p) => parts.has(p.name) && p.status === 200).map((p) => p.end)) : undefined;
     const far = seen.marks.find((m) => m.what === "far");
@@ -371,7 +371,10 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     say(`  whole at the end                      ground ${whole.ground ? "all the map's own" : "not all the map's own"}; far city of ${whole.pieces} pieces, of the map's ${statics} statics`);
     say(`  memory at the hand-over, after a GC   ${heap || "never handed over"}`);
     const before = seen.parts.filter((p) => p.status === 200 && p.end <= (on("frame") ?? -1));
+    const rule = [head.name, ...firstFrameParts(head, from.x, from.z).map((p) => p.name)];
+    const sent = (names: readonly string[]): string => (names.reduce((n, name) => n + statSync(join(partsFolder(opts.map), `${name}.br`)).size, 0) / 1e6).toFixed(2);
     say(`  before the first frame               ${before.length} files of the map, ${(before.reduce((n, p) => n + p.bytes, 0) / 1e6).toFixed(2)} MB as sent: ${before.map((p) => p.name.split(".").slice(0, -2).join(".")).join(" ")}`);
+    say(`  the build's rule there               ${rule.length} files, ${sent(rule)} MB of Brotli (client/core/mapload.ts firstFrameParts); until the statics are all in hand ${sent([head.name, ...handOverParts(head).map((p) => p.name)])} MB`);
     say(`  in all                                ${seen.parts.filter((p) => parts.has(p.name) && p.status === 200).length} of ${parts.size} parts, ${(seen.parts.reduce((n, p) => n + p.bytes, 0) / 1e6).toFixed(2)} MB of the map as sent`);
     return lines;
   } finally {
@@ -395,6 +398,6 @@ if (import.meta.main) {
   for (const mbit of value("--mbit", "5,20").split(",").map(Number)) {
     lines.push(...(await trip({ map, dist: resolve(value("--dist", join(ROOT, "client/dist"))), mbit, latency: Number(value("--latency", "100")), out, chrome, fail: !process.argv.includes("--no-fail") })));
   }
-  writeFileSync(join(out, "trip.txt"), lines.join("\n") + "\n");
+  writeFileSync(join(out, `trip${process.argv.includes("--no-fail") ? "-whole" : ""}.txt`), lines.join("\n") + "\n");
   process.exit(0);
 }
