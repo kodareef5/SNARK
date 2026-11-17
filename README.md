@@ -1,28 +1,24 @@
 # SNARK: Miami Devolved
 
-A browser survival parody with persistent multiplayer worlds.
+An ARK-style browser survival parody with GTA vehicles and persistent multiplayer. TypeScript on Bun, zero runtime dependencies.
 
-- **Zero dependencies.** TypeScript on [Bun](https://bun.com) and nothing else: the renderer, the file formats, the
-  texture and sound coding and the map builder are all here.
-- **Runs on a phone.** In the phone's own browser, at 60 frames a second on an iPhone. Played with a keyboard and
-  mouse or a gamepad.
-- **Real cities at full scale.** Public map data in, a playable map out: `tools/mapdata` and `tools/mapworld`.
-- **Easy to fork and hack.** The game is data in `content/`, a server is set up as an ARK server is (`config/`), and
-  `bun run check` tests for regressions.
+- **Renderer.** WebGL 2 without Three.js or Unreal Engine. Frustum culling skips offscreen geometry and screen-space error selects mesh LODs. A ten-minute iPhone test with 800 bodies and 2,048 building pieces finished at a median 17 ms per frame (about 60 FPS).
+- **Modding.** Creatures and engrams live in `content/`. ARK-style INIs set server rates. The map builder turns public data into full-scale cities. [Server configs](config/) · [Map builder](tools/mapworld/)
+- **MCP.** Agents join as survivors to harvest, craft, build and ride with normal player permissions. [Agent setup](agent/README.md#run-it)
 
 ## Gameplay systems
 
 **ARK**
 
-- **Playable** — harvesting, engrams, crafting, snapped bases, tribes, knockout taming and breeding. Ride a saddled raptor or parasaur. A mounted pteranodon can take off, hover, barrel-roll and land.
-- **Partial** — loot tables roll item quality and blueprints. Supply drops have no world spawner.
-- **Missing** — artifact runs, boss arenas and ascension.
+- **Playable.** Harvesting, engrams, crafting, snap building, tribes, knockout taming and breeding. Ride raptors and parasaurs, or hover and barrel-roll on a saddled pteranodon.
+- **Partial.** Loot tables roll item quality and blueprints. Supply drops still need a spawner.
+- **Missing.** Artifact runs, boss arenas and ascension.
 
 **GTA**
 
-- **Playable** — drive a compact car, pilot a motorboat or fly a helicopter. Vehicles carry passengers and cargo, burn fuel and persist across restarts.
-- **Partial** — civilians can take seats and players can carjack a driver. Ambient traffic and civilian routes are missing.
-- **Missing** — wanted levels, police pursuits, missions and heists.
+- **Playable.** Drive a compact car, pilot a motorboat or fly a helicopter. Vehicles carry passengers and cargo, burn fuel and persist across restarts.
+- **Partial.** Civilians can take seats and be carjacked. Ambient traffic and civilian routes are missing.
+- **Missing.** Wanted levels, police pursuits, missions and heists.
 
 ## Run it
 
@@ -31,10 +27,8 @@ bun install
 bun run dev        # http://localhost:8787
 ```
 
-A source checkout starts on the generated proving ground. The build makes a survivor mannequin,
-trees, building pieces and block creatures and vehicles from the game definitions. Installed art
-packs supply their own models. City maps need their separate map data.
+The proving ground runs without art packs, using mannequins and block models. Installed models replace them. City maps need separate map data. Play with keyboard and mouse or a gamepad.
 
-To build the game and its wiki as static files, run `bun run build` and then `bun run wiki`.
+Test with `bun run check`. Build the static game and wiki with `bun run build && bun run wiki`.
 
 MIT licence.
