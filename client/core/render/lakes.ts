@@ -123,7 +123,7 @@ export class Lakes {
     const { cell, side, surface } = water;
     const dims = hf.dims;
     const per = WATER_TILE / CHUNK_SIZE;
-    const [sx0, sz0, sx1, sz1] = [Math.floor(cx0 / per), Math.floor(cz0 / per), Math.ceil(cx1 / per), Math.ceil(cz1 / per)];
+    const sx0 = Math.floor(cx0 / per), sz0 = Math.floor(cz0 / per), sx1 = Math.ceil(cx1 / per), sz1 = Math.ceil(cz1 / per);
     for (let sz = sz0; sz < sz1; sz++) holes.fill(0, sz * this.seaX + sx0, sz * this.seaX + sx1);
     // Every square of the sea's tiles met is looked at again for their holes, and those of the chunks given for being wet.
     for (let cz = sz0 * per; cz < Math.min(dims.chunksZ, sz1 * per); cz++) {
@@ -162,11 +162,11 @@ export class Lakes {
   private take(p: FramePacket): void {
     const c = this.hf.changes;
     for (; this.seen < c.length; this.seen += 4) {
-      const [cx0, cz0, cx1, cz1] = [c[this.seen]!, c[this.seen + 1]!, c[this.seen + 2]!, c[this.seen + 3]!];
+      const cx0 = c[this.seen]!, cz0 = c[this.seen + 1]!, cx1 = c[this.seen + 2]!, cz1 = c[this.seen + 3]!;
       const was = Uint8Array.from(this.holes);
       this.measure(cx0, cz0, cx1, cz1);
       const reach = this.water.cell;
-      const [x0, z0, x1, z1] = [cx0 * CHUNK_SIZE - reach, cz0 * CHUNK_SIZE - reach, cx1 * CHUNK_SIZE + reach, cz1 * CHUNK_SIZE + reach];
+      const x0 = cx0 * CHUNK_SIZE - reach, z0 = cz0 * CHUNK_SIZE - reach, x1 = cx1 * CHUNK_SIZE + reach, z1 = cz1 * CHUNK_SIZE + reach;
       this.keys.forEach((t, k) => {
         const tx = (t % this.tilesX) * LAKE_TILE, tz = Math.floor(t / this.tilesX) * LAKE_TILE;
         if (tx < x1 && tx + LAKE_TILE > x0 && tz < z1 && tz + LAKE_TILE > z0) this.dirty[k] = 1;

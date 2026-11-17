@@ -234,7 +234,10 @@ export class TerrainLod {
       }
     }
     for (let level = 1; level < this.levels; level++) {
-      [cx0, cz0, cx1, cz1] = [cx0 >> 1, cz0 >> 1, (cx1 + 1) >> 1, (cz1 + 1) >> 1];
+      cx0 >>= 1;
+      cz0 >>= 1;
+      cx1 = (cx1 + 1) >> 1;
+      cz1 = (cz1 + 1) >> 1;
       const w = this.width[level]!, lo = this.minY[level]!, hi = this.maxY[level]!;
       const pw = this.width[level - 1]!, plo = this.minY[level - 1]!, phi = this.maxY[level - 1]!;
       const pd = plo.length / pw;
@@ -265,9 +268,9 @@ export class TerrainLod {
     const per = Math.round(CHUNK_SIZE / hf.cell);
     const w = this.size.width[SOURCE_WINDOW]!, h = this.size.height[SOURCE_WINDOW]!;
     for (; this.seen < c.length; this.seen += 4) {
-      const [cx0, cz0, cx1, cz1] = [c[this.seen]!, c[this.seen + 1]!, c[this.seen + 2]!, c[this.seen + 3]!];
+      const cx0 = c[this.seen]!, cz0 = c[this.seen + 1]!, cx1 = c[this.seen + 2]!, cz1 = c[this.seen + 3]!;
       this.measure(cx0, cz0, cx1, cz1);
-      const [i0, j0, i1, j1] = [cx0 * per, cz0 * per, cx1 * per, cz1 * per];
+      const i0 = cx0 * per, j0 = cz0 * per, i1 = cx1 * per, j1 = cz1 * per;
       const meets = (i: number, j: number, rows: number): boolean => i0 < i + w && i1 >= i && j0 < j + rows && j1 >= j;
       if (this.drawn >= 0 && meets(this.drawnI, this.drawnJ, h)) this.stale = true;
       if (this.fill >= 0 && meets(this.fillI, this.fillJ, this.row)) this.row = Math.max(0, j0 - this.fillJ);
@@ -413,7 +416,10 @@ export class TerrainLod {
     const moved = this.drawn < 0 || (off >= WINDOW_MOVE && (i !== this.drawnI || j !== this.drawnJ));
     // A window filling holds the samples as they are, and a stale one with the camera still is filled again where it is.
     if (this.fill >= 0) this.stale = false;
-    if (!moved && this.stale) [i, j] = [this.drawnI, this.drawnJ];
+    if (!moved && this.stale) {
+      i = this.drawnI;
+      j = this.drawnJ;
+    }
     if ((moved || this.stale) && (this.fill < 0 || i !== this.fillI || j !== this.fillJ)) {
       if (this.drawn < 0) budget?.reserve("terrain", this.size.bytes);
       this.fill = this.drawn < 0 ? 0 : 1 - this.drawn;

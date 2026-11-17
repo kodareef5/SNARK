@@ -364,12 +364,15 @@ export class FarNodes {
     // Ground that came: its nodes are worked out again, and those a chunk past it, whose footing may reach across.
     const ground = this.source.ground?.changes ?? [];
     for (; this.seenGround < ground.length; this.seenGround += 4) {
-      const [cx0, cz0, cx1, cz1] = [Math.max(0, ground[this.seenGround]! - 1), Math.max(0, ground[this.seenGround + 1]! - 1), Math.min(this.dims.chunksX, ground[this.seenGround + 2]! + 1), Math.min(this.dims.chunksZ, ground[this.seenGround + 3]! + 1)];
+      const cx0 = Math.max(0, ground[this.seenGround]! - 1), cz0 = Math.max(0, ground[this.seenGround + 1]! - 1);
+      const cx1 = Math.min(this.dims.chunksX, ground[this.seenGround + 2]! + 1), cz1 = Math.min(this.dims.chunksZ, ground[this.seenGround + 3]! + 1);
       for (let cz = cz0; cz < cz1; cz++) for (let cx = cx0; cx < cx1; cx++) this.mapCells.delete(cz * this.dims.chunksX + cx);
       for (let tz = Math.floor(cz0 / FAR_TILE); tz * FAR_TILE < cz1; tz++) {
         for (let tx = Math.floor(cx0 / FAR_TILE); tx * FAR_TILE < cx1; tx++) {
           const tile = this.tiles.get(tz * this.tilesX + tx);
-          if (tile) [tile.dirty, tile.spots] = [true, null];
+          if (!tile) continue;
+          tile.dirty = true;
+          tile.spots = null;
         }
       }
     }
