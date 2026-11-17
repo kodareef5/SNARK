@@ -11,6 +11,7 @@ import { FAR_HEIGHT, FAR_MESH, FAR_TILE_METRES } from "../../client/core/render/
 import { WATER_TILE } from "../../client/core/render/shading.ts";
 import { authoredClips } from "../../shared/anim/authored.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
+import type { LandmarkFarRow } from "../../shared/pack/far.ts";
 import { REGION_BASE, WATER_COLOR, defaultPalette } from "../../shared/pack/palette.ts";
 import { SOURCE, filesUnder, readPacks, type SourceArt } from "../art/source.ts";
 import { importGlb } from "./glb.ts";
@@ -176,9 +177,10 @@ export function withArt(made: readonly SourceMesh[], art: readonly SourceMesh[])
   return [...made.filter((m) => !modelled.has(m.id)), ...art];
 }
 
-export function buildCorePack(extra: SourceMesh[] = []): Uint8Array {
+/** `landmarks` are the rows of landmark far meshes among `extra` (tools/pack/far.ts). */
+export function buildCorePack(extra: SourceMesh[] = [], landmarks: readonly LandmarkFarRow[] = []): Uint8Array {
   const made = [...grayboxMeshes(CORE_CONTENT), farMesh(), ...mannequinMeshes(), ...weaponMeshes()];
-  return buildPack([...withArt(made, coreArt().meshes), worldSurfaceMesh(), ...extra], defaultPalette(), coreClips(), coreArt().rigs, coreArt().details);
+  return buildPack([...withArt(made, coreArt().meshes), worldSurfaceMesh(), ...extra], defaultPalette(), coreClips(), coreArt().rigs, coreArt().details, landmarks);
 }
 
 /** Every .glb under assets/source, imported. What the import had to say of each is printed. */

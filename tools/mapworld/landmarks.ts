@@ -7,7 +7,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { isBoatVehicle } from "../../shared/sim/vehicle.ts";
 import { boatRestY } from "../../shared/sim/boat.ts";
 import { GROUND_EASE, landmarkGround, placeLandmark, type Landmark } from "../../shared/world/landmark.ts";
-import type { MapContent, MapStatic, MapVehicle } from "../../shared/world/mapfile.ts";
+import type { MapContent, MapLandmark, MapStatic, MapVehicle } from "../../shared/world/mapfile.ts";
 import { S, type Ground } from "./ground.ts";
 
 /**
@@ -63,14 +63,15 @@ export function layLandmarkGround(ground: Ground, placed: readonly Sited[], size
 
 /** The landmarks' statics, vehicles and content as the map file has them. A boat floats at the sea under it. */
 export function placeLandmarks(placed: readonly Sited[], reg: Registry, sea: number): { statics: MapStatic[]; vehicles: MapVehicle[]; content: MapContent } {
-  const statics: MapStatic[] = [], vehicles: MapVehicle[] = [];
+  const statics: MapStatic[] = [], vehicles: MapVehicle[] = [], landmarks: MapLandmark[] = [];
   for (const { site, landmark } of placed) {
     const made = placeLandmark(landmark, site.x, site.y ?? sea, site.z, yawUnits(site.yaw));
     statics.push(...made.statics);
+    landmarks.push(made.placed);
     for (const v of made.vehicles) {
       const def = reg.vehicle[reg.index.get(v.kind) ?? 0];
       vehicles.push(def && isBoatVehicle(def) ? { ...v, y: boatRestY(def.spec, sea) } : v);
     }
   }
-  return { statics, vehicles, content: { landmarks: placed.map((p) => p.landmark.name), defs: landmarkDefs(placed) } };
+  return { statics, vehicles, content: { landmarks, defs: landmarkDefs(placed) } };
 }

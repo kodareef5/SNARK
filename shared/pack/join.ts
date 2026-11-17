@@ -1,6 +1,6 @@
 // A landmark's files beside the core's (tools/build-client.ts): its pack and manifest joined to the core's after them, so a
 // mesh, material or texture of the core keeps its index and the landmark's come after. Its boot file's bytes go after the
-// core boot file's, and the client holds both as one.
+// core boot file's, and the client holds both as one. Its far mesh's row (shared/pack/far.ts) goes after any before it.
 
 import type { Manifest, ManifestMesh, ManifestTexture } from "./manifest.ts";
 import type { Pack, PackMaterial, PackMesh } from "./pack.ts";
@@ -36,6 +36,7 @@ export function joinPacks(core: Pack, more: Pack): Pack {
   const header = { ...core.header, meshes: [...core.header.meshes, ...meshes], rigs: [...core.header.rigs, ...more.header.rigs] };
   if (more.header.materials) header.materials = [...(core.header.materials ?? []), ...more.header.materials.map((m) => shifted(m, textures))];
   if (more.header.textures) header.textures = [...(core.header.textures ?? []), ...more.header.textures];
+  if (more.header.landmarks) header.landmarks = [...(core.header.landmarks ?? []), ...more.header.landmarks];
   return { header, blob, blobAt: core.blobAt, palette: core.palette, meshIndex: new Map(header.meshes.map((m, i) => [m.id, i])), clips: core.clips };
 }
 
@@ -66,5 +67,6 @@ export function joinLandmark(core: { manifest: Manifest; boot: Pack }, more: { m
     materials: [...(c.materials ?? []), ...(m.materials ?? []).map((x) => shifted(x, textures))],
     textures: [...(c.textures ?? []), ...(m.textures ?? []).map((t) => ({ ...t, in: Object.fromEntries(Object.entries(t.in).map(([format, v]) => [format, { ...v, file: fileOf[v.file]! }])) as ManifestTexture["in"] }))],
   };
+  if (m.landmarks) manifest.landmarks = [...(c.landmarks ?? []), ...m.landmarks];
   return { manifest, boot: joinPacks(core.boot, more.boot) };
 }

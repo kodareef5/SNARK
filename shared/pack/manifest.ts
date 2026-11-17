@@ -12,6 +12,7 @@
 //       the blob it starts.
 
 import type { ClipSet } from "../anim/clip.ts";
+import type { LandmarkFarRow } from "./far.ts";
 import { checkIcons, type ManifestIcons } from "./icons.ts";
 import { CLIP_ROOT_BYTES, MOST_SECTIONS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, decodeClips, decodeUtf8, lodVertices, type Pack, type PackClip, type PackMaterial } from "./pack.ts";
 import { soundFault, type ManifestSound } from "./sound.ts";
@@ -19,7 +20,7 @@ import { unfilterPart } from "./stored.ts";
 import { ASTC_BLOCKS, STEP0_SIZE, TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_ROLES, blockOf, stepBytes, stepOf, topIn, type TextureFormat, type TextureRole } from "./texture.ts";
 
 /** Raised whenever the form changes: a build reads only its own. */
-export const MANIFEST_VERSION = 6;
+export const MANIFEST_VERSION = 7;
 
 export interface ManifestFile {
   name: string;
@@ -173,6 +174,8 @@ export interface Manifest {
   icons?: ManifestIcons;
   /** The colour far blocks draw each palette colour in (client/core/render/far.ts), worked out by the build from every piece. */
   farColours?: number[];
+  /** Each landmark's far mesh (shared/pack/far.ts), read by `landmarkFars`. */
+  landmarks?: LandmarkFarRow[];
 }
 
 const pad4 = (n: number): number => (n + 3) & ~3;
@@ -241,6 +244,7 @@ export function describePack(pack: Pack, file: { name: string; bytes: number }, 
   if (pack.header.materials) out.materials = pack.header.materials;
   // A pack names its textures and holds none of their pixels, so no variant is listed here. The build adds them.
   if (pack.header.textures) out.textures = pack.header.textures.map((t) => ({ ...t, in: {} }));
+  if (pack.header.landmarks) out.landmarks = pack.header.landmarks;
   return out;
 }
 

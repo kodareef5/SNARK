@@ -38,6 +38,7 @@
 import type { Clip, ClipSet } from "../anim/clip.ts";
 import { hashBytes, hashString } from "../hash.ts";
 import { ATLAS_MOST, CELL, atlasBytes, type PackDetails } from "./details.ts";
+import type { LandmarkFarRow } from "./far.ts";
 import { stepOf, type TextureRole } from "./texture.ts";
 
 export const PACK_MAGIC = 0x4b504e53; // "SNPK" little-endian
@@ -180,6 +181,8 @@ export interface PackHeader {
   textures?: PackTexture[];
   /** Small details: their atlas, effects and cue sheets (shared/pack/details.ts). The boot file carries them. */
   details?: PackDetails;
+  /** In a built landmark's pack, its far mesh's row (shared/pack/far.ts). A source pack has none. */
+  landmarks?: LandmarkFarRow[];
 }
 
 export interface Pack {

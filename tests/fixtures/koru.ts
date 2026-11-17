@@ -1,13 +1,10 @@
 // A bay of the sea with Koru moored along a quay, made as a map build makes a map with a landmark: the quay and the dug
 // berth its ground asks for, its statics and tender placed, its definitions in the map's content.
 
-import { join } from "node:path";
 import { KORU, KORU_LAYOUT } from "../../content/landmarks/koru.ts";
 import { joinPacks } from "../../shared/pack/join.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
-import { defaultPalette } from "../../shared/pack/palette.ts";
-import { LANDMARKS, readPacks } from "../../tools/art/source.ts";
-import { buildPack } from "../../tools/pack/write.ts";
+import { landmarkArt, landmarkPack } from "../../tools/pack/far.ts";
 import { corePack } from "./pack.ts";
 import { boatRestY } from "../../shared/sim/boat.ts";
 import { isBoatVehicle } from "../../shared/sim/vehicle.ts";
@@ -40,7 +37,7 @@ export function koruMap(): MapData {
       hf.setSample(i, j, landmarkGround(KORU, KORU_AT.x, KORU_AT.y, KORU_AT.z, KORU_AT.yaw, x, z, x > KORU_AT.x + 44 ? LAND : FLOOR));
     }
   }
-  const { statics, vehicles } = placeLandmark(KORU, KORU_AT.x, KORU_AT.y, KORU_AT.z, KORU_AT.yaw);
+  const { statics, vehicles, placed } = placeLandmark(KORU, KORU_AT.x, KORU_AT.y, KORU_AT.z, KORU_AT.yaw);
   const reg = coreRegistry();
   return {
     id: "test:koru-bay",
@@ -57,7 +54,7 @@ export function koruMap(): MapData {
       const def = reg.vehicle[reg.index.get(v.kind)!]!;
       return isBoatVehicle(def) ? { ...v, y: boatRestY(def.spec, 0) } : v;
     }),
-    content: { landmarks: [KORU.name], defs: KORU.defs },
+    content: { landmarks: [placed], defs: KORU.defs },
   };
 }
 
@@ -70,8 +67,7 @@ let joined: Pack | null = null;
 /** Koru's pack as the client build makes it, from its folder. */
 export function koruPackBytes(): Uint8Array {
   if (koruBytes) return koruBytes;
-  const art = readPacks(join(LANDMARKS, KORU.name));
-  return (koruBytes = buildPack(art.meshes, defaultPalette(), [], art.rigs));
+  return (koruBytes = landmarkPack(landmarkArt(KORU)));
 }
 
 /** The core pack with Koru's after it, as a client in the bay holds them whole. */

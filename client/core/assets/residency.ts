@@ -691,7 +691,8 @@ export class Residency {
 
   /**
    * The level of `mesh` to draw when `wanted` is asked for: that level if it is resident, else the next coarser that
-   * is, else the nearest finer. -1 if there is none, which cannot be once its row is here.
+   * is, else the nearest finer. -1 if there is none, which once its row is here can be only for a landmark's far mesh,
+   * which holds no level in the boot file (shared/pack/far.ts).
    */
   level(mesh: number, wanted: number): number {
     if (!this.known(mesh)) {

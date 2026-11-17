@@ -20,7 +20,7 @@ export function auditCruiseFirstFrame(names: readonly string[], dist = resolve(i
 }
 
 if (import.meta.main) {
-  const report = auditCruiseFirstFrame(cruiseCourse().content!.landmarks);
+  const report = auditCruiseFirstFrame(cruiseCourse().content!.landmarks.map((l) => l.name));
   const out = resolve(process.argv[2] ?? "var/cruise-preview/first-frame.json");
   mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, JSON.stringify(report, null, 2) + "\n");
   console.log(JSON.stringify({ out, ...report }));

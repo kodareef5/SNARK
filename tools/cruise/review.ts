@@ -395,9 +395,10 @@ export async function reviewCruise(map: MapData, shots: readonly CruiseShot[], a
   // The standard source path also supplies the native world-surface carrier. Its landmark root
   // belongs to this checkout; accepting an arbitrary external source would silently mix snapshots.
   if (source !== resolve(SOURCE)) throw new Error("Sync the matching assets into this checkout before review; --source must be its assets/source directory");
-  if (!map.content?.landmarks.includes("cruise") || !map.content.landmarks.includes("koru")) throw new Error("Cruise review requires both map-local landmark packs");
-  console.log(`Preparing native core + ${map.content.landmarks.join(" + ")} streams from ${source}`);
-  const files = await cruiseFiles(map.content.landmarks), pack = files.boot;
+  const names = map.content?.landmarks.map((l) => l.name) ?? [];
+  if (!map.content || !names.includes("cruise") || !names.includes("koru")) throw new Error("Cruise review requires both map-local landmark packs");
+  console.log(`Preparing native core + ${names.join(" + ")} streams from ${source}`);
+  const files = await cruiseFiles(names), pack = files.boot;
   const native = files.manifest.meshes.filter(m => isShipMesh(m.id)), graybox = args.includes("--graybox");
   const cellIds = new Set(CRUISE_LAYOUT.cells.map(cell => cell.id));
   const standaloneIds = new Set(CRUISE_COLLISION_PROTOTYPES.filter(prototype => prototype.mesh !== "none" && !cellIds.has(prototype.mesh)).map(prototype => prototype.mesh));
@@ -453,7 +454,7 @@ export async function reviewCruise(map: MapData, shots: readonly CruiseShot[], a
     console.log(`Native cruise review ${shot.name}`);
     report.push({ ...capture(shot, map, pack, clips, files, shot.portrait ? 540 : width, shot.portrait ? 960 : height, out, !args.includes("--visual-only"), !args.includes("--no-images") && !sweep, assetLatencyMs), packHash, packedGroupsHash: cellStages?.groupsSHA256 ?? null, assetStage: graybox ? "preliminary graybox" : CRUISE_LAYOUT.phase });
     report.sort((a, b) => String(a.name).localeCompare(String(b.name)));
-    writeFileSync(resolve(out, "report.json"), JSON.stringify({ source, generated: new Date().toISOString(), pipeline: "native LAND map → authoritative Harness → App → production cold paged core and separate landmark files, streamed assets and world surfaces → native frame packet → optional Rasterizer", packIdentity: "FNV-1a of joined manifest/boot blob and every source stream file, including textures and world surfaces", landmarks: map.content.landmarks, firstFrame: files.firstFrame, authoritativeAnimation: { clips: clips.clips.length, hash: clips.hash, rigs: pack.header.rigs.length }, cellStages, standaloneAssets, layout: { phase: CRUISE_LAYOUT.phase, logicalPrototypes: CRUISE_LAYOUT.prototypes.length, logicalInstances: CRUISE_LAYOUT.instances.filter(instance => instance.placed).length, collisionPrototypes: CRUISE_COLLISION_PROTOTYPES.length, cells: cellIds.size, placedInstances: CRUISE_COLLISION_INSTANCES.filter(instance => instance.placed).length, deckLabels: CRUISE_LAYOUT.decks.map(deck => deck.id) }, shots: report,
+    writeFileSync(resolve(out, "report.json"), JSON.stringify({ source, generated: new Date().toISOString(), pipeline: "native LAND map → authoritative Harness → App → production cold paged core and separate landmark files, streamed assets and world surfaces → native frame packet → optional Rasterizer", packIdentity: "FNV-1a of joined manifest/boot blob and every source stream file, including textures and world surfaces", landmarks: names, firstFrame: files.firstFrame, authoritativeAnimation: { clips: clips.clips.length, hash: clips.hash, rigs: pack.header.rigs.length }, cellStages, standaloneAssets, layout: { phase: CRUISE_LAYOUT.phase, logicalPrototypes: CRUISE_LAYOUT.prototypes.length, logicalInstances: CRUISE_LAYOUT.instances.filter(instance => instance.placed).length, collisionPrototypes: CRUISE_COLLISION_PROTOTYPES.length, cells: cellIds.size, placedInstances: CRUISE_COLLISION_INSTANCES.filter(instance => instance.placed).length, deckLabels: CRUISE_LAYOUT.decks.map(deck => deck.id) }, shots: report,
       limits: "Static native software-rendered views establish model, collision-camera and streaming behavior; they do not establish browser GPU performance or identical lit ocean shading." }, null, 2));
   }
   console.log(`${out}: ${report.length} native cruise views`);

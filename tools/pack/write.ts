@@ -6,6 +6,7 @@ import {
   setTexture, textureOf, type Pack, type PackHeader, type PackLod, type PackMaterial, type PackMesh, type PackRig, type PackTexture,
 } from "../../shared/pack/pack.ts";
 import type { PackDetails } from "../../shared/pack/details.ts";
+import type { LandmarkFarRow } from "../../shared/pack/far.ts";
 import { TEXTURE_ROLES, stepOf } from "../../shared/pack/texture.ts";
 import { surfaceError } from "./error.ts";
 import { rankSprays } from "./sprays.ts";
@@ -170,11 +171,13 @@ export interface SourceDetails {
   atlas: Uint8Array;
 }
 
-export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: readonly Clip[] = [], rigs: readonly PackRig[] = [], details: SourceDetails | null = null): Uint8Array {
+/** `landmarks` are the rows of the far meshes among `meshes` (tools/pack/far.ts). */
+export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: readonly Clip[] = [], rigs: readonly PackRig[] = [], details: SourceDetails | null = null, landmarks: readonly LandmarkFarRow[] = []): Uint8Array {
   const blob = new PackBlob();
   const append = (bytes: Uint8Array): number => blob.append(bytes);
 
   const header: PackHeader = { paletteOffset: append(palette), meshes: [], rigs: [...rigs].sort(byId), clips: [] };
+  if (landmarks.length > 0) header.landmarks = [...landmarks];
   if (details) header.details = { ...details.header, atlas: { ...details.header.atlas, offset: append(details.atlas) } };
   const sorted = [...meshes].sort(byId);
   const { materials, textures } = pool(sorted);
