@@ -523,7 +523,7 @@ async function timeWater(chrome: string): Promise<Record<string, number | string
     return [...f];
   };
   // The sea 10 m under the eye, spread over the screen from 20 m to 420 m off.
-  const vertex = `#version 300 es\nout vec3 vRel;\nflat out vec3 vColor;\nvoid main() {\n  vec2 at = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)) * 2.0 - 1.0;\n  vRel = vec3(at.x * 200.0, -10.0, at.y * 200.0 + 220.0);\n  gl_Position = vec4(at, 0.5, 1.0);\n  vColor = vec3(0.24, 0.43, 0.67);\n}`;
+  const vertex = `#version 300 es\nout vec3 vRel;\nflat out vec3 vColor;\nflat out int vSurface;\nvoid main() {\n  vec2 at = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)) * 2.0 - 1.0;\n  vRel = vec3(at.x * 200.0, -10.0, at.y * 200.0 + 220.0);\n  gl_Position = vec4(at, 0.5, 1.0);\n  vColor = vec3(0.24, 0.43, 0.67);\n  vSurface = 0;\n}`;
   const water = PROGRAMS.water!(tierOf("medium"), "rgba");
   const lit = PROGRAMS.flat!(tierOf("medium"), "rgba");
   const runs = [
