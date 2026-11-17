@@ -296,7 +296,7 @@ def qframe(x,y,z):
 def unit(v):return [a/math.sqrt(sum(b*b for b in v)) for a in v]
 co=next(m for m in mods if m['id']=='koru:sail_control')['origin']
 local=lambda p:[p[k]-co[k] for k in range(3)]
-BUNDLE=.6;parts=[]
+BUNDLE=.6;parts=[];rolls=[]
 for s in D['rig']['sails']:
  t=s['tack']
  if s['kind']=='gaff':
@@ -309,7 +309,7 @@ for s in D['rig']['sails']:
   q=qframe(chord,luff,normal)
   # Struck, the sheet is put away and its roll on the stay, a line drawn as the rig is, stands for it; set, the roll is.
   parts.append({'mesh':s['sheet'],'from':{'at':local(t),'turn':q,'scale':[.015,1,.3],'away':True},'to':{'at':local(t),'turn':q}})
-  parts.append({'mesh':'koru:roll_'+s['id'],'from':{'at':local(t),'turn':q},'to':{'at':local(t),'turn':q,'scale':[.001,1,.001],'away':True}})
+  rolls.append({'mesh':'koru:roll_'+s['id'],'from':{'at':local(t),'turn':q},'to':{'at':local(t),'turn':q,'scale':[.001,1,.001],'away':True}})
 # The standing rigging is drawn by parts of the control that never move, so that it is drawn as itself as far as the
 # sails are, and no wire is left to the far mesh: a part a group of its segments, each mast's in bands of 22 m up, the
 # forestays' and the backstays' likewise, and the triatics between the mastheads together. A part stands at the middle
@@ -328,6 +328,8 @@ for name,members in sorted(groups.items()):
  pts=[p for m in members for p in m['art']['ends']];mid=[(min(p[k] for p in pts)+max(p[k] for p in pts))/2 for k in range(3)]
  parts.append({'mesh':f'koru:rig_{name}','from':{'at':local(mid)},'to':{'at':local(mid)}})
  D['rig']['parts'].append({'mesh':f'koru:rig_{name}','members':[m['id'] for m in members]})
+# The rolls after the rig, see-through draws going as made, so that a roll is drawn over the stay it is rolled on.
+parts.extend(rolls)
 assert len(parts)<=32
 D['motion']={'static':'koru:sail_control','seconds':18,'parts':parts}
 # Cells: 16 m of the ship's length, the whole beam wide. A cell is one mesh, modelled in its anchor's frame and drawn by

@@ -19,7 +19,9 @@ furniture are an original interpretation. No photograph's pixels are in the pack
   1,024 that medium shows whole, so that they are as sharp on medium as they were on high in the atlas. `materials.json` says which picture each
   finish is in, where, and how it is painted and lit.
 - `asset.ts` is the pack: `landmarks:koru`, `koru.snpk`, which ships only with the maps that place it. It states the
-  cells' errors, what a cell may draw from each distance (`CELLS`, in place of the shared landmark rule), and that every
+  cells' errors, what a cell may draw from each distance (`CELLS`, in place of the shared landmark rule), that the rig's
+  parts and the rolls are see-through pieces, with the errors their levels take over at and a rule of their own for
+  what each may draw (`budget`), and that every
   finish of the pictures is one of the yacht's finishes (shared/pack/finish.ts): the build reads each finish's colour,
   occlusion, roughness and metalness off its part of the pictures as a textured draw shows them from afar, gives it a
   palette colour of its own, and a lit tier draws its flat faces lit as it is.
@@ -79,11 +81,11 @@ photographed: the layout's `rakes`, by which its collision and the art are shear
 the stem where it is drawn. The decks and rails keep the plumb ends.
 
 The sails: near, each row of a sheet is a panel of sailcloth from its picture, a gaff sail's sixth rows carrying battens,
-smooth over its camber; then two flat levels. Struck, a gaff sail and its gaff lie inside the cover on the boom, as an
-in-boom furling sail does, and a headsail rolls on its stay. Set or on their way, the sail parts are drawn as far as
-the far mesh. Struck, a gaff sail and its gaff are drawn while the client holds the yacht's structures near; a
-headsail's sheet is put away (PartPlacement `away`) and its roll on the stay is drawn in its place, as far as the far
-mesh, a line made and drawn as the rig's wires are, so no sliver of sail is left to break into dots.
+smooth over its camber; then two flat levels. Set or on their way, the sail parts are drawn as far as the far mesh.
+Struck, a gaff sail and its gaff lie inside the cover on the boom, as an in-boom furling sail does, and are drawn while
+the client holds the yacht's structures near. A headsail rolls on its stay: its sheet is put away (PartPlacement
+`away`) and its roll is drawn in its place as far as the far mesh, a line made and drawn as the rig's wires are, so no
+sliver of sail is left to break into dots.
 
 ## Pictures
 
@@ -113,17 +115,19 @@ land black where the browser draws it green; the yacht is drawn alike.
 - `near.png`: from the quay and the bow, in profile, on the sun deck and astern.
 - `rooms.png`: a look into each room at eye height on high, and `rooms-chrome.png` five of them in Chrome.
 - `rig-high.png`, `rig-medium.png`: Chrome on high and on medium, abeam a few metres either side of each hand-over,
-  the cells' and the rig's, three times, the left of each pair the nearer.
+  the cells' and the rig's, three times, the left of each pair the nearer: the fore rig against the sky, and the
+  forestays' feet against the land. `rig-250-300.png`: the 250 and 300 m views on high, three times, as the rig was
+  when it was the cells' and the far mesh's and as it is.
 
 Between level 1 and level 2 at 150 m on high (OKLab times 100, the mean of the band's pixels as light):
 
 | side | hour | hull | deckhouse | boot stripe |
 |---|---|---|---|---|
-| port | 08:00 | 0.06 | 0.75 | 0.47 |
-| port | 14:00 | 0.06 | 0.88 | 0.75 |
-| port | 18:15 | 0.03 | 0.13 | 0.37 |
-| port | 22:00 | 0.03 | 0.11 | 0.29 |
-| starboard | 08:00 | 0.12 | 0.65 | 0.10 |
-| starboard | 14:00 | 0.10 | 0.20 | 0.05 |
-| starboard | 18:15 | 0.15 | 1.32 | 0.16 |
-| starboard | 22:00 | 0.08 | 0.28 | 0.05 |
+| port | 08:00 | 0.03 | 0.77 | 0.37 |
+| port | 14:00 | 0.03 | 0.78 | 0.54 |
+| port | 18:15 | 0.02 | 0.18 | 0.29 |
+| port | 22:00 | 0.02 | 0.15 | 0.26 |
+| starboard | 08:00 | 0.13 | 0.50 | 0.10 |
+| starboard | 14:00 | 0.07 | 0.08 | 0.05 |
+| starboard | 18:15 | 0.13 | 1.27 | 0.16 |
+| starboard | 22:00 | 0.04 | 0.22 | 0.05 |
