@@ -127,7 +127,7 @@ export function createMapWorld(reg: Registry, map: MapFile, opts: WorldOptions =
   const zones = [...(defOf(reg, map)?.zones ?? []).filter((z) => z.kind === "spawn"), ...(map.regions ?? [])];
   const world = createWorld(reg, map.dims, hf, map.id, map.hash, map.spawns[0]!, opts.entityMax ?? ENTITY_LIMIT, map.spawns, mapNodes(map, hf, reg) ?? undefined, zones, opts.entityStart);
   if (opts.populate !== false) placeStatics(map, world.structs, reg);
-  world.statics = map.statics;
+  world.statics = map.statics.unordered();
   return world;
 }
 

@@ -119,14 +119,17 @@ export class ChunkTable {
   /** Table version at which the slot last changed. */
   mod: Uint32Array;
   free: number[] = [];
+  /** `x`, `y`, `z` and `yaw` are the map's own columns, lent by placeMap, until the first write to a slot's place or turn copies them. */
+  private lent: boolean;
 
-  constructor(cap = 16) {
+  constructor(cap = 16, lent: Pick<PlacedRows, "x" | "y" | "z" | "yaw"> | null = null) {
     this.cap = cap;
     this.kind = new Uint16Array(cap);
-    this.x = new Float32Array(cap);
-    this.y = new Float32Array(cap);
-    this.z = new Float32Array(cap);
-    this.yaw = new Uint16Array(cap);
+    this.x = lent ? lent.x : new Float32Array(cap);
+    this.y = lent ? lent.y : new Float32Array(cap);
+    this.z = lent ? lent.z : new Float32Array(cap);
+    this.yaw = lent ? lent.yaw : new Uint16Array(cap);
+    this.lent = lent !== null;
     this.owner = new Uint32Array(cap);
     this.hp = new Float32Array(cap);
     this.mod = new Uint32Array(cap);
@@ -150,8 +153,19 @@ export class ChunkTable {
     if (this.gone.length > GONE_KEPT) this.goneFloor = this.gone.shift()!.version;
   }
 
+  /** Copies the columns it was lent, if it was, so that a slot's place or turn may be written. */
+  own(): void {
+    if (!this.lent) return;
+    this.x = this.x.slice();
+    this.y = this.y.slice();
+    this.z = this.z.slice();
+    this.yaw = this.yaw.slice();
+    this.lent = false;
+  }
+
   ensure(slot: number): void {
     if (slot < this.cap) return;
+    this.lent = false;
     let cap = this.cap;
     while (cap <= slot) cap *= 2;
     const grow = <T extends Uint16Array | Float32Array | Uint32Array>(a: T): T => {
@@ -328,17 +342,22 @@ export class StructureStore {
       let n = 0;
       for (let r = first[c]!; r < first[c + 1]!; r++) slotOf[r] = placeable(r) && n < MAX_SLOTS_PER_CHUNK ? n++ : -1;
       if (n === 0) continue;
-      const t = (this.chunks[c] = new ChunkTable(n));
+      // Where every row takes a slot, the slots' places and turns are the map's own columns.
+      const [from, to] = [first[c]!, first[c + 1]!];
+      const lent = n === to - from ? { x: x.subarray(from, to), y: rows.y.subarray(from, to), z: z.subarray(from, to), yaw: yaw.subarray(from, to) } : null;
+      const t = (this.chunks[c] = new ChunkTable(n, lent));
       this.held.push(c);
-      for (let r = first[c]!; r < first[c + 1]!; r++) {
+      for (let r = from; r < to; r++) {
         const s = slotOf[r]!;
         if (s < 0) continue;
         const k = kinds[kind[r]!]!;
         t.kind[s] = k;
-        t.x[s] = x[r]!;
-        t.y[s] = rows.y[r]!;
-        t.z[s] = z[r]!;
-        t.yaw[s] = yaw[r]!;
+        if (!lent) {
+          t.x[s] = x[r]!;
+          t.y[s] = rows.y[r]!;
+          t.z[s] = z[r]!;
+          t.yaw[s] = yaw[r]!;
+        }
         t.hp[s] = hp[k]!;
         t.mod[s] = s + 1;
       }
@@ -672,6 +691,7 @@ export class StructureStore {
   private write(chunk: number, t: ChunkTable, slot: number, kind: number, x: number, y: number, z: number, yaw: number, owner: number, hp: number, mod: number, inPlace = false): void {
     if (!inPlace) t.placed++;
     t.ensure(slot);
+    t.own();
     if (slot >= t.high) t.high = slot + 1;
     t.kind[slot] = kind;
     t.x[slot] = x;
@@ -729,6 +749,7 @@ export class StructureStore {
       }
     }
     // Empty slots hold zeros, so equal tables are equal byte for byte.
+    t.own();
     t.kind[slot] = 0;
     t.x[slot] = 0;
     t.y[slot] = 0;

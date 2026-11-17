@@ -288,9 +288,15 @@ export function clusterRoot(rules: Rules, dbPath: string, id: string): string {
   return join(typeof over === "string" && over !== "" ? resolve(over) : join(dirname(resolve(dbPath)), "clusters"), id);
 }
 
+/** A file's bytes as a plain array: a Buffer's slice is a view, which would keep the whole file with what is copied out of it. */
+function fileBytes(path: string): Uint8Array {
+  const b = readFileSync(path);
+  return new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
+}
+
 function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]): Host {
   // A map's landmarks bring their own definitions, compiled after the core's.
-  const given = opts.world || !opts.map ? null : parseMap(typeof opts.map === "string" ? readFileSync(opts.map) : opts.map);
+  const given = opts.world || !opts.map ? null : parseMap(typeof opts.map === "string" ? fileBytes(opts.map) : opts.map);
   const content = withContent(core, given?.content?.defs ?? []);
   // The config files are the truth at every start (D88). No rule is read from the save.
   const rules = opts.config ?? new Rules();
