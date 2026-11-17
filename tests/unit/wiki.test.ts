@@ -8,6 +8,7 @@ import { inflateSync } from "node:zlib";
 import { CONTROL_GROUPS } from "../../client/core/ui/controls-guide.ts";
 import { findRows, mapTransform, type SearchRow } from "../../client/core/wiki/filter.ts";
 import { RATE_DEFAULTS, changed, rated, tamingLevels, tamingRows } from "../../client/core/wiki/rates.ts";
+import { takeRange, takeSamples } from "../../client/core/wiki/sound.ts";
 import { worldPath, type ServerSaid } from "../../client/core/wiki/world.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { LANDMARKS } from "../../content/landmarks/index.ts";
@@ -178,8 +179,8 @@ test("every page is whole HTML, names only what it has, and writes what the cont
       entries: entries.map((e) => (e.id === "core:raptor" ? { ...e, label: '<img src=x onerror="bad()">' } : e)),
       pictures: new Map([["core:raptor", { views: [card], card }]]),
       credits: new Map([["core:raptor", "Model and motion: from a CC0 1.0 pack."]]),
-      atlases: [],
-      sounds: [{ id: "core:raptor/sound/call", owner: "core:raptor", name: "Call", file: "core.snsd", at: 8, rate: 32000, takes: [[100, 20]], game: true }],
+      atlases: [{ id: "core:miami", slug: "miami", label: "Miami", metres: 8128, ground: card, card, resources: [], creatures: [], vehicles: [], regions: [], spawns: [], obelisks: [], landmarks: [{ of: "koru", name: "koru", x: 400, y: 500 }], districts: [], sources: [] }],
+      sounds: [{ id: "core:raptor/sound/call", owner: "core:raptor", name: "Call", file: "core.snsd", at: 8, rate: 32000, takes: [[16000, 20], [24000, 30]], game: true }],
       heard: new Map([["core:raptor", ["core:raptor/sound/call"]]]),
       music: [],
       commands: commands(),
@@ -197,10 +198,21 @@ test("every page is whole HTML, names only what it has, and writes what the cont
       writeFileSync(file, "");
     }
     expect(() => checkLinks(pages, dist)).not.toThrow();
+    // A landmark's home is its map: its dot, its row of the layers and its card under the map lead to its page, which leads back.
+    const miami = pages.get("maps/miami/")!;
+    expect(miami).toContain('<a href="/wiki/landmarks/koru/"><g class="landmark" transform="translate(400 500)"><circle r="5"/><text y="-9">Koru</text></g></a>');
+    expect(miami).toContain('<a href="/wiki/landmarks/koru/">Koru</a>');
+    expect(miami).toContain('<section><h2>Landmarks</h2><div class="cards"><a class="card" href="/wiki/landmarks/koru/">');
+    expect(miami).toContain("<small>Sail control · 3 doors · a boat</small>");
+    expect(pages.get("maps/")).toContain("<small>8.1 km across · Koru</small>");
+    expect(pages.get("landmarks/koru/")).toContain('<h2>Where it stands</h2><ul class="places"><li><a href="/wiki/maps/miami/?show=landmarks">Miami</a>');
     const raptor = pages.get("creatures/raptor/")!;
     expect(raptor).toContain("&lt;img src=x onerror=&quot;bad()&quot;&gt;");
     expect(raptor).not.toContain("<img src=x");
-    expect(raptor).toContain('data-file="/assets/core.snsd" data-at="8" data-rate="32000" data-takes="100:20"');
+    expect(raptor).toContain('data-file="/assets/core.snsd" data-at="8" data-rate="32000" data-takes="16000:20 24000:30"');
+    // A sound's takes are play buttons of one group, each saying what it plays and how long, filling over that time.
+    expect(raptor).toContain('<span class="takes" role="group" aria-label="Raptor call, 2 takes">');
+    expect(raptor).toContain('<button type="button" class="take" data-k="1" aria-pressed="false" aria-label="Play raptor call, take 2 of 2, 0.75 s" style="--d:0.750s"><b>2</b><small>0.75 s</small></button>');
     for (const html of pages.values()) expect(html).toStartWith("<!doctype html>");
     expect(pages.get("creatures/pteranodon/")).toContain('<span data-figure="hatch" data-v="');
     expect(pages.get("creatures/pteranodon/")).toContain("<table data-taming=");
@@ -214,6 +226,15 @@ test("every page is whole HTML, names only what it has, and writes what the cont
   } finally {
     rmSync(dist, { recursive: true, force: true });
   }
+});
+
+test("a press asks for a sound's takes alone, by range of the game's file, and gets each take's samples", async () => {
+  const row = { file: "/assets/core.snsd", at: "100", takes: "3:5 2:7" };
+  expect(takeRange(row)).toEqual({ from: 100, to: 111, sizes: [{ samples: 3, bytes: 5 }, { samples: 2, bytes: 7 }] });
+  const asked: string[] = [];
+  const get = async (url: string, init: { headers: Record<string, string> }) => (asked.push(`${url} ${init.headers.range}`), { status: 200, arrayBuffer: async () => new ArrayBuffer(0) });
+  await expect(takeSamples(row, get)).rejects.toThrow("the server sent 200 for a range of /assets/core.snsd");
+  expect(asked).toEqual(["/assets/core.snsd bytes=100-111"]);
 });
 
 test("search ranks a label that begins with the query first; the map stays over its view", () => {

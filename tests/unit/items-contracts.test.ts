@@ -10,7 +10,7 @@ import { MANIFEST_VERSION } from "../../shared/pack/manifest.ts";
 import * as P from "../../shared/net/protocol.ts";
 import { FLAG_BLUEPRINT, QUALITY_COST, QUALITY_CRAFT_XP, QUALITY_NAMES, QUALITY_RATING } from "../../shared/sim/items.ts";
 
-test("task E built quality and blueprints: the flag is the wire's bit, slots save as component 22 in record format 5, ARK's tier table, and loot is rolled", async () => {
+test("task E built quality and blueprints: the flag is the wire's bit, slots save as component 22 (record format 7), ARK's tier table, and loot is rolled", async () => {
   expect(FLAG_BLUEPRINT).toBe(P.SLOT_BLUEPRINT);
   const store = await Bun.file(new URL("../../server/persist/codec.ts", import.meta.url)).text();
   // The flyers' contracts raised the format to 6 for the flying bit (tests/unit/contracts.test.ts), the stations wave's to 7 for

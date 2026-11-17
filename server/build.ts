@@ -129,7 +129,7 @@ export class Build {
     this.decay.lone = (ref) => {
       this.support.forget();
       const node = this.support.node(ref);
-      return node !== null && node.root && node.links.length === 0;
+      return node !== null && node.root && (node.role === ROLE_FOUNDATION || node.role === ROLE_PILLAR) && node.links.length === 0;
     };
     // Any removal may leave what the piece held unsupported. The collapse already knows about the pieces it fells itself.
     structs.onRemove = (ref, cause) => {

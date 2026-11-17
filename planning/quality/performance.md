@@ -482,7 +482,7 @@ from 21 to 36 (`2026-11-15T07-47`); with 800 bodies, 17 to 24 ms (`08-23`).
 
 ## Sizes
 
-`bun run build` ends with the census (`tools/sizes.ts`); here on `b98944ce`, 2026-11-16.
+`bun run build` ends with the census (`tools/sizes.ts`); here on `46f0ca4b`, 2026-11-16.
 A build fails only on a row with a budget: what every player waits for before the first
 frame (D681), and waste the build can always avoid. The files streamed when wanted grow
 with the catalogue and are printed, not held; each asset is held to its own budget by
@@ -490,15 +490,15 @@ with the catalogue and are printed, not held; each asset is held to its own budg
 
 | Row | Size, Brotli unless said | Budget |
 | --- | --- | --- |
-| The page's script; the content; the manifest (raw) | 315 KB; 23 KB; 9.8 KB (65 KB) | |
-| The boot pack | 193 KB | |
-| Everything before the first frame | 655 KB | 1,024 KB |
-| The same on Miami, with the yacht's manifest and boot file (15 KB) | 670 KB | 1,024 KB |
+| The page's script; the content; the manifest (raw) | 316 KB; 23 KB; 9.8 KB (65 KB) | |
+| The boot pack | 174 KB | |
+| Everything before the first frame | 636 KB | 1,024 KB |
+| The same on Miami, with the yacht's manifest and boot file (15 KB) | 651 KB | 1,024 KB |
 | The page file; the mesh file; the clip file | 538 KB; 19.6 MB; 118 KB | |
 | Textures to 1,024, ASTC and BC; to 2,048 | 124.8, 229.5 MB; 337.8, 572.4 MB | |
 | The world's finishes to 1,024, ASTC and BC | 1,498, 3,039 KB | |
 | The RGBA texture file; textures with a 2,048 step | 335.8 MB; 139 | |
-| The sound file; its rate | 3,822 KB; 39.5 kbit/s | ; 42 kbit/s |
+| The sound file; its rate | 3,503 KB; 39.0 kbit/s | ; 42 kbit/s |
 | Music | 39.5 MB | |
 | Sound takes and ASTC texture steps stored twice; mesh parts stored twice | 0, 0; 394 | 0, 0; none |
 

@@ -139,7 +139,8 @@ export interface PageRows {
 }
 
 /**
- * A creature skeleton's clips, which come with its first level and not in the boot pack. Its part holds each clip's
+ * A creature skeleton's clips: a part of the clip file, asked for in the first frame a body of that skeleton is drawn. The
+ * boot pack holds the survivor's and any skeleton's of 4 KB or less (tools/pack/split.ts). Its part holds each clip's
  * rotations and then its root, as a pack stores them, one clip after another in the order listed.
  */
 export interface ManifestClips {

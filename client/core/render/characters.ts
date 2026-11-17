@@ -96,6 +96,11 @@ export interface VehicleSeatPose extends VehicleRenderPose {
   definition?: Seat;
 }
 
+/** A seat's pose for Characters.seatPose to fill, made once by whoever keeps it. */
+export function seatScratch(): VehicleSeatPose {
+  return { pitch: 0, roll: 0, steering: 0, wheelAngle: 0, x: 0, y: 0, z: 0, yaw: 0, driver: false, steer: 0 };
+}
+
 interface BodySet {
   /** Pack mesh per body slot, -1 where there is none. */
   slots: Int32Array;
@@ -416,11 +421,19 @@ export class Characters {
 
   vehicle(kind: number): boolean { return this.creatures[kind]?.vehicle != null; }
 
-  /** The pose of seat `slot` (1 for a vehicle's first seat) of a vehicle at `at`, for drawing who sits in it. */
-  seatPose(kind: number, slot: number, vehicle: VehicleRenderPose, at: ArrayLike<number>, yaw: number, aimYaw?: number): VehicleSeatPose | undefined {
+  /** Fills `out` with the pose of seat `slot` (1 for a vehicle's first seat) of a vehicle at `at`, for drawing who sits in it. */
+  seatPose(kind: number, slot: number, vehicle: VehicleRenderPose, at: ArrayLike<number>, yaw: number, aimYaw: number | undefined, out: VehicleSeatPose): VehicleSeatPose | undefined {
     const def = this.creatures[kind]?.vehicle?.def, seat = def?.seats[slot - 1];
     if (!def || !seat) return undefined;
-    return { ...vehicle, definition: seat, x: at[0]!, y: at[1]!, z: at[2]!, yaw, driver: seat.driver === true, steer: def.movement === "rotor" ? 0 : vehicle.steering / def.spec.maxSteer, ...(seat.pose ? { role: seat.pose } : {}), ...(seat.weapons === undefined ? {} : { weapons: seat.weapons }), ...(aimYaw === undefined ? {} : { aimYaw }) };
+    out.pitch = vehicle.pitch; out.roll = vehicle.roll; out.steering = vehicle.steering; out.wheelAngle = vehicle.wheelAngle;
+    out.qx = vehicle.qx; out.qy = vehicle.qy; out.qz = vehicle.qz; out.qw = vehicle.qw;
+    out.rotorRpm = vehicle.rotorRpm; out.rotorPhase = vehicle.rotorPhase; out.engineCondition = vehicle.engineCondition; out.rotorCondition = vehicle.rotorCondition;
+    out.engineRpm = vehicle.engineRpm; out.engineOn = vehicle.engineOn; out.hullCondition = vehicle.hullCondition; out.flooding = vehicle.flooding;
+    out.groundPitch = vehicle.groundPitch; out.groundRoll = vehicle.groundRoll; out.rideOffset = vehicle.rideOffset; out.grounded = vehicle.grounded; out.doors = vehicle.doors;
+    out.definition = seat; out.x = at[0]!; out.y = at[1]!; out.z = at[2]!; out.yaw = yaw; out.driver = seat.driver === true;
+    out.steer = def.movement === "rotor" ? 0 : vehicle.steering / def.spec.maxSteer;
+    out.role = seat.pose; out.weapons = seat.weapons; out.aimYaw = aimYaw;
+    return out;
   }
 
   /** Root on a seat, using the same body binding/proportions and pelvis solve as add(). Does not emit a draw. */

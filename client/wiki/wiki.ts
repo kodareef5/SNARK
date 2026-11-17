@@ -2,51 +2,55 @@
 // copies a console line, searches, and works the figures out again for the world the visitor came from.
 
 import { findRows, mapTransform, type SearchRow } from "../core/wiki/filter.ts";
+import { takeSamples } from "../core/wiki/sound.ts";
 import { worldPath, type ServerSaid } from "../core/wiki/world.ts";
 
 const all = <T extends Element>(selector: string, root: ParentNode = document): T[] => [...root.querySelectorAll<T>(selector)];
 
-// A sound's takes are fetched by range from the game's file and decoded as the game decodes them, once.
+// A sound's takes are fetched at the first press of one (client/core/wiki/sound.ts). One sound plays at a time: the button
+// pressed, `playing`, shows it sounding (aria-pressed) from when `source` starts until it ends or is stopped.
 let audio: AudioContext | null = null;
-let playing: AudioBufferSourceNode | null = null;
+let playing: HTMLElement | null = null;
+let source: AudioBufferSourceNode | null = null;
 const decoded = new Map<string, Promise<AudioBuffer[]>>();
 
-async function takes(row: HTMLElement): Promise<AudioBuffer[]> {
-  const { file, at, rate } = row.dataset;
-  const sizes = row.dataset.takes!.split(" ").map((t) => t.split(":").map(Number) as [number, number]);
-  const bytes = sizes.reduce((n, t) => n + t[1], 0);
-  const answer = await fetch(file!, { headers: { range: `bytes=${at}-${Number(at) + bytes - 1}` } });
-  if (answer.status !== 206) throw new Error(`the server sent ${answer.status} for a range of ${file}`);
-  const { decodeTakes } = await import("../../shared/pack/sound.ts");
-  const samples = decodeTakes(new Uint8Array(await answer.arrayBuffer()), sizes.map(([samples, bytes]) => ({ samples, bytes })));
-  if (!samples) throw new Error(`${file} at ${at} does not decode`);
-  return samples.map((s) => {
-    const b = new AudioBuffer({ length: s.length, numberOfChannels: 1, sampleRate: Number(rate) });
-    b.copyToChannel(s, 0);
-    return b;
-  });
+const takes = async (row: HTMLElement): Promise<AudioBuffer[]> => (await takeSamples(row.dataset, fetch)).map((s) => {
+  const b = new AudioBuffer({ length: s.length, numberOfChannels: 1, sampleRate: Number(row.dataset.rate) });
+  b.copyToChannel(s, 0);
+  return b;
+});
+
+/** Stops the take sounding, and the music but `keep`. */
+function hush(keep?: EventTarget | null): void {
+  for (const a of all<HTMLAudioElement>("audio")) if (a !== keep) a.pause();
+  playing?.setAttribute("aria-pressed", "false");
+  source?.stop();
+  [playing, source] = [null, null];
 }
 
 document.addEventListener("click", (event) => {
   const button = (event.target as Element).closest<HTMLElement>("[data-k]");
   const row = button?.closest<HTMLElement>("[data-takes]");
   if (button && row) {
+    const again = playing === button;
+    hush();
+    if (again) return;
     audio ??= new AudioContext();
     void audio.resume();
+    playing = button;
     const key = `${row.dataset.file}@${row.dataset.at}`;
     if (!decoded.has(key)) decoded.set(key, takes(row));
-    decoded.get(key)!.then(
-      (list) => {
-        playing?.stop();
-        playing = new AudioBufferSourceNode(audio!, { buffer: list[Number(button.dataset.k)]! });
-        playing.connect(audio!.destination);
-        playing.start();
-      },
-      () => {
-        decoded.delete(key);
-        button.classList.add("failed");
-      },
-    );
+    decoded.get(key)!.then((list) => {
+      if (playing !== button || source) return;
+      source = new AudioBufferSourceNode(audio!, { buffer: list[Number(button.dataset.k)]! });
+      source.connect(audio!.destination);
+      source.onended = (e) => source === e.target && hush();
+      source.start();
+      button.setAttribute("aria-pressed", "true");
+    }, () => {
+      decoded.delete(key);
+      button.classList.add("failed");
+    });
   }
   const copy = (event.target as Element).closest<HTMLButtonElement>("[data-copy]");
   if (copy) {
@@ -54,10 +58,7 @@ document.addEventListener("click", (event) => {
     navigator.clipboard.writeText(text).then(() => (copy.textContent = "Copied"), () => (copy.textContent = "Select it to copy"));
   }
 });
-document.addEventListener("play", (event) => {
-  for (const a of all<HTMLAudioElement>("audio")) if (a !== event.target) a.pause();
-  playing?.stop();
-}, true);
+document.addEventListener("play", (event) => hush(event.target), true);
 
 // The search page asks for the index once, as the first letter is typed or a query arrives in its address.
 for (const list of all<HTMLOListElement>("[data-search]")) {
@@ -131,7 +132,8 @@ for (const view of all<HTMLElement>("[data-atlas]")) {
     b.addEventListener("click", () => (b.dataset.zoom === "0" ? ((at = { zoom: 1, x: 0, y: 0 }), draw()) : zoom(b.dataset.zoom === "1" ? 1.5 : 1 / 1.5)));
   }
   view.addEventListener("pointerdown", (e) => {
-    if ((e.target as Element).closest("button")) return;
+    // A button or a landmark's link is pressed, not dragged.
+    if ((e.target as Element).closest("button, a")) return;
     drag = { id: e.pointerId, x: e.clientX, y: e.clientY, from: { ...at } };
     view.setPointerCapture(e.pointerId);
   });

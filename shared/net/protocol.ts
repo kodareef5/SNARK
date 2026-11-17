@@ -201,10 +201,10 @@ export const S_FAR = 13;
  */
 export const S_TRAVEL = 14;
 /**
- * Protocol 23. Where statics that travel when used stand (StructureDef.travel), every one in as many messages as they take after
+ * Protocol 23. Where statics that move when used stand (StructureDef.motion), every one in as many messages as they take after
  * a welcome, and each again as it is thrown (24): count u8, then per static ref u32, where it left from and goes to u16 (the top bit set when it goes to
  * its second state, the rest the progress it left from in 1/32,767), and the tick it left u32. Its kind and place are the
- * client's map's (shared/sim/travel.ts).
+ * client's map's (shared/sim/motion.ts).
  */
 export const S_MOTION = 15;
 
@@ -616,8 +616,8 @@ export class InputBuffer {
 
 /**
  * 380 bits: position and velocity exactly, then the rest of the predicted state. Protocol 13 added the aim's bloom and the
- * recoil's kick (a byte each, always 0 until W1 of planning/reference/weapons-plan.md steps them), and the flyers'
- * contracts (protocol 16) the flight counters.
+ * recoil's kick (a byte each, stepped by stepAim in shared/sim/aim.ts), and the flyers' contracts (protocol 16) the flight
+ * counters.
  */
 export function writeBody(w: BitWriter, b: Body): void {
   w.f32(b.x);

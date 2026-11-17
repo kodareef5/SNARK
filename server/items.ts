@@ -538,26 +538,11 @@ export class Items {
     return JSON.stringify(out);
   }
 
-  /** A null `saved` is a save with no ledger. The ledger then starts at what the world holds now. */
-  restore(saved: string | null): void {
+  restore(saved: string): void {
     this.minted.fill(0);
     this.burned.fill(0);
     this.received.fill(0);
     this.sent.fill(0);
-    if (saved === null) {
-      for (const rec of this.records.byPid.values()) {
-        const inv = rec.inv;
-        if (!inv) continue;
-        for (let s = 0; s < inv.cap; s++) {
-          if (inv.item[s] === 0) continue;
-          this.minted[inv.item[s]!] = this.minted[inv.item[s]!]! + inv.count[s]!;
-          if (inv.loaded[s]! > 0) this.minted[inv.ammo[s]!] = this.minted[inv.ammo[s]!]! + inv.loaded[s]!;
-          if (inv.attach[s] !== 0) this.minted[inv.attach[s]!] = this.minted[inv.attach[s]!]! + 1;
-        }
-      }
-      this.dirty = true;
-      return;
-    }
     for (const [id, pair] of Object.entries(JSON.parse(saved) as Record<string, number[]>)) {
       // What was counted under an id that has since been renamed is counted under what it is now. Two ids may have become one.
       const k = this.reg.index.get(id) ?? this.reg.redirects.get(id)?.[0];
