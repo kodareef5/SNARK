@@ -6,7 +6,8 @@
 // far, so a chunk changing hands remakes nothing. Nearest the near rows a tile is every box, the
 // near drawing in one mesh, so the hand-over shows nothing; farther off it takes the lattice (boxes merged, the least
 // left out), then a building's mass in cells. The lattice fades out over the last share of its reach as the mass fades in,
-// pixel by pixel in the far fade's pattern; the other changes of level are a tile at a time.
+// and the mass in finer cells as that in coarser ones does, pixel by pixel in the far fade's pattern; the other changes
+// of level are a tile at a time.
 //
 // Levels are made where the scene's maker makes them (citymake.ts): in the browser on a worker, sent only what a level
 // needs, and here a frame's budget at a time. What is made goes on the card and is not kept in the page. A tile holds
@@ -75,7 +76,8 @@ export interface CitySource {
  * How a level of the far city is made, its form, and to how many metres from the camera to a tile's nearest point it is
  * drawn: every box (`gap` below 0 and `least` 0); boxes merged across gaps up to `gap` metres with those no longer than
  * `least` left out (shared/world/city.ts mergedPart); or with `cell` above 0, cells that wide and `tall` tall (cellPart).
- * The first level of cells after one of boxes fades in over the last share of that level's reach as it fades out.
+ * A level of cells after one of boxes, or of cells of another size, fades in over the last share of that level's reach
+ * as it fades out.
  */
 export interface CityLevel extends LevelForm {
   readonly to: number;
@@ -444,9 +446,10 @@ export class FarCity {
         const f = l >= 0 ? this.formOf[l]! : other;
         const h = tile.held[f];
         if (!h || h.slot < 0) continue;
-        // The lattice fades out as the mass fades in where both are drawn, over the last share of the lattice's end; else
-        // each is gone at the reach. Across that fade a chunk wholly past the end draws no lattice and one wholly short of
-        // the fade no mass, and a run of chunks none of which is in the fade draws as if there were none.
+        // The lattice fades out as the mass fades in where both are drawn, over the last share of the lattice's end, and
+        // finer cells as coarser ones; else each is gone at the reach. Across a fade a chunk wholly past the end draws
+        // none of the one and one wholly short of the fade none of the other, and a run of chunks none of which is in the
+        // fade draws as if there were none.
         const out = l >= 0 && this.blends(l + 1) && (drawn & (1 << (l + 1))) !== 0;
         const into = l >= 0 && this.blends(l) && (drawn & (1 << (l - 1))) !== 0;
         const end = out ? levels[l]!.to : into ? levels[l - 1]!.to : 0;
@@ -486,10 +489,10 @@ export class FarCity {
     }
   }
 
-  /** Whether level `l` is the first of cells after one of boxes, which fades in as that one fades out. */
+  /** Whether level `l` fades in as the one before it fades out: cells after boxes, or after cells of another size. */
   private blends(l: number): boolean {
     const levels = this.levels;
-    return l > 0 && l < levels.length && levels[l]!.cell > 0 && levels[l - 1]!.cell === 0;
+    return l > 0 && l < levels.length && levels[l]!.cell > 0 && levels[l]!.cell !== levels[l - 1]!.cell;
   }
 
   /**
