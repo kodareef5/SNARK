@@ -61,7 +61,7 @@ import { CHUNK_SIZE } from "../shared/coords.ts";
 import { mapHeightfield, parseMap, writeMap, type MapData } from "../shared/world/mapfile.ts";
 import { groundSize } from "../client/core/render/terrain.ts";
 import { readLayers, writeLayers } from "./map/layers.ts";
-import { writeMapFile } from "./map/pack.ts";
+import { partsTable, writeMapFile } from "./map/pack.ts";
 
 const registry = () => compileContent(CORE_CONTENT).registry!;
 const WEBGL2_TEXTURE = 2048;
@@ -119,8 +119,7 @@ export function describe(file: Uint8Array): string[] {
 export async function save(path: string, map: MapData | Uint8Array, release = false): Promise<void> {
   const file = map instanceof Uint8Array ? map : writeMap(map);
   const packed = await writeMapFile(path, file, release);
-  for (const line of describe(file)) console.log(line);
-  console.log(`on the wire: ${packed.ground} bytes before a client draws and ${packed.br.length} in all (Brotli), ${packed.gz.length} gzip`);
+  for (const line of [...describe(file), ...partsTable(packed)]) console.log(line);
 }
 
 /** `args` are the words after the command's name, less --release. Another tool adds its command here. */

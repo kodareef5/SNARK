@@ -13,7 +13,7 @@ import type { ModuleDef } from "./api/module.ts";
 import { restoreBackup } from "./persist/backup.ts";
 import { stopOnSignals } from "./signals.ts";
 import type { VoicePeer } from "./voice.ts";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import { parsePack } from "../shared/pack/pack.ts";
@@ -23,7 +23,7 @@ import { serveFile } from "./files.ts";
 import { clientAddress } from "./front.ts";
 import { boardAsked, boardOwners, soundBoard, type BoardGate } from "./sound-board.ts";
 import { CUES } from "../shared/sound/cues.ts";
-import { mapCopy } from "../shared/world/mapfile.ts";
+import { partsFolder, partsOf, readHead } from "../shared/world/mapfile.ts";
 import { mapLabel, type Destination } from "./cluster/cluster.ts";
 import { comingSoonPage, htmlResponse, linkOf, pathOf, placeOf, startPage, worldAddress, type SiteLinks, type SiteWorld } from "./site.ts";
 
@@ -97,35 +97,56 @@ export function liveFileOf(folder: string): (() => string | null) | undefined {
   return () => (existsSync(path) ? readFileSync(path, "utf8") : null);
 }
 
-/**
- * Answers the two requests a client makes for the map. `/map.json` names the map and its file. The file's name carries the
- * start of its SHA-256, so whoever fetched it keeps it for good, and it goes out as the copies its build made for the wire
- * (tools/map/pack.ts). A map with none, as a test's or the proving ground, is small enough to compress here. Null for any
- * other path. `link` is the header that has a page ask for the file as it is read, before it has read map.json. It names the
- * file relatively, as the page's own fetch does, so it is the same file under whatever path the server is reached at. A file
- * given by its path is read for its name and served from disk, so the server does not hold it.
- */
-export function mapRoutes(file: Uint8Array<ArrayBuffer> | string, id: string, hash: number, copies: { br?: Blob; gz?: Blob } = {}): ((path: string, accepts: string) => Response | null) & { readonly link: string } {
-  const bytes = typeof file === "string" ? readFileSync(file) : file;
-  const name = `map.${new Bun.CryptoHasher("sha256").update(bytes).digest("hex").slice(0, 16)}.snmap`;
-  const json = JSON.stringify({ id, hash, file: name });
-  const gz = copies.gz ?? Bun.gzipSync(bytes);
-  const raw = typeof file === "string" ? Bun.file(file) : file;
-  return Object.assign((path: string, accepts: string): Response | null => {
-    if (path === "/map.json") return new Response(json, { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
-    if (path !== `/${name}`) return null;
-    const headers = { "content-type": "application/octet-stream", "cache-control": "public, max-age=31536000, immutable", vary: "accept-encoding" };
-    if (copies.br && accepts.includes("br")) return new Response(copies.br, { headers: { ...headers, "content-encoding": "br" } });
-    return accepts.includes("gzip") ? new Response(gz, { headers: { ...headers, "content-encoding": "gzip" } }) : new Response(raw, { headers });
-  }, { link: `<${name}>; rel=preload; as=fetch; crossorigin` });
+/** The head of the map file at `path`, read alone. */
+function headAt(path: string): Uint8Array {
+  const fd = openSync(path, "r");
+  try {
+    const start = new Uint8Array(16);
+    readSync(fd, start, 0, 16, 0);
+    const head = new Uint8Array(Math.max(16, new DataView(start.buffer).getUint32(12, true)));
+    readSync(fd, head, 0, head.length, 0);
+    return head;
+  } finally {
+    closeSync(fd);
+  }
 }
 
-/** The copies for the wire the build wrote beside the map file at `path`, if it did. */
-export function mapCopies(path: string, hash: number): { br?: Blob; gz?: Blob } {
-  const [br, gz] = [mapCopy(path, hash, "br"), mapCopy(path, hash, "gz")];
-  if (existsSync(br) && existsSync(gz)) return { br: Bun.file(br), gz: Bun.file(gz) };
-  console.log(`map: ${path} has no copies for the wire beside it, so it is compressed now: bun tools/map.ts pack ${path} writes them`);
-  return {};
+/**
+ * Answers a client's requests for the map. `/map.json` names the map and its head, and `/map/<name>` is the head or a part
+ * by the name the head gives it (shared/world/mapfile.ts); any other name there is not found, and any other path is null.
+ * A name carries its bytes' hash, so whoever fetched it keeps it for good. A map given by its path goes out from the folder
+ * its build wrote beside it (tools/map/pack.ts), Brotli to a browser that takes it and gzip to one that does not (on plain
+ * http), and the server holds none of it. A map made in code, or given with no such folder, is cut into its parts here and
+ * each gzipped. `link` is the header that has a page ask for the head as it is read, before it has read map.json, named
+ * relatively as the page's own fetch does.
+ */
+export function mapRoutes(file: Uint8Array<ArrayBuffer> | string, id: string): ((path: string, req: Request) => Response | Promise<Response> | null) & { readonly link: string } {
+  const head = readHead(typeof file === "string" ? headAt(file) : file, false);
+  const json = JSON.stringify({ id, hash: head.hash, head: `map/${head.name}` });
+  const folder = typeof file === "string" ? partsFolder(file) : "";
+  const wanted = [{ name: head.name, length: head.bytes }, ...head.parts];
+  const onDisk = folder !== "" && wanted.every((p) => existsSync(join(folder, `${p.name}.br`)) && existsSync(join(folder, `${p.name}.gz`)) && existsSync(join(folder, p.name)) && statSync(join(folder, p.name)).size === p.length);
+  if (typeof file === "string" && !onDisk) console.log(`map: ${file} has no files of its parts beside it, so they are cut and gzipped now: bun tools/map.ts pack ${file} writes them`);
+  // Cut here: a part's own bytes, from the file on disk where it was given by its path, and its gzip.
+  const held = new Map<string, { raw: Blob | Uint8Array; gz: Uint8Array }>();
+  if (!onDisk) {
+    const bytes = typeof file === "string" ? new Uint8Array(readFileSync(file)) : file;
+    for (const p of partsOf(bytes)) {
+      const at = p.part?.at ?? 0;
+      held.set(p.name, { raw: typeof file === "string" ? Bun.file(file).slice(at, at + p.bytes.length) : p.bytes, gz: Bun.gzipSync(p.bytes) });
+    }
+  }
+  const names = new Set(wanted.map((p) => p.name));
+  return Object.assign((path: string, req: Request): Response | Promise<Response> | null => {
+    if (path === "/map.json") return new Response(json, { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
+    if (!path.startsWith("/map/")) return null;
+    const name = path.slice(5);
+    if (!names.has(name)) return new Response("not found", { status: 404 });
+    if (onDisk) return serveFile(folder, req, `/${name}`);
+    const part = held.get(name)!;
+    const headers = { "content-type": "application/octet-stream", "cache-control": "public, max-age=31536000, immutable", vary: "accept-encoding" };
+    return (req.headers.get("accept-encoding") ?? "").includes("gzip") ? new Response(part.gz, { headers: { ...headers, "content-encoding": "gzip" } }) : new Response(part.raw, { headers });
+  }, { link: `<map/${head.name}>; rel=preload; as=fetch; crossorigin` });
 }
 
 /**
@@ -201,7 +222,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   for (const m of host.lists.unclear) console.log(`settings: ${m.setting} names ${m.name}, which could be ${m.could.join(" or ")}, so write the one meant in full`);
   for (const line of host.passed) console.log(`settings: passed over: ${line}`);
   if (!opts.probeScene && host.spawner === null && host.world.zones.every((z) => z.spawns === undefined)) console.log(`map: neither the content nor the map file gives ${host.world.mapId} a spawn region, so no wild creature lives on it`);
-  const mapRoute = mapRoutes(opts.map ?? host.mapFile!, host.world.mapId, host.world.mapHash, opts.map ? mapCopies(opts.map, host.world.mapHash) : {});
+  const mapRoute = mapRoutes(opts.map ?? host.mapFile!, host.world.mapId);
   // The shared families of sounds are the owners the catalogue's fallbacks name.
   const families = [...new Set(CUES.flatMap((c) => c.falls.map((f) => f.slice(0, f.indexOf("/")))).filter((o) => o !== "{owner}"))];
   const board: BoardGate = { dev: opts.dev ?? false, password: host.adminPassword, guesses: host.game.cheatGuesses, tick: () => host.world.tick };
@@ -333,7 +354,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       }
       const sounds = soundBoard(req, who, local ? board : { ...board, dev: false }, join(clientDir, "sounds.html"), () => boardOwners(registry, families), undefined, path);
       if (sounds) return sounds;
-      const map = mapRoute(path, req.headers.get("accept-encoding") ?? "");
+      const map = mapRoute(path, req);
       if (map) return map;
       const file = await serveFile(clientDir, req, path);
       // A device probe measures the link quiet before the game's files come, as index.html leaves its own preloads.

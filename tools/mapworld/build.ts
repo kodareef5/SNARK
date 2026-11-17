@@ -14,7 +14,7 @@ import { MapStatics, mapHeightfield, mapNodes, parseMap, writeMap } from "../../
 import { obeliskStatics } from "../../shared/world/obelisks.ts";
 import { describe } from "../map.ts";
 import { readLayers, waterLayer } from "../map/layers.ts";
-import { writeMapFile } from "../map/pack.ts";
+import { partsTable, wireBytes, writeMapFile } from "../map/pack.ts";
 import { lakeSquares } from "./lakes.ts";
 import { writeGrey } from "../map/png.ts";
 import { Base } from "./base.ts";
@@ -182,8 +182,8 @@ export async function buildMap(name: string, release = false): Promise<{ file: s
   const file = join(ROOT, "var/maps", `${name}.snmap`);
   const built = (performance.now() - t0) / 1000;
   const packed = await writeMapFile(file, bytes, release);
-  lap(`map file ${file} and its copies for the wire`);
-  for (const line of describe(bytes)) console.log(`        ${line}`);
+  lap(`map file ${file} and its parts' files with their copies for the wire`);
+  for (const line of [...describe(bytes), ...partsTable(packed)]) console.log(`        ${line}`);
 
   // The numbers: nodes by kind, how much land is walkable, the deepest water and the tallest heap.
   const parsed = parseMap(bytes);
@@ -248,8 +248,8 @@ export async function buildMap(name: string, release = false): Promise<{ file: s
   const stats = {
     id: world.id,
     bytes: bytes.length,
-    groundBrotli: packed.ground,
-    brotli: packed.br.length,
+    firstFrameBrotli: packed.first.br,
+    brotli: wireBytes(packed, "br"),
     release,
     buildSeconds: Number(built.toFixed(1)),
     totalSeconds: Number(((performance.now() - t0) / 1000).toFixed(2)),
