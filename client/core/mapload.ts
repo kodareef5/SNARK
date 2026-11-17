@@ -1,14 +1,17 @@
 // A map as the page takes it in parts (shared/world/mapfile.ts). Before anything is drawn: its head, its landmarks'
 // definitions, which the welcome's registry holds, and every overview, whose ground stands in for each sector's until it
 // comes (shared/world/heightfield.ts). Then the ground of the sectors within reach of the body, which the first frame waits
-// for and which come alone; then the rest of the ground nearest first, by where the body is and where it is heading, a few
-// at once and ordered again at each ask, so a jump goes first to where it lands; and last the statics, all of them.
+// for and which come alone; then the rest of the
+// ground nearest first, by where the body is and where it is heading, a few at once and ordered again at each ask, so a
+// jump goes first to where it lands; and last the statics, all of them, handed over once every part has come. A part that
+// fails is asked for again after a wait that grows to a cap, for as long as the page lives, and what has come is kept. One
+// that comes damaged or as another's is refused by name and asked for again, until the DAMAGED_MOST-th time breaks the map.
 
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
-import { OVERVIEW_STEP, blankLayers, joinWater, listedRows, readPart, setGround, setNodes, squareOf, type GroundPiece, type MapContent, type MapHead, type MapPart, type MapPiece, type NodeLayer } from "../../shared/world/mapfile.ts";
-import { fetchBytes, fetchHead, type FetchedStatics, type Get } from "./fetched.ts";
+import { OVERVIEW_STEP, blankLayers, joinWater, listedRows, partHash, readHead, readPart, setGround, setNodes, squareOf, type GroundPiece, type MapContent, type MapHead, type MapPart, type MapPiece, type MapStatics, type NodeLayer } from "../../shared/world/mapfile.ts";
+import { fetchBytes, readStatics, within, type Get } from "./fetched.ts";
 import { PREDICTED_REACH } from "./session.ts";
 
 /**
@@ -18,6 +21,16 @@ import { PREDICTED_REACH } from "./session.ts";
 export const PARTS_AT_ONCE = 6;
 /** Seconds of the body's way ahead of it whose ground is asked for as if the body were there. */
 export const LEAD = 2;
+/** Milliseconds before a part that failed is asked for again: RETRY_FIRST, doubled at each failure in a row, to RETRY_MOST. */
+export const RETRY_FIRST = 500;
+export const RETRY_MOST = 8000;
+/** Times a part may come damaged or as another's before the map is taken as broken. */
+export const DAMAGED_MOST = 3;
+/** Failures in a row of one part, after the first frame, at which the player is told; and again each time they double. */
+export const TELL_AFTER = 3;
+
+/** The wait after a part's `fails`-th failure in a row, in milliseconds. */
+export const retryWait = (fails: number): number => Math.min(RETRY_MOST, RETRY_FIRST * 2 ** Math.min(16, fails - 1));
 
 /** Where a body is and how fast it goes, in metres and metres a second. */
 export interface Place {
@@ -25,6 +38,15 @@ export interface Place {
   readonly z: number;
   readonly vx: number;
   readonly vz: number;
+}
+
+/**
+ * Whether the first frame waits for part `p` wherever the body is: the landmarks' definitions, every overview, and on a map
+ * with a listed node layer every sector's ground, since the head does not say that layer's slots a chunk and a node source
+ * counts them as it is made.
+ */
+function everywhere(head: MapHead, p: MapPart): boolean {
+  return p.kind === "land" || p.kind === "overview" || (p.kind === "ground" && head.layers.some((rule) => rule.type === 1));
 }
 
 /**
@@ -74,84 +96,164 @@ export class StagedMap {
   }
 }
 
-/** Metres from (x, z) to the map's part `p`'s square. */
-function offOf(head: MapHead, p: MapPart, x: number, z: number): number {
-  const sq = squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
-  return Math.hypot(Math.max(sq.cx0 * CHUNK_SIZE - x, x - sq.cx1 * CHUNK_SIZE, 0), Math.max(sq.cz0 * CHUNK_SIZE - z, z - sq.cz1 * CHUNK_SIZE, 0));
+/** What the page tells the player of its map as it comes, and how it waits. */
+export interface LoaderOptions {
+  /**
+   * Told a line when a part fails before the first frame, keeps failing after it, or comes damaged; and "" once the first
+   * frame waits for nothing that failed.
+   */
+  readonly say?: (line: string) => void;
+  /** Resolves after `ms` milliseconds: the wait before a part that failed is asked for again. */
+  readonly wait: (ms: number) => Promise<void>;
+  /** A pause between the steps the statics are read in, so frames go on (fetched.ts nextTask). */
+  readonly pause?: () => Promise<void>;
+}
+
+/** An error's message. */
+const why = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+/** Asks for a map's files, and keeps what has failed of each: the wait before it is asked for again, and what the player is told. */
+class Asker {
+  say: (line: string) => void;
+  /** Past the first frame: a part that fails is told of only once it keeps failing, and when it comes after that. */
+  late = false;
+  private readonly get: Get;
+  private readonly fails = new Map<string, { net: number; damaged: number; told: boolean }>();
+
+  constructor(get: Get, say: (line: string) => void) {
+    this.get = get;
+    this.say = say;
+  }
+
+  /**
+   * `url`, the file `name`, asked for once and read by `read`: what that gives, or the milliseconds to wait before asking
+   * again. Throws once it has come damaged DAMAGED_MOST times.
+   */
+  async ask<T>(name: string, url: string, read: (bytes: Uint8Array) => T): Promise<{ value: T } | { wait: number }> {
+    const f = this.fails.get(name) ?? { net: 0, damaged: 0, told: false };
+    let bytes: Uint8Array;
+    try {
+      bytes = new Uint8Array(await fetchBytes(this.get, url));
+    } catch (e) {
+      return { wait: this.failed(name, f, why(e), false) };
+    }
+    let value: T;
+    try {
+      value = read(bytes);
+    } catch (e) {
+      return { wait: this.failed(name, f, why(e), true) };
+    }
+    if (f.told) this.say(`the map's ${name} came, at ask ${f.net + f.damaged + 1}`);
+    this.fails.delete(name);
+    return { value };
+  }
+
+  /**
+   * Keeps that `name` failed, `line` saying how, and tells the player what fits: before the first frame every failure,
+   * after it a part damaged, or one that keeps failing at TELL_AFTER failures in a row and each doubling of that.
+   */
+  private failed(name: string, f: { net: number; damaged: number; told: boolean }, line: string, damaged: boolean): number {
+    this.fails.set(name, f);
+    if (damaged && ++f.damaged >= DAMAGED_MOST) throw new Error(`${line}, at each of ${DAMAGED_MOST} asks: the map is broken`);
+    if (!damaged) f.net++;
+    const n = f.net + f.damaged, wait = retryWait(n), times = n / TELL_AFTER;
+    const again = `asking again in ${wait / 1000} s`;
+    if (!this.late) this.say(`loading the map: ${line}; ${again}`);
+    else if (damaged) this.say(`${line}; ${again}`);
+    else if (Number.isInteger(times) && (times & (times - 1)) === 0) this.say(`the map is coming slowly: ${line}, ${n} times in a row; ${again}`);
+    else return wait;
+    f.told ||= this.late;
+    return wait;
+  }
 }
 
 /** The page's map as its parts come, each checked against the hash its head names. */
 export class MapLoader {
   readonly staged: StagedMap;
-  /** Every statics part, in its head's order, once each has come and so has every part of the ground. */
-  readonly statics: Promise<FetchedStatics>;
-  private readonly get: Get;
+  private readonly asker: Asker;
+  private readonly wait: (ms: number) => Promise<void>;
+  private readonly pause: () => Promise<void>;
   private readonly at: (p: MapPart) => string;
-  /** The ground parts not yet asked for, and the statics'. */
+  /** The ground parts not yet asked for, or failed and to be asked for again; and the statics', in the head's order. */
   private readonly grounds: MapPart[];
   private readonly rest: MapPart[];
+  /** The statics' bytes as each has come, until they are handed over. */
+  private readonly kept = new Map<MapPart, Uint8Array>();
   private where: () => Place | null = () => null;
-  private done!: (parts: FetchedStatics) => void;
-  private failed!: (why: unknown) => void;
 
-  private constructor(get: Get, at: (p: MapPart) => string, staged: StagedMap) {
-    this.get = get;
+  private constructor(asker: Asker, opts: LoaderOptions, at: (p: MapPart) => string, staged: StagedMap) {
+    this.asker = asker;
+    this.wait = opts.wait;
+    this.pause = opts.pause ?? (() => Promise.resolve());
     this.at = at;
     this.staged = staged;
-    this.grounds = staged.head.parts.filter((p) => p.kind === "ground");
-    this.rest = staged.head.parts.filter((p) => p.kind === "statics");
-    this.statics = new Promise((done, failed) => ((this.done = done), (this.failed = failed)));
-    // Read by readStatics, and failing there; a page that never asks for them leaves it.
-    this.statics.catch(() => {});
+    const head = staged.head;
+    this.grounds = head.parts.filter((p) => p.kind === "ground" && !everywhere(head, p));
+    this.rest = head.parts.filter((p) => p.kind === "statics");
   }
 
   /**
-   * The map whose head is at `url`, once its head, its landmarks' definitions and its overviews have come, six at once.
-   * A listed node layer's slots a chunk are the most rows a chunk of it has, which the head does not say, and a node
-   * source counts its slots as it is made: a map with one comes with all its ground here, before any source is made.
+   * The map whose head is at `url`, once its head and the parts its first frame waits for wherever the body is have come,
+   * six at once: its landmarks' definitions and its overviews, and on a map with a listed node layer all its ground.
    */
-  static async start(get: Get, url: string): Promise<MapLoader> {
-    const { head, at } = await fetchHead(get, url);
-    const loader = new MapLoader(get, at, new StagedMap(head));
-    const listed = head.layers.some((rule) => rule.type === 1);
-    const first = head.parts.filter((p) => p.kind === "land" || p.kind === "overview" || (listed && p.kind === "ground"));
-    if (listed) loader.grounds.length = 0;
+  static async start(get: Get, url: string, opts: LoaderOptions): Promise<MapLoader> {
+    const asker = new Asker(get, opts.say ?? (() => {}));
+    const wait = opts.wait;
+    const base = url.slice(0, url.lastIndexOf("/") + 1);
+    let got = await asker.ask(url.slice(base.length), url, (bytes) => within(url, () => readHead(bytes)));
+    while ("wait" in got) {
+      await wait(got.wait);
+      got = await asker.ask(url.slice(base.length), url, (bytes) => within(url, () => readHead(bytes)));
+    }
+    const head = got.value;
+    const loader = new MapLoader(asker, opts, (p) => base + p.name, new StagedMap(head));
+    const first = head.parts.filter((p) => everywhere(head, p));
     let next = 0;
     const lane = async (): Promise<void> => {
-      for (let k = next++; k < first.length; k = next++) loader.staged.take(await loader.fetched(first[k]!));
+      for (let k = next++; k < first.length; k = next++) await loader.must(first[k]!);
     };
     await Promise.all(Array.from({ length: Math.min(PARTS_AT_ONCE, first.length) }, lane));
     loader.staged.settle();
+    asker.say("");
     return loader;
   }
 
   /**
-   * From now on the rest of the map comes, the ground nearest first to where `where` has the body, else to the map's
-   * first spawn point. Resolves once the sectors within `reach` of where it has the body now are held, which come alone.
+   * From now on the rest of the map comes, the ground nearest first to where `where` has the body, else to the map's first
+   * spawn point. Resolves once the ground the first frame waits for where it has the body now has come, alone. From then
+   * on `then.say` is told what the player is, and once every part has come `then.arrived` is handed the map's statics,
+   * read a step at a time.
    */
-  async follow(where: () => Place | null, reach = PREDICTED_REACH): Promise<void> {
+  async follow(where: () => Place | null, then: { readonly say?: (line: string) => void; readonly arrived?: (statics: MapStatics) => void } = {}): Promise<void> {
     this.where = where;
-    const { x, z } = this.place();
+    const head = this.staged.head;
+    const { x, z } = this.place(), r = PREDICTED_REACH;
     const near = this.grounds.filter((p) => {
-      const sq = squareOf(this.staged.head.dims, SECTOR_CHUNKS, p.col, p.row)!;
-      return sq.cx0 * CHUNK_SIZE <= x + reach && sq.cx1 * CHUNK_SIZE >= x - reach && sq.cz0 * CHUNK_SIZE <= z + reach && sq.cz1 * CHUNK_SIZE >= z - reach;
+      const sq = squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
+      return sq.cx0 * CHUNK_SIZE <= x + r && sq.cx1 * CHUNK_SIZE >= x - r && sq.cz0 * CHUNK_SIZE <= z + r && sq.cz1 * CHUNK_SIZE >= z - r;
     });
     for (const p of near) this.grounds.splice(this.grounds.indexOf(p), 1);
-    try {
-      await Promise.all(near.map(async (p) => this.staged.take(await this.fetched(p))));
-    } catch (why) {
-      this.failed(why);
-      throw why;
-    }
-    const kept: { part: MapPart; bytes: Uint8Array }[] = [];
+    await Promise.all(near.map((p) => this.must(p)));
+    this.asker.say("");
+    this.asker.late = true;
+    if (then.say) this.asker.say = then.say;
     const lane = async (): Promise<void> => {
       for (let p = this.next(); p; p = this.next()) {
-        if (p.kind === "ground") this.staged.take(await this.fetched(p));
-        else kept.push({ part: p, bytes: await this.bytes(p) });
+        const got = await this.ask(p);
+        if (got === 0) continue;
+        await this.wait(got);
+        const k = this.rest.findIndex((q) => q.at > p.at);
+        if (p.kind === "ground") this.grounds.push(p);
+        else this.rest.splice(k < 0 ? this.rest.length : k, 0, p);
       }
     };
-    const head = this.staged.head;
-    void Promise.all(Array.from({ length: PARTS_AT_ONCE }, lane)).then(() => this.done({ head, parts: head.parts.filter((p) => p.kind === "statics").map((p) => kept.find((k) => k.part === p)!) }), this.failed);
+    void Promise.all(Array.from({ length: PARTS_AT_ONCE }, lane))
+      .then(() => {
+        const parts = head.parts.filter((p) => this.kept.has(p)).map((p) => ({ part: p, bytes: this.kept.get(p)! }));
+        this.kept.clear();
+        return readStatics({ head, parts }, this.pause);
+      })
+      .then((statics) => then.arrived?.(statics), (e: unknown) => this.asker.say(why(e)));
   }
 
   /** Where the body is, or the map's first spawn point standing still. */
@@ -175,12 +277,31 @@ export class MapLoader {
     return this.grounds.splice(best, 1)[0]!;
   }
 
-  private async bytes(p: MapPart): Promise<Uint8Array> {
-    return new Uint8Array(await fetchBytes(this.get, this.at(p)));
+  /** Part `p` asked for until it comes, and taken in. */
+  private async must(p: MapPart): Promise<void> {
+    for (let got = await this.ask(p); got !== 0; got = await this.ask(p)) await this.wait(got);
   }
 
-  /** Part `p` fetched and read, checked against its hash. */
-  private async fetched(p: MapPart): Promise<MapPiece> {
-    return readPart(this.staged.head, p, await this.bytes(p));
+  /**
+   * Part `p` asked for once and checked against its hash: a sector's statics kept, any other read and taken in. Gives 0, or
+   * the milliseconds to wait before it is asked for again.
+   */
+  private async ask(p: MapPart): Promise<number> {
+    const head = this.staged.head;
+    const got = await this.asker.ask(p.name, this.at(p), (bytes) => {
+      if (p.kind !== "statics") return readPart(head, p, bytes);
+      if (bytes.length !== p.length || partHash(bytes) !== p.hash) throw new Error(`map: its part ${p.name} is damaged or another's: its bytes are not those its head names`);
+      return bytes;
+    });
+    if ("wait" in got) return got.wait;
+    if (got.value instanceof Uint8Array) this.kept.set(p, got.value);
+    else this.staged.take(got.value);
+    return 0;
   }
+}
+
+/** Metres from (x, z) to the map's part `p`'s square. */
+function offOf(head: MapHead, p: MapPart, x: number, z: number): number {
+  const sq = squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
+  return Math.hypot(Math.max(sq.cx0 * CHUNK_SIZE - x, x - sq.cx1 * CHUNK_SIZE, 0), Math.max(sq.cz0 * CHUNK_SIZE - z, z - sq.cz1 * CHUNK_SIZE, 0));
 }
