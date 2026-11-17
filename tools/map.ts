@@ -4,7 +4,10 @@
 //   bun tools/map.ts unpack <file.snmap> <folder>   the folder a map is built from
 //   bun tools/map.ts proving <out.snmap>            the proving ground, as the server runs it with no --map
 //   bun tools/map.ts info <file.snmap>              what a file holds
-//   bun tools/map.ts pack <file.snmap>              its copies for the wire (tools/map/pack.ts), which a build writes too
+//   bun tools/map.ts pack <file.snmap>              its head's and parts' files and their copies for the wire beside it
+//                                                   (tools/map/pack.ts), which a build writes too
+//
+// build, proving and pack take --release for the tightest copies, as a map that ships has.
 //
 // A folder of layers. A chunk is 64 m and the ground has a sample every 2 m, so a map of 8 chunks a side is 257 samples
 // a side. Pictures are north up, as the map screen shows them: the first pixel is the north-west corner, which is the
@@ -59,7 +62,7 @@ import { CHUNK_SIZE } from "../shared/coords.ts";
 import { mapHeightfield, parseMap, writeMap, type MapData } from "../shared/world/mapfile.ts";
 import { groundSize } from "../client/core/render/terrain.ts";
 import { readLayers, writeLayers } from "./map/layers.ts";
-import { writeMapFile } from "./map/pack.ts";
+import { partsTable, writeMapFile } from "./map/pack.ts";
 
 const registry = () => compileContent(CORE_CONTENT).registry!;
 const WEBGL2_TEXTURE = 2048;
@@ -113,32 +116,32 @@ export function describe(file: Uint8Array): string[] {
   return lines;
 }
 
-/** Writes the map and its copies for the wire, and says what it holds and what a client fetches of it. */
-export async function save(path: string, map: MapData | Uint8Array): Promise<void> {
+/** Writes the map and its parts' files with their copies, a release build's if `release`, and says what it holds and what a client fetches of it. */
+export async function save(path: string, map: MapData | Uint8Array, release = false): Promise<void> {
   const file = map instanceof Uint8Array ? map : writeMap(map);
-  const packed = await writeMapFile(path, file);
-  for (const line of describe(file)) console.log(line);
-  console.log(`on the wire: ${packed.ground} bytes before a client draws and ${packed.br.length} in all (Brotli), ${packed.gz.length} gzip`);
+  const packed = await writeMapFile(path, file, release);
+  for (const line of [...describe(file), ...partsTable(packed)]) console.log(line);
 }
 
-/** `args` are the words after the command's name. Another tool adds its command here. */
-export const COMMANDS: Record<string, { usage: string; run(args: string[]): void | Promise<void> }> = {
-  build: { usage: "<folder> <out.snmap>", run: ([folder, out]) => save(out!, readLayers(folder!)) },
+/** `args` are the words after the command's name, less --release. Another tool adds its command here. */
+export const COMMANDS: Record<string, { usage: string; run(args: string[], release: boolean): void | Promise<void> }> = {
+  build: { usage: "<folder> <out.snmap>", run: ([folder, out], release) => save(out!, readLayers(folder!), release) },
   unpack: { usage: "<file.snmap> <folder>", run: ([file, folder]) => writeLayers(parseMap(new Uint8Array(readFileSync(file!))), folder!) },
-  proving: { usage: "<out.snmap>", run: ([out]) => save(out!, provingFile(registry())) },
+  proving: { usage: "<out.snmap>", run: ([out], release) => save(out!, provingFile(registry()), release) },
   info: { usage: "<file.snmap>", run: ([file]) => describe(new Uint8Array(readFileSync(file!))).forEach((line) => console.log(line)) },
-  pack: { usage: "<file.snmap>", run: ([file]) => save(file!, new Uint8Array(readFileSync(file!))) },
+  pack: { usage: "<file.snmap>", run: ([file], release) => save(file!, new Uint8Array(readFileSync(file!)), release) },
 };
 
 if (import.meta.main) {
-  const [name, ...args] = process.argv.slice(2);
+  const words = process.argv.slice(2);
+  const [name, ...args] = words.filter((w) => w !== "--release");
   const command = COMMANDS[name ?? ""];
   if (!command || args.length !== command.usage.split(" ").length) {
     console.error(Object.entries(COMMANDS).map(([n, c]) => `bun tools/map.ts ${n} ${c.usage}`).join("\n"));
     process.exit(2);
   }
   try {
-    await command.run(args);
+    await command.run(args, words.includes("--release"));
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);

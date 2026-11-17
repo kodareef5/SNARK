@@ -156,7 +156,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
         const report = new Promise<Record<string, any> | null>((done) => ((got = done), setTimeout(() => done(null), 150000)));
         const pixels = r.view ? ["--window-size=1920,1080", `--force-device-scale-factor=${r.scale}`] : ["--window-size=390,669", "--force-device-scale-factor=3"];
         const hold = r.view ? holdAt(server, CITY_PLACES[r.view]) : null;
-        const browser = Bun.spawn([CHROME!, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...pixels, `--user-data-dir=${profile}`, link], { stdout: "ignore", stderr: "ignore" });
+        const browser = Bun.spawn([CHROME!, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...pixels, `--user-data-dir=${profile}`, link], { stdout: "ignore", stderr: "ignore" });
         const result = await report;
         if (hold) clearInterval(hold);
         browser.kill();

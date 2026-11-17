@@ -10,6 +10,7 @@ import { cpus, loadavg, tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { SLOW_TEST, TEST_WATCH, TEST_WORKERS, hungAfter } from "../tests/fixtures/load.ts";
 import { ART } from "./art/source.ts";
+import { footprint } from "./memory.ts";
 import { dynamicLoads, madeArrays, stripComments } from "./policy.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -21,10 +22,18 @@ const ROOT = resolve(import.meta.dir, "..");
  */
 const TEST_CPU_BUDGET = 600;
 /**
- * Non-blank, non-comment lines allowed in client/shell, which has no tests. D250 shares the last 250 among round 8's
- * phases; the last 50 hold the executor's mirror of the card's state, which sends a frame's changes alone.
+ * The memory, in bytes, a test worker's JavaScriptCore is told the machine has, as it sizes its heap. Told the machine's
+ * own (24 GB here), it lets a file's garbage grow to what the file holds live before collecting it, and the heaviest
+ * files held twice what they needed. Told this, it collects at a quarter to a half over: the 30 costliest files held
+ * half as much at most and a third less on average, for 3% more CPU-seconds.
  */
-const SHELL_MAX_LINES = 1200;
+const WORKER_HEAP_RAM = 500_000_000;
+/**
+ * Non-blank, non-comment lines allowed in client/shell, which has no tests. D250 shares 250 among round 8's phases; 50
+ * hold the executor's mirror of the card's state, which sends a frame's changes alone; the last 100 are for the maps
+ * round's far shadow, filtering and map loader (D748).
+ */
+const SHELL_MAX_LINES = 1300;
 /** And in client/voice, which also has no tests. */
 const VOICE_MAX_LINES = 600;
 /** And in client/sound: the world's sounds and the listening page, carrying out what client/core/sound decides. */
@@ -280,6 +289,30 @@ const testFiles = walk(join(ROOT, "tests")).filter((f) => f.endsWith(".test.ts")
 const tally = { passed: 0, unart: 0 };
 const needsArt = new Set(ART ? [] : testFiles.filter((f) => readFileSync(f, "utf8").includes("fixtures/needs-art.ts")).map(repoPath));
 
+/** The most the workers held together at one moment, and what each was running then, heaviest first. */
+interface Held {
+  most: number;
+  files: [string, number][];
+}
+
+/** Adds the workers in `dir` up, each named there by the preload's files, and keeps the most in `held`. */
+function weigh(dir: string, held: Held): void {
+  const running = new Map<number, string>();
+  for (const name of readdirSync(dir)) {
+    const pid = parseInt(name);
+    if (!running.has(pid)) running.set(pid, "");
+    if (!name.endsWith(".now")) continue;
+    try {
+      running.set(pid, repoPath(readFileSync(join(dir, name), "utf8").split("\t")[0]!));
+    } catch {
+      // Removed as its file ended.
+    }
+  }
+  const files: [string, number][] = [...running].map(([pid, file]) => [file, footprint(pid)]);
+  const sum = files.reduce((n, [, bytes]) => n + bytes, 0);
+  if (sum > held.most) Object.assign(held, { most: sum, files: files.sort((a, b) => b[1] - a[1]) });
+}
+
 /** Each test file's CPU-seconds, from what the preload wrote in `dir`. */
 function fileCpu(dir: string): [string, number][] {
   const out: [string, number][] = [];
@@ -338,10 +371,18 @@ async function checkTests(tier: Tier, dir: string, env: Record<string, string>):
   const stopped: string[] = [];
   const most = new Map<string, number>();
   const watching = setInterval(() => stopHung(watch, workers, most, stopped), 1000);
-  const r = await run(["bun", "test", `--parallel=${workers}`, ...timed, "--reporter=junit", `--reporter-outfile=${report}`, ...only], true, { ...process.env, ...env, [TEST_WORKERS]: String(workers), [TEST_WATCH]: watch });
+  const held: Held = { most: 0, files: [] };
+  // A worker's memory can rise and fall within a second.
+  const weighing = setInterval(() => weigh(watch, held), 250);
+  const r = await run(["bun", "test", `--parallel=${workers}`, ...timed, "--reporter=junit", `--reporter-outfile=${report}`, ...only], true, { ...process.env, ...env, [TEST_WORKERS]: String(workers), [TEST_WATCH]: watch, BUN_JSC_forceRAMSize: String(WORKER_HEAP_RAM) });
   clearInterval(watching);
+  clearInterval(weighing);
   stopped.forEach(fail);
+  const gb = (bytes: number): string => `${(bytes / 1e9).toFixed(1)} GB`;
+  const heaviest = held.files.filter(([file]) => file).slice(0, 3);
+  const weighed = `${gb(held.most)} at most in the workers together${heaviest.length > 0 ? `\n  the heaviest workers then ran ${heaviest.map(([file, bytes]) => `${file} (${gb(bytes)})`).join(", ")}` : ""}`;
   if (!r.ok) {
+    console.log(`  ${weighed}`);
     fail(`${tier} tests failed:\n${r.out.trim()}`);
     return;
   }
@@ -350,7 +391,7 @@ async function checkTests(tier: Tier, dir: string, env: Record<string, string>):
   const counts = r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim());
   tally.passed += parseInt(counts.find((c) => c.endsWith(" pass")) ?? "0");
   for (const m of junit.matchAll(/<testsuite name="([^"]+)" file="\1"[^>]*? skipped="(\d+)"/g)) if (needsArt.has(m[1]!)) tally.unart += Number(m[2]);
-  console.log(`  ${counts.join(", ")}, ${r.cpu.toFixed(0)} CPU-seconds${tier === "fast" ? ` of ${TEST_CPU_BUDGET}` : ""}`);
+  console.log(`  ${counts.join(", ")}, ${r.cpu.toFixed(0)} CPU-seconds${tier === "fast" ? ` of ${TEST_CPU_BUDGET}` : ""}, ${weighed}`);
   // CPU-seconds move far less with the machine's load than the clock does, so a slow change shows on a busy day too.
   if (tier === "fast" && r.cpu > TEST_CPU_BUDGET) {
     const costliest = fileCpu(watch).slice(0, 5).map(([f, s]) => `${f} ${s.toFixed(1)}`);

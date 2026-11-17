@@ -9,7 +9,7 @@
 | `path.test.ts` | Ways across the ground: round a wall, never through a thin one, the search's budget, a search spread over calls, legs, a doorway off the grid, and a body walking every way found on the proving ground |
 | `layers.test.ts` | Ways that climb and swim: up stairs onto a slab, a stair core of three storeys and down again rather than falling, the pool swum or waded round, a goal inside a pillar |
 | `bodies.test.ts` | The grid of awake bodies that creatures search for prey |
-| `mapfile.test.ts`, `maplayers.test.ts` | A map through its file and back; a damaged or unplayable one refused with its reason; a folder of layers built into a map and unpacked again |
+| `mapfile.test.ts`, `maplayers.test.ts` | A map through its file and back, every height, tint, static in its slot, node slot and water square; each part read alone given its head; a part damaged or another's refused with its name, and a damaged or unplayable map with its reason; a map widened keeping the parts it did not reach; a folder of layers built into a map and unpacked again |
 | `character.test.ts`, `swim.test.ts` | Movement rules and the anti-clipping fuzz tests, on land and in water |
 | `sim.test.ts`, `items.test.ts` | Deadlines, lazy quantities, stat points, inheritance statistics; inventories |
 | `weapon.test.ts`, `anim.test.ts`, `creature.test.ts` | The action step; skeletons, clips, poses and hit zones for survivors and for creatures that came as models |
@@ -23,7 +23,7 @@
 | `render.test.ts` | Frame packets through the software rasterizer, asserted per pixel |
 | `views.test.ts` | What artists look at: a snapshot on a graphics tier with textures, the textures kept between runs, and a sheet with materials |
 | `hud.test.ts`, `ui.test.ts` | The HUD model, the minimap, the self-check logic; every screen laid out at four window shapes |
-| `tactical.test.ts`, `map.test.ts` | Latitude and longitude; a chunk's structures baked to cells against brute force, and on the wire; marks; the map's tiles and its four zooms lining up |
+| `tactical.test.ts`, `map.test.ts` | Latitude and longitude from the display origin, and shares of the map's picture; a chunk's structures baked to cells against brute force, and on the wire; marks; the map's tiles and its four zooms lining up; a map of 12 by 8 km shown in its own proportions; a widened map reading the same coordinates with its grid on the same ground |
 | `contracts.test.ts` | What the creature packages build on: the cue word's lasting states, hurt stages, the new codes, columns that change nothing until used, the dodo's numbers, its egg item and the tames' levels ready to join |
 
 Assert observable outcomes. Prefer a property over many seeded inputs to a few

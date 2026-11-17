@@ -236,7 +236,7 @@ export async function fullScreen(chrome: string): Promise<Record<string, number 
     },
   });
   const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
-  const browser = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", `--user-data-dir=${profile}`, `http://localhost:${server.port}/`], { stdout: "ignore", stderr: "ignore" });
+  const browser = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", `--user-data-dir=${profile}`, `http://localhost:${server.port}/`], { stdout: "ignore", stderr: "ignore" });
   const out = await Promise.race([finished, new Promise<null>((r) => setTimeout(() => r(null), 120000))]);
   browser.kill();
   await browser.exited;

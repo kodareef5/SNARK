@@ -60,8 +60,6 @@ export interface WorldOptions {
   entityMax?: number;
   /** In place of ENTITY_START, for a test that wants the store to grow early. */
   entityStart?: number;
-  /** False when a save will supply the map's static pieces. */
-  populate?: boolean;
 }
 
 /** `entityMax` is the most entities the world may hold. Its store starts at `entityStart`, or at the limit if that is less. */
@@ -117,13 +115,16 @@ function defOf(reg: Registry, map: MapFile): MapDef | null {
   return def;
 }
 
-/** A world on the ground a map file holds (shared/world/mapfile.ts), with what the map's definition says lives there. */
+/**
+ * A world on the ground a map file holds (shared/world/mapfile.ts), with what the map's definition says lives there and the
+ * map's statics set down, which a save's chunks are laid over.
+ */
 export function createMapWorld(reg: Registry, map: MapFile, opts: WorldOptions = {}): ServerWorld {
   // A server draws nothing, so its ground keeps no colours.
   const hf = mapHeightfield({ ...map, tint: new Uint8Array(0) });
   const zones = [...(defOf(reg, map)?.zones ?? []).filter((z) => z.kind === "spawn"), ...(map.regions ?? [])];
   const world = createWorld(reg, map.dims, hf, map.id, map.hash, map.spawns[0]!, opts.entityMax ?? ENTITY_LIMIT, map.spawns, mapNodes(map, hf, reg) ?? undefined, zones, opts.entityStart);
-  if (opts.populate !== false) placeStatics(map, world.structs, reg);
+  placeStatics(map, world.structs, reg);
   world.statics = map.statics.unordered();
   return world;
 }

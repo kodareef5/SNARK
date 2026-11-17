@@ -9,7 +9,7 @@
 | `movement.test.ts` | Swimming, stamina, and movement modifiers, predicted |
 | `persistence.test.ts` | Restart round trip; removed content; commit callbacks; three process kills with conservation |
 | `save-buffs.test.ts` | Buffs across a restart: a fire burns for what was left of it, a dose wears off, a stun is shown again; a save from before buffs were saved |
-| `maps.test.ts` | A map made in the test run by a server, served, and walked on; where its definition starts creatures; a save refused on another map; the proving ground from its file equal to the one its functions build |
+| `maps.test.ts` | A map made in the test run by a server, its head and parts served by their names from memory or from its build's folder, and walked on; where its definition starts creatures; a save refused on another map; the proving ground from its file equal to the one its functions build |
 | `tactical.test.ts` | The map on an 8 km map: a far base with no chunk sent, whose bases show, cells by zoom within a kilobyte a second, mates and tames as marks, the minimap and the map screen |
 | `determinism.test.ts` | The same scenario under Bun and Node produces the same hashes |
 | `items.test.ts`, `equipment.test.ts` | Inventories and the ledger under random moves; hotbar, armor, weapons that hold rounds and attachments |
@@ -43,7 +43,7 @@
 | `listen.test.ts` | The address a server listens on: a development server on this machine only, unless asked |
 | `contracts.test.ts` | The creature packages' places in a host: carrying, taking an egg and the new orders refused until built; a held creature left where its holder puts it |
 | `agent.test.ts`, `agent-play.test.ts` | An agent that plays, its tools called over the protocol: both eras of the protocol, progress and cancellation, resources, the key file, observe, the tools that need no walking; then walking round the wall, a crate set down in the way, up stairs, gathering, opening, and stopping for danger |
-| `agent-ride.test.ts`, `agent-base.test.ts`, `agent-fight.test.ts`, `agent-tools.test.ts` | The agent's loop through its tools: a raptor tamed, saddled and ridden, a pteranodon flown and landed, a car driven; a hut built and a campfire, a mortar and a forge worked; a bow and a crossbow from range, armour, drinking, swimming and a stair flight; and the smaller tools' refusals |
+| `agent-ride.test.ts`, `agent-base.test.ts`, `agent-fight.test.ts`, `agent-tools.test.ts` | The agent's loop through its tools: a raptor tamed, saddled and ridden, a pteranodon flown and landed, a car driven; a hut built and a campfire, a mortar and a forge worked; a bow and a crossbow from range, armour, drinking, swimming and a stair flight; and the smaller tools' refusals; latitude and longitude past 100 |
 
 `fixtures/net.ts` runs a real server and real client sessions in one process on
 virtual time. Nothing is mocked. The determinism test is skipped with a message

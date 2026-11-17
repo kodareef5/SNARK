@@ -3,12 +3,11 @@
 
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent, withContent, type Registry } from "../../shared/content/registry.ts";
-import type { MapDims } from "../../shared/coords.ts";
 import { joinLandmark } from "../../shared/pack/join.ts";
 import { parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { soundFault, type ManifestSound } from "../../shared/pack/sound.ts";
-import { groundBytes, staticsSteps, type MapContent, type MapStatics } from "../../shared/world/mapfile.ts";
+import { joinParts, joinStatics, partSteps, readHead, readPart, type MapContent, type MapFile, type MapHead, type MapPart, type MapStatics, type StaticsPiece } from "../../shared/world/mapfile.ts";
 
 export interface Answer {
   ok: boolean;
@@ -41,49 +40,90 @@ export async function fetchBytes(get: Get, url: string): Promise<ArrayBuffer> {
 }
 
 /**
- * A map file as it arrives (shared/world/mapfile.ts): its ground once every byte before the statics is in, which is all a
- * client needs to draw, and the rest once the answer ends.
+ * Map parts fetched at once: as many as a browser opens to a host over HTTP/1.1, so that on a link of 100 ms a request one
+ * part's round trip is mostly hidden by the others' bytes (Miami's ground in 3.67 s at 20 Mbit/s, where 4 take 3.94 and
+ * 24 on h2 3.56).
  */
-export async function fetchMap(get: Get, url: string): Promise<{ ground: Uint8Array; rest: Promise<Uint8Array> }> {
-  const reader = (await answer(get, url)).body!.getReader();
-  let held: Uint8Array = new Uint8Array(0);
-  /** Fills `out` from `at` with what comes next, and says how far it got before the answer ended. */
-  const fill = async (out: Uint8Array, at = 0): Promise<number> => {
-    for (let part = held; ; ) {
-      const k = Math.min(out.length - at, part.length);
-      out.set(part.subarray(0, k), at);
-      held = part.subarray(k);
-      at += k;
-      if (at === out.length) return at;
-      const next = await reader.read();
-      if (next.done || !next.value) return at;
-      part = next.value;
-    }
+const PARTS_AT_ONCE = 6;
+
+/** `work` on each of `items`, at most `n` at once, taken in their order; its results in that order. */
+async function inTurn<T, R>(items: readonly T[], n: number, work: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  let next = 0;
+  const lane = async (): Promise<void> => {
+    for (let k = next++; k < items.length; k = next++) out[k] = await work(items[k]!);
   };
-  const cut = (): Error => new Error(`${url}: the answer ended before the map did`);
-  const head = new Uint8Array(16);
-  if ((await fill(head)) < head.length) throw cut();
-  const ground = new Uint8Array(Math.max(head.length, groundBytes(head)));
-  ground.set(head);
-  if ((await fill(ground, head.length)) < ground.length) throw cut();
-  const rest = (async (): Promise<Uint8Array> => {
-    const tag = new Uint8Array(8);
-    const got = await fill(tag);
-    if (got === 0) return tag.subarray(0, 0);
-    const all = new Uint8Array(8 + (got === 8 ? new DataView(tag.buffer).getUint32(4, true) : 0));
-    all.set(tag);
-    if (got < 8 || (await fill(all, 8)) < all.length) throw cut();
-    return all;
-  })();
-  return { ground, rest };
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, lane));
+  return out;
 }
 
-/** The statics of a map of `dims` from the rest of its file, read a step at a time with `pause` between, so frames go on. */
-export async function readStatics(rest: Promise<Uint8Array>, dims: MapDims, pause: () => Promise<void>): Promise<MapStatics> {
-  const steps = staticsSteps(await rest, dims, false);
+/** A map's head (shared/world/mapfile.ts) from its url, and the url each of its parts is fetched by, beside it. */
+async function fetchHead(get: Get, url: string): Promise<{ head: MapHead; bytes: Uint8Array; at: (part: MapPart) => string }> {
+  const bytes = new Uint8Array(await fetchBytes(get, url));
+  const head = within(url, () => readHead(bytes));
+  return { head, bytes, at: (part) => url.slice(0, url.lastIndexOf("/") + 1) + part.name };
+}
+
+/** `read`, its error named for the request whose answer it read. */
+function within<T>(url: string, read: () => T): T {
+  try {
+    return read();
+  } catch (e) {
+    throw new Error(`${url}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/** A map's sectors' statics as fetched, for `readStatics`. */
+export interface FetchedStatics {
+  readonly head: MapHead;
+  readonly parts: readonly { readonly part: MapPart; readonly bytes: Uint8Array }[];
+}
+
+/**
+ * A map as a page fetches it (shared/world/mapfile.ts): its head, then its landmarks' definitions, overviews and sectors'
+ * ground, six at once and each read as it comes, which make the map with no statics: all a client needs to draw. Then its
+ * sectors' statics, which `rest` brings once they are all in. Each part is checked against the hash its head names.
+ */
+export async function fetchMap(get: Get, url: string): Promise<{ ground: MapFile; rest: Promise<FetchedStatics> }> {
+  const { head, at } = await fetchHead(get, url);
+  const fetched = async (part: MapPart): Promise<Uint8Array> => new Uint8Array(await fetchBytes(get, at(part)));
+  const pieces = await inTurn(head.parts.filter((p) => p.kind !== "statics"), PARTS_AT_ONCE, async (p) => readPart(head, p, await fetched(p)));
+  const ground = joinParts(head, pieces, false);
+  const rest = inTurn(head.parts.filter((p) => p.kind === "statics"), PARTS_AT_ONCE, async (part) => ({ part, bytes: await fetched(part) }));
+  return { ground, rest: rest.then((parts) => ({ head, parts })) };
+}
+
+/**
+ * The statics of a fetched map, each sector's read and then set in its chunks' rows a step at a time, a sector or a slice of
+ * one a step, with `pause` between, so frames go on.
+ */
+export async function readStatics(rest: Promise<FetchedStatics>, pause: () => Promise<void>): Promise<MapStatics> {
+  const { head, parts } = await rest;
+  const pieces: StaticsPiece[] = [];
+  for (const { part, bytes } of parts) {
+    const steps = partSteps(head, part, bytes);
+    let step = steps.next();
+    for (; !step.done; step = steps.next()) await pause();
+    pieces.push(step.value as StaticsPiece);
+    await pause();
+  }
+  const steps = joinStatics(head, pieces, false);
   let step = steps.next();
   for (; !step.done; step = steps.next()) await pause();
   return step.value;
+}
+
+/** A map's whole file, as a program that reads one fetches it: its head and every part, put back together in their order. */
+export async function fetchMapFile(get: Get, url: string): Promise<Uint8Array> {
+  const { head, bytes, at } = await fetchHead(get, url);
+  const file = new Uint8Array(head.parts.reduce((n, p) => n + p.length, head.bytes));
+  file.set(bytes.subarray(0, head.bytes));
+  await inTurn(head.parts, PARTS_AT_ONCE, async (p) => {
+    const part = new Uint8Array(await fetchBytes(get, at(p)));
+    if (part.length !== p.length) throw new Error(`${at(p)}: the part is ${part.length} bytes, and its head says ${p.length}`);
+    file.set(part, p.at);
+  });
+  return file;
 }
 
 /** The two ends of a page's MessageChannel, as nextTask uses them. */
