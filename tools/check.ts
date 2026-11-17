@@ -5,12 +5,12 @@
 //   bun run check -- --slow      the same, then the slow tier (`*.slow.test.ts`): before a merge to main
 //   bun run slow                 the slow tier alone
 
-import { dlopen, FFIType, ptr } from "bun:ffi";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { cpus, loadavg, tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { SLOW_TEST, TEST_WATCH, TEST_WORKERS, hungAfter } from "../tests/fixtures/load.ts";
 import { ART } from "./art/source.ts";
+import { footprint } from "./footprint.ts";
 import { dynamicLoads, madeArrays, stripComments } from "./policy.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -287,24 +287,6 @@ const testFiles = walk(join(ROOT, "tests")).filter((f) => f.endsWith(".test.ts")
 /** Tests passed, and those skipped in the files that mark tests as needing the art (tests/fixtures/needs-art.ts). */
 const tally = { passed: 0, unart: 0 };
 const needsArt = new Set(ART ? [] : testFiles.filter((f) => readFileSync(f, "utf8").includes("fixtures/needs-art.ts")).map(repoPath));
-
-/** A process's memory in bytes, its compressed and swapped pages counted, or 0 once it has ended. */
-const footprint = ((): ((pid: number) => number) => {
-  if (process.platform === "darwin") {
-    const { symbols } = dlopen("/usr/lib/libSystem.B.dylib", { proc_pid_rusage: { args: [FFIType.i32, FFIType.i32, FFIType.ptr], returns: FFIType.i32 } });
-    // struct rusage_info_v4 (flavor 4) is 37 words of 64 bits; ri_phys_footprint is the tenth.
-    const info = new BigUint64Array(37);
-    return (pid) => (symbols.proc_pid_rusage(pid, 4, ptr(info)) === 0 ? Number(info[9]) : 0);
-  }
-  return (pid) => {
-    try {
-      const status = readFileSync(`/proc/${pid}/status`, "utf8");
-      return 1024 * ["VmRSS", "VmSwap"].reduce((kb, field) => kb + Number(new RegExp(`${field}:\\s+(\\d+)`).exec(status)?.[1] ?? 0), 0);
-    } catch {
-      return 0;
-    }
-  };
-})();
 
 /** The most the workers held together at one moment, and what each was running then, heaviest first. */
 interface Held {
