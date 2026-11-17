@@ -254,12 +254,51 @@ test("the lattice fades out over the end of its reach exactly where the mass fad
   const statics: MapStatic[] = [];
   for (let k = 0; k < 6; k++) statics.push(...building(...mid(10 + k * 3, 30), 0, 6, 2, k * 2000));
   const w = cityWorld({ chunks: 48, statics, width: 480, height: 270 });
-  w.look(16 * CHUNK_SIZE, 10, 30 * CHUNK_SIZE + 32, 880, Math.PI / 2, 30);
+  w.look(16 * CHUNK_SIZE, 10, 30 * CHUNK_SIZE + 32, 830, Math.PI / 2, 30);
   const p = w.frame();
-  // Tiles across the fade are drawn twice, the lattice fading out and the mass fading in.
+  // The tower 862 m off, in the fade, is drawn twice, the lattice fading out and the mass fading in.
   const fades = cityDraws(p).map((d) => p.drawFade[d]!);
   expect(fades.some((f) => f === 900)).toBe(true);
   expect(fades.some((f) => f === -900)).toBe(true);
+});
+
+test("across the lattice's fade into the mass a chunk wholly past the lattice's end draws no lattice and one wholly short of the fade no mass, for the picture both drawn whole give", () => {
+  // Rows of towers in three rows of tiles, one in every chunk from 500 m to 1,600 m off, on medium (the lattice fades out
+  // from 810 to 900 m).
+  const statics: MapStatic[] = [];
+  for (let k = 0; k < 18; k++) for (const cz of [28, 31, 34]) statics.push(...building(...mid(10 + k, cz), 0, 4 + ((k * 5) % 7), 2, (k * 2300 + cz * 700) % 16384));
+  const w = cityWorld({ chunks: 48, statics, width: 480, height: 270 });
+  w.look(16 * CHUNK_SIZE, 10, 31 * CHUNK_SIZE, 880, Math.PI / 2, 30);
+  // Each level's indices on the card, by its slot.
+  const whole = new Map<number, number>();
+  let p = w.frame();
+  for (let f = 0; f < 3; f++, p = w.frame()) for (const u of p.assetUploads) whole.set(u.slot, u.indexCount);
+  const picture = w.raster.color.slice();
+  const draws = cityDraws(p);
+  const drawn = draws.reduce((n, d) => n + p.drawIndexCount[d]!, 0);
+  // Each tile drawn at both levels draws each of them whole, the lattice fading out and the mass in. A tile's draws
+  // share its origin, and a level drawn in the fade at all tells which it is.
+  const tiles = Map.groupBy(draws, (d) => [0, 1, 2].map((a) => p.drawOffset[d * 3 + a]).join());
+  let both = 0;
+  for (const list of tiles.values()) {
+    const sign = new Map<number, number>();
+    for (const d of list) if (p.drawFade[d] === 900 || p.drawFade[d] === -900) sign.set(p.drawSlot[d]!, Math.sign(p.drawFade[d]!));
+    const slots = new Set(list.map((d) => p.drawSlot[d]!));
+    if (slots.size < 2) continue;
+    expect(slots.size).toBe(2);
+    expect(sign.size).toBeGreaterThan(0);
+    both++;
+    const lattice = [...slots].find((s) => sign.get(s) === 1 || (!sign.has(s) && [...sign.values()][0] === -1))!;
+    for (const d of list) [p.drawFirstIndex[d], p.drawIndexCount[d], p.drawFade[d]] = [0, whole.get(p.drawSlot[d]!)!, p.drawSlot[d] === lattice ? 900 : -900];
+  }
+  // Drawn again as the world's frames are, without the ground.
+  p.tileCount = 0;
+  w.raster.render(p);
+  expect(both).toBeGreaterThanOrEqual(3);
+  expect(cityDraws(p).reduce((n, d) => n + p.drawIndexCount[d]!, 0)).toBeGreaterThan(drawn * 1.15);
+  let differ = 0;
+  for (let i = 0; i < picture.length; i++) if (picture[i] !== w.raster.color[i]) differ++;
+  expect(differ).toBe(0);
 });
 
 test("a tile wholly short of the last tenth of its reach draws with no fade, and one reaching into it fades there", () => {

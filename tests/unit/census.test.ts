@@ -141,10 +141,13 @@ test("a real city's downtown at its three views on each tier: the near city's dr
     return [s.name, [c.near, c.cast, c.nearTriangles, c.far, c.farTriangles]];
   }))]));
   // Each view's near window lies whole in the slice, so the first three are what the built Miami draws there with the
-  // grey boxes (equal when it was cut on 2026-11-17); the far city's are of the slice's ring of chunks round it.
+  // grey boxes (equal when it was cut on 2026-11-17); the far city's are of the slice's ring of chunks round it. The far
+  // city's were 15, 24, 11 and 14 draws and 48,382, 62,294, 62,790 and 78,520 triangles on the lit tiers while a chunk
+  // was in view by its pieces' box and 8 m round it at every level; by the box its level's faces may reach, a box's
+  // their pieces' own, chunks at the view's edge drop out.
   expect(got).toEqual({
-    "street-300": { lowpoly: [509, 0, 104248, 9, 41888], "medium, touch": [266, 183, 60652, 15, 48382], medium: [509, 362, 104248, 24, 62294], high: [509, 742, 104248, 24, 62294], ultra: [509, 876, 104248, 24, 62294] },
-    "roof-300": { lowpoly: [490, 0, 109168, 8, 51976], "medium, touch": [303, 117, 68592, 11, 62790], medium: [490, 324, 109168, 14, 78520], high: [490, 673, 109168, 14, 78520], ultra: [490, 755, 109168, 14, 78520] },
+    "street-300": { lowpoly: [509, 0, 104248, 9, 41888], "medium, touch": [266, 183, 60652, 13, 43124], medium: [509, 362, 104248, 22, 57036], high: [509, 742, 104248, 22, 57036], ultra: [509, 876, 104248, 22, 57036] },
+    "roof-300": { lowpoly: [490, 0, 109168, 8, 51976], "medium, touch": [303, 117, 68592, 14, 61284], medium: [490, 324, 109168, 17, 77014], high: [490, 673, 109168, 17, 77014], ultra: [490, 755, 109168, 17, 77014] },
     "air-300": { lowpoly: [574, 0, 120588, 10, 51466], "medium, touch": [312, 36, 74688, 18, 50932], medium: [574, 136, 120588, 27, 73184], high: [574, 635, 120588, 27, 73184], ultra: [574, 696, 120588, 27, 73184] },
   });
 });

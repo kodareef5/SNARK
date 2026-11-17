@@ -32,8 +32,13 @@ export const CITY_TILE = 3;
 const TILE_METRES = CITY_TILE * CHUNK_SIZE;
 /** A tile's vertices are stored from its corner less this, so faces reaching past its edges stay within FAR_MESH's square. */
 const LOCAL = (FAR_TILE_METRES - TILE_METRES) / 2;
-/** How far past its pieces a tile's box reaches, and its stored heights begin below them: a cell's face may lie a cell past a box. */
+/**
+ * How far past its pieces a tile's box reaches, by which its levels are chosen, and its stored heights begin below them;
+ * and how much farther across a face of its may lie, for what is in view: a cell's face may lie a cell past a box along
+ * the axes of the box's own turned frame, so across by a cell's diagonal.
+ */
 const BELOW = 8;
+const ACROSS = 4;
 /** Slots of tiles on the card start here, past the far blocks' (far.ts FAR_SLOTS up to twice that). */
 export const CITY_SLOTS = 2 ** 31;
 const CITY_SLOT_SPAN = 2 ** 30;
@@ -171,9 +176,16 @@ export class FarCity {
   private around: number[] = [];
   private readonly listed: Uint8Array;
   private readonly aroundAt = Float64Array.of(Infinity, Infinity, -1);
-  /** Per chunk, the box its pieces' faces may reach, as a tile's; and per chunk of the tile being drawn, its depth ranges or 0. */
+  /**
+   * Per chunk, the box its pieces reach, which its boxes' faces do not leave; and per chunk of the tile being drawn, 1
+   * where it is drawn far, its box from the camera, and at the level being drawn, the depth ranges its faces are in or 0
+   * for none, and 1 where it is in that level's fade.
+   */
   private readonly chunkBox: Float64Array;
-  private readonly ways = new Uint8Array(CITY_TILE * CITY_TILE);
+  private readonly far = new Uint8Array(CITY_TILE * CITY_TILE);
+  private readonly from = new Float64Array(CITY_TILE * CITY_TILE * 6);
+  private readonly kept = new Uint8Array(CITY_TILE * CITY_TILE);
+  private readonly band = new Uint8Array(CITY_TILE * CITY_TILE);
 
   /** `bounds` is FAR_MESH's centre and half extent, as the pack has them. `landmark` is 1 by content index for a kind a landmark brings. */
   constructor(source: CitySource, dims: MapDims, hf: Heightfield, mesh: number, bounds: { center: readonly number[]; half: readonly number[] }, landmark: Uint8Array = new Uint8Array(0)) {
@@ -223,12 +235,9 @@ export class FarCity {
           cb[c * 6 + 4] = Math.max(cb[c * 6 + 4]!, y[i]! + halfY[k]!);
           cb[c * 6 + 5] = Math.max(cb[c * 6 + 5]!, z[i]! + r);
         }
-        // A cell's face may lie a cell past the boxes it was made of.
         for (let a = 0; a < 3; a++) {
-          cb[c * 6 + a] -= BELOW;
-          cb[c * 6 + a + 3] += BELOW;
-          box[a] = Math.min(box[a]!, cb[c * 6 + a]!);
-          box[a + 3] = Math.max(box[a + 3]!, cb[c * 6 + a + 3]!);
+          box[a] = Math.min(box[a]!, cb[c * 6 + a]! - BELOW);
+          box[a + 3] = Math.max(box[a + 3]!, cb[c * 6 + a + 3]! + BELOW);
         }
       }
       const base = Math.floor(box[1]!);
@@ -356,8 +365,9 @@ export class FarCity {
   /**
    * Calls `put` for each run of a tile's chunks drawn far, at each level of the tile drawn, where the tile is on the
    * card, within `reach` of the camera and in its view: the level's slot, its first index and how many, where its stored
-   * origin is from the camera, the depth ranges its box is in, and where it is gone (`drawFade`, below 0 to fade in, and
-   * 0 for a tile wholly short of where the reach fades, so its draw may take the program that never discards).
+   * origin is from the camera, the depth ranges its faces are in, and where it is gone (`drawFade`, below 0 to fade in,
+   * and 0 for a run wholly short of where the reach fades and of any fade between levels, so its draw may take the
+   * program that never discards).
    */
   draw(cam: Camera, reach: number, put: (slot: number, firstIndex: number, indexCount: number, ox: number, oy: number, oz: number, passes: number, fade: number) => void): void {
     const levels = this.levels;
@@ -368,8 +378,7 @@ export class FarCity {
     stats.unseenFrames = 0;
     stats.coarse = 0;
     const whole = reach * (1 - this.share);
-    const cb = this.chunkBox;
-    const ways = this.ways;
+    const { chunkBox: cb, far, from, kept, band } = this;
     for (const n of this.around) {
       const tile = this.tiles[n]!;
       const b = tile.box;
@@ -380,7 +389,7 @@ export class FarCity {
       const by = b[4]! - cam.y;
       const bz = b[5]! - cam.z;
       const near = Math.hypot(Math.max(ax, -bx, 0), Math.max(ay, -by, 0), Math.max(az, -bz, 0));
-      if (near >= reach || !cam.boxVisible(ax, ay, az, bx, by, bz)) {
+      if (near >= reach || !cam.boxVisible(ax - ACROSS, ay, az - ACROSS, bx + ACROSS, by, bz + ACROSS)) {
         tile.unseen = 0;
         continue;
       }
@@ -402,36 +411,56 @@ export class FarCity {
         drawn = 1 << best;
         if (best > tile.primary) stats.coarse++;
       }
-      // Each chunk drawn far, in view, and the depth ranges its own box is in: a run is chunks alike in those.
+      // Each chunk drawn far, and its pieces' box from the camera.
       for (let r = 0; r < tile.chunks.length; r++) {
         const c = tile.chunks[r]!;
-        const k = c * 6;
-        const x0 = cb[k]! - cam.x;
-        const y0 = cb[k + 1]! - cam.y;
-        const z0 = cb[k + 2]! - cam.z;
-        const x1 = cb[k + 3]! - cam.x;
-        const y1 = cb[k + 4]! - cam.y;
-        const z1 = cb[k + 5]! - cam.z;
-        ways[r] = this.source.complete(c) || !cam.boxVisible(x0, y0, z0, x1, y1, z1) ? 0 : cam.passes(x0, y0, z0, x1, y1, z1);
+        far[r] = this.source.complete(c) ? 0 : 1;
+        for (let a = 0; a < 6; a++) from[r * 6 + a] = cb[c * 6 + a]! - (a % 3 === 0 ? cam.x : a % 3 === 1 ? cam.y : cam.z);
       }
       const tx = this.cornerX(tile.t), tz = this.cornerZ(tile.t);
       const ox = tx - LOCAL - cam.x, oy = tile.base - cam.y, oz = tz - LOCAL - cam.z;
       const most = Math.hypot(Math.max(-ax, bx), Math.max(-ay, by), Math.max(-az, bz));
+      const plain = most < whole ? 0 : reach;
       for (let l = 0; l < tile.held.length; l++) {
         const h = tile.held[l];
         if ((drawn & (1 << l)) === 0 || !h || h.slot < 0) continue;
-        // The lattice fades out as the mass fades in, where both are drawn; else each is gone at the reach.
-        const fade = this.blends(l + 1) && (drawn & (1 << (l + 1))) !== 0 ? levels[l]!.to : this.blends(l) && (drawn & (1 << (l - 1))) !== 0 ? -levels[l - 1]!.to : most < whole ? 0 : reach;
+        // The lattice fades out as the mass fades in where both are drawn, over the last share of the lattice's end; else
+        // each is gone at the reach. Across that fade a chunk wholly past the end draws no lattice and one wholly short of
+        // the fade no mass, and a run of chunks none of which is in the fade draws as if there were none.
+        const out = this.blends(l + 1) && (drawn & (1 << (l + 1))) !== 0;
+        const into = this.blends(l) && (drawn & (1 << (l - 1))) !== 0;
+        const end = out ? levels[l]!.to : into ? levels[l - 1]!.to : 0;
+        const start = end * (1 - this.share);
+        // Each chunk in view and the depth ranges its faces are in, a run being chunks alike in those: a box's faces stay
+        // within it, and a cell's may lie a cell past it.
+        const { cell, tall } = levels[l]!;
+        const [across, up] = cell > 0 ? [cell * Math.SQRT2, tall] : [0, 0];
+        for (let r = 0; r < tile.chunks.length; r++) {
+          const o = r * 6;
+          const x0 = from[o]! - across, y0 = from[o + 1]! - up, z0 = from[o + 2]! - across;
+          const x1 = from[o + 3]! + across, y1 = from[o + 4]! + up, z1 = from[o + 5]! + across;
+          const nearest = Math.hypot(Math.max(x0, -x1, 0), Math.max(y0, -y1, 0), Math.max(z0, -z1, 0));
+          const farthest = Math.hypot(Math.max(-x0, x1), Math.max(-y0, y1), Math.max(-z0, z1));
+          const left = far[r] === 0 || (out && nearest >= end) || (into && farthest < start) || !cam.boxVisible(x0, y0, z0, x1, y1, z1);
+          kept[r] = left ? 0 : cam.passes(x0, y0, z0, x1, y1, z1);
+          band[r] = (out || into) && farthest >= start && nearest < end ? 1 : 0;
+        }
+        const size = tile.chunks.length;
         let run = 0;
-        for (let r = 1; r <= tile.chunks.length; r++) {
-          if (r < tile.chunks.length && ways[r] === ways[run]) continue;
+        let fading = band[0]!;
+        for (let r = 1; r <= size; r++) {
+          if (r < size && kept[r] === kept[run]) {
+            fading |= band[r]!;
+            continue;
+          }
           const first = h.first[run]!;
           const count = h.first[r - 1]! + h.count[r - 1]! - first;
-          if (ways[run] !== 0 && count > 0) {
-            put(h.slot, first, count, ox, oy, oz, ways[run]!, fade);
+          if (kept[run] !== 0 && count > 0) {
+            put(h.slot, first, count, ox, oy, oz, kept[run]!, fading === 0 ? plain : out ? end : -end);
             this.drawn[l]! += count / 3;
           }
           run = r;
+          fading = r < size ? band[r]! : 0;
         }
       }
     }
