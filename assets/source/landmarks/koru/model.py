@@ -14,7 +14,7 @@ MODS=D['modules'];BYID={m['id']:m for m in MODS};WINDOWS={}
 for w in D['windows']:WINDOWS.setdefault(w['module'],[]).append(w)
 CLOTH={'sailcloth':FINISH['sail']['far']};SPAR={'spar':FINISH['white']['far']}
 # The first level drawn flat. Sides round a mast, a boom or the bowsprit at each level.
-FLAT=2;SIDES=[24,12,8,6]
+FLAT=2;STAND_IN=4;SIDES=[24,12,8,6,4]
 
 def worldbox(b,o):return ([o[k]+b['at'][k]-b['half'][k] for k in range(3)],[o[k]+b['at'][k]+b['half'][k] for k in range(3)])
 def worldhull(h,o):return [[p[k]+o[k] for k in range(3)] for p in h['points']]
@@ -61,7 +61,7 @@ def on_hull(z,y,sign,off=.03):
 # stations a hull is straight fore and aft, so a coarser level loses no shape by dropping the columns between. The red
 # boot stripe at the waterline is BOOT high, enough to show from 150 m.
 PORT_R,PORT_Y,PORT_H,BOOT=.3,2.28,.45,.25
-PORT_SIDES=[16,8,8,4]
+PORT_SIDES=[16,8,8,4,4]
 def zipper(m,o,i,tag,out):
  """Two columns of points, outer and inner, bottom to top, joined by triangles."""
  s=m.add(o+i);a=b=0;tris=[]
@@ -71,13 +71,13 @@ def zipper(m,o,i,tag,out):
  m.faces(0,tris,tag,out=out)
 def hull(m,mod):
  a,b=mod['art']['stations'];za,zb=a[0],b[0];L=m.level
- k=max(1,round((zb-za)/3.4));ports=[za+(i+.5)*(zb-za)/k for i in range(k)] if za>=-49 and zb<=44 and (zb-za)/k>.9 else []
+ k=max(1,round((zb-za)/3.4));ports=[za+(i+.5)*(zb-za)/k for i in range(k)] if L<STAND_IN and za>=-49 and zb<=44 and (zb-za)/k>.9 else []
  sides=PORT_SIDES[L]
  # A port of four sides is a square of the round one's area.
  radius,turn=(PORT_R*math.sqrt(math.pi/2),math.pi/4) if sides==4 else (PORT_R,0)
  cols={round(c+d,6) for c in ports for d in(-PORT_H,PORT_H)}|{za,zb}
  # Where the hull is raked, columns close enough for its curve.
- n=math.ceil((zb-za)/[1,1.5,2.5,3.5][L])
+ n=math.ceil((zb-za)/[1,1.5,2.5,3.5,5][L])
  cols=sorted(cols|{round(z,6) for z in [za+i*(zb-za)/n for i in range(1,n)] if rake(z,0)!=0 and all(abs(z-c)>PORT_H+.1 for c in ports)})
  first=len(m.v)
  # The stem rises to the sea at the bow; the underbody keeps a shallow V there.
@@ -90,8 +90,8 @@ def hull(m,mod):
    s=station(z);v=unit([sign,-.1*s['halfBeam']/s['sheer'],-slope(z)*(.9+.1*y/s['sheer'])])
    return [-c for c in v] if inner else v
   def port(z):return next((c for c in ports if abs(z-c)<PORT_H-1e-6),None)
-  outer=[lambda z:[0,BOOT,PORT_Y-PORT_H,PORT_Y+PORT_H,top(z)-.09,top(z)-.055,top(z)],lambda z:[0,BOOT,PORT_Y-PORT_H,PORT_Y+PORT_H,top(z)-.06,top(z)],lambda z:[0,BOOT,PORT_Y-PORT_H,PORT_Y+PORT_H,top(z)]][max(0,L-1)]
-  sheets=[(False,outer,[['red','navy','navy','navy','brass','teak'],['red','navy','navy','navy','teak'],['red','navy','navy','navy']][max(0,L-1)],2)]
+  outer=[lambda z:[0,BOOT,PORT_Y-PORT_H,PORT_Y+PORT_H,top(z)-.09,top(z)-.055,top(z)],lambda z:[0,BOOT,PORT_Y-PORT_H,PORT_Y+PORT_H,top(z)-.06,top(z)],lambda z:[0,BOOT,PORT_Y-PORT_H,PORT_Y+PORT_H,top(z)],lambda z:[0,BOOT,top(z)]][max(0,L-1)]
+  sheets=[(False,outer,[['red','navy','navy','navy','brass','teak'],['red','navy','navy','navy','teak'],['red','navy','navy','navy'],['red','navy']][max(0,L-1)],2)]
   sheets.append((True,(lambda z:[0,PORT_Y-PORT_H,PORT_Y+PORT_H,top(z)]) if L==0 else (lambda z:[0,top(z)]),['cream']*3,1 if L==0 else -1))
   for inner,rows,tags,band in sheets:
    out=(-sign if inner else sign,0,0)
@@ -394,7 +394,7 @@ def furniture(m,mod):
 # than the quarter of a pixel a card's four samples always catch, so a mast reads as a line and not as dashes.
 FAR_MAST=.4
 def mast(m,mod):
- a=mod['art'];aa,bb=a['ends'];r=max(a['radius'],FAR_MAST) if m.level==3 else a['radius'];m.tube([aa,bb],r,'white',SIDES[m.level])
+ a=mod['art'];aa,bb=a['ends'];r=max(a['radius'],FAR_MAST) if m.level>=3 else a['radius'];m.tube([aa,bb],r,'white',SIDES[m.level])
  if m.level:return
  z=aa[2]
  for y in [aa[1]+.12,bb[1]-.12]:m.tube([[0,y-.02,z],[0,y+.02,z]],r+.02,'chrome',16)
@@ -404,7 +404,7 @@ def mast(m,mod):
 # stands, and the top's radius.
 BOOM_R,COVER_Y,COVER_R=.38,1.05,.32
 def boom(m,mod):
- lo,hi=worldbox(mod['boxes'][0],mod['origin']);y=(lo[1]+hi[1])/2;z0,z1=lo[2]+.12,hi[2]-.12;n=SIDES[m.level]
+ lo,hi=worldbox(mod['boxes'][0],mod['origin']);y=(lo[1]+hi[1])/2;z0,z1=lo[2]+.12,hi[2]-.12;n=max(8,SIDES[m.level])
  under=n//2;over=n-under-2
  def ring(z,s):
   pts=[(BOOM_R*math.cos(-math.pi*k/under),BOOM_R*math.sin(-math.pi*k/under)) for k in range(under+1)]
@@ -443,9 +443,9 @@ def smallparts(m,mod):
   if L<FLAT:m.tube(a['ends'],a['radius'],'chrome',6 if L==0 else 4)
   return
  if cat=='spreader':
-  m.tube(a['ends'],a['radius'],'white',[8,4,4,3][L])
+  m.tube(a['ends'],a['radius'],'white',[8,4,4,3,3][L])
   # The fore and mizzen masts carry a pair of white radomes on their lowest spreaders, as photographed.
-  if mod['id'].endswith('_31') and '_main_' not in mod['id']:
+  if mod['id'].endswith('_31') and '_main_' not in mod['id'] and L<STAND_IN:
    (x0,y,z),(x1,_,_)=a['ends']
    for x in(x0*.58,x1*.58):dome(m,[x,y+a['radius']+DOME_R,z])
   return
@@ -526,15 +526,35 @@ def outside(mod):
  if cat=='rail':return 'stairOpening' not in a or a['deck']==3 or a['stairOpening']=='forward_2'
  if cat=='floor':return a['deck']>0
  return True
+def stand_in(m,members):
+ """The coarsest level, the one a landmark's boot file holds, drawn only until the others have come: per deck a
+ deckhouse block and a deck slab, and the hull, masts, booms and bowsprit at their plainest."""
+ for d in(1,2):
+  fs=[x for x in members if x['category']=='facade' and x['art']['deck']==d]
+  if not fs:continue
+  xs=[abs(x['art']['fixed']) for x in fs if x['art']['axis']=='z'];zs=[v for x in fs for v in (x['art']['range'] if x['art']['axis']=='z' else [x['art']['fixed']])]
+  w=max(xs) if xs else max(abs(v) for x in fs for v in x['art']['range']);y=fs[0]['art']['floorY']
+  m.box([-w-.09,y,min(zs)-.09],[w+.09,y+2.8,max(zs)+.09],'white')
+ for d in(1,2,3):
+  ps=[p for x in members if x['category']=='floor' and x['art']['deck']==d for h in x['hulls'] for p in worldhull(h,x['origin'])]
+  if not ps:continue
+  ends=[]
+  for z in(min(p[2] for p in ps),max(p[2] for p in ps)):
+   e=[p for p in ps if abs(p[2]-z)<1e-5];w=max(abs(p[0]) for p in e);y=max(p[1] for p in e);ends+=[[x,yy,z] for x in(-w,w) for yy in(y-.2,y)]
+  prism(m,ends)
+ for x in members:
+  if x['category'] in('hull','mast','boom','bowsprit','roof','canopy','steps'):DRAW.get(x['category'],smallparts)(m,x)
 
 DRAW={'hull':hull,'facade':facade,'wall':wall,'stairs':staircase,'steps':steps,'rail':lambda m,x:rails(m,x,'stairOpening' not in x['art']),'furniture':furniture,'mast':mast,'boom':boom,'bulkhead':bulkhead}
 PALETTE={k:v['far'] for k,v in FINISH.items()}
 for cell in D['cells']:
  members=[x for x in MODS if x.get('cell')==cell['id']];name=cell['id'][5:];origin=BYID[cell['anchor']]['origin']
- for level in range(4):
+ for level in range(STAND_IN+1):
   m=Mesh(flat=PALETTE if level>=FLAT else None);m.level=level
-  for x in members:
-   if level==0 or outside(x):DRAW.get(x['category'],smallparts)(m,x);plaques(m,x)
+  if level==STAND_IN:stand_in(m,members)
+  else:
+   for x in members:
+    if level==0 or outside(x):DRAW.get(x['category'],smallparts)(m,x);plaques(m,x)
   obj=m.object(name+(f'_LOD{level}' if level else ''),origin)
   print('koru',cell['id'],'level',level,len(obj.data.polygons),'triangles',flush=True)
 for x in MODS:

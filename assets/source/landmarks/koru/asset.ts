@@ -12,12 +12,14 @@ const name = (id: string): string => id.slice("koru:".length);
 // whole yacht is at most 20 thousand triangles, its far mesh, a sixth of the cruise ship's. Near it is at most 112
 // thousand, a twentieth of medium's frame.
 const CELLS = [[0, 14000], [50, 14000], [100, 4000], [250, 2500], [500, 2500]] as const;
-// A cell's four levels are model.py's: 0 and 1 drawn with the atlas, 2 and 3 flat. Levels 1 to 3 show what is seen from
+// A cell's five levels are model.py's: 0 and 1 drawn with the atlas, 2 to 4 flat. Levels 1 to 3 show what is seen from
 // outside, the hull, decks, deckhouse walls with their windows, and rig, and leave the rooms behind the white walls and
-// the glass, which is dark from outside. What they leave or thin that shows is under 2.5, 6 and 13 cm across (rail posts
-// and port rims, then rails, rigging and the cove line, then the cap rail and the spars' facets), which a measure of
-// points cannot judge: it counts the rooms.
-const cell = (id: string): PieceSpec => ({ id, object: name(id), triangles: budget(CELLS).slice(1), errors: [0.025, 0.06, 0.13] });
+// the glass, which is dark from outside. What they leave or thin that shows is under 2.5, 8 and 13 cm across (rail posts
+// and port rims; then the wires and rails, a third of a pixel where level 2 is first drawn, and the cove line; then the
+// cap rail's face and the spars' facets), which a measure of points cannot judge: it counts the rooms. Level 4 is a
+// stand-in of blocks for the boot file to hold, drawn only until the others come: no client is near enough a cell to
+// want a level past 0.13 m, and the far mesh takes levels 2 and 3.
+const cell = (id: string): PieceSpec => ({ id, object: name(id), triangles: [...budget(CELLS).slice(1), 400], errors: [0.025, 0.06, 0.13, 0.3] });
 const part = (id: string): PieceSpec => ({ id, object: name(id), triangles: budget(PIECE_TRIANGLES) });
 
 export default {

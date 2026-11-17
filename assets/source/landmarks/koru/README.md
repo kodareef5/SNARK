@@ -8,17 +8,14 @@ furniture are an original interpretation. No photograph's pixels are in the pack
 ## How it is made
 
 - `author_layout.py`, with `layout_details.py`, writes `content/landmarks/koru-layout.json`, the one authority for
-  collision, art and placement (`ref/LAYOUT.md`). It rebuilds byte for byte.
+  collision, placement and the art's layout (`ref/LAYOUT.md`). It rebuilds byte for byte.
 - `model.py` and `parts.py` build the pieces in Blender from that layout: eight cells, each one mesh of every module
   whose origin lies in its 16 m of the ship, in its anchor's frame; the three doors, each with its open form; and the
   sail parts, five sheets and three gaffs. The modules themselves are collision alone.
 - `tex/paint.ts` paints the one atlas every textured face is drawn from (`tex/PROVENANCE.md`); `materials.json` says
-  where each finish lies in it and what colour it is drawn far off.
-- `asset.ts` is the pack: `landmarks:koru`, `koru.snpk`, which ships only with the maps that place it.
-
-A cell's finest level is drawn with the atlas and is under 10,000 triangles. Its three far levels, flat, are made in
-`model.py` and show only what is seen from outside, since the rooms are behind white walls and glass that is dark
-from outside; `asset.ts` states their errors and why. The sails are flat colours, a sheet two faces back to back.
+  where each finish lies in it, how it is lit, and `far`, the palette colour it is drawn in flat.
+- `asset.ts` is the pack: `landmarks:koru`, `koru.snpk`, which ships only with the maps that place it. It states the
+  cells' errors and what a cell may draw from each distance (`CELLS`, in place of the shared landmark rule).
 
 ```sh
 python3 assets/source/landmarks/koru/author_layout.py
@@ -27,7 +24,46 @@ bun run art -- landmarks:koru
 bun run art -- landmarks:koru --check
 ```
 
+## The levels
+
+A cell has five levels, all made in `model.py`. On medium at 1,080 rows a level takes over at 88, 210 and 456 m from
+the cell's bounding sphere, on high at 138, 331 and 716 m. Past the structures a client holds (190 to 250 m) the yacht
+is drawn from its far mesh, which is every cell at level 2 and then at level 3; so levels 2 and 3 are the yacht from
+the hand-over to the horizon. Level 4 is a stand-in of blocks, the level the landmark's boot file holds, drawn only
+until the others have come, so the yacht adds no more than its old coarsest level did to the wait for the first frame.
+
+| level | drawn | holds |
+|---|---|---|
+| 0 | with the atlas | everything: rooms, stairs, furniture, plaques, ports with brass bores, rails with posts |
+| 1 | with the atlas | what is seen from outside: hull, decks, deckhouse walls with flush windows and shut doorways, open decks and their furniture, stairs whose wells open on an open deck, rig |
+| 2 | flat | level 1 without wires or rails, ports as octagons, furniture as blocks, flights as ramps |
+| 3 | flat | level 2 with square ports and no cove line or cap rail |
+
+The rules the levels keep, so nothing appears, goes or changes shade at a step:
+
+- Every stay, shroud and rail is drawn on levels 0 and 1 and none on 2 and 3: the wires are there while the yacht is
+  drawn with its atlas and gone past it, at 0.2 px and less.
+- Masts, booms with their sail covers, the bowsprit, spreaders, radomes, the furled headsails and the flag are on every
+  level. On level 3 no length of mast is under 80 cm across, so on a card with four samples a pixel it is a line to
+  3 km and not dashes.
+- The deckhouse's windows are their own faces on every level, and the hull's ports and its 25 cm red boot stripe too.
+- A flat face is drawn in its finish's `far` colour: the palette colour whose plain lit look (fully rough, no
+  reflection, as a landmark's flat draw is lit) is nearest the finish's lit look with its atlas, at 14:00 on the
+  course map, by the least sum of squared OKLab distances over side faces seen square on and from 45 degrees from both
+  sides, or upward faces from 5 and 30 degrees up. A glossy finish mirrors the sky and no flat colour can follow it on
+  both sides at once: the navy hull is 5 levels too dark on its shaded side and 10 too light on its sunlit side.
+
+The hull is straight between the layout's stations and shaded smooth across them. Below the sheer the art shears it
+back from the plumb stem and stern the layout gives, into a raked clipper bow (5 m at the waterline) and an overhanging
+canoe stern (3 m), as photographed; the decks, rails and collision keep the layout's ends.
+
+The sails: near, each row of a sheet is a panel of sailcloth from the atlas, a gaff sail's sixth rows carrying battens,
+smooth over its camber; then two flat levels. Struck, a gaff sail and its gaff lie inside the cover on the boom, as an
+in-boom furling sail does, and a headsail rolls on its stay. The sail parts are drawn as far as the far mesh.
+
+## Pictures
+
 `ref/pictures/` holds the accepted pictures, drawn by the software rasterizer on medium at its Miami berth
 (`bun tools/map/cityviews.ts var/maps/miami.snmap <views.json> <folder>`, `--moved 1` for the sails set): from the quay,
-on the sun deck, from 1 km off and 150 m up (its far form: the hull and three masts), and with its sails set.
-
+on the sun deck, from 1 km off and 150 m up, and with its sails set; and `ref/pictures/distances.png`, the yacht at
+each distance where a level or an owner takes over, on medium and on high, beside every cell drawn at level 0.
