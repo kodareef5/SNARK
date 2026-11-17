@@ -70,6 +70,11 @@
 //               before's, modulo 65,536; and x, y, z in 1/512 m from the square's corner and the datum, as zigzagged
 //               differences from the piece before's modulo 2^24, in 3 bytes (the first's from 0). Slot s of a chunk holds
 //               its s-th piece here.
+//   5 tops      the far feed's cells of an overview's square's chunks as the map places its statics, where its maker baked
+//               them (mapTops) and some of them are filled: a u16 count of those chunks, each a u16 index among its chunks
+//               row by row, ascending; then 256 bytes each, its 4 m cells' tops row by row from its corner (farTopByte in
+//               shared/world/tactical.ts, 0 for an empty cell); then 256 each of their palette colours. What a far block is
+//               drawn from where a sector's statics are not held. Nothing waits for it; it comes after every other part.
 //
 // A part's file is `<kind>.<column>-<row>.<hash>.part` (partName); the land's and the head's have no square.
 // A string is a varint byte length and UTF-8, as on the wire. A yaw is in 1/65,536 turns.
@@ -82,7 +87,8 @@ import { decodeUtf8 } from "../pack/pack.ts";
 import { BitReader, BitWriter } from "../net/codec.ts";
 import { Heightfield, TERRAIN_CELL } from "./heightfield.ts";
 import { formOf, mix, nodeForms, scatterNodes, type NodeSource } from "./nodes.ts";
-import { MAX_SLOTS_PER_CHUNK, type StructureStore } from "./structures.ts";
+import { MAX_SLOTS_PER_CHUNK, StructureStore } from "./structures.ts";
+import { FarCells, Summary, TACTICAL_CELL, bakeChunk, pieceShapes } from "./tactical.ts";
 import { MAX_WATER_BODIES, MapWater, type WaterBody } from "./water.ts";
 
 export const MAP_VERSION = 8;
@@ -96,10 +102,12 @@ export const OVERVIEW_STEP = 4;
 const CHUNK_SAMPLES = CHUNK_SIZE / TERRAIN_CELL;
 /** A static's bytes in a statics part's columns: id, yaw, x, y, z. */
 const STAT_ROW = 2 + 2 + 3 + 3 + 3;
+/** The far feed's cells of a chunk, 4 m each (shared/world/tactical.ts). */
+const FAR_CELLS = (CHUNK_SIZE / TACTICAL_CELL) * (CHUNK_SIZE / TACTICAL_CELL);
 /** Statics read between yields when read a step at a time: about a millisecond's work here, a few on a phone. */
 const SLICE = 1 << 15;
 /** A part's kinds, by their number in the file less one. */
-const PART_KINDS = ["land", "overview", "ground", "statics"] as const;
+const PART_KINDS = ["land", "overview", "ground", "statics", "tops"] as const;
 export type PartKind = (typeof PART_KINDS)[number];
 
 /** What `steps` comes to, run without a pause. */
@@ -336,6 +344,20 @@ export interface MapData {
   /** Lakes, ponds, reservoirs and the reaches of rivers, each on its own surface. Without it the sea is the only water. */
   readonly water?: MapWater;
   readonly content?: MapContent;
+  /** The far feed's cells of its chunks as it places its statics, where its maker baked them (mapTops). */
+  readonly tops?: MapTops;
+}
+
+/**
+ * The far feed's cells of a map's chunks as the map places its statics (shared/world/tactical.ts FarCells), from which a
+ * far block is drawn: the chunks with a filled cell, ascending, and FAR_CELLS of each, row by row from its corner.
+ */
+export interface MapTops {
+  readonly chunks: Uint32Array;
+  /** farTopByte of each cell's tallest piece above the ground at its middle, 0 for an empty cell. */
+  readonly top: Uint8Array;
+  /** Each cell's palette colour, 0 for an empty one. */
+  readonly tint: Uint8Array;
 }
 
 /** What a map adds to the content: its landmarks, each named by its files, and the definitions they bring. */
@@ -441,6 +463,8 @@ function check(m: MapData): void {
     if (!whole(w.bodies.length, 1, MAX_WATER_BODIES) || w.bodies.some((b) => !whole(b.level, 0, 65535) || b.name.length > MAX_TEXT)) fail(`it has ${w.bodies.length} bodies of water, and a map with water has 1 to ${MAX_WATER_BODIES}, each a surface on its heights' lattice and a name of at most ${MAX_TEXT} characters`);
     if (w.squares.length !== w.chunks().length * w.side * w.side || w.squares.some((b) => b > w.bodies.length)) fail("a square of its water is in a body it does not list");
   }
+  const far = m.tops;
+  if (far && (far.top.length !== far.chunks.length * FAR_CELLS || far.tint.length !== far.top.length || far.chunks.some((c, k) => c >= chunksX * chunksZ || (k > 0 && c <= far.chunks[k - 1]!)))) fail("its tops are not the cells of chunks of it in their order");
   const regions = m.regions ?? [];
   if (regions.length > MAX_REGIONS) fail(`it has ${regions.length} spawn regions, and a map has ${MAX_REGIONS} at most`);
   for (const z of regions) {
@@ -650,8 +674,8 @@ export function partsFolder(path: string): string {
   return `${path.replace(/\.snmap$/, "")}.parts`;
 }
 
-/** The squares a part's of `kind` lie on: SECTOR_CHUNKS a side for a sector's, OVERVIEW_CHUNKS for an overview's. */
-const sizeOf = (kind: PartKind): number => (kind === "overview" ? OVERVIEW_CHUNKS : SECTOR_CHUNKS);
+/** The squares a part's of `kind` lie on: SECTOR_CHUNKS a side for a sector's, OVERVIEW_CHUNKS for an overview's and its tops'. */
+const sizeOf = (kind: PartKind): number => (kind === "overview" || kind === "tops" ? OVERVIEW_CHUNKS : SECTOR_CHUNKS);
 
 /**
  * A square of the lattice, `size` chunks a side, as it lies on a map: its column and row of such squares, its corner in the
@@ -839,6 +863,22 @@ function groundPart(m: MapData, dims: FramedDims, layers: readonly NodeLayer[], 
       }
     }
   }
+  return o.done();
+}
+
+/** The tops of an overview's square's chunks, or null where none of them has a filled cell. */
+function topsPart(tops: MapTops, dims: FramedDims, sq: Square): Uint8Array | null {
+  const w = sq.cx1 - sq.cx0;
+  const held: number[] = [];
+  tops.chunks.forEach((c, k) => {
+    const [cx, cz] = [chunkCx(dims, c), chunkCz(dims, c)];
+    if (cx >= sq.cx0 && cx < sq.cx1 && cz >= sq.cz0 && cz < sq.cz1) held.push(k);
+  });
+  if (held.length === 0) return null;
+  const o = new Out();
+  o.u16(held.length);
+  for (const k of held) o.u16((chunkCz(dims, tops.chunks[k]!) - sq.cz0) * w + chunkCx(dims, tops.chunks[k]!) - sq.cx0);
+  for (const cells of [tops.top, tops.tint]) for (const k of held) o.put(cells.subarray(k * FAR_CELLS, (k + 1) * FAR_CELLS));
   return o.done();
 }
 
@@ -1087,6 +1127,13 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
   for (const sq of sectors) parts.push({ kind: "ground", sq, bytes: groundPart(m, dims, layers, sq) });
   const statics = sectorStatics(m.statics, dims, sectors);
   sectors.forEach((sq, s) => statics.parts[s] && parts.push({ kind: "statics", sq, bytes: statics.parts[s] }));
+  const tops = m.tops;
+  if (tops) {
+    for (const sq of squaresOf(dims, OVERVIEW_CHUNKS)) {
+      const bytes = topsPart(tops, dims, sq);
+      if (bytes) parts.push({ kind: "tops", sq, bytes });
+    }
+  }
   const head = headPart(m, dims, layers, statics, parts);
   const file = new Uint8Array(head.length + parts.reduce((n, p) => n + p.bytes.length, 0));
   file.set(head);
@@ -1340,7 +1387,13 @@ export interface StaticsPiece {
   readonly chunk: Uint32Array;
 }
 
-export type MapPiece = LandPiece | OverviewPiece | GroundPiece | StaticsPiece;
+/** An overview's square's tops: those of its chunks with a filled cell, by their map's chunks. Nothing waits for it. */
+export interface TopsPiece extends MapTops {
+  readonly kind: "tops";
+  readonly sq: Square;
+}
+
+export type MapPiece = LandPiece | OverviewPiece | GroundPiece | StaticsPiece | TopsPiece;
 
 /**
  * A part read a step at a time, given its head: a sector's statics yield every SLICE pieces, so a page reads a city's
@@ -1353,6 +1406,7 @@ export function* partSteps(head: MapHead, part: MapPart, bytes: Uint8Array, veri
   const steps = (function* (): Generator<void, MapPiece> {
     if (part.kind === "land") return { kind: "land", defs: JSON.parse(decodeUtf8(bytes)) as Def[] };
     if (part.kind === "statics") return yield* readStatics(head, sq!, s);
+    if (part.kind === "tops") return readTops(head, sq!, s);
     return part.kind === "overview" ? readOverview(head, sq!, s) : readGround(head, sq!, s);
   })();
   for (;;) {
@@ -1434,6 +1488,18 @@ function readGround(head: MapHead, sq: Square, s: In): GroundPiece {
     return { count, kind: Uint8Array.from(rows[0]!), x: Uint16Array.from(rows[1]!), z: Uint16Array.from(rows[2]!), yaw: Uint16Array.from(rows[3]!) };
   });
   return { kind: "ground", sq, heights, tint, listed };
+}
+
+function readTops(head: MapHead, sq: Square, s: In): TopsPiece {
+  const square = chunksOf(head.dims, sq);
+  const chunks = new Uint32Array(s.u16());
+  for (let k = 0; k < chunks.length; k++) {
+    const at = s.u16();
+    if (at >= square.length || (k > 0 && square[at]! <= chunks[k - 1]!)) throw new Error("map: its tops' chunks are off their square or out of order");
+    chunks[k] = square[at]!;
+  }
+  const top = s.take(chunks.length * FAR_CELLS).slice();
+  return { kind: "tops", sq, chunks, top, tint: s.take(top.length).slice() };
 }
 
 function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, StaticsPiece> {
@@ -1624,6 +1690,7 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
   const grounds: GroundPiece[] = [];
   const statics: StaticsPiece[] = [];
   const water: { chunks: Uint32Array; squares: Uint16Array }[] = [];
+  const tops: TopsPiece[] = [];
   let defs: readonly Def[] = [];
   for (const p of pieces) {
     if (p.kind === "land") defs = p.defs;
@@ -1633,7 +1700,8 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
     } else if (p.kind === "ground") {
       setGround(dims, heights, tint, p);
       grounds.push(p);
-    } else statics.push(p);
+    } else if (p.kind === "tops") tops.push(p);
+    else statics.push(p);
   }
   head.layers.forEach((rule, k) => rule.type === 1 && (nodes[k] = listedOf(dims, rule.kinds, k, grounds)));
   let mapWater: MapWater | null = null;
@@ -1646,7 +1714,68 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
   }
   const content = head.landmarks ? { content: { landmarks: head.landmarks, defs } } : {};
   const { id, minY, stepY, seaLevel, spawns, regions, vehicles, hash } = head;
-  return { id, dims, minY, stepY, seaLevel, heights, tint, statics: finish(joinStatics(head, statics, order)), nodes, spawns, ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(mapWater ? { water: mapWater } : {}), ...content, hash };
+  return { id, dims, minY, stepY, seaLevel, heights, tint, statics: finish(joinStatics(head, statics, order)), nodes, spawns, ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(mapWater ? { water: mapWater } : {}), ...content, ...(tops.length > 0 ? { tops: joinTops(tops) } : {}), hash };
+}
+
+/** The tops of overviews' squares as one map's, its chunks ascending. */
+function joinTops(pieces: readonly TopsPiece[]): MapTops {
+  const at = pieces.flatMap((p) => [...p.chunks].map((c, k) => [c, p, k] as const)).sort((a, b) => a[0] - b[0]);
+  const [top, tint] = [new Uint8Array(at.length * FAR_CELLS), new Uint8Array(at.length * FAR_CELLS)];
+  at.forEach(([, p, k], i) => {
+    top.set(p.top.subarray(k * FAR_CELLS, (k + 1) * FAR_CELLS), i * FAR_CELLS);
+    tint.set(p.tint.subarray(k * FAR_CELLS, (k + 1) * FAR_CELLS), i * FAR_CELLS);
+  });
+  return { chunks: Uint32Array.from(at, ([c]) => c), top, tint };
+}
+
+/**
+ * Sets `out` to the far feed's cells of `chunk` as `tops` (a map's, or an overview's tops part) holds them, every cell empty
+ * where it holds none of it. True where it holds them.
+ */
+export function topsOf(tops: MapTops, chunk: number, out: FarCells): boolean {
+  let [lo, hi] = [0, tops.chunks.length];
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (tops.chunks[mid]! < chunk) lo = mid + 1;
+    else hi = mid;
+  }
+  if (tops.chunks[lo] !== chunk) {
+    out.top.fill(0);
+    out.tint.fill(0);
+    out.filled = 0;
+    return false;
+  }
+  out.top.set(tops.top.subarray(lo * FAR_CELLS, (lo + 1) * FAR_CELLS));
+  out.tint.set(tops.tint.subarray(lo * FAR_CELLS, (lo + 1) * FAR_CELLS));
+  out.filled = 0;
+  for (const t of out.top) if (t !== 0) out.filled++;
+  return true;
+}
+
+/**
+ * The far feed's cells of every chunk of `map` as the server bakes them once its statics are set down (shared/world/tactical.ts
+ * bakeChunk), which a map's maker writes into its overviews' tops parts.
+ */
+export function mapTops(map: MapData, reg: Registry): MapTops {
+  const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  placeStatics(map, structs, reg);
+  const hf = mapHeightfield(map);
+  const shapes = pieceShapes(reg);
+  const summary = new Summary();
+  const chunks: number[] = [];
+  const cells: Uint8Array[] = [];
+  for (const c of structs.held) {
+    bakeChunk(structs.chunks[c]!, chunkCx(map.dims, c) * CHUNK_SIZE, chunkCz(map.dims, c) * CHUNK_SIZE, shapes, hf, summary);
+    if (summary.far.filled === 0) continue;
+    chunks.push(c);
+    cells.push(summary.far.top.slice(), summary.far.tint.slice());
+  }
+  const [top, tint] = [new Uint8Array(chunks.length * FAR_CELLS), new Uint8Array(chunks.length * FAR_CELLS)];
+  for (let k = 0; k < chunks.length; k++) {
+    top.set(cells[k * 2]!, k * FAR_CELLS);
+    tint.set(cells[k * 2 + 1]!, k * FAR_CELLS);
+  }
+  return { chunks: Uint32Array.from(chunks), top, tint };
 }
 
 /**

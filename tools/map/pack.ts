@@ -20,7 +20,7 @@ export const LEVELS = { everyday: { brotli: 9, gzip: 6 }, release: { brotli: 11,
  * 220 KB and its statics 220 KB, Los Angeles's). The budgets hold a release build's copies. An everyday build's are 16 to
  * 20% larger and are held to the same, so a map that passes one passes as a release.
  */
-export const PART_BUDGETS: Readonly<Record<PartKind | "head", number>> = { head: 1 << 20, land: 4 << 20, overview: 2 << 20, ground: 1 << 20, statics: 1 << 20 };
+export const PART_BUDGETS: Readonly<Record<PartKind | "head", number>> = { head: 1 << 20, land: 4 << 20, overview: 2 << 20, ground: 1 << 20, statics: 1 << 20, tops: 1 << 20 };
 /**
  * Brotli bytes of the heaviest first frame on a map: its head, its landmarks' definitions, its heaviest overview, and the
  * ground and statics of the four sectors meeting at the heaviest corner. A player waits for no more wherever it stands once
@@ -103,7 +103,7 @@ const kb = (bytes: number): string => (bytes / 1e3).toFixed(0);
 /** What a client fetches of a map, in lines: its parts by kind (how many, the median and the most, all of them) and its heaviest first frame. */
 export function partsTable(packed: Packed): string[] {
   const lines = [`on the wire, Brotli and gzip${packed.release ? "" : " (an everyday build's)"}: kind, count, median and most KB, all MB`];
-  for (const kind of ["head", "land", "overview", "ground", "statics"] as const) {
+  for (const kind of ["head", "land", "overview", "ground", "statics", "tops"] as const) {
     const of = packed.parts.filter((p) => p.kind === kind);
     if (of.length === 0) continue;
     const cell = (encoding: "br" | "gz"): string => {

@@ -59,7 +59,7 @@ import { CORE_CONTENT } from "../content/core.ts";
 import { provingFile } from "../server/world.ts";
 import { compileContent, withContent } from "../shared/content/registry.ts";
 import { CHUNK_SIZE } from "../shared/coords.ts";
-import { mapHeightfield, parseMap, writeMap, type MapData } from "../shared/world/mapfile.ts";
+import { mapHeightfield, mapTops, parseMap, writeMap, type MapData } from "../shared/world/mapfile.ts";
 import { groundSize } from "../client/core/render/terrain.ts";
 import { readLayers, writeLayers } from "./map/layers.ts";
 import { partsTable, writeMapFile } from "./map/pack.ts";
@@ -116,6 +116,11 @@ export function describe(file: Uint8Array): string[] {
   return lines;
 }
 
+/** A folder's map as its maker writes it, with the core content: the far feed's cells of its chunks baked into its tops. */
+export function made(map: MapData): MapData {
+  return { ...map, tops: mapTops(map, registry()) };
+}
+
 /** Writes the map and its parts' files with their copies, a release build's if `release`, and says what it holds and what a client fetches of it. */
 export async function save(path: string, map: MapData | Uint8Array, release = false): Promise<void> {
   const file = map instanceof Uint8Array ? map : writeMap(map);
@@ -125,7 +130,7 @@ export async function save(path: string, map: MapData | Uint8Array, release = fa
 
 /** `args` are the words after the command's name, less --release. Another tool adds its command here. */
 export const COMMANDS: Record<string, { usage: string; run(args: string[], release: boolean): void | Promise<void> }> = {
-  build: { usage: "<folder> <out.snmap>", run: ([folder, out], release) => save(out!, readLayers(folder!), release) },
+  build: { usage: "<folder> <out.snmap>", run: ([folder, out], release) => save(out!, made(readLayers(folder!)), release) },
   unpack: { usage: "<file.snmap> <folder>", run: ([file, folder]) => writeLayers(parseMap(new Uint8Array(readFileSync(file!))), folder!) },
   proving: { usage: "<out.snmap>", run: ([out], release) => save(out!, provingFile(registry()), release) },
   info: { usage: "<file.snmap>", run: ([file]) => describe(new Uint8Array(readFileSync(file!))).forEach((line) => console.log(line)) },

@@ -3,13 +3,14 @@ import type { Rig } from "../shared/anim/rigs.ts";
 import { NO_CLIPS } from "../shared/anim/clip.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
 import type { MapDef, MapZone } from "../shared/content/defs.ts";
-import type { Registry } from "../shared/content/registry.ts";
+import { CORE_CONTENT } from "../content/core.ts";
+import { compileContent, type Registry } from "../shared/content/registry.ts";
 import type { MapDims } from "../shared/coords.ts";
 import { ENTITY_LIMIT, EntityStore } from "../shared/sim/entities.ts";
 import { offsetForHour } from "../shared/sim/clock.ts";
 import type { CollisionWorld } from "../shared/world/collide.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
-import { mapHeightfield, mapNodes, parseMap, placeStatics, writeMap, type MapFile, type MapStatic, type MapStatics } from "../shared/world/mapfile.ts";
+import { mapHeightfield, mapNodes, mapTops, parseMap, placeStatics, writeMap, type MapData, type MapFile, type MapStatic, type MapStatics } from "../shared/world/mapfile.ts";
 import { PROVING_DIMS, PROVING_ID, PROVING_POOL, PROVING_SEA_LEVEL, PROVING_SPAWNS, buildProvingHeightfield, populateProving, provingNodeLayers } from "../shared/world/proving.ts";
 import { NodeField, type NodeSource } from "../shared/world/nodes.ts";
 import { StructureStore } from "../shared/world/structures.ts";
@@ -133,7 +134,7 @@ let proving: Uint8Array<ArrayBuffer> | null = null;
 
 /**
  * The proving ground as a map file, written once from the functions that build it (shared/world/proving.ts). It names content
- * by id, so the same bytes serve every registry.
+ * by id, and what a map's maker reads of the content (its far tops) is the core's, so the same bytes serve every registry.
  */
 export function provingFile(reg: Registry): Uint8Array<ArrayBuffer> {
   if (proving) return proving;
@@ -143,7 +144,7 @@ export function provingFile(reg: Registry): Uint8Array<ArrayBuffer> {
   // Chunk by chunk and slot by slot: set down again in this order, each piece gets the slot it had.
   const statics: MapStatic[] = [];
   for (const t of structs.chunks) for (let s = 0; t && s < t.high; s++) statics.push({ kind: reg.defs[t.kind[s]!]!.id, x: t.x[s]!, y: t.y[s]!, z: t.z[s]!, yaw: t.yaw[s]! });
-  return (proving = writeMap({
+  const map: MapData = {
     id: PROVING_ID,
     dims: PROVING_DIMS,
     minY: hf.minY,
@@ -154,7 +155,9 @@ export function provingFile(reg: Registry): Uint8Array<ArrayBuffer> {
     statics,
     nodes: provingNodeLayers(hf),
     spawns: PROVING_SPAWNS,
-  }));
+  };
+  const core = compileContent(CORE_CONTENT).registry!;
+  return (proving = writeMap({ ...map, tops: mapTops(map, core) }));
 }
 
 export function createProvingWorld(reg: Registry, opts: WorldOptions = {}): ServerWorld {

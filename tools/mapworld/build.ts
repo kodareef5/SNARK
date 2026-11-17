@@ -10,7 +10,7 @@ import { join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { SECTOR_CHUNKS, chunkCount, framed } from "../../shared/coords.ts";
-import { MapStatics, mapHeightfield, mapNodes, parseMap, writeMap } from "../../shared/world/mapfile.ts";
+import { MapStatics, mapHeightfield, mapNodes, mapTops, parseMap, writeMap } from "../../shared/world/mapfile.ts";
 import { obeliskStatics } from "../../shared/world/obelisks.ts";
 import { describe } from "../map.ts";
 import { readLayers, waterLayer } from "../map/layers.ts";
@@ -178,6 +178,8 @@ export async function buildMap(name: string, release = false): Promise<{ file: s
     put("vehicles.json", lines(all.map(v => ({ ...v, yaw: v.yaw * 360 / 65536 }))));
   }
   lap(`${aircraft.length} found aircraft at surveyed service sites and industrial yards; ${boats.length} boats at mapped waterfronts`);
+  map = { ...map, tops: mapTops(map, reg) };
+  lap(`the far feed's cells of ${map.tops!.chunks.length} chunks, for the overviews' tops`);
   const bytes = writeMap(map);
   const file = join(ROOT, "var/maps", `${name}.snmap`);
   const built = (performance.now() - t0) / 1000;

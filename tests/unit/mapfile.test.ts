@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
-import { CHUNK_SIZE, chunkCount, framed } from "../../shared/coords.ts";
+import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, framed } from "../../shared/coords.ts";
 import { hashBytes } from "../../shared/hash.ts";
-import { MapStatics, OVERVIEW_STEP, blankLayers, blankStatics, joinParts, joinStatics, mapHeightfield, mapNodes, parseMap, partSteps, placeStatics, readHead, readPart, setGround, setStatics, writeMap, type GroundPiece, type MapData, type NodeScatter, type NodeZoned, type OverviewPiece, type StaticsPiece } from "../../shared/world/mapfile.ts";
+import { CityStatics, cityTops } from "../../shared/world/city.ts";
+import { MapStatics, OVERVIEW_STEP, blankLayers, blankStatics, joinParts, joinStatics, mapHeightfield, mapNodes, mapTops, parseMap, partSteps, placeStatics, readHead, readPart, setGround, setStatics, topsOf, writeMap, type GroundPiece, type MapData, type NodeScatter, type NodeZoned, type OverviewPiece, type StaticsPiece, type TopsPiece } from "../../shared/world/mapfile.ts";
+import { FarCells, Summary, bakeChunk, pieceShapes } from "../../shared/world/tactical.ts";
 import { nodeForms, scatterNodes, type NodeSpot } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { busyMap, flatMap, wideMap } from "../fixtures/map.ts";
@@ -169,6 +171,38 @@ test("the head lays out every chunk's statics, and each sector's set in alone, i
   // A sector's statics that do not fill the rows its head counts are refused.
   const short = { ...one, id: one.id.subarray(1), yaw: one.yaw.subarray(1), x: one.x.subarray(1), y: one.y.subarray(1), z: one.z.subarray(1), chunk: one.chunk.subarray(1) };
   expect(() => finish(setStatics(head, blankStatics(head), short))).toThrow(`map: the statics of sector ${one.sq.col}, ${one.sq.row} do not fill the rows laid out for them`);
+});
+
+test("an overview's tops are the far feed's cells of its chunks as the statics give them, read alone and after every other part", () => {
+  const map = wideMap();
+  const tops = mapTops(map, reg);
+  const file = writeMap({ ...map, tops });
+  const head = readHead(file);
+  // A part for each overview's square, after every other part, and nothing in the first frame waits for them.
+  expect(head.parts.filter((p) => p.kind === "tops").map((p) => `${p.col}-${p.row}`)).toEqual(["31-32", "32-32"]);
+  expect(head.parts.slice(-2).every((p) => p.kind === "tops")).toBe(true);
+  const back = parseMap(file);
+  expect(writeMap(back)).toEqual(file);
+  // What the server bakes of each chunk with the statics set down, and the tops the far city takes from the statics.
+  const hf = mapHeightfield(back);
+  const structs = new StructureStore(back.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  placeStatics(back, structs, reg);
+  const city = new CityStatics(back.dims, back.statics, reg);
+  const [baked, read] = [new Summary(), new FarCells()];
+  const pieces = head.parts.filter((p) => p.kind === "tops").map((p) => readPart(head, p, file.subarray(p.at, p.at + p.length)) as TopsPiece);
+  let filled = 0;
+  for (let c = 0; c < chunkCount(back.dims); c++) {
+    bakeChunk(structs.chunks[c] ?? null, chunkCx(back.dims, c) * CHUNK_SIZE, chunkCz(back.dims, c) * CHUNK_SIZE, pieceShapes(reg), hf, baked);
+    const piece = pieces.find((p) => c % 70 >= p.sq.cx0 && c % 70 < p.sq.cx1)!;
+    expect(topsOf(piece, c, read)).toBe(baked.far.filled > 0);
+    expect([read.top, read.tint, read.filled]).toEqual([baked.far.top, baked.far.tint, baked.far.filled]);
+    expect([...read.top]).toEqual([...cityTops(city, c, hf, null)]);
+    if (topsOf(back.tops!, c, read)) filled++;
+    expect([read.top, read.tint]).toEqual([baked.far.top, baked.far.tint]);
+  }
+  expect(filled).toBe(structs.held.length);
+  // A map whose maker baked none has no tops parts.
+  expect(readHead(writeMap(map)).parts.some((p) => p.kind === "tops")).toBe(false);
 });
 
 test("a part that is damaged, or another's, is refused with its name, and so is a head", () => {
