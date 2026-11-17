@@ -11,6 +11,8 @@ export const PARASAUR: readonly Def[] = [
     color: 9,
     radius: 1.1,
     height: 2.6,
+    // Chosen physical kilograms for contact response, independent of inventory capacity.
+    mass: 900,
     eyeHeight: 2.4,
     walkSpeed: 2.6,
     sprintMul: 2.4,

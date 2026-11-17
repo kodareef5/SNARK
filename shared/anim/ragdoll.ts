@@ -8,8 +8,8 @@
 // only exactly rounded arithmetic and shared/math/scalar.ts's trigonometry: tools/simhash.ts's creature hash lays each
 // rig's, and JavaScriptCore and V8 must agree on it (tests/integration/determinism.test.ts).
 
-import { chunkAt } from "../coords.ts";
-import { detAtan2, detCos, detSin } from "../math/scalar.ts";
+import { chunkAt, mapSizeX, mapSizeZ } from "../coords.ts";
+import { detAtan2, detCos, detSin, len3 } from "../math/scalar.ts";
 import { quatRotate, quatUnrotate } from "../math/quat.ts";
 import type { CollisionWorld } from "../world/collide.ts";
 import { capsuleHull, hullPush } from "../world/convex.ts";
@@ -118,6 +118,8 @@ export class Ragdoll {
   private readonly yawQ = new Float64Array(4);
   private size = 1;
   awake = false;
+  /** An upward face or opposed steep faces supported the last step. Water and map limits cannot support a body. */
+  supported = false;
   /** Seconds no body has moved far from where stillX and stillQ hold, and how far is far. */
   private still = 0;
   private stillMove = 0;
@@ -197,9 +199,9 @@ export class Ragdoll {
    */
   start(now: Solved, before: Solved, x: number, y: number, z: number, yaw: number, size: number): void {
     const { skel, def, n } = this;
-    this.ox = x;
-    this.oy = y;
-    this.oz = z;
+    // Joint bindings must not depend on the world origin a late observer happens to restore at.
+    // Derive them near zero, then translate only dynamic positions into the world.
+    this.ox = this.oy = this.oz = 0;
     this.size = size;
     this.yawQ[0] = 0;
     this.yawQ[1] = detSin(yaw / 2);
@@ -267,8 +269,92 @@ export class Ragdoll {
       if (t3[0]! > this.swingNow[i]!) this.swingNow[i] = t3[0]!;
       if (t3[1]! > this.twistNow[i]!) this.twistNow[i] = t3[1]!;
     }
+    for (let i = 0; i < n; i++) {
+      this.x[i * 3]! += x; this.x[i * 3 + 1]! += y; this.x[i * 3 + 2]! += z;
+      this.px[i * 3]! += x; this.px[i * 3 + 1]! += y; this.px[i * 3 + 2]! += z;
+    }
+    this.ox = x; this.oy = y; this.oz = z;
+    this.supported = false;
     this.awake = true;
     this.hold();
+  }
+
+  /** Adds one inherited root velocity/spin to the canonical limp pose, at its root joint. */
+  launch(vx: number, vy: number, vz: number, wx: number, wy: number, wz: number): void {
+    this.rootPosition(t3);
+    const ox = t3[0]!, oy = t3[1]!, oz = t3[2]!;
+    for (let i = 0; i < this.n; i++) {
+      const k = i * 3, x = this.x[k]! - ox, y = this.x[k + 1]! - oy, z = this.x[k + 2]! - oz;
+      this.v[k]! += vx + wy * z - wz * y;
+      this.v[k + 1]! += vy + wz * x - wx * z;
+      this.v[k + 2]! += vz + wx * y - wy * x;
+      this.w[k]! += wx; this.w[k + 1]! += wy; this.w[k + 2]! += wz;
+    }
+    this.awake = true;
+    this.hold();
+  }
+
+  /** World root joint, used to keep a moving corpse in the correct spatial chunk. */
+  rootPosition(out: Float64Array): void {
+    const body = this.owner[0]!, at = body * 3;
+    quatRotate(this.q, body * 4, this.root[0]!, this.root[1]!, this.root[2]!, out, 0);
+    out[0]! += this.x[at]!; out[1]! += this.x[at + 1]!; out[2]! += this.x[at + 2]!;
+  }
+
+  /** Changes only the reference used by pose(); world bodies and momentum do not move. */
+  rebase(x: number, y: number, z: number): void { this.ox = x; this.oy = y; this.oz = z; }
+
+  /** Conservative radius from a supplied anchor to every collision capsule. */
+  reach(x: number, y: number, z: number): number {
+    let reach = 0;
+    for (let i = 0; i < this.n; i++) {
+      const k = i * 3, dx = this.x[k]! - x, dy = this.x[k + 1]! - y, dz = this.x[k + 2]! - z;
+      const half = Math.sqrt(this.seg[k]! * this.seg[k]! + this.seg[k + 1]! * this.seg[k + 1]! + this.seg[k + 2]! * this.seg[k + 2]!);
+      reach = Math.max(reach, Math.sqrt(dx * dx + dy * dy + dz * dz) + half + this.rad[i]!);
+    }
+    return reach;
+  }
+
+  /** A small local geometry stamp, used to publish a fresh authoritative impact-corpse checkpoint. */
+  worldRevision(world: CollisionWorld): number {
+    this.bounds(0);
+    const dims = world.hf.dims;
+    const x0 = Math.max(0, Math.floor(box[0]! / 64)), z0 = Math.max(0, Math.floor(box[1]! / 64));
+    const x1 = Math.min(dims.chunksX - 1, Math.floor(box[2]! / 64)), z1 = Math.min(dims.chunksZ - 1, Math.floor(box[3]! / 64));
+    let hash = 2166136261;
+    for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+      const chunk = z * dims.chunksX + x;
+      hash = Math.imul(hash ^ chunk, 16777619);
+      hash = Math.imul(hash ^ (world.structs.chunks[chunk]?.shape ?? 0), 16777619);
+      hash = Math.imul(hash ^ (world.nodes?.chunks[chunk]?.shape ?? 0), 16777619);
+    }
+    return hash >>> 0;
+  }
+
+  /** Exact future-controlling state after a whole tick. Bindings come from the canonical limp pose. */
+  checkpoint(): Float64Array {
+    const out = new Float64Array(22 * this.n + 13);
+    let at = 0;
+    for (const values of [this.x, this.v, this.w, this.q, this.swingNow, this.twistNow, this.stillX, this.stillQ]) { out.set(values, at); at += values.length; }
+    out[at++] = this.still;
+    for (const value of this.sleptOn) out[at++] = value;
+    for (const value of this.sleptShape) out[at++] = value;
+    return out;
+  }
+
+  /** Restores an already-validated checkpoint without restarting its sleep clock or adding launch twice. */
+  restore(values: Float64Array, awake: boolean): boolean {
+    if (values.length !== 22 * this.n + 13) return false;
+    for (const value of values) if (!Number.isFinite(value)) return false;
+    let at = 0;
+    for (const target of [this.x, this.v, this.w, this.q, this.swingNow, this.twistNow, this.stillX, this.stillQ]) {
+      for (let i = 0; i < target.length; i++) target[i] = values[at++]!;
+    }
+    this.still = values[at++]!;
+    for (let i = 0; i < this.sleptOn.length; i++) this.sleptOn[i] = values[at++]!;
+    for (let i = 0; i < this.sleptShape.length; i++) this.sleptShape[i] = values[at++]!;
+    this.awake = awake;
+    return true;
   }
 
   /**
@@ -331,9 +417,11 @@ export class Ragdoll {
     if (!(seconds > 0)) return true;
     if (seconds > MOST_STEP) seconds = MOST_STEP;
     this.gather(world, seconds);
+    this.supported = false;
     const steps = Math.ceil(seconds / SUBSTEP);
     const h = seconds / steps;
     for (let k = 0; k < steps; k++) this.substep(world, h);
+    this.confine(world);
     const { def, n, x, q, stillX, stillQ } = this;
     let moved = false;
     let relaxing = false;
@@ -347,7 +435,7 @@ export class Ragdoll {
     }
     if (moved) this.hold();
     else this.still += seconds;
-    if (this.still < SLEEP_AFTER || relaxing) return true;
+    if (!this.supported || this.still < SLEEP_AFTER || relaxing) return true;
     this.sleep(world);
     return false;
   }
@@ -357,6 +445,35 @@ export class Ragdoll {
     this.still = 0;
     this.stillX.set(this.x);
     this.stillQ.set(this.q);
+  }
+
+  /** The settling budget may stop a supported body, never an unsupported fall or sink. */
+  settle(world: CollisionWorld): void {
+    if (this.supported) this.sleep(world);
+  }
+
+  /** Map limits contain the whole articulated body; its spatial root and inventory cannot escape beyond them. */
+  private confine(world: CollisionWorld): void {
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (let i = 0; i < this.n; i++) {
+      const k = i * 3;
+      quatRotate(this.q, i * 4, this.seg[k]!, this.seg[k + 1]!, this.seg[k + 2]!, t3, 0);
+      const rx = Math.abs(t3[0]!) + this.rad[i]!, rz = Math.abs(t3[2]!) + this.rad[i]!;
+      x0 = Math.min(x0, this.x[k]! - rx); x1 = Math.max(x1, this.x[k]! + rx);
+      z0 = Math.min(z0, this.x[k + 2]! - rz); z1 = Math.max(z1, this.x[k + 2]! + rz);
+    }
+    const width = mapSizeX(world.hf.dims), depth = mapSizeZ(world.hf.dims);
+    const dx = x0 < 0 ? -x0 : x1 > width ? width - x1 : 0;
+    const dz = z0 < 0 ? -z0 : z1 > depth ? depth - z1 : 0;
+    if (dx === 0 && dz === 0) return;
+    for (let i = 0; i < this.n; i++) {
+      const k = i * 3;
+      this.x[k]! += dx; this.x[k + 2]! += dz;
+      this.px[k]! += dx; this.px[k + 2]! += dz;
+      this.stillX[k]! += dx; this.stillX[k + 2]! += dz;
+      if (this.v[k]! * dx < 0) this.v[k] = 0;
+      if (this.v[k + 2]! * dz < 0) this.v[k + 2] = 0;
+    }
   }
 
   private sleep(world: CollisionWorld): void {
@@ -746,6 +863,20 @@ export class Ragdoll {
     if (this.probing) {
       if (deep > this.worst) this.worst = deep;
       return;
+    }
+    if (ny > .35) this.supported = true;
+    else if (!this.supported && ny > .01) {
+      // A V-notch supports a body through both walls even when neither wall can hold it alone. Require
+      // opposing horizontal normals with a genuinely upward resultant; a single cliff remains a fall.
+      const horizontal = len3(nx, 0, nz);
+      for (let c = 0; c < this.nc; c++) {
+        const py = this.cn[c * 3 + 1]!;
+        if (py <= .01) continue;
+        const px = this.cn[c * 3]!, pz = this.cn[c * 3 + 2]!, other = len3(px, 0, pz);
+        if (other < 1e-8 || nx * px + nz * pz > -.98 * horizontal * other) continue;
+        const sx = nx / horizontal + px / other, sz = nz / horizontal + pz / other, sy = ny / horizontal + py / other;
+        if (sx * sx + sz * sz < sy * sy) { this.supported = true; break; }
+      }
     }
     if (deep > PUSH_OUT * this.h) deep = PUSH_OUT * this.h;
     // The point in the body's frame, so that where it was at the start of the substep can be found after it is pushed out.

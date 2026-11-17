@@ -26,7 +26,7 @@ export interface Built {
   /** `bytes` bytes of a file of the manifest, by its index, from `at`. */
   read(file: number, at: number, bytes: number): Uint8Array;
   /** The name under client/dist/assets of the one file whose name `pattern` matches. */
-  asset(pattern: RegExp): string;
+  asset(pattern: RegExp, optional?: boolean): string;
   close(): void;
 }
 
@@ -66,8 +66,9 @@ export function readBuilt(dist: string): Built {
       if (readSync(fd, out, 0, bytes, from) !== bytes) throw new Error(`${manifest.files[file]!.name} ends before ${from + bytes}`);
       return out;
     },
-    asset(pattern) {
+    asset(pattern, optional = false) {
       const found = names.filter((n) => pattern.test(n));
+      if (!found.length && optional) return "";
       if (found.length !== 1) throw new Error(`client/dist/assets has ${found.length} files named like ${pattern}`);
       return found[0]!;
     },

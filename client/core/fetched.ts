@@ -61,7 +61,7 @@ export async function fetchHead(get: Get, url: string): Promise<{ head: MapHead;
 }
 
 /** `read`, its error named for the request whose answer it read. */
-function within<T>(url: string, read: () => T): T {
+export function within<T>(url: string, read: () => T): T {
   try {
     return read();
   } catch (e) {
@@ -79,8 +79,7 @@ export interface FetchedStatics {
  * The statics of a fetched map, each sector's read and then set in its chunks' rows a step at a time, a sector or a slice of
  * one a step, with `pause` between, so frames go on.
  */
-export async function readStatics(rest: Promise<FetchedStatics>, pause: () => Promise<void>): Promise<MapStatics> {
-  const { head, parts } = await rest;
+export async function readStatics({ head, parts }: FetchedStatics, pause: () => Promise<void>): Promise<MapStatics> {
   const pieces: StaticsPiece[] = [];
   for (const { part, bytes } of parts) {
     const steps = partSteps(head, part, bytes);

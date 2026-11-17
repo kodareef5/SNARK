@@ -1,7 +1,36 @@
 import { expect, test } from "bun:test";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { BTN_JUMP, BTN_USE } from "../../shared/sim/character.ts";
+import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { Harness } from "../fixtures/net.ts";
+
+test("damage changes mechanical condition once; health regeneration does not invalidate driving prediction", () => {
+  const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [] });
+  try {
+    const s = h.join("damaged-driver"), pilot = h.pilots[0]!;
+    h.run(1500);
+    const spawn = h.world.spawn, car = h.host.spawnVehicle("core:compact", spawn.x + 1.6, spawn.z - .12, 0, Math.PI);
+    h.host.urban.mount(h.client(s)!, car); h.run(800);
+    expect(s.driving).toBe(car);
+    const ents = h.world.ents, record = h.host.records.byPid.get(ents.pid[car]!)!, v = ents.vrow[car]!;
+    h.host.survival.hurt(record, 200, 0);
+    h.run(500); // The one authoritative damage change has arrived before measuring continued prediction.
+    const hull = ents.vehicleHullCondition[v]!, health = h.host.survival.value(record, V_HEALTH);
+    expect(hull).toBeLessThan(.8);
+    const corrections = s.stats.corrections, states = s.stats.stateCorrections, start = s.simTick;
+    s.prediction.enabled = true;
+    h.run(5000, () => {
+      const age = s.simTick - start;
+      pilot.moveZ = age < 120 ? 1 : 0;
+      pilot.moveX = age >= 40 && age < 70 ? 1 : 0;
+      pilot.buttons = age >= 100 ? BTN_JUMP : 0;
+    });
+    expect(h.host.survival.value(record, V_HEALTH)).toBeGreaterThan(health);
+    expect(ents.vehicleHullCondition[v]).toBe(hull);
+    expect(s.stats.corrections).toBe(corrections); expect(s.stats.stateCorrections).toBe(states);
+    expect(s.prediction.differences).toEqual([]);
+  } finally { h.host.shutdown(); }
+});
 
 test("a catch-up frame transmits every newly sampled tick, including the first tick's short tap", () => {
   const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [] });

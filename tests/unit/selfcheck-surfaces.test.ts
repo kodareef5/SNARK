@@ -1,18 +1,16 @@
 import { expect, test } from "bun:test";
-import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { SelfcheckSurfaces } from "../../client/core/selfcheck-surfaces.ts";
 import { probePasses, provingProbes } from "../../client/core/selfcheck.ts";
 import { DRAW_PLAIN } from "../../client/core/render/packet.ts";
 import { lit, srgbToLinear } from "../../client/core/render/surface.ts";
-import { describePack } from "../../shared/pack/manifest.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
 import { PICK_ENTITY, PICK_STRUCTURE, PICK_TERRAIN } from "../../tools/snap/raster.ts";
 import { writeTextureFile } from "../../tools/pack/texture.ts";
 import { FakeNet } from "../fixtures/assetnet.ts";
 import { artTest } from "../fixtures/needs-art.ts";
-import { corePack, corePackBytes } from "../fixtures/pack.ts";
-import { worldMaps, surfaceProbeView, probePixel, probeRgb } from "../fixtures/world-surfaces.ts";
+import { corePack } from "../fixtures/pack.ts";
+import { referenceManifest, worldMaps, surfaceProbeView, probePixel, probeRgb } from "../fixtures/world-surfaces.ts";
 
 artTest("surface twins hit the same pixels, planes and mips as the software scene at browser and small canvas sizes", () => {
   const maps = worldMaps(corePack());
@@ -89,8 +87,7 @@ test("fully rough palette light is identical when its unused reflected-sky looku
 });
 
 test("self-check fetches independent RGBA maps, keeps GPU arrivals separate and reports a missing reference", () => {
-  const pack = corePack(), manifest = describePack(pack, { name: "boot", bytes: corePackBytes().length });
-  const material = manifest.materials!.find((m) => m.id === SURFACE_MATERIAL)!;
+  const { manifest, material } = referenceManifest(corePack());
   const roles = ["base", "normal", "mro"] as const;
   const encoded = writeTextureFile("rgba", roles.map((role) => ({ role, block: 1, pictures: Array.from({ length: 7 }, (_, k) => new Uint8Array(4 ** k * (role === "normal" ? 2 : 4)).fill(128)) })));
   manifest.files.push({ name: "reference", bytes: encoded.bytes.length, role: "tex", format: "rgba" });

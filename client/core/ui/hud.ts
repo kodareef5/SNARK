@@ -193,9 +193,9 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     f.add(KEY_VEHICLE + 2, K_BAR, x + 12, y + 41, DASH_W - 24, 3, S_MENU_FOCUS).value = Math.min(1, dash.rpm / dash.redline);
     f.text(KEY_VEHICLE + 3, x + 12, y + 47, 100, S_MENU_NOTE, `${Math.round(dash.rpm / 100) * 100} rpm`);
     f.text(KEY_VEHICLE + 4, x + 118, y + 47, DASH_W - 130, S_MENU_NOTE, `Fuel ${Math.round(dash.fuel * 100)}%`);
-    const warn = dash.handbrake ? "HANDBRAKE" : dash.brake > 0 ? "BRAKING" : "";
+    const warn = dash.flooding > .04 ? `TAKING WATER ${Math.round(dash.flooding * 100)}%` : dash.engineCondition <= .08 ? "ENGINE DAMAGED" : dash.handbrake ? "HANDBRAKE" : dash.brake > 0 ? "BRAKING" : "";
     f.text(KEY_VEHICLE + 5, x + 12, y + 65, DASH_W - 24, warn ? S_WARNING : S_MENU_NOTE, warn || "W/S drive · A/D steer");
-    f.text(KEY_VEHICLE + 6, x + 12, y + 83, DASH_W - 24, S_MENU_NOTE, "Space brake · E exit");
+    f.text(KEY_VEHICLE + 6, x + 12, y + 83, DASH_W - 24, S_MENU_NOTE, dash.flooding > .04 && dash.engineCondition <= .08 ? "E exit · Push ashore to repair" : dash.engineCondition <= .08 ? "F service · Repair engine" : "Space brake · E exit");
   }
   if (dash?.rotor) {
     const v = dash, x = W - MARGIN - HELI_W, y = dashY, line = HELI_W - 24;

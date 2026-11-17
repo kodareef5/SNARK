@@ -12,7 +12,10 @@ import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
 import { Urban } from "./urban.ts";
 import { foundVehicle, vehiclePlaceFree, VehicleService, VEHICLE_ORIGIN, type VehicleStart } from "./vehicle-service.ts";
-import { isBoatVehicle, isRotorVehicle } from "../shared/sim/vehicle.ts";
+import { vehicleRotation } from "../shared/sim/vehicle-frame.ts";
+import { carShapes } from "../shared/world/vehicle-shapes.ts";
+import { StaticVehicleSolids } from "../shared/world/vehicle-solid.ts";
+import { isBoatVehicle, isRotorVehicle, isWheelVehicle } from "../shared/sim/vehicle.ts";
 import { boatRestY } from "../shared/sim/boat.ts";
 import { groundUnder } from "../shared/world/collide.ts";
 import { VehicleContacts } from "./vehicle-contacts.ts";
@@ -20,6 +23,8 @@ import { Entangle } from "./entangle.ts";
 import { Breeding, DEADLINE_BREED } from "./breeding.ts";
 import { Carry } from "./carry.ts";
 import { Corpses, DEADLINE_CORPSE } from "./corpses.ts";
+import { CorpseReplication } from "./corpse-motion.ts";
+import { CMD_CORPSE } from "../shared/net/protocol.ts";
 import { Eggs } from "./eggs.ts";
 import { DEADLINE_FECES, Feces } from "./feces.ts";
 import { Hurt } from "./hurt.ts";
@@ -27,6 +32,7 @@ import { Overhead } from "./overhead.ts";
 import { growthStep, youngShare } from "../shared/sim/breeding.ts";
 import { creatureAnims } from "../shared/anim/creature.ts";
 import { buildRigs } from "../shared/anim/rigs.ts";
+import type { CorpseImpact } from "../shared/anim/corpse.ts";
 import type { PackRig } from "../shared/pack/pack.ts";
 import { DEADLINE_FIRE, Stations } from "./stations.ts";
 import { wirePower } from "./power.ts";
@@ -416,6 +422,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (e >= 0 && persistence) persistence.attach(records.byPid.get(world.ents.pid[e]!)!, e);
     return e;
   };
+  const parkingSolids = new StaticVehicleSolids(world);
   const parkVehicle = (id: string, x: number, z: number, ownerTeam: number, yaw: number, why: string, start: VehicleStart = {}): number => {
     const kind = reg.index.get(id);
     if (kind === undefined || !reg.vehicle[kind] || !Number.isSafeInteger(ownerTeam) || ownerTeam < 0 || !Number.isFinite(yaw)) return -1;
@@ -433,6 +440,27 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const ents = world.ents, v = ents.vrow[e]!;
     ents.vehicleYaw[v] = Math.fround(yaw);
     ents.vehicleQy[v] = Math.fround(Math.sin(yaw / 2)); ents.vehicleQw[v] = Math.fround(Math.cos(yaw / 2));
+    if (isWheelVehicle(def) && start.y === undefined) {
+      // Fit the four tyre heights at the spawn heading. An authored deck/air placement keeps its supplied height.
+      const sn = Math.sin(yaw), cs = Math.cos(yaw);
+      const height = (side: number, along: number) => world.hf.heightAt(x + cs * side + sn * along, z - sn * side + cs * along);
+      const w = def.spec.track / 2, l = def.spec.wheelbase / 2;
+      const fl = height(-w, l), fr = height(w, l), rl = height(-w, -l), rr = height(w, -l);
+      const cross = (fr + rr - fl - rl) / (4 * w), along = (fl + fr - rl - rr) / (4 * l);
+      const normal = 1 / Math.hypot(cross, along, 1);
+      const placedY = (fl + fr + rl + rr) / 4, travel = def.spec.suspensionTravel ?? .18;
+      if (normal < 1 && normal >= def.spec.minGroundNormal && Math.abs(fl + rr - fr - rl) < travel && Math.abs(placedY - y) < travel) {
+        const roll = Math.atan(cross), pitch = Math.asin(along * normal);
+        const q = new Float64Array(4);
+        vehicleRotation({ x, y, z, yaw, pitch, roll }, q);
+        const frame = { x, y: placedY, z, qx: q[0]!, qy: q[1]!, qz: q[2]!, qw: q[3]! };
+        if (!parkingSolids.blocked(frame, frame, carShapes(def.spec), undefined, false, 0)) {
+          ents.vehicleQx[v] = frame.qx; ents.vehicleQy[v] = frame.qy; ents.vehicleQz[v] = frame.qz; ents.vehicleQw[v] = frame.qw;
+          ents.vehiclePitch[v] = pitch; ents.vehicleRoll[v] = roll;
+          ents.setPosition(e, x, placedY, z);
+        }
+      }
+    }
     ents.fuel[v] = Math.fround((start.fuel ?? 1) * def.spec.fuelCapacity);
     ents.vehicleEngineCondition[v] = start.engine ?? 1; ents.vehicleRotorCondition[v] = start.rotor ?? 1;
     ents.vehicleHullCondition[v] = Math.max(.01, start.hull ?? 1); ents.vehicleFlooding[v] = 0;
@@ -442,7 +470,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     items.inv(rec);
     refreshBody(rec);
     if (start.hull !== undefined && rec.vitals) survival.add(rec, V_HEALTH, -(1 - Math.max(.01, start.hull)) * rec.vitals.max[V_HEALTH]! / 1e6);
-    urban.changed(e);
+    urban.initialized(e);
     return e;
   };
   const spawnVehicle = (id: string, x: number, z: number, ownerTeam = 0, yaw = 0, start: VehicleStart = {}): number => parkVehicle(id, x, z, ownerTeam, yaw, "admin", start);
@@ -530,7 +558,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (victim && car.team !== 0 && !tribes.may(victim, car.team)) return true;
     return !victim || kind?.type !== "species" || kind.class !== "survivor" || tribes.may(me, victim.team);
   };
-  const urban = new Urban({ world, game, records, items, creatures, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec), damage: (rec, points, by) => survival.hurt(rec, points, by) });
+  const urban = new Urban({ world, game, records, items, creatures, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec), damage: (rec, points, by) => survival.hurt(rec, points, by), collisionDamage: (rec, points, by) => combat.vehicleHurt(rec, points, by) });
   const vehicles = new VehicleService({ world, game, records, items, survival, urban,
     may: (actor, vehicle) => urbanMay(actor, vehicle, null),
     spawn: (kind, x, z, team, yaw, start) => parkVehicle(kind, x, z, team, yaw, "crafted", start),
@@ -541,7 +569,15 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     return !!actor && (reg.vehicle[rec.kind] ? urbanMay(actor, rec, null) : rec.team !== 0 && tribes.may(actor, rec.team));
   };
   game.onVehicleStep = e => urban.impact(e);
-  urban.contacts = new VehicleContacts({ world, records, combat, driverOf: e => urban.riderOf(e), impact: (e, speed, rotor, propeller) => urban.collision(e, speed, rotor, propeller) });
+  urban.contacts = new VehicleContacts({
+    world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
+    boarding: (actor, vehicle) => urban.boarding(actor, vehicle),
+    anchored: (e, opposing) => {
+      const vehicle = records.byPid.get(world.ents.pid[e]!);
+      return !!vehicle && vehicle.team !== 0 && vehicle.team !== opposing.team &&
+        rules.on("serverPVE") && opposing.team !== 0 && urban.parked(e);
+    },
+  });
   // The use button gets off a mount, and sets down what is in the arms.
   death.riding = (c) => urban.riding(c) || riding.riding(c) || carry.holding(c) >= 0;
   death.offMount = (c) => (urban.riding(c) ? urban.dismount(c) : riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
@@ -646,17 +682,17 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   projectiles.onCloud = (item, x, y, z, by) => clouds.make(item, x, y, z, by);
   // The killer is credited before death.die, which may delete the record.
   const dying = new Set<number>();
-  survival.onDeath = (rec, cause, by) => {
+  survival.onDeath = (rec, cause, by, impact) => {
     // Removing the body touches its vitals again, and so does setting down what dies held. It must die only once.
     if (rec.dead || dying.has(rec.pid)) return;
     dying.add(rec.pid);
     try {
-      died(rec, cause, by);
+      died(rec, cause, by, impact);
     } finally {
       dying.delete(rec.pid);
     }
   };
-  const died = (rec: EntityRecord, cause: number, by: number): void => {
+  const died = (rec: EntityRecord, cause: number, by: number, impact?: CorpseImpact): void => {
     if (bus.n[DEATH] !== 0) {
       // The killer is whoever struck last, or gave the buff that did it. A kill by a ridden creature is credited to its rider.
       const killer = by !== 0 ? records.byPid.get(by) : undefined;
@@ -673,7 +709,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     buffs.died(rec);
     spawner?.left(rec);
     if (reg.vehicle[rec.kind]?.movement === "boat") urban.releaseHost(rec.pid);
-    corpses.fell(rec, cause, by);
+    corpses.fell(rec, cause, by, impact);
     if (rec.kind === survivor) beds.died(rec, by !== 0 ? (records.byPid.get(by)?.team ?? 0) : 0);
     death.die(rec, cause);
   };
@@ -962,6 +998,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     focus.delete(c.id);
   };
   game.onBeforeStep = () => { refreshInventories(); urban.beforeStep(); riding.beforeStep(); };
+  const seatedHead = new Float64Array(3);
   game.onStep = (tick) => {
     for (const c of game.clients) {
       if (!c?.active) continue;
@@ -973,7 +1010,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     for (const c of game.clients) {
       if (!c?.active || c.ent < 0) continue;
       const rec = records.byPid.get(c.pid);
-      if (rec) survival.setSubmerged(rec, world.ents.y[c.ent]! + stanceEye(survivorMove, world.ents.stance[c.ent]!) < world.hf.waterAt(world.ents.x[c.ent]!, world.ents.z[c.ent]!));
+      if (rec) {
+        const seated = riding.eye(c.ent, seatedHead) || urban.eye(c.ent, seatedHead);
+        survival.setSubmerged(rec, seated
+          ? seatedHead[1]! < world.hf.waterAt(seatedHead[0]!, seatedHead[2]!)
+          : world.ents.y[c.ent]! + stanceEye(survivorMove, world.ents.stance[c.ent]!) < world.hf.waterAt(world.ents.x[c.ent]!, world.ents.z[c.ent]!));
+      }
     }
     deadlines.run(tick, (kind, pid, stamp) => {
       if (kind === DEADLINE_VITALS) survival.due(pid, stamp);
@@ -1001,7 +1043,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     projectiles.step();
     clouds.step();
     creatures.step(tick);
-    for (const e of urban.contacts!.step()) urban.syncAfterContact(e);
+    for (const e of urban.contacts!.step()) { urban.syncAfterContact(e); riding.syncAfterContact(e); }
     spawner?.step(tick);
     build.step();
     taming.step();
@@ -1123,6 +1165,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     harvest?.sync(c);
     tactical.sync(c);
   };
+  const corpseReplication = new CorpseReplication(game, corpses);
+  game.onSnapshot = (c, view) => corpseReplication.sync(c, view);
+  game.handle(CMD_CORPSE, (c, r) => corpseReplication.request(c, r));
   progression.onChange = (rec) => refreshBody(rec);
   addOwnCommands(own);
 

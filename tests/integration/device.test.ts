@@ -12,12 +12,11 @@ import { deviceTable } from "../../client/core/devicetext.ts";
 import { DRAW_PULLED, DRAW_SIZED, FRAME } from "../../client/core/render/packet.ts";
 import { decodeTexture, sampleWorldTexture } from "../../client/core/render/cpu-texture.ts";
 import { selfcheckReport } from "../../client/core/selfcheck-report.ts";
-import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
-import { describePack } from "../../shared/pack/manifest.ts";
 import { MAX_RUNS, MAX_WRONG, REPORT_BYTES, deviceRoutes, filesChanged, lacking, servedFiles } from "../../tools/device.ts";
 import { writeTextureFile } from "../../tools/pack/texture.ts";
 import { FakeNet } from "../fixtures/assetnet.ts";
 import { TIMING, TOKEN, browser, client, renderer, run, settle } from "../fixtures/device.ts";
+import { referenceManifest } from "../fixtures/world-surfaces.ts";
 import { corePack } from "../fixtures/pack.ts";
 
 test("a page shows which device it is on and the tests, starts nothing until one is tapped, then runs the quick look and posts after every step", async () => {
@@ -101,8 +100,8 @@ test("a page shows which device it is on and the tests, starts nothing until one
 });
 
 test("the page holds the lit ground and statics to what the plain self-check expects of the same frame, by the world surfaces' reference through the game's port", async () => {
-  const pack = corePack(), manifest = describePack(pack, { name: "boot", bytes: 0 });
-  const material = manifest.materials!.find((m) => m.id === SURFACE_MATERIAL)!;
+  const pack = corePack();
+  const { manifest, material } = referenceManifest(pack);
   const roles = ["base", "normal", "mro"] as const;
   const pictures = roles.map((role) => Array.from({ length: 7 }, (_, k) => new Uint8Array(4 ** k * (role === "normal" ? 2 : 4)).fill(128)));
   const encoded = writeTextureFile("rgba", roles.map((role, k) => ({ role, block: 1, pictures: pictures[k]! })));

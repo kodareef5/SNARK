@@ -295,7 +295,7 @@ ${related ? `<section><h2>Related</h2><dl class="related">${related}</dl></secti
     const sources = join(site.atlases, (a) => `<dt>${esc(a.label)}</dt><dd>${a.sources.map(esc).join("; ")}</dd>`);
     return `${heading("Credits")}<section><h2>Models and motion</h2><ul class="list">${models}</ul></section>
 <section><h2>Maps</h2><dl class="related">${sources}</dl></section>
-<section><h2>Type</h2><p>Barlow Semi Condensed, under the <a href="/assets/hud-font-license.txt">SIL Open Font License</a>.</p></section>`;
+${site.assets.font ? '<section><h2>Type</h2><p>Barlow Semi Condensed, under the <a href="/assets/hud-font-license.txt">SIL Open Font License</a>.</p></section>' : ""}`;
   };
 
   return { owners: sortedOwners, ownerName, ref, cards, maps, front, entry, engrams, levels, soundOwners, soundPage, music, controls, commands, settings, search, credits };

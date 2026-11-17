@@ -1,12 +1,15 @@
 // A map's head and parts as files of their own beside it (shared/world/mapfile.ts), each with its copies for the wire,
 // written once so the server compresses nothing: Brotli, and gzip for a browser that takes no Brotli (on plain http).
-// What one player waits for is held to budgets here: each part's size, and the heaviest first frame on the map.
+// What one player waits for is held to budgets here: each part's size, and the heaviest first frame on the map, by the rule
+// the page asks by (client/core/mapload.ts).
 
 import { mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { brotliCompress, constants, gzip } from "node:zlib";
-import { partsFolder, partsOf, type PartKind } from "../../shared/world/mapfile.ts";
+import { firstFrameParts, handOverParts } from "../../client/core/mapload.ts";
+import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
+import { partsFolder, partsOf, readHead, type MapHead, type MapPart, type PartKind } from "../../shared/world/mapfile.ts";
 
 /**
  * Brotli quality and gzip level of the copies. An everyday build's take a few seconds a city; a release build's are the
@@ -23,10 +26,11 @@ export const LEVELS = { everyday: { brotli: 9, gzip: 6 }, release: { brotli: 11,
  */
 export const PART_BUDGETS: Readonly<Record<PartKind | "head", number>> = { head: 1 << 20, land: 4 << 20, overview: 2 << 20, ground: 1 << 20, statics: 1 << 20, tops: 1 << 20 };
 /**
- * Brotli bytes of the heaviest first frame on a map: its head, its landmarks' definitions, its heaviest overview, and the
- * ground and statics of the four sectors meeting at the heaviest corner. A player waits for no more wherever it stands once
- * a client fetches only what it is near: 2.71 MB on Miami and 2.05 on Los Angeles (1.1 and 0.8 s at 20 Mbit/s, the phone
- * link the asset bench takes).
+ * Brotli bytes of the heaviest first frame on a map: its head and the parts the page's first frame waits for where it
+ * waits longest (client/core/mapload.ts firstFrameParts): the landmarks' definitions, every overview and the ground of the
+ * sectors within reach of the body, four where they meet. A player waits for no more wherever it stands: 3.69 MB on Miami
+ * and 3.36 on Los Angeles, everyday builds of 2026-11-17 at version 8 (1.5 and 1.3 s at 20 Mbit/s, the phone link the
+ * asset bench takes).
  */
 export const FIRST_FRAME_BUDGET = 8 << 20;
 
@@ -42,13 +46,17 @@ export interface PackedPart {
   readonly gz: Buffer;
 }
 
-/** What a player waits for before the first frame where it waits longest: the parts', in Brotli and gzip bytes. */
+/**
+ * What a player waits for before the first frame where it waits longest, in Brotli and gzip bytes, and where that is: a
+ * place in metres and the sectors whose ground it waits for there; and what it waits for there until the map's statics are
+ * all in hand (client/core/mapload.ts handOverParts), which the far city waits for.
+ */
 export interface FirstFrame {
   readonly br: number;
   readonly gz: number;
-  /** The heaviest overview's square, and the column and row of the north-west sector of the heaviest four. */
-  readonly overview: readonly [number, number];
-  readonly corner: readonly [number, number];
+  readonly at: readonly [number, number];
+  readonly sectors: readonly string[];
+  readonly city: { readonly br: number; readonly gz: number };
 }
 
 export interface Packed {
@@ -71,31 +79,33 @@ export async function packMap(file: Uint8Array, release = false): Promise<Packed
       return { name, kind: part?.kind ?? "head", col: part?.col ?? 0, row: part?.row ?? 0, bytes, br: b, gz: z };
     }),
   );
-  return { parts, first: firstFrame(parts), release };
+  return { parts, first: firstFrame(parts, readHead(file, false)), release };
 }
 
-/** The heaviest first frame of a map's parts: the head, the land, the heaviest overview, and the heaviest four sectors at a corner. */
-export function firstFrame(parts: readonly PackedPart[]): FirstFrame {
-  const heaviest = (kind: PackedPart["kind"]): PackedPart | null => parts.filter((p) => p.kind === kind).reduce<PackedPart | null>((a, p) => (!a || p.br.length > a.br.length ? p : a), null);
-  const [head, land, overview] = [heaviest("head"), heaviest("land"), heaviest("overview")];
-  const sector = new Map<string, [number, number]>();
-  for (const p of parts) {
-    if (p.kind !== "ground" && p.kind !== "statics") continue;
-    const [br, gz] = sector.get(`${p.col} ${p.row}`) ?? [0, 0];
-    sector.set(`${p.col} ${p.row}`, [br + p.br.length, gz + p.gz.length]);
-  }
-  const cols = parts.filter((p) => p.kind === "ground").map((p) => p.col);
-  const rows = parts.filter((p) => p.kind === "ground").map((p) => p.row);
-  let best = { br: 0, gz: 0, corner: [0, 0] as readonly [number, number] };
-  for (let col = Math.min(...cols) - 1; col <= Math.max(...cols); col++) {
-    for (let row = Math.min(...rows) - 1; row <= Math.max(...rows); row++) {
-      const four = [[0, 0], [1, 0], [0, 1], [1, 1]].map(([c, r]) => sector.get(`${col + c!} ${row + r!}`) ?? [0, 0]);
-      const br = four.reduce((n, s) => n + s[0], 0);
-      if (br > best.br) best = { br, gz: four.reduce((n, s) => n + s[1], 0), corner: [col, row] };
+/**
+ * The heaviest first frame of a map's parts, by the rule the page asks by: over every place a body can stand, the head and
+ * the parts firstFrameParts names there. The sectors within reach of a place all meet at a corner of the sectors' lattice,
+ * or at the map's edge where that corner is off it, and reach no fewer from there: those corners are the places weighed.
+ */
+export function firstFrame(parts: readonly PackedPart[], head: MapHead): FirstFrame {
+  const by = new Map(parts.map((p) => [p.name, p]));
+  const sum = (of: readonly MapPart[], encoding: "br" | "gz"): number => of.reduce((n, p) => n + by.get(p.name)![encoding].length, by.get(head.name)![encoding].length);
+  const { frameX, frameZ, chunksX, chunksZ } = head.dims;
+  const along = (frame: number, chunks: number): number[] => {
+    const out: number[] = [];
+    for (let k = Math.floor(frame / SECTOR_CHUNKS); (k - 1) * SECTOR_CHUNKS < frame + chunks; k++) out.push(Math.max(0, Math.min(chunks, k * SECTOR_CHUNKS - frame)) * CHUNK_SIZE);
+    return out;
+  };
+  let best = { br: -1, at: [0, 0] as readonly [number, number], of: [] as MapPart[] };
+  for (const z of along(frameZ, chunksZ)) {
+    for (const x of along(frameX, chunksX)) {
+      const of = firstFrameParts(head, x, z);
+      const br = sum(of, "br");
+      if (br > best.br) best = { br, at: [x, z], of };
     }
   }
-  const sum = (encoding: "br" | "gz"): number => [head, land, overview].reduce((n, p) => n + (p?.[encoding].length ?? 0), best[encoding]);
-  return { br: sum("br"), gz: sum("gz"), overview: [overview?.col ?? 0, overview?.row ?? 0], corner: best.corner };
+  const city = handOverParts(head);
+  return { br: best.br, gz: sum(best.of, "gz"), at: best.at, sectors: best.of.filter((p) => p.kind === "ground").map((p) => `${p.col}-${p.row}`), city: { br: sum(city, "br"), gz: sum(city, "gz") } };
 }
 
 const mb = (bytes: number): string => (bytes / 1e6).toFixed(2);
@@ -115,7 +125,8 @@ export function partsTable(packed: Packed): string[] {
   }
   const f = packed.first;
   lines.push(`  all ${packed.parts.length}: ${mb(wireBytes(packed, "br"))} | ${mb(wireBytes(packed, "gz"))}`);
-  lines.push(`the heaviest first frame: ${mb(f.br)} MB of Brotli, ${mb(f.gz)} of gzip, at overview ${f.overview[0]}-${f.overview[1]} and sectors ${f.corner[0]}-${f.corner[1]} to ${f.corner[0] + 1}-${f.corner[1] + 1}`);
+  lines.push(`the heaviest first frame: ${mb(f.br)} MB of Brotli, ${mb(f.gz)} of gzip, at ${f.at[0]}, ${f.at[1]} m, with the ground of sectors ${f.sectors.join(" ")}`);
+  lines.push(`  there, until the map's statics are all in hand: ${mb(f.city.br)} MB of Brotli, ${mb(f.city.gz)} of gzip`);
   return lines;
 }
 
@@ -126,12 +137,20 @@ export function checkBudgets(packed: Packed): void {
     if (p.br.length > PART_BUDGETS[p.kind]) throw new Error(`map: its part ${p.name} is ${mb(p.br.length)} MB on the wire, over the ${mb(PART_BUDGETS[p.kind])} MB a part of its kind may be in tools/map/pack.ts${which}`);
   }
   const f = packed.first;
-  if (f.br > FIRST_FRAME_BUDGET) throw new Error(`map: a client where sectors ${f.corner[0]}-${f.corner[1]} to ${f.corner[0] + 1}-${f.corner[1] + 1} meet waits for ${mb(f.br)} MB of it before it draws, over the ${mb(FIRST_FRAME_BUDGET)} MB of tools/map/pack.ts${which}`);
+  if (f.br > FIRST_FRAME_BUDGET) throw new Error(`map: a client at ${f.at[0]}, ${f.at[1]} m waits for ${mb(f.br)} MB of it before it draws, over the ${mb(FIRST_FRAME_BUDGET)} MB of tools/map/pack.ts${which}`);
+}
+
+/** Writes `bytes` to `path` whole: a reader has the file as it was or as it is, never half of it. */
+function writeWhole(path: string, bytes: Uint8Array): void {
+  writeFileSync(`${path}.tmp`, bytes);
+  renameSync(`${path}.tmp`, path);
 }
 
 /**
  * Writes the map at `path`, and beside it the folder of its head's and parts' files with their copies, a release build's if
  * `release`. Takes away any file of that folder that is not one of them. Throws over a budget, before writing anything.
+ * Each file is replaced whole, the map last, so a server still running on the map before (server/main.ts mapRoutes) holds
+ * that file open and cuts from it the parts that were taken away.
  */
 export async function writeMapFile(path: string, file: Uint8Array, release = false): Promise<Packed> {
   const packed = await packMap(file, release);
@@ -141,14 +160,13 @@ export async function writeMapFile(path: string, file: Uint8Array, release = fal
   const names = new Set(packed.parts.flatMap((p) => [p.name, `${p.name}.br`, `${p.name}.gz`]));
   for (const name of readdirSync(folder)) if (!names.has(name)) rmSync(join(folder, name), { recursive: true });
   for (const p of packed.parts) {
-    writeFileSync(join(folder, `${p.name}.br`), p.br);
-    writeFileSync(join(folder, `${p.name}.gz`), p.gz);
-    writeFileSync(join(folder, p.name), p.bytes);
+    writeWhole(join(folder, `${p.name}.br`), p.br);
+    writeWhole(join(folder, `${p.name}.gz`), p.gz);
+    writeWhole(join(folder, p.name), p.bytes);
   }
   // The whole map's copies of the version before parts.
   const whole = new RegExp(`^${basename(path).replace(/\./g, "\\.")}\\.[0-9a-f]{8}\\.(br|gz)$`);
   for (const name of readdirSync(dirname(path))) if (whole.test(name)) rmSync(join(dirname(path), name));
-  writeFileSync(`${path}.tmp`, file);
-  renameSync(`${path}.tmp`, path);
+  writeWhole(path, file);
   return packed;
 }

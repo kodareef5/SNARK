@@ -111,6 +111,7 @@ export function addAdminCommands(con: Console): void {
         const at = args.length === 3 ? y : groundUnder(world.hf, x, z, p.radius);
         if (ents.mode[e] !== MODE_GHOST && !placeFree(world, x, at, z, p.radius, p.height)) return "that spot is inside something";
         ents.setPosition(e, x, at, z);
+        world.history.discontinuity(e);
         ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
         return `at ${x} ${at.toFixed(2)} ${z}`;
       },

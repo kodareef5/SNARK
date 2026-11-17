@@ -9,12 +9,14 @@
 // it sinks. It lies, and its ragdoll is laid, only where it came to rest.
 
 import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT, hurtStage } from "../shared/anim/pose.ts";
-import { FALLING, FELL, Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16 } from "../shared/anim/corpse.ts";
+import { FALLING, FELL, Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16, type CorpseImpact } from "../shared/anim/corpse.ts";
 import { WET_DAMP, WET_GRAVITY } from "../shared/anim/ragdoll.ts";
 import { Solved, rayZones, zoneHit } from "../shared/anim/skeleton.ts";
 import type { ItemDef, SpeciesDef } from "../shared/content/defs.ts";
 import { TICK_DT, TICK_RATE } from "../shared/coords.ts";
 import { POS_UNITS } from "../shared/net/view.ts";
+import { CORPSE_BODIES_MAX, CORPSE_MOTION_COMPONENT, decodeCorpseCheckpoint, encodeCorpseCheckpoint, type CorpseMotion } from "../shared/net/corpse.ts";
+import { makeHandle } from "../shared/ids.ts";
 import { detCos, detSin } from "../shared/math/scalar.ts";
 import { quatNormalize } from "../shared/math/quat.ts";
 import { Rng } from "../shared/rng.ts";
@@ -72,6 +74,7 @@ const WRECK_COMPONENT = 0x687772;
 const WRECK_FIELDS = ["qx", "qy", "qz", "qw", "vx", "vy", "vz", "pitchRate", "yawRate", "rollRate"] as const;
 const BOAT_WRECK_FIELDS = ["flooding", "steering", "payloadMass"] as const;
 const wreckRotation = new Float64Array(4), wreckPoint = new Float64Array(3);
+const corpseRoot = new Float64Array(3);
 
 export interface CorpsesContext {
   readonly world: ServerWorld;
@@ -122,6 +125,13 @@ export interface Body {
   dropped: number;
   /** Rigid rotorcraft salvage, carrying its complete crash orientation independently of creature ragdolls. */
   readonly wreck: HelicopterState | BoatState | null;
+  /** A physical death starts directly in the replicated ragdoll; the capsule never also owns its motion. */
+  launch: CorpseImpact | null;
+  motionRevision: number;
+  motionStanding: boolean;
+  motionWorld: number;
+  motion: CorpseMotion | null;
+  reach: number;
 }
 
 /** What one blow gave, for tests and the console. */
@@ -156,6 +166,7 @@ export class Corpses {
   t = 0;
   private readonly rng: Rng;
   private readonly corpse: number;
+  private reach = PAD;
 
   constructor(ctx: CorpsesContext, seed: number) {
     this.ctx = ctx;
@@ -184,7 +195,7 @@ export class Corpses {
    * world. A creature's becomes a body whatever killed it, and takes what it carried and its saddle; Death raises it once
    * the creature's entity is gone.
    */
-  fell(rec: EntityRecord, cause: number, by: number): void {
+  fell(rec: EntityRecord, cause: number, by: number, impact?: CorpseImpact): void {
     const { world, records, items, rules } = this.ctx;
     const reg = world.reg;
     const def = reg.defs[rec.kind];
@@ -217,6 +228,11 @@ export class Corpses {
     // Survival clears rec.out as health runs out, so the body asks what the entity still shows.
     const out = rec.out || (ents.mflags[e]! & MF_OUT) !== 0 || (ents.cue[e]! & CUE_OUT) !== 0;
     const b = this.make(body, rec.kind, max, max, young, size, out, !out && ents.mode[e] === MODE_FLYER, life);
+    const rig = world.anims[rec.kind]?.rig;
+    if (impact && impact.victimPid === rec.pid && impact.victimHandle === makeHandle(e, ents.gen[e]!) && rig?.ragdoll && rig.ragdoll.bone.length <= CORPSE_BODIES_MAX) {
+      b.launch = impact;
+      b.motionRevision = 1;
+    }
     if (b.wreck) {
       const v = ents.vrow[e]!;
       Object.assign(b.wreck, { qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!,
@@ -228,7 +244,7 @@ export class Corpses {
       }
     }
     // Off the ground with nothing under it, it falls on as it was going.
-    if ((ents.flags[e]! & F_GROUNDED) === 0 && !this.held(b)) this.fallFrom(b, ents.vx[e]!, ents.vy[e]!, ents.vz[e]!, ents.yaw[e]!);
+    if (!b.launch && (ents.flags[e]! & F_GROUNDED) === 0 && !this.held(b)) this.fallFrom(b, ents.vx[e]!, ents.vy[e]!, ents.vz[e]!, ents.yaw[e]!);
     this.save(b);
     this.laid.set(rec.pid, b);
   }
@@ -236,6 +252,15 @@ export class Corpses {
   /** How many bodies are falling or sinking now. */
   get falling(): number {
     return this.dropping.length;
+  }
+
+  /** Cheap send decision for an already-visible corpse. Zero means the ordinary stationary/falling path. */
+  motionRevision(e: number): number { return this.byEnt.get(e)?.motionRevision ?? 0; }
+
+  /** Current whole-tick checkpoint, including one first seen long after its original impact. */
+  motion(e: number): CorpseMotion | null {
+    const motion = this.byEnt.get(e)?.motion;
+    return motion ? { revision: motion.revision, tick: this.ctx.world.tick, data: motion.data } : null;
   }
 
   /** Death took the creature `pid`'s entity away: its body takes its place. */
@@ -261,7 +286,7 @@ export class Corpses {
     const b = this.make(rec, s.species, s.max, s.left, s.young, corpseSize(s.span), s.out, s.air, s.life);
     this.place(b);
     // A body saved while it fell lies where it was in the air until it is found to hang there, when the world is whole.
-    this.loaded.push(b);
+    if (!b.motionRevision) this.loaded.push(b);
   }
 
   private make(rec: EntityRecord, kind: number, max: number, left: number, young: boolean, size: number, out: boolean, air: boolean, life: number): Body {
@@ -292,6 +317,7 @@ export class Corpses {
       rec, kind, e: -1, max, left, young, size, out, air, life, next: 0, stage: 0,
       x: rec.x, y: rec.y, z: rec.z, yaw: yawOf16(rec.yaw),
       fall: null, pose: !wreck && anim?.rig.ragdoll ? new Solved(anim.rig.bones) : null, moving: false, drop: null, dropped: 0, wreck,
+      launch: null, motionRevision: rec.extra.has(CORPSE_MOTION_COMPONENT) ? 1 : 0, motionStanding: false, motionWorld: 0, motion: null, reach: PAD,
     };
     this.bodies.set(rec.pid, b);
     return b;
@@ -358,11 +384,41 @@ export class Corpses {
   private lay(b: Body): void {
     if (b.wreck) return;
     const anim = this.ctx.world.anims[b.kind];
-    const r = anim && b.pose ? layCorpse(anim, b.out, b.air, b.x, b.y, b.z, b.yaw, b.size, b.pose) : null;
+    const saved = b.rec.extra.get(CORPSE_MOTION_COMPONENT), checkpoint = saved ? decodeCorpseCheckpoint(saved) : null;
+    b.motionStanding = !!b.launch || checkpoint?.standing === true;
+    const r = anim && b.pose ? layCorpse(anim, b.out, b.air, b.x, b.y, b.z, b.yaw, b.size, b.pose, b.motionStanding) : null;
     if (r) {
       b.fall = new Fall(r);
-      this.wake(b);
+      if (saved && (!checkpoint || checkpoint.x !== b.x || checkpoint.y !== b.y || checkpoint.z !== b.z || checkpoint.yaw !== b.yaw || checkpoint.size !== b.size || checkpoint.out !== b.out || checkpoint.air !== b.air || !r.restore(checkpoint.state, checkpoint.awake))) {
+        throw new Error(`corpse ${b.rec.pid}: invalid physical checkpoint`);
+      }
+      if (checkpoint) b.fall.ticks = checkpoint.ticks;
+      if (b.launch) {
+        const launch = b.launch;
+        r.launch(launch.vx, launch.vy, launch.vz, launch.wx, launch.wy, launch.wz);
+        b.launch = null;
+      }
+      if (b.motionRevision) { this.updateMotion(b, false); r.pose(b.pose!); this.save(b); }
+      if (!b.fall.still) this.wake(b);
     }
+  }
+
+  /** Move spatial interest and harvesting with the simulated root; publish topology/sleep transitions once. */
+  private updateMotion(b: Body, wasMoving: boolean): void {
+    const fall = b.fall!, r = fall.ragdoll, world = this.ctx.world;
+    r.rootPosition(corpseRoot);
+    b.x = b.rec.x = wireX(corpseRoot[0]!); b.y = b.rec.y = wireY(corpseRoot[1]!); b.z = b.rec.z = wireX(corpseRoot[2]!);
+    r.rebase(b.x, b.y, b.z);
+    b.reach = Math.max(PAD, r.reach(b.x, b.y, b.z));
+    this.reach = Math.max(this.reach, b.reach);
+    const revision = r.worldRevision(world);
+    if (b.motion && (revision !== b.motionWorld || wasMoving === fall.still)) b.motionRevision++;
+    b.motionWorld = revision;
+    if (b.e >= 0) world.ents.setPosition(b.e, b.x, b.y, b.z);
+    const data = encodeCorpseCheckpoint({ x: b.x, y: b.y, z: b.z, yaw: b.yaw, size: b.size, out: b.out, air: b.air,
+      awake: r.awake, standing: b.motionStanding, ticks: fall.ticks, state: r.checkpoint() });
+    b.motion = { revision: b.motionRevision, tick: world.tick, data };
+    b.rec.extra.set(CORPSE_MOTION_COMPONENT, data);
   }
 
   /**
@@ -525,7 +581,10 @@ export class Corpses {
         b.moving = false;
         continue;
       }
-      if (fall.tick(world)) fall.ragdoll.pose(b.pose!);
+      if (fall.tick(world)) {
+        if (b.motionRevision) { this.updateMotion(b, true); this.save(b); }
+        fall.ragdoll.pose(b.pose!);
+      }
       if (!fall.still) moving[kept++] = b;
       else b.moving = false;
     }
@@ -540,6 +599,7 @@ export class Corpses {
       }
       if (b.moving || !b.fall || b.fall.ragdoll.awake) continue;
       if (b.fall.tick(world)) {
+        if (b.motionRevision) { this.updateMotion(b, false); this.save(b); }
         b.fall.ragdoll.pose(b.pose!);
         this.wake(b);
       }
@@ -556,11 +616,11 @@ export class Corpses {
     const dims = world.dims;
     this.t = maxT;
     if (this.byEnt.size === 0) return -1;
-    const reach = maxT + PAD;
-    const x0 = Math.max(0, Math.floor((Math.min(ox, ox + dx * maxT) - PAD) / 64));
-    const x1 = Math.min(dims.chunksX - 1, Math.floor((Math.max(ox, ox + dx * maxT) + PAD) / 64));
-    const z0 = Math.max(0, Math.floor((Math.min(oz, oz + dz * maxT) - PAD) / 64));
-    const z1 = Math.min(dims.chunksZ - 1, Math.floor((Math.max(oz, oz + dz * maxT) + PAD) / 64));
+    const pad = this.reach;
+    const x0 = Math.max(0, Math.floor((Math.min(ox, ox + dx * maxT) - pad) / 64));
+    const x1 = Math.min(dims.chunksX - 1, Math.floor((Math.max(ox, ox + dx * maxT) + pad) / 64));
+    const z0 = Math.max(0, Math.floor((Math.min(oz, oz + dz * maxT) - pad) / 64));
+    const z1 = Math.min(dims.chunksZ - 1, Math.floor((Math.max(oz, oz + dz * maxT) + pad) / 64));
     let best = -1;
     for (let cz = z0; cz <= z1; cz++) {
       for (let cx = x0; cx <= x1; cx++) {
@@ -570,7 +630,7 @@ export class Corpses {
           const fx = b.x - ox;
           const fy = b.y - oy;
           const fz = b.z - oz;
-          if (fx * fx + fy * fy + fz * fz > reach * reach) continue;
+          if (fx * fx + fy * fy + fz * fz > (maxT + b.reach) * (maxT + b.reach)) continue;
           const t = this.ray(b, ox, oy, oz, dx, dy, dz, this.t);
           if (t < this.t) {
             this.t = t;

@@ -1,7 +1,7 @@
 // Bodies that died. A dead creature's body is an entity of its own, sent with CUE_DEAD (shared/anim/pose.ts), and lies
 // where it fell until it is used up or decays (server/corpses.ts). A client that saw the creature die plays its death clip
 // where the body lies, and the body goes limp as a ragdoll (shared/anim/ragdoll.ts) at the frame its asset gives; one that
-// died knocked out goes limp as it lay. A client that comes upon a body later lays it to rest at once. Either way its
+// died knocked out goes limp as it lay. A client that comes upon a body later lays it to rest in bounded slices. Either way its
 // ragdoll starts from the same pose and is stepped a whole tick at a time (shared/anim/corpse.ts), so every client, and
 // the server that judges the blows on it, have it lie the same.
 //
@@ -10,12 +10,14 @@
 // the place the wire then carries. One that died in its own flight plays its death in the air (CUE_FELL).
 
 import { Pose, blendPose, sampleClip } from "../../shared/anim/clip.ts";
-import { Fall, bodyFalls, corpseSize, deathOf, diedAloft, layCorpse, limpPose, wireX, wireY, wireYaw } from "../../shared/anim/corpse.ts";
+import { Fall, SETTLE_TICKS, bodyFalls, corpseSize, deathOf, diedAloft, layCorpse, limpPose, wireX, wireY, wireYaw } from "../../shared/anim/corpse.ts";
 import { creaturePose, type CreatureAnim } from "../../shared/anim/creature.ts";
 import type { Gait } from "../../shared/anim/gait.ts";
 import { AnimState, CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT, FLY_SPEED_STEP, SPEED_STEP, bodySeed } from "../../shared/anim/pose.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
+import { makeHandle } from "../../shared/ids.ts";
+import { decodeCorpseCheckpoint, type CorpseMotion } from "../../shared/net/corpse.ts";
 import { MODE_FLYER } from "../../shared/sim/character.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { RemoteSample } from "./session.ts";
@@ -31,14 +33,19 @@ const LATE = 30;
  * went in TOLD ticks at the speed it was drawn going: a flyer at 19 m/s goes 5 m.
  */
 const NEAR = 2;
-/** Ticks of falling stepped in one frame for the bodies a client comes upon, nearest first. The rest wait for the next frame. */
-const BUDGET = 600;
+/** Shared fast-forward ticks per frame for first-seen bodies, starting nearest and then rotating fairly. */
+const BUDGET = 60;
 /** Ticks one watched body is stepped in one frame when frames come slowly. Those left are stepped in the frames after. */
 const CATCH_UP = 6;
+/** A newly visible moving body asks for current authority rather than replaying an old world for minutes. */
+const CHECKPOINT_AGE = TICK_RATE;
+const impactRoot = new Float64Array(3);
 
 export interface Corpse {
   readonly kind: number;
   readonly id: number;
+  /** Slot and generation, for sparse physical checkpoints and reuse invalidation. */
+  readonly handle: number;
   /**
    * Where it went limp, as the wire has it, or while it falls where it was last sampled; its yaw in radians and its size,
    * and the six colours of its regions.
@@ -76,10 +83,14 @@ export interface Corpse {
   clock: number;
   /** Come upon and still being laid to rest. */
   settling: boolean;
+  /** Total fast-forward work for an ordinary first-seen body; any remainder advances at the render clock. */
+  settledTicks: number;
   /** The pose to draw, solved, about (x, y, z). */
   readonly solved: Solved;
   /** The update that last saw its entity. */
   seen: number;
+  motionRevision: number;
+  motionTick: number;
 }
 
 /** A creature the server said died, as it was last drawn, waiting for its body. */
@@ -152,7 +163,10 @@ export class Corpses {
   private readonly a: Pose[] = [];
   private readonly solvedScratch: Solved[] = [];
   private readonly waiting: Corpse[] = [];
+  private settleCursor = 0;
   private readonly fallen: Fallen[] = [];
+  /** Qualified IDs whose moving checkpoint is too old; the session can request a fresh visible-body checkpoint. */
+  readonly needsCheckpoint = new Set<number>();
 
   /**
    * `mortal` is what each kind plays, indexed by content kind, null for a kind whose body is not drawn here. A body carries
@@ -168,7 +182,7 @@ export class Corpses {
    * `remote.tick`. (cx, cz) is where the viewer is: bodies come upon nearer it are laid to rest first. `gaits` holds the
    * gait of each body drawn, by id.
    */
-  update(remote: RemoteSample, world: CollisionWorld, cx: number, cz: number, gaits: ReadonlyMap<number, Gait>): void {
+  update(remote: RemoteSample, world: CollisionWorld, cx: number, cz: number, gaits: ReadonlyMap<number, Gait>, motions?: ReadonlyMap<number, CorpseMotion>): void {
     const tick = remote.tick;
     const seen = ++this.updates;
     const now = this.now;
@@ -192,12 +206,18 @@ export class Corpses {
       const kind = remote.kind[i]!;
       if (!this.mortal[kind] || (remote.cue[i]! & CUE_DEAD) === 0) continue;
       let c = this.byId.get(remote.id[i]!);
+      const handle = makeHandle(remote.id[i]!, remote.gen[i]!);
+      const motion = motions?.get(handle);
       // A body whose entity's place another has taken is a new one. A body that lies never moves, so one elsewhere is another.
-      if (c && (c.kind !== kind || (!c.falling && (c.x !== wireX(remote.x[i]!) || c.z !== wireX(remote.z[i]!))))) {
+      if (c && (c.handle !== handle || c.kind !== kind || (!c.falling && !c.motionRevision && !motion && (c.x !== wireX(remote.x[i]!) || c.z !== wireX(remote.z[i]!))))) {
         this.forget(c);
         c = undefined;
       }
+      // First visibility can precede the checkpoint's render tick. Wait those few frames instead of laying
+      // a different local body on the ground and then snapping it to the authoritative airborne pose.
+      if (!c && motion && motion.tick > Math.floor(tick)) continue;
       c ??= this.meet(remote, i, tick, gaits);
+      if (motion && motion.tick <= Math.floor(tick) && (motion.revision > c.motionRevision || (motion.revision === c.motionRevision && motion.tick > c.motionTick))) this.applyMotion(c, motion, tick);
       if (c.falling) this.follow(c, remote, i, tick);
       if (c.rigid) {
         c.qx = remote.vehicleQx[i]!; c.qy = remote.vehicleQy[i]!; c.qz = remote.vehicleQz[i]!; c.qw = remote.vehicleQw[i]!;
@@ -214,15 +234,22 @@ export class Corpses {
       if (c.settling) waiting.push(c);
       else this.move(c, world, tick);
     }
-    // Bodies come upon are laid to rest nearest first, a budget of ticks a frame.
+    // Start nearest first, then rotate fairly: one difficult corpse cannot consume a neighbour's entire budget.
     const far = (c: Corpse): number => (c.x - cx) * (c.x - cx) + (c.z - cz) * (c.z - cz);
     waiting.sort((p, q) => far(p) - far(q));
     let budget = BUDGET;
-    for (const c of waiting) budget = this.settle(c, world, tick, budget);
+    const first = waiting.length ? this.settleCursor % waiting.length : 0;
+    let visited = 0;
+    for (; visited < waiting.length && budget > 0; visited++) {
+      const share = Math.ceil(budget / (waiting.length - visited)), c = waiting[(first + visited) % waiting.length]!;
+      budget -= share - this.settle(c, world, tick, share);
+    }
+    this.settleCursor = waiting.length ? (first + visited) % waiting.length : 0;
   }
 
   private forget(c: Corpse): void {
     this.byId.delete(c.id);
+    this.needsCheckpoint.delete(c.handle);
     const k = this.list.indexOf(c);
     if (k >= 0) this.list.splice(k, 1);
   }
@@ -261,6 +288,7 @@ export class Corpses {
     const c: Corpse = {
       kind,
       id: r.id[i]!,
+      handle: makeHandle(r.id[i]!, r.gen[i]!),
       x,
       y,
       z,
@@ -280,8 +308,11 @@ export class Corpses {
       fall: null,
       clock: 0,
       settling: false,
+      settledTicks: 0,
       solved: new Solved(rig.bones),
       seen: 0,
+      motionRevision: 0,
+      motionTick: -1,
     };
     this.byId.set(c.id, c);
     this.list.push(c);
@@ -292,6 +323,20 @@ export class Corpses {
     } else if (falling) this.held(c);
     else this.goLimp(c, c.born);
     return c;
+  }
+
+  private applyMotion(c: Corpse, motion: CorpseMotion, tick: number): void {
+    const checkpoint = decodeCorpseCheckpoint(motion.data), anim = this.mortal[c.kind]!;
+    if (!checkpoint || checkpoint.size !== c.size || checkpoint.out !== c.lying || checkpoint.air !== c.air || checkpoint.yaw !== c.yaw) return;
+    if (checkpoint.awake && tick - motion.tick > CHECKPOINT_AGE) { this.needsCheckpoint.add(c.handle); return; }
+    const r = layCorpse(anim, c.lying, c.air, checkpoint.x, checkpoint.y, checkpoint.z, c.yaw, c.size, c.solved, checkpoint.standing);
+    if (!r || !r.restore(checkpoint.state, checkpoint.awake)) return;
+    c.x = checkpoint.x; c.y = checkpoint.y; c.z = checkpoint.z;
+    c.fall = new Fall(r); c.fall.ticks = checkpoint.ticks;
+    c.limp = true; c.falling = false; c.settling = false;
+    c.clock = motion.tick; c.motionTick = motion.tick; c.motionRevision = motion.revision;
+    this.needsCheckpoint.delete(c.handle);
+    r.pose(c.solved);
   }
 
   /**
@@ -373,9 +418,9 @@ export class Corpses {
   private settle(c: Corpse, world: CollisionWorld, tick: number, budget: number): number {
     const fall = c.fall!;
     let n = 0;
-    for (; !fall.still && n < budget; n++) fall.tick(world);
+    for (; !fall.still && n < budget && c.settledTicks < SETTLE_TICKS; n++, c.settledTicks++) fall.tick(world);
     if (n > 0) fall.ragdoll.pose(c.solved);
-    if (fall.still) {
+    if (fall.still || c.settledTicks === SETTLE_TICKS) {
       c.settling = false;
       c.clock = Math.floor(tick);
     }
@@ -404,6 +449,7 @@ export class Corpses {
     const fall = c.fall;
     if (!fall) return;
     const to = Math.floor(tick);
+    if (c.motionRevision && !fall.still && to - c.clock > CHECKPOINT_AGE) { this.needsCheckpoint.add(c.handle); return; }
     let moved = false;
     for (let n = 0; c.clock < to && n < CATCH_UP; n++) {
       if (fall.still) {
@@ -417,6 +463,13 @@ export class Corpses {
       fall.tick(world);
       moved = true;
     }
-    if (moved) fall.ragdoll.pose(c.solved);
+    if (moved) {
+      if (c.motionRevision) {
+        fall.ragdoll.rootPosition(impactRoot);
+        c.x = wireX(impactRoot[0]!); c.y = wireY(impactRoot[1]!); c.z = wireX(impactRoot[2]!);
+        fall.ragdoll.rebase(c.x, c.y, c.z);
+      }
+      fall.ragdoll.pose(c.solved);
+    }
   }
 }
