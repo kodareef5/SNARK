@@ -4,10 +4,10 @@
 // hand-over between the two shows nothing. Its faces go in the order the near store lays a chunk's 16 m cells (scene.ts),
 // so that a run of cells in view is one draw.
 //
-// A face is held by the pieces round it that stand drawn as their form, its chunk's and its neighbours'. A busy chunk is made
-// in bands along z, a band a step, its chunk's other pieces holding its faces as its neighbours' do, so that no step takes
-// much of a frame. Its vertices are stored within bounds of the chunk on a lattice of a power of two metres
-// an axis, so that two chunks on the same lattice put a corner at the same place.
+// A face is held by the pieces round it that stand drawn as their form, its chunk's and its neighbours'. A busy chunk is
+// made in bands along z, a band a step, its chunk's other pieces holding its faces as its neighbours' do, so that no step
+// takes much of a frame. Its vertices are stored within bounds of the chunk on a lattice of a power of two metres an axis,
+// so that two chunks on the same lattice put a corner at the same place.
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
@@ -56,7 +56,7 @@ export function cellOrder(side: number, x: number, z: number): number {
 
 /**
  * The making of chunk `chunk`'s mesh, a band at a time. `mine` marks the chunk's pieces the mesh draws, in the city's
- * order; `holds(c)` marks a neighbour's pieces that stand drawn as boxes, which hold faces, or is null for none.
+ * order; `holds(c)` marks a neighbour's pieces that stand drawn as their form, which hold faces, or is null for none.
  */
 export class NearMaking {
   readonly chunk: number;

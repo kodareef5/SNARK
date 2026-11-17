@@ -306,7 +306,7 @@ interface ChunkBatch {
   uploaded: boolean;
   /** Bytes the card holds of the buffer by this chunk's id, until this or the next batch of it goes up in their place. */
   onCard: number;
-  /** The mesh its plain boxes are drawn with in place of their instances (nearcity.ts), or null; and its one instance, after the pieces', which is every instance's count. */
+  /** The mesh its statics of kinds drawn flat as their form are drawn with in place of their instances (nearcity.ts), or null; and its one instance, after the pieces', which is every instance's count. */
   mesh: NearMesh | null;
   meshAt: number;
 }
@@ -496,9 +496,9 @@ export class Scene {
   readonly nodesFar: FarNodes | null;
   /** The map's own buildings where the near store does not hold their chunks whole, given a source of them. */
   city: FarCity | null = null;
-  /** With the far city, the near store's chunks' plain boxes as a mesh a chunk (nearcity.ts). */
+  /** With the far city, the near store's chunks' statics drawn flat as their form as a mesh a chunk (nearcity.ts). */
   readonly near: NearCity | null;
-  /** Whether a chunk the near store holds whole draws its plain boxes from its mesh; false draws them as instances, for pictures held to them. */
+  /** Whether a chunk the near store holds whole draws such statics from its mesh; false draws them as instances, for pictures held to them. */
   nearMesh = true;
   /** The map's landmarks where the near store does not hold their pieces' chunks whole, with the far city. */
   landmarks: FarLandmarks | null = null;
@@ -1724,7 +1724,7 @@ export class Scene {
     // How far the near plane's corners are from the camera: a room that near may be cut into and seen.
     const slope = Math.tan(cam.fovY / 2);
     const reach = cam.near * Math.sqrt(1 + slope * slope * (1 + cam.aspect * cam.aspect));
-    // The map's statics' plain boxes are drawn as a mesh a chunk where the far city follows what of them stands.
+    // The map's statics drawn flat as their form are a mesh a chunk where the far city follows what of them stands.
     const statics = world.city?.statics;
     const near = base === 0 && this.nearMesh && this.city && statics ? this.near : null;
     if (base === 0 && !near) this.near?.clear(p, this.assets.residency);
