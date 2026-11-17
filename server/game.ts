@@ -75,7 +75,7 @@ import { sortU32 } from "../shared/sort.ts";
 import { groundStands, groundUnder } from "../shared/world/collide.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
 import { staticKinds, type MapStatics } from "../shared/world/mapfile.ts";
-import { Guesses } from "./guesses.ts";
+import { Allowance, Guesses, countedAs } from "./guesses.ts";
 import { freeAt, freePlace, placeFree } from "./place.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
@@ -154,7 +154,7 @@ const CHUNK_WINDOW = 16 * 1024;
 const NAME = /^[A-Za-z0-9 _-]{1,24}$/;
 /** Metres. */
 const SPECTATOR_LIFT = 1.6;
-/** New names one address may make in NEW_NAME_TICKS, an hour. */
+/** New names one machine may make in NEW_NAME_TICKS, an hour (Allowance). */
 const NEW_NAMES = 8;
 const NEW_NAME_TICKS = 108000;
 
@@ -170,10 +170,11 @@ export const DID_ROLL = 16;
 /** Read every argument and check r.overflow before acting. Returns a RESULT code. */
 export type CommandHandler = (c: Client, r: BitReader) => number;
 
-/** A connection that has not said hello, and the tick it came on. It holds no slot and none of a session's memory. */
+/** A connection that has not said hello, the tick it came on, and the machine it came from (countedAs). It holds no slot and none of a session's memory. */
 interface Pending {
   readonly conn: Connection;
   readonly since: number;
+  readonly from: string;
 }
 
 /** One survivor's session, made when its hello is accepted. It outlives its connection by lingerTicks, and a reconnect with the same name and key takes it over. */
@@ -360,8 +361,8 @@ export class GameServer {
   readonly opts: GameOptions;
   bus: Bus = NO_BUS;
   readonly clients: (Client | null)[];
-  /** New survivor names made from each address in the last hour. */
-  private readonly newNames = new Map<string, { n: number; since: number }>();
+  /** New survivor names made from each machine in the last hour. */
+  private readonly newNames = new Allowance(NEW_NAMES, NEW_NAME_TICKS);
   /** Wrong join passwords, by the address they came from. */
   readonly guesses = new Guesses();
   /** Wrong cheat passwords, counted apart: joining with the right password must not forgive them. */
@@ -842,12 +843,13 @@ export class GameServer {
   private accept(conn: Connection): void {
     const T = this.world.tick;
     const share = conn.address === undefined ? 0 : this.opts.pendingPerAddress;
+    const from = conn.address === undefined ? "" : countedAs(conn.address)[0]!;
     let first: Pending | null = null;
     let own: Pending | null = null;
     let mine = 0;
     for (const p of this.pending) {
       first ??= p;
-      if (share === 0 || p.conn.address !== conn.address) continue;
+      if (share === 0 || p.from !== from) continue;
       own ??= p;
       mine++;
     }
@@ -859,7 +861,7 @@ export class GameServer {
       if (T - out.since < HELLO_GRACE_TICKS) return this.close(conn, REJECT_FULL);
       this.turnAway(out, REJECT_FULL);
     }
-    const p: Pending = { conn, since: T };
+    const p: Pending = { conn, since: T, from };
     this.pending.add(p);
     conn.onMessage = (channel, data) => this.greet(p, channel, data);
     conn.onClose = () => void this.pending.delete(p);
@@ -1089,17 +1091,8 @@ export class GameServer {
     // A dead survivor joins dead, whatever it asks. As a spectator it could ask for its body back and get one that cannot die.
     const spectate = (flags & HELLO_SPECTATE) !== 0 && !this.savedPosition?.(name)?.dead;
     if (spectate && this.opts.spectators !== "anyone") return this.refuse(conn, REJECT_DENIED);
-    // Every new name leaves a survivor record for good, so one address may make only so many an hour.
-    if (conn.address !== undefined && this.savedPosition && this.savedPosition(name) === null) {
-      const made = this.newNames.get(conn.address);
-      if (made && world.tick - made.since < NEW_NAME_TICKS) {
-        if (made.n >= NEW_NAMES) return this.refuse(conn, REJECT_DENIED);
-        made.n++;
-      } else {
-        if (this.newNames.size > 4096) this.newNames.clear();
-        this.newNames.set(conn.address, { n: 1, since: world.tick });
-      }
-    }
+    // Every new name leaves a survivor record for good, so one machine may make only so many an hour.
+    if (conn.address !== undefined && this.savedPosition && this.savedPosition(name) === null && !this.newNames.take(conn.address, world.tick)) return this.refuse(conn, REJECT_DENIED);
     const slot = this.clients.indexOf(null);
     if (slot < 0) return this.refuse(conn, REJECT_FULL);
     // Nothing was kept for the connection until here. A session's memory is given only to a hello that is let in.

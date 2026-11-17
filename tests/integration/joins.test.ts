@@ -4,7 +4,8 @@ import { heapStats } from "bun:jsc";
 import { expect, test } from "bun:test";
 import { loadConfig } from "../../server/settings/config.ts";
 import type { VoiceSocket } from "../../server/voice.ts";
-import { REJECT_DENIED, REJECT_FULL, REJECT_NAME, SESSION_DEAD, S_REJECT } from "../../shared/net/protocol.ts";
+import type { ClientSession } from "../../client/core/session.ts";
+import { REJECT_DENIED, REJECT_FULL, REJECT_NAME, REJECT_PASSWORD, SESSION_DEAD, S_REJECT } from "../../shared/net/protocol.ts";
 import type { Connection } from "../../shared/net/transport.ts";
 import { writeAuth } from "../../shared/voice/packet.ts";
 import { Harness, testKey } from "../fixtures/net.ts";
@@ -76,6 +77,23 @@ test("joining with the right password does not forgive wrong guesses at the admi
   // Each guess comes on a new connection. The third starts a wait that the right password must sit out too.
   expect([guess("a"), guess("b"), guess("c")]).toEqual(["wrong password", "wrong password", "wrong password"]);
   expect(guess("hunter2")).toBe("too many wrong passwords: wait 30 s");
+});
+
+test("one machine is one count whatever address of its IPv6 network it comes from: wrong passwords, and connections waiting", () => {
+  const made = loadConfig({ gus: "[SnarkSettings]\nPendingPerAddress=4\n", game: "" });
+  const h = new Harness({ password: "door" }, 1, 60, { config: made.rules });
+  const from = (address: string, password: string): ClientSession => {
+    const s = h.join("eve", {}, { password });
+    (h.ends[h.ends.length - 1]!.peer as { address?: string }).address = address;
+    h.run(300);
+    return s;
+  };
+  for (let n = 0; n < 3; n++) expect(from(`2001:db8:7:8::${n + 1}`, "wrong").closeReason).toBe(REJECT_PASSWORD);
+  // The right password sits out the machine's wait from a fourth address. Another machine's is judged.
+  expect([from("2001:db8:7:8::99", "door").closeReason, from("2001:db8:7:9::1", "door").state]).toEqual([REJECT_PASSWORD, "active"]);
+  const flood = [];
+  for (let i = 0; i < 16; i++) flood.push(new Idle(h, `2001:db8:a:b::${i + 1}`));
+  expect(flood.filter((s) => s.open).length).toBe(4);
 });
 
 test("connections that only wait keep nobody out, and cost no session's memory", () => {
