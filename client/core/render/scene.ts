@@ -1552,7 +1552,9 @@ export class Scene {
 
   /**
    * The map's moving statics' parts, to their own reach: posed while they move, and as they were while they rest. A
-   * landmark's are drawn as far as its far mesh, the far city's reach, so its sails do not end before its hull.
+   * landmark's are drawn as far as its far mesh, the far city's reach, so its sails do not end before its hull; but one
+   * short of set, a sail struck, only while the near store holds its static's chunk, and past that the far mesh stands for
+   * it, as a headsail rolled on its stay is the stay.
    */
   private showMotion(cam: Camera, source: MotionSource): void {
     const p = this.packet, tier = this.assets.tier, table = this.assets.table;
@@ -1565,10 +1567,11 @@ export class Scene {
     const states = source.states(), tick = source.tick();
     const bones = Math.min(tier.bones, MAX_BONES), draws = Math.min(MAX_DRAWS, tier.budget.draws);
     for (const t of this.moving) {
-      const reach = this.landmarkKinds[t.kind] === 1 ? landmark : own;
+      const ours = this.landmarkKinds[t.kind] === 1;
       const x = t.x - cam.x, y = t.y - cam.y, z = t.z - cam.z;
-      if (Math.sqrt(x * x + y * y + z * z) > reach + MAX_MOVING_REACH) continue;
+      if (Math.sqrt(x * x + y * y + z * z) > (ours ? landmark : own) + MAX_MOVING_REACH) continue;
       poseMoving(t, states.get(t.ref), tick);
+      const reach = !ours ? own : t.progress < 1 && this.landmarks?.isFar(Math.floor(t.ref / 65536)) ? -1 : landmark;
       const parts = t.facet.parts, pose = t.pose;
       for (let i = 0; i < parts.length; i++) {
         const mesh = table.find(parts[i]!.mesh);
