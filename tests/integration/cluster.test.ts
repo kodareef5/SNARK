@@ -10,11 +10,13 @@ import { clusterList } from "../../server/main.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { REJECT_TRAVEL, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
+import { writeMap } from "../../shared/world/mapfile.ts";
 import { Rng } from "../../shared/rng.ts";
 import { rollWild } from "../../shared/sim/genome.ts";
 import { FLAG_BLUEPRINT } from "../../shared/sim/items.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { TestCluster, beat, commit, crash, from, keyAt, places, rec, rise, shift, terminal, travel } from "../fixtures/cluster.ts";
+import { koruMap } from "../fixtures/koru.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 
 const t = new TestCluster();
@@ -24,6 +26,23 @@ const id = (name: string): number => t.id(name);
 const server = t.server.bind(t);
 const audit = t.audit.bind(t);
 const survivor = t.survivor.bind(t);
+
+test("a map with a landmark of its own and a map without are one cluster: a survivor travels between them, and the landmark's own definitions stay", () => {
+  const clock = { ms: Date.now() };
+  const a = server("Miami", "landmark", clock, { host: { map: writeMap(koruMap()) } });
+  const b = server("Tampa", "landmark", clock);
+  const [here, there] = [a.h.host.world.reg, b.h.host.world.reg];
+  expect([here.baseHash === there.baseHash, here.coreHash === there.coreHash, there.own.size]).toEqual([false, true, 0]);
+  expect([...here.own].every((k) => here.ids[k]!.startsWith("koru:"))).toBe(true);
+  beat(a, b);
+  expect([a.h.host.cluster!.destinations().map((d) => d.why), b.h.host.cluster!.destinations().map((d) => d.why)]).toEqual([[""], [""]]);
+  const ada = a.h.join("ada", {}, { key: keyAt("ada", 1) });
+  a.h.run(300);
+  const me = rec(a, "ada")!;
+  a.h.host.items.mint(me, id("stone"), 5);
+  expect(travel(a, ada, b.world)).toBeInstanceOf(Uint8Array);
+  expect(a.h.host.records.byPid.has(me.pid)).toBe(false);
+});
 
 test("a survivor goes from one map to another and back with its level, engrams, look, tribe and all it carries, while its base and tames stay", () => {
   const clock = { ms: Date.now() };

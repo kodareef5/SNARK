@@ -39,6 +39,7 @@ export interface Destination {
   world: number;
   name: string;
   map: string;
+  mapId: string;
   port: number;
   url: string;
   players: number;
@@ -132,7 +133,7 @@ export class Cluster {
    */
   static open(root: string, id: string, store: WorldStore): Cluster {
     const folder = new ClusterFolder(root);
-    const blank = (world: number): Announcement => ({ world, saveId: store.saveId, save: resolve(store.path), name: "", map: "", port: 0, url: "", players: 0, max: 0, content: 0, survivors: false, items: false, at: 0 });
+    const blank = (world: number): Announcement => ({ world, saveId: store.saveId, save: resolve(store.path), name: "", map: "", mapId: "", port: 0, url: "", players: 0, max: 0, content: 0, survivors: false, items: false, at: 0 });
     const was = store.meta("cluster");
     if (was !== null && String(was) !== id) throw new Error(`this save is in the cluster ${was}, not ${id}: start it with -clusterid=${was}`);
     const own = folder.announcements().find((a) => a.saveId === store.saveId);
@@ -234,11 +235,12 @@ export class Cluster {
       save: this.savePath,
       name: rules.text("SessionName") || map,
       map,
+      mapId: world.mapId,
       port: this.port,
       url: this.url,
       players: game.playerCount,
       max: game.opts.maxClients,
-      content: reg.baseHash,
+      content: reg.coreHash,
       survivors: !rules.on("PreventDownloadSurvivors") && !rules.on("noTributeDownloads"),
       items: !rules.on("PreventDownloadItems") && !rules.on("noTributeDownloads"),
       at: this.now(),
@@ -258,7 +260,7 @@ export class Cluster {
   /** This server as the others list it, so that a page can list it among them (server/site.ts). */
   here(): Destination {
     const a = this.announcement();
-    return { world: a.world, name: a.name, map: a.map, port: a.port, url: a.url, players: a.players, max: a.max, why: "" };
+    return { world: a.world, name: a.name, map: a.map, mapId: a.mapId, port: a.port, url: a.url, players: a.players, max: a.max, why: "" };
   }
 
   /** The other servers of the cluster that are running, each with why a survivor of this one cannot go there now. */
@@ -267,13 +269,13 @@ export class Cluster {
     return this.folder
       .announcements()
       .filter((a) => a.world !== this.world && a.at > now - LIVE_MS)
-      .map((a) => ({ world: a.world, name: a.name, map: a.map, port: a.port, url: a.url, players: a.players, max: a.max, why: this.whyNot(a) }));
+      .map((a) => ({ world: a.world, name: a.name, map: a.map, mapId: a.mapId, port: a.port, url: a.url, players: a.players, max: a.max, why: this.whyNot(a) }));
   }
 
   private whyNot(a: Announcement): string {
     const { rules, reg } = this.ctx!;
     if (rules.on("PreventUploadSurvivors")) return "this server does not let survivors leave it";
-    if (a.content !== reg.baseHash) return `${a.name} runs other content, which what a survivor carries may not exist in`;
+    if (a.content !== reg.coreHash) return `${a.name} runs other content, which what a survivor carries may not exist in`;
     if (!a.survivors) return `${a.name} takes no survivors from other servers`;
     if (a.players >= a.max) return `${a.name} is full`;
     return "";
@@ -313,6 +315,9 @@ export class Cluster {
       const def = reg.defs[item] as ItemDef | undefined;
       if (def?.travels === false) return `you are carrying ${def.label ?? reg.ids[item]}, which cannot be transferred: drop such items and try again`;
     }
+    // A map's own definitions are on no other server.
+    const stays = recs.map((r) => r.kind).concat([...held.keys()]).find((k) => reg.own.has(k));
+    if (stays !== undefined) return `${reg.ids[stays]} is of this map and cannot leave it`;
     if (held.size > 0 && rules.on("PreventUploadItems")) return "this server does not let things leave it: drop what you carry and try again";
     const dest = this.folder.announcement(to);
     if (!dest || dest.at <= this.now() - LIVE_MS) return `${dest?.name || `world ${to}`} is not running`;
@@ -341,7 +346,7 @@ export class Cluster {
       expires: this.now() + TICKET_SECONDS * 1000,
       ticket: sha256(ticket.subarray(16)),
       key: rec.keyHash ? hex(rec.keyHash) : "",
-      content: reg.baseHash,
+      content: reg.coreHash,
       tribe: tribe ? { team: tribe.id, name: tribe.name, owner: tribe.owner === rec.pid } : null,
       items: Object.fromEntries([...held].map(([item, n]) => [reg.ids[item]!, n])),
       pids: recs.map((r) => r.pid),

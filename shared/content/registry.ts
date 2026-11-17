@@ -63,6 +63,12 @@ export interface Registry {
   readonly baseHash: number;
   readonly tuning: string;
   readonly source: Registry | null;
+  /**
+   * The hash of the definitions without a map's own (withContent), and which kinds are the map's own. The servers of a
+   * cluster share the first, since a survivor carries only what every map has, and nothing of the second leaves its map.
+   */
+  readonly coreHash: number;
+  readonly own: ReadonlySet<number>;
   /** Collider half extents of structures and nodes. 0 for everything else. */
   readonly halfX: Float32Array;
   readonly halfY: Float32Array;
@@ -312,12 +318,14 @@ export interface CompileResult {
   errors: string[];
 }
 
+const NONE: ReadonlySet<number> = new Set();
+
 /** `reg` with a map's own definitions compiled after it (shared/world/mapfile.ts MapContent), or `reg` where there are none. */
 export function withContent(reg: Registry, defs: readonly Def[]): Registry {
   if (defs.length === 0) return reg;
   const { registry, errors } = compileContent([...(reg.defs.slice(1) as Def[]), ...reg.renames, ...defs]);
   if (!registry) throw new Error("the map's content:\n" + errors.join("\n"));
-  return registry;
+  return { ...registry, coreHash: reg.coreHash, own: new Set(defs.map((d) => registry.index.get(d.id) ?? 0).filter((k) => k > 0)) };
 }
 
 export function compileContent(all: readonly Def[]): CompileResult {
@@ -1002,7 +1010,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
   const motion = defs.map((d) => (d?.type === "structure" && d.motion ? d.motion : null));
-  return { registry: { defs, ids, index, hash, motion, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, vehicleDeploy, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, vehicle, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry }, errors };
+  return { registry: { defs, ids, index, hash, motion, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, coreHash: hash, own: NONE, halfX, halfY, halfZ, parts, role, doorway, places, vehicleDeploy, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, vehicle, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;

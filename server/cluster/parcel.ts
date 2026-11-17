@@ -31,7 +31,7 @@ export interface ParcelHead {
   ticket: string;
   /** Hex of the device key hash that owned the survivor where it left, so its owner can take it back there. */
   key: string;
-  /** Registry.baseHash where it left. */
+  /** Registry.coreHash where it left. */
   content: number;
   /** The tribe of the first record where it left: its team, its name, and whether the record owned it. Null for none. */
   tribe: { team: number; name: string; owner: boolean } | null;

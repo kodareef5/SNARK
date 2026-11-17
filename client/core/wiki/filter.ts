@@ -9,8 +9,8 @@ export function searchTerms(query: string): string[] {
   return fold(query).trim().split(/\s+/).filter(Boolean);
 }
 
-/** The rows every term is in, those whose label begins with the first term first, at most `most`. */
-export function findRows(rows: readonly SearchRow[], query: string, most: number): SearchRow[] {
+/** The rows every term is in, those whose label begins with the first term first. */
+export function findRows(rows: readonly SearchRow[], query: string): SearchRow[] {
   const terms = searchTerms(query);
   if (terms.length === 0) return [];
   const hits = rows.filter((r) => {
@@ -18,7 +18,7 @@ export function findRows(rows: readonly SearchRow[], query: string, most: number
     return terms.every((t) => text.includes(t));
   });
   const starts = (r: SearchRow): number => (fold(r[0]).startsWith(terms[0]!) ? 0 : 1);
-  return hits.sort((a, b) => starts(a) - starts(b) || a[0].localeCompare(b[0])).slice(0, most);
+  return hits.sort((a, b) => starts(a) - starts(b) || a[0].localeCompare(b[0]));
 }
 
 /** A zoom from 1 to 8 and a pan that keeps the map over the view. */
