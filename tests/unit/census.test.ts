@@ -147,9 +147,9 @@ test("a real city's downtown at its three views on each tier: the near city's dr
   // cells (client/core/render/nearcity.ts), what is left a draw is a chunk's run of cells in view and the wrecks, its
   // casters runs of cells, and its triangles the every-box form's, faces held by another piece or the ground left out.
   expect(got).toEqual({
-    "street-300": { lowpoly: [41, 0, 65494, 9, 41888], "medium, touch": [16, 10, 30254, 15, 48382], medium: [41, 22, 65494, 24, 62294], high: [41, 51, 65494, 24, 62294], ultra: [41, 58, 65494, 24, 62294] },
-    "roof-300": { lowpoly: [37, 0, 64708, 8, 51976], "medium, touch": [21, 7, 40646, 11, 62790], medium: [37, 24, 64708, 14, 78520], high: [37, 46, 64708, 14, 78520], ultra: [37, 57, 64708, 14, 78520] },
-    "air-300": { lowpoly: [51, 0, 75126, 10, 51466], "medium, touch": [22, 2, 46028, 18, 50932], medium: [51, 7, 75126, 27, 73184], high: [51, 45, 75126, 27, 73184], ultra: [51, 53, 75126, 27, 73184] },
+    "street-300": { lowpoly: [41, 0, 67608, 9, 41888], "medium, touch": [16, 10, 30454, 15, 48382], medium: [41, 22, 67608, 24, 62294], high: [41, 51, 67608, 24, 62294], ultra: [41, 58, 67608, 24, 62294] },
+    "roof-300": { lowpoly: [37, 0, 66988, 8, 51976], "medium, touch": [21, 7, 40724, 11, 62790], medium: [37, 24, 66988, 14, 78520], high: [37, 46, 66988, 14, 78520], ultra: [37, 57, 66988, 14, 78520] },
+    "air-300": { lowpoly: [51, 0, 77364, 10, 51466], "medium, touch": [22, 2, 47074, 18, 50932], medium: [51, 7, 77364, 27, 73184], high: [51, 45, 77364, 27, 73184], ultra: [51, 53, 77364, 27, 73184] },
   });
 });
 

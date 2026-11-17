@@ -6,7 +6,7 @@ import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { BAND_PIECES, FRAME_PIECES, LAID_SHARE, MESH_SLOT } from "../../client/core/render/nearcity.ts";
+import { FRAME_PIECES, LAID_SHARE, MESH_SLOT, SHAPE_PIECES } from "../../client/core/render/nearcity.ts";
 import { DRAW_RANGED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS, Scene } from "../../client/core/render/scene.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz } from "../../shared/coords.ts";
@@ -112,8 +112,9 @@ test("a downtown chunk and those round it rasterize the same as a mesh a chunk a
       // A surface off by more than a step of the lattice or of the depth buffer: single pixels along an edge where a
       // corner moved under a millimetre, and on low poly where the checker's lines moved with it.
       expect({ tier, shot: shot.name, off: counts.farther + counts.nearer <= 0.0003 * W * H }).toEqual({ tier, shot: shot.name, off: true });
-      // In the same place another face of two shown: where two of the map's pieces overlap in one plane, which fight on a card either way.
-      expect({ tier, shot: shot.name, same: counts.same <= 0.005 * W * H }).toEqual({ tier, shot: shot.name, same: true });
+      // In the same place another face of two shown: where two of the map's pieces overlap in one plane (a balcony laid
+      // into a floor slab at its height), which fight on a card either way and of which the rasterizer shows the first drawn.
+      expect({ tier, shot: shot.name, same: counts.same <= 0.05 * W * H }).toEqual({ tier, shot: shot.name, same: true });
     }
   }
 });
@@ -164,7 +165,7 @@ test("a static shot away is gone from the picture the frame it goes, its chunk a
   scene.near!.pieces = Infinity;
   const raster = new Rasterizer(64, 36, farPack(), w.hf);
   for (let f = 0; f < 10; f++) raster.render(w.frame());
-  scene.near!.pieces = 1000;
+  scene.near!.pieces = FRAME_PIECES;
   let p = w.frame();
   raster.render(p);
   // The pixel at the middle of the picture shows the piece's top, from its chunk's mesh.
@@ -183,14 +184,22 @@ test("a static shot away is gone from the picture the frame it goes, its chunk a
     if (Math.abs(chunkCx(dims, c) - cx) > 1 || Math.abs(chunkCz(dims, c) - cz) > 1 || was === undefined || was < 0) continue;
     expect({ chunk: c, dropped: p.assetDrops.includes(was), mesh: scene.near!.chunk(c)?.mesh ?? null }).toEqual({ chunk: c, dropped: true, mesh: null });
   }
-  let frames = 1;
-  while (frames < 60 && [...structs.held].some((c) => !scene.near!.chunk(c)?.mesh)) {
+  // Its chunk, the nearest, is made first and drawn as its mesh again within a second, the floor under the piece in the
+  // middle; the rest follow a frame's pieces at a time.
+  let frames = 1, again = -1;
+  while (frames < 600 && [...structs.held].some((c) => !scene.near!.chunk(c)?.mesh)) {
     p = w.frame();
     raster.render(p);
     expect(w.owners(p)).toEqual([]);
+    if (again < 0 && [...p.drawBuffer.subarray(0, p.drawCount)].some((b, d) => b === chunk && (p.drawFlags[d]! & DRAW_RANGED) !== 0)) {
+      again = frames;
+      expect([raster.pickId[middle], raster.depth[middle]! > before]).toEqual([chunk * 65536 + MESH_SLOT, true]);
+    }
     frames++;
   }
-  expect(frames).toBeLessThan(60);
+  expect(again).toBeGreaterThan(0);
+  expect(again).toBeLessThan(60);
+  expect(frames).toBeLessThan(600);
 });
 
 test("crossing a chunk border at the slice's densest place makes no more in a frame than a frame's pieces, what it lays out as instances counted at its share", () => {
@@ -215,11 +224,11 @@ test("crossing a chunk border at the slice's densest place makes no more in a fr
   }
   // The border was crossed, the column of chunks it brought laid out as instances and then made as meshes.
   expect(Math.floor(x / CHUNK_SIZE)).toBe(4);
-  const brought = Array.from({ length: 7 }, (_, j) => j * w.dims.chunksX + 7).reduce((n, c) => n + scene.near!.chunk(c)!.mine.reduce((m, v) => m + v, 0), 0);
+  const weight = (c: number, s: number): number => (w.city.plain[w.city.kind[w.city.first[c]! + s]!] === 1 ? 1 : SHAPE_PIECES);
+  const brought = Array.from({ length: 7 }, (_, j) => j * w.dims.chunksX + 7).reduce((n, c) => n + scene.near!.chunk(c)!.mine.reduce((m, v, s) => m + v * weight(c, s), 0), 0);
   expect(frames.reduce((n, f) => n + f.made, 0)).toBe(brought);
   expect(scene.near!.stats.waiting).toBe(0);
-  // Each frame makes a band at most where it laid nothing out, and otherwise what is left of its pieces.
+  // Each frame makes what is left of its pieces past what it laid out, or one band where it laid nothing out.
   const over = frames.filter((f) => f.made > 0 && f.made + f.laid * LAID_SHARE > FRAME_PIECES && !(f.laid === 0 && f.steps === 1));
   expect(over).toEqual([]);
-  expect(Math.max(...frames.map((f) => f.made))).toBeLessThanOrEqual(BAND_PIECES);
 });

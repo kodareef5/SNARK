@@ -19,8 +19,12 @@ import { quadBytes, type FramePacket } from "./packet.ts";
 
 /** Strips of a chunk along z, 4 m wide, that bands are made of: a band is 1, 2, 4, 8 or 16 of them in a row. */
 const STRIPS = 16;
-/** A band holds at most this many of the pieces of its chunk's mesh, but where one strip holds more. */
+/**
+ * A band holds at most this many of the pieces of its chunk's mesh, but where one strip holds more. A piece of a shape
+ * counts as SHAPE_PIECES, as a ruin's flight or pitched roof took about that many boxes' making in the Miami slice.
+ */
 export const BAND_PIECES = 400;
+export const SHAPE_PIECES = 24;
 /** The finest step a vertex is stored to, in metres. */
 const FINEST = 2 ** -12;
 /**
@@ -63,6 +67,8 @@ export class NearMaking {
   private readonly side: number;
   /** Rows of the city: the chunk's pieces in the mesh by band, and by chunk round it the pieces that hold faces. */
   private readonly own: number[][];
+  /** Per band, its pieces as counted against BAND_PIECES. */
+  private readonly weights: Uint32Array;
   private readonly around = new Map<number, number[]>();
   /** The chunk whose list carries the chunk's pieces of other bands, which hold faces as a neighbour's do. */
   private readonly beside: number;
@@ -79,7 +85,8 @@ export class NearMaking {
     const from = city.first[chunk]!;
     const strip = (i: number): number => Math.min(STRIPS - 1, Math.max(0, Math.floor(((city.z[from + i]! - z0) * STRIPS) / CHUNK_SIZE)));
     const counts = new Uint32Array(STRIPS);
-    for (let i = 0; i < mine.length; i++) if (mine[i] === 1) counts[strip(i)]!++;
+    const weight = (i: number): number => (city.plain[city.kind[from + i]!] === 1 ? 1 : SHAPE_PIECES);
+    for (let i = 0; i < mine.length; i++) if (mine[i] === 1) counts[strip(i)]! += weight(i);
     this.beside = cx + 1 < dims.chunksX ? chunk + 1 : cx > 0 ? chunk - 1 : cz + 1 < dims.chunksZ ? chunk + dims.chunksX : cz > 0 ? chunk - dims.chunksX : -1;
     // The fewest bands of which none holds more than BAND_PIECES.
     let bands = 1;
@@ -90,7 +97,13 @@ export class NearMaking {
     }
     this.bands = bands;
     this.own = Array.from({ length: bands }, () => []);
-    for (let i = 0; i < mine.length; i++) if (mine[i] === 1) this.own[Math.floor((strip(i) * bands) / STRIPS)]!.push(from + i);
+    this.weights = new Uint32Array(bands);
+    for (let i = 0; i < mine.length; i++) {
+      if (mine[i] !== 1) continue;
+      const b = Math.floor((strip(i) * bands) / STRIPS);
+      this.own[b]!.push(from + i);
+      this.weights[b]! += weight(i);
+    }
     for (let dz = -1; dz <= 1; dz++) {
       for (let dx = -1; dx <= 1; dx++) {
         if ((dx === 0 && dz === 0) || cx + dx < 0 || cz + dz < 0 || cx + dx >= dims.chunksX || cz + dz >= dims.chunksZ) continue;
@@ -107,9 +120,9 @@ export class NearMaking {
     return this.parts.length === this.bands;
   }
 
-  /** Pieces the next step makes the faces of. */
+  /** Pieces the next step makes the faces of, a shape's counted as SHAPE_PIECES. */
   get next(): number {
-    return this.own[this.parts.length]?.length ?? 0;
+    return this.weights[this.parts.length] ?? 0;
   }
 
   /** Makes the faces of the next band. */
@@ -123,66 +136,96 @@ export class NearMaking {
   /** The mesh, once every band is made: its faces in cell order, stored on the lattice. */
   finish(): NearMade {
     let faces = 0;
-    const box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+    for (const part of this.parts) faces += part.faces;
+    // Every band's faces in one list, then each axis's box.
+    const pos = new Float32Array(faces * 12), colour = new Uint8Array(faces);
+    let n = 0;
     for (const part of this.parts) {
-      faces += part.faces;
-      for (let a = 0; a < 3 && part.faces > 0; a++) {
-        box[a] = Math.min(box[a]!, part.box[a]!);
-        box[a + 3] = Math.max(box[a + 3]!, part.box[a + 3]!);
-      }
+      pos.set(part.pos.subarray(0, part.faces * 12), n * 12);
+      colour.set(part.color.subarray(0, part.faces), n);
+      n += part.faces;
     }
+    const box = boxOf(pos, faces * 4);
+    const lo = box.subarray(0, 3), hi = box.subarray(3, 6);
     const center = [0, 0, 0], half = [1, 1, 1], step = [1, 1, 1];
     for (let a = 0; a < 3 && faces > 0; a++) {
       // The finest power of two that holds the box, its middle on the lattice.
       let s = FINEST;
-      const mid = (box[a]! + box[a + 3]!) / 2;
-      while (32767 * s < Math.max(box[a + 3]! - Math.round(mid / s) * s, Math.round(mid / s) * s - box[a]!)) s *= 2;
+      while (32767 * s < Math.max(hi[a]! - Math.round((lo[a]! + hi[a]!) / 2 / s) * s, Math.round((lo[a]! + hi[a]!) / 2 / s) * s - lo[a]!)) s *= 2;
       step[a] = s;
-      center[a] = Math.round(mid / s) * s;
+      center[a] = Math.round((lo[a]! + hi[a]!) / 2 / s) * s;
       half[a] = 32767 * s;
     }
     const cells = this.side * this.side;
     const cellOf = new Uint8Array(faces);
-    const cellFirst = new Uint32Array(cells + 1);
-    let f = 0;
-    for (const part of this.parts) {
-      for (let k = 0; k < part.faces; k++, f++) {
-        const p = part.pos;
-        const x = (p[k * 12]! + p[k * 12 + 3]! + p[k * 12 + 6]! + p[k * 12 + 9]!) / 4;
-        const z = (p[k * 12 + 2]! + p[k * 12 + 5]! + p[k * 12 + 8]! + p[k * 12 + 11]!) / 4;
-        cellOf[f] = cellOrder(this.side, x, z);
-        cellFirst[cellOf[f]! + 1]!++;
-      }
-    }
-    for (let c = 0; c < cells; c++) cellFirst[c + 1]! += cellFirst[c]!;
-    const at = cellFirst.slice(0, cells);
+    const cellFirst = cellsOf(pos, faces, this.side, cellOf);
     const cellBox = new Float32Array(cells * 6);
     for (let c = 0; c < cells; c++) cellBox.fill(Infinity, c * 6, c * 6 + 3).fill(-Infinity, c * 6 + 3, c * 6 + 6);
-    const data = new Uint8Array(faces * 4 * VERTEX_BYTES);
-    const view = new DataView(data.buffer);
-    f = 0;
-    for (const part of this.parts) {
-      for (let k = 0; k < part.faces; k++, f++) {
-        const c = cellOf[f]!, to = at[c]!++;
-        for (let e = 0; e < 4; e++) {
-          const o = (to * 4 + e) * VERTEX_BYTES;
-          for (let a = 0; a < 3; a++) {
-            const q = Math.max(-32767, Math.min(32767, Math.round((part.pos[k * 12 + e * 3 + a]! - center[a]!) / step[a]!)));
-            view.setInt16(o + a * 2, q, true);
-            // The box of what is stored, which is what is drawn.
-            const v = center[a]! + q * step[a]!;
-            if (v < cellBox[c * 6 + a]!) cellBox[c * 6 + a] = v;
-            if (v > cellBox[c * 6 + 3 + a]!) cellBox[c * 6 + 3 + a] = v;
-          }
-          data[o + 6] = part.color[k]!;
-        }
-      }
-    }
+    const data = store(pos, colour, faces, cellOf, cellFirst, center, step, cellBox);
     return { data, faces, indexBytes: quadBytes(faces), bounds: { center, half }, cellFirst, cellBox };
   }
 }
 
 const none = (): null => null;
+
+/** The box round the first `n` points of `pos`, least then most. */
+function boxOf(pos: Float32Array, n: number): Float64Array {
+  const box = Float64Array.of(Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity);
+  for (let v = 0; v < n * 3; v += 3) {
+    const x = pos[v]!, y = pos[v + 1]!, z = pos[v + 2]!;
+    if (x < box[0]!) box[0] = x;
+    if (y < box[1]!) box[1] = y;
+    if (z < box[2]!) box[2] = z;
+    if (x > box[3]!) box[3] = x;
+    if (y > box[4]!) box[4] = y;
+    if (z > box[5]!) box[5] = z;
+  }
+  return box;
+}
+
+/** Puts in `cellOf` the cell of `side` a side each face of `pos` lies in by its middle, and returns where each cell's faces begin. */
+function cellsOf(pos: Float32Array, faces: number, side: number, cellOf: Uint8Array): Uint32Array {
+  const first = new Uint32Array(side * side + 1);
+  for (let f = 0; f < faces; f++) {
+    const o = f * 12;
+    const c = cellOrder(side, (pos[o]! + pos[o + 3]! + pos[o + 6]! + pos[o + 9]!) / 4, (pos[o + 2]! + pos[o + 5]! + pos[o + 8]! + pos[o + 11]!) / 4);
+    cellOf[f] = c;
+    first[c + 1]!++;
+  }
+  for (let c = 0; c < side * side; c++) first[c + 1]! += first[c]!;
+  return first;
+}
+
+/**
+ * Faces `pos` of `colour`, stored on the lattice of `step` from `center` in the order of their cells `cellOf`, which begin
+ * at `cellFirst`, each cell's box of what is stored grown in `cellBox`. Its own function, short, for the compiler's sake.
+ */
+function store(pos: Float32Array, colour: Uint8Array, faces: number, cellOf: Uint8Array, cellFirst: Uint32Array, center: readonly number[], step: readonly number[], cellBox: Float32Array): Uint8Array {
+  const data = new Uint8Array(faces * 4 * VERTEX_BYTES);
+  const view = new DataView(data.buffer);
+  const at = cellFirst.slice(0, cellFirst.length - 1);
+  const c0 = center[0]!, c1 = center[1]!, c2 = center[2]!, s0 = step[0]!, s1 = step[1]!, s2 = step[2]!;
+  for (let f = 0; f < faces; f++) {
+    const c = cellOf[f]!, to = at[c]!++, b = c * 6;
+    for (let e = 0; e < 4; e++) {
+      const o = (to * 4 + e) * VERTEX_BYTES, v = (f * 4 + e) * 3;
+      const qx = Math.round((pos[v]! - c0) / s0), qy = Math.round((pos[v + 1]! - c1) / s1), qz = Math.round((pos[v + 2]! - c2) / s2);
+      view.setInt16(o, qx, true);
+      view.setInt16(o + 2, qy, true);
+      view.setInt16(o + 4, qz, true);
+      data[o + 6] = colour[f]!;
+      // The box of what is stored, which is what is drawn.
+      const x = c0 + qx * s0, y = c1 + qy * s1, z = c2 + qz * s2;
+      if (x < cellBox[b]!) cellBox[b] = x;
+      if (y < cellBox[b + 1]!) cellBox[b + 1] = y;
+      if (z < cellBox[b + 2]!) cellBox[b + 2] = z;
+      if (x > cellBox[b + 3]!) cellBox[b + 3] = x;
+      if (y > cellBox[b + 4]!) cellBox[b + 4] = y;
+      if (z > cellBox[b + 5]!) cellBox[b + 5] = z;
+    }
+  }
+  return data;
+}
 
 /**
  * The city as one step of a making sees it: `chunk` holding the rows `own`, the chunk `beside` holding `others` and its
