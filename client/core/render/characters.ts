@@ -466,7 +466,9 @@ export class Characters {
 
   /** The farthest any part of a body of this kind gets from its origin, for culling. */
   reach(kind: number): number {
-    return this.creatures[kind]?.anim.rig.reach ?? BODY_RADIUS;
+    const c = this.creatures[kind];
+    // A block vehicle has just a chassis bone at its origin. Its mesh gives its visible extent.
+    return c ? c.anim.rig.reach || this.assets.table.radius[c.mesh]! : BODY_RADIUS;
   }
 
   /** The bones a body of this kind takes when it is posed. */

@@ -185,14 +185,25 @@ export function withArt(made: readonly SourceMesh[], art: readonly SourceMesh[])
 /** `landmarks` are the rows of landmark far meshes among `extra` (tools/pack/far.ts). */
 export function buildCorePack(extra: SourceMesh[] = [], landmarks: readonly LandmarkFarRow[] = []): Uint8Array {
   const made = [...grayboxMeshes(CORE_CONTENT), farMesh(), ...mannequinMeshes(), ...weaponMeshes()];
-  const available = new Set([...made, ...coreArt().meshes, ...extra].map((m) => m.id));
+  const art = coreArt();
+  const rigs = new Map(art.rigs.map((rig) => [rig.id, rig]));
+  const available = new Set([...made, ...art.meshes, ...extra].map((m) => m.id));
   for (const d of CORE_CONTENT) {
     if (d.type !== "species" || d.skeleton === "human" || d.mesh === "box" || available.has(d.mesh)) continue;
     const spec = d.vehicle?.spec;
-    made.push(standingBox(d.mesh, [spec?.halfWidth ?? d.radius, d.height / 2, spec?.halfLength ?? d.radius]));
+    const mesh = standingBox(d.mesh, [spec?.halfWidth ?? d.radius, d.height / 2, spec?.halfLength ?? d.radius]);
+    if (d.vehicle) {
+      // A chassis lets the block bank and pitch and its occupants use the normal seat poses.
+      mesh.skeleton = d.skeleton ?? d.mesh;
+      mesh.rig = d.mesh;
+      const lod = mesh.lods[0]!;
+      lod.bones = new Uint8Array(lod.positions.length / 3);
+      if (!rigs.has(d.mesh)) rigs.set(d.mesh, { id: d.mesh, skeleton: mesh.skeleton, names: ["chassis"], parent: [-1], rest: [0, 0, 0] });
+    }
+    made.push(mesh);
     available.add(d.mesh);
   }
-  return buildPack([...withArt(made, coreArt().meshes), ...(HAS_SURFACES ? [worldSurfaceMesh()] : []), ...extra], defaultPalette(), coreClips(), coreArt().rigs, coreArt().details, landmarks);
+  return buildPack([...withArt(made, art.meshes), ...(HAS_SURFACES ? [worldSurfaceMesh()] : []), ...extra], defaultPalette(), coreClips(), [...rigs.values()], art.details, landmarks);
 }
 
 /** Every .glb under assets/source, imported. What the import had to say of each is printed. */
