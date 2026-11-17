@@ -2,8 +2,11 @@
 
 An ARK-style browser survival parody with GTA vehicles and persistent multiplayer. TypeScript on Bun, zero runtime dependencies.
 
-- **Renderer.** WebGL 2 without Three.js or Unreal Engine. Frustum culling skips offscreen geometry and screen-space error selects mesh LODs. A ten-minute iPhone test with 800 bodies and 2,048 building pieces finished at a median 17 ms per frame (about 60 FPS).
-- **Modding.** Creatures and engrams live in `content/`. ARK-style INIs set server rates. The map builder turns public data into full-scale cities. [Server configs](config/) · [Map builder](tools/mapworld/)
+- **Renderer.** Native browser graphics with WebGL 2, no Three.js or Unreal Engine. About 60 FPS in our iPhone test.
+- **Maps.** Five real-world cities, about 66 km² each. The map format supports up to 16 km per side. [Map builder](tools/mapworld/)
+- **Clusters.** One click at an obelisk moves your survivor and gear to another server. Crash recovery prevents lost or duplicated items.
+- **PvP.** Movement responds locally. The server checks hits with lag compensation. Multiplayer tests cover high ping and dropped packets.
+- **Modding.** Define creatures and engrams in `content/` and tune server rates in ARK-style INIs. [Server configs](config/)
 - **MCP.** Agents join as survivors to harvest, craft, build and ride with normal player permissions. [Agent setup](agent/README.md#run-it)
 
 ## Gameplay systems
