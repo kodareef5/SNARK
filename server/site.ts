@@ -11,10 +11,11 @@ export interface SiteLinks {
   repository: string;
 }
 
-/** A world as the start screen lists it, with the address a page goes to for it. */
+/** A world as the start screen lists it, with the address a page goes to for it. The wiki's maps are found by `mapId`. */
 export interface SiteWorld {
   name: string;
   map: string;
+  mapId: string;
   address: string;
   players: number;
   max: number;

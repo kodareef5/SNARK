@@ -195,9 +195,26 @@ footer {
   object-fit: contain;
 }
 
-.card.map img {
+.card > a {
+  display: flex;
+  flex-direction: column;
+  color: inherit;
+}
+
+.card.map img,
+.card.map .blank {
   aspect-ratio: 1;
   object-fit: cover;
+}
+
+.live {
+  display: block;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.note .live {
+  margin-bottom: 0.6rem;
 }
 
 .card .blank {

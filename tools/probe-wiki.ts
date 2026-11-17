@@ -2,11 +2,12 @@
 // serving, after `bun run build` and `bun run wiki`. Each page below is opened at a desktop's width and a phone's: it must
 // raise no error, fit the width and decode every picture it shows. A creature's sound must decode from the game's file
 // as the page plays it, show it is sounding and stop at a second press, a take must be a thumb's size on a phone, the
-// search must find a raptor, a map's layer must load when its box is ticked, and a page opened
-// for a world on config/boosted-50x must show that world's figures. It prints what each page fetched. With
-// `--shots <folder>` it keeps a picture of each page there.
+// search must find a raptor, a map's layer must load when its box is ticked, a page opened
+// for a world on config/boosted-50x must show that world's figures, and with a cluster of two worlds behind the pages, the
+// front page, the maps page and a map's own page must show the worlds on their maps first and every other map as not
+// running. It prints what each page fetched. With `--shots <folder>` it keeps a picture of each page there.
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { serveFile } from "../server/files.ts";
@@ -21,6 +22,7 @@ const PAGES = [
   "/wiki/items/pistol/",
   "/wiki/vehicles/compact/",
   "/wiki/maps/miami/",
+  "/wiki/maps/",
   "/wiki/items/",
   "/wiki/search/?q=raptor",
   "/wiki/commands/",
@@ -42,7 +44,14 @@ export async function wikiProbe(chrome: string): Promise<boolean> {
   if (shots) mkdirSync(shots, { recursive: true });
   // A world at the root on its defaults, and one at /fifty as config/boosted-50x sets it, as each answers its settings.json.
   const fifty = { name: "A 50x server", map: "core:miami", settings: publicValues(loadConfigFolder(resolve(import.meta.dir, "../config/boosted-50x")).rules) };
-  const worlds: Record<string, object> = { "/settings.json": { name: "Miami", map: "core:miami", settings: {} }, "/fifty/settings.json": fifty };
+  // The cluster's worlds as they answer worlds.json: one on Miami, and one on a map this build has no page for.
+  const cluster = [
+    { name: "Miami", map: "Miami", mapId: "core:miami", address: "/miami/", players: 3, max: 70 },
+    { name: "Atlantis", map: "Atlantis", mapId: "core:atlantis", address: "/atlantis/", players: 70, max: 70 },
+  ];
+  const marked = [["core:miami", "Running: Miami, 3 of 70 online", "/miami/", ""], ["core:atlantis", "Running: Atlantis, full, 70 of 70", "/atlantis/", "Its page is not built here"]];
+  const built = readdirSync(join(DIST, "wiki/maps"), { withFileTypes: true }).filter((d) => d.isDirectory()).length;
+  const worlds: Record<string, object> = { "/settings.json": { name: "Miami", map: "core:miami", settings: {} }, "/fifty/settings.json": fifty, "/worlds.json": cluster };
   const server = Bun.serve({ port: 0, fetch: (req) => worlds[new URL(req.url).pathname] ? Response.json(worlds[new URL(req.url).pathname]) : serveFile(DIST, req) });
   const profile = mkdtempSync(join(tmpdir(), "snark-pages-"));
   const flags = ["--headless=new", "--no-first-run", "--disable-extensions", "--remote-debugging-port=0", "--autoplay-policy=no-user-gesture-required"];
@@ -104,12 +113,19 @@ export async function wikiProbe(chrome: string): Promise<boolean> {
           await Bun.sleep(500);
           if (!(await run("[...document.querySelectorAll('.results a')].some((a) => a.textContent === 'Raptor')"))) faults.push(`${path}: no raptor found`);
         }
-        if (width > 500 && path.includes("maps/")) {
+        if (width > 500 && /\/maps\/\w/.test(path)) {
           await run("(() => { const box = document.querySelector('[data-show=\"palm\"]'); box.click(); return document.querySelector('img[data-layer=\"palm\"]').decode(); })()");
           if (!(await run("document.querySelector('img[data-layer=\"palm\"]').naturalWidth > 0"))) faults.push(`${path}: the palm layer does not load`);
           // Each landmark the map places is a dot that leads to its page and a card under the map.
           const led = await run("[...document.querySelectorAll('[data-layer=\"landmarks\"] g.landmark')].map((g) => [g.closest('a')?.getAttribute('href') ?? '', !!document.querySelector(`main section .card[href=\"${g.closest('a')?.getAttribute('href')}\"]`)])");
           if (led.length === 0 || led.some(([href, card]: [string, boolean]) => !href.startsWith("/wiki/landmarks/") || !card)) faults.push(`${path}: a landmark's dot and card do not lead to its page (${JSON.stringify(led)})`);
+        }
+        // Each map says which world of the cluster runs it, a link into it and who is on it, those first; the rest are not running.
+        if (path.startsWith("/wiki/maps/") || path === "/wiki/") {
+          await run("new Promise((r) => { const t = Date.now(); const k = () => (document.querySelector('.live') || Date.now() - t > 3000 ? r() : setTimeout(k, 50)); k(); })");
+          const maps = await run("[...document.querySelectorAll('[data-maps] > [data-map]')].map((c) => [c.dataset.map, [...c.querySelectorAll('.live')].map((l) => l.textContent).join(' / '), c.querySelector('.live a')?.getAttribute('href') ?? '', c.querySelector(':scope > small')?.textContent ?? ''])");
+          const want = path === "/wiki/maps/miami/" ? [marked[0]] : [...marked, ...Array.from({ length: built - 1 }, () => ["Not running here", "", ""])];
+          if (JSON.stringify(maps.map((m: string[]) => (m[1] === "Not running here" ? m.slice(1) : m))) !== JSON.stringify(want)) faults.push(`${path} at ${width}: the cluster's maps are not shown as it runs them (${JSON.stringify(maps)})`);
         }
         if (path.includes("?world=")) {
           await Bun.sleep(500);

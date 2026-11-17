@@ -54,9 +54,8 @@ export interface Site {
 
 /** Cards a list page holds, and sounds a sound page. */
 export const PAGE = 60;
-/** The front page's cards of creatures and vehicles, and of maps, however many there are. */
+/** The front page's cards of the creatures and vehicles met most, a selection it says it is. */
 export const FRONT_CARDS = 8;
-export const FRONT_MAPS = 4;
 const TITLES: Record<Kind, string> = { creatures: "Creatures", items: "Items", resources: "Resources", vehicles: "Vehicles", landmarks: "Landmarks", statuses: "Statuses", characters: "Characters" };
 
 function groupBy<T>(list: readonly T[], key: (t: T) => string): Map<string, T[]> {
@@ -99,8 +98,7 @@ export function renderWiki(site: Site): Map<string, string> {
   for (const e of site.entries) write(entryPath(e).slice(BASE.length), e.label, e.kind, v.entry(e));
   write("engrams/", "Engrams", "engrams", v.engrams());
   if (site.levels) write("levels/", "Levels", "engrams", v.levels(site.levels));
-  const running = `<p class="note" data-worlds hidden><a href="/">Which worlds are running now, and on which maps</a></p>`;
-  write("maps/", "Maps", "maps", `${heading("Maps", `${site.atlases.length} worlds`)}${v.maps()}${running}`);
+  write("maps/", "Maps", "maps", `${heading("Maps", `${site.atlases.length} maps`)}${v.maps()}`);
   for (const a of site.atlases) write(`maps/${a.slug}/`, a.label, "maps", atlasPage(a, site.names, site.entries.filter((e) => e.kind === "landmarks" && a.landmarks.some((l) => l.of === e.id)), v.cards));
   write("sounds/", "Sounds", "sounds", v.soundOwners());
   for (const [o, list] of v.owners) {
@@ -162,11 +160,12 @@ function views(site: Site) {
     const count = n > 1 ? ` <small>${n} takes</small>` : "";
     return `<li class="sound" ${data}><span>${esc(s.name)}${count}${later}</span><span class="takes" role="group" aria-label="${esc(`${sentence(of)}, ${n} ${n === 1 ? "take" : "takes"}`)}">${takes}</span></li>`;
   };
-  // A map's card says what it holds besides its ground: its landmarks by name.
-  const maps = (atlases: readonly Atlas[] = site.atlases): string =>
-    `<div class="cards">${join(atlases, (a) => {
+  // A map's card says what it holds besides its ground: its landmarks by name. Read from a server, the page adds the worlds
+  // running each (data-maps, client/core/wiki/world.ts).
+  const maps = (): string =>
+    `<div class="cards" data-maps="every">${join(site.atlases, (a) => {
       const holds = [`${num(a.metres / 1000, 1)} km across`, ...a.landmarks.map((l) => site.names.get(l.of) ?? l.of)].join(" · ");
-      return `<a class="card map" href="${BASE}maps/${a.slug}/">${img(a.card, "")}<b>${esc(a.label)}</b><small>${esc(holds)}</small></a>`;
+      return `<div class="card map" data-map="${esc(a.id)}"><a href="${BASE}maps/${a.slug}/">${img(a.card, "")}<b>${esc(a.label)}</b><small>${esc(holds)}</small></a></div>`;
     })}</div>`;
 
   const front = (): string => {
@@ -180,17 +179,17 @@ function views(site: Site) {
       ["controls/", "Controls", `${site.controls.length} groups`],
       ["commands/", "Commands", String(site.commands.length)],
     ];
-    // The creatures and vehicles a player meets most on the maps, by spawn regions and by vehicles parked, as many as the page holds.
+    // The creatures and vehicles a player meets most on the maps, by spawn regions and by vehicles parked.
     const met = (e: Entry): number => site.atlases.reduce((n, a) => n + (a.creatures.find((l) => l.of === e.id)?.count ?? 0) + (a.vehicles.find((v) => v.kind === e.id)?.count ?? 0), 0);
     const featured = site.entries.filter((e) => e.kind === "creatures" || e.kind === "vehicles").sort((a, b) => met(b) - met(a) || a.label.localeCompare(b.label)).slice(0, FRONT_CARDS);
-    const more = site.atlases.length > FRONT_MAPS ? `<p class="note"><a href="${BASE}maps/">Every map</a></p>` : "";
+    const every = `<p class="note"><a href="${BASE}creatures/">Every creature</a> · <a href="${BASE}vehicles/">Every vehicle</a></p>`;
     const left = site.left.map((l) => `${LEFT_OUT[l.why]}${l.names.length ? `: ${l.names.join(", ")}` : ""}`);
     const missing = left.length ? `<p class="note">Not in the wiki: ${esc(left.join("; "))}.</p>` : "";
     return `${heading("Wiki", "", "Creatures, items, maps and the console, read from the game itself.")}
 <form class="find big" action="${BASE}search/" role="search"><input name="q" aria-label="Search the wiki" placeholder="Raptor, wooden foundation, pistol…"></form>
 <nav class="shelves">${join(shelves, ([path, label, n]) => `<a href="${BASE}${path}"><b>${label}</b><small>${n}</small></a>`)}<a href="${SOURCE}"><b>Source code</b></a></nav>
-<section><h2>Creatures and vehicles</h2>${cards(featured)}</section>
-<section><h2>Maps</h2>${maps(site.atlases.slice(0, FRONT_MAPS))}${more}</section>
+<section><h2>The creatures and vehicles met most</h2>${cards(featured)}${every}</section>
+<section><h2>Maps</h2>${maps()}</section>
 ${missing}`;
   };
 
@@ -347,7 +346,7 @@ ${a.vehicles.map((v) => `<g data-layer="${esc(slug(v.kind))}" class="parked" hid
   const button = (by: number, label: string, text: string): string => `<button type="button" data-zoom="${by}" aria-label="${label}">${text}</button>`;
   const zoom = `<div class="zoom">${button(1, "Zoom in", "+")}${button(-1, "Zoom out", "−")}${button(0, "Whole map", "⤢")}</div>`;
   const standing = placed.length ? `<section><h2>Landmarks</h2>${cards(placed)}</section>` : "";
-  return `${heading(a.label, "Map", `${num(a.metres / 1000, 1)} km across. North is up.`)}
+  return `${heading(a.label, "Map", `${num(a.metres / 1000, 1)} km across. North is up.`)}<div data-maps><div class="note" data-map="${esc(a.id)}"></div></div>
 <div class="atlas"><div><div class="viewport" data-atlas tabindex="0" aria-label="Map of ${esc(a.label)}: drag to move, plus and minus to zoom">
 <div class="plane">${img(a.ground, `${a.label} from above`, false, "ground")}${layers}${svg}</div>${zoom}</div>${standing}</div>
 ${panel}</div>`;
