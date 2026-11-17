@@ -10,7 +10,7 @@ import { REGION_BASE, defaultPalette } from "../../shared/pack/palette.ts";
 import { main } from "../../tools/art.ts";
 import { isNode, type Asset } from "../../tools/art/assets.ts";
 import { checkAsset, measureSurface } from "../../tools/art/check.ts";
-import { readPacks } from "../../tools/art/source.ts";
+import { SOURCE, readPacks } from "../../tools/art/source.ts";
 import type { CreatureAsset } from "../../tools/art/spec.ts";
 import { withArt } from "../../tools/pack/build.ts";
 import { fitCapsule } from "../../tools/pack/creature.ts";
@@ -64,6 +64,20 @@ test("a surface is counted: its holes, faces turned against their neighbours, an
   // Nor is a thin closed card a body: one whose two sides have crossed is not called inside out.
   const card = boxMesh([0.2, 0.0002, 0.1], REGION_BASE);
   expect(measureSurface({ ...card, indices: Uint32Array.from(card.indices, (_, i) => card.indices[i - (i % 3) + [0, 2, 1][i % 3]!]!) })).toMatchObject({ holes: 0, insideOut: 0 });
+});
+
+test("a landmark's cell is held to the shared landmark rule by distance, or to the rule its asset states", () => {
+  // A cell of 200 boxes, 2,400 triangles at one level: drawn from 250 m and 500 m, past what five building pieces may.
+  const box = boxMesh([0.5, 0.5, 0.5], 5);
+  const lod: SourceLod = {
+    positions: Float32Array.from({ length: 200 * box.positions.length }, (_, i) => box.positions[i % box.positions.length]! + (i % 3 === 0 ? Math.floor(i / box.positions.length) : 0)),
+    colors: new Uint8Array(200 * box.colors.length).fill(5),
+    indices: Uint32Array.from({ length: 200 * box.indices.length }, (_, i) => box.indices[i % box.indices.length]! + Math.floor(i / box.indices.length) * (box.positions.length / 3)),
+  };
+  const pack = parsePack(buildPack([{ id: "t:cell_00", lods: [lod] }], defaultPalette()));
+  const asset = (cells?: readonly (readonly [number, number])[]): Asset => ({ id: "t:yacht", name: "yacht", dir: join(SOURCE, "landmarks", "yacht"), file: "", spec: { kind: "pieces", source: { scripts: [] }, pieces: [{ id: "t:cell_00", object: "cell_00" }], budgets: { triangles: [16000], ...(cells ? { cells } : {}) } } });
+  expect(checkAsset(asset(), pack).faults).toEqual(["t:cell_00: 2400 triangles drawn from 250 m on medium, and it may draw 1250", "t:cell_00: 2400 triangles drawn from 500 m on medium, and it may draw 300"]);
+  expect(checkAsset(asset([[0, 16000], [250, 2500], [500, 2500]]), pack).faults).toEqual([]);
 });
 
 const FRAMES = 20;

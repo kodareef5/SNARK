@@ -1151,13 +1151,13 @@ function flight(f: SpeciesDef["fly"]) {
  * fuel leaves anything.
  */
 /** Parts a moving static may move, and the farthest one may stand from it in metres. */
-export const MAX_MOVING_PARTS = 16;
+export const MAX_MOVING_PARTS = 32;
 export const MAX_MOVING_REACH = 128;
 
 function motionFaults(d: StructureDef): string[] {
   const t = d.motion!, out: string[] = [];
   const at = (v: unknown, n: number, ok: (x: number) => boolean): boolean => Array.isArray(v) && v.length === n && v.every((x) => typeof x === "number" && ok(x));
-  const placed = (p: PartPlacement | undefined): boolean => !!p && at(p.at, 3, (x) => Math.abs(x) <= MAX_MOVING_REACH) && (p.turn === undefined || (at(p.turn, 4, Number.isFinite) && Math.abs(Math.hypot(...p.turn) - 1) < 1e-4)) && (p.scale === undefined || at(p.scale, 3, (x) => x > 0 && x <= 16));
+  const placed = (p: PartPlacement | undefined): boolean => !!p && at(p.at, 3, (x) => Math.abs(x) <= MAX_MOVING_REACH) && (p.turn === undefined || (at(p.turn, 4, Number.isFinite) && Math.abs(Math.hypot(...p.turn) - 1) < 1e-4)) && (p.scale === undefined || at(p.scale, 3, (x) => x > 0 && x <= 16)) && (p.away === undefined || p.away === true);
   if (d.class !== "static" || d.opens !== undefined || d.slots !== undefined || d.locked !== undefined || d.material !== undefined) out.push(`${d.id}: a moving static is a public one that nothing harms, with no door, lock or slots`);
   if (!(t.seconds >= 0.5 && t.seconds <= 600)) out.push(`${d.id}: a motion takes 0.5 to 600 seconds`);
   if (!Array.isArray(t.say) || t.say.length !== 2 || t.say.some((w) => typeof w !== "string" || w.length < 1 || w.length > 40)) out.push(`${d.id}: a motion says what it does toward each state, in at most 40 characters`);

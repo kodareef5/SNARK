@@ -621,7 +621,7 @@ export class Scene {
     // A landmark's definitions and meshes are in its namespace, and its definitions are the map's own (withContent).
     const landmarks = new Set([...reg.own].map((k) => reg.defs[k]!.id.split(":")[0]));
     this.landmarkKinds = Uint8Array.from(reg.defs, (_, k) => (reg.own.has(k) ? 1 : 0));
-    this.flatFlags = Uint16Array.from(this.assets.manifest.meshes, (m) => (landmarks.has(m.id.split(":")[0]) ? DRAW_PLAIN : 0));
+    this.flatFlags = Uint16Array.from(this.assets.manifest.meshes, (m) => (landmarks.has(m.id.split(":")[0]) ? DRAW_PLAIN | (m.seeThrough ? DRAW_BLEND : 0) : 0));
     this.trisOfMesh = table.tris;
     this.radiusOfMesh = table.radius;
     this.materialFlags = new Uint8Array(table.materials.length);
@@ -777,6 +777,15 @@ export class Scene {
       if (!this.terrain.casters(cam, p, this.viewDistance, this.castBox)) p.casterDropped++;
       this.groundCast();
     }
+    // Water seen from above on a lit tier is drawn with its waves and its depth (water.ts), from the frame block's sea part.
+    // See-through draws go as made, and the sea is made first of them, so that a yacht's wires show over it.
+    const lit = p.lit && !this.plainSky && !under;
+    let waves = sea > -Infinity && this.waterMesh >= 0 && this.water(cam, sea, lit);
+    if (this.lakes) waves = this.showLakes(cam, lit) || waves;
+    if (waves) {
+      seaFrame(p.frame, this.world.hf, this.terrain.size, p.groundWindow, cam.x, cam.z, this.now / 1000, cam.y);
+      if (this.waterMaterial >= 0) this.assets.residency.material(this.waterMaterial, WATER_ASKED.pixels, WATER_ASKED.distance);
+    }
     // Before the statics, so a full frame leaves out pieces of a chunk rather than a yacht's sails.
     if (this.world.motion && this.motionReg) this.showMotion(cam, this.world.motion);
     this.structures(cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);
@@ -788,14 +797,6 @@ export class Scene {
     if (this.falling && this.falling.count > 0) this.showFalling(cam, this.falling);
     if (this.ghost.kind !== 0) this.showGhost(cam);
     if (this.things.length > 0) this.showThings(cam);
-    // Water seen from above on a lit tier is drawn with its waves and its depth (water.ts), from the frame block's sea part.
-    const lit = p.lit && !this.plainSky && !under;
-    let waves = sea > -Infinity && this.waterMesh >= 0 && this.water(cam, sea, lit);
-    if (this.lakes) waves = this.showLakes(cam, lit) || waves;
-    if (waves) {
-      seaFrame(p.frame, this.world.hf, this.terrain.size, p.groundWindow, cam.x, cam.z, this.now / 1000, cam.y);
-      if (this.waterMaterial >= 0) this.assets.residency.material(this.waterMaterial, WATER_ASKED.pixels, WATER_ASKED.distance);
-    }
     this.showDetails(cam, remote);
     this.quadsOnCard();
     // The viewer's own body goes over everything else, water included.
@@ -1555,7 +1556,13 @@ export class Scene {
     }
   }
 
-  /** The map's moving statics' parts, to their own reach: posed while they move, and as they were while they rest. */
+  /**
+   * The map's moving statics' parts, to their own reach: posed while they move, and as they were while they rest. A
+   * landmark's are drawn as far as its far mesh, the far city's reach, so its sails do not end before its hull; but a
+   * part at rest struck, a sail furled, only while the near store holds its static's chunk, and past that the far mesh
+   * stands for it. A part that never moves, a landmark's rig, is never struck, nor is a see-through one, a line that does
+   * not break into dots: a headsail's roll. A part put away where it rests is not drawn. Low poly draws no see-through part.
+   */
   private showMotion(cam: Camera, source: MotionSource): void {
     const p = this.packet, tier = this.assets.tier, table = this.assets.table;
     const statics = source.statics();
@@ -1563,12 +1570,15 @@ export class Scene {
       this.movingFrom = statics;
       this.moving = statics ? movingOf(this.motionReg!, statics) : [];
     }
-    const reach = Math.min(this.viewDistance, tier.reach.parts), states = source.states(), tick = source.tick();
+    const own = Math.min(this.viewDistance, tier.reach.parts), landmark = Math.min(this.viewDistance, Math.max(tier.reach.parts, tier.reach.city));
+    const states = source.states(), tick = source.tick();
     const bones = Math.min(tier.bones, MAX_BONES), draws = Math.min(MAX_DRAWS, tier.budget.draws);
     for (const t of this.moving) {
+      const ours = this.landmarkKinds[t.kind] === 1;
       const x = t.x - cam.x, y = t.y - cam.y, z = t.z - cam.z;
-      if (Math.sqrt(x * x + y * y + z * z) > reach + MAX_MOVING_REACH) continue;
+      if (Math.sqrt(x * x + y * y + z * z) > (ours ? landmark : own) + MAX_MOVING_REACH) continue;
       poseMoving(t, states.get(t.ref), tick);
+      const reach = ours ? landmark : own, struck = ours && t.progress === 0 && this.landmarks?.isFar(Math.floor(t.ref / 65536));
       const parts = t.facet.parts, pose = t.pose;
       for (let i = 0; i < parts.length; i++) {
         const mesh = table.find(parts[i]!.mesh);
@@ -1576,12 +1586,16 @@ export class Scene {
           p.skipped++;
           continue;
         }
+        const through = (this.flatFlags[mesh]! & DRAW_BLEND) !== 0;
+        if ((struck && t.fixed[i] === 0 && !through) || (!tier.lit && through) || (t.progress === 0 && (t.away[i]! & 1) !== 0) || (t.progress === 1 && (t.away[i]! & 2) !== 0)) continue;
         const at = i * PART_FLOATS, r = this.radiusOfMesh[mesh]! * pose[at + 12]!;
         const cx = x + pose[at + 3]!, cy = y + pose[at + 7]!, cz = z + pose[at + 11]!;
         const far = Math.max(0, Math.sqrt(cx * cx + cy * cy + cz * cz) - r);
         if (far > reach) continue;
         const seen = cam.boxVisible(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r);
-        const casts = this.casting ? this.castBox(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r) & this.cascades.fits(r) : 0;
+        // A see-through part, a rig of wires drawn wider and fainter than they are, casts nothing: no cascade holds a wire's
+        // shadow whole, and the sun's own breadth all but washes it out a few metres down.
+        const casts = this.casting && !through ? this.castBox(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r) & this.cascades.fits(r) : 0;
         if (!seen && casts === 0) continue;
         if (p.boneCount >= bones || p.transientCount === p.transientIds.length || (seen && p.drawCount + this.doubled >= draws)) {
           p.dropped++;

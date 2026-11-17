@@ -117,6 +117,12 @@ function attachmentKind(reg: Registry, inv: Inventory | null, slot: number): str
 /** Radians in a unit of yaw or pitch on the wire (65536 to a turn). */
 const UNIT_RADIANS = TAU / 65536;
 
+/** What a tool's own server tells a page that is the tool's look at a place (`App.address`). */
+export interface ToolOrders {
+  readonly run?: readonly unknown[];
+  readonly look?: readonly unknown[];
+}
+
 export class App {
   readonly session: ClientSession;
   readonly controls = new Controls();
@@ -179,6 +185,10 @@ export class App {
   private last = -1;
   /** Adopt the welcome's authored/saved facing once, before the first input overwrites it. */
   private facing = false;
+  /** A tool's look at a place (`address`): the commands still to send, and the facing held. */
+  private script: string[] = [];
+  private held: [number, number] | null = null;
+  private lineAt = 0;
   /** Eased eye height above the feet, or -1 before the first frame and while there is no living body. */
   private eye = -1;
   private helicopterViewHost = -1;
@@ -814,10 +824,15 @@ export class App {
   /**
    * What the page's address asks: `off`, effects turned off for a before and after (passes.ts). A page that pins pictures
    * or hashes, or measures, holds the governor at the tier, or at `level`, and may name the `tier`. It plays at
-   * MEASURED_VOLUME, or at `volume`.
+   * MEASURED_VOLUME, or at `volume`. A tool's look at a place is such a page, and its `orders` are what the server the
+   * tool started for it gave it, never the address's: `run`, lines sent as typed once the body is in the world, and
+   * `look`, the way it faces held, yaw and pitch in radians. Any other page sends no line it was not typed and holds no view.
    */
-  address(get: (name: string) => string | null, pinned: boolean): void {
+  address(get: (name: string) => string | null, pinned: boolean, orders: ToolOrders | null = null): void {
     this.off = effectsOff(get("off"));
+    this.script = pinned && Array.isArray(orders?.run) ? orders.run.filter((line): line is string => typeof line === "string") : [];
+    const look = pinned && Array.isArray(orders?.look) ? orders.look : [];
+    this.held = look.length === 2 && look.every((v) => typeof v === "number" && Number.isFinite(v)) ? [look[0] as number, look[1] as number] : null;
     if (!pinned) return;
     this.governor.held = Number(get("level") ?? 0);
     this.ui.settings.tier = tierOf(get("tier") ?? this.ui.settings.tier).name;
@@ -965,6 +980,12 @@ export class App {
     const cam = this.cam;
     const a = session.alpha;
     const alive = session.sessionState === SESSION_ALIVE;
+    // A server takes a typed line a few ticks apart.
+    if (alive && this.script.length > 0 && nowMs >= this.lineAt) {
+      session.text(this.script.shift()!);
+      this.lineAt = nowMs + 500;
+    }
+    if (this.held) [c.yaw, c.pitch] = this.held;
     const move = this.reg.move[session.bodyKind];
     // The eye eases toward the stance height, so crouching is a movement and not a cut.
     const eyeNow = alive && move ? stanceEye(move, session.own.stance) : 0;

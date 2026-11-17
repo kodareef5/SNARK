@@ -101,6 +101,8 @@ export interface PackMaterial {
   cutoff: number;
   /** Metres of surface across one whole texture, measured when the pack was made. */
   span: number;
+  /** A thin sheet's: how much of the light on one face its other face shows (shared/pack/finish.ts). Absent for none. */
+  sheet?: number;
 }
 
 /** The texture a material names in a role, -1 for none. */
@@ -140,6 +142,8 @@ export interface PackMesh {
    * uv[2]`. Absent for 0, 0, 1, 1. A wall whose material repeats along it has a range wider than one texture.
    */
   uv?: [number, number, number, number];
+  /** Drawn see-through, its finishes showing their share (shared/pack/finish.ts). */
+  seeThrough?: boolean;
 }
 
 /** A body with its own proportions on a shared skeleton. `rest` is each joint's rest position, x, y, z per bone. */
@@ -183,6 +187,8 @@ export interface PackHeader {
   details?: PackDetails;
   /** In a built landmark's pack, its far mesh's row (shared/pack/far.ts). A source pack has none. */
   landmarks?: LandmarkFarRow[];
+  /** In an asset's pack, the finishes its flat levels are lit with (shared/pack/finish.ts), FINISH_NUMBERS each. */
+  finishes?: number[];
 }
 
 export interface Pack {

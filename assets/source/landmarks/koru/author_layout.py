@@ -47,20 +47,32 @@ def station(z):
   if a[0]<=z<=b[0]:
    t=(z-a[0])/(b[0]-a[0]);return [z]+[a[k]+(b[k]-a[k])*t for k in range(1,4)]
  raise ValueError(z)
+# Below the sheer the hull is sheared back from the plumb stem and stern into a raked clipper bow and an overhanging
+# canoe stern, as photographed: each is (where it begins, the end, metres at the waterline, how the shear grows
+# downward). The hull is solid where it is drawn (model.py shears its art by the same); decks and rails keep the ends.
+RAKES=[(40,54.5,5.0,1.4),(-42,-54.5,3.0,1.3)]
+D['rakes']=[list(r) for r in RAKES]
+def rake(z,y):
+ d=0
+ for z0,z1,r,p in RAKES:
+  t=min(1,(z-z0)/(z1-z0))
+  if t>0:d+=(r if z1<0 else -r)*t*t*(3-2*t)*max(0,1-y/station(z)[3])**p
+ return d
+def raked(points):return [[x,y,z+rake(z,y)] for x,y,z in points]
 zs=sorted(set([p[0] for p in st]+[-25.2,-22.8]))
 for i,(za,zb) in enumerate(zip(zs,zs[1:])):
  a,b=station(za),station(zb);hs=[]
  # Below water remains solid; every walkable floor is above this closed underwater volume.
  lower=[]
  for z,w,k,s in (a,b):lower.extend([[0,k,z],[-w*.62,min(0,k*.45),z],[w*.62,min(0,k*.45),z],[-w*.9,0,z],[w*.9,0,z]])
- hs.append(lower)
+ hs.append(raked(lower))
  for sign in (-1,1):
   side=[]
   for z,w,k,s in(a,b):
    top=min(s,3.75) if sign==1 and za>=-25.2 and zb<=-22.8 else s
    outer=w*.9+(w-w*.9)*top/max(s,.01);inner=max(.015,outer-.24);bottom=max(.01,w*.9-.24)
    side.extend([[sign*w*.9,0,z],[sign*outer,top,z],[sign*inner,top,z],[sign*bottom,0,z]])
-  hs.append(side)
+  hs.append(raked(side))
  add(f'hull_{i:02}','hull',hulls=hs,meta={'stations':[a,b],'gatePort':za>=-25.2 and zb<=-22.8},color=83)
 # The room-circulation core is offset only at stairwells/mast trunks; open lobbies provide generous bypasses.
 cores=[('grand',0,0,0,3),('aft',-3.6,-24,0,3),('forward',-2.4,33.2,0,2)]
@@ -284,7 +296,7 @@ def qframe(x,y,z):
 def unit(v):return [a/math.sqrt(sum(b*b for b in v)) for a in v]
 co=next(m for m in mods if m['id']=='koru:sail_control')['origin']
 local=lambda p:[p[k]-co[k] for k in range(3)]
-BUNDLE=.6;parts=[]
+BUNDLE=.6;parts=[];rolls=[]
 for s in D['rig']['sails']:
  t=s['tack']
  if s['kind']=='gaff':
@@ -295,8 +307,32 @@ for s in D['rig']['sails']:
   luff=unit([b-a for a,b in zip(t,s['head'])]);c=[b-a for a,b in zip(t,s['clew'])];d=sum(a*b for a,b in zip(c,luff))
   chord=unit([a-d*b for a,b in zip(c,luff)]);normal=[chord[1]*luff[2]-chord[2]*luff[1],chord[2]*luff[0]-chord[0]*luff[2],chord[0]*luff[1]-chord[1]*luff[0]]
   q=qframe(chord,luff,normal)
-  parts.append({'mesh':s['sheet'],'from':{'at':local(t),'turn':q,'scale':[.015,1,.3]},'to':{'at':local(t),'turn':q}})
-assert len(parts)<=16
+  # Struck, the sheet is put away and its roll on the stay, a line drawn as the rig is, stands for it and for the stay
+  # it is rolled on; set, the roll is put away.
+  parts.append({'mesh':s['sheet'],'from':{'at':local(t),'turn':q,'scale':[.015,1,.3],'away':True},'to':{'at':local(t),'turn':q}})
+  rolls.append({'mesh':'koru:roll_'+s['id'],'from':{'at':local(t),'turn':q},'to':{'at':local(t),'turn':q,'scale':[.001,1,.001],'away':True}})
+# The standing rigging is drawn by parts of the control that never move, so that it is drawn as itself as far as the
+# sails are, and no wire is left to the far mesh: a part a group of its segments, each mast's in bands of 22 m up, the
+# forestays' and the backstays' likewise, and the triatics between the mastheads together. A part stands at the middle
+# of its group, so its own distance is its wires'.
+def rig_group(m):
+ i=m['id'];e=m['art']['ends'];band=int((e[0][1]+e[-1][1])/2//22)
+ if 'interstay' in i:return 'triatics'
+ for k in('forestay','backstay'):
+  if k in i:return f'{k}s_{band}'
+ return ('fore' if '_fore_' in i else 'main' if '_main_' in i else 'mizzen')+f'_{band}'
+groups={}
+for m in mods:
+ if m['category']=='rigging':groups.setdefault(rig_group(m),[]).append(m)
+D['rig']['parts']=[]
+for name,members in sorted(groups.items()):
+ pts=[p for m in members for p in m['art']['ends']];mid=[(min(p[k] for p in pts)+max(p[k] for p in pts))/2 for k in range(3)]
+ # The forestays carry the headsails: struck, each is inside its sail's roll, and put away with the sheet.
+ parts.append({'mesh':f'koru:rig_{name}','from':{'at':local(mid),**({'away':True} if name.startswith('forestays') else {})},'to':{'at':local(mid)}})
+ D['rig']['parts'].append({'mesh':f'koru:rig_{name}','members':[m['id'] for m in members]})
+# The rolls after the rig, see-through draws going as made, so that a roll is drawn over the stay it is rolled on.
+parts.extend(rolls)
+assert len(parts)<=32
 D['motion']={'static':'koru:sail_control','seconds':18,'parts':parts}
 # Cells: 16 m of the ship's length, the whole beam wide. A cell is one mesh, modelled in its anchor's frame and drawn by
 # the anchor's static; its other modules draw nothing and are collision alone. A door draws itself.
