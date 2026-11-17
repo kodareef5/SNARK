@@ -317,7 +317,7 @@ test("a world filling makes at most 64 creatures a tick, over all its regions", 
 });
 
 test("a map file's spawn regions are added to its definition's", () => {
-  const made = compilePacks([CORE_PACK, { name: "test", defs: [{ id: "test:flat", type: "map", chunks: [4, 4], zones: [{ kind: "spawn", at: [60, 190], radius: 12, spawns: "core:spawns_proving_hunters", count: 3 }] }] }]);
+  const made = compilePacks([CORE_PACK, { name: "test", defs: [{ id: "test:flat", type: "map", zones: [{ kind: "spawn", at: [60, 190], radius: 12, spawns: "core:spawns_proving_hunters", count: 3 }] }] }]);
   expect(made.errors).toEqual([]);
   const opts: HostOptions = { wild: true, map: writeMap(flatMap(4, { regions: [{ kind: "spawn", spawns: "core:spawns_beach", count: 6, at: [180, 60], half: [20, 30] }] })) };
   const host = createHost(made.registry!, opts);

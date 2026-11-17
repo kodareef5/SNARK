@@ -31,7 +31,7 @@ import { ATLAS_REGION, DRAW_TEXTURED } from "../../../../../client/core/render/p
 import { NODE_BUFFERS, Scene } from "../../../../../client/core/render/scene.ts";
 import { RemoteSample } from "../../../../../client/core/session.ts";
 import { CORE_CONTENT } from "../../../../../content/core.ts";
-import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz, type MapDims } from "../../../../../shared/coords.ts";
+import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz, frameKey, type MapDims } from "../../../../../shared/coords.ts";
 import { compileContent } from "../../../../../shared/content/registry.ts";
 import { INSTANCE_BYTES, parsePack } from "../../../../../shared/pack/pack.ts";
 import { Heightfield } from "../../../../../shared/world/heightfield.ts";
@@ -137,8 +137,9 @@ const source: NodeSource = {
       return;
     }
     if (args.includes("--alone")) return;
-    const h = mix(7, chunk, index);
-    const g = mix(h, index, chunk);
+    const key = frameKey(DIMS, chunk);
+    const h = mix(7, key, index);
+    const g = mix(h, index, key);
     const x = (chunkCx(DIMS, chunk) + (h & 0xffff) / 65536) * CHUNK_SIZE;
     const z = (chunkCz(DIMS, chunk) + (h >>> 16) / 65536) * CHUNK_SIZE;
     const y = hf.heightAt(x, z);
@@ -160,7 +161,7 @@ const source: NodeSource = {
     const pool = here.length > 0 ? here : kinds;
     if (!band && pool !== kinds && !dense && (g >>> 12) % 3 !== 0) return;
     out.kind = pool[g % pool.length]!;
-    out.form = formOf(forms, out.kind, mix(g, chunk, 7));
+    out.form = formOf(forms, out.kind, mix(g, key, 7));
     out.x = x;
     out.y = y;
     out.z = z;
@@ -176,8 +177,9 @@ const PALMS = byName(/palm/);
 const HARDWOODS = [...byName(/tree_/, 6), ...byName(/oak_/), ...byName(/fig_/, 2), ...byName(/banyan/)];
 
 function plantWood(chunk: number, index: number, out: Parameters<NodeSource["at"]>[2]): void {
-  const h = mix(11, chunk, index);
-  const g = mix(h, index, chunk);
+  const key = frameKey(DIMS, chunk);
+  const h = mix(11, key, index);
+  const g = mix(h, index, key);
   const x = (chunkCx(DIMS, chunk) + (h & 0xffff) / 65536) * CHUNK_SIZE;
   const z = (chunkCz(DIMS, chunk) + (h >>> 16) / 65536) * CHUNK_SIZE;
   const y = hf.heightAt(x, z);
@@ -191,7 +193,7 @@ function plantWood(chunk: number, index: number, out: Parameters<NodeSource["at"
   if (pool === HARDWOODS && (g >>> 16) % 5 < 2) return;
   if (pool.length === 0) return;
   out.kind = pool[g % pool.length]!;
-  out.form = formOf(forms, out.kind, mix(g, chunk, 7));
+  out.form = formOf(forms, out.kind, mix(g, key, 7));
   out.x = x;
   out.y = y;
   out.z = z;

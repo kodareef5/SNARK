@@ -2,14 +2,18 @@
 // serves it, and each client fetches it, so both stand on the same bytes. Little-endian:
 //
 //   0   "SNMP"
-//   4   u16 version 5, u16 reserved
+//   4   u16 version 6, u16 reserved
 //   8   u32 hash        FNV-1a of every byte after it
 //   12  u32 ground      bytes before the STAT section, which is last: all a client needs to draw. The whole file if none.
 //   16  u16 chunksX, u16 chunksZ
-//   20  f32 cell        metres between samples, which is 2
-//   24  f64 minY, f64 stepY, f64 seaLevel
+//   20  u16 frameX, u16 frameZ
+//                       the lattice column and row of the south-east corner (shared/coords.ts)
+//   24  u16 originX, u16 originZ
+//                       the display origin's, a sector's corner at or beyond the north-west corner
+//   28  f32 cell        metres between samples, which is 2
+//   32  f64 minY, f64 stepY, f64 seaLevel
 //                       a height is minY + sample * stepY metres; a sea level of -Infinity is no sea
-//   48  string id
+//   56  string id
 //   ..  sections, each a 4-byte tag, a u32 byte length and its bytes. A tag this build does not know is skipped.
 //
 //   HGTS  per sample, row by row from z = 0, the sample less (left + above - above left) as an i16, zigzagged (0, -1, 1, -2
@@ -51,7 +55,7 @@
 
 import type { Def, MapZone } from "../content/defs.ts";
 import type { Registry } from "../content/registry.ts";
-import { CHUNK_SIZE, MAX_CHUNKS_PER_AXIS, STRUCT_UNITS, WORLD_MAX_Y, WORLD_MIN_Y, chunkAt, chunkCount, chunkCx, chunkCz, type MapDims } from "../coords.ts";
+import { CHUNK_SIZE, FRAME_CHUNKS, MAX_CHUNKS_PER_AXIS, SECTOR_CHUNKS, STRUCT_UNITS, WORLD_MAX_Y, WORLD_MIN_Y, chunkAt, chunkCount, chunkCx, chunkCz, frameKey, framed, type FramedDims, type MapDims } from "../coords.ts";
 import { hashBytes } from "../hash.ts";
 import { decodeUtf8 } from "../pack/pack.ts";
 import { BitReader, BitWriter } from "../net/codec.ts";
@@ -60,9 +64,9 @@ import { formOf, mix, nodeForms, scatterNodes, type NodeSource } from "./nodes.t
 import type { StructureStore } from "./structures.ts";
 import { MAX_WATER_BODIES, MapWater } from "./water.ts";
 
-export const MAP_VERSION = 5;
+export const MAP_VERSION = 6;
 const MAGIC = 0x504d4e53;
-const HEADER_BYTES = 48;
+const HEADER_BYTES = 56;
 /** Where the header says how many bytes come before the statics. */
 const GROUND_AT = 12;
 /** A static's bytes in STAT's columns: id, yaw, x, y, z. */
@@ -313,6 +317,7 @@ export interface MapLandmark {
 /** A map read from a file, with the hash that names those bytes. */
 export interface MapFile extends MapData {
   readonly hash: number;
+  readonly dims: FramedDims;
   readonly statics: MapStatics;
 }
 
@@ -355,6 +360,9 @@ function check(m: MapData): void {
   if (landmarks.length > 255 || landmarks.some((n) => !/^[a-z][a-z0-9-]{0,31}$/.test(n)) || new Set(landmarks).size !== landmarks.length) fail("its landmarks are each named once, in lower case, at most 255 of them");
   if (m.content?.landmarks.some((l) => ![l.x, l.y, l.z].every(Number.isFinite) || !whole(l.yaw, 0, 65535))) fail("a landmark of it is not set down at a place and a yaw");
   if (!whole(chunksX, 1, MAX_CHUNKS_PER_AXIS) || !whole(chunksZ, 1, MAX_CHUNKS_PER_AXIS)) fail(`it is ${chunksX} by ${chunksZ} chunks, and a side is 1 to ${MAX_CHUNKS_PER_AXIS}`);
+  const { frameX, frameZ, originX, originZ } = framed(m.dims);
+  if (!whole(frameX, 0, FRAME_CHUNKS - chunksX) || !whole(frameZ, 0, FRAME_CHUNKS - chunksZ)) fail(`its south-east corner is at column ${frameX}, row ${frameZ}, and it must lie whole on the lattice of ${FRAME_CHUNKS} chunks a side`);
+  if (!whole(originX, frameX + chunksX, FRAME_CHUNKS) || !whole(originZ, frameZ + chunksZ, FRAME_CHUNKS) || originX % SECTOR_CHUNKS !== 0 || originZ % SECTOR_CHUNKS !== 0) fail(`its display origin is at column ${originX}, row ${originZ}, and it must be a sector's corner at or west of column ${frameX + chunksX} and at or north of row ${frameZ + chunksZ}`);
   if (!(m.stepY > 0 && Number.isFinite(m.stepY) && Number.isFinite(m.minY) && m.seaLevel < Infinity)) fail("its height range or its sea level is not a number");
   const sizeX = chunksX * CHUNK_SIZE;
   const sizeZ = chunksZ * CHUNK_SIZE;
@@ -514,8 +522,8 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
   o.u16(0);
   o.u32(0);
   o.u32(0);
-  o.u16(m.dims.chunksX);
-  o.u16(m.dims.chunksZ);
+  const dims = framed(m.dims);
+  for (const v of [dims.chunksX, dims.chunksZ, dims.frameX, dims.frameZ, dims.originX, dims.originZ]) o.u16(v);
   const cellAt = o.take(4);
   o.view.setFloat32(cellAt, TERRAIN_CELL, true);
   o.f64(m.minY);
@@ -863,7 +871,7 @@ function* readStatics(s: In, dims: MapDims, order = true): Generator<void, MapSt
 }
 
 function read(r: In): Omit<MapFile, "hash"> {
-  const dims = { chunksX: r.u16(), chunksZ: r.u16() };
+  const dims = { chunksX: r.u16(), chunksZ: r.u16(), frameX: r.u16(), frameZ: r.u16(), originX: r.u16(), originZ: r.u16() };
   const cell = r.view.getFloat32(r.at, true);
   r.at += 4;
   if (cell !== TERRAIN_CELL) throw new Error(`map: its samples are ${cell} m apart, and this build draws ground of ${TERRAIN_CELL} m`);
@@ -1088,8 +1096,8 @@ function sourceOf(dims: MapDims, hf: Heightfield, reg: Registry, layer: NodeLaye
       const kind = row < layer.first[chunk + 1]! ? kinds[layer.kind[row]!]! : 0;
       out.kind = kind;
       if (kind === 0) return;
-      // A listed node's variant and size come from its place, as a scattered one's do.
-      out.form = formOf(forms, kind, mix(chunk * 256 + index, layer.x[row]! | (layer.z[row]! << 16), layer.yaw[row]!));
+      // A listed node's variant and size come from its chunk's frame key, its slot and its place, as a scattered one's do.
+      out.form = formOf(forms, kind, mix(frameKey(dims, chunk) * 256 + index, layer.x[row]! | (layer.z[row]! << 16), layer.yaw[row]!));
       out.x = chunkCx(dims, chunk) * CHUNK_SIZE + layer.x[row]! / NODE_UNITS;
       out.z = chunkCz(dims, chunk) * CHUNK_SIZE + layer.z[row]! / NODE_UNITS;
       out.y = hf.heightAt(out.x, out.z);

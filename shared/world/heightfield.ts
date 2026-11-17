@@ -1,13 +1,14 @@
 // Each grid cell is two triangles split along the diagonal from (i, j) to (i+1, j+1). Collision, prediction and LOD 0 rendering
 // all use this triangulation, so what is drawn is what is solid. Everything below the surface is solid.
 
-import { CHUNK_SIZE, type MapDims } from "../coords.ts";
+import { CHUNK_SIZE, framed, type FramedDims, type MapDims } from "../coords.ts";
 import type { MapWater } from "./water.ts";
 
 export const TERRAIN_CELL = 2;
 
 export class Heightfield {
-  readonly dims: MapDims;
+  /** With its frame and display origin, the defaults where the dims it was made with give none. */
+  readonly dims: FramedDims;
   /** Metres between samples. */
   readonly cell: number;
   /** Samples per axis (cells + 1). */
@@ -28,7 +29,7 @@ export class Heightfield {
 
   /** Use a power-of-two fraction such as 1/256 for `stepY`, so round heights (sea level, floors) are exact. */
   constructor(dims: MapDims, cell: number, minY: number, stepY: number, heights?: Uint16Array, tint?: Uint8Array) {
-    this.dims = dims;
+    this.dims = framed(dims);
     this.cell = cell;
     this.sizeX = dims.chunksX * CHUNK_SIZE;
     this.sizeZ = dims.chunksZ * CHUNK_SIZE;

@@ -22,6 +22,7 @@ test("a map unpacked into a folder of layers and built from it again is the same
   expect(writeMap(readLayers(folder))).toEqual(file);
   expect(describe(file).slice(1)).toEqual([
     "2 by 3 chunks, 128 by 192 m, ground from 29.8 to 50.3 m, sea at 31.25 m",
+    "south-east corner at lattice column 2048, row 2048; display origin at column 2064, row 2064",
     "3 static pieces",
     "40 node slots a chunk, scattered where a picture of 4 m a pixel allows: core:tree x4, core:rock x1",
     "3 listed nodes",
@@ -31,12 +32,18 @@ test("a map unpacked into a folder of layers and built from it again is the same
     "parked vehicles: 2 of core:compact, 1 of test:hauler",
     "not in the core content: test:elsewhere, test:hauler",
   ]);
+  // Where it sits on the lattice and its display origin go into the folder's map.json, and come back.
+  const placed = writeMap({ ...busyMap(), dims: { chunksX: 2, chunksZ: 3, frameX: 3000, frameZ: 17, originX: 3008, originZ: 128 } });
+  writeLayers(parseMap(placed), join(dir, "placed"));
+  expect(JSON.parse(readFileSync(join(dir, "placed", "map.json"), "utf8"))).toMatchObject({ chunks: [2, 3], frame: [3000, 17], origin: [3008, 128] });
+  expect(writeMap(readLayers(join(dir, "placed")))).toEqual(placed);
+  expect(describe(placed)[2]).toBe("south-east corner at lattice column 3000, row 17; display origin at column 3008, row 128");
   // A scattered layer's slots taken out go into the folder as their own file, and come back.
   const busy = busyMap();
   const out = writeMap({ ...busy, nodes: busy.nodes.map((l) => ("zone" in l ? { ...l, out: new Uint8Array(Math.ceil((6 * l.perChunk) / 8)).fill(0x0f) } : l)) });
   writeLayers(parseMap(out), join(dir, "out"));
   expect(writeMap(readLayers(join(dir, "out")))).toEqual(out);
-  expect(describe(out)[5]).toBe("30 node slots a chunk, by zones of 16 m: 1 core:palm x1, bare x2; 2 core:fig x1, core:fern x2; 92 slots taken out");
+  expect(describe(out)[6]).toBe("30 node slots a chunk, by zones of 16 m: 1 core:palm x1, bare x2; 2 core:fig x1, core:fern x2; 92 slots taken out");
 });
 
 test("a map's water unpacked into its picture of squares and its list of bodies builds the same file again", () => {

@@ -9,7 +9,7 @@ import { mapRoutes } from "../../server/main.ts";
 import { createMapWorld, provingFile } from "../../server/world.ts";
 import { compilePacks } from "../../shared/content/packs.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
-import { chunkCount } from "../../shared/coords.ts";
+import { chunkCount, framed } from "../../shared/coords.ts";
 import { RESULT_OK } from "../../shared/net/protocol.ts";
 import { parseMap, writeMap } from "../../shared/world/mapfile.ts";
 import type { NodeSpot } from "../../shared/world/nodes.ts";
@@ -26,7 +26,7 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 test("a new map is a file: a flat one made here runs a server, is served as a browser fetches it, and is walked on", async () => {
   const file = writeMap(flatMap(4, { statics: [{ kind: "core:crate", x: 140, y: 0.5, z: 128, yaw: 0 }] }));
   const h = new Harness({}, 1, 60, { map: file });
-  expect([h.world.mapId, h.world.dims, h.world.structs.count, h.world.nodeField]).toEqual(["test:flat", { chunksX: 4, chunksZ: 4 }, 1, null]);
+  expect([h.world.mapId, h.world.dims, h.world.structs.count, h.world.nodeField]).toEqual(["test:flat", framed({ chunksX: 4, chunksZ: 4 }), 1, null]);
 
   // map.json names the file, and the file is the map, compressed for whoever takes it so.
   const route = mapRoutes(h.host.mapFile!, h.world.mapId, h.world.mapHash);
@@ -58,10 +58,10 @@ test("a new map is a file: a flat one made here runs a server, is served as a br
   expect([ents.y[e], ada.stats.corrections]).toEqual([0, 0]);
 });
 
-test("a map's definition says where a new world's creatures start, and must agree with its file", () => {
+test("a map's definition says where a new world's creatures start, and its sea must agree with its file", () => {
   const file = writeMap(flatMap(4));
   const withDef = (more: Record<string, unknown>) =>
-    compilePacks([CORE_PACK, { name: "test", defs: [{ id: "test:flat", type: "map", chunks: [4, 4], zones: [{ kind: "crate", at: [10, 10], radius: 5 }, { kind: "spawn", at: [60, 190], radius: 12 }, { kind: "spawn", at: [200, 60], half: [8, 20] }], ...more }] }]);
+    compilePacks([CORE_PACK, { name: "test", defs: [{ id: "test:flat", type: "map", zones: [{ kind: "crate", at: [10, 10], radius: 5 }, { kind: "spawn", at: [60, 190], radius: 12 }, { kind: "spawn", at: [200, 60], half: [8, 20] }], ...more }] }]);
   const made = withDef({});
   expect(made.errors).toEqual([]);
   const reg = made.registry!;
@@ -80,8 +80,9 @@ test("a map's definition says where a new world's creatures start, and must agre
   expect([herd, hunters]).toEqual([9, 4]);
   // A map the content does not define starts with nothing on it.
   expect(createHost(coreRegistry(), { map: file, startingCreatures: 9, startingHunters: 4 }).world.ents.count).toBe(0);
-  expect(() => createHost(withDef({ chunks: [8, 4] }).registry!, { map: file })).toThrow('map "test:flat": its file is 4 by 4 chunks with the sea at -Infinity, and its definition says 8 by 4');
-  expect(() => createHost(withDef({ seaLevel: 3 }).registry!, { map: file })).toThrow("and its definition says 4 by 4 with the sea at 3");
+  // Its size is its file's, which the definition does not say.
+  expect(withDef({ chunks: [8, 4] }).errors).toEqual(['test:flat: class map may not declare "chunks"']);
+  expect(() => createHost(withDef({ seaLevel: 3 }).registry!, { map: file })).toThrow('map "test:flat": its file has the sea at -Infinity, and its definition says 3');
 });
 
 test("a map's parked vehicles are set down once, in a new world, owned by nobody, and its save keeps them as it keeps any record", () => {
@@ -151,7 +152,7 @@ test("the proving ground loaded from its file is the one its functions build: ev
   const reg = coreRegistry();
   const world = createMapWorld(reg, parseMap(provingFile(reg)));
   const hf = buildProvingHeightfield();
-  expect([world.mapId, world.dims, world.spawn, world.spawns]).toEqual([PROVING_ID, PROVING_DIMS, PROVING_SPAWNS[0]!, PROVING_SPAWNS]);
+  expect([world.mapId, world.dims, world.spawn, world.spawns]).toEqual([PROVING_ID, framed(PROVING_DIMS), PROVING_SPAWNS[0]!, PROVING_SPAWNS]);
   expect([world.hf.cell, world.hf.minY, world.hf.stepY, world.hf.seaLevel]).toEqual([hf.cell, hf.minY, hf.stepY, hf.seaLevel]);
   expect(world.hf.heights).toEqual(hf.heights);
   expect(world.hf.tint).toEqual(hf.tint);

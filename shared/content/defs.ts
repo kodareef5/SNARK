@@ -828,8 +828,7 @@ export interface MapDef extends Named {
   readonly type: "map";
   readonly id: string;
   readonly label?: string;
-  /** Its size in chunks along x and along z, and its sea level. Each must be what its file holds. */
-  readonly chunks: readonly [number, number];
+  /** Its sea level, which must be what its file holds. Its size is its file's. */
   readonly seaLevel?: number;
   readonly game?: string;
   readonly zones?: readonly MapZone[];

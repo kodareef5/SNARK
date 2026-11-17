@@ -24,7 +24,7 @@ import { FAR_NODE_BUFFERS, NodeChanges, PULL_SLOTS, PULL_VERTICES } from "../../
 import { NODE_BUFFERS, Scene } from "../../../../../client/core/render/scene.ts";
 import { RemoteSample } from "../../../../../client/core/session.ts";
 import { CORE_CONTENT } from "../../../../../content/core.ts";
-import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz, type MapDims } from "../../../../../shared/coords.ts";
+import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz, frameKey, type MapDims } from "../../../../../shared/coords.ts";
 import { compileContent } from "../../../../../shared/content/registry.ts";
 import { parsePack } from "../../../../../shared/pack/pack.ts";
 import { Heightfield } from "../../../../../shared/world/heightfield.ts";
@@ -128,8 +128,9 @@ const source: NodeSource = {
       out.y = hf.heightAt(out.x, out.z);
       return;
     }
-    const h = mix(5, chunk, index);
-    const g = mix(h, index, chunk);
+    const key = frameKey(DIMS, chunk);
+    const h = mix(5, key, index);
+    const g = mix(h, index, key);
     const x = (chunkCx(DIMS, chunk) + (h & 0xffff) / 65536) * CHUNK_SIZE;
     const z = (chunkCz(DIMS, chunk) + (h >>> 16) / 65536) * CHUNK_SIZE;
     const across = x - PATCH.x;
@@ -138,7 +139,7 @@ const source: NodeSource = {
     // A gap between the patches, and a stone in two of the slots, or every slot of the scree.
     if (Math.abs(Math.abs(across) - SPAN / 2) < GAP / 2 || (view !== "scree" && (g & 1) !== 0)) return;
     out.kind = KINDS[patch]!;
-    out.form = formOf(forms, out.kind, mix(g, chunk, 7));
+    out.form = formOf(forms, out.kind, mix(g, key, 7));
     [out.x, out.y, out.z] = [x, hf.heightAt(x, z), z];
     out.yaw = (g >>> 8) & 0xffff;
   },

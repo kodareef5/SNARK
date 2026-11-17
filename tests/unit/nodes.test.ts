@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { CHUNK_SIZE, TICK_DT, chunkAt, chunkCx, chunkCz } from "../../shared/coords.ts";
+import { CHUNK_SIZE, TICK_DT, chunkAt, chunkCx, chunkCz, frameKey } from "../../shared/coords.ts";
 import { TAU } from "../../shared/math/scalar.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Body, STANCE_STAND, stanceEye, stepBody } from "../../shared/sim/character.ts";
@@ -12,7 +12,7 @@ import { nodeLayers, type NodeZoned } from "../../shared/world/mapfile.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import type { Def, NodeDef } from "../../shared/content/defs.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { HIT_NODE, castWorld, rayHit } from "../../shared/world/ray.ts";
+import { HIT_NODE, HIT_NONE, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { variantRegistry } from "../fixtures/nodes.ts";
 import { coreRegistry, flatWorld } from "../fixtures/world.ts";
@@ -56,17 +56,18 @@ test("where nodes stand is a pure function of the map: the same every time, dry,
   expect(total).toBeGreaterThan(2500);
   for (const id of ["core:tree", "core:rock", "core:bush"]) expect(counts.get(kind(id))!).toBeGreaterThan(200);
   // The big trees are few: elder oaks among the figs, and banyans only where the ground is level enough for their trunks.
-  for (const id of KINDS) expect(counts.get(kind(id)) ?? 0).toBeGreaterThan(id === "core:banyan" ? 15 : 20);
+  for (const id of KINDS) expect(counts.get(kind(id)) ?? 0).toBeGreaterThan(10);
   // Every young tree is one of sixteen sizes from 0.85 to 1.15 of its model.
   expect([...sizes].sort((x, y) => x - y)).toEqual(Array.from({ length: SIZE_STEPS }, (_, s) => Math.round((0.85 + (0.3 * s) / 15) * SIZE_UNITS)));
 });
 
 test("a world saved before the new kinds came keeps every node where it was and of its kind: the first 96 slots are as they were, but where a rock's footing fails", () => {
-  // The rule as it stood: a slot's place and its kind and turn from two hashes, trees, rocks and bushes 5, 3 and 3 beyond the plaza.
+  // The rule as it stood: a slot's place and its kind and turn from two hashes of its chunk's frame key, trees, rocks and
+  // bushes 5, 3 and 3 beyond the plaza.
   const kinds = [...Array(5).fill(kind("core:tree")), ...Array(3).fill(kind("core:rock")), ...Array(3).fill(kind("core:bush"))] as number[];
   const was = (chunk: number, index: number): number[] => {
-    const h = mix(0x51ab, chunk, index);
-    const g = mix(h, index, chunk);
+    const h = mix(0x51ab, frameKey(PROVING_DIMS, chunk), index);
+    const g = mix(h, index, frameKey(PROVING_DIMS, chunk));
     const x = (chunkCx(PROVING_DIMS, chunk) + (h & 0xffff) / 65536) * CHUNK_SIZE;
     const z = (chunkCz(PROVING_DIMS, chunk) + (h >>> 16) / 65536) * CHUNK_SIZE;
     if (Math.max(Math.abs(Math.floor(x) + 0.5 - 256), Math.abs(Math.floor(z) + 0.5 - 256)) <= 99) return [0];
@@ -87,7 +88,7 @@ test("a world saved before the new kinds came keeps every node where it was and 
       if (s.kind !== 0) standing++;
     }
   }
-  expect([standing > 1500, footless]).toEqual([true, 73]);
+  expect([standing > 1500, footless]).toEqual([true, 59]);
 });
 
 test("the zoned layer's slots keep their places and kinds: an elder oak grows only where the ground was bare, a strangler fig only where a banyan's footing fails, and nothing where a heap's or a metal rock's does", () => {
@@ -113,9 +114,9 @@ test("the zoned layer's slots keep their places and kinds: an elder oak grows on
       if (a.kind !== 0 && b.kind !== 0) expect([b.x, b.y, b.z, b.yaw]).toEqual([a.x, a.y, a.z, a.yaw]);
     }
   }
-  // Of the 25 banyans, 6 stood where the ground falls away under their outer trunks further than they are buried; of the
-  // 97 heaps of rubble 22, and of the 30 metal rocks 5, where it falls away under their bases.
-  expect(Object.fromEntries(changed)).toEqual({ "bare to core:oak": 44, "core:banyan to core:fig": 6, "core:rubble to bare": 22, "core:metal_rock to bare": 5 });
+  // Of the 30 banyans, 6 stood where the ground falls away under their outer trunks further than they are buried; of the
+  // 79 heaps of rubble 7, and of the 19 metal rocks 6, where it falls away under their bases.
+  expect(Object.fromEntries(changed)).toEqual({ "bare to core:oak": 57, "core:banyan to core:fig": 6, "core:rubble to bare": 7, "core:metal_rock to bare": 6 });
 });
 
 test("a kind with a footing grows only where the ground under it falls no further than it allows, and the kind it names elsewhere", () => {
@@ -187,6 +188,8 @@ test("a node's boxes turn and grow with its picture: what the shader draws at a 
       const a = (s.yaw / 65536) * TAU;
       const [lx, ly, lz] = [0.8 * k, 4 * k, 0.3 * k];
       const at = [Math.cos(a) * lx + Math.sin(a) * lz + s.x, ly + s.y, Math.cos(a) * lz - Math.sin(a) * lx + s.z];
+      // One leaning over the map's edge is past where a ray looks.
+      if (at[0]! < 0 || at[0]! > hf.sizeX || at[2]! < 0 || at[2]! > hf.sizeZ) continue;
       // A look straight down onto it from above meets the node there, at the top of that box.
       expect(castWorld(world, at[0]!, at[1]! + 3, at[2]!, 0, -1, 0, 3)).toBe(HIT_NODE);
       expect([rayHit.ref, rayHit.t]).toEqual([chunk * 65536 + i, expect.closeTo(3 - k, 2)]);
@@ -309,6 +312,14 @@ test("trees stop a body, rocks stop it or are climbed, bushes do not, and a ray 
       const ground = groundUnder(hf, s.x, s.z, p.radius);
       const south = groundUnder(hf, s.x, s.z - reach, p.radius);
       if (Math.abs(south - ground) > 0.3 || !capsuleFree(world, s.x, south, s.z - reach, p.radius, p.height)) continue;
+      // And none other where it stands, nor in the way of a look at it: with it taken out, a body fits there and the look
+      // meets nothing.
+      const first = forms.parts.start[s.form]! * 6;
+      const look = (): number => castWorld(world, s.x, s.y + forms.parts.box[first + 1]!, s.z - reach, 0, 0, 1, reach + 1);
+      f.store.put(chunk, i, 0, 0, 0, 0, 0, 0, 0, 1);
+      const alone = capsuleFree(world, s.x, ground, s.z, p.radius, p.height) && look() === HIT_NONE;
+      f.set(chunk, i, true);
+      if (!alone) continue;
       seen.add(s.kind);
       const soft = reg.soft[s.kind] === 1;
       expect(capsuleFree(world, s.x, ground, s.z, p.radius, p.height)).toBe(soft);
@@ -331,8 +342,7 @@ test("trees stop a body, rocks stop it or are climbed, bushes do not, and a ray 
       else if (reg.defs[s.kind]?.type === "node" && (reg.defs[s.kind] as NodeDef).material === "stone") expect(closest > p.radius || rose > 0.1).toBe(true);
       else expect(closest).toBeGreaterThan(p.radius);
       // A look level with the middle of its first box, which stands on its origin, from in front of it.
-      const first = forms.parts.start[s.form]! * 6;
-      expect(castWorld(world, s.x, s.y + forms.parts.box[first + 1]!, s.z - reach, 0, 0, 1, reach + 1)).toBe(HIT_NODE);
+      expect(look()).toBe(HIT_NODE);
       expect(rayHit.ref).toBe(chunk * 65536 + i);
     }
   }
@@ -615,12 +625,17 @@ test("a used-up rock leaves its broken base, which bodies and rays meet as its o
     expect([castWorld({ hf, structs, nodes: alone }, x, s.y + 6, z, 0, -1, 0, 6), rayHit.ref]).toEqual([HIT_NODE, chunk * 65536 + i]);
     return 6 - rayHit.t;
   };
-  /** The top of the highest of the form's boxes over the middle of its first. */
+  /**
+   * The top of the highest of the form's boxes over the middle of its first, or NaN where a box's side passes within a
+   * centimetre of it, as one of the rubble's does by design: which side of it a look falls is then rounding's.
+   */
   const highest = (form: number): number => {
     const b0 = forms.parts.start[form]! * 6;
     let most = -Infinity;
     for (let b = b0; b < forms.parts.start[form + 1]! * 6; b += 6) {
-      if (Math.abs(box[b0]! - box[b]!) <= box[b + 3]! && Math.abs(box[b0 + 2]! - box[b + 2]!) <= box[b + 5]!) most = Math.max(most, box[b + 1]! + box[b + 4]!);
+      const [dx, dz] = [Math.abs(box[b0]! - box[b]!) - box[b + 3]!, Math.abs(box[b0 + 2]! - box[b + 2]!) - box[b + 5]!];
+      if ((Math.abs(dx) < 0.01 && dz < 0.01) || (Math.abs(dz) < 0.01 && dx < 0.01)) return NaN;
+      if (dx <= 0 && dz <= 0) most = Math.max(most, box[b + 1]! + box[b + 4]!);
     }
     return most;
   };
@@ -629,7 +644,7 @@ test("a used-up rock leaves its broken base, which bodies and rays meet as its o
   for (let chunk = 0; chunk < CHUNKS; chunk++) {
     for (let i = 0; i < f.source.perChunk; i++) {
       f.source.at(chunk, i, s);
-      if ((stones.get(s.kind) ?? 10) >= 10) continue;
+      if ((stones.get(s.kind) ?? 10) >= 10 || Number.isNaN(highest(s.form) + highest(forms.left[s.form]!))) continue;
       stones.set(s.kind, stones.get(s.kind)! + 1);
       const whole = looked(chunk, i, s.form);
       expect(whole).toBeCloseTo(highest(s.form), 1);

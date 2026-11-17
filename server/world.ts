@@ -101,7 +101,6 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
 const PROVING_DEF: MapDef = {
   type: "map",
   id: PROVING_ID,
-  chunks: [PROVING_DIMS.chunksX, PROVING_DIMS.chunksZ],
   seaLevel: PROVING_SEA_LEVEL,
   zones: [
     { kind: "spawn", at: [256, 272], half: [30, 28], spawns: "core:spawns_proving_herd", count: 24 },
@@ -114,9 +113,7 @@ const PROVING_DEF: MapDef = {
 function defOf(reg: Registry, map: MapFile): MapDef | null {
   const def = map.id === PROVING_ID ? PROVING_DEF : reg.defs[reg.index.get(map.id) ?? -1];
   if (def?.type !== "map") return null;
-  if (def.chunks[0] !== map.dims.chunksX || def.chunks[1] !== map.dims.chunksZ || (def.seaLevel !== undefined && def.seaLevel !== map.seaLevel)) {
-    throw new Error(`map "${map.id}": its file is ${map.dims.chunksX} by ${map.dims.chunksZ} chunks with the sea at ${map.seaLevel}, and its definition says ${def.chunks[0]} by ${def.chunks[1]}${def.seaLevel === undefined ? "" : ` with the sea at ${def.seaLevel}`}`);
-  }
+  if (def.seaLevel !== undefined && def.seaLevel !== map.seaLevel) throw new Error(`map "${map.id}": its file has the sea at ${map.seaLevel}, and its definition says ${def.seaLevel}`);
   return def;
 }
 
