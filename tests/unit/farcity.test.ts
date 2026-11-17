@@ -93,6 +93,8 @@ test("near pieces are drawn alike on every tier at one camera, whatever frames c
   const statics = [...near];
   for (let d = 250, k = 0; d <= 2600; d += CHUNK_SIZE, k++) statics.push(...building(bx + d, bz + (k % 2 === 0 ? 40 : -40), 0, 4 + ((k * 7) % 9), 2, (k * 3100) % 16384));
   const w = cityWorld({ chunks: 64, statics, width: 480, height: 270 });
+  // Pieces are counted by the pixels each is picked in, which a chunk's mesh does not tell apart (nearcity.ts).
+  w.scene.nearMesh = false;
   for (const s of near) w.rows(w.chunkOf(s.x, s.z));
   w.look(bx, 1.2, bz, 10, Math.PI / 2, 4.1);
   // Each near piece's pixels in the last frame, by its pick id.
