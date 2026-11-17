@@ -9,7 +9,7 @@ import { KORU } from "../../content/landmarks/koru.ts";
 import type { Def, ShapeDef, StructureDef } from "../../shared/content/defs.ts";
 import { compileContent, withContent, type Registry } from "../../shared/content/registry.ts";
 import { deriveRegistry } from "../../shared/content/tuning.ts";
-import { hashString } from "../../shared/hash.ts";
+import { hashBytes, hashString } from "../../shared/hash.ts";
 import { decodeUtf8 } from "../../shared/pack/pack.ts";
 import { Rng } from "../../shared/rng.ts";
 import { MAX_CORNERS, hullFault, hullOf, hullPoint, type HullDef, type HullTable } from "../../shared/world/convex.ts";
@@ -163,6 +163,15 @@ test("UTF-8 is read as the platform reads it, with characters of one to four byt
   // A run of a larger buffer, as a file's sections are read.
   const file = new TextEncoder().encode("é😀middle€é");
   expect(decodeUtf8(file.subarray(6, 15))).toBe("middle€");
+});
+
+test("a string hashes as its characters' low and high bytes do, one after the other", () => {
+  for (const text of ["", "plain words", "é€😀 and \u00ff\u0100", `${"[1.25,-0.475]".repeat(500)}€`]) {
+    const bytes = new Uint8Array(text.length * 2);
+    for (let i = 0; i < text.length; i++) [bytes[i * 2], bytes[i * 2 + 1]] = [text.charCodeAt(i) & 0xff, text.charCodeAt(i) >>> 8];
+    expect(hashString(text)).toBe(hashBytes(bytes));
+    expect(hashString(text, 12345)).toBe(hashBytes(bytes, 12345));
+  }
 });
 
 test("a part's hull is the one every three corners tried give, or is refused for the same reason", () => {
