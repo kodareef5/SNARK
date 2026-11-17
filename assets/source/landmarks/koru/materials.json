@@ -1,7 +1,7 @@
 {
-  "pictures": {"surfaces": 2048, "sails": 512, "signs": 2048},
+  "pictures": {"surfaces": 2048, "sails": 512, "signs": 1024},
   "inset": 6,
-  "signs": [0, 0, 2048, 2048],
+  "signs": [0, 0, 1024, 1024],
   "finishes": {
     "teak": {"rect": [0, 0, 1024, 1024], "tile": [2, 2], "rgb": [153, 111, 72], "roughness": 0.52, "metal": 0},
     "mahogany": {"rect": [1024, 512, 1024, 512], "tile": [2, 1], "rgb": [104, 66, 43], "roughness": 0.32, "metal": 0},

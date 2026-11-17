@@ -35,8 +35,8 @@ export default {
     surfaces: pictures("surfaces"),
     // Sailcloth passes light: from the side the sun is not on, a sail shows most of what its other side takes.
     sails: pictures("sails", { sheet: 0.7, tops: { normal: 128 } }),
-    // The plaques and the name, twice as sharp as the atlas held them, so that medium's 1024 shows them as high did.
-    signs: pictures("signs", { tops: { normal: 1024 } }),
+    // The plaques and the name, in a picture of their own that medium shows whole, as sharp as high showed them in the atlas.
+    signs: pictures("signs", { tops: { normal: 512 } }),
   },
   finishes: Object.fromEntries(Object.entries(look.finishes).map(([n, f]) => [n, finish(f)])),
   budgets: { triangles: budget(CELLS), texture: { top: 2048, megabytes: 64 }, cells: CELLS },
