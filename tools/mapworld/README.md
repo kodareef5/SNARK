@@ -22,6 +22,10 @@ bun test ./tools/mapworld/ruins.test.ts
 bun run check
 ```
 
+`--release` after the name writes the map's copies for the wire as tightly as
+they go, as a map that ships has: about a minute and a half more than the few
+seconds an everyday build takes for them (`tools/map/pack.ts`).
+
 `world.ruins.report` chooses the report folder. `world.ruins.yardDistricts`
 chooses working container yards. `world.bridgeGapLayer` names the authored
 break mask, and `map.bathymetry` names the coastal raster relative to `base/`
