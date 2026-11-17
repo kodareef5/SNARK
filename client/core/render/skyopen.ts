@@ -58,19 +58,20 @@ export interface OpenMap {
 let lines = new Float64Array(0);
 
 /**
- * Sweeps lines along the unit way (dx, dz) climbing `rise` units of the heights a cell across the ground, over `top`,
- * `w` by `h` cells `cell` metres a side, adding `weight` to `hidden` at each cell a line passes over by more than
- * `slack` units, and `weight` times how far over to `over`. A cell takes the line nearest its middle before that line
- * meets the cell itself, as farshadow.ts `sweep` does.
+ * Sweeps lines along the unit way (dx, dz) over `top`, `w` by `h` cells, one set for each of `rises`, the units of the
+ * heights a line climbs a cell across the ground, adding `weight` to `hidden` at each cell a line passes over by more
+ * than `slack` units, and `weight` times how far over to `over`. A cell takes the line nearest its middle before that
+ * line meets the cell itself, as farshadow.ts `sweep` does.
  */
-function sweepSky(top: Uint16Array, w: number, h: number, dx: number, dz: number, rise: number, slack: number, weight: number, hidden: Float32Array, over: Float32Array): void {
+function sweepSky(top: Uint16Array, w: number, h: number, dx: number, dz: number, rises: readonly number[], slack: number, weight: number, hidden: Float32Array, over: Float32Array): void {
   const alongX = Math.abs(dx) >= Math.abs(dz);
   const a = alongX ? dx : dz, b = alongX ? dz : dx;
   const major = alongX ? w : h, minor = alongX ? h : w;
   const slope = b / a;
-  const drop = rise / Math.abs(a);
+  const k = rises.length;
+  const drops = rises.map((r) => r / Math.abs(a));
   const di = alongX ? 1 : w, dj = alongX ? w : 1;
-  const span = minor + 2 * major;
+  const span = (minor + 2 * major) * k;
   if (lines.length < span) lines = new Float64Array(span);
   lines.fill(-Infinity, 0, span);
   for (let n = 0; n < major; n++) {
@@ -78,12 +79,15 @@ function sweepSky(top: Uint16Array, w: number, h: number, dx: number, dz: number
     const q = Math.round(-slope * i) + major;
     for (let j = 0; j < minor; j++) {
       const c = i * di + j * dj;
-      const line = lines[j + q]!, t = top[c]!;
-      if (line > t + slack) {
-        hidden[c]! += weight;
-        over[c]! += weight * (line - t);
+      const t = top[c]!;
+      for (let e = 0, at = (j + q) * k; e < k; e++, at++) {
+        const line = lines[at]!;
+        if (line > t + slack) {
+          hidden[c]! += weight;
+          over[c]! += weight * (line - t);
+        }
+        lines[at] = (line > t ? line : t) - drops[e]!;
       }
-      lines[j + q] = (line > t ? line : t) - drop;
     }
   }
 }
@@ -123,12 +127,10 @@ export function openMeasure(solid: Uint16Array, ground: Uint16Array, nx: number,
   }
   const hidden = new Float32Array(w * h), over = new Float32Array(w * h);
   const weight = 1 / (OPEN_WAYS * OPEN_HEIGHTS);
+  const rises = Array.from({ length: OPEN_HEIGHTS }, (_, e) => (cell * k * Math.tan(Math.asin((e + 0.5) / OPEN_HEIGHTS))) / unit);
   for (let r = 0; r < OPEN_WAYS; r++) {
     const way = ((r + 0.5) / OPEN_WAYS) * 2 * Math.PI;
-    for (let e = 0; e < OPEN_HEIGHTS; e++) {
-      const up = Math.asin((e + 0.5) / OPEN_HEIGHTS);
-      sweepSky(top, w, h, Math.cos(way), Math.sin(way), (cell * k * Math.tan(up)) / unit, OPEN_SLACK / unit, weight, hidden, over);
-    }
+    sweepSky(top, w, h, Math.cos(way), Math.sin(way), rises, OPEN_SLACK / unit, weight, hidden, over);
   }
   // Open ground: the share hidden at the ground, and how fast it falls with the square of height, so that its area over
   // height is the swept one: share (1 - (y / top)^2) has the area 2/3 share top.
