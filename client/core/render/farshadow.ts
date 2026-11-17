@@ -1,8 +1,9 @@
 // The sun's shadow past the cascades (shadowtext.ts): a map over the whole map of the height under which the sun is hidden,
 // swept along the sun over the ground and the tops of the city's standing pieces, which a lit program compares a pixel's
-// height with. A city's shadow at a distance is the shadow of its outline: a building is the column of its 4 m cells'
-// tops (shared/world/city.ts cityTops) down to the ground, so an open frame of floors casts as a solid and nothing shades
-// a street from under a roof. The cascades still draw the truth near the camera.
+// height with past the cascades, and within them for what stands past the chunks the near store holds, whose pieces cast
+// into them. A city's shadow at a distance is the shadow of its outline: a building is the column of its 4 m cells' tops
+// (shared/world/city.ts cityTops) down to the ground, so an open frame of floors casts as a solid and nothing shades a
+// street from under a roof. The cascades still draw the truth near the camera.
 //
 // - Solid heights: a map's 4 m cells, each the ground at its middle or the top of the pieces standing in it, made once the
 //   statics come, a chunk made again when a piece of it that stood is gone.
@@ -336,7 +337,7 @@ export class FarShadow {
     const cell = farCell(this.city.dims, size);
     this.take();
     this.follow();
-    if (!this.away && (!this.map || this.changed.length > 0 || this.mapCell !== cell || tipMoves(this.mapSun, sun, this.mapRise) >= REMAKE * cell)) this.ask(cell, size, sun);
+    if (!this.away && (!this.map || this.changed.length > 0 || this.mapCell !== cell || this.mapSize !== size || tipMoves(this.mapSun, sun, this.mapRise) >= REMAKE * cell)) this.ask(cell, size, sun);
     this.take();
     this.upload(p, budget);
     if (!this.onCard || tipMoves(this.cardSun, sun, this.cardRise) > STALE * this.cardCell) return;

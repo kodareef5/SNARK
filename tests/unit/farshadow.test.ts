@@ -246,6 +246,12 @@ test("the scene's part sweeps when the statics come and again when the tallest t
   // A sun gone far from the map's, as the day's first is from last evening's: not looked up until the new one is all there.
   sun = sunAt(60, 200);
   expect(frame().scale).toBe(0);
+  // A layer of another side, as a touch tier's: swept again for it, though the cell is the same on a map this small.
+  p.tier = { ...p.tier, shadows: { ...p.tier.shadows, size: 128 } };
+  const before = shadow.stats.sweeps;
+  expect(frame(1e9).rows).toBe(128);
+  const next = frame();
+  expect([shadow.stats.sweeps - before, p.farMap.length, next.scale]).toEqual([1, 0, 1 / TOP_CELL]);
   // Low poly and the night look nothing up and send nothing.
   p.tier = tierOf("lowpoly");
   expect(frame()).toEqual({ rows: 0, from: 0, spent: 0, scale: 0 });
