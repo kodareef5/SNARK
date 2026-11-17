@@ -5,6 +5,7 @@
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import { Camera } from "../../client/core/render/camera.ts";
+import type { CityMaker } from "../../client/core/render/citymake.ts";
 import type { CitySource } from "../../client/core/render/farcity.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
@@ -118,6 +119,8 @@ export interface CityWorldOptions {
   pack?: Pack;
   /** The statics come after the scene is made, when `arrive` is called, as they do after a client's first frame. */
   late?: boolean;
+  /** Where the far city's levels are made, if not on this thread a frame's budget at a time. */
+  maker?: CityMaker;
 }
 
 export type CityWorld = ReturnType<typeof cityWorld>;
@@ -147,7 +150,8 @@ export function cityWorld(options: CityWorldOptions) {
   const complete = (chunk: number): boolean => whole[chunk] === 1;
   const pack = o.pack ?? farPack();
   const world: { dims: MapDims; hf: Heightfield; structs: StructureStore; far: { cells: FarStore; complete: typeof complete }; city?: CitySource } = { dims, hf, structs, far: { cells, complete } };
-  if (!o.late) world.city = { statics, complete };
+  const maker = o.maker ? { maker: o.maker } : {};
+  if (!o.late) world.city = { statics, complete, ...maker };
   const scene = new Scene(world, reg, pack);
   scene.assets.tier = { ...tierOf("medium"), ...o.tier };
   if (scene.city) scene.city.makeMs = Infinity;
@@ -180,7 +184,7 @@ export function cityWorld(options: CityWorldOptions) {
     },
     /** The statics of a `late` world come. */
     arrive(): void {
-      world.city = { statics, complete };
+      world.city = { statics, complete, ...maker };
     },
     /** The near store lets go of `chunk`. */
     drop(chunk: number): void {

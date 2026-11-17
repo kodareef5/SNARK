@@ -71,6 +71,8 @@ export interface CityMade {
 export interface CityMaker {
   /** Called as each level asked for is made, where they are made on another thread. */
   onMade: (() => void) | null;
+  /** How many levels it may be asked for ahead of what it has made, where they are made on other threads. */
+  readonly flights?: number;
   /** Makes for a city of these kinds from now on, forgetting what was asked before. */
   start(kinds: CityKinds): void;
   make(job: CityJob): void;

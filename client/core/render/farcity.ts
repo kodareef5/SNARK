@@ -53,7 +53,7 @@ export const CITY_BUFFER = FAR_BUFFER + 1;
 const RESERVE = "far city";
 /** Levels are made, nearest first and tiles with nothing on the card before the rest; here, until this much of a frame is spent. */
 export const MAKE_MS = 2;
-/** Levels a worker is asked for ahead of what it has made: it never waits on the page, and a tile come nearer soon goes first. */
+/** Levels a maker on other threads is asked for ahead of what it has made, if it does not say. */
 const FLIGHTS = 3;
 /** Milliseconds from some fixed moment: the page's clock in a browser and under Bun. */
 const clock = (): number => (globalThis as { performance?: { now(): number } }).performance?.now() ?? Date.now();
@@ -621,7 +621,7 @@ export class FarCity {
   private feed(): void {
     const start = clock();
     this.collect();
-    while (this.out < FLIGHTS && this.fed < this.work.length) this.post(this.work[this.fed++]!);
+    while (this.out < (this.maker.flights ?? FLIGHTS) && this.fed < this.work.length) this.post(this.work[this.fed++]!);
     this.fedMs += clock() - start;
   }
 

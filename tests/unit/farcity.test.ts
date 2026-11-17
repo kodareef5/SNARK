@@ -7,7 +7,8 @@ import { slopeKind } from "../../content/slopes.ts";
 import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
 import { ladder } from "../../client/core/governor.ts";
 import { FAR_BUFFER, fadeKeeps } from "../../client/core/render/far.ts";
-import { cityJob, cityKinds, makeLevel } from "../../client/core/render/citymake.ts";
+import { cityJob, cityKinds, makeLevel, type CityJob, type CityKinds, type CityMade, type CityMaker } from "../../client/core/render/citymake.ts";
+import { WorkerCityMaker, cityWorkers } from "../../client/city/maker.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
@@ -379,6 +380,51 @@ test("levels are held by their form: other levels in the same forms remake nothi
   const back = settle();
   expect(back.made).toBeLessThanOrEqual(nearer.dropped);
   expect(back.unseen).toBe(0);
+});
+
+test("the browser's maker asks each level of the worker with the fewest in hand, three ahead a worker, and makes the levels the page makes", async () => {
+  // A worker as client/city/city-worker.ts runs, here on this thread a turn later, and the workers each was asked of.
+  const asked: number[] = [];
+  let started = 0;
+  class Turn {
+    onmessage: ((m: { data: CityMade }) => void) | null = null;
+    private kinds: CityKinds | null = null;
+    private readonly n = started++;
+    postMessage(m: { kinds: CityKinds } | { job: CityJob }): void {
+      if ("kinds" in m) this.kinds = m.kinds;
+      else {
+        asked.push(this.n);
+        const made = makeLevel(this.kinds!, m.job);
+        setTimeout(() => this.onmessage!({ data: made }));
+      }
+    }
+  }
+  const statics: MapStatic[] = [];
+  for (let cx = 2; cx < 30; cx += 3) for (let cz = 2; cz < 30; cz += 5) statics.push(...building(...mid(cx, cz), 0, 3 + ((cx + cz) % 6), 2, cx * 900 + cz * 300));
+  const shot = async (maker?: CityMaker): Promise<Uint8ClampedArray> => {
+    const w = cityWorld({ chunks: 32, statics, width: 320, height: 180, ...(maker ? { maker } : {}) });
+    w.look(16 * CHUNK_SIZE, 10, 16 * CHUNK_SIZE, 600, 0.7, 120);
+    for (let f = 1; f < 200; f++) {
+      w.frame();
+      if (f > 1 && w.scene.city!.stats.behind === 0 && w.scene.city!.stats.missing === 0) return w.raster.color.slice();
+      await new Promise((go) => setTimeout(go));
+    }
+    throw new Error("still making");
+  };
+  const was = globalThis.Worker;
+  globalThis.Worker = Turn as unknown as typeof Worker;
+  try {
+    const maker = new WorkerCityMaker("city-worker.js", 3);
+    expect([maker.flights, cityWorkers(1), cityWorkers(4), cityWorkers(10)]).toEqual([9, 1, 2, 3]);
+    expect(await shot(maker)).toEqual(await shot());
+    // Three started, and each asked for a third of the levels, give or take its share of the last few.
+    expect(started).toBe(3);
+    const each = [0, 1, 2].map((n) => asked.filter((k) => k === n).length);
+    expect(Math.max(...each) - Math.min(...each)).toBeLessThanOrEqual(3);
+    expect(asked.length).toBeGreaterThan(20);
+  } finally {
+    globalThis.Worker = was;
+  }
 });
 
 test("a map's statics written, read back and set down give the rows and far city faces their list did, held once", () => {
