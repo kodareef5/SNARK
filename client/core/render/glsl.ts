@@ -172,7 +172,7 @@ precision highp int;
 in vec3 vRel, vNormal;
 in vec2 vAt;
 uniform highp usampler2D uTint;
-uniform sampler2D uPalette;
+uniform highp sampler2D uPalette;
 uniform vec4 uField;
 uniform vec2 uLast;
 out vec4 o;
