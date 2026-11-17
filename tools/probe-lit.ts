@@ -14,6 +14,7 @@ import { cityCheck } from "./probe-lit/city.ts";
 import { detailsCheck } from "./probe-lit/details.ts";
 import { rotorCheck } from "./probe-lit/rotor.ts";
 import { farCheck } from "./probe-lit/far.ts";
+import { farShadowCheck } from "./probe-lit/farshadow.ts";
 import { layersCheck } from "./probe-lit/layers.ts";
 import { litCheck } from "./probe-lit/lit.ts";
 import { nodesCheck } from "./probe-lit/nodes.ts";
@@ -28,7 +29,7 @@ import { waterCheck } from "./probe-lit/water.ts";
 const ROOT = resolve(import.meta.dir, "..");
 
 /** Every check, in the order the page draws them. */
-const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, terrainCheck, seamsCheck, farCheck, cityCheck, skyCheck, shadowCheck, nodesCheck, waterCheck, layersCheck, standCheck, detailsCheck, rotorCheck];
+const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, terrainCheck, seamsCheck, farCheck, cityCheck, skyCheck, shadowCheck, farShadowCheck, nodesCheck, waterCheck, layersCheck, standCheck, detailsCheck, rotorCheck];
 
 const PAGE = `<!doctype html><meta charset="utf-8"><title>lit probe</title><body><script type="module">
 const load = (name) => import("/m/" + name + ".js");
@@ -63,7 +64,8 @@ async function groundOf(id) {
 function unpack(p, f, blob) {
   p.beginFrame();
   for (const [name, value] of Object.entries(f.scalars)) if (name === "tier") p.tier = tierOf(value); else p[name] = value;
-  for (const [name, at, n] of f.arrays) p[name].set(new p[name].constructor(blob.buffer, at, n));
+  // An array longer than the packet's own, as the far shadow's rows are, is taken as it comes.
+  for (const [name, at, n] of f.arrays) if (n > p[name].length) p[name] = new p[name].constructor(blob.buffer, at, n); else p[name].set(new p[name].constructor(blob.buffer, at, n));
   const data = ([at, n]) => blob.subarray(at, at + n);
   for (const [buffer, at, n] of f.uploads) p.uploads.push({ buffer, data: data([at, n]), slots: new Uint16Array(0) });
   for (const u of f.assetUploads) p.assetUploads.push({ ...u, data: data(u.data) });

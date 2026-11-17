@@ -1,7 +1,8 @@
 // The sun's shadow maps as numbers and text (shadowtext.ts, shadowfilter.ts): the taps share a lookup out over the
 // texels as the filter's kernel says, a pixel hands over to the next cascade in even steps and the farthest fades out,
-// the lit programs carry the tier's shadows, the maps' bytes come off the card's budget, the rasterizer lights as if
-// in the sun, and the game asks the device what its compared lookups give and leaves the context as it was.
+// the lit programs carry the tier's shadows, the maps' bytes, the far map's layer among them, come off the card's
+// budget, the rasterizer lights as if in the sun, and the game asks the device what its compared lookups give and
+// leaves the context as it was.
 import { expect, test } from "bun:test";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
@@ -80,8 +81,8 @@ test("the lit tiers look the sun's shadow up as their tier says, with the same t
   expect(PROGRAMS.depthTerrainWindow!(tierOf("medium"), "rgba").samplers.uHeight).toBe(UNIT.windowHeights);
 });
 
-test("a tier's maps are a 16-bit layer a cascade, 16, 24 and 32 MB, and come off the card's budget on the lit tiers", () => {
-  expect(TIERS.map((t) => shadowBytes(t.shadows) / 2 ** 20)).toEqual([0, 16, 24, 32]);
+test("a tier's maps are a 16-bit layer a cascade and the far map's, 24, 32 and 40 MB, and come off the card's budget on the lit tiers", () => {
+  expect(TIERS.map((t) => shadowBytes(t.shadows) / 2 ** 20)).toEqual([0, 24, 32, 40]);
   const reg = compileContent(CORE_CONTENT).registry!;
   const dims = { chunksX: 1, chunksZ: 1 };
   const hf = new Heightfield(dims, TERRAIN_CELL, -32, 1 / 256);
