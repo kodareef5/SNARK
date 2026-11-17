@@ -142,15 +142,19 @@ test("a real city's downtown at its three views on each tier: the near city's dr
   }))]));
   // Each view's near window lies whole in the slice, so the first three are what the built Miami draws there with the
   // grey boxes (equal when it was cut on 2026-11-17); the far city's are of the slice's ring of chunks round it, in tiles
-  // of the slice's own from its corner. The far city's were 15, 24, 11 and 14 draws and 48,382, 62,294, 62,790 and
-  // 78,520 triangles on the lit tiers while a chunk was in view by its pieces' box and 8 m round it at every level; by
+  // of the slice's own from its corner. The near city's were 509, 742 and 104,248 at the street on high, 490, 673 and
+  // 109,168 on the roof and 574, 635 and 120,588 in the air while each piece was an instance; with a chunk's statics
+  // drawn flat as their form one mesh made in 16 m cells (client/core/render/nearcity.ts), what is left a draw is a
+  // chunk's run of cells in view and the wrecks, its casters runs of cells, and its triangles the every-box form's, faces
+  // held by another piece or the ground left out. The far city's were 15, 24, 11 and 14 draws and 48,382, 62,294, 62,790
+  // and 78,520 triangles on the lit tiers while a chunk was in view by its pieces' box and 8 m round it at every level; by
   // the box its level's faces may reach, a box's their pieces' own, chunks at the view's edge drop out. Then they were
   // 22, 17 and 27 draws on the lit tiers and 13, 14 and 18 for touch in tiles of 3 by 3 chunks; in tiles of 4 by 4 there
   // are fewer runs, and the touch rule's every box ends short of more tiles' nearest points.
   expect(got).toEqual({
-    "street-300": { lowpoly: [509, 0, 104248, 12, 41888], "medium, touch": [266, 183, 60652, 10, 32764], medium: [509, 362, 104248, 15, 57036], high: [509, 742, 104248, 15, 57036], ultra: [509, 876, 104248, 15, 57036] },
-    "roof-300": { lowpoly: [490, 0, 109168, 12, 51778], "medium, touch": [303, 117, 68592, 14, 48830], medium: [490, 324, 109168, 19, 76816], high: [490, 673, 109168, 19, 77014], ultra: [490, 755, 109168, 19, 77014] },
-    "air-300": { lowpoly: [574, 0, 120588, 11, 51268], "medium, touch": [312, 36, 74688, 10, 39132], medium: [574, 136, 120588, 13, 73184], high: [574, 635, 120588, 13, 73184], ultra: [574, 696, 120588, 13, 73184] },
+    "street-300": { lowpoly: [41, 0, 67608, 12, 41888], "medium, touch": [16, 10, 30454, 10, 32764], medium: [41, 22, 67608, 15, 57036], high: [41, 51, 67608, 15, 57036], ultra: [41, 58, 67608, 15, 57036] },
+    "roof-300": { lowpoly: [37, 0, 66988, 12, 51778], "medium, touch": [21, 7, 40724, 14, 48830], medium: [37, 24, 66988, 19, 76816], high: [37, 46, 66988, 19, 77014], ultra: [37, 57, 66988, 19, 77014] },
+    "air-300": { lowpoly: [51, 0, 77364, 11, 51268], "medium, touch": [22, 2, 47074, 10, 39132], medium: [51, 7, 77364, 13, 73184], high: [51, 45, 77364, 13, 73184], ultra: [51, 53, 77364, 13, 73184] },
   });
 });
 
