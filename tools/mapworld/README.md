@@ -247,6 +247,15 @@ by `street.cars.parked`:
   kilometre of such street, clamped to a few per district, the quietest streets
   first and then by a hash of the map's seed, and spread apart. The build drops
   one within 40 m of a spawn point or an obelisk.
+- A share `hurt.share` of them, by a hash of where each stands, are hurt: its row
+  in `vehicles.json` gives `hurt.condition` as the range its condition is rolled
+  in, one that leaves it able to drive (an engine stops at 0.08). The rest are
+  whole. Every row gives the range its fuel is rolled in, one of the bands of
+  `fuel` by their weights, most of them low. The server rolls both once, when it
+  parks the car in a new world, from the world's seed and where the car stands
+  (`foundVehicle`, `server/vehicle-service.ts`), as it does for found aircraft
+  and boats; the save keeps what was rolled. Which cars are hurt is the map's;
+  how hurt each is, and how much fuel each has, is the world's.
 
 The kinds and their sizes come from the compiled content: a vehicle's
 `spec` (half width, half length, height, wheelbase, track, ground limit) and its

@@ -286,7 +286,7 @@ export function makeRuins(site: Site): StaticPiece[] {
     // Nothing grows on it or where its doors open.
     const a = p.yaw * Math.PI / 180; const y = site.groundAt(p.x, p.z); const reach = fleet.find((f) => f.id === p.kind)!.def.spec.halfLength + 1;
     site.growthRoutes.push({ points: [{ x: p.x - Math.sin(a) * reach, y, z: p.z - Math.cos(a) * reach }, { x: p.x + Math.sin(a) * reach, y, z: p.z + Math.cos(a) * reach }], width: 5 });
-    site.vehicles.push({ kind: p.kind, x: p.x, z: p.z, yaw: p.yaw });
+    site.vehicles.push({ kind: p.kind, x: p.x, z: p.z, yaw: p.yaw, ...(p.condition ? { condition: p.condition } : {}), fuel: p.fuel });
   }
   const side = (site.ground.n - 1) / 2;
   for (const p of data.places) {

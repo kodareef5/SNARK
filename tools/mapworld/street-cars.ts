@@ -22,6 +22,9 @@ export interface Cars {
     perKm: number; least: number; most: number; apart: number; junction: number; clear: number; fromSpawn: number; classes: string[];
     lots: { classes: string[]; least: number; most: number; apart: number; perDistrict: number };
     kinds: Mix; styles: Record<string, Mix>; districts: Record<string, Mix>;
+    hurt: { share: number; condition: [number, number] };
+    /** Bands of a tank's fraction as [from, to, weight]. */
+    fuel: [number, number, number][];
   };
 }
 
@@ -102,7 +105,8 @@ export function carPicker(cars: Cars, seed: number): (x: number, z: number, fami
   };
 }
 
-export interface Parked { kind: string; x: number; z: number; yaw: number; district: string; lot: boolean; }
+/** A parked vehicle where it stands, with the ranges its condition (none for a whole one) and its fuel are rolled in. */
+export interface Parked { kind: string; x: number; z: number; yaw: number; district: string; lot: boolean; condition?: [number, number]; fuel: [number, number]; }
 /** A kind a city may park: its content id and its definition. */
 export interface Fleet { id: string; def: WheelVehicleDefinition; }
 
@@ -112,13 +116,14 @@ export interface Fleet { id: string; def: WheelVehicleDefinition; }
  * off, its envelope, door room and a margin clear of every piece, every reserved route and every other parked car. Each
  * place's kind is drawn by the weights of its district. A district takes a few car parks first, each holding several,
  * then so many a kilometre of street, within its least and most, chosen by a hash and spread apart; intact streets, with
- * fewest pieces near, first.
+ * fewest pieces near, first. A share of them are hurt, and each one's fuel is drawn from a band.
  */
 export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: ReturnType<typeof roadIndex>, cars: Cars, seed: number, fleet: readonly Fleet[]): Parked[] {
   const rules = cars.parked; const { ground } = site; const size = (ground.n - 1) * 2;
   const at = (x: number, z: number): number => Math.max(0, Math.min(ground.n - 1, Math.round((size - z) / 2))) * ground.n + Math.max(0, Math.min(ground.n - 1, Math.round((size - x) / 2)));
   const named = new Map(fleet.map((v) => [v.id, v]));
   for (const id of new Set([rules.kinds, ...Object.values(rules.styles), ...Object.values(rules.districts)].flatMap(Object.keys))) if (!named.has(id)) throw new Error(`street.cars.parked weighs ${id}, which is not a car of the fleet`);
+  if (rules.fuel.length === 0) throw new Error("street.cars.parked.fuel has no bands");
   // A district's weights are the defaults changed by its style's, then by its own.
   const mixes = new Map<number, [Fleet, number][]>();
   const mixOf = (index: number): [Fleet, number][] => {
@@ -157,7 +162,7 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
     }
     return false;
   };
-  type Candidate = Parked & { rank: number; clutter: number; line: number; room: Room };
+  type Candidate = Omit<Parked, "condition" | "fuel"> & { rank: number; clutter: number; line: number; room: Room };
   const candidates: Candidate[] = []; const length: Record<string, number> = {};
   for (const s of roads.segments) {
     const lot = rules.lots.classes.includes(s.mtfcc);
@@ -214,5 +219,10 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
       if (!p.lot && free(p, out, rules.apart)) { out.push(p); streets++; }
     }
   }
-  return out.map((p) => ({ kind: p.kind, x: p.x, z: p.z, yaw: p.yaw, district: p.district, lot: p.lot }));
+  const bands = rules.fuel.map((b) => [b, b[2]] as const);
+  return out.map((p) => {
+    const hurt = hash3(Math.round(p.x * 4), Math.round(p.z * 4), seed + 1231) / 4294967296 < rules.hurt.share;
+    const [from, to] = pick(bands, hash3(Math.round(p.z * 4), Math.round(p.x * 4), seed + 1237));
+    return { kind: p.kind, x: p.x, z: p.z, yaw: p.yaw, district: p.district, lot: p.lot, ...(hurt ? { condition: [rules.hurt.condition[0], rules.hurt.condition[1]] as [number, number] } : {}), fuel: [from, to] };
+  });
 }

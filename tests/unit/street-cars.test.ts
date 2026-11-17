@@ -120,3 +120,20 @@ test("no two parked cars' envelopes cross, nor one's door room the other's body,
     for (const q of cars) if (q !== p) expect(Math.hypot(q.x - p.x, q.z - p.z)).toBeGreaterThanOrEqual(6);
   }
 });
+
+test("a share of the parked cars are hurt in a range they drive in, the rest whole, and every one's fuel is in a band, most of them low", () => {
+  const site = fixture(streets(100, 900, 100)), cars = rules(MANY), parked = park(site, cars);
+  const { hurt, fuel } = cars.parked;
+  expect(hurt.condition[0]).toBeGreaterThan(.08);
+  const hurtOnes = parked.filter((p) => p.condition);
+  expect(hurtOnes.length / parked.length).toBeGreaterThan(hurt.share - .08); expect(hurtOnes.length / parked.length).toBeLessThan(hurt.share + .08);
+  for (const p of hurtOnes) expect(p.condition).toEqual(hurt.condition);
+  for (const p of parked) expect(fuel.some(([from, to]) => p.fuel[0] === from && p.fuel[1] === to)).toBe(true);
+  const low = fuel.reduce((a, b) => (b[2] > a[2] ? b : a));
+  expect(low[1]).toBeLessThanOrEqual(.15);
+  expect(parked.filter((p) => p.fuel[1] === low[1]).length / parked.length).toBeGreaterThan(.6);
+  // The bands and the share are the map's: the same map and seed give the same ranges, and other bands are taken as given.
+  expect(park(site, cars)).toEqual(parked);
+  const full = park(site, rules({ ...MANY, hurt: { share: 0, condition: [.5, .5] }, fuel: [[1, 1, 1]] }));
+  expect(full.every((p) => !p.condition && p.fuel[0] === 1)).toBe(true);
+});

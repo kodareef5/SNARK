@@ -1663,7 +1663,7 @@
       "pile-up"
     ],
     "cars": {
-      "about": "A car part's family picks a look by these weights, and a painted look a paint by its weight (1 where unlisted). Cells of `cell` metres where a fire went through, a share `fires` of them, take `fire` in place of any family. A share `slewed` of kerbside cars stand out of line. `parked`: drivable cars per kilometre of street of the classes, at least and at most so many a district, `apart` metres from each other, `junction` metres from one, `clear` metres of margin round body and doors, and `fromSpawn` metres from a spawn point or an obelisk. `lots`: a district first takes up to `perDistrict` car parks, a road of the lot classes each, holding `least` to `most` cars `apart` metres from each other. Each place's kind is drawn by the weights of `kinds`, changed by the district's style in `styles` and then by its name in `districts` (0 takes a kind out).",
+      "about": "A car part's family picks a look by these weights, and a painted look a paint by its weight (1 where unlisted). Cells of `cell` metres where a fire went through, a share `fires` of them, take `fire` in place of any family. A share `slewed` of kerbside cars stand out of line. `parked`: drivable cars per kilometre of street of the classes, at least and at most so many a district, `apart` metres from each other, `junction` metres from one, `clear` metres of margin round body and doors, and `fromSpawn` metres from a spawn point or an obelisk. `lots`: a district first takes up to `perDistrict` car parks, a road of the lot classes each, holding `least` to `most` cars `apart` metres from each other. Each place's kind is drawn by the weights of `kinds`, changed by the district's style in `styles` and then by its name in `districts` (0 takes a kind out). A share `hurt.share` of the cars have their condition rolled in `hurt.condition`, the rest are whole; each car's fuel is rolled in a band of `fuel`, [from, to, weight], as fractions of its tank.",
       "cell": 160,
       "fires": 0.18,
       "slewed": 0.15,
@@ -1686,7 +1686,9 @@
           "residential": { "core:caravan": 34, "core:panel_van": 6 },
           "deco": { "core:fastback": 24, "core:veloce": 8, "core:berlinetta": 8, "core:panel_van": 8 }
         },
-        "districts": {}
+        "districts": {},
+        "hurt": { "share": 0.2, "condition": [0.35, 0.7] },
+        "fuel": [[0.03, 0.15, 3], [0.15, 0.5, 1]]
       }
     }
   },
