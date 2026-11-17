@@ -218,9 +218,9 @@ async function boot(): Promise<void> {
       void fetch("__selfcheck", { method: "POST", body: JSON.stringify(report) });
     }
   };
-  // The first frame waits for the ground within reach of the body, where the welcome puts it. From then on the console
-  // says when the map comes slowly, and the statics are handed over once every part has come.
-  await session.welcomed.then(() => loader.follow(() => session.place, { say: (line) => app.ui.console.print(line), arrived: (statics) => session.staticsArrived(statics) }));
+  // The first frame waits for all the map's ground (`whole`), so none of it is fetched while the game is played. From then
+  // on the console says when the map comes slowly, and the statics are handed over once every part has come.
+  await session.welcomed.then(() => loader.follow(() => session.place, { say: (line) => app.ui.console.print(line), arrived: (statics) => session.staticsArrived(statics), whole: true }));
   // The interface takes the page's line from here.
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
   requestAnimationFrame(frame);
