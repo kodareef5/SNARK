@@ -2,9 +2,10 @@
 // scrolled pictures of wave slopes (assets/source/core/water). It mirrors the sky table where the eye's ray is
 // reflected to, by Fresnel's term, and glints where it mirrors the sun and the moon. Under that is the water itself:
 // clear in the shallows and the deep blue of open sea, by how deep the water is there, read from the terrain's own
-// heights, and see-through over its last 30 cm at the shore. The sun's shadow falls on its glint and on the light in
-// it. Then haze, exposure and the tone curve, as everything lit is shown. A lake's surface (lakes.ts) is drawn by the
-// same program: the depth is the height of the pixel's own surface over the ground, whatever level that stands at.
+// heights, and see-through over its last 30 cm at the shore, where foam lies on it in a broken line that the wind
+// moves and that thins out as the water deepens. The sun's shadow falls on its glint and on the light in it. Then haze,
+// exposure and the tone curve, as everything lit is shown. A lake's surface (lakes.ts) is drawn by the same program:
+// the depth is the height of the pixel's own surface over the ground, whatever level that stands at.
 //
 // The maths is here twice, as GLSL and as functions on numbers, written from the same constants. The rasterizer does
 // not draw it (D264): the twins are what the lit probe holds a GPU's pictures to. Under water, and in a plain sky, the
@@ -90,6 +91,25 @@ export const SQUARE_MOST = 0.1;
 export const RMS_SLOPE = 0.1;
 /** The smallest picture of waves drawn: a smaller one is the neutral pixel of a picture that has not come. */
 const WAVES_SMALLEST = 16;
+/**
+ * Foam where the water shoals: within FOAM metres of depth, broken by two noises, each of FOAM_CELLS cells a side to a
+ * tile of a wave layer and blown with it, where their mean passes a bar that rises from FOAM_BAR[0] at the water's edge
+ * to FOAM_BAR[1] at FOAM, as the root of the depth, over FOAM_SOFT of it: a line at the edge, mostly whole over its
+ * first 10 cm of depth, then flecks. It covers as much as FOAM_MOST of what is under it, and is lit as a white of
+ * FOAM_WHITE. It fades in over FOAM_EDGE of depth from the edge, or a pixel where that is more, so the edge is not a
+ * line of pixels. As a noise's cells shrink from two pixels to one it is flattened to its mean, and the bar is passed
+ * over FOAM_SPREAD more, about the spread the noises had, so the foam covers what it covered on average; it fades out
+ * as its depth shrinks from three pixels to one, and it is drawn only where the window's heights are, not the whole
+ * map's every COARSE-th sample, whose triangles it would show.
+ */
+export const FOAM = 0.3;
+const FOAM_CELLS = { long: 64, short: 16 } as const;
+const FOAM_BAR = [0.3, 0.85] as const;
+const FOAM_SOFT = 0.06;
+const FOAM_SPREAD = 0.2;
+const FOAM_MOST = 0.9;
+export const FOAM_WHITE = 0.75;
+const FOAM_EDGE = 0.02;
 
 type Out = number[] | Float32Array | Float64Array;
 type Vec = ArrayLike<number>;
@@ -152,22 +172,62 @@ function floorAt(sample: (i: number, j: number) => number, last: [number, number
  * program reads it from a frame block `seaFrame` filled: the point's height over the frame's level (the eye height and
  * `ry`, which is on the sea's surface unless said) less the ground's, from the window round the camera, eased into the
  * whole map's pair over the window's last EASE samples, and OPEN_SEA past the map's edges. Under 0 where the ground is
- * above the water.
+ * above the water. With `share`, its first is set to the share of the depth that is the window's.
  */
-export function seaDepth(frame: Float32Array, hf: Heightfield, size: GroundSize, window: Int32Array, rx: number, rz: number, ry = -frame[FRAME.eyeHeight]!): number {
+export function seaDepth(frame: Float32Array, hf: Heightfield, size: GroundSize, window: Int32Array, rx: number, rz: number, ry = -frame[FRAME.eyeHeight]!, share: number[] = []): number {
   const lastMap: [number, number] = [size.width[SOURCE_MAP]! - 1, size.height[SOURCE_MAP]! - 1];
   const mu = frame[FRAME.ground + 2]! + (rx * frame[FRAME.sea + 2]!) / COARSE;
   const mv = frame[FRAME.ground + 3]! + (rz * frame[FRAME.sea + 2]!) / COARSE;
+  share[0] = 0;
   if (mu < 0 || mv < 0 || mu > lastMap[0] || mv > lastMap[1]) return OPEN_SEA;
   const lastWin: [number, number] = window[0]! >= 0 ? [size.width[SOURCE_WINDOW]! - 1, size.height[SOURCE_WINDOW]! - 1] : [-1, -1];
   const wu = frame[FRAME.ground]! + rx * frame[FRAME.sea + 2]!;
   const wv = frame[FRAME.ground + 1]! + rz * frame[FRAME.sea + 2]!;
   const ease = Math.max(0, Math.min(1, Math.min(wu, wv, lastWin[0] - wu, lastWin[1] - wv) / EASE));
+  share[0] = ease;
   const coarse = (i: number, j: number): number => hf.heights[Math.min(j * COARSE, hf.nz - 1) * hf.nx + Math.min(i * COARSE, hf.nx - 1)]!;
   const fine = (i: number, j: number): number => hf.heights[(window[2]! + j) * hf.nx + window[1]! + i]!;
   let h = ease < 1 ? floorAt(coarse, lastMap, mu, mv) : 0;
   if (ease > 0) h += (floorAt(fine, lastWin, wu, wv) - h) * ease;
   return (frame[FRAME.sea]! - h) * frame[FRAME.sea + 1]! + (frame[FRAME.eyeHeight]! + ry);
+}
+
+/** A hash of the cell `x`, `y` of a noise of `n` cells a side that tiles, `n` a power of two, 0 to 1. */
+function foamHash(x: number, y: number, n: number): number {
+  let h = (Math.imul(x & (n - 1), 1597334677) ^ Math.imul(y & (n - 1), 3812015801)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 2246822519) >>> 0;
+  return ((h ^ (h >>> 13)) >>> 8) / 16777216;
+}
+
+/** That noise at `x`, `y` in its cells, eased between its cells' corners. */
+function foamNoise(x: number, y: number, n: number): number {
+  const i = Math.floor(x), j = Math.floor(y);
+  const fx = (x - i) * (x - i) * (3 - 2 * (x - i)), fy = (y - j) * (y - j) * (3 - 2 * (y - j));
+  const a = foamHash(i, j, n) * (1 - fx) + foamHash(i + 1, j, n) * fx;
+  const b = foamHash(i, j + 1, n) * (1 - fx) + foamHash(i + 1, j + 1, n) * fx;
+  return a * (1 - fy) + b * fy;
+}
+
+/**
+ * How much of what is under it the foam covers, as the WATER program has it, over water `depth` metres deep at the point
+ * `rx`, `rz` metres from the camera, its depth `fine` the window's (seaDepth), where a pixel spans `wide` metres of the
+ * surface (the length of the GPU's fwidth of it) and `deep` metres of depth (its fwidth).
+ */
+export function seaFoam(frame: Float32Array, rx: number, rz: number, depth: number, fine: number, wide: number, deep: number): number {
+  if (depth >= FOAM || fine <= 0) return 0;
+  const clamp = (x: number): number => Math.max(0, Math.min(1, x));
+  let [mean, kept] = [0.5, 0];
+  for (const [layer, at, n] of [[LONG, FRAME.waves, FOAM_CELLS.long], [SHORT, FRAME.waves + 2, FOAM_CELLS.short]] as const) {
+    const c = Math.cos(layer.turn) / layer.span, s = Math.sin(layer.turn) / layer.span;
+    const u = c * rx + s * rz + frame[at]!, v = c * rz - s * rx + frame[at + 1]!;
+    const k = clamp(2 - (2 * wide * n) / layer.span);
+    mean += 0.5 * (foamNoise(u * n, v * n, n) - 0.5) * k;
+    kept += 0.5 * k;
+  }
+  const bar = FOAM_BAR[0] + (FOAM_BAR[1] - FOAM_BAR[0]) * Math.sqrt(depth / FOAM);
+  const soft = FOAM_SOFT + FOAM_SPREAD * (1 - kept);
+  const t = clamp((mean - bar + soft) / (2 * soft));
+  return FOAM_MOST * t * t * (3 - 2 * t) * clamp(depth / Math.max(FOAM_EDGE, deep)) * clamp((FOAM / Math.max(deep, 1e-6) - 1) * 0.5) * fine;
 }
 
 /** What the WATER program makes of a pixel before it is shown: the light it adds over what is under it, and how much of that it covers. */
@@ -224,9 +284,9 @@ const seen = [0, 0, 0];
 /**
  * The twin of the WATER program for a pixel whose surface normal is `n` (straight up for a calm sea), seen along `v`,
  * the way to the eye, over water `depth` metres deep, its waves' slopes having lost `spread` of their mean square to
- * distance, `shade` of the sun reaching it. `table` is the sky table.
+ * distance, `shade` of the sun reaching it, `foam` of it foam (seaFoam). `table` is the sky table.
  */
-export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec, depth: number, spread: number, shade = 1): SeaPixel {
+export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec, depth: number, spread: number, shade = 1, foam = 0): SeaPixel {
   const nv = Math.min(Math.max(n[0]! * v[0]! + n[1]! * v[1]! + n[2]! * v[2]!, 0.001), 1);
   const a2 = Math.pow(SEA_ROUGH, 4) + DISC * DISC + spread;
   facing(seen, n, v, spread);
@@ -251,17 +311,22 @@ export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec,
   const deep = 1 - Math.exp(-d / TURN);
   skyOn(sky, frame, 1);
   const light = [0, 0, 0];
+  const white = [0, 0, 0];
   let peak = 0;
   for (let k = 0; k < 3; k++) {
     const lit = sky[k]! + frame[FRAME.sunColor + k]! * Math.max(frame[FRAME.sun + 1]!, 0) * shade + frame[FRAME.moonColor + k]! * Math.max(frame[FRAME.moon + 1]!, 0);
     const body = (SHALLOW[k]! + (DEEP[k]! - SHALLOW[k]!) * deep) * lit;
     light[k] = mirror[k]! + shine[k]! + (1 - f) * (1 - through) * body;
+    white[k] = FOAM_WHITE * lit;
     peak = Math.max(peak, (mirror[k]! + shine[k]!) * frame[FRAME.exposure]!);
   }
   const under = 1 - (1 - f) * through;
   const glare = Math.max(0, Math.min(1, (peak - GLARE) / GLARE));
   const cover = under + (1 - under) * glare;
-  return { light: light.map((c) => c / cover), cover: cover * Math.max(0, Math.min(1, d / SHORE)) };
+  // The foam lies over the water, which lies over what is under it.
+  const shore = Math.max(0, Math.min(1, d / SHORE));
+  const held = foam + (1 - foam) * cover * shore;
+  return { light: light.map((c, k) => (foam * white[k]! + (1 - foam) * shore * c) / Math.max(held, 1e-4)), cover: held };
 }
 
 /**
@@ -329,22 +394,49 @@ vec3 glint(vec3 l, vec3 colour, float a2, vec3 n, vec3 v, float nv) {
   float gloss = exp((c2 - 1.0) / (c2 * a2)) / (a2 * c2 * c2) * 0.5 / (nl * sqrt(nv * nv * (1.0 - a2) + a2) + nv * sqrt(nl * nl * (1.0 - a2) + a2));
   return colour * nl * gloss * (${g(SEA_F0)} + ${g(1 - SEA_F0)} * pow(1.0 - vh, 5.0));
 }
-// The twin of seaDepth: metres of water over the ground under the surface 'rel' from the camera.
-float seaDepth(vec3 rel) {
+// The twin of seaDepth: metres of water over the ground under the surface 'rel' from the camera, and the share of them that is the window's.
+float seaDepth(vec3 rel, out float ease) {
   vec2 lastMap = vec2(textureSize(uMapHeight, 0) - 1);
   vec2 m = fGround.zw + rel.xz * (fSea.z / ${g(COARSE)});
+  ease = 0.0;
   if (any(lessThan(m, vec2(0.0))) || any(greaterThan(m, lastMap))) return ${g(OPEN_SEA)};
   vec2 lastWin = vec2(textureSize(uWindowHeight, 0) - 1);
   vec2 w = fGround.xy + rel.xz * fSea.z;
-  float ease = clamp(min(min(w.x, w.y), min(lastWin.x - w.x, lastWin.y - w.y)) / ${g(EASE)}, 0.0, 1.0);
+  ease = clamp(min(min(w.x, w.y), min(lastWin.x - w.x, lastWin.y - w.y)) / ${g(EASE)}, 0.0, 1.0);
   float h = ease < 1.0 ? floorAt(uMapHeight, m, lastMap) : 0.0;
   if (ease > 0.0) h = mix(h, floorAt(uWindowHeight, w, lastWin), ease);
   return (fSea.x - h) * fSea.y + (fHaze.z + rel.y);
 }
+// The twins of foamHash and foamNoise.
+float foamHash(ivec2 p, int n) {
+  uvec2 q = uvec2(p & ivec2(n - 1));
+  uint h = q.x * 1597334677u ^ q.y * 3812015801u;
+  h = (h ^ (h >> 16u)) * 2246822519u;
+  return float((h ^ (h >> 13u)) >> 8u) / 16777216.0;
+}
+float foamNoise(vec2 p, int n) {
+  ivec2 i = ivec2(floor(p));
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(foamHash(i, n), foamHash(i + ivec2(1, 0), n), f.x), mix(foamHash(i + ivec2(0, 1), n), foamHash(i + ivec2(1, 1), n), f.x), f.y);
+}
+// The twin of seaFoam, the point 'rel' from the camera.
+float seaFoam(vec2 rel, float depth, float fine, float wide, float deep) {
+  float kl = clamp(2.0 - wide * ${g((2 * FOAM_CELLS.long) / LONG.span)}, 0.0, 1.0), ks = clamp(2.0 - wide * ${g((2 * FOAM_CELLS.short) / SHORT.span)}, 0.0, 1.0);
+  float mean = 0.5 + 0.5 * (foamNoise((${tiles(LONG, "fWaves.xy")}) * ${g(FOAM_CELLS.long)}, ${FOAM_CELLS.long}) - 0.5) * kl
+    + 0.5 * (foamNoise((${tiles(SHORT, "fWaves.zw")}) * ${g(FOAM_CELLS.short)}, ${FOAM_CELLS.short}) - 0.5) * ks;
+  float bar = ${g(FOAM_BAR[0])} + ${g(FOAM_BAR[1] - FOAM_BAR[0])} * sqrt(depth / ${g(FOAM)});
+  float soft = ${g(FOAM_SOFT)} + ${g(FOAM_SPREAD)} * (1.0 - 0.5 * (kl + ks));
+  return ${g(FOAM_MOST)} * smoothstep(bar - soft, bar + soft, mean) * clamp(depth / max(${g(FOAM_EDGE)}, deep), 0.0, 1.0) * clamp((${g(FOAM)} / max(deep, 1e-6) - 1.0) * 0.5, 0.0, 1.0) * fine;
+}
 void main() {
   dropNearer();
-  float depth = seaDepth(vRel);
+  float fine;
+  float depth = seaDepth(vRel, fine);
+  // A pixel's footprint on the surface and in depth, read while every pixel of its quad still runs.
+  float deep = fwidth(depth), wide = length(fwidth(vRel.xz));
   if (depth <= 0.0) discard;
+  float foam = depth < ${g(FOAM)} && fine > 0.0 ? seaFoam(vRel.xz, depth, fine, wide, deep) : 0.0;
   float dist = length(vRel);
   vec3 v = -vRel / dist;
   // The waves: each picture's slopes, and how much of their mean square its coarser pictures have lost to distance.
@@ -385,5 +477,8 @@ void main() {
   vec3 top = (mirror + shine) * fSunColor.w;
   float under = 1.0 - (1.0 - f) * through;
   float cover = under + (1.0 - under) * clamp((max(top.r, max(top.g, top.b)) - ${g(GLARE)}) / ${g(GLARE)}, 0.0, 1.0);
-  o = vec4(shown(light / cover, vRel), cover * clamp(depth / ${g(SHORE)}, 0.0, 1.0));
+  // The foam lies over the water, which lies over what is under it.
+  float shore = clamp(depth / ${g(SHORE)}, 0.0, 1.0);
+  float held = foam + (1.0 - foam) * cover * shore;
+  o = vec4(shown((foam * ${g(FOAM_WHITE)} * lit + (1.0 - foam) * shore * light) / max(held, 1e-4), vRel), held);
 }`;

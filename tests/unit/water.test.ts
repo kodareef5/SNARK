@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { DRAW_BLEND, DRAW_WATER, FRAME, FRAME_FLOATS, SOURCE_WINDOW } from "../../client/core/render/packet.ts";
 import { domeLight, hourOfSun, skyFrame, theSky, trueSun } from "../../client/core/render/sky.ts";
-import { tone } from "../../client/core/render/surface.ts";
+import { skyOn, tone } from "../../client/core/render/surface.ts";
 import { COARSE, groundSize } from "../../client/core/render/terrain.ts";
-import { BREEZE, RMS_SLOPE, SLOPE_MOST, SQUARE_MOST, WATER_MATERIAL, seaDepth, seaFrame, seaPixel, waveStrength } from "../../client/core/render/water.ts";
+import { BREEZE, FOAM, FOAM_WHITE, RMS_SLOPE, SLOPE_MOST, SQUARE_MOST, WATER_MATERIAL, seaDepth, seaFoam, seaFrame, seaPixel, waveStrength } from "../../client/core/render/water.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { readPicture, seam } from "../../tools/pack/image.ts";
 import { artTest } from "../fixtures/needs-art.ts";
@@ -104,6 +104,49 @@ test("a calm sea mirrors the sky table, most of it at a grazing angle and SEA_F0
   const view = [0, Math.sin(0.6), Math.cos(0.6)];
   const [two, shore, dry] = [2, 0.1, 0].map((d) => seaPixel(f, sky.table, up, view, d, 0).cover);
   expect([two! < 0.85, two! > 0.5, shore! < 0.15, dry]).toEqual([true, true, true, 0]);
+});
+
+test("foam lies where the water shoals, thinning out as it deepens and broken along the shore, in the world and blown by the wind; not where the depth is the whole map's coarse heights, nor where its cells or its line are under a pixel", () => {
+  const hf = seaFloor();
+  const size = groundSize(hf);
+  const window = Int32Array.of(0, 32, 32, -1, 0, 0, 0, 0);
+  const f = frameAt(12);
+  seaFrame(f, hf, size, window, 300, 300, 40);
+  // Along 60 m of a shore, a point every 10 cm, near: each pixel a centimetre of surface and a millimetre of depth.
+  const along = (depth: number, frame = f, from = 0, wide = 0.01, deep = 0.001, fine = 1): number[] => Array.from({ length: 600 }, (_, k) => seaFoam(frame, from + k * 0.1, 7, depth, fine, wide, deep));
+  const mean = (list: number[]): number => list.reduce((a, b) => a + b, 0) / list.length;
+  const shares = [0.03, 0.1, 0.2, 0.27].map((d) => mean(along(d)));
+  for (let k = 1; k < shares.length; k++) expect(shares[k]!).toBeLessThan(shares[k - 1]!);
+  expect([shares[0]! > 0.4, shares[3]! < 0.05, mean(along(FOAM)), mean(along(0.1, f, 0, 0.01, 0.001, 0))]).toEqual([true, true, 0, 0]);
+  const mid = along(0.12);
+  expect([mid.some((q) => q > 0.6), mid.some((q) => q < 0.05)]).toEqual([true, true]);
+  // The same point of the world, seen from a camera 13.7 m away: the same foam. Ten seconds later the wind has moved it.
+  const moved = new Float32Array(f);
+  seaFrame(moved, hf, size, window, 313.7, 300, 40);
+  const later = new Float32Array(f);
+  seaFrame(later, hf, size, window, 300, 300, 50);
+  const there = along(0.12, moved, -13.7);
+  expect(Math.max(...mid.map((q, k) => Math.abs(q - there[k]!)))).toBeLessThan(1e-3);
+  expect(mean(mid.map((q, k) => Math.abs(q - along(0.12, later)[k]!)))).toBeGreaterThan(0.05);
+  // Its noises tile with the wave layers' tiles, so a layer's place wrapping round its tile moves nothing.
+  const wrapped = new Float32Array(f);
+  for (const at of [FRAME.waves, FRAME.waves + 2]) wrapped[at] = f[at]! + 1;
+  expect(Math.max(...mid.map((q, k) => Math.abs(q - along(0.12, wrapped)[k]!)))).toBeLessThan(1e-3);
+  // Its cells under a pixel: its noises at their mean, a line no longer broken. Its line under a pixel: none.
+  const flat = along(0.1, f, 0, 2);
+  expect(Math.max(...flat) - Math.min(...flat)).toBeLessThan(1e-9);
+  expect(mean(along(0.1, f, 0, 0.01, FOAM))).toBe(0);
+});
+
+test("foam covers the water and what is under it by its share, lit as a white, and none is the sea as it was", () => {
+  const f = frameAt(12);
+  const view = [0, Math.sin(0.6), Math.cos(0.6)];
+  const [clear, foamed, all] = [0, 0.5, 1].map((q) => seaPixel(f, sky.table, [0, 1, 0], view, 0.1, 0, 1, q));
+  expect(seaPixel(f, sky.table, [0, 1, 0], view, 0.1, 0)).toEqual(clear!);
+  expect([foamed!.cover, all!.cover]).toEqual([0.5 + 0.5 * clear!.cover, 1]);
+  const lit = [0, 0, 0];
+  skyOn(lit, f, 1);
+  for (let k = 0; k < 3; k++) expect(all!.light[k]!).toBeCloseTo(FOAM_WHITE * (lit[k]! + f[FRAME.sunColor + k]! * Math.max(f[FRAME.sun + 1]!, 0) + f[FRAME.moonColor + k]! * Math.max(f[FRAME.moon + 1]!, 0)), 6);
 });
 
 test("the sun's glint is where the sun is and as strong as its disc is up: a bright path toward a low sun, held under the tone curve's white, none at dusk under the twilight's held light, and none away from it", () => {
