@@ -1,7 +1,7 @@
 // Every page of the wiki as complete HTML, by path under BASE. A page needs no script to be read; the script plays
 // sounds, moves the map, copies a console line, searches, and works a figure out again for the world a visitor came from.
 
-import type { Atlas, Mark } from "./atlas.ts";
+import { BOX, type Atlas, type Mark } from "./atlas.ts";
 import type { Cell, Entry, Kind, Ref, Table } from "./catalogue.ts";
 import { KINDS, num, sentence, time } from "./catalogue.ts";
 import type { ControlGroup } from "./controls.ts";
@@ -164,7 +164,7 @@ function views(site: Site) {
   // running each (data-maps, client/core/wiki/world.ts).
   const maps = (): string =>
     `<div class="cards" data-maps="every">${join(site.atlases, (a) => {
-      const holds = [`${num(a.metres / 1000, 1)} km across`, ...a.landmarks.map((l) => site.names.get(l.of) ?? l.of)].join(" · ");
+      const holds = [extent(a), ...a.landmarks.map((l) => site.names.get(l.of) ?? l.of)].join(" · ");
       return `<div class="card map" data-map="${esc(a.id)}"><a href="${BASE}maps/${a.slug}/">${img(a.card, "")}<b>${esc(a.label)}</b><small>${esc(holds)}</small></a></div>`;
     })}</div>`;
 
@@ -303,6 +303,12 @@ ${related ? `<section><h2>Related</h2><dl class="related">${related}</dl></secti
 
 const at1 = (n: number): number => Math.round(n * 10) / 10;
 
+/** "8.1 km across", or for a map that is not square "12 by 8 km", west to east first. */
+function extent(a: Atlas): string {
+  const [w, d] = a.metres;
+  return w === d ? `${num(w / 1000, 1)} km across` : `${num(w / 1000, 1)} by ${num(d / 1000, 1)} km`;
+}
+
 /** A map's page: the map with its layers, and under it a card for each landmark it places, as its dot and its row lead to. */
 function atlasPage(a: Atlas, names: ReadonlyMap<string, string>, placed: readonly Entry[], cards: (list: readonly Entry[]) => string): string {
   const name = (id: string): string => names.get(id) ?? id;
@@ -320,7 +326,8 @@ function atlasPage(a: Atlas, names: ReadonlyMap<string, string>, placed: readonl
   const landmarks = a.landmarks.map((l) => ({ ...l, name: name(l.of), entry: placed.find((e) => e.id === l.of) }));
   const linked = (href: string | undefined, inner: string): string => (href ? `<a href="${href}">${inner}</a>` : inner);
   const dots = join(landmarks, (l) => linked(l.entry && entryPath(l.entry), marks([l], "landmark")));
-  const svg = `<svg class="marks" viewBox="0 0 1000 1000" aria-hidden="true">
+  // The box is BOX wide and as deep as the map's proportions, as the overlays were placed (atlas.ts).
+  const svg = `<svg class="marks" viewBox="0 0 ${BOX} ${at1((BOX * a.metres[1]) / a.metres[0])}" aria-hidden="true">
 <g data-layer="districts">${districts}</g>
 ${a.creatures.map((c) => `<g data-layer="${esc(c.id)}" class="region" style="--c:${c.colour}" hidden>${regions(c.of)}</g>`).join("\n")}
 ${a.vehicles.map((v) => `<g data-layer="${esc(slug(v.kind))}" class="parked" hidden>${join(v.at, (m) => `<circle cx="${m.x}" cy="${m.y}" r="4"/>`)}</g>`).join("\n")}
@@ -346,8 +353,8 @@ ${a.vehicles.map((v) => `<g data-layer="${esc(slug(v.kind))}" class="parked" hid
   const button = (by: number, label: string, text: string): string => `<button type="button" data-zoom="${by}" aria-label="${label}">${text}</button>`;
   const zoom = `<div class="zoom">${button(1, "Zoom in", "+")}${button(-1, "Zoom out", "−")}${button(0, "Whole map", "⤢")}</div>`;
   const standing = placed.length ? `<section><h2>Landmarks</h2>${cards(placed)}</section>` : "";
-  return `${heading(a.label, "Map", `${num(a.metres / 1000, 1)} km across. North is up.`)}<div data-maps><div class="note" data-map="${esc(a.id)}"></div></div>
-<div class="atlas"><div><div class="viewport" data-atlas tabindex="0" aria-label="Map of ${esc(a.label)}: drag to move, plus and minus to zoom">
+  return `${heading(a.label, "Map", `${extent(a)}. North is up.`)}<div data-maps><div class="note" data-map="${esc(a.id)}"></div></div>
+<div class="atlas"><div><div class="viewport" data-atlas tabindex="0" style="aspect-ratio:${a.metres[0]} / ${a.metres[1]}" aria-label="Map of ${esc(a.label)}: drag to move, plus and minus to zoom">
 <div class="plane">${img(a.ground, `${a.label} from above`, false, "ground")}${layers}${svg}</div>${zoom}</div>${standing}</div>
 ${panel}</div>`;
 }

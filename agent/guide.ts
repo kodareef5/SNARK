@@ -5,7 +5,7 @@ export const GUIDE = `# Playing SNARK through these tools
 You are one survivor. You can do what a player can and no more.
 
 ## Places and ids
-- Places are x and z in metres, north +z and east -x, or lat and lon as the map screen gives them (lat 0 north, lon 0 west, each 0 to 100). A storey of a building is chosen with y, metres up.
+- Places are x and z in metres, north +z and east -x, or lat and lon as the map screen gives them (lat grows south and lon east from 0 at the map's top left, a unit 102.4 m and ten a sector). A storey of a building is chosen with y, metres up.
 - Ids come from observe: n12.3 a tree, rock or bush; s65539 something built; e7 a creature, a player, a car, a dead body, an egg or a bag.
 - Every answer has a state: done, running (status with wait_s waits for it), blocked (reason says why), danger (it stopped for a danger) or refused (nothing was done).
 

@@ -204,7 +204,7 @@ footer {
 .card.map img,
 .card.map .blank {
   aspect-ratio: 1;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .live {

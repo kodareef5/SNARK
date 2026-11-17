@@ -4,6 +4,7 @@ import { parseNumber } from "../../shared/console.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { REJECT_DENIED, REJECT_KICKED, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { formatHour, hourOfDay, offsetForHour } from "../../shared/sim/clock.ts";
+import { latLonText, latOf, lonOf } from "../../shared/world/coords.ts";
 import type { Console, ConsoleCommand } from "../console.ts";
 import { event } from "../events/bus.ts";
 
@@ -46,13 +47,14 @@ export function addCoreCommands(con: Console): void {
     {
       name: "pos",
       usage: "",
-      help: "Print where you are.",
+      help: "Print where you are: metres on the map, then latitude and longitude as the map screen gives them.",
       admin: false,
       run(ctx) {
         const c = ctx.client;
         if (!c) return needsSession;
         const b = c.body;
-        return `x ${b.x.toFixed(2)}  y ${b.y.toFixed(2)}  z ${b.z.toFixed(2)}  ${STATE_NAMES[c.state]}`;
+        const d = ctx.host.world.hf.dims;
+        return `x ${b.x.toFixed(2)}  y ${b.y.toFixed(2)}  z ${b.z.toFixed(2)}  ${latLonText(latOf(d, b.z), lonOf(d, b.x))}  ${STATE_NAMES[c.state]}`;
       },
     },
     {
