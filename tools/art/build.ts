@@ -190,6 +190,7 @@ export function convertPieces(asset: Asset & { spec: PiecesAsset }, files: Reado
     const report = importGlb(glbs.get(p.object)!, p.id, palette, { flat: (name) => pictured.get(name)?.flat ?? finishes?.colour.get(name) });
     out.warnings.push(...report.warnings.map((w) => `${p.id}: ${w}`));
     brought.set(p.id, report.levels - 1);
+    if (p.seeThrough) report.mesh.seeThrough = true;
     if (!report.mesh.flat || pictured.size === 0) {
       out.meshes.push(report.mesh);
       continue;

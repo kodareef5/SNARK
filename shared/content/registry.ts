@@ -1150,7 +1150,7 @@ function flight(f: SpeciesDef["fly"]) {
  * fuel leaves anything.
  */
 /** Parts a moving static may move, and the farthest one may stand from it in metres. */
-export const MAX_MOVING_PARTS = 16;
+export const MAX_MOVING_PARTS = 32;
 export const MAX_MOVING_REACH = 128;
 
 function motionFaults(d: StructureDef): string[] {

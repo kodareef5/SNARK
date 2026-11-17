@@ -308,7 +308,25 @@ for s in D['rig']['sails']:
   chord=unit([a-d*b for a,b in zip(c,luff)]);normal=[chord[1]*luff[2]-chord[2]*luff[1],chord[2]*luff[0]-chord[0]*luff[2],chord[0]*luff[1]-chord[1]*luff[0]]
   q=qframe(chord,luff,normal)
   parts.append({'mesh':s['sheet'],'from':{'at':local(t),'turn':q,'scale':[.015,1,.3]},'to':{'at':local(t),'turn':q}})
-assert len(parts)<=16
+# The standing rigging is drawn by parts of the control that never move, so that it is drawn as itself as far as the
+# sails are, and no wire is left to the far mesh: a part a group of its segments, each mast's in bands of 22 m up, the
+# forestays' and the backstays' likewise, and the triatics between the mastheads together. A part stands at the middle
+# of its group, so its own distance is its wires'.
+def rig_group(m):
+ i=m['id'];e=m['art']['ends'];band=int((e[0][1]+e[-1][1])/2//22)
+ if 'interstay' in i:return 'triatics'
+ for k in('forestay','backstay'):
+  if k in i:return f'{k}s_{band}'
+ return ('fore' if '_fore_' in i else 'main' if '_main_' in i else 'mizzen')+f'_{band}'
+groups={}
+for m in mods:
+ if m['category']=='rigging':groups.setdefault(rig_group(m),[]).append(m)
+D['rig']['parts']=[]
+for name,members in sorted(groups.items()):
+ pts=[p for m in members for p in m['art']['ends']];mid=[(min(p[k] for p in pts)+max(p[k] for p in pts))/2 for k in range(3)]
+ parts.append({'mesh':f'koru:rig_{name}','from':{'at':local(mid)},'to':{'at':local(mid)}})
+ D['rig']['parts'].append({'mesh':f'koru:rig_{name}','members':[m['id'] for m in members]})
+assert len(parts)<=32
 D['motion']={'static':'koru:sail_control','seconds':18,'parts':parts}
 # Cells: 16 m of the ship's length, the whole beam wide. A cell is one mesh, modelled in its anchor's frame and drawn by
 # the anchor's static; its other modules draw nothing and are collision alone. A door draws itself.

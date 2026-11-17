@@ -91,8 +91,11 @@ async function boot(): Promise<void> {
   session.prediction.enabled = selfcheck;
   const skin = installSkin(app.ui.frame);
   void Object.assign(new Image(), { src: SKIN_URL }).decode().catch(() => Object.assign(skin, { ...skinPixels(), url: "" }));
+  // A tool's look at a place takes its orders from the server the tool started for it, which alone answers /__look; on
+  // any other server the address does nothing.
+  const orders = params.has("look") ? await fetch(`/__look?view=${encodeURIComponent(params.get("look")!)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null;
   // A measurement run neither reads nor writes the player's saved interface preferences.
-  const measured = selfcheck || bench !== null || device !== null;
+  const measured = selfcheck || bench !== null || device !== null || orders !== null;
   const save = (): void => { if (!measured) try { localStorage.setItem("snark.interface", app.ui.settings.interfacePreferences()); } catch {} };
   if (!measured) try { app.ui.settings.restoreInterface(localStorage.getItem("snark.interface")); } catch {}
   addEventListener("pagehide", save);
@@ -102,7 +105,7 @@ async function boot(): Promise<void> {
   app.plainSky = selfcheck;
   app.ui.settings.touchFirst = matchMedia("(pointer: coarse)").matches;
   app.dpr = devicePixelRatio;
-  app.address((name) => params.get(name), measured);
+  app.address((name) => params.get(name), measured, orders);
   app.page = {
     origin: location.origin,
     protocol: location.protocol,

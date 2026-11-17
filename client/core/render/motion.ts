@@ -30,6 +30,8 @@ export interface Moving {
   readonly pose: Float32Array;
   /** Each part's level, as the last frame chose it. */
   readonly level: Int8Array;
+  /** Per part, 1 for one placed alike at both ends of the motion, which never moves. */
+  readonly fixed: Uint8Array;
   posed: number;
   progress: number;
 }
@@ -46,7 +48,7 @@ export function movingOf(reg: Registry, statics: MapStatics): Moving[] {
       const kind = kinds[statics.kind[row]!]!, facet = reg.motion[kind];
       if (!facet) continue;
       const d = reg.defs[kind]!;
-      out.push({ ref: c * 65536 + row - statics.first[c]!, kind, facet, ticks: motionTicks(facet), x: statics.x[row]!, y: statics.y[row]!, z: statics.z[row]!, yaw: statics.yaw[row]!, color: d.type === "structure" ? d.color : 0, pose: new Float32Array(facet.parts.length * PART_FLOATS), level: new Int8Array(facet.parts.length).fill(-1), posed: -1, progress: 0 });
+      out.push({ ref: c * 65536 + row - statics.first[c]!, kind, facet, ticks: motionTicks(facet), x: statics.x[row]!, y: statics.y[row]!, z: statics.z[row]!, yaw: statics.yaw[row]!, color: d.type === "structure" ? d.color : 0, pose: new Float32Array(facet.parts.length * PART_FLOATS), level: new Int8Array(facet.parts.length).fill(-1), fixed: Uint8Array.from(facet.parts, (part) => (JSON.stringify(part.from) === JSON.stringify(part.to) ? 1 : 0)), posed: -1, progress: 0 });
     }
   }
   return out;

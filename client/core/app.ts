@@ -116,6 +116,12 @@ function attachmentKind(reg: Registry, inv: Inventory | null, slot: number): str
 /** Radians in a unit of yaw or pitch on the wire (65536 to a turn). */
 const UNIT_RADIANS = TAU / 65536;
 
+/** What a tool's own server tells a page that is the tool's look at a place (`App.address`). */
+export interface ToolOrders {
+  readonly run?: readonly unknown[];
+  readonly look?: readonly unknown[];
+}
+
 export class App {
   readonly session: ClientSession;
   readonly controls = new Controls();
@@ -815,15 +821,16 @@ export class App {
   /**
    * What the page's address asks: `off`, effects turned off for a before and after (passes.ts). A page that pins pictures
    * or hashes, or measures, holds the governor at the tier, or at `level`, and may name the `tier`. It plays at
-   * MEASURED_VOLUME, or at `volume`. A page that is a tool's look at a place is pinned so too: `run` is commands sent as
-   * typed once the body is in the world, `|` between them, and `look` the way it faces, yaw and pitch in radians.
+   * MEASURED_VOLUME, or at `volume`. A tool's look at a place is such a page, and its `orders` are what the server the
+   * tool started for it gave it, never the address's: `run`, lines sent as typed once the body is in the world, and
+   * `look`, the way it faces held, yaw and pitch in radians. Any other page sends no line it was not typed and holds no view.
    */
-  address(get: (name: string) => string | null, pinned: boolean): void {
+  address(get: (name: string) => string | null, pinned: boolean, orders: ToolOrders | null = null): void {
     this.off = effectsOff(get("off"));
-    this.script = get("run")?.split("|") ?? [];
-    const look = (get("look") ?? "").split(",").map(Number);
-    this.held = look.length === 2 && look.every(Number.isFinite) ? [look[0]!, look[1]!] : null;
-    if (!pinned && this.script.length === 0) return;
+    this.script = pinned && Array.isArray(orders?.run) ? orders.run.filter((line): line is string => typeof line === "string") : [];
+    const look = pinned && Array.isArray(orders?.look) ? orders.look : [];
+    this.held = look.length === 2 && look.every((v) => typeof v === "number" && Number.isFinite(v)) ? [look[0] as number, look[1] as number] : null;
+    if (!pinned) return;
     this.governor.held = Number(get("level") ?? 0);
     this.ui.settings.tier = tierOf(get("tier") ?? this.ui.settings.tier).name;
     // Such a page runs unattended, often behind someone's other work, and its music would start at full volume.

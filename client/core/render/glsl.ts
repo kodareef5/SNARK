@@ -77,31 +77,33 @@ function swap(text: string, from: string, to: string): string {
 /**
  * LIT's fragment text for a flat mesh: a vertex in one of its landmark's finishes (shared/pack/finish.ts, `finishVertex`)
  * is lit with the finish's occlusion, roughness and metalness, mirroring the sky as SURFACE does, and with its sheet's
- * light from behind. Any other is fully rough, as before.
+ * light from behind, and shows its share where it is drawn see-through. Any other is fully rough, as before.
  */
 export const LIT_MESH_FRAGMENT = [
-  ["flat in vec3 vColor;\n", "flat in vec3 vColor;\nflat in vec4 vFinish;\n"],
+  ["flat in vec3 vColor;\n", "flat in vec3 vColor;\nflat in vec4 vFinish;\nflat in float vShare;\n"],
   ["void main() {\n", `${THROUGH}void main() {\n`],
   ["  vec3 orm = vec3(1.0, 1.0, 0.0);\n", "  vec3 orm = vFinish.xyz;\n"],
   ["worldSharp ? skyFrom(r)", "worldSharp || vFinish.y < 1.0 ? skyFrom(r)"],
-  ["  o = vec4(shown(lit(albedo, orm, n, v, mirrored, sunShadow(vRel, geometric)), vRel), uAlpha);", "  float shade = sunShadow(vRel, sunward(geometric, vFinish.w));\n  o = vec4(shown(lit(albedo, orm, n, v, mirrored, shade) + through(albedo, orm, n, vFinish.w, shade), vRel), uAlpha);"],
+  ["  o = vec4(shown(lit(albedo, orm, n, v, mirrored, sunShadow(vRel, geometric)), vRel), uAlpha);", "  float shade = sunShadow(vRel, sunward(geometric, vFinish.w));\n  o = vec4(shown(lit(albedo, orm, n, v, mirrored, shade) + through(albedo, orm, n, vFinish.w, shade), vRel), uAlpha * vShare);"],
 ].reduce((text, [from, to]) => swap(text, from!, to!), LIT_FRAGMENT);
 
 /**
  * A flat mesh program's vertex text on a lit tier, after `worldVertex`: where `uSolid` is past 2 the draw is of a
  * landmark whose finishes are in row uSolid - 2 of them on the palette's unit (shared/pack/finish.ts `finishTable`), and
  * a vertex in a colour the landmark states takes the finish's own colour and gives its occlusion, roughness,
- * metalness and sheet. Any other vertex gives a fully rough surface that is not metal.
+ * metalness, sheet and share. Any other vertex gives a fully rough surface that is not metal, all of which shows.
  */
 export function finishVertex(vertex: string): string {
   const fetch = "  vColor = texelFetch(uPalette, ivec2(int(i), 0), 0).rgb;\n";
-  return swap(swap(vertex, "flat out vec3 vColor;\n", "flat out vec3 vColor;\nflat out vec4 vFinish;\nuniform float uSolid;\n"), fetch, `${fetch}  vFinish = vec4(1.0, 1.0, 0.0, 0.0);
+  return swap(swap(vertex, "flat out vec3 vColor;\n", "flat out vec3 vColor;\nflat out vec4 vFinish;\nflat out float vShare;\nuniform float uSolid;\n"), fetch, `${fetch}  vFinish = vec4(1.0, 1.0, 0.0, 0.0);
+  vShare = 1.0;
   if (uSolid > 2.5) {
     int row = int(uSolid) * 2 - 5;
     vec4 own = texelFetch(uPalette, ivec2(int(i), row), 0);
-    if (own.a > 0.5) {
+    if (own.a > 0.0) {
       vColor = own.rgb;
       vFinish = texelFetch(uPalette, ivec2(int(i), row + 1), 0);
+      vShare = own.a;
     }
   }
 `);

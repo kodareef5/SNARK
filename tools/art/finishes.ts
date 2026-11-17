@@ -53,7 +53,7 @@ export function stateFinishes(finishes: Readonly<Record<string, FinishSpec>>, pi
     };
     const base = mean("base", true).map((c, i) => Math.round(srgb(Math.min(1, c * d.material.tint[i]!)) * 255));
     const orm = mean("mro", false).map((c) => Math.round(c * 255));
-    made.push({ name, numbers: [...base, ...orm, Math.round((f.sheet ?? d.material.sheet ?? 0) * 255)] });
+    made.push({ name, numbers: [...base, ...orm, Math.round((f.sheet ?? d.material.sheet ?? 0) * 255), Math.max(1, Math.round((f.share ?? 1) * 255))] });
   }
   const pairs: [number, number, number][] = [];
   made.forEach(({ numbers: [r, g, b] }, k) => {

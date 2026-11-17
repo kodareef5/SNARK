@@ -311,6 +311,13 @@ export interface PieceSpec {
   readonly hold?: "prop_r" | "prop_l";
   readonly dropped?: "auto" | string;
   readonly icon?: { readonly around: number; readonly above: number; readonly roll?: number; readonly zoom?: number; readonly shift?: readonly [number, number] };
+  /**
+   * Drawn see-through, its finishes showing their share (shared/pack/finish.ts): wires drawn wider than they are, so that
+   * they hold whole on the screen, and as much paler. It is left out of a landmark's far mesh.
+   */
+  readonly seeThrough?: boolean;
+  /** What it may draw from each distance on medium, as metres and triangles, in place of PIECE_TRIANGLES (tools/art/check.ts). */
+  readonly budget?: readonly (readonly [number, number])[];
 }
 
 export interface PiecesAsset {
@@ -373,11 +380,15 @@ export interface PiecesAsset {
   };
 }
 
-/** One finish of a landmark: the material it is part of, by its name in the model, where in its pictures, and its sheet where not the material's. */
+/**
+ * One finish of a landmark: the material it is part of, by its name in the model, where in its pictures, its sheet where
+ * not the material's, and the share of a face of it that shows, 1 where not given (shared/pack/finish.ts).
+ */
 export interface FinishSpec {
   readonly material: string;
   readonly rect: readonly [number, number, number, number];
   readonly sheet?: number;
+  readonly share?: number;
 }
 
 /** The humanoid's clips, converted from animation libraries under assets/raw (tools/art/human.ts). */

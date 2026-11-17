@@ -97,7 +97,7 @@ artTest("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draw
   expect(frames).toEqual([[21, 1435488, 69052], [27, 1148264, 62908]]);
 });
 
-artTest("Koru moored in its bay on medium at the iPhone's view: its eight cells, three doors and sails in a score of draws, and what it casts", () => {
+artTest("Koru moored in its bay on medium at the iPhone's view: its eight cells, three doors, sails and rig in a few score draws, and what it casts", () => {
   const map = parseMap(koruMapFile());
   const reg = withContent(coreRegistry(), map.content!.defs);
   const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
@@ -128,15 +128,16 @@ artTest("Koru moored in its bay on medium at the iPhone's view: its eight cells,
     return [name, [most(frames, (f) => f.draws), most(frames, (f) => f.triangles), most(frames, (f) => f.cast), own]];
   }));
   // The most a heading draws of the whole frame, its triangles, what it casts, and the most of the draws that are the
-  // yacht's: its cells, doors and sails, where the modules one draw each made it 470. From the dock it was 85,634
-  // triangles casting 69,756 before the yacht's sails were drawn with the atlas and its masts, booms and hull rounder,
-  // and 93,164 casting 86,252 in 18 draws before its furniture was made, its ports rimmed, and its plaques drawn from a
-  // picture of their own.
-  expect(got).toEqual({ dock: [23, 126184, 119416, 21], deck: [26, 129000, 119632, 24], below: [24, 133096, 119708, 22], "200 m off": [21, 72568, 10240, 19] });
+  // yacht's: its cells, doors, sails and the sixteen parts of its rig, where the modules one draw each made it 470. From
+  // the dock it was 85,634 triangles casting 69,756 before the yacht's sails were drawn with the atlas and its masts,
+  // booms and hull rounder, 93,164 casting 86,252 in 18 draws before its furniture was made, its ports rimmed, and its
+  // plaques drawn from a picture of their own, and 126,184 casting 119,416 in 23 before its rig was its own see-through
+  // parts, which cast nothing, and the cells' wires, thickened on their way off, no longer held them to finer levels.
+  expect(got).toEqual({ dock: [30, 118300, 99084, 28], deck: [34, 116540, 102808, 32], below: [29, 116684, 101264, 27], "200 m off": [37, 73032, 10240, 35] });
   expect(KORU_LAYOUT.cells.length).toBe(8);
 });
 
-artTest("Koru's sails and gaffs are drawn as far as its far mesh, past medium's reach for moving parts and short of the far city's", () => {
+artTest("Koru's sails, gaffs and rig are drawn as far as its far mesh, past medium's reach for moving parts and short of the far city's", () => {
   const map = parseMap(koruMapFile());
   const reg = withContent(coreRegistry(), map.content!.defs);
   const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
@@ -156,7 +157,7 @@ artTest("Koru's sails and gaffs are drawn as far as its far mesh, past medium's 
   }));
   // Medium draws moving parts to 1,200 m and the far city and the landmarks' far meshes to 2,048 m.
   expect([tierOf("medium").reach.parts, tierOf("medium").reach.city]).toEqual([1200, 2048]);
-  expect(drawn).toEqual({ 1100: [8, 0], 1500: [8, 0], 1900: [8, 0], 2300: [0, 0] });
+  expect(drawn).toEqual({ 1100: [24, 0], 1500: [24, 0], 1900: [24, 0], 2300: [0, 0] });
 });
 
 test("a real city's downtown at its three views on each tier: the near city's draws, casts and triangles, and the far city's draws and triangles", () => {

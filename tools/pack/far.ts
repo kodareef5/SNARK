@@ -55,6 +55,7 @@ export function mergeFar(l: Landmark, meshes: readonly SourceMesh[], finishes?: 
     const mesh = d && "mesh" in d ? d.mesh : undefined;
     if (mesh === "none" || (d?.type === "structure" && (d.opens !== undefined || d.motion !== undefined))) return;
     const m = mesh === undefined ? undefined : byId.get(mesh);
+    if (m?.seeThrough) return;
     if (!m) otherwise.add(p.kind);
     else drawn.push({ at: p.at, yaw: p.yaw, mesh: m, color: d && "color" in d ? (d.color as number) : 0, key: 0, index });
   });

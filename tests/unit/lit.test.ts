@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
 import { FLAT_FRAGMENT, LIT_FRAGMENT, LIT_MESH_FRAGMENT, LIT_TERRAIN_FRAGMENT } from "../../client/core/render/glsl.ts";
-import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { PROGRAMS, UNIT } from "../../client/core/render/programs.ts";
 import { SKY_GLSL, skyFrame, theSky } from "../../client/core/render/sky.ts";
 import { KNEE, LIGHT, lit, linearToSrgb, shown, srgbToLinear, tone } from "../../client/core/render/surface.ts";
@@ -162,7 +162,7 @@ test("a landmark's flat draw in a colour its art states is lit as that finish's 
   for (const [r, g, b, o, rough, metal, sheet] of finishes as number[][]) {
     const mesh = squareMesh("yacht:block", 1, ["base", "mro"], { sheet: sheet! / 255 });
     mesh.lods[0]!.colors.fill(46);
-    const pack = parsePack(buildPack([mesh], palette, [], [], null, [{ name: "yacht", pieces: [], counts: [[], []], finishes: [46, r!, g!, b!, o!, rough!, metal!, sheet!] }]));
+    const pack = parsePack(buildPack([mesh], palette, [], [], null, [{ name: "yacht", pieces: [], counts: [[], []], finishes: [46, r!, g!, b!, o!, rough!, metal!, sheet!, 255] }]));
     const stage = new Stage(pack, W, H);
     stage.raster.skyTable = theSky().table;
     [stage.cam.x, stage.cam.y, stage.cam.z, stage.cam.yaw, stage.cam.pitch] = [0.6, 1.1, 1.3, Math.PI - 0.4, -0.3];
@@ -189,5 +189,22 @@ test("a landmark's flat draw in a colour its art states is lit as that finish's 
   }
   expect(worst).toBeLessThanOrEqual(2);
   expect(behind).toBeGreaterThan(150);
-  expect(finishTable(palette, { meshes: [{ id: "core:rock" }, { id: "yacht:block" }], landmarks: [{ name: "yacht", pieces: [], counts: [[], []], finishes: [46, 1, 2, 3, 4, 5, 6, 7] }] }).row).toEqual(Uint8Array.from([0, 1]));
+  expect(finishTable(palette, { meshes: [{ id: "core:rock" }, { id: "yacht:block" }], landmarks: [{ name: "yacht", pieces: [], counts: [[], []], finishes: [46, 1, 2, 3, 4, 5, 6, 7, 255] }] }).row).toEqual(Uint8Array.from([0, 1]));
+});
+
+test("a landmark's see-through draw in a finish with a share shows that share of itself over what lies behind, against any of it", () => {
+  const mesh = squareMesh("yacht:wire", 1, []);
+  mesh.lods[0]!.colors.fill(46);
+  const draw = (share: number, flags: number): Uint8ClampedArray => {
+    const pack = parsePack(buildPack([mesh], palette, [], [], null, [{ name: "yacht", pieces: [], counts: [[], []], finishes: [46, 99, 105, 108, 247, 178, 31, 0, share] }]));
+    const stage = new Stage(pack, W, H);
+    [stage.cam.x, stage.cam.y, stage.cam.z, stage.cam.yaw, stage.cam.pitch] = [0, 0.5, 1.5, Math.PI, 0];
+    stage.begin();
+    if (flags >= 0) stage.add("yacht:wire", 0, { x: 0, y: 0, z: 0, flat: true, flags });
+    return stage.render().slice();
+  };
+  const [behind, whole, half] = [draw(255, -1), draw(255, 0), draw(128, DRAW_BLEND)];
+  const middle = ((H / 2) * W + W / 2) * 4;
+  for (let c = 0; c < 3; c++) expect(Math.abs(half[middle + c]! - (behind[middle + c]! + (whole[middle + c]! - behind[middle + c]!) * (128 / 255)))).toBeLessThanOrEqual(1);
+  expect(Math.abs(whole[middle]! - behind[middle]!)).toBeGreaterThan(40);
 });

@@ -163,6 +163,7 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
     if (m.skeleton !== undefined && m.lods[0]!.vertexCount > 0) out.bone = lodVertices(pack, m.lods[0]!)[7]!;
     if (m.flat !== undefined) out.flat = m.flat;
     if (m.uv !== undefined) out.uv = m.uv;
+    if (m.seeThrough) out.seeThrough = true;
     if (pageOf[i]! >= 0) out.page = pageOf[i]!;
     out.levels = placed[i]!.map((l, k): ManifestLevel => {
       const inPage = l.file === 2;

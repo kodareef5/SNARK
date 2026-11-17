@@ -13,10 +13,9 @@ D=json.loads((HERE.parents[3]/'content/landmarks/koru-layout.json').read_text())
 MODS=D['modules'];BYID={m['id']:m for m in MODS};WINDOWS={}
 for w in D['windows']:WINDOWS.setdefault(w['module'],[]).append(w)
 CLOTH={'sail':FINISH['sail']['rgb']};SPAR={'white':FINISH['white']['rgb']}
+WIRES={k:v['rgb'] for k,v in FINISH.items() if k.startswith('wire')}
 # The first level drawn flat, the stand-in level, and the sides round a mast or the bowsprit at each level.
 FLAT=2;STAND_IN=4;SIDES=[24,12,8,6,4]
-# A wire's radius on levels 0, 1 and 2: on level 0 the least, as on the rest.
-RIG=[.03,.09,.28]
 
 def worldbox(b,o):return ([o[k]+b['at'][k]-b['half'][k] for k in range(3)],[o[k]+b['at'][k]+b['half'][k] for k in range(3)])
 def worldhull(h,o):return [[p[k]+o[k] for k in range(3)] for p in h['points']]
@@ -334,7 +333,7 @@ def furniture(m,mod):
   # Which way a piece faces: toward the yacht's centreline, its back to the side it stands nearer.
   out=1 if x>0 else -1
   if m.level>0:
-   b(-.5,0,-.5,.5,1,.5,{'winch':'chrome','cleat':'chrome','tub':'cream','lounger':'fabric','sofa':'fabric','compass':'brass','bar':'mahogany','deck_hatch':'teak'}.get(kind,'mahogany'));continue
+   b(-.5,0,-.5,.5,1,.5,{'winch':'chrome','cleat':'chrome','tub':'teak','lounger':'fabric','sofa':'fabric','compass':'brass','bar':'mahogany','deck_hatch':'teak'}.get(kind,'mahogany'),top='pool' if kind=='tub' else None);continue
   if kind in('winch','cleat','deck_hatch'):
    if kind=='deck_hatch':b(-.5,0,-.5,.5,.7,.5,'steel');b(-.46,.7,-.46,.46,1,.46,'teak')
    elif kind=='winch':
@@ -421,8 +420,9 @@ def furniture(m,mod):
     m.rbox([x-w/2,y+sy*.44,zz-d/2],[x+w/2,y+sy*.52,zz+d/2],'fabric',.03,True)
     if kind=='chairs':m.rbox([x-w/2,y+sy*.52,zz+d*.38],[x+w/2,y+sy,zz+d/2],'mahogany',.02)
   elif kind=='tub':
-   rb(-.5,0,-.5,.5,.15,.5,'cream',.02);b(-.5,.12,-.5,-.38,1,.5,'cream',top='teak');b(.38,.12,-.5,.5,1,.5,'cream',top='teak')
-   b(-.38,.12,-.5,.38,1,-.38,'cream',top='teak');b(-.38,.12,.38,.38,1,.5,'cream',top='teak');b(-.38,.40,-.38,.38,.43,.38,'pool')
+   # A hot tub: clad in teak, its water near the brim inside a rounded white coping.
+   rb(-.47,0,-.47,.47,.88,.47,'teak',.02);b(-.42,.86,-.42,.42,.9,.42,'pool')
+   for a0,z0,a1,z1 in((-.5,-.5,.5,-.42),(-.5,.42,.5,.5),(-.5,-.42,-.42,.42),(.42,-.42,.5,.42)):rb(a0,.86,z0,a1,1,z1,'white',.02)
   elif kind=='helm':
    rb(-.48,0,.12,.48,.82,.47,'mahogany',.02);rb(-.5,.78,-.5,.5,.9,.5,'mahogany',.02)
    for i in range(3):
@@ -481,6 +481,12 @@ def mast(m,mod):
 # round top over the furled sail and its gaff. Metres from the boom's line: the boom's radius, how high the top's centre
 # stands, and the top's radius.
 BOOM_R,COVER_Y,COVER_R=.38,1.05,.32
+def rig_ends(mod):
+ """A wire's ends; a topping lift comes down to the top of its boom's cover, where it is made fast, and not into the boom."""
+ ends=mod['art']['ends']
+ if 'topping' in mod['id'] and mod['id'].endswith('_0'):
+  (x0,y0,z0),(x1,y1,z1)=ends;t=(COVER_Y+COVER_R-.02)/(y1-y0);ends=[[x0+t*(x1-x0),y0+t*(y1-y0),z0+t*(z1-z0)],ends[1]]
+ return ends
 def boom(m,mod):
  lo,hi=worldbox(mod['boxes'][0],mod['origin']);y=(lo[1]+hi[1])/2;z0,z1=lo[2]+.12,hi[2]-.12;n=max(8,SIDES[m.level])
  under=n//2;over=n-under-2
@@ -517,19 +523,9 @@ def smallparts(m,mod):
   for xx,tag in [(-.12,'green'),(.12,'red')]:m.tube([[x+xx,y+.90,z-.10],[x+xx,y+.92,z-.10]],.055,tag,8)
   plaque(m,[x-.2,y+.68,z-.262],[x+.2,y+.84,z-.25],'SAILS');return
  if cat=='rigging':
-  # The rig thins and pales as it goes off, and is gone by the third level, with no step: on each level a wire is about
-  # two thirds of a pixel across where that level is last drawn on high, which no wire below a pixel's width is at four
-  # samples a pixel without breaking into dashes, and as much paler as it is wider than the wire, so it shows about as
-  # much as the wire would. Near it is dark against the sky, as photographed. The diamonds go first, then the shrouds,
-  # toppings and interstays; the forestays and the mizzen backstays, the long diagonals of the schooner, go last.
-  heavy=any(k in mod['id'] for k in('forestay','backstay'));ends=a['ends']
-  # A topping lift comes down to the top of its boom's cover, where it is made fast, and not into the boom.
-  if 'topping' in mod['id'] and mod['id'].endswith('_0'):
-   (x0,y0,z0),(x1,y1,z1)=ends;t=(COVER_Y+COVER_R-.02)/(y1-y0);ends=[[x0+t*(x1-x0),y0+t*(y1-y0),z0+t*(z1-z0)],ends[1]]
-   if L==0:m.tube([[ends[0][0],ends[0][1]-.04,ends[0][2]],[ends[0][0],ends[0][1]+.06,ends[0][2]]],.06,'chrome',8)
-  if L==0:m.tube(ends,max(a['radius'],RIG[0]),'slate',6)
-  elif L==1 and 'diamond' not in mod['id']:m.tube(ends,RIG[1],'wire',4)
-  elif L==2 and heavy:m.tube(ends,RIG[2],'wire_far',4)
+  # The wires are the rig's parts (wire()); a topping lift is made fast on its boom's cover by an eye, which is the cell's.
+  if 'topping' in mod['id'] and mod['id'].endswith('_0') and L==0:
+   e=rig_ends(mod);m.tube([[e[0][0],e[0][1]-.04,e[0][2]],[e[0][0],e[0][1]+.06,e[0][2]]],.06,'chrome',8)
   return
  if cat=='spreader':
   m.tube(a['ends'],a['radius'],'white',[8,4,4,3,3][L])
@@ -674,6 +670,26 @@ def sheet(m,grid,out,camber,batten=None):
   s=m.add(pts,[[side*c for c in n] for n in ns])
   if m.flat:m.faces(s,quads,'sail',out=[side*c for c in out]);continue
   m.faces(s,quads,['batten' if batten and batten(i) else 'sail' for i,j in cells],uvs=[[(j/(cols-1),0),((j+1)/(cols-1),0),((j+1)/(cols-1),1),(j/(cols-1),1)] for i,j in cells],out=[side*c for c in out])
+# The rig: each part a group of wires, flat on every level, drawn see-through (asset.ts). On a level a wire is drawn no
+# thinner than WIRE_PX of a pixel where its part's farthest wire stands when the level is last drawn on high, at 1,080
+# rows, and shows the share of itself that its own width is of that, so that it shows as much as itself, against the
+# sky, the land or the hull: dark and fine near, and thinner and fainter out to nothing, with nothing to see where a
+# level hands over. A share is one of SHARE_STEPS a halving, a finish of its own (materials.json `wire<n>`), which a
+# see-through draw shows on both faces of a tube, so each face lets through what makes the share of the two.
+WIRE_PX=.7;SHARE_STEPS=4;RIG_SIDES=[6,6,4,4,3,3]
+# Where each level is last drawn on high, metres to its part's nearest: asset.ts states the levels' errors to match.
+RIG_ENDS=[25,50,100,200,400,800]
+PIXEL=1/771
+for part in D['rig']['parts']:
+ members=[BYID[i] for i in part['members']];mesh=part['mesh']
+ pts=[p for x in members for p in x['art']['ends']];span=math.dist([min(p[k] for p in pts) for k in range(3)],[max(p[k] for p in pts) for k in range(3)])
+ for level,end in enumerate(RIG_ENDS):
+  m=Mesh(flat=WIRES)
+  for x in members:
+   r=x['art']['radius'];floor=WIRE_PX/2*(end+span)*PIXEL
+   n=0 if r>=floor else math.ceil(SHARE_STEPS*math.log2(floor/r))
+   m.tube([pivot(mesh,p) for p in rig_ends(x)],r*2**(n/SHARE_STEPS),f'wire{n}',RIG_SIDES[level])
+  m.object(mesh[5:]+(f'_LOD{level}' if level else ''),[0,0,0])
 # A sail's levels: drawn with the atlas near, then two flat. Rows and columns of a gaff sail, rows of a jib.
 GAFF_GRIDS=[(9,25),(6,9),(4,6)];JIB_ROWS=[18,8,5]
 for s in D['rig']['sails']:

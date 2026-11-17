@@ -493,7 +493,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // 300 frames the sea's draw stood ahead of two opaque ones. It was 1980140685 until nodes were scattered by their chunks'
   // frame keys (shared/coords.ts), which moves every tree, rock and bush; with the chunk's number in the key's place it is
   // that again.
-  expect(hash).toBe(3496737782);
+  // It was 3496737782 until the sea was made ahead of the statics, the first of the see-through draws, which go as made:
+  // its tiles take the first of the frame's transient instances and its draw goes after the opaque ones all the same.
+  expect(hash).toBe(3058143769);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of

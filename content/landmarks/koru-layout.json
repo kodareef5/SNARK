@@ -48357,6 +48357,167 @@
           29.8
         ]
       }
+    ],
+    "parts": [
+      {
+        "mesh": "koru:rig_backstays_0",
+        "members": [
+          "koru:rig_mizzen_backstay_s_2",
+          "koru:rig_mizzen_backstay_p_2"
+        ]
+      },
+      {
+        "mesh": "koru:rig_backstays_1",
+        "members": [
+          "koru:rig_mizzen_backstay_s_1",
+          "koru:rig_mizzen_backstay_p_1"
+        ]
+      },
+      {
+        "mesh": "koru:rig_backstays_2",
+        "members": [
+          "koru:rig_mizzen_backstay_s_0",
+          "koru:rig_mizzen_backstay_p_0"
+        ]
+      },
+      {
+        "mesh": "koru:rig_fore_0",
+        "members": [
+          "koru:rig_fore_shroud_-1_-3_0",
+          "koru:rig_fore_shroud_-1_3_0",
+          "koru:rig_fore_shroud_1_-3_0",
+          "koru:rig_fore_shroud_1_3_0",
+          "koru:rig_topping_fore_0"
+        ]
+      },
+      {
+        "mesh": "koru:rig_fore_1",
+        "members": [
+          "koru:rig_fore_shroud_-1_-3_1",
+          "koru:rig_fore_shroud_-1_3_1",
+          "koru:rig_fore_shroud_1_-3_1",
+          "koru:rig_fore_shroud_1_3_1",
+          "koru:rig_fore_diamond_31_-1_0",
+          "koru:rig_fore_diamond_31_1_0",
+          "koru:rig_topping_fore_1"
+        ]
+      },
+      {
+        "mesh": "koru:rig_fore_2",
+        "members": [
+          "koru:rig_fore_shroud_-1_-3_2",
+          "koru:rig_fore_shroud_-1_3_2",
+          "koru:rig_fore_shroud_1_-3_2",
+          "koru:rig_fore_shroud_1_3_2",
+          "koru:rig_fore_diamond_55_-1_0",
+          "koru:rig_fore_diamond_55_1_0",
+          "koru:rig_fore_diamond_77_-1_0",
+          "koru:rig_fore_diamond_77_1_0",
+          "koru:rig_topping_fore_2"
+        ]
+      },
+      {
+        "mesh": "koru:rig_forestays_0",
+        "members": [
+          "koru:rig_forestay_outer_0",
+          "koru:rig_forestay_inner_0"
+        ]
+      },
+      {
+        "mesh": "koru:rig_forestays_1",
+        "members": [
+          "koru:rig_forestay_outer_1",
+          "koru:rig_forestay_inner_1"
+        ]
+      },
+      {
+        "mesh": "koru:rig_forestays_2",
+        "members": [
+          "koru:rig_forestay_outer_2",
+          "koru:rig_forestay_outer_3",
+          "koru:rig_forestay_inner_2"
+        ]
+      },
+      {
+        "mesh": "koru:rig_main_0",
+        "members": [
+          "koru:rig_main_shroud_-1_-3_0",
+          "koru:rig_main_shroud_-1_3_0",
+          "koru:rig_main_shroud_1_-3_0",
+          "koru:rig_main_shroud_1_3_0",
+          "koru:rig_topping_main_0"
+        ]
+      },
+      {
+        "mesh": "koru:rig_main_1",
+        "members": [
+          "koru:rig_main_shroud_-1_-3_1",
+          "koru:rig_main_shroud_-1_3_1",
+          "koru:rig_main_shroud_1_-3_1",
+          "koru:rig_main_shroud_1_3_1",
+          "koru:rig_main_diamond_31_-1_0",
+          "koru:rig_main_diamond_31_1_0",
+          "koru:rig_topping_main_1"
+        ]
+      },
+      {
+        "mesh": "koru:rig_main_2",
+        "members": [
+          "koru:rig_main_shroud_-1_-3_2",
+          "koru:rig_main_shroud_-1_3_2",
+          "koru:rig_main_shroud_1_-3_2",
+          "koru:rig_main_shroud_1_3_2",
+          "koru:rig_main_diamond_55_-1_0",
+          "koru:rig_main_diamond_55_1_0",
+          "koru:rig_main_diamond_77_-1_0",
+          "koru:rig_main_diamond_77_1_0",
+          "koru:rig_topping_main_2"
+        ]
+      },
+      {
+        "mesh": "koru:rig_mizzen_0",
+        "members": [
+          "koru:rig_mizzen_shroud_-1_-3_0",
+          "koru:rig_mizzen_shroud_-1_3_0",
+          "koru:rig_mizzen_shroud_1_-3_0",
+          "koru:rig_mizzen_shroud_1_3_0",
+          "koru:rig_topping_mizzen_0"
+        ]
+      },
+      {
+        "mesh": "koru:rig_mizzen_1",
+        "members": [
+          "koru:rig_mizzen_shroud_-1_-3_1",
+          "koru:rig_mizzen_shroud_-1_3_1",
+          "koru:rig_mizzen_shroud_1_-3_1",
+          "koru:rig_mizzen_shroud_1_3_1",
+          "koru:rig_mizzen_diamond_31_-1_0",
+          "koru:rig_mizzen_diamond_31_1_0",
+          "koru:rig_topping_mizzen_1"
+        ]
+      },
+      {
+        "mesh": "koru:rig_mizzen_2",
+        "members": [
+          "koru:rig_mizzen_shroud_-1_-3_2",
+          "koru:rig_mizzen_shroud_-1_3_2",
+          "koru:rig_mizzen_shroud_1_-3_2",
+          "koru:rig_mizzen_shroud_1_3_2",
+          "koru:rig_mizzen_diamond_55_-1_0",
+          "koru:rig_mizzen_diamond_55_1_0",
+          "koru:rig_mizzen_diamond_77_-1_0",
+          "koru:rig_mizzen_diamond_77_1_0",
+          "koru:rig_topping_mizzen_2"
+        ]
+      },
+      {
+        "mesh": "koru:rig_triatics",
+        "members": [
+          "koru:rig_main_interstay_0",
+          "koru:rig_main_interstay_1",
+          "koru:rig_mizzen_interstay_0"
+        ]
+      }
     ]
   },
   "cells": [
@@ -48597,6 +48758,278 @@
             0.678831,
             -0.197961,
             0.678831
+          ]
+        }
+      },
+      {
+        "mesh": "koru:rig_backstays_0",
+        "from": {
+          "at": [
+            -7.45,
+            10.758333,
+            -25.283333
+          ]
+        },
+        "to": {
+          "at": [
+            -7.45,
+            10.758333,
+            -25.283333
+          ]
+        }
+      },
+      {
+        "mesh": "koru:rig_backstays_1",
+        "from": {
+          "at": [
+            -7.45,
+            30.075,
+            -18.45
+          ]
+        },
+        "to": {
+          "at": [
+            -7.45,
+            30.075,
+            -18.45
+          ]
+        }
+      },
+      {
+        "mesh": "koru:rig_backstays_2",
+        "from": {
+          "at": [
+            -7.45,
+            49.391666,
+            -11.616667
+          ]
+        },
+        "to": {
+          "at": [
+            -7.45,
+            49.391666,
+            -11.616667
+          ]
+        }
+      },
+      {
+        "mesh": "koru:rig_fore_0",
+        "from": {
+          "at": [
+            -7.45,
+            15.078333,
+            33.4
+          ]
+        },
+        "to": {
+          "at": [
+            -7.45,
+            15.078333,
+            33.4
+          ]
+        }
+      },
+      {
+        "mesh": "koru:rig_fore_1",
+        "from": {
+          "at": [
+            -7.45,
+            34.31,
+            36.15
+          ]
+        },
+        "to": {
+          "at": [
+            -7.45,
+            34.31,
+            36.15
+          ]
+        }
+      },
+      {
+        "mesh": "koru:rig_fore_2",
+        "from": {
+          "at": [
+            -7.45,
+            53.65,
+            38.9
+          ]
+        },
+        "to": {
+          "at": [
+            -7.45,
+            53.65,
+            38.9
+          ]
+        }
+      },
+      {
+        "mesh": "koru:rig_forestays_0",
+        "from": {
+          "at": [
+            -7.45,
+            12.416666,
+            77.716667
+          ]
+        },
+        "to": {
+          "at": [
+            -7.45,
+            12.416666,
+            77.716667
+          ]
+        }
+      },
+      {
+        "mesh": "koru:rig_forestays_1",
+        "from": {
+          "at": [
+            -7.45,
+            28.695833,
+            66.070834
+          ]
+        },
+        "to": {
+          "at": [
+            -7.45,
+            28.695833,
+            66.070834
+          ]
+        }
+      },
+      {
+        "mesh": "koru:rig_forestays_2",
+        "from": {
+          "at": [
+            -7.45,
+            50.125,
+            54.425
+          ]
+        },
+        "to": {
+          "at": [
+            -7.45,
+            50.125,
+            54.425
+          ]
+        }
+      },
+      {
+        "mesh": "koru:rig_main_0",
+        "from": {
+          "at": [
+            -7.45,
+            13.078333,
+            5.4
+          ]
+        },
+        "to": {
+          "at": [
+            -7.45,
+            13.078333,
+            5.4
+          ]
+        }
+      },
+      {
+        "mesh": "koru:rig_main_1",
+        "from": {
+          "at": [
+            -7.45,
+            32.048333,
+            8.15
+          ]
+        },
+        "to": {
+          "at": [
+            -7.45,
+            32.048333,
+            8.15
+          ]
+        }
+      },
+      {
+        "mesh": "koru:rig_main_2",
+        "from": {
+          "at": [
+            -7.45,
+            51.325,
+            10.9
+          ]
+        },
+        "to": {
+          "at": [
+            -7.45,
+            51.325,
+            10.9
+          ]
+        }
+      },
+      {
+        "mesh": "koru:rig_mizzen_0",
+        "from": {
+          "at": [
+            -7.45,
+            11.911667,
+            -15.6
+          ]
+        },
+        "to": {
+          "at": [
+            -7.45,
+            11.911667,
+            -15.6
+          ]
+        }
+      },
+      {
+        "mesh": "koru:rig_mizzen_1",
+        "from": {
+          "at": [
+            -7.45,
+            31.083334,
+            -13.183333
+          ]
+        },
+        "to": {
+          "at": [
+            -7.45,
+            31.083334,
+            -13.183333
+          ]
+        }
+      },
+      {
+        "mesh": "koru:rig_mizzen_2",
+        "from": {
+          "at": [
+            -7.45,
+            49.0,
+            -10.766666
+          ]
+        },
+        "to": {
+          "at": [
+            -7.45,
+            49.0,
+            -10.766666
+          ]
+        }
+      },
+      {
+        "mesh": "koru:rig_triatics",
+        "from": {
+          "at": [
+            -7.45,
+            62.05,
+            16.8
+          ]
+        },
+        "to": {
+          "at": [
+            -7.45,
+            62.05,
+            16.8
           ]
         }
       }

@@ -55,6 +55,8 @@ export interface SourceMesh {
    */
   materials?: PackMaterial[];
   textures?: PackTexture[];
+  /** Drawn see-through, its finishes showing their share (shared/pack/finish.ts): a landmark's wires. */
+  seeThrough?: boolean;
 }
 
 /** The blob of a pack as it is put together: runs of bytes, each padded to a multiple of 4. */
@@ -209,6 +211,7 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
     if (flat > 0) out.flat = flat;
     const range = uvRange(mesh.lods.slice(0, flat).map((lod) => lod.uvs));
     if (range) out.uv = range;
+    if (mesh.seeThrough) out.seeThrough = true;
     const place = (mesh.materials ?? []).map((m) => materials.findIndex((p) => p.id === m.id));
     mesh.lods.forEach((lod, level) => {
       const n = lod.positions.length / 3;
@@ -318,6 +321,7 @@ export function unpackMeshes(pack: Pack): SourceMesh[] {
       return out;
     });
     const out: SourceMesh = { id: m.id, lods };
+    if (m.seeThrough) out.seeThrough = true;
     if (m.collider) out.collider = m.collider;
     if (m.skeleton) out.skeleton = m.skeleton;
     if (m.rig !== undefined) out.rig = pack.header.rigs[m.rig]!.id;

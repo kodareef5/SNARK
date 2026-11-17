@@ -156,7 +156,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
   eye[1] = -ry / dist;
   eye[2] = -rz / dist;
   const own = ((2 * row - 1) * 256 + colorIndex) * 4;
-  if (finish && row > 0 && finish.pixels[own + 3] === 255) {
+  if (finish && row > 0 && finish.pixels[own + 3]! > 0) {
     for (let c = 0; c < 3; c++) {
       albedo[c] = srgbToLinear(finish.pixels[own + c]! / 255);
       worldOrm[c] = finish.pixels[own + 1024 + c]! / 255;
@@ -1174,9 +1174,12 @@ export class Rasterizer {
             cb = rgb[2]! * 255;
           }
           if (blend) {
-            this.color[o] = this.color[o]! + (cr - this.color[o]!) * WATER_ALPHA;
-            this.color[o + 1] = this.color[o + 1]! + (cg - this.color[o + 1]!) * WATER_ALPHA;
-            this.color[o + 2] = this.color[o + 2]! + (cb - this.color[o + 2]!) * WATER_ALPHA;
+            // A landmark's see-through draw shows its finish's share (shared/pack/finish.ts), as LIT_MESH_FRAGMENT has it.
+            const share = this.finishRow > 0 ? this.finish.pixels[((2 * this.finishRow - 1) * 256 + colorIndex) * 4 + 3]! : 0;
+            const alpha = this.finishRow === 0 ? WATER_ALPHA : p.lit && share > 0 ? share / 255 : 1;
+            this.color[o] = this.color[o]! + (cr - this.color[o]!) * alpha;
+            this.color[o + 1] = this.color[o + 1]! + (cg - this.color[o + 1]!) * alpha;
+            this.color[o + 2] = this.color[o + 2]! + (cb - this.color[o + 2]!) * alpha;
           } else {
             this.color[o] = cr;
             this.color[o + 1] = cg;

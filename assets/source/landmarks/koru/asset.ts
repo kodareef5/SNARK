@@ -22,15 +22,21 @@ const CELLS = [[0, 22000], [50, 22000], [100, 4000], [250, 2500], [500, 2500]] a
 // want a level past 0.13 m, and the far mesh takes levels 2 and 3.
 const cell = (id: string): PieceSpec => ({ id, object: name(id), triangles: [...budget(CELLS).slice(1), 400], errors: [0.025, 0.06, 0.13, 0.3] });
 const part = (id: string): PieceSpec => ({ id, object: name(id), triangles: budget(PIECE_TRIANGLES) });
+// The rig's parts (model.py): six flat levels, each first drawn on high where the one before was last drawn at its part's
+// nearest (RIG_ENDS: 25, 50, 100, 200 and 400 m), the error a level states being what the high tier's pixel threshold
+// takes there. Drawn see-through, its wires showing their share. A part is a few wires, as many triangles from 500 m as
+// from near, and a hundred at most.
+const RIG_ERRORS = [25, 50, 100, 200, 400].map((metres) => Number(((metres * 0.14) / 771).toFixed(5)));
+const rig = (id: string): PieceSpec => ({ id, object: name(id), triangles: [300, 300, 200, 200, 120, 120], errors: RIG_ERRORS, seeThrough: true, budget: [[0, 300], [100, 200], [250, 120]] });
 // Every finish of the pictures is one of the yacht's finishes: its flat faces are lit as its part of the pictures is, so
 // a flat level is its textured level without the picture (shared/pack/finish.ts).
-const finish = (f: { picture?: string; rect: number[] }): FinishSpec => ({ material: f.picture ?? "surfaces", rect: f.rect as unknown as FinishSpec["rect"] });
+const finish = (f: { picture?: string; rect: number[]; share?: number }): FinishSpec => ({ material: f.picture ?? "surfaces", rect: f.rect as unknown as FinishSpec["rect"], ...(f.share ? { share: f.share } : {}) });
 const pictures = (name: string, more: object = {}) => ({ base: `tex/${name}_base.png`, normal: `tex/${name}_normal.png`, packed: `tex/${name}_packed.png`, height: `tex/${name}_height.png`, ...more });
 
 export default {
   kind: "pieces",
   source: { scripts: ["model.py"] },
-  pieces: [...layout.cells.map((c) => cell(c.id)), ...layout.modules.filter((m) => m.category === "door").map((m) => part(m.id)), ...layout.motion.parts.map((p) => part(p.mesh))],
+  pieces: [...layout.cells.map((c) => cell(c.id)), ...layout.modules.filter((m) => m.category === "door").map((m) => part(m.id)), ...layout.motion.parts.map((p) => (p.mesh.startsWith("koru:rig_") ? rig(p.mesh) : part(p.mesh)))],
   materials: {
     surfaces: pictures("surfaces"),
     // Sailcloth passes light: from the side the sun is not on, a sail shows most of what its other side takes.

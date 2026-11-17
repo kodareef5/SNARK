@@ -668,7 +668,7 @@ export class GlRenderer {
       else if ((flags & DRAW_WATER) !== 0) this.maps(this.materials[m], MAP_ROLES.length);
       else {
         this.uniform(prog, U.solid, (flags & DRAW_PLAIN) !== 0 || (p.lit && (flags & (DRAW_SIZED | DRAW_PULLED)) !== 0) ? 2 + this.finish.row[p.drawMesh[d]!]! : 1);
-        this.uniform(prog, U.alpha, blend ? WATER_ALPHA : 1);
+        this.uniform(prog, U.alpha, blend && this.finish.row[p.drawMesh[d]!] === 0 ? WATER_ALPHA : 1);
       }
       this.bind(prog, lod, buffer, p.drawMesh[d]!, p.drawFirst[d]!, p.drawOffset, d);
       if (textured || (flags & DRAW_RANGED) !== 0) gl.drawElementsInstanced(gl.TRIANGLES, p.drawIndexCount[d]!, lod.type, p.drawFirstIndex[d]! * lod.indexBytes, p.drawInstances[d]!);

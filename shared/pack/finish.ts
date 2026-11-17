@@ -11,20 +11,24 @@
 //   palette colour, as ever.
 // - `sheet` is how much of the light on one face of a thin sheet the other face shows (surface.ts `through`): sailcloth,
 //   an awning, a flag. A textured material says it too (PackMaterial `sheet`).
+// - `share` is how much of a face shows, for a wire drawn wider than it is so that it holds whole on the screen: drawn
+//   see-through (a see-through piece, PackMesh `seeThrough`), a wire twice its width at half its share shows as much
+//   as itself against the sky, the land or the hull alike. A see-through piece shows both its faces, so a tube's share
+//   is what one face lets through of the two.
 // - A landmark that states none is drawn as it always was.
 
 import type { LandmarkFarRow } from "./far.ts";
 
 /**
  * The numbers of a finish: its palette colour, then its colour as red, green and blue of 255 (sRGB), its occlusion,
- * roughness and metalness of 255, and its sheet of 255.
+ * roughness and metalness of 255, its sheet of 255, and its share of 255, 1 at least.
  */
-export const FINISH_NUMBERS = 8;
+export const FINISH_NUMBERS = 9;
 
 /**
  * The palette and every landmark's finishes as one RGBA8 picture 256 wide: row 0 the palette; for the landmark k of
- * those that state finishes, row 2k + 1 holds the colour of each palette colour it states, with alpha 255 where it
- * states one, and row 2k + 2 the finish's occlusion, roughness, metalness and sheet. `row` is k + 1 for each mesh of
+ * those that state finishes, row 2k + 1 holds the colour of each palette colour it states, with its share as alpha
+ * where it states one and 0 where not, and row 2k + 2 the finish's occlusion, roughness, metalness and sheet. `row` is k + 1 for each mesh of
  * that landmark, its id's namespace, and 0 for any other mesh.
  */
 export interface FinishTable {
@@ -44,7 +48,7 @@ export function finishTable(palette: Uint8Array, manifest: { readonly meshes: re
     const f = l.finishes!;
     for (let at = 0; at + FINISH_NUMBERS <= f.length; at += FINISH_NUMBERS) {
       const colour = f[at]!, own = ((2 * k + 1) * 256 + colour) * 4, more = own + 256 * 4;
-      pixels.set([f[at + 1]!, f[at + 2]!, f[at + 3]!, 255], own);
+      pixels.set([f[at + 1]!, f[at + 2]!, f[at + 3]!, Math.max(1, f[at + 8]!)], own);
       pixels.set([f[at + 4]!, f[at + 5]!, f[at + 6]!, f[at + 7]!], more);
     }
   });
