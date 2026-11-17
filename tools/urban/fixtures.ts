@@ -1,4 +1,6 @@
 // Native development fixtures; no renderer, asset build or alternate world.
+import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
+import { VEHICLE_ORIGIN, vehiclePlaceFree } from "../../server/vehicle-service.ts";
 import type { Host } from "../../server/host.ts";
 import { PROVING_ID } from "../../shared/world/proving.ts";
 import { Found } from "../../shared/world/structures.ts";
@@ -23,6 +25,28 @@ export function seedUrbanRoads(host: Host, completeExisting = false): number {
     }
     if (occupied || [-1.5, 1.5].some(dx => [-1.5, 1.5].some(dz => Math.abs(world.hf.heightAt(x + dx, z + dz) - y) > .02))) continue;
     if (world.structs.add(kinds[lane]!, x, y + 1 / 32, z, 0, 0, 1500) >= 0) added++;
+  }
+  return added;
+}
+
+/** A pair of bays per road frame, facing the spawn. A persisted model keeps its bay identity after being driven away. */
+export function seedRoadFleet(host: Host): number {
+  const { world, records } = host;
+  const placed = new Set<string>(), decoder = new TextDecoder();
+  for (const rec of records.byPid.values()) {
+    const origin = rec.extra.get(VEHICLE_ORIGIN);
+    if (origin) placed.add(decoder.decode(origin));
+  }
+  let added = 0;
+  for (const [i, model] of ROAD_FLEET.entries()) {
+    const origin = `fleet/${model.id}`;
+    if (placed.has(origin)) continue;
+    const definition = world.reg.vehicle[world.reg.index.get(model.id)!]!;
+    const x = world.spawn.x + (i - (ROAD_FLEET.length - 1) / 2) * 4.5;
+    const z = world.spawn.z + 9, y = world.hf.heightAt(x, z), yaw = Math.PI;
+    if (!vehiclePlaceFree(world, x, y, z, yaw, definition) || host.spawnVehicle(model.id, x, z, 0, yaw, { origin }) < 0)
+      throw new Error(`The fleet bay for ${model.id} is obstructed at (${x}, ${z})`);
+    added++;
   }
   return added;
 }

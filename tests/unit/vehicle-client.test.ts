@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { CARAVAN_ART } from "../../content/vehicles/van-art.ts";
+import { withVehicleDoor } from "../../shared/sim/vehicle-body.ts";
 import { Assets } from "../../client/core/assets/assets.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { Characters, type VehicleSeatPose } from "../../client/core/render/characters.ts";
@@ -41,7 +43,10 @@ function mesh(id: string, bone: number, skeleton = HUMAN.id, rig = humanRig.id):
 const sources = SLOT_NAMES.map((part, i) => mesh(`core:human_m/${part}`, i === 0 ? B_HEAD : B_HIPS));
 sources.push(mesh("core:human_m/armor/cloth/torso", B_SPINE), mesh("core:rifle", B_PROP_R));
 sources.push(mesh("core:compact", 0, carRig.skeleton, carRig.id));
-const pack = parsePack(buildPack(sources, defaultPalette(), [], [humanRig, carRig]));
+const vanRig: PackRig = { id: CARAVAN_ART.id, skeleton: CARAVAN_ART.id, names: CARAVAN_ART.bones,
+  rest: CARAVAN_ART.pivots.flat(), parent: CARAVAN_ART.bones.map((_, i) => i === 0 ? -1 : 0) };
+sources.push(mesh(CARAVAN_ART.id, 0, vanRig.skeleton, vanRig.id));
+const pack = parsePack(buildPack(sources, defaultPalette(), [], [humanRig, carRig, vanRig]));
 const reg = coreRegistry();
 const survivor = reg.index.get("core:survivor")!;
 const compact = reg.index.get("core:compact")!;
@@ -258,5 +263,23 @@ test("own and observed enclosed head look stays cabin-local through inversion an
       else { levelHead = heads; levelSpine = spines; }
       close(transform(f.packet, B_HIPS, rest.subarray(0, 3)), [seat.x, seat.y, seat.z]);
     }
+  }
+});
+
+
+test("a sliding passenger door clears its seal before running aft, follows chassis attitude, and resets between instances", () => {
+  const { characters } = fixture(), van = reg.index.get(CARAVAN_ART.id)!;
+  const right = CARAVAN_ART.bones.indexOf("door_slide_right"), left = CARAVAN_ART.bones.indexOf("door_slide_left");
+  const frame = { ...seat, x: 5, y: 2, z: 6, yaw: .7, pitch: .12, roll: -.15 };
+  for (const [fraction, outward, aft] of [[.2, -.115, 0], [1, -.115, -CARAVAN_ART.slideTravel], [0, 0, 0]]) {
+    const packet = new FramePacket(), expected = [0, 0, 0];
+    characters.begin();
+    const pose = { ...frame, doors: withVehicleDoor(0, 3, fraction) };
+    characters.add(packet, van, frame.x, frame.y, frame.z, frame.yaw, new AnimState(), 1, null, 0, colors, 0, null, 0, 1, false, false, 1, false, false, null, 0, pose);
+    const at = CARAVAN_ART.pivots[right]!;
+    vehiclePoint(frame, [at[0] + outward, at[1], at[2] + aft], expected);
+    close(transform(packet, right, at), expected);
+    vehiclePoint(frame, CARAVAN_ART.pivots[left]!, expected);
+    close(transform(packet, left, CARAVAN_ART.pivots[left]!), expected);
   }
 });

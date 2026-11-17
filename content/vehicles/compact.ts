@@ -28,7 +28,7 @@ export const MUD: VehicleSurface = { id: "mud", grip: 1.8, rolling: 1.1, drag: 0
 // Doors, wheels and the steering wheel name the rig's bones; each seat's anchor is its rig socket's point
 // (assets/source/core/vehicles/compact/ref/DESIGN.md), and the anchor is what server and client both use.
 export const COMPACT_VEHICLE: WheelVehicleDefinition = {
-  id: "core:compact", spec: COMPACT,
+  id: "core:compact", frame: "car", spec: COMPACT,
   seats: [
     { id: "driver", driver: true, anchor: [0.42, 0.59, 0.12], entry: [1.25, 0, 0.12], door: 0 },
     { id: "passenger", anchor: [-0.42, 0.59, 0.12], entry: [-1.25, 0, 0.12], door: 1 },

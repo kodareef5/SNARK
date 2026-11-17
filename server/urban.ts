@@ -731,7 +731,12 @@ export class Urban {
       if (door !== undefined) this.opening.set(action!.host, (this.opening.get(action!.host) ?? 0) | (1 << door));
     }
     this.drivers.clear();
-    for (const c of game.clients) if (c?.active && c.drive >= 0) this.drivers.add(c.drive);
+    for (const c of game.clients) {
+      if (!c?.active) continue;
+      if (c.drive >= 0) this.drivers.add(c.drive);
+      const cargoDoor = c.open ? this.hosts.get(c.open)?.definition.cargoDoor : undefined;
+      if (cargoDoor !== undefined) this.opening.set(c.open, (this.opening.get(c.open) ?? 0) | (1 << cargoDoor));
+    }
     for (const [pid, host] of this.hosts) {
       const e = this.entity(pid);
       if (e !== host.entity || makeHandle(e, ents.gen[e]!) !== host.handle) continue;

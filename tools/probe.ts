@@ -8,6 +8,7 @@
 // --lit holds what the shell draws at the lit tiers to the rasterizer and to each check under tools/probe-lit/ (tools/probe-lit.ts).
 // --wiki opens the wiki as built in client/dist/wiki (tools/probe-wiki.ts).
 // --drive has the page get into a car and drive it, and writes what it saw under artifacts/urban-drive/.
+// --drive-model selects another road body, e.g. --drive --drive-model berlinetta.
 // --software selects Chrome's software WebGL backend on machines without an available headless GPU.
 // --built checks the already prepared client/dist output without rebuilding it.
 
@@ -24,6 +25,9 @@ import { prepareDriveProbe } from "./probe-drive.ts";
 // --drive puts a car with a seated civilian by the spawn and has the page drive it with the real player controls, on
 // the ordinary build: the car is in the core pack. --medium draws it on the medium tier rather than low poly.
 const drive = process.argv.includes("--drive");
+const modelArg = process.argv.indexOf("--drive-model");
+const driveModel = modelArg < 0 ? "compact" : process.argv[modelArg + 1];
+if (!driveModel || !/^[a-z][a-z0-9_]*$/.test(driveModel)) throw new Error("--drive-model takes a core road vehicle name");
 const software = drive || process.argv.includes("--software");
 const driveTier = process.argv.includes("--medium") ? "medium" : "lowpoly";
 const CANDIDATES = [
@@ -55,7 +59,7 @@ for (const [flag, run] of [["--textured", texturedProbe], ["--lit", litProbe], [
 }
 const server = startServer({ dev: true, port: 0, probeScene: true });
 if (drive) {
-  try { await prepareDriveProbe(server.host); }
+  try { await prepareDriveProbe(server.host, undefined, `core:${driveModel}`); }
   catch (error) { server.stop(); throw error; }
 }
 const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
@@ -117,7 +121,7 @@ const gesture = drive ? (async () => {
 })().catch(error => console.error("drive gesture:", error)) : Promise.resolve();
 
 const timeout = new Promise<null>((r) => setTimeout(() => r(null), 30000));
-const report = (await Promise.race([server.nextSelfcheck(), timeout])) as { ok?: boolean } | null;
+const report = (await Promise.race([server.nextSelfcheck(), timeout])) as { ok?: boolean; urban?: { vehicles?: string[]; ownKind?: string } } | null;
 finished = true;
 await gesture;
 await observing;
@@ -133,7 +137,7 @@ if (report && process.argv.includes("--voice")) {
 }
 if (software) {
   const dir = join(import.meta.dir, drive ? "../artifacts/urban-drive" : "../artifacts/boot-software"); mkdirSync(dir, { recursive: true });
-  const name = drive ? `driving-${driveTier}` : "boot";
+  const name = drive ? `driving-${driveModel === "compact" ? "" : driveModel + "-"}${driveTier}` : "boot";
   // Write evidence before a screenshot request, which can itself time out behind a busy renderer.
   writeFileSync(join(dir, `${name}-diagnostics.json`), JSON.stringify({ url, report, progress }, null, 2) + "\n");
   writeFileSync(join(dir, `${name}-chrome.log`), readFileSync(join(profile, "chrome.log")));
@@ -141,8 +145,9 @@ if (software) {
     const target = await pageTarget();
     if (!target) throw new Error("native probe has no browser target");
     const screenshot = await pageCommand(target, "Page.captureScreenshot", { format: "png" });
-    writeFileSync(join(dir, drive ? "driving.png" : "boot.png"), Buffer.from(screenshot.data, "base64"));
-    writeFileSync(join(dir, drive ? "driving.json" : "boot.json"), JSON.stringify(report, null, 2) + "\n");
+    const shot = drive && driveModel === "compact" ? "driving" : name;
+    writeFileSync(join(dir, `${shot}.png`), Buffer.from(screenshot.data, "base64"));
+    writeFileSync(join(dir, `${shot}.json`), JSON.stringify(report, null, 2) + "\n");
   } catch (error) { console.error("probe screenshot:", error); }
 }
 if (software && !report) console.error(readFileSync(join(profile, "chrome.log"), "utf8").slice(-6000));
@@ -180,6 +185,7 @@ if (again !== undefined) {
   console.log(again ? JSON.stringify(again.assets, null, 2) : "no report within 30 s");
 }
 const kept = again === undefined || (again?.ok === true && again.assets?.fetched === 0 && again.assets.cached > 0);
-const ok = report.ok === true && (second === undefined || second?.ok === true) && kept;
+const droveModel = !drive || report.urban?.ownKind === `core:${driveModel}` && report.urban.vehicles?.includes(`core:${driveModel}`);
+const ok = report.ok === true && droveModel && (second === undefined || second?.ok === true) && kept;
 console.log(ok ? "\nprobe: PASS" : "\nprobe: FAIL");
 process.exit(ok ? 0 : 1);

@@ -84,6 +84,11 @@ export function stepVehicle(s: VehicleState & Partial<Pick<CarState, "engineCond
       }
     }
     s.vy -= gravity * dt;
+    if (p.downforce && forward > 0 && water.immersion === 0) {
+      // Acting at the centre of mass loads the suspension naturally. Do not create a levelling torque in flight.
+      const impulse = p.downforce * forward * forward * dt / mass;
+      s.vx -= up[0]! * impulse; s.vy -= up[1]! * impulse; s.vz -= up[2]! * impulse;
+    }
     let totalLoad = 0, averageOffset = 0, normalX = 0, normalY = 0, normalZ = 0;
     for (const wheel of wheels) {
       totalLoad += wheel.load; averageOffset += wheel.offset;
@@ -121,7 +126,8 @@ export function stepVehicle(s: VehicleState & Partial<Pick<CarState, "engineCond
       const side = pointV[0]! * sx + pointV[1]! * sy + pointV[2]! * sz;
       const share = wheel.load / Math.max(totalLoad, 1), grip = wheel.load / gravity * wheel.surface.grip * (wheel.front ? p.frontGrip ?? 1.08 : p.rearGrip ?? 1.05);
       const resistance = wheel.surface.rolling * mass + wheel.surface.drag * along * along * mass * (p.dragScale ?? 1) + mechanical.engineDrag;
-      let drive = s.engineOn ? mechanical.drive * (p.drivetrain ? 1 : p.acceleration / 8) * share : 0;
+      const torqueShare = p.frontDriveShare === undefined ? share : (wheel.front ? p.frontDriveShare : 1 - p.frontDriveShare) / 2;
+      let drive = s.engineOn ? mechanical.drive * (p.drivetrain ? 1 : p.acceleration / 8) * torqueShare : 0;
       drive = clamp(drive, -grip * .95, grip * .95);
       if (drive > 0) drive = Math.min(drive, Math.max(0, resistance * share + (p.maxForward - forward) / dt * mass * share));
       else if (drive < 0) drive = Math.max(drive, Math.min(0, -resistance * share + (-p.maxReverse - forward) / dt * mass * share));

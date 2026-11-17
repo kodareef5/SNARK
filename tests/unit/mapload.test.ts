@@ -79,6 +79,42 @@ const off = (p: MapPart, x: number, z: number): number => {
   return Math.hypot(Math.max(sq.cx0 * CHUNK_SIZE - x, x - sq.cx1 * CHUNK_SIZE, 0), Math.max(sq.cz0 * CHUNK_SIZE - z, z - sq.cz1 * CHUNK_SIZE, 0));
 };
 
+test("told to bring the whole ground first, the page draws nothing until every ground part has come, and then asks for the statics one at a time", async () => {
+  const s = heldServer(file);
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${head.name}`, NOW).then((l) => (loader = l));
+  await s.drain();
+  const before = s.asked.length;
+  const body = { x: 1056, z: 448, vx: 0, vz: 0 };
+  let drawn = false;
+  let handed: MapStatics | null = null;
+  void loader!.follow(() => body, { arrived: (t) => (handed = t), whole: true }).then(() => (drawn = true));
+  await settle();
+  const grounds = head.parts.filter((p) => p.kind === "ground").map(nameOf);
+  const statics = head.parts.filter((p) => p.kind === "statics").map(nameOf);
+  // Every ground part is answered before anything is drawn, and no statics part is asked for meanwhile.
+  while (s.asked.length - before < grounds.length || s.waiting.some((w) => grounds.includes(w.url))) {
+    expect(drawn).toBe(false);
+    expect(s.waiting.every((w) => grounds.includes(w.url))).toBe(true);
+    await s.answer();
+  }
+  await settle();
+  expect([drawn, loader!.staged.hf.exactIn(0, 0, head.dims.chunksX * CHUNK_SIZE, head.dims.chunksZ * CHUNK_SIZE)]).toEqual([true, true]);
+  expect(s.asked.slice(before, before + grounds.length).sort()).toEqual([...grounds].sort());
+  // Then the statics, never two at once.
+  let most = 0;
+  while (s.waiting.length > 0) {
+    most = Math.max(most, s.waiting.length);
+    expect(statics.includes(s.waiting[0]!.url)).toBe(true);
+    await s.answer();
+  }
+  await settle();
+  expect(most).toBe(1);
+  expect(s.asked.slice(before + grounds.length)).toEqual(statics);
+  expect(handed).not.toBeNull();
+  expect(handed!.length).toBe(whole.statics.length);
+});
+
 test("the page asks for the head, then the land and the overviews, then nothing until it knows where the body is; then that sector's ground alone, then the rest nearest first six at once, and the statics last", async () => {
   const s = heldServer(file);
   let loader: MapLoader | null = null;
