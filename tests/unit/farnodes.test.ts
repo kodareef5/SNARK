@@ -7,6 +7,7 @@ import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
 import { ATLAS_REGION, DRAW_PULLED, DRAW_TEXTURED, FRAME, type FramePacket } from "../../client/core/render/packet.ts";
 import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
+import { CityStatics } from "../../shared/world/city.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { SIZE_UNITS, formOf, mix, scatterNodes, type NodeForms, type NodeSource } from "../../shared/world/nodes.ts";
 import { FarCells, farTopByte } from "../../shared/world/tactical.ts";
@@ -352,6 +353,32 @@ test("nodes the client was told are used up, and nodes in a 4 m cell the far fee
   w.tell(chunk, []);
   w.sendCells(chunk, new FarCells());
   w.frame();
+  expect(farSlots(w, chunk)).toEqual(all);
+});
+
+test("where the far feed has told nothing of a chunk, nodes under the map's own pieces are left out far by the tops those make, and once it has, by its cells", () => {
+  const w = wood();
+  const z = 6 * CHUNK_SIZE + 20;
+  w.stand(4 * CHUNK_SIZE + 60, z);
+  w.look(4 * CHUNK_SIZE + 60, 24, z, Math.PI / 2);
+  w.frame();
+  const chunk = chunkAt(w.dims, 9 * CHUNK_SIZE + 1, z);
+  while (w.scene.nodesFar!.pending > 0) w.frame();
+  const all = farSlots(w, chunk);
+  // The map sets a crate in each of the chunk's first four rows of 4 m cells, which the far feed says nothing of.
+  const [x0, z0] = [chunkCx(w.dims, chunk) * CHUNK_SIZE, chunkCz(w.dims, chunk) * CHUNK_SIZE];
+  const crates = Array.from({ length: 64 }, (_, c) => ({ kind: "core:crate", x: x0 + (c % 16) * 4 + 2, y: 20.5, z: z0 + Math.floor(c / 16) * 4 + 2, yaw: 0 }));
+  w.holdCity(new CityStatics(w.dims, crates, w.reg));
+  do w.frame();
+  while (w.scene.nodesFar!.pending > 0);
+  const spot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
+  const under = all.filter((s) => (w.source.at(chunk, s, spot), spot.z - z0 < 16));
+  expect(under.length).toBeGreaterThan(5);
+  expect(farSlots(w, chunk)).toEqual(all.filter((s) => !under.includes(s)));
+  // The far feed sends the chunk emptied: its word is the last, and every node is there again.
+  w.sendCells(chunk, new FarCells());
+  do w.frame();
+  while (w.scene.nodesFar!.pending > 0);
   expect(farSlots(w, chunk)).toEqual(all);
 });
 

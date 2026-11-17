@@ -16,6 +16,7 @@ import type { Def } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { chunkAt, type MapDims } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
+import type { CityStatics } from "../../shared/world/city.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE, defaultPalette } from "../../shared/pack/palette.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
@@ -109,7 +110,8 @@ export function nodeWorld(o: NodeWorldOptions) {
   const gone = new Map<number, number[]>();
   const cells = new FarStore();
   const far: FarSource = { cells, complete: () => false };
-  const farNodes: FarNodeSource = { nodes: source, held: (c) => field.isLoaded(c), gone: (c) => gone.get(c), changes };
+  let city: CityStatics | null = null;
+  const farNodes: FarNodeSource = { nodes: source, held: (c) => field.isLoaded(c), gone: (c) => gone.get(c), changes, city: () => city, ground: hf };
   const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   const thePack = o.pack ?? nodePack();
   const scene = new Scene({ dims, hf, structs, nodes: field.store, far, farNodes }, reg, thePack);
@@ -150,6 +152,10 @@ export function nodeWorld(o: NodeWorldOptions) {
       for (const i of before) if (!slots.includes(i)) field.set(chunk, i, true);
       for (const i of slots) if (!before.includes(i)) field.set(chunk, i, false);
       changes.touch(chunk);
+    },
+    /** The map's statics come, as the session's far city has them: the far feed tells nothing of a chunk still as the map placed it. */
+    holdCity(statics: CityStatics | null): void {
+      city = statics;
     },
     /** Hands `cells` to the far store as `chunk`'s, as S_FAR does. */
     sendCells(chunk: number, cellsOf: FarCells): void {

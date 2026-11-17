@@ -216,3 +216,34 @@ test("a map's static pieces are set down in the file's order, and a piece the co
   expect([t.kind[0], t.x[0], t.y[0], t.z[0], t.yaw[0], t.owner[0], t.hp[0]]).toEqual([reg.index.get("core:wall")!, 12.5, 40.25, 100, 16384, 0, reg.maxHp[reg.index.get("core:wall")!]!]);
   expect(() => placeStatics({ ...map, statics: [{ kind: "core:nothing", x: 1, y: 1, z: 1, yaw: 0 }] }, structs, reg)).toThrow('map "test:busy" needs content "core:nothing"');
 });
+
+test("set down, a map's statics take just the slots they fill and no log of changes, lend their places to the tables, and each chunk stands as placed until anything in it changes", () => {
+  // 300 pieces over four chunks, listed out of the chunks' order.
+  const pieces = Array.from({ length: 300 }, (_, i) => ({ kind: i % 3 === 0 ? "core:wall" : "core:crate", x: 10 + ((i * 37) % 100), y: 1 + (i % 7), z: 20 + ((i * 53) % 90), yaw: (i * 4099) & 0xffff }));
+  const file = writeMap(flatMap(4, { statics: pieces }));
+  const map = parseMap(file);
+  const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  placeStatics(map, structs, reg);
+  const tables = structs.held.map((c) => structs.chunks[c]!);
+  expect([structs.held, tables.map((t) => t.high)]).toEqual([[0, 1, 4, 5], [83, 64, 79, 74]]);
+  expect([tables.reduce((n, t) => n + t.cap, 0), structs.count, tables.filter((t) => t.recentSlot !== null).length]).toEqual([300, 300, 0]);
+  // A slot's place and turn are the map's own column until one of the chunk's is written.
+  const [a, b, c, d] = tables;
+  expect([a!.x.buffer === map.statics.x.buffer, d!.yaw.buffer === map.statics.yaw.buffer]).toEqual([true, true]);
+  expect(structs.held.every((k) => structs.asPlaced(k)) && structs.asPlaced(2)).toBe(true);
+
+  // A blow, a change of owner that takes in no piece of the map's, a removal, and a piece built where the map set none.
+  const wall = reg.index.get("core:wall")!;
+  expect(structs.damage(4 * 65536, 1)).toBeGreaterThan(0);
+  expect(structs.reown(5, 6)).toBe(0);
+  structs.remove(65536 + 3);
+  expect(structs.add(wall, 150, 2, 20, 0, 9, 100)).toBe(2 * 65536);
+  expect([0, 1, 2, 4, 5].map((k) => structs.asPlaced(k))).toEqual([true, false, false, false, true]);
+  // The slot freed is built in again. The map's columns stay the map's, and the table's are its own from the first write.
+  expect(structs.add(wall, 70, 3, 30, 100, 9, 100)).toBe(65536 + 3);
+  expect([b!.x.buffer === map.statics.x.buffer, b!.x[3], b!.yaw[3], c!.x.buffer === map.statics.x.buffer]).toEqual([false, 70, 100, true]);
+  const again = parseMap(file).statics;
+  expect([map.statics.x, map.statics.y, map.statics.z, map.statics.yaw]).toEqual([again.x, again.y, again.z, again.yaw]);
+  // Kept by the server, the statics need not keep the map's order.
+  expect([map.statics.unordered().row.length, map.statics.unordered().x === map.statics.x, map.statics.row.length]).toEqual([0, true, 300]);
+});
