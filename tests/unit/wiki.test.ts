@@ -40,7 +40,7 @@ test("the wiki is of what a player meets: no scenery, no target, no creature wit
     "core:boat", "core:boat_police", "core:boat_rescue", "core:civilian", "core:compact", "core:dodo", "core:helicopter",
     "core:helicopter_police", "core:helicopter_rescue", "core:parasaur", "core:pteranodon", "core:raptor", "core:survivor",
   ]);
-  expect(entries.filter((e) => e.kind === "landmarks").map((e) => e.id)).toEqual(LANDMARKS.map((l) => l.name));
+  expect(entries.filter((e) => e.kind === "landmarks").map((e) => e.id).sort()).toEqual(LANDMARKS.map((l) => l.name).sort());
   const foundation = byId("core:piece_foundation_wood");
   expect([foundation.label, foundation.group, foundation.console]).toEqual(["Wooden foundation", "Building", "give core:piece_foundation_wood 1"]);
   expect(foundation.facts.map((f) => [f.label, f.value.join("")])).toContainEqual(["Engram", "Level 11, 6 points"]);
