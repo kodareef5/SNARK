@@ -6,12 +6,12 @@ import { watch } from "node:fs";
 import { resolve } from "node:path";
 import { DEV_CONFIG, liveFileOf, startServer } from "../server/main.ts";
 import { formatReport, loadConfigFolder } from "../server/settings/config.ts";
-import { buildClient } from "./build-client.ts";
+import { buildClientApart } from "./build-client.ts";
 
 const root = resolve(import.meta.dir, "..");
 /** With --stress the stress meshes are built in, and the page at ?stress=1 draws them. */
 const stress = process.argv.includes("--stress");
-await buildClient({ stress, quick: true });
+await buildClientApart({ stress, quick: true });
 // Settings come from DEV_CONFIG or the folder named after --config, then from ARK-style command-line arguments.
 const args = process.argv.slice(2);
 const named = args.indexOf("--config");
@@ -30,8 +30,8 @@ for (const dir of ["client/core", "client/shell", "client/voice", "client/assets
   watch(resolve(root, dir), { recursive: true }, () => {
     clearTimeout(pending);
     pending = setTimeout(() => {
-      buildClient({ stress, quick: true }).then(
-        (r) => console.log(`client rebuilt (${r.jsBytes} bytes)`),
+      buildClientApart({ stress, quick: true }).then(
+        () => console.log("client rebuilt"),
         (err) => console.error(String(err)),
       );
     }, 80);

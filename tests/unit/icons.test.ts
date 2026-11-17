@@ -31,7 +31,7 @@ const bytes = buildPack(weaponMeshes().filter((m) => m.id === "core:pick"), defa
 const pack = parsePack(bytes);
 const manifest = describePack(pack, { name: "core.boot.snpk", bytes: bytes.length });
 // The only mesh is the pick's, so of the core items only the pick has a picture.
-const built = buildIcons(pack, reg.defs, manifest, [bytes], { cache: null });
+const built = buildIcons(pack, reg.defs, manifest, (_, at, n) => bytes.subarray(at, at + n), { cache: null });
 const sheet = built.files[0]!;
 
 test("a code-made pick is drawn on a clear ground, filling its picture and centred, its length along the diagonal", () => {

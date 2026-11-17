@@ -15,7 +15,7 @@ import { existsSync, mkdtempSync, readFileSync, mkdirSync, writeFileSync, rmSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server/main.ts";
-import { buildClient } from "./build-client.ts";
+import { buildClientApart } from "./build-client.ts";
 import { litProbe } from "./probe-lit.ts";
 import { wikiProbe } from "./probe-wiki.ts";
 import { texturedProbe } from "./probe-textured.ts";
@@ -45,7 +45,7 @@ if (!process.argv.includes("--lit") && !process.argv.includes("--wiki")) {
   if (process.argv.includes("--built")) {
     const dist = join(import.meta.dir, "../client/dist");
     if (!existsSync(join(dist, "main.js")) || !existsSync(join(dist, "assets/manifest.json"))) throw new Error("No prepared client build. Run without --built first.");
-  } else await buildClient({ stress: process.argv.includes("--stress") });
+  } else await buildClientApart({ stress: process.argv.includes("--stress") });
 }
 for (const [flag, run] of [["--textured", texturedProbe], ["--lit", litProbe], ["--wiki", wikiProbe]] as const) {
   if (!process.argv.includes(flag)) continue;

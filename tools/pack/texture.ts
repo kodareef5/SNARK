@@ -21,6 +21,8 @@ export interface PlacedTexture {
   at: number;
   hash: string[];
   block?: number;
+  /** The bytes each step is stored in, where one is deflated (tools/pack/store.ts). */
+  stored?: number[];
 }
 
 /** Where the picture `size` pixels across starts in its texture. */
@@ -30,36 +32,57 @@ export function pictureOffset(format: TextureFormat, role: TextureRole, size: nu
   return at;
 }
 
-/** Throws if a texture has a top its variant does not hold, or a picture that is not the size the layout gives it. */
-export function writeTextureFile(format: TextureFormat, textures: readonly EncodedTexture[]): { bytes: Uint8Array; placed: PlacedTexture[] } {
-  const tops = textures.map((t, i) => {
-    const top = 1 << (t.pictures.length - 1);
-    if (stepOf(top) < 0 || topIn(format, top) !== top) throw new Error(`texture file: texture ${i} is ${top} pixels across, which ${format} does not hold`);
-    t.pictures.forEach((p, k) => {
-      const want = pictureBytes(format, t.role, 1 << k, t.block);
-      if (p.length !== want) throw new Error(`texture file: the ${1 << k}-pixel picture of texture ${i} is ${p.length} bytes, not ${want}`);
-    });
-    return top;
-  });
-  const bytes = new Uint8Array(tops.reduce((sum, top, i) => sum + textureBytes(format, textures[i]!.role, top, textures[i]!.block), TEXTURE_HEADER_BYTES));
+/** A texture file's header, saying it holds `count` textures. */
+export function textureHeader(format: TextureFormat, count: number, version: number = TEXTURE_VERSION): Uint8Array {
+  const bytes = new Uint8Array(TEXTURE_HEADER_BYTES);
   const view = new DataView(bytes.buffer);
   view.setUint32(0, TEXTURE_MAGIC, true);
-  view.setUint16(4, TEXTURE_VERSION, true);
+  view.setUint16(4, version, true);
   view.setUint16(6, TEXTURE_FORMATS.indexOf(format), true);
-  view.setUint32(8, textures.length, true);
+  view.setUint32(8, count, true);
+  return bytes;
+}
+
+/**
+ * Texture `i` as its variant's file holds it: its pictures one after another, and the hash of each step. Throws if it
+ * has a top its variant does not hold, or a picture that is not the size the layout gives it.
+ */
+export function laidOut(format: TextureFormat, t: EncodedTexture, i: number): { bytes: Uint8Array; hash: string[] } {
+  const top = 1 << (t.pictures.length - 1);
+  if (stepOf(top) < 0 || topIn(format, top) !== top) throw new Error(`texture file: texture ${i} is ${top} pixels across, which ${format} does not hold`);
+  t.pictures.forEach((p, k) => {
+    const want = pictureBytes(format, t.role, 1 << k, t.block);
+    if (p.length !== want) throw new Error(`texture file: the ${1 << k}-pixel picture of texture ${i} is ${p.length} bytes, not ${want}`);
+  });
+  const bytes = new Uint8Array(textureBytes(format, t.role, top, t.block));
+  let at = 0;
+  for (const p of t.pictures) {
+    bytes.set(p, at);
+    at += p.length;
+  }
+  const hash: string[] = [];
+  for (let s = 0; s <= stepOf(top); s++) {
+    const from = stepOffset(format, t.role, s, t.block);
+    hash.push(partHash(bytes.subarray(from, from + stepBytes(format, t.role, s, t.block))));
+  }
+  return { bytes, hash };
+}
+
+/** What the manifest lists of a texture starting `at` in its file. */
+export function placedAt(format: TextureFormat, t: EncodedTexture, at: number, hash: string[]): PlacedTexture {
+  return format === "astc" && t.block !== 4 ? { at, hash, block: t.block } : { at, hash };
+}
+
+/** The texture file of `textures`, each laid out as `laidOut` lays it, and where each is in it. */
+export function writeTextureFile(format: TextureFormat, textures: readonly EncodedTexture[]): { bytes: Uint8Array; placed: PlacedTexture[] } {
+  const laid = textures.map((t, i) => laidOut(format, t, i));
+  const bytes = new Uint8Array(laid.reduce((sum, l) => sum + l.bytes.length, TEXTURE_HEADER_BYTES));
+  bytes.set(textureHeader(format, textures.length));
   let at = TEXTURE_HEADER_BYTES;
-  const placed = textures.map((t, i): PlacedTexture => {
-    const start = at;
-    for (const p of t.pictures) {
-      bytes.set(p, at);
-      at += p.length;
-    }
-    const hash: string[] = [];
-    for (let s = 0; s <= stepOf(tops[i]!); s++) {
-      const from = start + stepOffset(format, t.role, s, t.block);
-      hash.push(partHash(bytes.subarray(from, from + stepBytes(format, t.role, s, t.block))));
-    }
-    return format === "astc" && t.block !== 4 ? { at: start, hash, block: t.block } : { at: start, hash };
+  const placed = laid.map((l, i): PlacedTexture => {
+    bytes.set(l.bytes, at);
+    at += l.bytes.length;
+    return placedAt(format, textures[i]!, at - l.bytes.length, l.hash);
   });
   return { bytes, placed };
 }
