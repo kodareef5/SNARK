@@ -191,10 +191,15 @@ export function groundCover(a: number, b: number, c: number, d: number, fx: numb
   const sc = (a === c ? wa : 0) + (b === c ? wb : 0) + wc + (d === c ? wd : 0);
   const sd = (a === d ? wa : 0) + (b === d ? wb : 0) + (c === d ? wc : 0) + wd;
   let best = a, most = sa;
-  if (sb > most) [best, most] = [b, sb];
-  if (sc > most) [best, most] = [c, sc];
-  if (sd > most) best = d;
-  return best;
+  if (sb > most) {
+    best = b;
+    most = sb;
+  }
+  if (sc > most) {
+    best = c;
+    most = sc;
+  }
+  return sd > most ? d : best;
 }
 
 const fl = (n: number): string => Number.isInteger(n) ? n.toFixed(1) : String(n);
