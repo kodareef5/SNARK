@@ -315,18 +315,22 @@ class ModelMaker implements CityMaker {
     this.coming.push({ at: this.free[n]!, worker: n, made });
   }
 
-  /** The clock to `ms`: what is done by then is handed over, as it would come, the first done first. */
+  /**
+   * The clock to `ms`: what is done by then is handed over as it would come, the first done first, each when it is done,
+   * so a level asked for as one comes back starts then, as a worker's message is taken between frames.
+   */
   advance(ms: number): void {
-    this.now = ms;
     for (;;) {
       let first = -1;
       for (let i = 0; i < this.coming.length; i++) if (this.coming[i]!.at <= ms && (first < 0 || this.coming[i]!.at < this.coming[first]!.at)) first = i;
-      if (first < 0) return;
-      const [{ worker, made }] = this.coming.splice(first, 1);
+      if (first < 0) break;
+      const [{ at, worker, made }] = this.coming.splice(first, 1);
+      this.now = Math.max(this.now, at!);
       this.hand[worker!]!--;
       this.done.push(made!);
       this.onMade?.();
     }
+    this.now = ms;
   }
 
   take(out: CityMade[]): number {
