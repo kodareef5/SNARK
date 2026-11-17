@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ClientSession } from "../../client/core/session.ts";
+import { listBackups, restoreBackup } from "../../server/persist/backup.ts";
 import type { WorldStore } from "../../server/persist/store.ts";
 import type { ServerWorld } from "../../server/world.ts";
 import { S_FAR } from "../../shared/net/protocol.ts";
@@ -51,7 +52,7 @@ test("a fresh save on a map with statics holds none of them, and a restart sets 
   again.host.shutdown();
 });
 
-test("one static destroyed is one chunk in the save, still gone after a restart, and every other chunk stands as placed", () => {
+test("one static destroyed is one chunk in the save, still gone after a restart, and every other chunk stands as placed; a backup and saveas hold the same", () => {
   const db = join(dir, "one.db");
   const h = new Harness({}, 1, 60, { dbPath: db });
   const structs = h.world.structs;
@@ -70,7 +71,17 @@ test("one static destroyed is one chunk in the save, still gone after a restart,
   expect([changed(again.world), lent(again.world)]).toEqual([[chunk], true]);
   again.run(1000);
   expect(saved(again.host.persistence!.store).chunks).toEqual([chunk]);
+  // A backup, and the world saved elsewhere, hold that chunk alone too, and a server started on the backup has it gone.
+  again.host.persistence!.onBackup = null;
+  expect(again.host.exec("backup")).toContain("a backup was started");
+  const moved = join(dir, "one-moved.db");
+  expect(again.host.exec(`saveas ${moved}`)).toBe(`the world is now saved in ${moved}`);
+  expect(saved(again.host.persistence!.store).chunks).toEqual([chunk]);
   again.host.shutdown();
+  restoreBackup(db, listBackups(db)[0]!, new Date());
+  const back = new Harness({}, 1, 60, { dbPath: db });
+  expect([changed(back.world), back.world.structs.chunks[chunk]!.kind[3], saved(back.host.persistence!.store).chunks]).toEqual([[chunk], 0, [chunk]]);
+  back.host.shutdown();
 });
 
 test("a base built, damaged and half pulled down, with a static hurt and one taken, comes back slot for slot", () => {
