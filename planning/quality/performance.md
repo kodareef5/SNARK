@@ -257,11 +257,11 @@ statics with grey boxes for meshes, whose near columns are the built map's.
 
 | View | Low poly | Medium, touch | Medium | High | Ultra |
 | --- | --- | --- | --- | --- | --- |
-| `street-300`, eye height looking west | 508, 0; 107, 344 k | 266, 183; 68, 186 k | 508, 362; 182, 540 k | 510, 742; 240, 675 k | 516, 875; 205, 748 k |
-| `roof-300`, a 42 m roof by it | 490, 0; 100, 335 k | 303, 117; 79, 187 k | 492, 322; 161, 518 k | 492, 671; 232, 717 k | 500, 751; 248, 900 k |
-| `air-300`, 150 m over the street | 571, 0; 109, 339 k | 312, 36; 64, 187 k | 571, 136; 173, 538 k | 571, 634; 229, 676 k | 573, 693; 191, 753 k |
-| `air-handover`, 140 m | 224, 0; 112, 480 k | 41, 0; 73, 275 k | 224, 50; 180, 708 k | 224, 204; 288, 1.00 M | 224, 281; 265, 1.08 M |
-| `air-wide`, 320 m | 65, 0; 108, 424 k | 75, 0; 75, 227 k | 84, 0; 166, 702 k | 84, 31; 283, 1.14 M | 84, 74; 297, 1.39 M |
+| `street-300`, eye height looking west | 40, 0; 107, 344 k | 16, 10; 68, 186 k | 40, 22; 182, 540 k | 42, 50; 240, 675 k | 48, 56; 205, 748 k |
+| `roof-300`, a 42 m roof by it | 37, 0; 100, 335 k | 21, 7; 79, 187 k | 39, 22; 161, 518 k | 39, 44; 232, 717 k | 47, 53; 248, 900 k |
+| `air-300`, 150 m over the street | 48, 0; 109, 339 k | 22, 2; 64, 187 k | 48, 7; 173, 538 k | 48, 44; 229, 676 k | 50, 50; 191, 753 k |
+| `air-handover`, 140 m | 20, 0; 112, 480 k | 3, 0; 73, 275 k | 20, 3; 180, 708 k | 20, 15; 288, 1.00 M | 20, 23; 265, 1.08 M |
+| `air-wide`, 320 m | 4, 0; 108, 424 k | 5, 0; 75, 227 k | 5, 0; 166, 702 k | 5, 2; 283, 1.14 M | 5, 4; 297, 1.39 M |
 
 Before the far city could give (main at `d1ba7ca3`) its draws and triangles were, by
 column: `street-300` 140, 404 k; 86, 273 k; 226, 580 k; 237, 844 k; 246, 1.09 M, and
@@ -271,8 +271,8 @@ nearer levels 25 to 36% on the phone's view, the bare lattice 13 to 27% on high 
 ultra, the fade between cell sizes put 0 to 7% back on, and tiles of 4 by 4 took a
 fifth to a third of the draws for 0 to 6% more triangles.
 
-The near city's triangles at `street-300` are 119 k, 66 k, 136 k, 154 k and 178 k by
-tier; with grey boxes they are 104 k on every tier but the touch rule's 61 k, so what
+The near city's triangles at `street-300` are 83 k, 36 k, 97 k, 117 k and 142 k by
+tier; with grey boxes they are 68 k on every tier but the touch rule's 30 k, so what
 grows with the tier is the art's levels.
 
 The device page's terrain flight over Miami before the yacht was berthed (`bun run
