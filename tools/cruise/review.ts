@@ -195,7 +195,7 @@ function uploadOnly(raster: Rasterizer, packet: FramePacket): void {
   raster.render(packet); [packet.drawCount, packet.tileCount, packet.casterCount, packet.cascadeCount] = counts;
 }
 
-function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, files: GameFiles, width: number, height: number, out: string, recordCpu: boolean, images: boolean) {
+function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, files: GameFiles, width: number, height: number, out: string, recordCpu: boolean, images: boolean, assetLatencyMs: number) {
   // Residency learns page rows in place. Each camera needs its own initial
   // manifest so an earlier view cannot turn a cold-load check into a warm one.
   files = { ...files, manifest: structuredClone(files.manifest) };
@@ -205,14 +205,15 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, fil
   const h = new Harness({}, 629, 60, { dev: true, map: writeMap(map), clips, rigs: pack.header.rigs }, built.registry);
   const reg = h.reg, placement = assertCruiseMap(map, reg);
   const placed = assertCruisePlaced(map, h.world.structs, reg);
-  const boot = pack, port = new FakeNet(files.files, { keep: true });
+  const boot = pack, port = new FakeNet(files.files, { keep: true, latencyMs: assetLatencyMs });
   const session = h.join("Cruise visitor", {}, { manual: true, look: defaultLook() });
   session.staticsArrived(h.world.statics!);
   const app = new App(session, reg, boot, { manifest: files.manifest, port });
   app.ui.settings.tier = shot.tier; app.ui.settings.steady = false;
   let raster: Rasterizer | null = null, packet: FramePacket | null = null;
   let coldSetup = shot.arrival === true;
-  let fallback: { frame: number; file: string | null; meshes: { id: string; lod: number; distance: number }[] } | null = null;
+  type ColdFallback = { frame: number; file: string | null; feet: number[]; positionError: number; streaming: { flying: number; waiting: number; meshUploads: number; textureUploads: number; cityBehind: number }; meshes: { id: string; lod: number; distance: number }[] };
+  let fallback: ColdFallback | null = null;
   const cellCenters = new Map(CRUISE_LAYOUT.cells.map(cell => [cell.id, cruiseWorldPoint(cell.origin)]));
   let quietFrames = 0, measure = false, measuredUploadFrames = 0;
   let resumedStreaming: unknown;
@@ -251,7 +252,10 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, fil
       }
       if (meshes.length) {
         const file = images ? `${shot.name}-cold-fallback-scene.png` : null;
-        fallback = { frame: cold.frames, file, meshes };
+        fallback = { frame: cold.frames, file, feet: [session.own.x, session.own.y, session.own.z],
+          positionError: Math.hypot(session.own.x-shot.feet[0], session.own.y-shot.feet[1], session.own.z-shot.feet[2]),
+          streaming: { flying: residency?.flying ?? 0, waiting: residency?.waiting ?? 0, meshUploads: packet.assetUploads.length,
+            textureUploads: packet.texUploads.length, cityBehind: app.scene?.city?.stats.behind ?? 0 }, meshes };
         if (file && raster) { raster.render(packet); writeFileSync(resolve(out, file), encodePng(width, height, raster.color)); }
       }
     }
@@ -321,6 +325,9 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, fil
     }
     const tier = app.scene.assets.tier;
     const faults: string[] = [];
+    const capturedFallback = fallback as ColdFallback | null;
+    if (shot.coldFallback && !capturedFallback) faults.push("requested nearby cold flat fallback was not observed while streaming at the intended floor");
+    if (shot.coldFallback && images && (!capturedFallback?.file || !existsSync(resolve(out, capturedFallback.file)))) faults.push("requested cold fallback image was not saved");
     const worldSurfaces = app.scene.assets.residency.textureState().filter(texture => texture.id.startsWith(`${SURFACE_MATERIAL}/`));
     if (tier.lit && (worldSurfaces.length !== 3 || worldSurfaces.some(texture => texture.have < 0))) faults.push("native world-surface texture references are not resident");
     if (p.dropped || p.skipped || p.casterDropped) faults.push("native rendering dropped draws or shadow casters");
@@ -361,8 +368,8 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, fil
       dropped: p.dropped, skipped: p.skipped, casterDropped: p.casterDropped, faults,
       placement: { ...placement, actualPlaced: placed.length, cruiseInstances: shipRows.length, auxiliaryPortAndKoruInstances: map.statics.length - shipRows.length },
       budget: { tier: tier.name, ...tier.budget, gpuBytes: tier.gpuBytes, uploadBytes: tier.uploadBytes },
-      cold: { ...cold, assetTransport: "Zero latency, unlimited bandwidth, no loss; native per-frame upload budgets remain enabled.", medianMs: coldTimes[Math.floor(coldTimes.length / 2)], p95Ms: coldTimes[Math.ceil(coldTimes.length * .95) - 1], maxMs: coldTimes.at(-1),
-        retries: rejectedSamples.length, rejectedSamples, fallback,
+      cold: { ...cold, assetLatencyMs, assetTransport: `${assetLatencyMs}ms fixed asset-request latency, unlimited bandwidth, no loss; native per-frame upload budgets remain enabled.`, medianMs: coldTimes[Math.floor(coldTimes.length / 2)], p95Ms: coldTimes[Math.ceil(coldTimes.length * .95) - 1], maxMs: coldTimes.at(-1),
+        retries: rejectedSamples.length, rejectedSamples, fallback: capturedFallback,
         scope: "App.frame from cold client arrival through placement and streaming, including every discarded sample; excludes the accepted window and server/network/raster/GPU work." },
       shipTarget: { triangles: draws.filter(draw => isShipMesh(draw.mesh)).reduce((sum, draw) => sum + draw.triangles, 0), draws: draws.filter(draw => isShipMesh(draw.mesh)).length, targetTriangles: 1000000, targetDraws: 600, note: "Near cruise meshes only; shared far-city draws are reported separately and include port/Koru geometry." },
       residency: { ...app.scene.assets.residency?.stats }, worldSurfaces, casterCount: p.casterCount,
@@ -383,6 +390,8 @@ export async function reviewCruise(map: MapData, shots: readonly CruiseShot[], a
   const out = resolve(value("--out") ?? (sweep ? "var/cruise-preview/heading-capacity" : "var/cruise-preview/review"));
   const [width, height] = (value("--size") ?? "1200x800").split("x").map(Number) as [number, number];
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 320 || height < 240 || width > 1920 || height > 1080) throw new Error("--size must be 320x240 through 1920x1080");
+  const assetLatencyMs = Number(value("--asset-latency-ms") ?? 0);
+  if (!Number.isInteger(assetLatencyMs) || assetLatencyMs < 0 || assetLatencyMs > 1000) throw new Error("--asset-latency-ms must be an integer from 0 through 1000");
   // The standard source path also supplies the native world-surface carrier. Its landmark root
   // belongs to this checkout; accepting an arbitrary external source would silently mix snapshots.
   if (source !== resolve(SOURCE)) throw new Error("Sync the matching assets into this checkout before review; --source must be its assets/source directory");
@@ -442,7 +451,7 @@ export async function reviewCruise(map: MapData, shots: readonly CruiseShot[], a
   }
   for (const shot of selected) {
     console.log(`Native cruise review ${shot.name}`);
-    report.push({ ...capture(shot, map, pack, clips, files, shot.portrait ? 540 : width, shot.portrait ? 960 : height, out, !args.includes("--visual-only"), !args.includes("--no-images") && !sweep), packHash, packedGroupsHash: cellStages?.groupsSHA256 ?? null, assetStage: graybox ? "preliminary graybox" : CRUISE_LAYOUT.phase });
+    report.push({ ...capture(shot, map, pack, clips, files, shot.portrait ? 540 : width, shot.portrait ? 960 : height, out, !args.includes("--visual-only"), !args.includes("--no-images") && !sweep, assetLatencyMs), packHash, packedGroupsHash: cellStages?.groupsSHA256 ?? null, assetStage: graybox ? "preliminary graybox" : CRUISE_LAYOUT.phase });
     report.sort((a, b) => String(a.name).localeCompare(String(b.name)));
     writeFileSync(resolve(out, "report.json"), JSON.stringify({ source, generated: new Date().toISOString(), pipeline: "native LAND map → authoritative Harness → App → production cold paged core and separate landmark files, streamed assets and world surfaces → native frame packet → optional Rasterizer", packIdentity: "FNV-1a of joined manifest/boot blob and every source stream file, including textures and world surfaces", landmarks: map.content.landmarks, firstFrame: files.firstFrame, authoritativeAnimation: { clips: clips.clips.length, hash: clips.hash, rigs: pack.header.rigs.length }, cellStages, standaloneAssets, layout: { phase: CRUISE_LAYOUT.phase, logicalPrototypes: CRUISE_LAYOUT.prototypes.length, logicalInstances: CRUISE_LAYOUT.instances.filter(instance => instance.placed).length, collisionPrototypes: CRUISE_COLLISION_PROTOTYPES.length, cells: cellIds.size, placedInstances: CRUISE_COLLISION_INSTANCES.filter(instance => instance.placed).length, deckLabels: CRUISE_LAYOUT.decks.map(deck => deck.id) }, shots: report,
       limits: "Static native software-rendered views establish model, collision-camera and streaming behavior; they do not establish browser GPU performance or identical lit ocean shading." }, null, 2));
