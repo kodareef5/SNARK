@@ -569,6 +569,26 @@ and 0.56 M triangles without the far layers. Before D743 and D745 the street mad
 1,592, 2,506 and 3,513 GL draws on medium, high and ultra (the review's runs,
 `planning/reference/review-maps-2026-11-17.md`).
 
+Again on 2026-11-17 at main `ff083a5c`, after the lit ground (D749, D750), the far sun shadow (D754), anisotropic
+filtering and ultra's canvas (D759), on Miami `0f4341ce` (map version 8): three passes, of which the first ran at
+load 6 to 8 and is given; the street's rows stayed at that load through all three and their spread follows in
+brackets, and the air's later passes ran at load 22 to 32 and are left out. On a window of one device pixel ultra
+now draws 3,840 by 1,986, the canvas its second column had before.
+
+| View, tier | Device pixels a CSS pixel | GPU, ms a frame | GL draws |
+| --- | --- | --- | --- |
+| Street, medium | 1; 1.5 | 6.7 (3.7 to 6.7); 5.3 (4.9 to 6.9) | 770 |
+| Street, high | 1; 2 | 7.0 (5.0 to 7.0); 7.8 (7.3 to 7.8) | 1,519 |
+| Street, ultra | 1; 2 | 8.1 (8.1 to 8.7); 8.2 (8.2 to 8.5) | 2,410 |
+| Air, medium | 1; 1.5 | 6.2; 6.4 | 234 |
+| Air, high | 1; 2 | 5.8; 10.2 | 929 |
+| Air, ultra | 1; 2 | 11.7; 11.9 | 1,464 |
+
+One pass of the page's GPU timer swings by 2 ms on this machine when another browser is drawing, so only the rows at
+two device pixels say anything against the table above: from the air they are 0.9 ms higher on high and 1.7 on
+ultra, at four times the pixels. GL draws are as they were but for the air on medium (234 where 262) and on high
+(929 where 875). A change is judged by alternating runs with and without it, four each way (D754 was).
+
 ## Where the limits are
 
 Reasoned from the rows, in the order a growing world meets them.
