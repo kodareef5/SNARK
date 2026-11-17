@@ -57,7 +57,7 @@ artTest("Koru's sails set or moving are drawn from 600 m off with its far mesh, 
     seen.push(sails());
     run(KORU_LAYOUT.motion.seconds * 1000);
     seen.push(sails());
-    const [struck, moving, set] = [[0, rigMeshes.size, 2], [sailParts.length, rigMeshes.size, 2], [sailParts.length, rigMeshes.size, 0]];
+    const [struck, moving, set]: [number, number, number][] = [[0, rigMeshes.size, 2], [sailParts.length, rigMeshes.size, 2], [sailParts.length, rigMeshes.size, 0]];
     expect([sailParts.length, rigMeshes.size, rollMeshes.size]).toEqual([8, 16, 2]);
     expect(seen).toEqual([struck, moving, set, moving, struck]);
   } finally { h.host.shutdown(); }

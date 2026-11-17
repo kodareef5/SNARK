@@ -517,8 +517,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 3121847286 until clips were stored to 0.025 degrees, as above, and 359459847 until chunks were drawn by cell.
   // It was 1443514794, with 97 more draws on one bone, until bodies without bones stood in a pose, as above, and
   // 2400700468 until the sea's draw went after the opaque ones, as above, and 3112331256 until nodes were scattered by
-  // their chunks' frame keys, as above.
-  expect(saddled.hash).toBe(2005316451);
+  // their chunks' frame keys, as above, and 2005316451 until the sea was made ahead of the statics, as above.
+  expect(saddled.hash).toBe(2725115234);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
