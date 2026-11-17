@@ -1,7 +1,7 @@
 // A far city tile's level (farcity.ts) as it is made: what it is made from, gathered on the page from the map's statics,
-// what is gone and the ground, and the making, a pure function of that. The browser makes levels on a worker of its own
-// (client/city), so no busy tile stops a frame; tests and tools make them here, a frame's budget at a time. Either way
-// the bytes are the same.
+// what is gone and the ground, and the making, a pure function of that. The browser makes levels on workers of its own
+// (ThreadedCityMaker, client/city), so no busy tile stops a frame; tests and tools make them here, a frame's budget at a
+// time. Either way the bytes are the same.
 
 import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { VERTEX_BYTES } from "../../../shared/pack/pack.ts";
@@ -9,12 +9,16 @@ import { cellPart, mergedPart, type CityForm, type CityPart, type CityStatics, t
 import { HeightWindow, type Heightfield } from "../../../shared/world/heightfield.ts";
 import { quadBytes } from "./packet.ts";
 
-/** What every level of a map's city is made with: its kinds, the ground's scale, and FAR_MESH's bounds its vertices are stored within. */
+/**
+ * What every level of a map's city is made with: its kinds, each one's middle extent in metres, the ground's scale, and
+ * FAR_MESH's bounds its vertices are stored within.
+ */
 export interface CityKinds {
   readonly dims: MapDims;
   readonly halfX: Float32Array;
   readonly halfY: Float32Array;
   readonly halfZ: Float32Array;
+  readonly middle: Float32Array;
   readonly color: Uint8Array;
   readonly plain: Uint8Array;
   readonly walked: CityForm;
@@ -31,6 +35,7 @@ export interface CityJob {
   readonly least: number;
   readonly cell: number;
   readonly tall: number;
+  readonly thin: number;
   /** The tile's chunks with pieces, in the order its mesh holds them, and where its vertices are stored from in the world. */
   readonly chunks: Int32Array;
   readonly ox: number;
@@ -66,6 +71,8 @@ export interface CityMade {
 export interface CityMaker {
   /** Called as each level asked for is made, where they are made on another thread. */
   onMade: (() => void) | null;
+  /** How many levels it may be asked for ahead of what it has made, where they are made on other threads. */
+  readonly flights?: number;
   /** Makes for a city of these kinds from now on, forgetting what was asked before. */
   start(kinds: CityKinds): void;
   make(job: CityJob): void;
@@ -77,14 +84,15 @@ export interface CityMaker {
 
 export function cityKinds(city: CityStatics, hf: Heightfield, bounds: { center: readonly number[]; half: readonly number[] }): CityKinds {
   const { dims, halfX, halfY, halfZ, color, plain, walked, look } = city;
-  return { dims, halfX, halfY, halfZ, color, plain, walked, look, ground: { cell: hf.cell, nx: hf.nx, nz: hf.nz, minY: hf.minY, stepY: hf.stepY }, center: bounds.center, half: bounds.half };
+  const middle = Float32Array.from(halfX, (hx, k) => 2 * (hx + halfY[k]! + halfZ[k]! - Math.max(hx, halfY[k]!, halfZ[k]!) - Math.min(hx, halfY[k]!, halfZ[k]!)));
+  return { dims, halfX, halfY, halfZ, middle, color, plain, walked, look, ground: { cell: hf.cell, nx: hf.nx, nz: hf.nz, minY: hf.minY, stepY: hf.stepY }, center: bounds.center, half: bounds.half };
 }
 
 /**
  * What a level of the tile whose chunks with pieces are `chunks` (in its mesh's order) is made from: `level`'s form, with
  * its vertices stored from (ox, oy, oz). `gone` says which pieces of a chunk are gone.
  */
-export function cityJob(id: number, city: CityStatics, hf: Heightfield, gone: (chunk: number) => Gone, chunks: readonly number[], level: { gap: number; least: number; cell: number; tall: number }, ox: number, oy: number, oz: number): CityJob {
+export function cityJob(id: number, city: CityStatics, hf: Heightfield, gone: (chunk: number) => Gone, chunks: readonly number[], level: { gap: number; least: number; cell: number; tall: number; thin?: number }, ox: number, oy: number, oz: number): CityJob {
   const dims = city.dims;
   let cx0 = Infinity, cz0 = Infinity, cx1 = -Infinity, cz1 = -Infinity;
   for (const c of chunks) {
@@ -122,8 +130,8 @@ export function cityJob(id: number, city: CityStatics, hf: Heightfield, gone: (c
   const j0 = Math.max(0, Math.floor(((cz0 - 1) * CHUNK_SIZE) / hf.cell));
   const i1 = Math.min(hf.nx - 1, Math.floor(((cx1 + 2) * CHUNK_SIZE) / hf.cell) + 1);
   const j1 = Math.min(hf.nz - 1, Math.floor(((cz1 + 2) * CHUNK_SIZE) / hf.cell) + 1);
-  const { gap, least, cell, tall } = level;
-  return { id, gap, least, cell, tall, chunks: Int32Array.from(chunks), ox, oy, oz, area: Int32Array.from(area), counts, kind, yaw, x, y, z, gone: lost, i0, j0, w: i1 - i0 + 1, heights: hf.window(i0, j0, i1, j1) };
+  const { gap, least, cell, tall, thin = 0 } = level;
+  return { id, gap, least, cell, tall, thin, chunks: Int32Array.from(chunks), ox, oy, oz, area: Int32Array.from(area), counts, kind, yaw, x, y, z, gone: lost, i0, j0, w: i1 - i0 + 1, heights: hf.window(i0, j0, i1, j1) };
 }
 
 /** Every buffer of a job, or of what was made, to move it to another thread rather than copy it. */
@@ -163,7 +171,18 @@ export class LevelMaking {
     const { kind, yaw, x, y, z } = job;
     this.city = { dims: k.dims, first, kind, yaw, x, y, z, halfX: k.halfX, halfY: k.halfY, halfZ: k.halfZ, color: k.color, plain: k.plain, walked: k.walked, look: k.look, count: kind.length, in: (chunk: number) => first[chunk + 1]! - first[chunk]! };
     this.ground = new HeightWindow({ ...k.ground, i0: job.i0, j0: job.j0, w: job.w, heights: job.heights });
-    this.gone = (chunk) => (job.gone ? job.gone.subarray(first[chunk]!, first[chunk + 1]!) : null);
+    const gone = (chunk: number): Gone => (job.gone ? job.gone.subarray(first[chunk]!, first[chunk + 1]!) : null);
+    // Pieces thinner across than the level's `thin` are left out as gone ones are: neither drawn nor hiding a face.
+    const thin = new Map<number, Uint8Array>();
+    this.gone = job.thin <= 0 ? gone : (chunk) => {
+      let g = thin.get(chunk);
+      if (!g) {
+        const was = gone(chunk);
+        g = new Uint8Array(first[chunk + 1]! - first[chunk]!).map((_, i) => (was?.[i] === 1 || k.middle[kind[first[chunk]! + i]!]! < job.thin ? 1 : 0));
+        thin.set(chunk, g);
+      }
+      return g;
+    };
   }
 
   get done(): boolean {
@@ -207,6 +226,71 @@ export class LevelMaking {
       }
     });
     return { id: job.id, data, indexBytes: quadBytes(faces), first, count };
+  }
+}
+
+/** Threads for a machine of `cores` logical cores: a core each left to the page and the other workers, and at most three. */
+export const cityThreads = (cores = 4): number => Math.max(1, Math.min(3, cores - 2));
+
+/** Levels a thread is asked for ahead of what it has made: it never waits on the page, and a tile come nearer soon goes first. */
+export const CITY_AHEAD = 3;
+
+/** A thread levels are made on, as a worker running client/city/city-worker.ts is: sent the kinds, then jobs, each answered with what it made. */
+export interface CityThread {
+  onmessage: ((m: { data: CityMade }) => void) | null;
+  postMessage(m: { kinds: CityKinds | null } | { job: CityJob }, transfer?: ArrayBuffer[]): void;
+}
+
+/**
+ * Makes levels on `count` threads that `open` starts when the first level is asked for, each level asked of the one with
+ * the fewest in hand, since every level is made alone from what it is sent.
+ */
+export class ThreadedCityMaker implements CityMaker {
+  onMade: (() => void) | null = null;
+  readonly flights: number;
+  private readonly open: () => CityThread;
+  private readonly count: number;
+  private readonly threads: CityThread[] = [];
+  /** Levels asked of each thread and not yet back. */
+  private readonly asked: number[] = [];
+  private kinds: CityKinds | null = null;
+  private readonly done: CityMade[] = [];
+
+  constructor(open: () => CityThread, count: number) {
+    this.open = open;
+    this.count = count;
+    this.flights = count * CITY_AHEAD;
+  }
+
+  start(kinds: CityKinds): void {
+    this.kinds = kinds;
+    this.done.length = 0;
+    for (const thread of this.threads) thread.postMessage({ kinds });
+  }
+
+  make(job: CityJob): void {
+    while (this.threads.length < this.count) {
+      const n = this.threads.length;
+      const thread = this.open();
+      thread.onmessage = (m) => {
+        this.asked[n]!--;
+        this.done.push(m.data);
+        this.onMade?.();
+      };
+      thread.postMessage({ kinds: this.kinds });
+      this.threads.push(thread);
+      this.asked.push(0);
+    }
+    const n = this.asked.indexOf(Math.min(...this.asked));
+    this.asked[n]!++;
+    this.threads[n]!.postMessage({ job }, buffersOf(job));
+  }
+
+  take(out: CityMade[]): number {
+    const n = this.done.length;
+    for (let i = 0; i < n; i++) out[i] = this.done[i]!;
+    this.done.length = 0;
+    return n;
   }
 }
 

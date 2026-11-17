@@ -13,12 +13,17 @@ test("a tier's levels are its steps that change something, levels and leaves fir
   const names = (tier: string, dpr: number) => ladder(tierOf(tier), dpr).map((l) => l.name);
   const details = "small details: half the pool, of each burst and of the fill";
   const levels = ["levels: half again the error", "levels: twice the error", "levels: three times the error"];
-  expect(names("high", 3)).toEqual(["the tier", levels[0], "leaves: the frame's triangles to 75%", "the farther cascade every other frame", levels[1], "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", levels[2], "one cascade fewer", "bodies a level coarser", "85% of the pixels a side", "70% of the pixels a side", details, "no sun shadows"]);
+  const city = "the far city's levels to 70% as far";
+  expect(names("high", 3)).toEqual(["the tier", levels[0], city, "leaves: the frame's triangles to 75%", "the farther cascade every other frame", levels[1], "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", levels[2], "one cascade fewer", "bodies a level coarser", "85% of the pixels a side", "70% of the pixels a side", details, "no sun shadows"]);
   // A screen of one device pixel a CSS pixel has no pixels to spare; low poly casts nothing.
   expect(names("medium", 1)).not.toContain("85% of the pixels a side");
-  expect(names("lowpoly", 1)).toEqual(["the tier", levels[0], "leaves: the frame's triangles to 75%", levels[1], "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", levels[2], "bodies a level coarser", details]);
+  expect(names("lowpoly", 1)).toEqual(["the tier", levels[0], city, "leaves: the frame's triangles to 75%", levels[1], "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", levels[2], "bodies a level coarser", details]);
   const medium = ladder(tierOf("medium"), 3).map((l) => [l.tier.budget.triangles, Math.round(l.tier.threshold * 100) / 100, l.tier.shadows.cascades, l.tier.bodyError, l.tier.pixelRatio, l.tier.details.pool]);
-  expect(medium).toEqual([[2e6, 0.22, 2, 1, 1.5, 1536], [2e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.44, 2, 1, 1.5, 1536], [1.5e6, 0.44, 2, 1, 1.5, 1536], [1e6, 0.44, 2, 1, 1.5, 1536], [1e6, 0.66, 2, 1, 1.5, 1536], [1e6, 0.66, 1, 1, 1.5, 1536], [1e6, 0.66, 1, 2, 1.5, 1536], [1e6, 0.66, 1, 2, 1.27, 1536], [1e6, 0.66, 1, 2, 1.05, 1536], [1e6, 0.66, 1, 2, 1.05, 768], [1e6, 0.66, 0, 2, 1.05, 768]]);
+  expect(medium).toEqual([[2e6, 0.22, 2, 1, 1.5, 1536], [2e6, 0.33, 2, 1, 1.5, 1536], [2e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.44, 2, 1, 1.5, 1536], [1.5e6, 0.44, 2, 1, 1.5, 1536], [1e6, 0.44, 2, 1, 1.5, 1536], [1e6, 0.66, 2, 1, 1.5, 1536], [1e6, 0.66, 1, 1, 1.5, 1536], [1e6, 0.66, 1, 2, 1.5, 1536], [1e6, 0.66, 1, 2, 1.27, 1536], [1e6, 0.66, 1, 2, 1.05, 1536], [1e6, 0.66, 1, 2, 1.05, 768], [1e6, 0.66, 0, 2, 1.05, 768]]);
+  // The far city's step draws the same forms nearer, so nothing made of them is made again.
+  const form = ({ to: _, ...f }: { to: number }) => f;
+  const [atTier, nearer] = [ladder(tierOf("medium"), 3)[1]!.tier.city.levels, ladder(tierOf("medium"), 3)[2]!.tier.city.levels];
+  expect([nearer.map(form), nearer.map((l) => l.to)]).toEqual([atTier.map(form), atTier.map((l) => l.to * 0.7)]);
   for (const t of TIERS) {
     for (const { tier } of ladder(t, 3)) {
       expect([tier.nodes, tier.reach.bases, tier.split, tier.view, tier.texture, tier.name, tier.shadows.distance, tier.shadows.size]).toEqual([t.nodes, t.reach.bases, t.split, t.view, t.texture, t.name, t.shadows.distance, t.shadows.size]);
@@ -93,29 +98,33 @@ test("main-thread load is not the GPU's, and steps that buy nothing are undone",
   expect(run(5, () => ({ gpu: 8, ours: 25 })).governor.steps).toEqual([]);
   // Frames slowed by something no step touches, and not paced by the display. A step buys nothing, so does the next,
   // and both are undone and passed over; the governor rests 1, 2, 4 and 8 minutes, tries the steps not passed over, and
-  // ends at the tier. With no crowns near to give, the leaves steps (2 and 6) are passed by.
+  // ends at the tier. With no crowns near to give and no far city, the leaves steps (3 and 7) and the far city's (2) are
+  // passed by.
   const { governor } = run(20, (t) => ({ gpu: 24 + 3 * Math.sin(t / 37) }));
   expect(governor.level).toBe(0);
   const rests = governor.steps.filter((s) => s.why.includes("not what is slow")).length;
   expect(rests).toBeLessThanOrEqual(5);
   expect(governor.steps.length).toBeLessThanOrEqual(rests * 3);
-  expect(governor.steps.filter((s) => s.why.endsWith("ms a frame")).map((s) => s.level)).toEqual([1, 4, 7, 9, 11]);
+  expect(governor.steps.filter((s) => s.why.endsWith("ms a frame")).map((s) => s.level)).toEqual([1, 5, 8, 10, 12]);
   // A step this card does not need is passed for the next, which it does.
-  const passed = run(2, (_, level) => ({ gpu: 20 * [1, 0.95, 0.95, 0.8][Math.min(level, 3)]!, crowns: 1 })).governor;
+  const passed = run(2, (_, level) => ({ gpu: 20 * [1, 0.95, 0.95, 0.8][Math.min(level, 3)]!, crowns: 1, city: 1 })).governor;
   expect(passed.steps.map((s) => s.level)).toEqual([1, 2, 3]);
   expect(passed.steps[2]!.why).toBe("the step before took 19 ms to 19");
   // Two that buy nothing are undone and passed over, and the next miss goes to the step past them.
-  const over = run(3, (_, level) => ({ gpu: 22 * [1, 0.9, 0.9, 0.9, 0.7][Math.min(level, 4)]!, crowns: 1 })).governor;
+  const over = run(3, (_, level) => ({ gpu: 22 * [1, 0.9, 0.9, 0.9, 0.7][Math.min(level, 4)]!, crowns: 1, city: 1 })).governor;
   expect(over.steps.map((s) => s.level)).toEqual([1, 2, 3, 1, 4]);
 });
 
-test("leaves give where crowns near can, and are passed by where they cannot", () => {
+test("leaves give where crowns near can and the far city's step where it draws much, and each is passed by where it cannot", () => {
   // A wood: crowns near take a third of the frame. Levels give first, then leaves.
   const wood = run(3, (_, level) => ({ gpu: 21 * leave(level), work: 20, crowns: 7 })).governor;
   expect(wood.steps.map((s) => s.name)).toEqual(["levels: half again the error", "leaves: the frame's triangles to 75%"]);
-  // A base with no trees: from levels to the farther cascade, the leaves' step passed by.
+  // A base with no trees: from levels to the farther cascade, the leaves' step passed by, and the far city's.
   const base = run(3, (_, level) => ({ gpu: 21 * leave(level), work: 20 })).governor;
   expect(base.steps.map((s) => s.name)).toEqual(["levels: half again the error", "the farther cascade every other frame"]);
+  // Downtown: the far city a third of the frame's work. Levels give first, then the far city's levels nearer.
+  const downtown = run(3, (_, level) => ({ gpu: 21 * leave(level), work: 20, city: 7 })).governor;
+  expect(downtown.steps.map((s) => s.name)).toEqual(["levels: half again the error", "the far city's levels to 70% as far"]);
 });
 
 test("a scene too heavy for good goes to the last step and stays there, trying the level above rarely", () => {
@@ -139,7 +148,9 @@ test("a scene that lightens is drawn at its tier again, and one that lightens an
 });
 
 test("with no GPU timer and a display that shows only whole intervals, a GPU at 22 ms that reads as a steady 33.3 is stepped down until frames come at 16.7, and a try back up that finds 33.3 again is undone", () => {
-  const { minutes, governor } = run(30, (_, level) => ({ gpu: 22 * leave(level) }), { quantized: true });
+  // A card with no crowns near and no far city, on which the leaves' and the far city's steps buy nothing.
+  const bought = (level: number): number => ladder(tierOf("high"), 3).slice(1, level + 1).filter((l) => !l.leaves && !l.city).length;
+  const { minutes, governor } = run(30, (_, level) => ({ gpu: 22 * leave(bought(level)) }), { quantized: true });
   expect(governor.steps[0]!.why).toBe("33 ms a frame, 2 display intervals");
   expect(governor.level).toBeGreaterThan(0);
   for (const m of minutes.slice(2)) expect(m.median).toBeLessThan(17.2);
@@ -152,8 +163,9 @@ test("with no GPU timer and a display that shows only whole intervals, a GPU at 
 test("a display at half rate, saving power, is told from a slow GPU by stepping once through the ladder, which moves nothing: the tier comes back and is kept", () => {
   for (const quantized of [true, false]) {
     const { minutes, governor } = run(20, () => ({ gpu: 5, display: 1000 / 30 }), { quantized });
-    // Every level but the leaves', passed by with no crowns near to give, and then back to the tier.
-    const every = ladder(tierOf("high"), 3).flatMap((l, k) => (k > 0 && !l.leaves ? [k] : []));
+    // Every level but the leaves' and the far city's, passed by with no crowns near to give and no city, and then back to
+    // the tier.
+    const every = ladder(tierOf("high"), 3).flatMap((l, k) => (k > 0 && !l.leaves && !l.city ? [k] : []));
     expect(governor.steps.map((s) => s.level)).toEqual([...every, 0]);
     expect(governor.steps.at(-1)!.why).toBe("frames stayed at 33 ms at every level: the display's rate");
     expect([governor.level, Math.round(governor.paced)]).toEqual([0, 33]);

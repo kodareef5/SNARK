@@ -21,9 +21,9 @@ import { FAR_BUFFER, FAR_TILE, FAR_TILE_METRES } from "./far.ts";
 import { quadBytes, type FramePacket } from "./packet.ts";
 import { WATER_TILE } from "./shading.ts";
 
-/** Slots of tiles on the card start here, past the far city's (farcity.ts, 2^31 up to three times 2^30). */
+/** Slots of tiles on the card start here, past the far city's (farcity.ts, 2^31 up to three times 2^30), and the near city's follow (nearcity.ts). */
 export const LAKE_SLOTS = 3 * 2 ** 30;
-const LAKE_SLOT_SPAN = 2 ** 30;
+export const LAKE_SLOT_SPAN = 2 ** 29;
 /** The instance buffer every tile is drawn with: one instance at the origin. */
 export const LAKE_BUFFER = FAR_BUFFER + 2;
 /** A tile's side in metres, four of the sea's. */
