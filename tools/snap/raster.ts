@@ -9,7 +9,7 @@ import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.t
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { LANDMARK_BUFFER } from "../../client/core/render/farlandmarks.ts";
 import { nearKeeps } from "../../client/core/render/hand.ts";
-import { groundNormal, groundSize, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
+import { groundNormal, groundSize, groundTint, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
 import { MOST_LOD, detailKeeps, rotorOf, shapeOf } from "../../client/core/render/detailtext.ts";
 import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
@@ -1090,8 +1090,10 @@ export class Rasterizer {
             if (((Math.floor(wx) + Math.floor(wy) + Math.floor(wz)) & 1) !== 0) shade -= (1 - CHECK_FINE) * Math.max(0, 1 - dist / CHECK_FINE_FADE);
             if (((Math.floor(wx / cs) + Math.floor(wy / cs) + Math.floor(wz / cs)) & 1) !== 0) shade -= (1 - CHECK_COARSE) * Math.max(0, 1 - dist / CHECK_COARSE_FADE);
           }
+          // Metres a pixel covers on the finish's projection, and on the ground's level for its cover's wander.
           let footprint = 0;
-          if (p.lit && this.worldMaps && !this.plain) {
+          let reach = 0;
+          if (p.lit && ((this.worldMaps && !this.plain) || ground)) {
             const r0 = (e0 + e0x) * poly[v0 + 5]!, r1 = (e1 + e1x) * poly[v1 + 5]!, r2 = (e2 - e0x - e1x) * poly[v2 + 5]!;
             const d0 = (e0 + e0y) * poly[v0 + 5]!, d1 = (e1 + e1y) * poly[v1 + 5]!, d2 = (e2 - e0y - e1y) * poly[v2 + 5]!;
             const u = axis === 0 ? rz : rx, v = axis === 1 ? rz : ry;
@@ -1100,12 +1102,19 @@ export class Rasterizer {
             const uy = (d0 * poly[v0 + uc]! + d1 * poly[v1 + uc]! + d2 * poly[v2 + uc]!) / (d0 + d1 + d2) - u;
             const vy = (d0 * poly[v0 + vc]! + d1 * poly[v1 + vc]! + d2 * poly[v2 + vc]!) / (d0 + d1 + d2) - v;
             footprint = Math.max(Math.hypot(ux, vx), Math.hypot(uy, vy));
+            if (ground && axis === 1) reach = footprint;
+            else if (ground) {
+              const xx = (r0 * poly[v0]! + r1 * poly[v1]! + r2 * poly[v2]!) / (r0 + r1 + r2) - rx, zx = (r0 * poly[v0 + 2]! + r1 * poly[v1 + 2]! + r2 * poly[v2 + 2]!) / (r0 + r1 + r2) - rz;
+              const xy = (d0 * poly[v0]! + d1 * poly[v1]! + d2 * poly[v2]!) / (d0 + d1 + d2) - rx, zy = (d0 * poly[v0 + 2]! + d1 * poly[v1 + 2]! + d2 * poly[v2 + 2]!) / (d0 + d1 + d2) - rz;
+              reach = Math.max(Math.hypot(xx, zx), Math.hypot(xy, zy));
+            }
           }
           if (p.lit && !blend) {
-            // Only what ends in front is shaded, once the opaque draws are done (`resolve`).
+            // Only what ends in front is shaded, once the opaque draws are done (`resolve`). The ground's cover is chosen here.
             const s = this.deferredAt;
             const g6 = at * 6;
-            this.deferred[at] = (colorIndex + 1) | (solid ? 512 : 0) | (this.plain ? 1024 : 0) | (ground ? DEFERRED_GROUND : 0);
+            const tint = ground ? groundTint(this.hf, this.picture, rx + p.camX, rz + p.camZ, reach) : colorIndex;
+            this.deferred[at] = (tint + 1) | (solid ? 512 : 0) | (this.plain ? 1024 : 0) | (ground ? DEFERRED_GROUND : 0);
             this.deferredShade[at] = footprint;
             s[g6] = rx;
             s[g6 + 1] = ry;

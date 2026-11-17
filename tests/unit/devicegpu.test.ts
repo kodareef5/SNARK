@@ -130,12 +130,12 @@ test("the fake context refuses the probe's SURFACE pass as the dome left it, and
   expect(link(SURFACE_VERTEX, sized)).toMatch(/^ERROR: 0:\d+: 'SHADOW_SIZE' : undeclared identifier$/);
   // A name the frame block does not have, a call with an argument too many, and a line before the version.
   expect(link(SKY_VERTEX.replace("fCloudSun.rgb", "fCloudLight.rgb"), LIT_FRAGMENT)).toMatch(/^ERROR: 0:\d+: 'fCloudLight' : undeclared identifier$/);
-  expect(link(worldVertex(FLAT_MESH_VERTEX, false), LIT_FRAGMENT.replace("sunShadow(vRel, geometric)), vRel)", "sunShadow(vRel, geometric), 1.0), vRel)"))).toMatch(/'lit' : no matching overloaded function found$/);
-  expect(link(worldVertex(FLAT_MESH_VERTEX, false), withDefines(LIT_FRAGMENT, "#define SHADOWS 1\n"))).toBe("");
+  expect(link(worldVertex(FLAT_MESH_VERTEX), LIT_FRAGMENT.replace("sunShadow(vRel, geometric)), vRel)", "sunShadow(vRel, geometric), 1.0), vRel)"))).toMatch(/'lit' : no matching overloaded function found$/);
+  expect(link(worldVertex(FLAT_MESH_VERTEX), withDefines(LIT_FRAGMENT, "#define SHADOWS 1\n"))).toBe("");
   expect(link(FLAT_MESH_VERTEX, "#define SHADOWS 1\n" + LIT_FRAGMENT)).toMatch(/'#version' : must be the text's first line/);
   // Linking: SURFACE's fragment behind FLAT's vertex text, which writes vRel but not the rest, and vColor flat where LIT reads it smooth.
   expect(link(FLAT_MESH_VERTEX, surfaceFragment("rgba", AIR)).split("\n")[0]).toBe("ERROR: 'vNormal' : the fragment reads it as vec3, and the vertex text does not write it");
-  expect(link(worldVertex(FLAT_MESH_VERTEX, false), LIT_FRAGMENT.replace("flat in vec3 vColor;", "in vec3 vColor;"))).toBe("ERROR: 'vColor' : the fragment reads it as vec3, and the vertex text writes it as flat vec3");
+  expect(link(worldVertex(FLAT_MESH_VERTEX), LIT_FRAGMENT.replace("flat in vec3 vColor;", "in vec3 vColor;"))).toBe("ERROR: 'vColor' : the fragment reads it as vec3, and the vertex text writes it as flat vec3");
 });
 
 test("every program of the game's table compiles and links on the fake context, on every tier and texture variant, compared lookups hard or not", () => {

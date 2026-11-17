@@ -152,20 +152,66 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
   orm[2] = f.metal;
 }
 
+/** Metres between the points of the noise by which an edge between two covers of the ground wanders, and the most it wanders, in metres. */
+export const GROUND_GRAIN = 1.5;
+export const GROUND_WANDER = 0.4;
+
+/** The twelve high bits of a hash, and the twelve low, each from 0 to 1. */
+const high = (h: number): number => Math.floor(h * 4096) / 4096;
+const low = (h: number): number => h * 4096 - Math.floor(h * 4096);
+
+/**
+ * How far along x and z, in metres, the ground's cover is looked up from ground point (x, z): a smooth noise of the high
+ * and the low bits of hashes GROUND_GRAIN apart, within GROUND_WANDER either way, which fades out as the pixel's
+ * `footprint` grows from a quarter of the grain to half of it, where it would only scatter the edge's pixels. Into `out`.
+ */
+export function groundWander(x: number, z: number, footprint: number, out: Float64Array): void {
+  const reach = clamp(2 - (4 * footprint) / GROUND_GRAIN) * 2 * GROUND_WANDER;
+  out[0] = out[1] = 0;
+  if (reach === 0) return;
+  const p = x / GROUND_GRAIN, q = z / GROUND_GRAIN;
+  const ix = Math.floor(p), iz = Math.floor(q);
+  const fx = (p - ix) * (p - ix) * (3 - 2 * (p - ix)), fz = (q - iz) * (q - iz) * (3 - 2 * (q - iz));
+  const a = surfaceHash(ix, iz), b = surfaceHash(ix + 1, iz), c = surfaceHash(ix, iz + 1), d = surfaceHash(ix + 1, iz + 1);
+  out[0] = (((high(a) * (1 - fx) + high(b) * fx) * (1 - fz) + (high(c) * (1 - fx) + high(d) * fx) * fz) - 0.5) * reach;
+  out[1] = (((low(a) * (1 - fx) + low(b) * fx) * (1 - fz) + (low(c) * (1 - fx) + low(d) * fx) * fz) - 0.5) * reach;
+}
+
+/**
+ * The tint a pixel of the ground takes from the four samples round it, a, b, c and d at the corners (0, 0), (1, 0),
+ * (0, 1) and (1, 1) of their cell, where it lies at (fx, fz) in the cell: the tint with most of the bilinear weight
+ * there, the first of them where two have as much. Where two covers meet, the edge runs where each has half the
+ * weight, a curve across the cell rather than its side.
+ */
+export function groundCover(a: number, b: number, c: number, d: number, fx: number, fz: number): number {
+  if (a === b && a === c && a === d) return a;
+  const wa = (1 - fx) * (1 - fz), wb = fx * (1 - fz), wc = (1 - fx) * fz, wd = fx * fz;
+  const sa = wa + (b === a ? wb : 0) + (c === a ? wc : 0) + (d === a ? wd : 0);
+  const sb = (a === b ? wa : 0) + wb + (c === b ? wc : 0) + (d === b ? wd : 0);
+  const sc = (a === c ? wa : 0) + (b === c ? wb : 0) + wc + (d === c ? wd : 0);
+  const sd = (a === d ? wa : 0) + (b === d ? wb : 0) + (c === d ? wc : 0) + wd;
+  let best = a, most = sa;
+  if (sb > most) [best, most] = [b, sb];
+  if (sc > most) [best, most] = [c, sc];
+  if (sd > most) best = d;
+  return best;
+}
+
 const fl = (n: number): string => Number.isInteger(n) ? n.toFixed(1) : String(n);
 const vectors = (name: string, rows: readonly (readonly number[])[]): string => {
   const t = `vec${rows[0]!.length}`;
   return `const ${t} ${name}[16] = ${t}[16](${rows.map((a) => `${t}(${a.map(fl).join(",")})`).join(",")});\n`;
 };
-/** Adds a material index to FLAT's vertex texts, and gives the colour as light, keeping the low-poly texts byte-for-byte. */
-export function worldVertex(vertex: string, ground: boolean): string {
-  const table = Array.from({ length: 256 }, (_, i) => surfaceIndex(i, ground));
-  const lookup = `flat out int vSurface;\n${ground ? "uniform vec4 uSurfaceCity[3];\n" : ""}const int SURFACE_IDS[256] = int[256](${table.join(",")});\n`;
-  const colour = ground ? "int(texelFetch(uTint, at, 0).r)" : "int(i)";
-  const desert = ground ? `  if (uSurfaceCity[1].w > 0.5 && (${[100, 101, 122, 123, 124, 158, 167].map((c) => `${colour} == ${c}`).join(" || ")})) vSurface = 5;\n` : "";
+/** Adds a material index to FLAT's mesh vertex texts, and gives the colour as light, keeping the low-poly texts byte-for-byte. */
+export function worldVertex(vertex: string): string {
+  const table = Array.from({ length: 256 }, (_, i) => surfaceIndex(i, false));
+  const lookup = `flat out int vSurface;\nconst int SURFACE_IDS[256] = int[256](${table.join(",")});\n`;
   const light = "  vColor = mix(vColor / 12.92, pow((vColor + 0.055) / 1.055, vec3(2.4)), step(0.04045, vColor));\n";
-  return vertex.replace("out vec3 vRel;", lookup + "out vec3 vRel;").replace("  vRel = p;", `  vSurface = SURFACE_IDS[${colour}];\n${desert}${light}  vRel = p;`);
+  return vertex.replace("out vec3 vRel;", lookup + "out vec3 vRel;").replace("  vRel = p;", `  vSurface = SURFACE_IDS[int(i)];\n${light}  vRel = p;`);
 }
+
+/** The tints whose finish differs on the desert's ground (content/surfaces.ts surfaceIndex): its open land, all of one finish. */
+const desert = Array.from({ length: 256 }, (_, i) => i).filter((i) => surfaceIndex(i, true, "las-vegas") !== surfaceIndex(i, true));
 
 /**
  * Same operations as worldSurface, on finish `id`: `face` is the face's normal and `n` the one the light falls on, the
@@ -270,5 +316,34 @@ void worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n, vec3 face, int 
   bump *= f.y*uSurfaceCity[2].x*relief;
   n = normalize(n + (axis==1 ? vec3(bump.x,0.0,bump.y) : axis==0 ? vec3(0.0,-bump.y,bump.x) : vec3(bump.x,-bump.y,0.0)));
   orm = vec3(finishMap.x,clamp(f.z*(0.8+0.2*finishMap.y)-wet*0.35,0.12,1.0),f.w);
+}
+`;
+
+/**
+ * The ground's cover, which follows WORLD_GLSL: its finish by tint, with the desert's (`surfaceIndex`), and the twins of
+ * `groundWander` and `groundCover`.
+ */
+export const GROUND_GLSL = `const int GROUND_IDS[256] = int[256](${Array.from({ length: 256 }, (_, i) => surfaceIndex(i, true)).join(",")});
+int groundSurface(int tint) {
+  return uSurfaceCity[1].w > 0.5 && (${desert.map((c) => `tint == ${c}`).join(" || ")}) ? ${surfaceIndex(desert[0]!, true, "las-vegas")} : GROUND_IDS[tint];
+}
+vec2 groundBits(float h) { return vec2(floor(h * 4096.0) / 4096.0, fract(h * 4096.0)); }
+vec2 groundWander(vec2 p, float footprint) {
+  float reach = clamp(2.0 - 4.0 * footprint / ${fl(GROUND_GRAIN)}, 0.0, 1.0) * 2.0 * ${fl(GROUND_WANDER)};
+  if (reach == 0.0) return vec2(0.0);
+  p /= ${fl(GROUND_GRAIN)};
+  ivec2 i = ivec2(floor(p)); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return (mix(mix(groundBits(surfaceHash(i)), groundBits(surfaceHash(i + ivec2(1, 0))), f.x), mix(groundBits(surfaceHash(i + ivec2(0, 1))), groundBits(surfaceHash(i + ivec2(1, 1))), f.x), f.y) - 0.5) * reach;
+}
+int groundCover(ivec4 t, vec2 f) {
+  if (all(equal(t, t.xxxx))) return t.x;
+  vec4 w = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
+  float a = dot(w, vec4(equal(t, t.xxxx))), b = dot(w, vec4(equal(t, t.yyyy))), c = dot(w, vec4(equal(t, t.zzzz))), d = dot(w, vec4(equal(t, t.wwww)));
+  int best = t.x;
+  float most = a;
+  if (b > most) { best = t.y; most = b; }
+  if (c > most) { best = t.z; most = c; }
+  if (d > most) best = t.w;
+  return best;
 }
 `;

@@ -10,7 +10,7 @@ import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE
 import { AIR } from "./atmosphere.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { LIGHT } from "./surface.ts";
-import { WORLD_GLSL } from "./world-surfaces.ts";
+import { GROUND_GLSL, WORLD_GLSL } from "./world-surfaces.ts";
 
 const f = (n: number): string => n.toFixed(4);
 
@@ -129,25 +129,69 @@ void main() {
 }`;
 
 /**
- * The lit tiers' terrain text: FLAT's, and the normal the light falls on, from the heights a stride of the tile either
- * side as far as the picture holds them, which the GPU blends across each triangle (terrain.ts `groundNormal`).
+ * The lit tiers' terrain text. Its place is FLAT's. The normal the light falls on is from the heights a stride of the tile
+ * either side, as far as the picture holds them, and the GPU blends it across each triangle (terrain.ts `groundNormal`).
+ * The cover is chosen a pixel, so the vertex gives no colour, only where it is in the picture's samples.
  */
-export const LIT_TERRAIN_VERTEX = FLAT_TERRAIN_VERTEX.replace("out vec3 vRel;\n", "out vec3 vRel;\nout vec3 vNormal;\n").replace(
-  "  vRel = p;\n",
-  `  ivec2 s = ivec2(int(iTile.w), 0), last = ivec2(uLast);
+export const LIT_TERRAIN_VERTEX = `#version 300 es
+layout(location=0) in uvec4 aGrid;
+layout(location=1) in vec4 iTile;
+layout(location=2) in vec2 iOrigin;
+uniform mat4 uViewProj;
+uniform highp usampler2D uHeight;
+uniform vec4 uField;
+uniform vec2 uLast;
+out vec3 vRel, vNormal;
+out vec2 vAt;
+void main() {
+  vec2 ij = min(iOrigin + vec2(aGrid.xy) * iTile.w, uLast);
+  ivec2 at = ivec2(ij);
+  float h = uField.x + float(texelFetch(uHeight, at, 0).r) * uField.y - uField.w;
+  vec2 d = (ij - iOrigin) * uField.z;
+  vec3 p = vec3(iTile.x + d.x, h - float(aGrid.z) * iTile.z * 2.0, iTile.y + d.y);
+  ivec2 s = ivec2(int(iTile.w), 0), last = ivec2(uLast);
   ivec2 l = max(at - s, 0), r = min(at + s, last), b = max(at - s.yx, 0), f = min(at + s.yx, last);
   vec2 rise = vec2(float(texelFetch(uHeight, r, 0).r) - float(texelFetch(uHeight, l, 0).r), float(texelFetch(uHeight, f, 0).r) - float(texelFetch(uHeight, b, 0).r));
   rise *= uField.y / (vec2(r.x - l.x, f.y - b.y) * uField.z);
   vNormal = normalize(vec3(-rise.x, 1.0, -rise.y));
+  vAt = ij;
   vRel = p;
-`,
-);
+  gl_Position = uViewProj * vec4(p, 1.0);
+}`;
 
 /**
- * The lit tiers' ground: LIT lit by the ground's own normal (LIT_TERRAIN_VERTEX). The face's still chooses the finish's
- * projection and where growth takes, and puts the sun's shadow off the surface.
+ * The lit tiers' ground: LIT lit by the ground's own normal, the face's still choosing the finish's projection and where
+ * growth takes, and putting the sun's shadow off the surface. Its cover is the tint of the four samples round the pixel
+ * with most of their weight at a place moved by a wander of a fraction of a metre (world-surfaces.ts `groundCover`), so
+ * an edge between two covers curves and wanders across a cell. It reads the picture its tile reads at that picture's
+ * own samples, however coarse the tile, so it does not change as a tile splits.
  */
-export const LIT_TERRAIN_FRAGMENT = LIT_FRAGMENT.replace("in vec3 vRel;\n", "in vec3 vRel, vNormal;\n").replace("  vec3 n = geometric;\n", "  vec3 n = normalize(vNormal);\n");
+export const LIT_TERRAIN_FRAGMENT = `#version 300 es
+precision highp float;
+precision highp int;
+in vec3 vRel, vNormal;
+in vec2 vAt;
+uniform highp usampler2D uTint;
+uniform sampler2D uPalette;
+uniform vec4 uField;
+uniform vec2 uLast;
+out vec4 o;
+${LIGHT}${SHADOW_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}void main() {
+  vec3 dx = dFdx(vRel), dy = dFdy(vRel);
+  vec3 geometric = normalize(cross(dx, dy));
+  vec2 s = clamp(vAt + groundWander(vRel.xz + uWorldEye.xz, max(length(dx.xz), length(dy.xz))) / uField.z, vec2(0.0), uLast);
+  ivec2 i = min(ivec2(s), ivec2(uLast) - 1);
+  int tint = groundCover(ivec4(texelFetch(uTint, i, 0).r, texelFetch(uTint, i + ivec2(1, 0), 0).r, texelFetch(uTint, i + ivec2(0, 1), 0).r, texelFetch(uTint, i + 1, 0).r), s - vec2(i));
+  vec3 c = texelFetch(uPalette, ivec2(tint, 0), 0).rgb;
+  vec3 albedo = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
+  vec3 n = normalize(vNormal);
+  vec3 orm = vec3(1.0, 1.0, 0.0);
+  if (uWorldReady > 0.5) worldSurface(albedo, orm, n, geometric, groundSurface(tint));
+  vec3 v = -normalize(vRel);
+  vec3 r = reflect(-v,n);
+  vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : worldSharp ? skyFrom(r) : skyLight(r);
+  o = vec4(shown(lit(albedo, orm, n, v, mirrored, sunShadow(vRel, geometric)), vRel), 1.0);
+}`;
 
 /**
  * Every see-through program of a lit tier includes this and calls dropNearer() first. A see-through draw across the
