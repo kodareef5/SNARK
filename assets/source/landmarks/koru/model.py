@@ -1,6 +1,8 @@
 """Koru from the layout author_layout.py writes: each 16 m cell of the ship one mesh in its anchor's frame, each door and
-each sail part one of its own. A cell's finest level is drawn with the atlas; its three far levels are flat and made
-here, since a cell is hundreds of separate solids the pipeline's simplifier cannot thin (asset.ts states their errors).
+each sail part one of its own. A cell has four levels, all made here, since a cell is hundreds of separate solids the
+pipeline's simplifier cannot thin (asset.ts states their errors): 0, everything, and 1, what is seen from outside, both
+drawn with the atlas; 2 and 3, what is seen from outside at its plainest, flat in each finish's far colour, which are
+the far mesh's two levels and so the yacht from the hand-over to the horizon.
 
 Nothing here is taken from the reference photographs but proportions and finishes."""
 import json,math
@@ -10,22 +12,34 @@ HERE=Path(__file__).resolve().parent
 D=json.loads((HERE.parents[3]/'content/landmarks/koru-layout.json').read_text())
 MODS=D['modules'];BYID={m['id']:m for m in MODS};WINDOWS={}
 for w in D['windows']:WINDOWS.setdefault(w['module'],[]).append(w)
-CLOTH={'sailcloth':(236,233,222)};SPAR={'spar':(239,238,226)}
+CLOTH={'sailcloth':(230,226,214)};SPAR={'spar':(245,245,245)}
+# The first level drawn flat. Sides round a mast, a boom or the bowsprit at each level.
+FLAT=2;SIDES=[24,12,8,6]
 
 def worldbox(b,o):return ([o[k]+b['at'][k]-b['half'][k] for k in range(3)],[o[k]+b['at'][k]+b['half'][k] for k in range(3)])
 def worldhull(h,o):return [[p[k]+o[k] for k in range(3)] for p in h['points']]
+ST=D['hullStations']
 def station(z):
- st=D['hullStations']
- for a,b in zip(st,st[1:]):
+ for a,b in zip(ST,ST[1:]):
   if a['z']-1e-7<=z<=b['z']+1e-7:
    t=(z-a['z'])/(b['z']-a['z']);return {k:a[k]+t*(b[k]-a[k]) for k in a}
- return st[0] if z<st[0]['z'] else st[-1]
+ return ST[0] if z<ST[0]['z'] else ST[-1]
 def hullwidth(z,y):
  a=station(z);return a['halfBeam']*(.9+.1*y/a['sheer'])
+# The hull's half beam is straight between stations; its slope is shaded as the mean of the two either side at each
+# station and eased between, so the glossy side shows no facets.
+_G=[(b['halfBeam']-a['halfBeam'])/(b['z']-a['z']) for a,b in zip(ST,ST[1:])]
+SLOPE=[_G[0]]+[(p+q)/2 for p,q in zip(_G,_G[1:])]+[_G[-1]]
+def slope(z):
+ for i,(a,b) in enumerate(zip(ST,ST[1:])):
+  if a['z']-1e-7<=z<=b['z']+1e-7:return SLOPE[i]+(z-a['z'])/(b['z']-a['z'])*(SLOPE[i+1]-SLOPE[i])
+ return SLOPE[0] if z<ST[0]['z'] else SLOPE[-1]
 
 # The hull: an underbody, and each side a shell 24 cm thick, its outer face smooth, with round glazed ports. Between two
-# stations a hull is straight fore and aft, so a far level loses no shape by dropping the columns between.
-PORT_R,PORT_Y,PORT_H=.3,2.28,.45
+# stations a hull is straight fore and aft, so a coarser level loses no shape by dropping the columns between. The red
+# boot stripe at the waterline is BOOT high, enough to show from 150 m.
+PORT_R,PORT_Y,PORT_H,BOOT=.3,2.28,.45,.25
+PORT_SIDES=[16,8,8,4]
 def zipper(m,o,i,tag,out):
  """Two columns of points, outer and inner, bottom to top, joined by triangles."""
  s=m.add(o+i);a=b=0;tris=[]
@@ -35,8 +49,10 @@ def zipper(m,o,i,tag,out):
  m.faces(0,tris,tag,out=out)
 def hull(m,mod):
  a,b=mod['art']['stations'];za,zb=a[0],b[0];L=m.level
- k=max(1,round((zb-za)/3.4));ports=[za+(i+.5)*(zb-za)/k for i in range(k)] if L<2 and za>=-49 and zb<=44 and (zb-za)/k>.9 else []
- sides=8
+ k=max(1,round((zb-za)/3.4));ports=[za+(i+.5)*(zb-za)/k for i in range(k)] if za>=-49 and zb<=44 and (zb-za)/k>.9 else []
+ sides=PORT_SIDES[L]
+ # A port of four sides is a square of the round one's area.
+ radius,turn=(PORT_R*math.sqrt(math.pi/2),math.pi/4) if sides==4 else (PORT_R,0)
  cols=sorted({round(c+d,6) for c in ports for d in(-PORT_H,PORT_H)}|{za,zb})
  # The stem rises to the sea at the bow; the underbody keeps a shallow V there.
  m.loft([[[-w*.9,0,z],[-w*.62,kk*.45,z],[0,kk,z],[w*.62,kk*.45,z],[w*.9,0,z]] for z in cols for w,kk in [(station(z)['halfBeam'],min(-.05,station(z)['keel']))]],'red')
@@ -45,11 +61,11 @@ def hull(m,mod):
   top=lambda z:min(station(z)['sheer'],3.75) if gate else station(z)['sheer']
   def x(z,y,inner):return sign*max(.01,hullwidth(z,y)-(.24 if inner else 0))
   def normal(z,y,inner):
-   s=station(z);dz=(hullwidth(z+.5,y)-hullwidth(z-.5,y));v=unit([sign,-.1*s['halfBeam']/s['sheer'],-dz])
+   s=station(z);v=unit([sign,-.1*s['halfBeam']/s['sheer'],-slope(z)*(.9+.1*y/s['sheer'])])
    return [-c for c in v] if inner else v
   def port(z):return next((c for c in ports if abs(z-c)<PORT_H-1e-6),None)
-  outer=[lambda z:[0,.12,PORT_Y-PORT_H,PORT_Y+PORT_H,top(z)-.09,top(z)-.055,top(z)],lambda z:[0,.12,top(z)-.06,top(z)],lambda z:[0,top(z)]][max(0,L-1)]
-  sheets=[(False,outer,[['red','navy','navy','navy','brass','teak'],['red','navy','teak'],['navy']][max(0,L-1)],2 if L<2 else -1)]
+  outer=[lambda z:[0,BOOT,PORT_Y-PORT_H,PORT_Y+PORT_H,top(z)-.09,top(z)-.055,top(z)],lambda z:[0,BOOT,PORT_Y-PORT_H,PORT_Y+PORT_H,top(z)-.06,top(z)],lambda z:[0,BOOT,PORT_Y-PORT_H,PORT_Y+PORT_H,top(z)]][max(0,L-1)]
+  sheets=[(False,outer,[['red','navy','navy','navy','brass','teak'],['red','navy','navy','navy','teak'],['red','navy','navy','navy']][max(0,L-1)],2)]
   sheets.append((True,(lambda z:[0,PORT_Y-PORT_H,PORT_Y+PORT_H,top(z)]) if L==0 else (lambda z:[0,top(z)]),['cream']*3,1 if L==0 else -1))
   for inner,rows,tags,band in sheets:
    out=(-sign if inner else sign,0,0)
@@ -66,7 +82,7 @@ def hull(m,mod):
    for c in range(len(cols)-1):
     centre=port((cols[c]+cols[c+1])/2)
     if centre is None or band<0:continue
-    ring=[[x(centre+PORT_R*math.cos(i*math.tau/sides),PORT_Y+PORT_R*math.sin(i*math.tau/sides),inner),PORT_Y+PORT_R*math.sin(i*math.tau/sides),centre+PORT_R*math.cos(i*math.tau/sides)] for i in range(sides)]
+    ring=[[x(centre+radius*math.cos(turn+i*math.tau/sides),PORT_Y+radius*math.sin(turn+i*math.tau/sides),inner),PORT_Y+radius*math.sin(turn+i*math.tau/sides),centre+radius*math.cos(turn+i*math.tau/sides)] for i in range(sides)]
     rs=m.add(ring,[normal(p[2],p[1],inner) for p in ring])
     corner={'ur':at(c+1,band+1),'ul':at(c,band+1),'ll':at(c,band),'lr':at(c+1,band)}
     q=sides//4;tris=[]
@@ -75,7 +91,7 @@ def hull(m,mod):
     m.faces(0,tris,tags[band],out=out)
     if inner:continue
     if L>0:
-     # Far off a port is its glass on the shell, in the shell's own points.
+     # Off the quay a port is its glass on the shell, in the shell's own points.
      m.faces(0,[tuple(rs+i for i in range(sides))],'port',out=out);continue
     m.poly(ring,'port',out=out)
     inside=[[x(p[2],p[1],True),p[1],p[2]] for p in ring];bore=m.add(ring+inside)
@@ -155,7 +171,8 @@ def rail_segment(m,a,b,bottomA,bottomB,r=.023,mid=True,spacing=2):
  for i in range(n+1):
   t=i/n;tube(m,[[bottomA[k]+(bottomB[k]-bottomA[k])*t for k in range(3)],[a[k]+(b[k]-a[k])*t-(.02 if k==1 else 0) for k in range(3)]],.02,'chrome',4)
 def rails(m,mod,mid=True):
- if m.level>1:return
+ # Rails are wires: drawn with the atlas, and none on a flat level.
+ if m.level>=FLAT:return
  o=mod['origin']
  for b in mod['boxes']:
   lo,hi=worldbox(b,o);axis=0 if hi[0]-lo[0]>hi[2]-lo[2] else 2;a=[(lo[k]+hi[k])/2 for k in range(3)];c=a[:];a[axis]=lo[axis]+.025;c[axis]=hi[axis]-.025;a[1]=c[1]=hi[1]-.025;qa=a[:];qc=c[:];qa[1]=qc[1]=lo[1];rail_segment(m,a,c,qa,qc,mid=mid,spacing=2.2 if mid else 3.5)
@@ -177,19 +194,26 @@ def flight(m,x0,x1,za,ya,zb,yb,n,thick=.3):
  for i in range(n):edges+=[(nose[i],up[i],'white',(0,0,-sgn)),(up[i],nose[i+1],'teak',(0,1,0))]
  edges+=[(nose[-1],soffit,'white',(0,0,sgn)),(soffit,foot,'ceiling',(0,-1,0))]
  for p,q,tag,out in edges:m.poly([(x0,p[1],p[0]),(x1,p[1],p[0]),(x1,q[1],q[0]),(x0,q[1],q[0])],tag,out=out)
+def ramp(m,x0,x1,za,ya,zb,yb,thick=.3):
+ """A flight far off: a sloped solid along its nosings."""
+ if ya>yb:za,ya,zb,yb=zb,yb,za,ya
+ m.convex([(x,y,z) for x in(x0,x1) for z,y in [(za,ya),(za,ya-.2),(zb,yb),(zb,yb-thick)]],'teak')
 def staircase(m,mod):
  art=mod['art'];o=mod['origin']
  if 'flight' not in art:
   if art.get('poolExit'):
    for b in mod['boxes']:m.box(*worldbox(b,o),'teak')
   else:
-   m.box(*worldbox(mod['boxes'][0],o),'white',top='teak');rails(m,{**mod,'boxes':mod['boxes'][1:],'hulls':[]},mid=False)
+   m.box(*worldbox(mod['boxes'][0],o),'white',top='teak')
+   if m.level==0:rails(m,{**mod,'boxes':mod['boxes'][1:],'hulls':[]},mid=False)
   return
- (x0,y0,z0),(x1,y1,z1)=art['flight'];flight(m,x0,x1,z0,y0,z1,y1,art['steps'])
+ (x0,y0,z0),(x1,y1,z1)=art['flight']
+ if m.level>=FLAT:ramp(m,x0,x1,z0,y0,z1,y1);return
+ flight(m,x0,x1,z0,y0,z1,y1,art['steps'])
  for x in(x0-.04,x1+.04):rail_segment(m,[x,y0+1.075,z0],[x,y1+1.075,z1],[x,y0,z0],[x,y1,z1],mid=False,spacing=3.5)
 def steps(m,mod):
  art=mod['art'];o=mod['origin'];(x0,y0,z0),(x1,y1,z1)=art['flight']
- if m.level>1:
+ if m.level>=FLAT:
   m.convex(worldhull(mod['hulls'][0],o),'teak');m.box(*worldbox(mod['boxes'][0],o),'white',top='teak');return
  flight(m,x0,x1,z0,y0,z1,y1,round((y1-y0)/art['riser']))
  m.box(*worldbox(mod['boxes'][0],o),'white',top='teak')
@@ -197,19 +221,38 @@ def steps(m,mod):
  for x in(x0-.04,x1+.04):
   rail_segment(m,[x,yg+1.075,zg],[x,y1+1.075,z1],[x,yg,zg],[x,y1,z1]);rail_segment(m,[x,y1+1.075,z1],[x,y1+1.075,-53.55],[x,y1,z1],[x,y1,-53.55])
   # A strut from the stern post carries the flight.
-  tube(m,[[x*.1,.3,-54.45],[x*.6,y0+(y1-y0)*(-58.6-z0)/(z1-z0)-.35,-58.6]],.06,'chrome',6)
+  tube(m,[[x*.1,.3,-54.45],[x*.6,y0+(y1-y0)*(-58.6-z0)/(z1-z0)-.35,-58.6]],.06,'chrome',6 if m.level==0 else 4)
 
 def facade(m,mod):
- """A deckhouse wall, one solid: white, its windows dark glass seen from outside only, clear from within. Far off the
- glass is a band of the wall's own face."""
- a=mod['art'];y=a['floorY'];lo,hi=a['range'];axis=a['axis'];fixed=a['fixed'];d=.09
+ """A deckhouse wall, one solid: white, its windows dark glass seen from outside only, clear from within. Off the quay
+ the glass is flush in the wall's outer face, the inner face is plain, and an open doorway is shut with glass, which is
+ how it looks from outside."""
+ a=mod['art'];y=a['floorY'];lo,hi=a['range'];axis=a['axis'];fixed=a['fixed'];d=.09;L=m.level
  o=(1 if fixed>0 else -1) if axis=='z' else (-1 if '_aft_' in mod['id'] else 1)
  def P(t,yy,side):return [fixed+side*d,yy,t] if axis=='z' else [t,yy,fixed+side*d]
  def along(v):return (0,0,v) if axis=='z' else (v,0,0)
  across=(o,0,0) if axis=='z' else (0,0,o)
+ wins=sorted(WINDOWS.get(mod['id'],[]),key=lambda w:w['range'][0])
+ if L>0:
+  rows=[y,y+2.6,y+2.8] if a['portal'] else [y,y+.75,y+2.35,y+2.8] if wins else [y,y+2.8]
+  cuts=[lo]+[v for w in wins for v in w['range']]+[hi]
+  grid=[[P(t,yy,o) for yy in rows] for t in cuts];R=len(rows);s=m.add([p for col in grid for p in col])
+  at=lambda c,r:s+c*R+r;quads=[];tags=[]
+  for c in range(len(cuts)-1):
+   for r in range(R-1):
+    quads.append((at(c,r),at(c+1,r),at(c+1,r+1),at(c,r+1)));tags.append('glass' if (a['portal'] and r==0) or (R==4 and r==1 and c%2==1) else 'white')
+  m.faces(0,quads,tags,out=across)
+  # The rest of the solid shares the outer face's edges: the top and bottom fanned from the inner corners, the ends
+  # likewise, and the inner face one quad.
+  inner=m.add([P(lo,y,-o),P(hi,y,-o),P(hi,y+2.8,-o),P(lo,y+2.8,-o)])
+  m.faces(inner,[(0,1,2,3)],'cream',out=[-v for v in across])
+  for r,k,up in [(0,0,-1),(R-1,3,1)]:
+   m.faces(0,[(inner+k,at(c,r),at(c+1,r)) for c in range(len(cuts)-1)]+[(inner+k,at(len(cuts)-1,r),inner+(1 if k==0 else 2))],'white',out=(0,up,0))
+  for c,(b,t),v in [(0,(0,3),-1),(len(cuts)-1,(1,2),1)]:
+   m.faces(0,[(inner+b,at(c,r),at(c,r+1)) for r in range(R-1)]+[(inner+b,at(c,R-1),inner+t)],'white',out=along(v))
+  return
  if a['portal']:rows=[y+2.6,y+2.8]
- else:rows=[y,y+.75,y+2.35,y+2.8] if WINDOWS.get(mod['id']) else [y,y+2.8]
- wins=sorted(WINDOWS.get(mod['id'],[]),key=lambda w:w['range'][0]) if m.level==0 else []
+ else:rows=[y,y+.75,y+2.35,y+2.8] if wins else [y,y+2.8]
  cuts=[lo]+[v for w in wins for v in w['range']]+[hi]
  band=len(rows)==4
  def glass(c):return band and c%2==1
@@ -219,7 +262,7 @@ def facade(m,mod):
   for c in range(len(cuts)-1):
    for r in range(R-1):
     if glass(c) and r==1:continue
-    quads.append((at(c,r),at(c+1,r),at(c+1,r+1),at(c,r+1)));tags.append('glass' if band and m.level>0 and r==1 and side==o else tag)
+    quads.append((at(c,r),at(c+1,r),at(c+1,r+1),at(c,r+1)));tags.append(tag)
   m.faces(0,quads,tags,out=[v*side*o for v in across])
   if side==o:
    for c in range(len(cuts)-1):
@@ -320,16 +363,26 @@ def furniture(m,mod):
     a,bx=(-.5,-.47) if x>0 else(.47,.5)
     for zz in(-.28,.28):b(a,.42,zz-.025,bx,.60,zz+.025,'brass')
 
-SIDES=[12,12,8,6]
 def mast(m,mod):
  a=mod['art'];aa,bb=a['ends'];r=a['radius'];m.tube([aa,bb],r,'white',SIDES[m.level])
  if m.level:return
  z=aa[2]
- for y in [aa[1]+.12,bb[1]-.12]:m.tube([[0,y-.02,z],[0,y+.02,z]],r+.02,'chrome',8)
+ for y in [aa[1]+.12,bb[1]-.12]:m.tube([[0,y-.02,z],[0,y+.02,z]],r+.02,'chrome',16)
  m.box([-.016,aa[1]+.03,z-r-.012],[.016,bb[1]-.03,z-r+.02],'chrome')
+# A boom and the cover its sail furls into, one smooth solid along it: round below as the boom, its sides rising to a
+# round top over the furled sail and its gaff. Metres from the boom's line: the boom's radius, how high the top's centre
+# stands, and the top's radius.
+BOOM_R,COVER_Y,COVER_R=.38,1.05,.32
 def boom(m,mod):
- lo,hi=worldbox(mod['boxes'][0],mod['origin']);y=(lo[1]+hi[1])/2
- m.tube([[0,y,lo[2]+.12],[0,y,hi[2]-.12]],.25,'white',SIDES[m.level])
+ lo,hi=worldbox(mod['boxes'][0],mod['origin']);y=(lo[1]+hi[1])/2;z0,z1=lo[2]+.12,hi[2]-.12;n=SIDES[m.level]
+ under=n//2;over=n-under-2
+ def ring(z,s):
+  pts=[(BOOM_R*math.cos(-math.pi*k/under),BOOM_R*math.sin(-math.pi*k/under)) for k in range(under+1)]
+  pts+=[(COVER_R*math.cos(math.pi-math.pi*k/over),COVER_Y+COVER_R*math.sin(math.pi-math.pi*k/over)) for k in range(over+1)]
+  return [[s*px,y+s*py,z] for px,py in pts]
+ # Its after end rounds off; its forward end meets the mast.
+ ends=[(z0,.45),(z0+.15,.8),(z0+.45,.96),(z0+1,1),(z1,1)] if m.level==0 else [(z0,.6),(z0+.4,1),(z1,1)] if m.level==1 else [(z0,1),(z1,1)]
+ m.loft([ring(z,s) for z,s in ends],'white',smooth=m.level<FLAT)
 def door(m,mod):
  lo,hi=worldbox(mod['boxes'][0],mod['origin']);axis=0 if hi[0]-lo[0]<hi[2]-lo[2] else 2;along=2 if axis==0 else 0
  a=lo[:];b=hi[:];a[axis]+=.006;b[axis]-=.006;m.box(a,b,'mahogany')
@@ -349,33 +402,32 @@ def smallparts(m,mod):
   for xx,tag in [(-.12,'green'),(.12,'red')]:m.tube([[x+xx,y+.90,z-.10],[x+xx,y+.92,z-.10]],.055,tag,8)
   plaque(m,[x-.2,y+.68,z-.262],[x+.2,y+.84,z-.25],'SAILS');return
  if cat=='rigging':
-  if L<2:m.tube(a['ends'],a['radius'],'chrome',6 if L==0 else 4)
+  # Every stay and shroud is drawn on the levels with the atlas and none on the flat ones.
+  if L<FLAT:m.tube(a['ends'],a['radius'],'chrome',6 if L==0 else 4)
   return
- if cat=='spreader':m.tube(a['ends'],a['radius'],'white',6 if L<2 else 4);return
+ if cat=='spreader':m.tube(a['ends'],a['radius'],'white',[8,4,4,3][L]);return
  if cat=='bowsprit':
-  n=SIDES[L];m.loft([[[.245*math.cos(k*math.tau/n),p[1]+.245*math.sin(k*math.tau/n),p[2]] for k in range(n)] for p in(a['heel'],a['tip'])],'white',smooth=True);return
+  n=SIDES[L];m.loft([[[.245*math.cos(k*math.tau/n),p[1]+.245*math.sin(k*math.tau/n),p[2]] for k in range(n)] for p in(a['heel'],a['tip'])],'white',smooth=L<FLAT);return
  if cat=='ornament':
   # Gilded fern scrolls at the bow, an original reading of the photographed carving.
-  if L<2:
+  if L<FLAT:
    for sign in(-1,1):m.tube([[sign*(1.65*(1-t)+.1),7.0+.26*math.sin(t*math.tau*1.5),49.6+4*t] for t in [i/15 for i in range(16)]],.03,'brass',6 if L==0 else 4)
   if L<3:m.box([-.1,6.72,52.85],[.1,7.18,53.35],'brass')
   return
  if cat=='flag':
-  if L>2:return
-  sx,sy,sz=a['staff'];m.tube([[sx,sy,sz],[sx,5.975,sz]],.024,'mahogany',6 if L<2 else 4)
+  sx,sy,sz=a['staff'];m.tube([[sx,sy,sz],[sx,5.975,sz]],.024,'mahogany',[6,4,3,3][L])
   rings=[]
-  for i in range(9 if L<2 else 2):
-   t=i/(8 if L<2 else 1);x=sx-.7*t;z=sz-1.5*t+.06*math.sin(t*math.tau*2);ya=5.82-.22*t;yb=4.9-.1*t
+  for i in range(9 if L<FLAT else 2):
+   t=i/(8 if L<FLAT else 1);x=sx-.7*t;z=sz-1.5*t+.06*math.sin(t*math.tau*2);ya=5.82-.22*t;yb=4.9-.1*t
    rings.append([[x-.008,ya,z],[x+.008,ya,z],[x+.008,yb,z],[x-.008,yb,z]])
   m.loft(rings,'red');return
  if cat=='pool':
-  if L>2:return
   for b in mod['boxes']:m.box(*worldbox(b,o),'cream',top='teak')
   m.box([-1.98,a['waterY']-.025,-49.98],[1.98,a['waterY'],-43.02],'pool');return
  if cat=='canopy':
   for i,b in enumerate(mod['boxes']):
    if i==len(mod['boxes'])-1:m.box(*worldbox(b,o),'canvas')
-   elif L<3:lo,hi=worldbox(b,o);m.tube([[(lo[0]+hi[0])/2,lo[1],(lo[2]+hi[2])/2],[(lo[0]+hi[0])/2,hi[1],(lo[2]+hi[2])/2]],.05,'white',8 if L<2 else 4)
+   elif L<3:lo,hi=worldbox(b,o);m.tube([[(lo[0]+hi[0])/2,lo[1],(lo[2]+hi[2])/2],[(lo[0]+hi[0])/2,hi[1],(lo[2]+hi[2])/2]],.05,'white',8 if L<FLAT else 4)
   return
  if cat=='gangway':
   if L>2:return
@@ -408,44 +460,30 @@ def plaques(m,mod):
    y=deck['floorY']+1.65;z=mod['art']['ends'][0][2]-mod['art']['radius']
    plaque(m,[-.3,y-.12,z-.012],[.3,y+.12,z+.03],['LOWER DECK','MAIN DECK','UPPER DECK','SUN DECK'][deck['index']])
 
-# The far levels draw what is seen from outside: behind the white walls and the dark glass the rooms are not.
+# The coarser levels draw what is seen from outside: behind the white walls and the dark glass the rooms are not. A
+# stair is drawn where its well opens on an open deck, so the well is not a hole.
 OPEN={r['id'] for r in D['rooms'] if r['deck']==3 or r['id'] in('aft_pool_deck','aft_terrace','foredeck')}
+def open_well(mod):
+ a=mod['art'];o=mod['origin']
+ top=max(a['flight'][0][1],a['flight'][1][1]) if 'flight' in a else o[1]+1.05
+ return top>9.7 or (top>6.7 and o[2]>19)
 def outside(mod):
  cat,a=mod['category'],mod['art']
  if cat in('wall','bulkhead'):return False
- if cat=='stairs':return a.get('poolExit',False)
+ if cat=='stairs':return a.get('poolExit',False) or open_well(mod)
  if cat=='furniture':return a['room'] in OPEN
- if cat=='rail':return 'stairOpening' not in a
+ if cat=='rail':return 'stairOpening' not in a or a['deck']==3 or a['stairOpening']=='forward_2'
  if cat=='floor':return a['deck']>0
  return True
-def far(m,members):
- """The farthest level: per deck a deckhouse block, a deck slab, and the hull, rig and canopy at their plainest."""
- for d in(1,2):
-  fs=[x for x in members if x['category']=='facade' and x['art']['deck']==d]
-  if not fs:continue
-  xs=[abs(x['art']['fixed']) for x in fs if x['art']['axis']=='z'];zs=[v for x in fs for v in (x['art']['range'] if x['art']['axis']=='z' else [x['art']['fixed']])]
-  w=max(xs) if xs else max(abs(v) for x in fs for v in x['art']['range']);y=fs[0]['art']['floorY']
-  m.box([-w-.09,y,min(zs)-.09],[w+.09,y+2.8,max(zs)+.09],'white')
- for d in(1,2,3):
-  ps=[p for x in members if x['category']=='floor' and x['art']['deck']==d for h in x['hulls'] for p in worldhull(h,x['origin'])]
-  if not ps:continue
-  ends=[]
-  for z in(min(p[2] for p in ps),max(p[2] for p in ps)):
-   e=[p for p in ps if abs(p[2]-z)<1e-5];w=max(abs(p[0]) for p in e);y=max(p[1] for p in e);ends+=[[x,yy,z] for x in(-w,w) for yy in(y-.2,y)]
-  prism(m,ends)
- for x in members:
-  if x['category'] in('hull','mast','boom','spreader','bowsprit','roof','canopy','steps'):DRAW.get(x['category'],smallparts)(m,x)
 
 DRAW={'hull':hull,'facade':facade,'wall':wall,'stairs':staircase,'steps':steps,'rail':lambda m,x:rails(m,x,'stairOpening' not in x['art']),'furniture':furniture,'mast':mast,'boom':boom,'bulkhead':bulkhead}
-PALETTE={k:v['rgb'] for k,v in FINISH.items()}
+PALETTE={k:v['far'] for k,v in FINISH.items()}
 for cell in D['cells']:
  members=[x for x in MODS if x.get('cell')==cell['id']];name=cell['id'][5:];origin=BYID[cell['anchor']]['origin']
  for level in range(4):
-  m=Mesh(flat=PALETTE if level else None);m.level=level
-  if level==3:far(m,members)
-  else:
-   for x in members:
-    if level==0 or outside(x):DRAW.get(x['category'],smallparts)(m,x);plaques(m,x)
+  m=Mesh(flat=PALETTE if level>=FLAT else None);m.level=level
+  for x in members:
+   if level==0 or outside(x):DRAW.get(x['category'],smallparts)(m,x);plaques(m,x)
   obj=m.object(name+(f'_LOD{level}' if level else ''),origin)
   print('koru',cell['id'],'level',level,len(obj.data.polygons),'triangles',flush=True)
 for x in MODS:

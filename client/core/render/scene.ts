@@ -1539,7 +1539,10 @@ export class Scene {
     }
   }
 
-  /** The map's moving statics' parts, to their own reach: posed while they move, and as they were while they rest. */
+  /**
+   * The map's moving statics' parts, to their own reach: posed while they move, and as they were while they rest. A
+   * landmark's are drawn as far as its far mesh, the far city's reach, so its sails do not end before its hull.
+   */
   private showMotion(cam: Camera, source: MotionSource): void {
     const p = this.packet, tier = this.assets.tier, table = this.assets.table;
     const statics = source.statics();
@@ -1547,9 +1550,11 @@ export class Scene {
       this.movingFrom = statics;
       this.moving = statics ? movingOf(this.motionReg!, statics) : [];
     }
-    const reach = Math.min(this.viewDistance, tier.reach.parts), states = source.states(), tick = source.tick();
+    const own = Math.min(this.viewDistance, tier.reach.parts), landmark = Math.min(this.viewDistance, Math.max(tier.reach.parts, tier.reach.city));
+    const states = source.states(), tick = source.tick();
     const bones = Math.min(tier.bones, MAX_BONES), draws = Math.min(MAX_DRAWS, tier.budget.draws);
     for (const t of this.moving) {
+      const reach = this.landmarkKinds[t.kind] === 1 ? landmark : own;
       const x = t.x - cam.x, y = t.y - cam.y, z = t.z - cam.z;
       if (Math.sqrt(x * x + y * y + z * z) > reach + MAX_MOVING_REACH) continue;
       poseMoving(t, states.get(t.ref), tick);

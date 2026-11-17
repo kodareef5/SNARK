@@ -133,6 +133,29 @@ artTest("Koru moored in its bay on medium at the iPhone's view: its eight cells,
   expect(KORU_LAYOUT.cells.length).toBe(8);
 });
 
+artTest("Koru's sails and gaffs are drawn as far as its far mesh, past medium's reach for moving parts and short of the far city's", () => {
+  const map = parseMap(koruMapFile());
+  const reg = withContent(coreRegistry(), map.content!.defs);
+  const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  placeStatics(map, structs, reg);
+  const scene = new Scene({ dims: map.dims, hf: mapHeightfield(map), structs, motion: { states: () => new Map(), tick: () => 0, statics: () => map.statics } }, reg, koruPack());
+  [scene.assets.tier, scene.viewHeight] = [tierOf("medium"), VIEW[1]];
+  const cam = new Camera();
+  [cam.aspect, cam.fovY] = [VIEW[0] / VIEW[1], (VIEW[2] * Math.PI) / 180];
+  const parts = new Set(KORU_LAYOUT.motion.parts.map((p) => scene.assets.table.find(p.mesh)));
+  const drawn = Object.fromEntries([1100, 1500, 1900, 2300].map((metres) => {
+    const at = koruPoint([-metres, 20, 0]), to = koruPoint([0, 20, 0]);
+    [cam.x, cam.y, cam.z] = at;
+    headings(scene, cam, [Math.atan2(to[0] - at[0], to[2] - at[2])]);
+    let n = 0;
+    for (let d = 0; d < scene.packet.drawCount; d++) if (parts.has(scene.packet.drawMesh[d]!)) n++;
+    return [metres, [n, scene.packet.dropped]];
+  }));
+  // Medium draws moving parts to 1,200 m and the far city and the landmarks' far meshes to 2,048 m.
+  expect([tierOf("medium").reach.parts, tierOf("medium").reach.city]).toEqual([1200, 2048]);
+  expect(drawn).toEqual({ 1100: [8, 0], 1500: [8, 0], 1900: [8, 0], 2300: [0, 0] });
+});
+
 test("a real city's downtown at its three views on each tier: the near city's draws, casts and triangles, and the far city's draws and triangles", () => {
   const slice = miamiSlice();
   const w = censusWorld(slice.map, slice.centre, coreRegistry(), farPack());

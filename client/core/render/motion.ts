@@ -19,6 +19,7 @@ export const PART_FLOATS = 13;
 /** A static of the map that moves when used. `pose` holds each part's at `posed`, the progress it was last given, -1 for none. */
 export interface Moving {
   readonly ref: number;
+  readonly kind: number;
   readonly facet: MotionFacet;
   readonly ticks: number;
   readonly x: number;
@@ -45,7 +46,7 @@ export function movingOf(reg: Registry, statics: MapStatics): Moving[] {
       const kind = kinds[statics.kind[row]!]!, facet = reg.motion[kind];
       if (!facet) continue;
       const d = reg.defs[kind]!;
-      out.push({ ref: c * 65536 + row - statics.first[c]!, facet, ticks: motionTicks(facet), x: statics.x[row]!, y: statics.y[row]!, z: statics.z[row]!, yaw: statics.yaw[row]!, color: d.type === "structure" ? d.color : 0, pose: new Float32Array(facet.parts.length * PART_FLOATS), level: new Int8Array(facet.parts.length).fill(-1), posed: -1, progress: 0 });
+      out.push({ ref: c * 65536 + row - statics.first[c]!, kind, facet, ticks: motionTicks(facet), x: statics.x[row]!, y: statics.y[row]!, z: statics.z[row]!, yaw: statics.yaw[row]!, color: d.type === "structure" ? d.color : 0, pose: new Float32Array(facet.parts.length * PART_FLOATS), level: new Int8Array(facet.parts.length).fill(-1), posed: -1, progress: 0 });
     }
   }
   return out;
