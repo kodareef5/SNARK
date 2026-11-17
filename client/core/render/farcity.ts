@@ -41,7 +41,7 @@ const LOCAL = 32;
 /**
  * How far past its pieces a tile's box reaches, by which its levels are chosen, and its stored heights begin below them;
  * and how much farther across a face of its may lie, for what is in view: a cell's face may lie a cell past a box along
- * the axes of the box's own turned frame, so across by a cell's diagonal.
+ * the axes of the box's own turned frame, so across by a cell's diagonal, 11.3 m for the widest cells, 8 m.
  */
 const BELOW = 8;
 const ACROSS = 4;
