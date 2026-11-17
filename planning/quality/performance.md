@@ -45,7 +45,7 @@ high and marked "busy".
 - **This Mac's GPU** spends 0.13 ms a megapixel on LIT and 0.38 with the world
   finish; the iPhone 3.5 and 4.5 times as much.
 - **A map as it comes** (the map trip, Miami): the first frame at 8.4 s over 5 Mbit/s
-  and 3.1 over 20; the far city only once every part has come, at 29.4 and 9.0 s.
+  and 3.0 over 20; the far city only once every part has come, at 28.5 and 8.8 s.
 
 ## The cleanup round in the bench
 
@@ -604,15 +604,15 @@ probe; "now" is the loader that asks again, of the maps round's step 3G. Picture
 
 | Moment | 5 Mbit/s: main | 5 Mbit/s: now | 20 Mbit/s: main | 20 Mbit/s: now |
 | --- | --- | --- | --- | --- |
-| First frame | 8.60 | 8.36 | 3.15 | 3.13 |
+| First frame | 8.60 | 8.32 | 3.15 | 3.04 |
 | Before it: the map's files, as the build's rule names them there | 8, 3.37 MB | 8, 3.37 MB | 8, 3.37 MB | 8, 3.37 MB |
-| Up 300 m (share of the map come) | 11.77 (35%) | 10.97 (34%) | 3.98 (36%) | 3.93 (35%) |
-| The jump: made by the server (share come); drawn by the page | 19.57 (67%); 25.66 | 18.83 (67%); 25.48 | 6.13 (68%); 6.19 | 6.13 (67%); 6.21 |
-| Last part | never | 28.85 | never | 8.59 |
-| Statics handed over | never | 28.94 | never | 8.65 |
-| Far city drawn | never | 29.41 | never | 9.00 |
+| Up 300 m (share of the map come) | 11.77 (35%) | 11.21 (34%) | 3.98 (36%) | 3.86 (34%) |
+| The jump: made by the server (share come); drawn by the page | 19.57 (67%); 25.66 | 18.93 (67%); 21.35 | 6.13 (68%); 6.19 | 6.00 (67%); 6.13 |
+| Last part | never | 28.03 | never | 8.39 |
+| Statics handed over | never | 28.09 | never | 8.46 |
+| Far city drawn | never | 28.47 | never | 8.76 |
 | After the jump: predicted again; ground exact | never; never | at once; at once | never; never | at once; at once |
-| After the jump: the street there drawn with its materials | 12.03 | 29.77 | 8.72 | 17.17 |
+| After the jump: the street there drawn with its materials | 12.03 | 30.83 | 8.72 | 17.67 |
 | The failed part | asked once, never came | came at its second ask | asked once, never came | came at its second ask |
 | At the end | 126 of 127 parts; no far city | whole; far city of 1,246,991 pieces | 126 of 127; no far city | whole |
 
@@ -620,9 +620,9 @@ The street the body joined on is drawn with its pieces and materials only after 
 there (an earlier run of the trip that went up only then), at 50.6 s on main and 49.9 now at 5 Mbit/s, 25.4 and 22.9 at
 20. Without the failure at 20 Mbit/s main hands the statics over at 8.52 s and draws the far city at 8.87.
 
-At 5 Mbit/s the page draws the jump about 6.5 s after the server makes it: the game's socket has a thirteenth of a line
-that twelve requests of the map and the assets share, so its rows and snapshots wait. By then the ground there has come,
-so prediction does not stop. On main the sector whose ground failed stays the overview's for good: prediction never
+At 5 Mbit/s the page draws the jump 2.4 to 6.7 s after the server makes it (three runs of this loader, one of main's):
+the game's socket has a thirteenth of a line that twelve requests of the map and the assets share, so its rows and
+snapshots wait. By then the ground there has come, so prediction does not stop. On main the sector whose ground failed stays the overview's for good: prediction never
 runs there, and the statics are never handed over, so the far city never comes. Now the failed part is asked for
 again 0.5 s later and comes. The street there is drawn later now than on main, where no far city was made to compete
 with its assets.
