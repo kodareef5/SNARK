@@ -1,5 +1,5 @@
 // Builds the small UI sheet independently of world materials. Source art and fonts never ship at their source size.
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { brotliCompressSync } from "node:zlib";
 import { GLASS_SIZE, GLASS_X, GLASS_Y, SKIN_WIDTH, skinPixels } from "../../client/core/ui/skin.ts";
@@ -9,8 +9,10 @@ import { encodePng } from "../snap/png.ts";
 
 export function uiSheet(): ReturnType<typeof skinPixels> {
   const base = skinPixels();
+  const glass = resolve(import.meta.dir, "../../assets/source/ui/glass-source.png");
+  if (!existsSync(glass)) return base;
   const image = { ...base, data: base.data.slice() };
-  const source = readPng(resolve(import.meta.dir, "../../assets/source/ui/glass-source.png"));
+  const source = readPng(glass);
   // Sample only the clean central surface. Average in premultiplied alpha to keep its transparent edge colours out.
   for (let y = 1; y < GLASS_SIZE - 1; y++) for (let x = 1; x < GLASS_SIZE - 1; x++) {
     if (x + y <= 5 || (63-x)+(63-y) <= 5) continue;
@@ -33,9 +35,12 @@ export function uiSheet(): ReturnType<typeof skinPixels> {
 export function buildUiAssets(dist: string): { atlas: string; font: string; bytes: number; decodedBytes: number } {
   mkdirSync(join(dist, "assets"), { recursive: true });
   const sheet = uiSheet(), png = encodePng(sheet.width, sheet.height, sheet.data);
-  const fontSource = resolve(import.meta.dir, "../../assets/raw/fonts/barlow"), font = readFileSync(join(fontSource, "BarlowSemiCondensed-Medium.ttf"));
-  const atlasName = `assets/hud.${partHash(png)}.png`, fontName = `assets/hud-font.${partHash(font)}.ttf`;
+  const atlasName = `assets/hud.${partHash(png)}.png`;
   writeFileSync(join(dist, atlasName), png);
+  const fontSource = resolve(import.meta.dir, "../../assets/raw/fonts/barlow");
+  const fontFile = join(fontSource, "BarlowSemiCondensed-Medium.ttf");
+  if (!existsSync(fontFile)) return { atlas: atlasName, font: "", bytes: png.length, decodedBytes: sheet.data.byteLength };
+  const font = readFileSync(fontFile), fontName = `assets/hud-font.${partHash(font)}.ttf`;
   writeFileSync(join(dist, fontName), font);
   const compressed = brotliCompressSync(font);
   writeFileSync(join(dist, `${fontName}.br`), compressed);

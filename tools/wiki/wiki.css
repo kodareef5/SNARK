@@ -1,7 +1,7 @@
 /* The wiki. The build fills in the game's font, its interface sheet, and where the glass lies in that sheet. */
 @font-face {
   font-family: Barlow;
-  src: url("HUD_FONT") format("truetype");
+  src: HUD_FONT_SOURCE;
   font-display: swap;
 }
 

@@ -11,6 +11,8 @@ import type { SourceMesh } from "../pack/write.ts";
 const ROOT = resolve(import.meta.dir, "../..");
 export const SURFACE_ART = resolve(ROOT, "var/surfaces/art");
 export const SURFACE_TOP = 2048;
+const STUDIES = ["ground-organic", "ground-mineral", "ruins-masonry", "ruins-finishes"].map((name) => resolve(ROOT, `assets/source/surfaces/source/${name}.png`));
+export const HAS_SURFACES = STUDIES.every((file) => existsSync(file));
 export function worldMaterial(): Material {
   buildSurfaceArt();
   return { name: "atlas", id: SURFACE_MATERIAL, dir: SURFACE_ART, spec: { base: "base.png", normal: "normal.png", packed: "orm.png", tiles: 3 } };
@@ -18,14 +20,13 @@ export function worldMaterial(): Material {
 
 /** Crops away neighbouring cells, makes each scan periodic, derives conservative relief, and adds wrap gutters. */
 export function buildSurfaceArt(): void {
-  const sources = ["ground-organic", "ground-mineral", "ruins-masonry", "ruins-finishes"].map((name) => resolve(ROOT, `assets/source/surfaces/source/${name}.png`));
   const hash = createHash("sha256").update(readFileSync(import.meta.filename));
-  for (const source of sources) hash.update(readFileSync(source));
+  for (const source of STUDIES) hash.update(readFileSync(source));
   const key = hash.digest("hex");
   const stamp = resolve(SURFACE_ART, "key");
   if (existsSync(stamp) && readFileSync(stamp, "utf8") === key) return;
   mkdirSync(SURFACE_ART, { recursive: true });
-  const pictures = sources.map(readPicture);
+  const pictures = STUDIES.map(readPicture);
   const side = SURFACE_TOP, cell = side / 4, pad = 16, core = cell - pad * 2;
   const base = new Uint8Array(side * side * 4), normal = new Uint8Array(base.length), orm = new Uint8Array(base.length);
   const byte = (x: number): number => Math.max(0, Math.min(255, Math.round(x)));

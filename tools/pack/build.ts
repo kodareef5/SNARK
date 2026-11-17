@@ -1,7 +1,7 @@
 // Builds the core asset pack: grayboxes made from the content, every pack found under assets/source, and every .glb
 // under assets/source as "<folder>:<file name>". `bun run build` splits it into the files a client fetches.
 
-import { worldSurfaceMesh } from "../surfaces/build.ts";
+import { HAS_SURFACES, worldSurfaceMesh } from "../surfaces/build.ts";
 import { readFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -115,6 +115,13 @@ function partsMesh(boxes: readonly ShapeBox[], hulls: readonly HullDef[], cull =
   return { positions: Float32Array.from(positions), colors: new Uint8Array(positions.length / 3).fill(REGION_BASE), indices: Uint32Array.from(indices) };
 }
 
+/** A palette box standing on the entity's origin. */
+function standingBox(id: string, half: readonly [number, number, number]): SourceMesh {
+  const lod = boxMesh(half, REGION_BASE);
+  for (let i = 1; i < lod.positions.length; i += 3) lod.positions[i]! += half[1];
+  return { id, lods: [lod] };
+}
+
 /** Their single colour is region 0, so the definition's colour applies per instance. */
 export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
   // The beam marks where a survivor died, visible from far off.
@@ -150,9 +157,7 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
       meshes.push({ id: d.id, lods: [lod] });
     } else {
       // A species or prop stands on its origin, so the box is lifted to put its base at y = 0.
-      const lod = boxMesh([d.radius, d.height / 2, d.radius], REGION_BASE);
-      for (let i = 1; i < lod.positions.length; i += 3) lod.positions[i]! += d.height / 2;
-      meshes.push({ id: d.id, lods: [lod] });
+      meshes.push(standingBox(d.id, [d.radius, d.height / 2, d.radius]));
     }
   }
   return meshes;
@@ -180,7 +185,14 @@ export function withArt(made: readonly SourceMesh[], art: readonly SourceMesh[])
 /** `landmarks` are the rows of landmark far meshes among `extra` (tools/pack/far.ts). */
 export function buildCorePack(extra: SourceMesh[] = [], landmarks: readonly LandmarkFarRow[] = []): Uint8Array {
   const made = [...grayboxMeshes(CORE_CONTENT), farMesh(), ...mannequinMeshes(), ...weaponMeshes()];
-  return buildPack([...withArt(made, coreArt().meshes), worldSurfaceMesh(), ...extra], defaultPalette(), coreClips(), coreArt().rigs, coreArt().details, landmarks);
+  const available = new Set([...made, ...coreArt().meshes, ...extra].map((m) => m.id));
+  for (const d of CORE_CONTENT) {
+    if (d.type !== "species" || d.skeleton === "human" || d.mesh === "box" || available.has(d.mesh)) continue;
+    const spec = d.vehicle?.spec;
+    made.push(standingBox(d.mesh, [spec?.halfWidth ?? d.radius, d.height / 2, spec?.halfLength ?? d.radius]));
+    available.add(d.mesh);
+  }
+  return buildPack([...withArt(made, coreArt().meshes), ...(HAS_SURFACES ? [worldSurfaceMesh()] : []), ...extra], defaultPalette(), coreClips(), coreArt().rigs, coreArt().details, landmarks);
 }
 
 /** Every .glb under assets/source, imported. What the import had to say of each is printed. */

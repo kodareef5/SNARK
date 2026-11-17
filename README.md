@@ -17,7 +17,11 @@ bun install
 bun run dev        # http://localhost:8787
 ```
 
-The game needs its art to build, and the art is not in this repository.
+A source checkout starts on the generated proving ground. The build makes a survivor mannequin,
+trees, building pieces and block creatures and vehicles from the game definitions. Installed art
+packs supply their own models. City maps need their separate map data.
+
+To build the game and its wiki as static files, run `bun run build` and then `bun run wiki`.
 
 ## Art, patches, collaboration
 
