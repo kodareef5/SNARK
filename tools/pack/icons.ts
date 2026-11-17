@@ -456,13 +456,13 @@ export function iconSheets(drawn: DrawnIcons, firstFile: number): { sheets: { wi
 
 /**
  * The sheets of a build's pictures as files to serve, and the manifest told of them: each sheet a file of role "icon",
- * after the files it lists already. `files` are the manifest's files' bytes by index, which the textures are read from.
+ * after the files it lists already. The textures are read from the manifest's files as stored, by `read` (rgbaTextures).
  */
-export function buildIcons(pack: Pack, defs: readonly (Def | null)[], manifest: Manifest, files: readonly Uint8Array[], opts: IconOptions = {}): { files: SplitFile[]; report: IconReport } {
+export function buildIcons(pack: Pack, defs: readonly (Def | null)[], manifest: Manifest, read: (file: number, at: number, bytes: number) => Uint8Array, opts: IconOptions = {}): { files: SplitFile[]; report: IconReport } {
   const subjects = iconSubjects(defs, (id) => pack.meshIndex.has(id));
   const textureKey = (slot: number): string => (manifest.textures?.[slot]?.in.rgba?.hash ?? []).join(",");
   // The manifest's materials name its textures, which a build may have shared out or left out.
-  const drawn = drawIcons({ ...pack, header: { ...pack.header, materials: manifest.materials } }, subjects, rgbaTextures(manifest, (f, at, n) => files[f]!.subarray(at, at + n)), { textureKey, ...opts });
+  const drawn = drawIcons({ ...pack, header: { ...pack.header, materials: manifest.materials } }, subjects, rgbaTextures(manifest, read), { textureKey, ...opts });
   const { sheets, icons } = iconSheets(drawn, manifest.files.length);
   const out = sheets.map((s, k): SplitFile => ({ name: `core.icons.${k}.png`, role: "icon", bytes: iconPng(s.width, s.height, s.rgba) }));
   for (const f of out) manifest.files.push({ name: f.name, bytes: f.bytes.length, role: "icon" });
@@ -483,11 +483,11 @@ export async function assetFraming(): Promise<Map<string, IconFraming>> {
 
 /**
  * What `bun run build` adds: the pictures of the core content's items, drawn from `core`, the whole core pack, with the
- * textures of `files`, the build's files as stored, by the manifest's index. The manifest is told of the sheets.
+ * textures of the build's files as stored, which `read` reads by the manifest's index. The manifest is told of the sheets.
  */
-export async function gameIcons(core: Uint8Array, manifest: Manifest, files: readonly SplitFile[]): Promise<SplitFile[]> {
+export async function gameIcons(core: Uint8Array, manifest: Manifest, read: (file: number, at: number, bytes: number) => Uint8Array): Promise<SplitFile[]> {
   const defs = compileContent(CORE_CONTENT).registry!.defs;
-  const built = buildIcons(parsePack(core), defs, manifest, files.map((f) => f.bytes), { framing: await assetFraming() });
+  const built = buildIcons(parsePack(core), defs, manifest, read, { framing: await assetFraming() });
   console.log(iconLine(built.report));
   return built.files;
 }
