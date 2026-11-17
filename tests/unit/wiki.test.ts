@@ -9,7 +9,7 @@ import { CONTROL_GROUPS } from "../../client/core/ui/controls-guide.ts";
 import { findRows, mapTransform, type SearchRow } from "../../client/core/wiki/filter.ts";
 import { RATE_DEFAULTS, changed, rated, tamingLevels, tamingRows } from "../../client/core/wiki/rates.ts";
 import { takeRange, takeSamples } from "../../client/core/wiki/sound.ts";
-import { worldPath, type ServerSaid } from "../../client/core/wiki/world.ts";
+import { liveMaps, worldPath, type LiveWorld, type ServerSaid } from "../../client/core/wiki/world.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { LANDMARKS } from "../../content/landmarks/index.ts";
 import type { Host } from "../../server/host.ts";
@@ -228,6 +228,36 @@ test("every page is whole HTML, names only what it has, and writes what the cont
   }
 });
 
+test("the front page and the maps page list every map, and read from a server say which its cluster runs, those first", () => {
+  const card = { file: "/wiki/media/m.card.png", width: 240, height: 240 };
+  const atlases = [["miami", "Miami"], ["tampa", "Tampa"], ["san-francisco", "San Francisco"], ["los-angeles", "Los Angeles"], ["las-vegas", "Las Vegas"], ["reno", "Reno"]].map(([slug, label]) => ({
+    id: `core:${slug}`, slug: slug!, label: label!, metres: 8128, ground: card, card, resources: [], creatures: [], vehicles: [], regions: [], spawns: [], obelisks: [], landmarks: [], districts: [], sources: [],
+  }));
+  const pages = renderWiki({
+    assets: { css: "/wiki/a.css", js: "/wiki/a.js", search: "/wiki/s.json", font: "/assets/f.ttf", revision: "abc" },
+    entries: [], pictures: new Map(), credits: new Map(), atlases, sounds: [], heard: new Map(), music: [], commands: [], settings: [], engrams: [], levels: null, controls: [], left: [], names: new Map(),
+  });
+  const cardsOf = (html: string) => [...html.matchAll(/<div class="card map" data-map="([^"]+)">.*?<\/a><\/div>/g)].map((m) => [m[1]!, m[0]] as const);
+  for (const path of ["", "maps/"]) expect([path, cardsOf(pages.get(path)!).map(([id]) => id)]).toEqual([path, atlases.map((a) => a.id)]);
+  // The creatures and vehicles on the front page are a selection, and it says so.
+  expect(pages.get("")).toContain('<h2>The creatures and vehicles met most</h2><div class="cards"></div><p class="note"><a href="/wiki/creatures/">Every creature</a> · <a href="/wiki/vehicles/">Every vehicle</a></p>');
+  // A cluster of two worlds on Las Vegas, and one on a map this build has no page for.
+  const worlds: LiveWorld[] = [
+    { name: "Vegas <Night>", map: "Las Vegas", mapId: "core:las-vegas", address: "/vegas/", players: 3, max: 70 },
+    { name: "Atlantis", map: "Atlantis", mapId: "core:atlantis", address: "//play.example:8799/", players: 70, max: 70 },
+    { name: "Vegas Day", map: "Las Vegas", mapId: "core:las-vegas", address: "javascript:alert(1)", players: 0, max: 10 },
+  ];
+  const live = liveMaps(cardsOf(pages.get("")!), worlds, true);
+  expect([...live.matchAll(/ data-map="([^"]+)"/g)].map((m) => m[1])).toEqual(["core:las-vegas", "core:atlantis", "core:miami", "core:tampa", "core:san-francisco", "core:los-angeles", "core:reno"]);
+  expect(live).toContain('<b>Las Vegas</b><small>8.1 km across</small></a><span class="live">Running: <a href="/vegas/">Vegas &#60;Night&#62;</a>, 3 of 70 online</span><span class="live">Running: Vegas Day, 0 of 10 online</span></div>');
+  expect(live).toContain('<div class="card map" data-map="core:atlantis"><span class="blank">A</span><b>Atlantis</b><small>Its page is not built here</small><span class="live">Running: <a href="//play.example:8799/">Atlantis</a>, full, 70 of 70</span></div>');
+  expect(live.match(/<span class="live">Not running here<\/span><\/div>/g)!.length).toBe(5);
+  // A map's own page says it of itself alone.
+  const own = (slug: string) => [...pages.get(`maps/${slug}/`)!.matchAll(/<div class="note" data-map="([^"]+)"><\/div>/g)].map((m) => [m[1]!, m[0]] as const);
+  expect(liveMaps(own("las-vegas"), worlds.slice(0, 2), false)).toBe('<div class="note" data-map="core:las-vegas"><span class="live">Running: <a href="/vegas/">Vegas &#60;Night&#62;</a>, 3 of 70 online</span></div>');
+  expect(liveMaps(own("tampa"), worlds, false)).toBe('<div class="note" data-map="core:tampa"><span class="live">Not running here</span></div>');
+});
+
 test("a press asks for a sound's takes alone, by range of the game's file, and gets each take's samples", async () => {
   const row = { file: "/assets/core.snsd", at: "100", takes: "3:5 2:7" };
   expect(takeRange(row)).toEqual({ from: 100, to: 111, sizes: [{ samples: 3, bytes: 5 }, { samples: 2, bytes: 7 }] });
@@ -239,9 +269,11 @@ test("a press asks for a sound's takes alone, by range of the game's file, and g
 
 test("search ranks a label that begins with the query first; the map stays over its view", () => {
   const rows: SearchRow[] = [["Raptor saddle", "/a/", "Saddle", ""], ["Raptor", "/b/", "Creature", ""], ["Pistol", "/c/", "Weapon", ""]];
-  expect(findRows(rows, "rap", 10).map((r) => r[0])).toEqual(["Raptor", "Raptor saddle"]);
-  expect(findRows(rows, "saddle rap", 10).map((r) => r[0])).toEqual(["Raptor saddle"]);
-  expect(findRows(rows, " ", 10)).toEqual([]);
+  expect(findRows(rows, "rap").map((r) => r[0])).toEqual(["Raptor", "Raptor saddle"]);
+  expect(findRows(rows, "saddle rap").map((r) => r[0])).toEqual(["Raptor saddle"]);
+  expect(findRows(rows, " ")).toEqual([]);
+  // Every match is listed, however many.
+  expect(findRows(Array.from({ length: 500 }, (_, k): SearchRow => [`Rock ${k}`, `/r/${k}/`, "Resource", ""]), "rock").length).toBe(500);
   expect(mapTransform(2, 900, -900, 400, 400)).toEqual({ zoom: 2, x: 200, y: -200 });
   expect(mapTransform(20, 0, 0, 400, 400).zoom).toBe(8);
 });

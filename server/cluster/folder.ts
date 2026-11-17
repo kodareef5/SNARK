@@ -19,9 +19,11 @@ export interface Announcement {
   /** The save that took this world id, which no other may use (WorldStore.saveId), and its whole path. */
   saveId: string;
   save: string;
-  /** SessionName, or the map's id where there is none. */
+  /** SessionName, or the map's label where there is none. */
   name: string;
+  /** Its map as a person reads it (mapLabel), and its id. */
   map: string;
+  mapId: string;
   /** How a page reaches it: the port on this machine, and the address it was told it is reached at from elsewhere ("" for none). */
   port: number;
   url: string;

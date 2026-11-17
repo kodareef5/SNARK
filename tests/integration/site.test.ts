@@ -59,8 +59,8 @@ test("the start screen lists each world with its count and goes to its path, and
   expect([linkOf(" /wiki/ "), linkOf("https://git.example.com/snark"), linkOf("javascript:alert(1)"), linkOf("wiki"), linkOf(""), linkOf("//elsewhere.example/"), linkOf("/\\elsewhere.example/")]).toEqual(["/wiki/", "https://git.example.com/snark", "", "", "", "", ""]);
   const page = startPage(
     [
-      { name: "Miami", map: "Miami", address: "/miami/", players: 3, max: 70 },
-      { name: "<Tampa>", map: "Tampa", address: "/tampa/", players: 70, max: 70 },
+      { name: "Miami", map: "Miami", mapId: "core:miami", address: "/miami/", players: 3, max: 70 },
+      { name: "<Tampa>", map: "Tampa", mapId: "core:tampa", address: "/tampa/", players: 70, max: 70 },
     ],
     { wiki: "/wiki/", repository: "" },
   );
@@ -86,6 +86,9 @@ test("a server reached at /miami answers its world under it, sends /miami on wit
   // as the world that answers it, which the page names.
   const said = { name: "Miami", map: "proving:1", settings: {} };
   expect([await (await get(`${at}/miami/settings.json`)).json(), await (await get(`${at}/settings.json`)).json()]).toEqual([said, said]);
+  // The worlds running, as the start screen lists them, for the wiki's maps: with no cluster, this one alone.
+  const alone = [{ name: "Miami", map: "proving:1", mapId: "proving:1", address: `//127.0.0.1:${s.port}/miami/`, players: 0, max: 70 }];
+  expect([await (await get(`${at}/miami/worlds.json`)).json(), await (await get(`${at}/worlds.json`)).json()]).toEqual([alone, alone]);
   // Its sockets are under its path, and not at the root, which is the site's.
   expect([await opens(`ws://127.0.0.1:${s.port}/miami/ws`, null), await opens(`ws://127.0.0.1:${s.port}/ws`, null)]).toEqual([true, false]);
   // The site: the start screen with this world alone, at its port since the page came straight to it, the wiki at /wiki/, and
@@ -127,6 +130,9 @@ test("the front sends each path to its world and the site to the lowest world, s
   // The start screen, from whichever world answers the site, lists both.
   const start = await (await get(`${at}/`)).text();
   expect([start.indexOf('href="/miami/"') > 0, start.indexOf('href="/tampa/"') > start.indexOf('href="/miami/"')]).toEqual([true, true]);
+  // And so does the list the wiki's maps are marked from, each world by its map's id.
+  const listed = (await (await get(`${at}/worlds.json`)).json()) as { name: string; mapId: string; address: string }[];
+  expect(listed.map((w) => [w.name, w.mapId, w.address])).toEqual([["Miami", miami.host.world.mapId, "/miami/"], ["Tampa", tampa.host.world.mapId, "/tampa/"]]);
   // Each path goes to its own world: their maps are their own, and each sends its path on with its slash.
   const [m, t] = [await (await get(`${at}/miami/map.json`)).json(), await (await get(`${at}/tampa/map.json`)).json()];
   expect([miami.host.world.mapHash, tampa.host.world.mapHash]).toEqual([(m as { hash: number }).hash, (t as { hash: number }).hash]);
@@ -145,7 +151,7 @@ test("the front sends each path to its world and the site to the lowest world, s
 });
 
 test("the front knows only worlds running and listening, routes a path to its world and the rest to the lowest reached at a path, and closes a socket as it may", () => {
-  const a = { world: 2, saveId: "", save: "", name: "", map: "", port: 8799, url: "/tampa", players: 0, max: 70, content: 0, survivors: true, items: true, at: 100_000 };
+  const a = { world: 2, saveId: "", save: "", name: "", map: "", mapId: "", port: 8799, url: "/tampa", players: 0, max: 70, content: 0, survivors: true, items: true, at: 100_000 };
   const seen = frontWorlds([a, { ...a, world: 1, url: "/miami", port: 8798 }, { ...a, world: 3, url: "/old", at: 1 }, { ...a, world: 4, url: "/wiki" }, { ...a, world: 5, url: "/x", port: 0 }], 100_500);
   expect(seen).toEqual([{ world: 1, path: "/miami", port: 8798 }, { world: 2, path: "/tampa", port: 8799 }]);
   expect([frontRoute(seen, "/tampa/ws")?.port, frontRoute(seen, "/tampa")?.port, frontRoute(seen, "/tampaz")?.port, frontRoute(seen, "/wiki/")?.port, frontRoute([], "/")]).toEqual([8799, 8799, 8798, 8798, null]);

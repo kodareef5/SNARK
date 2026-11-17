@@ -1,9 +1,10 @@
 // The wiki's pages read whole without this. It plays a sound from the game's sound files, moves and layers a map,
-// copies a console line, searches, and works the figures out again for the world the visitor came from.
+// copies a console line, searches, works the figures out again for the world the visitor came from, and says which maps
+// the cluster behind it runs.
 
 import { findRows, mapTransform, type SearchRow } from "../core/wiki/filter.ts";
 import { takeSamples } from "../core/wiki/sound.ts";
-import { worldPath, type ServerSaid } from "../core/wiki/world.ts";
+import { liveMaps, worldPath, type LiveWorld, type ServerSaid } from "../core/wiki/world.ts";
 
 const all = <T extends Element>(selector: string, root: ParentNode = document): T[] => [...root.querySelectorAll<T>(selector)];
 
@@ -66,7 +67,7 @@ for (const list of all<HTMLOListElement>("[data-search]")) {
   let rows: Promise<SearchRow[]> | null = null;
   const show = async (): Promise<void> => {
     rows ??= fetch(list.dataset.search!).then((r) => r.json() as Promise<SearchRow[]>);
-    const found = findRows(await rows, input.value, 60);
+    const found = findRows(await rows, input.value);
     list.replaceChildren(...found.map(([label, path, group, picture]) => {
       const li = document.createElement("li");
       const a = li.appendChild(document.createElement("a"));
@@ -88,8 +89,6 @@ const kept = ((): string | null => { try { return sessionStorage.getItem("world"
 const world = worldPath(location.search, document.referrer, location.origin, kept);
 try { sessionStorage.setItem("world", world); } catch { /* Without storage each page asks by its own address. */ }
 void fetch(`${world}/settings.json`, { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).then(async (said: ServerSaid | null) => {
-  // A world reached at a path is one of a site whose start screen lists every world running.
-  if (said?.settings && world) for (const p of all<HTMLElement>("[data-worlds]")) p.hidden = false;
   if (!said?.settings || Object.keys(said.settings).length === 0) return;
   const { changed, rated, settingText, settingsLine, tamingRows } = await import("../core/wiki/rates.ts");
   const kinds = new Set<string>();
@@ -111,6 +110,12 @@ void fetch(`${world}/settings.json`, { cache: "no-cache" }).then((r) => (r.ok ? 
   const note = Object.assign(document.createElement("p"), { className: "note" });
   note.append("Figures here are for ", Object.assign(document.createElement("a"), { href: `${world}/`, textContent: said.name }), `: ${settingsLine(differ)}.`);
   document.querySelector("main .heading")?.after(note);
+}, () => {});
+
+// The maps the cluster behind the page runs, as its start screen lists its worlds; with no server behind it, as built.
+const lists = all<HTMLElement>("[data-maps]");
+if (lists.length) void fetch("/worlds.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : null)).then((worlds: LiveWorld[] | null) => {
+  for (const at of Array.isArray(worlds) ? lists : []) at.innerHTML = liveMaps(all<HTMLElement>("[data-map]", at).map((c) => [c.dataset.map!, c.outerHTML]), worlds!, at.dataset.maps === "every");
 }, () => {});
 
 // A map moves under a drag and zooms by its buttons, the wheel with ctrl, and the keys; its layers show by their boxes.

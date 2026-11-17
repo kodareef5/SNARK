@@ -135,11 +135,16 @@ function texturesOf(m: Manifest, format: TextureFormat, widest: number, only?: r
   return bytes;
 }
 
-/** The wiki's budgets (tools/wiki.ts): what a visitor's browser fetches for a page before it scrolls, Brotli where the server has it. */
+/**
+ * The wiki's budgets (tools/wiki.ts), Brotli where the server has it: what a visitor waits for before a page can be read (its
+ * text, style, font and script, and the pictures at its top; the rest load as they come into view), and the size of any one
+ * picture and card. None is a total over the catalogue: a map, creature or landmark added adds a page and a card, not weight
+ * to one. The first has room for a map's ground and an entry's first view at the most the build makes them.
+ */
 const WIKI_BUDGETS: Record<string, number> = {
-  "wiki: the front page, every picture": 300 * KB,
-  "wiki: its heaviest page": 300 * KB,
-  "wiki: a list page with every card's picture": 300 * KB,
+  "wiki: the heaviest page before it can be read": 400 * KB,
+  "wiki: its largest picture": 320 * KB,
+  "wiki: its largest card's picture": 64 * KB,
 };
 
 /** Prints the wiki's rows against their budgets; false if any is over. */
@@ -165,24 +170,24 @@ export function weighWiki(dist: string): boolean {
     }
     return bytes;
   };
-  const pictures = (html: string, lazy: boolean): number =>
-    [...html.matchAll(/<img\b[^>]*?\ssrc="([^"]+)"[^>]*>/g)].filter((m) => lazy || !m[0].includes('loading="lazy"')).reduce((n, m) => n + sent(m[1]!), 0);
-  const pages = [...new Bun.Glob("wiki/**/index.html").scanSync({ cwd: dist })];
-  const weigh = (path: string, lazy: boolean): number => {
-    const html = readFileSync(join(dist, path), "utf8");
-    return sent(path) + fixed(html) + pictures(html, lazy);
-  };
-  const lists = pages.filter((p) => /^wiki\/(creatures|items|resources|vehicles|landmarks|statuses|characters)\/(page\/\d+\/|group\/\w+\/)?index\.html$/.test(p));
-  const rows: [string, number][] = [
-    ["wiki: the front page, every picture", weigh("wiki/index.html", true)],
-    ["wiki: its heaviest page", Math.max(...pages.map((p) => weigh(p, false)))],
-    ["wiki: a list page with every card's picture", Math.max(...lists.map((p) => weigh(p, true)))],
+  const eager = (html: string): number =>
+    [...html.matchAll(/<img\b[^>]*?\ssrc="([^"]+)"[^>]*>/g)].filter((m) => !m[0].includes('loading="lazy"')).reduce((n, m) => n + sent(m[1]!), 0);
+  const pages = [...new Bun.Glob("wiki/**/index.html").scanSync({ cwd: dist })].map((p): [string, number] => {
+    const html = readFileSync(join(dist, p), "utf8");
+    return [p, sent(p) + fixed(html) + eager(html)];
+  });
+  const media = [...new Bun.Glob("wiki/media/*.png").scanSync({ cwd: dist })].map((f): [string, number] => [f, sent(f)]);
+  const most = (list: [string, number][]): [string, number] => list.reduce((a, b) => (b[1] > a[1] ? b : a), ["", 0]);
+  const rows: [string, [string, number]][] = [
+    ["wiki: the heaviest page before it can be read", most(pages)],
+    ["wiki: its largest picture", most(media)],
+    ["wiki: its largest card's picture", most(media.filter(([f]) => f.endsWith(".card.png")))],
   ];
   let ok = true;
-  for (const [name, value] of rows) {
+  for (const [name, [what, value]] of rows) {
     const pass = value <= WIKI_BUDGETS[name]!;
     ok &&= pass;
-    console.log(`  ${name.padEnd(52)} ${`${(value / KB).toFixed(0)} KB`.padStart(10)}  ${pass ? "ok" : "MISS"} (budget ${(WIKI_BUDGETS[name]! / KB).toFixed(0)} KB)`);
+    console.log(`  ${name.padEnd(52)} ${`${(value / KB).toFixed(0)} KB`.padStart(10)}  ${pass ? "ok" : "MISS"} (budget ${(WIKI_BUDGETS[name]! / KB).toFixed(0)} KB)  ${what.replace(/^wiki\/|index\.html$/g, "")}`);
   }
   return ok;
 }

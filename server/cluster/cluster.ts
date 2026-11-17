@@ -39,6 +39,7 @@ export interface Destination {
   world: number;
   name: string;
   map: string;
+  mapId: string;
   port: number;
   url: string;
   players: number;
@@ -132,7 +133,7 @@ export class Cluster {
    */
   static open(root: string, id: string, store: WorldStore): Cluster {
     const folder = new ClusterFolder(root);
-    const blank = (world: number): Announcement => ({ world, saveId: store.saveId, save: resolve(store.path), name: "", map: "", port: 0, url: "", players: 0, max: 0, content: 0, survivors: false, items: false, at: 0 });
+    const blank = (world: number): Announcement => ({ world, saveId: store.saveId, save: resolve(store.path), name: "", map: "", mapId: "", port: 0, url: "", players: 0, max: 0, content: 0, survivors: false, items: false, at: 0 });
     const was = store.meta("cluster");
     if (was !== null && String(was) !== id) throw new Error(`this save is in the cluster ${was}, not ${id}: start it with -clusterid=${was}`);
     const own = folder.announcements().find((a) => a.saveId === store.saveId);
@@ -234,6 +235,7 @@ export class Cluster {
       save: this.savePath,
       name: rules.text("SessionName") || map,
       map,
+      mapId: world.mapId,
       port: this.port,
       url: this.url,
       players: game.playerCount,
@@ -258,7 +260,7 @@ export class Cluster {
   /** This server as the others list it, so that a page can list it among them (server/site.ts). */
   here(): Destination {
     const a = this.announcement();
-    return { world: a.world, name: a.name, map: a.map, port: a.port, url: a.url, players: a.players, max: a.max, why: "" };
+    return { world: a.world, name: a.name, map: a.map, mapId: a.mapId, port: a.port, url: a.url, players: a.players, max: a.max, why: "" };
   }
 
   /** The other servers of the cluster that are running, each with why a survivor of this one cannot go there now. */
@@ -267,7 +269,7 @@ export class Cluster {
     return this.folder
       .announcements()
       .filter((a) => a.world !== this.world && a.at > now - LIVE_MS)
-      .map((a) => ({ world: a.world, name: a.name, map: a.map, port: a.port, url: a.url, players: a.players, max: a.max, why: this.whyNot(a) }));
+      .map((a) => ({ world: a.world, name: a.name, map: a.map, mapId: a.mapId, port: a.port, url: a.url, players: a.players, max: a.max, why: this.whyNot(a) }));
   }
 
   private whyNot(a: Announcement): string {

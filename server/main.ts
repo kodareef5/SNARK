@@ -250,22 +250,23 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
 
   /** Where the game's links go, read at each request, so the live file changes them. */
   const links = (): SiteLinks => ({ wiki: linkOf(host.rules.text("WikiUrl")), repository: linkOf(host.rules.text("RepositoryUrl")) });
-  /** The worlds the start screen lists: the cluster's running, this one among them, or this one alone outside a cluster. */
+  /** The worlds the start screen and the wiki's maps list: the cluster's running, this one among them, or this one alone outside a cluster. */
   const worlds = (requestHost: string): SiteWorld[] => {
     const c = host.cluster;
     const map = mapLabel(registry, host.world.mapId);
-    const all: Omit<Destination, "world" | "why">[] = c ? [c.here(), ...c.destinations()].sort((a, b) => a.world - b.world) : [{ name: host.rules.text("SessionName") || map, map, port: server.port ?? 0, url: base, players: host.game.playerCount, max: host.game.opts.maxClients }];
+    const all: Omit<Destination, "world" | "why">[] = c ? [c.here(), ...c.destinations()].sort((a, b) => a.world - b.world) : [{ name: host.rules.text("SessionName") || map, map, mapId: host.world.mapId, port: server.port ?? 0, url: base, players: host.game.playerCount, max: host.game.opts.maxClients }];
     const straight = Number(/:(\d+)$/.exec(requestHost)?.[1] ?? 0) === server.port;
-    return all.map((w) => ({ name: w.name, map: w.map, address: worldAddress(w, requestHost, straight), players: w.players, max: w.max }));
+    return all.map((w) => ({ name: w.name, map: w.map, mapId: w.mapId, address: worldAddress(w, requestHost, straight), players: w.players, max: w.max }));
   };
   /**
    * What every server answers alike, under its world's path and on the site around it: where the game's links go, what the
-   * world runs for the wiki's figures (the site's is that of whichever world answers it, which the page names), and the
-   * page the source link goes to.
+   * world runs for the wiki's figures (the site's is that of whichever world answers it, which the page names), the worlds
+   * running as the start screen lists them, and the page the source link goes to.
    */
-  const alike = (path: string): Response | null => {
+  const alike = (path: string, requestHost: string): Response | null => {
     if (path === "/links.json") return new Response(JSON.stringify(links()), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
     if (path === "/settings.json") return new Response(JSON.stringify(worldSettings(host)), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
+    if (path === "/worlds.json") return new Response(JSON.stringify(worlds(requestHost)), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
     if (path === "/source" || path === "/source/") return htmlResponse(comingSoonPage());
     return null;
   };
@@ -285,7 +286,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       if (answered) return answered;
       const { at, path } = placeOf(base, url.pathname);
       if (at === "slash") return new Response(null, { status: 308, headers: { location: `${base}/${url.search}` } });
-      const same = alike(path);
+      const same = alike(path, req.headers.get("host") ?? "");
       if (same) return same;
       if (at === "site") {
         if (path === "/" || path === "/index.html") return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""), links()));
