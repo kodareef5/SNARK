@@ -303,14 +303,15 @@ test("a maker on other threads sweeps there, moving the solid heights and the ma
   expect(CHUNK_SIZE / TOP_CELL).toBe(16);
 });
 
-test("the lookup leaves a building's own sunlit walls and roof lit wherever they lie in their cells, and shades the ground in its shadow", () => {
+test("the lookup leaves a building's own sunlit walls and roof lit wherever they lie in their cells and however it is turned, and shades the ground in its shadow", () => {
   const reg = farRegistry();
   const dims: MapDims = { chunksX: 8, chunksZ: 8 };
   const hf = new Heightfield(dims, TERRAIN_CELL, -64, 1 / 64);
   for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) hf.setSample(i, j, 0);
-  // Towers of 12 storeys 16 m square: one with its walls on its cells' edges, and others with theirs a part of a cell in.
-  const places = [[160, 160], [161.3, 352.7], [354.6, 161.9], [355.9, 354.1]];
-  const city = new CityStatics(dims, asWritten(places.flatMap(([x, z]) => building(x!, z!, 0, 12))), reg);
+  // Towers of 12 storeys 16 m square: one with its walls on its cells' edges, others with theirs a part of a cell in, and
+  // others turned (in 65,536ths of a turn), the eighth of a turn among them, whose cells along a wall stand out most.
+  const places = [[112, 112, 0], [113.3, 400.7, 0], [402.6, 113.9, 0], [403.9, 402.1, 0], [256, 256, 8192], [160, 300, 3000], [330, 190, 13000]];
+  const city = new CityStatics(dims, asWritten(places.flatMap(([x, z, yaw]) => building(x!, z!, 0, 12, 2, yaw))), reg);
   const solid = makeSolid(city, hf, () => null);
   const top = Math.max(...solid) * UNIT + hf.minY;
   const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), topsOf: () => null };
@@ -326,19 +327,24 @@ test("the lookup leaves a building's own sunlit walls and roof lit wherever they
     shadow.update(p, allowance(1e9), cam[0]!, cam[1]!, cam[2]!, sun);
     const map = p.farMap.slice();
     const look = (x: number, y: number, z: number, n: number[]): number => farLookup(map, 128, p.frame, x - cam[0]!, y - cam[1]!, z - cam[2]!, n[0]!, n[2]!);
-    for (const [cx, cz] of places) {
+    for (const [cx, cz, yaw] of places) {
+      // A point of the tower's own frame (u, v) from its middle in the world, as building() turns its pieces.
+      const a = (yaw! / 65536) * 2 * Math.PI;
+      const [c, sn] = [Math.cos(a), Math.sin(a)];
+      const world = (u: number, v: number): [number, number] => [cx! + c * u + sn * v, cz! + c * v - sn * u];
       // Each wall the sun reaches, a quarter of the way in from either end and from the foot to the top.
-      for (const n of [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]) {
+      for (const [nu, nv] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const n = [c * nu! + sn * nv!, 0, c * nv! - sn * nu!];
         if (n[0]! * sun[0]! + n[2]! * sun[2]! < 0.1) continue;
-        for (const along of [-4, 0, 4]) {
+        for (let along = -7; along <= 7; along += 0.5) {
           for (const y of [1, 12, 30, top - 2]) {
-            const [x, z] = [cx! + n[0]! * 8 + (n[2] !== 0 ? along : 0), cz! + n[2]! * 8 + (n[0] !== 0 ? along : 0)];
+            const [x, z] = world(nu! * 8 + nv! * along, nv! * 8 + nu! * along);
             expect({ sun: [elevation, azimuth], at: [x, y, z], lit: look(x, y, z, n) }).toEqual({ sun: [elevation, azimuth], at: [x, y, z], lit: 1 });
           }
         }
       }
       // Its roof, and the ground behind it, half its shadow's length on.
-      for (const [u, v] of [[0, 0], [-6, -6], [6, 6], [-6, 6]]) expect(look(cx! + u!, top, cz! + v!, [0, 1, 0])).toBe(1);
+      for (const [u, v] of [[0, 0], [-6, -6], [6, 6], [-6, 6]]) expect(look(...world(u!, v!).flatMap((w, k) => (k === 0 ? [w, top] : [w])) as [number, number, number], [0, 1, 0])).toBe(1);
       const back = (top / 2 / Math.tan(elevation * DEG)) / Math.hypot(sun[0]!, sun[2]!);
       const [bx, bz] = [cx! - sun[0]! * back - Math.sign(sun[0]!) * 8, cz! - sun[2]! * back - Math.sign(sun[2]!) * 8];
       if (bx > 0 && bz > 0 && bx < 512 && bz < 512) expect({ sun: [elevation, azimuth], at: [bx, bz], lit: look(bx, 0, bz, [0, 1, 0]) }).toEqual({ sun: [elevation, azimuth], at: [bx, bz], lit: 0 });

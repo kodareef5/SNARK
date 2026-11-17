@@ -313,8 +313,16 @@ export const farShadowCheck: LitCheck = {
       }
       writeFileSync(join(folder, `${pic.name}-before.png`), encodePng(PW, PH, off));
       writeFileSync(join(folder, `${pic.name}-after.png`), encodePng(PW, PH, on));
+      // Where the far map darkened the picture, by how much, over the picture without it greyed.
       let darker = 0;
-      for (let at = 0; at < PW * PH; at++) if (on[at * 4]! + on[at * 4 + 1]! + on[at * 4 + 2]! + 30 < off[at * 4]! + off[at * 4 + 1]! + off[at * 4 + 2]!) darker++;
+      const where = new Uint8Array(PW * PH * 4);
+      for (let at = 0; at < PW * PH; at++) {
+        const d = off[at * 4]! + off[at * 4 + 1]! + off[at * 4 + 2]! - on[at * 4]! - on[at * 4 + 1]! - on[at * 4 + 2]!;
+        if (d > 30) darker++;
+        const grey = (off[at * 4]! + off[at * 4 + 1]! + off[at * 4 + 2]!) / 6;
+        where.set([Math.min(255, grey + Math.max(0, d)), grey, Math.min(255, grey + Math.max(0, -d)), 255], at * 4);
+      }
+      writeFileSync(join(folder, `${pic.name}-darker.png`), encodePng(PW, PH, where));
       lines.push(`${pic.name}: ${((100 * darker) / (PW * PH)).toFixed(1)}% of the picture shaded by the far map`);
     }
     return { ok, lines };
