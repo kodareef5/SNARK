@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { artTest } from "../fixtures/needs-art.ts";
 import { App } from "../../client/core/app.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
-import type { FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_DETAILS, DRAW_PLAIN, DRAW_TEXTURED, type FramePacket } from "../../client/core/render/packet.ts";
 import { CRUISE_COLLISION_INSTANCES, CRUISE_LAYOUT, cruiseStatics } from "../../content/landmarks/cruise.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { landmarkPoint } from "../../shared/world/landmark.ts";
@@ -123,5 +123,46 @@ artTest("native cruise cell anchors retain one render owner from near through 2 
       expect([p!.dropped, p!.skipped, p!.casterDropped]).toEqual([0, 0, 0]);
     }
     expect([mixed, entirelyNear, entirelyFar]).toEqual([true, true, true]);
+  } finally { h.host.shutdown(); }
+});
+
+// A landmark's art is authored down to its flat levels, which keep its palette colours on every tier. A core piece's
+// flat draws take the world finish on the lit tiers and the checker on low poly, as before.
+artTest("a flat draw of a ship cell is plain on every tier, and a flat draw of a core piece is not", () => {
+  const map = cruiseCourse(), pack = cruisePack(map.content!.landmarks), c = CRUISE_COURSE;
+  const h = new Harness({}, 629, 60, { dev: true, map: writeMap(map), clips: pack.clips, rigs: pack.header.rigs });
+  try {
+    const session = h.join("quay", {}, { manual: true }), app = new App(session, h.reg, pack);
+    session.staticsArrived(h.world.statics!);
+    app.ui.settings.steady = false;
+    let packet: FramePacket | null = null;
+    const run = (ms: number) => h.run(ms, now => { packet = app.frame(now, 1280, 720); });
+    run(900); session.text("enablecheats"); run(100); session.text("fly"); run(100);
+    const client = h.client(session)!, ents = h.world.ents, scene = app.scene!;
+    const pieces = new Set(map.statics.filter(s => s.kind.startsWith("core:")).map(s => scene.assets.bind.mesh(s.kind, "mesh")));
+    const ids = scene.assets.manifest.meshes.map(m => m.id);
+    for (const tier of ["lowpoly", "medium", "high"] as const) {
+      app.ui.settings.tier = tier;
+      ents.setPosition(client.ent, c.quayX + 40, 30, c.vessel.z - 60);
+      ents.vx[client.ent] = ents.vy[client.ent] = ents.vz[client.ent] = 0;
+      ents.mode[client.ent] = MODE_GHOST; ents.flags[client.ent] &= ~F_GROUNDED; client.ownDirty = true;
+      app.controls.yaw = -Math.PI / 2 - 0.5; app.controls.pitch = -0.2; run(1300);
+      const p = packet as FramePacket | null; expect(p).not.toBeNull();
+      expect([p!.tier.name, p!.lit]).toEqual([tier, tier !== "lowpoly"]);
+      let ship = 0, core = 0;
+      for (let d = 0; d < p!.drawCount; d++) {
+        const flags = p!.drawFlags[d]!, mesh = p!.drawMesh[d]!;
+        if ((flags & (DRAW_DETAILS | DRAW_TEXTURED)) !== 0 || p!.drawBuffer[d] === CITY_BUFFER) continue;
+        if (/^cruise:cell_\d+$/.test(ids[mesh]!)) {
+          ship++;
+          expect(flags & DRAW_PLAIN, `${tier} ${ids[mesh]}`).toBe(DRAW_PLAIN);
+        } else if (pieces.has(mesh)) {
+          core++;
+          expect(flags & DRAW_PLAIN, `${tier} ${ids[mesh]}`).toBe(0);
+        }
+      }
+      expect(ship).toBeGreaterThan(0);
+      expect(core).toBeGreaterThan(0);
+    }
   } finally { h.host.shutdown(); }
 });

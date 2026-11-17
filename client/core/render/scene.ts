@@ -366,6 +366,11 @@ export class Scene {
   readonly budget = new FrameBudget();
   /** Per mesh, 1 for a standing tree's, whose crown gives to the budget and whose trunk does not. */
   private readonly treeOf: Uint8Array;
+  /**
+   * Per mesh, the flags a draw of it in palette colours carries besides its own: DRAW_PLAIN for a landmark's, whose flat
+   * levels are its art's own colours and take neither the world finish nor the checker.
+   */
+  readonly flatFlags: Uint16Array;
   /** Per mesh and level, the triangles of its sections drawn with bark and of its cut-out ones. */
   private readonly trunkTris: number[][];
   private readonly leafTris: number[][];
@@ -595,6 +600,9 @@ export class Scene {
       const def = reg.defs[kind];
       if (def?.type === "node" && familyOf(def) === 0 && forms.depleted[f] === 0) this.treeOf[mesh] = 1;
     }
+    // A landmark's definitions and meshes are in its namespace, and its definitions are the map's own (withContent).
+    const landmarks = new Set([...reg.own].map((k) => reg.defs[k]!.id.split(":")[0]));
+    this.flatFlags = Uint16Array.from(this.assets.manifest.meshes, (m) => (landmarks.has(m.id.split(":")[0]) ? DRAW_PLAIN : 0));
     this.trisOfMesh = table.tris;
     this.radiusOfMesh = table.radius;
     this.materialFlags = new Uint8Array(table.materials.length);
@@ -2301,7 +2309,7 @@ export class Scene {
       p.drawOffset[d * 3] = ox;
       p.drawOffset[d * 3 + 1] = oy;
       p.drawOffset[d * 3 + 2] = oz;
-      p.drawFlags[d] = material < 0 ? flags : flags | this.materialFlags[material]!;
+      p.drawFlags[d] = flags | (material < 0 ? this.flatFlags[mesh]! : this.materialFlags[material]!);
       p.drawHand[d] = hand;
       p.drawLayer[d] = layer > 0 && material >= 0 && this.assets.layered(material) ? layer : 0;
       const made = material < 0 ? this.trisOfMesh[mesh]![top]! : indices / 3;
