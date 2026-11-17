@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { RemoteSample } from "../../client/core/session.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { RESULT_OK } from "../../shared/net/protocol.ts";
-import { BTN_JUMP, BTN_MOD, BTN_PRONE, BTN_PRIMARY } from "../../shared/sim/character.ts";
+import { BTN_JUMP, BTN_MOD, BTN_PRONE, BTN_PRIMARY, BTN_SPRINT } from "../../shared/sim/character.ts";
 import { vehiclePoint } from "../../shared/sim/vehicle-frame.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -53,5 +53,40 @@ test("four players stay grouped through real helicopter flight over delayed link
     h.pilots[0]!.moveX = 0; h.pilots[0]!.buttons = BTN_PRONE | BTN_JUMP; h.run(2000);
     expect(pilot.drive).toBe(e);
     expect(crew.map((s, i) => s.stats.corrections - before[i]!)).toEqual([0, 0, 0, 0]);
+  } finally { h.host.shutdown(); }
+});
+
+test("a line that holds the pilot's inputs back neither throws a fast helicopter forward nor stops it in the air", () => {
+  // A stream that loses a segment holds every input after it until the segment is sent again, while snapshots keep coming.
+  // Its inputs then come late, and the round trip they say grows: the input clock is not behind and must not jump, or the
+  // aircraft is drawn leaping ahead by the ticks it could not step and then standing still while the clock comes back.
+  const h = new Harness({}, 3, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(16)) });
+  try {
+    const s = h.join("pilot", { tcp: true, latencyMs: 30 }); h.run(1200);
+    const c = h.client(s)!, ents = h.world.ents, e = h.host.spawnVehicle("core:helicopter", 512, 60, 0);
+    h.host.survival.gods.add(c.pid);
+    const entry = h.reg.vehicle[ents.kind[e]!]!.seats[0]!.entry;
+    ents.setPosition(c.ent, 512 + entry[0], entry[1], 60 + entry[2]);
+    expect(h.host.urban.mount(c, e)).toBe(RESULT_OK); h.run(1500);
+    const pilot = h.pilots[0]!;
+    pilot.buttons = BTN_JUMP; h.run(4000);
+    pilot.buttons = BTN_SPRINT; pilot.moveZ = 1; h.run(9000);
+    expect(Math.hypot(s.own.vx, s.own.vz)).toBeGreaterThan(40);
+    const end = h.ends[0]!, send = end.send.bind(end), held: [number, Uint8Array][] = [];
+    const drawn = (): number => s.ownPrev.z + (s.own.z - s.ownPrev.z) * s.alpha + s.smoothZ;
+    const jumps = s.stats.clockJumps;
+    let was = NaN, most = 0, least = Infinity;
+    // Called before each frame's update, so the first call sees the frame before.
+    const watch = (): void => { const z = drawn(); if (!Number.isNaN(was)) { most = Math.max(most, z - was); least = Math.min(least, z - was); } was = z; };
+    h.run(500, watch);
+    end.send = (channel, data) => void held.push([channel, data.slice()]);
+    h.run(700, watch);
+    end.send = send;
+    for (const [channel, data] of held) send(channel, data);
+    h.run(4000, watch);
+    expect(s.stats.clockJumps - jumps).toBe(0);
+    // About 0.75 m a frame at 45 m/s.
+    expect(most).toBeLessThan(1.5);
+    expect(least).toBeGreaterThan(0.3);
   } finally { h.host.shutdown(); }
 });
