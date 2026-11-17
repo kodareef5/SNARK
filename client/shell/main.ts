@@ -6,7 +6,7 @@ import { parsePack } from "../../shared/pack/pack.ts";
 import { WorkerPort } from "../assets/port.ts";
 import { WorkerCityMaker } from "../city/maker.ts";
 import { DEFAULT_TIER, tierOf } from "../core/assets/tiers.ts";
-import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
+import { mapHeightfield, mapNodes } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
 import { fetchBytes, fetchContent, fetchJson, fetchMap, fetchSounds, fetchText, nextTask, readStatics, withLandmarks } from "../core/fetched.ts";
 import { loadIdentity } from "../core/identity.ts";
@@ -44,9 +44,9 @@ const arrival = arrivalOf(location.hash);
 
 async function boot(): Promise<void> {
   // Every file the first frame needs is asked for before anything else runs, and index.html asked for most of them already.
-  // The server names its map's file. The renderer draws from its ground, which comes first; the far city from its statics,
-  // which come after, while the world is drawn.
-  const mapFile = fetchJson(fetch, "map.json").then((named) => fetchMap(fetch, (named as { file: string }).file));
+  // The server names its map's head. The renderer draws from its ground's parts, which come first; the far city from its
+  // statics' parts, which come after, while the world is drawn.
+  const mapFile = fetchJson(fetch, "map.json").then((named) => fetchMap(fetch, (named as { head: string }).head));
   const manifestText = fetchText(fetch, "assets/manifest.json"), skyBytes = fetchBytes(fetch, SKY_FILE), content = fetchContent(fetch, __CONTENT_FILE__);
   // The socket opens once the map's ground is in, so its handshake runs while the map is read. The server waits 5 s for a
   // hello, and a socket it gave up on is opened again.
@@ -55,9 +55,9 @@ async function boot(): Promise<void> {
   // wanted. The sound library starts once the sounds' rows have come.
   const core = parseManifest(await manifestText);
   const bootBytes = fetchBytes(fetch, `assets/${core.files[core.boot]!.name}`);
-  // The file is named by its SHA-256, so its body is not hashed again.
-  const { ground: first, rest } = await mapFile;
-  const map = parseMap(first, false), hf = mapHeightfield(map);
+  // Each part was checked against the hash its head names as it was read.
+  const { ground: map, rest } = await mapFile;
+  const hf = mapHeightfield(map);
   const { reg, manifest, pack } = await withLandmarks(fetch, map.content, await content, core, parsePack(new Uint8Array(await bootBytes)));
   const silent = fetchSounds(fetch, manifest);
   const port = new WorkerPort(manifest, "assets", tierOf(DEFAULT_TIER).diskBytes, params.get("assetnet"));
@@ -84,7 +84,7 @@ async function boot(): Promise<void> {
     cityMaker: new WorkerCityMaker(),
     ...(map.content ? { landmarks: map.content.landmarks } : {}),
   });
-  void readStatics(rest, map.dims, nextTask(new MessageChannel())).then((statics) => session.staticsArrived(statics));
+  void readStatics(rest, nextTask(new MessageChannel())).then((statics) => session.staticsArrived(statics));
   const surfaces = selfcheck ? new SelfcheckSurfaces(manifest, port) : null;
   const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });
   void silent.then((why) => why && app.ui.console.print(`no sounds: ${why}`));

@@ -9,7 +9,7 @@
 | `path.test.ts` | Ways across the ground: round a wall, never through a thin one, the search's budget, a search spread over calls, legs, a doorway off the grid, and a body walking every way found on the proving ground |
 | `layers.test.ts` | Ways that climb and swim: up stairs onto a slab, a stair core of three storeys and down again rather than falling, the pool swum or waded round, a goal inside a pillar |
 | `bodies.test.ts` | The grid of awake bodies that creatures search for prey |
-| `mapfile.test.ts`, `maplayers.test.ts` | A map through its file and back; a damaged or unplayable one refused with its reason; a folder of layers built into a map and unpacked again |
+| `mapfile.test.ts`, `maplayers.test.ts` | A map through its file and back, every height, tint, static in its slot, node slot and water square; each part read alone given its head; a part damaged or another's refused with its name, and a damaged or unplayable map with its reason; a map widened keeping the parts it did not reach; a folder of layers built into a map and unpacked again |
 | `character.test.ts`, `swim.test.ts` | Movement rules and the anti-clipping fuzz tests, on land and in water |
 | `sim.test.ts`, `items.test.ts` | Deadlines, lazy quantities, stat points, inheritance statistics; inventories |
 | `weapon.test.ts`, `anim.test.ts`, `creature.test.ts` | The action step; skeletons, clips, poses and hit zones for survivors and for creatures that came as models |

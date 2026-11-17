@@ -77,9 +77,11 @@ test("a server reached at /miami answers its world under it, sends /miami on wit
   const at = `http://127.0.0.1:${s.port}`;
   const slash = await get(`${at}/miami?name=Ada`);
   expect([slash.status, slash.headers.get("location")]).toEqual([308, "/miami/?name=Ada"]);
-  // The world's page, and the map it is told to ask for at once, named beside it.
+  // The world's page, and the map's head it is told to ask for at once, named beside it.
   const page = await get(`${at}/miami/`);
-  expect([page.status, await page.text(), /^<map\.[0-9a-f]{16}\.snmap>; rel=preload/.test(page.headers.get("link") ?? "")]).toEqual([200, "<!doctype html><title>the game</title>", true]);
+  expect([page.status, await page.text(), /^<map\/head\.[0-9a-f]{16}\.part>; rel=preload/.test(page.headers.get("link") ?? "")]).toEqual([200, "<!doctype html><title>the game</title>", true]);
+  const head = (page.headers.get("link") ?? "").slice(1, page.headers.get("link")!.indexOf(">"));
+  expect([(await get(`${at}/miami/${head}`)).status, (await get(`${at}/miami/map/head.0123456789abcdef.part`)).status]).toEqual([200, 404]);
   expect([(await get(`${at}/miami/map.json`)).status, (await get(`${at}/miami/assets/manifest.json`)).status]).toEqual([200, 200]);
   expect(await (await get(`${at}/miami/links.json`)).json()).toEqual({ wiki: "https://wiki.example/snark", repository: "" });
   // What the world runs, for the wiki's figures: its public settings not at their default, beside its links, and on the site
