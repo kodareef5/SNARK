@@ -150,8 +150,12 @@ for cell in INDEX['meshes']:
         ident = key(sample)
         if ident in selected:
             selected[ident]['multiplicity'] += 1
+            selected[ident]['centroidOccurrences'] += int(sample['sample'] == 'centroid')
+            selected[ident]['hasCorner'] |= sample['sample'] != 'centroid'
         else:
             sample['multiplicity'] = 1
+            sample['centroidOccurrences'] = int(sample['sample'] == 'centroid')
+            sample['hasCorner'] = sample['sample'] != 'centroid'
             sample['error'] = far.tree.find_nearest(sample['point'])[3]
             selected[ident] = sample
 bad = [s for s in selected.values() if s['error'] > THRESHOLD]
@@ -195,10 +199,17 @@ for sample in selected.values():
     if point_key(sample) in bad_points:
         bad_weight[sample['cell']] += sample['multiplicity']
 good = {cell: [] for cell in TARGETS}
+good_weight = Counter()
+good_corners = set()
 for sample in selected.values():
     cell = sample['cell']
     wanted = max(40, 20 * bad_weight[cell])
-    if len(good[cell]) >= wanted or sample['sample'] != 'centroid' or sample['area'] < .001 or sample['error'] > .059:
+    # Export may share vertices. Count a geometric corner only once per cell;
+    # retained triangles each guarantee their own centroid sample. Repeated raw
+    # corner occurrences remain only in the conservative bad upper bound.
+    corner = sample['hasCorner'] and point_key(sample) not in good_corners
+    weight = sample['centroidOccurrences'] + int(corner)
+    if good_weight[cell] >= wanted or not weight or sample['error'] > .059:
         continue
     for label, eye in EYES:  # A shared subset of the bad-sample viewpoint family.
         direction = sample['point'] - eye
@@ -212,9 +223,13 @@ for sample in selected.values():
         hit = near.ray(eye, direction, distance + .002)
         if hit is None or hit.get('unresolved') or abs(hit['distance'] - distance) > .002:
             continue
-        good[cell].append(witness(sample, label, eye, hit))
+        good[cell].append({**witness(sample, label, eye, hit), 'uniqueCorner': corner,
+                           'triangleCentroids': sample['centroidOccurrences'], 'guaranteedSamples': weight})
+        good_weight[cell] += weight
+        if corner:
+            good_corners.add(point_key(sample))
         break
-    if all(len(good[c]) >= max(40, 20 * bad_weight[c]) for c in TARGETS):
+    if all(good_weight[c] >= max(40, 20 * bad_weight[c]) for c in TARGETS):
         break
 
 reverse = []
@@ -250,12 +265,13 @@ for sample in bad:
 
 bounds = []
 for cell in sorted(TARGETS):
-    bad_count, good_count = bad_weight[cell], len(good[cell])
+    bad_count, good_count = bad_weight[cell], good_weight[cell]
     bounds.append(dict(cell=cell, visibleOrUnresolvedBadPositionOccurrences=bad_count, visibleGoodLower=good_count,
+                       distinctGoodWitnesses=len(good[cell]),
                        badShareUpper=bad_count / (bad_count + good_count) if good_count else 1))
 report = dict(
     schema=1,
-    scope='Sampled bidirectional exterior P95 bound, not an all-camera guarantee or delivered-pack acceptance. Whole raw occluders; all retained candidate positions set native shared bounds. Artificial cell caps and clear target faces excluded. Actual clear/front-face traversal. Corner and triangle-middle sample normals deduplicated for rays; conservative raw occurrence multiplicities retained in the bound.',
+    scope='Sampled bidirectional exterior P95 bound, not an all-camera guarantee or delivered-pack acceptance. Whole raw occluders; all retained candidate positions set native shared bounds. Artificial cell caps and clear target faces excluded. Actual clear/front-face traversal. Bad upper weights retain all raw corner/centroid occurrences. Good lower weights count each verified geometric corner once per cell plus guaranteed triangle centroids; they never assume raw corner multiplicity survives exported vertex sharing.',
     identities={**CONFIG['identities'], 'usedGeometryAndClearSHA256': FINGERPRINT.hexdigest()},
     parameters=dict(targetCells=sorted(TARGETS), threshold=THRESHOLD, targetSurfaceExclusion=.002, capIdentification=.0003,
                     rayAdvance=.00001, maxSkips=512, cameraRadius=250, cameraAzimuthStep=10,
