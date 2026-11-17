@@ -16,7 +16,7 @@ CLOTH={'sail':FINISH['sail']['rgb']};SPAR={'white':FINISH['white']['rgb']}
 # The first level drawn flat, the stand-in level, and the sides round a mast or the bowsprit at each level.
 FLAT=2;STAND_IN=4;SIDES=[24,12,8,6,4]
 # A wire's radius on levels 0, 1 and 2: on level 0 the least, as on the rest.
-RIG=[.03,.09,.2]
+RIG=[.03,.09,.28]
 
 def worldbox(b,o):return ([o[k]+b['at'][k]-b['half'][k] for k in range(3)],[o[k]+b['at'][k]+b['half'][k] for k in range(3)])
 def worldhull(h,o):return [[p[k]+o[k] for k in range(3)] for p in h['points']]
@@ -117,13 +117,22 @@ def hull(m,mod):
     for side,(p0,p1) in enumerate([('lr','ur'),('ur','ul'),('ul','ll'),('ll','lr')]):tris.append((corner[p0],corner[p1],rs+side*q))
     m.faces(0,tris,tags[band],out=out)
     if inner:continue
-    if L>0:
-     # Off the quay a port is its glass on the shell, in the shell's own points.
+    if L>=FLAT:
+     # Far off a port is a bright dot: its glass and rim on the shell, in the shell's own points.
      m.faces(0,[tuple(rs+i for i in range(sides))],'port',out=out);continue
-    m.poly(ring,'port',out=out)
-    inside=[[x(p[2],p[1],True),p[1],p[2]] for p in ring];bore=m.add(ring+inside)
-    m.faces(bore,[(i,(i+1)%sides,sides+(i+1)%sides,sides+i) for i in range(sides)],'brass',
-     out=lambda i:[0,-math.sin((i+.5)*math.tau/sides),-math.cos((i+.5)*math.tau/sides)])
+    # Near, dark glass in a bright stainless rim. Off the quay the rim and the glass are drawn on the shell; on the quay
+    # the rim is a flange proud of the shell, and a bore runs in to the glass and on to the inner shell.
+    def around(d,f=1):return [[x(p[2],p[1],False)-sign*d,PORT_Y+f*(p[1]-PORT_Y),centre+f*(p[2]-centre)] for p in ring]
+    strip=lambda a,b,tag,way:m.faces(m.add(a+b),[(i,(i+1)%sides,sides+(i+1)%sides,sides+i) for i in range(sides)],tag,out=way)
+    inward=lambda i:[0,-math.sin(turn+(i+.5)*math.tau/sides),-math.cos(turn+(i+.5)*math.tau/sides)]
+    if L==1:
+     g=m.add(around(0,.72))
+     m.faces(0,[(rs+i,rs+(i+1)%sides,g+(i+1)%sides,g+i) for i in range(sides)],'chrome',out=out)
+     m.faces(0,[tuple(g+i for i in range(sides))],'portglass',out=out);continue
+    strip(around(-.015),around(-.015,1.22),'chrome',out);strip(around(-.015,1.22),around(.01,1.22),'chrome',lambda i:[-c for c in inward(i)])
+    strip(around(.01,1.22),around(.01),'chrome',[-c for c in out]);strip(around(.01),around(-.015),'chrome',inward)
+    strip(ring,around(.06),'chrome',inward);m.poly(around(.06),'portglass',out=out)
+    strip(around(.06),[[x(p[2],p[1],True),p[1],p[2]] for p in ring],'cream',inward)
   # Cap rail, the strip at the waterline, and the two ends.
   for y,tag,up in [(top,'teak',1),(lambda z:0,'navy',-1)]:
    strip=m.add([[x(z,y(z),inner),y(z),z] for z in cols for inner in(False,True)])
@@ -445,10 +454,14 @@ def smallparts(m,mod):
   # samples a pixel without breaking into dashes, and as much paler as it is wider than the wire, so it shows about as
   # much as the wire would. Near it is dark against the sky, as photographed. The diamonds go first, then the shrouds,
   # toppings and interstays; the forestays and the mizzen backstays, the long diagonals of the schooner, go last.
-  heavy=any(k in mod['id'] for k in('forestay','backstay'))
-  if L==0:m.tube(a['ends'],max(a['radius'],RIG[0]),'slate',6)
-  elif L==1 and 'diamond' not in mod['id']:m.tube(a['ends'],RIG[1],'wire',4)
-  elif L==2 and heavy:m.tube(a['ends'],RIG[2],'wire_far',4)
+  heavy=any(k in mod['id'] for k in('forestay','backstay'));ends=a['ends']
+  # A topping lift comes down to the top of its boom's cover, where it is made fast, and not into the boom.
+  if 'topping' in mod['id'] and mod['id'].endswith('_0'):
+   (x0,y0,z0),(x1,y1,z1)=ends;t=(COVER_Y+COVER_R-.02)/(y1-y0);ends=[[x0+t*(x1-x0),y0+t*(y1-y0),z0+t*(z1-z0)],ends[1]]
+   if L==0:m.tube([[ends[0][0],ends[0][1]-.04,ends[0][2]],[ends[0][0],ends[0][1]+.06,ends[0][2]]],.06,'chrome',8)
+  if L==0:m.tube(ends,max(a['radius'],RIG[0]),'slate',6)
+  elif L==1 and 'diamond' not in mod['id']:m.tube(ends,RIG[1],'wire',4)
+  elif L==2 and heavy:m.tube(ends,RIG[2],'wire_far',4)
   return
  if cat=='spreader':
   m.tube(a['ends'],a['radius'],'white',[8,4,4,3,3][L])
