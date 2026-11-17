@@ -333,6 +333,7 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, fil
     if (cold.dropped || cold.skipped || cold.casterDropped) faults.push("native rendering dropped draws or shadow casters during cold streaming");
     if (p.drawCount > tier.budget.draws || p.triangles > tier.budget.triangles) faults.push("frame exceeds unchanged tier submission budget");
     if (app.scene.city && (app.scene.city.stats.missing || app.scene.city.stats.behind)) faults.push("far city did not settle");
+    if (app.scene.landmarks?.stats.unseen) faults.push("a landmark's far mesh did not settle");
     if (session.stats.corrections !== corrections) faults.push("prediction corrected after settling");
     const origin = CRUISE_COURSE.vessel, shipRows = cruiseStatics(origin.x, origin.y, origin.z, origin.yaw);
     // The chunks the ship's far pieces belong to, each drawn near while held whole and by the far mesh otherwise.

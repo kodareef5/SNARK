@@ -146,7 +146,7 @@ artTest("each drawn piece of the ship and the yacht has one owner from the quay 
       }
       expect(faults, `at ${distance} m`).toEqual([]);
       expect(shipDraws).toBeLessThanOrEqual(32);
-      expect([scene.city!.stats.missing, scene.city!.stats.unseen, scene.city!.stats.behind]).toEqual([0, 0, 0]);
+      expect([scene.city!.stats.missing, scene.city!.stats.unseen, scene.city!.stats.behind, marks.stats.unseen]).toEqual([0, 0, 0, 0]);
       expect([p!.dropped, p!.skipped, p!.casterDropped]).toEqual([0, 0, 0]);
     }
     expect(was).toEqual([{ near: true, far: true, mixed: true }, { near: true, far: true, mixed: false }]);
