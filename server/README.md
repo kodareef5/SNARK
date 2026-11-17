@@ -58,7 +58,8 @@ run in the [operator's guide](../planning/reference/operators.md).
 
 `--dev` enables the self-check report endpoint and cheats without a password, and
 reads `config/dev` when no other folder is named. It must not be used on a
-public server. `/sounds.html` is the sound board (`sound-board.ts`), every sound by
+public server, and it takes a socket only for a browser that asked for this machine by
+`localhost`, an address, or the host of `--public-url` (`namesThisMachine`). `/sounds.html` is the sound board (`sound-board.ts`), every sound by
 owner and occasion with the briefs and recipes behind them: open on a `--dev`
 server, and on any other only to a browser that gives `ServerAdminPassword` at
 its sign-in (any name). `--cert` and `--key` serve over TLS, which a browser asks for
