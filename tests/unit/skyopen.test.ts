@@ -269,7 +269,13 @@ test("the rasterizer, the reference for light, takes sky light from a street bet
   /** The frame from where the camera is, and the same with no grid, which takes no sky light from anything. */
   const view = (x: number, z: number, yaw: number): { opened: Uint8Array; plain: Uint8Array } => {
     [w.cam.x, w.cam.y, w.cam.z, w.cam.yaw, w.cam.pitch] = [x, 4, z, yaw, -0.25];
-    for (let k = 0; k < 40; k++) w.frame(true);
+    // Frames whose uploads the rasterizer takes, drawing nothing, until all is on its card.
+    for (let k = 0; k < 40; k++) {
+      w.scene.now += 1000 / 60;
+      const p = w.scene.build(w.cam, null);
+      p.drawCount = p.tileCount = 0;
+      w.raster.render(p);
+    }
     const p = w.frame(true);
     const opened = Uint8Array.from(w.raster.color);
     p.frame[FRAME.farScale] = 0;
