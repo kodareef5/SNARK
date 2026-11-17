@@ -129,7 +129,7 @@ artTest("native cruise cell anchors retain one render owner from near through 2 
 // A landmark's art is authored down to its flat levels, which keep its palette colours on every tier. A core piece's
 // flat draws take the world finish on the lit tiers and the checker on low poly, as before.
 artTest("a flat draw of a ship cell is plain on every tier, and a flat draw of a core piece is not", () => {
-  const map = cruiseCourse(), pack = cruisePack(map.content!.landmarks), c = CRUISE_COURSE;
+  const map = cruiseCourse(), pack = cruisePack(map.content!.landmarks.map(l => l.name)), c = CRUISE_COURSE;
   const h = new Harness({}, 629, 60, { dev: true, map: writeMap(map), clips: pack.clips, rigs: pack.header.rigs });
   try {
     const session = h.join("quay", {}, { manual: true }), app = new App(session, h.reg, pack);
