@@ -1,14 +1,18 @@
 // The authoring clipper's exact closed pieces must also be accepted by native convex queries.
 import { expect, test } from "bun:test";
+import { artTest } from "../fixtures/needs-art.ts";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import fixture from "../fixtures/cruise-cell-physics.json" with { type: "json" };
 import { hullOf } from "../../shared/world/convex.ts";
 
-test("cruise collision cells conserve source solids and retain native-valid thin clipped caps", () => {
+artTest("the cruise collision fixture matches its authored clipper source", () => {
   const hash = createHash("sha256").update(readFileSync(resolve(import.meta.dir, "../..", fixture.source))).digest("hex");
   expect(hash).toBe(fixture.sha256); // Regenerate with the authoring helper's --self-test after a clipper change.
+});
+
+test("cruise collision cells conserve source solids and retain native-valid thin clipped caps", () => {
   const cases = fixture.cases;
   expect(cases.map(c => c.name)).toEqual(["box", "thin-rib", "twelve-corner", "slide-cap"]);
   for (const sample of cases) {

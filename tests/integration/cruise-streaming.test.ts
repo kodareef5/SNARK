@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { artTest } from "../fixtures/needs-art.ts";
 import { App } from "../../client/core/app.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
@@ -53,7 +54,7 @@ test("cruise visual and physical cells keep the same owner after arbitrary nativ
 
 // Collision-only modules do not own draws. The map's cell anchors own near meshes; the complete
 // cell-clipped collision/look rows supply the far proxy after their shared chunk leaves interest.
-test("native cruise cell anchors retain one render owner from near through 2 km and back", () => {
+artTest("native cruise cell anchors retain one render owner from near through 2 km and back", () => {
   const map = cruiseCourse(), pack = cruisePack(map.content!.landmarks), origin = CRUISE_COURSE.vessel;
   const rows = cruiseStatics(origin.x, origin.y, origin.z, origin.yaw);
   const chunks = [...new Set(rows.map(row => chunkAt(map.dims, row.x, row.z)))];

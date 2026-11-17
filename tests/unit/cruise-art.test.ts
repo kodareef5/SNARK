@@ -1,5 +1,6 @@
 // Delivered map-local cells retain the near walking spaces while far levels omit hidden fittings.
-import { expect, test } from "bun:test";
+import { expect } from "bun:test";
+import { test } from "../fixtures/needs-art.ts";
 import { CRUISE_LAYOUT } from "../../content/landmarks/cruise.ts";
 import type { CruiseLayout } from "../../content/landmarks/cruise-layout.ts";
 import { toTriangle } from "../../tools/pack/error.ts";

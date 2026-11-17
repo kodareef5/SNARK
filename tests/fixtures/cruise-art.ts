@@ -6,11 +6,14 @@ import { frameAxes, HALF_SIDE } from "../../shared/world/frame.ts";
 import { cruiseGeometry, type CruiseGeometrySection } from "../../tools/cruise/geometry.ts";
 import { verifyCruiseGroups, type CruisePackedGroups } from "../../tools/cruise/packed-groups.ts";
 import type { SourceLod } from "../../tools/pack/write.ts";
+import { fromArt } from "./needs-art.ts";
 
-export const cruiseArtBytes = readFileSync(new URL("../../assets/source/landmarks/cruise/cruise.snpk", import.meta.url));
-export const cruiseArtGroups: CruisePackedGroups = JSON.parse(readFileSync(new URL("../../assets/source/landmarks/cruise/ref/packed-groups.json", import.meta.url), "utf8"));
-verifyCruiseGroups(cruiseArtGroups, readFileSync(new URL("../../content/landmarks/cruise-layout.json", import.meta.url)), cruiseArtBytes);
-export const cruiseArt = cruiseGeometry(CRUISE_LAYOUT, cruiseArtBytes, cruiseArtGroups);
+export const cruiseArtBytes = fromArt(() => readFileSync(new URL("../../assets/source/landmarks/cruise/cruise.snpk", import.meta.url)));
+export const cruiseArtGroups: CruisePackedGroups = fromArt(() => JSON.parse(readFileSync(new URL("../../assets/source/landmarks/cruise/ref/packed-groups.json", import.meta.url), "utf8")));
+export const cruiseArt = fromArt(() => {
+  verifyCruiseGroups(cruiseArtGroups, readFileSync(new URL("../../content/landmarks/cruise-layout.json", import.meta.url)), cruiseArtBytes);
+  return cruiseGeometry(CRUISE_LAYOUT, cruiseArtBytes, cruiseArtGroups);
+});
 const cache = new Map<number, readonly CruiseGeometrySection[]>();
 export function cruiseArtSections(level: number): readonly CruiseGeometrySection[] {
   let sections = cache.get(level);

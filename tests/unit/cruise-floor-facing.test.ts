@@ -1,5 +1,6 @@
 // Collision support and closed-volume checks do not catch an individually reversed visible floor cap.
-import { expect, test } from "bun:test";
+import { expect } from "bun:test";
+import { test } from "../fixtures/needs-art.ts";
 import type { CruiseLayout } from "../../content/landmarks/cruise-layout.ts";
 import { CRUISE_LAYOUT } from "../../content/landmarks/cruise.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
