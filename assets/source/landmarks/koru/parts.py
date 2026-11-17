@@ -1,10 +1,10 @@
-"""Koru's mesh toolkit. Shapes are closed solids in ship metres (+Y up, +Z bow, +X port), each face in a finish of the one
-atlas (materials.json) or a plaque (signs.json). A vertex given a normal is smooth; the rest are flat."""
+"""Koru's mesh toolkit. Shapes are closed solids in ship metres (+Y up, +Z bow, +X port), each face in a finish of one of
+the pictures (materials.json) or a plaque (signs.json). A vertex given a normal is smooth; the rest are flat."""
 import bpy,bmesh,json,math
 from pathlib import Path
 from mathutils import Vector
 HERE=Path(__file__).resolve().parent
-LOOK=json.loads((HERE/'materials.json').read_text());SIZE=LOOK['size'];FINISH=LOOK['finishes']
+LOOK=json.loads((HERE/'materials.json').read_text());PICTURES=LOOK['pictures'];FINISH=LOOK['finishes']
 SIGNS=json.loads((HERE/'signs.json').read_text())
 INSET=LOOK['inset']
 AVG='avg'  # a vertex smoothed over the faces it is on
@@ -15,7 +15,8 @@ def material(name,rgb):
  m=bpy.data.materials.get(name) or bpy.data.materials.new(name);m.use_nodes=True
  colour=(*[linear(c) for c in rgb],1);m.diffuse_color=colour;m.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value=colour
  return m
-ATLAS=material('surfaces',[255,255,255])
+# A Blender material for each picture, which the asset names.
+DRAWN={name:material(name,[255,255,255]) for name in PICTURES}
 def blender(p):return (p[0],-p[2],p[1])
 def engine(p):return (p[0],p[2],-p[1])
 def unit(v):
@@ -76,7 +77,7 @@ class Mesh:
   bmesh.ops.delete(bm,geom=[v for v in bm.verts if not v.link_faces],context='VERTS');bm.verts.index_update()
   self.faces(self.add([tuple(v.co) for v in bm.verts]),[tuple(v.index for v in f.verts) for f in bm.faces],tag,away=[sum(p[k] for p in points)/len(points) for k in range(3)]);bm.free()
  def object(self,name,origin):
-  """The mesh in the frame of a static at `origin`, faces in their finishes on the atlas, or in flat colours."""
+  """The mesh in the frame of a static at `origin`, faces in their finishes on the pictures, or in flat colours."""
   bm=bmesh.new();vs=[bm.verts.new(blender(sub(p,origin))) for p in self.v];fs=[bm.faces.new([vs[i] for i in f]) for f in self.f]
   bm.verts.index_update();bm.normal_update()
   # A smooth vertex takes the mean of its faces, or the normal it was given.
@@ -90,29 +91,32 @@ class Mesh:
    mats=list(self.flat);me=bpy.data.meshes.new(name)
    for face,tag in zip(fs,self.tags):face.material_index=mats.index(tag)
   else:
-   mats=None;layer=bm.loops.layers.uv.new('Surface')
+   mats=None;layer=bm.loops.layers.uv.new('Surface');pics=[]
    for face,f,tag,custom in zip(fs,self.f,self.tags,self.uv):
     pts=[self.v[i] for i in f];normal=engine(face.normal);axis=max(range(3),key=lambda k:abs(normal[k]))
     ua,va={0:(2,1),1:(0,2),2:(0,1)}[axis];mirror=(axis==0 and normal[0]>0) or (axis==2 and normal[2]<0)
     order={v.index:j for j,v in enumerate(face.verts)}
     a=[p[ua] for p in pts];b=[p[va] for p in pts];lo=(min(a),min(b));ext=(max(a)-lo[0],max(b)-lo[1])
     if tag.startswith('sign:') and min(ext)>.05:
-     x,y,w,h=SIGNS[tag[5:]];inset=3
+     x,y,w,h=SIGNS[tag[5:]];inset=6;pic='signs'
      fr=[((ai-lo[0])/max(ext[0],1e-6),(bi-lo[1])/max(ext[1],1e-6)) for ai,bi in zip(a,b)]
      if mirror:fr=[(1-u,v) for u,v in fr]
     else:
      if tag.startswith('sign:'):tag='brass'
-     fin=FINISH[tag];x,y,w,h=fin['rect'];tile=fin.get('tile');inset=w/4 if 'tile' not in fin else INSET
+     fin=FINISH[tag];x,y,w,h=fin['rect'];tile=fin.get('tile');inset=w/4 if 'tile' not in fin else INSET;pic=fin.get('picture','surfaces')
      if custom:fr=custom
      else:
       span=tile or ext;fr=[((ai-lo[0])/max(ext[0],span[0],1e-6),(bi-lo[1])/max(ext[1],span[1],1e-6)) for ai,bi in zip(a,b)]
+    if pic not in pics:pics.append(pic)
+    face.material_index=pics.index(pic);size=PICTURES[pic]
     for loop in face.loops:
      u,v=fr[f.index(loop.vert.index)]
-     loop[layer].uv=((x+inset+u*(w-2*inset))/SIZE,1-(y+h-inset-v*(h-2*inset))/SIZE)
+     loop[layer].uv=((x+inset+u*(w-2*inset))/size,1-(y+h-inset-v*(h-2*inset))/size)
    me=bpy.data.meshes.new(name)
   bmesh.ops.triangulate(bm,faces=bm.faces[:],quad_method='BEAUTY',ngon_method='BEAUTY')
   bm.to_mesh(me);bm.free()
-  if mats is None:me.materials.append(ATLAS)
+  if mats is None:
+   for pic in pics:me.materials.append(DRAWN[pic])
   else:
    for tag in mats:me.materials.append(material('flat_'+tag,self.flat[tag]))
   normals=[]

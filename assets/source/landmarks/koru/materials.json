@@ -1,7 +1,7 @@
 {
-  "size": 2048,
+  "pictures": {"surfaces": 2048, "sails": 512, "signs": 2048},
   "inset": 6,
-  "signs": [1024, 0, 1024, 512],
+  "signs": [0, 0, 2048, 2048],
   "finishes": {
     "teak": {"rect": [0, 0, 1024, 1024], "tile": [2, 2], "rgb": [153, 111, 72], "roughness": 0.52, "metal": 0},
     "mahogany": {"rect": [1024, 512, 1024, 512], "tile": [2, 1], "rgb": [104, 66, 43], "roughness": 0.32, "metal": 0},
@@ -23,7 +23,7 @@
     "ceiling": {"rect": [128, 1664, 128, 128], "rgb": [233, 230, 219], "roughness": 0.7, "metal": 0},
     "chrome": {"rect": [256, 1664, 128, 128], "rgb": [196, 201, 204], "roughness": 0.18, "metal": 0.95},
     "port": {"rect": [384, 1664, 128, 128], "rgb": [118, 132, 140], "roughness": 0.1, "metal": 0.7},
-    "sail": {"rect": [512, 1664, 128, 128], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "sheet": 0.7},
-    "batten": {"rect": [640, 1664, 128, 128], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "sheet": 0.5}
+    "sail": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "sheet": 0.7},
+    "batten": {"picture": "sails", "rect": [0, 256, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "sheet": 0.7}
   }
 }
