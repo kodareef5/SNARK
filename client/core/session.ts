@@ -358,8 +358,8 @@ export class ClientSession {
   /** The survivor left for another server of the cluster: the ticket to take there, and that server's world id (S_TRAVEL). */
   travelled: { ticket: Uint8Array; world: number } | null = null;
 
-  /** Every moving static's state as the server last told it (S_MOTION), by ref. */
-  motions: ReadonlyMap<number, MotionState> = new Map();
+  /** Every moving static's state as the server last told it (S_MOTION), by ref: all after a welcome, then each as it is thrown. */
+  readonly motions = new Map<number, MotionState>();
   private readonly motionSource: MotionSource = { states: () => this.motions, tick: () => this.tickClock, statics: () => this.arrived ?? this.opts.statics ?? null };
   world: (CollisionWorld & { mapId: string; dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource; motion?: MotionSource }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
@@ -986,7 +986,7 @@ export class ClientSession {
     } else if (type === S_OWN) this.ownState(r);
     else if (type === S_MOTION) {
       const told = readMotions(r);
-      if (told) this.motions = told;
+      if (told) for (const [ref, s] of told) this.motions.set(ref, s);
     }
     else if (type === S_REJECT) {
       this.state = "closed";
@@ -1308,7 +1308,7 @@ export class ClientSession {
   }
 
   private welcome(r: BitReader): void {
-    this.motions = new Map();
+    this.motions.clear();
     const version = r.u16();
     const tick = r.u32();
     this.ownHandle = r.u32();

@@ -1,6 +1,6 @@
 // Statics that move between two states when used (shared/sim/motion.ts). A static's state is its fixture record's,
-// made the first time it is thrown, and every client is sent all of them when it joins and when one is thrown. Nothing is
-// done a tick.
+// made the first time it is thrown. A client is sent every state when it joins, and then each static as it is thrown.
+// Nothing is done a tick.
 
 import { RESULT_BUSY, RESULT_OK, S_MOTION } from "../shared/net/protocol.ts";
 import type { Connection } from "../shared/net/transport.ts";
@@ -12,6 +12,8 @@ import type { ServerWorld } from "./world.ts";
 
 /** The part of a fixture record that holds its static's motion. */
 export const MOTION_PART = 0x6d6f74;
+/** Throws remembered for the clients not yet told of them. One further behind is told every state again. */
+const THROWS_KEPT = 1024;
 
 export class Motion {
   private readonly world: ServerWorld;
@@ -19,8 +21,11 @@ export class Motion {
   private readonly fixtures: Fixtures;
   private readonly game: GameServer;
   private readonly states = new Map<number, MotionState>();
+  /** The statics thrown, in order, the first of them the `base`-th throw since the start. */
+  private readonly throws: number[] = [];
+  private base = 0;
+  /** By connection, the throws it has been told of. */
   private readonly told = new WeakMap<Connection, number>();
-  private version: number;
 
   constructor(world: ServerWorld, records: Records, fixtures: Fixtures, game: GameServer) {
     this.world = world;
@@ -31,7 +36,6 @@ export class Motion {
       const b = rec.extra.get(MOTION_PART);
       if (b) this.states.set(ref, readMotionBytes(b));
     });
-    this.version = this.states.size > 0 ? 1 : 0;
   }
 
   /** The static at `ref` is thrown: on toward the state it was not going to, from where it stands. A RESULT code. */
@@ -40,13 +44,17 @@ export class Motion {
     const facet = this.world.reg.motion[t.kind[ref & 0xffff]!]!;
     const was = this.states.get(ref) ?? null;
     const tick = this.world.tick;
-    if (was ? tick - was.at < THROW_TICKS : this.states.size >= MAX_MOVING) return RESULT_BUSY;
+    if (was && tick - was.at < THROW_TICKS) return RESULT_BUSY;
     const s = thrown(was, motionTicks(facet), tick);
     this.states.set(ref, s);
     const rec = this.fixtures.ensure(ref);
     rec.extra.set(MOTION_PART, motionBytes(s));
     this.records.dirty.add(rec.pid);
-    this.version++;
+    if (this.throws.length === THROWS_KEPT) {
+      this.throws.splice(0, THROWS_KEPT / 2);
+      this.base += THROWS_KEPT / 2;
+    }
+    this.throws.push(ref);
     return RESULT_OK;
   }
 
@@ -54,11 +62,16 @@ export class Motion {
     return this.states.get(ref) ?? null;
   }
 
-  /** Tells the client every moving static's state, if it has not been told them as they stand. */
+  /** Tells the client the states it has not been told as they stand: every one after its welcome, then those thrown since. */
   sync(c: Client): void {
-    if ((this.told.get(c.conn) ?? 0) === this.version) return;
-    writeMotions(this.game.begin(S_MOTION), this.states);
-    this.game.endOwn(c);
-    this.told.set(c.conn, this.version);
+    const told = this.told.get(c.conn);
+    const now = this.base + this.throws.length;
+    if (told === now) return;
+    const refs = told === undefined || told < this.base ? [...this.states.keys()] : [...new Set(this.throws.slice(told - this.base))];
+    for (let i = 0; i < refs.length; i += MAX_MOVING) {
+      writeMotions(this.game.begin(S_MOTION), this.states, refs.slice(i, i + MAX_MOVING));
+      this.game.endOwn(c);
+    }
+    this.told.set(c.conn, now);
   }
 }

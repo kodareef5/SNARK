@@ -34,7 +34,7 @@ test("a throw goes on from where the static stands toward the state it was not g
   expect(motionProgress(back, ticks, back.at + ticks / 3 + 1)).toBe(0);
   expect(readMotionBytes(motionBytes(back))).toEqual(back);
   const w = new BitWriter(64);
-  writeMotions(w, new Map([[0x00030007, back], [5, first]]));
+  writeMotions(w, new Map([[0x00030007, back], [5, first], [9, first]]), [0x00030007, 5]);
   expect(w.bytes().length).toBe(1 + 2 * 10);
   expect(readMotions(new BitReader(w.bytes()))).toEqual(new Map([[0x00030007, back], [5, first]]));
   expect(readMotions(new BitReader(w.bytes().subarray(0, 15)))).toBeNull();

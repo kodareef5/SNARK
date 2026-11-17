@@ -4,10 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { KORU_LAYOUT } from "../../content/landmarks/koru.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
-import { RESULT_BUSY } from "../../shared/net/protocol.ts";
+import { RESULT_BUSY, RESULT_OK, S_MOTION } from "../../shared/net/protocol.ts";
 import { BTN_USE, stanceEye } from "../../shared/sim/character.ts";
 import { THROW_TICKS, MOTION_STEPS, motionProgress } from "../../shared/sim/motion.ts";
-import { KORU_QUAY, koruMapFile, koruPoint } from "../fixtures/koru.ts";
+import { writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
+import { KORU_QUAY, koruMap, koruMapFile, koruPoint } from "../fixtures/koru.ts";
 import { Harness } from "../fixtures/net.ts";
 
 // Koru's sail control, a static that moves when used: thrown with E as a door is, its state on its record, told to every
@@ -76,6 +77,50 @@ test("the sail control is thrown with E, told to a guest who joins after, refuse
     const again = h.join("deckhand");
     h.run(800);
     expect(again.motions.get(ref)).toEqual(back);
+  } finally {
+    h.host.shutdown();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a map with more moving statics than a message holds moves every one, tells a guest of all, then of each as it is thrown, and keeps them across a restart", () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-motions-"));
+  const bay = koruMap();
+  const one = (bay.statics as readonly MapStatic[]).find((s) => s.kind === control.id)!;
+  const many = Array.from({ length: 299 }, (_, i) => ({ ...one, x: 300 + (i % 20) * 2, y: 1.5, z: 100 + Math.floor(i / 20) * 2 }));
+  const opts = { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap({ ...bay, statics: [...(bay.statics as readonly MapStatic[]), ...many] }), dbPath: join(dir, "world.db") };
+  const refs = (h: Harness): number[] => {
+    const kind = h.reg.index.get(control.id)!;
+    return [...h.world.structs.chunks.entries()].flatMap(([c, t]) => (t ? Array.from(t.kind.subarray(0, t.high), (k, slot) => (k === kind ? c * 65536 + slot : -1)).filter((r) => r >= 0) : []));
+  };
+  /** S_MOTION messages the server sends while `run` runs. */
+  const told = (h: Harness, run: () => void): number => {
+    const begin = h.server.begin.bind(h.server);
+    let n = 0;
+    h.server.begin = (type) => (type === S_MOTION && n++, begin(type));
+    run();
+    h.server.begin = begin;
+    return n;
+  };
+  let h = new Harness({}, 41, 60, opts);
+  try {
+    const all = refs(h);
+    expect(all.length).toBe(300);
+    expect(all.map((r) => h.host.motion.throw(r)).filter((code) => code !== RESULT_OK)).toEqual([]);
+    const guest = h.join("guest");
+    expect(told(h, () => h.run(800))).toBe(2);
+    expect(all.map((r) => guest.motions.get(r))).toEqual(all.map((r) => h.host.motion.get(r)!));
+    h.run(((THROW_TICKS + 30) * 1000) / 30);
+    // One static thrown is one message to each client, of that static alone.
+    expect(told(h, () => (h.host.motion.throw(all[299]!), h.run(200)))).toBe(1);
+    expect([h.host.motion.get(all[299]!)!.to, guest.motions.get(all[299]!)!.to, guest.motions.get(all[0]!)!.to]).toEqual([0, 0, 1]);
+    const states = all.map((r) => h.host.motion.get(r));
+    h.host.shutdown();
+    h = new Harness({}, 41, 60, opts);
+    expect(refs(h).map((r) => h.host.motion.get(r))).toEqual(states);
+    const back = h.join("guest");
+    h.run(800);
+    expect(all.map((r) => back.motions.get(r) ?? null)).toEqual(states);
   } finally {
     h.host.shutdown();
     rmSync(dir, { recursive: true, force: true });
