@@ -557,6 +557,10 @@ Reasoned from the rows, in the order a growing world meets them.
   var/maps/miami.snmap`); forty hurt and dead creatures in view (`--flock`); small
   details, a hundred dust rings near the camera.
 - Real network congestion; WebSocket send cost under load; Firefox.
+- This Mac's GPU on a built city in the bench: the Miami rows of `bun tools/bench/gpu.ts`
+  (its street and air on medium, high and ultra at one and two device pixels to one,
+  with shadows and the far layers off) want a quiet machine and room: a server on
+  Miami holds 3.4 GB as it starts (C), and the bench's client build passes 3 GB.
 
 ## The interface
 
