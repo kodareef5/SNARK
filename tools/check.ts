@@ -377,7 +377,11 @@ async function checkTests(tier: Tier, dir: string, env: Record<string, string>):
   clearInterval(watching);
   clearInterval(weighing);
   stopped.forEach(fail);
+  const gb = (bytes: number): string => `${(bytes / 1e9).toFixed(1)} GB`;
+  const heaviest = held.files.filter(([file]) => file).slice(0, 3);
+  const weighed = `${gb(held.most)} at most in the workers together${heaviest.length > 0 ? `\n  the heaviest workers then ran ${heaviest.map(([file, bytes]) => `${file} (${gb(bytes)})`).join(", ")}` : ""}`;
   if (!r.ok) {
+    console.log(`  ${weighed}`);
     fail(`${tier} tests failed:\n${r.out.trim()}`);
     return;
   }
@@ -386,10 +390,7 @@ async function checkTests(tier: Tier, dir: string, env: Record<string, string>):
   const counts = r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim());
   tally.passed += parseInt(counts.find((c) => c.endsWith(" pass")) ?? "0");
   for (const m of junit.matchAll(/<testsuite name="([^"]+)" file="\1"[^>]*? skipped="(\d+)"/g)) if (needsArt.has(m[1]!)) tally.unart += Number(m[2]);
-  const gb = (bytes: number): string => `${(bytes / 1e9).toFixed(1)} GB`;
-  console.log(`  ${counts.join(", ")}, ${r.cpu.toFixed(0)} CPU-seconds${tier === "fast" ? ` of ${TEST_CPU_BUDGET}` : ""}, ${gb(held.most)} at most in the workers together`);
-  const heaviest = held.files.filter(([file]) => file).slice(0, 3);
-  if (heaviest.length > 0) console.log(`  the heaviest workers then ran ${heaviest.map(([file, bytes]) => `${file} (${gb(bytes)})`).join(", ")}`);
+  console.log(`  ${counts.join(", ")}, ${r.cpu.toFixed(0)} CPU-seconds${tier === "fast" ? ` of ${TEST_CPU_BUDGET}` : ""}, ${weighed}`);
   // CPU-seconds move far less with the machine's load than the clock does, so a slow change shows on a busy day too.
   if (tier === "fast" && r.cpu > TEST_CPU_BUDGET) {
     const costliest = fileCpu(watch).slice(0, 5).map(([f, s]) => `${f} ${s.toFixed(1)}`);
