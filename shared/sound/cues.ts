@@ -66,18 +66,18 @@ const SURVIVOR = "species/survivor";
 // ---- Any body: steps, landings, water. Shared families: core:surface, core:body.
 cue("step/{ground}", BODIES, "step", "body", "built", "a foot plants, from the gait as drawn (creatures) or the ground covered (survivors); the ground from client/core/sound/ground.ts", { falls: ["{owner}/step", "{owner}/step/grass", "core:surface/step/{ground}"] });
 cue("land/{ground}", BODIES, "hit", "body", "fire", "the airborne bit clears; how hard from the fall", { falls: ["{owner}/land", "core:surface/land/{ground}"] });
-cue("drag/{ground}", BODIES, "step", "body", "fire", "a body carried or held moves along the ground (CUE_HELD)", { falls: ["core:surface/drag/{ground}"] });
+cue("drag/{ground}", BODIES, "step", "body", "waits:dragging", "a body carried or held moves along the ground (CUE_HELD)", { falls: ["core:surface/drag/{ground}"] });
 cue("splash/in", BODIES, "hit", "body", "fire", "swimming begins: the swim bit or the own body's mode", { falls: ["{owner}/splash/in", "core:body/splash/in/large"] });
 cue("splash/out", BODIES, "hit", "body", "fire", "swimming ends", { falls: ["core:body/splash/out"] });
 cue("swim", BODIES, "step", "body", "fire", "a stroke while swimming, by the water covered", { falls: ["{owner}/swim", "core:body/swim/stroke"] });
 cue("thump", BODIES, "hit", "body", "built", "a body goes down, knocked out or dead, as its hips meet the ground", { falls: ["{owner}/land@0.9", "core:body/thump/medium"] });
-cue("rustle", BODIES, "step", "body", "fire", "a body moves through a plant node", { falls: ["core:body/rustle/foliage"] });
+cue("rustle", BODIES, "step", "body", "waits:polish", "a body moves through a plant node", { falls: ["core:body/rustle/foliage"] });
 
 // ---- Creatures (species/creature). Each species' own first, then a stand-in of its own, then the shared.
 cue("call", CREATURE, "vocal", "body", "built", "an idle with a sound begins (shared/anim/creature.ts idleOf), as its mouth opens");
 cue("startled", CREATURE, "vocal", "body", "built", "CUE_STARTLE in the cue word", { falls: ["{owner}/alarm", "{owner}/hurt"] });
 cue("hurt", CREATURE, "vocal", "body", "built", "LAYER_FLINCH in the cue word", { falls: ["{owner}/pain"] });
-cue("hurt/badly", CREATURE, "vocal", "body", "fire", "the hurt stage bits rise (server/hurt.ts)", { falls: ["{owner}/hurt@0.94"] });
+cue("hurt/badly", CREATURE, "vocal", "body", "hook", "the hurt stage bits rise (server/hurt.ts)", { falls: ["{owner}/hurt@0.94"] });
 cue("death", CREATURE, "vocal", "body", "built", "the body leaves the view as the server says it died", { falls: ["{owner}/hurt@0.88"] });
 cue("attack", CREATURE, "hit", "body", "built", "act=SWING starts; heard as the blow lands (the bite's lands tick)", { falls: ["{owner}/peck", "{owner}/bite", "core:weapon/swing/hands"] });
 cue("land", CREATURE, "hit", "body", "built", "CUE_LAND in the cue word", { falls: ["{owner}/thump", "core:body/thump/medium"] });
@@ -91,11 +91,11 @@ cue("roar", CREATURE, "vocal", "body", "waits:riding", "a rider's roar key", { f
 cue("flap", CREATURE, "step", "body", "built", "a flyer's wingbeat at the top of each stroke of its flight, none on still wings, and CUE_TAKEOFF");
 cue("graze", CREATURE, "item", "body", "waits:behaviour", "grazing; there is no cue for it yet");
 cue("sleep", CREATURE, "vocal", "body", "waits:behaviour", "sleeping; there is no cue for it yet", { loop: true });
-cue("tamed", CREATURE, "vocal", "body", "fire", "EVENT_TAMED for the owner", { falls: ["{owner}/call"] });
-cue("mate", CREATURE, "vocal", "body", "fire", "the mating step bits rise", { falls: ["{owner}/call@1.1"] });
-cue("lay", CREATURE, "item", "world", "fire", "an egg prop appears beside it", { falls: ["core:body/thump/small"] });
-cue("hatch", CREATURE, "vocal", "world", "fire", "an egg prop goes and a young one appears", { falls: ["{owner}/call@1.3"] });
-cue("carried", CREATURE, "vocal", "body", "fire", "CUE_HELD is set", { falls: ["{owner}/startled"] });
+cue("tamed", CREATURE, "vocal", "body", "hook", "EVENT_TAMED for the owner", { falls: ["{owner}/call"] });
+cue("mate", CREATURE, "vocal", "body", "hook", "the mating step bits rise", { falls: ["{owner}/call@1.1"] });
+cue("lay", CREATURE, "item", "world", "waits:breeding", "an egg prop appears beside it", { falls: ["core:body/thump/small"] });
+cue("hatch", CREATURE, "vocal", "world", "waits:breeding", "an egg prop goes and a young one appears", { falls: ["{owner}/call@1.3"] });
+cue("carried", CREATURE, "vocal", "body", "hook", "CUE_HELD is set", { falls: ["{owner}/startled"] });
 
 // ---- The survivor (species/survivor). Others hear these placed; the player hears their own at the ear.
 cue("voice/{sex}/hurt", SURVIVOR, "vocal", "body", "fire", "EVENT_HURT for the player; others cannot see it (gap)");
@@ -104,8 +104,8 @@ cue("voice/{sex}/death", SURVIVOR, "vocal", "body", "fire", "the session goes to
 cue("voice/{sex}/jump", SURVIVOR, "vocal", "body", "fire", "grounded is lost going up");
 cue("voice/{sex}/land", SURVIVOR, "vocal", "body", "fire", "landing from a fall fast enough to hurt");
 cue("voice/{sex}/winded", SURVIVOR, "vocal", "ear", "fire", "MF_WINDED is set on the own body");
-cue("voice/{sex}/gasp", SURVIVOR, "vocal", "ear", "fire", "the eye comes up out of the water after a while under it");
-cue("voice/{sex}/drown", SURVIVOR, "vocal", "ear", "fire", "oxygen is gone and health falls");
+cue("voice/{sex}/gasp", SURVIVOR, "vocal", "ear", "hook", "the eye comes up out of the water after a while under it");
+cue("voice/{sex}/drown", SURVIVOR, "vocal", "ear", "hook", "oxygen is gone and health falls");
 cue("voice/{sex}/knocked_out", SURVIVOR, "vocal", "ear", "fire", "MF_OUT is set");
 cue("voice/{sex}/wake", SURVIVOR, "vocal", "ear", "fire", "MF_OUT is cleared");
 cue("voice/{sex}/eat", SURVIVOR, "item", "ear", "fire", "food rises after using an item");
@@ -122,27 +122,27 @@ cue("draw/{hold}", ["item", ...BODIES], "weapon", "body", "fire", "act=DRAW begi
 cue("release/{hold}", ["item", ...BODIES], "weapon", "body", "fire", "a bow's arrow leaves: act goes to COOL after HOLD", { falls: ["{owner}/release", "core:weapon/release/bow"] });
 cue("fire/{hold}", ["item", ...BODIES], "weapon", "world", "fire", "own: session.fired; others: EVENT_SHOT within 260 m", { falls: ["{owner}/fire", "core:weapon/fire/{name}", "core:weapon/fire/{hold}"] });
 cue("fire/far", "item", "weapon", "world", "fire", "EVENT_SHOT from beyond 150 m", { falls: ["core:weapon/fire/far"] });
-cue("fire/crossbow", "item", "weapon", "world", "fire", "a crossbow's shot", { falls: ["{owner}/fire", "core:weapon/fire/crossbow"] });
-cue("fire/sling", "item", "weapon", "world", "fire", "a slingshot's shot", { falls: ["{owner}/fire", "core:weapon/fire/sling"] });
+cue("fire/crossbow", "item", "weapon", "world", "hook", "a crossbow's shot", { falls: ["{owner}/fire", "core:weapon/fire/crossbow"] });
+cue("fire/sling", "item", "weapon", "world", "hook", "a slingshot's shot", { falls: ["{owner}/fire", "core:weapon/fire/sling"] });
 cue("fire/silenced", "item", "weapon", "world", "waits:W0", "EVENT_SHOT's silenced bit (protocol 13)");
 cue("reload/{hold}", ["item", ...BODIES], "weapon", "body", "fire", "act=RELOAD begins", { falls: ["{owner}/reload", "core:weapon/reload/{name}", "core:weapon/reload/{hold}", "core:weapon/reload/rifle"] });
-cue("dry", "item", "weapon", "ear", "fire", "the trigger with no rounds loaded", { falls: ["core:weapon/dry"] });
+cue("dry", "item", "weapon", "ear", "hook", "the trigger with no rounds loaded", { falls: ["core:weapon/dry"] });
 cue("equip", ["item", ...BODIES], "item", "body", "fire", "act=EQUIP begins", { falls: ["{owner}/equip", "core:weapon/equip"] });
 cue("throw", ["item", ...BODIES], "weapon", "body", "fire", "a throw (hold THROW) begins", { falls: ["{owner}/throw", "core:weapon/throw/{name}", "core:weapon/throw"] });
 cue("fly/arrow", "prop", "weapon", "world", "hook", "a flying shot passes the ear (shots.ts flies it)", { falls: ["core:weapon/fly/arrow"] });
 cue("whiz", "prop", "weapon", "world", "fire", "a hitscan shot's line passes within 4 m of the ear", { falls: ["core:weapon/whiz/bullet"] });
 cue("ricochet", "prop", "weapon", "world", "fire", "a hitscan shot ends on the world", { falls: ["core:weapon/ricochet"] });
-cue("stick", "prop", "hit", "world", "fire", "an arrow_stuck prop appears", { falls: ["core:weapon/stick"] });
+cue("stick", "prop", "hit", "world", "hook", "an arrow_stuck prop appears", { falls: ["core:weapon/stick"] });
 cue("impact/{material}", ["prop", "item"], "hit", "world", "fire", "a blow or a shot lands: EVENT_HIT for the attacker; a projectile's end; the struck thing's material", { falls: ["core:surface/impact/{material}"] });
 cue("blast/near", "prop", "weapon", "world", "fire", "EVENT_BLAST within 120 m", { falls: ["core:weapon/blast/near"] });
 cue("blast/far", "prop", "weapon", "world", "fire", "EVENT_BLAST beyond 120 m", { falls: ["core:weapon/blast/far"] });
-cue("fuse", "prop", "weapon", "body", "fire", "a live grenade lies in view", { loop: true, falls: ["core:weapon/fuse"] });
-cue("bounce", "prop", "hit", "body", "fire", "a live grenade's velocity turns", { falls: ["core:weapon/bounce"] });
-cue("zap", "prop", "weapon", "world", "fire", "a shock dart's buff on a body", { falls: ["core:weapon/zap"] });
+cue("fuse", "prop", "weapon", "body", "hook", "a live grenade lies in view", { loop: true, falls: ["core:weapon/fuse"] });
+cue("bounce", "prop", "hit", "body", "waits:polish", "a live grenade's velocity turns", { falls: ["core:weapon/bounce"] });
+cue("zap", "prop", "weapon", "world", "hook", "a shock dart's buff on a body", { falls: ["core:weapon/zap"] });
 cue("hit/marker", "ui", "ui", "ear", "fire", "EVENT_HIT for the attacker", { falls: ["core:weapon/hit/marker"] });
 cue("hit/head", "ui", "ui", "ear", "fire", "EVENT_HIT on the head zone", { falls: ["core:weapon/hit/head"] });
 cue("kill", "ui", "ui", "ear", "fire", "EVENT_HIT with the killed bit, or EVENT_KILL", { falls: ["core:weapon/kill"] });
-cue("break", "item", "item", "ear", "fire", "a held item's durability reaches 0", { falls: ["core:structure/demolish@1.3"] });
+cue("break", "item", "item", "ear", "hook", "a held item's durability reaches 0", { falls: ["core:structure/demolish@1.3"] });
 cue("auto", "item", "weapon", "world", "waits:W2", "automatic fire");
 cue("pellets", "item", "weapon", "world", "waits:W3", "a shotgun's burst");
 cue("pump", ["item", ...BODIES], "weapon", "body", "fire", "a pump gun fired: its pump follows the shot", { falls: ["{owner}/pump", "core:weapon/pump/{name}"] });
@@ -163,14 +163,14 @@ cue("demolish", "structure", "build", "world", "fire", "a removal with GONE_TAKE
 cue("door/open/{door}", "structure", "build", "world", "fire", "a door's kind swaps to its open kind", { falls: ["{owner}/open", "core:structure/door/open/{door}"] });
 cue("door/close/{door}", "structure", "build", "world", "fire", "an open door's kind swaps back", { falls: ["{owner}/close", "core:structure/door/close/{door}"] });
 cue("door/locked", "structure", "build", "ear", "fire", "RESULT_LOCKED for the one who tried it", { falls: ["core:structure/door/locked"] });
-cue("lock", "structure", "build", "ear", "fire", "RESULT_PIN or a lock command's result, for its user only", { falls: ["core:structure/lock"] });
-cue("box/open/{door}", "structure", "build", "ear", "fire", "OWN_OPEN opens, for its user only", { falls: ["core:structure/box/open/{door}"] });
-cue("box/close/{door}", "structure", "build", "ear", "fire", "OWN_OPEN closes", { falls: ["core:structure/box/close/{door}"] });
+cue("lock", "structure", "build", "ear", "hook", "RESULT_PIN or a lock command's result, for its user only", { falls: ["core:structure/lock"] });
+cue("box/open/{door}", "structure", "build", "ear", "hook", "OWN_OPEN opens, for its user only", { falls: ["core:structure/box/open/{door}"] });
+cue("box/close/{door}", "structure", "build", "ear", "hook", "OWN_OPEN closes", { falls: ["core:structure/box/close/{door}"] });
 cue("fire/light", "structure", "build", "world", "fire", "a station's kind swaps to its lit kind", { falls: ["core:structure/fire/light"] });
 cue("fire/out", "structure", "build", "world", "fire", "a lit kind swaps back", { falls: ["core:structure/fire/out"] });
 cue("fire/burn", "structure", "bed", "world", "fire", "a lit station within hearing", { loop: true, falls: ["core:world/fire"] });
 cue("station/run", "structure", "build", "world", "waits:stations", "a station's jobs run", { loop: true, falls: ["core:structure/grind"] });
-cue("bed/use", "structure", "ui", "ear", "fire", "respawning at a bed", { falls: ["core:structure/bed/use"] });
+cue("bed/use", "structure", "ui", "ear", "hook", "respawning at a bed", { falls: ["core:structure/bed/use"] });
 cue("turret", "structure", "weapon", "world", "waits:defences", "a turret fires");
 
 // ---- Nodes. Shared family core:node, by the node's material.
@@ -181,13 +181,16 @@ cue("struck", "node", "hit", "world", "hook", "a blow lands on a node (own strik
 cue("regrow", "node", "build", "world", "waits:polish", "a node's slot is freed");
 
 // ---- The interface, never placed. Shared family core:ui.
+// The interface fires these (client/core/ui/ui.ts, client/core/sound/actions.ts); the rest have their moment in the
+// interface's code and wait for a line there.
+const UI_FIRED = new Set(["click", "level_up", "engram", "respawn", "tame/done", "dead"]);
 for (const n of ["click", "hover", "back", "tab", "toggle", "slider", "slot/pick", "slot/drop", "craft/queue", "craft/done", "error", "notice", "chat", "level_up", "engram", "respawn", "tame/done", "tribe", "ghost/snap", "dead"]) {
   // `dead` is the player's own death sting; `death` is the creature's cry.
-  cue(n, "ui", "ui", "ear", n === "hover" || n === "slider" || n === "tribe" ? "hook" : "fire", `the interface: ${n.replace("/", " ")}`, { falls: [`core:ui/${n === "dead" ? "death" : n}`] });
+  cue(n, "ui", "ui", "ear", UI_FIRED.has(n) ? "fire" : "hook", `the interface: ${n.replace("/", " ")}`, { falls: [`core:ui/${n === "dead" ? "death" : n}`] });
 }
 cue("screen/{screen}/open", "ui", "ui", "ear", "fire", "a screen or panel opens", { falls: ["core:ui/open"] });
 cue("screen/{screen}/close", "ui", "ui", "ear", "fire", "a screen or panel closes", { falls: ["core:ui/close"] });
-cue("whistle/{order}", "ui", "ui", "ear", "fire", "a whistle key; others hear nothing (gap)", { falls: ["core:ui/whistle/{order}", "core:ui/whistle/follow"] });
+cue("whistle/{order}", "ui", "ui", "ear", "hook", "a whistle key; others hear nothing (gap)", { falls: ["core:ui/whistle/{order}", "core:ui/whistle/follow"] });
 
 // ---- The world, where the ear is. Shared family core:world.
 cue("bed/{biome}/{time}", "world", "bed", "ear", "fire", "the clock (shared/sim/clock.ts) and the place: beach near the sea, jungle among many trees, else grass", { loop: true, falls: ["core:world/bed/{biome}/{time}", "core:world/bed/grass/{time}"] });

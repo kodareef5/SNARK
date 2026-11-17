@@ -15,7 +15,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { motionProgress, motionTicks } from "../../shared/sim/motion.ts";
 import { MODE_FLYER, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
@@ -220,6 +220,7 @@ export class App {
       this.builder.result(seq, code, this.nowMs);
       this.vehiclePlacement.result(seq, code, this.nowMs);
       this.ui.structure.result(seq, code, this.nowMs, this.session, this.aimed);
+      if (code === RESULT_LOCKED) this.ui.hear?.("door/locked");
     };
   }
 
