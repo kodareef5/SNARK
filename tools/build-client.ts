@@ -4,7 +4,7 @@
 // stored a part at a time, deflated where that is smaller, and every level is ordered for the vertex cache first, a
 // flat one welded. What the first frame waits for holds the survivor and nothing else that grows with the catalogue.
 
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { brotliCompressSync, constants } from "node:zlib";
 import { Binding } from "../client/core/assets/bind.ts";
@@ -20,20 +20,21 @@ import { compileContent, type Registry } from "../shared/content/registry.ts";
 import { fillSlot, slotsOf } from "../shared/content/slots.ts";
 import { describePack } from "../shared/pack/manifest.ts";
 import { parsePack, type Pack } from "../shared/pack/pack.ts";
+import { TEXTURE_FORMATS } from "../shared/pack/texture.ts";
 import { soundsHeard } from "../shared/sound/reach.ts";
 import { nodeForms } from "../shared/world/nodes.ts";
 import { gameTextures } from "./art/materials.ts";
 import { ART, LANDMARKS, SOURCE } from "./art/source.ts";
 import { farMeshId } from "../shared/pack/far.ts";
 import { BEAM_MESH, MISSING_MESH, WATER_MESH, buildCorePack, importedMeshes } from "./pack/build.ts";
-import { buildTextures, type TextureSource } from "./pack/encode.ts";
+import { writeTextures, type TextureSource } from "./pack/encode.ts";
 import { landmarkArt, landmarkPack } from "./pack/far.ts";
 import { gameIcons } from "./pack/icons.ts";
 import { partHash } from "./pack/manifest.ts";
 import { orderPack } from "./pack/order.ts";
 import { SOUND_RATES, buildSounds, findSheets, type SoundReport } from "./pack/sound.ts";
-import { bootManifest, splitPack, writePages } from "./pack/split.ts";
-import { storeParts } from "./pack/store.ts";
+import { bootManifest, splitPack, writePages, type SplitFile } from "./pack/split.ts";
+import { storeParts, type StoreReport } from "./pack/store.ts";
 import { STRESS_CARDS, cardPicture, spoilStress, stressMeshes } from "./pack/stress.ts";
 import { weigh, weighLandmarks } from "./sizes.ts";
 import { buildUiAssets } from "./ui/assets.ts";
@@ -157,42 +158,57 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   const split = splitPack(core, "core", paging(registry!, whole));
   const manifest = split.manifest;
   const pageFile = split.files.findIndex((f) => f.role === "page");
-  // The game's own textures, from its asset folders but its landmarks', and the cards.
+  let packBytes = 0;
+  /** Writes file `i` of the manifest, named after its hash, once its bytes are final. */
+  const write = (f: SplitFile, i: number): void => {
+    manifest.files[i]!.name = f.name.replace(/\.(\w+)$/, `.${partHash(f.bytes)}.$1`);
+    writeFileSync(join(dist, "assets", manifest.files[i]!.name), f.bytes);
+    packBytes += f.bytes.length;
+  };
+  // The game's own textures, from its asset folders but its landmarks', and the cards, each stored and written as it is made.
   const sources: TextureSource[] = [...(await gameTextures()), ...(opts.stress ? stressCards() : [])];
   let t0 = performance.now();
-  const textures = await buildTextures(manifest, sources, "core");
-  if (textures.files.length > 0) {
+  const textures = await writeTextures(manifest, sources, "core", join(dist, "assets"));
+  if (textures.raw > 0) {
     const { pictures, encoded, megapixels } = textures.report;
-    console.log(`textures     ${manifest.textures!.length} in ${textures.files.length} variants, ${textures.files.reduce((sum, f) => sum + f.bytes.length, 0)} bytes: ${encoded} of ${pictures} pictures encoded (${megapixels.toFixed(1)} megapixels), ${(performance.now() - t0).toFixed(0)} ms`);
+    console.log(`textures     ${manifest.textures!.length} in ${TEXTURE_FORMATS.length} variants, ${textures.raw} bytes: ${encoded} of ${pictures} pictures encoded (${megapixels.toFixed(1)} megapixels), ${(performance.now() - t0).toFixed(0)} ms`);
   }
   t0 = performance.now();
-  const ranged = [...split.files, ...textures.files];
-  const first = await storeParts(ranged, manifest, { only: ranged.flatMap((f, i) => (f.role === "page" ? [] : [i])) });
+  const first = await storeParts(split.files, manifest, { only: split.files.flatMap((f, i) => (f.role === "page" ? [] : [i])) });
   if (opts.stress) spoilStress(first.files, manifest);
   // The pages say where everything else is stored, so they are written and stored after it.
   first.files[pageFile] = { ...first.files[pageFile]!, bytes: writePages(manifest, split.blobs) };
   const { files, report: pages } = await storeParts(first.files, manifest, { only: [pageFile] });
-  const report = { parts: first.report.parts + pages.parts, raw: first.report.raw + pages.raw, stored: first.report.stored + pages.stored, deflated: first.report.deflated + pages.deflated, made: first.report.made + pages.made };
-  console.log(`parts        ${report.parts} in ${files.length - 1} files, ${report.raw} bytes stored in ${report.stored}: ${report.deflated} deflated, ${report.made} of them anew, ${manifest.pages!.length} pages in ${pages.stored} bytes, ${(performance.now() - t0).toFixed(0)} ms`);
+  const parts = [first.report, pages, textures.stored];
+  const report = Object.fromEntries((["parts", "raw", "stored", "deflated", "made"] as const).map((k) => [k, parts.reduce((sum, r) => sum + r[k], 0)])) as Record<keyof StoreReport, number>;
+  console.log(`parts        ${report.parts} in ${manifest.files.length - 1} files, ${report.raw} bytes stored in ${report.stored}: ${report.deflated} deflated, ${report.made} of them anew, ${manifest.pages!.length} pages in ${pages.stored} bytes, ${(performance.now() - t0).toFixed(0)} ms`);
+  files.forEach(write);
   manifest.farColours = wholeFarColours(registry!, whole);
-  // The inventory pictures, drawn from the meshes and the textures as stored, in sheets after the other files.
-  files.push(...(await gameIcons(core, manifest, files)));
+  // The inventory pictures, drawn from the meshes and the textures as written, in sheets after the other files.
+  const read = (file: number, at: number, bytes: number): Uint8Array => {
+    const out = new Uint8Array(bytes);
+    const fd = openSync(join(dist, "assets", manifest.files[file]!.name), "r");
+    try {
+      readSync(fd, out, 0, bytes, at);
+    } finally {
+      closeSync(fd);
+    }
+    return out;
+  };
+  const sheets = manifest.files.length;
+  (await gameIcons(core, manifest, read)).forEach((f, k) => write(f, sheets + k));
   // Sounds are a file of their own, fetched a sound at a time and stored as they are coded: those a cue the game fires
   // can reach. The rest go in a file of their own for the sound board, which lists them from loose.json.
   t0 = performance.now();
   const ids = findSheets().flatMap((s) => Object.keys(s.sheet.sounds).map((name) => `${s.owner}/sound/${name}`));
-  const sounds = buildSounds(files.length, undefined, undefined, soundsHeard(ids, registry!));
+  const sounds = buildSounds(manifest.files.length, undefined, undefined, soundsHeard(ids, registry!));
   if (sounds) {
-    files.push({ name: "core.snsd", role: "sound", bytes: sounds.bytes });
     manifest.files.push({ name: "core.snsd", role: "sound", bytes: sounds.bytes.length });
     manifest.sounds = sounds.sounds;
+    write({ name: "core.snsd", role: "sound", bytes: sounds.bytes }, manifest.files.length - 1);
     const line = (r: SoundReport): string => `${r.sounds} with ${r.takes} takes, ${r.seconds.toFixed(1)} s in ${r.bytes} bytes (${((r.bytes * 8) / Math.max(1, r.seconds) / 1000).toFixed(0)} kbps; s at ${SOUND_RATES.map((k, i) => `${k / 1000}k ${r.rates[i]!.toFixed(0)}`).join(", ")}; ${(r.decoded / 1048576).toFixed(1)} MB decoded), ${r.made} coded anew${r.limited.length > 0 ? `, ${r.limited.length} brought under -1 dB` : ""}`;
     console.log(`sounds       ${line(sounds.report)}; loose ${line(sounds.loose!.report)}, ${(performance.now() - t0).toFixed(0)} ms`);
   }
-  files.forEach((f, i) => {
-    manifest.files[i]!.name = f.name.replace(/\.(\w+)$/, `.${partHash(f.bytes)}.$1`);
-    writeFileSync(join(dist, "assets", manifest.files[i]!.name), f.bytes);
-  });
   if (sounds?.loose) {
     const name = `loose.${partHash(sounds.loose.bytes)}.snsd`;
     writeFileSync(join(dist, "assets", name), sounds.loose.bytes);
@@ -214,7 +230,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   writeFileSync(join(dist, "index.html"), readFileSync(join(root, "client/index.html"), "utf8").replaceAll("HUD_FONT_URL", ui.font).replaceAll("HUD_ATLAS_URL", ui.atlas).replace("<!-- MODULES -->", modules).replace("FETCHED", JSON.stringify(["map.json", "assets/manifest.json", boot, skyName, contentName])));
   const fetchedWhole = ["index.html", "assets/manifest.json", boot, skyName, contentName, ...(rows ? [`assets/${manifest.soundRows}`] : []), ...scripts];
   for (const name of fetchedWhole) writeFileSync(join(dist, `${name}.br`), brotli(readFileSync(join(dist, name)), opts.quick ?? false));
-  return { jsBytes: ["main.js", ...pieces].reduce((sum, f) => sum + statSync(join(dist, f)).size, 0), packBytes: files.reduce((sum, f) => sum + (f.role === "tex" ? 0 : f.bytes.length), 0) + landmarks };
+  return { jsBytes: ["main.js", ...pieces].reduce((sum, f) => sum + statSync(join(dist, f)).size, 0), packBytes: packBytes + landmarks };
 }
 
 /**
@@ -228,30 +244,45 @@ async function buildLandmarks(dist: string, quick: boolean): Promise<number> {
   // Their content takes a second to load, so only a build loads it.
   const { LANDMARKS: PLACED } = await import("../content/landmarks/index.ts");
   for (const name of existsSync(LANDMARKS) ? readdirSync(LANDMARKS).filter((n) => statSync(join(LANDMARKS, n)).isDirectory()).sort() : []) {
+    // What the core's stages and the landmark before left is collected before a landmark's art is read.
+    Bun.gc(true);
     const placed = PLACED.find((l) => l.name === name);
     if (!placed) throw new Error(`assets/source/landmarks/${name} is the art of a landmark content/landmarks/index.ts does not have`);
     const art = landmarkArt(placed);
     const { files: split, manifest } = splitPack(orderPack(landmarkPack(art)), name);
-    const textures = await buildTextures(manifest, await gameTextures(SOURCE, name), name);
-    const { files } = await storeParts([...split, ...textures.files], manifest);
+    await writeTextures(manifest, await gameTextures(SOURCE, name), name, out);
+    const { files } = await storeParts(split, manifest);
     files.forEach((f, i) => {
       manifest.files[i]!.name = f.name.replace(/\.(\w+)$/, `.${partHash(f.bytes)}.$1`);
       writeFileSync(join(out, manifest.files[i]!.name), f.bytes);
-      bytes += f.bytes.length;
     });
+    bytes += manifest.files.reduce((sum, f) => sum + f.bytes, 0);
     writeFileSync(join(out, `${name}.json`), JSON.stringify(manifest));
     for (const file of [`${name}.json`, manifest.files[manifest.boot]!.name]) writeFileSync(join(out, `${file}.br`), brotli(readFileSync(join(out, file)), quick));
-    console.log(`landmark     ${name}: ${manifest.meshes.length} meshes, ${manifest.textures?.length ?? 0} textures, ${files.map((f) => `${f.role} ${f.bytes.length}`).join(", ")} bytes`);
+    console.log(`landmark     ${name}: ${manifest.meshes.length} meshes, ${manifest.textures?.length ?? 0} textures, ${manifest.files.map((f) => `${f.role} ${f.bytes}`).join(", ")} bytes`);
     const far = manifest.meshes.find((m) => m.id === farMeshId(name));
     if (far && art.far) console.log(`             ${far.id}: ${art.far.row.pieces.length / 4} pieces, ${far.levels.map((l) => `${l.tris} triangles, ${l.verts} vertices at ${l.error} m`).join("; ")}${art.far.otherwise.length > 0 ? `; drawn otherwise and left out: ${art.far.otherwise.join(", ")}` : ""}`);
   }
   return bytes;
 }
 
+/**
+ * buildClient in a process of its own, for a caller that goes on running: what the build held is given back when it
+ * ends. Its lines go to the caller's. Throws if it fails.
+ */
+export async function buildClientApart(opts: { stress?: boolean; quick?: boolean; dist?: string } = {}): Promise<void> {
+  const args = [...(opts.stress ? ["--stress"] : []), ...(opts.quick ? ["--quick"] : []), "--dist", opts.dist ?? resolve(import.meta.dir, "../client/dist")];
+  const code = await Bun.spawn([process.execPath, import.meta.path, ...args], { stdout: "inherit", stderr: "inherit" }).exited;
+  if (code !== 0) throw new Error(`the client did not build: the build ended with ${code}`);
+}
+
 if (import.meta.main) {
   const t0 = performance.now();
-  const { jsBytes, packBytes } = await buildClient({ stress: process.argv.includes("--stress") });
+  const flag = (name: string): boolean => process.argv.includes(name);
+  const at = process.argv.indexOf("--dist");
+  const { jsBytes, packBytes } = await buildClient({ stress: flag("--stress"), quick: flag("--quick"), ...(at >= 0 ? { dist: resolve(process.argv[at + 1]!) } : {}) });
   console.log(`client/dist  main.js ${jsBytes} bytes, assets ${packBytes} bytes, ${(performance.now() - t0).toFixed(0)} ms`);
+  // Only `bun run build` is weighed: a build for a caller (buildClientApart) says where it goes.
   const dist = resolve(import.meta.dir, "../client/dist");
-  if (!process.argv.includes("--stress") && ![weigh(dist), weighLandmarks(dist)].every(Boolean)) process.exitCode = 1;
+  if (!flag("--stress") && at < 0 && ![weigh(dist), weighLandmarks(dist)].every(Boolean)) process.exitCode = 1;
 }
