@@ -17,7 +17,7 @@ import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz } from "../../shared/coords.ts
 import { parsePack } from "../../shared/pack/pack.ts";
 import { CityStatics, cellPart, cityTops, goneByCells, mergedPart } from "../../shared/world/city.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
-import { mapHeightfield, parseMap, placeStatics } from "../../shared/world/mapfile.ts";
+import { mapHeightfield, parseMap } from "../../shared/world/mapfile.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { corePackBytes } from "../../tests/fixtures/pack.ts";
 
@@ -49,7 +49,8 @@ function cityWorld(path: string) {
   const statics = new CityStatics(map.dims, map.statics, reg);
   const indexMs = performance.now() - t1;
   const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
-  placeStatics(map, structs, reg);
+  // The pieces of kinds the core's content has: a landmark's are left out here as they are of the far city.
+  for (let i = 0; i < statics.count; i++) structs.add(statics.kind[i]!, statics.x[i]!, statics.y[i]!, statics.z[i]!, statics.yaw[i]!, 0, reg.maxHp[statics.kind[i]!]!);
   const pack = parsePack(corePackBytes());
   const since = new Float64Array(chunkCount(map.dims)).fill(-1);
   let now = 0;

@@ -21,6 +21,7 @@ touch rule, ASTC, 24-bit depth, 16 texture units, no timer queries.
 | E | `bun run bench`, three runs at the end of the cleanup round, load 3.3 to 4.3 on 10 cores. Medians are from runs 1 and 3; tails (99th percentile, worst) are ranges over all three. Run 2 overlapped a device server starting | 2026-11-16 | `b98944ce` |
 | Start | `bun run bench` once at the start of the same round; its later rows ran as builders started, so times there are high, counts not | 2026-11-16 | `b9896d20` |
 | M | once on main, on a busy machine (load 7 to 39 on 10 cores) | 2026-11-15 | `1ca2026` |
+| C | counts and bytes on Miami as built that day (`187f1213`, map version 5, with the cruise ship), on a busy machine (load 6 to 25), so no times | 2026-11-17 | `d45f43da` |
 | Dnnn | the measurement its decision records | | |
 | iPhone | the device page's reports (D349), kept in `planning/reference/device-reports` and named by UTC time, the three soaks the governor's tests replay in `tests/fixtures/device-reports` | 2026-11-15, 16 | |
 
@@ -212,29 +213,56 @@ At 480 chunks: 17.7, 56.3, 61.3 and 61.3 far draws by tier. A castle's blocks ar
 
 ### The far city
 
-Miami's ruins with round two's bridges, wings and district colours, built from main
-at 3d88e06 on 2026-11-15: 1,188,264 statics in 6,893 chunks (`bun
-tools/bench/city.ts var/maps/miami.snmap`, M). Making a busy chunk's levels (the 200
-with most pieces) takes, median and worst: every box 0.57, 1.92 ms; the lattice 0.49,
-1.01; mass in 4 m cells 1.09, 2.66; in 8 m cells 0.39, 1.25 (busy). In the browser
-they are made on the city's worker, one level a job (D647).
+Miami's ruins with the cruise ship (C): 1,242,693 statics of the core's kinds in 7,567
+chunks (`bun tools/bench/city.ts var/maps/miami.snmap`); the ship's and Koru's 4,298
+are left out, as the far city leaves a landmark's. The map's columns and the far
+city's hold 42.9 MB. In the browser a chunk's levels are made on the city's worker,
+one level a job (D647). Making a busy chunk's levels (the 200 with most pieces) took,
+median and worst, every box 0.57, 1.92 ms; the lattice 0.49, 1.01; mass in 4 m cells
+1.09, 2.66; in 8 m cells 0.39, 1.25 on the map of 2026-11-15 (M, busy); those times
+want a quiet run on today's.
 
 The eight cameras of `assets/source/maps/miami/reports/farcity/views.json` at 1,920
 by 1,080, the near window held whole, draws and triangles as listed in the packet, a
-run across the split counted in both ranges (M):
+run across the split counted in both ranges (C). The worst view draws 42 to 61% more
+triangles than on the map of 2026-11-15:
 
 | | Low poly | Medium | High | Ultra |
 | --- | --- | --- | --- | --- |
 | Reach; every box, lattice, mass 4 m to | 2,048 m; 340, 600, none | 2,048 m; 400, 900, none | 3,072 m; 500, 1,300, 2,000 m | 4,096 m; 600, 1,800, 2,800 m |
-| Draws, the most in a view | 160 | 220 | 297 | 350 |
-| Triangles, the most in a view | 376 k | 517 k | 994 k | 1.32 M |
-| Frame build, median in the slowest view | 0.39 ms | 0.23 ms | 0.20 ms | 0.23 ms |
+| Draws, the most in a view | 161 | 231 | 317 | 368 |
+| Triangles, the most in a view | 599 k | 830 k | 1.41 M | 1.88 M |
+| On the card, the most in a view | 19.6 MB | 23.9 MB | 39.2 MB | 54.5 MB |
 
-The worst views are from the air over downtown (`air-handover`, `air-wide`). With far
-levels' indices held once by the shell, medium's far city holds 21.6 to 22.0 MB on
-the card in the reviewer's views and ultra 51.0 to 52.2 (D653). A jump into downtown
-has every tile made in 45 frames, the page spending at most 0.76 ms of a frame on
-the far city (D647).
+The most triangles are from the air over downtown (`air-handover` on low poly and
+medium, `air-wide` on high and ultra), the most draws from `air-handover` on low poly
+and medium and from the bay (`skyline-bay`) on high and ultra, and the most bytes on
+the card from the street (`street-300`). Frame build in the slowest view was 0.39, 0.23,
+0.20 and 0.23 ms on the map of 2026-11-15 (M) and wants a quiet run on today's. A
+jump into downtown has every tile made in 45 frames, the page spending at most 0.76
+ms of a frame on the far city (D647).
+
+### A real city's census
+
+What each view of downtown Miami draws on each tier, the near window of 7 by 7 chunks
+held whole and the far city drawing the rest, at noon (`bun tools/bench/census.ts
+var/maps/miami.snmap`, C): the near city's draws, its draws into the sun's maps (a
+caster once a cascade), and the far city's draws and triangles. Medium with the touch
+rule is at the iPhone's 390 by 669, the others at 1,920 by 1,080; trees and rocks are
+left out. `tests/unit/census.test.ts` pins the first three views on a slice of these
+statics with grey boxes for meshes, whose near columns are the built map's.
+
+| View | Low poly | Medium, touch | Medium | High | Ultra |
+| --- | --- | --- | --- | --- | --- |
+| `street-300`, eye height looking west | 508, 0; 140, 404 k | 266, 183; 86, 273 k | 508, 362; 226, 580 k | 510, 742; 237, 844 k | 516, 875; 246, 1.09 M |
+| `roof-300`, a 42 m roof by it | 490, 0; 139, 387 k | 303, 117; 91, 288 k | 492, 322; 195, 576 k | 492, 671; 242, 895 k | 500, 751; 297, 1.21 M |
+| `air-300`, 150 m over the street | 571, 0; 139, 415 k | 312, 36; 83, 272 k | 571, 136; 224, 591 k | 571, 634; 232, 845 k | 573, 693; 239, 1.08 M |
+| `air-handover`, 140 m | 224, 0; 161, 555 k | 41, 0; 98, 367 k | 224, 50; 231, 786 k | 224, 204; 272, 1.15 M | 224, 281; 286, 1.54 M |
+| `air-wide`, 320 m | 65, 0; 150, 450 k | 75, 0; 95, 353 k | 84, 0; 209, 801 k | 84, 31; 291, 1.39 M | 84, 74; 357, 1.86 M |
+
+The near city's triangles at `street-300` are 119 k, 66 k, 136 k, 154 k and 178 k by
+tier; with grey boxes they are 104 k on every tier but the touch rule's 61 k, so what
+grows with the tier is the art's levels.
 
 The device page's terrain flight over Miami before the yacht was berthed (`bun run
 device -- --self terrain --terrain --map var/maps/miami.snmap`, headless Chrome on
@@ -529,6 +557,10 @@ Reasoned from the rows, in the order a growing world meets them.
   var/maps/miami.snmap`); forty hurt and dead creatures in view (`--flock`); small
   details, a hundred dust rings near the camera.
 - Real network congestion; WebSocket send cost under load; Firefox.
+- This Mac's GPU on a built city in the bench: the Miami rows of `bun tools/bench/gpu.ts`
+  (its street and air on medium, high and ultra at one and two device pixels to one,
+  with shadows and the far layers off) want a quiet machine and room: a server on
+  Miami holds 3.4 GB as it starts (C), and the bench's client build passes 3 GB.
 
 ## The interface
 
