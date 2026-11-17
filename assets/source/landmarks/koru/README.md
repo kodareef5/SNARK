@@ -40,7 +40,7 @@ until the others have come, so the yacht adds no more than its old coarsest leve
 | 3 | flat | level 2 with square ports, no face to the cap rail, and masts no thinner than 80 cm |
 | 4 | flat | a stand-in: per deck a deckhouse block and a deck slab, the hull without ports, masts, booms and bowsprit |
 
-The rules the levels keep, so nothing appears, goes or changes shade at a step:
+The rules the levels keep:
 
 - Every stay, shroud and rail is drawn on levels 0 and 1 and none on 2 and 3: the wires are there while the yacht is
   drawn with its atlas and gone past it, where they are a third of a pixel and less. The stays and shrouds are dark
@@ -68,7 +68,19 @@ in-boom furling sail does, and a headsail rolls on its stay. The sail parts are 
 
 `ref/pictures/` holds the accepted pictures, drawn by the software rasterizer on medium at its Miami berth
 (`bun tools/map/cityviews.ts var/maps/miami.snmap <views.json> <folder>`, `--moved 1` for the sails set): from the quay,
-on the sun deck, from 1 km off and 150 m up, and with its sails set. `distances.png` and `distances-sails.png` are the
+on the sun deck, from 1 km off and 150 m up, and with its sails set. Their views, with the yacht's origin at x 5942,
+z 3384 and its bow to +z:
+
+```json
+[
+  { "name": "dock", "x": 5975, "z": 3360, "y": 5.4, "yaw": -90, "pitch": 9 },
+  { "name": "deck", "x": 5945, "z": 3366, "y": 11.4, "yaw": 2, "pitch": 6 },
+  { "name": "far-1km", "x": 4942, "z": 3384, "y": 150, "yaw": 90, "pitch": -8.5 },
+  { "name": "sails-set", "x": 5880, "z": 3290, "y": 8, "yaw": 32, "pitch": 6 }
+]
+```
+
+`distances.png` and `distances-sails.png` are the
 yacht on the course map at each distance where a level or an owner takes over, on medium and on high, beside every cell
 drawn at level 0: the software rasterizer's frame drawn four times, each shifted to one of a card's four samples a
 pixel, and averaged, as a browser's antialiasing shows it.
