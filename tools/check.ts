@@ -10,7 +10,7 @@ import { cpus, loadavg, tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { SLOW_TEST, TEST_WATCH, TEST_WORKERS, hungAfter } from "../tests/fixtures/load.ts";
 import { ART } from "./art/source.ts";
-import { footprint } from "./footprint.ts";
+import { footprint } from "./memory.ts";
 import { dynamicLoads, madeArrays, stripComments } from "./policy.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
