@@ -1,8 +1,8 @@
 """Koru from the layout author_layout.py writes: each 16 m cell of the ship one mesh in its anchor's frame, each door and
-each sail part one of its own. A cell has four levels, all made here, since a cell is hundreds of separate solids the
+each sail part one of its own. A cell has five levels, all made here, since a cell is hundreds of separate solids the
 pipeline's simplifier cannot thin (asset.ts states their errors): 0, everything, and 1, what is seen from outside, both
 drawn with the atlas; 2 and 3, what is seen from outside at its plainest, flat in each finish's far colour, which are
-the far mesh's two levels and so the yacht from the hand-over to the horizon.
+the far mesh's two levels and so the yacht from the hand-over to the horizon; 4, a stand-in for the boot file.
 
 Nothing here is taken from the reference photographs but proportions and finishes."""
 import json,math
@@ -13,7 +13,7 @@ D=json.loads((HERE.parents[3]/'content/landmarks/koru-layout.json').read_text())
 MODS=D['modules'];BYID={m['id']:m for m in MODS};WINDOWS={}
 for w in D['windows']:WINDOWS.setdefault(w['module'],[]).append(w)
 CLOTH={'sailcloth':FINISH['sail']['far']};SPAR={'spar':FINISH['white']['far']}
-# The first level drawn flat. Sides round a mast, a boom or the bowsprit at each level.
+# The first level drawn flat, the stand-in level, and the sides round a mast or the bowsprit at each level.
 FLAT=2;STAND_IN=4;SIDES=[24,12,8,6,4]
 
 def worldbox(b,o):return ([o[k]+b['at'][k]-b['half'][k] for k in range(3)],[o[k]+b['at'][k]+b['half'][k] for k in range(3)])
@@ -439,8 +439,8 @@ def smallparts(m,mod):
   for xx,tag in [(-.12,'green'),(.12,'red')]:m.tube([[x+xx,y+.90,z-.10],[x+xx,y+.92,z-.10]],.055,tag,8)
   plaque(m,[x-.2,y+.68,z-.262],[x+.2,y+.84,z-.25],'SAILS');return
  if cat=='rigging':
-  # Every stay and shroud is drawn on the levels with the atlas and none on the flat ones.
-  if L<FLAT:m.tube(a['ends'],a['radius'],'chrome',6 if L==0 else 4)
+  # Every stay and shroud is drawn on the levels with the atlas and none on the flat ones; dark against the sky, as photographed.
+  if L<FLAT:m.tube(a['ends'],a['radius'],'slate',6 if L==0 else 4)
   return
  if cat=='spreader':
   m.tube(a['ends'],a['radius'],'white',[8,4,4,3,3][L])

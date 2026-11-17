@@ -42,7 +42,8 @@ until the others have come, so the yacht adds no more than its old coarsest leve
 The rules the levels keep, so nothing appears, goes or changes shade at a step:
 
 - Every stay, shroud and rail is drawn on levels 0 and 1 and none on 2 and 3: the wires are there while the yacht is
-  drawn with its atlas and gone past it, at 0.2 px and less.
+  drawn with its atlas and gone past it, where they are a third of a pixel and less. The stays and shrouds are dark
+  against the sky, as photographed; the rails are bright steel.
 - Masts, booms with their sail covers, the bowsprit, spreaders, radomes, the furled headsails and the flag are on every
   level. On level 3 no length of mast is under 80 cm across, so on a card with four samples a pixel it is a line to
   3 km and not dashes.

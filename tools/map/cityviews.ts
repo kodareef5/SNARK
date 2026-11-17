@@ -117,6 +117,7 @@ for (const v of views) {
       ...(values.blocks ? { far: { cells: blocks!, complete } } : { city: { statics, complete } }),
       farNodes: { nodes: view.nodes.source, held: (c) => view.nodes.isLoaded(c), gone: () => undefined, changes: new NodeChanges(map.dims) },
       ...(view.motion ? { motion: view.motion } : {}),
+      ...(map.content?.landmarks.length ? { landmarks: map.content.landmarks } : {}),
     },
     view.reg, view.pack, view.port ? { manifest: files.manifest, port: view.port } : undefined,
   );
