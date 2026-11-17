@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { RemoteSample } from "../../client/core/session.ts";
+import { REWIND_TICKS } from "../../server/combat.ts";
 import { HISTORY_TICKS, History, Past } from "../../server/history.ts";
 import { Pose } from "../../shared/anim/clip.ts";
 import { HUMAN, HUMAN_BONES, ZONE_COUNT, ZONE_HEAD, ZONE_LEG_L, ZONE_TORSO } from "../../shared/anim/human.ts";
@@ -135,6 +136,16 @@ test("history holds where every moving entity was for the last sixteen ticks, an
   expect(history.sample(now - 3.25, ea, past)).toBe(true);
   expect(past.anim).toBe(t1.anim);
   expect(history.sample(now + 0.5, ea, past)).toBe(false);
+  // While a tick is stepped, a shot may be judged as far back as REWIND_TICKS before it, and between that tick and the next.
+  const step = h.server.onStep!;
+  let reach: boolean[] = [];
+  h.server.onStep = (T) => {
+    reach = [history.sample(T - REWIND_TICKS, ea, past), history.sample(T - REWIND_TICKS + 0.5, ea, past)];
+    step(T);
+  };
+  h.run(100);
+  h.server.onStep = step;
+  expect(reach).toEqual([true, true]);
 
   const eb = h.ent(b);
   h.ends[1]!.close();

@@ -1,8 +1,8 @@
 // The client's files over HTTP: a range of one, the whole of one, and one that has not changed.
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 import { serveFile } from "../../server/files.ts";
 
@@ -61,6 +61,14 @@ test("nothing outside the folder is served, and nothing that is not there", asyn
   expect((await get("/nothing.js")).status).toBe(404);
   expect((await get("/..%2f..%2fetc/passwd")).status).toBe(404);
   expect((await serveFile(dir, new Request("http://localhost/../../etc/passwd"))).status).toBe(404);
+  // A folder beside it whose name begins with the folder's is outside it too.
+  mkdirSync(`${dir}-beside`);
+  writeFileSync(`${dir}-beside/kept.txt`, "kept");
+  try {
+    expect((await serveFile(dir, new Request("http://localhost/"), `/../${basename(dir)}-beside/kept.txt`)).status).toBe(404);
+  } finally {
+    rmSync(`${dir}-beside`, { recursive: true, force: true });
+  }
 });
 
 test("HUD images and the locally hosted font use typed immutable responses and compressed font delivery",async()=>{

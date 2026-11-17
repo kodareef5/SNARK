@@ -2,7 +2,7 @@
 // kept for good by whoever fetched it. Any other is checked again each time, and costs nothing if it is unchanged.
 
 import { existsSync } from "node:fs";
-import { join, normalize } from "node:path";
+import { join, normalize, sep } from "node:path";
 
 const TYPES: Record<string, string> = { html: "text/html; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript", snpk: "application/octet-stream", json: "application/json", png: "image/png", ttf: "font/ttf", txt: "text/plain; charset=utf-8", opus: "audio/ogg" };
 /** Sixteen hex digits in a name are the start of the SHA-256 of the file. */
@@ -15,7 +15,7 @@ const HASHED = /\.[0-9a-f]{16}\./;
 export async function serveFile(dir: string, req: Request, pathname = new URL(req.url).pathname): Promise<Response> {
   // A folder's address is its index.html, as the wiki's pages are written (tools/wiki.ts).
   const path = normalize(join(dir, pathname.endsWith("/") ? `${pathname}index.html` : pathname));
-  if (!path.startsWith(dir)) return new Response("not found", { status: 404 });
+  if (!path.startsWith(dir + sep)) return new Response("not found", { status: 404 });
   const file = Bun.file(path);
   if (!(await file.exists())) {
     // A folder asked for without its slash goes on to its address with one, as /wiki to /wiki/, so that its page's

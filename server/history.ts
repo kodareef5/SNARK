@@ -3,7 +3,7 @@
 
 import { F_ALIVE, wider, type EntityStore } from "../shared/sim/entities.ts";
 
-/** Ticks kept. A power of two. Covers the 12-tick rewind cap with room for the tick being stepped. */
+/** Ticks kept, a power of two. A tick is recorded after it is stepped, so while it steps these are the ticks before it, past REWIND_TICKS (server/combat.ts). */
 export const HISTORY_TICKS = 16;
 const MASK = HISTORY_TICKS - 1;
 /** Per entity per tick. */
