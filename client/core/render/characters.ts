@@ -758,14 +758,15 @@ export class Characters {
         orientSolved(rig.solved, this.rotation, c.oriented);
         // Wheel contact follows the support plane while the sprung body and its occupants roll, pitch and heave.
         this.turn(undefined, yaw, vehicle?.groundPitch ?? vehicle?.pitch ?? 0, vehicle?.groundRoll ?? vehicle?.roll ?? 0, this.groundRotation);
-        // In the air a wheel hangs a quarter of its travel below the body.
+        // Without a full attitude, a wheel in the air hangs a quarter of its travel below the body.
         const droop = v.def.movement !== "rotor" && v.def.movement !== "boat" ? (v.def.spec.suspensionTravel ?? 0.18) / 4 : 0;
         for (const b of v.wheels) {
           if (b < 0) continue;
           if (vehicle?.qw !== undefined && v.def.movement !== "rotor" && v.def.movement !== "boat") {
-            // A rigid car's wheels travel along its local spring axes, also when it rolls onto its roof.
-            const offset = vehicle.grounded !== false ? -(vehicle.rideOffset ?? 0) : -droop;
-            quatRotate(this.rotation, 0, 0, offset, 0, this.seatPlace, 0);
+            // A rigid car's wheels travel along its local spring axes, also when it rolls onto its roof. The ride offset is
+            // that travel, all of it where no wheel has ground. The grounded bit is the hull's contact too, and a rolled car
+            // rocking on its side or roof touches and leaves the ground from tick to tick, so it does not move the wheels.
+            quatRotate(this.rotation, 0, 0, -(vehicle.rideOffset ?? 0), 0, this.seatPlace, 0);
             for (let axis = 0; axis < 3; axis++) c.oriented.pos[b * 3 + axis]! += this.seatPlace[axis]!;
           } else if (vehicle?.grounded !== false) {
             quatRotate(this.groundRotation, 0, rig.solved.pos[b * 3]!, rig.solved.pos[b * 3 + 1]!, rig.solved.pos[b * 3 + 2]!, c.oriented.pos, b * 3);
