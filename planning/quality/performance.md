@@ -544,6 +544,31 @@ with the catalogue and are printed, not held; each asset is held to its own budg
 The wiki (`bun run wiki`: 717 files, 3.6 MB) holds its front page, its heaviest page
 and a list page to 300 KB each before they scroll: 193, 286 and 251 KB.
 
+## A built city on this Mac's GPU
+
+`CLIENT_DIR=client/dist bun tools/bench/gpu.ts 1 city` on 2026-11-17, main at `89dcb425`
+(the near city as a mesh a chunk, D743, and the far city of D745 to D747), Miami
+`e14fd066`: the game's own page in headless Chrome on ANGLE's Metal renderer, the
+survivor held at the census's street and 140 m over downtown, the view turning. One
+pass at load 4 to 8, so a tail is not quoted; counts do not move with load.
+
+| View, tier | Device pixels a CSS pixel | GPU, ms a frame | GL draws | Triangles |
+| --- | --- | --- | --- | --- |
+| Street, medium | 1; 1.5 | 4.6; 4.2 | 770 | 1.19 M |
+| Street, high | 1; 2 | 5.6; 6.9 | 1,521 | 1.90 M |
+| Street, ultra | 1; 2 | 5.1; 7.5 | 2,372 | 2.97 M |
+| Air, medium | 1; 1.5 | 5.5; 6.3 | 262 | 0.90 M |
+| Air, high | 1; 2 | 4.9; 9.3 | 875 | 1.50 M |
+| Air, ultra | 1; 2 | 5.5; 10.2 | 1,460 | 2.24 M |
+
+With the sun's shadows off the street on medium is 4.3 ms and 508 draws, and with the
+far layers off 3.9 ms, 543 draws and 0.56 M triangles; on ultra at two device pixels
+6.3 ms and 1,308 draws, and 6.1 ms, 1,891 draws and 1.35 M triangles. From the air on
+ultra at two device pixels: 8.8 ms and 803 draws without shadows; 7.3 ms, 1,005 draws
+and 0.56 M triangles without the far layers. Before D743 and D745 the street made
+1,592, 2,506 and 3,513 GL draws on medium, high and ultra (the review's runs,
+`planning/reference/review-maps-2026-11-17.md`).
+
 ## Where the limits are
 
 Reasoned from the rows, in the order a growing world meets them.
@@ -568,10 +593,8 @@ Reasoned from the rows, in the order a growing world meets them.
   var/maps/miami.snmap`); forty hurt and dead creatures in view (`--flock`); small
   details, a hundred dust rings near the camera.
 - Real network congestion; WebSocket send cost under load; Firefox.
-- This Mac's GPU on a built city in the bench: the Miami rows of `bun tools/bench/gpu.ts`
-  (its street and air on medium, high and ultra at one and two device pixels to one,
-  with shadows and the far layers off) want a quiet machine and room: a server on
-  Miami holds 3.4 GB as it starts (C), and the bench's client build passes 3 GB.
+- This Mac's GPU on a built city in the bench, over three quiet runs: the Miami rows
+  below are one pass.
 
 ## The interface
 
