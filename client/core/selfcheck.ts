@@ -38,6 +38,8 @@ export interface ProbeSurfaces {
   width: number;
   height: number;
   sample: WorldSample | null;
+  /** The built manifest has no world finish, so the lit shader draws palette colours. */
+  paletteOnly?: boolean;
 }
 
 /** Normals spread over the half of the sphere that faces the camera, for a probe's `facings`. */
@@ -50,7 +52,7 @@ const FACINGS = 64;
  * plane, including the projected pixel footprint, and are left out on a lit frame without the reference atlas. Species
  * keep palette lighting. The sky is the same dome table.
  */
-export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, skyIndex: number, hf: Heightfield, withCreature: boolean, p: FramePacket, surfaces: ProbeSurfaces): Probe[] {
+export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, skyIndex: number, hf: Heightfield, withCreature: boolean, p: FramePacket, surfaces: ProbeSurfaces, mannequinColor?: number): Probe[] {
   const ray = [0, 0, 0];
   const out = [0, 0, 0];
   const rgb = [0, 0, 0];
@@ -58,7 +60,7 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
   // gl.readPixel floors bottom-up coordinates. In particular, a probe exactly on a row boundary reads the row
   // ABOVE floor(sy * height). Sample its centre, not the projected landmark or the pixel's corner.
   const screen = (): [number, number] => [(Math.floor(at[0]! * surfaces.width) + 0.5) / surfaces.width, 1 - (Math.floor((1 - at[1]!) * surfaces.height) + 0.5) / surfaces.height];
-  const finished = !p.lit || surfaces.sample !== null;
+  const finished = !p.lit || surfaces.paletteOnly || surfaces.sample !== null;
   const sun = [0, 0, 0];
   trueSun(p.frame, sun);
   const look = (view: ArrayLike<number>, light: Float64Array | Float32Array | number[]): void => domeLight(theSky().table, sun, view, light);
@@ -146,7 +148,8 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
   const survivor = reg.defs[reg.index.get("core:survivor") ?? 0];
   const chest = HUMAN.rest[B_CHEST * 3 + 1]! + HUMAN.capA[B_CHEST * 3 + 1]!;
   if (withCreature && survivor && survivor.type === "species" && cam.project(PROBE_BODY.x, hf.heightAt(PROBE_BODY.x, PROBE_BODY.z) + chest, PROBE_BODY.z, at)) {
-    probes.push({ name: "body", sx: at[0]!, sy: at[1]!, rgb: color(SKIN_BASE + defaultLook()[LOOK_SKIN]!), mode: hue });
+    const chestColor = mannequinColor ?? SKIN_BASE + defaultLook()[LOOK_SKIN]!;
+    probes.push({ name: "body", sx: at[0]!, sy: at[1]!, rgb: color(chestColor), mode: hue, facings: mannequinColor === undefined ? undefined : facings(chestColor) });
   }
   return probes;
 }

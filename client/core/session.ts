@@ -7,6 +7,8 @@ import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, TICK_RATE, YAW_UNITS, chunkAt, chunk
 import { handleIndex } from "../../shared/ids.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { BitReader, BitWriter, Named } from "../../shared/net/codec.ts";
+import { newerCorpseMotion, readCorpseMotion, type CorpseMotion } from "../../shared/net/corpse.ts";
+import { CMD_CORPSE, S_CORPSE } from "../../shared/net/protocol.ts";
 import {
   CMD_TEXT,
   CMD_VIEW,
@@ -368,6 +370,9 @@ export class ClientSession {
 
   /** Every moving static's state as the server last told it (S_MOTION), by ref: all after a welcome, then each as it is thrown. */
   readonly motions = new Map<number, MotionState>();
+  /** Sparse exact launch/resume state, keyed by generation-qualified entity handle. Kept across packet/snapshot ordering. */
+  readonly corpseMotions = new Map<number, CorpseMotion>();
+  private corpseRetryAt = -TICK_RATE;
   private readonly motionSource: MotionSource = { states: () => this.motions, tick: () => this.tickClock, statics: () => this.arrived ?? this.opts.statics ?? null };
   world: (CollisionWorld & { mapId: string; dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource; motion?: MotionSource; landmarks?: readonly MapLandmark[] }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
@@ -622,6 +627,14 @@ export class ClientSession {
     return seq;
   }
 
+  /** A stalled/resumed renderer asks for current visible corpse state instead of replaying an unbounded old fall. */
+  requestCorpseMotions(wanted: ReadonlySet<number>): void {
+    if (wanted.size === 0 || this.tickClock - this.corpseRetryAt < TICK_RATE) return;
+    const ids: number[] = [];
+    for (const id of wanted) { ids.push(id); if (ids.length === 8) break; }
+    if (this.command(CMD_CORPSE, w => { w.u8(ids.length); for (const id of ids) w.u32(id); })) this.corpseRetryAt = this.tickClock;
+  }
+
   /**
    * Asks to be shown at most `cap` entities, in snapshots of at most `bytes`. Sent when either changes, and again when the
    * server was too busy to take it. The server holds both to its limits.
@@ -857,7 +870,7 @@ export class ClientSession {
     out.vehicleRpm[n] = unpackVehicleRpm(drive);
     out.vehicleShifting[n] = vehicleShifting(drive) ? 1 : 0;
     if (a) {
-      if (out.vehicleRotorcraft[n] || out.vehicleBoat[n]) {
+      if (b.vehicleAttitudeA[j] || b.vehicleAttitudeB[j]) {
         unpackVehicleQuaternion(a.vehicleAttitudeA[i]!, a.vehicleAttitudeB[i]!, this.rotorQuatA);
         this.rotorQuatB.set(this.rotorQuat);
         quatNlerp(this.rotorQuat, 0, this.rotorQuatA, 0, this.rotorQuatB, 0, k);
@@ -1037,6 +1050,14 @@ export class ClientSession {
     else if (type === S_MOTION) {
       const told = readMotions(r);
       if (told) for (const [ref, s] of told) this.motions.set(ref, s);
+    }
+    else if (type === S_CORPSE) {
+      const motion = readCorpseMotion(r);
+      if (motion && newerCorpseMotion(motion, this.corpseMotions.get(motion.id))) {
+        this.corpseMotions.delete(motion.id);
+        while (this.corpseMotions.size >= MAX_VIEW) this.corpseMotions.delete(this.corpseMotions.keys().next().value!);
+        this.corpseMotions.set(motion.id, motion);
+      }
     }
     else if (type === S_REJECT) {
       this.state = "closed";
@@ -1371,7 +1392,7 @@ export class ClientSession {
   }
 
   private welcome(r: BitReader): void {
-    this.motions.clear();
+    this.motions.clear(); this.corpseMotions.clear(); this.corpseRetryAt = -TICK_RATE;
     const version = r.u16();
     const tick = r.u32();
     this.ownHandle = r.u32();

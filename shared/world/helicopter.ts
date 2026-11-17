@@ -1,15 +1,15 @@
 // Aircraft parts use the common native full-quaternion convex sweep.
-import { detAtan2, detCos, detSin, len3 } from "../math/scalar.ts";
+import { detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { createHelicopter, type HelicopterContact, type HelicopterState, type HelicopterSupport, type HelicopterWorld } from "../sim/helicopter.ts";
 import { vehicleRotation } from "../sim/vehicle-frame.ts";
 import type { HelicopterSpec, RotorVehicleDefinition, VehicleDefinition } from "../sim/vehicle.ts";
 import type { CollisionWorld } from "./collide.ts";
-import { boxSolid, partSolid, solidsCross, type Solid } from "./convex.ts";
+import { boxSolid, partSolid, type Solid } from "./convex.ts";
 import { frame, frameOf } from "./frame.ts";
 import { castWorld, HIT_NONE, rayHit } from "./ray.ts";
 import type { PartTable } from "./structures.ts";
-import { StaticVehicleSolids, bounds, box, makeSolid, sweep, tube, type Shape, type Swept } from "./vehicle-solid.ts";
-import { boatOutboardFrame, boatShapes, helicopterShapes as localShapes, type BoatFrame } from "./vehicle-shapes.ts";
+import { StaticVehicleSolids, bounds, makeSolid, solidContact, sweep, tube, type ContactGeometry, type Shape, type Swept } from "./vehicle-solid.ts";
+import { boatOutboardFrame, boatShapes, carShapes, helicopterShapes as localShapes, type BoatFrame } from "./vehicle-shapes.ts";
 const q = new Float64Array(4);
 export class StaticHelicopterWorld implements HelicopterWorld {
   private readonly supportWorld: CollisionWorld;
@@ -69,7 +69,8 @@ export interface HelicopterFrame {
 const interactionShapes = new WeakMap<RotorVehicleDefinition, Shape[]>();
 const interactionSweep: Swept = { solid: makeSolid(), hazard: false, radius: 0, pad: 0, bounds: bounds() };
 const interactionSolid = makeSolid();
-const interactionHit = { rotor: false, nx: 0, ny: 0, nz: 0 };
+interface HelicopterInteraction extends ContactGeometry { rotor: boolean; otherRotor: boolean; otherPropeller: boolean }
+const interactionHit: HelicopterInteraction = { rotor: false, nx: 0, ny: 0, nz: 0, x: 0, y: 0, z: 0, depth: 0, otherRotor: false, otherPropeller: false };
 function frameState(def: RotorVehicleDefinition, frame: HelicopterFrame): HelicopterState {
   const state = createHelicopter(def.spec, frame.x, frame.y, frame.z, frame.yaw);
   state.pitch = frame.pitch; state.roll = frame.roll;
@@ -77,17 +78,13 @@ function frameState(def: RotorVehicleDefinition, frame: HelicopterFrame): Helico
   state.qx = q[0]!; state.qy = q[1]!; state.qz = q[2]!; state.qw = q[3]!;
   return state;
 }
-function interaction(def: RotorVehicleDefinition, state: HelicopterState, obstacle: Solid, slack: number): {rotor:boolean;nx:number;ny:number;nz:number}|null {
+function interaction(def: RotorVehicleDefinition, state: HelicopterState, obstacle: Solid, slack: number): HelicopterInteraction | null {
+  interactionHit.otherRotor = interactionHit.otherPropeller = false;
   let shapes = interactionShapes.get(def); if (!shapes) { shapes = localShapes(def); interactionShapes.set(def, shapes); }
   for (const part of shapes) {
     sweep(part, state, state, interactionSweep);
-    if (!solidsCross(interactionSweep.solid, slack, slack, obstacle, 0, 0, 0)) continue;
-    let x = 0, y = 0, z = 0;
-    for (let i = 0; i < obstacle.corners * 3; i += 3) { x += obstacle.at[i]!; y += obstacle.at[i + 1]!; z += obstacle.at[i + 2]!; }
-    // Contact normal points from the other body toward the aircraft, as the static collision adapter does.
-    x = state.x - x / obstacle.corners; y = state.y + def.spec.height / 2 - y / obstacle.corners; z = state.z - z / obstacle.corners;
-    const length = len3(x, y, z) || 1;
-    interactionHit.rotor = part.hazard; interactionHit.nx = x / length; interactionHit.ny = y / length; interactionHit.nz = z / length; return interactionHit;
+    if (!solidContact(interactionSweep.solid, obstacle, interactionHit, slack)) continue;
+    interactionHit.rotor = part.hazard; return interactionHit;
   }
   return null;
 }
@@ -107,29 +104,26 @@ export function helicopterMeetsKind(parts: PartTable, kind: number, sx: number, 
   return false;
 }
 /** Conservative circumscribed capsule cylinder. Server sweeps this query between authoritative frames; no particle decides a hit. */
-export function helicopterMeetsCapsule(def: RotorVehicleDefinition, frame: HelicopterFrame, x: number, y: number, z: number, radius: number, height: number): {rotor:boolean;nx:number;ny:number;nz:number}|null {
+export function helicopterMeetsCapsule(def: RotorVehicleDefinition, frame: HelicopterFrame, x: number, y: number, z: number, radius: number, height: number): (ContactGeometry & { rotor: boolean }) | null {
   const capsule = tube([x, y, z], [x, y + Math.max(height, radius * 2), z], [1, 0, 0], [0, 0, 1], radius, radius, 12);
   return interaction(def, frameState(def, frame), capsule, 0);
 }
 
 const otherSweep: Swept = { solid: makeSolid(), hazard: false, radius: 0, pad: 0, bounds: bounds() };
 /** The same shapes against another vehicle. Callers sweep relative motion and own authority, impulses and damage. */
-export function helicopterMeetsVehicle(def: RotorVehicleDefinition, frame: HelicopterFrame, other: VehicleDefinition, otherFrame: BoatFrame): {rotor:boolean;nx:number;ny:number;nz:number}|null {
+export function helicopterMeetsVehicle(def: RotorVehicleDefinition, frame: HelicopterFrame, other: VehicleDefinition, otherFrame: BoatFrame): HelicopterInteraction | null {
   const source = frameState(def, frame), target = frameState(def, otherFrame);
   let parts: readonly Shape[];
   if (other.movement === "rotor") {
     const rotorParts = interactionShapes.get(other) ?? localShapes(other); interactionShapes.set(other, rotorParts); parts = rotorParts;
   } else if (other.movement === "boat") parts = boatShapes(other);
-  else {
-    const p = other.spec;
-    parts = [box([0, (p.clearance + p.height) / 2, 0], [p.halfWidth, (p.height - p.clearance) / 2, p.halfLength])];
-  }
+  else parts = carShapes(other.spec);
   const mount = other.movement === "boat" ? boatOutboardFrame(otherFrame, other.spec) : target;
   for (const part of parts) {
     const pose = part.joint === undefined ? target : mount;
     sweep(part, pose, pose, otherSweep);
     const hit = interaction(def, source, otherSweep.solid, 0);
-    if (hit) return hit;
+    if (hit) { hit.otherRotor = other.movement === "rotor" && part.hazard; hit.otherPropeller = other.movement === "boat" && part.hazard; return hit; }
   }
   return null;
 }

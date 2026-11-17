@@ -2,6 +2,7 @@
 // their own body and never compute it, so prediction steps with the server's numbers.
 
 import { GROWN, growthStep, youngHunger, youngShare } from "../shared/sim/breeding.ts";
+import type { CorpseImpact } from "../shared/anim/corpse.ts";
 import { proneHunger } from "../shared/sim/taming.ts";
 import type { SpeciesDef } from "../shared/content/defs.ts";
 import { drainAt, torporAt } from "../shared/content/wild.ts";
@@ -141,7 +142,7 @@ export class Survival {
   bus: Bus = NO_BUS;
   readonly starving = new Set<number>();
   /** Called when health reaches zero. `by` is the killer's record id, or 0. */
-  onDeath: ((rec: EntityRecord, cause: number, by: number) => void) | null = null;
+  onDeath: ((rec: EntityRecord, cause: number, by: number, impact?: CorpseImpact) => void) | null = null;
   /** Records that take no harm. */
   readonly gods = new Set<number>();
   /** Called when a body goes unconscious or comes round. */
@@ -159,8 +160,6 @@ export class Survival {
   private readonly survivor: number;
   private readonly submerged = new Set<number>();
   private readonly suspended = new Set<number>();
-  private pendingCause = 0;
-  private pendingBy = 0;
 
   /** `deadlines` is the world's one heap. Its runner must pass DEADLINE_VITALS entries to `due`. */
   constructor(world: ServerWorld, records: Records, deadlines: DeadlineHeap) {
@@ -262,27 +261,23 @@ export class Survival {
   }
 
   /** Negative `points` take. Gods take no harm to health. `cause` is the CAUSE_ reported if it kills. */
-  add(rec: EntityRecord, i: number, points: number, cause = CAUSE_KILLED): void {
+  add(rec: EntityRecord, i: number, points: number, cause = CAUSE_KILLED, impact?: CorpseImpact, by = 0): void {
     const v = rec.vitals;
     if (!v || (points < 0 && i === V_HEALTH && this.gods.has(rec.pid))) return;
     v.rebase(this.world.tick);
     const next = v.value[i]! + Math.round(points * MICRO);
     v.value[i] = next < 0 ? 0 : next > v.max[i]! ? v.max[i]! : next;
-    this.pendingCause = cause;
-    this.update(rec);
-    this.pendingCause = 0;
+    this.update(rec, cause, by, impact);
   }
 
   /**
    * Takes `points` of health. `by` is the record id blamed if that kills, or 0 for nobody.
    * Returns the points taken, which is less than asked when less was left, and 0 for a god.
    */
-  hurt(rec: EntityRecord, points: number, by: number, cause = CAUSE_KILLED): number {
+  hurt(rec: EntityRecord, points: number, by: number, cause = CAUSE_KILLED, impact?: CorpseImpact): number {
     if (!rec.vitals || !(points > 0) || this.gods.has(rec.pid)) return 0;
     const before = this.value(rec, V_HEALTH);
-    this.pendingBy = by;
-    this.add(rec, V_HEALTH, -points, cause);
-    this.pendingBy = 0;
+    this.add(rec, V_HEALTH, -points, cause, impact, by);
     return points < before ? points : before;
   }
 
@@ -343,7 +338,7 @@ export class Survival {
     this.update(rec);
   }
 
-  private update(rec: EntityRecord): void {
+  private update(rec: EntityRecord, cause = 0, killer = 0, impact?: CorpseImpact): void {
     const v = rec.vitals!;
     const tick = this.world.tick;
     v.rebase(tick);
@@ -366,9 +361,9 @@ export class Survival {
       this.schedule(rec, Infinity);
       rec.out = false;
       // Harm from someone takes the blame over starving or drowning, whether it was a blow or a buff they left on it.
-      const by = this.pendingBy !== 0 ? this.pendingBy : ex && ex.health < 0 ? ex.by : 0;
+      const by = killer !== 0 ? killer : ex && ex.health < 0 ? ex.by : 0;
       // What struck the last blow is the cause. Only a death no blow caused is drowning, starving or thirst.
-      this.onDeath?.(rec, this.pendingCause !== 0 ? this.pendingCause : by !== 0 ? CAUSE_KILLED : airless ? CAUSE_DROWNED : starved ? CAUSE_STARVED : parched ? CAUSE_THIRST : CAUSE_KILLED, by);
+      this.onDeath?.(rec, cause !== 0 ? cause : by !== 0 ? CAUSE_KILLED : airless ? CAUSE_DROWNED : starved ? CAUSE_STARVED : parched ? CAUSE_THIRST : CAUSE_KILLED, by, impact);
       return;
     }
     if (paused) {

@@ -202,7 +202,9 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
       const colors = new Uint8Array(6);
       lookColors(look, colors);
       const body = `${d.mesh}_${SEX_IDS[look[LOOK_SEX]!]}`;
-      picture = { meshes: [...SLOT_NAMES, `hair/${HAIR_STYLES[look[LOOK_HAIR]!]!.id}`].map((p) => `${body}/${p}`), colors: [...colors], body: true };
+      const parts = SLOT_NAMES.map((p) => [`${body}/${p}`, `${d.mesh}/${p}`, `core:mannequin/${p}`].find(has) ?? "");
+      const hair = `${body}/hair/${HAIR_STYLES[look[LOOK_HAIR]!]!.id}`;
+      picture = { meshes: has(hair) ? [...parts, hair] : parts, colors: [...colors], body: true };
     } else picture = { meshes: [d.mesh], colors: d.regions?.map((r) => r?.colors[0]?.[0] ?? 0) ?? [], body: true };
     // A species with no art of its own is a stand-in, and not in the wiki (coverage.ts).
     if (!picture.meshes.every(has)) continue;
@@ -329,7 +331,8 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
 
   for (const d of of("node")) {
     // The first individual a node names is its usual one.
-    const mesh = d.variants?.[0]?.mesh ?? d.mesh;
+    const variant = d.variants?.[0]?.mesh;
+    const mesh = variant && has(variant) ? variant : d.mesh === "box" ? d.id : d.mesh;
     const e = entry(d.id, "resources", labelOf(d), d.material === undefined ? "Picked by hand" : (NODE_GROUPS[d.material] ?? sentence(d.material)), has(mesh) ? { meshes: [mesh], colors: [], body: true, sides: 1 } : null);
     const fact = facts(e);
     const working = tools.filter((t) => t.tool!.on === d.material);
@@ -360,7 +363,7 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
     if (d.after) fact("Afterwards", { id: d.after });
   }
 
-  for (const l of input.landmarks ?? LANDMARKS) landmarkEntry(l, entry, facts);
+  for (const l of input.landmarks ?? LANDMARKS) landmarkEntry(l, entry, facts, has);
 
   // The other way round: what uses each thing, and where it is found.
   const back = (id: string, relation: string, ref: Ref): void => {
@@ -407,12 +410,12 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
  * own meshes where its pieces stand. No size: what is walked of it takes in its gangway and masts, and the content does not
  * say which pieces are the thing itself.
  */
-function landmarkEntry(l: Landmark, entry: (id: string, kind: Kind, label: string, group: string, picture?: Entry["picture"]) => Entry, facts: (e: Entry) => (label: string, ...value: Cell[]) => void): void {
+function landmarkEntry(l: Landmark, entry: (id: string, kind: Kind, label: string, group: string, picture?: Entry["picture"]) => Entry, facts: (e: Entry) => (label: string, ...value: Cell[]) => void, has: (mesh: string) => boolean): void {
   const defs = new Map(l.defs.map((d) => [d.id, d]));
   const placed = l.pieces.map((p) => ({ p, d: defs.get(p.kind) as StructureDef }));
   const meshes = [...new Set(placed.map(({ d }) => d.mesh).filter((m) => m !== "none"))];
   const places = placed.filter(({ d }) => d.mesh !== "none").map(({ p, d }) => [meshes.indexOf(d.mesh), ...p.at, p.yaw] as [number, number, number, number, number]);
-  const e = entry(l.name, "landmarks", sentence(l.name), "Landmark", meshes.length ? { meshes, colors: [], body: true, places } : null);
+  const e = entry(l.name, "landmarks", sentence(l.name), "Landmark", meshes.length && meshes.every(has) ? { meshes, colors: [], body: true, places } : null);
   const fact = facts(e);
   const doors = placed.filter(({ d }) => d.opens && d.shape && (defs.get(d.shape) as ShapeDef | undefined)?.role === "door").length;
   if (doors) fact("Doors", `${doors} that open and close`);

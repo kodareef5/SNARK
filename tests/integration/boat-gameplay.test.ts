@@ -203,6 +203,24 @@ test("a shore shove adds bounded momentum without moving the boat, and rejects r
   } finally { h.host.shutdown(); }
 });
 
+test("a beached boat can be pushed downhill from beyond eight metres inland", () => {
+  const { h, c, actor } = setup();
+  try {
+    const a = h.world.ents, hf = h.world.hf;
+    const e = h.host.spawnVehicle("core:boat", 64, 64, actor.team);
+    for (let row = 0; row < hf.nz; row++) for (let col = 0; col < hf.nx; col++) {
+      hf.setSample(col, row, 3 + Math.max(-2, Math.min(2, (row * hf.cell - 72) * .15)));
+    }
+    a.setPosition(e, 64, hf.heightAt(64, 84) + .2, 84); h.world.history.discontinuity(e);
+    h.run(3000);
+    a.setPosition(c.ent, 64, hf.heightAt(64, 88.5), 88.5); h.world.history.discontinuity(c.ent);
+    const z = a.z[e]!;
+    expect(h.host.vehicles.recover(c, makeHandle(e, a.gen[e]!))).toBe(RESULT_OK);
+    h.run(3100);
+    expect(z - a.z[e]!).toBeGreaterThan(.1);
+  } finally { h.host.shutdown(); }
+});
+
 test("destroying a loaded boat releases its swimmer crew and preserves cargo in a sinking native salvage wreck", () => {
   const { h, c, actor } = setup();
   try {

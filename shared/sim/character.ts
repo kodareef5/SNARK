@@ -86,6 +86,8 @@ export interface MoveParams {
   readonly radius: number;
   readonly height: number;
   readonly eyeHeight: number;
+  /** Creatures keep their full standing capsule when a rider presses crouch/prone. Unconsciousness is separate. */
+  readonly lowStance: boolean;
   /** crouchMul and proneMul are shares of the walk speed. */
   readonly crouchHeight: number;
   readonly crouchEye: number;
@@ -449,6 +451,8 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   // An unconscious body lies prone and ignores every button.
   const out = (flags & MF_OUT) !== 0;
   if (out) buttons = 0;
+  // The same buttons are a flyer's roll/brake in the air; only suppress their ground stance meaning.
+  if (!p.lowStance) buttons &= ~(BTN_CROUCH | BTN_PRONE);
   const want = out || (buttons & BTN_PRONE) !== 0 ? STANCE_PRONE : (buttons & BTN_CROUCH) !== 0 ? STANCE_CROUCH : STANCE_STAND;
   if (want !== stance) {
     if (want > stance || capsuleFree(w, b.x, b.y, b.z, r, stanceHeight(p, want))) stance = want;

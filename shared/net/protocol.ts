@@ -56,9 +56,10 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 20: marine hull/flooding state and physical shoreline recovery. 21: compact chunk rows, rows in place, and chunks
  * taken from the map (HELLO_STATICS). 22: the map's statics told of after the hello (CMD_STATICS). 23: S_MOTION, a
  * travelling static's state. 24: S_MOTION's states are added to those told before: all of them after a welcome, in as many
- * messages as they take, and then each static as it is thrown.
+ * messages as they take, and then each static as it is thrown. 25: wheeled full-attitude/flooding state and
+ * replicated fatal-impact corpse checkpoints (S_CORPSE/CMD_CORPSE). 26: local car push/pull and manual flip commands.
  */
-export const PROTOCOL_VERSION = 24;
+export const PROTOCOL_VERSION = 26;
 
 // Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
@@ -207,6 +208,8 @@ export const S_TRAVEL = 14;
  * client's map's (shared/sim/motion.ts).
  */
 export const S_MOTION = 15;
+/** Protocol 25. Sparse, generation-qualified corpse motion checkpoint; shared/net/corpse.ts defines its bounded payload. */
+export const S_CORPSE = 16;
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
@@ -366,12 +369,18 @@ export const CMD_VEHICLE = 32;
  * client whose hello did; INVALID where the world has no map file.
  */
 export const CMD_STATICS = 33;
+/** Refresh up to eight currently visible corpse checkpoints: count u8, then generation-qualified entity handles u32. */
+export const CMD_CORPSE = 34;
 export const VEHICLE_INSPECT = 0;
 export const VEHICLE_REFUEL = 1;
 export const VEHICLE_REPAIR = 2;
 export const VEHICLE_DEPLOY = 3;
-/** A nearby survivor pushes a stopped, engine-off boat toward reachable deeper water. */
+/** A nearby survivor pushes an unoccupied stopped car locally, or a stopped boat toward deeper water. */
 export const VEHICLE_RECOVER = 4;
+/** Manually right a stopped, unoccupied rolled car through a clear local path. */
+export const VEHICLE_FLIP = 5;
+/** Pull a stopped unoccupied car toward the nearby survivor. */
+export const VEHICLE_PULL = 6;
 
 /** The only boxes a slot command can address. No ids travel. */
 export const BOX_SELF = 0;

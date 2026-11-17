@@ -47,7 +47,7 @@ export function page(a: Assets, title: string, here: string, body: string): stri
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="data:,">
 <title>${esc(title)} · Wiki</title>
-<link rel="preload" href="${a.font}" as="font" type="font/ttf" crossorigin>
+${a.font ? `<link rel="preload" href="${a.font}" as="font" type="font/ttf" crossorigin>` : ""}
 <link rel="stylesheet" href="${a.css}">
 <script type="module" src="${a.js}"></script>
 </head>

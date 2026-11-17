@@ -1,12 +1,12 @@
 // A destroyed aircraft keeps its complete attitude and momentum. The server alone steps this rigid salvage;
 // observers receive its pose, including while inverted. Broken blades no longer collide as a spinning disc.
 import { TICK_DT } from "../coords.ts";
-import { WET_DAMP, WET_GRAVITY } from "../anim/ragdoll.ts";
 import { quatAxis, quatMul, quatNlerp, quatNormalize } from "../math/quat.ts";
 import { len3 } from "../math/scalar.ts";
 import type { HelicopterState, HelicopterWorld } from "./helicopter.ts";
 import type { RotorVehicleDefinition } from "./vehicle.ts";
 import { helicopterImmersion } from "./helicopter-immersion.ts";
+import { stepHelicopterWater } from "./helicopter-water.ts";
 
 const q = new Float64Array(4), turn = new Float64Array(4), fromQ = new Float64Array(4), toQ = new Float64Array(4);
 const definitions = new WeakMap<RotorVehicleDefinition, RotorVehicleDefinition>();
@@ -21,16 +21,22 @@ export function helicopterWreckDefinition(def: RotorVehicleDefinition): RotorVeh
 export function stepHelicopterWreck(s: HelicopterState, def: RotorVehicleDefinition, world: HelicopterWorld): boolean {
   const wreck = helicopterWreckDefinition(def);
   s.engineOn = false; s.rotorRpm = s.engineRpm = s.collective = 0; s.grounded = false;
-  const wet = helicopterImmersion(s, def.spec, world.waterAt(s.x, s.z)) > .5;
   const angular = len3(s.pitchRate, s.yawRate, s.rollRate);
   const count = Math.max(2, Math.min(32, Math.ceil((len3(s.vx, s.vy, s.vz) + angular * 7) * TICK_DT / .12)));
   const dt = TICK_DT / count;
   let supported = false;
   for (let i = 0; i < count; i++) {
     const before = { ...s };
-    const drag = wet ? WET_DAMP : .08;
-    s.vx *= 1 - drag * dt; s.vy = s.vy * (1 - drag * dt) - (wet ? WET_GRAVITY : def.spec.gravity) * dt; s.vz *= 1 - drag * dt;
-    s.pitchRate *= 1 - (wet ? 3 : .35) * dt; s.yawRate *= 1 - (wet ? 3 : .35) * dt; s.rollRate *= 1 - (wet ? 3 : .35) * dt;
+    const immersion = helicopterImmersion(s, def.spec, world.waterAt(s.x, s.z));
+    if (immersion > 0) {
+      const air = 1 - immersion, drag = 1 - .08 * air * dt, spin = 1 - .35 * air * dt;
+      s.vx *= drag; s.vy *= drag; s.vz *= drag;
+      s.pitchRate *= spin; s.yawRate *= spin; s.rollRate *= spin;
+      stepHelicopterWater(s, def.spec, immersion, dt);
+    } else {
+      s.vx *= 1 - .08 * dt; s.vy = s.vy * (1 - .08 * dt) - def.spec.gravity * dt; s.vz *= 1 - .08 * dt;
+      s.pitchRate *= 1 - .35 * dt; s.yawRate *= 1 - .35 * dt; s.rollRate *= 1 - .35 * dt;
+    }
     q.set([s.qx, s.qy, s.qz, s.qw]);
     const rate = len3(s.pitchRate, s.yawRate, s.rollRate);
     if (rate > 1e-6) {

@@ -83,7 +83,7 @@ export class VehiclePlacement {
         const other = reg.vehicle[kind];
         const otherFrame = {
           x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, yaw: r.yaw[i]!, pitch: r.vehiclePitch[i]!, roll: r.vehicleRoll[i]!, steering: r.steering[i]!,
-          ...(other && (isRotorVehicle(other) || isBoatVehicle(other)) ? { qx: r.vehicleQx[i]!, qy: r.vehicleQy[i]!, qz: r.vehicleQz[i]!, qw: r.vehicleQw[i]! } : {}),
+          ...(other ? { qx: r.vehicleQx[i]!, qy: r.vehicleQy[i]!, qz: r.vehicleQz[i]!, qw: r.vehicleQw[i]! } : {}),
         };
         if (other ? (isBoatVehicle(def) ? boatMeetsVehicle(def, frame, other, otherFrame) : helicopterMeetsVehicle(def, frame, other, otherFrame)) : reg.move[kind] && meetsCapsule(r.x[i]!, r.y[i]!, r.z[i]!, reg.bodyRadius[kind]!, reg.bodyHeight[kind]!)) problem = RESULT_OBSTRUCTED;
       }

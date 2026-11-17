@@ -10,6 +10,8 @@ export const GRAZER: readonly Def[] = [
     color: 9,
     radius: 0.7,
     height: 1.6,
+    // This small grey-box grazer keeps the former capsule-derived mass, rounded to kilograms.
+    mass: 220,
     eyeHeight: 1.3,
     walkSpeed: 2.5,
     sprintMul: 2.2,

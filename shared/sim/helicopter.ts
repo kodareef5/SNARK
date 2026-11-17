@@ -5,6 +5,7 @@ import { quatAxis, quatMul, quatNormalize, quatRotate, quatUnrotate } from "../m
 import { clamp, detAtan2, detCos, detSin, len3, TAU } from "../math/scalar.ts";
 import { validateHelicopterSpec, type HelicopterSpec, type RotorVehicleDefinition, type VehicleState } from "./vehicle.ts";
 import { helicopterEngineImmersion, helicopterImmersion } from "./helicopter-immersion.ts";
+import { stepHelicopterWater } from "./helicopter-water.ts";
 
 export interface HelicopterState extends VehicleState {
   qx: number; qy: number; qz: number; qw: number;
@@ -114,12 +115,16 @@ export function stepHelicopter(s: HelicopterState, input: Readonly<HelicopterInp
   const forward = input.pilot ? unit(input.forward) : 0, right = input.pilot ? unit(input.right) : 0;
   const recovery = input.brake || !input.pilot, direct = input.direct && !recovery;
   const usable = s.fuel > 0 && s.engineCondition > 0.08 && s.rotorCondition > 0.05;
-  if (input.pilot && climb > 0 && usable && !s.engineOn) {
+  // An orientation-independent lower bound skips pose work for aircraft clear of the water.
+  const engine = p.engineBox;
+  const wetReach = Math.max(p.halfWidth + p.height + p.halfLength, engine ? Math.abs(engine.at[0]) + Math.abs(engine.at[1]) + Math.abs(engine.at[2]) + engine.half[0] + engine.half[1] + engine.half[2] : 0);
+  const water = world.waterAt(s.x, s.z);
+  let immersion = Number.isFinite(water) && water > s.y - wetReach ? helicopterImmersion(s, p, water) : 0;
+  let wet = immersion > 0 || (Number.isFinite(water) && water > s.y - wetReach && helicopterEngineImmersion(s, p, water) > 0);
+  if (input.pilot && climb > 0 && usable && !s.engineOn && !wet) {
     s.engineOn = true; s.collective = clamp(mass / (p.liftMass * Math.max(0.2, efficiency)), 0, 1);
   }
   if (!usable || (!input.pilot && s.grounded)) s.engineOn = false;
-  const water = world.waterAt(s.x, s.z);
-  const wet = helicopterImmersion(s, p, water) > 0 || helicopterEngineImmersion(s, p, water) > 0;
   if (wet) { s.engineOn = false; result.water = true; result.surface = "water"; }
   const autorotation = !s.engineOn && !s.grounded && !wet ? clamp(-s.vy / 10, 0, 0.6) * s.rotorCondition : 0;
   const targetRpm = p.rotorRpm * (s.engineOn ? 0.76 + 0.24 * s.engineCondition : autorotation);
@@ -137,10 +142,10 @@ export function stepHelicopter(s: HelicopterState, input: Readonly<HelicopterInp
   }
   const powered = s.engineOn && !wet;
   // No spontaneous takeoff while idling on a pad. Starting and climbing require the deliberate collective input.
-  const launching = s.grounded && climb > 0 && liftMax * s.collective > p.gravity + 0.2;
+  const launching = !wet && s.grounded && climb > 0 && liftMax * s.collective > p.gravity + 0.2;
   if (launching) s.grounded = false;
-  const control = s.grounded ? 0 : clamp(s.rotorRpm / p.rotorRpm, 0, 1);
-  if (direct) s.collective = clamp(s.collective + climb * 0.4 * TICK_DT, 0, 1);
+  const control = s.grounded || wet ? 0 : clamp(s.rotorRpm / p.rotorRpm, 0, 1);
+  if (direct && !wet) s.collective = clamp(s.collective + climb * 0.4 * TICK_DT, 0, 1);
   else if (powered) {
     const wantedVy = climb * (climb > 0 ? p.climbSpeed : p.descendSpeed);
     const verticalAcceleration = clamp((wantedVy - s.vy) * 2.2, -8, 8);
@@ -167,9 +172,11 @@ export function stepHelicopter(s: HelicopterState, input: Readonly<HelicopterInp
     wantedYawRate += clamp(2 * error[1]! * p.attitudeResponse, -p.turnRate, p.turnRate);
   }
   const acceleration = p.turnAcceleration * (s.grounded ? 1 : Math.max(0.15, control));
-  s.pitchRate = approach(s.pitchRate, wantedPitchRate * control, acceleration * TICK_DT);
-  s.rollRate = approach(s.rollRate, wantedRollRate * control, acceleration * TICK_DT);
-  s.yawRate = approach(s.yawRate, wantedYawRate * control, acceleration * TICK_DT);
+  if (!wet) {
+    s.pitchRate = approach(s.pitchRate, wantedPitchRate * control, acceleration * TICK_DT);
+    s.rollRate = approach(s.rollRate, wantedRollRate * control, acceleration * TICK_DT);
+    s.yawRate = approach(s.yawRate, wantedYawRate * control, acceleration * TICK_DT);
+  }
   if (s.grounded) { s.vy = 0; s.yawRate = s.pitchRate = s.rollRate = 0; result.surface = wet ? "water" : "ground"; }
   if (s.engineOn) s.fuel = Math.max(0, s.fuel - p.fuelPerSecond * (0.4 + 0.6 * s.collective) * TICK_DT);
   // Angular substeps also keep a sweeping rotor/tail from crossing an obstacle during a stationary roll.
@@ -185,6 +192,11 @@ export function stepHelicopter(s: HelicopterState, input: Readonly<HelicopterInp
       quatAxis(turn, 0, -s.pitchRate / rate, s.yawRate / rate, s.rollRate / rate, rate * dt);
       quatMul(q, 0, q, 0, turn, 0); quatNormalize(q, 0); writeRotation(s);
     }
+    const water = world.waterAt(s.x, s.z);
+    immersion = Number.isFinite(water) && water > s.y - wetReach ? helicopterImmersion(s, p, water) : 0;
+    if (immersion > 0 || (Number.isFinite(water) && water > s.y - wetReach && helicopterEngineImmersion(s, p, water) > 0)) {
+      wet = true; s.engineOn = false; s.engineRpm = 0; result.water = true; result.surface = "water";
+    }
     if (s.grounded) {
       // A skid touchdown does not cancel horizontal momentum. Dry friction removes a bounded amount of speed,
       // and the same swept hull still meets walls and pad edges while the aircraft slides.
@@ -198,14 +210,19 @@ export function stepHelicopter(s: HelicopterState, input: Readonly<HelicopterInp
     } else {
       // Anisotropic body drag, with no desired-speed servo: flares, dives and inverted momentum remain available.
       bodyDrag(s, p);
-      const thrust = liftMax * s.collective;
-      const ax = upright[0]! * thrust + drag[0]!, az = upright[2]! * thrust + drag[2]!;
-      let ay = upright[1]! * thrust - p.gravity + drag[1]!;
-      // Unpowered rotor drag dissipates fall energy; broken blades lose that benefit. It never reverses gravity.
-      if (!powered && s.vy < 0 && upright[1]! > 0) ay += Math.min(p.gravity * 0.92, s.vy * s.vy * 0.22 * efficiency * upright[1]!);
-      if (wet) { ay += -s.vy * 3; }
-      s.vx = clamp(s.vx + ax * dt, -120, 120); s.vy = clamp(s.vy + ay * dt, -100, 100); s.vz = clamp(s.vz + az * dt, -120, 120);
-      if (wet) { s.vx *= 1 - 2 * dt; s.vz *= 1 - 2 * dt; }
+      if (wet) {
+        const air = 1 - immersion;
+        s.vx += drag[0]! * air * dt; s.vy += drag[1]! * air * dt; s.vz += drag[2]! * air * dt;
+        stepHelicopterWater(s, p, immersion, dt);
+        s.vx = clamp(s.vx, -120, 120); s.vy = clamp(s.vy, -100, 100); s.vz = clamp(s.vz, -120, 120);
+      } else {
+        const thrust = liftMax * s.collective;
+        const ax = upright[0]! * thrust + drag[0]!, az = upright[2]! * thrust + drag[2]!;
+        let ay = upright[1]! * thrust - p.gravity + drag[1]!;
+        // Unpowered rotor drag dissipates fall energy; broken blades lose that benefit. It never reverses gravity.
+        if (!powered && s.vy < 0 && upright[1]! > 0) ay += Math.min(p.gravity * 0.92, s.vy * s.vy * 0.22 * efficiency * upright[1]!);
+        s.vx = clamp(s.vx + ax * dt, -120, 120); s.vy = clamp(s.vy + ay * dt, -100, 100); s.vz = clamp(s.vz + az * dt, -120, 120);
+      }
       s.x += s.vx * dt; s.z += s.vz * dt; s.y += s.vy * dt;
       if (s.y > WORLD_MAX_Y - p.height) { s.y = WORLD_MAX_Y - p.height; s.vy = Math.min(0, s.vy); }
       const support = upright[1]! > 0.9 ? world.support(s.x, previous.y + 0.04, s.z, s.yaw, Math.max(0.12, previous.y - s.y + 0.06), p) : null;
@@ -241,6 +258,12 @@ export function stepHelicopter(s: HelicopterState, input: Readonly<HelicopterInp
       result.surface = wet ? "water" : "ground";
     }
   }
+  // Entry on the last substep (or a contact rollback) must not publish a running engine inside water.
+  const waterAfter = world.waterAt(s.x, s.z);
+  if (Number.isFinite(waterAfter) && waterAfter > s.y - wetReach && (helicopterImmersion(s, p, waterAfter) > 0 || helicopterEngineImmersion(s, p, waterAfter) > 0)) {
+    result.water = true; result.surface = "water";
+  }
+  if (result.water) { s.engineOn = false; s.engineRpm = 0; }
   if (s.grounded && !input.pilot) s.engineOn = false;
   if (s.fuel <= 0) s.engineOn = false;
   result.fuelUsed = beforeFuel - s.fuel;

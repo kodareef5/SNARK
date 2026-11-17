@@ -119,10 +119,7 @@ function wholeFarColours(reg: Registry, pack: Pack): number[] {
  * client/dist if not given.
  */
 export async function buildClient(opts: { stress?: boolean; quick?: boolean; dist?: string } = {}): Promise<{ jsBytes: number; packBytes: number }> {
-  if (!ART) {
-    console.error("The art is not in this repository, and the game cannot be built without it.");
-    process.exit(1);
-  }
+  if (!ART) console.log("Building with generated geometry and the built-in HUD.");
   const root = resolve(import.meta.dir, "..");
   const dist = opts.dist ?? join(root, "client/dist");
   rmSync(join(dist, "assets"), { recursive: true, force: true });
@@ -144,7 +141,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   const scripts = [...(await bundle(["client/shell/main.ts"], true)), ...(await bundle(["client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts", "client/sound/decode-worker.ts", "client/city/city-worker.ts"], false))].filter((o) => o.path.endsWith(".js")).map((o) => o.path.slice(dist.length + 1));
   // The pieces main.js imports before it runs, which the page asks for beside it.
   const pieces = [...readFileSync(join(dist, "main.js"), "utf8").matchAll(/\bimport\s*(?:\{[^}]*\}\s*from\s*)?"\.\/([^"]+\.js)"/g)].map((m) => m[1]!);
-  console.log(`ui           ${ui.bytes} bytes transferred with compressed font, ${ui.decodedBytes} RGBA bytes`);
+  console.log(`ui           ${ui.bytes} bytes transferred, ${ui.decodedBytes} RGBA bytes`);
   copyFileSync(join(root, "client/sound/sounds.html"), join(dist, "sounds.html"));
   // The music as it is played: each track's layers as Opus, music.json listing them, and the lab to hear them.
   const music = join(root, "assets/source/core/music");
@@ -227,7 +224,13 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   // The page asks for its script and the files the first frame needs as it is read. The server names its map's file, so main.js asks for that.
   const boot = `assets/${manifest.files[manifest.boot]!.name}`;
   const modules = ["main.js", ...pieces].map((f) => `<link rel="modulepreload" href="${f}">`).join("\n");
-  writeFileSync(join(dist, "index.html"), readFileSync(join(root, "client/index.html"), "utf8").replaceAll("HUD_FONT_URL", ui.font).replaceAll("HUD_ATLAS_URL", ui.atlas).replace("<!-- MODULES -->", modules).replace("FETCHED", JSON.stringify(["map.json", "assets/manifest.json", boot, skyName, contentName])));
+  const html = readFileSync(join(root, "client/index.html"), "utf8")
+    .replace("<!-- HUD_FONT_PRELOAD -->", ui.font ? `<link rel="preload" href="${ui.font}" as="font" type="font/ttf" crossorigin>` : "")
+    .replace("HUD_FONT_SOURCE", ui.font ? `url("${ui.font}") format("truetype")` : 'local("Arial")')
+    .replaceAll("HUD_ATLAS_URL", ui.atlas)
+    .replace("<!-- MODULES -->", modules)
+    .replace("FETCHED", JSON.stringify(["map.json", "assets/manifest.json", boot, skyName, contentName]));
+  writeFileSync(join(dist, "index.html"), html);
   const fetchedWhole = ["index.html", "assets/manifest.json", boot, skyName, contentName, ...(rows ? [`assets/${manifest.soundRows}`] : []), ...scripts];
   for (const name of fetchedWhole) writeFileSync(join(dist, `${name}.br`), brotli(readFileSync(join(dist, name)), opts.quick ?? false));
   return { jsBytes: ["main.js", ...pieces].reduce((sum, f) => sum + statSync(join(dist, f)).size, 0), packBytes: packBytes + landmarks };

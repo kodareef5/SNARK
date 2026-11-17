@@ -359,7 +359,7 @@ export class Details {
         y = r.y[i]!;
         z = r.z[i]!;
         yaw = r.yaw[i]!; steering = r.steering[i]!;
-        if (this.rotorKinds[h.kind] || this.boatKinds[h.kind]) {
+        if (this.reg.vehicle[h.kind]) {
           vehicleRotation({ x, y, z, yaw, pitch: 0, roll: 0, qx: r.vehicleQx[i]!, qy: r.vehicleQy[i]!, qz: r.vehicleQz[i]!, qw: r.vehicleQw[i]! }, this.rotation);
           rotated = true;
         }
@@ -391,7 +391,7 @@ export class Details {
     else if (from === "hit") {
       world(solved.pos[0]!, book.height * 0.55, solved.pos[2]!);
       const cx = at[0]!, cz = at[2]!;
-      if (rotated && (book.vehicle?.movement === "rotor" || book.vehicle?.movement === "boat")) {
+      if (rotated && book.vehicle) {
         // The impact surface follows the cabin in three dimensions, including an inverted aircraft.
         let sx = h.fromX, sy = h.fromY - .6, sz = h.fromZ;
         if (!Number.isFinite(sx)) {
