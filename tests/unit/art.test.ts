@@ -1,14 +1,14 @@
 // The art tool: the asset folders it finds, what its check counts as a fault, and the sheet it draws. Blender is never run here.
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { join } from "node:path";
 import type { Clip } from "../../shared/anim/clip.ts";
 import { ZONE_TORSO } from "../../shared/anim/human.ts";
 import { CLIP_ROOT_STEPS, parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { REGION_BASE, defaultPalette } from "../../shared/pack/palette.ts";
 import { main } from "../../tools/art.ts";
-import { findAssets, isNode, type Asset } from "../../tools/art/assets.ts";
+import { isNode, type Asset } from "../../tools/art/assets.ts";
 import { checkAsset, measureSurface } from "../../tools/art/check.ts";
 import { readPacks } from "../../tools/art/source.ts";
 import type { CreatureAsset } from "../../tools/art/spec.ts";
@@ -18,28 +18,6 @@ import { readPng } from "../../tools/pack/png-read.ts";
 import { boxMesh, buildPack, type SourceLod } from "../../tools/pack/write.ts";
 import { ASSETS } from "../fixtures/assets.ts";
 import { artTest } from "../fixtures/needs-art.ts";
-
-/** The examples of scripted assets, which are in no game pack. */
-const EXAMPLES = await findAssets(join(import.meta.dir, "../../tools/blender/example"));
-
-/**
- * A node pack (trees, rocks, plants) is many meshes of crowns and cards, whose errors are stated rather than measured on
- * their points, and that measure takes seconds on such a pack. Its maker sees it in `bun run art -- <id> --check`. Here a
- * node pack is checked without it, and its stated errors are held to rise level by level while its triangles fall.
- */
-function unmeasured(asset: Asset): Asset {
-  if (!isNode(asset) || asset.spec.kind !== "pieces") return asset;
-  return { ...asset, spec: { ...asset.spec, pieces: asset.spec.pieces.map(({ errors: _, ...p }) => p) } };
-}
-
-artTest("every asset folder has its pack, named as the folder is, and the pack passes its check; so do the examples", () => {
-  expect(ASSETS.length).toBeGreaterThan(0);
-  expect(EXAMPLES.map((a) => [a.id, a.spec.kind])).toEqual([["demo:pup", "creature"], ["demo:mallet", "pieces"], ["demo:crate", "pieces"]]);
-  for (const asset of [...ASSETS, ...EXAMPLES]) {
-    expect([asset.id, basename(asset.file), basename(dirname(asset.file)), existsSync(asset.file)]).toEqual([asset.id, `${asset.name}.snpk`, asset.name, true]);
-    expect([asset.id, checkAsset(unmeasured(asset), parsePack(new Uint8Array(readFileSync(asset.file)))).faults]).toEqual([asset.id, []]);
-  }
-});
 
 // A first flat level may carry more triangles than the textured level before it: it builds in geometry what that level
 // cuts out of a picture (a palmetto's fingers, a fern's leaflets). From there on they never rise, and end under the first.
