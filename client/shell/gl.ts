@@ -644,7 +644,7 @@ export class GlRenderer {
       gl.deleteTexture(this.open.texture);
       gl.bindTexture(gl.TEXTURE_2D, (this.open = { texture: open > 0 ? gl.createTexture() : null, size: open }).texture);
       if (open > 0) gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, p.openWidth, p.openHeight);
-      for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) if (open > 0) gl.texParameteri(gl.TEXTURE_2D, k, v);
+      for (const q of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) if (open > 0) gl.texParameteri(gl.TEXTURE_2D, q[0], q[1]);
     }
     if (p.openRows > 0) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, p.openRow, p.openWidth, p.openRows, gl.RGBA, gl.UNSIGNED_BYTE, p.openMap);
     gl.activeTexture(gl.TEXTURE0 + UNIT.bones);
