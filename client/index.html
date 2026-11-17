@@ -9,10 +9,10 @@
   // What the first frame needs is asked for as the page is read. A device probe measures the link quiet first (client/core/device.ts).
   if (!new URLSearchParams(location.search).has("device")) for (const href of FETCHED) document.head.append(Object.assign(document.createElement("link"), { rel: "preload", as: "fetch", crossOrigin: "anonymous", href }));
 </script>
-<link rel="preload" href="HUD_FONT_URL" as="font" type="font/ttf" crossorigin>
+<!-- HUD_FONT_PRELOAD -->
 <link rel="preload" href="HUD_ATLAS_URL" as="image">
 <style>
-  @font-face { font-family: Hud; src: url("HUD_FONT_URL") format("truetype"); font-style: normal; font-weight: 500; font-display: swap; }
+  @font-face { font-family: Hud; src: HUD_FONT_SOURCE; font-style: normal; font-weight: 500; font-display: swap; }
   html, body { margin: 0; height: 100%; background: #111; overflow: hidden; }
   #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   /* Every child is one interface node; client/shell/ui.ts sets where it goes and how it looks. */

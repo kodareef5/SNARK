@@ -1,29 +1,50 @@
 // Native terrain, structure and node collision for the boat's actual rigid parts and propeller.
+import { quatRotate } from "../math/quat.ts";
+import { vehicleMassProperties } from "../sim/vehicle-rigid.ts";
 import { detCos, detSin, len3 } from "../math/scalar.ts";
 import { boatRestY, createBoat, type BoatContact, type BoatState, type BoatWorld } from "../sim/boat.ts";
 import { vehicleRotation } from "../sim/vehicle-frame.ts";
 import type { BoatVehicleDefinition, VehicleDefinition } from "../sim/vehicle.ts";
 import type { CollisionWorld } from "./collide.ts";
-import { boxSolid, partSolid, solidsCross, type Solid } from "./convex.ts";
+import { boxSolid, partSolid, type Solid } from "./convex.ts";
 import { frame, frameOf } from "./frame.ts";
 import type { PartTable } from "./structures.ts";
-import { StaticVehicleSolids, bounds, box, makeSolid, sweep, tube, type Swept } from "./vehicle-solid.ts";
+import { StaticVehicleSolids, bounds, makeSolid, solidContact, sweep, tube, type ContactGeometry, type Swept } from "./vehicle-solid.ts";
 
-import { boatOutboardFrame, boatShapes, helicopterShapes, type BoatFrame } from "./vehicle-shapes.ts";
+import { boatOutboardFrame, boatShapes, carShapes, helicopterShapes, type BoatFrame } from "./vehicle-shapes.ts";
 export { boatShapes, type BoatFrame } from "./vehicle-shapes.ts";
 
 export class StaticBoatWorld implements BoatWorld {
   readonly world: CollisionWorld;
   private readonly collision: StaticVehicleSolids;
-  private readonly hit: BoatContact = { reason: "", propeller: false, nx: 0, ny: 1, nz: 0 };
+  private readonly hit: BoatContact = { reason: "", propeller: false, nx: 0, ny: 1, nz: 0, x: 0, y: 0, z: 0, depth: 0 };
+  private readonly rotation = new Float64Array(4);
+  private readonly center = new Float64Array(3);
   constructor(world: CollisionWorld) { this.world = world; this.collision = new StaticVehicleSolids(world); }
   waterAt(x: number, z: number): number { return this.world.hf.waterAt(x, z); }
   groundAt(x: number, z: number): number { return this.world.hf.heightAt(x, z); }
   blocked(from: Readonly<BoatState>, to: Readonly<BoatState>, def: BoatVehicleDefinition): BoatContact | null {
-    const hit = this.collision.blocked(from, to, boatShapes(def), [{ from: boatOutboardFrame(from, def.spec), to: boatOutboardFrame(to, def.spec) }]);
+    const hit = this.collision.blocked(from, to, boatShapes(def), [{ from: boatOutboardFrame(from, def.spec), to: boatOutboardFrame(to, def.spec) }], true);
     if (!hit) return null;
-    this.hit.reason = hit.reason; this.hit.propeller = hit.hazard;
-    this.hit.nx = hit.nx; this.hit.ny = hit.ny; this.hit.nz = hit.nz; return this.hit;
+    Object.assign(this.hit, hit); this.hit.propeller = hit.hazard; this.bank(to, def); return this.hit;
+  }
+  penetration(at: Readonly<BoatState>, def: BoatVehicleDefinition): BoatContact | null {
+    const mount = boatOutboardFrame(at, def.spec);
+    const hit = this.collision.blocked(at, at, boatShapes(def), [{ from: mount, to: mount }], false, 0);
+    if (!hit) return null;
+    Object.assign(this.hit, hit); this.hit.propeller = hit.hazard; this.bank(at, def); return this.hit;
+  }
+  private bank(at: Readonly<BoatState>, def: BoatVehicleDefinition): void {
+    const hit = this.hit; hit.geometryNx = hit.geometryNy = hit.geometryNz = undefined;
+    if (hit.reason !== "terrain" || hit.ny <= 0 || hit.ny >= .8660254) return;
+    // A bank steeper than thirty degrees is a wall to a hull. Its vertical response face rejects the boat
+    // without converting forward thrust into a climbing force or using a submerged keel point as a launch lever.
+    hit.geometryNx = hit.nx; hit.geometryNy = hit.ny; hit.geometryNz = hit.nz;
+    const horizontal = len3(hit.nx, 0, hit.nz); hit.nx /= horizontal; hit.nz /= horizontal; hit.ny = 0;
+    hit.depth = (hit.depth ?? 0) / horizontal;
+    const { comX, comY, comZ } = vehicleMassProperties(def.spec, at);
+    vehicleRotation(at, this.rotation); quatRotate(this.rotation, 0, comX, comY, comZ, this.center, 0);
+    hit.y = at.y + this.center[1]!;
   }
 }
 const adapters = new WeakMap<CollisionWorld, StaticBoatWorld>();
@@ -48,24 +69,23 @@ export function boatPlacement(world: CollisionWorld, x: number, y: number, z: nu
   return w.blocked(s, s, def) === null;
 }
 
-const q = new Float64Array(4), center = new Float64Array(3);
+const q = new Float64Array(4);
 const swept: Swept = { solid: makeSolid(), hazard: false, radius: 0, pad: 0, bounds: bounds() };
 const otherSweep: Swept = { solid: makeSolid(), hazard: false, radius: 0, pad: 0, bounds: bounds() };
-const obstacle = makeSolid(), contact: BoatContact = { reason: "vehicle", propeller: false, nx: 0, ny: 0, nz: 0 };
+type BoatInteraction = BoatContact & ContactGeometry & { otherRotor: boolean; otherPropeller: boolean };
+const obstacle = makeSolid(), contact: BoatInteraction = { reason: "vehicle", propeller: false, nx: 0, ny: 0, nz: 0, x: 0, y: 0, z: 0, depth: 0, otherRotor: false, otherPropeller: false };
 function stateAt(def: BoatVehicleDefinition, frame: BoatFrame): BoatState {
   const s = createBoat(def.spec, frame.x, frame.y, frame.z, frame.yaw); s.steering = frame.steering ?? 0;
   vehicleRotation(frame, q); s.qx = q[0]!; s.qy = q[1]!; s.qz = q[2]!; s.qw = q[3]!; return s;
 }
-function interaction(def: BoatVehicleDefinition, s: BoatState, target: Solid, slack: number): BoatContact | null {
+function interaction(def: BoatVehicleDefinition, s: BoatState, target: Solid, slack: number): BoatInteraction | null {
+  contact.otherRotor = contact.otherPropeller = false;
   const mount = boatOutboardFrame(s, def.spec);
   for (const part of boatShapes(def)) {
     const pose = part.joint === undefined ? s : mount;
     sweep(part, pose, pose, swept);
-    if (!solidsCross(swept.solid, slack, slack, target, 0, 0, 0)) continue;
-    center.fill(0);
-    for (let i = 0; i < target.corners * 3; i += 3) for (let axis = 0; axis < 3; axis++) center[axis] = center[axis]! + target.at[i + axis]! / target.corners;
-    const x = s.x - center[0]!, y = s.y + def.spec.centerOfMass[1] - center[1]!, z = s.z - center[2]!, length = len3(x, y, z) || 1;
-    contact.propeller = part.hazard; contact.nx = x / length; contact.ny = y / length; contact.nz = z / length; return contact;
+    if (!solidContact(swept.solid, target, contact, slack)) continue;
+    contact.propeller = part.hazard; return contact;
   }
   return null;
 }
@@ -82,13 +102,17 @@ export function boatMeetsKind(parts: PartTable, kind: number, sx: number, sy: nu
   }
   return false;
 }
-export function boatMeetsCapsule(def: BoatVehicleDefinition, frame: BoatFrame, x: number, y: number, z: number, radius: number, height: number): BoatContact | null {
+export function boatMeetsCapsule(def: BoatVehicleDefinition, frame: BoatFrame, x: number, y: number, z: number, radius: number, height: number): (BoatContact & ContactGeometry) | null {
   return interaction(def, stateAt(def, frame), tube([x, y, z], [x, y + Math.max(height, radius * 2), z], [1, 0, 0], [0, 0, 1], radius, radius, 12), 0);
 }
-export function boatMeetsVehicle(def: BoatVehicleDefinition, frame: BoatFrame, other: VehicleDefinition, otherFrame: BoatFrame): BoatContact | null {
-  const s = stateAt(def, frame), target = stateAt(def, otherFrame), p = other.spec;
-  const shapes = other.movement === "boat" ? boatShapes(other) : other.movement === "rotor" ? helicopterShapes(other) : [box([0, (p.clearance + p.height) / 2, 0], [p.halfWidth, (p.height - p.clearance) / 2, p.halfLength])];
+export function boatMeetsVehicle(def: BoatVehicleDefinition, frame: BoatFrame, other: VehicleDefinition, otherFrame: BoatFrame): BoatInteraction | null {
+  const s = stateAt(def, frame), target = stateAt(def, otherFrame);
+  const shapes = other.movement === "boat" ? boatShapes(other) : other.movement === "rotor" ? helicopterShapes(other) : carShapes(other.spec);
   const mount = other.movement === "boat" ? boatOutboardFrame(otherFrame, other.spec) : target;
-  for (const part of shapes) { const pose = part.joint === undefined ? target : mount; sweep(part, pose, pose, otherSweep); const hit = interaction(def, s, otherSweep.solid, 0); if (hit) return hit; }
+  for (const part of shapes) {
+    const pose = part.joint === undefined ? target : mount; sweep(part, pose, pose, otherSweep);
+    const hit = interaction(def, s, otherSweep.solid, 0);
+    if (hit) { hit.otherRotor = other.movement === "rotor" && part.hazard; hit.otherPropeller = other.movement === "boat" && part.hazard; return hit; }
+  }
   return null;
 }

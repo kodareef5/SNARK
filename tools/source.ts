@@ -44,7 +44,8 @@ if (import.meta.main) {
   let bytes = 0;
   for (const file of files) {
     const size = statSync(join(ROOT, file)).size;
-    if (size > MOST) {
+    // This layout is imported as code by the landmark tools, tests and wiki. Git compresses its repeated geometry.
+    if (size > MOST && file !== "content/landmarks/cruise-layout.json") {
       held.push(`${file} (${(size / 1024 / 1024).toFixed(1)} MB)`);
       continue;
     }

@@ -23,7 +23,7 @@ import { serveFile } from "./files.ts";
 import { clientAddress } from "./front.ts";
 import { boardAsked, boardOwners, soundBoard, type BoardGate } from "./sound-board.ts";
 import { CUES } from "../shared/sound/cues.ts";
-import { partsFolder, partsOf, readHead } from "../shared/world/mapfile.ts";
+import { partHash, partsFolder, readHead } from "../shared/world/mapfile.ts";
 import { mapLabel, type Destination } from "./cluster/cluster.ts";
 import { comingSoonPage, htmlResponse, linkOf, pathOf, placeOf, startPage, worldAddress, type SiteLinks, type SiteWorld } from "./site.ts";
 
@@ -56,7 +56,7 @@ export interface ServerOptions {
   /** See `HostOptions.config` and `HostOptions.live`. */
   config?: Rules;
   live?: () => string | null;
-  /** Sees every request first, and answers it or returns null to pass it on. Only the device probe's server has one (tools/device.ts). */
+  /** Sees every request first, and answers it or returns null to pass it on. Only the device probe's and the map trip's servers have one (tools/device.ts, tools/map/trip.ts). */
   routes?: (req: Request, url: URL) => Response | Promise<Response> | null;
   /**
    * The address pages reach this server at from elsewhere, such as a tunnel's: told to the other servers of its cluster, whose
@@ -97,56 +97,74 @@ export function liveFileOf(folder: string): (() => string | null) | undefined {
   return () => (existsSync(path) ? readFileSync(path, "utf8") : null);
 }
 
-/** The head of the map file at `path`, read alone. */
-function headAt(path: string): Uint8Array {
-  const fd = openSync(path, "r");
-  try {
-    const start = new Uint8Array(16);
-    readSync(fd, start, 0, 16, 0);
-    const head = new Uint8Array(Math.max(16, new DataView(start.buffer).getUint32(12, true)));
-    readSync(fd, head, 0, head.length, 0);
-    return head;
-  } finally {
-    closeSync(fd);
+/** `length` bytes of the open file `fd` from `at`. */
+function readAt(fd: number, at: number, length: number): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(length);
+  for (let n = 0; n < length; ) {
+    const got = readSync(fd, bytes, n, length - n, at + n);
+    if (got === 0) break;
+    n += got;
   }
+  return bytes;
 }
+
+/** The map's routes (mapRoutes), and how to let go of the file they hold. */
+export type MapRoute = ((path: string, req: Request) => Response | Promise<Response> | null) & { readonly link: string; close(): void };
 
 /**
  * Answers a client's requests for the map. `/map.json` names the map and its head, and `/map/<name>` is the head or a part
  * by the name the head gives it (shared/world/mapfile.ts); any other name there is not found, and any other path is null.
  * A name carries its bytes' hash, so whoever fetched it keeps it for good. A map given by its path goes out from the folder
  * its build wrote beside it (tools/map/pack.ts), Brotli to a browser that takes it and gzip to one that does not (on plain
- * http), and the server holds none of it. A map made in code, or given with no such folder, is cut into its parts here and
- * each gzipped. `link` is the header that has a page ask for the head as it is read, before it has read map.json, named
- * relatively as the page's own fetch does.
+ * http). The file is held open as it was at the start, and `hash`, the world's, must be its: a build replaces it whole and
+ * takes away the parts its new head does not name, so a part this server names and its folder no longer has is cut from
+ * the file it holds, and gzipped once. That holds the old file's disk until the server stops, and its parts' gzip in memory
+ * once asked for. A map made in code, or given with no such folder, is cut likewise. `link` is the header that has a page
+ * ask for the head as it is read, before it has read map.json, named relatively as the page's own fetch does.
  */
-export function mapRoutes(file: Uint8Array<ArrayBuffer> | string, id: string): ((path: string, req: Request) => Response | Promise<Response> | null) & { readonly link: string } {
-  const head = readHead(typeof file === "string" ? headAt(file) : file, false);
+export function mapRoutes(file: Uint8Array<ArrayBuffer> | string, id: string, hash?: number): MapRoute {
+  const fd = typeof file === "string" ? openSync(file, "r") : -1;
+  const at = (from: number, length: number): Uint8Array<ArrayBuffer> => (fd < 0 ? (file as Uint8Array<ArrayBuffer>).slice(from, from + length) : readAt(fd, from, length));
+  let open = fd >= 0;
+  const close = (): void => void (open && ((open = false), closeSync(fd)));
+  const start = at(0, 16);
+  // The head as it was at the start, which this server names; a part is checked against it as it is cut.
+  const first = at(0, Math.max(16, new DataView(start.buffer).getUint32(12, true)));
+  const head = readHead(fd < 0 ? (file as Uint8Array) : first, false);
+  if (hash !== undefined && head.hash !== hash) {
+    close();
+    throw new Error(`map: ${String(file)} was built again as the server started: start it again`);
+  }
   const json = JSON.stringify({ id, hash: head.hash, head: `map/${head.name}` });
   const folder = typeof file === "string" ? partsFolder(file) : "";
-  const wanted = [{ name: head.name, length: head.bytes }, ...head.parts];
-  const onDisk = folder !== "" && wanted.every((p) => existsSync(join(folder, `${p.name}.br`)) && existsSync(join(folder, `${p.name}.gz`)) && existsSync(join(folder, p.name)) && statSync(join(folder, p.name)).size === p.length);
-  if (typeof file === "string" && !onDisk) console.log(`map: ${file} has no files of its parts beside it, so they are cut and gzipped now: bun tools/map.ts pack ${file} writes them`);
-  // Cut here: a part's own bytes, from the file on disk where it was given by its path, and its gzip.
-  const held = new Map<string, { raw: Blob | Uint8Array; gz: Uint8Array }>();
-  if (!onDisk) {
-    const bytes = typeof file === "string" ? new Uint8Array(readFileSync(file)) : file;
-    for (const p of partsOf(bytes)) {
-      const at = p.part?.at ?? 0;
-      held.set(p.name, { raw: typeof file === "string" ? Bun.file(file).slice(at, at + p.bytes.length) : p.bytes, gz: Bun.gzipSync(p.bytes) });
+  const wanted = new Map([{ name: head.name, at: 0, length: head.bytes, hash: "" }, ...head.parts].map((p) => [p.name, p]));
+  const onDisk = folder !== "" && [...wanted.values()].every((p) => existsSync(join(folder, `${p.name}.br`)) && existsSync(join(folder, `${p.name}.gz`)) && existsSync(join(folder, p.name)) && statSync(join(folder, p.name)).size === p.length);
+  if (typeof file === "string" && !onDisk) console.log(`map: ${file} has no files of its parts beside it, so they are cut and gzipped as they are asked for: bun tools/map.ts pack ${file} writes them`);
+  const zipped = new Map<string, Uint8Array>();
+  const headers = { "content-type": "application/octet-stream", "cache-control": "public, max-age=31536000, immutable", vary: "accept-encoding" };
+  /** A part as the file this server holds has it: never another build's, which a file written over in place would give. */
+  const cut = (name: string, req: Request): Response => {
+    const p = wanted.get(name)!;
+    const bytes = name === head.name ? first.subarray(0, head.bytes) : at(p.at, p.length);
+    if (name !== head.name && partHash(bytes) !== p.hash) {
+      console.log(`map: ${String(file)} was written over in place while the server ran, so its part ${name} is gone: start the server again`);
+      return new Response("gone", { status: 410 });
     }
-  }
-  const names = new Set(wanted.map((p) => p.name));
-  return Object.assign((path: string, req: Request): Response | Promise<Response> | null => {
-    if (path === "/map.json") return new Response(json, { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
-    if (!path.startsWith("/map/")) return null;
-    const name = path.slice(5);
-    if (!names.has(name)) return new Response("not found", { status: 404 });
-    if (onDisk) return serveFile(folder, req, `/${name}`);
-    const part = held.get(name)!;
-    const headers = { "content-type": "application/octet-stream", "cache-control": "public, max-age=31536000, immutable", vary: "accept-encoding" };
-    return (req.headers.get("accept-encoding") ?? "").includes("gzip") ? new Response(part.gz, { headers: { ...headers, "content-encoding": "gzip" } }) : new Response(part.raw, { headers });
-  }, { link: `<map/${head.name}>; rel=preload; as=fetch; crossorigin` });
+    if (!(req.headers.get("accept-encoding") ?? "").includes("gzip")) return new Response(bytes, { headers });
+    if (!zipped.has(name)) zipped.set(name, Bun.gzipSync(bytes));
+    return new Response(zipped.get(name)!, { headers: { ...headers, "content-encoding": "gzip" } });
+  };
+  return Object.assign(
+    (path: string, req: Request): Response | Promise<Response> | null => {
+      if (path === "/map.json") return new Response(json, { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
+      if (!path.startsWith("/map/")) return null;
+      const name = path.slice(5);
+      if (!wanted.has(name)) return new Response("not found", { status: 404 });
+      if (!onDisk) return cut(name, req);
+      return serveFile(folder, req, `/${name}`).then((res) => (res.status === 404 ? cut(name, req) : res));
+    },
+    { link: `<map/${head.name}>; rel=preload; as=fetch; crossorigin`, close },
+  );
 }
 
 /**
@@ -222,7 +240,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   for (const m of host.lists.unclear) console.log(`settings: ${m.setting} names ${m.name}, which could be ${m.could.join(" or ")}, so write the one meant in full`);
   for (const line of host.passed) console.log(`settings: passed over: ${line}`);
   if (!opts.probeScene && host.spawner === null && host.world.zones.every((z) => z.spawns === undefined)) console.log(`map: neither the content nor the map file gives ${host.world.mapId} a spawn region, so no wild creature lives on it`);
-  const mapRoute = mapRoutes(opts.map ?? host.mapFile!, host.world.mapId);
+  const mapRoute = mapRoutes(opts.map ?? host.mapFile!, host.world.mapId, host.world.mapHash);
   // The shared families of sounds are the owners the catalogue's fallbacks name.
   const families = [...new Set(CUES.flatMap((c) => c.falls.map((f) => f.slice(0, f.indexOf("/")))).filter((o) => o !== "{owner}"))];
   const board: BoardGate = { dev: opts.dev ?? false, password: host.adminPassword, guesses: host.game.cheatGuesses, tick: () => host.world.tick };
@@ -465,6 +483,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       clearTimeout(timer);
       server.stop(true);
       host.shutdown();
+      mapRoute.close();
     },
   };
 }

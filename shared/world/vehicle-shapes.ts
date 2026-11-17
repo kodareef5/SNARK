@@ -2,10 +2,36 @@
 import { quatMul, quatRotate } from "../math/quat.ts";
 import { detCos, detSin, len3 } from "../math/scalar.ts";
 import { vehicleRotation, type VehicleFrame } from "../sim/vehicle-frame.ts";
-import type { BoatSpec, BoatVehicleDefinition, RotorVehicleDefinition } from "../sim/vehicle.ts";
-import { box, shape, tube, type Shape, type SolidFrame } from "./vehicle-solid.ts";
+import type { BoatSpec, BoatVehicleDefinition, RotorVehicleDefinition, VehicleSpec } from "../sim/vehicle.ts";
+import { box, makeSolid, shape, tube, type Shape, type SolidFrame } from "./vehicle-solid.ts";
 export interface BoatFrame extends VehicleFrame { steering?: number }
 const q = new Float64Array(4), jointQ = new Float64Array(4), point = new Float64Array(3);
+const cars = new WeakMap<VehicleSpec, readonly Shape[]>();
+/** A rigid underbody bevel beyond each axle keeps the authored approach/departure clearance on built ramps too. */
+export function carShapes(p: VehicleSpec): readonly Shape[] {
+  const known = cars.get(p); if (known) return known;
+  const solid = makeSolid(), axle = Math.min(p.halfLength, p.wheelbase / 2), track = Math.min(p.halfWidth, p.track / 2);
+  const rise = Math.min(p.height - p.clearance, (p.halfLength - axle) * .3);
+  const sideRise = Math.min(rise, (p.halfWidth - track) * .8), shoulder = axle + sideRise / .3;
+  const bumperTop = Math.max(p.clearance + rise + .05, p.height * .35 - .05);
+  const roofEnd = Math.max(axle, p.halfLength - .35), endSlope = (p.halfLength - roofEnd) / (p.height - bumperTop);
+  const vertices: number[][] = [];
+  for (const x of [-1, 1]) for (const z of [-1, 1]) {
+    vertices.push([x * track, p.clearance, z * axle], [x * p.halfWidth, p.clearance + sideRise, z * shoulder],
+      [x * p.halfWidth, p.clearance + rise, z * p.halfLength], [x * p.halfWidth, bumperTop, z * p.halfLength], [x * p.halfWidth, p.height, z * roofEnd]);
+  }
+  for (let i = 0; i < vertices.length; i++) solid.at.set(vertices[i]!, i * 3);
+  // The upper ends slope back toward the cabin, so a bumper is not a broad flat support face on which a car
+  // can balance vertically. This is collision geometry, not an upright-rest force.
+  const faces = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, endSlope, 1], [0, endSlope, -1], [.8, -1, 0], [-.8, -1, 0], [0, -1, .3], [0, -1, -.3]];
+  const edges = [[1, 0, 0], [0, 1, 0], [0, 1, endSlope], [0, 1, -endSlope], [0, 0, 1], [1, .8, 0], [1, -.8, 0], [0, .3, 1], [0, -.3, 1],
+    [1, .8, .8 / .3], [1, .8, -.8 / .3], [1, -.8, .8 / .3], [1, -.8, -.8 / .3]];
+  solid.corners = vertices.length; solid.faces = faces.length; solid.edges = edges.length;
+  for (const [vectors, out] of [[faces, solid.face], [edges, solid.edge]] as const) for (let i = 0; i < vectors.length; i++) {
+    const v = vectors[i]!, length = len3(v[0]!, v[1]!, v[2]!); out.set(v.map(n => n / length), i * 3);
+  }
+  const parts = [shape(solid)]; cars.set(p, parts); return parts;
+}
 /** The outboard's axis is yaw=-steering: positive helm turns the bow toward local +X by pushing the stern toward -X. */
 export function boatOutboardFrame(frame: BoatFrame, p: BoatSpec): SolidFrame {
   vehicleRotation(frame, q);

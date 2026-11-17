@@ -1,7 +1,7 @@
 // Where every moving entity was over the last half second. A shot is judged against where its target was when the shooter saw it.
 // Only players and awake creatures have rows. A sleeping creature has none, because it has not moved.
 
-import { F_ALIVE, wider, type EntityStore } from "../shared/sim/entities.ts";
+import { F_ALIVE, GEAR_WORN, wider, type EntityStore } from "../shared/sim/entities.ts";
 
 /** Ticks kept, a power of two. A tick is recorded after it is stepped, so while it steps these are the ticks before it, past REWIND_TICKS (server/combat.ts). */
 export const HISTORY_TICKS = 16;
@@ -9,6 +9,9 @@ const MASK = HISTORY_TICKS - 1;
 /** Per entity per tick. */
 const ROW_BYTES = 20;
 const VEHICLE_FIELDS = ["pitch", "roll", "qx", "qy", "qz", "qw", "steering"] as const;
+// Kept only while an entity has occupied a seat in the retained window. Host pose and saddle belong to that
+// instant: a dismount, changed saddle or recycled host slot must not rewrite an earlier seated hitbox.
+const SEAT_FIELDS = ["seat", "seatGen", "seatSlot", "saddle", "hostKind", "hostX", "hostY", "hostZ", "hostYaw", "hostAnim", "hostCue"] as const;
 
 export class Past {
   x = 0;
@@ -21,6 +24,49 @@ export class Past {
   cue = 0;
   /** Mechanical attitude is sparse in History; ordinary creatures do not allocate a second ring. */
   pitch = 0; roll = 0; qx = 0; qy = 0; qz = 0; qw = 1; steering = 0;
+  seat = 0; seatGen = 0; seatSlot = 0; saddle = 0; hostKind = 0;
+  hostX = 0; hostY = 0; hostZ = 0; hostYaw = 0; hostAnim = 0; hostCue = 0;
+
+  seatFrom(ents: EntityStore, e: number): void {
+    const host = ents.seat[e]! - 1;
+    this.seat = host >= 0 && ents.seatSlot[e] !== 0 && ents.seatGen[e] === ents.gen[host] && (ents.flags[host]! & F_ALIVE) !== 0 ? host + 1 : 0;
+    this.seatGen = this.seat ? ents.seatGen[e]! : 0;
+    this.seatSlot = this.seat ? ents.seatSlot[e]! : 0;
+    this.saddle = this.seat ? ents.gears.get(host)?.[GEAR_WORN] ?? 0 : 0;
+    if (!this.seat) return;
+    this.hostKind = ents.kind[host]!;
+    this.hostX = ents.x[host]!; this.hostY = ents.y[host]!; this.hostZ = ents.z[host]!;
+    this.hostYaw = ents.yaw[host]!; this.hostAnim = ents.anim[host]!; this.hostCue = ents.cue[host]!;
+  }
+
+  blendSeat(other: Past, k: number): void {
+    if (!this.sameSeat(other)) {
+      if (k >= 0.5) for (const field of SEAT_FIELDS) this[field] = other[field];
+      return;
+    }
+    if (!this.seat) return;
+    this.hostX += (other.hostX - this.hostX) * k;
+    this.hostY += (other.hostY - this.hostY) * k;
+    this.hostZ += (other.hostZ - this.hostZ) * k;
+    const turn = ((other.hostYaw - this.hostYaw + 32768) & 0xffff) - 32768;
+    this.hostYaw = (this.hostYaw + Math.round(turn * k)) & 0xffff;
+    if (k >= 0.5) { this.hostAnim = other.hostAnim; this.hostCue = other.hostCue; }
+  }
+
+  sameSeat(other: Past): boolean {
+    return this.seat === other.seat && this.seatGen === other.seatGen && this.seatSlot === other.seatSlot && this.saddle === other.saddle;
+  }
+
+  /** Seat attachment changes are discrete, never a travelled segment between two different seat origins. */
+  blend(other: Past, k: number): void {
+    if (!this.sameSeat(other)) k = k < 0.5 ? 0 : 1;
+    this.x += (other.x - this.x) * k; this.y += (other.y - this.y) * k; this.z += (other.z - this.z) * k;
+    this.blendVehicle(other, k);
+    this.blendSeat(other, k);
+    const turn = ((other.yaw - this.yaw + 32768) & 0xffff) - 32768;
+    this.yaw = (this.yaw + Math.round(turn * k)) & 0xffff;
+    if (k >= 0.5) { this.anim = other.anim; this.cue = other.cue; }
+  }
 
   vehicleFrom(ents: EntityStore, e: number): void {
     const v = ents.vrow[e]!;
@@ -63,11 +109,33 @@ export class History {
    */
   private readonly cues = new Map<number, Uint32Array>();
   private readonly vehicles = new Map<number, Float32Array>();
+  private readonly seats = new Map<number, Float64Array>();
+  /** Tokens exist only for queried/teleported tracked bodies; untrack retires them with the history row. */
+  private readonly motionEpochs = new Map<number, number>();
+  private motionVersion = 0;
+  /** Maximum travelled distance of any tracked entity during each recorded tick, plus the tick still being stepped. */
+  private readonly travel = new Float64Array(HISTORY_TICKS);
+  private travelled: Float64Array;
+  private travelGen: Uint16Array;
+  private currentTravel = 0;
+  private travelDirty = false;
 
   constructor(ents: EntityStore, capacity = 256) {
     this.ents = ents;
     this.rowOf = new Int32Array(ents.cap).fill(-1);
-    ents.onGrow.push((cap) => void (this.rowOf = wider(this.rowOf, cap, -1)));
+    this.travelled = new Float64Array(capacity);
+    this.travelGen = new Uint16Array(capacity);
+    ents.onGrow.push((cap) => {
+      this.rowOf = wider(this.rowOf, cap, -1);
+    });
+    ents.onPosition.push((e, x, y, z) => {
+      const r = this.rowOf[e]!;
+      if (r < 0) return;
+      if (this.travelGen[r] !== ents.gen[e]) { this.travelGen[r] = ents.gen[e]!; this.travelled[r] = 0; }
+      const distance = Math.hypot(ents.x[e]! - x, ents.y[e]! - y, ents.z[e]! - z);
+      this.travelled[r] = this.travelled[r]! + distance;
+      this.currentTravel = Math.max(this.currentTravel, this.travelled[r]!);
+    });
     this.capacity = capacity;
     this.entOf = new Int32Array(capacity);
     this.x = new Float32Array(capacity * HISTORY_TICKS);
@@ -79,7 +147,8 @@ export class History {
   }
 
   get bytes(): number {
-    return this.capacity * HISTORY_TICKS * ROW_BYTES + this.rowOf.byteLength + this.vehicles.size * HISTORY_TICKS * VEHICLE_FIELDS.length * 4;
+    return this.capacity * HISTORY_TICKS * ROW_BYTES + this.rowOf.byteLength + this.travelled.byteLength + this.travelGen.byteLength + this.travel.byteLength
+      + this.vehicles.size * HISTORY_TICKS * VEHICLE_FIELDS.length * 4 + this.seats.size * HISTORY_TICKS * SEAT_FIELDS.length * 8;
   }
 
   /** The entity in row `r`, for `r` below `rows`: an awake creature or a player's body. */
@@ -92,6 +161,8 @@ export class History {
     if (this.rowOf[e]! >= 0) return;
     if (this.rows === this.capacity) this.grow();
     const r = this.rows++;
+    this.travelled[r] = 0;
+    this.travelGen[r] = this.ents.gen[e]!;
     this.rowOf[e] = r;
     this.entOf[r] = e;
     for (let t = 0; t < HISTORY_TICKS; t++) this.write(r * HISTORY_TICKS + t, e);
@@ -109,11 +180,16 @@ export class History {
     if (r < 0) return;
     this.cues.delete(e);
     this.vehicles.delete(e);
+    this.seats.delete(e);
+    this.motionEpochs.delete(e);
+    this.travelled[r] = 0;
     this.rowOf[e] = -1;
     const last = --this.rows;
     if (r === last) return;
     // The last row moves into the gap.
     const moved = this.entOf[last]!;
+    this.travelled[r] = this.travelled[last]!;
+    this.travelGen[r] = this.travelGen[last]!;
     this.entOf[r] = moved;
     this.rowOf[moved] = r;
     const from = last * HISTORY_TICKS;
@@ -131,6 +207,9 @@ export class History {
     const flags = this.ents.flags;
     const slot = tick & MASK;
     this.tickOf[slot] = tick;
+    this.travel[slot] = this.currentDistance();
+    this.travelled.fill(0);
+    this.currentTravel = 0;
     for (let r = this.rows - 1; r >= 0; r--) {
       const e = this.entOf[r]!;
       // Destroyed without an untrack call. Iterating backward means the row moved into the gap was already written.
@@ -142,6 +221,53 @@ export class History {
       ring[slot] = this.ents.cue[e]!;
       if (ring[slot] === 0 && ring.every((c) => c === 0)) this.cues.delete(e);
     }
+    for (const [e, ring] of this.seats) {
+      let occupied = false;
+      for (let t = 0; t < HISTORY_TICKS; t++) if (ring[t * SEAT_FIELDS.length] !== 0) { occupied = true; break; }
+      if (!occupied) this.seats.delete(e);
+    }
+  }
+
+  /**
+   * Conservative path length since `from`, including projectile flight and movement in the unrecorded tick. The sum
+   * of per-tick maxima bounds every individual path, regardless of carrier, impulse, vertical or downhill speed.
+   * At most the retained 16 intervals are visited; the current tick has its own accumulator.
+   */
+  displacement(from: number, now: number): number {
+    let distance = this.currentDistance();
+    for (let tick = Math.max(Math.floor(from) + 1, now - HISTORY_TICKS + 1); tick <= now; tick++) {
+      if (this.has(tick)) distance += this.travel[tick & MASK]!;
+    }
+    return distance;
+  }
+
+  /** Immediately after an explicit teleport. Do not interpolate or sweep through the space it skipped. */
+  discontinuity(e: number): void {
+    if ((this.ents.flags[e]! & F_ALIVE) === 0) return;
+    if (this.rowOf[e]! < 0) this.track(e);
+    const r = this.rowOf[e]!;
+    this.gen.fill(0, r * HISTORY_TICKS, (r + 1) * HISTORY_TICKS);
+    this.seats.delete(e);
+    this.motionEpochs.set(e, ++this.motionVersion);
+    this.travelled[r] = 0;
+    this.travelDirty = true;
+  }
+
+  /** A lazy tracked-body token. Retracking cannot revive an earlier capture, even without an intervening teleport. */
+  motionEpoch(e: number): number {
+    if (this.rowOf[e]! < 0) return 0;
+    let epoch = this.motionEpochs.get(e);
+    if (epoch === undefined) { epoch = ++this.motionVersion; this.motionEpochs.set(e, epoch); }
+    return epoch;
+  }
+
+  private currentDistance(): number {
+    if (this.travelDirty) {
+      this.currentTravel = 0;
+      for (let r = 0; r < this.rows; r++) this.currentTravel = Math.max(this.currentTravel, this.travelled[r]!);
+      this.travelDirty = false;
+    }
+    return this.currentTravel;
   }
 
   has(tick: number): boolean {
@@ -170,6 +296,7 @@ export class History {
       out.anim = ents.anim[e]!;
       out.cue = ents.cue[e]!;
       out.vehicleFrom(ents, e);
+      out.seatFrom(ents, e);
       return true;
     }
     const i = r * HISTORY_TICKS + (tick & MASK);
@@ -183,6 +310,9 @@ export class History {
     const vehicle = this.vehicles.get(e);
     if (vehicle) for (let field = 0; field < VEHICLE_FIELDS.length; field++) out[VEHICLE_FIELDS[field]!] = vehicle[(tick & MASK) * VEHICLE_FIELDS.length + field]!;
     else out.vehicleFrom(ents, e);
+    const seat = this.seats.get(e);
+    if (seat) for (let field = 0; field < SEAT_FIELDS.length; field++) out[SEAT_FIELDS[field]!] = seat[(tick & MASK) * SEAT_FIELDS.length + field]!;
+    else { out.seat = out.seatGen = out.seatSlot = out.saddle = 0; }
     return true;
   }
 
@@ -192,18 +322,7 @@ export class History {
     const k = tick - t0;
     if (k === 0) return this.at(t0, e, out);
     if (!this.at(t0 + 1, e, later) || !this.at(t0, e, out)) return false;
-    out.x += (later.x - out.x) * k;
-    out.y += (later.y - out.y) * k;
-    out.z += (later.z - out.z) * k;
-    out.blendVehicle(later, k);
-    let turn = later.yaw - out.yaw;
-    if (turn > 32768) turn -= 65536;
-    else if (turn < -32768) turn += 65536;
-    out.yaw = (out.yaw + Math.round(turn * k)) & 0xffff;
-    if (k >= 0.5) {
-      out.anim = later.anim;
-      out.cue = later.cue;
-    }
+    out.blend(later, k);
     return true;
   }
 
@@ -215,6 +334,12 @@ export class History {
     this.yaw[i] = ents.yaw[e]!;
     this.anim[i] = ents.anim[e]!;
     this.gen[i] = ents.gen[e]!;
+    let seat = this.seats.get(e);
+    if (seat || ents.seatSlot[e] !== 0) {
+      current.seatFrom(ents, e);
+      if (!seat) { seat = new Float64Array(HISTORY_TICKS * SEAT_FIELDS.length); this.seats.set(e, seat); }
+      for (let field = 0; field < SEAT_FIELDS.length; field++) seat[(i & MASK) * SEAT_FIELDS.length + field] = current[SEAT_FIELDS[field]!]!;
+    }
     if (ents.vehicle[ents.vrow[e]!]) {
       let ring = this.vehicles.get(e);
       current.vehicleFrom(ents, e);
@@ -229,6 +354,8 @@ export class History {
 
   private grow(): void {
     const capacity = this.capacity * 2;
+    this.travelled = wider(this.travelled, capacity);
+    this.travelGen = wider(this.travelGen, capacity);
     const n = capacity * HISTORY_TICKS;
     const entOf = new Int32Array(capacity);
     entOf.set(this.entOf);

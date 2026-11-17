@@ -2,6 +2,9 @@ import { expect, test } from "bun:test";
 import { PredictionTrace } from "../../client/core/diagnostics.ts";
 import { ClientSession, RemoteSample } from "../../client/core/session.ts";
 import { Body } from "../../shared/sim/character.ts";
+import { predictedVehiclePose, remoteVehiclePose } from "../../client/core/vehicle-view.ts";
+import { vehiclePoint } from "../../shared/sim/vehicle-frame.ts";
+import { packVehicleQuaternionPair } from "../../shared/sim/vehicle-presentation.ts";
 import { packVehicleDrive } from "../../shared/sim/vehicle-body.ts";
 import { EntityView, type ViewRing } from "../../shared/net/view.ts";
 import type { Connection } from "../../shared/net/transport.ts";
@@ -29,6 +32,29 @@ test("vehicle observers blend engine speed but select actual gears and shift sta
   views.find(102)!.gen[0] = 2;
   s.sampleRemote(remote, 0);
   expect(remote.vehicleRpm[0]).toBe(3900);
+});
+
+test("a rolling car's predicted and observed seats follow the complete attitude beyond the old Euler limit", () => {
+  const registry = coreRegistry(), kind = registry.index.get("core:compact")!;
+  const conn: Connection = { send() {}, close() {}, open: true, onMessage: null, onClose: null };
+  const session = new ClientSession(conn, { registry, name: "roll-observer", key: new Uint8Array(32), spectate: true, resolveMap: () => null });
+  const views = (session as unknown as { drawn: ViewRing<EntityView> }).drawn;
+  const a = new Body(), b = new Body(); a.vehicle = b.vehicle = true;
+  b.vehicleQz = 1; b.vehicleQw = 0;
+  for (const [tick, body] of [[100, a], [102, b]] as const) {
+    const view = views.alloc(tick); view.push(4, 1, kind, 0, 0, 0, 0, 0, 0);
+    view.vehicleAttitudeA[0] = packVehicleQuaternionPair(body.vehicleQx, body.vehicleQy);
+    view.vehicleAttitudeB[0] = packVehicleQuaternionPair(body.vehicleQz, body.vehicleQw);
+  }
+  const remote = new RemoteSample(), predicted = [0, 0, 0], observed = [0, 0, 0];
+  const anchor = registry.vehicle[kind]!.seats[0]!.anchor;
+  for (const t of [.25, .75, 1]) {
+    session.renderClock = 100 + 2 * t; session.sampleRemote(remote, 0);
+    vehiclePoint({ x: 0, y: 0, z: 0, yaw: 0, ...predictedVehiclePose(a, b, t, false) }, anchor, predicted);
+    vehiclePoint({ x: 0, y: 0, z: 0, yaw: 0, ...remoteVehiclePose(remote, 0) }, anchor, observed);
+    for (let axis = 0; axis < 3; axis++) expect(observed[axis]!).toBeCloseTo(predicted[axis]!, 5);
+  }
+  expect(observed[1]!).toBeLessThan(0);
 });
 
 test("a body that is no vehicle samples the vehicle columns a car sent no vehicle parts does, blended and new", () => {

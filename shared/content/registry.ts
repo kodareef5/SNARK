@@ -1090,6 +1090,7 @@ function moveParams(d: SpeciesDef): MoveParams {
     radius: d.radius,
     height: d.height,
     eyeHeight: d.eyeHeight,
+    lowStance: d.class !== "creature",
     crouchHeight,
     crouchEye: d.crouch?.eye ?? crouchHeight * (d.eyeHeight / d.height),
     crouchMul: d.crouch?.speed ?? 0.5,

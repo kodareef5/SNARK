@@ -207,6 +207,8 @@ export class VehicleTelemetry {
 
   update(id: number, body: Body, throttle: number, handbrake: boolean, spec: VehicleSpec, _dt: number): void {
     this.active = true; this.id = id; this.rotor = false; this.boat = false;
+    this.engineCondition = body.vehicleEngineCondition; this.engineOn = body.vehicleEngineOn;
+    this.hullCondition = body.vehicleHullCondition; this.flooding = body.vehicleFlooding;
     const forward = body.vx * Math.sin(body.vehicleYaw) + body.vz * Math.cos(body.vehicleYaw), pedal = Math.max(-1, Math.min(1, throttle));
     this.speed = Math.hypot(body.vx, body.vz);
     this.handbrake = handbrake;

@@ -109,17 +109,17 @@ test('a saved car loads clamped to a retuned definition, and a component of anot
     const ents = restored.world.ents, e = restored.host.records.entOf.get(pid)!, v = ents.vrow[e]!;
     expect(ents.fuel[v]).toBe(Math.fround(spec.fuelCapacity));
     expect(ents.vehicleGear[v]).toBe(spec.drivetrain!.forwardRatios.length);
-    expect(Math.abs(ents.vehiclePitch[v]!)).toBeLessThan(1);
+    expect(ents.vehiclePitch[v]!).toBeCloseTo(8 - Math.PI * 2, 5);
     expect(ents.steering[v]).toBe(Math.fround(spec.maxSteer));
-    expect(ents.vehicleYawRate[v]).toBe(3);
+    expect(ents.vehicleYawRate[v]).toBe(12);
     expect(ents.vehicleRideOffset[v]).toBe(Math.fround(spec.suspensionTravel!));
-    expect(ents.vx[e]).toBe(spec.maxForward);
-    expect(ents.vy[e]).toBe(60);
+    expect(ents.vx[e]).toBe(120);
+    expect(ents.vy[e]).toBe(100);
     const other = new Uint8Array(90); other[0] = 9;
     restored.host.records.byPid.get(pid)!.extra.set(0x757262, other);
     restored.host.records.dirty.add(pid);
     restored.host.shutdown(); active = null;
-    expect(() => new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], dbPath })).toThrow(`vehicle ${pid}: its saved state is version 9 in 90 bytes, and this build reads version 4 in 82`);
+    expect(() => new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], dbPath })).toThrow(`vehicle ${pid}: its saved state is version 9 in 90 bytes, and this build reads version 8 in 111`);
   } finally { active?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
 });
 

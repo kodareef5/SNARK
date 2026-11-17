@@ -1,4 +1,4 @@
-// One render representation for the predicted aircraft, its passengers, and remote observers.
+// One full-attitude render representation for every vehicle, its passengers and remote observers.
 import { TICK_DT } from "../../shared/coords.ts";
 import { quatNlerp } from "../../shared/math/quat.ts";
 import type { Body } from "../../shared/sim/character.ts";
@@ -16,7 +16,7 @@ export function predictedVehiclePose(a: Body, b: Body, t: number, rotor: boolean
     rideOffset: mix(a.vehicleRideOffset, b.vehicleRideOffset, t), grounded: b.grounded,
   };
   if (boat) pose.wheelAngle = interpolateRotorPhase(a.wheelAngle, b.wheelAngle, a.vehicleRpm * a.vehicleGear, b.vehicleRpm * b.vehicleGear, TICK_DT, t);
-  if (rotor || boat) {
+  if (a.vehicleQx || a.vehicleQy || a.vehicleQz || a.vehicleQw || b.vehicleQx || b.vehicleQy || b.vehicleQz || b.vehicleQw) {
     qa.set([a.vehicleQx, a.vehicleQy, a.vehicleQz, a.vehicleQw]); qb.set([b.vehicleQx, b.vehicleQy, b.vehicleQz, b.vehicleQw]);
     quatNlerp(q, 0, qa, 0, qb, 0, t);
     pose.qx = q[0]!; pose.qy = q[1]!; pose.qz = q[2]!; pose.qw = q[3]!;
@@ -35,7 +35,7 @@ export function remoteVehiclePose(r: RemoteSample, i: number, out?: VehicleRende
   pose.pitch = r.vehiclePitch[i]!; pose.roll = r.vehicleRoll[i]!; pose.steering = r.steering[i]!; pose.wheelAngle = r.wheelAngle[i]!;
   pose.groundPitch = r.vehicleGroundPitch[i]!; pose.groundRoll = r.vehicleGroundRoll[i]!; pose.rideOffset = r.vehicleRideOffset[i]!; pose.grounded = r.vehicleGrounded[i] !== 0;
   pose.doors = r.vehicleDoors[i]!;
-  if (r.vehicleRotorcraft[i] || r.vehicleBoat[i]) {
+  if (r.vehicleQx[i] || r.vehicleQy[i] || r.vehicleQz[i] || r.vehicleQw[i]) {
     pose.qx = r.vehicleQx[i]!; pose.qy = r.vehicleQy[i]!; pose.qz = r.vehicleQz[i]!; pose.qw = r.vehicleQw[i]!;
     pose.engineRpm = r.vehicleRpm[i]!; pose.engineOn = r.vehicleEngineOn[i] !== 0;
     pose.hullCondition = r.vehicleHullCondition[i]!; pose.flooding = r.vehicleFlooding[i]!;

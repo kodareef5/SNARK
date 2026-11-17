@@ -9,7 +9,7 @@ import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { SKIN, capsuleFree, capsuleKind, groundUnder } from "../shared/world/collide.ts";
-import { vehicleMeetsKind } from "../shared/world/vehicle.ts";
+import { carMeetsKind } from "../shared/world/vehicle.ts";
 import { isBoatVehicle, isRotorVehicle } from "../shared/sim/vehicle.ts";
 import { helicopterMeetsKind } from "../shared/world/helicopter.ts";
 import { boatMeetsKind } from "../shared/world/boat.ts";
@@ -711,16 +711,17 @@ export class Build {
           if ((ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
           const k = ents.kind[i]!, car = reg.vehicle[k], v = ents.vrow[i]!;
           // A vehicle is its whole hull, nose to boot, not a body of its half width.
-          if (car && (isRotorVehicle(car) || isBoatVehicle(car))) {
+          if (car) {
             const frame = {
               x: ents.x[i]!, y: ents.y[i]!, z: ents.z[i]!, yaw: ents.vehicleYaw[v]!, pitch: ents.vehiclePitch[v]!, roll: ents.vehicleRoll[v]!,
               qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!, steering: ents.steering[v]!,
             };
             if (isBoatVehicle(car) ? boatMeetsKind(reg.parts, kind, x, y, z, yaw, car, frame, BODY_SLACK)
-              : helicopterMeetsKind(reg.parts, kind, x, y, z, yaw, car, frame, BODY_SLACK)) return true;
+              : isRotorVehicle(car) ? helicopterMeetsKind(reg.parts, kind, x, y, z, yaw, car, frame, BODY_SLACK)
+              : carMeetsKind(reg.parts, kind, x, y, z, yaw, car.spec, frame, BODY_SLACK)) return true;
             continue;
           }
-          if (car ? vehicleMeetsKind(reg.parts, kind, x, y, z, yaw, car.spec, ents.x[i]!, ents.y[i]!, ents.z[i]!, ents.vehicleYaw[v]!, BODY_SLACK) : capsuleKind(reg.parts, kind, x, y, z, yaw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, BODY_SLACK)) return true;
+          if (capsuleKind(reg.parts, kind, x, y, z, yaw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, BODY_SLACK)) return true;
         }
       }
     }

@@ -8,9 +8,21 @@ import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
 import { decodeTexture, sampleWorldTexture } from "../../client/core/render/cpu-texture.ts";
 import type { WorldSample } from "../../client/core/render/world-surfaces.ts";
 import type { TextureUpload } from "../../client/core/render/packet.ts";
+import { describePack } from "../../shared/pack/manifest.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { rgbaOf } from "../../tools/snap/files.ts";
-import { worldMaterial } from "../../tools/surfaces/build.ts";
+import { worldMaterial, worldSurfaceMesh } from "../../tools/surfaces/build.ts";
+
+/** The probe tests supply their own texture bytes, including on a checkout with no surface atlas. */
+export function referenceManifest(pack: Pack) {
+  const manifest = describePack(pack, { name: "boot", bytes: pack.blobAt + pack.blob.length });
+  const present = manifest.materials?.find((m) => m.id === SURFACE_MATERIAL);
+  if (present) return { manifest, material: present };
+  const first = (manifest.textures ??= []).length;
+  const material = { ...worldSurfaceMesh().materials![0]!, base: first, normal: first + 1, mro: first + 2 };
+  manifest.materials = [...(manifest.materials ?? []), material];
+  return { manifest, material };
+}
 
 export function worldMaps(pack: Pack): { sample: WorldSample; uploads: TextureUpload[] } {
   const material = pack.header.materials!.find((m) => m.id === SURFACE_MATERIAL)!;

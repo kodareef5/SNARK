@@ -63,6 +63,7 @@ export function vehicleRotation(frame: VehicleFrame, out: Numbers): void {
   quatAxis(pitch, 0, 1, 0, 0, -frame.pitch);
   quatMul(out, 0, yaw, 0, roll, 0);
   quatMul(out, 0, out, 0, pitch, 0);
+  quatNormalize(out, 0);
 }
 
 /** Use for seats, approach markers, cameras and hit geometry, never a separate yaw-only attachment. */

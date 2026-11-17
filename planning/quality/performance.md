@@ -44,6 +44,8 @@ high and marked "busy".
   3 ms a frame on medium and 5 on high. A governed soak on high holds 17 ms.
 - **This Mac's GPU** spends 0.13 ms a megapixel on LIT and 0.38 with the world
   finish; the iPhone 3.5 and 4.5 times as much.
+- **A map as it comes** (the map trip, Miami): the first frame at 8.4 s over 5 Mbit/s
+  and 3.0 over 20; the far city only once every part has come, at 28.5 and 8.8 s.
 
 ## The cleanup round in the bench
 
@@ -569,6 +571,71 @@ and 0.56 M triangles without the far layers. Before D743 and D745 the street mad
 1,592, 2,506 and 3,513 GL draws on medium, high and ultra (the review's runs,
 `planning/reference/review-maps-2026-11-17.md`).
 
+Again on 2026-11-17 at main `ff083a5c`, after the lit ground (D749, D750), the far sun shadow (D754), anisotropic
+filtering and ultra's canvas (D759), on Miami `0f4341ce` (map version 8): three passes, of which the first ran at
+load 6 to 8 and is given; the street's rows stayed at that load through all three and their spread follows in
+brackets, and the air's later passes ran at load 22 to 32 and are left out. On a window of one device pixel ultra
+now draws 3,840 by 1,986, the canvas its second column had before.
+
+| View, tier | Device pixels a CSS pixel | GPU, ms a frame | GL draws |
+| --- | --- | --- | --- |
+| Street, medium | 1; 1.5 | 6.7 (3.7 to 6.7); 5.3 (4.9 to 6.9) | 770 |
+| Street, high | 1; 2 | 7.0 (5.0 to 7.0); 7.8 (7.3 to 7.8) | 1,519 |
+| Street, ultra | 1; 2 | 8.1 (8.1 to 8.7); 8.2 (8.2 to 8.5) | 2,410 |
+| Air, medium | 1; 1.5 | 6.2; 6.4 | 234 |
+| Air, high | 1; 2 | 5.8; 10.2 | 929 |
+| Air, ultra | 1; 2 | 11.7; 11.9 | 1,464 |
+
+One pass of the page's GPU timer swings by 2 ms on this machine when another browser is drawing, so only the rows at
+two device pixels say anything against the table above: from the air they are 0.9 ms higher on high and 1.7 on
+ultra, at four times the pixels. GL draws are as they were but for the air on medium (234 where 262) and on high
+(929 where 875). A change is judged by alternating runs with and without it, four each way (D754 was).
+
+## A map as it comes
+
+`bun tools/map/trip.ts --map var/maps/miami.snmap` on 2026-11-17: the built Miami, an everyday build at version 8,
+from a server of the tool's own behind a link of its own held to 5 or 20 Mbit/s with 100 ms there and back, shared by
+every connection a slice at a time and pushing back on the server as TCP does; headless Chrome 157, muted, from an
+empty cache, at `?trip`, which only watches. The body joins on the map's thickest street (6944, 2976, downtown); goes
+300 m up once the street is drawn or a third of the map has come; jumps, once the far city is drawn or two thirds have
+come, to the thickest street 4 km away (6176, 6880), whose sector's ground is answered 503 at its first ask. Seconds by
+the page's clock, one run each on a busy machine (load 4 to 30 on 10 cores). "Main" is `ebd2b240` with the trip's
+probe; "now" is the loader that asks again, of the maps round's step 3G. Pictures of each moment are in `var/maps-round/3g-trip`.
+
+| Moment | 5 Mbit/s: main | 5 Mbit/s: now | 20 Mbit/s: main | 20 Mbit/s: now |
+| --- | --- | --- | --- | --- |
+| First frame | 8.60 | 8.32 | 3.15 | 3.04 |
+| Before it: the map's files, as the build's rule names them there | 8, 3.37 MB | 8, 3.37 MB | 8, 3.37 MB | 8, 3.37 MB |
+| Up 300 m (share of the map come) | 11.77 (35%) | 11.21 (34%) | 3.98 (36%) | 3.86 (34%) |
+| The jump: made by the server (share come); drawn by the page | 19.57 (67%); 25.66 | 18.93 (67%); 21.35 | 6.13 (68%); 6.19 | 6.00 (67%); 6.13 |
+| Last part | never | 28.03 | never | 8.39 |
+| Statics handed over | never | 28.09 | never | 8.46 |
+| Far city drawn | never | 28.47 | never | 8.76 |
+| After the jump: predicted again; ground exact | never; never | at once; at once | never; never | at once; at once |
+| After the jump: the street there drawn with its materials | 12.03 | 30.83 | 8.72 | 17.67 |
+| The failed part | asked once, never came | came at its second ask | asked once, never came | came at its second ask |
+| At the end | 126 of 127 parts; no far city | whole; far city of 1,246,991 pieces | 126 of 127; no far city | whole |
+
+The street the body joined on is drawn with its pieces and materials only after the map has come: with the body kept
+there (an earlier run of the trip that went up only then), at 50.6 s on main and 49.9 now at 5 Mbit/s, 25.4 and 22.9 at
+20. Without the failure at 20 Mbit/s main hands the statics over at 8.52 s and draws the far city at 8.87.
+
+At 5 Mbit/s the page draws the jump 2.4 to 6.7 s after the server makes it (three runs of this loader, one of main's):
+the game's socket has a thirteenth of a line that twelve requests of the map and the assets share, so its rows and
+snapshots wait. By then the ground there has come, so prediction does not stop. On main the sector whose ground failed stays the overview's for good: prediction never
+runs there, and the statics are never handed over, so the far city never comes. Now the failed part is asked for
+again 0.5 s later and comes. The street there is drawn later now than on main, where no far city was made to compete
+with its assets.
+
+The page's map memory at the statics' hand-over, after a full collection, at 20 Mbit/s with no failure: 56.0 MB of
+heap and 198.5 MB of arrays on main, 54.5 and 132.3 now. Counted in Bun on the same parts, what the loader and the
+handed statics hold falls from 140.7 MB to 74.7: each sector's decoded ground (49.7 MB on Miami) is let go once copied,
+and the statics' bytes (16.2 MB) once read, where main's resolved promise kept them for the page's life.
+
+The build's figure is the page's: at the trip's street 8 files and 3.37 MB on Miami, and on Los Angeles (`--map
+var/maps/los-angeles.snmap`, at 7136, 352) 7 and 2.75 MB, as the rule says there; the heaviest place is 3.69 MB on
+Miami and 3.36 on Los Angeles.
+
 ## Where the limits are
 
 Reasoned from the rows, in the order a growing world meets them.
@@ -592,7 +659,7 @@ Reasoned from the rows, in the order a growing world meets them.
   terrain flight and the tree order since cells (`--terrain --map
   var/maps/miami.snmap`); forty hurt and dead creatures in view (`--flock`); small
   details, a hundred dust rings near the camera.
-- Real network congestion; WebSocket send cost under load; Firefox.
+- Real network congestion, past the map trip's link of its own; WebSocket send cost under load; Firefox.
 - This Mac's GPU on a built city in the bench, over three quiet runs: the Miami rows
   below are one pass.
 

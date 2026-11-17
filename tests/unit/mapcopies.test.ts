@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { brotliDecompressSync, gunzipSync, gzipSync } from "node:zlib";
 import { partsFolder, partsOf, readHead, writeMap } from "../../shared/world/mapfile.ts";
-import { FIRST_FRAME_BUDGET, PART_BUDGETS, checkBudgets, firstFrame, packMap, writeMapFile, type PackedPart } from "../../tools/map/pack.ts";
+import { FIRST_FRAME_BUDGET, PART_BUDGETS, checkBudgets, packMap, writeMapFile, type PackedPart } from "../../tools/map/pack.ts";
+import { firstFrameParts } from "../../client/core/mapload.ts";
+import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { koruMap } from "../fixtures/koru.ts";
 import { busyMap, wideMap } from "../fixtures/map.ts";
 
@@ -26,19 +28,27 @@ test("each part's copies give its bytes back, and a release's are the smaller", 
   expect(sum(release.parts)).toBeLessThan(sum(everyday.parts));
 });
 
-test("the heaviest first frame is the head, the landmarks' definitions, the heaviest overview and the heaviest four sectors at a corner", async () => {
-  const packed = await packMap(writeMap(koruMap()));
-  const of = (kind: string): PackedPart[] => packed.parts.filter((p) => p.kind === kind);
-  expect(of("land").length).toBe(1);
-  // The wide map's ten sectors, two rows of five: the heaviest corner is somewhere among four of them.
-  const wide = await packMap(writeMap(wideMap()));
-  const sector = (col: number, row: number): number => wide.parts.filter((p) => (p.kind === "ground" || p.kind === "statics") && p.col === col && p.row === row).reduce((n, p) => n + p.br.length, 0);
-  const corners = [127, 128, 129, 130].map((c) => sector(c, 128) + sector(c + 1, 128) + sector(c, 129) + sector(c + 1, 129));
-  const most = Math.max(...corners);
-  const head = wide.parts.find((p) => p.kind === "head")!.br.length;
-  const overview = Math.max(...wide.parts.filter((p) => p.kind === "overview").map((p) => p.br.length));
-  expect(wide.first).toEqual({ br: head + overview + most, gz: wide.first.gz, overview: wide.first.overview, corner: [127 + corners.indexOf(most), 128] });
-  expect(firstFrame(packed.parts).br).toBe(of("head")[0]!.br.length + of("land")[0]!.br.length + of("overview")[0]!.br.length + of("ground")[0]!.br.length + of("statics")[0]!.br.length);
+test("the heaviest first frame is the head and what the page's first frame waits for where it waits longest, by the loader's own rule: the landmarks' definitions, every overview and at most four sectors' ground", async () => {
+  // The wide map's ten sectors, two rows of five, none of its nodes listed (a listed layer's map waits for all its ground).
+  const m = wideMap();
+  const file = writeMap({ ...m, nodes: m.nodes.filter((l) => !("first" in l)) });
+  const head = readHead(file);
+  const wide = await packMap(file);
+  const br = (name: string): number => wide.parts.find((p) => p.name === name)!.br.length;
+  const at = (x: number, z: number): number => firstFrameParts(head, x, z).reduce((n, p) => n + br(p.name), br(head.name));
+  // Every place a body can stand, a chunk's corner at a time: none waits for more than the build says, and one waits for that.
+  let most = 0;
+  for (let z = 0; z <= head.dims.chunksZ * CHUNK_SIZE; z += CHUNK_SIZE) for (let x = 0; x <= head.dims.chunksX * CHUNK_SIZE; x += CHUNK_SIZE) most = Math.max(most, at(x, z));
+  expect([wide.first.br, at(...wide.first.at), wide.first.sectors.length]).toEqual([most, most, 4]);
+  const overviews = wide.parts.filter((p) => p.kind === "overview").reduce((n, p) => n + p.br.length, 0);
+  const grounds = wide.parts.filter((p) => p.kind === "ground" && wide.first.sectors.includes(`${p.col}-${p.row}`)).reduce((n, p) => n + p.br.length, 0);
+  expect(wide.first.br).toBe(br(head.name) + overviews + grounds);
+  // Until the statics are all in hand there: every part but the tops.
+  expect(wide.first.city.br).toBe(wide.parts.filter((p) => p.kind !== "tops").reduce((n, p) => n + p.br.length, 0));
+  // With landmarks, their definitions are waited for too.
+  const koru = await packMap(writeMap(koruMap()));
+  expect(koru.parts.filter((p) => p.kind === "land").length).toBe(1);
+  expect(koru.first.br).toBe(koru.parts.filter((p) => p.kind === "head" || p.kind === "land" || p.kind === "overview" || p.kind === "ground").reduce((n, p) => n + p.br.length, 0));
 });
 
 test("a part over its kind's budget, or a first frame over its own, is refused and named", async () => {

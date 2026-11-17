@@ -18,6 +18,7 @@ import { vehiclePoint, vehicleRotation } from "../../shared/sim/vehicle-frame.ts
 import { Body } from "../../shared/sim/character.ts";
 import { boxMesh, buildPack, type SourceMesh } from "../../tools/pack/write.ts";
 import { coreRegistry, flatWorld } from "../fixtures/world.ts";
+import { corePack } from "../fixtures/pack.ts";
 
 // A small exact fixture exercises real body bindings, proportions and equipment without building any art library.
 const rest = Float32Array.from(HUMAN.rest, (n, i) => i % 3 === 1 ? n * 1.13 : n);
@@ -45,6 +46,20 @@ const reg = coreRegistry();
 const survivor = reg.index.get("core:survivor")!;
 const compact = reg.index.get("core:compact")!;
 const colors = new Uint8Array(6);
+
+test("installed models and generated blocks both carry their crew at the vehicle's seat anchors", () => {
+  const built = corePack(), characters = new Characters(reg, built, new Assets(reg, built));
+  const at = new Float64Array(12);
+  for (const [kind, vehicle] of reg.vehicle.entries()) {
+    if (!vehicle) continue;
+    expect(characters.vehicle(kind)).toBe(true);
+    expect(characters.reach(kind)).toBeGreaterThanOrEqual(vehicle.spec.halfLength);
+    for (const [i, seat] of vehicle.seats.entries()) {
+      expect(characters.seat(kind, 0, 0, 0, 0, new AnimState(), 0, at, i + 1)).toBe(true);
+      close(at, seat.anchor);
+    }
+  }
+});
 
 function fixture() {
   const assets = new Assets(reg, pack), characters = new Characters(reg, pack, assets), packet = new FramePacket();

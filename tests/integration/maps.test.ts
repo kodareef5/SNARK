@@ -11,7 +11,8 @@ import { compilePacks } from "../../shared/content/packs.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { chunkCount, framed } from "../../shared/coords.ts";
 import { RESULT_OK } from "../../shared/net/protocol.ts";
-import { parseMap, readHead, writeMap } from "../../shared/world/mapfile.ts";
+import { parseMap, partsFolder, readHead, writeMap } from "../../shared/world/mapfile.ts";
+import { fetchMapFile } from "../../client/core/fetched.ts";
 import { writeMapFile } from "../../tools/map/pack.ts";
 import type { NodeSpot } from "../../shared/world/nodes.ts";
 import { PROVING_DIMS, PROVING_ID, PROVING_SPAWNS, buildProvingHeightfield, populateProving, provingNodes } from "../../shared/world/proving.ts";
@@ -162,7 +163,7 @@ test("a map given by its path is read and let go: the host keeps none of its byt
   console.log = (line: string) => said.push(line);
   const [cut, held] = [mapRoutes(path, host.world.mapId), mapRoutes(file, host.world.mapId)];
   console.log = log;
-  expect(said).toEqual([`map: ${path} has no files of its parts beside it, so they are cut and gzipped now: bun tools/map.ts pack ${path} writes them`]);
+  expect(said).toEqual([`map: ${path} has no files of its parts beside it, so they are cut and gzipped as they are asked for: bun tools/map.ts pack ${path} writes them`]);
   expect(cut.link).toBe(held.link);
   const head = readHead(file);
   const ask = (route: typeof cut, name: string, accepts: string): Promise<Response> => Promise.resolve(route(`/map/${name}`, new Request(`http://x/map/${name}`, { headers: { "accept-encoding": accepts } }))!);
@@ -178,6 +179,38 @@ test("a map given by its path is read and let go: the host keeps none of its byt
   expect(new Uint8Array(Bun.gunzipSync(await (await ask(disk, part.name, "gzip, deflate")).arrayBuffer()))).toEqual(bytes);
   expect(new Uint8Array(await (await ask(disk, head.name, "")).arrayBuffer())).toEqual(file.subarray(0, head.bytes));
   expect((await ask(disk, "statics.1-1.0123456789abcdef.part", "br")).status).toBe(404);
+  host.shutdown();
+});
+
+test("a map rebuilt in place beside a running server: a fresh client of that server gets the map it holds, whole, and a server started after gets the new one", async () => {
+  const path = join(dir, "rebuilt.snmap");
+  const crate = (x: number) => writeMap(flatMap(4, { statics: [{ kind: "core:crate", x, y: 0.5, z: 128, yaw: 0 }] }));
+  const [was, now] = [crate(140), crate(150)];
+  await writeMapFile(path, was);
+  const host = createHost(coreRegistry(), { map: path, clips: NO_CLIPS, rigs: [], log: () => {} });
+  const route = mapRoutes(path, host.world.mapId);
+  // Built again with a crate moved, as an everyday build and then a release, while the server runs.
+  await writeMapFile(path, now);
+  await writeMapFile(path, now, true);
+  const fetched = async (r: typeof route): Promise<Uint8Array> => {
+    const get = async (url: string) => (await r(`/${url}`, new Request(`http://x/${url}`, { headers: { "accept-encoding": "gzip" } })))! as Response;
+    const named = (await (await get("map.json")).json()) as { head: string };
+    return fetchMapFile(async (url) => {
+      const res = await get(url);
+      return res.headers.get("content-encoding") === "gzip" ? new Response(Bun.gunzipSync(await res.arrayBuffer()), { status: res.status }) : res;
+    }, named.head);
+  };
+  const served = await fetched(route);
+  expect([parseMap(served).hash, host.world.mapHash]).toEqual([parseMap(was).hash, parseMap(was).hash]);
+  expect(served).toEqual(was);
+  const after = mapRoutes(path, host.world.mapId);
+  expect(await fetched(after)).toEqual(now);
+  // A file written over in place, not replaced, gives the held file another's bytes: a part its folder lacks is gone.
+  writeFileSync(path, crate(160));
+  rmSync(partsFolder(path), { recursive: true });
+  const statics = readHead(now).parts.find((p) => p.kind === "statics")!.name;
+  expect((await after(`/map/${statics}`, new Request(`http://x/map/${statics}`)))!.status).toBe(410);
+  for (const r of [route, after]) r.close();
   host.shutdown();
 });
 
