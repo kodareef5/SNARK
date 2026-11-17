@@ -1,12 +1,13 @@
 // The sun's shadow past the cascades (client/core/render/farshadow.ts): the sweep over solid heights shades the cells a
 // tower's shadow covers and leaves the rest lit, ground that rises shades what lies behind it, a piece gone takes its
-// shadow with it, the map is the same bytes made twice or on another thread, and the scene's part makes it again when
-// the sun has moved enough, puts it on the card within the frame's allowance and looks it up only once it is all there.
+// shadow with it, the map is the same bytes made twice or on another thread, the lookup leaves a building's own sunlit
+// faces lit and shades the ground in its shadow, and the scene's part makes it again when the sun has moved enough,
+// puts it on the card within the frame's allowance and looks it up only once it is all there.
 
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { ThreadedCityMaker, cityKinds, type CityThread } from "../../client/core/render/citymake.ts";
-import { FAR_SPAN, FarShadow, TOP_CELL, chunkSolid, doSweep, farCell, makeSolid, sweep, sweepBuffers, tipMoves, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
+import { FAR_SPAN, FarShadow, TOP_CELL, chunkSolid, doSweep, farCell, farLookup, makeSolid, sweep, sweepBuffers, tipMoves, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { CHUNK_SIZE, chunkAt, chunkCount, type MapDims } from "../../shared/coords.ts";
 import { CityStatics, cityTops, type Gone } from "../../shared/world/city.ts";
@@ -289,4 +290,48 @@ test("a maker on other threads sweeps there, moving the solid heights and the ma
   sweep(makeSolid(city, hf, () => null), 128, 128, 1, 128, sun[0]!, sun[1]!, sun[2]!, here);
   expect(p.farMap).toEqual(here);
   expect(CHUNK_SIZE / TOP_CELL).toBe(16);
+});
+
+test("the lookup leaves a building's own sunlit walls and roof lit wherever they lie in their cells, and shades the ground in its shadow", () => {
+  const reg = farRegistry();
+  const dims: MapDims = { chunksX: 8, chunksZ: 8 };
+  const hf = new Heightfield(dims, TERRAIN_CELL, -64, 1 / 64);
+  for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) hf.setSample(i, j, 0);
+  // Towers of 12 storeys 16 m square: one with its walls on its cells' edges, and others with theirs a part of a cell in.
+  const places = [[160, 160], [161.3, 352.7], [354.6, 161.9], [355.9, 354.1]];
+  const city = new CityStatics(dims, asWritten(places.flatMap(([x, z]) => building(x!, z!, 0, 12))), reg);
+  const solid = makeSolid(city, hf, () => null);
+  const top = Math.max(...solid) * UNIT + hf.minY;
+  const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), topsOf: () => null };
+  const p = new FramePacket();
+  p.tier = { ...tierOf("high"), shadows: { ...tierOf("high").shadows, size: 128 } };
+  p.lit = true;
+  const cam = [100, 30, 80];
+  for (const [elevation, azimuth] of [[35, 200], [15, 70], [60, 330]] as const) {
+    const sun = sunAt(elevation, azimuth);
+    for (let k = 0; k < 3; k++) p.frame[FRAME.moon + k] = -sun[k]!;
+    const shadow = new FarShadow(city, hf, standing, null);
+    p.beginFrame();
+    shadow.update(p, allowance(1e9), cam[0]!, cam[1]!, cam[2]!, sun);
+    const look = (x: number, y: number, z: number, n: number[]): number => farLookup(p.farMap, 128, p.frame, x - cam[0]!, y - cam[1]!, z - cam[2]!, n[0]!, n[2]!);
+    for (const [cx, cz] of places) {
+      // Each wall the sun reaches, a quarter of the way in from either end and from the foot to the top.
+      for (const n of [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]) {
+        if (n[0]! * sun[0]! + n[2]! * sun[2]! < 0.1) continue;
+        for (const along of [-4, 0, 4]) {
+          for (const y of [1, 12, 30, top - 2]) {
+            const [x, z] = [cx! + n[0]! * 8 + (n[2] !== 0 ? along : 0), cz! + n[2]! * 8 + (n[0] !== 0 ? along : 0)];
+            expect({ sun: [elevation, azimuth], at: [x, y, z], lit: look(x, y, z, n) }).toEqual({ sun: [elevation, azimuth], at: [x, y, z], lit: 1 });
+          }
+        }
+      }
+      // Its roof, and the ground behind it, half its shadow's length on.
+      for (const [u, v] of [[0, 0], [-6, -6], [6, 6], [-6, 6]]) expect(look(cx! + u!, top, cz! + v!, [0, 1, 0])).toBe(1);
+      const back = (top / 2 / Math.tan(elevation * DEG)) / Math.hypot(sun[0]!, sun[2]!);
+      const [bx, bz] = [cx! - sun[0]! * back - Math.sign(sun[0]!) * 8, cz! - sun[2]! * back - Math.sign(sun[2]!) * 8];
+      if (bx > 0 && bz > 0 && bx < 512 && bz < 512) expect({ sun: [elevation, azimuth], at: [bx, bz], lit: look(bx, 0, bz, [0, 1, 0]) }).toEqual({ sun: [elevation, azimuth], at: [bx, bz], lit: 0 });
+      // The ground on its sunward side, past its walls.
+      expect(look(cx! + sun[0]! * 24, 0, cz! + sun[2]! * 24, [0, 1, 0])).toBe(1);
+    }
+  }
 });

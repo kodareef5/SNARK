@@ -31,10 +31,10 @@ const UNIT = FAR_SPAN / 65535;
 /**
  * Where a lookup is taken, in the map's cells: moved out across the ground along a surface's normal, and toward the
  * sun along its rays, so a wall meets the street before it and not its own building's cells, and the ground the cell
- * before its own. A wall stands within half a cell of its cells' edge (cityTops fills a cell whose middle a piece grown
- * by half a cell reaches), so a cell out leaves the filter's reach.
+ * before its own. A wall stands in the outermost of its building's cells (cityTops fills a cell whose middle a piece
+ * grown by half a cell reaches), within half a cell of its middle, so a cell and a half out leaves the filter's reach.
  */
-export const FAR_OUT = 1;
+export const FAR_OUT = 1.5;
 export const FAR_LEAD = 1;
 /** Metres a lookup is raised: half the coarsest step of a top (tactical.ts farTopByte), which may stand over what is drawn. */
 export const FAR_RISE = 1;
@@ -277,21 +277,25 @@ export class FarShadow {
   }
 
   /**
-   * On a lit frame while the sun casts, toward the unit vector `sun`: makes the map again where it is due, puts rows of
-   * it on the card from `budget`'s allowance, and says in the frame block where the camera (cx, cy, cz) is on it, or
-   * that there is none to look up.
+   * Each frame, with the unit vector toward the sun while it casts, else null: makes the map again where it is due, puts
+   * rows of it on the card from `budget`'s allowance, and says in the frame block where the camera (cx, cy, cz) is on it,
+   * or that there is none to look up. A frame with no shadow array on the card, as low poly's, leaves the layer empty.
    */
-  update(p: FramePacket, budget: { readonly left: number; spend(bytes: number): void }, cx: number, cy: number, cz: number, sun: ArrayLike<number>): void {
+  update(p: FramePacket, budget: { readonly left: number; spend(bytes: number): void }, cx: number, cy: number, cz: number, sun: ArrayLike<number> | null): void {
     const f = p.frame;
     f[FRAME.farScale] = 0;
     const { cascades, size } = p.tier.shadows;
-    if (cascades <= 0 || size <= 0) return;
+    if (!p.lit || cascades <= 0 || size <= 0) {
+      this.layerSize = 0;
+      return;
+    }
     if (size !== this.layerSize || cascades !== this.layerAt) {
       this.layerSize = size;
       this.layerAt = cascades;
       this.row = 0;
       this.onCard = false;
     }
+    if (!sun) return;
     const cell = farCell(this.city.dims, size);
     this.take();
     this.follow();
