@@ -1,15 +1,18 @@
 // A map's own buildings past the near rows (shared/world/city.ts). The client makes them from the map's statics, which
-// it holds from the map file, in tiles of 3 by 3 chunks, each level of a tile a level of its own on the card. A
+// it holds from the map file, in tiles of 4 by 4 chunks, each level of a tile a level of its own on the card. A
 // landmark's pieces are left out, as its far mesh draws them (farlandmarks.ts). A chunk is drawn here while the near
 // store does not hold it whole, and then the near store draws none of it, so its pieces are drawn one way or the other
 // and never both or neither. A tile's mesh holds every chunk of it in order and a draw takes the runs of chunks drawn
 // far, so a chunk changing hands remakes nothing. Nearest the near rows a tile is every box, the
 // near drawing in one mesh, so the hand-over shows nothing; farther off it takes the lattice (boxes merged, the least
 // left out), then a building's mass in cells. The lattice fades out over the last share of its reach as the mass fades in,
-// pixel by pixel in the far fade's pattern; the other changes of level are a tile at a time.
+// and the mass in finer cells as that in coarser ones does, pixel by pixel in the far fade's pattern; the other changes
+// of level are a tile at a time.
 //
 // Levels are made where the scene's maker makes them (citymake.ts): in the browser on a worker, sent only what a level
-// needs, and here a frame's budget at a time. What is made goes on the card and is not kept in the page.
+// needs, and here a frame's budget at a time. What is made goes on the card and is not kept in the page. A tile holds
+// its levels by their form, not by where they stand in the tier's list, so another tier, or the governor bringing the
+// distances in, makes only the forms a tile comes to; and until they are made it draws what it holds.
 //
 // What stands: a chunk the near store holds whole says exactly which of the map's pieces stand, and that is kept when it
 // is let go. Past that, the far feed's cells (farcells.ts) show a piece gone when its top stands over the top sent for a
@@ -24,16 +27,24 @@ import type { StructureStore } from "../../../shared/world/structures.ts";
 import type { FarStore } from "../farcells.ts";
 import type { Camera } from "./camera.ts";
 import { InlineCityMaker, cityJob, cityKinds, type CityMade, type CityMaker } from "./citymake.ts";
-import { FAR_BUFFER, FAR_HEIGHT, FAR_TILE_METRES } from "./far.ts";
+import { FAR_BUFFER, FAR_HEIGHT } from "./far.ts";
 import type { FramePacket } from "./packet.ts";
 
-/** Chunks along a tile's side, and its side in metres. */
-export const CITY_TILE = 3;
+/** Chunks along a tile's side, a whole number of tiles to a sector of 16, and its side in metres. */
+export const CITY_TILE = 4;
 const TILE_METRES = CITY_TILE * CHUNK_SIZE;
-/** A tile's vertices are stored from its corner less this, so faces reaching past its edges stay within FAR_MESH's square. */
-const LOCAL = (FAR_TILE_METRES - TILE_METRES) / 2;
-/** How far past its pieces a tile's box reaches, and its stored heights begin below them: a cell's face may lie a cell past a box. */
+/**
+ * A tile's vertices are stored from its corner less this across, within bounds of the city's own: a square this much
+ * wider than the tile each way, so faces reaching past its edges stay within it, and FAR_MESH's heights.
+ */
+const LOCAL = 32;
+/**
+ * How far past its pieces a tile's box reaches, by which its levels are chosen, and its stored heights begin below them;
+ * and how much farther across a face of its may lie, for what is in view: a cell's face may lie a cell past a box along
+ * the axes of the box's own turned frame, so across by a cell's diagonal, 11.3 m for the widest cells, 8 m.
+ */
 const BELOW = 8;
+const ACROSS = 4;
 /** Slots of tiles on the card start here, past the far blocks' (far.ts FAR_SLOTS up to twice that). */
 export const CITY_SLOTS = 2 ** 31;
 const CITY_SLOT_SPAN = 2 ** 30;
@@ -42,13 +53,15 @@ export const CITY_BUFFER = FAR_BUFFER + 1;
 const RESERVE = "far city";
 /** Levels are made, nearest first and tiles with nothing on the card before the rest; here, until this much of a frame is spent. */
 export const MAKE_MS = 2;
-/** Levels a worker is asked for ahead of what it has made: it never waits on the page, and a tile come nearer soon goes first. */
+/** Levels a maker on other threads is asked for ahead of what it has made, if it does not say. */
 const FLIGHTS = 3;
 /** Milliseconds from some fixed moment: the page's clock in a browser and under Bun. */
 const clock = (): number => (globalThis as { performance?: { now(): number } }).performance?.now() ?? Date.now();
 /** A tile leaves a level for a coarser one this much past where the level ends, and comes back this much short of it. */
 const HYSTERESIS = 1.08;
+/** The most levels a tier has, and the most forms a city is drawn in (a bit each in a tile's `wants`). */
 const LEVELS = 8;
+const FORMS = 30;
 /** The slot of a level made with no faces, which is never on the card. */
 const EMPTY = -2;
 
@@ -63,22 +76,27 @@ export interface CitySource {
 }
 
 /**
- * How a level of the far city is made, and to how many metres from the camera to a tile's nearest point it is drawn:
- * every box (`gap` below 0 and `least` 0); boxes merged across gaps up to `gap` metres with those no longer than `least`
- * left out (shared/world/city.ts mergedPart); or with `cell` above 0, cells that wide and `tall` tall (cellPart). The
- * first level of cells after one of boxes fades in over the last share of that level's reach as it fades out.
+ * How a level of the far city is made, its form, and to how many metres from the camera to a tile's nearest point it is
+ * drawn: every box (`gap` below 0 and `least` 0); boxes merged across gaps up to `gap` metres with those no longer than
+ * `least` left out (shared/world/city.ts mergedPart); or with `cell` above 0, cells that wide and `tall` tall (cellPart).
+ * A level of cells after one of boxes, or of cells of another size, fades in over the last share of that level's reach
+ * as it fades out.
  */
-export interface CityLevel {
+export interface CityLevel extends LevelForm {
   readonly to: number;
+}
+
+export interface LevelForm {
   readonly gap: number;
   readonly least: number;
   readonly cell: number;
   readonly tall: number;
+  /** Pieces whose middle extent is under this many metres are left out, none if not given: a beam, a fin, a pier, a sill. */
+  readonly thin?: number;
 }
 
 /** A tile's level on the card: its slot, its bytes there, and where each chunk's faces start in its indices and how many indices they take. */
 interface Held {
-  readonly level: number;
   readonly bytes: number;
   readonly first: Uint32Array;
   readonly count: Uint32Array;
@@ -96,10 +114,11 @@ interface Tile {
   readonly base: number;
   /** The level its nearest point asks for, kept a little past where it ends; -1 before it is first asked. */
   primary: number;
+  /** Its levels on the card, by their form. */
   readonly held: (Held | null)[];
   /** Frames in a row it has been in view and reach with nothing made to draw. */
   unseen: number;
-  /** The levels it wanted when last in reach, and those being made, a bit each. */
+  /** The forms it wanted when last in reach, and those being made, a bit each. */
   wants: number;
   making: number;
   /** Counts of its lettings go and of the changes to what stands that its levels show, so a level asked for before one is known. */
@@ -109,17 +128,18 @@ interface Tile {
   rank: number;
 }
 
-/** A level asked of the maker, and its tile's counts then. */
+/** A level asked of the maker, by its form, and its tile's counts then. */
 interface Asked {
   readonly tile: number;
-  readonly level: number;
+  readonly form: number;
   readonly epoch: number;
   readonly version: number;
 }
 
 export class FarCity {
-  /** The pack mesh of the tiles' bounds (far.ts FAR_MESH), as a draw names it. */
+  /** The pack mesh a draw names (far.ts FAR_MESH), and the bounds the tiles' vertices are stored within in place of its. */
   readonly mesh: number;
+  private readonly bounds: { readonly center: readonly number[]; readonly half: readonly number[] };
   /** Bytes of tiles on the card. */
   bytes = 0;
   /**
@@ -153,6 +173,12 @@ export class FarCity {
   /** Per chunk, the far feed's top byte of each cell as its standing pieces give it, made when asked for. */
   private readonly tops = new Map<number, Uint8Array>();
   private levels: readonly CityLevel[] = [];
+  /**
+   * Every form levels have been drawn in, by what it is, and the form of each of this tier's levels: a tile holds its
+   * levels by form, so other levels that share a form, of another tier or at other distances, remake nothing.
+   */
+  private readonly forms: LevelForm[] = [];
+  private formOf: number[] = [];
   /** The share of a reach a far draw fades over (the tier's `fade`). */
   private share = 0.1;
   private next = 0;
@@ -171,9 +197,16 @@ export class FarCity {
   private around: number[] = [];
   private readonly listed: Uint8Array;
   private readonly aroundAt = Float64Array.of(Infinity, Infinity, -1);
-  /** Per chunk, the box its pieces' faces may reach, as a tile's; and per chunk of the tile being drawn, its depth ranges or 0. */
+  /**
+   * Per chunk, the box its pieces reach, which its boxes' faces do not leave; and per chunk of the tile being drawn, 1
+   * where it is drawn far, its box from the camera, and at the level being drawn, the depth ranges its faces are in or 0
+   * for none, and 1 where it is in that level's fade.
+   */
   private readonly chunkBox: Float64Array;
-  private readonly ways = new Uint8Array(CITY_TILE * CITY_TILE);
+  private readonly far = new Uint8Array(CITY_TILE * CITY_TILE);
+  private readonly from = new Float64Array(CITY_TILE * CITY_TILE * 6);
+  private readonly kept = new Uint8Array(CITY_TILE * CITY_TILE);
+  private readonly band = new Uint8Array(CITY_TILE * CITY_TILE);
 
   /** `bounds` is FAR_MESH's centre and half extent, as the pack has them. `landmark` is 1 by content index for a kind a landmark brings. */
   constructor(source: CitySource, dims: MapDims, hf: Heightfield, mesh: number, bounds: { center: readonly number[]; half: readonly number[] }, landmark: Uint8Array = new Uint8Array(0)) {
@@ -182,7 +215,9 @@ export class FarCity {
     this.hf = hf;
     this.mesh = mesh;
     this.maker = source.maker ?? new InlineCityMaker();
-    this.maker.start(cityKinds(source.statics, hf, bounds));
+    const across = TILE_METRES / 2 + LOCAL;
+    this.bounds = { center: [across, bounds.center[1]!, across], half: [across, bounds.half[1]!, across] };
+    this.maker.start(cityKinds(source.statics, hf, this.bounds));
     this.maker.onMade = () => this.feed();
     this.tilesX = Math.ceil(dims.chunksX / CITY_TILE);
     const chunks = chunkCount(dims);
@@ -223,12 +258,9 @@ export class FarCity {
           cb[c * 6 + 4] = Math.max(cb[c * 6 + 4]!, y[i]! + halfY[k]!);
           cb[c * 6 + 5] = Math.max(cb[c * 6 + 5]!, z[i]! + r);
         }
-        // A cell's face may lie a cell past the boxes it was made of.
         for (let a = 0; a < 3; a++) {
-          cb[c * 6 + a] -= BELOW;
-          cb[c * 6 + a + 3] += BELOW;
-          box[a] = Math.min(box[a]!, cb[c * 6 + a]!);
-          box[a + 3] = Math.max(box[a + 3]!, cb[c * 6 + a + 3]!);
+          box[a] = Math.min(box[a]!, cb[c * 6 + a]! - BELOW);
+          box[a + 3] = Math.max(box[a + 3]!, cb[c * 6 + a + 3]! + BELOW);
         }
       }
       const base = Math.floor(box[1]!);
@@ -270,9 +302,8 @@ export class FarCity {
    */
   update(p: FramePacket, budget: { spend(bytes: number): void; reserve(name: string, bytes: number): void }, cam: Camera, levels: readonly CityLevel[], reach: number, share: number, near: StructureStore | null, cells: FarStore | null): void {
     if (levels !== this.levels) {
-      // Another tier: what was made at the old levels is let go.
-      for (const tile of this.tiles) this.letGo(p, tile);
       this.levels = levels;
+      this.formOf = levels.map((l) => this.formNumber(l));
     }
     this.on = reach > 0 && levels.length > 0;
     this.share = share;
@@ -295,16 +326,15 @@ export class FarCity {
         continue;
       }
       if (off > reach) continue;
-      const needed = (tile.wants = this.needed(tile, cam, off, share));
-      let any = false;
+      const needed = (tile.wants = this.formsOf(this.needed(tile, cam, off, share)));
+      const any = tile.held.some((h) => h !== null);
       let short = false;
-      for (let l = 0; l < levels.length; l++) {
-        const h = tile.held[l];
-        if (h) any = true;
-        if ((needed & (1 << l)) === 0 || (h && !h.stale)) continue;
+      for (let f = 0; f < this.forms.length; f++) {
+        const h = tile.held[f];
+        if ((needed & (1 << f)) === 0 || (h && !h.stale)) continue;
         short = true;
         lacking++;
-        if ((tile.making & (1 << l)) === 0) work.push(n * LEVELS + l);
+        if ((tile.making & (1 << f)) === 0) work.push(n * FORMS + f);
       }
       if (!any) stats.missing++;
       if (short) {
@@ -315,15 +345,15 @@ export class FarCity {
         continue;
       }
       // Levels no longer wanted go once every wanted one is there to draw in their place.
-      for (let l = 0; l < tile.held.length; l++) {
-        const h = tile.held[l];
-        if (!h || (needed & (1 << l)) !== 0) continue;
+      for (let f = 0; f < tile.held.length; f++) {
+        const h = tile.held[f];
+        if (!h || (needed & (1 << f)) !== 0) continue;
         if (h.slot >= 0) p.assetDrops.push(h.slot);
-        tile.held[l] = null;
+        tile.held[f] = null;
       }
     }
     const tiles = this.tiles;
-    work.sort((a, b) => tiles[Math.floor(a / LEVELS)]!.rank - tiles[Math.floor(b / LEVELS)]!.rank);
+    work.sort((a, b) => tiles[Math.floor(a / FORMS)]!.rank - tiles[Math.floor(b / FORMS)]!.rank);
     this.fed = 0;
     const asking = clock();
     if (this.maker.run) {
@@ -356,8 +386,9 @@ export class FarCity {
   /**
    * Calls `put` for each run of a tile's chunks drawn far, at each level of the tile drawn, where the tile is on the
    * card, within `reach` of the camera and in its view: the level's slot, its first index and how many, where its stored
-   * origin is from the camera, the depth ranges its box is in, and where it is gone (`drawFade`, below 0 to fade in, and
-   * 0 for a tile wholly short of where the reach fades, so its draw may take the program that never discards).
+   * origin is from the camera, the depth ranges its faces are in, and where it is gone (`drawFade`, below 0 to fade in,
+   * and 0 for a run wholly short of where the reach fades and of any fade between levels, so its draw may take the
+   * program that never discards).
    */
   draw(cam: Camera, reach: number, put: (slot: number, firstIndex: number, indexCount: number, ox: number, oy: number, oz: number, passes: number, fade: number) => void): void {
     const levels = this.levels;
@@ -368,8 +399,7 @@ export class FarCity {
     stats.unseenFrames = 0;
     stats.coarse = 0;
     const whole = reach * (1 - this.share);
-    const cb = this.chunkBox;
-    const ways = this.ways;
+    const { chunkBox: cb, far, from, kept, band } = this;
     for (const n of this.around) {
       const tile = this.tiles[n]!;
       const b = tile.box;
@@ -380,67 +410,96 @@ export class FarCity {
       const by = b[4]! - cam.y;
       const bz = b[5]! - cam.z;
       const near = Math.hypot(Math.max(ax, -bx, 0), Math.max(ay, -by, 0), Math.max(az, -bz, 0));
-      if (near >= reach || !cam.boxVisible(ax, ay, az, bx, by, bz)) {
+      if (near >= reach || !cam.boxVisible(ax - ACROSS, ay, az - ACROSS, bx + ACROSS, by, bz + ACROSS)) {
         tile.unseen = 0;
         continue;
       }
       // A tile in view whose levels are none of them made yet, empty ones aside, is not drawn at all.
-      let held = 0;
-      for (let l = 0; l < tile.held.length; l++) if (tile.held[l]) held |= 1 << l;
-      if (held === 0) {
+      if (!tile.held.some((h) => h !== null)) {
         stats.unseen++;
         stats.unseenAt = Math.min(stats.unseenAt, near);
         stats.unseenFrames = Math.max(stats.unseenFrames, ++tile.unseen);
         continue;
       }
       tile.unseen = 0;
-      // The levels wanted that are on the card; or, if none is yet, the one on the card nearest the first wanted.
-      let drawn = this.needed(tile, cam, near, this.share) & held;
+      // The levels wanted that are on the card; or, if none is yet, the one on the card nearest the first wanted; or, if
+      // none of this tier's is, a form of another's on the card.
+      const needed = this.needed(tile, cam, near, this.share);
+      let drawn = 0;
+      for (let l = 0; l < levels.length; l++) if ((needed & (1 << l)) !== 0 && tile.held[this.formOf[l]!]) drawn |= 1 << l;
+      let other = -1;
       if (drawn === 0) {
         let best = -1;
-        for (let l = 0; l < tile.held.length; l++) if (tile.held[l] && (best < 0 || Math.abs(l - tile.primary) < Math.abs(best - tile.primary))) best = l;
-        drawn = 1 << best;
-        if (best > tile.primary) stats.coarse++;
+        for (let l = 0; l < levels.length; l++) if (tile.held[this.formOf[l]!] && (best < 0 || Math.abs(l - tile.primary) < Math.abs(best - tile.primary))) best = l;
+        if (best >= 0) drawn = 1 << best;
+        else other = tile.held.findIndex((h) => h !== null);
+        if (best > tile.primary || other >= 0) stats.coarse++;
       }
-      // Each chunk drawn far, in view, and the depth ranges its own box is in: a run is chunks alike in those.
+      // Each chunk drawn far, and its pieces' box from the camera.
       for (let r = 0; r < tile.chunks.length; r++) {
         const c = tile.chunks[r]!;
-        const k = c * 6;
-        const x0 = cb[k]! - cam.x;
-        const y0 = cb[k + 1]! - cam.y;
-        const z0 = cb[k + 2]! - cam.z;
-        const x1 = cb[k + 3]! - cam.x;
-        const y1 = cb[k + 4]! - cam.y;
-        const z1 = cb[k + 5]! - cam.z;
-        ways[r] = this.source.complete(c) || !cam.boxVisible(x0, y0, z0, x1, y1, z1) ? 0 : cam.passes(x0, y0, z0, x1, y1, z1);
+        far[r] = this.source.complete(c) ? 0 : 1;
+        for (let a = 0; a < 6; a++) from[r * 6 + a] = cb[c * 6 + a]! - (a % 3 === 0 ? cam.x : a % 3 === 1 ? cam.y : cam.z);
       }
       const tx = this.cornerX(tile.t), tz = this.cornerZ(tile.t);
       const ox = tx - LOCAL - cam.x, oy = tile.base - cam.y, oz = tz - LOCAL - cam.z;
       const most = Math.hypot(Math.max(-ax, bx), Math.max(-ay, by), Math.max(-az, bz));
-      for (let l = 0; l < tile.held.length; l++) {
-        const h = tile.held[l];
-        if ((drawn & (1 << l)) === 0 || !h || h.slot < 0) continue;
-        // The lattice fades out as the mass fades in, where both are drawn; else each is gone at the reach.
-        const fade = this.blends(l + 1) && (drawn & (1 << (l + 1))) !== 0 ? levels[l]!.to : this.blends(l) && (drawn & (1 << (l - 1))) !== 0 ? -levels[l - 1]!.to : most < whole ? 0 : reach;
+      const plain = most < whole ? 0 : reach;
+      // Each level drawn, and last another tier's form drawn in their place.
+      for (let k = 0; k <= levels.length; k++) {
+        const l = k < levels.length ? k : -1;
+        if (l >= 0 ? (drawn & (1 << l)) === 0 : other < 0) continue;
+        const f = l >= 0 ? this.formOf[l]! : other;
+        const h = tile.held[f];
+        if (!h || h.slot < 0) continue;
+        // The lattice fades out as the mass fades in where both are drawn, over the last share of the lattice's end, and
+        // finer cells as coarser ones; else each is gone at the reach. Across a fade a chunk wholly past the end draws
+        // none of the one and one wholly short of the fade none of the other, and a run of chunks none of which is in the
+        // fade draws as if there were none.
+        const out = l >= 0 && this.blends(l + 1) && (drawn & (1 << (l + 1))) !== 0;
+        const into = l >= 0 && this.blends(l) && (drawn & (1 << (l - 1))) !== 0;
+        const end = out ? levels[l]!.to : into ? levels[l - 1]!.to : 0;
+        const start = end * (1 - this.share);
+        // Each chunk in view and the depth ranges its faces are in, a run being chunks alike in those: a box's faces stay
+        // within it, and a cell's may lie a cell past it.
+        const { cell, tall } = this.forms[f]!;
+        const across = cell > 0 ? cell * Math.SQRT2 : 0;
+        const up = cell > 0 ? tall : 0;
+        for (let r = 0; r < tile.chunks.length; r++) {
+          const o = r * 6;
+          const x0 = from[o]! - across, y0 = from[o + 1]! - up, z0 = from[o + 2]! - across;
+          const x1 = from[o + 3]! + across, y1 = from[o + 4]! + up, z1 = from[o + 5]! + across;
+          const nearest = Math.hypot(Math.max(x0, -x1, 0), Math.max(y0, -y1, 0), Math.max(z0, -z1, 0));
+          const farthest = Math.hypot(Math.max(-x0, x1), Math.max(-y0, y1), Math.max(-z0, z1));
+          const left = far[r] === 0 || (out && nearest >= end) || (into && farthest < start) || !cam.boxVisible(x0, y0, z0, x1, y1, z1);
+          kept[r] = left ? 0 : cam.passes(x0, y0, z0, x1, y1, z1);
+          band[r] = (out || into) && farthest >= start && nearest < end ? 1 : 0;
+        }
+        const size = tile.chunks.length;
         let run = 0;
-        for (let r = 1; r <= tile.chunks.length; r++) {
-          if (r < tile.chunks.length && ways[r] === ways[run]) continue;
+        let fading = band[0]!;
+        for (let r = 1; r <= size; r++) {
+          if (r < size && kept[r] === kept[run]) {
+            fading |= band[r]!;
+            continue;
+          }
           const first = h.first[run]!;
           const count = h.first[r - 1]! + h.count[r - 1]! - first;
-          if (ways[run] !== 0 && count > 0) {
-            put(h.slot, first, count, ox, oy, oz, ways[run]!, fade);
-            this.drawn[l]! += count / 3;
+          if (kept[run] !== 0 && count > 0) {
+            put(h.slot, first, count, ox, oy, oz, kept[run]!, fading === 0 ? plain : out ? end : -end);
+            if (l >= 0) this.drawn[l]! += count / 3;
           }
           run = r;
+          fading = r < size ? band[r]! : 0;
         }
       }
     }
   }
 
-  /** Whether level `l` is the first of cells after one of boxes, which fades in as that one fades out. */
+  /** Whether level `l` fades in as the one before it fades out: cells after boxes, or after cells of another size. */
   private blends(l: number): boolean {
     const levels = this.levels;
-    return l > 0 && l < levels.length && levels[l]!.cell > 0 && levels[l - 1]!.cell === 0;
+    return l > 0 && l < levels.length && levels[l]!.cell > 0 && levels[l]!.cell !== levels[l - 1]!.cell;
   }
 
   /**
@@ -525,16 +584,32 @@ export class FarCity {
     tile.epoch++;
   }
 
-  /** Asks the maker for this frame's level `w` (a tile times LEVELS plus a level). */
+  /** Asks the maker for this frame's level `w` (a tile times FORMS plus a form). */
   private post(w: number): void {
-    const n = Math.floor(w / LEVELS);
-    const level = w % LEVELS;
+    const n = Math.floor(w / FORMS);
+    const form = w % FORMS;
     const tile = this.tiles[n]!;
     const id = levelsAsked++;
-    this.asked.set(id, { tile: n, level, epoch: tile.epoch, version: tile.version });
-    tile.making |= 1 << level;
+    this.asked.set(id, { tile: n, form, epoch: tile.epoch, version: tile.version });
+    tile.making |= 1 << form;
     this.out++;
-    this.maker.make(cityJob(id, this.source.statics, this.hf, (c) => this.leftOut(c), tile.chunks, this.levels[level]!, this.cornerX(tile.t) - LOCAL, tile.base, this.cornerZ(tile.t) - LOCAL));
+    this.maker.make(cityJob(id, this.source.statics, this.hf, (c) => this.leftOut(c), tile.chunks, this.forms[form]!, this.cornerX(tile.t) - LOCAL, tile.base, this.cornerZ(tile.t) - LOCAL));
+  }
+
+  /** The number of `form` among the forms levels are drawn in, given one if it has none. */
+  private formNumber(form: LevelForm): number {
+    const { gap, least, cell, tall, thin = 0 } = form;
+    const known = this.forms.findIndex((f) => f.gap === gap && f.least === least && f.cell === cell && f.tall === tall && f.thin === thin);
+    if (known >= 0) return known;
+    if (this.forms.length === FORMS) throw new Error(`far city: levels in more than ${FORMS} forms`);
+    return this.forms.push({ gap, least, cell, tall, thin }) - 1;
+  }
+
+  /** The forms of the levels `levels` names, a bit each. */
+  private formsOf(levels: number): number {
+    let forms = 0;
+    for (let l = 0; l < this.formOf.length; l++) if ((levels & (1 << l)) !== 0) forms |= 1 << this.formOf[l]!;
+    return forms;
   }
 
   /** Which pieces of `chunk` no level holds: those gone, and a landmark's. */
@@ -547,7 +622,7 @@ export class FarCity {
   private feed(): void {
     const start = clock();
     this.collect();
-    while (this.out < FLIGHTS && this.fed < this.work.length) this.post(this.work[this.fed++]!);
+    while (this.out < (this.maker.flights ?? FLIGHTS) && this.fed < this.work.length) this.post(this.work[this.fed++]!);
     this.fedMs += clock() - start;
   }
 
@@ -571,20 +646,20 @@ export class FarCity {
       this.asked.delete(made.id);
       const tile = this.tiles[a.tile]!;
       if (a.epoch !== tile.epoch) continue;
-      const bit = 1 << a.level;
+      const bit = 1 << a.form;
       tile.making &= ~bit;
       if ((tile.wants & bit) === 0) continue;
-      const old = tile.held[a.level];
+      const old = tile.held[a.form];
       if (old && old.slot >= 0) p.assetDrops.push(old.slot);
       // A level with no faces is made but never on the card.
       let slot = EMPTY;
       if (made.data.length > 0) {
         slot = CITY_SLOTS + this.next;
         this.next = (this.next + 1) % CITY_SLOT_SPAN;
-        p.assetUploads.push({ slot, mesh: this.mesh, level: 0, data: made.data, indexCount: made.first.at(-1)! + made.count.at(-1)!, indexBytes: made.indexBytes, quads: true });
+        p.assetUploads.push({ slot, mesh: this.mesh, level: 0, data: made.data, indexCount: made.first.at(-1)! + made.count.at(-1)!, indexBytes: made.indexBytes, quads: true, bounds: this.bounds });
         budget.spend(made.data.length);
       }
-      tile.held[a.level] = { level: a.level, bytes: made.data.length, first: made.first, count: made.count, slot, stale: a.version !== tile.version };
+      tile.held[a.form] = { bytes: made.data.length, first: made.first, count: made.count, slot, stale: a.version !== tile.version };
       n++;
     }
     this.arrived.length = 0;
@@ -602,9 +677,9 @@ export class FarCity {
       this.seenShape[c] = -1;
       this.whole.delete(c);
     }
-    const tables = near?.chunks;
-    for (let c = 0; tables && c < tables.length; c++) {
-      const table = tables[c];
+    // The chunks the near store has a table for, not every chunk of the map.
+    for (const c of near?.held ?? []) {
+      const table = near!.chunks[c];
       if (!table || table.shape === this.seenShape[c] || city.in(c) === 0 || !this.source.complete(c)) continue;
       this.seenShape[c] = table.shape;
       this.whole.add(c);

@@ -1,7 +1,8 @@
 // The far city's benchmark rows on a built map's real city (client/core/render/farcity.ts): what its statics hold, what a
 // chunk costs to make at each level, what each tier draws from the cameras of planning's views, a ghost flying across it
 // at 600 m/s, a pteranodon's rider at 150 m, and walking through the hand-over. bun tools/bench/city.ts <file.snmap>
-// [views.json], or bun run bench --city <file>; with --rider, the rider's flight alone.
+// [views.json], or bun run bench --city <file>; with --rider, the rider's flight alone. Run alone it then jumps into
+// downtown, levels made as the browser's workers make them; with --jump, that alone.
 
 import { readFileSync } from "node:fs";
 import { cpus, loadavg } from "node:os";
@@ -10,6 +11,7 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import { TIERS, type Tier } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import { Camera } from "../../client/core/render/camera.ts";
+import { CITY_AHEAD, cityThreads, makeLevel, type CityJob, type CityKinds, type CityMade, type CityMaker } from "../../client/core/render/citymake.ts";
 import { CITY_BUFFER, type FarCity } from "../../client/core/render/farcity.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -60,8 +62,8 @@ function cityWorld(path: string) {
   const far = { cells: new FarStore(), complete };
   return {
     map, reg, hf, statics, structs, pack, cam, far, parseMs, indexMs,
-    scene(tier: Tier, size: [number, number]): Scene {
-      const scene = new Scene({ dims: map.dims, hf, structs, far, city: { statics, complete } }, reg, pack);
+    scene(tier: Tier, size: [number, number], maker?: CityMaker): Scene {
+      const scene = new Scene({ dims: map.dims, hf, structs, far, city: { statics, complete, ...(maker ? { maker } : {}) } }, reg, pack);
       scene.assets.tier = tier;
       scene.viewHeight = size[1];
       cam.aspect = size[0] / size[1];
@@ -132,9 +134,13 @@ export function benchCity(section: (title: string) => void, record: Record, path
   // A chunk's cost at each form, over the 200 busiest chunks.
   const chunks = [...Array(chunkCount(map.dims)).keys()].filter((c) => statics.in(c) > 0).sort((a, b) => statics.in(b) - statics.in(a)).slice(0, 200);
   const none = (): null => null;
+  // The bare lattice's pieces under 1.3 m across left out as gone ones are (tiers.ts, citymake.ts).
+  const across = (k: number): number => [statics.halfX[k]!, statics.halfY[k]!, statics.halfZ[k]!].sort((a, b) => a - b)[1]! * 2;
+  const thin = (n: number): Uint8Array => Uint8Array.from({ length: statics.in(n) }, (_, i) => (across(statics.kind[statics.first[n]! + i]!) < 1.3 ? 1 : 0));
   const forms: [string, (c: number) => unknown][] = [
     ["every box", (c) => mergedPart(statics, c, hf, none, 0.01, 0)],
     ["the lattice", (c) => mergedPart(statics, c, hf, none, 0.5, 2.1)],
+    ["the bare lattice", (c) => mergedPart(statics, c, hf, thin, 0.5, 2.1)],
     ["mass in 4 m cells", (c) => cellPart(statics, c, hf, null, 4, 4)],
     ["mass in 8 m cells", (c) => cellPart(statics, c, hf, null, 8, 4)],
     ["the far feed's tops of its statics", (c) => cityTops(statics, c, hf, null)],
@@ -273,6 +279,101 @@ export function benchCity(section: (title: string) => void, record: Record, path
 }
 
 /**
+ * Levels made as `workers` workers free of other work would make them (citymake.ts ThreadedCityMaker): each given to the one with
+ * the fewest in hand, made here and timed, and done that long after that worker was free, on a clock moved by `advance`.
+ */
+class ModelMaker implements CityMaker {
+  onMade: (() => void) | null = null;
+  readonly flights: number;
+  private now = 0;
+  private kinds: CityKinds | null = null;
+  private readonly free: number[];
+  private readonly hand: number[];
+  private readonly coming: { at: number; worker: number; made: CityMade }[] = [];
+  private readonly done: CityMade[] = [];
+
+  constructor(workers: number) {
+    this.flights = workers * CITY_AHEAD;
+    this.free = new Array<number>(workers).fill(0);
+    this.hand = new Array<number>(workers).fill(0);
+  }
+
+  start(kinds: CityKinds): void {
+    this.kinds = kinds;
+    this.coming.length = this.done.length = 0;
+    this.free.fill(0);
+    this.hand.fill(0);
+  }
+
+  make(job: CityJob): void {
+    const n = this.hand.indexOf(Math.min(...this.hand));
+    this.hand[n]!++;
+    const t = performance.now();
+    const made = makeLevel(this.kinds!, job);
+    this.free[n] = Math.max(this.free[n]!, this.now) + performance.now() - t;
+    this.coming.push({ at: this.free[n]!, worker: n, made });
+  }
+
+  /**
+   * The clock to `ms`: what is done by then is handed over as it would come, the first done first, each when it is done,
+   * so a level asked for as one comes back starts then, as a worker's message is taken between frames.
+   */
+  advance(ms: number): void {
+    for (;;) {
+      let first = -1;
+      for (let i = 0; i < this.coming.length; i++) if (this.coming[i]!.at <= ms && (first < 0 || this.coming[i]!.at < this.coming[first]!.at)) first = i;
+      if (first < 0) break;
+      const [{ at, worker, made }] = this.coming.splice(first, 1);
+      this.now = Math.max(this.now, at!);
+      this.hand[worker!]!--;
+      this.done.push(made!);
+      this.onMade?.();
+    }
+    this.now = ms;
+  }
+
+  take(out: CityMade[]): number {
+    const n = this.done.length;
+    for (let i = 0; i < n; i++) out[i] = this.done[i]!;
+    this.done.length = 0;
+    return n;
+  }
+}
+
+/**
+ * A jump into downtown: a client come to each of the views `names` with nothing of the far city made, the near window
+ * held whole a second later, a frame each sixtieth of a second and its levels made by workers as ModelMaker has them:
+ * the frames until every tile in view and reach is drawn, and until nothing in reach is left to make, with one worker as
+ * before and with as many as the browser starts on a machine of ten cores.
+ */
+export function benchJump(section: (title: string) => void, record: Record, path: string, viewsPath = DEFAULT_VIEWS, names = ["street-300", "air-handover", "air-wide"]): void {
+  const w = cityWorld(path);
+  const views = (JSON.parse(readFileSync(viewsPath, "utf8")) as View[]).filter((v) => names.includes(v.name));
+  const counts = [1, cityThreads(10)];
+  for (const tier of TIERS.filter((t) => t.name !== "lowpoly")) {
+    section(`A jump into downtown on ${tier.name}: frames until every tile in view is drawn and until nothing in reach is left to make, each level timed as made on one thread; load ${loadavg().map((l) => l.toFixed(1)).join(" ")} over ${cpus().length} cores`);
+    for (const v of views) {
+      for (const n of counts) {
+        const maker = new ModelMaker(n);
+        const scene = w.scene(tier, v.size ?? [1920, 1080], maker);
+        aim(w.cam, w.hf, v);
+        w.step(0, 1);
+        let [seen, made] = [0, 0];
+        for (let f = 1; f <= 3600 && made === 0; f++) {
+          maker.advance((f * 1000) / 60);
+          w.step(1 / 60, 1);
+          scene.build(w.cam, null);
+          const s = scene.city!.stats;
+          if (seen === 0 && f > 1 && s.unseen === 0) seen = f;
+          if (f > 1 && s.behind === 0 && s.missing === 0) made = f;
+        }
+        record(`${v.name}, ${n} worker${n > 1 ? "s" : ""}: every tile in view drawn, nothing left to make`, seen, `and ${made} frames`);
+      }
+    }
+  }
+}
+
+/**
  * A pteranodon's rider over downtown at 150 m on medium (flyers-plan.md, FL2): its tamed sprint, 18.975 m/s, its riding
  * camera (client/core/viewpoint.ts, the boom the app gives the stand-in), straight for 20 s, banking round at 15 degrees
  * a second for 20 s, and straight again, a frame a sixtieth of a second, with the machine's load before and after.
@@ -325,7 +426,7 @@ function benchRider(section: (title: string) => void, record: Record, w: ReturnT
 
 if (import.meta.main) {
   const rider = process.argv.includes("--rider");
-  const [path, views] = process.argv.slice(2).filter((a) => a !== "--rider");
+  const [path, views] = process.argv.slice(2).filter((a) => a !== "--rider" && a !== "--jump");
   if (!path) {
     console.error("bun tools/bench/city.ts <file.snmap> [views.json] [--rider]");
     process.exit(2);
@@ -334,6 +435,8 @@ if (import.meta.main) {
     const verdict = budget === null ? "" : value <= budget ? `  ok (budget ${budget})` : `  MISS (budget ${budget})`;
     console.log(`  ${name.padEnd(64)} ${value.toFixed(value < 10 ? 3 : 1).padStart(10)} ${unit}${verdict}`);
   };
-  if (rider) benchRider((title) => console.log(`\n${title}`), record, cityWorld(path));
-  else benchCity((title) => console.log(`\n${title}`), record, path, views);
+  const section = (title: string): void => console.log(`\n${title}`);
+  if (rider) benchRider(section, record, cityWorld(path));
+  else if (!process.argv.includes("--jump")) benchCity(section, record, path, views);
+  if (!rider) benchJump(section, record, path, views);
 }

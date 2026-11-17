@@ -54,7 +54,7 @@ export async function wikiProbe(chrome: string): Promise<boolean> {
   const worlds: Record<string, object> = { "/settings.json": { name: "Miami", map: "core:miami", settings: {} }, "/fifty/settings.json": fifty, "/worlds.json": cluster };
   const server = Bun.serve({ port: 0, fetch: (req) => worlds[new URL(req.url).pathname] ? Response.json(worlds[new URL(req.url).pathname]) : serveFile(DIST, req) });
   const profile = mkdtempSync(join(tmpdir(), "snark-pages-"));
-  const flags = ["--headless=new", "--no-first-run", "--disable-extensions", "--remote-debugging-port=0", "--autoplay-policy=no-user-gesture-required"];
+  const flags = ["--headless=new", "--mute-audio", "--no-first-run", "--disable-extensions", "--remote-debugging-port=0", "--autoplay-policy=no-user-gesture-required"];
   const browser = Bun.spawn([chrome, ...flags, `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
   const faults: string[] = [];
   try {

@@ -1273,7 +1273,7 @@ export class Rasterizer {
       if (!transient && !buffer) throw new Error(`caster ${e} uses buffer ${p.casterBuffer[e]} which was never uploaded`);
       const data = transient ? p.transient : buffer!.data;
       const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-      const run = (flags & DRAW_TEXTURED) !== 0;
+      const run = (flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0;
       const [from, to] = run ? [p.casterFirstIndex[e]!, p.casterFirstIndex[e]! + p.casterIndexCount[e]!] : [0, lod.indices.length];
       const n = lod.positions.length / 3;
       const place = new Float32Array(n * 3);
