@@ -349,7 +349,7 @@ export class FramePacket {
    * Rows of the far shadow's map (farshadow.ts) to put in the shadow array's layer after the cascades' before they are
    * drawn: `farRows` of its layer's side from row `farRow`, none while it is empty. The scene owns the map.
    */
-  farMap = NO_ROWS;
+  farMap: Uint16Array = NO_ROWS;
   farRow = 0;
   farRows = 0;
   /** The draw before which the dome goes, on a lit frame. */

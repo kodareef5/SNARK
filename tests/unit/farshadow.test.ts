@@ -262,7 +262,7 @@ test("a maker on other threads sweeps there, moving the solid heights and the ma
   const kinds = cityKinds(city, hf, { center: [0, 0, 0], half: [1, 1, 1] });
   // Threads as a worker runs them, each message cloned with what it moves taken out of the sender.
   const opened: CityThread[] = [];
-  const maker = new ThreadedCityMaker(() => {
+  const open = (): CityThread => {
     let held: typeof kinds | null = null;
     const thread: CityThread = {
       onmessage: null,
@@ -278,7 +278,8 @@ test("a maker on other threads sweeps there, moving the solid heights and the ma
     };
     opened.push(thread);
     return thread;
-  }, 2);
+  };
+  const maker = new ThreadedCityMaker(open, 2);
   maker.start(kinds);
   const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, null) : null) };
   const shadow = new FarShadow(city, hf, standing, maker, () => false);
