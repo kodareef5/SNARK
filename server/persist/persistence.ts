@@ -166,6 +166,12 @@ export class Persistence {
     this.sidecars.push({ key, of, every, at: -every });
   }
 
+  /** Writes the sidecar `key` alone, in a commit of its own: what must outlast a stop that saves nothing else. */
+  writeSidecar(key: string): void {
+    const s = this.sidecars.find((x) => x.key === key);
+    if (s) this.store.transaction(() => this.store.setMeta(key, s.of.serialize()));
+  }
+
   /** Replaces the keeper with one `make` builds, now and whenever the world moves to another file. */
   keepWith(make: (store: WorldStore) => Keeper): void {
     this.keep = make;

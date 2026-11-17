@@ -382,6 +382,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const wrong = items.audit();
     if (wrong.length > 0 && !opts.allowLedgerMismatch) throw new Error("the item ledger does not balance:\n" + wrong.join("\n"));
     persistence.sidecar("ledger", items);
+    if (!loaded!.fresh) game.refusals.restore(persistence.store.meta("refused") as string | null);
+    persistence.sidecar("refused", game.refusals);
     persistence.open = (path) => new WorldStore(path, reg, storeOptions);
   }
   const creatures = new Creatures(world, game, records, survival, opts.seed ?? 1, opts.wakeRadius ?? 3);
@@ -1057,6 +1059,20 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // Last, so a host that fails to start has no thread to stop.
     if (opts.keeper === "worker") persistence.keepWith((s) => workerKeeper(s.path));
   }
+  // A command that threw may have left the world half done. Its ledger is what a save is checked by as it loads, so while that
+  // balances the world goes on; else the server stops as at any other throw, saving nothing but the refusal.
+  game.onFault = (c, op, command, err) => {
+    say(`a command of ${c.name} (survivor ${c.pid}) threw at tick ${world.tick}; it is put out, and its device and machine refused for 10 minutes. Op ${op}, the message ${Buffer.from(command).toString("hex")}:\n${err instanceof Error ? err.stack : String(err)}`);
+    const wrong = items.audit();
+    if (wrong.length === 0) return true;
+    say(`the item ledger does not balance after it, so the server stops without saving the tick:\n${wrong.join("\n")}`);
+    try {
+      persistence?.writeSidecar("refused");
+    } catch {
+      // The stop goes on.
+    }
+    return false;
+  };
   // An unconscious survivor can talk, use the console, shut what it had open and say how far off it is sent bases. Its client
   // can make it do nothing else.
   game.allows = (c, op) => op === CMD_TEXT || op === CMD_CHAT || op === CMD_CLOSE || op === CMD_FAR || !records.byPid.get(c.pid)?.out;

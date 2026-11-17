@@ -158,6 +158,42 @@ const SPECTATOR_LIFT = 1.6;
 const NEW_NAMES = 8;
 const NEW_NAME_TICKS = 108000;
 
+/** A device key and machine whose command threw are refused this long, ten minutes. */
+const FAULT_REFUSED_TICKS = 10 * 60 * TICK_RATE;
+/** Refusals kept. Past this the oldest goes. */
+const REFUSALS_KEPT = 4096;
+
+/** What a refusal names of a connection: its device key, and its machine (countedAs). */
+const refusedAs = (key: Uint8Array, address: string | undefined): string[] => (address === undefined ? [`key:${key.toHex()}`] : [`key:${key.toHex()}`, `at:${countedAs(address)[0]}`]);
+
+/** Who is refused until a tick (refusedAs). A sidecar of the save, so that a stop does not forgive it. */
+export class Refusals {
+  dirty = false;
+  private readonly until = new Map<string, number>();
+
+  refuse(who: readonly string[], tick: number, until: number): void {
+    for (const [k, t] of this.until) if (t <= tick) this.until.delete(k);
+    for (const k of who) {
+      if (this.until.size >= REFUSALS_KEPT) this.until.delete(this.until.keys().next().value!);
+      this.until.delete(k);
+      this.until.set(k, until);
+    }
+    this.dirty = true;
+  }
+
+  refused(who: readonly string[], tick: number): boolean {
+    return who.some((k) => (this.until.get(k) ?? 0) > tick);
+  }
+
+  serialize(): string {
+    return JSON.stringify([...this.until]);
+  }
+
+  restore(saved: string | null): void {
+    for (const [k, t] of JSON.parse(saved ?? "[]") as [string, number][]) this.until.set(k, t);
+  }
+}
+
 /** Bits of Client.did, set by the action step on the tick just stepped. */
 export const DID_STRIKE = 1;
 /** The mount it drives landed a bite. */
@@ -367,8 +403,15 @@ export class GameServer {
   readonly guesses = new Guesses();
   /** Wrong cheat passwords, counted apart: joining with the right password must not forgive them. */
   readonly cheatGuesses = new Guesses();
-  /** `overflows` counts snapshots and chunk messages that outgrew the writer and were not sent. */
-  readonly stats = { malformed: 0, throttled: 0, lateInputs: 0, heldInputs: 0, commands: 0, chunkBytes: 0, overflows: 0 };
+  /** `overflows` counts snapshots and chunk messages that outgrew the writer and were not sent, and `faults` commands that threw. */
+  readonly stats = { malformed: 0, throttled: 0, lateInputs: 0, heldInputs: 0, commands: 0, chunkBytes: 0, overflows: 0, faults: 0 };
+  /** Device keys and machines whose command threw, refused for a while. */
+  readonly refusals = new Refusals();
+  /**
+   * A command's handler threw `err`. Its key and machine are refused (refusals). Returns whether the world goes on, its
+   * session then put out; false, or no hook, throws on, so the server stops as at any throw and saves nothing of the tick.
+   */
+  onFault: ((c: Client, op: number, command: Uint8Array, err: unknown) => boolean) | null = null;
   /** May this device key use this name? Called before anything is created. */
   authorize: ((name: string, key: Uint8Array) => boolean) | null = null;
   /**
@@ -970,13 +1013,24 @@ export class GameServer {
   private runCommands(c: Client): void {
     const r = this.r;
     for (let n = 0; n < COMMANDS_PER_TICK && c.queue.length > 0; n++) {
-      r.reset(c.queue.shift()!);
+      const data = c.queue.shift()!;
+      r.reset(data);
       r.bits(4);
       const seq = r.u16();
       const op = r.u8();
       const handler = this.handlers[op];
-      // What a session is shown is its own to ask in any state, so that is answered here.
-      const code = op === CMD_VIEW ? this.askView(c, r) : op === CMD_STATICS ? this.takeStatics(c) : !handler ? RESULT_INVALID : this.allows && !this.allows(c, op) ? RESULT_DENIED : handler(c, r);
+      let code: number;
+      try {
+        // What a session is shown is its own to ask in any state, so that is answered here.
+        code = op === CMD_VIEW ? this.askView(c, r) : op === CMD_STATICS ? this.takeStatics(c) : !handler ? RESULT_INVALID : this.allows && !this.allows(c, op) ? RESULT_DENIED : handler(c, r);
+      } catch (err) {
+        this.stats.faults++;
+        this.refusals.refuse(refusedAs(c.key, c.conn.address), this.world.tick, this.world.tick + FAULT_REFUSED_TICKS);
+        if (!this.onFault?.(c, op, data, err)) throw err;
+        this.sendText(c, TEXT_NOTICE, `the server could not carry out a command of yours, so it has put you out; you may come back in ${FAULT_REFUSED_TICKS / TICK_RATE / 60} minutes`);
+        this.reject(c, REJECT_DENIED);
+        return;
+      }
       this.stats.commands++;
       // The handler may have ended the session (a kick, too many password attempts).
       if (this.clients[c.id] !== c || c.closed || !c.conn.open) return;
@@ -1053,6 +1107,7 @@ export class GameServer {
       this.guesses.right(who);
     }
     if (!NAME.test(name)) return this.refuse(conn, REJECT_NAME);
+    if (this.refusals.refused(refusedAs(key, conn.address), world.tick)) return this.refuse(conn, REJECT_DENIED);
     // A module may turn a login away, or a name nobody has had before. A survivor's name is who it is, so it is not reworded.
     const isNew = this.savedPosition?.(name) == null;
     if (isNew && this.bus.before(NAME_SET, { what: "survivor", text: name }) !== "") return this.refuse(conn, REJECT_NAME);
