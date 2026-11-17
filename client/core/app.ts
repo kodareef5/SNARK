@@ -40,6 +40,7 @@ import { KICK_UNIT, scopeFitted, shotCone, sway, swayOut } from "../../shared/si
 import { AnimState, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
 import { handleGen, handleIndex, makeHandle } from "../../shared/ids.ts";
 import { VehiclePlacement } from "./vehicle-placement.ts";
+import { SeatedAim } from "./seated-aim.ts";
 import { predictedVehiclePose, remoteVehiclePose } from "./vehicle-view.ts";
 import { vehiclePoint, type VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
@@ -134,6 +135,10 @@ export class App {
   readonly feedback = new Feedback();
   /** Laser dots this frame (client/core/render/laser.ts). */
   readonly lasers = new Lasers();
+  private seatedAim: SeatedAim;
+  private readonly shotSample = new RemoteSample();
+  private readonly shotState = new AnimState();
+  private readonly posedEye = new Float64Array(3);
   /** The frame's view and eye, and whether its own laser is on, for the sights. */
   private readonly sightAt = { yaw: 0, pitch: 0, laser: false, x: 0, y: 0, z: 0 };
   private readonly spot = [0, 0, 0];
@@ -207,6 +212,12 @@ export class App {
     this.session = session;
     this.shown = reg;
     this.pack = pack;
+    this.seatedAim = new SeatedAim(reg, pack);
+    session.shotOrigin = (out, tick, yaw, pitch) => {
+      if (!session.world || session.driving >= 0 || !session.own.seat) return false;
+      session.sampleRemote(this.shotSample);
+      return this.ownSeatEye(session.world, this.shotSample, tick, yaw, pitch, out, true, tick);
+    };
     this.ui.registry = reg;
     this.ui.palette = pack.palette;
     const app = this;
@@ -228,6 +239,15 @@ export class App {
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
     this.shots = new Shots(reg, pack);
+    const nodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
+    session.onNode = (chunk, index, used, crushed) => {
+      const field = session.nodeField;
+      if (!used || !crushed || !field || !this.scene) return;
+      field.source.at(chunk, index, nodeSpot);
+      if (Math.hypot(nodeSpot.x - session.own.x, nodeSpot.y - session.own.y, nodeSpot.z - session.own.z) > 64) return;
+      this.scene.details.nodeBreak(nodeSpot.kind, chunk * 256 + index, nodeSpot.x, nodeSpot.y, nodeSpot.z,
+        session.renderClock - session.remoteDelay, field.forms.size[nodeSpot.form]! / 64);
+    };
     this.ui.inventory.onDeploy = slot => this.vehiclePlacement.begin(slot);
     session.onResult = (seq, code) => {
       this.ui.creator.result(seq, code === RESULT_OK);
@@ -592,6 +612,18 @@ export class App {
     return `${r.name[hit]}${mine ? " (tribe)" : ""}  level ${r.level[hit]}`;
   }
 
+  /** Current own aim/action pose on the remote carrier at its presentation clock. */
+  private ownSeatEye(world: CollisionWorld, remote: RemoteSample, tick: number, yaw: number, pitch: number, out: Float64Array, clip = true, actionTick = this.session.simTick): boolean {
+    const s = this.session, b = s.own, st = this.shotState;
+    if (s.driving >= 0 || !b.seat || !b.seatSlot) return false;
+    st.mode = b.mode; st.grounded = b.grounded; st.stance = b.stance;
+    st.setMotion(b.vx, b.vz, yaw, pitch, b.vy);
+    st.setAction(b.act, (this.reg.weapon[b.held] ?? FISTS).hold, actionTick - b.actTicks);
+    st.seed = bodySeed(handleIndex(s.ownHandle));
+    if (!this.seatedAim.pose(remote, s.ownKind, b.seat, b.seatGen, b.seatSlot, s.ownLook, st, yaw, tick)) return false;
+    this.seatedAim.eye(world, out, clip); return true;
+  }
+
   /**
    * The laser dots on the screen, its own and those of bodies whose laser is on, each where the world or a body first meets
    * its beam and only where the camera sees that spot; and the holo-scope's crosshair colour (weapons-plan.md, M10).
@@ -603,8 +635,8 @@ export class App {
     const day = daylight(hourOfDay(session.serverTick, session.dayOffset, session.clock));
     lookDirection((at.yaw / TAU) * 65536, (at.pitch / (PI / 2)) * 16384, d);
     lasers.clear();
-    if (at.laser) lasers.cast(this.reg, world, r, at.x, at.y, at.z, d[0]!, d[1]!, d[2]!, day, 0, session.driving);
-    lasers.remotes(this.reg, world, r, day);
+    if (at.laser) lasers.cast(this.reg, world, r, at.x, at.y, at.z, d[0]!, d[1]!, d[2]!, day, 0, handleIndex(session.ownHandle), this.seatedAim, session.own.seat - 1, session.own.seatGen);
+    lasers.remotes(this.reg, world, r, day, this.seatedAim);
     const s = this.spot;
     let n = 0;
     for (let i = 0; i < lasers.count; i++) {
@@ -633,10 +665,10 @@ export class App {
    * -1 for nothing in reach. `d` is the view's way.
    */
   private holoTint(world: CollisionWorld, d: readonly number[]): number {
-    const { cam, session, reg } = this;
+    const { sightAt: eye, session, reg } = this;
     const r = this.remote;
     const team = session.tribe.team;
-    let t = castWorld(world, cam.x, cam.y, cam.z, d[0]!, d[1]!, d[2]!, HOLO_REACH) === HIT_NONE ? Infinity : rayHit.t;
+    let t = castWorld(world, eye.x, eye.y, eye.z, d[0]!, d[1]!, d[2]!, HOLO_REACH) === HIT_NONE ? Infinity : rayHit.t;
     let tint = -1;
     if (t < Infinity && rayHit.kind === HIT_STRUCTURE) {
       const ref = rayHit.ref;
@@ -646,8 +678,9 @@ export class App {
     for (let i = 0; i < r.count; i++) {
       const kind = r.kind[i]!;
       const rad = reg.bodyRadius[kind]!;
-      if (reg.move[kind] === null || !(rad > 0) || r.id[i] === session.driving) continue;
-      const hit = rayBox(cam.x, cam.y, cam.z, d[0]!, d[1]!, d[2]!, r.x[i]! - rad, r.y[i]!, r.z[i]! - rad, r.x[i]! + rad, r.y[i]! + reg.bodyHeight[kind]!, r.z[i]! + rad);
+      if (reg.move[kind] === null || !(rad > 0) || r.id[i] === session.driving || r.id[i] === handleIndex(session.ownHandle) || (r.id[i] === session.own.seat - 1 && r.gen[i] === session.own.seatGen)) continue;
+      const posed = this.seatedAim.ray(r, i, eye.x, eye.y, eye.z, d[0]!, d[1]!, d[2]!, t);
+      const hit = posed ?? rayBox(eye.x, eye.y, eye.z, d[0]!, d[1]!, d[2]!, r.x[i]! - rad, r.y[i]!, r.z[i]! - rad, r.x[i]! + rad, r.y[i]! + reg.bodyHeight[kind]!, r.z[i]! + rad);
       if (!(hit > 0 && hit < t)) continue;
       t = hit;
       const mine = team !== 0 && r.team[i] === team;
@@ -947,6 +980,7 @@ export class App {
     }
     if (this.shown !== session.registry) {
       this.shown = session.registry;
+      this.seatedAim = new SeatedAim(this.shown, this.pack);
       this.ui.registry = this.shown;
       this.shots.reg = this.shown;
     }
@@ -998,7 +1032,7 @@ export class App {
     const bz = session.ownPrev.z + (session.own.z - session.ownPrev.z) * a + session.smoothZ;
     const car = this.reg.vehicle[session.bodyKind];
     const rotor = car?.movement === "rotor", boat = car?.movement === "boat", fullAttitude = car !== undefined && car !== null;
-    const vehiclePose = car ? predictedVehiclePose(session.ownPrev, session.own, a, rotor, boat) : undefined;
+    const vehiclePose = car ? predictedVehiclePose(session.ownPrev, session.own, a, rotor, boat, session.vehicleCorrection) : undefined;
     if (alive && car && session.driving >= 0) {
       if (car.movement === "rotor") {
         const altitude = castWorld(world, bx, by + .05, bz, 0, -1, 0, 2000) !== HIT_NONE ? Math.max(0, rayHit.t - .05) : by - world.hf.heightAt(bx, bz);
@@ -1007,7 +1041,8 @@ export class App {
       else this.vehicleTelemetry.update(session.driving, session.own, this.steer ? c.moveZ : 0, this.steer && (c.buttons & BTN_JUMP) !== 0, car.spec, dt);
       hud.vehicle = this.vehicleTelemetry;
     } else this.vehicleTelemetry.stop();
-    const carYaw = session.ownPrev.vehicleYaw + Math.atan2(Math.sin(session.own.vehicleYaw - session.ownPrev.vehicleYaw), Math.cos(session.own.vehicleYaw - session.ownPrev.vehicleYaw)) * a;
+    const carYaw = vehiclePose?.qw !== undefined ? Math.atan2(2 * (vehiclePose.qw * vehiclePose.qy! + vehiclePose.qx! * vehiclePose.qz!), 1 - 2 * (vehiclePose.qx! ** 2 + vehiclePose.qy! ** 2))
+      : session.ownPrev.vehicleYaw + Math.atan2(Math.sin(session.own.vehicleYaw - session.ownPrev.vehicleYaw), Math.cos(session.own.vehicleYaw - session.ownPrev.vehicleYaw)) * a;
     const passenger = alive && session.driving < 0 && session.own.seatSlot !== 0 && session.own.seat > 0;
     // A passenger's chase camera is third person, so it obeys the same server rule.
     let passengerFullAttitude = false, passengerCockpit = false;
@@ -1110,6 +1145,7 @@ export class App {
         }
         break;
       }
+      if (!chase && this.ownSeatEye(world, this.remote, session.tickClock, c.yaw, c.pitch, this.posedEye, false)) { px = this.posedEye[0]!; py = this.posedEye[1]!; pz = this.posedEye[2]!; }
       if (chase) this.view.placeVehicle(cam, world, px, py, pz, lookYaw, lookPitch, heading, 0, dt, false, boom === undefined ? undefined : { vx: chaseVx, vy: 0, vz: chaseVz, id: makeHandle(session.own.seat - 1, session.own.seatGen), boom, anticipate: !passengerFullAttitude, safeY: this.mountCamera.safeY, wantedY: this.mountCamera.wantedY });
       else if (passengerCockpit && cockpitFrame) this.view.placeCockpit(cam, px, py, pz, cockpitFrame, this.cockpit.yaw, this.cockpit.pitch);
       else this.view.place(cam, world, px, py, pz, lookYaw, lookPitch, dt);
@@ -1132,6 +1168,9 @@ export class App {
     this.sightAt.x = bx;
     this.sightAt.y = by + eye;
     this.sightAt.z = bz;
+    if (alive && this.ownSeatEye(world, this.remote, session.tickClock, c.yaw, c.pitch, this.posedEye)) {
+      this.sightAt.x = this.posedEye[0]!; this.sightAt.y = this.posedEye[1]!; this.sightAt.z = this.posedEye[2]!;
+    }
     this.fov += (want - this.fov) * (hud.vehicle ? 1 - Math.exp(-Math.max(0, dt) / 260) : Math.min(1, dt / 70));
     cam.fovY = this.fov;
     c.zoom = (this.fov / base) * settings.sensitivity;

@@ -52,6 +52,9 @@ const DEATH_CACHE = event("death.cache");
 
 export class Death {
   count = 0;
+  /** Shared current posed eye for seated interactions; absent on small standalone fixtures. */
+  eye: ((entity: number, out: Float64Array) => void) | null = null;
+  private readonly eyeAt = new Float64Array(3);
   /** The use button found nothing here to act on. Another system may want it (a bush to pick). */
   onUse: ((c: Client) => void) | null = null;
   /** The use button was pressed looking at a structure (`ref`) with nothing nearer. Returns a result code, or -1 if it has no use. */
@@ -548,9 +551,9 @@ export class Death {
     const ents = world.ents;
     const reg = world.reg;
     const e = c.ent;
-    const ox = ents.x[e]!;
-    const oy = ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!);
-    const oz = ents.z[e]!;
+    this.eyeAt[0] = ents.x[e]!; this.eyeAt[1] = ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!); this.eyeAt[2] = ents.z[e]!;
+    this.eye?.(e, this.eyeAt);
+    const ox = this.eyeAt[0]!, oy = this.eyeAt[1]!, oz = this.eyeAt[2]!;
     const d = this.dir;
     lookDirection(c.heldYaw, c.heldPitch, d);
     const what = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach);

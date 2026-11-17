@@ -333,6 +333,8 @@ export interface VehicleInput {
 }
 
 export interface VehicleWorld {
+  /** Authority may fracture a contacted obstacle after paying its work through a point impulse. Null keeps the solid response. */
+  breakContact?(state: VehicleState, spec: VehicleSpec, hit: VehicleContact): number | null;
   /** Surface normal points out of the obstacle, toward the chassis. Scratch result: consume before another query. */
   contact(from: Readonly<VehicleState>, to: Readonly<VehicleState>, spec: VehicleSpec): VehicleContact | null;
   /** Actual current overlap, without the moving-contact skin; use only for bounded position recovery. */

@@ -57,7 +57,9 @@ export function soundView(session: ClientSession): SoundView {
 /** Hands the session's changes to structures and nodes to `sounds`, from now on. */
 export function hearSession(session: ClientSession, sounds: Sounds): void {
   session.onStructure = (was, kind, x, y, z, hpWas, hp, cause) => sounds.build.structure(was, kind, x, y, z, hpWas, hp, cause);
-  session.onNode = (chunk, index, used) => {
+  const beforeNode = session.onNode;
+  session.onNode = (chunk, index, used, crushed) => {
+    beforeNode?.(chunk, index, used, crushed);
     const field = session.nodeField;
     if (!used || !field) return;
     field.source.at(chunk, index, spot);

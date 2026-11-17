@@ -51,6 +51,7 @@ export function stepVehicle(s: VehicleState & Partial<Pick<CarState, "engineCond
   const contacts: VehicleContactQueries<VehicleState> = {
     contact: (from, to) => w.contact(from, to, p),
     penetration: at => w.penetration(at, p),
+    breakContact: w.breakContact ? (state, hit) => w.breakContact!(state, p, hit) : undefined,
   };
   const throttle = command(input.throttle, -1, 1), steer = command(input.steer, -1, 1), brake = command(input.brake, 0, 1);
   const dt = TICK_DT / 4, beforeFuel = s.fuel, gravity = p.gravity ?? 18;

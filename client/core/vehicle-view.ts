@@ -5,10 +5,11 @@ import type { Body } from "../../shared/sim/character.ts";
 import { interpolateRotorPhase } from "../../shared/sim/vehicle-presentation.ts";
 import type { VehicleRenderPose } from "./render/characters.ts";
 import type { RemoteSample } from "./session.ts";
+import type { VehicleCorrection } from "./vehicle-correction.ts";
 
 const qa = new Float64Array(4), qb = new Float64Array(4), q = new Float64Array(4);
 const mix = (a: number, b: number, t: number): number => a + (b - a) * t;
-export function predictedVehiclePose(a: Body, b: Body, t: number, rotor: boolean, boat = false): VehicleRenderPose {
+export function predictedVehiclePose(a: Body, b: Body, t: number, rotor: boolean, boat = false, correction?: VehicleCorrection): VehicleRenderPose {
   const pose: VehicleRenderPose = {
     pitch: mix(a.vehiclePitch, b.vehiclePitch, t), roll: mix(a.vehicleRoll, b.vehicleRoll, t), steering: mix(a.steering, b.steering, t),
     wheelAngle: a.wheelAngle + Math.atan2(Math.sin(b.wheelAngle - a.wheelAngle), Math.cos(b.wheelAngle - a.wheelAngle)) * t,
@@ -19,6 +20,7 @@ export function predictedVehiclePose(a: Body, b: Body, t: number, rotor: boolean
   if (a.vehicleQx || a.vehicleQy || a.vehicleQz || a.vehicleQw || b.vehicleQx || b.vehicleQy || b.vehicleQz || b.vehicleQw) {
     qa.set([a.vehicleQx, a.vehicleQy, a.vehicleQz, a.vehicleQw]); qb.set([b.vehicleQx, b.vehicleQy, b.vehicleQz, b.vehicleQw]);
     quatNlerp(q, 0, qa, 0, qb, 0, t);
+    correction?.apply(q);
     pose.qx = q[0]!; pose.qy = q[1]!; pose.qz = q[2]!; pose.qw = q[3]!;
     pose.engineRpm = mix(a.vehicleRpm, b.vehicleRpm, t); pose.engineOn = b.vehicleEngineOn;
     pose.hullCondition = b.vehicleHullCondition; pose.flooding = b.vehicleFlooding;

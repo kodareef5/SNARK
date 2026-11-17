@@ -62,6 +62,7 @@ import {
 } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
+import { ContactSnapshot, writeContacts } from "../shared/net/contact.ts";
 import { BTN_JUMP, Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
 import { stepVehicleBody, packVehicleDrive, packVehiclePose, quantVehicleWheel, packVehicleRide } from "../shared/sim/vehicle-body.ts";
 import { packVehicleRotor, packVehicleSystems, packVehicleQuaternionPair, packBoatWater } from "../shared/sim/vehicle-presentation.ts";
@@ -439,6 +440,8 @@ export class GameServer {
   onReplicate: ((c: Client) => void) | null = null;
   /** The complete view actually sent, after budget selection and a successful snapshot write. */
   onSnapshot: ((c: Client, view: SentView) => void) | null = null;
+  /** Authority-provided contact neighbourhood for driver prediction, independent of the render view. */
+  contactProxies: ((c: Client, out: ContactSnapshot) => void) | null = null;
   /** The shared view around a session as that session may be sent it, or the same view. */
   viewFor: ((c: Client, cur: SentView) => SentView) | null = null;
   /** Whether the session may run command `op` now. A refused command answers RESULT_DENIED and its handler is not called. */
@@ -450,6 +453,8 @@ export class GameServer {
   onMountFlight: ((e: number) => void) | null = null;
   /** Vehicle report is still current; authoritative damage consumes it immediately after the body is stored. */
   onVehicleStep: ((e: number) => void) | null = null;
+  /** The host adds resource contacts around this same shared vehicle step. */
+  vehicleStep: typeof stepVehicleBody = stepVehicleBody;
   /** Without this hook nobody is sent to the creator. */
   needsLook: ((name: string) => boolean) | null = null;
   /** Null for a new survivor. `dead` means it joins with no body and chooses where to respawn. */
@@ -463,6 +468,7 @@ export class GameServer {
   /** Sized for the tuning string a welcome carries. */
   private readonly welcomeW: BitWriter;
   private readonly r = new BitReader();
+  private readonly contactSnapshot = new ContactSnapshot();
   /** The entities around each chunk that is some client's centre this tick, gathered once and shared by every client centred there. */
   private readonly around: SentView[] = [];
   /** For each of those lists, each entry's place in the order it was chosen in. A client is sent the entries below its cap. */
@@ -568,7 +574,7 @@ export class GameServer {
         const passenger = !driving && parent >= 0 && ents.seatSlot[e] !== 0 && ents.gen[parent] === ents.seatGen[e];
         if (vehicle) {
           const quiet = c.closed || T - c.inputAt > INPUT_HOLD_TICKS;
-          stepVehicleBody(world, b, quiet ? 0 : c.heldX, quiet ? 0 : c.heldZ, quiet ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : c.heldButtons, vehicle, TICK_DT, c.heldYaw, !quiet);
+          this.vehicleStep(world, b, quiet ? 0 : c.heldX, quiet ? 0 : c.heldZ, quiet ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : c.heldButtons, vehicle, TICK_DT, c.heldYaw, !quiet);
         } else if (!passenger) {
           // A survivor's tamed numbers are its own. A body that is driven is a tame's.
           stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.tamedMove[b.kind]!, TICK_DT);
@@ -1361,6 +1367,13 @@ export class GameServer {
     w.varint(c.drive + 1);
     writeBody(w, c.body);
     const bytes = c.snapshotBytes !== 0 ? c.snapshotBytes : this.opts.snapshotBytes;
+    const contacts = this.contactSnapshot;
+    contacts.tick = T;
+    contacts.owner = contacts.epoch = contacts.count = 0;
+    contacts.truncated = false;
+    if (c.drive >= 0 && this.world.reg.vehicle[c.body.kind]) this.contactProxies?.(c, contacts);
+    // Leave at least half the remaining packet for the ordinary view, and never exceed the selected snapshot budget.
+    writeContacts(w, contacts, Math.min(480 * 8, Math.floor((bytes * 8 - w.pos) / 2)));
     c.rotate = writeViewDelta(w, base, cur, next, bytes * 8 - w.pos, c.rotate, ents, self, limit < cur.count ? this.ranks[at]! : null, limit, c.views);
     if (w.overflow) {
       // Part of a snapshot is of no use. Nothing is sent, and the view the client would have held is forgotten.

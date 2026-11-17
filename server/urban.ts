@@ -5,7 +5,9 @@ import { Pose } from '../shared/anim/clip.ts';
 import { HUMAN, HUMAN_BONES, SOCKET_EYE } from '../shared/anim/human.ts';
 import { defaultLook, lookScales, LOOK_SEX, SEX_IDS } from '../shared/anim/look.ts';
 import type { PackRig } from '../shared/pack/pack.ts';
-import { createMountMotion, mountOrigin, mountPose } from '../shared/anim/mount.ts';
+import { createMountMotion, mountOrigin } from '../shared/anim/mount.ts';
+import { occupantPose, occupantSeat, createOccupantSeat } from '../shared/anim/occupant.ts';
+import { AnimState, bodySeed } from '../shared/anim/pose.ts';
 import { fitSeatControls } from '../shared/anim/seat-controls.ts';
 import { boneToModel, Solved, solve } from '../shared/anim/skeleton.ts';
 import { CHUNK_SIZE, TICK_DT, TICK_RATE } from '../shared/coords.ts';
@@ -50,6 +52,8 @@ interface UrbanContext {
   damage?(record: EntityRecord, points: number, by: number): number;
   /** Physical collision harm uses the opposing qualified body/driver and ordinary PvE rules. */
   collisionDamage?(record: EntityRecord, points: number, by: EntityRecord): number;
+  /** The same authoritative resource-aware step as driven vehicles use. */
+  vehicleStep?: typeof stepVehicleBody;
 }
 interface HostSeat { entity: number; handle: number; definition: VehicleDefinition; last: Point & { vx: number; vy: number; vz: number } }
 interface Scope { epoch: number; request: number; connection: Connection | null }
@@ -98,6 +102,8 @@ export class Urban {
   private readonly seatRotation = new Float64Array(4);
   private readonly seatOrigin = new Float64Array(3);
   private readonly motion = createMountMotion();
+  private readonly occupantState = new AnimState();
+  private readonly occupantSeat = createOccupantSeat();
   private readonly scales = new Float32Array(HUMAN_BONES * 3);
   private readonly rests = new Map<string, Float32Array>();
   private readonly seating: Seating;
@@ -440,6 +446,12 @@ export class Urban {
     this.pushes.set(this.ctx.world.ents.pid[e]!, { until: this.ctx.world.tick + TICK_RATE, x, z });
   }
 
+  /** Replication uses the same temporary parking-brake release as the native undriven controller. */
+  recoveryCoasting(e: number): boolean {
+    const { world } = this.ctx, ents = world.ents, pid = ents.pid[e]!, push = this.pushes.get(pid), host = this.hosts.get(pid);
+    return !!push && !!host && world.tick < push.until && ents.vx[e]! * push.x + ents.vz[e]! * push.z > .12 && !this.occupied(pid, host);
+  }
+
   /** Empty parked vehicles keep their place when a protected foreign tribe hits them. */
   parked(e: number): boolean {
     const { world } = this.ctx, a = world.ents, v = a.vrow[e]!;
@@ -732,7 +744,7 @@ export class Urban {
       if (!pushed) this.pushes.delete(pid);
       if (!driven && (!this.resting(e) || (world.tick + e) % REST_TICKS === 0)) {
         ents.loadBody(e, this.body);
-        stepVehicleBody(world, this.body, 0, 0, isWheelVehicle(host.definition) && !pushed ? BTN_JUMP : 0, host.definition, TICK_DT, this.body.yaw, false);
+        (this.ctx.vehicleStep ?? stepVehicleBody)(world, this.body, 0, 0, isWheelVehicle(host.definition) && !pushed ? BTN_JUMP : 0, host.definition, TICK_DT, this.body.yaw, false);
         ents.storeBody(e, this.body);
         this.impact(e);
         ents.pose(e, world.tick);
@@ -1080,8 +1092,10 @@ export class Urban {
     const { world } = this.ctx, ents = world.ents;
     const state = this.state(vehicle), seat = this.seatAt, rotation = this.seatRotation, origin = this.seatOrigin;
     vehiclePoint(state, anchor, seat); vehicleRotation(state, rotation);
-    const def = world.reg.vehicle[ents.kind[vehicle]!]!, seatDefinition = def.seats.find(s => s.anchor === anchor), profile = seatDefinition?.pose;
-    mountPose(this.motion, { role: profile ?? (driver ? 'drive' : 'passenger'), tick: world.tick, startTick: 0, durationTicks: 1, steering: isRotorVehicle(def) ? 0 : state.steering / def.spec.maxSteer }, this.pose);
+    const def = world.reg.vehicle[ents.kind[vehicle]!]!, seatDefinition = def.seats.find(s => s.anchor === anchor)!;
+    const st = this.occupantState; st.unpack(ents.anim[actor]!, ents.cue[actor]!); st.seed = bodySeed(actor);
+    occupantSeat(def, seatDefinition, state, ents.yaw[actor]! * TAU / 65536, this.occupantSeat);
+    occupantPose(world.anim, st, world.tick, this.pose, this.occupantSeat, null, 0, this.occupantSeat.aimYaw!, driver, this.motion);
     const look = ents.looks.get(actor) ?? this.ctx.records.byPid.get(ents.pid[actor]!)?.look ?? PLAIN;
     const definition = world.reg.defs[ents.kind[actor]!];
     const mesh = definition?.type === 'species' ? definition.mesh.replace(/^[^:]*:/, '') : 'human';

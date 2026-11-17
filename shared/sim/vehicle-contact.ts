@@ -10,6 +10,8 @@ export interface VehicleContactQueries<S extends VehicleState, C extends Vehicle
   penetration(at: Readonly<S>): C | null;
   steeringJoint?: boolean;
   onContact?(contact: C): void;
+  /** Returns the absorbed equivalent impact speed when the obstacle changed, or null for its ordinary response. */
+  breakContact?(state: S, contact: C): number | null;
 }
 export interface VehicleContactStep { blocked: string | null; impactSpeed: number; landSpeed?: number }
 const manifold = new Float64Array(12);
@@ -70,6 +72,15 @@ export function resolveVehicleContacts<S extends VehicleState, C extends Vehicle
     s.qx = q[0]!; s.qy = q[1]!; s.qz = q[2]!; s.qw = q[3]!;
     if (w.steeringJoint) s.steering = start.steering + (target.steering - start.steering) * low;
     w.onContact?.(hit);
+    const broken = w.breakContact?.(s, hit);
+    if (broken !== undefined && broken !== null) {
+      result.impactSpeed = Math.max(result.impactSpeed, broken);
+      remaining *= 1 - low; start = { ...s };
+      // A fractured obstacle may leave a stump. Its replacement and everything beyond it still take the
+      // same bounded sweep; exhausting the contact budget keeps the last tested pose.
+      integrateVehiclePose(s, p, remaining);
+      continue;
+    }
     const gx = hit.geometryNx ?? hit.nx, gy = hit.geometryNy ?? hit.ny, gz = hit.geometryNz ?? hit.nz;
     const repeated = iteration > 0 && nx * gx + ny * gy + nz * gz > .999;
     nx = gx; ny = gy; nz = gz;

@@ -93,9 +93,9 @@ export class StaticVehicleWorld implements VehicleWorld {
   private readonly center = new Float64Array(3);
   private readonly supportWorld: CollisionWorld;
 
-  constructor(world: CollisionWorld, surfaceAt: VehicleSurfaceAt = (hit, ref) => vehicleSurfaceAt(world, hit, ref)) {
+  constructor(world: CollisionWorld, surfaceAt: VehicleSurfaceAt = (hit, ref) => vehicleSurfaceAt(world, hit, ref), ignoreNode?: (ref: number) => boolean) {
     this.world = world;
-    this.solids = new StaticVehicleSolids(world);
+    this.solids = new StaticVehicleSolids(world, ignoreNode);
     this.surfaceAt = surfaceAt;
     // Resource nodes obstruct the chassis but are not road support. Soft vegetation never becomes an elevated road.
     this.supportWorld = { hf: world.hf, structs: world.structs };

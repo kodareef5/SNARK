@@ -88,15 +88,19 @@ test("a fast carrier's seated survivor stays in the historical candidate set, an
     const rider = ents.create(reg.index.get("core:survivor")!, 123, 3, 95, 0);
     ents.seat[rider] = car + 1; ents.seatGen[rider] = ents.gen[car]!; ents.seatSlot[rider] = 2;
     history.track(car); history.track(rider);
+    const eye = new Float64Array(3);
     for (let tick = 1; tick <= 16; tick++) {
       world.tick = tick;
       ents.setPosition(car, 123 + (tick - 1) * 1.1, 0, 95);
       ents.setPosition(rider, 123 + (tick - 1) * 1.1, 3, 95);
+      if (tick === 1) expect(h.host.combat.eye(rider, eye, tick, false)).toBe(true);
       history.record(tick);
     }
     // The seated body has no own walking speed; the authoritative pin movement still expands both query guards.
     expect(ents.vx[rider]).toBe(0);
-    expect(h.host.combat.castBodies(-1, 123, 4.62, 92, 0, 0, 1, 5, 0, 1)).toBe(rider);
+    expect(h.host.combat.castBodies(-1, eye[0]!, eye[1]!, eye[2]! - 3, 0, 0, 1, 5, 0, 1)).toBe(rider);
+    // The old fake crouching proxy above the car is no longer a hittable occupant.
+    expect(h.host.combat.castBodies(-1, 123, 4.62, 92, 0, 0, 1, 5, 0, 1)).toBe(-1);
     const v = ents.vrow[car]!;
     ents.setPosition(car, 90, 2, 90); history.discontinuity(car);
     ents.vehicleQz[v] = 1; ents.vehicleQw[v] = 0;

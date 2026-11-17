@@ -2,6 +2,7 @@
 import { WORLD_MAX_Y, WORLD_MIN_Y } from "../coords.ts";
 import { quatNormalize, quatRotate } from "../math/quat.ts";
 import { detCos, detSin, len3, TAU } from "../math/scalar.ts";
+import { sortU32 } from "../sort.ts";
 import type { CollisionWorld } from "./collide.ts";
 import { boxSolid, partSolid, solidsCross, type Solid } from "./convex.ts";
 import { frame, frameOf } from "./frame.ts";
@@ -178,7 +179,8 @@ export class StaticVehicleSolids {
   private readonly terrain: SolidContact = { reason: "terrain", hazard: false, nx: 0, ny: 1, nz: 0, x: 0, y: 0, z: 0, depth: 0 };
   private skin = .008;
   readonly world: CollisionWorld;
-  constructor(world: CollisionWorld) { this.world = world; }
+  private readonly ignoreNode: ((ref: number) => boolean) | undefined;
+  constructor(world: CollisionWorld, ignoreNode?: (ref: number) => boolean) { this.world = world; this.ignoreNode = ignoreNode; }
   blocked(from: Readonly<SolidFrame>, to: Readonly<SolidFrame>, shapes: readonly Shape[], joints?: readonly SolidJoint[], allowSeparating = false, skin = .008, center?: ArrayLike<number>, manifold = false): SolidContact | null {
     this.skin = skin; this.center = center; this.manifold = manifold; this.hit.balanced = false; this.hit.points = undefined; this.contactPoints.length = 0;
     let contacts = 0, weight = 0, blockedTerrain = false, blockedHazard = false, supportX = 0, supportY = 0, supportZ = 0, supportNX = 0, supportNY = 1, supportNZ = 0;
@@ -383,9 +385,11 @@ export class StaticVehicleSolids {
   }
   private obstacles(store: StructureStore, area: Bounds, count: number, name: string): SolidContact | null {
     const n = store.query(area.minX, area.minZ, area.maxX, area.maxZ, this.found, area.minY, area.maxY);
+    // Replicated rows rebuild the grid in a different insertion order. Pick the same real contact on both peers.
+    sortU32(this.found.refs, n);
     for (let i = 0; i < n; i++) {
       const ref = this.found.refs[i]!, row = store.chunks[Math.floor(ref / 65536)]!, slot = ref & 65535, kind = row.kind[slot]!;
-      if (store.isSoft(kind)) continue;
+      if (store.isSoft(kind) || name === "node" && this.ignoreNode?.(ref)) continue;
       const x = row.x[slot]!, y = row.y[slot]!, z = row.z[slot]!, yaw = row.yaw[slot]!;
       frameOf(yaw); const cs = frame.cos, sn = frame.sin, stretch = frame.stretch, boxes = store.parts.box;
       for (let j = store.parts.start[kind]! * 6, end = store.parts.start[kind + 1]! * 6; j < end; j += 6) {

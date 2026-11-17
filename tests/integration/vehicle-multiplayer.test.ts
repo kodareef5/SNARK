@@ -1,18 +1,17 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { RemoteSample } from "../../client/core/session.ts";
-import { NO_CLIPS, Pose } from "../../shared/anim/clip.ts";
-import { B_HIPS, HUMAN, HUMAN_BONES, SLOT_NAMES, SOCKET_EYE } from "../../shared/anim/human.ts";
-import { lookScales } from "../../shared/anim/look.ts";
-import { createMountMotion, mountOrigin, mountPose } from "../../shared/anim/mount.ts";
-import { boneToModel, Solved, solve } from "../../shared/anim/skeleton.ts";
+import { NO_CLIPS } from "../../shared/anim/clip.ts";
+import { B_HEAD, B_HIPS, HUMAN, SLOT_NAMES, SOCKET_EYE } from "../../shared/anim/human.ts";
+import { Assets } from "../../client/core/assets/assets.ts";
+import { Characters, type VehicleSeatPose } from "../../client/core/render/characters.ts";
+import { BONE_FLOATS, FramePacket } from "../../client/core/render/packet.ts";
 import { RESULT_OK } from "../../shared/net/protocol.ts";
 import { parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { BTN_PRIMARY, BTN_RELOAD, BTN_SECONDARY } from "../../shared/sim/character.ts";
-import { quatRotate } from "../../shared/math/quat.ts";
 import { remoteVehiclePose } from "../../client/core/vehicle-view.ts";
-import { vehiclePoint, vehicleRotation } from "../../shared/sim/vehicle-frame.ts";
+import { vehiclePoint } from "../../shared/sim/vehicle-frame.ts";
 import { boxMesh, buildPack, type SourceMesh } from "../../tools/pack/write.ts";
 import { takeInHand } from "../fixtures/gather.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -89,15 +88,18 @@ test("first-person passenger camera uses the rendered host tick, rig proportions
     const r = app.remote, index = [...r.id.subarray(0, r.count)].indexOf(car);
     expect(index).toBeGreaterThanOrEqual(0);
     const frame = { ...remoteVehiclePose(r, index), x: r.x[index]!, y: r.y[index]!, z: r.z[index]!, yaw: r.yaw[index]! };
-    const pose = new Pose(HUMAN_BONES), solved = new Solved(HUMAN_BONES), scales = new Float32Array(HUMAN_BONES * 3), anchor = [0, 0, 0], rotation = [0, 0, 0, 1], origin = [0, 0, 0];
-    mountPose(createMountMotion(), { role: "passenger", tick: 0, startTick: 0, durationTicks: 1 }, pose);
-    lookScales(s.ownLook!, scales); solve(HUMAN, pose, solved, rest, scales);
-    vehiclePoint(frame, [-.42, .59, .12], anchor); vehicleRotation(frame, rotation); mountOrigin(solved, anchor, rotation, origin);
-    // Full-attitude cabins use the actual posed head, so an inverted or tall passenger keeps the same eye.
-    const eye = [0, 0, 0];
-    boneToModel(solved, SOCKET_EYE.bone, SOCKET_EYE.x, SOCKET_EYE.y, SOCKET_EYE.z, eye);
-    quatRotate(rotation, 0, eye[0]!, eye[1]!, eye[2]!, eye, 0);
-    expect(app.cam.x).toBeCloseTo(origin[0]! + eye[0]!, 5); expect(app.cam.y).toBeCloseTo(origin[1]! + eye[1]!, 5); expect(app.cam.z).toBeCloseTo(origin[2]! + eye[2]!, 5);
+    const anchor = [0, 0, 0]; vehiclePoint(frame, [-.42, .59, .12], anchor);
+    const chars = new Characters(h.reg, pack, new Assets(h.reg, pack)), packet = new FramePacket(), body = app.scene!.own!;
+    const seated: VehicleSeatPose = { ...frame, x: anchor[0]!, y: anchor[1]!, z: anchor[2]!, driver: false, steer: 0, role: "passenger", aimYaw: app.controls.yaw };
+    chars.begin();
+    expect(chars.add(packet, body.kind, 0, 0, 0, 0, body.state, body.tick, body.look, 0, body.colors, 0, body.gear, 0, body.id, false, false, 1, false, false, null, 0, undefined, seated)).toBe(true);
+    // Read the head matrix actually emitted for the aimed pose with this body's explicit nonstandard binding.
+    const local = [rest[B_HEAD * 3]! + SOCKET_EYE.x, rest[B_HEAD * 3 + 1]! + SOCKET_EYE.y, rest[B_HEAD * 3 + 2]! + SOCKET_EYE.z], eye = [0, 0, 0];
+    for (let axis = 0; axis < 3; axis++) {
+      const row = B_HEAD * BONE_FLOATS + axis * 4;
+      eye[axis] = packet.bones[row]! * local[0]! + packet.bones[row + 1]! * local[1]! + packet.bones[row + 2]! * local[2]! + packet.bones[row + 3]!;
+    }
+    expect(app.cam.x).toBeCloseTo(eye[0]!, 4); expect(app.cam.y).toBeCloseTo(eye[1]!, 4); expect(app.cam.z).toBeCloseTo(eye[2]!, 4);
     expect(Math.abs(app.cam.z - s.own.z)).toBeGreaterThan(.2);
     expect(app.controls.yaw).toBe(.4); expect(app.controls.pitch).toBe(.2);
     // A replacement in the same entity slot cannot become this passenger's camera parent.

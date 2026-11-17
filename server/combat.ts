@@ -5,7 +5,9 @@ import type { CorpseImpact } from "../shared/anim/corpse.ts";
 import { HUMAN } from "../shared/anim/human.ts";
 import { SLOT_OF_ZONE, ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { AnimState, bodySeed } from "../shared/anim/pose.ts";
-import { BODY_REACH, BODY_REACH_Y, rayBody, raySeated } from "../shared/anim/zones.ts";
+import { BODY_REACH, BODY_REACH_Y, rayBody } from "../shared/anim/zones.ts";
+import { OccupantBody, clipSeatEye, createOccupantSeat, occupantSeat } from "../shared/anim/occupant.ts";
+import type { PackRig } from "../shared/pack/pack.ts";
 import { SEAT_FLOATS, saddleSeat, seatOn } from "../shared/anim/seat.ts";
 import { rayCreature, type CreatureAnim } from "../shared/anim/creature.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
@@ -77,6 +79,7 @@ export const LIGHT_WEAR_TICKS = 60 * TICK_RATE;
 
 export interface CombatContext {
   readonly world: ServerWorld;
+  readonly rigs?: readonly PackRig[];
   readonly game: GameServer;
   readonly records: Records;
   readonly items: Items;
@@ -173,6 +176,12 @@ export class Combat {
   private readonly boundBefore = new Past();
   private readonly mountSt = new AnimState();
   private readonly seatAt = new Float64Array(SEAT_FLOATS);
+  private readonly occupant: OccupantBody;
+  private readonly seatedAt = createOccupantSeat();
+  private readonly carrierFrame = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, qx: 0, qy: 0, qz: 0, qw: 1, steering: 0 };
+  private readonly eyeAt = new Float64Array(3);
+  private readonly eyePast = new Past();
+  private readonly eyeNow = new Past();
   private readonly rolls: Roll[] = [];
   private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, silenced: false };
   /** Content index of the tranquilized buff. Each hit with torpor over time gives one, carrying its strength. */
@@ -213,6 +222,7 @@ export class Combat {
 
   constructor(ctx: CombatContext, seed: number) {
     this.ctx = ctx;
+    this.occupant = new OccupantBody(ctx.rigs);
     const reg = ctx.world.reg;
     this.survivor = reg.index.get("core:survivor")!;
     this.human = Uint8Array.from(reg.defs, (d) => (d?.type === "species" && d.skeleton === HUMAN.id ? 1 : 0));
@@ -394,9 +404,8 @@ export class Combat {
     const reach = butt ? reg.blowReach[item]! : reg.reach[item !== 0 ? item : kind]!;
     const d = this.dir;
     lookDirection(ents.yaw[e]!, ents.pitch[e]!, d);
-    const ox = ents.x[e]!;
-    const oy = ents.y[e]! + stanceEye(reg.move[kind]!, ents.stance[e]!);
-    const oz = ents.z[e]!;
+    this.eye(e, this.eyeAt);
+    const ox = this.eyeAt[0]!, oy = this.eyeAt[1]!, oz = this.eyeAt[2]!;
     const what = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach);
     const ref = rayHit.ref;
     const worldT = rayHit.t;
@@ -686,6 +695,7 @@ export class Combat {
       out.cue = ents.cue[i]!;
       out.vehicleFrom(ents, i);
       out.seatFrom(ents, i);
+      if (out.seat) out.hostEpoch = world.history.motionEpoch(out.seat - 1);
       return true;
     }
     // Between the last remembered tick and this one, which is not recorded yet. Blend as a client does.
@@ -695,25 +705,53 @@ export class Combat {
     current.x = ents.x[i]!; current.y = ents.y[i]!; current.z = ents.z[i]!;
     current.yaw = ents.yaw[i]!; current.anim = ents.anim[i]!; current.cue = ents.cue[i]!;
     current.vehicleFrom(ents, i); current.seatFrom(ents, i);
+    if (current.seat) current.hostEpoch = world.history.motionEpoch(current.seat - 1);
     out.blend(current, k);
     return true;
   }
 
+  /** Pose the occupant at this recorded carrier frame; slot reuse cannot substitute a different host. */
+  private seated(i: number, was: Past, tick: number, poseTick = tick): boolean {
+    const world = this.ctx.world, host = was.seat - 1;
+    if (host < 0 || was.seatSlot === 0) return false;
+    const definition = world.reg.defs[world.ents.kind[i]!];
+    const mesh = definition?.type === "species" ? definition.mesh : "human";
+    const look = world.ents.looks.get(i) ?? null, rest = this.occupant.rest(mesh, look);
+    const vehicle = world.reg.vehicle[was.hostKind], yaw = was.yaw * TAU / 65536;
+    if (vehicle) {
+      const seat = vehicle.seats[was.seatSlot - 1];
+      if (!seat) return false;
+      const frame = this.carrierFrame;
+      frame.x = was.hostX; frame.y = was.hostY; frame.z = was.hostZ; frame.yaw = was.hostYaw * TAU / 65536;
+      frame.qx = was.hostQx; frame.qy = was.hostQy; frame.qz = was.hostQz; frame.qw = was.hostQw; frame.steering = was.hostSteering;
+      occupantSeat(vehicle, seat, frame, yaw, this.seatedAt);
+      this.occupant.vehicle(world.anim, this.st, poseTick, this.seatedAt, rest, look);
+    } else {
+      const seat = saddleSeat(world.reg, was.saddle, was.seatSlot);
+      if (!seat) return false;
+      const st = this.mountSt; st.unpack(was.hostAnim, was.hostCue); st.seed = bodySeed(host);
+      seatOn(this.anims[was.hostKind] ?? null, seat, st, tick, was.hostX, was.hostY, was.hostZ, was.hostYaw * TAU / 65536, this.seatAt);
+      this.occupant.saddle(world.anim, this.st, poseTick, this.seatAt, seat.driver === true, yaw, rest, look);
+    }
+    return true;
+  }
+
   /**
-   * For body `i` sitting in a saddle's seat, writes its seat's frame on its mount as the mount was at `tick` to `seatAt`
-   * and returns 1 for the seat that steers, 2 for a passenger's; 0 for a body in no saddle.
+   * Current own pose on the carrier the passenger saw. Only the same uninterrupted current attachment may rewind;
+   * foot shots and a just-changed seat use current authority. Target hitboxes use their wholly historical pose instead.
    */
-  private saddled(was: Past, tick: number): number {
-    const world = this.ctx.world;
-    const host = was.seat - 1;
-    if (host < 0 || was.seatSlot === 0 || world.reg.vehicle[was.hostKind]) return 0;
-    const seat = saddleSeat(world.reg, was.saddle, was.seatSlot);
-    if (!seat) return 0;
-    const st = this.mountSt;
-    st.unpack(was.hostAnim, was.hostCue);
-    st.seed = bodySeed(host);
-    seatOn(this.anims[was.hostKind] ?? null, seat, st, tick, was.hostX, was.hostY, was.hostZ, (was.hostYaw * TAU) / 65536, this.seatAt);
-    return seat.driver ? 1 : 2;
+  eye(e: number, out: Float64Array, at = this.ctx.world.tick, clip = true): boolean {
+    const world = this.ctx.world, ents = world.ents, now = this.eyeNow, past = this.eyePast;
+    out[0] = ents.x[e]!; out[1] = ents.y[e]! + stanceEye(world.reg.move[ents.kind[e]!]!, ents.stance[e]!); out[2] = ents.z[e]!;
+    if (!this.where(e, world.tick, now) || !now.seat) return false;
+    let pose = now, tick = world.tick;
+    if (at < world.tick && this.where(e, at, past) && now.sameSeat(past)) { pose = past; tick = at; }
+    pose.yaw = ents.yaw[e]!;
+    this.st.unpack(ents.anim[e]!, ents.cue[e]!); this.st.seed = bodySeed(e);
+    if (!this.seated(e, pose, tick, world.tick)) return false;
+    this.occupant.eye(out);
+    if (clip) clipSeatEye(world, this.occupant.anchor, out);
+    return true;
   }
 
   /** The nearest of the first `n` bodies in `near` that the ray hits nearer than `this.t`, or -1. Updates `this.t` and `this.zone`. */
@@ -757,10 +795,10 @@ export class Combat {
       }
       const reach = this.t / scale;
       if (this.human[kind] && world.anim) {
-        st.unpack(past.anim);
+        st.unpack(past.anim, past.cue);
         st.seed = bodySeed(i);
-        const seat = this.saddled(past, tick);
-        const zone = seat !== 0 ? raySeated(world.anim, st, tick, this.seatAt, seat === 1, rx, ry, rz, ux, uy, uz, reach) : rayBody(world.anim, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach);
+        const seated = this.seated(i, past, tick);
+        const zone = seated ? this.occupant.ray(rx, ry, rz, ux, uy, uz, reach) : rayBody(world.anim, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach);
         if (zone !== ZONE_NONE && zoneHit.t < reach) {
           this.t = zoneHit.t * scale;
           this.zone = zone;

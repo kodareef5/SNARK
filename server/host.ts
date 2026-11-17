@@ -19,6 +19,8 @@ import { isBoatVehicle, isRotorVehicle, isWheelVehicle } from "../shared/sim/veh
 import { boatRestY } from "../shared/sim/boat.ts";
 import { groundUnder } from "../shared/world/collide.ts";
 import { VehicleContacts } from "./vehicle-contacts.ts";
+import { INPUT_HOLD_TICKS } from "../shared/net/protocol.ts";
+import { BTN_JUMP, MODE_WALK } from "../shared/sim/character.ts";
 import { Entangle } from "./entangle.ts";
 import { Breeding, DEADLINE_BREED } from "./breeding.ts";
 import { Carry } from "./carry.ts";
@@ -48,6 +50,7 @@ import { Combat } from "./combat.ts";
 import { Creatures } from "./creatures.ts";
 import { DEADLINE_DESPAWN, Death } from "./death.ts";
 import { DEADLINE_NODE, Harvest } from "./harvest.ts";
+import { VehicleTrees } from "./vehicle-trees.ts";
 import { DEADLINE_CRAFT, Progression } from "./progression.ts";
 import { stanceEye } from "../shared/sim/character.ts";
 import { V_HEALTH } from "../shared/sim/vitals.ts";
@@ -496,7 +499,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     persistence.sidecar("settings_at", at);
     settingsAt = at;
   }
-  const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, lists, harvest, bus }, (opts.seed ?? 1) + 53);
+  const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, lists, harvest, bus, rigs: opts.rigs }, (opts.seed ?? 1) + 53);
+  death.eye = (e, out) => { combat.eye(e, out); };
   creatures.onStrike = (e) => combat.bite(e);
   const tribes = new Tribes(world, records);
   tribes.rules = rules;
@@ -545,7 +549,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // A hit's buff goes through entangling, which reads the bola's fields (weapons-plan.md, M6); a bola'd body is not mounted.
   const entangle = new Entangle({ world, game, records, buffs });
   combat.entangle = (victim, buff, by) => void entangle.give(victim, buff, by);
-  const riding = new Riding({ world, game, records, tribes, refresh: (rec) => refreshBody(rec), tangled: (rec) => entangle.tangled(rec) });
+  const riding = new Riding({ world, game, records, tribes, rigs: opts.rigs, refresh: (rec) => refreshBody(rec), tangled: (rec) => entangle.tangled(rec) });
   // A saddle stays on while anyone sits on it, steering or not.
   taming.ridden = (e) => riding.occupied(e);
   // An unowned car is anyone's to take, and a tribe's own cars are its members'. On PvP another tribe's car
@@ -558,7 +562,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (victim && car.team !== 0 && !tribes.may(victim, car.team)) return true;
     return !victim || kind?.type !== "species" || kind.class !== "survivor" || tribes.may(me, victim.team);
   };
-  const urban = new Urban({ world, game, records, items, creatures, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec), damage: (rec, points, by) => survival.hurt(rec, points, by), collisionDamage: (rec, points, by) => combat.vehicleHurt(rec, points, by) });
+  const trees = harvest ? new VehicleTrees(world, harvest) : null;
+  if (trees) game.vehicleStep = trees.step;
+  const urban = new Urban({ world, game, records, items, creatures, vehicleStep: game.vehicleStep, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec), damage: (rec, points, by) => survival.hurt(rec, points, by), collisionDamage: (rec, points, by) => combat.vehicleHurt(rec, points, by) });
   const vehicles = new VehicleService({ world, game, records, items, survival, urban,
     may: (actor, vehicle) => urbanMay(actor, vehicle, null),
     spawn: (kind, x, z, team, yaw, start) => parkVehicle(kind, x, z, team, yaw, "crafted", start),
@@ -571,6 +577,25 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   game.onVehicleStep = e => urban.impact(e);
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
+    controls: (e, proxy) => {
+      const def = reg.vehicle[world.ents.kind[e]!];
+      const c = sessionOf(urban.riderOf(e)?.pid ?? world.ents.pid[e]!);
+      proxy.tamed = world.ents.team[e] !== 0;
+      if (c) {
+        const quiet = world.tick - c.inputAt > INPUT_HOLD_TICKS;
+        proxy.native = true; proxy.pilot = !quiet; proxy.tamed = true;
+        proxy.moveX = quiet ? 0 : c.heldX; proxy.moveZ = quiet ? 0 : c.heldZ;
+        proxy.yaw = c.heldYaw; proxy.pitch = c.heldPitch;
+        proxy.buttons = quiet && def ? isRotorVehicle(def) ? 0 : BTN_JUMP : c.heldButtons;
+      } else if (def) {
+        proxy.native = true;
+        proxy.buttons = isWheelVehicle(def) && !urban.recoveryCoasting(e) ? BTN_JUMP : 0;
+      } else if (proxy.body.mode === MODE_WALK) {
+        proxy.native = true;
+        proxy.moveZ = creatures.mind.move[e]!; proxy.yaw = creatures.mind.look[e]!;
+        proxy.pitch = creatures.mind.pitch[e]!; proxy.buttons = creatures.mind.buttons[e]!;
+      }
+    },
     boarding: (actor, vehicle) => urban.boarding(actor, vehicle),
     anchored: (e, opposing) => {
       const vehicle = records.byPid.get(world.ents.pid[e]!);
@@ -1165,6 +1190,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     harvest?.sync(c);
     tactical.sync(c);
   };
+  game.contactProxies = (c, out) => { if (c.drive >= 0) urban.contacts?.proxies(c.drive, out); };
   const corpseReplication = new CorpseReplication(game, corpses);
   game.onSnapshot = (c, view) => corpseReplication.sync(c, view);
   game.handle(CMD_CORPSE, (c, r) => corpseReplication.request(c, r));

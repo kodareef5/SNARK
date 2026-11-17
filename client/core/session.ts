@@ -1,12 +1,16 @@
 // One client's connection, with no DOM, clock or socket. The shell or a test supplies a Connection and calls update().
 // It runs ahead of the server so input T arrives before tick T, and steers its tick clock to keep the reported margin small and positive.
 
+import { PredictedTrees } from "./vehicle-trees.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { deriveRegistry, parseTuning } from "../../shared/content/tuning.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, TICK_RATE, YAW_UNITS, chunkAt, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
-import { handleIndex } from "../../shared/ids.ts";
+import { handleIndex, makeHandle } from "../../shared/ids.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { BitReader, BitWriter, Named } from "../../shared/net/codec.ts";
+import { ContactSnapshot, readContacts } from "../../shared/net/contact.ts";
+import { VehiclePrediction } from "./vehicle-prediction.ts";
+import { VehicleCorrection } from "./vehicle-correction.ts";
 import { newerCorpseMotion, readCorpseMotion, type CorpseMotion } from "../../shared/net/corpse.ts";
 import { CMD_CORPSE, S_CORPSE } from "../../shared/net/protocol.ts";
 import {
@@ -443,6 +447,9 @@ export class ClientSession {
   readonly buffs: { buff: number; until: number }[] = [];
   /** Predicted shots of its own body, oldest first. Shots.absorb empties it. */
   readonly fired: LocalShot[] = [];
+  /** Presentation-time carrier, current own pose. Installed by App; false retains the bootstrap capsule fallback. */
+  shotOrigin: ((out: Float64Array, tick: number, yaw: number, pitch: number) => boolean) | null = null;
+  private readonly shotEye = new Float64Array(3);
   private firedTick = 0;
   /** Oldest first. Shots.absorb takes the shots and blasts, then Feedback.absorb empties it. */
   readonly events: CombatEvent[] = [];
@@ -489,12 +496,15 @@ export class ClientSession {
   readonly progress = { xp: 0, level: 1, statPoints: 0, engramPoints: 0, engrams: [] as number[], jobs: [] as { item: number; left: number; doneAt: number }[], version: 0 };
   /** Resource nodes around the body, filled from the map minus those the server reports used up. */
   nodeField: NodeField | null = null;
+  private vehicleTrees: PredictedTrees | null = null;
+  private treeDriver = 0;
   private nodeChunk = -1;
   private nodeRadius = NODE_RADIUS;
   /** The chunks the near node field holds for the body, and the ground's changes when they were chosen. */
   private nodeHeld: number[] = [];
   private nodeSeen = -1;
   private readonly nodeGone = new Map<number, number[]>();
+  private readonly nodeCrushed = new Map<number, number[]>();
   /** Chunks whose used-up nodes were told, for the far nodes. */
   private nodeChanges: NodeChanges | null = null;
   /** Bodies the server said died, by id, and the ids one snapshot said so of. */
@@ -506,8 +516,8 @@ export class ClientSession {
    * none), where, its health before and after, and for a removal its GONE_ cause (else -1). For sound only.
    */
   onStructure: ((was: number, kind: number, x: number, y: number, z: number, hpWas: number, hp: number, cause: number) => void) | null = null;
-  /** Told of each node used up (true) or grown back (false) in a chunk whose nodes were known before. For sound only. */
-  onNode: ((chunk: number, index: number, used: boolean) => void) | null = null;
+  /** A witnessed depletion/regrowth in a known chunk. Crushed trees leave no stump; initial join state emits no effects. */
+  onNode: ((chunk: number, index: number, used: boolean, crushed: boolean) => void) | null = null;
   /** Predicted local body after the latest simulated tick; while its ground is not held, the body the server last told. */
   readonly own = new Body();
   /** The ground within PREDICTED_REACH of the body is the map's own and its nodes held, so the body is predicted on it. */
@@ -543,6 +553,10 @@ export class ClientSession {
   smoothX = 0;
   smoothY = 0;
   smoothZ = 0;
+  readonly vehicleCorrection = new VehicleCorrection();
+  vehicleContacts: VehiclePrediction | null = null;
+  private readonly contactSnapshot = new ContactSnapshot();
+  private readonly contactBefore = new Body();
 
   private readonly conn: Connection;
   private readonly opts: SessionOptions;
@@ -699,6 +713,8 @@ export class ClientSession {
     this.tickClock += ticks * this.dilation;
     this.renderClock += ticks;
     this.followJitter(ticks);
+    this.vehicleCorrection.update(dt);
+    this.vehicleContacts?.update(dt);
     if (this.smoothX !== 0 || this.smoothY !== 0 || this.smoothZ !== 0) {
       const keep = Math.exp(-dt / SMOOTH_MS);
       this.smoothX *= keep;
@@ -807,12 +823,13 @@ export class ClientSession {
       out.on[n] = b.on[j]!;
       for (let q = 0; q < 6; q++) out.colors[n * 6 + q] = b.colors[j * 6 + q]!;
       out.team[n] = b.team[j]!;
-      out.seat[n] = b.seat[j]!;
-      out.seatSlot[n] = b.seatSlot[j]!;
-      out.seatGen[n] = b.seatGen[j]!;
+
       out.span[n] = b.span[j]!;
       out.grown[n] = b.grown[j]!;
       const both = a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j];
+      const sameSeat = both && a!.seat[i] === b.seat[j] && a!.seatGen[i] === b.seatGen[j] && a!.seatSlot[i] === b.seatSlot[j];
+      const attachment = both && k < .5 ? a! : b, attachmentRow = attachment === a ? i : j;
+      out.seat[n] = attachment.seat[attachmentRow]!; out.seatSlot[n] = attachment.seatSlot[attachmentRow]!; out.seatGen[n] = attachment.seatGen[attachmentRow]!;
       const vehicle = this.registry.vehicle[b.kind[j]!];
       if (vehicle || hasVehicleParts(b, j) || (both && hasVehicleParts(a!, i))) {
         this.vehicleColumns(out, n, b, j, both ? a : null, i, k, vehicle?.movement);
@@ -821,7 +838,7 @@ export class ClientSession {
         noVehicle(out, n);
         out.bare[n] = 1;
       }
-      if (both) {
+      if (both && sameSeat) {
         out.x[n] = dequantX(a!.qx[i]! + (b.qx[j]! - a!.qx[i]!) * k);
         out.y[n] = dequantY(a!.qy[i]! + (b.qy[j]! - a!.qy[i]!) * k);
         out.z[n] = dequantX(a!.qz[i]! + (b.qz[j]! - a!.qz[i]!) * k);
@@ -833,13 +850,14 @@ export class ClientSession {
         out.anim[n] = k < 0.5 ? a!.anim[i]! : b.anim[j]!;
         out.cue[n] = k < 0.5 ? a!.cue[i]! : b.cue[j]!;
       } else {
-        out.anim[n] = b.anim[j]!;
-        out.cue[n] = b.cue[j]!;
-        out.x[n] = dequantX(b.qx[j]!);
-        out.y[n] = dequantY(b.qy[j]!);
-        out.z[n] = dequantX(b.qz[j]!);
-        out.yaw[n] = (b.yaw[j]! * TAU) / 1024;
+        out.anim[n] = attachment.anim[attachmentRow]!;
+        out.cue[n] = attachment.cue[attachmentRow]!;
+        out.x[n] = dequantX(attachment.qx[attachmentRow]!);
+        out.y[n] = dequantY(attachment.qy[attachmentRow]!);
+        out.z[n] = dequantX(attachment.qz[attachmentRow]!);
+        out.yaw[n] = (attachment.yaw[attachmentRow]! * TAU) / 1024;
       }
+      if (this.predicting && this.driving >= 0 && this.registry.vehicle[this.own.kind]) this.vehicleContacts?.draw(out, n, Math.max(0, Math.min(1, this.tickClock - this.simTick)), this.simTick);
     }
   }
 
@@ -954,7 +972,12 @@ export class ClientSession {
     const buttons = inp.buttons[i]!;
     // The body steps with the move parameters of the kind the server last sent: its own species, or its mount's once tamed.
     const vehicle = this.registry.vehicle[this.own.kind];
-    if (vehicle) stepVehicleBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, TICK_DT, inp.yaw[i]!, pilot);
+    if (vehicle) {
+      this.contactBefore.copy(this.own);
+      this.vehicleTrees?.begin(t, this.treeDriver);
+      stepVehicleBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, TICK_DT, inp.yaw[i]!, pilot, this.vehicleTrees ?? undefined);
+      this.vehicleContacts?.step(t, this.contactBefore, this.own, vehicle);
+    }
     // Any vehicle seat slot other than 0 holds the body still, as the server does (server/game.ts).
     else if (this.own.seatSlot === 0) stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.tamedMove[this.own.kind] ?? this.move!, TICK_DT);
     else this.own.yaw = inp.yaw[i]!;
@@ -985,7 +1008,12 @@ export class ClientSession {
       const ammo = slot >= 0 ? inv!.ammo[slot]! : 0;
       // It leaves where the server will send it: the look with its kick, sway and cone, from the same body and seed.
       aimShot(this.own, buttons, w, this.registry.tamedMove[this.own.kind] ?? this.move!, inp.yaw[i]!, inp.pitch[i]!, scopeFitted(this.registry, inv, slot), this.ownHandle, t);
-      if (ammo !== 0 && this.fired.length < 16) this.fired.push({ x: this.own.x, y: this.own.y + stanceEye(this.move!, this.own.stance), z: this.own.z, yaw: shotAim.yaw, pitch: shotAim.pitch, cone: shotAim.cone, seed: aimSeed(this.ownHandle, t), draw: actionOut.draw, ammo, weapon: inv!.item[slot]! });
+      if (ammo !== 0 && this.fired.length < 16) {
+        const eye = this.shotEye;
+        eye[0] = this.own.x; eye[1] = this.own.y + stanceEye(this.move!, this.own.stance); eye[2] = this.own.z;
+        this.shotOrigin?.(eye, t, inp.yaw[i]! * TAU / 65536, inp.pitch[i]! * Math.PI / 32768);
+        this.fired.push({ x: eye[0]!, y: eye[1]!, z: eye[2]!, yaw: shotAim.yaw, pitch: shotAim.pitch, cone: shotAim.cone, seed: aimSeed(this.ownHandle, t), draw: actionOut.draw, ammo, weapon: inv!.item[slot]! });
+      }
     }
     this.bodies[t & (HISTORY - 1)]!.copy(this.own);
     this.bodyTick[t & (HISTORY - 1)] = t;
@@ -1078,20 +1106,23 @@ export class ClientSession {
     r.u32();
     const count = r.u16();
     const gone: number[] = [];
-    for (let k = 0; k < count; k++) gone.push(r.u8());
+    const crushed: number[] = [];
+    for (let k = 0; k < count; k++) { const slot = r.u8(); gone.push(slot); if (r.bool()) crushed.push(slot); }
     const field = this.nodeField;
     if (r.overflow || !field) return;
     const known = this.nodeGone.has(chunk);
     const before = this.nodeGone.get(chunk) ?? [];
     this.nodeGone.set(chunk, gone);
+    this.nodeCrushed.set(chunk, crushed);
     for (const i of before) if (!gone.includes(i)) {
       field.set(chunk, i, true);
-      if (known) this.onNode?.(chunk, i, false);
+      if (known) this.onNode?.(chunk, i, false, false);
     }
     for (const i of gone) if (!before.includes(i)) {
-      field.set(chunk, i, false);
-      if (known) this.onNode?.(chunk, i, true);
+      field.set(chunk, i, false, crushed.includes(i));
+      if (known) this.onNode?.(chunk, i, true, crushed.includes(i));
     }
+    this.vehicleTrees?.confirm(chunk, gone);
     this.nodeChanges?.touch(chunk);
   }
 
@@ -1122,7 +1153,7 @@ export class ClientSession {
       for (let x = Math.max(0, cx - r); x <= Math.min(dims.chunksX - 1, cx + r); x++) {
         const c = z * dims.chunksX + x;
         if (hf.exact[c] === 0) continue;
-        if (!this.nodeHeld.includes(c)) field.retain(c, 0, 1, gone);
+        if (!this.nodeHeld.includes(c)) field.retain(c, 0, 1, gone, undefined, (chunk, index) => this.nodeCrushed.get(chunk)?.includes(index) ?? false);
         held.push(c);
       }
     }
@@ -1434,6 +1465,7 @@ export class ClientSession {
     this.motdSeconds = motdSeconds;
     const source = this.opts.nodes?.(hf, reg) ?? null;
     this.nodeField = source ? new NodeField(dims, reg, source) : null;
+    this.nodeGone.clear(); this.nodeCrushed.clear();
     [this.nodeChunk, this.nodeSeen, this.nodeHeld] = [-1, -1, []];
     this.whole = new Uint8Array(dims.chunksX * dims.chunksZ);
     this.staticKinds = fills && this.opts.statics ? staticKinds(this.opts.statics, reg) : null;
@@ -1444,7 +1476,9 @@ export class ClientSession {
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges!, city: () => this.world?.city?.statics ?? this.nodeCity(), ground: hf } } : {};
     // The file's dims, which say where the map sits on the lattice as the welcome's do not.
     this.world = { mapId, dims: hf.dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...(reg.motion.some((t) => t !== null) ? { motion: this.motionSource } : {}), ...(this.opts.landmarks?.length ? { landmarks: this.opts.landmarks } : {}) };
+    this.vehicleTrees = field ? new PredictedTrees(this.world, reg, field) : null;
     this.startCity(this.arrived);
+    this.vehicleContacts = new VehiclePrediction(this.world, reg);
     this.recenterNodes();
     this.move = move;
     this.ownPrev.copy(this.own);
@@ -1491,6 +1525,7 @@ export class ClientSession {
     const sb = this.serverBody;
     readBody(r, sb);
     if (r.overflow || tick <= this.latestSnapshot) return;
+    if (!readContacts(r, this.contactSnapshot, tick)) { this.stats.undecodable++; return; }
 
     const base = age > 0 ? this.views.find(tick - age) : null;
     if (age > 0 && !base) {
@@ -1517,6 +1552,8 @@ export class ClientSession {
     this.needFull = false;
     this.sessionState = state;
     this.driving = driving;
+    this.treeDriver = 0;
+    for (let i = 0; i < next.count; i++) if (next.id[i] === driving) { this.treeDriver = makeHandle(driving, next.gen[i]!); break; }
     this.stats.snapshots++;
     // The inputs sent again are ones the server has, so this says only which snapshot came.
     if (this.sentInput > 0 && tick - this.sentAck >= QUIET_TICKS) this.sendInputs(this.sentInput, 1);
@@ -1582,17 +1619,25 @@ export class ClientSession {
       }
     }
 
+    const discontinuity = this.vehicleContacts?.accept(this.contactSnapshot);
     this.reconcile(tick, sb);
+    if (discontinuity) {
+      this.smoothX = this.smoothY = this.smoothZ = 0;
+      this.vehicleCorrection.reset();
+    }
+    this.vehicleContacts?.finishReplay();
   }
 
   /** On a mismatch with the body predicted for `tick`, rewinds and replays. */
   private reconcile(tick: number, sb: Body): void {
+    this.vehicleTrees?.acknowledge(tick);
     const passenger = this.driving < 0 && sb.seatSlot !== 0 && sb.seat > 0;
     if (tick >= this.simTick) {
       // The server is at or past the prediction (join, stall), so adopt its state.
       this.prediction.adopt(tick, this.simTick);
       this.own.copy(sb);
       this.ownPrev.copy(sb);
+      this.vehicleCorrection.reset();
       // This is the state AFTER tick, so no later update may step tick (or an earlier one) again.
       // Keep the input clock's elapsed time: moving its clock here would add the stalled interval twice.
       this.simTick = tick;
@@ -1606,6 +1651,7 @@ export class ClientSession {
       this.own.copy(sb);
       this.ownPrev.copy(sb);
       this.smoothX = this.smoothY = this.smoothZ = 0;
+      this.vehicleCorrection.reset();
       return;
     }
     const slot = tick & (HISTORY - 1);
@@ -1621,7 +1667,9 @@ export class ClientSession {
       compared.grounded = sb.grounded;
     }
     const matches = predicted && compared.equals(sb);
-    if (matches && !passenger) return;
+    // Even an exact own-body baseline can have newer target facts that change the future replay.
+    const replayContacts = this.registry.vehicle[sb.kind] && this.vehicleContacts?.needsReplay;
+    if (matches && !passenger && !replayContacts) return;
     if (predicted && !matches && this.prediction.enabled) {
       const i = tick & this.inputs.mask;
       this.prediction.record(tick, this.simTick, this.stats.margin, this.driving, compared, sb,
@@ -1640,11 +1688,17 @@ export class ClientSession {
     if (this.simTick - tick >= HISTORY) {
       this.own.copy(sb);
       this.ownPrev.copy(sb);
+      this.smoothX = this.smoothY = this.smoothZ = 0;
+      this.vehicleCorrection.reset();
       return;
     }
-    const wasX = this.own.x;
-    const wasY = this.own.y;
-    const wasZ = this.own.z;
+    const vehicle = !!this.registry.vehicle[this.own.kind];
+    const alpha = vehicle ? this.alpha : 1;
+    const wasX = this.ownPrev.x + (this.own.x - this.ownPrev.x) * alpha;
+    const wasY = this.ownPrev.y + (this.own.y - this.ownPrev.y) * alpha;
+    const wasZ = this.ownPrev.z + (this.own.z - this.ownPrev.z) * alpha;
+    // Replay can replace both render endpoints. Preserve the actual interpolated pose visible this frame.
+    this.vehicleCorrection.capture(this.own, this.ownPrev, alpha);
     this.own.copy(sb);
     this.bodies[slot]!.copy(sb);
     this.bodyTick[slot] = tick;
@@ -1671,16 +1725,17 @@ export class ClientSession {
     }
     // Replaying a seated body only steps look/action/aim. Its spatial state is the latest authoritative pin;
     // rendering attaches it to the interpolated host, so it needs no independent correction fade.
-    if (passenger || changed) { this.smoothX = this.smoothY = this.smoothZ = 0; return; }
+    if (passenger || changed) { this.smoothX = this.smoothY = this.smoothZ = 0; this.vehicleCorrection.reset(); return; }
     // Keep drawing from where the body appeared to be, and let that fade. A large jump (a teleport) is shown at once.
-    const dx = wasX - this.own.x + this.smoothX;
-    const dy = wasY - this.own.y + this.smoothY;
-    const dz = wasZ - this.own.z + this.smoothZ;
+    const dx = wasX - (this.ownPrev.x + (this.own.x - this.ownPrev.x) * alpha) + this.smoothX;
+    const dy = wasY - (this.ownPrev.y + (this.own.y - this.ownPrev.y) * alpha) + this.smoothY;
+    const dz = wasZ - (this.ownPrev.z + (this.own.z - this.ownPrev.z) * alpha) + this.smoothZ;
     if (predicted && dx * dx + dy * dy + dz * dz < SMOOTH_LIMIT * SMOOTH_LIMIT) {
       this.smoothX = dx;
       this.smoothY = dy;
       this.smoothZ = dz;
     } else this.smoothX = this.smoothY = this.smoothZ = 0;
+    this.vehicleCorrection.reconcile(this.own, vehicle && predicted && dx * dx + dy * dy + dz * dz < SMOOTH_LIMIT * SMOOTH_LIMIT, this.ownPrev, alpha);
   }
 
   private chunk(r: BitReader): void {
