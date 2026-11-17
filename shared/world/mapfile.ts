@@ -1385,7 +1385,7 @@ function readOverview(head: MapHead, sq: Square, s: In): OverviewPiece {
   }
   let water: OverviewPiece["water"] = null;
   if (head.water) {
-    const per = (CHUNK_SIZE / head.water.cell) ** 2;
+    const per = (CHUNK_SIZE / head.water.cell) * (CHUNK_SIZE / head.water.cell);
     const n = s.u16();
     const held = new Uint32Array(n);
     const squares = new Uint16Array(n * per);
@@ -1593,7 +1593,7 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
   head.layers.forEach((rule, k) => rule.type === 1 && (nodes[k] = listedOf(dims, rule.kinds, k, grounds)));
   let mapWater: MapWater | null = null;
   if (head.water) {
-    const per = (CHUNK_SIZE / head.water.cell) ** 2;
+    const per = (CHUNK_SIZE / head.water.cell) * (CHUNK_SIZE / head.water.cell);
     const held = water.flatMap((w) => [...w.chunks].map((c, k) => [c, w.squares.subarray(k * per, k * per + per)] as const)).sort((a, b) => a[0] - b[0]);
     const squares = new Uint16Array(held.length * per);
     held.forEach(([, s], k) => squares.set(s, k * per));
