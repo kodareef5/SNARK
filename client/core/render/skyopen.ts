@@ -68,22 +68,29 @@ export interface OpenMap {
 
 let lines = new Float64Array(0);
 
+/** What the sweeps add up a cell: the lines hidden over it, how far over in all, and how many more lie toward +x and +z. */
+interface Sums {
+  readonly hidden: Uint8Array;
+  readonly over: Float32Array;
+  readonly sideX: Int8Array;
+  readonly sideZ: Int8Array;
+}
+
 /**
  * Sweeps lines along the unit way (dx, dz) from `cast`, the tops of the cells buildings stand in and 0 for the rest,
- * over `top`, `w` by `h` cells, one set for each of `rises`, the units of the heights a line climbs a cell across the
- * ground. At each cell a line passes over by more than `slack` units it adds `weight` to `hidden`, `weight` times how far
- * over to `over`, and `weight` toward the way's side along x and z to `sideX` and `sideZ`. A cell takes the line nearest
- * its middle before that line meets the cell itself, as farshadow.ts `sweep` does.
+ * over `top`, `w` by `h` cells, one set for each of `drops`, the units of the heights a line climbs a cell across the
+ * ground, into `sums` at each cell a line passes over by more than `slack` units. A cell takes the line nearest its
+ * middle before that line meets the cell itself, as farshadow.ts `sweep` does.
  */
-function sweepSky(top: Uint16Array, cast: Uint16Array, w: number, h: number, dx: number, dz: number, rises: readonly number[], slack: number, weight: number, sums: { hidden: Float32Array; over: Float32Array; sideX: Float32Array; sideZ: Float32Array }): void {
+function sweepSky(top: Uint16Array, cast: Uint16Array, w: number, h: number, dx: number, dz: number, rises: readonly number[], slack: number, sums: Sums): void {
   const { hidden, over, sideX, sideZ } = sums;
   const alongX = Math.abs(dx) >= Math.abs(dz);
   const a = alongX ? dx : dz, b = alongX ? dz : dx;
   const major = alongX ? w : h, minor = alongX ? h : w;
   const slope = b / a;
   const k = rises.length;
-  const drops = rises.map((r) => r / Math.abs(a));
-  const wx = Math.sign(dx) * weight, wz = Math.sign(dz) * weight;
+  const drops = Float64Array.from(rises, (r) => r / Math.abs(a));
+  const sx = Math.sign(dx), sz = Math.sign(dz);
   const di = alongX ? 1 : w, dj = alongX ? w : 1;
   const span = (minor + 2 * major) * k;
   if (lines.length < span) lines = new Float64Array(span);
@@ -97,10 +104,10 @@ function sweepSky(top: Uint16Array, cast: Uint16Array, w: number, h: number, dx:
       for (let e = 0, at = (j + q) * k; e < k; e++, at++) {
         const line = lines[at]!;
         if (line > t + slack) {
-          hidden[c]! += weight;
-          over[c]! += weight * (line - t);
-          sideX[c]! += wx;
-          sideZ[c]! += wz;
+          hidden[c]!++;
+          over[c]! += line - t;
+          sideX[c]! += sx;
+          sideZ[c]! += sz;
         }
         lines[at] = (line > up ? line : up) - drops[e]!;
       }
@@ -143,42 +150,40 @@ export function openMeasure(solid: Uint16Array, ground: Uint16Array, nx: number,
   }
   const standing = Uint8Array.from(top, (t, c) => ((t - floor[c]!) * unit > SOLID_RISE ? 1 : 0));
   const cast = Uint16Array.from(top, (t, c) => (standing[c] ? t : 0));
-  const sums = { hidden: new Float32Array(w * h), over: new Float32Array(w * h), sideX: new Float32Array(w * h), sideZ: new Float32Array(w * h) };
-  const { hidden, over, sideX, sideZ } = sums;
+  const sums: Sums = { hidden: new Uint8Array(w * h), over: new Float32Array(w * h), sideX: new Int8Array(w * h), sideZ: new Int8Array(w * h) };
   const weight = 1 / (OPEN_WAYS * OPEN_HEIGHTS);
   const rises = Array.from({ length: OPEN_HEIGHTS }, (_, e) => (cell * k * Math.tan(Math.asin((e + 0.5) / OPEN_HEIGHTS))) / unit);
   for (let r = 0; r < OPEN_WAYS; r++) {
     const way = ((r + 0.5) / OPEN_WAYS) * 2 * Math.PI;
-    sweepSky(top, cast, w, h, Math.cos(way), Math.sin(way), rises, OPEN_SLACK / unit, weight, sums);
+    sweepSky(top, cast, w, h, Math.cos(way), Math.sin(way), rises, OPEN_SLACK / unit, sums);
   }
-  // Open ground: the share hidden at the ground, and how fast it falls with the square of height, so that its area over
-  // height is the swept one: share (1 - (y / top)^2) has the area 2/3 share top.
+  // Open ground: the share hidden at the ground, how much more toward +x and +z, and how fast it falls with the square
+  // of height, so that its area over height is the swept one: share (1 - (y / top)^2) has the area 2/3 share top.
   const share = new Float32Array(w * h), reach = new Float32Array(w * h);
+  const sideX = new Float32Array(w * h), sideZ = new Float32Array(w * h);
   const queue = new Int32Array(w * h);
   let tail = 0;
   for (let c = 0; c < w * h; c++) {
-    if (standing[c]) {
-      sideX[c] = sideZ[c] = 0;
-      continue;
-    }
-    share[c] = Math.min(1, hidden[c]!);
-    reach[c] = over[c]! > 0 ? (1.5 * over[c]! * unit) / share[c]! : 0;
+    if (standing[c]) continue;
+    share[c] = Math.min(1, sums.hidden[c]! * weight);
+    sideX[c] = sums.sideX[c]! * weight;
+    sideZ[c] = sums.sideZ[c]! * weight;
+    reach[c] = sums.over[c]! > 0 ? (1.5 * sums.over[c]! * weight * unit) / share[c]! : 0;
     queue[tail++] = c;
   }
   // A building's cells take their ground's shares from the cells round them, nearest first, and fall from that to their
   // roof's own share at their top.
   const filled = Uint8Array.from(standing, (s) => 1 - s);
+  const steps = [-1, 1, -w, w];
   for (let head = 0; head < tail; head++) {
     const c = queue[head]!;
-    const i = c % w, j = (c - i) / w;
-    for (const [ni, nj] of [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1]] as const) {
-      if (ni < 0 || nj < 0 || ni >= w || nj >= h) continue;
-      const n = nj * w + ni;
-      if (filled[n] !== 0) continue;
+    for (let s = 0; s < 4; s++) {
+      const n = c + steps[s]!;
+      if ((s < 2 && Math.floor(n / w) !== Math.floor(c / w)) || n < 0 || n >= w * h || filled[n] !== 0) continue;
       let count = 0;
-      for (const [mi, mj] of [[ni - 1, nj], [ni + 1, nj], [ni, nj - 1], [ni, nj + 1]] as const) {
-        const m = mj * w + mi;
-        if (mi < 0 || mj < 0 || mi >= w || mj >= h || filled[m] === 0) continue;
+      for (let t = 0; t < 4; t++) {
+        const m = n + steps[t]!;
+        if ((t < 2 && Math.floor(m / w) !== Math.floor(n / w)) || m < 0 || m >= w * h || filled[m] === 0) continue;
         share[n]! += share[m]!;
         sideX[n]! += sideX[m]!;
         sideZ[n]! += sideZ[m]!;
@@ -197,7 +202,7 @@ export function openMeasure(solid: Uint16Array, ground: Uint16Array, nx: number,
   const bytes = new Uint8Array(w * h * OPEN_BYTES);
   for (let c = 0; c < w * h; c++) {
     const rise = standing[c] ? (top[c]! - floor[c]!) * unit : reach[c]!;
-    const bend = rise > 0 ? Math.max(0, share[c]! - (standing[c] ? Math.min(1, hidden[c]!) : 0)) / (rise * rise) : 0;
+    const bend = rise > 0 ? Math.max(0, share[c]! - (standing[c] ? Math.min(1, sums.hidden[c]! * weight) : 0)) / (rise * rise) : 0;
     bytes[c * 4] = Math.round(share[c]! * 255);
     bytes[c * 4 + 1] = Math.max(1, Math.round(Math.sqrt(Math.sqrt(Math.min(1, bend / BEND_MOST))) * 255));
     bytes[c * 4 + 2] = SIDE_ZERO + Math.round(sideX[c]! * SIDE_STEPS);
