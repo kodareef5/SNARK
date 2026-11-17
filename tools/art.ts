@@ -1,6 +1,7 @@
 // Builds the assets under assets/source, one folder each. See assets/source/README.md.
 //
 //   bun run art -- core:raptor            build it: Blender, conversion, the check and the review sheet
+//   bun run art -- landmarks:koru --no-sheet  the same build and checks, without the optional per-piece montage
 //   bun run art -- --all                  every asset
 //   bun run art -- core:raptor --check    measure the pack it has, and the pictures its materials name. No Blender.
 //   bun run art -- core:raptor --sheet    draw the review sheet of the pack it has. No Blender.
@@ -25,6 +26,7 @@ const VALUED = ["source", "out"];
 /** Returns the number of assets with faults. `say` takes what it has to tell. */
 export async function main(args: readonly string[], say: (line: string) => void = console.log): Promise<number> {
   const has = (name: string): boolean => args.includes(`--${name}`);
+  if (has("no-sheet") && has("sheet")) throw new Error("--sheet and --no-sheet cannot be used together");
   const value = (name: string): string | undefined => (has(name) ? args[args.indexOf(`--${name}`) + 1] : undefined);
   const source = resolve(value("source") ?? SOURCE);
   const outDir = resolve(value("out") ?? "artifacts/art");
@@ -36,7 +38,7 @@ export async function main(args: readonly string[], say: (line: string) => void 
     return asset;
   });
   if (chosen.length === 0) {
-    say(`usage: bun run art -- <id>... | --all  [--check] [--sheet] [--repack [--levels]] [--source DIR] [--out DIR]\n${found.map((a) => `  ${a.id.padEnd(20)} ${a.spec.kind.padEnd(13)} ${relative(process.cwd(), a.dir)}${existsSync(a.file) ? "" : "  (not built yet)"}`).join("\n")}`);
+    say(`usage: bun run art -- <id>... | --all  [--check] [--sheet | --no-sheet] [--repack [--levels]] [--source DIR] [--out DIR]\n${found.map((a) => `  ${a.id.padEnd(20)} ${a.spec.kind.padEnd(13)} ${relative(process.cwd(), a.dir)}${existsSync(a.file) ? "" : "  (not built yet)"}`).join("\n")}`);
     return 0;
   }
 
@@ -74,7 +76,7 @@ export async function main(args: readonly string[], say: (line: string) => void 
     const report = checkAsset(asset, pack, !only || has("check"), found);
     report.faults.unshift(...faults);
     if (!only || has("check")) say(reportLines(report).join("\n"));
-    if (!only || has("sheet")) sheet(asset, pack, report, outDir, say);
+    if ((!only || has("sheet")) && !has("no-sheet")) sheet(asset, pack, report, outDir, say);
     if (report.faults.length > 0) failed++;
   }
   return failed;

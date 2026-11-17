@@ -30,6 +30,7 @@ yet, and neither the game nor a test reads it until the pack is there.
 
 ```
 bun run art -- core:raptor            build it: Blender, conversion, the check, the review sheet
+bun run art -- landmarks:koru --no-sheet  build and check without the optional per-piece montage
 bun run art -- core:raptor --check    measure the pack it has. No Blender
 bun run art -- core:raptor --sheet    draw the sheet of the pack it has. No Blender
 bun run art -- --all                  every asset
