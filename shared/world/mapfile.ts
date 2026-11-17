@@ -1548,8 +1548,9 @@ export function* setStatics(dims: MapDims, t: MapStatics, piece: StaticsPiece, f
 }
 
 /**
- * The statics of a map from its sectors' pieces, given in the order of its head's table, a slice at a time: each chunk's
- * rows laid out from the pieces' counts, then each piece set in. Without `order` the map's order is not kept.
+ * The statics of a map from its sectors' pieces, given in the order of its head's table, a sector or a slice of one at a
+ * time: each chunk's rows laid out from the pieces' counts, then each piece set in. Without `order` the map's order is not
+ * kept.
  */
 export function* joinStatics(head: MapHead, pieces: readonly StaticsPiece[], order = true): Generator<void, MapStatics> {
   const chunks = chunkCount(head.dims);
@@ -1560,6 +1561,7 @@ export function* joinStatics(head: MapHead, pieces: readonly StaticsPiece[], ord
   for (const p of pieces) {
     yield* setStatics(head.dims, t, p, from);
     from += p.id.length;
+    yield;
   }
   return t;
 }

@@ -66,9 +66,11 @@ test("a page fetches a map's head, then its ground's parts six at once, which ma
   expect(get.asked.slice(0, 1 + head.parts.length - statics.length)).toEqual([`map/${head.name}`, ...head.parts.filter((p) => p.kind !== "statics").map((p) => `map/${p.name}`)]);
   expect(get.most).toBe(6);
   expect([ground.hash, ground.statics.length, ground.heights, ground.tint, ground.nodes, ground.water]).toEqual([whole.hash, 0, whole.heights, whole.tint, whole.nodes, whole.water]);
-  // Its statics, each sector's read and then set in a step at a time, without the map's order.
-  const t = await readStatics(rest, () => Promise.resolve());
-  expect(get.asked.slice(-statics.length)).toEqual(statics);
+  // Its statics, each sector's read and then set in a step at a time, without the map's order: its ten sectors, each smaller
+  // than a slice, are ten steps read and ten set.
+  let paused = 0;
+  const t = await readStatics(rest, () => (paused++, Promise.resolve()));
+  expect([get.asked.slice(-statics.length), paused]).toEqual([statics, 20]);
   expect([t.row.length, t.first, t.kind, t.x, t.y, t.z, t.yaw]).toEqual([0, whole.statics.first, whole.statics.kind, whole.statics.x, whole.statics.y, whole.statics.z, whole.statics.yaw]);
   // A program that reads a map whole gets its file back.
   expect(await fetchMapFile(mapServer(file), `map/${head.name}`)).toEqual(file);
@@ -94,8 +96,9 @@ test("a part that comes damaged, or as another's, or not at all, is refused with
   await expect(fetchMap(() => Promise.resolve(new Response(head2)), `map/${head.name}`)).rejects.toThrow(`map/${head.name}: map: its head is damaged`);
 });
 
-test("a page's statics read with a message to itself between steps are the same, a step for each slice of a sector's pieces read and set", async () => {
-  // Three slices of pieces and some in one sector: each slice is a step as it is read and as it is set in its chunks.
+test("a page's statics read with a message to itself between steps are the same, a step for each slice of a sector's pieces read and set and one after each sector", async () => {
+  // Three slices of pieces and some in one sector: each slice is a step as it is read and as it is set in its chunks, and
+  // the sector's end another each time.
   const statics = Array.from({ length: 100000 }, (_, i) => ({ kind: i % 3 === 0 ? "core:wall" : "core:floor", x: (i % 250) + 0.5, y: 33, z: Math.floor(i / 400) + 0.5, yaw: (i * 64) & 0xffff }));
   const file = writeMap(flatMap(4, { statics }));
   const whole = parseMap(file);
@@ -107,6 +110,6 @@ test("a page's statics read with a message to itself between steps are the same,
   const part = head.parts.find((p) => p.kind === "statics")!;
   const t = await readStatics(Promise.resolve({ head, parts: [{ part, bytes: file.subarray(part.at, part.at + part.length) }] }), () => (steps++, pause()));
   channel.port1.close();
-  expect([steps, posted]).toEqual([6, 6]);
+  expect([steps, posted]).toEqual([8, 8]);
   expect([t.first, t.kind, t.x, t.y, t.z, t.yaw]).toEqual([whole.statics.first, whole.statics.kind, whole.statics.x, whole.statics.y, whole.statics.z, whole.statics.yaw]);
 });

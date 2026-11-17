@@ -94,8 +94,8 @@ export async function fetchMap(get: Get, url: string): Promise<{ ground: MapFile
 }
 
 /**
- * The statics of a fetched map, each sector's read and then set in its chunks' rows a step at a time with `pause` between,
- * so frames go on.
+ * The statics of a fetched map, each sector's read and then set in its chunks' rows a step at a time, a sector or a slice of
+ * one a step, with `pause` between, so frames go on.
  */
 export async function readStatics(rest: Promise<FetchedStatics>, pause: () => Promise<void>): Promise<MapStatics> {
   const { head, parts } = await rest;
@@ -105,6 +105,7 @@ export async function readStatics(rest: Promise<FetchedStatics>, pause: () => Pr
     let step = steps.next();
     for (; !step.done; step = steps.next()) await pause();
     pieces.push(step.value as StaticsPiece);
+    await pause();
   }
   const steps = joinStatics(head, pieces, false);
   let step = steps.next();
