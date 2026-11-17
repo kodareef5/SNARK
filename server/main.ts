@@ -56,7 +56,7 @@ export interface ServerOptions {
   /** See `HostOptions.config` and `HostOptions.live`. */
   config?: Rules;
   live?: () => string | null;
-  /** Sees every request first, and answers it or returns null to pass it on. Only the device probe's server has one (tools/device.ts). */
+  /** Sees every request first, and answers it or returns null to pass it on. Only the device probe's and the map trip's servers have one (tools/device.ts, tools/map/trip.ts). */
   routes?: (req: Request, url: URL) => Response | Promise<Response> | null;
   /**
    * The address pages reach this server at from elsewhere, such as a tunnel's: told to the other servers of its cluster, whose
