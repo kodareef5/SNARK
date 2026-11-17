@@ -16,7 +16,7 @@ import { ZONE_COUNT } from "../anim/human.ts";
 import { DAMAGE_TYPES } from "../sim/damage.ts";
 import { lootFaults } from "../sim/loot.ts";
 import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../sim/weapon.ts";
-import { hullOf, hullTable, type HullDef } from "../world/convex.ts";
+import { hullFault, hullTable, type HullDef } from "../world/convex.ts";
 import type { PartTable } from "../world/structures.ts";
 import { defFaults, refFaults } from "./classes.ts";
 import { PIECE_ROLES, shapeHalf, type Def, type NodeShape, type PartPlacement, type RenameDef, type SpeciesDef, type StructureDef, type MotionFacet, type WeaponFacet } from "./defs.ts";
@@ -516,8 +516,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
         }
       }
       for (const h of [...(d.hulls ?? []), ...(d.look?.hulls ?? [])]) {
-        const made = hullOf(h);
-        if (typeof made === "string") errors.push(`${d.id}: ${made}`);
+        const fault = hullFault(h);
+        if (fault !== "") errors.push(`${d.id}: ${fault}`);
         if (shapeHalf([], [h]).some((v) => !(v <= MAX_STRUCTURE_HALF))) errors.push(`${d.id}: a convex part reaches further than ${MAX_STRUCTURE_HALF} m from the origin`);
       }
     } else if (d.type === "item") {
@@ -788,7 +788,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
   for (let i = 1; i < n; i++) {
     const d = defs[i]!;
     index.set(d.id, i);
-    hash = hashString(canonical(d), hash);
+    hash = hashCanonical(d, hash);
     partStart[i] = partBox.length / 6;
     if (d.type === "structure" || d.type === "node") {
       halfX[i] = d.half[0];
@@ -1225,4 +1225,35 @@ function canonical(v: unknown): string {
     return "{" + Object.keys(o).sort().map((k) => JSON.stringify(k) + ":" + canonical(o[k])).join(",") + "}";
   }
   return JSON.stringify(v);
+}
+
+const PLAIN_KEY = /^\w*$/;
+
+/** hashString(canonical(v), h), without the text: a map's landmarks write some 25 MB of it. */
+function hashCanonical(v: unknown, h: number, inList = false): number {
+  if (Array.isArray(v)) {
+    let numbers = true;
+    for (let i = 0; i < v.length && numbers; i++) numbers = typeof v[i] === "number";
+    // JSON writes a list of numbers as canonical does.
+    if (numbers) return hashString(JSON.stringify(v), h);
+    h = hashString("[", h);
+    for (let i = 0; i < v.length; i++) h = hashCanonical(v[i], i > 0 ? hashString(",", h) : h, true);
+    return hashString("]", h);
+  }
+  if (v !== null && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    h = hashString("{", h);
+    const keys = Object.keys(o).sort();
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i]!;
+      if (i > 0) h = hashString(",", h);
+      // A name of letters, digits and "_" is written in quotes as it is.
+      h = PLAIN_KEY.test(k) ? hashString('":', hashString(k, hashString('"', h))) : hashString(JSON.stringify(k) + ":", h);
+      h = hashCanonical(o[k], h);
+    }
+    return hashString("}", h);
+  }
+  // What JSON does not write, such as undefined, canonical leaves out of a list and writes as "undefined" in a field.
+  const s = JSON.stringify(v);
+  return s !== undefined ? hashString(s, h) : inList ? h : hashString("undefined", h);
 }

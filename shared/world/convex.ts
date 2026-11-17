@@ -36,41 +36,73 @@ export interface HullDef {
   readonly sixty?: boolean;
 }
 
-/** Where a corner written (a, y, b) is in the piece's own level frame at no turn, in metres. */
-export function hullPoint(c: readonly [number, number, number], sixty: boolean): [number, number, number] {
-  return sixty ? [c[0] + c[2] * 0.5, c[1], c[2] * 0.8660254037844386] : [c[0], c[1], c[2]];
+/** Where a corner written (a, y, b) is in the piece's own level frame at no turn, in metres, into `out`. */
+export function hullPoint(c: readonly [number, number, number], sixty: boolean, out: [number, number, number] = [0, 0, 0]): [number, number, number] {
+  out[0] = sixty ? c[0] + c[2] * 0.5 : c[0];
+  out[1] = c[1];
+  out[2] = sixty ? c[2] * 0.8660254037844386 : c[2];
+  return out;
 }
 
+// The part hullFault looked at last: its corners as hullPoint gives them, and each plane of its hull found (one at most for
+// every three corners) with the first three corners found on it, going round it, and its corners as bits. For a ring, each
+// corner's place along and across the face and which half round it is in.
+const EPS = 1e-9;
+const MOST_PLANES = (MAX_CORNERS * (MAX_CORNERS - 1) * (MAX_CORNERS - 2)) / 6;
+const workPoint = new Float64Array(3 * MAX_CORNERS);
+const onePoint: [number, number, number] = [0, 0, 0];
+const workPlane = new Float64Array(4 * MOST_PLANES);
+const workFace = new Uint8Array(3 * MOST_PLANES);
+const workOn = new Uint16Array(MOST_PLANES);
+let workCorners = 0;
+let workPlanes = 0;
+const ringAlong = new Float64Array(MAX_CORNERS);
+const ringAcross = new Float64Array(MAX_CORNERS);
+const ringHalf = new Uint8Array(MAX_CORNERS);
+const ringOn: number[] = [];
+let ringFirst = 0;
+const byTurn = (i: number, j: number): number => {
+  if (i === ringFirst) return -1;
+  if (j === ringFirst) return 1;
+  const h = ringHalf[i]! - ringHalf[j]!;
+  return h !== 0 ? h : ringAlong[j]! * ringAcross[i]! - ringAlong[i]! * ringAcross[j]!;
+};
+
 /**
- * The faces and edges of the hull of a part's corners, or a reason it is not a solid one. Each face is the first three corners
- * found on its plane; every corner must be on the hull. `rings` holds each face's every corner, in order round it.
+ * Why a part's corners are not a solid one, or "" if they are, with its hull found into the working arrays above. Each face
+ * is the first three corners found on its plane; every corner must be on the hull.
  */
-export function hullOf(def: HullDef): { faces: number[]; edges: number[]; rings: number[][] } | string {
+export function hullFault(def: HullDef): string {
   const n = def.corners.length;
   if (n < 4 || n > MAX_CORNERS) return `a part has 4 to ${MAX_CORNERS} corners`;
-  const p = def.corners.map((c) => hullPoint(c, def.sixty === true));
-  const planes: number[][] = [];
-  const faces: number[] = [];
-  const EPS = 1e-9;
+  const p = workPoint;
   for (let i = 0; i < n; i++) {
+    const c = hullPoint(def.corners[i]!, def.sixty === true, onePoint);
+    p[i * 3] = c[0];
+    p[i * 3 + 1] = c[1];
+    p[i * 3 + 2] = c[2];
+  }
+  const pl = workPlane;
+  let planes = 0;
+  for (let i = 0; i < n; i++) {
+    const ax = p[i * 3]!, ay = p[i * 3 + 1]!, az = p[i * 3 + 2]!;
     for (let j = i + 1; j < n; j++) {
+      const ux = p[j * 3]! - ax, uy = p[j * 3 + 1]! - ay, uz = p[j * 3 + 2]! - az;
       for (let k = j + 1; k < n; k++) {
-        const [a, b, c] = [p[i]!, p[j]!, p[k]!];
-        const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-        const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-        let nx = u[1]! * v[2]! - u[2]! * v[1]!;
-        let ny = u[2]! * v[0]! - u[0]! * v[2]!;
-        let nz = u[0]! * v[1]! - u[1]! * v[0]!;
+        const vx = p[k * 3]! - ax, vy = p[k * 3 + 1]! - ay, vz = p[k * 3 + 2]! - az;
+        let nx = uy * vz - uz * vy;
+        let ny = uz * vx - ux * vz;
+        let nz = ux * vy - uy * vx;
         const l = Math.sqrt(nx * nx + ny * ny + nz * nz);
         if (l < EPS) continue;
         nx /= l;
         ny /= l;
         nz /= l;
-        const d = nx * a[0] + ny * a[1] + nz * a[2];
+        const d = nx * ax + ny * ay + nz * az;
         let above = 0;
         let below = 0;
-        for (const q of p) {
-          const s = nx * q[0] + ny * q[1] + nz * q[2] - d;
+        for (let q = 0; q < n * 3 && (above === 0 || below === 0); q += 3) {
+          const s = nx * p[q]! + ny * p[q + 1]! + nz * p[q + 2]! - d;
           if (s > EPS) above++;
           else if (s < -EPS) below++;
         }
@@ -78,52 +110,98 @@ export function hullOf(def: HullDef): { faces: number[]; edges: number[]; rings:
         if (above === 0 && below === 0) return "a part's corners all lie in one plane";
         // Outward is away from the other corners.
         const flip = above > 0;
-        const plane = flip ? [-nx, -ny, -nz, -d] : [nx, ny, nz, d];
-        if (planes.some((q) => Math.abs(q[0]! - plane[0]!) < 1e-7 && Math.abs(q[1]! - plane[1]!) < 1e-7 && Math.abs(q[2]! - plane[2]!) < 1e-7 && Math.abs(q[3]! - plane[3]!) < 1e-7)) continue;
-        planes.push(plane);
-        faces.push(i, flip ? k : j, flip ? j : k);
+        const p0 = flip ? -nx : nx, p1 = flip ? -ny : ny, p2 = flip ? -nz : nz, p3 = flip ? -d : d;
+        let known = false;
+        for (let o = 0; o < planes * 4 && !known; o += 4) known = Math.abs(pl[o]! - p0) < 1e-7 && Math.abs(pl[o + 1]! - p1) < 1e-7 && Math.abs(pl[o + 2]! - p2) < 1e-7 && Math.abs(pl[o + 3]! - p3) < 1e-7;
+        if (known) continue;
+        pl[planes * 4] = p0;
+        pl[planes * 4 + 1] = p1;
+        pl[planes * 4 + 2] = p2;
+        pl[planes * 4 + 3] = p3;
+        workFace[planes * 3] = i;
+        workFace[planes * 3 + 1] = flip ? k : j;
+        workFace[planes * 3 + 2] = flip ? j : k;
+        planes++;
       }
     }
   }
-  if (faces.length / 3 > MAX_FACES) return "a part has too many faces";
-  const on = (plane: number[], q: number[]): boolean => Math.abs(plane[0]! * q[0]! + plane[1]! * q[1]! + plane[2]! * q[2]! - plane[3]!) < EPS;
-  for (const q of p) if (!planes.some((plane) => on(plane, q))) return "a corner is inside the part, not on it";
-  const edges: number[] = [];
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) if (planes.filter((plane) => on(plane, p[i]!) && on(plane, p[j]!)).length >= 2) edges.push(i, j);
+  if (planes > MAX_FACES) return "a part has too many faces";
+  let onAny = 0;
+  for (let f = 0, o = 0; f < planes; f++, o += 4) {
+    let on = 0;
+    for (let q = 0; q < n; q++) if (Math.abs(pl[o]! * p[q * 3]! + pl[o + 1]! * p[q * 3 + 1]! + pl[o + 2]! * p[q * 3 + 2]! - pl[o + 3]!) < EPS) on |= 1 << q;
+    workOn[f] = on;
+    onAny |= on;
   }
-  const rings = planes.map((plane, f) => ringOf(p, plane, faces.slice(f * 3, f * 3 + 3)));
-  return { faces, edges, rings };
+  if (onAny !== (1 << n) - 1) return "a corner is inside the part, not on it";
+  workCorners = n;
+  workPlanes = planes;
+  return "";
 }
 
 /**
- * The corners of `p` on `plane` in order round the face, starting from the first of its three `tri`, which go round it
- * counter-clockwise seen from outside. Ordered by which side of the first corner each lies and then by turn, with no angle
- * worked out, so every engine orders them alike.
+ * The faces and edges of the hull of a part's corners, or a reason it is not a solid one (hullFault). `rings` holds each
+ * face's every corner, in order round it.
  */
-function ringOf(p: readonly number[][], plane: readonly number[], tri: readonly number[]): number[] {
-  const on = p.flatMap((q, i) => (Math.abs(plane[0]! * q[0]! + plane[1]! * q[1]! + plane[2]! * q[2]! - plane[3]!) < 1e-9 ? [i] : []));
-  const m = [0, 1, 2].map((a) => on.reduce((s, i) => s + p[i]![a]!, 0) / on.length);
-  const first = p[tri[0]!]!;
-  const u = [first[0]! - m[0]!, first[1]! - m[1]!, first[2]! - m[2]!];
-  // w is the plane's normal crossed with u: a quarter turn on from u, counter-clockwise seen from outside.
-  const w = [plane[1]! * u[2]! - plane[2]! * u[1]!, plane[2]! * u[0]! - plane[0]! * u[2]!, plane[0]! * u[1]! - plane[1]! * u[0]!];
-  const along = (i: number): [number, number] => {
-    const d = [p[i]![0]! - m[0]!, p[i]![1]! - m[1]!, p[i]![2]! - m[2]!];
-    return [d[0]! * u[0]! + d[1]! * u[1]! + d[2]! * u[2]!, d[0]! * w[0]! + d[1]! * w[1]! + d[2]! * w[2]!];
-  };
-  const half = (a: number, b: number): number => (b > 1e-12 || (Math.abs(b) <= 1e-12 && a > 0) ? 0 : 1);
-  return on.sort((i, j) => {
-    if (i === tri[0]) return -1;
-    if (j === tri[0]) return 1;
-    const [ai, bi] = along(i);
-    const [aj, bj] = along(j);
-    const h = half(ai, bi) - half(aj, bj);
-    return h !== 0 ? h : aj * bi - ai * bj;
-  });
+export function hullOf(def: HullDef): { faces: number[]; edges: number[]; rings: number[][] } | string {
+  const fault = hullFault(def);
+  if (fault !== "") return fault;
+  const faces = Array.from(workFace.subarray(0, workPlanes * 3));
+  const edges = edgesInto([]);
+  const rings: number[][] = [];
+  for (let f = 0; f < workPlanes; f++) rings.push(ringInto(f, []));
+  return { faces, edges, rings };
 }
 
-/** Builds the table of every kind's parts. `partsOf(k)` lists kind k's parts, each already accepted by hullOf. */
+/** The edges of the hull hullFault found, onto `out`, each its two corners: every two corners on two of its planes. */
+function edgesInto(out: number[]): number[] {
+  for (let i = 0; i < workCorners; i++) {
+    for (let j = i + 1; j < workCorners; j++) {
+      const both = (1 << i) | (1 << j);
+      let meet = 0;
+      for (let f = 0; f < workPlanes && meet < 2; f++) if ((workOn[f]! & both) === both) meet++;
+      if (meet === 2) out.push(i, j);
+    }
+  }
+  return out;
+}
+
+/**
+ * The corners on face `f` of the hull hullFault found, onto `out` in order round it, starting from the first of its three,
+ * which go round it counter-clockwise seen from outside. Ordered by which side of the first corner each lies and then by
+ * turn, with no angle worked out, so every engine orders them alike.
+ */
+function ringInto(f: number, out: number[]): number[] {
+  const p = workPoint;
+  const first = (ringFirst = workFace[f * 3]!);
+  const on = ringOn;
+  on.length = 0;
+  for (let q = 0; q < workCorners; q++) if (workOn[f]! & (1 << q)) on.push(q);
+  let mx = 0, my = 0, mz = 0;
+  for (const i of on) mx += p[i * 3]!;
+  for (const i of on) my += p[i * 3 + 1]!;
+  for (const i of on) mz += p[i * 3 + 2]!;
+  mx /= on.length;
+  my /= on.length;
+  mz /= on.length;
+  const ux = p[first * 3]! - mx, uy = p[first * 3 + 1]! - my, uz = p[first * 3 + 2]! - mz;
+  // w is the plane's normal crossed with u: a quarter turn on from u, counter-clockwise seen from outside.
+  const nx = workPlane[f * 4]!, ny = workPlane[f * 4 + 1]!, nz = workPlane[f * 4 + 2]!;
+  const wx = ny * uz - nz * uy, wy = nz * ux - nx * uz, wz = nx * uy - ny * ux;
+  for (const i of on) {
+    const dx = p[i * 3]! - mx, dy = p[i * 3 + 1]! - my, dz = p[i * 3 + 2]! - mz;
+    const a = dx * ux + dy * uy + dz * uz;
+    const b = dx * wx + dy * wy + dz * wz;
+    ringAlong[i] = a;
+    ringAcross[i] = b;
+    ringHalf[i] = b > 1e-12 || (Math.abs(b) <= 1e-12 && a > 0) ? 0 : 1;
+  }
+  on.sort(byTurn);
+  for (const i of on) out.push(i);
+  return out;
+}
+
+/** Builds the table of every kind's parts. `partsOf(k)` lists kind k's parts, each one hullFault accepts. */
 export function hullTable(kinds: number, partsOf: (kind: number) => readonly HullDef[]): HullTable {
   const start = new Uint32Array(kinds + 1);
   const corner: number[] = [];
@@ -138,17 +216,17 @@ export function hullTable(kinds: number, partsOf: (kind: number) => readonly Hul
   for (let k = 0; k < kinds; k++) {
     start[k] = sixty.length;
     for (const def of partsOf(k)) {
-      const built = hullOf(def) as Exclude<ReturnType<typeof hullOf>, string>;
+      hullFault(def);
       corner.push(at.length / 3);
       face.push(faceCorners.length / 3);
       edge.push(edgeCorners.length / 2);
       sixty.push(def.sixty ? 1 : 0);
       for (const c of def.corners) at.push(c[0], c[1], c[2]);
-      faceCorners.push(...built.faces);
-      edgeCorners.push(...built.edges);
-      for (const r of built.rings) {
+      for (let i = 0; i < workPlanes * 3; i++) faceCorners.push(workFace[i]!);
+      edgesInto(edgeCorners);
+      for (let f = 0; f < workPlanes; f++) {
         ring.push(ringCorners.length);
-        ringCorners.push(...r);
+        ringInto(f, ringCorners);
       }
     }
   }
