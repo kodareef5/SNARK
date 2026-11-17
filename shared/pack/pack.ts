@@ -338,27 +338,10 @@ export function readIndices(pack: Pack, lod: PackLod): Uint32Array {
   return out;
 }
 
+// The platform's decoder, which every engine the game runs on has though ECMAScript does not name it. A string built a
+// character at a time is a piece per character in JavaScriptCore, about 36 bytes of heap each.
+const utf8 = new (globalThis as unknown as { TextDecoder: new () => { decode(bytes: Uint8Array): string } }).TextDecoder();
+
 export function decodeUtf8(bytes: Uint8Array): string {
-  let s = "";
-  for (let i = 0; i < bytes.length; ) {
-    const b = bytes[i++]!;
-    let c = b;
-    let extra = 0;
-    if (b >= 0xf0) {
-      c = b & 7;
-      extra = 3;
-    } else if (b >= 0xe0) {
-      c = b & 15;
-      extra = 2;
-    } else if (b >= 0xc0) {
-      c = b & 31;
-      extra = 1;
-    }
-    for (; extra > 0 && i < bytes.length; extra--) c = (c << 6) | (bytes[i++]! & 63);
-    if (c >= 0x10000) {
-      c -= 0x10000;
-      s += String.fromCharCode(0xd800 + (c >> 10), 0xdc00 + (c & 1023));
-    } else s += String.fromCharCode(c);
-  }
-  return s;
+  return utf8.decode(bytes);
 }

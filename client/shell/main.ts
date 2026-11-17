@@ -8,7 +8,7 @@ import { WorkerCityMaker } from "../city/maker.ts";
 import { DEFAULT_TIER, tierOf } from "../core/assets/tiers.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
-import { fetchBytes, fetchContent, fetchJson, fetchMap, fetchSounds, fetchText, readStatics, withLandmarks } from "../core/fetched.ts";
+import { fetchBytes, fetchContent, fetchJson, fetchMap, fetchSounds, fetchText, nextTask, readStatics, withLandmarks } from "../core/fetched.ts";
 import { loadIdentity } from "../core/identity.ts";
 import { SelfcheckSurfaces } from "../core/selfcheck-surfaces.ts";
 import { SelfcheckProgress, selfcheckReport } from "../core/selfcheck-report.ts";
@@ -84,7 +84,7 @@ async function boot(): Promise<void> {
     cityMaker: new WorkerCityMaker(),
     ...(map.content ? { landmarks: map.content.landmarks } : {}),
   });
-  void readStatics(rest, map.dims, () => new Promise((go) => setTimeout(go))).then((statics) => session.staticsArrived(statics));
+  void readStatics(rest, map.dims, nextTask(new MessageChannel())).then((statics) => session.staticsArrived(statics));
   const surfaces = selfcheck ? new SelfcheckSurfaces(manifest, port) : null;
   const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });
   void silent.then((why) => why && app.ui.console.print(`no sounds: ${why}`));

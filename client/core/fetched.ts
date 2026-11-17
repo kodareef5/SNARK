@@ -86,6 +86,26 @@ export async function readStatics(rest: Promise<Uint8Array>, dims: MapDims, paus
   return step.value;
 }
 
+/** The two ends of a page's MessageChannel, as nextTask uses them. */
+export interface TaskChannel {
+  port1: { onmessage: ((event: never) => void) | null };
+  port2: { postMessage(message: null): void };
+}
+
+/**
+ * A pause until the page's next task, by a message to itself. A timer set from a timer waits at least 4 ms once five are
+ * nested, which a map's hundred or more steps would add up to.
+ */
+export function nextTask(channel: TaskChannel): () => Promise<void> {
+  const waiting: (() => void)[] = [];
+  channel.port1.onmessage = () => waiting.shift()?.();
+  return () =>
+    new Promise((go) => {
+      waiting.push(go);
+      channel.port2.postMessage(null);
+    });
+}
+
 /** The content, a file of its own beside the script, compiled. */
 export async function fetchContent(get: Get, url: string): Promise<Registry> {
   const { registry, errors } = compileContent((await fetchJson(get, url)) as Def[]);

@@ -863,14 +863,26 @@ export interface RenameDef {
 export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | EngramDef | LevelsDef | BuffDef | MaterialDef | ShapeDef | DamageDef | LootDef | SpawnsDef | MapDef | GameDef | RenameDef;
 
 /** Half extents of the box, centred on a shape's origin, that holds all of its boxes and convex parts, and what is drawn of it. */
-export function shapeHalf(boxes: readonly ShapeBox[], hulls: readonly HullDef[] = [], look: ShapeLook = {}): [number, number, number] {
+export function shapeHalf(boxes: readonly ShapeBox[], hulls: readonly HullDef[] = [], look?: ShapeLook): [number, number, number] {
   const out: [number, number, number] = [0, 0, 0];
-  for (const b of [...boxes, ...(look.boxes ?? [])]) for (let a = 0; a < 3; a++) out[a] = Math.max(out[a]!, Math.abs(b.at[a]!) + b.half[a]!);
-  for (const h of [...hulls, ...(look.hulls ?? [])]) {
+  holdBoxes(out, boxes);
+  if (look?.boxes) holdBoxes(out, look.boxes);
+  holdHulls(out, hulls);
+  if (look?.hulls) holdHulls(out, look.hulls);
+  return out;
+}
+
+function holdBoxes(out: [number, number, number], boxes: readonly ShapeBox[]): void {
+  for (const b of boxes) for (let a = 0; a < 3; a++) out[a] = Math.max(out[a]!, Math.abs(b.at[a]!) + b.half[a]!);
+}
+
+const corner: [number, number, number] = [0, 0, 0];
+
+function holdHulls(out: [number, number, number], hulls: readonly HullDef[]): void {
+  for (const h of hulls) {
     for (const c of h.corners) {
-      const p = hullPoint(c, h.sixty === true);
+      const p = hullPoint(c, h.sixty === true, corner);
       for (let a = 0; a < 3; a++) out[a] = Math.max(out[a]!, Math.abs(p[a]!));
     }
   }
-  return out;
 }

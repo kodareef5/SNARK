@@ -1,7 +1,7 @@
 // What the page fetches whole as it starts: a failure names the request and what the server answered.
 
 import { expect, test } from "bun:test";
-import { fetchBytes, fetchJson, fetchMap, fetchSounds, fetchText, readStatics, type Get } from "../../client/core/fetched.ts";
+import { fetchBytes, fetchJson, fetchMap, fetchSounds, fetchText, nextTask, readStatics, type Get } from "../../client/core/fetched.ts";
 import { MANIFEST_VERSION, type Manifest } from "../../shared/pack/manifest.ts";
 import { groundBytes, parseMap, writeMap } from "../../shared/world/mapfile.ts";
 import { busyMap, flatMap } from "../fixtures/map.ts";
@@ -63,4 +63,20 @@ test("a page reads its map's ground at once and its statics a step at a time aft
   expect([map.hash, map.statics.length, map.heights]).toEqual([whole.hash, 0, whole.heights]);
   const t = await readStatics(rest, map.dims, () => Promise.resolve());
   expect([t.row.length, t.first, t.kind, t.x, t.y, t.z, t.yaw]).toEqual([0, whole.statics.first, whole.statics.kind, whole.statics.x, whole.statics.y, whole.statics.z, whole.statics.yaw]);
+});
+
+test("a page's statics read with a message to itself between steps are the same, one message a step", async () => {
+  // Three slices of pieces and some: each slice is a step as it is read, as it is counted by chunk, and as it is put in its chunk.
+  const statics = Array.from({ length: 100000 }, (_, i) => ({ kind: i % 3 === 0 ? "core:wall" : "core:floor", x: (i % 250) + 0.5, y: 33, z: Math.floor(i / 400) + 0.5, yaw: (i * 64) & 0xffff }));
+  const file = writeMap(flatMap(4, { statics }));
+  const at = groundBytes(file);
+  const whole = parseMap(file);
+  const channel = new MessageChannel();
+  let posted = 0;
+  let steps = 0;
+  const pause = nextTask({ port1: channel.port1, port2: { postMessage: (m) => (posted++, channel.port2.postMessage(m)) } });
+  const t = await readStatics(Promise.resolve(file.subarray(at)), whole.dims, () => (steps++, pause()));
+  channel.port1.close();
+  expect([steps, posted]).toEqual([9, 9]);
+  expect([t.first, t.kind, t.x, t.y, t.z, t.yaw]).toEqual([whole.statics.first, whole.statics.kind, whole.statics.x, whole.statics.y, whole.statics.z, whole.statics.yaw]);
 });
