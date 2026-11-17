@@ -1428,6 +1428,10 @@ export class ClientSession {
     if (lag > 6 || lag < -6) this.renderClock = tick;
     else this.renderClock += lag * 0.1;
 
+    // Until an input of its own reaches the server there is no margin to steer by. A page that stalled as it joined, a
+    // great landmark's files coming, is behind the server by then and samples no input at all, so it would never have
+    // one: its input clock starts again ahead of this snapshot, as at the welcome.
+    if (margin === MARGIN_UNKNOWN && this.tickClock < tick) this.tickClock = tick + INITIAL_LEAD;
     // The input clock keeps the server's margin near the target, once the server has one to report. A stall that held
     // inputs back lowers the least margin for a few seconds and speeds the clock gently; it is not a reason to jump.
     if (margin !== MARGIN_UNKNOWN) {

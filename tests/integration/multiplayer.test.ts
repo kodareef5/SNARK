@@ -83,6 +83,21 @@ test("on a clean link, prediction is never corrected", () => {
   expect(h.server.stats.heldInputs).toBeLessThan(40); // only around the initial clock sync
 });
 
+test("a page that stalls as it joins, while a great landmark's files come, walks once its frames run", () => {
+  // Stalled, its input clock falls behind the server's and samples no input, and with none the server has no margin to
+  // send back for it to steer by: it stood still for good.
+  for (const [stallMs, latencyMs] of [[300, 0], [1500, 30], [4000, 80]] as const) {
+    const h = new Harness();
+    const s = h.join("stalled", { latencyMs }, { manual: true });
+    h.run(stallMs);
+    h.run(3000, (now) => s.update(now, 0, 1, 0, 0, 0));
+    const e = h.ent(s);
+    expect(h.world.ents.z[e]! - 240).toBeGreaterThan(8);
+    expect(s.stats.margin).toBeGreaterThanOrEqual(0);
+    expect(s.stats.clockJumps).toBeLessThanOrEqual(2);
+  }
+});
+
 test("a client that joins a world that has been running for a while can move", () => {
   // Before any input arrives the server must not report a margin of minus its own tick, or the client
   // jumps its clock out of the input window.
