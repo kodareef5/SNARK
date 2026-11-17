@@ -26,6 +26,7 @@ import type { Pack, PackRig } from "../../../shared/pack/pack.ts";
 import type { CollisionWorld } from "../../../shared/world/collide.ts";
 import type { Assets } from "../assets/assets.ts";
 import { Corpses, type Corpse } from "../ragdoll.ts";
+import type { CorpseMotion } from "../../../shared/net/corpse.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
@@ -413,6 +414,8 @@ export class Characters {
   get fallen(): readonly Corpse[] {
     return this.dead.list;
   }
+  corpseMotions: ReadonlyMap<number, CorpseMotion> | undefined;
+  get corpseCheckpointRequests(): ReadonlySet<number> { return this.dead.needsCheckpoint; }
 
   /** Whether this kind is on the humanoid skeleton. */
   human(kind: number): boolean {
@@ -750,7 +753,12 @@ export class Characters {
         const droop = v.def.movement !== "rotor" && v.def.movement !== "boat" ? (v.def.spec.suspensionTravel ?? 0.18) / 4 : 0;
         for (const b of v.wheels) {
           if (b < 0) continue;
-          if (vehicle?.grounded !== false) {
+          if (vehicle?.qw !== undefined && v.def.movement !== "rotor" && v.def.movement !== "boat") {
+            // A rigid car's wheels travel along its local spring axes, also when it rolls onto its roof.
+            const offset = vehicle.grounded !== false ? -(vehicle.rideOffset ?? 0) : -droop;
+            quatRotate(this.rotation, 0, 0, offset, 0, this.seatPlace, 0);
+            for (let axis = 0; axis < 3; axis++) c.oriented.pos[b * 3 + axis]! += this.seatPlace[axis]!;
+          } else if (vehicle?.grounded !== false) {
             quatRotate(this.groundRotation, 0, rig.solved.pos[b * 3]!, rig.solved.pos[b * 3 + 1]!, rig.solved.pos[b * 3 + 2]!, c.oriented.pos, b * 3);
             c.oriented.pos[b * 3 + 1]! -= vehicle?.rideOffset ?? 0;
             quatMul(c.oriented.rot, b * 4, this.groundRotation, 0, rig.solved.rot, b * 4);
@@ -880,7 +888,7 @@ export class Characters {
    * ragdolls, and draws those in view where they lie. `world` is what a ragdoll falls on.
    */
   corpses(p: FramePacket, cam: Camera, remote: RemoteSample, world: CollisionWorld): void {
-    this.dead.update(remote, world, cam.x, cam.z, this.gaits);
+    this.dead.update(remote, world, cam.x, cam.z, this.gaits, this.corpseMotions);
     const lit = this.assets.tier.lit;
     for (const d of this.dead.list) {
       const c = this.creatures[d.kind]!;

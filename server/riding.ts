@@ -7,6 +7,7 @@
 
 import { bodySeed, AnimState } from "../shared/anim/pose.ts";
 import { seatOn, SEAT_FLOATS } from "../shared/anim/seat.ts";
+import { seatedEye } from "../shared/anim/seated-eye.ts";
 import { makeHandle } from "../shared/ids.ts";
 import { TAU } from "../shared/math/scalar.ts";
 import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, SESSION_ALIVE, TEXT_NOTICE } from "../shared/net/protocol.ts";
@@ -257,6 +258,30 @@ export class Riding {
     }
   }
 
+  /** After a contact moves a surviving mount. Preserve the earlier pre-combat pin and all occupancy claim timing. */
+  syncAfterContact(e: number): void {
+    const ents = this.ctx.world.ents, pid = ents.pid[e]!, host = this.hosts.get(pid);
+    if (!host || this.live(pid, host) !== e) return;
+    host.last.x = ents.x[e]!; host.last.y = ents.y[e]!; host.last.z = ents.z[e]!; host.last.yaw = ents.yaw[e]!;
+    for (const seat of host.seats) {
+      const actor = this.occupancy.occupant(pid, seat.id);
+      if (actor) this.pin(actor, host, seat);
+    }
+  }
+
+  /** Before vital deadlines: read the posed eye from the current host, even if the rider has not been pinned yet. */
+  eye(e: number, out: Float64Array): boolean {
+    const world = this.ctx.world, ents = world.ents, carrier = ents.seat[e]! - 1;
+    if (carrier < 0 || ents.seatGen[e] !== ents.gen[carrier]) return false;
+    const pid = ents.pid[carrier]!, host = this.hosts.get(pid), seat = host?.seats[ents.seatSlot[e]! - 1];
+    if (!host || !seat || this.live(pid, host) !== carrier || this.seated(ents.pid[e]!, pid, seat.id) !== e) return false;
+    this.frameOn(host, seat);
+    this.st.unpack(ents.anim[e]!, ents.cue[e]!);
+    this.st.seed = bodySeed(e);
+    seatedEye(world.anim, this.st, world.tick, this.frame, seat.driver === true, out);
+    return true;
+  }
+
   /** Registers a saddled creature as a host of its saddle's seats. */
   private register(e: number): boolean {
     const { world, records } = this.ctx, ents = world.ents, pid = ents.pid[e]!, rec = records.byPid.get(pid);
@@ -456,11 +481,8 @@ export class Riding {
     const world = this.ctx.world, ents = world.ents, e = host.entity;
     const body = this.seated(actor, ents.pid[e]!, seat.id);
     if (body < 0) return;
-    const st = this.st;
-    st.unpack(ents.anim[e]!, ents.cue[e]!);
-    st.seed = bodySeed(e);
     const frame = this.frame;
-    seatOn(world.anims[ents.kind[e]!] ?? null, seat, st, world.tick, ents.x[e]!, ents.y[e]!, ents.z[e]!, (ents.yaw[e]! / 65536) * TAU, frame);
+    this.frameOn(host, seat);
     const b = this.body;
     ents.loadBody(body, b);
     b.x = frame[0]!;
@@ -473,6 +495,13 @@ export class Riding {
     b.stance = STANCE_CROUCH;
     ents.storeBody(body, b);
     ents.pose(body, world.tick);
+  }
+
+  private frameOn(host: Host, seat: Seat): void {
+    const world = this.ctx.world, ents = world.ents, e = host.entity, st = this.st;
+    st.unpack(ents.anim[e]!, ents.cue[e]!);
+    st.seed = bodySeed(e);
+    seatOn(world.anims[ents.kind[e]!] ?? null, seat, st, world.tick, ents.x[e]!, ents.y[e]!, ents.z[e]!, (ents.yaw[e]! / 65536) * TAU, this.frame);
   }
 
   /** Whether `e`, if it flies, touches water: swimming, or in flight with its feet at or under the surface over water. */

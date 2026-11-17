@@ -1,6 +1,7 @@
 // Finds what a swing or shot lands on, on the server, from the body's own eye. A client never names what it hit.
 // What a hit does is resolveDamage (shared/sim/damage.ts) and nothing else. The attacker's events never say what the victim has left.
 
+import type { CorpseImpact } from "../shared/anim/corpse.ts";
 import { HUMAN } from "../shared/anim/human.ts";
 import { SLOT_OF_ZONE, ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { AnimState, bodySeed } from "../shared/anim/pose.ts";
@@ -15,7 +16,7 @@ import type { SpeciesDef } from "../shared/content/defs.ts";
 import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, S_EVENT } from "../shared/net/protocol.ts";
 import { BTN_MOD, stanceEye } from "../shared/sim/character.ts";
 import { DMG_EXPLOSIVE, DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
-import { F_ALIVE, F_HELD, F_PROP, GEAR_WORN } from "../shared/sim/entities.ts";
+import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON, QUALITY_MUL } from "../shared/sim/items.ts";
 import { TICK_DT, TICK_RATE } from "../shared/coords.ts";
 import { W_BOW, W_GUN, W_MELEE, W_THROWN } from "../shared/sim/weapon.ts";
@@ -106,9 +107,6 @@ export const REWIND_TICKS = 15;
 export const REWIND_SLACK = 7;
 /** The round trip is the least seen in this many ticks and the same number before them, so that holding acknowledgements back before a shot buys nothing. */
 const LAG_WINDOW = 64;
-/** Metres a body can have moved in REWIND_TICKS, and in the tick one segment of a flight takes. They pad the search for bodies near a ray. */
-const REWIND_REACH = 6.5;
-const SWEEP_REACH = 1;
 
 /** What a blow or a shot carries. */
 export interface Source {
@@ -171,7 +169,8 @@ export class Combat {
   private readonly nearT = new Float32Array(MAX_NEAR);
   private readonly past = new Past();
   /** A rider's mount as it was at the tick a cast is judged at, and the rider's seat on it then. */
-  private readonly mountPast = new Past();
+  private readonly boundPast = new Past();
+  private readonly boundBefore = new Past();
   private readonly mountSt = new AnimState();
   private readonly seatAt = new Float64Array(SEAT_FLOATS);
   private readonly rolls: Roll[] = [];
@@ -220,13 +219,14 @@ export class Combat {
     this.vehicleReach = Float32Array.from(reg.vehicle, (vehicle, kind) => {
       if (!vehicle) return 0;
       const spec = vehicle.spec, h = reg.bodyHeight[kind]!;
-      if (vehicle.movement !== "boat") return Math.hypot(spec.halfWidth, spec.halfLength, h * .5);
+      if (vehicle.movement !== "boat") return Math.hypot(spec.halfWidth, spec.halfLength, h);
       const marine = vehicle.spec;
       const reach = Math.max(marine.halfLength, Math.abs(marine.propeller.at[2]) + marine.propeller.radius,
         ...(marine.outboard?.boxes ?? []).map(box => Math.abs(box.at[2]) + box.half[2]));
       return Math.hypot(marine.halfWidth + .5, reach + .5, h);
     });
-    this.targetReach = Math.max(BODY_REACH, ...this.vehicleReach);
+    this.targetReach = Math.max(BODY_REACH + BODY_REACH_Y, ...this.vehicleReach,
+      ...reg.bodyHeight.map((h, kind) => Math.max(h * .5 + reg.bodyRadius[kind]!, ctx.world.anims[kind]?.rig.reach ?? 0)));
     // A creature whose skeleton came with its model is hit on that rig's capsules, as posed.
     this.anims = ctx.world.anims;
     this.dose = reg.index.get("core:tranquilized") ?? 0;
@@ -562,12 +562,15 @@ export class Combat {
     this.span = maxT;
     // Gather every body whose bounding sphere could touch the ray. A body judged in the past may have moved since, so the search is padded.
     // The car or creature the caster sits on is not in its way, nor, for a mount, are those who sit on it.
-    const parent = self >= 0 ? ents.seat[self]! - 1 : -1;
-    const carrier = parent >= 0 && ents.seatSlot[self] !== 0 && ents.seatGen[self] === ents.gen[parent] ? parent : -1;
+    const tick = this.at < 0 ? world.tick : this.at;
+    const selfAt = this.boundPast;
+    const parent = self >= 0 && this.where(self, tick, selfAt) ? selfAt.seat - 1 : -1;
+    const carrier = parent >= 0 && selfAt.seatGen === ents.gen[parent] ? parent : -1;
     let n = 0;
     const near = this.near;
     const nearT = this.nearT;
-    const slack = width + (this.at < 0 ? 0 : REWIND_REACH) + (sweep > 0 ? SWEEP_REACH : 0);
+    const moving = this.at >= 0 || sweep > 0;
+    const slack = width + (moving ? world.history.displacement(tick - sweep, world.tick) : 0);
     const pad = this.targetReach + slack;
     const ex = ox + dx * maxT;
     const ez = oz + dz * maxT;
@@ -588,19 +591,34 @@ export class Combat {
         if (fx * fx + fz * fz > (CHUNK_REACH + pad) * (CHUNK_REACH + pad)) continue;
         for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
           if (i === self || i === this.spare || i === carrier || (ents.flags[i]! & (F_ALIVE | F_PROP | F_HELD)) !== F_ALIVE) continue;
-          if (self >= 0 && ents.seat[i] === self + 1 && ents.seatSlot[i] !== 0 && ents.seatGen[i] === ents.gen[self]) continue;
           const kind = ents.kind[i]!;
-          // A sphere that holds the body in any pose. A larger box gets a larger sphere.
           const h = reg.bodyHeight[kind]!;
           const rig = this.anims[kind]?.rig;
-          const vehicle = reg.vehicle[kind], car = vehicle?.spec;
-          const marine = vehicle?.movement === "boat" ? vehicle.spec : null;
-          const r = (car ? this.vehicleReach[kind]! : rig ? rig.reach : Math.max(BODY_REACH, h * 0.5 + reg.bodyRadius[kind]!)) + slack;
+          const car = reg.vehicle[kind];
+          const bodyReach = car ? this.vehicleReach[kind]! : this.human[kind] ? BODY_REACH + BODY_REACH_Y : rig ? rig.reach : Math.max(BODY_REACH, h * .5 + reg.bodyRadius[kind]!);
           const px = ents.x[i]! - ox;
-          const py = ents.y[i]! + (marine ? 0 : this.human[kind] ? BODY_REACH_Y : rig && !car ? rig.mid : h * 0.5) - oy;
+          const py = ents.y[i]! + (car || this.human[kind] ? 0 : rig ? rig.mid : h * .5) - oy;
           const pz = ents.z[i]! - oz;
           const t = px * dx + py * dy + pz * dz;
-          if (t < -r || t > maxT + r || px * px + py * py + pz * pz - t * t > r * r) continue;
+          const off2 = px * px + py * py + pz * pz - t * t;
+          // The per-tick travel maxima bound every tracked body, including riders and fast targets.
+          const radius = bodyReach + slack;
+          if (t < -radius || t > maxT + radius || off2 > radius * radius) continue;
+          const was = this.boundPast;
+          if (moving) {
+            if (!this.where(i, tick, was)) continue;
+            // Only tighten the bound if this target needed motion padding to pass the first test.
+            const base = bodyReach + width;
+            if (t < -base || t > maxT + base || off2 > base * base) {
+              let moved = Math.hypot(ents.x[i]! - was.x, ents.y[i]! - was.y, ents.z[i]! - was.z);
+              if (sweep > 0 && this.where(i, tick - sweep, this.boundBefore) && was.sameSeat(this.boundBefore)) {
+                moved = Math.max(moved, Math.hypot(ents.x[i]! - this.boundBefore.x, ents.y[i]! - this.boundBefore.y, ents.z[i]! - this.boundBefore.z));
+              }
+              const reach = base + moved;
+              if (t < -reach || t > maxT + reach || off2 > reach * reach) continue;
+            }
+          } else was.seatFrom(ents, i);
+          if (self >= 0 && was.seat === self + 1 && was.seatSlot !== 0 && was.seatGen === ents.gen[self]) continue;
           if (n < MAX_NEAR) {
             nearT[n] = t;
             near[n++] = i;
@@ -667,23 +685,17 @@ export class Combat {
       out.anim = ents.anim[i]!;
       out.cue = ents.cue[i]!;
       out.vehicleFrom(ents, i);
+      out.seatFrom(ents, i);
       return true;
     }
     // Between the last remembered tick and this one, which is not recorded yet. Blend as a client does.
     if (!world.history.at(whole, i, out)) return false;
     const k = tick - whole;
-    out.x += (ents.x[i]! - out.x) * k;
-    out.y += (ents.y[i]! - out.y) * k;
-    out.z += (ents.z[i]! - out.z) * k;
-    this.vehicleNow.vehicleFrom(ents, i); out.blendVehicle(this.vehicleNow, k);
-    let turn = ents.yaw[i]! - out.yaw;
-    if (turn > 32768) turn -= 65536;
-    else if (turn < -32768) turn += 65536;
-    out.yaw = (out.yaw + Math.round(turn * k)) & 0xffff;
-    if (k >= 0.5) {
-      out.anim = ents.anim[i]!;
-      out.cue = ents.cue[i]!;
-    }
+    const current = this.vehicleNow;
+    current.x = ents.x[i]!; current.y = ents.y[i]!; current.z = ents.z[i]!;
+    current.yaw = ents.yaw[i]!; current.anim = ents.anim[i]!; current.cue = ents.cue[i]!;
+    current.vehicleFrom(ents, i); current.seatFrom(ents, i);
+    out.blend(current, k);
     return true;
   }
 
@@ -691,17 +703,16 @@ export class Combat {
    * For body `i` sitting in a saddle's seat, writes its seat's frame on its mount as the mount was at `tick` to `seatAt`
    * and returns 1 for the seat that steers, 2 for a passenger's; 0 for a body in no saddle.
    */
-  private saddled(i: number, tick: number): number {
-    const world = this.ctx.world, ents = world.ents;
-    const host = ents.seat[i]! - 1;
-    if (host < 0 || ents.seatSlot[i] === 0 || ents.gen[host] !== ents.seatGen[i] || world.reg.vehicle[ents.kind[host]!]) return 0;
-    const seat = saddleSeat(world.reg, ents.gears.get(host)?.[GEAR_WORN] ?? 0, ents.seatSlot[i]!);
-    const was = this.mountPast;
-    if (!seat || !this.where(host, tick, was)) return 0;
+  private saddled(was: Past, tick: number): number {
+    const world = this.ctx.world;
+    const host = was.seat - 1;
+    if (host < 0 || was.seatSlot === 0 || world.reg.vehicle[was.hostKind]) return 0;
+    const seat = saddleSeat(world.reg, was.saddle, was.seatSlot);
+    if (!seat) return 0;
     const st = this.mountSt;
-    st.unpack(was.anim, was.cue);
+    st.unpack(was.hostAnim, was.hostCue);
     st.seed = bodySeed(host);
-    seatOn(this.anims[ents.kind[host]!] ?? null, seat, st, tick, was.x, was.y, was.z, (was.yaw * TAU) / 65536, this.seatAt);
+    seatOn(this.anims[was.hostKind] ?? null, seat, st, tick, was.hostX, was.hostY, was.hostZ, (was.hostYaw * TAU) / 65536, this.seatAt);
     return seat.driver ? 1 : 2;
   }
 
@@ -723,7 +734,7 @@ export class Combat {
       // further back by as much as the body moved. Tested this way, nothing slips between ticks.
       let rx = ox, ry = oy, rz = oz, ux = dx, uy = dy, uz = dz;
       let scale = 1;
-      if (this.sweep > 0 && this.where(i, tick - this.sweep, before)) {
+      if (this.sweep > 0 && this.where(i, tick - this.sweep, before) && past.sameSeat(before)) {
         const mx = past.x - before.x;
         const my = past.y - before.y;
         const mz = past.z - before.z;
@@ -748,7 +759,7 @@ export class Combat {
       if (this.human[kind] && world.anim) {
         st.unpack(past.anim);
         st.seed = bodySeed(i);
-        const seat = this.saddled(i, tick);
+        const seat = this.saddled(past, tick);
         const zone = seat !== 0 ? raySeated(world.anim, st, tick, this.seatAt, seat === 1, rx, ry, rz, ux, uy, uz, reach) : rayBody(world.anim, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach);
         if (zone !== ZONE_NONE && zoneHit.t < reach) {
           this.t = zoneHit.t * scale;
@@ -773,7 +784,7 @@ export class Combat {
       } else if (reg.vehicle[kind]) {
         // A vehicle is met by its mechanical hull up to its belt line, whatever its art, turned as it was.
         const def = reg.vehicle[kind]!;
-        const t = rayVehicle(def, past.x, past.y, past.z, (past.yaw * TAU) / 65536, rx, ry, rz, ux, uy, uz, def.beltline, def.movement === "boat" || def.movement === "rotor" ? past : { pitch: past.pitch, roll: past.roll });
+        const t = rayVehicle(def, past.x, past.y, past.z, (past.yaw * TAU) / 65536, rx, ry, rz, ux, uy, uz, def.beltline, past);
         if (t < reach) {
           this.t = t * scale;
           this.zone = ZONE_TORSO;
@@ -828,8 +839,29 @@ export class Combat {
     return type !== DMG_EXPLOSIVE && !rules.on("FullFriendlyFire");
   }
 
+  /** Physical protection is independent of damage/rearm callbacks. Owned vehicles still respond by mass. */
+  vehicleDisplaces(by: EntityRecord | null, vehicle: EntityRecord, victim: EntityRecord): boolean {
+    if (this.ctx.world.reg.vehicle[victim.kind] || victim.team === 0) return true;
+    const actor = by ?? vehicle;
+    if (actor.team === 0) return false;
+    return !this.spared(actor, victim.team, DMG_MELEE, actor === victim);
+  }
+
+  /** A vehicle pair already resolved momentum; charge its physical damage once with ordinary harm authorization. */
+  vehicleHurt(victim: EntityRecord, points: number, by: EntityRecord): number {
+    const { world, survival, bus } = this.ctx;
+    if (!(points > 0) || victim.dead || this.spared(by, victim.team, DMG_MELEE, by === victim)) return 0;
+    const kind = world.reg.ids[victim.kind]!;
+    const scale = bus.n[DAMAGE] ? this.asked("body", victim.pid, kind, victim.team, by, 0, DMG_MELEE, ZONE_NONE) : 1;
+    const taken = survival.hurt(victim, points * scale, by.pid);
+    if (taken > 0 && bus.n[DAMAGED]) bus.after(DAMAGED, { target: "body", victim: victim.pid, kind, team: victim.team,
+      byPid: by.pid, byTeam: by.team, item: "", type: "melee", zone: ZONE_NONE, taken, blocked: 0,
+      killed: victim.dead, left: victim.dead ? 0 : survival.value(victim, V_HEALTH) });
+    return taken;
+  }
+
   /** `far` is metres from where `src` came. The harm applies to the body as it is now, even when the hit was judged at an earlier tick. */
-  land(src: Source, target: number, zone: number, x: number, y: number, z: number, far: number): void {
+  land(src: Source, target: number, zone: number, x: number, y: number, z: number, far: number, impact?: CorpseImpact): void {
     const { world, records, items, survival, creatures, buffs } = this.ctx;
     const ents = world.ents;
     const reg = world.reg;
@@ -890,7 +922,7 @@ export class Combat {
     const vx = ents.x[target]!;
     const vz = ents.z[target]!;
     this.died = false;
-    const taken = survival.hurt(victim, harm.health, by ? by.pid : 0);
+    const taken = survival.hurt(victim, harm.health, by ? by.pid : 0, undefined, impact);
     const killed = this.died;
     this.blow.victim = 0;
     if (bus.n[DAMAGED] !== 0) {

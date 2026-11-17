@@ -26,11 +26,11 @@ test("protocol 13 is the weapons program's, and it took no command, own componen
   // 14 is the cluster's, which took CMD_TRAVEL (31), 15 the beds', 16 the flyers' (tests/unit/contracts.test.ts), 17 the
   // stations wave's, for OWN_STATION's layout (tests/unit/stations-contracts.test.ts), and 18 the vehicles'
   // (tests/integration/vehicle-contracts.test.ts); 19 adds rotorcraft state and CMD_VEHICLE (32); 21 the compact chunk rows; 22 CMD_STATICS (33);
-  // 24 S_MOTION's states told a part at a time.
-  expect(P.PROTOCOL_VERSION).toBe(24);
+  // 24 S_MOTION's states told a part at a time; 25 adds S_CORPSE and CMD_CORPSE (34); 26 adds car recovery actions.
+  expect(P.PROTOCOL_VERSION).toBe(26);
   // EVENT_NAME_BYTES is a size, not a kind of event.
   const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));
-  expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([33, 16, 7, 10]);
+  expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([34, 16, 7, 10]);
   // FLAG_ON, W7's: the next slot flag after the blueprint's, the same bit on the slot and on the wire.
   expect([P.SLOT_BLUEPRINT, P.SLOT_ON, FLAG_BLUEPRINT, FLAG_ON]).toEqual([1, 2, 1, 2]);
   const store = readFileSync(join(root, "server/persist/codec.ts"), "utf8");

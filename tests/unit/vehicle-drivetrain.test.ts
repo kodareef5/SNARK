@@ -1,10 +1,11 @@
+import { vehiclePlane } from "../fixtures/vehicle-plane.ts";
 import { expect, test } from "bun:test";
 import { ASPHALT, COMPACT } from "../../content/vehicles/compact.ts";
-import { createVehicle, stepVehicle, validateVehicleSpec, type VehicleInput, type VehicleSpec, type VehicleState, type VehicleWorld } from "../../shared/sim/vehicle.ts";
+import { createVehicle, stepVehicle, validateVehicleSpec, type VehicleInput, type VehicleSpec, type VehicleState } from "../../shared/sim/vehicle.ts";
 import { drivetrainShifting, engineTorqueAt, stepDrivetrain, validateDrivetrainSpec, vehicleMass, type DrivetrainInput, type VehicleDrivetrainSpec, type VehicleDrivetrainState } from "../../shared/sim/vehicle-drivetrain.ts";
 
 const spec = COMPACT.drivetrain!, dt = 1 / 120;
-const flat: VehicleWorld = { support: () => ({ y: 0, normalY: 1, surface: ASPHALT }), blocked: () => null };
+const flat = vehiclePlane(ASPHALT);
 const command = (throttle = 0, brake = 0, neutral = false): VehicleInput => ({ throttle, brake, neutral, steer: 0, handbrake: false });
 const engineInput = (throttle = 1, forward = 0): DrivetrainInput => ({ throttle, forward, running: true, disengaged: false, neutral: false, wheelRadius: .3 });
 const engineState = (): VehicleDrivetrainState => ({ gear: 0, engineRpm: spec.idleRpm, shiftTime: 0, payloadMass: 0 });
@@ -64,9 +65,9 @@ test("automatic shift cuts wheel torque, then restores it during the anti-huntin
   expect(state.gear).toBe(gear);
 });
 
-test("reverse first brakes even tiny forward motion and only selects R after a true stop", () => {
+test("reverse brakes forward travel and selects R within the stopped-speed tolerance", () => {
   const state = engineState(); state.gear = 1;
-  for (const forward of [12, .5, .001]) {
+  for (const forward of [12, .5, .03]) {
     const result = stepDrivetrain(state, engineInput(-1, forward), spec, dt);
     expect(result.drive).toBe(0); expect(result.opposingBrake).toBe(1); expect(state.gear).toBe(1);
   }
@@ -77,7 +78,7 @@ test("reverse first brakes even tiny forward motion and only selects R after a t
   expect(force).toBeLessThan(0);
   const car = createVehicle(COMPACT, 0, 0, 0);
   run(car, 45, command(1)); run(car, 180, command(-1));
-  expect(car.gear).toBe(-1); expect(car.vz).toBeLessThan(-5); expect(car.vz).toBeGreaterThanOrEqual(-COMPACT.maxReverse);
+  expect(car.gear).toBe(-1); expect(car.vz).toBeLessThan(-5); expect(car.vz).toBeGreaterThanOrEqual(-COMPACT.maxReverse - 1e-9);
 });
 
 test("neutral free-revs without moving; no fuel removes torque and a stopped empty engine settles to zero rpm", () => {

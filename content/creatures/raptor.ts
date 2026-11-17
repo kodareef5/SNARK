@@ -11,6 +11,8 @@ export const RAPTOR: readonly Def[] = [
     color: 5,
     radius: 0.6,
     height: 1.5,
+    // Chosen physical kilograms, close to the former capsule-derived 150 kg fallback.
+    mass: 150,
     eyeHeight: 1.3,
     walkSpeed: 3.2,
     sprintMul: 2.6,

@@ -67,7 +67,7 @@ test("a learned expensive assembly crafts at a fueled fabricator, deploys, servi
     for (const [name, n] of [["gasoline", 2], ["ingot", 40], ["polymer", 10], ["electronics", 8], ["stone", 13]] as const) h.host.items.mint(actor, id(name), n);
     expect(send(s, CMD_VEHICLE, w => { w.u8(VEHICLE_REFUEL); w.u32(handle); w.u8(2); })).toBe(RESULT_OK);
     expect(h.world.ents.fuel[h.world.ents.vrow[e]!]).toBe(10);
-    h.host.urban.collision(e, 8, false); h.run(50);
+    h.host.survival.hurt(boats, 100, 0); h.run(50);
     expect(h.host.survival.value(boats, V_HEALTH)).toBeLessThan(1200);
     expect(send(s, CMD_VEHICLE, w => { w.u8(VEHICLE_REPAIR); w.u32(handle); })).toBe(RESULT_OK);
     expect(h.host.survival.value(boats, V_HEALTH)).toBe(1200); expect(h.world.ents.vehicleEngineCondition[h.world.ents.vrow[e]!]).toBe(1);

@@ -17,6 +17,24 @@ export interface BridgeRecord {
 export interface Corridor { a: Point; b: Point; width: number; low: number; high: number; }
 export const worldFrame = (size: number): Frame => ({ x: 0, z: 0, yaw: 0, c: 1, s: 0, width: size, depth: size, rings: [] });
 const key = (p: Point, kind: string): string => `${kind === "rail_bridge" ? "rail" : "road"}:${Math.round(p[0] * 5)},${Math.round(p[1] * 5)}`;
+
+/** A road's square deck keeps its footprint; its top follows adjacent grades, including the turn onto level road. */
+export function roadDeckSlab(deck: readonly DeckPoint[], index: number): { shape: RuinShape; yaw: number; y: number } {
+  const d = deck[index]!, a = d.yaw * Math.PI / 180, dx = Math.cos(a), dz = -Math.sin(a);
+  let low = d.y, high = d.y;
+  if (!d.gap) for (const other of [deck[index - 1], deck[index + 1]]) {
+    if (!other || other.gap) continue;
+    const x = other.x - d.x, z = other.z - d.z, along = x * dx + z * dz;
+    // At a sharp junction the other branch cannot supply this plate's longitudinal slope.
+    if (Math.abs(along) < Math.hypot(x, z) * .7 || Math.abs(along) < .01) continue;
+    const grade = (other.y - d.y) / along;
+    if (along < 0) low = d.y - grade * 2;
+    else high = d.y + grade * 2;
+  }
+  const rise = high - low, step = Math.min(4, Math.round(Math.abs(rise) * 8)), y = (low + high) / 2 - .2;
+  return step ? { shape: `floorroad${step}` as RuinShape, yaw: d.yaw + (rise > 0 ? 90 : 270), y } : { shape: "floor4", yaw: d.yaw, y };
+}
+
 export function makeBridges(site: Site, accept: (m: Mason) => boolean): { records: BridgeRecord[]; corridors: Corridor[]; outlines: { id: number; status: string }[] } {
   const size = (site.ground.n - 1) * 2;
   const { paths, outlines } = pathsOf(readWays(site.source), size / 2);
@@ -222,7 +240,8 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
     for (let i = 0; i < deck.length; i++) {
       const d = deck[i]!; if (d.gap) continue;
       const a = d.yaw * Math.PI / 180; const dx = Math.cos(a); const dz = -Math.sin(a);
-      for (let side = -p.width / 2 + 2; side < p.width / 2; side += 4) m.put("floor4", d.x - dz * side, d.y - .2, d.z + dx * side, "concrete", d.yaw);
+      const slab = p.way.kind === "road_bridge" ? roadDeckSlab(deck, i) : { shape: "floor4" as const, yaw: d.yaw, y: d.y - .2 };
+      for (let side = -p.width / 2 + 2; side < p.width / 2; side += 4) m.put(slab.shape, d.x - dz * side, slab.y, d.z + dx * side, "concrete", slab.yaw);
       m.cover(d.x, d.z, p.width / 2 + 10);
       if (p.way.kind === "breakwater") {
         if (i % 3 === 0) m.put("rubble4", d.x, d.y - .1, d.z, "concrete", d.yaw + 17);

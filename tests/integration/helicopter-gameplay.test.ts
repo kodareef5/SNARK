@@ -1,3 +1,4 @@
+import { vehicleStep } from "../../shared/sim/vehicle-body.ts";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -152,7 +153,7 @@ test("destroyed aircraft retain cargo in the native falling salvage wreck and re
   } finally { h.host.shutdown(); }
 });
 
-test("an authored rooftop height is respected, and harmless brushing does not consume aircraft condition", () => {
+test("an authored rooftop height is respected and static impact reports use the damage threshold", () => {
   const { h, actor } = setup();
   try {
     const ceiling = h.reg.index.get("core:ceiling")!, y = 8 + h.reg.halfY[ceiling]!;
@@ -161,10 +162,12 @@ test("an authored rooftop height is respected, and harmless brushing does not co
     expect(e).toBeGreaterThanOrEqual(0);
     const ents = h.world.ents, rec = h.host.records.byPid.get(ents.pid[e]!)!, health = h.host.survival.value(rec, V_HEALTH);
     expect(ents.y[e]).toBeCloseTo(y, 4);
-    h.host.urban.collision(e, 2, false); h.host.urban.step();
+    vehicleStep.impactSpeed = 2; vehicleStep.landSpeed = 0; vehicleStep.rotorHit = vehicleStep.propHit = vehicleStep.water = false;
+    h.host.urban.impact(e); h.host.urban.step();
     expect(h.host.survival.value(rec, V_HEALTH)).toBe(health);
     expect(ents.vehicleEngineCondition[ents.vrow[e]!]).toBe(1); expect(ents.vehicleRotorCondition[ents.vrow[e]!]).toBe(1);
-    h.host.urban.collision(e, 12, false); h.host.urban.step();
+    vehicleStep.impactSpeed = 12;
+    h.host.urban.impact(e); h.host.urban.step();
     expect(h.host.survival.value(rec, V_HEALTH)).toBeLessThan(health);
     expect(ents.vehicleEngineCondition[ents.vrow[e]!]).toBeLessThan(1);
   } finally { h.host.shutdown(); }

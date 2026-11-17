@@ -115,7 +115,7 @@ export function drivetrainShifting(shiftTime: number, spec: VehicleDrivetrainSpe
 export function stepDrivetrain(state: VehicleDrivetrainState, input: DrivetrainInput, spec: VehicleDrivetrainSpec, dt: number): DrivetrainForce {
   const throttle = Number.isFinite(input.throttle) ? clamp(input.throttle, -1, 1) : 0;
   const forward = input.forward, speed = Math.abs(forward), pedal = Math.abs(throttle), desired = throttle > 0 ? 1 : throttle < 0 ? -1 : 0;
-  const wheelRpm = speed * 60 / (TAU * input.wheelRadius), opposing = desired * forward < 0;
+  const wheelRpm = speed * 60 / (TAU * input.wheelRadius), opposing = desired * forward < -STOP_SPEED;
   const result: DrivetrainForce = { drive: 0, engineDrag: 0, opposingBrake: opposing && !input.neutral ? pedal : 0 };
   // Bounds also make a pre-drivetrain save (all-zero state) a valid neutral vehicle.
   if (!Number.isInteger(state.gear) || state.gear < -1 || state.gear > spec.forwardRatios.length) state.gear = 0;

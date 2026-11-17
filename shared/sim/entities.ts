@@ -56,6 +56,8 @@ export class EntityStore {
   refused = 0;
   /** Each is called with the new capacity after the store grows. Whoever keeps a column for each entity widens it here. */
   readonly onGrow: ((cap: number) => void)[] = [];
+  /** Server history observes authoritative movement, including movement within the tick being simulated. */
+  readonly onPosition: ((e: number, fromX: number, fromY: number, fromZ: number) => void)[] = [];
 
   // The typed columns are replaced when the store grows, so none is kept across a create. That includes indexing
   // one with a create's result in the same expression: `ents.pid[spawn()]` reads the column from before the spawn.
@@ -722,9 +724,11 @@ export class EntityStore {
 
   /** Returns true if it changed chunk. */
   setPosition(i: number, x: number, y: number, z: number): boolean {
+    const fromX = this.x[i]!, fromY = this.y[i]!, fromZ = this.z[i]!;
     this.x[i] = x;
     this.y[i] = y;
     this.z[i] = z;
+    for (const moved of this.onPosition) moved(i, fromX, fromY, fromZ);
     const c = chunkAt(this.dims, x, z);
     if (c === this.chunk[i]) return false;
     this.unlink(i);

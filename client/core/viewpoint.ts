@@ -6,6 +6,7 @@ import { HIT_NONE, castWorld, rayHit } from "../../shared/world/ray.ts";
 import type { Camera } from "./render/camera.ts";
 import { quatRotate } from "../../shared/math/quat.ts";
 import { vehicleRotation, type VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
+import { mountCameraHeight } from "./mount-camera.ts";
 
 const rotation = new Float64Array(4), forward = new Float64Array(3), up = new Float64Array(3);
 
@@ -58,7 +59,7 @@ const CLEAR = 0.3;
 const EASE_MS = 350;
 const EASE_REACH = 15;
 /** The vehicle's own motion, and how far back (metres) the boom holds the camera at rest: its size's, not one number for all. */
-export interface VehicleCameraMotion { vx: number; vy: number; vz: number; id?: number; boom?: number }
+export interface VehicleCameraMotion { vx: number; vy: number; vz: number; id?: number; boom?: number; anticipate?: boolean; safeY?: number; wantedY?: number }
 
 export class Viewpoint {
   thirdPerson = false;
@@ -70,6 +71,7 @@ export class Viewpoint {
   private readonly target = new Float64Array(3);
   private readonly targetVelocity = new Float64Array(3);
   private boom = 6;
+  private clearReach = 0;
   /** Where the camera was last placed, and while easing, where the ease began and the milliseconds it has left. */
   private placed = false;
   private readonly last = new Float64Array(3);
@@ -110,6 +112,30 @@ export class Viewpoint {
     const length = Math.hypot(dx, dy, dz);
     let reach = length;
     if (world && castWorld(world, ex, ey, ez, dx / length, dy / length, dz / length, length + CLEAR) !== HIT_NONE) reach = Math.max(0, rayHit.t - CLEAR);
+    if (motion?.anticipate) {
+      let wantedReach = reach;
+      // Retract before the pivot starts descending: sharing its shorter horizon makes both moves start
+      // together and a reversing rider's camera can reach the roof before the boom has shortened.
+      const speed = Math.hypot(motion.vx, motion.vz), ahead = Math.min(1.5, 12 / Math.max(1, speed));
+      // A roof edge becomes visible to the future boom before the rider crosses it. Retract while the route is clear.
+      const samples = Math.max(1, Math.ceil(speed * ahead / .15));
+      if (world && speed > .01) for (let k = 1; k <= samples; k++) {
+        const step = ahead * k / samples, x = ex + motion.vx * step, z = ez + motion.vz * step;
+        const futureY = mountCameraHeight(world, x, z, motion.safeY ?? ey, motion.wantedY ?? ey);
+        // The pivot can descend before the mount enters a roof. Test both the current and lowered boom
+        // so a camera ahead of a reversing mount retracts before its pivot descends.
+        if (castWorld(world, x, ey, z, dx / length, dy / length, dz / length, length + CLEAR) !== HIT_NONE) wantedReach = Math.min(wantedReach, Math.max(0, rayHit.t - CLEAR));
+        if (futureY < ey && castWorld(world, x, futureY, z, dx / length, dy / length, dz / length, length + CLEAR) !== HIT_NONE) wantedReach = Math.min(wantedReach, Math.max(0, rayHit.t - CLEAR));
+      }
+      if (reset) this.clearReach = wantedReach;
+      else {
+        const change = (wantedReach - this.clearReach) * (1 - Math.exp(-seconds / .18));
+        this.clearReach += Math.max(-20 * seconds, Math.min(20 * seconds, change));
+      }
+      // Sudden new geometry still wins over easing; never smooth through a solid obstacle.
+      this.clearReach = Math.min(reach, this.clearReach);
+      reach = this.clearReach;
+    }
     const k = reach / length;
     cam.x = ex + dx * k;
     cam.y = ey + dy * k;

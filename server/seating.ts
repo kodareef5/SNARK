@@ -6,6 +6,8 @@ import { CHUNK_SIZE } from "../shared/coords.ts";
 import { STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceHeight } from "../shared/sim/character.ts";
 import { F_ALIVE } from "../shared/sim/entities.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
+import { isWheelVehicle } from "../shared/sim/vehicle.ts";
+import { carMeetsCapsule } from "../shared/world/vehicle.ts";
 import type { Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
 
@@ -26,7 +28,7 @@ export class Seating {
     let reach = 0;
     for (let k = 0; k < reg.defs.length; k++) {
       const v = reg.vehicle[k];
-      reach = Math.max(reach, reg.bodyRadius[k] ?? 0, v ? Math.hypot(v.spec.halfWidth, v.spec.halfLength) : 0);
+      reach = Math.max(reach, reg.bodyRadius[k] ?? 0, v ? Math.hypot(v.spec.halfWidth, v.spec.halfLength, v.spec.height) : 0);
     }
     this.reach = reach;
   }
@@ -51,15 +53,26 @@ export class Seating {
     for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) for (let e = ents.chunkHead[cz * world.dims.chunksX + cx]!; e >= 0; e = ents.next[e]!) {
       const pid = ents.pid[e]!;
       if (pid === 0 || records.entOf.get(pid) !== e || ignored.includes(pid) || pid === ignoredHost || (ents.flags[e]! & F_ALIVE) === 0) continue;
-      if (p.y >= ents.y[e]! + world.reg.bodyHeight[ents.kind[e]!]! || p.y + (height ?? move.height) <= ents.y[e]!) continue;
       const vehicle = world.reg.vehicle[ents.kind[e]!];
       const dx = p.x - ents.x[e]!, dz = p.z - ents.z[e]!;
-      if (vehicle) {
+      if (vehicle && !isWheelVehicle(vehicle)) {
+        // Boarding corridors intentionally permit stepping over skids/through the stern ladder.
+        // Aircraft/boat interaction queries include those parts (and rotor hazards), so retain their boarding proxy.
+        if (p.y >= ents.y[e]! + world.reg.bodyHeight[ents.kind[e]!]! || p.y + (height ?? move.height) <= ents.y[e]!) continue;
         const a = ents.vehicleYaw[ents.vrow[e]!]!, co = Math.cos(a), sn = Math.sin(a);
         const x = Math.max(0, Math.abs(co * dx - sn * dz) - vehicle.spec.halfWidth);
         const z = Math.max(0, Math.abs(sn * dx + co * dz) - vehicle.spec.halfLength);
         if (x * x + z * z < move.radius * move.radius) return false;
-      } else if (dx * dx + dz * dz < (move.radius + world.reg.bodyRadius[ents.kind[e]!]!) ** 2) return false;
+      } else if (vehicle) {
+        const v = ents.vrow[e]!;
+        const frame = { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[v]!, pitch: ents.vehiclePitch[v]!, roll: ents.vehicleRoll[v]!,
+          qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!, steering: ents.steering[v]! };
+        const hit = carMeetsCapsule(vehicle.spec, frame, p.x, p.y, p.z, move.radius, height ?? move.height);
+        if (hit) return false;
+      } else {
+        if (p.y >= ents.y[e]! + world.reg.bodyHeight[ents.kind[e]!]! || p.y + (height ?? move.height) <= ents.y[e]!) continue;
+        if (dx * dx + dz * dz < (move.radius + world.reg.bodyRadius[ents.kind[e]!]!) ** 2) return false;
+      }
     }
     return true;
   }
