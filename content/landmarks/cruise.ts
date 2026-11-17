@@ -30,6 +30,11 @@ export const CRUISE: Landmark = {
   vehicles: [],
   ground: [
     { from: [-layout.dimensions.bridgeBeam / 2 - 6, layout.dimensions.minZ - 8], to: [layout.dimensions.bridgeBeam / 2 + 6, layout.dimensions.maxZ + 8], y: source.dimensions.provisionalKeelY - 2, dig: true },
+    // Lay lower approaches first. The normal 16 m easing then joins each rise to
+    // the next terrace, so Miami's low quay can reach the 14 m boarding deck on foot.
+    { from: [57.6, -28], to: [154, -20], y: 3 },
+    { from: [57.6, -28], to: [130, -20], y: 6 },
+    { from: [57.6, -28], to: [106, -20], y: 10 },
     { from: [layout.docking.shoreLanding[0]! - .4, layout.docking.shoreLanding[2]! - 16], to: [layout.docking.shoreLanding[0]! + 24, layout.docking.shoreLanding[2]! + 16], y: layout.docking.shoreLanding[1]! },
   ],
 };
