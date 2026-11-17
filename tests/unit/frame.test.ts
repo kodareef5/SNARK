@@ -21,7 +21,7 @@ test("a chunk's frame key is its column and row on the lattice, and names it aga
   for (const [col, row] of [[4090, 8], [4096, 8], [4093, 6], [4093, 10]] as const) expect(chunkOfKey(d, row * FRAME_CHUNKS + col)).toBe(-1);
   expect([chunkOfKey(d, -1), chunkOfKey(d, FRAME_CHUNKS * FRAME_CHUNKS + 4091)]).toEqual([-1, -1]);
   // Hand-made dims sit with their south-east corner in the lattice's middle, and the origin is the sector corner at or
-  // beyond their north-west corner: a 127-chunk map reads 0 to 79.4 across and 0.6 to 80 down.
+  // beyond their north-west corner: a 127-chunk map reads 0.6 to 80 across and down.
   expect(framed({ chunksX: 127, chunksZ: 127 })).toEqual({ chunksX: 127, chunksZ: 127, frameX: 2048, frameZ: 2048, originX: 2176, originZ: 2176 });
   expect(framed({ chunksX: 16, chunksZ: 1 })).toEqual({ chunksX: 16, chunksZ: 1, frameX: 2048, frameZ: 2048, originX: 2064, originZ: 2064 });
   expect(framed({ chunksX: 2, chunksZ: 2, frameX: 100, frameZ: 33 })).toEqual({ chunksX: 2, chunksZ: 2, frameX: 100, frameZ: 33, originX: 112, originZ: 48 });

@@ -179,7 +179,10 @@ test("every page is whole HTML, names only what it has, and writes what the cont
       entries: entries.map((e) => (e.id === "core:raptor" ? { ...e, label: '<img src=x onerror="bad()">' } : e)),
       pictures: new Map([["core:raptor", { views: [card], card }]]),
       credits: new Map([["core:raptor", "Model and motion: from a CC0 1.0 pack."]]),
-      atlases: [{ id: "core:miami", slug: "miami", label: "Miami", metres: [8128, 8128], ground: card, card, resources: [], creatures: [], vehicles: [], regions: [], spawns: [], obelisks: [], landmarks: [{ of: "koru", name: "koru", x: 400, y: 500 }], districts: [], sources: [] }],
+      atlases: [
+        { id: "core:miami", slug: "miami", label: "Miami", metres: [8128, 8128], ground: card, card, resources: [], creatures: [], vehicles: [], regions: [], spawns: [], obelisks: [], landmarks: [{ of: "koru", name: "koru", x: 400, y: 500 }], districts: [], sources: [] },
+        { id: "core:reno", slug: "reno", label: "Reno", metres: [12032, 8000], ground: card, card, resources: [], creatures: [], vehicles: [], regions: [], spawns: [], obelisks: [], landmarks: [], districts: [], sources: [] },
+      ],
       sounds: [{ id: "core:raptor/sound/call", owner: "core:raptor", name: "Call", file: "core.snsd", at: 8, rate: 32000, takes: [[16000, 20], [24000, 30]], game: true }],
       heard: new Map([["core:raptor", ["core:raptor/sound/call"]]]),
       music: [],
@@ -205,6 +208,12 @@ test("every page is whole HTML, names only what it has, and writes what the cont
     expect(miami).toContain('<section><h2>Landmarks</h2><div class="cards"><a class="card" href="/wiki/landmarks/koru/">');
     expect(miami).toContain("<small>Sail control · 3 doors · a boat</small>");
     expect(pages.get("maps/")).toContain("<small>8.1 km across · Koru</small>");
+    // A map that is not square is drawn in its own proportions: its box as deep as its width makes it, and its marks in that box.
+    expect(miami).toContain('style="aspect-ratio:8128 / 8128"');
+    expect(miami).toContain('<svg class="marks" viewBox="0 0 1000 1000"');
+    expect(pages.get("maps/reno/")).toContain('style="aspect-ratio:12032 / 8000"');
+    expect(pages.get("maps/reno/")).toContain('<svg class="marks" viewBox="0 0 1000 664.9"');
+    expect(pages.get("maps/")).toContain("<small>12 by 8 km</small>");
     expect(pages.get("landmarks/koru/")).toContain('<h2>Where it stands</h2><ul class="places"><li><a href="/wiki/maps/miami/?show=landmarks">Miami</a>');
     const raptor = pages.get("creatures/raptor/")!;
     expect(raptor).toContain("&lt;img src=x onerror=&quot;bad()&quot;&gt;");

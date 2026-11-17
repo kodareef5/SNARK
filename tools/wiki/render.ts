@@ -303,7 +303,7 @@ ${related ? `<section><h2>Related</h2><dl class="related">${related}</dl></secti
 
 const at1 = (n: number): number => Math.round(n * 10) / 10;
 
-/** "8.1 km across", or for a map that is not square "12.0 by 8.0 km", west to east first. */
+/** "8.1 km across", or for a map that is not square "12 by 8 km", west to east first. */
 function extent(a: Atlas): string {
   const [w, d] = a.metres;
   return w === d ? `${num(w / 1000, 1)} km across` : `${num(w / 1000, 1)} by ${num(d / 1000, 1)} km`;

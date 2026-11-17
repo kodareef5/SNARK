@@ -399,24 +399,24 @@ export class MapPicture {
     // Longitude grows east, which is rightward, from the map's west edge or the picture's left, whichever is further east.
     for (let k = Math.ceil(lonOf(d, Math.min(hf.sizeX, west)) / step - 1e-6) * step; k <= lonOf(d, 0) + 1e-6; k += step) {
       const px = Math.round((west - xOfLon(d, k)) * scale);
-      if (px >= N) break;
+      if (px >= right) break;
       for (let py = top; py < bottom; py++) darken(out, py * N + px, darkness(k));
-      if (this.coordinates && k % numbered === 0) this.number(k, px + 2, top + 2, big);
+      if (this.coordinates && k % numbered === 0) this.number(k, px + 2, top + 2, big, right, bottom);
     }
     for (let k = Math.ceil(latOf(d, Math.min(hf.sizeZ, north)) / step - 1e-6) * step; k <= latOf(d, 0) + 1e-6; k += step) {
       const py = Math.round((north - zOfLat(d, k)) * scale);
-      if (py >= N) break;
+      if (py >= bottom) break;
       for (let px = left; px < right; px++) darken(out, py * N + px, darkness(k));
       // The top row belongs to the longitudes.
-      if (this.coordinates && k % numbered === 0 && py - top > 7 * big) this.number(k, left + 2, py + 2, big);
+      if (this.coordinates && k % numbered === 0 && py - top > 7 * big) this.number(k, left + 2, py + 2, big, right, bottom);
     }
   }
 
-  /** Writes a whole number in white on a dark shadow, its top left at (x, y), `big` pixels to a dot. Left out if it would not fit. */
-  private number(value: number, x: number, y: number, big: number): void {
+  /** Writes a whole number in white on a dark shadow, its top left at (x, y), `big` pixels to a dot. Left out if it would pass `right` or `bottom`. */
+  private number(value: number, x: number, y: number, big: number, right: number, bottom: number): void {
     const N = this.image.width;
     const text = String(value);
-    if (x < 0 || y < 0 || x + text.length * 4 * big + big > N || y + 6 * big > N) return;
+    if (x < 0 || y < 0 || x + text.length * 4 * big + big > right || y + 6 * big > bottom) return;
     for (const [shift, colour] of [[big, 0xff000000], [0, 0xffffffff]] as const) {
       for (let d = 0; d < text.length; d++) {
         const bits = DIGITS[text.charCodeAt(d) - 48]!;
