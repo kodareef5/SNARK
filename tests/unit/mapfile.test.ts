@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
-import { CHUNK_SIZE, framed } from "../../shared/coords.ts";
+import { CHUNK_SIZE, chunkCount, framed } from "../../shared/coords.ts";
 import { hashBytes } from "../../shared/hash.ts";
-import { MapStatics, groundBytes, mapHeightfield, mapNodes, parseMap, parseStatics, placeStatics, staticsSteps, writeMap, type MapData, type NodeScatter, type NodeZoned } from "../../shared/world/mapfile.ts";
+import { MapStatics, OVERVIEW_STEP, blankLayers, joinParts, mapHeightfield, mapNodes, parseMap, partSteps, placeStatics, readHead, readPart, setGround, writeMap, type GroundPiece, type MapData, type NodeScatter, type NodeZoned, type OverviewPiece, type StaticsPiece } from "../../shared/world/mapfile.ts";
 import { nodeForms, scatterNodes, type NodeSpot } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
-import { busyMap, flatMap } from "../fixtures/map.ts";
+import { busyMap, flatMap, wideMap } from "../fixtures/map.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -14,15 +14,15 @@ test("a map written to a file is read back whole, and the same map is the same b
   const map = busyMap();
   const file = writeMap(map);
   const back = parseMap(file);
-  // A map that does not say where it sits is read back at the lattice's middle, with the default display origin.
-  expect({ ...back, statics: [...back.statics] }).toEqual({ ...map, dims: framed(map.dims), statics: [...map.statics], hash: hashBytes(file.subarray(12)) });
+  // A map that does not say where it sits is read back at the lattice's middle, with the default display origin. Its hash is its head's.
+  expect({ ...back, statics: [...back.statics] }).toEqual({ ...map, dims: framed(map.dims), statics: [...map.statics], hash: hashBytes(file.subarray(12, readHead(file).bytes)) });
   expect(back.dims).toEqual({ chunksX: 2, chunksZ: 3, frameX: 2048, frameZ: 2048, originX: 2064, originZ: 2064 });
   expect(writeMap(back)).toEqual(file);
-  // One that does keeps its frame and origin, and its file differs from the default's in those eight bytes alone.
+  // One that does keeps its frame and origin, and its head differs from the default's in those eight bytes and its hashes.
   const placed = { chunksX: 2, chunksZ: 3, frameX: 1001, frameZ: 4093, originX: 1008, originZ: 4096 };
   const there = writeMap({ ...map, dims: placed });
   expect(parseMap(there).dims).toEqual(placed);
-  expect(Array.from({ length: file.length }, (_, i) => i).filter((i) => i >= 12 && there[i] !== file[i]).every((i) => i >= 20 && i < 28)).toBe(true);
+  expect(parseMap(there).heights).toEqual(map.heights);
   // A map with nothing on it and no water.
   const bare = parseMap(writeMap(flatMap(1)));
   expect([bare.seaLevel, [...bare.statics], bare.nodes, mapNodes(bare, mapHeightfield(bare), reg)]).toEqual([-Infinity, [], [], null]);
@@ -30,40 +30,152 @@ test("a map written to a file is read back whole, and the same map is the same b
   expect(Bun.gzipSync(writeMap(flatMap(4))).length).toBeLessThan(400);
 });
 
-test("a file's ground comes before its statics, and each reads alone: the ground as the map with none, the rest as its statics", () => {
-  const map = busyMap();
+test("a map written in parts and read back is the map it was made of: every height, tint, static in its slot, node slot and water square", () => {
+  const map = wideMap();
   const file = writeMap(map);
-  const ground = groundBytes(file);
-  expect(ground).toBeLessThan(file.length);
-  const first = parseMap(file.subarray(0, ground), false);
-  expect([first.hash, first.statics.length, first.heights, first.nodes]).toEqual([parseMap(file).hash, 0, map.heights, map.nodes]);
-  expect(() => parseMap(file.subarray(0, ground))).toThrow("map: the file is damaged");
-  expect([...parseStatics(file.subarray(ground), map.dims)]).toEqual([...MapStatics.of(map.dims, map.statics)]);
-  expect(parseStatics(new Uint8Array(0), map.dims).length).toBe(0);
+  const back = parseMap(file);
+  const head = readHead(file);
+  // Two overviews and ten sectors of ground, and a sector's statics for each sector that has some.
+  expect(head.parts.map((p) => `${p.kind} ${p.col}-${p.row}`)).toEqual(["overview 31-32", "overview 32-32", ...[128, 129].flatMap((r) => [127, 128, 129, 130, 131].map((c) => `ground ${c}-${r}`)), ...[128, 129].flatMap((r) => [127, 128, 129, 130, 131].map((c) => `statics ${c}-${r}`))]);
+  expect([back.heights, back.tint]).toEqual([map.heights, map.tint]);
+  // The statics set down from the file fill the slots those of the list fill, piece for piece.
+  const [ours, theirs] = [back, map].map((m) => {
+    const structs = new StructureStore(m.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+    placeStatics(m, structs, reg);
+    return structs;
+  });
+  expect(ours!.held).toEqual(theirs!.held);
+  for (const c of theirs!.held) for (const col of ["kind", "x", "y", "z", "yaw"] as const) expect(ours!.chunks[c]![col]).toEqual(theirs!.chunks[c]![col]);
+  expect(back.statics.first).toEqual(MapStatics.of(map.dims, map.statics).first);
+  // Every node slot of every chunk, of every layer: scattered where its picture allows, listed, and the two zoned on one picture.
+  const hf = mapHeightfield(back);
+  const [a, b] = [mapNodes(back, hf, reg)!, mapNodes(map, hf, reg)!];
+  const [s, t] = [spot(), spot()];
+  let standing = 0;
+  for (let c = 0; c < chunkCount(map.dims); c++) {
+    for (let i = 0; i < a.perChunk; i++) {
+      a.at(c, i, s);
+      b.at(c, i, t);
+      expect(s.kind === 0 ? [0] : s).toEqual(t.kind === 0 ? [0] : t);
+      if (s.kind !== 0) standing++;
+    }
+  }
+  expect([a.perChunk, standing > 5000]).toEqual([46, true]);
+  expect([back.nodes[0], back.nodes[1]]).toEqual([map.nodes[0], map.nodes[1]]);
+  // Every chunk's water squares.
+  const [w, v] = [back.water!, map.water!];
+  expect([w.chunks(), w.bodies, w.cell]).toEqual([v.chunks(), v.bodies, v.cell]);
+  for (const c of v.chunks()) expect(w.squares.subarray(w.block[c]!, w.block[c]! + 64)).toEqual(v.squares.subarray(v.block[c]!, v.block[c]! + 64));
+  expect(writeMap(back)).toEqual(file);
+});
+
+test("each part reads alone given the head, and sets into what the game holds", () => {
+  const map = wideMap();
+  const file = writeMap(map);
+  const head = readHead(file);
+  const bytes = (kind: string, col: number, row: number): [typeof head.parts[number], Uint8Array] => {
+    const p = head.parts.find((q) => q.kind === kind && q.col === col && q.row === row)!;
+    return [p, file.subarray(p.at, p.at + p.length)];
+  };
+  const nx = 70 * 32 + 1;
+  // The second sector of the first row: chunks 8 up to 24 along x, 0 up to 14 along z, and its far edges.
+  const ground = readPart(head, ...bytes("ground", 128, 128)) as GroundPiece;
+  expect([ground.sq.cx0, ground.sq.cx1, ground.sq.cz0, ground.sq.cz1, ground.heights.length]).toEqual([8, 24, 0, 14, 513 * 449]);
+  const [heights, tint] = [new Uint16Array(map.heights.length), new Uint8Array(0)];
+  setGround(head.dims, heights, tint, ground);
+  for (let j = 0; j < 449; j++) expect([...heights.subarray(j * nx + 256, j * nx + 769)]).toEqual([...map.heights.subarray(j * nx + 256, j * nx + 769)]);
+  expect([heights[nx * 449 + 256], heights[255], heights[769]]).toEqual([0, 0, 0]);
+  // An overview: every fourth sample, and each of its chunks' lowest and highest sample, edges and all.
+  const over = readPart(head, ...bytes("overview", 32, 32)) as OverviewPiece;
+  const w = 62 * 8 + 1;
+  expect(over.heights.length).toBe(w * (20 * 8 + 1));
+  for (const [i, j] of [[0, 0], [7, 3], [w - 1, 160]] as const) expect(over.heights[j * w + i]).toBe(map.heights[j * OVERVIEW_STEP * nx + 256 + i * OVERVIEW_STEP]);
+  const lowest = (cx: number, cz: number): number[] => {
+    const all = Array.from({ length: 33 * 33 }, (_, k) => map.heights[(cz * 32 + Math.floor(k / 33)) * nx + cx * 32 + (k % 33)]!);
+    return [Math.min(...all), Math.max(...all)];
+  };
+  expect([over.low[0], over.high[0], over.low[62 * 19 + 61], over.high[62 * 19 + 61]]).toEqual([...lowest(8, 0), ...lowest(69, 19)]);
+  // A sector's statics: those of its chunks, each in its chunk, in the map's order.
+  const statics = readPart(head, ...bytes("statics", 127, 129)) as StaticsPiece;
+  const whole = MapStatics.of(map.dims, map.statics);
+  let mine = 0;
+  for (let cz = 14; cz < 20; cz++) for (let cx = 0; cx < 8; cx++) mine += whole.first[cz * 70 + cx + 1]! - whole.first[cz * 70 + cx]!;
+  expect([statics.id.length, [...statics.chunk].every((c) => c % 70 < 8 && c >= 14 * 70)]).toEqual([mine, true]);
+  // Without its statics' parts the head and the rest are the map with none, which a client draws from while they come.
+  const ground0 = joinParts(head, head.parts.filter((p) => p.kind !== "statics").map((p) => readPart(head, p, file.subarray(p.at, p.at + p.length))), false);
+  expect([ground0.statics.length, ground0.heights, ground0.nodes[2]]).toEqual([0, map.heights, parseMap(file).nodes[2]]);
+  expect(blankLayers(head).map((l) => ("zone" in l ? l.zone.length : "first" in l ? l.first.length : l.allow!.length))).toEqual([11200, 1401, 22400, 22400]);
+  // Read a step at a time, a city's pieces in one sector yield a slice of them a step.
+  const many = Array.from({ length: 70000 }, (_, i) => ({ kind: i % 3 ? "core:wall" : "core:crate", x: (i % 250) / 4, y: 1 + (i % 7), z: (i * 7) % 64, yaw: i % 65536 }));
+  const city = writeMap({ ...flatMap(1), statics: many });
+  const cityHead = readHead(city);
+  const part = cityHead.parts.find((p) => p.kind === "statics")!;
+  const steps = partSteps(cityHead, part, city.subarray(part.at, part.at + part.length));
+  let step = steps.next();
+  let taken = 0;
+  for (; !step.done; step = steps.next()) taken++;
+  expect([taken, (step.value as StaticsPiece).id.length]).toEqual([2, 70000]);
   // Pieces from one end of the widest map to the other, and from the lowest to the highest, come back where they were.
   const dims = { chunksX: 256, chunksZ: 1 };
   const samples = (256 * 32 + 1) * 33;
   const far = [{ kind: "core:wall", x: 0, y: -1024, z: 64, yaw: 65535 }, { kind: "core:wall", x: 16384, y: 3072, z: 0, yaw: 0 }, { kind: "core:wall", x: 0.5, y: 0, z: 63.5, yaw: 1 }];
-  const wide = writeMap({ ...flatMap(1), dims, heights: new Uint16Array(samples), tint: new Uint8Array(samples), statics: far });
-  expect([...parseStatics(wide.subarray(groundBytes(wide)), dims)]).toEqual([...MapStatics.of(dims, far)]);
-  // Read a step at a time, a city's pieces come to the same table, a slice of them a step.
-  const many = Array.from({ length: 70000 }, (_, i) => ({ kind: i % 3 ? "core:wall" : "core:crate", x: (i % 250) / 4, y: 1 + (i % 7), z: (i * 7) % 64, yaw: i % 65536 }));
-  const city = writeMap({ ...flatMap(1), statics: many });
-  const steps = staticsSteps(city.subarray(groundBytes(city)), { chunksX: 1, chunksZ: 1 });
-  let step = steps.next();
-  let taken = 0;
-  for (; !step.done; step = steps.next()) taken++;
-  expect([taken >= 4, [...step.value].slice(-3)]).toEqual([true, [...MapStatics.of({ chunksX: 1, chunksZ: 1 }, many)].slice(-3)]);
-  // A piece off the map in the file itself is refused as one in a map written so would be.
+  const wide = parseMap(writeMap({ ...flatMap(1), dims, heights: new Uint16Array(samples), tint: new Uint8Array(samples), statics: far }));
+  const ref = MapStatics.of(dims, far);
+  expect([wide.statics.first, wide.statics.x, wide.statics.y, wide.statics.z, wide.statics.yaw]).toEqual([ref.first, ref.x, ref.y, ref.z, ref.yaw]);
+  // The map's order is each sector's pieces in turn, its own in the order the map gave them.
+  expect([...wide.statics]).toEqual([far[0], far[2], far[1]]);
+  // A piece off the map in the part itself is refused as one in a map written so would be.
   const off = city.slice();
-  // The high byte of the last piece's x, in the third of x's planes: the columns end the file.
-  off[off.length - 13 * many.length + 6 * many.length + many.length - 1]! = 0x7f;
-  expect(() => parseStatics(off.subarray(groundBytes(city)), { chunksX: 1, chunksZ: 1 })).toThrow("is off the map");
+  // The high byte of the last piece's x, in the third of x's planes, after the part's count and 6 planes.
+  off[part.at + 4 + 6 * 70000 + 69999]! = 0x7f;
+  expect(() => readPart(cityHead, part, off.subarray(part.at, part.at + part.length), false)).toThrow("is off the map");
+});
+
+test("a part that is damaged, or another's, is refused with its name, and so is a head", () => {
+  const file = writeMap(wideMap());
+  const head = readHead(file);
+  const [a, b] = [head.parts[3]!, head.parts[4]!];
+  const flipped = file.slice();
+  flipped[a.at + 100]! ^= 1;
+  const said = `map: its part ${a.name} is damaged or another's: its bytes are not those its head names`;
+  expect(a.name).toMatch(/^ground\.128-128\.[0-9a-f]{16}\.part$/);
+  expect(() => readPart(head, a, flipped.subarray(a.at, a.at + a.length))).toThrow(said);
+  expect(() => parseMap(flipped)).toThrow(said);
+  // Another part's bytes, as a stale file under the name would be.
+  expect(() => readPart(head, a, file.subarray(b.at, b.at + b.length))).toThrow(`map: its part ${a.name} is damaged or another's`);
+  // A head damaged, and the parts of a file cut short or run on.
+  const changed = file.slice();
+  changed[60]! ^= 1;
+  expect(() => readHead(changed)).toThrow("map: its head is damaged: its hash is not that of its bytes");
+  expect(() => parseMap(file.subarray(0, file.length - 1))).toThrow("map: it is cut short");
+  expect(() => parseMap(Uint8Array.from([...file, 0]))).toThrow("map: it runs on past its last part");
+  // Taken on trust, a damaged part is read as it is.
+  expect(readPart(head, a, flipped.subarray(a.at, a.at + a.length), false).kind).toBe("ground");
+});
+
+test("a map widened on one side keeps every part of the squares it did not reach, by name and bytes", () => {
+  const map = wideMap();
+  const statics = MapStatics.of(map.dims, map.statics);
+  // A column of chunks more on the east, where x is 0: the lattice corner moves a chunk east and every place a chunk west.
+  const [nx, nz] = [70 * 32 + 1, 20 * 32 + 1];
+  const heights = new Uint16Array((nx + 32) * nz);
+  for (let j = 0; j < nz; j++) heights.set(map.heights.subarray(j * nx, j * nx + nx), j * (nx + 32) + 32);
+  const plain = { ...map, nodes: [], water: undefined };
+  const wider: MapData = { ...plain, dims: { ...map.dims, chunksX: 71, frameX: 2039 }, heights, tint: new Uint8Array(heights.length), statics: [...statics].map((s) => ({ ...s, x: s.x + CHUNK_SIZE })), spawns: [{ name: "West", x: 4064, z: 600, yaw: 0 }] };
+  const tinted = { ...plain, tint: new Uint8Array(map.tint.length) };
+  const [before, after] = [readHead(writeMap(tinted)), readHead(writeMap(wider))];
+  const names = (h: typeof before): string[] => h.parts.map((p) => p.name);
+  // The ground of column 127 of sectors and of column 31 of overviews takes the new chunks. Every other part keeps its name,
+  // the statics of column 127 among them, which stand where they stood on the lattice.
+  const touched = (n: string): boolean => /^(ground\.127|overview\.31)-/.test(n);
+  expect(names(before).filter((n) => !touched(n)).filter((n) => names(after).includes(n)).length).toBe(19);
+  expect(names(before).filter(touched).filter((n) => names(after).includes(n))).toEqual([]);
 });
 
 test("slots taken out of a scattered layer stand empty, and the rest are the scatter's", () => {
   const zoned = busyMap().nodes[2] as NodeZoned;
-  const out = new Uint8Array(Math.ceil((6 * zoned.perChunk) / 8)).fill(0x55);
+  // Bits past the last chunk's slots are not kept.
+  const out = new Uint8Array(Math.ceil((6 * zoned.perChunk) / 8)).fill(0x55).fill(0x05, 22);
   const map = parseMap(writeMap({ ...busyMap(), nodes: [{ ...zoned, out }] }));
   expect((map.nodes[0] as NodeZoned).out).toEqual(out);
   const hf = mapHeightfield(map);
@@ -86,28 +198,30 @@ test("slots taken out of a scattered layer stand empty, and the rest are the sca
 
 test("a file that is damaged, foreign or unplayable is refused, and the reason says which", () => {
   const file = writeMap(flatMap(1));
-  /** The file with one thing changed and its hash made right again, as a faulty writer would leave it. */
+  const headBytes = readHead(file).bytes;
+  /** The file with one thing of its head changed and its hash made right again, as a faulty writer would leave it. */
   const rehashed = (change: (view: DataView) => void): Uint8Array => {
     const copy = file.slice();
     const view = new DataView(copy.buffer);
     change(view);
-    view.setUint32(8, hashBytes(copy.subarray(12)), true);
+    view.setUint32(8, hashBytes(copy.subarray(12, headBytes)), true);
     return copy;
   };
   const flipped = file.slice();
-  flipped[file.length >> 1]! ^= 4;
-  expect(() => parseMap(flipped)).toThrow("map: the file is damaged");
+  flipped[file.length - 100]! ^= 4;
+  expect(() => parseMap(flipped)).toThrow(/^map: its part ground\.128-128\.[0-9a-f]{16}\.part is damaged/);
   expect(() => parseMap(file.subarray(0, file.length - 9))).toThrow("map: it is cut short");
-  const busy = writeMap(busyMap());
-  expect(() => parseMap(busy.subarray(0, busy.length - 9))).toThrow("map: the file is damaged");
-  // A page fetched the file by its SHA-256, so it reads the body without hashing it again.
+  // Taken on trust, the bytes are read as they are, and the same bytes are the same map.
   expect(parseMap(file, false)).toEqual(parseMap(file));
   expect(() => parseMap(file.subarray(0, file.length - 9), false)).toThrow("map: it is cut short");
   expect(() => parseMap(new Uint8Array(100))).toThrow("map: this is not a map file");
   expect(() => parseMap(file.subarray(0, 20))).toThrow("map: it is cut short");
   expect(() => parseMap(rehashed((view) => view.setUint16(4, 3, true)))).toThrow("map: version 3 is not one this build reads: build the map again");
   expect(() => parseMap(rehashed((view) => view.setFloat32(28, 4, true)))).toThrow("map: its samples are 4 m apart");
-  expect(() => parseMap(rehashed((view) => view.setUint16(16, 2, true)))).toThrow("map: it has 1089 heights and 1089 tints, and its size takes 2145 of each");
+  // Twice as wide, its overview's ground is read as twice the samples it holds.
+  expect(() => parseMap(rehashed((view) => view.setUint16(16, 2, true)))).toThrow(/^map: its part overview\.32-32\.[0-9a-f]{16}\.part runs past its end$/);
+  // Off the lattice's grid by a sector, its parts lie off the map.
+  expect(() => parseMap(rehashed((view) => view.setUint16(20, 2064, true)))).toThrow(/^map: its part ground\.128-128\.[0-9a-f]{16}\.part lies off the map$/);
   // The first section's length, made to reach past the end of the file.
   const lengthAt = 56 + 1 + "test:flat".length + 4;
   expect(() => parseMap(rehashed((view) => view.setUint32(lengthAt, file.length, true)))).toThrow("map: a section runs past its end");

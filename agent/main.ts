@@ -15,6 +15,7 @@ import { CMD_RESPAWN, CMD_TRAVEL, KEY_BYTES, SESSION_ALIVE, REJECT_CONTENT, REJE
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { CityStatics } from "../shared/world/city.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../shared/world/mapfile.ts";
+import { fetchMapFile } from "../client/core/fetched.ts";
 import { Mcp, type Answer, type ToolHost } from "./mcp.ts";
 import { connect } from "./socket.ts";
 import { GUIDE } from "./guide.ts";
@@ -116,9 +117,9 @@ async function main(): Promise<void> {
       };
       // The server poses bodies with the clips of the pack it serves, and wants the same of whoever joins.
       const clipHash = parseManifest(await (await get("assets/manifest.json")).text()).clipHash;
-      // It names its map's file, which holds the ground and where the trees and rocks stand.
-      const named = (await (await get("map.json")).json()) as { file: string };
-      const map = parseMap(new Uint8Array(await (await get(named.file)).arrayBuffer()));
+      // It names its map's head, whose parts hold the ground and where the trees and rocks stand: read whole, as one file.
+      const named = (await (await get("map.json")).json()) as { head: string };
+      const map = parseMap(await fetchMapFile(get, named.head));
       const hf = mapHeightfield(map);
       const ticket = trip && trip.refused === "" ? trip.ticket : null;
       const session = new ClientSession(connect(url), {
