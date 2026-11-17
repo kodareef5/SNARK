@@ -368,9 +368,27 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     await until(jump === undefined ? 0 : PATIENCE.after, () => on("exact", jump) !== undefined);
     const exact = jump === undefined ? undefined : on("exact", jump);
     await shot("exact", exact);
-    await until(PATIENCE.street, () => on("street", jump ?? upAt) !== undefined);
+    // Until the end, a picture as the last part comes and as the far city is first drawn, if it was not before the jump.
+    let farShot = on("far", upAt) !== undefined && on("far", upAt)! < jumpAt;
+    let lastShot = false;
+    const pictures = async (): Promise<void> => {
+      if (!lastShot && [...parts].every(came)) {
+        lastShot = true;
+        await shot("last-part", 0);
+      }
+      if (!farShot && on("far") !== undefined) {
+        farShot = true;
+        await shot("far-city", 0);
+      }
+    };
+    await until(PATIENCE.street, () => (void pictures(), on("street", jump ?? upAt) !== undefined));
     await shot("street-there", on("street", jump ?? upAt));
-    await until(PATIENCE.end, () => [...parts].every(came) && on("handed") !== undefined && on("far", jump ?? upAt) !== undefined);
+    for (const t0 = performance.now(); performance.now() - t0 < PATIENCE.end * 1000 && chrome.exitCode === null; seen = await look()) {
+      await measure();
+      await pictures();
+      if ([...parts].every(came) && on("handed") !== undefined && on("far", jump ?? upAt) !== undefined) break;
+      await Bun.sleep(50);
+    }
     await Bun.sleep(3000);
     seen = await look();
     await shot("end", seen.now);
