@@ -1,10 +1,13 @@
 import { expect, test } from "bun:test";
-import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, framed } from "../../shared/coords.ts";
+import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, frameKey, framed, type MapDims } from "../../shared/coords.ts";
 import { hashBytes } from "../../shared/hash.ts";
 import { CityStatics, cityTops } from "../../shared/world/city.ts";
-import { MapStatics, OVERVIEW_STEP, blankLayers, blankStatics, joinParts, joinStatics, mapHeightfield, mapNodes, mapTops, parseMap, partSteps, placeStatics, readHead, readPart, setGround, setStatics, topsOf, writeMap, type GroundPiece, type MapData, type NodeScatter, type NodeZoned, type OverviewPiece, type StaticsPiece, type TopsPiece } from "../../shared/world/mapfile.ts";
+import { MapStatics, OVERVIEW_STEP, blankLayers, blankStatics, joinParts, joinStatics, mapHeightfield, mapNodes, mapTops, parseMap, partSteps, placeStatics, readHead, readPart, resolveNodes, setGround, setStatics, topsOf, writeMap, type GroundPiece, type MapData, type NodeScatter, type NodeZoned, type OverviewPiece, type StaticsPiece, type TopsPiece } from "../../shared/world/mapfile.ts";
 import { FarCells, Summary, bakeChunk, pieceShapes } from "../../shared/world/tactical.ts";
-import { nodeForms, scatterNodes, type NodeSpot } from "../../shared/world/nodes.ts";
+import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import { SEA_DRY, SEA_UNDER, formOf, mix, nodeForms, scatterNodes, type NodeForms, type NodeSource, type NodeSpot, type SlotsTaken } from "../../shared/world/nodes.ts";
+import { MapWater, seaHere } from "../../shared/world/water.ts";
+import { Rng } from "../../shared/rng.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { busyMap, flatMap, wideMap } from "../fixtures/map.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -246,12 +249,15 @@ test("a map widened on one side keeps every part of the squares it did not reach
   expect(names(before).filter(touched).filter((n) => names(after).includes(n))).toEqual([]);
 });
 
-test("slots taken out of a scattered layer stand empty, and the rest are the scatter's", () => {
+test("slots a build takes out stand empty whatever the ground, and the rest stand as the rule resolves them", () => {
   const zoned = busyMap().nodes[2] as NodeZoned;
+  const { out: resolved, other, ...rule } = zoned;
   // Bits past the last chunk's slots are not kept.
-  const out = new Uint8Array(Math.ceil((6 * zoned.perChunk) / 8)).fill(0x55).fill(0x05, 22);
-  const map = parseMap(writeMap({ ...busyMap(), nodes: [{ ...zoned, out }] }));
-  expect((map.nodes[0] as NodeZoned).out).toEqual(out);
+  const taken = new Uint8Array(Math.ceil((6 * zoned.perChunk) / 8)).fill(0x55).fill(0x05, 22);
+  const map = parseMap(writeMap(resolveNodes({ ...busyMap(), nodes: [{ ...rule, out: taken }] }, reg)));
+  const back = map.nodes[0] as NodeZoned;
+  expect([[...back.out!].map((b, k) => b & taken[k]!), back.other]).toEqual([[...taken.subarray(0, 22), 0x05], other]);
+  expect([...back.out!].map((b, k) => b & ~taken[k]! & 0xff)).toEqual([...resolved!].map((b, k) => b & ~taken[k]! & 0xff));
   const hf = mapHeightfield(map);
   const kept = mapNodes(map, hf, reg)!;
   const all = mapNodes({ ...map, nodes: [zoned] }, hf, reg)!;
@@ -267,7 +273,142 @@ test("slots taken out of a scattered layer stand empty, and the rest are the sca
     }
   }
   expect(stood).toBeGreaterThan(10);
-  expect(() => writeMap({ ...busyMap(), nodes: [{ ...zoned, out: out.subarray(1) }] })).toThrow("map: the slots taken out of scattered nodes are not a bit per slot of every chunk");
+  expect(() => writeMap({ ...busyMap(), nodes: [{ ...zoned, out: taken.subarray(1) }] })).toThrow("map: the slots taken out of scattered nodes are not a bit per slot of every chunk");
+  // A file says where every node stands: a layer not resolved is refused.
+  expect(() => writeMap({ ...busyMap(), nodes: [{ ...rule, out: taken }] })).toThrow("map: its scattered nodes are not resolved");
+});
+
+/**
+ * The rule of where a scattered node stands as it was before a map's file said so, read from the whole ground at every ask:
+ * shared/world/nodes.ts scatterNodes of map version 7, kept here to hold every slot of a resolved map to it.
+ */
+function ruleBefore(dims: MapDims, hf: Heightfield, seed: number, perChunk: number, forms: NodeForms, kindsAt: (x: number, z: number) => readonly number[] | null): NodeSource {
+  const count = forms.footReach.length;
+  const [ring, slant, fall] = [new Int32Array(count), new Int32Array(count), new Int32Array(count)];
+  for (let k = 0; k < count; k++) {
+    if (!(forms.footReach[k]! > 0)) continue;
+    ring[k] = Math.ceil(forms.footReach[k]! / hf.cell);
+    slant[k] = Math.floor((ring[k]! * 181 + 128) / 256);
+    fall[k] = Math.floor(forms.footFall[k]! / hf.stepY);
+  }
+  const per = (hf.cell * 65536) / CHUNK_SIZE;
+  const height = (i: number, j: number): number => hf.heights[Math.min(hf.nz - 1, Math.max(0, j)) * hf.nx + Math.min(hf.nx - 1, Math.max(0, i))]!;
+  const fits = (kind: number, ux: number, uz: number): boolean => {
+    const [i, j] = [Math.floor((ux + per / 2) / per), Math.floor((uz + per / 2) / per)];
+    const low = height(i, j) - fall[kind]!;
+    const [r, d] = [ring[kind]!, slant[kind]!];
+    return [[r, 0], [-r, 0], [0, r], [0, -r], [d, d], [d, -d], [-d, d], [-d, -d]].every(([a, b]) => height(i + a!, j + b!) >= low);
+  };
+  return {
+    perChunk,
+    at(chunk, index, out) {
+      out.kind = 0;
+      const key = frameKey(dims, chunk);
+      const h = mix(seed, key, index);
+      const g = mix(h, index, key);
+      const x = (chunkCx(dims, chunk) + (h & 0xffff) / 65536) * CHUNK_SIZE;
+      const z = (chunkCz(dims, chunk) + (h >>> 16) / 65536) * CHUNK_SIZE;
+      const grows = kindsAt(x, z);
+      if (grows === null || grows.length === 0) return;
+      const y = hf.heightAt(x, z);
+      let kind = grows[g % grows.length]!;
+      const sea = forms.sea[kind]!;
+      if ((sea === SEA_DRY ? y < hf.waterAt(x, z) + 0.3 : sea === SEA_UNDER && (y >= hf.seaLevel || !seaHere(hf.water, x, z))) || hf.slopeCosAt(x, z) < 0.85) return;
+      if (kind !== 0 && ring[kind]! > 0 && !fits(kind, chunkCx(dims, chunk) * 65536 + (h & 0xffff), chunkCz(dims, chunk) * 65536 + (h >>> 16))) kind = forms.footElse[kind]!;
+      if (kind === 0) return;
+      [out.kind, out.form, out.x, out.y, out.z, out.yaw] = [kind, formOf(forms, kind, mix(g, key, seed)), x, y, z, (g >>> 8) & 0xffff];
+    },
+  };
+}
+
+/**
+ * Hills of 24 by 20 chunks off the lattice's grid of sectors, so they lie on four: the sea in the south, terraces whose steps
+ * are cliffs, and a pond on a rise. A zoned layer of trees, banyans, rocks and the sea floor's kinds, and a scattered one of
+ * rubble and metal rocks with slots a build took out; neither yet resolved.
+ */
+function hillsMap(): MapData {
+  const rng = new Rng(47);
+  const dims = { chunksX: 24, chunksZ: 20, frameX: 2040, frameZ: 2044 };
+  const [nx, nz] = [24 * 32 + 1, 20 * 32 + 1];
+  const pond = { x: 1100, z: 900, r: 70, surface: 14 };
+  const ground = (x: number, z: number): number => {
+    let h = 6 + 4 * Math.sin(x / 37) * Math.cos(z / 29) + ((x + z / 2) % 200 < 100 ? 6 : 0) + Math.min(0, (z - 220) / 12);
+    const d = Math.hypot(x - pond.x, z - pond.z);
+    if (d < pond.r + 30) h = Math.max(h, 16);
+    if (d < pond.r) h = pond.surface - 2 + d / pond.r;
+    return h;
+  };
+  const heights = Uint16Array.from({ length: nx * nz }, (_, k) => Math.round((ground((k % nx) * 2, Math.floor(k / nx) * 2) + 32) * 256));
+  const grid = Uint16Array.from({ length: 192 * 160 }, (_, k) => (Math.hypot((k % 192) * 8 + 4 - pond.x, Math.floor(k / 192) * 8 + 4 - pond.z) < pond.r + 8 ? 1 : 0));
+  const water = MapWater.fromGrid(dims, -32, 1 / 256, 8, [{ name: "Rise Pond", level: (pond.surface + 32) * 256 }], grid);
+  const zone = Uint8Array.from({ length: 96 * 80 }, (_, k) => (k % 97 === 0 ? 0 : Math.floor(k / 96) * 16 < 260 ? 2 : 1));
+  const zoned: NodeZoned = { seed: 91, perChunk: 48, zones: [{ bare: 2, kinds: [["core:banyan", 3], ["core:rock", 2], ["core:palm", 2], ["core:fig", 1]] }, { bare: 3, kinds: [["core:clam", 2], ["core:oil_rock", 1], ["core:crystal_rock", 1], ["core:mangrove", 2]] }], zoneCell: 16, zone };
+  const allow = Uint8Array.from({ length: (192 * 160) / 8 }, (_, k) => (k % 24 < 20 ? 0xff : 0));
+  const scatter: NodeScatter = { seed: 92, perChunk: 32, kinds: [["core:tree", 3], ["core:rubble", 2], ["core:metal_rock", 1]], allowCell: 8, allow, out: Uint8Array.from({ length: (480 * 32) / 8 }, () => (rng.int(8) === 0 ? 1 << rng.int(8) : 0)) };
+  return { id: "test:hills", dims, minY: -32, stepY: 1 / 256, seaLevel: 0, heights, tint: new Uint8Array(nx * nz).fill(7), statics: [], nodes: [zoned, scatter], spawns: [{ name: "Rise", x: 1100, z: 900, yaw: 0 }], water };
+}
+
+test("whether each node stands, and as what, is decided as a map is made, and its file then says it: every slot as the rule had it", () => {
+  const made = hillsMap();
+  const taken: SlotsTaken = { water: 0, slope: 0, footing: 0, other: 0 };
+  const map = parseMap(writeMap(resolveNodes(made, reg, taken)));
+  // Each rule takes slots here: under the water, on the terraces' cliffs, where a rock's footing falls away, and where a
+  // banyan's does and a fig grows in its place.
+  expect(Object.values(taken).every((n) => n > 20)).toBe(true);
+  const hf = mapHeightfield(map);
+  const forms = nodeForms(reg);
+  const file = mapNodes(map, hf, reg)!;
+  const [zoned, scatter] = made.nodes as [NodeZoned, NodeScatter];
+  const weighed = (kinds: readonly (readonly [string, number])[], bare = 0): number[] => [...kinds.flatMap(([id, w]) => Array(w).fill(reg.index.get(id)!)), ...Array(bare).fill(0)];
+  const zones = [null, ...zoned.zones.map((z) => weighed(z.kinds, z.bare))];
+  const before = [
+    ruleBefore(map.dims, hf, zoned.seed, zoned.perChunk, forms, (x, z) => zones[zoned.zone[Math.floor(z / 16) * 96 + Math.floor(x / 16)]!]!),
+    ruleBefore(map.dims, hf, scatter.seed, scatter.perChunk, forms, (x, z) => {
+      const bit = Math.floor(z / 8) * 192 + Math.floor(x / 8);
+      return (scatter.allow![bit >> 3]! >> (bit & 7)) & 1 ? weighed(scatter.kinds) : null;
+    }),
+  ];
+  const [a, b] = [spot(), spot()];
+  const stood = new Map<number, number>();
+  for (let c = 0; c < chunkCount(map.dims); c++) {
+    for (let i = 0; i < file.perChunk; i++) {
+      file.at(c, i, a);
+      const [layer, slot] = i < 48 ? [0, i] : [1, i - 48];
+      before[layer]!.at(c, slot, b);
+      const bit = c * 32 + slot;
+      if (layer === 1 && (scatter.out![bit >> 3]! >> (bit & 7)) & 1) expect(a.kind).toBe(0);
+      else expect(a.kind === 0 ? [0] : a).toEqual(b.kind === 0 ? [0] : b);
+      if (a.kind !== 0) stood.set(a.kind, (stood.get(a.kind) ?? 0) + 1);
+    }
+  }
+  for (const id of ["core:banyan", "core:fig", "core:rock", "core:clam", "core:crystal_rock", "core:mangrove", "core:tree", "core:rubble", "core:metal_rock"]) expect(stood.get(reg.index.get(id)!) ?? 0).toBeGreaterThan(10);
+  // Read again, a resolved map is kept as it is: the rule is not asked again.
+  expect(resolveNodes(map, reg)).toBe(map);
+});
+
+test("with only one sector's ground held and every other height poisoned, every node elsewhere is where and what it is", () => {
+  const map = parseMap(writeMap(resolveNodes(hillsMap(), reg)));
+  const hf = mapHeightfield(map);
+  // The sector of chunks 8 to 23 along x and 4 to 19 along z is held; every other sample is noise.
+  const rng = new Rng(5);
+  const poisoned = new Heightfield(map.dims, TERRAIN_CELL, map.minY, map.stepY);
+  poisoned.seaLevel = map.seaLevel;
+  poisoned.water = map.water ?? null;
+  for (let j = 0; j < poisoned.nz; j++) for (let i = 0; i < poisoned.nx; i++) poisoned.setSample(i, j, i >= 8 * 32 && j >= 4 * 32 ? hf.sample(i, j) : map.minY + rng.int(65536) * map.stepY);
+  const [whole, held] = [mapNodes(map, hf, reg)!, mapNodes(map, poisoned, reg)!];
+  const [a, b] = [spot(), spot()];
+  let elsewhere = 0;
+  for (let c = 0; c < chunkCount(map.dims); c++) {
+    const inHeld = chunkCx(map.dims, c) >= 8 && chunkCz(map.dims, c) >= 4;
+    for (let i = 0; i < whole.perChunk; i++) {
+      whole.at(c, i, a);
+      held.at(c, i, b);
+      // Its place, kind, form and turn; and in the held sector its height too, which alone reads the ground.
+      expect(b.kind === 0 ? [0] : [b.kind, b.form, b.x, b.z, b.yaw, inHeld ? b.y : 0]).toEqual(a.kind === 0 ? [0] : [a.kind, a.form, a.x, a.z, a.yaw, inHeld ? a.y : 0]);
+      if (!inHeld && a.kind !== 0) elsewhere++;
+    }
+  }
+  expect(elsewhere).toBeGreaterThan(2000);
 });
 
 test("a file that is damaged, foreign or unplayable is refused, and the reason says which", () => {

@@ -1,13 +1,17 @@
 import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
-import type { MapData, NodeList, NodeScatter, NodeZoned } from "../../shared/world/mapfile.ts";
+import { resolveNodes, type MapData, type NodeList, type NodeScatter, type NodeZoned } from "../../shared/world/mapfile.ts";
 import { MapWater } from "../../shared/world/water.ts";
+import { coreRegistry } from "./world.ts";
 
-/** Flat ground at y = 0, `chunks` on a side, with one spawn point in the middle and no water. */
+/**
+ * Flat ground at y = 0, `chunks` on a side, with one spawn point in the middle and no water. Its node layers, where `more`
+ * gives some, are resolved on its ground with the core content, as a map's maker does (resolveNodes).
+ */
 export function flatMap(chunks = 4, more: Partial<MapData> = {}): MapData {
   const side = (chunks * CHUNK_SIZE) / TERRAIN_CELL + 1;
-  return {
+  return resolveNodes({
     id: "test:flat",
     dims: { chunksX: chunks, chunksZ: chunks },
     minY: -32,
@@ -19,10 +23,10 @@ export function flatMap(chunks = 4, more: Partial<MapData> = {}): MapData {
     nodes: [],
     spawns: [{ name: "Middle", x: (chunks * CHUNK_SIZE) / 2, z: (chunks * CHUNK_SIZE) / 2, yaw: 0 }],
     ...more,
-  };
+  }, coreRegistry());
 }
 
-/** Sloping ground of 2 by 3 chunks with one of everything a file can hold. */
+/** Sloping ground of 2 by 3 chunks with one of everything a file can hold, its node layers resolved with the core content. */
 export function busyMap(): MapData {
   const rng = new Rng(41);
   const samples = 65 * 97;
@@ -34,7 +38,7 @@ export function busyMap(): MapData {
   const zone = Uint8Array.from({ length: 8 * 12 }, (_, k) => (Math.floor(k / 8) < 4 ? 1 : Math.floor(k / 8) < 8 && k % 8 >= 4 ? 0 : 2));
   const zoned: NodeZoned = { seed: 78, perChunk: 30, zones: [{ bare: 2, kinds: [["core:palm", 1]] }, { bare: 0, kinds: [["core:fig", 1], ["core:fern", 2]] }], zoneCell: 16, zone };
   const list: NodeList = { kinds: ["core:bush", "core:rock"], first: Uint32Array.from([0, 2, 2, 3, 3, 3, 3]), kind: Uint8Array.from([0, 1, 0]), x: Uint16Array.from([1024, 40000, 7]), z: Uint16Array.from([2048, 3, 65535]), yaw: Uint16Array.from([0, 16384, 65535]) };
-  return {
+  return resolveNodes({
     id: "test:busy",
     dims: { chunksX: 2, chunksZ: 3 },
     minY: -40.5,
@@ -58,13 +62,14 @@ export function busyMap(): MapData {
       { kind: "test:hauler", x: 128, z: 0, yaw: 65535 },
       { kind: "core:compact", x: 90, z: 120 + 1 / 512, yaw: 0 },
     ],
-  };
+  }, coreRegistry());
 }
 
 /**
  * Ground of 70 by 20 chunks whose corner is off the lattice's grids of sectors and of overviews, so that it lies on two
- * overviews and ten sectors, the first column of each 8 chunks wide: with every kind of node layer, water in both overviews,
- * and statics in every sector, some on squares' edges and the map's.
+ * overviews and ten sectors, the first column of each 8 chunks wide: with every kind of node layer, resolved with the core
+ * content over slots a build took out at random, water in both overviews, and statics in every sector, some on squares'
+ * edges and the map's.
  */
 export function wideMap(): MapData {
   const rng = new Rng(43);
@@ -93,5 +98,5 @@ export function wideMap(): MapData {
     // Under a sector's edge, on it once set on the 1/512 m lattice.
     { kind: "core:wall", x: 512 - 1 / 4096, y: 3, z: 700, yaw: 2 },
   ];
-  return { id: "test:wide", dims, minY: -32, stepY: 1 / 256, seaLevel: 0, heights, tint: Uint8Array.from({ length: nx * nz }, () => rng.int(256)), statics, nodes: [scatter, list, zoned, other], spawns: [{ name: "West", x: 4000, z: 600, yaw: 0 }], water };
+  return resolveNodes({ id: "test:wide", dims, minY: -32, stepY: 1 / 256, seaLevel: 0, heights, tint: Uint8Array.from({ length: nx * nz }, () => rng.int(256)), statics, nodes: [scatter, list, zoned, other], spawns: [{ name: "West", x: 4000, z: 600, yaw: 0 }], water }, coreRegistry());
 }

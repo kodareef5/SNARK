@@ -39,7 +39,7 @@ import { compileContent } from "../shared/content/registry.ts";
 import { allClips } from "../shared/pack/clips.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { parsePack } from "../shared/pack/pack.ts";
-import { writeMap } from "../shared/world/mapfile.ts";
+import { resolveNodes, writeMap } from "../shared/world/mapfile.ts";
 import { groundUnder } from "../shared/world/collide.ts";
 import { placeFree } from "../server/place.ts";
 import type { ServerWorld } from "../server/world.ts";
@@ -465,7 +465,7 @@ if (import.meta.main) {
   const given = terrain ? value("--map") : undefined;
   const hills = terrain && !given ? benchHills() : null;
   const mapDir = hills ? mkdtempSync(join(tmpdir(), "snark-device-map-")) : "";
-  if (hills) writeFileSync(join(mapDir, "hills.snmap"), writeMap({ id: "device:hills", dims: hills.dims, minY: hills.minY, stepY: hills.stepY, seaLevel: -Infinity, heights: hills.heights, tint: hills.tint.fill(12), statics: [], nodes: [terrainWood(hills.dims)], spawns: [{ name: "Middle", x: 4096, z: 4096, yaw: 0 }] }));
+  if (hills) writeFileSync(join(mapDir, "hills.snmap"), writeMap(resolveNodes({ id: "device:hills", dims: hills.dims, minY: hills.minY, stepY: hills.stepY, seaLevel: -Infinity, heights: hills.heights, tint: hills.tint.fill(12), statics: [], nodes: [terrainWood(hills.dims)], spawns: [{ name: "Middle", x: 4096, z: 4096, yaw: 0 }] }, compileContent(CORE_CONTENT).registry!)));
   const mapFile = given ? resolve(given) : hills ? join(mapDir, "hills.snmap") : null;
   // The fixed scene of the boot probe, where nothing wakes, and behind the spawn point the crowd scene's thatch and bodies.
   server = startServer({ port: Number(value("--port") ?? 0), hostname: "127.0.0.1", clientDir: dist, probeScene: true, config: rules, routes, ...(mapFile ? { map: mapFile } : {}) });

@@ -39,7 +39,10 @@
 //                 { "list": [{ "kind": "core:rock", "x": 12.5, "z": 40, "yaw": 0 }] }
 //                   stands each node on the ground where it says.
 //                 A scattered layer may name "out": a file of a bit per slot, chunk by chunk, lowest bit first, set where
-//                 that slot's node is taken out, as a city's build leaves out what would stand in its ruins' way.
+//                 that slot's node is taken out, as a city's build leaves out what would stand in its ruins' way. With
+//                 "other" as well, a file of the same bits set where a node stands as its footing's other kind, the layer
+//                 says where each node stands and is written as it is (an unpacked map's are); without it, build decides
+//                 that from the ground (resolveNodes), and a file always says it.
 //                 A node's variant and size, and a scattered node's turn, come from its place, by the rule of nodes.ts.
 //   spawns.json   [{ "name": "Plaza", "x": 256, "z": 240, "yaw": 0 }]
 //                 Up to 16. The first is where a new survivor arrives, and a dead one chooses among them.
@@ -59,7 +62,7 @@ import { CORE_CONTENT } from "../content/core.ts";
 import { provingFile } from "../server/world.ts";
 import { compileContent, withContent } from "../shared/content/registry.ts";
 import { CHUNK_SIZE } from "../shared/coords.ts";
-import { mapHeightfield, mapTops, parseMap, writeMap, type MapData } from "../shared/world/mapfile.ts";
+import { mapHeightfield, mapTops, parseMap, resolveNodes, writeMap, type MapData } from "../shared/world/mapfile.ts";
 import { groundSize } from "../client/core/render/terrain.ts";
 import { readLayers, writeLayers } from "./map/layers.ts";
 import { partsTable, writeMapFile } from "./map/pack.ts";
@@ -87,9 +90,13 @@ export function describe(file: Uint8Array): string[] {
     `${map.statics.length} static pieces`,
     ...map.nodes.map((layer) => {
       if ("first" in layer) return `${layer.kind.length} listed nodes`;
-      let out = 0;
-      for (const b of layer.out ?? []) for (let v = b; v; v &= v - 1) out++;
-      const taken = out > 0 ? `; ${out} slots taken out` : "";
+      const ones = (bits: Uint8Array | undefined): number => {
+        let n = 0;
+        for (const b of bits ?? []) for (let v = b; v; v &= v - 1) n++;
+        return n;
+      };
+      const [out, other] = [ones(layer.out), ones(layer.other)];
+      const taken = `${out > 0 ? `; ${out} slots taken out` : ""}${other > 0 ? `; ${other} stand as their footing's other kind` : ""}`;
       if ("zone" in layer) return `${layer.perChunk} node slots a chunk, by zones of ${layer.zoneCell} m: ${layer.zones.map((z, i) => `${i + 1} ${[...z.kinds.map(([id, weight]) => `${id} x${weight}`), ...(z.bare > 0 ? [`bare x${z.bare}`] : [])].join(", ")}`).join("; ")}${taken}`;
       return `${layer.perChunk} node slots a chunk, scattered${layer.allow ? ` where a picture of ${layer.allowCell} m a pixel allows` : ""}: ${layer.kinds.map(([id, weight]) => `${id} x${weight}`).join(", ")}${taken}`;
     }),
@@ -116,9 +123,13 @@ export function describe(file: Uint8Array): string[] {
   return lines;
 }
 
-/** A folder's map as its maker writes it, with the core content: the far feed's cells of its chunks baked into its tops. */
+/**
+ * A folder's map as its maker writes it, with the core content: each node layer resolved where the folder does not say where
+ * its nodes stand, and the far feed's cells of its chunks baked into its tops.
+ */
 export function made(map: MapData): MapData {
-  return { ...map, tops: mapTops(map, registry()) };
+  const reg = registry();
+  return { ...resolveNodes(map, reg), tops: mapTops(map, reg) };
 }
 
 /** Writes the map and its parts' files with their copies, a release build's if `release`, and says what it holds and what a client fetches of it. */

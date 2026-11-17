@@ -201,15 +201,62 @@ export function nodeForms(reg: Registry): NodeForms {
   return forms;
 }
 
+/** What grows at a place: content indices repeated for weight, with 0 for bare ground, or null where nothing grows. */
+export type KindsAt = (x: number, z: number) => readonly number[] | null;
+
+/** How many slots the rule of resolveSlots left empty, by why, and how many it stood as their footings' other kinds. */
+export interface SlotsTaken {
+  water: number;
+  slope: number;
+  footing: number;
+  other: number;
+}
+
+/** A slot's place, from the first of its hashes, and its second, which draws its kind and turn and, with its chunk's key, its form. */
+interface Drawn {
+  x: number;
+  z: number;
+  /** Its place in 65536ths of a chunk from the map's corner. */
+  ux: number;
+  uz: number;
+  g: number;
+  key: number;
+}
+
+function draw(dims: MapDims, seed: number, chunk: number, index: number, d: Drawn): void {
+  const key = frameKey(dims, chunk);
+  const h = mix(seed, key, index);
+  d.g = mix(h, index, key);
+  d.key = key;
+  d.ux = chunkCx(dims, chunk) * 65536 + (h & 0xffff);
+  d.uz = chunkCz(dims, chunk) * 65536 + (h >>> 16);
+  d.x = (chunkCx(dims, chunk) + (h & 0xffff) / 65536) * CHUNK_SIZE;
+  d.z = (chunkCz(dims, chunk) + (h >>> 16) / 65536) * CHUNK_SIZE;
+}
+
+/** The kind a drawn slot's hash and `kindsAt` give it, 0 for none. */
+function drawnKind(kindsAt: KindsAt, d: Drawn): number {
+  const grows = kindsAt(d.x, d.z);
+  return grows === null || grows.length === 0 ? 0 : grows[d.g % grows.length]!;
+}
+
+const isSet = (bits: Uint8Array, bit: number): boolean => ((bits[bit >> 3]! >> (bit & 7)) & 1) === 1;
+
 /**
- * Scatters nodes by a hash. `kindsAt` gives the content indices that may grow at a place, repeated for weight, with 0 for
- * bare ground, or null where nothing grows. A slot is also empty where the ground is lower than 0.3 m above sea level or too
- * steep, or for a kind of the sea floor where the ground is not under the sea. A slot's place in its chunk comes from a hash
- * of the seed, its chunk's frame key and its index, its kind and turn from a second and its variant and size from a third,
- * so a node stands where it did when its map is widened.
- * A kind with a footing grows only where the ground under it falls no further than it allows, and elsewhere what it says.
+ * Whether the node each slot of a scattered layer draws stands on `hf`, and as what: the rule of where nodes stand, which a
+ * map's build applies once and its file then says (shared/world/mapfile.ts). A slot draws its place from a hash of the seed,
+ * its chunk's frame key and its index, and its kind from a second and `kindsAt` there. Its node does not stand where the
+ * ground is steeper than about 32 degrees, or for a kind of dry ground lower than 0.3 m above the water, or for a kind of the
+ * sea floor where the ground is not under the sea; and a kind with a footing grows only where the ground under it falls no
+ * further than it allows, and elsewhere what it names, or nothing. Bit `chunk * perChunk + slot` of `out` is set where its
+ * node does not stand, and of `other` where it stands as its footing's other kind; a slot that draws no node has neither.
+ * Bits set in `taken` (slots a build took out) are kept and those slots not judged.
  */
-export function scatterNodes(dims: MapDims, hf: Heightfield, seed: number, perChunk: number, forms: NodeForms, kindsAt: (x: number, z: number) => readonly number[] | null): NodeSource {
+export function resolveSlots(dims: MapDims, hf: Heightfield, seed: number, perChunk: number, forms: NodeForms, kindsAt: KindsAt, taken?: Uint8Array, tally?: SlotsTaken): { out: Uint8Array; other: Uint8Array } {
+  const bytes = Math.ceil((chunkCount(dims) * perChunk) / 8);
+  const out = new Uint8Array(bytes);
+  if (taken) out.set(taken);
+  const other = new Uint8Array(bytes);
   // A footing is judged in the heightfield's own whole numbers, so every engine judges it alike: the height samples as far
   // out as it reaches, along the axes and the diagonals, against the sample nearest the origin, in steps of height.
   const count = forms.footReach.length;
@@ -233,33 +280,63 @@ export function scatterNodes(dims: MapDims, hf: Heightfield, seed: number, perCh
     const [r, d] = [ring[kind]!, slant[kind]!];
     return height(i + r, j) >= low && height(i - r, j) >= low && height(i, j + r) >= low && height(i, j - r) >= low && height(i + d, j + d) >= low && height(i + d, j - d) >= low && height(i - d, j + d) >= low && height(i - d, j - d) >= low;
   };
-  return {
-    perChunk,
-    at(chunk, index, out) {
-      out.kind = 0;
-      const key = frameKey(dims, chunk);
-      const h = mix(seed, key, index);
-      const g = mix(h, index, key);
-      const x = (chunkCx(dims, chunk) + (h & 0xffff) / 65536) * CHUNK_SIZE;
-      const z = (chunkCz(dims, chunk) + (h >>> 16) / 65536) * CHUNK_SIZE;
-      const grows = kindsAt(x, z);
-      if (grows === null || grows.length === 0) return;
-      const y = hf.heightAt(x, z);
-      let kind = grows[g % grows.length]!;
+  const d: Drawn = { x: 0, z: 0, ux: 0, uz: 0, g: 0, key: 0 };
+  for (let chunk = 0, bit = 0; chunk < chunkCount(dims); chunk++) {
+    for (let index = 0; index < perChunk; index++, bit++) {
+      if (isSet(out, bit)) continue;
+      draw(dims, seed, chunk, index, d);
+      const kind = drawnKind(kindsAt, d);
+      if (kind === 0) continue;
+      const y = hf.heightAt(d.x, d.z);
       // A kind of the sea floor grows only under the sea, not a lake; one of either anywhere; and every other only on dry
       // ground, out of the sea and every lake.
       const sea = forms.sea[kind]!;
-      if ((sea === SEA_DRY ? y < hf.waterAt(x, z) + 0.3 : sea === SEA_UNDER && (y >= hf.seaLevel || !seaHere(hf.water, x, z))) || hf.slopeCosAt(x, z) < 0.85) return;
-      if (kind !== 0 && ring[kind]! > 0 && !fits(kind, chunkCx(dims, chunk) * 65536 + (h & 0xffff), chunkCz(dims, chunk) * 65536 + (h >>> 16))) kind = forms.footElse[kind]!;
+      const wet = sea === SEA_DRY ? y < hf.waterAt(d.x, d.z) + 0.3 : sea === SEA_UNDER && (y >= hf.seaLevel || !seaHere(hf.water, d.x, d.z));
+      const steep = !wet && hf.slopeCosAt(d.x, d.z) < 0.85;
+      const footless = !wet && !steep && ring[kind]! > 0 && !fits(kind, d.ux, d.uz);
+      if (wet || steep || (footless && forms.footElse[kind] === 0)) out[bit >> 3]! |= 1 << (bit & 7);
+      else if (footless) other[bit >> 3]! |= 1 << (bit & 7);
+      if (!tally) continue;
+      if (wet) tally.water++;
+      else if (steep) tally.slope++;
+      else if (footless && forms.footElse[kind] === 0) tally.footing++;
+      else if (footless) tally.other++;
+    }
+  }
+  return { out, other };
+}
+
+/**
+ * Nodes scattered by a hash as resolveSlots draws them, standing where `out` and `other` say: none where `out` is set, its
+ * footing's other kind where `other` is, else the kind drawn. Its variant and size come from a third hash, so a node stands
+ * where it did when its map is widened. Only a node's height reads `hf`.
+ */
+export function placedNodes(dims: MapDims, hf: Heightfield, seed: number, perChunk: number, forms: NodeForms, kindsAt: KindsAt, out: Uint8Array, other: Uint8Array): NodeSource {
+  const d: Drawn = { x: 0, z: 0, ux: 0, uz: 0, g: 0, key: 0 };
+  return {
+    perChunk,
+    at(chunk, index, spot) {
+      spot.kind = 0;
+      const bit = chunk * perChunk + index;
+      if (isSet(out, bit)) return;
+      draw(dims, seed, chunk, index, d);
+      let kind = drawnKind(kindsAt, d);
+      if (kind !== 0 && isSet(other, bit)) kind = forms.footElse[kind]!;
       if (kind === 0) return;
-      out.kind = kind;
-      out.form = formOf(forms, kind, mix(g, key, seed));
-      out.x = x;
-      out.y = y;
-      out.z = z;
-      out.yaw = (g >>> 8) & 0xffff;
+      spot.kind = kind;
+      spot.form = formOf(forms, kind, mix(d.g, d.key, seed));
+      spot.x = d.x;
+      spot.y = hf.heightAt(d.x, d.z);
+      spot.z = d.z;
+      spot.yaw = (d.g >>> 8) & 0xffff;
     },
   };
+}
+
+/** Nodes scattered by a hash on `hf`, whether each stands decided once as the source is made (resolveSlots, placedNodes). */
+export function scatterNodes(dims: MapDims, hf: Heightfield, seed: number, perChunk: number, forms: NodeForms, kindsAt: KindsAt): NodeSource {
+  const { out, other } = resolveSlots(dims, hf, seed, perChunk, forms, kindsAt);
+  return placedNodes(dims, hf, seed, perChunk, forms, kindsAt, out, other);
 }
 
 /** chunk * 65536 + slot, as for structures. */

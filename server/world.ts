@@ -10,7 +10,7 @@ import { ENTITY_LIMIT, EntityStore } from "../shared/sim/entities.ts";
 import { offsetForHour } from "../shared/sim/clock.ts";
 import type { CollisionWorld } from "../shared/world/collide.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
-import { mapHeightfield, mapNodes, mapTops, parseMap, placeStatics, writeMap, type MapData, type MapFile, type MapStatic, type MapStatics } from "../shared/world/mapfile.ts";
+import { mapHeightfield, mapNodes, mapTops, parseMap, placeStatics, resolveNodes, writeMap, type MapData, type MapFile, type MapStatic, type MapStatics } from "../shared/world/mapfile.ts";
 import { PROVING_DIMS, PROVING_ID, PROVING_POOL, PROVING_SEA_LEVEL, PROVING_SPAWNS, buildProvingHeightfield, populateProving, provingNodeLayers } from "../shared/world/proving.ts";
 import { NodeField, type NodeSource } from "../shared/world/nodes.ts";
 import { StructureStore } from "../shared/world/structures.ts";
@@ -134,7 +134,8 @@ let proving: Uint8Array<ArrayBuffer> | null = null;
 
 /**
  * The proving ground as a map file, written once from the functions that build it (shared/world/proving.ts). It names content
- * by id, and what a map's maker reads of the content (its far tops) is the core's, so the same bytes serve every registry.
+ * by id, and what a map's maker reads of the content (where each node stands, its far tops) is the core's, so the same bytes
+ * serve every registry.
  */
 export function provingFile(reg: Registry): Uint8Array<ArrayBuffer> {
   if (proving) return proving;
@@ -157,7 +158,7 @@ export function provingFile(reg: Registry): Uint8Array<ArrayBuffer> {
     spawns: PROVING_SPAWNS,
   };
   const core = compileContent(CORE_CONTENT).registry!;
-  return (proving = writeMap({ ...map, tops: mapTops(map, core) }));
+  return (proving = writeMap({ ...resolveNodes(map, core), tops: mapTops(map, core) }));
 }
 
 export function createProvingWorld(reg: Registry, opts: WorldOptions = {}): ServerWorld {

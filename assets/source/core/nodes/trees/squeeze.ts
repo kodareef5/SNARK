@@ -25,7 +25,7 @@ import { CORE_CONTENT } from "../../../../../content/core.ts";
 import { chunkAt } from "../../../../../shared/coords.ts";
 import { compileContent } from "../../../../../shared/content/registry.ts";
 import { parsePack } from "../../../../../shared/pack/pack.ts";
-import { mapHeightfield, mapNodes, parseMap, writeMap } from "../../../../../shared/world/mapfile.ts";
+import { mapHeightfield, mapNodes, parseMap, resolveNodes, writeMap } from "../../../../../shared/world/mapfile.ts";
 import { NodeField, nodeForms, type NodeSource } from "../../../../../shared/world/nodes.ts";
 import { StructureStore } from "../../../../../shared/world/structures.ts";
 import { FakeNet } from "../../../../../tests/fixtures/assetnet.ts";
@@ -49,7 +49,7 @@ const reg = compileContent(CORE_CONTENT).registry!;
 const forms = nodeForms(reg);
 const oak = reg.index.get("core:oak")!;
 const hills = benchHills();
-const map = parseMap(writeMap({ id: "device:hills", dims: hills.dims, minY: hills.minY, stepY: hills.stepY, seaLevel: -Infinity, heights: hills.heights, tint: hills.tint.fill(12), statics: [], nodes: [terrainWood(hills.dims)], spawns: [{ name: "Middle", x: 4096, z: 4096, yaw: 0 }] }));
+const map = parseMap(writeMap(resolveNodes({ id: "device:hills", dims: hills.dims, minY: hills.minY, stepY: hills.stepY, seaLevel: -Infinity, heights: hills.heights, tint: hills.tint.fill(12), statics: [], nodes: [terrainWood(hills.dims)], spawns: [{ name: "Middle", x: 4096, z: 4096, yaw: 0 }] }, reg)));
 const hf = mapHeightfield(map);
 // The elder oak of the second variant at its kind's largest size, alone where the stand's spot is.
 const form = forms.first[oak]! + forms.steps[oak]! * 2 - 1;

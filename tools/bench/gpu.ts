@@ -26,7 +26,9 @@ import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import { PASSES, type Effect } from "../../client/core/passes.ts";
 import { startServer } from "../../server/main.ts";
-import { writeMap } from "../../shared/world/mapfile.ts";
+import { resolveNodes, writeMap } from "../../shared/world/mapfile.ts";
+import { compileContent } from "../../shared/content/registry.ts";
+import { CORE_CONTENT } from "../../content/core.ts";
 import { buildClientApart } from "../build-client.ts";
 import { placeOf, type Place } from "./census.ts";
 import { benchHills } from "./terrain.ts";
@@ -130,7 +132,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
     const mapDir = scene === "wood" ? mkdtempSync(join(tmpdir(), "snark-gpu-map-")) : "";
     if (mapDir) {
       const hills = benchHills();
-      writeFileSync(join(mapDir, "hills.snmap"), writeMap({ id: "bench:hills", dims: hills.dims, minY: hills.minY, stepY: hills.stepY, seaLevel: -Infinity, heights: hills.heights, tint: hills.tint.fill(12), statics: [], nodes: [WOOD], spawns: [{ name: "Middle", x: 4096, z: 4096, yaw: 0 }] }));
+      writeFileSync(join(mapDir, "hills.snmap"), writeMap(resolveNodes({ id: "bench:hills", dims: hills.dims, minY: hills.minY, stepY: hills.stepY, seaLevel: -Infinity, heights: hills.heights, tint: hills.tint.fill(12), statics: [], nodes: [WOOD], spawns: [{ name: "Middle", x: 4096, z: 4096, yaw: 0 }] }, compileContent(CORE_CONTENT).registry!)));
     }
     const map = scene === "city" ? CITY_MAP : mapDir ? join(mapDir, "hills.snmap") : null;
     const server = startServer({ port: 0, hostname: "127.0.0.1", clientDir: dist, probeScene: true, routes, ...(map ? { map } : {}) });

@@ -10,7 +10,7 @@ import { join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { SECTOR_CHUNKS, chunkCount, framed } from "../../shared/coords.ts";
-import { MapStatics, mapHeightfield, mapNodes, mapTops, parseMap, writeMap } from "../../shared/world/mapfile.ts";
+import { MapStatics, mapHeightfield, mapNodes, mapTops, parseMap, resolveNodes, writeMap } from "../../shared/world/mapfile.ts";
 import { obeliskStatics } from "../../shared/world/obelisks.ts";
 import { describe } from "../map.ts";
 import { readLayers, waterLayer } from "../map/layers.ts";
@@ -147,6 +147,10 @@ export async function buildMap(name: string, release = false): Promise<{ file: s
   let map = readLayers(layers);
   map = { ...map, statics: MapStatics.of(map.dims, map.statics), ...(sited.length > 0 ? { content: brought.content } : {}) };
   Bun.gc(true);
+  // Whether each slot's node stands, and as what, is decided here once, and the file says so.
+  const taken = { water: 0, slope: 0, footing: 0, other: 0 };
+  map = resolveNodes(map, reg, taken);
+  lap(`nodes resolved: ${taken.water} slots empty for water, ${taken.slope} for slope, ${taken.footing} for a footing; ${taken.other} stand as their footing's other kind`);
   if (growth) {
     const grown = growRuins(map, compiled.registry, site, growth);
     map = { ...map, nodes: grown.layers };
@@ -270,6 +274,7 @@ export async function buildMap(name: string, release = false): Promise<{ file: s
     ...(ground.lakes ? { lakes: ground.lakes.made.map((m) => ({ ...m, squareMetres: m.water * 4 })) } : {}),
     nodes: Object.fromEntries([...byKind.entries()].sort((a, b) => b[1] - a[1])),
     nodeTotal: [...byKind.values()].reduce((a, b) => a + b, 0),
+    nodeSlotsTaken: taken,
     zoneCell: ZONE_CELL,
     spawns,
     obelisks: obelisks.map((o) => ({ ...o, yaw: Math.round((o.yaw * 360) / 65536), ground: Number(site.groundAt(o.x, o.z).toFixed(2)) })),

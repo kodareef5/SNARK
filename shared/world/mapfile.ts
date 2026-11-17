@@ -21,13 +21,12 @@
 //         several, and a chunk's slots are the first layer's, then the next's.
 //         u8 0, scattered by a hash (shared/world/nodes.ts): u32 seed, u16 slots a chunk, u8 count of kinds, each a u8 weight
 //               and a content id, then u8 metres a square of its picture of where a node may stand, 0 for none: a node may
-//               stand anywhere. Then u8 1 where slots are taken out, else 0.
+//               stand anywhere.
 //         u8 1, listed: u8 count of kinds, each a content id.
 //         u8 2, zoned, scattered as by 0: u32 seed, u16 slots a chunk, u8 count of zones, each a u8 weight of bare ground,
 //               a u8 count of kinds and each a u8 weight and a content id, then u8 metres a square, a u8 count of codes and
-//               that many bytes, u8 1 to take the picture of the zoned layer before or 0 for its own, and u8 1 where slots
-//               are taken out, else 0. With codes, the picture is one the zoned layers share, and a value's zone in this
-//               layer is its code.
+//               that many bytes, and u8 1 to take the picture of the zoned layer before or 0 for its own. With codes, the
+//               picture is one the zoned layers share, and a value's zone in this layer is its code.
 //   SPWN  u8 count, then each a string name, i32 x, i32 z in 1/512 m, u16 yaw. The first is where a new survivor arrives.
 //   WILD  where wild creatures live: u16 count, then each a string spawns id, u16 count it holds at 1x, u8 shape (0 a circle,
 //         1 a box), i32 x, i32 z, u32 radius or half width, u32 half depth, in 1/512 m.
@@ -58,10 +57,12 @@
 //               index. Each of its chunks' lowest sample and then each one's highest, its edges among them, row by row as
 //               u16s. Then for each node layer: a scattered one's picture, a bit a square row by row, lowest bit first, set
 //               where a node may stand; a zoned one's own picture, a byte a square, the number of its zone counting from 1,
-//               or 0 where nothing grows; and where slots are taken out a bit a slot, chunk by chunk row by row, set where
-//               none stands. A layer's bits start on a byte. Then, where the head has WATR, a u16 count of its chunks holding
-//               water, each a u16 index among its chunks row by row, ascending, and its squares as u16s row by row: the
-//               number of its body counting from 1, or 0 for the sea's.
+//               or 0 where nothing grows; and for either, two planes of a bit a slot, chunk by chunk row by row: set where
+//               the node the slot's hash and picture draw does not stand, then set where it stands as its footing's other
+//               kind. Whether a node stands is the map's build's to say (resolveNodes), so its place, kind, form and turn
+//               need no ground; only its height does. A layer's bits start on a byte. Then, where the head has WATR, a u16
+//               count of its chunks holding water, each a u16 index among its chunks row by row, ascending, and its squares
+//               as u16s row by row: the number of its body counting from 1, or 0 for the sea's.
 //   3 ground    a sector's ground at every sample (2 m), its edges among them, as a grid, then a u8 tint each. Then for each
 //               listed layer, for each of its chunks row by row, a u16 count and 7-byte rows: u8 kind, u16 x, u16 z in
 //               1/1024 m from the chunk's corner, u16 yaw.
@@ -86,7 +87,7 @@ import { hashBytes } from "../hash.ts";
 import { decodeUtf8 } from "../pack/pack.ts";
 import { BitReader, BitWriter } from "../net/codec.ts";
 import { Heightfield, TERRAIN_CELL } from "./heightfield.ts";
-import { formOf, mix, nodeForms, scatterNodes, type NodeSource } from "./nodes.ts";
+import { formOf, mix, nodeForms, placedNodes, resolveSlots, type KindsAt, type NodeSource, type SlotsTaken } from "./nodes.ts";
 import { MAX_SLOTS_PER_CHUNK, StructureStore } from "./structures.ts";
 import { FarCells, Summary, TACTICAL_CELL, bakeChunk, pieceShapes } from "./tactical.ts";
 import { MAX_WATER_BODIES, MapWater, type WaterBody } from "./water.ts";
@@ -282,8 +283,13 @@ export interface NodeScatter {
   readonly allowCell: number;
   /** A bit per square, row by row from z = 0, lowest bit first, set where a node may stand. */
   readonly allow: Uint8Array | null;
-  /** Bit `chunk * perChunk + slot`, lowest bit first, set where that slot's node is taken out: the map's build froze it. */
+  /**
+   * Bit `chunk * perChunk + slot`, lowest bit first, set where the node the slot draws does not stand: the build took it out
+   * (a ruin's way, a route, a canopy), or once the layer is resolved, the rule of where nodes stand did too (resolveNodes).
+   */
   readonly out?: Uint8Array;
+  /** As `out`, set where the node stands as its footing's other kind. With it the layer is resolved, as a file holds every one. */
+  readonly other?: Uint8Array;
 }
 
 /** Kinds that grow in a zone, each with its weight, and the weight of bare ground among them. */
@@ -305,6 +311,7 @@ export interface NodeZoned {
   readonly codes?: Uint8Array;
   /** As NodeScatter's. */
   readonly out?: Uint8Array;
+  readonly other?: Uint8Array;
 }
 
 export type NodeLayer = NodeScatter | NodeList | NodeZoned;
@@ -433,16 +440,15 @@ function check(m: MapData): void {
   if (!whole(m.spawns.length, 1, MAX_SPAWNS)) fail(`it has ${m.spawns.length} spawn points, and a map has 1 to ${MAX_SPAWNS}`);
   for (const s of m.spawns) if (!inside(s.x, s.z)) fail(`spawn point "${s.name}" is off the map`);
   checkStatics(m.dims, m.statics);
-  let slots = 0;
+  const slots = m.nodes.reduce((n, layer) => n + slotsOf(layer, chunksX * chunksZ), 0);
+  if (slots > NODE_SLOTS) fail(`its nodes take ${slots} slots in a chunk, and a chunk has ${NODE_SLOTS}`);
   for (const layer of m.nodes) {
-    slots += slotsOf(layer, chunksX * chunksZ);
     if ("first" in layer) {
       const rows = layer.first[chunksX * chunksZ];
       if (layer.first.length !== chunksX * chunksZ + 1 || rows !== layer.kind.length || rows !== layer.x.length || rows !== layer.z.length || rows !== layer.yaw.length) fail("a list of nodes does not match its chunks");
       if (layer.kinds.length > 255 || layer.kind.some((k) => k >= layer.kinds.length)) fail("a listed node is of a kind its list does not name");
       continue;
     }
-    if (layer.out && layer.out.length !== outBytes(m.dims, layer.perChunk)) fail("the slots taken out of scattered nodes are not a bit per slot of every chunk");
     if ("zone" in layer) {
       const cell = layer.zoneCell;
       const weighed = (z: NodeZone): boolean => whole(z.bare, 0, 255) && whole(z.kinds.length, 0, 255) && z.kinds.every(([, weight]) => whole(weight, 1, 255)) && z.bare + z.kinds.length > 0;
@@ -450,13 +456,14 @@ function check(m: MapData): void {
       if (!whole(cell, 1, CHUNK_SIZE) || CHUNK_SIZE % cell !== 0 || layer.zone.length !== (sizeX / cell) * (sizeZ / cell)) fail("the zones of zoned nodes are not a byte per square of 1, 2, 4, 8, 16, 32 or 64 m");
       const codes = layer.codes;
       if (codes ? codes.length > 255 || codes.some((z) => z > layer.zones.length) || highest(layer.zone) >= codes.length : highest(layer.zone) > layer.zones.length) fail("a square is in a zone the list of zones does not have");
-      continue;
+    } else {
+      const cell = layer.allowCell;
+      if (!whole(layer.perChunk, 1, NODE_SLOTS) || !whole(layer.kinds.length, 1, 255) || layer.kinds.some(([, weight]) => !whole(weight, 1, 255))) fail("scattered nodes need 1 to 256 slots a chunk and 1 to 255 kinds, each of weight 1 to 255");
+      if (layer.allow === null ? cell !== 0 : !whole(cell, 1, CHUNK_SIZE) || CHUNK_SIZE % cell !== 0 || layer.allow.length !== Math.ceil(((sizeX / cell) * (sizeZ / cell)) / 8)) fail("where scattered nodes may stand is not a bit per square of 1, 2, 4, 8, 16, 32 or 64 m");
     }
-    const cell = layer.allowCell;
-    if (!whole(layer.perChunk, 1, NODE_SLOTS) || !whole(layer.kinds.length, 1, 255) || layer.kinds.some(([, weight]) => !whole(weight, 1, 255))) fail("scattered nodes need 1 to 256 slots a chunk and 1 to 255 kinds, each of weight 1 to 255");
-    if (layer.allow === null ? cell !== 0 : !whole(cell, 1, CHUNK_SIZE) || CHUNK_SIZE % cell !== 0 || layer.allow.length !== Math.ceil(((sizeX / cell) * (sizeZ / cell)) / 8)) fail("where scattered nodes may stand is not a bit per square of 1, 2, 4, 8, 16, 32 or 64 m");
+    if ([layer.out, layer.other].some((bits) => bits && bits.length !== outBytes(m.dims, layer.perChunk))) fail("the slots taken out of scattered nodes are not a bit per slot of every chunk");
+    if (!layer.out || !layer.other) fail("its scattered nodes are not resolved: resolveNodes decides where each stands, as a file says");
   }
-  if (slots > NODE_SLOTS) fail(`its nodes take ${slots} slots in a chunk, and a chunk has ${NODE_SLOTS}`);
   const w = m.water;
   if (w) {
     if (!whole(w.cell, 1, CHUNK_SIZE) || CHUNK_SIZE % w.cell !== 0 || w.dims.chunksX !== chunksX || w.dims.chunksZ !== chunksZ) fail("its water is not in squares of 1, 2, 4, 8, 16, 32 or 64 m over its chunks");
@@ -820,9 +827,9 @@ function overviewPart(m: MapData, dims: FramedDims, layers: readonly NodeLayer[]
       for (let j = 0; j < p.d; j++) copyBits(layer.allow, (p.j0 + j) * p.across + p.i0, bits, j * p.w, p.w);
       o.put(bits);
     }
-    if (layer.out) {
+    for (const all of [layer.out!, layer.other!]) {
       const bits = new Uint8Array(Math.ceil((chunks.length * layer.perChunk) / 8));
-      chunks.forEach((c, k) => copyBits(layer.out!, c * layer.perChunk, bits, k * layer.perChunk, layer.perChunk));
+      chunks.forEach((c, k) => copyBits(all, c * layer.perChunk, bits, k * layer.perChunk, layer.perChunk));
       o.put(bits);
     }
   }
@@ -982,7 +989,6 @@ function headPart(m: MapData, dims: FramedDims, layers: readonly NodeLayer[], st
         o.u8(layer.codes?.length ?? 0);
         if (layer.codes) o.put(layer.codes);
         o.u8(layer.zone === picture ? 1 : 0);
-        o.u8(layer.out ? 1 : 0);
         picture = layer.zone;
         return;
       }
@@ -1001,7 +1007,6 @@ function headPart(m: MapData, dims: FramedDims, layers: readonly NodeLayer[], st
         o.text(id);
       }
       o.u8(layer.allowCell);
-      o.u8(layer.out ? 1 : 0);
     });
   }
   o.section("SPWN", () => {
@@ -1145,11 +1150,11 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
   return file;
 }
 
-/** A node layer as the head gives it: its rules, and whether the parts hold a picture of it and its slots taken out. */
+/** A node layer as the head gives it: its rules, and whether the parts hold a picture of it. */
 export type LayerRule =
-  | { readonly type: 0; readonly seed: number; readonly perChunk: number; readonly kinds: readonly (readonly [string, number])[]; readonly allowCell: number; readonly out: boolean }
+  | { readonly type: 0; readonly seed: number; readonly perChunk: number; readonly kinds: readonly (readonly [string, number])[]; readonly allowCell: number }
   | { readonly type: 1; readonly kinds: readonly string[] }
-  | { readonly type: 2; readonly seed: number; readonly perChunk: number; readonly zones: readonly NodeZone[]; readonly zoneCell: number; readonly codes: Uint8Array | null; readonly shared: boolean; readonly out: boolean };
+  | { readonly type: 2; readonly seed: number; readonly perChunk: number; readonly zones: readonly NodeZone[]; readonly zoneCell: number; readonly codes: Uint8Array | null; readonly shared: boolean };
 
 /** A part as its head lists it. */
 export interface MapPart {
@@ -1208,7 +1213,7 @@ function readRule(s: In): LayerRule {
   if (type === 0) {
     const [seed, perChunk, kinds] = [s.u32(), s.u16(), weights()];
     const allowCell = s.u8();
-    return { type, seed, perChunk, kinds, allowCell: allowCell === 0 ? 0 : cellOf(allowCell), out: s.u8() === 1 };
+    return { type, seed, perChunk, kinds, allowCell: allowCell === 0 ? 0 : cellOf(allowCell) };
   }
   if (type !== 2) throw new Error(`map: nodes of type ${type} are not ones this build reads`);
   const [seed, perChunk] = [s.u32(), s.u16()];
@@ -1218,7 +1223,7 @@ function readRule(s: In): LayerRule {
   });
   const zoneCell = cellOf(s.u8());
   const codes = s.u8();
-  return { type, seed, perChunk, zones, zoneCell, codes: codes > 0 ? s.take(codes).slice() : null, shared: s.u8() === 1, out: s.u8() === 1 };
+  return { type, seed, perChunk, zones, zoneCell, codes: codes > 0 ? s.take(codes).slice() : null, shared: s.u8() === 1 };
 }
 
 /**
@@ -1356,9 +1361,13 @@ export interface OverviewPiece {
   /** Each of its chunks' lowest and highest sample, its edges among them, row by row. */
   readonly low: Uint16Array;
   readonly high: Uint16Array;
-  /** By node layer, its picture of the square, bits or bytes as the layer's is, and its slots taken out, or null where it has none. */
+  /**
+   * By node layer, its picture of the square, bits or bytes as the layer's is, or null where it has none; and a scattered or
+   * zoned one's bits of its chunks' slots, chunk by chunk, where none stands and where the footing's other kind does.
+   */
   readonly pictures: readonly (Uint8Array | null)[];
   readonly out: readonly (Uint8Array | null)[];
+  readonly other: readonly (Uint8Array | null)[];
   /** The map's chunks of it that hold water, ascending, and their squares. Null where the map has no WATR. */
   readonly water: { readonly chunks: Uint32Array; readonly squares: Uint16Array } | null;
 }
@@ -1439,6 +1448,7 @@ function readOverview(head: MapHead, sq: Square, s: In): OverviewPiece {
   const [low, high] = [getU16s(s, chunks.length), getU16s(s, chunks.length)];
   const pictures: (Uint8Array | null)[] = [];
   const out: (Uint8Array | null)[] = [];
+  const other: (Uint8Array | null)[] = [];
   for (const rule of head.layers) {
     let picture: Uint8Array | null = null;
     if (rule.type === 2 && !rule.shared) {
@@ -1449,7 +1459,9 @@ function readOverview(head: MapHead, sq: Square, s: In): OverviewPiece {
       picture = s.take(Math.ceil((p.w * p.d) / 8)).slice();
     }
     pictures.push(picture);
-    out.push(rule.type !== 1 && rule.out ? s.take(Math.ceil((chunks.length * rule.perChunk) / 8)).slice() : null);
+    const bits = rule.type === 1 ? 0 : Math.ceil((chunks.length * rule.perChunk) / 8);
+    out.push(rule.type === 1 ? null : s.take(bits).slice());
+    other.push(rule.type === 1 ? null : s.take(bits).slice());
   }
   let water: OverviewPiece["water"] = null;
   if (head.water) {
@@ -1466,7 +1478,7 @@ function readOverview(head: MapHead, sq: Square, s: In): OverviewPiece {
     }
     water = { chunks: held, squares };
   }
-  return { kind: "overview", sq, heights, tint, low, high, pictures, out, water };
+  return { kind: "overview", sq, heights, tint, low, high, pictures, out, other, water };
 }
 
 function readGround(head: MapHead, sq: Square, s: In): GroundPiece {
@@ -1546,7 +1558,7 @@ export function setGround(dims: MapDims, heights: Uint16Array, tint: Uint8Array,
   }
 }
 
-/** Sets an overview's pictures and slots taken out into the map's node layers, as `blankLayers` made them. */
+/** Sets an overview's pictures and its slots' bits of where nodes stand into the map's node layers, as `blankLayers` made them. */
 export function setNodes(dims: MapDims, layers: readonly NodeLayer[], piece: OverviewPiece): void {
   const chunks = chunksOf(dims, piece.sq);
   layers.forEach((layer, k) => {
@@ -1559,19 +1571,20 @@ export function setNodes(dims: MapDims, layers: readonly NodeLayer[], piece: Ove
       const p = pictureOf(dims, piece.sq, layer.allowCell);
       for (let j = 0; j < p.d; j++) copyBits(picture, j * p.w, layer.allow, (p.j0 + j) * p.across + p.i0, p.w);
     }
-    const out = piece.out[k];
-    if (out && layer.out) chunks.forEach((c, i) => copyBits(out, i * layer.perChunk, layer.out!, c * layer.perChunk, layer.perChunk));
+    for (const [from, into] of [[piece.out[k], layer.out], [piece.other[k], layer.other]] as const) {
+      if (from && into) chunks.forEach((c, i) => copyBits(from, i * layer.perChunk, into, c * layer.perChunk, layer.perChunk));
+    }
   });
 }
 
-/** The node layers a head names, their pictures and slots taken out blank for the overviews to be set into, and a listed one's rows none. */
+/** The node layers a head names, their pictures and their slots' bits blank for the overviews to be set into, and a listed one's rows none. */
 export function blankLayers(head: MapHead): NodeLayer[] {
   const { dims } = head;
   const squares = (cell: number): number => ((dims.chunksX * CHUNK_SIZE) / cell) * ((dims.chunksZ * CHUNK_SIZE) / cell);
   const layers: NodeLayer[] = [];
   let picture: Uint8Array | null = null;
   for (const rule of head.layers) {
-    const out = rule.type !== 1 && rule.out ? { out: new Uint8Array(outBytes(dims, rule.perChunk)) } : {};
+    const out = rule.type === 1 ? {} : { out: new Uint8Array(outBytes(dims, rule.perChunk)), other: new Uint8Array(outBytes(dims, rule.perChunk)) };
     if (rule.type === 1) layers.push({ kinds: rule.kinds, first: new Uint32Array(chunkCount(dims) + 1), kind: new Uint8Array(0), x: new Uint16Array(0), z: new Uint16Array(0), yaw: new Uint16Array(0) });
     else if (rule.type === 0) layers.push({ seed: rule.seed, perChunk: rule.perChunk, kinds: rule.kinds, allowCell: rule.allowCell, allow: rule.allowCell > 0 ? new Uint8Array(Math.ceil(squares(rule.allowCell) / 8)) : null, ...out });
     else {
@@ -1816,40 +1829,50 @@ function weighed(reg: Registry, kinds: readonly (readonly [id: string, weight: n
   return out;
 }
 
-function layerSource(dims: MapDims, hf: Heightfield, reg: Registry, layer: NodeLayer): NodeSource {
-  const source = sourceOf(dims, hf, reg, layer);
-  const out = "first" in layer ? null : layer.out;
-  if (!out) return source;
-  const per = source.perChunk;
-  return {
-    perChunk: per,
-    at(chunk, index, spot) {
-      const bit = chunk * per + index;
-      if ((out[bit >> 3]! >> (bit & 7)) & 1) spot.kind = 0;
-      else source.at(chunk, index, spot);
-    },
-  };
-}
-
-function sourceOf(dims: MapDims, hf: Heightfield, reg: Registry, layer: NodeLayer): NodeSource {
-  const forms = nodeForms(reg);
+/** What a scattered or zoned layer grows at a place, by content index (KindsAt in shared/world/nodes.ts). */
+function kindsOf(dims: MapDims, reg: Registry, layer: NodeScatter | NodeZoned): KindsAt {
   const wide = (cell: number): number => (dims.chunksX * CHUNK_SIZE) / cell;
   if ("zone" in layer) {
     const own: (readonly number[] | null)[] = [null, ...layer.zones.map((z) => weighed(reg, z.kinds, z.bare))];
     const zones = layer.codes ? Array.from(layer.codes, (c) => own[c]!) : own;
     const { zone, zoneCell: cell } = layer;
     const across = wide(cell);
-    return scatterNodes(dims, hf, layer.seed, layer.perChunk, forms, (x, z) => zones[zone[Math.floor(z / cell) * across + Math.floor(x / cell)]!]!);
+    return (x, z) => zones[zone[Math.floor(z / cell) * across + Math.floor(x / cell)]!]!;
   }
+  const kinds = weighed(reg, layer.kinds);
+  const { allow, allowCell: cell } = layer;
+  if (!allow) return () => kinds;
+  const across = wide(cell);
+  return (x, z) => {
+    const bit = Math.floor(z / cell) * across + Math.floor(x / cell);
+    return ((allow[bit >> 3]! >> (bit & 7)) & 1) === 1 ? kinds : null;
+  };
+}
+
+/** A scattered or zoned layer's bits of where its nodes stand: its own once resolved, else resolved now on `hf` (resolveSlots). */
+function standing(dims: MapDims, hf: Heightfield, reg: Registry, layer: NodeScatter | NodeZoned, tally?: SlotsTaken): { out: Uint8Array; other: Uint8Array } {
+  if (layer.out && layer.other) return { out: layer.out, other: layer.other };
+  return resolveSlots(dims, hf, layer.seed, layer.perChunk, nodeForms(reg), kindsOf(dims, reg, layer), layer.out, tally);
+}
+
+/**
+ * `map` with each scattered and zoned layer resolved on its own ground, as its file holds it: whether each slot's node stands,
+ * and as what, decided once by the rule of where nodes stand (resolveSlots in shared/world/nodes.ts) and kept in its `out` and
+ * `other` bits, so that a reader needs only its overviews' bits, its pictures and a slot's hash to know a node's place, kind,
+ * form and turn. Slots a layer's `out` already takes out stay out. A layer already resolved is kept as it is. A map made in
+ * code is resolved so as it is made, before it is written.
+ */
+export function resolveNodes(map: MapData, reg: Registry, tally?: SlotsTaken): MapData {
+  if (map.nodes.every((layer) => "first" in layer || (layer.out && layer.other))) return map;
+  const hf = mapHeightfield(map);
+  return { ...map, nodes: map.nodes.map((layer) => ("first" in layer ? layer : { ...layer, ...standing(map.dims, hf, reg, layer, tally) })) };
+}
+
+function layerSource(dims: MapDims, hf: Heightfield, reg: Registry, layer: NodeLayer): NodeSource {
+  const forms = nodeForms(reg);
   if (!("first" in layer)) {
-    const kinds = weighed(reg, layer.kinds);
-    const { allow, allowCell: cell } = layer;
-    if (!allow) return scatterNodes(dims, hf, layer.seed, layer.perChunk, forms, () => kinds);
-    const across = wide(cell);
-    return scatterNodes(dims, hf, layer.seed, layer.perChunk, forms, (x, z) => {
-      const bit = Math.floor(z / cell) * across + Math.floor(x / cell);
-      return ((allow[bit >> 3]! >> (bit & 7)) & 1) === 1 ? kinds : null;
-    });
+    const { out, other } = standing(dims, hf, reg, layer);
+    return placedNodes(dims, hf, layer.seed, layer.perChunk, forms, kindsOf(dims, reg, layer), out, other);
   }
   const kinds = layer.kinds.map((id) => reg.index.get(id) ?? 0);
   return {
