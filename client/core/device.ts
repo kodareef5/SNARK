@@ -14,7 +14,8 @@ import { joinClips, type ClipSet } from "../../shared/anim/clip.ts";
 import { HumanAnim } from "../../shared/anim/pose.ts";
 import { creatureAnims } from "../../shared/anim/creature.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
-import type { Registry } from "../../shared/content/registry.ts";
+import type { Def } from "../../shared/content/defs.ts";
+import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import type { Pack, PackRig } from "../../shared/pack/pack.ts";
@@ -1188,7 +1189,10 @@ export class DeviceRun {
       else assets.wantClips(c);
     }
     if (sets.length <= assets.table.skeletons.size) return false;
-    this.report.hashes = deviceScenarios(side.reg, side.pack.header.rigs, joinClips(sets)).map(([name, run]) => {
+    // The server's hashes are of the content every map has: a map's own landmarks are left out of the page's.
+    const own = side.reg.own;
+    const shared = own.size === 0 ? side.reg : compileContent([...side.reg.defs.filter((d, k): d is Def => d !== null && !own.has(k)), ...side.reg.renames]).registry!;
+    this.report.hashes = deviceScenarios(shared, side.pack.header.rigs, joinClips(sets)).map(([name, run]) => {
       const t = side.now();
       const got = run();
       return { name, got, want: side.expected?.[name] ?? null, ms: tenth(side.now() - t) };
