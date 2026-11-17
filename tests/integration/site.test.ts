@@ -98,8 +98,10 @@ test("a server reached at /miami answers its world under it, sends /miami on wit
   // The sound board is the world's, behind its password, and the site does not hand its page out.
   writeFileSync(join(dir, "sounds.html"), "the board");
   expect([await (await get(`${at}/sounds.html`)).text(), (await get(`${at}/admin/sounds.json`)).status]).toEqual(["not found", 404]);
-  // The world's own is behind its gate, which this server, with no admin password, keeps shut.
+  for (const path of ["/Sounds.html", "//sounds.html"]) expect(await (await get(`${at}${path}`)).text()).toBe("not found");
+  // The world's own is behind its gate, which this server, with no admin password, keeps shut, in any case of the path.
   expect(await (await get(`${at}/miami/sounds.html`)).text()).toStartWith("the sound board opens on a development server");
+  expect(await (await get(`${at}/miami/Sounds.html`)).text()).toStartWith("the sound board opens on a development server");
 });
 
 test("a server at the root of its host is all world as before, and has the page the source link goes to and its links", async () => {

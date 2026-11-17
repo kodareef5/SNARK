@@ -4,7 +4,9 @@
 // was when the body went limp. A joint keeps a body within the swing and twist its asset allows from the rest pose, then
 // holds its joint to its parent body. Bodies meet the terrain and the boxes and convex parts of structures and nodes, with
 // friction and rolling resistance.
-// Only a client runs it, so it need not agree across engines; the same steps give the same result.
+// The server lays it as every client does, to judge blows on a body as it is drawn (shared/anim/corpse.ts), so it uses
+// only exactly rounded arithmetic and shared/math/scalar.ts's trigonometry: tools/simhash.ts's creature hash lays each
+// rig's, and JavaScriptCore and V8 must agree on it (tests/integration/determinism.test.ts).
 
 import { chunkAt } from "../coords.ts";
 import { detAtan2, detCos, detSin } from "../math/scalar.ts";

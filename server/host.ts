@@ -369,12 +369,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (reg.defs[rec.kind]?.type === "species") inventoryChanged.add(rec);
   };
   if (persistence) {
-    const ledger = loaded!.fresh ? "{}" : (persistence.store.meta("ledger") as string | null);
-    items.restore(ledger);
+    // The ledger is written once something is minted, so a save without one has minted nothing.
+    items.restore(loaded!.fresh ? "{}" : ((persistence.store.meta("ledger") as string | null) ?? "{}"));
     const dropped = persistence.store.dropped;
     if (dropped.count.size > 0) {
-      // What went with the content an operator chose to go on without leaves the ledger too. A save with no ledger never counted it.
-      if (ledger !== null) for (const [item, n] of dropped.burn) items.burned[item] = items.burned[item]! + n;
+      // What went with the content an operator chose to go on without leaves the ledger too.
+      for (const [item, n] of dropped.burn) items.burned[item] = items.burned[item]! + n;
       items.dirty = true;
       say(`left out, as --allow-missing-content asked, and gone from the save at its next commit: ${[...dropped.count].map(([id, n]) => `${n} of ${id}`).join(", ")}`);
       if (dropped.burn.size > 0) say(`what they held went with them: ${[...dropped.burn].map(([item, n]) => `${n} of ${reg.ids[item]}`).join(", ")}`);

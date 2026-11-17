@@ -123,6 +123,22 @@ test('a saved car loads clamped to a retuned definition, and a component of anot
   } finally { active?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('a saved wreck of another form is refused by name', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'snark-wreck-form-')), dbPath = join(dir, 'world.db');
+  let active: Harness | null = null;
+  try {
+    const { h, x, z, owner } = setup(dbPath); active = h;
+    const kind = h.reg.index.get('core:helicopter')!, heli = h.host.spawnVehicle('core:helicopter', x + 12, z, owner, 0);
+    h.host.survival.hurt(h.host.records.byPid.get(h.world.ents.pid[heli]!)!, 1e6, 0); h.run(100);
+    const wreck = [...h.host.corpses.bodies.values()].find((b) => b.kind === kind)!, pid = wreck.rec.pid;
+    expect(wreck.wreck).not.toBeNull();
+    wreck.rec.extra.set(0x687772, new Uint8Array(53).fill(2));
+    h.host.records.dirty.add(pid);
+    h.host.shutdown(); active = null;
+    expect(() => new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], dbPath })).toThrow(`wreck ${pid}: its saved state is version 2 in 53 bytes, and this build reads version 1 in 41`);
+  } finally { active?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('content refuses vehicle seats the seat authority would refuse at spawn', () => {
   const broken = (seats: (s: VehicleSeat[]) => VehicleSeat[]): string[] => compileContent(CORE_CONTENT.map(d =>
     d.type === 'species' && d.vehicle ? { ...d, vehicle: { ...d.vehicle, seats: seats([...d.vehicle.seats]) } } : d)).errors;

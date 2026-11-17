@@ -18,7 +18,7 @@ import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { RemoteSample } from "../session.ts";
 import { GROUND_NAMES, groundAt } from "./ground.ts";
 import type { DetailSheet, DetailSound, Occasion } from "../../../shared/pack/details.ts";
-import { cueKey } from "../../../shared/sound/cues.ts";
+import { KEYS, cueKey } from "../../../shared/sound/cues.ts";
 import { Rng } from "../../../shared/rng.ts";
 import type { SoundLibrary } from "./library.ts";
 import type { Resolver } from "./resolve.ts";
@@ -89,14 +89,18 @@ export class Book {
   /** What it plays as drawn; null for a creature drawn as a grey box, which is heard by its cue word alone. */
   readonly anim: CreatureAnim | null;
 
-  /** `lands` is the tick of its bite at which the blow lands, where its content says, else it is read from the clip. */
-  constructor(owner: string, anim: CreatureAnim | null, height: number, lib: SoundLibrary, res: Resolver, lands: number | null = null, sheet: DetailSheet | null = null) {
+  /**
+   * `on` is its owner class (`species/creature`): an occasion the catalogue gives another class has no sound in its book.
+   * `lands` is the tick of its bite at which the blow lands, where its content says, else it is read from the clip.
+   */
+  constructor(owner: string, on: string, anim: CreatureAnim | null, height: number, lib: SoundLibrary, res: Resolver, lands: number | null = null, sheet: DetailSheet | null = null) {
     this.anim = anim;
     this.height = height;
     const o = res.owner(owner);
     const find = (name: string): number => lib.index.get(`${owner}/sound/${name}`) ?? -1;
+    const peek = (name: string): number => (KEYS[cueKey(name)]!.cue.on.includes(on) ? res.peek(o, cueKey(name)) : -1);
     OCCASIONS.forEach((name, i) => {
-      this.sound[i] = res.peek(o, cueKey(name));
+      this.sound[i] = peek(name);
       this.rate[i] = res.rate(o, cueKey(name));
     });
     // The creature's own sheet (its cues.json, D426) names its sound for an occasion where it says one.
@@ -114,7 +118,7 @@ export class Book {
         this.rate[O_THUMP] = 1;
       }
     }
-    GROUND_NAMES.forEach((g, i) => (this.step[i] = res.peek(o, cueKey(`step/${g}`))));
+    GROUND_NAMES.forEach((g, i) => (this.step[i] = peek(`step/${g}`)));
     const rig = anim?.rig ?? null;
     const idles = anim?.idles ?? [];
     const names = idles.map((c) => c.id.slice(c.id.lastIndexOf("/") + 1));
@@ -203,7 +207,7 @@ export class CreatureSounds {
   private bookOf(kind: number): Book | null {
     const d = this.reg.defs[kind];
     if (d?.type !== "species") return null;
-    const book = new Book(d.id, this.made[kind] ?? null, this.reg.bodyHeight[kind]!, this.lib, this.res, d.bite ? (this.reg.weapon[kind]?.strikeTick ?? null) : null, this.sheets.find((s) => s.owner === d.id) ?? null);
+    const book = new Book(d.id, `species/${d.class}`, this.made[kind] ?? null, this.reg.bodyHeight[kind]!, this.lib, this.res, d.bite ? (this.reg.weapon[kind]?.strikeTick ?? null) : null, this.sheets.find((s) => s.owner === d.id) ?? null);
     return book.reach > 0 ? book : null;
   }
 

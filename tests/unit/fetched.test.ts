@@ -1,7 +1,8 @@
 // What the page fetches whole as it starts: a failure names the request and what the server answered.
 
 import { expect, test } from "bun:test";
-import { fetchBytes, fetchJson, fetchMap, fetchText, readStatics, type Get } from "../../client/core/fetched.ts";
+import { fetchBytes, fetchJson, fetchMap, fetchSounds, fetchText, readStatics, type Get } from "../../client/core/fetched.ts";
+import { MANIFEST_VERSION, type Manifest } from "../../shared/pack/manifest.ts";
 import { groundBytes, parseMap, writeMap } from "../../shared/world/mapfile.ts";
 import { busyMap, flatMap } from "../fixtures/map.ts";
 
@@ -21,6 +22,19 @@ test("a file the server does not have is named with its status, not left to a JS
   await expect(fetchBytes(gone, "assets/core.boot.0123456789abcdef.snpk")).rejects.toThrow("assets/core.boot.0123456789abcdef.snpk: the server answered 404");
   await expect(fetchJson(get, "broken.json")).rejects.toThrow('broken.json: the server answered 200 with what is not JSON: "not found"');
   await expect(fetchJson(() => Promise.reject(new TypeError("Load failed")), "map.json")).rejects.toThrow("map.json: no answer (Load failed)");
+});
+
+test("a sounds' rows file that fails says why, and leaves the manifest without sounds", async () => {
+  const manifest = (): Manifest => ({ version: MANIFEST_VERSION, files: [{ name: "boot", bytes: 0, role: "boot" }], boot: 0, clipHash: 0, meshes: [], soundRows: "sounds.1.json" });
+  const rows = manifest();
+  expect(await fetchSounds(server({ "assets/sounds.1.json": "[]" }), rows)).toBe("");
+  expect(rows.sounds).toEqual([]);
+  const gone = manifest();
+  expect(await fetchSounds(server({}), gone)).toBe('assets/sounds.1.json: the server answered 404: "not found"');
+  expect(gone.sounds).toBeUndefined();
+  const wrong = manifest();
+  expect(await fetchSounds(server({ "assets/sounds.1.json": '[{"id":"nobody"}]' }), wrong)).toContain('sound "nobody"');
+  expect(wrong.sounds).toBeUndefined();
 });
 
 test("a map comes in two: its ground as soon as every byte before the statics is in, and the rest when the answer ends", async () => {

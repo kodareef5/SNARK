@@ -27,7 +27,7 @@ import type { ShotEnd } from "../occasions.ts";
 import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
-import { Characters, showMaterials, type BodyShadows, type CastFn, type VehicleRenderPose, type VehicleSeatPose } from "./characters.ts";
+import { Characters, seatScratch, showMaterials, type BodyShadows, type CastFn, type VehicleRenderPose, type VehicleSeatPose } from "./characters.ts";
 import { Clouds } from "./clouds.ts";
 import { Dropped } from "./dropped.ts";
 import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
@@ -38,7 +38,7 @@ import { HAND_NEAR } from "./hand.ts";
 import { PROGRAM, drawProgram } from "./programs.ts";
 import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER } from "./packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndexCount } from "./packet.ts";
 import { SURFACE_MATERIAL } from "../../../content/surfaces.ts";
 import { citySurface, WORLD_ASKED } from "./world-surfaces.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
@@ -119,6 +119,7 @@ const BEAM_COLOR = 8;
 const RUN_TRIANGLES = 4096;
 /** What the card holds for the chunks' instance buffers is reserved under this name. */
 const INSTANCES = "chunk instances";
+const QUAD_INDICES = "quad indices";
 /** Numbers a run of cells takes in `runs` (Scene.ranges), and in `castRuns` (Scene.castChunk). */
 const RUN = 11;
 const CAST_RUN = 5;
@@ -148,6 +149,17 @@ function indexOfId(remote: RemoteSample, id: number): number {
     else hi = mid - 1;
   }
   return -1;
+}
+
+/**
+ * A draw's place in the order in `range`, as stepOf will find it, two to an opaque step for its cut-outs (`cutAt`) and
+ * the rest (`restAt`), and -1 where it is not drawn there.
+ */
+function placeOf(flags: number, range: number, cutAt: number, restAt: number): number {
+  let s = (flags & DRAW_BLEND) !== 0 ? STEP_NEAR_SEE - range : range;
+  if ((flags & DRAW_NEAR) !== 0) s = range === PASS_NEAR ? STEP_BODY : -1;
+  const at = s <= STEP_FAR && (flags & DRAW_CUTOUT) !== 0 ? cutAt : restAt;
+  return s < 0 || at < 0 ? -1 : s <= STEP_FAR ? s * 2 + at : s + 2;
 }
 
 /** A draw's key for `sortRuns`, whole in a double: its program, its material, the low 16 bits of its level's slot, and its place as made. */
@@ -385,6 +397,9 @@ export class Scene {
   /** Bytes of the chunks' instance buffers on the card, and as reserved under INSTANCES. */
   private instanceBytes = 0;
   private instancesReserved = 0;
+  /** The most indices of quads the card has been sent levels for, 16-bit and 32-bit, as the shell holds them once for all. */
+  private readonly quadIndices = [0, 0];
+  private quadsReserved = 0;
   /** Per mesh, the level its falling pieces were last drawn at, or -1. */
   private readonly fallLevel: Int8Array;
   /** Per mesh counted in `counts`, the square of how far off the nearest instance is, and how far along the view they all lie. */
@@ -423,6 +438,9 @@ export class Scene {
   readonly ghost = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, color: 0 };
   readonly characters: Characters;
   private readonly vehicleSeats: (VehicleSeatPose | undefined)[] = new Array(MAX_VIEW);
+  /** What vehicleSeats points into, a pose a slot, and the own body's seat. */
+  private readonly seatPoses: VehicleSeatPose[] = [];
+  private readonly ownSeat = seatScratch();
   /** Scratch for a remote vehicle's pose, which Characters keeps none of. */
   private readonly vehiclePose: VehicleRenderPose = { pitch: 0, roll: 0, steering: 0, wheelAngle: 0 };
   /** Small details: feathers knocked loose, dust thrown up. */
@@ -643,6 +661,17 @@ export class Scene {
     this.nodesFar?.learn();
   }
 
+  /** Counts on the card the indices the shell holds for this frame's levels of quads and every one before. */
+  private quadsOnCard(): void {
+    const ups = this.packet.assetUploads, most = this.quadIndices;
+    for (let k = 0; k < ups.length; k++) {
+      const u = ups[k]!;
+      if (u.quads) most[u.indexBytes === 2 ? 0 : 1] = Math.max(most[u.indexBytes === 2 ? 0 : 1]!, u.indexCount);
+    }
+    const bytes = (most[0]! > 0 ? quadIndexCount(most[0]!, 2) * 2 : 0) + (most[1]! > 0 ? quadIndexCount(most[1]!, 4) * 4 : 0);
+    if (bytes !== this.quadsReserved) this.assets.residency.reserve(QUAD_INDICES, (this.quadsReserved = bytes));
+  }
+
   /** Call after a lost graphics context. Every buffer and every level is uploaded again. */
   resetUploads(): void {
     for (const b of this.batches.values()) {
@@ -650,6 +679,7 @@ export class Scene {
       b.onCard = 0;
     }
     this.instanceBytes = 0;
+    this.quadIndices[0] = this.quadIndices[1] = 0;
     this.assets.residency.reset();
     this.terrain.reset();
     this.far?.reset();
@@ -734,6 +764,7 @@ export class Scene {
       if (this.waterMaterial >= 0) this.assets.residency.material(this.waterMaterial, WATER_ASKED.pixels, WATER_ASKED.distance);
     }
     this.showDetails(cam, remote);
+    this.quadsOnCard();
     // The viewer's own body goes over everything else, water included.
     this.characters.flush(p, this.transient, true, this.drawBody, this.casting ? this.castBody : null);
     this.order();
@@ -946,6 +977,7 @@ export class Scene {
    * draw in both is listed twice, and an opaque step's cut-out draws where `cutouts` says, each part of it by what its
    * draws bind (`byState`) unless they are to stay as made. With one range they are all in the near range, and stay as
    * they were made unless a cut-out is to move: drawn flat, as low poly draws, sorting would save less than it costs.
+   * A see-through draw made ahead of an opaque one still goes after it, the rest staying as made.
    */
   private order(): void {
     const p = this.packet;
@@ -955,25 +987,28 @@ export class Scene {
     // A cut-out's place and the rest's within the step, -1 for left out.
     const cutAt = this.cutouts === "last" ? 1 : this.cutouts === "none" ? -1 : 0;
     const restAt = this.cutouts === "first" ? 1 : 0;
+    let sort = !made;
     if (one) {
       p.drawPass.fill(PASS_NEAR, 0, n);
       p.skyAt = n;
-      let cut = false;
-      for (let d = 0; d < n && !cut; d++) cut = cutAt !== restAt && (p.drawFlags[d]! & (DRAW_CUTOUT | DRAW_BLEND | DRAW_NEAR)) === DRAW_CUTOUT;
-      if (!cut) return;
+      let cut = false, late = false;
+      for (let d = 0, last = 0; d < n && !cut; d++) {
+        const flags = p.drawFlags[d]!, place = placeOf(flags, PASS_NEAR, cutAt, restAt);
+        cut = cutAt !== restAt && (flags & (DRAW_CUTOUT | DRAW_BLEND | DRAW_NEAR)) === DRAW_CUTOUT;
+        late ||= place < last;
+        if (place > last) last = place;
+      }
+      if (!cut && !late) return;
+      sort &&= cut;
     }
-    // Each draw's place in each range, -1 where it is not drawn in that range: its step as stepOf will find it, and in
-    // an opaque step the cut-outs a place after the rest, or before it, or none.
+    // Each draw's place in each range, -1 where it is not drawn in that range.
     const steps = this.steps;
     const starts = this.starts.fill(0);
     for (let d = 0; d < n; d++) {
       const flags = p.drawFlags[d]!;
       for (let range = PASS_NEAR; range <= PASS_FAR; range++) {
         const drawn = one ? range === PASS_NEAR : (this.passOf[d]! & (1 << range)) !== 0;
-        let s = !drawn ? -1 : (flags & DRAW_BLEND) !== 0 ? STEP_NEAR_SEE - range : range;
-        if ((flags & DRAW_NEAR) !== 0) s = range === PASS_NEAR ? STEP_BODY : -1;
-        const at = s <= STEP_FAR && (flags & DRAW_CUTOUT) !== 0 ? cutAt : restAt;
-        const place = s < 0 || at < 0 ? -1 : s <= STEP_FAR ? s * 2 + at : s + 2;
+        const place = drawn ? placeOf(flags, range, cutAt, restAt) : -1;
         steps[d * 2 + range] = place;
         if (place >= 0) starts[place + 1]!++;
       }
@@ -995,8 +1030,8 @@ export class Scene {
       }
     }
     // The opaque steps' places, near then far, two a step.
-    if (!made) for (let s = 0, turns = 0; s < STEP_FAR * 2 + 2; s++) turns = this.byState(s === 0 ? 0 : starts[s - 1]!, starts[s]!, s % 2 === 0 ? 0 : turns);
-    if (moved || !made) reorder(this.columns, MAX_DRAWS, n, total, source, this.copy);
+    if (sort) for (let s = 0, turns = 0; s < STEP_FAR * 2 + 2; s++) turns = this.byState(s === 0 ? 0 : starts[s - 1]!, starts[s]!, s % 2 === 0 ? 0 : turns);
+    if (moved || sort) reorder(this.columns, MAX_DRAWS, n, total, source, this.copy);
     for (let k = 0; k < total; k++) p.drawPass[k] = pass[k]!;
     p.drawCount = total;
   }
@@ -1272,7 +1307,7 @@ export class Scene {
         const v = this.viewed[j]!;
         if (ch.seat(remote!.kind[j]!, remote!.x[j]! - cam.x, remote!.y[j]! - cam.y, remote!.z[j]! - cam.z, remote!.yaw[j]!, ms, remote!.tick, at, own.attachment!.slot, vehicle, remote!.gear[j * GEAR_COUNT + GEAR_WORN]!, remote!.id[j]!, v >= 0 && this.bodyRigid[v] !== 0)) {
           // A passenger in a car is posed in the car's frame; on a creature, astride in its seat's.
-          if (vehicle) seat = ch.seatPose(remote!.kind[j]!, own.attachment!.slot, vehicle, at, remote!.yaw[j]!, own.yaw);
+          if (vehicle) seat = ch.seatPose(remote!.kind[j]!, own.attachment!.slot, vehicle, at, remote!.yaw[j]!, own.yaw, this.ownSeat);
           else saddled = true;
         }
       }
@@ -1341,7 +1376,7 @@ export class Scene {
       saddle = own.gear[GEAR_WORN]!;
       found = held ? ch.heldAt(remote.id[i]!, remote.kind[i]!, own.id, own.kind, x, y, z, own.yaw, own.state, at) : ch.seat(own.kind, x, y, z, own.yaw, own.state, own.tick, at, remote.seatSlot[i]!, own.vehicle, saddle, own.id);
       yaw = own.yaw;
-      if (found && !held && ch.vehicle(own.kind)) this.vehicleSeats[i] = ch.seatPose(own.kind, remote.seatSlot[i]!, own.vehicle!, at, yaw, remote.yaw[i]!);
+      if (found && !held && ch.vehicle(own.kind)) this.vehicleSeats[i] = ch.seatPose(own.kind, remote.seatSlot[i]!, own.vehicle!, at, yaw, remote.yaw[i]!, (this.seatPoses[i] ??= seatScratch()));
     } else {
       const j = mount;
       const x = remote.x[j]! - p.camX, y = remote.y[j]! - p.camY, z = remote.z[j]! - p.camZ;
@@ -1353,7 +1388,7 @@ export class Scene {
       const v = this.viewed[j]!;
       found = held ? ch.heldAt(remote.id[i]!, remote.kind[i]!, remote.id[j]!, remote.kind[j]!, x, y, z, remote.yaw[j]!, ms, at) : ch.seat(remote.kind[j]!, x, y, z, remote.yaw[j]!, ms, remote.tick, at, remote.seatSlot[i]!, vehicle, saddle, remote.id[j]!, v >= 0 && this.bodyRigid[v] !== 0);
       yaw = remote.yaw[j]!;
-      if (found && !held && vehicle) this.vehicleSeats[i] = ch.seatPose(remote.kind[j]!, remote.seatSlot[i]!, vehicle, at, yaw, remote.yaw[i]!);
+      if (found && !held && vehicle) this.vehicleSeats[i] = ch.seatPose(remote.kind[j]!, remote.seatSlot[i]!, vehicle, at, yaw, remote.yaw[i]!, (this.seatPoses[i] ??= seatScratch()));
     }
     place[k * 4] = found ? at[0]! : remote.x[i]! - p.camX;
     place[k * 4 + 1] = found ? at[1]! : remote.y[i]! - p.camY;

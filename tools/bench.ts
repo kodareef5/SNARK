@@ -643,14 +643,15 @@ const wreck: Rubble[] = [];
   work.sort((a, b) => a - b);
   whole.sort((a, b) => a - b);
   record("pieces that fell", build.fallen - fallenBefore, "");
-  record("pieces of the house left standing", structs.count - before, "", 0);
+  let standing = 0;
+  for (const t of structs.chunks) for (let s = 0; t && s < t.high; s++) if (t.kind[s] !== 0 && t.owner[s] === 9000) standing++;
+  record("pieces of the house left standing", standing, "", 0);
   record("removals they fell in", build.collapse.waves - wavesBefore, "");
   record("ticks until the last was down", ticks, "", 60);
   record("collapse work in a tick, median", percentile(work, 0.5), "ms", 1.5);
   record("collapse work in a tick, worst", work[work.length - 1]!, "ms", 3);
   record("whole tick while it fell, worst", whole[whole.length - 1]!, "ms", 16);
   record("sent to each watcher for all of it", (host.game.stats.chunkBytes - sentBytes) / watchers, "bytes", pieces * 2);
-  record("the same told row by row would be at least", pieces * 4, "bytes");
 }
 
 // ---------------------------------------------------------------- voice

@@ -1102,7 +1102,6 @@ export function mapNodes(map: MapData, hf: Heightfield, reg: Registry): NodeSour
   return nodeLayers(map.dims, hf, reg, map.nodes);
 }
 
-/** Server side: sets the map's static pieces down in `structs`. Clients receive them by replication. */
 /** Each of the table's kinds as a content index, 0 for one this content lacks. */
 export function staticKinds(statics: MapStatics, reg: Registry): Uint16Array {
   return Uint16Array.from(statics.kinds, (id) => reg.index.get(id) ?? 0);

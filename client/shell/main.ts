@@ -59,7 +59,7 @@ async function boot(): Promise<void> {
   const { ground: first, rest } = await mapFile;
   const map = parseMap(first, false), hf = mapHeightfield(map);
   const { reg, manifest, pack } = await withLandmarks(fetch, map.content, await content, core, parsePack(new Uint8Array(await bootBytes)));
-  fetchSounds(fetch, manifest);
+  const silent = fetchSounds(fetch, manifest);
   const port = new WorkerPort(manifest, "assets", tierOf(DEFAULT_TIER).diskBytes, params.get("assetnet"));
   giveSky(new Uint8Array(await skyBytes));
   const canvas = document.querySelector<HTMLCanvasElement>("#view")!;
@@ -86,6 +86,7 @@ async function boot(): Promise<void> {
   void readStatics(rest, map.dims, () => new Promise((go) => setTimeout(go))).then((statics) => session.staticsArrived(statics));
   const surfaces = selfcheck ? new SelfcheckSurfaces(manifest, port) : null;
   const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });
+  void silent.then((why) => why && app.ui.console.print(`no sounds: ${why}`));
   session.prediction.enabled = selfcheck;
   const skin = installSkin(app.ui.frame);
   void Object.assign(new Image(), { src: SKIN_URL }).decode().catch(() => Object.assign(skin, { ...skinPixels(), url: "" }));
