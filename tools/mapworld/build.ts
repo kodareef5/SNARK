@@ -255,6 +255,7 @@ export async function buildMap(name: string, release = false): Promise<{ file: s
     id: world.id,
     bytes: bytes.length,
     firstFrameBrotli: packed.first.br,
+    handOverBrotli: packed.first.city.br,
     brotli: wireBytes(packed, "br"),
     release,
     buildSeconds: Number(built.toFixed(1)),

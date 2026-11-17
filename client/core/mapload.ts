@@ -1,7 +1,7 @@
 // A map as the page takes it in parts (shared/world/mapfile.ts). Before anything is drawn: its head, its landmarks'
 // definitions, which the welcome's registry holds, and every overview, whose ground stands in for each sector's until it
 // comes (shared/world/heightfield.ts). Then the ground of the sectors within reach of the body, which the first frame waits
-// for and which come alone; then the rest of the
+// for and which come alone (firstFrameParts says which, for the loader and for the map's build); then the rest of the
 // ground nearest first, by where the body is and where it is heading, a few at once and ordered again at each ask, so a
 // jump goes first to where it lands; and last the statics, all of them, handed over once every part has come. A part that
 // fails is asked for again after a wait that grows to a cap, for as long as the page lives, and what has come is kept. One
@@ -47,6 +47,29 @@ export interface Place {
  */
 function everywhere(head: MapHead, p: MapPart): boolean {
   return p.kind === "land" || p.kind === "overview" || (p.kind === "ground" && head.layers.some((rule) => rule.type === 1));
+}
+
+/**
+ * The parts the first frame waits for with the body at (x, z), besides the head, in the head's order: those it waits for
+ * everywhere, and the ground of each sector within PREDICTED_REACH of it on both axes, where the body is predicted from the
+ * first frame on. The loader asks by it, and the map's build holds its worst over the map to a budget (tools/map/pack.ts).
+ */
+export function firstFrameParts(head: MapHead, x: number, z: number): MapPart[] {
+  const r = PREDICTED_REACH;
+  return head.parts.filter((p) => {
+    if (everywhere(head, p)) return true;
+    if (p.kind !== "ground") return false;
+    const sq = squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
+    return sq.cx0 * CHUNK_SIZE <= x + r && sq.cx1 * CHUNK_SIZE >= x - r && sq.cz0 * CHUNK_SIZE <= z + r && sq.cz1 * CHUNK_SIZE >= z - r;
+  });
+}
+
+/**
+ * The parts the map's statics are handed over after, besides the head: every part but the tops, so that the far city, the
+ * near city and the far shadow are made on exact ground. The map's build says what that is at its heaviest first frame.
+ */
+export function handOverParts(head: MapHead): MapPart[] {
+  return head.parts.filter((p) => p.kind !== "tops");
 }
 
 /**
@@ -189,7 +212,7 @@ export class MapLoader {
     this.staged = staged;
     const head = staged.head;
     this.grounds = head.parts.filter((p) => p.kind === "ground" && !everywhere(head, p));
-    this.rest = head.parts.filter((p) => p.kind === "statics");
+    this.rest = handOverParts(head).filter((p) => p.kind === "statics");
   }
 
   /**
@@ -227,11 +250,8 @@ export class MapLoader {
   async follow(where: () => Place | null, then: { readonly say?: (line: string) => void; readonly arrived?: (statics: MapStatics) => void } = {}): Promise<void> {
     this.where = where;
     const head = this.staged.head;
-    const { x, z } = this.place(), r = PREDICTED_REACH;
-    const near = this.grounds.filter((p) => {
-      const sq = squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
-      return sq.cx0 * CHUNK_SIZE <= x + r && sq.cx1 * CHUNK_SIZE >= x - r && sq.cz0 * CHUNK_SIZE <= z + r && sq.cz1 * CHUNK_SIZE >= z - r;
-    });
+    const { x, z } = this.place();
+    const near = firstFrameParts(head, x, z).filter((p) => this.grounds.includes(p));
     for (const p of near) this.grounds.splice(this.grounds.indexOf(p), 1);
     await Promise.all(near.map((p) => this.must(p)));
     this.asker.say("");

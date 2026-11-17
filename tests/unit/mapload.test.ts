@@ -1,13 +1,13 @@
 // The page's map as its parts come (client/core/mapload.ts): its head, its landmarks' definitions and its overviews before
-// anything; the ground within reach of the body alone, which the first frame waits for; then the rest of the ground nearest
-// first to where the body is and is heading, six at once, and the statics last, all of them. A part that fails is asked for
-// again, the wait between asks counted here with no clock.
+// anything; the ground within reach of the body alone, which the first frame waits for, by the rule the map's build holds to
+// its budget; then the rest of the ground nearest first to where the body is and is heading, six at once, and the statics
+// last, all of them. A part that fails is asked for again, the wait between asks counted here with no clock.
 
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import type { Get } from "../../client/core/fetched.ts";
-import { DAMAGED_MOST, MapLoader, PARTS_AT_ONCE, RETRY_FIRST, RETRY_MOST, StagedMap, type Place } from "../../client/core/mapload.ts";
+import { DAMAGED_MOST, MapLoader, PARTS_AT_ONCE, RETRY_FIRST, RETRY_MOST, StagedMap, firstFrameParts, type Place } from "../../client/core/mapload.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { Scene } from "../../client/core/render/scene.ts";
@@ -132,7 +132,7 @@ test("the page asks for the head, then the land and the overviews, then nothing 
   expect(wholeStatics(handed)).toBe(true);
 });
 
-test("the first frame on this map waits for its head, its land, its two overviews and at most four sectors' ground: counted, not timed", async () => {
+test("the first frame on this map waits for its head, its land, its two overviews and at most four sectors' ground, as firstFrameParts says: counted, not timed", async () => {
   const count = async (body: Place): Promise<number[]> => {
     const s = heldServer(file);
     let loader: MapLoader | null = null;
@@ -142,6 +142,8 @@ test("the first frame on this map waits for its head, its land, its two overview
     void loader!.follow(() => body).then(() => (near = true));
     await settle();
     while (!near) await s.answer();
+    // The loader asked for the head and what the rule names there, and nothing else.
+    expect(s.asked.slice(0, s.answered)).toEqual([`map/${head.name}`, ...firstFrameParts(head, body.x, body.z).map(nameOf)]);
     return [s.answered, s.bytes];
   };
   const size = (kinds: string[]): number => head.bytes + head.parts.filter((p) => kinds.includes(p.kind)).reduce((n, p) => n + p.length, 0);
@@ -149,6 +151,8 @@ test("the first frame on this map waits for its head, its land, its two overview
   expect(await count({ x: 1056, z: 448, vx: 0, vz: 0 })).toEqual([5, 1072143]);
   expect(await count({ x: 1536, z: 896, vx: 0, vz: 0 })).toEqual([8, 2357208]);
   expect([size(["land", "overview"]), size(["land", "overview", "ground"])]).toEqual([381132, 4705002]);
+  // Off the map's sectors' corners: two sectors along an edge, one in a middle; and every corner, at most four.
+  for (const [x, z] of [[1024, 448], [100, 100], [0, 0], [2048, 1024], [3200, 1280]] as const) await count({ x, z, vx: 0, vz: 0 });
 });
 
 
