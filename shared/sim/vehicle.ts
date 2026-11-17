@@ -54,6 +54,10 @@ export interface VehicleSpec extends VehicleHullSpec {
   readonly suspensionTravel?: number;
   readonly gravity?: number;
   readonly airDrag?: number;
+  /** Fraction of engine torque sent to the front axle. Omitted uses the legacy load-proportional split. */
+  readonly frontDriveShare?: number;
+  /** Aero load in newtons per (m/s) squared, toward the underside on a forward run. */
+  readonly downforce?: number;
   /** Multiplier on the surface speed-squared resistance (body/tire drag). */
   readonly dragScale?: number;
 }
@@ -61,15 +65,21 @@ export interface VehicleSpec extends VehicleHullSpec {
 /** A vehicle's seats are seats like any host's (shared/sim/seats.ts), in its chassis frame. */
 export type VehicleSeat = Seat;
 
-/** A hinged part of the rig. `open` is radians about `axis` (in the bone's frame) when it is fully open. */
-export interface VehicleDoor {
+/** A rigid door, driven by its replicated open fraction. Sliding doors first release out of the seal, then run aft. */
+export type VehicleDoor = {
   readonly bone: string;
-  readonly axis: readonly [number, number, number];
-  readonly open: number;
-  /** Ticks it takes to swing fully open, and to swing shut. */
   readonly openTicks: number;
   readonly closeTicks: number;
-}
+} & ({
+  readonly axis: readonly [number, number, number];
+  readonly open: number;
+  readonly slide?: never;
+} | {
+  /** Signed local X and Z travel in metres. */
+  readonly slide: { readonly outward: number; readonly along: number };
+  readonly axis?: never;
+  readonly open?: never;
+});
 
 /** A wheel bone rolls about the chassis X axis with the wheel angle; one that steers turns about Y first. */
 export interface VehicleWheel {
@@ -77,7 +87,7 @@ export interface VehicleWheel {
   readonly steers?: boolean;
 }
 
-/** At most this many doors a vehicle: their open fractions travel in four bits each (shared/sim/vehicle-body.ts). */
+/** At most this many doors a vehicle: their open fractions travel in eight bits each (shared/sim/vehicle-body.ts). */
 export const MAX_VEHICLE_DOORS = 4;
 
 /** One kind of vehicle: its mechanics, its seats and the parts of its rig that move. Content, never code, says each. */
@@ -87,6 +97,8 @@ interface VehicleDefinitionBase {
   readonly wreck?: string;
   readonly seats: readonly VehicleSeat[];
   readonly doors: readonly VehicleDoor[];
+  /** Door held open while the vehicle's inventory is being accessed. */
+  readonly cargoDoor?: number;
   readonly wheels: readonly VehicleWheel[];
   /** The bone the driver's hands turn, about `axis`, `ratio` times the road wheels' steering angle. */
   readonly steeringWheel?: { readonly bone: string; readonly axis: readonly [number, number, number]; readonly ratio: number };
@@ -99,6 +111,8 @@ interface VehicleDefinitionBase {
 /** Existing packs omit movement; their controller remains the wheeled one. */
 export interface WheelVehicleDefinition extends VehicleDefinitionBase {
   readonly movement?: "wheeled";
+  /** Road chassis family shown in the catalogue. Older wheel definitions use the car family. */
+  readonly frame?: "car" | "sports_car" | "van";
   readonly spec: VehicleSpec;
 }
 
@@ -250,6 +264,7 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   else if (d.movement === "boat") validateBoatSpec(d.spec);
   else {
     if (d.movement !== undefined && d.movement !== "wheeled") throw new Error("invalid vehicle movement");
+    if (d.frame !== undefined && !["car", "sports_car", "van"].includes(d.frame)) throw new Error("invalid road vehicle frame");
     validateVehicleSpec(d.spec);
   }
   const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
@@ -257,7 +272,11 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   if (!Array.isArray(d.doors) || d.doors.length > MAX_VEHICLE_DOORS) throw new Error("a vehicle has at most 4 doors");
   if (!Array.isArray(d.wheels) || d.wheels.length > 16 || !d.wheels.every((w) => bone(w.bone))) throw new Error("invalid vehicle wheels");
   for (const door of d.doors) {
-    if (!bone(door.bone) || !vec(door.axis) || !Number.isFinite(door.open) || Math.abs(door.open) > Math.PI ||
+    const validMotion = door.slide
+      ? door.axis === undefined && door.open === undefined && Number.isFinite(door.slide.outward) && Math.abs(door.slide.outward) <= .5 &&
+        Number.isFinite(door.slide.along) && Math.abs(door.slide.along) > 0 && Math.abs(door.slide.along) <= 3
+      : vec(door.axis) && Number.isFinite(door.open) && Math.abs(door.open!) <= Math.PI;
+    if (!bone(door.bone) || !validMotion ||
       !Number.isInteger(door.openTicks) || door.openTicks < 1 || door.openTicks > 255 ||
       !Number.isInteger(door.closeTicks) || door.closeTicks < 1 || door.closeTicks > 255) throw new Error("invalid vehicle door");
   }
@@ -275,6 +294,7 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
     for (const p of [d.propeller, d.outboard]) if (p && (!bone(p.bone) || !vec(p.axis) || Math.abs(p.axis[0] * p.axis[0] + p.axis[1] * p.axis[1] + p.axis[2] * p.axis[2] - 1) > 1e-6 ||
       !Number.isFinite(p.ratio) || p.ratio === 0 || Math.abs(p.ratio) > 16)) throw new Error("invalid boat propulsion rig");
   }
+  if (d.cargoDoor !== undefined && (!Number.isInteger(d.cargoDoor) || d.cargoDoor < 0 || d.cargoDoor >= d.doors.length)) throw new Error("invalid vehicle cargo door");
   if (d.wreck !== undefined && (typeof d.wreck !== "string" || !d.wreck.includes(":"))) throw new Error("invalid vehicle wreck");
   const s = d.steeringWheel;
   if (s !== undefined && (!bone(s.bone) || !vec(s.axis) || !Number.isFinite(s.ratio) || Math.abs(s.ratio) > 50)) throw new Error("invalid steering wheel");
@@ -360,10 +380,11 @@ export function validateVehicleSpec(s: VehicleSpec): void {
   for (const key of ["halfWidth", "halfLength", "height", "clearance", "wheelbase", "track", "wheelRadius", "acceleration", "brake", "maxForward", "maxReverse", "maxSteer", "steerRate", "maxRise", "maxDrop", "minGroundNormal", "fuelCapacity", "fuelPerSecond"] as const) {
     if (!Number.isFinite(s[key]) || s[key] <= 0) throw new Error(`missing or invalid vehicle ${key}`);
   }
-  const zero = new Set(["yawDamping", "airDrag", "dragScale"]);
+  const zero = new Set(["yawDamping", "airDrag", "dragScale", "frontDriveShare", "downforce"]);
   for (const [key, value] of Object.entries(s)) if (key !== "drivetrain" && value !== undefined &&
     (!Number.isFinite(value) || (zero.has(key) ? value < 0 : value <= 0))) throw new Error("invalid vehicle specification");
   if (s.mass !== undefined && (s.mass < 50 || s.mass > 1000000)) throw new Error("invalid vehicle mass");
+  if ((s.frontDriveShare ?? 0) > 1 || (s.downforce ?? 0) > 10) throw new Error("invalid vehicle axle split or downforce");
   if (s.drivetrain !== undefined) validateDrivetrainSpec(s.drivetrain);
   if (s.clearance >= s.height || s.track > 2 * s.halfWidth || s.wheelbase > 2 * s.halfLength || s.maxSteer >= 1.2 || s.minGroundNormal > 1 ||
     (s.handbrakeGrip ?? 0.18) > 1 || (s.suspensionDamping ?? 0.85) > 2 || (s.suspensionFrequency ?? 10) > 24 ||
