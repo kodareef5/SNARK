@@ -195,6 +195,9 @@ export async function eachTexture(sources: readonly TextureSource[], opts: Encod
   let taking: Promise<void> = Promise.resolve();
   try {
     for (const s of sources) {
+      // A texture's pictures are made through floats several times their size. What the one before left is collected
+      // first, so that what is held follows the largest texture and not how often the collector happens to run.
+      Bun.gc(true);
       const mips = s.mips();
       if (mips.length !== Math.log2(s.top) + 1 || mips.some((m, i) => m.length !== 4 ** i * 4)) throw new Error(`texture ${s.id}: its pictures are not the sizes from 1 to ${s.top} pixels across`);
       const alpha = (s.role === "base" && (opts.alpha?.has(s.id) ?? false)) || s.role === "layer";
@@ -338,7 +341,10 @@ export async function writeTextures(manifest: Manifest, sources: readonly Textur
       const laid = files.map((file) => {
         const { role, block } = t[file.format];
         const { bytes, hash } = laidOut(file.format, t[file.format], i);
-        const steps = hash.map((_, s) => bytes.subarray(stepOffset(file.format, role, s, block), stepOffset(file.format, role, s, block) + stepBytes(file.format, role, s, block)));
+        const steps = hash.map((_, s) => {
+          const from = stepOffset(file.format, role, s, block);
+          return bytes.subarray(from, from + stepBytes(file.format, role, s, block));
+        });
         return { placed: placedAt(file.format, t[file.format], 0, hash), steps, stored: Promise.all(steps.map((raw, s) => store.part(raw, textureFilters(file.format, role, s), file.path))) };
       });
       const bytes = laid.reduce((sum, l) => sum + l.steps.reduce((n, s) => n + s.length, 0), 0);

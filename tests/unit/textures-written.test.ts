@@ -52,7 +52,9 @@ test("written a texture at a time, the texture files and the manifest are those 
     expect(JSON.stringify(manifest)).toBe(JSON.stringify(whole.manifest));
     expect(readdirSync(dir).sort()).toEqual(tex.map((t) => t.entry.name).sort());
     for (const { entry, bytes } of tex) expect([entry.name, Buffer.compare(readFileSync(join(dir, entry.name)), bytes)]).toEqual([entry.name, 0]);
-    expect([written.raw, written.report, written.stored]).toEqual([raw.files.reduce((sum, f) => sum + f.bytes.length, 0), raw.report, stored.report]);
+    // Megapixels are summed in the order the threads finish, so in their last digits they differ from run to run.
+    const counted = (r: { pictures: number; encoded: number; megapixels: number }) => ({ ...r, megapixels: r.megapixels.toFixed(6) });
+    expect([written.raw, counted(written.report), written.stored]).toEqual([raw.files.reduce((sum, f) => sum + f.bytes.length, 0), counted(raw.report), stored.report]);
     // Some steps are stored deflated and some as they are, so the manifest says of some textures what each step is stored in.
     expect(stored.report.deflated).toBeGreaterThan(0);
     expect(stored.report.deflated).toBeLessThan(stored.report.parts);

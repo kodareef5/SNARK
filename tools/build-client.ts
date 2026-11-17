@@ -244,6 +244,8 @@ async function buildLandmarks(dist: string, quick: boolean): Promise<number> {
   // Their content takes a second to load, so only a build loads it.
   const { LANDMARKS: PLACED } = await import("../content/landmarks/index.ts");
   for (const name of existsSync(LANDMARKS) ? readdirSync(LANDMARKS).filter((n) => statSync(join(LANDMARKS, n)).isDirectory()).sort() : []) {
+    // What the core's stages and the landmark before left is collected before a landmark's art is read.
+    Bun.gc(true);
     const placed = PLACED.find((l) => l.name === name);
     if (!placed) throw new Error(`assets/source/landmarks/${name} is the art of a landmark content/landmarks/index.ts does not have`);
     const art = landmarkArt(placed);

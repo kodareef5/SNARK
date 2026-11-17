@@ -376,6 +376,7 @@ export function buildSounds(file: number, root: string = SOURCE, cache: string |
     if (hash === undefined) hashes.set(path, (hash = sha(readFileSync(path))));
     return hash;
   };
+  let coding = 0;
   const out = [file, -1].map((index) => ({ index, chunks: [] as Uint8Array[], at: SOUND_HEADER_BYTES, sounds: [] as ManifestSound[], report: { sounds: 0, takes: 0, seconds: 0, bytes: 0, made: 0, limited: [] as string[], rates: SOUND_RATES.map(() => 0), decoded: 0 } }));
   for (const { owner, dir, sheet } of sheets) {
     for (const [name, cue] of Object.entries(sheet.sounds).sort(([a], [b]) => (a < b ? -1 : 1))) {
@@ -424,6 +425,12 @@ export function buildSounds(file: number, root: string = SOURCE, cache: string |
           store.write(k);
           to.report.made++;
           if (p.take.limited) to.report.limited.push(`${id} ${t.take.file}`);
+          // Coding a take leaves floats many times its size behind. They are collected every 2^23 samples coded, so
+          // that a build that codes every sound holds what that many leave and no more.
+          if ((coding += x.length) > 1 << 23) {
+            Bun.gc(true);
+            coding = 0;
+          }
         }
         entry.takes.push({ samples, bytes: coded.length, hash: partHash(coded), ...(t.take.from ? { from: t.take.from } : {}) });
         to.chunks.push(coded);
