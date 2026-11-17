@@ -73,6 +73,7 @@ interface VehicleRig {
   wheels: Int16Array;
   rotors: Int16Array;
   doors: Int16Array;
+  slideOffsets?: Float32Array;
   steer: number;
   outboard: number;
   propeller: number;
@@ -470,8 +471,10 @@ export class Characters {
   /** The farthest any part of a body of this kind gets from its origin, for culling. */
   reach(kind: number): number {
     const c = this.creatures[kind];
-    // A block vehicle has just a chassis bone at its origin. Its mesh gives its visible extent.
-    return c ? c.anim.rig.reach || this.assets.table.radius[c.mesh]! : BODY_RADIUS;
+    if (!c) return BODY_RADIUS;
+    // Wheel and door pivots sit inside the bodywork. Include the mesh when framing a vehicle with long overhangs.
+    const radius = this.assets.table.radius[c.mesh]!;
+    return c.vehicle ? Math.max(c.anim.rig.reach, radius, c.vehicle.def.spec.halfLength) : c.anim.rig.reach || radius;
   }
 
   /** The bones a body of this kind takes when it is posed. */
@@ -721,7 +724,13 @@ export class Characters {
         if (s && v.steer >= 0) quatAxis(rig.a.rot, v.steer * 4, s.axis[0], s.axis[1], s.axis[2], steering * s.ratio);
         for (let d = 0; d < v.def.doors.length; d++) {
           const door = v.def.doors[d]!, b = v.doors[d]!;
-          if (b >= 0) quatAxis(rig.a.rot, b * 4, door.axis[0], door.axis[1], door.axis[2], vehicleDoor(vehicle?.doors ?? 0, d) * door.open);
+          if (b < 0) continue;
+          const fraction = vehicleDoor(vehicle?.doors ?? 0, d);
+          if (door.slide) {
+            const offsets = v.slideOffsets!;
+            offsets[b * 3] = door.slide.outward * Math.min(1, fraction * 5);
+            offsets[b * 3 + 2] = door.slide.along * Math.max(0, (fraction - .2) / .8);
+          } else quatAxis(rig.a.rot, b * 4, door.axis[0], door.axis[1], door.axis[2], fraction * door.open);
         }
         if (v.def.movement === "rotor") {
           for (let r = 0; r < v.def.rotors.length; r++) {
@@ -741,7 +750,7 @@ export class Characters {
           quatAxis(this.steer, 0, 0, 1, 0, v.def.wheels[w]!.steers ? steering : 0);
           quatMul(rig.a.rot, b * 4, this.steer, 0, this.wheel, 0);
         }
-        solve(rig, rig.a, rig.solved);
+        solve(rig, rig.a, rig.solved, rig.rest, null, v.slideOffsets);
         this.fresh++;
       } else solved = this.creatureSolved(kind, c, id, x, y, z, yaw, st, tick, size, unseen);
       if (v) {
@@ -749,14 +758,15 @@ export class Characters {
         orientSolved(rig.solved, this.rotation, c.oriented);
         // Wheel contact follows the support plane while the sprung body and its occupants roll, pitch and heave.
         this.turn(undefined, yaw, vehicle?.groundPitch ?? vehicle?.pitch ?? 0, vehicle?.groundRoll ?? vehicle?.roll ?? 0, this.groundRotation);
-        // In the air a wheel hangs a quarter of its travel below the body.
+        // Without a full attitude, a wheel in the air hangs a quarter of its travel below the body.
         const droop = v.def.movement !== "rotor" && v.def.movement !== "boat" ? (v.def.spec.suspensionTravel ?? 0.18) / 4 : 0;
         for (const b of v.wheels) {
           if (b < 0) continue;
           if (vehicle?.qw !== undefined && v.def.movement !== "rotor" && v.def.movement !== "boat") {
-            // A rigid car's wheels travel along its local spring axes, also when it rolls onto its roof.
-            const offset = vehicle.grounded !== false ? -(vehicle.rideOffset ?? 0) : -droop;
-            quatRotate(this.rotation, 0, 0, offset, 0, this.seatPlace, 0);
+            // A rigid car's wheels travel along its local spring axes, also when it rolls onto its roof. The ride offset is
+            // that travel, all of it where no wheel has ground. The grounded bit is the hull's contact too, and a rolled car
+            // rocking on its side or roof touches and leaves the ground from tick to tick, so it does not move the wheels.
+            quatRotate(this.rotation, 0, 0, -(vehicle.rideOffset ?? 0), 0, this.seatPlace, 0);
             for (let axis = 0; axis < 3; axis++) c.oriented.pos[b * 3 + axis]! += this.seatPlace[axis]!;
           } else if (vehicle?.grounded !== false) {
             quatRotate(this.groundRotation, 0, rig.solved.pos[b * 3]!, rig.solved.pos[b * 3 + 1]!, rig.solved.pos[b * 3 + 2]!, c.oriented.pos, b * 3);
@@ -1384,7 +1394,7 @@ function writeRigid(out: Float32Array, at: number, x: number, y: number, z: numb
 function vehicleRig(def: VehicleDefinition | null, names: readonly string[]): VehicleRig | null {
   if (!def) return null;
   const bone = (name: string): number => names.indexOf(name);
-  return { def, outboard: def.movement === "boat" && def.outboard ? bone(def.outboard.bone) : -1, propeller: def.movement === "boat" && def.propeller ? bone(def.propeller.bone) : -1, rotors: Int16Array.from(def.movement === "rotor" ? def.rotors : [], (r) => bone(r.bone)), wheels: Int16Array.from(def.wheels, (w) => bone(w.bone)), doors: Int16Array.from(def.doors, (d) => bone(d.bone)), steer: def.steeringWheel ? bone(def.steeringWheel.bone) : -1 };
+  return { def, ...(def.doors.some(d => d.slide) ? { slideOffsets: new Float32Array(names.length * 3) } : {}), outboard: def.movement === "boat" && def.outboard ? bone(def.outboard.bone) : -1, propeller: def.movement === "boat" && def.propeller ? bone(def.propeller.bone) : -1, rotors: Int16Array.from(def.movement === "rotor" ? def.rotors : [], (r) => bone(r.bone)), wheels: Int16Array.from(def.wheels, (w) => bone(w.bone)), doors: Int16Array.from(def.doors, (d) => bone(d.bone)), steer: def.steeringWheel ? bone(def.steeringWheel.bone) : -1 };
 }
 
 function orientSolved(source: Solved, rotation: Float64Array, out: Solved): void {

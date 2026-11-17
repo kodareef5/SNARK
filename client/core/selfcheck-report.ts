@@ -72,7 +72,8 @@ export function selfcheckReport(app: App, pack: Pack, manifest: Manifest, hf: He
   const misplaced = o.misplaced;
   const urban = o.has("urban") ? (() => {
     const drawn = Array.from(packet.drawMesh.subarray(0, packet.drawCount), index => manifest.meshes[index]?.id ?? "");
-    const vehicles = drawn.filter(id => id.startsWith("core:compact"));
+    const vehicleMeshes = new Set(reg.defs.flatMap(d => d?.type === "species" && d.vehicle ? [d.mesh] : []));
+    const vehicles = drawn.filter(id => vehicleMeshes.has(id));
     const humans = drawn.filter(id => id.startsWith("core:human") || (mannequin && id.startsWith("core:mannequin/")));
     const seats = Array.from(app.remote.seatSlot.subarray(0, app.remote.count)).filter(slot => slot > 0);
     const driving = drive ? { ...drive, ownKind: reg.ids[session.own.kind], ok: !drive.timedOut && drive.maxSpeed > 3 && drive.hud && session.driving >= 0 } : null;
