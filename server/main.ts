@@ -143,6 +143,18 @@ export function originAllowed(origin: string | null, host: string | null, allowe
 }
 
 /**
+ * Whether a browser that sent `host` asked for this machine by a name only this machine can have: localhost, an address
+ * itself (127.0.0.1, [::1], or this machine's on a network, which no other site's name makes a browser send), or `named`, the
+ * host of the server's public address. Any other name is a site that may have pointed its name at this machine after its
+ * page was opened (DNS rebinding), so a development server, whose cheats need no password, takes no socket for it.
+ */
+export function namesThisMachine(host: string | null, named: string): boolean {
+  if (host === null) return false;
+  const name = host.toLowerCase().replace(/:\d+$/, "");
+  return name === "localhost" || /^\d{1,3}(\.\d{1,3}){3}$/.test(name) || /^\[[0-9a-f:.]+\]$/.test(name) || (named !== "" && name === named);
+}
+
+/**
  * What `/cluster.json` answers: this server, and the others of its cluster that are running, with why its survivors cannot go to
  * each now ("" where they can). A page goes to another by its `url` when it was itself reached by this one's, and otherwise by
  * its `port` on the host it reached this one by. Outside a cluster the list is empty.
@@ -166,6 +178,7 @@ export const DEV_CONFIG = resolve(import.meta.dir, "../config/dev");
 
 export function startServer(opts: ServerOptions = {}): RunningServer {
   const base = pathOf(opts.publicUrl ?? "");
+  const named = /^https?:\/\//i.test(opts.publicUrl ?? "") ? new URL(opts.publicUrl!).hostname.toLowerCase() : "";
   const { registry, errors } = compileContent(CORE_CONTENT);
   if (!registry) throw new Error("content errors:\n" + errors.join("\n"));
   const clientDir = resolve(opts.clientDir ?? join(import.meta.dir, "../client/dist"));
@@ -280,7 +293,17 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         return path === "/sounds.html" || path.startsWith("/admin/") ? new Response("not found", { status: 404 }) : serveFile(clientDir, req, path);
       }
       const who = clientAddress(srv.requestIP(req)?.address ?? "", req.headers.get("x-forwarded-for"));
+      // A development server's own routes and its sockets are for a browser that asked for this machine (namesThisMachine).
+      const local = !opts.dev || namesThisMachine(req.headers.get("host"), named);
       if (path === "/ws" || path === "/voice") {
+        if (!local) {
+          const asked = (req.headers.get("host") ?? "").slice(0, 100);
+          if (!refused.has(asked) && refused.size < 32) {
+            refused.add(asked);
+            console.log(`refused a socket asked for as ${asked}: a development server takes one for localhost, an address, or the host of --public-url`);
+          }
+          return new Response("a development server takes a socket only for localhost, an address, or the host of its --public-url", { status: 403 });
+        }
         // A page on another site may not use its visitor's browser, and that visitor's address, to reach this server.
         const origin = req.headers.get("origin");
         if (!originAllowed(origin, req.headers.get("host"), host.rules.text("AllowedOrigins"))) {
@@ -294,17 +317,17 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         return srv.upgrade(req, { data: { conn: null, voice: null, isVoice: path === "/voice", address: who } }) ? undefined : new Response("expected a WebSocket", { status: 400 });
       }
       if (path === "/cluster.json") return new Response(JSON.stringify(clusterList(host)), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
-      if (path === "/__selfcheck" && req.method === "POST" && opts.dev) {
+      if (path === "/__selfcheck" && req.method === "POST" && opts.dev && local) {
         report(await req.json());
         return new Response("ok");
       }
-      if (path === "/__bench" && req.method === "POST" && opts.dev) {
+      if (path === "/__bench" && req.method === "POST" && opts.dev && local) {
         const result = await req.json();
         console.log(`frame times from a browser:\n${JSON.stringify(result, null, 2)}`);
         measured(result);
         return new Response("ok");
       }
-      const sounds = soundBoard(req, who, board, join(clientDir, "sounds.html"), () => boardOwners(registry, families), undefined, path);
+      const sounds = soundBoard(req, who, local ? board : { ...board, dev: false }, join(clientDir, "sounds.html"), () => boardOwners(registry, families), undefined, path);
       if (sounds) return sounds;
       const map = mapRoute(path, req.headers.get("accept-encoding") ?? "");
       if (map) return map;

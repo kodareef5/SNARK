@@ -8,13 +8,18 @@ import { originAllowed, startServer } from "../../server/main.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { splitPack } from "../../tools/pack/split.ts";
 
-test("a page on another site may not open a socket, the server's own page and a program that is no browser may, and an operator lists the rest", async () => {
-  // A client folder with what the server reads of it: the manifest, the boot pack and the clip file.
+/** A client folder with what the server reads of it: the manifest, the boot pack and the clip file. */
+function clientFolder(): string {
   const dir = mkdtempSync(join(tmpdir(), "snark-sockets-"));
   mkdirSync(join(dir, "assets"));
   const { files, manifest } = splitPack(corePackBytes(), "core");
   for (const [f, file] of files.entries()) if (file.role !== "mesh") writeFileSync(join(dir, "assets", manifest.files[f]!.name), file.bytes);
   writeFileSync(join(dir, "assets/manifest.json"), JSON.stringify(manifest));
+  return dir;
+}
+
+test("a page on another site may not open a socket, the server's own page and a program that is no browser may, and an operator lists the rest", async () => {
+  const dir = clientFolder();
   const log = console.log;
   const said: string[] = [];
   console.log = (line: string) => void said.push(line);
@@ -44,4 +49,35 @@ test("a page on another site may not open a socket, the server's own page and a 
   }
   // A proxy that passes the Host on needs no listing. Case and a closing slash do not matter.
   expect([originAllowed("https://Play.Example", "play.example", ""), originAllowed("https://play.example", "10.0.0.5:8787", ""), originAllowed("https://play.example", "10.0.0.5:8787", "HTTPS://PLAY.EXAMPLE/")]).toEqual([true, false, true]);
+});
+
+test("a development server takes a socket and answers its own routes only for a browser that asked for this machine: localhost, an address, or its public address's host", async () => {
+  const dir = clientFolder();
+  writeFileSync(join(dir, "sounds.html"), "<p>board</p>");
+  const log = console.log;
+  console.log = () => {};
+  const servers = [startServer({ port: 0, clientDir: dir, dev: true }), startServer({ port: 0, clientDir: dir, dev: true, publicUrl: "https://Play.Example/miami" }), startServer({ port: 0, clientDir: dir })];
+  /** Opens a socket as a page of `name` would, a page that asked for `name` and was given this machine. */
+  const open = (port: number, name: string, path = "/ws"): Promise<boolean> =>
+    new Promise((done) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}${path}`, { headers: { Host: `${name}:${port}`, Origin: `http://${name}:${port}` } });
+      ws.onopen = () => (ws.close(), done(true));
+      ws.onerror = () => done(false);
+    });
+  const status = (port: number, name: string, path: string, method = "GET"): Promise<number> =>
+    fetch(`http://127.0.0.1:${port}${path}`, { method, headers: { host: `${name}:${port}` }, ...(method === "POST" ? { body: "{}" } : {}) }).then((r) => r.status);
+  try {
+    const [dev, named, plain] = servers.map((s) => s.port) as [number, number, number];
+    expect([await open(dev, "localhost"), await open(dev, "127.0.0.1"), await open(dev, "[::1]"), await open(dev, "192.168.1.20"), await open(dev, "localhost", "/voice")]).toEqual([true, true, true, true, true]);
+    // A site that pointed its name at this machine gets neither a socket nor the dev server's routes.
+    expect([await open(dev, "rebound.example"), await open(dev, "rebound.example", "/voice"), await open(dev, "play.example")]).toEqual([false, false, false]);
+    expect([await status(dev, "rebound.example", "/__selfcheck", "POST"), await status(dev, "rebound.example", "/sounds.html"), await status(dev, "localhost", "/__selfcheck", "POST"), await status(dev, "localhost", "/sounds.html")]).toEqual([404, 404, 200, 200]);
+    expect([await open(named, "play.example", "/miami/ws"), await open(named, "rebound.example", "/miami/ws")]).toEqual([true, false]);
+    // A server that is not for development asks for its passwords whatever the name.
+    expect(await open(plain, "rebound.example")).toBe(true);
+  } finally {
+    console.log = log;
+    for (const s of servers) s.stop();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
