@@ -9,6 +9,16 @@ export function toTriangle(px: number, py: number, pz: number, t: Float32Array, 
   const abx = t[b]! - ax, aby = t[b + 1]! - ay, abz = t[b + 2]! - az;
   const acx = t[c]! - ax, acy = t[c + 1]! - ay, acz = t[c + 2]! - az;
   const apx = px - ax, apy = py - ay, apz = pz - az;
+  // Packing can collapse a thin triangle to a line or point. Its surface is then its edges; the
+  // triangle's region tests below can otherwise divide by zero when two corners coincide.
+  if (aby * acz - abz * acy === 0 && abz * acx - abx * acz === 0 && abx * acy - aby * acx === 0) {
+    const edge = (x: number, y: number, z: number, u: number, v: number, w: number): number => {
+      const square = u * u + v * v + w * w;
+      const along = square === 0 ? 0 : Math.max(0, Math.min(1, (x * u + y * v + z * w) / square));
+      return len3(x - along * u, y - along * v, z - along * w);
+    };
+    return Math.min(edge(apx, apy, apz, abx, aby, abz), edge(apx, apy, apz, acx, acy, acz), edge(apx - abx, apy - aby, apz - abz, acx - abx, acy - aby, acz - abz));
+  }
   const d1 = abx * apx + aby * apy + abz * apz;
   const d2 = acx * apx + acy * apy + acz * apz;
   let v = 0;

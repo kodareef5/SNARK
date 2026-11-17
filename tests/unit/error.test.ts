@@ -5,11 +5,33 @@ import { join } from "node:path";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { isNode } from "../../tools/art/assets.ts";
 import { filesUnder } from "../../tools/art/source.ts";
-import { SLOW_MOST, slowSurfaceError, surfaceError } from "../../tools/pack/error.ts";
+import { SLOW_MOST, slowSurfaceError, surfaceError, toTriangle } from "../../tools/pack/error.ts";
 import { simplify } from "../../tools/pack/simplify.ts";
 import { boxMesh, unpackMeshes, type SourceLod } from "../../tools/pack/write.ts";
 import { ASSETS } from "../fixtures/assets.ts";
 import { tubeMesh } from "../fixtures/textured.ts";
+
+test("packed triangles collapsed to segments or points have finite, order-independent distances", () => {
+  // Actual packed cruise cell 0183: the first two corners coincide after quantization.
+  const collapsed = Float32Array.from([8, 4.799951076507568, 4.884670734405518, 8, 4.799951076507568, 4.884670734405518, 8, 6.699911594390869, 2.3267312049865723]);
+  const orders = [[0, 3, 6], [0, 6, 3], [3, 0, 6], [3, 6, 0], [6, 0, 3], [6, 3, 0]];
+  for (const [a, b, c] of orders) expect(toTriangle(-8, 4.799951076507568, 2.941251754760742, collapsed, a!, b!, c!)).toBeCloseTo(16.041909582621248, 12);
+  const line = Float32Array.from([0, 0, 0, 1, 0, 0, 3, 0, 0]);
+  for (const [a, b, c] of orders) {
+    expect(toTriangle(2, 4, 0, line, a!, b!, c!)).toBe(4);
+    expect(toTriangle(-3, 4, 0, line, a!, b!, c!)).toBe(5);
+    expect(toTriangle(6, 4, 0, line, a!, b!, c!)).toBe(5);
+  }
+  expect(toTriangle(3, 4, 0, new Float32Array(9), 0, 3, 6)).toBe(5);
+  const box = boxMesh([0.5, 1, 2], 1);
+  for (const positions of [collapsed, line, new Float32Array(9)]) {
+    const degenerate: SourceLod = { positions, colors: new Uint8Array(3), indices: Uint32Array.from([0, 1, 2]) };
+    const actual = surfaceError(box, degenerate);
+    expect(Number.isFinite(actual)).toBe(true);
+    expect(actual).toBe(slowSurfaceError(box, degenerate));
+    expect(surfaceError(degenerate, box)).toBe(actual);
+  }
+});
 
 test("the distance between two levels is exactly what trying every triangle gives, on the meshes there are", () => {
   // Every modelled mesh small enough to try the slow way: the building pieces, the bodies, the examples and the creatures'
