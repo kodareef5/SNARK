@@ -1310,7 +1310,7 @@ if (import.meta.main) {
     const names = graphics === "all" ? TIERS.map((t) => t.name) : [graphics];
     for (const name of names) if (!TIERS.some((t) => t.name === name)) throw new Error(`--graphics takes ${TIERS.map((t) => t.name).join(", ")} or all, not "${name}"`);
     const t0 = performance.now();
-    const files = await gameFiles(source, undefined, extra, mapFile?.content?.landmarks.map((l) => l.name));
+    const files = await gameFiles(source, undefined, extra, mapFile?.content?.landmarks);
     console.log(`asset files from ${relative(process.cwd(), source) || "."}: ${files.manifest.textures?.length ?? 0} textures, ${(files.files.reduce((n, f) => n + f.length, 0) / 1048576).toFixed(1)} MB, ${(performance.now() - t0).toFixed(0)} ms`);
     const across = names.length > 1 ? 2 : 1;
     const [W, H] = [w! * across, h! * Math.ceil(names.length / across)];

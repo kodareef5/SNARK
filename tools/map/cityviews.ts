@@ -68,7 +68,7 @@ export function readLevels(text: string): CityLevel[] {
 const started = performance.now();
 const map = parseMap(new Uint8Array(readFileSync(path)));
 const views = (JSON.parse(readFileSync(list, "utf8")) as View[]).filter((v) => values.only === undefined || v.name === values.only);
-const files = await gameFiles(resolve(SOURCE), undefined, [], map.content?.landmarks.map((l) => l.name));
+const files = await gameFiles(resolve(SOURCE), undefined, [], map.content?.landmarks);
 mkdirSync(folder, { recursive: true });
 const tier = tierOf(values.tier!);
 const near = Number(values.near);

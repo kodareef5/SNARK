@@ -132,14 +132,14 @@ export function splitWithTextures(whole: Uint8Array, texture: (t: ManifestTextur
 
 /**
  * The core pack of the asset folders under `source`, split as a build splits it, with the rgba variant of its textures.
- * `extra` meshes, drawn flat, are put in with the rest: a test's code-made saddles.
+ * `extra` meshes, drawn flat, are put in with the rest: a test's code-made saddles. `landmarks` are a map's.
  */
-export async function gameFiles(source: string = SOURCE, cache: string | null = SNAP_CACHE, extra: SourceMesh[] = [], landmarks: readonly string[] = []): Promise<GameFiles> {
+export async function gameFiles(source: string = SOURCE, cache: string | null = SNAP_CACHE, extra: SourceMesh[] = [], landmarks: readonly { readonly name: string }[] = []): Promise<GameFiles> {
   const named = await namedTextures(source);
   // A map's landmarks are drawn from the core's files here, their meshes among the core's and their far meshes' rows listed.
   // Their content is read only where there are some: it takes a second to load.
   const placed = landmarks.length > 0 ? (await import("../../content/landmarks/index.ts")).LANDMARKS : [];
-  const theirs = landmarks.map((name) => {
+  const theirs = landmarks.map(({ name }) => {
     const l = placed.find((x) => x.name === name);
     if (!l) throw new Error(`content/landmarks/index.ts has no landmark "${name}"`);
     return landmarkArt(l);
