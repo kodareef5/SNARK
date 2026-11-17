@@ -52,6 +52,7 @@ precision highp float;
 precision highp int;
 in vec3 vRel;
 flat in vec3 vColor;
+flat in int vSurface;
 uniform float uSolid, uAlpha;
 out vec4 o;
 ${LIGHT}${SHADOW_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}void main() {
@@ -59,7 +60,7 @@ ${LIGHT}${SHADOW_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}void main
   vec3 n = geometric;
   vec3 albedo = vColor;
   vec3 orm = vec3(1.0, 1.0, 0.0);
-  if (uSolid < 1.5 && uWorldReady > 0.5) worldSurface(albedo, orm, n);
+  if (uSolid < 1.5 && uWorldReady > 0.5) worldSurface(albedo, orm, n, geometric, vSurface);
   vec3 v = -normalize(vRel);
   // A rough finish mirrors the sky's light, which is a colour; only a smooth one shows the sky's picture.
   vec3 r = reflect(-v,n);
@@ -126,6 +127,27 @@ void main() {
   vRel = p;
   gl_Position = uViewProj * vec4(p, 1.0);
 }`;
+
+/**
+ * The lit tiers' terrain text: FLAT's, and the normal the light falls on, from the heights a stride of the tile either
+ * side as far as the picture holds them, which the GPU blends across each triangle (terrain.ts `groundNormal`).
+ */
+export const LIT_TERRAIN_VERTEX = FLAT_TERRAIN_VERTEX.replace("out vec3 vRel;\n", "out vec3 vRel;\nout vec3 vNormal;\n").replace(
+  "  vRel = p;\n",
+  `  ivec2 s = ivec2(int(iTile.w), 0), last = ivec2(uLast);
+  ivec2 l = max(at - s, 0), r = min(at + s, last), b = max(at - s.yx, 0), f = min(at + s.yx, last);
+  vec2 rise = vec2(float(texelFetch(uHeight, r, 0).r) - float(texelFetch(uHeight, l, 0).r), float(texelFetch(uHeight, f, 0).r) - float(texelFetch(uHeight, b, 0).r));
+  rise *= uField.y / (vec2(r.x - l.x, f.y - b.y) * uField.z);
+  vNormal = normalize(vec3(-rise.x, 1.0, -rise.y));
+  vRel = p;
+`,
+);
+
+/**
+ * The lit tiers' ground: LIT lit by the ground's own normal (LIT_TERRAIN_VERTEX). The face's still chooses the finish's
+ * projection and where growth takes, and puts the sun's shadow off the surface.
+ */
+export const LIT_TERRAIN_FRAGMENT = LIT_FRAGMENT.replace("in vec3 vRel;\n", "in vec3 vRel, vNormal;\n").replace("  vec3 n = geometric;\n", "  vec3 n = normalize(vNormal);\n");
 
 /**
  * Every see-through program of a lit tier includes this and calls dropNearer() first. A see-through draw across the

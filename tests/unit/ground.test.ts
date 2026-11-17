@@ -2,7 +2,8 @@
 
 import { expect, test } from "bun:test";
 import { Camera } from "../../client/core/render/camera.ts";
-import { FramePacket } from "../../client/core/render/packet.ts";
+import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
+import { skyFrame, theSky } from "../../client/core/render/sky.ts";
 import { TerrainLod } from "../../client/core/render/terrain.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
@@ -120,4 +121,56 @@ test("what is drawn is the ground: a ray through any pixel meets the face drawn 
   look(proving, 220, 6, 282, 0.1, -0.15);
   look(proving, 330, 9, 330, 0.7, -0.2);
   expect(problems).toEqual([]);
+});
+
+test("on a lit frame the ground is lit by the normal of its heights, blended across each triangle: under a low sun no facet shows, and a bank still reads as one", () => {
+  // Ground rolling by 2 m over 9 to 13 m, and a bank 6 m high over 6 m across it at x = 120, all of one grass.
+  const w = flatWorld(4);
+  const hf = w.hf;
+  for (let j = 0; j < hf.nz; j++) {
+    for (let i = 0; i < hf.nx; i++) {
+      const [x, z] = [i * hf.cell, j * hf.cell];
+      hf.setSample(i, j, 2 * Math.sin(x / 9) * Math.cos(z / 13) + 6 * Math.min(Math.max((x - 120) / 6, 0), 1));
+      hf.tint[j * hf.nx + i] = 12;
+    }
+  }
+  const [w2, h2] = [2 * W, 2 * H];
+  const cam = new Camera();
+  [cam.x, cam.z, cam.yaw, cam.pitch, cam.aspect] = [96, 128, Math.PI / 2, -0.2, w2 / h2];
+  cam.y = hf.heightAt(cam.x, cam.z) + 3;
+  cam.update();
+  const p = new FramePacket();
+  p.lit = true;
+  skyFrame(12, theSky(), p.frame);
+  // A sun 10 degrees up behind the camera, which the bank faces.
+  p.frame.set([-Math.cos(0.17), Math.sin(0.17), 0], FRAME.sun);
+  p.viewProj.set(cam.viewProj);
+  [p.camX, p.camY, p.camZ, p.fogStart, p.fogEnd] = [cam.x, cam.y, cam.z, 1e6, 2e6];
+  new TerrainLod(hf).select(cam, p, 4000);
+  const raster = new Rasterizer(w2, h2, { palette: defaultPalette() } as unknown as Pack, hf);
+  raster.render(p);
+  const c = raster.color;
+  // How far off along the view a pixel's depth is.
+  const along = (at: number): number => (2 * cam.far * cam.near) / (cam.far + cam.near - raster.depth[at]! * (cam.far - cam.near));
+  // Neighbouring pixels of ground at about the same distance differ by a few levels at most, the most where the bank's
+  // light turns over the quad at its top. Lit by its faces, the ground stepped by 51 levels from one face to the next here.
+  let pairs = 0;
+  let worst = 0;
+  for (let at = 0; at < w2 * h2 - 1; at++) {
+    if (at % w2 === w2 - 1 || raster.pickKind[at] !== PICK_TERRAIN || raster.pickKind[at + 1] !== PICK_TERRAIN) continue;
+    if (Math.abs(along(at) - along(at + 1)) > 0.02 * along(at)) continue;
+    pairs++;
+    for (let k = 0; k < 3; k++) worst = Math.max(worst, Math.abs(c[at * 4 + k]! - c[(at + 1) * 4 + k]!));
+  }
+  expect(pairs).toBeGreaterThan(w2 * h2 * 0.4);
+  expect(worst).toBeLessThanOrEqual(10);
+  // The bank's face, turned to the sun, is far brighter than the ground before it.
+  const shade = (x: number, z: number): number => {
+    const out = [0, 0, 0];
+    expect(cam.project(x, hf.heightAt(x, z), z, out)).toBe(true);
+    const at = Math.floor(out[1]! * h2) * w2 + Math.floor(out[0]! * w2);
+    expect(raster.pickKind[at]).toBe(PICK_TERRAIN);
+    return c[at * 4]! + c[at * 4 + 1]! + c[at * 4 + 2]!;
+  };
+  expect(shade(123, 128) - shade(110, 128)).toBeGreaterThan(60);
 });

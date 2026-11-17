@@ -9,6 +9,7 @@ import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.t
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { LANDMARK_BUFFER } from "../../client/core/render/farlandmarks.ts";
 import { nearKeeps } from "../../client/core/render/hand.ts";
+import { groundNormal, groundSize, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
 import { MOST_LOD, detailKeeps, rotorOf, shapeOf } from "../../client/core/render/detailtext.ts";
 import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
@@ -115,6 +116,8 @@ function standing(bones: Float32Array, stand: number, bone: number, place: numbe
 const stood = new Float64Array(BONE_FLOATS);
 
 const CARRIED = 12;
+/** A deferred pixel of the ground, which keeps the normal it is lit by. */
+const DEFERRED_GROUND = 2048;
 // Scratch for one pixel of a textured draw: what is carried to it, sampled at it and worked out for it.
 const carried = new Float64Array(CARRIED);
 const carriedNormal = carried.subarray(5, 8);
@@ -128,25 +131,27 @@ const light = new Float64Array(3);
 const rgb = new Float64Array(3);
 const reflected = new Float64Array(3);
 const mirrored = new Float64Array(3);
+const smoothed = new Float64Array(3);
 /** What LIT lights a flat draw as: no occlusion, fully rough, not metal. Its highlight mirrors nothing. */
 const ROUGH = [1, 1, 0];
 const NOTHING = [0, 0, 0];
 
 /**
- * A palette draw on a lit frame into `rgb`, with world-projected finishes and SURFACE lighting. (rx, ry, rz) is where it is from the camera, and (nx, ny, nz) its face's normal.
+ * A palette draw on a lit frame into `rgb`, with world-projected finishes and SURFACE lighting. (rx, ry, rz) is where it
+ * is from the camera, and (nx, ny, nz) its face's normal. The ground is lit by its own normal, `smooth` (LIT_TERRAIN_FRAGMENT).
  */
-function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void): void {
+function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, smooth: Float64Array | null = null): void {
   const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
   for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear(pal[colorIndex * 4 + c]! / 255);
-  normal[0] = nx;
-  normal[1] = ny;
-  normal[2] = nz;
+  normal[0] = smooth ? smooth[0]! : nx;
+  normal[1] = smooth ? smooth[1]! : ny;
+  normal[2] = smooth ? smooth[2]! : nz;
   eye[0] = -rx / dist;
   eye[1] = -ry / dist;
   eye[2] = -rz / dist;
   if (sample) {
     const index = surfaceIndex(colorIndex, ground, p.surfaceCity[7] ? "las-vegas" : "default");
-    worldSurface(albedo, worldOrm, normal, albedo, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, p.tier.finish === "light");
+    worldSurface(albedo, worldOrm, normal, albedo, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, p.tier.finish === "light", smooth);
     const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
     for (let c = 0; c < 3; c++) reflected[c] = twice * normal[c]! - eye[c]!;
     const sharp = worldSharp(index, p.surfaceCity);
@@ -264,10 +269,17 @@ export class Rasterizer {
   private domeTable: Uint8Array | null = null;
   private readonly domeKey = new Float64Array(16 + FRAME.ends + 5);
   private readonly domeInverse = new Float64Array(9);
-  /** Per pixel, a lit palette draw's colour and flags, projection footprint, position and geometric normal. */
+  /**
+   * Per pixel, a lit palette draw's colour and flags, projection footprint, position and geometric normal, and on the
+   * ground (DEFERRED_GROUND) the normal it is lit by.
+   */
   private readonly deferred: Uint16Array;
   private readonly deferredShade: Float64Array;
   private readonly deferredAt: Float64Array;
+  private readonly deferredNormal: Float64Array;
+  /** On a lit frame, the tile being drawn: its vertices' normals (terrain.ts groundNormal), or null for any other draw. */
+  private groundNormals: Float64Array | null = null;
+  private readonly picture: GroundPicture = { i: 0, j: 0, step: 1, lastI: 0, lastJ: 0 };
   // A textured triangle's corners, and its clip scratch: per vertex what it carries, then screen x, y, 1/w and NDC depth.
   private readonly corners = new Float64Array(3 * CARRIED);
   private readonly wide = new Float64Array(5 * (CARRIED + 4));
@@ -290,6 +302,7 @@ export class Rasterizer {
     this.deferred = new Uint16Array(width * height);
     this.deferredShade = new Float64Array(width * height);
     this.deferredAt = new Float64Array(width * height * 6);
+    this.deferredNormal = new Float64Array(width * height * 3);
   }
 
   render(packet: FramePacket): void {
@@ -370,7 +383,9 @@ export class Rasterizer {
     for (let at = 0; at < this.width * this.height; at++) {
       if (this.deferred[at] === 0) continue;
       const g6 = at * 6;
-      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && this.worldMaps ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look);
+      const ground = (this.deferred[at]! & DEFERRED_GROUND) !== 0;
+      if (ground) smoothed.set(this.deferredNormal.subarray(at * 3, at * 3 + 3));
+      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && this.worldMaps ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, ground ? smoothed : null);
       for (let c = 0; c < 3; c++) this.color[at * 4 + c] = rgb[c]! * 255;
       this.deferred[at] = 0;
     }
@@ -500,11 +515,15 @@ export class Rasterizer {
     const row = TILE_QUADS + 1;
     const pos = new Float32Array(row * row * 3);
     const tint = new Uint8Array(row * row);
+    // On a lit frame each vertex has the normal the ground is lit by, from the picture its tile reads.
+    const normals = p.lit ? new Float64Array(row * row * 3) : null;
+    const size = groundSize(hf);
     for (let t = 0; t < p.tileCount; t++) {
       if ((p.tilePass[t]! & (1 << range)) === 0) continue;
       const stride = p.tiles[t * 4 + 3]!;
       const i0 = p.tileOrigin[t * 2]!;
       const j0 = p.tileOrigin[t * 2 + 1]!;
+      tilePicture(p, t, size, this.picture);
       for (let gz = 0; gz < row; gz++) {
         for (let gx = 0; gx < row; gx++) {
           const i = Math.min(i0 + gx * stride, hf.nx - 1);
@@ -514,8 +533,10 @@ export class Rasterizer {
           pos[k * 3 + 1] = hf.sample(i, j) - p.camY;
           pos[k * 3 + 2] = j * hf.cell - p.camZ;
           tint[k] = hf.tint[j * hf.nx + i]!;
+          if (normals) groundNormal(hf, this.picture, i, j, stride, normals, k * 3);
         }
       }
+      this.groundNormals = normals;
       for (let gz = 0; gz < TILE_QUADS; gz++) {
         for (let gx = 0; gx < TILE_QUADS; gx++) {
           const a = gz * row + gx;
@@ -528,6 +549,7 @@ export class Rasterizer {
         }
       }
     }
+    this.groundNormals = null;
   }
 
   private draw(p: FramePacket, d: number): void {
@@ -1010,6 +1032,9 @@ export class Rasterizer {
     const fogSpan = p.fogEnd - p.fogStart;
     const axis = Math.abs(ny) >= Math.max(Math.abs(nx), Math.abs(nz)) ? 1 : Math.abs(nx) > Math.abs(nz) ? 0 : 2;
     const uc = axis === 0 ? 2 : 0, vc = axis === 1 ? 2 : 1;
+    // The ground's vertices' normals are blended across the triangle by where a pixel lies over it, as the GPU blends them.
+    const ground = this.groundNormals;
+    const across = (bx - ax) * (cz - az) - (cx - ax) * (bz - az);
 
     for (let k = 1; k + 1 < count; k++) {
       const v0 = 0, v1 = k * 7, v2 = (k + 1) * 7;
@@ -1080,7 +1105,7 @@ export class Rasterizer {
             // Only what ends in front is shaded, once the opaque draws are done (`resolve`).
             const s = this.deferredAt;
             const g6 = at * 6;
-            this.deferred[at] = (colorIndex + 1) | (solid ? 512 : 0) | (this.plain ? 1024 : 0);
+            this.deferred[at] = (colorIndex + 1) | (solid ? 512 : 0) | (this.plain ? 1024 : 0) | (ground ? DEFERRED_GROUND : 0);
             this.deferredShade[at] = footprint;
             s[g6] = rx;
             s[g6 + 1] = ry;
@@ -1088,6 +1113,18 @@ export class Rasterizer {
             s[g6 + 3] = nx;
             s[g6 + 4] = ny;
             s[g6 + 5] = nz;
+            if (ground) {
+              const wb = ((rx - ax) * (cz - az) - (cx - ax) * (rz - az)) / across;
+              const wc = ((bx - ax) * (rz - az) - (rx - ax) * (bz - az)) / across;
+              const wa = 1 - wb - wc;
+              const gx = wa * ground[ia * 3]! + wb * ground[ib * 3]! + wc * ground[ic * 3]!;
+              const gy = wa * ground[ia * 3 + 1]! + wb * ground[ib * 3 + 1]! + wc * ground[ic * 3 + 1]!;
+              const gz = wa * ground[ia * 3 + 2]! + wb * ground[ib * 3 + 2]! + wc * ground[ic * 3 + 2]!;
+              const gl = Math.hypot(gx, gy, gz);
+              this.deferredNormal[at * 3] = gx / gl;
+              this.deferredNormal[at * 3 + 1] = gy / gl;
+              this.deferredNormal[at * 3 + 2] = gz / gl;
+            }
             continue;
           }
           let fog = (dist - p.fogStart) / fogSpan;

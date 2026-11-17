@@ -1,13 +1,13 @@
 // The terrain's pictures (D253): the whole map at every fourth sample and a window round the camera. A twin of what
 // the shell does with them, the rows it copies and the vertex fetch of the pinned terrain text, gives every tile the
-// map's own samples; fine tiles never read past their window; the window follows within the upload allowance. A tile's
-// mesh puts its ground before its skirts, which the shell draws behind it.
+// map's own samples, and the lit text's normal the rasterizer's; fine tiles never read past their window; the window
+// follows within the upload allowance. A tile's mesh puts its ground before its skirts, which the shell draws behind it.
 
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { FramePacket, PASS_FAR, PASS_NEAR, SOURCE_MAP, SOURCE_WINDOW, TILE_QUADS } from "../../client/core/render/packet.ts";
-import { COARSE, TerrainLod, WINDOW, WINDOW_MOVE, coarseGround, groundSize, tileMesh, type GroundBudget } from "../../client/core/render/terrain.ts";
+import { COARSE, TerrainLod, WINDOW, WINDOW_MOVE, coarseGround, groundNormal, groundSize, tileMesh, tilePicture, type GroundBudget } from "../../client/core/render/terrain.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 
@@ -88,6 +88,24 @@ class Twin {
     const cell = this.size.cell[source]!;
     return [p.tiles[t * 4]! + (i - oi) * cell, hf.minY + heights[j * w + i]! * hf.stepY - p.camY, p.tiles[t * 4 + 1]! + (j - oj) * cell, tint[j * w + i]!];
   }
+
+  /**
+   * LIT_TERRAIN_VERTEX's normal at grid point (gx, gz) of tile `t`: the heights a stride either side in the picture's
+   * own samples, held to the picture, and whether one was held.
+   */
+  normal(p: FramePacket, t: number, gx: number, gz: number): { n: number[]; held: boolean } {
+    const source = p.tileSource[t * 4 + 3]!;
+    const [oi, oj, stride] = [p.tileSource[t * 4]!, p.tileSource[t * 4 + 1]!, p.tileSource[t * 4 + 2]!];
+    const [w, h] = [this.size.width[source]!, this.size.height[source]!];
+    const heights = source === SOURCE_MAP ? this.coarse.heights : this.heights[this.drawn]!;
+    const cell = this.size.cell[source]!;
+    const [i, j] = [Math.min(oi + gx * stride, w - 1), Math.min(oj + gz * stride, h - 1)];
+    const [l, r, b, f] = [Math.max(i - stride, 0), Math.min(i + stride, w - 1), Math.max(j - stride, 0), Math.min(j + stride, h - 1)];
+    const x = ((heights[j * w + r]! - heights[j * w + l]!) * this.hf.stepY) / ((r - l) * cell);
+    const z = ((heights[f * w + i]! - heights[b * w + i]!) * this.hf.stepY) / ((f - b) * cell);
+    const n = Math.hypot(x, 1, z);
+    return { n: [-x / n, 1 / n, -z / n], held: r - l < 2 * stride || f - b < 2 * stride };
+  }
 }
 
 /** The map's own sample under grid point (gx, gz) of tile `t`, as the rasterizer reads it from the tile's corner and stride. */
@@ -131,13 +149,16 @@ function placed(hf: Heightfield, p: FramePacket): boolean {
   return true;
 }
 
-test("the shell's fetch, twinned, gives every vertex of every tile the map's height and tint, from either pair, over tile lists split in two ranges and a refill", () => {
+test("the shell's fetch, twinned, gives every vertex of every tile the map's height and tint and the lit tiers' normal, from either pair, over tile lists split in two ranges and a refill", () => {
   const hf = rough(48);
   const lod = new TerrainLod(hf);
   const twin = new Twin(hf);
   const budget = allowance(1 * MB);
   const off: string[] = [];
-  let [checked, fromWindow, inBoth, swaps] = [0, 0, 0, 0];
+  const size = groundSize(hf);
+  const picture = { i: 0, j: 0, step: 1, lastI: 0, lastJ: 0 };
+  const normal = new Float64Array(3);
+  let [checked, fromWindow, inBoth, swaps, held] = [0, 0, 0, 0, 0];
   // Along the map's diagonal, 30 m a frame, turning: windows are filled in bands and swapped on the way.
   for (let f = 0; f < 64; f++) {
     budget.next();
@@ -156,13 +177,21 @@ test("the shell's fetch, twinned, gives every vertex of every tile the map's hei
           const [a, b] = [twin.vertex(p, t, gx, gz), truth(hf, p, t, gx, gz)];
           checked++;
           if (a.some((v, k) => v !== b[k]) && off.length < 5) off.push(`frame ${f} tile ${t} (${gx}, ${gz}): ${a.join(", ")} against ${b.join(", ")}`);
+          // The rasterizer's normal, from the map's own samples, is the one the text takes from the picture.
+          const stride = p.tiles[t * 4 + 3]!;
+          const [i, j] = [Math.min(p.tileOrigin[t * 2]! + gx * stride, hf.nx - 1), Math.min(p.tileOrigin[t * 2 + 1]! + gz * stride, hf.nz - 1)];
+          groundNormal(hf, tilePicture(p, t, size, picture), i, j, stride, normal, 0);
+          const lit = twin.normal(p, t, gx, gz);
+          // Held to the window's edge inside the map, where the rasterizer, reading the map, must hold its normal as well.
+          if (lit.held && p.tileSource[t * 4 + 3] === SOURCE_WINDOW && i > 0 && j > 0 && i < hf.nx - 1 && j < hf.nz - 1) held++;
+          if (lit.n.some((v, k) => v !== normal[k]) && off.length < 5) off.push(`frame ${f} tile ${t} (${gx}, ${gz}): normal ${lit.n.join(", ")} against ${normal.join(", ")}`);
         }
       }
     }
   }
   expect(off).toEqual([]);
   expect(checked).toBeGreaterThan(200000);
-  expect([fromWindow > 100, inBoth > 10, swaps >= 4]).toEqual([true, true, true]);
+  expect([fromWindow > 100, inBoth > 10, swaps >= 4, held > 100]).toEqual([true, true, true, true]);
 });
 
 test("no fine tile reads past its window over a 10 km random walk with 20 teleports; the window comes within the allowance and refills as the camera moves 256 m", () => {

@@ -66,6 +66,43 @@ export function coarseGround(hf: Heightfield): { heights: Uint16Array; tint: Uin
   return { heights, tint };
 }
 
+/** Where the picture a tile reads lies in the map's samples: its corner, how many apart it holds them, and its last sample across and down, counted in its own. */
+export interface GroundPicture {
+  i: number;
+  j: number;
+  step: number;
+  lastI: number;
+  lastJ: number;
+}
+
+/** The picture tile `t` of frame `p` reads, into `out`. */
+export function tilePicture(p: FramePacket, t: number, size: GroundSize, out: GroundPicture): GroundPicture {
+  const source = p.tileSource[t * 4 + 3]!;
+  const window = source === SOURCE_WINDOW;
+  out.i = window ? p.groundWindow[1]! : 0;
+  out.j = window ? p.groundWindow[2]! : 0;
+  out.step = window ? 1 : COARSE;
+  out.lastI = size.width[source]! - 1;
+  out.lastJ = size.height[source]! - 1;
+  return out;
+}
+
+/**
+ * The normal the lit tiers light the ground by at sample (i, j) of a tile `stride` samples a quad, as LIT_TERRAIN_VERTEX
+ * takes it from picture `pic`: from the heights a stride either side, as far as the picture holds them. Into `out` at `at`.
+ */
+export function groundNormal(hf: Heightfield, pic: GroundPicture, i: number, j: number, stride: number, out: Float64Array | Float32Array, at: number): void {
+  const h = hf.heights, nx = hf.nx;
+  const l = Math.max(i - stride, pic.i), r = Math.min(i + stride, pic.i + pic.lastI * pic.step);
+  const b = Math.max(j - stride, pic.j), f = Math.min(j + stride, pic.j + pic.lastJ * pic.step);
+  const gx = ((h[j * nx + r]! - h[j * nx + l]!) * hf.stepY) / ((r - l) * hf.cell);
+  const gz = ((h[f * nx + i]! - h[b * nx + i]!) * hf.stepY) / ((f - b) * hf.cell);
+  const n = Math.hypot(gx, 1, gz);
+  out[at] = -gx / n;
+  out[at + 1] = 1 / n;
+  out[at + 2] = -gz / n;
+}
+
 /**
  * Steps of the depth buffer by which a tile's skirt is drawn behind the ground. A skirt meets the ground along the
  * tile's border, and where the buffer could not tell them apart, as on low poly far off, it showed through the ground

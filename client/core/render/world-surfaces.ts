@@ -73,9 +73,11 @@ const weights = new Float64Array(3), corners = new Int32Array(6);
 /**
  * Writes linear albedo, ORM and the bumped normal. footprint is metres covered by one screen pixel on the projection.
  * `light` is the touch rule's finish (assets/tiers.ts `finish`): one cell of the tile and its base map alone, no stain.
+ * (nx, ny, nz) is the face's normal, which chooses the projection and where growth takes; `smooth`, where given, is the
+ * normal the light falls on and the bump turns (the ground's, from its heights), and otherwise the face's is.
  */
 export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Numbers, index: number, x: number, y: number, z: number,
-  nx: number, ny: number, nz: number, footprint: number, city: Numbers, sample: WorldSample, light = false): void {
+  nx: number, ny: number, nz: number, footprint: number, city: Numbers, sample: WorldSample, light = false, smooth: Numbers | null = null): void {
   const f = finishes[index]!;
   const axis = Math.abs(ny) >= Math.max(Math.abs(nx), Math.abs(nz)) ? 1 : Math.abs(nx) > Math.abs(nz) ? 0 : 2;
   const metres = f.metres * city[3]!;
@@ -139,7 +141,7 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
   }
   const bump = f.bump * city[8]! * relief;
   const bx = sum[5]! * bump, by = sum[6]! * bump;
-  let ox = nx, oy = ny, oz = nz;
+  let ox = smooth ? smooth[0]! : nx, oy = smooth ? smooth[1]! : ny, oz = smooth ? smooth[2]! : nz;
   if (axis === 1) { ox += bx; oz += by; } else if (axis === 0) { oz += bx; oy -= by; } else { ox += bx; oy -= by; }
   const length = Math.sqrt(ox * ox + oy * oy + oz * oz);
   normal[0] = ox / length;
@@ -165,9 +167,11 @@ export function worldVertex(vertex: string, ground: boolean): string {
   return vertex.replace("out vec3 vRel;", lookup + "out vec3 vRel;").replace("  vRel = p;", `  vSurface = SURFACE_IDS[${colour}];\n${desert}${light}  vRel = p;`);
 }
 
-/** Same operations as worldSurface. All texture reads use explicit derivatives taken before wrapping or random rotation. */
+/**
+ * Same operations as worldSurface, on finish `id`: `face` is the face's normal and `n` the one the light falls on, the
+ * same on everything but the ground. All texture reads use explicit derivatives taken before wrapping or random rotation.
+ */
 export const WORLD_GLSL = `
-flat in int vSurface;
 uniform vec3 uWorldEye;
 uniform vec4 uSurfaceCity[3];
 uniform float uWorldReady;
@@ -203,11 +207,10 @@ vec2 worldPlace(vec2 q, float h, int id, out int r) {
 }
 // Whether the finish is smooth enough to mirror the sky as a picture (worldSharp's twin), set by worldSurface.
 bool worldSharp = false;
-void worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n) {
-  int id = vSurface;
+void worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n, vec3 face, int id) {
   vec4 f = WF[id], tint = WT[id], w = WW[id];
   vec3 p = vRel + uWorldEye;
-  vec3 an = abs(n);
+  vec3 an = abs(face);
   int axis = an.y >= max(an.x,an.z) ? 1 : an.x > an.z ? 0 : 2;
   float metres = f.x * uSurfaceCity[0].w;
   vec2 q = (axis == 1 ? p.xz : axis == 0 ? vec2(p.z,-p.y) : vec2(p.x,-p.y)) / metres;
@@ -261,7 +264,7 @@ void worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n) {
   float stain = surfaceNoise(vec2(p.x/8.0+p.z/19.0,p.y/17.0+p.z/11.0));
 #endif
   float weather = w.x*uSurfaceCity[1].x;
-  float growth = clamp((w.z+uSurfaceCity[1].z)*clamp((macro-0.42)*3.0,0.0,1.0)*(n.y>0.2?1.0:0.4),0.0,1.0);
+  float growth = clamp((w.z+uSurfaceCity[1].z)*clamp((macro-0.42)*3.0,0.0,1.0)*(face.y>0.2?1.0:0.4),0.0,1.0);
   albedo = base*mix(vec3(1.0),clamp(albedo/0.3,0.18,2.2),tint.w)*tint.rgb*uSurfaceCity[0].rgb;
   albedo *= (1.0+(macro-0.5)*0.5-stain*weather*0.5)*(1.0-wet*0.28)*mix(vec3(1.0),vec3(0.55,0.75,0.35),growth);
   bump *= f.y*uSurfaceCity[2].x*relief;
