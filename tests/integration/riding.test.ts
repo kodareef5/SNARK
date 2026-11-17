@@ -12,7 +12,6 @@ import { BOX_OPEN, BOX_SELF, CMD_FEED, CMD_MOVE, CMD_OPEN, CMD_ORDER, ORDER_UNSA
 import { BTN_PRIMARY, BTN_USE, STANCE_CROUCH, STANCE_STAND, stanceEye } from "../../shared/sim/character.ts";
 import { V_FOOD, V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
 import { flatGround } from "../fixtures/arena.ts";
-import { artTest } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -240,7 +239,7 @@ test("a rider is shot where she sits; a saddle is her mount's armor; a mount tha
   expect(blow()).toBeCloseTo(60, 1);
 });
 
-artTest("in the whole client: riding, the mount is drawn where the rider predicts it, with the rider on its seat, seen from behind", () => {
+test("in the whole client: riding, the mount is drawn where the rider predicts it, with the rider on its seat, seen from behind", () => {
   const h = new Harness({}, 1, 60, { dev: true });
   const pack = corePack();
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, pack);
@@ -279,8 +278,9 @@ artTest("in the whole client: riding, the mount is drawn where the rider predict
   expect([scene.own?.kind, scene.own?.id, scene.skip, scene.own?.firstPerson]).toEqual([id("raptor"), e, e, false]);
   expect(Math.hypot(scene.own!.x - s.own.x, scene.own!.z - s.own.z)).toBeLessThan(0.6);
   const mesh = pack.meshIndex.get("core:raptor")!;
+  const skinned = pack.header.meshes[mesh]!.skeleton !== undefined ? DRAW_SKINNED : 0;
   let mounts = 0;
-  for (let d = 0; d < packet.drawCount; d++) if (packet.drawMesh[d] === mesh && (packet.drawFlags[d]! & DRAW_SKINNED) !== 0) mounts += packet.drawInstances[d]!;
+  for (let d = 0; d < packet.drawCount; d++) if (packet.drawMesh[d] === mesh && (packet.drawFlags[d]! & DRAW_SKINNED) === skinned) mounts += packet.drawInstances[d]!;
   expect(mounts).toBe(1);
   expect(Math.hypot(app.cam.x - s.own.x, app.cam.y - s.own.y, app.cam.z - s.own.z)).toBeGreaterThan(2);
   // F opens the mount's inventory without dismounting.
