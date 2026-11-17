@@ -61,11 +61,14 @@ class Mesh:
    away=lambda i:[(a+b)/2 for a,b in zip(mid[i//n],mid[i//n+1])])
   if caps:
    self.poly(rings[0],tag,away=mid[1]);self.poly(rings[-1],tag,away=mid[-2])
- def tube(self,points,r,tag,n=6,caps=True):
+ def tube(self,points,r,tag,n=6,caps=True,across=None):
+  """Rings round a line of points. `across`, a way the line never runs, keeps every ring turned alike, for a line that curls."""
   rings=[]
   for i,p in enumerate(points):
    d=Vector(points[min(len(points)-1,i+1)])-Vector(points[max(0,i-1)]);d.normalize()
-   u=d.cross(Vector((0,1,0)) if abs(d.y)<.9 else Vector((1,0,0))).normalized();w=d.cross(u).normalized()
+   if across:a=Vector(across);u=(a-a.dot(d)*d).normalized()
+   else:u=d.cross(Vector((0,1,0)) if abs(d.y)<.9 else Vector((1,0,0))).normalized()
+   w=d.cross(u).normalized()
    rings.append([tuple(Vector(p)+r*(math.cos(k*math.tau/n)*u+math.sin(k*math.tau/n)*w)) for k in range(n)])
   self.loft(rings,tag,caps,True)
  def convex(self,points,tag):

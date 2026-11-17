@@ -34,6 +34,28 @@ def slope(z):
  for i,(a,b) in enumerate(zip(ST,ST[1:])):
   if a['z']-1e-7<=z<=b['z']+1e-7:return SLOPE[i]+(z-a['z'])/(b['z']-a['z'])*(SLOPE[i+1]-SLOPE[i])
  return SLOPE[0] if z<ST[0]['z'] else SLOPE[-1]
+# The layout's stem and stern are plumb; drawn, the hull below the sheer is sheared back from them into a raked clipper
+# bow and an overhanging canoe stern, as photographed. Each is (where it begins, the end, metres at the waterline, how
+# the shear grows downward). Decks, rails and collision keep the layout's ends.
+RAKES=[(40,54.5,5.0,1.4),(-42,-54.5,3.0,1.3)]
+def rake(z,y):
+ d=0
+ for z0,z1,r,p in RAKES:
+  t=min(1,(z-z0)/(z1-z0))
+  if t>0:d+=(r if z1<0 else -r)*t*t*(3-2*t)*max(0,1-y/station(z)['sheer'])**p
+ return d
+def raked(m,start):
+ """The points made since `start` sheared by `rake`, and their normals with them."""
+ for i in range(start,len(m.v)):
+  x,y,z=m.v[i];d=rake(z,y)
+  if d==0:continue
+  m.v[i]=(x,y,z+d);n=m.n[i]
+  if n is None or n==AVG:continue
+  e=1e-3;a=(rake(z,y+e)-rake(z,y-e))/(2*e);b=1+(rake(z+e,y)-rake(z-e,y))/(2*e)
+  m.n[i]=unit([n[0],n[1]-a/b*n[2],n[2]/b])
+def on_hull(z,y,sign,off=.03):
+ """A point `off` out from the hull's side at z and y, where the drawn hull is."""
+ return [sign*(hullwidth(z,y)+off),y,z+rake(z,y)]
 
 # The hull: an underbody, and each side a shell 24 cm thick, its outer face smooth, with round glazed ports. Between two
 # stations a hull is straight fore and aft, so a coarser level loses no shape by dropping the columns between. The red
@@ -53,7 +75,11 @@ def hull(m,mod):
  sides=PORT_SIDES[L]
  # A port of four sides is a square of the round one's area.
  radius,turn=(PORT_R*math.sqrt(math.pi/2),math.pi/4) if sides==4 else (PORT_R,0)
- cols=sorted({round(c+d,6) for c in ports for d in(-PORT_H,PORT_H)}|{za,zb})
+ cols={round(c+d,6) for c in ports for d in(-PORT_H,PORT_H)}|{za,zb}
+ # Where the hull is raked, columns close enough for its curve.
+ n=math.ceil((zb-za)/[1,1.5,2.5,3.5][L])
+ cols=sorted(cols|{round(z,6) for z in [za+i*(zb-za)/n for i in range(1,n)] if rake(z,0)!=0 and all(abs(z-c)>PORT_H+.1 for c in ports)})
+ first=len(m.v)
  # The stem rises to the sea at the bow; the underbody keeps a shallow V there.
  m.loft([[[-w*.9,0,z],[-w*.62,kk*.45,z],[0,kk,z],[w*.62,kk*.45,z],[w*.9,0,z]] for z in cols for w,kk in [(station(z)['halfBeam'],min(-.05,station(z)['keel']))]],'red')
  for sign in(-1,1):
@@ -102,6 +128,7 @@ def hull(m,mod):
    strip=m.add([[x(z,y(z),inner),y(z),z] for z in cols for inner in(False,True)])
    m.faces(strip,[(2*c,2*c+2,2*c+3,2*c+1) for c in range(len(cols)-1)],tag,out=(0,up,0))
   for z,end in [(za,-1),(zb,1)]:zipper(m,[[x(z,y,False),y,z] for y in outer(z)],[[x(z,y,True),y,z] for y in sheets[1][1](z)],'navy',(0,0,end))
+ raked(m,first)
 
 # Decks: a slab whose top is laid in 2 m tiles of the teak picture, planks fore and aft, over a painted ceiling.
 TEAK=2.0
@@ -221,7 +248,7 @@ def steps(m,mod):
  for x in(x0-.04,x1+.04):
   rail_segment(m,[x,yg+1.075,zg],[x,y1+1.075,z1],[x,yg,zg],[x,y1,z1]);rail_segment(m,[x,y1+1.075,z1],[x,y1+1.075,-53.55],[x,y1,z1],[x,y1,-53.55])
   # A strut from the stern post carries the flight.
-  tube(m,[[x*.1,.3,-54.45],[x*.6,y0+(y1-y0)*(-58.6-z0)/(z1-z0)-.35,-58.6]],.06,'chrome',6 if m.level==0 else 4)
+  tube(m,[[x*.1,.3,-54.45+rake(-54.45,.3)],[x*.6,y0+(y1-y0)*(-58.6-z0)/(z1-z0)-.35,-58.6]],.06,'chrome',6 if m.level==0 else 4)
 
 def facade(m,mod):
  """A deckhouse wall, one solid: white, its windows dark glass seen from outside only, clear from within. Off the quay
@@ -363,8 +390,11 @@ def furniture(m,mod):
     a,bx=(-.5,-.47) if x>0 else(.47,.5)
     for zz in(-.28,.28):b(a,.42,zz-.025,bx,.60,zz+.025,'brass')
 
+# On the farthest level no length of mast is under 80 cm across: a third of a pixel at 2 km on a 1,080-row screen, more
+# than the quarter of a pixel a card's four samples always catch, so a mast reads as a line and not as dashes.
+FAR_MAST=.4
 def mast(m,mod):
- a=mod['art'];aa,bb=a['ends'];r=a['radius'];m.tube([aa,bb],r,'white',SIDES[m.level])
+ a=mod['art'];aa,bb=a['ends'];r=max(a['radius'],FAR_MAST) if m.level==3 else a['radius'];m.tube([aa,bb],r,'white',SIDES[m.level])
  if m.level:return
  z=aa[2]
  for y in [aa[1]+.12,bb[1]-.12]:m.tube([[0,y-.02,z],[0,y+.02,z]],r+.02,'chrome',16)
@@ -422,10 +452,18 @@ def smallparts(m,mod):
  if cat=='bowsprit':
   n=SIDES[L];m.loft([[[.245*math.cos(k*math.tau/n),p[1]+.245*math.sin(k*math.tau/n),p[2]] for k in range(n)] for p in(a['heel'],a['tip'])],'white',smooth=L<FLAT);return
  if cat=='ornament':
-  # Gilded fern scrolls at the bow, an original reading of the photographed carving.
-  if L<FLAT:
-   for sign in(-1,1):m.tube([[sign*(1.65*(1-t)+.1),7.0+.26*math.sin(t*math.tau*1.5),49.6+4*t] for t in [i/15 for i in range(16)]],.03,'brass',6 if L==0 else 4)
-  if L<3:m.box([-.1,6.72,52.85],[.1,7.18,53.35],'brass')
+  # Gilded fern scrolls on the bow under the cap rail, an original reading of the photographed carving: a waved stem
+  # with fronds curling off it, and a pair curled at the stem head. Far off, the band they make.
+  if L==3:return
+  for sign in(-1,1):
+   sheer=lambda z:station(z)['sheer']
+   stem=[(z,sheer(z)-.62+.1*math.sin((z-46.6)*1.3)) for z in [46.6+i*(53.9-46.6)/(23 if L==0 else 9) for i in range((24 if L==0 else 10))]]
+   if L==2:m.tube([on_hull(z,y,sign,.05) for z,y in stem[::3]],.09,'brass',3,across=(sign,0,0));continue
+   m.tube([on_hull(z,y,sign) for z,y in stem],.045,'brass',6 if L==0 else 4,across=(sign,0,0))
+   for k,(zc,up) in enumerate([(47.6,1),(49.2,-1),(50.8,1),(52.3,-1),(53.8,1)]):
+    yc=sheer(zc)-.62+.1*math.sin((zc-46.6)*1.3)+up*.2;r0=.24 if k<4 else .2;turn=-1 if k==4 else 1
+    curl=[(zc+turn*r0*(1-t/(3*math.pi))*math.sin(t),yc-up*r0*(1-t/(3*math.pi))*math.cos(t)) for t in [i*2.2*math.pi/(17 if L==0 else 7) for i in range(18 if L==0 else 8)]]
+    m.tube([on_hull(z,y,sign) for z,y in curl],.03,'brass',6 if L==0 else 4,across=(sign,0,0))
   return
  if cat=='flag':
   sx,sy,sz=a['staff'];m.tube([[sx,sy,sz],[sx,5.975,sz]],.024,'mahogany',[6,4,3,3][L])
