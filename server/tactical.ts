@@ -263,7 +263,8 @@ export class Tactical {
     // A bake that changes nothing a map shows (health, a piece under another) gives no new version, so nothing is sent for it.
     // The far cells have a version of their own, so a change to one is never sent as the other.
     const mapSame = s ? s.same(fresh) : fresh.filled === 0;
-    const farSame = s ? s.far.same(fresh.far) : fresh.far.filled === 0;
+    // A chunk already changed and empty at its first bake (razed before a restart) is news to a session that draws the statics.
+    const farSame = s ? s.far.same(fresh.far) : fresh.far.filled === 0 && this.world.structs.asPlaced(chunk);
     if (mapSame && farSame) return;
     s ??= this.summaries[chunk] = new Summary();
     if (!farSame) {

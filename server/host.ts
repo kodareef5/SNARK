@@ -310,10 +310,10 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const storeOptions = { ...opts.store, allowNetworkDisk: opts.store?.allowNetworkDisk ?? rules.flag("AllowNetworkSave") === true };
   const store = opts.dbPath ? new WorldStore(opts.dbPath, reg, storeOptions) : null;
   if (store) opened.push(store);
-  // A save supplies its own structures. Only a new world gets the map's.
   const mapFile = opts.world || typeof opts.map === "string" ? null : (opts.map ?? provingFile(reg));
   const parsed = given ?? (mapFile ? parseMap(mapFile) : null);
-  const world = opts.world ?? createMapWorld(reg, parsed!, { populate: !store || store.fresh, entityMax: opts.entityMax ?? rules.num("MaxEntities"), entityStart: opts.entityStart });
+  // Every world starts from the map's statics. A save's chunks are laid over them (Persistence.load).
+  const world = opts.world ?? createMapWorld(reg, parsed!, { entityMax: opts.entityMax ?? rules.num("MaxEntities"), entityStart: opts.entityStart });
   world.clock.cycle = rules.num("DayCycleSpeedScale");
   world.clock.day = rules.num("DayTimeSpeedScale");
   world.clock.night = rules.num("NightTimeSpeedScale");
