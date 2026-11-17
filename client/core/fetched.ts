@@ -7,7 +7,7 @@ import { joinLandmark } from "../../shared/pack/join.ts";
 import { parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { soundFault, type ManifestSound } from "../../shared/pack/sound.ts";
-import { joinParts, joinStatics, partSteps, readHead, readPart, type MapContent, type MapFile, type MapHead, type MapPart, type MapStatics, type StaticsPiece } from "../../shared/world/mapfile.ts";
+import { joinStatics, partSteps, readHead, type MapContent, type MapHead, type MapPart, type MapStatics, type StaticsPiece } from "../../shared/world/mapfile.ts";
 
 export interface Answer {
   ok: boolean;
@@ -39,11 +39,7 @@ export async function fetchBytes(get: Get, url: string): Promise<ArrayBuffer> {
   return (await answer(get, url)).arrayBuffer();
 }
 
-/**
- * Map parts fetched at once: as many as a browser opens to a host over HTTP/1.1, so that on a link of 100 ms a request one
- * part's round trip is mostly hidden by the others' bytes (Miami's ground in 3.67 s at 20 Mbit/s, where 4 take 3.94 and
- * 24 on h2 3.56).
- */
+/** Parts a program that reads a map whole fetches at once (mapload.ts PARTS_AT_ONCE). */
 const PARTS_AT_ONCE = 6;
 
 /** `work` on each of `items`, at most `n` at once, taken in their order; its results in that order. */
@@ -58,7 +54,7 @@ async function inTurn<T, R>(items: readonly T[], n: number, work: (item: T) => P
 }
 
 /** A map's head (shared/world/mapfile.ts) from its url, and the url each of its parts is fetched by, beside it. */
-async function fetchHead(get: Get, url: string): Promise<{ head: MapHead; bytes: Uint8Array; at: (part: MapPart) => string }> {
+export async function fetchHead(get: Get, url: string): Promise<{ head: MapHead; bytes: Uint8Array; at: (part: MapPart) => string }> {
   const bytes = new Uint8Array(await fetchBytes(get, url));
   const head = within(url, () => readHead(bytes));
   return { head, bytes, at: (part) => url.slice(0, url.lastIndexOf("/") + 1) + part.name };
@@ -77,20 +73,6 @@ function within<T>(url: string, read: () => T): T {
 export interface FetchedStatics {
   readonly head: MapHead;
   readonly parts: readonly { readonly part: MapPart; readonly bytes: Uint8Array }[];
-}
-
-/**
- * A map as a page fetches it (shared/world/mapfile.ts): its head, then its landmarks' definitions, overviews and sectors'
- * ground, six at once and each read as it comes, which make the map with no statics: all a client needs to draw. Then its
- * sectors' statics, which `rest` brings once they are all in. Each part is checked against the hash its head names.
- */
-export async function fetchMap(get: Get, url: string): Promise<{ ground: MapFile; rest: Promise<FetchedStatics> }> {
-  const { head, at } = await fetchHead(get, url);
-  const fetched = async (part: MapPart): Promise<Uint8Array> => new Uint8Array(await fetchBytes(get, at(part)));
-  const pieces = await inTurn(head.parts.filter((p) => p.kind !== "statics"), PARTS_AT_ONCE, async (p) => readPart(head, p, await fetched(p)));
-  const ground = joinParts(head, pieces, false);
-  const rest = inTurn(head.parts.filter((p) => p.kind === "statics"), PARTS_AT_ONCE, async (part) => ({ part, bytes: await fetched(part) }));
-  return { ground, rest: rest.then((parts) => ({ head, parts })) };
 }
 
 /**

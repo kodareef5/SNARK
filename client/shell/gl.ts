@@ -82,7 +82,7 @@ export class GlRenderer {
   errors = 0;
   /** What compared lookups give on this device (shadowfilter.ts). Where they come back "hard" the shadow lookup filters for itself. */
   shadowLookup = "";
-  /** The sun's shadow maps: a 16-bit depth layer a cascade, a target on each, and their side. */
+  /** The sun's shadow maps: a 16-bit depth layer a cascade and the far map's after them, a target on each cascade's, and their side. */
   private shadow = { texture: null as WebGLTexture | null, targets: [] as WebGLFramebuffer[], size: 0 };
   private boneRows = 0;
   /**
@@ -735,7 +735,7 @@ export class GlRenderer {
       gl.activeTexture(gl.TEXTURE0 + UNIT.shadow);
       gl.bindTexture(gl.TEXTURE_2D_ARRAY, (map.texture = cascades > 0 ? gl.createTexture() : null));
       if (cascades > 0) {
-        gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.DEPTH_COMPONENT16, size, size, cascades);
+        gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.DEPTH_COMPONENT16, size, size, cascades + 1);
         const filter = this.shadowLookup === "hard" ? gl.NEAREST : gl.LINEAR;
         for (const p of [[gl.TEXTURE_MIN_FILTER, filter], [gl.TEXTURE_MAG_FILTER, filter], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE], [gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL]] as const) gl.texParameteri(gl.TEXTURE_2D_ARRAY, p[0], p[1]);
       }
@@ -746,6 +746,9 @@ export class GlRenderer {
         gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, map.texture, 0, k);
       }
     }
+    // Rows of the far shadow's map (farshadow.ts), in the layer after the cascades'.
+    gl.activeTexture(gl.TEXTURE0 + UNIT.shadow);
+    if (p.farRows > 0) gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, p.farRow, cascades, size, p.farRows, 1, gl.DEPTH_COMPONENT, gl.UNSIGNED_SHORT, p.farMap);
     gl.viewport(0, 0, size, size);
     gl.polygonOffset(POLYGON_OFFSET[0], POLYGON_OFFSET[1]);
     gl.cullFace(gl.FRONT);

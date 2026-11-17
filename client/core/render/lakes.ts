@@ -1,9 +1,10 @@
 // Water standing on its own surfaces, apart from the sea (shared/world/water.ts): lakes, ponds and a river's reaches,
 // drawn as the sea is, see-through, with the lit tiers' WATER program seen from above and the flat plane from under
 // water, in both depth ranges and to the end of the view. Water does not change, so the tiles of LAKE_TILE that hold
-// some are made once, with the map, 256 m at a time: each body's squares merged into rectangles at its surface, but for
-// squares whose ground is all above it, since the flat plane is hidden only by the ground's depth; and a sheet of water
-// down each step from a body to lower water beside it, a river's reach to the next or to the sea.
+// some are made with the map, 256 m at a time, and again where its ground comes after: each body's squares merged into
+// rectangles at its surface, but for squares whose ground is all above it, since the flat plane is hidden only by the
+// ground's depth; and a sheet of water down each step from a body to lower water beside it, a river's reach to the next
+// or to the sea.
 //
 // The sea is one plane under everything, so it would show inside a body whose bed goes below it. A tile of the sea's
 // (WATER_TILE) holding such a body is not drawn as the sea's mesh: the tile here that holds it draws the sea too, on every
@@ -68,54 +69,120 @@ export class Lakes {
   readonly mesh: number;
   /** Bytes of tiles on the card. */
   bytes = 0;
-  private readonly tiles: Tile[] = [];
+  /** Each tile that holds a body's squares, by its number among the map's tiles row by row, and what it draws, or null for nothing. */
+  private readonly keys: number[] = [];
+  private readonly tiles: (Tile | null)[] = [];
+  /** By `keys`, 1 where the ground under it changed and it is to be made again. */
+  private readonly dirty: Uint8Array;
   /** By the sea's tile over the map, row by row, 1 where the tiles here draw the sea. */
   private readonly holes: Uint8Array;
   private readonly seaX: number;
   private readonly seaZ: number;
   private next = 0;
   private sent = false;
+  private readonly hf: Heightfield;
+  private readonly water: MapWater;
+  /** The body squares whose ground goes under their surface. */
+  private readonly wet: Uint8Array;
+  /** The parts, by their number among the map's row by row, that hold a body's squares. */
+  private readonly parts = new Set<number>();
+  private readonly partsX: number;
+  private readonly tilesX: number;
+  /** The heightfield's changes taken in. */
+  private seen: number;
 
   constructor(hf: Heightfield, water: MapWater, mesh: number) {
     this.mesh = mesh;
-    const { cell, side, surface } = water;
-    const sea = hf.seaLevel;
+    this.hf = hf;
+    this.water = water;
     const dims = hf.dims;
     this.seaX = Math.ceil(hf.sizeX / WATER_TILE);
     this.seaZ = Math.ceil(hf.sizeZ / WATER_TILE);
     this.holes = new Uint8Array(this.seaX * this.seaZ);
-    // The body squares whose ground goes under their surface, the sea's tiles where a body's ground goes under the sea,
-    // and the parts and tiles that hold a body's squares.
-    const wet = new Uint8Array(water.squares.length);
-    const partsX = Math.ceil(dims.chunksX / FAR_TILE);
-    const parts = new Set<number>();
-    const tilesX = Math.ceil(hf.sizeX / LAKE_TILE);
-    const tiles = new Set<number>();
+    this.wet = new Uint8Array(water.squares.length);
+    this.partsX = Math.ceil(dims.chunksX / FAR_TILE);
+    this.tilesX = Math.ceil(hf.sizeX / LAKE_TILE);
     for (const c of water.chunks()) {
       const x0 = (c % dims.chunksX) * CHUNK_SIZE, z0 = Math.floor(c / dims.chunksX) * CHUNK_SIZE;
-      const at = water.block[c]!;
-      for (let s = 0; s < side * side; s++) {
-        const b = water.squares[at + s]!;
-        if (b === 0) continue;
-        const x = x0 + (s % side) * cell, z = z0 + Math.floor(s / side) * cell;
-        const low = lowest(hf, x, z, cell);
-        if (low < surface[b]!) wet[at + s] = 1;
-        if (low < sea) this.holes[Math.floor(z / WATER_TILE) * this.seaX + Math.floor(x / WATER_TILE)] = 1;
-      }
-      parts.add(Math.floor(z0 / FAR_TILE_METRES) * partsX + Math.floor(x0 / FAR_TILE_METRES));
-      tiles.add(Math.floor(z0 / LAKE_TILE) * tilesX + Math.floor(x0 / LAKE_TILE));
+      this.parts.add(Math.floor(z0 / FAR_TILE_METRES) * this.partsX + Math.floor(x0 / FAR_TILE_METRES));
+      const t = Math.floor(z0 / LAKE_TILE) * this.tilesX + Math.floor(x0 / LAKE_TILE);
+      if (!this.keys.includes(t)) this.keys.push(t);
     }
-    // A tile is made a part at a time: those that hold a body's squares, and every part of a sea's tile it draws the sea of.
-    for (const t of tiles) {
-      const tx = (t % tilesX) * LAKE_TILE, tz = Math.floor(t / tilesX) * LAKE_TILE;
-      const pos: number[] = [];
-      for (let k = 0; k < PARTS * PARTS; k++) {
-        const x = tx + (k % PARTS) * FAR_TILE_METRES, z = tz + Math.floor(k / PARTS) * FAR_TILE_METRES;
-        if (this.holed(Math.floor(x / WATER_TILE), Math.floor(z / WATER_TILE)) || (x < hf.sizeX && z < hf.sizeZ && parts.has((z / FAR_TILE_METRES) * partsX + x / FAR_TILE_METRES))) this.part(hf, water, wet, x, z, x - tx, z - tz, pos);
+    this.dirty = new Uint8Array(this.keys.length);
+    this.measure(0, 0, dims.chunksX, dims.chunksZ);
+    for (const t of this.keys) this.tiles.push(this.make(t));
+    this.seen = hf.changes.length;
+  }
+
+  /**
+   * The body squares of chunks cx0, cz0 up to cx1, cz1 whose ground goes under their surface, and the sea's tiles that
+   * meet them where a body's ground goes under the sea, from the ground as it is.
+   */
+  private measure(cx0: number, cz0: number, cx1: number, cz1: number): void {
+    const { hf, water, holes, wet } = this;
+    const { cell, side, surface } = water;
+    const dims = hf.dims;
+    const per = WATER_TILE / CHUNK_SIZE;
+    const sx0 = Math.floor(cx0 / per), sz0 = Math.floor(cz0 / per), sx1 = Math.ceil(cx1 / per), sz1 = Math.ceil(cz1 / per);
+    for (let sz = sz0; sz < sz1; sz++) holes.fill(0, sz * this.seaX + sx0, sz * this.seaX + sx1);
+    // Every square of the sea's tiles met is looked at again for their holes, and those of the chunks given for being wet.
+    for (let cz = sz0 * per; cz < Math.min(dims.chunksZ, sz1 * per); cz++) {
+      for (let cx = sx0 * per; cx < Math.min(dims.chunksX, sx1 * per); cx++) {
+        const at = water.block[cz * dims.chunksX + cx]!;
+        if (at < 0) continue;
+        const inside = cx >= cx0 && cx < cx1 && cz >= cz0 && cz < cz1;
+        for (let s = 0; s < side * side; s++) {
+          const b = water.squares[at + s]!;
+          if (b === 0) continue;
+          const x = cx * CHUNK_SIZE + (s % side) * cell, z = cz * CHUNK_SIZE + Math.floor(s / side) * cell;
+          const low = lowest(hf, x, z, cell);
+          if (inside) wet[at + s] = low < surface[b]! ? 1 : 0;
+          if (low < hf.seaLevel) holes[Math.floor(z / WATER_TILE) * this.seaX + Math.floor(x / WATER_TILE)] = 1;
+        }
       }
-      const tile = this.tile(pos, tx, tz);
-      if (tile) this.tiles.push(tile);
     }
+  }
+
+  /** Tile `t`, made a part at a time: those that hold a body's squares, and every part of a sea's tile it draws the sea of. */
+  private make(t: number): Tile | null {
+    const hf = this.hf;
+    const tx = (t % this.tilesX) * LAKE_TILE, tz = Math.floor(t / this.tilesX) * LAKE_TILE;
+    const pos: number[] = [];
+    for (let k = 0; k < PARTS * PARTS; k++) {
+      const x = tx + (k % PARTS) * FAR_TILE_METRES, z = tz + Math.floor(k / PARTS) * FAR_TILE_METRES;
+      if (this.holed(Math.floor(x / WATER_TILE), Math.floor(z / WATER_TILE)) || (x < hf.sizeX && z < hf.sizeZ && this.parts.has((z / FAR_TILE_METRES) * this.partsX + x / FAR_TILE_METRES))) this.part(hf, this.water, this.wet, x, z, x - tx, z - tz, pos);
+    }
+    return this.tile(pos, tx, tz);
+  }
+
+  /**
+   * Takes in the ground that changed: its squares are measured again, and the tiles whose faces read it, a square past
+   * where it changed, and that of a sea's tile whose hole it changed, are made again, one a frame.
+   */
+  private take(p: FramePacket): void {
+    const c = this.hf.changes;
+    for (; this.seen < c.length; this.seen += 4) {
+      const cx0 = c[this.seen]!, cz0 = c[this.seen + 1]!, cx1 = c[this.seen + 2]!, cz1 = c[this.seen + 3]!;
+      const was = Uint8Array.from(this.holes);
+      this.measure(cx0, cz0, cx1, cz1);
+      const reach = this.water.cell;
+      const x0 = cx0 * CHUNK_SIZE - reach, z0 = cz0 * CHUNK_SIZE - reach, x1 = cx1 * CHUNK_SIZE + reach, z1 = cz1 * CHUNK_SIZE + reach;
+      this.keys.forEach((t, k) => {
+        const tx = (t % this.tilesX) * LAKE_TILE, tz = Math.floor(t / this.tilesX) * LAKE_TILE;
+        if (tx < x1 && tx + LAKE_TILE > x0 && tz < z1 && tz + LAKE_TILE > z0) this.dirty[k] = 1;
+      });
+      for (let s = 0; s < was.length; s++) {
+        if (was[s] === this.holes[s]) continue;
+        const k = this.keys.indexOf(Math.floor(((Math.floor(s / this.seaX) * WATER_TILE) / LAKE_TILE)) * this.tilesX + Math.floor(((s % this.seaX) * WATER_TILE) / LAKE_TILE));
+        if (k >= 0) this.dirty[k] = 1;
+      }
+    }
+    const k = this.dirty.indexOf(1);
+    if (k < 0) return;
+    this.dirty[k] = 0;
+    const old = this.tiles[k];
+    if (old && old.slot >= 0) p.assetDrops.push(old.slot);
+    this.tiles[k] = this.make(this.keys[k]!);
   }
 
   /** Whether the sea's tile (tx, tz), its corner at WATER_TILE times them, is drawn here and not as the sea's mesh. */
@@ -125,7 +192,7 @@ export class Lakes {
 
   /** After a lost context: every tile and the instance buffer go on the card again. */
   reset(): void {
-    for (const tile of this.tiles) tile.slot = -1;
+    for (const tile of this.tiles) if (tile) tile.slot = -1;
     this.sent = false;
   }
 
@@ -134,8 +201,10 @@ export class Lakes {
    * drops go into the packet, and what they weigh is spent and reserved in `budget`.
    */
   update(p: FramePacket, budget: { spend(bytes: number): void; reserve(name: string, bytes: number): void }, x: number, z: number, reach: number): void {
+    this.take(p);
     let bytes = 0;
     for (const tile of this.tiles) {
+      if (!tile) continue;
       const off = Math.hypot(Math.max(tile.x - x, x - tile.x - LAKE_TILE, 0), Math.max(tile.z - z, z - tile.z - LAKE_TILE, 0));
       if (tile.slot >= 0 && off > reach + LAKE_TILE) {
         p.assetDrops.push(tile.slot);
@@ -162,7 +231,7 @@ export class Lakes {
    */
   draw(cam: Camera, reach: number, put: (slot: number, triangles: number, ox: number, oy: number, oz: number, passes: number) => void): void {
     for (const tile of this.tiles) {
-      if (tile.slot < 0) continue;
+      if (!tile || tile.slot < 0) continue;
       const b = tile.box;
       const ax = b[0]! - cam.x, ay = b[1]! - cam.y, az = b[2]! - cam.z, bx = b[3]! - cam.x, by = b[4]! - cam.y, bz = b[5]! - cam.z;
       const near = Math.hypot(Math.max(ax, -bx, 0), Math.max(ay, -by, 0), Math.max(az, -bz, 0));

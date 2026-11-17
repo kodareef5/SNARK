@@ -4,12 +4,15 @@
 //
 // A pixel takes the finest cascade whose sphere holds it, and over the last tenth of that sphere it hands over to the
 // next by a 4 by 4 pattern on the screen, so it always makes one lookup. Over the last tenth of the farthest sphere the
-// shadow fades out, and it fades with the sun's casting strength at dusk. The lookup is moved off the surface along its
-// normal by up to half a texel, the more the more the surface turns from the sun, and is filtered by compared taps after
-// Castaño (The Witness, 2013). A device whose compared lookups come back hard compares four texels in the shader for each.
+// shadow hands over to the far map's (farshadow.ts), which a pixel past every sphere takes alone and one within them takes
+// for what lies past the near store's chunks, and it fades with the sun's casting strength at dusk. The lookup is moved off the surface along its normal by up to half a texel, the more
+// the more the surface turns from the sun, and is filtered by compared taps after Castaño (The Witness, 2013). A device
+// whose compared lookups come back hard compares four texels in the shader for each. The far map is the layer after the
+// cascades', looked up with one tap.
 
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import type { Tier } from "../assets/tiers.ts";
+import { FAR_LEAD, FAR_OUT, FAR_RISE, FAR_SPAN, FLAT_LEAST } from "./farshadow.ts";
 import { BONES_PER_ROW, MAX_CASCADES } from "./packet.ts";
 
 /** Texels of the receiver's cascade the lookup is moved along its normal, at most, where the surface runs along the light. */
@@ -19,7 +22,7 @@ export const NORMAL_OFFSET = 0.5;
  * stored too. A caster that casts its back faces alone gets none, since its back lies a thickness behind what it lights.
  */
 export const POLYGON_OFFSET = [1.5, 2] as const;
-/** The share of a cascade's sphere over which a pixel hands over to the next, and over which the farthest fades out. */
+/** The share of a cascade's sphere over which a pixel hands over to the next, and over which the farthest hands over to the far map. */
 export const EDGE = 0.1;
 /**
  * Each tap compares the depth the receiver's own plane has there, not the receiver's depth, so the faces where two
@@ -90,9 +93,9 @@ export function shadowCascade(px: number, py: number, pz: number, spheres: Array
   return { cascade: k, fade: k + 1 < count ? 0 : Math.min(1, Math.max(0, (t - 1 + EDGE) / EDGE)) };
 }
 
-/** Bytes a tier's shadow maps hold on the card: a 16-bit layer a cascade. */
+/** Bytes a tier's shadow maps hold on the card: a 16-bit layer a cascade, and the far map's. */
 export function shadowBytes(shadows: Tier["shadows"]): number {
-  return shadows.cascades * shadows.size * shadows.size * 2;
+  return shadows.cascades > 0 ? (shadows.cascades + 1) * shadows.size * shadows.size * 2 : 0;
 }
 
 /**
@@ -123,9 +126,14 @@ function filterText(m: number): string {
 /**
  * The lookup, which LIT and SURFACE include after the frame block: `sunShadow(rel, normal)` is how much of the sun a
  * camera-relative point with that normal gets, 0 to 1, which `lit` takes as `shade`. Without SHADOW_CASCADES defined it
- * is 1 everywhere and reads no texture. `uCascades` is the frame's cascades, 0 while nothing casts. The sun turned away
- * from a surface is kept off it by its own back, whatever its normal map says. Places on the map are in texels, the
- * receiver's `at` with its depth, and `slope` is how its plane's depth rises a texel along each axis.
+ * is 1 everywhere and reads no texture. `uCascades` is the frame's cascades, 0 while nothing casts, and the far map's
+ * layer. The sun turned away from a surface is kept off it by its own back, whatever its normal map says. Places on the
+ * map are in texels, the receiver's `at` with its depth, and `slope` is how its plane's depth rises a texel along each
+ * axis. `farShadow` is the twin of farshadow.ts `farLookup`; with fFarScale 0 there is no far map and the farthest
+ * cascade fades to the sun. Within the cascades, which the near store's pieces cast into and the far city does not, a
+ * pixel is shaded by the far map too, looked up where its ray to the sun leaves the chunks the near store holds
+ * (`farBeyond`, farshadow.ts `nearLead`), so the far city's shadows reach near the camera and the near pieces' are not
+ * cast twice.
  */
 export const SHADOW_GLSL = `#ifdef SHADOW_CASCADES
 uniform highp sampler2DArrayShadow uShadow;
@@ -153,6 +161,29 @@ ${filterText(3)}#endif
 float shadowShare(vec3 rel, int i) {
   return length(rel - fSpheres[i].xyz) / fSpheres[i].w;
 }
+#define fFarAt fSwell.zw
+#define fFarScale fLook.w
+#define fFarDepth fSkyAlong.w
+float farShadow(vec3 rel, vec3 normal) {
+  if (fFarScale <= 0.0) return 1.0;
+  vec3 sun = fTrueSun;
+  vec3 p = rel + vec3(normal.x, 0.0, normal.z) * (${g(FAR_OUT)} / fFarScale) + sun * (${g(FAR_LEAD)} / (fFarScale * max(length(sun.xz), ${g(FLAT_LEAST)})));
+  vec2 t = p.xz * fFarScale + fFarAt;
+  return shadowTap(t, float(uCascades), vec3(t, fFarDepth - (p.y + ${g(FAR_RISE)}) / ${g(FAR_SPAN)}), vec2(0.0));
+}
+#define fNearFrom vec2(fMoon.w, fMoonColor.w)
+#define fNearTo vec2(fSkyBelow.w, fCloudSun.w)
+float farBeyond(vec3 rel, vec3 normal) {
+  if (fFarScale <= 0.0) return 1.0;
+  float ground = max(length(fTrueSun.xz), ${g(FLAT_LEAST)});
+  vec2 d = fTrueSun.xz / ground;
+  d = vec2(abs(d.x) < 1e-6 ? 1e-6 : d.x, abs(d.y) < 1e-6 ? 1e-6 : d.y);
+  vec2 a = (fNearFrom - rel.xz) / d, b = (fNearTo - rel.xz) / d;
+  vec2 lo = min(a, b), hi = max(a, b);
+  float leave = min(hi.x, hi.y);
+  float lead = fNearFrom.x <= fNearTo.x && leave >= max(max(lo.x, lo.y), 0.0) ? leave : 0.0;
+  return farShadow(rel + fTrueSun * (lead / ground), normal);
+}
 float sunShadow(vec3 rel, vec3 normal) {
   if (uCascades == 0 || fSun.w <= 0.0) return 1.0;
   int k = 0;
@@ -162,7 +193,8 @@ float sunShadow(vec3 rel, vec3 normal) {
     k = i;
     t = shadowShare(rel, i);
   }
-  if (t >= 1.0) return 1.0;
+  float facing = dot(normal, fTrueSun);
+  if (t >= 1.0) return fFarScale > 0.0 ? mix(1.0, farShadow(rel, normal) * clamp(facing * 20.0, 0.0, 1.0), fSun.w) : 1.0;
   ivec2 q = ivec2(gl_FragCoord.xy) & 3;
   int order = ((q.x ^ q.y) & 1) * 8 + (q.y & 1) * 4 + (((q.x ^ q.y) >> 1) & 1) * 2 + ((q.y >> 1) & 1);
   if (k + 1 < uCascades && (t - ${g(1 - EDGE)}) / ${g(EDGE)} > (float(order) + 0.5) / 16.0) {
@@ -170,14 +202,13 @@ float sunShadow(vec3 rel, vec3 normal) {
     t = shadowShare(rel, k);
   }
   float fade = k + 1 < uCascades ? 0.0 : clamp((t - ${g(1 - EDGE)}) / ${g(EDGE)}, 0.0, 1.0);
-  float facing = dot(normal, fTrueSun);
   float scale = length(fCascades[k][0].xyz);
   vec3 p = rel + normal * (${g(2 * NORMAL_OFFSET)} / (SHADOW_SIZE * scale) * sqrt(max(1.0 - facing * facing, 0.0)));
   vec3 at = (fCascades[k] * vec4(p, 1.0)).xyz * 0.5 + 0.5;
   at.xy *= SHADOW_SIZE;
   at.z -= ${g(DEPTH_SLACK)} / 65535.0;
   vec2 slope = clamp((mat3(fCascades[k]) * normal).xy / (scale * max(facing, 0.05)), -${g(SLOPE_MOST)}, ${g(SLOPE_MOST)}) / SHADOW_SIZE;
-  float sun = mix(shadowFilter(at, slope, float(k)), 1.0, fade) * clamp(facing * 20.0, 0.0, 1.0);
+  float sun = mix(shadowFilter(at, slope, float(k)) * farBeyond(rel, normal), fade > 0.0 ? farShadow(rel, normal) : 1.0, fade) * clamp(facing * 20.0, 0.0, 1.0);
   return mix(1.0, sun, fSun.w);
 }
 #else
