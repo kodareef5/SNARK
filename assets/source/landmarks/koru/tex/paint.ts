@@ -76,7 +76,18 @@ const PATTERNS: Record<string, Pattern> = {
   },
   steel: (_u, v, px, py) => [Math.sin(v * 2400) * 2 + noise(px / 4, py / 64, 128, 19) * 0.6, Math.sin(v * 2400) * 0.0015],
   canvas: (_u, _v, px, py) => [weave(px, py, 5) * 2 + noise(px / 16, py / 16, 32, 23), weave(px, py, 5) * 0.008],
+  // A panel of sailcloth, one row of a sail: its seams at the top and bottom edges, which meet the next panel's.
+  sail: (_u, v, px, py) => cloth(v, px, py),
+  // The same with a batten across its middle.
+  batten: (_u, v, px, py) => {
+    const [tone, relief] = cloth(v, px, py);
+    return Math.abs(v - 0.5) < 0.03 ? [tone - 9, relief + 0.03] : [tone, relief];
+  },
 };
+function cloth(v: number, px: number, py: number): [number, number] {
+  const seam = Math.min(v, 1 - v) < 0.025;
+  return [(seam ? -7 : 0) + weave(px, py, 4) * 1.2 + noise(px / 24, py / 24, 32, 31) * 1.5, seam ? -0.02 : weave(px, py, 4) * 0.004];
+}
 
 for (const [name, f] of Object.entries(LOOK.finishes)) {
   const [x0, y0, w, h] = f.rect;

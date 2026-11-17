@@ -357,6 +357,11 @@ export interface PiecesAsset {
      */
     readonly triangles: readonly number[];
     readonly texture?: TextureBudget;
+    /**
+     * A landmark's: the most triangles one of its cells may draw from each distance on, on medium, as metres and
+     * triangles in the form of `LANDMARK_TRIANGLES` (tools/art/check.ts), which holds a landmark that does not say.
+     */
+    readonly cells?: readonly (readonly [number, number])[];
   };
 }
 

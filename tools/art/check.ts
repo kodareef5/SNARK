@@ -615,7 +615,7 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false, others: r
       if (mesh) report.meshes.push(measureMesh(mesh, pack, piece.triangles ?? spec.budgets.triangles, report.faults, undefined, piece.errors));
       else report.faults.push(`${piece.id}: not in the pack`);
       if (mesh && PIECES.has(piece.id)) report.faults.push(...pieceFaults(mesh, report.meshes[report.meshes.length - 1]!));
-      else if (mesh && landmarkOf(asset) !== null) report.faults.push(...pieceFaults(mesh, report.meshes[report.meshes.length - 1]!, LANDMARK_CELL.test(piece.id) ? LANDMARK_TRIANGLES : PIECE_TRIANGLES));
+      else if (mesh && landmarkOf(asset) !== null) report.faults.push(...pieceFaults(mesh, report.meshes[report.meshes.length - 1]!, LANDMARK_CELL.test(piece.id) ? (spec.budgets.cells ?? LANDMARK_TRIANGLES) : PIECE_TRIANGLES));
       if (mesh && piece.hold) report.faults.push(...heldFaults(mesh, piece.hold));
       if (piece.dropped === undefined) continue;
       const lying = meshes.find((m) => m.id === `${piece.id}/dropped`);
@@ -646,7 +646,7 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false, others: r
 
 /**
  * What is wrong with a building piece's levels on medium, or a landmark's piece's: one never drawn or drawn over a sliver,
- * one over `most` (PIECE_TRIANGLES, or LANDMARK_TRIANGLES for a landmark's cell), or flat too near. A piece with no
+ * one over `most` (PIECE_TRIANGLES, or for a landmark's cell its asset's `budgets.cells` or LANDMARK_TRIANGLES), or flat too near. A piece with no
  * materials is flat by design.
  */
 export function pieceFaults(mesh: SourceMesh, facts: MeshFacts, most: readonly (readonly [number, number])[] = PIECE_TRIANGLES): string[] {

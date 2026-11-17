@@ -12,7 +12,7 @@ HERE=Path(__file__).resolve().parent
 D=json.loads((HERE.parents[3]/'content/landmarks/koru-layout.json').read_text())
 MODS=D['modules'];BYID={m['id']:m for m in MODS};WINDOWS={}
 for w in D['windows']:WINDOWS.setdefault(w['module'],[]).append(w)
-CLOTH={'sailcloth':(230,226,214)};SPAR={'spar':(245,245,245)}
+CLOTH={'sailcloth':FINISH['sail']['far']};SPAR={'spar':FINISH['white']['far']}
 # The first level drawn flat. Sides round a mast, a boom or the bowsprit at each level.
 FLAT=2;SIDES=[24,12,8,6]
 
@@ -392,6 +392,13 @@ def door(m,mod):
   else:p[axis]=b[axis];q[axis]=b[axis]+.004
   m.box(p,q,'teak')
 
+DOME_R=.9
+def dome(m,c):
+ """A radome: a sphere, smooth in rings near and a few flat faces far."""
+ rows,n=[(8,16),(4,8),(3,6),(2,4)][m.level]
+ rings=[[[c[0]+DOME_R*math.sin(math.pi*(i+1)/(rows+1))*math.cos(k*math.tau/n),c[1]-DOME_R*math.cos(math.pi*(i+1)/(rows+1)),c[2]+DOME_R*math.sin(math.pi*(i+1)/(rows+1))*math.sin(k*math.tau/n)] for k in range(n)] for i in range(rows)]
+ if m.level<FLAT:m.loft(rings,'white',smooth=True)
+ else:m.convex([p for r in rings for p in r]+[[c[0],c[1]-DOME_R,c[2]],[c[0],c[1]+DOME_R,c[2]]],'white')
 def plaque(m,lo,hi,label):m.box(lo,hi,'sign:'+label)
 def smallparts(m,mod):
  cat=mod['category'];o=mod['origin'];a=mod['art'];L=m.level
@@ -405,7 +412,13 @@ def smallparts(m,mod):
   # Every stay and shroud is drawn on the levels with the atlas and none on the flat ones.
   if L<FLAT:m.tube(a['ends'],a['radius'],'chrome',6 if L==0 else 4)
   return
- if cat=='spreader':m.tube(a['ends'],a['radius'],'white',[8,4,4,3][L]);return
+ if cat=='spreader':
+  m.tube(a['ends'],a['radius'],'white',[8,4,4,3][L])
+  # The fore and mizzen masts carry a pair of white radomes on their lowest spreaders, as photographed.
+  if mod['id'].endswith('_31') and '_main_' not in mod['id']:
+   (x0,y,z),(x1,_,_)=a['ends']
+   for x in(x0*.58,x1*.58):dome(m,[x,y+a['radius']+DOME_R,z])
+  return
  if cat=='bowsprit':
   n=SIDES[L];m.loft([[[.245*math.cos(k*math.tau/n),p[1]+.245*math.sin(k*math.tau/n),p[2]] for k in range(n)] for p in(a['heel'],a['tip'])],'white',smooth=L<FLAT);return
  if cat=='ornament':
@@ -498,8 +511,9 @@ PLACE={p['mesh']:p['to'] for p in D['motion']['parts']}
 def pivot(mesh,p):
  to=PLACE[mesh];q=to.get('turn',[0,0,0,1]);d=[p[k]-CONTROL[k]-to['at'][k] for k in range(3)]
  return qrotate([-q[0],-q[1],-q[2],q[3]],d)
-def sheet(m,grid,out,camber):
- """Rows of points across a sail, cambered along `out`, as two faces back to back."""
+def sheet(m,grid,out,camber,batten=None):
+ """Rows of points across a sail, cambered along `out`, as two faces back to back. Drawn with the atlas, each row is a
+ panel of sailcloth, and a row `batten` names carries a batten."""
  rows=len(grid);cols=len(grid[0])
  pts=[[p[k]+out[k]*camber(i,j) for k in range(3)] for i,row in enumerate(grid) for j,p in enumerate(row)]
  def normal(i,j):
@@ -507,33 +521,43 @@ def sheet(m,grid,out,camber):
   du=sub(at(i,min(cols-1,j+1)),at(i,max(0,j-1)));dv=sub(at(min(rows-1,i+1),j),at(max(0,i-1),j));n=unit(cross(du,dv))
   return n if sum(a*b for a,b in zip(n,out))>0 else [-a for a in n]
  ns=[normal(i,j) for i in range(rows) for j in range(cols)]
- quads=[(i*cols+j,i*cols+j+1,(i+1)*cols+j+1,(i+1)*cols+j) for i in range(rows-1) for j in range(cols-1)]
+ cells=[(i,j) for i in range(rows-1) for j in range(cols-1)]
+ quads=[(i*cols+j,i*cols+j+1,(i+1)*cols+j+1,(i+1)*cols+j) for i,j in cells]
  for side in(1,-1):
-  s=m.add(pts,[[side*c for c in n] for n in ns]);m.faces(s,quads,'sailcloth',out=[side*c for c in out])
+  s=m.add(pts,[[side*c for c in n] for n in ns])
+  if m.flat:m.faces(s,quads,'sailcloth',out=[side*c for c in out]);continue
+  m.faces(s,quads,['batten' if batten and batten(i) else 'sail' for i,j in cells],uvs=[[(j/(cols-1),0),((j+1)/(cols-1),0),((j+1)/(cols-1),1),(j/(cols-1),1)] for i,j in cells],out=[side*c for c in out])
+# A sail's levels: drawn with the atlas near, then two flat. Rows and columns of a gaff sail, rows of a jib.
+GAFF_GRIDS=[(9,25),(6,9),(4,6)];JIB_ROWS=[18,8,5]
 for s in D['rig']['sails']:
  if s['kind']=='gaff':
   corners=[pivot(s['sheet'],s[k]) for k in('tack','clew','throat','peak')]
-  for level,(ns,nt) in enumerate([(7,11),(4,6)]):
+  for level,(ns,nt) in enumerate(GAFF_GRIDS):
    grid=[[[(1-t)*((1-u)*corners[0][k]+u*corners[1][k])+t*((1-u)*corners[2][k]+u*corners[3][k]) for k in range(3)] for u in [j/(ns-1) for j in range(ns)]] for t in [i/(nt-1) for i in range(nt)]]
-   m=Mesh(flat=CLOTH);sheet(m,grid,[-1,0,0],lambda i,j:s['camber']*16*(j/(ns-1))*(1-j/(ns-1))*(i/(nt-1))*(1-i/(nt-1)))
-   m.object(s['sheet'][5:]+('_LOD1' if level else ''),[0,0,0])
-  peak=pivot(s['gaff'],s['peak']);m=Mesh(flat=SPAR)
+   m=Mesh(flat=CLOTH if level else None);sheet(m,grid,[-1,0,0],lambda i,j:s['camber']*16*(j/(ns-1))*(1-j/(ns-1))*(i/(nt-1))*(1-i/(nt-1)),lambda i:i%6==5)
+   m.object(s['sheet'][5:]+(f'_LOD{level}' if level else ''),[0,0,0])
+  peak=pivot(s['gaff'],s['peak'])
   a=unit(peak);e=[0,a[2],-a[1]]
-  m.loft([[[q[0]+r*math.cos(k*math.tau/8),q[1]+r*math.sin(k*math.tau/8)*e[1],q[2]+r*math.sin(k*math.tau/8)*e[2]] for k in range(8)] for q,r in [([0,0,0],.2),(peak,.12)]],'spar',smooth=True)
-  m.object(s['gaff'][5:],[0,0,0])
+  for level,n in enumerate([16,6]):
+   m=Mesh(flat=SPAR if level else None)
+   m.loft([[[q[0]+r*math.cos(k*math.tau/n),q[1]+r*math.sin(k*math.tau/n)*e[1],q[2]+r*math.sin(k*math.tau/n)*e[2]] for k in range(n)] for q,r in [([0,0,0],.2),(peak,.12)]],'spar' if level else 'white',smooth=True)
+   m.object(s['gaff'][5:]+(f'_LOD{level}' if level else ''),[0,0,0])
  else:
   t,c,h=[pivot(s['sheet'],s[k]) for k in('tack','clew','head')]
-  for level,n in enumerate([10,5]):
+  for level,n in enumerate(JIB_ROWS):
    grid=[[[t[k]+(i/n)*(h[k]-t[k])+(j/n)*(c[k]-t[k]) for k in range(3)] for j in range(n-i+1)] for i in range(n+1)]
-   m=Mesh(flat=CLOTH);pts=[];idx={}
+   m=Mesh(flat=CLOTH if level else None);pts=[];idx={}
    for i,row in enumerate(grid):
     for j,p in enumerate(row):idx[i,j]=len(pts);a,b=j/n,i/n;pts.append([p[0],p[1],p[2]-s['camber']*27*a*b*(1-a-b)])
-   tris=[(idx[i,j],idx[i,j+1],idx[i+1,j]) for i in range(n) for j in range(n-i)]+[(idx[i,j+1],idx[i+1,j+1],idx[i+1,j]) for i in range(n) for j in range(n-i-1)]
+   up=[((i,j),(i,j+1),(i+1,j)) for i in range(n) for j in range(n-i)];down=[((i,j+1),(i+1,j+1),(i+1,j)) for i in range(n) for j in range(n-i-1)]
+   tris=[tuple(idx[q] for q in tri) for tri in up+down]
    norm={}
    for a,b,cc in tris:
     nn=cross(sub(pts[b],pts[a]),sub(pts[cc],pts[a]))
     if nn[2]>0:nn=[-v for v in nn]
     for v in(a,b,cc):norm[v]=[x+y for x,y in zip(norm.get(v,[0,0,0]),nn)]
    for side in(1,-1):
-    st=m.add(pts,[[side*x for x in unit(norm[v])] for v in range(len(pts))]);m.faces(st,tris,'sailcloth',out=[0,0,-side])
-   m.object(s['sheet'][5:]+('_LOD1' if level else ''),[0,0,0])
+    st=m.add(pts,[[side*x for x in unit(norm[v])] for v in range(len(pts))])
+    if level:m.faces(st,tris,'sailcloth',out=[0,0,-side])
+    else:m.faces(st,tris,'sail',uvs=[[(q[1]/n,q[0]-tri[0][0]) for q in tri] for tri in up+down],out=[0,0,-side])
+   m.object(s['sheet'][5:]+(f'_LOD{level}' if level else ''),[0,0,0])
