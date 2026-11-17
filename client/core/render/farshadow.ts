@@ -14,7 +14,10 @@
 // - The map is a 16-bit layer of the shadow array after the cascades', stored as depth from a ceiling FAR_SPAN over the
 //   ground's floor, so a compared lookup with LEQUAL says lit where a pixel stands at or over it, filtered by the card.
 //
-// It is swept where the far city's levels are made (citymake.ts), on a worker in the browser, and here in tests and tools.
+// It is swept where the far city's levels are made (citymake.ts), on a worker in the browser, and here in tests and tools,
+// and the sky's openness (skyopen.ts) is made there from the same solid heights and the ground under them. The camera's
+// place on the grid is in the frame block whenever a lit frame has one, for the openness, and the far map is looked up
+// only where its texels a metre are positive.
 
 import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { cityTops, type CityStatics, type Gone } from "../../../shared/world/city.ts";
@@ -22,6 +25,7 @@ import { Heightfield } from "../../../shared/world/heightfield.ts";
 import { TACTICAL_CELL, farTopMetres } from "../../../shared/world/tactical.ts";
 import type { CityKinds, CityMaker } from "./citymake.ts";
 import { FRAME, type FramePacket } from "./packet.ts";
+import { SkyOpen, openMeasure, type OpenMap } from "./skyopen.ts";
 
 /** Metres a side of the cells solid heights are made in: the tops' own (shared/world/tactical.ts). */
 export const TOP_CELL = TACTICAL_CELL;
@@ -58,22 +62,24 @@ const units = (m: number): number => Math.max(0, Math.min(65535, Math.round(m / 
 
 /**
  * Writes the solid heights of `chunk`'s cells into `out`, a map's TOP_CELL cells `SIDE * chunksX` a row, in UNITs over
- * `floor`: the ground at each cell's middle, and the top `tops` gives a cell (cityTops), if any, over that.
+ * `floor`: the ground at each cell's middle, and the top `tops` gives a cell (cityTops), if any, over that; and the
+ * ground alone into `under`, where given.
  */
-export function chunkSolid(out: Uint16Array, dims: MapDims, floor: number, chunk: number, tops: Uint8Array | null, ground: Pick<Heightfield, "heightAt">): void {
+export function chunkSolid(out: Uint16Array, dims: MapDims, floor: number, chunk: number, tops: Uint8Array | null, ground: Pick<Heightfield, "heightAt">, under?: Uint16Array): void {
   const row = dims.chunksX * SIDE;
   const i0 = chunkCx(dims, chunk) * SIDE, j0 = chunkCz(dims, chunk) * SIDE;
   for (let c = 0; c < SIDE * SIDE; c++) {
     const i = i0 + (c % SIDE), j = j0 + Math.floor(c / SIDE);
     const g = ground.heightAt((i + 0.5) * TOP_CELL, (j + 0.5) * TOP_CELL);
     out[j * row + i] = units((tops && tops[c]! > 0 ? g + farTopMetres(tops[c]!) : g) - floor);
+    if (under) under[j * row + i] = units(g - floor);
   }
 }
 
-/** A map's solid heights: every chunk's, its pieces gone as `gone` says left out. */
-export function makeSolid(city: CityStatics, hf: Heightfield, gone: (chunk: number) => Gone): Uint16Array {
+/** A map's solid heights: every chunk's, its pieces gone as `gone` says left out; and its ground into `under`, where given. */
+export function makeSolid(city: CityStatics, hf: Heightfield, gone: (chunk: number) => Gone, under?: Uint16Array): Uint16Array {
   const out = new Uint16Array(city.dims.chunksX * city.dims.chunksZ * SIDE * SIDE);
-  for (let c = 0; c < chunkCount(city.dims); c++) chunkSolid(out, city.dims, hf.minY, c, city.in(c) > 0 ? cityTops(city, c, hf, gone(c)) : null, hf);
+  for (let c = 0; c < chunkCount(city.dims); c++) chunkSolid(out, city.dims, hf.minY, c, city.in(c) > 0 ? cityTops(city, c, hf, gone(c)) : null, hf, under);
   return out;
 }
 
@@ -191,13 +197,16 @@ export function farBeyondLookup(map: Uint16Array, size: number, frame: Float32Ar
 /** A sweep asked of where levels are made. */
 export interface SweepJob {
   readonly id: number;
-  /** The map's solid heights, or null to make them first from `make`. */
+  /** The map's solid heights and its ground, or null to make them first from `make`. */
   readonly solid: Uint16Array | null;
+  readonly ground: Uint16Array | null;
   readonly make: SolidJob | null;
-  /** Cells pooled a side, the layer's side, and the sun. */
+  /** Cells pooled a side, the layer's side, and the sun, or null for no map. */
   readonly k: number;
   readonly size: number;
-  readonly sun: readonly number[];
+  readonly sun: readonly number[] | null;
+  /** Whether the sky's openness is made too (skyopen.ts openMeasure). */
+  readonly open: boolean;
 }
 
 /** What a map's solid heights are made from on another thread: its statics as CityStatics holds them, which are gone, and its ground. */
@@ -216,32 +225,41 @@ export interface SolidJob {
 export interface SweepMade {
   readonly id: number;
   readonly solid: Uint16Array;
-  readonly map: Uint16Array;
-  /** How far its highest solid stands over its lowest, in metres. */
+  readonly ground: Uint16Array;
+  /** The map, or null where no sun was sent, and how far its highest solid stands over its lowest, in metres. */
+  readonly map: Uint16Array | null;
   readonly rise: number;
+  readonly open: OpenMap | null;
 }
 
 /** Every buffer of a sweep or what it made, to move it to another thread rather than copy it. */
 export function sweepBuffers(m: SweepJob | SweepMade): ArrayBuffer[] {
-  const all = "map" in m ? [m.solid, m.map] : [m.solid, m.make?.first, m.make?.kind, m.make?.yaw, m.make?.x, m.make?.y, m.make?.z, m.make?.gone, m.make?.heights];
+  const all = "map" in m ? [m.solid, m.ground, m.map, m.open?.bytes] : [m.solid, m.ground, m.make?.first, m.make?.kind, m.make?.yaw, m.make?.x, m.make?.y, m.make?.z, m.make?.gone, m.make?.heights];
   return all.flatMap((a) => (a ? [a.buffer as ArrayBuffer] : []));
+}
+
+/** What a job asks of a map's solid heights and ground, `dims` its size, on any thread. */
+function sweepOf(dims: MapDims, job: SweepJob, solid: Uint16Array, ground: Uint16Array): SweepMade {
+  const nx = dims.chunksX * SIDE, nz = dims.chunksZ * SIDE;
+  const map = job.sun ? new Uint16Array(job.size * job.size) : null;
+  const rise = job.sun ? sweep(solid, nx, nz, job.k, job.size, job.sun[0]!, job.sun[1]!, job.sun[2]!, map!) : 0;
+  return { id: job.id, solid, ground, map, rise, open: job.open ? openMeasure(solid, ground, nx, nz, job.k, TOP_CELL, UNIT) : null };
 }
 
 /** Does a sweep, on any thread: makes the solid heights first where it was sent them to make from, for a city of `kinds`. */
 export function doSweep(kinds: CityKinds, job: SweepJob): SweepMade {
   const d = kinds.dims;
-  let solid = job.solid;
-  if (!solid) {
+  let solid = job.solid, ground = job.ground;
+  if (!solid || !ground) {
     const m = job.make!;
     const { first, kind, yaw, x, y, z } = m;
     const city: CityStatics = { dims: d, first, kind, yaw, x, y, z, halfX: kinds.halfX, halfY: kinds.halfY, halfZ: kinds.halfZ, color: kinds.color, plain: kinds.plain, walked: kinds.walked, look: kinds.look, count: kind.length, in: (c: number) => first[c + 1]! - first[c]! };
     const g = kinds.ground;
     const hf = new Heightfield(d, g.cell, g.minY, g.stepY, m.heights, new Uint8Array(0));
-    solid = makeSolid(city, hf, (c) => (m.gone ? m.gone.subarray(first[c]!, first[c + 1]!) : null));
+    ground = new Uint16Array(d.chunksX * d.chunksZ * SIDE * SIDE);
+    solid = makeSolid(city, hf, (c) => (m.gone ? m.gone.subarray(first[c]!, first[c + 1]!) : null), ground);
   }
-  const map = new Uint16Array(job.size * job.size);
-  const rise = sweep(solid, d.chunksX * SIDE, d.chunksZ * SIDE, job.k, job.size, job.sun[0]!, job.sun[1]!, job.sun[2]!, map);
-  return { id: job.id, solid, map, rise };
+  return sweepOf(d, job, solid, ground);
 }
 
 /** What stands of the map's pieces, as the far city follows it (farcity.ts goneOf, goneVersion, topsOf). */
@@ -261,26 +279,30 @@ const NEAR_SCAN = 6;
 const clock = (): number => (globalThis as { performance?: { now(): number } }).performance?.now() ?? Date.now();
 
 /**
- * The far map of one map's city: made and swept where `maker` makes the far city's levels, else here, and put on the
- * card a frame's allowance of rows at a time. A map is looked up once all of it is on the card, while its sun is near
- * enough the one in the sky.
+ * The far map of one map's city, and the sky's openness over it (skyopen.ts): made and swept where `maker` makes the far
+ * city's levels, else here, and put on the card a frame's allowance of rows at a time. A map is looked up once all of
+ * it is on the card, while its sun is near enough the one in the sky.
  */
 export class FarShadow {
   /** Sweeps made, and the last one's milliseconds where it was made here. */
   readonly stats = { sweeps: 0, ms: 0 };
+  /** The sky's openness, made from the same solid heights. */
+  readonly open = new SkyOpen();
   private readonly city: CityStatics;
   private readonly hf: Heightfield;
   private readonly standing: Standing;
   private readonly maker: CityMaker | null;
   private readonly held: (chunk: number) => boolean;
-  /** The solid heights, while they are here and not away being swept; and whether they have been made. */
+  /** The solid heights and the ground, while they are here and not away being swept; and whether they have been made. */
   private solid: Uint16Array | null = null;
+  private ground: Uint16Array | null = null;
   private made = false;
   private away = false;
   private asked = 0;
-  /** goneVersion as the solid heights last took it, and the chunks to make again. */
+  /** goneVersion as the solid heights last took it, the chunks to make again, and whether the map was swept before them. */
   private readonly seen: Uint32Array;
   private readonly changed: number[] = [];
+  private stale = false;
   /** The latest map, with the sun, cell, side and rise it was made for; and the sun, cell and side of the one asked for. */
   private map: Uint16Array | null = null;
   private readonly mapSun = new Float64Array(3);
@@ -309,43 +331,52 @@ export class FarShadow {
     this.seen = new Uint32Array(chunkCount(city.dims));
   }
 
-  /** After a lost context: the layer is empty, and the latest map goes on it again. */
+  /** After a lost context: the layer and the openness's texture are empty, and the latest of each goes on the card again. */
   reset(): void {
     this.layerSize = 0;
+    this.open.reset();
   }
 
   /**
-   * Each frame, with the unit vector toward the sun while it casts, else null: makes the map again where it is due, puts
-   * rows of it on the card from `budget`'s allowance, and says in the frame block where the camera (cx, cy, cz) is on it,
-   * or that there is none to look up. A frame with no shadow array on the card, as low poly's, leaves the layer empty.
+   * Each frame, with the unit vector toward the sun while it casts, else null, and the scene's clock in milliseconds:
+   * makes the map and the openness again where they are due, puts rows of them on the card from `budget`'s allowance,
+   * and says in the frame block where the camera (cx, cy, cz) is on their grid, and whether the map is to be looked up.
+   * A frame with no shadow array on the card, as low poly's, leaves the layer empty; one with no shadow maps at all
+   * looks nothing up.
    */
-  update(p: FramePacket, budget: { readonly left: number; spend(bytes: number): void }, cx: number, cy: number, cz: number, sun: ArrayLike<number> | null): void {
+  update(p: FramePacket, budget: { readonly left: number; spend(bytes: number): void }, cx: number, cy: number, cz: number, sun: ArrayLike<number> | null, now = 0): void {
     const f = p.frame;
     f[FRAME.farScale] = 0;
     const { cascades, size } = p.tier.shadows;
-    if (!p.lit || cascades <= 0 || size <= 0) {
+    if (!p.lit || size <= 0) {
       this.layerSize = 0;
+      this.open.upload(p, budget, 0);
       return;
     }
-    if (size !== this.layerSize || cascades !== this.layerAt) {
+    const cell = farCell(this.city.dims, size);
+    if (cascades <= 0) this.layerSize = 0;
+    else if (size !== this.layerSize || cascades !== this.layerAt) {
       this.layerSize = size;
       this.layerAt = cascades;
       this.row = 0;
       this.onCard = false;
     }
-    if (!sun) return;
-    const cell = farCell(this.city.dims, size);
+    const casts = cascades > 0 && sun !== null;
     this.take();
     this.follow();
-    if (!this.away && (!this.map || this.changed.length > 0 || this.mapCell !== cell || this.mapSize !== size || tipMoves(this.mapSun, sun, this.mapRise) >= REMAKE * cell)) this.ask(cell, size, sun);
+    const swept = casts && (!this.map || this.stale || this.mapCell !== cell || this.mapSize !== size || tipMoves(this.mapSun, sun, this.mapRise) >= REMAKE * cell);
+    const open = this.open.due(cell, now);
+    if (!this.away && (swept || open)) this.ask(cell, size, swept ? sun : null, open, now);
     this.take();
-    this.upload(p, budget);
-    if (!this.onCard || tipMoves(this.cardSun, sun, this.cardRise) > STALE * this.cardCell) return;
-    f[FRAME.farAt] = cx / this.cardCell;
-    f[FRAME.farAt + 1] = cz / this.cardCell;
-    f[FRAME.farScale] = 1 / this.cardCell;
+    if (cascades > 0) this.upload(p, budget);
+    this.open.upload(p, budget, cell);
+    const looked = casts && this.onCard && tipMoves(this.cardSun, sun, this.cardRise) <= STALE * this.cardCell;
+    const at = looked ? this.cardCell : cell;
+    f[FRAME.farAt] = cx / at;
+    f[FRAME.farAt + 1] = cz / at;
+    f[FRAME.farScale] = (looked ? 1 : -1) / at;
     f[FRAME.farDepth] = (this.hf.minY + FAR_SPAN - cy) / FAR_SPAN;
-    this.near(f, cx, cz);
+    if (looked) this.near(f, cx, cz);
   }
 
   /** Writes the box of the chunks the near store holds whole about the camera, camera-relative, or one with none in it. */
@@ -369,7 +400,10 @@ export class FarShadow {
     f[FRAME.nearToZ] = none ? -1 : (j1 + 1) * CHUNK_SIZE - cz;
   }
 
-  /** Notes the chunks a piece of which has gone since they were last made, and makes them again while the solid heights are here. */
+  /**
+   * Notes the chunks a piece of which has gone since they were last made, and makes them again once the solid heights
+   * are here, after which the map and the openness are due again.
+   */
   private follow(): void {
     const version = this.standing.goneVersion;
     for (let c = 0; c < version.length; c++) {
@@ -378,31 +412,40 @@ export class FarShadow {
       if (this.made) this.changed.push(c);
     }
     const solid = this.solid;
-    if (!solid) return;
+    if (!solid || this.changed.length === 0) return;
     for (const c of this.changed) chunkSolid(solid, this.city.dims, this.hf.minY, c, this.standing.topsOf(c), this.hf);
+    this.changed.length = 0;
+    this.stale = true;
+    this.open.changed();
   }
 
-  private ask(cell: number, size: number, sun: ArrayLike<number>): void {
-    this.changed.length = 0;
+  /** Asks for the map for `sun` where it is not null, and for the openness with `open`, where levels are made, else here. */
+  private ask(cell: number, size: number, sun: ArrayLike<number> | null, open: boolean, now: number): void {
     this.away = true;
-    this.askedSun[0] = sun[0]!;
-    this.askedSun[1] = sun[1]!;
-    this.askedSun[2] = sun[2]!;
-    this.askedCell = cell;
-    this.askedSize = size;
-    const job: SweepJob = { id: ++this.asked, solid: this.made ? this.solid : null, make: this.made ? null : this.solidJob(), k: cell / TOP_CELL, size, sun: Array.from(sun) };
-    this.solid = null;
+    if (sun) {
+      this.stale = false;
+      this.askedSun[0] = sun[0]!;
+      this.askedSun[1] = sun[1]!;
+      this.askedSun[2] = sun[2]!;
+      this.askedCell = cell;
+      this.askedSize = size;
+    }
+    if (open) this.open.asked(cell, now);
+    const job: SweepJob = { id: ++this.asked, solid: this.made ? this.solid : null, ground: this.made ? this.ground : null, make: this.made ? null : this.solidJob(), k: cell / TOP_CELL, size, sun: sun ? Array.from(sun) : null, open };
+    this.solid = this.ground = null;
     this.made = true;
     if (this.maker) {
       this.maker.sweep!(job);
       return;
     }
     const start = clock();
-    const solid = job.solid ?? makeSolid(this.city, this.hf, (c) => this.standing.goneOf(c));
-    const map = new Uint16Array(size * size);
-    const rise = sweep(solid, this.city.dims.chunksX * SIDE, this.city.dims.chunksZ * SIDE, job.k, size, sun[0]!, sun[1]!, sun[2]!, map);
-    this.stats.ms = clock() - start;
-    this.got({ id: job.id, solid, map, rise });
+    const ground = job.ground ?? new Uint16Array(this.city.dims.chunksX * this.city.dims.chunksZ * SIDE * SIDE);
+    const solid = job.solid ?? makeSolid(this.city, this.hf, (c) => this.standing.goneOf(c), ground);
+    const made = sweepOf(this.city.dims, { ...job, open: false }, solid, ground);
+    const swept = clock();
+    const measure = open ? openMeasure(solid, ground, this.city.dims.chunksX * SIDE, this.city.dims.chunksZ * SIDE, job.k, TOP_CELL, UNIT) : null;
+    this.stats.ms = swept - start;
+    this.got({ ...made, open: measure }, clock() - swept);
   }
 
   /** What the solid heights are made from, copied to go to another thread: here they are made from the city as it is. */
@@ -422,10 +465,14 @@ export class FarShadow {
     if (made) this.got(made);
   }
 
-  private got(made: SweepMade): void {
+  /** Takes what a job made, `ms` the openness's milliseconds where it was made here. */
+  private got(made: SweepMade, ms = 0): void {
     this.solid = made.solid;
+    this.ground = made.ground;
     this.away = false;
     if (made.id !== this.asked) return;
+    if (made.open) this.open.got(made.open, ms);
+    if (!made.map) return;
     this.map = made.map;
     this.mapSun.set(this.askedSun);
     this.mapCell = this.askedCell;

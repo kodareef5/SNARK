@@ -509,7 +509,7 @@ export class Scene {
   private readonly farBounds: { center: readonly number[]; half: readonly number[] } | undefined;
   /** Water on its own surfaces apart from the sea, and the sea round those whose beds go under it (lakes.ts), given the far mesh. */
   private readonly lakes: Lakes | null;
-  /** Sun shadows: the cascades fitted this frame, and past them the far map of the city's outline, with the far city. */
+  /** Sun shadows: the cascades fitted this frame, and past them the far map of the city's outline, with the far city, which makes the sky's openness too. */
   readonly cascades = new Cascades();
   farShadow: FarShadow | null = null;
   /** Whether anything casts this frame, how far the true sun climbs (its unit vector's y), and frames fitted, for a cascade drawn every other frame. */
@@ -770,7 +770,7 @@ export class Scene {
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
     if (this.city ?? this.startCity()) this.farCity(cam);
-    this.farShadow?.update(p, this.assets.residency, cam.x, cam.y, cam.z, p.cascadeCount > 0 ? this.sunAt : null);
+    this.farShadow?.update(p, this.assets.residency, cam.x, cam.y, cam.z, p.cascadeCount > 0 ? this.sunAt : null, this.now);
     if (this.far) this.farBlocks(cam);
     if (this.nodesFar) this.farNodes(cam);
     if (this.casting) {
