@@ -15,16 +15,17 @@ import { partsFolder, partsOf, type PartKind } from "../../shared/world/mapfile.
 export const LEVELS = { everyday: { brotli: 9, gzip: 6 }, release: { brotli: 11, gzip: 9 } } as const;
 
 /**
- * Brotli bytes a part may be, by its kind: there to catch a mistake, with room over the most the cities measure (an everyday
- * build's, 2026-11-17: Miami's head 14 KB, its landmarks' definitions 1.5 MB, an overview 0.41 MB, a sector's ground 176 KB
- * and its statics 169 KB). The budgets hold a release build's copies. An everyday build's are larger and are held to the
- * same, so a map that passes one passes as a release.
+ * Brotli bytes a part may be, by its kind: there to catch a mistake, with room over the most the cities measure (release
+ * builds of 2026-11-17: Miami's head 12 KB and its landmarks' definitions 1.29 MB; an overview 0.56 MB, a sector's ground
+ * 220 KB and its statics 220 KB, Los Angeles's). The budgets hold a release build's copies. An everyday build's are 16 to
+ * 20% larger and are held to the same, so a map that passes one passes as a release.
  */
 export const PART_BUDGETS: Readonly<Record<PartKind | "head", number>> = { head: 1 << 20, land: 4 << 20, overview: 2 << 20, ground: 1 << 20, statics: 1 << 20 };
 /**
  * Brotli bytes of the heaviest first frame on a map: its head, its landmarks' definitions, its heaviest overview, and the
- * ground and statics of the four sectors meeting at the heaviest corner. A player waits for no more wherever it stands:
- * 3.1 MB on Miami (1.3 s at 20 Mbit/s, the phone link the asset bench takes).
+ * ground and statics of the four sectors meeting at the heaviest corner. A player waits for no more wherever it stands once
+ * a client fetches only what it is near: 2.70 MB on Miami and 2.01 on Los Angeles (1.1 and 0.8 s at 20 Mbit/s, the phone
+ * link the asset bench takes).
  */
 export const FIRST_FRAME_BUDGET = 8 << 20;
 
