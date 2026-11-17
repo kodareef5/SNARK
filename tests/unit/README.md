@@ -10,6 +10,7 @@
 | `layers.test.ts` | Ways that climb and swim: up stairs onto a slab, a stair core of three storeys and down again rather than falling, the pool swum or waded round, a goal inside a pillar |
 | `bodies.test.ts` | The grid of awake bodies that creatures search for prey |
 | `mapfile.test.ts`, `maplayers.test.ts` | A map through its file and back, every height, tint, static in its slot, node slot and water square; each part read alone given its head; a part damaged or another's refused with its name, and a damaged or unplayable map with its reason; a map widened keeping the parts it did not reach; a folder of layers built into a map and unpacked again |
+| `staged.test.ts` | A client's ground as it comes in parts: every sample its overview's until its sector comes, in any order, then the map's own; which chunks hold their own; what is made of the ground made again where it changed, the window within the frame's allowance, until the picture is that of the map held whole |
 | `character.test.ts`, `swim.test.ts` | Movement rules and the anti-clipping fuzz tests, on land and in water |
 | `sim.test.ts`, `items.test.ts` | Deadlines, lazy quantities, stat points, inheritance statistics; inventories |
 | `weapon.test.ts`, `anim.test.ts`, `creature.test.ts` | The action step; skeletons, clips, poses and hit zones for survivors and for creatures that came as models |

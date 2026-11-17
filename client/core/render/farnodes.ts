@@ -206,6 +206,8 @@ export class FarNodes {
   private readonly tiles = new Map<number, Tile>();
   private seenNodes = 0;
   private seenCells = 0;
+  /** The ground's changes taken in. */
+  private seenGround: number;
   /** The map's statics as last seen, and the far feed's top bytes their pieces make in each chunk worked out so far. */
   private city: CityStatics | null = null;
   private readonly mapCells = new Map<number, Uint8Array>();
@@ -224,6 +226,7 @@ export class FarNodes {
     this.cells = cells;
     this.dims = dims;
     this.looks = looks;
+    this.seenGround = source.ground?.changes.length ?? 0;
     this.forms = nodeForms(reg);
     this.perChunk = source.nodes.perChunk;
     this.tilesX = Math.ceil(dims.chunksX / FAR_TILE);
@@ -357,6 +360,18 @@ export class FarNodes {
       this.city = city;
       this.mapCells.clear();
       for (const tile of this.tiles.values()) tile.dirty = true;
+    }
+    // Ground that came: its nodes are worked out again, and those a chunk past it, whose footing may reach across.
+    const ground = this.source.ground?.changes ?? [];
+    for (; this.seenGround < ground.length; this.seenGround += 4) {
+      const [cx0, cz0, cx1, cz1] = [Math.max(0, ground[this.seenGround]! - 1), Math.max(0, ground[this.seenGround + 1]! - 1), Math.min(this.dims.chunksX, ground[this.seenGround + 2]! + 1), Math.min(this.dims.chunksZ, ground[this.seenGround + 3]! + 1)];
+      for (let cz = cz0; cz < cz1; cz++) for (let cx = cx0; cx < cx1; cx++) this.mapCells.delete(cz * this.dims.chunksX + cx);
+      for (let tz = Math.floor(cz0 / FAR_TILE); tz * FAR_TILE < cz1; tz++) {
+        for (let tx = Math.floor(cx0 / FAR_TILE); tx * FAR_TILE < cx1; tx++) {
+          const tile = this.tiles.get(tz * this.tilesX + tx);
+          if (tile) [tile.dirty, tile.spots] = [true, null];
+        }
+      }
     }
     const cells = this.cells;
     if (cells && cells.version !== this.seenCells) {
