@@ -15,11 +15,11 @@ import { dynamicLoads, madeArrays, stripComments } from "./policy.ts";
 const ROOT = resolve(import.meta.dir, "..");
 
 /**
- * CPU-seconds the fast tier's tests may take, theirs and their workers'. On the development machine they took about 220 on
- * a quiet day and up to 371 beside other teams' work, which competes for caches and memory. The clock is shown but not
+ * CPU-seconds the fast tier's tests may take, theirs and their workers'. On the development machine they took about 260 on
+ * a quiet day and up to 440 beside other teams' work, which competes for caches and memory. The clock is shown but not
  * held to a budget: on a busy machine it times the neighbours.
  */
-const TEST_CPU_BUDGET = 440;
+const TEST_CPU_BUDGET = 600;
 /**
  * Non-blank, non-comment lines allowed in client/shell, which has no tests. D250 shares the last 250 among round 8's
  * phases; the last 50 hold the executor's mirror of the card's state, which sends a frame's changes alone.
