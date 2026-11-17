@@ -676,9 +676,9 @@ export class FarCity {
       this.seenShape[c] = -1;
       this.whole.delete(c);
     }
-    const tables = near?.chunks;
-    for (let c = 0; tables && c < tables.length; c++) {
-      const table = tables[c];
+    // The chunks the near store has a table for, not every chunk of the map.
+    for (const c of near?.held ?? []) {
+      const table = near!.chunks[c];
       if (!table || table.shape === this.seenShape[c] || city.in(c) === 0 || !this.source.complete(c)) continue;
       this.seenShape[c] = table.shape;
       this.whole.add(c);
