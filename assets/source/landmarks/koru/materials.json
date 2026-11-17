@@ -22,6 +22,8 @@
     "slate": {"rect": [0, 1664, 128, 128], "rgb": [99, 105, 108], "roughness": 0.7, "metal": 0.12},
     "ceiling": {"rect": [128, 1664, 128, 128], "rgb": [233, 230, 219], "roughness": 0.7, "metal": 0},
     "chrome": {"rect": [256, 1664, 128, 128], "rgb": [196, 201, 204], "roughness": 0.18, "metal": 0.95},
+    "wire": {"rect": [768, 1664, 128, 128], "rgb": [168, 174, 178], "roughness": 0.4, "metal": 0.6},
+    "wire_far": {"rect": [896, 1664, 128, 128], "rgb": [202, 206, 210], "roughness": 0.35, "metal": 0.8},
     "port": {"rect": [384, 1664, 128, 128], "rgb": [118, 132, 140], "roughness": 0.1, "metal": 0.7},
     "sail": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "sheet": 0.7},
     "batten": {"picture": "sails", "rect": [0, 256, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "sheet": 0.7}

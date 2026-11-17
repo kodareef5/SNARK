@@ -15,6 +15,8 @@ for w in D['windows']:WINDOWS.setdefault(w['module'],[]).append(w)
 CLOTH={'sail':FINISH['sail']['rgb']};SPAR={'white':FINISH['white']['rgb']}
 # The first level drawn flat, the stand-in level, and the sides round a mast or the bowsprit at each level.
 FLAT=2;STAND_IN=4;SIDES=[24,12,8,6,4]
+# A wire's radius on levels 0, 1 and 2: on level 0 the least, as on the rest.
+RIG=[.03,.09,.2]
 
 def worldbox(b,o):return ([o[k]+b['at'][k]-b['half'][k] for k in range(3)],[o[k]+b['at'][k]+b['half'][k] for k in range(3)])
 def worldhull(h,o):return [[p[k]+o[k] for k in range(3)] for p in h['points']]
@@ -34,10 +36,9 @@ def slope(z):
  for i,(a,b) in enumerate(zip(ST,ST[1:])):
   if a['z']-1e-7<=z<=b['z']+1e-7:return SLOPE[i]+(z-a['z'])/(b['z']-a['z'])*(SLOPE[i+1]-SLOPE[i])
  return SLOPE[0] if z<ST[0]['z'] else SLOPE[-1]
-# The layout's stem and stern are plumb; drawn, the hull below the sheer is sheared back from them into a raked clipper
-# bow and an overhanging canoe stern, as photographed. Each is (where it begins, the end, metres at the waterline, how
-# the shear grows downward). Decks, rails and collision keep the layout's ends.
-RAKES=[(40,54.5,5.0,1.4),(-42,-54.5,3.0,1.3)]
+# Below the sheer the hull is sheared back from the plumb stem and stern into a raked clipper bow and an overhanging
+# canoe stern, as the layout's hull is (author_layout.py `rakes`). Decks and rails keep the layout's ends.
+RAKES=D['rakes']
 def rake(z,y):
  d=0
  for z0,z1,r,p in RAKES:
@@ -439,8 +440,15 @@ def smallparts(m,mod):
   for xx,tag in [(-.12,'green'),(.12,'red')]:m.tube([[x+xx,y+.90,z-.10],[x+xx,y+.92,z-.10]],.055,tag,8)
   plaque(m,[x-.2,y+.68,z-.262],[x+.2,y+.84,z-.25],'SAILS');return
  if cat=='rigging':
-  # Every stay and shroud is drawn on the levels with the atlas and none on the flat ones; dark against the sky, as photographed.
-  if L<FLAT:m.tube(a['ends'],a['radius'],'slate',6 if L==0 else 4)
+  # The rig thins and pales as it goes off, and is gone by the third level, with no step: on each level a wire is about
+  # two thirds of a pixel across where that level is last drawn on high, which no wire below a pixel's width is at four
+  # samples a pixel without breaking into dashes, and as much paler as it is wider than the wire, so it shows about as
+  # much as the wire would. Near it is dark against the sky, as photographed. The diamonds go first, then the shrouds,
+  # toppings and interstays; the forestays and the mizzen backstays, the long diagonals of the schooner, go last.
+  heavy=any(k in mod['id'] for k in('forestay','backstay'))
+  if L==0:m.tube(a['ends'],max(a['radius'],RIG[0]),'slate',6)
+  elif L==1 and 'diamond' not in mod['id']:m.tube(a['ends'],RIG[1],'wire',4)
+  elif L==2 and heavy:m.tube(a['ends'],RIG[2],'wire_far',4)
   return
  if cat=='spreader':
   m.tube(a['ends'],a['radius'],'white',[8,4,4,3,3][L])

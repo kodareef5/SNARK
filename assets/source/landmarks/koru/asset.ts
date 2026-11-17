@@ -34,7 +34,7 @@ export default {
   materials: {
     surfaces: pictures("surfaces"),
     // Sailcloth passes light: from the side the sun is not on, a sail shows most of what its other side takes.
-    sails: pictures("sails", { sheet: 0.7 }),
+    sails: pictures("sails", { sheet: 0.7, tops: { normal: 128 } }),
     // The plaques and the name, twice as sharp as the atlas held them, so that medium's 1024 shows them as high did.
     signs: pictures("signs", { tops: { normal: 1024 } }),
   },

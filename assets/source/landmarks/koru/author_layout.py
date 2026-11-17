@@ -47,20 +47,32 @@ def station(z):
   if a[0]<=z<=b[0]:
    t=(z-a[0])/(b[0]-a[0]);return [z]+[a[k]+(b[k]-a[k])*t for k in range(1,4)]
  raise ValueError(z)
+# Below the sheer the hull is sheared back from the plumb stem and stern into a raked clipper bow and an overhanging
+# canoe stern, as photographed: each is (where it begins, the end, metres at the waterline, how the shear grows
+# downward). The hull is solid where it is drawn (model.py shears its art by the same); decks and rails keep the ends.
+RAKES=[(40,54.5,5.0,1.4),(-42,-54.5,3.0,1.3)]
+D['rakes']=[list(r) for r in RAKES]
+def rake(z,y):
+ d=0
+ for z0,z1,r,p in RAKES:
+  t=min(1,(z-z0)/(z1-z0))
+  if t>0:d+=(r if z1<0 else -r)*t*t*(3-2*t)*max(0,1-y/station(z)[3])**p
+ return d
+def raked(points):return [[x,y,z+rake(z,y)] for x,y,z in points]
 zs=sorted(set([p[0] for p in st]+[-25.2,-22.8]))
 for i,(za,zb) in enumerate(zip(zs,zs[1:])):
  a,b=station(za),station(zb);hs=[]
  # Below water remains solid; every walkable floor is above this closed underwater volume.
  lower=[]
  for z,w,k,s in (a,b):lower.extend([[0,k,z],[-w*.62,min(0,k*.45),z],[w*.62,min(0,k*.45),z],[-w*.9,0,z],[w*.9,0,z]])
- hs.append(lower)
+ hs.append(raked(lower))
  for sign in (-1,1):
   side=[]
   for z,w,k,s in(a,b):
    top=min(s,3.75) if sign==1 and za>=-25.2 and zb<=-22.8 else s
    outer=w*.9+(w-w*.9)*top/max(s,.01);inner=max(.015,outer-.24);bottom=max(.01,w*.9-.24)
    side.extend([[sign*w*.9,0,z],[sign*outer,top,z],[sign*inner,top,z],[sign*bottom,0,z]])
-  hs.append(side)
+  hs.append(raked(side))
  add(f'hull_{i:02}','hull',hulls=hs,meta={'stations':[a,b],'gatePort':za>=-25.2 and zb<=-22.8},color=83)
 # The room-circulation core is offset only at stairwells/mast trunks; open lobbies provide generous bypasses.
 cores=[('grand',0,0,0,3),('aft',-3.6,-24,0,3),('forward',-2.4,33.2,0,2)]
