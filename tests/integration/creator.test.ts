@@ -24,6 +24,7 @@ import { CMD_CREATE, PROTOCOL_VERSION, RESULT_DENIED, RESULT_INVALID, SESSION_AL
 import { EYE_BASE, HAIR_BASE, SKIN_BASE } from "../../shared/pack/palette.ts";
 import { Rng } from "../../shared/rng.ts";
 import { CH_RELIABLE } from "../../shared/net/transport.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { Harness, testKey } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 
@@ -61,7 +62,7 @@ function fits(f: UiFrame, where: string): void {
   }
 }
 
-test("a new name arrives in the creator with no body; it makes a look, and the survivor exists as made", () => {
+artTest("a new name arrives in the creator with no body; it makes a look, and the survivor exists as made", () => {
   const h = new Harness();
   const pack = corePack();
   const app = new App(h.join("ada", { latencyMs: 20 }, { manual: true, look: null }), h.reg, pack);

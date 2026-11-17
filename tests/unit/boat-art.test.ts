@@ -1,16 +1,17 @@
 // Native production packs, actual moving hardware and clear first-person apertures at every level. The fit of real
 // survivors at the seats is boat-fit.slow.test.ts.
-import { expect, test } from "bun:test";
+import { expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { BOAT_ART as B } from "../../content/vehicles/boat-art.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { bothWays, measureSurface } from "../../tools/art/check.ts";
 import { unpackMeshes, type SourceLod } from "../../tools/pack/write.ts";
+import { fromArt, test } from "../fixtures/needs-art.ts";
 
-const assets = ["boat", "boat_rescue", "boat_police", "boat_wreck"].map(id => {
+const assets = fromArt(() => ["boat", "boat_rescue", "boat_police", "boat_wreck"].map(id => {
   const pack = parsePack(new Uint8Array(readFileSync(new URL(`../../assets/source/core/vehicles/${id}/${id}.snpk`, import.meta.url))));
   return { id: `core:${id}`, pack, mesh: unpackMeshes(pack)[0]!, rig: pack.header.rigs[0]! };
-});
+}));
 
 test("all boat liveries keep the measured seats, articulated engine sockets and propeller parent", () => {
   for (const { id, rig } of assets) {

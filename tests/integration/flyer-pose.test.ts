@@ -11,6 +11,7 @@ import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { MODE_FLYER } from "../../shared/sim/character.ts";
 import { flyCourse, mounted, type Mounted } from "../fixtures/flyer/course.ts";
 import { FLYER, clipTurns, turnBetween } from "../fixtures/flyer/flyer.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 
 /** The server's pose state and cues of `e` after each tick it steps, by tick. */
 function watch(h: Mounted["h"], e: number): Map<number, [number, number]> {
@@ -23,7 +24,7 @@ function watch(h: Mounted["h"], e: number): Map<number, [number, number]> {
   return seen;
 }
 
-test("through a whole ridden flight other clients are sent the flyer's pose state as the server poses it, and draw it with their gaits smoothly, settling on the server's pose to the bit", () => {
+artTest("through a whole ridden flight other clients are sent the flyer's pose state as the server poses it, and draw it with their gaits smoothly, settling on the server's pose to the bit", () => {
   const m = mounted(60, ["bea", "cy"]);
   const { h, e } = m;
   const anim = h.world.anims[h.reg.index.get(FLYER)!]!;

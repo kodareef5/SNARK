@@ -6,6 +6,7 @@ import { shapeHalf, type Def, type ShapeBox } from "../../shared/content/defs.ts
 import { compilePacks } from "../../shared/content/packs.ts";
 import { fillSlot, slotAddress, slotsOf } from "../../shared/content/slots.ts";
 import { grayboxMeshes } from "../../tools/pack/build.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
 
 const pack = corePack();
@@ -13,7 +14,7 @@ const has = (asset: Slot["asset"], id: string): boolean => (asset === "mesh" ? p
 const uses = slotsOf(CORE_CONTENT);
 const at = (address: string) => uses.find((u) => slotAddress(u) === address);
 
-test("every asset the core content must have is in the pack, its own or the one that stands in for it", () => {
+artTest("every asset the core content must have is in the pack, its own or the one that stands in for it", () => {
   const must = uses.filter((u) => u.need === "must");
   expect(must.length).toBeGreaterThan(120);
   expect(must.filter((u) => fillSlot(u, has).id === "").map(slotAddress)).toEqual([]);

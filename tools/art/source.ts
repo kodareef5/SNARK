@@ -10,6 +10,12 @@ import { unpackMeshes, type SourceDetails, type SourceMesh } from "../pack/write
 
 export const SOURCE = fileURLToPath(new URL("../../assets/source", import.meta.url));
 
+/**
+ * Whether the art is here: whether there is an assets folder at all. Every checkout of the repository has one, so art
+ * missing from it fails what needs it there; the code as shown outside (tools/source.ts) has none, and skips that.
+ */
+export const ART = existsSync(fileURLToPath(new URL("../../assets", import.meta.url)));
+
 /** Every file under `dir` whose name ends in `ending`, in name order, so every machine finds them in the same order. */
 export function filesUnder(dir: string, ending: string, out: string[] = []): string[] {
   if (!existsSync(dir)) return out;

@@ -4,6 +4,7 @@ import { expect, test } from "bun:test";
 import { V_WATER } from "../../shared/sim/vitals.ts";
 import { play } from "../fixtures/agent.ts";
 import { flatGround } from "../fixtures/arena.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 
 test("a bow kills a dodo from range, a crossbow's tranquilizer arrows knock out a raptor, and armour is worn", async () => {
   const p = play();
@@ -35,7 +36,7 @@ test("a bow kills a dodo from range, a crossbow's tranquilizer arrows knock out 
   expect((await p.call("status")).worn).toMatchObject({ torso: "hide_shirt", legs: "hide_pants" });
 });
 
-test("a pteranodon, which shows no knock-out to those who do not look at it, is brought down from range, fed and tamed", async () => {
+artTest("a pteranodon, which shows no knock-out to those who do not look at it, is brought down from range, fed and tamed", async () => {
   const p = play();
   const g = flatGround(p.h, 50, 50);
   for (const line of ["enablecheats", `tp ${g.x + 25} ${g.z + 5}`, "god", "kit bow", "give meat 2", "setting TamingSpeedMultiplier 60"]) await p.typed(line);

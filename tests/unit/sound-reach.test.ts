@@ -1,10 +1,11 @@
 // The client's sound file holds the sounds a cue the game fires can reach, and the sound board's loose file the rest;
 // and which occasions the game fires no sheet answers.
 
-import { expect, test } from "bun:test";
+import { expect } from "bun:test";
 import { coverage } from "../../client/core/sound/coverage.ts";
 import { soundsHeard } from "../../shared/sound/reach.ts";
 import { findSheets } from "../../tools/pack/sound.ts";
+import { test } from "../fixtures/needs-art.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const ids = findSheets().flatMap((s) => Object.keys(s.sheet.sounds).map((name) => `${s.owner}/sound/${name}`));

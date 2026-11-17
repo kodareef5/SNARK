@@ -21,13 +21,14 @@ import type { ModuleDef } from "../../server/api/module.ts";
 import { EVENTS, eventFaults, eventIndex } from "../../server/events/catalog.ts";
 import { EVENTS_PAGE, eventsPage } from "../../tools/events.ts";
 import { listener } from "../fixtures/module.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const SAY = eventIndex("chat.say");
 const SAID = eventIndex("chat.said");
 const quiet = { log: () => {} };
 
-test("the event table is sound, its page is current, and an event said to be raised is raised where it says", () => {
+artTest("the event table is sound, its page is current, and an event said to be raised is raised where it says", () => {
   expect(eventFaults()).toEqual([]);
   expect(readFileSync(EVENTS_PAGE, "utf8")).toBe(eventsPage());
   for (const r of EVENTS.filter((e) => e.status === "wired")) {

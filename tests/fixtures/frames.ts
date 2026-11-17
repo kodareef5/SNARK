@@ -68,11 +68,11 @@ export function run(minutes: number, at: (t: number, level: number) => Frame, o:
 }
 
 /**
- * The iPhone's ungoverned soaks on lit tiers that ran their minutes, from the kept reports (planning/reference/device-reports,
- * D349): what each turned through and each minute's median frame, a minute that held the display's rate read as just inside it.
+ * The iPhone's ungoverned soaks on lit tiers that ran their minutes, from its kept reports (D349) in device-reports beside
+ * this: what each turned through and each minute's median frame, a minute that held the display's rate read as just inside it.
  */
 export function phoneSoaks(): { name: string; tier: string; load: SoakReport["load"]; wood: boolean; points: number[] }[] {
-  const dir = join(import.meta.dir, "../../planning/reference/device-reports");
+  const dir = join(import.meta.dir, "device-reports");
   return readdirSync(dir).flatMap((file) => {
     const r = JSON.parse(readFileSync(join(dir, file), "utf8")) as DeviceReport;
     if (!r.soak || !r.done || r.mode === "governed" || r.soak.minutes.length < r.soak.minutesWanted || !r.soak.cascades) return [];

@@ -13,6 +13,7 @@ import { handsAt } from "../../shared/anim/hold.ts";
 import { HUMAN } from "../../shared/anim/human.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { PROVING_POOL } from "../../shared/world/proving.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { STANCE_AGGRESSIVE } from "../../server/behavior.ts";
@@ -480,7 +481,7 @@ test("her leaving, wading into deep water and the server stopping set it down to
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("in the whole client: she sees it at her palms as she runs with it, from her prediction; the prompt says what the keys do, and the button that would strike throws it", () => {
+artTest("in the whole client: she sees it at her palms as she runs with it, from her prediction; the prompt says what the keys do, and the button that would strike throws it", () => {
   const h = new Harness({}, 1, 60, { dev: true });
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
   let packet = null as ReturnType<App["frame"]>;

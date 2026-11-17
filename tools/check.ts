@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSy
 import { cpus, loadavg, tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { SLOW_TEST, TEST_WATCH, TEST_WORKERS, hungAfter } from "../tests/fixtures/load.ts";
+import { ART } from "./art/source.ts";
 import { dynamicLoads, madeArrays, stripComments } from "./policy.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -275,6 +276,9 @@ function keepTimes(file: string, junit: string): void {
 }
 
 const testFiles = walk(join(ROOT, "tests")).filter((f) => f.endsWith(".test.ts"));
+/** Tests passed, and those skipped in the files that mark tests as needing the art (tests/fixtures/needs-art.ts). */
+const tally = { passed: 0, unart: 0 };
+const needsArt = new Set(ART ? [] : testFiles.filter((f) => readFileSync(f, "utf8").includes("fixtures/needs-art.ts")).map(repoPath));
 
 /** Each test file's CPU-seconds, from what the preload wrote in `dir`. */
 function fileCpu(dir: string): [string, number][] {
@@ -341,8 +345,11 @@ async function checkTests(tier: Tier, dir: string, env: Record<string, string>):
     fail(`${tier} tests failed:\n${r.out.trim()}`);
     return;
   }
-  keepTimes(times, readFileSync(report, "utf8"));
+  const junit = readFileSync(report, "utf8");
+  keepTimes(times, junit);
   const counts = r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim());
+  tally.passed += parseInt(counts.find((c) => c.endsWith(" pass")) ?? "0");
+  for (const m of junit.matchAll(/<testsuite name="([^"]+)" file="\1"[^>]*? skipped="(\d+)"/g)) if (needsArt.has(m[1]!)) tally.unart += Number(m[2]);
   console.log(`  ${counts.join(", ")}, ${r.cpu.toFixed(0)} CPU-seconds${tier === "fast" ? ` of ${TEST_CPU_BUDGET}` : ""}`);
   // CPU-seconds move far less with the machine's load than the clock does, so a slow change shows on a busy day too.
   if (tier === "fast" && r.cpu > TEST_CPU_BUDGET) {
@@ -375,8 +382,10 @@ try {
 }
 
 const seconds = (performance.now() - t0) / 1000;
+// In the repository every test runs. In the code as shown outside, those that need the art are skipped, and said to be.
+const unart = ART ? "" : `\n${tally.passed.toLocaleString("en-US")} tests passed. ${tally.unart.toLocaleString("en-US")} were skipped: they need the art or the planning documents, which are not in this repository.`;
 if (problems.length > 0) {
-  console.error(`\nFAILED (${problems.length})\n` + problems.map((p) => " - " + p).join("\n"));
+  console.error(`\nFAILED (${problems.length})\n` + problems.map((p) => " - " + p).join("\n") + unart);
   process.exit(1);
 }
-console.log(`\nOK in ${seconds.toFixed(2)}s, at load ${loadavg()[0]!.toFixed(0)} on ${cpus().length} cores`);
+console.log(`\nOK in ${seconds.toFixed(2)}s, at load ${loadavg()[0]!.toFixed(0)} on ${cpus().length} cores${unart}`);

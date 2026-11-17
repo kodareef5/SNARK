@@ -3,7 +3,9 @@
 Run with `bun run check`, which leaves out the slow tier (files named
 `*.slow.test.ts`); `bun run slow` runs those, and `bun test` alone runs both.
 All of them run in Bun; none opens a browser. See the
-[testing policy](../planning/quality/testing.md).
+[testing policy](../planning/quality/testing.md). Where the art (`assets/`) is not
+here, as in the code shown outside, a test that needs it is skipped and the check
+says how many ([needs-art.ts](fixtures/needs-art.ts)); in the repository every one runs.
 
 | Directory | Purpose |
 | --- | --- |

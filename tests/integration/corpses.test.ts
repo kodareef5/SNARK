@@ -28,6 +28,7 @@ import { SWING_TICKS } from "../../shared/sim/weapon.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { DROPS, OP_BLOW, OP_LAY } from "../fixtures/corpse-child.ts";
 import { swing, takeInHand } from "../fixtures/gather.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -82,7 +83,7 @@ function face(h: Harness, s: ClientSession, b: Body, far = 1.4, from = Math.PI):
   h.run(200);
 }
 
-test("a dodo's body lies where it fell, and two swings of a stone hatchet use it up, as wikily.gg's Dodo page has them", () => {
+artTest("a dodo's body lies where it fell, and two swings of a stone hatchet use it up, as wikily.gg's Dodo page has them", () => {
   const { h, ada, at, me, id, have } = camp();
   const body = killed(h, "core:dodo", at.x, at.z + 1.6, me);
   const ents = h.world.ents;
@@ -425,7 +426,7 @@ test("a creature that dies held, mating, knocked out under water, or of a fall a
   void id;
 });
 
-test("a body is the same for two clients that saw it fall, one that joined after, and the server, to the bit", () => {
+artTest("a body is the same for two clients that saw it fall, one that joined after, and the server, to the bit", () => {
   const { h, at, me } = camp();
   const bob = h.join("bob");
   h.run(500);
@@ -471,7 +472,7 @@ test("a body is the same for two clients that saw it fall, one that joined after
   void TICK_RATE;
 });
 
-test("a body survives a restart where it lay, with the harvest health and the time it had left, and lies there as it did", () => {
+artTest("a body survives a restart where it lay, with the harvest health and the time it had left, and lies there as it did", () => {
   const db = join(dir, "restart.db");
   const { h, at, me, id } = camp({ dbPath: db });
   const b = killed(h, "core:raptor", at.x, at.z + 4, me);
@@ -646,7 +647,7 @@ function sameEverywhere(h: Harness, drawn: Map<ClientSession, Drawn>, b: Body, j
   }
 }
 
-test("a pteranodon killed in its flight 100 m up dies as it does in the air, falls to the ground in 3.2 s and lies there the same for the server, two clients that watched and one that joined after, and is harvested there", () => {
+artTest("a pteranodon killed in its flight 100 m up dies as it does in the air, falls to the ground in 3.2 s and lies there the same for the server, two clients that watched and one that joined after, and is harvested there", () => {
   const { h, ada, at, me, id, have } = camp();
   const bob = h.join("bob");
   h.run(500);
@@ -710,7 +711,7 @@ test("a pteranodon killed in its flight 100 m up dies as it does in the air, fal
   expect(h.host.items.audit()).toEqual([]);
 });
 
-test("a body over a building lands on its roof, one over the pool sinks to its bottom, and one that dies afloat sinks there as slowly as a ragdoll does, each the same for every client", () => {
+artTest("a body over a building lands on its roof, one over the pool sinks to its bottom, and one that dies afloat sinks there as slowly as a ragdoll does, each the same for every client", () => {
   const { h, at, me, id } = camp();
   const bob = h.join("bob");
   h.run(500);
@@ -893,7 +894,7 @@ test("a ridden stand-in bola'd 100 m up comes down where it was caught with its 
   expect([rider.length, sv.value(me, V_HEALTH) >= hers]).toEqual([0, true]);
 });
 
-test("a body saved while it fell falls on after a restart, from where it was saved, as one that died in its flight, and lies on the ground; one saved lying stays as it lay", () => {
+artTest("a body saved while it fell falls on after a restart, from where it was saved, as one that died in its flight, and lies on the ground; one saved lying stays as it lay", () => {
   const db = join(dir, "falling.db");
   const { h, at, me } = camp({ dbPath: db });
   const ents = h.world.ents;

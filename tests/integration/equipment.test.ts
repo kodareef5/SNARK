@@ -19,6 +19,7 @@ import { Rng } from "../../shared/rng.ts";
 import { BTN_USE } from "../../shared/sim/character.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ARMOR_SLOTS, GEAR_SLOTS, HOTBAR_SLOTS, Inventory, QUALITY_MUL, fitsSlot, moveSlot } from "../../shared/sim/items.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -89,7 +90,7 @@ test("an inventory with an equipment tail: things land in the bag, an armor slot
   expect([HOTBAR_SLOTS, ARMOR_SLOTS]).toEqual([10, 5]);
 });
 
-test("the content hangs together: every engram can be reached, every thing that is made unlocked, every weapon fed, every piece drawn", () => {
+artTest("the content hangs together: every engram can be reached, every thing that is made unlocked, every weapon fed, every piece drawn", () => {
   const levels = reg.defs.find((d) => d?.type === "levels")!;
   expect(levels.type === "levels" && levels.xp.length).toBe(105);
   const pack = corePack();
@@ -467,7 +468,7 @@ test("fuzz: no stream of equipment commands, valid or not, makes or loses an ite
   expect(h.server.stats.malformed).toBe(0);
 });
 
-test("the client draws what is worn and held, and the hotbar and inventory screens show and send it", () => {
+artTest("the client draws what is worn and held, and the hotbar and inventory screens show and send it", () => {
   const h = new Harness({}, 1, 60, { dev: true });
   const pack = corePack();
   const app = new App(h.join("ada", { latencyMs: 20 }, { manual: true }), h.reg, pack);

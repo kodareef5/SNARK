@@ -4,6 +4,7 @@ import { Governor, JOIN_MS, PHONE_MS, TARGET_MS, ladder, middleMean, workMs } fr
 import { HudModel } from "../../client/core/hud.ts";
 import { levels, replay, sceneOf } from "../../tools/bench/governor.ts";
 import { phoneSoaks, run } from "../fixtures/frames.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 
 /** Each step leaves this share of the GPU's time: a made-up card on which every step buys a little. */
 const leave = (level: number): number => 0.88 ** level;
@@ -41,7 +42,7 @@ test("the mean of the middle eight tenths is not moved by a hitch", () => {
   expect(middleMean([...Array(10).fill(16.7), ...Array(10).fill(33.3)])).toBeCloseTo(25, 5);
 });
 
-test("the iPhone's kept soaks, replayed with what each step leaves of the phone's GPU in the soak's own scene, hold 60 a second at minute 10 and never step back while the phone warms", () => {
+artTest("the iPhone's kept soaks, replayed with what each step leaves of the phone's GPU in the soak's own scene, hold 60 a second at minute 10 and never step back while the phone warms", () => {
   const soaks = phoneSoaks();
   expect(soaks.length).toBe(3);
   for (const soak of soaks) {

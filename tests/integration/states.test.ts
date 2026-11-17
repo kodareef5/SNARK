@@ -1,7 +1,7 @@
 // What a dodo goes through on a running server, drawn as its clients draw it: knocked out, fed and waking; startled,
 // struck and pecking; dropped and landing; and standing about, where every client draws the idle the server poses.
 
-import { expect, test } from "bun:test";
+import { expect } from "bun:test";
 import { RemoteSample } from "../../client/core/session.ts";
 import { CUE_TICKS } from "../../server/creatures.ts";
 import { MIND_FLEE } from "../../server/behavior.ts";
@@ -17,6 +17,7 @@ import { BTN_USE, stanceEye } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { V_TORPOR } from "../../shared/sim/vitals.ts";
 import { flatGround } from "../fixtures/arena.ts";
+import { test } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
 
 /** Ada, and any others named, on level ground with cheats on, where nothing harms her; a dodo of `level` before her. */

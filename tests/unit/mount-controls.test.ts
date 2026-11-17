@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { Pose } from "../../shared/anim/clip.ts";
 import { B_HAND_L, B_HAND_R, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_PROP_L, B_PROP_R, B_UPPER_ARM_L, B_UPPER_ARM_R, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
@@ -8,8 +8,9 @@ import { createMountMotion, mountPose } from "../../shared/anim/mount.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { quatAxis, quatRotate } from "../../shared/math/quat.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
+import { fromArt, test } from "../fixtures/needs-art.ts";
 
-const pack = parsePack(new Uint8Array(readFileSync(new URL("../../assets/source/core/humans/human-bodies/human-bodies.snpk", import.meta.url))));
+const pack = fromArt(() => parsePack(new Uint8Array(readFileSync(new URL("../../assets/source/core/humans/human-bodies/human-bodies.snpk", import.meta.url)))));
 const left = { position: [.28, .20, .22] }, right = { position: [-.14, .26, .32] };
 function fixture(rest: Float32Array, proportions: number[]) {
   const look = defaultLook(), scale = new Float32Array(HUMAN_BONES * 3), pose = new Pose(HUMAN_BONES), solved = new Solved(HUMAN_BONES);

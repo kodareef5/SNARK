@@ -15,7 +15,7 @@ import { defaultPalette } from "../shared/pack/palette.ts";
 import * as scenarios from "../shared/sim/scenarios.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
 import type { StructureStore } from "../shared/world/structures.ts";
-import { SOURCE, readPacks } from "./art/source.ts";
+import { ART, SOURCE, readPacks } from "./art/source.ts";
 import { buildPack } from "./pack/write.ts";
 import { birdAnim } from "../tests/fixtures/bird.ts";
 
@@ -32,9 +32,13 @@ export function simHash(ticks = 3000, content: Registry | null = null, ground: {
   return scenarios.simHash(content ?? core(), ticks, ground);
 }
 
-/** Converted and authored clips, passed through the pack's own encoding. Built only from files and modules both engines can read. */
+/**
+ * Converted and authored clips, passed through the pack's own encoding. Built only from files and modules both engines can
+ * read. Where the art is not here, the converted clips are the copy in tests/fixtures/art.
+ */
 export function sourceClips(): HumanAnim {
-  const converted = parsePack(new Uint8Array(readFileSync(new URL("../assets/source/core/humans/human-clips/human-clips.snpk", import.meta.url)))).clips.clips;
+  const file = ART ? "../assets/source/core/humans/human-clips/human-clips.snpk" : "../tests/fixtures/art/human-clips.snpk";
+  const converted = parsePack(new Uint8Array(readFileSync(new URL(file, import.meta.url)))).clips.clips;
   return new HumanAnim(parsePack(buildPack([], defaultPalette(), [...converted, ...authoredClips()])).clips);
 }
 

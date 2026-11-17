@@ -26,6 +26,7 @@ import { convertCreature } from "../../tools/pack/creature.ts";
 import { readGltf } from "../../tools/pack/gltf.ts";
 import { provingView } from "../../tools/snap.ts";
 import { CREATURE_ASSETS } from "../fixtures/assets.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { strider } from "../fixtures/strider.ts";
 import { TUBE, tubeGlb } from "../fixtures/textured.ts";
@@ -111,7 +112,7 @@ test("a creature dropped on a slope rests within 3 s, with no joint past its lim
   }
 });
 
-test("the dodo comes to rest on the slope and on a floor from every one of 32 yaws, well inside the 3 s", () => {
+artTest("the dodo comes to rest on the slope and on a floor from every one of 32 yaws, well inside the 3 s", () => {
   // Its round trunk once crawled over onto its side for seconds, a few tenths inside the limit at the six yaws above and
   // past it at others. Every yaw rests within 2 s, and nine in ten within 1 s.
   const rig = rigs.get("core:dodo")!;
@@ -235,7 +236,7 @@ test("the same fall gives the same rest, to the bit", () => {
   expect(Array.from(a.q)).toEqual(Array.from(b.q));
 });
 
-test("a client draws a dead creature's body where it lies: one it saw die plays its clip and goes limp at its asset's frame, one come upon is laid to rest at once, and one that only left makes none", () => {
+artTest("a client draws a dead creature's body where it lies: one it saw die plays its clip and goes limp at its asset's frame, one come upon is laid to rest at once, and one that only left makes none", () => {
   const view = provingView(64, 36);
   const { scene, remote, hf } = view;
   const ch = scene.characters as unknown as { dead: { list: Corpse[] } };
@@ -293,7 +294,7 @@ test("a client draws a dead creature's body where it lies: one it saw die plays 
   expect(ch.dead.list.map((c) => c.id)).toEqual([13]);
 });
 
-test("a body lies the same, to the bit, for a client that saw it fall, one that came later, and the server that judges blows on it", () => {
+artTest("a body lies the same, to the bit, for a client that saw it fall, one that came later, and the server that judges blows on it", () => {
   const view = provingView(64, 36);
   const { hf, structs, nodes } = view;
   const world = { hf, structs, nodes: nodes.store };
@@ -329,7 +330,7 @@ test("a body lies the same, to the bit, for a client that saw it fall, one that 
   }
 });
 
-test("a body sent falling is drawn where each sample has it, is not landed by a sample blended between two snapshots, and lies where it is sent lying still, as one come upon later lies", () => {
+artTest("a body sent falling is drawn where each sample has it, is not landed by a sample blended between two snapshots, and lies where it is sent lying still, as one come upon later lies", () => {
   const view = provingView(64, 36);
   const { hf, structs, nodes } = view;
   const world = { hf, structs, nodes: nodes.store };

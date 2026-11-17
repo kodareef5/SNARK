@@ -8,6 +8,7 @@ import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { KEY_PROMPT } from "../../client/core/ui/hud.ts";
 import { KEY_NAME_TITLE } from "../../client/core/ui/tame.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { DEV_CONFIG } from "../../server/main.ts";
@@ -285,7 +286,7 @@ test("an egg hatches and what hatches is grown on the ticks they were due, watch
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("what hatches is nobody's and helpless until someone takes it; then it is theirs, small, hungry and weak, eats what it is given, and is no mount, no mate and nothing to tame until it is grown", () => {
+artTest("what hatches is nobody's and helpless until someone takes it; then it is theirs, small, hungry and weak, eats what it is given, and is no mount, no mate and nothing to tame until it is grown", () => {
   const { h, ada, bob, at, me } = pen();
   const ents = h.world.ents;
   const breeding = h.host.breeding;
