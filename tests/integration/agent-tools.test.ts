@@ -2,8 +2,11 @@
 // built, ordering a tame, and carrying, through the protocol, in process.
 
 import { expect, test } from "bun:test";
+import { latOf, lonOf } from "../../shared/world/coords.ts";
+import { writeMap } from "../../shared/world/mapfile.ts";
 import { play } from "../fixtures/agent.ts";
 import { flatGround } from "../fixtures/arena.ts";
+import { flatMap } from "../fixtures/map.ts";
 
 test("level_up spends a level point, move_item drops on the ground, and use_item loads, fits and takes in hand", async () => {
   const p = play();
@@ -83,4 +86,21 @@ test("order lands, unsaddles and levels a tame, or says why not, and carry picks
   expect(await p.call("carry", { put: "throw" })).toMatchObject({ state: "done", threw: true });
   expect(await p.call("carry", { put: "down" })).toMatchObject({ state: "blocked" });
   expect(await p.call("carry", { put: "sideways" })).toMatchObject({ state: "refused" });
+});
+
+test("status says where the survivor is as the map screen does, and go_to takes a latitude and longitude anywhere on the map, past 100 too", async () => {
+  // Ground of 4 chunks a side whose display origin is 192 chunks west and 176 north of its south-east corner: it reads 117.5 to
+  // 120 west to east and 107.5 to 110 north to south.
+  const dims = { chunksX: 4, chunksZ: 4, frameX: 2048, frameZ: 2048, originX: 2240, originZ: 2224 };
+  const p = play({ map: writeMap(flatMap(4, { dims })) });
+  const at = async (): Promise<{ x: number; z: number; lat: number; lon: number }> => (await p.call("status")).self as never;
+  const was = await at();
+  expect([was.lat, was.lon]).toEqual([Math.round(latOf(p.s.world!.hf.dims, was.z) * 10) / 10, Math.round(lonOf(p.s.world!.hf.dims, was.x) * 10) / 10]);
+  expect(was.lat > 107.5 && was.lat < 110 && was.lon > 117.5 && was.lon < 120).toBe(true);
+  expect(await p.call("go_to", { lat: 109.5, lon: 119.5 })).toMatchObject({ state: "done" });
+  const now = await at();
+  expect([Math.abs(now.lat - 109.5) < 0.05, Math.abs(now.lon - 119.5) < 0.05]).toEqual([true, true]);
+  // Off the map is refused with the map's range, to the tenth status gives.
+  expect(await p.call("go_to", { lat: 50, lon: 119 })).toEqual({ state: "refused", reason: "lat must be a number from 107.5 to 110" });
+  expect(await p.call("go_to", { lat: 109, lon: 117.4 })).toEqual({ state: "refused", reason: "lon must be a number from 117.5 to 120" });
 });

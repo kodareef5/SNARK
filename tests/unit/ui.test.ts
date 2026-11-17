@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Controls, LOOK_SPEED } from "../../client/core/controls.ts";
 import { HudModel } from "../../client/core/hud.ts";
+import { Chart } from "../../client/core/tactical.ts";
 import { KEY_CHAT_INPUT, KEY_CHAT_PANEL, KEY_CHAT_ROW, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT, KEY_CONSOLE_PANEL, KEY_CONSOLE_ROW, MAX_LINE } from "../../client/core/ui/console.ts";
 import { bindTextInput } from "../../client/core/ui/events.ts";
@@ -21,6 +22,7 @@ import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { CHOOSE_DIED, CHOOSE_TRAVEL, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_STRUCT, CMD_USE, MARKER_DEATH, MAX_CHAT_CHARS, MAX_NAME_BYTES, SESSION_ALIVE, SESSION_DEAD, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
 import { STAT_NAMES } from "../../shared/sim/genome.ts";
 import { flatWorld } from "../fixtures/world.ts";
+import { corePack } from "../fixtures/pack.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -30,11 +32,15 @@ import { BTN_BRAKE, BTN_CROUCH, BTN_JUMP, BTN_MELEE, BTN_MOD, BTN_PRIMARY, BTN_P
 
 const ASPECTS: [string, number][] = [["4:3", 4 / 3], ["16:9", 16 / 9], ["21:9", 21 / 9], ["phone upright", 9 / 16]];
 
-/** A HUD with the widest numbers it can show. */
+const chartWorld = flatWorld(8);
+
+/** A HUD with the widest numbers it can show, and the map's pictures for its markers to be put on. */
 function fullHud(): HudModel {
   const m = new HudModel();
-  m.lat = 100;
-  m.lon = 100;
+  m.chart = new Chart(chartWorld.hf, corePack().palette);
+  // The lattice is 2,560 units a side (this was 100, the most a map read when it read 0 to 100 across).
+  m.lat = 2560;
+  m.lon = 2560;
   m.heading = 359;
   m.compass = "NW";
   m.x = 8191.9;
@@ -153,7 +159,7 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
           }
         }
       }
-      expect(f.find(KEY_READOUT)!.text).toBe("100.0 lat  100.0 lon  NW 359");
+      expect(f.find(KEY_READOUT)!.text).toBe("2560.0 lat  2560.0 lon  NW 359");
       expect(f.find(KEY_MINIMAP)).not.toBeNull();
       expect(f.find(KEY_VITAL + 9)!.value).toBe(0.5);
       expect(f.find(KEY_BANNER)!.text).toBe("SPECTATING");

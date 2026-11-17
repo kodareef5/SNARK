@@ -53,11 +53,13 @@ import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
 import { findAssets } from "./art/assets.ts";
 import { corePackBytes } from "../tests/fixtures/pack.ts";
 import { splitPack } from "./pack/split.ts";
-import { HudModel, mapU, mapV } from "../client/core/hud.ts";
+import { HudModel } from "../client/core/hud.ts";
+import { Chart } from "../client/core/tactical.ts";
+import { latOf, lonOf, mapU, mapV } from "../shared/world/coords.ts";
 import { IMAGE_MINIMAP, MINIMAP_SIZE } from "../client/core/ui/hud.ts";
 import { Ui } from "../client/core/ui/ui.ts";
 import { TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../shared/net/protocol.ts";
-import { minimapImage, headingOf } from "../client/core/hud.ts";
+import { headingOf } from "../client/core/hud.ts";
 import { TIERS, tierOf } from "../client/core/assets/tiers.ts";
 import { SOURCE } from "./art/source.ts";
 import { gameFiles, type GameFiles } from "./snap/files.ts";
@@ -1361,8 +1363,8 @@ if (import.meta.main) {
     hud.x = cam.x;
     hud.y = cam.y - 1.62;
     hud.z = cam.z;
-    hud.lon = mapU(view.hf, cam.x) * 100;
-    hud.lat = mapV(view.hf, cam.z) * 100;
+    hud.lon = lonOf(view.hf.dims, cam.x);
+    hud.lat = latOf(view.hf.dims, cam.z);
     hud.heading = headingOf(cam.yaw);
     hud.compass = "N";
     hud.fps = 60;
@@ -1383,7 +1385,13 @@ if (import.meta.main) {
     }
     [1, 0.6, 0.8, 0.45].forEach((v, i) => (hud.vitals[i]!.fraction = v));
     hud.markers.push({ kind: "creature", u: mapU(view.hf, 259), v: mapV(view.hf, 254) }, { kind: "self", u: mapU(view.hf, cam.x), v: mapV(view.hf, cam.z) });
-    ui.frame.images[IMAGE_MINIMAP] = { width: MINIMAP_SIZE, height: MINIMAP_SIZE, data: minimapImage(view.hf, view.pack.palette, MINIMAP_SIZE), version: 1 };
+    // The minimap as a client draws it, once the tiles its window touches have been made, one a step.
+    const chart = (hud.chart = new Chart(view.hf, view.pack.palette));
+    for (let i = 0; i < 6; i++) {
+      chart.tiles.step();
+      chart.drawMini(null, 0, mapU(view.hf, cam.x), mapV(view.hf, cam.z), MINIMAP_SIZE, true);
+    }
+    ui.frame.images[IMAGE_MINIMAP] = chart.mini.image;
     const typed = arg("console");
     if (typed !== undefined) {
       ui.console.open = true;

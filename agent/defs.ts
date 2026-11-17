@@ -5,7 +5,7 @@ import type { ToolAnnotations, ToolDef } from "./mcp.ts";
 
 export const INSTRUCTIONS =
   "You play one survivor in SNARK, a survival game, through these tools. You can do what a player can and no more. " +
-  "Places are x and z in metres (north is +z, east is -x), or lat and lon as the map screen gives them. Things have ids from observe: n12.3 a tree, rock or bush, s65539 something built, e7 a creature, a player, a car, a dead body, an egg or a bag. " +
+  "Places are x and z in metres (north is +z, east is -x), or lat and lon as the map screen gives them, a unit 102.4 m. Things have ids from observe: n12.3 a tree, rock or bush, s65539 something built, e7 a creature, a player, a car, a dead body, an egg or a bag. " +
   "Every answer has a state: done, running (still going; status waits for it), blocked (it stopped short, and reason says why), danger (it stopped because you are in danger) or refused (nothing was done). " +
   "go_to, harvest, attack, open, craft at a station, place, mount, structure and use_item on a creature take time, and only one of them runs at once. An answer lists dangers while there are any. " +
   "Read snark://guide for taming, riding, flying, driving, building, stations and shooting, and snark://recipes for what is made of what.";
@@ -16,8 +16,8 @@ const thing = (what: string) => ({ type: "string", description: `${what}, by its
 const place = {
   x: { type: "number", description: "Metres. Give x and z, or lat and lon, or an id." },
   z: { type: "number" },
-  lat: { type: "number", minimum: 0, maximum: 100, description: "Latitude, 0 at the north edge to 100 at the south." },
-  lon: { type: "number", minimum: 0, maximum: 100, description: "Longitude, 0 at the west edge to 100 at the east." },
+  lat: { type: "number", minimum: 0, description: "Latitude as the map screen gives it: units of 102.4 m south of the map's top, ten a sector." },
+  lon: { type: "number", minimum: 0, description: "Longitude as the map screen gives it: units of 102.4 m east of the map's left side, ten a sector." },
 };
 const vitals = { type: "array", items: { type: "number" }, description: "[now, most]" };
 const self = {
