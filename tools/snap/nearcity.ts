@@ -1,8 +1,11 @@
-// Pictures of the near city on the Miami slice (tests/fixtures/cityslice.ts) by the software rasterizer, a busy chunk
-// drawn as an instance a piece and as its near mesh (client/core/render/nearcity.ts), with the pixels that differ:
-// along its border with a neighbour drawn as instances, and where a player's wall is set against a wall of the mesh.
+// Pictures of the near city on the Miami slice (tests/fixtures/cityslice.ts) by the software rasterizer, its chunks drawn
+// as an instance a piece and as a mesh a chunk (client/core/render/nearcity.ts), with the pixels that differ: along the
+// border of a busy chunk with a neighbour that stays instances, and where a player's wall is set against a wall of its
+// mesh and a foundation on a floor of it.
 //
 //   bun tools/snap/nearcity.ts <out folder> [--tier high] [--size 960x540]
+//
+// tests/unit/nearcity.test.ts holds the shots to what it counts.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -10,8 +13,7 @@ import { parseArgs } from "node:util";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import { Camera, FAR_FROM } from "../../client/core/render/camera.ts";
-import { NearMaking } from "../../client/core/render/nearcity.ts";
-import { PASS_NEAR } from "../../client/core/render/packet.ts";
+import { MESH_SLOT } from "../../client/core/render/nearcity.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { CHUNK_SIZE, YAW_UNITS, chunkCount, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { CityStatics } from "../../shared/world/city.ts";
@@ -23,27 +25,23 @@ import { coreRegistry } from "../../tests/fixtures/world.ts";
 import { encodePng } from "./png.ts";
 import { PICK_FAR, PICK_STRUCTURE, Rasterizer } from "./raster.ts";
 
-const { values, positionals } = parseArgs({ allowPositionals: true, options: { tier: { type: "string", default: "high" }, size: { type: "string", default: "960x540" } } });
-const folder = positionals[0];
-if (!folder) {
-  console.error("bun tools/snap/nearcity.ts <out folder> [--tier high] [--size 960x540]");
-  process.exit(2);
-}
-const [W, H] = values.size!.split("x").map(Number) as [number, number];
-mkdirSync(folder, { recursive: true });
-
 const slice = miamiSlice();
 const reg = coreRegistry();
 const pack = farPack();
 const dims = slice.map.dims;
 const hf = mapHeightfield(slice.map);
 const city = new CityStatics(dims, slice.map.statics, reg);
-const box = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" && d.mesh === "box" && d.shape === undefined ? 1 : 0));
 /** The window round the slice's chunk (3, 3) is held whole, so the busy chunk (1, 3) and its neighbours are all near. */
 const CENTRE = [3, 3] as const;
 const CHUNK = 3 * dims.chunksX + 1;
+/** Its neighbour east, whose pieces are set at slots other than the map's, so that they stay instances. */
+const BESIDE = CHUNK + 1;
+const complete = (c: number): boolean => Math.abs(chunkCx(dims, c) - CENTRE[0]) <= 3 && Math.abs(chunkCz(dims, c) - CENTRE[1]) <= 3;
+const sceneOf = (structs: StructureStore): Scene => new Scene({ mapId: slice.map.id, dims, hf, structs, far: { cells: new FarStore(), complete }, city: { statics: city, complete } }, reg, pack);
+/** Kinds a mesh draws. */
+const box = sceneOf(new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts)).near!.kinds;
 
-interface Shot {
+export interface Shot {
   name: string;
   x: number;
   y: number;
@@ -131,14 +129,14 @@ function floorShot(): Shot | null {
   return null;
 }
 
-/** The near store holding the window whole, and in it the busy chunk's pieces of `kept`, and a player's piece. */
-function storeOf(kept: (i: number) => boolean, piece: Shot["piece"]): StructureStore {
+/** The near store holding the window whole, the neighbour's pieces one slot on, and a player's piece. */
+function storeOf(piece: Shot["piece"]): StructureStore {
   const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   for (let cz = CENTRE[1] - 3; cz <= CENTRE[1] + 3; cz++) {
     for (let cx = CENTRE[0] - 3; cx <= CENTRE[0] + 3; cx++) {
       const c = cz * dims.chunksX + cx;
       const first = city.first[c]!;
-      for (let i = first; i < city.first[c + 1]!; i++) if (c !== CHUNK || kept(i)) structs.put(c, i - first, city.kind[i]!, city.x[i]!, city.y[i]!, city.z[i]!, city.yaw[i]!, 0, reg.maxHp[city.kind[i]!]!, 1);
+      for (let i = first; i < city.first[c + 1]!; i++) structs.put(c, i - first + (c === BESIDE ? 1 : 0), city.kind[i]!, city.x[i]!, city.y[i]!, city.z[i]!, city.yaw[i]!, 0, reg.maxHp[city.kind[i]!]!, 1);
       structs.setVersion(c, 1);
     }
   }
@@ -150,46 +148,33 @@ function storeOf(kept: (i: number) => boolean, piece: Shot["piece"]): StructureS
   return structs;
 }
 
-const complete = (c: number): boolean => Math.abs(chunkCx(dims, c) - CENTRE[0]) <= 3 && Math.abs(chunkCz(dims, c) - CENTRE[1]) <= 3;
-const mine = Uint8Array.from({ length: city.in(CHUNK) }, (_, i) => box[city.kind[city.first[CHUNK]! + i]!]!);
-const holds = (c: number): Uint8Array => Uint8Array.from({ length: city.in(c) }, (_, i) => box[city.kind[city.first[c]! + i]!]!);
-const making = new NearMaking(city, CHUNK, hf, mine, holds, 4);
-while (!making.done) making.step();
-const mesh = making.finish();
-console.log(`chunk ${CHUNK}: ${city.in(CHUNK)} pieces, ${mine.reduce((n, v) => n + v, 0)} in the mesh in ${making.bands} bands, ${mesh.faces} faces, steps ${mesh.bounds.half.map((h) => (h / 32767) * 1000).map((s) => s.toFixed(3)).join(", ")} mm`);
-const SLOT = 2 ** 32 - 16;
-
-/** The shot drawn with the busy chunk as instances, or with its boxes as its mesh. */
-function picture(shot: Shot, meshed: boolean): Rasterizer {
-  const structs = storeOf((i) => !meshed || mine[i - city.first[CHUNK]!] !== 1, shot.piece);
-  const scene = new Scene({ mapId: slice.map.id, dims, hf, structs, far: { cells: new FarStore(), complete }, city: { statics: city, complete } }, reg, pack);
-  scene.assets.tier = tierOf(values.tier!);
+/** The shot drawn `w` by `h` on `tier` with the chunks' pieces as instances, or with their mesh. */
+function picture(shot: Shot, meshed: boolean, tier: string, W: number, H: number): Rasterizer {
+  const scene = sceneOf(storeOf(shot.piece));
+  scene.assets.tier = tierOf(tier);
   scene.viewHeight = H;
   scene.city!.makeMs = Infinity;
+  scene.near!.pieces = Infinity;
+  scene.nearMesh = meshed;
   const cam = new Camera();
   [cam.x, cam.y, cam.z, cam.yaw, cam.pitch, cam.aspect] = [shot.x, shot.y, shot.z, shot.yaw, shot.pitch, W / H];
   const raster = new Rasterizer(W, H, pack, hf);
   raster.depthBits = 24;
-  const s = scene as unknown as { structures: (...a: unknown[]) => void; drawCity: (slot: number, first: number, count: number, ox: number, oy: number, oz: number, passes: number, fade: number) => void };
-  const structures = s.structures.bind(scene);
-  let sent = false;
-  s.structures = (...a: unknown[]) => {
-    structures(...a);
-    if (!meshed || a[2] !== 0) return;
-    const p = scene.packet;
-    if (!sent) p.assetUploads.push({ slot: SLOT, mesh: scene.city!.mesh, level: 0, data: mesh.data, indexCount: mesh.faces * 6, indexBytes: mesh.indexBytes, quads: true, bounds: mesh.bounds });
-    sent = true;
-    s.drawCity(SLOT, 0, mesh.faces * 6, chunkCx(dims, CHUNK) * CHUNK_SIZE - cam.x, -cam.y, chunkCz(dims, CHUNK) * CHUNK_SIZE - cam.z, 1 << PASS_NEAR, 0);
-  };
   for (let f = 0; f < 60; f++) {
     scene.now += 1000 / 60;
-    const p = scene.build(cam, null);
-    p.tileCount = 0;
-    raster.render(p);
-    if (f > 3 && p.uploads.length + p.assetUploads.length === 0 && scene.city!.stats.behind === 0) break;
+    raster.render(scene.build(cam, null));
+    const p = scene.packet;
+    if (f > 3 && p.uploads.length + p.assetUploads.length === 0 && scene.city!.stats.behind === 0 && scene.near!.stats.waiting === 0) break;
+  }
+  const own = scene.near!.chunk(CHUNK);
+  if (meshed && !said && own?.mesh && import.meta.main) {
+    said = true;
+    const m = own.mesh;
+    console.log(`chunk ${CHUNK}: ${city.in(CHUNK)} pieces, ${own.mine.reduce((n, v) => n + v, 0)} in its mesh, ${m.faces} faces, steps ${m.bounds.half.map((h) => ((h / 32767) * 1000).toFixed(3)).join(", ")} mm; chunk ${BESIDE} drawn as instances: ${!scene.near!.chunk(BESIDE)?.mine.includes(1)}`);
   }
   return raster;
 }
+let said = false;
 
 /** Metres from the eye along the view to what a pixel holds, from the depth it keeps as 24 bits, or Infinity for none. */
 function distance(r: Rasterizer, cam: Camera, split: number, i: number): number {
@@ -204,21 +189,33 @@ function distance(r: Rasterizer, cam: Camera, split: number, i: number): number 
 /** How far apart two pictures' surfaces may be and still be the same place: a step of the mesh's lattice, and a step of the depth buffer's 24 bits there. */
 const same = (cam: Camera, split: number, w: number): number => 0.0025 + (w * w) / (cam.near * 2 ** 23) * (split > 0 ? 2 : 1);
 
-const shots = [...borderShots(), wallShot(), floorShot()].filter((s): s is Shot => s !== null);
-const rows: string[] = [];
-for (const shot of shots) {
-  const a = picture(shot, false), b = picture(shot, true);
+/** The shots: along and across the busy chunk's border at eye height and over it, and the two player pieces. */
+export function nearShots(): Shot[] {
+  return [...borderShots(), wallShot(), floorShot()].filter((s): s is Shot => s !== null);
+}
+
+/** What a shot's two pictures show where they differ, by pixel and as counts, and what is under the pixels each way. */
+export interface Compared {
+  readonly instances: Rasterizer;
+  readonly mesh: Rasterizer;
+  /** Pixels whose colour differs: the same surface's place with another face of two in it shown, the mesh's surface farther than the instances' (a face missing), or nearer (a face more). */
+  readonly counts: { same: number; farther: number; nearer: number };
+  readonly diff: Uint8ClampedArray;
+  readonly shows: Map<string, number>;
+}
+
+/** A shot drawn both ways `w` by `h` on `tier`, compared. */
+export function compareShot(shot: Shot, tier: string, W: number, H: number): Compared {
+  const a = picture(shot, false, tier, W, H), b = picture(shot, true, tier, W, H);
   const cam = new Camera();
-  const split = tierOf(values.tier!).split;
+  const split = tierOf(tier).split;
   const diff = new Uint8ClampedArray(W * H * 4);
-  // Pixels that differ in colour: the same surface's place with another face of two in it shown, the mesh's surface
-  // farther than the instances' (a face missing), or nearer (a face more).
   const counts = { same: 0, farther: 0, nearer: 0 };
   const shows = new Map<string, number>();
   const name = (r: Rasterizer, i: number): string => {
     const id = r.pickId[i]!, k = r.pickKind[i]!;
     const chunk = Math.floor(id / 65536), slot = id % 65536;
-    return k === PICK_STRUCTURE ? `${chunk}:${slot}:${reg.defs[city.kind[city.first[chunk]! + slot] ?? 0]?.id ?? "player"}` : k === PICK_FAR ? "mesh" : `pick ${k}`;
+    return k === PICK_STRUCTURE ? (slot === MESH_SLOT ? `${chunk}:mesh` : `${chunk}:${slot}:${reg.defs[city.kind[city.first[chunk]! + slot] ?? 0]?.id ?? "player"}`) : k === PICK_FAR ? "far" : `pick ${k}`;
   };
   for (let i = 0; i < W * H; i++) {
     const d = Math.abs(a.color[i * 4]! - b.color[i * 4]!) + Math.abs(a.color[i * 4 + 1]! - b.color[i * 4 + 1]!) + Math.abs(a.color[i * 4 + 2]! - b.color[i * 4 + 2]!);
@@ -234,11 +231,27 @@ for (const shot of shots) {
     const key = `${kind}: ${name(a, i)} / ${name(b, i)}`;
     shows.set(key, (shows.get(key) ?? 0) + 1);
   }
-  writeFileSync(join(folder, `${shot.name}-instances.png`), encodePng(W, H, a.color));
-  writeFileSync(join(folder, `${shot.name}-mesh.png`), encodePng(W, H, b.color));
-  writeFileSync(join(folder, `${shot.name}-differ.png`), encodePng(W, H, diff));
-  const row = `${shot.name}: eye (${shot.x.toFixed(1)}, ${shot.y.toFixed(1)}, ${shot.z.toFixed(1)}) yaw ${shot.yaw.toFixed(2)}${shot.piece ? `, ${shot.piece.kind} at (${shot.piece.x.toFixed(2)}, ${shot.piece.y.toFixed(2)}, ${shot.piece.z.toFixed(2)})` : ""}: ${counts.same} pixels the same place another face, ${counts.farther} the mesh farther, ${counts.nearer} the mesh nearer`;
-  rows.push(row, ...[...shows].sort((x, y) => y[1] - x[1]).slice(0, 8).map(([k, v]) => `  ${v} ${k}`));
-  console.log(rows.slice(-1 - Math.min(8, shows.size)).join("\n"));
+  return { instances: a, mesh: b, counts, diff, shows };
 }
-writeFileSync(join(folder, "nearcity.txt"), `${rows.join("\n")}\n`);
+
+if (import.meta.main) {
+  const { values, positionals } = parseArgs({ allowPositionals: true, options: { tier: { type: "string", default: "high" }, size: { type: "string", default: "960x540" } } });
+  const folder = positionals[0];
+  if (!folder) {
+    console.error("bun tools/snap/nearcity.ts <out folder> [--tier high] [--size 960x540]");
+    process.exit(2);
+  }
+  const [W, H] = values.size!.split("x").map(Number) as [number, number];
+  mkdirSync(folder, { recursive: true });
+  const rows: string[] = [];
+  for (const shot of nearShots()) {
+    const { instances, mesh, counts, diff, shows } = compareShot(shot, values.tier!, W, H);
+    writeFileSync(join(folder, `${shot.name}-instances.png`), encodePng(W, H, instances.color));
+    writeFileSync(join(folder, `${shot.name}-mesh.png`), encodePng(W, H, mesh.color));
+    writeFileSync(join(folder, `${shot.name}-differ.png`), encodePng(W, H, diff));
+    const row = `${shot.name}: eye (${shot.x.toFixed(1)}, ${shot.y.toFixed(1)}, ${shot.z.toFixed(1)}) yaw ${shot.yaw.toFixed(2)}${shot.piece ? `, ${shot.piece.kind} at (${shot.piece.x.toFixed(2)}, ${shot.piece.y.toFixed(2)}, ${shot.piece.z.toFixed(2)})` : ""}: ${counts.same} pixels the same place another face, ${counts.farther} the mesh farther, ${counts.nearer} the mesh nearer`;
+    rows.push(row, ...[...shows].sort((x, y) => y[1] - x[1]).slice(0, 8).map(([k, v]) => `  ${v} ${k}`));
+    console.log(rows.slice(-1 - Math.min(8, shows.size)).join("\n"));
+  }
+  writeFileSync(join(folder, "nearcity.txt"), `${rows.join("\n")}\n`);
+}

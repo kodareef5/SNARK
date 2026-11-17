@@ -38,6 +38,7 @@ import { FarNodes, familyOf, type FarNodeSource, type NodeLooks } from "./farnod
 import { HAND_NEAR } from "./hand.ts";
 import { PROGRAM, drawProgram } from "./programs.ts";
 import { LAKE_BUFFER, Lakes } from "./lakes.ts";
+import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndexCount } from "./packet.ts";
 import { SURFACE_MATERIAL } from "../../../content/surfaces.ts";
@@ -305,6 +306,9 @@ interface ChunkBatch {
   uploaded: boolean;
   /** Bytes the card holds of the buffer by this chunk's id, until this or the next batch of it goes up in their place. */
   onCard: number;
+  /** The mesh its plain boxes are drawn with in place of their instances (nearcity.ts), or null; and its one instance, after the pieces', which is every instance's count. */
+  mesh: NearMesh | null;
+  meshAt: number;
 }
 
 export class Scene {
@@ -492,6 +496,10 @@ export class Scene {
   readonly nodesFar: FarNodes | null;
   /** The map's own buildings where the near store does not hold their chunks whole, given a source of them. */
   city: FarCity | null = null;
+  /** With the far city, the near store's chunks' plain boxes as a mesh a chunk (nearcity.ts). */
+  readonly near: NearCity | null;
+  /** Whether a chunk the near store holds whole draws its plain boxes from its mesh; false draws them as instances, for pictures held to them. */
+  nearMesh = true;
   /** The map's landmarks where the near store does not hold their pieces' chunks whole, with the far city. */
   landmarks: FarLandmarks | null = null;
   /** Per content index, 1 for a kind a landmark brings, which the far city leaves to the landmark's far mesh. */
@@ -646,6 +654,8 @@ export class Scene {
     const shown = (k: number): number => (this.meshOfKind[k] === missing || this.meshOfKind[k] === HIDDEN ? -1 : (pack.meshIndex.get(this.assets.manifest.meshes[this.meshOfKind[k]!]!.id) ?? -1));
     const colours = this.assets.manifest.farColours;
     this.far = world.far && this.farBounds ? new FarBlocks(world.far, world.dims, world.hf, far, this.farBounds, colours ? Uint8Array.from(colours) : farColours(reg, pack, shown)) : null;
+    const flat = (k: number): boolean => this.meshOfKind[k] !== missing && this.meshOfKind[k] !== HIDDEN && table.sections[this.meshOfKind[k]!]!.every((runs) => runs.length === 0);
+    this.near = this.farBounds ? new NearCity(reg, far, this.landmarkKinds, flat) : null;
     this.startCity();
     const last = (mesh: number): ReturnType<NodeLooks["last"]> => this.assets.residency.heldGeometry(mesh, table.tris[mesh]!.length - 1);
     const looks: NodeLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, side: table.side, low: table.low, high: table.high, tris: table.tris, last, known: (mesh) => this.assets.known(mesh) };
@@ -702,6 +712,7 @@ export class Scene {
     this.far?.reset();
     this.nodesFar?.reset();
     this.city?.reset();
+    this.near?.reset();
     this.landmarks?.reset();
     this.lakes?.reset();
     this.cascades.clear();
@@ -974,7 +985,7 @@ export class Scene {
     p.casterCount = n + 1;
     const maps = (cascades & 1) + ((cascades >> 1) & 1) + ((cascades >> 2) & 1) + ((cascades >> 3) & 1);
     p.castDraws += maps;
-    p.castTriangles += ((flags & DRAW_TEXTURED) !== 0 ? indexCount / 3 : this.trisOfMesh[mesh]![level]!) * count * maps;
+    p.castTriangles += ((flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 ? indexCount / 3 : this.trisOfMesh[mesh]![level]!) * count * maps;
   }
 
   /** Counts what the ground casts: its tiles into each cascade, a draw for each pair of tiles it reads from a cascade casts from. */
@@ -1713,6 +1724,13 @@ export class Scene {
     // How far the near plane's corners are from the camera: a room that near may be cut into and seen.
     const slope = Math.tan(cam.fovY / 2);
     const reach = cam.near * Math.sqrt(1 + slope * slope * (1 + cam.aspect * cam.aspect));
+    // The map's statics' plain boxes are drawn as a mesh a chunk where the far city follows what of them stands.
+    const statics = world.city?.statics;
+    const near = base === 0 && this.nearMesh && this.city && statics ? this.near : null;
+    if (base === 0 && !near) this.near?.clear(p, this.assets.residency);
+    near?.begin();
+    // Instances laid out this frame, which take of what the near city may make in it.
+    let laid = 0;
 
     // Chunks that no longer exist on this client free their buffers.
     for (const id of this.batches.keys()) if (id >= base && id < base + NODE_BUFFERS && !chunks[id - base]) this.drop(id);
@@ -1728,15 +1746,21 @@ export class Scene {
       }
       // Until the near store holds it whole, a chunk the far feed has cells of is drawn as blocks.
       if (base === 0 && (this.far?.isFar(chunk) || this.city?.isFar(chunk) || this.landmarks?.isFar(chunk))) continue;
+      const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
+      const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
+      const own = near ? near.of(chunk, t, statics!, this.city!, this.chunkCells, Math.hypot(x0 + CHUNK_SIZE / 2 - cam.x, z0 + CHUNK_SIZE / 2 - cam.z), p) : null;
+      const mesh = own?.mesh ?? null;
       let batch = this.batches.get(id);
       // A piece that took another kind in place is moved in place; a chunk whose doors have stood a while other than its
-      // rooms were found with has them found again. A mesh not yet known has its page asked for while it is near.
+      // rooms were found with has them found again. A mesh not yet known has its page asked for while it is near. A chunk
+      // whose mesh came, or went with a change to what stands, is laid out again the same frame.
       let learnt = false;
       if (batch) for (const m of batch.unknown) learnt = this.assets.known(m) || learnt;
       const turned = batch !== undefined && batch.shape !== t.shape && !batch.sized && batch.placed === t.placed;
-      if (!batch || learnt || (batch.shape !== t.shape && !(turned && this.reform(batch, t, meshOf, colorOf))) || (batch.differ > 0 && this.now - batch.since >= SETTLE)) batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf);
-      const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
-      const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
+      if (!batch || learnt || batch.mesh !== mesh || (batch.shape !== t.shape && !(turned && this.reform(batch, t, meshOf, colorOf))) || (batch.differ > 0 && this.now - batch.since >= SETTLE)) {
+        batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf, mesh, own?.mine ?? null);
+        laid += t.high;
+      }
       const ax = batch.minX - cam.x;
       const ay = batch.minY - cam.y;
       const az = batch.minZ - cam.z;
@@ -1762,9 +1786,13 @@ export class Scene {
       this.zones(cam, batch, seen, casts);
       // From outside air a chunk's interior is neither seen nor seen to cast: only its shell is drawn and cast.
       const all = batch.blocks === batch.cells || batch.exposing > 0 || batch.rooms!.near(cam.x, cam.y, cam.z, reach);
-      if (seen) this.ranges(cam, batch, id, dist, x0 - cam.x, -cam.y, z0 - cam.z, cam.passes(ax, ay, az, bx, by, bz), all);
-      if (casts !== 0) this.castChunk(batch, id, x0 - cam.x, -cam.y, z0 - cam.z, casts, all);
+      const ox = x0 - cam.x, oy = -cam.y, oz = z0 - cam.z;
+      if (seen) this.ranges(cam, batch, id, dist, ox, oy, oz, cam.passes(ax, ay, az, bx, by, bz), all);
+      if (seen && batch.mesh) this.meshRuns(cam, batch, id, ox, oy, oz, cam.passes(ax, ay, az, bx, by, bz));
+      if (casts !== 0) this.castChunk(batch, id, ox, oy, oz, casts, all);
+      if (casts !== 0 && batch.mesh) this.castMesh(batch, id, ox, oy, oz);
     }
+    near?.end(p, this.assets.residency, statics!, this.city!, world.hf, this.chunkCells, laid);
   }
 
   /** Lets go of a chunk's instances, and the card of its buffer. */
@@ -1927,6 +1955,98 @@ export class Scene {
     }
   }
 
+  /**
+   * Draws a chunk's mesh by its cells in view (`zones`), each run of neighbouring cells one draw in the depth ranges
+   * `passes`, a run going on over cells out of view between where they weigh less than a draw.
+   */
+  private meshRuns(cam: Camera, b: ChunkBatch, id: number, ox: number, oy: number, oz: number, passes: number): void {
+    const m = b.mesh!, first = m.cellFirst, box = m.cellBox;
+    if (m.slot < 0) return;
+    let from = -1, to = 0, gap = 0;
+    for (let c = 0; c < b.cells; c++) {
+      const n = first[c + 1]! - first[c]!;
+      if (n === 0) continue;
+      const k = c * 6, seen = this.cellSeen[c]!;
+      if (seen === 0 || (seen === 1 && !cam.boxVisible(box[k]! + ox, box[k + 1]! + oy, box[k + 2]! + oz, box[k + 3]! + ox, box[k + 4]! + oy, box[k + 5]! + oz))) {
+        gap += n;
+        continue;
+      }
+      if (from >= 0 && gap * 2 > RUN_TRIANGLES) {
+        this.drawMesh(b, id, from, to, ox, oy, oz, passes);
+        from = -1;
+      }
+      if (from < 0) from = first[c]!;
+      to = first[c + 1]!;
+      gap = 0;
+    }
+    if (from >= 0) this.drawMesh(b, id, from, to, ox, oy, oz, passes);
+  }
+
+  /** Faces `from` up to `to` of a chunk's mesh: one instance of its level, at the chunk's corner. */
+  private drawMesh(b: ChunkBatch, id: number, from: number, to: number, ox: number, oy: number, oz: number, passes: number): void {
+    const p = this.packet;
+    const d = p.drawCount;
+    const copies = passes === (NEAR | FAR) ? 2 : 1;
+    if (d + this.doubled + copies > MAX_DRAWS) {
+      p.dropped++;
+      return;
+    }
+    p.drawMesh[d] = this.near!.mesh;
+    p.drawLod[d] = 0;
+    p.drawSlot[d] = b.mesh!.slot;
+    p.drawBuffer[d] = id;
+    p.drawFirst[d] = b.meshAt;
+    p.drawInstances[d] = 1;
+    p.drawFlags[d] = DRAW_RANGED;
+    p.drawFirstIndex[d] = from * 6;
+    p.drawIndexCount[d] = (to - from) * 6;
+    p.drawOffset[d * 3] = ox;
+    p.drawOffset[d * 3 + 1] = oy;
+    p.drawOffset[d * 3 + 2] = oz;
+    this.passOf[d] = passes;
+    p.drawCount = d + 1;
+    this.doubled += copies - 1;
+    p.triangles += (to - from) * 2 * copies;
+  }
+
+  /**
+   * Puts a chunk's mesh in the caster list: into each cascade the runs of its cells that cast into it (`cellCasts`), a
+   * cell between that does not going in when it weighs less than a draw. Runs alike but for their cascades are one caster.
+   */
+  private castMesh(b: ChunkBatch, id: number, ox: number, oy: number, oz: number): void {
+    const m = b.mesh!, first = m.cellFirst;
+    if (m.slot < 0) return;
+    const runs = this.castRuns;
+    runs.length = 0;
+    for (let i = 0; i < this.cascades.count; i++) {
+      const bit = 1 << i;
+      let open = -1, gap = 0;
+      for (let c = 0; c < b.cells; c++) {
+        const n = first[c + 1]! - first[c]!;
+        if (n === 0) continue;
+        if ((this.cellCasts[c]! & bit) === 0) {
+          gap += n;
+          continue;
+        }
+        if (open >= 0 && gap * 2 <= RUN_TRIANGLES) runs[open + 1] = first[c + 1]!;
+        else {
+          open = runs.length;
+          runs.push(first[c]!, first[c + 1]!, bit);
+        }
+        gap = 0;
+      }
+    }
+    for (let k = 0; k < runs.length; k += 3) {
+      if (runs[k + 2] === 0) continue;
+      for (let j = k + 3; j < runs.length; j += 3) {
+        if (runs[j] !== runs[k] || runs[j + 1] !== runs[k + 1]) continue;
+        runs[k + 2]! |= runs[j + 2]!;
+        runs[j + 2] = 0;
+      }
+      this.caster(this.near!.mesh, 0, m.slot, id, b.meshAt, 1, ox, oy, oz, DRAW_RANGED, 0, runs[k]! * 6, (runs[k + 1]! - runs[k]!) * 6, runs[k + 2]!);
+    }
+  }
+
   /** The first instance of cell `c` of the range whose blocks begin at `at0` in `cellFirst`, as if each cell's shell and interior lay together. */
   private firstOf(b: ChunkBatch, at0: number, c: number): number {
     const first = b.cellFirst;
@@ -1986,8 +2106,8 @@ export class Scene {
     const blocks = b.blocks;
     for (let moves = 0; ; moves++) {
       let i = 0;
-      while (i < slots.length && t.kind[slots[i]!] === kinds[i]) i++;
-      if (i === slots.length) break;
+      while (i < b.meshAt && t.kind[slots[i]!] === kinds[i]) i++;
+      if (i === b.meshAt) break;
       const slot = slots[i]!, kind = t.kind[slot]!, was = kinds[i]!;
       if (moves === 16 || kind === 0 || meshOf[kind] === HIDDEN) return false;
       let q = 0, to = -1;
@@ -2057,9 +2177,10 @@ export class Scene {
   /**
    * The instances of a chunk of the store, each mesh's together, shell before interior (rooms.ts), then by cell
    * (ChunkBatch.cells), and in a cell by slot. A mesh whose kinds turn into another's in place (a door and its open form)
-   * has that mesh's range beside it, empty or not, so the turn can be made in place (`reform`).
+   * has that mesh's range beside it, empty or not, so the turn can be made in place (`reform`). Given the chunk's `mesh`,
+   * the pieces `mine` marks by slot are its and have no instance, and one instance at the chunk's corner draws it.
    */
-  private rebuild(store: StructureStore, chunk: number, id: number, old: ChunkBatch | undefined, meshOf: Uint16Array, colorOf: Uint8Array, sizeOf: Uint8Array | null): ChunkBatch {
+  private rebuild(store: StructureStore, chunk: number, id: number, old: ChunkBatch | undefined, meshOf: Uint16Array, colorOf: Uint8Array, sizeOf: Uint8Array | null, mesh: NearMesh | null, mine: Uint8Array | null): ChunkBatch {
     const world = this.world;
     const t = store.chunks[chunk]!;
     const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
@@ -2080,9 +2201,10 @@ export class Scene {
     const blocks = inside ? cells * 2 : cells;
     const shell = rooms?.shell, blockAt = this.blockAt;
     const counts = this.cellCounts.fill(0, 0, this.counts.length * blocks);
+    const skip = mesh ? mine! : null;
     for (let s = 0; s < t.high; s++) {
       const kind = t.kind[s]!;
-      if (kind === 0 || meshOf[kind] === HIDDEN) continue;
+      if (kind === 0 || meshOf[kind] === HIDDEN || (skip && skip[s] === 1)) continue;
       const i = Math.min(side - 1, Math.max(0, Math.floor(((t.x[s]! - x0) * side) / CHUNK_SIZE)));
       const j = Math.min(side - 1, Math.max(0, Math.floor(((t.z[s]! - z0) * side) / CHUNK_SIZE)));
       const block = (inside && shell![s] === 0 ? cells : 0) + j * side + (j & 1 ? side - 1 - i : i);
@@ -2103,9 +2225,10 @@ export class Scene {
       if (total > from || paired) ranges.push(m, from, total - from);
     }
     const n = ranges.length / 3;
-    const data = old && old.data.length === total * INSTANCE_BYTES ? old.data : new Uint8Array(total * INSTANCE_BYTES);
-    const slots = old && old.slots.length === total ? old.slots : new Uint16Array(total);
-    const kinds = old && old.kinds.length === total ? old.kinds : new Uint16Array(total);
+    const count = total + (mesh ? 1 : 0);
+    const data = old && old.data.length === count * INSTANCE_BYTES ? old.data : new Uint8Array(count * INSTANCE_BYTES);
+    const slots = old && old.slots.length === count ? old.slots : new Uint16Array(count);
+    const kinds = old && old.kinds.length === count ? old.kinds : new Uint16Array(count);
     const w = new InstanceWriter(data);
     const b: ChunkBatch = {
       shape: t.shape,
@@ -2142,6 +2265,8 @@ export class Scene {
       maxZ: -Infinity,
       uploaded: false,
       onCard: old?.onCard ?? 0,
+      mesh,
+      meshAt: total,
     };
     emptyBoxes(b.cellBox);
     emptyBoxes(b.zone);
@@ -2154,7 +2279,7 @@ export class Scene {
     const box = b.cellBox, zone = b.zone;
     for (let s = 0; s < t.high; s++) {
       const kind = t.kind[s]!;
-      if (kind === 0 || meshOf[kind] === HIDDEN) continue;
+      if (kind === 0 || meshOf[kind] === HIDDEN || (skip && skip[s] === 1)) continue;
       const mesh = meshOf[kind]!;
       const x = t.x[s]!;
       const y = t.y[s]!;
@@ -2198,6 +2323,24 @@ export class Scene {
       const most = this.mostOfForm[kind]! / SIZE_UNITS;
       b.reach[this.cursor[mesh]!] = Math.max(b.reach[this.cursor[mesh]!]!, most);
       b.cellReach[this.cursor[mesh]! * cells + cell] = Math.max(b.cellReach[this.cursor[mesh]! * cells + cell]!, most);
+    }
+    if (mesh) {
+      // The mesh's cells, x and z from the chunk's corner, in the chunk's.
+      w.set(total, 0, 0, 0, 0, 0);
+      slots[total] = MESH_SLOT;
+      kinds[total] = 0;
+      const mb = mesh.cellBox;
+      for (let c = 0; c < cells; c++) {
+        const k = c * 6;
+        if (mb[k]! > mb[k + 3]!) continue;
+        grow(zone, k, mb[k]! + x0, mb[k + 1]!, mb[k + 2]! + z0, mb[k + 3]! + x0, mb[k + 4]!, mb[k + 5]! + z0);
+        b.minX = Math.min(b.minX, mb[k]! + x0);
+        b.minY = Math.min(b.minY, mb[k + 1]!);
+        b.minZ = Math.min(b.minZ, mb[k + 2]! + z0);
+        b.maxX = Math.max(b.maxX, mb[k + 3]! + x0);
+        b.maxY = Math.max(b.maxY, mb[k + 4]!);
+        b.maxZ = Math.max(b.maxZ, mb[k + 5]! + z0);
+      }
     }
     this.batches.set(id, b);
     return b;
