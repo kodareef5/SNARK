@@ -5,7 +5,7 @@ import { parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { WorkerPort } from "../assets/port.ts";
 import { WorkerCityMaker } from "../city/maker.ts";
-import { DEFAULT_TIER, tierOf } from "../core/assets/tiers.ts";
+import { DEFAULT_TIER, canvasRatio, tierOf } from "../core/assets/tiers.ts";
 import { mapHeightfield, mapNodes } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
 import { fetchBytes, fetchContent, fetchJson, fetchMap, fetchSounds, fetchText, nextTask, readStatics, withLandmarks } from "../core/fetched.ts";
@@ -171,9 +171,8 @@ async function boot(): Promise<void> {
     view.apply(app.ui.frame, cssHeight);
     if (!packet) return;
     const built = performance.now();
-    // The tier says how many device pixels to draw for one CSS pixel, at most, and 0 is as many as the screen has.
-    const most = app.scene?.assets.tier.pixelRatio ?? 0;
-    const ratio = most > 0 ? Math.min(devicePixelRatio, most) : devicePixelRatio;
+    // The tier says how many pixels to draw for one CSS pixel: the screen's own at most, or on ultra more (canvasRatio).
+    const ratio = app.scene ? canvasRatio(app.scene.assets.tier, devicePixelRatio, cssWidth, cssHeight) : devicePixelRatio;
     const width = Math.floor(cssWidth * ratio);
     const height = Math.floor(cssHeight * ratio);
     if (canvas.width !== width || canvas.height !== height) {

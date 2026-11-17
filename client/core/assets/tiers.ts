@@ -27,6 +27,12 @@ export interface Tier {
   /** The most device pixels drawn for one CSS pixel. 0 for as many as the screen has. */
   readonly pixelRatio: number;
   /**
+   * The fewest canvas pixels a side drawn for one CSS pixel, reached by drawing a whole number of the screen's own for
+   * each, which the browser scales down, as far as `canvas` pixels in all (canvasRatio). 0 for the screen's own.
+   */
+  readonly fewest: number;
+  readonly canvas: number;
+  /**
    * How long a pixel's footprint on a material's texture may be against its width and still be read at its width, where
    * the texture is seen at a glancing angle, as far as the card offers (EXT_texture_filter_anisotropic): 1 for read at
    * its length, as if seen head on.
@@ -70,7 +76,7 @@ export interface Tier {
    * whether its settings offer the tier at all. Each value is a phone's report's (planning/decisions.md, M2's rows), but
    * for what no phone has measured yet, which a phone draws as it did: materials read as if seen head on.
    */
-  readonly touch: { readonly shadows?: Tier["shadows"]; readonly gpuBytes?: number; readonly finish?: Tier["finish"]; readonly city?: Tier["city"]; readonly anisotropy?: number; readonly offered?: boolean } | null;
+  readonly touch: { readonly shadows?: Tier["shadows"]; readonly gpuBytes?: number; readonly finish?: Tier["finish"]; readonly city?: Tier["city"]; readonly fewest?: number; readonly anisotropy?: number; readonly offered?: boolean } | null;
   /**
    * The lit tiers' world finish (render/world-surfaces.ts): "full", three hashed cells of a tile with its normal and
    * packed maps and two noises; or "light", one cell, its base map and the large noise alone, which costs about two fifths as much over plain lighting.
@@ -123,29 +129,43 @@ const HIGH_CITY = [boxes(500), lattice(800), bare(1300), mass(2000, 4), mass(Inf
 // in the census's views of downtown Miami (tools/bench/census.ts).
 const PHONE_HIGH_CARD = 1024 * MB;
 const PHONE_CITY = 0.7;
+// Ultra draws twice the pixels a side of a screen of one or one and a half device pixels a CSS pixel, which the browser
+// halves cleanly; on a 1x 1440p screen that is a 5K screen's pixels, which no card for ultra is asked more than.
+const ULTRA_CANVAS = 5120 * 2880;
 
 export const TIERS: readonly Tier[] = [
   {
-    name: "lowpoly", texture: 0, textureShare: 0, view: 256, bones: 8192, threshold: 0.44, finest: 1, instanced: 160, pixelRatio: 1, anisotropy: 1, gpuBytes: 96 * MB, uploadBytes: 0.5 * MB, diskBytes: 256 * MB,
+    name: "lowpoly", texture: 0, textureShare: 0, view: 256, bones: 8192, threshold: 0.44, finest: 1, instanced: 160, pixelRatio: 1, fewest: 0, canvas: 0, anisotropy: 1, gpuBytes: 96 * MB, uploadBytes: 0.5 * MB, diskBytes: 256 * MB,
     lit: false, split: 0, reach: { bases: 1024, city: 2048, trees: 500, rocks: 0, bushes: 0, parts: 500 }, fade: 0.1, city: { levels: [boxes(340), lattice(600), mass(Infinity, 8)] }, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 0, size: 0, distance: 0, taps: 0, blend: 0, everyOther: false }, touch: null, finish: "full", clouds: 0, water: "flat",
     details: { pool: 384, share: 0.5, reach: 0.6, fill: 0.5 }, budget: { triangles: 2e6, draws: 2048 }, bodyError: 1,
   },
   {
-    name: "medium", texture: 1024, textureShare: 0.6, view: 512, bones: 16384, threshold: 0.22, finest: 0, instanced: 256, pixelRatio: 1.5, anisotropy: 1, gpuBytes: 512 * MB, uploadBytes: 1 * MB, diskBytes: 2048 * MB,
+    name: "medium", texture: 1024, textureShare: 0.6, view: 512, bones: 16384, threshold: 0.22, finest: 0, instanced: 256, pixelRatio: 1.5, fewest: 0, canvas: 0, anisotropy: 1, gpuBytes: 512 * MB, uploadBytes: 1 * MB, diskBytes: 2048 * MB,
     lit: true, split: 384, reach: { bases: 2048, city: 2048, trees: 1200, rocks: 600, bushes: 300, parts: 1200 }, fade: 0.1, city: { levels: MEDIUM_CITY }, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 2, size: 2048, distance: 64, taps: 4, blend: 0.8, everyOther: false }, touch: { shadows: { cascades: 2, size: 1024, distance: 64, taps: 1, blend: 0.8, everyOther: false }, finish: "light", city: { levels: nearer(MEDIUM_CITY, PHONE_CITY) } }, finish: "full", clouds: 2, water: "simple",
     details: { pool: 1536, share: 1, reach: 1, fill: 1 }, budget: { triangles: 2e6, draws: 1024 }, bodyError: 1,
   },
   {
-    name: "high", texture: 2048, textureShare: 0.6, view: 1024, bones: 32768, threshold: 0.14, finest: 0, instanced: 384, pixelRatio: 2, anisotropy: 16, gpuBytes: 1536 * MB, uploadBytes: 2 * MB, diskBytes: 8192 * MB,
+    name: "high", texture: 2048, textureShare: 0.6, view: 1024, bones: 32768, threshold: 0.14, finest: 0, instanced: 384, pixelRatio: 2, fewest: 0, canvas: 0, anisotropy: 16, gpuBytes: 1536 * MB, uploadBytes: 2 * MB, diskBytes: 8192 * MB,
     lit: true, split: 384, reach: { bases: 2048, city: 3072, trees: 2000, rocks: 900, bushes: 500, parts: 2000 }, fade: 0.1, city: { levels: HIGH_CITY }, nodes: { chunks: 4, band: [216, 248] }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false }, touch: { shadows: { cascades: 3, size: 1024, distance: 128, taps: 1, blend: 0.85, everyOther: false }, gpuBytes: PHONE_HIGH_CARD, finish: "light", city: { levels: nearer(HIGH_CITY, PHONE_CITY) }, anisotropy: 1 }, finish: "full", clouds: 2, water: "simple",
     details: { pool: 3072, share: 1, reach: 1, fill: 1.5 }, budget: { triangles: 4e6, draws: 2048 }, bodyError: 1,
   },
   {
-    name: "ultra", texture: 4096, textureShare: 0.6, view: 2048, bones: 65536, threshold: 0.08, finest: 0, instanced: 512, pixelRatio: 0, anisotropy: 16, gpuBytes: 4096 * MB, uploadBytes: 4 * MB, diskBytes: 24576 * MB,
-    lit: true, split: 384, reach: { bases: 2048, city: 4096, trees: 3000, rocks: 1200, bushes: 600, parts: 3000 }, fade: 0.1, city: { levels: [boxes(600), lattice(900), bare(1800), mass(2800, 4), mass(Infinity, 8)] }, nodes: { chunks: 5, band: [280, 312] }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false }, touch: { offered: false, anisotropy: 1 }, finish: "full", clouds: 2, water: "simple",
+    name: "ultra", texture: 4096, textureShare: 0.6, view: 2048, bones: 65536, threshold: 0.08, finest: 0, instanced: 512, pixelRatio: 0, fewest: 2, canvas: ULTRA_CANVAS, anisotropy: 16, gpuBytes: 4096 * MB, uploadBytes: 4 * MB, diskBytes: 24576 * MB,
+    lit: true, split: 384, reach: { bases: 2048, city: 4096, trees: 3000, rocks: 1200, bushes: 600, parts: 3000 }, fade: 0.1, city: { levels: [boxes(600), lattice(900), bare(1800), mass(2800, 4), mass(Infinity, 8)] }, nodes: { chunks: 5, band: [280, 312] }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false }, touch: { offered: false, fewest: 0, anisotropy: 1 }, finish: "full", clouds: 2, water: "simple",
     details: { pool: 6144, share: 1, reach: 1.25, fill: 2 }, budget: { triangles: 8e6, draws: 4096 }, bodyError: 1,
   },
 ];
+
+/**
+ * Canvas pixels a side for one CSS pixel on a screen of `dpr` device pixels to one, the canvas `width` by `height` CSS
+ * pixels: the screen's own as far as the tier's `pixelRatio`, then the fewest whole number of those that reaches its
+ * `fewest`, fewer where that passes its `canvas` pixels, and never under the screen's own.
+ */
+export function canvasRatio(tier: Tier, dpr: number, width: number, height: number): number {
+  const own = tier.pixelRatio > 0 ? Math.min(dpr, tier.pixelRatio) : dpr;
+  if (tier.fewest <= own) return own;
+  return Math.max(own, Math.min(own * Math.ceil(tier.fewest / own), Math.sqrt(tier.canvas / Math.max(1, width * height))));
+}
 
 /** What a new player gets. */
 export const DEFAULT_TIER: Tier["name"] = "medium";
