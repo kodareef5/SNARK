@@ -30,7 +30,11 @@ export class VehiclePairQueries implements DynamicQueries {
   private readonly hit = contact(); private readonly current = contact();
   private readonly solids: StaticVehicleSolids;
   private readonly world: CollisionWorld;
-  constructor(world: CollisionWorld) { this.world = world; this.solids = new StaticVehicleSolids(world); }
+  private checking: DynamicBody | null = null;
+  constructor(world: CollisionWorld, omits?: (body: DynamicBody, ref: number) => boolean) {
+    this.world = world;
+    this.solids = new StaticVehicleSolids(world, omits ? ref => !!this.checking && omits(this.checking, ref) : undefined);
+  }
   configure(a: DynamicBody, b: DynamicBody, defA: VehicleDefinition, defB: VehicleDefinition | undefined, radius: number, height: number): void {
     this.a = a; this.b = b; this.defA = defA; this.defB = defB; this.radiusB = radius; this.heightB = height;
     rotation(a.prior, this.qa); rotation(a.state, this.qb);
@@ -108,6 +112,7 @@ export class VehiclePairQueries implements DynamicQueries {
   free(body: DynamicBody, from: Readonly<DynamicState>, blocker: Float64Array): boolean {
     const to = body.state, def = body === this.a ? this.defA : this.defB;
     if (def) {
+      this.checking = body;
       const shapes = isWheelVehicle(def) ? carShapes(def.spec) : isBoatVehicle(def) ? boatShapes(def) : helicopterShapes(def);
       const hit = this.solids.blocked(from, to, shapes, isBoatVehicle(def) ? [{ from: boatOutboardFrame(from, def.spec), to: boatOutboardFrame(to, def.spec) }] : undefined, true);
       if (!hit) return true;
@@ -119,7 +124,7 @@ export class VehiclePairQueries implements DynamicQueries {
     for (let i = 1; i <= n; i++) {
       const t = i / n;
       const x = from.x + (to.x - from.x) * t, y = from.y + (to.y - from.y) * t, z = from.z + (to.z - from.z) * t, world = this.world;
-      if (!capsuleFree(world, x, y, z, this.radiusB, this.heightB)) {
+      if (!capsuleFree(world, x, y, z, this.radiusB, this.heightB, true)) {
         blocker[3] = x; blocker[4] = y; blocker[5] = z;
         if (x < 0 || z < 0 || x > world.hf.sizeX || z > world.hf.sizeZ) {
           blocker[0] = x < 0 ? 1 : x > world.hf.sizeX ? -1 : 0; blocker[2] = z < 0 ? 1 : z > world.hf.sizeZ ? -1 : 0;

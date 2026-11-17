@@ -28,8 +28,7 @@ export class VehicleCorrection {
     if (!allow) { this.reset(); return; }
     this.after[0] = -x; this.after[1] = -y; this.after[2] = -z; this.after[3] = w;
     quatMul(this.q, 0, this.before, 0, this.after, 0);
-    // Half-turns and teleports are explicit discontinuities, not slowly hidden orientation errors.
-    if (this.angle > Math.PI / 2) this.reset();
+    // A large collision correction is still continuous. Only a qualified discontinuity cuts the fade.
   }
   update(dtMs: number): void { quatNlerp(this.q, 0, this.q, 0, identity, 0, 1 - Math.exp(-dtMs / 90)); }
   apply(q: Numbers): void { quatMul(q, 0, this.q, 0, q, 0); }

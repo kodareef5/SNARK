@@ -497,6 +497,7 @@ export class ClientSession {
   /** Resource nodes around the body, filled from the map minus those the server reports used up. */
   nodeField: NodeField | null = null;
   private vehicleTrees: PredictedTrees | null = null;
+  get predictedTrees(): PredictedTrees | null { return this.vehicleTrees; }
   private treeDriver = 0;
   private nodeChunk = -1;
   private nodeRadius = NODE_RADIUS;
@@ -517,7 +518,7 @@ export class ClientSession {
    */
   onStructure: ((was: number, kind: number, x: number, y: number, z: number, hpWas: number, hp: number, cause: number) => void) | null = null;
   /** A witnessed depletion/regrowth in a known chunk. Crushed trees leave no stump; initial join state emits no effects. */
-  onNode: ((chunk: number, index: number, used: boolean, crushed: boolean) => void) | null = null;
+  onNode: ((chunk: number, index: number, used: boolean, crushed: boolean, form?: number) => void) | null = null;
   /** Predicted local body after the latest simulated tick; while its ground is not held, the body the server last told. */
   readonly own = new Body();
   /** The ground within PREDICTED_REACH of the body is the map's own and its nodes held, so the body is predicted on it. */
@@ -1112,17 +1113,19 @@ export class ClientSession {
     if (r.overflow || !field) return;
     const known = this.nodeGone.has(chunk);
     const before = this.nodeGone.get(chunk) ?? [];
+    const oldCrushed = this.nodeCrushed.get(chunk) ?? [];
     this.nodeGone.set(chunk, gone);
     this.nodeCrushed.set(chunk, crushed);
     for (const i of before) if (!gone.includes(i)) {
       field.set(chunk, i, true);
       if (known) this.onNode?.(chunk, i, false, false);
     }
-    for (const i of gone) if (!before.includes(i)) {
+    for (const i of gone) if (!before.includes(i) || oldCrushed.includes(i) !== crushed.includes(i)) {
+      const form = field.store.chunks[chunk]?.kind[i];
       field.set(chunk, i, false, crushed.includes(i));
-      if (known) this.onNode?.(chunk, i, true, crushed.includes(i));
+      if (known) this.onNode?.(chunk, i, true, crushed.includes(i), form);
     }
-    this.vehicleTrees?.confirm(chunk, gone);
+    this.vehicleTrees?.confirm(chunk, gone, crushed);
     this.nodeChanges?.touch(chunk);
   }
 
@@ -1478,7 +1481,7 @@ export class ClientSession {
     this.world = { mapId, dims: hf.dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...(reg.motion.some((t) => t !== null) ? { motion: this.motionSource } : {}), ...(this.opts.landmarks?.length ? { landmarks: this.opts.landmarks } : {}) };
     this.vehicleTrees = field ? new PredictedTrees(this.world, reg, field) : null;
     this.startCity(this.arrived);
-    this.vehicleContacts = new VehiclePrediction(this.world, reg);
+    this.vehicleContacts = new VehiclePrediction(this.world, reg, field ? () => new PredictedTrees(this.world!, reg, field) : undefined, this.vehicleTrees ?? undefined);
     this.recenterNodes();
     this.move = move;
     this.ownPrev.copy(this.own);
@@ -1525,7 +1528,7 @@ export class ClientSession {
     const sb = this.serverBody;
     readBody(r, sb);
     if (r.overflow || tick <= this.latestSnapshot) return;
-    if (!readContacts(r, this.contactSnapshot, tick)) { this.stats.undecodable++; return; }
+    if (!readContacts(r, this.contactSnapshot, tick, this.world?.hf.sizeX, this.world?.hf.sizeZ)) { this.stats.undecodable++; return; }
 
     const base = age > 0 ? this.views.find(tick - age) : null;
     if (age > 0 && !base) {
@@ -1619,13 +1622,13 @@ export class ClientSession {
       }
     }
 
-    const discontinuity = this.vehicleContacts?.accept(this.contactSnapshot);
+    const discontinuity = this.vehicleContacts?.accept(this.contactSnapshot, sb);
     this.reconcile(tick, sb);
     if (discontinuity) {
       this.smoothX = this.smoothY = this.smoothZ = 0;
       this.vehicleCorrection.reset();
     }
-    this.vehicleContacts?.finishReplay();
+    this.vehicleContacts?.finishReplay(this.alpha);
   }
 
   /** On a mismatch with the body predicted for `tick`, rewinds and replays. */
@@ -1634,6 +1637,7 @@ export class ClientSession {
     const passenger = this.driving < 0 && sb.seatSlot !== 0 && sb.seat > 0;
     if (tick >= this.simTick) {
       // The server is at or past the prediction (join, stall), so adopt its state.
+      this.vehicleContacts?.beginReplay(this.alpha);
       this.prediction.adopt(tick, this.simTick);
       this.own.copy(sb);
       this.ownPrev.copy(sb);
@@ -1699,6 +1703,7 @@ export class ClientSession {
     const wasZ = this.ownPrev.z + (this.own.z - this.ownPrev.z) * alpha;
     // Replay can replace both render endpoints. Preserve the actual interpolated pose visible this frame.
     this.vehicleCorrection.capture(this.own, this.ownPrev, alpha);
+    this.vehicleContacts?.beginReplay(this.alpha);
     this.own.copy(sb);
     this.bodies[slot]!.copy(sb);
     this.bodyTick[slot] = tick;
@@ -1730,12 +1735,13 @@ export class ClientSession {
     const dx = wasX - (this.ownPrev.x + (this.own.x - this.ownPrev.x) * alpha) + this.smoothX;
     const dy = wasY - (this.ownPrev.y + (this.own.y - this.ownPrev.y) * alpha) + this.smoothY;
     const dz = wasZ - (this.ownPrev.z + (this.own.z - this.ownPrev.z) * alpha) + this.smoothZ;
-    if (predicted && dx * dx + dy * dy + dz * dz < SMOOTH_LIMIT * SMOOTH_LIMIT) {
+    const smoothLimit = vehicle ? 12 : SMOOTH_LIMIT;
+    if (predicted && dx * dx + dy * dy + dz * dz < smoothLimit * smoothLimit) {
       this.smoothX = dx;
       this.smoothY = dy;
       this.smoothZ = dz;
     } else this.smoothX = this.smoothY = this.smoothZ = 0;
-    this.vehicleCorrection.reconcile(this.own, vehicle && predicted && dx * dx + dy * dy + dz * dz < SMOOTH_LIMIT * SMOOTH_LIMIT, this.ownPrev, alpha);
+    this.vehicleCorrection.reconcile(this.own, vehicle && predicted && dx * dx + dy * dy + dz * dz < smoothLimit * smoothLimit, this.ownPrev, alpha);
   }
 
   private chunk(r: BitReader): void {

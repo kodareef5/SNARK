@@ -4,10 +4,10 @@ import type { CorpseImpact } from '../shared/anim/corpse.ts';
 import { ZONE_NONE } from '../shared/anim/human.ts';
 import { CHUNK_SIZE, TICK_DT } from '../shared/coords.ts';
 import { makeHandle } from '../shared/ids.ts';
-import { MAX_CONTACT_PROXIES, type ContactProxy, type ContactSnapshot } from '../shared/net/contact.ts';
+import { MAX_CONTACT_PROXIES, contactBody, contactRelevant, contactHorizon, contactReach, publicContactBody, type ContactSnapshot } from '../shared/net/contact.ts';
 import { clamp, len3, TAU } from '../shared/math/scalar.ts';
 import { youngScale } from '../shared/sim/breeding.ts';
-import { Body, BTN_BRAKE, BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_ROLL, BTN_SPRINT, MODE_GHOST, MODE_NONE, stanceHeight } from '../shared/sim/character.ts';
+import { Body, MODE_GHOST, MODE_NONE, stanceHeight } from '../shared/sim/character.ts';
 import { DMG_MELEE } from '../shared/sim/damage.ts';
 import { F_ALIVE, F_GROUNDED, F_HELD, F_PROP } from '../shared/sim/entities.ts';
 import { isBoatVehicle, isRotorVehicle, type VehicleDefinition, type VehicleHullSpec } from '../shared/sim/vehicle.ts';
@@ -39,8 +39,6 @@ export interface VehicleContactsContext {
   boarding?(actor: number, vehicle: number): boolean;
   /** Only an empty, parked protected foreign vehicle is anchored against an unauthorized opposing actor. */
   anchored?(vehicle: number, opposing: EntityRecord): boolean;
-  /** Last applied movement controls, for bounded driver-side prediction of nearby bodies. */
-  controls?(entity: number, proxy: ContactProxy): void;
   pair?(event: VehicleCollisionPair): void;
 }
 interface Frame { body: Body; handle: number; pid: number; tick: number; motionEpoch: number; consumed: boolean; by: number; byHandle: number }
@@ -69,6 +67,7 @@ export class VehicleContacts {
   private readonly first = contact();
   private readonly queries: VehiclePairQueries;
   private readonly snapshotBody = new Body();
+  private readonly publicBody = new Body();
   private defA!: VehicleDefinition;
   private defB: VehicleDefinition | undefined;
   private radiusB = 0;
@@ -105,29 +104,26 @@ export class VehicleContacts {
       return (x + vx * t) ** 2 + (z + vz * t) ** 2;
     };
     this.candidates.sort((a, b) => distance(a) - distance(b) || a - b);
-    out.truncated = this.candidates.length > MAX_CONTACT_PROXIES;
+    out.truncated = false;
     for (const e of this.candidates) {
-      if (out.count === MAX_CONTACT_PROXIES) break;
-      const row = out.rows[out.count++]!, kind = ents.kind[e]!, move = world.reg.move[kind]!, other = world.reg.vehicle[kind];
+      if (out.count === MAX_CONTACT_PROXIES) { out.truncated = true; break; }
+      const row = out.rows[out.count]!, kind = ents.kind[e]!, move = world.reg.move[kind]!, other = world.reg.vehicle[kind];
       const victim = records.byPid.get(ents.pid[e]!)!, definition = world.reg.defs[kind];
       const scale = ents.grown[e] ? youngScale(world.reg.birthScale[kind]!, ents.span[e]!, ents.grown[e]!, world.tick) : 1;
       row.handle = makeHandle(e, ents.gen[e]!); row.epoch = world.history.motionEpoch(e); row.kind = kind;
       row.vehicle = !!other; row.grounded = (ents.flags[e]! & F_GROUNDED) !== 0;
-      ents.loadBody(e, row.body);
-      row.native = row.pilot = row.tamed = false;
-      row.moveX = row.moveZ = row.pitch = row.buttons = 0; row.yaw = row.body.yaw;
-      this.ctx.controls?.(e, row);
-      // A driver needs the neighbour's movement. The owner's weapon state belongs to its own snapshot.
-      row.body.held = row.body.act = row.body.actTicks = 0;
-      row.body.rounds = row.body.reloadTo = row.body.bloom = row.body.kick = 0;
-      if (!other) row.buttons &= BTN_JUMP | BTN_SPRINT | BTN_CROUCH | BTN_PRONE | BTN_ROLL | BTN_BRAKE;
-      row.radius = move.radius * scale; row.height = stanceHeight(move, ents.stance[e]!) * scale;
-      this.loadRigid(e, row.state);
-      if (!other) { this.upright(row.state); row.state.yaw = ents.yaw[e]! * TAU / 65536; }
-      row.mass = other ? vehicleMassProperties(other.spec, row.state).mass : Math.max(1, (world.reg.mass[kind]! || 80 * (move.radius / .4) ** 2 * move.height / 1.8) * scale ** 3);
+      ents.loadBody(e, this.publicBody);
+      publicContactBody(this.publicBody, row.body);
+      row.radius = other ? Math.max(move.radius, contactReach(other)) : move.radius * scale;
+      row.height = stanceHeight(move, ents.stance[e]!) * scale;
+      if (!contactRelevant(this.snapshotBody, row, contactReach(def))) continue;
+      contactBody(row.body, row.state);
+      row.mass = other ? vehicleMassProperties(other.spec, row.state).mass : Math.max(1, (world.reg.mass[kind]! || 80 * (move.radius / .4) * (move.radius / .4) * move.height / 1.8) * scale * scale * scale);
       const fixed = !other && definition?.type === 'species' && definition.still === true && row.grounded;
       const anchored = !!other && (this.ctx.anchored?.(e, by ?? vehicle) ?? false);
       row.response = fixed || anchored ? 'fixed' : combat.vehicleDisplaces(by, vehicle, victim) ? 'dynamic' : 'protected';
+      if (!contactHorizon(row)) continue;
+      out.count++;
       if (row.response === 'fixed') {
         row.state.vx = row.state.vy = row.state.vz = row.state.pitchRate = row.state.yawRate = row.state.rollRate = 0;
         row.body.vx = row.body.vy = row.body.vz = row.body.vehiclePitchRate = row.body.vehicleYawRate = row.body.vehicleRollRate = 0;
@@ -186,7 +182,7 @@ export class VehicleContacts {
           const handle = makeHandle(target, ents.gen[target]!);
           if (this.touches.get(Math.min(frame.handle, handle))?.get(Math.max(frame.handle, handle))?.seen === world.tick) continue;
           const hit = this.rigidContact(e, frame, target, def);
-          if (hit && (this.first.entity < 0 || hit.t < this.first.t || (hit.t === this.first.t && target < this.first.entity))) Object.assign(this.first, hit);
+          if (hit && (this.first.entity < 0 || hit.t < this.first.t || (hit.t === this.first.t && makeHandle(target, ents.gen[target]!) < this.first.handle))) Object.assign(this.first, hit);
         }
         if (this.first.entity < 0) break;
         if (this.resolve(e, frame, this.first) && !this.changed.includes(e)) this.changed.push(e);

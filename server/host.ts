@@ -19,8 +19,6 @@ import { isBoatVehicle, isRotorVehicle, isWheelVehicle } from "../shared/sim/veh
 import { boatRestY } from "../shared/sim/boat.ts";
 import { groundUnder } from "../shared/world/collide.ts";
 import { VehicleContacts } from "./vehicle-contacts.ts";
-import { INPUT_HOLD_TICKS } from "../shared/net/protocol.ts";
-import { BTN_JUMP, MODE_WALK } from "../shared/sim/character.ts";
 import { Entangle } from "./entangle.ts";
 import { Breeding, DEADLINE_BREED } from "./breeding.ts";
 import { Carry } from "./carry.ts";
@@ -577,25 +575,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   game.onVehicleStep = e => urban.impact(e);
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
-    controls: (e, proxy) => {
-      const def = reg.vehicle[world.ents.kind[e]!];
-      const c = sessionOf(urban.riderOf(e)?.pid ?? world.ents.pid[e]!);
-      proxy.tamed = world.ents.team[e] !== 0;
-      if (c) {
-        const quiet = world.tick - c.inputAt > INPUT_HOLD_TICKS;
-        proxy.native = true; proxy.pilot = !quiet; proxy.tamed = true;
-        proxy.moveX = quiet ? 0 : c.heldX; proxy.moveZ = quiet ? 0 : c.heldZ;
-        proxy.yaw = c.heldYaw; proxy.pitch = c.heldPitch;
-        proxy.buttons = quiet && def ? isRotorVehicle(def) ? 0 : BTN_JUMP : c.heldButtons;
-      } else if (def) {
-        proxy.native = true;
-        proxy.buttons = isWheelVehicle(def) && !urban.recoveryCoasting(e) ? BTN_JUMP : 0;
-      } else if (proxy.body.mode === MODE_WALK) {
-        proxy.native = true;
-        proxy.moveZ = creatures.mind.move[e]!; proxy.yaw = creatures.mind.look[e]!;
-        proxy.pitch = creatures.mind.pitch[e]!; proxy.buttons = creatures.mind.buttons[e]!;
-      }
-    },
     boarding: (actor, vehicle) => urban.boarding(actor, vehicle),
     anchored: (e, opposing) => {
       const vehicle = records.byPid.get(world.ents.pid[e]!);

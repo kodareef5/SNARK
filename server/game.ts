@@ -1372,8 +1372,8 @@ export class GameServer {
     contacts.owner = contacts.epoch = contacts.count = 0;
     contacts.truncated = false;
     if (c.drive >= 0 && this.world.reg.vehicle[c.body.kind]) this.contactProxies?.(c, contacts);
-    // Leave at least half the remaining packet for the ordinary view, and never exceed the selected snapshot budget.
-    writeContacts(w, contacts, Math.min(480 * 8, Math.floor((bytes * 8 - w.pos) / 2)));
+    // Leave at least two thirds of the remaining packet for the ordinary view, and never exceed the selected snapshot budget.
+    writeContacts(w, contacts, Math.min(320 * 8, Math.floor((bytes * 8 - w.pos) / 3)));
     c.rotate = writeViewDelta(w, base, cur, next, bytes * 8 - w.pos, c.rotate, ents, self, limit < cur.count ? this.ranks[at]! : null, limit, c.views);
     if (w.overflow) {
       // Part of a snapshot is of no use. Nothing is sent, and the view the client would have held is forgotten.

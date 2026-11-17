@@ -3,11 +3,12 @@ import type { Registry } from '../../shared/content/registry.ts';
 import { TICK_DT } from '../../shared/coords.ts';
 import { makeHandle } from '../../shared/ids.ts';
 import { quatNlerp } from '../../shared/math/quat.ts';
-import { contactBody, contactProxy, type ContactProxy, type ContactSnapshot } from '../../shared/net/contact.ts';
-import { Body, stepBody } from '../../shared/sim/character.ts';
+import { contactBody, contactProxy, contactRelevant, contactHorizon, contactReach, type ContactProxy, type ContactSnapshot } from '../../shared/net/contact.ts';
+import { Body } from '../../shared/sim/character.ts';
 import { stepVehicleBody } from '../../shared/sim/vehicle-body.ts';
 import { dynamicState, DynamicScratch, resolveDynamicContact, type DynamicBody, type DynamicResult, type DynamicState } from '../../shared/sim/vehicle-dynamic.ts';
 import { integrateVehiclePose, vehicleMassProperties } from '../../shared/sim/vehicle-rigid.ts';
+import type { PredictedTrees } from './vehicle-trees.ts';
 import type { VehicleDefinition } from '../../shared/sim/vehicle.ts';
 import { groundUnder, type CollisionWorld } from '../../shared/world/collide.ts';
 import { VehiclePairQueries } from '../../shared/world/vehicle-pair.ts';
@@ -25,6 +26,10 @@ interface Proxy {
   sx: number; sy: number; sz: number;
   oldX: number; oldY: number; oldZ: number;
   correction: VehicleCorrection;
+  active: boolean; reenter: boolean; withdrawing: boolean; exit: number; lastContact: number;
+  dx: number; dy: number; dz: number; dq: Float64Array; exitQ: Float64Array;
+  history: DynamicState[]; historyTick: Int32Array;
+  trees?: PredictedTrees;
 }
 const dynamicBody = (): DynamicBody => ({ prior: dynamicState(), state: dynamicState(), spec: null, mass: 1, response: 'dynamic' });
 function rounded(s: DynamicState): void {
@@ -33,7 +38,7 @@ function rounded(s: DynamicState): void {
   s.pitchRate = Math.fround(s.pitchRate); s.yawRate = Math.fround(s.yawRate); s.rollRate = Math.fround(s.rollRate);
 }
 export class VehiclePrediction {
-  readonly stats = { contacts: 0, lastTick: 0, lastTarget: 0, proxies: 0, truncated: false };
+  readonly stats = { contacts: 0, lastTick: 0, lastTarget: 0, proxies: 0, truncated: false, steps: 0, replays: 0 };
   private readonly proxies = new Map<number, Proxy>();
   private readonly own = dynamicBody();
   private readonly pair: VehiclePairQueries;
@@ -52,90 +57,132 @@ export class VehiclePrediction {
   private snapshotTick = 0;
   private owner = 0;
   private epoch = 0;
+  private replaying = false;
+  private readonly treeBodies = new WeakMap<DynamicBody, PredictedTrees>();
+  private readonly treeFactory?: () => PredictedTrees;
 
   private readonly world: CollisionWorld;
   private readonly registry: Registry;
 
-  constructor(world: CollisionWorld, registry: Registry) {
+  constructor(world: CollisionWorld, registry: Registry, treeFactory?: () => PredictedTrees, ownTrees?: PredictedTrees) {
     this.world = world;
+    this.treeFactory = treeFactory;
     this.registry = registry;
-    this.pair = new VehiclePairQueries(world);
+    if (ownTrees) this.treeBodies.set(this.own, ownTrees);
+    this.pair = new VehiclePairQueries(world, (body, ref) => this.treeBodies.get(body)?.omits(ref) ?? false);
   }
 
   /** Returns true for a qualified own-body discontinuity, including a teleport smaller than the fade limit. */
-  accept(snapshot: ContactSnapshot): boolean {
-    const hadTargets = this.proxies.size > 0;
+  accept(snapshot: ContactSnapshot, own?: Body): boolean {
     const discontinuity = snapshot.owner !== this.owner || snapshot.epoch !== this.epoch;
     if (discontinuity) this.proxies.clear();
-    this.owner = snapshot.owner;
-    this.epoch = snapshot.epoch;
-    this.snapshotTick = snapshot.tick;
-    this.stats.truncated = snapshot.truncated;
+    this.owner = snapshot.owner; this.epoch = snapshot.epoch; this.snapshotTick = snapshot.tick;
+    this.stats.truncated = snapshot.truncated; this.needsReplay = false;
+    const def = own && this.registry.vehicle[own.kind];
     for (let i = 0; i < snapshot.count; i++) {
       const fact = snapshot.rows[i]!;
-      if (!this.registry.move[fact.kind] || fact.vehicle !== !!this.registry.vehicle[fact.kind]) continue;
+      if (!this.registry.move[fact.kind] || fact.vehicle !== !!this.registry.vehicle[fact.kind] ||
+          def && !contactRelevant(own!, fact, contactReach(def))) continue;
       let p = this.proxies.get(fact.handle);
+      const fresh = !p, teleport = !!p && p.fact.epoch !== fact.epoch;
       if (!p) {
+        // Visual withdrawal rows are retained briefly, but cannot grow without a bound as neighbours rotate.
+        if (this.proxies.size >= 32) {
+          for (const [handle, old] of this.proxies) if (!old.active) { this.proxies.delete(handle); break; }
+          if (this.proxies.size >= 32) continue;
+        }
         p = {
           fact: contactProxy(), body: dynamicBody(), native: new Body(), tick: 0, seen: 0,
           visual: false, fadeIn: true, sx: 0, sy: 0, sz: 0, oldX: 0, oldY: 0, oldZ: 0,
-          correction: new VehicleCorrection(),
+          correction: new VehicleCorrection(), active: true, reenter: false, withdrawing: false, exit: 0, lastContact: 0,
+          dx: 0, dy: 0, dz: 0, dq: new Float64Array([0, 0, 0, 1]), exitQ: new Float64Array(4),
+          history: Array.from({ length: 16 }, dynamicState), historyTick: new Int32Array(16),
+          trees: fact.vehicle ? this.treeFactory?.() : undefined,
         };
         this.proxies.set(fact.handle, p);
-      } else if (p.fact.epoch !== fact.epoch) {
-        // A target teleport must not animate back through the old contact location.
-        p.visual = false;
-        p.fadeIn = false;
-        p.sx = p.sy = p.sz = 0;
-        p.correction.reset();
-        Object.assign(p.body.state, fact.state);
+        if (p.trees) this.treeBodies.set(p.body, p.trees);
       }
-      const before = p.body.state;
-      p.oldX = before.x; p.oldY = before.y; p.oldZ = before.z;
-      p.correction.captureQuaternion(before.qx, before.qy, before.qz, before.qw);
+      const index = snapshot.tick & 15, known = p.historyTick[index] === snapshot.tick ? p.history[index]! : p.fact.state;
+      const changed = fresh || teleport || !p.active || p.withdrawing || p.fact.grounded !== fact.grounded || p.fact.kind !== fact.kind || p.fact.response !== fact.response || p.fact.radius !== fact.radius || p.fact.height !== fact.height ||
+        p.fact.mass !== fact.mass || p.fact.body.vehicleGroundPitch !== fact.body.vehicleGroundPitch ||
+        p.fact.body.vehicleGroundRoll !== fact.body.vehicleGroundRoll || p.fact.body.vehicleRideOffset !== fact.body.vehicleRideOffset ||
+        p.fact.body.vehicleRideVelocity !== fact.body.vehicleRideVelocity || !sameMotion(known, fact.state);
+      if (changed) this.needsReplay = true;
+      if (teleport) {
+        p.visual = false; p.fadeIn = false; p.sx = p.sy = p.sz = 0; p.correction.reset(); p.historyTick.fill(0);
+      } else if ((!p.active || p.withdrawing) && p.visual) {
+        // beginReplay knows the current interpolation alpha, so it can preserve this actual displayed endpoint.
+        p.reenter = true;
+      }
       const state = p.fact.state, full = p.fact.body;
-      Object.assign(p.fact, fact);
-      p.fact.state = state; p.fact.body = full;
-      Object.assign(state, fact.state);
-      full.copy(fact.body);
-      p.native.copy(full);
-      Object.assign(p.body.state, state);
-      Object.assign(p.body.prior, state);
-      p.body.response = fact.response;
-      p.body.mass = fact.mass;
-      p.body.spec = this.registry.vehicle[fact.kind]?.spec ?? null;
-      p.tick = p.seen = snapshot.tick;
+      Object.assign(p.fact, fact); p.fact.state = state; p.fact.body = full;
+      Object.assign(state, fact.state); full.copy(fact.body);
+      p.body.response = fact.response; p.body.mass = fact.mass; p.body.spec = this.registry.vehicle[fact.kind]?.spec ?? null;
+      p.seen = snapshot.tick; p.active = true; p.withdrawing = false;
+      if (fresh || teleport) this.resetProxy(p);
     }
-    for (const [handle, p] of this.proxies) {
-      if (p.seen !== snapshot.tick) this.proxies.delete(handle);
+    for (const p of this.proxies.values()) if (p.active && p.seen !== snapshot.tick) {
+      // Only a withdrawn body that already caused a future impact can change an otherwise exact own replay.
+      if (p.lastContact > snapshot.tick) this.needsReplay = true;
+      p.active = false; p.withdrawing = false;
     }
-    this.stats.proxies = this.proxies.size;
-    this.needsReplay = discontinuity || hadTargets || this.proxies.size > 0;
+    this.stats.proxies = 0;
+    for (const p of this.proxies.values()) if (p.active) this.stats.proxies++;
     return discontinuity;
   }
 
-  /** Called once after own-body replay. Only new raw error, not an existing clock fade, can trigger a snap. */
-  finishReplay(): void {
+  /** Accepting a packet does not throw away a matching future. Reset only when the owner really rewinds. */
+  beginReplay(alpha = 1): void {
+    this.replaying = true; this.stats.replays++;
     for (const p of this.proxies.values()) {
-      if (!p.visual) continue;
-      const s = p.body.state, dx = p.oldX - s.x, dy = p.oldY - s.y, dz = p.oldZ - s.z;
-      const continuous = dx * dx + dy * dy + dz * dz < 9;
+      if (!p.active) continue;
+      const s = p.body.state, a = p.body.prior;
+      p.oldX = a.x + (s.x - a.x) * alpha; p.oldY = a.y + (s.y - a.y) * alpha; p.oldZ = a.z + (s.z - a.z) * alpha;
+      this.interpolateQ(p, alpha);
+      if (p.reenter) {
+        p.reenter = false; p.sx = p.dx - p.oldX; p.sy = p.dy - p.oldY; p.sz = p.dz - p.oldZ;
+        p.correction.reset(); p.correction.captureQuaternion(p.dq[0]!, p.dq[1]!, p.dq[2]!, p.dq[3]!);
+      } else p.correction.captureQuaternion(this.drawQ[0]!, this.drawQ[1]!, this.drawQ[2]!, this.drawQ[3]!);
+      this.resetProxy(p);
+    }
+  }
+  private resetProxy(p: Proxy): void {
+    p.native.copy(p.fact.body);
+    Object.assign(p.body.state, p.fact.state); Object.assign(p.body.prior, p.fact.state);
+    p.tick = p.seen;
+    p.trees?.acknowledge(p.seen);
+  }
+
+  /** Called once after own-body replay. Only new raw error, not an existing clock fade, can trigger a snap. */
+  finishReplay(alpha = 1): void {
+    if (!this.replaying) return;
+    this.replaying = false;
+    for (const p of this.proxies.values()) {
+      if (!p.visual || !p.active) continue;
+      const s = p.body.state, a = p.body.prior;
+      const dx = p.oldX - (a.x + (s.x - a.x) * alpha), dy = p.oldY - (a.y + (s.y - a.y) * alpha), dz = p.oldZ - (a.z + (s.z - a.z) * alpha);
+      const continuous = dx * dx + dy * dy + dz * dz < 144;
       if (continuous) { p.sx += dx; p.sy += dy; p.sz += dz; }
       else p.sx = p.sy = p.sz = 0;
-      p.correction.reconcileQuaternion(s.qx, s.qy, s.qz, s.qw, continuous);
+      this.interpolateQ(p, alpha);
+      p.correction.reconcileQuaternion(this.drawQ[0]!, this.drawQ[1]!, this.drawQ[2]!, this.drawQ[3]!, continuous);
     }
   }
 
   update(dtMs: number): void {
     const keep = Math.exp(-dtMs / 90);
     for (const p of this.proxies.values()) {
-      p.sx *= keep; p.sy *= keep; p.sz *= keep;
+      // Bound the extra visual speed of a large correction; small corrections keep the ordinary 90ms decay.
+      const offset = Math.sqrt(p.sx * p.sx + p.sy * p.sy + p.sz * p.sz);
+      const bounded = Math.max(keep, 1 - dtMs * .008 / Math.max(.001, offset));
+      p.sx *= bounded; p.sy *= bounded; p.sz *= bounded;
       p.correction.update(dtMs);
+      if (p.withdrawing) p.exit *= keep;
     }
   }
 
   step(tick: number, before: Body, body: Body, def: VehicleDefinition): void {
-    // Hold the last observed controls for at most 400ms. Beyond that, fall back to authority.
+    // Slow actors have 200ms of observed motion; standing bodies and vehicles have at most 400ms. No private intent is guessed.
     if (!this.proxies.size || tick - this.snapshotTick > 12) return;
     const handle = this.owner, own = this.own;
     contactBody(before, own.prior);
@@ -143,6 +190,7 @@ export class VehiclePrediction {
     own.spec = def.spec;
     own.mass = vehicleMassProperties(def.spec, own.state).mass;
     for (const p of this.proxies.values()) {
+      if (!this.live(p, tick)) continue;
       const other = this.registry.vehicle[p.fact.kind] ?? undefined;
       this.pair.configure(own, p.body, def, other, p.fact.radius, p.fact.height);
       while (p.tick < tick) { this.advance(p, other); p.tick++; }
@@ -151,7 +199,7 @@ export class VehiclePrediction {
     for (let iteration = 0; iteration < 4; iteration++) {
       let first: Proxy | undefined, firstTime = Infinity;
       for (const [target, p] of this.proxies) {
-        if (target === handle || this.used.has(target)) continue;
+        if (target === handle || this.used.has(target) || !this.live(p, tick)) continue;
         const other = this.registry.vehicle[p.fact.kind] ?? undefined;
         this.pair.configure(own, p.body, def, other, p.fact.radius, p.fact.height);
         const hit = this.pair.sweep();
@@ -172,11 +220,18 @@ export class VehiclePrediction {
       else resolveDynamicContact(own, first.body, hit, this.pair, this.scratch, this.result);
       rounded(own.state);
       rounded(first.body.state);
+      if (first.body.state.vy > .01) first.native.grounded = false;
       this.used.add(target);
+      first.lastContact = tick;
       this.stats.contacts++;
       this.stats.lastTick = tick;
       this.stats.lastTarget = target;
     }
+    for (const p of this.proxies.values()) if (this.live(p, tick)) {
+      const i = tick & 15; Object.assign(p.history[i]!, p.body.state); p.historyTick[i] = tick;
+    }
+    // Presence alone must never alter a kerb/ramp controller's grounded state.
+    if (!this.used.size) return;
     const s = own.state;
     body.x = s.x; body.y = s.y; body.z = s.z;
     body.vx = s.vx; body.vy = s.vy; body.vz = s.vz;
@@ -188,18 +243,20 @@ export class VehiclePrediction {
     const b = p.body, s = b.state, prior = b.prior;
     Object.assign(prior, s);
     if (b.response === 'fixed') return;
-    if (p.fact.native) {
-      const native = p.native, input = p.fact;
-      native.x = s.x; native.y = s.y; native.z = s.z;
-      native.vx = s.vx; native.vy = s.vy; native.vz = s.vz;
+    if (def && def.movement !== 'rotor' && def.movement !== 'boat') {
+      // Stationary support needs no repeated suspension solve until a contact changes its motion.
+      if (p.native.grounded && Math.abs(s.vx) + Math.abs(s.vy) + Math.abs(s.vz) + Math.abs(s.pitchRate) + Math.abs(s.yawRate) + Math.abs(s.rollRate) < .001) return;
+      const native = p.native;
+      native.x = s.x; native.y = s.y; native.z = s.z; native.vx = s.vx; native.vy = s.vy; native.vz = s.vz;
       native.vehiclePitchRate = s.pitchRate; native.vehicleYawRate = s.yawRate; native.vehicleRollRate = s.rollRate;
-      if (s.vy > .01) native.grounded = false;
-      if (def) stepVehicleBody(this.world, native, input.moveX, input.moveZ, input.buttons, def, TICK_DT, input.yaw, input.pilot);
-      else stepBody(this.world, native, input.moveX, input.moveZ, input.yaw, input.pitch, input.buttons,
-        (input.tamed ? this.registry.tamedMove[input.kind] : this.registry.move[input.kind])!, TICK_DT);
+      native.vehicleQx = s.qx; native.vehicleQy = s.qy; native.vehicleQz = s.qz; native.vehicleQw = s.qw;
+      p.trees?.begin(p.tick + 1, p.fact.handle);
+      this.stats.steps++;
+      stepVehicleBody(this.world, native, 0, 0, 0, def, TICK_DT, 0, false, p.trees);
       contactBody(native, s);
       return;
     }
+    this.stats.steps++;
     if (def) integrateVehiclePose(s, def.spec, TICK_DT);
     else { s.x += s.vx * TICK_DT; s.y += s.vy * TICK_DT; s.z += s.vz * TICK_DT; }
     if (!def && p.fact.grounded) s.y = Math.max(s.y, groundUnder(this.world.hf, s.x, s.z, p.fact.radius));
@@ -215,31 +272,51 @@ export class VehiclePrediction {
     rounded(s);
   }
 
-  /** Near-driver targets share the driving clock, instead of colliding against a target drawn 100ms in the past. */
-  draw(out: RemoteSample, index: number, alpha: number, tick: number): void {
-    if (tick - this.snapshotTick > 12) return;
-    const p = this.proxies.get(makeHandle(out.id[index]!, out.gen[index]!));
-    if (!p) return;
+  private interpolateQ(p: Proxy, alpha: number): void {
     const a = p.body.prior, b = p.body.state;
-    const x = a.x + (b.x - a.x) * alpha, y = a.y + (b.y - a.y) * alpha, z = a.z + (b.z - a.z) * alpha;
-    if (!p.visual) {
-      p.visual = true;
-      if (p.fadeIn) {
-        p.sx = out.x[index]! - x; p.sy = out.y[index]! - y; p.sz = out.z[index]! - z;
-      }
-      p.correction.captureQuaternion(out.vehicleQx[index]!, out.vehicleQy[index]!, out.vehicleQz[index]!, out.vehicleQw[index]!);
-      p.correction.reconcileQuaternion(b.qx, b.qy, b.qz, b.qw, p.fadeIn);
-      p.fadeIn = true;
-    }
-    out.x[index] = x + p.sx; out.y[index] = y + p.sy; out.z[index] = z + p.sz;
-    if (p.fact.vehicle) {
-      this.qa[0] = a.qx; this.qa[1] = a.qy; this.qa[2] = a.qz; this.qa[3] = a.qw;
-      this.qb[0] = b.qx; this.qb[1] = b.qy; this.qb[2] = b.qz; this.qb[3] = b.qw;
-      quatNlerp(this.drawQ, 0, this.qa, 0, this.qb, 0, alpha);
-      p.correction.apply(this.drawQ);
-      const qx = this.drawQ[0]!, qy = this.drawQ[1]!, qz = this.drawQ[2]!, qw = this.drawQ[3]!;
-      out.vehicleQx[index] = qx!; out.vehicleQy[index] = qy!; out.vehicleQz[index] = qz!; out.vehicleQw[index] = qw!;
-      out.yaw[index] = Math.atan2(2 * (qx! * qz! + qw! * qy!), 1 - 2 * (qx! * qx! + qy! * qy!));
-    }
+    this.qa[0] = a.qx; this.qa[1] = a.qy; this.qa[2] = a.qz; this.qa[3] = a.qw;
+    this.qb[0] = b.qx; this.qb[1] = b.qy; this.qb[2] = b.qz; this.qb[3] = b.qw;
+    quatNlerp(this.drawQ, 0, this.qa, 0, this.qb, 0, alpha);
   }
+  private live(p: Proxy, tick: number): boolean {
+    return p.active && contactHorizon(p.fact) > 0 && tick - p.seen <= contactHorizon(p.fact);
+  }
+
+  /** Vehicles cross between current driving and delayed view clocks in both directions. Actors stay on their view clock. */
+  draw(out: RemoteSample, index: number, alpha: number, tick: number): void {
+    const handle = makeHandle(out.id[index]!, out.gen[index]!), p = this.proxies.get(handle);
+    if (!p || !p.fact.vehicle) return;
+    if (!this.live(p, tick)) {
+      if (!p.visual) { if (!p.active) this.proxies.delete(handle); return; }
+      if (!p.withdrawing) { p.withdrawing = true; p.exit = 1; p.oldX = p.dx; p.oldY = p.dy; p.oldZ = p.dz; p.exitQ.set(p.dq); }
+      if (p.exit < .001) { p.visual = false; if (!p.active) this.proxies.delete(handle); return; }
+      out.x[index] += (p.oldX - out.x[index]!) * p.exit;
+      out.y[index] += (p.oldY - out.y[index]!) * p.exit;
+      out.z[index] += (p.oldZ - out.z[index]!) * p.exit;
+      this.qa[0] = out.vehicleQx[index]!; this.qa[1] = out.vehicleQy[index]!; this.qa[2] = out.vehicleQz[index]!; this.qa[3] = out.vehicleQw[index]!;
+      quatNlerp(this.drawQ, 0, this.qa, 0, p.exitQ, 0, p.exit);
+    } else {
+      const a = p.body.prior, b = p.body.state;
+      const x = a.x + (b.x - a.x) * alpha, y = a.y + (b.y - a.y) * alpha, z = a.z + (b.z - a.z) * alpha;
+      if (!p.visual) {
+        p.visual = true;
+        if (p.fadeIn) { p.sx = out.x[index]! - x; p.sy = out.y[index]! - y; p.sz = out.z[index]! - z; }
+        p.correction.captureQuaternion(out.vehicleQx[index]!, out.vehicleQy[index]!, out.vehicleQz[index]!, out.vehicleQw[index]!);
+        p.correction.reconcileQuaternion(b.qx, b.qy, b.qz, b.qw, p.fadeIn); p.fadeIn = true;
+      }
+      out.x[index] = x + p.sx; out.y[index] = y + p.sy; out.z[index] = z + p.sz;
+      this.interpolateQ(p, alpha); p.correction.apply(this.drawQ);
+    }
+    p.dx = out.x[index]!; p.dy = out.y[index]!; p.dz = out.z[index]!; p.dq.set(this.drawQ);
+    const qx = this.drawQ[0]!, qy = this.drawQ[1]!, qz = this.drawQ[2]!, qw = this.drawQ[3]!;
+    out.vehicleQx[index] = qx; out.vehicleQy[index] = qy; out.vehicleQz[index] = qz; out.vehicleQw[index] = qw;
+    out.yaw[index] = Math.atan2(2 * (qx * qz + qw * qy), 1 - 2 * (qx * qx + qy * qy));
+  }
+}
+
+function sameMotion(a: DynamicState, b: DynamicState): boolean {
+  return Math.abs((a.steering ?? 0) - (b.steering ?? 0)) < .001 && Math.abs(a.x - b.x) < .005 && Math.abs(a.y - b.y) < .005 && Math.abs(a.z - b.z) < .005 &&
+    Math.abs(a.vx - b.vx) < .01 && Math.abs(a.vy - b.vy) < .01 && Math.abs(a.vz - b.vz) < .01 &&
+    Math.abs(a.qx - b.qx) < .0001 && Math.abs(a.qy - b.qy) < .0001 && Math.abs(a.qz - b.qz) < .0001 && Math.abs(a.qw - b.qw) < .0001 &&
+    Math.abs(a.pitchRate - b.pitchRate) < .001 && Math.abs(a.yawRate - b.yawRate) < .001 && Math.abs(a.rollRate - b.rollRate) < .001;
 }

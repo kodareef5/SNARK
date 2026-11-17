@@ -17,7 +17,7 @@ function displayed(s: ClientSession) {
     z: p.z + (b.z - p.z) * a + s.smoothZ, q: [q.qx!, q.qy!, q.qz!, q.qw!] };
 }
 
-for (const swerve of [false, true]) test(`TCP150ms native crash ${swerve ? 'eases unknown steering at the actual visible pose' : 'predicts opposing held controls before authority arrives'}`, () => {
+for (const swerve of [false, true]) test(`TCP150ms native crash ${swerve ? 'eases unknown steering at the actual visible pose' : 'predicts public coasting before authority arrives'}`, () => {
   const seed = swerve ? 15 : 6;
   const h = new Harness({}, seed, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(4)) });
   try {
@@ -73,7 +73,8 @@ for (const swerve of [false, true]) test(`TCP150ms native crash ${swerve ? 'ease
     expect(impact).toBeGreaterThan(0); expect(predictedForward).toBe(true); expect(samples).toBeGreaterThan(100);
     // Hidden future steering remains a real raw error; the correction must preserve the displayed interpolation endpoints.
     if (swerve) expect(maxRaw).toBeGreaterThan(.5);
-    else expect(maxRaw).toBeLessThan(.01);
+    else expect(maxRaw).toBeLessThan(.3); // Nominal mass and coasting intentionally do not reveal inventory or held controls.
+    expect(maxRaw).toBeLessThan(3.5);
     expect(maxDisplayed).toBeLessThan(.00001); expect(maxAngle).toBeLessThan(.00001);
     expect(s.stats.undecodable).toBe(0);
   } finally { h.host.shutdown(); }
@@ -87,14 +88,14 @@ test('a nearby driver gets actor movement without the other survivor’s private
     const c = h.client(target)!, ents = h.world.ents, body = new Body(), snapshot = new ContactSnapshot();
     const car = h.host.spawnVehicle('core:compact', 128, 125);
     ents.loadBody(c.ent, body);
-    body.x = 128; body.z = 130; body.held = h.reg.index.get('core:pistol')!;
-    body.rounds = 7; body.bloom = 15; body.kick = 9;
+    body.x = 128; body.z = 129; body.held = h.reg.index.get('core:pistol')!;
+    body.rounds = 7; body.bloom = 15; body.kick = 9; body.grounded = true; body.vx = body.vy = body.vz = 0;
     ents.storeBody(c.ent, body);
     c.heldButtons = BTN_JUMP | BTN_PRIMARY;
     h.host.urban.contacts!.proxies(car, snapshot);
     expect(snapshot.count).toBe(1);
     const row = snapshot.rows[0]!;
-    expect(row.buttons).toBe(BTN_JUMP);
+    expect('buttons' in row).toBe(false);
     expect([row.body.held, row.body.rounds, row.body.reloadTo, row.body.bloom, row.body.kick]).toEqual([0, 0, 0, 0, 0]);
     ents.loadBody(c.ent, body);
     expect([body.rounds, body.bloom, body.kick]).toEqual([7, 15, 9]);
