@@ -444,7 +444,7 @@ export class FarShadow {
     const made = sweepOf(this.city.dims, { ...job, open: false }, solid, ground);
     const swept = clock();
     const measure = open ? openMeasure(solid, ground, this.city.dims.chunksX * SIDE, this.city.dims.chunksZ * SIDE, job.k, TOP_CELL, UNIT) : null;
-    this.stats.ms = swept - start;
+    if (sun) this.stats.ms = swept - start;
     this.got({ ...made, open: measure }, clock() - swept);
   }
 

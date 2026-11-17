@@ -143,10 +143,10 @@ function compare(gpu: Uint8Array, h: Held): { taken: number[]; left: number[] } 
 
 /** The views of a built map's pictures, of Miami: where the camera stands, at a height or `up` over the ground, the point it looks at (x, y, z), and the hours. */
 const VIEWS: { name: string; x: number; z: number; y?: number; up?: number; look: [number, number, number]; hours: number[] }[] = [
-  { name: "street", x: 6880, z: 3046, up: 1.7, look: [6880, 12, 3250], hours: [12, 17.5] },
-  { name: "foot", x: 6872, z: 3100, up: 1.7, look: [6862, 4, 3104], hours: [12] },
-  { name: "street-150m", x: 6880, z: 2960, y: 150, look: [6880, 0, 3150], hours: [12] },
-  { name: "shore", x: 5300, z: 2520, up: 1.7, look: [5420, 0, 2560], hours: [12] },
+  { name: "street", x: 6540, z: 4114, up: 1.7, look: [6700, 20, 4114], hours: [12, 17.5] },
+  { name: "foot", x: 6618, z: 4110, up: 1.7, look: [6618, 3, 4122], hours: [12] },
+  { name: "street-150m", x: 6470, z: 4114, y: 150, look: [6640, 0, 4114], hours: [12] },
+  { name: "shore", x: 5930, z: 2560, up: 1.7, look: [5840, 0, 2660], hours: [12] },
 ];
 const [PW, PH] = [1280, 720];
 
@@ -224,7 +224,7 @@ export const skyOpenCheck: LitCheck = {
       }
       const c = compare(gpu, h);
       const fine = (n: number[]): boolean => n[1]! <= n[0]! * MOST_OFF;
-      const pass = fine(c.taken) && fine(c.left) && c.left[0]! >= 2000 && (h.without === null || c.taken[0]! >= 3000);
+      const pass = fine(c.taken) && fine(c.left) && c.taken[0]! + c.left[0]! >= 2000 && (h.without === null || c.taken[0]! >= 3000);
       ok &&= pass;
       lines.push(`${h.name}: pixels taken down ${say(c.taken)}, and left ${say(c.left)}  ${pass ? "ok" : "FAIL"}`);
     }

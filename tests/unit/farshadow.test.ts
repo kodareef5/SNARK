@@ -10,7 +10,7 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { ThreadedCityMaker, cityKinds, type CityThread } from "../../client/core/render/citymake.ts";
 import { FAR_SPAN, FarShadow, TOP_CELL, chunkSolid, doSweep, farBeyondLookup, farCell, farLookup, makeSolid, nearLead, sweep, sweepBuffers, tipMoves, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
-import { openMeasure } from "../../client/core/render/skyopen.ts";
+import { OPEN_BYTES, openMeasure } from "../../client/core/render/skyopen.ts";
 import { CHUNK_SIZE, chunkAt, chunkCount, type MapDims } from "../../shared/coords.ts";
 import { CityStatics, cityTops, type Gone } from "../../shared/world/city.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
@@ -215,7 +215,7 @@ test("the scene's part sweeps when the statics come and again when the tallest t
     { rows: 100, from: 100, spent: 100 * rowBytes, scale: -1 / TOP_CELL },
     { rows: 56, from: 200, spent: 100 * rowBytes, scale: 1 / TOP_CELL },
   ]);
-  expect([p.openWidth, p.openRow, p.openRows]).toEqual([128, 0, (44 * rowBytes) / (128 * 2)]);
+  expect([p.openWidth, p.openRow, p.openRows]).toEqual([128, 0, (44 * rowBytes) / (128 * OPEN_BYTES)]);
   expect(shadow.stats.sweeps).toBe(1);
   expect(p.frame[FRAME.farAt]).toBe(300 / TOP_CELL);
   expect(p.frame[FRAME.farDepth]).toBeCloseTo((hf.minY + FAR_SPAN - 20) / FAR_SPAN, 7);

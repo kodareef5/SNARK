@@ -10,7 +10,7 @@ import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FAR_SPAN, FarShadow, TOP_CELL, makeSolid } from "../../client/core/render/farshadow.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
-import { BEND_MOST, CONTACT, CONTACT_BAND, OPEN_EVERY, OPEN_HEIGHTS, OPEN_STRENGTH, OPEN_WAYS, openMeasure, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
+import { BEND_MOST, CONTACT, CONTACT_BAND, OPEN_BYTES, OPEN_EVERY, OPEN_HEIGHTS, OPEN_STRENGTH, OPEN_WAYS, openMeasure, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { COARSE } from "../../client/core/render/terrain.ts";
 import { YAW_UNITS, chunkAt, chunkCount, type MapDims } from "../../shared/coords.ts";
 import { CityStatics, cityTops, type Gone } from "../../shared/world/city.ts";
@@ -32,13 +32,18 @@ function street() {
   return { n, solid, ground, map: openMeasure(solid, ground, n, n, 1, TOP_CELL, UNIT) };
 }
 
-/** The share of the sky hidden at `y` metres over the ground in the middle of cell (ci, cj), by rays cast every half metre over the cells' tops. */
-function castHidden(solid: Uint16Array, n: number, ci: number, cj: number, y: number): number {
+/**
+ * The share of the sky hidden at `y` metres over the ground in the middle of cell (ci, cj), by rays cast every half
+ * metre over the cells' tops; with `facing`, of the half of the sky that way round the ground.
+ */
+function castHidden(solid: Uint16Array, n: number, ci: number, cj: number, y: number, facing?: [number, number]): number {
   const [px, pz] = [(ci + 0.5) * TOP_CELL, (cj + 0.5) * TOP_CELL];
-  let hidden = 0;
+  let hidden = 0, cast = 0;
   const [ways, heights] = [72, 30];
   for (let a = 0; a < ways; a++) {
     const [dx, dz] = [Math.cos(((a + 0.5) / ways) * 2 * Math.PI), Math.sin(((a + 0.5) / ways) * 2 * Math.PI)];
+    if (facing && dx * facing[0] + dz * facing[1] <= 0) continue;
+    cast += heights;
     for (let e = 0; e < heights; e++) {
       const rise = Math.tan(Math.asin((e + 0.5) / heights));
       for (let d = 0.5; d < 1200; d += 0.5) {
@@ -51,18 +56,18 @@ function castHidden(solid: Uint16Array, n: number, ci: number, cj: number, y: nu
       }
     }
   }
-  return hidden / (ways * heights);
+  return hidden / cast;
 }
 
 /** The measure's hidden share at `y` metres over the ground at cell (i, j), as its bytes hold it. */
 function measured(map: { bytes: Uint8Array; w: number }, i: number, j: number, y: number): number {
-  const share = map.bytes[(j * map.w + i) * 2]! / 255, root = map.bytes[(j * map.w + i) * 2 + 1]! / 255;
+  const share = map.bytes[(j * map.w + i) * OPEN_BYTES]! / 255, root = map.bytes[(j * map.w + i) * OPEN_BYTES + 1]! / 255;
   return Math.max(0, share - root ** 4 * BEND_MOST * y * y);
 }
 
 test("the measure hides what rays cast over the solid heights find hidden, at the ground and up a street's walls, and next to nothing over open ground", () => {
   const { n, solid, map } = street();
-  expect([map.w, map.h, map.bytes.length]).toEqual([n, n, n * n * 2]);
+  expect([map.w, map.h, map.bytes.length]).toEqual([n, n, n * n * OPEN_BYTES]);
   // The street's middle, by each wall, near its end and past it; open ground 80 m off and far off; by the tower and 8 m
   // from it. Right by the tower, a building four cells wide, the softening takes up to 0.15 from its foot, and the fall
   // with the square of the height, fitted to a street, up to 0.2 up its walls, which come out lighter than they should.
@@ -77,6 +82,26 @@ test("the measure hides what rays cast over the solid heights find hidden, at th
   expect(measured(map, 45, 64, 48)).toBe(0);
   // Every share is a whole number of the equal shares the sweep takes, so the ground cells hold at most so many values.
   expect(OPEN_WAYS * OPEN_HEIGHTS).toBe(64);
+});
+
+test("a wall reads the share hidden on the side it faces: across a street the other block's, and in the open none, its own building left to its sky's light", () => {
+  const { n, solid, map } = street();
+  const frame = gridFrame();
+  /** The sky's light the twin gives a wall `y` metres up, facing (fx, fz), at the middle of the side of cell (i, j) it faces, with no contact. */
+  const wallAt = (i: number, j: number, fx: number, fz: number, y: number): number => skyOpen(map.bytes, map.w, map.h, frame, (i + 0.5 + fx / 2) * TOP_CELL, (j + 0.5 + fz / 2) * TOP_CELL, fx, 0, fz, y, 0);
+  // The west block's wall on the street faces +x, the east block's -x, the lone tower's faces each way; the share each
+  // reads, against what rays cast into the half of the sky it faces find from the cell before it.
+  for (const [i, j, fx, fz, ci, cj] of [[49, 64, 1, 0, 50, 64], [54, 64, -1, 0, 53, 64], [103, 101, 1, 0, 104, 101], [101, 103, 0, 1, 101, 104], [100, 101, -1, 0, 99, 101]] as const) {
+    for (const y of [2, 16, 32]) {
+      const hidden = (1 - wallAt(i, j, fx, fz, y)) / OPEN_STRENGTH;
+      expect(Math.abs(hidden - castHidden(solid, n, ci, cj, y, [fx, fz]))).toBeLessThan(0.08);
+    }
+  }
+  // Across the street most of the half of the sky a wall faces is hidden low down; a tower in the open hides almost none
+  // of its own walls' sky, where the ground at its foot, which sees the tower, has a good share hidden.
+  expect(wallAt(49, 64, 1, 0, 2)).toBeLessThan(1 - OPEN_STRENGTH * 0.7);
+  expect(wallAt(103, 101, 1, 0, 2)).toBeGreaterThan(1 - OPEN_STRENGTH * 0.05);
+  expect(measured(map, 104, 101, 0)).toBeGreaterThan(0.2);
 });
 
 /** A frame block with the camera at the origin of a grid of TOP_CELL cells, as the far shadow writes it with no map to look up. */
@@ -119,7 +144,7 @@ test("the cells a building stands in read their street's share, so the ground be
 test("the foot of what stands loses sky light over the last metre and a half, smoothly, but not a deck, a bridge's underside or a body, and nothing does with no measure on the card", () => {
   const frame = gridFrame();
   // A measure of open ground, which hides no sky.
-  let open = Uint8Array.of(0, 1);
+  let open = Uint8Array.of(0, 1, 128, 128);
   const wall = (over: number, ny = 0, contact = 1): number => skyOpen(open, 1, 1, frame, 10, 10, Math.sqrt(1 - ny * ny), ny, 0, over, contact);
   expect(wall(0)).toBeCloseTo(1 - CONTACT, 9);
   expect(wall(CONTACT_BAND)).toBe(1);
@@ -134,9 +159,9 @@ test("the foot of what stands loses sky light over the last metre and a half, sm
   expect(wall(0.3, 0.5)).toBeGreaterThan(wall(0.3));
   expect(wall(0.3, -0.5)).toBe(wall(0.3));
   // With no measure on the card nothing is taken, nor with no grid, as on a map with no city.
-  open = new Uint8Array(2);
+  open = new Uint8Array(OPEN_BYTES);
   expect(wall(0)).toBe(1);
-  open = Uint8Array.of(0, 1);
+  open = Uint8Array.of(0, 1, 128, 128);
   frame[FRAME.farScale] = 0;
   expect(wall(0)).toBe(1);
 });
@@ -192,7 +217,7 @@ test("the scene's part makes the measure when the statics come, by night and wit
   // High with the governor's shadows taken off, and the sun down.
   p.tier = { ...tierOf("high"), shadows: { ...tierOf("high").shadows, cascades: 0 } };
   p.lit = true;
-  const row = 128 * 2;
+  const row = 128 * OPEN_BYTES;
   // Frames 20 ms apart, the first at 20.
   let now = 0;
   const frame = (bytes = 50 * row) => {

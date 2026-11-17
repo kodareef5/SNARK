@@ -4,19 +4,24 @@
 // down to the ground, so nothing is hidden under a roof or inside a frame, and a creature hides nothing. A window's
 // reveal or a box's joint waits for a pass over the picture.
 //
-// - The measure: over each cell of the far shadow's grid, the share of the sky hidden from the top of its column, and how
-//   that falls with height. Lines are swept across the solid heights along OPEN_WAYS ways round and OPEN_HEIGHTS heights
-//   up the sky, each an equal share of the sky's solid angle, as the far shadow sweeps along the sun; a cell takes each
-//   line that passes over its top. Over open ground the hidden share falls with the square of the height over the
-//   ground, as it does in a street, which keeps its walls hidden until near their tops, to none at a height fitted to
-//   its area over height. A cell a building stands in takes its ground's share from the cells round it, and falls from
-//   that to its roof's own, so a lookup beside a wall or under a roof's edge reads the street's.
+// - The measure: over each cell of the far shadow's grid, the share of the sky its city hides from the top of its
+//   column, how much more of it lies toward +x than -x and toward +z than -z, and how it falls with height. Lines are
+//   swept from the buildings' tops along OPEN_WAYS ways round and OPEN_HEIGHTS heights up the sky, each an equal share
+//   of the sky's solid angle, as the far shadow sweeps along the sun; a cell takes each line that passes over its top.
+//   The ground hides nothing, so open ground beside no building is as it was. Over open ground the hidden share falls
+//   with the square of the height over the ground, as it does in a street, which keeps its walls hidden until near
+//   their tops, to none at a height fitted to its area over height. A cell a building stands in takes its ground's
+//   shares from the cells round it, and falls from that to its roof's own, so a lookup beside a wall or under a roof's
+//   edge reads the street's.
+// - A wall reads the share hidden on the side it faces, so its own building, which its sky's light already leaves out,
+//   is not counted again, and a tower in the open keeps its light.
 // - Contact: a standing thing's sky is taken down over the last CONTACT_BAND metres over the ground under it, on its
 //   faces not turned up, so a deck or a roof is not darkened as ground is. The ground is the whole map's heights picture
 //   on the card, split as the ground's tiles split it.
-// - On the card: two bytes a cell on its own unit, filtered: the share hidden at the ground, and the fourth root of how
-//   fast it falls with the square of height, never under 1 where there is a measure. Zero hides nothing and holds no
-//   contact, so a texture not yet made, or not yet all sent, takes no light away.
+// - On the card: four bytes a cell on its own unit, filtered: the share hidden at the ground, the fourth root of how fast
+//   it falls with the square of height, never under 1 where there is a measure, and how much more is hidden toward +x
+//   and toward +z, from 128. A cell with its second byte 0 hides nothing and holds no contact, so a texture not yet
+//   made, or not yet all sent, takes no light away.
 //
 // It is made where the far shadow's map is swept, on the far city's workers in the browser, when the statics come, and
 // again when pieces that stood are gone, at most once every OPEN_EVERY.
@@ -45,10 +50,16 @@ export const CONTACT_BAND = 1.5;
 /** The least time between measures made again for pieces gone, in milliseconds. */
 export const OPEN_EVERY = 30000;
 
+/** Bytes a cell of the measure. */
+export const OPEN_BYTES = 4;
+/** The third and fourth bytes' zero, and their steps from it to a whole share. */
+const SIDE_ZERO = 128;
+const SIDE_STEPS = 254;
+
 /** A number as GLSL writes it. */
 const g = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
 
-/** What a measure is: its cells across and down, and two bytes a cell, row by row. */
+/** What a measure is: its cells across and down, and OPEN_BYTES a cell, row by row. */
 export interface OpenMap {
   readonly w: number;
   readonly h: number;
@@ -58,18 +69,21 @@ export interface OpenMap {
 let lines = new Float64Array(0);
 
 /**
- * Sweeps lines along the unit way (dx, dz) over `top`, `w` by `h` cells, one set for each of `rises`, the units of the
- * heights a line climbs a cell across the ground, adding `weight` to `hidden` at each cell a line passes over by more
- * than `slack` units, and `weight` times how far over to `over`. A cell takes the line nearest its middle before that
- * line meets the cell itself, as farshadow.ts `sweep` does.
+ * Sweeps lines along the unit way (dx, dz) from `cast`, the tops of the cells buildings stand in and 0 for the rest,
+ * over `top`, `w` by `h` cells, one set for each of `rises`, the units of the heights a line climbs a cell across the
+ * ground. At each cell a line passes over by more than `slack` units it adds `weight` to `hidden`, `weight` times how far
+ * over to `over`, and `weight` toward the way's side along x and z to `sideX` and `sideZ`. A cell takes the line nearest
+ * its middle before that line meets the cell itself, as farshadow.ts `sweep` does.
  */
-function sweepSky(top: Uint16Array, w: number, h: number, dx: number, dz: number, rises: readonly number[], slack: number, weight: number, hidden: Float32Array, over: Float32Array): void {
+function sweepSky(top: Uint16Array, cast: Uint16Array, w: number, h: number, dx: number, dz: number, rises: readonly number[], slack: number, weight: number, sums: { hidden: Float32Array; over: Float32Array; sideX: Float32Array; sideZ: Float32Array }): void {
+  const { hidden, over, sideX, sideZ } = sums;
   const alongX = Math.abs(dx) >= Math.abs(dz);
   const a = alongX ? dx : dz, b = alongX ? dz : dx;
   const major = alongX ? w : h, minor = alongX ? h : w;
   const slope = b / a;
   const k = rises.length;
   const drops = rises.map((r) => r / Math.abs(a));
+  const wx = Math.sign(dx) * weight, wz = Math.sign(dz) * weight;
   const di = alongX ? 1 : w, dj = alongX ? w : 1;
   const span = (minor + 2 * major) * k;
   if (lines.length < span) lines = new Float64Array(span);
@@ -79,14 +93,16 @@ function sweepSky(top: Uint16Array, w: number, h: number, dx: number, dz: number
     const q = Math.round(-slope * i) + major;
     for (let j = 0; j < minor; j++) {
       const c = i * di + j * dj;
-      const t = top[c]!;
+      const t = top[c]!, up = cast[c]!;
       for (let e = 0, at = (j + q) * k; e < k; e++, at++) {
         const line = lines[at]!;
         if (line > t + slack) {
           hidden[c]! += weight;
           over[c]! += weight * (line - t);
+          sideX[c]! += wx;
+          sideZ[c]! += wz;
         }
-        lines[at] = (line > t ? line : t) - drops[e]!;
+        lines[at] = (line > up ? line : up) - drops[e]!;
       }
     }
   }
@@ -125,29 +141,31 @@ export function openMeasure(solid: Uint16Array, ground: Uint16Array, nx: number,
     }
     floor = Uint16Array.from(sum, (s, c) => Math.round(s / count[c]!));
   }
-  const hidden = new Float32Array(w * h), over = new Float32Array(w * h);
+  const standing = Uint8Array.from(top, (t, c) => ((t - floor[c]!) * unit > SOLID_RISE ? 1 : 0));
+  const cast = Uint16Array.from(top, (t, c) => (standing[c] ? t : 0));
+  const sums = { hidden: new Float32Array(w * h), over: new Float32Array(w * h), sideX: new Float32Array(w * h), sideZ: new Float32Array(w * h) };
+  const { hidden, over, sideX, sideZ } = sums;
   const weight = 1 / (OPEN_WAYS * OPEN_HEIGHTS);
   const rises = Array.from({ length: OPEN_HEIGHTS }, (_, e) => (cell * k * Math.tan(Math.asin((e + 0.5) / OPEN_HEIGHTS))) / unit);
   for (let r = 0; r < OPEN_WAYS; r++) {
     const way = ((r + 0.5) / OPEN_WAYS) * 2 * Math.PI;
-    sweepSky(top, w, h, Math.cos(way), Math.sin(way), rises, OPEN_SLACK / unit, weight, hidden, over);
+    sweepSky(top, cast, w, h, Math.cos(way), Math.sin(way), rises, OPEN_SLACK / unit, weight, sums);
   }
   // Open ground: the share hidden at the ground, and how fast it falls with the square of height, so that its area over
   // height is the swept one: share (1 - (y / top)^2) has the area 2/3 share top.
   const share = new Float32Array(w * h), reach = new Float32Array(w * h);
-  const standing = new Uint8Array(w * h);
   const queue = new Int32Array(w * h);
   let tail = 0;
   for (let c = 0; c < w * h; c++) {
-    if ((top[c]! - floor[c]!) * unit > SOLID_RISE) {
-      standing[c] = 1;
+    if (standing[c]) {
+      sideX[c] = sideZ[c] = 0;
       continue;
     }
     share[c] = Math.min(1, hidden[c]!);
     reach[c] = over[c]! > 0 ? (1.5 * over[c]! * unit) / share[c]! : 0;
     queue[tail++] = c;
   }
-  // A building's cells take their ground's share from the cells round them, nearest first, and fall from that to their
+  // A building's cells take their ground's shares from the cells round them, nearest first, and fall from that to their
   // roof's own share at their top.
   const filled = Uint8Array.from(standing, (s) => 1 - s);
   for (let head = 0; head < tail; head++) {
@@ -157,26 +175,33 @@ export function openMeasure(solid: Uint16Array, ground: Uint16Array, nx: number,
       if (ni < 0 || nj < 0 || ni >= w || nj >= h) continue;
       const n = nj * w + ni;
       if (filled[n] !== 0) continue;
-      let sum = 0, count = 0;
+      let count = 0;
       for (const [mi, mj] of [[ni - 1, nj], [ni + 1, nj], [ni, nj - 1], [ni, nj + 1]] as const) {
-        if (mi < 0 || mj < 0 || mi >= w || mj >= h || filled[mj * w + mi] === 0) continue;
-        sum += share[mj * w + mi]!;
+        const m = mj * w + mi;
+        if (mi < 0 || mj < 0 || mi >= w || mj >= h || filled[m] === 0) continue;
+        share[n]! += share[m]!;
+        sideX[n]! += sideX[m]!;
+        sideZ[n]! += sideZ[m]!;
         count++;
       }
-      share[n] = sum / count;
+      share[n]! /= count;
+      sideX[n]! /= count;
+      sideZ[n]! /= count;
       filled[n] = 1;
       queue[tail++] = n;
     }
   }
-  // The ground's share softened over the cells next to each, so that where an outline steps across a wall turned to the
+  // The ground's shares softened over the cells next to each, so that where an outline steps across a wall turned to the
   // grid the ground beside it does not step with it; it is gone at the same height.
-  soften(share, w, h);
-  const bytes = new Uint8Array(w * h * 2);
+  for (const a of [share, sideX, sideZ]) soften(a, w, h);
+  const bytes = new Uint8Array(w * h * OPEN_BYTES);
   for (let c = 0; c < w * h; c++) {
     const rise = standing[c] ? (top[c]! - floor[c]!) * unit : reach[c]!;
     const bend = rise > 0 ? Math.max(0, share[c]! - (standing[c] ? Math.min(1, hidden[c]!) : 0)) / (rise * rise) : 0;
-    bytes[c * 2] = Math.round(share[c]! * 255);
-    bytes[c * 2 + 1] = Math.max(1, Math.round(Math.sqrt(Math.sqrt(Math.min(1, bend / BEND_MOST))) * 255));
+    bytes[c * 4] = Math.round(share[c]! * 255);
+    bytes[c * 4 + 1] = Math.max(1, Math.round(Math.sqrt(Math.sqrt(Math.min(1, bend / BEND_MOST))) * 255));
+    bytes[c * 4 + 2] = SIDE_ZERO + Math.round(sideX[c]! * SIDE_STEPS);
+    bytes[c * 4 + 3] = SIDE_ZERO + Math.round(sideZ[c]! * SIDE_STEPS);
   }
   return { w, h, bytes };
 }
@@ -184,27 +209,26 @@ export function openMeasure(solid: Uint16Array, ground: Uint16Array, nx: number,
 /**
  * The share of the sky's light a camera-relative point gets, 0 to 1, from the measure as the card holds it, `w` by `h`
  * cells, filtered between the four about it as the card filters: its face's normal (nx, nz across the ground, ny up)
- * moves the lookup out, `over` is its height over the ground under it (0 for the ground), and `contact` is 1 for a thing
- * that stands, 0 for one that does not, such as a body, and takes light only where the card holds a measure. The twin
- * of SKY_OPEN_GLSL's `skyOpen`.
+ * moves the lookup out and turns it to the side it faces, `over` is its height over the ground under it (0 for the
+ * ground), and `contact` is 1 for a thing that stands, 0 for one that does not, such as a body. Where the card holds no
+ * measure it takes nothing. The twin of SKY_OPEN_GLSL's `skyOpen`.
  */
 export function skyOpen(map: Uint8Array, w: number, h: number, frame: Float32Array, rx: number, rz: number, nx: number, ny: number, nz: number, over: number, contact: number): number {
   const s = Math.abs(frame[FRAME.farScale]!);
   if (s <= 0) return 1;
-  let share = 0, root = 0;
+  const m = [0, 0, 0, 0];
   if (w > 0 && h > 0) {
     const tx = rx * s + frame[FRAME.farAt]! + nx * OPEN_OUT - 0.5, tz = rz * s + frame[FRAME.farAt + 1]! + nz * OPEN_OUT - 0.5;
     const bx = Math.floor(tx), bz = Math.floor(tz);
     const fx = tx - bx, fz = tz - bz;
-    const at = (i: number, j: number, b: number): number => map[(Math.min(h - 1, Math.max(0, j)) * w + Math.min(w - 1, Math.max(0, i))) * 2 + b]! / 255;
-    const filtered = (b: number): number => (at(bx, bz, b) * (1 - fx) + at(bx + 1, bz, b) * fx) * (1 - fz) + (at(bx, bz + 1, b) * (1 - fx) + at(bx + 1, bz + 1, b) * fx) * fz;
-    share = filtered(0);
-    root = filtered(1);
+    const at = (i: number, j: number, b: number): number => map[(Math.min(h - 1, Math.max(0, j)) * w + Math.min(w - 1, Math.max(0, i))) * OPEN_BYTES + b]! / 255;
+    for (let b = 0; b < OPEN_BYTES; b++) m[b] = (at(bx, bz, b) * (1 - fx) + at(bx + 1, bz, b) * fx) * (1 - fz) + (at(bx, bz + 1, b) * (1 - fx) + at(bx + 1, bz + 1, b) * fx) * fz;
   }
+  const known = m[1]! >= 0.5 / 255 ? 1 : 0;
+  const toward = known * (nx * (m[2]! * 255 - SIDE_ZERO) + nz * (m[3]! * 255 - SIDE_ZERO)) / SIDE_STEPS;
   const up = Math.max(over, 0);
-  const hidden = Math.min(1, Math.max(0, share - root * root * root * root * BEND_MOST * up * up));
+  const hidden = Math.min(1, Math.max(0, m[0]! + toward - m[1]! ** 4 * BEND_MOST * up * up));
   const near = Math.min(1, Math.max(0, 1 - over / CONTACT_BAND));
-  const known = root >= 0.5 / 255 ? 1 : 0;
   return (1 - OPEN_STRENGTH * hidden) * (1 - known * contact * CONTACT * near * near * (1 - Math.max(ny, 0)));
 }
 
@@ -239,11 +263,12 @@ export const SKY_OPEN_GLSL = `uniform highp sampler2D uSkyOpen;
 float skyOpen(vec3 rel, vec3 normal, float over, float contact) {
   float s = abs(fFarScale);
   if (s <= 0.0) return 1.0;
-  vec2 m = texture(uSkyOpen, (rel.xz * s + fFarAt + normal.xz * ${g(OPEN_OUT)}) / vec2(textureSize(uSkyOpen, 0))).rg;
-  float up = max(over, 0.0), bend = m.y * m.y;
-  float hidden = clamp(m.x - bend * bend * ${g(BEND_MOST)} * up * up, 0.0, 1.0);
-  float near = clamp(1.0 - over / ${g(CONTACT_BAND)}, 0.0, 1.0);
+  vec4 m = texture(uSkyOpen, (rel.xz * s + fFarAt + normal.xz * ${g(OPEN_OUT)}) / vec2(textureSize(uSkyOpen, 0)));
   float known = m.y >= ${g(0.5 / 255)} ? 1.0 : 0.0;
+  float toward = known * dot(normal.xz, m.zw * 255.0 - ${g(SIDE_ZERO)}) / ${g(SIDE_STEPS)};
+  float up = max(over, 0.0), bend = m.y * m.y;
+  float hidden = clamp(m.x + toward - bend * bend * ${g(BEND_MOST)} * up * up, 0.0, 1.0);
+  float near = clamp(1.0 - over / ${g(CONTACT_BAND)}, 0.0, 1.0);
   return (1.0 - ${g(OPEN_STRENGTH)} * hidden) * (1.0 - known * contact * ${g(CONTACT)} * near * near * (1.0 - max(normal.y, 0.0)));
 }
 `;
@@ -338,12 +363,13 @@ export class SkyOpen {
     p.openWidth = map.w;
     p.openHeight = map.h;
     if (this.row >= map.h) return;
-    const rows = Math.min(map.h - this.row, Math.floor(budget.left / (map.w * 2)));
+    const row = map.w * OPEN_BYTES;
+    const rows = Math.min(map.h - this.row, Math.floor(budget.left / row));
     if (rows <= 0) return;
-    p.openMap = map.bytes.subarray(this.row * map.w * 2, (this.row + rows) * map.w * 2);
+    p.openMap = map.bytes.subarray(this.row * row, (this.row + rows) * row);
     p.openRow = this.row;
     p.openRows = rows;
-    budget.spend(rows * map.w * 2);
+    budget.spend(rows * row);
     this.row += rows;
   }
 }

@@ -357,7 +357,7 @@ export class FramePacket {
   /**
    * The sky's openness over the far map's grid (skyopen.ts), on its own unit: its cells across and down, none while
    * there is none for the grid the frame looks up on, in which case a renderer lets its texture go; and `openRows` of
-   * its rows from `openRow` to put on it, two bytes a cell. The scene owns the rows.
+   * its rows from `openRow` to put on it, four bytes a cell. The scene owns the rows.
    */
   openWidth = 0;
   openHeight = 0;

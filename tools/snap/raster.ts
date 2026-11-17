@@ -10,7 +10,7 @@ import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { LANDMARK_BUFFER } from "../../client/core/render/farlandmarks.ts";
 import { nearKeeps } from "../../client/core/render/hand.ts";
 import { COARSE, groundNormal, groundSize, groundTint, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
-import { overGround, skyOpen } from "../../client/core/render/skyopen.ts";
+import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { MOST_LOD, detailKeeps, rotorOf, shapeOf } from "../../client/core/render/detailtext.ts";
 import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
@@ -358,9 +358,9 @@ export class Rasterizer {
     this.worldMaps = packet.lit && world && this.textures.has(world.base) ? [this.textures.get(world.base)!, this.textures.get(world.normal) ?? NEUTRALS[1]!, this.textures.get(world.mro) ?? NEUTRALS[2]!] : null;
     if (packet.openWidth !== this.openWidth || packet.openHeight !== this.openHeight) {
       [this.openWidth, this.openHeight] = [packet.openWidth, packet.openHeight];
-      this.open = new Uint8Array(this.openWidth * this.openHeight * 2);
+      this.open = new Uint8Array(this.openWidth * this.openHeight * OPEN_BYTES);
     }
-    if (packet.openRows > 0) this.open.set(packet.openMap, packet.openRow * this.openWidth * 2);
+    if (packet.openRows > 0) this.open.set(packet.openMap, packet.openRow * this.openWidth * OPEN_BYTES);
     if (packet.atlasRows > 0) {
       const rows = packet.atlas.subarray(0, packet.atlasRows * ATLAS_WIDTH * 4);
       if (this.atlas.length < rows.length) this.atlas = new Float32Array(rows.length);
