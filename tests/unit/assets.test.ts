@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { Assets, HYSTERESIS } from "../../client/core/assets/assets.ts";
 import { DEFAULT_TIER, TIERS, forTouch, offeredTiers, tierOf } from "../../client/core/assets/tiers.ts";
 import { SETTING_ROWS, Settings, keptLine } from "../../client/core/settings.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -10,7 +11,7 @@ const pack = corePack();
 const { table, bind } = new Assets(coreRegistry(), pack);
 const id = (mesh: number): string => (mesh < 0 ? "" : pack.header.meshes[mesh]!.id);
 
-test("the table knows each mesh's levels, size and bone without reading its bytes again", () => {
+artTest("the table knows each mesh's levels, size and bone without reading its bytes again", () => {
   expect(table.count).toBe(pack.header.meshes.length);
   const head = table.find("core:human_m/head");
   expect([table.tris[head]!.length, table.skeleton[head], table.rig[head]! >= 0]).toEqual([3, "human", true]);
@@ -25,7 +26,7 @@ test("the table knows each mesh's levels, size and bone without reading its byte
   expect([table.has("mesh", "core:raptor"), table.has("rig", "core:raptor"), table.has("clip", "core:raptor/walk"), table.has("clip", "core:raptor/fly"), table.has("icon", "core:stone/icon")]).toEqual([true, true, true, false, false]);
 });
 
-test("a slot is bound to its own asset, to what stands in, or to nothing", () => {
+artTest("a slot is bound to its own asset, to what stands in, or to nothing", () => {
   expect(id(bind.mesh("core:raptor", "body"))).toBe("core:raptor");
   expect(bind.id("core:raptor", "rig")).toBe("core:raptor");
   expect(id(bind.mesh("core:survivor", "body", "f/legs"))).toBe("core:human_f/legs");
@@ -55,7 +56,7 @@ const bodyErrors = (sex: string): number[] => {
   return [0, 1, 2].map((level) => parts.reduce((sum, e) => sum + e[level]!, 0) / parts.length);
 };
 
-test("a level is chosen by its error on screen: a body goes coarser near 14 and 45 metres at 720p", () => {
+artTest("a level is chosen by its error on screen: a body goes coarser near 14 and 45 metres at 720p", () => {
   const assets = new Assets(coreRegistry(), pack);
   /** The distance at which something seen afresh is first drawn at `level`. */
   const from = (errors: number[], level: number): number => {
@@ -82,7 +83,7 @@ test("a level is chosen by its error on screen: a body goes coarser near 14 and 
   }
 });
 
-test("a level is left only when another is right by a margin, and a mesh is never asked for a level it lacks", () => {
+artTest("a level is left only when another is right by a margin, and a mesh is never asked for a level it lacks", () => {
   const assets = new Assets(coreRegistry(), pack);
   const errors = bodyErrors("m");
   let edge = 0.5;

@@ -8,6 +8,7 @@ import { CLASSES } from "../../shared/content/classes.ts";
 import { FEATURES } from "../../server/settings/row.ts";
 import { Rules, readValue } from "../../server/settings/rules.ts";
 import { SETTINGS_PAGE, settingsPage } from "../../tools/settings.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 
 const root = resolve(import.meta.dir, "../..");
 
@@ -33,7 +34,7 @@ test("keys are found whatever their case, and a command-line flag is not the fil
   expect([rowOf("EggHatchSpeedMultiplier")!.retime, rowOf("MatingIntervalMultiplier")!.retime, rowOf("ResourcesRespawnPeriodMultiplier")!.retime]).toEqual(["speed", "period", "period"]);
 });
 
-test("the reference page is what the catalogue would write; and every setting said to take effect is read somewhere", () => {
+artTest("the reference page is what the catalogue would write; and every setting said to take effect is read somewhere", () => {
   // If this fails the page is stale. Run `bun run settings`.
   expect(readFileSync(SETTINGS_PAGE, "utf8")).toBe(settingsPage());
   const files: string[] = [];

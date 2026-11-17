@@ -1,6 +1,6 @@
 // What a creature does, drawn with the clip made for it: on the dodo, on a bird made in code with the dodo's clips
 // (tests/fixtures/bird.ts), and the fallback on the stand-ins that lack them. A pose is a function of the state and the tick.
-import { expect, test } from "bun:test";
+import { expect } from "bun:test";
 import { Pose, blendPose, sampleClip, type Clip } from "../../shared/anim/clip.ts";
 import { CreatureAnim, FADE, advanceCreature, creaturePose, idleOf, layer, rayCreature } from "../../shared/anim/creature.ts";
 import { Gait, tickPhase } from "../../shared/anim/gait.ts";
@@ -12,6 +12,7 @@ import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { MODE_SWIM } from "../../shared/sim/character.ts";
 import { ACT_SWING, HOLD_HANDS } from "../../shared/sim/weapon.ts";
 import { birdAnim } from "../fixtures/bird.ts";
+import { fromArt, test } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { strider } from "../fixtures/strider.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -22,10 +23,10 @@ const of = (id: string): CreatureAnim => {
   const kind = reg.index.get(id)!;
   return new CreatureAnim(rigs.get(id)!, reg.runAt[kind]!, reg.move[kind]!.swimSpeed);
 };
-const DODO = of("core:dodo");
+const DODO = fromArt(() => of("core:dodo"));
 const BIRD = birdAnim();
 /** The stand-ins: a dinosaur from the pack, with idle, walk, run, attack, jump and death, and a rig with fewer. */
-const RAPTOR = of("core:raptor");
+const RAPTOR = fromArt(() => of("core:raptor"));
 const STRIDER = new CreatureAnim(strider(), 99, 0);
 const START = 1000;
 

@@ -23,7 +23,7 @@ import { parsePack, type Pack } from "../shared/pack/pack.ts";
 import { soundsHeard } from "../shared/sound/reach.ts";
 import { nodeForms } from "../shared/world/nodes.ts";
 import { gameTextures } from "./art/materials.ts";
-import { LANDMARKS, SOURCE, readPacks } from "./art/source.ts";
+import { ART, LANDMARKS, SOURCE, readPacks } from "./art/source.ts";
 import { defaultPalette } from "../shared/pack/palette.ts";
 import { BEAM_MESH, MISSING_MESH, WATER_MESH, buildCorePack, importedMeshes } from "./pack/build.ts";
 import { buildTextures, type TextureSource } from "./pack/encode.ts";
@@ -118,6 +118,10 @@ function wholeFarColours(reg: Registry, pack: Pack): number[] {
  * client/dist if not given.
  */
 export async function buildClient(opts: { stress?: boolean; quick?: boolean; dist?: string } = {}): Promise<{ jsBytes: number; packBytes: number }> {
+  if (!ART) {
+    console.error("The art is not in this repository, and the game cannot be built without it.");
+    process.exit(1);
+  }
   const root = resolve(import.meta.dir, "..");
   const dist = opts.dist ?? join(root, "client/dist");
   rmSync(join(dist, "assets"), { recursive: true, force: true });

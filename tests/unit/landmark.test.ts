@@ -13,6 +13,7 @@ import { Assets } from "../../client/core/assets/assets.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
 import { FakeNet } from "../fixtures/assetnet.ts";
 import { koruMap, koruPackBytes } from "../fixtures/koru.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -84,7 +85,7 @@ test("a client on a map with a landmark fetches its manifest and boot file, and 
   expect([bare.reg, bare.manifest, asked.length]).toEqual([reg, core.manifest, 2]);
 });
 
-test("Koru's levels stream from its own files joined after the core's: its coarsest drawn from the boot at once, its finest fetched", () => {
+artTest("Koru's levels stream from its own files joined after the core's: its coarsest drawn from the boot at once, its finest fetched", () => {
   const core = splitPack(corePackBytes(), "core");
   const more = splitPack(koruPackBytes(), "koru");
   const boots = [core, more].map((s) => parsePack(s.files[s.manifest.boot]!.bytes));

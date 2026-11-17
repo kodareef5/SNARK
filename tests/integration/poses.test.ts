@@ -10,6 +10,7 @@ import { handleIndex } from "../../shared/ids.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_SPRINT, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceEye } from "../../shared/sim/character.ts";
 import { EntityStore } from "../../shared/sim/entities.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreAnim } from "../fixtures/pack.ts";
 
@@ -285,7 +286,7 @@ test("what a client draws of a remote body is what the server would test a shot 
   }
 });
 
-test("no pose reaches outside the sphere the hit test rejects by, and a body costs microseconds to test", () => {
+artTest("no pose reaches outside the sphere the hit test rejects by, and a body costs microseconds to test", () => {
   const anim = coreAnim();
   const st = new AnimState();
   const pose = new Pose(HUMAN_BONES);

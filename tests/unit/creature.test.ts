@@ -1,5 +1,5 @@
 // Every creature found under assets/source, held to what its asset.ts says of it. A new creature is tested without being named here.
-import { expect, test } from "bun:test";
+import { expect } from "bun:test";
 import { sampleClip, type Clip } from "../../shared/anim/clip.ts";
 import { CreatureAnim, FADE, advanceCreature, creaturePose, rayCreature } from "../../shared/anim/creature.ts";
 import { Gait } from "../../shared/anim/gait.ts";
@@ -14,6 +14,7 @@ import { ACT_EQUIP, ACT_NONE, ACT_SWING, HOLD_CARRY, HOLD_HANDS } from "../../sh
 import { ZONES } from "../../tools/art/spec.ts";
 import { CREATURE_ASSETS } from "../fixtures/assets.ts";
 import { clipTurns, flyerAnim, turnBetween } from "../fixtures/flyer/flyer.ts";
+import { fromArt, test } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -173,8 +174,8 @@ test("a creature is hit where it is: its head from in front, every zone from som
 // A flyer in its own flight, on the pteranodon's rig and clips. Clips that stand in for its own where a test needs a
 // simpler one are made here.
 
-const flyer = flyerAnim();
-const frig = flyer.rig;
+const flyer = fromArt(flyerAnim);
+const frig = fromArt(() => flyer.rig);
 const named = (n: string): number => frig.names.indexOf(n);
 const T = 1000;
 const SEED = 11;

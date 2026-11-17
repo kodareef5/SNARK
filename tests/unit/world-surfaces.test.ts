@@ -5,6 +5,7 @@ import { TIERS, forTouch } from "../../client/core/assets/tiers.ts";
 import { FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX, PULLED_VERTEX } from "../../client/core/render/glsl.ts";
 import { worldMaterial } from "../../tools/surfaces/build.ts";
 import { rgbaOf } from "../../tools/snap/files.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 
 test("ground aliases and static finishes remain distinct; desert open land is gravel", () => {
   for (const [palette, ground, name] of [[10, true, "rock"], [10, false, "concrete"], [100, true, "gravel"], [100, false, "concrete"], [89, true, "paving"], [89, false, "steel"], [179, false, "rust"], [197, true, "grass"], [125, true, "sand"]] as const)
@@ -44,7 +45,7 @@ test("the textured vertex variants carry semantic IDs while low-poly shader sour
   }
 });
 
-test("a distant finish fades to its mean in the atlas's 4 x 4 mip without reading it; the normal map's mean is flat", () => {
+artTest("a distant finish fades to its mean in the atlas's 4 x 4 mip without reading it; the normal map's mean is flat", () => {
   const source = worldMaterial();
   for (const [role, at] of [["base", 0], ["mro", 3]] as const) {
     const mip = rgbaOf(source, role, 2048).pictures[2]!;

@@ -11,6 +11,7 @@ import { COARSE, groundSize } from "../../client/core/render/terrain.ts";
 import { BREEZE, RMS_SLOPE, SLOPE_MOST, SQUARE_MOST, WATER_MATERIAL, seaDepth, seaFrame, seaPixel, waveStrength } from "../../client/core/render/water.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { readPicture, seam } from "../../tools/pack/image.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { sceneSet, sceneWorld } from "../fixtures/sceneworld.ts";
 
 const sky = theSky();
@@ -161,7 +162,7 @@ test("on a lit tier the sea seen from above is a WATER draw with the waves' mate
   old();
 });
 
-test("the waves' pictures tile, hold RMS_SLOPE of slope about level, and their blue is the mean square of it", () => {
+artTest("the waves' pictures tile, hold RMS_SLOPE of slope about level, and their blue is the mean square of it", () => {
   for (const file of ["long.png", "short.png"]) {
     const p = readPicture(join(import.meta.dir, "../../assets/source/core/water", file));
     expect(Math.max(...seam(p))).toBeLessThan(1.5);

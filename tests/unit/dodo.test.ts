@@ -16,6 +16,7 @@ import { Genome, statValue } from "../../shared/sim/genome.ts";
 import { narcoticsNeeded, piecesNeeded, proneHunger, tameSeconds } from "../../shared/sim/taming.ts";
 import { findAssets } from "../../tools/art/assets.ts";
 import type { CreatureAsset } from "../../tools/art/spec.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -100,7 +101,7 @@ test("an egg hatches in 2,999.76 seconds and the young grows up in 55,555.56, as
   expect(reg.matureTicks[kind]! / TICK_RATE / 3600).toBeCloseTo(15.43, 2);
 });
 
-test("its six colour regions go under ARK's names, each with colours of its own, and its asset draws the default bird", async () => {
+artTest("its six colour regions go under ARK's names, each with colours of its own, and its asset draws the default bird", async () => {
   const set = reg.colorSet[kind]!;
   expect(dodo.regions!.map((r) => r?.name)).toEqual(["Body", "Face", "Beak", "Forehead, Neck and Feet", "Head", "Wings and Patterning"]);
   for (let r = 0; r < 6; r++) {
@@ -114,7 +115,7 @@ test("its six colour regions go under ARK's names, each with colours of its own,
   expect(asset.regions.map((r) => [r.name, r.sample])).toEqual(dodo.regions!.map((r, i) => [r!.name, DODO_DYES[i]!]));
 });
 
-test("the bird as modelled: its peck reaches as far as its beak does on the tick it lands, its head and the top of its neck are hit at three times, and it stands as tall as its body", () => {
+artTest("the bird as modelled: its peck reaches as far as its beak does on the tick it lands, its head and the top of its neck are hit at three times, and it stands as tall as its body", () => {
   const pack = corePack();
   const rig = buildRigs(pack.header.rigs, pack.clips).get("core:dodo")!;
   const bite = dodo.bite!;

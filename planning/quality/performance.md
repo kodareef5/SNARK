@@ -22,7 +22,7 @@ touch rule, ASTC, 24-bit depth, 16 texture units, no timer queries.
 | Start | `bun run bench` once at the start of the same round; its later rows ran as builders started, so times there are high, counts not | 2026-11-16 | `b9896d20` |
 | M | once on main, on a busy machine (load 7 to 39 on 10 cores) | 2026-11-15 | `1ca2026` |
 | Dnnn | the measurement its decision records | | |
-| iPhone | the device page's reports (D349), kept in `planning/reference/device-reports` and named by UTC time | 2026-11-15, 16 | |
+| iPhone | the device page's reports (D349), kept in `planning/reference/device-reports` and named by UTC time, the three soaks the governor's tests replay in `tests/fixtures/device-reports` | 2026-11-15, 16 | |
 
 Rows without a code are E. Counts and bytes do not move with load; times from M are
 high and marked "busy".
@@ -397,7 +397,7 @@ by the touch rule (`shadowBytes` in `shadowtext.ts`).
 
 ## The iPhone
 
-`bun run device -- --tunnel`, the reports in `planning/reference/device-reports`.
+`bun run device -- --tunnel`, the reports in `planning/reference/device-reports` and the soaks in `tests/fixtures/device-reports`.
 D271's GPU questions hold on both days: `depthRange` is honoured; a 16-bit depth array
 renders and compared lookups filter; an RGBA8 3D texture filters. D1's seam leaves no
 clear pixel over 60 turning frames (87 with the far range starting at the split

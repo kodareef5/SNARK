@@ -28,13 +28,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FakeNet } from "../fixtures/assetnet.ts";
 import { corePack } from "../fixtures/pack.ts";
+import { artTest, fromArt } from "../fixtures/needs-art.ts";
 import { builtSounds, chirp } from "../fixtures/sounds.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
 const DODO = reg.index.get("core:dodo")!;
 const rig = buildRigs(corePack().header.rigs, corePack().clips).get("core:dodo")!;
-const anim = new CreatureAnim(rig, reg.runAt[DODO]!, reg.move[DODO]?.swimSpeed ?? 0);
+const anim = fromArt(() => new CreatureAnim(rig, reg.runAt[DODO]!, reg.move[DODO]?.swimSpeed ?? 0));
 
 /** Takes hard and easy for a coder: a chirp, bursts of noise, silence, clicks, a full-scale square, and the shortest there are. */
 function hardTakes(): Float32Array[] {
@@ -452,7 +453,7 @@ test("the ground under a foot: the plaza is stone, the pool's low rim sand, the 
   expect(groundAt(hf, PROVING_POOL.x - 22, hf.heightAt(PROVING_POOL.x - 22, PROVING_POOL.z), PROVING_POOL.z)).toBe(GROUND_SAND);
 });
 
-test("when a sound belongs in the dodo's clips is read from its motion: the peck lands early, the ground pecks two or three times, the call opens its beak", () => {
+artTest("when a sound belongs in the dodo's clips is read from its motion: the peck lands early, the ground pecks two or three times, the call opens its beak", () => {
   const strike = strikeAt(rig, anim.attack);
   expect(strike).toBeGreaterThan(0);
   expect(strike).toBeLessThan((anim.attack!.frames - 1) / TICK_RATE / 1.5);
@@ -477,7 +478,7 @@ class Ears implements SoundSink {
   }
 }
 
-test("a dodo is heard as its state changes: startled, landing, hurt, pecking, knocked down, calling now and then, stepping, and dying", () => {
+artTest("a dodo is heard as its state changes: startled, landing, hurt, pecking, knocked down, calling now and then, stepping, and dying", () => {
   const net = new FakeNet([new Uint8Array(0), built.file], { latencyMs: 1, bytesPerSecond: 1e8 });
   const sounds = new Sounds(built.manifest, net, reg, (k) => (k === DODO ? anim : null));
   const lib = sounds.library;
@@ -621,13 +622,13 @@ function hearOne(kind: number, setup: (remote: RemoteSample, i: number) => void)
   return { frame, heard, st, remote };
 }
 
-test("a dodo's body lying dead never calls or pecks, however long it lies in view", () => {
+artTest("a dodo's body lying dead never calls or pecks, however long it lies in view", () => {
   const { frame, heard } = hearOne(DODO, (remote) => (remote.cue[0] = CUE_DEAD));
   for (let k = 0; k < 90 * TICK_RATE; k++) frame();
   expect(heard).toEqual([]);
 });
 
-test("a dodo carried in a survivor's arms takes no steps of its own as its carrier walks", () => {
+artTest("a dodo carried in a survivor's arms takes no steps of its own as its carrier walks", () => {
   const { frame, heard, st, remote } = hearOne(DODO, (r) => (r.cue[0] = CUE_HELD));
   for (let k = 0; k < 30; k++) frame();
   heard.length = 0;
@@ -663,7 +664,7 @@ test("a voice taken over in the frame it was started never reaches the device, w
   expect(device.size).toBe(m.playing);
 });
 
-test("a pteranodon is heard flapping once a beat of its flight, twice flying fast, and as it takes off; never on still wings or standing", () => {
+artTest("a pteranodon is heard flapping once a beat of its flight, twice flying fast, and as it takes off; never on still wings or standing", () => {
   const flaps = builtSounds(1, false, true);
   const manifest = parseManifest(JSON.stringify({ version: MANIFEST_VERSION, files: [{ name: "boot", bytes: 0, role: "boot" }, { name: "sounds", bytes: flaps.file.length, role: "sound" }], boot: 0, clipHash: 0, meshes: [], sounds: flaps.sounds }));
   const net = new FakeNet([new Uint8Array(0), flaps.file], { latencyMs: 1, bytesPerSecond: 1e8 });

@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { listSounds, takesOf } from "../../client/core/sound/listing.ts";
 import { Guesses } from "../../server/guesses.ts";
 import { SOURCE_DIR, boardOwners, soundBoard, soundFolders, type BoardGate } from "../../server/sound-board.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { builtSounds } from "../fixtures/sounds.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -54,7 +55,7 @@ test("the board opens on a development server, and elsewhere only to the admin p
   }
 });
 
-test("the board lists every owner by its folder, and each occasion by how the game hears it: its own, a stand-in, shared, or nothing", () => {
+artTest("the board lists every owner by its folder, and each occasion by how the game hears it: its own, a stand-in, shared, or nothing", () => {
   // The repository's own folders: the dodo's and the shared families'.
   expect(soundFolders().map((f) => f.id)).toEqual(expect.arrayContaining(["core:dodo", "core:surface", "core:survivor"]));
   expect(soundFolders().some((f) => f.id === "core:ref")).toBe(false);

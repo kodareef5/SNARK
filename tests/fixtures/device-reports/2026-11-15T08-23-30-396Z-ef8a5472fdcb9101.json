@@ -1,0 +1,420 @@
+{
+  "run": "ef8a5472fdcb9101",
+  "mode": "soak",
+  "seq": 16,
+  "stage": "done",
+  "done": true,
+  "device": {
+    "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 27_2_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/157.0.8103.37 Mobile/15E148 Safari/604.1",
+    "screen": [
+      390,
+      844
+    ],
+    "window": [
+      390,
+      669
+    ],
+    "pixelRatio": 3,
+    "cores": 4,
+    "memoryGB": null,
+    "touch": 5,
+    "features": {
+      "workers": true,
+      "opfs": true,
+      "decompress": "gzip deflate deflate-raw brotli",
+      "audioWorklet": true,
+      "opusEncode": true,
+      "opusDecode": true,
+      "webTransport": true,
+      "webgpu": true,
+      "wakeLock": true,
+      "quotaMB": 39322
+    }
+  },
+  "gpu": {
+    "vendor": "Apple Inc.",
+    "renderer": "Apple GPU",
+    "version": "WebGL 2.0",
+    "maxTexture": 16384,
+    "maxArrayLayers": 2048,
+    "maxSamples": 4,
+    "vertexTextures": 16,
+    "textureUnits": 16,
+    "combinedUnits": 32,
+    "drawBuffers": 8,
+    "anisotropy": 16,
+    "highp": true,
+    "antialias": true,
+    "uniformBytes": 16384,
+    "uniformBlocks": [
+      16,
+      16
+    ],
+    "uniformBindings": 32,
+    "uniformAlign": 16,
+    "depthBits": 24,
+    "extensions": [
+      "EXT_clip_control",
+      "EXT_color_buffer_float",
+      "EXT_color_buffer_half_float",
+      "EXT_conservative_depth",
+      "EXT_depth_clamp",
+      "EXT_polygon_offset_clamp",
+      "EXT_render_snorm",
+      "EXT_texture_filter_anisotropic",
+      "EXT_texture_mirror_clamp_to_edge",
+      "EXT_texture_norm16",
+      "KHR_parallel_shader_compile",
+      "NV_shader_noperspective_interpolation",
+      "OES_draw_buffers_indexed",
+      "OES_sample_variables",
+      "OES_shader_multisample_interpolation",
+      "WEBGL_blend_func_extended",
+      "WEBGL_clip_cull_distance",
+      "WEBGL_compressed_texture_astc",
+      "WEBGL_compressed_texture_etc",
+      "WEBGL_compressed_texture_etc1",
+      "WEBGL_compressed_texture_pvrtc",
+      "WEBKIT_WEBGL_compressed_texture_pvrtc",
+      "WEBGL_debug_renderer_info",
+      "WEBGL_debug_shaders",
+      "WEBGL_lose_context",
+      "WEBGL_multi_draw",
+      "WEBGL_polygon_mode",
+      "WEBGL_provoking_vertex",
+      "WEBGL_render_shared_exponent",
+      "WEBGL_stencil_texturing"
+    ],
+    "variant": "astc"
+  },
+  "idleFrameMs": 17,
+  "wakeLock": "not asked",
+  "link": {
+    "httpMs": {
+      "median": 68,
+      "p95": 95,
+      "p99": 95,
+      "worst": 170
+    },
+    "gameMs": null,
+    "snapshots": 18081,
+    "missed": 0,
+    "missedLoading": 0,
+    "missedHidden": 0,
+    "server": {
+      "skipped": 0,
+      "overflows": 0
+    },
+    "longestGapMs": 96,
+    "bytesIn": 984960,
+    "clockJumps": 0,
+    "corrections": 0,
+    "undecodable": 0
+  },
+  "load": {
+    "firstFrameMs": 1092,
+    "fullDetailMs": 1950,
+    "settled": true,
+    "pageBytes": 119550,
+    "assetBytes": 0,
+    "diskBytes": 1361403,
+    "failed": 0,
+    "failedHow": "",
+    "refused": 0,
+    "cache": "disk"
+  },
+  "probes": [
+    {
+      "name": "sky",
+      "ok": true,
+      "expected": [
+        79,
+        146,
+        223
+      ],
+      "got": [
+        79,
+        146,
+        223
+      ]
+    },
+    {
+      "name": "plaza",
+      "ok": true,
+      "expected": [
+        192,
+        192,
+        190
+      ],
+      "got": [
+        175,
+        175,
+        173
+      ]
+    },
+    {
+      "name": "block",
+      "ok": true,
+      "expected": [
+        77,
+        84,
+        96
+      ],
+      "got": [
+        64,
+        70,
+        81
+      ]
+    },
+    {
+      "name": "creature",
+      "ok": true,
+      "expected": [
+        122,
+        116,
+        45
+      ],
+      "got": [
+        102,
+        97,
+        41
+      ]
+    },
+    {
+      "name": "body",
+      "ok": true,
+      "expected": [
+        112,
+        92,
+        79
+      ],
+      "got": [
+        113,
+        92,
+        78
+      ]
+    }
+  ],
+  "hashes": [
+    {
+      "name": "sim",
+      "got": "1f4dbd37f2e359ac",
+      "want": "1f4dbd37f2e359ac",
+      "ms": 41
+    },
+    {
+      "name": "pose",
+      "got": "335d6893bc507a11",
+      "want": "335d6893bc507a11",
+      "ms": 13
+    },
+    {
+      "name": "snap",
+      "got": "4fe0eeea53b9c036",
+      "want": "4fe0eeea53b9c036",
+      "ms": 27
+    },
+    {
+      "name": "creature",
+      "got": "c4e100fcf4c0134e",
+      "want": "c4e100fcf4c0134e",
+      "ms": 17
+    },
+    {
+      "name": "tuned",
+      "got": "988e57ee2014a7331d898876",
+      "want": "988e57ee2014a7331d898876",
+      "ms": 12
+    },
+    {
+      "name": "hull",
+      "got": "f125f16e04a3a07d",
+      "want": "f125f16e04a3a07d",
+      "ms": 47
+    },
+    {
+      "name": "node",
+      "got": "af39543b5c75fd89",
+      "want": "af39543b5c75fd89",
+      "ms": 42
+    }
+  ],
+  "phases": [],
+  "again": null,
+  "ladder": null,
+  "soak": {
+    "tier": "high",
+    "load": {
+      "stress": true,
+      "bodies": 800,
+      "pieces": 0,
+      "near": 64,
+      "far": 512
+    },
+    "from": "half what the ladder held on high",
+    "wood": false,
+    "cascades": 3,
+    "minutesWanted": 10,
+    "minutes": [
+      {
+        "minute": 1,
+        "frames": 3600,
+        "frameMs": {
+          "median": 17,
+          "p95": 18,
+          "p99": 18,
+          "worst": 22
+        },
+        "long": 0,
+        "buildMs": 1,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 63
+      },
+      {
+        "minute": 2,
+        "frames": 3293,
+        "frameMs": {
+          "median": 17,
+          "p95": 24,
+          "p99": 27,
+          "worst": 32
+        },
+        "long": 0,
+        "buildMs": 1,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 63
+      },
+      {
+        "minute": 3,
+        "frames": 3169,
+        "frameMs": {
+          "median": 17,
+          "p95": 28,
+          "p99": 37,
+          "worst": 39
+        },
+        "long": 0,
+        "buildMs": 1,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 63
+      },
+      {
+        "minute": 4,
+        "frames": 3167,
+        "frameMs": {
+          "median": 17,
+          "p95": 27,
+          "p99": 37,
+          "worst": 40
+        },
+        "long": 0,
+        "buildMs": 1,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 63
+      },
+      {
+        "minute": 5,
+        "frames": 3029,
+        "frameMs": {
+          "median": 18,
+          "p95": 30,
+          "p99": 36,
+          "worst": 41
+        },
+        "long": 0,
+        "buildMs": 1,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 63
+      },
+      {
+        "minute": 6,
+        "frames": 2907,
+        "frameMs": {
+          "median": 19,
+          "p95": 32,
+          "p99": 42,
+          "worst": 48
+        },
+        "long": 0,
+        "buildMs": 1,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 63
+      },
+      {
+        "minute": 7,
+        "frames": 2701,
+        "frameMs": {
+          "median": 21,
+          "p95": 31,
+          "p99": 33,
+          "worst": 37
+        },
+        "long": 0,
+        "buildMs": 1,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 63
+      },
+      {
+        "minute": 8,
+        "frames": 2571,
+        "frameMs": {
+          "median": 22,
+          "p95": 32,
+          "p99": 33,
+          "worst": 38
+        },
+        "long": 0,
+        "buildMs": 1,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 63
+      },
+      {
+        "minute": 9,
+        "frames": 2466,
+        "frameMs": {
+          "median": 24,
+          "p95": 32,
+          "p99": 34,
+          "worst": 38
+        },
+        "long": 0,
+        "buildMs": 1,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 63
+      },
+      {
+        "minute": 10,
+        "frames": 2325,
+        "frameMs": {
+          "median": 24,
+          "p95": 35,
+          "p99": 37,
+          "worst": 40
+        },
+        "long": 0,
+        "buildMs": 1,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 63
+      }
+    ],
+    "hidden": 0,
+    "hiddenMs": 0
+  },
+  "terrain": null,
+  "gpuTests": null,
+  "skipped": [],
+  "texturesMade": 85,
+  "hidden": [],
+  "errors": [],
+  "reloadedDuring": null
+}

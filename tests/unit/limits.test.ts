@@ -11,6 +11,7 @@ import { EntityView, MAX_VIEW, SentView, readViewDelta, writeViewDelta } from ".
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { provingView } from "../../tools/snap.ts";
 import { PICK_ENTITY } from "../../tools/snap/raster.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 
 function looksFor(n: number) {
   return { level: new Uint16Array(n), colors: new Uint8Array(n * 6), names: new Map<number, string>(), looks: new Map<number, Uint8Array>(), gears: new Map<number, Uint16Array>(), team: new Uint32Array(n), seat: new Uint32Array(n), span: new Uint32Array(n), grown: new Uint32Array(n) };
@@ -202,7 +203,7 @@ test("a budget smaller than one create still carries one of each kind a snapshot
   expect(fresh).toEqual([2, 4, 5, 6]);
 });
 
-test("a frame short of bones poses survivors first, then the nearest, and stands every other body on one bone where it is, in a pose for what it does", () => {
+artTest("a frame short of bones poses survivors first, then the nearest, and stands every other body on one bone where it is, in a pose for what it does", () => {
   const view = provingView(320, 180);
   const { remote, cam, scene, reg, hf, raster, pack } = view;
   const raptor = reg.index.get("core:raptor")!;

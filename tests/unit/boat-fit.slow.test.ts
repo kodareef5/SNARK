@@ -1,7 +1,8 @@
 // The boat's seats against real survivors over three million points: slow by nature, so in the slow tier
 // (boat-art.test.ts checks the packs themselves).
-import { expect, test } from "bun:test";
+import { expect } from "bun:test";
 import { auditBoatFit } from "../../tools/art/boat-fit.ts";
+import { test } from "../fixtures/needs-art.ts";
 
 test("actual survivors and gear clear all other seats, console and hull across proportions and head look", () => {
   const report = auditBoatFit();

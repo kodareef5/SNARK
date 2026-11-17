@@ -15,6 +15,7 @@ import { BTN_PRIMARY, BTN_SECONDARY } from "../../shared/sim/character.ts";
 import { DMG_BULLET, falloff, harm, hit, resetHit, resolveDamage } from "../../shared/sim/damage.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { takeInHand } from "../fixtures/gather.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const TICK_MS = 1000 / 30;
@@ -216,7 +217,7 @@ test("at 2 m every pellet of a shell hits the dummy, ten markers of 64, for one 
   expect(h.host.items.audit()).toEqual([]);
 });
 
-test("at 30 m from the hip a few pellets hit, each at a third of its damage", () => {
+artTest("at 30 m from the hip a few pellets hit, each at a third of its damage", () => {
   const { h, mine, told, hits, fire } = range(30, 0, 0);
   let rays = 0;
   for (let k = 0; k < 6; k++) {

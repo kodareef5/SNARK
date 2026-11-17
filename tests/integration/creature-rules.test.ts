@@ -21,6 +21,7 @@ import { F_ALIVE, F_GROUNDED } from "../../shared/sim/entities.ts";
 import { V_HEALTH, V_OXYGEN, V_TORPOR } from "../../shared/sim/vitals.ts";
 import { PROVING_POOL } from "../../shared/world/proving.ts";
 import { flatGround } from "../fixtures/arena.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
 import { flatWorld } from "../fixtures/world.ts";
 
@@ -76,7 +77,7 @@ function causes(h: Harness): Map<number, number> {
   return seen;
 }
 
-test("a flock of twenty with one struck: the nineteen within 15 m take fright with it, stand through their startle and then run from the blow; one further off and one of another kind do not", () => {
+artTest("a flock of twenty with one struck: the nineteen within 15 m take fright with it, stand through their startle and then run from the blow; one further off and one of another kind do not", () => {
   const { h, ada, g } = camp();
   const ents = h.world.ents;
   const mind = h.host.creatures.mind;
@@ -297,7 +298,7 @@ test("burning harms a dodo by its fire multiplier, three eighths of what it harm
   expect(before - h.host.survival.value(rec, V_HEALTH)).toBeCloseTo(4 * (22 * 0.375 - 0.2), 1);
 });
 
-test("her creatures wander, go for what she points at and take up her target, as ARK's whistles and menu have them, and refuse what they should", () => {
+artTest("her creatures wander, go for what she points at and take up her target, as ARK's whistles and menu have them, and refuse what they should", () => {
   const dir = mkdtempSync(join(tmpdir(), "snark-orders-"));
   const dbPath = join(dir, "world.db");
   let { h, ada, g, at, me } = camp({ dbPath });

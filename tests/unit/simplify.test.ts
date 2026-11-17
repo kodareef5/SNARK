@@ -2,6 +2,7 @@
 import { expect, test } from "bun:test";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { CREATURE_ASSETS } from "../fixtures/assets.ts";
 import { surfaceError } from "../../tools/pack/error.ts";
@@ -94,7 +95,7 @@ test("a ball's levels lie further from it as they get coarser, by about what the
   }
 });
 
-test("a mesh with one level gets more only if it has the triangles for them, and a creature that brings one gets five", () => {
+artTest("a mesh with one level gets more only if it has the triangles for them, and a creature that brings one gets five", () => {
   const box = withLevels({ id: "t:box", lods: [boxMesh([1, 1, 1], 3)] });
   expect(box.lods.length).toBe(1);
   expect(withLevels({ id: "t:small", lods: [ball(8, 6)] }).lods.map(tris)).toEqual([80]);

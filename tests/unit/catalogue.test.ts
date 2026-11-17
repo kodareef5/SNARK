@@ -23,6 +23,7 @@ import { FOODS } from "../../content/foods.ts";
 import { KNOCKOUT } from "../../content/knockout.ts";
 import { ITEMS } from "../../content/items/index.ts";
 import { CATALOGUE_PAGE, cataloguePage } from "../../tools/catalogue.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 
 // What the creature files bring is counted apart, so a new creature moves no number here, and so is what the files of
 // the creature features and of the item and weapons programs (content/items) bring, so that those built side by side do
@@ -117,7 +118,7 @@ test("every feature that is not built is waited for: by a setting, a class of co
   expect(Object.keys(FEATURES).filter((f) => !waited.has(f))).toEqual([]);
 });
 
-test("the reference page is what the table generates", () => {
+artTest("the reference page is what the table generates", () => {
   expect(readFileSync(CATALOGUE_PAGE, "utf8")).toBe(cataloguePage());
 });
 

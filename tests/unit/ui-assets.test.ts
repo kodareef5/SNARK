@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect } from "bun:test";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -9,6 +9,7 @@ import { fitText, textWidth, wrapText } from "../../client/core/ui/nodes.ts";
 import { S_MENU_NOTE } from "../../client/core/ui/style.ts";
 import { readPng } from "../../tools/pack/png-read.ts";
 import { partHash } from "../../tools/pack/manifest.ts";
+import { test } from "../fixtures/needs-art.ts";
 
 test("HUD export is bounded, content-addressed and carries its local font license without source art",()=>{
   const dir=mkdtempSync(join(tmpdir(),"snark-ui-"));

@@ -1,7 +1,7 @@
 // A creature's clips come with its species and not in the boot pack. One met before they have come is drawn at once,
 // standing at rest, and from the frame they come is posed as a client that had every clip from the first poses it.
 
-import { expect, test } from "bun:test";
+import { expect } from "bun:test";
 import { BONE_FLOATS, type FramePacket } from "../../client/core/render/packet.ts";
 import { writeBones } from "../../client/core/render/characters.ts";
 import { Pose } from "../../shared/anim/clip.ts";
@@ -9,6 +9,7 @@ import { AnimState } from "../../shared/anim/pose.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { MODE_FLYER } from "../../shared/sim/character.ts";
 import { provingView, type ProvingView } from "../../tools/snap.ts";
+import { test } from "../fixtures/needs-art.ts";
 
 const FLYER = "core:pteranodon";
 const WALKER = "core:dodo";

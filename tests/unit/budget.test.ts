@@ -4,6 +4,7 @@ import { FrameBudget, LEAVES_LEFT, ORDER, SQUEEZE_MOST, STEPS, coverScale, crown
 import { DRAW_CUTOUT, DRAW_TEXTURED, type FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
 import { Rng } from "../../shared/rng.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { nodeWorld } from "../fixtures/nodeworld.ts";
 import { corePack } from "../fixtures/pack.ts";
 
@@ -98,7 +99,7 @@ test("leaves thin from the band inward, the nearest last, and a crown keeps its 
   expect([1, 2, 3, 4].map(coverScale)).toEqual([1, 1, 2, 4]);
 });
 
-test("a squeezed elder oak draws its bark at the trunk's level, its crown coarser, and its leaves' best seen share; the count follows", () => {
+artTest("a squeezed elder oak draws its bark at the trunk's level, its crown coarser, and its leaves' best seen share; the count follows", () => {
   const w = nodeWorld({ chunksX: 5, chunksZ: 5, kinds: ["core:oak"], perChunk: 24, pack: corePack(), width: 390, height: 669 });
   const { scene } = w;
   const sections = scene.assets.table.sections;

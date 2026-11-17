@@ -1,7 +1,8 @@
 // The helicopter's cabin against real survivors over three million points: slow by nature, so in the slow tier
 // (helicopter-art.test.ts checks the packs themselves).
-import { expect, test } from "bun:test";
+import { expect } from "bun:test";
 import { auditHelicopterFit } from "../../tools/art/helicopter-fit.ts";
+import { test } from "../fixtures/needs-art.ts";
 
 test("real survivor bodies, every armor set and hair fit across proportion extremes and continuous body/look bounds", () => {
   const report = auditHelicopterFit();
