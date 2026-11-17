@@ -1,10 +1,15 @@
-// Loaded before each test file (bunfig.toml): the hang limit its tests share, and under the check, what the worker is
-// running and what the file cost.
+// Loaded before each test file (bunfig.toml): what the last file left collected, the hang limit its tests share, and
+// under the check, what the worker is running and what the file cost.
 
 import { afterAll, beforeEach, setDefaultTimeout } from "bun:test";
 import { appendFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { TEST_WATCH, hungAfter } from "./load.ts";
+
+// A worker of `bun test --parallel` runs file after file in one process. JavaScriptCore collects by what has been made
+// since its last collection, so what the last file left could stand through the next files: a worker held a gigabyte
+// or more that the file it was running did not need.
+Bun.gc(true);
 
 const limit = hungAfter(Bun.main);
 setDefaultTimeout(limit);

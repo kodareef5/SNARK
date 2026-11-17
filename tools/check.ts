@@ -5,6 +5,7 @@
 //   bun run check -- --slow      the same, then the slow tier (`*.slow.test.ts`): before a merge to main
 //   bun run slow                 the slow tier alone
 
+import { dlopen, FFIType, ptr } from "bun:ffi";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { cpus, loadavg, tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -280,6 +281,48 @@ const testFiles = walk(join(ROOT, "tests")).filter((f) => f.endsWith(".test.ts")
 const tally = { passed: 0, unart: 0 };
 const needsArt = new Set(ART ? [] : testFiles.filter((f) => readFileSync(f, "utf8").includes("fixtures/needs-art.ts")).map(repoPath));
 
+/** A process's memory in bytes, its compressed and swapped pages counted, or 0 once it has ended. */
+const footprint = ((): ((pid: number) => number) => {
+  if (process.platform === "darwin") {
+    const { symbols } = dlopen("/usr/lib/libSystem.B.dylib", { proc_pid_rusage: { args: [FFIType.i32, FFIType.i32, FFIType.ptr], returns: FFIType.i32 } });
+    // struct rusage_info_v4 (flavor 4) is 37 words of 64 bits; ri_phys_footprint is the tenth.
+    const info = new BigUint64Array(37);
+    return (pid) => (symbols.proc_pid_rusage(pid, 4, ptr(info)) === 0 ? Number(info[9]) : 0);
+  }
+  return (pid) => {
+    try {
+      const status = readFileSync(`/proc/${pid}/status`, "utf8");
+      return 1024 * ["VmRSS", "VmSwap"].reduce((kb, field) => kb + Number(new RegExp(`${field}:\\s+(\\d+)`).exec(status)?.[1] ?? 0), 0);
+    } catch {
+      return 0;
+    }
+  };
+})();
+
+/** The most the workers held together at one moment, and what each was running then, heaviest first. */
+interface Held {
+  most: number;
+  files: [string, number][];
+}
+
+/** Adds the workers in `dir` up, each named there by the preload's files, and keeps the most in `held`. */
+function weigh(dir: string, held: Held): void {
+  const running = new Map<number, string>();
+  for (const name of readdirSync(dir)) {
+    const pid = parseInt(name);
+    if (!running.has(pid)) running.set(pid, "");
+    if (!name.endsWith(".now")) continue;
+    try {
+      running.set(pid, repoPath(readFileSync(join(dir, name), "utf8").split("\t")[0]!));
+    } catch {
+      // Removed as its file ended.
+    }
+  }
+  const files: [string, number][] = [...running].map(([pid, file]) => [file, footprint(pid)]);
+  const sum = files.reduce((n, [, bytes]) => n + bytes, 0);
+  if (sum > held.most) Object.assign(held, { most: sum, files: files.sort((a, b) => b[1] - a[1]) });
+}
+
 /** Each test file's CPU-seconds, from what the preload wrote in `dir`. */
 function fileCpu(dir: string): [string, number][] {
   const out: [string, number][] = [];
@@ -338,8 +381,12 @@ async function checkTests(tier: Tier, dir: string, env: Record<string, string>):
   const stopped: string[] = [];
   const most = new Map<string, number>();
   const watching = setInterval(() => stopHung(watch, workers, most, stopped), 1000);
+  const held: Held = { most: 0, files: [] };
+  // A worker's memory can rise and fall within a second.
+  const weighing = setInterval(() => weigh(watch, held), 250);
   const r = await run(["bun", "test", `--parallel=${workers}`, ...timed, "--reporter=junit", `--reporter-outfile=${report}`, ...only], true, { ...process.env, ...env, [TEST_WORKERS]: String(workers), [TEST_WATCH]: watch });
   clearInterval(watching);
+  clearInterval(weighing);
   stopped.forEach(fail);
   if (!r.ok) {
     fail(`${tier} tests failed:\n${r.out.trim()}`);
@@ -350,7 +397,10 @@ async function checkTests(tier: Tier, dir: string, env: Record<string, string>):
   const counts = r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim());
   tally.passed += parseInt(counts.find((c) => c.endsWith(" pass")) ?? "0");
   for (const m of junit.matchAll(/<testsuite name="([^"]+)" file="\1"[^>]*? skipped="(\d+)"/g)) if (needsArt.has(m[1]!)) tally.unart += Number(m[2]);
-  console.log(`  ${counts.join(", ")}, ${r.cpu.toFixed(0)} CPU-seconds${tier === "fast" ? ` of ${TEST_CPU_BUDGET}` : ""}`);
+  const gb = (bytes: number): string => `${(bytes / 1e9).toFixed(1)} GB`;
+  console.log(`  ${counts.join(", ")}, ${r.cpu.toFixed(0)} CPU-seconds${tier === "fast" ? ` of ${TEST_CPU_BUDGET}` : ""}, ${gb(held.most)} at most in the workers together`);
+  const heaviest = held.files.filter(([file]) => file).slice(0, 3);
+  if (heaviest.length > 0) console.log(`  the heaviest workers then ran ${heaviest.map(([file, bytes]) => `${file} (${gb(bytes)})`).join(", ")}`);
   // CPU-seconds move far less with the machine's load than the clock does, so a slow change shows on a busy day too.
   if (tier === "fast" && r.cpu > TEST_CPU_BUDGET) {
     const costliest = fileCpu(watch).slice(0, 5).map(([f, s]) => `${f} ${s.toFixed(1)}`);
