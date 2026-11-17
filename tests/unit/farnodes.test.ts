@@ -444,3 +444,16 @@ test("tiles go on the card again after a lost context, tiles past reach are let 
   expect([[...w.card.keys()].filter((b) => b >= FAR_NODE_BUFFERS).length, [...none.drawBuffer.subarray(0, none.drawCount)].filter((b) => b >= FAR_NODE_BUFFERS).length]).toEqual([0, 0]);
   expect([held > 100000, reserved - w.scene.assets.residency.reserved]).toEqual([true, held]);
 });
+
+test("reversible predicted tree hiding removes both near and far instances without changing native nodes", () => {
+  const w = wood(); w.stand(4 * CHUNK_SIZE + 60, 6 * CHUNK_SIZE + 20); w.look(4 * CHUNK_SIZE + 60, 24, 6 * CHUNK_SIZE + 20, Math.PI / 2, -.05);
+  w.scene.nodesFar!.makes = Infinity; w.frame();
+  const initial = drawnNodes(w, w.frame()), pick = [...initial].find(([, draws]) => draws.some(d => d.far) && draws.some(d => !d.far))!;
+  expect(pick).toBeDefined();
+  const ref = pick[0], chunk = Math.floor(ref / 65536), slot = ref & 65535, kind = w.field.store.chunks[chunk]!.kind[slot]!;
+  w.scene.hideNode(ref, true); w.frame();
+  expect(drawnNodes(w, w.frame()).has(ref)).toBe(false); expect(w.field.store.chunks[chunk]!.kind[slot]).toBe(kind);
+  w.scene.hideNode(ref, false); w.frame();
+  expect(drawnNodes(w, w.frame()).get(ref)?.some(d => d.far)).toBe(true);
+  expect(drawnNodes(w, w.frame()).get(ref)?.some(d => !d.far)).toBe(true);
+});

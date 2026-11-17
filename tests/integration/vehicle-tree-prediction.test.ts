@@ -16,7 +16,7 @@ function mapOf() {
     spawns: [{ name: "Driver", x: 152, z: 30, yaw: 0 }] }));
 }
 
-for (const rtt of [0, 80, 150]) test(`the actual driver predicts first-tree fracture at ${rtt}ms RTT without a local stop or snap`, () => {
+for (const rtt of [0, 80, 150, 250]) test(`the actual driver predicts first-tree fracture at ${rtt}ms RTT without a local stop or snap`, () => {
   const h = new Harness({}, 2, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: mapOf() });
   try {
     const s = h.join("tree-driver", { tcp: true, latencyMs: rtt / 2, jitterMs: 10 }); h.run(4000);
@@ -24,6 +24,13 @@ for (const rtt of [0, 80, 150]) test(`the actual driver predicts first-tree frac
     a.setPosition(c.ent, 153.6, 0, 30.12); h.world.history.discontinuity(c.ent);
     expect(h.host.urban.mount(c, car)).toBe(RESULT_OK); h.run(2500); expect(s.driving).toBe(car);
     let impact = -1, peakRaw = 0, peakRendered = 0, slowest = Infinity, prematureEffects = 0, confirmedEffects = 0, stepsPast = 0;
+    let visualBreaks = 0, visualConfirms = 0, visualRejects = 0, hiddenBeforeFeed = false;
+    const visuals = () => {
+      for (const event of s.predictedTrees?.present() ?? []) {
+        if (event.action === "break") { visualBreaks++; hiddenBeforeFeed ||= confirmedEffects === 0 && s.predictedTrees!.hidden(event.ref); }
+        else if (event.action === "confirm") visualConfirms++; else visualRejects++;
+      }
+    };
     const observed = s as unknown as { reconcile(tick: number, body: Body): void }, reconcile = observed.reconcile.bind(s);
     observed.reconcile = (tick, body) => {
       const sim = s.simTick, x = s.own.x, y = s.own.y, z = s.own.z, sx = s.smoothX, sy = s.smoothY, sz = s.smoothZ;
@@ -37,10 +44,14 @@ for (const rtt of [0, 80, 150]) test(`the actual driver predicts first-tree frac
       confirmedEffects++; if (!h.host.harvest!.crushed(6, 0)) prematureEffects++;
     };
     for (let ms = 0; ms < 13000 && (impact < 0 || h.world.tick < impact + 60); ms += 50) h.run(50, () => {
+      visuals();
       const v = Math.hypot(s.own.vx, s.own.vz), pilot = h.pilots[0]!; pilot.moveZ = v < 19.7 ? 1 : v > 20.3 ? 0 : .35;
       if (s.own.z >= 89.7 && s.own.z < 99) { slowest = Math.min(slowest, v); stepsPast++; }
       if (impact < 0 && h.host.harvest!.crushed(6, 0)) impact = h.world.tick;
     });
+    visuals();
+    if (rtt > 0) { expect(hiddenBeforeFeed).toBe(true); expect(visualBreaks).toBe(1); expect(visualConfirms).toBe(1); }
+    expect(visualRejects).toBe(0); expect(s.predictedTrees!.hidden(6 * 65536)).toBe(false);
     expect(impact).toBeGreaterThan(0); expect(stepsPast).toBeGreaterThan(10); expect(slowest).toBeGreaterThan(15);
     expect(peakRaw).toBeLessThan(.01); expect(peakRendered).toBeLessThan(.01);
     expect(a.z[car]!).toBeGreaterThan(112); expect(confirmedEffects).toBe(1); expect(prematureEffects).toBe(0);
@@ -98,7 +109,7 @@ test("driver-only tree speculation survives replay, spends resistance again, and
     first.copy(original); overlay.begin(100, handle); stepVehicleBody(h.world, first, 0, 0, 0, COMPACT_VEHICLE, undefined, undefined, true, overlay);
     expect(first.vz).toBeGreaterThan(15); expect(first.vz).toBeLessThan(18); expect(first.z).toBeGreaterThan(90);
     expect(field.store.chunks[6]!.kind[0]).toBeGreaterThan(0); expect(h.host.harvest!.goneCount).toBe(0);
-    // Remote physics and rendering retain the solid tree until authority actually depletes it.
+    // Native remote collision retains the solid tree; the driver's renderer may hide it reversibly.
     remote.copy(original); stepVehicleBody(h.world, remote, 0, 0, 0, COMPACT_VEHICLE); expect(remote.vz).toBeLessThan(1);
     overlay.begin(101, handle); replay.copy(original); overlay.begin(100, handle);
     stepVehicleBody(h.world, replay, 0, 0, 0, COMPACT_VEHICLE, undefined, undefined, true, overlay);
@@ -115,5 +126,31 @@ test("driver-only tree speculation survives replay, spends resistance again, and
       expect(replay.vz).toBeLessThan(1);
     }
     expect(field.store.chunks[6]!.kind[0]).toBeGreaterThan(0); expect(h.host.harvest!.goneCount).toBe(0);
+  } finally { h.host.shutdown(); }
+});
+
+
+test("driver presentation hides a predicted break once, survives replay and feed order, and restores rejected or harvested trees", () => {
+  const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: mapOf() });
+  try {
+    const field = h.world.nodeField!; h.host.harvest!.retain(6, 0, 1);
+    const overlay = new PredictedTrees(h.world, h.reg, field), original = new Body(), ref = 6 * 65536;
+    original.kind = h.reg.index.get("core:compact")!; original.vehicle = true; original.x = 152; original.z = 89.7; original.vz = 20; original.fuel = 40;
+    const form = field.store.chunks[6]!.kind[0]!, body = new Body(), handle = makeHandle(4, 1);
+    const crash = (tick: number) => { body.copy(original); overlay.begin(tick, handle); stepVehicleBody(h.world, body, 0, 0, 0, COMPACT_VEHICLE, undefined, undefined, true, overlay); };
+    crash(100); expect(overlay.omits(ref)).toBe(true);
+    const first = overlay.present().map(event => ({ ...event })); expect(first).toHaveLength(1); expect(first[0]!.action).toBe("break");
+    expect(first[0]!.form).toBe(form); expect(overlay.hidden(ref)).toBe(true); expect(field.store.chunks[6]!.kind[0]).toBe(form);
+    crash(100); expect(overlay.present()).toHaveLength(0); expect(overlay.hidden(ref)).toBe(true);
+    overlay.acknowledge(103); overlay.confirm(6, [0], [0]);
+    expect(overlay.present().map(event => event.action)).toEqual(["confirm"]); expect(overlay.hidden(ref)).toBe(false);
+    expect(overlay.present()).toHaveLength(0);
+    crash(200); overlay.present(); overlay.acknowledge(203);
+    expect(overlay.present().map(event => event.action)).toEqual(["revoke"]); expect(overlay.hidden(ref)).toBe(false);
+    crash(300); overlay.present(); overlay.confirm(6, [0], []);
+    expect(overlay.present().map(event => event.action)).toEqual(["revoke"]); expect(overlay.omits(ref)).toBe(false);
+    crash(400); overlay.present(); overlay.begin(401, makeHandle(4, 2));
+    expect(overlay.present().map(event => event.action)).toEqual(["revoke"]); expect(overlay.hidden(ref)).toBe(false);
+    expect(h.host.harvest!.goneCount).toBe(0); expect(field.store.chunks[6]!.kind[0]).toBe(form);
   } finally { h.host.shutdown(); }
 });

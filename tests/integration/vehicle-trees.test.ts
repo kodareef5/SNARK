@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { COMPACT_SPECIES, COMPACT_VEHICLE } from "../../content/vehicles/compact.ts";
+import { VehicleTrees } from "../../server/vehicle-trees.ts";
+import { F_GROUNDED } from "../../shared/sim/entities.ts";
+import { Body } from "../../shared/sim/character.ts";
+import { ROLE_FOUNDATION } from "../../shared/world/snap.ts";
 import { placeFree } from "../../server/place.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
@@ -11,7 +15,10 @@ import { compileContent } from "../../shared/content/registry.ts";
 import { BitWriter } from "../../shared/net/codec.ts";
 import { RESULT_OK } from "../../shared/net/protocol.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
-import { writeMap } from "../../shared/world/mapfile.ts";
+import { frameKey } from "../../shared/coords.ts";
+import { formOf, mix, nodeForms } from "../../shared/world/nodes.ts";
+import { vehicleStep } from "../../shared/sim/vehicle-body.ts";
+import { parseMap, writeMap } from "../../shared/world/mapfile.ts";
 import { nodesOf } from "../fixtures/gather.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -22,10 +29,16 @@ if (!made.registry) throw new Error(made.errors.join("\n"));
 const registry = made.registry;
 const fast = loadConfig({ gus: "[ServerSettings]\nResourcesRespawnPeriodMultiplier=0.001", game: "" }).rules;
 
-function mapOf(kind = "core:tree", chunk = 6) {
-  const first = new Uint32Array(17); for (let i = chunk + 1; i < first.length; i++) first[i] = 1;
-  return writeMap(flatMap(4, { nodes: [{ kinds: [kind], first, kind: new Uint8Array([0]), x: new Uint16Array([24 * 1024]), z: new Uint16Array([28 * 1024]), yaw: new Uint16Array([0]) }],
-    spawns: [{ name: "Driver", x: chunk % 4 * 64 + 24, z: Math.floor(chunk / 4) * 64 + 16, yaw: 0 }] }));
+function mapOf(kind = "core:tree", chunk = 6, width = 4, form?: number) {
+  let yaw = 0;
+  if (form !== undefined) {
+    const forms = nodeForms(registry), dims = parseMap(writeMap(flatMap(width))).dims;
+    while (yaw < 65536 && formOf(forms, registry.index.get(kind)!, mix(frameKey(dims, chunk) * 256, 24 * 1024 | (28 * 1024 << 16), yaw)) !== form) yaw++;
+    if (yaw === 65536) throw new Error("missing authored form");
+  }
+  const first = new Uint32Array(width * width + 1); for (let i = chunk + 1; i < first.length; i++) first[i] = 1;
+  return writeMap(flatMap(width, { nodes: [{ kinds: [kind], first, kind: new Uint8Array([0]), x: new Uint16Array([24 * 1024]), z: new Uint16Array([28 * 1024]), yaw: new Uint16Array([yaw]) }],
+    spawns: [{ name: "Driver", x: chunk % width * 64 + 24, z: Math.floor(chunk / width) * 64 + 16, yaw: 0 }] }));
 }
 function camp(kind = "core:tree", chunk = 6, heavy = false, options = {}) {
   const h = new Harness({}, 19, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: mapOf(kind, chunk), ...options }, registry);
@@ -74,7 +87,7 @@ test("vehicle mass changes which impact can fracture the same authored tree", ()
   for (const heavy of [false, true]) {
     const s = camp("core:tree", 6, heavy);
     try {
-      s.a.vz[s.car] = 12; for (let i = 0; i < 90; i++) s.tick();
+      s.a.vz[s.car] = 10; for (let i = 0; i < 90; i++) s.tick();
       expect(s.harvest.crushed(s.tree.chunk, s.tree.index)).toBe(heavy);
       if (heavy) expect(s.a.z[s.car]!).toBeGreaterThan(s.tree.z + 4);
       else expect(s.a.z[s.car]!).toBeLessThan(s.tree.z - 1);
@@ -180,7 +193,7 @@ test("a cold tree across both chunk edges is included in a diagonal car's native
   try {
     const a = h.world.ents, tree = nodesOf(h, "core:tree", 0, 0)[0]!;
     expect(h.world.nodeField!.isLoaded(tree.chunk)).toBe(false);
-    const car = h.host.spawnVehicle("core:compact", tree.x - 5, tree.z - 5, 8192); expect(car).toBeGreaterThanOrEqual(0);
+    const car = h.host.spawnVehicle("core:compact", tree.x - 5, tree.z - 5, 0, Math.PI / 4); expect(car).toBeGreaterThanOrEqual(0);
     expect(a.x[car]!).toBeLessThan(128); expect(a.z[car]!).toBeLessThan(64);
     a.vx[car] = 25; a.vz[car] = 25;
     let lost = 0;
@@ -200,5 +213,122 @@ test("a joining client behind a buffered TCP feed eventually collides with the s
     let effects = 0; late.onNode = () => effects++; h.run(8000);
     expect(late.state).toBe("active"); expect(late.nodeField!.store.chunks[tree.chunk]!.kind[tree.index]).toBe(0);
     expect(effects).toBe(0); expect(late.world!.nodes!.chunks[tree.chunk]!.kind[tree.index]).toBe(s.harvest.field.store.chunks[tree.chunk]!.kind[tree.index]);
+  } finally { h.host.shutdown(); }
+});
+
+
+test("a harvested stump can be crushed without resetting its deadline, granting rewards or hiding that mode change from a witness", () => {
+  const s = camp(), { h, tree, harvest, car, a } = s;
+  try {
+    while (harvest.field.standing(tree.chunk, tree.index)) harvest.strike(s.c, tree.chunk, tree.index);
+    const due = harvest.regrowsAt(tree.chunk, tree.index), version = harvest.version[tree.chunk]!, hp = s.hp(), xp = s.driver.xp;
+    const inv = h.host.items.inv(s.driver), inventory = [inv.item.slice(), inv.count.slice()];
+    const witness = h.join("stump-witness", { latencyMs: 40 }); h.run(800);
+    const form = harvest.field.store.chunks[tree.chunk]!.kind[tree.index]!;
+    expect(form).toBe(harvest.field.forms.left[tree.form]!);
+    expect(witness.nodeField!.store.chunks[tree.chunk]!.kind[tree.index]).toBe(form);
+    const changes: [boolean, number | undefined][] = [];
+    witness.onNode = (chunk, slot, used, crushed, prior) => { if (chunk === tree.chunk && slot === tree.index && used) changes.push([crushed, prior]); };
+    a.vz[car] = 15; for (let i = 0; i < 60; i++) s.tick(); h.run(600);
+    expect(harvest.crushed(tree.chunk, tree.index)).toBe(true); expect(harvest.regrowsAt(tree.chunk, tree.index)).toBe(due);
+    expect(harvest.version[tree.chunk]).toBe(version + 1); expect(a.z[car]!).toBeGreaterThan(tree.z + 5);
+    expect(hp - s.hp()).toBeLessThan(10); expect(s.driver.xp).toBe(xp); expect([inv.item.slice(), inv.count.slice()]).toEqual(inventory);
+    expect(changes).toEqual([[true, form]]); expect(witness.nodeField!.store.chunks[tree.chunk]!.kind[tree.index]).toBe(0);
+  } finally { h.host.shutdown(); }
+});
+
+for (const obstruction of ["nearby-base", "wall", "roof", "bonnet-hot", "boot-cold"] as const) {
+  test(`crushed cover regrows beside a base but waits for actual ${obstruction} occupancy to clear`, () => {
+    const s = camp("core:tree", 6, false, { config: fast, map: mapOf("core:tree", 6, 12) }), { h, a, car, tree, harvest } = s;
+    try {
+      a.vz[car] = 20; for (let i = 0; i < 45; i++) s.tick(); expect(harvest.crushed(tree.chunk, tree.index)).toBe(true);
+      h.host.urban.dismount(s.c); h.run(900); a.setPosition(s.c.ent, 12, 0, 12); h.world.history.discontinuity(s.c.ent);
+      a.setPosition(car, tree.x + 30, 0, tree.z); h.world.history.discontinuity(car); a.vx[car] = a.vy[car] = a.vz[car] = 0;
+      let placed = -1;
+      if (obstruction === "nearby-base") placed = h.world.structs.add(h.reg.role.findIndex(role => role === ROLE_FOUNDATION), tree.x + 10, 0, tree.z, 0, 777, 1000);
+      if (obstruction === "wall" || obstruction === "roof") placed = h.world.structs.add(h.reg.index.get(obstruction === "wall" ? "core:wall" : "core:ceiling")!, tree.x, obstruction === "roof" ? 2 : 0, tree.z, 0, 777, 1000);
+      if (obstruction.startsWith("bonnet") || obstruction.startsWith("boot")) {
+        a.setPosition(car, tree.x, 0, tree.z + (obstruction === "boot-cold" ? 1.5 : -1.2)); h.world.history.discontinuity(car);
+      }
+      if (obstruction === "bonnet-hot") harvest.retain(tree.chunk, 0, 1);
+      const deadline = harvest.regrowsAt(tree.chunk, tree.index);
+      while (h.world.tick <= deadline + 2) h.server.tick();
+      expect(harvest.crushed(tree.chunk, tree.index)).toBe(obstruction !== "nearby-base");
+      if (obstruction === "boot-cold") expect(harvest.field.isLoaded(tree.chunk)).toBe(false);
+      if (placed >= 0 && obstruction !== "nearby-base") h.world.structs.remove(placed);
+      a.setPosition(car, tree.x + 30, 0, tree.z); h.world.history.discontinuity(car);
+      const retry = harvest.regrowsAt(tree.chunk, tree.index); while (h.world.tick <= retry + 2) h.server.tick();
+      expect(harvest.crushed(tree.chunk, tree.index)).toBe(false); expect(harvest.regrowsAt(tree.chunk, tree.index)).toBe(0);
+      expect(harvest.field.kindAt(tree.chunk, tree.index)).toBe(tree.kind);
+      if (obstruction === "bonnet-hot") harvest.retain(tree.chunk, 0, -1);
+    } finally { h.host.shutdown(); }
+  });
+}
+
+for (const kind of ["core:oak", "core:fig", "core:banyan", "core:mangrove"]) {
+  test(`actual mature ${kind} resists a 26m/s compact with five tonnes of inventory`, () => {
+    const s = camp(kind), { h, a, car, tree, harvest } = s;
+    try {
+      const cargo = h.reg.index.get("core:piece_foundation_stone")!;
+      for (let i = 0; i < 9; i++) expect(h.host.items.mint(s.vehicle, cargo, 100, 0, 0, -1, "test")).toBeGreaterThan(0);
+      h.run(100); expect(a.vehiclePayloadMass[a.vrow[car]!]!).toBeGreaterThan(5000);
+      const hp = s.hp(); a.vz[car] = 26; for (let i = 0; i < 90; i++) s.tick();
+      expect(harvest.crushed(tree.chunk, tree.index)).toBe(false); expect(a.z[car]!).toBeLessThan(tree.z - 1);
+      expect(Math.hypot(a.vx[car]!, a.vz[car]!)).toBeLessThan(2); expect(s.hp()).toBeLessThan(hp);
+      expect(harvest.field.standing(tree.chunk, tree.index)).toBe(tree.kind);
+    } finally { h.host.shutdown(); }
+  });
+}
+
+test("sleeping cold cars do not load trees for their heartbeat, but a moving car still acquires and fractures them", () => {
+  const h = new Harness({}, 19, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: mapOf() }, registry);
+  try {
+    const harvest = h.host.harvest!, tree = nodesOf(h, "core:tree", 0, 0)[0]!, trees = new VehicleTrees(h.world, harvest), body = new Body();
+    body.kind = h.reg.index.get("core:compact")!; body.vehicle = true; body.x = tree.x; body.z = tree.z - 4; body.grounded = true;
+    const source = harvest.field.source, at = source.at.bind(source); let reads = 0;
+    source.at = (chunk, index, out) => { reads++; at(chunk, index, out); };
+    for (let i = 0; i < 90; i++) trees.step(h.world, body, 0, 0, 0, COMPACT_VEHICLE, undefined, undefined, false);
+    expect(reads).toBe(0); expect(harvest.field.isLoaded(tree.chunk)).toBe(false);
+    body.vz = 25;
+    for (let i = 0; i < 30; i++) trees.step(h.world, body, 0, 0, 0, COMPACT_VEHICLE, undefined, undefined, false);
+    expect(reads).toBeGreaterThan(0); expect(harvest.crushed(tree.chunk, tree.index)).toBe(true); expect(body.z).toBeGreaterThan(tree.z + 3);
+    expect(harvest.field.isLoaded(tree.chunk)).toBe(false);
+  } finally { h.host.shutdown(); }
+});
+
+
+for (const [name, offset, heading] of [["head-on", 0, 0], ["corner", .7, 0], ["glancing", 0, Math.PI / 6]] as const) {
+  test(`native ${name} impacts give graded hull damage across a young trunk's breaking threshold`, () => {
+    const forms = nodeForms(registry), form = forms.first[registry.index.get("core:tree")!]! + 8;
+    let previousDamage = -1, stopped = 0, broken = 0;
+    for (const speed of [9, 10, 11, 12, 15, 20]) {
+      const s = camp("core:tree", 6, false, { map: mapOf("core:tree", 6, 4, form) }), { h, a, car, tree, harvest } = s;
+      try {
+        expect(tree.form).toBe(form); const fx = Math.sin(heading), fz = Math.cos(heading), v = a.vrow[car]!;
+        a.setPosition(car, tree.x - fx * 8 + fz * offset, 0, tree.z - fz * 8 - fx * offset); h.world.history.discontinuity(car);
+        a.vehicleYaw[v] = heading; a.vehicleQy[v] = Math.sin(heading / 2); a.vehicleQw[v] = Math.cos(heading / 2);
+        a.vx[car] = fx * speed; a.vz[car] = fz * speed;
+        const hp = s.hp(); for (let i = 0; i < 90; i++) s.tick();
+        const damage = hp - s.hp(); expect(damage).toBeGreaterThanOrEqual(previousDamage - 1); previousDamage = damage;
+        expect(Number.isFinite(a.vehicleYawRate[v]!)).toBe(true); expect(Math.hypot(a.vx[car]!, a.vz[car]!)).toBeLessThan(speed);
+        if (harvest.crushed(tree.chunk, tree.index)) { broken++; expect(damage).toBeGreaterThan(0); }
+        else { stopped++; expect(Math.hypot(a.vx[car]!, a.vz[car]!)).toBeLessThan(1); }
+      } finally { h.host.shutdown(); }
+    }
+    expect(stopped).toBeGreaterThan(0); expect(broken).toBeGreaterThan(0);
+  });
+}
+
+test("an actual falling car's successful upward tree fracture reports landing speed, not a wall crash", () => {
+  const forms = nodeForms(registry), form = forms.first[registry.index.get("core:tree")!]! + 8;
+  const s = camp("core:tree", 6, false, { map: mapOf("core:tree", 6, 4, form) }), { h, a, car, tree } = s;
+  try {
+    a.setPosition(car, tree.x, 6, tree.z - .5); h.world.history.discontinuity(car); a.flags[car] = a.flags[car]! & ~F_GROUNDED; a.vy[car] = -14; a.vz[car] = 2;
+    let landing = 0, wall = 0, fractured = false;
+    for (let i = 0; i < 60; i++) {
+      const was = s.harvest.crushed(tree.chunk, tree.index); s.tick();
+      if (!was && s.harvest.crushed(tree.chunk, tree.index)) { fractured = true; landing = vehicleStep.landSpeed; wall = vehicleStep.impactSpeed; }
+    }
+    expect(fractured).toBe(true); expect(landing).toBeGreaterThan(6); expect(wall).toBe(0);
   } finally { h.host.shutdown(); }
 });

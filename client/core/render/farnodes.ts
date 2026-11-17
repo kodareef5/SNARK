@@ -93,6 +93,8 @@ export class NodeChanges {
 
 /** What far nodes are placed from: the map's nodes, the chunks the near field holds, and what the client was told is used up. */
 export interface FarNodeSource {
+  /** Local visual omission only; never read by collision or replication. */
+  hidden?: (ref: number) => boolean;
   readonly nodes: NodeSource;
   held(chunk: number): boolean;
   /** The slots of `chunk` last said to be used up, if any were. */
@@ -608,7 +610,7 @@ export class FarNodes {
       for (let i = 0; i < n; i++) {
         const at = c * n + i;
         const form = s.form[at]!;
-        if (form === 0 || gone[i]) continue;
+        if (form === 0 || gone[i] || this.source.hidden?.(chunk * 65536 + i)) continue;
         const reach = formReach[form]!;
         if (reach <= 0) {
           if (meshOfForm[form] !== NO_MESH && this.meshRow[meshOfForm[form]!]! < 0 && this.forms.depleted[form] === 0) this.missing.add(meshOfForm[form]!);

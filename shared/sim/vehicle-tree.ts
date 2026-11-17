@@ -5,8 +5,8 @@ import type { NodeForms } from "../world/nodes.ts";
 import { applyVehicleImpulse, vehicleMassProperties, vehiclePointInverseMass, vehiclePointVelocity } from "./vehicle-rigid.ts";
 import type { VehicleContact, VehicleSpec, VehicleState } from "./vehicle.ts";
 
-/** Design tuning in joules for a half-metre young trunk, before authored size/height/health. */
-const TRUNK_WORK = 75000, MIN_CLOSING = 3;
+/** Reversible gameplay tuning: half-metre young trunk work, a 50%-curb usable load, and 12% post-fracture deformation. */
+const TRUNK_WORK = 75000, MIN_CLOSING = 3, USABLE_PAYLOAD = .5, DEFORMATION = .12;
 
 export class TreeFracture {
   readonly work: Float64Array;
@@ -19,7 +19,7 @@ export class TreeFracture {
     for (let form = 1; form < forms.count; form++) {
       reach = Math.max(reach, len3(forms.halfX[form]!, 0, forms.halfZ[form]!));
       const def = reg.defs[forms.kind[form]!];
-      if (def?.type !== "node" || def.material !== "wood" || forms.depleted[form]) continue;
+      if (def?.type !== "node" || def.material !== "wood") continue;
       let height = 0, area = 0;
       const start = parts.start[form]! * 6, end = parts.start[form + 1]! * 6, box = parts.box;
       for (let i = start; i < end; i += 6) height = Math.max(height, box[i + 1]! + box[i + 4]!);
@@ -27,8 +27,8 @@ export class TreeFracture {
       // The entire basal section resists felling: multiple banyan trunks do not become a single thin branch.
       for (let i = start; i < end; i += 6) if (box[i + 1]! - box[i + 4]! <= section && box[i + 1]! + box[i + 4]! >= section) area += 4 * box[i + 3]! * box[i + 5]!;
       if (!(area > 0)) continue;
-      const relativeDiameter = Math.sqrt(area) / .5, heightScale = Math.max(.7, Math.min(2, Math.sqrt(height / 4)));
-      this.work[form] = Math.max(3500, TRUNK_WORK * relativeDiameter * relativeDiameter * relativeDiameter * heightScale * reg.nodeHits[forms.kind[form]!]! / def.hits);
+      const relativeDiameter = Math.sqrt(area) / .5, heightScale = Math.max(.1, Math.min(2, Math.sqrt(height / 4)));
+      this.work[form] = Math.max(3500, TRUNK_WORK * relativeDiameter * relativeDiameter * relativeDiameter * heightScale * Math.min(1, height / .6));
     }
     this.reach = reach;
   }
@@ -41,15 +41,26 @@ export class TreeFracture {
     const closing = -(this.point[0]! * hit.nx + this.point[1]! * hit.ny + this.point[2]! * hit.nz);
     if (!(closing >= MIN_CLOSING)) return NaN;
     const inverseMass = vehiclePointInverseMass(state, spec, hit.x, hit.y, hit.z, hit.nx, hit.ny, hit.nz);
-    const energy = .5 * closing * closing / inverseMass;
-    if (!(work <= energy * .8)) return NaN;
-    const after = Math.sqrt(Math.max(0, closing * closing - 2 * work * inverseMass));
+    const mass = vehicleMassProperties(spec, state).mass;
+    // The chassis can transmit only a plausible load into a trunk. Excess inventory does not become a logging weight;
+    // the actual point impulse still uses the body's real mass/inertia and dissipates the excess in the chassis.
+    const curb = mass - Math.max(0, state.payloadMass), usable = curb + Math.min(Math.max(0, state.payloadMass), curb * USABLE_PAYLOAD);
+    const usableInverse = inverseMass * mass / usable, energy = .5 * closing * closing / usableInverse;
+    const fraction = work / energy;
+    hit.restitution = .12 * Math.max(0, 1 - 1 / fraction) * Math.max(0, 1 - 1 / fraction);
+    if (fraction > 1) return NaN;
+    // No reserved-speed cliff: both a nearly failed and a just-completed fracture approach zero normal speed.
+    const after = closing * Math.sqrt(Math.max(0, (1 - fraction) * (1 - DEFORMATION)));
     return (closing - after) / inverseMass;
   }
 
   /** Applies the measured resistance only after the caller has consumed its node; returns absorbed equivalent speed. */
-  apply(state: VehicleState, spec: VehicleSpec, hit: VehicleContact, form: number, impulse: number): number {
+  apply(state: VehicleState, spec: VehicleSpec, hit: VehicleContact, _form: number, impulse: number): number {
+    vehiclePointVelocity(state, spec, hit.x!, hit.y!, hit.z!, this.point);
+    const closing = -(this.point[0]! * hit.nx + this.point[1]! * hit.ny + this.point[2]! * hit.nz);
+    const inverseMass = vehiclePointInverseMass(state, spec, hit.x!, hit.y!, hit.z!, hit.nx, hit.ny, hit.nz);
+    const change = impulse * inverseMass;
     applyVehicleImpulse(state, spec, hit.x!, hit.y!, hit.z!, hit.nx * impulse, hit.ny * impulse, hit.nz * impulse);
-    return Math.sqrt(2 * this.work[form]! / vehicleMassProperties(spec, state).mass);
+    return Math.sqrt(Math.max(0, change * (2 * closing - change)));
   }
 }

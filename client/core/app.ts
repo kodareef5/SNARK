@@ -240,13 +240,17 @@ export class App {
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
     this.shots = new Shots(reg, pack);
     const nodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
-    session.onNode = (chunk, index, used, crushed) => {
+    session.onNode = (chunk, index, used, crushed, priorForm) => {
       const field = session.nodeField;
       if (!used || !crushed || !field || !this.scene) return;
+      const ref = chunk * 65536 + index;
+      if (session.predictedTrees?.hidden(ref)) return;
       field.source.at(chunk, index, nodeSpot);
       if (Math.hypot(nodeSpot.x - session.own.x, nodeSpot.y - session.own.y, nodeSpot.z - session.own.z) > 64) return;
+      const form = priorForm || nodeSpot.form;
+      this.scene.treeFalls.add({ action: "break", ref, kind: nodeSpot.kind, form, x: nodeSpot.x, y: nodeSpot.y, z: nodeSpot.z, yaw: nodeSpot.yaw, dx: nodeSpot.x - session.own.x, dz: nodeSpot.z - session.own.z, tick: session.serverTick }, this.nowMs);
       this.scene.details.nodeBreak(nodeSpot.kind, chunk * 256 + index, nodeSpot.x, nodeSpot.y, nodeSpot.z,
-        session.renderClock - session.remoteDelay, field.forms.size[nodeSpot.form]! / 64);
+        session.renderClock - session.remoteDelay, field.forms.size[form]! / 64);
     };
     this.ui.inventory.onDeploy = slot => this.vehiclePlacement.begin(slot);
     session.onResult = (seq, code) => {
@@ -1005,6 +1009,15 @@ export class App {
       this.sounds = new Sounds(this.stream!.manifest, this.split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.soundDecoder ?? undefined, this.pack.header.details?.sheets ?? []);
       hearSession(session, this.sounds);
       this.ui.hear = (key) => this.sounds?.hearUi(cueKey(key));
+    }
+    for (const event of session.predictedTrees?.present() ?? []) {
+      this.scene.hideNode(event.ref, event.action === "break");
+      this.scene.treeFalls.add(event, nowMs);
+      if (event.action === "break") {
+        const size = session.nodeField!.forms.size[event.form]! / 64;
+        this.scene.details.nodeBreak(event.kind, event.ref, event.x, event.y, event.z, session.renderClock - session.remoteDelay, size);
+        this.sounds?.build.treeImpact(event.kind, event.x, event.y, event.z);
+      }
     }
     hud.status = this.debug ? `${this.scene.assets.line()}${this.sounds ? `; ${this.sounds.line()}` : ""}` : "";
     // Sampled before the camera, which puts a passenger in its seat on the vehicle as it is drawn.

@@ -22,6 +22,7 @@ import type { Rules } from "./settings/rules.ts";
 import type { Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
 import { event } from "./events/bus.ts";
+import { TreeClearance } from "./tree-clearance.ts";
 
 export const DEADLINE_NODE = 3;
 /** The chunk blobs that hold used-up nodes. */
@@ -81,9 +82,10 @@ export class Harvest {
   private readonly spot: NodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
   private readonly per: number;
   private readonly found = new Found();
+  private readonly clearance: TreeClearance;
 
   constructor(world: ServerWorld, game: GameServer, records: Records, items: Items, progression: Progression, deadlines: DeadlineHeap, seed: number) {
-    this.world = world;
+    this.world = world; this.clearance = new TreeClearance(world);
     this.game = game;
     this.records = records;
     this.items = items;
@@ -152,9 +154,16 @@ export class Harvest {
   /** Physical destruction uses the same depletion/save/regrowth feed, without items, XP or harvesting callbacks.
    * The map source also identifies an untouched tree in a chunk that no survivor has loaded. */
   breakTree(chunk: number, index: number): boolean {
-    if (!Number.isInteger(chunk) || chunk < 0 || chunk >= this.version.length || !Number.isInteger(index) || index < 0 || index >= this.per || this.regrowsAt(chunk, index)) return false;
+    if (!Number.isInteger(chunk) || chunk < 0 || chunk >= this.version.length || !Number.isInteger(index) || index < 0 || index >= this.per) return false;
     const kind = this.field.kindAt(chunk, index), def = this.world.reg.defs[kind];
     if (def?.type !== "node" || def.material !== "wood") return false;
+    const prior = this.touched.get(this.key(chunk, index));
+    if (prior?.respawnAt) {
+      this.field.source.at(chunk, index, this.spot);
+      if (prior.crushed || !this.field.forms.left[this.spot.form]) return false;
+      prior.crushed = true; this.field.set(chunk, index, false, true); this.dirty.add(chunk);
+      this.version[chunk] = this.version[chunk]! + 1; return true;
+    }
     this.deplete(chunk, index, def, true); return true;
   }
 
@@ -232,7 +241,7 @@ export class Harvest {
     const chunk = key >> 8;
     const index = key & 255;
     this.field.source.at(chunk, index, this.spot);
-    if (this.held(this.spot.x, this.spot.z, this.field.store.spread[this.spot.form]!)) {
+    if ((!t.crushed && this.held(this.spot.x, this.spot.z, this.field.store.spread[this.spot.form]!)) || this.clearance.blocked(this.spot)) {
       t.respawnAt = this.world.tick + RETRY_TICKS;
       this.deadlines.push(t.respawnAt, DEADLINE_NODE, key, t.respawnAt);
       this.dirty.add(chunk);

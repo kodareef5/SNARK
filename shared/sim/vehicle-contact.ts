@@ -74,7 +74,8 @@ export function resolveVehicleContacts<S extends VehicleState, C extends Vehicle
     w.onContact?.(hit);
     const broken = w.breakContact?.(s, hit);
     if (broken !== undefined && broken !== null) {
-      result.impactSpeed = Math.max(result.impactSpeed, broken);
+      if (result.landSpeed !== undefined && hit.ny > .4) result.landSpeed = Math.max(result.landSpeed, broken);
+      else result.impactSpeed = Math.max(result.impactSpeed, broken);
       remaining *= 1 - low; start = { ...s };
       // A fractured obstacle may leave a stump. Its replacement and everything beyond it still take the
       // same bounded sweep; exhausting the contact budget keeps the last tested pose.
@@ -152,7 +153,7 @@ function respond<S extends VehicleState>(s: S, p: VehicleRigidSpec, hit: Vehicle
     const x = manifold[i * 3]!, y = manifold[i * 3 + 1]!, z = manifold[i * 3 + 2]!;
     vehiclePointVelocity(s, p, x, y, z, pointV);
     const speed = Math.max(0, -(pointV[0]! * hit.nx + pointV[1]! * hit.ny + pointV[2]! * hit.nz));
-    closing = Math.max(closing, speed); rows[i * 6] = speed > 2 ? speed * .12 : 0;
+    closing = Math.max(closing, speed); rows[i * 6] = speed > 2 ? speed * (hit.restitution ?? .12) : 0;
     rows[i * 6 + 5] = vehiclePointInverseMass(s, p, x, y, z, hit.nx, hit.ny, hit.nz);
   }
   for (let pass = 0; pass < (count > 1 ? 6 : 1); pass++) for (let index = 0; index < count; index++) {

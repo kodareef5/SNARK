@@ -152,10 +152,10 @@ export class Details {
     const def = this.reg.defs[kind];
     if (def?.type !== "node" || def.material !== "wood") return;
     const effect = this.effects[this.treeDust]!;
-    const h: Happening = { occasion: "struck", id, kind, tick, x, y, z, yaw: 0, size: Math.max(.6, Math.min(1.4, size)),
+    const h: Happening = { occasion: "struck", id, kind, tick, x, y, z, yaw: 0, size: Math.max(1.4, Math.min(2.4, size * 1.8)),
       anim: 0, cue: 0, grounded: true, colours: this.nodeColours, fromX: NaN, fromY: NaN, fromZ: NaN, foot: -1, corpse: null };
-    this.waiting.push({ h, answer: { effect, delay: 0, entry: { effect: this.treeDust, from: "ground", at: "now", count: [6, 10] } },
-      due: tick, index: id, origin: { x, y: y + .35, z, floor: y } });
+    this.waiting.push({ h, answer: { effect, delay: 0, entry: { effect: this.treeDust, from: "ground", at: "now", count: [14, 22] } },
+      due: tick, index: id, origin: { x, y: y + .65, z, floor: y } });
   }
 
   /** What a species of `kind` answers, as it plays `anim`. */

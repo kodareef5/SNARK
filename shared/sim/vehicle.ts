@@ -370,7 +370,7 @@ export interface VehicleWorld {
 }
 
 export interface WheelRayContact { distance: number; nx: number; ny: number; nz: number; surface: VehicleSurface }
-export interface VehicleContact { reason: string; nx: number; ny: number; nz: number; x?: number; y?: number; z?: number; depth?: number; balanced?: boolean; geometryNx?: number; geometryNy?: number; geometryNz?: number; points?: readonly { x: number; y: number; z: number }[] }
+export interface VehicleContact { restitution?: number; reason: string; nx: number; ny: number; nz: number; x?: number; y?: number; z?: number; depth?: number; balanced?: boolean; geometryNx?: number; geometryNy?: number; geometryNz?: number; points?: readonly { x: number; y: number; z: number }[] }
 
 export interface VehicleStep {
   blocked: string | null;
