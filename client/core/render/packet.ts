@@ -245,6 +245,14 @@ export const FRAME = {
   handTo: 143,
   /** fLook: what every lookup of the sky table shares this frame (sky.ts SKY_GLSL): fTrueSun's way on the ground, x and z of length 1, and its slice of the table as a texture coordinate. */
   look: 148,
+  /**
+   * fFarAt, fFarScale and fFarDepth, in lanes the rest leave free (fSwell.zw, fLook.w, fSkyAlong.w): where the camera
+   * is on the far shadow's map (farshadow.ts) in its texels, x and z; its texels a metre, 0 while there is none to look
+   * up; and the camera's depth in it.
+   */
+  farAt: 54,
+  farScale: 151,
+  farDepth: 147,
 } as const;
 export const FRAME_FLOATS = FRAME.look + 4;
 /** The frame block as GLSL declares it, for any program that reads it. */
@@ -326,6 +334,13 @@ export class FramePacket {
    * that map was drawn with, moved with the camera.
    */
   cascadesDrawn = 0;
+  /**
+   * Rows `farRow` to `farRow + farRows` of the far shadow's map (farshadow.ts), its layer's side a row, to put in the
+   * shadow array's layer after the cascades' before they are drawn. The scene owns the map.
+   */
+  farMap = new Uint16Array(0);
+  farRow = 0;
+  farRows = 0;
   /** The draw before which the dome goes, on a lit frame. */
   skyAt = 0;
 
@@ -472,6 +487,7 @@ export class FramePacket {
     this.castDraws = 0;
     this.cascadeCount = 0;
     this.cascadesDrawn = 0;
+    this.farRows = 0;
     this.triangles = 0;
     this.detailCount = 0;
     this.detailFill = 0;

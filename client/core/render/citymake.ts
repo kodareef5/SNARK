@@ -7,6 +7,7 @@ import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../../..
 import { VERTEX_BYTES } from "../../../shared/pack/pack.ts";
 import { cellPart, mergedPart, type CityForm, type CityPart, type CityStatics, type Gone } from "../../../shared/world/city.ts";
 import { HeightWindow, type Heightfield } from "../../../shared/world/heightfield.ts";
+import { sweepBuffers, type SweepJob, type SweepMade } from "./farshadow.ts";
 import { quadBytes } from "./packet.ts";
 
 /**
@@ -80,6 +81,12 @@ export interface CityMaker {
   take(out: CityMade[]): number;
   /** Where levels are made on this thread: makes what was asked a chunk at a time until `ms` are spent, the first chunk whatever it takes. */
   run?(ms: number): void;
+  /**
+   * Where levels are made on other threads: sweeps the far shadow's map there (farshadow.ts), and gives back the one
+   * swept since the last call, or null. A maker without them leaves the sweep to the page.
+   */
+  sweep?(job: SweepJob): void;
+  swept?(): SweepMade | null;
 }
 
 export function cityKinds(city: CityStatics, hf: Heightfield, bounds: { center: readonly number[]; half: readonly number[] }): CityKinds {
@@ -235,10 +242,10 @@ export const cityThreads = (cores = 4): number => Math.max(1, Math.min(3, cores 
 /** Levels a thread is asked for ahead of what it has made: it never waits on the page, and a tile come nearer soon goes first. */
 export const CITY_AHEAD = 3;
 
-/** A thread levels are made on, as a worker running client/city/city-worker.ts is: sent the kinds, then jobs, each answered with what it made. */
+/** A thread levels are made on, as a worker running client/city/city-worker.ts is: sent the kinds, then jobs and sweeps, each answered with what it made. */
 export interface CityThread {
-  onmessage: ((m: { data: CityMade }) => void) | null;
-  postMessage(m: { kinds: CityKinds | null } | { job: CityJob }, transfer?: ArrayBuffer[]): void;
+  onmessage: ((m: { data: CityMade | SweepMade }) => void) | null;
+  postMessage(m: { kinds: CityKinds | null } | { job: CityJob } | { sweep: SweepJob }, transfer?: ArrayBuffer[]): void;
 }
 
 /**
@@ -255,6 +262,7 @@ export class ThreadedCityMaker implements CityMaker {
   private readonly asked: number[] = [];
   private kinds: CityKinds | null = null;
   private readonly done: CityMade[] = [];
+  private readonly sweeps: SweepMade[] = [];
 
   constructor(open: () => CityThread, count: number) {
     this.open = open;
@@ -269,11 +277,25 @@ export class ThreadedCityMaker implements CityMaker {
   }
 
   make(job: CityJob): void {
+    this.threads[this.least()]!.postMessage({ job }, buffersOf(job));
+  }
+
+  sweep(job: SweepJob): void {
+    this.threads[this.least()]!.postMessage({ sweep: job }, sweepBuffers(job));
+  }
+
+  swept(): SweepMade | null {
+    return this.sweeps.shift() ?? null;
+  }
+
+  /** The thread with the fewest in hand, started with the rest if they are not, counted as having one more. */
+  private least(): number {
     while (this.threads.length < this.count) {
       const n = this.threads.length;
       const thread = this.open();
       thread.onmessage = (m) => {
         this.asked[n]!--;
+        if ("map" in m.data) return void this.sweeps.push(m.data);
         this.done.push(m.data);
         this.onMade?.();
       };
@@ -283,7 +305,7 @@ export class ThreadedCityMaker implements CityMaker {
     }
     const n = this.asked.indexOf(Math.min(...this.asked));
     this.asked[n]!++;
-    this.threads[n]!.postMessage({ job }, buffersOf(job));
+    return n;
   }
 
   take(out: CityMade[]): number {
