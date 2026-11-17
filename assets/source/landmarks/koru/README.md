@@ -93,7 +93,27 @@ z 3384 and its bow to +z:
 ]
 ```
 
-`distances.png` and `distances-sails.png` are the
-yacht on the course map at each distance where a level or an owner takes over, on medium and on high, beside every cell
-drawn at level 0: the software rasterizer's frame drawn four times, each shifted to one of a card's four samples a
-pixel, and averaged, as a browser's antialiasing shows it.
+The rest are sheets of the yacht on the course map from its water side at 14:00, each picture drawn three ways: by the
+software rasterizer on medium and on high, its frame drawn four times, each shifted to one of a card's four samples a
+pixel, and averaged; and by the game itself in headless Chrome on high (a server on the course map, the page standing
+where the rasterizer's camera stands by its address's `run` and `look`). The rasterizer leaves the course map's
+far land black where the browser draws it green; the yacht is drawn alike.
+
+- `distances.png`, `distances-sails.png`: from 40 m to 2 km abeam, and from the raking quarter at 200 and 300 m,
+  sails stowed and set.
+- `joint.png`: where the stern's cell, drawn with its pictures, meets the far mesh, at 2.4 times, stowed and set.
+- `near.png`: from the quay and the bow, in profile, on the sun deck and astern.
+- `rooms.png`: a look into each room at eye height on high, and `rooms-chrome.png` five of them in Chrome.
+
+Between level 1 and level 2 at 150 m on high (OKLab times 100, the mean of the band's pixels as light):
+
+| side | hour | hull | deckhouse | boot stripe |
+|---|---|---|---|---|
+| port | 08:00 | 0.06 | 0.75 | 0.47 |
+| port | 14:00 | 0.06 | 0.88 | 0.75 |
+| port | 18:15 | 0.03 | 0.13 | 0.37 |
+| port | 22:00 | 0.03 | 0.11 | 0.29 |
+| starboard | 08:00 | 0.12 | 0.65 | 0.10 |
+| starboard | 14:00 | 0.10 | 0.20 | 0.05 |
+| starboard | 18:15 | 0.15 | 1.32 | 0.16 |
+| starboard | 22:00 | 0.08 | 0.28 | 0.05 |
