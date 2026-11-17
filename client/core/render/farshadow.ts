@@ -159,6 +159,34 @@ export function farLookup(map: Uint16Array, size: number, frame: Float32Array, r
   return (lit(bx, bz) * (1 - fx) + lit(bx + 1, bz) * fx) * (1 - fz) + (lit(bx, bz + 1) * (1 - fx) + lit(bx + 1, bz + 1) * fx) * fz;
 }
 
+/**
+ * How far along the ground from a camera-relative point toward the sun its ray leaves the box of the chunks the near
+ * store holds whole (FRAME nearFromX and the rest), where it meets that box, else 0: within the cascades the far map is
+ * looked up that far on along the ray, past what casts into them. The twin of SHADOW_GLSL's `farBeyond`.
+ */
+export function nearLead(frame: Float32Array, rx: number, rz: number): number {
+  const sx = -frame[FRAME.moon]!, sz = -frame[FRAME.moon + 2]!;
+  const flat = Math.max(Math.hypot(sx, sz), FLAT_LEAST);
+  let dx = sx / flat, dz = sz / flat;
+  if (Math.abs(dx) < 1e-6) dx = 1e-6;
+  if (Math.abs(dz) < 1e-6) dz = 1e-6;
+  const x0 = frame[FRAME.nearFromX]!, z0 = frame[FRAME.nearFromZ]!, x1 = frame[FRAME.nearToX]!, z1 = frame[FRAME.nearToZ]!;
+  if (x0 > x1) return 0;
+  const ax = (x0 - rx) / dx, bx = (x1 - rx) / dx, az = (z0 - rz) / dz, bz = (z1 - rz) / dz;
+  const leave = Math.min(Math.max(ax, bx), Math.max(az, bz));
+  return leave >= Math.max(Math.min(ax, bx), Math.min(az, bz), 0) ? leave : 0;
+}
+
+/**
+ * The twin of `farBeyond`: the far map looked up for a camera-relative point within the cascades, past the near store's
+ * chunks along its ray to the sun.
+ */
+export function farBeyondLookup(map: Uint16Array, size: number, frame: Float32Array, rx: number, ry: number, rz: number, nx: number, nz: number): number {
+  const sx = -frame[FRAME.moon]!, sy = -frame[FRAME.moon + 1]!, sz = -frame[FRAME.moon + 2]!;
+  const along = nearLead(frame, rx, rz) / Math.max(Math.hypot(sx, sz), FLAT_LEAST);
+  return farLookup(map, size, frame, rx + sx * along, ry + sy * along, rz + sz * along, nx, nz);
+}
+
 /** A sweep asked of where levels are made. */
 export interface SweepJob {
   readonly id: number;
@@ -222,6 +250,12 @@ export interface Standing {
   topsOf(chunk: number): Uint8Array | null;
 }
 
+/**
+ * Chunks either side of the camera's looked at for those the near store holds whole: the server's window of three and
+ * the one more it lets go at (server/game.ts structRadius), and room for a camera away from its body.
+ */
+const NEAR_SCAN = 6;
+
 /** Milliseconds from some fixed moment: the page's clock in a browser and under Bun. */
 const clock = (): number => (globalThis as { performance?: { now(): number } }).performance?.now() ?? Date.now();
 
@@ -237,6 +271,7 @@ export class FarShadow {
   private readonly hf: Heightfield;
   private readonly standing: Standing;
   private readonly maker: CityMaker | null;
+  private readonly held: (chunk: number) => boolean;
   /** The solid heights, while they are here and not away being swept; and whether they have been made. */
   private solid: Uint16Array | null = null;
   private made = false;
@@ -263,10 +298,12 @@ export class FarShadow {
   private cardCell = 0;
   private cardRise = 0;
 
-  constructor(city: CityStatics, hf: Heightfield, standing: Standing, maker: CityMaker | null) {
+  /** `held` says the near store holds a chunk whole, whose pieces cast into the cascades. */
+  constructor(city: CityStatics, hf: Heightfield, standing: Standing, maker: CityMaker | null, held: (chunk: number) => boolean) {
     this.city = city;
     this.hf = hf;
     this.standing = standing;
+    this.held = held;
     this.maker = maker?.sweep && maker.swept ? maker : null;
     this.seen = new Uint32Array(chunkCount(city.dims));
   }
@@ -307,6 +344,28 @@ export class FarShadow {
     f[FRAME.farAt + 1] = cz / this.cardCell;
     f[FRAME.farScale] = 1 / this.cardCell;
     f[FRAME.farDepth] = (this.hf.minY + FAR_SPAN - cy) / FAR_SPAN;
+    this.near(f, cx, cz);
+  }
+
+  /** Writes the box of the chunks the near store holds whole about the camera, camera-relative, or one with none in it. */
+  private near(f: Float32Array, cx: number, cz: number): void {
+    const d = this.city.dims;
+    const ci = Math.floor(cx / CHUNK_SIZE), cj = Math.floor(cz / CHUNK_SIZE);
+    let i0 = Infinity, j0 = Infinity, i1 = -Infinity, j1 = -Infinity;
+    for (let j = Math.max(0, cj - NEAR_SCAN); j <= Math.min(d.chunksZ - 1, cj + NEAR_SCAN); j++) {
+      for (let i = Math.max(0, ci - NEAR_SCAN); i <= Math.min(d.chunksX - 1, ci + NEAR_SCAN); i++) {
+        if (!this.held(j * d.chunksX + i)) continue;
+        i0 = Math.min(i0, i);
+        j0 = Math.min(j0, j);
+        i1 = Math.max(i1, i);
+        j1 = Math.max(j1, j);
+      }
+    }
+    const none = i0 > i1;
+    f[FRAME.nearFromX] = none ? 1 : i0 * CHUNK_SIZE - cx;
+    f[FRAME.nearFromZ] = none ? 1 : j0 * CHUNK_SIZE - cz;
+    f[FRAME.nearToX] = none ? -1 : (i1 + 1) * CHUNK_SIZE - cx;
+    f[FRAME.nearToZ] = none ? -1 : (j1 + 1) * CHUNK_SIZE - cz;
   }
 
   /** Notes the chunks a piece of which has gone since they were last made, and makes them again while the solid heights are here. */
@@ -381,7 +440,7 @@ export class FarShadow {
     if (!map || size !== this.layerSize || this.row >= size) return;
     const rows = Math.min(size - this.row, Math.floor(budget.left / (size * 2)));
     if (rows <= 0) return;
-    p.farMap = map;
+    p.farMap = map.subarray(this.row * size, (this.row + rows) * size);
     p.farRow = this.row;
     p.farRows = rows;
     budget.spend(rows * size * 2);

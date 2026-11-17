@@ -1,13 +1,14 @@
 // The sun's shadow past the cascades (client/core/render/farshadow.ts): the sweep over solid heights shades the cells a
 // tower's shadow covers and leaves the rest lit, ground that rises shades what lies behind it, a piece gone takes its
 // shadow with it, the map is the same bytes made twice or on another thread, the lookup leaves a building's own sunlit
-// faces lit and shades the ground in its shadow, and the scene's part makes it again when the sun has moved enough,
-// puts it on the card within the frame's allowance and looks it up only once it is all there.
+// faces lit and shades the ground in its shadow, within the cascades it is looked up past the chunks the near store
+// holds, whose pieces cast there, and the scene's part makes it again when the sun has moved enough, puts it on the card
+// within the frame's allowance and looks it up only once it is all there.
 
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { ThreadedCityMaker, cityKinds, type CityThread } from "../../client/core/render/citymake.ts";
-import { FAR_SPAN, FarShadow, TOP_CELL, chunkSolid, doSweep, farCell, farLookup, makeSolid, sweep, sweepBuffers, tipMoves, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
+import { FAR_SPAN, FarShadow, TOP_CELL, chunkSolid, doSweep, farBeyondLookup, farCell, farLookup, makeSolid, nearLead, sweep, sweepBuffers, tipMoves, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { CHUNK_SIZE, chunkAt, chunkCount, type MapDims } from "../../shared/coords.ts";
 import { CityStatics, cityTops, type Gone } from "../../shared/world/city.ts";
@@ -189,7 +190,7 @@ test("the scene's part sweeps when the statics come and again when the tallest t
   const version = new Uint32Array(chunkCount(dims));
   const gone = new Map<number, Uint8Array>();
   const standing = { goneOf: (c: number): Gone => gone.get(c) ?? null, goneVersion: version, topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, gone.get(c) ?? null) : null) };
-  const shadow = new FarShadow(city, hf, standing, null);
+  const shadow = new FarShadow(city, hf, standing, null, () => false);
   const p = new FramePacket();
   p.tier = { ...tierOf("high"), shadows: { ...tierOf("high").shadows, size: 256 } };
   p.lit = true;
@@ -274,7 +275,7 @@ test("a maker on other threads sweeps there, moving the solid heights and the ma
   }, 2);
   maker.start(kinds);
   const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, null) : null) };
-  const shadow = new FarShadow(city, hf, standing, maker);
+  const shadow = new FarShadow(city, hf, standing, maker, () => false);
   const p = new FramePacket();
   p.tier = { ...tierOf("medium"), shadows: { ...tierOf("medium").shadows, size: 128 } };
   p.lit = true;
@@ -289,6 +290,10 @@ test("a maker on other threads sweeps there, moving the solid heights and the ma
   const here = new Uint16Array(128 * 128);
   sweep(makeSolid(city, hf, () => null), 128, 128, 1, 128, sun[0]!, sun[1]!, sun[2]!, here);
   expect(p.farMap).toEqual(here);
+  // A frame that sends no rows sends no map.
+  p.beginFrame();
+  shadow.update(p, allowance(1e9), 0, 0, 0, sun);
+  expect([p.farRows, p.farMap.length]).toEqual([0, 0]);
   expect(CHUNK_SIZE / TOP_CELL).toBe(16);
 });
 
@@ -310,10 +315,11 @@ test("the lookup leaves a building's own sunlit walls and roof lit wherever they
   for (const [elevation, azimuth] of [[35, 200], [15, 70], [60, 330]] as const) {
     const sun = sunAt(elevation, azimuth);
     for (let k = 0; k < 3; k++) p.frame[FRAME.moon + k] = -sun[k]!;
-    const shadow = new FarShadow(city, hf, standing, null);
+    const shadow = new FarShadow(city, hf, standing, null, () => false);
     p.beginFrame();
     shadow.update(p, allowance(1e9), cam[0]!, cam[1]!, cam[2]!, sun);
-    const look = (x: number, y: number, z: number, n: number[]): number => farLookup(p.farMap, 128, p.frame, x - cam[0]!, y - cam[1]!, z - cam[2]!, n[0]!, n[2]!);
+    const map = p.farMap.slice();
+    const look = (x: number, y: number, z: number, n: number[]): number => farLookup(map, 128, p.frame, x - cam[0]!, y - cam[1]!, z - cam[2]!, n[0]!, n[2]!);
     for (const [cx, cz] of places) {
       // Each wall the sun reaches, a quarter of the way in from either end and from the foot to the top.
       for (const n of [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]) {
@@ -334,4 +340,47 @@ test("the lookup leaves a building's own sunlit walls and roof lit wherever they
       expect(look(cx! + sun[0]! * 24, 0, cz! + sun[2]! * 24, [0, 1, 0])).toBe(1);
     }
   }
+});
+
+test("within the cascades the far map is looked up past the chunks the near store holds, so their pieces are not cast twice and the far city's are", () => {
+  const { dims, hf, city, a, b, chunkA, chunkB } = twoTowers();
+  const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), topsOf: () => null };
+  // The near store holds B's chunk and those about it, three a side, as about a camera there.
+  const [bi, bj] = [chunkB % dims.chunksX, Math.floor(chunkB / dims.chunksX)];
+  const held = (c: number): boolean => Math.abs((c % dims.chunksX) - bi) <= 1 && Math.abs(Math.floor(c / dims.chunksX) - bj) <= 1;
+  expect(held(chunkA)).toBe(false);
+  const shadow = new FarShadow(city, hf, standing, null, held);
+  const p = new FramePacket();
+  p.tier = { ...tierOf("high"), shadows: { ...tierOf("high").shadows, size: 128 } };
+  p.lit = true;
+  const sun = sunAt(35, 200);
+  for (let k = 0; k < 3; k++) p.frame[FRAME.moon + k] = -sun[k]!;
+  const cam = [b[0]! - 20, 20, b[1]! - 40];
+  shadow.update(p, allowance(1e9), cam[0]!, cam[1]!, cam[2]!, sun);
+  const f = p.frame;
+  expect([f[FRAME.nearFromX], f[FRAME.nearFromZ], f[FRAME.nearToX], f[FRAME.nearToZ]]).toEqual([(bi - 1) * 64 - cam[0]!, (bj - 1) * 64 - cam[2]!, (bi + 2) * 64 - cam[0]!, (bj + 2) * 64 - cam[2]!]);
+  const map = p.farMap.slice();
+  // Behind each tower, half its shadow's length on: B's shadow is the cascades' to draw, A's is the far map's.
+  const behind = (t: number[]): number[] => [t[0]! + 10 - cam[0]!, -cam[1]!, t[1]! + 30 - cam[2]!];
+  const [ra, rb] = [behind(a), behind(b)];
+  expect([farLookup(map, 128, f, ra[0]!, ra[1]!, ra[2]!, 0, 0), farLookup(map, 128, f, rb[0]!, rb[1]!, rb[2]!, 0, 0)]).toEqual([0, 0]);
+  expect([farBeyondLookup(map, 128, f, ra[0]!, ra[1]!, ra[2]!, 0, 0), farBeyondLookup(map, 128, f, rb[0]!, rb[1]!, rb[2]!, 0, 0)]).toEqual([0, 1]);
+  // The lead is where the ray to the sun leaves the box, marched for: from inside it, from outside through it, and none
+  // from a point it does not cross.
+  const flat = Math.hypot(sun[0]!, sun[2]!);
+  const [ux, uz] = [sun[0]! / flat, sun[2]! / flat];
+  const inside = (x: number, z: number): boolean => x >= f[FRAME.nearFromX]! && x <= f[FRAME.nearToX]! && z >= f[FRAME.nearFromZ]! && z <= f[FRAME.nearToZ]!;
+  const marched = (x: number, z: number): number => {
+    let last = 0;
+    for (let t = 0; t < 2000; t += 0.01) if (inside(x + ux * t, z + uz * t)) last = t;
+    return last;
+  };
+  for (const [x, z] of [[rb[0]!, rb[2]!], [rb[0]! - ux * 300, rb[2]! - uz * 300], [rb[0]! + ux * 300, rb[2]! + uz * 300]]) expect(nearLead(f, x!, z!)).toBeCloseTo(marched(x!, z!), 1);
+  expect(nearLead(f, rb[0]! - ux * 300, rb[2]! - uz * 300)).toBeGreaterThan(300);
+  expect(nearLead(f, rb[0]! + ux * 300, rb[2]! + uz * 300)).toBe(0);
+  // With no chunk held the box is empty and the lead none.
+  const none = new FarShadow(city, hf, standing, null, () => false);
+  none.update(p, allowance(1e9), cam[0]!, cam[1]!, cam[2]!, sun);
+  expect(nearLead(p.frame, rb[0]!, rb[2]!)).toBe(0);
+  expect(p.frame[FRAME.nearFromX]! > p.frame[FRAME.nearToX]!).toBe(true);
 });

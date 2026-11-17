@@ -746,7 +746,7 @@ export class GlRenderer {
     }
     // Rows of the far shadow's map (farshadow.ts), in the layer after the cascades'.
     gl.activeTexture(gl.TEXTURE0 + UNIT.shadow);
-    if (p.farRows > 0) gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, p.farRow, cascades, size, p.farRows, 1, gl.DEPTH_COMPONENT, gl.UNSIGNED_SHORT, p.farMap, p.farRow * size);
+    if (p.farRows > 0) gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, p.farRow, cascades, size, p.farRows, 1, gl.DEPTH_COMPONENT, gl.UNSIGNED_SHORT, p.farMap);
     gl.viewport(0, 0, size, size);
     gl.polygonOffset(POLYGON_OFFSET[0], POLYGON_OFFSET[1]);
     gl.cullFace(gl.FRONT);
