@@ -208,6 +208,15 @@ function foamNoise(x: number, y: number, n: number): number {
   return a * (1 - fy) + b * fy;
 }
 
+const unit = (x: number): number => Math.max(0, Math.min(1, x));
+
+/** A layer's noise of `n` cells a tile at the point `rx`, `rz` from the camera, the layer placed at `frame[at]`, its half-spread about the mean, times `k`. */
+function foamLayer(frame: Float32Array, layer: WaveLayer, at: number, n: number, rx: number, rz: number, k: number): number {
+  const c = Math.cos(layer.turn) / layer.span, s = Math.sin(layer.turn) / layer.span;
+  const u = c * rx + s * rz + frame[at]!, v = c * rz - s * rx + frame[at + 1]!;
+  return 0.5 * (foamNoise(u * n, v * n, n) - 0.5) * k;
+}
+
 /**
  * How much of what is under it the foam covers, as the WATER program has it, over water `depth` metres deep at the point
  * `rx`, `rz` metres from the camera, its depth `fine` the window's (seaDepth), where a pixel spans `wide` metres of the
@@ -215,19 +224,12 @@ function foamNoise(x: number, y: number, n: number): number {
  */
 export function seaFoam(frame: Float32Array, rx: number, rz: number, depth: number, fine: number, wide: number, deep: number): number {
   if (depth >= FOAM || fine <= 0) return 0;
-  const clamp = (x: number): number => Math.max(0, Math.min(1, x));
-  let [mean, kept] = [0.5, 0];
-  for (const [layer, at, n] of [[LONG, FRAME.waves, FOAM_CELLS.long], [SHORT, FRAME.waves + 2, FOAM_CELLS.short]] as const) {
-    const c = Math.cos(layer.turn) / layer.span, s = Math.sin(layer.turn) / layer.span;
-    const u = c * rx + s * rz + frame[at]!, v = c * rz - s * rx + frame[at + 1]!;
-    const k = clamp(2 - (2 * wide * n) / layer.span);
-    mean += 0.5 * (foamNoise(u * n, v * n, n) - 0.5) * k;
-    kept += 0.5 * k;
-  }
+  const kl = unit(2 - (2 * wide * FOAM_CELLS.long) / LONG.span), ks = unit(2 - (2 * wide * FOAM_CELLS.short) / SHORT.span);
+  const mean = 0.5 + foamLayer(frame, LONG, FRAME.waves, FOAM_CELLS.long, rx, rz, kl) + foamLayer(frame, SHORT, FRAME.waves + 2, FOAM_CELLS.short, rx, rz, ks);
   const bar = FOAM_BAR[0] + (FOAM_BAR[1] - FOAM_BAR[0]) * Math.sqrt(depth / FOAM);
-  const soft = FOAM_SOFT + FOAM_SPREAD * (1 - kept);
-  const t = clamp((mean - bar + soft) / (2 * soft));
-  return FOAM_MOST * t * t * (3 - 2 * t) * clamp(depth / Math.max(FOAM_EDGE, deep)) * clamp((FOAM / Math.max(deep, 1e-6) - 1) * 0.5) * fine;
+  const soft = FOAM_SOFT + FOAM_SPREAD * (1 - 0.5 * (kl + ks));
+  const t = unit((mean - bar + soft) / (2 * soft));
+  return FOAM_MOST * t * t * (3 - 2 * t) * unit(depth / Math.max(FOAM_EDGE, deep)) * unit((FOAM / Math.max(deep, 1e-6) - 1) * 0.5) * fine;
 }
 
 /** What the WATER program makes of a pixel before it is shown: the light it adds over what is under it, and how much of that it covers. */
