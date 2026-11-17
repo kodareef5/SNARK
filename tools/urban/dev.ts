@@ -1,12 +1,11 @@
-// The actual SNARK app/server with two compact cars and paved strips seeded near spawn, on the ordinary client build:
-// the car is in the core pack like any other asset. The development save stays inside this checkout.
-import { mkdirSync } from "node:fs";
+// The ordinary game with a local test drive near spawn. --fleet parks the six road models in their own save.
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DEV_CONFIG, liveFileOf, startServer } from "../../server/main.ts";
 import { formatReport, loadConfigFolder } from "../../server/settings/config.ts";
 import { stopOnSignals } from "../../server/signals.ts";
 import type { Host } from "../../server/host.ts";
-import { seedUrbanRoads } from "./fixtures.ts";
+import { seedRoadFleet, seedUrbanRoads } from "./fixtures.ts";
 import { buildClient } from "../build-client.ts";
 
 /** Place a small development fixture in the real map, once per isolated save. Normal players/dinos/resources remain. */
@@ -37,14 +36,24 @@ if(import.meta.main){
   const args=process.argv.slice(2);
   const value=(key:string):string|undefined=>{const at=args.indexOf(key);return at>=0?args[at+1]:undefined;};
   const root=resolve(import.meta.dir,"../..");
-  console.log(JSON.stringify(await buildClient({quick:true})));
+  const fleet = args.includes("--fleet");
+  if (!args.includes("--built")) console.log(JSON.stringify(await buildClient({quick:true})));
+  else if (!existsSync(resolve(root, "client/dist/assets/manifest.json"))) throw new Error("Run without --built to prepare the client.");
   const folder=value("--config")??DEV_CONFIG,{rules,report}=loadConfigFolder(folder,args);
   for(const line of formatReport(report,rules))console.log(line);
-  const dbPath=resolve(value("--db")??resolve(root,"var/urban-v1/world.db"));mkdirSync(dirname(dbPath),{recursive:true});
+  const dbPath=resolve(value("--db")??resolve(root,fleet?"var/road-fleet/world.db":"var/urban-v1/world.db"));mkdirSync(dirname(dbPath),{recursive:true});
   const live=liveFileOf(folder),map=value("--map");
   const server=startServer({dev:true,hostname:value("--host")??"127.0.0.1",port:Number(value("--port")??process.env.PORT??8787),dbPath,config:rules,...(live?{live}:{}),...(map?{map:resolve(map)}:{})});
-  try{seedUrbanVehicles(server.host);const roads=seedUrbanRoads(server.host);if(roads)console.log(`Added ${roads} native paving pieces southeast of spawn: asphalt, gravel, mud.`);}catch(error){server.stop();throw error;}
+  try {
+    if (fleet) console.log(`Parked ${seedRoadFleet(server.host)} fleet models near spawn.`);
+    else seedUrbanVehicles(server.host);
+    const roads = seedUrbanRoads(server.host);
+    if (roads) console.log(`Added ${roads} native paving pieces southeast of spawn.`);
+  } catch (error) {
+    server.stop();
+    throw error;
+  }
   stopOnSignals(()=>server.stop());
-  console.log(`SNARK with compact vehicles: http://localhost:${server.port}`);
+  console.log(`SNARK with road vehicles: http://localhost:${server.port}`);
   console.log(`Isolated save: ${dbPath}`);
 }

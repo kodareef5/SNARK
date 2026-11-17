@@ -208,7 +208,9 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
     } else picture = { meshes: [d.mesh], colors: d.regions?.map((r) => r?.colors[0]?.[0] ?? 0) ?? [], body: true };
     // A species with no art of its own is a stand-in, and not in the wiki (coverage.ts).
     if (!picture.meshes.every(has)) continue;
-    const group = creature ? (d.fly ? "Flyer" : "Creature") : kind === "vehicles" ? sentence(d.vehicle?.movement ?? "car") : "Human";
+    const vehicle = d.vehicle;
+    const group = vehicle ? sentence(vehicle.movement === "rotor" || vehicle.movement === "boat" ? vehicle.movement : (vehicle.frame ?? "car").replace("_", " "))
+      : creature ? (d.fly ? "Flyer" : "Creature") : "Human";
     const e = entry(d.id, kind, labelOf(d), group, picture, [d.id]);
     const fact = facts(e);
     if (kind === "vehicles") {
