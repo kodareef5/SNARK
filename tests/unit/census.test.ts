@@ -129,8 +129,10 @@ artTest("Koru moored in its bay on medium at the iPhone's view: its eight cells,
   }));
   // The most a heading draws of the whole frame, its triangles, what it casts, and the most of the draws that are the
   // yacht's: its cells, doors and sails, where the modules one draw each made it 470. From the dock it was 85,634
-  // triangles casting 69,756 before the yacht's sails were drawn with the atlas and its masts, booms and hull rounder.
-  expect(got).toEqual({ dock: [18, 93164, 86252, 16], deck: [21, 95980, 86468, 19], below: [19, 100076, 86544, 17], "200 m off": [21, 72564, 10240, 19] });
+  // triangles casting 69,756 before the yacht's sails were drawn with the atlas and its masts, booms and hull rounder,
+  // and 93,164 casting 86,252 in 18 draws before its furniture was made, its ports rimmed, and its plaques drawn from a
+  // picture of their own.
+  expect(got).toEqual({ dock: [23, 126184, 119416, 21], deck: [26, 129000, 119632, 24], below: [24, 133096, 119708, 22], "200 m off": [21, 72568, 10240, 19] });
   expect(KORU_LAYOUT.cells.length).toBe(8);
 });
 
