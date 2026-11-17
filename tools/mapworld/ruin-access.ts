@@ -9,14 +9,17 @@ export interface Approach { street: { x: number; y: number; z: number }; door: {
 export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]): ((m: Mason, owner: number) => Approach[]) & { reserve: (routes: Approach[]) => void } {
   const { n, surface, heaps } = site.ground; const size = (n - 1) * 2;
   const bins = new Map<string, { x: number; z: number }[]>();
-  interface Solid { x: number; z: number; lo: number; hi: number; floor: boolean; c: number; s: number; w: number; d: number; }
+  // A solid is in every 4 m bin within w + d of its middle, past which no point it holds can lie, so a point's own bin
+  // holds every solid that can stand in its way.
   const index = (pieces: readonly StaticPiece[]): Map<number, Solid[]> => {
     const out = new Map<number, Solid[]>();
     for (const p of pieces) {
       const [w, h, d] = RUIN_SHAPES[p.kind.split("_")[1] as RuinShape]; const angle = p.yaw * Math.PI / 180;
-      const k = Math.floor(p.x / 16) + Math.floor(p.z / 16) * 1024;
-      if (!out.has(k)) out.set(k, []);
-      out.get(k)!.push({ x: p.x, z: p.z, lo: p.y - h / 2, hi: p.y + h / 2, floor: p.kind.includes("_floor"), c: Math.cos(angle), s: Math.sin(angle), w: w / 2 + .45, d: d / 2 + .45 });
+      const o = { x: p.x, z: p.z, lo: p.y - h / 2, hi: p.y + h / 2, floor: p.kind.includes("_floor"), c: Math.cos(angle), s: Math.sin(angle), w: w / 2 + .45, d: d / 2 + .45 };
+      const reach = o.w + o.d;
+      for (let z = Math.floor((p.z - reach) / 4); z <= Math.floor((p.z + reach) / 4); z++) for (let x = Math.floor((p.x - reach) / 4); x <= Math.floor((p.x + reach) / 4); x++) {
+        const bin = out.get(x + z * 4096); if (bin) bin.push(o); else out.set(x + z * 4096, [o]);
+      }
     }
     return out;
   };
@@ -37,15 +40,9 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
     const out: Approach[] = [];
     const own = index(m.pieces.filter((p) => { const shape = RUIN_SHAPES[p.kind.split("_")[1] as RuinShape]; return p.y + shape[1] / 2 > m.base + .4 && p.y - shape[1] / 2 < m.base + 2.2; }));
     const obstructed = (x: number, z: number, y: number): boolean => {
-      const bx = Math.floor(x / 16); const bz = Math.floor(z / 16);
-      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) for (const grid of [own, solids]) {
-        for (const o of grid.get(bx + dx + (bz + dz) * 1024) ?? []) {
-          const overDeck = grid === solids && o.floor && o.hi < y - .35 && o.hi > y - 3;
-          if (!overDeck && (o.hi <= y + .38 || o.lo >= y + 2.1)) continue;
-          const px = x - o.x; const pz = z - o.z;
-          if (Math.abs(px * o.c - pz * o.s) < o.w && Math.abs(px * o.s + pz * o.c) < o.d) return true;
-        }
-      }
+      const k = Math.floor(x / 4) + Math.floor(z / 4) * 4096;
+      for (const o of own.get(k) ?? []) if (stands(o, x, z, y, false)) return true;
+      for (const o of solids.get(k) ?? []) if (stands(o, x, z, y, true)) return true;
       return false;
     };
     for (const entry of m.entries) {
@@ -54,18 +51,21 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
       let ramp = 1;
       const bx = Math.floor(entry.x / 64); const bz = Math.floor(entry.z / 64); const candidates: { x: number; z: number }[] = [];
       for (let x = bx - 2; x <= bx + 2; x++) for (let z = bz - 2; z <= bz + 2; z++) candidates.push(...bins.get(`${x},${z}`) ?? []);
-      candidates.sort((a, b) => Math.hypot(a.x - entry.x, a.z - entry.z) - Math.hypot(b.x - entry.x, b.z - entry.z));
-      const street = [4, 0].flatMap((margin) => candidates.slice(0, 48).map((street) => ({ street, margin }))).find(({ street: p, margin }) => {
-        const len = Math.hypot(p.x - entry.x, p.z - entry.z); const groundY = site.groundAt(p.x, p.z); const y = streetLevel(groundY, m.base);
+      // The distances worked out once sort as they would worked out at every comparison.
+      const nearest = candidates.map((p) => ({ p, len: Math.hypot(p.x - entry.x, p.z - entry.z) })).sort((a, b) => a.len - b.len).slice(0, 48);
+      const street = [4, 0].flatMap((margin) => nearest.map(({ p, len }) => ({ street: p, len, margin }))).find(({ street: p, len, margin }) => {
+        const groundY = site.groundAt(p.x, p.z); const y = streetLevel(groundY, m.base);
         if (len > 112 || len < 4 || y < .1 || Math.abs(y - m.base) / len > .12) return false;
         let boundary = len;
+        // With no margin the squares beside are the square itself.
+        const beside = margin > 0 ? [-margin, 0, margin, 0, 0, -margin, 0, margin] : [];
         for (let s = 0; s <= len; s += .25) {
           const x = p.x + (entry.x - p.x) * s / len; const z = p.z + (entry.z - p.z) * s / len;
           const other = heaps.owner[at(x, z)];
           if (other !== undefined && other >= 0 && other !== owner) return false;
-          for (const [dx, dz] of [[-margin, 0], [margin, 0], [0, -margin], [0, margin]]) {
-            const beside = heaps.owner[at(x + dx!, z + dz!)];
-            if (beside !== undefined && beside >= 0 && beside !== owner) return false;
+          for (let i = 0; i < beside.length; i += 2) {
+            const next = heaps.owner[at(x + beside[i]!, z + beside[i + 1]!)];
+            if (next !== undefined && next >= 0 && next !== owner) return false;
           }
           if (other === owner) boundary = Math.min(boundary, s);
         }
@@ -77,13 +77,8 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
           const t = s / len; const x = p.x + (entry.x - p.x) * t; const z = p.z + (entry.z - p.z) * t;
           const level = y + (m.base - y) * Math.min(1, t / ramp);
           if (obstructed(x, z, level)) return false;
-          for (const a of [...(reserved.get(Math.floor(x / 32) + Math.floor(z / 32) * 1024) ?? []), ...out]) {
-            const dx = a.door.x - a.street.x; const dz = a.door.z - a.street.z;
-            const along = Math.max(0, Math.min(1, ((x - a.street.x) * dx + (z - a.street.z) * dz) / (dx * dx + dz * dz)));
-            if (Math.hypot(x - a.street.x - dx * along, z - a.street.z - dz * along) >= 8) continue;
-            const other = a.street.y + (a.door.y - a.street.y) * Math.min(1, along / a.ramp);
-            if (Math.abs(other - level) > .35) return false;
-          }
+          for (const a of reserved.get(Math.floor(x / 32) + Math.floor(z / 32) * 1024) ?? []) if (clashes(a, x, z, level)) return false;
+          for (const a of out) if (clashes(a, x, z, level)) return false;
         }
         return true;
       })?.street;
@@ -124,6 +119,25 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
   };
   return Object.assign(plan, { reserve });
 }
+interface Solid { x: number; z: number; lo: number; hi: number; floor: boolean; c: number; s: number; w: number; d: number; }
+
+/** Whether a solid stands in the way of a walker at (x, y, z); a floor of the infrastructure's just under it does too. */
+function stands(o: Solid, x: number, z: number, y: number, infrastructure: boolean): boolean {
+  const overDeck = infrastructure && o.floor && o.hi < y - .35 && o.hi > y - 3;
+  if (!overDeck && (o.hi <= y + .38 || o.lo >= y + 2.1)) return false;
+  const px = x - o.x; const pz = z - o.z;
+  return Math.abs(px * o.c - pz * o.s) < o.w && Math.abs(px * o.s + pz * o.c) < o.d;
+}
+
+/** Whether an approach passes within 8 m of (x, z) at another level than `level`. */
+function clashes(a: Approach, x: number, z: number, level: number): boolean {
+  const dx = a.door.x - a.street.x; const dz = a.door.z - a.street.z;
+  const along = Math.max(0, Math.min(1, ((x - a.street.x) * dx + (z - a.street.z) * dz) / (dx * dx + dz * dz)));
+  if (Math.hypot(x - a.street.x - dx * along, z - a.street.z - dz * along) >= 8) return false;
+  const other = a.street.y + (a.door.y - a.street.y) * Math.min(1, along / a.ramp);
+  return Math.abs(other - level) > .35;
+}
+
 export function gradeApproaches(site: Site, approaches: readonly Approach[], owner: number): void {
   const { n, height, water, heaps } = site.ground; const size = (n - 1) * 2;
   for (const a of approaches) {

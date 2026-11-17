@@ -1,9 +1,9 @@
-// A playable map from a painted map's base layers: bun tools/mapworld/build.ts [name]
+// A playable map from a painted map's base layers: bun tools/mapworld/build.ts <name> [--release]
 //
 // Reads assets/source/maps/<name>/base (its VALUES.md says what each layer holds) and world/world.json (the sea, the
 // districts, where survivors arrive and where obelisks stand), writes the folder of layers tools/map.ts builds from to
 // var/maps/<name>/layers, then the map file var/maps/<name>.snmap, and says what it holds. The same inputs give the same
-// bytes.
+// bytes. Its copies for the wire take a few seconds; --release writes the tightest, as a map that ships has (tools/map/pack.ts).
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -32,7 +32,7 @@ import { landmarkDefs, landmarksOf, layLandmarkGround, placeLandmarks } from "./
 
 const ROOT = resolve(import.meta.dir, "../..");
 
-export async function buildMap(name: string): Promise<{ file: string; stats: Record<string, unknown> }> {
+export async function buildMap(name: string, release = false): Promise<{ file: string; stats: Record<string, unknown> }> {
   const t0 = performance.now();
   const lap = (what: string): void => console.log(`${((performance.now() - t0) / 1000).toFixed(1).padStart(5)} s  ${what}`);
   const source = join(ROOT, "assets/source/maps", name);
@@ -181,7 +181,7 @@ export async function buildMap(name: string): Promise<{ file: string; stats: Rec
   const bytes = writeMap(map);
   const file = join(ROOT, "var/maps", `${name}.snmap`);
   const built = (performance.now() - t0) / 1000;
-  const packed = await writeMapFile(file, bytes);
+  const packed = await writeMapFile(file, bytes, release);
   lap(`map file ${file} and its copies for the wire`);
   for (const line of describe(bytes)) console.log(`        ${line}`);
 
@@ -250,6 +250,7 @@ export async function buildMap(name: string): Promise<{ file: string; stats: Rec
     bytes: bytes.length,
     groundBrotli: packed.ground,
     brotli: packed.br.length,
+    release,
     buildSeconds: Number(built.toFixed(1)),
     totalSeconds: Number(((performance.now() - t0) / 1000).toFixed(2)),
     peakResidentMiB: Number((process.resourceUsage().maxRSS / 1024).toFixed(1)),
@@ -279,6 +280,7 @@ export async function buildMap(name: string): Promise<{ file: string; stats: Rec
 }
 
 if (import.meta.main) {
-  const { stats } = await buildMap(process.argv[2] ?? (() => { throw new Error("Map name required"); })());
+  const words = process.argv.slice(2);
+  const { stats } = await buildMap(words.find((w) => w !== "--release") ?? (() => { throw new Error("Map name required"); })(), words.includes("--release"));
   console.log(JSON.stringify({ ...stats, spawns: undefined, surfaceSquareMetres: undefined }, null, 2));
 }
