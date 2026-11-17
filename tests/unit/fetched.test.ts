@@ -1,7 +1,7 @@
 // What the page fetches whole as it starts: a failure names the request and what the server answered.
 
 import { expect, test } from "bun:test";
-import { fetchBytes, fetchJson, fetchMap, fetchMapFile, fetchSounds, fetchText, nextTask, readStatics, type Get } from "../../client/core/fetched.ts";
+import { fetchBytes, fetchJson, fetchMapFile, fetchSounds, fetchText, nextTask, readStatics, type Get } from "../../client/core/fetched.ts";
 import { MANIFEST_VERSION, type Manifest } from "../../shared/pack/manifest.ts";
 import { parseMap, partsOf, readHead, writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap, wideMap } from "../fixtures/map.ts";
@@ -55,45 +55,25 @@ function mapServer(file: Uint8Array, change: (name: string, bytes: Uint8Array) =
   return get;
 }
 
-test("a page fetches a map's head, then its ground's parts six at once, which make the map with no statics; then its statics' parts", async () => {
+test("a program that reads a map whole fetches its head and every part, six at once, and puts its file back together", async () => {
   const file = writeMap(wideMap());
-  const whole = parseMap(file);
   const head = readHead(file);
   const get = mapServer(file);
-  const { ground, rest } = await fetchMap(get, `map/${head.name}`);
-  // The ground's parts are all asked for before any statics', and no more than six at once.
-  const statics = head.parts.filter((p) => p.kind === "statics").map((p) => `map/${p.name}`);
-  expect(get.asked.slice(0, 1 + head.parts.length - statics.length)).toEqual([`map/${head.name}`, ...head.parts.filter((p) => p.kind !== "statics").map((p) => `map/${p.name}`)]);
-  expect(get.most).toBe(6);
-  expect([ground.hash, ground.statics.length, ground.heights, ground.tint, ground.nodes, ground.water]).toEqual([whole.hash, 0, whole.heights, whole.tint, whole.nodes, whole.water]);
-  // Its statics, each sector's read and then set in a step at a time, without the map's order: its ten sectors, each smaller
-  // than a slice, are ten steps read and ten set.
-  let paused = 0;
-  const t = await readStatics(rest, () => (paused++, Promise.resolve()));
-  expect([get.asked.slice(-statics.length), paused]).toEqual([statics, 20]);
-  expect([t.row.length, t.first, t.kind, t.x, t.y, t.z, t.yaw]).toEqual([0, whole.statics.first, whole.statics.kind, whole.statics.x, whole.statics.y, whole.statics.z, whole.statics.yaw]);
-  // A program that reads a map whole gets its file back.
-  expect(await fetchMapFile(mapServer(file), `map/${head.name}`)).toEqual(file);
+  expect(await fetchMapFile(get, `map/${head.name}`)).toEqual(file);
+  expect([get.asked.length, get.most]).toEqual([1 + head.parts.length, 6]);
 });
 
-test("a part that comes damaged, or as another's, or not at all, is refused with its name", async () => {
+test("a part that comes as another's, or a head that is damaged or not there, is refused with its name", async () => {
   const file = writeMap(wideMap());
   const head = readHead(file);
   const [a, b] = [head.parts[2]!, head.parts[3]!];
-  const damaged = mapServer(file, (url, bytes) => (url === `map/${a.name}` ? bytes.map((v, i) => (i === 7 ? v ^ 1 : v)) : bytes));
-  await expect(fetchMap(damaged, `map/${head.name}`)).rejects.toThrow(`map: its part ${a.name} is damaged or another's: its bytes are not those its head names`);
   const other = partsOf(file).find((p) => p.name === b.name)!.bytes;
   const swapped = mapServer(file, (url, bytes) => (url === `map/${a.name}` ? other : bytes));
-  await expect(fetchMap(swapped, `map/${head.name}`)).rejects.toThrow(`map: its part ${a.name} is damaged or another's`);
   await expect(fetchMapFile(swapped, `map/${head.name}`)).rejects.toThrow(`map/${a.name}: the part is ${b.length} bytes, and its head says ${a.length}`);
-  const statics = head.parts.find((p) => p.kind === "statics")!;
-  const { rest } = await fetchMap(mapServer(file, (url, bytes) => (url === `map/${statics.name}` ? bytes.subarray(1) : bytes)), `map/${head.name}`);
-  await expect(readStatics(rest, () => Promise.resolve())).rejects.toThrow(`map: its part ${statics.name} is damaged or another's`);
-  const gone = mapServer(file);
-  await expect(fetchMap(gone, `map/head.0123456789abcdef.part`)).rejects.toThrow('map/head.0123456789abcdef.part: the server answered 404: "not found"');
+  await expect(fetchMapFile(mapServer(file), `map/head.0123456789abcdef.part`)).rejects.toThrow('map/head.0123456789abcdef.part: the server answered 404: "not found"');
   const head2 = file.slice(0, head.bytes);
   head2[70]! ^= 1;
-  await expect(fetchMap(() => Promise.resolve(new Response(head2)), `map/${head.name}`)).rejects.toThrow(`map/${head.name}: map: its head is damaged`);
+  await expect(fetchMapFile(() => Promise.resolve(new Response(head2)), `map/${head.name}`)).rejects.toThrow(`map/${head.name}: map: its head is damaged`);
 });
 
 test("a page's statics read with a message to itself between steps are the same, a step for each slice of a sector's pieces read and set and one after each sector", async () => {
