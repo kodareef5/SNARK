@@ -171,13 +171,14 @@ export interface SourceDetails {
   atlas: Uint8Array;
 }
 
-/** `landmarks` are the rows of the far meshes among `meshes` (tools/pack/far.ts). */
-export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: readonly Clip[] = [], rigs: readonly PackRig[] = [], details: SourceDetails | null = null, landmarks: readonly LandmarkFarRow[] = []): Uint8Array {
+/** `landmarks` are the rows of the far meshes among `meshes` (tools/pack/far.ts), and `finishes` an asset's (shared/pack/finish.ts). */
+export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: readonly Clip[] = [], rigs: readonly PackRig[] = [], details: SourceDetails | null = null, landmarks: readonly LandmarkFarRow[] = [], finishes: readonly number[] = []): Uint8Array {
   const blob = new PackBlob();
   const append = (bytes: Uint8Array): number => blob.append(bytes);
 
   const header: PackHeader = { paletteOffset: append(palette), meshes: [], rigs: [...rigs].sort(byId), clips: [] };
   if (landmarks.length > 0) header.landmarks = [...landmarks];
+  if (finishes.length > 0) header.finishes = [...finishes];
   if (details) header.details = { ...details.header, atlas: { ...details.header.atlas, offset: append(details.atlas) } };
   const sorted = [...meshes].sort(byId);
   const { materials, textures } = pool(sorted);

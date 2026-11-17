@@ -31,6 +31,8 @@ export interface LandmarkFarRow {
   pieces: number[];
   /** For each level, each piece's count of indices. A piece's first index is the sum of the counts before it. */
   counts: [number[], number[]];
+  /** The finishes its art states, which every flat draw of its meshes is lit with (shared/pack/finish.ts). */
+  finishes?: number[];
 }
 
 /** What the draw side reads of a landmark's far mesh. */

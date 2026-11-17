@@ -149,6 +149,7 @@ export function describe(m: Material, top: number, palette: Uint8Array, layer = 
     flags: (m.spec.twoSided ? MATERIAL_TWO_SIDED : 0) | (cutout ? MATERIAL_CUTOUT : 0), cutoff: cutout ? (m.spec.cutout === true ? 0.5 : (m.spec.cutout as number)) : 0, span: m.spec.tiles ?? 0,
   };
   if (layered) material.layer = place("layer");
+  if (m.spec.sheet) material.sheet = m.spec.sheet;
   if (m.spec.id !== undefined && !m.spec.tiles) faults.push(`${m.id}: a material several assets share says how far it tiles, so that it is the same on all of them`);
 
   // Flat, it is the region that dyes half of it or more, the colour its asset gives it, or its base colour's mean as light.

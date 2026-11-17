@@ -113,6 +113,8 @@ export interface MaterialSpec {
   readonly cutout?: boolean | number;
   /** Metres one whole picture spans, for a material that tiles. Measured on the meshes where not given. */
   readonly tiles?: number;
+  /** A thin sheet's: how much of the light on one face its other face shows, 0 to 1 (shared/pack/finish.ts). */
+  readonly sheet?: number;
   /** Multiplied over the base colour: linear, 0 to 1. Nothing is, where not given. */
   readonly tint?: readonly [number, number, number];
   /**
@@ -344,6 +346,12 @@ export interface PiecesAsset {
    */
   readonly materials?: Readonly<Record<string, MaterialSpec>>;
   /**
+   * A landmark's finishes, by the name its flat levels give each, whose faces are in the Blender material
+   * "flat_<name>" (shared/pack/finish.ts). Each is a rectangle of a material's pictures, in pixels of its base colour,
+   * and is read off them: its flat faces are drawn in a palette colour of their own and lit as the pictures are.
+   */
+  readonly finishes?: Readonly<Record<string, FinishSpec>>;
+  /**
    * Where given, every piece's coarser levels are made from its finest to the triangle budgets, as a creature's are,
    * and this is the first flat one. Levels a piece's script brought ("<object>_LOD1" and on, flat) then follow those as
    * its last ones, taking the last budgets: a far level made by hand (farnodes.ts). Where not, a piece keeps the levels
@@ -363,6 +371,13 @@ export interface PiecesAsset {
      */
     readonly cells?: readonly (readonly [number, number])[];
   };
+}
+
+/** One finish of a landmark: the material it is part of, by its name in the model, where in its pictures, and its sheet where not the material's. */
+export interface FinishSpec {
+  readonly material: string;
+  readonly rect: readonly [number, number, number, number];
+  readonly sheet?: number;
 }
 
 /** The humanoid's clips, converted from animation libraries under assets/raw (tools/art/human.ts). */

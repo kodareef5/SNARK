@@ -33,6 +33,8 @@ export interface SourceArt {
   clips: Clip[];
   /** The pack of small details (core:details), where one is built. */
   details: SourceDetails | null;
+  /** A landmark's finishes, where its art states them (shared/pack/finish.ts). */
+  finishes?: number[];
 }
 
 /** Where a landmark's assets are (tools/art/assets.ts landmarkOf). The core pack reads none of them. */
@@ -59,6 +61,10 @@ export function readPacks(dir: string = SOURCE): SourceArt {
     out.meshes.push(...unpackMeshes(pack));
     out.rigs.push(...pack.header.rigs);
     out.clips.push(...pack.clips.clips);
+    if (pack.header.finishes) {
+      claim("finishes", "", file);
+      out.finishes = pack.header.finishes;
+    }
     if (pack.header.details) {
       claim("details", "", file);
       out.details = { header: pack.header.details, atlas: detailsAtlas(pack).slice() };

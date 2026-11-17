@@ -44,8 +44,8 @@ export interface MergedFar {
   otherwise: string[];
 }
 
-/** The far mesh of `l` from its pack's meshes, or null where it draws none of them. */
-export function mergeFar(l: Landmark, meshes: readonly SourceMesh[]): MergedFar | null {
+/** The far mesh of `l` from its pack's meshes, or null where it draws none of them. Its row carries the `finishes` its art states. */
+export function mergeFar(l: Landmark, meshes: readonly SourceMesh[], finishes?: readonly number[]): MergedFar | null {
   const byId = new Map(meshes.map((m) => [m.id, m]));
   const defs = new Map<string, Def>(l.defs.map((d) => [d.id, d]));
   const otherwise = new Set<string>();
@@ -93,7 +93,9 @@ export function mergeFar(l: Landmark, meshes: readonly SourceMesh[]): MergedFar 
   });
   // Rounded up past the centimetre, so it holds the vertices as stored as well.
   const pieces = drawn.flatMap((p, k) => [p.at[0]!, p.at[1]!, p.at[2]!, Math.ceil(radius[k]! * 100 + 1) / 100]);
-  return { mesh: { id: farMeshId(l.name), lods }, row: { name: l.name, pieces, counts }, otherwise: [...otherwise].sort() };
+  const row: LandmarkFarRow = { name: l.name, pieces, counts };
+  if (finishes?.length) row.finishes = [...finishes];
+  return { mesh: { id: farMeshId(l.name), lods }, row, otherwise: [...otherwise].sort() };
 }
 
 /** A landmark's art: what the packs in its folder hold, with its far mesh among the meshes and its row beside them. */
@@ -104,7 +106,7 @@ export interface LandmarkArt extends SourceArt {
 /** The art of a landmark, its far mesh made from its own meshes. */
 export function landmarkArt(l: Landmark): LandmarkArt {
   const art = readPacks(join(LANDMARKS, l.name));
-  const far = mergeFar(l, art.meshes);
+  const far = mergeFar(l, art.meshes, art.finishes);
   return { ...art, meshes: far ? [...art.meshes, far.mesh] : art.meshes, far };
 }
 
