@@ -10,7 +10,8 @@
 //
 // With PROBE_PICTURES naming a folder it writes what the GPU drew of each beside the twin's shade. With PROBE_MAP
 // naming a built map, Miami's, it writes there the pictures of the far shadow on that map: from the air over downtown,
-// down a street, and across the bay at the skyline, at 8:00 and at noon, on high, without and with it.
+// down a street, and across the bay at the skyline, at 8:00 and at noon, on high, without and with it, the far map's
+// lanes of one frame cleared for without, so both are the same frame.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -199,13 +200,14 @@ function sheet(row: Uint8Array[], width: number, height: number): Uint8Array {
 }
 
 /**
- * The views of a built map's pictures, planning's of Miami (assets/source/maps/miami/reports/farcity/views.json): where
- * the camera stands, at a height or `up` over the ground, and the point it looks at.
+ * The views of a built map's pictures, of Miami: over downtown from inland toward the bay, down a street toward it, and
+ * across the bay at its skyline. Where the camera stands, at a height or `up` over the ground, and the point it looks
+ * at (x, z, y). The morning sun is over the bay.
  */
 const VIEWS: { name: string; x: number; z: number; y?: number; up?: number; look: [number, number, number] }[] = [
-  { name: "air-downtown", x: 5900, z: 2500, y: 320, look: [6900, 2900, 0] },
-  { name: "street", x: 6533, z: 3425, up: 1.7, look: [6773, 3416, 10] },
-  { name: "bay-skyline", x: 4600, z: 2600, y: 8, look: [6700, 2800, 60] },
+  { name: "air-downtown", x: 7300, z: 3300, y: 380, look: [6300, 2700, 0] },
+  { name: "street", x: 6950, z: 3425, up: 30, look: [6300, 3418, 0] },
+  { name: "bay-skyline", x: 5250, z: 2500, y: 12, look: [6350, 2700, 50] },
 ];
 const [PW, PH] = [1280, 720];
 
