@@ -7,7 +7,7 @@ import { meshKnown, parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { landmarkGround, placeLandmark, type Landmark } from "../../shared/world/landmark.ts";
-import { groundBytes, parseMap, writeMap } from "../../shared/world/mapfile.ts";
+import { joinParts, parseMap, readHead, readPart, writeMap } from "../../shared/world/mapfile.ts";
 import { bootManifest, splitPack } from "../../tools/pack/split.ts";
 import { boxMesh, buildPack } from "../../tools/pack/write.ts";
 import { Assets } from "../../client/core/assets/assets.ts";
@@ -18,12 +18,14 @@ import { artTest } from "../fixtures/needs-art.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
-test("a map carries its landmarks' names and definitions before its statics, so a client has them from its ground alone", () => {
+test("a map's head names its landmarks and their places and a part of its own holds their definitions, so a client has them before any statics", () => {
   const bytes = writeMap(koruMap());
-  const ground = parseMap(bytes.subarray(0, groundBytes(bytes)), false);
-  expect(ground.content!.landmarks).toEqual([{ name: "koru", ...KORU_AT }]);
-  expect(ground.content!.defs).toEqual(JSON.parse(JSON.stringify(KORU.defs)));
-  expect(ground.statics.x.length).toBe(0);
+  const head = readHead(bytes);
+  expect(head.landmarks).toEqual([{ name: "koru", ...KORU_AT }]);
+  const land = head.parts.find((p) => p.kind === "land")!;
+  expect(readPart(head, land, bytes.subarray(land.at, land.at + land.length))).toEqual({ kind: "land", defs: JSON.parse(JSON.stringify(KORU.defs)) });
+  const ground = joinParts(head, head.parts.filter((p) => p.kind !== "statics").map((p) => readPart(head, p, bytes.subarray(p.at, p.at + p.length))));
+  expect([ground.content, ground.statics.x.length]).toEqual([{ landmarks: [{ name: "koru", ...KORU_AT }], defs: JSON.parse(JSON.stringify(KORU.defs)) }, 0]);
   expect(parseMap(bytes).statics.x.length).toBe(KORU.pieces.length);
 });
 
