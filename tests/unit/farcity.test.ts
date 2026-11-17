@@ -5,6 +5,7 @@ import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { slopeKind } from "../../content/slopes.ts";
 import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
+import { ladder } from "../../client/core/governor.ts";
 import { FAR_BUFFER, fadeKeeps } from "../../client/core/render/far.ts";
 import { cityJob, cityKinds, makeLevel } from "../../client/core/render/citymake.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
@@ -331,6 +332,47 @@ test("tiles with nothing on the card are made first, a chunk at a time within th
   }
   expect(frames).toBeLessThan(400);
   expect(city.stats.unseen).toBe(0);
+});
+
+test("levels are held by their form: other levels in the same forms remake nothing, and the governor's nearer distances make only the forms tiles come to", () => {
+  // Towers in three rows of tiles from 150 m to 1,900 m off, on medium.
+  const statics: MapStatic[] = [];
+  for (let k = 0; k < 28; k++) for (const cz of [27, 30, 32, 35]) statics.push(...building(...mid(4 + k, cz), 0, 4 + (k % 5), 2, k * 1700));
+  const w = cityWorld({ chunks: 48, statics, width: 320, height: 180 });
+  w.look(16 * CHUNK_SIZE, 10, 31 * CHUNK_SIZE, 950, Math.PI / 2, 40);
+  const city = w.scene.city!;
+  /** Frames until nothing is left to make: the levels put on the card and let go meanwhile, and the most tiles in view with none. */
+  const settle = (): { made: number; dropped: number; unseen: number } => {
+    const out = { made: 0, dropped: 0, unseen: 0 };
+    for (let f = 0; f < 600; f++) {
+      const p = w.frame();
+      out.made += p.assetUploads.length;
+      out.dropped += p.assetDrops.length;
+      out.unseen = Math.max(out.unseen, city.stats.unseen);
+      if (f > 2 && city.stats.behind === 0 && p.assetUploads.length === 0) return out;
+    }
+    throw new Error("still making");
+  };
+  const medium = tierOf("medium");
+  const first = settle();
+  expect(first.made).toBeGreaterThan(8);
+  // The same levels in a list of their own: nothing made again or let go.
+  w.scene.assets.tier = { ...medium, city: { levels: medium.city.levels.map((l) => ({ ...l })) } };
+  expect(settle()).toEqual({ made: 0, dropped: 0, unseen: 0 });
+  // The governor's step: a tile whose nearest point the nearer distances move to another level makes that level, and
+  // lets go of the one it leaves once it is there; the rest keep theirs. A level at a time, no tile goes undrawn.
+  const step = ladder(medium, 3).find((l) => l.city)!.tier;
+  w.scene.assets.tier = step;
+  city.makeMs = 0;
+  const nearer = settle();
+  expect(nearer.made).toBeGreaterThan(0);
+  expect(nearer.made).toBeLessThan(first.made * 0.6);
+  expect(nearer.unseen).toBe(0);
+  // Back to the tier: only those tiles again.
+  w.scene.assets.tier = medium;
+  const back = settle();
+  expect(back.made).toBeLessThanOrEqual(nearer.dropped);
+  expect(back.unseen).toBe(0);
 });
 
 test("a map's statics written, read back and set down give the rows and far city faces their list did, held once", () => {

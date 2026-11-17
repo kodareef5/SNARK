@@ -1,10 +1,11 @@
 // Pictures of a built map's city as a client draws it, from the software rasterizer: the near rows round the camera and
 // the map's own buildings past them (client/core/render/farcity.ts).
 //
-//   bun tools/map/cityviews.ts <file.snmap> <views.json> <out folder> [--tier medium] [--only name] [--levels box:800,cells:1600:2,cells:inf:4]
+//   bun tools/map/cityviews.ts <file.snmap> <views.json> <out folder> [--tier medium] [--touch] [--only name] [--levels box:800,cells:1600:2,cells:inf:4]
 //                              [--blocks] [--near 3] [--moved 1]
 //
-// views.json is tools/mapworld/views.ts's list. --levels replaces the tier's far city levels, `box:<to>` or
+// views.json is tools/mapworld/views.ts's list. --touch draws the tier as a touch-first device does (tiers.ts forTouch).
+// --levels replaces the tier's far city levels, `box:<to>` or
 // `cells:<to>:<size>[:<tall>]`, and `--levels box:inf` draws every box to the reach, the reference the coarser levels are
 // held to. --blocks draws the city as far blocks, as before the far city. --near is the chunks round the camera's the near
 // store holds whole. A map's landmarks are drawn from their files, their moving statics at rest at their first state, or
@@ -13,7 +14,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { tierOf } from "../../client/core/assets/tiers.ts";
+import { forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import { CITY_BUFFER, type CityLevel } from "../../client/core/render/farcity.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
@@ -41,7 +42,7 @@ interface View {
   look?: [number, number, number?];
 }
 
-const { values, positionals } = parseArgs({ allowPositionals: true, options: { tier: { type: "string", default: "medium" }, only: { type: "string" }, levels: { type: "string" }, blocks: { type: "boolean", default: false }, near: { type: "string", default: "3" }, reach: { type: "string" }, moved: { type: "string", default: "0" } } });
+const { values, positionals } = parseArgs({ allowPositionals: true, options: { tier: { type: "string", default: "medium" }, touch: { type: "boolean", default: false }, only: { type: "string" }, levels: { type: "string" }, blocks: { type: "boolean", default: false }, near: { type: "string", default: "3" }, reach: { type: "string" }, moved: { type: "string", default: "0" } } });
 const [path, list, folder] = positionals;
 if (!path || !list || !folder) {
   console.error("bun tools/map/cityviews.ts <file.snmap> <views.json> <out folder> [--tier medium] [--only name] [--levels ...] [--blocks] [--near 3]");
@@ -70,7 +71,7 @@ const map = parseMap(new Uint8Array(readFileSync(path)));
 const views = (JSON.parse(readFileSync(list, "utf8")) as View[]).filter((v) => values.only === undefined || v.name === values.only);
 const files = await gameFiles(resolve(SOURCE), undefined, [], map.content?.landmarks);
 mkdirSync(folder, { recursive: true });
-const tier = tierOf(values.tier!);
+const tier = forTouch(tierOf(values.tier!), values.touch!);
 const near = Number(values.near);
 const rendered: Record<string, unknown>[] = [];
 let statics: CityStatics | null = null;

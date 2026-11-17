@@ -2,21 +2,30 @@
 // touch rule in the scenes of its kept soaks as the device page lays them out (devicescene.ts) and in the budget's woods
 // with forty bodies fighting (budget.ts), and what that frame would take the iPhone's GPU by the costs its reports
 // measured. Then the soaks are replayed through the governor, each level leaving the share of the GPU's time it leaves in
-// its soak's scene. `bun tools/bench/governor.ts [headings]` runs these alone.
+// its soak's scene. `bun tools/bench/governor.ts [headings] [file.snmap]` runs these alone, and given a built city, the
+// census's downtown views of it (tools/bench/census.ts) too, turning where they stand.
 
+import { readFileSync } from "node:fs";
 import { forTouch, tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import type { SoakReport } from "../../client/core/device.ts";
 import { BodyCopies, basePieces, crowdScene } from "../../client/core/devicescene.ts";
 import { TARGET_MS, ladder, workMs, type GovernorStep } from "../../client/core/governor.ts";
+import { FarStore } from "../../client/core/farcells.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { Scene, type Thing } from "../../client/core/render/scene.ts";
 import { RemoteSample } from "../../client/core/session.ts";
+import { CHUNK_SIZE, chunkCount } from "../../shared/coords.ts";
+import { parsePack } from "../../shared/pack/pack.ts";
+import { CityStatics } from "../../shared/world/city.ts";
+import { mapHeightfield, parseMap } from "../../shared/world/mapfile.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
+import { StructureStore } from "../../shared/world/structures.ts";
 import { curve, phoneSoaks, run, type Minute } from "../../tests/fixtures/frames.ts";
-import { corePack } from "../../tests/fixtures/pack.ts";
-import { provingWorld } from "../../tests/fixtures/world.ts";
+import { corePack, corePackBytes } from "../../tests/fixtures/pack.ts";
+import { coreRegistry, provingWorld } from "../../tests/fixtures/world.ts";
 import { asTextured } from "./base.ts";
 import { SPOTS, VIEW, fight, wood } from "./budget.ts";
+import { CENSUS_VIEWS, centreOf, placeOf } from "./census.ts";
 
 type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
@@ -100,6 +109,41 @@ export function woodScene(spot: readonly number[], bodies: number): Counting {
   return { scene, cam, remote, settle: SQUEEZED, face: () => fight(remote, scene, cam, ground, bodies) };
 }
 
+/**
+ * A census view of the built city in `path` at the iPhone's view, as tools/bench/census.ts stands it: the near store
+ * holding the 7 by 7 chunks round the camera whole, the far city the rest, nothing left to make in a frame.
+ */
+export function cityScenes(path: string): [string, () => Counting][] {
+  const map = parseMap(new Uint8Array(readFileSync(path)), false);
+  const reg = coreRegistry();
+  const hf = mapHeightfield(map);
+  const statics = new CityStatics(map.dims, map.statics, reg);
+  const pack = parsePack(corePackBytes());
+  return CENSUS_VIEWS.filter((v) => v.name === "street-300" || v.name === "air-wide").map((view) => [`${map.id} at ${view.name}`, () => {
+    const cam = new Camera();
+    [cam.x, cam.y, cam.z] = placeOf(centreOf(map), hf, view);
+    [cam.pitch, cam.aspect, cam.fovY] = [view.pitch, VIEW[0] / VIEW[1], (VIEW[2] * Math.PI) / 180];
+    const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+    const held = new Uint8Array(chunkCount(map.dims));
+    const [cx, cz] = [Math.floor(cam.x / CHUNK_SIZE), Math.floor(cam.z / CHUNK_SIZE)];
+    for (let j = cz - 3; j <= cz + 3; j++) {
+      for (let i = cx - 3; i <= cx + 3; i++) {
+        const c = j * map.dims.chunksX + i;
+        for (let s = statics.first[c]!; s < statics.first[c + 1]!; s++) structs.put(c, s - statics.first[c]!, statics.kind[s]!, statics.x[s]!, statics.y[s]!, statics.z[s]!, statics.yaw[s]!, 0, reg.maxHp[statics.kind[s]!]!, 1);
+        structs.setVersion(c, 1);
+        held[c] = 1;
+      }
+    }
+    const complete = (c: number): boolean => held[c] === 1;
+    const scene = new Scene({ mapId: map.id, dims: map.dims, hf, structs, far: { cells: new FarStore(), complete }, city: { statics, complete } }, reg, pack);
+    asTextured(scene);
+    scene.viewHeight = VIEW[1];
+    scene.build(cam, null);
+    scene.city!.makeMs = Infinity;
+    return { scene, cam, remote: null, settle: SETTLE };
+  }]);
+}
+
 /** A frame's counts: what it draws and what it casts into the sun's maps, and the device pixels it shades. */
 export interface Counts {
   triangles: number;
@@ -174,12 +218,13 @@ export function replay(soak: { tier: string; points: number[] }, left: readonly 
   return { minutes, steps: governor.steps };
 }
 
-export function benchGovernor(section: Section, record: Row, headings = 8): void {
+export function benchGovernor(section: Section, record: Row, headings = 8, city?: string): void {
   const scenes: [string, () => Counting][] = [
     ["200 bodies and 1,024 pieces, the soak of 07-47", () => soakScene({ bodies: 200, pieces: 1024, near: 16, far: 512, stress: true })],
     ["800 bodies and 64 near rocks, the soak of 08-23", () => soakScene({ bodies: 800, pieces: 0, near: 64, far: 512, stress: true })],
     ["the young wood, 40 bodies", () => woodScene(SPOTS.young, 40)],
     ["the elder stand, 40 bodies", () => woodScene(SPOTS.elder, 40)],
+    ...(city ? cityScenes(city) : []),
   ];
   for (const name of ["medium", "high"]) {
     const base = forTouch(tierOf(name), true);
@@ -207,5 +252,6 @@ export function benchGovernor(section: Section, record: Row, headings = 8): void
 if (import.meta.main) {
   const section = (title: string): void => console.log(`\n${title}`);
   const record: Row = (name, value, unit, budget = null) => console.log(`  ${name.slice(0, 90).padEnd(90)} ${value.toFixed(2).padStart(8)} ${unit}${budget === null || budget === undefined ? "" : value <= budget ? `  ok (budget ${budget.toFixed(1)})` : `  MISS (budget ${budget.toFixed(1)})`}`);
-  benchGovernor(section, record, Number(process.argv[2] ?? 8));
+  const [headings, city] = process.argv.slice(2);
+  benchGovernor(section, record, Number(headings ?? 8), city);
 }

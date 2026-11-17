@@ -63,7 +63,7 @@ export interface Tier {
    * What a touch-first device draws on this tier in place of the tier's own values, or null for the same (forTouch), and
    * whether its settings offer the tier at all. Each value is a phone's report's (planning/decisions.md, M2's rows).
    */
-  readonly touch: { readonly shadows?: Tier["shadows"]; readonly gpuBytes?: number; readonly finish?: Tier["finish"]; readonly offered?: boolean } | null;
+  readonly touch: { readonly shadows?: Tier["shadows"]; readonly gpuBytes?: number; readonly finish?: Tier["finish"]; readonly city?: Tier["city"]; readonly offered?: boolean } | null;
   /**
    * The lit tiers' world finish (render/world-surfaces.ts): "full", three hashed cells of a tile with its normal and
    * packed maps and two noises; or "light", one cell, its base map and the large noise alone, which costs about two fifths as much over plain lighting.
@@ -95,6 +95,10 @@ const MB = 1024 * 1024;
 const boxes = (to: number): CityLevel => ({ to, gap: 0.01, least: 0, cell: 0, tall: 0 });
 const lattice = (to: number): CityLevel => ({ to, gap: 0.5, least: 2.1, cell: 0, tall: 0 });
 const mass = (to: number, size: number): CityLevel => ({ to, gap: -1, least: 0, cell: size, tall: 4 });
+/** `levels` each drawn `share` as far: the same forms, so nothing made of them is made again (render/farcity.ts). */
+export const nearer = (levels: readonly CityLevel[], share: number): CityLevel[] => levels.map((l) => ({ ...l, to: l.to * share }));
+const MEDIUM_CITY = [boxes(400), lattice(900), mass(Infinity, 8)];
+const HIGH_CITY = [boxes(500), lattice(1300), mass(2000, 4), mass(Infinity, 8)];
 
 // The touch rule, from the iPhone's kept reports (planning/reference/device-reports, D349): a depth pass into a 1,024
 // map costs 0.18 ms per 100,000 triangles against 0.38 into a 2,048 one, and a lookup of 1 compared tap 0.06 ms a
@@ -103,8 +107,12 @@ const mass = (to: number, size: number): CityLevel => ({ to, gap: -1, least: 0, 
 // 07-43-00 and 08-19-25), and its textures may take 2.4 GB where the phone's tab was dropped at 2 GB, so a phone is not
 // offered it. iOS ends a tab short of memory without the card saying so (D123 never hears of it): the device page's
 // memory step lost the iPhone's tab between 1.5 and 2 GB of textures, where high's card may hold 1.9 GB with its
-// overflow. High's card on a phone is a first guess, 1.25 GB with the overflow, for the phone to confirm.
+// overflow. High's card on a phone is a first guess, 1.25 GB with the overflow, for the phone to confirm. A phone is
+// bound by triangles (D423), and downtown the far city is most of a frame and gives nothing: on a phone its levels are
+// drawn PHONE_CITY as far, which takes 26 to 29% of its triangles on medium and 18 to 29% on high at the iPhone's view
+// in the census's views of downtown Miami (tools/bench/census.ts).
 const PHONE_HIGH_CARD = 1024 * MB;
+const PHONE_CITY = 0.7;
 
 export const TIERS: readonly Tier[] = [
   {
@@ -114,12 +122,12 @@ export const TIERS: readonly Tier[] = [
   },
   {
     name: "medium", texture: 1024, textureShare: 0.6, view: 512, bones: 16384, threshold: 0.22, finest: 0, instanced: 256, pixelRatio: 1.5, gpuBytes: 512 * MB, uploadBytes: 1 * MB, diskBytes: 2048 * MB,
-    lit: true, split: 384, reach: { bases: 2048, city: 2048, trees: 1200, rocks: 600, bushes: 300, parts: 1200 }, fade: 0.1, city: { levels: [boxes(400), lattice(900), mass(Infinity, 8)] }, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 2, size: 2048, distance: 64, taps: 4, blend: 0.8, everyOther: false }, touch: { shadows: { cascades: 2, size: 1024, distance: 64, taps: 1, blend: 0.8, everyOther: false }, finish: "light" }, finish: "full", clouds: 2, water: "simple",
+    lit: true, split: 384, reach: { bases: 2048, city: 2048, trees: 1200, rocks: 600, bushes: 300, parts: 1200 }, fade: 0.1, city: { levels: MEDIUM_CITY }, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 2, size: 2048, distance: 64, taps: 4, blend: 0.8, everyOther: false }, touch: { shadows: { cascades: 2, size: 1024, distance: 64, taps: 1, blend: 0.8, everyOther: false }, finish: "light", city: { levels: nearer(MEDIUM_CITY, PHONE_CITY) } }, finish: "full", clouds: 2, water: "simple",
     details: { pool: 1536, share: 1, reach: 1, fill: 1 }, budget: { triangles: 2e6, draws: 1024 }, bodyError: 1,
   },
   {
     name: "high", texture: 2048, textureShare: 0.6, view: 1024, bones: 32768, threshold: 0.14, finest: 0, instanced: 384, pixelRatio: 2, gpuBytes: 1536 * MB, uploadBytes: 2 * MB, diskBytes: 8192 * MB,
-    lit: true, split: 384, reach: { bases: 2048, city: 3072, trees: 2000, rocks: 900, bushes: 500, parts: 2000 }, fade: 0.1, city: { levels: [boxes(500), lattice(1300), mass(2000, 4), mass(Infinity, 8)] }, nodes: { chunks: 4, band: [216, 248] }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false }, touch: { shadows: { cascades: 3, size: 1024, distance: 128, taps: 1, blend: 0.85, everyOther: false }, gpuBytes: PHONE_HIGH_CARD, finish: "light" }, finish: "full", clouds: 2, water: "simple",
+    lit: true, split: 384, reach: { bases: 2048, city: 3072, trees: 2000, rocks: 900, bushes: 500, parts: 2000 }, fade: 0.1, city: { levels: HIGH_CITY }, nodes: { chunks: 4, band: [216, 248] }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false }, touch: { shadows: { cascades: 3, size: 1024, distance: 128, taps: 1, blend: 0.85, everyOther: false }, gpuBytes: PHONE_HIGH_CARD, finish: "light", city: { levels: nearer(HIGH_CITY, PHONE_CITY) } }, finish: "full", clouds: 2, water: "simple",
     details: { pool: 3072, share: 1, reach: 1, fill: 1.5 }, budget: { triangles: 4e6, draws: 2048 }, bodyError: 1,
   },
   {
