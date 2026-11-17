@@ -1,14 +1,15 @@
 // `bun tools/map/trip.ts --map var/maps/miami.snmap [--mbit 5,20] [--out folder]`: what a player feels of a built map as it
 // comes. A server of the map runs here behind a link of this tool's own, held to each `--mbit` (shared by every connection
 // a slice at a time, with --latency ms there and back), and a headless Chrome, muted, joins from an empty cache at ?trip
-// (client/core/trip.ts). The body joins on the map's thickest street, goes 300 m up once the street round it is drawn,
-// waits there for the far city, then jumps to a street 4 km away; the first request for that sector's ground is answered
-// 503. It prints, by the page's clock: the first frame; the first in which the street is drawn with its pieces and
-// materials; the first in which the far city is drawn; the last part; after the jump, the time until the body is predicted
-// again and until the ground the fine terrain draws is the map's own; whether the failed part came on a later ask and the
-// map was whole at the end; and the page's heap and array memory at the statics' hand-over. A picture is taken at each of
-// those moments, into --out. The client must be built (bun run build). --dist names another, --chrome the browser, and
-// --no-fail fails no request.
+// (client/core/trip.ts). The body joins on the map's thickest street; goes 300 m up once the street round it is drawn or a
+// third of the map has come; waits there until the far city is drawn or two thirds have come, so that it jumps while the
+// map still comes; then jumps to the thickest street 4 km away, whose sector's ground is answered 503 at its first ask.
+// It prints, by the page's clock: the first frame; the first in which the street is drawn with its pieces and materials;
+// the first in which the far city is drawn; the last part; after the jump, the time until the body is predicted again,
+// until the ground the fine terrain draws is the map's own and until the street there is drawn; whether the failed part
+// came on a later ask and the map was whole at the end; and the page's heap and array memory at the statics' hand-over.
+// A picture is taken at each of those moments, into --out. The client must be built (bun run build). --dist names
+// another, --chrome the browser, and --no-fail fails no request.
 
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -315,26 +316,29 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     const s = (ms: number | undefined): string => (ms === undefined ? "never" : `${(ms / 1000).toFixed(2)} s`);
     const later = (ms: number | undefined, from: number | undefined): string => (ms === undefined || from === undefined ? "never" : `${((ms - from) / 1000).toFixed(2)} s after it`);
 
+    /** The share of the map's bytes until its statics are all in hand that has come. */
+    const handed = handOverParts(head).reduce((n, p) => n + statSync(join(partsFolder(opts.map), `${p.name}.br`)).size, statSync(join(partsFolder(opts.map), `${head.name}.br`)).size);
+    const share = (): number => seen.parts.filter((p) => p.status === 200).reduce((n, p) => n + p.bytes, 0) / handed;
     await until(PATIENCE.frame, () => on("frame") !== undefined);
     await shot("first-frame", on("frame"));
-    await until(PATIENCE.street, () => on("street") !== undefined);
+    await until(PATIENCE.street, () => on("street") !== undefined || share() >= 1 / 3);
     await shot("street", on("street"));
     const street = JSON.stringify(await page.value("globalThis.snarkTrip?.state()"));
-    // Up, standing on nothing, once the street is drawn.
+    // Up, standing on nothing, once the street is drawn or a third of the map has come.
     const ents = server.host.world.ents;
     const e = server.host.game.clients.find((c) => c?.name === "trip")!.ent;
     ents.mode[e] = MODE_GHOST;
     ents.setPosition(e, ents.x[e]!, ents.y[e]! + UP, ents.z[e]!);
     ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
-    const upAt = (seen = await look()).now;
-    await until(PATIENCE.far, () => on("far", upAt) !== undefined);
+    const upAt = (seen = await look()).now, upShare = share();
+    await until(PATIENCE.far, () => on("far", upAt) !== undefined || share() >= 2 / 3);
     await shot("far-city", on("far", upAt));
-    // The jump: to the ground on the street 4 km away, walking.
+    // The jump, once the far city is drawn or two thirds of the map have come: to the ground on the street 4 km away, walking.
     const move = server.host.world.reg.move[ents.kind[e]!]!;
     ents.mode[e] = MODE_WALK;
     ents.setPosition(e, to.x, groundUnder(server.host.world.hf, to.x, to.z, move.radius), to.z);
     ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
-    const jumpAt = (seen = await look()).now;
+    const jumpAt = (seen = await look()).now, jumpShare = share();
     await until(PATIENCE.jump, () => on("jump", jumpAt) !== undefined);
     const jump = seen.marks.find((m) => m.what === "jump" && m.at >= jumpAt)?.at;
     await shot("jumped", jump);
@@ -349,6 +353,8 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     await until(jump === undefined ? 0 : PATIENCE.after, () => on("exact", jump) !== undefined);
     const exact = jump === undefined ? undefined : on("exact", jump);
     await shot("exact", exact);
+    await until(PATIENCE.street, () => on("street", jump ?? upAt) !== undefined);
+    await shot("street-there", on("street", jump ?? upAt));
     await until(PATIENCE.end, () => [...parts].every(came) && on("handed") !== undefined && on("far", jump ?? upAt) !== undefined);
     await Bun.sleep(3000);
     seen = await look();
@@ -358,10 +364,12 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     const statics = head.counts.reduce((n, c) => n + c, 0);
     const lastPart = [...parts].every(came) ? Math.max(...seen.parts.filter((p) => parts.has(p.name) && p.status === 200).map((p) => p.end)) : undefined;
     const far = seen.marks.find((m) => m.what === "far");
-    say(`trip on ${head.id} over ${opts.mbit} Mbit/s, ${opts.latency} ms there and back: joined at ${from.x}, ${from.z}, went ${UP} m up at ${s(upAt)}, jumped to ${to.x}, ${to.z} at ${s(jumpAt)}; ${failing.name}, the ground there, ${fails ? "was answered 503 at its first ask" : "failed at no ask (--no-fail)"}`);
+    say(`trip on ${head.id} over ${opts.mbit} Mbit/s, ${opts.latency} ms there and back: joined at ${from.x}, ${from.z}, went ${UP} m up at ${s(upAt)} (${Math.round(upShare * 100)}% of the map in), jumped to ${to.x}, ${to.z} at ${s(jumpAt)} (${Math.round(jumpShare * 100)}% in); ${failing.name}, the ground there, ${fails ? "was answered 503 at its first ask" : "failed at no ask (--no-fail)"}`);
     say(`  first frame                           ${s(on("frame"))}`);
-    say(`  street drawn with its materials       ${s(on("street"))}${on("street") === undefined ? ` (when the body went up: ${street})` : ""}`);
-    say(`  far city drawn                        ${s(far?.at)}${far ? ` at (${far.x}, ${far.z})` : ""}`);
+    const at = (m: TripMark | undefined): string => (m ? `${s(m.at)} at ${m.x}, ${m.z}` : "never");
+    const joined = on("street");
+    say(`  street drawn with its materials       ${joined !== undefined && joined < upAt ? s(joined) : `not before the body went up (${street})`}; the street jumped to, ${later(jump === undefined ? undefined : on("street", jump), jump)}`);
+    say(`  far city drawn                        ${at(far)}`);
     say(`  last part                             ${lastPart === undefined ? `never: ${[...parts].filter((n) => !came(n)).join(" ")} not come` : s(lastPart)}`);
     say(`  statics handed over                   ${s(on("handed"))}`);
     say(`  the jump drawn                        ${s(jump)}`);
