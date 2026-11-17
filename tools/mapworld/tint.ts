@@ -66,12 +66,13 @@ export function makeTint(ground: Ground, world: World): Uint8Array {
     const s = surface[i]!;
     const x = c * cell;
     const z = r * cell;
-    const ruin = heaps.owner[i]!;
-    if (ruin >= 0 && (s === S.HEAP || s === S.SPILL || s === S.WALL || s === S.FLOOR)) {
-      const d = heaps.ruins[ruin]!.district;
-      const style = world.districts[d - 1]?.style ?? "residential";
+    const owner = heaps.owner[i]!;
+    if (owner >= 0 && (s === S.HEAP || s === S.SPILL || s === S.WALL || s === S.FLOOR)) {
+      const ruin = heaps.ruins[owner]!;
+      const style = world.districts[ruin.district - 1]?.style ?? "residential";
       const list = RUIN[style] ?? RUIN.residential!;
-      let k = list[hash3(ruin, 7, 0) % list.length]!;
+      // By its footprint's own id, not its place among the ruins, so a footprint added or taken away recolours no other.
+      let k = list[hash3(ruin.building.id, 7, 0) % list.length]!;
       const v = fbm(x, z, 10, 401, 2);
       if (s === S.SPILL || s === S.FLOOR) k = v < 0.45 ? k - 1 : k;
       else k = v < 0.33 ? k - 1 : v > 0.68 ? k + 1 : k;

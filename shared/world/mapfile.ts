@@ -3,7 +3,7 @@
 //
 // The head:
 //   0   "SNMP"
-//   4   u16 version 7, u16 reserved
+//   4   u16 version 8, u16 reserved
 //   8   u32 hash        FNV-1a of every byte of the head after it: the map's hash, which names each part by its own
 //   12  u32 bytes of the head. Its parts follow it in the order of its table, each where the one before ends.
 //   16  u16 chunksX, u16 chunksZ
@@ -41,7 +41,8 @@
 //   LAND  what the map adds to the content: u8 count of its landmarks and each a name, whose files a client fetches
 //         (assets/landmarks/<name>.json), then f64 x, y, z of its origin and u16 yaw as it was placed. The definitions
 //         they add are the land part.
-//   STAT  u16 count and that many content ids, which a sector's statics name by their place here.
+//   STAT  u16 count and that many content ids in the order of their characters, which a sector's statics name by their
+//         place here.
 //   PART  u16 count, then each part's u8 kind, u8 column and u8 row of its square, u32 byte length, and its hash
 //         (partHash) as two u32s.
 //
@@ -83,7 +84,7 @@ import { formOf, mix, nodeForms, scatterNodes, type NodeSource } from "./nodes.t
 import type { StructureStore } from "./structures.ts";
 import { MAX_WATER_BODIES, MapWater, type WaterBody } from "./water.ts";
 
-export const MAP_VERSION = 7;
+export const MAP_VERSION = 8;
 const MAGIC = 0x504d4e53;
 const HEADER_BYTES = 56;
 /** Chunks a side of an overview's square, 4,096 m. */
@@ -849,9 +850,12 @@ function sectorStatics(statics: MapStatics | readonly MapStatic[], dims: FramedD
   const [col0, row0] = [sectors[0]!.col, sectors[0]!.row];
   const cols = sectors.findLast((s) => s.row === row0)!.col - col0 + 1;
   const counts = new Uint32Array(sectors.length + 1);
+  // The kinds in the order of their ids, so a piece added or taken away renumbers no other kind.
+  const names = new Set<string>();
+  eachStatic(statics, (kind) => names.add(kind));
+  for (const kind of [...names].sort()) ids.set(kind, ids.size);
   let i = 0;
   eachStatic(statics, (kind, x, y, z, turn) => {
-    if (!ids.has(kind)) ids.set(kind, ids.size);
     [ux[i], uy[i], uz[i]] = [Math.round(x * STRUCT_UNITS), Math.round(y * STRUCT_UNITS), Math.round(z * STRUCT_UNITS)];
     // Its chunk is that of its place on the lattice, as a reader finds it.
     const c = chunkAt(dims, ux[i]! / STRUCT_UNITS, uz[i]! / STRUCT_UNITS);
