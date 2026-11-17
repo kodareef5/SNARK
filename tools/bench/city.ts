@@ -132,9 +132,13 @@ export function benchCity(section: (title: string) => void, record: Record, path
   // A chunk's cost at each form, over the 200 busiest chunks.
   const chunks = [...Array(chunkCount(map.dims)).keys()].filter((c) => statics.in(c) > 0).sort((a, b) => statics.in(b) - statics.in(a)).slice(0, 200);
   const none = (): null => null;
+  // The bare lattice's pieces under 1.3 m across left out as gone ones are (tiers.ts, citymake.ts).
+  const across = (k: number): number => [statics.halfX[k]!, statics.halfY[k]!, statics.halfZ[k]!].sort((a, b) => a - b)[1]! * 2;
+  const thin = (n: number): Uint8Array => Uint8Array.from({ length: statics.in(n) }, (_, i) => (across(statics.kind[statics.first[n]! + i]!) < 1.3 ? 1 : 0));
   const forms: [string, (c: number) => unknown][] = [
     ["every box", (c) => mergedPart(statics, c, hf, none, 0.01, 0)],
     ["the lattice", (c) => mergedPart(statics, c, hf, none, 0.5, 2.1)],
+    ["the bare lattice", (c) => mergedPart(statics, c, hf, thin, 0.5, 2.1)],
     ["mass in 4 m cells", (c) => cellPart(statics, c, hf, null, 4, 4)],
     ["mass in 8 m cells", (c) => cellPart(statics, c, hf, null, 8, 4)],
     ["the far feed's tops of its statics", (c) => cityTops(statics, c, hf, null)],

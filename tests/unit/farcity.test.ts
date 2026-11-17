@@ -263,43 +263,45 @@ test("the lattice fades out over the end of its reach exactly where the mass fad
   expect(fades.some((f) => f === -900)).toBe(true);
 });
 
-test("across the lattice's fade into the mass a chunk wholly past the lattice's end draws no lattice and one wholly short of the fade no mass, for the picture both drawn whole give", () => {
-  // Rows of towers in three rows of tiles, one in every chunk from 500 m to 1,600 m off, on medium (the lattice fades out
-  // from 810 to 900 m).
-  const statics: MapStatic[] = [];
-  for (let k = 0; k < 18; k++) for (const cz of [28, 31, 34]) statics.push(...building(...mid(10 + k, cz), 0, 4 + ((k * 5) % 7), 2, (k * 2300 + cz * 700) % 16384));
-  const w = cityWorld({ chunks: 48, statics, width: 480, height: 270 });
-  w.look(16 * CHUNK_SIZE, 10, 31 * CHUNK_SIZE, 880, Math.PI / 2, 30);
-  // Each level's indices on the card, by its slot.
-  const whole = new Map<number, number>();
-  let p = w.frame();
-  for (let f = 0; f < 3; f++, p = w.frame()) for (const u of p.assetUploads) whole.set(u.slot, u.indexCount);
-  const picture = w.raster.color.slice();
-  const draws = cityDraws(p);
-  const drawn = draws.reduce((n, d) => n + p.drawIndexCount[d]!, 0);
-  // Each tile drawn at both levels draws each of them whole, the lattice fading out and the mass in. A tile's draws
-  // share its origin, and a level drawn in the fade at all tells which it is.
-  const tiles = Map.groupBy(draws, (d) => [0, 1, 2].map((a) => p.drawOffset[d * 3 + a]).join());
-  let both = 0;
-  for (const list of tiles.values()) {
-    const sign = new Map<number, number>();
-    for (const d of list) if (p.drawFade[d] === 900 || p.drawFade[d] === -900) sign.set(p.drawSlot[d]!, Math.sign(p.drawFade[d]!));
-    const slots = new Set(list.map((d) => p.drawSlot[d]!));
-    if (slots.size < 2) continue;
-    expect(slots.size).toBe(2);
-    expect(sign.size).toBeGreaterThan(0);
-    both++;
-    const lattice = [...slots].find((s) => sign.get(s) === 1 || (!sign.has(s) && [...sign.values()][0] === -1))!;
-    for (const d of list) [p.drawFirstIndex[d], p.drawIndexCount[d], p.drawFade[d]] = [0, whole.get(p.drawSlot[d]!)!, p.drawSlot[d] === lattice ? 900 : -900];
+test("across a fade between levels a chunk wholly past the one's end draws none of it and one wholly short of the fade none of the other, for the picture both drawn whole give", () => {
+  // Rows of towers in three rows of tiles, one in every chunk across the fade: the lattice into the mass on medium from
+  // 810 to 900 m, and the mass in 4 m cells into that in 8 m cells on high from 1,800 to 2,000 m.
+  for (const { tier, end, from, off } of [{ tier: "medium", end: 900, from: 10, off: 880 }]) {
+    const statics: MapStatic[] = [];
+    for (let k = 0; k < 18; k++) for (const cz of [28, 31, 34]) statics.push(...building(...mid(from + k, cz), 0, 4 + ((k * 5) % 7), 2, (k * 2300 + cz * 700) % 16384));
+    const w = cityWorld({ chunks: 64, statics, width: 480, height: 270, tier: tierOf(tier) });
+    w.look((from + 6) * CHUNK_SIZE, 10, 31 * CHUNK_SIZE, off, Math.PI / 2, 30);
+    // Each level's indices on the card, by its slot.
+    const whole = new Map<number, number>();
+    let p = w.frame();
+    for (let f = 0; f < 3; f++, p = w.frame()) for (const u of p.assetUploads) whole.set(u.slot, u.indexCount);
+    const picture = w.raster.color.slice();
+    const draws = cityDraws(p);
+    const drawn = draws.reduce((n, d) => n + p.drawIndexCount[d]!, 0);
+    // Each tile drawn at both levels draws each of them whole, the one fading out and the other in. A tile's draws
+    // share its origin, and a level drawn in the fade at all tells which it is.
+    const tiles = Map.groupBy(draws, (d) => [0, 1, 2].map((a) => p.drawOffset[d * 3 + a]).join());
+    let both = 0;
+    for (const list of tiles.values()) {
+      const sign = new Map<number, number>();
+      for (const d of list) if (p.drawFade[d] === end || p.drawFade[d] === -end) sign.set(p.drawSlot[d]!, Math.sign(p.drawFade[d]!));
+      const slots = new Set(list.map((d) => p.drawSlot[d]!));
+      if (slots.size < 2) continue;
+      expect(slots.size).toBe(2);
+      expect(sign.size).toBeGreaterThan(0);
+      both++;
+      const finer = [...slots].find((s) => sign.get(s) === 1 || (!sign.has(s) && [...sign.values()][0] === -1))!;
+      for (const d of list) [p.drawFirstIndex[d], p.drawIndexCount[d], p.drawFade[d]] = [0, whole.get(p.drawSlot[d]!)!, p.drawSlot[d] === finer ? end : -end];
+    }
+    // Drawn again as the world's frames are, without the ground.
+    p.tileCount = 0;
+    w.raster.render(p);
+    expect({ tier, both: both >= 3 }).toEqual({ tier, both: true });
+    expect(cityDraws(p).reduce((n, d) => n + p.drawIndexCount[d]!, 0)).toBeGreaterThan(drawn * 1.15);
+    let differ = 0;
+    for (let i = 0; i < picture.length; i++) if (picture[i] !== w.raster.color[i]) differ++;
+    expect({ tier, differ }).toEqual({ tier, differ: 0 });
   }
-  // Drawn again as the world's frames are, without the ground.
-  p.tileCount = 0;
-  w.raster.render(p);
-  expect(both).toBeGreaterThanOrEqual(3);
-  expect(cityDraws(p).reduce((n, d) => n + p.drawIndexCount[d]!, 0)).toBeGreaterThan(drawn * 1.15);
-  let differ = 0;
-  for (let i = 0; i < picture.length; i++) if (picture[i] !== w.raster.color[i]) differ++;
-  expect(differ).toBe(0);
 });
 
 test("a tile wholly short of the last tenth of its reach draws with no fade, and one reaching into it fades there", () => {
@@ -452,12 +454,16 @@ test("a level made from what a worker is sent, its tile's statics, those round i
   const chunks = [9, 10, 11, 17, 18, 19, 25, 26, 27].filter((c) => city.in(c) > 0);
   const lost = new Map(chunks.map((c) => [c, Uint8Array.from({ length: city.in(c) }, () => (rng.float() < 0.2 ? 1 : 0))]));
   const goneOf = (c: number): Uint8Array | null => lost.get(c) ?? null;
-  for (const level of [{ gap: 0.01, least: 0, cell: 0, tall: 0 }, { gap: 0.5, least: 2.1, cell: 0, tall: 0 }, { gap: -1, least: 0, cell: 4, tall: 4 }]) {
+  // The bare lattice's pieces under 1.3 m across, the piers and beams here, are left out as gone ones are.
+  const across = (k: number): number => [w.reg.halfX[k]!, w.reg.halfY[k]!, w.reg.halfZ[k]!].sort((a, b) => a - b)[1]! * 2;
+  const thinOf = (c: number): Uint8Array => Uint8Array.from({ length: city.in(c) }, (_, i) => (goneOf(c)?.[i] === 1 || across(city.kind[city.first[c]! + i]!) < 1.3 ? 1 : 0));
+  expect(chunks.map(thinOf).flatMap((g) => [...g]).filter((g) => g === 1).length).toBeGreaterThan(30);
+  for (const level of [{ gap: 0.01, least: 0, cell: 0, tall: 0 }, { gap: 0.5, least: 2.1, cell: 0, tall: 0 }, { gap: 0.5, least: 2.1, cell: 0, tall: 0, thin: 1.3 }, { gap: -1, least: 0, cell: 4, tall: 4 }]) {
     const made = makeLevel(cityKinds(city, w.hf, bounds), cityJob(0, city, w.hf, goneOf, chunks, level, 32, -8, 32));
     // The same faces, chunk by chunk, made from the whole map and stored as the level stores them.
     let faces = 0;
     chunks.forEach((c, r) => {
-      const part = level.cell > 0 ? cellPart(city, c, w.hf, goneOf(c), level.cell, level.tall) : mergedPart(city, c, w.hf, goneOf, level.gap, level.least);
+      const part = level.cell > 0 ? cellPart(city, c, w.hf, goneOf(c), level.cell, level.tall) : mergedPart(city, c, w.hf, "thin" in level ? thinOf : goneOf, level.gap, level.least);
       expect([made.first[r], made.count[r]]).toEqual([faces * 6, part.faces * 6]);
       const view = new DataView(made.data.buffer);
       for (let v = 0; v < part.faces * 4; v++) {

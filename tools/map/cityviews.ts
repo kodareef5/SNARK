@@ -51,7 +51,8 @@ if (!path || !list || !folder) {
 
 /**
  * Levels, comma separated, each `<form>:<to>` and `inf` for no end: `box` every box unmerged, `boxes` touching boxes
- * merged, `lattice`, `mass:<to>:<size>` (cells 4 m tall), `merged:<to>:<gap>:<least>` or `cells:<to>:<size>:<tall>`.
+ * merged, `lattice`, `bare:<to>[:<thin>]` the lattice without pieces under `thin` metres across (1.3 if not given),
+ * `mass:<to>:<size>` (cells 4 m tall), `merged:<to>:<gap>:<least>` or `cells:<to>:<size>:<tall>`.
  */
 export function readLevels(text: string): CityLevel[] {
   return text.split(",").map((l) => {
@@ -60,6 +61,7 @@ export function readLevels(text: string): CityLevel[] {
     if (kind === "box") return { to: end, gap: -1, least: 0, cell: 0, tall: 0 };
     if (kind === "boxes") return { to: end, gap: 0.01, least: 0, cell: 0, tall: 0 };
     if (kind === "lattice") return { to: end, gap: 0.5, least: 2.1, cell: 0, tall: 0 };
+    if (kind === "bare") return { to: end, gap: 0.5, least: 2.1, cell: 0, tall: 0, thin: Number(a ?? 1.3) };
     if (kind === "mass") return { to: end, gap: -1, least: 0, cell: Number(a), tall: 4 };
     if (kind === "merged") return { to: end, gap: Number(a), least: Number(b ?? 0), cell: 0, tall: 0 };
     return { to: end, gap: -1, least: 0, cell: Number(a), tall: Number(b ?? a) };

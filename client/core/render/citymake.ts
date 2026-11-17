@@ -9,12 +9,16 @@ import { cellPart, mergedPart, type CityForm, type CityPart, type CityStatics, t
 import { HeightWindow, type Heightfield } from "../../../shared/world/heightfield.ts";
 import { quadBytes } from "./packet.ts";
 
-/** What every level of a map's city is made with: its kinds, the ground's scale, and FAR_MESH's bounds its vertices are stored within. */
+/**
+ * What every level of a map's city is made with: its kinds, each one's middle extent in metres, the ground's scale, and
+ * FAR_MESH's bounds its vertices are stored within.
+ */
 export interface CityKinds {
   readonly dims: MapDims;
   readonly halfX: Float32Array;
   readonly halfY: Float32Array;
   readonly halfZ: Float32Array;
+  readonly middle: Float32Array;
   readonly color: Uint8Array;
   readonly plain: Uint8Array;
   readonly walked: CityForm;
@@ -31,6 +35,7 @@ export interface CityJob {
   readonly least: number;
   readonly cell: number;
   readonly tall: number;
+  readonly thin: number;
   /** The tile's chunks with pieces, in the order its mesh holds them, and where its vertices are stored from in the world. */
   readonly chunks: Int32Array;
   readonly ox: number;
@@ -77,14 +82,15 @@ export interface CityMaker {
 
 export function cityKinds(city: CityStatics, hf: Heightfield, bounds: { center: readonly number[]; half: readonly number[] }): CityKinds {
   const { dims, halfX, halfY, halfZ, color, plain, walked, look } = city;
-  return { dims, halfX, halfY, halfZ, color, plain, walked, look, ground: { cell: hf.cell, nx: hf.nx, nz: hf.nz, minY: hf.minY, stepY: hf.stepY }, center: bounds.center, half: bounds.half };
+  const middle = Float32Array.from(halfX, (hx, k) => 2 * (hx + halfY[k]! + halfZ[k]! - Math.max(hx, halfY[k]!, halfZ[k]!) - Math.min(hx, halfY[k]!, halfZ[k]!)));
+  return { dims, halfX, halfY, halfZ, middle, color, plain, walked, look, ground: { cell: hf.cell, nx: hf.nx, nz: hf.nz, minY: hf.minY, stepY: hf.stepY }, center: bounds.center, half: bounds.half };
 }
 
 /**
  * What a level of the tile whose chunks with pieces are `chunks` (in its mesh's order) is made from: `level`'s form, with
  * its vertices stored from (ox, oy, oz). `gone` says which pieces of a chunk are gone.
  */
-export function cityJob(id: number, city: CityStatics, hf: Heightfield, gone: (chunk: number) => Gone, chunks: readonly number[], level: { gap: number; least: number; cell: number; tall: number }, ox: number, oy: number, oz: number): CityJob {
+export function cityJob(id: number, city: CityStatics, hf: Heightfield, gone: (chunk: number) => Gone, chunks: readonly number[], level: { gap: number; least: number; cell: number; tall: number; thin?: number }, ox: number, oy: number, oz: number): CityJob {
   const dims = city.dims;
   let cx0 = Infinity, cz0 = Infinity, cx1 = -Infinity, cz1 = -Infinity;
   for (const c of chunks) {
@@ -122,8 +128,8 @@ export function cityJob(id: number, city: CityStatics, hf: Heightfield, gone: (c
   const j0 = Math.max(0, Math.floor(((cz0 - 1) * CHUNK_SIZE) / hf.cell));
   const i1 = Math.min(hf.nx - 1, Math.floor(((cx1 + 2) * CHUNK_SIZE) / hf.cell) + 1);
   const j1 = Math.min(hf.nz - 1, Math.floor(((cz1 + 2) * CHUNK_SIZE) / hf.cell) + 1);
-  const { gap, least, cell, tall } = level;
-  return { id, gap, least, cell, tall, chunks: Int32Array.from(chunks), ox, oy, oz, area: Int32Array.from(area), counts, kind, yaw, x, y, z, gone: lost, i0, j0, w: i1 - i0 + 1, heights: hf.window(i0, j0, i1, j1) };
+  const { gap, least, cell, tall, thin = 0 } = level;
+  return { id, gap, least, cell, tall, thin, chunks: Int32Array.from(chunks), ox, oy, oz, area: Int32Array.from(area), counts, kind, yaw, x, y, z, gone: lost, i0, j0, w: i1 - i0 + 1, heights: hf.window(i0, j0, i1, j1) };
 }
 
 /** Every buffer of a job, or of what was made, to move it to another thread rather than copy it. */
@@ -163,7 +169,18 @@ export class LevelMaking {
     const { kind, yaw, x, y, z } = job;
     this.city = { dims: k.dims, first, kind, yaw, x, y, z, halfX: k.halfX, halfY: k.halfY, halfZ: k.halfZ, color: k.color, plain: k.plain, walked: k.walked, look: k.look, count: kind.length, in: (chunk: number) => first[chunk + 1]! - first[chunk]! };
     this.ground = new HeightWindow({ ...k.ground, i0: job.i0, j0: job.j0, w: job.w, heights: job.heights });
-    this.gone = (chunk) => (job.gone ? job.gone.subarray(first[chunk]!, first[chunk + 1]!) : null);
+    const gone = (chunk: number): Gone => (job.gone ? job.gone.subarray(first[chunk]!, first[chunk + 1]!) : null);
+    // Pieces thinner across than the level's `thin` are left out as gone ones are: neither drawn nor hiding a face.
+    const thin = new Map<number, Uint8Array>();
+    this.gone = job.thin <= 0 ? gone : (chunk) => {
+      let g = thin.get(chunk);
+      if (!g) {
+        const was = gone(chunk);
+        g = new Uint8Array(first[chunk + 1]! - first[chunk]!).map((_, i) => (was?.[i] === 1 || k.middle[kind[first[chunk]! + i]!]! < job.thin ? 1 : 0));
+        thin.set(chunk, g);
+      }
+      return g;
+    };
   }
 
   get done(): boolean {

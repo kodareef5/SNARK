@@ -86,6 +86,8 @@ export interface LevelForm {
   readonly least: number;
   readonly cell: number;
   readonly tall: number;
+  /** Pieces whose middle extent is under this many metres are left out, none if not given: a beam, a fin, a pier, a sill. */
+  readonly thin?: number;
 }
 
 /** A tile's level on the card: its slot, its bytes there, and where each chunk's faces start in its indices and how many indices they take. */
@@ -586,11 +588,11 @@ export class FarCity {
 
   /** The number of `form` among the forms levels are drawn in, given one if it has none. */
   private formNumber(form: LevelForm): number {
-    const { gap, least, cell, tall } = form;
-    const known = this.forms.findIndex((f) => f.gap === gap && f.least === least && f.cell === cell && f.tall === tall);
+    const { gap, least, cell, tall, thin = 0 } = form;
+    const known = this.forms.findIndex((f) => f.gap === gap && f.least === least && f.cell === cell && f.tall === tall && f.thin === thin);
     if (known >= 0) return known;
     if (this.forms.length === FORMS) throw new Error(`far city: levels in more than ${FORMS} forms`);
-    return this.forms.push({ gap, least, cell, tall }) - 1;
+    return this.forms.push({ gap, least, cell, tall, thin }) - 1;
   }
 
   /** The forms of the levels `levels` names, a bit each. */

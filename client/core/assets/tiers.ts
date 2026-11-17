@@ -91,14 +91,17 @@ export interface Tier {
 const MB = 1024 * 1024;
 // The far city's levels, each drawn to `to` metres (render/farcity.ts): every box, touching boxes merged, which is the
 // near drawing; the lattice, boxes merged across half a metre and those of 2.1 m or less left out, which changes 1% of
-// pixels or less; a building's mass in cells `size` metres wide and 4 m tall.
+// pixels or less; on high and ultra the lattice bare of what is under 1.3 m across (beams, fins, sills, piers, half the
+// lattice's faces), which from 800 m at 1080p and 900 m at 1440p is a pixel across or less and crawls, and changes 0.1 to
+// 1.1% of the pixels of the views from the air; a building's mass in cells `size` metres wide and 4 m tall.
 const boxes = (to: number): CityLevel => ({ to, gap: 0.01, least: 0, cell: 0, tall: 0 });
 const lattice = (to: number): CityLevel => ({ to, gap: 0.5, least: 2.1, cell: 0, tall: 0 });
+const bare = (to: number): CityLevel => ({ to, gap: 0.5, least: 2.1, cell: 0, tall: 0, thin: 1.3 });
 const mass = (to: number, size: number): CityLevel => ({ to, gap: -1, least: 0, cell: size, tall: 4 });
 /** `levels` each drawn `share` as far: the same forms, so nothing made of them is made again (render/farcity.ts). */
 export const nearer = (levels: readonly CityLevel[], share: number): CityLevel[] => levels.map((l) => ({ ...l, to: l.to * share }));
 const MEDIUM_CITY = [boxes(400), lattice(900), mass(Infinity, 8)];
-const HIGH_CITY = [boxes(500), lattice(1300), mass(2000, 4), mass(Infinity, 8)];
+const HIGH_CITY = [boxes(500), lattice(800), bare(1300), mass(2000, 4), mass(Infinity, 8)];
 
 // The touch rule, from the iPhone's kept reports (planning/reference/device-reports, D349): a depth pass into a 1,024
 // map costs 0.18 ms per 100,000 triangles against 0.38 into a 2,048 one, and a lookup of 1 compared tap 0.06 ms a
@@ -132,7 +135,7 @@ export const TIERS: readonly Tier[] = [
   },
   {
     name: "ultra", texture: 4096, textureShare: 0.6, view: 2048, bones: 65536, threshold: 0.08, finest: 0, instanced: 512, pixelRatio: 0, gpuBytes: 4096 * MB, uploadBytes: 4 * MB, diskBytes: 24576 * MB,
-    lit: true, split: 384, reach: { bases: 2048, city: 4096, trees: 3000, rocks: 1200, bushes: 600, parts: 3000 }, fade: 0.1, city: { levels: [boxes(600), lattice(1800), mass(2800, 4), mass(Infinity, 8)] }, nodes: { chunks: 5, band: [280, 312] }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false }, touch: { offered: false }, finish: "full", clouds: 2, water: "simple",
+    lit: true, split: 384, reach: { bases: 2048, city: 4096, trees: 3000, rocks: 1200, bushes: 600, parts: 3000 }, fade: 0.1, city: { levels: [boxes(600), lattice(900), bare(1800), mass(2800, 4), mass(Infinity, 8)] }, nodes: { chunks: 5, band: [280, 312] }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false }, touch: { offered: false }, finish: "full", clouds: 2, water: "simple",
     details: { pool: 6144, share: 1, reach: 1.25, fill: 2 }, budget: { triangles: 8e6, draws: 4096 }, bodyError: 1,
   },
 ];
