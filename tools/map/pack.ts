@@ -10,7 +10,7 @@ import { partsFolder, partsOf, type PartKind } from "../../shared/world/mapfile.
 
 /**
  * Brotli quality and gzip level of the copies. An everyday build's take a few seconds a city; a release build's are the
- * tightest a map ships with and take most of a minute, Miami's landmarks' definitions the longest.
+ * tightest a map ships with and take about 25 s on Miami, made side by side, its landmarks' definitions the longest.
  */
 export const LEVELS = { everyday: { brotli: 9, gzip: 6 }, release: { brotli: 11, gzip: 9 } } as const;
 
