@@ -7,12 +7,16 @@ import { S } from "./ground.ts";
 import type { Site } from "./statics.ts";
 import type { Vocabulary } from "./ruin-vocabulary.ts";
 
-/** The map's scattered layers with every slot taken out whose node would stand in a structure, a route or a canopy's way. */
+/**
+ * The map's scattered layers, resolved (resolveNodes), with every slot taken out besides whose node would stand in a
+ * structure, a route or a canopy's way.
+ */
 export function growRuins(map: MapData, reg: Registry, site: Site, growth: Vocabulary["growth"]): { layers: NodeLayer[]; summary: Record<string, unknown> } {
   const hf = mapHeightfield(map); const source = mapNodes(map, hf, reg)!; const forms = nodeForms(reg);
   const layers = map.nodes.map((layer) => {
     if ("first" in layer) throw new Error("growth takes slots out of scattered layers, and this map lists its nodes");
-    return { ...layer, out: new Uint8Array(Math.ceil((chunkCount(map.dims) * layer.perChunk) / 8)) };
+    if (!layer.out || !layer.other) throw new Error("growth takes slots out of resolved layers: resolveNodes first");
+    return { ...layer, out: layer.out.slice() };
   });
   const takeOut = (chunk: number, slot: number): void => {
     for (const layer of layers) {

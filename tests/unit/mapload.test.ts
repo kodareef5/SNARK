@@ -141,10 +141,10 @@ test("the first frame on this map waits for its head, its land, its two overview
     return [s.answered, s.bytes];
   };
   const size = (kinds: string[]): number => head.bytes + head.parts.filter((p) => kinds.includes(p.kind)).reduce((n, p) => n + p.length, 0);
-  // In a sector's middle, one sector's ground; at the corner of four, four. The page fetched 4.69 MB before its first frame here.
-  expect(await count({ x: 1056, z: 448, vx: 0, vz: 0 })).toEqual([5, 1060246]);
-  expect(await count({ x: 1536, z: 896, vx: 0, vz: 0 })).toEqual([8, 2345311]);
-  expect([size(["land", "overview"]), size(["land", "overview", "ground"])]).toEqual([369235, 4693105]);
+  // In a sector's middle, one sector's ground; at the corner of four, four. The page fetched 4.71 MB before its first frame here.
+  expect(await count({ x: 1056, z: 448, vx: 0, vz: 0 })).toEqual([5, 1072143]);
+  expect(await count({ x: 1536, z: 896, vx: 0, vz: 0 })).toEqual([8, 2357208]);
+  expect([size(["land", "overview"]), size(["land", "overview", "ground"])]).toEqual([381132, 4705002]);
 });
 
 /** What a promise came to: null, or the message it failed with. */

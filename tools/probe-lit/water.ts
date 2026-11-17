@@ -1,14 +1,15 @@
 // The sea on a GPU (D270), a check of tools/probe-lit.ts. The sea is drawn calm, its waves' pictures not sent, and each
 // sea pixel is held to water.ts's twin over what the rasterizer draws under it: a plate of sand 2 m down seen from
 // above, and again under a pond 20 m up on a map with no sea, drawn from its squares (lakes.ts); the shore, where the
-// sea is 5 to 15 cm deep and mostly see-through; the open sea at a grazing angle, where it is the sky table mirrored;
-// and the sea across the split between the depth ranges, from 50 m up over deep water and over the shallows, and from
-// the art director's camera over the proving ground, where a band blended twice or a row left undrawn would show. Each
-// within 5 steps at 99 points in 100.
+// sea is 5 to 15 cm deep, mostly see-through and under its foam, whose footprints the twin takes from the next pixels;
+// the open sea at a grazing angle, where it is the sky table mirrored; and the sea across the split between the depth
+// ranges, from 50 m up over deep water and over the shallows, and from the art director's camera over the proving
+// ground, where a band blended twice or a row left undrawn would show. Each within 5 steps at 99 points in 100.
 //
 // With PROBE_PICTURES naming a folder it also writes what the shell draws with the waves' and the sky's pictures sent:
 // each mood key's two views from the art director's cameras over the proving ground's rim, a beach of an island from
-// eye height toward the light and away from it at the keys' eight hours, and the sea from 50 m up.
+// eye height toward the light and away from it at the keys' eight hours, the sea from 50 m up, and the shore from a
+// boat and from 100 m up.
 // Run by itself, with the folder: bun tools/probe-lit/water.ts [folder]; with WATER_TIME it instead measures WATER full
 // screen, calm and with its waves, and LIT beside it, in ms a megapixel.
 
@@ -22,7 +23,7 @@ import { DRAW_WATER, FRAME, FRAME_FLOATS, type FramePacket } from "../../client/
 import { PROGRAMS, UNIT } from "../../client/core/render/programs.ts";
 import { SKY_SIZE, SKY_SLICES, hourOfSun, skyFrame, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { groundSize } from "../../client/core/render/terrain.ts";
-import { SHORE, WATER_MATERIAL, seaDepth, seaFrame, seaPixel, seaShown } from "../../client/core/render/water.ts";
+import { SHORE, WATER_MATERIAL, seaDepth, seaFoam, seaFrame, seaPixel, seaShown } from "../../client/core/render/water.ts";
 import { describePack } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
@@ -150,6 +151,13 @@ interface Held {
   surface: number;
 }
 
+/** The point of the water's surface at height `sea` the pixel (x, y) of the camera at height `y0` sees, from the camera. */
+function surfaceAt(cam: Camera, y0: number, sea: number, x: number, y: number): number[] {
+  const r = [0, 0, 0];
+  cam.ray((x + 0.5) / W, (y + 0.5) / H, r);
+  return r.map((c) => (c * (sea - y0)) / r[1]!);
+}
+
 const held: Held[] = [];
 const pictured: { key: string; frame: number; name: string }[] = [];
 
@@ -274,10 +282,13 @@ export const waterCheck: LitCheck = {
     for (const key of KEYS) {
       isle.scene.hour = key.hour;
       const toward = lightWay(key.hour, key.moon);
-      const views: [string, number, number, number, number][] = [["toward", toward, 4, 1.7, -0.1], ["away", toward + Math.PI, 4, 1.7, -0.1]];
+      const views: [string, number, number, number, number, boolean?][] = [["toward", toward, 4, 1.7, -0.1], ["away", toward + Math.PI, 4, 1.7, -0.1]];
       if (key.name === "noon" || key.name === "golden" || key.name === "night") views.push(["high toward", toward, 0, 50, -0.16], ["high away", toward + Math.PI, 0, 50, -0.16]);
-      for (const [side, a, back, up, pitch] of views) {
+      // The shore and its foam from a boat 30 m out, and from 100 m up and 150 m out.
+      if (key.name === "noon" || key.name === "golden") views.push(["boat", toward, -30, 2.6, -0.06, true], ["100 m up", toward, -150, 100, -0.5, true]);
+      for (const [side, a, back, up, pitch, inland] of views) {
         onBeach(isle, a, back, up, pitch);
+        if (inland) isle.cam.yaw += Math.PI;
         for (let f = 0; f < 3; f++) {
           const p = build(isle, (beach.frames.length + 1) * (1000 / 60));
           if (beach.frames.length === 0) {
@@ -310,7 +321,8 @@ export const waterCheck: LitCheck = {
       const hf = h.world.hf;
       const size = groundSize(hf);
       const r = [0, 0, 0];
-      let [count, over, worst, cover, seen] = [0, 0, 0, 0, 0];
+      let [count, over, worst, cover, seen, foamed] = [0, 0, 0, 0, 0, 0];
+      const share = [0];
       for (let y = 2; y < H - 2; y++) {
         for (let x = 2; x < W - 2; x++) {
           const at = y * W + x;
@@ -341,12 +353,18 @@ export const waterCheck: LitCheck = {
             below = hazedShown(below, r.map((c) => c * ground), h.block);
             if (!below) continue;
           }
-          const depth = seaDepth(h.block, hf, size, h.window, rel[0]!, rel[2]!, rel[1]!);
+          const depth = seaDepth(h.block, hf, size, h.window, rel[0]!, rel[2]!, rel[1]!, share);
           if (depth <= 0) continue;
           const lean = (Math.asin(-r[1]!) * 180) / Math.PI;
           const want = h.kind === "plate" || (h.kind === "shore" && depth > 0.05 && depth < 0.15) || (h.kind === "grazing" && lean < 4 && depth > 20) || (h.kind === "split" && Math.abs((t * (r[0]! * forward[0]! + r[1]! * forward[1]! + r[2]! * forward[2]!)) / h.cam.split - 1) < 0.15);
           if (!want) continue;
-          const px = seaPixel(h.block, table, [0, 1, 0], r.map((c) => -c), depth, 0);
+          // The foam's footprints, as the GPU's fwidth takes them from the next pixel across and down.
+          const [across, down] = [surfaceAt(cam, h.cam.y, sea, x + 1, y), surfaceAt(cam, h.cam.y, sea, x, y + 1)];
+          const wide = Math.hypot(Math.abs(across[0]! - rel[0]!) + Math.abs(down[0]! - rel[0]!), Math.abs(across[2]! - rel[2]!) + Math.abs(down[2]! - rel[2]!));
+          const deep = Math.abs(seaDepth(h.block, hf, size, h.window, across[0]!, across[2]!, across[1]!) - depth) + Math.abs(seaDepth(h.block, hf, size, h.window, down[0]!, down[2]!, down[1]!) - depth);
+          const foam = seaFoam(h.block, rel[0]!, rel[2]!, depth, share[0]!, wide, deep);
+          const px = seaPixel(h.block, table, [0, 1, 0], r.map((c) => -c), depth, 0, 1, foam);
+          foamed += foam;
           const shown = seaShown(px, rel, below, h.block, table);
           const off = Math.max(...[0, 1, 2].map((k) => Math.abs(gpu[at * 4 + k]! - shown[k]!)));
           count++;
@@ -358,7 +376,7 @@ export const waterCheck: LitCheck = {
       }
       const fine = count >= 300 && over <= count * 0.01;
       ok &&= fine;
-      const extra = h.kind === "shore" ? `; the twin covers ${((cover / Math.max(count, 1)) * 100).toFixed(0)}% of what is under it, and the GPU's pixel is ${(seen / Math.max(count, 1)).toFixed(1)} steps from it on average (fades out over the last ${SHORE} m)` : "";
+      const extra = h.kind === "shore" ? `; the twin covers ${((cover / Math.max(count, 1)) * 100).toFixed(0)}% of what is under it, ${((foamed / Math.max(count, 1)) * 100).toFixed(0)}% with foam, and the GPU's pixel is ${(seen / Math.max(count, 1)).toFixed(1)} steps from it on average (fades out over the last ${SHORE} m)` : "";
       lines.push(`${h.name.padEnd(36)} ${count} points, ${over} over ${NEAR}, worst ${worst.toFixed(1)}${extra}  ${fine ? "ok" : "FAIL"}`);
     }
     const folder = process.env.PROBE_PICTURES;
@@ -377,7 +395,8 @@ export const waterCheck: LitCheck = {
 /**
  * The timing page: each program full screen on a canvas 1,024 square, blended so that a tiled GPU shades every pixel of
  * every draw, by timer query where there is one, else by the clock; seven rounds in a turned order, the median. The
- * sea is a plane 10 m under the eye from 20 m to 420 m off, 2 m deep over ground read from a window 1,025 square.
+ * sea is a plane 10 m under the eye from 20 m to 420 m off, 2 m deep over ground read from a window 1,025 square, or
+ * 15 cm deep, where it is all under foam.
  */
 const TIME_PAGE = `<!doctype html><meta charset="utf-8"><title>water timing</title><body><script type="module">
 const get = async (path) => (await fetch(path)).json();
@@ -488,27 +507,30 @@ try {
 }
 </script>`;
 
-/** WATER full screen, calm and with its waves, inside the window and past the map, and LIT hazed for scale; noon's frame block, in ms a megapixel, blended. */
+/** WATER full screen, calm and with its waves, inside the window and past the map and shallow enough for foam, and LIT hazed for scale; noon's frame block, in ms a megapixel, blended. */
 async function timeWater(chrome: string): Promise<Record<string, number | string | boolean>> {
   const ground = 1025;
   const hf = new Heightfield({ chunksX: 32, chunksZ: 32 }, 2, -64, 1 / 64);
   hf.seaLevel = 0;
-  const frame = (inside: boolean): number[] => {
+  // The ground 2 m under the sea, or `deep` metres under it where the sea's level is moved down to it.
+  const frame = (inside: boolean, deep = 2): number[] => {
     const f = new Float32Array(FRAME_FLOATS);
     skyFrame(12, theSky(), f);
     airFrame(f, theSky(), 12, 0, 0, 0, 4000, 0, false);
     f[FRAME.eyeHeight] = 10;
     seaFrame(f, hf, groundSize(hf), Int32Array.of(0, 0, 0, -1, 0, 0, 0, 0), inside ? 1024 : -2000, 1024, 0);
+    f[FRAME.sea] = f[FRAME.sea]! - (2 - deep) / hf.stepY;
     return [...f];
   };
   // The sea 10 m under the eye, spread over the screen from 20 m to 420 m off.
-  const vertex = `#version 300 es\nout vec3 vRel;\nflat out vec3 vColor;\nvoid main() {\n  vec2 at = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)) * 2.0 - 1.0;\n  vRel = vec3(at.x * 200.0, -10.0, at.y * 200.0 + 220.0);\n  gl_Position = vec4(at, 0.5, 1.0);\n  vColor = vec3(0.24, 0.43, 0.67);\n}`;
+  const vertex = `#version 300 es\nout vec3 vRel;\nflat out vec3 vColor;\nflat out int vSurface;\nvoid main() {\n  vec2 at = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)) * 2.0 - 1.0;\n  vRel = vec3(at.x * 200.0, -10.0, at.y * 200.0 + 220.0);\n  gl_Position = vec4(at, 0.5, 1.0);\n  vColor = vec3(0.24, 0.43, 0.67);\n  vSurface = 0;\n}`;
   const water = PROGRAMS.water!(tierOf("medium"), "rgba");
   const lit = PROGRAMS.flat!(tierOf("medium"), "rgba");
   const runs = [
     { name: "WATER, calm", vertex, fragment: water.fragment, samplers: water.samplers, frame: frame(true), waves: false },
     { name: "WATER, waves", vertex, fragment: water.fragment, samplers: water.samplers, frame: frame(true), waves: true },
     { name: "WATER, waves, open sea", vertex, fragment: water.fragment, samplers: water.samplers, frame: frame(false), waves: true },
+    { name: "WATER, waves, 15 cm deep, foam", vertex, fragment: water.fragment, samplers: water.samplers, frame: frame(true, 0.15), waves: true },
     { name: "LIT, hazed, same place", vertex, fragment: lit.fragment, samplers: lit.samplers, frame: frame(true), waves: false },
   ];
   const mips = { long: packedMips(readPicture(join(ROOT, "assets/source/core/water/long.png"))), short: packedMips(readPicture(join(ROOT, "assets/source/core/water/short.png"))) };

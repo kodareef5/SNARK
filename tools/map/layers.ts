@@ -24,7 +24,7 @@ type Node = Place & { kind: string };
 type Spawn = Place & { name: string };
 type Vehicle = Place & Omit<MapVehicle, "yaw">;
 type Zone = { kinds: Record<string, number>; bare?: number };
-type NodeLayer = { seed: number; perChunk: number; kinds: Record<string, number>; allow?: string; out?: string } | { seed: number; perChunk: number; zones: Zone[]; zone: string; out?: string } | { list: Node[] };
+type NodeLayer = { seed: number; perChunk: number; kinds: Record<string, number>; allow?: string; out?: string; other?: string } | { seed: number; perChunk: number; zones: Zone[]; zone: string; out?: string; other?: string } | { list: Node[] };
 type Region = { spawns: string; count: number; x: number; z: number; radius?: number; half?: [number, number] };
 type Water = { squares: string; bodies: { name: string; surface: number }[] };
 
@@ -72,7 +72,7 @@ export function readLayers(folder: string): MapData {
     return { cell, pixels: image.data.reverse() as Uint8Array };
   };
   const nodes = (json<NodeLayer[]>("nodes.json") ?? []).map((layer): Layer => {
-    const out = !("list" in layer) && layer.out ? { out: need(file(layer.out), layer.out) } : {};
+    const out = { ...(!("list" in layer) && layer.out ? { out: need(file(layer.out), layer.out) } : {}), ...(!("list" in layer) && layer.other ? { other: need(file(layer.other), layer.other) } : {}) };
     if ("zones" in layer) {
       const { cell, pixels } = squares(layer.zone);
       return { seed: layer.seed, perChunk: layer.perChunk, zones: layer.zones.map((z) => ({ bare: z.bare ?? 0, kinds: Object.entries(z.kinds) })), zoneCell: cell, zone: pixels, ...out };
@@ -169,9 +169,10 @@ export function writeLayers(map: MapData, folder: string): void {
   if (map.nodes.length === 0) return;
   const layers = map.nodes.map((layer, i): NodeLayer => {
     const written = plain(layer, i);
-    if ("first" in layer || !layer.out) return written;
-    put(`out-${i}.bits`, layer.out);
-    return { ...written, out: `out-${i}.bits` };
+    if ("first" in layer || "list" in written) return written;
+    if (layer.out) put(`out-${i}.bits`, layer.out);
+    if (layer.other) put(`other-${i}.bits`, layer.other);
+    return { ...written, ...(layer.out ? { out: `out-${i}.bits` } : {}), ...(layer.other ? { other: `other-${i}.bits` } : {}) };
   });
   put("nodes.json", lines(layers));
 

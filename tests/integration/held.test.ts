@@ -8,14 +8,17 @@ import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BTN_JUMP, BTN_SPRINT } from "../../shared/sim/character.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
-import { parseMap, readHead, readPart, setGround, writeMap, type GroundPiece, type MapData, type NodeScatter } from "../../shared/world/mapfile.ts";
+import { parseMap, readHead, readPart, resolveNodes, setGround, writeMap, type GroundPiece, type MapData, type NodeScatter } from "../../shared/world/mapfile.ts";
 import { PROVING_DIMS, buildProvingHeightfield, populateProving } from "../../shared/world/proving.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { simHash } from "../../tools/simhash.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
-/** Hills of 32 by 32 chunks, two sectors a side, a wood and walls round the middle of the first sector, where survivors arrive. */
+/**
+ * Hills of 32 by 32 chunks, two sectors a side, a wood and walls round the middle of the first sector, where survivors arrive.
+ * Where the wood's trees stand is resolved as the map is made.
+ */
 function hills(): MapData {
   const n = 32 * 32 + 1;
   const [minY, stepY] = [-32, 1 / 256];
@@ -26,7 +29,7 @@ function hills(): MapData {
     const [x, z] = [470 + (i % 8) * 11, 470 + Math.floor(i / 8) * 19];
     return { kind: i % 3 === 0 ? "core:crate" : "core:wall", x, y: ground(x, z), z, yaw: i * 5000 };
   });
-  return { id: "test:hills", dims: { chunksX: 32, chunksZ: 32 }, minY, stepY, seaLevel: -Infinity, heights, tint: new Uint8Array(n * n).fill(3), statics, nodes: [wood], spawns: [{ name: "Middle", x: 512, z: 512, yaw: 0 }] };
+  return resolveNodes({ id: "test:hills", dims: { chunksX: 32, chunksZ: 32 }, minY, stepY, seaLevel: -Infinity, heights, tint: new Uint8Array(n * n).fill(3), statics, nodes: [wood], spawns: [{ name: "Middle", x: 512, z: 512, yaw: 0 }] }, coreRegistry());
 }
 
 const file = writeMap(hills());
