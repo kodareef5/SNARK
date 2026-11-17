@@ -374,7 +374,8 @@ export class NearCity {
     stats.steps = stats.made = stats.taken = stats.waiting = 0;
     stats.laid = laid;
     let bytes = 0;
-    for (const [chunk, c] of this.chunks) {
+    for (const chunk of this.chunks.keys()) {
+      const c = this.chunks.get(chunk)!;
       if (c.frame !== this.frame) {
         this.letGo(p, c);
         this.chunks.delete(chunk);
@@ -392,7 +393,8 @@ export class NearCity {
     while (true) {
       if (!this.making) {
         let best = -1, far = Infinity;
-        for (const [chunk, c] of this.chunks) {
+        for (const chunk of this.chunks.keys()) {
+          const c = this.chunks.get(chunk)!;
           if (c.mesh || c.far >= far) continue;
           best = chunk;
           far = c.far;
@@ -475,9 +477,14 @@ export class NearCity {
     return out;
   }
 
+  /** Whether what stands round `chunk` is as the counts `around` were taken (`stamps`). */
   private same(around: Uint32Array, chunk: number, dims: MapDims, standing: Standing): boolean {
-    const now = this.stamps(chunk, dims, standing);
-    for (let k = 0; k < 9; k++) if (now[k] !== around[k]) return false;
+    const cx = chunkCx(dims, chunk), cz = chunkCz(dims, chunk);
+    for (let k = 0; k < 9; k++) {
+      const x = cx + (k % 3) - 1, z = cz + Math.floor(k / 3) - 1;
+      const now = k !== 4 && x >= 0 && z >= 0 && x < dims.chunksX && z < dims.chunksZ ? standing.goneVersion[z * dims.chunksX + x]! : 0;
+      if (now !== around[k]) return false;
+    }
     return true;
   }
 }

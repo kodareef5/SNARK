@@ -148,36 +148,49 @@ function storeOf(piece: Shot["piece"]): StructureStore {
   return structs;
 }
 
-/** The shot drawn `w` by `h` on `tier` with the chunks' pieces as instances, or with their mesh. */
-function picture(shot: Shot, meshed: boolean, tier: string, W: number, H: number): Rasterizer {
+/** What a picture holds of each pixel. */
+type Picture = Pick<Rasterizer, "color" | "depth" | "pickId" | "pickKind">;
+
+/**
+ * The shot drawn `W` by `H` on `tier` with the chunks' pieces as instances, then in the same scene with their meshes, each
+ * once nothing is left to make or put on the card, the frames before cut to no draws as the picture tools settle a view.
+ */
+function pictures(shot: Shot, tier: string, W: number, H: number): [Picture, Picture] {
   const scene = sceneOf(storeOf(shot.piece));
   scene.assets.tier = tierOf(tier);
   scene.viewHeight = H;
   scene.city!.makeMs = Infinity;
   scene.near!.pieces = Infinity;
-  scene.nearMesh = meshed;
   const cam = new Camera();
   [cam.x, cam.y, cam.z, cam.yaw, cam.pitch, cam.aspect] = [shot.x, shot.y, shot.z, shot.yaw, shot.pitch, W / H];
+  const out: Picture[] = [];
   const raster = new Rasterizer(W, H, pack, hf);
   raster.depthBits = 24;
-  for (let f = 0; f < 60; f++) {
-    scene.now += 1000 / 60;
-    raster.render(scene.build(cam, null));
-    const p = scene.packet;
-    if (f > 3 && p.uploads.length + p.assetUploads.length === 0 && scene.city!.stats.behind === 0 && scene.near!.stats.waiting === 0) break;
+  for (const meshed of [false, true]) {
+    scene.nearMesh = meshed;
+    for (let f = 0; f < 60; f++) {
+      scene.now += 1000 / 60;
+      const p = scene.build(cam, null);
+      const done = f > 1 && p.uploads.length + p.assetUploads.length === 0 && scene.city!.stats.behind === 0 && scene.near!.stats.waiting === 0;
+      // A raster of its own sees every level the card has, as it is put there.
+      if (!done) p.drawCount = p.tileCount = 0;
+      raster.render(p);
+      if (done) break;
+    }
+    out.push({ color: raster.color.slice(), depth: raster.depth.slice(), pickId: raster.pickId.slice(), pickKind: raster.pickKind.slice() });
+    const own = scene.near!.chunk(CHUNK);
+    if (meshed && !said && own?.mesh && import.meta.main) {
+      said = true;
+      const m = own.mesh;
+      console.log(`chunk ${CHUNK}: ${city.in(CHUNK)} pieces, ${own.mine.reduce((n, v) => n + v, 0)} in its mesh, ${m.faces} faces, steps ${m.bounds.half.map((h) => ((h / 32767) * 1000).toFixed(3)).join(", ")} mm; chunk ${BESIDE} drawn as instances: ${!scene.near!.chunk(BESIDE)?.mine.includes(1)}`);
+    }
   }
-  const own = scene.near!.chunk(CHUNK);
-  if (meshed && !said && own?.mesh && import.meta.main) {
-    said = true;
-    const m = own.mesh;
-    console.log(`chunk ${CHUNK}: ${city.in(CHUNK)} pieces, ${own.mine.reduce((n, v) => n + v, 0)} in its mesh, ${m.faces} faces, steps ${m.bounds.half.map((h) => ((h / 32767) * 1000).toFixed(3)).join(", ")} mm; chunk ${BESIDE} drawn as instances: ${!scene.near!.chunk(BESIDE)?.mine.includes(1)}`);
-  }
-  return raster;
+  return [out[0]!, out[1]!];
 }
 let said = false;
 
 /** Metres from the eye along the view to what a pixel holds, from the depth it keeps as 24 bits, or Infinity for none. */
-function distance(r: Rasterizer, cam: Camera, split: number, i: number): number {
+function distance(r: Picture, cam: Camera, split: number, i: number): number {
   if (r.depth[i] === Infinity) return Infinity;
   const d = r.depth[i]! / ((2 ** 24 - 1) / 2) - 1;
   const nearRange = split <= 0 || d <= 0;
@@ -196,8 +209,8 @@ export function nearShots(): Shot[] {
 
 /** What a shot's two pictures show where they differ, by pixel and as counts, and what is under the pixels each way. */
 export interface Compared {
-  readonly instances: Rasterizer;
-  readonly mesh: Rasterizer;
+  readonly instances: Picture;
+  readonly mesh: Picture;
   /** Pixels whose colour differs: the same surface's place with another face of two in it shown, the mesh's surface farther than the instances' (a face missing), or nearer (a face more). */
   readonly counts: { same: number; farther: number; nearer: number };
   readonly diff: Uint8ClampedArray;
@@ -206,13 +219,13 @@ export interface Compared {
 
 /** A shot drawn both ways `w` by `h` on `tier`, compared. */
 export function compareShot(shot: Shot, tier: string, W: number, H: number): Compared {
-  const a = picture(shot, false, tier, W, H), b = picture(shot, true, tier, W, H);
+  const [a, b] = pictures(shot, tier, W, H);
   const cam = new Camera();
   const split = tierOf(tier).split;
   const diff = new Uint8ClampedArray(W * H * 4);
   const counts = { same: 0, farther: 0, nearer: 0 };
   const shows = new Map<string, number>();
-  const name = (r: Rasterizer, i: number): string => {
+  const name = (r: Picture, i: number): string => {
     const id = r.pickId[i]!, k = r.pickKind[i]!;
     const chunk = Math.floor(id / 65536), slot = id % 65536;
     return k === PICK_STRUCTURE ? (slot === MESH_SLOT ? `${chunk}:mesh` : `${chunk}:${slot}:${reg.defs[city.kind[city.first[chunk]! + slot] ?? 0]?.id ?? "player"}`) : k === PICK_FAR ? "far" : `pick ${k}`;
