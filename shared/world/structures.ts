@@ -19,6 +19,18 @@ export interface PartTable {
   readonly hulls?: HullTable;
 }
 
+/** A map's statics as columns grouped by chunk, as MapStatics holds them (shared/world/mapfile.ts). */
+export interface PlacedRows {
+  readonly first: Uint32Array;
+  readonly kind: Uint16Array;
+  readonly x: Float32Array;
+  readonly y: Float32Array;
+  readonly z: Float32Array;
+  readonly yaw: Uint16Array;
+  /** The row of the map's `i`th piece, or empty where the rows are in the map's order. */
+  readonly row: Uint32Array;
+}
+
 /** Every kind gets one box of its half extents. */
 function oneBoxEach(halfX: Float32Array, halfY: Float32Array, halfZ: Float32Array): PartTable {
   const n = halfX.length;
@@ -65,6 +77,11 @@ export interface GoneBatch {
 export class ChunkTable {
   /** Bumped on every change to this chunk. 0 means never touched. */
   version = 0;
+  /**
+   * The version this chunk had once placeMap set the map's statics down in it, 0 for one it set none down in. While
+   * `version` is still this, the chunk stands as the map placed it (StructureStore.asPlaced).
+   */
+  placedVersion = 0;
   /** Bumped when a slot's kind, position or yaw changes. Damage, repair and a change of owner leave it alone, so what is drawn need not be rebuilt for them. */
   shape = 0;
   /** Bumped with `shape` but where a slot keeps its place and turn and takes another kind (a door opening), which what is drawn may follow in place. */
@@ -102,14 +119,17 @@ export class ChunkTable {
   /** Table version at which the slot last changed. */
   mod: Uint32Array;
   free: number[] = [];
+  /** `x`, `y`, `z` and `yaw` are the map's own columns, lent by placeMap, until the first write to a slot's place or turn copies them. */
+  private lent: boolean;
 
-  constructor(cap = 16) {
+  constructor(cap = 16, lent: Pick<PlacedRows, "x" | "y" | "z" | "yaw"> | null = null) {
     this.cap = cap;
     this.kind = new Uint16Array(cap);
-    this.x = new Float32Array(cap);
-    this.y = new Float32Array(cap);
-    this.z = new Float32Array(cap);
-    this.yaw = new Uint16Array(cap);
+    this.x = lent ? lent.x : new Float32Array(cap);
+    this.y = lent ? lent.y : new Float32Array(cap);
+    this.z = lent ? lent.z : new Float32Array(cap);
+    this.yaw = lent ? lent.yaw : new Uint16Array(cap);
+    this.lent = lent !== null;
     this.owner = new Uint32Array(cap);
     this.hp = new Float32Array(cap);
     this.mod = new Uint32Array(cap);
@@ -133,8 +153,19 @@ export class ChunkTable {
     if (this.gone.length > GONE_KEPT) this.goneFloor = this.gone.shift()!.version;
   }
 
+  /** Copies the columns it was lent, if it was, so that a slot's place or turn may be written. */
+  own(): void {
+    if (!this.lent) return;
+    this.x = this.x.slice();
+    this.y = this.y.slice();
+    this.z = this.z.slice();
+    this.yaw = this.yaw.slice();
+    this.lent = false;
+  }
+
   ensure(slot: number): void {
     if (slot < this.cap) return;
+    this.lent = false;
     let cap = this.cap;
     while (cap <= slot) cap *= 2;
     const grow = <T extends Uint16Array | Float32Array | Uint32Array>(a: T): T => {
@@ -291,6 +322,76 @@ export class StructureStore {
     return chunk * 65536 + slot;
   }
 
+  /**
+   * Sets down a map's statics in a store that holds nothing, as `add` would one by one in the map's order with no owner and
+   * `hp` of its kind: chunk `c` takes rows `first[c]` up to `first[c + 1]` into its slots in turn, and the grid takes them in
+   * the order `rows.row` gives (the chunks' where it is empty), so every query lists them as it would. `kinds` turns a row's
+   * kind into a content index. Each table and the grid are made the size they need, nothing is logged as changed, and each
+   * chunk is marked as the map placed it (`placedVersion`). Authority only.
+   */
+  placeMap(rows: PlacedRows, kinds: Uint16Array, hp: Float32Array): void {
+    if (this.count !== 0 || this.held.length !== 0) throw new Error("the map's statics are set down in a store that holds nothing");
+    const { first, kind, x, z, yaw } = rows;
+    const placeable = (r: number): boolean => {
+      const k = kinds[kind[r]!]!;
+      return k > 0 && k < this.halfX.length && this.halfX[k] !== 0;
+    };
+    // Per row, its slot, or -1 where add would have refused it.
+    const slotOf = new Int32Array(kind.length);
+    for (let c = 0; c + 1 < first.length; c++) {
+      let n = 0;
+      for (let r = first[c]!; r < first[c + 1]!; r++) slotOf[r] = placeable(r) && n < MAX_SLOTS_PER_CHUNK ? n++ : -1;
+      if (n === 0) continue;
+      // Where every row takes a slot, the slots' places and turns are the map's own columns.
+      const [from, to] = [first[c]!, first[c + 1]!];
+      const lent = n === to - from ? { x: x.subarray(from, to), y: rows.y.subarray(from, to), z: z.subarray(from, to), yaw: yaw.subarray(from, to) } : null;
+      const t = (this.chunks[c] = new ChunkTable(n, lent));
+      this.held.push(c);
+      for (let r = from; r < to; r++) {
+        const s = slotOf[r]!;
+        if (s < 0) continue;
+        const k = kinds[kind[r]!]!;
+        t.kind[s] = k;
+        if (!lent) {
+          t.x[s] = x[r]!;
+          t.y[s] = rows.y[r]!;
+          t.z[s] = z[r]!;
+          t.yaw[s] = yaw[r]!;
+        }
+        t.hp[s] = hp[k]!;
+        t.mod[s] = s + 1;
+      }
+      // What was set down is not in the log of changes.
+      t.high = t.live = t.version = t.placedVersion = t.recentFloor = t.shape = t.placed = n;
+      this.count += n;
+      this.shapes += n;
+    }
+    const order = rows.row;
+    const each = (put: (r: number) => void): void => {
+      for (let i = 0; i < kind.length; i++) {
+        const r = order.length > 0 ? order[i]! : i;
+        if (slotOf[r]! < 0) continue;
+        this.footprint(kinds[kind[r]!]!, x[r]!, z[r]!, yaw[r]!);
+        put(r);
+      }
+    };
+    let nodes = 0;
+    each(() => (nodes += (this.fx1 - this.fx0 + 1) * (this.fz1 - this.fz0 + 1)));
+    // Room for what players build is left past the map's, and pages never written to cost no memory.
+    this.growNodes(this.nodeHigh + nodes + (nodes >> 3));
+    each((r) => this.link(chunkAt(this.dims, x[r]!, z[r]!) * 65536 + slotOf[r]!, kinds[kind[r]!]!, rows.y[r]!));
+    for (const c of this.held) this.onChunkChanged?.(c, false);
+  }
+
+  /**
+   * Whether `chunk` holds what the map set down in it and nothing else, as placeMap set it down: nothing in it has changed
+   * since, health and owner included. A chunk the map set nothing down in stands so while nothing is built in it. Authority only.
+   */
+  asPlaced(chunk: number): boolean {
+    const t = this.chunks[chunk];
+    return !t || t.version === t.placedVersion;
+  }
+
   /** Called with a structure's ref and cause before it is removed, while its row can still be read. Authority only. */
   onRemove: ((ref: number, cause: number) => void) | null = null;
 
@@ -415,7 +516,8 @@ export class StructureStore {
     if (from === to) return 0;
     for (let chunk = 0; chunk < this.chunks.length; chunk++) {
       const t = this.chunks[chunk];
-      if (!t) continue;
+      // A chunk as the map placed it holds only pieces owned by nobody.
+      if (!t || (from !== 0 && t.version === t.placedVersion)) continue;
       let any = false;
       for (let slot = 0; slot < t.high; slot++) {
         if (t.kind[slot] === 0 || t.owner[slot] !== from) continue;
@@ -589,6 +691,7 @@ export class StructureStore {
   private write(chunk: number, t: ChunkTable, slot: number, kind: number, x: number, y: number, z: number, yaw: number, owner: number, hp: number, mod: number, inPlace = false): void {
     if (!inPlace) t.placed++;
     t.ensure(slot);
+    t.own();
     if (slot >= t.high) t.high = slot + 1;
     t.kind[slot] = kind;
     t.x[slot] = x;
@@ -603,7 +706,11 @@ export class StructureStore {
     t.live++;
     this.count++;
     this.footprint(kind, x, z, yaw);
-    const ref = chunk * 65536 + slot;
+    this.link(chunk * 65536 + slot, kind, y);
+  }
+
+  /** Puts `ref`, of `kind` with its centre at height `y`, at the head of the list of each grid cell from fx0..fz1. */
+  private link(ref: number, kind: number, y: number): void {
     for (let cz = this.fz0; cz <= this.fz1; cz++) {
       for (let cx = this.fx0; cx <= this.fx1; cx++) {
         const cells = (this.heads[(cz >> 4) * this.dims.chunksX + (cx >> 4)] ??= new Int32Array(CELLS * CELLS));
@@ -642,6 +749,7 @@ export class StructureStore {
       }
     }
     // Empty slots hold zeros, so equal tables are equal byte for byte.
+    t.own();
     t.kind[slot] = 0;
     t.x[slot] = 0;
     t.y[slot] = 0;
@@ -685,21 +793,21 @@ export class StructureStore {
       this.nodeFree = this.nodeNext[node]!;
       return node;
     }
-    if (this.nodeHigh === this.nodeRef.length) {
-      const cap = this.nodeHigh * 2;
-      const refs = new Uint32Array(cap);
-      refs.set(this.nodeRef);
-      this.nodeRef = refs;
-      const next = new Int32Array(cap);
-      next.set(this.nodeNext);
-      this.nodeNext = next;
-      const bottom = new Float32Array(cap);
-      bottom.set(this.nodeBottom);
-      this.nodeBottom = bottom;
-      const top = new Float32Array(cap);
-      top.set(this.nodeTop);
-      this.nodeTop = top;
-    }
+    if (this.nodeHigh === this.nodeRef.length) this.growNodes(this.nodeHigh * 2);
     return this.nodeHigh++;
+  }
+
+  /** Makes room for `cap` grid nodes, if there is less. */
+  private growNodes(cap: number): void {
+    if (cap <= this.nodeRef.length) return;
+    const grow = <T extends Uint32Array | Int32Array | Float32Array>(a: T): T => {
+      const b = new (a.constructor as new (n: number) => T)(cap);
+      b.set(a.subarray(0, this.nodeHigh));
+      return b;
+    };
+    this.nodeRef = grow(this.nodeRef);
+    this.nodeNext = grow(this.nodeNext);
+    this.nodeBottom = grow(this.nodeBottom);
+    this.nodeTop = grow(this.nodeTop);
   }
 }

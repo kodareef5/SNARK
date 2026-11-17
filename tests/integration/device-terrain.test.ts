@@ -41,27 +41,27 @@ test("the terrain flight is offered only by its own server's link, flies the cam
   }
   expect(strayed).toBeGreaterThan(100);
   // Then far bases at medium: on the proving ground, in the chunks the near store does not hold whole and the feed sent
-  // nothing for; taken away after, and what the feed sent kept. It was 58 chunks until the obelisk's pieces stood in one
-  // that had none.
-  expect(t.far.map((g) => [g.asked, g.chunks, g.farDraws > 0])).toEqual([[0, 0, false], [130, 57, true], [480, 57, true]]);
-  expect([sent > 0, app.session.far.chunks.size === sent, app.ui.settings.tier]).toEqual([true, true, "medium"]);
+  // nothing for; taken away after. The proving ground's only far pieces are its own, which stand as the map placed them
+  // and which the page draws from its copy of the map, so the feed has sent nothing and nothing is left.
+  expect(t.far.map((g) => [g.asked, g.chunks, g.farDraws > 0])).toEqual([[0, 0, false], [130, 58, true], [480, 58, true]]);
+  expect([sent, app.session.far.chunks.size, app.ui.settings.tier]).toEqual([0, 0, "medium"]);
   // Then the wood on each tier the device takes. The proving ground's far nodes are only in the chunks at its west and
   // north edges that the near field leaves out, which the turning camera faces in some rungs and not in others, as its
   // settling took longer or shorter: whether a rung drew any is not judged here.
   expect(t.wood.map((g) => `${g.tier} ${g.reach}${g.band ? " band" : ""}`)).toEqual(["lowpoly 500", "medium 1200", "high 2000", "medium 1200 band"]);
-  expect(lacking(r, "terrain").filter((line) => !line.startsWith("wood "))).toEqual(["no frame on medium carried rows of the terrain window", "no frame on lowpoly carried rows of the terrain window", "far 130: bases stood in 57 chunks", "far 480: bases stood in 57 chunks", "the wood has no rung on ultra"]);
+  expect(lacking(r, "terrain").filter((line) => !line.startsWith("wood "))).toEqual(["no frame on medium carried rows of the terrain window", "no frame on lowpoly carried rows of the terrain window", "far 130: bases stood in 58 chunks", "far 480: bases stood in 58 chunks", "the wood has no rung on ultra"]);
   const table = deviceTable(r);
   expect(table.some((line) => line.startsWith("terrain   a map 0.5 km across"))).toBe(true);
-  expect(table.some((line) => /^57\/130 +(yes|GPU|ours|invalid) /.test(line))).toBe(true);
+  expect(table.some((line) => /^58\/130 +(yes|GPU|ours|invalid) /.test(line))).toBe(true);
   expect(table.some((line) => /^high +(yes|GPU|ours|invalid) /.test(line))).toBe(true);
 
-  // The soak on this server stands at the middle among the far bases, with nothing else, and takes them away after: 57
+  // The soak on this server stands at the middle among the far bases, with nothing else, and takes them away after: 58
   // chunks of them, as above.
   probe.start("soak");
   let among = 0;
   await run(probe, h, app, card.r, 30000, { each: () => void (among = Math.max(among, app.session.far.chunks.size - sent)) });
   const s = probe.report.soak!;
-  expect([probe.report.done, s.wood, s.load.bodies, s.minutes.length, among, app.session.far.chunks.size === sent]).toEqual([true, true, 0, 1, 57, true]);
+  expect([probe.report.done, s.wood, s.load.bodies, s.minutes.length, among, app.session.far.chunks.size === sent]).toEqual([true, true, 0, 1, 58, true]);
   // The picture probes look at the proving ground, so a soak through the wood lacks none.
   expect(lacking(probe.report, "soak")).not.toContain("no probes");
   expect(deviceTable(probe.report).some((line) => line.startsWith("soak      high: turning once a minute (the terrain map's wood and 480 far base chunks round its middle"))).toBe(true);

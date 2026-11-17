@@ -7,7 +7,7 @@ import { chunkAt } from "../../shared/coords.ts";
 import { BitReader } from "../../shared/net/codec.ts";
 import { CMD_FAR, CMD_MAP_ZOOM, CMD_VIEW, S_FAR } from "../../shared/net/protocol.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
-import { writeMap } from "../../shared/world/mapfile.ts";
+import { parseMap, writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
 import { FarCells, farTopMetres, readFar } from "../../shared/world/tactical.ts";
 import { farJoin } from "../../tools/bench/far.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -17,8 +17,8 @@ const SAMPLES = ((DIMS.chunksX * 64) / TERRAIN_CELL + 1) * ((DIMS.chunksZ * 64) 
 /** A flat map 8,192 m by 256 m with nothing on it, its ground at 0. */
 const WIDE = writeMap({ id: "test:wide", dims: DIMS, minY: -32, stepY: 1 / 256, seaLevel: -Infinity, heights: new Uint16Array(SAMPLES).fill(32 * 256), tint: new Uint8Array(SAMPLES).fill(1), statics: [], nodes: [], spawns: [{ name: "West", x: 100, z: 100, yaw: 0 }] });
 
-function wide() {
-  const h = new Harness({}, 1, 60, { map: WIDE });
+function wide(map = WIDE) {
+  const h = new Harness({}, 1, 60, { map });
   const world = h.world;
   const k = (id: string): number => h.reg.index.get(`core:${id}`)!;
   /** A hut two foundations square with a wall and a tower of pillars to 30.3 m, its corner at (x, z). */
@@ -169,4 +169,41 @@ test("on one stream as Linux runs it, 400 base chunks in reach hold a join's nea
   // The feed was busy meanwhile: most of the base chunks in reach came within the seven seconds, at 8 KB a second.
   expect(r.held).toBeGreaterThan(300);
   expect(r.farBytes).toBeLessThanOrEqual(7 * 8192);
+});
+
+test("a session that holds the map's statics is sent no far cells of chunks as the map placed them, and a chunk's from the moment it changes, emptied too; one that does not is sent them all", () => {
+  // A tower of three pillars in each chunk of the map's second row from 64 m to 2.5 km east.
+  const towers: MapStatic[] = [];
+  for (let cx = 1; cx < 40; cx++) for (let i = 0; i < 3; i++) towers.push({ kind: "core:pillar", x: cx * 64 + 20, y: 3.3 + i * 6, z: 96, yaw: 0 });
+  const city = writeMap({ ...parseMap(WIDE), id: "test:wide-city", statics: towers });
+  const { h, world, tap } = wide(city);
+  const a = h.join("ada");
+  const b = h.join("bob", {}, { statics: false });
+  const [sa, sb] = [tap(a), tap(b)];
+  const run = (ms: number): void =>
+    h.run(ms, () => {
+      a.askFar(2048);
+      b.askFar(2048);
+    });
+  const chunkOf = (cx: number): number => DIMS.chunksX + cx;
+  const inReach = [...Array(39).keys()].map((i) => i + 1).filter((cx) => Math.hypot(cx * 64 + 32 - 100, 96 - 100) <= 2048);
+  run(4000);
+  const bytes = (m: Uint8Array[]): number => m.reduce((n, d) => n + d.length, 0);
+  // The join costs Ada's far feed nothing. Bob is sent every tower in reach, 33 of them, 9 bytes each.
+  expect([sa.length, bytes(sa), sb.length, inReach.length, bytes(sb)]).toEqual([0, 0, inReach.length, 33, 297]);
+  // The top of the tower 1 km off is shot away: each is sent that chunk once, Ada its cells for the first time.
+  const shot = chunkOf(16);
+  expect(world.structs.asPlaced(shot)).toBe(true);
+  world.structs.remove(shot * 65536 + 2);
+  expect(world.structs.asPlaced(shot)).toBe(false);
+  run(3000);
+  const chunksOf = (m: Uint8Array[]): number[] => m.map((d) => readFar(new BitReader(d.subarray(1)), new FarCells()));
+  expect([chunksOf(sa), chunksOf(sb.slice(inReach.length))]).toEqual([[shot], [shot]]);
+  expect(Math.abs(farTopMetres(a.far.cellAt(16 * 64 + 20, 96) & 255) - 9.3 - 3)).toBeLessThanOrEqual(0.5);
+  // The tower beside it is taken down whole: Ada, who was sent none of it, is sent it empty, and her far store hears of it.
+  const razed = chunkOf(17);
+  for (let s = 0; s < 3; s++) world.structs.remove(razed * 65536 + s);
+  run(3000);
+  expect([chunksOf(sa), a.far.chunks.has(razed), a.far.changed[razed]! > 0]).toEqual([[shot, razed], false, true]);
+  expect(chunksOf(sb.slice(inReach.length))).toEqual([shot, razed]);
 });
