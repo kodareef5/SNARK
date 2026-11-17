@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { SURFACE_NAMES, surfaceIndex } from "../../content/surfaces.ts";
-import { citySurface, surfaceHash, surfaceNoise, WORLD_MEANS, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { GROUND_GRAIN, GROUND_WANDER, citySurface, groundCover, groundWander, surfaceHash, surfaceNoise, WORLD_MEANS, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TIERS, forTouch } from "../../client/core/assets/tiers.ts";
-import { FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX, PULLED_VERTEX } from "../../client/core/render/glsl.ts";
+import { FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX } from "../../client/core/render/glsl.ts";
 import { worldMaterial } from "../../tools/surfaces/build.ts";
 import { rgbaOf } from "../../tools/snap/files.ts";
 import { artTest } from "../fixtures/needs-art.ts";
@@ -37,12 +37,53 @@ test("all finishes have bounded reflectance and unit normals at near and flyer f
   }
 });
 
-test("the textured vertex variants carry semantic IDs while low-poly shader sources stay untouched", () => {
-  for (const [text, ground] of [[FLAT_MESH_VERTEX, false], [FLAT_TERRAIN_VERTEX, true], [PULLED_VERTEX, false]] as const) {
-    const shader = worldVertex(text, ground);
-    expect(shader).toContain("vSurface = SURFACE_IDS[");
+test("the textured mesh vertex variants carry semantic IDs while low-poly shader sources stay untouched; the lit ground chooses its cover a pixel", () => {
+  for (const text of [FLAT_MESH_VERTEX, PULLED_VERTEX]) {
+    expect(worldVertex(text)).toContain("vSurface = SURFACE_IDS[");
     expect(text).not.toContain("SURFACE_IDS");
   }
+  expect([FLAT_TERRAIN_VERTEX.includes("uTint"), LIT_TERRAIN_VERTEX.includes("uTint")]).toEqual([true, false]);
+  expect(LIT_TERRAIN_FRAGMENT).toContain("worldSurface(albedo, orm, n, geometric, groundSurface(tint))");
+});
+
+test("the ground takes the cover with most of the bilinear weight, so an edge between two curves through a cell and a corner's cover is a rounded bite", () => {
+  const [A, B, C] = [12, 4, 1];
+  // Two covers side by side meet halfway between their samples; a cover at one corner reaches halfway along the cell's sides.
+  for (const f of [0.1, 0.3, 0.49, 0.51, 0.9]) {
+    expect(groundCover(A, B, A, B, f, 0.37)).toBe(f < 0.5 ? A : B);
+    expect(groundCover(B, A, A, A, f, 0)).toBe(f < 0.5 ? B : A);
+  }
+  // Along the diagonal, B at one corner holds where its weight passes a half: (1 - x)(1 - z) > 0.5.
+  expect([groundCover(B, A, A, A, 0.28, 0.28), groundCover(B, A, A, A, 0.3, 0.3)]).toEqual([B, A]);
+  // Three covers: the one with most weight, even where the nearest sample is another's; and the first where two tie.
+  expect(groundCover(A, B, C, B, 0.2, 0.2)).toBe(A);
+  expect(groundCover(A, B, C, B, 0.45, 0.2)).toBe(B);
+  expect(groundCover(A, B, B, A, 0.5, 0.5)).toBe(A);
+});
+
+test("the cover's edge wanders by at most GROUND_WANDER, smoothly, and not once a pixel is half the noise's grain", () => {
+  const out = new Float64Array(2);
+  const last = new Float64Array(2);
+  let [most, steps, mean] = [0, 0, 0];
+  for (let k = 0; k < 20000; k++) {
+    const x = 7.3 + k * 0.011;
+    groundWander(x, 3.1 + Math.sin(k * 0.002) * 5, 0.05, out);
+    most = Math.max(most, Math.abs(out[0]!), Math.abs(out[1]!));
+    if (k > 0) steps = Math.max(steps, Math.abs(out[0]! - last[0]!), Math.abs(out[1]! - last[1]!));
+    mean += out[0]! / 20000;
+    last.set(out);
+  }
+  expect(most).toBeLessThanOrEqual(GROUND_WANDER);
+  expect(most).toBeGreaterThan(GROUND_WANDER / 2);
+  // Steps of 1.1 cm along x and at most 1 cm along z move it by at most the noise's steepest, 1.5 times its span a grain.
+  expect(steps).toBeLessThan(0.02);
+  expect(Math.abs(mean)).toBeLessThan(0.1);
+  groundWander(31.7, 8.2, GROUND_GRAIN / 4, out);
+  const full = [...out];
+  groundWander(31.7, 8.2, (GROUND_GRAIN * 3) / 8, out);
+  expect(out.map((v, k) => v / full[k]!)).toEqual(Float64Array.of(0.5, 0.5));
+  groundWander(31.7, 8.2, GROUND_GRAIN / 2, out);
+  expect([...out]).toEqual([0, 0]);
 });
 
 artTest("a distant finish fades to its mean in the atlas's 4 x 4 mip without reading it; the normal map's mean is flat", () => {

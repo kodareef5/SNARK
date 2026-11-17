@@ -22,9 +22,9 @@ bun test ./tools/mapworld/ruins.test.ts
 bun run check
 ```
 
-`--release` after the name writes the map's copies for the wire as tightly as
-they go, as a map that ships has: about a minute and a half more than the few
-seconds an everyday build takes for them (`tools/map/pack.ts`).
+`--release` after the name writes the copies for the wire of the map's parts as
+tightly as they go, as a map that ships has: about 25 s on Miami where an
+everyday build takes a few (`tools/map/pack.ts`).
 
 `world.ruins.report` chooses the report folder. `world.ruins.yardDistricts`
 chooses working container yards. `world.bridgeGapLayer` names the authored

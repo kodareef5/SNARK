@@ -4,7 +4,8 @@
 //   bun tools/map.ts unpack <file.snmap> <folder>   the folder a map is built from
 //   bun tools/map.ts proving <out.snmap>            the proving ground, as the server runs it with no --map
 //   bun tools/map.ts info <file.snmap>              what a file holds
-//   bun tools/map.ts pack <file.snmap>              its copies for the wire (tools/map/pack.ts), which a build writes too
+//   bun tools/map.ts pack <file.snmap>              its head's and parts' files and their copies for the wire beside it
+//                                                   (tools/map/pack.ts), which a build writes too
 //
 // build, proving and pack take --release for the tightest copies, as a map that ships has.
 //
@@ -61,7 +62,7 @@ import { CHUNK_SIZE } from "../shared/coords.ts";
 import { mapHeightfield, parseMap, writeMap, type MapData } from "../shared/world/mapfile.ts";
 import { groundSize } from "../client/core/render/terrain.ts";
 import { readLayers, writeLayers } from "./map/layers.ts";
-import { writeMapFile } from "./map/pack.ts";
+import { partsTable, writeMapFile } from "./map/pack.ts";
 
 const registry = () => compileContent(CORE_CONTENT).registry!;
 const WEBGL2_TEXTURE = 2048;
@@ -115,12 +116,11 @@ export function describe(file: Uint8Array): string[] {
   return lines;
 }
 
-/** Writes the map and its copies for the wire, a release build's if `release`, and says what it holds and what a client fetches of it. */
+/** Writes the map and its parts' files with their copies, a release build's if `release`, and says what it holds and what a client fetches of it. */
 export async function save(path: string, map: MapData | Uint8Array, release = false): Promise<void> {
   const file = map instanceof Uint8Array ? map : writeMap(map);
   const packed = await writeMapFile(path, file, release);
-  for (const line of describe(file)) console.log(line);
-  console.log(`on the wire: ${packed.ground} bytes before a client draws and ${packed.br.length} in all (Brotli), ${packed.gz.length} gzip`);
+  for (const line of [...describe(file), ...partsTable(packed)]) console.log(line);
 }
 
 /** `args` are the words after the command's name, less --release. Another tool adds its command here. */

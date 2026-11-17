@@ -2,6 +2,7 @@ import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import type { MapData, NodeList, NodeScatter, NodeZoned } from "../../shared/world/mapfile.ts";
+import { MapWater } from "../../shared/world/water.ts";
 
 /** Flat ground at y = 0, `chunks` on a side, with one spawn point in the middle and no water. */
 export function flatMap(chunks = 4, more: Partial<MapData> = {}): MapData {
@@ -58,4 +59,39 @@ export function busyMap(): MapData {
       { kind: "core:compact", x: 90, z: 120 + 1 / 512, yaw: 0 },
     ],
   };
+}
+
+/**
+ * Ground of 70 by 20 chunks whose corner is off the lattice's grids of sectors and of overviews, so that it lies on two
+ * overviews and ten sectors, the first column of each 8 chunks wide: with every kind of node layer, water in both overviews,
+ * and statics in every sector, some on squares' edges and the map's.
+ */
+export function wideMap(): MapData {
+  const rng = new Rng(43);
+  const dims = { chunksX: 70, chunksZ: 20, frameX: 2040, frameZ: 2050, originX: 2112, originZ: 2080 };
+  const [nx, nz] = [70 * 32 + 1, 20 * 32 + 1];
+  const heights = Uint16Array.from({ length: nx * nz }, (_, k) => 8000 + ((k % nx) * 3 + Math.floor(k / nx) * 5) % 900 + rng.int(40));
+  const bits = (n: number): Uint8Array => Uint8Array.from({ length: Math.ceil(n / 8) }, () => rng.int(256));
+  const scatter: NodeScatter = { seed: 5, perChunk: 20, kinds: [["core:tree", 3], ["core:rock", 1]], allowCell: 8, allow: bits(560 * 160), out: bits(1400 * 20) };
+  const zone = Uint8Array.from({ length: 280 * 80 }, (_, k) => Math.floor(k / 280 / 20 + (k % 280) / 50) % 3);
+  const zones = [{ bare: 1, kinds: [["core:palm", 2]] as [string, number][] }, { bare: 0, kinds: [["core:fig", 1], ["core:fern", 1]] as [string, number][] }];
+  const zoned: NodeZoned = { seed: 6, perChunk: 16, zones, zoneCell: 16, zone, out: bits(1400 * 16) };
+  const other: NodeZoned = { seed: 7, perChunk: 8, zones: [zones[1]!], zoneCell: 16, zone: zone.map((z, k) => (k % 7 === 0 ? 0 : Math.min(z, 1))) };
+  const first = new Uint32Array(1401);
+  for (let c = 0; c < 1400; c++) first[c + 1] = first[c]! + (c % 7 === 3 ? 2 : 0);
+  const rows = first[1400]!;
+  const list: NodeList = { kinds: ["core:bush", "core:rock"], first, kind: Uint8Array.from({ length: rows }, (_, r) => r % 2), x: Uint16Array.from({ length: rows }, () => rng.int(65536)), z: Uint16Array.from({ length: rows }, () => rng.int(65536)), yaw: Uint16Array.from({ length: rows }, () => rng.int(65536)) };
+  const grid = new Uint16Array(560 * 160);
+  for (let j = 30; j < 70; j++) for (let i = 20; i < 540; i += 3) grid[j * 560 + i] = 1 + (i % 2);
+  const water = MapWater.fromGrid(dims, -32, 1 / 256, 8, [{ name: "Long Pond", level: 8300 }, { name: "", level: 8200 }], grid);
+  const kinds = ["core:wall", "core:crate", "core:pillar"];
+  const statics = [
+    ...Array.from({ length: 4000 }, (_, i) => ({ kind: kinds[i % 3]!, x: rng.int(4480 * 512) / 512, y: rng.int(80 * 512) / 512, z: rng.int(1280 * 512) / 512, yaw: rng.int(65536) })),
+    { kind: "core:wall", x: 512, y: 3, z: 0, yaw: 0 },
+    { kind: "core:wall", x: 4480, y: 3, z: 1280, yaw: 1 },
+    { kind: "core:crate", x: 511 + 511 / 512, y: -1024, z: 896, yaw: 65535 },
+    // Under a sector's edge, on it once set on the 1/512 m lattice.
+    { kind: "core:wall", x: 512 - 1 / 4096, y: 3, z: 700, yaw: 2 },
+  ];
+  return { id: "test:wide", dims, minY: -32, stepY: 1 / 256, seaLevel: 0, heights, tint: Uint8Array.from({ length: nx * nz }, () => rng.int(256)), statics, nodes: [scatter, list, zoned, other], spawns: [{ name: "West", x: 4000, z: 600, yaw: 0 }], water };
 }

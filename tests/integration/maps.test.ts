@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
+import { brotliDecompressSync } from "node:zlib";
 import { CORE_PACK } from "../../content/core.ts";
 import { createHost, type Host } from "../../server/host.ts";
 import { mapRoutes } from "../../server/main.ts";
@@ -11,7 +11,8 @@ import { compilePacks } from "../../shared/content/packs.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { chunkCount, framed } from "../../shared/coords.ts";
 import { RESULT_OK } from "../../shared/net/protocol.ts";
-import { parseMap, writeMap } from "../../shared/world/mapfile.ts";
+import { parseMap, readHead, writeMap } from "../../shared/world/mapfile.ts";
+import { writeMapFile } from "../../tools/map/pack.ts";
 import type { NodeSpot } from "../../shared/world/nodes.ts";
 import { PROVING_DIMS, PROVING_ID, PROVING_SPAWNS, buildProvingHeightfield, populateProving, provingNodes } from "../../shared/world/proving.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
@@ -28,22 +29,24 @@ test("a new map is a file: a flat one made here runs a server, is served as a br
   const h = new Harness({}, 1, 60, { map: file });
   expect([h.world.mapId, h.world.dims, h.world.structs.count, h.world.nodeField]).toEqual(["test:flat", framed({ chunksX: 4, chunksZ: 4 }), 1, null]);
 
-  // map.json names the file, and the file is the map, compressed for whoever takes it so.
-  const route = mapRoutes(h.host.mapFile!, h.world.mapId, h.world.mapHash);
-  const named = (await route("/map.json", "")!.json()) as { id: string; hash: number; file: string };
-  expect([named.id, named.hash, /^map\.[0-9a-f]{16}\.snmap$/.test(named.file)]).toEqual(["test:flat", h.world.mapHash, true]);
-  const packed = route(`/${named.file}`, "gzip, br")!;
-  expect([packed.headers.get("content-encoding"), packed.headers.get("cache-control")]).toEqual(["gzip", "public, max-age=31536000, immutable"]);
-  expect(parseMap(Bun.gunzipSync(await packed.arrayBuffer())).hash).toBe(h.world.mapHash);
-  expect(new Uint8Array(await route(`/${named.file}`, "")!.arrayBuffer())).toEqual(file);
-  expect(route("/index.html", "gzip")).toBeNull();
-  // The page is sent with a header that has it ask for the file while it is read, named as the page names it, beside itself.
-  expect(route.link).toBe(`<${named.file}>; rel=preload; as=fetch; crossorigin`);
-  // With the copies its build wrote, the file goes out as Brotli to whoever takes it, and as their gzip to the rest.
-  const copied = mapRoutes(h.host.mapFile!, h.world.mapId, h.world.mapHash, { br: new Blob([brotliCompressSync(file)]), gz: new Blob([Bun.gzipSync(file)]) });
-  const br = copied(`/${named.file}`, "gzip, deflate, br")!;
-  expect([br.headers.get("content-encoding"), new Uint8Array(brotliDecompressSync(await br.arrayBuffer()))]).toEqual(["br", file]);
-  expect(copied(`/${named.file}`, "gzip, deflate")!.headers.get("content-encoding")).toBe("gzip");
+  // map.json names the head, and the head and each of its parts are served by their names, gzipped for whoever takes it so.
+  const route = mapRoutes(h.host.mapFile!, h.world.mapId);
+  const ask = (path: string, accepts = ""): Promise<Response> => Promise.resolve(route(path, new Request(`http://x${path}`, { headers: { "accept-encoding": accepts } }))!);
+  const named = (await (await ask("/map.json")).json()) as { id: string; hash: number; head: string };
+  expect([named.id, named.hash, /^map\/head\.[0-9a-f]{16}\.part$/.test(named.head)]).toEqual(["test:flat", h.world.mapHash, true]);
+  const head = readHead(new Uint8Array(await (await ask(`/${named.head}`)).arrayBuffer()));
+  expect(head.hash).toBe(h.world.mapHash);
+  for (const p of head.parts) {
+    const packed = await ask(`/map/${p.name}`, "gzip, br");
+    expect([packed.headers.get("content-encoding"), packed.headers.get("cache-control")]).toEqual(["gzip", "public, max-age=31536000, immutable"]);
+    expect(new Uint8Array(Bun.gunzipSync(await packed.arrayBuffer()))).toEqual(file.subarray(p.at, p.at + p.length));
+    expect(new Uint8Array(await (await ask(`/map/${p.name}`)).arrayBuffer())).toEqual(file.subarray(p.at, p.at + p.length));
+  }
+  // A name the head does not give is not found, and any other path is the server's other routes'.
+  expect((await ask(`/map/${head.parts[0]!.name.replace(/\.[0-9a-f]{16}\./, ".0123456789abcdef.")}`)).status).toBe(404);
+  expect(route("/index.html", new Request("http://x/index.html"))).toBeNull();
+  // The page is sent with a header that has it ask for the head while it is read, named as the page names it, beside itself.
+  expect(route.link).toBe(`<${named.head}>; rel=preload; as=fetch; crossorigin`);
 
   const ada = h.join("ada");
   h.run(500);
@@ -148,17 +151,33 @@ test("a save records the map it was made on, and loads onto no other", () => {
   expect(() => restart(other)).toThrow('save is for map "test:flat", not "test:other": start with the map file it was made on');
 });
 
-test("a map given by its path is read and let go: the host keeps none of its bytes, and the file is served from disk as it is from them", async () => {
+test("a map given by its path is read and let go: the host keeps none of its bytes, and its parts go out from the folder its build wrote, or are cut from the file", async () => {
   const file = writeMap(busyMap());
   const path = join(dir, "busy.snmap");
   writeFileSync(path, file);
   const host = createHost(coreRegistry(), { map: path, clips: NO_CLIPS, rigs: [], log: () => {} });
   expect([host.mapFile, host.world.structs.count, host.world.hf.tint.length]).toEqual([null, 3, 0]);
-  const [disk, held] = [mapRoutes(path, host.world.mapId, host.world.mapHash), mapRoutes(file, host.world.mapId, host.world.mapHash)];
-  expect(disk.link).toBe(held.link);
-  const name = /^<(.+)>/.exec(disk.link)![1]!;
-  expect(new Uint8Array(await disk(`/${name}`, "")!.arrayBuffer())).toEqual(file);
-  expect(new Uint8Array(Bun.gunzipSync(await disk(`/${name}`, "gzip")!.arrayBuffer()))).toEqual(file);
+  const said: string[] = [];
+  const log = console.log;
+  console.log = (line: string) => said.push(line);
+  const [cut, held] = [mapRoutes(path, host.world.mapId), mapRoutes(file, host.world.mapId)];
+  console.log = log;
+  expect(said).toEqual([`map: ${path} has no files of its parts beside it, so they are cut and gzipped now: bun tools/map.ts pack ${path} writes them`]);
+  expect(cut.link).toBe(held.link);
+  const head = readHead(file);
+  const ask = (route: typeof cut, name: string, accepts: string): Promise<Response> => Promise.resolve(route(`/map/${name}`, new Request(`http://x/map/${name}`, { headers: { "accept-encoding": accepts } }))!);
+  const part = head.parts.find((p) => p.kind === "statics")!;
+  const bytes = file.subarray(part.at, part.at + part.length);
+  expect(new Uint8Array(await (await ask(cut, part.name, "")).arrayBuffer())).toEqual(bytes);
+  expect(new Uint8Array(Bun.gunzipSync(await (await ask(cut, part.name, "gzip")).arrayBuffer()))).toEqual(bytes);
+  // With the folder its build writes, each goes out from disk: Brotli to whoever takes it, gzip to the rest, and itself to whoever takes neither.
+  await writeMapFile(path, file);
+  const disk = mapRoutes(path, host.world.mapId);
+  const br = await ask(disk, part.name, "gzip, deflate, br");
+  expect([br.headers.get("content-encoding"), br.headers.get("cache-control"), new Uint8Array(brotliDecompressSync(await br.arrayBuffer()))]).toEqual(["br", "public, max-age=31536000, immutable", bytes]);
+  expect(new Uint8Array(Bun.gunzipSync(await (await ask(disk, part.name, "gzip, deflate")).arrayBuffer()))).toEqual(bytes);
+  expect(new Uint8Array(await (await ask(disk, head.name, "")).arrayBuffer())).toEqual(file.subarray(0, head.bytes));
+  expect((await ask(disk, "statics.1-1.0123456789abcdef.part", "br")).status).toBe(404);
   host.shutdown();
 });
 
