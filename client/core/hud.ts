@@ -1,4 +1,5 @@
-// HUD view model as plain data. Places are in ARK's latitude and longitude (shared/world/coords.ts).
+// HUD view model as plain data. A place is told as its latitude and longitude and drawn at its share of the map's picture
+// (shared/world/coords.ts).
 
 import { CUE_DEAD, CUE_MATING_SHIFT } from "../../shared/anim/pose.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -19,7 +20,7 @@ import type { Camera } from "./render/camera.ts";
 import { ACT_DRAW, ACT_HOLD, ACT_RELOAD } from "../../shared/sim/weapon.ts";
 import { formatHour, hourOfDay } from "../../shared/sim/clock.ts";
 import { V_FOOD, V_HEALTH, V_OXYGEN, V_TORPOR, V_WATER } from "../../shared/sim/vitals.ts";
-import { latLonText, latOf, lonOf } from "../../shared/world/coords.ts";
+import { latLonText, latOf, lonOf, mapU, mapV } from "../../shared/world/coords.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { MARK_MATE, MARK_OTHER, MARK_TAME, MAX_MARKS, PLAYERS_OFF, type Marks } from "../../shared/world/tactical.ts";
 import { CombatModel } from "./feedback.ts";
@@ -31,7 +32,7 @@ export type MarkerKind = "self" | "mate" | "tame" | "death" | "spawn" | "player"
 
 export interface Marker {
   kind: MarkerKind;
-  /** Where on the map, 0..1 from its north-west corner: longitude and latitude over 100. */
+  /** Where on the map's picture, 0..1 east and south from its north-west corner (mapU, mapV). */
   u: number;
   v: number;
 }
@@ -244,8 +245,8 @@ export class HudModel {
   readonly talkers: string[] = [];
   /** 0 to 1, for the settings screen. */
   micLevel = 0;
-  lat = 50;
-  lon = 50;
+  lat = 0;
+  lon = 0;
   x = 0;
   y = 0;
   z = 0;
@@ -285,7 +286,7 @@ export class HudModel {
   /** Counts updates. `mapSeen` is the update during which the map screen was last built. */
   frames = 0;
   mapSeen = -2;
-  /** The map screen's picture on the canvas, and the place last pointed at on it as fractions of the map, or -1. */
+  /** The map screen's picture on the canvas, and the place last pointed at on it as shares of the map's picture, or -1. */
   readonly mapBox = { x: 0, y: 0, size: 1 };
   pointedU = -1;
   pointedV = -1;
@@ -342,8 +343,8 @@ export class HudModel {
     }
     const m = (this.pool[n] ??= { kind, u: 0, v: 0 });
     m.kind = kind;
-    m.u = lonOf(hf, x) / 100;
-    m.v = latOf(hf, z) / 100;
+    m.u = mapU(hf, x);
+    m.v = mapV(hf, z);
     this.markers.push(m);
   }
 
@@ -389,16 +390,6 @@ const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 /** Bits of the replicated entity flags. */
 const VIEW_FLAG_PLAYER = 4;
 const VIEW_FLAG_PROP = 8;
-
-/** Where x is across the map, 0 at its west edge and 1 at its east. */
-export function mapU(hf: Heightfield, x: number): number {
-  return lonOf(hf, x) / 100;
-}
-
-/** Where z is down the map, 0 at its north edge and 1 at its south. */
-export function mapV(hf: Heightfield, z: number): number {
-  return latOf(hf, z) / 100;
-}
 
 export function headingOf(yaw: number): number {
   const deg = (-yaw * 180) / Math.PI;
@@ -450,8 +441,8 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
   model.x = b.x;
   model.y = b.y;
   model.z = b.z;
-  model.lon = lonOf(world.hf, b.x);
-  model.lat = latOf(world.hf, b.z);
+  model.lon = lonOf(world.hf.dims, b.x);
+  model.lat = latOf(world.hf.dims, b.z);
   model.heading = headingOf(session.ownYaw);
   model.compass = COMPASS[Math.round(model.heading / 45) % 8]!;
   model.speed = Math.hypot(b.vx, b.vz);
@@ -463,7 +454,7 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
   const chart = model.chart;
   if (chart) {
     chart.tiles.step();
-    if (model.minimapVisible) chart.drawMini(session.tactical, session.tribe.team, model.lon / 100, model.lat / 100, Math.max(64, Math.min(512, Math.round(MINIMAP_SIZE * scale))), session.mapLocation);
+    if (model.minimapVisible) chart.drawMini(session.tactical, session.tribe.team, mapU(world.hf, b.x), mapV(world.hf, b.z), Math.max(64, Math.min(512, Math.round(MINIMAP_SIZE * scale))), session.mapLocation);
     // The server sends structure cells at the size that suits the finest zoom on show. Its marks say which zoom it holds, so a
     // request that was lost or refused is made again.
     const want = Math.max(model.minimapVisible ? chart.mini.view.zoom : 0, model.mapSeen === model.frames - 1 ? chart.fullZoom : 0);
@@ -625,7 +616,7 @@ export function fillOverhead(m: OverheadModel, session: ClientSession, remote: R
   }
 }
 
-/** A top-down RGBA picture of the whole terrain, north up, with relief shading: the one tile of the map's far zoom. */
+/** A top-down RGBA picture of the whole terrain, north up, with relief shading: the one tile of the map's far zoom, the map at its middle. */
 export function minimapImage(hf: Heightfield, palette: Uint8Array, size: number): Uint8ClampedArray {
   const out = new Uint32Array(size * size);
   paintRelief(hf, palette, 0, 0, 0, size, out);
