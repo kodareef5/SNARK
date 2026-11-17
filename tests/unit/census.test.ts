@@ -1,5 +1,5 @@
 // What a frame and the HUD may hold: counts, which load cannot move. The frame on medium at the iPhone's view (D349,
-// D423), the HUD in every mode it has.
+// D423), a real city's downtown on every tier (tools/bench/census.ts), the HUD in every mode it has.
 
 import { expect, test } from "bun:test";
 import { forTouch, tierOf } from "../../client/core/assets/tiers.ts";
@@ -12,9 +12,12 @@ import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { asTextured, boxBase } from "../../tools/bench/base.ts";
 import { SPOTS, VIEW, count, turn, wood, type Counted } from "../../tools/bench/budget.ts";
+import { SETUPS, SLICE_VIEWS, censusWorld } from "../../tools/bench/census.ts";
 import { KORU_LAYOUT } from "../../content/landmarks/koru.ts";
 import { withContent } from "../../shared/content/registry.ts";
 import { mapHeightfield, parseMap, placeStatics } from "../../shared/world/mapfile.ts";
+import { miamiSlice } from "../fixtures/cityslice.ts";
+import { farPack } from "../fixtures/farworld.ts";
 import { KORU_QUAY, koruMapFile, koruPack, koruPoint } from "../fixtures/koru.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
@@ -127,6 +130,22 @@ artTest("Koru moored in its bay on medium at the iPhone's view: its eight cells,
   // yacht's: its cells, doors and sails, where the modules one draw each made it 470.
   expect(got).toEqual({ dock: [18, 85634, 69756, 16], deck: [21, 87938, 69932, 19], below: [19, 92034, 69968, 17], "200 m off": [21, 66496, 10240, 19] });
   expect(KORU_LAYOUT.cells.length).toBe(8);
+});
+
+test("a real city's downtown at its three views on each tier: the near city's draws, casts and triangles, and the far city's draws and triangles", () => {
+  const slice = miamiSlice();
+  const w = censusWorld(slice.map, slice.centre, coreRegistry(), farPack());
+  const got = Object.fromEntries(SLICE_VIEWS.map((v) => [v.name, Object.fromEntries(SETUPS.map((s) => {
+    const c = w.count(v, s);
+    return [s.name, [c.near, c.cast, c.nearTriangles, c.far, c.farTriangles]];
+  }))]));
+  // Each view's near window lies whole in the slice, so the first three are what the built Miami draws there with the
+  // grey boxes (equal when it was cut on 2026-11-17); the far city's are of the slice's ring of chunks round it.
+  expect(got).toEqual({
+    "street-300": { lowpoly: [509, 0, 104248, 9, 41888], "medium, touch": [266, 183, 60652, 15, 48382], medium: [509, 362, 104248, 24, 62294], high: [509, 742, 104248, 24, 62294], ultra: [509, 876, 104248, 24, 62294] },
+    "roof-300": { lowpoly: [490, 0, 109168, 8, 51976], "medium, touch": [303, 117, 68592, 11, 62790], medium: [490, 324, 109168, 14, 78520], high: [490, 673, 109168, 14, 78520], ultra: [490, 755, 109168, 14, 78520] },
+    "air-300": { lowpoly: [574, 0, 120588, 10, 51466], "medium, touch": [312, 36, 74688, 18, 50932], medium: [574, 136, 120588, 27, 73184], high: [574, 635, 120588, 27, 73184], ultra: [574, 696, 120588, 27, 73184] },
+  });
 });
 
 test("the HUD holds at most 500 nodes in every mode, the vehicles' dashes and the menus among them, and grows none after warming up", () => {
