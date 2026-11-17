@@ -76,6 +76,8 @@ export interface JoinOptions {
   statics?: boolean;
   /** Where the far city's levels are made, here by default. */
   cityMaker?: CityMaker;
+  /** The map's ground as this client holds it, the map's own by default: a page's comes a part at a time. */
+  ground?: Heightfield;
 }
 
 export class Harness {
@@ -138,7 +140,7 @@ export class Harness {
       clipHash: this.world.anim.set.hash,
       ...(opts.look === null ? {} : { look: opts.look ?? defaultLook() }),
       ...(opts.ticket ? { ticket: opts.ticket } : {}),
-      resolveMap: (id, hash) => (id === this.map.id && hash === this.map.hash ? this.hf : null),
+      resolveMap: (id, hash) => (id === this.map.id && hash === this.map.hash ? (opts.ground ?? this.hf) : null),
       nodes: (hf, reg) => mapNodes(this.map, hf, reg),
       ...(opts.statics === false ? {} : { statics: this.map.statics }),
       ...(this.map.content ? { landmarks: this.map.content.landmarks } : {}),

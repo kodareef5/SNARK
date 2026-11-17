@@ -179,6 +179,8 @@ export const ground = { nx: 0, ny: 1, nz: 0, up: 1 };
 // The last groundUnder call, which movement asks again at the same place several times a substep: its ground, and its x, z, r,
 // answer, normal and most level face.
 let lastHf: Heightfield | null = null;
+/** Its heightfield's changes when it was found, since a client's samples change as its sectors come. */
+let lastChanges = 0;
 const last = new Float64Array([NaN, NaN, NaN, 0, 0, 1, 0, 1]);
 /** While groundUnder runs, per face under the sphere: the most its plane could hold the centre up, or -Infinity where it misses. */
 let faceTop = new Float64Array(32);
@@ -190,7 +192,7 @@ const held = new Float64Array(4);
  * it as they are drawn. Its lower sphere then rests on a face, an edge or a corner of them, and `ground` is the normal there.
  */
 export function groundUnder(hf: Heightfield, x: number, z: number, r: number): number {
-  if (x === last[0] && z === last[1] && r === last[2] && hf === lastHf) {
+  if (x === last[0] && z === last[1] && r === last[2] && hf === lastHf && hf.changes.length === lastChanges) {
     ground.nx = last[4]!;
     ground.ny = last[5]!;
     ground.nz = last[6]!;
@@ -348,6 +350,7 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
     cz = held[3]!;
   }
   lastHf = hf;
+  lastChanges = hf.changes.length;
   last[0] = x;
   last[1] = z;
   last[2] = r;

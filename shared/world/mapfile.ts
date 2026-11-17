@@ -1597,8 +1597,11 @@ export function blankLayers(head: MapHead): NodeLayer[] {
   return layers;
 }
 
-/** A listed layer's rows from the sectors' grounds, chunk by chunk. */
-function listedOf(dims: MapDims, kinds: readonly string[], k: number, grounds: readonly GroundPiece[]): NodeList {
+/**
+ * Listed layer `k`'s rows from the sectors' grounds given, chunk by chunk, in any order: a chunk of a sector not given has
+ * none. A loader sets them into the layer its node source reads as each sector comes.
+ */
+export function listedRows(dims: MapDims, kinds: readonly string[], k: number, grounds: readonly GroundPiece[]): NodeList {
   const chunks = chunkCount(dims);
   const first = new Uint32Array(chunks + 1);
   for (const g of grounds) chunksOf(dims, g.sq).forEach((c, i) => (first[c + 1] = g.listed[k]!.count[i]!));
@@ -1716,18 +1719,21 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
     } else if (p.kind === "tops") tops.push(p);
     else statics.push(p);
   }
-  head.layers.forEach((rule, k) => rule.type === 1 && (nodes[k] = listedOf(dims, rule.kinds, k, grounds)));
-  let mapWater: MapWater | null = null;
-  if (head.water) {
-    const per = (CHUNK_SIZE / head.water.cell) * (CHUNK_SIZE / head.water.cell);
-    const held = water.flatMap((w) => [...w.chunks].map((c, k) => [c, w.squares.subarray(k * per, k * per + per)] as const)).sort((a, b) => a[0] - b[0]);
-    const squares = new Uint16Array(held.length * per);
-    held.forEach(([, s], k) => squares.set(s, k * per));
-    mapWater = new MapWater(dims, head.minY, head.stepY, head.water.cell, head.water.bodies, Uint32Array.from(held, ([c]) => c), squares);
-  }
+  head.layers.forEach((rule, k) => rule.type === 1 && (nodes[k] = listedRows(dims, rule.kinds, k, grounds)));
+  const mapWater = joinWater(head, water);
   const content = head.landmarks ? { content: { landmarks: head.landmarks, defs } } : {};
   const { id, minY, stepY, seaLevel, spawns, regions, vehicles, hash } = head;
   return { id, dims, minY, stepY, seaLevel, heights, tint, statics: finish(joinStatics(head, statics, order)), nodes, spawns, ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(mapWater ? { water: mapWater } : {}), ...content, ...(tops.length > 0 ? { tops: joinTops(tops) } : {}), hash };
+}
+
+/** The water of a map's overviews (OverviewPiece.water) as the map's, every overview's given, or null where its head has no WATR. */
+export function joinWater(head: MapHead, overviews: readonly { readonly chunks: Uint32Array; readonly squares: Uint16Array }[]): MapWater | null {
+  if (!head.water) return null;
+  const per = (CHUNK_SIZE / head.water.cell) * (CHUNK_SIZE / head.water.cell);
+  const held = overviews.flatMap((w) => [...w.chunks].map((c, k) => [c, w.squares.subarray(k * per, k * per + per)] as const)).sort((a, b) => a[0] - b[0]);
+  const squares = new Uint16Array(held.length * per);
+  held.forEach(([, s], k) => squares.set(s, k * per));
+  return new MapWater(head.dims, head.minY, head.stepY, head.water.cell, head.water.bodies, Uint32Array.from(held, ([c]) => c), squares);
 }
 
 /** The tops of overviews' squares as one map's, its chunks ascending. */

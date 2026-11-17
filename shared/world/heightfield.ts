@@ -1,7 +1,10 @@
 // Each grid cell is two triangles split along the diagonal from (i, j) to (i+1, j+1). Collision, prediction and LOD 0 rendering
 // all use this triangulation, so what is drawn is what is solid. Everything below the surface is solid.
+//
+// A client's ground comes a part at a time (shared/world/mapfile.ts): every sample is first filled from its overview, and
+// each sector then sets its own. `exact` says which chunks hold the map's own samples, and `changes` where samples changed.
 
-import { CHUNK_SIZE, framed, type FramedDims, type MapDims } from "../coords.ts";
+import { CHUNK_SIZE, chunkCount, framed, type FramedDims, type MapDims } from "../coords.ts";
 import type { MapWater } from "./water.ts";
 
 export const TERRAIN_CELL = 2;
@@ -26,6 +29,16 @@ export class Heightfield {
   seaLevel = -Infinity;
   /** Water standing on its own surfaces, apart from the sea (water.ts), or null for a map with none. */
   water: MapWater | null = null;
+  /**
+   * Per chunk, row by row, 1 where its samples are the map's own and 0 where they stand in for them until its sector is
+   * set (`hold`). A heightfield is made with all its own.
+   */
+  readonly exact: Uint8Array;
+  /**
+   * Each change to the samples since the heightfield was made, oldest first, four numbers a change: the chunks it covers,
+   * cx0, cz0 up to but not including cx1, cz1. A reader that made something of the samples makes it again where they changed.
+   */
+  readonly changes: number[] = [];
 
   /** Use a power-of-two fraction such as 1/256 for `stepY`, so round heights (sea level, floors) are exact. */
   constructor(dims: MapDims, cell: number, minY: number, stepY: number, heights?: Uint16Array, tint?: Uint8Array) {
@@ -42,6 +55,71 @@ export class Heightfield {
     if (this.heights.length !== this.nx * this.nz || (this.tint.length !== 0 && this.tint.length !== this.nx * this.nz)) {
       throw new Error("heightfield data does not match map dimensions");
     }
+    this.exact = new Uint8Array(chunkCount(dims)).fill(1);
+  }
+
+  /** From now on no chunk holds its own samples until it is held: a client's ground, which comes a part at a time. */
+  holdNone(): void {
+    this.exact.fill(0);
+  }
+
+  /**
+   * Fills the samples of chunks cx0, cz0 up to cx1, cz1 that are not their own from every `step`th sample of them, given
+   * from the first chunk's corner row by row with its far edges: a height as the two triangles of the coarse cell, split as
+   * the ground's are, have it there, rounded, which is how a tile that coarse draws it, and a tint the nearest coarse
+   * sample's. A sample on the edge of a chunk that holds its own is left as it is.
+   */
+  fill(cx0: number, cz0: number, cx1: number, cz1: number, step: number, heights: Uint16Array, tint: Uint8Array): void {
+    const per = CHUNK_SIZE / this.cell;
+    const w = ((cx1 - cx0) * per) / step + 1;
+    const d = heights.length / w;
+    const [i0, j0, nx, cx] = [cx0 * per, cz0 * per, this.nx, this.dims.chunksX];
+    for (let z = cz0; z < cz1; z++) {
+      for (let x = cx0; x < cx1; x++) {
+        if (this.exact[z * cx + x] === 1) continue;
+        for (let j = z * per; j <= z * per + per; j++) {
+          const edgeJ = j === z * per || j === z * per + per;
+          const cj = Math.min(d - 2, Math.floor((j - j0) / step));
+          const v = (j - j0 - cj * step) / step;
+          for (let i = x * per; i <= x * per + per; i++) {
+            if ((edgeJ || i === x * per || i === x * per + per) && this.ownSample(i, j)) continue;
+            const ci = Math.min(w - 2, Math.floor((i - i0) / step));
+            const u = (i - i0 - ci * step) / step;
+            const k = cj * w + ci;
+            const h00 = heights[k]!, h11 = heights[k + w + 1]!;
+            const q = u >= v ? h00 + (heights[k + 1]! - h00) * u + (h11 - heights[k + 1]!) * v : h00 + (h11 - heights[k + w]!) * u + (heights[k + w]! - h00) * v;
+            this.heights[j * nx + i] = Math.round(q);
+            if (this.tint.length > 0) this.tint[j * nx + i] = tint[(cj + Math.round(v)) * w + ci + Math.round(u)]!;
+          }
+        }
+      }
+    }
+    this.changes.push(cx0, cz0, cx1, cz1);
+  }
+
+  /** Chunks cx0, cz0 up to cx1, cz1 hold their own samples from now on, which the caller has just set. */
+  hold(cx0: number, cz0: number, cx1: number, cz1: number): void {
+    for (let z = cz0; z < cz1; z++) this.exact.fill(1, z * this.dims.chunksX + cx0, z * this.dims.chunksX + cx1);
+    this.changes.push(cx0, cz0, cx1, cz1);
+  }
+
+  /** Whether every chunk the box from (x0, z0) to (x1, z1) metres touches holds its own samples, the box held to the map. */
+  exactIn(x0: number, z0: number, x1: number, z1: number): boolean {
+    const { chunksX, chunksZ } = this.dims;
+    const at = (v: number, n: number): number => Math.max(0, Math.min(n - 1, Math.floor(v / CHUNK_SIZE)));
+    const [a, b, c, e] = [at(x0, chunksX), at(x1, chunksX), at(z0, chunksZ), at(z1, chunksZ)];
+    for (let z = c; z <= e; z++) for (let x = a; x <= b; x++) if (this.exact[z * chunksX + x] === 0) return false;
+    return true;
+  }
+
+  /** Whether sample (i, j) is one of a chunk that holds its own: any of the up to four chunks it is a corner or an edge of. */
+  private ownSample(i: number, j: number): boolean {
+    const per = CHUNK_SIZE / this.cell;
+    const { chunksX, chunksZ } = this.dims;
+    const x1 = Math.min(chunksX - 1, Math.floor(i / per)), x0 = i % per === 0 ? Math.max(0, i / per - 1) : x1;
+    const z1 = Math.min(chunksZ - 1, Math.floor(j / per)), z0 = j % per === 0 ? Math.max(0, j / per - 1) : z1;
+    for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) if (this.exact[z * chunksX + x] === 1) return true;
+    return false;
   }
 
   /** In metres. */

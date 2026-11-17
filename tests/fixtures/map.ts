@@ -100,3 +100,31 @@ export function wideMap(): MapData {
   ];
   return resolveNodes({ id: "test:wide", dims, minY: -32, stepY: 1 / 256, seaLevel: 0, heights, tint: Uint8Array.from({ length: nx * nz }, () => rng.int(256)), statics, nodes: [scatter, list, zoned, other], spawns: [{ name: "West", x: 4000, z: 600, yaw: 0 }], water }, coreRegistry());
 }
+
+/**
+ * Ground of 6 by 6 chunks whose middle is the corner of four sectors and of four overviews: rolling hills, a pond on a rise
+ * across that corner, the sea in the south, trees and rocks scattered and resolved with the core content, bushes listed
+ * where `listed`, and walls in every sector. A client's ground comes in parts on it from every side of the corner.
+ */
+export function cornerMap(listed = false): MapData {
+  const dims = { chunksX: 6, chunksZ: 6, frameX: 2045, frameZ: 2045 };
+  const [n, cell, minY, stepY] = [6 * 32 + 1, TERRAIN_CELL, -32, 1 / 256];
+  const pond = { x: 192, z: 200, r: 40, surface: 7.5 };
+  const ground = (x: number, z: number): number => {
+    let h = 4 + 2.5 * Math.sin(x / 23) + 1.5 * Math.cos(z / 17) + Math.sin((x + z) / 7);
+    const d = Math.hypot(x - pond.x, z - pond.z);
+    if (d < pond.r + 20) h = Math.max(h, 8.5 - Math.max(0, d - pond.r) * 0.1);
+    if (d < pond.r) h = pond.surface - 0.5 - (pond.r - d) * 0.05;
+    if (z < 50) h = Math.min(h, -3 + (z / 50) * 7);
+    return h;
+  };
+  const heights = Uint16Array.from({ length: n * n }, (_, k) => Math.round((ground((k % n) * cell, Math.floor(k / n) * cell) - minY) / stepY));
+  const side = (6 * CHUNK_SIZE) / cell;
+  const grid = Uint16Array.from({ length: side * side }, (_, k) => (Math.hypot(((k % side) + 0.5) * cell - pond.x, (Math.floor(k / side) + 0.5) * cell - pond.z) < pond.r + cell ? 1 : 0));
+  const water = MapWater.fromGrid(dims, minY, stepY, cell, [{ name: "Corner Pond", level: Math.round((pond.surface - minY) / stepY) }], grid);
+  const scatter: NodeScatter = { seed: 31, perChunk: 24, kinds: [["core:tree", 3], ["core:rock", 1]], allowCell: 0, allow: null };
+  const first = Uint32Array.from({ length: 37 }, (_, c) => 2 * c);
+  const list: NodeList = { kinds: ["core:bush"], first, kind: new Uint8Array(72), x: Uint16Array.from({ length: 72 }, (_, r) => 9000 + r * 700), z: Uint16Array.from({ length: 72 }, (_, r) => 40000 - r * 300), yaw: Uint16Array.from({ length: 72 }, (_, r) => r * 900) };
+  const statics = Array.from({ length: 24 }, (_, i) => ({ kind: i % 2 ? "core:wall" : "core:crate", x: 20 + (i % 6) * 64, y: ground(20 + (i % 6) * 64, 30 + Math.floor(i / 6) * 96), z: 30 + Math.floor(i / 6) * 96, yaw: i * 4000 }));
+  return resolveNodes({ id: "test:corner", dims, minY, stepY, seaLevel: 0, heights, tint: Uint8Array.from({ length: n * n }, (_, k) => 1 + ((k % n >> 3) + (Math.floor(k / n) >> 3)) % 5), statics, nodes: listed ? [scatter, list] : [scatter], spawns: [{ name: "Corner", x: 150, z: 150, yaw: 0 }], water }, coreRegistry());
+}
