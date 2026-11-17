@@ -44,6 +44,7 @@ interface Held {
   color: Uint8Array;
   kind: Uint8Array;
   id: Float64Array;
+  depth: Float32Array;
   without: Uint8Array | null;
 }
 
@@ -79,13 +80,13 @@ function settle(w: CityWorld, shot: Shot): void {
 function hold(w: CityWorld, shot: Shot, name: string): void {
   settle(w, shot);
   const p = frame(w, shot, true);
-  const held: Held = { name, frame: shot.frames.length - 1, color: Uint8Array.from(w.raster.color), kind: w.raster.pickKind.slice(), id: w.raster.pickId.slice(), without: null };
+  const held: Held = { name, frame: shot.frames.length - 1, color: Uint8Array.from(w.raster.color), kind: w.raster.pickKind.slice(), id: w.raster.pickId.slice(), depth: w.raster.depth.slice(), without: null };
   const [width, height] = [p.openWidth, p.openHeight];
   p.openWidth = p.openHeight = 0;
   w.raster.render(p);
   shot.add(p, true);
   held.without = Uint8Array.from(w.raster.color);
-  made.held.push(held, { name: `${name}, the measure let go`, frame: shot.frames.length - 1, color: held.without, kind: held.kind, id: held.id, without: null });
+  made.held.push(held, { name: `${name}, the measure let go`, frame: shot.frames.length - 1, color: held.without, kind: held.kind, id: held.id, depth: held.depth, without: null });
   [p.openWidth, p.openHeight] = [width, height];
   w.scene.farShadow!.open.reset();
 }
@@ -120,8 +121,9 @@ function stagedShots(): Shot[] {
 }
 
 /**
- * Pixels whose 5 by 5 neighbours are one thing and one colour in the rasterizer, so that an edge the GPU draws a sample
- * aside is not judged, taken down by the measure or not: how many, how many the GPU has more than SAME off, and the worst.
+ * Pixels whose 5 by 5 neighbours are one thing, one plane and one colour in the rasterizer, so that an edge or a crease
+ * the GPU draws a sample aside is not judged, taken down by the measure or not: how many, how many the GPU has more
+ * than SAME off, and the worst.
  */
 function compare(gpu: Uint8Array, h: Held): { taken: number[]; left: number[] } {
   const out = { taken: [0, 0, 0], left: [0, 0, 0] };
@@ -130,7 +132,15 @@ function compare(gpu: Uint8Array, h: Held): { taken: number[]; left: number[] } 
     next: for (let x = 2; x < W - 2; x++) {
       const at = y * W + x;
       if (h.kind[at] === PICK_SKY) continue;
-      for (let dy = -2 * W; dy <= 2 * W; dy += W) for (let dx = -2; dx <= 2; dx++) if (h.kind[at + dy + dx] !== h.kind[at] || h.id[at + dy + dx] !== h.id[at] || off(h.color, h.color, at + dy + dx, at) > 2) continue next;
+      const d = h.depth;
+      const gx = (d[at + 1]! - d[at - 1]!) / 2, gy = (d[at + W]! - d[at - W]!) / 2;
+      const slack = (Math.abs(gx) + Math.abs(gy)) * 0.05 + 1e-7;
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          const n = at + dy * W + dx;
+          if (h.kind[n] !== h.kind[at] || h.id[n] !== h.id[at] || off(h.color, h.color, n, at) > 2 || Math.abs(d[n]! - d[at]! - dx * gx - dy * gy) > slack) continue next;
+        }
+      }
       const n = h.without && off(h.without, h.color, at) >= TAKEN ? out.taken : out.left;
       const o = off(gpu, h.color, at);
       n[0]!++;
