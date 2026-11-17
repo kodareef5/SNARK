@@ -3,7 +3,9 @@
 // SKIRT_BEHIND). Rolling ground is seen through long lenses from 30 m up, 800 m off and 300 m off, which medium draws
 // in its near range, at low poly and at medium. The software rasterizer draws no skirts, and no ground pixel may be far
 // darker than every pixel about it in the rasterizer's picture. A control moves every other tile 30 cm, so that cracks
-// open along their borders and the skirts show through them: the check must find those.
+// open along their borders and the skirts show through them: at low poly, where a skirt is lit by its own face, the
+// check must find those. A lit tier lights a skirt by the normal of the ground it hangs from, so there the same cracks
+// must show nothing.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -55,6 +57,8 @@ interface Held {
   pic: Picture;
   /** A control, which must fail. */
   control: boolean;
+  /** Cracks are open in it and must not show. */
+  cracked: boolean;
 }
 
 const made = { held: [] as Held[] };
@@ -117,7 +121,8 @@ export const seamsCheck: LitCheck = {
         raster.render(p);
         change?.(p);
         shot.add(p, true);
-        made.held.push({ key: shot.key, frame: shot.frames.length - 1, name: `${tier}, ${name}`, pic: { color: Uint8Array.from(raster.color), kind: raster.pickKind.slice() }, control: change !== undefined });
+        const lit = scene.assets.tier.lit;
+        made.held.push({ key: shot.key, frame: shot.frames.length - 1, name: `${tier}, ${name}`, pic: { color: Uint8Array.from(raster.color), kind: raster.pickKind.slice() }, control: change !== undefined && !lit, cracked: change !== undefined && lit });
       };
       /** From `up` metres over the ground at (x, z), looks along +x at the ground `metres` on, through a lens `span` metres high there. */
       const look = (x: number, z: number, metres: number, up: number, span: number): void => {
@@ -154,7 +159,7 @@ export const seamsCheck: LitCheck = {
       const clean = d.dark <= d.n * MOST_DARK;
       const pass = d.n > 50000 && clean !== h.control;
       ok &&= pass;
-      lines.push(`${h.name}: ${d.dark} of ${d.n} ground pixels far darker than the rasterizer's${h.control ? ", which the check must find" : ""}  ${pass ? "ok" : "FAIL"}`);
+      lines.push(`${h.name}: ${d.dark} of ${d.n} ground pixels far darker than the rasterizer's${h.control ? ", which the check must find" : h.cracked ? ", where a skirt is lit as its ground and a crack must not show" : ""}  ${pass ? "ok" : "FAIL"}`);
     }
     const folder = process.env.PROBE_PICTURES;
     if (folder) {
