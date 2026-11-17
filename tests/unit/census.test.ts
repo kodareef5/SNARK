@@ -132,8 +132,9 @@ artTest("Koru moored in its bay on medium at the iPhone's view: its eight cells,
   // the dock it was 85,634 triangles casting 69,756 before the yacht's sails were drawn with the atlas and its masts,
   // booms and hull rounder, 93,164 casting 86,252 in 18 draws before its furniture was made, its ports rimmed, and its
   // plaques drawn from a picture of their own, and 126,184 casting 119,416 in 23 before its rig was its own see-through
-  // parts, which cast nothing, and the cells' wires, thickened on their way off, no longer held them to finer levels.
-  expect(got).toEqual({ dock: [30, 118300, 99084, 28], deck: [34, 116540, 102808, 32], below: [29, 116684, 101264, 27], "200 m off": [37, 73032, 10240, 35] });
+  // parts, which cast nothing, and the cells' wires, thickened on their way off, no longer held them to finer levels;
+  // a struck headsail is its roll, a line, not its sheet squeezed onto the stay.
+  expect(got).toEqual({ dock: [30, 117036, 97532, 28], deck: [34, 115276, 101256, 32], below: [29, 115428, 99712, 27], "200 m off": [37, 72792, 10240, 35] });
   expect(KORU_LAYOUT.cells.length).toBe(8);
 });
 

@@ -36,7 +36,7 @@ const pictures = (name: string, more: object = {}) => ({ base: `tex/${name}_base
 export default {
   kind: "pieces",
   source: { scripts: ["model.py"] },
-  pieces: [...layout.cells.map((c) => cell(c.id)), ...layout.modules.filter((m) => m.category === "door").map((m) => part(m.id)), ...layout.motion.parts.map((p) => (p.mesh.startsWith("koru:rig_") ? rig(p.mesh) : part(p.mesh)))],
+  pieces: [...layout.cells.map((c) => cell(c.id)), ...layout.modules.filter((m) => m.category === "door").map((m) => part(m.id)), ...layout.motion.parts.map((p) => (/^koru:(rig|roll)_/.test(p.mesh) ? rig(p.mesh) : part(p.mesh)))],
   materials: {
     surfaces: pictures("surfaces"),
     // Sailcloth passes light: from the side the sun is not on, a sail shows most of what its other side takes.

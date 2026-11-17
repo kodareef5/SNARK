@@ -1560,8 +1560,8 @@ export class Scene {
    * The map's moving statics' parts, to their own reach: posed while they move, and as they were while they rest. A
    * landmark's are drawn as far as its far mesh, the far city's reach, so its sails do not end before its hull; but a
    * part at rest struck, a sail furled, only while the near store holds its static's chunk, and past that the far mesh
-   * and the rig stand for it, as a headsail rolled on its stay is the stay. A part that never moves, a landmark's rig, is
-   * never struck. Low poly draws no see-through part.
+   * stands for it. A part that never moves, a landmark's rig, is never struck, nor is a see-through one, a line that does
+   * not break into dots: a headsail's roll. A part put away where it rests is not drawn. Low poly draws no see-through part.
    */
   private showMotion(cam: Camera, source: MotionSource): void {
     const p = this.packet, tier = this.assets.tier, table = this.assets.table;
@@ -1586,7 +1586,8 @@ export class Scene {
           p.skipped++;
           continue;
         }
-        if ((struck && t.fixed[i] === 0) || (!tier.lit && (this.flatFlags[mesh]! & DRAW_BLEND) !== 0)) continue;
+        const through = (this.flatFlags[mesh]! & DRAW_BLEND) !== 0;
+        if ((struck && t.fixed[i] === 0 && !through) || (!tier.lit && through) || (t.progress === 0 && (t.away[i]! & 1) !== 0) || (t.progress === 1 && (t.away[i]! & 2) !== 0)) continue;
         const at = i * PART_FLOATS, r = this.radiusOfMesh[mesh]! * pose[at + 12]!;
         const cx = x + pose[at + 3]!, cy = y + pose[at + 7]!, cz = z + pose[at + 11]!;
         const far = Math.max(0, Math.sqrt(cx * cx + cy * cy + cz * cz) - r);
@@ -1594,7 +1595,7 @@ export class Scene {
         const seen = cam.boxVisible(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r);
         // A see-through part, a rig of wires drawn wider and fainter than they are, casts nothing: no cascade holds a wire's
         // shadow whole, and the sun's own breadth all but washes it out a few metres down.
-        const casts = this.casting && (this.flatFlags[mesh]! & DRAW_BLEND) === 0 ? this.castBox(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r) & this.cascades.fits(r) : 0;
+        const casts = this.casting && !through ? this.castBox(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r) & this.cascades.fits(r) : 0;
         if (!seen && casts === 0) continue;
         if (p.boneCount >= bones || p.transientCount === p.transientIds.length || (seen && p.drawCount + this.doubled >= draws)) {
           p.dropped++;

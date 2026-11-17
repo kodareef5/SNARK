@@ -233,12 +233,14 @@ export interface ShapeLook {
 
 /**
  * Where a moving part stands from its static's origin, in the static's frame: offset in metres, then a turn as a unit
- * quaternion (x, y, z, w), then a scale along the part's own axes. A turn or a scale left out is none.
+ * quaternion (x, y, z, w), then a scale along the part's own axes. A turn or a scale left out is none. A part `away` at
+ * one end is put away there and not drawn while it rests there: a headsail rolled on its stay, which a roll stands for.
  */
 export interface PartPlacement {
   readonly at: readonly [number, number, number];
   readonly turn?: readonly [number, number, number, number];
   readonly scale?: readonly [number, number, number];
+  readonly away?: true;
 }
 
 /**

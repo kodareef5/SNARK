@@ -10,8 +10,10 @@ furniture are an original interpretation. No photograph's pixels are in the pack
 - `author_layout.py`, with `layout_details.py`, writes `content/landmarks/koru-layout.json`, the one authority for
   collision, placement and the art's layout (`ref/LAYOUT.md`), the hull's rake among it. It rebuilds byte for byte.
 - `model.py` and `parts.py` build the pieces in Blender from that layout: eight cells, each one mesh of every module
-  whose origin lies in its 16 m of the ship, in its anchor's frame; the three doors, each with its open form; and the
-  sail parts, five sheets and three gaffs. The modules themselves are collision alone.
+  whose origin lies in its 16 m of the ship, in its anchor's frame; the three doors, each with its open form; the
+  sail parts, five sheets, three gaffs and the two headsails' rolls; and the rig, sixteen parts that never move: each
+  mast's wires in three bands of its height, the forestays, the backstays and the triatics. The modules themselves are
+  collision alone.
 - `tex/paint.ts` paints the three pictures every textured face is drawn from (`tex/PROVENANCE.md`): `surfaces`, the
   atlas of the yacht's finishes; `sails`, its sailcloth; and `signs`, its brass plaques and its name, a picture of
   1,024 that medium shows whole, so that they are as sharp on medium as they were on high in the atlas. `materials.json` says which picture each
@@ -39,20 +41,25 @@ until the others have come, so the yacht adds no more than its old coarsest leve
 
 | level | drawn | holds |
 |---|---|---|
-| 0 | with the pictures | everything: rooms and their furniture as made pieces, stairs, plaques, ports of dark glass in a stainless flange and bore, rails with posts, every wire of the rig |
-| 1 | with the pictures | what is seen from outside: hull, decks, deckhouse walls with flush windows and shut doorways, open decks and their furniture as blocks, stairs whose wells open on an open deck, ports as glass in a rim, the rig but its diamonds, 18 cm across and paler |
-| 2 | flat | level 1 without rails or the cove line, ports as bright octagons, flights as ramps, and of the rig the forestays and the mizzen backstays alone, 56 cm across and paler still |
-| 3 | flat | level 2 with square ports, no face to the cap rail, no rig, and masts no thinner than 80 cm |
+| 0 | with the pictures | everything: rooms and their furniture as made pieces, stairs, plaques, ports of dark glass in a stainless flange and bore, rails with posts |
+| 1 | with the pictures | what is seen from outside: hull, decks, deckhouse walls with flush windows and shut doorways, open decks and their furniture as blocks, stairs whose wells open on an open deck, ports as glass in a rim |
+| 2 | flat | level 1 without rails or the cove line, ports as bright octagons, flights as ramps |
+| 3 | flat | level 2 with square ports, no face to the cap rail, and masts no thinner than 80 cm |
 | 4 | flat | a stand-in: per deck a deckhouse block and a deck slab, the hull without ports, masts, booms and bowsprit |
 
 The rules the levels keep:
 
-- The rig thins and pales as it goes off, and is gone by level 3, with no step: on each level a wire is about two
-  thirds of a pixel across where that level is last drawn on high (on level 0 no wire is under 6 cm), which no wire
-  below a pixel's width is at four samples a pixel without breaking into dashes, and as much paler as it is wider than
-  the wire, so that it shows about as much as the wire would. Near it is dark against the sky, as photographed. The
-  diamonds go first, then the shrouds, toppings and interstays; the forestays and the mizzen backstays, the long
-  diagonals of the schooner, go last. The rails are bright steel on levels 0 and 1.
+- The rig is its own parts, not the cells', and is drawn as itself as far as the far mesh, the same wires on every
+  level. A part has six flat levels, which take over on high at 25, 50, 100, 200 and 400 m from it. On a level a wire is
+  as thick as it is, or, where that is thinner, about two thirds of a pixel at the level's far end on high, widened in
+  steps of a quarter of a doubling; and it is drawn see-through, showing as much less of itself as it is wider, by a
+  finish's share (shared/pack/finish.ts). So its width times its strength is the wire's on every level, against the
+  sky, the land or the hull, and a hand-over has nothing to show: `ref/pictures/rig-high.png` and `rig-medium.png` are
+  Chrome's pictures either side of each, three times. Blended, a wire under a pixel is a faint line and not dots, as it
+  is when four samples a pixel cover it or miss it; and a line's finish is lit the same across its width, as if it
+  faced the eye, where a tube lit face by face is light and dark by turns along a line a pixel or two across. It is
+  dark with the sun beyond it and bright with the sun behind the eye. It casts no shadow, and low poly does not draw
+  it. The rails are bright steel on levels 0 and 1.
 - Masts, booms with their sail covers, the bowsprit, spreaders, radomes and the flag are on every level. On level 3 no
   length of mast is under 80 cm across, so on a card with four samples a pixel it is a line to 3 km and not dashes.
 - The deckhouse's windows are their own faces on every level, and the hull's ports and its 25 cm red boot stripe too.
@@ -73,9 +80,10 @@ the stem where it is drawn. The decks and rails keep the plumb ends.
 
 The sails: near, each row of a sheet is a panel of sailcloth from its picture, a gaff sail's sixth rows carrying battens,
 smooth over its camber; then two flat levels. Struck, a gaff sail and its gaff lie inside the cover on the boom, as an
-in-boom furling sail does, and a headsail rolls on its stay. Set, the sail parts are drawn as far as the far mesh;
-struck, while the client holds the yacht's structures near, and past that the far mesh's forestays stand for the
-headsails rolled on them, so no sliver of sail is left to break into dots far off.
+in-boom furling sail does, and a headsail rolls on its stay. Set or on their way, the sail parts are drawn as far as
+the far mesh. Struck, a gaff sail and its gaff are drawn while the client holds the yacht's structures near; a
+headsail's sheet is put away (PartPlacement `away`) and its roll on the stay is drawn in its place, as far as the far
+mesh, a line made and drawn as the rig's wires are, so no sliver of sail is left to break into dots.
 
 ## Pictures
 
@@ -95,15 +103,17 @@ z 3384 and its bow to +z:
 
 The rest are sheets of the yacht on the course map from its water side at 14:00, each picture drawn three ways: by the
 software rasterizer on medium and on high, its frame drawn four times, each shifted to one of a card's four samples a
-pixel, and averaged; and by the game itself in headless Chrome on high (a server on the course map, the page standing
-where the rasterizer's camera stands by its address's `run` and `look`). The rasterizer leaves the course map's
-far land black where the browser draws it green; the yacht is drawn alike.
+pixel, and averaged; and by the game itself in headless Chrome on high (a server on the course map started for the
+look, which alone tells the page where the rasterizer's camera stands). The rasterizer leaves the course map's far
+land black where the browser draws it green; the yacht is drawn alike.
 
 - `distances.png`, `distances-sails.png`: from 40 m to 2 km abeam, and from the raking quarter at 200 and 300 m,
   sails stowed and set.
 - `joint.png`: where the stern's cell, drawn with its pictures, meets the far mesh, at 2.4 times, stowed and set.
 - `near.png`: from the quay and the bow, in profile, on the sun deck and astern.
 - `rooms.png`: a look into each room at eye height on high, and `rooms-chrome.png` five of them in Chrome.
+- `rig-high.png`, `rig-medium.png`: Chrome on high and on medium, abeam a few metres either side of each hand-over,
+  the cells' and the rig's, three times, the left of each pair the nearer.
 
 Between level 1 and level 2 at 150 m on high (OKLab times 100, the mean of the band's pixels as light):
 

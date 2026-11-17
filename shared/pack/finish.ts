@@ -11,25 +11,33 @@
 //   palette colour, as ever.
 // - `sheet` is how much of the light on one face of a thin sheet the other face shows (surface.ts `through`): sailcloth,
 //   an awning, a flag. A textured material says it too (PackMaterial `sheet`).
-// - `share` is how much of a face shows, for a wire drawn wider than it is so that it holds whole on the screen: drawn
-//   see-through (a see-through piece, PackMesh `seeThrough`), a wire twice its width at half its share shows as much
-//   as itself against the sky, the land or the hull alike. A see-through piece shows both its faces, so a tube's share
-//   is what one face lets through of the two.
+// - `share` makes a finish a line's: a wire, a cable, a rail or a lattice drawn as wide as it is or wider, so that it
+//   holds whole on the screen. Such a finish is lit the same across its width, as a face turned to the eye is, since a
+//   line a pixel or two across that is lit face by face is light and dark by turns along its length. Drawn see-through
+//   (a see-through piece, PackMesh `seeThrough`), it shows its share of itself, so a wire twice its width at half its
+//   share shows as much as itself against the sky, the land or the hull alike. A see-through piece shows both its
+//   faces, so a tube's share is what one face lets through of the two.
 // - A landmark that states none is drawn as it always was.
 
 import type { LandmarkFarRow } from "./far.ts";
 
 /**
  * The numbers of a finish: its palette colour, then its colour as red, green and blue of 255 (sRGB), its occlusion,
- * roughness and metalness of 255, its sheet of 255, and its share of 255, 1 at least.
+ * roughness and metalness of 255, its sheet of 255, and its share: 255 where it states none, and of 254 where it does,
+ * 1 at least, a line's (finishShare).
  */
 export const FINISH_NUMBERS = 9;
+
+/** The last of a finish's numbers for a share it states, or for none: a line's is under 255 even where it is whole. */
+export function finishShare(share: number | undefined): number {
+  return share === undefined ? 255 : Math.max(1, Math.min(254, Math.round(share * 254)));
+}
 
 /**
  * The palette and every landmark's finishes as one RGBA8 picture 256 wide: row 0 the palette; for the landmark k of
  * those that state finishes, row 2k + 1 holds the colour of each palette colour it states, with its share as alpha
- * where it states one and 0 where not, and row 2k + 2 the finish's occlusion, roughness, metalness and sheet. `row` is k + 1 for each mesh of
- * that landmark, its id's namespace, and 0 for any other mesh.
+ * (255 for none, under it for a line's) and 0 where it states no finish, and row 2k + 2 the finish's occlusion,
+ * roughness, metalness and sheet. `row` is k + 1 for each mesh of that landmark, its id's namespace, and 0 for any other mesh.
  */
 export interface FinishTable {
   readonly pixels: Uint8Array;

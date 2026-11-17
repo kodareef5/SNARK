@@ -13,7 +13,7 @@ D=json.loads((HERE.parents[3]/'content/landmarks/koru-layout.json').read_text())
 MODS=D['modules'];BYID={m['id']:m for m in MODS};WINDOWS={}
 for w in D['windows']:WINDOWS.setdefault(w['module'],[]).append(w)
 CLOTH={'sail':FINISH['sail']['rgb']};SPAR={'white':FINISH['white']['rgb']}
-WIRES={k:v['rgb'] for k,v in FINISH.items() if k.startswith('wire')}
+WIRES={k:v['rgb'] for k,v in FINISH.items() if k.startswith('wire')};ROLLS={k:v['rgb'] for k,v in FINISH.items() if k.startswith('roll')}
 # The first level drawn flat, the stand-in level, and the sides round a mast or the bowsprit at each level.
 FLAT=2;STAND_IN=4;SIDES=[24,12,8,6,4]
 
@@ -421,7 +421,7 @@ def furniture(m,mod):
     if kind=='chairs':m.rbox([x-w/2,y+sy*.52,zz+d*.38],[x+w/2,y+sy,zz+d/2],'mahogany',.02)
   elif kind=='tub':
    # A hot tub: clad in teak, its water near the brim inside a rounded white coping.
-   rb(-.47,0,-.47,.47,.88,.47,'teak',.02);b(-.42,.86,-.42,.42,.9,.42,'pool')
+   rb(-.47,0,-.47,.47,.88,.47,'teak',.02);b(-.42,.86,-.42,.42,.94,.42,'pool')
    for a0,z0,a1,z1 in((-.5,-.5,.5,-.42),(-.5,.42,.5,.5),(-.5,-.42,-.42,.42),(.42,-.42,.5,.42)):rb(a0,.86,z0,a1,1,z1,'white',.02)
   elif kind=='helm':
    rb(-.48,0,.12,.48,.82,.47,'mahogany',.02);rb(-.5,.78,-.5,.5,.9,.5,'mahogany',.02)
@@ -675,21 +675,31 @@ def sheet(m,grid,out,camber,batten=None):
 # rows, and shows the share of itself that its own width is of that, so that it shows as much as itself, against the
 # sky, the land or the hull: dark and fine near, and thinner and fainter out to nothing, with nothing to see where a
 # level hands over. A share is one of SHARE_STEPS a halving, a finish of its own (materials.json `wire<n>`), which a
-# see-through draw shows on both faces of a tube, so each face lets through what makes the share of the two.
+# see-through draw shows on both faces of a tube, so each face lets through what makes the share of the two. A tube of
+# fewer sides is drawn as much wider as keeps it as wide as a round wire seen from all round (its perimeter over pi).
 WIRE_PX=.7;SHARE_STEPS=4;RIG_SIDES=[6,6,4,4,3,3]
 # Where each level is last drawn on high, metres to its part's nearest: asset.ts states the levels' errors to match.
 RIG_ENDS=[25,50,100,200,400,800]
 PIXEL=1/771
+def lines(m,ends,r,span,level,tag):
+ """A line of the rig on a level: as thick as it is or as the level's floor, its share as much less, its finish `<tag><n>`."""
+ floor=WIRE_PX/2*(RIG_ENDS[level]+span)*PIXEL;n=0 if r>=floor else math.ceil(SHARE_STEPS*math.log2(floor/r))
+ sides=RIG_SIDES[level];m.tube(ends,r*2**(n/SHARE_STEPS)*math.pi/(sides*math.sin(math.pi/sides)),f'{tag}{n}',sides)
 for part in D['rig']['parts']:
  members=[BYID[i] for i in part['members']];mesh=part['mesh']
  pts=[p for x in members for p in x['art']['ends']];span=math.dist([min(p[k] for p in pts) for k in range(3)],[max(p[k] for p in pts) for k in range(3)])
- for level,end in enumerate(RIG_ENDS):
+ for level in range(len(RIG_ENDS)):
   m=Mesh(flat=WIRES)
-  for x in members:
-   r=x['art']['radius'];floor=WIRE_PX/2*(end+span)*PIXEL
-   n=0 if r>=floor else math.ceil(SHARE_STEPS*math.log2(floor/r))
-   m.tube([pivot(mesh,p) for p in rig_ends(x)],r*2**(n/SHARE_STEPS),f'wire{n}',RIG_SIDES[level])
+  for x in members:lines(m,[pivot(mesh,p) for p in rig_ends(x)],x['art']['radius'],span,level,'wire')
   m.object(mesh[5:]+(f'_LOD{level}' if level else ''),[0,0,0])
+# A headsail struck is a roll of sailcloth on its stay, as thick as the sheet scaled across its luff is, drawn as the rig
+# is, so that far off it is a line and not a sliver of cloth broken into dots.
+for s in D['rig']['sails']:
+ if s['kind']!='jib':continue
+ roll='koru:roll_'+s['id'];t,c,h=[pivot(roll,s[k]) for k in('tack','clew','head')];luff=math.dist(t,h)
+ chord=math.sqrt(max(0,math.dist(t,c)**2-(sum((a-b)*(e-b) for a,b,e in zip(c,t,h))/luff)**2))
+ for level in range(len(RIG_ENDS)):
+  m=Mesh(flat=ROLLS);lines(m,[t,h],.015*chord/2,luff,level,'roll');m.object(roll[5:]+(f'_LOD{level}' if level else ''),[0,0,0])
 # A sail's levels: drawn with the atlas near, then two flat. Rows and columns of a gaff sail, rows of a jib.
 GAFF_GRIDS=[(9,25),(6,9),(4,6)];JIB_ROWS=[18,8,5]
 for s in D['rig']['sails']:

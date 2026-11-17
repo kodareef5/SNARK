@@ -2,7 +2,7 @@
 // read off its part of its material's pictures as a textured draw shows them from afar, and a palette colour no other
 // of them has, which its flat faces are drawn in.
 
-import { FINISH_NUMBERS } from "../../shared/pack/finish.ts";
+import { FINISH_NUMBERS, finishShare } from "../../shared/pack/finish.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
 import { NEUTRAL } from "../../client/core/render/surface.ts";
 import { materialMips } from "../pack/texture.ts";
@@ -53,7 +53,7 @@ export function stateFinishes(finishes: Readonly<Record<string, FinishSpec>>, pi
     };
     const base = mean("base", true).map((c, i) => Math.round(srgb(Math.min(1, c * d.material.tint[i]!)) * 255));
     const orm = mean("mro", false).map((c) => Math.round(c * 255));
-    made.push({ name, numbers: [...base, ...orm, Math.round((f.sheet ?? d.material.sheet ?? 0) * 255), Math.max(1, Math.round((f.share ?? 1) * 255))] });
+    made.push({ name, numbers: [...base, ...orm, Math.round((f.sheet ?? d.material.sheet ?? 0) * 255), finishShare(f.share)] });
   }
   const pairs: [number, number, number][] = [];
   made.forEach(({ numbers: [r, g, b] }, k) => {

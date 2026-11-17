@@ -307,7 +307,9 @@ for s in D['rig']['sails']:
   luff=unit([b-a for a,b in zip(t,s['head'])]);c=[b-a for a,b in zip(t,s['clew'])];d=sum(a*b for a,b in zip(c,luff))
   chord=unit([a-d*b for a,b in zip(c,luff)]);normal=[chord[1]*luff[2]-chord[2]*luff[1],chord[2]*luff[0]-chord[0]*luff[2],chord[0]*luff[1]-chord[1]*luff[0]]
   q=qframe(chord,luff,normal)
-  parts.append({'mesh':s['sheet'],'from':{'at':local(t),'turn':q,'scale':[.015,1,.3]},'to':{'at':local(t),'turn':q}})
+  # Struck, the sheet is put away and its roll on the stay, a line drawn as the rig is, stands for it; set, the roll is.
+  parts.append({'mesh':s['sheet'],'from':{'at':local(t),'turn':q,'scale':[.015,1,.3],'away':True},'to':{'at':local(t),'turn':q}})
+  parts.append({'mesh':'koru:roll_'+s['id'],'from':{'at':local(t),'turn':q},'to':{'at':local(t),'turn':q,'scale':[.001,1,.001],'away':True}})
 # The standing rigging is drawn by parts of the control that never move, so that it is drawn as itself as far as the
 # sails are, and no wire is left to the far mesh: a part a group of its segments, each mast's in bands of 22 m up, the
 # forestays' and the backstays' likewise, and the triatics between the mastheads together. A part stands at the middle

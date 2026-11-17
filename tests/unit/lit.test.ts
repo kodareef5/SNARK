@@ -192,19 +192,24 @@ test("a landmark's flat draw in a colour its art states is lit as that finish's 
   expect(finishTable(palette, { meshes: [{ id: "core:rock" }, { id: "yacht:block" }], landmarks: [{ name: "yacht", pieces: [], counts: [[], []], finishes: [46, 1, 2, 3, 4, 5, 6, 7, 255] }] }).row).toEqual(Uint8Array.from([0, 1]));
 });
 
-test("a landmark's see-through draw in a finish with a share shows that share of itself over what lies behind, against any of it", () => {
+test("a line's finish is lit alike whichever way its faces turn, and drawn see-through shows its share of itself over what lies behind", () => {
   const mesh = squareMesh("yacht:wire", 1, []);
   mesh.lods[0]!.colors.fill(46);
-  const draw = (share: number, flags: number): Uint8ClampedArray => {
+  const draw = (share: number, flags: number, yaw = 0): Uint8ClampedArray => {
     const pack = parsePack(buildPack([mesh], palette, [], [], null, [{ name: "yacht", pieces: [], counts: [[], []], finishes: [46, 99, 105, 108, 247, 178, 31, 0, share] }]));
     const stage = new Stage(pack, W, H);
     [stage.cam.x, stage.cam.y, stage.cam.z, stage.cam.yaw, stage.cam.pitch] = [0, 0.5, 1.5, Math.PI, 0];
     stage.begin();
-    if (flags >= 0) stage.add("yacht:wire", 0, { x: 0, y: 0, z: 0, flat: true, flags });
+    if (flags >= 0) stage.add("yacht:wire", 0, { x: 0, y: 0, z: 0, yaw, flat: true, flags });
     return stage.render().slice();
   };
-  const [behind, whole, half] = [draw(255, -1), draw(255, 0), draw(128, DRAW_BLEND)];
   const middle = ((H / 2) * W + W / 2) * 4;
-  for (let c = 0; c < 3; c++) expect(Math.abs(half[middle + c]! - (behind[middle + c]! + (whole[middle + c]! - behind[middle + c]!) * (128 / 255)))).toBeLessThanOrEqual(1);
-  expect(Math.abs(whole[middle]! - behind[middle]!)).toBeGreaterThan(40);
+  const at = (picture: Uint8ClampedArray): number[] => Array.from(picture.subarray(middle, middle + 3));
+  // A line's finish (a share under 255) turned half away from the eye is lit as it is facing it; a finish with none is not.
+  const [line, turned, plain, plainTurned] = [draw(254, 0), draw(254, 0, 0.9), draw(255, 0), draw(255, 0, 0.9)];
+  for (let c = 0; c < 3; c++) expect(Math.abs(turned[middle + c]! - line[middle + c]!)).toBeLessThanOrEqual(1);
+  expect(at(plainTurned)).not.toEqual(at(plain));
+  const [behind, half] = [draw(254, -1), draw(127, DRAW_BLEND)];
+  for (let c = 0; c < 3; c++) expect(Math.abs(half[middle + c]! - (behind[middle + c]! + (line[middle + c]! - behind[middle + c]!) * (127 / 255)))).toBeLessThanOrEqual(1);
+  expect(Math.abs(line[middle]! - behind[middle]!)).toBeGreaterThan(40);
 });

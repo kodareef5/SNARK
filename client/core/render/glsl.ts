@@ -77,12 +77,14 @@ function swap(text: string, from: string, to: string): string {
 /**
  * LIT's fragment text for a flat mesh: a vertex in one of its landmark's finishes (shared/pack/finish.ts, `finishVertex`)
  * is lit with the finish's occlusion, roughness and metalness, mirroring the sky as SURFACE does, and with its sheet's
- * light from behind, and shows its share where it is drawn see-through. Any other is fully rough, as before.
+ * light from behind. A line's finish, one with a share, is lit as if it faced the eye, and shows its share where it is
+ * drawn see-through. Any other is fully rough, as before.
  */
 export const LIT_MESH_FRAGMENT = [
   ["flat in vec3 vColor;\n", "flat in vec3 vColor;\nflat in vec4 vFinish;\nflat in float vShare;\n"],
   ["void main() {\n", `${THROUGH}void main() {\n`],
   ["  vec3 orm = vec3(1.0, 1.0, 0.0);\n", "  vec3 orm = vFinish.xyz;\n"],
+  ["  vec3 v = -normalize(vRel);\n", "  vec3 v = -normalize(vRel);\n  if (vShare < 1.0) n = v;\n"],
   ["worldSharp ? skyFrom(r)", "worldSharp || vFinish.y < 1.0 ? skyFrom(r)"],
   ["  o = vec4(shown(lit(albedo, orm, n, v, mirrored, sunShadow(vRel, geometric)), vRel), uAlpha);", "  float shade = sunShadow(vRel, sunward(geometric, vFinish.w));\n  o = vec4(shown(lit(albedo, orm, n, v, mirrored, shade) + through(albedo, orm, n, vFinish.w, shade), vRel), uAlpha * vShare);"],
 ].reduce((text, [from, to]) => swap(text, from!, to!), LIT_FRAGMENT);

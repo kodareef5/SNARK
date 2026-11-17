@@ -382,7 +382,7 @@ export interface PiecesAsset {
 
 /**
  * One finish of a landmark: the material it is part of, by its name in the model, where in its pictures, its sheet where
- * not the material's, and the share of a face of it that shows, 1 where not given (shared/pack/finish.ts).
+ * not the material's, and, for a line's, the share of a face of it that shows (shared/pack/finish.ts).
  */
 export interface FinishSpec {
   readonly material: string;

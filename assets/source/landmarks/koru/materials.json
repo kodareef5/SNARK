@@ -44,6 +44,25 @@
     "wire15": {"rect": [0, 1664, 128, 128], "rgb": [99, 105, 108], "roughness": 0.7, "metal": 0.12, "share": 0.0379},
     "wire16": {"rect": [0, 1664, 128, 128], "rgb": [99, 105, 108], "roughness": 0.7, "metal": 0.12, "share": 0.0318},
     "wire17": {"rect": [0, 1664, 128, 128], "rgb": [99, 105, 108], "roughness": 0.7, "metal": 0.12, "share": 0.0266},
-    "wire18": {"rect": [0, 1664, 128, 128], "rgb": [99, 105, 108], "roughness": 0.7, "metal": 0.12, "share": 0.0223}
+    "wire18": {"rect": [0, 1664, 128, 128], "rgb": [99, 105, 108], "roughness": 0.7, "metal": 0.12, "share": 0.0223},
+    "roll0": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 1},
+    "roll1": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.6011},
+    "roll2": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.4588},
+    "roll3": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.3633},
+    "roll4": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.2929},
+    "roll5": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.2387},
+    "roll6": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.196},
+    "roll7": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.1617},
+    "roll8": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.134},
+    "roll9": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.1113},
+    "roll10": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.0927},
+    "roll11": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.0773},
+    "roll12": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.0646},
+    "roll13": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.054},
+    "roll14": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.0452},
+    "roll15": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.0379},
+    "roll16": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.0318},
+    "roll17": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.0266},
+    "roll18": {"picture": "sails", "rect": [0, 0, 512, 256], "tile": [1, 1], "rgb": [236, 233, 222], "roughness": 0.78, "metal": 0, "share": 0.0223}
   }
 }

@@ -156,12 +156,14 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
   eye[1] = -ry / dist;
   eye[2] = -rz / dist;
   const own = ((2 * row - 1) * 256 + colorIndex) * 4;
+  // A line's finish is lit as if it faced the eye, as LIT_MESH_FRAGMENT has it.
+  if (finish && row > 0 && finish.pixels[own + 3]! > 0 && finish.pixels[own + 3]! < 255) normal.set(eye);
   if (finish && row > 0 && finish.pixels[own + 3]! > 0) {
     for (let c = 0; c < 3; c++) {
       albedo[c] = srgbToLinear(finish.pixels[own + c]! / 255);
       worldOrm[c] = finish.pixels[own + 1024 + c]! / 255;
     }
-    const twice = 2 * (nx * eye[0]! + ny * eye[1]! + nz * eye[2]!);
+    const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
     for (let c = 0; c < 3; c++) reflected[c] = twice * normal[c]! - eye[c]!;
     if (worldOrm[1]! < 1 && look) skyFrom(mirrored, p.frame, reflected, look);
     lit(light, albedo, worldOrm, normal, eye, p.frame, worldOrm[1]! < 1 && look ? mirrored : NOTHING);

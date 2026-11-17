@@ -88,9 +88,14 @@ function cloth(v: number, px: number, py: number): [number, number] {
   return [(seam ? -7 : 0) + weave(px, py, 4) * 1.2 + noise(px / 24, py / 24, 32, 31) * 1.5, seam ? -0.02 : weave(px, py, 4) * 0.004];
 }
 
+// A line's finishes (`share`) are drawn in another's part of a picture, which that one paints.
+const painted = new Set<string>();
 for (const [name, f] of Object.entries(LOOK.finishes)) {
   const { n: N, base, height, rough, metal } = canvases[f.picture ?? "surfaces"]!;
   const [x0, y0, w, h] = f.rect;
+  const where = `${f.picture ?? "surfaces"} ${f.rect.join(" ")}`;
+  if (painted.has(where)) continue;
+  painted.add(where);
   const pattern = PATTERNS[name];
   // A face takes its picture from within the inset, so a tiling picture repeats over that window and runs on into the inset.
   const inner = f.tile ? LOOK.inset : 0;
