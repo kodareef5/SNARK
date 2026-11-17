@@ -7,7 +7,7 @@ import type { AssetPort } from "./assets/port.ts";
 import { forTouch, tierOf } from "./assets/tiers.ts";
 import { Governor, PHONE_MS, workMs } from "./governor.ts";
 import { BENCH_TURN_MS, effectsOff, packetWithout, tierWithout, type Effect } from "./passes.ts";
-import { keptLine } from "./settings.ts";
+import { VOLUME_MAX, keptLine } from "./settings.ts";
 import { stressThings, type Mark } from "./stress.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
@@ -73,6 +73,8 @@ import { TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
 import { TRAVEL_REFRESH_MS } from "./ui/travel.ts";
 import { arrivalAddress, joinAddress, serverAddress, siteLinks, type ClusterList, type Page } from "./travel.ts";
 
+/** The master volume of a page that measures itself (a probe, a bench, the device page), of 1 for full: `?volume=` gives another. */
+export const MEASURED_VOLUME = 0.02;
 /** Metres. Matches the server's REACH. */
 const REACH = 3.5;
 /** Holding the use key on a structure this long opens its menu. */
@@ -808,13 +810,17 @@ export class App {
 
   /**
    * What the page's address asks: `off`, effects turned off for a before and after (passes.ts). A page that pins pictures
-   * or hashes, or measures, holds the governor at the tier, or at `level`, and may name the `tier`.
+   * or hashes, or measures, holds the governor at the tier, or at `level`, and may name the `tier`. It plays at
+   * MEASURED_VOLUME, or at `volume`.
    */
   address(get: (name: string) => string | null, pinned: boolean): void {
     this.off = effectsOff(get("off"));
     if (!pinned) return;
     this.governor.held = Number(get("level") ?? 0);
     this.ui.settings.tier = tierOf(get("tier") ?? this.ui.settings.tier).name;
+    // Such a page runs unattended, often behind someone's other work, and its music would start at full volume.
+    const volume = Number(get("volume") ?? MEASURED_VOLUME);
+    this.ui.settings.masterVolume = Number.isFinite(volume) ? Math.max(0, Math.min(VOLUME_MAX, volume)) : MEASURED_VOLUME;
   }
 
   /** After the frame is handed to WebGL: our code took `ours` ms of it. */
