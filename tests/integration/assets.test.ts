@@ -150,11 +150,14 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // picture it did (the rasterizer, which draws no shadows).
   // They were 48ed7779 and 2d1c4611 until a step's opaque draws came by what they bind (scene.ts order): only the
   // draws' order moved, and each of the 300 frames, rasterized at 1,280 by 720, is the picture it was.
-  expect(beforePlain).toBe("e4ff9131");
-  expect(hash).toBe("290c7341");
+  // They were e4ff9131 and 290c7341, with 32,700 draws and 33,985,200 triangles, until nodes were scattered by their
+  // chunks' frame keys (shared/coords.ts), which moves every tree, rock and bush on the proving ground; with the chunk's
+  // number in the key's place they are those again.
+  expect(beforePlain).toBe("c10a0609");
+  expect(hash).toBe("1ef8d869");
   // What the hash cannot say: the 300 frames' draws, triangles and bytes put on the card. A change that moves the hash
   // and leaves the frames as they were leaves these.
-  expect(counts).toEqual([32700, 33985200, 0]);
+  expect(counts).toEqual([34500, 32934000, 0]);
 
   // The same scene with the raptor's box saddle in the pack and on the raptor (FL5), drawn on its bones wherever it is
   // seen. The saddle's mesh numbers the meshes after it on, so the pack that holds it is the frozen one with it added:
@@ -169,8 +172,9 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // It was c7cb77a9 until the street wrecks' kinds, as above; without them it is that again.
   // They were d122e6e1 and c0721ce1 until the pteranodon's mesh became its own, as above, and a49f75cd and 40c252f5, with
   // 38,100 draws and 34,590,000 triangles, until chunks were drawn by cell, as above, and 9343af55 and 6a13306d until the
-  // draws came by what they bind, as above, each frame's picture as it was.
-  expect(saddled.beforePlain).toBe("afc06c85");
-  expect(saddled.hash).toBe("6dd7b425");
-  expect(saddled.counts).toEqual([33000, 34003200, 0]);
+  // draws came by what they bind, as above, each frame's picture as it was, and afc06c85 and 6dd7b425, with 33,000
+  // draws and 34,003,200 triangles, until nodes were scattered by their chunks' frame keys, as above.
+  expect(saddled.beforePlain).toBe("1536293d");
+  expect(saddled.hash).toBe("706f11fd");
+  expect(saddled.counts).toEqual([34800, 32952000, 0]);
 });

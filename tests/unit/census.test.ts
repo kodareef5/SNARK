@@ -77,8 +77,9 @@ artTest("a frame on medium at the iPhone's view keeps within medium's draws and 
   }
   // Nothing holds what is cast into the sun's maps yet: pinned at the most a heading. It was 1,112,574, 4,015,468 and
   // 205,904 while a chunk cast all its instances into every cascade its box met; by its 16 m cells, each into the
-  // cascades it reaches, it is this (the touch rule's one tap keeps the levels).
-  expect(Object.values(scenes).map((frames) => most(frames, (f) => f.cast))).toEqual([342046, 1736330, 138704]);
+  // cascades it reaches, it is this (the touch rule's one tap keeps the levels). It was 342,046 and 1,736,330 in the first
+  // two until nodes were scattered by their chunks' frame keys (shared/coords.ts), which moves every tree, rock and bush.
+  expect(Object.values(scenes).map((frames) => most(frames, (f) => f.cast))).toEqual([342060, 1820564, 138704]);
 });
 
 artTest("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draws and casts what it did", () => {

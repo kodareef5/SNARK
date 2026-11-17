@@ -490,8 +490,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // of draws); and from frame 200 the frame has 66 bones, not 40, as few as leaves bones for those poses and drops
   // nothing. Every body here is near enough to be posed every frame: posing all of them every frame gives this hash too.
   // It was 4216232697 until a see-through draw made ahead of opaque ones went after them, the rest as made: in each of the
-  // 300 frames the sea's draw stood ahead of two opaque ones.
-  expect(hash).toBe(1980140685);
+  // 300 frames the sea's draw stood ahead of two opaque ones. It was 1980140685 until nodes were scattered by their chunks'
+  // frame keys (shared/coords.ts), which moves every tree, rock and bush; with the chunk's number in the key's place it is
+  // that again.
+  expect(hash).toBe(3496737782);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -512,8 +514,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1893532195 until the pteranodon was drawn on its own art, as above.
   // It was 3121847286 until clips were stored to 0.025 degrees, as above, and 359459847 until chunks were drawn by cell.
   // It was 1443514794, with 97 more draws on one bone, until bodies without bones stood in a pose, as above, and
-  // 2400700468 until the sea's draw went after the opaque ones, as above.
-  expect(saddled.hash).toBe(3112331256);
+  // 2400700468 until the sea's draw went after the opaque ones, as above, and 3112331256 until nodes were scattered by
+  // their chunks' frame keys, as above.
+  expect(saddled.hash).toBe(2005316451);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

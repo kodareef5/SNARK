@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { CHUNK_SIZE } from "../../shared/coords.ts";
+import { CHUNK_SIZE, framed } from "../../shared/coords.ts";
 import { hashBytes } from "../../shared/hash.ts";
 import { MapStatics, groundBytes, mapHeightfield, mapNodes, parseMap, parseStatics, placeStatics, staticsSteps, writeMap, type MapData, type NodeScatter, type NodeZoned } from "../../shared/world/mapfile.ts";
 import { nodeForms, scatterNodes, type NodeSpot } from "../../shared/world/nodes.ts";
@@ -14,8 +14,15 @@ test("a map written to a file is read back whole, and the same map is the same b
   const map = busyMap();
   const file = writeMap(map);
   const back = parseMap(file);
-  expect({ ...back, statics: [...back.statics] }).toEqual({ ...map, statics: [...map.statics], hash: hashBytes(file.subarray(12)) });
+  // A map that does not say where it sits is read back at the lattice's middle, with the default display origin.
+  expect({ ...back, statics: [...back.statics] }).toEqual({ ...map, dims: framed(map.dims), statics: [...map.statics], hash: hashBytes(file.subarray(12)) });
+  expect(back.dims).toEqual({ chunksX: 2, chunksZ: 3, frameX: 2048, frameZ: 2048, originX: 2064, originZ: 2064 });
   expect(writeMap(back)).toEqual(file);
+  // One that does keeps its frame and origin, and its file differs from the default's in those eight bytes alone.
+  const placed = { chunksX: 2, chunksZ: 3, frameX: 1001, frameZ: 4093, originX: 1008, originZ: 4096 };
+  const there = writeMap({ ...map, dims: placed });
+  expect(parseMap(there).dims).toEqual(placed);
+  expect(Array.from({ length: file.length }, (_, i) => i).filter((i) => i >= 12 && there[i] !== file[i]).every((i) => i >= 20 && i < 28)).toBe(true);
   // A map with nothing on it and no water.
   const bare = parseMap(writeMap(flatMap(1)));
   expect([bare.seaLevel, [...bare.statics], bare.nodes, mapNodes(bare, mapHeightfield(bare), reg)]).toEqual([-Infinity, [], [], null]);
@@ -99,10 +106,10 @@ test("a file that is damaged, foreign or unplayable is refused, and the reason s
   expect(() => parseMap(new Uint8Array(100))).toThrow("map: this is not a map file");
   expect(() => parseMap(file.subarray(0, 20))).toThrow("map: it is cut short");
   expect(() => parseMap(rehashed((view) => view.setUint16(4, 3, true)))).toThrow("map: version 3 is not one this build reads: build the map again");
-  expect(() => parseMap(rehashed((view) => view.setFloat32(20, 4, true)))).toThrow("map: its samples are 4 m apart");
+  expect(() => parseMap(rehashed((view) => view.setFloat32(28, 4, true)))).toThrow("map: its samples are 4 m apart");
   expect(() => parseMap(rehashed((view) => view.setUint16(16, 2, true)))).toThrow("map: it has 1089 heights and 1089 tints, and its size takes 2145 of each");
   // The first section's length, made to reach past the end of the file.
-  const lengthAt = 48 + 1 + "test:flat".length + 4;
+  const lengthAt = 56 + 1 + "test:flat".length + 4;
   expect(() => parseMap(rehashed((view) => view.setUint32(lengthAt, file.length, true)))).toThrow("map: a section runs past its end");
 
   const refused = (more: Partial<MapData>): (() => void) => () => void writeMap({ ...busyMap(), ...more });
@@ -111,6 +118,13 @@ test("a file that is damaged, foreign or unplayable is refused, and the reason s
   expect(refused({ id: "two words" })).toThrow("map: its id must be");
   expect(refused({ stepY: 0 })).toThrow("map: its height range or its sea level is not a number");
   expect(refused({ dims: { chunksX: 2, chunksZ: 257 } })).toThrow("map: it is 2 by 257 chunks");
+  // A map lies whole on the lattice, and its display origin is a sector's corner at or beyond its north-west corner.
+  expect(refused({ dims: { chunksX: 2, chunksZ: 3, frameX: 4095 } })).toThrow("map: its south-east corner is at column 4095, row 2048, and it must lie whole on the lattice of 4096 chunks a side");
+  expect(refused({ dims: { chunksX: 2, chunksZ: 3, frameZ: 4094, originZ: 4096 } })).toThrow("map: its south-east corner is at column 2048, row 4094");
+  expect(refused({ dims: { chunksX: 2, chunksZ: 3, originX: 2048 } })).toThrow("map: its display origin is at column 2048, row 2064, and it must be a sector's corner at or west of column 2050 and at or north of row 2051");
+  expect(refused({ dims: { chunksX: 2, chunksZ: 3, originX: 2070 } })).toThrow("map: its display origin is at column 2070");
+  expect(refused({ dims: { chunksX: 2, chunksZ: 3, frameZ: 2061, originZ: 2048 } })).toThrow("map: its display origin is at column 2064, row 2048");
+  expect(() => parseMap(rehashed((view) => view.setUint16(26, 2047, true)))).toThrow("map: its display origin is at column 2064, row 2047");
   expect(refused({ statics: [{ kind: "core:wall", x: 5, y: 5000, z: 5, yaw: 0 }] })).toThrow("map: a core:wall at 5, 5000, 5 is off the map");
   const scatter = busyMap().nodes[0] as NodeScatter;
   expect(refused({ nodes: [{ ...scatter, perChunk: 250 }, { ...scatter, perChunk: 7 }] })).toThrow("map: its nodes take 257 slots in a chunk");
@@ -138,7 +152,8 @@ test("a map's nodes are its layers one after another: scattered where the map al
     for (let i = 0; i < 40; i++) {
       nodes.at(chunk, i, a);
       plain.at(chunk, i, b);
-      expect(a).toEqual(b);
+      // An empty slot leaves the rest of the spot as it was.
+      expect(a.kind === 0 ? [b.kind] : a).toEqual(a.kind === 0 ? [0] : b);
       if (a.kind !== 0) scattered++;
     }
   }
@@ -167,7 +182,7 @@ test("a map's nodes are its layers one after another: scattered where the map al
     for (let i = 0; i < 30; i++) {
       nodes.at(chunk, 42 + i, a);
       same.at(chunk, i, b);
-      expect(a).toEqual(b);
+      expect(a.kind === 0 ? [b.kind] : a).toEqual(a.kind === 0 ? [0] : b);
       if (a.kind === 0) continue;
       const square = zoned.zone[Math.floor(a.z / 16) * 8 + Math.floor(a.x / 16)]!;
       expect(square === 1 ? [palm] : [fig, fern]).toContain(a.kind);

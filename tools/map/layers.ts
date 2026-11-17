@@ -2,7 +2,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CHUNK_SIZE, YAW_UNITS, chunkAt, chunkCount, chunkCx, chunkCz } from "../../shared/coords.ts";
+import { CHUNK_SIZE, YAW_UNITS, chunkAt, chunkCount, chunkCx, chunkCz, framed } from "../../shared/coords.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import type { MapZone } from "../../shared/content/defs.ts";
@@ -56,8 +56,8 @@ export function readLayers(folder: string): MapData {
     return (bits === 8 ? raw : Uint16Array.from({ length: width * height }, (_, i) => raw[i * 2]! | (raw[i * 2 + 1]! << 8))).reverse();
   };
 
-  const about = need(json<{ id: string; chunks: [number, number]; minY: number; stepY: number; seaLevel?: number | null }>("map.json"), "map.json");
-  const dims = { chunksX: about.chunks[0], chunksZ: about.chunks[1] };
+  const about = need(json<{ id: string; chunks: [number, number]; frame?: [number, number]; origin?: [number, number]; minY: number; stepY: number; seaLevel?: number | null }>("map.json"), "map.json");
+  const dims = framed({ chunksX: about.chunks[0], chunksZ: about.chunks[1], ...(about.frame ? { frameX: about.frame[0], frameZ: about.frame[1] } : {}), ...(about.origin ? { originX: about.origin[0], originZ: about.origin[1] } : {}) });
   const sizeX = dims.chunksX * CHUNK_SIZE;
   const sizeZ = dims.chunksZ * CHUNK_SIZE;
   const nx = sizeX / TERRAIN_CELL + 1;
@@ -140,13 +140,13 @@ export function waterLayer(dims: MapData["dims"], minY: number, stepY: number, c
 /** Writes the folder `readLayers` reads the same map from. */
 export function writeLayers(map: MapData, folder: string): void {
   mkdirSync(folder, { recursive: true });
-  const { chunksX, chunksZ } = map.dims;
+  const { chunksX, chunksZ, frameX, frameZ, originX, originZ } = framed(map.dims);
   const nx = (chunksX * CHUNK_SIZE) / TERRAIN_CELL + 1;
   const nz = (chunksZ * CHUNK_SIZE) / TERRAIN_CELL + 1;
   const put = (name: string, data: Uint8Array | string): void => writeFileSync(join(folder, name), data);
   /** One record a line, so that a change to one shows as one line. */
   const lines = (rows: readonly unknown[]): string => `[\n${rows.map((r) => `  ${JSON.stringify(r)}`).join(",\n")}\n]\n`;
-  const about = { id: map.id, chunks: [chunksX, chunksZ], minY: map.minY, stepY: map.stepY, ...(map.seaLevel === -Infinity ? {} : { seaLevel: map.seaLevel }) };
+  const about = { id: map.id, chunks: [chunksX, chunksZ], frame: [frameX, frameZ], origin: [originX, originZ], minY: map.minY, stepY: map.stepY, ...(map.seaLevel === -Infinity ? {} : { seaLevel: map.seaLevel }) };
   put("map.json", `{\n${Object.entries(about).map(([key, value]) => `  ${JSON.stringify(key)}: ${JSON.stringify(value)}`).join(",\n")}\n}\n`);
   put("heights.png", writeGrey(nx, nz, map.heights.slice().reverse()));
   put("tint.png", writeGrey(nx, nz, map.tint.slice().reverse(), defaultPalette()));

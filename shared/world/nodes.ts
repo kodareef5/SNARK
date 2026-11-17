@@ -5,7 +5,7 @@
 
 import { shapeHalf, type ShapeBox } from "../content/defs.ts";
 import type { Registry } from "../content/registry.ts";
-import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../coords.ts";
+import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, frameKey, type MapDims } from "../coords.ts";
 import type { Heightfield } from "./heightfield.ts";
 import { StructureStore, type PartTable } from "./structures.ts";
 import { seaHere } from "./water.ts";
@@ -204,7 +204,9 @@ export function nodeForms(reg: Registry): NodeForms {
 /**
  * Scatters nodes by a hash. `kindsAt` gives the content indices that may grow at a place, repeated for weight, with 0 for
  * bare ground, or null where nothing grows. A slot is also empty where the ground is lower than 0.3 m above sea level or too
- * steep, or for a kind of the sea floor where the ground is not under the sea. A node's kind and turn come from one hash of its slot, as they always have, and its variant and size from a third.
+ * steep, or for a kind of the sea floor where the ground is not under the sea. A slot's place in its chunk comes from a hash
+ * of the seed, its chunk's frame key and its index, its kind and turn from a second and its variant and size from a third,
+ * so a node stands where it did when its map is widened.
  * A kind with a footing grows only where the ground under it falls no further than it allows, and elsewhere what it says.
  */
 export function scatterNodes(dims: MapDims, hf: Heightfield, seed: number, perChunk: number, forms: NodeForms, kindsAt: (x: number, z: number) => readonly number[] | null): NodeSource {
@@ -235,8 +237,9 @@ export function scatterNodes(dims: MapDims, hf: Heightfield, seed: number, perCh
     perChunk,
     at(chunk, index, out) {
       out.kind = 0;
-      const h = mix(seed, chunk, index);
-      const g = mix(h, index, chunk);
+      const key = frameKey(dims, chunk);
+      const h = mix(seed, key, index);
+      const g = mix(h, index, key);
       const x = (chunkCx(dims, chunk) + (h & 0xffff) / 65536) * CHUNK_SIZE;
       const z = (chunkCz(dims, chunk) + (h >>> 16) / 65536) * CHUNK_SIZE;
       const grows = kindsAt(x, z);
@@ -250,7 +253,7 @@ export function scatterNodes(dims: MapDims, hf: Heightfield, seed: number, perCh
       if (kind !== 0 && ring[kind]! > 0 && !fits(kind, chunkCx(dims, chunk) * 65536 + (h & 0xffff), chunkCz(dims, chunk) * 65536 + (h >>> 16))) kind = forms.footElse[kind]!;
       if (kind === 0) return;
       out.kind = kind;
-      out.form = formOf(forms, kind, mix(g, chunk, seed));
+      out.form = formOf(forms, kind, mix(g, key, seed));
       out.x = x;
       out.y = y;
       out.z = z;

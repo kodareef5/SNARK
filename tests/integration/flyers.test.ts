@@ -109,7 +109,7 @@ test("a wild pteranodon in the air whose chunk goes to sleep is set down unhurt 
   const health = h.host.survival.value(rec, V_HEALTH);
   expect([ents.mode[e], up() > 10]).toEqual([MODE_FLYER, true]);
   // She goes far off, and their chunks sleep.
-  h.say(s, "tp 40 470");
+  h.say(s, "tp 44 470");
   h.run(1000);
   const tameUp = ents.y[tame]! - groundUnder(h.world.hf, ents.x[tame]!, ents.z[tame]!, 0.75);
   expect([(ents.flags[e]! & F_ALIVE) !== 0, h.host.creatures.isChunkAwake(ents.chunk[e]!), ents.mode[e], (ents.flags[e]! & F_GROUNDED) !== 0, up() < 0.01, h.host.survival.value(rec, V_HEALTH), h.host.creatures.grounded]).toEqual([true, false, MODE_WALK, true, true, health, 1]);

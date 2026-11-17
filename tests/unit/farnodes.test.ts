@@ -5,7 +5,7 @@ import { FAR_NODE_BUFFERS, PULL_SLOTS, farNodeOf } from "../../client/core/rende
 import { HAND_FAR, HAND_NEAR } from "../../client/core/render/hand.ts";
 import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
 import { ATLAS_REGION, DRAW_PULLED, DRAW_TEXTURED, FRAME, type FramePacket } from "../../client/core/render/packet.ts";
-import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
+import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz, frameKey, type MapDims } from "../../shared/coords.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { SIZE_UNITS, formOf, mix, scatterNodes, type NodeForms, type NodeSource } from "../../shared/world/nodes.ts";
@@ -248,10 +248,11 @@ test("at the benchmark's density each tier's far triangles in view stay within i
   const place = (dims: MapDims, hf: Heightfield, forms: NodeForms, kinds: number[]): NodeSource => ({
     perChunk: 160,
     at(chunk, index, out) {
-      const h = mix(7, chunk, index);
-      const g = mix(h, index, chunk);
+      const key = frameKey(dims, chunk);
+      const h = mix(7, key, index);
+      const g = mix(h, index, key);
       out.kind = kinds[g % kinds.length]!;
-      out.form = formOf(forms, out.kind, mix(g, chunk, 7));
+      out.form = formOf(forms, out.kind, mix(g, key, 7));
       out.x = (chunkCx(dims, chunk) + (h & 0xffff) / 65536) * CHUNK_SIZE;
       out.z = (chunkCz(dims, chunk) + (h >>> 16) / 65536) * CHUNK_SIZE;
       out.y = hf.minY + hf.heights[0]! * hf.stepY;

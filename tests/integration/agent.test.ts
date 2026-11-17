@@ -208,7 +208,7 @@ test("observe shows the house with its doorway, the pool and the slopes, and lis
 
   // Among the trees every id names the node the server has in that slot.
   p.run(200);
-  await p.call("console", { line: "tp 256 150" });
+  await p.call("console", { line: "tp 252 150" });
   p.run(600);
   const woods = await p.call("observe", { radius: 24, cell: 1 });
   const trees = woods.tree as [string, number, number, number, string][];
@@ -218,7 +218,7 @@ test("observe shows the house with its doorway, the pool and the slopes, and lis
     const t = p.h.world.nodeField!.store.chunks[chunk!]!;
     expect([p.h.world.nodeField!.standing(chunk!, slot!), Math.round(t.x[slot!]!), Math.round(t.z[slot!]!)]).toEqual([p.id("tree"), x, z]);
     expect(letterAt(woods, t.x[slot!]!, t.z[slot!]!)).toBe("T");
-    expect(far).toBe(Math.round(Math.hypot(t.x[slot!]! - 256, t.z[slot!]! - 150)));
+    expect(far).toBe(Math.round(Math.hypot(t.x[slot!]! - 252, t.z[slot!]! - 150)));
   }
   expect(trees.map((t) => t[3])).toEqual(trees.map((t) => t[3]).sort((a, b) => a - b));
   expect((woods.rock as unknown[]).length).toBeGreaterThan(0);

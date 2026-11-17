@@ -78,6 +78,10 @@ export interface World {
   readonly lakes?: LakeRules | false;
   /** The landmarks it places (tools/mapworld/landmarks.ts). */
   readonly landmarks?: readonly LandmarkSite[];
+  /** The lattice column and row of its south-east corner (shared/coords.ts), by default the lattice's middle. */
+  readonly frame?: readonly [number, number];
+  /** Sectors of room it leaves to grow into north and west: its display origin is that far past the default. */
+  readonly room?: { readonly north?: number; readonly west?: number };
 }
 
 export interface Ground {

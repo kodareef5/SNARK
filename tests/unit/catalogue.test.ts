@@ -140,7 +140,7 @@ const STUBS: ContentPack = {
     { id: "stub:beach", type: "spawns", entries: [{ group: ["core:parasaur"], weight: 3 }, { name: "Alphas", group: ["stub:alpha", "core:raptor"], chances: [1, 0.5], offsets: [[0, 2], [0, -2]], weight: 0.1 }], limits: [{ species: "stub:alpha", share: 0.05 }] },
     { id: "stub:alpha", extends: "core:raptor", tag: "raptor", variant: "alpha", boss: true, loot: "stub:drop", buffs: ["core:fed"], saddle: "core:saddle_raptor", attacks: [{ name: "bite", damage: 60, type: "melee", reach: 2, ticks: 27, lands: 11 }] },
     { id: "stub:rules", type: "game", survivor: "core:survivor", cache: "core:cache", bag: "core:bag", levels: "core:levels", buffs: ["core:fed"] },
-    { id: "stub:island", type: "map", label: "The island", chunks: [16, 16], seaLevel: 0, game: "stub:rules", zones: [{ kind: "spawn", at: [100, 100], radius: 80, spawns: "stub:beach", count: 12 }, { kind: "crate", at: [300, 200], radius: 40, crate: "stub:crate" }] },
+    { id: "stub:island", type: "map", label: "The island", seaLevel: 0, game: "stub:rules", zones: [{ kind: "spawn", at: [100, 100], radius: 80, spawns: "stub:beach", count: 12 }, { kind: "crate", at: [300, 200], radius: 40, crate: "stub:crate" }] },
     { id: "stub:engram-shield", type: "engram", label: "Shield", level: 80, cost: 0, item: "stub:shield", requires: ["core:engram-spear"], group: "island", from: "stub:alpha" },
   ],
 };
