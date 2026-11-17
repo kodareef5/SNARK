@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { authoredClips } from "../../shared/anim/authored.ts";
+import type { LandmarkFarRow } from "../../shared/pack/far.ts";
 import type { Manifest, ManifestTexture } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
@@ -96,12 +97,12 @@ export async function namedTextures(source: string = SOURCE): Promise<Map<string
   return out;
 }
 
-/** The core pack as `buildCorePack` makes it, from the packs under `source`, with `extra` meshes besides. */
-export function corePack(source: string = SOURCE, extra: SourceMesh[] = []): Uint8Array {
-  if (resolve(source) === resolve(SOURCE)) return buildCorePack(extra);
+/** The core pack as `buildCorePack` makes it, from the packs under `source`, with `extra` meshes besides and the rows of the landmark far meshes among them. */
+export function corePack(source: string = SOURCE, extra: SourceMesh[] = [], landmarks: readonly LandmarkFarRow[] = []): Uint8Array {
+  if (resolve(source) === resolve(SOURCE)) return buildCorePack(extra, landmarks);
   const art = readPacks(source);
   const made = [...grayboxMeshes(CORE_CONTENT), farMesh(), ...mannequinMeshes(), ...weaponMeshes()];
-  return buildPack([...withArt(made, art.meshes), ...extra], defaultPalette(), [...art.clips, ...authoredClips()], art.rigs, art.details);
+  return buildPack([...withArt(made, art.meshes), ...extra], defaultPalette(), [...art.clips, ...authoredClips()], art.rigs, art.details, landmarks);
 }
 
 export interface GameFiles {
@@ -136,20 +137,18 @@ export function splitWithTextures(whole: Uint8Array, texture: (t: ManifestTextur
  */
 export async function gameFiles(source: string = SOURCE, cache: string | null = SNAP_CACHE, extra: SourceMesh[] = [], landmarks: readonly { readonly name: string }[] = []): Promise<GameFiles> {
   const named = await namedTextures(source);
-  // A map's landmarks are drawn from the core's files here, their meshes among the core's and their far meshes' rows listed.
-  // Their content is read only where there are some: it takes a second to load.
+  // A map's landmarks are drawn from the core's files here, their meshes among the core's, their far meshes split as a
+  // build splits a landmark's. Their content is read only where there are some: it takes a second to load.
   const placed = landmarks.length > 0 ? (await import("../../content/landmarks/index.ts")).LANDMARKS : [];
   const theirs = landmarks.map(({ name }) => {
     const l = placed.find((x) => x.name === name);
     if (!l) throw new Error(`content/landmarks/index.ts has no landmark "${name}"`);
     return landmarkArt(l);
   });
-  const files = splitWithTextures(corePack(source, [...extra, ...theirs.flatMap((art) => art.meshes)]), (t) => {
+  const rows = theirs.flatMap((art) => (art.far ? [art.far.row] : []));
+  return splitWithTextures(corePack(source, [...extra, ...theirs.flatMap((art) => art.meshes)], rows), (t) => {
     const n = named.get(t.id);
     if (!n) throw new Error(`texture ${t.id} is named by a mesh, and no asset under ${source} has its pictures`);
     return rgbaOf(n.material, t.role, t.top, cache);
   });
-  const rows = theirs.flatMap((art) => (art.far ? [art.far.row] : []));
-  if (rows.length > 0) files.manifest.landmarks = rows;
-  return files;
 }
