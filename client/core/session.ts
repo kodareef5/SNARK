@@ -269,6 +269,12 @@ const SMOOTH_MS = 90;
 const SMOOTH_LIMIT = 3;
 /** Chunks around the body whose nodes stay filled until the tier says how many (assets/tiers.ts `nodes`). Collision needs one, drawing wants more. */
 const NODE_RADIUS = 3;
+/**
+ * Metres round the body whose ground a prediction may read: what a tick's step reaches, a vehicle's length, and the way
+ * from the snapshot a replay starts at, at 250 m/s on a link of 200 ms. Its body is predicted only where every chunk this
+ * near holds the map's own ground (shared/world/heightfield.ts), and the page's first frame waits for the sectors it meets.
+ */
+export const PREDICTED_REACH = 128;
 /** A view or far request the server was too busy to take is sent again this long after. The server reads either once a second. */
 const ASK_AGAIN_MS = 1000;
 /**
@@ -480,6 +486,9 @@ export class ClientSession {
   nodeField: NodeField | null = null;
   private nodeChunk = -1;
   private nodeRadius = NODE_RADIUS;
+  /** The chunks the near node field holds for the body, and the ground's changes when they were chosen. */
+  private nodeHeld: number[] = [];
+  private nodeSeen = -1;
   private readonly nodeGone = new Map<number, number[]>();
   /** Chunks whose used-up nodes were told, for the far nodes. */
   private nodeChanges: NodeChanges | null = null;
@@ -494,8 +503,13 @@ export class ClientSession {
   onStructure: ((was: number, kind: number, x: number, y: number, z: number, hpWas: number, hp: number, cause: number) => void) | null = null;
   /** Told of each node used up (true) or grown back (false) in a chunk whose nodes were known before. For sound only. */
   onNode: ((chunk: number, index: number, used: boolean) => void) | null = null;
-  /** Predicted local body after the latest simulated tick. */
+  /** Predicted local body after the latest simulated tick; while its ground is not held, the body the server last told. */
   readonly own = new Body();
+  /** The ground within PREDICTED_REACH of the body is the map's own and its nodes held, so the body is predicted on it. */
+  predicting = false;
+  /** Settles once the welcome has come or the session has closed. */
+  readonly welcomed: Promise<void>;
+  private welcomedNow!: () => void;
   /** One tick earlier, for render interpolation. */
   readonly ownPrev = new Body();
   ownYaw = 0;
@@ -518,7 +532,7 @@ export class ClientSession {
    * predicted state. `transitions` counts those that changed which body it is or where it sits (a mount, a seat), which
    * nothing predicts and are not counted as either. `unsent` counts commands too long for a message.
    */
-  readonly stats = { snapshots: 0, undecodable: 0, corrections: 0, stateCorrections: 0, transitions: 0, clockJumps: 0, margin: 0, rttTicks: 0, bytesIn: 0, unsent: 0 };
+  readonly stats = { snapshots: 0, undecodable: 0, corrections: 0, stateCorrections: 0, transitions: 0, clockJumps: 0, margin: 0, rttTicks: 0, bytesIn: 0, unsent: 0, unheld: 0 };
   readonly prediction = new PredictionTrace();
   /** What is left to hide of the last correction. Add it to the body's position when drawing. */
   smoothX = 0;
@@ -542,6 +556,8 @@ export class ClientSession {
   private readonly w = new BitWriter(MAX_CLIENT_MESSAGE);
   private readonly r = new BitReader();
   private readonly serverBody = new Body();
+  /** The body the server last told while it was not predicted, that prediction starts again from. */
+  private readonly told = new Body();
   private readonly passengerCompared = new Body();
   private lastNow = -1;
   private dilation = 1;
@@ -572,6 +588,7 @@ export class ClientSession {
     this.name = opts.name;
     this.conn = conn;
     this.opts = opts;
+    this.welcomed = new Promise((go) => (this.welcomedNow = go));
     for (let i = 0; i < HISTORY; i++) this.bodies.push(new Body());
     conn.onMessage = (channel, data) => this.receive(channel, data);
     conn.onClose = () => {
@@ -579,6 +596,7 @@ export class ClientSession {
         this.state = "closed";
         this.closeReason = CLOSED_BY_PEER;
       }
+      this.welcomedNow();
     };
     const w = this.w;
     writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, (opts.spectate ? HELLO_SPECTATE : 0) | (opts.statics ? HELLO_STATICS : 0), opts.key, opts.look ?? null, opts.password ?? "", opts.ticket ?? null);
@@ -684,6 +702,7 @@ export class ClientSession {
     this.ownPitch = pitch;
 
     this.tapped |= buttons;
+    this.holdGround();
     const target = Math.floor(this.tickClock);
     let steps = 0;
     while (this.simTick < target && steps < MAX_STEPS_PER_UPDATE) {
@@ -692,7 +711,8 @@ export class ClientSession {
       this.inputs.set(t, qx, qz, qyaw, qpitch, this.tapped | buttons);
       this.tapped = 0;
       this.ownPrev.copy(this.own);
-      this.step(t);
+      if (this.predicting) this.step(t);
+      else this.stats.unheld++;
     }
     // Too far behind to catch up by simulating, so skip. The server held the last input meanwhile.
     const newestInput = this.simTick;
@@ -702,6 +722,32 @@ export class ClientSession {
       this.sendInputs(newestInput, steps);
       this.recenterNodes();
     }
+  }
+
+  /** Where its living body is and how it moves, or null before the welcome, while dead or choosing, and watching. */
+  get place(): { readonly x: number; readonly z: number; readonly vx: number; readonly vz: number } | null {
+    return this.state === "active" && this.sessionState === SESSION_ALIVE && this.ownHandle !== 0 ? this.own : null;
+  }
+
+  /**
+   * Whether the body is predicted from here on: the near node field takes the chunks whose ground has come, and the body
+   * is predicted while all within PREDICTED_REACH hold the map's own ground. Where they do not it is drawn as the server
+   * last told it, and where they come to, its prediction starts again from that.
+   */
+  private holdGround(): void {
+    this.recenterNodes();
+    const held = this.groundHeld();
+    if (held && !this.predicting && this.latestSnapshot > 0 && this.latestSnapshot < this.simTick) {
+      this.predicting = true;
+      this.told.copy(this.own);
+      this.reconcile(this.latestSnapshot, this.told);
+    }
+    this.predicting = held;
+  }
+
+  private groundHeld(): boolean {
+    const b = this.own, r = PREDICTED_REACH;
+    return this.world?.hf.exactIn(b.x - r, b.z - r, b.x + r, b.z + r) ?? false;
   }
 
   /** Fill `out` with remote entities interpolated to the current render time. */
@@ -854,6 +900,7 @@ export class ClientSession {
   close(): void {
     this.state = "closed";
     this.conn.close();
+    this.welcomedNow();
   }
 
   /**
@@ -995,6 +1042,7 @@ export class ClientSession {
       this.state = "closed";
       this.closeReason = r.u8();
       if (this.closeReason === REJECT_TRAVEL) this.closeText = r.string(MAX_SERVER_TEXT_BYTES);
+      this.welcomedNow();
     } else if (type === S_TRAVEL) {
       const ticket = new Uint8Array(TICKET_BYTES);
       for (let i = 0; i < TICKET_BYTES; i++) ticket[i] = r.u8();
@@ -1029,24 +1077,36 @@ export class ClientSession {
   /** The near node field holds `chunks` round the body's chunk from now on, as the tier says. */
   holdNodes(chunks: number): void {
     if (chunks === this.nodeRadius) return;
-    const gone = (c: number, i: number): boolean => this.nodeGone.get(c)?.includes(i) ?? false;
-    if (this.nodeField && this.nodeChunk >= 0) {
-      this.nodeField.retain(this.nodeChunk, chunks, 1, gone);
-      this.nodeField.retain(this.nodeChunk, this.nodeRadius, -1, gone);
-    }
     this.nodeRadius = chunks;
+    this.nodeSeen = -1;
+    this.recenterNodes();
   }
 
+  /**
+   * The near node field holds the chunks round the body's chunk whose ground is the map's own: a node there is placed as
+   * the server places it. Each is taken before those left are let go, so a chunk in both stays filled.
+   */
   private recenterNodes(): void {
     const field = this.nodeField;
     const world = this.world;
     if (!field || !world) return;
-    const chunk = chunkAt(world.dims, this.own.x, this.own.z);
-    if (chunk === this.nodeChunk) return;
+    const { dims, hf } = world;
+    const chunk = chunkAt(dims, this.own.x, this.own.z);
+    if (chunk === this.nodeChunk && hf.changes.length === this.nodeSeen) return;
+    [this.nodeChunk, this.nodeSeen] = [chunk, hf.changes.length];
     const gone = (c: number, i: number): boolean => this.nodeGone.get(c)?.includes(i) ?? false;
-    field.retain(chunk, this.nodeRadius, 1, gone);
-    if (this.nodeChunk >= 0) field.retain(this.nodeChunk, this.nodeRadius, -1, gone);
-    this.nodeChunk = chunk;
+    const [cx, cz, r] = [chunkCx(dims, chunk), chunkCz(dims, chunk), this.nodeRadius];
+    const held: number[] = [];
+    for (let z = Math.max(0, cz - r); z <= Math.min(dims.chunksZ - 1, cz + r); z++) {
+      for (let x = Math.max(0, cx - r); x <= Math.min(dims.chunksX - 1, cx + r); x++) {
+        const c = z * dims.chunksX + x;
+        if (hf.exact[c] === 0) continue;
+        if (!this.nodeHeld.includes(c)) field.retain(c, 0, 1, gone);
+        held.push(c);
+      }
+    }
+    for (const c of this.nodeHeld) if (!held.includes(c)) field.retain(c, 0, -1, gone);
+    this.nodeHeld = held;
   }
 
   /** One component per message. */
@@ -1335,6 +1395,7 @@ export class ClientSession {
       this.state = "closed";
       this.closeReason = reason;
       this.conn.close();
+      this.welcomedNow();
     };
     // Another version lays the rest out differently, so nothing after the version is believed.
     if (version !== PROTOCOL_VERSION) return refuse(CLOSED_BAD_VERSION);
@@ -1352,6 +1413,7 @@ export class ClientSession {
     this.motdSeconds = motdSeconds;
     const source = this.opts.nodes?.(hf, reg) ?? null;
     this.nodeField = source ? new NodeField(dims, reg, source) : null;
+    [this.nodeChunk, this.nodeSeen, this.nodeHeld] = [-1, -1, []];
     this.whole = new Uint8Array(dims.chunksX * dims.chunksZ);
     this.staticKinds = fills && this.opts.statics ? staticKinds(this.opts.statics, reg) : null;
     this.staticsSeq = 0;
@@ -1370,6 +1432,8 @@ export class ClientSession {
     this.simTick = tick + INITIAL_LEAD;
     this.renderClock = tick;
     this.state = "active";
+    this.predicting = this.groundHeld();
+    this.welcomedNow();
   }
 
   /**
@@ -1514,6 +1578,13 @@ export class ClientSession {
       const slot = tick & (HISTORY - 1);
       this.bodies[slot]!.copy(sb);
       this.bodyTick[slot] = tick;
+      return;
+    }
+    if (!this.predicting) {
+      // Drawn from snapshots, as nothing is predicted.
+      this.own.copy(sb);
+      this.ownPrev.copy(sb);
+      this.smoothX = this.smoothY = this.smoothZ = 0;
       return;
     }
     const slot = tick & (HISTORY - 1);
