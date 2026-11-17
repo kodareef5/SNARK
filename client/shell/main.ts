@@ -87,7 +87,7 @@ async function boot(): Promise<void> {
   void readStatics(loader.statics, nextTask(new MessageChannel())).then((statics) => session.staticsArrived(statics));
   const surfaces = selfcheck ? new SelfcheckSurfaces(manifest, port) : null;
   const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });
-  if (params.has("trip")) void import("../core/trip.ts").then(({ TripProbe }) => TripProbe.watch(app, globalThis as unknown as Record<string, unknown>, (go) => void requestAnimationFrame(go)));
+  if (params.has("trip")) void import("../core/trip.ts").then(({ TripProbe }) => TripProbe.watch(app, head.counts, globalThis as unknown as Record<string, unknown>, (go) => void requestAnimationFrame(go)));
   void silent.then((why) => why && app.ui.console.print(`no sounds: ${why}`));
   session.prediction.enabled = selfcheck;
   const skin = installSkin(app.ui.frame);

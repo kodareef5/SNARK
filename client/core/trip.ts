@@ -22,27 +22,30 @@ const JUMP = 500;
 const FINE = ((WINDOW - 1) / 2) * TERRAIN_CELL;
 
 /**
- * Watches the app's frames. Marks: `frame`, the first drawn; `street`, the chunks round the body whole in the near store,
- * every asset it asked for in hand, and pieces drawn with their materials; `far`, the far city drawn in the view; `handed`,
- * the map's statics handed to the session; `predicting`, the body predicted; `exact`, the ground the fine terrain draws all
- * the map's own; `jump`, the body moved more than JUMP metres in a frame. Each, but `frame` and `jump`, again with a minus
- * when it went.
+ * Watches the app's frames. Marks: `frame`, the first drawn; `street`, each chunk within one of the body's that the map
+ * has statics in whole in the near store, every asset asked for in hand, and pieces drawn with their materials; `far`, the
+ * far city drawn in the view; `handed`, the map's statics handed to the session; `predicting`, the body predicted; `exact`,
+ * the ground the fine terrain draws all the map's own; `jump`, the body moved more than JUMP metres in a frame. Each, but
+ * `frame` and `jump`, again with a minus when it went.
  */
 export class TripProbe {
   readonly marks: TripMark[] = [];
   private readonly app: App;
+  /** The map's statics a chunk, as its head counts them. */
+  private readonly counts: Uint16Array;
   private seen = -1;
   private readonly on = new Set<string>();
   private x = NaN;
   private z = NaN;
 
-  constructor(app: App) {
+  constructor(app: App, counts: Uint16Array) {
     this.app = app;
+    this.counts = counts;
   }
 
   /** Watches every frame from now on, and is on `global` as snarkTrip. */
-  static watch(app: App, global: Record<string, unknown>, nextFrame: (go: () => void) => void): TripProbe {
-    const probe = new TripProbe(app);
+  static watch(app: App, counts: Uint16Array, global: Record<string, unknown>, nextFrame: (go: () => void) => void): TripProbe {
+    const probe = new TripProbe(app, counts);
     global.snarkTrip = probe;
     const look = (): void => {
       probe.look();
@@ -66,7 +69,7 @@ export class TripProbe {
     const p = scene.packet, r = scene.assets.residency;
     let textured = false;
     for (let d = 0; d < p.drawCount && !textured; d++) textured = (p.drawFlags[d]! & DRAW_TEXTURED) !== 0;
-    this.set("street", textured && r.flying === 0 && r.waiting === 0 && this.near((c) => world.far.complete(c)));
+    this.set("street", textured && r.flying === 0 && r.waiting === 0 && this.near((c) => this.counts[c] === 0 || world.far.complete(c)));
     this.set("far", (scene.city?.drawn.reduce((n, t) => n + t, 0) ?? 0) > 0);
     this.set("handed", world.city !== undefined);
     this.set("predicting", session.predicting);
@@ -78,6 +81,18 @@ export class TripProbe {
     const world = this.app.session.world;
     if (!world) return { ground: false, pieces: 0 };
     return { ground: world.hf.exactIn(0, 0, world.hf.sizeX, world.hf.sizeZ), pieces: world.city?.statics.first.at(-1) ?? 0 };
+  }
+
+  /** What the street waits for, as it is now: requests under way and bytes waiting for the card, and the chunks round the body not whole. */
+  state(): { flying: number; waiting: number; apart: number } {
+    const scene = this.app.scene, world = this.app.session.world;
+    if (!scene || !world) return { flying: -1, waiting: -1, apart: -1 };
+    let apart = 0;
+    this.near((c) => {
+      if (this.counts[c]! > 0 && !world.far.complete(c)) apart++;
+      return true;
+    });
+    return { flying: scene.assets.residency.flying, waiting: scene.assets.residency.waiting, apart };
   }
 
   /** Whether `held` says so of each chunk within one of the body's. */

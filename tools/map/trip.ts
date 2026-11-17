@@ -1,13 +1,14 @@
-// `bun tools/map/trip.ts --map var/maps/miami.snmap [--mbit 5] [--out folder]`: what a player feels of a built map as it
-// comes. A server of the map runs here behind a link of this tool's own, held to `--mbit` (shared by every connection,
-// round by round, with --latency ms there and back), and a headless Chrome, muted, joins from an empty cache at ?trip
-// (client/core/trip.ts). The body stands at the spawn point `--join` names, goes 300 m up once the street round it is
-// drawn, waits there for the far city, then jumps to the spawn point `--to` names; the first request for that place's
-// sector's ground is answered 503. It prints, by the page's clock: the first frame; the first in which the street is drawn
-// with its pieces and materials; the first in which the far city is drawn; the last part; after the jump, the time until
-// the body is predicted again and until the ground the fine terrain draws is the map's own; whether the failed part came on
-// a later ask and the map was whole at the end; and the page's heap and array memory at the statics' hand-over. A picture
-// is taken at each of those moments, into --out. The client must be built (bun run build). --chrome sets the browser.
+// `bun tools/map/trip.ts --map var/maps/miami.snmap [--mbit 5,20] [--out folder]`: what a player feels of a built map as it
+// comes. A server of the map runs here behind a link of this tool's own, held to each `--mbit` (shared by every connection
+// a slice at a time, with --latency ms there and back), and a headless Chrome, muted, joins from an empty cache at ?trip
+// (client/core/trip.ts). The body joins on the map's thickest street, goes 300 m up once the street round it is drawn,
+// waits there for the far city, then jumps to a street 4 km away; the first request for that sector's ground is answered
+// 503. It prints, by the page's clock: the first frame; the first in which the street is drawn with its pieces and
+// materials; the first in which the far city is drawn; the last part; after the jump, the time until the body is predicted
+// again and until the ground the fine terrain draws is the map's own; whether the failed part came on a later ask and the
+// map was whole at the end; and the page's heap and array memory at the statics' hand-over. A picture is taken at each of
+// those moments, into --out. The client must be built (bun run build). --dist names another, --chrome the browser, and
+// --no-fail fails no request.
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readSync, openSync, closeSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -28,6 +29,8 @@ const value = (flag: string, otherwise: string): string => {
 const PATIENCE = { frame: 180, street: 60, far: 120, jump: 20, after: 90, end: 120 };
 /** Metres the body goes up once the street is drawn. */
 const UP = 300;
+/** Metres from where the trip joins to where it jumps to. */
+const JUMP = 4000;
 /** Bytes a Chrome of the trip may hold in all its processes before the trip ends it. */
 const CHROME_MOST = 8e9;
 
@@ -210,16 +213,47 @@ interface Seen {
   parts: { name: string; status: number; end: number; bytes: number }[];
 }
 
+/** The statics of the 3 by 3 chunks round each chunk of the map, as its head counts them. */
+function around(head: MapHead): Uint32Array {
+  const { chunksX, chunksZ } = head.dims;
+  const out = new Uint32Array(chunksX * chunksZ);
+  for (let cz = 0; cz < chunksZ; cz++) {
+    for (let cx = 0; cx < chunksX; cx++) {
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) if (cx + dx >= 0 && cz + dz >= 0 && cx + dx < chunksX && cz + dz < chunksZ) out[cz * chunksX + cx] += head.counts[(cz + dz) * chunksX + cx + dx]!;
+    }
+  }
+  return out;
+}
+
+/**
+ * Where the trip joins and where it jumps to: the middle of the chunk whose 3 by 3 hold the map's most statics, its
+ * thickest street; and of the chunks whose middles are JUMP metres from there, give or take a chunk, the one whose 3 by 3
+ * hold the most.
+ */
+export function tripPlaces(head: MapHead): { from: { x: number; z: number }; to: { x: number; z: number } } {
+  const n = around(head), w = head.dims.chunksX;
+  const middle = (c: number) => ({ x: ((c % w) + 0.5) * CHUNK_SIZE, z: (Math.floor(c / w) + 0.5) * CHUNK_SIZE });
+  let best = 0;
+  for (let c = 0; c < n.length; c++) if (n[c]! > n[best]!) best = c;
+  const from = middle(best);
+  let far = -1;
+  for (let c = 0; c < n.length; c++) {
+    const m = middle(c);
+    if (Math.abs(Math.hypot(m.x - from.x, m.z - from.z) - JUMP) <= CHUNK_SIZE && (far < 0 || n[c]! > n[far]!)) far = c;
+  }
+  return { from, to: middle(far) };
+}
+
 /** One trip over a link of `mbit`: its moments by the page's clock, and its pictures in `out`. */
-export async function trip(opts: { map: string; dist: string; mbit: number; latency: number; out: string; join: string; to: string; chrome: string }): Promise<string[]> {
+export async function trip(opts: { map: string; dist: string; mbit: number; latency: number; out: string; chrome: string; fail: boolean }): Promise<string[]> {
   const head = headOf(opts.map);
-  const spawn = (name: string) => head.spawns.find((s) => s.name === name) ?? (() => { throw new Error(`${opts.map} has no spawn point named ${name}: it has ${head.spawns.map((s) => s.name).join(", ")}`); })();
-  const [from, to] = [spawn(opts.join), spawn(opts.to)];
+  const { from, to } = tripPlaces(head);
   const sector = (x: number, z: number) => [Math.floor((head.dims.frameX + Math.floor(x / CHUNK_SIZE)) / SECTOR_CHUNKS), Math.floor((head.dims.frameZ + Math.floor(z / CHUNK_SIZE)) / SECTOR_CHUNKS)] as const;
   const [col, row] = sector(to.x, to.z);
   const failing = head.parts.find((p) => p.kind === "ground" && p.col === col && p.row === row)!;
   const parts = new Set([head.name, ...head.parts.filter((p) => p.kind !== "tops").map((p) => p.name)]);
   const asked: number[] = [];
+  const fails = opts.fail ? 1 : 0;
   const server = startServer({
     dev: true,
     port: 0,
@@ -227,12 +261,12 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     map: opts.map,
     routes: (_, url) => {
       if (url.pathname !== `/map/${failing.name}`) return null;
-      asked.push(asked.length === 0 ? 503 : 200);
-      return asked.length === 1 ? new Response("not now", { status: 503 }) : null;
+      asked.push(asked.length < fails ? 503 : 200);
+      return asked.at(-1) === 503 ? new Response("not now", { status: 503 }) : null;
     },
   });
-  // The page joins where `--join` is; the trip moves it from there.
-  Object.assign(server.host.world, { spawn: { x: from.x, z: from.z, yaw: from.yaw } });
+  // The page joins on the street; the trip moves it from there.
+  Object.assign(server.host.world, { spawn: { x: from.x, z: from.z, yaw: 0 } });
   const link = shapedLink(server.port, opts.mbit, opts.latency);
   const profile = mkdtempSync(join(tmpdir(), "snark-trip-"));
   const chrome = Bun.spawn([opts.chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
@@ -247,7 +281,7 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     await page.send("Page.addScriptToEvaluateOnNewDocument", { source: "performance.setResourceTimingBufferSize(100000)" });
     await page.send("Page.navigate", { url: `http://127.0.0.1:${link.port}/?quick=1&name=trip&trip` });
     const look = (): Promise<Seen> =>
-      page!.value<Seen>(`({marks: globalThis.snarkTrip?.marks ?? [], now: performance.now(), parts: performance.getEntriesByType("resource").filter((r) => r.name.includes("/map/")).map((r) => ({name: r.name.slice(r.name.lastIndexOf("/") + 1), status: r.responseStatus, end: r.responseEnd, bytes: r.transferSize}))})`);
+      page!.value<Seen>(`({marks: globalThis.snarkTrip?.marks ?? [], now: performance.now(), parts: performance.getEntriesByType("resource").filter((r) => r.name.includes("/map/")).map((r) => ({name: r.name.slice(r.name.lastIndexOf("/") + 1), status: r.responseStatus, end: r.responseEnd, bytes: r.encodedBodySize}))})`);
     let seen = await look();
     let heap = "";
     /** At the statics' hand-over, once: the page's heap and its arrays' bytes after a full collection. */
@@ -284,6 +318,7 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     await shot("first-frame", on("frame"));
     await until(PATIENCE.street, () => on("street") !== undefined);
     await shot("street", on("street"));
+    const street = JSON.stringify(await page.value("globalThis.snarkTrip?.state()"));
     // Up, standing on nothing, once the street is drawn.
     const ents = server.host.world.ents;
     const e = server.host.game.clients.find((c) => c?.name === "trip")!.ent;
@@ -293,7 +328,7 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     const upAt = (seen = await look()).now;
     await until(PATIENCE.far, () => on("far", upAt) !== undefined);
     await shot("far-city", on("far", upAt));
-    // The jump: to the ground at the spawn point `--to` names, walking.
+    // The jump: to the ground on the street 4 km away, walking.
     const move = server.host.world.reg.move[ents.kind[e]!]!;
     ents.mode[e] = MODE_WALK;
     ents.setPosition(e, to.x, groundUnder(server.host.world.hf, to.x, to.z, move.radius), to.z);
@@ -302,9 +337,16 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     await until(PATIENCE.jump, () => on("jump", jumpAt) !== undefined);
     const jump = seen.marks.find((m) => m.what === "jump" && m.at >= jumpAt)?.at;
     await shot("jumped", jump);
-    await until(jump === undefined ? 0 : PATIENCE.after, () => on("predicting", jump) !== undefined);
-    const again = jump === undefined ? undefined : on("predicting", jump);
-    await shot("predicted", again);
+    // The session sees the body's new place a frame after the probe may: prediction stops at the first frame it is off
+    // after the jump, if it is, and runs again at the first after that it is on.
+    const again = (): number | undefined => {
+      if (jump === undefined) return undefined;
+      const stop = seen.marks.find((m) => m.what === "-predicting" && m.at >= jump);
+      return stop === undefined ? jump : on("predicting", stop.at);
+    };
+    await until(jump === undefined ? 0 : PATIENCE.after, () => again() !== undefined);
+    const predicted = again();
+    await shot("predicted", predicted);
     await until(jump === undefined ? 0 : PATIENCE.after, () => on("exact", jump) !== undefined);
     const exact = jump === undefined ? undefined : on("exact", jump);
     await shot("exact", exact);
@@ -316,19 +358,21 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     const statics = head.counts.reduce((n, c) => n + c, 0);
     const lastPart = [...parts].every(came) ? Math.max(...seen.parts.filter((p) => parts.has(p.name) && p.status === 200).map((p) => p.end)) : undefined;
     const far = seen.marks.find((m) => m.what === "far");
-    say(`trip on ${head.id} over ${opts.mbit} Mbit/s, ${opts.latency} ms there and back: joined at ${from.name} (${from.x}, ${from.z}), went ${UP} m up at ${s(upAt)}, jumped to ${to.name} (${to.x}, ${to.z}) at ${s(jumpAt)}; ${failing.name}, the ground there, was answered 503 at its first ask`);
+    say(`trip on ${head.id} over ${opts.mbit} Mbit/s, ${opts.latency} ms there and back: joined at ${from.x}, ${from.z}, went ${UP} m up at ${s(upAt)}, jumped to ${to.x}, ${to.z} at ${s(jumpAt)}; ${failing.name}, the ground there, ${fails ? "was answered 503 at its first ask" : "failed at no ask (--no-fail)"}`);
     say(`  first frame                           ${s(on("frame"))}`);
-    say(`  street drawn with its materials       ${s(on("street"))}`);
+    say(`  street drawn with its materials       ${s(on("street"))}${on("street") === undefined ? ` (when the body went up: ${street})` : ""}`);
     say(`  far city drawn                        ${s(far?.at)}${far ? ` at (${far.x}, ${far.z})` : ""}`);
     say(`  last part                             ${lastPart === undefined ? `never: ${[...parts].filter((n) => !came(n)).join(" ")} not come` : s(lastPart)}`);
     say(`  statics handed over                   ${s(on("handed"))}`);
     say(`  the jump drawn                        ${s(jump)}`);
-    say(`  predicted again after the jump        ${later(again, jump)}`);
+    say(`  predicted again after the jump        ${later(predicted, jump)}`);
     say(`  ground exact after the jump           ${later(exact, jump)}`);
-    say(`  the failed part                       asked ${asked.length} times (${asked.join(", ")}): ${asked.includes(200) ? "it came on a later ask" : "it never came"}`);
+    say(`  the failed part                       ${fails === 0 ? "none failed" : `asked ${asked.length} times (${asked.join(", ")}): ${asked.includes(200) ? "it came on a later ask" : "it never came"}`}`);
     say(`  whole at the end                      ground ${whole.ground ? "all the map's own" : "not all the map's own"}; far city of ${whole.pieces} pieces, of the map's ${statics} statics`);
     say(`  memory at the hand-over, after a GC   ${heap || "never handed over"}`);
-    say(`  ${seen.parts.filter((p) => parts.has(p.name) && p.status === 200).length} of ${parts.size} parts in, ${(seen.parts.reduce((n, p) => n + p.bytes, 0) / 1e6).toFixed(2)} MB of the map over the wire`);
+    const before = seen.parts.filter((p) => p.status === 200 && p.end <= (on("frame") ?? -1));
+    say(`  before the first frame               ${before.length} files of the map, ${(before.reduce((n, p) => n + p.bytes, 0) / 1e6).toFixed(2)} MB as sent: ${before.map((p) => p.name.split(".").slice(0, -2).join(".")).join(" ")}`);
+    say(`  in all                                ${seen.parts.filter((p) => parts.has(p.name) && p.status === 200).length} of ${parts.size} parts, ${(seen.parts.reduce((n, p) => n + p.bytes, 0) / 1e6).toFixed(2)} MB of the map as sent`);
     return lines;
   } finally {
     clearInterval(watchdog);
@@ -349,7 +393,7 @@ if (import.meta.main) {
   mkdirSync(out, { recursive: true });
   const lines: string[] = [];
   for (const mbit of value("--mbit", "5,20").split(",").map(Number)) {
-    lines.push(...(await trip({ map, dist: resolve(value("--dist", join(ROOT, "client/dist"))), mbit, latency: Number(value("--latency", "100")), out, join: value("--join", "Bayfront Park"), to: value("--to", "Belle Isle"), chrome })));
+    lines.push(...(await trip({ map, dist: resolve(value("--dist", join(ROOT, "client/dist"))), mbit, latency: Number(value("--latency", "100")), out, chrome, fail: !process.argv.includes("--no-fail") })));
   }
   writeFileSync(join(out, "trip.txt"), lines.join("\n") + "\n");
   process.exit(0);

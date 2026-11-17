@@ -5,6 +5,7 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { TripProbe } from "../../client/core/trip.ts";
+import { chunkCount } from "../../shared/coords.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -15,7 +16,7 @@ const pack = parsePack(corePackBytes());
 function walk(watched: boolean): { frames: number[]; probe: TripProbe | null } {
   const h = new Harness();
   const app = new App(h.join("trip", { latencyMs: 20 }, { manual: true }), h.reg, pack);
-  const probe = watched ? new TripProbe(app) : null;
+  const probe = watched ? new TripProbe(app, new Uint16Array(chunkCount(h.world.dims))) : null;
   const frames: number[] = [];
   app.key("KeyW", true);
   h.run(3000, (now) => {
