@@ -2,8 +2,8 @@
 // it holds from the map file, in tiles of 3 by 3 chunks, each level of a tile a level of its own on the card. A
 // landmark's pieces are left out, as its far mesh draws them (farlandmarks.ts). A chunk is drawn here while the near
 // store does not hold it whole, and then the near store draws none of it, so its pieces are drawn one way or the other
-// and never both or neither. A tile's mesh holds every chunk of it in order and a draw takes
-// the runs of chunks drawn far, so a chunk changing hands remakes nothing. Nearest the near rows a tile is every box, the
+// and never both or neither. A tile's mesh holds every chunk of it in order and a draw takes the runs of chunks drawn
+// far, so a chunk changing hands remakes nothing. Nearest the near rows a tile is every box, the
 // near drawing in one mesh, so the hand-over shows nothing; farther off it takes the lattice (boxes merged, the least
 // left out), then a building's mass in cells. The lattice fades out over the last share of its reach as the mass fades in,
 // pixel by pixel in the far fade's pattern; the other changes of level are a tile at a time.

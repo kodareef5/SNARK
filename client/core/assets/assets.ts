@@ -11,7 +11,7 @@ import { stepOf, type TextureFormat } from "../../../shared/pack/texture.ts";
 import type { FramePacket } from "../render/packet.ts";
 import { Binding } from "./bind.ts";
 import type { AssetPort } from "./port.ts";
-import { Residency } from "./residency.ts";
+import { PAGE_FIRST, Residency } from "./residency.ts";
 import { AssetTable } from "./table.ts";
 import { DEFAULT_TIER, TIERS, tierOf, type Tier } from "./tiers.ts";
 
@@ -120,6 +120,13 @@ export class Assets {
     const errors = this.table.error[mesh]!;
     const at = level < errors.length ? level : errors.length - 1;
     this.residency.want(mesh, at, this.urgency(errors, at, distance));
+  }
+
+  /** As `want`, for a level of a mesh that holds none to draw in its place: as urgent as a page, as nothing of it is drawn without it. */
+  wantFirst(mesh: number, level: number, distance: number): void {
+    const errors = this.table.error[mesh]!;
+    const at = level < errors.length ? level : errors.length - 1;
+    this.residency.want(mesh, at, PAGE_FIRST + this.urgency(errors, at, distance));
   }
 
   private urgency(errors: readonly number[], at: number, distance: number): number {

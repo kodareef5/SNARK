@@ -92,6 +92,20 @@ test("paged, a rock is drawn only once its page has come: pages are asked for fi
   for (const e of near.pages!) expect(back.port.over.get(`2:${e.at}`)).toBe(1);
 });
 
+// A landmark's far mesh holds no level in the boot file, and nothing of it is drawn until one comes (render/farlandmarks.ts).
+test("a level wanted first is asked for before every level and texture wanted with it, the nearest included", () => {
+  const port = new FakeNet(SET.files.map((f) => f.bytes), { latencyMs: 100 });
+  const assets = new Assets(REG, BOOT, SET.manifest, port);
+  const far = ROCKS.at(-1)!, level = inBoot(far.mesh) - 1;
+  assets.begin(FRAME, 720, 1.2217);
+  for (const r of ROCKS) assets.wantTextured(r.mesh, 0, r.z);
+  assets.wantFirst(far.mesh, level, far.z);
+  assets.end(new FramePacket(), FRAME);
+  expect(level).toBeGreaterThanOrEqual(0);
+  expect(port.log.length).toBe(IN_FLIGHT);
+  expect(port.log[0]!.split(" ").slice(1, 3)).toEqual(["ask", String(assets.residency.slot(far.mesh, level))]);
+});
+
 test("the same flight twice asks for the same things in the same order", () => {
   const logs = [0, 1].map(() => {
     const w = world({ latencyMs: 120, bytesPerSecond: 2e6, loss: 0.05, seed: 11 });

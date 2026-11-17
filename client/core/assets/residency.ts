@@ -71,8 +71,8 @@ const MAPS = 5;
 const NEEDED: readonly number[] = [0, 3, 4];
 /** Step 0 of what a material is not drawn without is more urgent than anything else, by this much and again by how near it is. */
 export const FIRST = 1e6;
-/** A page is more urgent than step 0 of any texture: nothing of its meshes is drawn without it. */
-const PAGE_FIRST = 4 * FIRST;
+/** A page is more urgent than step 0 of any texture: nothing of its meshes is drawn without it. So is the first level of a mesh with none held. */
+export const PAGE_FIRST = 4 * FIRST;
 /** How urgent a material's textures are against one another. */
 const WEIGHT: readonly number[] = [1, 0.5, 0.25, 1, 1];
 /** A texture in view is remade smaller only if what is left would do for this many times the pixels it covers. */

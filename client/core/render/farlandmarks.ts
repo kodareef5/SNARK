@@ -34,9 +34,9 @@ export interface PlacedFar {
   readonly at: Float64Array;
   /** The box every piece's sphere is in. */
   readonly box: Float64Array;
-  /** Per piece: the level it last asked for, -1 for none; and this frame, the depth ranges it is drawn here in, or -1 for none. */
+  /** Per piece: the level it last asked for, -1 for none; and this frame, the depth ranges it is drawn here in, or 0 for none. */
   readonly level: Int8Array;
-  readonly key: Int8Array;
+  readonly ways: Uint8Array;
   /** Per piece this frame: metres from the camera to the farthest of its sphere. */
   readonly most: Float64Array;
 }
@@ -83,7 +83,7 @@ export class FarLandmarks {
           box[k + 3] = Math.max(box[k + 3]!, at[i * 3 + k]! + r);
         }
       }
-      out.push({ far, instance: out.length, x: l.x, y: l.y, z: l.z, yaw: l.yaw, chunk, at, box, level: new Int8Array(n).fill(-1), key: new Int8Array(n), most: new Float64Array(n) });
+      out.push({ far, instance: out.length, x: l.x, y: l.y, z: l.z, yaw: l.yaw, chunk, at, box, level: new Int8Array(n).fill(-1), ways: new Uint8Array(n), most: new Float64Array(n) });
     }
     this.placed = out;
     this.instances = new Uint8Array(out.length * INSTANCE_BYTES);
@@ -124,7 +124,7 @@ export class FarLandmarks {
         l.level.fill(-1);
         continue;
       }
-      const { far, at, key, level, most, chunk } = l;
+      const { far, at, ways, level, most, chunk } = l;
       const mesh = far.mesh;
       const errors = assets.table.error[mesh]!;
       this.nearest[0] = this.nearest[1] = Infinity;
@@ -133,7 +133,7 @@ export class FarLandmarks {
         const x = at[i * 3]! - cam.x, y = at[i * 3 + 1]! - cam.y, z = at[i * 3 + 2]! - cam.z;
         const d = Math.sqrt(x * x + y * y + z * z);
         const near = Math.max(0, d - r);
-        key[i] = -1;
+        ways[i] = 0;
         if (near >= reach) {
           level[i] = -1;
           continue;
@@ -141,15 +141,18 @@ export class FarLandmarks {
         const k = (level[i] = assets.choose(errors, near, level[i]!));
         if (near < this.nearest[k]!) this.nearest[k] = near;
         if (this.source.complete(chunk[i]!) || !cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
-        key[i] = cam.passes(x - r, y - r, z - r, x + r, y + r, z + r);
+        ways[i] = cam.passes(x - r, y - r, z - r, x + r, y + r, z + r);
         most[i] = d + r;
       }
+      // With no level on the card nothing of the landmark is drawn here, so its coarser level comes first.
+      const nearest = Math.min(this.nearest[0]!, this.nearest[1]!);
+      if (nearest < Infinity && assets.held(mesh) === 0) assets.wantFirst(mesh, 1, nearest);
       for (let k = 0; k < 2; k++) if (this.nearest[k]! < Infinity) assets.want(mesh, k, this.nearest[k]!);
       this.drawn[0] = this.drawn[1] = -2;
       const ox = l.x - cam.x, oy = l.y - cam.y, oz = l.z - cam.z;
       for (let run = 0, i = 1; i <= far.pieces; i++) {
-        if (i < far.pieces && key[i] === key[run]) continue;
-        if (key[run]! > 0) {
+        if (i < far.pieces && ways[i] === ways[run]) continue;
+        if (ways[run]! > 0) {
           // A run is drawn at the finest level a piece of it asks for: a draw costs more than its coarser pieces drawn finer.
           let wanted = 1, farthest = 0;
           for (let j = run; j < i; j++) {
@@ -161,7 +164,7 @@ export class FarLandmarks {
           if (lod < 0) this.stats.unseen++;
           else {
             const firsts = far.first[lod as 0 | 1], counts = far.count[lod as 0 | 1], first = firsts[run]!;
-            put(mesh, lod, l.instance, first, firsts[i - 1]! + counts[i - 1]! - first, ox, oy, oz, key[run]!, farthest < whole ? 0 : reach);
+            put(mesh, lod, l.instance, first, firsts[i - 1]! + counts[i - 1]! - first, ox, oy, oz, ways[run]!, farthest < whole ? 0 : reach);
           }
         }
         run = i;

@@ -143,7 +143,7 @@ export interface SessionOptions {
   cityMaker?: CityMaker;
   /** The statics of the map file resolveMap accepts. With them the server sends a chunk's only where they differ (HELLO_STATICS). */
   statics?: MapStatics;
-  /** The landmarks that map file sets down (MapContent), which the far city's scene draws far from their far meshes. */
+  /** The landmarks that map file sets down (MapContent). Past the near rows the scene draws each from its far mesh. */
   landmarks?: readonly MapLandmark[];
 }
 
