@@ -6,13 +6,12 @@
 
 import { readFileSync } from "node:fs";
 import { cpus, loadavg } from "node:os";
-import { CITY_AHEAD, cityWorkers } from "../../client/city/maker.ts";
 import { Viewpoint } from "../../client/core/viewpoint.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { TIERS, type Tier } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { makeLevel, type CityJob, type CityKinds, type CityMade, type CityMaker } from "../../client/core/render/citymake.ts";
+import { CITY_AHEAD, cityThreads, makeLevel, type CityJob, type CityKinds, type CityMade, type CityMaker } from "../../client/core/render/citymake.ts";
 import { CITY_BUFFER, type FarCity } from "../../client/core/render/farcity.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -280,7 +279,7 @@ export function benchCity(section: (title: string) => void, record: Record, path
 }
 
 /**
- * Levels made as `workers` workers free of other work would make them (client/city/maker.ts): each given to the one with
+ * Levels made as `workers` workers free of other work would make them (citymake.ts ThreadedCityMaker): each given to the one with
  * the fewest in hand, made here and timed, and done that long after that worker was free, on a clock moved by `advance`.
  */
 class ModelMaker implements CityMaker {
@@ -350,7 +349,7 @@ class ModelMaker implements CityMaker {
 export function benchJump(section: (title: string) => void, record: Record, path: string, viewsPath = DEFAULT_VIEWS, names = ["street-300", "air-handover", "air-wide"]): void {
   const w = cityWorld(path);
   const views = (JSON.parse(readFileSync(viewsPath, "utf8")) as View[]).filter((v) => names.includes(v.name));
-  const counts = [1, cityWorkers(10)];
+  const counts = [1, cityThreads(10)];
   for (const tier of TIERS.filter((t) => t.name !== "lowpoly")) {
     section(`A jump into downtown on ${tier.name}: frames until every tile in view is drawn and until nothing in reach is left to make, each level timed as made on one thread; load ${loadavg().map((l) => l.toFixed(1)).join(" ")} over ${cpus().length} cores`);
     for (const v of views) {

@@ -1,7 +1,7 @@
 // A far city tile's level (farcity.ts) as it is made: what it is made from, gathered on the page from the map's statics,
-// what is gone and the ground, and the making, a pure function of that. The browser makes levels on a worker of its own
-// (client/city), so no busy tile stops a frame; tests and tools make them here, a frame's budget at a time. Either way
-// the bytes are the same.
+// what is gone and the ground, and the making, a pure function of that. The browser makes levels on workers of its own
+// (ThreadedCityMaker, client/city), so no busy tile stops a frame; tests and tools make them here, a frame's budget at a
+// time. Either way the bytes are the same.
 
 import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { VERTEX_BYTES } from "../../../shared/pack/pack.ts";
@@ -226,6 +226,71 @@ export class LevelMaking {
       }
     });
     return { id: job.id, data, indexBytes: quadBytes(faces), first, count };
+  }
+}
+
+/** Threads for a machine of `cores` logical cores: a core each left to the page and the other workers, and at most three. */
+export const cityThreads = (cores = 4): number => Math.max(1, Math.min(3, cores - 2));
+
+/** Levels a thread is asked for ahead of what it has made: it never waits on the page, and a tile come nearer soon goes first. */
+export const CITY_AHEAD = 3;
+
+/** A thread levels are made on, as a worker running client/city/city-worker.ts is: sent the kinds, then jobs, each answered with what it made. */
+export interface CityThread {
+  onmessage: ((m: { data: CityMade }) => void) | null;
+  postMessage(m: { kinds: CityKinds | null } | { job: CityJob }, transfer?: ArrayBuffer[]): void;
+}
+
+/**
+ * Makes levels on `count` threads that `open` starts when the first level is asked for, each level asked of the one with
+ * the fewest in hand, since every level is made alone from what it is sent.
+ */
+export class ThreadedCityMaker implements CityMaker {
+  onMade: (() => void) | null = null;
+  readonly flights: number;
+  private readonly open: () => CityThread;
+  private readonly count: number;
+  private readonly threads: CityThread[] = [];
+  /** Levels asked of each thread and not yet back. */
+  private readonly asked: number[] = [];
+  private kinds: CityKinds | null = null;
+  private readonly done: CityMade[] = [];
+
+  constructor(open: () => CityThread, count: number) {
+    this.open = open;
+    this.count = count;
+    this.flights = count * CITY_AHEAD;
+  }
+
+  start(kinds: CityKinds): void {
+    this.kinds = kinds;
+    this.done.length = 0;
+    for (const thread of this.threads) thread.postMessage({ kinds });
+  }
+
+  make(job: CityJob): void {
+    while (this.threads.length < this.count) {
+      const n = this.threads.length;
+      const thread = this.open();
+      thread.onmessage = (m) => {
+        this.asked[n]!--;
+        this.done.push(m.data);
+        this.onMade?.();
+      };
+      thread.postMessage({ kinds: this.kinds });
+      this.threads.push(thread);
+      this.asked.push(0);
+    }
+    const n = this.asked.indexOf(Math.min(...this.asked));
+    this.asked[n]!++;
+    this.threads[n]!.postMessage({ job }, buffersOf(job));
+  }
+
+  take(out: CityMade[]): number {
+    const n = this.done.length;
+    for (let i = 0; i < n; i++) out[i] = this.done[i]!;
+    this.done.length = 0;
+    return n;
   }
 }
 

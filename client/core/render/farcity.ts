@@ -463,7 +463,8 @@ export class FarCity {
         // Each chunk in view and the depth ranges its faces are in, a run being chunks alike in those: a box's faces stay
         // within it, and a cell's may lie a cell past it.
         const { cell, tall } = this.forms[f]!;
-        const [across, up] = cell > 0 ? [cell * Math.SQRT2, tall] : [0, 0];
+        const across = cell > 0 ? cell * Math.SQRT2 : 0;
+        const up = cell > 0 ? tall : 0;
         for (let r = 0; r < tile.chunks.length; r++) {
           const o = r * 6;
           const x0 = from[o]! - across, y0 = from[o + 1]! - up, z0 = from[o + 2]! - across;

@@ -7,8 +7,7 @@ import { slopeKind } from "../../content/slopes.ts";
 import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
 import { ladder } from "../../client/core/governor.ts";
 import { FAR_BUFFER, fadeKeeps } from "../../client/core/render/far.ts";
-import { cityJob, cityKinds, makeLevel, type CityJob, type CityKinds, type CityMade, type CityMaker } from "../../client/core/render/citymake.ts";
-import { WorkerCityMaker, cityWorkers } from "../../client/city/maker.ts";
+import { ThreadedCityMaker, cityJob, cityKinds, cityThreads, makeLevel, type CityJob, type CityKinds, type CityMade, type CityMaker, type CityThread } from "../../client/core/render/citymake.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
@@ -382,15 +381,15 @@ test("levels are held by their form: other levels in the same forms remake nothi
   expect(back.unseen).toBe(0);
 });
 
-test("the browser's maker asks each level of the worker with the fewest in hand, three ahead a worker, and makes the levels the page makes", async () => {
-  // A worker as client/city/city-worker.ts runs, here on this thread a turn later, and the workers each was asked of.
+test("levels made on threads are each asked of the one with the fewest in hand, three ahead a thread, and are the levels the page makes", async () => {
+  // A thread as a worker running client/city/city-worker.ts is, here on this one a turn later, and those each was asked of.
   const asked: number[] = [];
   let started = 0;
-  class Turn {
+  class Turn implements CityThread {
     onmessage: ((m: { data: CityMade }) => void) | null = null;
     private kinds: CityKinds | null = null;
     private readonly n = started++;
-    postMessage(m: { kinds: CityKinds } | { job: CityJob }): void {
+    postMessage(m: { kinds: CityKinds | null } | { job: CityJob }): void {
       if ("kinds" in m) this.kinds = m.kinds;
       else {
         asked.push(this.n);
@@ -411,20 +410,14 @@ test("the browser's maker asks each level of the worker with the fewest in hand,
     }
     throw new Error("still making");
   };
-  const was = globalThis.Worker;
-  globalThis.Worker = Turn as unknown as typeof Worker;
-  try {
-    const maker = new WorkerCityMaker("city-worker.js", 3);
-    expect([maker.flights, cityWorkers(1), cityWorkers(4), cityWorkers(10)]).toEqual([9, 1, 2, 3]);
-    expect(await shot(maker)).toEqual(await shot());
-    // Three started, and each asked for a third of the levels, give or take its share of the last few.
-    expect(started).toBe(3);
-    const each = [0, 1, 2].map((n) => asked.filter((k) => k === n).length);
-    expect(Math.max(...each) - Math.min(...each)).toBeLessThanOrEqual(3);
-    expect(asked.length).toBeGreaterThan(20);
-  } finally {
-    globalThis.Worker = was;
-  }
+  const maker = new ThreadedCityMaker(() => new Turn(), 3);
+  expect([maker.flights, cityThreads(1), cityThreads(4), cityThreads(10)]).toEqual([9, 1, 2, 3]);
+  expect(await shot(maker)).toEqual(await shot());
+  // Three started, and each asked for a third of the levels, give or take its share of the last few.
+  expect(started).toBe(3);
+  const each = [0, 1, 2].map((n) => asked.filter((k) => k === n).length);
+  expect(Math.max(...each) - Math.min(...each)).toBeLessThanOrEqual(3);
+  expect(asked.length).toBeGreaterThan(20);
 });
 
 test("a map's statics written, read back and set down give the rows and far city faces their list did, held once", () => {
