@@ -72,10 +72,22 @@ class Mesh:
    w=d.cross(u).normalized()
    rings.append([tuple(Vector(p)+r*(math.cos(k*math.tau/n)*u+math.sin(k*math.tau/n)*w)) for k in range(n)])
   self.loft(rings,tag,caps,True)
- def convex(self,points,tag):
+ def convex(self,points,tag,smooth=False):
   bm=bmesh.new();vs=[bm.verts.new(p) for p in points];bmesh.ops.convex_hull(bm,input=vs,use_existing_faces=False)
   bmesh.ops.delete(bm,geom=[v for v in bm.verts if not v.link_faces],context='VERTS');bm.verts.index_update()
-  self.faces(self.add([tuple(v.co) for v in bm.verts]),[tuple(v.index for v in f.verts) for f in bm.faces],tag,away=[sum(p[k] for p in points)/len(points) for k in range(3)]);bm.free()
+  pts=[tuple(v.co) for v in bm.verts]
+  self.faces(self.add(pts,[AVG]*len(pts) if smooth else None),[tuple(v.index for v in f.verts) for f in bm.faces],tag,away=[sum(p[k] for p in points)/len(points) for k in range(3)]);bm.free()
+ def rbox(self,lo,hi,tag,r=.02,smooth=False):
+  """A box with its edges and corners rounded off by `r`, as joinery and upholstery are; smooth, it is shaded soft all
+  over, as a cushion is."""
+  r=min(r,*[(b-a)/2.05 for a,b in zip(lo,hi)])
+  if r<.004:return self.box(lo,hi,tag)
+  pts=[]
+  for cx,sx in((lo[0]+r,-1),(hi[0]-r,1)):
+   for cy,sy in((lo[1]+r,-1),(hi[1]-r,1)):
+    for cz,sz in((lo[2]+r,-1),(hi[2]-r,1)):
+     for dx,dy,dz in((1,0,0),(0,1,0),(0,0,1))+(((.58,.58,.58),) if smooth else ()):pts.append((cx+sx*r*dx,cy+sy*r*dy,cz+sz*r*dz))
+  self.convex(pts,tag,smooth)
  def object(self,name,origin):
   """The mesh in the frame of a static at `origin`, faces in their finishes on the pictures, or in flat colours."""
   bm=bmesh.new();vs=[bm.verts.new(blender(sub(p,origin))) for p in self.v];fs=[bm.faces.new([vs[i] for i in f]) for f in self.f]

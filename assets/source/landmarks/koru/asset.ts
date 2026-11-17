@@ -12,7 +12,7 @@ const name = (id: string): string => id.slice("koru:".length);
 // windows, the ports and the boot stripe to the horizon, which five building pieces' worth cannot: from 250 m on the
 // whole yacht is at most 20 thousand triangles, its far mesh, a sixth of the cruise ship's. Near it is at most 112
 // thousand, a twentieth of medium's frame.
-const CELLS = [[0, 14000], [50, 14000], [100, 4000], [250, 2500], [500, 2500]] as const;
+const CELLS = [[0, 22000], [50, 22000], [100, 4000], [250, 2500], [500, 2500]] as const;
 // A cell's five levels are model.py's: 0 and 1 drawn with the atlas, 2 to 4 flat. Levels 1 to 3 show what is seen from
 // outside, the hull, decks, deckhouse walls with their windows, and rig, and leave the rooms behind the white walls and
 // the glass, which is dark from outside. What they leave or thin that shows is under 2.5, 8 and 13 cm across (rail posts

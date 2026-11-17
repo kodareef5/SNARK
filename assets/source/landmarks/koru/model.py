@@ -327,8 +327,13 @@ def furniture(m,mod):
  for item in mod['art']['items']:
   kind=item['kind'];x,y,z=item['at'];sx,sy,sz=item['size']
   def b(ax,ay,az,bx,by,bz,tag='mahogany',top=None):m.box([x+ax*sx,y+ay*sy,z+az*sz],[x+bx*sx,y+by*sy,z+bz*sz],tag,top=top)
-  def cushion(ax,az,bx,bz,ay=.28,by=.54):b(ax,ay,az,bx,by,bz,'fabric')
-  if m.level>1:
+  # Made pieces: `r` rounds joinery's edges by its metres; a cushion is rounded more and shaded soft.
+  def rb(ax,ay,az,bx,by,bz,tag='mahogany',r=.012,soft=False):m.rbox([x+ax*sx,y+ay*sy,z+az*sz],[x+bx*sx,y+by*sy,z+bz*sz],tag,r,soft)
+  def cushion(ax,ay,az,bx,by,bz,tag='fabric'):rb(ax,ay,az,bx,by,bz,tag,.06,True)
+  def leg(ax,az,ya,yb,r=.025,tag='mahogany',n=6):m.tube([[x+ax*sx,y+ya*sy,z+az*sz],[x+ax*sx,y+yb*sy,z+az*sz]],r,tag,n)
+  # Which way a piece faces: toward the yacht's centreline, its back to the side it stands nearer.
+  out=1 if x>0 else -1
+  if m.level>0:
    b(-.5,0,-.5,.5,1,.5,{'winch':'chrome','cleat':'chrome','tub':'cream','lounger':'fabric','sofa':'fabric','compass':'brass','bar':'mahogany','deck_hatch':'teak'}.get(kind,'mahogany'));continue
   if kind in('winch','cleat','deck_hatch'):
    if kind=='deck_hatch':b(-.5,0,-.5,.5,.7,.5,'steel');b(-.46,.7,-.46,.46,1,.46,'teak')
@@ -339,66 +344,129 @@ def furniture(m,mod):
     for ax in(-.24,.24):m.tube([[x+ax*sx,y+sy*.1,z],[x+ax*sx,y+sy*.7,z]],.045,'chrome',6)
     m.tube([[x-sx*.45,y+sy*.7,z],[x+sx*.45,y+sy*.7,z]],.055,'chrome',6)
   elif kind in('table','dining','desk','chart','workbench','vanity'):
-   b(-.5,.88,-.5,.5,.96 if kind in('chart','dining') else 1,.5,'slate' if kind=='workbench' else 'mahogany')
-   for ax in(-.39,.39):
-    for az in(-.39,.39):b(ax-.035,0,az-.035,ax+.035,.88,az+.035)
-   if kind in('desk','workbench','vanity'):b(-.48,.15,-.45,-.18,.86,.45);b(.18,.15,-.45,.48,.86,.45)
-   if kind=='chart':b(-.44,.96,-.43,.44,1,.43,'mahogany',top='screen')
+   top=.96 if kind in('chart','dining') else 1
+   # A top with a rounded edge over a rail, on turned legs; a dining table on two pedestals.
+   rb(-.5,top-.06,-.5,.5,top,.5,'slate' if kind=='workbench' else 'mahogany',.02)
+   rb(-.44,top-.13,-.44,.44,top-.06,.44,'mahogany',.008)
+   if kind=='dining':
+    long=0 if sx>sz else 2
+    for f in(-.3,.3):
+     px,pz=(f,0) if long==0 else (0,f)
+     leg(px,pz,.06,top-.13,.07,'mahogany',12)
+     rb(px-(.14 if long==0 else .32),0,pz-(.32 if long==0 else .14),px+(.14 if long==0 else .32),.06,pz+(.32 if long==0 else .14),'mahogany',.02)
+   elif kind not in('desk','workbench','vanity'):
+    for ax in(-.4,.4):
+     for az in(-.4,.4):m.tube([[x+ax*sx,y,z+az*sz],[x+ax*sx*1.02,y+sy*(top-.13),z+az*sz*1.02]],.028,'mahogany',8)
+   if kind in('desk','workbench','vanity'):
+    for a0,a1 in((-.47,-.17),(.17,.47)):
+     rb(a0,.12,-.42,a1,top-.13,.42,'mahogany',.01)
+     for k in range(3):
+      d0=.16+k*(top-.31)/3;d1=d0+(top-.31)/3-.02
+      rb(a0+.01,d0,-.44 if out<0 else .42,a1-.01,d1,-.42 if out<0 else .44,'mahogany',.006)
+      m.tube([[x+(a0+a1)/2*sx-.04,y+(d0+d1)/2*sy,z+(-.445 if out<0 else .445)*sz],[x+(a0+a1)/2*sx+.04,y+(d0+d1)/2*sy,z+(-.445 if out<0 else .445)*sz]],.008,'brass',6)
+   if kind=='chart':rb(-.44,.96,-.43,.44,1.0,.43,'dark',.01);b(-.42,.99,-.41,.42,1.005,.41,'dark',top='screen')
   elif kind in('sofa','armchair','bench','lounger','helm_chair'):
-   b(-.46,0,-.46,.46,.42,.46);cushion(-.49,-.47,.49,.46,.39,.63)
-   if kind=='lounger':b(-.47,.58,.15,.47,1,.46,'fabric')
-   elif kind=='helm_chair':b(-.48,.50,-.48,.48,1,-.25,'fabric');b(-.5,.5,-.3,-.37,.65,.32);b(.37,.5,-.3,.5,.65,.32)
-   elif kind!='bench':
-    if sz>sx:
-     a,bx=(.29,.5) if x>0 else(-.5,-.29)
-     b(a,.45,-.5,bx,1,.5,'fabric');b(-.48,.45,-.5,.48,.84,-.37,'fabric');b(-.48,.45,.37,.48,.84,.5,'fabric')
-    else:b(-.5,.45,.28,.5,1,.5,'fabric');b(-.5,.45,-.45,-.36,.84,.4,'fabric');b(.36,.45,-.45,.5,.84,.4,'fabric')
+   along=sz>sx and kind!='lounger'
+   # u runs along the piece and v across it, from its back (v=.5) to its front (v=-.5).
+   def piece(u0,y0,v0,u1,y1,v1,tag='fabric',r=.06,soft=True):
+    if along:a0,a1=sorted((out*v0,out*v1));rb(a0,y0,u0,a1,y1,u1,tag,r,soft)
+    else:rb(u0,y0,v0,u1,y1,v1,tag,r,soft)
+   length=sz if along else sx
+   if kind=='lounger':
+    # A teak sun lounger: a frame on short legs, a cushion, and its head raised at +z.
+    rb(-.47,.12,-.47,.47,.3,.47,'teak',.015)
+    for ax in(-.42,.42):
+     for az in(-.4,.4):rb(ax-.03,0,az-.04,ax+.03,.13,az+.04,'teak',0)
+    cushion(-.45,.3,-.45,.45,.42,.2)
+    m.convex([[x+u*sx,y+yy*sy,z+v*sz] for v,yy in [(.2,.3),(.2,.42),(.47,.9),(.47,1.0),(.34,.98)] for u in(-.45,.45)],'fabric',True)
+    continue
+   if kind=='helm_chair':
+    leg(0,0,.05,.42,.06,'chrome',12);m.tube([[x,y,z],[x,y+.05*sy,z]],min(sx,sz)*.35,'chrome',12)
+    piece(-.46,.42,-.46,.46,.58,.4);piece(-.46,.55,.3,.46,1,.48)
+    piece(-.5,.55,-.35,-.38,.72,.32,'mahogany',.02,False);piece(.38,.55,-.35,.5,.72,.32,'mahogany',.02,False)
+    continue
+   # A frame on short legs, seat cushions side by side, back cushions and, but for a bench, arms.
+   piece(-.47,.08,-.47,.47,.36,.46,'mahogany' if kind=='bench' else 'fabric',.03,kind!='bench')
+   for au in(-.43,.43):
+    for av in(-.42,.4):piece(au-.02,0,av-.02,au+.02,.09,av+.02,'dark',0,False)
+   arms=0 if kind=='bench' else .1
+   n=max(1,round(length*(1-2*arms)/.8))
+   for i in range(n):
+    u0=-.5+arms+i*(1-2*arms)/n+.005;u1=-.5+arms+(i+1)*(1-2*arms)/n-.005
+    piece(u0,.35,-.46,u1,.5,.3 if kind!='bench' else .46)
+    if kind!='bench':piece(u0,.45,.26,u1,.92,.47)
+   if arms:
+    for u0 in(-.5,.5-arms):piece(u0,.3,-.47,u0+arms,.7,.47,'fabric',.05)
   elif kind in('bed','bunk'):
-   b(-.49,0,-.49,.49,.35,.49);b(-.48,.34,-.48,.48,.67,.48,'white');b(-.49,.67,-.48,.49,.75,.18,'rug');b(-.5,.2,.42,.5,1,.5)
-   cushion(-.41,.21,-.02,.42,.68,.85);cushion(.02,.21,.41,.42,.68,.85)
-   if kind=='bunk':
-    b(-.49,.65,-.49,.49,.69,.49);b(-.48,.69,-.48,.48,.83,.48,'white')
-    for ax in(-.47,.47):b(ax-.025,.35,.445,ax+.025,1,.495)
+   # A bed: its frame, a mattress, a cover over the foot, two pillows and an upholstered headboard at +z.
+   def bed(y0,k):
+    rb(-.49,y0,-.49,.49,y0+.28*k,.47,'mahogany',.02)
+    rb(-.47,y0+.27*k,-.47,.47,y0+.48*k,.42,'white',.07,True)
+    rb(-.49,y0+.44*k,-.48,.49,y0+.54*k,.1,'rug',.04,True)
+    for a0,a1 in((-.42,-.03),(.03,.42)):rb(a0,y0+.47*k,.2,a1,y0+.62*k,.4,'white',.07,True)
+   if kind=='bed':bed(0,1);rb(-.5,.15,.42,.5,1,.5,'fabric',.05,True)
+   else:
+    bed(0,.55);bed(.55,.55);rb(-.5,0,.44,.5,1,.5,'mahogany',.015)
+    for ax in(-.47,.47):leg(ax,-.47,.28,1,.025)
+    for k in range(4):m.tube([[x+.47*sx,y+(.15+k*.22)*sy,z-.47*sz],[x+.47*sx,y+(.15+k*.22)*sy,z-.3*sz]],.015,'chrome',6)
   elif kind in('chairs','stools'):
    n=max(2,round(sz/1.3))
    for i in range(n):
-    zz=z-sz/2+(i+.5)*sz/n;w=min(sx,.62);d=min(.62,sz/n*.8)
-    m.box([x-.04,y,zz-.04],[x+.04,y+sy*.58,zz+.04],'brass');m.box([x-w/2,y+sy*.58,zz-d/2],[x+w/2,y+sy*.76,zz+d/2],'fabric')
-    if kind=='chairs':m.box([x-w/2,y+sy*.7,zz+d*.29],[x+w/2,y+sy,zz+d*.49],'mahogany')
+    zz=z-sz/2+(i+.5)*sz/n;w=min(sx,.56);d=min(.56,sz/n*.8)
+    if kind=='stools':
+     m.tube([[x,y,zz],[x,y+sy*.04,zz]],w*.38,'brass',12);m.tube([[x,y,zz],[x,y+sy*.64,zz]],.035,'brass',8)
+     m.tube([[x,y+sy*.64,zz],[x,y+sy*.76,zz]],w*.45,'fabric',16);continue
+    for dx in(-.4,.4):
+     for dz in(-.4,.4):m.tube([[x+dx*w,y,zz+dz*d],[x+dx*w,y+sy*.46,zz+dz*d]],.018,'mahogany',6)
+    m.rbox([x-w/2,y+sy*.44,zz-d/2],[x+w/2,y+sy*.52,zz+d/2],'fabric',.03,True)
+    if kind=='chairs':m.rbox([x-w/2,y+sy*.52,zz+d*.38],[x+w/2,y+sy,zz+d/2],'mahogany',.02)
   elif kind=='tub':
-   b(-.5,0,-.5,.5,.15,.5,'cream');b(-.5,.12,-.5,-.38,1,.5,'cream',top='teak');b(.38,.12,-.5,.5,1,.5,'cream',top='teak')
+   rb(-.5,0,-.5,.5,.15,.5,'cream',.02);b(-.5,.12,-.5,-.38,1,.5,'cream',top='teak');b(.38,.12,-.5,.5,1,.5,'cream',top='teak')
    b(-.38,.12,-.5,.38,1,-.38,'cream',top='teak');b(-.38,.12,.38,.38,1,.5,'cream',top='teak');b(-.38,.40,-.38,.38,.43,.38,'pool')
   elif kind=='helm':
-   b(-.48,0,.12,.48,.82,.47);b(-.5,.78,-.5,.5,.9,.5)
+   rb(-.48,0,.12,.48,.82,.47,'mahogany',.02);rb(-.5,.78,-.5,.5,.9,.5,'mahogany',.02)
    for i in range(3):
     cx=x+sx*(-.32+i*.32);m.box([cx-sx*.12,y+sy*.87,z-sz*.49],[cx+sx*.12,y+sy,z-sz*.33],'dark',top='screen')
    m.tube([[x,y+sy*.68,z-sz*.40],[x,y+sy*.68,z-sz*.36]],.2,'mahogany',12)
-  elif kind=='treadmill':b(-.5,0,-.5,.5,.22,.5,'dark');b(-.47,.18,.32,-.40,.86,.44,'steel');b(.40,.18,.32,.47,.86,.44,'steel');b(-.48,.82,.25,.48,1,.46,'dark')
+  elif kind=='treadmill':b(-.5,0,-.5,.5,.22,.5,'dark');b(-.47,.18,.32,-.40,.86,.44,'steel');b(.40,.18,.32,.47,.86,.44,'steel');rb(-.48,.82,.25,.48,1,.46,'dark',.03)
   elif kind=='machinery':
-   b(-.49,0,-.49,.49,.84,.49,'cream');b(-.38,.84,-.36,.38,1,.36,'slate')
+   rb(-.49,0,-.49,.49,.84,.49,'cream',.02);rb(-.38,.84,-.36,.38,1,.36,'slate',.03)
    for i in range(4):b(-.44,.22+i*.11,-.50,.44,.25+i*.11,-.49,'dark')
   elif kind in('weights','tools'):
-   b(-.46,0,-.45,.46,.96,.45)
+   rb(-.46,0,-.45,.46,.96,.45,'mahogany',.015)
    for i in range(4):b(-.44,.15+i*.2,-.5,.44,.19+i*.2,-.46,'steel')
   elif kind=='piano':
-   b(-.5,0,-.2,.5,.66,.48,'navy');b(-.5,.2,-.48,.5,.58,-.2,'navy');b(-.5,.6,.25,.5,1,.5,'navy');b(-.45,.58,-.5,.45,.64,-.24,'white')
+   rb(-.5,0,-.2,.5,.66,.48,'navy',.02);rb(-.5,.2,-.48,.5,.58,-.2,'navy',.02);rb(-.5,.6,.25,.5,1,.5,'navy',.02);b(-.45,.58,-.5,.45,.64,-.24,'white')
+   for k in range(14):b(-.43+k*.062,.62,-.49,-.43+k*.062+.03,.645,-.36,'dark')
   elif kind=='planter':
-   b(-.38,0,-.38,.38,.43,.38,'cream',top='dark')
+   rb(-.38,0,-.38,.38,.43,.38,'cream',.02);b(-.34,.42,-.34,.34,.44,.34,'dark')
    # A clipped shrub: three overlapping leafy masses.
    for dx,dy,dz,r in[(0,.62,0,.34),(.12,.82,.06,.24),(-.1,.9,-.08,.2)]:
     cx,cy,cz=x+dx*sx,y+dy*sy,z+dz*sz
     m.convex([[cx+r*math.cos(i*2.39996)*math.sin(math.acos(1-2*(i+.5)/14)),cy+r*(1-2*(i+.5)/14),cz+r*math.sin(i*2.39996)*math.sin(math.acos(1-2*(i+.5)/14))] for i in range(14)],'green')
   elif kind=='compass':
-   b(-.3,0,-.3,.3,.85,.3);m.tube([[x,y+sy*.82,z],[x,y+sy,z]],sx*.48,'brass',12);m.tube([[x,y+sy-.02,z],[x,y+sy-.005,z]],sx*.36,'screen',12)
+   rb(-.3,0,-.3,.3,.85,.3,'mahogany',.02);m.tube([[x,y+sy*.82,z],[x,y+sy,z]],sx*.48,'brass',12);m.tube([[x,y+sy-.02,z],[x,y+sy-.005,z]],sx*.36,'screen',12)
   else:
+   # Cabinetry: a carcass on a recessed plinth, its doors or drawers framed and handled on the side toward the room.
    tag='cream' if kind in('laundry','galley','cold_store','bath') else 'mahogany'
-   b(-.47,0,-.5,.47,1,.5,tag,top='slate' if kind=='galley' else None)
+   f0,f1=(-.5,-.47) if out>0 else(.47,.5)
+   rb(-.45,0,-.47,.45,.06,.47,'dark',.005)
+   rb(-.47,.05,-.5,.47,.97,.5,tag,.012)
+   rb(-.49,.96,-.5,.49,1,.5,'slate' if kind in('galley','bath') else tag,.008)
    if kind=='books':
     for shelf in range(4):
      for i in range(4):b(.47,.08+shelf*.23,-.46+i*.23,.5,.25+shelf*.23,-.25+i*.23,['navy','red','teak','green'][(i+shelf)%4])
+   elif kind=='nightstand' or (kind=='cabinet' and sy<1.2):
+    for k in range(2):
+     d0=.12+k*.42;rb(f0,d0,-.46,f1,d0+.38,.46,tag,.006)
+     m.tube([[x+(f0+f1)/2*sx-out*.02,y+(d0+.19)*sy,z-.08],[x+(f0+f1)/2*sx-out*.02,y+(d0+.19)*sy,z+.08]],.009,'brass',6)
    else:
-    a,bx=(-.5,-.47) if x>0 else(.47,.5)
-    for zz in(-.28,.28):b(a,.42,zz-.025,bx,.60,zz+.025,'brass')
+    doors=max(1,round(sz/.6))
+    for k in range(doors):
+     a0=-.48+k*.96/doors+.006;a1=-.48+(k+1)*.96/doors-.006
+     rb(f0,.1,a0,f1,.93,a1,tag,.006)
+     side=a1-.06 if k%2==0 else a0+.06
+     m.tube([[x+(f0+f1)/2*sx-out*.02,y+.42*sy,z+side*sz],[x+(f0+f1)/2*sx-out*.02,y+.62*sy,z+side*sz]],.01,'brass',6)
 
 # On the farthest level no length of mast is under 80 cm across: a third of a pixel at 2 km on a 1,080-row screen, more
 # than the quarter of a pixel a card's four samples always catch, so a mast reads as a line and not as dashes.
