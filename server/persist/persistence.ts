@@ -143,10 +143,11 @@ export class Persistence {
       this.records.nextSeq = Number(store.meta("next_seq"));
       this.records.nextTeam = Number(store.meta("next_team"));
     }
-    const structures = store.fresh ? world.structs.count : store.loadChunks(world.structs);
-    // A fresh save keeps the structures the world was created with, so the first commit writes them all.
+    // The world holds the map's statics. What changed of them, and what was built, is laid over them.
+    const structures = store.loadChunks(world.structs);
     this.dirtyChunks.clear();
-    if (store.fresh) world.structs.chunks.forEach((t, chunk) => t && this.dirtyChunks.add(chunk));
+    // A fresh save takes in its first commit what the world was made with beyond the map's statics as placed.
+    if (store.fresh) for (const chunk of world.structs.held) if (!world.structs.asPlaced(chunk)) this.dirtyChunks.add(chunk);
     for (const rec of store.loadEntities()) this.records.byPid.set(rec.pid, rec);
     // What the operator chose to go on without leaves the save in the next commit, so that choice is made once.
     for (const chunk of store.dropped.chunks) this.dirtyChunks.add(chunk);
@@ -298,7 +299,7 @@ export class Persistence {
     const old = this.store;
     const world = this.world;
     this.store = next;
-    world.structs.chunks.forEach((t, chunk) => t && this.dirtyChunks.add(chunk));
+    for (const chunk of world.structs.held) if (!world.structs.asPlaced(chunk)) this.dirtyChunks.add(chunk);
     this.chunkAt.clear();
     for (const pid of this.records.byPid.keys()) this.records.dirty.add(pid);
     for (const b of this.blobs) b.all();
