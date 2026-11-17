@@ -5,7 +5,7 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { heldTo, probePasses, provingProbes } from "../../client/core/selfcheck.ts";
 import { MARKER_DEATH, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
-import { latOf, lonOf } from "../../shared/world/coords.ts";
+import { mapU, mapV } from "../../shared/world/coords.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../../shared/world/proving.ts";
 import { provingView } from "../../tools/snap.ts";
 import { artTest } from "../fixtures/needs-art.ts";
@@ -20,9 +20,10 @@ test("HUD coordinates, compass and minimap markers follow the map convention", (
   const remote = new RemoteSample();
   a.sampleRemote(remote);
   updateHud(hud, a, remote, 60);
-  // Spawn is at x 256, z 240 on a 512 m map, so longitude is 50 and latitude a little south of centre.
-  expect(hud.lon).toBeCloseTo(50, 0);
-  expect(hud.lat).toBeCloseTo((1 - 240 / 512) * 100, 0);
+  // Spawn is at x 256, z 240 on a 512 m map that reads 5 to 10 each way, so longitude is 7.5 and latitude a little south of
+  // the middle (these were 50 and 53.1 when a map read 0 to 100 across).
+  expect(hud.lon).toBeCloseTo(7.5, 1);
+  expect(hud.lat).toBeCloseTo(7.66, 1);
   expect(hud.compass).toBe("N");
   expect(hud.nearby).toBe(1);
   // The survivor beside it is of another tribe, and by the server's rule is not marked.
@@ -68,7 +69,7 @@ test("HUD coordinates, compass and minimap markers follow the map convention", (
   a.respawnPoints.push({ kind: 0, name: "Plaza", x: 256, z: 240, readyAt: 0 });
   updateHud(hud, a, remote, 60);
   expect(hud.markers.map((m) => m.kind)).toEqual(["self", "mate", "tame", "death", "spawn", "creature"]);
-  expect([hud.markers[4]!.u, hud.markers[4]!.v]).toEqual([lonOf(h.world.hf, 256) / 100, latOf(h.world.hf, 240) / 100]);
+  expect([hud.markers[4]!.u, hud.markers[4]!.v]).toEqual([mapU(h.world.hf, 256), mapV(h.world.hf, 240)]);
 
   // Facing +X is west (270) and facing -X is east (90).
   expect(headingOf(Math.PI / 2)).toBeCloseTo(270, 6);

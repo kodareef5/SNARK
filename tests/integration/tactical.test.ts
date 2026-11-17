@@ -10,7 +10,7 @@ import { UiFrame } from "../../client/core/ui/nodes.ts";
 import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN, KEY_MAP_TITLE, KEY_MAP_ZOOM, buildMap, mapPointer } from "../../client/core/ui/screens.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { CMD_MAP_ZOOM } from "../../shared/net/protocol.ts";
-import { latLonText, latOf, lonOf } from "../../shared/world/coords.ts";
+import { latLonText, lonOf, mapU, mapV, xOfU } from "../../shared/world/coords.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { MARK_MATE, MARK_OTHER, MARK_TAME, PLAYERS_ALL, PLAYERS_OFF, PLAYERS_VIEW } from "../../shared/world/tactical.ts";
@@ -275,8 +275,8 @@ test("the minimap is a window on one zoom around its reader, and the map screen 
   /** Whether a picture shows the tribe's green where the place (x, z) is, to within a pixel. */
   const green = (p: MapPicture, x: number, z: number): boolean => {
     const N = p.image.width;
-    const px = Math.floor(((lonOf(hf, x) / 100 - p.view.u0) / p.view.du) * N);
-    const py = Math.floor(((latOf(hf, z) / 100 - p.view.v0) / p.view.dv) * N);
+    const px = Math.floor(((mapU(hf, x) - p.view.u0) / p.view.du) * N);
+    const py = Math.floor(((mapV(hf, z) - p.view.v0) / p.view.dv) * N);
     for (let y = py - 1; y <= py + 1; y++) {
       for (let x = px - 1; x <= px + 1; x++) {
         const c = p.image.data.subarray((y * N + x) * 4, (y * N + x) * 4 + 3);
@@ -296,15 +296,15 @@ test("the minimap is a window on one zoom around its reader, and the map screen 
   expect(green(mini, 124, 112)).toBe(true);
   expect(green(mini, 150, 112)).toBe(false);
   expect(markers()).toBe(1);
-  // Three steps out is the whole map, with the mate on it where its longitude and latitude put it.
+  // Three steps out is the whole map at the middle of the window, with the mate on it where its share of the picture puts it.
   for (let i = 0; i < 4; i++) expect(chart.key("Minus", true, false)).toBe(true);
   frames(3000);
   expect([mini.view.zoom, mini.view.u0, mini.view.du, a.tactical.marks.zoom]).toEqual([0, 0, 1, 0]);
   expect(markers()).toBe(2);
   const box = f.find(KEY_MINIMAP)!;
   const mate = f.find(KEY_MARKER)!;
-  expect(mate.x + 2).toBeCloseTo(box.x + (lonOf(hf, 2150) / 100) * box.w, 1);
-  expect(mate.y + 2).toBeCloseTo(box.y + (latOf(hf, 100) / 100 / mini.view.dv) * box.h, 1);
+  expect(mate.x + 2).toBeCloseTo(box.x + mapU(hf, 2150) * box.w, 1);
+  expect(mate.y + 2).toBeCloseTo(box.y + ((mapV(hf, 100) - mini.view.v0) / mini.view.dv) * box.h, 1);
 
   // The map screen opens on its reader at the far zoom, and says the same latitude and longitude as the readout.
   map = true;
@@ -327,7 +327,7 @@ test("the minimap is a window on one zoom around its reader, and the map screen 
     expect(green(full, 124, 112)).toBe(true);
     expect(green(full, 124, 200)).toBe(false);
     const pin = f.find(KEY_MAP_PIN + 16)!;
-    expect(full.view.u0 + ((pin.x + 4 - image.x) / image.w) * full.view.du).toBeCloseTo(hud.lon / 100, 9);
+    expect(lonOf(hf.dims, xOfU(hf, full.view.u0 + ((pin.x + 4 - image.x) / image.w) * full.view.du))).toBeCloseTo(hud.lon, 6);
   }
   // An arrow moves it a quarter of its window, and a click puts the place clicked at its middle.
   const u0 = full.view.u0;

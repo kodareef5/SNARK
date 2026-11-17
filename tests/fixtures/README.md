@@ -14,7 +14,7 @@
 | `crash-child.ts` | A process that trades items and commits until it is killed |
 | `device.ts` | The device probe's page on the harness: a browser and a phone's GPU made of numbers, a client to watch, a run until done |
 | `load.ts` | `hungAfter(file)`: the one time limit every test has, after which it is called hung, stretched with the machine's load and the check's workers; what marks a file of the slow tier |
-| `preload.ts` | Loaded before each test file (`bunfig.toml`): sets that limit, and under the check says what each worker is running and what each file cost |
+| `preload.ts` | Loaded before each test file (`bunfig.toml`): collects what the last file in the worker left, sets that limit, and under the check says what each worker is running and what each file cost |
 | `needs-art.ts` | `test` and `artTest` for tests that need the art in `assets/`, skipped where it is not here: in the code as shown outside, never in the repository |
 | `frames.ts`, `device-reports/` | Frame traces for the governor, and the iPhone's three soaks they replay |
 | `cityslice.ts`, `miami-slice.gz` | Downtown Miami's 9 by 9 chunks of a built map, its statics and ground (114 KB), for the city census; cut again by `bun tools/bench/census.ts <map> --cut` |

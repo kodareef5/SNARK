@@ -9,7 +9,7 @@ import { join, resolve } from "node:path";
 import { MAPS } from "../../content/maps.ts";
 import type { Def, MapDef, SpawnsDef } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
-import { CHUNK_SIZE } from "../../shared/coords.ts";
+import { mapSizeX, mapSizeZ } from "../../shared/coords.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
 import { Base } from "../mapworld/base.ts";
 import { place } from "./files.ts";
@@ -18,13 +18,13 @@ import { scaled, type Picture } from "./posters.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const CACHE = join(ROOT, ".cache/wiki/maps");
-/** The ground's picture is the largest of these sides that PNG holds in GROUND_BYTES; a card's is CARD a side. */
+/** The ground's picture is the largest of these along the map's longer side that PNG holds in GROUND_BYTES; a card's is CARD wide. */
 const SIDES = [768, 640, 512];
 const GROUND_BYTES = 240 * 1024;
 const CARD = 240;
-/** Squares a side of a resource's picture: one for every 32 m of an 8 km map. */
+/** Squares along the longer side of a resource's picture: one for every 32 m of an 8 km map. */
 const GRID = 254;
-/** The overlays are drawn in a box this many units a side. */
+/** The overlays are drawn in a box this many units wide, and as deep as the map's proportions make it. */
 export const BOX = 1000;
 
 export interface Layer {
@@ -57,7 +57,8 @@ export interface Atlas {
   id: string;
   slug: string;
   label: string;
-  metres: number;
+  /** The map's extent, west to east and north to south. */
+  metres: [number, number];
   ground: Picture;
   card: Picture;
   resources: Layer[];
@@ -97,19 +98,25 @@ function speciesOf(def: SpawnsDef): string[] {
   return [...new Set(def.entries.filter((e) => !e.waits).flatMap((e) => e.group))];
 }
 
+/** Pixels across and down a picture of the map whose longer side is `side`, each pixel as wide as it is deep. */
+function sides(map: ReturnType<typeof parseMap>, side: number): [number, number] {
+  const [w, d] = [mapSizeX(map.dims), mapSizeZ(map.dims)];
+  return w >= d ? [side, Math.max(1, Math.round((side * d) / w))] : [Math.max(1, Math.round((side * w) / d)), side];
+}
+
 /** The ground as the game colours it, each pixel the mean of the samples under it, shaded by its slope; water by its depth. */
-function ground(palette: Uint8Array, map: ReturnType<typeof parseMap>, SIDE: number): Uint8Array {
+function ground(palette: Uint8Array, map: ReturnType<typeof parseMap>, side: number): { rgba: Uint8Array; width: number; height: number } {
   const hf = mapHeightfield(map);
-  const size = map.dims.chunksX * CHUNK_SIZE;
-  const out = new Uint8Array(SIDE * SIDE * 4);
-  const step = size / SIDE;
+  const [W, H] = sides(map, side);
+  const out = new Uint8Array(W * H * 4);
+  const step = Math.max(hf.sizeX, hf.sizeZ) / side;
   const span = Math.max(1, Math.round(step / hf.cell));
-  for (let py = 0; py < SIDE; py++) {
-    for (let px = 0; px < SIDE; px++) {
-      const [x, z] = [size - (px + 0.5) * step, size - (py + 0.5) * step];
+  for (let py = 0; py < H; py++) {
+    for (let px = 0; px < W; px++) {
+      const [x, z] = [hf.sizeX - (px + 0.5) * (hf.sizeX / W), hf.sizeZ - (py + 0.5) * (hf.sizeZ / H)];
       const h = hf.heightAt(x, z);
       const water = hf.waterAt(x, z);
-      const at = (py * SIDE + px) * 4;
+      const at = (py * W + px) * 4;
       if (h < water) {
         const deep = Math.min(1, (water - h) / 12);
         out.set([Math.round(46 - 26 * deep), Math.round(96 - 40 * deep), Math.round(122 - 34 * deep), 255], at);
@@ -133,7 +140,7 @@ function ground(palette: Uint8Array, map: ReturnType<typeof parseMap>, SIDE: num
       out[at + 3] = 255;
     }
   }
-  return out;
+  return { rgba: out, width: W, height: H };
 }
 
 /** The atlas of every map whose file is in `maps`, its pictures written into `out` and named from `prefix`. */
@@ -149,8 +156,10 @@ export function buildAtlases(reg: Registry, palette: Uint8Array, maps: string, o
     if (!existsSync(file)) continue;
     const bytes = new Uint8Array(readFileSync(file));
     const map = parseMap(bytes, false);
-    const size = map.dims.chunksX * CHUNK_SIZE;
-    const toBox = (x: number, z: number): [number, number] => [((size - x) / size) * BOX, ((size - z) / size) * BOX];
+    const [sizeX, sizeZ] = [mapSizeX(map.dims), mapSizeZ(map.dims)];
+    // Box units to a metre, the same both ways.
+    const scale = BOX / sizeX;
+    const toBox = (x: number, z: number): [number, number] => [(sizeX - x) * scale, (sizeZ - z) * scale];
     const mark = (name: string, x: number, z: number): Mark => {
       const [bx, by] = toBox(x, z);
       return { name, x: at1(bx), y: at1(by) };
@@ -171,13 +180,20 @@ export function buildAtlases(reg: Registry, palette: Uint8Array, maps: string, o
     };
     const groundPicture = picture("ground", () => {
       let png: Uint8Array = new Uint8Array(0);
-      for (const side of SIDES) if ((png = indexedPng(side, side, ground(palette, map, side))).length <= GROUND_BYTES) break;
+      for (const side of SIDES) {
+        const g = ground(palette, map, side);
+        if ((png = indexedPng(g.width, g.height, g.rgba)).length <= GROUND_BYTES) break;
+      }
       return png;
     });
-    const card = picture("card", () => scaled(ground(palette, map, SIDES.at(-1)!), SIDES.at(-1)!, SIDES.at(-1)!, CARD));
+    const card = picture("card", () => {
+      const g = ground(palette, map, SIDES.at(-1)!);
+      return scaled(g.rgba, g.width, g.height, CARD);
+    });
 
-    // Every slot of every chunk, counted by kind on a grid.
+    // Every slot of every chunk, counted by kind on a grid of squares.
     const nodes = mapNodes(map, mapHeightfield(map), reg);
+    const [gridW, gridH] = sides(map, GRID);
     const counts = new Map<number, Uint16Array>();
     if (nodes) {
       const spot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
@@ -187,9 +203,9 @@ export function buildAtlases(reg: Registry, palette: Uint8Array, maps: string, o
           nodes.at(c, s, spot);
           if (spot.kind === 0) continue;
           let grid = counts.get(spot.kind);
-          if (!grid) counts.set(spot.kind, (grid = new Uint16Array(GRID * GRID)));
-          const [bx, by] = toBox(spot.x, spot.z);
-          grid[Math.min(GRID - 1, Math.floor((by / BOX) * GRID)) * GRID + Math.min(GRID - 1, Math.floor((bx / BOX) * GRID))]!++;
+          if (!grid) counts.set(spot.kind, (grid = new Uint16Array(gridW * gridH)));
+          const [col, row] = [Math.floor(((sizeX - spot.x) / sizeX) * gridW), Math.floor(((sizeZ - spot.z) / sizeZ) * gridH)];
+          grid[Math.max(0, Math.min(gridH - 1, row)) * gridW + Math.max(0, Math.min(gridW - 1, col))]!++;
         }
       }
     }
@@ -200,9 +216,9 @@ export function buildAtlases(reg: Registry, palette: Uint8Array, maps: string, o
       const colour = `#${tint.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
       const most = grid.reduce((m, n) => Math.max(m, n), 1);
       const made = (): { rgba: Uint8Array; width: number; height: number } => {
-        const px = new Uint8Array(GRID * GRID * 4);
+        const px = new Uint8Array(gridW * gridH * 4);
         for (let i = 0; i < grid.length; i++) if (grid[i]! > 0) px.set([...tint, Math.round(40 + 200 * Math.sqrt(grid[i]! / most))], i * 4);
-        return { rgba: px, width: GRID, height: GRID };
+        return { rgba: px, width: gridW, height: gridH };
       };
       const slugOf = node.id.slice(node.id.indexOf(":") + 1);
       return { id: slugOf, of: node.id, picture: picture(`node-${slugOf}`, made), count: grid.reduce((n, x) => n + x, 0), colour };
@@ -210,7 +226,6 @@ export function buildAtlases(reg: Registry, palette: Uint8Array, maps: string, o
 
     const regions: Region[] = (map.regions ?? []).filter((z) => z.kind === "spawn" && z.spawns).map((z) => {
       const [x, y] = toBox(z.at[0], z.at[1]);
-      const scale = BOX / size;
       const half: [number, number] | undefined = z.half ? [z.half[0] * scale, z.half[1] * scale] : undefined;
       return { x: at1(x), y: at1(y), r: at1((z.radius ?? 0) * scale), ...(half ? { half } : {}), species: spawns.get(z.spawns!) ?? [], count: z.count ?? 0 };
     });
@@ -235,10 +250,12 @@ export function buildAtlases(reg: Registry, palette: Uint8Array, maps: string, o
     const worldFile = join(source, "world/world.json");
     const world: WorldPlaces = existsSync(worldFile) ? JSON.parse(readFileSync(worldFile, "utf8")) : {};
     const base = new Base(source);
+    // The build lays its square of the earth with the map's south-east corner at the square's: x = 0 is its east edge and z = 0 its south.
     const half = base.info.size_m / 2;
     const fromLonLat = (lon: number, lat: number): [number, number] => {
       const [e, n] = base.tm.forward(lon, lat);
-      return [at1(((half + e) / base.info.size_m) * BOX), at1(((half - n) / base.info.size_m) * BOX)];
+      const [bx, by] = toBox(half - e, half + n);
+      return [at1(bx), at1(by)];
     };
     const districts = (world.districts ?? []).map((d) => {
       const points = d.ring.map(([lon, lat]) => fromLonLat(lon, lat));
@@ -257,7 +274,7 @@ export function buildAtlases(reg: Registry, palette: Uint8Array, maps: string, o
       id: def.id,
       slug,
       label: def.label ?? slug,
-      metres: size,
+      metres: [sizeX, sizeZ],
       ground: groundPicture,
       card,
       resources,

@@ -40,7 +40,7 @@ From the repository's root, in PowerShell:
 
    ```powershell
    bun run build
-   bun tools/mapworld/build.ts miami      # and each other map in the cluster's file
+   bun tools/mapworld/build.ts miami --release      # and each other map in the cluster's file
    bun run wiki
    ```
 

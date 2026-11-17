@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { Rng } from "../../shared/rng.ts";
-import { latLonText, latOf, lonOf, xOfLon, zOfLat } from "../../shared/world/coords.ts";
+import { framed } from "../../shared/coords.ts";
+import { latLonText, latOf, lonOf, mapU, mapV, xOfLon, xOfU, zOfLat, zOfV } from "../../shared/world/coords.ts";
 import { CELL_FILLED, Cells, FarCells, LEVEL_AT, MARK_MATE, MARK_TAME, Marks, OWNER_OTHER, PLAYERS_VIEW, Summary, bakeChunk, farTopByte, farTopMetres, levelSide, onlyTeam, pieceShapes, readCells, readFar, readMarks, writeCells, writeFar, writeMark, writeMarksHead } from "../../shared/world/tactical.ts";
 import { flatWorld, type TestWorld } from "../fixtures/world.ts";
 
@@ -17,19 +18,29 @@ const cell = (s: Summary, cx: number, cz: number, level = 0) => {
   return { filled: (v & CELL_FILLED) !== 0, tint: s.tint[at]!, band: v & 7, owner: (v >> 3) & 7 };
 };
 
-test("latitude and longitude run 0 to 100 from the north-west corner, +X is west, and both convert back", () => {
-  const map = { sizeX: 2304, sizeZ: 256 };
-  expect(latOf(map, 256)).toBe(0);
-  expect(latOf(map, 0)).toBe(100);
-  expect(lonOf(map, 2304)).toBe(0);
-  expect(lonOf(map, 0)).toBe(100);
-  expect(lonOf(map, 1152 - 23.04)).toBeCloseTo(51, 9);
+// Coordinates moved from 0 to 100 across the extent to units of 102.4 m from the display origin, and shares of the picture
+// took the other half of what they were used for.
+test("latitude and longitude are units of 102.4 m south and east of the display origin, and a share of the picture runs 0 to 1 across the extent", () => {
+  // Today's cities: 127 chunks, the origin the sector corner a chunk beyond the north-west corner, so they read 0.6 to 80 each way.
+  const city = framed({ chunksX: 127, chunksZ: 127 });
+  expect([lonOf(city, 8128), lonOf(city, 0), latOf(city, 8128), latOf(city, 0), lonOf(city, 4064)]).toEqual([0.625, 80, 0.625, 80, 40.3125]);
+  // Miami leaves eight sectors north of it for its coast.
+  const miami = framed({ chunksX: 127, chunksZ: 127, frameX: 2048, frameZ: 2048, originX: 2176, originZ: 2304 });
+  expect([latOf(miami, 8128), latOf(miami, 0), lonOf(miami, 8128)]).toEqual([80.625, 160, 0.625]);
+  // A map 36 by 4 units: a unit is as long either way, and ten are a sector. Its shares run 0 to 1 each way all the same.
+  const map = framed({ chunksX: 36, chunksZ: 4, frameX: 104, frameZ: 32 });
+  const extent = { sizeX: 2304, sizeZ: 256 };
+  expect([lonOf(map, 2304), lonOf(map, 0), latOf(map, 256), latOf(map, 0)]).toEqual([2.5, 25, 7.5, 10]);
+  expect([lonOf(map, 1000) - lonOf(map, 1000 + 1024), latOf(map, 100) - latOf(map, 100 + 102.4)]).toEqual([10, 1]);
+  expect([mapU(extent, 2304), mapU(extent, 0), mapV(extent, 256), mapV(extent, 0), mapU(extent, 1152)]).toEqual([0, 1, 0, 1, 0.5]);
   const rng = new Rng(4);
   for (let i = 0; i < 200; i++) {
-    const x = rng.range(0, map.sizeX);
-    const z = rng.range(0, map.sizeZ);
+    const x = rng.range(0, extent.sizeX);
+    const z = rng.range(0, extent.sizeZ);
     expect(xOfLon(map, lonOf(map, x))).toBeCloseTo(x, 8);
     expect(zOfLat(map, latOf(map, z))).toBeCloseTo(z, 8);
+    expect(xOfU(extent, mapU(extent, x))).toBeCloseTo(x, 8);
+    expect(zOfV(extent, mapV(extent, z))).toBeCloseTo(z, 8);
   }
   expect(latLonText(47.26, 50)).toBe("47.3 lat  50.0 lon");
 });

@@ -319,8 +319,8 @@ export class Agent implements ToolHost {
       x: round1(b.x),
       z: round1(b.z),
       y: round1(b.y),
-      lat: round1(latOf(hf, b.z)),
-      lon: round1(lonOf(hf, b.x)),
+      lat: round1(latOf(hf.dims, b.z)),
+      lon: round1(lonOf(hf.dims, b.x)),
       ...(up > 1.5 ? { above_ground: round1(up) } : {}),
       facing: compass(s.ownYaw),
       alive: s.sessionState === SESSION_ALIVE,
@@ -397,12 +397,17 @@ export class Agent implements ToolHost {
     return 0;
   }
 
-  /** x and z from x and z, or from lat and lon. */
+  /** x and z from x and z, or from lat and lon, each a place on the map. */
   private where(a: Record<string, unknown>): [number, number] | null {
     const hf = this.session.world!.hf;
     if (a.lat !== undefined || a.lon !== undefined) {
       if (a.lat === undefined || a.lon === undefined) throw new Bad("give lat and lon together");
-      return [xOfLon(hf, amount(a, "lon", 0, 100, 0)), zOfLat(hf, amount(a, "lat", 0, 100, 0))];
+      const d = hf.dims;
+      // The map's range to the tenth status gives, so that a place read at its edge is taken, and then kept on the map.
+      const on = (key: string, edge: number, other: number): number => amount(a, key, Math.floor(edge * 10) / 10, Math.ceil(other * 10) / 10, 0);
+      const x = xOfLon(d, on("lon", lonOf(d, hf.sizeX), lonOf(d, 0)));
+      const z = zOfLat(d, on("lat", latOf(d, hf.sizeZ), latOf(d, 0)));
+      return [Math.max(0, Math.min(hf.sizeX, x)), Math.max(0, Math.min(hf.sizeZ, z))];
     }
     if (a.x === undefined && a.z === undefined) return null;
     if (a.x === undefined || a.z === undefined) throw new Bad("give x and z together");
