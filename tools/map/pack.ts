@@ -129,9 +129,17 @@ export function checkBudgets(packed: Packed): void {
   if (f.br > FIRST_FRAME_BUDGET) throw new Error(`map: a client where sectors ${f.corner[0]}-${f.corner[1]} to ${f.corner[0] + 1}-${f.corner[1] + 1} meet waits for ${mb(f.br)} MB of it before it draws, over the ${mb(FIRST_FRAME_BUDGET)} MB of tools/map/pack.ts${which}`);
 }
 
+/** Writes `bytes` to `path` whole: a reader has the file as it was or as it is, never half of it. */
+function writeWhole(path: string, bytes: Uint8Array): void {
+  writeFileSync(`${path}.tmp`, bytes);
+  renameSync(`${path}.tmp`, path);
+}
+
 /**
  * Writes the map at `path`, and beside it the folder of its head's and parts' files with their copies, a release build's if
  * `release`. Takes away any file of that folder that is not one of them. Throws over a budget, before writing anything.
+ * Each file is replaced whole, the map last, so a server still running on the map before (server/main.ts mapRoutes) holds
+ * that file open and cuts from it the parts that were taken away.
  */
 export async function writeMapFile(path: string, file: Uint8Array, release = false): Promise<Packed> {
   const packed = await packMap(file, release);
@@ -141,14 +149,13 @@ export async function writeMapFile(path: string, file: Uint8Array, release = fal
   const names = new Set(packed.parts.flatMap((p) => [p.name, `${p.name}.br`, `${p.name}.gz`]));
   for (const name of readdirSync(folder)) if (!names.has(name)) rmSync(join(folder, name), { recursive: true });
   for (const p of packed.parts) {
-    writeFileSync(join(folder, `${p.name}.br`), p.br);
-    writeFileSync(join(folder, `${p.name}.gz`), p.gz);
-    writeFileSync(join(folder, p.name), p.bytes);
+    writeWhole(join(folder, `${p.name}.br`), p.br);
+    writeWhole(join(folder, `${p.name}.gz`), p.gz);
+    writeWhole(join(folder, p.name), p.bytes);
   }
   // The whole map's copies of the version before parts.
   const whole = new RegExp(`^${basename(path).replace(/\./g, "\\.")}\\.[0-9a-f]{8}\\.(br|gz)$`);
   for (const name of readdirSync(dirname(path))) if (whole.test(name)) rmSync(join(dirname(path), name));
-  writeFileSync(`${path}.tmp`, file);
-  renameSync(`${path}.tmp`, path);
+  writeWhole(path, file);
   return packed;
 }
