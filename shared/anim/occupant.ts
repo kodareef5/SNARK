@@ -9,7 +9,6 @@ import type { CollisionWorld } from "../world/collide.ts";
 import { castWorld, HIT_NONE, rayHit } from "../world/ray.ts";
 import { Pose } from "./clip.ts";
 import { B_HEAD, B_NECK, B_SPINE, HUMAN, HUMAN_BONES, SOCKET_EYE } from "./human.ts";
-import { defaultLook, LOOK_SEX, SEX_IDS, lookScales } from "./look.ts";
 import { createMountMotion, mountOrigin, mountPose, type MountMotionProfile } from "./mount.ts";
 import { AnimState, humanPose, PITCH_STEPS, type HumanAnim } from "./pose.ts";
 import { fitSeatControls } from "./seat-controls.ts";
@@ -28,7 +27,6 @@ export interface OccupantSeat extends VehicleFrame {
 
 const motion = createMountMotion(), state = new AnimState();
 const rotation = new Float64Array(4), turn = new Float64Array(4), direction = new Float64Array(3);
-const plain = defaultLook();
 
 export function createOccupantSeat(): OccupantSeat {
   return { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, driver: false, steer: 0, steering: 0 };
@@ -98,7 +96,6 @@ export class OccupantBody {
   readonly solved = new Solved(HUMAN_BONES);
   readonly frame = new Float64Array(SEAT_FLOATS);
   readonly anchor = new Float64Array(3);
-  readonly scales = new Float32Array(HUMAN_BONES * 3);
   private readonly rotation = new Float64Array(4);
   private readonly point = new Float64Array(3);
   private readonly origin = new Float64Array(3);
@@ -114,15 +111,14 @@ export class OccupantBody {
     }
   }
 
-  rest(mesh: string, look: Uint8Array | null): Float32Array {
-    return this.rests.get(mesh.replace(/^[^:]*:/, "") + "_" + SEX_IDS[(look ?? plain)[LOOK_SEX]!]) ?? HUMAN.rest;
+  rest(mesh: string): Float32Array {
+    return this.rests.get(mesh.replace(/^[^:]*:/, "") + "_m") ?? HUMAN.rest;
   }
 
-  vehicle(anim: HumanAnim, st: AnimState, tick: number, seat: OccupantSeat, rest: Float32Array, look: Uint8Array | null): void {
+  vehicle(anim: HumanAnim, st: AnimState, tick: number, seat: OccupantSeat, rest: Float32Array): void {
     occupantPose(anim, st, tick, this.pose, seat, null, 0, seat.aimYaw ?? seat.yaw, seat.driver);
-    lookScales(look ?? plain, this.scales);
-    solve(HUMAN, this.pose, this.solved, rest, this.scales);
-    if (seat.definition) fitSeatControls(this.pose, this.solved, rest, this.scales, seat.definition, seat.steering ?? 0);
+    solve(HUMAN, this.pose, this.solved, rest);
+    if (seat.definition) fitSeatControls(this.pose, this.solved, rest, null, seat.definition, seat.steering ?? 0);
     vehicleRotation(seat, this.rotation);
     this.anchor[0] = seat.x; this.anchor[1] = seat.y; this.anchor[2] = seat.z;
     mountOrigin(this.solved, this.anchor, this.rotation, this.origin);
@@ -133,11 +129,10 @@ export class OccupantBody {
     }
   }
 
-  saddle(anim: HumanAnim, st: AnimState, tick: number, frame: Float64Array, driver: boolean, yaw: number, rest: Float32Array, look: Uint8Array | null): void {
+  saddle(anim: HumanAnim, st: AnimState, tick: number, frame: Float64Array, driver: boolean, yaw: number, rest: Float32Array): void {
     this.frame.set(frame);
     occupantPose(anim, st, tick, this.pose, undefined, frame, 3, yaw, driver);
-    lookScales(look ?? plain, this.scales);
-    solve(HUMAN, this.pose, this.solved, rest, this.scales);
+    solve(HUMAN, this.pose, this.solved, rest);
     for (let axis = 0; axis < 3; axis++) this.anchor[axis] = frame[axis]! + frame[4 + axis * 3]! * SEAT_DROP;
   }
 

@@ -441,16 +441,14 @@ export class Characters {
     return out;
   }
 
-  /** Root on a seat, using the same body binding/proportions and pelvis solve as add(). Does not emit a draw. */
-  seatedOrigin(kind: number, look: Uint8Array | null, seat: VehicleSeatPose, out: Float64Array | number[], st = this.seatState, tick = 0): boolean {
+  /** Root on a seat, using the canonical proportions for the camera (D54). Does not emit a draw. */
+  seatedOrigin(kind: number, seat: VehicleSeatPose, out: Float64Array | number[], st = this.seatState, tick = 0): boolean {
     const k = this.kinds[kind];
     if (!k) return false;
-    const view = look ?? (k.sets.length > 1 ? PLAIN : null);
-    const set = k.sets[view && view[LOOK_SEX]! < k.sets.length ? view[LOOK_SEX]! : 0]!;
+    const set = k.sets[0]!;
     occupantPose(this.anim, st, tick, this.pose, seat, null, 0, seat.aimYaw ?? seat.yaw, seat.driver);
-    if (view) lookScales(view, this.scales);
-    solve(HUMAN, this.pose, this.solved, set.rest, view ? this.scales : null);
-    if (seat.definition) fitSeatControls(this.pose, this.solved, set.rest, view ? this.scales : null, seat.definition, seat.steering);
+    solve(HUMAN, this.pose, this.solved, set.rest);
+    if (seat.definition) fitSeatControls(this.pose, this.solved, set.rest, null, seat.definition, seat.steering);
     vehicleRotation(seat, this.rotation);
     this.seatPlace[0] = seat.x;
     this.seatPlace[1] = seat.y;
@@ -459,9 +457,9 @@ export class Characters {
     return true;
   }
 
-  /** Eye in the posed head, for enclosed seats where weapons are stowed. Scales with the survivor's actual proportions. */
-  seatedEye(kind: number, look: Uint8Array | null, seat: VehicleSeatPose, out: Float64Array, st = this.seatState, tick = 0): boolean {
-    if (!this.seatedOrigin(kind, look, seat, out, st, tick)) return false;
+  /** Eye in the posed head, for enclosed seats where weapons are stowed. */
+  seatedEye(kind: number, seat: VehicleSeatPose, out: Float64Array, st = this.seatState, tick = 0): boolean {
+    if (!this.seatedOrigin(kind, seat, out, st, tick)) return false;
     const x = out[0]!, y = out[1]!, z = out[2]!;
     boneToModel(this.solved, SOCKET_EYE.bone, SOCKET_EYE.x, SOCKET_EYE.y, SOCKET_EYE.z, out);
     quatRotate(this.rotation, 0, out[0]!, out[1]!, out[2]!, out, 0);

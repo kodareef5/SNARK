@@ -3,7 +3,6 @@
 import { BOAT_ART } from '../content/vehicles/boat-art.ts';
 import { Pose } from '../shared/anim/clip.ts';
 import { HUMAN, HUMAN_BONES, SOCKET_EYE } from '../shared/anim/human.ts';
-import { defaultLook, lookScales, LOOK_SEX, SEX_IDS } from '../shared/anim/look.ts';
 import type { PackRig } from '../shared/pack/pack.ts';
 import { createMountMotion, mountOrigin } from '../shared/anim/mount.ts';
 import { occupantPose, occupantSeat, createOccupantSeat } from '../shared/anim/occupant.ts';
@@ -73,7 +72,6 @@ const HULL_FIELDS = ["vehicleEngineCondition", "vehicleQx", "vehicleQy", "vehicl
 const BASE_BYTES = 2 + VEHICLE_FIELDS.length * 4;
 const formOf = (movement: VehicleDefinition['movement']): { version: number; extra: readonly (typeof ROTOR_FIELDS[number] | typeof HULL_FIELDS[number])[] } =>
   movement === 'rotor' ? { version: 5, extra: ROTOR_FIELDS } : movement === 'boat' ? { version: 9, extra: HULL_FIELDS } : { version: 8, extra: HULL_FIELDS };
-const PLAIN = defaultLook();
 /** How often a car at rest that nobody drives is stepped, to find the ground gone from under it. */
 const REST_TICKS = 30;
 
@@ -104,7 +102,6 @@ export class Urban {
   private readonly motion = createMountMotion();
   private readonly occupantState = new AnimState();
   private readonly occupantSeat = createOccupantSeat();
-  private readonly scales = new Float32Array(HUMAN_BONES * 3);
   private readonly rests = new Map<string, Float32Array>();
   private readonly seating: Seating;
   private readonly impacts = new Map<number, { speed: number; rotor: boolean; prop: boolean; water: boolean; landing: number }>();
@@ -1010,7 +1007,7 @@ export class Urban {
       if (e >= 0 && makeHandle(e, ents.gen[e]!) === expected && effect.landing) {
         ents.setSeat(e, -1); ents.driven[e] = 0; ents.stance[e] = STANCE_STAND;
         ents.setPosition(e, effect.landing.x, effect.landing.y, effect.landing.z);
-        world.history.discontinuity(e);
+        world.history.seatExit(e);
         ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
         if (isBoatVehicle(host.definition) || effect.landing.y + world.reg.move[ents.kind[e]!]!.height * .75 < world.hf.waterAt(effect.landing.x, effect.landing.z) + .01) {
           const inherit = (v: number): number => Number.isFinite(v) ? v : 0;
@@ -1092,7 +1089,7 @@ export class Urban {
     return true;
   }
 
-  /** Same role, controls, body proportions, pelvis alignment and chassis attitude as the drawn occupant. */
+  /** Physical seat pose uses the common survivor proportions (D54). */
   private poseOn(actor: number, vehicle: number, anchor: readonly [number, number, number], driver: boolean): VehicleState & { qx?: number; qy?: number; qz?: number; qw?: number } {
     const { world } = this.ctx, ents = world.ents;
     const state = this.state(vehicle), seat = this.seatAt, rotation = this.seatRotation, origin = this.seatOrigin;
@@ -1101,13 +1098,11 @@ export class Urban {
     const st = this.occupantState; st.unpack(ents.anim[actor]!, ents.cue[actor]!); st.seed = bodySeed(actor);
     occupantSeat(def, seatDefinition, state, ents.yaw[actor]! * TAU / 65536, this.occupantSeat);
     occupantPose(world.anim, st, world.tick, this.pose, this.occupantSeat, null, 0, this.occupantSeat.aimYaw!, driver, this.motion);
-    const look = ents.looks.get(actor) ?? this.ctx.records.byPid.get(ents.pid[actor]!)?.look ?? PLAIN;
     const definition = world.reg.defs[ents.kind[actor]!];
     const mesh = definition?.type === 'species' ? definition.mesh.replace(/^[^:]*:/, '') : 'human';
-    const rest = this.rests.get(mesh + '_' + SEX_IDS[look[LOOK_SEX]!]) ?? HUMAN.rest;
-    lookScales(look, this.scales);
-    solve(HUMAN, this.pose, this.solved, rest, this.scales);
-    if (seatDefinition) fitSeatControls(this.pose, this.solved, rest, this.scales, seatDefinition, state.steering);
+    const rest = this.rests.get(mesh + '_m') ?? HUMAN.rest;
+    solve(HUMAN, this.pose, this.solved, rest);
+    if (seatDefinition) fitSeatControls(this.pose, this.solved, rest, null, seatDefinition, state.steering);
     mountOrigin(this.solved, seat, rotation, origin);
     return state;
   }

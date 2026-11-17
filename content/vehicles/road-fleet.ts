@@ -68,7 +68,7 @@ function roadCar(art: RoadModel, frame: NonNullable<WheelVehicleDefinition["fram
     track: front[0] - pivot("wheel_front_right")[0], wheelbase: front[2] - pivot("wheel_rear_left")[2],
   };
   const vehicle: WheelVehicleDefinition = {
-    ...COMPACT_VEHICLE, id: art.id, frame, spec, beltline: trim.beltline,
+    ...COMPACT_VEHICLE, id: art.id, frame, spec, beltline: trim.beltline, shotPanels: undefined,
     seats: [
       { id: "driver", driver: true, anchor: at.seat_driver, entry: at.approach_left, door: 0 },
       { id: "passenger", anchor: at.seat_front_passenger, entry: at.approach_right, door: 1 },

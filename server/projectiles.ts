@@ -197,7 +197,7 @@ export class Projectiles {
     const rays = shotRays(reg, weapon, ammo);
     this.aim(c, rec, weapon, 0, d, rays);
     const view = combat.viewTick(c);
-    combat.eye(e, this.eyeAt, view);
+    combat.eye(e, this.eyeAt, combat.originTick(c, view));
     const ox = this.eyeAt[0]!, oy = this.eyeAt[1]!, oz = this.eyeAt[2]!;
     this.fired++;
     if (reg.ammoLight[ammo]! > 0) {

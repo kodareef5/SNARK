@@ -1,4 +1,5 @@
 // First original vehicle in the actual game's species registry. Presentation lives in its asset source.
+import { COMPACT_ART } from "./compact-art.ts";
 import type { SpeciesDef } from "../../shared/content/defs.ts";
 import type { WheelVehicleDefinition, VehicleSpec, VehicleSurface } from "../../shared/sim/vehicle.ts";
 
@@ -45,6 +46,7 @@ export const COMPACT_VEHICLE: WheelVehicleDefinition = {
   actionTicks: 18,
   // The door sills: the side windows are down and the screens open in the middle (DESIGN.md).
   beltline: 0.95,
+  shotPanels: COMPACT_ART.shotPanels,
 };
 
 /** Uses normal entity health, cargo and ownership; the vehicle controller supplies all movement. */

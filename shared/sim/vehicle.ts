@@ -91,6 +91,7 @@ export interface VehicleWheel {
 export const MAX_VEHICLE_DOORS = 4;
 
 /** One kind of vehicle: its mechanics, its seats and the parts of its rig that move. Content, never code, says each. */
+type VehiclePoint3 = readonly [number, number, number];
 interface VehicleDefinitionBase {
   readonly id: string;
   /** Mesh used by the native persistent corpse for an opted-in mechanical wreck. */
@@ -106,6 +107,8 @@ interface VehicleDefinitionBase {
   readonly actionTicks: number;
   /** Metres up from the ground to where the body shell ends and the open cabin begins: a shot above it reaches whoever sits inside. */
   readonly beltline: number;
+  /** Solid cabin panels above the belt in vehicle-local metres. Openings between them admit shots. */
+  readonly shotPanels?: readonly (readonly [VehiclePoint3, VehiclePoint3, VehiclePoint3, VehiclePoint3])[];
 }
 
 /** Existing packs omit movement; their controller remains the wheeled one. */
@@ -299,6 +302,9 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   const s = d.steeringWheel;
   if (s !== undefined && (!bone(s.bone) || !vec(s.axis) || !Number.isFinite(s.ratio) || Math.abs(s.ratio) > 50)) throw new Error("invalid steering wheel");
   if (!Number.isInteger(d.actionTicks) || d.actionTicks < 1 || d.actionTicks > 300) throw new Error("invalid vehicle action ticks");
+  for (const panel of d.shotPanels ?? []) {
+    if (panel.length !== 4 || panel.some(point => point.length !== 3 || !point.every(Number.isFinite))) throw new Error("invalid vehicle cabin panel");
+  }
   if (!Number.isFinite(d.beltline) || d.beltline <= d.spec.clearance || d.beltline > d.spec.height) throw new Error("invalid vehicle belt line");
   validateSeats(d.seats, d.doors.length, "vehicle");
 }

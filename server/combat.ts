@@ -11,7 +11,8 @@ import type { PackRig } from "../shared/pack/pack.ts";
 import { SEAT_FLOATS, saddleSeat, seatOn } from "../shared/anim/seat.ts";
 import { rayCreature, type CreatureAnim } from "../shared/anim/creature.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
-import { rayVehicle } from "../shared/sim/vehicle-frame.ts";
+import { rayVehicle, rayVehicleCover } from "../shared/sim/vehicle-frame.ts";
+import { quatRotate } from "../shared/math/quat.ts";
 import { TAU } from "../shared/math/scalar.ts";
 import { zoneHit } from "../shared/anim/skeleton.ts";
 import type { SpeciesDef } from "../shared/content/defs.ts";
@@ -161,6 +162,7 @@ export class Combat {
   private readonly survivor: number;
   /** A second entity the cast in progress skips: the rider of the creature that is biting. -1 for none. */
   private spare = -1;
+  private biting = false;
   private readonly human: Uint8Array;
   /** Vehicle origins can be in an adjacent chunk even when their hull touches a ray. */
   private readonly vehicleReach: Float32Array;
@@ -412,7 +414,9 @@ export class Combat {
     // A mount does not bite its rider, who sits where its jaws begin.
     const rider = c === null ? (this.riderOf?.(rec) ?? null) : null;
     this.spare = rider ? (this.ctx.records.entOf.get(rider.pid) ?? -1) : -1;
+    this.biting = c === null;
     const target = this.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, what === HIT_NONE ? reach : worldT, SWING_WIDTH);
+    this.biting = false;
     this.spare = -1;
     // A dead creature's body nearer than any living one and anything built. Only a survivor's swing harvests one yet.
     const corpses = this.corpses;
@@ -536,6 +540,14 @@ export class Combat {
     return view;
   }
 
+  /** A passenger's muzzle may follow the rendered carrier only within the delay the host measured.
+   * Target rewind has additional jitter slack; that slack cannot relocate the shooter's own origin. */
+  originTick(c: Client, view: number): number {
+    const now = this.ctx.world.tick;
+    const committed = c.inputs.has(now) ? Math.max(0, now - c.arrived[now & c.inputs.mask]!) : 0;
+    return Math.max(view, now - Math.max(0, this.lag(c)) - committed - VIEW_BEHIND);
+  }
+
   /**
    * The ammunition a reload of the weapon in `slot` would use: the kind last chosen if any is loaded or carried,
    * else the first kind it takes that the record carries. 0 for none.
@@ -627,17 +639,20 @@ export class Combat {
               if (t < -reach || t > maxT + reach || off2 > reach * reach) continue;
             }
           } else was.seatFrom(ents, i);
+          if (this.biting && was.seat && reg.vehicle[was.hostKind]?.shotPanels) continue;
           if (self >= 0 && was.seat === self + 1 && was.seatSlot !== 0 && was.seatGen === ents.gen[self]) continue;
+          // Even after a rewind or a wide swing the true intersection cannot precede this bound.
+          const first = t - radius;
           if (n < MAX_NEAR) {
-            nearT[n] = t;
+            nearT[n] = first;
             near[n++] = i;
             continue;
           }
           // Full. The farthest along the ray gives way, so the nearest body is always among those tested.
           let far = 0;
           for (let k = 1; k < MAX_NEAR; k++) if (nearT[k]! > nearT[far]!) far = k;
-          if (t < nearT[far]!) {
-            nearT[far] = t;
+          if (first < nearT[far]!) {
+            nearT[far] = first;
             near[far] = i;
           }
         }
@@ -646,6 +661,14 @@ export class Combat {
     this.zone = ZONE_NONE;
     this.t = maxT;
     if (n === 0) return -1;
+    // Visit the front of a convoy first so its first actual hit prunes the bodies behind it.
+    let front = 0;
+    for (let k = 1; k < n; k++) if (nearT[k]! < nearT[front]!) front = k;
+    if (front) {
+      const body = near[0]!, bound = nearT[0]!;
+      near[0] = near[front]!; nearT[0] = nearT[front]!;
+      near[front] = body; nearT[front] = bound;
+    }
     let best = this.castNear(n, ox, oy, oz, dx, dy, dz);
     if (best >= 0 || width <= 0) return best;
     // Offsets to each side, above and below. (rx, 0, rz) is level and square to the ray, and (ux, uy, uz) is square to both.
@@ -710,13 +733,29 @@ export class Combat {
     return true;
   }
 
+  private readonly seatQ = new Float64Array(4);
+  private readonly pelvis = new Float64Array(3);
+
+  /** Every seated human capsule fits inside this rotation-independent shell around the authored pelvis.
+   * Use the recorded carrier itself: the body's indexing position can be below an overturned car. */
+  private seatInRay(was: Past, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, reach: number): boolean {
+    const seat = this.ctx.world.reg.vehicle[was.hostKind]?.seats[was.seatSlot - 1];
+    if (!seat) return true;
+    const q = this.seatQ, p = this.pelvis;
+    q[0] = was.hostQx; q[1] = was.hostQy; q[2] = was.hostQz; q[3] = was.hostQw;
+    quatRotate(q, 0, seat.anchor[0], seat.anchor[1], seat.anchor[2], p, 0);
+    const x = was.hostX + p[0]! - ox, y = was.hostY + p[1]! - oy, z = was.hostZ + p[2]! - oz;
+    const t = Math.max(0, Math.min(reach, x * dx + y * dy + z * dz));
+    return (x - t * dx) ** 2 + (y - t * dy) ** 2 + (z - t * dz) ** 2 <= BODY_REACH ** 2;
+  }
+
   /** Pose the occupant at this recorded carrier frame; slot reuse cannot substitute a different host. */
   private seated(i: number, was: Past, tick: number, poseTick = tick): boolean {
     const world = this.ctx.world, host = was.seat - 1;
     if (host < 0 || was.seatSlot === 0) return false;
     const definition = world.reg.defs[world.ents.kind[i]!];
     const mesh = definition?.type === "species" ? definition.mesh : "human";
-    const look = world.ents.looks.get(i) ?? null, rest = this.occupant.rest(mesh, look);
+    const rest = this.occupant.rest(mesh);
     const vehicle = world.reg.vehicle[was.hostKind], yaw = was.yaw * TAU / 65536;
     if (vehicle) {
       const seat = vehicle.seats[was.seatSlot - 1];
@@ -725,13 +764,13 @@ export class Combat {
       frame.x = was.hostX; frame.y = was.hostY; frame.z = was.hostZ; frame.yaw = was.hostYaw * TAU / 65536;
       frame.qx = was.hostQx; frame.qy = was.hostQy; frame.qz = was.hostQz; frame.qw = was.hostQw; frame.steering = was.hostSteering;
       occupantSeat(vehicle, seat, frame, yaw, this.seatedAt);
-      this.occupant.vehicle(world.anim, this.st, poseTick, this.seatedAt, rest, look);
+      this.occupant.vehicle(world.anim, this.st, poseTick, this.seatedAt, rest);
     } else {
       const seat = saddleSeat(world.reg, was.saddle, was.seatSlot);
       if (!seat) return false;
       const st = this.mountSt; st.unpack(was.hostAnim, was.hostCue); st.seed = bodySeed(host);
       seatOn(this.anims[was.hostKind] ?? null, seat, st, tick, was.hostX, was.hostY, was.hostZ, was.hostYaw * TAU / 65536, this.seatAt);
-      this.occupant.saddle(world.anim, this.st, poseTick, this.seatAt, seat.driver === true, yaw, rest, look);
+      this.occupant.saddle(world.anim, this.st, poseTick, this.seatAt, seat.driver === true, yaw, rest);
     }
     return true;
   }
@@ -765,6 +804,7 @@ export class Combat {
     const span = this.span;
     let best = -1;
     for (let k = 0; k < n; k++) {
+      if (this.nearT[k]! > this.t + .001) continue;
       const i = this.near[k]!;
       const kind = world.ents.kind[i]!;
       if (!this.where(i, tick, past)) continue;
@@ -795,6 +835,7 @@ export class Combat {
       }
       const reach = this.t / scale;
       if (this.human[kind] && world.anim) {
+        if (past.seat && !this.seatInRay(past, rx, ry, rz, ux, uy, uz, reach)) continue;
         st.unpack(past.anim, past.cue);
         st.seed = bodySeed(i);
         const seated = this.seated(i, past, tick);
@@ -820,9 +861,12 @@ export class Combat {
           best = i;
         }
       } else if (reg.vehicle[kind]) {
-        // A vehicle is met by its mechanical hull up to its belt line, whatever its art, turned as it was.
+        // Animals bite the enclosing body. Aimed fire and beams can pass through the cabin openings.
         const def = reg.vehicle[kind]!;
-        const t = rayVehicle(def, past.x, past.y, past.z, (past.yaw * TAU) / 65536, rx, ry, rz, ux, uy, uz, def.beltline, past);
+        const yaw = past.yaw * TAU / 65536;
+        const t = this.biting && def.shotPanels
+          ? rayVehicle(def, past.x, past.y, past.z, yaw, rx, ry, rz, ux, uy, uz, def.spec.height, past)
+          : rayVehicleCover(def, past.x, past.y, past.z, yaw, rx, ry, rz, ux, uy, uz, past);
         if (t < reach) {
           this.t = t * scale;
           this.zone = ZONE_TORSO;

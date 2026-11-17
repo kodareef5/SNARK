@@ -282,9 +282,9 @@ export class Riding {
     this.frameOn(host, seat);
     this.st.unpack(ents.anim[e]!, ents.cue[e]!);
     this.st.seed = bodySeed(e);
-    const definition = world.reg.defs[ents.kind[e]!], look = ents.looks.get(e) ?? null;
-    const rest = this.occupant.rest(definition?.type === "species" ? definition.mesh : "human", look);
-    this.occupant.saddle(world.anim, this.st, world.tick, this.frame, seat.driver === true, ents.yaw[e]! * TAU / 65536, rest, look);
+    const definition = world.reg.defs[ents.kind[e]!];
+    const rest = this.occupant.rest(definition?.type === "species" ? definition.mesh : "human");
+    this.occupant.saddle(world.anim, this.st, world.tick, this.frame, seat.driver === true, ents.yaw[e]! * TAU / 65536, rest);
     this.occupant.eye(out);
     return true;
   }

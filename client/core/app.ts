@@ -620,7 +620,7 @@ export class App {
     st.setMotion(b.vx, b.vz, yaw, pitch, b.vy);
     st.setAction(b.act, (this.reg.weapon[b.held] ?? FISTS).hold, actionTick - b.actTicks);
     st.seed = bodySeed(handleIndex(s.ownHandle));
-    if (!this.seatedAim.pose(remote, s.ownKind, b.seat, b.seatGen, b.seatSlot, s.ownLook, st, yaw, tick)) return false;
+    if (!this.seatedAim.pose(remote, s.ownKind, b.seat, b.seatGen, b.seatSlot, st, yaw, tick)) return false;
     this.seatedAim.eye(world, out, clip); return true;
   }
 
@@ -1092,7 +1092,7 @@ export class App {
         const slot = car.seats.findIndex(seat => seat.driver) + 1, ch = this.scene.characters;
         ch.seat(session.bodyKind, bx, by, bz, carYaw, this.body.state, session.tickClock, this.seatSpot, slot, vehiclePose);
         const seat = ch.seatPose(session.bodyKind, slot, vehiclePose!, this.seatSpot, carYaw, undefined, this.seated);
-        if (!seat || !ch.seatedEye(session.ownKind, session.ownLook, seat, this.seatSpot)) vehiclePoint(frame, [.48, 1.86, .70], this.seatSpot);
+        if (!seat || !ch.seatedEye(session.ownKind, seat, this.seatSpot)) vehiclePoint(frame, [.48, 1.86, .70], this.seatSpot);
         this.view.placeCockpit(cam, this.seatSpot[0]!, this.seatSpot[1]!, this.seatSpot[2]!, frame, this.cockpit.yaw, this.cockpit.pitch);
       }
     } else if (alive && car) c.yaw = this.view.placeVehicle(cam, world, bx, by + car.spec.height * 2 / 3, bz, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt, true, { vx: session.own.vx, vy: session.own.vy, vz: session.own.vz, id: session.driving, boom: car.spec.halfLength * 3 });
@@ -1131,7 +1131,7 @@ export class App {
           const pose = remoteVehiclePose(r, i);
           if (ch.seat(r.kind[i]!, r.x[i]!, r.y[i]!, r.z[i]!, heading, this.body.state, r.tick, this.seatSpot, session.own.seatSlot, pose)) {
             const seat = ch.seatPose(r.kind[i]!, session.own.seatSlot, pose, this.seatSpot, heading, undefined, this.seated)!;
-            const found = passengerFullAttitude ? ch.seatedEye(session.ownKind, session.ownLook, seat, this.seatSpot) : ch.seatedOrigin(session.ownKind, session.ownLook, seat, this.seatSpot);
+            const found = passengerFullAttitude ? ch.seatedEye(session.ownKind, seat, this.seatSpot) : ch.seatedOrigin(session.ownKind, seat, this.seatSpot);
             if (found) { px = this.seatSpot[0]!; py = this.seatSpot[1]! + (passengerFullAttitude ? 0 : eye); pz = this.seatSpot[2]!; }
           }
         } else {

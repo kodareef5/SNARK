@@ -239,3 +239,72 @@ test("native raptor and parasaur saddles hit the rendered head while their crouc
     } finally { h.host.shutdown(); }
   }
 });
+
+test("survivor appearance has no effect on a seated eye or aimed zone", () => {
+  const f = fixture("compact"), { h, actor } = f;
+  try {
+    const eye = f.pose(.8, 20).slice();
+    const actual = new Float64Array(3);
+    h.host.combat.eye(actor, actual, 20, false);
+    const canonical = actual.slice();
+    const variant = defaultLook();
+    variant[0] = 1;
+    variant.fill(127, 9);
+    h.world.ents.looks.set(actor, variant);
+    h.host.combat.eye(actor, actual, 20, false);
+    expect([...actual]).toEqual([...canonical]);
+    expect(f.hit(eye)).toBe(actor);
+    expect(h.host.combat.zone).toBe(ZONE_HEAD);
+  } finally { h.host.shutdown(); }
+});
+
+test("a completed car exit retains seated history while retiring the old motion capture", () => {
+  const h = new Harness({}, 3, 60, { dev: true, map: writeMap(flatMap(4)) });
+  try {
+    const s = h.join("seat-history"); h.run(600);
+    const c = h.client(s)!, { ents, history } = h.world;
+    const car = h.host.spawnVehicle("core:compact", 90, 90, 0);
+    ents.setPosition(c.ent, 91.6, 0, 90.12);
+    expect(h.host.urban.mount(c, car)).toBe(RESULT_OK); h.run(1100);
+    h.host.urban.dismount(c);
+    const eye = new Float64Array(3);
+    let at = 0;
+    const epoch = history.motionEpoch(c.ent);
+    const deadline = h.world.tick + 60;
+    while (ents.seat[c.ent] && h.world.tick < deadline) {
+      at = h.world.tick;
+      h.host.combat.eye(c.ent, eye, at, false);
+      h.run(35);
+    }
+    expect(ents.seat[c.ent]).toBe(0);
+    expect(history.motionEpoch(c.ent)).not.toBe(epoch);
+    for (const delay of [4, 8, 12, 15]) {
+      while (h.world.tick < at + delay) h.run(5);
+      expect(h.host.combat.castBodies(-1, eye[0]! + 3, eye[1]!, eye[2]!, -1, 0, 0, 4, 0, at)).toBe(c.ent);
+    }
+  } finally { h.host.shutdown(); }
+});
+
+test("the compact roof stops a shot and its clear windscreen admits one", () => {
+  const f = fixture("compact", 1), { h, actor, car, frame } = f;
+  try {
+    const { combat } = h.host;
+    frame.yaw = 0;
+    const eye = f.pose(0, 20);
+    expect(combat.castBodies(-1, eye[0]!, eye[1]! + 3, eye[2]!, 0, -1, 0, 4)).toBe(car);
+    expect(combat.castBodies(-1, eye[0]!, eye[1]!, eye[2]! + 3, 0, 0, -1, 4)).toBe(actor);
+  } finally { h.host.shutdown(); }
+});
+
+test("a passenger's origin stays within the measured delay while a target retains its rewind allowance", () => {
+  const h = new Harness({}, 7, 60, { dev: true, map: writeMap(flatMap(2)) });
+  try {
+    const s = h.join("passenger-clock"); h.run(700);
+    const c = h.client(s)!, now = h.world.tick;
+    c.inputs.set(now, 0, 0, 0, 0, 0);
+    c.arrived[now & c.inputs.mask] = now;
+    const oldest = h.host.combat.originTick(c, now - 15);
+    expect(oldest).toBe(now - h.host.combat.lag(c) - 2);
+    expect(h.host.combat.originTick(c, now)).toBe(now);
+  } finally { h.host.shutdown(); }
+});

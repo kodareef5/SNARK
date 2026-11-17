@@ -242,7 +242,7 @@ export class VehicleContacts {
     const captured = this.defB ? this.frames.get(e) : undefined;
     if (captured?.tick === world.tick && captured.handle === makeHandle(e, ents.gen[e]!) && captured.pid === ents.pid[e] && captured.motionEpoch === world.history.motionEpoch(e)) this.fromBody(captured.body, this.b.prior);
     // Vehicles have explicit pre-step captures. A rejected capture must not revive through an older history row.
-    else if (!this.defB && world.history.at(world.tick - 1, e, this.past)) {
+    else if (!this.defB && world.history.at(world.tick - 1, e, this.past) && !this.past.seat) {
       this.b.prior.x = this.past.x; this.b.prior.y = this.past.y; this.b.prior.z = this.past.z;
     }
     if (!this.defB) { this.upright(this.b.prior); this.upright(this.b.state); }

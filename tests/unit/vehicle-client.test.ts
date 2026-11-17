@@ -230,7 +230,7 @@ test("an inverted enclosed passenger keeps a seated pelvis and stows held equipm
   expect(packet.boneCount).toBe(HUMAN_BONES);
   close(transform(packet, B_HIPS, rest.subarray(0, 3)), [seat.x, seat.y, seat.z]);
   const eye = new Float64Array(3);
-  expect(characters.seatedEye(survivor, look, enclosed, eye)).toBe(true);
+  expect(characters.seatedEye(survivor, enclosed, eye)).toBe(true);
   expect(eye[1]).toBeLessThan(seat.y - .5);
   const drawn: string[] = [];
   characters.flush(packet, new InstanceWriter(packet.transient), false, m => drawn.push(pack.header.meshes[m]!.id));

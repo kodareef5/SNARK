@@ -3,13 +3,12 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { creatureAnims } from "../../shared/anim/creature.ts";
 import { HumanAnim, AnimState, bodySeed } from "../../shared/anim/pose.ts";
 import { OccupantBody, clipSeatEye, createOccupantSeat, occupantSeat } from "../../shared/anim/occupant.ts";
-import { LOOK_BYTES } from "../../shared/anim/look.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
 import { saddleSeat, seatOn, SEAT_FLOATS } from "../../shared/anim/seat.ts";
 import { zoneHit } from "../../shared/anim/skeleton.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { GEAR_COUNT, GEAR_WORN } from "../../shared/sim/entities.ts";
-import { rayVehicle } from "../../shared/sim/vehicle-frame.ts";
+import { rayVehicleCover } from "../../shared/sim/vehicle-frame.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { RemoteSample } from "./session.ts";
 
@@ -23,7 +22,6 @@ export class SeatedAim {
   private readonly saddle = new Float64Array(SEAT_FLOATS);
   private readonly st = new AnimState();
   private readonly hostState = new AnimState();
-  private readonly look = new Uint8Array(LOOK_BYTES);
 
   constructor(reg: Registry, pack: Pack) {
     this.reg = reg;
@@ -41,25 +39,25 @@ export class SeatedAim {
   }
 
   /** The own pose is current prediction; its carrier is exactly the remote sample that the input reports seeing. */
-  pose(r: RemoteSample, kind: number, parent: number, generation: number, slot: number, look: Uint8Array | null, st: AnimState, yaw: number, poseTick: number): boolean {
+  pose(r: RemoteSample, kind: number, parent: number, generation: number, slot: number, st: AnimState, yaw: number, poseTick: number): boolean {
     if (!parent || !slot) return false;
     let host = -1;
     for (let i = 0; i < r.count; i++) if (r.id[i] === parent - 1 && r.gen[i] === generation) { host = i; break; }
     if (host < 0) return false;
-    const def = this.reg.defs[kind], rest = this.body.rest(def?.type === "species" ? def.mesh : "human", look);
+    const def = this.reg.defs[kind], rest = this.body.rest(def?.type === "species" ? def.mesh : "human");
     const vehicle = this.reg.vehicle[r.kind[host]!];
     if (vehicle) {
       const seat = vehicle.seats[slot - 1];
       if (!seat) return false;
       this.carrier(r, host);
       occupantSeat(vehicle, seat, this.frame, yaw, this.seat);
-      this.body.vehicle(this.human, st, poseTick, this.seat, rest, look);
+      this.body.vehicle(this.human, st, poseTick, this.seat, rest);
     } else {
       const seat = saddleSeat(this.reg, r.gear[host * GEAR_COUNT + GEAR_WORN]!, slot);
       if (!seat) return false;
       const ms = this.hostState; ms.unpack(r.anim[host]!, r.cue[host]!); ms.seed = bodySeed(r.id[host]!);
       seatOn(this.creatures[r.kind[host]!] ?? null, seat, ms, r.tick, r.x[host]!, r.y[host]!, r.z[host]!, r.yaw[host]!, this.saddle);
-      this.body.saddle(this.human, st, poseTick, this.saddle, seat.driver === true, yaw, rest, look);
+      this.body.saddle(this.human, st, poseTick, this.saddle, seat.driver === true, yaw, rest);
     }
     return true;
   }
@@ -71,9 +69,7 @@ export class SeatedAim {
 
   private remote(r: RemoteSample, i: number): boolean {
     const st = this.st; st.unpack(r.anim[i]!, r.cue[i]!); st.seed = bodySeed(r.id[i]!);
-    const look = r.hasLook[i] ? this.look : null;
-    if (look) for (let n = 0; n < LOOK_BYTES; n++) look[n] = r.look[i * LOOK_BYTES + n]!;
-    return this.pose(r, r.kind[i]!, r.seat[i]!, r.seatGen[i]!, r.seatSlot[i]!, look, st, r.yaw[i]!, r.tick);
+    return this.pose(r, r.kind[i]!, r.seat[i]!, r.seatGen[i]!, r.seatSlot[i]!, st, r.yaw[i]!, r.tick);
   }
 
   remoteEye(world: CollisionWorld, r: RemoteSample, i: number, out: Float64Array): boolean {
@@ -86,7 +82,7 @@ export class SeatedAim {
     const vehicle = this.reg.vehicle[r.kind[i]!];
     if (vehicle) {
       this.carrier(r, i);
-      return rayVehicle(vehicle, this.frame.x, this.frame.y, this.frame.z, this.frame.yaw, ox, oy, oz, dx, dy, dz, vehicle.beltline, this.frame);
+      return rayVehicleCover(vehicle, this.frame.x, this.frame.y, this.frame.z, this.frame.yaw, ox, oy, oz, dx, dy, dz, this.frame);
     }
     if (!this.remote(r, i)) return null;
     return this.body.ray(ox, oy, oz, dx, dy, dz, maxT) ? zoneHit.t : Infinity;

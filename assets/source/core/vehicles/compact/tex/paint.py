@@ -829,7 +829,10 @@ def paint_cabin():
     decay = (t < 3) & (s.hurt[:, 3] == 0) & ~s.where("glass_in")
     s.decay[decay, :3] = colour[decay]
     s.decay[decay, 3] = reveal(t[decay])
+    # Keep the printed perimeter on the drivable car; its glass admits sight and shots from either side.
+    s.alpha[glass] = frit[glass]
     s.save(cutout=True)
+    s.alpha[glass] = 1.0  # parked wreck and abandoned variants have their own weathered glass
     return s
 
 

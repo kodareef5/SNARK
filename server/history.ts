@@ -253,6 +253,13 @@ export class History {
     return distance;
   }
 
+  /** An exit crosses the cabin without sweeping a body through it. Keep the previous seat and its
+   * travel bound for shots already in flight. Past.blend selects one side of the attachment change. */
+  seatExit(e: number): void {
+    if (this.rowOf[e]! < 0) this.track(e);
+    this.motionEpochs.set(e, ++this.motionVersion);
+  }
+
   /** Immediately after an explicit teleport. Do not interpolate or sweep through the space it skipped. */
   discontinuity(e: number): void {
     if ((this.ents.flags[e]! & F_ALIVE) === 0) return;

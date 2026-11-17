@@ -6,6 +6,17 @@
 export const COMPACT_ART = {
   id: "core:compact",
   envelope: { min: [-0.9, 0, -2], max: [0.9, 1.5, 2] },
+  // Roof between the two glass panes, side rails and the A/C pillars, from the greenhouse sections in shape.py.
+  // Points run round each face. The windscreen, rear glass and open side windows stay clear.
+  shotPanels: [
+    [[-.68,1.44,.247],[.68,1.44,.247],[.68,1.50,-.23],[-.68,1.50,-.23]],
+    [[-.68,1.50,-.23],[.68,1.50,-.23],[.68,1.44,-.705],[-.68,1.44,-.705]],
+    ...([-1, 1] as const).flatMap(side => [
+      [[side*.68,1.44,.247],[side*.73,1.37,.20],[side*.74,1.36,-.57],[side*.68,1.44,-.705]],
+      [[side*.68,1.44,.247],[side*.73,1.37,.20],[side*.79,.95,.63],[side*.72,.95,.73]],
+      [[side*.68,1.44,-.705],[side*.74,1.36,-.57],[side*.79,.95,-.96],[side*.70,.95,-1.37]],
+    ] as const),
+  ] as const,
   wheelRadius: 0.3,
   wheelWidth: 0.24,
   bones: ["chassis", "wheel_front_left", "wheel_front_right", "wheel_rear_left", "wheel_rear_right", "door_left", "door_right", "steering_wheel"],
