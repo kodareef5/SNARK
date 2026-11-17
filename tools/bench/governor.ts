@@ -6,7 +6,7 @@
 // census's downtown views of it (tools/bench/census.ts) too, turning where they stand.
 
 import { readFileSync } from "node:fs";
-import { forTouch, tierOf, type Tier } from "../../client/core/assets/tiers.ts";
+import { canvasRatio, forTouch, tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import type { SoakReport } from "../../client/core/device.ts";
 import { BodyCopies, basePieces, crowdScene } from "../../client/core/devicescene.ts";
 import { TARGET_MS, ladder, workMs, type GovernorStep } from "../../client/core/governor.ts";
@@ -155,7 +155,7 @@ export interface Counts {
 
 /** Device pixels the shell draws at a tier on the iPhone's view (client/shell/main.ts). */
 export function pixelsOf(tier: Tier): number {
-  const ratio = tier.pixelRatio > 0 ? Math.min(PHONE_DPR, tier.pixelRatio) : PHONE_DPR;
+  const ratio = canvasRatio(tier, PHONE_DPR, VIEW[0], VIEW[1]);
   return Math.floor(VIEW[0] * ratio) * Math.floor(VIEW[1] * ratio);
 }
 
