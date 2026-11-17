@@ -369,14 +369,12 @@ export function buildSounds(file: number, root: string = SOURCE, cache: string |
     if (other) throw new Error(`sound: ${relative(root, other)} and ${relative(root, dir)} are both owner ${owner}; rename one folder`);
     folders.set(owner, dir);
   }
-  const wavs = new Map<string, { bytes: Uint8Array; hash: string }>();
-  const wavOf = (path: string): { bytes: Uint8Array; hash: string } => {
-    let w = wavs.get(path);
-    if (!w) {
-      const bytes = new Uint8Array(readFileSync(path));
-      wavs.set(path, (w = { bytes, hash: sha(bytes) }));
-    }
-    return w;
+  // A file is hashed once and read again only where a take of it must be prepared, so no more than one is held.
+  const hashes = new Map<string, string>();
+  const hashOf = (path: string): string => {
+    let hash = hashes.get(path);
+    if (hash === undefined) hashes.set(path, (hash = sha(readFileSync(path))));
+    return hash;
   };
   const out = [file, -1].map((index) => ({ index, chunks: [] as Uint8Array[], at: SOUND_HEADER_BYTES, sounds: [] as ManifestSound[], report: { sounds: 0, takes: 0, seconds: 0, bytes: 0, made: 0, limited: [] as string[], rates: SOUND_RATES.map(() => 0), decoded: 0 } }));
   for (const { owner, dir, sheet } of sheets) {
@@ -389,12 +387,11 @@ export function buildSounds(file: number, root: string = SOURCE, cache: string |
       const takes = cue.takes.map((take) => {
         const path = join(dir, take.file);
         if (!existsSync(path)) throw new Error(`sound: ${id} names ${take.file}, which is not in ${dir}`);
-        const wav = wavOf(path);
-        const key = sha(tools + wav.hash + JSON.stringify([take.start, take.end, take.gain, take.crossfade, cue.level, cue.highpass, cue.loop === true]));
+        const key = sha(tools + hashOf(path) + JSON.stringify([take.start, take.end, take.gain, take.crossfade, cue.level, cue.highpass, cue.loop === true]));
         let ready: { take: PreparedTake; rate: number } | null = null;
         const prepare = (): { take: PreparedTake; rate: number } => {
           if (ready) return ready;
-          const w = readWav(wav.bytes);
+          const w = readWav(new Uint8Array(readFileSync(path)));
           return (ready = { take: prepareTake(w, take, cue), rate: w.rate });
         };
         // What the take holds, and its file's rate, are kept to choose the sound's rate without preparing it again.

@@ -12,8 +12,7 @@
 // high and ultra, with shadows and the far layers off in turn on medium at one and on ultra at two. A city row's GL
 // draws and triangles are of the frame its run ends on. Chrome is found as tools/probe.ts finds it, or named by CHROME;
 // without it every row is skipped, and without the map the city's. The page is a client built for the bench in a
-// process of its own, which holds the whole game's textures and parts while it builds (past 3 GB), or the built client
-// CLIENT_DIR names. `bun tools/bench/gpu.ts [runs] [a row's first words]` runs these alone, each `runs` times (3), and
+// process of its own (buildClientApart), or the built client CLIENT_DIR names. `bun tools/bench/gpu.ts [runs] [a row's first words]` runs these alone, each `runs` times (3), and
 // prints each row's range.
 
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -28,7 +27,7 @@ import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import { PASSES, type Effect } from "../../client/core/passes.ts";
 import { startServer } from "../../server/main.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
-import { buildClient } from "../build-client.ts";
+import { buildClientApart } from "../build-client.ts";
 import { placeOf, type Place } from "./census.ts";
 import { benchHills } from "./terrain.ts";
 
@@ -122,7 +121,7 @@ const nameOf = (r: Run): string => `${r.scene}${r.view ? ` ${r.view}` : ""} ${r.
 async function measure(runs: Run[], times: number, say: (line: string) => void): Promise<Map<string, Record<string, any>[]>> {
   const out = new Map<string, Record<string, any>[]>();
   const dist = process.env.CLIENT_DIR ?? mkdtempSync(join(tmpdir(), "snark-gpu-client-"));
-  if (!process.env.CLIENT_DIR && Bun.spawnSync([process.execPath, import.meta.path, "--build", dist], { stdout: "inherit", stderr: "inherit" }).exitCode !== 0) throw new Error("the client did not build");
+  if (!process.env.CLIENT_DIR) await buildClientApart({ stress: true, dist, quick: true });
   for (const scene of ["base", "wood", "flock", "city"] as Scene[]) {
     const mine = runs.filter((r) => r.scene === scene);
     if (mine.length === 0) continue;
@@ -232,8 +231,7 @@ export async function benchGpu(section: Section, record: Row, times = 1): Promis
   rows(section, record, await measure(runs, times, () => {}));
 }
 
-if (import.meta.main && process.argv[2] === "--build") await buildClient({ stress: true, dist: process.argv[3]!, quick: true });
-else if (import.meta.main) {
+if (import.meta.main) {
   if (!CHROME) throw new Error("no Chrome: set CHROME");
   const times = Number(process.argv[2] ?? 3);
   const only = process.argv[3];

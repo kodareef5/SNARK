@@ -19,7 +19,7 @@ import type { SplitFile } from "./split.ts";
 export const PART_CACHE = resolve(import.meta.dir, "../../.cache/parts");
 
 /** A filter and its numbers. */
-type Filter = readonly [number, readonly number[]];
+export type Filter = readonly [number, readonly number[]];
 
 /** A part of a ranged file before it is stored. */
 interface Part {
@@ -45,7 +45,7 @@ export function textureFilters(format: TextureFormat, role: TextureRole, step: n
   return [[FILTER_PIXELS, [role === "normal" ? 2 : 4, pictures, step === 0 ? 0 : Math.log2(STEP0_SIZE) + step, role === "base" ? 0 : 1]]];
 }
 
-/** Every part of every ranged file, by file, in the order of the file. */
+/** Every part of every ranged file, by file, in the order of the file. A texture file not among `files` was stored as it was written (tools/pack/encode.ts writeTextures). */
 function partsOf(files: readonly SplitFile[], manifest: Manifest): Part[][] {
   const parts: Part[][] = files.map(() => []);
   for (const mesh of manifest.meshes) {
@@ -69,6 +69,7 @@ function partsOf(files: readonly SplitFile[], manifest: Manifest): Part[][] {
   for (const e of [...(manifest.clips ?? []), ...(manifest.pages ?? [])]) parts[e.file]!.push({ at: e.at, bytes: e.part.bytes, filters: [[FILTER_NONE, []]], put: (at, stored) => void ((e.at = at), stored < e.part.bytes && (e.part.stored = stored)) });
   for (const tex of manifest.textures ?? []) {
     for (const [format, v] of Object.entries(tex.in) as [TextureFormat, NonNullable<(typeof tex.in)[TextureFormat]>][]) {
+      if (v.file >= files.length) continue;
       const stored: number[] = [];
       v.hash.forEach((_, step) => {
         const bytes = stepBytes(format, tex.role, step, blockOf(format, v));
@@ -148,37 +149,74 @@ export interface StoreReport {
 const sha = (data: string | Uint8Array): string => createHash("sha256").update(data).digest("hex");
 
 /**
- * The files with every ranged one remade of its parts, stored, one after another behind a header of its own, and the
- * manifest changed to say where each part now is and how many bytes it is stored in. Each part is tried with the
- * filters that suit it and kept as the smallest of those deflated, or as it is if none is smaller; a surface is first
- * made what its filter gives back, and hashed again. What is deflated is kept under .cache/ by the hash of what went in
- * and of the compressor's source, and every part is inflated again before it is written, to be sure it comes back.
+ * Stores parts: each is tried with the filters that suit it and kept as the smallest of those deflated, or as it is if
+ * none is smaller. What is deflated is kept under .cache/ by the hash of what went in and of the compressor's source,
+ * and is inflated again before it is used, to be sure it comes back. Threads are started as they are first needed.
  */
-export async function storeParts(files: readonly SplitFile[], manifest: Manifest, opts: StoreOptions = {}): Promise<{ files: SplitFile[]; report: StoreReport }> {
-  const cache = opts.cache === undefined ? PART_CACHE : opts.cache;
-  const compressor = sha(readFileSync(join(import.meta.dir, "deflate.ts")));
-  const workers = opts.workers ?? availableParallelism();
-  const threads = pool(workers);
-  const report: StoreReport = { parts: 0, deflated: 0, made: 0, raw: 0, stored: 0 };
-  const deflated = async (data: Uint8Array): Promise<Uint8Array> => {
-    const key = sha(compressor + sha(data));
-    const path = cache && join(cache, key.slice(0, 2), key);
+export class PartStore {
+  /** Parts deflated rather than taken from the cache. */
+  made = 0;
+  readonly workers: number;
+  private readonly cache: string | null;
+  private readonly compressor = sha(readFileSync(join(import.meta.dir, "deflate.ts")));
+  private readonly threads: ReturnType<typeof pool>;
+
+  constructor(opts: { workers?: number; cache?: string | null } = {}) {
+    this.cache = opts.cache === undefined ? PART_CACHE : opts.cache;
+    this.workers = opts.workers ?? availableParallelism();
+    this.threads = pool(this.workers);
+  }
+
+  private async deflated(data: Uint8Array): Promise<Uint8Array> {
+    const key = sha(this.compressor + sha(data));
+    const path = this.cache && join(this.cache, key.slice(0, 2), key);
     if (path) {
       try {
-        return new Uint8Array(readFileSync(path));
+        return readFileSync(path);
       } catch {
         // Not kept yet.
       }
     }
-    const out = await threads.run(data);
-    report.made++;
+    const out = await this.threads.run(data);
+    this.made++;
     if (path) {
-      mkdirSync(join(cache!, key.slice(0, 2)), { recursive: true });
+      mkdirSync(join(this.cache!, key.slice(0, 2)), { recursive: true });
       writeFileSync(`${path}.${process.pid}.tmp`, out);
       renameSync(`${path}.${process.pid}.tmp`, path);
     }
     return out;
-  };
+  }
+
+  /** `kept` as it is stored, from `filtered`, what each of `filters` makes of it. `what` names it where it does not come back. */
+  async smallest(kept: Uint8Array, filtered: readonly Uint8Array[], filters: readonly Filter[], what: string): Promise<Uint8Array> {
+    let best = kept;
+    for (const [k, data] of filtered.entries()) {
+      const out = await this.deflated(data);
+      const back = unfilterPart(new Uint8Array(inflateRawSync(out)), kept.length);
+      if (!back || Buffer.compare(back, kept) !== 0) throw new Error(`store: a part of ${what} does not come back from filter ${filters[k]![0]}`);
+      if (out.length < best.length) best = out;
+    }
+    return best;
+  }
+
+  /** A part with no filter of its own to undo: `raw` as it is stored. */
+  part(raw: Uint8Array, filters: readonly Filter[], what: string): Promise<Uint8Array> {
+    return this.smallest(raw, filters.map(([filter, numbers]) => filterPart(raw, filter, numbers)), filters, what);
+  }
+
+  close(): Promise<unknown> {
+    return this.threads.close();
+  }
+}
+
+/**
+ * The files with every ranged one remade of its parts, stored (PartStore), one after another behind a header of its
+ * own, and the manifest changed to say where each part now is and how many bytes it is stored in. A surface is first
+ * made what its filter gives back, and hashed again.
+ */
+export async function storeParts(files: readonly SplitFile[], manifest: Manifest, opts: StoreOptions = {}): Promise<{ files: SplitFile[]; report: StoreReport }> {
+  const store = new PartStore(opts);
+  const report: StoreReport = { parts: 0, deflated: 0, made: 0, raw: 0, stored: 0 };
   const only = (f: number): boolean => files[f]!.role !== "boot" && (opts.only?.includes(f) ?? true);
   const lists = partsOf(files, manifest);
   const stored: Uint8Array[][] = lists.map(() => []);
@@ -193,18 +231,12 @@ export async function storeParts(files: readonly SplitFile[], manifest: Manifest
       const filtered = p.filters.map(([filter, numbers]) => filterPart(raw, filter, numbers));
       const kept = p.hashed ? unfilterPart(filtered[0]!, p.bytes)! : raw;
       p.hashed?.(partHash(kept));
-      let best: Uint8Array = kept;
-      for (const [k, data] of filtered.entries()) {
-        const out = await deflated(data);
-        const back = unfilterPart(new Uint8Array(inflateRawSync(out)), p.bytes);
-        if (!back || Buffer.compare(back, kept) !== 0) throw new Error(`store: a part of ${files[f]!.name} does not come back from filter ${p.filters[k]![0]}`);
-        if (out.length < best.length) best = out;
-      }
-      stored[f]![k] = best;
+      stored[f]![k] = await store.smallest(kept, filtered, p.filters, files[f]!.name);
     }
   };
   try {
-    await Promise.all(Array.from({ length: workers * 2 }, work));
+    await Promise.all(Array.from({ length: store.workers * 2 }, work));
+    report.made = store.made;
     const out = files.map((file, f): SplitFile => {
       if (!only(f)) return file;
       const list = lists[f]!;
@@ -237,6 +269,6 @@ export async function storeParts(files: readonly SplitFile[], manifest: Manifest
     manifest.version = MANIFEST_VERSION;
     return { files: out, report };
   } finally {
-    await threads.close();
+    await store.close();
   }
 }

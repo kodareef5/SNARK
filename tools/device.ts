@@ -45,7 +45,7 @@ import { placeFree } from "../server/place.ts";
 import type { ServerWorld } from "../server/world.ts";
 import { flock } from "./bench/gpu.ts";
 import { benchHills } from "./bench/terrain.ts";
-import { buildClient } from "./build-client.ts";
+import { buildClientApart } from "./build-client.ts";
 
 /** A report larger than this is refused, and so is any post past these counts. A ladder posts after each of a hundred or so rungs. */
 export const REPORT_BYTES = 64 * 1024;
@@ -369,7 +369,7 @@ if (import.meta.main) {
 
   const dist = realpathSync(mkdtempSync(join(tmpdir(), "snark-device-client-")));
   process.on("exit", () => rmSync(dist, { recursive: true, force: true }));
-  await buildClient({ stress: true, dist });
+  await buildClientApart({ stress: true, dist });
   const servedAtStart = servedFiles(dist);
   const manifest = parseManifest(readFileSync(join(dist, "assets/manifest.json"), "utf8"));
   const served = (file: number): Uint8Array => new Uint8Array(readFileSync(join(dist, "assets", manifest.files[file]!.name)));
