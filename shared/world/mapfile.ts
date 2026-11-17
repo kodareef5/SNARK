@@ -1129,9 +1129,10 @@ export function staticKinds(statics: MapStatics, reg: Registry): Uint16Array {
  * order (MapStatics row first[chunk] + s), with no owner and its kind's most health (Registry.maxHp).
  */
 export function placeStatics(map: MapData, structs: StructureStore, reg: Registry): void {
-  eachStatic(map.statics, (id, x, y, z, yaw) => {
-    const kind = reg.index.get(id);
-    if (kind === undefined) throw new Error(`map "${map.id}" needs content "${id}"`);
-    structs.add(kind, x, y, z, yaw, 0, reg.maxHp[kind]!);
+  const statics = MapStatics.of(map.dims, map.statics);
+  const kinds = staticKinds(statics, reg);
+  kinds.forEach((k, i) => {
+    if (k === 0) throw new Error(`map "${map.id}" needs content "${statics.kinds[i]}"`);
   });
+  structs.placeMap(statics, kinds, reg.maxHp);
 }
