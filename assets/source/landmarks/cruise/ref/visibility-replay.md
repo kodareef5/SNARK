@@ -1,4 +1,10 @@
-These diagnostics measure layout `4bd7249e428cf3e2d88e49e8279cae148d6b67fc148c814d6c286548127ee5b6`
+The unsuccessful dome visibility results below are historical. The subsequent
+balanced shell and seven real portal beams pass whole-dome-owner native P95
+in all 36 cells; see `dome-stage3-fit.json` and
+`tools/cruise/dome-fit/README.md`. That is a whole-surface P95 claim, not a
+maximum-error or separate exterior-visible percentile claim.
+
+The historical diagnostics measure layout `4bd7249e428cf3e2d88e49e8279cae148d6b67fc148c814d6c286548127ee5b6`
 and frozen raw index `495467641d3cd29dc0e53963a4fdafe90f761b6e1984e5668620a37dd1200e0c`.
 They do not replace the normal export, packed-art checks, or native visual review.
 
@@ -27,8 +33,9 @@ corner multiplicity survives exported vertex sharing. The compact report
 retains all per-cell results and representative witnesses, and hashes the full
 replay report, whose complete ray witnesses remain reproducible.
 
-Run from the repository root, with Blender and Bun on PATH. To regenerate raw
-geometry from the matching source, run the authoring census first (it also
+Run the historical replay from an isolated checkout of baseline `7a673712`,
+with Blender and Bun on PATH. To regenerate raw
+geometry from that matching source, run the authoring census first (it also
 updates the source census tables):
 
 ```sh
@@ -38,7 +45,7 @@ bun tools/cruise/dome-error.ts --raw assets/source/landmarks/cruise/ref/raw-cell
 bun tools/cruise/aquatheater.ts assets/source/landmarks/cruise var/cruise-preview/aquatheater-final --capacity
 ```
 
-The dome command intentionally exits nonzero on this snapshot. The old
+The dome command intentionally exits nonzero on the historical snapshot. The old
 `dome-error.json` two-cell evidence is historical and cannot establish full
 dome coverage. Raw generation, exported topology, and final rendered
 appearance remain separate checks. Diagnostic elapsed times are not game

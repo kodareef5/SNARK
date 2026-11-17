@@ -1795,5 +1795,19 @@
     "derive.py": "cdf7dc05fe971bf49bc7b0e71e41d532cfb4ba388563fcdb42114d8107f279b2",
     "check.ts": "2fc6fb71cb66c6ee14625fa803b6e4c5f3ec1bbd6024a65bde0017a6b06f9a14",
     "metrics.py": "a6e83cd9279175e56e03aeb8ef3d3e209d20b1938db858161572479936f57f4e"
+  },
+  "portableReplay": {
+    "instructions": "tools/cruise/dome-fit/README.md",
+    "scripts": {
+      "tools/cruise/dome-fit/derive.py": "7f95e68542a352f6fe2ac3fd5b22f6154a0ed67f7d4f6ea49250a6c03ba9b7e8",
+      "tools/cruise/dome-fit/check.ts": "3ea9b0bd70d370791533df7e16089cc32b484636dde47c9c05c0a5868fe646f2",
+      "tools/cruise/dome-fit/metrics.py": "1bd03ba45bd3a0713854ca4cc69c5a3ce663b4dad809f2202fbcdf7d088015f0"
+    },
+    "priorWitnesses": "assets/source/landmarks/cruise/ref/dome-prior-visible-witnesses.json",
+    "validatedOutputs": {
+      "native": "native-check.json",
+      "directional": "metrics.json"
+    },
+    "priorWitnessesSHA256": "01bf8305daf04ab9554655987fa38c8c6af935537773ce0d5cdb641de482f9e2"
   }
 }
