@@ -29,7 +29,7 @@ A stand-in in the fan-art sense: anyone who has built in ARK should know at a gl
 An image model called artist makes these. It is very capable and works a whole job through by itself: in a test, one brief got back a complete, aligned, tileable layer set with its own build and check scripts in ten minutes. Give it the whole job, what excellent looks like, and the wood wall as the example to beat; do not feed it one prompt at a time. Start it as a background shell command and wait for it:
 
 ```
-codex exec -m gpt-6-artist -c model_reasoning_effort="xhigh" -C <folder> -s workspace-write -o <report file> - < <brief file>
+codex exec -m gpt-6.2-artist -c model_reasoning_effort="xhigh" -C <folder> -s workspace-write -o <report file> - < <brief file>
 ```
 
 Run it in `tex/<material>/` inside your asset folder so its brief, sources, scripts, pictures and report are kept with the asset. Its image tool returns pictures of about 1,254 pixels a side; in the test it reached 2,048 by placing generated elements in a larger master or adding fine detail by script. It cannot run git commands that write; you commit. You can run two or three jobs at once.
