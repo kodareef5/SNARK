@@ -280,7 +280,11 @@ test("across a fade between levels a chunk wholly past the one's end draws none 
     const drawn = draws.reduce((n, d) => n + p.drawIndexCount[d]!, 0);
     // Each tile drawn at both levels draws each of them whole, the one fading out and the other in. A tile's draws
     // share its origin, and a level drawn in the fade at all tells which it is.
-    const tiles = Map.groupBy(draws, (d) => [0, 1, 2].map((a) => p.drawOffset[d * 3 + a]).join());
+    const tiles = new Map<string, number[]>();
+    for (const d of draws) {
+      const at = [0, 1, 2].map((a) => p.drawOffset[d * 3 + a]).join();
+      tiles.set(at, [...(tiles.get(at) ?? []), d]);
+    }
     let both = 0;
     for (const list of tiles.values()) {
       const sign = new Map<number, number>();
