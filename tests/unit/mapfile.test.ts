@@ -27,7 +27,7 @@ test("a map written to a file is read back whole, and the same map is the same b
   const bare = parseMap(writeMap(flatMap(1)));
   expect([bare.seaLevel, [...bare.statics], bare.nodes, mapNodes(bare, mapHeightfield(bare), reg)]).toEqual([-Infinity, [], [], null]);
   // Smooth ground costs little once the file is compressed for the wire.
-  expect(Bun.gzipSync(writeMap(flatMap(4))).length).toBeLessThan(500);
+  expect(Bun.gzipSync(writeMap(flatMap(4))).length).toBeLessThan(400);
 });
 
 test("a map written in parts and read back is the map it was made of: every height, tint, static in its slot, node slot and water square", () => {
