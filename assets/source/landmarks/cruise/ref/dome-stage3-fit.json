@@ -1,0 +1,1799 @@
+{
+  "scope": "Stage3 balanced single closed dome shell and seven real authored doorway beams. All36 dome-containing cells use actual serialized native positions with bounds determined by every retained level. Dome-owner whole-surface bidirectional P95 is measured without visibility exclusions. Complete affected-cell topology/counts are also checked. This is pre-export geometry evidence; normal exported-pack checks remain required.",
+  "pass": true,
+  "layoutSHA256": "4bd7249e428cf3e2d88e49e8279cae148d6b67fc148c814d6c286548127ee5b6",
+  "baselineRawIndexSHA256": "495467641d3cd29dc0e53963a4fdafe90f761b6e1984e5668620a37dd1200e0c",
+  "candidateIndexSHA256": "c680814e6441d5094f5cf945bcfe18180e77aa4393492e1974b5666960587790",
+  "modelCellsSHA256": "2204b35f575ce76ba841e6ce9bf36d47cf191575907120763c3d0d70a41b29c0",
+  "baselineFunctionCommit": "7a673712",
+  "functionComparison": {
+    "scope": "Private stage3 balanced closed shell; no canonical source edits",
+    "originalFunctionSHA256": "c05d45692de0a7c75f418b1fec07e08afb5062c1766da414163ab1c762cbb670",
+    "patchedFunctionSHA256": "37a8f44fe874239ce1e30340c6274307c75d65ff10c936a70206904faa5a6cd8",
+    "otherStagesExactlyEqual": {
+      "0": true,
+      "1": true,
+      "2": true,
+      "4": true,
+      "5": true
+    },
+    "source": "/home/user/Desktop/SNARK-cruise-preview/assets/source/landmarks/cruise",
+    "wholeDomeBounds": {
+      "min": [
+        -28.5,
+        45.6,
+        77.04499999999999
+      ],
+      "max": [
+        28.5,
+        62.599999999999994,
+        147.0
+      ]
+    },
+    "lowerCRimExactlyEqual": true
+  },
+  "recipe": {
+    "innerOffset": -0.055,
+    "outerOffset": 0.06,
+    "outerCrownOffset": 0.105,
+    "unchangedSeparateLowerCRim": true,
+    "portalRadius": 0.105,
+    "portalSides": 6,
+    "portalSegments": [
+      "jamb51:0-1",
+      "top1:45-46",
+      "top1:46-47",
+      "top1:47-48",
+      "top1:48-49",
+      "top1:49-50",
+      "top1:50-51"
+    ],
+    "leftJamb45": "Absent in actual near source; no invented replacement"
+  },
+  "native": [
+    {
+      "cell": "cruise:cell_0087",
+      "triangles": 408,
+      "nativeHalf": [
+        6.4501953125,
+        8,
+        8
+      ],
+      "wholeP95": 1.1206398010253906,
+      "domeP95": 0.04458671324931628,
+      "domeTopology": {
+        "parts": 2,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 20,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 3,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0088",
+      "triangles": 508,
+      "nativeHalf": [
+        6.4501953125,
+        8,
+        8
+      ],
+      "wholeP95": 1.0036306799294847,
+      "domeP95": 0.04428216135693609,
+      "domeTopology": {
+        "parts": 2,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 29,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 1,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0089",
+      "triangles": 456,
+      "nativeHalf": [
+        8,
+        8,
+        8
+      ],
+      "wholeP95": 1.120054471773426,
+      "domeP95": 0.044608254920715254,
+      "domeTopology": {
+        "parts": 2,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 26,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 5,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0090",
+      "triangles": 356,
+      "nativeHalf": [
+        8,
+        8,
+        8
+      ],
+      "wholeP95": 1.1377300098538399,
+      "domeP95": 0.04480402605916956,
+      "domeTopology": {
+        "parts": 2,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 11,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 2,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0109",
+      "triangles": 120,
+      "nativeHalf": [
+        4.452668935060501,
+        4.652309417724609,
+        6.183635711669922
+      ],
+      "wholeP95": 0.04943747917173108,
+      "domeP95": 0.04943747917173108,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0110",
+      "triangles": 172,
+      "nativeHalf": [
+        6.059266567230225,
+        5.836383819580078,
+        8
+      ],
+      "wholeP95": 0.04974166688764542,
+      "domeP95": 0.04974166688764542,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0111",
+      "triangles": 172,
+      "nativeHalf": [
+        6.059100151062012,
+        5.836383819580078,
+        8
+      ],
+      "wholeP95": 0.050176023378520264,
+      "domeP95": 0.050176023378520264,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0112",
+      "triangles": 120,
+      "nativeHalf": [
+        4.452604293823242,
+        4.652307510375977,
+        6.183885812759399
+      ],
+      "wholeP95": 0.0496543008346914,
+      "domeP95": 0.0496543008346914,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0202",
+      "triangles": 376,
+      "nativeHalf": [
+        8,
+        7.920000076293945,
+        8
+      ],
+      "wholeP95": 0.9020169612818991,
+      "domeP95": 0.049829630174006545,
+      "domeTopology": {
+        "parts": 2,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 23,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 5,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0203",
+      "triangles": 566,
+      "nativeHalf": [
+        8,
+        7.920000076293945,
+        8
+      ],
+      "wholeP95": 0.08000485102335642,
+      "domeP95": 0.044424427548536864,
+      "domeTopology": {
+        "parts": 2,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 29,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 66,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0206",
+      "triangles": 468,
+      "nativeHalf": [
+        8,
+        7.787695407867432,
+        8
+      ],
+      "wholeP95": 5.60850977897644,
+      "domeP95": 0.04500354093309511,
+      "domeTopology": {
+        "parts": 2,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 23,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 32,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0207",
+      "triangles": 252,
+      "nativeHalf": [
+        8,
+        8,
+        4.226834803819656
+      ],
+      "wholeP95": 1.1199072003364563,
+      "domeP95": 0.046001649615535066,
+      "domeTopology": {
+        "parts": 2,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 5,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0224",
+      "triangles": 392,
+      "nativeHalf": [
+        8,
+        8,
+        8
+      ],
+      "wholeP95": 1.1305086174836714,
+      "domeP95": 0.05545395375578128,
+      "domeTopology": {
+        "parts": 5,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 22,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 4,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0225",
+      "triangles": 244,
+      "nativeHalf": [
+        8,
+        6.322299957275391,
+        8
+      ],
+      "wholeP95": 0.05106085694397241,
+      "domeP95": 0.05106085694397241,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0226",
+      "triangles": 264,
+      "nativeHalf": [
+        8,
+        2.7481727600097656,
+        8
+      ],
+      "wholeP95": 0.053519448048282244,
+      "domeP95": 0.053519448048282244,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0227",
+      "triangles": 264,
+      "nativeHalf": [
+        8,
+        2.7481727600097656,
+        8
+      ],
+      "wholeP95": 0.05248943404197989,
+      "domeP95": 0.05248943404197989,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0228",
+      "triangles": 372,
+      "nativeHalf": [
+        8,
+        6.322300910949707,
+        8
+      ],
+      "wholeP95": 0.0500667203969108,
+      "domeP95": 0.05035395132149561,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 5,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 7,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0229",
+      "triangles": 64,
+      "nativeHalf": [
+        5.2684431076049805,
+        2.242983818054199,
+        1.2661621570587158
+      ],
+      "wholeP95": 0.05289817735692997,
+      "domeP95": 0.05289817735692997,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0322",
+      "triangles": 396,
+      "nativeHalf": [
+        8,
+        8,
+        8
+      ],
+      "wholeP95": 0.7993265924294657,
+      "domeP95": 0.04787591031858165,
+      "domeTopology": {
+        "parts": 3,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 24,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 5,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0323",
+      "triangles": 566,
+      "nativeHalf": [
+        8,
+        7.920000076293945,
+        8
+      ],
+      "wholeP95": 0.08000485102335642,
+      "domeP95": 0.045003592375422986,
+      "domeTopology": {
+        "parts": 2,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 29,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 66,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0326",
+      "triangles": 466,
+      "nativeHalf": [
+        8,
+        7.787695407867432,
+        8
+      ],
+      "wholeP95": 5.040481328964233,
+      "domeP95": 0.04410279523918528,
+      "domeTopology": {
+        "parts": 2,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 23,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 28,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0327",
+      "triangles": 252,
+      "nativeHalf": [
+        8,
+        8,
+        4.226817041635513
+      ],
+      "wholeP95": 1.120015962711394,
+      "domeP95": 0.04539082035164249,
+      "domeTopology": {
+        "parts": 2,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 5,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0344",
+      "triangles": 424,
+      "nativeHalf": [
+        8,
+        8,
+        8
+      ],
+      "wholeP95": 1.1194519905806486,
+      "domeP95": 0.05468120579577897,
+      "domeTopology": {
+        "parts": 6,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 24,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 4,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0345",
+      "triangles": 244,
+      "nativeHalf": [
+        8,
+        6.322299957275391,
+        8
+      ],
+      "wholeP95": 0.05037340875262918,
+      "domeP95": 0.05037340875262918,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0346",
+      "triangles": 264,
+      "nativeHalf": [
+        8,
+        2.7481727600097656,
+        8
+      ],
+      "wholeP95": 0.05248943404197989,
+      "domeP95": 0.05248943404197989,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0347",
+      "triangles": 264,
+      "nativeHalf": [
+        8,
+        2.7481727600097656,
+        8
+      ],
+      "wholeP95": 0.053519448048282244,
+      "domeP95": 0.053519448048282244,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0348",
+      "triangles": 372,
+      "nativeHalf": [
+        8,
+        6.322300910949707,
+        8
+      ],
+      "wholeP95": 0.050791575027525945,
+      "domeP95": 0.05108299703993854,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 5,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 7,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0349",
+      "triangles": 64,
+      "nativeHalf": [
+        5.2684431076049805,
+        2.2430458068847656,
+        1.2662091255187988
+      ],
+      "wholeP95": 0.052595145188615945,
+      "domeP95": 0.052595145188615945,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0441",
+      "triangles": 408,
+      "nativeHalf": [
+        6.4501953125,
+        8,
+        8
+      ],
+      "wholeP95": 1.1150062958170384,
+      "domeP95": 0.044773270009100266,
+      "domeTopology": {
+        "parts": 2,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 19,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 2,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0442",
+      "triangles": 452,
+      "nativeHalf": [
+        6.4501953125,
+        8,
+        8
+      ],
+      "wholeP95": 1.0982771196395151,
+      "domeP95": 0.04465805673429629,
+      "domeTopology": {
+        "parts": 2,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 29,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0443",
+      "triangles": 468,
+      "nativeHalf": [
+        8,
+        8,
+        8
+      ],
+      "wholeP95": 2.226630449295044,
+      "domeP95": 0.04432028890434461,
+      "domeTopology": {
+        "parts": 2,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 26,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 7,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0444",
+      "triangles": 356,
+      "nativeHalf": [
+        8,
+        8,
+        8
+      ],
+      "wholeP95": 1.1450544521212578,
+      "domeP95": 0.044666735611490135,
+      "domeTopology": {
+        "parts": 2,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 11,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 2,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0463",
+      "triangles": 120,
+      "nativeHalf": [
+        4.452604293823242,
+        4.652309417724609,
+        6.183873176574707
+      ],
+      "wholeP95": 0.04965418828360743,
+      "domeP95": 0.04965418828360743,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0464",
+      "triangles": 172,
+      "nativeHalf": [
+        6.059100151062012,
+        5.836383819580078,
+        8
+      ],
+      "wholeP95": 0.05006879410497308,
+      "domeP95": 0.05006879410497308,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0465",
+      "triangles": 172,
+      "nativeHalf": [
+        6.059266567230225,
+        5.836383819580078,
+        8
+      ],
+      "wholeP95": 0.04974166688764542,
+      "domeP95": 0.04974166688764542,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    },
+    {
+      "cell": "cruise:cell_0466",
+      "triangles": 120,
+      "nativeHalf": [
+        4.452668935060501,
+        4.652307510375977,
+        6.1836395263671875
+      ],
+      "wholeP95": 0.04940341690655116,
+      "domeP95": 0.04940341690655116,
+      "domeTopology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      },
+      "topology": {
+        "parts": 1,
+        "openEdges": 0,
+        "holes": 0,
+        "flipped": 0,
+        "insideOut": 0,
+        "crowded": 0,
+        "collapsed": 0
+      }
+    }
+  ],
+  "metrics": {
+    "scope": "Actual serialized shared-bound dome-owner geometry. Bidirectional vertices and triangle-centroid P95; original visible witnesses checked against the complete candidate dome. Entrance route capsule-center volume is uniformly sampled with a Lipschitz coverage reserve, radius.4 and full height2.6; physical colliders and near geometry are unchanged.",
+    "nativeBounds": {
+      "min": [
+        -28.49999713897705,
+        45.60001993179321,
+        77.67009496688843
+      ],
+      "max": [
+        28.49999713897705,
+        62.599998474121094,
+        147.00006341934204
+      ]
+    },
+    "nativeWidth": 56.9999942779541,
+    "nativeHeight": 16.99997854232788,
+    "crownAbove62m": [
+      {
+        "direction": "forward",
+        "samples": 58128,
+        "p95": 0.053405046463012695,
+        "max": {
+          "point": [
+            1.3046458562215169,
+            62.401589711507164,
+            110.39586575826009
+          ],
+          "error": 0.06900393962860107
+        }
+      },
+      {
+        "direction": "reverse",
+        "samples": 984,
+        "p95": 0.02900146134197712,
+        "max": {
+          "point": [
+            1.2442599932352703,
+            62.354706128438316,
+            107.72838528951009
+          ],
+          "error": 0.02907201461493969
+        }
+      }
+    ],
+    "rows": [
+      {
+        "cell": "cruise:cell_0087",
+        "forward": {
+          "samples": 2248,
+          "p95": 0.044586796313524246,
+          "max": 0.058678433299064636
+        },
+        "reverse": {
+          "samples": 416,
+          "p95": 0.024900710210204124,
+          "max": 0.04462498798966408
+        }
+      },
+      {
+        "cell": "cruise:cell_0088",
+        "forward": {
+          "samples": 2112,
+          "p95": 0.04428204521536827,
+          "max": 0.056213147938251495
+        },
+        "reverse": {
+          "samples": 352,
+          "p95": 0.02423189952969551,
+          "max": 0.04441112279891968
+        }
+      },
+      {
+        "cell": "cruise:cell_0089",
+        "forward": {
+          "samples": 2152,
+          "p95": 0.044608402997255325,
+          "max": 0.05651582032442093
+        },
+        "reverse": {
+          "samples": 352,
+          "p95": 0.02485884726047516,
+          "max": 0.04466135799884796
+        }
+      },
+      {
+        "cell": "cruise:cell_0090",
+        "forward": {
+          "samples": 2368,
+          "p95": 0.044804081320762634,
+          "max": 0.059388417750597
+        },
+        "reverse": {
+          "samples": 416,
+          "p95": 0.02438107691705227,
+          "max": 0.04461183398962021
+        }
+      },
+      {
+        "cell": "cruise:cell_0109",
+        "forward": {
+          "samples": 7184,
+          "p95": 0.049437567591667175,
+          "max": 0.060577392578125
+        },
+        "reverse": {
+          "samples": 480,
+          "p95": 0.04451744258403778,
+          "max": 0.04539977386593819
+        }
+      },
+      {
+        "cell": "cruise:cell_0110",
+        "forward": {
+          "samples": 12024,
+          "p95": 0.04974173754453659,
+          "max": 0.05703980103135109
+        },
+        "reverse": {
+          "samples": 688,
+          "p95": 0.04390512406826019,
+          "max": 0.044792406260967255
+        }
+      },
+      {
+        "cell": "cruise:cell_0111",
+        "forward": {
+          "samples": 11856,
+          "p95": 0.05017603188753128,
+          "max": 0.057255297899246216
+        },
+        "reverse": {
+          "samples": 688,
+          "p95": 0.028755832463502884,
+          "max": 0.04473089054226875
+        }
+      },
+      {
+        "cell": "cruise:cell_0112",
+        "forward": {
+          "samples": 7040,
+          "p95": 0.04965426027774811,
+          "max": 0.061335086822509766
+        },
+        "reverse": {
+          "samples": 480,
+          "p95": 0.04271411895751953,
+          "max": 0.044656962156295776
+        }
+      },
+      {
+        "cell": "cruise:cell_0202",
+        "forward": {
+          "samples": 608,
+          "p95": 0.04982932657003403,
+          "max": 0.10135677456855774
+        },
+        "reverse": {
+          "samples": 160,
+          "p95": 0.02554083615541458,
+          "max": 0.044751111418008804
+        }
+      },
+      {
+        "cell": "cruise:cell_0203",
+        "forward": {
+          "samples": 1224,
+          "p95": 0.04442422837018967,
+          "max": 0.08856281638145447
+        },
+        "reverse": {
+          "samples": 256,
+          "p95": 0.025041786953806877,
+          "max": 0.06347846984863281
+        }
+      },
+      {
+        "cell": "cruise:cell_0206",
+        "forward": {
+          "samples": 1336,
+          "p95": 0.04500378295779228,
+          "max": 0.08889980614185333
+        },
+        "reverse": {
+          "samples": 256,
+          "p95": 0.03142242878675461,
+          "max": 0.06201362609863281
+        }
+      },
+      {
+        "cell": "cruise:cell_0207",
+        "forward": {
+          "samples": 2136,
+          "p95": 0.04600183665752411,
+          "max": 0.10061146318912506
+        },
+        "reverse": {
+          "samples": 352,
+          "p95": 0.02445288375020027,
+          "max": 0.0443616658449173
+        }
+      },
+      {
+        "cell": "cruise:cell_0224",
+        "forward": {
+          "samples": 2768,
+          "p95": 0.05545365810394287,
+          "max": 0.11304068565368652
+        },
+        "reverse": {
+          "samples": 512,
+          "p95": 0.02502337284386158,
+          "max": 0.045124445110559464
+        }
+      },
+      {
+        "cell": "cruise:cell_0225",
+        "forward": {
+          "samples": 16136,
+          "p95": 0.05106097459793091,
+          "max": 0.08592116832733154
+        },
+        "reverse": {
+          "samples": 976,
+          "p95": 0.04392905905842781,
+          "max": 0.056925658136606216
+        }
+      },
+      {
+        "cell": "cruise:cell_0226",
+        "forward": {
+          "samples": 28496,
+          "p95": 0.0535195916891098,
+          "max": 0.06899784505367279
+        },
+        "reverse": {
+          "samples": 1056,
+          "p95": 0.04386080056428909,
+          "max": 0.044838473200798035
+        }
+      },
+      {
+        "cell": "cruise:cell_0227",
+        "forward": {
+          "samples": 28576,
+          "p95": 0.05248944088816643,
+          "max": 0.06900546699762344
+        },
+        "reverse": {
+          "samples": 1056,
+          "p95": 0.04394412413239479,
+          "max": 0.044232673943042755
+        }
+      },
+      {
+        "cell": "cruise:cell_0228",
+        "forward": {
+          "samples": 16384,
+          "p95": 0.050353895872831345,
+          "max": 0.10588428378105164
+        },
+        "reverse": {
+          "samples": 976,
+          "p95": 0.043637994676828384,
+          "max": 0.05560922250151634
+        }
+      },
+      {
+        "cell": "cruise:cell_0229",
+        "forward": {
+          "samples": 3928,
+          "p95": 0.0528983473777771,
+          "max": 0.11158490180969238
+        },
+        "reverse": {
+          "samples": 256,
+          "p95": 0.04408326745033264,
+          "max": 0.04431159794330597
+        }
+      },
+      {
+        "cell": "cruise:cell_0322",
+        "forward": {
+          "samples": 824,
+          "p95": 0.047875721007585526,
+          "max": 0.10061146318912506
+        },
+        "reverse": {
+          "samples": 240,
+          "p95": 0.0241017397493124,
+          "max": 0.04441496357321739
+        }
+      },
+      {
+        "cell": "cruise:cell_0323",
+        "forward": {
+          "samples": 1336,
+          "p95": 0.045003507286310196,
+          "max": 0.08896735310554504
+        },
+        "reverse": {
+          "samples": 256,
+          "p95": 0.03141995891928673,
+          "max": 0.06103706359863281
+        }
+      },
+      {
+        "cell": "cruise:cell_0326",
+        "forward": {
+          "samples": 1224,
+          "p95": 0.04410303384065628,
+          "max": 0.09056127071380615
+        },
+        "reverse": {
+          "samples": 256,
+          "p95": 0.024389058351516724,
+          "max": 0.06054878234863281
+        }
+      },
+      {
+        "cell": "cruise:cell_0327",
+        "forward": {
+          "samples": 2096,
+          "p95": 0.04539079591631889,
+          "max": 0.09920869767665863
+        },
+        "reverse": {
+          "samples": 352,
+          "p95": 0.023912329226732254,
+          "max": 0.043761517852544785
+        }
+      },
+      {
+        "cell": "cruise:cell_0344",
+        "forward": {
+          "samples": 2960,
+          "p95": 0.05468140169978142,
+          "max": 0.11059927940368652
+        },
+        "reverse": {
+          "samples": 592,
+          "p95": 0.009218359366059303,
+          "max": 0.04414575174450874
+        }
+      },
+      {
+        "cell": "cruise:cell_0345",
+        "forward": {
+          "samples": 16376,
+          "p95": 0.050373442471027374,
+          "max": 0.10666371881961823
+        },
+        "reverse": {
+          "samples": 976,
+          "p95": 0.04363788291811943,
+          "max": 0.05472715571522713
+        }
+      },
+      {
+        "cell": "cruise:cell_0346",
+        "forward": {
+          "samples": 28576,
+          "p95": 0.05248944088816643,
+          "max": 0.06900546699762344
+        },
+        "reverse": {
+          "samples": 1056,
+          "p95": 0.04394957795739174,
+          "max": 0.044233288615942
+        }
+      },
+      {
+        "cell": "cruise:cell_0347",
+        "forward": {
+          "samples": 28488,
+          "p95": 0.0535195916891098,
+          "max": 0.06899784505367279
+        },
+        "reverse": {
+          "samples": 1056,
+          "p95": 0.043860796838998795,
+          "max": 0.0448383130133152
+        }
+      },
+      {
+        "cell": "cruise:cell_0348",
+        "forward": {
+          "samples": 16136,
+          "p95": 0.051083050668239594,
+          "max": 0.08759515732526779
+        },
+        "reverse": {
+          "samples": 976,
+          "p95": 0.04388298839330673,
+          "max": 0.054306164383888245
+        }
+      },
+      {
+        "cell": "cruise:cell_0349",
+        "forward": {
+          "samples": 3776,
+          "p95": 0.052594926208257675,
+          "max": 0.1101377010345459
+        },
+        "reverse": {
+          "samples": 256,
+          "p95": 0.04347869008779526,
+          "max": 0.04417311027646065
+        }
+      },
+      {
+        "cell": "cruise:cell_0441",
+        "forward": {
+          "samples": 2376,
+          "p95": 0.04477320611476898,
+          "max": 0.059388417750597
+        },
+        "reverse": {
+          "samples": 416,
+          "p95": 0.024430453777313232,
+          "max": 0.0446806401014328
+        }
+      },
+      {
+        "cell": "cruise:cell_0442",
+        "forward": {
+          "samples": 2160,
+          "p95": 0.044657982885837555,
+          "max": 0.05651773512363434
+        },
+        "reverse": {
+          "samples": 352,
+          "p95": 0.0249340757727623,
+          "max": 0.04470571130514145
+        }
+      },
+      {
+        "cell": "cruise:cell_0443",
+        "forward": {
+          "samples": 2112,
+          "p95": 0.04432031884789467,
+          "max": 0.05631738528609276
+        },
+        "reverse": {
+          "samples": 352,
+          "p95": 0.024136897176504135,
+          "max": 0.044469013810157776
+        }
+      },
+      {
+        "cell": "cruise:cell_0444",
+        "forward": {
+          "samples": 2248,
+          "p95": 0.04466667026281357,
+          "max": 0.058678433299064636
+        },
+        "reverse": {
+          "samples": 416,
+          "p95": 0.024784065783023834,
+          "max": 0.04469684511423111
+        }
+      },
+      {
+        "cell": "cruise:cell_0463",
+        "forward": {
+          "samples": 7064,
+          "p95": 0.049654148519039154,
+          "max": 0.06133460998535156
+        },
+        "reverse": {
+          "samples": 480,
+          "p95": 0.04271412268280983,
+          "max": 0.044669508934020996
+        }
+      },
+      {
+        "cell": "cruise:cell_0464",
+        "forward": {
+          "samples": 11848,
+          "p95": 0.05006876215338707,
+          "max": 0.057255297899246216
+        },
+        "reverse": {
+          "samples": 688,
+          "p95": 0.028755832463502884,
+          "max": 0.04473089054226875
+        }
+      },
+      {
+        "cell": "cruise:cell_0465",
+        "forward": {
+          "samples": 12008,
+          "p95": 0.04974173754453659,
+          "max": 0.05703980103135109
+        },
+        "reverse": {
+          "samples": 688,
+          "p95": 0.04390495643019676,
+          "max": 0.044792406260967255
+        }
+      },
+      {
+        "cell": "cruise:cell_0466",
+        "forward": {
+          "samples": 7176,
+          "p95": 0.04940340295433998,
+          "max": 0.060577392578125
+        },
+        "reverse": {
+          "samples": 480,
+          "p95": 0.04451771453022957,
+          "max": 0.04539991170167923
+        }
+      }
+    ],
+    "oldWitnesses": 3148,
+    "oldWitnessesStillAbove06": 0,
+    "maxOldWitnessError": 0.051302485167980194,
+    "remainingWitnessYRange": [
+      null,
+      null
+    ],
+    "remainingBaseRim": 0,
+    "worstWitnesses": [
+      {
+        "cell": "cruise:cell_0345",
+        "owner": "aquadome_12_0",
+        "point": [
+          8.489761352539062,
+          49.634456634521484,
+          80.0
+        ],
+        "oldError": 0.07598786801099777,
+        "newError": 0.051302485167980194
+      },
+      {
+        "cell": "cruise:cell_0344",
+        "owner": "aquadome_12_0",
+        "point": [
+          8.489761352539062,
+          49.63457107543945,
+          80.0
+        ],
+        "oldError": 0.07592303305864334,
+        "newError": 0.05124194547533989
+      },
+      {
+        "cell": "cruise:cell_0344",
+        "owner": "aquadome_12_0",
+        "point": [
+          8.489761352539062,
+          49.63457107543945,
+          80.0
+        ],
+        "oldError": 0.07592303305864334,
+        "newError": 0.05124194547533989
+      },
+      {
+        "cell": "cruise:cell_0443",
+        "owner": "aquadome_0_0",
+        "point": [
+          27.905635833740234,
+          48.0,
+          112.000732421875
+        ],
+        "oldError": 0.07584855705499649,
+        "newError": 0.051241498440504074
+      },
+      {
+        "cell": "cruise:cell_0443",
+        "owner": "aquadome_0_0",
+        "point": [
+          27.905635833740234,
+          48.0,
+          112.000732421875
+        ],
+        "oldError": 0.07584855705499649,
+        "newError": 0.051241498440504074
+      },
+      {
+        "cell": "cruise:cell_0110",
+        "owner": "aquadome_8_0",
+        "point": [
+          -27.21698570251465,
+          49.98168182373047,
+          111.99951171875
+        ],
+        "oldError": 0.07599565386772156,
+        "newError": 0.05122843757271767
+      },
+      {
+        "cell": "cruise:cell_0465",
+        "owner": "aquadome_0_0",
+        "point": [
+          27.21698570251465,
+          49.98168182373047,
+          112.00048828125
+        ],
+        "oldError": 0.07599565386772156,
+        "newError": 0.05122843757271767
+      },
+      {
+        "cell": "cruise:cell_0110",
+        "owner": "aquadome_8_0",
+        "point": [
+          -27.905691146850586,
+          48.0,
+          111.999267578125
+        ],
+        "oldError": 0.07579341530799866,
+        "newError": 0.051186978816986084
+      },
+      {
+        "cell": "cruise:cell_0110",
+        "owner": "aquadome_8_0",
+        "point": [
+          -27.905691146850586,
+          48.0,
+          111.999267578125
+        ],
+        "oldError": 0.07579341530799866,
+        "newError": 0.051186978816986084
+      },
+      {
+        "cell": "cruise:cell_0110",
+        "owner": "aquadome_8_0",
+        "point": [
+          -27.905691146850586,
+          48.0,
+          111.999267578125
+        ],
+        "oldError": 0.07579341530799866,
+        "newError": 0.051186978816986084
+      },
+      {
+        "cell": "cruise:cell_0110",
+        "owner": "aquadome_8_0",
+        "point": [
+          -27.905691146850586,
+          48.0,
+          111.999267578125
+        ],
+        "oldError": 0.07579341530799866,
+        "newError": 0.051186978816986084
+      },
+      {
+        "cell": "cruise:cell_0465",
+        "owner": "aquadome_0_0",
+        "point": [
+          27.905691146850586,
+          48.0,
+          112.000732421875
+        ],
+        "oldError": 0.07579341530799866,
+        "newError": 0.051186978816986084
+      }
+    ],
+    "entrance": {
+      "route": "aquadome_access",
+      "samples": 32984,
+      "capsuleRadius": 0.4,
+      "coverageReserve": 0.16770509831248423,
+      "minimumSurfaceDistance": {
+        "fine": [
+          1.0750384330749512,
+          [
+            4.400000095367432,
+            47.79999923706055,
+            78.25
+          ]
+        ],
+        "candidate": [
+          1.0891876220703125,
+          [
+            4.400000095367432,
+            47.79999923706055,
+            78.25
+          ]
+        ]
+      },
+      "clear": true
+    }
+  },
+  "maxDomeP95": 0.05545395375578128,
+  "maxCompleteCellTriangles": 566,
+  "limitations": [
+    "P95 is not a maximum-error bound. The crown sample maximum .069004m remains recorded and is not labelled a visible maximum.",
+    "Other owners in these cells are outside this dome error certificate; their whole-cell P95 is recorded without asserting it meets .06.",
+    "Near stages0/1/2 and far4/5 distant-shell geometry compare exactly with the committed baseline function. Source layout/collision are unchanged.",
+    "Final normal export, full census, packed bounds/topology and source-rendered appearance are independent required gates."
+  ],
+  "centralReplay": [
+    "blender --background --factory-startup --python-exit-code 1 --python assets/source/landmarks/cruise/census.py",
+    "bun tools/cruise/dome-census.ts --raw assets/source/landmarks/cruise/ref/raw-cells --layout content/landmarks/cruise-layout.json --out var/cruise-preview/dome-census-balanced.json"
+  ],
+  "replayCheck": "Every domeOwnerNativeP95 must be<=.06. Whole-cell error may include unrelated owners and does not replace their separate checks.",
+  "diagnosticScriptSHA256": {
+    "derive.py": "cdf7dc05fe971bf49bc7b0e71e41d532cfb4ba388563fcdb42114d8107f279b2",
+    "check.ts": "2fc6fb71cb66c6ee14625fa803b6e4c5f3ec1bbd6024a65bde0017a6b06f9a14",
+    "metrics.py": "a6e83cd9279175e56e03aeb8ef3d3e209d20b1938db858161572479936f57f4e"
+  }
+}

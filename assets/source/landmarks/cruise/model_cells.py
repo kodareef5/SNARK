@@ -469,13 +469,16 @@ def distant_shell(D,kind,level):
   # convex half-ellipsoid incorrectly sealed that public doorway at distance.
   angles=sorted(set([i*math.tau/n for i in range(n)]+[45*math.tau/64,51*math.tau/64]))
   vertices=[];faces=[];lookup={};station={};N=len(angles)
-  for layer,offset in enumerate((-.03,.105)):
+  # At250m the single visible envelope balances the real105mm frame and
+  # glazing surfaces. Keep the crown and separate lower C rim full-size.
+  for layer,offset in enumerate((-.055,.060) if level==3 else (-.03,.105)):
    for j in range(bands+1):
     t=j*math.pi/(2*bands)
     for i,u in enumerate(angles):
      q=[rx*math.cos(t)*math.cos(u),base+ry*math.sin(t),a['centerZ']+rz*math.cos(t)*math.sin(u)]
      normal=[math.cos(t)*math.cos(u)/rx,math.sin(t)/ry,math.cos(t)*math.sin(u)/rz]
-     length=math.sqrt(sum(v*v for v in normal));point=tuple(q[k]+offset*normal[k]/length for k in range(3));ident=key(point)
+     fitted=.105 if level==3 and layer==1 and j==bands else offset
+     length=math.sqrt(sum(v*v for v in normal));point=tuple(q[k]+fitted*normal[k]/length for k in range(3));ident=key(point)
      if ident not in lookup:lookup[ident]=len(vertices);vertices.append(point)
      station[layer,j,i]=lookup[ident]
   active={(j,i) for j in range(bands) for i in range(N)
@@ -496,6 +499,25 @@ def distant_shell(D,kind,level):
     if neighbour in active:continue
     v,w=edge;face([station[0,*v],station[0,*w],station[1,*w],station[1,*v]])
   m.indexed(vertices,faces,'dome_glaze')
+  if level==3:
+   # These seven real doorway beams project tangentially beyond the shell.
+   # Reuse their snapped centerlines; the source has only the right jamb.
+   prototypes={p['id']:p for p in D['prototypes']};beams=[]
+   for inst in D['instances']:
+    proto=prototypes[inst['prototype']]
+    if proto['art']['kind']!='dome_dense':continue
+    at=[snap(v) for v in inst['at']];c,s=axes(inst['yaw'])
+    for beam in proto['art']['beams']:
+     beams.append([[at[0]+c*p[0]+s*p[2],at[1]+p[1],at[2]-s*p[0]+c*p[2]] for p in beam])
+   def portal(j,i):
+    t=j*math.pi/16;u=i*math.tau/64
+    return [rx*math.cos(t)*math.cos(u),base+ry*math.sin(t),a['centerZ']+rz*math.cos(t)*math.sin(u)]
+   wanted=[(portal(0,51),portal(1,51))]+[(portal(1,i),portal(1,i+1)) for i in range(45,51)]
+   for start,end in wanted:
+    def distance(beam):return min(max(math.dist(beam[0],start),math.dist(beam[1],end)),max(math.dist(beam[1],start),math.dist(beam[0],end)))
+    beam=min(beams,key=distance)
+    if distance(beam)>.002:raise ValueError('Missing authored AquaDome portal frame')
+    m.tube(beam,.105,'steel',n=6)
   if level==2:
    # Retain every triangulated frame line, but join its hidden segment caps.
    # Canonical stations differ from snapped near members by less than1mm.
