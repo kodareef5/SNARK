@@ -112,6 +112,19 @@ class Mesh:
   # creates non-manifold edges and can reverse otherwise visible floor panels.
   if not self.direct_uv:bmesh.ops.recalc_face_normals(bm,faces=bm.faces)
   bmesh.ops.triangulate(bm,faces=bm.faces,quad_method='BEAUTY',ngon_method='BEAUTY')
+  # Split only after orientation and triangulation: paired sheets need their
+  # shared edges while normals are oriented, but the glTF exporter's ordinary
+  # mesh validation deletes reversed triangles sharing the same vertex set.
+  seen=set()
+  for face in list(bm.faces):
+   identity=frozenset(face.verts)
+   if identity in seen:
+    other=bm.faces.new([bm.verts.new(v.co) for v in face.verts])
+    other.material_index=face.material_index;other[owners]=face[owners];other[clear]=face[clear]
+    for layer in bm.loops.layers.uv.values():
+     for target,source in zip(other.loops,face.loops):target[layer].uv=source[layer].uv
+    bm.faces.remove(face)
+   else:seen.add(identity)
   if self.raw:
    with open(self.raw,'wb') as stream,open(str(self.raw)+'.clear','wb') as visibility:
     for face in bm.faces:
@@ -120,6 +133,7 @@ class Mesh:
      stream.write(struct.pack('<I9f',face[owners],*(q for p in points for q in p)))
      visibility.write(bytes([face[clear]]))
   bm.to_mesh(me);bm.free();me.update()
+  if me.validate():raise ValueError(name+': Blender validation changed authored geometry')
   # Smoothness is restrained: manufactured planes stay plane, while cylindrical spars/rails receive smooth normals.
   for p in me.polygons:p.use_smooth=False
   return obj
