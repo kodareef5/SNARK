@@ -52,20 +52,28 @@ function headOf(path: string): MapHead {
 
 /**
  * A link to `port` on this machine, as a player's would be: what the server sends goes out over one line of `mbit`, each
- * connection given a slice in turn, and every byte either way comes `latency` / 2 ms late.
+ * connection given a slice in turn, and every byte either way comes `latency` / 2 ms late. A connection holds at most
+ * WINDOW bytes waiting for the line before the link stops reading the server's side of it, so the server meets a slow
+ * link as it would over TCP: its own sends wait, and it skips what it may.
  */
 function shapedLink(port: number, mbit: number, latency: number): { port: number; stop(): void } {
   const rate = (mbit * 1e6) / 8 / 1000;
   const SLICE = 16384;
+  const WINDOW = 65536;
   interface Pipe {
     up: import("bun").Socket<undefined> | null;
     early: Uint8Array[];
+    /** What the server sent and the line has not taken, its bytes, and slices on the line not yet come. */
     down: Uint8Array[];
+    queued: number;
+    flying: number;
     out: Uint8Array[];
     upOut: Uint8Array[];
     closed: boolean;
     upClosed: boolean;
   }
+  /** Ends the page's side of a connection once the server's has ended and all it sent has come. */
+  const ended = (client: import("bun").Socket<Pipe>): void => void (client.data.upClosed && client.data.down.length === 0 && client.data.flying === 0 && !client.data.closed && client.end());
   const pipes: { client: import("bun").Socket<Pipe>; pipe: Pipe }[] = [];
   let turn = 0;
   let free = 0;
@@ -95,11 +103,14 @@ function shapedLink(port: number, mbit: number, latency: number): { port: number
     const slice = head.subarray(0, SLICE);
     if (slice.length === head.length) pipe.down.shift();
     else pipe.down[0] = head.subarray(SLICE);
+    pipe.queued -= slice.length;
+    if (pipe.queued <= WINDOW / 2) pipe.up?.resume();
     free = Math.max(free, performance.now()) + slice.length / rate;
-    const last = pipe.down.length === 0 && pipe.upClosed;
+    pipe.flying++;
     setTimeout(() => {
+      pipe.flying--;
       if (!pipe.closed) send(client, pipe.out, slice);
-      if (last && !pipe.closed) client.end();
+      ended(client);
     }, Math.max(0, free - performance.now()) + latency / 2);
     setTimeout(pump, Math.max(0, free - performance.now()));
   };
@@ -108,15 +119,17 @@ function shapedLink(port: number, mbit: number, latency: number): { port: number
     port: 0,
     socket: {
       open(client) {
-        const pipe: Pipe = { up: null, early: [], down: [], out: [], upOut: [], closed: false, upClosed: false };
+        const pipe: Pipe = { up: null, early: [], down: [], queued: 0, flying: 0, out: [], upOut: [], closed: false, upClosed: false };
         client.data = pipe;
         pipes.push({ client, pipe });
         void Bun.connect<undefined>({
           hostname: "127.0.0.1",
           port,
           socket: {
-            data(_, bytes) {
+            data(up, bytes) {
               pipe.down.push(new Uint8Array(bytes));
+              pipe.queued += bytes.length;
+              if (pipe.queued > WINDOW) up.pause();
               if (!pumping) {
                 pumping = true;
                 pump();
@@ -127,7 +140,7 @@ function shapedLink(port: number, mbit: number, latency: number): { port: number
             },
             close() {
               pipe.upClosed = true;
-              if (pipe.down.length === 0) setTimeout(() => pipe.closed || client.end(), latency / 2);
+              ended(client);
             },
             error() {},
           },
@@ -331,6 +344,8 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     ents.setPosition(e, ents.x[e]!, ents.y[e]! + UP, ents.z[e]!);
     ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
     const upAt = (seen = await look()).now, upShare = share();
+    // The page has the body up within a round trip or two.
+    await until(PATIENCE.jump, () => seen.now > upAt + 1500);
     await until(PATIENCE.far, () => on("far", upAt) !== undefined || share() >= 2 / 3);
     await shot("far-city", on("far", upAt));
     // The jump, once the far city is drawn or two thirds of the map have come: to the ground on the street 4 km away, walking.
