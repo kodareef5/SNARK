@@ -74,7 +74,8 @@ export function handOverParts(head: MapHead): MapPart[] {
 
 /**
  * A map as a client holds it while its parts come: its ground, in which a sample not yet its sector's is its overview's,
- * its node layers, its water and its landmarks. Every overview is taken before anything reads it.
+ * its node layers, its water and its landmarks. Every overview is taken before anything reads it. A sector's ground is
+ * copied into the heightfield and let go; of a listed node layer's rows, only those are kept.
  */
 export class StagedMap {
   readonly head: MapHead;
@@ -82,7 +83,8 @@ export class StagedMap {
   readonly nodes: NodeLayer[];
   /** The landmarks the head places and the definitions the land part adds, or undefined where the head has none. */
   content: MapContent | undefined;
-  private readonly grounds: GroundPiece[] = [];
+  /** Each sector's come so far that has rows of a listed node layer: those rows, and none of its ground. */
+  private readonly listed: GroundPiece[] = [];
   private readonly water: { readonly chunks: Uint32Array; readonly squares: Uint16Array }[] = [];
 
   constructor(head: MapHead) {
@@ -106,10 +108,11 @@ export class StagedMap {
       if (piece.water) this.water.push(piece.water);
     } else if (piece.kind === "ground") {
       setGround(dims, this.hf.heights, this.hf.tint, piece);
-      this.grounds.push(piece);
-      // Listed layer k's rows from the sectors' grounds come so far, set in the layer the node source reads.
-      this.head.layers.forEach((rule, k) => rule.type === 1 && piece.listed[k]!.count.some((n) => n > 0) && Object.assign(this.nodes[k]!, listedRows(dims, rule.kinds, k, this.grounds)));
       this.hf.hold(piece.sq.cx0, piece.sq.cz0, piece.sq.cx1, piece.sq.cz1);
+      if (piece.listed.every((rows) => rows === null)) return;
+      this.listed.push({ kind: "ground", sq: piece.sq, heights: NO_HEIGHTS, tint: NO_TINT, listed: piece.listed });
+      // Listed layer k's rows from the sectors come so far, set in the layer the node source reads.
+      this.head.layers.forEach((rule, k) => rule.type === 1 && piece.listed[k]!.count.some((n) => n > 0) && Object.assign(this.nodes[k]!, listedRows(dims, rule.kinds, k, this.listed)));
     }
   }
 
@@ -118,6 +121,9 @@ export class StagedMap {
     if (this.head.water) this.hf.water = joinWater(this.head, this.water);
   }
 }
+
+const NO_HEIGHTS = new Uint16Array(0);
+const NO_TINT = new Uint8Array(0);
 
 /** What the page tells the player of its map as it comes, and how it waits. */
 export interface LoaderOptions {

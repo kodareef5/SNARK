@@ -273,3 +273,32 @@ test("the ground under a body is found again at the same place once its sector h
   expect([again, normal]).toEqual([groundUnder(whole, x, z, 0.4), { ...ground }]);
   expect(again).not.toBe(under);
 });
+
+/** Every array buffer `root` reaches through its fields, arrays, maps and sets. */
+function reached(root: object): Set<ArrayBufferLike> {
+  const buffers = new Set<ArrayBufferLike>();
+  const seen = new Set<object>();
+  const todo: unknown[] = [root];
+  while (todo.length > 0) {
+    const v = todo.pop();
+    if (v === null || typeof v !== "object" || seen.has(v)) continue;
+    seen.add(v);
+    if (ArrayBuffer.isView(v)) buffers.add(v.buffer);
+    else if (v instanceof Map) for (const [k, x] of v) todo.push(k, x);
+    else if (v instanceof Set || Array.isArray(v)) todo.push(...v);
+    else for (const k of Object.keys(v)) todo.push((v as Record<string, unknown>)[k]);
+  }
+  return buffers;
+}
+
+test("a sector's ground is copied into the heightfield and let go: the staged map keeps no sector's piece, and of a listed node layer's rows only those", () => {
+  for (const listed of [false, true]) {
+    const file = writeMap(cornerMap(listed));
+    const { staged, grounds } = cornerStaged(file);
+    for (const g of grounds) staged.take(g);
+    const held = reached(staged);
+    const rows = grounds.flatMap((g) => g.listed.filter((r) => r !== null)).map((r) => r!.kind.buffer);
+    expect([listed, grounds.some((g) => held.has(g.heights.buffer) || held.has(g.tint.buffer)), rows.length > 0, rows.every((b) => held.has(b))]).toEqual([listed, false, listed, true]);
+    expect([listed, staged.hf.heights, [...staged.nodes]]).toEqual([listed, mapHeightfield(parseMap(file)).heights, [...parseMap(file).nodes]]);
+  }
+});
