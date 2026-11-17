@@ -1,0 +1,86 @@
+[
+ {
+  "pair": 1,
+  "tier": "high",
+  "A": 46,
+  "B": 54
+ },
+ {
+  "pair": 2,
+  "tier": "high",
+  "A": 104,
+  "B": 96
+ },
+ {
+  "pair": 3,
+  "tier": "high",
+  "A": 130,
+  "B": 146
+ },
+ {
+  "pair": 4,
+  "tier": "high",
+  "A": 208,
+  "B": 192
+ },
+ {
+  "pair": 5,
+  "tier": "high",
+  "A": 262,
+  "B": 240
+ },
+ {
+  "pair": 6,
+  "tier": "high",
+  "A": 262,
+  "B": 300
+ },
+ {
+  "pair": 7,
+  "tier": "high",
+  "A": 384,
+  "B": 416
+ },
+ {
+  "pair": 8,
+  "tier": "high",
+  "A": 732,
+  "B": 700
+ },
+ {
+  "pair": 9,
+  "tier": "medium",
+  "A": 61,
+  "B": 67
+ },
+ {
+  "pair": 10,
+  "tier": "medium",
+  "A": 84,
+  "B": 92
+ },
+ {
+  "pair": 11,
+  "tier": "medium",
+  "A": 132,
+  "B": 122
+ },
+ {
+  "pair": 12,
+  "tier": "medium",
+  "A": 200,
+  "B": 220
+ },
+ {
+  "pair": 13,
+  "tier": "medium",
+  "A": 265,
+  "B": 245
+ },
+ {
+  "pair": 14,
+  "tier": "medium",
+  "A": 440,
+  "B": 472
+ }
+]
