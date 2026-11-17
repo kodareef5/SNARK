@@ -24,7 +24,7 @@ test("the source front page links into the game and root commands forward their 
     writeSourceRoot(out);
     expect(readdirSync(out).sort()).toEqual([".gitignore", "LICENSE", "README.md", "bunfig.toml", "game", "package.json"]);
     expect(readFileSync(join(out, "README.md"), "utf8")).toBe("[Agent](game/agent/README.md#run-it) [Here](#run) [Web](https://example.org/)\n");
-    expect(Bun.TOML.parse(readFileSync(join(out, "bunfig.toml"), "utf8")).test).toEqual({ root: "game/tests", preload: ["./game/tests/setup.ts"] });
+    expect(Bun.TOML.parse(readFileSync(join(out, "bunfig.toml"), "utf8"))).toEqual({ test: { root: "game/tests", preload: ["./game/tests/setup.ts"] } });
     const result = Bun.spawnSync([process.execPath, "run", "echo", "--", "two words"], { cwd: out });
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout.toString())).toEqual(["two words"]);

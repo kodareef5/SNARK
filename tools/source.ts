@@ -39,8 +39,7 @@ export function writeSourceRoot(out: string): void {
   scripts.postinstall = "bun install --cwd game --frozen-lockfile";
   writeFileSync(join(out, "package.json"), JSON.stringify({ private: true, engines: pkg.engines, scripts }, null, 2) + "\n");
 
-  const config = Bun.TOML.parse(readFileSync(join(game, "bunfig.toml"), "utf8"));
-  const tests = config.test as { root: string; preload: string[] };
+  const { test: tests } = Bun.TOML.parse(readFileSync(join(game, "bunfig.toml"), "utf8")) as { test: { root: string; preload: string[] } };
   const preloads = tests.preload.map((file) => "./" + posix.join("game", file));
   writeFileSync(join(out, "bunfig.toml"), `[test]\nroot = "game/${tests.root}"\npreload = ${JSON.stringify(preloads)}\n`);
 
