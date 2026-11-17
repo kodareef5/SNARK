@@ -1,6 +1,7 @@
 // Feedback pilots use ordinary client movement and E; graph edges select destinations, never positions or server state.
 import { CRUISE_COLLISION_INSTANCES, CRUISE_LAYOUT, cruisePoint, cruiseStatics } from "../../content/landmarks/cruise.ts";
 import type { CruiseLayout, CruiseRoute } from "../../content/landmarks/cruise-layout.ts";
+import { LANDMARKS } from "../../content/landmarks/index.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import { BTN_USE, MODE_WALK, stanceEye } from "../../shared/sim/character.ts";
@@ -24,7 +25,7 @@ export function cruisePack(names: readonly string[] = ["cruise", "koru"]): Pack 
   let pack = corePack();
   for (const name of names) {
     let bytes = landmarkBytes.get(name);
-    if (!bytes) { bytes = landmarkPack(landmarkArt(name)); landmarkBytes.set(name, bytes); }
+    if (!bytes) { bytes = landmarkPack(landmarkArt(LANDMARKS.find(l => l.name === name)!)); landmarkBytes.set(name, bytes); }
     pack = joinPacks(pack, parsePack(bytes));
   }
   joined.set(key, pack); return pack;

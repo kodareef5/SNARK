@@ -1,8 +1,18 @@
-// A landmark's far mesh, `<name>:far`, made when its files are built (tools/pack/far.ts): its drawn pieces at two coarse
-// levels in one mesh, in the landmark's own metres, so one draw of a run of it stands for many of its pieces. Each
-// piece's triangles are one run of indices in each level, and the pieces go in an order that keeps neighbours together.
-// The row that finds the pieces in the mesh goes in the landmark's pack header and its manifest, and joins with them
-// (shared/pack/join.ts).
+// A landmark's far mesh, `<name>:far`, made whenever its files are built (tools/pack/far.ts) and never kept: its pieces
+// at two coarse levels in one mesh, so one draw of a run of it stands for many of them.
+//
+// - It holds every placed piece whose kind draws a mesh of the landmark's pack, except a kind that opens or moves, which
+//   is drawn as itself. A piece is its mesh's vertices turned by its yaw and moved to where it stands, in the landmark's
+//   metres: a plain turn, x' = c x + s z and z' = c z - s x, not the lattice frame its static stands by. A colour region
+//   becomes the colour a static of its kind is drawn in.
+// - Both levels are flat. Level l holds each piece at the coarsest level of its own mesh that errs FAR_ERRORS[l] metres
+//   or less, its finest where none does, and states FAR_ERRORS[1] as level 1's error.
+// - Each piece's triangles are one run of indices in each level. The pieces go in the order a Hilbert curve on the
+//   landmark's x and z visits where they stand, in squares of a metre, the lower first at one place, so the pieces of a
+//   few chunks are a few runs at any turn on a map.
+// - Neither level is in the landmark's boot file: each is fetched from its mesh file when asked for.
+// - Its row, which says where the pieces are in it, goes in the landmark's pack header and its manifest and joins with
+//   them (shared/pack/join.ts). It names the mesh by the landmark's name, so it needs no index fixed as it joins.
 
 import { meshKnown, type Manifest } from "./manifest.ts";
 

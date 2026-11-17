@@ -67,7 +67,7 @@ let joined: Pack | null = null;
 /** Koru's pack as the client build makes it, from its folder. */
 export function koruPackBytes(): Uint8Array {
   if (koruBytes) return koruBytes;
-  return (koruBytes = landmarkPack(landmarkArt(KORU.name)));
+  return (koruBytes = landmarkPack(landmarkArt(KORU)));
 }
 
 /** The core pack with Koru's after it, as a client in the bay holds them whole. */

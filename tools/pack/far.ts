@@ -1,12 +1,7 @@
-// Makes a landmark's far mesh (shared/pack/far.ts) from its placed pieces' own levels, and is the one way every build and
-// test reads a landmark's art, so each has the far mesh as the others do. It is made anew each time, never kept.
-//
-// The pieces drawn are those whose kind draws a mesh of the landmark's pack, and not one that opens or moves, which are
-// drawn as themselves. They go in the order a Hilbert curve on the landmark's x and z visits them, those at one place
-// lowest first, so the pieces of a few chunks are a few runs of the mesh at any turn on a map.
+// Makes a landmark's far mesh as shared/pack/far.ts describes it, from its placed pieces' own levels. `landmarkArt` is the
+// one way every build and test reads a landmark's art, so each has the far mesh as the others do.
 
 import { join } from "node:path";
-import { LANDMARKS as PLACED } from "../../content/landmarks/index.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { FAR_ERRORS, farMeshId, type LandmarkFarRow } from "../../shared/pack/far.ts";
 import { REGION_BASE, REGION_COUNT, defaultPalette } from "../../shared/pack/palette.ts";
@@ -106,11 +101,9 @@ export interface LandmarkArt extends SourceArt {
   far: MergedFar | null;
 }
 
-/** The art of the landmark named `name`, its far mesh made from its own meshes. */
-export function landmarkArt(name: string): LandmarkArt {
-  const l = PLACED.find((x) => x.name === name);
-  if (!l) throw new Error(`content/landmarks/index.ts has no landmark "${name}"`);
-  const art = readPacks(join(LANDMARKS, name));
+/** The art of a landmark, its far mesh made from its own meshes. */
+export function landmarkArt(l: Landmark): LandmarkArt {
+  const art = readPacks(join(LANDMARKS, l.name));
   const far = mergeFar(l, art.meshes);
   return { ...art, meshes: far ? [...art.meshes, far.mesh] : art.meshes, far };
 }

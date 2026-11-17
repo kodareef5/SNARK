@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
+import { Assets } from "../../client/core/assets/assets.ts";
+import { FramePacket } from "../../client/core/render/packet.ts";
 import { CRUISE } from "../../content/landmarks/cruise.ts";
+import { compileContent } from "../../shared/content/registry.ts";
 import { KORU } from "../../content/landmarks/koru.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
@@ -12,10 +15,12 @@ import { REGION_BASE, defaultPalette } from "../../shared/pack/palette.ts";
 import { HALF_SIDE } from "../../shared/world/frame.ts";
 import { landmarkPoint, placeLandmark, type Landmark } from "../../shared/world/landmark.ts";
 import { parseMap, writeMap } from "../../shared/world/mapfile.ts";
+import { landmarksOf, placeLandmarks } from "../../tools/mapworld/landmarks.ts";
 import { hilbert, landmarkArt, landmarkPack, mergeFar } from "../../tools/pack/far.ts";
 import { orderPack } from "../../tools/pack/order.ts";
 import { splitPack } from "../../tools/pack/split.ts";
 import { boxMesh, buildPack, type SourceLod, type SourceMesh } from "../../tools/pack/write.ts";
+import { FakeNet } from "../fixtures/assetnet.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 
@@ -63,12 +68,12 @@ const LANDMARK: Landmark = {
 };
 
 /** The landmark's files as a build makes them: its pack ordered and split, and its manifest. */
-function built(l: Landmark = LANDMARK, meshes: SourceMesh[] = MESHES): { bytes: Uint8Array; ordered: Uint8Array; manifest: Manifest; boot: Pack } {
+function built(l: Landmark = LANDMARK, meshes: SourceMesh[] = MESHES): { bytes: Uint8Array; ordered: Uint8Array; manifest: Manifest; boot: Pack; files: Uint8Array[] } {
   const far = mergeFar(l, meshes)!;
   const bytes = buildPack([...meshes, far.mesh], defaultPalette(), [], [], null, [far.row]);
   const ordered = orderPack(bytes);
   const split = splitPack(ordered, l.name);
-  return { bytes, ordered, manifest: split.manifest, boot: parsePack(split.files[split.manifest.boot]!.bytes) };
+  return { bytes, ordered, manifest: split.manifest, boot: parsePack(split.files[split.manifest.boot]!.bytes), files: split.files.map((f) => f.bytes) };
 }
 
 /** Each triangle of a level of a pack's mesh, its corners' places to the centimetre, by the piece whose run holds it. */
@@ -94,7 +99,7 @@ test("a landmark's far mesh holds each piece it draws at its coarsest level with
   // The second and third levels of t:a, and t:b's finest at both.
   const chosen = { "t:a": [1, 2], "t:b": [0, 0] } as const;
   const meshOf = (k: number) => (LANDMARK.pieces[k]!.kind === "t:b_kind" ? "t:b" : "t:a");
-  expect(far.row.counts).toEqual([0, 1].map((l) => order.map((k) => MESHES.find((m) => m.id === meshOf(k))!.lods[chosen[meshOf(k)][l]!]!.indices.length)));
+  expect(far.row.counts as number[][]).toEqual([0, 1].map((l) => order.map((k) => MESHES.find((m) => m.id === meshOf(k))!.lods[chosen[meshOf(k)][l]!]!.indices.length)));
   far.mesh.lods.forEach((lod, l) => {
     let first = 0, base = 0;
     order.forEach((k, p) => {
@@ -134,6 +139,11 @@ test("its pieces are runs of each level that cover it once ordered for the cache
     // Ordering moved triangles only within their own piece's run.
     expect(trianglesByPiece(parsePack(ordered), "t:far", l, far!.first[l], far!.count[l])).toEqual(trianglesByPiece(parsePack(bytes), "t:far", l, far!.first[l], far!.count[l]));
   }
+  // So too where pieces share vertices, which the order for the cache would otherwise take from one to the next: four
+  // rows of boxes from one place, turned a quarter apart, all through the box there.
+  const star = built({ ...LANDMARK, pieces: [0, 16384, 32768, 49152].map((yaw) => ({ kind: "t:a_kind", at: [0, 0, 0], yaw })) });
+  const [rows] = landmarkFars(star.manifest);
+  for (const l of [0, 1] as const) expect(trianglesByPiece(parsePack(star.ordered), "t:far", l, rows!.first[l], rows!.count[l])).toEqual(trianglesByPiece(parsePack(star.bytes), "t:far", l, rows!.first[l], rows!.count[l]));
 });
 
 test("a landmark's far row joins with its pack and its manifest, and the draw side finds its mesh in what it joined", () => {
@@ -153,6 +163,21 @@ test("a landmark's far row joins with its pack and its manifest, and the draw si
   const wrong = structuredClone(t.manifest);
   wrong.landmarks![0]!.counts[1]![0]! += 3;
   expect(() => landmarkFars(wrong)).toThrow("do not cover");
+  // A client that joined it has neither level until it asks, and then each comes from the landmark's mesh file.
+  const files = [...core.files.map((f) => f.bytes), ...[t, uu].flatMap((more) => more.files.filter((_, i) => i !== more.manifest.boot))];
+  const port = new FakeNet(files), assets = new Assets(compileContent([]).registry!, joined.boot, joined.manifest, port), packet = new FramePacket();
+  const mesh = fars[0]!.mesh;
+  expect([assets.level(mesh, 1), assets.level(mesh, 0)]).toEqual([-1, -1]);
+  for (let frame = 0, now = 0; frame < 30; frame++) {
+    now += 1000 / 60;
+    port.advance(now);
+    packet.beginFrame();
+    assets.begin(now, 669, 1.2217);
+    assets.want(mesh, 1, 1);
+    assets.want(mesh, 0, 1);
+    assets.end(packet, now);
+  }
+  expect([assets.level(mesh, 1), assets.level(mesh, 0)]).toEqual([1, 0]);
 });
 
 test("a map records each landmark's origin and yaw as it was placed, so a client sets its pieces where the statics stand", () => {
@@ -169,6 +194,10 @@ test("a map records each landmark's origin and yaw as it was placed, so a client
   }));
   expect(placed.sort()).toEqual(Array.from(s.x, (x, i) => [x, s.y[i], s.z[i], s.yaw[i]].join(",")).sort());
   for (const bad of [{ yaw: 65536 }, { yaw: 1.5 }, { x: NaN }]) expect(() => writeMap(flatMap(4, { content: { landmarks: [{ ...one.placed, ...bad }], defs: [] } }))).toThrow("set down");
+  // A map build records each where its world.json sets it, as it placed it.
+  const sited = landmarksOf([{ name: KORU.name, at: [10.25, 20.5], yaw: 30 }, { name: CRUISE.name, at: [100, 200], y: 1.5, yaw: 271.3 }], (lon, lat) => [lon, lat], 4096);
+  const map2 = placeLandmarks(sited, compileContent([]).registry!, 0.25);
+  expect(map2.content.landmarks).toEqual([placeLandmark(KORU, 4075.5, 0.25, 4055, 5461).placed, placeLandmark(CRUISE, 3896, 1.5, 3696, 49389).placed]);
 });
 
 test("a Hilbert curve visits each square once, each from one beside it", () => {
@@ -179,7 +208,7 @@ test("a Hilbert curve visits each square once, each from one beside it", () => {
 });
 
 artTest("the cruise ship's far mesh is its 475 cells at 112,964 and 48,898 triangles, in few runs of the chunks a client does not hold, near its statics at any yaw", () => {
-  const art = landmarkArt(CRUISE.name), pack = parsePack(landmarkPack(art));
+  const art = landmarkArt(CRUISE), pack = parsePack(landmarkPack(art));
   const [far] = landmarkFars(describePack(pack, { name: "", bytes: 0 }));
   expect([far!.name, far!.pieces, pack.header.meshes[far!.mesh]!.lods.map((l) => l.indexCount / 3), art.far!.otherwise]).toEqual(["cruise", 475, [112964, 48898], []]);
   // The pieces it draws are the cells, each once.
@@ -217,7 +246,7 @@ artTest("the cruise ship's far mesh is its 475 cells at 112,964 and 48,898 trian
 });
 
 artTest("the yacht's far mesh comes by the same code: its eight cells, without its doors or its sails", () => {
-  const art = landmarkArt(KORU.name);
+  const art = landmarkArt(KORU);
   const [far] = landmarkFars(describePack(parsePack(landmarkPack(art)), { name: "", bytes: 0 }));
   expect([far!.name, far!.pieces, Array.from(far!.count, (c) => c.reduce((a, b) => a + b, 0) / 3), art.far!.otherwise]).toEqual(["koru", 8, [4328, 1224], []]);
   expect(farMeshId(KORU.name)).toBe("koru:far");

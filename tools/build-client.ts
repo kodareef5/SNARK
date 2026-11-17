@@ -225,8 +225,12 @@ async function buildLandmarks(dist: string, quick: boolean): Promise<number> {
   const out = join(dist, "assets/landmarks");
   mkdirSync(out, { recursive: true });
   let bytes = 0;
+  // Their content takes a second to load, so only a build loads it.
+  const { LANDMARKS: PLACED } = await import("../content/landmarks/index.ts");
   for (const name of existsSync(LANDMARKS) ? readdirSync(LANDMARKS).filter((n) => statSync(join(LANDMARKS, n)).isDirectory()).sort() : []) {
-    const art = landmarkArt(name);
+    const placed = PLACED.find((l) => l.name === name);
+    if (!placed) throw new Error(`assets/source/landmarks/${name} is the art of a landmark content/landmarks/index.ts does not have`);
+    const art = landmarkArt(placed);
     const { files: split, manifest } = splitPack(orderPack(landmarkPack(art)), name);
     const textures = await buildTextures(manifest, await gameTextures(SOURCE, name), name);
     const { files } = await storeParts([...split, ...textures.files], manifest);
