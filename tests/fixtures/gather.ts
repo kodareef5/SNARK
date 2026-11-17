@@ -36,7 +36,8 @@ export function standFacing(h: Harness, s: ClientSession, pilot: Pilot, at: { x:
     const z = at.z - Math.cos(a) * distance;
     const y = h.world.hf.heightAt(x, z);
     if (y < h.world.hf.seaLevel + 0.2 || Math.abs(y - h.world.hf.heightAt(at.x, at.z)) > 0.8 || !capsuleFree(h.world, x, y, z, p.radius, p.height)) continue;
-    h.say(s, `tp ${x.toFixed(3)} ${z.toFixed(3)}`);
+    // The server refuses a place inside a node of a chunk nobody holds, which the world here does not have.
+    if (!h.say(s, `tp ${x.toFixed(3)} ${z.toFixed(3)}`).some((line) => line.startsWith("at "))) continue;
     pilot.yaw = a;
     const middle = at.form === undefined ? at.y : at.y + h.world.nodeField!.forms.halfY[at.form]! / 2;
     pilot.pitch = Math.atan2(middle - (y + 1.62), distance);
