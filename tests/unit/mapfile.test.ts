@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { CHUNK_SIZE, chunkCount, framed } from "../../shared/coords.ts";
 import { hashBytes } from "../../shared/hash.ts";
-import { MapStatics, OVERVIEW_STEP, blankLayers, joinParts, mapHeightfield, mapNodes, parseMap, partSteps, placeStatics, readHead, readPart, setGround, writeMap, type GroundPiece, type MapData, type NodeScatter, type NodeZoned, type OverviewPiece, type StaticsPiece } from "../../shared/world/mapfile.ts";
+import { MapStatics, OVERVIEW_STEP, blankLayers, blankStatics, joinParts, joinStatics, mapHeightfield, mapNodes, parseMap, partSteps, placeStatics, readHead, readPart, setGround, setStatics, writeMap, type GroundPiece, type MapData, type NodeScatter, type NodeZoned, type OverviewPiece, type StaticsPiece } from "../../shared/world/mapfile.ts";
 import { nodeForms, scatterNodes, type NodeSpot } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { busyMap, flatMap, wideMap } from "../fixtures/map.ts";
@@ -107,7 +107,9 @@ test("each part reads alone given the head, and sets into what the game holds", 
   expect(blankLayers(head).map((l) => ("zone" in l ? l.zone.length : "first" in l ? l.first.length : l.allow!.length))).toEqual([11200, 1401, 22400, 22400]);
   // Read a step at a time, a city's pieces in one sector yield a slice of them a step.
   const many = Array.from({ length: 70000 }, (_, i) => ({ kind: i % 3 ? "core:wall" : "core:crate", x: (i % 250) / 4, y: 1 + (i % 7), z: (i * 7) % 64, yaw: i % 65536 }));
-  const city = writeMap({ ...flatMap(1), statics: many });
+  // A chunk holds 65,535 at most, as a structure store's chunk does; over two chunks they are a sector's.
+  expect(() => writeMap({ ...flatMap(1), statics: many })).toThrow("map: chunk 0, 0 holds more than 65535 statics");
+  const city = writeMap({ ...flatMap(2), statics: many.map((s, i) => ({ ...s, x: s.x + (i % 2) * CHUNK_SIZE })) });
   const cityHead = readHead(city);
   const part = cityHead.parts.find((p) => p.kind === "statics")!;
   const steps = partSteps(cityHead, part, city.subarray(part.at, part.at + part.length));
@@ -129,6 +131,44 @@ test("each part reads alone given the head, and sets into what the game holds", 
   // The high byte of the last piece's x, in the third of x's planes, after the part's count and 6 planes.
   off[part.at + 4 + 6 * 70000 + 69999]! = 0x7f;
   expect(() => readPart(cityHead, part, off.subarray(part.at, part.at + part.length), false)).toThrow("is off the map");
+});
+
+test("the head lays out every chunk's statics, and each sector's set in alone, in any order, makes the table joinStatics makes", () => {
+  const map = wideMap();
+  const file = writeMap(map);
+  const head = readHead(file);
+  const pieces = head.parts.filter((p) => p.kind === "statics").map((p) => readPart(head, p, file.subarray(p.at, p.at + p.length)) as StaticsPiece);
+  const listed = MapStatics.of(map.dims, map.statics);
+  expect([...head.counts]).toEqual(Array.from({ length: chunkCount(map.dims) }, (_, c) => listed.first[c + 1]! - listed.first[c]!));
+  const finish = <T,>(steps: Generator<void, T>): T => {
+    for (;;) {
+      const r = steps.next();
+      if (r.done) return r.value;
+    }
+  };
+  const columns = (t: MapStatics): unknown[] => [t.kinds, t.first, t.kind, t.yaw, t.x, t.y, t.z, t.row];
+  // A sector alone fills its own chunks' rows and no others.
+  const alone = blankStatics(head);
+  const one = pieces[3]!;
+  finish(setStatics(head, alone, one));
+  const whole = finish(joinStatics(head, pieces));
+  for (let c = 0; c < chunkCount(map.dims); c++) {
+    const rows = [alone.first[c]!, alone.first[c + 1]!] as const;
+    const mine = one.chunk.includes(c);
+    for (const col of ["kind", "yaw", "x", "y", "z"] as const) expect([...alone[col].subarray(...rows)]).toEqual(mine ? [...whole[col].subarray(...rows)] : Array(rows[1] - rows[0]).fill(0));
+  }
+  // Every sector, in a scrambled order, with the map's order and without it.
+  const scrambled = [7, 2, 9, 0, 5, 1, 8, 3, 6, 4].map((k) => pieces[k]!);
+  expect(scrambled.length).toBe(pieces.length);
+  for (const order of [true, false]) {
+    const t = blankStatics(head, order);
+    for (const p of scrambled) finish(setStatics(head, t, p));
+    expect(columns(t)).toEqual(columns(finish(joinStatics(head, pieces, order))));
+  }
+  expect([...finish(joinStatics(head, pieces))]).toEqual([...parseMap(file).statics]);
+  // A sector's statics that do not fill the rows its head counts are refused.
+  const short = { ...one, id: one.id.subarray(1), yaw: one.yaw.subarray(1), x: one.x.subarray(1), y: one.y.subarray(1), z: one.z.subarray(1), chunk: one.chunk.subarray(1) };
+  expect(() => finish(setStatics(head, blankStatics(head), short))).toThrow(`map: the statics of sector ${one.sq.col}, ${one.sq.row} do not fill the rows laid out for them`);
 });
 
 test("a part that is damaged, or another's, is refused with its name, and so is a head", () => {

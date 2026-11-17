@@ -42,7 +42,8 @@
 //         (assets/landmarks/<name>.json), then f64 x, y, z of its origin and u16 yaw as it was placed. The definitions
 //         they add are the land part.
 //   STAT  u16 count and that many content ids in the order of their characters, which a sector's statics name by their
-//         place here.
+//         place here. Then how many statics each of the map's chunks holds, row by row, as u16 planes, so a reader lays out
+//         every chunk's rows before any sector's statics come.
 //   PART  u16 count, then each part's u8 kind, u8 column and u8 row of its square, u32 byte length, and its hash
 //         (partHash) as two u32s.
 //
@@ -81,7 +82,7 @@ import { decodeUtf8 } from "../pack/pack.ts";
 import { BitReader, BitWriter } from "../net/codec.ts";
 import { Heightfield, TERRAIN_CELL } from "./heightfield.ts";
 import { formOf, mix, nodeForms, scatterNodes, type NodeSource } from "./nodes.ts";
-import type { StructureStore } from "./structures.ts";
+import { MAX_SLOTS_PER_CHUNK, type StructureStore } from "./structures.ts";
 import { MAX_WATER_BODIES, MapWater, type WaterBody } from "./water.ts";
 
 export const MAP_VERSION = 8;
@@ -841,10 +842,11 @@ function groundPart(m: MapData, dims: FramedDims, layers: readonly NodeLayer[], 
   return o.done();
 }
 
-/** The map's statics by sector, each sector's in the map's order, and the table of content ids they name. */
-function sectorStatics(statics: MapStatics | readonly MapStatic[], dims: FramedDims, sectors: readonly Square[]): { ids: Map<string, number>; parts: (Uint8Array | null)[] } {
+/** The map's statics by sector, each sector's in the map's order, the table of content ids they name, and each chunk's count. */
+function sectorStatics(statics: MapStatics | readonly MapStatic[], dims: FramedDims, sectors: readonly Square[]): { ids: Map<string, number>; parts: (Uint8Array | null)[]; chunks: Uint16Array } {
   const n = statics.length;
   const ids = new Map<string, number>();
+  const chunks = new Uint16Array(chunkCount(dims));
   const [id, yaw, sector] = [new Uint16Array(n), new Uint16Array(n), new Uint32Array(n)];
   const [ux, uy, uz] = [new Int32Array(n), new Int32Array(n), new Int32Array(n)];
   const [col0, row0] = [sectors[0]!.col, sectors[0]!.row];
@@ -859,6 +861,8 @@ function sectorStatics(statics: MapStatics | readonly MapStatic[], dims: FramedD
     [ux[i], uy[i], uz[i]] = [Math.round(x * STRUCT_UNITS), Math.round(y * STRUCT_UNITS), Math.round(z * STRUCT_UNITS)];
     // Its chunk is that of its place on the lattice, as a reader finds it.
     const c = chunkAt(dims, ux[i]! / STRUCT_UNITS, uz[i]! / STRUCT_UNITS);
+    if (chunks[c] === MAX_SLOTS_PER_CHUNK) throw new Error(`map: chunk ${chunkCx(dims, c)}, ${chunkCz(dims, c)} holds more than ${MAX_SLOTS_PER_CHUNK} statics`);
+    chunks[c]!++;
     const s = (Math.floor((dims.frameZ + chunkCz(dims, c)) / SECTOR_CHUNKS) - row0) * cols + Math.floor((dims.frameX + chunkCx(dims, c)) / SECTOR_CHUNKS) - col0;
     [id[i], yaw[i], sector[i]] = [ids.get(kind)!, turn, s];
     counts[s + 1]!++;
@@ -895,7 +899,7 @@ function sectorStatics(statics: MapStatics | readonly MapStatic[], dims: FramedD
     }
     return o.done();
   });
-  return { ids, parts };
+  return { ids, parts, chunks };
 }
 
 interface Written {
@@ -904,7 +908,7 @@ interface Written {
   readonly bytes: Uint8Array;
 }
 
-function headPart(m: MapData, dims: FramedDims, layers: readonly NodeLayer[], ids: Map<string, number>, parts: readonly Written[]): Uint8Array<ArrayBuffer> {
+function headPart(m: MapData, dims: FramedDims, layers: readonly NodeLayer[], statics: { ids: Map<string, number>; chunks: Uint16Array }, parts: readonly Written[]): Uint8Array<ArrayBuffer> {
   const o = new Out();
   o.u32(MAGIC);
   o.u16(MAP_VERSION);
@@ -1037,10 +1041,11 @@ function headPart(m: MapData, dims: FramedDims, layers: readonly NodeLayer[], id
       }
     });
   }
-  if (ids.size > 0) {
+  if (statics.ids.size > 0) {
     o.section("STAT", () => {
-      o.u16(ids.size);
-      for (const id of ids.keys()) o.text(id);
+      o.u16(statics.ids.size);
+      for (const id of statics.ids.keys()) o.text(id);
+      putU16s(o, statics.chunks);
     });
   }
   o.section("PART", () => {
@@ -1082,7 +1087,7 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
   for (const sq of sectors) parts.push({ kind: "ground", sq, bytes: groundPart(m, dims, layers, sq) });
   const statics = sectorStatics(m.statics, dims, sectors);
   sectors.forEach((sq, s) => statics.parts[s] && parts.push({ kind: "statics", sq, bytes: statics.parts[s] }));
-  const head = headPart(m, dims, layers, statics.ids, parts);
+  const head = headPart(m, dims, layers, statics, parts);
   const file = new Uint8Array(head.length + parts.reduce((n, p) => n + p.bytes.length, 0));
   file.set(head);
   let at = head.length;
@@ -1136,6 +1141,8 @@ export interface MapHead {
   readonly water: { readonly cell: number; readonly bodies: readonly WaterBody[] } | null;
   /** The content ids its statics name by number. */
   readonly kinds: readonly string[];
+  /** How many statics each chunk holds, row by row: a chunk's rows of MapStatics, laid out before any sector's come (blankStatics). */
+  readonly counts: Uint16Array;
   readonly parts: readonly MapPart[];
 }
 
@@ -1200,6 +1207,7 @@ function readHeadSections(r: In, hash: number): MapHead {
   let water: MapHead["water"] = null;
   let landmarks: MapLandmark[] | null = null;
   let kinds: string[] = [];
+  let counts: Uint16Array = new Uint16Array(chunkCount(dims));
   let parts: MapPart[] | null = null;
   while (r.at < r.bytes.length) {
     const tag = String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8());
@@ -1245,8 +1253,10 @@ function readHeadSections(r: In, hash: number): MapHead {
       const cell = s.u8();
       if (!(cell >= 1 && cell <= CHUNK_SIZE && CHUNK_SIZE % cell === 0)) throw new Error(`map: its water is in squares of ${cell} m, and a square is 1, 2, 4, 8, 16, 32 or 64 m`);
       water = { cell, bodies: Array.from({ length: s.u16() }, () => ({ name: s.text(), level: s.u16() })) };
-    } else if (tag === "STAT") kinds = Array.from({ length: s.u16() }, () => s.text());
-    else if (tag === "PART") {
+    } else if (tag === "STAT") {
+      kinds = Array.from({ length: s.u16() }, () => s.text());
+      counts = getU16s(s, counts.length);
+    } else if (tag === "PART") {
       if (parts) throw new Error("map: it has two PART sections");
       parts = [];
       let at = r.bytes.length;
@@ -1264,7 +1274,7 @@ function readHeadSections(r: In, hash: number): MapHead {
     if (!vehicles[index]) throw new Error("map: parked vehicle extension names a missing vehicle");
     vehicles[index] = { ...vehicles[index]!, ...extra };
   }
-  const head = { hash, bytes: r.bytes.length, name: partName("head", 0, 0, partHash(r.bytes)), id, dims, minY, stepY, seaLevel, spawns, regions, vehicles, landmarks, layers, water, kinds, parts: parts ?? [] };
+  const head = { hash, bytes: r.bytes.length, name: partName("head", 0, 0, partHash(r.bytes)), id, dims, minY, stepY, seaLevel, spawns, regions, vehicles, landmarks, layers, water, kinds, counts, parts: parts ?? [] };
   checkParts(head);
   return head;
 }
@@ -1530,17 +1540,18 @@ function listedOf(dims: MapDims, kinds: readonly string[], k: number, grounds: r
 }
 
 /**
- * Sets a sector's statics into the rows of its chunks in `t`, whose `first` was laid out with it (joinStatics), slot s of a
- * chunk its s-th piece. With the map's order kept, `from` is the place of its first piece in that order.
+ * Sets a sector's statics into the rows of its chunks in `t`, slot s of a chunk its s-th piece, and with the map's order
+ * kept, its pieces from place `from` of that order on. Throws unless they fill those rows.
  */
-export function* setStatics(dims: MapDims, t: MapStatics, piece: StaticsPiece, from = 0): Generator<void, void> {
+function* fillRows(dims: MapDims, t: MapStatics, piece: StaticsPiece, from: number): Generator<void, void> {
   const { sq } = piece;
   const w = sq.cx1 - sq.cx0;
   const filled = new Uint32Array(w * (sq.cz1 - sq.cz0));
+  const fail = (): Error => new Error(`map: the statics of sector ${sq.col}, ${sq.row} do not fill the rows laid out for them`);
   for (let i = 0; i < piece.id.length; i++) {
     const c = piece.chunk[i]!;
     const r = t.first[c]! + filled[(chunkCz(dims, c) - sq.cz0) * w + chunkCx(dims, c) - sq.cx0]!++;
-    if (r >= t.first[c + 1]!) throw new Error(`map: the statics of sector ${sq.col}, ${sq.row} do not fit the rows laid out for them`);
+    if (r >= t.first[c + 1]!) throw fail();
     t.kind[r] = piece.id[i]!;
     t.yaw[r] = piece.yaw[i]!;
     t.x[r] = piece.x[i]!;
@@ -1549,6 +1560,36 @@ export function* setStatics(dims: MapDims, t: MapStatics, piece: StaticsPiece, f
     if (t.row.length > 0) t.row[from + i] = r;
     if (i % SLICE === SLICE - 1) yield;
   }
+  for (let k = 0; k < filled.length; k++) {
+    const c = (sq.cz0 + Math.floor(k / w)) * dims.chunksX + sq.cx0 + (k % w);
+    if (filled[k] !== t.first[c + 1]! - t.first[c]!) throw fail();
+  }
+}
+
+/**
+ * The map's statics laid out from its head, each chunk's rows where its count puts them and blank, for each sector's to be
+ * set in as it comes, in any order and alone (setStatics). Without `order` the map's order is not kept.
+ */
+export function blankStatics(head: MapHead, order = true): MapStatics {
+  const { counts } = head;
+  const t = MapStatics.blank(head.kinds, counts.length, counts.reduce((n, k) => n + k, 0), order);
+  for (let c = 0; c < counts.length; c++) t.first[c + 1] = t.first[c]! + counts[c]!;
+  return t;
+}
+
+/**
+ * Sets a sector's statics into the rows its head lays out for its chunks in `t` (blankStatics), a slice of them a step, and
+ * with the map's order kept, each at its place in that order: the sectors' in the order of the head's table, each sector's in
+ * its own. Throws unless they fill those rows.
+ */
+export function* setStatics(head: MapHead, t: MapStatics, piece: StaticsPiece): Generator<void, void> {
+  let from = 0;
+  for (const p of head.parts) {
+    if (p.kind !== "statics") continue;
+    if (p.col === piece.sq.col && p.row === piece.sq.row) break;
+    for (const c of chunksOf(head.dims, squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!)) from += head.counts[c]!;
+  }
+  yield* fillRows(head.dims, t, piece, from);
 }
 
 /**
@@ -1563,7 +1604,7 @@ export function* joinStatics(head: MapHead, pieces: readonly StaticsPiece[], ord
   for (let c = 0; c < chunks; c++) t.first[c + 1]! += t.first[c]!;
   let from = 0;
   for (const p of pieces) {
-    yield* setStatics(head.dims, t, p, from);
+    yield* fillRows(head.dims, t, p, from);
     from += p.id.length;
     yield;
   }
@@ -1618,6 +1659,7 @@ export function parseMap(file: Uint8Array, verify = true): MapFile {
   if (file.length < end) throw new Error("map: it is cut short");
   if (file.length > end) throw new Error("map: it runs on past its last part");
   const map = joinParts(head, head.parts.map((p) => readPart(head, p, file.subarray(p.at, p.at + p.length), verify)));
+  if (head.counts.some((n, c) => map.statics.first[c + 1]! - map.statics.first[c]! !== n)) throw new Error("map: its statics are not as many a chunk as its head counts");
   check(map);
   return map;
 }
