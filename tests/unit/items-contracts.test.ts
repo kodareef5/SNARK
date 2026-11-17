@@ -27,8 +27,8 @@ test("the numbers the item program reserved are its own and still free of anythi
   expect([P.CMD_CRAFT_AT, P.CMD_CRAFT_BLUEPRINT, P.OWN_STATION, P.SLOT_BLUEPRINT]).toEqual([29, 30, 16, 1]);
   const own = Object.entries(P).filter(([k]) => k.startsWith("OWN_")).map(([, v]) => v);
   expect(new Set(own).size).toBe(own.length);
-  // Task B moved the manifest to 4 for icon sheets, the creature clips coming with their species to 5, and pages to 6.
-  expect(MANIFEST_VERSION).toBe(6);
+  // Task B moved the manifest to 4 for icon sheets, the creature clips coming with their species to 5, pages to 6, and landmark far meshes to 7.
+  expect(MANIFEST_VERSION).toBe(7);
 });
 
 test("the item program's content is in the core pack, and a consumable may be one only for what using it does", () => {

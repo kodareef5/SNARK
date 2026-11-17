@@ -3,6 +3,7 @@
 
 import { MANIFEST_VERSION, type Manifest, type ManifestClips, type ManifestFile, type ManifestLevel, type ManifestMesh, type MeshStub, type PageRows } from "../../shared/pack/manifest.ts";
 import { CLIP_ROOT_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, parsePack, textureOf, type PackClip, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
+import { farMeshId } from "../../shared/pack/far.ts";
 import { PARTS_HEADER_BYTES, PARTS_MAGIC, PARTS_VERSION } from "../../shared/pack/stored.ts";
 import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
 import { partHash, partsAt } from "./manifest.ts";
@@ -43,7 +44,7 @@ interface Placed {
 /**
  * The boot file holds the palette, the rigs, the survivor's clips, the details atlas and the smallest levels of the
  * meshes `boot` names: the coarsest and every one of HELD_LEVEL_BYTES or less, so a client that has it can draw those,
- * coarsely, and pose its own body. Each other mesh's smallest levels are in its page, with its row. Both hold them flat:
+ * coarsely, and pose its own body. A landmark's far mesh has none held. Each other mesh's smallest levels are in its page, with its row. Both hold them flat:
  * the surface and the skin of a level are always in the mesh file, with every other level. The boot and mesh files are
  * packs, though only the manifest says where the mesh file has the surface of a level held elsewhere. Each creature
  * skeleton's clips are one part of the clip file. Neither the clip file's parts nor the pages are yet deflated. The bytes
@@ -61,7 +62,9 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
   if (pack.header.textures) headers[1]!.textures = pack.header.textures;
   const details = pack.header.details;
   if (details) headers[0]!.details = { ...details, atlas: { ...details.atlas, offset: blobs[0]!.append(detailsAtlas(pack)) } };
-  const held = (m: (typeof pack.header.meshes)[number], level: number, bytes: number): boolean => level === m.lods.length - 1 || bytes <= HELD_LEVEL_BYTES;
+  // A landmark's far mesh is fetched a level at a time like the finer levels of any other.
+  const far = new Set((pack.header.landmarks ?? []).map((row) => farMeshId(row.name)));
+  const held = (m: (typeof pack.header.meshes)[number], level: number, bytes: number): boolean => !far.has(m.id) && (level === m.lods.length - 1 || bytes <= HELD_LEVEL_BYTES);
   const firstBytes = (lod: PackLod): number => pad4(lod.indexCount * lod.indexBytes) + lod.vertexCount * VERTEX_BYTES;
   // Paged meshes by group and place, each page as many as its bytes allow.
   const pageOf = new Int32Array(pack.header.meshes.length).fill(-1);
@@ -180,6 +183,7 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
   if (streamed.length > 0) manifest.clips = streamed;
   if (pack.header.materials) manifest.materials = pack.header.materials;
   if (pack.header.textures) manifest.textures = pack.header.textures.map((t) => ({ ...t, in: {} }));
+  if (pack.header.landmarks) manifest.landmarks = pack.header.landmarks;
   if (pages.length > 0) {
     manifest.pages = pages.map(() => ({ file: pageFile, at: 0, part: { bytes: 0, hash: "" } }));
     files[pageFile]!.bytes = writePages(manifest, pageBlobs);

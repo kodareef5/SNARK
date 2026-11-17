@@ -2,7 +2,7 @@
 // serves it, and each client fetches it, so both stand on the same bytes. Little-endian:
 //
 //   0   "SNMP"
-//   4   u16 version 4, u16 reserved
+//   4   u16 version 5, u16 reserved
 //   8   u32 hash        FNV-1a of every byte after it
 //   12  u32 ground      bytes before the STAT section, which is last: all a client needs to draw. The whole file if none.
 //   16  u16 chunksX, u16 chunksZ
@@ -40,8 +40,9 @@
 //         holding water, each a u32 chunk index, ascending, and its squares as u16, row by row from z = 0: the number of
 //         its body counting from 1, or 0 for the sea's.
 //   LAND  what the map adds to the content: u8 count of its landmarks and each a name, whose files a client fetches
-//         (assets/landmarks/<name>.json), then a u32 byte length and that many bytes of UTF-8 JSON, the definitions they
-//         add, compiled after the core's. Before STAT, so a client has them before it says hello.
+//         (assets/landmarks/<name>.json), then f64 x, y, z of its origin and u16 yaw as it was placed; then a u32 byte
+//         length and that many bytes of UTF-8 JSON, the definitions they add, compiled after the core's. Before STAT, so
+//         a client has them before it says hello.
 //   STAT  u16 count and that many content ids, a u32 count n, then columns of n in the map's order, each as byte planes
 //         (every value's low byte, then the next): u16 id; u16 yaw less the piece before's, modulo 65,536; and x, y, z in
 //         1/512 m as zigzagged differences from the piece before's modulo 2^24, in 3 bytes (the first's from 0).
@@ -59,7 +60,7 @@ import { formOf, mix, nodeForms, scatterNodes, type NodeSource } from "./nodes.t
 import type { StructureStore } from "./structures.ts";
 import { MAX_WATER_BODIES, MapWater } from "./water.ts";
 
-export const MAP_VERSION = 4;
+export const MAP_VERSION = 5;
 const MAGIC = 0x504d4e53;
 const HEADER_BYTES = 48;
 /** Where the header says how many bytes come before the statics. */
@@ -296,8 +297,17 @@ export interface MapData {
 
 /** What a map adds to the content: its landmarks, each named by its files, and the definitions they bring. */
 export interface MapContent {
-  readonly landmarks: readonly string[];
+  readonly landmarks: readonly MapLandmark[];
   readonly defs: readonly Def[];
+}
+
+/** A landmark the map places, with its origin and its yaw in 1/65,536 turns exactly as `placeLandmark` was given them. */
+export interface MapLandmark {
+  readonly name: string;
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly yaw: number;
 }
 
 /** A map read from a file, with the hash that names those bytes. */
@@ -341,8 +351,9 @@ function check(m: MapData): void {
     return top;
   };
   if (!/^[\x21-\x7e]{1,64}$/.test(m.id)) fail("its id must be 1 to 64 characters of plain text with no space");
-  const landmarks = m.content?.landmarks ?? [];
+  const landmarks = (m.content?.landmarks ?? []).map((l) => l.name);
   if (landmarks.length > 255 || landmarks.some((n) => !/^[a-z][a-z0-9-]{0,31}$/.test(n)) || new Set(landmarks).size !== landmarks.length) fail("its landmarks are each named once, in lower case, at most 255 of them");
+  if (m.content?.landmarks.some((l) => ![l.x, l.y, l.z].every(Number.isFinite) || !whole(l.yaw, 0, 65535))) fail("a landmark of it is not set down at a place and a yaw");
   if (!whole(chunksX, 1, MAX_CHUNKS_PER_AXIS) || !whole(chunksZ, 1, MAX_CHUNKS_PER_AXIS)) fail(`it is ${chunksX} by ${chunksZ} chunks, and a side is 1 to ${MAX_CHUNKS_PER_AXIS}`);
   if (!(m.stepY > 0 && Number.isFinite(m.stepY) && Number.isFinite(m.minY) && m.seaLevel < Infinity)) fail("its height range or its sea level is not a number");
   const sizeX = chunksX * CHUNK_SIZE;
@@ -663,7 +674,13 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
   if (land && land.landmarks.length + land.defs.length > 0) {
     section("LAND", () => {
       o.u8(land.landmarks.length);
-      for (const name of land.landmarks) o.text(name);
+      for (const l of land.landmarks) {
+        o.text(l.name);
+        o.f64(l.x);
+        o.f64(l.y);
+        o.f64(l.z);
+        o.u16(l.yaw);
+      }
       // Written as ASCII, every other character escaped, which UTF-8 reads as it is.
       const json = JSON.stringify(land.defs).replace(/[\u0080-\uffff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
       o.u32(json.length);
@@ -920,7 +937,7 @@ function read(r: In): Omit<MapFile, "hash"> {
       }
     } else if (tag === "LAND") {
       if (content) throw new Error("map: it has two LAND sections");
-      const landmarks = Array.from({ length: s.u8() }, () => s.text());
+      const landmarks = Array.from({ length: s.u8() }, (): MapLandmark => ({ name: s.text(), x: s.f64(), y: s.f64(), z: s.f64(), yaw: s.u16() }));
       content = { landmarks, defs: JSON.parse(decodeUtf8(s.take(s.u32()))) as Def[] };
     } else if (tag === "WATR") {
       if (water) throw new Error("map: it has two WATR sections");

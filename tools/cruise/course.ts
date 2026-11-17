@@ -1,7 +1,7 @@
 // A separate deep-water cruise port, built around the authored ship's actual gangway landing.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { CRUISE, CRUISE_LAYOUT, cruisePoint, cruiseStatics } from "../../content/landmarks/cruise.ts";
+import { CRUISE, CRUISE_LAYOUT, cruisePoint } from "../../content/landmarks/cruise.ts";
 import { KORU, KORU_LAYOUT } from "../../content/landmarks/koru.ts";
 import { ruinKind } from "../../content/ruins.ts";
 import { BOAT_VEHICLE } from "../../content/vehicles/boat.ts";
@@ -25,7 +25,8 @@ export const CRUISE_COURSE = {
 } as const;
 
 export interface CruisePortPlacement {
-  readonly statics: readonly MapStatic[];
+  /** Where the ship's origin is set down, its yaw a native 65536-unit turn. */
+  readonly vessel: { readonly x: number; readonly y: number; readonly z: number; readonly yaw: number };
   /** The ship-authored shore end of its gangway, in world metres; port pavement meets it exactly. */
   readonly landing: readonly [number, number, number];
 }
@@ -41,7 +42,7 @@ export function cruisePort(placement: CruisePortPlacement): MapData {
   const hf = new Heightfield({ chunksX: 64, chunksZ: 64 }, TERRAIN_CELL, -96, 1 / 128), c = CRUISE_COURSE;
   const [landingX, deck, landingZ] = placement.landing, k = c.koru;
   if (!(landingX > c.vessel.x && landingX < c.quayX && deck > 0 && deck < 32)) throw new Error("Cruise gangway must meet the port side quay above water and below 32 m");
-  const koru = placeLandmark(KORU, k.x, k.y, k.z, k.yaw), statics: MapStatic[] = [];
+  const v = placement.vessel, ship = placeLandmark(CRUISE, v.x, v.y, v.z, v.yaw), koru = placeLandmark(KORU, k.x, k.y, k.z, k.yaw), statics: MapStatic[] = [];
   const palette = defaultPalette(), sand = nearestColour(palette, 171, 159, 134), stone = nearestColour(palette, 170, 167, 154), grass = nearestColour(palette, 109, 128, 95);
   const quayY = (z: number) => 3.75 + (deck - 3.75) * Math.max(0, Math.min(1, (z - 1800) / 100));
   // The real arrival eye must see the waterline over the real quay, not merely fit it into the frustum.
@@ -117,9 +118,9 @@ export function cruisePort(placement: CruisePortPlacement): MapData {
   for (let x = 2167; x < c.quayX + 3; x += 3) floor(x, 3.75, 1755);
   for (const z of [1731, 1746]) pile(2168.1, z, .6);
   // Ordinary port rows keep their order when a landmark adds or removes a cell anchor.
-  statics.push(...placement.statics, ...koru.statics);
+  statics.push(...ship.statics, ...koru.statics);
   const map: MapData = { id: c.id, dims: hf.dims, minY: hf.minY, stepY: hf.stepY, seaLevel: c.water, heights: hf.heights, tint: hf.tint, statics, nodes: [],
-    content: { landmarks: [CRUISE.name, KORU.name], defs: [...CRUISE.defs, ...KORU.defs] },
+    content: { landmarks: [ship.placed, koru.placed], defs: [...CRUISE.defs, ...KORU.defs] },
     vehicles: koru.vehicles.map(vehicle => ({ ...vehicle, y: boatRestY(BOAT_VEHICLE.spec, c.water) })),
     spawns: [{ name: "Cruise terminal", ...c.spawn }] };
   assertCruiseMap(map); return map;
@@ -142,7 +143,7 @@ export function cruiseWorldPoint(local: readonly number[]): readonly [number, nu
 
 export function cruiseCourse(): MapData {
   const p = CRUISE_COURSE.vessel;
-  return cruisePort({ statics: cruiseStatics(p.x, p.y, p.z, p.yaw), landing: cruiseWorldPoint(CRUISE_LAYOUT.docking.shoreLanding) });
+  return cruisePort({ vessel: p, landing: cruiseWorldPoint(CRUISE_LAYOUT.docking.shoreLanding) });
 }
 
 export function cruiseApproach(map = cruiseCourse()): readonly (readonly [number, number, number])[] {

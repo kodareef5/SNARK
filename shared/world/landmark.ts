@@ -6,7 +6,7 @@ import type { Def } from "../content/defs.ts";
 import { STRUCT_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { frameAxes, HALF_SIDE } from "./frame.ts";
-import type { MapStatic, MapVehicle } from "./mapfile.ts";
+import type { MapLandmark, MapStatic, MapVehicle } from "./mapfile.ts";
 
 type Vec3 = readonly [number, number, number];
 
@@ -58,8 +58,11 @@ export function landmarkPoint(x: number, y: number, z: number, yaw: number, at: 
 
 const snap = (v: number): number => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS;
 
-/** Its statics and vehicles with its origin at (x, y, z) and turned by `yaw` in 1/65,536 turns, on the lattice statics stand on. */
-export function placeLandmark(l: Landmark, x: number, y: number, z: number, yaw: number): { statics: MapStatic[]; vehicles: MapVehicle[] } {
+/**
+ * Its statics and vehicles with its origin at (x, y, z) and turned by `yaw` in 1/65,536 turns, on the lattice statics stand
+ * on, and the placement as the map file records it.
+ */
+export function placeLandmark(l: Landmark, x: number, y: number, z: number, yaw: number): { statics: MapStatic[]; vehicles: MapVehicle[]; placed: MapLandmark } {
   const p = [0, 0, 0];
   const statics = l.pieces.map((s): MapStatic => {
     landmarkPoint(x, y, z, yaw, s.at, p);
@@ -69,7 +72,7 @@ export function placeLandmark(l: Landmark, x: number, y: number, z: number, yaw:
     landmarkPoint(x, y, z, yaw, v.at, p);
     return { kind: v.kind, id: v.id, x: p[0]!, z: p[2]!, yaw: (yaw + v.yaw) & 65535, ...(v.condition ? { condition: v.condition } : {}), ...(v.fuel ? { fuel: v.fuel } : {}) };
   });
-  return { statics, vehicles };
+  return { statics, vehicles, placed: { name: l.name, x, y, z, yaw } };
 }
 
 /** Metres over which ground laid to a height eases into the ground round it. */

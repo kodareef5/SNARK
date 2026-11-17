@@ -38,7 +38,7 @@ const faults: string[] = [], counts = new Map<string, number>();
 let localCount = 0, otherCount = 0;
 for (const s of map.statics) {
   const k = key(s); if (wanted.has(k)) wanted.set(k, wanted.get(k)! + 1);
-  for (const name of map.content?.landmarks ?? []) if (s.kind.startsWith(`${name}:`)) counts.set(name, (counts.get(name) ?? 0) + 1);
+  for (const { name } of map.content?.landmarks ?? []) if (s.kind.startsWith(`${name}:`)) counts.set(name, (counts.get(name) ?? 0) + 1);
   // Every collision that can affect this 365 m vessel or its 180 m shore approach lies inside this margin.
   if (Math.hypot(s.x - x, s.z - z) > 500) continue;
   const kind = reg.index.get(s.kind)!;
@@ -47,7 +47,7 @@ for (const s of map.statics) {
 }
 if (structs.count !== localCount || others.count !== otherCount) faults.push("native collision stores lost a local map row");
 for (const [k, count] of wanted) if (count !== 1) faults.push(`expected one landmark placement, got ${count}: ${k}`);
-if (JSON.stringify(map.content?.landmarks) !== JSON.stringify(placed.map(p => p.landmark.name))) faults.push("map LAND names differ from world.json");
+if (JSON.stringify(map.content?.landmarks) !== JSON.stringify(expected.content.landmarks)) faults.push("map LAND placements differ from world.json");
 const crossings = cruiseStatics(x, y, z, yaw).filter(s => obstructed(others, reg.parts, reg.index.get(s.kind)!, s.x, s.y, s.z, s.yaw));
 if (crossings.length) faults.push(`${crossings.length} cruise modules intersect existing city statics under native construction overlap rules`);
 let depthSamples = 0, highestBed = -Infinity, lowestClearance = Infinity;

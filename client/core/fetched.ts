@@ -122,7 +122,7 @@ export async function fetchJson(get: Get, url: string): Promise<unknown> {
  */
 export async function withLandmarks(get: Get, land: MapContent | undefined, core: Registry, manifest: Manifest, boot: Pack): Promise<{ reg: Registry; manifest: Manifest; pack: Pack }> {
   let joined = { manifest, boot };
-  for (const name of land?.landmarks ?? []) {
+  for (const { name } of land?.landmarks ?? []) {
     const m = parseManifest(await fetchText(get, `assets/landmarks/${name}.json`));
     joined = joinLandmark(joined, { manifest: m, boot: parsePack(new Uint8Array(await fetchBytes(get, `assets/landmarks/${m.files[m.boot]!.name}`))) }, "landmarks");
   }

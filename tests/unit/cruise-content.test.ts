@@ -22,9 +22,9 @@ test("cruise prototypes belong to their map once and every transformed instance 
     expect(reg.index.has(`${p.id}_shape`)).toBe(true);
   }
   for (const yaw of [0, 16384, 27183]) {
-    const statics = cruiseStatics(512, 7, 512, yaw), map = { ...flatMap(16), statics, content: { landmarks: [CRUISE.name], defs: CRUISE.defs } };
+    const statics = cruiseStatics(512, 7, 512, yaw), map = { ...flatMap(16), statics, content: { landmarks: [{ name: CRUISE.name, x: 512, y: 7, z: 512, yaw }], defs: CRUISE.defs } };
     const ground = parseMap(writeMap(map), false);
-    expect(ground.content?.landmarks).toEqual(["cruise"]);
+    expect(ground.content?.landmarks).toEqual([{ name: "cruise", x: 512, y: 7, z: 512, yaw }]);
     expect(withContent(core, ground.content!.defs).hash).toBe(reg.hash);
     const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
     placeStatics(map, structs, reg);

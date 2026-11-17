@@ -23,17 +23,17 @@ import { parsePack, type Pack } from "../shared/pack/pack.ts";
 import { soundsHeard } from "../shared/sound/reach.ts";
 import { nodeForms } from "../shared/world/nodes.ts";
 import { gameTextures } from "./art/materials.ts";
-import { ART, LANDMARKS, SOURCE, readPacks } from "./art/source.ts";
-import { defaultPalette } from "../shared/pack/palette.ts";
+import { ART, LANDMARKS, SOURCE } from "./art/source.ts";
+import { farMeshId } from "../shared/pack/far.ts";
 import { BEAM_MESH, MISSING_MESH, WATER_MESH, buildCorePack, importedMeshes } from "./pack/build.ts";
 import { buildTextures, type TextureSource } from "./pack/encode.ts";
+import { landmarkArt, landmarkPack } from "./pack/far.ts";
 import { gameIcons } from "./pack/icons.ts";
 import { partHash } from "./pack/manifest.ts";
 import { orderPack } from "./pack/order.ts";
 import { SOUND_RATES, buildSounds, findSheets, type SoundReport } from "./pack/sound.ts";
 import { bootManifest, splitPack, writePages } from "./pack/split.ts";
 import { storeParts } from "./pack/store.ts";
-import { buildPack } from "./pack/write.ts";
 import { STRESS_CARDS, cardPicture, spoilStress, stressMeshes } from "./pack/stress.ts";
 import { weigh, weighLandmarks } from "./sizes.ts";
 import { buildUiAssets } from "./ui/assets.ts";
@@ -226,8 +226,8 @@ async function buildLandmarks(dist: string, quick: boolean): Promise<number> {
   mkdirSync(out, { recursive: true });
   let bytes = 0;
   for (const name of existsSync(LANDMARKS) ? readdirSync(LANDMARKS).filter((n) => statSync(join(LANDMARKS, n)).isDirectory()).sort() : []) {
-    const art = readPacks(join(LANDMARKS, name));
-    const { files: split, manifest } = splitPack(orderPack(buildPack(art.meshes, defaultPalette(), [], art.rigs)), name);
+    const art = landmarkArt(name);
+    const { files: split, manifest } = splitPack(orderPack(landmarkPack(art)), name);
     const textures = await buildTextures(manifest, await gameTextures(SOURCE, name), name);
     const { files } = await storeParts([...split, ...textures.files], manifest);
     files.forEach((f, i) => {
@@ -238,6 +238,8 @@ async function buildLandmarks(dist: string, quick: boolean): Promise<number> {
     writeFileSync(join(out, `${name}.json`), JSON.stringify(manifest));
     for (const file of [`${name}.json`, manifest.files[manifest.boot]!.name]) writeFileSync(join(out, `${file}.br`), brotli(readFileSync(join(out, file)), quick));
     console.log(`landmark     ${name}: ${manifest.meshes.length} meshes, ${manifest.textures?.length ?? 0} textures, ${files.map((f) => `${f.role} ${f.bytes.length}`).join(", ")} bytes`);
+    const far = manifest.meshes.find((m) => m.id === farMeshId(name));
+    if (far && art.far) console.log(`             ${far.id}: ${art.far.row.pieces.length / 4} pieces, ${far.levels.map((l) => `${l.tris} triangles, ${l.verts} vertices at ${l.error} m`).join("; ")}${art.far.otherwise.length > 0 ? `; drawn otherwise and left out: ${art.far.otherwise.join(", ")}` : ""}`);
   }
   return bytes;
 }

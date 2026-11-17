@@ -14,8 +14,9 @@ import { defaultPalette } from "../../shared/pack/palette.ts";
 import { pictureBytes, topIn, type TextureRole } from "../../shared/pack/texture.ts";
 import { findAssets } from "../art/assets.ts";
 import { materialsOf, mipsOf, pictureFiles, type Material } from "../art/materials.ts";
-import { LANDMARKS, SOURCE, readPacks } from "../art/source.ts";
+import { SOURCE, readPacks } from "../art/source.ts";
 import { buildCorePack, farMesh, grayboxMeshes, withArt } from "../pack/build.ts";
+import { landmarkArt } from "../pack/far.ts";
 import { mannequinMeshes } from "../pack/mannequin.ts";
 import { splitPack } from "../pack/split.ts";
 import { rgbaTexture, writeTextureFile } from "../pack/texture.ts";
@@ -135,11 +136,14 @@ export function splitWithTextures(whole: Uint8Array, texture: (t: ManifestTextur
  */
 export async function gameFiles(source: string = SOURCE, cache: string | null = SNAP_CACHE, extra: SourceMesh[] = [], landmarks: readonly string[] = []): Promise<GameFiles> {
   const named = await namedTextures(source);
-  // A map's landmarks are drawn from the core's files here, their meshes after the core's as a client joins them.
-  const theirs = landmarks.flatMap((name) => readPacks(join(LANDMARKS, name)).meshes);
-  return splitWithTextures(corePack(source, [...extra, ...theirs]), (t) => {
+  // A map's landmarks are drawn from the core's files here, their meshes among the core's and their far meshes' rows listed.
+  const theirs = landmarks.map((name) => landmarkArt(name));
+  const files = splitWithTextures(corePack(source, [...extra, ...theirs.flatMap((art) => art.meshes)]), (t) => {
     const n = named.get(t.id);
     if (!n) throw new Error(`texture ${t.id} is named by a mesh, and no asset under ${source} has its pictures`);
     return rgbaOf(n.material, t.role, t.top, cache);
   });
+  const rows = theirs.flatMap((art) => (art.far ? [art.far.row] : []));
+  if (rows.length > 0) files.manifest.landmarks = rows;
+  return files;
 }

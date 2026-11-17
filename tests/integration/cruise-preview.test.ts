@@ -19,7 +19,7 @@ test("the cruise port launch is usable from its real dry berth and the independe
   let h: Harness | null = null;
   try {
     h = new Harness({}, 629, 60, options);
-    expect(map.content?.landmarks).toEqual(["cruise", "koru"]);
+    expect(map.content?.landmarks).toEqual([{ name: "cruise", ...CRUISE_COURSE.vessel }, { name: "koru", ...CRUISE_COURSE.koru }]);
     expect(h.reg.index.has(CRUISE_LAYOUT.doors[0]!.closedPrototype)).toBe(true);
     expect(assertCruisePlaced(map, h.world.structs, h.reg).length).toBe(map.statics.length);
     const tenderOrigin = `${map.id}/koru/tender`;

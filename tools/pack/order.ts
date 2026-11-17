@@ -3,6 +3,7 @@
 // rounds exactly, so the order is the same on any machine.
 
 import { CLIP_ROOT_BYTES, MATERIAL_CUTOUT, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodSkin, lodSurface, lodVertices, parsePack, readIndices, type Pack, type PackLod } from "../../shared/pack/pack.ts";
+import { farMeshId } from "../../shared/pack/far.ts";
 import { PackBlob } from "./write.ts";
 
 /** The cache Forsyth's scores are made for, and the most triangles a vertex's valence is scored for. */
@@ -187,8 +188,11 @@ function orderRuns(pack: Pack, lod: PackLod, cutout: (material: number) => boole
   return { indices, vertices: permuted(vertices, from, VERTEX_BYTES), surface: permuted(lodSurface(pack, lod)!, from, SURFACE_BYTES), skin: skin && permuted(skin, from, SKIN_BYTES) };
 }
 
-/** A flat level: vertices of the same bytes made one (with no normals, those a source split for its faces), then ordered as one run. */
-function weldFlat(pack: Pack, lod: PackLod): Level {
+/**
+ * A flat level: vertices of the same bytes made one (with no normals, those a source split for its faces), then ordered
+ * as one run, or inside each of `runs`, counts of indices one after another: a landmark far mesh's pieces.
+ */
+function weldFlat(pack: Pack, lod: PackLod, runs: readonly number[] = [lod.indexCount]): Level {
   const vertices = lodVertices(pack, lod).slice();
   const first = new Map<bigint, number>();
   const kept: number[] = [];
@@ -198,7 +202,7 @@ function weldFlat(pack: Pack, lod: PackLod): Level {
     return k;
   });
   const indices = readIndices(pack, lod).map((v) => to[v]!);
-  cacheOrder(indices, 0, indices.length, kept.length);
+  for (let k = 0, first = 0; k < runs.length; first += runs[k++]!) cacheOrder(indices, first, runs[k]!, kept.length);
   const from = fetchOrder(indices, kept.length);
   return { indices, vertices: permuted(vertices, Array.from(from, (k) => kept[k]!), VERTEX_BYTES), surface: null, skin: null };
 }
@@ -211,12 +215,13 @@ export function orderPack(file: Uint8Array): Uint8Array {
   const pack = parsePack(file);
   const { header, blob } = pack;
   const cutout = (m: number): boolean => (header.materials![m]!.flags & MATERIAL_CUTOUT) !== 0;
+  const far = new Map((header.landmarks ?? []).map((row) => [farMeshId(row.name), row.counts]));
   const out = new PackBlob();
   header.paletteOffset = out.append(pack.palette);
   if (header.details) header.details.atlas.offset = out.append(detailsAtlas(pack));
   for (const mesh of header.meshes) {
-    for (const lod of mesh.lods) {
-      const level = lod.sections ? orderRuns(pack, lod, cutout) : weldFlat(pack, lod);
+    for (const [l, lod] of mesh.lods.entries()) {
+      const level = lod.sections ? orderRuns(pack, lod, cutout) : weldFlat(pack, lod, far.get(mesh.id)?.[l]);
       lod.vertexCount = level.vertices.length / VERTEX_BYTES;
       lod.indexBytes = lod.vertexCount > 65535 ? 4 : 2;
       const idx = new Uint8Array(level.indices.length * lod.indexBytes);

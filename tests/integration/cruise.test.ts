@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { RemoteSample } from "../../client/core/session.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { CRUISE_COLLISION_INSTANCES, CRUISE_COLLISION_PROTOTYPES, CRUISE_LAYOUT, cruisePoint, cruiseStatics } from "../../content/landmarks/cruise.ts";
+import { CRUISE_COLLISION_INSTANCES, CRUISE_COLLISION_PROTOTYPES, CRUISE_LAYOUT, cruisePoint } from "../../content/landmarks/cruise.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { compileContent, withContent } from "../../shared/content/registry.ts";
 import { RESULT_OBSTRUCTED } from "../../shared/net/protocol.ts";
@@ -110,7 +110,7 @@ test("a cruise at an arbitrary native yaw retains walkable stairs and independen
   const placement = { ...CRUISE_COURSE.vessel, yaw: 9123 };
   const point = (p: readonly number[]) => cruisePoint(placement.x, placement.y, placement.z, placement.yaw, p);
   const landing = point(CRUISE_LAYOUT.docking.shoreLanding);
-  const rotated = cruisePort({ statics: cruiseStatics(placement.x, placement.y, placement.z, placement.yaw), landing });
+  const rotated = cruisePort({ vessel: placement, landing });
   const h = new Harness({}, 77, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(rotated) }, core);
   try {
     const refs = cruiseRefs(rotated, h.world.structs, reg, placement), s = h.join("rotated cruise guest"); h.run(900);

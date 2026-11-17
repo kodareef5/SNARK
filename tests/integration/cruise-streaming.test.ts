@@ -55,7 +55,7 @@ test("cruise visual and physical cells keep the same owner after arbitrary nativ
 // Collision-only modules do not own draws. The map's cell anchors own near meshes; the complete
 // cell-clipped collision/look rows supply the far proxy after their shared chunk leaves interest.
 artTest("native cruise cell anchors retain one render owner from near through 2 km and back", () => {
-  const map = cruiseCourse(), pack = cruisePack(map.content!.landmarks), origin = CRUISE_COURSE.vessel;
+  const map = cruiseCourse(), pack = cruisePack(map.content!.landmarks.map(l => l.name)), origin = CRUISE_COURSE.vessel;
   const rows = cruiseStatics(origin.x, origin.y, origin.z, origin.yaw);
   const chunks = [...new Set(rows.map(row => chunkAt(map.dims, row.x, row.z)))];
   const h = new Harness({}, 629, 60, { dev: true, map: writeMap(map), clips: pack.clips, rigs: pack.header.rigs });

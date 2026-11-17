@@ -13,7 +13,7 @@ import { boxMesh, buildPack } from "../../tools/pack/write.ts";
 import { Assets } from "../../client/core/assets/assets.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
 import { FakeNet } from "../fixtures/assetnet.ts";
-import { koruMap, koruPackBytes } from "../fixtures/koru.ts";
+import { KORU_AT, koruMap, koruPackBytes } from "../fixtures/koru.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -21,7 +21,7 @@ import { coreRegistry } from "../fixtures/world.ts";
 test("a map carries its landmarks' names and definitions before its statics, so a client has them from its ground alone", () => {
   const bytes = writeMap(koruMap());
   const ground = parseMap(bytes.subarray(0, groundBytes(bytes)), false);
-  expect(ground.content!.landmarks).toEqual(["koru"]);
+  expect(ground.content!.landmarks).toEqual([{ name: "koru", ...KORU_AT }]);
   expect(ground.content!.defs).toEqual(JSON.parse(JSON.stringify(KORU.defs)));
   expect(ground.statics.x.length).toBe(0);
   expect(parseMap(bytes).statics.x.length).toBe(KORU.pieces.length);
@@ -78,7 +78,7 @@ test("a client on a map with a landmark fetches its manifest and boot file, and 
   const reg = compileContent([]).registry!;
   const shape = { type: "shape", id: "koru:a_shape", role: "thing", boxes: [{ at: [0, 0.5, 0], half: [0.5, 0.5, 0.5] }] } as const;
   const piece = { type: "structure", class: "static", id: "koru:a", mesh: "koru:cell_00", shape: shape.id, half: [0.5, 1, 0.5], color: 3, hp: 10 } as const;
-  const got = await withLandmarks(get, { landmarks: ["koru"], defs: [shape, piece] }, reg, core.manifest, parsePack(core.files[core.manifest.boot]!.bytes));
+  const got = await withLandmarks(get, { landmarks: [{ name: "koru", x: 0, y: 0, z: 0, yaw: 0 }], defs: [shape, piece] }, reg, core.manifest, parsePack(core.files[core.manifest.boot]!.bytes));
   expect(asked).toEqual(["assets/landmarks/koru.json", `assets/landmarks/${more.files[more.manifest.boot]!.name}`]);
   expect([got.reg.index.has("koru:a"), got.manifest.meshes.map((m) => m.id), got.pack.meshIndex.get("koru:cell_00")]).toEqual([true, ["core:a", "koru:cell_00"], 1]);
   // A map with none asks for nothing and keeps the core's as they are.
