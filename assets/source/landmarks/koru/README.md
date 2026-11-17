@@ -36,23 +36,25 @@ until the others have come, so the yacht adds no more than its old coarsest leve
 |---|---|---|
 | 0 | with the atlas | everything: rooms, stairs, furniture, plaques, ports with brass bores, rails with posts |
 | 1 | with the atlas | what is seen from outside: hull, decks, deckhouse walls with flush windows and shut doorways, open decks and their furniture, stairs whose wells open on an open deck, rig |
-| 2 | flat | level 1 without wires or rails, ports as octagons, furniture as blocks, flights as ramps |
-| 3 | flat | level 2 with square ports and no cove line or cap rail |
+| 2 | flat | level 1 without wires, rails or the cove line, ports as octagons, furniture as blocks, flights as ramps |
+| 3 | flat | level 2 with square ports, no face to the cap rail, and masts no thinner than 80 cm |
+| 4 | flat | a stand-in: per deck a deckhouse block and a deck slab, the hull without ports, masts, booms and bowsprit |
 
 The rules the levels keep, so nothing appears, goes or changes shade at a step:
 
 - Every stay, shroud and rail is drawn on levels 0 and 1 and none on 2 and 3: the wires are there while the yacht is
   drawn with its atlas and gone past it, where they are a third of a pixel and less. The stays and shrouds are dark
   against the sky, as photographed; the rails are bright steel.
-- Masts, booms with their sail covers, the bowsprit, spreaders, radomes, the furled headsails and the flag are on every
-  level. On level 3 no length of mast is under 80 cm across, so on a card with four samples a pixel it is a line to
-  3 km and not dashes.
+- Masts, booms with their sail covers, the bowsprit, spreaders, radomes and the flag are on every level, and the struck
+  headsails, which are sail parts, are drawn as far as the far mesh. On level 3 no length of mast is under 80 cm across,
+  so on a card with four samples a pixel it is a line to 3 km and not dashes.
 - The deckhouse's windows are their own faces on every level, and the hull's ports and its 25 cm red boot stripe too.
 - A flat face is drawn in its finish's `far` colour: the palette colour whose plain lit look (fully rough, no
   reflection, as a landmark's flat draw is lit) is nearest the finish's lit look with its atlas, at 14:00 on the
   course map, by the least sum of squared OKLab distances over side faces seen square on and from 45 degrees from both
   sides, or upward faces from 5 and 30 degrees up. A glossy finish mirrors the sky and no flat colour can follow it on
-  both sides at once: the navy hull is 5 levels too dark on its shaded side and 10 too light on its sunlit side.
+  both sides at once: flat, the navy hull is about 8 levels of 255 darker than with its atlas on its shaded side and 10
+  lighter on its sunlit side, which is the step where a near cell with the atlas meets the far mesh.
 
 The hull is straight between the layout's stations and shaded smooth across them. Below the sheer the art shears it
 back from the plumb stem and stern the layout gives, into a raked clipper bow (5 m at the waterline) and an overhanging
@@ -66,5 +68,7 @@ in-boom furling sail does, and a headsail rolls on its stay. The sail parts are 
 
 `ref/pictures/` holds the accepted pictures, drawn by the software rasterizer on medium at its Miami berth
 (`bun tools/map/cityviews.ts var/maps/miami.snmap <views.json> <folder>`, `--moved 1` for the sails set): from the quay,
-on the sun deck, from 1 km off and 150 m up, and with its sails set; and `ref/pictures/distances.png`, the yacht at
-each distance where a level or an owner takes over, on medium and on high, beside every cell drawn at level 0.
+on the sun deck, from 1 km off and 150 m up, and with its sails set. `distances.png` and `distances-sails.png` are the
+yacht on the course map at each distance where a level or an owner takes over, on medium and on high, beside every cell
+drawn at level 0: the software rasterizer's frame drawn four times, each shifted to one of a card's four samples a
+pixel, and averaged, as a browser's antialiasing shows it.
