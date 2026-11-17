@@ -144,10 +144,31 @@ export class ReliefTiles implements TileSource {
   /** The finest tile asked for and not had since the last step, or -1. */
   private wanted = -1;
   private uses = 0;
+  /** The heightfield's changes taken in, and the tiles kept that show ground changed since they were painted. */
+  private seen: number;
+  private readonly stale = new Set<number>();
 
   constructor(hf: Heightfield, palette: Uint8Array) {
     this.hf = hf;
     this.palette = palette;
+    this.seen = hf.changes.length;
+  }
+
+  /** Marks each tile kept that shows ground changed since it was painted. */
+  private take(): void {
+    const { hf, kept } = this;
+    const c = hf.changes;
+    const whole = Math.max(hf.sizeX, hf.sizeZ);
+    for (; this.seen < c.length; this.seen += 4) {
+      const [x0, z0, x1, z1] = [c[this.seen]! * CHUNK_SIZE, c[this.seen + 1]! * CHUNK_SIZE, c[this.seen + 2]! * CHUNK_SIZE, c[this.seen + 3]! * CHUNK_SIZE];
+      for (const key of kept.keys()) {
+        const side = whole / (1 << (key >> 16));
+        // A tile's pixels read the ground up to a pixel past their own.
+        const [e, n] = [(hf.sizeX + whole) / 2 - (key & 255) * side, (hf.sizeZ + whole) / 2 - ((key >> 8) & 255) * side];
+        const margin = (2 * side) / RELIEF_SIZE + hf.cell;
+        if (e - side - margin < x1 && e + margin > x0 && n - side - margin < z1 && n + margin > z0) this.stale.add(key);
+      }
+    }
   }
 
   /** How many tiles it holds. */
@@ -166,20 +187,28 @@ export class ReliefTiles implements TileSource {
     return null;
   }
 
+  /** Paints the tile last asked for that it lacks, or else one kept that shows ground changed since, in its place. */
   step(): void {
-    const key = this.wanted;
-    if (key < 0) return;
-    this.wanted = -1;
+    this.take();
+    let key = this.wanted;
     let rgba: Uint32Array | null = null;
-    if (this.kept.size >= RELIEF_KEPT) {
+    if (key < 0) {
+      key = this.stale.values().next().value ?? -1;
+      if (key < 0) return;
+      rgba = this.kept.get(key)!.tile.rgba;
+    }
+    this.wanted = -1;
+    this.stale.delete(key);
+    if (!rgba && this.kept.size >= RELIEF_KEPT) {
       let oldest = -1;
       for (const [k, e] of this.kept) if (oldest < 0 || e.used < this.kept.get(oldest)!.used) oldest = k;
       rgba = this.kept.get(oldest)!.tile.rgba;
       this.kept.delete(oldest);
+      this.stale.delete(oldest);
     }
     rgba ??= new Uint32Array(RELIEF_SIZE * RELIEF_SIZE);
     paintRelief(this.hf, this.palette, key >> 16, key & 255, (key >> 8) & 255, RELIEF_SIZE, rgba);
-    this.kept.set(key, { tile: { size: RELIEF_SIZE, rgba }, used: ++this.uses });
+    this.kept.set(key, { tile: { size: RELIEF_SIZE, rgba }, used: this.kept.get(key)?.used ?? ++this.uses });
     this.version++;
   }
 }

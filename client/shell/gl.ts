@@ -396,6 +396,8 @@ export class GlRenderer {
       gl.bindTexture(gl.TEXTURE_2D, copy);
       gl.texStorage2D(gl.TEXTURE_2D, 32 - Math.clz32(u.top), internal, u.top, u.top);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      // Read for the angle it is seen at, as far as the frame's tier asks and the card offers; but the world's finish, which picks its own level.
+      if (this.warmed!.anisotropy > 1 && gl.getExtension("EXT_texture_filter_anisotropic") && !MAP_ROLES.some((r) => this.worldMaterial && textureOf(this.worldMaterial, r) === u.slot)) gl.texParameterf(gl.TEXTURE_2D, 0x84fe, Math.min(this.warmed!.anisotropy, gl.getParameter(0x84ff) as number));
     } else if (copy) gl.bindTexture(gl.TEXTURE_2D, copy);
     else return;
     // The picture `size` across is as many halvings below the top as `size` is below `top`.

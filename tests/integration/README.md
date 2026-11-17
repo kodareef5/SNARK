@@ -7,6 +7,7 @@
 | `sessions.test.ts` | Spectators, lingering bodies, device keys, the console and its cheats |
 | `faults.test.ts`, `hostile.slow.test.ts` | A command whose handler throws: its player put out and refused, the world going on or stopping by the ledger; a hostile client that can do what a survivor can, across fresh worlds (slow tier) |
 | `movement.test.ts` | Swimming, stamina, and movement modifiers, predicted |
+| `held.test.ts` | Prediction only on ground the client holds as the map's own: a client holding only its body's sector, every other sample poisoned, predicts the body and its car as one holding the whole map, and the seeded simulation hashes the same; one whose body's sector has not come draws it from the snapshots and predicts again once it comes |
 | `persistence.test.ts` | Restart round trip; removed content; commit callbacks; three process kills with conservation |
 | `save-buffs.test.ts` | Buffs across a restart: a fire burns for what was left of it, a dose wears off, a stun is shown again; a save from before buffs were saved |
 | `maps.test.ts` | A map made in the test run by a server, its head and parts served by their names from memory or from its build's folder, and walked on; where its definition starts creatures; a save refused on another map; the proving ground from its file equal to the one its functions build |

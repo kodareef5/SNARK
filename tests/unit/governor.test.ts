@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
+import { TIERS, canvasRatio, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { Governor, JOIN_MS, PHONE_MS, TARGET_MS, ladder, middleMean, workMs } from "../../client/core/governor.ts";
 import { HudModel } from "../../client/core/hud.ts";
 import { levels, replay, sceneOf } from "../../tools/bench/governor.ts";
@@ -32,6 +32,18 @@ test("a tier's levels are its steps that change something, levels and leaves fir
   }
   // The same tier and screen give the same copies, so the renderer's programs are made once.
   expect(ladder(tierOf("high"), 3)[3]!.tier).toBe(ladder(tierOf("high"), 3)[3]!.tier);
+});
+
+test("ultra gives back the pixels it draws past the screen's own first among the pixel steps, and only on a screen where it draws them", () => {
+  const own = "no more pixels than the screen's own";
+  const names = (tier: string, dpr: number) => ladder(tierOf(tier), dpr).map((l) => l.name);
+  const after = ["small details: half the pool, of each burst and of the fill", "no sun shadows"];
+  expect(names("ultra", 1).slice(-4)).toEqual(["bodies a level coarser", own, ...after]);
+  expect(names("ultra", 1.5).slice(-6)).toEqual(["bodies a level coarser", own, "85% of the pixels a side", "70% of the pixels a side", ...after]);
+  for (const t of TIERS) for (const dpr of [1, 1.5, 2, 3]) expect(names(t.name, dpr).includes(own)).toBe(t.name === "ultra" && dpr < 2);
+  // There, and at each pixel step after it, a 1440p window draws the screen's own pixels, then fewer.
+  const ratios = (dpr: number) => ladder(tierOf("ultra"), dpr).map((l) => canvasRatio(l.tier, dpr, 2560, 1440));
+  expect([ratios(1)[0], ratios(1).at(-3), ratios(1.5)[0], ...ratios(1.5).slice(-5, -2)]).toEqual([2, 1, 2, 1.5, 1.27, 1.05]);
 });
 
 test("a frame's work counts what it casts into the sun's maps beside what it draws, at the iPhone's costs", () => {

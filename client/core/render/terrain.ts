@@ -189,6 +189,10 @@ export class TerrainLod {
   private fillI = 0;
   private fillJ = 0;
   private row = 0;
+  /** The drawn window holds samples that have changed since, and is filled again round its corner. */
+  private stale = false;
+  /** The heightfield's changes taken in. */
+  private seen: number;
 
   constructor(hf: Heightfield) {
     this.hf = hf;
@@ -198,50 +202,78 @@ export class TerrainLod {
     let levels = 1;
     while (1 << (levels - 1) < Math.max(cx, cz)) levels++;
     this.levels = levels;
-
-    // Height range per node, finest level first.
-    const per = Math.round(CHUNK_SIZE / hf.cell);
     for (let level = 0; level < levels; level++) {
       const w = Math.ceil(cx / (1 << level));
       const d = Math.ceil(cz / (1 << level));
-      const lo = new Float32Array(w * d).fill(Infinity);
-      const hi = new Float32Array(w * d).fill(-Infinity);
-      if (level === 0) {
-        for (let tz = 0; tz < d; tz++) {
-          for (let tx = 0; tx < w; tx++) {
-            let a = Infinity;
-            let b = -Infinity;
-            for (let j = tz * per; j <= (tz + 1) * per; j++) {
-              for (let i = tx * per; i <= (tx + 1) * per; i++) {
-                const y = hf.sample(i, j);
-                if (y < a) a = y;
-                if (y > b) b = y;
-              }
-            }
-            lo[tz * w + tx] = a;
-            hi[tz * w + tx] = b;
+      this.width.push(w);
+      this.minY.push(new Float32Array(w * d));
+      this.maxY.push(new Float32Array(w * d));
+    }
+    this.measure(0, 0, cx, cz);
+    this.seen = hf.changes.length;
+  }
+
+  /** Height range per node over chunks cx0, cz0 up to cx1, cz1, finest level first, and of every node above them, from the samples as they are. */
+  private measure(cx0: number, cz0: number, cx1: number, cz1: number): void {
+    const hf = this.hf;
+    const per = Math.round(CHUNK_SIZE / hf.cell);
+    const w0 = this.width[0]!, lo0 = this.minY[0]!, hi0 = this.maxY[0]!;
+    for (let tz = cz0; tz < cz1; tz++) {
+      for (let tx = cx0; tx < cx1; tx++) {
+        let a = Infinity;
+        let b = -Infinity;
+        for (let j = tz * per; j <= (tz + 1) * per; j++) {
+          for (let i = tx * per; i <= (tx + 1) * per; i++) {
+            const y = hf.sample(i, j);
+            if (y < a) a = y;
+            if (y > b) b = y;
           }
         }
-      } else {
-        const pw = this.width[level - 1]!;
-        const plo = this.minY[level - 1]!;
-        const phi = this.maxY[level - 1]!;
-        const pd = plo.length / pw;
-        for (let tz = 0; tz < d; tz++) {
-          for (let tx = 0; tx < w; tx++) {
-            for (let k = 0; k < 4; k++) {
-              const px = tx * 2 + (k & 1);
-              const pz = tz * 2 + (k >> 1);
-              if (px >= pw || pz >= pd) continue;
-              lo[tz * w + tx] = Math.min(lo[tz * w + tx]!, plo[pz * pw + px]!);
-              hi[tz * w + tx] = Math.max(hi[tz * w + tx]!, phi[pz * pw + px]!);
-            }
+        lo0[tz * w0 + tx] = a;
+        hi0[tz * w0 + tx] = b;
+      }
+    }
+    for (let level = 1; level < this.levels; level++) {
+      cx0 >>= 1;
+      cz0 >>= 1;
+      cx1 = (cx1 + 1) >> 1;
+      cz1 = (cz1 + 1) >> 1;
+      const w = this.width[level]!, lo = this.minY[level]!, hi = this.maxY[level]!;
+      const pw = this.width[level - 1]!, plo = this.minY[level - 1]!, phi = this.maxY[level - 1]!;
+      const pd = plo.length / pw;
+      for (let tz = cz0; tz < cz1; tz++) {
+        for (let tx = cx0; tx < cx1; tx++) {
+          let a = Infinity;
+          let b = -Infinity;
+          for (let k = 0; k < 4; k++) {
+            const px = tx * 2 + (k & 1);
+            const pz = tz * 2 + (k >> 1);
+            if (px >= pw || pz >= pd) continue;
+            a = Math.min(a, plo[pz * pw + px]!);
+            b = Math.max(b, phi[pz * pw + px]!);
           }
+          lo[tz * w + tx] = a;
+          hi[tz * w + tx] = b;
         }
       }
-      this.width.push(w);
-      this.minY.push(lo);
-      this.maxY.push(hi);
+    }
+  }
+
+  /**
+   * Takes in the samples that changed since the last frame: their chunks' height ranges are measured again, and a window
+   * that holds them is filled again, from the first of its rows they change where it is being filled.
+   */
+  private take(): void {
+    const hf = this.hf, c = hf.changes;
+    const per = Math.round(CHUNK_SIZE / hf.cell);
+    const w = this.size.width[SOURCE_WINDOW]!, h = this.size.height[SOURCE_WINDOW]!;
+    for (; this.seen < c.length; this.seen += 4) {
+      const cx0 = c[this.seen]!, cz0 = c[this.seen + 1]!, cx1 = c[this.seen + 2]!, cz1 = c[this.seen + 3]!;
+      this.measure(cx0, cz0, cx1, cz1);
+      const i0 = cx0 * per, j0 = cz0 * per, i1 = cx1 * per, j1 = cz1 * per;
+      const meets = (i: number, j: number, rows: number): boolean => i0 < i + w && i1 >= i && j0 < j + rows && j1 >= j;
+      if (this.drawn >= 0 && meets(this.drawnI, this.drawnJ, h)) this.stale = true;
+      if (this.fill >= 0 && meets(this.fillI, this.fillJ, this.row)) this.row = Math.max(0, j0 - this.fillJ);
     }
   }
 
@@ -255,6 +287,7 @@ export class TerrainLod {
    * wanted. With `casts`, each tile is marked with the shadow cascades it casts into.
    */
   select(cam: Camera, packet: FramePacket, viewDistance: number, budget?: GroundBudget, casts?: CastTest): void {
+    this.take();
     this.follow(cam, packet, budget);
     this.coarser = 0;
     this.walk(cam, packet, viewDistance, casts ?? null, false);
@@ -369,23 +402,31 @@ export class TerrainLod {
   }
 
   /**
-   * Keeps a window round the camera. Once the camera is WINDOW_MOVE from the middle of the one drawn, the other copy is
-   * filled round it, rows a frame within the frame's upload allowance, and drawn from the frame its last rows go. The
-   * first is filled whole: until a window is in, nothing finer than the whole map's pair is drawn.
+   * Keeps a window round the camera. Once the camera is WINDOW_MOVE from the middle of the one drawn, or the samples it
+   * holds have changed, the other copy is filled round it, rows a frame within the frame's upload allowance, and drawn
+   * from the frame its last rows go. The first is filled whole: until a window is in, nothing finer than the whole map's
+   * pair is drawn.
    */
   private follow(cam: Camera, p: FramePacket, budget?: GroundBudget): void {
     const hf = this.hf;
     const w = this.size.width[SOURCE_WINDOW]!, h = this.size.height[SOURCE_WINDOW]!;
     const corner = (at: number, n: number, side: number): number => Math.max(0, Math.min(n - side, Math.round((at / hf.cell - (side - 1) / 2) / SNAP) * SNAP));
-    const i = corner(cam.x, hf.nx, w), j = corner(cam.z, hf.nz, h);
+    let i = corner(cam.x, hf.nx, w), j = corner(cam.z, hf.nz, h);
     const off = Math.max(Math.abs(cam.x / hf.cell - this.drawnI - (w - 1) / 2), Math.abs(cam.z / hf.cell - this.drawnJ - (h - 1) / 2)) * hf.cell;
-    const wanted = this.drawn < 0 || (off >= WINDOW_MOVE && (i !== this.drawnI || j !== this.drawnJ));
-    if (wanted && (this.fill < 0 || i !== this.fillI || j !== this.fillJ)) {
+    const moved = this.drawn < 0 || (off >= WINDOW_MOVE && (i !== this.drawnI || j !== this.drawnJ));
+    // A window filling holds the samples as they are, and a stale one with the camera still is filled again where it is.
+    if (this.fill >= 0) this.stale = false;
+    if (!moved && this.stale) {
+      i = this.drawnI;
+      j = this.drawnJ;
+    }
+    if ((moved || this.stale) && (this.fill < 0 || i !== this.fillI || j !== this.fillJ)) {
       if (this.drawn < 0) budget?.reserve("terrain", this.size.bytes);
       this.fill = this.drawn < 0 ? 0 : 1 - this.drawn;
       this.fillI = i;
       this.fillJ = j;
       this.row = 0;
+      this.stale = false;
     }
     const g = p.groundWindow;
     g[3] = -1;

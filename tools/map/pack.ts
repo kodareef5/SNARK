@@ -16,15 +16,16 @@ export const LEVELS = { everyday: { brotli: 9, gzip: 6 }, release: { brotli: 11,
 
 /**
  * Brotli bytes a part may be, by its kind: there to catch a mistake, with room over the most the cities measure (release
- * builds of 2026-11-17: Miami's head 12 KB and its landmarks' definitions 1.29 MB; an overview 0.56 MB, a sector's ground
- * 220 KB and its statics 220 KB, Los Angeles's). The budgets hold a release build's copies. An everyday build's are 16 to
- * 20% larger and are held to the same, so a map that passes one passes as a release.
+ * builds of 2026-11-17 at version 8: a head 22 KB and Miami's landmarks' definitions 1.29 MB; an overview 0.59 MB, a
+ * sector's ground 220 KB and its statics 220 KB, and an overview's tops 393 KB, Los Angeles's). The budgets hold a release
+ * build's copies. An everyday build's are 16 to 20% larger and are held to the same, so a map that passes one passes as a
+ * release. The tops are not waited for and count in no first frame.
  */
-export const PART_BUDGETS: Readonly<Record<PartKind | "head", number>> = { head: 1 << 20, land: 4 << 20, overview: 2 << 20, ground: 1 << 20, statics: 1 << 20 };
+export const PART_BUDGETS: Readonly<Record<PartKind | "head", number>> = { head: 1 << 20, land: 4 << 20, overview: 2 << 20, ground: 1 << 20, statics: 1 << 20, tops: 1 << 20 };
 /**
  * Brotli bytes of the heaviest first frame on a map: its head, its landmarks' definitions, its heaviest overview, and the
  * ground and statics of the four sectors meeting at the heaviest corner. A player waits for no more wherever it stands once
- * a client fetches only what it is near: 2.70 MB on Miami and 2.01 on Los Angeles (1.1 and 0.8 s at 20 Mbit/s, the phone
+ * a client fetches only what it is near: 2.71 MB on Miami and 2.05 on Los Angeles (1.1 and 0.8 s at 20 Mbit/s, the phone
  * link the asset bench takes).
  */
 export const FIRST_FRAME_BUDGET = 8 << 20;
@@ -103,7 +104,7 @@ const kb = (bytes: number): string => (bytes / 1e3).toFixed(0);
 /** What a client fetches of a map, in lines: its parts by kind (how many, the median and the most, all of them) and its heaviest first frame. */
 export function partsTable(packed: Packed): string[] {
   const lines = [`on the wire, Brotli and gzip${packed.release ? "" : " (an everyday build's)"}: kind, count, median and most KB, all MB`];
-  for (const kind of ["head", "land", "overview", "ground", "statics"] as const) {
+  for (const kind of ["head", "land", "overview", "ground", "statics", "tops"] as const) {
     const of = packed.parts.filter((p) => p.kind === kind);
     if (of.length === 0) continue;
     const cell = (encoding: "br" | "gz"): string => {

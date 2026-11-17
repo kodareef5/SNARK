@@ -36,7 +36,15 @@ these modules.
 `statics.ts` is the seam. A `StaticLayer.make(site)` returns kind, centre and yaw
 for each box. The site exposes footprints, district data, ground samples and
 plant clearing masks. The ground builder leaves the footprints bare when
-`world.heaps` is false. Resource nodes are placed after all static layers.
+`world.heaps` is false. Resource nodes are placed after all static layers:
+whether each slot's node stands, and as what, is decided once on the finished
+ground (`resolveNodes`), then the growth takes out what would stand in a
+structure's, a route's or a canopy's way, and the file says both; `stats.json`
+counts the slots the ground took (`nodeSlotsTaken`). The far feed's cells of
+every chunk are baked from the statics into the overviews' tops (`mapTops`).
+A ruin's ground colour is drawn from its footprint's id and the statics'
+kinds are numbered in the order of their ids, so a footprint added or taken
+away changes only the parts near it.
 
 ## Lakes above the sea
 

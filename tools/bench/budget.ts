@@ -16,7 +16,7 @@ import { AnimState } from "../../shared/anim/pose.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import { ACT_NONE, ACT_SWING } from "../../shared/sim/weapon.ts";
-import { mapHeightfield, mapNodes, parseMap, writeMap } from "../../shared/world/mapfile.ts";
+import { mapHeightfield, mapNodes, parseMap, resolveNodes, writeMap } from "../../shared/world/mapfile.ts";
 import { NodeField } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { corePack } from "../../tests/fixtures/pack.ts";
@@ -83,7 +83,7 @@ export function count(scene: Scene, p: FramePacket): Counted {
 export function wood(spot: readonly number[]): { scene: Scene; cam: Camera; ground: (x: number, z: number) => number } {
   const reg = coreRegistry();
   const hills = benchHills();
-  const map = parseMap(writeMap({ id: "bench:budget", dims: hills.dims, minY: hills.minY, stepY: hills.stepY, seaLevel: -Infinity, heights: hills.heights, tint: hills.tint.fill(12), statics: [], nodes: [terrainWood(hills.dims)], spawns: [{ name: "Middle", x: 4096, z: 4096, yaw: 0 }] }));
+  const map = parseMap(writeMap(resolveNodes({ id: "bench:budget", dims: hills.dims, minY: hills.minY, stepY: hills.stepY, seaLevel: -Infinity, heights: hills.heights, tint: hills.tint.fill(12), statics: [], nodes: [terrainWood(hills.dims)], spawns: [{ name: "Middle", x: 4096, z: 4096, yaw: 0 }] }, reg)));
   const hf = mapHeightfield(map);
   const source = mapNodes(map, hf, reg)!;
   const tier = tierOf("medium");

@@ -5,10 +5,11 @@ import { parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { WorkerPort } from "../assets/port.ts";
 import { WorkerCityMaker } from "../city/maker.ts";
-import { DEFAULT_TIER, tierOf } from "../core/assets/tiers.ts";
-import { mapHeightfield, mapNodes } from "../../shared/world/mapfile.ts";
+import { DEFAULT_TIER, canvasRatio, tierOf } from "../core/assets/tiers.ts";
+import { nodeLayers } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
-import { fetchBytes, fetchContent, fetchJson, fetchMap, fetchSounds, fetchText, nextTask, readStatics, withLandmarks } from "../core/fetched.ts";
+import { fetchBytes, fetchContent, fetchJson, fetchSounds, fetchText, nextTask, readStatics, withLandmarks } from "../core/fetched.ts";
+import { MapLoader } from "../core/mapload.ts";
 import { loadIdentity } from "../core/identity.ts";
 import { SelfcheckSurfaces } from "../core/selfcheck-surfaces.ts";
 import { SelfcheckProgress, selfcheckReport } from "../core/selfcheck-report.ts";
@@ -44,21 +45,20 @@ const arrival = arrivalOf(location.hash);
 
 async function boot(): Promise<void> {
   // Every file the first frame needs is asked for before anything else runs, and index.html asked for most of them already.
-  // The server names its map's head. The renderer draws from its ground's parts, which come first; the far city from its
-  // statics' parts, which come after, while the world is drawn.
-  const mapFile = fetchJson(fetch, "map.json").then((named) => fetchMap(fetch, (named as { head: string }).head));
+  // The server names its map's head. Its landmarks' definitions and overviews come first, then the ground round the body
+  // once the welcome says where that is, and the rest while the world is drawn (client/core/mapload.ts).
+  const loading = fetchJson(fetch, "map.json").then((named) => MapLoader.start(fetch, (named as { head: string }).head));
   const manifestText = fetchText(fetch, "assets/manifest.json"), skyBytes = fetchBytes(fetch, SKY_FILE), content = fetchContent(fetch, __CONTENT_FILE__);
-  // The socket opens once the map's ground is in, so its handshake runs while the map is read. The server waits 5 s for a
-  // hello, and a socket it gave up on is opened again.
-  const early = mapFile.then(() => connect(socketAddress(location, "ws")), () => null);
+  // The socket opens once the overviews are in, so its handshake runs while the landmarks are read. The server waits 5 s for
+  // a hello, and a socket it gave up on is opened again.
+  const early = loading.then(() => connect(socketAddress(location, "ws")), () => null);
   // The manifest names every mesh and says where the pages are. The boot pack is fetched whole, and the rest as it is
   // wanted. The sound library starts once the sounds' rows have come.
   const core = parseManifest(await manifestText);
   const bootBytes = fetchBytes(fetch, `assets/${core.files[core.boot]!.name}`);
-  // Each part was checked against the hash its head names as it was read.
-  const { ground: map, rest } = await mapFile;
-  const hf = mapHeightfield(map);
-  const { reg, manifest, pack } = await withLandmarks(fetch, map.content, await content, core, parsePack(new Uint8Array(await bootBytes)));
+  // Each part is checked against the hash its head names as it is read.
+  const loader = await loading, { head, hf, nodes, content: land } = loader.staged;
+  const { reg, manifest, pack } = await withLandmarks(fetch, land, await content, core, parsePack(new Uint8Array(await bootBytes)));
   const silent = fetchSounds(fetch, manifest);
   const port = new WorkerPort(manifest, "assets", tierOf(DEFAULT_TIER).diskBytes, params.get("assetnet"));
   giveSky(new Uint8Array(await skyBytes));
@@ -79,12 +79,12 @@ async function boot(): Promise<void> {
     clipHash: manifest.clipHash,
     // The self-check, the bench, the device probe and ?quick skip the creator.
     ...(selfcheck || bench || device || params.has("quick") ? { look: defaultLook() } : {}),
-    resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),
-    nodes: (ground, content) => mapNodes(map, ground, content),
+    resolveMap: (id, hash) => (id === head.id && hash === head.hash ? hf : null),
+    nodes: (ground, content) => nodeLayers(head.dims, ground, content, nodes),
     cityMaker: new WorkerCityMaker(),
-    ...(map.content ? { landmarks: map.content.landmarks } : {}),
+    ...(land ? { landmarks: land.landmarks } : {}),
   });
-  void readStatics(rest, nextTask(new MessageChannel())).then((statics) => session.staticsArrived(statics));
+  void readStatics(loader.statics, nextTask(new MessageChannel())).then((statics) => session.staticsArrived(statics));
   const surfaces = selfcheck ? new SelfcheckSurfaces(manifest, port) : null;
   const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });
   void silent.then((why) => why && app.ui.console.print(`no sounds: ${why}`));
@@ -174,9 +174,8 @@ async function boot(): Promise<void> {
     view.apply(app.ui.frame, cssHeight);
     if (!packet) return;
     const built = performance.now();
-    // The tier says how many device pixels to draw for one CSS pixel, at most, and 0 is as many as the screen has.
-    const most = app.scene?.assets.tier.pixelRatio ?? 0;
-    const ratio = most > 0 ? Math.min(devicePixelRatio, most) : devicePixelRatio;
+    // The tier says how many pixels to draw for one CSS pixel: the screen's own at most, or on ultra more (canvasRatio).
+    const ratio = app.scene ? canvasRatio(app.scene.assets.tier, devicePixelRatio, cssWidth, cssHeight) : devicePixelRatio;
     const width = Math.floor(cssWidth * ratio);
     const height = Math.floor(cssHeight * ratio);
     if (canvas.width !== width || canvas.height !== height) {
@@ -219,6 +218,8 @@ async function boot(): Promise<void> {
       void fetch("__selfcheck", { method: "POST", body: JSON.stringify(report) });
     }
   };
+  // The first frame waits for the ground within reach of the body, where the welcome puts it.
+  await session.welcomed.then(() => loader.follow(() => session.place));
   requestAnimationFrame(frame);
 }
 
