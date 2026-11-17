@@ -1,8 +1,8 @@
 import { MARKER_DEATH } from "../../../shared/net/protocol.ts";
-import { latLonText, latOf, lonOf } from "../../../shared/world/coords.ts";
+import { latLonText, latOf, lonOf, mapU, mapV, xOfU, zOfV } from "../../../shared/world/coords.ts";
 import { MAX_MARKERS, type HudModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
-import { WHOLE_MAP, ZOOMS } from "../tactical.ts";
+import { ZOOMS, wholeMap } from "../tactical.ts";
 import { IMAGE_MAP, MARKER_STYLE, MARKER_TINT } from "./hud.ts";
 import { K_BUTTON, K_IMAGE, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
 import { S_BUTTON, S_FRAME, S_LABEL, S_MARK_DEATH, S_MARK_SELF, S_PANEL, S_TITLE } from "./style.ts";
@@ -37,12 +37,12 @@ export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel): voi
   const picture = f.add(KEY_MAP_IMAGE, K_IMAGE, x, top, size, size, S_FRAME);
   picture.image = IMAGE_MAP;
   const chart = hud.chart;
-  const view = chart ? chart.full.view : WHOLE_MAP;
+  const view = chart ? chart.full.view : wholeMap(hf);
   let line = "";
   if (chart) {
     // Opened afresh it looks at its reader, or at the middle of the map if the reader may not be shown where it is.
     if (hud.mapSeen < hud.frames - 1) {
-      chart.look(session.mapLocation ? hud.lon / 100 : 0.5, session.mapLocation ? hud.lat / 100 : 0.5);
+      chart.look(session.mapLocation ? mapU(hf, session.own.x) : 0.5, session.mapLocation ? mapV(hf, session.own.z) : 0.5);
       hud.pointedU = -1;
     }
     hud.mapSeen = hud.frames;
@@ -56,7 +56,7 @@ export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel): voi
       b.text = i === 0 ? "-" : "+";
       b.interactive = true;
     }
-    line = `zoom ${chart.fullZoom + 1} of ${ZOOMS}   ${hud.pointedU < 0 ? "arrows, - and =, click" : latLonText(hud.pointedV * 100, hud.pointedU * 100)}`;
+    line = `zoom ${chart.fullZoom + 1} of ${ZOOMS}   ${hud.pointedU < 0 ? "arrows, - and =, click" : latLonText(latOf(hf.dims, zOfV(hf, hud.pointedV)), lonOf(hf.dims, xOfU(hf, hud.pointedU)))}`;
   }
   /** A mark `half` wide each way at a place on the map, if the window shows it. */
   const pin = (key: number, u: number, v: number, half: number, style: number, tint = -1): void => {
@@ -72,16 +72,19 @@ export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel): voi
   const now = session.serverTick;
   for (let i = 0; i < deaths.length && i < 16; i++) {
     const m = deaths[i]!;
-    pin(KEY_MAP_PIN + i, lonOf(hf, m.x) / 100, latOf(hf, m.z) / 100, 4, S_MARK_DEATH);
+    pin(KEY_MAP_PIN + i, mapU(hf, m.x), mapV(hf, m.z), 4, S_MARK_DEATH);
     const minutes = Math.max(0, Math.floor((now - m.tick) / 1800));
-    f.text(KEY_MAP_LINE + i, x, top + size + 6 + i * lh, size, S_LABEL, `died  ${latLonText(latOf(hf, m.z), lonOf(hf, m.x))}  ${minutes} min ago`);
+    f.text(KEY_MAP_LINE + i, x, top + size + 6 + i * lh, size, S_LABEL, `died  ${latLonText(latOf(hf.dims, m.z), lonOf(hf.dims, m.x))}  ${minutes} min ago`);
   }
   if (line !== "") f.text(KEY_MAP_LINE + 16, x, top + size + 6 + Math.min(deaths.length, 16) * lh, size, S_LABEL, line);
   // A server rule can hide the reader's own position.
-  if (session.mapLocation !== false) pin(KEY_MAP_PIN + 16, lonOf(hf, session.own.x) / 100, latOf(hf, session.own.z) / 100, 4, S_MARK_SELF);
+  if (session.mapLocation !== false) pin(KEY_MAP_PIN + 16, mapU(hf, session.own.x), mapV(hf, session.own.z), 4, S_MARK_SELF);
 }
 
-/** A click on the map looks there, and its two buttons zoom. The place pointed at is kept for the line under the map. Returns true if the map used the event. */
+/**
+ * A click on the map looks there, and its two buttons zoom. The place pointed at, or the nearest place on the map to it, is
+ * kept for the line under the map. Returns true if the map used the event.
+ */
 export function mapPointer(hud: HudModel, kind: number, key: number, x: number, y: number): boolean {
   const chart = hud.chart;
   if (!chart || key < KEY_MAP_IMAGE || key > KEY_MAP_ZOOM + 1 || key === KEY_MAP_TITLE) return false;
@@ -90,8 +93,8 @@ export function mapPointer(hud: HudModel, kind: number, key: number, x: number, 
     return true;
   }
   const view = chart.full.view;
-  hud.pointedU = view.u0 + ((x - hud.mapBox.x) / hud.mapBox.size) * view.du;
-  hud.pointedV = view.v0 + ((y - hud.mapBox.y) / hud.mapBox.size) * view.dv;
+  hud.pointedU = Math.max(0, Math.min(1, view.u0 + ((x - hud.mapBox.x) / hud.mapBox.size) * view.du));
+  hud.pointedV = Math.max(0, Math.min(1, view.v0 + ((y - hud.mapBox.y) / hud.mapBox.size) * view.dv));
   if (kind === 0) chart.look(hud.pointedU, hud.pointedV);
   return true;
 }

@@ -23,7 +23,7 @@
 | `render.test.ts` | Frame packets through the software rasterizer, asserted per pixel |
 | `views.test.ts` | What artists look at: a snapshot on a graphics tier with textures, the textures kept between runs, and a sheet with materials |
 | `hud.test.ts`, `ui.test.ts` | The HUD model, the minimap, the self-check logic; every screen laid out at four window shapes |
-| `tactical.test.ts`, `map.test.ts` | Latitude and longitude; a chunk's structures baked to cells against brute force, and on the wire; marks; the map's tiles and its four zooms lining up |
+| `tactical.test.ts`, `map.test.ts` | Latitude and longitude from the display origin, and shares of the map's picture; a chunk's structures baked to cells against brute force, and on the wire; marks; the map's tiles and its four zooms lining up; a map of 12 by 8 km shown in its own proportions; a widened map reading the same coordinates with its grid on the same ground |
 | `contracts.test.ts` | What the creature packages build on: the cue word's lasting states, hurt stages, the new codes, columns that change nothing until used, the dodo's numbers, its egg item and the tames' levels ready to join |
 
 Assert observable outcomes. Prefer a property over many seeded inputs to a few

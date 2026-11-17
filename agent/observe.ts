@@ -295,7 +295,7 @@ export function observe(session: ClientSession, remote: RemoteSample, radius = 3
   const hf = world.hf;
   const out: Record<string, unknown> = {
     state: "done",
-    self: { x: Math.round(b.x * 10) / 10, z: Math.round(b.z * 10) / 10, y: Math.round(b.y * 10) / 10, lat: Math.round(latOf(hf, b.z) * 10) / 10, lon: Math.round(lonOf(hf, b.x) * 10) / 10, ...(storey ? { above_ground: Math.round(up * 10) / 10 } : {}), facing: compass(session.ownYaw) },
+    self: { x: Math.round(b.x * 10) / 10, z: Math.round(b.z * 10) / 10, y: Math.round(b.y * 10) / 10, lat: Math.round(latOf(hf.dims, b.z) * 10) / 10, lon: Math.round(lonOf(hf.dims, b.x) * 10) / 10, ...(storey ? { above_ground: Math.round(up * 10) / 10 } : {}), facing: compass(session.ownYaw) },
     legend: storey ? STOREY_LEGEND : LEGEND,
     map: `North (+z) is up and east (-x) is right. Each letter is a square of ${cell} m. The top left one is centred on x ${(midX + each) * cell + cell / 2}, z ${(midZ + each) * cell + cell / 2}.${storey ? ` It shows the storey you stand on, ${Math.round(up)} m above the ground.` : ""}`,
     grid: rows,
