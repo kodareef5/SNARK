@@ -47,7 +47,7 @@ artTest("Koru's sails set or moving are drawn from 600 m off with its far mesh, 
     const control = h.reg.index.get("koru:sail_control");
     const toss = (): void => h.world.structs.chunks.forEach((t, c) => { if (t) for (let r = 0; r < t.kind.length; r++) if (t.kind[r] === control && t.hp[r]! > 0) h.host.motion.throw(c * 65536 + r); });
     // Struck; rising; set; coming down; struck again. A sail on its way is drawn as a set one is, a headsail's roll
-    // while it is not set, and the rig's parts, which never move, throughout.
+    // while it is not set, and the rig's parts throughout but the forestays struck.
     const seen = [sails()];
     toss();
     seen.push(sails());
@@ -57,8 +57,10 @@ artTest("Koru's sails set or moving are drawn from 600 m off with its far mesh, 
     seen.push(sails());
     run(KORU_LAYOUT.motion.seconds * 1000);
     seen.push(sails());
-    const [struck, moving, set]: [number, number, number][] = [[0, rigMeshes.size, 2], [sailParts.length, rigMeshes.size, 2], [sailParts.length, rigMeshes.size, 0]];
-    expect([sailParts.length, rigMeshes.size, rollMeshes.size]).toEqual([8, 16, 2]);
+    // Struck, the forestays are inside the rolls and put away with the sheets.
+    const forestays = KORU_LAYOUT.motion.parts.filter((p) => p.mesh.startsWith("koru:rig_forestays_")).length;
+    const [struck, moving, set]: [number, number, number][] = [[0, rigMeshes.size - forestays, 2], [sailParts.length, rigMeshes.size, 2], [sailParts.length, rigMeshes.size, 0]];
+    expect([sailParts.length, rigMeshes.size, rollMeshes.size, forestays]).toEqual([8, 16, 2, 3]);
     expect(seen).toEqual([struck, moving, set, moving, struck]);
   } finally { h.host.shutdown(); }
 });

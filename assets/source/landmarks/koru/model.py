@@ -698,6 +698,8 @@ for s in D['rig']['sails']:
  if s['kind']!='jib':continue
  roll='koru:roll_'+s['id'];t,c,h=[pivot(roll,s[k]) for k in('tack','clew','head')];luff=math.dist(t,h)
  chord=math.sqrt(max(0,math.dist(t,c)**2-(sum((a-b)*(e-b) for a,b,e in zip(c,t,h))/luff)**2))
+ # The roll covers its stay from end to end, the 0.6 m the sheet stops short of each.
+ u=[(b-a)/luff for a,b in zip(t,h)];t=[a-.6*v for a,v in zip(t,u)];h=[b+.6*v for b,v in zip(h,u)];luff+=1.2
  for level in range(len(RIG_ENDS)):
   m=Mesh(flat=ROLLS);lines(m,[t,h],.015*chord/2,luff,level,'roll');m.object(roll[5:]+(f'_LOD{level}' if level else ''),[0,0,0])
 # A sail's levels: drawn with the atlas near, then two flat. Rows and columns of a gaff sail, rows of a jib.

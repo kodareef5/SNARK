@@ -307,7 +307,8 @@ for s in D['rig']['sails']:
   luff=unit([b-a for a,b in zip(t,s['head'])]);c=[b-a for a,b in zip(t,s['clew'])];d=sum(a*b for a,b in zip(c,luff))
   chord=unit([a-d*b for a,b in zip(c,luff)]);normal=[chord[1]*luff[2]-chord[2]*luff[1],chord[2]*luff[0]-chord[0]*luff[2],chord[0]*luff[1]-chord[1]*luff[0]]
   q=qframe(chord,luff,normal)
-  # Struck, the sheet is put away and its roll on the stay, a line drawn as the rig is, stands for it; set, the roll is.
+  # Struck, the sheet is put away and its roll on the stay, a line drawn as the rig is, stands for it and for the stay
+  # it is rolled on; set, the roll is put away.
   parts.append({'mesh':s['sheet'],'from':{'at':local(t),'turn':q,'scale':[.015,1,.3],'away':True},'to':{'at':local(t),'turn':q}})
   rolls.append({'mesh':'koru:roll_'+s['id'],'from':{'at':local(t),'turn':q},'to':{'at':local(t),'turn':q,'scale':[.001,1,.001],'away':True}})
 # The standing rigging is drawn by parts of the control that never move, so that it is drawn as itself as far as the
@@ -326,7 +327,8 @@ for m in mods:
 D['rig']['parts']=[]
 for name,members in sorted(groups.items()):
  pts=[p for m in members for p in m['art']['ends']];mid=[(min(p[k] for p in pts)+max(p[k] for p in pts))/2 for k in range(3)]
- parts.append({'mesh':f'koru:rig_{name}','from':{'at':local(mid)},'to':{'at':local(mid)}})
+ # The forestays carry the headsails: struck, each is inside its sail's roll, and put away with the sheet.
+ parts.append({'mesh':f'koru:rig_{name}','from':{'at':local(mid),**({'away':True} if name.startswith('forestays') else {})},'to':{'at':local(mid)}})
  D['rig']['parts'].append({'mesh':f'koru:rig_{name}','members':[m['id'] for m in members]})
 # The rolls after the rig, see-through draws going as made, so that a roll is drawn over the stay it is rolled on.
 parts.extend(rolls)

@@ -133,8 +133,8 @@ artTest("Koru moored in its bay on medium at the iPhone's view: its eight cells,
   // booms and hull rounder, 93,164 casting 86,252 in 18 draws before its furniture was made, its ports rimmed, and its
   // plaques drawn from a picture of their own, and 126,184 casting 119,416 in 23 before its rig was its own see-through
   // parts, which cast nothing, and the cells' wires, thickened on their way off, no longer held them to finer levels;
-  // a struck headsail is its roll, a line, not its sheet squeezed onto the stay.
-  expect(got).toEqual({ dock: [30, 117036, 97532, 28], deck: [34, 115276, 101256, 32], below: [29, 115428, 99712, 27], "200 m off": [37, 72792, 10240, 35] });
+  // a struck headsail is its roll, a line, not its sheet squeezed onto the stay, and the roll stands for the stay too.
+  expect(got).toEqual({ dock: [27, 116952, 97532, 25], deck: [31, 115200, 101256, 29], below: [26, 115428, 99712, 24], "200 m off": [34, 72736, 10240, 32] });
   expect(KORU_LAYOUT.cells.length).toBe(8);
 });
 
@@ -158,7 +158,7 @@ artTest("Koru's sails, gaffs and rig are drawn as far as its far mesh, past medi
   }));
   // Medium draws moving parts to 1,200 m and the far city and the landmarks' far meshes to 2,048 m.
   expect([tierOf("medium").reach.parts, tierOf("medium").reach.city]).toEqual([1200, 2048]);
-  expect(drawn).toEqual({ 1100: [24, 0], 1500: [24, 0], 1900: [24, 0], 2300: [0, 0] });
+  expect(drawn).toEqual({ 1100: [21, 0], 1500: [21, 0], 1900: [21, 0], 2300: [0, 0] });
 });
 
 test("a real city's downtown at its three views on each tier: the near city's draws, casts and triangles, and the far city's draws and triangles", () => {

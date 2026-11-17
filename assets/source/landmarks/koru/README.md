@@ -11,9 +11,9 @@ furniture are an original interpretation. No photograph's pixels are in the pack
   collision, placement and the art's layout (`ref/LAYOUT.md`), the hull's rake among it. It rebuilds byte for byte.
 - `model.py` and `parts.py` build the pieces in Blender from that layout: eight cells, each one mesh of every module
   whose origin lies in its 16 m of the ship, in its anchor's frame; the three doors, each with its open form; the
-  sail parts, five sheets, three gaffs and the two headsails' rolls; and the rig, sixteen parts that never move: each
-  mast's wires in three bands of its height, the forestays, the backstays and the triatics. The modules themselves are
-  collision alone.
+  sail parts, five sheets, three gaffs and the two headsails' rolls; and the rig, sixteen parts: each mast's wires in
+  three bands of its height, the forestays, the backstays and the triatics, none of which moves, though the forestays
+  are put away with the headsails. The modules themselves are collision alone.
 - `tex/paint.ts` paints the three pictures every textured face is drawn from (`tex/PROVENANCE.md`): `surfaces`, the
   atlas of the yacht's finishes; `sails`, its sailcloth; and `signs`, its brass plaques and its name, a picture of
   1,024 that medium shows whole, so that they are as sharp on medium as they were on high in the atlas. `materials.json` says which picture each
@@ -85,7 +85,8 @@ smooth over its camber; then two flat levels. Set or on their way, the sail part
 Struck, a gaff sail and its gaff lie inside the cover on the boom, as an in-boom furling sail does, and are drawn while
 the client holds the yacht's structures near. A headsail rolls on its stay: its sheet is put away (PartPlacement
 `away`) and its roll is drawn in its place as far as the far mesh, a line made and drawn as the rig's wires are, so no
-sliver of sail is left to break into dots.
+sliver of sail is left to break into dots. The forestays are put away with the sheets, the rolls standing for them, so
+that no stay shows light and dark by turns through the roll on it.
 
 ## Pictures
 
