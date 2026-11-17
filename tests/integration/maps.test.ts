@@ -153,8 +153,8 @@ test("the proving ground loaded from its file is the one its functions build: ev
   const hf = buildProvingHeightfield();
   expect([world.mapId, world.dims, world.spawn, world.spawns]).toEqual([PROVING_ID, PROVING_DIMS, PROVING_SPAWNS[0]!, PROVING_SPAWNS]);
   expect([world.hf.cell, world.hf.minY, world.hf.stepY, world.hf.seaLevel]).toEqual([hf.cell, hf.minY, hf.stepY, hf.seaLevel]);
-  expect(world.hf.heights).toEqual(hf.heights);
-  expect(world.hf.tint).toEqual(hf.tint);
+  // The server draws nothing, so it keeps none of the ground's colours.
+  expect([world.hf.heights, world.hf.tint.length]).toEqual([hf.heights, 0]);
 
   // The tables must match slot for slot, since a piece is known by its chunk and slot.
   const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);

@@ -19,7 +19,7 @@ export class Heightfield {
   /** Metres per stored height unit. */
   readonly stepY: number;
   readonly heights: Uint16Array;
-  /** Palette index per sample, used only for drawing. */
+  /** Palette index per sample, used only for drawing. Empty for a server's ground, which draws nothing. */
   readonly tint: Uint8Array;
   /** Height of the sea's surface, set by the code that builds the map. -Infinity for a map with no sea. */
   seaLevel = -Infinity;
@@ -38,7 +38,7 @@ export class Heightfield {
     this.stepY = stepY;
     this.heights = heights ?? new Uint16Array(this.nx * this.nz);
     this.tint = tint ?? new Uint8Array(this.nx * this.nz);
-    if (this.heights.length !== this.nx * this.nz || this.tint.length !== this.nx * this.nz) {
+    if (this.heights.length !== this.nx * this.nz || (this.tint.length !== 0 && this.tint.length !== this.nx * this.nz)) {
       throw new Error("heightfield data does not match map dimensions");
     }
   }

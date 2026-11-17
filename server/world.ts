@@ -122,7 +122,8 @@ function defOf(reg: Registry, map: MapFile): MapDef | null {
 
 /** A world on the ground a map file holds (shared/world/mapfile.ts), with what the map's definition says lives there. */
 export function createMapWorld(reg: Registry, map: MapFile, opts: WorldOptions = {}): ServerWorld {
-  const hf = mapHeightfield(map);
+  // A server draws nothing, so its ground keeps no colours.
+  const hf = mapHeightfield({ ...map, tint: new Uint8Array(0) });
   const zones = [...(defOf(reg, map)?.zones ?? []).filter((z) => z.kind === "spawn"), ...(map.regions ?? [])];
   const world = createWorld(reg, map.dims, hf, map.id, map.hash, map.spawns[0]!, opts.entityMax ?? ENTITY_LIMIT, map.spawns, mapNodes(map, hf, reg) ?? undefined, zones, opts.entityStart);
   if (opts.populate !== false) placeStatics(map, world.structs, reg);

@@ -465,6 +465,7 @@ export class ClientSession {
   private whole = new Uint8Array(0);
   /** The map's statics, come after the session began (staticsArrived). */
   private arrived: MapStatics | null = null;
+  private heldCity: CityStatics | null = null;
   /** The command that told the server of them (CMD_STATICS), until its answer. */
   private staticsSeq = 0;
   /** The map's statics' kinds as content indices, from the welcome or CMD_STATICS's answer, when the client takes chunks from them. */
@@ -1355,7 +1356,7 @@ export class ClientSession {
     const far: FarSource = { cells: this.far, complete: (chunk) => this.whole[chunk] === 1 };
     const field = this.nodeField;
     this.nodeChanges = field ? new NodeChanges(dims) : null;
-    const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges! } } : {};
+    const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges!, city: () => this.world?.city?.statics ?? this.nodeCity(), ground: hf } } : {};
     this.world = { mapId, dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...(reg.motion.some((t) => t !== null) ? { motion: this.motionSource } : {}) };
     this.startCity(this.arrived);
     this.recenterNodes();
@@ -1375,6 +1376,15 @@ export class ClientSession {
   staticsArrived(statics: MapStatics): void {
     this.arrived = statics;
     this.startCity(statics);
+  }
+
+  /**
+   * The map's statics for the far nodes' tops where this session draws no far city of them (it was given them at its
+   * hello): the server sends no far cells of a chunk still as the map placed it to a session that holds them.
+   */
+  private nodeCity(): CityStatics | null {
+    if (!this.staticKinds || !this.world) return null;
+    return (this.heldCity ??= new CityStatics(this.world.dims, (this.arrived ?? this.opts.statics)!, this.registry));
   }
 
   private startCity(statics: MapStatics | null): void {
