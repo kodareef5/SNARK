@@ -229,5 +229,5 @@ export function deriveRegistry(reg: Registry, tuning: Tuning): Registry {
   if (text === "") return base;
   const made = compileContent([...applyTuning(base.defs.filter((d): d is Def => d !== null), tuning), ...base.renames]);
   if (!made.registry) throw new Error("content does not compile as tuned:\n" + made.errors.join("\n"));
-  return { ...made.registry, baseHash: base.hash, tuning: text, source: base };
+  return { ...made.registry, baseHash: base.hash, coreHash: base.coreHash, own: base.own, tuning: text, source: base };
 }

@@ -238,7 +238,7 @@ export class Cluster {
       url: this.url,
       players: game.playerCount,
       max: game.opts.maxClients,
-      content: reg.baseHash,
+      content: reg.coreHash,
       survivors: !rules.on("PreventDownloadSurvivors") && !rules.on("noTributeDownloads"),
       items: !rules.on("PreventDownloadItems") && !rules.on("noTributeDownloads"),
       at: this.now(),
@@ -273,7 +273,7 @@ export class Cluster {
   private whyNot(a: Announcement): string {
     const { rules, reg } = this.ctx!;
     if (rules.on("PreventUploadSurvivors")) return "this server does not let survivors leave it";
-    if (a.content !== reg.baseHash) return `${a.name} runs other content, which what a survivor carries may not exist in`;
+    if (a.content !== reg.coreHash) return `${a.name} runs other content, which what a survivor carries may not exist in`;
     if (!a.survivors) return `${a.name} takes no survivors from other servers`;
     if (a.players >= a.max) return `${a.name} is full`;
     return "";
@@ -313,6 +313,9 @@ export class Cluster {
       const def = reg.defs[item] as ItemDef | undefined;
       if (def?.travels === false) return `you are carrying ${def.label ?? reg.ids[item]}, which cannot be transferred: drop such items and try again`;
     }
+    // A map's own definitions are on no other server.
+    const stays = recs.map((r) => r.kind).concat([...held.keys()]).find((k) => reg.own.has(k));
+    if (stays !== undefined) return `${reg.ids[stays]} is of this map and cannot leave it`;
     if (held.size > 0 && rules.on("PreventUploadItems")) return "this server does not let things leave it: drop what you carry and try again";
     const dest = this.folder.announcement(to);
     if (!dest || dest.at <= this.now() - LIVE_MS) return `${dest?.name || `world ${to}`} is not running`;
@@ -341,7 +344,7 @@ export class Cluster {
       expires: this.now() + TICKET_SECONDS * 1000,
       ticket: sha256(ticket.subarray(16)),
       key: rec.keyHash ? hex(rec.keyHash) : "",
-      content: reg.baseHash,
+      content: reg.coreHash,
       tribe: tribe ? { team: tribe.id, name: tribe.name, owner: tribe.owner === rec.pid } : null,
       items: Object.fromEntries([...held].map(([item, n]) => [reg.ids[item]!, n])),
       pids: recs.map((r) => r.pid),
