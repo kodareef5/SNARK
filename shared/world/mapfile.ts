@@ -118,15 +118,21 @@ export class MapStatics {
   /** The row of the map's `i`th piece. Empty where the map's order was not kept, and its pieces are then the chunks' order. */
   readonly row: Uint32Array;
 
-  private constructor(kinds: readonly string[], chunks: number, n: number, order: boolean) {
+  /** With `of`, its columns without the map's order. */
+  private constructor(kinds: readonly string[], chunks: number, n: number, order: boolean, of: MapStatics | null = null) {
     this.kinds = kinds;
-    this.first = new Uint32Array(chunks + 1);
+    this.first = of ? of.first : new Uint32Array(chunks + 1);
     this.row = new Uint32Array(order ? n : 0);
-    this.kind = new Uint16Array(n);
-    this.yaw = new Uint16Array(n);
-    this.x = new Float32Array(n);
-    this.y = new Float32Array(n);
-    this.z = new Float32Array(n);
+    this.kind = of ? of.kind : new Uint16Array(n);
+    this.yaw = of ? of.yaw : new Uint16Array(n);
+    this.x = of ? of.x : new Float32Array(n);
+    this.y = of ? of.y : new Float32Array(n);
+    this.z = of ? of.z : new Float32Array(n);
+  }
+
+  /** The same pieces, their columns shared, without the map's order: a server needs it only to set them down. */
+  unordered(): MapStatics {
+    return this.row.length === 0 ? this : new MapStatics(this.kinds, 0, 0, false, this);
   }
 
   /**
@@ -1137,9 +1143,10 @@ export function staticKinds(statics: MapStatics, reg: Registry): Uint16Array {
  * order (MapStatics row first[chunk] + s), with no owner and its kind's most health (Registry.maxHp).
  */
 export function placeStatics(map: MapData, structs: StructureStore, reg: Registry): void {
-  eachStatic(map.statics, (id, x, y, z, yaw) => {
-    const kind = reg.index.get(id);
-    if (kind === undefined) throw new Error(`map "${map.id}" needs content "${id}"`);
-    structs.add(kind, x, y, z, yaw, 0, reg.maxHp[kind]!);
+  const statics = MapStatics.of(map.dims, map.statics);
+  const kinds = staticKinds(statics, reg);
+  kinds.forEach((k, i) => {
+    if (k === 0) throw new Error(`map "${map.id}" needs content "${statics.kinds[i]}"`);
   });
+  structs.placeMap(statics, kinds, reg.maxHp);
 }

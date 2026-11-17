@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
@@ -16,7 +16,7 @@ import type { NodeSpot } from "../../shared/world/nodes.ts";
 import { PROVING_DIMS, PROVING_ID, PROVING_SPAWNS, buildProvingHeightfield, populateProving, provingNodes } from "../../shared/world/proving.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { simHash } from "../../tools/simhash.ts";
-import { flatMap } from "../fixtures/map.ts";
+import { busyMap, flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -148,14 +148,28 @@ test("a save records the map it was made on, and loads onto no other", () => {
   expect(() => restart(other)).toThrow('save is for map "test:flat", not "test:other": start with the map file it was made on');
 });
 
+test("a map given by its path is read and let go: the host keeps none of its bytes, and the file is served from disk as it is from them", async () => {
+  const file = writeMap(busyMap());
+  const path = join(dir, "busy.snmap");
+  writeFileSync(path, file);
+  const host = createHost(coreRegistry(), { map: path, clips: NO_CLIPS, rigs: [], log: () => {} });
+  expect([host.mapFile, host.world.structs.count, host.world.hf.tint.length]).toEqual([null, 3, 0]);
+  const [disk, held] = [mapRoutes(path, host.world.mapId, host.world.mapHash), mapRoutes(file, host.world.mapId, host.world.mapHash)];
+  expect(disk.link).toBe(held.link);
+  const name = /^<(.+)>/.exec(disk.link)![1]!;
+  expect(new Uint8Array(await disk(`/${name}`, "")!.arrayBuffer())).toEqual(file);
+  expect(new Uint8Array(Bun.gunzipSync(await disk(`/${name}`, "gzip")!.arrayBuffer()))).toEqual(file);
+  host.shutdown();
+});
+
 test("the proving ground loaded from its file is the one its functions build: every height, piece and node slot, and the same simulation", () => {
   const reg = coreRegistry();
   const world = createMapWorld(reg, parseMap(provingFile(reg)));
   const hf = buildProvingHeightfield();
   expect([world.mapId, world.dims, world.spawn, world.spawns]).toEqual([PROVING_ID, framed(PROVING_DIMS), PROVING_SPAWNS[0]!, PROVING_SPAWNS]);
   expect([world.hf.cell, world.hf.minY, world.hf.stepY, world.hf.seaLevel]).toEqual([hf.cell, hf.minY, hf.stepY, hf.seaLevel]);
-  expect(world.hf.heights).toEqual(hf.heights);
-  expect(world.hf.tint).toEqual(hf.tint);
+  // The server draws nothing, so it keeps none of the ground's colours.
+  expect([world.hf.heights, world.hf.tint.length]).toEqual([hf.heights, 0]);
 
   // The tables must match slot for slot, since a piece is known by its chunk and slot.
   const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);

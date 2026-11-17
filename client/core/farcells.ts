@@ -9,7 +9,10 @@ import { FarCells, TACTICAL_CELL, readFar } from "../../shared/world/tactical.ts
 export class FarStore {
   /** A chunk with no filled cell has no entry. */
   readonly chunks = new Map<number, FarCells>();
-  /** Counts the messages that changed a chunk. `changed` holds that count per chunk at its last change, so a drawing can tell which to build again. */
+  /**
+   * Counts the messages that changed a chunk. `changed` holds that count per chunk at its last change, so a drawing can tell
+   * which to build again, and 0 for a chunk never told of.
+   */
   version = 0;
   changed = new Uint32Array(0);
   private dims: MapDims | null = null;
@@ -27,9 +30,11 @@ export class FarStore {
     }
     const was = this.chunks.get(chunk);
     if (got.filled === 0) {
-      if (!was) return;
-      this.chunks.delete(chunk);
-      this.spare = was;
+      // Sent empty though never sent filled: the map's own pieces there are gone, which the far city must hear.
+      if (was) {
+        this.chunks.delete(chunk);
+        this.spare = was;
+      }
     } else {
       this.chunks.set(chunk, got);
       this.spare = was ?? new FarCells();

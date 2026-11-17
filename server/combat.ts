@@ -1054,9 +1054,9 @@ export class Combat {
       this.land(src, i, ZONE_NONE, ents.x[i]!, by, ents.z[i]!, Math.sqrt((ents.x[i]! - x) * (ents.x[i]! - x) + (by - y) * (by - y) + (ents.z[i]! - z) * (ents.z[i]! - z)));
     }
     src.base = base;
-    // Structures take the blast by the distance to their nearest point.
+    // Structures take the blast by the distance to their nearest point, so none wholly above or below its reach can.
     const structs = world.structs;
-    const n = structs.query(x - radius, z - radius, x + radius, z + radius, this.inBlast);
+    const n = structs.query(x - radius, z - radius, x + radius, z + radius, this.inBlast, y - radius, y + radius);
     const refs = this.inBlast.refs;
     found.length = share.length = 0;
     for (let k = 0; k < n; k++) {

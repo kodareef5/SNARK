@@ -1531,7 +1531,7 @@ export class GameServer {
     this.kinds.reset();
     this.yaws.reset();
     this.owners.reset();
-    // Slots taken from the map count against the budget as rows do, since the client sets each down as it does a row.
+    // Only rows count against the budget. Slots taken from the map cost no bytes, and their setting down is the client's.
     let count = 0;
     let rows = 0;
     let s = cursor;
@@ -1545,12 +1545,13 @@ export class GameServer {
       // Rows stop where another might not fit, with a byte left for the count of removals.
       const room = w.buf.length * 8 - ROW_BITS - 8;
       const end = filling ? Math.max(t.high, mapped) : t.high;
+      // A chunk still as the map placed it is all the map's slots and nothing else.
+      if (filling && t.high === mapped && this.world.structs.asPlaced(chunk)) s = end;
       for (; s < end && count < budget && w.pos <= room; s++) {
         if (filling && s < mapped) {
-          count++;
           if (this.asMap(t, s, statics!, first + s)) continue;
         } else if (t.mod[s]! <= from || (byRemoval && t.kind[s] === 0)) continue;
-        else count++;
+        count++;
         this.row(w, t, s, x0, z0, false);
         rows++;
       }

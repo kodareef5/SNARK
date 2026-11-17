@@ -80,6 +80,7 @@ import { F_ALIVE, GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entitie
 import { ARMOR_SLOTS, FLAG_ON } from "../shared/sim/items.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
 import { Cluster } from "./cluster/cluster.ts";
+import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 export interface HostOptions {
@@ -108,8 +109,11 @@ export interface HostOptions {
   startingHunters?: number;
   /** Chunks around a player in which creatures are simulated. */
   wakeRadius?: number;
-  /** A map file's bytes (shared/world/mapfile.ts). Without one, and without `world`, the proving ground. */
-  map?: Uint8Array<ArrayBuffer>;
+  /**
+   * A map file (shared/world/mapfile.ts): its bytes, or its path, which is read here and not kept, as the server serves the
+   * file from there. Without one, and without `world`, the proving ground.
+   */
+  map?: Uint8Array<ArrayBuffer> | string;
   /** Use this world instead of creating one from a map file. Its structures are kept only if the save is new. */
   world?: ServerWorld;
   /** For a world the host creates: the most entities it holds, in place of the MaxEntities setting, and the size its store starts at. */
@@ -147,7 +151,10 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 
 export interface Host {
   readonly world: ServerWorld;
-  /** The map file the world stands on, for clients to fetch. Null for a world made in code and handed to the host. */
+  /**
+   * The map file the world stands on, for clients to fetch: HostOptions.map's bytes, or the proving ground's. Null for a world
+   * made in code and handed to the host, and for a map given by its path, which is served from its file.
+   */
   readonly mapFile: Uint8Array<ArrayBuffer> | null;
   readonly records: Records;
   readonly game: GameServer;
@@ -281,9 +288,15 @@ export function clusterRoot(rules: Rules, dbPath: string, id: string): string {
   return join(typeof over === "string" && over !== "" ? resolve(over) : join(dirname(resolve(dbPath)), "clusters"), id);
 }
 
+/** A file's bytes as a plain array: a Buffer's slice is a view, which would keep the whole file with what is copied out of it. */
+function fileBytes(path: string): Uint8Array {
+  const b = readFileSync(path);
+  return new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
+}
+
 function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]): Host {
   // A map's landmarks bring their own definitions, compiled after the core's.
-  const given = opts.world || !opts.map ? null : parseMap(opts.map);
+  const given = opts.world || !opts.map ? null : parseMap(typeof opts.map === "string" ? fileBytes(opts.map) : opts.map);
   const content = withContent(core, given?.content?.defs ?? []);
   // The config files are the truth at every start (D88). No rule is read from the save.
   const rules = opts.config ?? new Rules();
@@ -298,7 +311,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const store = opts.dbPath ? new WorldStore(opts.dbPath, reg, storeOptions) : null;
   if (store) opened.push(store);
   // A save supplies its own structures. Only a new world gets the map's.
-  const mapFile = opts.world ? null : (opts.map ?? provingFile(reg));
+  const mapFile = opts.world || typeof opts.map === "string" ? null : (opts.map ?? provingFile(reg));
   const parsed = given ?? (mapFile ? parseMap(mapFile) : null);
   const world = opts.world ?? createMapWorld(reg, parsed!, { populate: !store || store.fresh, entityMax: opts.entityMax ?? rules.num("MaxEntities"), entityStart: opts.entityStart });
   world.clock.cycle = rules.num("DayCycleSpeedScale");
