@@ -22,6 +22,25 @@ bun test ./tools/mapworld/ruins.test.ts
 bun run check
 ```
 
+To refresh several maps without changing an existing world, build a new directory:
+
+```sh
+bun tools/mapworld/build-set.ts var/maps/road-deck-2 <map-name> <another-map-name>
+bun server/main.ts --map var/maps/road-deck-2/<map-name>.snmap --db var/worlds/<new-world>.db
+```
+
+`build-set.ts` builds each map serially and refuses an existing output directory.
+It verifies every raw, Brotli and gzip part against the packed map, then writes
+`release.json` with producer revision, map IDs, hashes and SHA-256 digests. Copy
+both `<name>.snmap` and `<name>.parts/` together when distributing a release;
+the normal server `/map.json` and `/map/` routes serve this package.
+
+Use a fresh database for changed map bytes. An existing save still requires its
+original map ID and hash; startup refuses a mismatch. Keep the old map package
+with that save. This command does not switch a running server, rewrite a live
+map, or migrate a save. Run the ordinary map verification and driving courses
+above before choosing a release for a new world.
+
 `--release` after the name writes the copies for the wire of the map's parts as
 tightly as they go, as a map that ships has: about 25 s on Miami where an
 everyday build takes a few (`tools/map/pack.ts`).
