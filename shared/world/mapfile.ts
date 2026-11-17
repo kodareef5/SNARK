@@ -619,16 +619,21 @@ function shareZones(nodes: readonly NodeLayer[]): readonly NodeLayer[] {
 }
 
 /**
- * A part's hash, which its file's name ends with: FNV-1a of its bytes, and beside it the same walk with another start and
- * another multiplier, as 16 hex digits. Not a security primitive.
+ * A part's hash, which its file's name ends with, as 16 hex digits: two hashes of 32 bits in one walk over its length and
+ * then its bytes four at a time as a little-endian u32, the last few padded with zeros, each step xor, multiply and its
+ * high bits folded down, by two primes from two starts. Each step undoes, so any one word changed changes both. Not a
+ * security primitive.
  */
 export function partHash(bytes: Uint8Array): string {
-  let a = 0x811c9dc5;
-  let b = 0x9e3779b9;
-  for (let i = 0; i < bytes.length; i++) {
-    const v = bytes[i]!;
+  let a = Math.imul(0x811c9dc5 ^ bytes.length, 0x01000193);
+  let b = Math.imul(0x9e3779b9 ^ bytes.length, 0x5bd1e995);
+  const n = bytes.length & ~3;
+  for (let i = 0; i < bytes.length; i += 4) {
+    const v = i < n ? bytes[i]! | (bytes[i + 1]! << 8) | (bytes[i + 2]! << 16) | (bytes[i + 3]! << 24) : bytes[i]! | ((bytes[i + 1] ?? 0) << 8) | ((bytes[i + 2] ?? 0) << 16);
     a = Math.imul(a ^ v, 0x01000193);
+    a ^= a >>> 15;
     b = Math.imul(b ^ v, 0x5bd1e995);
+    b ^= b >>> 13;
   }
   return (a >>> 0).toString(16).padStart(8, "0") + (b >>> 0).toString(16).padStart(8, "0");
 }
@@ -847,10 +852,11 @@ function sectorStatics(statics: MapStatics | readonly MapStatic[], dims: FramedD
   let i = 0;
   eachStatic(statics, (kind, x, y, z, turn) => {
     if (!ids.has(kind)) ids.set(kind, ids.size);
-    const c = chunkAt(dims, x, z);
+    [ux[i], uy[i], uz[i]] = [Math.round(x * STRUCT_UNITS), Math.round(y * STRUCT_UNITS), Math.round(z * STRUCT_UNITS)];
+    // Its chunk is that of its place on the lattice, as a reader finds it.
+    const c = chunkAt(dims, ux[i]! / STRUCT_UNITS, uz[i]! / STRUCT_UNITS);
     const s = (Math.floor((dims.frameZ + chunkCz(dims, c)) / SECTOR_CHUNKS) - row0) * cols + Math.floor((dims.frameX + chunkCx(dims, c)) / SECTOR_CHUNKS) - col0;
     [id[i], yaw[i], sector[i]] = [ids.get(kind)!, turn, s];
-    [ux[i], uy[i], uz[i]] = [Math.round(x * STRUCT_UNITS), Math.round(y * STRUCT_UNITS), Math.round(z * STRUCT_UNITS)];
     counts[s + 1]!++;
     i++;
   });
@@ -1426,6 +1432,7 @@ function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, Statics
   const { dims } = head;
   const [x0, z0] = [sq.ox * CHUNK_SIZE * STRUCT_UNITS, sq.oz * CHUNK_SIZE * STRUCT_UNITS];
   const [wide, deep] = [dims.chunksX * CHUNK_SIZE * STRUCT_UNITS, dims.chunksZ * CHUNK_SIZE * STRUCT_UNITS];
+  const off = (kind: number, x: number, y: number, z: number, what: string): Error => new Error(`map: a ${head.kinds[kind]} at ${x / STRUCT_UNITS}, ${y / STRUCT_UNITS}, ${z / STRUCT_UNITS} is off ${what}`);
   let [x, y, z, turn] = [0, 0, 0, 0];
   for (let i = 0; i < n; i++) {
     id[i] = b[i]! | (b[n + i]! << 8);
@@ -1435,14 +1442,13 @@ function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, Statics
     y = ((y + three(7, i)) << 8) >> 8;
     z = (z + three(10, i)) & 0xffffff;
     const [ax, az] = [x0 + x, z0 + z];
-    const at = `${head.kinds[id[i]!]} at ${ax / STRUCT_UNITS}, ${y / STRUCT_UNITS}, ${az / STRUCT_UNITS}`;
-    if (ax < 0 || ax > wide || az < 0 || az > deep || y < WORLD_MIN_Y * STRUCT_UNITS || y > WORLD_MAX_Y * STRUCT_UNITS) throw new Error(`map: a ${at} is off the map`);
+    if (ax < 0 || ax > wide || az < 0 || az > deep || y < WORLD_MIN_Y * STRUCT_UNITS || y > WORLD_MAX_Y * STRUCT_UNITS) throw off(id[i]!, ax, y, az, "the map");
     xs[i] = ax / STRUCT_UNITS;
     ys[i] = y / STRUCT_UNITS;
     zs[i] = az / STRUCT_UNITS;
     const c = (chunk[i] = chunkAt(dims, xs[i]!, zs[i]!));
     const [cx, cz] = [chunkCx(dims, c), chunkCz(dims, c)];
-    if (cx < sq.cx0 || cx >= sq.cx1 || cz < sq.cz0 || cz >= sq.cz1) throw new Error(`map: a ${at} is off its sector ${sq.col}, ${sq.row}`);
+    if (cx < sq.cx0 || cx >= sq.cx1 || cz < sq.cz0 || cz >= sq.cz1) throw off(id[i]!, ax, y, az, `its sector ${sq.col}, ${sq.row}`);
     if (i % SLICE === SLICE - 1) yield;
   }
   return { kind: "statics", sq, id, yaw, x: xs, y: ys, z: zs, chunk };

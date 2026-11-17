@@ -90,6 +90,8 @@ export function wideMap(): MapData {
     { kind: "core:wall", x: 512, y: 3, z: 0, yaw: 0 },
     { kind: "core:wall", x: 4480, y: 3, z: 1280, yaw: 1 },
     { kind: "core:crate", x: 511 + 511 / 512, y: -1024, z: 896, yaw: 65535 },
+    // Under a sector's edge, on it once set on the 1/512 m lattice.
+    { kind: "core:wall", x: 512 - 1 / 4096, y: 3, z: 700, yaw: 2 },
   ];
   return { id: "test:wide", dims, minY: -32, stepY: 1 / 256, seaLevel: 0, heights, tint: Uint8Array.from({ length: nx * nz }, () => rng.int(256)), statics, nodes: [scatter, list, zoned, other], spawns: [{ name: "West", x: 4000, z: 600, yaw: 0 }], water };
 }
