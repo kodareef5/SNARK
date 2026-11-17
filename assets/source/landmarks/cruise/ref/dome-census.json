@@ -1,0 +1,1030 @@
+{
+  "scope": "Every declared dome_dense cell, with actual raw dome triangle ownership counted independently. All retained positions determine the shared bounds of a real serialized native pack. Whole-cell and dome-owner-only stage0-to-stage3 bidirectional P95 use those same quantized positions, including caps and clear faces. Either metric exceeding .06, or a missing dome representation, selects a cell for the separate finite clear-aware dome-only visible certificate. This enumeration is not a visible-error or final export acceptance claim.",
+  "layoutSHA256": "4bd7249e428cf3e2d88e49e8279cae148d6b67fc148c814d6c286548127ee5b6",
+  "rawIndexSHA256": "495467641d3cd29dc0e53963a4fdafe90f761b6e1984e5668620a37dd1200e0c",
+  "measuredRawAndClearSHA256": "4d48ee09fcad396d369fca71f70df099d2b234feab781da100466916e9350059",
+  "toolSHA256": "2f43a63362382f895e16dd7628819c554805d8ba3645cc9a994761e6044ed706",
+  "nativeSources": {
+    "tools/pack/write.ts": "7357fbbb8ed2f231e930a2ea614b7020e065bfb18ae17c1e1a073e87d9e038f4",
+    "tools/pack/error.ts": "fbc0dd89d5bd823f8ec3ce550df692e7d087152797bb450eadba2834165c93aa"
+  },
+  "declaredCells": 36,
+  "actualDomeCells": 36,
+  "threshold": 0.06,
+  "selectedCells": [
+    "cruise:cell_0087",
+    "cruise:cell_0088",
+    "cruise:cell_0089",
+    "cruise:cell_0090",
+    "cruise:cell_0109",
+    "cruise:cell_0110",
+    "cruise:cell_0111",
+    "cruise:cell_0112",
+    "cruise:cell_0202",
+    "cruise:cell_0203",
+    "cruise:cell_0206",
+    "cruise:cell_0207",
+    "cruise:cell_0224",
+    "cruise:cell_0225",
+    "cruise:cell_0226",
+    "cruise:cell_0227",
+    "cruise:cell_0228",
+    "cruise:cell_0229",
+    "cruise:cell_0322",
+    "cruise:cell_0323",
+    "cruise:cell_0326",
+    "cruise:cell_0327",
+    "cruise:cell_0344",
+    "cruise:cell_0345",
+    "cruise:cell_0346",
+    "cruise:cell_0347",
+    "cruise:cell_0348",
+    "cruise:cell_0349",
+    "cruise:cell_0441",
+    "cruise:cell_0442",
+    "cruise:cell_0443",
+    "cruise:cell_0444",
+    "cruise:cell_0463",
+    "cruise:cell_0464",
+    "cruise:cell_0465",
+    "cruise:cell_0466"
+  ],
+  "rows": [
+    {
+      "cell": "cruise:cell_0087",
+      "origin": [
+        -24,
+        40,
+        88
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 562,
+      "middleDomeTriangles": 104,
+      "wholeCellNativeP95": 1.1206398010253906,
+      "domeOwnerNativeP95": 0.05762599743136031,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        6.4501953125,
+        8,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0088",
+      "origin": [
+        -24,
+        40,
+        104
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 528,
+      "middleDomeTriangles": 88,
+      "wholeCellNativeP95": 0.9999747138771417,
+      "domeOwnerNativeP95": 0.060939384116961724,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        6.4501953125,
+        8,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0089",
+      "origin": [
+        -24,
+        40,
+        120
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 538,
+      "middleDomeTriangles": 88,
+      "wholeCellNativeP95": 1.120054471773426,
+      "domeOwnerNativeP95": 0.06020041757231817,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        8,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0090",
+      "origin": [
+        -24,
+        40,
+        136
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 592,
+      "middleDomeTriangles": 104,
+      "wholeCellNativeP95": 1.1377300098538399,
+      "domeOwnerNativeP95": 0.06137274034157817,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        8,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0109",
+      "origin": [
+        -24,
+        56,
+        88
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 1796,
+      "middleDomeTriangles": 120,
+      "wholeCellNativeP95": 0.06817835462913933,
+      "domeOwnerNativeP95": 0.06817835462913933,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        4.452668935060501,
+        4.652309417724609,
+        6.183635711669922
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0110",
+      "origin": [
+        -24,
+        56,
+        104
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 3006,
+      "middleDomeTriangles": 172,
+      "wholeCellNativeP95": 0.07074069968374407,
+      "domeOwnerNativeP95": 0.07074069968374407,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        6.059266567230225,
+        5.836383819580078,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0111",
+      "origin": [
+        -24,
+        56,
+        120
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 2964,
+      "middleDomeTriangles": 172,
+      "wholeCellNativeP95": 0.06995372797202896,
+      "domeOwnerNativeP95": 0.06995372797202896,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        6.059100151062012,
+        5.836383819580078,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0112",
+      "origin": [
+        -24,
+        56,
+        136
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 1760,
+      "middleDomeTriangles": 120,
+      "wholeCellNativeP95": 0.06837913324175349,
+      "domeOwnerNativeP95": 0.06837913324175349,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        4.452604293823242,
+        4.652307510375977,
+        6.183885812759399
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0202",
+      "origin": [
+        -8,
+        40,
+        72
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 152,
+      "middleDomeTriangles": 40,
+      "wholeCellNativeP95": 0.9020169612818991,
+      "domeOwnerNativeP95": 0.053097904781232975,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        7.920000076293945,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0203",
+      "origin": [
+        -8,
+        40,
+        88
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 306,
+      "middleDomeTriangles": 64,
+      "wholeCellNativeP95": 0.08000485102335642,
+      "domeOwnerNativeP95": 0.06038684418122387,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        7.920000076293945,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0206",
+      "origin": [
+        -8,
+        40,
+        136
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 334,
+      "middleDomeTriangles": 64,
+      "wholeCellNativeP95": 5.60850977897644,
+      "domeOwnerNativeP95": 0.06378601238776023,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        7.787695407867432,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0207",
+      "origin": [
+        -8,
+        40,
+        152
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 534,
+      "middleDomeTriangles": 88,
+      "wholeCellNativeP95": 1.1199072003364563,
+      "domeOwnerNativeP95": 0.0616097838718759,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        8,
+        4.226834803819656
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0224",
+      "origin": [
+        -8,
+        56,
+        72
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 692,
+      "middleDomeTriangles": 52,
+      "wholeCellNativeP95": 1.1305086174836714,
+      "domeOwnerNativeP95": 0.07589346596643853,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        8,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0225",
+      "origin": [
+        -8,
+        56,
+        88
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 4034,
+      "middleDomeTriangles": 244,
+      "wholeCellNativeP95": 0.07130782591559248,
+      "domeOwnerNativeP95": 0.07130782591559248,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        6.322299957275391,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0226",
+      "origin": [
+        -8,
+        56,
+        104
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 7124,
+      "middleDomeTriangles": 264,
+      "wholeCellNativeP95": 0.07548422814645972,
+      "domeOwnerNativeP95": 0.07548422814645972,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        2.7481727600097656,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0227",
+      "origin": [
+        -8,
+        56,
+        120
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 7144,
+      "middleDomeTriangles": 264,
+      "wholeCellNativeP95": 0.07541073296972756,
+      "domeOwnerNativeP95": 0.07541073296972756,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        2.7481727600097656,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0228",
+      "origin": [
+        -8,
+        56,
+        136
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 4096,
+      "middleDomeTriangles": 244,
+      "wholeCellNativeP95": 0.07116195576009098,
+      "domeOwnerNativeP95": 0.07165519170728943,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        6.322300910949707,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0229",
+      "origin": [
+        -8,
+        56,
+        152
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 982,
+      "middleDomeTriangles": 64,
+      "wholeCellNativeP95": 0.06837841284450767,
+      "domeOwnerNativeP95": 0.06837841284450767,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        5.2684431076049805,
+        2.242983818054199,
+        1.2661621570587158
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0322",
+      "origin": [
+        8,
+        40,
+        72
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 206,
+      "middleDomeTriangles": 40,
+      "wholeCellNativeP95": 0.7993265924294657,
+      "domeOwnerNativeP95": 0.07291400311695781,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        8,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0323",
+      "origin": [
+        8,
+        40,
+        88
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 334,
+      "middleDomeTriangles": 64,
+      "wholeCellNativeP95": 0.08000485102335642,
+      "domeOwnerNativeP95": 0.06378601238776023,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        7.920000076293945,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0326",
+      "origin": [
+        8,
+        40,
+        136
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 306,
+      "middleDomeTriangles": 64,
+      "wholeCellNativeP95": 5.040481328964233,
+      "domeOwnerNativeP95": 0.06039765441951363,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        7.787695407867432,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0327",
+      "origin": [
+        8,
+        40,
+        152
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 524,
+      "middleDomeTriangles": 88,
+      "wholeCellNativeP95": 1.120015962711394,
+      "domeOwnerNativeP95": 0.06020271096418247,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        8,
+        4.226817041635513
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0344",
+      "origin": [
+        8,
+        56,
+        72
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 740,
+      "middleDomeTriangles": 52,
+      "wholeCellNativeP95": 1.1194519905806486,
+      "domeOwnerNativeP95": 0.07752823454433797,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        8,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0345",
+      "origin": [
+        8,
+        56,
+        88
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 4094,
+      "middleDomeTriangles": 244,
+      "wholeCellNativeP95": 0.07163168215718456,
+      "domeOwnerNativeP95": 0.07163168215718456,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        6.322299957275391,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0346",
+      "origin": [
+        8,
+        56,
+        104
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 7144,
+      "middleDomeTriangles": 264,
+      "wholeCellNativeP95": 0.07541073296972756,
+      "domeOwnerNativeP95": 0.07541073296972756,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        2.7481727600097656,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0347",
+      "origin": [
+        8,
+        56,
+        120
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 7122,
+      "middleDomeTriangles": 264,
+      "wholeCellNativeP95": 0.07548422814645972,
+      "domeOwnerNativeP95": 0.07548422814645972,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        2.7481727600097656,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0348",
+      "origin": [
+        8,
+        56,
+        136
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 4034,
+      "middleDomeTriangles": 244,
+      "wholeCellNativeP95": 0.07105645278062783,
+      "domeOwnerNativeP95": 0.07146229513107119,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        6.322300910949707,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0349",
+      "origin": [
+        8,
+        56,
+        152
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 944,
+      "middleDomeTriangles": 64,
+      "wholeCellNativeP95": 0.06882510680359541,
+      "domeOwnerNativeP95": 0.06882510680359541,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        5.2684431076049805,
+        2.2430458068847656,
+        1.2662091255187988
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0441",
+      "origin": [
+        24,
+        40,
+        88
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 594,
+      "middleDomeTriangles": 104,
+      "wholeCellNativeP95": 1.1150062958170384,
+      "domeOwnerNativeP95": 0.06140218982145241,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        6.4501953125,
+        8,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0442",
+      "origin": [
+        24,
+        40,
+        104
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 540,
+      "middleDomeTriangles": 88,
+      "wholeCellNativeP95": 1.0981780216097832,
+      "domeOwnerNativeP95": 0.06013311345386494,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        6.4501953125,
+        8,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0443",
+      "origin": [
+        24,
+        40,
+        120
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 528,
+      "middleDomeTriangles": 88,
+      "wholeCellNativeP95": 2.226630449295044,
+      "domeOwnerNativeP95": 0.06102725990468735,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        8,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0444",
+      "origin": [
+        24,
+        40,
+        136
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 562,
+      "middleDomeTriangles": 104,
+      "wholeCellNativeP95": 1.1450544521212578,
+      "domeOwnerNativeP95": 0.057669265863673054,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        8,
+        8,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0463",
+      "origin": [
+        24,
+        56,
+        88
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 1766,
+      "middleDomeTriangles": 120,
+      "wholeCellNativeP95": 0.06837912677915965,
+      "domeOwnerNativeP95": 0.06837912677915965,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        4.452604293823242,
+        4.652309417724609,
+        6.183873176574707
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0464",
+      "origin": [
+        24,
+        56,
+        104
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 2962,
+      "middleDomeTriangles": 172,
+      "wholeCellNativeP95": 0.06995372797202896,
+      "domeOwnerNativeP95": 0.06995372797202896,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        6.059100151062012,
+        5.836383819580078,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0465",
+      "origin": [
+        24,
+        56,
+        120
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 3002,
+      "middleDomeTriangles": 172,
+      "wholeCellNativeP95": 0.07074069968374407,
+      "domeOwnerNativeP95": 0.07074069968374407,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        6.059266567230225,
+        5.836383819580078,
+        8
+      ],
+      "requiresVisibleCertificate": true
+    },
+    {
+      "cell": "cruise:cell_0466",
+      "origin": [
+        24,
+        56,
+        136
+      ],
+      "retainedStages": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "stage3NativeLevel": 3,
+      "nearDomeTriangles": 1794,
+      "middleDomeTriangles": 120,
+      "wholeCellNativeP95": 0.06817840762637409,
+      "domeOwnerNativeP95": 0.06817840762637409,
+      "missingDomeRepresentation": false,
+      "nativeHalf": [
+        4.452668935060501,
+        4.652307510375977,
+        6.1836395263671875
+      ],
+      "requiresVisibleCertificate": true
+    }
+  ]
+}

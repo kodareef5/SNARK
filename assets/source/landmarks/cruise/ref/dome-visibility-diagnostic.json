@@ -1,0 +1,2326 @@
+{
+  "schema": 1,
+  "scope": "Sampled bidirectional exterior P95 bound, not an all-camera guarantee or delivered-pack acceptance. Whole raw occluders; all retained candidate positions set native shared bounds. Artificial cell caps and clear target faces excluded. Actual clear/front-face traversal. Bad upper weights retain all raw corner/centroid occurrences. Good lower weights count each verified geometric corner once per cell plus guaranteed triangle centroids; they never assume raw corner multiplicity survives exported vertex sharing.",
+  "identities": {
+    "selection": {
+      "scope": "Complete native dome-cell census",
+      "file": "/home/user/Desktop/SNARK-cruise-preview/var/cruise-preview/final-49546764/dome-census.json",
+      "sha256": "f577e33d4eec1d1221e6ce0f32d1775cc52866ca755aaa09348ca7e343778945",
+      "scannedCells": 36,
+      "selectedCells": [
+        "cruise:cell_0087",
+        "cruise:cell_0088",
+        "cruise:cell_0089",
+        "cruise:cell_0090",
+        "cruise:cell_0109",
+        "cruise:cell_0110",
+        "cruise:cell_0111",
+        "cruise:cell_0112",
+        "cruise:cell_0202",
+        "cruise:cell_0203",
+        "cruise:cell_0206",
+        "cruise:cell_0207",
+        "cruise:cell_0224",
+        "cruise:cell_0225",
+        "cruise:cell_0226",
+        "cruise:cell_0227",
+        "cruise:cell_0228",
+        "cruise:cell_0229",
+        "cruise:cell_0322",
+        "cruise:cell_0323",
+        "cruise:cell_0326",
+        "cruise:cell_0327",
+        "cruise:cell_0344",
+        "cruise:cell_0345",
+        "cruise:cell_0346",
+        "cruise:cell_0347",
+        "cruise:cell_0348",
+        "cruise:cell_0349",
+        "cruise:cell_0441",
+        "cruise:cell_0442",
+        "cruise:cell_0443",
+        "cruise:cell_0444",
+        "cruise:cell_0463",
+        "cruise:cell_0464",
+        "cruise:cell_0465",
+        "cruise:cell_0466"
+      ]
+    },
+    "layoutSHA256": "4bd7249e428cf3e2d88e49e8279cae148d6b67fc148c814d6c286548127ee5b6",
+    "rawIndexSHA256": "495467641d3cd29dc0e53963a4fdafe90f761b6e1984e5668620a37dd1200e0c",
+    "candidateIndexSHA256": "495467641d3cd29dc0e53963a4fdafe90f761b6e1984e5668620a37dd1200e0c",
+    "candidateFilesSHA256": "4d48ee09fcad396d369fca71f70df099d2b234feab781da100466916e9350059",
+    "nativeSources": {
+      "tools/pack/write.ts": "7357fbbb8ed2f231e930a2ea614b7020e065bfb18ae17c1e1a073e87d9e038f4",
+      "tools/pack/error.ts": "fbc0dd89d5bd823f8ec3ce550df692e7d087152797bb450eadba2834165c93aa",
+      "tools/art/check.ts": "64688629d27e3f5ce99177252014d030b06eb2f742bfef32d21d7a2d7608e0d8"
+    },
+    "diagnosticSources": {
+      "dome-error.ts": "ee391e0784198fd59b66771ad62969dbf10200cd7a0869426d4b6ff989414288",
+      "dome-error.py": "700bdd53ae7cd086c25b29311692a94c30cc0dd9b56df1beda9c68c7296ae436"
+    },
+    "modelSourcesObserved": {
+      "asset.ts": "c9e4aa6b7ee7fd564304bc3a562c1d7c55dfb2ee097b0a0a1d51ad1a4cdbcdfd",
+      "model.py": "c56b86173abdf8107bee7f01a23e5a51cb307759107f47c4d9204da5fad37edc",
+      "model_aquatheater.py": "1459f4265558271fa4637b8bb007263ed2edf6d165d8acb7a0851a2a0e82da56",
+      "model_cells.py": "777809888328ae6dc3aab3b3c7538db59c5f46b44f44e884be727f40251c0395",
+      "model_exterior.py": "71112bc04829f2ef6bfca4704635c43df9c0d2e65cb2f130cb5903f5695e6f82",
+      "model_far_aquatheater.py": "133e0b21a135a41ef5ad3dc31ab92d1e566a14393e14de61ea47a9f0e3b79849",
+      "model_far_facades.py": "32d8bd388a22725898dd4aa3197c5cf8041453a3723461e5441a9e4a480aaf76",
+      "model_far_lifeboat.py": "bfe727a4347d0de3d674316e5d518967ff52d2c5eb9923085cd8c0f7e9160ca1",
+      "model_far_pearl.py": "733893bf87a55ace1f362b43c7ee3e9003ea7cfa9b5261d869f7703558610eb7",
+      "model_far_slides.py": "1d18ee5c0fb5e877820e99550f784aa58e1e2746170649fa32d9abbd7b18ebc1",
+      "model_interiors.py": "46aa7a191fa08d02bb7dcacc1e2a2f73fbe0a68bab38163463a8e22d67963d2e",
+      "model_parts.py": "5660df2cb4e64aaeb8a5402029c3a30b08f440d26745cf6827197c2b28d6a5ec",
+      "parts.py": "f2b01bff421db6071ce36152c6823960bdf6b3de1714c145d6d9876d15a16770"
+    },
+    "modelScope": "Observed source hashes, not a claim the frozen raw was regenerated from current source. Source may have evolved after the frozen census; raw hashes identify the measured geometry.",
+    "usedGeometryAndClearSHA256": "45357ea18f4831adbbb7f32eefaf3ec228f5a93486f4ba35cf355af237adf24c"
+  },
+  "parameters": {
+    "targetCells": [
+      "cruise:cell_0087",
+      "cruise:cell_0088",
+      "cruise:cell_0089",
+      "cruise:cell_0090",
+      "cruise:cell_0109",
+      "cruise:cell_0110",
+      "cruise:cell_0111",
+      "cruise:cell_0112",
+      "cruise:cell_0202",
+      "cruise:cell_0203",
+      "cruise:cell_0206",
+      "cruise:cell_0207",
+      "cruise:cell_0224",
+      "cruise:cell_0225",
+      "cruise:cell_0226",
+      "cruise:cell_0227",
+      "cruise:cell_0228",
+      "cruise:cell_0229",
+      "cruise:cell_0322",
+      "cruise:cell_0323",
+      "cruise:cell_0326",
+      "cruise:cell_0327",
+      "cruise:cell_0344",
+      "cruise:cell_0345",
+      "cruise:cell_0346",
+      "cruise:cell_0347",
+      "cruise:cell_0348",
+      "cruise:cell_0349",
+      "cruise:cell_0441",
+      "cruise:cell_0442",
+      "cruise:cell_0443",
+      "cruise:cell_0444",
+      "cruise:cell_0463",
+      "cruise:cell_0464",
+      "cruise:cell_0465",
+      "cruise:cell_0466"
+    ],
+    "threshold": 0.06,
+    "targetSurfaceExclusion": 0.002,
+    "capIdentification": 0.0003,
+    "rayAdvance": 1e-05,
+    "maxSkips": 512,
+    "cameraRadius": 250,
+    "cameraAzimuthStep": 10,
+    "cameraElevations": [
+      -10,
+      -5,
+      0,
+      5,
+      10,
+      20,
+      35,
+      50,
+      70,
+      90
+    ],
+    "sharedViewpoints": 481
+  },
+  "wholeCellNativeP95": [
+    {
+      "cell": "cruise:cell_0087",
+      "origin": [
+        -24,
+        40,
+        88
+      ],
+      "p95": 1.1206398010253906,
+      "half": [
+        6.4501953125,
+        8,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0088",
+      "origin": [
+        -24,
+        40,
+        104
+      ],
+      "p95": 0.9999747138771417,
+      "half": [
+        6.4501953125,
+        8,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0089",
+      "origin": [
+        -24,
+        40,
+        120
+      ],
+      "p95": 1.120054471773426,
+      "half": [
+        8,
+        8,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0090",
+      "origin": [
+        -24,
+        40,
+        136
+      ],
+      "p95": 1.1377300098538399,
+      "half": [
+        8,
+        8,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0109",
+      "origin": [
+        -24,
+        56,
+        88
+      ],
+      "p95": 0.06817835462913933,
+      "half": [
+        4.452668935060501,
+        4.652309417724609,
+        6.183635711669922
+      ]
+    },
+    {
+      "cell": "cruise:cell_0110",
+      "origin": [
+        -24,
+        56,
+        104
+      ],
+      "p95": 0.07074069968374407,
+      "half": [
+        6.059266567230225,
+        5.836383819580078,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0111",
+      "origin": [
+        -24,
+        56,
+        120
+      ],
+      "p95": 0.06995372797202896,
+      "half": [
+        6.059100151062012,
+        5.836383819580078,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0112",
+      "origin": [
+        -24,
+        56,
+        136
+      ],
+      "p95": 0.06837913324175349,
+      "half": [
+        4.452604293823242,
+        4.652307510375977,
+        6.183885812759399
+      ]
+    },
+    {
+      "cell": "cruise:cell_0202",
+      "origin": [
+        -8,
+        40,
+        72
+      ],
+      "p95": 0.9020169612818991,
+      "half": [
+        8,
+        7.920000076293945,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0203",
+      "origin": [
+        -8,
+        40,
+        88
+      ],
+      "p95": 0.08000485102335642,
+      "half": [
+        8,
+        7.920000076293945,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0206",
+      "origin": [
+        -8,
+        40,
+        136
+      ],
+      "p95": 5.60850977897644,
+      "half": [
+        8,
+        7.787695407867432,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0207",
+      "origin": [
+        -8,
+        40,
+        152
+      ],
+      "p95": 1.1199072003364563,
+      "half": [
+        8,
+        8,
+        4.226834803819656
+      ]
+    },
+    {
+      "cell": "cruise:cell_0224",
+      "origin": [
+        -8,
+        56,
+        72
+      ],
+      "p95": 1.1305086174836714,
+      "half": [
+        8,
+        8,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0225",
+      "origin": [
+        -8,
+        56,
+        88
+      ],
+      "p95": 0.07130782591559248,
+      "half": [
+        8,
+        6.322299957275391,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0226",
+      "origin": [
+        -8,
+        56,
+        104
+      ],
+      "p95": 0.07548422814645972,
+      "half": [
+        8,
+        2.7481727600097656,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0227",
+      "origin": [
+        -8,
+        56,
+        120
+      ],
+      "p95": 0.07541073296972756,
+      "half": [
+        8,
+        2.7481727600097656,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0228",
+      "origin": [
+        -8,
+        56,
+        136
+      ],
+      "p95": 0.07116195576009098,
+      "half": [
+        8,
+        6.322300910949707,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0229",
+      "origin": [
+        -8,
+        56,
+        152
+      ],
+      "p95": 0.06837841284450767,
+      "half": [
+        5.2684431076049805,
+        2.242983818054199,
+        1.2661621570587158
+      ]
+    },
+    {
+      "cell": "cruise:cell_0322",
+      "origin": [
+        8,
+        40,
+        72
+      ],
+      "p95": 0.7993265924294657,
+      "half": [
+        8,
+        8,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0323",
+      "origin": [
+        8,
+        40,
+        88
+      ],
+      "p95": 0.08000485102335642,
+      "half": [
+        8,
+        7.920000076293945,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0326",
+      "origin": [
+        8,
+        40,
+        136
+      ],
+      "p95": 5.040481328964233,
+      "half": [
+        8,
+        7.787695407867432,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0327",
+      "origin": [
+        8,
+        40,
+        152
+      ],
+      "p95": 1.120015962711394,
+      "half": [
+        8,
+        8,
+        4.226817041635513
+      ]
+    },
+    {
+      "cell": "cruise:cell_0344",
+      "origin": [
+        8,
+        56,
+        72
+      ],
+      "p95": 1.1194519905806486,
+      "half": [
+        8,
+        8,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0345",
+      "origin": [
+        8,
+        56,
+        88
+      ],
+      "p95": 0.07163168215718456,
+      "half": [
+        8,
+        6.322299957275391,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0346",
+      "origin": [
+        8,
+        56,
+        104
+      ],
+      "p95": 0.07541073296972756,
+      "half": [
+        8,
+        2.7481727600097656,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0347",
+      "origin": [
+        8,
+        56,
+        120
+      ],
+      "p95": 0.07548422814645972,
+      "half": [
+        8,
+        2.7481727600097656,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0348",
+      "origin": [
+        8,
+        56,
+        136
+      ],
+      "p95": 0.07105645278062783,
+      "half": [
+        8,
+        6.322300910949707,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0349",
+      "origin": [
+        8,
+        56,
+        152
+      ],
+      "p95": 0.06882510680359541,
+      "half": [
+        5.2684431076049805,
+        2.2430458068847656,
+        1.2662091255187988
+      ]
+    },
+    {
+      "cell": "cruise:cell_0441",
+      "origin": [
+        24,
+        40,
+        88
+      ],
+      "p95": 1.1150062958170384,
+      "half": [
+        6.4501953125,
+        8,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0442",
+      "origin": [
+        24,
+        40,
+        104
+      ],
+      "p95": 1.0981780216097832,
+      "half": [
+        6.4501953125,
+        8,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0443",
+      "origin": [
+        24,
+        40,
+        120
+      ],
+      "p95": 2.226630449295044,
+      "half": [
+        8,
+        8,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0444",
+      "origin": [
+        24,
+        40,
+        136
+      ],
+      "p95": 1.1450544521212578,
+      "half": [
+        8,
+        8,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0463",
+      "origin": [
+        24,
+        56,
+        88
+      ],
+      "p95": 0.06837912677915965,
+      "half": [
+        4.452604293823242,
+        4.652309417724609,
+        6.183873176574707
+      ]
+    },
+    {
+      "cell": "cruise:cell_0464",
+      "origin": [
+        24,
+        56,
+        104
+      ],
+      "p95": 0.06995372797202896,
+      "half": [
+        6.059100151062012,
+        5.836383819580078,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0465",
+      "origin": [
+        24,
+        56,
+        120
+      ],
+      "p95": 0.07074069968374407,
+      "half": [
+        6.059266567230225,
+        5.836383819580078,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0466",
+      "origin": [
+        24,
+        56,
+        136
+      ],
+      "p95": 0.06817840762637409,
+      "half": [
+        4.452668935060501,
+        4.652307510375977,
+        6.1836395263671875
+      ]
+    }
+  ],
+  "samples": 227050,
+  "overThreshold": 29828,
+  "rays": 5928766,
+  "counts": {
+    "cruise:cell_0322:overThreshold": 64,
+    "cruise:cell_0322:visibleBad": 46,
+    "cruise:cell_0344:overThreshold": 407,
+    "cruise:cell_0344:visibleBad": 158,
+    "cruise:cell_0224:overThreshold": 366,
+    "cruise:cell_0224:visibleBad": 145,
+    "cruise:cell_0344:occludedBad": 249,
+    "cruise:cell_0224:occludedBad": 221,
+    "cruise:cell_0347:overThreshold": 2688,
+    "cruise:cell_0347:occludedBad": 2688,
+    "cruise:cell_0226:overThreshold": 2688,
+    "cruise:cell_0226:occludedBad": 2687,
+    "cruise:cell_0225:overThreshold": 1832,
+    "cruise:cell_0225:occludedBad": 1729,
+    "cruise:cell_0348:overThreshold": 1832,
+    "cruise:cell_0348:occludedBad": 1682,
+    "cruise:cell_0228:overThreshold": 2073,
+    "cruise:cell_0228:occludedBad": 1885,
+    "cruise:cell_0345:overThreshold": 2076,
+    "cruise:cell_0345:occludedBad": 1961,
+    "cruise:cell_0227:overThreshold": 2725,
+    "cruise:cell_0227:occludedBad": 2725,
+    "cruise:cell_0346:overThreshold": 2725,
+    "cruise:cell_0346:occludedBad": 2725,
+    "cruise:cell_0110:overThreshold": 1500,
+    "cruise:cell_0110:visibleBad": 155,
+    "cruise:cell_0465:overThreshold": 1498,
+    "cruise:cell_0465:visibleBad": 131,
+    "cruise:cell_0345:visibleBad": 115,
+    "cruise:cell_0110:occludedBad": 1345,
+    "cruise:cell_0465:occludedBad": 1367,
+    "cruise:cell_0443:overThreshold": 70,
+    "cruise:cell_0443:visibleBad": 61,
+    "cruise:cell_0111:overThreshold": 1442,
+    "cruise:cell_0111:occludedBad": 1307,
+    "cruise:cell_0464:overThreshold": 1443,
+    "cruise:cell_0464:occludedBad": 1268,
+    "cruise:cell_0349:overThreshold": 314,
+    "cruise:cell_0349:occludedBad": 178,
+    "cruise:cell_0088:overThreshold": 70,
+    "cruise:cell_0088:visibleBad": 67,
+    "cruise:cell_0228:visibleBad": 188,
+    "cruise:cell_0229:overThreshold": 326,
+    "cruise:cell_0229:visibleBad": 144,
+    "cruise:cell_0089:overThreshold": 58,
+    "cruise:cell_0089:visibleBad": 53,
+    "cruise:cell_0229:occludedBad": 182,
+    "cruise:cell_0442:overThreshold": 58,
+    "cruise:cell_0442:visibleBad": 51,
+    "cruise:cell_0111:visibleBad": 135,
+    "cruise:cell_0464:visibleBad": 175,
+    "cruise:cell_0109:overThreshold": 721,
+    "cruise:cell_0109:visibleBad": 156,
+    "cruise:cell_0109:occludedBad": 565,
+    "cruise:cell_0466:overThreshold": 728,
+    "cruise:cell_0466:visibleBad": 150,
+    "cruise:cell_0348:visibleBad": 150,
+    "cruise:cell_0349:visibleBad": 136,
+    "cruise:cell_0444:overThreshold": 65,
+    "cruise:cell_0444:visibleBad": 54,
+    "cruise:cell_0087:overThreshold": 65,
+    "cruise:cell_0087:visibleBad": 58,
+    "cruise:cell_0327:overThreshold": 62,
+    "cruise:cell_0327:visibleBad": 59,
+    "cruise:cell_0207:overThreshold": 70,
+    "cruise:cell_0207:visibleBad": 66,
+    "cruise:cell_0466:occludedBad": 578,
+    "cruise:cell_0463:overThreshold": 748,
+    "cruise:cell_0463:visibleBad": 142,
+    "cruise:cell_0463:occludedBad": 606,
+    "cruise:cell_0090:overThreshold": 82,
+    "cruise:cell_0090:visibleBad": 67,
+    "cruise:cell_0441:overThreshold": 82,
+    "cruise:cell_0441:occludedBad": 18,
+    "cruise:cell_0441:visibleBad": 64,
+    "cruise:cell_0112:overThreshold": 745,
+    "cruise:cell_0112:occludedBad": 600,
+    "cruise:cell_0112:visibleBad": 145,
+    "cruise:cell_0225:visibleBad": 103,
+    "cruise:cell_0322:occludedBad": 18,
+    "cruise:cell_0203:overThreshold": 40,
+    "cruise:cell_0203:visibleBad": 34,
+    "cruise:cell_0326:overThreshold": 40,
+    "cruise:cell_0326:visibleBad": 36,
+    "cruise:cell_0087:occludedBad": 7,
+    "cruise:cell_0323:overThreshold": 53,
+    "cruise:cell_0323:visibleBad": 43,
+    "cruise:cell_0206:overThreshold": 53,
+    "cruise:cell_0206:visibleBad": 46,
+    "cruise:cell_0326:occludedBad": 4,
+    "cruise:cell_0203:occludedBad": 6,
+    "cruise:cell_0090:occludedBad": 15,
+    "cruise:cell_0206:occludedBad": 7,
+    "cruise:cell_0202:overThreshold": 19,
+    "cruise:cell_0202:visibleBad": 14,
+    "cruise:cell_0202:occludedBad": 5,
+    "cruise:cell_0226:visibleBad": 1,
+    "cruise:cell_0444:occludedBad": 11,
+    "cruise:cell_0443:occludedBad": 9,
+    "cruise:cell_0089:occludedBad": 5,
+    "cruise:cell_0088:occludedBad": 3,
+    "cruise:cell_0323:occludedBad": 10,
+    "cruise:cell_0442:occludedBad": 7,
+    "cruise:cell_0327:occludedBad": 3,
+    "cruise:cell_0207:occludedBad": 4
+  },
+  "bounds": [
+    {
+      "cell": "cruise:cell_0087",
+      "visibleOrUnresolvedBadPositionOccurrences": 63,
+      "visibleGoodLower": 279,
+      "distinctGoodWitnesses": 279,
+      "badShareUpper": 0.18421052631578946
+    },
+    {
+      "cell": "cruise:cell_0088",
+      "visibleOrUnresolvedBadPositionOccurrences": 68,
+      "visibleGoodLower": 217,
+      "distinctGoodWitnesses": 217,
+      "badShareUpper": 0.23859649122807017
+    },
+    {
+      "cell": "cruise:cell_0089",
+      "visibleOrUnresolvedBadPositionOccurrences": 53,
+      "visibleGoodLower": 216,
+      "distinctGoodWitnesses": 216,
+      "badShareUpper": 0.1970260223048327
+    },
+    {
+      "cell": "cruise:cell_0090",
+      "visibleOrUnresolvedBadPositionOccurrences": 72,
+      "visibleGoodLower": 232,
+      "distinctGoodWitnesses": 232,
+      "badShareUpper": 0.23684210526315788
+    },
+    {
+      "cell": "cruise:cell_0109",
+      "visibleOrUnresolvedBadPositionOccurrences": 188,
+      "visibleGoodLower": 325,
+      "distinctGoodWitnesses": 325,
+      "badShareUpper": 0.3664717348927875
+    },
+    {
+      "cell": "cruise:cell_0110",
+      "visibleOrUnresolvedBadPositionOccurrences": 188,
+      "visibleGoodLower": 473,
+      "distinctGoodWitnesses": 473,
+      "badShareUpper": 0.2844175491679274
+    },
+    {
+      "cell": "cruise:cell_0111",
+      "visibleOrUnresolvedBadPositionOccurrences": 162,
+      "visibleGoodLower": 446,
+      "distinctGoodWitnesses": 446,
+      "badShareUpper": 0.26644736842105265
+    },
+    {
+      "cell": "cruise:cell_0112",
+      "visibleOrUnresolvedBadPositionOccurrences": 160,
+      "visibleGoodLower": 342,
+      "distinctGoodWitnesses": 342,
+      "badShareUpper": 0.3187250996015936
+    },
+    {
+      "cell": "cruise:cell_0202",
+      "visibleOrUnresolvedBadPositionOccurrences": 17,
+      "visibleGoodLower": 88,
+      "distinctGoodWitnesses": 88,
+      "badShareUpper": 0.1619047619047619
+    },
+    {
+      "cell": "cruise:cell_0203",
+      "visibleOrUnresolvedBadPositionOccurrences": 39,
+      "visibleGoodLower": 148,
+      "distinctGoodWitnesses": 148,
+      "badShareUpper": 0.20855614973262032
+    },
+    {
+      "cell": "cruise:cell_0206",
+      "visibleOrUnresolvedBadPositionOccurrences": 49,
+      "visibleGoodLower": 143,
+      "distinctGoodWitnesses": 143,
+      "badShareUpper": 0.2552083333333333
+    },
+    {
+      "cell": "cruise:cell_0207",
+      "visibleOrUnresolvedBadPositionOccurrences": 66,
+      "visibleGoodLower": 257,
+      "distinctGoodWitnesses": 257,
+      "badShareUpper": 0.2043343653250774
+    },
+    {
+      "cell": "cruise:cell_0224",
+      "visibleOrUnresolvedBadPositionOccurrences": 166,
+      "visibleGoodLower": 112,
+      "distinctGoodWitnesses": 112,
+      "badShareUpper": 0.5971223021582733
+    },
+    {
+      "cell": "cruise:cell_0225",
+      "visibleOrUnresolvedBadPositionOccurrences": 131,
+      "visibleGoodLower": 509,
+      "distinctGoodWitnesses": 509,
+      "badShareUpper": 0.2046875
+    },
+    {
+      "cell": "cruise:cell_0226",
+      "visibleOrUnresolvedBadPositionOccurrences": 3,
+      "visibleGoodLower": 60,
+      "distinctGoodWitnesses": 60,
+      "badShareUpper": 0.047619047619047616
+    },
+    {
+      "cell": "cruise:cell_0227",
+      "visibleOrUnresolvedBadPositionOccurrences": 0,
+      "visibleGoodLower": 40,
+      "distinctGoodWitnesses": 39,
+      "badShareUpper": 0.0
+    },
+    {
+      "cell": "cruise:cell_0228",
+      "visibleOrUnresolvedBadPositionOccurrences": 208,
+      "visibleGoodLower": 615,
+      "distinctGoodWitnesses": 615,
+      "badShareUpper": 0.25273390036452004
+    },
+    {
+      "cell": "cruise:cell_0229",
+      "visibleOrUnresolvedBadPositionOccurrences": 156,
+      "visibleGoodLower": 290,
+      "distinctGoodWitnesses": 290,
+      "badShareUpper": 0.34977578475336324
+    },
+    {
+      "cell": "cruise:cell_0322",
+      "visibleOrUnresolvedBadPositionOccurrences": 53,
+      "visibleGoodLower": 87,
+      "distinctGoodWitnesses": 87,
+      "badShareUpper": 0.37857142857142856
+    },
+    {
+      "cell": "cruise:cell_0323",
+      "visibleOrUnresolvedBadPositionOccurrences": 52,
+      "visibleGoodLower": 144,
+      "distinctGoodWitnesses": 144,
+      "badShareUpper": 0.2653061224489796
+    },
+    {
+      "cell": "cruise:cell_0326",
+      "visibleOrUnresolvedBadPositionOccurrences": 37,
+      "visibleGoodLower": 117,
+      "distinctGoodWitnesses": 117,
+      "badShareUpper": 0.24025974025974026
+    },
+    {
+      "cell": "cruise:cell_0327",
+      "visibleOrUnresolvedBadPositionOccurrences": 59,
+      "visibleGoodLower": 248,
+      "distinctGoodWitnesses": 248,
+      "badShareUpper": 0.19218241042345277
+    },
+    {
+      "cell": "cruise:cell_0344",
+      "visibleOrUnresolvedBadPositionOccurrences": 179,
+      "visibleGoodLower": 120,
+      "distinctGoodWitnesses": 120,
+      "badShareUpper": 0.5986622073578596
+    },
+    {
+      "cell": "cruise:cell_0345",
+      "visibleOrUnresolvedBadPositionOccurrences": 141,
+      "visibleGoodLower": 507,
+      "distinctGoodWitnesses": 507,
+      "badShareUpper": 0.2175925925925926
+    },
+    {
+      "cell": "cruise:cell_0346",
+      "visibleOrUnresolvedBadPositionOccurrences": 0,
+      "visibleGoodLower": 40,
+      "distinctGoodWitnesses": 40,
+      "badShareUpper": 0.0
+    },
+    {
+      "cell": "cruise:cell_0347",
+      "visibleOrUnresolvedBadPositionOccurrences": 0,
+      "visibleGoodLower": 40,
+      "distinctGoodWitnesses": 40,
+      "badShareUpper": 0.0
+    },
+    {
+      "cell": "cruise:cell_0348",
+      "visibleOrUnresolvedBadPositionOccurrences": 174,
+      "visibleGoodLower": 579,
+      "distinctGoodWitnesses": 579,
+      "badShareUpper": 0.23107569721115537
+    },
+    {
+      "cell": "cruise:cell_0349",
+      "visibleOrUnresolvedBadPositionOccurrences": 148,
+      "visibleGoodLower": 265,
+      "distinctGoodWitnesses": 265,
+      "badShareUpper": 0.3583535108958838
+    },
+    {
+      "cell": "cruise:cell_0441",
+      "visibleOrUnresolvedBadPositionOccurrences": 79,
+      "visibleGoodLower": 285,
+      "distinctGoodWitnesses": 285,
+      "badShareUpper": 0.21703296703296704
+    },
+    {
+      "cell": "cruise:cell_0442",
+      "visibleOrUnresolvedBadPositionOccurrences": 55,
+      "visibleGoodLower": 227,
+      "distinctGoodWitnesses": 227,
+      "badShareUpper": 0.1950354609929078
+    },
+    {
+      "cell": "cruise:cell_0443",
+      "visibleOrUnresolvedBadPositionOccurrences": 67,
+      "visibleGoodLower": 209,
+      "distinctGoodWitnesses": 209,
+      "badShareUpper": 0.2427536231884058
+    },
+    {
+      "cell": "cruise:cell_0444",
+      "visibleOrUnresolvedBadPositionOccurrences": 56,
+      "visibleGoodLower": 205,
+      "distinctGoodWitnesses": 205,
+      "badShareUpper": 0.21455938697318008
+    },
+    {
+      "cell": "cruise:cell_0463",
+      "visibleOrUnresolvedBadPositionOccurrences": 175,
+      "visibleGoodLower": 339,
+      "distinctGoodWitnesses": 339,
+      "badShareUpper": 0.3404669260700389
+    },
+    {
+      "cell": "cruise:cell_0464",
+      "visibleOrUnresolvedBadPositionOccurrences": 205,
+      "visibleGoodLower": 447,
+      "distinctGoodWitnesses": 447,
+      "badShareUpper": 0.31441717791411045
+    },
+    {
+      "cell": "cruise:cell_0465",
+      "visibleOrUnresolvedBadPositionOccurrences": 148,
+      "visibleGoodLower": 471,
+      "distinctGoodWitnesses": 471,
+      "badShareUpper": 0.23909531502423265
+    },
+    {
+      "cell": "cruise:cell_0466",
+      "visibleOrUnresolvedBadPositionOccurrences": 160,
+      "visibleGoodLower": 332,
+      "distinctGoodWitnesses": 332,
+      "badShareUpper": 0.3252032520325203
+    }
+  ],
+  "supportsSampledP95": false,
+  "limitations": [
+    "Unused GLTF vertices can change final native shared bounds; final packed-art and visual gates remain required.",
+    "Visible witnesses and boundary probes may exceed0.06m; their recorded errors are retained. This is a sampled P95 bound, not a maximum bound.",
+    "This diagnostic uses complete over-threshold classification and positive good-sample lower bounds rather than an exhaustive all-visible-sample percentile; unresolved bad rays count conservatively.",
+    "Observed model source hashes may postdate frozen raw generation; raw/index hashes identify the measured artifact."
+  ],
+  "elapsedSeconds": 178.37141370773315,
+  "status": "Insufficient constructive bound in32of36cells; not dome acceptance",
+  "fullReportSHA256": "282e7494b3b238306663d35d65d31be9f690842109268490f232b1589dfaddd4",
+  "fullReportBytes": 24681368,
+  "reverse": [
+    {
+      "cell": "cruise:cell_0087",
+      "samples": 314,
+      "p95": 0.019110310822725296,
+      "max": 0.019763361662626266,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0088",
+      "samples": 262,
+      "p95": 0.019256340339779854,
+      "max": 0.020029651001095772,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0089",
+      "samples": 262,
+      "p95": 0.019170857965946198,
+      "max": 0.019650455564260483,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0090",
+      "samples": 314,
+      "p95": 0.019251154735684395,
+      "max": 0.019753145053982735,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0109",
+      "samples": 328,
+      "p95": 0.00029694056138396263,
+      "max": 0.0007022592471912503,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0110",
+      "samples": 494,
+      "p95": 0.0010010964469984174,
+      "max": 0.0011346543906256557,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0111",
+      "samples": 496,
+      "p95": 0.0008186420309357345,
+      "max": 0.0010319531429558992,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0112",
+      "samples": 328,
+      "p95": 0.0007574743940494955,
+      "max": 0.0007712884689681232,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0202",
+      "samples": 122,
+      "p95": 0.019090086221694946,
+      "max": 0.019642625004053116,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0203",
+      "samples": 174,
+      "p95": 0.018952464684844017,
+      "max": 0.019915910437703133,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0206",
+      "samples": 174,
+      "p95": 0.019097767770290375,
+      "max": 0.01966722309589386,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0207",
+      "samples": 262,
+      "p95": 0.019275963306427002,
+      "max": 0.019590169191360474,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0224",
+      "samples": 136,
+      "p95": 0.0007044342928566039,
+      "max": 0.0007044342928566039,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0225",
+      "samples": 710,
+      "p95": 0.0012074700789526105,
+      "max": 0.001313437707722187,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0226",
+      "samples": 840,
+      "p95": 0.0011447370052337646,
+      "max": 0.0012426972389221191,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0227",
+      "samples": 840,
+      "p95": 0.0011984226293861866,
+      "max": 0.0013116582995280623,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0228",
+      "samples": 710,
+      "p95": 0.0011831712909042835,
+      "max": 0.0013391828397288918,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0229",
+      "samples": 152,
+      "p95": 0.00029646168695762753,
+      "max": 0.0003268115979153663,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0322",
+      "samples": 122,
+      "p95": 0.01925276219844818,
+      "max": 0.019603682681918144,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0323",
+      "samples": 174,
+      "p95": 0.01914978213608265,
+      "max": 0.019704341888427734,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0326",
+      "samples": 174,
+      "p95": 0.019027912989258766,
+      "max": 0.019865674898028374,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0327",
+      "samples": 262,
+      "p95": 0.019136080518364906,
+      "max": 0.01966901496052742,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0344",
+      "samples": 136,
+      "p95": 0.0006031595985405147,
+      "max": 0.0006666231201961637,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0345",
+      "samples": 710,
+      "p95": 0.0011792416917160153,
+      "max": 0.0013366884086281061,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0346",
+      "samples": 840,
+      "p95": 0.0011984226293861866,
+      "max": 0.0013076456962153316,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0347",
+      "samples": 840,
+      "p95": 0.0011447370052337646,
+      "max": 0.0012390336487442255,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0348",
+      "samples": 710,
+      "p95": 0.00118278618901968,
+      "max": 0.0013134622713550925,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0349",
+      "samples": 152,
+      "p95": 0.0006584066431969404,
+      "max": 0.000668767315801233,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0441",
+      "samples": 314,
+      "p95": 0.019283892586827278,
+      "max": 0.01977032609283924,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0442",
+      "samples": 262,
+      "p95": 0.01918269321322441,
+      "max": 0.01965758390724659,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0443",
+      "samples": 262,
+      "p95": 0.019176192581653595,
+      "max": 0.020038021728396416,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0444",
+      "samples": 314,
+      "p95": 0.019130408763885498,
+      "max": 0.01972101628780365,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0463",
+      "samples": 328,
+      "p95": 0.0007640544208697975,
+      "max": 0.0007752005476504564,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0464",
+      "samples": 496,
+      "p95": 0.0008239944581873715,
+      "max": 0.0010296591790392995,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0465",
+      "samples": 494,
+      "p95": 0.0010018011089414358,
+      "max": 0.0011346543906256557,
+      "overThresholdCount": 0
+    },
+    {
+      "cell": "cruise:cell_0466",
+      "samples": 328,
+      "p95": 0.00029214206733740866,
+      "max": 0.0007022592471912503,
+      "overThresholdCount": 0
+    }
+  ],
+  "unresolvedBadRayCount": 0,
+  "maximumObservedVisibleError": 0.09896468371152878,
+  "representativeVisibleWitnesses": [
+    {
+      "cell": "cruise:cell_0087",
+      "triangle": 1938,
+      "sample": "c",
+      "owner": "aquadome_10_0",
+      "point": [
+        -17.695865631103516,
+        48.0,
+        85.46476745605469
+      ],
+      "normal": [
+        0.9188136458396912,
+        -0.15449035167694092,
+        0.36319997906684875
+      ],
+      "error": 0.07542258501052856,
+      "eye": [
+        191.5111083984375,
+        46.79999923706055,
+        -48.6968994140625
+      ],
+      "eyeLabel": "outside250:320:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0088",
+      "triangle": 7126,
+      "sample": "centroid",
+      "owner": "aquadome_8_0",
+      "point": [
+        -28.0341854095459,
+        47.22898483276367,
+        111.99951171875
+      ],
+      "normal": [
+        0.9535977840423584,
+        -0.15881973505020142,
+        0.25578826665878296
+      ],
+      "error": 0.07579529285430908,
+      "eye": [
+        125.0,
+        46.79999923706055,
+        -104.50634765625
+      ],
+      "eyeLabel": "outside250:300:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0089",
+      "triangle": 3512,
+      "sample": "b",
+      "owner": "aquadome_8_0",
+      "point": [
+        -27.905879974365234,
+        48.0,
+        112.0
+      ],
+      "normal": [
+        0.9106776118278503,
+        -0.1516842246055603,
+        0.3842630982398987
+      ],
+      "error": 0.07563520222902298,
+      "eye": [
+        125.0,
+        46.79999923706055,
+        -104.50634765625
+      ],
+      "eyeLabel": "outside250:300:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0090",
+      "triangle": 93,
+      "sample": "c",
+      "owner": "aquadome_6_0",
+      "point": [
+        -19.73155975341797,
+        48.0,
+        136.26661682128906
+      ],
+      "normal": [
+        0.3795992434024811,
+        -0.17616640031337738,
+        -0.9082233905792236
+      ],
+      "error": 0.07517952471971512,
+      "eye": [
+        43.412044525146484,
+        46.79999923706055,
+        -134.20193481445312
+      ],
+      "eyeLabel": "outside250:280:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0109",
+      "triangle": 585,
+      "sample": "a",
+      "owner": "aquadome_10_0",
+      "point": [
+        -17.695756912231445,
+        48.0,
+        85.46477508544922
+      ],
+      "normal": [
+        0.3804590106010437,
+        -0.1836162954568863,
+        0.9063862562179565
+      ],
+      "error": 0.075503408908844,
+      "eye": [
+        216.50634765625,
+        46.79999923706055,
+        -13.0
+      ],
+      "eyeLabel": "outside250:330:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0110",
+      "triangle": 1362,
+      "sample": "centroid",
+      "owner": "aquadome_8_0",
+      "point": [
+        -27.21698570251465,
+        49.98168182373047,
+        111.99951171875
+      ],
+      "normal": [
+        0.8432854413986206,
+        -0.4326200783252716,
+        0.31891921162605286
+      ],
+      "error": 0.07599565386772156,
+      "eye": [
+        160.0854034423828,
+        25.011062622070312,
+        302.7823486328125
+      ],
+      "eyeLabel": "outside250:50:-5",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0111",
+      "triangle": 1160,
+      "sample": "b",
+      "owner": "aquadome_8_0",
+      "point": [
+        -27.90591812133789,
+        48.0,
+        112.0
+      ],
+      "normal": [
+        0.9108375906944275,
+        -0.15170758962631226,
+        0.38387465476989746
+      ],
+      "error": 0.07559822499752045,
+      "eye": [
+        125.0,
+        46.79999923706055,
+        -104.50634765625
+      ],
+      "eyeLabel": "outside250:300:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0112",
+      "triangle": 208,
+      "sample": "a",
+      "owner": "aquadome_6_0",
+      "point": [
+        -19.73158836364746,
+        48.0,
+        136.26663208007812
+      ],
+      "normal": [
+        0.9176212549209595,
+        -0.1607084572315216,
+        -0.36351633071899414
+      ],
+      "error": 0.07514138519763947,
+      "eye": [
+        43.412044525146484,
+        46.79999923706055,
+        -134.20193481445312
+      ],
+      "eyeLabel": "outside250:280:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0202",
+      "triangle": 857,
+      "sample": "b",
+      "owner": "aquadome_11_0",
+      "point": [
+        -8.897976875305176,
+        48.0,
+        79.50511169433594
+      ],
+      "normal": [
+        0.450690895318985,
+        -0.24882321059703827,
+        0.8573008179664612
+      ],
+      "error": 0.0702383741736412,
+      "eye": [
+        216.50634765625,
+        46.79999923706055,
+        -13.0
+      ],
+      "eyeLabel": "outside250:330:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0203",
+      "triangle": 25,
+      "sample": "c",
+      "owner": "aquadome_10_0",
+      "point": [
+        -15.487777709960938,
+        48.0,
+        83.45249938964844
+      ],
+      "normal": [
+        0.9206594824790955,
+        -0.1468033641576767,
+        0.3617110252380371
+      ],
+      "error": 0.07454495131969452,
+      "eye": [
+        216.50634765625,
+        46.79999923706055,
+        -13.0
+      ],
+      "eyeLabel": "outside250:330:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0206",
+      "triangle": 83,
+      "sample": "c",
+      "owner": "aquadome_5_0",
+      "point": [
+        -15.487777709960938,
+        48.0,
+        140.54823303222656
+      ],
+      "normal": [
+        0.38103532791137695,
+        -0.18926064670085907,
+        -0.9049820899963379
+      ],
+      "error": 0.07396566867828369,
+      "eye": [
+        25.0,
+        47.29999923706055,
+        -77.0
+      ],
+      "eyeLabel": "route:spine_15:1",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0207",
+      "triangle": 19,
+      "sample": "c",
+      "owner": "aquadome_4_0",
+      "point": [
+        0.0,
+        48.0,
+        146.31820678710938
+      ],
+      "normal": [
+        -0.38191571831703186,
+        -0.1853398233652115,
+        -0.9054223299026489
+      ],
+      "error": 0.07526608556509018,
+      "eye": [
+        -1.100000023841858,
+        49.29999923706055,
+        -71.19999694824219
+      ],
+      "eyeLabel": "route:stair_aft_15:2",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0224",
+      "triangle": 708,
+      "sample": "c",
+      "owner": "aquadome_11_0",
+      "point": [
+        -5.433027267456055,
+        48.87551498413086,
+        78.43257141113281
+      ],
+      "normal": [
+        -0.11252901703119278,
+        -0.923943817615509,
+        -0.36560237407684326
+      ],
+      "error": 0.09795060753822327,
+      "eye": [
+        -249.04867553710938,
+        25.011062622070312,
+        112.0
+      ],
+      "eyeLabel": "outside250:180:-5",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0225",
+      "triangle": 115,
+      "sample": "c",
+      "owner": "aquadome_10_0",
+      "point": [
+        -16.0,
+        50.56600570678711,
+        85.43107604980469
+      ],
+      "normal": [
+        0.374724417924881,
+        -0.26947805285453796,
+        0.8871094584465027
+      ],
+      "error": 0.07512732595205307,
+      "eye": [
+        215.68247985839844,
+        25.011062622070312,
+        -12.524337768554688
+      ],
+      "eyeLabel": "outside250:330:-5",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0226",
+      "triangle": 1440,
+      "sample": "b",
+      "owner": "aquadome_9_2",
+      "point": [
+        -15.172094345092773,
+        57.50212097167969,
+        96.0
+      ],
+      "normal": [
+        0.7440333366394043,
+        -0.38137486577033997,
+        0.5486051440238953
+      ],
+      "error": 0.06939581781625748,
+      "eye": [
+        90.5210952758789,
+        3.326152801513672,
+        315.98614501953125
+      ],
+      "eyeLabel": "normal-offset:4",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0228",
+      "triangle": 284,
+      "sample": "c",
+      "owner": "aquadome_4_0",
+      "point": [
+        -8.490005493164062,
+        49.63484191894531,
+        144.0
+      ],
+      "normal": [
+        0.6314597129821777,
+        -0.2865943908691406,
+        -0.7205014824867249
+      ],
+      "error": 0.0756928026676178,
+      "eye": [
+        -1.100000023841858,
+        40.5,
+        -77.0
+      ],
+      "eyeLabel": "route:stair_aft_11:8",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0229",
+      "triangle": 278,
+      "sample": "b",
+      "owner": "aquadome_4_0",
+      "point": [
+        -8.490093231201172,
+        49.634849548339844,
+        144.0
+      ],
+      "normal": [
+        0.6317188143730164,
+        -0.28625449538230896,
+        -0.7204093337059021
+      ],
+      "error": 0.07565707713365555,
+      "eye": [
+        -1.100000023841858,
+        40.5,
+        -77.0
+      ],
+      "eyeLabel": "route:stair_aft_11:8",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0322",
+      "triangle": 870,
+      "sample": "b",
+      "owner": "aquadome_12_0",
+      "point": [
+        8.026368141174316,
+        48.0,
+        79.05758666992188
+      ],
+      "normal": [
+        -0.9228951334953308,
+        -0.11647456884384155,
+        0.36701256036758423
+      ],
+      "error": 0.09896468371152878,
+      "eye": [
+        -246.20193481445312,
+        46.79999923706055,
+        68.58795166015625
+      ],
+      "eyeLabel": "outside250:190:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0323",
+      "triangle": 79,
+      "sample": "c",
+      "owner": "aquadome_13_0",
+      "point": [
+        15.487777709960938,
+        48.0,
+        83.45176696777344
+      ],
+      "normal": [
+        -0.38103485107421875,
+        -0.1892666518688202,
+        0.9049810171127319
+      ],
+      "error": 0.07396622747182846,
+      "eye": [
+        -234.92315673828125,
+        46.79999923706055,
+        26.494964599609375
+      ],
+      "eyeLabel": "outside250:200:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0326",
+      "triangle": 21,
+      "sample": "c",
+      "owner": "aquadome_2_0",
+      "point": [
+        15.487777709960938,
+        48.0,
+        140.54750061035156
+      ],
+      "normal": [
+        -0.9206603169441223,
+        -0.14679722487926483,
+        -0.361711323261261
+      ],
+      "error": 0.07454495131969452,
+      "eye": [
+        -85.50503540039062,
+        46.79999923706055,
+        -122.92315673828125
+      ],
+      "eyeLabel": "outside250:250:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0327",
+      "triangle": 1351,
+      "sample": "b",
+      "owner": "aquadome_4_0",
+      "point": [
+        0.000244140625,
+        48.0,
+        146.31805419921875
+      ],
+      "normal": [
+        0.3824324905872345,
+        -0.18530267477035522,
+        -0.9052117466926575
+      ],
+      "error": 0.07537634670734406,
+      "eye": [
+        -1.100000023841858,
+        49.29999923706055,
+        -71.19999694824219
+      ],
+      "eyeLabel": "route:stair_aft_15:2",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0344",
+      "triangle": 885,
+      "sample": "a",
+      "owner": "aquadome_12_0",
+      "point": [
+        8.026368141174316,
+        48.0,
+        79.05758666992188
+      ],
+      "normal": [
+        -0.9228214621543884,
+        0.030427342280745506,
+        -0.38402441143989563
+      ],
+      "error": 0.09896468371152878,
+      "eye": [
+        -246.20193481445312,
+        46.79999923706055,
+        68.58795166015625
+      ],
+      "eyeLabel": "outside250:190:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0345",
+      "triangle": 284,
+      "sample": "c",
+      "owner": "aquadome_12_0",
+      "point": [
+        8.489761352539062,
+        49.634456634521484,
+        80.0
+      ],
+      "normal": [
+        -0.6314405798912048,
+        -0.28658628463745117,
+        0.7205213904380798
+      ],
+      "error": 0.07598786801099777,
+      "eye": [
+        -234.02920532226562,
+        25.011062622070312,
+        26.820335388183594
+      ],
+      "eyeLabel": "outside250:200:-5",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0348",
+      "triangle": 1020,
+      "sample": "a",
+      "owner": "aquadome_3_0",
+      "point": [
+        2.5725884437561035,
+        52.062503814697266,
+        144.0
+      ],
+      "normal": [
+        0.1869196593761444,
+        -0.2722974419593811,
+        -0.943882942199707
+      ],
+      "error": 0.07548303157091141,
+      "eye": [
+        -1.100000023841858,
+        37.29999923706055,
+        -77.0
+      ],
+      "eyeLabel": "route:stair_aft_10:8",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0349",
+      "triangle": 364,
+      "sample": "b",
+      "owner": "aquadome_4_0",
+      "point": [
+        0.00016069412231445312,
+        52.20351028442383,
+        144.0
+      ],
+      "normal": [
+        0.38284870982170105,
+        -0.6866647601127625,
+        -0.6179955005645752
+      ],
+      "error": 0.07547461241483688,
+      "eye": [
+        -1.100000023841858,
+        40.5,
+        -75.5999984741211
+      ],
+      "eyeLabel": "route:stair_aft_12:1",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0441",
+      "triangle": 8521,
+      "sample": "b",
+      "owner": "aquadome_14_0",
+      "point": [
+        19.731691360473633,
+        48.0,
+        87.73339080810547
+      ],
+      "normal": [
+        -0.9179133176803589,
+        -0.16055992245674133,
+        0.36284399032592773
+      ],
+      "error": 0.0751786157488823,
+      "eye": [
+        -216.50634765625,
+        46.79999923706055,
+        -13.0
+      ],
+      "eyeLabel": "outside250:210:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0442",
+      "triangle": 12327,
+      "sample": "b",
+      "owner": "aquadome_0_0",
+      "point": [
+        27.905902862548828,
+        48.0,
+        112.0
+      ],
+      "normal": [
+        -0.9111149907112122,
+        -0.15182244777679443,
+        -0.38317030668258667
+      ],
+      "error": 0.07561389356851578,
+      "eye": [
+        -160.6968994140625,
+        46.79999923706055,
+        -79.5111083984375
+      ],
+      "eyeLabel": "outside250:230:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0443",
+      "triangle": 3347,
+      "sample": "centroid",
+      "owner": "aquadome_0_0",
+      "point": [
+        28.03413963317871,
+        47.22898483276367,
+        112.00048828125
+      ],
+      "normal": [
+        -0.9370596408843994,
+        -0.15607847273349762,
+        -0.31234392523765564
+      ],
+      "error": 0.07587800920009613,
+      "eye": [
+        -160.6968994140625,
+        46.79999923706055,
+        -79.5111083984375
+      ],
+      "eyeLabel": "outside250:230:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0444",
+      "triangle": 187,
+      "sample": "c",
+      "owner": "aquadome_2_0",
+      "point": [
+        17.695852279663086,
+        48.0,
+        138.5352325439453
+      ],
+      "normal": [
+        -0.9185423254966736,
+        -0.15460285544395447,
+        -0.3638380467891693
+      ],
+      "error": 0.07543666660785675,
+      "eye": [
+        -188.60162353515625,
+        3.3879547119140625,
+        270.25555419921875
+      ],
+      "eyeLabel": "outside250:140:-10",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0463",
+      "triangle": 205,
+      "sample": "a",
+      "owner": "aquadome_14_0",
+      "point": [
+        19.73158836364746,
+        48.0,
+        87.73338317871094
+      ],
+      "normal": [
+        -0.9176085591316223,
+        -0.1607087105512619,
+        0.3635481894016266
+      ],
+      "error": 0.07525867223739624,
+      "eye": [
+        -216.50634765625,
+        46.79999923706055,
+        -13.0
+      ],
+      "eyeLabel": "outside250:210:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0464",
+      "triangle": 1,
+      "sample": "b",
+      "owner": "aquadome_0_0",
+      "point": [
+        27.90591812133789,
+        48.0,
+        112.0
+      ],
+      "normal": [
+        -0.9108375906944275,
+        -0.15170758962631226,
+        -0.38387465476989746
+      ],
+      "error": 0.07559822499752045,
+      "eye": [
+        -160.6968994140625,
+        46.79999923706055,
+        -79.5111083984375
+      ],
+      "eyeLabel": "outside250:230:0",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0465",
+      "triangle": 1300,
+      "sample": "centroid",
+      "owner": "aquadome_0_0",
+      "point": [
+        27.21698570251465,
+        49.98168182373047,
+        112.00048828125
+      ],
+      "normal": [
+        -0.8432854413986206,
+        -0.4326200783252716,
+        -0.31891921162605286
+      ],
+      "error": 0.07599565386772156,
+      "eye": [
+        -160.0854034423828,
+        25.011062622070312,
+        302.7823486328125
+      ],
+      "eyeLabel": "outside250:130:-5",
+      "hit": null
+    },
+    {
+      "cell": "cruise:cell_0466",
+      "triangle": 581,
+      "sample": "a",
+      "owner": "aquadome_2_0",
+      "point": [
+        17.695756912231445,
+        48.0,
+        138.5352325439453
+      ],
+      "normal": [
+        -0.3804459571838379,
+        -0.18379630148410797,
+        -0.9063551425933838
+      ],
+      "error": 0.075503408908844,
+      "eye": [
+        -234.02920532226562,
+        25.011062622070312,
+        197.17965698242188
+      ],
+      "eyeLabel": "outside250:160:-5",
+      "hit": null
+    }
+  ],
+  "goodWitnessSummary": [
+    {
+      "cell": "cruise:cell_0087",
+      "distinctWitnesses": 279,
+      "guaranteedSamples": 279,
+      "uniqueCorners": 126,
+      "triangleCentroids": 153
+    },
+    {
+      "cell": "cruise:cell_0088",
+      "distinctWitnesses": 217,
+      "guaranteedSamples": 217,
+      "uniqueCorners": 110,
+      "triangleCentroids": 107
+    },
+    {
+      "cell": "cruise:cell_0089",
+      "distinctWitnesses": 216,
+      "guaranteedSamples": 216,
+      "uniqueCorners": 108,
+      "triangleCentroids": 108
+    },
+    {
+      "cell": "cruise:cell_0090",
+      "distinctWitnesses": 232,
+      "guaranteedSamples": 232,
+      "uniqueCorners": 105,
+      "triangleCentroids": 127
+    },
+    {
+      "cell": "cruise:cell_0109",
+      "distinctWitnesses": 325,
+      "guaranteedSamples": 325,
+      "uniqueCorners": 168,
+      "triangleCentroids": 157
+    },
+    {
+      "cell": "cruise:cell_0110",
+      "distinctWitnesses": 473,
+      "guaranteedSamples": 473,
+      "uniqueCorners": 269,
+      "triangleCentroids": 204
+    },
+    {
+      "cell": "cruise:cell_0111",
+      "distinctWitnesses": 446,
+      "guaranteedSamples": 446,
+      "uniqueCorners": 260,
+      "triangleCentroids": 186
+    },
+    {
+      "cell": "cruise:cell_0112",
+      "distinctWitnesses": 342,
+      "guaranteedSamples": 342,
+      "uniqueCorners": 180,
+      "triangleCentroids": 162
+    },
+    {
+      "cell": "cruise:cell_0202",
+      "distinctWitnesses": 88,
+      "guaranteedSamples": 88,
+      "uniqueCorners": 44,
+      "triangleCentroids": 44
+    },
+    {
+      "cell": "cruise:cell_0203",
+      "distinctWitnesses": 148,
+      "guaranteedSamples": 148,
+      "uniqueCorners": 75,
+      "triangleCentroids": 73
+    },
+    {
+      "cell": "cruise:cell_0206",
+      "distinctWitnesses": 143,
+      "guaranteedSamples": 143,
+      "uniqueCorners": 69,
+      "triangleCentroids": 74
+    },
+    {
+      "cell": "cruise:cell_0207",
+      "distinctWitnesses": 257,
+      "guaranteedSamples": 257,
+      "uniqueCorners": 113,
+      "triangleCentroids": 144
+    },
+    {
+      "cell": "cruise:cell_0224",
+      "distinctWitnesses": 112,
+      "guaranteedSamples": 112,
+      "uniqueCorners": 66,
+      "triangleCentroids": 46
+    },
+    {
+      "cell": "cruise:cell_0225",
+      "distinctWitnesses": 509,
+      "guaranteedSamples": 509,
+      "uniqueCorners": 319,
+      "triangleCentroids": 190
+    },
+    {
+      "cell": "cruise:cell_0226",
+      "distinctWitnesses": 60,
+      "guaranteedSamples": 60,
+      "uniqueCorners": 60,
+      "triangleCentroids": 0
+    },
+    {
+      "cell": "cruise:cell_0227",
+      "distinctWitnesses": 39,
+      "guaranteedSamples": 40,
+      "uniqueCorners": 34,
+      "triangleCentroids": 6
+    },
+    {
+      "cell": "cruise:cell_0228",
+      "distinctWitnesses": 615,
+      "guaranteedSamples": 615,
+      "uniqueCorners": 341,
+      "triangleCentroids": 274
+    },
+    {
+      "cell": "cruise:cell_0229",
+      "distinctWitnesses": 290,
+      "guaranteedSamples": 290,
+      "uniqueCorners": 136,
+      "triangleCentroids": 154
+    },
+    {
+      "cell": "cruise:cell_0322",
+      "distinctWitnesses": 87,
+      "guaranteedSamples": 87,
+      "uniqueCorners": 40,
+      "triangleCentroids": 47
+    },
+    {
+      "cell": "cruise:cell_0323",
+      "distinctWitnesses": 144,
+      "guaranteedSamples": 144,
+      "uniqueCorners": 70,
+      "triangleCentroids": 74
+    },
+    {
+      "cell": "cruise:cell_0326",
+      "distinctWitnesses": 117,
+      "guaranteedSamples": 117,
+      "uniqueCorners": 61,
+      "triangleCentroids": 56
+    },
+    {
+      "cell": "cruise:cell_0327",
+      "distinctWitnesses": 248,
+      "guaranteedSamples": 248,
+      "uniqueCorners": 109,
+      "triangleCentroids": 139
+    },
+    {
+      "cell": "cruise:cell_0344",
+      "distinctWitnesses": 120,
+      "guaranteedSamples": 120,
+      "uniqueCorners": 72,
+      "triangleCentroids": 48
+    },
+    {
+      "cell": "cruise:cell_0345",
+      "distinctWitnesses": 507,
+      "guaranteedSamples": 507,
+      "uniqueCorners": 315,
+      "triangleCentroids": 192
+    },
+    {
+      "cell": "cruise:cell_0346",
+      "distinctWitnesses": 40,
+      "guaranteedSamples": 40,
+      "uniqueCorners": 35,
+      "triangleCentroids": 5
+    },
+    {
+      "cell": "cruise:cell_0347",
+      "distinctWitnesses": 40,
+      "guaranteedSamples": 40,
+      "uniqueCorners": 40,
+      "triangleCentroids": 0
+    },
+    {
+      "cell": "cruise:cell_0348",
+      "distinctWitnesses": 579,
+      "guaranteedSamples": 579,
+      "uniqueCorners": 331,
+      "triangleCentroids": 248
+    },
+    {
+      "cell": "cruise:cell_0349",
+      "distinctWitnesses": 265,
+      "guaranteedSamples": 265,
+      "uniqueCorners": 120,
+      "triangleCentroids": 145
+    },
+    {
+      "cell": "cruise:cell_0441",
+      "distinctWitnesses": 285,
+      "guaranteedSamples": 285,
+      "uniqueCorners": 126,
+      "triangleCentroids": 159
+    },
+    {
+      "cell": "cruise:cell_0442",
+      "distinctWitnesses": 227,
+      "guaranteedSamples": 227,
+      "uniqueCorners": 116,
+      "triangleCentroids": 111
+    },
+    {
+      "cell": "cruise:cell_0443",
+      "distinctWitnesses": 209,
+      "guaranteedSamples": 209,
+      "uniqueCorners": 105,
+      "triangleCentroids": 104
+    },
+    {
+      "cell": "cruise:cell_0444",
+      "distinctWitnesses": 205,
+      "guaranteedSamples": 205,
+      "uniqueCorners": 106,
+      "triangleCentroids": 99
+    },
+    {
+      "cell": "cruise:cell_0463",
+      "distinctWitnesses": 339,
+      "guaranteedSamples": 339,
+      "uniqueCorners": 178,
+      "triangleCentroids": 161
+    },
+    {
+      "cell": "cruise:cell_0464",
+      "distinctWitnesses": 447,
+      "guaranteedSamples": 447,
+      "uniqueCorners": 258,
+      "triangleCentroids": 189
+    },
+    {
+      "cell": "cruise:cell_0465",
+      "distinctWitnesses": 471,
+      "guaranteedSamples": 471,
+      "uniqueCorners": 270,
+      "triangleCentroids": 201
+    },
+    {
+      "cell": "cruise:cell_0466",
+      "distinctWitnesses": 332,
+      "guaranteedSamples": 332,
+      "uniqueCorners": 178,
+      "triangleCentroids": 154
+    }
+  ],
+  "replay": "bun tools/cruise/dome-error.ts --raw assets/source/landmarks/cruise/ref/raw-cells --source assets/source/landmarks/cruise --layout content/landmarks/cruise-layout.json --census assets/source/landmarks/cruise/ref/dome-census.json --out var/cruise-preview/dome-error.json"
+}
