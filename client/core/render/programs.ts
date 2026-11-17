@@ -7,7 +7,7 @@ import type { TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "./atmosphere.ts";
 import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_VERTEX } from "./detailtext.ts";
-import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_FRAGMENT, LIT_SPLIT_FRAGMENT, PULLED_VERTEX } from "./glsl.ts";
+import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, PULLED_VERTEX, finishVertex } from "./glsl.ts";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, type FramePacket } from "./packet.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
 import { SURFACE_ANY, surfaceFragment, surfaceVertex, type SurfaceVariant } from "./surface.ts";
@@ -59,8 +59,11 @@ function surface(tier: Tier, format: TextureFormat, hard: boolean, variant: Surf
 
 type Make = (tier: Tier, format: TextureFormat, hard?: boolean) => ProgramText;
 
+/** A flat mesh program, whose vertices on a lit tier take their landmark's finishes (glsl.ts `finishVertex`). */
+const mesh = (tier: Tier, made: ProgramText): ProgramText => (tier.lit ? { ...made, vertex: finishVertex(made.vertex) } : made);
+
 const MAKE = {
-  flat: (tier, format, hard = false) => flatOr(tier, format, hard, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_FRAGMENT, MESH),
+  flat: (tier, format, hard = false) => mesh(tier, flatOr(tier, format, hard, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH)),
   terrain: (tier, format, hard = false) => flatOr(tier, format, hard, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_FRAGMENT, GROUND),
   // The same, for the tiles that read the window round the camera (terrain.ts).
   terrainWindow: (tier, format, hard): ProgramText => {
@@ -69,12 +72,12 @@ const MAKE = {
   },
   // See-through flat draws where the view is split in two depth ranges. A program of their own keeps the discard out of
   // the opaque draws, which some GPUs would then test for depth only after shading.
-  seeThrough: (tier, format, hard = false) => flatOr(tier, format, hard, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, LIT_SPLIT_FRAGMENT, MESH),
+  seeThrough: (tier, format, hard = false) => mesh(tier, flatOr(tier, format, hard, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, LIT_SPLIT_FRAGMENT, MESH)),
   // Far blocks (far.ts), which fade out over the last of their reach, and nodes in the hand-over between the near store
   // and the far one (hand.ts). A program of their own keeps the discard out of the rest.
-  far: (tier, format, hard = false) => flatOr(tier, format, hard, FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, MESH),
+  far: (tier, format, hard = false) => mesh(tier, flatOr(tier, format, hard, FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, MESH)),
   // Far nodes of every mesh in one draw (packet.ts DRAW_PULLED), their vertices read from the atlas.
-  pulled: (tier, format, hard = false) => flatOr(tier, format, hard, PULLED_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, { uPalette: UNIT.palette, uAtlas: UNIT.atlas }),
+  pulled: (tier, format, hard = false) => mesh(tier, flatOr(tier, format, hard, PULLED_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, { uPalette: UNIT.palette, uAtlas: UNIT.atlas })),
   // A textured draw (surface.ts), dyed and able to drop fragments; and the same undyed, never dropping, or both, which
   // `drawProgram` takes where a draw allows (SurfaceVariant).
   surface: (tier, format, hard = false) => surface(tier, format, hard, SURFACE_ANY),

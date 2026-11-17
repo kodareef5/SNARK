@@ -125,7 +125,7 @@ function pool(meshes: readonly SourceMesh[]): { materials: PackMaterial[]; textu
         textures.set(t.id, { id: t.id, role: t.role, top: t.top });
         return t.id;
       });
-      const material: PackMaterial = { id: m.id, base: -1, normal: -1, mro: -1, mask: -1, mask2: -1, tint: m.tint, grey: m.grey, emissive: m.emissive, flags: m.flags, cutoff: m.cutoff, span: m.span };
+      const material: PackMaterial = { id: m.id, base: -1, normal: -1, mro: -1, mask: -1, mask2: -1, tint: m.tint, grey: m.grey, emissive: m.emissive, flags: m.flags, cutoff: m.cutoff, span: m.span, ...(m.sheet ? { sheet: m.sheet } : {}) };
       const text = JSON.stringify([material, names]);
       const had = materials.get(m.id);
       if (had && had.text !== text) throw new Error(`${mesh.id}: material ${m.id} is described twice, and differently`);

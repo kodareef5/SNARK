@@ -3,7 +3,8 @@
 
 import layout from "../../../../content/landmarks/koru-layout.json" with { type: "json" };
 import { PIECE_TRIANGLES } from "../../../../tools/art/check.ts";
-import type { PieceSpec, PiecesAsset } from "../../../../tools/art/spec.ts";
+import type { FinishSpec, PieceSpec, PiecesAsset } from "../../../../tools/art/spec.ts";
+import look from "./materials.json" with { type: "json" };
 
 const budget = (rule: readonly (readonly [number, number])[]): number[] => rule.map(([, n]) => n);
 const name = (id: string): string => id.slice("koru:".length);
@@ -21,6 +22,9 @@ const CELLS = [[0, 14000], [50, 14000], [100, 4000], [250, 2500], [500, 2500]] a
 // want a level past 0.13 m, and the far mesh takes levels 2 and 3.
 const cell = (id: string): PieceSpec => ({ id, object: name(id), triangles: [...budget(CELLS).slice(1), 400], errors: [0.025, 0.06, 0.13, 0.3] });
 const part = (id: string): PieceSpec => ({ id, object: name(id), triangles: budget(PIECE_TRIANGLES) });
+// Every finish of the atlas is one of the yacht's finishes: its flat faces are lit as its part of the pictures is, so a
+// flat level is its textured level without the picture (shared/pack/finish.ts).
+const finish = (f: { rect: number[]; sheet?: number }): FinishSpec => ({ material: "surfaces", rect: f.rect as unknown as FinishSpec["rect"], ...(f.sheet ? { sheet: f.sheet } : {}) });
 
 export default {
   kind: "pieces",
@@ -29,5 +33,6 @@ export default {
   materials: {
     surfaces: { base: "tex/surfaces_base.png", normal: "tex/surfaces_normal.png", packed: "tex/surfaces_packed.png", height: "tex/surfaces_height.png" },
   },
+  finishes: Object.fromEntries(Object.entries(look.finishes).map(([n, f]) => [n, finish(f)])),
   budgets: { triangles: budget(CELLS), texture: { top: 2048, megabytes: 64 }, cells: CELLS },
 } satisfies PiecesAsset;

@@ -56,6 +56,14 @@ interface Level {
 
 const cross = (a: number[], b: number[]): number[] => [a[1]! * b[2]! - a[2]! * b[1]!, a[2]! * b[0]! - a[0]! * b[2]!, a[0]! * b[1]! - a[1]! * b[0]!];
 
+/** The names of the materials a .glb file's JSON lists. */
+export function glbMaterials(file: Uint8Array): string[] {
+  const view = new DataView(file.buffer, file.byteOffset, file.byteLength);
+  if (file.length < 20 || view.getUint32(16, true) !== 0x4e4f534a) return [];
+  const json = JSON.parse(decodeUtf8(file.subarray(20, 20 + view.getUint32(12, true)))) as { materials?: { name?: string }[] };
+  return (json.materials ?? []).flatMap((m) => (m.name === undefined ? [] : [m.name]));
+}
+
 export function importGlb(file: Uint8Array, id: string, palette: Uint8Array, opts: ImportOptions = {}): ImportReport {
   const view = new DataView(file.buffer, file.byteOffset, file.byteLength);
   if (file.length < 20 || view.getUint32(0, true) !== 0x46546c67) throw new Error(`${id}: not a .glb file`);

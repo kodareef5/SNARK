@@ -177,6 +177,9 @@ export class App {
   private last = -1;
   /** Adopt the welcome's authored/saved facing once, before the first input overwrites it. */
   private facing = false;
+  /** A tool's look at a place (`address`): the commands still to send, and the facing held. */
+  private script: string[] = [];
+  private held: [number, number] | null = null;
   /** Eased eye height above the feet, or -1 before the first frame and while there is no living body. */
   private eye = -1;
   private helicopterViewHost = -1;
@@ -811,11 +814,15 @@ export class App {
   /**
    * What the page's address asks: `off`, effects turned off for a before and after (passes.ts). A page that pins pictures
    * or hashes, or measures, holds the governor at the tier, or at `level`, and may name the `tier`. It plays at
-   * MEASURED_VOLUME, or at `volume`.
+   * MEASURED_VOLUME, or at `volume`. A page that is a tool's look at a place is pinned so too: `run` is commands sent as
+   * typed once the body is in the world, `|` between them, and `look` the way it faces, yaw and pitch in radians.
    */
   address(get: (name: string) => string | null, pinned: boolean): void {
     this.off = effectsOff(get("off"));
-    if (!pinned) return;
+    this.script = get("run")?.split("|") ?? [];
+    const look = (get("look") ?? "").split(",").map(Number);
+    this.held = look.length === 2 && look.every(Number.isFinite) ? [look[0]!, look[1]!] : null;
+    if (!pinned && this.script.length === 0) return;
     this.governor.held = Number(get("level") ?? 0);
     this.ui.settings.tier = tierOf(get("tier") ?? this.ui.settings.tier).name;
     // Such a page runs unattended, often behind someone's other work, and its music would start at full volume.
@@ -962,6 +969,8 @@ export class App {
     const cam = this.cam;
     const a = session.alpha;
     const alive = session.sessionState === SESSION_ALIVE;
+    if (alive) for (const line of this.script.splice(0)) session.text(line);
+    if (this.held) [c.yaw, c.pitch] = this.held;
     const move = this.reg.move[session.bodyKind];
     // The eye eases toward the stance height, so crouching is a movement and not a cut.
     const eyeNow = alive && move ? stanceEye(move, session.own.stance) : 0;

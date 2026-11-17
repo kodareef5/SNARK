@@ -13,7 +13,7 @@
 //   an awning, a flag. A textured material says it too (PackMaterial `sheet`).
 // - A landmark that states none is drawn as it always was.
 
-import type { Manifest } from "./manifest.ts";
+import type { LandmarkFarRow } from "./far.ts";
 
 /**
  * The numbers of a finish: its palette colour, then its colour as red, green and blue of 255 (sRGB), its occlusion,
@@ -33,7 +33,7 @@ export interface FinishTable {
   readonly row: Uint8Array;
 }
 
-export function finishTable(palette: Uint8Array, manifest: Pick<Manifest, "meshes" | "landmarks">): FinishTable {
+export function finishTable(palette: Uint8Array, manifest: { readonly meshes: readonly { readonly id: string }[]; readonly landmarks?: readonly LandmarkFarRow[] }): FinishTable {
   const stating = (manifest.landmarks ?? []).filter((l) => (l.finishes?.length ?? 0) > 0);
   const height = 1 + 2 * stating.length;
   const pixels = new Uint8Array(256 * 4 * height);

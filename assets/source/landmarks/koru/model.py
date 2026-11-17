@@ -12,7 +12,7 @@ HERE=Path(__file__).resolve().parent
 D=json.loads((HERE.parents[3]/'content/landmarks/koru-layout.json').read_text())
 MODS=D['modules'];BYID={m['id']:m for m in MODS};WINDOWS={}
 for w in D['windows']:WINDOWS.setdefault(w['module'],[]).append(w)
-CLOTH={'sailcloth':FINISH['sail']['far']};SPAR={'spar':FINISH['white']['far']}
+CLOTH={'sail':FINISH['sail']['rgb']};SPAR={'white':FINISH['white']['rgb']}
 # The first level drawn flat, the stand-in level, and the sides round a mast or the bowsprit at each level.
 FLAT=2;STAND_IN=4;SIDES=[24,12,8,6,4]
 
@@ -546,7 +546,7 @@ def stand_in(m,members):
   if x['category'] in('hull','mast','boom','bowsprit','roof','canopy','steps'):DRAW.get(x['category'],smallparts)(m,x)
 
 DRAW={'hull':hull,'facade':facade,'wall':wall,'stairs':staircase,'steps':steps,'rail':lambda m,x:rails(m,x,'stairOpening' not in x['art']),'furniture':furniture,'mast':mast,'boom':boom,'bulkhead':bulkhead}
-PALETTE={k:v['far'] for k,v in FINISH.items()}
+PALETTE={k:v['rgb'] for k,v in FINISH.items()}
 for cell in D['cells']:
  members=[x for x in MODS if x.get('cell')==cell['id']];name=cell['id'][5:];origin=BYID[cell['anchor']]['origin']
  for level in range(STAND_IN+1):
@@ -583,7 +583,7 @@ def sheet(m,grid,out,camber,batten=None):
  quads=[(i*cols+j,i*cols+j+1,(i+1)*cols+j+1,(i+1)*cols+j) for i,j in cells]
  for side in(1,-1):
   s=m.add(pts,[[side*c for c in n] for n in ns])
-  if m.flat:m.faces(s,quads,'sailcloth',out=[side*c for c in out]);continue
+  if m.flat:m.faces(s,quads,'sail',out=[side*c for c in out]);continue
   m.faces(s,quads,['batten' if batten and batten(i) else 'sail' for i,j in cells],uvs=[[(j/(cols-1),0),((j+1)/(cols-1),0),((j+1)/(cols-1),1),(j/(cols-1),1)] for i,j in cells],out=[side*c for c in out])
 # A sail's levels: drawn with the atlas near, then two flat. Rows and columns of a gaff sail, rows of a jib.
 GAFF_GRIDS=[(9,25),(6,9),(4,6)];JIB_ROWS=[18,8,5]
@@ -598,7 +598,7 @@ for s in D['rig']['sails']:
   a=unit(peak);e=[0,a[2],-a[1]]
   for level,n in enumerate([16,6]):
    m=Mesh(flat=SPAR if level else None)
-   m.loft([[[q[0]+r*math.cos(k*math.tau/n),q[1]+r*math.sin(k*math.tau/n)*e[1],q[2]+r*math.sin(k*math.tau/n)*e[2]] for k in range(n)] for q,r in [([0,0,0],.2),(peak,.12)]],'spar' if level else 'white',smooth=True)
+   m.loft([[[q[0]+r*math.cos(k*math.tau/n),q[1]+r*math.sin(k*math.tau/n)*e[1],q[2]+r*math.sin(k*math.tau/n)*e[2]] for k in range(n)] for q,r in [([0,0,0],.2),(peak,.12)]],'white',smooth=True)
    m.object(s['gaff'][5:]+(f'_LOD{level}' if level else ''),[0,0,0])
  else:
   t,c,h=[pivot(s['sheet'],s[k]) for k in('tack','clew','head')]
@@ -616,6 +616,6 @@ for s in D['rig']['sails']:
     for v in(a,b,cc):norm[v]=[x+y for x,y in zip(norm.get(v,[0,0,0]),nn)]
    for side in(1,-1):
     st=m.add(pts,[[side*x for x in unit(norm[v])] for v in range(len(pts))])
-    if level:m.faces(st,tris,'sailcloth',out=[0,0,-side])
+    if level:m.faces(st,tris,'sail',out=[0,0,-side])
     else:m.faces(st,tris,'sail',uvs=[[(q[1]/n,q[0]-tri[0][0]) for q in tri] for tri in up+down],out=[0,0,-side])
    m.object(s['sheet'][5:]+(f'_LOD{level}' if level else ''),[0,0,0])

@@ -2,12 +2,13 @@
 // beside SURFACE.
 import { expect, test } from "bun:test";
 import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
-import { FLAT_FRAGMENT, LIT_FRAGMENT } from "../../client/core/render/glsl.ts";
+import { FLAT_FRAGMENT, LIT_FRAGMENT, LIT_MESH_FRAGMENT } from "../../client/core/render/glsl.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { PROGRAMS, UNIT } from "../../client/core/render/programs.ts";
 import { SKY_GLSL, skyFrame, theSky } from "../../client/core/render/sky.ts";
 import { KNEE, LIGHT, lit, linearToSrgb, shown, srgbToLinear, tone } from "../../client/core/render/surface.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
+import { finishTable } from "../../shared/pack/finish.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { PICK_ENTITY } from "../../tools/snap/raster.ts";
 import { buildPack } from "../../tools/pack/write.ts";
@@ -49,9 +50,10 @@ test("the tone curve keeps what is under its knee, meets the line there with slo
   expect([LIGHT.includes(`peak <= ${KNEE}`), LIT_FRAGMENT.includes(LIGHT)]).toEqual([true, true]);
 });
 
-test("the lit tiers draw flat and the ground with LIT, the dome from the table and SURFACE mirroring it; low poly keeps FLAT", () => {
+test("the lit tiers draw the ground with LIT and flat meshes with LIT and their finishes, the dome from the table and SURFACE mirroring it; low poly keeps FLAT", () => {
   for (const tier of TIERS) {
-    expect([PROGRAMS.flat!(tier, "rgba").fragment, PROGRAMS.terrain!(tier, "rgba").fragment]).toEqual(tier.lit ? [LIT_FRAGMENT, LIT_FRAGMENT] : [FLAT_FRAGMENT, FLAT_FRAGMENT]);
+    expect([PROGRAMS.flat!(tier, "rgba").fragment, PROGRAMS.terrain!(tier, "rgba").fragment]).toEqual(tier.lit ? [LIT_MESH_FRAGMENT, LIT_FRAGMENT] : [FLAT_FRAGMENT, FLAT_FRAGMENT]);
+    expect(PROGRAMS.flat!(tier, "rgba").vertex.includes("vFinish")).toBe(tier.lit);
   }
   const medium = tierOf("medium");
   for (const name of ["sky", "surface"]) expect([PROGRAMS[name]!(medium, "bc").fragment.includes(SKY_GLSL), PROGRAMS[name]!(medium, "bc").samplers.uSkyTable]).toEqual([true, UNIT.sky]);
@@ -150,4 +152,42 @@ test("a block drawn flat on a lit tier is that block with a base colour of its c
     }
   }
   expect(worst).toBeLessThanOrEqual(2);
+});
+
+test("a landmark's flat draw in a colour its art states is lit as that finish's picture is, gloss, metal and sheet, within 2 steps", () => {
+  const sunUp = Math.cos(Math.atan(0.43));
+  // Navy paint, brushed steel and sailcloth: each its own colour, occlusion, roughness, metalness and sheet, on palette colour 46.
+  const finishes = [[22, 32, 43, 247, 71, 51, 0], [177, 185, 189, 247, 56, 235, 0], [235, 232, 221, 246, 199, 0, 179]];
+  let worst = 0, behind = 0;
+  for (const [r, g, b, o, rough, metal, sheet] of finishes as number[][]) {
+    const mesh = squareMesh("yacht:block", 1, ["base", "mro"], { sheet: sheet! / 255 });
+    mesh.lods[0]!.colors.fill(46);
+    const pack = parsePack(buildPack([mesh], palette, [], [], null, [{ name: "yacht", pieces: [], counts: [[], []], finishes: [46, r!, g!, b!, o!, rough!, metal!, sheet!] }]));
+    const stage = new Stage(pack, W, H);
+    stage.raster.skyTable = theSky().table;
+    [stage.cam.x, stage.cam.y, stage.cam.z, stage.cam.yaw, stage.cam.pitch] = [0.6, 1.1, 1.3, Math.PI - 0.4, -0.3];
+    for (const sun of [[0, sunUp, Math.sqrt(1 - sunUp * sunUp)], [0.9, 0.1, 0.42], [0.2, 0.5, -0.84]]) {
+      const draw = (flat: boolean): Uint8ClampedArray => {
+        stage.begin();
+        skyFrame(12, theSky(), stage.packet.frame);
+        stage.packet.frame.set(sun.map((v) => v / Math.hypot(...sun)), FRAME.sun);
+        stage.textures("yacht:block/", { base: picture(64, () => [r!, g!, b!, 255]), mro: picture(64, () => [o!, rough!, metal!, 255]) });
+        stage.add("yacht:block", 0, { x: 0, y: 0, z: 0, flat });
+        return stage.render().slice();
+      };
+      const [flat, textured] = [draw(true), draw(false)];
+      for (let i = 0; i < W * H; i++) {
+        if (stage.raster.pickKind[i] !== PICK_ENTITY) continue;
+        for (let c = 0; c < 3; c++) worst = Math.max(worst, Math.abs(flat[i * 4 + c]! - textured[i * 4 + c]!));
+      }
+      // The sun behind the sailcloth: its face toward the eye shows the light that comes through.
+      if (sheet && sun[2]! < 0) {
+        const lit = flat.findIndex((_, i) => i % 4 === 0 && stage.raster.pickKind[i / 4] === PICK_ENTITY);
+        behind = shade(flat.subarray(lit, lit + 3));
+      }
+    }
+  }
+  expect(worst).toBeLessThanOrEqual(2);
+  expect(behind).toBeGreaterThan(150);
+  expect(finishTable(palette, { meshes: [{ id: "core:rock" }, { id: "yacht:block" }], landmarks: [{ name: "yacht", pieces: [], counts: [[], []], finishes: [46, 1, 2, 3, 4, 5, 6, 7] }] }).row).toEqual(Uint8Array.from([0, 1]));
 });

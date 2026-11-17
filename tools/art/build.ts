@@ -9,7 +9,7 @@ import { RAMP_BASE, SKIN_BASE, defaultPalette, nearestColour } from "../../share
 import { LAST_STEP, TEXTURE_ROLES, stepSize } from "../../shared/pack/texture.ts";
 import { convertCreature, planOf, withMotion } from "../pack/creature.ts";
 import { baker, painted } from "../pack/bake.ts";
-import { importGlb } from "../pack/glb.ts";
+import { glbMaterials, importGlb } from "../pack/glb.ts";
 import { readGltf } from "../pack/gltf.ts";
 import { lying } from "../pack/lying.ts";
 import { simplifySurface, withLevels, withSurfaceLevels } from "../pack/simplify.ts";
@@ -179,14 +179,15 @@ export function convertPieces(asset: Asset & { spec: PiecesAsset }, files: Reado
   const spec = asset.spec;
   const palette = defaultPalette();
   const pictured = described(asset, palette, out);
-  const finishes = spec.finishes ? stateFinishes(spec.finishes, pictured, palette) : null;
+  const pieces = piecesOf(spec);
+  const glbs = new Map(pieces.map((p) => [p.object, new Uint8Array(readFileSync(files[p.object]!))]));
+  const finishes = spec.finishes ? stateFinishes(spec.finishes, pictured, palette, new Set([...glbs.values()].flatMap(glbMaterials))) : null;
   if (finishes) out.finishes = finishes.numbers;
   const maps = new Map<string, MaterialMaps[]>();
   const flatColours = new Map<string, (number | undefined)[]>();
   const brought = new Map<string, number>();
-  const pieces = piecesOf(spec);
   for (const p of pieces) {
-    const report = importGlb(readFileSync(files[p.object]!), p.id, palette, { flat: (name) => pictured.get(name)?.flat ?? finishes?.colour.get(name) });
+    const report = importGlb(glbs.get(p.object)!, p.id, palette, { flat: (name) => pictured.get(name)?.flat ?? finishes?.colour.get(name) });
     out.warnings.push(...report.warnings.map((w) => `${p.id}: ${w}`));
     brought.set(p.id, report.levels - 1);
     if (!report.mesh.flat || pictured.size === 0) {

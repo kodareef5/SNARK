@@ -13,9 +13,10 @@ import { MOST_LOD, detailKeeps, rotorOf, shapeOf } from "../../client/core/rende
 import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
-import { LAYER_LEVELS, NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyFrom, skyLight, srgbToLinear, wounded } from "../../client/core/render/surface.ts";
+import { LAYER_LEVELS, NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyFrom, skyLight, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
+import { finishTable, type FinishTable } from "../../shared/pack/finish.ts";
 import { CELL, mipOffset } from "../../shared/pack/details.ts";
 import { INSTANCE_BYTES, VERTEX_BYTES, detailsAtlas, lodSkin, lodSurface, lodVertices, readIndices, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
@@ -64,6 +65,8 @@ interface Surfaced {
   tint: readonly number[];
   /** 0 for a draw that is not cut out. */
   cutoff: number;
+  /** The material's sheet (shared/pack/finish.ts), 0 for none. */
+  sheet: number;
   twoSided: boolean;
   uvs: Float32Array;
   tangents: Float32Array;
@@ -134,8 +137,9 @@ const NOTHING = [0, 0, 0];
 
 /**
  * A palette draw on a lit frame into `rgb`, with world-projected finishes and SURFACE lighting. (rx, ry, rz) is where it is from the camera, and (nx, ny, nz) its face's normal.
+ * A landmark's draw names its row of `finish` (shared/pack/finish.ts): a colour it states is lit as that finish, as LIT_MESH_FRAGMENT has it.
  */
-function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void): void {
+function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, finish?: FinishTable, row = 0): void {
   const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
   for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear(pal[colorIndex * 4 + c]! / 255);
   normal[0] = nx;
@@ -144,7 +148,18 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
   eye[0] = -rx / dist;
   eye[1] = -ry / dist;
   eye[2] = -rz / dist;
-  if (sample) {
+  const own = ((2 * row - 1) * 256 + colorIndex) * 4;
+  if (finish && row > 0 && finish.pixels[own + 3] === 255) {
+    for (let c = 0; c < 3; c++) {
+      albedo[c] = srgbToLinear(finish.pixels[own + c]! / 255);
+      worldOrm[c] = finish.pixels[own + 1024 + c]! / 255;
+    }
+    const twice = 2 * (nx * eye[0]! + ny * eye[1]! + nz * eye[2]!);
+    for (let c = 0; c < 3; c++) reflected[c] = twice * normal[c]! - eye[c]!;
+    if (worldOrm[1]! < 1 && look) skyFrom(mirrored, p.frame, reflected, look);
+    lit(light, albedo, worldOrm, normal, eye, p.frame, worldOrm[1]! < 1 && look ? mirrored : NOTHING);
+    through(light, albedo, worldOrm, normal, p.frame, finish.pixels[own + 1027]! / 255);
+  } else if (sample) {
     const index = surfaceIndex(colorIndex, ground, p.surfaceCity[7] ? "las-vegas" : "default");
     worldSurface(albedo, worldOrm, normal, albedo, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, p.tier.finish === "light");
     const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
@@ -213,6 +228,9 @@ export class Rasterizer {
   private readonly lods = new Map<number, DecodedLod>();
   /** Given a manifest, only what a packet has uploaded may be drawn, as on a graphics card. Levels are kept by slot. */
   private readonly manifest: Manifest | null;
+  /** The landmarks' finishes, and the row of them of the flat draw being drawn (shared/pack/finish.ts). */
+  private readonly finish: FinishTable;
+  private finishRow = 0;
   /** Given a manifest: the surfaces uploaded, by the slot of their level, each with its own slot. */
   private readonly surfaces = new Map<number, { slot: number; surface: DecodedSurface }>();
   /** Levels and surfaces going up in pieces, as far as they have come. */
@@ -280,6 +298,7 @@ export class Rasterizer {
     this.pack = pack;
     this.hf = hf;
     this.manifest = manifest;
+    this.finish = finishTable(pack.palette, manifest ?? pack.header);
     this.color = new Uint8ClampedArray(width * height * 4);
     this.depth = new Float32Array(width * height);
     this.pickKind = new Uint8Array(width * height);
@@ -352,6 +371,7 @@ export class Rasterizer {
 
     this.depthSteps = (2 ** this.depthBits - 1) / 2;
     this.plain = false;
+    this.finishRow = 0;
     this.bone = 0;
     let step = -1;
     for (let d = 0; d < packet.drawCount; d++) {
@@ -370,7 +390,7 @@ export class Rasterizer {
     for (let at = 0; at < this.width * this.height; at++) {
       if (this.deferred[at] === 0) continue;
       const g6 = at * 6;
-      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && this.worldMaps ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look);
+      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && this.worldMaps ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, this.finish, this.deferred[at]! >> 11);
       for (let c = 0; c < 3; c++) this.color[at * 4 + c] = rgb[c]! * 255;
       this.deferred[at] = 0;
     }
@@ -496,6 +516,7 @@ export class Rasterizer {
     const hf = this.hf;
     this.fade = this.hand = this.bone = 0;
     this.plain = false;
+    this.finishRow = 0;
     this.drawing = -1;
     const row = TILE_QUADS + 1;
     const pos = new Float32Array(row * row * 3);
@@ -553,6 +574,7 @@ export class Rasterizer {
     const one = (p.drawFlags[d]! & DRAW_ONE_BONE) !== 0;
     const sized = (p.drawFlags[d]! & DRAW_SIZED) !== 0;
     this.plain = (p.drawFlags[d]! & DRAW_PLAIN) !== 0 || (p.lit && (p.drawFlags[d]! & (DRAW_SIZED | DRAW_PULLED)) !== 0);
+    this.finishRow = (p.drawFlags[d]! & DRAW_PLAIN) !== 0 ? this.finish.row[p.drawMesh[d]!]! : 0;
     this.fade = p.drawFade[d]!;
     this.fadeShare = p.frame[FRAME.fade]!;
     // Far blocks, the far city and a landmark's far mesh short of where their reach fades draw with no fade, and are far all the same.
@@ -777,6 +799,7 @@ export class Rasterizer {
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
     const [ox, oy, oz] = [p.drawOffset[d * 3]!, p.drawOffset[d * 3 + 1]!, p.drawOffset[d * 3 + 2]!];
     this.plain = (p.drawFlags[d]! & DRAW_PLAIN) !== 0 || (p.lit && (p.drawFlags[d]! & (DRAW_SIZED | DRAW_PULLED)) !== 0);
+    this.finishRow = 0;
     this.fadeShare = p.frame[FRAME.fade]!;
     this.bone = 0;
     const out = this.scratch.length >= ATLAS_WIDTH * 3 ? this.scratch : (this.scratch = new Float32Array(ATLAS_WIDTH * 3));
@@ -879,7 +902,7 @@ export class Rasterizer {
     const level = p.drawLayer[d]!;
     const layer = level > 0 ? (this.textures.get(material.layer ?? -1) ?? null) : null;
     if (level > 0 && !layer) throw new Error(`draw ${d} draws the layer of ${material.id}, which is not on the graphics card`);
-    const s: Surfaced = { maps, layer, level: level / LAYER_LEVELS, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
+    const s: Surfaced = { maps, layer, level: level / LAYER_LEVELS, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
@@ -1080,7 +1103,7 @@ export class Rasterizer {
             // Only what ends in front is shaded, once the opaque draws are done (`resolve`).
             const s = this.deferredAt;
             const g6 = at * 6;
-            this.deferred[at] = (colorIndex + 1) | (solid ? 512 : 0) | (this.plain ? 1024 : 0);
+            this.deferred[at] = (colorIndex + 1) | (solid ? 512 : 0) | (this.plain ? 1024 : 0) | (this.finishRow << 11);
             this.deferredShade[at] = footprint;
             s[g6] = rx;
             s[g6 + 1] = ry;
@@ -1097,7 +1120,7 @@ export class Rasterizer {
           let cg = g * shade * (1 - fog) + p.sky[1]! * 255 * fog;
           let cb = b * shade * (1 - fog) + p.sky[2]! * 255 * fog;
           if (p.lit) {
-            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz, !this.plain && this.worldMaps ? this.worldSample : null, !solid, footprint, this.look);
+            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz, !this.plain && this.worldMaps ? this.worldSample : null, !solid, footprint, this.look, this.finish, this.finishRow);
             cr = rgb[0]! * 255;
             cg = rgb[1]! * 255;
             cb = rgb[2]! * 255;
@@ -1226,6 +1249,7 @@ export class Rasterizer {
           for (let i = 0; i < 3; i++) reflected[i] = twice * normal[i]! - eye[i]!;
           skyFrom(mirrored, p.frame, reflected, this.look);
           lit(light, albedo, mro, normal, eye, p.frame, mirrored);
+          through(light, albedo, mro, normal, p.frame, s.sheet);
           shown(rgb, light, dist, p);
           this.color[at * 4] = rgb[0]! * 255;
           this.color[at * 4 + 1] = rgb[1]! * 255;
