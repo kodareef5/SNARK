@@ -102,18 +102,21 @@ export function liveFileOf(folder: string): (() => string | null) | undefined {
  * start of its SHA-256, so whoever fetched it keeps it for good, and it goes out as the copies its build made for the wire
  * (tools/map/pack.ts). A map with none, as a test's or the proving ground, is small enough to compress here. Null for any
  * other path. `link` is the header that has a page ask for the file as it is read, before it has read map.json. It names the
- * file relatively, as the page's own fetch does, so it is the same file under whatever path the server is reached at.
+ * file relatively, as the page's own fetch does, so it is the same file under whatever path the server is reached at. A file
+ * given by its path is read for its name and served from disk, so the server does not hold it.
  */
-export function mapRoutes(file: Uint8Array<ArrayBuffer>, id: string, hash: number, copies: { br?: Blob; gz?: Blob } = {}): ((path: string, accepts: string) => Response | null) & { readonly link: string } {
-  const name = `map.${new Bun.CryptoHasher("sha256").update(file).digest("hex").slice(0, 16)}.snmap`;
+export function mapRoutes(file: Uint8Array<ArrayBuffer> | string, id: string, hash: number, copies: { br?: Blob; gz?: Blob } = {}): ((path: string, accepts: string) => Response | null) & { readonly link: string } {
+  const bytes = typeof file === "string" ? readFileSync(file) : file;
+  const name = `map.${new Bun.CryptoHasher("sha256").update(bytes).digest("hex").slice(0, 16)}.snmap`;
   const json = JSON.stringify({ id, hash, file: name });
-  const gz = copies.gz ?? Bun.gzipSync(file);
+  const gz = copies.gz ?? Bun.gzipSync(bytes);
+  const raw = typeof file === "string" ? Bun.file(file) : file;
   return Object.assign((path: string, accepts: string): Response | null => {
     if (path === "/map.json") return new Response(json, { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
     if (path !== `/${name}`) return null;
     const headers = { "content-type": "application/octet-stream", "cache-control": "public, max-age=31536000, immutable", vary: "accept-encoding" };
     if (copies.br && accepts.includes("br")) return new Response(copies.br, { headers: { ...headers, "content-encoding": "br" } });
-    return accepts.includes("gzip") ? new Response(gz, { headers: { ...headers, "content-encoding": "gzip" } }) : new Response(file, { headers });
+    return accepts.includes("gzip") ? new Response(gz, { headers: { ...headers, "content-encoding": "gzip" } }) : new Response(raw, { headers });
   }, { link: `<${name}>; rel=preload; as=fetch; crossorigin` });
 }
 
@@ -190,7 +193,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const served = (file: number): Uint8Array => new Uint8Array(readFileSync(join(clientDir, "assets", manifest.files[file]!.name)));
   const pack = parsePack(served(manifest.boot));
   const clips = allClips(manifest, pack, served, (stored) => new Uint8Array(inflateRawSync(stored)));
-  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: new Uint8Array(readFileSync(opts.map)) } : {}), ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
+  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: opts.map } : {}), ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, backups: !opts.noBackups, store: { allowMissingContent: opts.allowMissingContent ?? false } } : {}), wild: true });
   // Settings problems are logged at startup and do not stop the server.
   for (const m of host.lists.missing) console.log(`settings: ${m.setting} names ${m.name}, which this build does not have`);
@@ -198,7 +201,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   for (const m of host.lists.unclear) console.log(`settings: ${m.setting} names ${m.name}, which could be ${m.could.join(" or ")}, so write the one meant in full`);
   for (const line of host.passed) console.log(`settings: passed over: ${line}`);
   if (!opts.probeScene && host.spawner === null && host.world.zones.every((z) => z.spawns === undefined)) console.log(`map: neither the content nor the map file gives ${host.world.mapId} a spawn region, so no wild creature lives on it`);
-  const mapRoute = mapRoutes(host.mapFile!, host.world.mapId, host.world.mapHash, opts.map ? mapCopies(opts.map, host.world.mapHash) : {});
+  const mapRoute = mapRoutes(opts.map ?? host.mapFile!, host.world.mapId, host.world.mapHash, opts.map ? mapCopies(opts.map, host.world.mapHash) : {});
   // The shared families of sounds are the owners the catalogue's fallbacks name.
   const families = [...new Set(CUES.flatMap((c) => c.falls.map((f) => f.slice(0, f.indexOf("/")))).filter((o) => o !== "{owner}"))];
   const board: BoardGate = { dev: opts.dev ?? false, password: host.adminPassword, guesses: host.game.cheatGuesses, tick: () => host.world.tick };

@@ -7,6 +7,7 @@ import { OP_DEATH } from "../../server/death.ts";
 import { createHost } from "../../server/host.ts";
 import { WorldStore } from "../../server/persist/store.ts";
 import { EntityRecord } from "../../server/records.ts";
+import type { Def } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { BitReader } from "../../shared/net/codec.ts";
 import { Inventory } from "../../shared/sim/items.ts";
@@ -92,17 +93,23 @@ test("a first start that stopped before its first commit left no world, so the n
   again.shutdown();
 });
 
+/** A piece the proving ground does not set down, so a build may lack it: the map's own pieces are the map's, never dropped. */
+const OBELISK: Def = { type: "structure", class: "static", id: "test:obelisk", mesh: "box", color: 5, half: [1, 3, 1], hp: 5000, material: "core:mat_stone" };
+
 test("a save that uses removed content refuses to load unless told to drop it", () => {
   const db = join(dir, "content.db");
-  const full = coreRegistry();
-  createHost(full, { dbPath: db }).shutdown();
-  const without = compileContent(CORE_CONTENT.filter((d) => d.id !== "core:wall")).registry!;
-  expect(() => createHost(without, { dbPath: db })).toThrow(/core:wall/);
+  const full = compileContent([...CORE_CONTENT, OBELISK]).registry!;
+  const host = createHost(full, { dbPath: db });
+  const whole = host.world.structs.count;
+  host.world.structs.add(full.index.get("test:obelisk")!, 200, 3, 200, 0, 9, 5000);
+  host.shutdown();
+  const without = coreRegistry();
+  expect(() => createHost(without, { dbPath: db })).toThrow(/test:obelisk/);
   const forced = createHost(without, { dbPath: db, store: { allowMissingContent: true }, log: () => {} });
-  expect(forced.world.structs.count).toBeLessThan(createHost(full).world.structs.count);
-  forced.persistence!.store.close(); // closed without committing, so the save keeps its walls
+  expect(forced.world.structs.count).toBe(whole);
+  forced.persistence!.store.close(); // closed without committing, so the save keeps its obelisk
   const back = createHost(full, { dbPath: db });
-  expect(back.world.structs.count).toBe(createHost(full).world.structs.count);
+  expect(back.world.structs.count).toBe(whole + 1);
   back.shutdown();
 });
 
@@ -140,7 +147,7 @@ test("an item whose content is gone stops the load, and a ledger that does not b
 
 test("an operator goes on without removed content by one start: what was made of it is dropped for good, said aloud, and the ledger balances", () => {
   const db = join(dir, "species.db");
-  const full = coreRegistry();
+  const full = compileContent([...CORE_CONTENT, OBELISK]).registry!;
   const stone = full.index.get("core:stone")!;
   const host = createHost(full, { dbPath: db });
   const mule = host.records.create(full.index.get("core:grazer")!, "mule");
@@ -148,11 +155,12 @@ test("an operator goes on without removed content by one start: what was made of
   expect(host.items.mint(mule, stone, 250)).toBe(250);
   expect(host.items.mint(keeper, stone, 40)).toBe(40);
   expect(host.items.mint(keeper, full.index.get("core:waterskin")!, 3)).toBe(3);
+  for (const x of [200, 204]) host.world.structs.add(full.index.get("test:obelisk")!, x, 3, 200, 0, 9, 5000);
   host.shutdown();
 
   // A species, an item with its engram, and a piece of building.
-  const gone = new Set(["core:grazer", "core:waterskin", "core:engram-waterskin", "core:wall"]);
-  const without = compileContent(CORE_CONTENT.filter((d) => !gone.has(d.id))).registry!;
+  const gone = new Set(["core:grazer", "core:waterskin", "core:engram-waterskin", "test:obelisk"]);
+  const without = compileContent([...CORE_CONTENT, OBELISK].filter((d) => !gone.has(d.id))).registry!;
   expect(() => createHost(without, { dbPath: db })).toThrow(/core:grazer[^]*--allow-missing-content/);
   // The server reads the flag its refusal names.
   expect(readFileSync(join(import.meta.dir, "../../server/main.ts"), "utf8")).toContain('allowMissingContent: args.includes("--allow-missing-content")');
@@ -164,7 +172,7 @@ test("an operator goes on without removed content by one start: what was made of
   const told = said.join("\n");
   expect(told).toContain("1 of core:grazer");
   expect(told).toContain("3 of core:waterskin");
-  expect(told).toMatch(/\d+ of core:wall/);
+  expect(told).toContain("2 of test:obelisk");
   expect(told).toContain("250 of core:stone");
   forced.shutdown();
 

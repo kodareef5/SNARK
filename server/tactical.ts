@@ -263,7 +263,8 @@ export class Tactical {
     // A bake that changes nothing a map shows (health, a piece under another) gives no new version, so nothing is sent for it.
     // The far cells have a version of their own, so a change to one is never sent as the other.
     const mapSame = s ? s.same(fresh) : fresh.filled === 0;
-    const farSame = s ? s.far.same(fresh.far) : fresh.far.filled === 0;
+    // A chunk already changed and empty at its first bake (razed before a restart) is news to a session that draws the statics.
+    const farSame = s ? s.far.same(fresh.far) : fresh.far.filled === 0 && this.world.structs.asPlaced(chunk);
     if (mapSame && farSame) return;
     s ??= this.summaries[chunk] = new Summary();
     if (!farSame) {
@@ -364,10 +365,7 @@ export class Tactical {
     let n = 0;
     for (let i = 0; i < list.length; i++) {
       const chunk = list[i]!;
-      const s = this.summaries[chunk]!;
-      const had = h.farSent[chunk]!;
-      // An empty chunk is news only to a session that was sent it filled.
-      if (had === s.farVersion || (had === 0 && s.far.filled === 0)) continue;
+      if (!this.farDue(c, h, chunk)) continue;
       const dx = (chunkCx(dims, chunk) + 0.5) * CHUNK_SIZE - c.body.x;
       const dz = (chunkCz(dims, chunk) + 0.5) * CHUNK_SIZE - c.body.z;
       const d2 = dx * dx + dz * dz;
@@ -384,6 +382,20 @@ export class Tactical {
   }
 
   /**
+   * Whether the session is due the far cells of `chunk`. One that holds the map's statics draws a chunk still as the map
+   * placed it from them, and is due its cells once it has changed, even emptied. To any other an empty chunk is news only
+   * if it was sent it filled.
+   */
+  private farDue(c: Client, h: Held, chunk: number): boolean {
+    const s = this.summaries[chunk]!;
+    const had = h.farSent[chunk]!;
+    if (had === s.farVersion) return false;
+    const statics = c.statics ? this.world.statics : null;
+    if (statics && this.world.structs.asPlaced(chunk)) return false;
+    return had !== 0 || s.far.filled > 0 || (statics !== null && statics.first[chunk + 1]! > statics.first[chunk]!);
+  }
+
+  /**
    * Sends what is due of the far cells, each chunk whole in one message, within the second's bytes and this tick's. They go in
    * what the chunk rows leave of the window, so a join's near chunks come first.
    */
@@ -393,7 +405,7 @@ export class Tactical {
       const chunk = h.farDue[h.farNext]!;
       const s = this.summaries[chunk]!;
       const had = h.farSent[chunk]!;
-      if (had === s.farVersion || (had === 0 && s.far.filled === 0) || (had !== 0 && h.farOlder >= FAR_BYTES)) continue;
+      if (!this.farDue(c, h, chunk) || (had !== 0 && h.farOlder >= FAR_BYTES)) continue;
       // Open decision 2 (F5): a terrain check would test a chunk here, before its first send, since a send cannot be taken back.
       const w = this.game.begin(S_FAR);
       writeFar(w, chunk, s.far);

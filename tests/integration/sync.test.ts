@@ -4,7 +4,9 @@ import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { S_CHUNK } from "../../shared/net/protocol.ts";
+import { writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
 import { GONE_FELL, type StructureStore } from "../../shared/world/structures.ts";
+import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
 
 test("a collapse too large for one message reaches the client whole", () => {
@@ -110,4 +112,35 @@ test("a client whose statics come after its hello is sent rows until it says it 
   expect([c.statics, whole.length > 4, differ(structs, cleo.world!.structs, whole)]).toEqual([true, true, 0]);
   // The far city is made of them as well.
   expect(cleo.world!.city!.statics.count).toBeGreaterThan(100);
+});
+
+test("a near window of the map's statics is whole within a tick of the body's arrival for a client that holds them, rows still going at 256 slots a tick to one that does not", () => {
+  // The 7 by 7 chunks round the middle of a map 9 chunks wide each hold 640 crates: 31,360 slots, 123 ticks at 256 a tick.
+  const crates: MapStatic[] = [];
+  for (let cz = 1; cz <= 7; cz++) for (let cx = 1; cx <= 7; cx++) for (let k = 0; k < 640; k++) crates.push({ kind: "core:crate", x: cx * CHUNK_SIZE + 4 + (k % 8) * 8, y: 40 + Math.floor(k / 64) * 3, z: cz * CHUNK_SIZE + 4 + (Math.floor(k / 8) % 8) * 8, yaw: 0 });
+  const h = new Harness({}, 1, 30, { map: writeMap(flatMap(9, { statics: crates })) });
+  const structs = h.world.structs;
+  // One crate of the middle chunk is gone, so that chunk is not as the map placed it.
+  const middle = 4 * 9 + 4;
+  structs.remove(middle * 65536 + 100);
+  const window = [...Array(49).keys()].map((i) => (1 + Math.floor(i / 7)) * 9 + 1 + (i % 7));
+  expect(window.filter((c) => structs.asPlaced(c)).length).toBe(48);
+  const ada = h.join("ada");
+  const bob = h.join("bob", {}, { statics: false });
+  const sessions = [ada, bob];
+  const [arrived, whole] = [[-1, -1], [-1, -1]];
+  for (let t = 0; t < 300 && whole.includes(-1); t++) {
+    h.run(1000 / 30);
+    sessions.forEach((s, i) => {
+      const c = h.client(s);
+      if (arrived[i]! < 0 && c && c.ent >= 0) arrived[i] = h.world.tick;
+      if (arrived[i]! >= 0 && whole[i]! < 0 && window.every((k) => c!.known[k] === structs.chunks[k]!.version)) whole[i] = h.world.tick - arrived[i]!;
+    });
+  }
+  // Ticks from the body's arrival until the server has sent each chunk of the window whole.
+  expect(whole[0]).toBeLessThanOrEqual(1);
+  expect(whole[1]).toBeGreaterThanOrEqual(122);
+  // Once what was sent has landed, each holds the window as the server does.
+  h.run(1000);
+  expect([differ(structs, ada.world!.structs, window), differ(structs, bob.world!.structs, window)]).toEqual([0, 0]);
 });

@@ -1,5 +1,7 @@
 // Durable world state in one SQLite database. One commit is one transaction, so a crash lands the whole world on a commit boundary.
 // Saves refer to content by string id through content_ids, never by a build's dense index, so adding content does not disturb them.
+// The map's statics are the map's: chunk_structs holds only the chunks that no longer stand as the map placed them, laid over
+// the map's on load.
 
 import { Database, type Statement } from "bun:sqlite";
 import type { Registry } from "../../shared/content/registry.ts";
@@ -12,7 +14,7 @@ import { listBackups } from "./backup.ts";
 import { refuseNetworkDisk } from "./disk.ts";
 import { holdSave, type SaveLock } from "./lock.ts";
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 const CHUNK_FORMAT = 1;
 /** Per structure slot in a chunk blob: kind, x, y, z, yaw, owner, hp, mod. */
 const SLOT_BYTES = 2 + 4 + 4 + 4 + 2 + 4 + 4 + 4;
@@ -257,7 +259,10 @@ export class WorldStore {
     this.putChunk.run(chunk, t.version, n, out);
   }
 
-  /** Returns the number of structures. */
+  /**
+   * Lays the saved chunks over what `structs` holds, which is the map's statics as placeStatics set them down, slot over slot.
+   * Returns the number of structures.
+   */
   loadChunks(structs: StructureStore): number {
     const rows = this.db.query("SELECT chunk, version, slots, data FROM chunk_structs").all() as { chunk: number; version: number; slots: number; data: Uint8Array }[];
     for (const row of rows) {

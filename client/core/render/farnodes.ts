@@ -3,16 +3,18 @@
 // the tree far is the tree near. Each is drawn at its mesh's last level, which is flat, to its kind's reach, and dropped
 // over the last share of it as far blocks are (far.ts). A mesh whose last level is a far level made for this is drawn as
 // that. The nodes of 4 by 4 chunks are one instance buffer, whether the near field holds their chunks or not, made again
-// when the client is told of nodes used up there, when the far feed shows building there, and when a kind comes within
-// reach of it. Every mesh's last level is a row of one float texture (packet.ts `atlas`), so a tile is drawn in a draw
-// or a few whatever meshes it holds (DRAW_PULLED), its instances sorted by how many vertices their meshes take and then
-// by chunk. A chunk the near field holds is drawn from the band on, faded in over it; one it does not is drawn whole,
-// which in play is always past the band.
+// when the client is told of nodes used up there, when the far feed or the map's own pieces show building there, and
+// when a kind comes within reach of it. Every mesh's last level is a row of one float texture (packet.ts `atlas`), so a
+// tile is drawn in a draw or a few whatever meshes it holds (DRAW_PULLED), its instances sorted by how many vertices their
+// meshes take and then by chunk. A chunk the near field holds is drawn from the band on, faded in over it; one it does
+// not is drawn whole, which in play is always past the band.
 
 import type { NodeDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { INSTANCE_BYTES, VERTEX_BYTES } from "../../../shared/pack/pack.ts";
+import { cityTops, type CityStatics } from "../../../shared/world/city.ts";
+import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { SIZE_UNITS, nodeForms, type NodeForms, type NodeSource, type NodeSpot } from "../../../shared/world/nodes.ts";
 import { TACTICAL_CELL } from "../../../shared/world/tactical.ts";
 import type { Tier } from "../assets/tiers.ts";
@@ -96,6 +98,12 @@ export interface FarNodeSource {
   /** The slots of `chunk` last said to be used up, if any were. */
   gone(chunk: number): readonly number[] | undefined;
   readonly changes: NodeChanges;
+  /**
+   * The map's statics once they are here, and the ground they stand on. The far feed tells nothing of a chunk still as the
+   * map placed it to a client that holds them, so such a chunk is built on where its own pieces are.
+   */
+  city?(): CityStatics | null;
+  readonly ground?: Heightfield;
 }
 
 /** How the scene draws nodes: per form its mesh (or NO_MESH), its size in SIZE_UNITS and its colour, and per mesh its bounds, triangles and last level. */
@@ -198,6 +206,9 @@ export class FarNodes {
   private readonly tiles = new Map<number, Tile>();
   private seenNodes = 0;
   private seenCells = 0;
+  /** The map's statics as last seen, and the far feed's top bytes their pieces make in each chunk worked out so far. */
+  private city: CityStatics | null = null;
+  private readonly mapCells = new Map<number, Uint8Array>();
   private readonly waiting: number[] = [];
   private readonly spot: NodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
   // Scratch for making a tile: per size of row and cell a count and then a cursor, which slots of a cell are used up, and which are kept.
@@ -340,6 +351,12 @@ export class FarNodes {
         if (tile) tile.dirty = tile.now = true;
       }
       this.seenNodes = changes.version;
+    }
+    const city = this.source.city?.() ?? null;
+    if (city !== this.city) {
+      this.city = city;
+      this.mapCells.clear();
+      for (const tile of this.tiles.values()) tile.dirty = true;
     }
     const cells = this.cells;
     if (cells && cells.version !== this.seenCells) {
@@ -509,6 +526,15 @@ export class FarNodes {
     }
   }
 
+  /** The top bytes the map's own pieces make in the cells of `chunk`, where the far feed has told nothing of it and they are here. */
+  private mapTops(chunk: number): Uint8Array | undefined {
+    const city = this.city;
+    if (!city || !this.source.ground || (this.cells?.changed[chunk] ?? 0) > 0 || city.first[chunk + 1] === city.first[chunk]) return undefined;
+    let tops = this.mapCells.get(chunk);
+    if (!tops) this.mapCells.set(chunk, (tops = cityTops(city, chunk, this.source.ground, null)));
+    return tops;
+  }
+
   /** Room for a tile's nodes. */
   private newSpots(): Spots {
     const n = this.perChunk;
@@ -559,7 +585,7 @@ export class FarNodes {
       const told = this.source.gone(chunk);
       if (told) for (const i of told) gone[i] = 1;
       // Building in the far feed's 4 m cells, counted from the chunk's corner.
-      const built = this.cells?.chunks.get(chunk)?.top;
+      const built = this.cells?.chunks.get(chunk)?.top ?? this.mapTops(chunk);
       const x0 = chunkCx(this.dims, chunk) * CHUNK_SIZE, z0 = chunkCz(this.dims, chunk) * CHUNK_SIZE;
       for (let i = 0; i < n; i++) {
         const at = c * n + i;
