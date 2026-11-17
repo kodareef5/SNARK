@@ -22,6 +22,13 @@ const ROOT = resolve(import.meta.dir, "..");
  */
 const TEST_CPU_BUDGET = 600;
 /**
+ * The memory, in bytes, a test worker's JavaScriptCore is told the machine has, as it sizes its heap. Told the machine's
+ * own (24 GB here), it lets a file's garbage grow to what the file holds live before collecting it, and the heaviest
+ * files held twice what they needed. Told this, it collects at a quarter to a half over: the 30 costliest files held
+ * half as much at most and a third less on average, for 3% more CPU-seconds.
+ */
+const WORKER_HEAP_RAM = 500_000_000;
+/**
  * Non-blank, non-comment lines allowed in client/shell, which has no tests. D250 shares the last 250 among round 8's
  * phases; the last 50 hold the executor's mirror of the card's state, which sends a frame's changes alone.
  */
@@ -384,7 +391,7 @@ async function checkTests(tier: Tier, dir: string, env: Record<string, string>):
   const held: Held = { most: 0, files: [] };
   // A worker's memory can rise and fall within a second.
   const weighing = setInterval(() => weigh(watch, held), 250);
-  const r = await run(["bun", "test", `--parallel=${workers}`, ...timed, "--reporter=junit", `--reporter-outfile=${report}`, ...only], true, { ...process.env, ...env, [TEST_WORKERS]: String(workers), [TEST_WATCH]: watch });
+  const r = await run(["bun", "test", `--parallel=${workers}`, ...timed, "--reporter=junit", `--reporter-outfile=${report}`, ...only], true, { ...process.env, ...env, [TEST_WORKERS]: String(workers), [TEST_WATCH]: watch, BUN_JSC_forceRAMSize: String(WORKER_HEAP_RAM) });
   clearInterval(watching);
   clearInterval(weighing);
   stopped.forEach(fail);
