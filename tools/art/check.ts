@@ -646,8 +646,8 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false, others: r
 
 /**
  * What is wrong with a building piece's levels on medium, or a landmark's piece's: one never drawn or drawn over a sliver,
- * one over `most` (PIECE_TRIANGLES, or for a landmark's cell its asset's `budgets.cells` or LANDMARK_TRIANGLES), or flat too near. A piece with no
- * materials is flat by design.
+ * one over `most` (PIECE_TRIANGLES, or for a landmark's cell its asset's `budgets.cells` or LANDMARK_TRIANGLES), or flat
+ * too near. A piece with no materials is flat by design.
  */
 export function pieceFaults(mesh: SourceMesh, facts: MeshFacts, most: readonly (readonly [number, number])[] = PIECE_TRIANGLES): string[] {
   const faults: string[] = [];
