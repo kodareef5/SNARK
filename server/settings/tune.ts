@@ -8,6 +8,7 @@ import type { Lists } from "./lists.ts";
 import type { Rules } from "./rules.ts";
 import { rowOf } from "./catalog.ts";
 import type { StatName } from "../../shared/sim/genome.ts";
+import { difficulty } from "../../shared/content/wild.ts";
 
 /** ARK's player settings apply to this species, and its creature settings to every other. */
 const SURVIVOR = "core:survivor";
@@ -147,16 +148,9 @@ export function tuningOf(rules: Rules, lists: Lists, reg: Registry): { tuning: T
   return { tuning, passed };
 }
 
-/** The value of ARK's later maps. With ARK's default offset it gives wild creatures up to level 150. */
-export const MAP_DIFFICULTY = 5;
+export { MAP_DIFFICULTY, wildLevel } from "../../shared/content/wild.ts";
 
 /** The offset goes through ARK's formula for the map unless OverrideOfficialDifficulty is above 0. */
 export function difficultyOf(rules: Rules): number {
-  const said = rules.num("OverrideOfficialDifficulty");
-  return said > 0 ? said : Math.max(0, rules.num("DifficultyOffset") * (MAP_DIFFICULTY - 0.5) + 0.5);
-}
-
-/** `step` is 1 to 30. */
-export function wildLevel(step: number, difficulty: number): number {
-  return Math.max(1, Math.floor(step * difficulty));
+  return difficulty(rules.num("DifficultyOffset"), rules.num("OverrideOfficialDifficulty"));
 }

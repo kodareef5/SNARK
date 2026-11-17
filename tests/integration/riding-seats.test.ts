@@ -28,6 +28,7 @@ import type { Seat } from "../../shared/sim/seats.ts";
 import { V_TORPOR } from "../../shared/sim/vitals.ts";
 import { capsuleFree, groundUnder } from "../../shared/world/collide.ts";
 import { flatGround } from "../fixtures/arena.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -175,7 +176,7 @@ test("no carjacking a creature: its one seat taken, a tribe mate is told it is b
   expect([riding.riding(ada), riding.riding(bob), riding.riderOf(e)]).toEqual([true, false, recs[0]]);
 });
 
-test("a saddle of three seats: one steers and two ride behind, pinned where they sit; their packs weigh on the mount; a passenger keeps the saddle on and falls off knocked out", () => {
+artTest("a saddle of three seats: one steers and two ride behind, pinned where they sit; their packs weigh on the mount; a passenger keeps the saddle on and falls off knocked out", () => {
   const reg = threeSeats();
   const { h, sessions, clients, recs, e, rec } = yard("parasaur", ["ada", "bob", "cy"], { reg });
   const [ada, bob, cy] = clients as [typeof clients[0], typeof clients[0], typeof clients[0]];
@@ -278,7 +279,7 @@ test("on a 60 ms link that loses 2% of its packets, getting on, riding, flying a
   }
 });
 
-test("in the whole client the riding camera is behind the look, on a boom as long as the mount is big, and drawn in by a wall", () => {
+artTest("in the whole client the riding camera is behind the look, on a boom as long as the mount is big, and drawn in by a wall", () => {
   const seen = (["raptor", "parasaur"] as const).map((species) => {
     const h = new Harness({}, 1, 60, { dev: true });
     const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
@@ -323,7 +324,7 @@ test("in the whole client the riding camera is behind the look, on a boom as lon
   expect(seen[1]!.back).toBeGreaterThan(seen[0]!.back * 1.5);
 });
 
-test("on the pteranodon in a hard bank, its rider is pinned in her seat's whole frame and a shot at her head as it is drawn there finds her head", () => {
+artTest("on the pteranodon in a hard bank, its rider is pinned in her seat's whole frame and a shot at her head as it is drawn there finds her head", () => {
   const m = mounted(60, ["bob"]);
   const { h, e } = m;
   const ents = h.world.ents, pilot = h.pilots[0]!;

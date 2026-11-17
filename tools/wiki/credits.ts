@@ -1,12 +1,13 @@
-// Who made a model and its motion, from what its asset records: an asset converted from a pack under assets/raw is
-// credited to that pack's author under the licence its folder carries, and any other was made for the game.
+// What a model and its motion are, from what its asset records: an asset converted from a pack under assets/raw is from
+// that pack, under the licence its folder carries, which names the pack's folder only where it is not CC0; any other was
+// made for the game.
 
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { findAssets, type Asset } from "../art/assets.ts";
 
 const RAW = resolve(import.meta.dir, "../../assets/raw");
-const MADE = "Made for the game";
+const MADE = "made for the game";
 
 /** Every `raw` an asset's spec names, at any depth. */
 function raws(spec: unknown): string[] {
@@ -15,13 +16,15 @@ function raws(spec: unknown): string[] {
   return Object.entries(spec).flatMap(([k, v]) => (k === "raw" && typeof v === "string" ? [v] : raws(v)));
 }
 
-/** The author and licence of a path under assets/raw: its first folder, and CC0 where every licence file under it says so. */
+/**
+ * What a path under assets/raw is: from a CC0 pack where every licence file under it says so, which asks for no name;
+ * else from its first folder's pack, under that pack's own licence, which may.
+ */
 function creditOf(raw: string): string {
-  const author = raw.charAt(0).toUpperCase() + raw.slice(1, raw.indexOf("/") < 0 ? undefined : raw.indexOf("/"));
   let dir = join(RAW, raw);
   while (!existsSync(dir) || !statSync(dir).isDirectory()) dir = dirname(dir);
   const texts = readdirSync(dir, { recursive: true }).map(String).filter((f) => /(^|\/)licen[cs]e[^/]*$/i.test(f)).map((f) => readFileSync(join(dir, f), "utf8"));
-  return texts.length > 0 && texts.every((t) => t.includes("CC0")) ? `${author}, CC0 1.0` : author;
+  return texts.length > 0 && texts.every((t) => t.includes("CC0")) ? "from a CC0 1.0 pack" : `from the ${raw.split("/")[0]} pack, under its licence`;
 }
 
 /** The ids of the meshes in a pack, from its header alone. */

@@ -22,6 +22,7 @@ import { parsePack } from "../../shared/pack/pack.ts";
 import { GROWN, MATE_TICKS, growthStep, leftAtPeriod, leftAtSpeed } from "../../shared/sim/breeding.ts";
 import { STAMINA_UNITS } from "../../shared/sim/character.ts";
 import { V_FOOD, V_TORPOR } from "../../shared/sim/vitals.ts";
+import { settingsPage } from "../../tools/settings.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { nodesOf, standFacing } from "../fixtures/gather.ts";
@@ -345,7 +346,7 @@ test("client: on a server that scales stamina, stacks, what things are made of a
 test("catalogue: every setting of ARK's the research found is in it as taking effect, waiting for a feature it names, or of no meaning here with the reason; each that takes effect is held by a test; and the reference page is the catalogue", () => {
   expect(catalogFaults()).toEqual([]);
   const counts = catalogCounts();
-  expect([counts.all, counts.todo, counts.live + counts.planned + counts.none]).toEqual([524, 0, 524]);
+  expect([counts.all, counts.todo, counts.live + counts.planned + counts.none]).toEqual([526, 0, 526]);
   expect(counts.live).toBeGreaterThanOrEqual(114);
   for (const row of CATALOG) {
     if (row.status === "planned") expect([row.name, row.waits in FEATURES]).toEqual([row.name, true]);
@@ -358,7 +359,7 @@ test("catalogue: every setting of ARK's the research found is in it as taking ef
   // Every live setting's name appears in some test file.
   const tests = ["integration", "unit"].flatMap((d) => readdirSync(resolve(import.meta.dir, "..", d)).filter((f) => f.endsWith(".ts")).map((f) => readFileSync(resolve(import.meta.dir, "..", d, f), "utf8"))).join("\n");
   expect(CATALOG.filter((r) => r.status === "live" && !tests.includes(r.name)).map((r) => r.name)).toEqual([]);
-  // The reference page names every setting, with a leading - for a flag.
-  const page = readFileSync(resolve(import.meta.dir, "../../planning/reference/settings.md"), "utf8");
+  // The reference page names every setting, with a leading - for a flag. That the page is this is settings.test.ts's.
+  const page = settingsPage();
   expect(CATALOG.filter((r) => !page.includes(`\`${r.kind === "flag" ? "-" : ""}${r.name}`)).map((r) => r.name)).toEqual([]);
 });

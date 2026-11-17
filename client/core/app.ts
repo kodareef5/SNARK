@@ -15,7 +15,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { motionProgress, motionTicks } from "../../shared/sim/motion.ts";
 import { MODE_FLYER, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
@@ -26,6 +26,7 @@ import { Controls, LOOK_SPEED } from "./controls.ts";
 import { HudModel, VehicleTelemetry, fillAction, fillBuffs, fillHotbar, fillOverhead, updateHud } from "./hud.ts";
 import { Chart } from "./tactical.ts";
 import { Camera } from "./render/camera.ts";
+import { seatScratch } from "./render/characters.ts";
 import { SQUEEZE_MOST } from "./render/budget.ts";
 import type { FramePacket } from "./render/packet.ts";
 import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
@@ -70,7 +71,7 @@ import { mapPointer } from "./ui/screens.ts";
 import { Ui } from "./ui/ui.ts";
 import { TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
 import { TRAVEL_REFRESH_MS } from "./ui/travel.ts";
-import { arrivalAddress, joinAddress, serverAddress, type Page } from "./travel.ts";
+import { arrivalAddress, joinAddress, serverAddress, siteLinks, type ClusterList, type Page } from "./travel.ts";
 
 /** Metres. Matches the server's REACH. */
 const REACH = 3.5;
@@ -129,6 +130,7 @@ export class App {
   private readonly spot = [0, 0, 0];
   /** Where a passenger sits, for its camera (Characters.seat), and the pose of the creature it sits on. */
   private readonly seatSpot = new Float64Array(12);
+  private readonly seated = seatScratch();
   private readonly mountState = new AnimState();
   readonly shots: Shots;
   /** Null until the world arrives. */
@@ -206,6 +208,8 @@ export class App {
         if (press && n) this.pointer(press === 1 ? 0 : 1, key, n.x+n.w/2, n.y+n.h/2, 0);
       },
     };
+    // Within the press that chose it, which is when a browser lets a page open another.
+    this.ui.openLink = (url) => this.page?.open?.(url);
     this.ui.local = (line) => (this.sounds ? soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null);
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
@@ -216,6 +220,7 @@ export class App {
       this.builder.result(seq, code, this.nowMs);
       this.vehiclePlacement.result(seq, code, this.nowMs);
       this.ui.structure.result(seq, code, this.nowMs, this.session, this.aimed);
+      if (code === RESULT_LOCKED) this.ui.hear?.("door/locked");
     };
   }
 
@@ -841,6 +846,8 @@ export class App {
     if (session.state === "active" && !this.arrived) {
       this.arrived = true;
       page.arrived();
+      // Asked for once the world is in, so the first frame waits for nothing more.
+      page.json("links.json").then((answer) => (this.ui.links = siteLinks(answer)), () => {});
     }
     if (session.state === "closed" && (session.closeReason === REJECT_TRAVEL || session.closeReason === REJECT_FULL) && !this.turnedAway) {
       this.turnedAway = t.open = true;
@@ -849,9 +856,9 @@ export class App {
     const trip = session.travelled;
     if ((t.open || trip) && nowMs - t.askedAt >= TRAVEL_REFRESH_MS) {
       t.askedAt = nowMs;
-      page.cluster().then(
+      page.json("cluster.json").then(
         (list) => {
-          t.list = list;
+          t.list = list as ClusterList;
           t.note = "";
         },
         () => {
@@ -1015,7 +1022,7 @@ export class App {
       } else {
         const slot = car.seats.findIndex(seat => seat.driver) + 1, ch = this.scene.characters;
         ch.seat(session.bodyKind, bx, by, bz, carYaw, this.body.state, session.tickClock, this.seatSpot, slot, vehiclePose);
-        const seat = ch.seatPose(session.bodyKind, slot, vehiclePose!, this.seatSpot, carYaw);
+        const seat = ch.seatPose(session.bodyKind, slot, vehiclePose!, this.seatSpot, carYaw, undefined, this.seated);
         if (!seat || !ch.seatedEye(session.ownKind, session.ownLook, seat, this.seatSpot)) vehiclePoint(frame, [.48, 1.86, .70], this.seatSpot);
         this.view.placeCockpit(cam, this.seatSpot[0]!, this.seatSpot[1]!, this.seatSpot[2]!, frame, this.cockpit.yaw, this.cockpit.pitch);
       }
@@ -1049,7 +1056,7 @@ export class App {
         } else if (vehicle) {
           const pose = remoteVehiclePose(r, i);
           if (ch.seat(r.kind[i]!, r.x[i]!, r.y[i]!, r.z[i]!, heading, this.body.state, r.tick, this.seatSpot, session.own.seatSlot, pose)) {
-            const seat = ch.seatPose(r.kind[i]!, session.own.seatSlot, pose, this.seatSpot, heading)!;
+            const seat = ch.seatPose(r.kind[i]!, session.own.seatSlot, pose, this.seatSpot, heading, undefined, this.seated)!;
             const found = passengerFullAttitude ? ch.seatedEye(session.ownKind, session.ownLook, seat, this.seatSpot) : ch.seatedOrigin(session.ownKind, session.ownLook, seat, this.seatSpot);
             if (found) { px = this.seatSpot[0]!; py = this.seatSpot[1]! + (passengerFullAttitude ? 0 : eye); pz = this.seatSpot[2]!; }
           }

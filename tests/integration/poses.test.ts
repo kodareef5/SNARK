@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { RemoteSample } from "../../client/core/session.ts";
+import { REWIND_TICKS } from "../../server/combat.ts";
 import { HISTORY_TICKS, History, Past } from "../../server/history.ts";
 import { Pose } from "../../shared/anim/clip.ts";
 import { HUMAN, HUMAN_BONES, ZONE_COUNT, ZONE_HEAD, ZONE_LEG_L, ZONE_TORSO } from "../../shared/anim/human.ts";
@@ -10,6 +11,7 @@ import { handleIndex } from "../../shared/ids.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_SPRINT, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceEye } from "../../shared/sim/character.ts";
 import { EntityStore } from "../../shared/sim/entities.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreAnim } from "../fixtures/pack.ts";
 
@@ -135,6 +137,16 @@ test("history holds where every moving entity was for the last sixteen ticks, an
   expect(history.sample(now - 3.25, ea, past)).toBe(true);
   expect(past.anim).toBe(t1.anim);
   expect(history.sample(now + 0.5, ea, past)).toBe(false);
+  // While a tick is stepped, a shot may be judged as far back as REWIND_TICKS before it, and between that tick and the next.
+  const step = h.server.onStep!;
+  let reach: boolean[] = [];
+  h.server.onStep = (T) => {
+    reach = [history.sample(T - REWIND_TICKS, ea, past), history.sample(T - REWIND_TICKS + 0.5, ea, past)];
+    step(T);
+  };
+  h.run(100);
+  h.server.onStep = step;
+  expect(reach).toEqual([true, true]);
 
   const eb = h.ent(b);
   h.ends[1]!.close();
@@ -285,7 +297,7 @@ test("what a client draws of a remote body is what the server would test a shot 
   }
 });
 
-test("no pose reaches outside the sphere the hit test rejects by, and a body costs microseconds to test", () => {
+artTest("no pose reaches outside the sphere the hit test rejects by, and a body costs microseconds to test", () => {
   const anim = coreAnim();
   const st = new AnimState();
   const pose = new Pose(HUMAN_BONES);

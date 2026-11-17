@@ -26,7 +26,8 @@
     "agent-trip": "bun tools/agent-trip.ts",
     "events": "bun tools/events.ts",
     "sounds": "bun tools/sounds.ts",
-    "wiki": "bun tools/wiki.ts"
+    "wiki": "bun tools/wiki.ts",
+    "source": "bun tools/source.ts"
   },
   "devDependencies": {
     "@types/bun": "1.4.3",

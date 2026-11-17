@@ -26,7 +26,7 @@
       ]
     },
     "enrage": {
-      "kind": "impact",
+      "kind": "voice",
       "range": 600,
       "level": -6,
       "vary": 0.04,
@@ -42,6 +42,17 @@
           "takes_moss-pt": 2,
           "seconds": 10,
           "text": "A giant beast screams in rage: a shrieking, distorted, furious howl, two separate screams with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v5-40190",
+          "models": [
+            "moss"
+          ],
+          "seed": 40190,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 6,
+          "text": "A giant monster screams in rage: one long furious roaring howl, then silence. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
     },

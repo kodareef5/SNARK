@@ -14,7 +14,8 @@ import { deriveRegistry, type Tuning } from "../content/tuning.ts";
 import { TICK_DT } from "../coords.ts";
 import { Rng } from "../rng.ts";
 import { BTN_BRAKE, BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_ROLL, BTN_SPRINT, Body, MF_NO_JUMP, MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, MODE_FLYER, MODE_GHOST, MODE_SWIM, MODE_WALK, STAMINA_UNITS, stepBody } from "./character.ts";
-import type { Heightfield } from "../world/heightfield.ts";
+import { Heightfield, TERRAIN_CELL } from "../world/heightfield.ts";
+import { Fall, SETTLE_TICKS, layCorpse } from "../anim/corpse.ts";
 import { buildProvingHeightfield, populateProving, PROVING_DIMS } from "../world/proving.ts";
 import { castWorld, lookDirection, rayHit } from "../world/ray.ts";
 import { NodeField, nodeForms, scatterNodes, type NodeSpot } from "../world/nodes.ts";
@@ -393,8 +394,15 @@ export function snapHash(reg: Registry): string {
  * standing long enough for its idles; and one that flies through its flight, taking off, banked, pitched, rolling and
  * landing. Hashes its bone transforms and what two rays hit.
  */
-export function creatureHash(anims: Iterable<CreatureAnim>): string {
+export function creatureHash(anims: Iterable<CreatureAnim>, reg: Registry): string {
   const st = new AnimState();
+  // Ground that rises toward +X in steps of 5 cm, with a wall in the way of a body laid beside it.
+  const dims = { chunksX: 2, chunksZ: 2 };
+  const ground = new Heightfield(dims, TERRAIN_CELL, -32, 1 / 256);
+  for (let j = 0; j < ground.nz; j++) for (let i = 0; i < ground.nx; i++) ground.setSample(i, j, i * TERRAIN_CELL * 0.3 + Math.floor(j / 7) * 0.05);
+  const lying = { hf: ground, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts) };
+  const wall = reg.index.get("core:wall_wood")!;
+  lying.structs.add(wall, 41.2, ground.heightAt(41.2, 40) + reg.halfY[wall]!, 40, 9000, 1, 1000);
   let h1 = 0x811c9dc5;
   let h2 = 0x9747b28c;
   const mix = (bytes: Uint8Array): void => {
@@ -492,6 +500,18 @@ export function creatureHash(anims: Iterable<CreatureAnim>): string {
     for (const seed of [0, 333, 777]) {
       st.seed = seed;
       for (let tick = 2000; tick < 3800; tick += 11.5) pose(tick, false);
+    }
+    // Dead and knocked out, laid on the slope and against the wall, every tick until it rests: the server lays it as clients do.
+    for (const [out, yaw, x] of [[false, 0.3, 40], [true, 2.1, 40.6], [false, 4.4, 39.5]] as const) {
+      const r = layCorpse(a, out, false, x, ground.heightAt(x, 40), 40, yaw, 1, rig.solved);
+      if (!r) break;
+      const fall = new Fall(r);
+      for (let t = 0; t < SETTLE_TICKS && fall.tick(lying); t++) {
+        mix(new Uint8Array(r.x.buffer));
+        mix(new Uint8Array(r.q.buffer));
+      }
+      mix(new Uint8Array(r.x.buffer));
+      mix(new Uint8Array(r.q.buffer));
     }
     if (!a.flies) continue;
     // In the air: each speed, look, bank and climb in turn, taking off and rolling now and then, and landing.

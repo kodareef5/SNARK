@@ -10,10 +10,11 @@ import { SKY_COLOR } from "../../shared/pack/palette.ts";
 import { PICK_ENTITY, PICK_STRUCTURE, PICK_TERRAIN } from "../../tools/snap/raster.ts";
 import { writeTextureFile } from "../../tools/pack/texture.ts";
 import { FakeNet } from "../fixtures/assetnet.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { corePack, corePackBytes } from "../fixtures/pack.ts";
 import { worldMaps, surfaceProbeView, probePixel, probeRgb } from "../fixtures/world-surfaces.ts";
 
-test("surface twins hit the same pixels, planes and mips as the software scene at browser and small canvas sizes", () => {
+artTest("surface twins hit the same pixels, planes and mips as the software scene at browser and small canvas sizes", () => {
   const maps = worldMaps(corePack());
   for (const [width, height, hour] of [[1280, 577, 9], [320, 180, 12]]) {
     const v = surfaceProbeView(width!, height!); v.scene.hour = hour!;
@@ -36,7 +37,7 @@ test("surface twins hit the same pixels, planes and mips as the software scene a
   }
 });
 
-test("a rigid species keeps its palette light with or without the atlas; removing DRAW_PLAIN reproduces the regression", () => {
+artTest("a rigid species keeps its palette light with or without the atlas; removing DRAW_PLAIN reproduces the regression", () => {
   const v = surfaceProbeView(320, 180), maps = worldMaps(v.pack);
   const p = v.scene.build(v.cam, v.remote);
   p.texUploads.push(...maps.uploads); v.raster.render(p);

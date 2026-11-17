@@ -30,7 +30,7 @@ Keep the generated source pictures at full size in `source/` and the scripts tha
 
 ## What excellent looks like
 
-The bar is `oak_trunk.png`, and for a complete layer set the wood plank wall in `../../../../../../../planning/artist-test/wood/` (start with `checks/layers.jpg`). Bark a player wants to touch.
+The bar is `oak_trunk.png`, and for a complete layer set the wood plank wall in `../../../../../../../planning/art-trial/wood/` (start with `checks/layers.jpg`). Bark a player wants to touch.
 
 ## Checks to leave in `checks/`
 

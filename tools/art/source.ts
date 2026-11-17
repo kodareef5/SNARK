@@ -2,13 +2,19 @@
 // only one of them has.
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Clip } from "../../shared/anim/clip.ts";
 import { detailsAtlas, parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { unpackMeshes, type SourceDetails, type SourceMesh } from "../pack/write.ts";
 
 export const SOURCE = fileURLToPath(new URL("../../assets/source", import.meta.url));
+
+/**
+ * Whether the art is here: whether there is an assets folder at all. Every checkout of the repository has one, so art
+ * missing from it fails what needs it there; the code as shown outside (tools/source.ts) has none, and skips that.
+ */
+export const ART = existsSync(fileURLToPath(new URL("../../assets", import.meta.url)));
 
 /** Every file under `dir` whose name ends in `ending`, in name order, so every machine finds them in the same order. */
 export function filesUnder(dir: string, ending: string, out: string[] = []): string[] {
@@ -45,7 +51,7 @@ export function readPacks(dir: string = SOURCE): SourceArt {
     from.set(key, file);
   };
   for (const file of filesUnder(dir, ".snpk")) {
-    if (dir === SOURCE && file.startsWith(LANDMARKS + "/")) continue;
+    if (dir === SOURCE && file.startsWith(LANDMARKS + sep)) continue;
     const pack = parsePack(new Uint8Array(readFileSync(file)));
     for (const m of pack.header.meshes) claim("mesh", m.id, file);
     for (const r of pack.header.rigs) claim("rig", r.id, file);

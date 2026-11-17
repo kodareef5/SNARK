@@ -57,9 +57,9 @@ interface Sample {
   timed: boolean;
 }
 
-/** The feather and the wood under planning/artist-test and the thatch tier's textures, each at 1,024, and the thatch's own base colour at 2,048. */
+/** The feather and the wood under planning/art-trial and the thatch tier's textures, each at 1,024, and the thatch's own base colour at 2,048. */
 async function testSet(): Promise<Sample[]> {
-  const art = (name: string) => readPicture(join(ROOT, "planning/artist-test", name));
+  const art = (name: string) => readPicture(join(ROOT, "planning/art-trial", name));
   const sets: Record<string, Partial<Record<TextureRole, Uint8Array[]>>> = {
     feather: materialMips({ base: art("feather/feather_base.png"), normal: art("feather/feather_normal.png"), mro: packMro(art("feather/feather_ao.png"), art("feather/feather_rough.png")), regions: art("feather/feather_mask.png") }),
     wood: materialMips({ base: art("wood/wood_base.png"), normal: art("wood/wood_normal.png"), mro: art("wood/wood_orm.png"), regions: art("wood/wood_mask.png") }),

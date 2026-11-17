@@ -1,9 +1,11 @@
 import { expect, test } from "bun:test";
 import { SURFACE_NAMES, surfaceIndex } from "../../content/surfaces.ts";
-import { citySurface, surfaceHash, surfaceNoise, WORLD_MEANS, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { citySurface, surfaceHash, surfaceNoise, WORLD_MEANS, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { TIERS, forTouch } from "../../client/core/assets/tiers.ts";
 import { FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX, PULLED_VERTEX } from "../../client/core/render/glsl.ts";
 import { worldMaterial } from "../../tools/surfaces/build.ts";
 import { rgbaOf } from "../../tools/snap/files.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 
 test("ground aliases and static finishes remain distinct; desert open land is gravel", () => {
   for (const [palette, ground, name] of [[10, true, "rock"], [10, false, "concrete"], [100, true, "gravel"], [100, false, "concrete"], [89, true, "paving"], [89, false, "steel"], [179, false, "rust"], [197, true, "grass"], [125, true, "sand"]] as const)
@@ -43,7 +45,7 @@ test("the textured vertex variants carry semantic IDs while low-poly shader sour
   }
 });
 
-test("a distant finish fades to its mean in the atlas's 4 x 4 mip without reading it; the normal map's mean is flat", () => {
+artTest("a distant finish fades to its mean in the atlas's 4 x 4 mip without reading it; the normal map's mean is flat", () => {
   const source = worldMaterial();
   for (const [role, at] of [["base", 0], ["mro", 3]] as const) {
     const mip = rgbaOf(source, role, 2048).pictures[2]!;
@@ -55,14 +57,23 @@ test("a distant finish fades to its mean in the atlas's 4 x 4 mip without readin
 test("a finish reads the base of its cells and the other maps of the heaviest, the normal only while it shows, and nothing far off", () => {
   const city = new Float32Array(12); citySurface(city, "core:default");
   const a = new Float64Array(3), o = new Float64Array(3), n = new Float64Array(3);
-  const reads = (id: number, footprint: number): number[] => {
+  const reads = (id: number, footprint: number, light = false): number[] => {
     const count = [0, 0, 0];
-    worldSurface(a, o, n, [0.4, 0.4, 0.4], id, 31.3, 2, 17.9, 0, 1, 0, footprint, city, (role, _u, _v, _spread, out) => { count[role]!++; out.fill(0.5); });
+    worldSurface(a, o, n, [0.4, 0.4, 0.4], id, 31.3, 2, 17.9, 0, 1, 0, footprint, city, (role, _u, _v, _spread, out) => { count[role]!++; out.fill(0.5); }, light);
     return count;
   };
   // Grass's tile is 1.4 m: a pixel of 0.15 m is near, 0.3 m fading with relief, 1 m fading flat, 2 m far.
   expect([0.15, 0.3, 1, 2].map((footprint) => reads(0, footprint))).toEqual([[3, 1, 1], [3, 1, 1], [3, 0, 1], [0, 0, 0]]);
   expect([0.05, 2].map((footprint) => reads(9, footprint))).toEqual([[1, 1, 1], [0, 0, 0]]);
+  // The touch rule's light finish: the base of one cell, near and fading, and nothing far off.
+  expect([0.15, 1, 2].map((footprint) => reads(0, footprint, true))).toEqual([[1, 0, 0], [1, 0, 0], [0, 0, 0]]);
+});
+
+test("only a smooth finish mirrors the sky table; wetness makes mud one, and the light finish is the touch rule's", () => {
+  const city = new Float32Array(12);
+  citySurface(city, "core:default");
+  expect(SURFACE_NAMES.filter((_, i) => worldSharp(i, city))).toEqual(["mud", "steel", "glass"]);
+  for (const tier of TIERS) expect([tier.finish, forTouch(tier, true).finish]).toEqual(["full", tier.name === "medium" || tier.name === "high" ? "light" : "full"]);
 });
 
 test("city bump tuning changes relief without changing albedo or finish selection", () => {

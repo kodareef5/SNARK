@@ -61,7 +61,9 @@ ${LIGHT}${SHADOW_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}void main
   vec3 orm = vec3(1.0, 1.0, 0.0);
   if (uSolid < 1.5 && uWorldReady > 0.5) worldSurface(albedo, orm, n);
   vec3 v = -normalize(vRel);
-  vec3 mirrored = orm.y < 1.0 ? skyFrom(reflect(-v,n)) : vec3(0.0);
+  // A rough finish mirrors the sky's light, which is a colour; only a smooth one shows the sky's picture.
+  vec3 r = reflect(-v,n);
+  vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : worldSharp ? skyFrom(r) : skyLight(r);
   o = vec4(shown(lit(albedo, orm, n, v, mirrored, sunShadow(vRel, geometric)), vRel), uAlpha);
 }`;
 

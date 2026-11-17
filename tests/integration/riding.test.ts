@@ -12,6 +12,7 @@ import { BOX_OPEN, BOX_SELF, CMD_FEED, CMD_MOVE, CMD_OPEN, CMD_ORDER, ORDER_UNSA
 import { BTN_PRIMARY, BTN_USE, STANCE_CROUCH, STANCE_STAND, stanceEye } from "../../shared/sim/character.ts";
 import { V_FOOD, V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
 import { flatGround } from "../fixtures/arena.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -239,7 +240,7 @@ test("a rider is shot where she sits; a saddle is her mount's armor; a mount tha
   expect(blow()).toBeCloseTo(60, 1);
 });
 
-test("in the whole client: riding, the mount is drawn where the rider predicts it, with the rider on its seat, seen from behind", () => {
+artTest("in the whole client: riding, the mount is drawn where the rider predicts it, with the rider on its seat, seen from behind", () => {
   const h = new Harness({}, 1, 60, { dev: true });
   const pack = corePack();
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, pack);

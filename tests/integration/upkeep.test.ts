@@ -188,6 +188,9 @@ test("what its tribe has not come near decays: anyone may take it down then, a p
   const f = found(made, ada, 0, 5);
   const wall = join(ada, "wall", f, 2).ref;
   const alone = found(made, ada, 6, 5);
+  // A box on the ground by itself is no foundation or pillar: it keeps its whole period.
+  const team = structs.chunks[Math.floor(alone / 65536)]!.owner[alone & 0xffff]!, box = id("storage_box");
+  const boxed = structs.add(box, made.at.x + 3, h.world.hf.heightAt(made.at.x + 3, made.at.z + 8) + h.reg.halfY[box]!, made.at.z + 8, 0, team, h.reg.maxHp[box]!);
   h.say(bob, `tp ${(made.at.x + 5).toFixed(3)} ${(made.at.z + 2).toFixed(3)}`);
   // As in ARK, a non-PvE server has no decay unless PvPStructureDecay is on, and a lone foundation decays no sooner
   // than other pieces unless FastDecayUnsnappedCoreStructures is on.
@@ -206,7 +209,7 @@ test("what its tribe has not come near decays: anyone may take it down then, a p
   // She leaves. The wait covers the four seconds plus one DECAY_EVERY interval between checks.
   h.ends[0]!.close();
   h.run(4400 + (DECAY_EVERY / TICK_RATE) * 1000);
-  expect([alone, f, wall].map((ref) => decay().expired(ref, h.world.tick))).toEqual([true, false, false]);
+  expect([alone, f, wall, boxed].map((ref) => decay().expired(ref, h.world.tick))).toEqual([true, false, false, false]);
   // The decay clocks are saved, so a restart does not reset them.
   expect(structs.chunks[Math.floor(alone / 65536)]!.kind[alone & 0xffff]).toBe(id("foundation_wood"));
   h.host.shutdown();

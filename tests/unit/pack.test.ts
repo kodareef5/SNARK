@@ -11,6 +11,7 @@ import { importGlb } from "../../tools/pack/glb.ts";
 import { manifestOf, partHash } from "../../tools/pack/manifest.ts";
 import { buildPack, unpackMeshes, type SourceLod } from "../../tools/pack/write.ts";
 import { sampleGlb } from "../fixtures/glb.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 
 test("a glTF export becomes a pack mesh with levels of detail, colour regions and a collider", () => {
@@ -65,7 +66,7 @@ test("the core pack has a mesh for every graybox definition and rejects damaged 
   expect(() => parsePack(future)).toThrow(/version/);
 });
 
-test("the pack carries bodies cut into slots, each vertex on one bone, and the clips that move them", () => {
+artTest("the pack carries bodies cut into slots, each vertex on one bone, and the clips that move them", () => {
   const pack = parsePack(corePackBytes());
   // The mannequin is the skeleton's own capsules. Each modelled body is on its own rig, at three levels of detail.
   for (const [base, rig, levels] of [["core:mannequin", undefined, 1], ["core:human_m", "human_m", 3], ["core:human_f", "human_f", 3]] as const) {
@@ -108,7 +109,7 @@ test("the pack carries bodies cut into slots, each vertex on one bone, and the c
   const jog = clips.clips[clips.index.get("human/jog")!]!;
   expect([jog.bones, jog.frames, jog.loop]).toEqual([HUMAN.bones, 28, true]);
   for (let k = 0; k < jog.rot.length; k += 4) expect(Math.hypot(jog.rot[k]!, jog.rot[k + 1]!, jog.rot[k + 2]!, jog.rot[k + 3]!)).toBeCloseTo(1, 3);
-  expect(clips.clips[clips.index.get("human/death")!]!.loop).toBe(false);
+  expect(clips.clips[clips.index.get("human/punch")!]!.loop).toBe(false);
   expect(clips.hash).not.toBe(0);
   expect(parsePack(buildCorePack()).clips.hash).toBe(clips.hash);
   // A clip pointing outside the file is refused.
@@ -193,7 +194,7 @@ test("a pack of another version is refused, clips come back within a step, and t
   }
 });
 
-test("the manifest lists every level with the bytes that hold it, and reads back as it was written", () => {
+artTest("the manifest lists every level with the bytes that hold it, and reads back as it was written", () => {
   const file = corePackBytes();
   const pack = parsePack(file);
   const manifest = manifestOf("core.snpk", file);

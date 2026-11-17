@@ -1,0 +1,347 @@
+{
+  "run": "addb10230085bebc",
+  "mode": "soak",
+  "seq": 15,
+  "stage": "done",
+  "done": true,
+  "device": {
+    "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 27_2_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/157.0.8103.37 Mobile/15E148 Safari/604.1",
+    "screen": [
+      390,
+      844
+    ],
+    "window": [
+      390,
+      669
+    ],
+    "pixelRatio": 3,
+    "cores": 4,
+    "memoryGB": null,
+    "touch": 5,
+    "features": {
+      "workers": true,
+      "opfs": true,
+      "decompress": "gzip deflate deflate-raw brotli",
+      "audioWorklet": true,
+      "opusEncode": true,
+      "opusDecode": true,
+      "webTransport": true,
+      "webgpu": true,
+      "wakeLock": true,
+      "quotaMB": 39322
+    }
+  },
+  "gpu": {
+    "vendor": "Apple Inc.",
+    "renderer": "Apple GPU",
+    "version": "WebGL 2.0",
+    "maxTexture": 16384,
+    "maxArrayLayers": 2048,
+    "maxSamples": 4,
+    "vertexTextures": 16,
+    "textureUnits": 16,
+    "combinedUnits": 32,
+    "drawBuffers": 8,
+    "anisotropy": 16,
+    "highp": true,
+    "antialias": true,
+    "uniformBytes": 16384,
+    "uniformBlocks": [
+      16,
+      16
+    ],
+    "uniformBindings": 32,
+    "uniformAlign": 16,
+    "depthBits": 24,
+    "extensions": [
+      "EXT_clip_control",
+      "EXT_color_buffer_float",
+      "EXT_color_buffer_half_float",
+      "EXT_conservative_depth",
+      "EXT_depth_clamp",
+      "EXT_polygon_offset_clamp",
+      "EXT_render_snorm",
+      "EXT_texture_filter_anisotropic",
+      "EXT_texture_mirror_clamp_to_edge",
+      "EXT_texture_norm16",
+      "KHR_parallel_shader_compile",
+      "NV_shader_noperspective_interpolation",
+      "OES_draw_buffers_indexed",
+      "OES_sample_variables",
+      "OES_shader_multisample_interpolation",
+      "WEBGL_blend_func_extended",
+      "WEBGL_clip_cull_distance",
+      "WEBGL_compressed_texture_astc",
+      "WEBGL_compressed_texture_etc",
+      "WEBGL_compressed_texture_etc1",
+      "WEBGL_compressed_texture_pvrtc",
+      "WEBKIT_WEBGL_compressed_texture_pvrtc",
+      "WEBGL_debug_renderer_info",
+      "WEBGL_debug_shaders",
+      "WEBGL_lose_context",
+      "WEBGL_multi_draw",
+      "WEBGL_polygon_mode",
+      "WEBGL_provoking_vertex",
+      "WEBGL_render_shared_exponent",
+      "WEBGL_stencil_texturing"
+    ],
+    "variant": "astc"
+  },
+  "idleFrameMs": 17,
+  "wakeLock": "held",
+  "link": {
+    "httpMs": {
+      "median": 68,
+      "p95": 171,
+      "p99": 171,
+      "worst": 182
+    },
+    "gameMs": null,
+    "snapshots": 18126,
+    "missed": 0,
+    "missedLoading": 0,
+    "missedHidden": 0,
+    "server": {
+      "skipped": 0,
+      "overflows": 0
+    },
+    "longestGapMs": 134,
+    "bytesIn": 963996,
+    "clockJumps": 1,
+    "corrections": 0,
+    "undecodable": 0
+  },
+  "load": {
+    "firstFrameMs": 1572,
+    "fullDetailMs": 2843,
+    "settled": true,
+    "pageBytes": 471929,
+    "assetBytes": 0,
+    "diskBytes": 13596212,
+    "failed": 0,
+    "cache": "disk"
+  },
+  "probes": null,
+  "hashes": [
+    {
+      "name": "sim",
+      "got": "1f4dbd37f2e359ac",
+      "want": "1f4dbd37f2e359ac",
+      "ms": 70
+    },
+    {
+      "name": "pose",
+      "got": "335d6893bc507a11",
+      "want": "335d6893bc507a11",
+      "ms": 21
+    },
+    {
+      "name": "snap",
+      "got": "4fe0eeea53b9c036",
+      "want": "4fe0eeea53b9c036",
+      "ms": 41
+    },
+    {
+      "name": "creature",
+      "got": "c4e100fcf4c0134e",
+      "want": "c4e100fcf4c0134e",
+      "ms": 28
+    },
+    {
+      "name": "tuned",
+      "got": "988e57ee2014a7331d898876",
+      "want": "988e57ee2014a7331d898876",
+      "ms": 22
+    },
+    {
+      "name": "hull",
+      "got": "f125f16e04a3a07d",
+      "want": "f125f16e04a3a07d",
+      "ms": 80
+    },
+    {
+      "name": "node",
+      "got": "af39543b5c75fd89",
+      "want": "af39543b5c75fd89",
+      "ms": 71
+    }
+  ],
+  "phases": [],
+  "again": null,
+  "ladder": null,
+  "soak": {
+    "tier": "high",
+    "load": {
+      "stress": false,
+      "bodies": 0,
+      "pieces": 0,
+      "near": 0,
+      "far": 0
+    },
+    "from": "the terrain map's wood and 480 far base chunks round its middle, nothing else",
+    "wood": true,
+    "cascades": 3,
+    "minutesWanted": 10,
+    "minutes": [
+      {
+        "minute": 1,
+        "frames": 2113,
+        "frameMs": {
+          "median": 28,
+          "p95": 37,
+          "p99": 40,
+          "worst": 43
+        },
+        "long": 0,
+        "buildMs": 2,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 117
+      },
+      {
+        "minute": 2,
+        "frames": 2147,
+        "frameMs": {
+          "median": 28,
+          "p95": 31,
+          "p99": 32,
+          "worst": 34
+        },
+        "long": 0,
+        "buildMs": 2,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 117
+      },
+      {
+        "minute": 3,
+        "frames": 2223,
+        "frameMs": {
+          "median": 27,
+          "p95": 30,
+          "p99": 31,
+          "worst": 33
+        },
+        "long": 0,
+        "buildMs": 2,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 117
+      },
+      {
+        "minute": 4,
+        "frames": 2097,
+        "frameMs": {
+          "median": 28,
+          "p95": 34,
+          "p99": 39,
+          "worst": 40
+        },
+        "long": 0,
+        "buildMs": 2,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 117
+      },
+      {
+        "minute": 5,
+        "frames": 2251,
+        "frameMs": {
+          "median": 26,
+          "p95": 30,
+          "p99": 31,
+          "worst": 33
+        },
+        "long": 0,
+        "buildMs": 2,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 117
+      },
+      {
+        "minute": 6,
+        "frames": 2395,
+        "frameMs": {
+          "median": 25,
+          "p95": 28,
+          "p99": 28,
+          "worst": 30
+        },
+        "long": 0,
+        "buildMs": 2,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 117
+      },
+      {
+        "minute": 7,
+        "frames": 2518,
+        "frameMs": {
+          "median": 24,
+          "p95": 26,
+          "p99": 27,
+          "worst": 28
+        },
+        "long": 0,
+        "buildMs": 1,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 117
+      },
+      {
+        "minute": 8,
+        "frames": 2648,
+        "frameMs": {
+          "median": 23,
+          "p95": 25,
+          "p99": 25,
+          "worst": 26
+        },
+        "long": 0,
+        "buildMs": 1,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 117
+      },
+      {
+        "minute": 9,
+        "frames": 2703,
+        "frameMs": {
+          "median": 22,
+          "p95": 24,
+          "p99": 25,
+          "worst": 26
+        },
+        "long": 0,
+        "buildMs": 1,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 117
+      },
+      {
+        "minute": 10,
+        "frames": 2694,
+        "frameMs": {
+          "median": 22,
+          "p95": 24,
+          "p99": 25,
+          "worst": 26
+        },
+        "long": 0,
+        "buildMs": 1,
+        "drawMs": 1,
+        "missed": 0,
+        "mat": 117
+      }
+    ],
+    "hidden": 0,
+    "hiddenMs": 0
+  },
+  "terrain": null,
+  "gpuTests": null,
+  "skipped": [],
+  "texturesMade": 80,
+  "hidden": [],
+  "errors": [],
+  "reloadedDuring": null
+}

@@ -1,12 +1,14 @@
 // The wiki: bun run wiki, after bun run build. It reads the game's build in client/dist and the map files in
 // var/maps, and writes plain files to client/dist/wiki, which the game's server serves at /wiki/ as it serves the rest
-// of client/dist. Its pictures are kept under .cache/wiki, so a second build draws only what changed.
+// of client/dist. Its pictures are kept under .cache/wiki, so a second build draws only what changed. Its figures are
+// at the defaults; a page works those a world's settings change out again for the world it was opened from.
 
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { GLASS_SIZE, GLASS_X, GLASS_Y, SKIN_HEIGHT, SKIN_WIDTH } from "../client/core/ui/skin.ts";
 import { CORE_CONTENT } from "../content/core.ts";
-import type { EngramDef } from "../shared/content/defs.ts";
+import { LANDMARKS } from "../content/landmarks/index.ts";
+import type { EngramDef, LevelsDef } from "../shared/content/defs.ts";
 import type { ManifestSound } from "../shared/pack/sound.ts";
 import { compileContent } from "../shared/content/registry.ts";
 import { vehicleFamilies } from "../shared/sound/cues.ts";
@@ -16,8 +18,10 @@ import { buildAtlases } from "./wiki/atlas.ts";
 import { readBuilt } from "./wiki/built.ts";
 import { buildCatalogue, namesOf, sentence } from "./wiki/catalogue.ts";
 import { entryCredit, fromAssets } from "./wiki/credits.ts";
+import { controlGroups } from "./wiki/controls.ts";
+import { coverage, leftOut } from "./wiki/coverage.ts";
 import { checkLinks } from "./wiki/links.ts";
-import { BASE } from "./wiki/html.ts";
+import { BASE, slug } from "./wiki/html.ts";
 import { drawPosters, type Subject } from "./wiki/posters.ts";
 import { commands, consoleLine, publicSettings } from "./wiki/reference.ts";
 import { entryPath, renderWiki, type Sound, type Track } from "./wiki/render.ts";
@@ -44,7 +48,8 @@ export async function buildWiki(dist = join(ROOT, "client/dist"), maps = join(RO
     const reg = compileContent(CORE_CONTENT).registry!;
     const list = commands();
     const framing = await assetFraming();
-    const entries = buildCatalogue({ console: consoleLine(list), framing, meshes: new Set(built.manifest.meshes.map((m) => m.id)) });
+    const meshes = new Set(built.manifest.meshes.map((m) => m.id));
+    const entries = buildCatalogue({ console: consoleLine(list), framing, meshes, landmarks: LANDMARKS });
     const art = await fromAssets();
     // A creature whose content gives no colours is drawn in its art's own.
     for (const e of entries) if (e.picture?.body && e.picture.colors.length === 0) e.picture.colors = art.colours.get(e.picture.meshes[0]!) ?? [];
@@ -52,8 +57,10 @@ export async function buildWiki(dist = join(ROOT, "client/dist"), maps = join(RO
     const posters = drawPosters(built, subjects, media, `${BASE}media/`);
     const pictures = new Map(entries.flatMap((e) => (e.picture ? [[e.id, posters.drawn.get(e.id.replace(/[:/]/g, "-"))!] as const] : [])));
     const credits = new Map<string, string>();
-    for (const e of entries) if (e.picture) credits.set(e.id, entryCredit(art.credits, e.picture.meshes, e.picture.body && e.kind !== "vehicles", e.kind === "characters"));
+    for (const e of entries) if (e.picture) credits.set(e.id, entryCredit(art.credits, e.picture.meshes, e.kind === "creatures" || e.kind === "characters", e.kind === "characters"));
     const atlases = buildAtlases(reg, built.boot.palette, maps, media, `${BASE}media/`);
+    const left = leftOut(coverage({ defs: CORE_CONTENT, landmarks: LANDMARKS, has: (m) => meshes.has(m), maps: new Set(atlases.map((a) => a.id)) }));
+    const controls = controlGroups();
 
     const soundRow = (file: string, game: boolean) => (s: ManifestSound): Sound => {
       const name = s.id.slice(s.id.indexOf("/sound/") + 7);
@@ -67,8 +74,8 @@ export async function buildWiki(dist = join(ROOT, "client/dist"), maps = join(RO
     // What the game plays for each entry: its definitions' own sounds, a family's sounds named for it, and a vehicle's families'.
     const heard = new Map(
       entries.map((e) => {
-        const def = CORE_CONTENT.find((d) => d.id === e.id)!;
-        const own = e.kind === "vehicles" ? vehicleFamilies(e.id, "aliases" in def ? (def.aliases ?? []) : []) : [];
+        const def = CORE_CONTENT.find((d) => d.id === e.id);
+        const own = e.kind === "vehicles" ? vehicleFamilies(e.id, def && "aliases" in def ? (def.aliases ?? []) : []) : [];
         // A vehicle of no family of its own sounds as the shared car does.
         const families = e.kind === "vehicles" && own.length === 0 ? ["core:vehicle"] : own;
         const name = e.id.slice(e.id.indexOf(":") + 1);
@@ -104,9 +111,13 @@ export async function buildWiki(dist = join(ROOT, "client/dist"), maps = join(RO
     const css = readFileSync(join(import.meta.dir, "wiki/wiki.css"), "utf8").replace('url("HUD_FONT")', `url("${font}")`).replace('url("HUD_SHEET") GLASS', `url("${sheet}") ${glass}`);
     const cssName = `wiki.${partHash(new TextEncoder().encode(css))}.css`;
     writeText(join(out, cssName), css);
+    const levels = CORE_CONTENT.find((d): d is LevelsDef => d.type === "levels") ?? null;
+    // Each control is found by what it does, as each entry and map by its name.
+    const actions = controls.flatMap((g) => [...new Set([...g.keys, ...g.pad].map((c) => c.title))].map((title) => [title, `${BASE}controls/#${slug(g.name.toLowerCase())}`, `${g.name} control`, ""]));
     const search = JSON.stringify([
       ...entries.map((e) => [e.label, entryPath(e), e.group, pictures.get(e.id)?.card.file ?? ""]),
       ...atlases.map((a) => [a.label, `${BASE}maps/${a.slug}/`, "Map", a.card.file]),
+      ...actions,
     ]);
     const searchName = `search.${partHash(new TextEncoder().encode(search))}.json`;
     writeText(join(out, searchName), search);
@@ -126,6 +137,9 @@ export async function buildWiki(dist = join(ROOT, "client/dist"), maps = join(RO
       commands: list,
       settings: publicSettings(),
       engrams,
+      levels: levels ? { xp: levels.xp, points: levels.engramPoints } : null,
+      controls,
+      left,
       names: namesOf(entries),
     });
     for (const [path, html] of pages) {

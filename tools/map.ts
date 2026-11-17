@@ -11,7 +11,7 @@
 // highest x and the highest z. Places in the JSON files are metres from the map's south-east corner, x growing west and
 // z growing north. A yaw is degrees from north, turning toward +x.
 //
-//   map.json      { "id": "core:miami", "chunks": [125, 125], "minY": -32, "stepY": 0.00390625, "seaLevel": 0 }
+//   map.json      { "id": "core:miami", "chunks": [127, 127], "minY": -32, "stepY": 0.00390625, "seaLevel": 0 }
 //                 The id is the map's name to the server, and that of its definition in the content, if it has one.
 //                 A height is minY + value * stepY metres. Without seaLevel the map has no sea.
 //   heights.png   16-bit greyscale, a pixel a sample. Or heights.u16: the same values, little-endian, with no header.
@@ -52,11 +52,13 @@ import { CORE_CONTENT } from "../content/core.ts";
 import { provingFile } from "../server/world.ts";
 import { compileContent, withContent } from "../shared/content/registry.ts";
 import { CHUNK_SIZE } from "../shared/coords.ts";
-import { parseMap, writeMap, type MapData } from "../shared/world/mapfile.ts";
+import { mapHeightfield, parseMap, writeMap, type MapData } from "../shared/world/mapfile.ts";
+import { groundSize } from "../client/core/render/terrain.ts";
 import { readLayers, writeLayers } from "./map/layers.ts";
 import { writeMapFile } from "./map/pack.ts";
 
 const registry = () => compileContent(CORE_CONTENT).registry!;
+const WEBGL2_TEXTURE = 2048;
 
 /** What a map holds, in lines, and the content ids it names that the core pack lacks. */
 export function describe(file: Uint8Array): string[] {
@@ -69,9 +71,11 @@ export function describe(file: Uint8Array): string[] {
     if (h > high) high = h;
   }
   const at = (h: number): string => (map.minY + h * map.stepY).toFixed(1);
+  const ground = groundSize(mapHeightfield(map));
   const lines = [
     `${map.id}, hash ${map.hash.toString(16).padStart(8, "0")}, ${file.length} bytes`,
     `${chunksX} by ${chunksZ} chunks, ${chunksX * CHUNK_SIZE} by ${chunksZ * CHUNK_SIZE} m, ground from ${at(low)} to ${at(high)} m, ${map.seaLevel === -Infinity ? "no sea" : `sea at ${map.seaLevel} m`}`,
+    ...(Math.max(...ground.width, ...ground.height) > WEBGL2_TEXTURE ? [`its ground is ${ground.width[0]} by ${ground.height[0]} texels: a device whose textures go to ${WEBGL2_TEXTURE}, the least WebGL2 allows, refuses it`] : []),
     `${map.statics.length} static pieces`,
     ...map.nodes.map((layer) => {
       if ("first" in layer) return `${layer.kind.length} listed nodes`;

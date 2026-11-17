@@ -173,7 +173,7 @@ export function weighWiki(dist: string): boolean {
     const html = readFileSync(join(dist, path), "utf8");
     return sent(path) + fixed(html) + pictures(html, lazy);
   };
-  const lists = pages.filter((p) => /^wiki\/(creatures|items|vehicles|characters)\/(page\/\d+\/|group\/\w+\/)?index\.html$/.test(p));
+  const lists = pages.filter((p) => /^wiki\/(creatures|items|resources|vehicles|landmarks|statuses|characters)\/(page\/\d+\/|group\/\w+\/)?index\.html$/.test(p));
   const rows: [string, number][] = [
     ["wiki: the front page, every picture", weigh("wiki/index.html", true)],
     ["wiki: its heaviest page", Math.max(...pages.map((p) => weigh(p, false)))],

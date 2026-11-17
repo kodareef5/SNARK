@@ -46,6 +46,12 @@ export interface Destination {
   why: string;
 }
 
+/** A map as a person reads it: the label content gives it, as the map screen shows it, or its id where it has none. */
+export function mapLabel(reg: Registry, mapId: string): string {
+  const def = reg.defs[reg.index.get(mapId) ?? 0];
+  return (def?.type === "map" ? def.label : undefined) ?? mapId;
+}
+
 /** What the cluster needs of the world it is part of. */
 export interface ClusterContext {
   readonly reg: Registry;
@@ -221,9 +227,7 @@ export class Cluster {
 
   private announcement(): Announcement {
     const { rules, world, game, reg } = this.ctx!;
-    // A map content names is shown by its label, as the map screen does.
-    const def = reg.defs[reg.index.get(world.mapId) ?? 0];
-    const map = (def?.type === "map" ? def.label : undefined) ?? world.mapId;
+    const map = mapLabel(reg, world.mapId);
     return {
       world: this.world,
       saveId: this.saveId,
@@ -249,6 +253,12 @@ export class Cluster {
   serverName(world: number): string {
     const a = this.folder.announcement(world);
     return a && a.name !== "" ? a.name : `world ${world}`;
+  }
+
+  /** This server as the others list it, so that a page can list it among them (server/site.ts). */
+  here(): Destination {
+    const a = this.announcement();
+    return { world: a.world, name: a.name, map: a.map, port: a.port, url: a.url, players: a.players, max: a.max, why: "" };
   }
 
   /** The other servers of the cluster that are running, each with why a survivor of this one cannot go there now. */

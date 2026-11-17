@@ -1,13 +1,17 @@
 // `bun run probe -- --wiki`: the wiki in headless Chrome, served from client/dist by the server's own file
 // serving, after `bun run build` and `bun run wiki`. Each page below is opened at a desktop's width and a phone's: it must
 // raise no error, fit the width and decode every picture it shows. A creature's sound must decode from the game's file
-// as the page plays it, the search must find a raptor, and a map's layer must load when its box is ticked. It prints
-// what each page fetched. With `--shots <folder>` it keeps a picture of each page there.
+// as the page plays it, show it is sounding and stop at a second press, a take must be a thumb's size on a phone, the
+// search must find a raptor, a map's layer must load when its box is ticked, and a page opened
+// for a world on config/boosted-50x must show that world's figures. It prints what each page fetched. With
+// `--shots <folder>` it keeps a picture of each page there.
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { serveFile } from "../server/files.ts";
+import { loadConfigFolder } from "../server/settings/config.ts";
+import { publicValues } from "../server/settings/rules.ts";
 
 const DIST = resolve(import.meta.dir, "../client/dist");
 const PAGES = [
@@ -20,6 +24,14 @@ const PAGES = [
   "/wiki/items/",
   "/wiki/search/?q=raptor",
   "/wiki/commands/",
+  "/wiki/landmarks/koru/",
+  "/wiki/resources/banyan/",
+  "/wiki/statuses/entangled/",
+  "/wiki/controls/",
+  "/wiki/sounds/raptor/",
+  "/wiki/music/",
+  // Last, as it is remembered for the visit: the figures of a world on config/boosted-50x.
+  "/wiki/creatures/pteranodon/?world=/fifty",
 ];
 const WIDTHS = [1280, 390];
 
@@ -28,7 +40,10 @@ export async function wikiProbe(chrome: string): Promise<boolean> {
   const at = process.argv.indexOf("--shots");
   const shots = at > 0 ? resolve(process.argv[at + 1]!) : null;
   if (shots) mkdirSync(shots, { recursive: true });
-  const server = Bun.serve({ port: 0, fetch: (req) => serveFile(DIST, req) });
+  // A world at the root on its defaults, and one at /fifty as config/boosted-50x sets it, as each answers its settings.json.
+  const fifty = { name: "A 50x server", map: "core:miami", settings: publicValues(loadConfigFolder(resolve(import.meta.dir, "../config/boosted-50x")).rules) };
+  const worlds: Record<string, object> = { "/settings.json": { name: "Miami", map: "core:miami", settings: {} }, "/fifty/settings.json": fifty };
+  const server = Bun.serve({ port: 0, fetch: (req) => worlds[new URL(req.url).pathname] ? Response.json(worlds[new URL(req.url).pathname]) : serveFile(DIST, req) });
   const profile = mkdtempSync(join(tmpdir(), "snark-pages-"));
   const flags = ["--headless=new", "--no-first-run", "--disable-extensions", "--remote-debugging-port=0", "--autoplay-policy=no-user-gesture-required"];
   const browser = Bun.spawn([chrome, ...flags, `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
@@ -73,10 +88,17 @@ export async function wikiProbe(chrome: string): Promise<boolean> {
         })`);
         if (page.wide) faults.push(`${path} at ${width}: wider than the screen`);
         if (page.broken.length) faults.push(`${path} at ${width}: pictures that do not decode: ${page.broken.join(", ")}`);
-        if (width > 500 && path.includes("raptor")) {
-          await run("document.querySelector('[data-k]').click()");
-          await Bun.sleep(1500);
-          if (await run("document.querySelector('[data-k]').classList.contains('failed')")) faults.push(`${path}: its first sound does not play`);
+        // A take shows it is sounding from its press, filling as it goes, and a press while it sounds stops it.
+        if (width > 500 && /creatures\/raptor|sounds\//.test(path)) {
+          const pressed = "(b) => new Promise((r) => { const o = new MutationObserver(() => (o.disconnect(), r(b.getAttribute('aria-pressed')))); o.observe(b, { attributes: true, attributeFilter: ['aria-pressed'] }); b.click(); setTimeout(() => r(b.classList.contains('failed') ? 'failed' : 'unchanged'), 3000); })";
+          const longest = "[...document.querySelectorAll('[data-k]')].sort((a, b) => parseFloat(b.style.getPropertyValue('--d')) - parseFloat(a.style.getPropertyValue('--d')))[0]";
+          const filled = "new Promise((r) => setTimeout(() => r(parseFloat(getComputedStyle(b).backgroundSize) > 0 ? 'filling' : 'not filling'), 250))";
+          const states = await run(`(async () => { const b = ${longest}; const p = ${pressed}; return [await p(b), await ${filled}, await p(b)]; })().catch((e) => [String(e)])`);
+          if (states.join() !== "true,filling,false") faults.push(`${path}: its longest take, pressed twice, went ${states.join(" then ")}, not sounding, filling, then stopped`);
+        }
+        if (width < 500 && path.includes("sounds/")) {
+          const small = await run("[...document.querySelectorAll('.take')].filter((b) => b.getBoundingClientRect().height < 44 || b.getBoundingClientRect().width < 44).length");
+          if (small > 0) faults.push(`${path} at ${width}: ${small} takes are smaller than a thumb's 44 px`);
         }
         if (width > 500 && path.includes("search")) {
           await Bun.sleep(500);
@@ -85,6 +107,15 @@ export async function wikiProbe(chrome: string): Promise<boolean> {
         if (width > 500 && path.includes("maps/")) {
           await run("(() => { const box = document.querySelector('[data-show=\"palm\"]'); box.click(); return document.querySelector('img[data-layer=\"palm\"]').decode(); })()");
           if (!(await run("document.querySelector('img[data-layer=\"palm\"]').naturalWidth > 0"))) faults.push(`${path}: the palm layer does not load`);
+          // Each landmark the map places is a dot that leads to its page and a card under the map.
+          const led = await run("[...document.querySelectorAll('[data-layer=\"landmarks\"] g.landmark')].map((g) => [g.closest('a')?.getAttribute('href') ?? '', !!document.querySelector(`main section .card[href=\"${g.closest('a')?.getAttribute('href')}\"]`)])");
+          if (led.length === 0 || led.some(([href, card]: [string, boolean]) => !href.startsWith("/wiki/landmarks/") || !card)) faults.push(`${path}: a landmark's dot and card do not lead to its page (${JSON.stringify(led)})`);
+        }
+        if (path.includes("?world=")) {
+          await Bun.sleep(500);
+          const shown = await run("({ note: document.querySelector('main .note')?.textContent ?? '', top: document.querySelector('[data-taming] tbody tr:last-child td:nth-child(4)')?.textContent ?? '' })");
+          if (!shown.note.startsWith("Figures here are for A 50x server") || shown.top !== "1 in 2 min 30 s") faults.push(`${path} at ${width}: the world's figures are not shown (${JSON.stringify(shown)})`);
+          await run("sessionStorage.clear()");
         }
         faults.push(...errors.map((e) => `${path} at ${width}: ${e}`));
         console.log(`  ${path.padEnd(40)} ${String(width).padStart(4)} px  ${(page.bytes / 1024).toFixed(0).padStart(5)} KB fetched${errors.length ? `, ${errors.length} errors` : ""}`);

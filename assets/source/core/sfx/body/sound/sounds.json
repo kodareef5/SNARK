@@ -54,6 +54,19 @@
       "takes": [
         {"file": "takes/bubbles/moss-pt-1400-02175.wav", "from": "moss", "start": 0.05, "end": 3.957}
       ]
+    },
+    "eat": {
+      "range": 20, "level": -24, "vary": 0.6,
+      "takes": [
+        {"file": "takes/eat/moss-pt-40090-05265.wav", "from": "moss", "start": 0.05, "end": 1.215},
+        {"file": "takes/eat/moss-pt-40091-05255.wav", "from": "moss", "start": 0.05, "end": 0.557},
+        {"file": "takes/eat/moss-pt-40092-00090.wav", "from": "moss", "start": 0.05, "end": 0.88},
+        {"file": "takes/eat/moss-pt-40081-00085.wav", "from": "moss", "start": 0.05, "end": 1.055},
+        {"file": "takes/eat/moss-pt-40100-05170.wav", "from": "moss", "start": 0.05, "end": 2.318},
+        {"file": "takes/eat/moss-pt-40101-03875.wav", "from": "moss", "start": 0.05, "end": 1.517},
+        {"file": "takes/eat/moss-pt-40090-00525.wav", "from": "moss", "start": 0.05, "end": 1.225},
+        {"file": "takes/eat/moss-pt-40091-00265.wav", "from": "moss", "start": 0.05, "end": 0.545}
+      ]
     }
   }
 }

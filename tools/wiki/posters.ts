@@ -1,7 +1,7 @@
 // The wiki's pictures, drawn by the software rasterizer from the game's built meshes and rgba textures, lit as
-// tools/snap.ts's ModelView lights a model, on a clear ground. A body is drawn standing as its idle clip begins. An
-// item is drawn as the inventory picture is, larger. Each picture has a card-sized copy. A picture is kept under
-// .cache/wiki/posters by the hashes of everything it is drawn from.
+// tools/snap.ts's ModelView lights a model, on a clear ground. A body is drawn standing as its idle clip begins, and a
+// thing of many pieces with each where it stands. An item is drawn as the inventory picture is, larger. Each picture has
+// a card-sized copy. A picture is kept under .cache/wiki/posters by the hashes of everything it is drawn from.
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -40,6 +40,10 @@ export interface Subject {
   colors: number[];
   /** A body is posed and drawn from two sides; anything else as its inventory picture is. */
   body: boolean;
+  /** How many of the body's sides are drawn, where not both: a tree looks alike from any. */
+  sides?: number;
+  /** Where each of `meshes` stands, by its index: x, y, z in metres and a yaw in 1/65,536 turns, for a thing of many pieces. */
+  places?: readonly (readonly [mesh: number, x: number, y: number, z: number, yaw: number])[];
   framing?: IconFraming | null;
 }
 
@@ -58,7 +62,7 @@ let drawnBy: string | null = null;
 
 function keyOf(b: Built, s: Subject): string {
   const h = createHash("sha256").update((drawnBy ??= DRAWN_BY.map((f) => readFileSync(join(import.meta.dir, f), "utf8")).join("\0")));
-  h.update(JSON.stringify([s.meshes, s.colors, s.body, s.framing ?? null, b.manifest.clipHash]));
+  h.update(JSON.stringify([s.meshes, s.colors, s.body, s.framing ?? null, b.manifest.clipHash, ...(s.sides || s.places ? [s.sides ?? null, s.places ?? null] : [])]));
   const materials = b.manifest.materials ?? [];
   for (const id of s.meshes) {
     const m = b.manifest.meshes.find((m) => m.id === id)!;
@@ -89,16 +93,25 @@ function posed(pack: Pack): Rig | null {
   return rig;
 }
 
-/** Every vertex of the pack's meshes, skinned by `rig` where they have one, as x, y, z. */
-function points(pack: Pack, rig: Rig | null): number[] {
+/** Every vertex of the pack's meshes, skinned by `rig` where they have one, or each where `places` stands it, as x, y, z. */
+function points(pack: Pack, rig: Rig | null, places?: Subject["places"]): number[] {
   const out: number[] = [];
-  for (const m of pack.header.meshes) {
+  for (const [i, m] of pack.header.meshes.entries()) {
     const lod = m.lods[0]!;
     const raw = lodVertices(pack, lod);
     const skin = lodSkin(pack, lod);
     const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
     for (let v = 0; v < lod.vertexCount; v++) {
       const p = [0, 1, 2].map((a) => m.center[a]! + (view.getInt16(v * VERTEX_BYTES + a * 2, true) / 32767) * m.half[a]!);
+      if (places) {
+        // Turned as the rasterizer turns an instance by its yaw.
+        for (const [mesh, x, y, z, yaw] of places) {
+          if (mesh !== i) continue;
+          const [s, c] = [Math.sin((yaw / 65536) * Math.PI * 2), Math.cos((yaw / 65536) * Math.PI * 2)];
+          out.push(c * p[0]! + s * p[2]! + x, p[1]! + y, -s * p[0]! + c * p[2]! + z);
+        }
+        continue;
+      }
       if (!rig || !m.skeleton) {
         out.push(p[0]!, p[1]!, p[2]!);
         continue;
@@ -204,11 +217,12 @@ function draw(b: Built, s: Subject): { rgba: Uint8Array; width: number; height: 
       }
     }
   }
-  const rig = posed(pack);
-  const at = points(pack, rig);
-  return VIEWS.map(([around, above]) => {
+  const rig = s.places ? null : posed(pack);
+  const at = points(pack, rig, s.places);
+  return VIEWS.slice(0, s.sides ?? VIEWS.length).map(([around, above]) => {
     const { centre, radius } = fit(at, around, above, w / h);
-    view.draw({ mesh: 0, also: pack.header.meshes.slice(1).map((_, k) => k + 1), level: 0, around, above, centre, radius, rig, colors: s.colors, textured: true });
+    const parts = s.places ? { mesh: s.places[0]![0], placed: s.places } : { mesh: 0, also: pack.header.meshes.slice(1).map((_, k) => k + 1) };
+    view.draw({ ...parts, level: 0, around, above, centre, radius, rig, colors: s.colors, textured: true });
     return { rgba: shrink(view.raster.color, view.raster.pickKind, w, h, SUPER), width: w, height: h };
   });
 }
@@ -221,7 +235,7 @@ export function drawPosters(b: Built, subjects: readonly Subject[], out: string,
   for (const s of subjects) {
     const key = keyOf(b, s);
     const dir = join(CACHE, key);
-    const views = Array.from({ length: s.body ? VIEWS.length : 1 }, (_, k) => `${s.key}.${key}.${k}.png`);
+    const views = Array.from({ length: s.body ? (s.sides ?? VIEWS.length) : 1 }, (_, k) => `${s.key}.${key}.${k}.png`);
     const card = `${s.key}.${key}.card.png`;
     if (![...views, card].every((f) => existsSync(join(dir, f)))) {
       const pictures = draw(b, s);

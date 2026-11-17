@@ -10,6 +10,7 @@ import { CAUSE_KILLED } from "../../server/survival.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { FakeNet } from "../fixtures/assetnet.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { builtSounds, manifestWithSounds } from "../fixtures/sounds.ts";
@@ -30,7 +31,7 @@ class Ears implements SoundSink {
   }
 }
 
-test("a client hears a dodo before it, startled and fleeing on soft feet when struck, and dying; a client with no sink does no sound work", () => {
+artTest("a client hears a dodo before it, startled and fleeing on soft feet when struck, and dying; a client with no sink does no sound work", () => {
   const h = new Harness({}, 1, 60, { dev: true });
   const manifest = manifestWithSounds(pack, bytes.length, built);
   const net = new FakeNet([bytes, built.file], { latencyMs: 30, bytesPerSecond: 2e6 });

@@ -12,6 +12,7 @@ import { Pose } from "../../shared/anim/clip.ts";
 import { B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_LOWER_LEG_R, B_UPPER_CHEST, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { AnimState, humanPose } from "../../shared/anim/pose.ts";
 import { Solved, boneToModel, solve } from "../../shared/anim/skeleton.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { flatWorld } from "../fixtures/world.ts";
 import { TerrainLod } from "../../client/core/render/terrain.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
@@ -267,7 +268,7 @@ function boneCentre(view: ReturnType<typeof provingView>, i: number, bone: numbe
   return [c * m[0]! + s * m[2]! + r.x[i]!, m[1]! + r.y[i]!, c * m[2]! - s * m[0]! + r.z[i]!];
 }
 
-test("a body with bones is drawn where its skeleton is, standing and running", () => {
+artTest("a body with bones is drawn where its skeleton is, standing and running", () => {
   const view = provingView(W * 2, H * 2);
   const { raster, remote } = view;
   // The camera is close to the survivor and a little to one side, so neither arm hides behind the body.
@@ -320,7 +321,7 @@ test("a body with bones is drawn where its skeleton is, standing and running", (
   expect(away.boneCount).toBe(0);
 });
 
-test("the viewer's own body is drawn last and in front: headless from its own eyes, whole from over the shoulder", () => {
+artTest("the viewer's own body is drawn last and in front: headless from its own eyes, whole from over the shoulder", () => {
   const view = provingView(W, H);
   const { raster, reg } = view;
   const kind = reg.index.get("core:survivor")!;
@@ -390,7 +391,7 @@ test("the third-person camera is pulled in by whatever is behind the body, and f
   expect([cam.x, cam.y, cam.z, cam.yaw, cam.pitch]).toEqual([64, 1.62, 64, 0.5, 0.2]);
 });
 
-test("a body is drawn coarser as it goes off, all its parts at one level, and does not flicker at the edge", () => {
+artTest("a body is drawn coarser as it goes off, all its parts at one level, and does not flicker at the edge", () => {
   const view = provingView();
   const { remote, cam, scene, pack } = view;
   remote.count = 1;
@@ -420,7 +421,7 @@ test("a body is drawn coarser as it goes off, all its parts at one level, and do
   expect([levels(30), levels(60), levels(200)]).toEqual([[0], [1], [2]]);
 });
 
-test("a loose thing is drawn where it stands, at a level chosen for its distance, and not when it is out of view", () => {
+artTest("a loose thing is drawn where it stands, at a level chosen for its distance, and not when it is out of view", () => {
   const view = provingView(320, 180);
   const { scene, cam, pack } = view;
   cam.yaw = 0;

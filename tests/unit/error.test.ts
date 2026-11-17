@@ -9,6 +9,7 @@ import { SLOW_MOST, slowSurfaceError, surfaceError, toTriangle } from "../../too
 import { simplify } from "../../tools/pack/simplify.ts";
 import { boxMesh, unpackMeshes, type SourceLod } from "../../tools/pack/write.ts";
 import { ASSETS } from "../fixtures/assets.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { tubeMesh } from "../fixtures/textured.ts";
 
 test("packed triangles collapsed to segments or points have finite, order-independent distances", () => {
@@ -33,7 +34,7 @@ test("packed triangles collapsed to segments or points have finite, order-indepe
   }
 });
 
-test("the distance between two levels is exactly what trying every triangle gives, on the meshes there are", () => {
+artTest("the distance between two levels is exactly what trying every triangle gives, on the meshes there are", () => {
   // Every modelled mesh small enough to try the slow way: the building pieces, the bodies, the examples and the creatures'
   // coarser levels. A node pack's crowns and cards are tried by `bun run art -- <id> --check`: they are many, and more
   // with every tree, plant or rock.

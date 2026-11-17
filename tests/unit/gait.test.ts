@@ -15,6 +15,7 @@ import { writeBones } from "../../client/core/render/characters.ts";
 import { BONE_FLOATS } from "../../client/core/render/packet.ts";
 import { provingView } from "../../tools/snap.ts";
 import { CREATURE_ASSETS } from "../fixtures/assets.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { coreAnim, corePack } from "../fixtures/pack.ts";
 import { FOOT_L, FOOT_R, HIP_L, strider } from "../fixtures/strider.ts";
 
@@ -153,7 +154,7 @@ test("turning on the spot steps by the arc the feet turn through, and standing s
   expect(g.speed).toBeLessThan(0.01);
 });
 
-test("a body in water strokes by the water it covers, a creature and a survivor alike", () => {
+artTest("a body in water strokes by the water it covers, a creature and a survivor alike", () => {
   const a = species(strider(), 99);
   const st = new AnimState();
   st.mode = MODE_SWIM;
@@ -176,7 +177,7 @@ test("a body in water strokes by the water it covers, a creature and a survivor 
   expect((h.phase - start + 1) % 1).toBeCloseTo(strokes - Math.floor(strokes), 2);
 });
 
-test("the creatures in the repository slide a planted foot no farther over one time down than their own clips do, at three speeds and two sizes", () => {
+artTest("the creatures in the repository slide a planted foot no farther over one time down than their own clips do, at three speeds and two sizes", () => {
   for (const { id, spec } of CREATURE_ASSETS) {
     const rig = rigs.get(id)!;
     const feet = spec.feet.map((n) => rig.names.indexOf(n));
@@ -200,7 +201,7 @@ test("the creatures in the repository slide a planted foot no farther over one t
   }
 });
 
-test("a survivor's gaits stride as far as their clips carry a planted foot back", () => {
+artTest("a survivor's gaits stride as far as their clips carry a planted foot back", () => {
   const anim = coreAnim();
   const pose = new Pose(HUMAN_BONES);
   const solved = new Solved(HUMAN_BONES);
@@ -229,7 +230,7 @@ test("a survivor's gaits stride as far as their clips carry a planted foot back"
   }
 });
 
-test("the client draws a creature with the gait it keeps for it", () => {
+artTest("the client draws a creature with the gait it keeps for it", () => {
   const view = provingView(64, 36);
   const { scene, remote, reg, hf } = view;
   const cam = new Camera();

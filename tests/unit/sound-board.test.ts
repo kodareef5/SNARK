@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { listSounds, takesOf } from "../../client/core/sound/listing.ts";
 import { Guesses } from "../../server/guesses.ts";
 import { SOURCE_DIR, boardOwners, soundBoard, soundFolders, type BoardGate } from "../../server/sound-board.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { builtSounds } from "../fixtures/sounds.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -34,8 +35,10 @@ test("the board opens on a development server, and elsewhere only to the admin p
     // The URL resolves dots before the board sees them: this is a request for /package.json, not the board's.
     expect(ask(dev, "/admin/source/%2e%2e/%2e%2e/package.json")).toBeNull();
     expect(ask(dev, "/admin/source/core%2f..%2f..%2fsecret.txt")!.status).toBe(404);
-    // A server with no password and no --dev keeps it shut.
+    // A server with no password and no --dev keeps it shut, in any case of the path: a file system may ignore case.
     expect(ask({ ...dev, dev: false }, "/sounds.html")!.status).toBe(404);
+    for (const path of ["/Sounds.html", "/SOUNDS.HTML", "//sounds.html", "/%53ounds.html", "/Admin/sounds.json"]) expect([path, ask({ ...dev, dev: false }, path)?.status]).toEqual([path, 404]);
+    expect(ask(dev, "/Sounds.html")!.status).toBe(200);
     const gate: BoardGate = { dev: false, password: "kiwi", guesses: new Guesses(), tick: () => 0 };
     const shut = ask(gate, "/sounds.html")!;
     expect(shut.status).toBe(401);
@@ -52,7 +55,7 @@ test("the board opens on a development server, and elsewhere only to the admin p
   }
 });
 
-test("the board lists every owner by its folder, and each occasion by how the game hears it: its own, a stand-in, shared, or nothing", () => {
+artTest("the board lists every owner by its folder, and each occasion by how the game hears it: its own, a stand-in, shared, or nothing", () => {
   // The repository's own folders: the dodo's and the shared families'.
   expect(soundFolders().map((f) => f.id)).toEqual(expect.arrayContaining(["core:dodo", "core:surface", "core:survivor"]));
   expect(soundFolders().some((f) => f.id === "core:ref")).toBe(false);

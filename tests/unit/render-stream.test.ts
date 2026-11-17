@@ -1,8 +1,9 @@
 // A scene whose levels arrive over a slow link: no frame draws what the card lacks, and the last is the whole pack's
 // picture. Apart from render.test.ts, whose frames it would wait behind, so the two run side by side.
 
-import { expect, test } from "bun:test";
+import { expect } from "bun:test";
 import { provingView } from "../../tools/snap.ts";
+import { test } from "../fixtures/needs-art.ts";
 
 test("a scene whose levels stream never draws what the card lacks, and ends with the picture the whole pack gives", () => {
   const [whole, stream] = [provingView(320, 180), provingView(320, 180, { latencyMs: 150, bytesPerSecond: 300e3 })];

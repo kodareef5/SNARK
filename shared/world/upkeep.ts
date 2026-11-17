@@ -30,8 +30,6 @@ export const PIN_WAIT_TICKS = 30 * TICK_RATE;
 export const REPAIR_WAIT_TICKS = 180 * TICK_RATE;
 /** Metres from the eye to the piece's nearest face, roughly. */
 export const ACT_REACH = 4;
-/** A foundation or a ground pillar of any material with nothing joined to it decays after this long unvisited. */
-export const LONE_DECAY_DAYS = 0.5;
 
 /** Scratch that refundOf and repairCostOf fill with `n` pairs of item and count. */
 export const cost = { n: 0, item: new Uint16Array(16), count: new Uint16Array(16) };

@@ -4,6 +4,7 @@
 import { GROWN, growthStep, youngHunger, youngShare } from "../shared/sim/breeding.ts";
 import { proneHunger } from "../shared/sim/taming.ts";
 import type { SpeciesDef } from "../shared/content/defs.ts";
+import { drainAt, torporAt } from "../shared/content/wild.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { MF_NO_JUMP, MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, STAMINA_UNITS } from "../shared/sim/character.ts";
@@ -55,14 +56,12 @@ export function wildLevels(g: Genome | null): number {
  */
 export function torporMax(def: SpeciesDef, g: Genome | null): number {
   const curve = def.stats?.torpidity;
-  return curve ? curve[0] * (1 + curve[1] * wildLevels(g)) : 0;
+  return curve ? torporAt(curve[0], curve[1], wildLevels(g)) : 0;
 }
 
-/** Torpor lost per second. The species' rate rises with wild levels by ARK's curve. */
+/** Torpor lost per second (shared/content/wild.ts). */
 export function torporDrain(def: SpeciesDef, g: Genome | null): number {
-  const base = def.torporDrain ?? 1;
-  const levels = wildLevels(g);
-  return levels > 0 && base > 0 ? base + Math.pow(levels, 0.800403041) / (22.39671632 / base) : base;
+  return drainAt(def.torporDrain ?? 1, wildLevels(g));
 }
 
 /** Carrying this share of the weight stat stops sprinting and slows the body. Carrying all of it roots the body. */

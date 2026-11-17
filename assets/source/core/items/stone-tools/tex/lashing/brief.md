@@ -31,7 +31,7 @@ All PNG, pixel-aligned with one another, at **2,048 x 2,048** and the same set a
 
 ## The examples to beat
 
-Finished materials of this game, in the main checkout, read only: `/home/user/Desktop/SNARK/assets/source/core/structures/wood/tex/timber/` (`timber_base.png`, `timber_normal.png`, `REPORT.md`), `/home/user/Desktop/SNARK/planning/artist-test/feather/` (`qa/layers_contact.png`, `REPORT.md`: a fibrous material from an earlier test). They are good: aligned, seamless, honest. Beat them: the most tactile material in the game.
+Finished materials of this game, in the main checkout, read only: `/home/user/Desktop/SNARK/assets/source/core/structures/wood/tex/timber/` (`timber_base.png`, `timber_normal.png`, `REPORT.md`), `/home/user/Desktop/SNARK/planning/art-trial/feather/` (`qa/layers_contact.png`, `REPORT.md`: a fibrous material from an earlier test). They are good: aligned, seamless, honest. Beat them: the most tactile material in the game.
 
 ## How
 

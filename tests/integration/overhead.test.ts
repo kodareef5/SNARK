@@ -17,6 +17,7 @@ import { stanceEye } from "../../shared/sim/character.ts";
 import { V_TORPOR } from "../../shared/sim/vitals.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { flatGround } from "../fixtures/arena.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 
@@ -275,7 +276,7 @@ test("each mark shows to the viewer ARK shows it to: a tame's health and food to
   expect([o.look, o.heartCount, o.hearts[0]!.step, o.hearts[1]!.step, sam.looked]).toEqual([false, 2, 0, 0, null]);
 });
 
-test("a whole client draws the mark over the dodo it looks at from the overhead socket of the pose it is drawn in, lower as it lies knocked out, and a heart over each of a pair", () => {
+artTest("a whole client draws the mark over the dodo it looks at from the overhead socket of the pose it is drawn in, lower as it lies knocked out, and a heart over each of a pair", () => {
   const h = new Harness({}, 1, 60, { dev: true });
   const app = new App(h.join("ada", { latencyMs: 20 }, { manual: true }), h.reg, parsePack(corePackBytes()));
   const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));

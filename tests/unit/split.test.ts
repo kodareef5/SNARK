@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { allClips } from "../../shared/pack/clips.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { lodIndices, lodVertices, parsePack } from "../../shared/pack/pack.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { surfaceError } from "../../tools/pack/error.ts";
 import { partHash } from "../../tools/pack/manifest.ts";
@@ -10,7 +11,7 @@ import { HELD_LEVEL_BYTES, PAGE_BYTES, bootManifest, splitPack } from "../../too
 import { meshKnown, readPage } from "../../shared/pack/manifest.ts";
 import { LEVEL_COLOURS, stressMeshes, stressSet } from "../../tools/pack/stress.ts";
 
-test("a split pack holds every level once, byte for byte, with the coarsest of each mesh in the boot file", () => {
+artTest("a split pack holds every level once, byte for byte, with the coarsest of each mesh in the boot file", () => {
   const whole = corePackBytes();
   const pack = parsePack(whole);
   const { files, manifest } = splitPack(whole, "core");
@@ -42,7 +43,7 @@ test("a split pack holds every level once, byte for byte, with the coarsest of e
   expect(files[0]!.bytes.length).toBeLessThan(whole.length * 0.6);
 });
 
-test("paged, the boot file holds only the meshes it is told to, and every other mesh's row and smallest levels are in its page", () => {
+artTest("paged, the boot file holds only the meshes it is told to, and every other mesh's row and smallest levels are in its page", () => {
   const whole = corePackBytes();
   const pack = parsePack(whole);
   const boot = new Set(["core:missing", "core:far", "core:human_m/torso"]);
@@ -84,7 +85,7 @@ test("paged, the boot file holds only the meshes it is told to, and every other 
   expect(read.materials).toEqual(manifest.materials!);
 });
 
-test("the boot file holds the survivor's clips, and the clip file each creature skeleton's as the whole pack had them", () => {
+artTest("the boot file holds the survivor's clips, and the clip file each creature skeleton's as the whole pack had them", () => {
   const whole = corePackBytes();
   const pack = parsePack(whole);
   const { files, manifest } = splitPack(whole, "core");

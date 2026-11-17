@@ -15,6 +15,7 @@ import { checkAsset } from "../../tools/art/check.ts";
 import { materialsOf, mipsOf } from "../../tools/art/materials.ts";
 import { drawSheet } from "../../tools/art/sheet.ts";
 import { encodePng, readPicture } from "../../tools/pack/image.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { boxMesh, buildPack, type SourceLod } from "../../tools/pack/write.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
@@ -43,7 +44,7 @@ function smallFiles(): GameFiles {
   }));
 }
 
-test("a snapshot on a tier with textures draws the house with its materials once the card holds them, and on low poly what the whole pack gives", () => {
+artTest("a snapshot on a tier with textures draws the house with its materials once the card holds them, and on low poly what the whole pack gives", () => {
   const files = smallFiles();
   expect(files.manifest.textures!.length).toBeGreaterThan(0);
   const textured: Record<string, number> = {};

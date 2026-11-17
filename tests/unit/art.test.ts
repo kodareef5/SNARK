@@ -17,6 +17,7 @@ import { fitCapsule } from "../../tools/pack/creature.ts";
 import { readPng } from "../../tools/pack/png-read.ts";
 import { boxMesh, buildPack, type SourceLod } from "../../tools/pack/write.ts";
 import { ASSETS } from "../fixtures/assets.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 
 /** The examples of scripted assets, which are in no game pack. */
 const EXAMPLES = await findAssets(join(import.meta.dir, "../../tools/blender/example"));
@@ -31,7 +32,7 @@ function unmeasured(asset: Asset): Asset {
   return { ...asset, spec: { ...asset.spec, pieces: asset.spec.pieces.map(({ errors: _, ...p }) => p) } };
 }
 
-test("every asset folder has its pack, named as the folder is, and the pack passes its check; so do the examples", () => {
+artTest("every asset folder has its pack, named as the folder is, and the pack passes its check; so do the examples", () => {
   expect(ASSETS.length).toBeGreaterThan(0);
   expect(EXAMPLES.map((a) => [a.id, a.spec.kind])).toEqual([["demo:pup", "creature"], ["demo:mallet", "pieces"], ["demo:crate", "pieces"]]);
   for (const asset of [...ASSETS, ...EXAMPLES]) {
@@ -42,7 +43,7 @@ test("every asset folder has its pack, named as the folder is, and the pack pass
 
 // A first flat level may carry more triangles than the textured level before it: it builds in geometry what that level
 // cuts out of a picture (a palmetto's fingers, a fern's leaflets). From there on they never rise, and end under the first.
-test("a node pack's levels state errors that rise and carry triangles that do not", () => {
+artTest("a node pack's levels state errors that rise and carry triangles that do not", () => {
   for (const asset of ASSETS.filter(isNode)) {
     const pack = parsePack(new Uint8Array(readFileSync(asset.file)));
     for (const mesh of pack.header.meshes) {

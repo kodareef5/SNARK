@@ -46,7 +46,7 @@ const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };
  */
 function flatOr(tier: Tier, format: TextureFormat, hard: boolean, vertex: string, flat: string, lit: string, samplers: Record<string, number>): ProgramText {
   if (!tier.lit) return { vertex, fragment: flat, defines: "", samplers };
-  return { vertex: worldVertex(vertex, "uHeight" in samplers), fragment: lit.replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), defines: shadowDefines(tier.shadows, hard), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } };
+  return { vertex: worldVertex(vertex, "uHeight" in samplers), fragment: lit.replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), defines: shadowDefines(tier.shadows, hard) + (tier.finish === "light" ? "#define WORLD_LIGHT\n" : ""), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } };
 }
 
 /** A SURFACE program of a variant: a material's maps on their units, and the masks and palette only where it is dyed. */

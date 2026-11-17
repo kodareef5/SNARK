@@ -27,7 +27,7 @@ Keep the generated source pictures at full size in `source/`, and the scripts th
 
 ## What excellent looks like
 
-The concept pictures are the bar. The example of a complete layer set to beat is the wood plank wall in `../../../../../../../planning/artist-test/wood/` (start with `checks/layers.jpg`). A first attempt at this tier was sent back because its flat roof wore the wall's picture and looked like a pattern printed on a box; this must look made as a roof, from reeds laid and bound by hand.
+The concept pictures are the bar. The example of a complete layer set to beat is the wood plank wall in `../../../../../../../planning/art-trial/wood/` (start with `checks/layers.jpg`). A first attempt at this tier was sent back because its flat roof wore the wall's picture and looked like a pattern printed on a box; this must look made as a roof, from reeds laid and bound by hand.
 
 - Real detail at full size: individual reeds a few pixels wide, their butts, the bindings' twist. The image tool returns about 1254 pixels a side; reach 2048 by composing generated elements in a larger master and adding fine detail by script.
 - No visible seam when tiled, and no motif the eye finds in a 3 by 3 tiling beyond the intended panel seams.

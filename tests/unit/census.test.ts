@@ -16,6 +16,7 @@ import { KORU_LAYOUT } from "../../content/landmarks/koru.ts";
 import { withContent } from "../../shared/content/registry.ts";
 import { mapHeightfield, parseMap, placeStatics } from "../../shared/world/mapfile.ts";
 import { KORU_QUAY, koruMapFile, koruPack, koruPoint } from "../fixtures/koru.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -49,7 +50,7 @@ function headings(scene: Scene, cam: Camera, yaws: number[]): Counted[] {
 
 const most = (frames: Counted[], f: (c: Counted) => number): number => Math.max(...frames.map(f));
 
-test("a frame on medium at the iPhone's view keeps within medium's draws and triangles, with what does not give within the governor's first step", () => {
+artTest("a frame on medium at the iPhone's view keeps within medium's draws and triangles, with what does not give within the governor's first step", () => {
   const { budget } = MEDIUM;
   const scenes: Record<string, Counted[]> = {};
   for (const [name, spot] of Object.entries(SPOTS)) {
@@ -77,7 +78,7 @@ test("a frame on medium at the iPhone's view keeps within medium's draws and tri
   expect(Object.values(scenes).map((frames) => most(frames, (f) => f.cast))).toEqual([342046, 1736330, 138704]);
 });
 
-test("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draws and casts what it did", () => {
+artTest("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draws and casts what it did", () => {
   const reg = coreRegistry();
   const base = flat((structs) => boxBase(reg, "wood", 64 * 6 + 0.5, 0, 64 * 6 + 0.5, 21, 1, 20000).forEach(([kind, x, y, z, yaw]) => structs.add(kind, x, y, z, yaw, 1, 1000)));
   const frames = [30, 60].map((off) => {
@@ -92,7 +93,7 @@ test("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draws a
   expect(frames).toEqual([[21, 1435488, 69052], [27, 1148264, 62908]]);
 });
 
-test("Koru moored in its bay on medium at the iPhone's view: its eight cells, three doors and sails in a score of draws, and what it casts", () => {
+artTest("Koru moored in its bay on medium at the iPhone's view: its eight cells, three doors and sails in a score of draws, and what it casts", () => {
   const map = parseMap(koruMapFile());
   const reg = withContent(coreRegistry(), map.content!.defs);
   const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);

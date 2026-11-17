@@ -20,6 +20,17 @@ test("the agent goes to the other server's port on the host it came by, or by it
   expect(socketOf("wss://miami.example/ws", open, open.servers[0]!)).toBe("wss://tampa.example/ws");
   // Reached some other way, the public addresses are not this agent's way in.
   expect(socketOf("ws://localhost:8798/ws", open, open.servers[0]!)).toBe("ws://localhost:8799/ws");
+  // Public addresses with paths keep them: the socket is under the other's path, not the path this one's socket had.
+  const pathed: ClusterList = { ...list, url: "https://play.example/miami", servers: [{ ...tampa, url: "https://play.example/tampa" }] };
+  expect(socketOf("wss://play.example/miami/ws", pathed, pathed.servers[0]!)).toBe("wss://play.example/tampa/ws");
+});
+
+test("servers reached at paths of one host send the agent to the other's path on whatever host it came by", () => {
+  const paths: ClusterList = { ...list, url: "/miami", servers: [{ ...tampa, url: "/tampa" }] };
+  expect(socketOf("wss://abc.trycloudflare.com/miami/ws", paths, paths.servers[0]!)).toBe("wss://abc.trycloudflare.com/tampa/ws");
+  expect(socketOf("ws://localhost:8787/miami/ws", paths, paths.servers[0]!)).toBe("ws://localhost:8787/tampa/ws");
+  // One that came straight to this server's port goes to the other's port, under its path, the one place it answers.
+  expect(socketOf("ws://localhost:8798/miami/ws", paths, paths.servers[0]!)).toBe("ws://localhost:8799/tampa/ws");
 });
 
 test("the agent finds the nearest obelisk terminal it has been sent, and stands a step in front of it", () => {

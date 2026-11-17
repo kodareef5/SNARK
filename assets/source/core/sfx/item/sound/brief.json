@@ -447,7 +447,7 @@
       "loop": true
     },
     "radio/tune": {
-      "kind": "impact",
+      "kind": "voice",
       "range": 10,
       "level": -20,
       "vary": 0.04,
@@ -463,6 +463,17 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A radio dial is turned through static, squeals and snatches of noise, three separate tunings with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v5-40210",
+          "models": [
+            "moss"
+          ],
+          "seed": 40210,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 6,
+          "text": "A radio's dial is turned: crackling static sweeps and whistles for two seconds, then silence. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
     },

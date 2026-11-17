@@ -5,6 +5,7 @@
 | `multiplayer.test.ts` | Join, movement, mutual visibility, structure sync; zero corrections on a clean link; convergence under loss; a hostile client; refusals; a crowded scene within the byte budget |
 | `latency.test.ts` | Whole clients a round trip from the server, among more walking creatures than a snapshot carries: none steps back and none blinks out |
 | `sessions.test.ts` | Spectators, lingering bodies, device keys, the console and its cheats |
+| `faults.test.ts`, `hostile.slow.test.ts` | A command whose handler throws: its player put out and refused, the world going on or stopping by the ledger; a hostile client that can do what a survivor can, across fresh worlds (slow tier) |
 | `movement.test.ts` | Swimming, stamina, and movement modifiers, predicted |
 | `persistence.test.ts` | Restart round trip; removed content; commit callbacks; three process kills with conservation |
 | `save-buffs.test.ts` | Buffs across a restart: a fire burns for what was left of it, a dose wears off, a stun is shown again; a save from before buffs were saved |

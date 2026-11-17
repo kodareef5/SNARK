@@ -5,7 +5,7 @@
 // files and what made them, and the briefs, recipes and sheets themselves, for whoever makes more sounds.
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { basename, dirname, join, normalize, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, normalize, posix, relative, resolve, sep } from "node:path";
 import type { Registry } from "../shared/content/registry.ts";
 import { sameSecret } from "./commands/core.ts";
 import type { Guesses } from "./guesses.ts";
@@ -105,23 +105,38 @@ function refused(req: Request, who: string, gate: BoardGate): Response | null {
 }
 
 /**
- * The board's answer to a request, or null for a request that is not the board's. `page` is the built sounds.html, and
- * `owners` makes the list of owners when it is asked for.
+ * A request's path as the board is matched by: decoded, dots and doubled slashes resolved, and in lower case, since a file
+ * system that ignores case would serve /Sounds.html as the page. Null for one that cannot be decoded.
  */
-export function soundBoard(req: Request, who: string, gate: BoardGate, page: string, owners: () => BoardOwner[], root = SOURCE_DIR): Response | null {
-  let path = new URL(req.url).pathname;
+function boardPath(pathname: string): string | null {
   try {
-    path = normalize(decodeURIComponent(path));
+    return posix.normalize(decodeURIComponent(pathname)).toLowerCase();
   } catch {
     return null;
   }
-  if (path !== "/sounds.html" && !path.startsWith("/admin/")) return null;
+}
+
+/** Whether a request's path is the board's page or under its /admin/, in any case. */
+export function boardAsked(pathname: string): boolean {
+  const at = boardPath(pathname);
+  return at === "/sounds.html" || (at?.startsWith("/admin/") ?? false);
+}
+
+/**
+ * The board's answer to a request, or null for a request that is not the board's. `page` is the built sounds.html, and
+ * `owners` makes the list of owners when it is asked for. `pathname` is the request's path, or for a server reached at a
+ * path of its host the part of it under that path (server/site.ts placeOf).
+ */
+export function soundBoard(req: Request, who: string, gate: BoardGate, page: string, owners: () => BoardOwner[], root = SOURCE_DIR, pathname = new URL(req.url).pathname): Response | null {
+  if (!boardAsked(pathname)) return null;
   const no = refused(req, who, gate);
   if (no) return no;
+  // An address's path, which has / between its parts on every system, and the same folded for matching.
+  const path = posix.normalize(decodeURIComponent(pathname)), at = path.toLowerCase();
   const fresh = { "cache-control": "no-store" };
-  if (path === "/sounds.html") return existsSync(page) ? new Response(Bun.file(page), { headers: { ...fresh, "content-type": "text/html; charset=utf-8" } }) : new Response("build the client first", { status: 404 });
-  if (path === "/admin/sounds.json") return new Response(JSON.stringify(owners()), { headers: { ...fresh, "content-type": "application/json" } });
+  if (at === "/sounds.html") return existsSync(page) ? new Response(Bun.file(page), { headers: { ...fresh, "content-type": "text/html; charset=utf-8" } }) : new Response("build the client first", { status: 404 });
+  if (at === "/admin/sounds.json") return new Response(JSON.stringify(owners()), { headers: { ...fresh, "content-type": "application/json" } });
   const file = normalize(join(root, path.slice("/admin/source/".length)));
-  if (!path.startsWith("/admin/source/") || !file.startsWith(root + sep) || !SHOWN.has(basename(file)) || !existsSync(file)) return new Response("not found", { status: 404 });
+  if (!at.startsWith("/admin/source/") || !file.startsWith(root + sep) || !SHOWN.has(basename(file)) || !existsSync(file)) return new Response("not found", { status: 404 });
   return new Response(Bun.file(file), { headers: { ...fresh, "content-type": file.endsWith(".json") ? "application/json" : "text/plain; charset=utf-8" } });
 }

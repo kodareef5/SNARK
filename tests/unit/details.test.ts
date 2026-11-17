@@ -26,6 +26,7 @@ import { ACT_SWING, HOLD_TOOL } from "../../shared/sim/weapon.ts";
 import { buildProvingHeightfield } from "../../shared/world/proving.ts";
 import { SOURCE } from "../../tools/art/source.ts";
 import { detailInputs } from "../../tools/pack/details.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { provingView } from "../../tools/snap.ts";
 import { playDetails } from "../../tools/snap/details.ts";
@@ -40,7 +41,7 @@ const animOf = (kind: number) => characters.creature(kind);
 /** A grassy spot beyond the plaza. */
 const [X, Z] = [256, 362];
 
-test("the details pack is as new as the sheets and pictures it is made from", () => {
+artTest("the details pack is as new as the sheets and pictures it is made from", () => {
   const built = parsePack(new Uint8Array(readFileSync(join(SOURCE, "core/details/details.snpk"))));
   expect(built.header.details?.inputs).toBe(detailInputs());
   // The core pack carries it, and the dodo answers every occasion its sheet names.
@@ -149,7 +150,7 @@ const landing = (s: AnimState, t: number): void => {
   else [s.cue, s.cueStart] = [CUE_LAND, 1006 & 255];
 };
 
-test("every client that saw a landing makes the same feathers and dust, which land, lie and are gone", () => {
+artTest("every client that saw a landing makes the same feathers and dust, which land, lie and are gone", () => {
   const a = play("medium", 1, landing, 120);
   const b = play("medium", 1, landing, 120);
   expect(a.p.detailCount).toBeGreaterThan(3);
@@ -166,7 +167,7 @@ test("every client that saw a landing makes the same feathers and dust, which la
   }
 });
 
-test("a hundred bodies going down at once keep within the tier's pool, fill and two draws, and low poly makes half as many", () => {
+artTest("a hundred bodies going down at once keep within the tier's pool, fill and two draws, and low poly makes half as many", () => {
   const down = (s: AnimState, t: number): void => {
     if (t >= 0.1) [s.out, s.cue, s.cueStart] = [true, CUE_TORPOR, 1003];
   };
@@ -183,7 +184,7 @@ test("a hundred bodies going down at once keep within the tier's pool, fill and 
   expect(low).toBeLessThan(medium);
 });
 
-test("the feathers are written first, to be cut out, and the dust after them far to near, and low poly's shapes are drawn where their twins say", () => {
+artTest("the feathers are written first, to be cut out, and the dust after them far to near, and low poly's shapes are drawn where their twins say", () => {
   const { p, cut } = play("medium", 3, landing, 20);
   expect(cut).toBeGreaterThan(0);
   expect(p.detailCount).toBeGreaterThan(cut);
@@ -214,7 +215,7 @@ test("the feathers are written first, to be cut out, and the dust after them far
   expect(kept).toBe(1);
 });
 
-test("the rasterizer draws a landing on low poly and on medium from the same numbers the shell is given, pinned", () => {
+artTest("the rasterizer draws a landing on low poly and on medium from the same numbers the shell is given, pinned", () => {
   const seen: string[] = [];
   for (const tier of ["lowpoly", "medium"]) {
     const view = provingView(160, 120);

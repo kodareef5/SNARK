@@ -1,5 +1,6 @@
-// What the wiki takes from the game's build, client/dist: its manifest, boot pack and every clip, its files read by range as a
-// client reads them, the loose sounds, and the names of the files the wiki's pages share with the game's.
+// What the wiki takes from the game's build, client/dist: its manifest, boot pack and every clip with each landmark's joined
+// after them, its files read by range as a client reads them, the loose sounds, and the names of the files the wiki's pages
+// share with the game's.
 
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -7,6 +8,7 @@ import { inflateRawSync } from "node:zlib";
 import type { ClipSet } from "../../shared/anim/clip.ts";
 import { allClips } from "../../shared/pack/clips.ts";
 import { parseManifest, readPages, storedBytes, type Manifest } from "../../shared/pack/manifest.ts";
+import { joinLandmark } from "../../shared/pack/join.ts";
 import { parsePack, type Pack, type PackLod, type PackMesh } from "../../shared/pack/pack.ts";
 import type { ManifestSound } from "../../shared/pack/sound.ts";
 import { unfilterPart } from "../../shared/pack/stored.ts";
@@ -31,13 +33,20 @@ export interface Built {
 export function readBuilt(dist: string): Built {
   const at = (name: string): string => join(dist, "assets", name);
   if (!existsSync(at("manifest.json"))) throw new Error(`${at("manifest.json")} is missing: build the game first (bun run build)`);
-  const manifest = parseManifest(readFileSync(at("manifest.json"), "utf8"));
-  if (manifest.soundRows) manifest.sounds = JSON.parse(readFileSync(at(manifest.soundRows), "utf8")) as ManifestSound[];
-  const whole = (file: number): Uint8Array => new Uint8Array(readFileSync(at(manifest.files[file]!.name)));
-  const boot = parsePack(whole(manifest.boot));
+  const core = parseManifest(readFileSync(at("manifest.json"), "utf8"));
+  if (core.soundRows) core.sounds = JSON.parse(readFileSync(at(core.soundRows), "utf8")) as ManifestSound[];
+  const whole = (file: number): Uint8Array => new Uint8Array(readFileSync(at(core.files[file]!.name)));
   const inflate = (stored: Uint8Array): Uint8Array => new Uint8Array(inflateRawSync(stored));
-  const pages = readPages(manifest, whole, inflate);
-  const clips = allClips(manifest, boot, whole, inflate);
+  const pages = readPages(core, whole, inflate);
+  const coreBoot = parsePack(whole(core.boot));
+  const clips = allClips(core, coreBoot, whole, inflate);
+  // Every landmark's meshes, materials and textures after the core's, as a client on a map that places it joins them.
+  let joined = { manifest: core, boot: coreBoot };
+  for (const name of existsSync(at("landmarks")) ? readdirSync(at("landmarks")).filter((n) => n.endsWith(".json")).sort() : []) {
+    const m = parseManifest(readFileSync(at(`landmarks/${name}`), "utf8"));
+    joined = joinLandmark(joined, { manifest: m, boot: parsePack(new Uint8Array(readFileSync(at(`landmarks/${m.files[m.boot]!.name}`)))) }, "landmarks");
+  }
+  const { manifest, boot } = joined;
   const loose = existsSync(at("loose.json")) ? (JSON.parse(readFileSync(at("loose.json"), "utf8")) as Built["loose"]) : null;
   const open = new Map<number, number>();
   const names = readdirSync(join(dist, "assets"));
@@ -49,6 +58,8 @@ export function readBuilt(dist: string): Built {
     clips,
     loose,
     read(file, from, bytes) {
+      // The boot file is its pack's blob after its header, the landmarks' blobs after the core's (shared/pack/join.ts).
+      if (file === manifest.boot) return boot.blob.slice(from - boot.blobAt, from - boot.blobAt + bytes);
       let fd = open.get(file);
       if (fd === undefined) open.set(file, (fd = openSync(at(manifest.files[file]!.name), "r")));
       const out = new Uint8Array(bytes);

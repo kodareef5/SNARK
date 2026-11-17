@@ -18,6 +18,7 @@ import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
 import { HIT_NONE, castWorld } from "../../shared/world/ray.ts";
 import { takeInHand } from "../fixtures/gather.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { Harness, type Pilot } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -351,7 +352,7 @@ test("a swing lands on a standing target at 150 ms of latency as it does at none
   expect(s.stats.stateCorrections).toBe(0);
 });
 
-test("a swing takes the upper body and leaves the legs walking", () => {
+artTest("a swing takes the upper body and leaves the legs walking", () => {
   const anim = new HumanAnim(corePack().clips);
   const st = new AnimState();
   st.setMotion(0, 4.2, 0, 0);

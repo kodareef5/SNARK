@@ -96,14 +96,19 @@ export function quadBytes(faces: number): 2 | 4 {
   return faces > QUAD_FACES ? 4 : 2;
 }
 
+/** How many quadIndices holds for at least `count` indices of `bytes` each. */
+export function quadIndexCount(count: number, bytes: 2 | 4): number {
+  const step = (QUAD_FACES / 4) * 6;
+  return bytes === 2 ? QUAD_FACES * 6 : Math.ceil(count / step) * step;
+}
+
 /**
  * The indices of every level of quads, far blocks, far city tiles and lakes: face f is the triangles 4f, 4f+1, 4f+2 and
  * 4f, 4f+2, 4f+3. The card holds them once for all such levels, which send their vertices alone (AssetUpload `quads`):
  * at least `count`, `bytes` each, as many as 16-bit indices reach, or 32-bit ones in steps of 4,096 faces (96 KB).
  */
 export function quadIndices(count: number, bytes: 2 | 4): Uint16Array | Uint32Array {
-  const step = (QUAD_FACES / 4) * 6;
-  const n = bytes === 2 ? QUAD_FACES * 6 : Math.ceil(count / step) * step;
+  const n = quadIndexCount(count, bytes);
   const out = bytes === 2 ? new Uint16Array(n) : new Uint32Array(n);
   for (let i = 0, v = 0; i < n; i += 6, v += 4) {
     out[i] = out[i + 3] = v;

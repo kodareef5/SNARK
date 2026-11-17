@@ -8,6 +8,7 @@ import { SKY_COLOR } from "../../shared/pack/palette.ts";
 import { latOf, lonOf } from "../../shared/world/coords.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../../shared/world/proving.ts";
 import { provingView } from "../../tools/snap.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
 
 test("HUD coordinates, compass and minimap markers follow the map convention", () => {
@@ -92,7 +93,7 @@ test("the minimap image is the terrain seen from above with north up and east ri
   expect(gentle[1]!).toBeGreaterThan(gentle[2]! * 1.3);
 });
 
-test("the self-check probes pass on the reference renderer and fail on a wrong picture", () => {
+artTest("the self-check probes pass on the reference renderer and fail on a wrong picture", () => {
   const W = 320;
   const H = 180;
   const view = provingView(W, H);

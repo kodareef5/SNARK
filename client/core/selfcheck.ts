@@ -2,7 +2,7 @@
 // A probe that fails in the browser but passes here points at the shell: a shader, a buffer layout, a missing upload.
 
 import { surfaceIndex } from "../../content/surfaces.ts";
-import { worldSurface, type WorldSample } from "./render/world-surfaces.ts";
+import { worldSharp, worldSurface, type WorldSample } from "./render/world-surfaces.ts";
 import { B_CHEST, HUMAN } from "../../shared/anim/human.ts";
 import { LOOK_SKIN, defaultLook } from "../../shared/anim/look.ts";
 import { SKIN_BASE } from "../../shared/pack/palette.ts";
@@ -12,7 +12,7 @@ import { PROBE_BODY, PROBE_CREATURE } from "../../shared/world/proving.ts";
 import type { Camera } from "./render/camera.ts";
 import type { FramePacket } from "./render/packet.ts";
 import { domeLight, theSky, trueSun } from "./render/sky.ts";
-import { lit, shown, skyFrom, srgbToLinear } from "./render/surface.ts";
+import { lit, shown, skyFrom, skyLight, srgbToLinear } from "./render/surface.ts";
 
 export interface Probe {
   name: string;
@@ -85,9 +85,12 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
       const u = axis === 0 ? 2 : 0, w = axis === 1 ? 2 : 1;
       const footprint = Math.max(...[right, down].map((next) => Math.hypot(next[u]! - point[u]!, next[w]! - point[w]!)));
       distance = Math.hypot(...point.map((c, k) => c - eye[k]!));
-      worldSurface(albedo, orm, normal, albedo, surfaceIndex(index, plane.ground, p.surfaceCity[7] ? "las-vegas" : "default"), point[0]!, point[1]!, point[2]!, n[0]!, n[1]!, n[2]!, footprint, p.surfaceCity, surfaces.sample);
+      const finish = surfaceIndex(index, plane.ground, p.surfaceCity[7] ? "las-vegas" : "default");
+      worldSurface(albedo, orm, normal, albedo, finish, point[0]!, point[1]!, point[2]!, n[0]!, n[1]!, n[2]!, footprint, p.surfaceCity, surfaces.sample, p.tier.finish === "light");
       const twice = 2 * normal.reduce((sum, c, k) => sum + c * v[k]!, 0);
-      skyFrom(mirrored, p.frame, normal.map((c, k) => twice * c - v[k]!), look);
+      const reflected = normal.map((c, k) => twice * c - v[k]!);
+      if (worldSharp(finish, p.surfaceCity)) skyFrom(mirrored, p.frame, reflected, look);
+      else skyLight(mirrored, p.frame, reflected);
     }
     lit(out, albedo, orm, normal, v, p.frame, mirrored);
     shown(rgb, out, distance, p);

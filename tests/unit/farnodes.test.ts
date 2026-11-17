@@ -10,6 +10,7 @@ import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { SIZE_UNITS, formOf, mix, scatterNodes, type NodeForms, type NodeSource } from "../../shared/world/nodes.ts";
 import { FarCells, farTopByte } from "../../shared/world/tactical.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { HELD, WOOD, nodeWorld, type NodeWorld } from "../fixtures/nodeworld.ts";
 import { corePack } from "../fixtures/pack.ts";
 
@@ -148,7 +149,7 @@ test("a wood looks the same whichever store holds it: the camera still, the near
   }
 });
 
-test("a used-up node's stump is the near store's alone: drawn short of the band, fading out over it, and by neither store past it", () => {
+artTest("a used-up node's stump is the near store's alone: drawn short of the band, fading out over it, and by neither store past it", () => {
   // The core pack, whose trees and rocks leave stumps and broken bases.
   const w = nodeWorld({ chunksX: 16, chunksZ: 8, kinds: ["core:tree", "core:tree", "core:rock"], pack: corePack() });
   const z = 4 * CHUNK_SIZE + 10;

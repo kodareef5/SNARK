@@ -12,6 +12,7 @@ import { domeLight, hazeColor, hourOfSun, luminance, shownSky, skyFrame, theSky,
 import { shown, srgbToLinear } from "../../client/core/render/surface.ts";
 import { apart } from "../../tools/sky/fit.ts";
 import { packedMips, readPicture } from "../../tools/pack/image.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { sceneSet, sceneWorld } from "../fixtures/sceneworld.ts";
 
 const sky = theSky();
@@ -83,7 +84,7 @@ test("the dome's air in the frame block: haze, the view's end, what is drawn ove
   expect(dip(LOW)).toBeCloseTo(1.24, 2);
 });
 
-test("the clouds take the hour's light from the table: overhead, their mean at noon and at sunset is within 3 (OKLab x 100) of the art director's lit clouds", () => {
+artTest("the clouds take the hour's light from the table: overhead, their mean at noon and at sunset is within 3 (OKLab x 100) of the art director's lit clouds", () => {
   const picture = packedMips(readPicture(new URL("../../assets/source/core/sky/clouds/low.png", import.meta.url).pathname))[6]!;
   const keys = JSON.parse(readFileSync(new URL("../../assets/source/core/sky/keys/points.json", import.meta.url), "utf8")).keys as Record<string, Record<string, number[]>>;
   /** A key's colour as light.py takes it back to light: sRGB undone, then the shoulder over 0.8. */
@@ -124,7 +125,7 @@ test("the clouds take the hour's light from the table: overhead, their mean at n
   }
 });
 
-test("the low layer's heaps lie differently in every tile and cover as much of the sky as the art director's picture", () => {
+artTest("the low layer's heaps lie differently in every tile and cover as much of the sky as the art director's picture", () => {
   const mips = packedMips(readPicture(new URL("../../assets/source/core/sky/clouds/low.png", import.meta.url).pathname));
   // The picture `side` pixels across, read between its pixels as a card does, wrapping.
   const read = (u: number, v: number, side: number): number[] => {

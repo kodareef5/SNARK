@@ -240,6 +240,8 @@ test("tiles a tile past the tier's reach are let go, what is on the card is rese
   const onCard = p.assetUploads.filter((u) => u.slot >= FAR_SLOTS);
   expect(onCard.length).toBe(1);
   expect(residency.reserved).toBeGreaterThanOrEqual(onCard[0]!.data.length);
+  // The indices every level of quads shares are on the card once, as the shell holds them: 16,384 faces at 16 bits.
+  expect([onCard[0]!.quads, onCard[0]!.indexBytes, (residency as unknown as { reserves: Map<string, number> }).reserves.get("quad indices")]).toEqual([true, 2, 16384 * 6 * 2]);
   const before = residency.reserved;
   // Walked off 1.6 km east, the first is more than a tile past reach and the second is in it.
   w.look(2600, 10, 400, 300, 0);

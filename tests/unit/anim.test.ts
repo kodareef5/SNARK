@@ -11,6 +11,7 @@ import { STANCE_CROUCH, STANCE_PRONE } from "../../shared/sim/character.ts";
 import { Solved, boneToModel, rayCapsule, rayZones, solve, zoneHit } from "../../shared/anim/skeleton.ts";
 import { Rng } from "../../shared/rng.ts";
 import { quatAxis, quatMul, quatMulConj, quatNlerp, quatRotate, quatUnrotate } from "../../shared/math/quat.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { coreAnim } from "../fixtures/pack.ts";
 
 const HALF_TURN = Math.PI;
@@ -90,7 +91,7 @@ test("the skeleton is a tree in order, mirrored left to right, with a capsule on
   for (let b = 0; b < s.bones; b++) for (let k = 0; k < 3; k++) expect(rest.pos[b * 3 + k]!).toBeCloseTo(s.rest[b * 3 + k]!, 6);
 });
 
-test("without clips a body rests in a T-pose; with them it stands with its arms down and its feet on the ground", () => {
+artTest("without clips a body rests in a T-pose; with them it stands with its arms down and its feet on the ground", () => {
   const st = new AnimState();
   const t = solved(st, 0, new HumanAnim(NO_CLIPS));
   expect(y(t, B_HAND_L)).toBeCloseTo(y(t, B_UPPER_ARM_L), 6);
@@ -108,7 +109,7 @@ test("without clips a body rests in a T-pose; with them it stands with its arms 
   }
 });
 
-test("a pose depends only on its inputs, and bodies with different seeds are out of step", () => {
+artTest("a pose depends only on its inputs, and bodies with different seeds are out of step", () => {
   const st = new AnimState();
   st.speed = 7;
   st.seed = 123;
@@ -131,7 +132,7 @@ function cycleOf(speed: number): number {
   return (TICK_RATE * gaitShares(coreAnim().standing, v, true, new Float64Array(3))) / v;
 }
 
-test("gaits stride in step: left foot ahead at the start of every cycle, right foot half a cycle later", () => {
+artTest("gaits stride in step: left foot ahead at the start of every cycle, right foot half a cycle later", () => {
   const st = new AnimState();
   for (const speed of [3, 7, 12]) {
     const cycle = cycleOf(speed);
@@ -178,7 +179,7 @@ test("moving sideways turns the hips toward the way it goes and leaves the head 
   for (let k = 0; k < back.pos.length; k++) expect(back.pos[k]!).toBeCloseTo(fore.pos[k]!, 5);
 });
 
-test("looking up tips the head back, crouching lowers it, lying prone and swimming lay the body flat", () => {
+artTest("looking up tips the head back, crouching lowers it, lying prone and swimming lay the body flat", () => {
   const st = new AnimState();
   const v = new Float64Array(3);
   const facing = (s: Solved): number[] => {
@@ -223,7 +224,7 @@ test("looking up tips the head back, crouching lowers it, lying prone and swimmi
   expect(y(rising, B_HEAD) - y(rising, B_HIPS)).toBeGreaterThan(0.35);
 });
 
-test("a ray finds the zone it would hit on the posed body", () => {
+artTest("a ray finds the zone it would hit on the posed body", () => {
   const st = new AnimState();
   const s = solved(st, 0);
   const cast = (ox: number, oy: number, oz: number, dx: number, dy: number, dz: number): number => rayZones(HUMAN, s, ox, oy, oz, dx, dy, dz, 20);
@@ -246,7 +247,7 @@ test("a ray finds the zone it would hit on the posed body", () => {
   expect(cast(0.35, 1.387, 5, 0, 0, -1)).toBe(0);
 });
 
-test("sampling a clip between frames and blending poses stay on the short way round", () => {
+artTest("sampling a clip between frames and blending poses stay on the short way round", () => {
   const anim = coreAnim();
   const clip = anim.walk!;
   const a = new Pose(HUMAN_BONES);
@@ -265,7 +266,7 @@ test("sampling a clip between frames and blending poses stay on the short way ro
   sampleClip(clip, clip.frames, a);
   sampleClip(clip, 0, b);
   expect([...a.rot]).toEqual([...b.rot]);
-  const once = coreAnim().set.clips[coreAnim().set.index.get("human/death")!]!;
+  const once = coreAnim().set.clips[coreAnim().set.index.get("human/punch")!]!;
   expect(once.loop).toBe(false);
   sampleClip(once, once.frames + 50, a);
   sampleClip(once, once.frames - 1, b);

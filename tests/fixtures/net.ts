@@ -3,7 +3,7 @@
 import { ClientSession } from "../../client/core/session.ts";
 import type { GameOptions, GameServer } from "../../server/game.ts";
 import { createHost, type Host, type HostOptions } from "../../server/host.ts";
-import { backlog } from "../../server/main.ts";
+import { backlog } from "../../shared/net/transport.ts";
 import type { ServerWorld } from "../../server/world.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";

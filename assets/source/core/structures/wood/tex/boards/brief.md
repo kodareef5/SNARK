@@ -35,7 +35,7 @@ All 2,048 by 2,048, pixel-aligned with one another, PNG:
 
 ## The example to beat
 
-A wood wall material from an earlier test is at `/home/user/dev/SNARK/.claude/worktrees/agent-ae515c340350f410b/planning/artist-test/wood/` (look at `checks/layers.jpg`, `checks/tilings.jpg`, `wood_base_2048.png`, `REPORT.md`). It is good: aligned, seamless, honest. Beat it. Its weaknesses: every plank is the same grey-brown, so a wall of it reads as one printed sheet; its relief is shallow and its nails are small dots; its 2,048 is its 1,024 resampled with added fibres. Yours should look like boards someone chose and nailed up one by one, with native detail at 2,048.
+A wood wall material from an earlier test is at `/home/user/dev/SNARK/.claude/worktrees/agent-ae515c340350f410b/planning/art-trial/wood/` (look at `checks/layers.jpg`, `checks/tilings.jpg`, `wood_base_2048.png`, `REPORT.md`). It is good: aligned, seamless, honest. Beat it. Its weaknesses: every plank is the same grey-brown, so a wall of it reads as one printed sheet; its relief is shallow and its nails are small dots; its 2,048 is its 1,024 resampled with added fibres. Yours should look like boards someone chose and nailed up one by one, with native detail at 2,048.
 
 ## How
 

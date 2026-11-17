@@ -13,6 +13,7 @@ import { HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../../shared/wo
 import { frameAxes, poseAt, type Pose } from "../../shared/world/snap.ts";
 import { NO_PIN, STRUCT_LOCK, STRUCT_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { flatGround } from "../fixtures/arena.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -340,7 +341,7 @@ test("wrong PINs are counted against the survivor who gives them, and each one p
   expect([1, 2].map((pin) => guess(cy, pin))).toEqual([RESULT_DENIED, RESULT_DENIED]);
 });
 
-test("a tame that dies leaves what it carried and its saddle in its body where it fell, for anyone to take, as in the reference", () => {
+artTest("a tame that dies leaves what it carried and its saddle in its body where it fell, for anyone to take, as in the reference", () => {
   const { h, sessions, recs, at } = arena(["ada", "bob"]);
   const bob = sessions[1]!;
   const { records, items } = h.host;

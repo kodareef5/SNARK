@@ -16,7 +16,7 @@ export const PIECES = ["foundation", "wall", "ceiling", "pillar", "door", "stair
 /** Each builder starts with this many of each piece, as many as a survivor with all its points in weight can walk with. */
 export const STOCK = 60;
 
-/** Survivors with cheats on level ground, each with STOCK wood pieces of every kind, one kind in each of the first six hotbar slots. */
+/** Survivors with cheats on level ground, each with STOCK wood pieces of every kind, one kind in each of the first six hotbar slots. A development server's cheats, or the admin password's. */
 export function builder(names = ["ada"], wide = 40, deep = wide, host: HostOptions = {}) {
   const h = new Harness({}, 1, 60, { dev: true, ...host });
   const sessions = names.map((n) => h.join(n));
@@ -24,7 +24,7 @@ export function builder(names = ["ada"], wide = 40, deep = wide, host: HostOptio
   const g = flatGround(h, wide, deep);
   const at = { x: g.x + wide / 2, z: g.z + 4, y: g.y };
   sessions.forEach((s, i) => {
-    h.say(s, "enablecheats");
+    h.say(s, `enablecheats ${host.adminPassword ?? ""}`);
     h.say(s, `tp ${(at.x + i * 2).toFixed(3)} ${at.z.toFixed(3)}`);
     h.say(s, "setstat weight 255");
     PIECES.forEach((piece, slot) => {

@@ -9,7 +9,7 @@ import type { Registry } from "../../../shared/content/registry.ts";
 import { EVENT_BLAST, EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, EVENT_SHOT } from "../../../shared/net/protocol.ts";
 import { GEAR_COUNT, GEAR_HELD } from "../../../shared/sim/entities.ts";
 import { V_FOOD, V_HEALTH, V_WATER, type Vitals } from "../../../shared/sim/vitals.ts";
-import { ACT_DRAW, ACT_EQUIP, ACT_RELOAD, ACT_SWING, FISTS, HOLD_NAMES, HOLD_PISTOL, HOLD_RIFLE } from "../../../shared/sim/weapon.ts";
+import { ACT_DRAW, ACT_EQUIP, ACT_RELOAD, ACT_SWING, FISTS, HOLD_NAMES, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW } from "../../../shared/sim/weapon.ts";
 import { cueKey } from "../../../shared/sound/cues.ts";
 import type { CombatEvent, LocalShot, RemoteSample } from "../session.ts";
 import type { Hear } from "./bodies.ts";
@@ -26,7 +26,8 @@ const HUNGER = 0.1;
 const GULP = 0.02;
 
 const by = (f: (h: string) => string): number[] => HOLD_NAMES.map((h) => cueKey(f(h)));
-const SWING = by((h) => `swing/${h}`);
+// A throw begins as a swing of what is thrown.
+const SWING = by((h) => (h === "throw" ? "throw" : `swing/${h}`));
 const DRAW = by((h) => `draw/${h}`);
 const RELEASE = by((h) => `release/${h}`);
 const FIRE = by((h) => `fire/${h}`);
@@ -198,6 +199,8 @@ export class ActionSounds {
       } else if (e.kind === EVENT_KILL) {
         hear(ui, K.kill, -1, 0, 0, 0, 0, 1, true);
       } else if (e.kind === EVENT_SHOT) {
+        // A thrown weapon that is its own round, the bola, was heard as it was thrown.
+        if (this.reg.weapon[e.item]?.hold === HOLD_THROW) continue;
         const d = Math.hypot(e.x - ex, e.y - ey, e.z - ez);
         const h = this.ammoHold[e.item]! >= 0 ? this.ammoHold[e.item]! : HOLD_RIFLE;
         const gun = h === HOLD_RIFLE || h === HOLD_PISTOL;

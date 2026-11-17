@@ -11,9 +11,10 @@ import { BodyCopies, boxBase, crowdScene } from "../../client/core/devicescene.t
 import { RemoteSample } from "../../client/core/session.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { TIMING, TOKEN, browser, client, renderer, run } from "../fixtures/device.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
-test("the ladder climbs until a rung breaks, asks the server for the base, and ends taking texture memory until the device refuses it", async () => {
+artTest("the ladder climbs until a rung breaks, asks the server for the base, and ends taking texture memory until the device refuses it", async () => {
   const { h, pack, app, expected } = client();
   // A display twice as fast as the harness draws: no rung holds its rate, so each axis stops at its first.
   const { b, asked, boxed } = browser({ clock: () => h.now, expected, mode: "ladder", frameMs: 8.3, bases: bases(h.world) });

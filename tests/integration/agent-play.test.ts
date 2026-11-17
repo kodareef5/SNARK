@@ -4,6 +4,7 @@ import { expect, test } from "bun:test";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { play, type Play } from "../fixtures/agent.ts";
 import { flatGround } from "../fixtures/arena.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 
 /** Runs the world until the running task ends. Returns the metres the body moved on the server and every place it was. */
 function follow(p: Play, seconds = 60): { walked: number; trail: [number, number][] } {
@@ -255,7 +256,7 @@ test("health falling and death each stop the task, and the survivor wakes again"
 /** The rows observe lists under a name: id, name, x, z, metres away, direction, then what else is known. */
 const rows = async (p: Play, name: string): Promise<unknown[][]> => ((await p.call("observe", { radius: 16 }))[name] as unknown[][] | undefined) ?? [];
 
-test("attack knocks a dodo out with bare hands and then kills it, and the dead one is listed and harvested", async () => {
+artTest("attack knocks a dodo out with bare hands and then kills it, and the dead one is listed and harvested", async () => {
   const p = play();
   for (const line of ["enablecheats", "destroywilddinos", "spawn dodo 1"]) expect((await p.call("console", { line })).state).toBe("done");
   p.run(300);

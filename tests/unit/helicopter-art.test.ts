@@ -1,17 +1,18 @@
 // Native helicopter packs must preserve the measured mechanical contract and every independent moving part. The fit of
 // real survivors in the cabin is helicopter-fit.slow.test.ts.
-import { expect, test } from "bun:test";
+import { expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { HELICOPTER_ART as H } from "../../content/vehicles/helicopter-art.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { bothWays, measureSurface } from "../../tools/art/check.ts";
 import { unpackMeshes } from "../../tools/pack/write.ts";
+import { fromArt, test } from "../fixtures/needs-art.ts";
 
 const ids = ["helicopter", "helicopter_rescue", "helicopter_police", "helicopter_wreck"];
-const assets = ids.map(id => {
+const assets = fromArt(() => ids.map(id => {
   const pack = parsePack(new Uint8Array(readFileSync(new URL(`../../assets/source/core/vehicles/${id}/${id}.snpk`, import.meta.url))));
   return { id: `core:${id}`, pack, mesh: unpackMeshes(pack)[0]!, rig: pack.header.rigs[0]! };
-});
+}));
 
 test("all helicopter liveries and the wreck keep the eight-bone rig and every measured anchor", () => {
   for (const { id, rig } of assets) {

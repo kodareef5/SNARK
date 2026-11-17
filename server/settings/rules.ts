@@ -158,6 +158,17 @@ export class Rules {
   }
 }
 
+/** The settings a player may know (Row.public) that take effect and are not at their default, by name. Nothing else ever leaves. */
+export function publicValues(rules: Rules): Record<string, number | boolean | string> {
+  const out: Record<string, number | boolean | string> = {};
+  for (const row of CATALOG) {
+    if (!row.public || row.status !== "live") continue;
+    const v = rules.valueOf(row);
+    if ((typeof v === "number" || typeof v === "boolean" || typeof v === "string") && v !== row.def) out[row.name] = v;
+  }
+  return out;
+}
+
 /** The values a save's timers were computed under, from its snapshot. Null if the snapshot does not read. */
 export function timersOf(snapshot: string | number | null): Record<string, number> | null {
   let snap: unknown;

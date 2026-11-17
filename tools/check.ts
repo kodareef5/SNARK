@@ -7,8 +7,9 @@
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { cpus, loadavg, tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { SLOW_TEST, TEST_WATCH, TEST_WORKERS, hungAfter } from "../tests/fixtures/load.ts";
+import { ART } from "./art/source.ts";
 import { dynamicLoads, madeArrays, stripComments } from "./policy.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -92,6 +93,11 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/** A file's path from the repository's root, with / between its parts on every system, as the zones and the rules name them. */
+function repoPath(file: string): string {
+  return relative(ROOT, file).split(sep).join("/");
+}
+
 function zoneOf(rel: string): Zone | undefined {
   let best: Zone | undefined;
   for (const z of ZONES) {
@@ -136,7 +142,7 @@ function checkPolicy(): void {
   let wikiLines = 0;
 
   for (const file of files) {
-    const rel = relative(ROOT, file);
+    const rel = repoPath(file);
     const zone = zoneOf(rel)!;
     const src = stripComments(readFileSync(file, "utf8"));
 
@@ -172,7 +178,7 @@ function checkPolicy(): void {
     for (const m of src.matchAll(IMPORT)) {
       const spec = m[1] ?? m[2] ?? m[3]!;
       if (spec.startsWith(".")) {
-        const target = relative(ROOT, resolve(dirname(file), spec));
+        const target = repoPath(resolve(dirname(file), spec));
         const tz = zoneOf(target);
         if (!tz) fail(`${rel}: imports "${spec}" which is outside every zone`);
         else if (zone.may !== "*" && !zone.may.includes(tz.dir)) {
@@ -270,6 +276,9 @@ function keepTimes(file: string, junit: string): void {
 }
 
 const testFiles = walk(join(ROOT, "tests")).filter((f) => f.endsWith(".test.ts"));
+/** Tests passed, and those skipped in the files that mark tests as needing the art (tests/fixtures/needs-art.ts). */
+const tally = { passed: 0, unart: 0 };
+const needsArt = new Set(ART ? [] : testFiles.filter((f) => readFileSync(f, "utf8").includes("fixtures/needs-art.ts")).map(repoPath));
 
 /** Each test file's CPU-seconds, from what the preload wrote in `dir`. */
 function fileCpu(dir: string): [string, number][] {
@@ -277,7 +286,7 @@ function fileCpu(dir: string): [string, number][] {
   for (const name of readdirSync(dir).filter((n) => n.endsWith(".tsv"))) {
     for (const line of readFileSync(join(dir, name), "utf8").split("\n")) {
       const [file, seconds] = line.split("\t");
-      if (file && seconds) out.push([relative(ROOT, file), Number(seconds)]);
+      if (file && seconds) out.push([repoPath(file), Number(seconds)]);
     }
   }
   return out.sort((a, b) => b[1] - a[1]);
@@ -308,7 +317,7 @@ function stopHung(dir: string, workers: number, most: Map<string, number>, stopp
     // Only a test worker of this run: a worker that crashed leaves its file, and its number may since be another's.
     if (!Bun.spawnSync(["ps", "-o", "command=", "-p", String(pid)]).stdout.toString().includes("--test-worker")) continue;
     process.kill(pid, "SIGKILL");
-    stopped.push(`${relative(ROOT, file!)}: ${n === "0" ? "loading it" : `its test number ${n}`} ran ${(ran / 1000).toFixed(0)} s, past its hang limit of ${(allowed / 1000).toFixed(0)} s, without yielding; its worker was stopped`);
+    stopped.push(`${repoPath(file!)}: ${n === "0" ? "loading it" : `its test number ${n}`} ran ${(ran / 1000).toFixed(0)} s, past its hang limit of ${(allowed / 1000).toFixed(0)} s, without yielding; its worker was stopped`);
   }
 }
 
@@ -336,8 +345,11 @@ async function checkTests(tier: Tier, dir: string, env: Record<string, string>):
     fail(`${tier} tests failed:\n${r.out.trim()}`);
     return;
   }
-  keepTimes(times, readFileSync(report, "utf8"));
+  const junit = readFileSync(report, "utf8");
+  keepTimes(times, junit);
   const counts = r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim());
+  tally.passed += parseInt(counts.find((c) => c.endsWith(" pass")) ?? "0");
+  for (const m of junit.matchAll(/<testsuite name="([^"]+)" file="\1"[^>]*? skipped="(\d+)"/g)) if (needsArt.has(m[1]!)) tally.unart += Number(m[2]);
   console.log(`  ${counts.join(", ")}, ${r.cpu.toFixed(0)} CPU-seconds${tier === "fast" ? ` of ${TEST_CPU_BUDGET}` : ""}`);
   // CPU-seconds move far less with the machine's load than the clock does, so a slow change shows on a busy day too.
   if (tier === "fast" && r.cpu > TEST_CPU_BUDGET) {
@@ -370,8 +382,10 @@ try {
 }
 
 const seconds = (performance.now() - t0) / 1000;
+// In the repository every test runs. In the code as shown outside, those that need the art are skipped, and said to be.
+const unart = ART ? "" : `\n${tally.passed.toLocaleString("en-US")} tests passed. ${tally.unart.toLocaleString("en-US")} were skipped: they need the art or the planning documents, which are not in this repository.`;
 if (problems.length > 0) {
-  console.error(`\nFAILED (${problems.length})\n` + problems.map((p) => " - " + p).join("\n"));
+  console.error(`\nFAILED (${problems.length})\n` + problems.map((p) => " - " + p).join("\n") + unart);
   process.exit(1);
 }
-console.log(`\nOK in ${seconds.toFixed(2)}s, at load ${loadavg()[0]!.toFixed(0)} on ${cpus().length} cores`);
+console.log(`\nOK in ${seconds.toFixed(2)}s, at load ${loadavg()[0]!.toFixed(0)} on ${cpus().length} cores${unart}`);

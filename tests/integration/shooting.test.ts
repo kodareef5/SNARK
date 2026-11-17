@@ -4,6 +4,7 @@ import { DRAW_SKINNED } from "../../client/core/render/packet.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { TRACER_MS } from "../../client/core/shots.ts";
 import { KEY_ACTION, KEY_AMMO } from "../../client/core/ui/hud.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { REWIND_TICKS } from "../../server/combat.ts";
 import { dress } from "../../server/commands/combat.ts";
@@ -634,7 +635,7 @@ test("the client shows shots: its own arrow at once, another's when told, the li
   expect(s.stats.undecodable).toBe(0);
 });
 
-test("a creature that came as a model is hit where its capsules are, in the pose it is in: its head for half as much again, its body for the 70% of a round a creature takes", () => {
+artTest("a creature that came as a model is hit where its capsules are, in the pose it is in: its head for half as much again, its body for the 70% of a round a creature takes", () => {
   // `still` keeps the parasaur where it is put, so the test can compute where its head is.
   const wild = CORE_CONTENT.find((d) => d.id === "core:parasaur")!;
   const { registry } = compileContent([...CORE_CONTENT, { ...wild, id: "core:parasaur_still", still: true } as Def]);

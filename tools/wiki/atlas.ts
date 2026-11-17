@@ -1,6 +1,7 @@
 // The wiki's map of each world, from the map file a server is started with (var/maps/<name>.snmap): the ground as the
 // game colours it, where each kind of resource grows, the regions each creature is kept stocked in, where survivors
-// arrive and vehicles stand, and from the map's world.json its obelisks and districts. A map that has no file is left out.
+// arrive and vehicles stand, the landmarks it places, and from the map's world.json its obelisks and districts. A map that
+// has no file is left out.
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -65,6 +66,8 @@ export interface Atlas {
   regions: Region[];
   spawns: Mark[];
   obelisks: Mark[];
+  /** The landmarks the map places, by name, each where the middle of its pieces is. */
+  landmarks: (Mark & { of: string })[];
   districts: { name: string; points: [number, number][]; at: Mark }[];
   /** The first column of the table in the map's SOURCES.md. */
   sources: string[];
@@ -220,6 +223,13 @@ export function buildAtlases(reg: Registry, palette: Uint8Array, maps: string, o
 
     const parked = new Map<string, Mark[]>();
     for (const v of map.vehicles ?? []) parked.set(v.kind, [...(parked.get(v.kind) ?? []), mark("", v.x, v.z)]);
+    // A landmark stands where the middle of its pieces is, its definitions being of its own namespace.
+    const landmarks = (map.content?.landmarks ?? []).flatMap((name) => {
+      const s = map.statics;
+      let [x, z, n] = [0, 0, 0];
+      for (let i = 0; i < s.kind.length; i++) if (s.kinds[s.kind[i]!]!.startsWith(`${name}:`)) [x, z, n] = [x + s.x[i]!, z + s.z[i]!, n + 1];
+      return n ? [{ of: name, ...mark(name, x / n, z / n) }] : [];
+    });
 
     const source = join(ROOT, "assets/source/maps", slug);
     const worldFile = join(source, "world/world.json");
@@ -256,6 +266,7 @@ export function buildAtlases(reg: Registry, palette: Uint8Array, maps: string, o
       regions,
       spawns: map.spawns.map((s) => mark(s.name, s.x, s.z)),
       obelisks,
+      landmarks,
       districts,
       sources,
     });

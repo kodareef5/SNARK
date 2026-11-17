@@ -183,6 +183,49 @@
           "text": "A person pushes slowly through dense leafy bushes, leaves and branches brushing and rustling, several separate passes. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
+    },
+    "eat": {
+      "kind": "impact",
+      "range": 20,
+      "level": -24,
+      "vary": 0.6,
+      "want": "a creature eating: chewing, tearing and swallowing",
+      "prompts": [
+        {
+          "id": "v5-40080",
+          "models": [
+            "moss"
+          ],
+          "seed": 40080,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A large animal eats: wet chewing, crunching and a swallow, three separate mouthfuls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v5-40090",
+          "models": [
+            "moss"
+          ],
+          "seed": 40090,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A big lizard tears a mouthful of meat and gulps it down, three separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v5-40100",
+          "models": [
+            "moss"
+          ],
+          "seed": 40100,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "An animal munches leaves and grass, crunchy chewing, three separate mouthfuls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 8
     }
   }
 }

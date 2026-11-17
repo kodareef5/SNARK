@@ -19,7 +19,7 @@ This round replaces it on the textured tiers with real surfaces, in this order:
 - **No tiling you can see.** A street or a field 500 m long does not repeat in stripes. Stochastic or rotated sampling, or a macro variation layer, whatever works, measured from a flyer's height.
 - **Low poly stays as it is.** It is the no-texture option the owner asked to keep, and its 300-frame hash is pinned. Phones on medium hold their frame budget. High and ultra show more, not something different.
 - **Better than our examples**, which are the bar to beat:
-  - `planning/artist-test/` (your own feather material and wood wall);
+  - `planning/art-trial/` (your own feather material and wood wall);
   - the structure tiers' materials in `assets/source/core/structures/{wood,stone,thatch}/tex/`;
   - the pteranodon's material studies in `assets/source/core/creatures/pteranodon/tex/studies/`.
 

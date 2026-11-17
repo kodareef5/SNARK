@@ -7,6 +7,7 @@ import { SKY_SIZE, SKY_SLICES, aroundOf, cardTakes, decodeTexel, domeLight, elev
 import { linearToSrgb, skyLight, srgbToLinear } from "../../client/core/render/surface.ts";
 import { SkyBuilder } from "../../tools/sky/build.ts";
 import { apart, basePoints, cardColours, domeApart, hueApart, keyCards } from "../../tools/sky/fit.ts";
+import { artTest } from "../fixtures/needs-art.ts";
 import { sceneWorld } from "../fixtures/sceneworld.ts";
 
 const sky = theSky();
@@ -103,7 +104,7 @@ test("a grey card facing up in the open, lit as surfaces are, shows within 3 ste
   expect(worst).toBeLessThanOrEqual(3);
 });
 
-test("the committed table is what the tool makes, and its bytes hold the sky to within a step on screen", () => {
+artTest("the committed table is what the tool makes, and its bytes hold the sky to within a step on screen", () => {
   const b = new SkyBuilder();
   // A morning slice and an evening one.
   for (const z of [12, 43]) {
@@ -138,7 +139,7 @@ test("a page's build stores the table as a file a page gives back byte for byte"
   expect(() => giveSky(skyFile(table).subarray(4))).toThrow("the sky's table is 262140 bytes");
 });
 
-test("the morning and the evening have skies of their own: with the sun 2 degrees up the morning shows dawn's key and the evening the way from golden hour to sunset", () => {
+artTest("the morning and the evening have skies of their own: with the sun 2 degrees up the morning shows dawn's key and the evening the way from golden hour to sunset", () => {
   const dawn = basePoints().find((k) => k.name === "dawn")!;
   const evening = hourOfSun(sunHeight(dawn.hour), true);
   expect(apart(dome(dawn.hour, 89, 0), dome(evening, 89, 0))).toBeGreaterThan(15);
@@ -284,7 +285,7 @@ test("at noon a grey card sunlit and seen head on shows 128, and one in its own 
   expect(255 * linearToSrgb(luminance(shaded))).toBeCloseTo(70, 0);
 });
 
-test("at each key's hour the game shows the accepted key over its whole clear sky: half of it within 1.5 OKLab times 100, nine tenths within 4", () => {
+artTest("at each key's hour the game shows the accepted key over its whole clear sky: half of it within 1.5 OKLab times 100, nine tenths within 4", () => {
   for (const key of basePoints()) {
     const d = domeApart(sky, key, 4);
     expect(d.median).toBeLessThan(1.5);
@@ -299,12 +300,12 @@ test("twilight is over by the table's slice past 18 degrees down: from 20 down t
   }
 });
 
-test("as the sun goes down the white balance goes with it: at dusk a grey card in its own shade is lit the colour of the sky shown, as the dusk key has it", () => {
+artTest("as the sun goes down the white balance goes with it: at dusk a grey card in its own shade is lit the colour of the sky shown, as the dusk key has it", () => {
   const dusk = basePoints().find((k) => k.name === "dusk")!;
   expect(apart(cardColours(sky, dusk.hour, false).shaded, keyCards().dusk!.shaded!)).toBeLessThan(2);
 });
 
-test("shade is the colour the keys paint it: a grey card face up in full shadow has its key's shaded card's hue, cool grey at noon, and at golden hour and sunset a card in its own shade is blue", () => {
+artTest("shade is the colour the keys paint it: a grey card face up in full shadow has its key's shaded card's hue, cool grey at noon, and at golden hour and sunset a card in its own shade is blue", () => {
   const cards = keyCards();
   for (const key of basePoints()) expect(hueApart(cardColours(sky, key.hour, key.lightBy === "moon").under, cards[key.name]!.shaded!)).toBeLessThan(2.5);
   // The key's noon shade is blue over red 1.3 on screen; the sky's light alone made it 2.
@@ -316,7 +317,7 @@ test("shade is the colour the keys paint it: a grey card face up in full shadow 
   }
 });
 
-test("at golden hour, just past where low poly's light leaps, a grey card face up in the open shows low poly's card", () => {
+artTest("at golden hour, just past where low poly's light leaps, a grey card face up in the open shows low poly's card", () => {
   const golden = basePoints().find((k) => k.name === "golden")!;
   const up = cardColours(sky, golden.hour, false).up;
   const shows = 255 * linearToSrgb(luminance(up.map((c) => srgbToLinear(c / 255))));

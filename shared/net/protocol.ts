@@ -55,9 +55,10 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 19: rotor state/condition, observer rotor and service parts, and vehicle maintenance/deployment commands.
  * 20: marine hull/flooding state and physical shoreline recovery. 21: compact chunk rows, rows in place, and chunks
  * taken from the map (HELLO_STATICS). 22: the map's statics told of after the hello (CMD_STATICS). 23: S_MOTION, a
- * travelling static's state.
+ * travelling static's state. 24: S_MOTION's states are added to those told before: all of them after a welcome, in as many
+ * messages as they take, and then each static as it is thrown.
  */
-export const PROTOCOL_VERSION = 23;
+export const PROTOCOL_VERSION = 24;
 
 // Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
@@ -200,10 +201,10 @@ export const S_FAR = 13;
  */
 export const S_TRAVEL = 14;
 /**
- * Protocol 23. Where every static that travels when used stands (StructureDef.travel), sent whole to a client when it joins and
- * when one is thrown: count u8, then per static ref u32, where it left from and goes to u16 (the top bit set when it goes to
+ * Protocol 23. Where statics that move when used stand (StructureDef.motion), every one in as many messages as they take after
+ * a welcome, and each again as it is thrown (24): count u8, then per static ref u32, where it left from and goes to u16 (the top bit set when it goes to
  * its second state, the rest the progress it left from in 1/32,767), and the tick it left u32. Its kind and place are the
- * client's map's (shared/sim/travel.ts).
+ * client's map's (shared/sim/motion.ts).
  */
 export const S_MOTION = 15;
 
@@ -615,8 +616,8 @@ export class InputBuffer {
 
 /**
  * 380 bits: position and velocity exactly, then the rest of the predicted state. Protocol 13 added the aim's bloom and the
- * recoil's kick (a byte each, always 0 until W1 of planning/reference/weapons-plan.md steps them), and the flyers'
- * contracts (protocol 16) the flight counters.
+ * recoil's kick (a byte each, stepped by stepAim in shared/sim/aim.ts), and the flyers' contracts (protocol 16) the flight
+ * counters.
  */
 export function writeBody(w: BitWriter, b: Body): void {
   w.f32(b.x);

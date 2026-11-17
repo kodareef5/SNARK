@@ -10,7 +10,7 @@ The game models every block as real geometry, chamfered edges and joints include
 
 ## What excellent looks like
 
-The bar to beat is the wood plank wall in `/home/user/dev/SNARK/.claude/worktrees/agent-a2517e755af91bae1/planning/artist-test/wood/` (start with `checks/layers.jpg`, then its `REPORT.md`): a complete, aligned, tileable layer set with its own build and checks, in which the layers agree to the pixel. Yours should be better: a block cut from any part of it, from 0.25 m to 1 m across, should look like a stone a mason worked.
+The bar to beat is the wood plank wall in `/home/user/dev/SNARK/.claude/worktrees/agent-a2517e755af91bae1/planning/art-trial/wood/` (start with `checks/layers.jpg`, then its `REPORT.md`): a complete, aligned, tileable layer set with its own build and checks, in which the layers agree to the pixel. Yours should be better: a block cut from any part of it, from 0.25 m to 1 m across, should look like a stone a mason worked.
 
 - The face is tooled: rows of fine chisel strokes (a batted or dragged finish) and here and there a coarser punched or clawed patch. Real tooling changes direction and character from block to block, so let it change in patches of about 0.3 to 0.6 m with soft, irregular borders, as if several masons had worked it. No regular grid of patches.
 - The stone itself: faint bedding lines, a few small shell fragments or darker inclusions, the odd tiny pit, slight colour drift across the stone. Weathered a little, clean enough to read as the good stone of the building.

@@ -140,7 +140,7 @@ export class EntityStore {
   actTicks: Uint8Array;
   rounds: Uint8Array;
   reloadTo: Uint8Array;
-  /** Aim state (Body.bloom, Body.kick): 0 until planning/reference/weapons-plan.md's W1 steps them. */
+  /** Aim state (Body.bloom, Body.kick), stepped by stepAim (shared/sim/aim.ts). */
   bloom: Uint8Array;
   kick: Uint8Array;
   /** Flight state (Body.regenWait, Body.rollWait): 0 until FL1 of planning/reference/flyers-plan.md steps them. */

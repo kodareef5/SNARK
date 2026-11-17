@@ -10,7 +10,7 @@ import type { MotionFacet } from "../content/defs.ts";
 export const MOTION_STEPS = 32767;
 /** Ticks after a throw before the static may be thrown again: a public control is no strobe. */
 export const THROW_TICKS = 2 * TICK_RATE;
-/** Moving statics one message may carry. */
+/** Statics' states one S_MOTION message carries at most. */
 export const MAX_MOVING = 255;
 /** A row of S_MOTION: ref u32, where it left from and goes to u16, the tick it left u32. */
 const ROW_BYTES = 10;
@@ -53,16 +53,18 @@ export function readMotionBytes(b: Uint8Array): MotionState {
   return { from: w & MOTION_STEPS, to: (w >> 15) as 0 | 1, at: v.getUint32(2, true) };
 }
 
-export function writeMotions(w: BitWriter, states: ReadonlyMap<number, MotionState>): void {
-  w.u8(states.size);
-  for (const [ref, s] of states) {
+/** The states of `refs`, at most MAX_MOVING of them, each one in `states`. */
+export function writeMotions(w: BitWriter, states: ReadonlyMap<number, MotionState>, refs: readonly number[]): void {
+  w.u8(refs.length);
+  for (const ref of refs) {
+    const s = states.get(ref)!;
     w.u32(ref);
     w.u16((s.to << 15) | s.from);
     w.u32(s.at);
   }
 }
 
-/** Every moving static's state, or null where the message is not whole. */
+/** The states a message carries, or null where it is not whole. */
 export function readMotions(r: BitReader): Map<number, MotionState> | null {
   const n = r.u8();
   if (r.overflow || r.remainingBits !== n * ROW_BYTES * 8) return null;

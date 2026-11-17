@@ -27,7 +27,7 @@ Keep the generated source pictures at full size in `source/`, and the scripts th
 
 ## What excellent looks like
 
-The bar is the concept pictures, and the bar for a complete layer set is the wood plank wall in `../../../../../../../planning/artist-test/wood/` (start with `checks/layers.jpg`). Pieces of a city that a player recognises at once as what they were, and that look as old as the trees round them. The image tool returns about 1254 pixels a side; reach 2048 by composing generated pictures in a larger master laid out on the guide and by adding fine detail by script.
+The bar is the concept pictures, and the bar for a complete layer set is the wood plank wall in `../../../../../../../planning/art-trial/wood/` (start with `checks/layers.jpg`). Pieces of a city that a player recognises at once as what they were, and that look as old as the trees round them. The image tool returns about 1254 pixels a side; reach 2048 by composing generated pictures in a larger master laid out on the guide and by adding fine detail by script.
 
 ## Checks to leave in `checks/`
 

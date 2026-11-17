@@ -93,12 +93,17 @@ export async function fetchContent(get: Get, url: string): Promise<Registry> {
   return registry;
 }
 
-/** The sounds' rows into the manifest once they come, where it names a file of them that holds what its files can. */
-export function fetchSounds(get: Get, manifest: Manifest): void {
-  if (!manifest.soundRows) return;
-  void fetchJson(get, `assets/${manifest.soundRows}`)
-    .then((rows) => void (soundFault(rows as ManifestSound[], manifest.files) === "" && (manifest.sounds = rows as ManifestSound[])))
-    .catch(() => {});
+/** The sounds' rows into the manifest once they come, where it names a file of them that holds what its files can. Resolves to why it holds none, or "". */
+export function fetchSounds(get: Get, manifest: Manifest): Promise<string> {
+  if (!manifest.soundRows) return Promise.resolve("");
+  return fetchJson(get, `assets/${manifest.soundRows}`).then(
+    (rows) => {
+      const fault = soundFault(rows as ManifestSound[], manifest.files);
+      if (fault === "") manifest.sounds = rows as ManifestSound[];
+      return fault;
+    },
+    (e: unknown) => (e instanceof Error ? e.message : String(e)),
+  );
 }
 
 export async function fetchJson(get: Get, url: string): Promise<unknown> {

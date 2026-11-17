@@ -11,7 +11,7 @@ import { MODE_SWIM } from "../../shared/sim/character.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import { buildProvingHeightfield } from "../../shared/world/proving.ts";
 import { GONE_DESTROYED } from "../../shared/world/structures.ts";
-import { EVENT_HIT, EVENT_KILL } from "../../shared/net/protocol.ts";
+import { EVENT_HIT, EVENT_KILL, EVENT_SHOT } from "../../shared/net/protocol.ts";
 import { ACT_SWING, HOLD_HANDS } from "../../shared/sim/weapon.ts";
 import { RemoteSample, type CombatEvent } from "../../client/core/session.ts";
 import { ActionSounds, type OwnState } from "../../client/core/sound/actions.ts";
@@ -216,6 +216,28 @@ test("the world's bed follows the place and the clock: a beach by the sea, grass
   expect(WORLD_LOOPS).toBeGreaterThan(10);
 });
 
+test("a creature's book holds the occasions of its class: a survivor's only its body's going down, and a vehicle has none", () => {
+  const root = mkdtempSync(join(tmpdir(), "snark-books-"));
+  try {
+    for (const [folder, sounds] of [["weapon", ["swing/hands"]], ["body", ["thump/medium", "eat"]]] as const) {
+      const dir = join(root, "core", folder, "sound");
+      mkdirSync(join(dir, "takes"), { recursive: true });
+      writeFileSync(join(dir, "takes", "a.wav"), writeWav(chirp(0.2, 32000), 32000));
+      writeFileSync(join(dir, "sounds.json"), JSON.stringify({ sounds: Object.fromEntries(sounds.map((n) => [n, { range: 30, level: -20, takes: [{ file: "takes/a.wav" }] }])) }));
+    }
+    const built = buildSounds(1, root, null)!;
+    const sounds = new Sounds({ sounds: built.sounds }, new FakeNet([new Uint8Array(0), built.bytes], { latencyMs: 1, bytesPerSecond: 1e8 }), reg, () => null);
+    const book = (id: string) => sounds.creatures.books[reg.index.get(id)!] ?? null;
+    const named = (id: string): string[] => [...book(id)!.sound].filter((s) => s >= 0).map((s) => built.sounds[s]!.id);
+    expect(named("core:dodo")).toEqual(["core:weapon/sound/swing/hands", "core:body/sound/thump/medium", "core:body/sound/eat", "core:body/sound/thump/medium"]);
+    // Another survivor's swing is its weapon's (actions.ts), not a bare-handed creature's as well.
+    expect(named("core:survivor")).toEqual(["core:body/sound/thump/medium"]);
+    for (const id of ["core:helicopter", "core:boat", "core:compact"]) expect(book(id)).toBeNull();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("a looping bed fades in when it is wanted and out when it is not, and the interface plays at the ear", () => {
   const root = mkdtempSync(join(tmpdir(), "snark-catalogue-"));
   try {
@@ -344,6 +366,25 @@ test("a kill is heard once: the blow that killed and the kill the server credits
   update();
   expect(heard.filter((k) => k === "kill")).toEqual(["kill"]);
   expect(heard).toContain("hit/marker");
+});
+
+test("a throw is heard as a throw, and a thrown bola, which is its own round, is not heard again as a shot", () => {
+  const a = new ActionSounds(reg, () => -1);
+  const heard: string[] = [];
+  const hear: Hear = (_o, key) => heard.push(KEYS[key]!.key);
+  const own = ownState();
+  const update = (): void => a.update(new RemoteSample(), own.x, own.y + 1.6, own.z, own, -1, 0, 1, () => false, hear, () => {});
+  own.held = reg.index.get("core:bola")!;
+  update();
+  own.act = ACT_SWING;
+  update();
+  a.absorb([combatEvent(EVENT_SHOT, { x: 381, y: own.y + 1.5, z: 380, item: own.held, flies: true })], [], 0);
+  update();
+  expect(heard).toEqual(["throw"]);
+  // A rifle's round is a shot.
+  a.absorb([combatEvent(EVENT_SHOT, { x: 381, y: own.y + 1.5, z: 380, item: reg.index.get("core:round_rifle")!, flies: true })], [], 0);
+  update();
+  expect(heard.slice(1, 2)).toEqual(["fire/rifle"]);
 });
 
 test("with the button held, every swing of a combo is heard, the player's own and another survivor's", () => {
