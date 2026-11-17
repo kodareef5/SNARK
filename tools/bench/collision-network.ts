@@ -12,7 +12,8 @@ import { flatMap } from "../../tests/fixtures/map.ts";
 import { Harness } from "../../tests/fixtures/net.ts";
 
 const CASES = ["wall", "dodo", "parasaur", "protected", "parked", "crossing", "oncoming", "swerve", "near-miss", "push"] as const;
-export type CollisionCase = typeof CASES[number];
+const EXTRA_CASES = ["stop-short", "close-pass"] as const;
+export type CollisionCase = typeof CASES[number] | typeof EXTRA_CASES[number];
 interface Correction { now: number; tick: number; at: number; distance: number; yaw: number; angle: number; displayYaw: number; displayDistance: number; snap: boolean }
 interface Sample { now: number; tick: number; x: number; z: number; yaw: number; smooth: number; angle: number; gap: number | null }
 export interface CollisionNetworkOptions { kind: CollisionCase; rtt: number; seed: number; loss?: number; jitter?: number; speed?: number }
@@ -56,7 +57,7 @@ export function collisionNetworkTrial({ kind, rtt, seed, loss = 0, jitter = 10, 
   const h = new Harness({}, seed, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: map ??= writeMap(flatMap(4)) });
   try {
     const link = { tcp: true, latencyMs: rtt / 2, jitterMs: jitter, loss };
-    const crossing = kind === "crossing" || kind === "near-miss";
+    const crossing = kind === "crossing" || kind === "near-miss" || kind === "stop-short" || kind === "close-pass";
     const opposingCar = kind === "oncoming" || kind === "swerve";
     const session: ObservedSession = h.join("impact-driver", link);
     const remote = crossing || opposingCar ? h.join("impact-target", link) : null;
@@ -86,7 +87,8 @@ export function collisionNetworkTrial({ kind, rtt, seed, loss = 0, jitter = 10, 
     } else if (crossing && remote) {
       const peer = h.client(remote)!;
       target = peer.ent;
-      ents.setPosition(target, LANE + (kind === "near-miss" ? 12 : 3.3) + offset, 0, TARGET);
+      const side = kind === "near-miss" ? 12 : kind === "close-pass" ? 1.53 + offset * .28 : kind === "stop-short" ? 4.9 + offset * .35 : 3.3 + offset;
+      ents.setPosition(target, LANE + side, 0, TARGET);
       h.host.survival.gods.add(peer.pid);
     } else {
       target = h.host.spawnCreature(kind === "dodo" ? "core:dodo" : "core:parasaur", LANE + offset, TARGET, 1);
@@ -159,7 +161,7 @@ export function collisionNetworkTrial({ kind, rtt, seed, loss = 0, jitter = 10, 
       samples.push({ x, z, yaw, angle: (session.vehicleCorrection?.angle ?? 0) * 180 / Math.PI, now: h.now, tick: h.world.tick, smooth: Math.hypot(session.smoothX, session.smoothY, session.smoothZ), gap });
     };
     const pilot = h.pilots[0]!, downlink = h.ends[0]!.peer, bytesBefore = downlink.bytesSent, driveStart = h.now;
-    let crossingStarted = false, swerving = false;
+    let crossingStarted = false, crossingStopped = false, swerving = false;
     for (let elapsed = 0; elapsed < 22000 && (impactTick < 0 || h.world.tick <= impactTick + WINDOW_TICKS + 12); elapsed += 50) {
       h.run(50, () => {
         const velocity = Math.hypot(ents.vx[car]!, ents.vz[car]!), age = impactTick < 0 ? 0 : h.world.tick - impactTick;
@@ -170,7 +172,8 @@ export function collisionNetworkTrial({ kind, rtt, seed, loss = 0, jitter = 10, 
         const other = h.pilots[1]!;
         if (crossing) {
           crossingStarted ||= ents.z[car]! > TARGET - 17;
-          other.moveX = crossingStarted && age < 18 ? 1 : 0;
+          crossingStopped ||= kind === "stop-short" && ents.x[target]! < LANE + 2.15;
+          other.moveX = crossingStarted && !crossingStopped && kind !== "close-pass" && age < 18 ? 1 : 0;
         } else {
           // Last-moment steering/braking is an input the other driver cannot have received yet.
           swerving ||= kind === "swerve" && ents.z[target]! - ents.z[car]! < 14;
@@ -208,6 +211,7 @@ export function collisionNetworkTrial({ kind, rtt, seed, loss = 0, jitter = 10, 
       lastVisibleFadeMs: lastVisible ? Math.round(lastVisible.now - impactNow) : null,
       fadeCensored: !!lastVisible && lastVisible.tick >= impactTick + WINDOW_TICKS - 1,
       drawnGapAtImpactM: firstFrame ? round(firstFrame.gap!) : null,
+      closestDrawnGapM: encounter.length ? round(Math.min(...encounter.map(s => s.gap!))) : null,
       deepestDrawnOverlapM: encounter.length ? round(Math.max(0, ...encounter.map(s => -s.gap!))) : null,
       approachTicks: LEAD_TICKS, windowTicks: WINDOW_TICKS, comparedSnapshots: window.length, peakTranslationM: round(peak("distance")), peakYawDeg: round(peak("yaw")),
       peakAngleDeg: round(peak("angle")), significantCorrections: moved.length, directSnaps: window.filter(c => c.snap).length,
@@ -220,7 +224,7 @@ export function collisionNetworkTrial({ kind, rtt, seed, loss = 0, jitter = 10, 
 
 if (import.meta.main) {
   const args = new Map(process.argv.slice(2).map(word => { const at = word.indexOf("="); return [word.slice(0, at), word.slice(at + 1)]; }));
-  const kind = args.get("--case"), cases = kind ? CASES.filter(c => c === kind) : CASES;
+  const kind = args.get("--case"), cases = kind ? [...CASES, ...EXTRA_CASES].filter(c => c === kind) : CASES;
   if (!cases.length) throw new Error(`unknown collision case ${kind}`);
   const rtts = args.has("--rtt") ? [Number(args.get("--rtt"))] : [0, 80, 150];
   const count = Number(args.get("--seeds") ?? 20);
