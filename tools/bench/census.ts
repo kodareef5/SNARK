@@ -15,7 +15,7 @@ import { forTouch, tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
-import { DRAW_TEXTURED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_RANGED, DRAW_TEXTURED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS, Scene } from "../../client/core/render/scene.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkCount, mapSizeX, mapSizeZ } from "../../shared/coords.ts";
@@ -120,7 +120,7 @@ function counted(scene: Scene, p: FramePacket): Counted {
       c.farTriangles += p.drawIndexCount[d]! / 3;
     } else if (near(b)) {
       c.near++;
-      c.nearTriangles += ((p.drawFlags[d]! & DRAW_TEXTURED) !== 0 ? p.drawIndexCount[d]! / 3 : tris[p.drawMesh[d]!]![p.drawLod[d]!]!) * p.drawInstances[d]!;
+      c.nearTriangles += ((p.drawFlags[d]! & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 ? p.drawIndexCount[d]! / 3 : tris[p.drawMesh[d]!]![p.drawLod[d]!]!) * p.drawInstances[d]!;
     }
   }
   for (let e = 0; e < p.casterCount; e++) if (near(p.casterBuffer[e]!)) for (let m = p.casterCascades[e]!; m > 0; m >>= 1) c.cast += m & 1;
@@ -166,10 +166,11 @@ export function censusWorld(map: MapData, centre: readonly [number, number], reg
       [scene.assets.tier, scene.viewHeight] = [setup.tier, setup.size[1]];
       const city = scene.city!;
       city.makeMs = Infinity;
+      scene.near!.pieces = Infinity;
       for (let f = 0; f < SETTLE; f++) {
         scene.now += 1000 / 60;
         const p = scene.build(cam, null);
-        if (f > 3 && p.uploads.length + p.assetUploads.length + p.texUploads.length === 0 && city.stats.behind === 0 && city.stats.made === 0) return counted(scene, p);
+        if (f > 3 && p.uploads.length + p.assetUploads.length + p.texUploads.length === 0 && city.stats.behind === 0 && city.stats.made === 0 && scene.near!.stats.waiting === 0) return counted(scene, p);
       }
       throw new Error(`${view.name} on ${setup.name}: still making after ${SETTLE} frames`);
     },
