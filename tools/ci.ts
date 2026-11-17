@@ -23,12 +23,12 @@ const OPTIONS = ["slow", "build", ...PROBES, "all"];
  * Tools that write committed files without Blender. In the copy each writes its files again, and they must come out as
  * committed. The packs Blender builds are not here: the check's art test measures them.
  */
-const GENERATED: string[][] = [
-  ["tools/settings.ts"],
-  ["tools/catalogue.ts"],
-  ["tools/events.ts"],
-  ["tools/art.ts", "core:human-clips"],
-  ["tools/blender/example/demo/pictures.ts"],
+const GENERATED: { cmd: string[]; needs?: string }[] = [
+  { cmd: ["tools/settings.ts"], needs: "planning" },
+  { cmd: ["tools/catalogue.ts"], needs: "planning" },
+  { cmd: ["tools/events.ts"], needs: "planning" },
+  { cmd: ["tools/art.ts", "core:human-clips"], needs: "assets" },
+  { cmd: ["tools/blender/example/demo/pictures.ts"] },
 ];
 
 const args = process.argv.slice(2);
@@ -77,6 +77,7 @@ if (within(realpathSync(ROOT)) || within(dirname(dirname(objects)))) {
   process.exit(2);
 }
 const copy = mkdtempSync(join(base, "snark-ci-"));
+let project = copy;
 const removeCopy = (): void => rmSync(copy, { recursive: true, force: true });
 for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
   process.on(signal, () => {
@@ -109,7 +110,7 @@ async function step(name: string, fn: () => Promise<Result>): Promise<number> {
 /** Runs Bun in the copy: this Bun, whatever the path holds. */
 async function bun(cmd: string[], quiet = false): Promise<{ status: number; out: string }> {
   console.log(`$ bun ${cmd.join(" ")}`);
-  const proc = Bun.spawn([process.execPath, ...cmd], { cwd: copy, env: copyEnv, stdout: quiet ? "pipe" : "inherit", stderr: quiet ? "pipe" : "inherit" });
+  const proc = Bun.spawn([process.execPath, ...cmd], { cwd: project, env: copyEnv, stdout: quiet ? "pipe" : "inherit", stderr: quiet ? "pipe" : "inherit" });
   const [out, err] = quiet ? await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]) : ["", ""];
   return { status: await proc.exited, out: out + err };
 }
@@ -135,6 +136,7 @@ try {
     writeFileSync(join(copy, ".git/objects/info/alternates"), objects + "\n");
     git(copy, "config", "core.excludesFile", "/dev/null");
     git(copy, "-c", "advice.detachedHead=false", "-c", "checkout.workers=0", "checkout", "--quiet", "--detach", sha);
+    if (existsSync(join(copy, "game/tools/check.ts"))) project = join(copy, "game");
     const off = changed();
     if (git(copy, "rev-parse", "HEAD") !== sha || off.length > 0) return { status: 1, note: `the copy is not the commit:\n${off.join("\n")}` };
     return { status: 0, note: `${git(copy, "ls-files").split("\n").length} files` };
@@ -143,7 +145,7 @@ try {
   const installed =
     copied === 0 &&
     (await step("install", async () => {
-      const pinned = JSON.parse(readFileSync(join(copy, "package.json"), "utf8")).engines?.bun;
+      const pinned = JSON.parse(readFileSync(join(project, "package.json"), "utf8")).engines?.bun;
       if (pinned !== Bun.version) return { status: 1, note: `package.json pins Bun ${pinned}, and this is Bun ${Bun.version}` };
       const r = await bun(["install", "--frozen-lockfile"]);
       return r.status === 0 ? { status: 0, note: `Bun ${Bun.version} as pinned, Node ${nodeVersion.slice(1)}` } : { status: r.status, note: "the lockfile does not install" };
@@ -159,8 +161,9 @@ try {
     await step("generated", async () => {
       const stale: string[] = [];
       let ran = 0;
-      for (const cmd of GENERATED) {
-        if (!existsSync(join(copy, cmd[0]!))) continue;
+      for (const { cmd, needs } of GENERATED) {
+        if (!existsSync(join(project, cmd[0]!))) continue;
+        if (project !== copy && needs && !existsSync(join(project, needs))) continue;
         const r = await bun(cmd, true);
         if (r.status !== 0) return { status: 1, note: `bun ${cmd.join(" ")}: exit ${r.status}\n${r.out.trim()}` };
         ran++;

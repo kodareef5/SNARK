@@ -4,8 +4,8 @@
 // (var/source/names.txt, a pattern a line, not in git) is held back and listed; code that says one stops the export.
 // The licence and the top README are the owner's to sign, and are not looked through.
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, posix, resolve } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
 const TEXT = new Set(["ts", "js", "json", "md", "py", "css", "html", "ini", "toml", "lock", "txt", "sh", "ps1", "psd1", "yml", "overpassql", "gitignore"]);
@@ -30,9 +30,28 @@ function git(dir: string, ...args: string[]): string {
   return run.stdout.toString();
 }
 
+/** The exported repository keeps the project under game/ and accepts its Bun commands from the root. */
+export function writeSourceRoot(out: string): void {
+  const game = join(out, "game");
+  for (const file of [".gitignore", "LICENSE"]) copyFileSync(join(game, file), join(out, file));
+  const pkg = JSON.parse(readFileSync(join(game, "package.json"), "utf8"));
+  const scripts = Object.fromEntries(Object.keys(pkg.scripts).map((name) => [name, `bun run --cwd game ${name}`]));
+  scripts.postinstall = "bun install --cwd game --frozen-lockfile";
+  writeFileSync(join(out, "package.json"), JSON.stringify({ private: true, engines: pkg.engines, scripts }, null, 2) + "\n");
+
+  const config = Bun.TOML.parse(readFileSync(join(game, "bunfig.toml"), "utf8"));
+  const tests = config.test as { root: string; preload: string[] };
+  const preloads = tests.preload.map((file) => "./" + posix.join("game", file));
+  writeFileSync(join(out, "bunfig.toml"), `[test]\nroot = "game/${tests.root}"\npreload = ${JSON.stringify(preloads)}\n`);
+
+  const readme = readFileSync(join(game, "README.md"), "utf8");
+  const linked = readme.replace(/\]\((?![a-z][\w+.-]*:|[/#])([^\s)]+)\)/gi, "](game/$1)");
+  writeFileSync(join(out, "README.md"), linked);
+}
+
 if (import.meta.main) {
   const out = resolve(process.argv[2] ?? join(ROOT, "var/source/repo"));
-  const changed = git(ROOT, "diff", "--name-only", "HEAD").split("\n").filter((f) => f !== "" && shown(f));
+  const changed = git(ROOT, "diff", "--relative", "--name-only", "HEAD", "--", ".").split("\n").filter((f) => f !== "" && shown(f));
   if (changed.length > 0) throw new Error(`the export is of what is committed, and these have changes that are not:\n  ${changed.join("\n  ")}`);
   const list = join(ROOT, "var/source/names.txt");
   const names = existsSync(list) ? readFileSync(list, "utf8").split("\n").filter((l) => l.trim() !== "").map((l) => new RegExp(l.trim(), "i")) : [];
@@ -68,9 +87,11 @@ if (import.meta.main) {
   mkdirSync(out, { recursive: true });
   for (const entry of readdirSync(out)) if (entry !== ".git") rmSync(join(out, entry), { recursive: true });
   for (const file of kept) {
-    mkdirSync(dirname(join(out, file)), { recursive: true });
-    copyFileSync(join(ROOT, file), join(out, file));
+    const dest = join(out, "game", file);
+    mkdirSync(dirname(dest), { recursive: true });
+    copyFileSync(join(ROOT, file), dest);
   }
+  writeSourceRoot(out);
   if (!existsSync(join(out, ".git"))) git(out, "init", "-q", "-b", "main");
   git(out, "add", "-A");
   const from = git(ROOT, "rev-parse", "--short", "HEAD").trim();
