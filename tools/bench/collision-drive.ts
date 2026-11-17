@@ -51,6 +51,8 @@ try {
   const graphics = process.argv.includes("--software") ? ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : process.platform === "darwin" ? ["--use-angle=metal"] : [];
   browser = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...graphics, "--window-size=800,600", "--remote-debugging-port=0", "--user-data-dir="+profile, "about:blank"], { stdout: "ignore", stderr: "ignore" });
   const tab = page = await devtools(profile);
+  await tab.send("Runtime.enable");
+  await tab.send("Page.enable");
   await tab.send("Page.navigate", { url: "http://127.0.0.1:"+server.port+"/?quick=1&tier=lowpoly&name=course" });
   await tab.send("Page.bringToFront");
   const client = await until(() => host.game.clients.find(c => c?.active && c.ent >= 0), "Join", 90000);
@@ -85,6 +87,9 @@ try {
   const result = { course, distance: distance(), seconds: (world.tick-begin)/30, peak, minUp, maxSide, broke, speedBefore, speedAfter, hullDamage: health-hp(), occupantDamage: crew-host.survival.value(driver,V_HEALTH), xp: driver.xp-xp, seated: client.drive === car };
   console.log(JSON.stringify(result));
   if (!result.seated || result.occupantDamage || (city ? minUp < .85 || maxSide > 3 : !broke || speedAfter >= speedBefore || !result.hullDamage || result.xp)) throw new Error("Course outcome failed");
+} catch (error) {
+  if (page) console.error(await page.value<string>("document.body.innerText.slice(-1400)").catch(() => "Browser closed"));
+  throw error;
 } finally {
   page?.close(); browser?.kill(); if (browser) await browser.exited;
   server?.stop(); rmSync(profile, { recursive: true, force: true });

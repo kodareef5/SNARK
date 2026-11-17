@@ -6,6 +6,9 @@ import { FASTBACK_ART } from "./fastback-art.ts";
 import { BERLINETTA_ART, VELOCE_ART } from "./sports-art.ts";
 import { CARAVAN_ART, PANEL_VAN_ART } from "./van-art.ts";
 
+// Each model supplies its own cabin geometry. Leave an absent field absent on the JSON wire as well.
+const { shotPanels: _compactPanels, ...roadDefaults } = COMPACT_VEHICLE;
+
 type Point = readonly [number, number, number];
 interface RoadModel {
   readonly id: string;
@@ -68,7 +71,7 @@ function roadCar(art: RoadModel, frame: NonNullable<WheelVehicleDefinition["fram
     track: front[0] - pivot("wheel_front_right")[0], wheelbase: front[2] - pivot("wheel_rear_left")[2],
   };
   const vehicle: WheelVehicleDefinition = {
-    ...COMPACT_VEHICLE, id: art.id, frame, spec, beltline: trim.beltline, shotPanels: undefined,
+    ...roadDefaults, id: art.id, frame, spec, beltline: trim.beltline,
     seats: [
       { id: "driver", driver: true, anchor: at.seat_driver, entry: at.approach_left, door: 0 },
       { id: "passenger", anchor: at.seat_front_passenger, entry: at.approach_right, door: 1 },
