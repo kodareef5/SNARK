@@ -9,7 +9,8 @@ import { contextualize } from "./ruin-context.ts";
 import { joinFrontages } from "./ruin-frontage.ts";
 import { boxOf, extentOf, middleOf, obstacleIndex, obstructs } from "./ruin-obstacles.ts";
 import { carPicker, frameYaw, parkCars, roadIndex } from "./street-cars.ts";
-import { COMPACT_VEHICLE } from "../../content/vehicles/compact.ts";
+import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
+import type { WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { wreckLook } from "../../content/vehicles/wrecks.ts";
 import { S } from "./ground.ts";
 import { compactWalls, reserveRoutes, frameOf, inRing, Mason, tilesOf, worldPoint, type Frame } from "./ruin-geometry.ts";
@@ -279,10 +280,11 @@ export function makeRuins(site: Site): StaticPiece[] {
   // Lettered signs come after the passes that read every piece as a box of the ruin kit.
   const signs = makeSigns(site, accept);
   const publicPlaces = makePublicPlaces(site, data.places, acceptProp, nearSign(site, 60));
-  const parked = parkCars(site, pieces, roads, v.street.cars, v.seed, { id: COMPACT_VEHICLE.id, def: COMPACT_VEHICLE });
+  const fleet = ROAD_FLEET.map((s) => ({ id: s.id, def: s.vehicle as WheelVehicleDefinition }));
+  const parked = parkCars(site, pieces, roads, v.street.cars, v.seed, fleet);
   for (const p of parked) {
     // Nothing grows on it or where its doors open.
-    const a = p.yaw * Math.PI / 180; const y = site.groundAt(p.x, p.z); const reach = COMPACT_VEHICLE.spec.halfLength + 1;
+    const a = p.yaw * Math.PI / 180; const y = site.groundAt(p.x, p.z); const reach = fleet.find((f) => f.id === p.kind)!.def.spec.halfLength + 1;
     site.growthRoutes.push({ points: [{ x: p.x - Math.sin(a) * reach, y, z: p.z - Math.cos(a) * reach }, { x: p.x + Math.sin(a) * reach, y, z: p.z + Math.cos(a) * reach }], width: 5 });
     site.vehicles.push({ kind: p.kind, x: p.x, z: p.z, yaw: p.yaw });
   }
