@@ -39,8 +39,12 @@ export async function fetchBytes(get: Get, url: string): Promise<ArrayBuffer> {
   return (await answer(get, url)).arrayBuffer();
 }
 
-/** Map parts fetched at once: a few, so that the page's other files are not queued behind them on a link of six connections. */
-const PARTS_AT_ONCE = 4;
+/**
+ * Map parts fetched at once: as many as a browser opens to a host over HTTP/1.1, so that on a link of 100 ms a request one
+ * part's round trip is mostly hidden by the others' bytes (Miami's ground in 3.67 s at 20 Mbit/s, where 4 take 3.94 and
+ * 24 on h2 3.56).
+ */
+const PARTS_AT_ONCE = 6;
 
 /** `work` on each of `items`, at most `n` at once, taken in their order; its results in that order. */
 async function inTurn<T, R>(items: readonly T[], n: number, work: (item: T) => Promise<R>): Promise<R[]> {
@@ -77,7 +81,7 @@ export interface FetchedStatics {
 
 /**
  * A map as a page fetches it (shared/world/mapfile.ts): its head, then its landmarks' definitions, overviews and sectors'
- * ground, a few at once and each read as it comes, which make the map with no statics: all a client needs to draw. Then its
+ * ground, six at once and each read as it comes, which make the map with no statics: all a client needs to draw. Then its
  * sectors' statics, which `rest` brings once they are all in. Each part is checked against the hash its head names.
  */
 export async function fetchMap(get: Get, url: string): Promise<{ ground: MapFile; rest: Promise<FetchedStatics> }> {

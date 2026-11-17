@@ -55,16 +55,16 @@ function mapServer(file: Uint8Array, change: (name: string, bytes: Uint8Array) =
   return get;
 }
 
-test("a page fetches a map's head, then its ground's parts a few at once, which make the map with no statics; then its statics' parts", async () => {
+test("a page fetches a map's head, then its ground's parts six at once, which make the map with no statics; then its statics' parts", async () => {
   const file = writeMap(wideMap());
   const whole = parseMap(file);
   const head = readHead(file);
   const get = mapServer(file);
   const { ground, rest } = await fetchMap(get, `map/${head.name}`);
-  // The ground's parts are all asked for before any statics', and no more than four at once.
+  // The ground's parts are all asked for before any statics', and no more than six at once.
   const statics = head.parts.filter((p) => p.kind === "statics").map((p) => `map/${p.name}`);
   expect(get.asked.slice(0, 1 + head.parts.length - statics.length)).toEqual([`map/${head.name}`, ...head.parts.filter((p) => p.kind !== "statics").map((p) => `map/${p.name}`)]);
-  expect(get.most).toBe(4);
+  expect(get.most).toBe(6);
   expect([ground.hash, ground.statics.length, ground.heights, ground.tint, ground.nodes, ground.water]).toEqual([whole.hash, 0, whole.heights, whole.tint, whole.nodes, whole.water]);
   // Its statics, each sector's read and then set in a step at a time, without the map's order.
   const t = await readStatics(rest, () => Promise.resolve());
