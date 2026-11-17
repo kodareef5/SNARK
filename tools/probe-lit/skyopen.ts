@@ -120,17 +120,17 @@ function stagedShots(): Shot[] {
 }
 
 /**
- * Pixels whose 3 by 3 neighbours are one thing and one colour in the rasterizer, taken down by the measure or not: how
- * many, how many the GPU has more than SAME off, and the worst.
+ * Pixels whose 5 by 5 neighbours are one thing and one colour in the rasterizer, so that an edge the GPU draws a sample
+ * aside is not judged, taken down by the measure or not: how many, how many the GPU has more than SAME off, and the worst.
  */
 function compare(gpu: Uint8Array, h: Held): { taken: number[]; left: number[] } {
   const out = { taken: [0, 0, 0], left: [0, 0, 0] };
   const off = (a: Uint8Array, b: Uint8Array, at: number, bt = at): number => Math.max(...[0, 1, 2].map((c) => Math.abs(a[at * 4 + c]! - b[bt * 4 + c]!)));
-  for (let y = 1; y < H - 1; y++) {
-    next: for (let x = 1; x < W - 1; x++) {
+  for (let y = 2; y < H - 2; y++) {
+    next: for (let x = 2; x < W - 2; x++) {
       const at = y * W + x;
       if (h.kind[at] === PICK_SKY) continue;
-      for (let dy = -W; dy <= W; dy += W) for (let dx = -1; dx <= 1; dx++) if (h.kind[at + dy + dx] !== h.kind[at] || h.id[at + dy + dx] !== h.id[at] || off(h.color, h.color, at + dy + dx, at) > 2) continue next;
+      for (let dy = -2 * W; dy <= 2 * W; dy += W) for (let dx = -2; dx <= 2; dx++) if (h.kind[at + dy + dx] !== h.kind[at] || h.id[at + dy + dx] !== h.id[at] || off(h.color, h.color, at + dy + dx, at) > 2) continue next;
       const n = h.without && off(h.without, h.color, at) >= TAKEN ? out.taken : out.left;
       const o = off(gpu, h.color, at);
       n[0]!++;
@@ -141,12 +141,22 @@ function compare(gpu: Uint8Array, h: Held): { taken: number[]; left: number[] } 
   return out;
 }
 
+/** Pictures side by side with a gap of 4 pixels, `width` by `height` each. */
+function sheet(row: Uint8Array[], width: number, height: number): Uint8Array {
+  const sw = row.length * (width + 4) - 4;
+  const out = new Uint8Array(sw * height * 4).fill(255);
+  row.forEach((px, c) => {
+    for (let y = 0; y < height; y++) out.set(px.subarray(y * width * 4, (y + 1) * width * 4), (y * sw + c * (width + 4)) * 4);
+  });
+  return encodePng(sw, height, out);
+}
+
 /** The views of a built map's pictures, of Miami: where the camera stands, at a height or `up` over the ground, the point it looks at (x, y, z), and the hours. */
 const VIEWS: { name: string; x: number; z: number; y?: number; up?: number; look: [number, number, number]; hours: number[] }[] = [
   { name: "street", x: 6540, z: 4114, up: 1.7, look: [6700, 20, 4114], hours: [12, 17.5] },
   { name: "foot", x: 6618, z: 4110, up: 1.7, look: [6618, 3, 4122], hours: [12] },
   { name: "street-150m", x: 6470, z: 4114, y: 150, look: [6640, 0, 4114], hours: [12] },
-  { name: "shore", x: 5930, z: 2560, up: 1.7, look: [5840, 0, 2660], hours: [12] },
+  { name: "shore", x: 2022, z: 2290, up: 1.7, look: [2150, 0, 2340], hours: [12] },
 ];
 const [PW, PH] = [1280, 720];
 
@@ -215,21 +225,23 @@ export const skyOpenCheck: LitCheck = {
     const lines: string[] = [];
     let ok = true;
     const say = (n: number[]): string => `${n[0]} (${n[1]} more than ${SAME} off, the worst ${n[2]})`;
-    for (const h of made.held) {
+    const folder = process.env.PROBE_PICTURES;
+    if (folder) mkdirSync(folder, { recursive: true });
+    made.held.forEach((h, k) => {
       const gpu = back.pixels(made.key, h.frame);
       if (!gpu) {
         lines.push(`${h.name}: NO PICTURE`);
         ok = false;
-        continue;
+        return;
       }
       const c = compare(gpu, h);
       const fine = (n: number[]): boolean => n[1]! <= n[0]! * MOST_OFF;
       const pass = fine(c.taken) && fine(c.left) && c.taken[0]! + c.left[0]! >= 2000 && (h.without === null || c.taken[0]! >= 3000);
       ok &&= pass;
       lines.push(`${h.name}: pixels taken down ${say(c.taken)}, and left ${say(c.left)}  ${pass ? "ok" : "FAIL"}`);
-    }
-    const folder = process.env.PROBE_PICTURES;
-    if (folder) mkdirSync(folder, { recursive: true });
+      // The GPU's picture, the rasterizer's, and where they are more than SAME apart, in red.
+      if (folder) writeFileSync(join(folder, `staged-${k}.png`), sheet([gpu, h.color, gpu.map((v, i) => ((i & 3) === 3 ? 255 : (i & 3) === 0 && Math.max(...[0, 1, 2].map((ch) => Math.abs(gpu[(i & ~3) + ch]! - h.color[(i & ~3) + ch]!))) > SAME ? 255 : 0))], W, H));
+    });
     for (const pic of made.pictures) {
       const [off, on] = [back.pixels(pic.key, pic.off), back.pixels(pic.key, pic.on)];
       if (!off || !on || !folder) {
@@ -248,7 +260,7 @@ export const skyOpenCheck: LitCheck = {
         if (d < -6) lighter++;
         most = Math.max(most, d);
         const grey = (off[at * 4]! + off[at * 4 + 1]! + off[at * 4 + 2]!) / 6;
-        where.set([Math.min(255, grey + Math.max(0, d) * 2), grey, Math.min(255, grey + Math.max(0, -d) * 2), 255], at * 4);
+        where.set([Math.min(255, grey + Math.max(0, d)), grey, Math.min(255, grey + Math.max(0, -d)), 255], at * 4);
       }
       writeFileSync(join(folder, `${pic.name}-darker.png`), encodePng(PW, PH, where));
       lines.push(`${pic.name}: ${((100 * darker) / (PW * PH)).toFixed(1)}% of the picture darker by more than 2 levels a channel, the most ${Math.round(most / 3)}; ${lighter} pixels lighter`);

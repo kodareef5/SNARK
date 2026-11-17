@@ -33,7 +33,7 @@ import { FRAME, type FramePacket } from "./packet.ts";
 export const OPEN_WAYS = 16;
 export const OPEN_HEIGHTS = 4;
 /** The share of the sky's light a place loses with all its sky hidden: the rest is light the street sends back. */
-export const OPEN_STRENGTH = 0.7;
+export const OPEN_STRENGTH = 0.55;
 /** Cells a lookup is moved out across the ground along a surface's normal, so a wall reads the street before it more than its own cell. */
 export const OPEN_OUT = 0.5;
 /**
@@ -45,7 +45,7 @@ export const OPEN_SLACK = 0.5;
 /** Metres a cell's top stands over its ground for a building to stand in it. */
 export const SOLID_RISE = 1;
 /** How much of the sky's light the foot of a standing thing loses, and over how many metres over the ground that goes. */
-export const CONTACT = 0.45;
+export const CONTACT = 0.35;
 export const CONTACT_BAND = 1.5;
 /** The least time between measures made again for pieces gone, in milliseconds. */
 export const OPEN_EVERY = 30000;
