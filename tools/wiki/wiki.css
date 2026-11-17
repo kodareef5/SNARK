@@ -213,6 +213,10 @@ footer {
   font-size: 0.9rem;
 }
 
+.note .live {
+  margin-bottom: 0.6rem;
+}
+
 .card .blank {
   display: grid;
   place-items: center;
