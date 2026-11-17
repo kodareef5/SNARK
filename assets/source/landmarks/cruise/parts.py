@@ -98,6 +98,10 @@ class Mesh:
       if axis in(0,2) and normal[axis]*(-1 if axis==0 else 1)<0:uv[0]=1-uv[0]
       uv=[.03+.94*(uv[0]-.04)/.92,.29+.42*(uv[1]-.04)/.92]
      layer.data[li].uv=((cx+uv[0])/grid,1-(cy+1-uv[1])/grid)
+   # Tangents must see the same UV winding as the native UNORM16 surface.
+   # Tiny clipped cap triangles can otherwise reverse after UV quantization,
+   # leaving a shared vertex with the handedness of its neighbour.
+   for loop in layer.data:loop.uv=tuple(math.floor(v*65535+.5)/65535 for v in loop.uv)
   else:
    tags=list(LOOK);[me.materials.append(MATS[t]) for t in tags]
    for poly,tag in zip(me.polygons,self.tags):poly.material_index=tags.index('steel' if tag.startswith('sign:') else tag)
