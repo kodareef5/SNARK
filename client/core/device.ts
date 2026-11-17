@@ -25,7 +25,7 @@ import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import { FarCells, writeFar } from "../../shared/world/tactical.ts";
 import type { App } from "./app.ts";
-import { DEFAULT_TIER, TIERS, tierOf, type Tier } from "./assets/tiers.ts";
+import { DEFAULT_TIER, TIERS, canvasRatio, tierOf, type Tier } from "./assets/tiers.ts";
 import { FrameTimer, GPU_PLAN, GpuQuestions, type Gl2, type GpuReport, type PassTime } from "./devicegpu.ts";
 import { BodyCopies, LOOK, TextureMemory, boxBase, farBases, farSpots, rocks } from "./devicescene.ts";
 import { CITY_BUFFER } from "./render/farcity.ts";
@@ -899,6 +899,8 @@ export interface DeviceSide {
   surfaces: Pick<SelfcheckSurfaces, "start" | "done" | "sample" | "state"> | null;
   /** The browser's device pixels for one CSS pixel. */
   dpr: number;
+  /** The window's width and height in CSS pixels. */
+  view(): [number, number];
   /** The widest texture the device takes. A tier with wider ones is not tried. */
   maxTexture: number;
   /** When the game began to load, on the clock of `now`. */
@@ -1926,8 +1928,8 @@ export class DeviceRun {
 
   /** Device pixels the page draws for one CSS pixel, as client/shell/main.ts works it out from the tier in use. */
   private ratio(): number {
-    const most = this.side.app.scene!.assets.tier.pixelRatio;
-    return most > 0 ? Math.min(this.side.dpr, most) : this.side.dpr;
+    const [width, height] = this.side.view();
+    return canvasRatio(this.side.app.scene!.assets.tier, this.side.dpr, width, height);
   }
 
   /** The stress scene, less the three meshes it lists wrongly on purpose: they are for the probe, and never settle. */
@@ -2193,6 +2195,7 @@ export class DeviceProbe {
       ...side,
       surfaces,
       dpr: b.dpr,
+      view: () => [Number(b.global.innerWidth) || 0, Number(b.global.innerHeight) || 0],
       maxTexture: gpu.maxTexture,
       bootAt: this.bootAt,
       now: () => b.now(),

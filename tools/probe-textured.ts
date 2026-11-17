@@ -24,7 +24,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { tierOf } from "../client/core/assets/tiers.ts";
+import { canvasRatio, tierOf } from "../client/core/assets/tiers.ts";
 import { Camera } from "../client/core/render/camera.ts";
 import { BONE_FLOATS, DRAW_CUTOUT, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, type FramePacket, type TextureUpload } from "../client/core/render/packet.ts";
 import { Scene } from "../client/core/render/scene.ts";
@@ -361,7 +361,7 @@ function house(manifest: Manifest, files: Uint8Array[], pages: readonly Uint8Arr
   scene.assets.tier = tier;
   scene.assets.format = format;
   scene.viewHeight = CSS[1]!;
-  const ratio = tier.pixelRatio > 0 ? Math.min(SCREEN_RATIO, tier.pixelRatio) : SCREEN_RATIO;
+  const ratio = canvasRatio(tier, SCREEN_RATIO, CSS[0]!, CSS[1]!);
   const [width, height] = [Math.floor(CSS[0]! * ratio), Math.floor(CSS[1]! * ratio)];
   // Off the north-east corner, looking at the door.
   const cam = new Camera();
