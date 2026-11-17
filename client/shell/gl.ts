@@ -767,7 +767,7 @@ export class GlRenderer {
         // The cut-out caster's program reads the base colour alone.
         if (cutout) this.material(prog, p.casterMaterial[e]!, p.casterMesh[e]!, true, 0, 1);
         this.bind(prog, lod, buffer, p.casterMesh[e]!, p.casterFirst[e]!, p.casterOffset, e);
-        const run = (flags & DRAW_TEXTURED) !== 0;
+        const run = (flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0;
         gl.drawElementsInstanced(gl.TRIANGLES, run ? p.casterIndexCount[e]! : lod.indexCount, lod.type, run ? p.casterFirstIndex[e]! * lod.indexBytes : 0, p.casterInstances[e]!);
         this.drawCalls++;
       }

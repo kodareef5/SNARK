@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { App } from "../../client/core/app.ts";
+import { App, MEASURED_VOLUME } from "../../client/core/app.ts";
 import { KEY_CONSOLE_INPUT, KEY_CONSOLE_ROW } from "../../client/core/ui/console.ts";
 import { KEY_CHAT_INPUT, KEY_CHAT_ROW, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
 import { KEY_BANNER, KEY_CROSS, KEY_PROMPT, KEY_READOUT, KEY_STATUS, KEY_TALKER, KEY_VITAL, KEY_VOICE } from "../../client/core/ui/hud.ts";
@@ -523,4 +523,21 @@ test("a controller drives a car: the left stick throttles and steers, A holds th
   run(800);
   expect(s.driving).toBe(-1);
   h.host.shutdown();
+});
+
+// A probe, a bench or the device page runs unattended in the background of someone's machine: its music must not start loud.
+test("a page that measures itself plays at a fiftieth of full volume unless its address names another; a player's page is left alone", () => {
+  const h = new Harness();
+  const ask = (params: Record<string, string>, pinned: boolean): number => {
+    const app = client(h, `v${Object.keys(params).length}${pinned ? "p" : "u"}`);
+    app.address((name) => params[name] ?? null, pinned);
+    return app.ui.settings.masterVolume;
+  };
+  expect(MEASURED_VOLUME).toBe(0.02);
+  expect(ask({}, true)).toBe(MEASURED_VOLUME);
+  expect(ask({ volume: "0.5" }, true)).toBe(0.5);
+  expect(ask({ volume: "9", tier: "high" }, true)).toBe(2);
+  expect(ask({ volume: "loud", tier: "high", level: "1" }, true)).toBe(MEASURED_VOLUME);
+  expect(ask({}, false)).toBe(1);
+  expect(ask({ volume: "0.5" }, false)).toBe(1);
 });

@@ -32,7 +32,7 @@ const html = join(folder, "compile.html");
 writeFileSync(html, page);
 const profile = mkdtempSync(join(tmpdir(), "snark-surfaces-chrome-"));
 const chrome = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const child = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--disable-background-networking", `--user-data-dir=${profile}`, "--dump-dom", `file://${html}`], { stdout: Bun.file(join(folder, "compile-dom.txt")), stderr: Bun.file(join(folder, "compile-browser.log")) });
+const child = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--disable-background-networking", `--user-data-dir=${profile}`, "--dump-dom", `file://${html}`], { stdout: Bun.file(join(folder, "compile-dom.txt")), stderr: Bun.file(join(folder, "compile-browser.log")) });
 const timer = setTimeout(() => child.kill(), 55000);
 const code = await child.exited;
 clearTimeout(timer);

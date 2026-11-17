@@ -5,8 +5,9 @@ import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { slopeKind } from "../../content/slopes.ts";
 import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
+import { ladder } from "../../client/core/governor.ts";
 import { FAR_BUFFER, fadeKeeps } from "../../client/core/render/far.ts";
-import { cityJob, cityKinds, makeLevel } from "../../client/core/render/citymake.ts";
+import { ThreadedCityMaker, cityJob, cityKinds, cityThreads, makeLevel, type CityJob, type CityKinds, type CityMade, type CityMaker, type CityThread } from "../../client/core/render/citymake.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
@@ -93,6 +94,8 @@ test("near pieces are drawn alike on every tier at one camera, whatever frames c
   const statics = [...near];
   for (let d = 250, k = 0; d <= 2600; d += CHUNK_SIZE, k++) statics.push(...building(bx + d, bz + (k % 2 === 0 ? 40 : -40), 0, 4 + ((k * 7) % 9), 2, (k * 3100) % 16384));
   const w = cityWorld({ chunks: 64, statics, width: 480, height: 270 });
+  // Pieces are counted by the pixels each is picked in, which a chunk's mesh does not tell apart (nearcity.ts).
+  w.scene.nearMesh = false;
   for (const s of near) w.rows(w.chunkOf(s.x, s.z));
   w.look(bx, 1.2, bz, 10, Math.PI / 2, 4.1);
   // Each near piece's pixels in the last frame, by its pick id.
@@ -254,12 +257,57 @@ test("the lattice fades out over the end of its reach exactly where the mass fad
   const statics: MapStatic[] = [];
   for (let k = 0; k < 6; k++) statics.push(...building(...mid(10 + k * 3, 30), 0, 6, 2, k * 2000));
   const w = cityWorld({ chunks: 48, statics, width: 480, height: 270 });
-  w.look(16 * CHUNK_SIZE, 10, 30 * CHUNK_SIZE + 32, 880, Math.PI / 2, 30);
+  w.look(16 * CHUNK_SIZE, 10, 30 * CHUNK_SIZE + 32, 830, Math.PI / 2, 30);
   const p = w.frame();
-  // Tiles across the fade are drawn twice, the lattice fading out and the mass fading in.
+  // The tower 862 m off, in the fade, is drawn twice, the lattice fading out and the mass fading in.
   const fades = cityDraws(p).map((d) => p.drawFade[d]!);
   expect(fades.some((f) => f === 900)).toBe(true);
   expect(fades.some((f) => f === -900)).toBe(true);
+});
+
+test("across a fade between levels a chunk wholly past the one's end draws none of it and one wholly short of the fade none of the other, for the picture both drawn whole give", () => {
+  // Rows of towers in three rows of tiles, one in every chunk across the fade: the lattice into the mass on medium from
+  // 810 to 900 m, and the mass in 4 m cells into that in 8 m cells on high from 1,800 to 2,000 m.
+  for (const { tier, end, from, off } of [{ tier: "medium", end: 900, from: 10, off: 820 }, { tier: "high", end: 2000, from: 26, off: 1900 }]) {
+    const statics: MapStatic[] = [];
+    for (let k = 0; k < 18; k++) for (const cz of [27, 31, 35]) statics.push(...building(...mid(from + k, cz), 0, 4 + ((k * 5) % 7), 2, (k * 2300 + cz * 700) % 16384));
+    const w = cityWorld({ chunks: 64, statics, width: 480, height: 270, tier: tierOf(tier) });
+    w.look((from + 6) * CHUNK_SIZE, 10, 31 * CHUNK_SIZE, off, Math.PI / 2, 30);
+    // Each level's indices on the card, by its slot.
+    const whole = new Map<number, number>();
+    let p = w.frame();
+    for (let f = 0; f < 3; f++, p = w.frame()) for (const u of p.assetUploads) whole.set(u.slot, u.indexCount);
+    const picture = w.raster.color.slice();
+    const draws = cityDraws(p);
+    const drawn = draws.reduce((n, d) => n + p.drawIndexCount[d]!, 0);
+    // Each tile drawn at both levels draws each of them whole, the one fading out and the other in. A tile's draws
+    // share its origin, and a level drawn in the fade at all tells which it is.
+    const tiles = new Map<string, number[]>();
+    for (const d of draws) {
+      const at = [0, 1, 2].map((a) => p.drawOffset[d * 3 + a]).join();
+      tiles.set(at, [...(tiles.get(at) ?? []), d]);
+    }
+    let both = 0;
+    for (const list of tiles.values()) {
+      const sign = new Map<number, number>();
+      for (const d of list) if (p.drawFade[d] === end || p.drawFade[d] === -end) sign.set(p.drawSlot[d]!, Math.sign(p.drawFade[d]!));
+      const slots = new Set(list.map((d) => p.drawSlot[d]!));
+      if (slots.size < 2) continue;
+      expect(slots.size).toBe(2);
+      expect(sign.size).toBeGreaterThan(0);
+      both++;
+      const finer = [...slots].find((s) => sign.get(s) === 1 || (!sign.has(s) && [...sign.values()][0] === -1))!;
+      for (const d of list) [p.drawFirstIndex[d], p.drawIndexCount[d], p.drawFade[d]] = [0, whole.get(p.drawSlot[d]!)!, p.drawSlot[d] === finer ? end : -end];
+    }
+    // Drawn again as the world's frames are, without the ground.
+    p.tileCount = 0;
+    w.raster.render(p);
+    expect({ tier, both: both >= 3 }).toEqual({ tier, both: true });
+    expect(cityDraws(p).reduce((n, d) => n + p.drawIndexCount[d]!, 0)).toBeGreaterThan(drawn * 1.15);
+    let differ = 0;
+    for (let i = 0; i < picture.length; i++) if (picture[i] !== w.raster.color[i]) differ++;
+    expect({ tier, differ }).toEqual({ tier, differ: 0 });
+  }
 });
 
 test("a tile wholly short of the last tenth of its reach draws with no fade, and one reaching into it fades there", () => {
@@ -269,7 +317,7 @@ test("a tile wholly short of the last tenth of its reach draws with no fade, and
   const [x, z] = mid(2, 30);
   w.look(x, 10, z, 300, 0, 2);
   const p = w.frame();
-  const at = (d: number): number => Math.hypot(p.drawOffset[d * 3]! + 128, p.drawOffset[d * 3 + 2]! + 128);
+  const at = (d: number): number => Math.hypot(p.drawOffset[d * 3]! + 160, p.drawOffset[d * 3 + 2]! + 160);
   const fades = cityDraws(p).map((d) => [at(d) < 1000, p.drawFade[d]!] as const);
   expect(fades.filter(([near]) => near).map(([, f]) => f)).toEqual([0]);
   expect(fades.filter(([near]) => !near).map(([, f]) => f)).toEqual([2048]);
@@ -292,6 +340,86 @@ test("tiles with nothing on the card are made first, a chunk at a time within th
   }
   expect(frames).toBeLessThan(400);
   expect(city.stats.unseen).toBe(0);
+});
+
+test("levels are held by their form: other levels in the same forms remake nothing, and the governor's nearer distances make only the forms tiles come to", () => {
+  // Towers in three rows of tiles from 150 m to 1,900 m off, on medium.
+  const statics: MapStatic[] = [];
+  for (let k = 0; k < 28; k++) for (const cz of [27, 30, 32, 35]) statics.push(...building(...mid(4 + k, cz), 0, 4 + (k % 5), 2, k * 1700));
+  const w = cityWorld({ chunks: 48, statics, width: 320, height: 180 });
+  w.look(16 * CHUNK_SIZE, 10, 31 * CHUNK_SIZE, 950, Math.PI / 2, 40);
+  const city = w.scene.city!;
+  /** Frames until nothing is left to make: the levels put on the card and let go meanwhile, and the most tiles in view with none. */
+  const settle = (): { made: number; dropped: number; unseen: number } => {
+    const out = { made: 0, dropped: 0, unseen: 0 };
+    for (let f = 0; f < 600; f++) {
+      const p = w.frame();
+      out.made += p.assetUploads.length;
+      out.dropped += p.assetDrops.length;
+      out.unseen = Math.max(out.unseen, city.stats.unseen);
+      if (f > 2 && city.stats.behind === 0 && p.assetUploads.length === 0) return out;
+    }
+    throw new Error("still making");
+  };
+  const medium = tierOf("medium");
+  const first = settle();
+  expect(first.made).toBeGreaterThan(8);
+  // The same levels in a list of their own: nothing made again or let go.
+  w.scene.assets.tier = { ...medium, city: { levels: medium.city.levels.map((l) => ({ ...l })) } };
+  expect(settle()).toEqual({ made: 0, dropped: 0, unseen: 0 });
+  // The governor's step: a tile whose nearest point the nearer distances move to another level makes that level, and
+  // lets go of the one it leaves once it is there; the rest keep theirs. A level at a time, no tile goes undrawn.
+  const step = ladder(medium, 3).find((l) => l.city)!.tier;
+  w.scene.assets.tier = step;
+  city.makeMs = 0;
+  const nearer = settle();
+  expect(nearer.made).toBeGreaterThan(0);
+  expect(nearer.made).toBeLessThan(first.made * 0.6);
+  expect(nearer.unseen).toBe(0);
+  // Back to the tier: only those tiles again.
+  w.scene.assets.tier = medium;
+  const back = settle();
+  expect(back.made).toBeLessThanOrEqual(nearer.dropped);
+  expect(back.unseen).toBe(0);
+});
+
+test("levels made on threads are each asked of the one with the fewest in hand, three ahead a thread, and are the levels the page makes", async () => {
+  // A thread as a worker running client/city/city-worker.ts is, here on this one a turn later, and those each was asked of.
+  const asked: number[] = [];
+  let started = 0;
+  class Turn implements CityThread {
+    onmessage: ((m: { data: CityMade }) => void) | null = null;
+    private kinds: CityKinds | null = null;
+    private readonly n = started++;
+    postMessage(m: { kinds: CityKinds | null } | { job: CityJob }): void {
+      if ("kinds" in m) this.kinds = m.kinds;
+      else {
+        asked.push(this.n);
+        const made = makeLevel(this.kinds!, m.job);
+        setTimeout(() => this.onmessage!({ data: made }));
+      }
+    }
+  }
+  const statics: MapStatic[] = [];
+  for (let cx = 2; cx < 30; cx += 3) for (let cz = 2; cz < 30; cz += 5) statics.push(...building(...mid(cx, cz), 0, 3 + ((cx + cz) % 6), 2, cx * 900 + cz * 300));
+  const shot = async (maker?: CityMaker): Promise<Uint8ClampedArray> => {
+    const w = cityWorld({ chunks: 32, statics, width: 320, height: 180, ...(maker ? { maker } : {}) });
+    w.look(16 * CHUNK_SIZE, 10, 16 * CHUNK_SIZE, 600, 0.7, 120);
+    for (let f = 1; f < 200; f++) {
+      w.frame();
+      if (f > 1 && w.scene.city!.stats.behind === 0 && w.scene.city!.stats.missing === 0) return w.raster.color.slice();
+      await new Promise((go) => setTimeout(go));
+    }
+    throw new Error("still making");
+  };
+  const maker = new ThreadedCityMaker(() => new Turn(), 3);
+  expect([maker.flights, cityThreads(1), cityThreads(4), cityThreads(10)]).toEqual([9, 1, 2, 3]);
+  expect(await shot(maker)).toEqual(await shot());
+  // Three started, and each asked for a third of the levels, give or take its share of the last few.
+  expect(started).toBe(3);
+  const each = [0, 1, 2].map((n) => asked.filter((k) => k === n).length);
+  expect(Math.max(...each) - Math.min(...each)).toBeLessThanOrEqual(3);
+  expect(asked.length).toBeGreaterThan(20);
 });
 
 test("a map's statics written, read back and set down give the rows and far city faces their list did, held once", () => {
@@ -371,12 +499,16 @@ test("a level made from what a worker is sent, its tile's statics, those round i
   const chunks = [9, 10, 11, 17, 18, 19, 25, 26, 27].filter((c) => city.in(c) > 0);
   const lost = new Map(chunks.map((c) => [c, Uint8Array.from({ length: city.in(c) }, () => (rng.float() < 0.2 ? 1 : 0))]));
   const goneOf = (c: number): Uint8Array | null => lost.get(c) ?? null;
-  for (const level of [{ gap: 0.01, least: 0, cell: 0, tall: 0 }, { gap: 0.5, least: 2.1, cell: 0, tall: 0 }, { gap: -1, least: 0, cell: 4, tall: 4 }]) {
+  // The bare lattice's pieces under 1.3 m across, the piers and beams here, are left out as gone ones are.
+  const across = (k: number): number => [w.reg.halfX[k]!, w.reg.halfY[k]!, w.reg.halfZ[k]!].sort((a, b) => a - b)[1]! * 2;
+  const thinOf = (c: number): Uint8Array => Uint8Array.from({ length: city.in(c) }, (_, i) => (goneOf(c)?.[i] === 1 || across(city.kind[city.first[c]! + i]!) < 1.3 ? 1 : 0));
+  expect(chunks.map(thinOf).flatMap((g) => [...g]).filter((g) => g === 1).length).toBeGreaterThan(30);
+  for (const level of [{ gap: 0.01, least: 0, cell: 0, tall: 0 }, { gap: 0.5, least: 2.1, cell: 0, tall: 0 }, { gap: 0.5, least: 2.1, cell: 0, tall: 0, thin: 1.3 }, { gap: -1, least: 0, cell: 4, tall: 4 }]) {
     const made = makeLevel(cityKinds(city, w.hf, bounds), cityJob(0, city, w.hf, goneOf, chunks, level, 32, -8, 32));
     // The same faces, chunk by chunk, made from the whole map and stored as the level stores them.
     let faces = 0;
     chunks.forEach((c, r) => {
-      const part = level.cell > 0 ? cellPart(city, c, w.hf, goneOf(c), level.cell, level.tall) : mergedPart(city, c, w.hf, goneOf, level.gap, level.least);
+      const part = level.cell > 0 ? cellPart(city, c, w.hf, goneOf(c), level.cell, level.tall) : mergedPart(city, c, w.hf, "thin" in level ? thinOf : goneOf, level.gap, level.least);
       expect([made.first[r], made.count[r]]).toEqual([faces * 6, part.faces * 6]);
       const view = new DataView(made.data.buffer);
       for (let v = 0; v < part.faces * 4; v++) {
