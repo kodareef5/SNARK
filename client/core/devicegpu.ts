@@ -1087,6 +1087,8 @@ void main() {}`);
     if (!made) throw new Error(`the renderer has no program "${name}"`);
     const text = made(tier, this.variant, this.report.compareArray === "hard");
     if (vertex && text.fragment.includes("flat in int vSurface;")) vertex = vertex.replace("void main() {", `flat out int vSurface;\nvoid main() {\n  vSurface = ${WALL_FINISH};`);
+    // A flat mesh's fragment reads a landmark's finish (glsl.ts finishVertex): none, a surface that is fully rough.
+    if (vertex && text.fragment.includes("flat in vec4 vFinish;")) vertex = vertex.replace("void main() {", "flat out vec4 vFinish;\nvoid main() {\n  vFinish = vec4(1.0, 1.0, 0.0, 0.0);");
     const prog = this.program(withDefines(vertex ?? text.vertex, text.defines), withDefines(text.fragment, text.defines));
     gl.useProgram(prog);
     const units: Record<string, number> = {};

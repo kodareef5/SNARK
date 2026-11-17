@@ -2,7 +2,7 @@
 // beside SURFACE.
 import { expect, test } from "bun:test";
 import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
-import { FLAT_FRAGMENT, LIT_FRAGMENT, LIT_MESH_FRAGMENT } from "../../client/core/render/glsl.ts";
+import { FLAT_FRAGMENT, LIT_FRAGMENT, LIT_MESH_FRAGMENT, LIT_TERRAIN_FRAGMENT } from "../../client/core/render/glsl.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { PROGRAMS, UNIT } from "../../client/core/render/programs.ts";
 import { SKY_GLSL, skyFrame, theSky } from "../../client/core/render/sky.ts";
@@ -50,9 +50,9 @@ test("the tone curve keeps what is under its knee, meets the line there with slo
   expect([LIGHT.includes(`peak <= ${KNEE}`), LIT_FRAGMENT.includes(LIGHT)]).toEqual([true, true]);
 });
 
-test("the lit tiers draw the ground with LIT and flat meshes with LIT and their finishes, the dome from the table and SURFACE mirroring it; low poly keeps FLAT", () => {
+test("the lit tiers draw flat meshes with LIT and their finishes and the ground with its own lit text, the dome from the table and SURFACE mirroring it; low poly keeps FLAT", () => {
   for (const tier of TIERS) {
-    expect([PROGRAMS.flat!(tier, "rgba").fragment, PROGRAMS.terrain!(tier, "rgba").fragment]).toEqual(tier.lit ? [LIT_MESH_FRAGMENT, LIT_FRAGMENT] : [FLAT_FRAGMENT, FLAT_FRAGMENT]);
+    expect([PROGRAMS.flat!(tier, "rgba").fragment, PROGRAMS.terrain!(tier, "rgba").fragment]).toEqual(tier.lit ? [LIT_MESH_FRAGMENT, LIT_TERRAIN_FRAGMENT] : [FLAT_FRAGMENT, FLAT_FRAGMENT]);
     expect(PROGRAMS.flat!(tier, "rgba").vertex.includes("vFinish")).toBe(tier.lit);
   }
   const medium = tierOf("medium");

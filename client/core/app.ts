@@ -180,6 +180,7 @@ export class App {
   /** A tool's look at a place (`address`): the commands still to send, and the facing held. */
   private script: string[] = [];
   private held: [number, number] | null = null;
+  private lineAt = 0;
   /** Eased eye height above the feet, or -1 before the first frame and while there is no living body. */
   private eye = -1;
   private helicopterViewHost = -1;
@@ -969,7 +970,11 @@ export class App {
     const cam = this.cam;
     const a = session.alpha;
     const alive = session.sessionState === SESSION_ALIVE;
-    if (alive) for (const line of this.script.splice(0)) session.text(line);
+    // A server takes a typed line a few ticks apart.
+    if (alive && this.script.length > 0 && nowMs >= this.lineAt) {
+      session.text(this.script.shift()!);
+      this.lineAt = nowMs + 500;
+    }
     if (this.held) [c.yaw, c.pitch] = this.held;
     const move = this.reg.move[session.bodyKind];
     // The eye eases toward the stance height, so crouching is a movement and not a cut.

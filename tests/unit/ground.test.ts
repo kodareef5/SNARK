@@ -1,9 +1,12 @@
 // The ground is one surface. What the reference rasterizer draws is what heightAt reports and what a ray meets, face by face.
+// On a lit frame it is lit by the normal of its heights, and its cover is chosen a pixel from the picture its tile reads.
 
 import { expect, test } from "bun:test";
 import { Camera } from "../../client/core/render/camera.ts";
-import { FramePacket } from "../../client/core/render/packet.ts";
+import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
+import { skyFrame, theSky } from "../../client/core/render/sky.ts";
 import { TerrainLod } from "../../client/core/render/terrain.ts";
+import { GROUND_WANDER } from "../../client/core/render/world-surfaces.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { HIT_NONE, HIT_TERRAIN, castWorld, rayHit } from "../../shared/world/ray.ts";
@@ -120,4 +123,133 @@ test("what is drawn is the ground: a ray through any pixel meets the face drawn 
   look(proving, 220, 6, 282, 0.1, -0.15);
   look(proving, 330, 9, 330, 0.7, -0.2);
   expect(problems).toEqual([]);
+});
+
+test("on a lit frame the ground is lit by the normal of its heights, blended across each triangle: under a low sun no facet shows, and a bank still reads as one", () => {
+  // Ground rolling by 2 m over 9 to 13 m, and a bank 6 m high over 6 m across it at x = 120, all of one grass.
+  const w = flatWorld(4);
+  const hf = w.hf;
+  for (let j = 0; j < hf.nz; j++) {
+    for (let i = 0; i < hf.nx; i++) {
+      const [x, z] = [i * hf.cell, j * hf.cell];
+      hf.setSample(i, j, 2 * Math.sin(x / 9) * Math.cos(z / 13) + 6 * Math.min(Math.max((x - 120) / 6, 0), 1));
+      hf.tint[j * hf.nx + i] = 12;
+    }
+  }
+  const [w2, h2] = [2 * W, 2 * H];
+  const cam = new Camera();
+  [cam.x, cam.z, cam.yaw, cam.pitch, cam.aspect] = [96, 128, Math.PI / 2, -0.2, w2 / h2];
+  cam.y = hf.heightAt(cam.x, cam.z) + 3;
+  cam.update();
+  const p = new FramePacket();
+  p.lit = true;
+  skyFrame(12, theSky(), p.frame);
+  // A sun 10 degrees up behind the camera, which the bank faces.
+  p.frame.set([-Math.cos(0.17), Math.sin(0.17), 0], FRAME.sun);
+  p.viewProj.set(cam.viewProj);
+  [p.camX, p.camY, p.camZ, p.fogStart, p.fogEnd] = [cam.x, cam.y, cam.z, 1e6, 2e6];
+  new TerrainLod(hf).select(cam, p, 4000);
+  const raster = new Rasterizer(w2, h2, { palette: defaultPalette() } as unknown as Pack, hf);
+  raster.render(p);
+  const c = raster.color;
+  // How far off along the view a pixel's depth is.
+  const along = (at: number): number => (2 * cam.far * cam.near) / (cam.far + cam.near - raster.depth[at]! * (cam.far - cam.near));
+  // Neighbouring pixels of ground at about the same distance differ by a few levels at most, the most where the bank's
+  // light turns over the quad at its top. Lit by its faces, the ground stepped by 51 levels from one face to the next here.
+  let pairs = 0;
+  let worst = 0;
+  for (let at = 0; at < w2 * h2 - 1; at++) {
+    if (at % w2 === w2 - 1 || raster.pickKind[at] !== PICK_TERRAIN || raster.pickKind[at + 1] !== PICK_TERRAIN) continue;
+    if (Math.abs(along(at) - along(at + 1)) > 0.02 * along(at)) continue;
+    pairs++;
+    for (let k = 0; k < 3; k++) worst = Math.max(worst, Math.abs(c[at * 4 + k]! - c[(at + 1) * 4 + k]!));
+  }
+  expect(pairs).toBeGreaterThan(w2 * h2 * 0.4);
+  expect(worst).toBeLessThanOrEqual(10);
+  // The bank's face, turned to the sun, is far brighter than the ground before it.
+  const shade = (x: number, z: number): number => {
+    const out = [0, 0, 0];
+    expect(cam.project(x, hf.heightAt(x, z), z, out)).toBe(true);
+    const at = Math.floor(out[1]! * h2) * w2 + Math.floor(out[0]! * w2);
+    expect(raster.pickKind[at]).toBe(PICK_TERRAIN);
+    return c[at * 4]! + c[at * 4 + 1]! + c[at * 4 + 2]!;
+  };
+  expect(shade(123, 128) - shade(110, 128)).toBeGreaterThan(60);
+});
+
+/** A lit frame at noon of the ground of `hf` alone from `cam`, drawn `w` by `h` with the terrain's level of detail at `detail`. */
+function litGround(hf: TestWorld["hf"], cam: Camera, w: number, h: number, detail = 2.5): Rasterizer {
+  cam.aspect = w / h;
+  cam.update();
+  const p = new FramePacket();
+  p.lit = true;
+  skyFrame(12, theSky(), p.frame);
+  p.viewProj.set(cam.viewProj);
+  [p.camX, p.camY, p.camZ, p.fogStart, p.fogEnd] = [cam.x, cam.y, cam.z, 1e6, 2e6];
+  const lod = new TerrainLod(hf);
+  lod.detail = detail;
+  lod.select(cam, p, 4000);
+  const raster = new Rasterizer(w, h, { palette: defaultPalette() } as unknown as Pack, hf);
+  raster.render(p);
+  return raster;
+}
+
+test("on a lit frame the ground's cover is chosen a pixel: an edge across the samples runs within a fraction of a metre of the line between the covers and never steps", () => {
+  // Grass east of the diagonal, asphalt on it and west of it, on level ground: halfway between them is the line x - z = 1 m.
+  const hf = flatWorld(2).hf;
+  for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) hf.tint[j * hf.nx + i] = i > j ? 12 : 4;
+  const cam = new Camera();
+  [cam.x, cam.y, cam.z, cam.yaw, cam.pitch] = [64, 14, 64, 0, -Math.PI / 2 + 1e-3];
+  const [w2, h2] = [2 * W, 2 * H];
+  const raster = litGround(hf, cam, w2, h2);
+  const ray = [0, 0, 0];
+  // In each row, where the cover first turns from asphalt to grass, and how far that is across the line.
+  const across: number[] = [];
+  for (let py = 0; py < h2; py++) {
+    for (let px = 1; px < w2; px++) {
+      const grass = (at: number): boolean => raster.color[at * 4 + 1]! > raster.color[at * 4 + 2]!;
+      if (grass(py * w2 + px - 1) === grass(py * w2 + px)) continue;
+      cam.ray(px / w2, (py + 0.5) / h2, ray);
+      const t = -cam.y / ray[1]!;
+      across.push((cam.x + ray[0]! * t - (cam.z + ray[2]! * t) - 1) / Math.SQRT2);
+      break;
+    }
+  }
+  expect(across.length).toBeGreaterThan(h2 * 0.9);
+  // A pixel here is 11 cm. The curve through the cells is within 12 cm of the line, and the wander moves it smoothly by up
+  // to GROUND_WANDER along each axis. Where each quad took its first corner's colour, the stair stepped 1.39 m between rows.
+  let [most, jump] = [0, 0];
+  for (let k = 0; k < across.length; k++) {
+    most = Math.max(most, Math.abs(across[k]!));
+    if (k > 0) jump = Math.max(jump, Math.abs(across[k]! - across[k - 1]!));
+  }
+  expect(most).toBeLessThan(0.12 + GROUND_WANDER * Math.SQRT2);
+  expect(most).toBeGreaterThan(0.25);
+  expect(jump).toBeLessThan(0.3);
+});
+
+test("on a lit frame the ground's cover does not change as a tile splits: tiles of any size read their picture's every sample", () => {
+  // Level ground of covers in patches and single samples, which a coarser tile would skip.
+  const hf = flatWorld(16).hf;
+  for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) hf.tint[j * hf.nx + i] = (i * 7 + j * 13) % 29 === 0 ? 1 : Math.floor(i / 9 + j / 14) % 3 === 0 ? 4 : 12;
+  const [w2, h2] = [2 * W, 2 * H];
+  const look = (y: number, pitch: number, detail: number): Rasterizer => {
+    const cam = new Camera();
+    [cam.x, cam.y, cam.z, cam.yaw, cam.pitch] = [200, y, 200, 0.7, pitch];
+    return litGround(hf, cam, w2, h2, detail);
+  };
+  // From 700 m up every tile reads the whole map's picture, from 30 m up those within 320 m read the window's.
+  for (const [y, pitch, within] of [[700, -0.9, Infinity], [30, -0.25, 300]] as const) {
+    const [fine, coarse] = [look(y, pitch, 2.5), look(y, pitch, 1.25)];
+    const { near, far } = new Camera();
+    let [compared, changed] = [0, 0];
+    for (let at = 0; at < w2 * h2; at++) {
+      if (fine.pickKind[at] !== PICK_TERRAIN) continue;
+      if ((2 * far * near) / (far + near - fine.depth[at]! * (far - near)) > within) continue;
+      compared++;
+      if ([0, 1, 2].some((c) => fine.color[at * 4 + c] !== coarse.color[at * 4 + c])) changed++;
+    }
+    // Where each quad took its first corner's colour, 5,937 of the 21,214 pixels seen from 700 m changed.
+    expect([compared > w2 * h2 * 0.3, fine.trianglesDrawn > coarse.trianglesDrawn, changed]).toEqual([true, true, 0]);
+  }
 });

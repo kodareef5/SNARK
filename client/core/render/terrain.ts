@@ -8,6 +8,7 @@ import { CHUNK_SIZE } from "../../../shared/coords.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { Camera } from "./camera.ts";
 import { MAX_TILES, SOURCE_MAP, SOURCE_WINDOW, TILE_CASTS, TILE_QUADS, type FramePacket } from "./packet.ts";
+import { groundCover, groundWander } from "./world-surfaces.ts";
 
 /** The whole map's pair takes every fourth sample: 1,025 a side on an 8 km map. */
 export const COARSE = 4;
@@ -64,6 +65,63 @@ export function coarseGround(hf: Heightfield): { heights: Uint16Array; tint: Uin
     }
   }
   return { heights, tint };
+}
+
+/**
+ * Where the picture a tile reads lies in the map's samples: its corner, how many apart it holds them, and its last sample
+ * across and down, counted in its own.
+ */
+export interface GroundPicture {
+  i: number;
+  j: number;
+  step: number;
+  lastI: number;
+  lastJ: number;
+}
+
+/** The picture tile `t` of frame `p` reads, into `out`. */
+export function tilePicture(p: FramePacket, t: number, size: GroundSize, out: GroundPicture): GroundPicture {
+  const source = p.tileSource[t * 4 + 3]!;
+  const window = source === SOURCE_WINDOW;
+  out.i = window ? p.groundWindow[1]! : 0;
+  out.j = window ? p.groundWindow[2]! : 0;
+  out.step = window ? 1 : COARSE;
+  out.lastI = size.width[source]! - 1;
+  out.lastJ = size.height[source]! - 1;
+  return out;
+}
+
+/**
+ * The normal the lit tiers light the ground by at sample (i, j) of a tile `stride` samples a quad, as LIT_TERRAIN_VERTEX
+ * takes it from picture `pic`: from the heights a stride either side, as far as the picture holds them. Into `out` at
+ * `at`.
+ */
+export function groundNormal(hf: Heightfield, pic: GroundPicture, i: number, j: number, stride: number, out: Float64Array, at: number): void {
+  const h = hf.heights, nx = hf.nx;
+  const l = Math.max(i - stride, pic.i), r = Math.min(i + stride, pic.i + pic.lastI * pic.step);
+  const b = Math.max(j - stride, pic.j), f = Math.min(j + stride, pic.j + pic.lastJ * pic.step);
+  const gx = ((h[j * nx + r]! - h[j * nx + l]!) * hf.stepY) / ((r - l) * hf.cell);
+  const gz = ((h[f * nx + i]! - h[b * nx + i]!) * hf.stepY) / ((f - b) * hf.cell);
+  const n = Math.hypot(gx, 1, gz);
+  out[at] = -gx / n;
+  out[at + 1] = 1 / n;
+  out[at + 2] = -gz / n;
+}
+
+const wander = new Float64Array(2);
+
+/**
+ * The tint the lit tiers' ground takes at ground point (x, z) of a tile that reads picture `pic`, a pixel `footprint`
+ * metres wide, as LIT_TERRAIN_FRAGMENT chooses it from the picture's own samples (world-surfaces.ts `groundCover`).
+ */
+export function groundTint(hf: Heightfield, pic: GroundPicture, x: number, z: number, footprint: number): number {
+  groundWander(x, z, footprint, wander);
+  const metres = hf.cell * pic.step;
+  const s = Math.min(Math.max((x + wander[0]!) / metres - pic.i / pic.step, 0), pic.lastI);
+  const t = Math.min(Math.max((z + wander[1]!) / metres - pic.j / pic.step, 0), pic.lastJ);
+  const i = Math.min(Math.floor(s), pic.lastI - 1), j = Math.min(Math.floor(t), pic.lastJ - 1);
+  const at = (pic.j + j * pic.step) * hf.nx + pic.i + i * pic.step, down = pic.step * hf.nx;
+  return groundCover(hf.tint[at]!, hf.tint[at + pic.step]!, hf.tint[at + down]!, hf.tint[at + down + pic.step]!, s - i, t - j);
 }
 
 /**
