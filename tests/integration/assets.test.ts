@@ -153,8 +153,11 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // They were e4ff9131 and 290c7341, with 32,700 draws and 33,985,200 triangles, until nodes were scattered by their
   // chunks' frame keys (shared/coords.ts), which moves every tree, rock and bush on the proving ground; with the chunk's
   // number in the key's place they are those again.
-  expect(beforePlain).toBe("c10a0609");
-  expect(hash).toBe("1ef8d869");
+  // They were c10a0609 and 1ef8d869 until the sea was made ahead of the statics, the first of the see-through draws,
+  // which go as made (scene.ts): its tiles take the first of each frame's transient instances, and the draws and
+  // triangles are as they were.
+  expect(beforePlain).toBe("6566450d");
+  expect(hash).toBe("bc950e8d");
   // What the hash cannot say: the 300 frames' draws, triangles and bytes put on the card. A change that moves the hash
   // and leaves the frames as they were leaves these.
   expect(counts).toEqual([34500, 32934000, 0]);
@@ -173,8 +176,9 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // They were d122e6e1 and c0721ce1 until the pteranodon's mesh became its own, as above, and a49f75cd and 40c252f5, with
   // 38,100 draws and 34,590,000 triangles, until chunks were drawn by cell, as above, and 9343af55 and 6a13306d until the
   // draws came by what they bind, as above, each frame's picture as it was, and afc06c85 and 6dd7b425, with 33,000
-  // draws and 34,003,200 triangles, until nodes were scattered by their chunks' frame keys, as above.
-  expect(saddled.beforePlain).toBe("1536293d");
-  expect(saddled.hash).toBe("706f11fd");
+  // draws and 34,003,200 triangles, until nodes were scattered by their chunks' frame keys, as above, and 1536293d and
+  // 706f11fd until the sea was made ahead of the statics, as above.
+  expect(saddled.beforePlain).toBe("d44c5109");
+  expect(saddled.hash).toBe("90b43a9");
   expect(saddled.counts).toEqual([34800, 32952000, 0]);
 });
