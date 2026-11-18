@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { compileContent } from "../../shared/content/registry.ts";
+import { compileContent, withContent } from "../../shared/content/registry.ts";
 import { chunkAt, TICK_DT } from "../../shared/coords.ts";
 import { Body, stepBody } from "../../shared/sim/character.ts";
 import { mapHeightfield, mapNodes, parseMap, placeStatics } from "../../shared/world/mapfile.ts";
@@ -11,7 +11,7 @@ import type { RuinRecord } from "./ruins.ts";
 
 const paths = reportPaths();
 const map = parseMap(new Uint8Array(readFileSync(paths.mapFile)));
-const reg = compileContent(CORE_CONTENT).registry!; const hf = mapHeightfield(map);
+const reg = withContent(compileContent(CORE_CONTENT).registry!, map.content?.defs ?? []); const hf = mapHeightfield(map);
 const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts); placeStatics(map, structs, reg);
 const source = mapNodes(map, hf, reg); const nodes = source ? new NodeField(map.dims, reg, source) : null;
 const world = { hf, structs, ...(nodes ? { nodes: nodes.store } : {}) };
