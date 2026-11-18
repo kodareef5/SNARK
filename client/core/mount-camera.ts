@@ -5,8 +5,8 @@ import { GroundMountFrame, groundMountFrame } from "../../shared/world/ground-mo
 
 const footing = new GroundMountFrame();
 /** The chase target follows the supported body height, while its horizon and safe capsule-centred boom stay upright. */
-export function groundMountCameraHeight(world: CollisionWorld, move: MoveParams, x: number, y: number, z: number, yaw: number, grounded: boolean, mode: number, up: number): number {
-  if (!grounded || mode !== MODE_WALK || move.flies) return y + up;
+export function groundMountCameraHeight(world: CollisionWorld, move: MoveParams, x: number, y: number, z: number, yaw: number, mode: number, up: number): number {
+  if (mode !== MODE_WALK || move.flies) return y + up;
   groundMountFrame(world, move, x, y, z, yaw, footing);
   return y + footing.lift + up * footing.ny;
 }

@@ -20,6 +20,7 @@ import { ACT_NONE, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
 import { MODE_FLYER, MODE_WALK, STANCE_CROUCH, STANCE_STAND } from "../../../shared/sim/character.ts";
 import { Solved, boneToModel, solve } from "../../../shared/anim/skeleton.ts";
 import { CreatureAnim, advanceCreature, creaturePose } from "../../../shared/anim/creature.ts";
+import { prepareBiteAim } from "../../../shared/anim/bite-aim.ts";
 import { groundMountMotion, groundMountPose } from "../../../shared/anim/ground-mount.ts";
 import { GroundMountFrame, groundMountFrame } from "../../../shared/world/ground-mount.ts";
 import { Gait } from "../../../shared/anim/gait.ts";
@@ -536,7 +537,7 @@ export class Characters {
   /** Keep cached gait poses unmodified: the same current footing is applied once for the seat and once for drawing. */
   private groundSolved(kind: number, c: Creature, solved: Solved, x: number, y: number, z: number, yaw: number, st: AnimState, relative: boolean, id = -1): Solved {
     const move = this.reg.tamedMove[kind];
-    if (!this.world || !move || c.vehicle || move.flies || !st.grounded || st.mode !== MODE_WALK || st.out || st.held) return solved;
+    if (!this.world || !move || c.vehicle || move.flies || st.mode !== MODE_WALK || st.out || st.held) return solved;
     const g = id >= 0 ? this.gaitOf(id) : null;
     const wx = x + (relative ? this.packet?.camX ?? 0 : 0), wy = y + (relative ? this.packet?.camY ?? 0 : 0), wz = z + (relative ? this.packet?.camZ ?? 0 : 0);
     const footing = g?.moved === this.frame ? g.footing : this.footing;
@@ -563,6 +564,7 @@ export class Characters {
       advanceCreature(c.anim, g, st, tick, x + (this.packet?.camX ?? 0), z + (this.packet?.camZ ?? 0), yaw, size);
     }
     st.surfaceSpeed = g.surfaceSpeed;
+    prepareBiteAim(st, g.footing.supported ? g.footing.rotation : undefined);
     const solved = this.kept(g, rig.bones);
     const aloft = st.mode === MODE_FLYER && !st.grounded;
     if (this.due(g, kind * 4, id, Math.sqrt(x * x + y * y + z * z) / size, unseen, aloft ? 0 : g.speed)) {
@@ -745,7 +747,7 @@ export class Characters {
       if (c.vehicle && vehicle?.qw !== undefined) {
         this.turn(vehicle, yaw, vehicle.pitch, vehicle.roll, this.rotation);
         writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, size, this.rotation);
-      } else if (!c.vehicle && this.world && st.grounded && st.mode === MODE_WALK && !st.out && !st.held && !this.reg.move[kind]?.flies) {
+      } else if (!c.vehicle && this.world && st.mode === MODE_WALK && !st.out && !st.held && !this.reg.move[kind]?.flies) {
         groundMountFrame(this.world, this.reg.tamedMove[kind]!, p.camX + x, p.camY + y, p.camZ + z, yaw, this.footing);
         if (this.footing.rotation[0] === 0 && this.footing.rotation[2] === 0) {
           writeRigid(p.bones, first * BONE_FLOATS, x, y + this.footing.lift, z, yaw, size);

@@ -7,7 +7,6 @@ import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
 import { SKIN, capsuleBox, capsuleFree, groundStands, groundUnder, nothingBuilt, push, restingAt, settleOnto, steepGround, stepOnto, type CollisionWorld } from "../world/collide.ts";
 import { Found } from "../world/structures.ts";
-import { GroundMountFrame, groundMountFrame } from "../world/ground-mount.ts";
 
 export const BTN_JUMP = 1;
 export const BTN_SPRINT = 2;
@@ -397,7 +396,6 @@ const TAKEOFF_RISE = 1.5;
 const DESCENT = 2;
 const BRAKE = 60;
 const found = new Found();
-const footing = new GroundMountFrame();
 
 /**
  * `moveX` (strafe right) and `moveZ` (forward) are -127 to 127. `yaw` and `pitch` are in 1/65536 turns, and pitch 16384 is
@@ -480,16 +478,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   const sprint = m2 > 0 && standing && canSprint(b, buttons);
   let stamina = spendStamina(b, p, sprint, m2 > 0 ? p.staminaWalk : 0);
   const speed = p.walkSpeed * (b.speedQ / 1000) * (sprint ? p.sprintMul : standing ? 1 : stance === STANCE_CROUCH ? p.crouchMul : p.proneMul);
-  let wishedX = (s * mz - c * mx) * speed, wishedZ = (c * mz + s * mx) * speed;
-  if (!p.lowStance && !p.flies && b.grounded && !out && m2 > 0) {
-    groundMountFrame(w, p, b.x, b.y, b.z, a, footing);
-    if (footing.supported) {
-      const climb = (wishedX * footing.nx + wishedZ * footing.nz) / footing.ny;
-      const horizontal = wishedX * wishedX + wishedZ * wishedZ;
-      const along = horizontal > 0 ? Math.sqrt(horizontal / (horizontal + climb * climb)) : 1;
-      wishedX *= along; wishedZ *= along;
-    }
-  }
+  const wishedX = (s * mz - c * mx) * speed, wishedZ = (c * mz + s * mx) * speed;
   let dvx = wishedX - b.vx;
   let dvz = wishedZ - b.vz;
   const maxDv = (b.grounded ? p.accelGround : p.accelAir) * dt;

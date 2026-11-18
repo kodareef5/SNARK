@@ -1145,7 +1145,7 @@ export class App {
       const view = this.mountView(session.bodyKind, session.driving);
       const o = session.own;
       const move = this.reg.tamedMove[session.bodyKind]!;
-      const wanted = groundMountCameraHeight(world, move, bx, by, bz, o.yaw * TAU / 65536, o.grounded, o.mode, view.up);
+      const wanted = groundMountCameraHeight(world, move, bx, by, bz, o.yaw * TAU / 65536, o.mode, view.up);
       const pivot = this.mountCamera.height(world, view.identity, bx, bz, by + move.height * .5, wanted, o.vx, o.vz, dt);
       this.view.placeVehicle(cam, world, bx, pivot, bz, lookYaw, lookPitch, lookYaw, Math.hypot(o.vx, o.vy, o.vz), dt, false, { vx: o.vx, vy: o.vy, vz: o.vz, id: view.identity, boom: view.boom, anticipate: true, safeY: this.mountCamera.safeY, wantedY: this.mountCamera.wantedY });
     } else if (passenger) {
@@ -1169,7 +1169,7 @@ export class App {
           px = r.x[i]!; py = r.y[i]! + (view?.up ?? 1); pz = r.z[i]!;
           if (view) {
             const ms = this.mountState; ms.unpack(r.anim[i]!, r.cue[i]!);
-            py = groundMountCameraHeight(world, this.reg.tamedMove[r.kind[i]!]!, px, r.y[i]!, pz, heading, ms.grounded, ms.mode, view.up);
+            py = groundMountCameraHeight(world, this.reg.tamedMove[r.kind[i]!]!, px, r.y[i]!, pz, heading, ms.mode, view.up);
             py = this.mountCamera.height(world, view.identity, px, pz, r.y[i]! + (this.reg.move[r.kind[i]!]?.height ?? 1) * .5, py, undefined, undefined, dt);
             chaseVx = this.mountCamera.vx; chaseVz = this.mountCamera.vz;
           }

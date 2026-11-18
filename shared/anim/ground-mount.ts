@@ -4,22 +4,25 @@ import { MODE_WALK, type MoveParams } from '../sim/character.ts';
 import type { CollisionWorld } from '../world/collide.ts';
 import { GroundMountFrame, groundMountFrame } from '../world/ground-mount.ts';
 import { DIR_STEPS, type AnimState } from './pose.ts';
+import { prepareBiteAim } from './bite-aim.ts';
 import type { Solved } from './skeleton.ts';
 
 const frame = new GroundMountFrame();
 /** Prepare once before sampling clips; the same footing can then align the resulting bones without another query. */
 export function groundMountMotion(st: AnimState, w: CollisionWorld, p: MoveParams, x: number, y: number, z: number, yaw: number, out: GroundMountFrame): void {
   st.surfaceSpeed = 1; out.supported = false;
-  if (p.lowStance || p.flies || !st.grounded || st.mode !== MODE_WALK || st.out || st.held) return;
+  prepareBiteAim(st);
+  if (p.lowStance || p.flies || st.mode !== MODE_WALK || st.out || st.held) return;
   groundMountFrame(w, p, x, y, z, yaw, out);
-  if (!out.supported || st.speed === 0) return;
+  prepareBiteAim(st, out.supported ? out.rotation : undefined);
+  if (!st.grounded || !out.supported || st.speed === 0) return;
   const direction = yaw + st.dir * TAU / DIR_STEPS;
   const climb = (out.nx * detSin(direction) + out.nz * detCos(direction)) / out.ny;
   st.surfaceSpeed = Math.sqrt(1 + climb * climb);
 }
-/** Apply once to a fresh solved pose, before its ordinary world yaw. Flying, swimming, falling and held poses stay authored. */
+/** Apply once to a fresh solved pose, before its ordinary world yaw. Flying, swimming and held poses stay authored; near-ground airborne frames fade by actual clearance. */
 export function groundMountPose(solved: Solved, st: AnimState, w: CollisionWorld, p: MoveParams, x: number, y: number, z: number, yaw: number, prepared?: GroundMountFrame): void {
-  if (p.lowStance || p.flies || !st.grounded || st.mode !== MODE_WALK || st.out || st.held) return;
+  if (p.lowStance || p.flies || st.mode !== MODE_WALK || st.out || st.held) return;
   const footing = prepared ?? frame;
   if (!prepared) groundMountFrame(w, p, x, y, z, yaw, footing);
   if (!footing.supported) return;

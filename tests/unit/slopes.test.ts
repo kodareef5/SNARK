@@ -74,13 +74,11 @@ const SPEEDS = [
 ] as const;
 
 /**
- * Ground creatures spend their authored speed along the surface, so their horizontal pace can fall to slopeCos times
- * that speed on a walkable face. Survivors and flyers keep their horizontal pace. Allow the original three seconds for
+ * Every mover keeps its authored horizontal pace on a walkable face. Allow the original three seconds for
  * acceleration and seams, and use walking pace even for a sprint so exhaustion does not change the course deadline.
  */
 function courseTicks(p: MoveParams, speed: { move: number }, horizontalDistance: number): number {
-  const horizontalFraction = !p.lowStance && !p.flies ? p.slopeCos : 1;
-  const pace = p.walkSpeed * (speed.move / 127) * horizontalFraction * TICK_DT;
+  const pace = p.walkSpeed * (speed.move / 127) * TICK_DT;
   return Math.ceil(horizontalDistance / pace) + 90;
 }
 
@@ -146,11 +144,10 @@ test("every species walks up and down every sloped piece it can stand on at ever
   expect(wrong).toEqual([]);
 });
 
-test("ground creatures keep authored surface speed on actual ramp faces in both directions", () => {
+test("ground creatures keep authored horizontal speed on actual ramp faces in both directions", () => {
   for (const [name, gradient] of [["rubble", 1.5 / 4], ["stairs_solid", 3 / 3.6], ["slab30", Math.tan(Math.PI / 6)]] as const) {
     const w = world();
     piece(w, name);
-    const horizontalFraction = 1 / Math.hypot(1, gradient);
     for (const id of WALKERS) {
       const p = move(id);
       if (p.lowStance || p.flies) continue;
@@ -160,7 +157,7 @@ test("ground creatures keep authored surface speed on actual ramp faces in both 
         for (let tick = 0; tick < 3; tick++) stepBody(w, b, 0, 0, b.yaw, 0, 0, p, TICK_DT);
         // Start at steady speed, well inside the real face. Geometry supplies the vertical displacement: this does not
         // ask the footing helper for its normal or use its result to calculate the expected speed.
-        b.vz = (deg === 0 ? 1 : -1) * pace * horizontalFraction;
+        b.vz = (deg === 0 ? 1 : -1) * pace;
         b.stamina = b.staminaMax * 1000;
         for (let tick = 0; tick < 3; tick++) {
           const { x, y, z } = b;
@@ -168,9 +165,9 @@ test("ground creatures keep authored surface speed on actual ramp faces in both 
           expect(b.grounded).toBe(true);
           expect(capsuleFree(w, b.x, b.y, b.z, p.radius, p.height)).toBe(true);
           const horizontal = Math.hypot(b.x - x, b.z - z);
-          expect(horizontal / horizontalFraction / TICK_DT).toBeCloseTo(pace, 3);
+          expect(horizontal / TICK_DT).toBeCloseTo(pace, 3);
           // Following down can retain GROUND_PROBE of clearance before the capsule settles. Account for that existing
-          // geometric band separately; it must not mask a slower horizontal advance or an incorrect surface pace.
+          // geometric band separately; it must not mask a slower horizontal advance or an incorrect horizontal pace.
           expect(Math.abs((b.y - y) - (b.z - z) * gradient)).toBeLessThan(0.02 + 2 * SKIN);
         }
       }

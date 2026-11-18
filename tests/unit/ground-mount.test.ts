@@ -29,18 +29,39 @@ function body(w: ReturnType<typeof plane>, kind: string, yaw = 0) {
   return { b, p };
 }
 
-test('ground mounts keep authored surface speed uphill, downhill and across 20–50 degree terrain', () => {
+test('ground mounts keep authored horizontal speed uphill, downhill and across 20–50 degree terrain', () => {
   for (const kind of ['core:raptor', 'core:parasaur']) for (const degrees of [20, 40, 50]) for (const yaw of [0, 16384, 32768]) {
     const w = plane(degrees), { b, p } = body(w, kind, yaw);
     let distance = 0;
     for (let tick = 0; tick < 90; tick++) {
-      const { x, y, z } = b;
+      const { x, z } = b;
       stepBody(w, b, 0, 127, yaw, 0, BTN_SPRINT, p, 1 / 30);
-      const travel = Math.hypot(b.x - x, b.y - y, b.z - z);
+      const travel = Math.hypot(b.x - x, b.z - z);
       if (tick > 15) { expect(travel * 30).toBeLessThan(p.walkSpeed * p.sprintMul + .03); distance += travel; }
       expect(b.grounded).toBe(true); expect(b.y - groundUnder(w.hf, b.x, b.z, p.radius)).toBeLessThan(.03);
     }
     expect(distance).toBeGreaterThan(p.walkSpeed * p.sprintMul * 2.3);
+  }
+});
+
+test('wild and ridden raptors retain their level-ground pace advantage over a sprinting survivor on hills', () => {
+  for (const degrees of [0, 20, 40]) for (const yaw of [0, 32768]) {
+    const w = plane(degrees), speeds: number[] = [];
+    for (const [kind, tamed] of [['core:survivor', false], ['core:raptor', false], ['core:raptor', true]] as const) {
+      const k = w.kind(kind), p = (tamed ? w.reg.tamedMove[k] : w.reg.move[k])!, b = new Body();
+      b.x = b.z = 128; b.y = groundUnder(w.hf, b.x, b.z, p.radius); b.grounded = true;
+      b.staminaMax = 10000; b.stamina = 10000000;
+      let distance = 0;
+      for (let tick = 0; tick < 90; tick++) {
+        const { x, z } = b; stepBody(w, b, 0, 127, yaw, 0, BTN_SPRINT, p, 1 / 30);
+        if (tick >= 30) distance += Math.hypot(b.x - x, b.z - z);
+        expect(b.grounded).toBe(true);
+      }
+      speeds.push(distance / 2);
+      expect(distance / 2).toBeCloseTo(p.walkSpeed * p.sprintMul, 3);
+    }
+    expect(speeds[1]! - speeds[0]!).toBeCloseTo(1.12, 3);
+    expect(speeds[2]! - speeds[0]!).toBeCloseTo(1.12, 3);
   }
 });
 
@@ -102,12 +123,12 @@ test('actual raptor and parasaur saddle frames match the tilted bones, without c
   }
 });
 
-test('a ground mount still jumps off a slope and does not tilt its airborne pose', () => {
+test('a ground mount still jumps off a slope and a body born high in the air keeps its authored pose', () => {
   const w = plane(30), { b, p } = body(w, 'core:raptor');
   stepBody(w, b, 0, 127, 0, 0, BTN_JUMP, p, 1 / 30);
   expect(b.grounded).toBe(false); expect(b.vy).toBeGreaterThan(4);
   const solved = new Solved(1), st = new AnimState(); solved.pos.set([0, 2, 1]); solved.rot.set([0, 0, 0, 1]); st.grounded = false;
-  groundMountPose(solved, st, w, p, b.x, b.y, b.z, 0);
+  groundMountPose(solved, st, w, p, b.x, b.y + 10, b.z, 0);
   expect([...solved.pos]).toEqual([0, 2, 1]); expect([...solved.rot]).toEqual([0, 0, 0, 1]);
 });
 
