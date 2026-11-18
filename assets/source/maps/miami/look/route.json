@@ -1,0 +1,13 @@
+{
+  "about": "Downtown to the water: East Flagler Street from NE 2nd Avenue east to Biscayne Boulevard and Bayfront Park's shore. The Flagler Building's shops on the north side, 50 Biscayne's apartments at the Boulevard, the garage on NE 1st Street behind the shops. Engine metres (x west, z north); `up` is the eye over the ground or the sea, `look` the point faced as x, z and metres over the ground there. The game's own lens (70 degrees high) at 14:00.",
+  "hour": 14,
+  "views": [
+    { "name": "corner", "x": 6503, "z": 3424, "up": 1.7, "look": [6205, 3434, 6] },
+    { "name": "shop", "x": 6418, "z": 3424, "up": 1.7, "look": [6418, 3445, 5] },
+    { "name": "third-ave", "x": 6336, "z": 3428, "up": 1.7, "look": [6352, 3600, 10] },
+    { "name": "apartments", "x": 6296, "z": 3425, "up": 1.7, "look": [6296, 3455, 20] },
+    { "name": "garage", "x": 6440, "z": 3535, "up": 1.7, "look": [6372, 3562, 9] },
+    { "name": "water", "x": 5950, "z": 3436, "up": 25, "look": [6300, 3440, 30] },
+    { "name": "air", "x": 5840, "z": 3330, "up": 140, "look": [6420, 3440, 0] }
+  ]
+}
