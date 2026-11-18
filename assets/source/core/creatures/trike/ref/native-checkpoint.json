@@ -1,0 +1,861 @@
+{
+  "status": "Checkpoint 28. The fitted orbital skin and distinct upper/lower margins meet through a three-frame blink. Native source, built BC/ASTC material and mounted hardware checks are bound to the revised pack.",
+  "pack_sha256": "dd6e120faa42926d7dbf3c8a02abba205738dc1be6baf9fed22d60aa0723f41b",
+  "pack_bytes": 1609612,
+  "geometry_sha256": "bc47e64c925edad979ed78b75e48b012c9555125419242d5f45eef63df538389",
+  "native_meshes": [
+    {
+      "id": "core:trike",
+      "size": [
+        2.464792490005493,
+        3.157732012271881,
+        7.979508399963379
+      ],
+      "levels": [
+        {
+          "triangles": 21820,
+          "vertices": 15097,
+          "budget": 22000,
+          "error": 0,
+          "from": 0,
+          "tall": 0,
+          "starts": [
+            null,
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 0,
+              "tall": 0
+            }
+          ],
+          "parts": 24,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 8,
+          "collapsed": 0,
+          "materials": 3,
+          "bothWays": 0
+        },
+        {
+          "triangles": 9000,
+          "vertices": 7784,
+          "budget": 9000,
+          "error": 0.00872,
+          "from": 30.56855200773063,
+          "tall": 79.66755076832726,
+          "starts": [
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 30.56855200773063,
+              "tall": 79.66755076832726
+            },
+            {
+              "from": 48.03629601214813,
+              "tall": 50.697532307117356
+            },
+            {
+              "from": 84.06351802125923,
+              "tall": 28.970018461209918
+            }
+          ],
+          "parts": 24,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 19,
+          "collapsed": 0,
+          "materials": 3,
+          "bothWays": 0
+        },
+        {
+          "triangles": 4000,
+          "vertices": 4115,
+          "budget": 4000,
+          "error": 0.02166,
+          "from": 75.93060051461529,
+          "tall": 32.072993661117906,
+          "starts": [
+            {
+              "from": 37.965300257307646,
+              "tall": 64.14598732223581
+            },
+            {
+              "from": 75.93060051461529,
+              "tall": 32.072993661117906
+            },
+            {
+              "from": 119.31951509439544,
+              "tall": 20.41008687525685
+            },
+            {
+              "from": 208.80915141519205,
+              "tall": 11.662906785861058
+            }
+          ],
+          "parts": 24,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 19,
+          "collapsed": 0,
+          "materials": 3,
+          "bothWays": 0
+        },
+        {
+          "triangles": 1400,
+          "vertices": 913,
+          "budget": 1400,
+          "error": 0.04178,
+          "from": 146.4626264774066,
+          "tall": 16.627597958348826,
+          "starts": [
+            {
+              "from": 73.2313132387033,
+              "tall": 33.25519591669765
+            },
+            {
+              "from": 146.4626264774066,
+              "tall": 16.627597958348826
+            },
+            {
+              "from": 230.15555589306746,
+              "tall": 10.581198700767436
+            },
+            {
+              "from": 402.7722228128681,
+              "tall": 6.046399257581391
+            }
+          ],
+          "parts": 21,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 3,
+          "collapsed": 0
+        },
+        {
+          "triangles": 400,
+          "vertices": 300,
+          "budget": 400,
+          "error": 0.14328,
+          "from": 502.2777673930784,
+          "tall": 4.848555574398477,
+          "starts": [
+            {
+              "from": 251.1388836965392,
+              "tall": 9.697111148796955
+            },
+            {
+              "from": 502.2777673930784,
+              "tall": 4.848555574398477
+            },
+            {
+              "from": 789.2936344748374,
+              "tall": 3.0854444564353956
+            },
+            {
+              "from": 1381.2638603309656,
+              "tall": 1.763111117963083
+            }
+          ],
+          "parts": 5,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 2,
+          "collapsed": 0
+        },
+        {
+          "triangles": 96,
+          "vertices": 88,
+          "budget": 96,
+          "error": 0.39145,
+          "from": 1372.2545508516232,
+          "tall": 1.7746865313572968,
+          "starts": [
+            {
+              "from": 686.1272754258116,
+              "tall": 3.5493730627145936
+            },
+            {
+              "from": 1372.2545508516232,
+              "tall": 1.7746865313572968
+            },
+            {
+              "from": 2156.400008481122,
+              "tall": 1.129345974500098
+            },
+            {
+              "from": 3773.700014841964,
+              "tall": 0.6453405568571988
+            }
+          ],
+          "parts": 5,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 6,
+          "collapsed": 0
+        }
+      ],
+      "materials": [
+        {
+          "id": "core:trike/trike_frill",
+          "span": 4.2087,
+          "texels": 243.305533775275
+        },
+        {
+          "id": "core:trike/trike_horn",
+          "span": 2.0142,
+          "texels": 508.3904279614735
+        },
+        {
+          "id": "core:trike/trike_skin",
+          "span": 6.2512,
+          "texels": 327.6170975172767
+        }
+      ],
+      "strays": 0
+    },
+    {
+      "id": "core:saddle_trike/worn",
+      "size": [
+        2.246411919593811,
+        2.5705384016036987,
+        2.097127377986908
+      ],
+      "levels": [
+        {
+          "triangles": 2388,
+          "vertices": 1961,
+          "budget": 2400,
+          "error": 0,
+          "from": 0,
+          "tall": 0,
+          "starts": [
+            null,
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 0,
+              "tall": 0
+            }
+          ],
+          "parts": 13,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 4,
+          "collapsed": 0,
+          "materials": 1,
+          "bothWays": 0
+        },
+        {
+          "triangles": 1000,
+          "vertices": 1118,
+          "budget": 1000,
+          "error": 0.01551,
+          "from": 54.371357986227295,
+          "tall": 36.46153761139998,
+          "starts": [
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 54.371357986227295,
+              "tall": 36.46153761139998
+            },
+            {
+              "from": 85.4407054069286,
+              "tall": 23.202796661799994
+            },
+            {
+              "from": 149.52123446212505,
+              "tall": 13.258740949599995
+            }
+          ],
+          "parts": 13,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 15,
+          "collapsed": 0,
+          "materials": 1,
+          "bothWays": 0
+        },
+        {
+          "triangles": 400,
+          "vertices": 317,
+          "budget": 400,
+          "error": 0.2566,
+          "from": 899.5287207779447,
+          "tall": 2.203891069184777,
+          "starts": [
+            {
+              "from": 449.76436038897236,
+              "tall": 4.407782138369554
+            },
+            {
+              "from": 899.5287207779447,
+              "tall": 2.203891069184777
+            },
+            {
+              "from": 1413.5451326510558,
+              "tall": 1.4024761349357675
+            },
+            {
+              "from": 2473.703982139348,
+              "tall": 0.8014149342490098
+            }
+          ],
+          "parts": 10,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 45,
+          "collapsed": 0
+        },
+        {
+          "triangles": 120,
+          "vertices": 94,
+          "budget": 120,
+          "error": 1.02695,
+          "from": 3600.0429454517166,
+          "tall": 0.5506776847488327,
+          "starts": [
+            {
+              "from": 1800.0214727258583,
+              "tall": 1.1013553694976654
+            },
+            {
+              "from": 3600.0429454517166,
+              "tall": 0.5506776847488327
+            },
+            {
+              "from": 5657.210342852697,
+              "tall": 0.3504312539310754
+            },
+            {
+              "from": 9900.118099992222,
+              "tall": 0.2002464308177573
+            }
+          ],
+          "parts": 6,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 5,
+          "collapsed": 0
+        }
+      ],
+      "materials": [
+        {
+          "id": "core:trike/trike_saddle",
+          "span": 1.3662,
+          "texels": 749.5242277850973
+        }
+      ],
+      "strays": 0
+    }
+  ],
+  "native_notes": [
+    "clip \"swim\": front_toes_l slides 44.3 cm while planted at a stride of 4.8 m (it holds best at 2.77 m). The stride is stated: A 48-tick submerged paddling cycle at 3 m/s, with no planted ground contact.",
+    "clip \"swim\": front_toes_r slides 55.6 cm while planted at a stride of 4.8 m (it holds best at 2.77 m). The stride is stated: A 48-tick submerged paddling cycle at 3 m/s, with no planted ground contact.",
+    "clip \"torpor_idle\" stands still for 42 of its 120 frames",
+    "core:trike/trike_frill: its hurt picture is core:trike/trike_horn's too, and the build keeps one texture of what the two make alike",
+    "core:trike/trike_horn: its hurt picture is core:trike/trike_frill's too, and the build keeps one texture of what the two make alike",
+    "core:trike/trike_saddle: its mask is everywhere what a material without one draws, and the build leaves it out",
+    "texel density runs from 243 pixels a metre (core:trike/trike_frill on core:trike) to 750 (core:trike/trike_saddle on core:saddle_trike/worn), more than 2 times apart"
+  ],
+  "native_faults": [],
+  "texture_megabytes": {
+    "textures": 59.66664123535156,
+    "budget": 60
+  },
+  "rig": {
+    "skeleton": "trike",
+    "bones": 48,
+    "capsules": 43,
+    "buried": [],
+    "sockets": [
+      "head",
+      "breath_l",
+      "breath_r",
+      "overhead",
+      "horn_l",
+      "horn_r",
+      "horn_contact",
+      "seat",
+      "grip_l",
+      "grip_r",
+      "rest_l",
+      "rest_r",
+      "sole_l",
+      "sole_r",
+      "knee_l",
+      "knee_r",
+      "foot_l",
+      "foot_r",
+      "rear_foot_l",
+      "rear_foot_r",
+      "vent"
+    ]
+  },
+  "ragdoll": {
+    "limp": 24,
+    "bodies": [
+      {
+        "bone": "body",
+        "swing": 0,
+        "twist": 0,
+        "bent": [
+          0,
+          0
+        ]
+      },
+      {
+        "bone": "skull",
+        "swing": 65,
+        "twist": 40,
+        "bent": [
+          48.19156241385349,
+          6.2605411819958565
+        ]
+      },
+      {
+        "bone": "front_upper_l",
+        "swing": 95,
+        "twist": 45,
+        "bent": [
+          56.5240543771114,
+          18.891547886341623
+        ]
+      },
+      {
+        "bone": "front_lower_l",
+        "swing": 125,
+        "twist": 25,
+        "bent": [
+          53.159666079258606,
+          2.1530613214782726
+        ]
+      },
+      {
+        "bone": "front_foot_l",
+        "swing": 100,
+        "twist": 30,
+        "bent": [
+          48.50931978513125,
+          20.2870416248165
+        ]
+      },
+      {
+        "bone": "front_toes_l",
+        "swing": 15,
+        "twist": 5,
+        "bent": [
+          11.990550281458573,
+          4.860920822636396e-06
+        ],
+        "massCentre": [
+          0,
+          -0.007,
+          0.124
+        ]
+      },
+      {
+        "bone": "front_upper_r",
+        "swing": 95,
+        "twist": 45,
+        "bent": [
+          56.5240543771114,
+          18.891547886341623
+        ]
+      },
+      {
+        "bone": "front_lower_r",
+        "swing": 125,
+        "twist": 25,
+        "bent": [
+          53.159666079258606,
+          2.1530613214782726
+        ]
+      },
+      {
+        "bone": "front_foot_r",
+        "swing": 100,
+        "twist": 30,
+        "bent": [
+          48.50931978513125,
+          20.2870416248165
+        ]
+      },
+      {
+        "bone": "front_toes_r",
+        "swing": 15,
+        "twist": 5,
+        "bent": [
+          11.990552501017346,
+          7.800842115769727e-06
+        ],
+        "massCentre": [
+          0,
+          -0.007,
+          0.124
+        ]
+      },
+      {
+        "bone": "back_upper_l",
+        "swing": 95,
+        "twist": 45,
+        "bent": [
+          54.50158797975727,
+          36.68233713098674
+        ]
+      },
+      {
+        "bone": "back_lower_l",
+        "swing": 140,
+        "twist": 25,
+        "bent": [
+          68.03957994764521,
+          1.3363566167116114
+        ]
+      },
+      {
+        "bone": "back_foot_l",
+        "swing": 110,
+        "twist": 35,
+        "bent": [
+          68.16672268616087,
+          19.656638188076908
+        ]
+      },
+      {
+        "bone": "back_toes_l",
+        "swing": 10,
+        "twist": 5,
+        "bent": [
+          5.006427193871654,
+          4.489075513803028e-06
+        ],
+        "massCentre": [
+          0,
+          -0.01,
+          0.144
+        ]
+      },
+      {
+        "bone": "back_upper_r",
+        "swing": 95,
+        "twist": 45,
+        "bent": [
+          54.50158797975727,
+          36.68233713098674
+        ]
+      },
+      {
+        "bone": "back_lower_r",
+        "swing": 140,
+        "twist": 25,
+        "bent": [
+          68.03957994764521,
+          1.3363566167116114
+        ]
+      },
+      {
+        "bone": "back_foot_r",
+        "swing": 110,
+        "twist": 35,
+        "bent": [
+          68.16672268616087,
+          26.126938692528284
+        ]
+      },
+      {
+        "bone": "back_toes_r",
+        "swing": 10,
+        "twist": 5,
+        "bent": [
+          5.006428010120185,
+          6.758707408273764e-06
+        ],
+        "massCentre": [
+          0,
+          -0.01,
+          0.144
+        ]
+      }
+    ]
+  },
+  "checks": {
+    "native_art": "pass",
+    "trike_unit_tests": 15,
+    "native_authority_and_harvest_tests": 9,
+    "combined_assertions": 20546,
+    "tools_types": "pass",
+    "tests_types": "pass",
+    "content_types": "pass",
+    "support_regression": {
+      "test_files": [
+        "tests/unit/ragdoll.test.ts",
+        "tests/unit/trike.test.ts",
+        "tests/unit/stego.test.ts",
+        "tests/integration/dinosaur-native.test.ts"
+      ],
+      "tests": 52,
+      "assertions": 8635,
+      "mixed_benchmark": {
+        "crowd_models_visible": 32,
+        "dropped_draws_and_bodies": 0,
+        "falls_awake_at_three_seconds": {
+          "level": 0,
+          "grade": 0
+        },
+        "combat_contacts": 202
+      }
+    },
+    "combined_test_cases": 35,
+    "scope": "Trike unit, native dinosaur authority, airway/swimming, corpse scale and rivalry."
+  },
+  "authored_ground": {
+    "frames": 348,
+    "lowest_m": -0.0002704377402551472,
+    "vertices_below_minus_3mm": 0,
+    "torpor_rest_lowest_m": 0.0009323570411652327
+  },
+  "rider_audit": {
+    "status": "All 60 current native complete outfit samples have zero saddle/hide triangle intersections. Actual native human soles and hand calibration used with forearmAlignment75.",
+    "cases": 60,
+    "intersections": 0,
+    "scope": "Native finest exact triangle intersections at 60 rendered poses: two sexes, two extreme looks, bare/cloth/hide outfits, five animations. Hands/seat/support contact is reported, not automatically waived. Does not cover unrendered poses or creator intervals."
+  },
+  "limitations": [
+    "The beak transition, planted forefoot, frill root and pigment, and oral return remain close-art review items. The outer eye corner retains some angularity at extreme magnification.",
+    "Current raw native ground/fit measurements are sampled evidence, not interval proofs over all human sliders or animation times.",
+    "The prescribed mixed-grade, terrain and structure-ramp cases settle by 2.717 s. Settled finest skin can still enter the mild-grade terrain by 9.58 mm. Six additional headings at each of ±20° include settlements up to 4.8 s and skin up to 34.02 mm below the terrain.",
+    "The 70-view native head audit still finds 919 visible head samples classified as another zone, 1 outright miss, and 1,461 empty silhouette samples awarded head. Most remaining wrong-zone rays have trunk or neck contacts near the head. The historical sample definition groups corneas and lids with other skin.",
+    "The close-up sheet uses a decoded 2K BC client material and neutral shading. Local hardware BC and ASTC rides passed. Other GPU/OS combinations and all projected LOD transitions remain outside this check."
+  ],
+  "uv_audit": {
+    "geometry_sha256": "bc47e64c925edad979ed78b75e48b012c9555125419242d5f45eef63df538389",
+    "scope": "Physical aliasing at 512px texel centres, with deliberate X mirroring. Reports separations above 4cm; inspect native imagery for smaller visible seams.",
+    "by_material": {
+      "trike_skin": {
+        "samples": 3,
+        "maximum_m": 0.04763448437225161
+      },
+      "trike_frill": {
+        "samples": 0,
+        "maximum_m": 0
+      }
+    }
+  },
+  "native_limb_deformation": {
+    "previous": "b263fc4f9b0b3b6ebf46e187babc50dd4d6dc064361b71442a86bc257aa6b537",
+    "current": "dd6e120faa42926d7dbf3c8a02abba205738dc1be6baf9fed22d60aa0723f41b",
+    "scope": "Native finest skin edges of at least 5 mm, bilaterally in the axillary and hip review volumes. All authored integer frames plus fractional touchdown and lift. Length ratio is a diagnostic of skin stretching.",
+    "picked_edges": 5920,
+    "cycles": [
+      {
+        "clip": "idle",
+        "sampled_frames": 120,
+        "prior_worst": 2.0915201921505284,
+        "current_worst": 1.1708517521875677
+      },
+      {
+        "clip": "walk",
+        "sampled_frames": 40,
+        "prior_worst": 8.182246142373168,
+        "current_worst": 1.6193596860853787
+      },
+      {
+        "clip": "run",
+        "sampled_frames": 30,
+        "prior_worst": 12.566494520370677,
+        "current_worst": 2.036877683388145
+      },
+      {
+        "clip": "charge",
+        "sampled_frames": 30,
+        "prior_worst": 13.30482083534417,
+        "current_worst": 2.0877554909368667
+      },
+      {
+        "clip": "torpor_in",
+        "sampled_frames": 66,
+        "prior_worst": 6.56429243276892,
+        "current_worst": 1.5592384957333587
+      },
+      {
+        "clip": "torpor_idle",
+        "sampled_frames": 120,
+        "prior_worst": 6.564374775871793,
+        "current_worst": 1.5319376555830164
+      },
+      {
+        "clip": "torpor_out",
+        "sampled_frames": 86,
+        "prior_worst": 6.56429243276892,
+        "current_worst": 1.5592384957333587
+      },
+      {
+        "clip": "death",
+        "sampled_frames": 76,
+        "prior_worst": 6.56429243276892,
+        "current_worst": 1.5592384957333587
+      }
+    ]
+  },
+  "post_limp_grade_study": {
+    "source_before": "c8bc61d8b9cc24038247b61754a747b98310c8800ccda3adcdd3f89a74315541",
+    "source_after": "e7ad8a23b89d4b3b9b2142082d0f2d88c5c41c0b84ce3a05dac6ae1a49c0420d",
+    "identical_payload_sha256": "ef1d239b6ca9636c4cddd0c6627147dfe9f4917e97326d76c3939987ab53656b",
+    "changed_header_fields": [
+      "rigs[0].caps",
+      "rigs[0].ragdoll.bodies"
+    ],
+    "scope": "Native 60 Hz steps from the authored limp frame. The shared 0.35 terrain gradient and scaled 1:3 structure ramp use the ragdoll unit test positions and yaws. The mixed-grade placements use the eight Trike positions from the 16-creature benchmark. Positive-X terrain rises 0.35 m/m. The signed-Z stress grades use a 0.15 m drop from six headings spaced 60 degrees apart. Finest skin is evaluated at rest across 15,169 actual skinned vertices.",
+    "cases": {
+      "shared_terrain": {
+        "before": {
+          "cases": 6,
+          "latest_sleep_seconds": 4.483333,
+          "worst_settled_skin_mm": -20.854,
+          "worst_capsule_intrusion_mm": 0.306
+        },
+        "after": {
+          "cases": 6,
+          "latest_sleep_seconds": 2.716667,
+          "worst_settled_skin_mm": -8.718,
+          "worst_capsule_intrusion_mm": 0.367
+        }
+      },
+      "structure_ramp": {
+        "before": {
+          "cases": 3,
+          "latest_sleep_seconds": 5.95,
+          "worst_settled_skin_mm": -13.745,
+          "worst_capsule_intrusion_mm": 0.163
+        },
+        "after": {
+          "cases": 3,
+          "latest_sleep_seconds": 1.633333,
+          "worst_settled_skin_mm": -6.704,
+          "worst_capsule_intrusion_mm": 0.202
+        }
+      },
+      "mixed_benchmark_grade": {
+        "before": {
+          "cases": 8,
+          "latest_sleep_seconds": 3.833333,
+          "worst_settled_skin_mm": -38.738,
+          "worst_capsule_intrusion_mm": 0.232
+        },
+        "after": {
+          "cases": 8,
+          "latest_sleep_seconds": 2.233333,
+          "worst_settled_skin_mm": -9.579,
+          "worst_capsule_intrusion_mm": 0.402
+        }
+      },
+      "grade_-20_degrees": {
+        "before": {
+          "cases": 6,
+          "latest_sleep_seconds": 6.933333,
+          "worst_settled_skin_mm": -115.688,
+          "worst_capsule_intrusion_mm": 0.358
+        },
+        "after": {
+          "cases": 6,
+          "latest_sleep_seconds": 4.8,
+          "worst_settled_skin_mm": -31.551,
+          "worst_capsule_intrusion_mm": 0.204
+        }
+      },
+      "grade_+20_degrees": {
+        "before": {
+          "cases": 6,
+          "latest_sleep_seconds": 6.633333,
+          "worst_settled_skin_mm": -120.178,
+          "worst_capsule_intrusion_mm": 0.362
+        },
+        "after": {
+          "cases": 6,
+          "latest_sleep_seconds": 4.616667,
+          "worst_settled_skin_mm": -34.018,
+          "worst_capsule_intrusion_mm": 0.204
+        }
+      }
+    },
+    "forearm_hit_sample": {
+      "scope": "Bind pose. Lateral rays on both sides, 0.025 m spacing, y=0.82..1.12 and z=-0.25..0.10. Included only first visible finest-mesh triangles with interpolated front-lower weight above 0.5. Skin/capsule depth error reported for rays registering the matching leg zone. The elbow clearance uses right native finest vertex 5887 in bind coordinates (negative distance indicates inside the forearm capsule).",
+      "samples": 221,
+      "before": {
+        "correct_forearm_hits": 76,
+        "correct_leg_zone_hits": 130,
+        "misses": 2,
+        "mean_absolute_depth_error_on_leg_hits_m": 0.06570300896460979,
+        "witness_signed_surface_distance_m": 0.10497006975942502
+      },
+      "after": {
+        "correct_forearm_hits": 202,
+        "correct_leg_zone_hits": 208,
+        "misses": 0,
+        "mean_absolute_depth_error_on_leg_hits_m": 0.03114136856379468,
+        "witness_signed_surface_distance_m": -0.009482215023162543
+      }
+    },
+    "physical_rig_and_skin_also_verified_byte_identical_in": "52746c4dae10938582c53fa5e13f5b43edf41c0d689677cc35077688d7ec8671"
+  },
+  "head_contact": {
+    "cases": 70,
+    "rays": 1668590,
+    "visibleHead": 72544,
+    "missed": 1,
+    "wrong": 919,
+    "bodyAsHead": 1064,
+    "emptyAsHead": 1461,
+    "deepEmpty": 1,
+    "p95CorrectDepthErrorMetres": 0.1124717107387081,
+    "physical_capsules": 43,
+    "draw_rig_bones": 48
+  },
+  "orbital_lids": {
+    "centralCorneaRaysPerEyeOpen": 77,
+    "blinkFramesFullyCovered": [
+      89,
+      90,
+      91
+    ],
+    "directlyMeetingTransverseColumns": 18,
+    "columnsAudited": 18
+  }
+}

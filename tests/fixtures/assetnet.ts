@@ -136,7 +136,7 @@ export class FakeNet implements AssetPort {
 
   private finish(t: Transfer, data: Uint8Array | null, fail: number, fetched: number, cached = 0): void {
     this.transfers = this.transfers.filter((x) => x !== t);
-    this.done.push({ slot: t.request.slot, data, fail, fetched, cached });
+    this.done.push({ slot: t.request.slot, generation: t.request.generation, data, fail, fetched, cached });
   }
 
   take(out: AssetArrival[]): number {

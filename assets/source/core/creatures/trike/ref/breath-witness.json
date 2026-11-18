@@ -1,0 +1,108 @@
+{
+  "pack_sha256": "dd6e120faa42926d7dbf3c8a02abba205738dc1be6baf9fed22d60aa0723f41b",
+  "scope": "Every integer native frame of the named clips. Height is relative to the creature origin. The higher accessible paired opening is retained separately; one submerged nostril does not imply both are submerged.",
+  "ranges": {
+    "idle": {
+      "frames": 120,
+      "sides": {
+        "breath_l": [
+          1.645975828934402,
+          1.7241092029068705
+        ],
+        "breath_r": [
+          1.645975828934402,
+          1.7241092029068705
+        ]
+      },
+      "accessible_upper_opening": [
+        1.645975828934402,
+        1.7241092029068705
+      ]
+    },
+    "swim": {
+      "frames": 48,
+      "sides": {
+        "breath_l": [
+          1.7235036275695619,
+          1.7919805360056467
+        ],
+        "breath_r": [
+          1.7235036275695619,
+          1.7919805360056467
+        ]
+      },
+      "accessible_upper_opening": [
+        1.7235036275695619,
+        1.7919805360056467
+      ]
+    },
+    "swim_idle": {
+      "frames": 90,
+      "sides": {
+        "breath_l": [
+          1.7235036275695619,
+          1.7919805360056467
+        ],
+        "breath_r": [
+          1.7235036275695619,
+          1.7919805360056467
+        ]
+      },
+      "accessible_upper_opening": [
+        1.7235036275695619,
+        1.7919805360056467
+      ]
+    },
+    "torpor_in": {
+      "frames": 66,
+      "sides": {
+        "breath_l": [
+          1.5369080164046762,
+          1.7142937003392136
+        ],
+        "breath_r": [
+          0.9689841396369013,
+          1.684921875
+        ]
+      },
+      "accessible_upper_opening": [
+        1.5369080164046762,
+        1.7142937003392136
+      ]
+    },
+    "torpor_idle": {
+      "frames": 120,
+      "sides": {
+        "breath_l": [
+          1.5324932790750743,
+          1.5413208291032319
+        ],
+        "breath_r": [
+          0.9645434500695553,
+          0.9734232064541115
+        ]
+      },
+      "accessible_upper_opening": [
+        1.5324932790750743,
+        1.5413208291032319
+      ]
+    },
+    "torpor_out": {
+      "frames": 86,
+      "sides": {
+        "breath_l": [
+          1.5369080164046762,
+          1.7132896568346987
+        ],
+        "breath_r": [
+          0.9689841396369013,
+          1.684921875
+        ]
+      },
+      "accessible_upper_opening": [
+        1.5369080164046762,
+        1.7132896568346987
+      ]
+    }
+  }
+}

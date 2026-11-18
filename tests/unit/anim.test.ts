@@ -60,7 +60,7 @@ test("quaternions turn the right way and compose in order", () => {
 
 test("the skeleton is a tree in order, mirrored left to right, with a capsule on every bone that can be hit", () => {
   const s = HUMAN;
-  expect(s.bones).toBe(28);
+  expect(s.bones).toBe(30);
   expect(s.names[B_HIPS]).toBe("hips");
   expect(s.names[B_UPPER_ARM_R]).toBe("upperArm.R");
   for (let b = 0; b < s.bones; b++) expect(s.parent[b]!).toBeLessThan(b);

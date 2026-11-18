@@ -3,12 +3,14 @@
 import { join } from "node:path";
 import { BEARD_STYLES, BODY_SCALES, HAIR_STYLES, REGION_CLOTH, REGION_EYE, REGION_HAIR, REGION_MAIN, REGION_SECOND, REGION_SKIN, REGION_TRIM, SEX_IDS } from "../../shared/anim/look.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
-import type { PackRig } from "../../shared/pack/pack.ts";
+import { parsePack, type PackRig } from "../../shared/pack/pack.ts";
+import { defaultPalette } from "../../shared/pack/palette.ts";
 import { convertHumanClips } from "../pack/anim.ts";
 import { readGltf, type Gltf } from "../pack/gltf.ts";
 import { readPng } from "../pack/png-read.ts";
 import { convertBody, type ColorRule, type MaterialRule } from "../pack/skin.ts";
-import type { SourceMesh } from "../pack/write.ts";
+import { buildPack, unpackMeshes, type SourceMesh } from "../pack/write.ts";
+import { calibrateHand } from "../pack/grips.ts";
 import { RAW, blender } from "./blender.ts";
 import type { HumanBodiesAsset, HumanClipsAsset } from "./spec.ts";
 
@@ -123,5 +125,14 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string): { meshes: So
       meshes.push(...armor.meshes);
     }
   });
+  // Calibrate the exact positions the native quantizer will ship, once at source build. Ordinary repacks/boot
+  // streaming preserve these compact tables and never run the offline search.
+  const native = parsePack(buildPack(meshes.filter(m => m.id.endsWith("/hands")), defaultPalette(), [], rigs));
+  for (const mesh of unpackMeshes(native)) {
+    const rig = rigs.find(r => r.id === mesh.rig)!;
+    const result = calibrateHand(mesh, Float32Array.from(rig.rest));
+    if (result.checks.some(c => !Number.isFinite(c.clearance + c.gap) || c.clearance < 0 || Math.max(...c.contacts) > .002)) throw new Error(`${mesh.id}: native grip calibration failed physical contact`);
+    (rig.grips ??= []).push(result.calibration);
+  }
   return { meshes, rigs, warnings };
 }

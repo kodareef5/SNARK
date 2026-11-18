@@ -394,7 +394,7 @@ function buriedCapsules(poser: Poser): string[] {
       const at = (k: number): number => rig.capA[b * 3 + k]! + (rig.capB[b * 3 + k]! - rig.capA[b * 3 + k]!) * t;
       boneToModel(rig.solved, b, at(0), at(1), at(2), p);
       for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const) {
-        rayZones(rig, rig.solved, p[0]! - dx * 1000, p[1]! - dy * 1000, p[2]! - dz * 1000, dx, dy, dz, 2000);
+        rayZones(rig, rig.solved, p[0]! - dx * 1000, p[1]! - dy * 1000, p[2]! - dz * 1000, dx, dy, dz, 2000, 0, "capsules");
         if (zoneHit.bone === b) reached = true;
       }
     }
@@ -538,7 +538,25 @@ function checkCreature(asset: Asset, spec: CreatureAsset, pack: Pack, meshes: So
     }
   }
   if (spec.ragdoll) report.ragdoll = checkRagdoll(rig, spec, pack, faults, notes);
+  if (spec.breath !== undefined) {
+    if (!Array.isArray(spec.breath) || spec.breath.length !== 2 || spec.breath[0] === spec.breath[1] || !rig.breath || spec.breath.some((name, i) => rig.sockets.get(name) !== rig.breath![i])) faults.push("breathing: missing or invalid native airway pair; build the asset again");
+  } else if (packRig.breath !== undefined) faults.push("breathing: native airway pair is absent from the asset; build the asset again");
+  if (spec.ground) {
+    const ground = rig.ground, wanted = spec.ground;
+    if (!ground || ground.legs.length !== wanted.legs.length) faults.push("ground fitting: missing or invalid native leg chains; build the asset again");
+    else {
+      if (Math.abs(ground.maxTilt * 180 / Math.PI - wanted.maxTilt) > .0001 || ground.maxStep !== wanted.maxStep || ground.probe !== wanted.probe) faults.push("ground fitting: native limits differ from the asset");
+      wanted.legs.forEach((leg, i) => {
+        const made = ground.legs[i]!;
+        if (rig.names[made.upper] !== leg.upper || rig.names[made.lower] !== leg.lower || rig.names[made.end] !== leg.end || rig.sockets.get(leg.socket) !== made.foot) faults.push(`ground fitting: native chain for "${leg.socket}" differs from the asset`);
+      });
+    }
+  }
   for (const bone of spec.feet) if (!rig.names.includes(bone)) faults.push(`foot "${bone}" is not a bone of the rig`);
+  for (const [name, gait] of Object.entries(spec.gaits)) if (gait.footfalls) {
+    const rows = rig.footfalls.get(name);
+    if (!rows || rows.length !== gait.footfalls.length || gait.footfalls.some(wanted => !rows.some(made => rig.names[made.bone] === wanted.foot && made.plant === wanted.plant && made.lift === wanted.lift))) faults.push(`footfalls for "${name}" differ from the asset; build it again`);
+  }
   // Each saddle worn on it and its saddled model, against budgets of its own, on the body's bones.
   for (const extra of extraMeshes(asset.id, spec)) {
     const made = meshes.find((m) => m.id === extra.id);
@@ -564,7 +582,18 @@ function checkRagdoll(rig: Rig, spec: CreatureAsset, pack: Pack, faults: string[
   listed.forEach((b, i) => {
     if (!(rig.capR[def.bone[i]!]! > 0)) faults.push(`ragdoll: "${b.bone}" carries no hit capsule, and a body is its capsule`);
     if (i > 0 && doll.parent[i]! < 0) faults.push(`ragdoll: "${b.bone}" has no listed body above it, and only the first may not`);
+    const centre = def.massCentres?.[i];
+    if (centre?.[0] !== b.massCentre?.[0] || centre?.[1] !== b.massCentre?.[1] || centre?.[2] !== b.massCentre?.[2]) faults.push(`ragdoll: mass centre for "${b.bone}" differs from its source. Build it again`);
     if (!(b.mass > 0)) faults.push(`ragdoll: "${b.bone}" has no share of the mass`);
+  });
+  const contacts = spec.ragdoll!.contacts ?? [];
+  if (contacts.length !== (def.contacts?.length ?? 0)) faults.push("ragdoll: rigid contact metadata differs from the source; build it again");
+  if (contacts.length > 16) faults.push("ragdoll: more than 16 rigid contacts");
+  contacts.forEach((name, i) => {
+    const b = rig.names.indexOf(name);
+    let parent = rig.parent[b] ?? -1;
+    while (parent >= 0 && !def.bone.includes(parent)) parent = rig.parent[parent]!;
+    if (b < 0 || def.contacts?.[i] !== b || !(rig.capR[b]! > 0) || def.bone.includes(b) || contacts.indexOf(name) !== i || parent < 0) faults.push(`ragdoll: "${name}" must be a unique rigid contact capsule below a body`);
   });
   const death = rig.clips.get("death");
   if (death && def.limp > death.frames - 1) faults.push(`ragdoll: it goes limp at frame ${def.limp}, past the death clip's last, ${death.frames - 1}`);

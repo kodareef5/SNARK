@@ -1,0 +1,955 @@
+{
+  "source": "assets/raw/quaternius/dinosaurs/Stegosaurus.fbx",
+  "sha256": "944a457338731a544a904a7c60d85d67c8f034c77e0205aae0ca3efc5711a002",
+  "bytes": 1133964,
+  "blender": "5.3.0",
+  "unit_scale": 1.0,
+  "fps": 24,
+  "meshes": [
+    {
+      "name": "Stegosaurus",
+      "vertices": 1145,
+      "triangles": 2290,
+      "polygons": 1152,
+      "bounds_min": [
+        -2.3531899452209473,
+        -7.676090240478516,
+        -0.10622742772102356
+      ],
+      "bounds_max": [
+        2.353189706802368,
+        15.37740421295166,
+        10.510133743286133
+      ],
+      "scale": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "uv_layers": [],
+      "uv_unique": 0,
+      "materials": [
+        "DarkBrown",
+        "LightBrown",
+        "Brown"
+      ],
+      "boundary_edges": 0,
+      "nonmanifold_edges": 8,
+      "loose_vertices": 0,
+      "unweighted": 0,
+      "max_influences": 14,
+      "groups": [
+        "root",
+        "Body",
+        "BackLeg.R",
+        "BackUpLeg.R",
+        "BackLowLeg.R",
+        "BackLeg.L",
+        "BackUpLeg.L",
+        "BackLowLeg.L",
+        "Back",
+        "Tail1",
+        "Tail2",
+        "Tail3",
+        "Tail4",
+        "Tail5",
+        "Hips",
+        "Torso",
+        "Shoulders",
+        "Neck",
+        "Head",
+        "FrontLeg.R",
+        "FrontUpLeg.R",
+        "FrontLowLeg.R",
+        "FrontLeg.L",
+        "FrontUpLeg.L",
+        "FrontLowLeg.L",
+        "BackFoot.R",
+        "BackFoot.L",
+        "FrontFoot.R",
+        "FrontFoot.L"
+      ]
+    }
+  ],
+  "armatures": [
+    {
+      "name": "Armature",
+      "bones": [
+        {
+          "name": "root",
+          "parent": null,
+          "head": [
+            0.0,
+            -0.009096503257751465,
+            0.0
+          ],
+          "tail": [
+            0.0,
+            -0.009096503257751465,
+            2.2843823432922363
+          ],
+          "deform": true
+        },
+        {
+          "name": "Body",
+          "parent": "root",
+          "head": [
+            0.030816197395324707,
+            0.025900959968566895,
+            4.439356327056885
+          ],
+          "tail": [
+            0.030816197395324707,
+            0.025900959968566895,
+            6.5145649909973145
+          ],
+          "deform": true
+        },
+        {
+          "name": "BackLeg.R",
+          "parent": "Body",
+          "head": [
+            -0.23062530159950256,
+            0.9471675157546997,
+            3.025818347930908
+          ],
+          "tail": [
+            -1.1122260093688965,
+            0.9471677541732788,
+            3.025818347930908
+          ],
+          "deform": true
+        },
+        {
+          "name": "BackUpLeg.R",
+          "parent": "BackLeg.R",
+          "head": [
+            -1.1122260093688965,
+            0.9471677541732788,
+            3.025818347930908
+          ],
+          "tail": [
+            -0.9608772993087769,
+            0.9110633730888367,
+            1.4115779399871826
+          ],
+          "deform": true
+        },
+        {
+          "name": "BackLowLeg.R",
+          "parent": "BackUpLeg.R",
+          "head": [
+            -0.9608772993087769,
+            0.9110633730888367,
+            1.4115779399871826
+          ],
+          "tail": [
+            -0.9608771800994873,
+            1.5409395694732666,
+            0.08617067337036133
+          ],
+          "deform": true
+        },
+        {
+          "name": "BackLowLeg.R_end",
+          "parent": "BackLowLeg.R",
+          "head": [
+            -0.9608771800994873,
+            1.540939450263977,
+            0.08617079257965088
+          ],
+          "tail": [
+            -0.9608771800994873,
+            2.1708154678344727,
+            -1.2392363548278809
+          ],
+          "deform": true
+        },
+        {
+          "name": "BackLeg.L",
+          "parent": "Body",
+          "head": [
+            0.230625182390213,
+            0.9471675157546997,
+            3.025818347930908
+          ],
+          "tail": [
+            1.1122257709503174,
+            0.9471677541732788,
+            3.025818347930908
+          ],
+          "deform": true
+        },
+        {
+          "name": "BackUpLeg.L",
+          "parent": "BackLeg.L",
+          "head": [
+            1.1122257709503174,
+            0.9471677541732788,
+            3.025818347930908
+          ],
+          "tail": [
+            0.9608769416809082,
+            0.9110633730888367,
+            1.411577820777893
+          ],
+          "deform": true
+        },
+        {
+          "name": "BackLowLeg.L",
+          "parent": "BackUpLeg.L",
+          "head": [
+            0.9608769416809082,
+            0.9110633730888367,
+            1.411577820777893
+          ],
+          "tail": [
+            0.9608767032623291,
+            1.5409393310546875,
+            0.08617055416107178
+          ],
+          "deform": true
+        },
+        {
+          "name": "BackLowLeg.L_end",
+          "parent": "BackLowLeg.L",
+          "head": [
+            0.9608767032623291,
+            1.5409393310546875,
+            0.08617055416107178
+          ],
+          "tail": [
+            0.9608767032623291,
+            2.1708152294158936,
+            -1.2392367124557495
+          ],
+          "deform": true
+        },
+        {
+          "name": "Back",
+          "parent": "Body",
+          "head": [
+            -0.001466512680053711,
+            0.856727123260498,
+            3.2354953289031982
+          ],
+          "tail": [
+            -0.001466512680053711,
+            1.4446778297424316,
+            3.199300765991211
+          ],
+          "deform": true
+        },
+        {
+          "name": "Tail1",
+          "parent": "Back",
+          "head": [
+            -0.001466512680053711,
+            1.4446778297424316,
+            3.199300765991211
+          ],
+          "tail": [
+            -0.001466512680053711,
+            2.54127836227417,
+            2.9718031883239746
+          ],
+          "deform": true
+        },
+        {
+          "name": "Tail2",
+          "parent": "Tail1",
+          "head": [
+            -0.001466512680053711,
+            2.54127836227417,
+            2.9718031883239746
+          ],
+          "tail": [
+            -0.0014665150083601475,
+            3.296609401702881,
+            2.3747589588165283
+          ],
+          "deform": true
+        },
+        {
+          "name": "Tail3",
+          "parent": "Tail2",
+          "head": [
+            -0.0014665150083601475,
+            3.296609401702881,
+            2.3747589588165283
+          ],
+          "tail": [
+            -0.0014665176859125495,
+            4.367433547973633,
+            1.3036983013153076
+          ],
+          "deform": true
+        },
+        {
+          "name": "Tail4",
+          "parent": "Tail3",
+          "head": [
+            -0.0014665176859125495,
+            4.367433547973633,
+            1.3036983013153076
+          ],
+          "tail": [
+            -0.0014665115159004927,
+            5.991044044494629,
+            0.5545831322669983
+          ],
+          "deform": true
+        },
+        {
+          "name": "Tail5",
+          "parent": "Tail4",
+          "head": [
+            -0.0014665115159004927,
+            5.991044044494629,
+            0.5545831322669983
+          ],
+          "tail": [
+            -0.0014665118651464581,
+            6.64146614074707,
+            0.37484174966812134
+          ],
+          "deform": true
+        },
+        {
+          "name": "Tail5_end",
+          "parent": "Tail5",
+          "head": [
+            -0.0014665118651464581,
+            6.64146614074707,
+            0.37484174966812134
+          ],
+          "tail": [
+            -0.0014665118651464581,
+            7.291888236999512,
+            0.19510066509246826
+          ],
+          "deform": true
+        },
+        {
+          "name": "Hips",
+          "parent": "Body",
+          "head": [
+            -0.001466512680053711,
+            0.6032689809799194,
+            3.1801254749298096
+          ],
+          "tail": [
+            -0.001466512680053711,
+            -0.08599108457565308,
+            3.2363991737365723
+          ],
+          "deform": true
+        },
+        {
+          "name": "Torso",
+          "parent": "Hips",
+          "head": [
+            -0.001466512680053711,
+            -0.08599108457565308,
+            3.2363991737365723
+          ],
+          "tail": [
+            -0.04283846542239189,
+            -0.8236578106880188,
+            2.8196792602539062
+          ],
+          "deform": true
+        },
+        {
+          "name": "Shoulders",
+          "parent": "Torso",
+          "head": [
+            -0.04283846542239189,
+            -0.8236578106880188,
+            2.8196792602539062
+          ],
+          "tail": [
+            0.005708798766136169,
+            -1.8614075183868408,
+            2.2505738735198975
+          ],
+          "deform": true
+        },
+        {
+          "name": "Neck",
+          "parent": "Shoulders",
+          "head": [
+            -0.001466523390263319,
+            -1.881115436553955,
+            2.2874820232391357
+          ],
+          "tail": [
+            -0.001466550282202661,
+            -2.78886079788208,
+            2.0238611698150635
+          ],
+          "deform": true
+        },
+        {
+          "name": "Head",
+          "parent": "Neck",
+          "head": [
+            -0.0014665309572592378,
+            -2.788860559463501,
+            2.023860454559326
+          ],
+          "tail": [
+            -0.004189880099147558,
+            -3.7031455039978027,
+            1.809445858001709
+          ],
+          "deform": true
+        },
+        {
+          "name": "Head_end",
+          "parent": "Head",
+          "head": [
+            -0.004189880099147558,
+            -3.7031455039978027,
+            1.809445858001709
+          ],
+          "tail": [
+            -0.006913229823112488,
+            -4.617430686950684,
+            1.5950312614440918
+          ],
+          "deform": true
+        },
+        {
+          "name": "FrontLeg.R",
+          "parent": "Body",
+          "head": [
+            -0.11826890707015991,
+            -1.7199556827545166,
+            1.883009910583496
+          ],
+          "tail": [
+            -0.5703698992729187,
+            -1.7199554443359375,
+            1.883009910583496
+          ],
+          "deform": true
+        },
+        {
+          "name": "FrontUpLeg.R",
+          "parent": "FrontLeg.R",
+          "head": [
+            -0.5703698992729187,
+            -1.7199554443359375,
+            1.883009910583496
+          ],
+          "tail": [
+            -0.4927554428577423,
+            -1.4189543724060059,
+            0.8672188520431519
+          ],
+          "deform": true
+        },
+        {
+          "name": "FrontLowLeg.R",
+          "parent": "FrontUpLeg.R",
+          "head": [
+            -0.4927554428577423,
+            -1.4189543724060059,
+            0.8672188520431519
+          ],
+          "tail": [
+            -0.49275535345077515,
+            -1.59550940990448,
+            0.08617091178894043
+          ],
+          "deform": true
+        },
+        {
+          "name": "FrontLowLeg.R_end",
+          "parent": "FrontLowLeg.R",
+          "head": [
+            -0.49275535345077515,
+            -1.59550940990448,
+            0.08617091178894043
+          ],
+          "tail": [
+            -0.49275535345077515,
+            -1.7720646858215332,
+            -0.6948770880699158
+          ],
+          "deform": true
+        },
+        {
+          "name": "FrontLeg.L",
+          "parent": "Body",
+          "head": [
+            0.11826884746551514,
+            -1.7199556827545166,
+            1.883009910583496
+          ],
+          "tail": [
+            0.5703698396682739,
+            -1.7199554443359375,
+            1.883009910583496
+          ],
+          "deform": true
+        },
+        {
+          "name": "FrontUpLeg.L",
+          "parent": "FrontLeg.L",
+          "head": [
+            0.5703698396682739,
+            -1.7199554443359375,
+            1.883009910583496
+          ],
+          "tail": [
+            0.49275538325309753,
+            -1.4189543724060059,
+            0.8672186136245728
+          ],
+          "deform": true
+        },
+        {
+          "name": "FrontLowLeg.L",
+          "parent": "FrontUpLeg.L",
+          "head": [
+            0.49275538325309753,
+            -1.4189543724060059,
+            0.8672186136245728
+          ],
+          "tail": [
+            0.49275532364845276,
+            -1.59550940990448,
+            0.08617067337036133
+          ],
+          "deform": true
+        },
+        {
+          "name": "FrontLowLeg.L_end",
+          "parent": "FrontLowLeg.L",
+          "head": [
+            0.49275532364845276,
+            -1.59550940990448,
+            0.08617067337036133
+          ],
+          "tail": [
+            0.49275532364845276,
+            -1.7720645666122437,
+            -0.6948773264884949
+          ],
+          "deform": true
+        },
+        {
+          "name": "BackFoot.R",
+          "parent": "root",
+          "head": [
+            -0.96585613489151,
+            1.5541857481002808,
+            0.08617043495178223
+          ],
+          "tail": [
+            -0.96585613489151,
+            0.9082286357879639,
+            0.08617043495178223
+          ],
+          "deform": true
+        },
+        {
+          "name": "BackFoot.R_end",
+          "parent": "BackFoot.R",
+          "head": [
+            -0.96585613489151,
+            0.9082286357879639,
+            0.08617043495178223
+          ],
+          "tail": [
+            -0.96585613489151,
+            0.262271523475647,
+            0.08617043495178223
+          ],
+          "deform": true
+        },
+        {
+          "name": "BackFoot.L",
+          "parent": "root",
+          "head": [
+            0.9658563733100891,
+            1.5541857481002808,
+            0.08617043495178223
+          ],
+          "tail": [
+            0.9658563733100891,
+            0.9082286357879639,
+            0.08617043495178223
+          ],
+          "deform": true
+        },
+        {
+          "name": "BackFoot.L_end",
+          "parent": "BackFoot.L",
+          "head": [
+            0.9658563733100891,
+            0.9082286357879639,
+            0.08617043495178223
+          ],
+          "tail": [
+            0.9658563733100891,
+            0.262271523475647,
+            0.08617043495178223
+          ],
+          "deform": true
+        },
+        {
+          "name": "FrontFoot.R",
+          "parent": "root",
+          "head": [
+            -0.4953087866306305,
+            -1.5822628736495972,
+            0.08617043495178223
+          ],
+          "tail": [
+            -0.4953087866306305,
+            -2.117854595184326,
+            0.08617043495178223
+          ],
+          "deform": true
+        },
+        {
+          "name": "FrontFoot.R_end",
+          "parent": "FrontFoot.R",
+          "head": [
+            -0.4953087866306305,
+            -2.117854595184326,
+            0.08617043495178223
+          ],
+          "tail": [
+            -0.4953087866306305,
+            -2.6534461975097656,
+            0.08617043495178223
+          ],
+          "deform": true
+        },
+        {
+          "name": "FrontFoot.L",
+          "parent": "root",
+          "head": [
+            0.49530893564224243,
+            -1.5822628736495972,
+            0.08617043495178223
+          ],
+          "tail": [
+            0.49530893564224243,
+            -2.117854595184326,
+            0.08617043495178223
+          ],
+          "deform": true
+        },
+        {
+          "name": "FrontFoot.L_end",
+          "parent": "FrontFoot.L",
+          "head": [
+            0.49530893564224243,
+            -2.117854595184326,
+            0.08617043495178223
+          ],
+          "tail": [
+            0.49530893564224243,
+            -2.6534461975097656,
+            0.08617043495178223
+          ],
+          "deform": true
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "name": "Armature|Armature|Stegosaurus_Attack",
+      "frames": [
+        1.0,
+        46.0
+      ],
+      "curves": 299,
+      "animated_bones": [
+        "Back",
+        "BackFoot.L",
+        "BackFoot.R",
+        "BackLeg.L",
+        "BackLeg.R",
+        "BackLowLeg.L",
+        "BackLowLeg.R",
+        "BackUpLeg.L",
+        "BackUpLeg.R",
+        "Body",
+        "FrontFoot.L",
+        "FrontFoot.R",
+        "FrontLeg.L",
+        "FrontLeg.R",
+        "FrontLowLeg.L",
+        "FrontLowLeg.R",
+        "FrontUpLeg.L",
+        "FrontUpLeg.R",
+        "Head",
+        "Hips",
+        "Neck",
+        "Shoulders",
+        "Tail1",
+        "Tail2",
+        "Tail3",
+        "Tail4",
+        "Tail5",
+        "Torso",
+        "root"
+      ],
+      "keyframes": 9838
+    },
+    {
+      "name": "Armature|Armature|Stegosaurus_Death",
+      "frames": [
+        1.0,
+        39.0
+      ],
+      "curves": 299,
+      "animated_bones": [
+        "Back",
+        "BackFoot.L",
+        "BackFoot.R",
+        "BackLeg.L",
+        "BackLeg.R",
+        "BackLowLeg.L",
+        "BackLowLeg.R",
+        "BackUpLeg.L",
+        "BackUpLeg.R",
+        "Body",
+        "FrontFoot.L",
+        "FrontFoot.R",
+        "FrontLeg.L",
+        "FrontLeg.R",
+        "FrontLowLeg.L",
+        "FrontLowLeg.R",
+        "FrontUpLeg.L",
+        "FrontUpLeg.R",
+        "Head",
+        "Hips",
+        "Neck",
+        "Shoulders",
+        "Tail1",
+        "Tail2",
+        "Tail3",
+        "Tail4",
+        "Tail5",
+        "Torso",
+        "root"
+      ],
+      "keyframes": 7398
+    },
+    {
+      "name": "Armature|Armature|Stegosaurus_Idle",
+      "frames": [
+        1.0,
+        62.0
+      ],
+      "curves": 299,
+      "animated_bones": [
+        "Back",
+        "BackFoot.L",
+        "BackFoot.R",
+        "BackLeg.L",
+        "BackLeg.R",
+        "BackLowLeg.L",
+        "BackLowLeg.R",
+        "BackUpLeg.L",
+        "BackUpLeg.R",
+        "Body",
+        "FrontFoot.L",
+        "FrontFoot.R",
+        "FrontLeg.L",
+        "FrontLeg.R",
+        "FrontLowLeg.L",
+        "FrontLowLeg.R",
+        "FrontUpLeg.L",
+        "FrontUpLeg.R",
+        "Head",
+        "Hips",
+        "Neck",
+        "Shoulders",
+        "Tail1",
+        "Tail2",
+        "Tail3",
+        "Tail4",
+        "Tail5",
+        "Torso",
+        "root"
+      ],
+      "keyframes": 6378
+    },
+    {
+      "name": "Armature|Armature|Stegosaurus_Jump",
+      "frames": [
+        1.0,
+        36.0
+      ],
+      "curves": 299,
+      "animated_bones": [
+        "Back",
+        "BackFoot.L",
+        "BackFoot.R",
+        "BackLeg.L",
+        "BackLeg.R",
+        "BackLowLeg.L",
+        "BackLowLeg.R",
+        "BackUpLeg.L",
+        "BackUpLeg.R",
+        "Body",
+        "FrontFoot.L",
+        "FrontFoot.R",
+        "FrontLeg.L",
+        "FrontLeg.R",
+        "FrontLowLeg.L",
+        "FrontLowLeg.R",
+        "FrontUpLeg.L",
+        "FrontUpLeg.R",
+        "Head",
+        "Hips",
+        "Neck",
+        "Shoulders",
+        "Tail1",
+        "Tail2",
+        "Tail3",
+        "Tail4",
+        "Tail5",
+        "Torso",
+        "root"
+      ],
+      "keyframes": 6598
+    },
+    {
+      "name": "Armature|Armature|Stegosaurus_Run",
+      "frames": [
+        1.0,
+        20.0
+      ],
+      "curves": 299,
+      "animated_bones": [
+        "Back",
+        "BackFoot.L",
+        "BackFoot.R",
+        "BackLeg.L",
+        "BackLeg.R",
+        "BackLowLeg.L",
+        "BackLowLeg.R",
+        "BackUpLeg.L",
+        "BackUpLeg.R",
+        "Body",
+        "FrontFoot.L",
+        "FrontFoot.R",
+        "FrontLeg.L",
+        "FrontLeg.R",
+        "FrontLowLeg.L",
+        "FrontLowLeg.R",
+        "FrontUpLeg.L",
+        "FrontUpLeg.R",
+        "Head",
+        "Hips",
+        "Neck",
+        "Shoulders",
+        "Tail1",
+        "Tail2",
+        "Tail3",
+        "Tail4",
+        "Tail5",
+        "Torso",
+        "root"
+      ],
+      "keyframes": 4818
+    },
+    {
+      "name": "Armature|Armature|Stegosaurus_Walk",
+      "frames": [
+        1.0,
+        71.0
+      ],
+      "curves": 299,
+      "animated_bones": [
+        "Back",
+        "BackFoot.L",
+        "BackFoot.R",
+        "BackLeg.L",
+        "BackLeg.R",
+        "BackLowLeg.L",
+        "BackLowLeg.R",
+        "BackUpLeg.L",
+        "BackUpLeg.R",
+        "Body",
+        "FrontFoot.L",
+        "FrontFoot.R",
+        "FrontLeg.L",
+        "FrontLeg.R",
+        "FrontLowLeg.L",
+        "FrontLowLeg.R",
+        "FrontUpLeg.L",
+        "FrontUpLeg.R",
+        "Head",
+        "Hips",
+        "Neck",
+        "Shoulders",
+        "Tail1",
+        "Tail2",
+        "Tail3",
+        "Tail4",
+        "Tail5",
+        "Torso",
+        "root"
+      ],
+      "keyframes": 16398
+    }
+  ],
+  "materials": [
+    {
+      "name": "Brown",
+      "diffuse": [
+        0.13286012411117554,
+        0.09587529301643372,
+        0.05506833270192146,
+        1.0
+      ],
+      "nodes": [
+        "ShaderNodeBsdfPrincipled",
+        "ShaderNodeOutputMaterial",
+        "ShaderNodeNormalMap"
+      ],
+      "images": []
+    },
+    {
+      "name": "DarkBrown",
+      "diffuse": [
+        0.08650047332048416,
+        0.06301002949476242,
+        0.0368894599378109,
+        1.0
+      ],
+      "nodes": [
+        "ShaderNodeBsdfPrincipled",
+        "ShaderNodeOutputMaterial",
+        "ShaderNodeNormalMap"
+      ],
+      "images": []
+    },
+    {
+      "name": "LightBrown",
+      "diffuse": [
+        0.15231113135814667,
+        0.12311917543411255,
+        0.07796391099691391,
+        1.0
+      ],
+      "nodes": [
+        "ShaderNodeBsdfPrincipled",
+        "ShaderNodeOutputMaterial",
+        "ShaderNodeNormalMap"
+      ],
+      "images": []
+    }
+  ]
+}

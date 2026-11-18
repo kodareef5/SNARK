@@ -19,6 +19,20 @@ export interface Seat {
     /** A steering-driven control rotates its grips and grasp about this authored pivot. */
     readonly turn?: { readonly pivot: readonly [number, number, number]; readonly axis: readonly [number, number, number]; readonly ratio: number };
   };
+  /** A saddle's authored HUMAN palm grips, ankle positions and optional outward knee poles, named on the creature rig. */
+  readonly rider?: {
+    readonly hands: readonly [string, string];
+    readonly feet: readonly [string, string];
+    readonly knees?: readonly [string, string];
+    /** Centres of finite sole platforms, parallel to the seat's +Y plane; half width/depth in metres. */
+    readonly soles?: { readonly sockets: readonly [string, string]; readonly half: readonly [number, number] };
+    /** Upright bars centred on hands sockets; signed lower/upper extents along the seat's Y axis, in metres. */
+    readonly grips?: {
+      readonly radius: number; readonly span: readonly [number, number];
+      /** Maximum axial forearm alignment toward the fixed hand orientation, degrees. Omitted preserves its original roll. */
+      readonly forearmAlignment?: number;
+    };
+  };
   /**
    * Where the occupant sits: a car's occupant's pelvis, a saddle's top under the rider (shared/anim/seat.ts hangs the
    * rider's origin SEAT_DROP below it). The server pins it there and every client draws it there.
@@ -37,6 +51,8 @@ export interface Seat {
 
 /** At most this many seats a host (server/occupancy.ts holds the same). */
 export const MAX_SEATS = 16;
+/** A temporary hostile tail attachment, never a seat that occupancy can claim. */
+export const IMPALE_SLOT = 255;
 /** A seat's name: what occupancy accepts, so content that compiles always registers. */
 export const SEAT_ID = /^[a-z][a-z0-9_]{0,47}$/;
 
@@ -44,6 +60,7 @@ export const SEAT_ID = /^[a-z][a-z0-9_]{0,47}$/;
 export function validateSeats(seats: readonly Seat[], doors: number, what: string): void {
   const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
   if (!Array.isArray(seats) || seats.length < 1 || seats.length > MAX_SEATS) throw new Error(`a ${what} has 1 to ${MAX_SEATS} seats`);
+  const pair = (v: unknown): boolean => Array.isArray(v) && v.length === 2 && v.every(x => typeof x === "string" && x.length > 0 && x.length <= 64) && v[0] !== v[1];
   const names = new Set<string>();
   let drivers = 0;
   for (const seat of seats) {
@@ -54,6 +71,12 @@ export function validateSeats(seats: readonly Seat[], doors: number, what: strin
       (seat.weapons !== undefined && typeof seat.weapons !== "boolean")) throw new Error(`invalid ${what} seat profile`);
     if (seat.controls && ((seat.pose !== "pilot" && seat.pose !== "pwc") || !seat.driver || !vec(seat.controls.left) || !vec(seat.controls.right))) throw new Error(`invalid ${what} pilot controls`);
     if (seat.controls?.style !== undefined && seat.controls.style !== "helicopter" && seat.controls.style !== "helm" && seat.controls.style !== "handlebar") throw new Error(`invalid ${what} control style`);
+    if (seat.rider && (what !== "saddle" || !seat.socket || !pair(seat.rider.hands) || !pair(seat.rider.feet) || (seat.rider.knees !== undefined && !pair(seat.rider.knees)))) throw new Error(`invalid ${what} rider sockets`);
+    const soles = seat.rider?.soles;
+    if (soles && (!pair(soles.sockets) || !Array.isArray(soles.half) || soles.half.length !== 2 || !soles.half.every((v: number) => Number.isFinite(v) && v > 0 && v <= 1))) throw new Error(`invalid ${what} sole supports`);
+    const grips = seat.rider?.grips;
+    if (grips && (!Number.isFinite(grips.radius) || grips.radius < .005 || grips.radius > .05 || !Array.isArray(grips.span) || grips.span.length !== 2 || !grips.span.every(Number.isFinite) || grips.span[0] < -.3 || grips.span[0] >= 0 || grips.span[1] <= 0 || grips.span[1] > .3)) throw new Error(`invalid ${what} hand grips`);
+    if (grips?.forearmAlignment !== undefined && (!Number.isFinite(grips.forearmAlignment) || grips.forearmAlignment < 0 || grips.forearmAlignment > 90)) throw new Error(`invalid ${what} forearm alignment`);
     const turn = seat.controls?.turn;
     if (turn && (!vec(turn.pivot) || !vec(turn.axis) || Math.abs(turn.axis.reduce((n: number, v: number) => n + v * v, 0) - 1) > 1e-6 || !Number.isFinite(turn.ratio) || Math.abs(turn.ratio) > 50)) throw new Error(`invalid ${what} moving controls`);
     names.add(seat.id);

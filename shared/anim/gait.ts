@@ -9,6 +9,7 @@ import { TICK_RATE } from "../coords.ts";
 import { PI, TAU } from "../math/scalar.ts";
 import { blendPose, sampleClip, type Clip, type Pose } from "./clip.ts";
 import { solve, type Skeleton, type Solved } from "./skeleton.ts";
+import type { PackFootfall } from "../pack/pack.ts";
 
 export interface GaitClip {
   readonly clip: Clip;
@@ -18,10 +19,11 @@ export interface GaitClip {
   readonly start: number;
   /** Metres a second at which it plays at its own rate. */
   readonly speed: number;
+  readonly footfalls: readonly PackFootfall[] | null;
 }
 
-export function gaitClip(clip: Clip, stride: number, start: number): GaitClip {
-  return { clip, stride, start, speed: (stride * TICK_RATE) / clip.frames };
+export function gaitClip(clip: Clip, stride: number, start: number, footfalls: readonly PackFootfall[] | null = null): GaitClip {
+  return { clip, stride, start, speed: (stride * TICK_RATE) / clip.frames, footfalls };
 }
 
 /**
@@ -129,7 +131,8 @@ export class Gait {
    * to set. `radius` is how far its feet stand from where it turns, as made, so turning on the spot steps. It is drawn
    * `size` times as large as it was made.
    */
-  track(x: number, z: number, yaw: number, tick: number, speed: number, radius: number, size: number): number {
+  track(x: number, z: number, yaw: number, tick: number, speed: number, radius: number, size: number, distanceScale = 1): number {
+    speed *= distanceScale;
     const dt = tick - this.tick;
     const dx = x - this.x;
     const dz = z - this.z;
@@ -146,7 +149,7 @@ export class Gait {
     }
     turn -= Math.floor((turn + PI) / TAU) * TAU;
     const arc = (turn < 0 ? -turn : turn) * radius;
-    const moved = Math.sqrt(dx * dx + dz * dz) / size;
+    const moved = Math.sqrt(dx * dx + dz * dz) * distanceScale / size;
     const seconds = dt / TICK_RATE;
     const spin = speed > 0 ? 0 : turn / seconds;
     if (spin !== 0) {
@@ -155,6 +158,10 @@ export class Gait {
     }
     this.spin += ((spin - this.spin) * seconds) / (EASE + seconds);
     speed /= size;
+    // A very slow body (especially a juvenile) can move below the replicated
+    // speed word's first step. Its observed ground displacement still supplies
+    // a gait rate. A teleport must not become an enormous one-frame stride.
+    if (speed === 0 && moved * size <= JUMP) speed = moved / seconds;
     const want = speed > arc / seconds ? speed : arc / seconds;
     this.speed += ((want - this.speed) * seconds) / (EASE + seconds);
     if (moved * size > JUMP) return 0;

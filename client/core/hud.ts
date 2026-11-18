@@ -17,7 +17,7 @@ import { DEFAULT_DRIVETRAIN } from "../../shared/sim/vehicle-drivetrain.ts";
 import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Camera } from "./render/camera.ts";
-import { ACT_DRAW, ACT_HOLD, ACT_RELOAD } from "../../shared/sim/weapon.ts";
+import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_RELOAD } from "../../shared/sim/weapon.ts";
 import { formatHour, hourOfDay } from "../../shared/sim/clock.ts";
 import { V_FOOD, V_HEALTH, V_OXYGEN, V_TORPOR, V_WATER } from "../../shared/sim/vitals.ts";
 import { latLonText, latOf, lonOf, mapU, mapV } from "../../shared/world/coords.ts";
@@ -88,9 +88,10 @@ export function fillHotbar(m: HudModel, inv: Inventory | null, held: number, reg
   }
 }
 
-export function fillBuffs(m: HudModel, session: ClientSession | null, reg: Registry, palette: Uint8Array): void {
+export function fillBuffs(m: HudModel, session: ClientSession | null, reg: Registry, palette: Uint8Array, rivalry = false): void {
   m.buffs.length = 0;
   if (!session) return;
+  if (rivalry && session.driving >= 0) m.buffs.push({ label: "Rivalry · large predator nearby", tint: 0x824a34, seconds: -1 });
   for (const b of session.buffs) {
     const def = reg.defs[b.buff];
     if (def?.type !== "buff") continue;
@@ -110,6 +111,25 @@ export function fillAction(m: HudModel, session: ClientSession | null, reg: Regi
   m.ammo = "";
   if (!session || !session.weaponsAllowed) return;
   const b = session.own;
+  const creature = session.driving >= 0 ? reg.combat[b.kind] : null;
+  if (creature) {
+    const charge = creature.charge, impale = creature.secondary?.impale;
+    if (b.act === ACT_DRAW && charge) {
+      m.actionKind = ACTION_DRAW; m.actionFraction = Math.min(1, b.actTicks / charge.windup);
+      m.ammo = "Charging · release RMB to run";
+    } else if (b.act === ACT_HOLD && charge) {
+      m.actionKind = ACTION_DRAW; m.actionFraction = Math.max(0, 1 - b.actTicks / charge.duration);
+      m.ammo = "Charging · LMB to stop";
+    } else if (b.act === ACT_HOLD && impale) {
+      m.actionKind = ACTION_DRAW; m.actionFraction = Math.max(0, 1 - b.actTicks / (impale.seconds * TICK_RATE));
+      m.ammo = "Impaling · RMB to release";
+    } else if (b.act === ACT_EQUIP) {
+      m.actionKind = ACTION_RELOAD; m.actionFraction = b.actTicks / (creature.switchTicks ?? 1);
+      m.ammo = "Changing plates";
+    } else if (b.act === ACT_COOL || b.creatureCooldown > 0) m.ammo = b.creatureCooldown > 0 ? `Recovering · ${Math.ceil(b.creatureCooldown / TICK_RATE)} s` : "Recovering";
+    else if (creature.modes) m.ammo = `${creature.modes[b.creatureMode]?.name ?? creature.modes[0]!.name} · R change plates`;
+    return;
+  }
   const w = reg.weapon[b.held];
   if (!w || w.clip === 0) return;
   if (b.act === ACT_DRAW || b.act === ACT_HOLD) {

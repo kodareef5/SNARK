@@ -22,6 +22,7 @@ import { quatNormalize } from "../shared/math/quat.ts";
 import { Rng } from "../shared/rng.ts";
 import { GROWN, growthStep, leftAtPeriod, youngScale } from "../shared/sim/breeding.ts";
 import { Body as Mover, MF_OUT, MF_ROOTED, MODE_FLYER, MODE_WALK, STANCE_STAND, stepBody, type MoveParams } from "../shared/sim/character.ts";
+import { copyMoveSize } from "../shared/sim/move-size.ts";
 import { F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
 import { Inventory } from "../shared/sim/items.ts";
 import { createBoat, type BoatState } from "../shared/sim/boat.ts";
@@ -100,6 +101,8 @@ export interface Body {
   left: number;
   readonly young: boolean;
   readonly size: number;
+  /** Movement capsule at its frozen, replicated size at death. */
+  readonly move: MoveParams;
   /** It died knocked out. */
   readonly out: boolean;
   /** It died in its own flight, and goes limp from its death in the air. */
@@ -155,8 +158,8 @@ export class Corpses {
   private readonly dropping: Body[] = [];
   /** Loaded from a save, to be asked once the world is whole whether anything holds them up. */
   private readonly loaded: Body[] = [];
-  /** By kind, what a body sinks by in water: its kind's capsule, pulled down as a ragdoll's bodies are there. */
-  private readonly sunk: (MoveParams | undefined)[] = [];
+  /** A submerged body keeps its own dimensions and sinks under ragdoll gravity. */
+  private readonly sunk = new WeakMap<MoveParams, MoveParams>();
   /** Made by `fell`, waiting for the creature's entity to go. */
   private readonly laid = new Map<number, Body>();
   /** Blows that landed on a body, and the last one's yield. */
@@ -313,8 +316,14 @@ export class Corpses {
         wreck.payloadMass = Math.max(0, Math.min(1e6, fields[2]!));
       }
     }
+    let move = this.ctx.world.reg.move[kind]!;
+    if (size !== 1) {
+      const sized = { ...move };
+      copyMoveSize(sized, move, size);
+      move = sized;
+    }
     const b: Body = {
-      rec, kind, e: -1, max, left, young, size, out, air, life, next: 0, stage: 0,
+      rec, kind, e: -1, max, left, young, size, move, out, air, life, next: 0, stage: 0,
       x: rec.x, y: rec.y, z: rec.z, yaw: yawOf16(rec.yaw),
       fall: null, pose: !wreck && anim?.rig.ragdoll ? new Solved(anim.rig.bones) : null, moving: false, drop: null, dropped: 0, wreck,
       launch: null, motionRevision: rec.extra.has(CORPSE_MOTION_COMPONENT) ? 1 : 0, motionStanding: false, motionWorld: 0, motion: null, reach: PAD,
@@ -334,8 +343,7 @@ export class Corpses {
           ? helicopterWorld(world).blocked(b.wreck, { ...b.wreck, y: b.wreck.y - .035 }, helicopterWreckDefinition(def)) : null;
       return !!hit && (hit.ny ?? 0) > .45;
     }
-    const p = world.reg.move[b.kind]!;
-    return rests(world, b.x, b.y, b.z, p);
+    return rests(world, b.x, b.y, b.z, b.move);
   }
 
   /** Sets body `b` falling from where it is, at the velocity given, facing `yaw` in 65536ths of a turn. */
@@ -443,9 +451,16 @@ export class Corpses {
       else this.save(b);
       return;
     }
-    const p = world.reg.move[b.kind]!;
+    const p = b.move;
+    let movement = p;
     const wet = m.y + p.height * 0.5 < world.hf.waterAt(m.x, m.z);
     if (wet) {
+      const cached = this.sunk.get(p);
+      if (cached) movement = cached;
+      else {
+        movement = { ...p, gravity: WET_GRAVITY };
+        this.sunk.set(p, movement);
+      }
       m.vx = Math.fround(m.vx * WET_KEEP);
       m.vy = Math.fround(m.vy * WET_KEEP);
       m.vz = Math.fround(m.vz * WET_KEEP);
@@ -456,7 +471,7 @@ export class Corpses {
     m.grounded = false;
     m.mflags = MF_ROOTED;
     const [x, y, z] = [m.x, m.y, m.z];
-    stepBody(world, m, 0, 0, m.yaw, 0, 0, wet ? (this.sunk[b.kind] ??= { ...p, gravity: WET_GRAVITY }) : p, TICK_DT);
+    stepBody(world, m, 0, 0, m.yaw, 0, 0, movement, TICK_DT);
     b.dropped++;
     const stuck = m.x === x && m.y === y && m.z === z;
     if (!stuck && !(m.vy <= 0 && rests(world, m.x, m.y, m.z, p)) && b.dropped < DROP_TICKS) {

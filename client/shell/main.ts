@@ -25,7 +25,7 @@ import { VoiceIo } from "../voice/voice.ts";
 import { SoundIo } from "../sound/sound.ts";
 import { WorkerDecoder } from "../sound/decoder.ts";
 import { UiView } from "./ui.ts";
-import { VehicleSelfcheck } from "../core/vehicle-selfcheck.ts";
+import { ActivitySelfcheck } from "../core/activity-selfcheck.ts";
 import { probeProgress } from "../core/diagnostics.ts";
 import { installSkin, SKIN_URL, skinPixels } from "../core/ui/skin.ts";
 
@@ -102,7 +102,7 @@ async function boot(): Promise<void> {
   addEventListener("pagehide", save);
   app.stress = params.has("stress");
   app.debug = app.stress || params.has("debug");
-  app.steer = driveCheck || !selfcheck && !device;
+  app.steer = driveCheck || selfcheck && params.has("dinosaur") || !selfcheck && !device;
   app.plainSky = selfcheck;
   app.ui.settings.touchFirst = matchMedia("(pointer: coarse)").matches;
   app.dpr = devicePixelRatio;
@@ -136,11 +136,11 @@ async function boot(): Promise<void> {
   const voiceListen = selfcheck && params.get("voice") === "listen";
   voice.loop = voiceCheck;
   const progress = new SelfcheckProgress();
-  const drivingCheck = driveCheck ? new VehicleSelfcheck() : null;
-  const drive = drivingCheck?.data;
+  const drivingCheck = new ActivitySelfcheck(params);
+  const drive = drivingCheck.vehicle?.data;
 
   let restored = 0;
-  if (selfcheck) Object.assign(globalThis, { snarkProbe: () => ({ ...probeProgress(app), frames: progress.frames, still: progress.still, cache: port.cache, glErrors: renderer.errors, drawCalls: renderer.drawCalls, drive }) });
+  if (selfcheck) Object.assign(globalThis, { snarkProbe: () => ({ ...probeProgress(app), frames: progress.frames, still: progress.still, cache: port.cache, glErrors: renderer.errors, drawCalls: renderer.drawCalls, drive, dinosaur: drivingCheck.dinosaur?.data }) });
   canvas.addEventListener("webglcontextlost", (e) => e.preventDefault());
   canvas.addEventListener("webglcontextrestored", () => {
     renderer.init();
@@ -208,10 +208,10 @@ async function boot(): Promise<void> {
     // second of played voice, or for ten seconds to report that none was.
     const voiced = voiceCheck || voiceListen;
     // Parts are written to disk a little after they arrive. The report waits until that has been still for half a second.
-    if (selfcheck && progress.advance(performance.now() - t0, port.cache.used, !packet.lit || surfaces!.done, voiced, voice.report.played, !drive || drive.finished)) {
+    if (selfcheck && progress.advance(performance.now() - t0, port.cache.used, !packet.lit || surfaces!.done, voiced, voice.report.played, drivingCheck.finished)) {
       const report = selfcheckReport(app, pack, manifest, hf, packet, {
         has: name => params.has(name), voiced, voiceListen, voice: voice.report,
-        driveCheck, drive, restored, misplaced: view.misplaced(app.ui.frame), sound: sound ? { peak: sound.peak } : null,
+        driveCheck, drive, dinosaur: drivingCheck.dinosaur?.data, restored, misplaced: view.misplaced(app.ui.frame), sound: sound ? { peak: sound.peak } : null,
         cache: port.cache, userAgent: navigator.userAgent, width, height, times: progress.times, renderer, surfaces,
       });
       document.title = report.ok ? "SNARK self-check passed" : "SNARK self-check FAILED";

@@ -37,7 +37,7 @@ export class WorkerPort implements AssetPort {
   }
 
   request(r: AssetRequest): void {
-    const ask: Ask = { slot: r.slot, url: this.url(r.file), parts: [...r.parts], fresh: r.fresh };
+    const ask: Ask = { slot: r.slot, generation: r.generation, url: this.url(r.file), parts: [...r.parts], fresh: r.fresh };
     this.worker.postMessage({ ask });
   }
 

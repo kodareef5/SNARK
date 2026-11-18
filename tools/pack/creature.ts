@@ -1,8 +1,9 @@
 // Turns a rigged, animated creature model into a rig that is a whole skeleton, one mesh on it, and its clips.
 // The skeleton is data, so a different model needs only a different spec (tools/art/spec.ts) and content.
 
+import { fitHitSurface } from "./hit-hulls.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
-import type { PackRig } from "../../shared/pack/pack.ts";
+import { type PackRig, validMassCentre } from "../../shared/pack/pack.ts";
 import { REGION_BASE, REGION_COUNT, defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
 import { ZONES, type CreatureAsset, type MaterialSpec } from "../art/spec.ts";
 import { convertClips, type ClipSpec } from "./anim.ts";
@@ -116,13 +117,64 @@ export function withMotion(rig: PackRig, spec: CreatureAsset, clips: readonly Cl
   };
   const out: PackRig = { ...rig, feet: spec.feet.map((f) => bone(f, "foot")).filter((b) => b >= 0) };
   delete out.strides;
+  delete out.footfalls;
   delete out.ragdoll;
+  delete out.ground;
+  delete out.breath;
+  if (spec.breath !== undefined) {
+    const pair = spec.breath;
+    if (!Array.isArray(pair) || pair.length !== 2 || pair[0] === pair[1]) faults.push("breathing requires two distinct named airway sockets");
+    else {
+      for (const name of pair) {
+        const matches = rig.sockets?.filter(s => s.name === name) ?? [], s = matches[0];
+        if (typeof name !== "string" || !name || matches.length !== 1 || !s || !Number.isInteger(s.bone) || s.bone < 0 || s.bone >= names.length || !Number.isFinite(s.x + s.y + s.z)) faults.push(`breathing socket "${name}" requires one finite point on a real bone`);
+      }
+      out.breath = [pair[0], pair[1]];
+    }
+  }
+  if (spec.ground) {
+    const ground = spec.ground;
+    out.ground = { maxTilt: ground.maxTilt, maxStep: ground.maxStep, probe: ground.probe,
+      legs: ground.legs.map(l => ({ upper: bone(l.upper, "ground upper"), lower: bone(l.lower, "ground lower"), end: bone(l.end, "ground end"), socket: l.socket })) };
+    if (!(ground.maxTilt >= 0 && ground.maxTilt <= 45 && ground.maxStep > 0 && ground.maxStep <= 1 && ground.probe >= ground.maxStep && ground.probe <= 3)) faults.push("ground fitting requires a finite tilt 0..45, step 0..1 and probe step..3");
+    if (ground.legs.length < 3 || ground.legs.length > 8) faults.push("ground fitting requires 3..8 legs");
+    for (const leg of out.ground.legs) {
+      const socket = rig.sockets?.find(s => s.name === leg.socket);
+      let b = socket?.bone ?? -1;
+      while (b > leg.end) b = rig.parent?.[b] ?? -1;
+      if (leg.upper < 0 || leg.lower < 0 || leg.end < 0 || rig.parent?.[leg.lower] !== leg.upper || rig.parent?.[leg.end] !== leg.lower || b !== leg.end) faults.push(`ground chain for "${leg.socket}" is not upper/lower/end with a descendant sole socket`);
+    }
+  }
   if (Object.keys(spec.gaits).length > 0) out.strides = Object.fromEntries(Object.entries(spec.gaits).map(([clip, g]) => [clip, g.stride]));
+  for (const [name, gait] of Object.entries(spec.gaits)) if (gait.footfalls) {
+    const rows = gait.footfalls.map(f => ({ bone: bone(f.foot, "footfall"), plant: f.plant, lift: f.lift }));
+    const clip = clips.find(c => c.id === `${rig.id}/${name}`);
+    if (!clip?.loop || rows.length < 2 || rows.length > 8 || rows.length !== out.feet!.length || new Set(rows.map(f => f.bone)).size !== rows.length || rows.some(f => !out.feet!.includes(f.bone) || !Number.isFinite(f.plant) || !Number.isFinite(f.lift) || !(f.plant >= 0 && f.plant < 1 && f.lift >= 0 && f.lift < 1) || f.plant === f.lift)) faults.push(`footfalls for "${name}" require a loop and one finite distinct plant/lift phase per foot (2..8 feet)`);
+    (out.footfalls ??= {})[name] = rows;
+  }
   const r = spec.ragdoll;
   if (r && r.bodies.length > 0) {
     const death = clips.find((c) => c.id === `${rig.id}/death`);
-    const bodies = r.bodies.map((b) => ({ bone: bone(b.bone, "ragdoll body"), mass: b.mass, swing: b.swing ?? 0, twist: b.twist ?? 0 })).filter((b) => b.bone >= 0);
+    const bodies = r.bodies.map((b) => {
+      const body = { bone: bone(b.bone, "ragdoll body"), mass: b.mass, swing: b.swing ?? 0, twist: b.twist ?? 0 };
+      if (b.massCentre === undefined) return body;
+      if (validMassCentre(b.massCentre)) return { ...body, massCentre: b.massCentre };
+      faults.push(`ragdoll body "${b.bone}" requires three finite coordinates for its mass centre`);
+      return body;
+    }).filter((b) => b.bone >= 0);
     out.ragdoll = { limp: r.limp ?? (death ? death.frames - 1 : 0), bodies };
+    if (r.contacts?.length) {
+      const contacts = r.contacts.map(name => bone(name, "rigid ragdoll contact"));
+      if (contacts.length > 16) faults.push("ragdoll has more than 16 rigid contacts");
+      const bodyBones = new Set(bodies.map(b => b.bone));
+      const caps = new Set((rig.caps ?? []).filter((_, i) => i % 9 === 0));
+      for (const [i, contact] of contacts.entries()) {
+        let ancestor = rig.parent?.[contact] ?? -1;
+        while (ancestor >= 0 && !bodyBones.has(ancestor)) ancestor = rig.parent?.[ancestor] ?? -1;
+        if (contact < 0 || !caps.has(contact) || bodyBones.has(contact) || contacts.indexOf(contact) !== i || ancestor < 0) faults.push(`rigid ragdoll contact "${r.contacts[i]}" requires a unique non-body capsule below a body`);
+      }
+      out.ragdoll.contacts = contacts;
+    }
   }
   return out;
 }
@@ -382,6 +434,7 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset, palett
   warnings.push(...made.warnings);
   for (const c of spec.clips) if (!made.clips.some((m) => m.id === `${id}/${c.name}`)) faults.push(`clip "${c.name}" was not made`);
   const rig = withMotion({ id, skeleton: skeleton.id, rest: rest.map((v) => +v.toFixed(5)), names, parent, caps, sockets }, spec, made.clips, faults);
+  if (spec.hitSurfaces) rig.hitSurfaces = spec.hitSurfaces.map(s => fitHitSurface(s, fine, names, parent, rest, caps));
   const meshes = parts.filter((p) => p.levels.length > 0).map((p): SourceMesh => {
     const lods = p.levels.map((l): SourceLod => {
       const lod: SourceLod = { positions: Float32Array.from(l.positions), colors: Uint8Array.from(l.colors), indices: Uint32Array.from(l.indices), bones: Uint8Array.from(l.bones) };

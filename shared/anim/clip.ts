@@ -68,6 +68,8 @@ export function sampleClip(clip: Clip, frame: number, out: Pose): void {
   } else {
     for (let i = 0; i < width; i += 4) quatNlerp(o, i, rot, a + i, rot, b + i, t);
   }
+  // A newer skeleton may append optional geometry bones. Legacy clips must clear a prior special pose on those bones.
+  for (let i = width; i < o.length; i += 4) { o[i] = 0; o[i + 1] = 0; o[i + 2] = 0; o[i + 3] = 1; }
   const root = clip.root;
   for (let k = 0; k < 3; k++) out.root[k] = root[f0 * 3 + k]! + (root[f1 * 3 + k]! - root[f0 * 3 + k]!) * t;
 }

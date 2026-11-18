@@ -3,9 +3,9 @@
 // 13%) now and then lays an unfertilised egg there instead, wild or tamed, unless EGG_LIMIT of them lie near. Only a
 // creature that is awake goes: one in stasis, with nobody near, does not, as in ARK.
 
-import { creaturePose } from "../shared/anim/creature.ts";
+import { poseCreatureOn } from "../shared/anim/creature.ts";
 import { AnimState, bodySeed } from "../shared/anim/pose.ts";
-import { boneToModel, solve } from "../shared/anim/skeleton.ts";
+import { boneToModel } from "../shared/anim/skeleton.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { TAU } from "../shared/math/scalar.ts";
 import { fecesWait, youngScale } from "../shared/sim/breeding.ts";
@@ -134,12 +134,13 @@ export class Feces {
     const rig = anim?.rig;
     const socket = rig?.sockets.get("vent");
     const v = this.vent;
+    const size = ents.grown[e] !== 0 ? youngScale(world.reg.birthScale[kind]!, ents.span[e]!, ents.grown[e]!, world.tick) : 1;
+    const a = (ents.yaw[e]! / 65536) * TAU;
     if (anim && rig && socket) {
       const st = this.st;
       st.unpack(ents.anim[e]!, ents.cue[e]!);
       st.seed = bodySeed(e);
-      creaturePose(anim, st, world.tick, rig.a);
-      solve(rig, rig.a, rig.solved);
+      poseCreatureOn(anim, st, world.tick, world, ents.x[e]!, ents.y[e]!, ents.z[e]!, a, size);
       boneToModel(rig.solved, socket.bone, socket.x, socket.y, socket.z, v);
     } else {
       v[0] = 0;
@@ -147,8 +148,6 @@ export class Feces {
       v[2] = -world.reg.bodyRadius[kind]!;
     }
     // A young one is drawn smaller, and so is its rig.
-    const size = ents.grown[e] !== 0 ? youngScale(world.reg.birthScale[kind]!, ents.span[e]!, ents.grown[e]!, world.tick) : 1;
-    const a = (ents.yaw[e]! / 65536) * TAU;
     const s = Math.sin(a);
     const co = Math.cos(a);
     const mx = v[0]! * size;
