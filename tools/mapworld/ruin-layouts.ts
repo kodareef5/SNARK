@@ -102,7 +102,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
         from = Math.max(adjacent, playable);
       }
       // What fell lies heaped against the wall it fell from.
-      if (broken && !damaged.has(t) && bay === 8 && opts.detail < 2 && mode !== "burnt") facade(m, "zwedge", u, base + adjacent * 4, v, side, "concrete");
+      if (broken && adjacent === 0 && !damaged.has(t) && bay === 8 && opts.detail < 2 && mode !== "burnt") facade(m, "zwedge", u, base, v, side, "concrete");
       for (let level = from; level < top;) {
         const h = base + level * 4;
         const entry = level === 0 && (entryLane(t) || ["loading", "shopfront", "clock"].includes(form.front) && (t.i + t.j) % 2 === 0);
@@ -163,13 +163,13 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       if (bay !== 8 || opts.detail >= 2 || burnt || party || top === 0) continue;
       // Where the storey above broke away the wall's top is broken too, stepping, sloping or notched.
       if (!capped && !safe(t) && mode !== "hanging") facade(m, `zcrown${1 + hash3(opts.seed + 97, t.i * 4 + side, t.j) % 4}` as RuinShape, u, base + top * 4, v, side, rule.finish);
-      // What fell from a wall lies along its foot: one bay in three, two in three beside a failure; never at a way in.
+      // What fell from a wall lies along its foot: one bay in four, one in two beside a failure; never at a way in.
       const doorway = entryLane(t) || ["loading", "shopfront", "clock"].includes(form.front) || grammar?.ground === "zstore" && !nearFall;
-      const fell = hash3(opts.seed + 101, t.i * 4 + side, t.j) % 6;
+      const fell = hash3(opts.seed + 101, t.i * 4 + side, t.j) % 8;
       if (adjacent === 0 && !broken && !doorway && fell < (nearFall ? 4 : 2)) facade(m, fell % 2 ? "zskirt1" : "zskirt2", u, base, v, side, "concrete");
     }
-    // A tuft has rooted on one broken roof in five.
-    if ((damaged.has(t) || mode === "lost-top") && !safe(t) && top > 0 && bay === 8 && opts.detail < 2 && hash3(opts.seed + 103, t.i, t.j) % 5 === 0) {
+    // A tuft has rooted on one broken roof in ten.
+    if ((damaged.has(t) || mode === "lost-top") && !safe(t) && top > 0 && bay === 8 && opts.detail < 2 && hash3(opts.seed + 103, t.i, t.j) % 10 === 0) {
       m.put("zshrub", t.u + (t.i % 2 ? 2 : -2), base + top * 4 + 0.62, t.v + (t.j % 2 ? 2 : -2), "concrete", hash3(t.i, t.j, 3) % 360);
     }
     // A garage's ramp runs along its front behind every third bay, a storey's worth of them seen through the open decks.

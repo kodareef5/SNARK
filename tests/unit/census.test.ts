@@ -184,11 +184,13 @@ test("a real city's downtown at its three views on each tier: the near city's dr
   // 67,608 near and 15 and 57,036 far, the roof 37, 46, 66,988, 19 and 77,014, the air 51, 45, 77,364, 13 and 73,184.
   // Cut again the same day when the door-to-curb kit and the street's walks came (content/ruins.ts, makeWalks in
   // tools/mapworld/ruins.ts): the street on high was 44, 51 and 126,242 near and 15 and 112,772 far, the roof 40, 48,
-  // 131,204, 19 and 145,914, the air 54, 49, 145,540, 13 and 141,406.
+  // 131,204, 19 and 145,914, the air 54, 49, 145,540, 13 and 141,406. With them and before the ruins' broken tops,
+  // rubble, leaning pieces, cut edges and vines it was 30, 38, 133,324, 15 and 117,186 at the street, 28, 36, 139,774, 19
+  // and 151,618 on the roof and 36, 34, 152,584, 14 and 150,150 in the air.
   expect(got).toEqual({
-    "street-300": { lowpoly: [30, 0, 133324, 12, 82180], "medium, touch": [16, 9, 66230, 10, 39076], medium: [30, 18, 133324, 15, 117186], high: [30, 38, 133324, 15, 117186], ultra: [30, 42, 133324, 15, 117186] },
-    "roof-300": { lowpoly: [28, 0, 139774, 13, 98742], "medium, touch": [19, 7, 85580, 14, 57650], medium: [28, 20, 139774, 19, 149840], high: [28, 36, 139774, 19, 151618], ultra: [28, 46, 139774, 19, 151618] },
-    "air-300": { lowpoly: [36, 0, 152584, 11, 97532], "medium, touch": [19, 2, 96264, 9, 42722], medium: [36, 6, 152584, 14, 150150], high: [36, 34, 152584, 14, 150150], ultra: [36, 39, 152584, 14, 150150] },
+    "street-300": { lowpoly: [35, 0, 152010, 12, 92320], "medium, touch": [19, 12, 73966, 10, 42808], medium: [35, 22, 152010, 15, 131512], high: [35, 48, 152010, 15, 131512], ultra: [35, 53, 152010, 15, 131512] },
+    "roof-300": { lowpoly: [32, 0, 157928, 13, 113018], "medium, touch": [20, 7, 94206, 14, 64564], medium: [32, 21, 157928, 19, 170472], high: [32, 41, 157928, 19, 172790], ultra: [32, 52, 157928, 19, 172790] },
+    "air-300": { lowpoly: [42, 0, 173668, 11, 109118], "medium, touch": [22, 3, 108142, 9, 46830], medium: [42, 8, 173668, 14, 168744], high: [42, 42, 173668, 14, 168744], ultra: [42, 48, 173668, 14, 168744] },
   });
 });
 

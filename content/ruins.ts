@@ -74,13 +74,13 @@ const BALCONY: Part[] = [
 /** Walked, a balcony's front returns at the bay's ends, so it is reached only from the flat behind it. */
 const BALCONY_WALKED: Part[] = [[-4, 4, -0.25, 0, 0, 2], [-4, 4, 0, 1.05, 1.82, 2], ...RETURNS, wall(4)];
 /** The top flats' balconies roofed, and a guard standing above the roof at the roof's edge. */
-const BALCONY_CAP: Part[] = [bevelX([-4, 4, 3.6, 4, 0.25, 2], 0.1, "uo"), [-4, 4, 4, 4.8, 1.82, 2, FRONT]];
+const BALCONY_CAP: Part[] = [[-4, 4, 3.6, 4, 0.25, 2], [-4, 4, 4, 4.8, 1.82, 2, FRONT]];
 /** A window to each 4 m room, sills standing out, a band from the head down to the slab above. */
-const WINDOWS: Part[] = [[-4, 4, 0, 1, -0.25, 0.25], [-4, 4, 3, 4, -0.25, 0.25], bevelY([-4, -2.6, 1, 3, -0.25, 0.25], 0.08, "+"), bevelY([-1.2, 1.2, 1, 3, -0.25, 0.25], 0.08, "-+"), bevelY([2.6, 4, 1, 3, -0.25, 0.25], 0.08, "-"), [-2.6, -1.2, 1, 3, -0.3, -0.15, DARK], [1.2, 2.6, 1, 3, -0.3, -0.15, DARK], [-2.75, -1.05, 0.88, 1, 0.25, 0.42], [1.05, 2.75, 0.88, 1, 0.25, 0.42]];
+const WINDOWS: Part[] = [[-4, 4, 0, 1, -0.25, 0.25], [-4, 4, 3, 4, -0.25, 0.25], [-4, -2.6, 1, 3, -0.25, 0.25], [-1.2, 1.2, 1, 3, -0.25, 0.25], [2.6, 4, 1, 3, -0.25, 0.25], [-2.6, -1.2, 1, 3, -0.3, -0.15, DARK], [1.2, 2.6, 1, 3, -0.3, -0.15, DARK], [-2.75, -1.05, 0.88, 1, 0.25, 0.42], [1.05, 2.75, 0.88, 1, 0.25, 0.42]];
 /** A parapet over the roof's edge and its coping. */
 const PARAPET: Part[] = [[-4, 4, 4, 4.8, -0.25, 0.25], bevelX([-4, 4, 4.8, 4.95, -0.3, 0.35], 0.06, "uoui")];
 /** Spandrel over the slab's edge, a pane a storey and mullions at 2 m. */
-const CURTAIN: Part[] = [bevelX([-4, 4, -0.4, 1, -0.15, 0.25], 0.06, "uo"), [-4, 4, 1, 3.6, -0.2, -0.05, PANE], ...[-4, -2, 0, 2, 4].map((x): Part => [Math.max(-4, x - 0.05), Math.min(4, x + 0.05), 1, 3.6, -0.05, 0.15, METAL])];
+const CURTAIN: Part[] = [[-4, 4, -0.4, 1, -0.15, 0.25], [-4, 4, 1, 3.6, -0.2, -0.05, PANE], ...[-4, -2, 0, 2, 4].map((x): Part => [Math.max(-4, x - 0.05), Math.min(4, x + 0.05), 1, 3.6, -0.05, 0.15, METAL])];
 const CROWN: Part[] = [bevelX([-4, 4, 3.6, 5.2, -0.15, 0.25], 0.1, "uo")];
 /** A shop's front: half piers, a sign band standing proud of them, a dark display on a low riser and a 2 m door set back. */
 const SHOP: Part[] = [bevelY([-4, -3.6, 0, 4, -0.3, 0.3], 0.1, "+"), bevelY([3.6, 4, 0, 4, -0.3, 0.3], 0.1, "-"), [-3.6, 3.6, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 3.6, 3.8, 4, -0.25, 0.25], [-3.6, 1.4, 0, 0.5, -0.25, 0.05], [-3.6, 1.4, 0.5, 2.9, -0.25, -0.15, DARK], [1.4, 1.6, 0, 2.9, -1.2, 0.05]];
@@ -88,7 +88,7 @@ const SHOP_WALKED: Part[] = [[-4, -3.6, 0, 4, -0.3, 0.3], [3.6, 4, 0, 4, -0.3, 0
 /** The same front with a blue-grey shutter down over display and door. */
 const SHUTTER: Part[] = [SHOP[0]!, SHOP[1]!, [-3.6, 3.6, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 3.6, 3.8, 4, -0.25, 0.25], [-3.6, 3.6, 0, 2.9, 0, 0.1, STEEL]];
 /** A garage's open deck: columns at the bay's ends and a weathered spandrel over the slab's edge. */
-const DECK: Part[] = [bevelY([-4, -3.65, 0, 3.6, -0.35, 0.35], 0.08, "+"), bevelY([3.65, 4, 0, 3.6, -0.35, 0.35], 0.08, "-"), [-3.65, 3.65, -0.4, 1.05, 0, 0.25, SPANDREL]];
+const DECK: Part[] = [[-4, -3.65, 0, 3.6, -0.35, 0.35], [3.65, 4, 0, 3.6, -0.35, 0.35], [-3.65, 3.65, -0.4, 1.05, 0, 0.25, SPANDREL]];
 /** The deck above's edge beam, a lip under its slab. */
 const DECK_LIP: Part = [-3.65, 3.65, 3.4, 3.6, -0.1, 0.25];
 const DECK_CAP: Part[] = [[-4, 4, 3.6, 4.6, -0.1, 0.25, SPANDREL], [-0.08, 0.08, 4.6, 9.4, 0.05, 0.2, STEEL], [-0.7, 0.1, 9.25, 9.45, 0.05, 0.4, STEEL]];
@@ -100,7 +100,7 @@ const RAILED: Part[] = [...BALCONY.filter((p) => p !== BALCONY[1] && !RETURNS.in
  * A lobby's way in: a steel head across the open bay from column to column and a concrete canopy over it. Nothing of it
  * stands below the head, so it is no obstacle to the way through the door.
  */
-const ENTRY: Part[] = [[-4, 4, 2.82, 3, -0.09, 0.09, METAL], bevelX([-3.2, 3.2, 3, 3.25, 0.09, 2.1], 0.08, "do"), [-3.2, 3.2, 3.25, 3.45, 1.95, 2.1]];
+const ENTRY: Part[] = [[-4, 4, 2.82, 3, -0.09, 0.09, METAL], [-3.2, 3.2, 3, 3.25, 0.09, 2.1], [-3.2, 3.2, 3.25, 3.45, 1.95, 2.1]];
 const MODULES = {
   zbalc: { look: BALCONY, walked: BALCONY_WALKED },
   zbalctop: { look: [...BALCONY, ...BALCONY_CAP], walked: [...BALCONY_WALKED, ...BALCONY_CAP] },
@@ -203,15 +203,17 @@ const through = (z0: number, z1: number, xy: readonly (readonly [number, number]
  * height at either end, stepping, sloping and notched down to the slab between them; a bar or two standing out of it.
  */
 const CROWNS: readonly (readonly (readonly [number, number, number, number])[])[] = [
-  [[-4, -1.6, 1.3, 1.1], [-1.6, 0.4, 0.75, 0.55], [0.4, 2.5, 0.4, 0.2], [3.2, 4, 0.1, 0.25]],
-  [[-4, -1.8, 1.5, 1.05], [-1.8, 1.2, 0.95, 0.3], [1.2, 4, 0.22, 0.08]],
-  [[-4, -2.3, 0.85, 1.1], [-2.3, -0.6, 0.3, 0.22], [-0.6, 1.9, 1.35, 0.95], [1.9, 4, 0.5, 0.65]],
-  [[-4, -0.2, 0.35, 0.6], [-0.2, 2.2, 0.6, 0.18], [3, 4, 0.12, 0.3]],
+  [[-4, -1.6, 1.2, 1.2], [-1.6, 0.4, 0.65, 0.65], [0.4, 2.5, 0.4, 0.15], [3.2, 4, 0.2, 0.2]],
+  [[-4, -1.8, 1.5, 1.05], [-1.8, 1.2, 0.95, 0.3], [1.2, 4, 0.15, 0.15]],
+  [[-4, -2.3, 1, 1], [-2.3, -0.6, 0.25, 0.25], [-0.6, 1.9, 1.35, 0.95], [1.9, 4, 0.55, 0.55]],
+  [[-4, -0.2, 0.45, 0.45], [-0.2, 2.2, 0.6, 0.18], [3, 4, 0.25, 0.25]],
 ];
 const crown = (name: string, runs: readonly (readonly [number, number, number, number])[]): ShapeDef => {
-  const hulls = runs.map(([a, b, ya, yb]): HullDef => ({ corners: through(-0.25, 0.25, [[a, 0], [b, 0], [b, yb], [a, ya]]) }));
+  // A level run is a box; a sloping one a convex part.
+  const level = runs.filter(([, , ya, yb]) => ya === yb).map(([a, b, y]): ShapeBox => ({ at: [(a + b) / 2, y / 2, 0], half: [(b - a) / 2, y / 2, 0.25] }));
+  const hulls = runs.filter(([, , ya, yb]) => ya !== yb).map(([a, b, ya, yb]): HullDef => ({ corners: through(-0.25, 0.25, [[a, 0], [b, 0], [b, yb], [a, ya]]) }));
   const [a, , ya] = runs[0]!;
-  return centred(shaped(name), { hulls }, { hulls, boxes: [{ at: [a + 0.5, ya + 0.2, 0.1], half: [0.025, 0.25, 0.025], color: RUST }, { at: [a + 1.4, ya + 0.1, -0.1], half: [0.025, 0.2, 0.025], color: RUST }] });
+  return centred(shaped(name), { boxes: level, hulls }, { hulls, boxes: [...level, { at: [a + 0.5, ya + 0.2, 0.1], half: [0.025, 0.25, 0.025], color: RUST }, { at: [a + 1.4, ya + 0.1, -0.1], half: [0.025, 0.2, 0.025], color: RUST }] });
 };
 /** A lump of rubble along a wall's foot from a to b, h high against the wall and reaching `out` from it on the ground. */
 const lump = (a: number, b: number, h: number, out: number): HullDef => ({ corners: [[a, 0, 0.2], [b, 0, 0.2], [a + 0.3, 0, out * 0.85], [b - 0.2, 0, out], [a + 0.2, h, 0.2], [b - 0.3, h * 0.75, 0.2]] });
@@ -268,10 +270,10 @@ export const RUIN_BREAKS = {
     boxes: bars([[-2.5, -0.95, 0.35, 0.4], [-0.4, -0.95, 0.25, 0], [1.8, -0.95, 0.4, 0.55]]).map((b) => ({ ...b, at: [b.at[0], b.at[1], b.at[2] + 2.15] as const })),
   }),
   // The rubble at the foot of a failure, 8 m along the wall it fell from, up to 1.5 m high against it and 2.8 m out.
-  zwedge: skirt("zwedge", [[-3.9, -1, 1.3, 2.6], [-1.4, 1.6, 0.9, 2.0], [1.2, 3.9, 1.5, 2.8]], [[-2.8, 1.9, 0.3, 101], [-0.2, 1.5, 0.22, 99], [0.9, 2.3, 0.35, 102], [2.9, 2.1, 0.25, 101]], 2.75),
+  zwedge: skirt("zwedge", [[-3.9, -0.2, 1.3, 2.6], [-0.6, 3.9, 1.5, 2.8]], [[-2.8, 1.9, 0.3, 101], [-0.2, 1.5, 0.22, 99], [0.9, 2.3, 0.35, 102], [2.9, 2.1, 0.25, 101]], 2.75),
   // What fell from a standing wall along its foot, two runs of it.
-  zskirt1: skirt("zskirt1", [[-3.7, -1.4, 0.5, 1.0], [-1.7, 0.6, 0.32, 0.8], [0.4, 3.6, 0.45, 1.1]], [[-2.6, 0.75, 0.2, 101], [1.6, 0.95, 0.24, 99], [-0.4, 0.7, 0.16, 102]], 1.15),
-  zskirt2: skirt("zskirt2", [[-3.8, -0.9, 0.38, 0.9], [-1.2, 1.8, 0.55, 1.15], [1.5, 3.8, 0.28, 0.75]], [[-2.2, 0.8, 0.18, 99], [0.4, 1.0, 0.22, 101], [2.6, 0.7, 0.15, 102]], 1.2),
+  zskirt1: skirt("zskirt1", [[-3.7, -0.4, 0.5, 1.0], [-0.8, 3.6, 0.38, 1.1]], [[-2.6, 0.75, 0.2, 101], [1.6, 0.95, 0.24, 99], [-0.4, 0.7, 0.16, 102]], 1.15),
+  zskirt2: skirt("zskirt2", [[-3.8, 0.2, 0.36, 0.95], [-0.2, 3.8, 0.55, 1.15]], [[-2.2, 0.8, 0.18, 99], [0.4, 1.0, 0.22, 101], [2.6, 0.7, 0.15, 102]], 1.2),
   zcrown1: crown("zcrown1", CROWNS[0]!), zcrown2: crown("zcrown2", CROWNS[1]!), zcrown3: crown("zcrown3", CROWNS[2]!), zcrown4: crown("zcrown4", CROWNS[3]!),
   zhang: centred(shaped("zhang"), { hulls: [{ corners: hanging() }] }, { hulls: [{ corners: hanging() }], boxes: [{ at: [-1.45, -0.3, 0.45], half: [0.04, 0.2, 0.04], color: RUST }] }),
   zleancol: centred(shaped("zleancol"), { hulls: [{ corners: LEAN_COLUMN }] }, { hulls: [{ corners: LEAN_COLUMN }], boxes: [{ at: [-0.18, 3.25, 0.55], half: [0.025, 0.3, 0.025], color: RUST }, { at: [0.15, 3.0, 0.3], half: [0.025, 0.25, 0.025], color: RUST }] }),
