@@ -2,6 +2,7 @@
 // sounds, moves the map, copies a console line, searches, and works a figure out again for the world a visitor came from.
 
 import { BOX, type Atlas, type Mark } from "./atlas.ts";
+import { fleetTables } from "./driving.ts";
 import type { Cell, Entry, Kind, Ref, Table } from "./catalogue.ts";
 import { KINDS, num, sentence, time } from "./catalogue.ts";
 import type { ControlGroup } from "./controls.ts";
@@ -88,7 +89,8 @@ export function renderWiki(site: Site): Map<string, string> {
     const ordered = kind === "items" ? [...all].sort((a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label)) : all;
     for (let at = 0; at * PAGE < Math.max(1, ordered.length); at++) {
       const shown = v.cards(ordered.slice(at * PAGE, (at + 1) * PAGE));
-      const body = `${heading(TITLES[kind], `${all.length} in the game`)}${chips}${shown}${pager(`${BASE}${kind}/`, all.length, PAGE, at)}`;
+      const compared = kind === "vehicles" && at === 0 ? fleetTables(all).map(v.table).join("\n") : "";
+      const body = `${heading(TITLES[kind], `${all.length} in the game`)}${chips}${shown}${pager(`${BASE}${kind}/`, all.length, PAGE, at)}${compared}`;
       write(`${kind}/${at ? `page/${at + 1}/` : ""}`, TITLES[kind], kind, body);
     }
     for (const g of kind === "items" ? groups : []) {
@@ -133,7 +135,8 @@ function views(site: Site) {
     return `${href ? `<a href="${href}">${name}</a>` : name}${r.note ? ` <small>${esc(r.note)}</small>` : ""}`;
   };
   const cell = (c: Cell): string => (typeof c === "string" ? esc(c) : "rate" in c ? `<span data-figure="${c.rate}" data-v="${esc(c.v)}">${esc(c.text)}</span>` : ref(c));
-  const row = (r: readonly Cell[]): string => `<tr>${r.map((c, k) => (k === 0 ? `<th>${cell(c)}</th>` : `<td>${cell(c)}</td>`)).join("")}</tr>`;
+  const part = (c: Cell | readonly Cell[]): string => (Array.isArray(c) ? c.map(cell).join("") : cell(c as Cell));
+  const row = (r: readonly (Cell | readonly Cell[])[]): string => `<tr>${r.map((c, k) => (k === 0 ? `<th>${part(c)}</th>` : `<td>${part(c)}</td>`)).join("")}</tr>`;
   const table = (t: Table): string => {
     const head = `<thead><tr>${join(t.head, (h) => `<th>${cell(h)}</th>`)}</tr></thead>`;
     const note = t.note?.length ? `<p class="note">${t.note.map(cell).join("")}</p>` : "";
@@ -298,7 +301,7 @@ ${related ? `<section><h2>Related</h2><dl class="related">${related}</dl></secti
 ${site.assets.font ? '<section><h2>Type</h2><p>Barlow Semi Condensed, under the <a href="/assets/hud-font-license.txt">SIL Open Font License</a>.</p></section>' : ""}`;
   };
 
-  return { owners: sortedOwners, ownerName, ref, cards, maps, front, entry, engrams, levels, soundOwners, soundPage, music, controls, commands, settings, search, credits };
+  return { owners: sortedOwners, ownerName, ref, table, cards, maps, front, entry, engrams, levels, soundOwners, soundPage, music, controls, commands, settings, search, credits };
 }
 
 const at1 = (n: number): number => Math.round(n * 10) / 10;
