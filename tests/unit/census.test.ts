@@ -79,8 +79,8 @@ artTest("a frame on medium at the iPhone's view keeps within medium's draws and 
   // 205,904 while a chunk cast all its instances into every cascade its box met; by its 16 m cells, each into the
   // cascades it reaches, it is this (the touch rule's one tap keeps the levels). It was 342,046 and 1,736,330 in the first
   // two until nodes were scattered by their chunks' frame keys (shared/coords.ts), which moves every tree, rock and bush.
-  // The feathered raptors add 21,888 and 21,520 shadow triangles in the two fights.
-  expect(Object.values(scenes).map((frames) => most(frames, (f) => f.cast))).toEqual([363948, 1842084, 138704]);
+  // The native Parasaur adds 29,528 shadow triangles to each woodland fight on top of the feathered Raptor.
+  expect(Object.values(scenes).map((frames) => most(frames, (f) => f.cast))).toEqual([393476, 1871612, 138704]);
 });
 
 artTest("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draws and casts what it did", () => {

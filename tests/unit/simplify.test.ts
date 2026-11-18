@@ -136,3 +136,18 @@ artTest("a mesh with one level gets more only if it has the triangles for them, 
     }
   }
 });
+
+artTest("the native Parasaur streams seven decreasing body meshes across its textured and flat levels", () => {
+  const pack = parsePack(corePackBytes());
+  const mesh = pack.header.meshes[pack.meshIndex.get("core:parasaur")!]!;
+  expect(mesh.lods.length).toBe(7);
+  expect(mesh.flat!).toBeGreaterThan(0);
+  expect(mesh.flat!).toBeLessThan(7);
+  for (const [level, lod] of mesh.lods.entries()) {
+    expect((lod.sections?.length ?? 0) > 0).toBe(level < mesh.flat!);
+    if (level > 0) {
+      expect(lod.indexCount).toBeLessThan(mesh.lods[level - 1]!.indexCount);
+      expect(lod.error).toBeGreaterThan(mesh.lods[level - 1]!.error);
+    }
+  }
+});

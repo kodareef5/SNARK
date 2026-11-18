@@ -4,6 +4,7 @@ import { allClips } from "../../shared/pack/clips.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { lodIndices, lodVertices, parsePack } from "../../shared/pack/pack.ts";
 import { artTest } from "../fixtures/needs-art.ts";
+import { CREATURE_ASSETS } from "../fixtures/assets.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { surfaceError } from "../../tools/pack/error.ts";
 import { partHash } from "../../tools/pack/manifest.ts";
@@ -136,9 +137,10 @@ artTest("the boot file holds the survivor's clips, and the clip file each creatu
   const { files, manifest } = splitPack(whole, "core");
   const boot = parsePack(files[0]!.bytes);
   expect([...new Set(boot.header.clips.map((c) => c.id.slice(0, c.id.indexOf("/"))))]).toEqual(["human"]);
-  expect(manifest.clips!.map((e) => [e.rig, e.file, e.clips.length])).toEqual([
-    ["core:brachio", 2, 17], ["core:carbonemys", 2, 19], ["core:dodo", 2, 21], ["core:parasaur", 2, 6], ["core:pteranodon", 2, 32], ["core:raptor", 2, 6], ["core:rex", 2, 19], ["core:spino", 2, 17], ["core:stego", 2, 30], ["core:trike", 2, 22],
-  ]);
+  expect(manifest.clips!.map((e) => [e.rig, e.file, e.clips.map((c) => c.id).sort()])).toEqual(
+    CREATURE_ASSETS.filter(({ spec }) => spec.clips.length > 0).sort((a, b) => a.id.localeCompare(b.id))
+      .map(({ id, spec }) => [id, 2, spec.clips.map((c) => `${id}/${c.name}`).sort()]),
+  );
   for (const e of manifest.clips!) expect(partHash(files[2]!.bytes.subarray(e.at, e.at + e.part.bytes))).toBe(e.part.hash);
   // Every clip comes back as it was, and so does the hash of them all, which the manifest gives the client to send.
   const all = allClips(manifest, boot, (f) => files[f]!.bytes, () => new Uint8Array(0));

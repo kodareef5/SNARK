@@ -140,7 +140,8 @@ test("a saved Trike keeps its inherited dye and re-evaluates a nearby threat aft
 
 artTest("native draws flush only the configured frill, preserve custom dyes and leave the saddle alone", () => {
   const kind = reg.index.get("core:trike")!, saddle = reg.index.get("core:saddle_trike")!;
-  const render = new Characters(reg, pack, new Assets(reg, pack));
+  const assets = new Assets(reg, pack);
+  const render = new Characters(reg, pack, assets);
   function draw(dyes: Uint8Array, word: number) {
     const state = new AnimState(); state.unpackCue(word); state.grounded = true;
     const packet = new FramePacket(), gear = new Uint16Array(GEAR_COUNT); gear[GEAR_WORN] = saddle;
@@ -151,12 +152,16 @@ artTest("native draws flush only the configured frill, preserve custom dyes and 
     const colors = (name: string) => { expect(offsets.has(name)).toBe(true); const at = offsets.get(name)!; return [...packet.transient.subarray(at, at + 6)]; };
     return { body: colors("core:trike"), saddle: colors("core:saddle_trike/worn") };
   }
-  for (const frill of [TRIKE_DYES[3]!, 0, 9, 10, 11, 21]) {
-    const dyes = Uint8Array.from(TRIKE_DYES); dyes[3] = frill;
-    const ordinary = draw(dyes, 0), alert = draw(dyes, CUE_RIVALRY);
-    expect(ordinary.body).toEqual([...dyes]);
-    expect(alert.body.filter((_, i) => i !== 3)).toEqual(ordinary.body.filter((_, i) => i !== 3));
-    expect(alert.body[3]).not.toBe(frill); expect(alert.saddle).toEqual(ordinary.saddle);
-    expect(draw(dyes, 0)).toEqual(ordinary);
+  for (const textured of [false, true]) {
+    assets.textured = (mesh, lod) => textured && assets.table.sections[mesh]![lod]!.length > 0;
+    for (const frill of [TRIKE_DYES[3]!, 0, 9, 10, 11, 21]) {
+      const dyes = Uint8Array.from(TRIKE_DYES); dyes[3] = frill;
+      const ordinary = draw(dyes, 0), alert = draw(dyes, CUE_RIVALRY);
+      const expected = [...dyes].map((c, q) => c || (textured ? 0 : TRIKE_DYES[q]!));
+      expect(ordinary.body).toEqual(expected);
+      expect(alert.body.filter((_, i) => i !== 3)).toEqual(ordinary.body.filter((_, i) => i !== 3));
+      expect(alert.body[3]).not.toBe(ordinary.body[3]); expect(alert.saddle).toEqual(ordinary.saddle);
+      expect(draw(dyes, 0)).toEqual(ordinary);
+    }
   }
 });
