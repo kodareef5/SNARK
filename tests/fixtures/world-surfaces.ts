@@ -26,14 +26,17 @@ export function referenceManifest(pack: Pack): { manifest: ReturnType<typeof des
   return { manifest, materials };
 }
 
-/** The finishes' maps as the rgba variant has them: uploads for a frame, and the twin's sampler. */
+/**
+ * The finishes' maps as the rgba variant has them, at most as wide as medium keeps them: uploads for a frame, and the
+ * twin's sampler. Both read the same pictures, and 48 whole ones would hold a test's worker at 4 GB.
+ */
 export function worldMaps(pack: Pack): { sample: WorldSample; uploads: TextureUpload[] } {
   const sources = worldMaterials();
   const uploads: TextureUpload[] = [];
   const maps: Texture[][] = SURFACE_NAMES.map((name, k) => {
     const material = pack.header.materials!.find((m) => m.id === surfaceMaterial(name))!;
     return ROLES.map((role) => {
-      const top = pack.header.textures![material[role]]!.top;
+      const top = Math.min(pack.header.textures![material[role]]!.top, role === "mro" ? 256 : 512);
       const t = rgbaOf(sources[k]!, role, top);
       t.pictures.forEach((data, i) => uploads.push({ slot: material[role], role, format: "rgba", top: t.top, size: 1 << i, row: 0, rows: 1 << i, data, last: i === t.pictures.length - 1 }));
       return decodeTexture(role, t.pictures);

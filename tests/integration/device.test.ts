@@ -128,7 +128,7 @@ test("the page holds the lit ground and statics to what the plain self-check exp
   expect([r.probes?.map((p) => p.name), r.surfaceReference?.ready, r.surfaceReference?.error, r.surfaceReference!.fetched > 0]).toEqual([["sky", "plaza", "block", "creature"], true, null, true]);
   const twins = new Map(plain!.probes.map((p) => [p.name, p.expected]));
   for (const p of r.probes!) expect([p.name, p.expected]).toEqual([p.name, twins.get(p.name)!]);
-  expect(deviceTable(r).some((line) => /^ {10}ground and statics held to the world surfaces' rgba reference, 0\.1 MB fetched, 0\.0 MB from disk$/.test(line))).toBe(true);
+  expect(deviceTable(r).some((line) => /^ {10}ground and statics held to the world surfaces' rgba reference, 0\.8 MB fetched, 0\.0 MB from disk$/.test(line))).toBe(true);
 });
 
 test("a page the browser reloads in the middle of a run shows and sends what it had, and runs again only when a test is tapped", async () => {

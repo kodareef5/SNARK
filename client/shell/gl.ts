@@ -602,7 +602,9 @@ export class GlRenderer {
     }
     for (let r = 0; r < 3; r++) if (p.worldSide[r] !== this.worldSide[r]) {
       gl.deleteTexture(this.world[r] ?? null);
-      [this.world[r], this.worldSide[r], this.worldBase[r]] = [null, p.worldSide[r]!, -2];
+      this.world[r] = null;
+      this.worldSide[r] = p.worldSide[r]!;
+      this.worldBase[r] = -2;
     }
     this.passes?.mark(PASS_UPLOADS);
     for (const slot of p.assetDrops) this.drop(slot);
@@ -687,6 +689,7 @@ export class GlRenderer {
     this.mapped = null;
     this.worldReady = 1;
     for (let r = 0; r < 3; r++) {
+      if (r > 0 && p.worldSide[r] === 0) continue;
       if (p.worldLevel[r]! < 0 || this.worldBase[r]! < -1) this.worldReady = 0;
       else if (p.worldLevel[r] !== this.worldBase[r]) {
         gl.activeTexture(gl.TEXTURE0 + UNIT.maps + r);

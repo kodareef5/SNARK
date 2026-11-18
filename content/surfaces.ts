@@ -11,7 +11,7 @@ export type SurfaceGroup = "living" | "dry" | "wet" | "mineral" | "masonry" | "m
 export interface SurfaceDials { tint: readonly [number, number, number]; scale: number; bump: number; weather: number; wetness: number; growth: number }
 const dials = (values: Partial<SurfaceDials> = {}): SurfaceDials => ({ tint: [1, 1, 1], scale: 1, bump: 1, weather: 1, wetness: 0, growth: 0, ...values });
 export const SURFACE_GROUPS: Record<SurfaceGroup, SurfaceDials> = {
-  living: dials({ tint: [0.86, 1.04, 0.78] }), dry: dials(), wet: dials({ wetness: 0.35 }),
+  living: dials({ tint: [0.86, 1.04, 0.78] }), dry: dials(), wet: dials(),
   mineral: dials(), masonry: dials(), metal: dials(), paint: dials(), timber: dials(), glass: dials(),
 };
 
@@ -46,7 +46,7 @@ export const SURFACE_FINISHES: Record<SurfaceName, SurfaceFinish> = {
   grass: finish("living", 2, 0.18, 0.2, 0.12, 40, 6),
   sand: finish("dry", 2.5, 0.12, 0.12, 0.05, 6, 6),
   dirt: finish("dry", 2, 0.2, 0.24, 0.1, 12, 0),
-  mud: finish("wet", 2, 0.14, 0.3, 0.08, 15, -6),
+  mud: { ...finish("wet", 2, 0.14, 0.3, 0.08, 15, -6), rough: 1.15 },
   rock: finish("mineral", 3, 0.3, 0.23, 0.08, 30, 0),
   gravel: finish("dry", 1.5, 0.2, 0.2, 0.08, 30, 0),
   asphalt: finish("mineral", 2.5, 0.1, 0.4, 0.1, 8, 0),
@@ -84,7 +84,7 @@ export const GROUND_SURFACES: Partial<Record<SurfaceName, readonly number[]>> = 
 export const FALLBACK_SURFACES: Partial<Record<SurfaceName, readonly number[]>> = {
   // Architectural limestone uses fine mineral grain, not the ground's fractured bedrock.
   rock: [15], asphalt: [4, 84, 85, 86], paving: [1, 98], concrete: [2, 10, 88, 99, 100, 101, 102],
-  brick: [172, 180, 181], clay: [183, 205, 206], rust: [179], steel: [5, 89, 90, 91],
+  brick: [172, 180, 181, 183], clay: [205, 206], rust: [179], steel: [5, 6, 89, 90, 91],
   plaster: [75, 81, 103, 104, 112, 113, 114, 135], wood: [115, 116, 120], glass: [9, 92],
   grass: [137, 138, 139, 150, 151, 195, 196, 197],
 };

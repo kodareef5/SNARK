@@ -165,7 +165,7 @@ test("a frame asks for every finish as wide as its tier keeps them, tells the ca
   const materials: PackMaterial[] = SURFACE_NAMES.map((name, k) => ({ id: surfaceMaterial(name), base: 3 * k, normal: 3 * k + 1, mro: 3 * k + 2, mask: -1, mask2: -1, tint: [1, 1, 1], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 0 }));
   const textures: PackTexture[] = materials.flatMap((m) => roles.map((role) => ({ id: `${m.id}/${role}`, role, top: role === "mro" ? 1024 : 2048 })));
   const held = new Int8Array(48).fill(-1), asked: number[] = [], again: number[] = [];
-  const residency = { format: "bc" as const, material: (m: number, pixels: number) => asked.push(m * 10000 + pixels), holds: (t: number) => held[t]!, again: (t: number) => { again.push(t); held[t] = -1; } };
+  const residency = { format: "bc" as const, material: (m: number, pixels: number, _distance: number, roles = 3) => asked.push(m * 10000 + pixels + (roles === 3 ? 0 : roles / 10)), holds: (t: number) => held[t]!, again: (t: number) => { again.push(t); held[t] = -1; } };
   const finishes = new WorldFinishes(materials, textures), p = new FramePacket();
   finishes.frame(p, residency, tierOf("high"));
   expect([asked.length, asked[0], [...p.worldSide], [...p.worldLevel], again.length]).toEqual([16, 1024, [1024, 1024, 512], [-1, -1, -1], 48]);
@@ -179,6 +179,13 @@ test("a frame asks for every finish as wide as its tier keeps them, tells the ca
   again.length = 0;
   finishes.frame(p, residency, tierOf("ultra"));
   expect([[...p.worldSide], [...p.worldLevel], again.length]).toEqual([[2048, 2048, 1024], [-1, -1, -1], 48]);
+  // The touch rule's light finish reads the base colour alone: only that is asked for and held, and the rest let go.
+  held.fill(4); asked.length = 0; again.length = 0;
+  finishes.frame(p, residency, forTouch(tierOf("high"), true));
+  expect([asked.length, asked[0], [...p.worldSide], [...p.worldLevel], again.length]).toEqual([16, 1024.1, [1024, 0, 0], [-1, -1, -1], 48]);
+  held.fill(4);
+  finishes.frame(p, residency, forTouch(tierOf("high"), true));
+  expect([...p.worldLevel]).toEqual([0, -1, -1]);
   finishes.frame(p, residency, tierOf("lowpoly"));
   expect([[...p.worldSide], [...p.worldLevel]]).toEqual([[0, 0, 0], [-1, -1, -1]]);
   for (const tier of TIERS) expect([tier.name, tier.finishes]).toEqual([tier.name, { lowpoly: 0, medium: 512, high: 1024, ultra: 2048 }[tier.name]]);

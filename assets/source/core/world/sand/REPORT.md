@@ -6,7 +6,7 @@ Dry buff quartz with sparse cream, grey and pale pink shell chips. The 2.5 m til
 
 | File | Construction and checks |
 | --- | --- |
-| `base.png` | Three flat-lit ImageGen sand sources supply the mineral colour. I reduced them to matching grain scales, removed broad colour drift and quilted 1,024 irregular patches across both wrap boundaries. A fourth source supplied the face colours and outlines of 100 shell chips. The 8-bit RGB PNG carries an sRGB tag and the four source prompts in its metadata. |
+| `base.png` | Three flat-lit image-tool sand sources supply the mineral colour. I reduced them to matching grain scales, removed broad colour drift and quilted 1,024 irregular patches across both wrap boundaries. A fourth source supplied the face colours and outlines of 100 shell chips. The 8-bit RGB PNG carries an sRGB tag and the four source prompts in its metadata. |
 | `height.png` | The original 51–96 mm wind crests and deposits support the revised bed. I modelled small convex crowns inside individual light, dark and amber grain footprints. Each shell cutout received a separate tilted, bevelled face and an independently chosen exposure height. The middle 90% of samples span 1.58–3.60 mm. The 16-bit map uses both endpoints of its 0–6 mm range. |
 | `normal.png` | I reopened the exported height, took centred differences across wrapped neighbours at the physical texel pitch, and normalised the vectors. Red points right and green points towards the top of the image. The result is 8-bit RGB. |
 | `roughness.png` | The original dry-bed roughness carries the variation in packing. Resolved mineral grains and shell faces receive a smoother finish using their registered footprints. The linear 8-bit map ranges from 231 to 253 and averages 245.51. |

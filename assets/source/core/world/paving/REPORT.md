@@ -36,7 +36,7 @@ The photographic reference has warmer cement, fewer exposed pale grains and tigh
 Replaced the procedural face colour with photographic quilts and widened the joints from 6.8 to 9.2 mm. Pale sand now interrupts the dark grit, and the fill sits a median 5.7 mm below the concrete. The new edge geometry includes chipped arrises and wider worn bevels. Across the sixteen slab interiors the mean luma range increased from 1.4 to 6.4 sRGB code values. The 500 mm pitch and palette target are unchanged.
 
 <details>
-<summary>Photographic source prompts · built-in ImageGen</summary>
+<summary>Photographic source prompts · image tool</summary>
 
 **Exposed limestone**
 

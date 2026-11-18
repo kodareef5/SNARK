@@ -610,14 +610,15 @@ export class Residency {
   /**
    * Says a material is on screen this frame, a whole texture of it covering `pixels` pixels on something `distance`
    * metres off. Each of its textures is kept, and wanted at the first step that is as wide as it is shown: as far
-   * under the material's widest as it was authored, and no wider than the tier allows.
+   * under the material's widest as it was authored, and no wider than the tier allows. Only its first `roles` maps are
+   * wanted where fewer are read.
    */
-  material(m: number, pixels: number, distance: number): void {
+  material(m: number, pixels: number, distance: number, roles = MAPS): void {
     if (this.cap < 0) return;
     this.matSeen[m] = this.frame;
     const most = STEP0_SIZE << (this.matTop[m]! < this.cap ? this.matTop[m]! : this.cap);
     const shown = pixels < most ? pixels : most;
-    for (let r = 0; r < MAPS; r++) {
+    for (let r = 0; r < roles; r++) {
       const t = this.matTex[m * MAPS + r]!;
       if (t >= 0) this.texture(t, shown / (1 << this.matUnder[m * MAPS + r]!), WEIGHT[r]! / distance, r === 0 || r >= 3);
     }

@@ -22,7 +22,7 @@ I replaced the first pass’s scattered pale flecks with twelve photographic sou
 
 | Proof | What I checked and saw |
 | --- | --- |
-| [Source crops](checks/sources.png) | Samples from all twelve built-in ImageGen generations before colour matching, ordered left to right by row. The exact prompt for each generation is embedded in the PNG text metadata. |
+| [Source crops](checks/sources.png) | Samples from all twelve image-tool generations before colour matching, ordered left to right by row. The exact prompt for each generation is embedded in the PNG text metadata. |
 | [Photographic comparison](checks/comparison.png) | Left is the finish at one texel per pixel. Centre and right show the same 112.5 cm field width at the scan’s sampling pitch. The right column uses a CC0 road scan. Both scale-matched low-sun views use the same 15° light and an 8 mm black-to-white displacement range. |
 | [Half-offset](checks/offset.png) | Shifted base, height and roughness by 1024 pixels on both axes. Grain shapes continue across the old corners. In base green, the top and left joins measure 1.01× and 0.93× the mean ordinary adjacent-pixel difference. |
 | [Three repeats](checks/tiled3.png) | Full-resolution 3 × 3 assemblies, base above height. I checked both the overview and native-size join crops. I could not pick out a recurring crack, bright chip or quilt boundary. |

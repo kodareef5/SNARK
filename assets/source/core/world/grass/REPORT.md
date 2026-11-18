@@ -10,7 +10,7 @@ All six maps were exported together from the recovered blade layout. Roughness a
 
 ## Round two
 
-I rebuilt the 2 m tile from six overcast ImageGen turf studies. Their runners, leaf faces and thatch supply the understorey. A seventh generation supplied 36 isolated blade silhouettes with their own veins, tips and pigment. I placed those in small fans and fitted a separate curved surface to each blade. They cover 22% of the finished tile. The middle 80% of their projected lengths span 6.0–12.2 cm, with widths of 5.4–9.5 mm. The inputs and exact prompts are in [sources](sources/) and [prompts.md](sources/prompts.md).
+I rebuilt the 2 m tile from six overcast image-tool turf studies. Their runners, leaf faces and thatch supply the understorey. A seventh generation supplied 36 isolated blade silhouettes with their own veins, tips and pigment. I placed those in small fans and fitted a separate curved surface to each blade. They cover 22% of the finished tile. The middle 80% of their projected lengths span 6.0–12.2 cm, with widths of 5.4–9.5 mm. The inputs and exact prompts are in [sources](sources/) and [prompts.md](sources/prompts.md).
 
 In the native crop, the upper leaves have broad faces and pale midribs. Older olive blades and buff straw remain visible between them. The median height steps from 2.9 mm on exposed soil to 16.0 mm on thatch and 30.4 mm on the added blades. I corrected small pale marks that initially rendered as holes. Under the 15° sun, a few close crossings still have a thicker edge than the blades in the field photographs. The reference photographs have unrecorded camera distances and sun angles. [Field comparison](checks/reference.png) · [Generated source comparison](checks/source.png) · [Relighting](checks/relit.png)
 

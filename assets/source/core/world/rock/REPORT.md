@@ -13,7 +13,7 @@ This 2048 × 2048 tile covers 3 m of weathered stone. The exposed body grades fr
 | `occlusion.png` | An 8-bit linear map. Sixteen directions sample local horizons out to 35 mm. Opposing horizons cancel on flat, sloping stone. The darkest enclosed portions reach 74 and exposed ridges reach 255. |
 | `tint.png` | An 8-bit linear mask. Deep interiors meeting both a local carving-depth threshold and a low final elevation receive 128. They cover 2.88% of the tile. The remaining stone receives 255. |
 | `material.json` | Records 3 m width, 30 mm relief, null laying module and the rounded measured mean. The finish is entirely mineral. |
-| `make_rock.py` and `sources/` | The deterministic builder reads the eight local ImageGen fields and reconstructs the maps and seven PNG proofs. The generation prompts are in [prompts.txt](sources/prompts.txt). |
+| `make_rock.py` and `sources/` | The deterministic builder reads the eight local image-tool fields and reconstructs the maps and seven PNG proofs. The generation prompts are in [prompts.txt](sources/prompts.txt). |
 
 ## Visual inspection
 

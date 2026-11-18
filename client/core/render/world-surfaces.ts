@@ -55,7 +55,7 @@ export function worldPhase(out: Float32Array, x: number, y: number, z: number, c
 /** What the finishes need of the textures' residency (assets/residency.ts). */
 export interface FinishResidency {
   readonly format: TextureFormat;
-  material(m: number, pixels: number, distance: number): void;
+  material(m: number, pixels: number, distance: number, roles?: number): void;
   holds(t: number): number;
   again(t: number): void;
 }
@@ -72,6 +72,7 @@ export class WorldFinishes {
   private readonly tops: number[];
   private readonly share: number[];
   private side = 0;
+  private roles = 0;
 
   constructor(materials: readonly PackMaterial[], textures: readonly PackTexture[]) {
     const found = SURFACE_NAMES.map((name) => materials.findIndex((m) => m.id === surfaceMaterial(name)));
@@ -88,12 +89,15 @@ export class WorldFinishes {
 
   frame(p: FramePacket, residency: FinishResidency, tier: Tier): void {
     const side = this.present && tier.lit ? tier.finishes : 0;
-    if (side !== this.side) for (const ts of this.textures) for (const t of ts) residency.again(t);
+    // The touch rule's light finish reads the base colour alone, so it neither fetches nor holds the others.
+    const roles = tier.finish === "light" ? 1 : 3;
+    if (side !== this.side || roles !== this.roles) for (const ts of this.textures) for (const t of ts) residency.again(t);
     this.side = side;
-    for (const m of this.materials) if (side > 0) residency.material(m, side, 1);
+    this.roles = roles;
+    for (const m of this.materials) if (side > 0) residency.material(m, side, 1, roles);
     for (let r = 0; r < 3; r++) {
-      const along = Math.min(side * this.share[r]!, topIn(residency.format, this.tops[r]!));
-      let level = side > 0 ? 0 : -1;
+      const along = r < roles ? Math.min(side * this.share[r]!, topIn(residency.format, this.tops[r]!)) : 0;
+      let level = along > 0 ? 0 : -1;
       for (const t of this.textures[r]!) {
         const held = residency.holds(t);
         level = held < 0 || level < 0 ? -1 : Math.max(level, Math.log2(along / Math.min(along, STEP0_SIZE << held)));
@@ -215,7 +219,12 @@ function finishMaps(id: number, u: number, v: number, spread: number, sample: Wo
     maps.lean[0] += (turned ? -by : bx) * s;
     maps.lean[1] += (turned ? bx : by) * s;
   }
-  if (light) maps.mro.set([1, f.mean, 0, 0.5]);
+  if (light) {
+    maps.mro[0] = 1;
+    maps.mro[1] = f.mean;
+    maps.mro[2] = 0;
+    maps.mro[3] = 0.5;
+  }
 }
 
 /**
