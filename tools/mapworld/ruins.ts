@@ -51,6 +51,9 @@ export function makeRuins(site: Site): StaticPiece[] {
     const id = Math.floor(f.building.id / 4);
     if ((primary.get(id)?.building.area ?? 0) < f.building.area) primary.set(id, f);
   }
+  // A named place is the city's own: one that stands on no footprint of this map is a broken anchor, never a quiet loss.
+  const unplaced = named.filter((p) => !primary.has(p.footprint));
+  if (unplaced.length > 0) throw new Error(`named places on no footprint of this map (ruins/places.json): ${unplaced.map((p) => p.name).join(", ")}`);
   const facts = resolveLabels(primary, data, v);
   const neighbours = new Map<string, Footprint[]>();
   for (const f of site.footprints) { const k = `${Math.floor(f.building.e / 64)},${Math.floor(f.building.n / 64)}`; if (!neighbours.has(k)) neighbours.set(k, []); neighbours.get(k)!.push(f); }
@@ -400,7 +403,7 @@ function makePublicPlaces(site: Site, places: PublicPlace[], accept: (m: Mason) 
     if (p.kind === "pier") { record.status = "full way geometry built by bridge layer"; continue; }
     if (y < 0) { record.status = "submerged context"; continue; }
     // A board stands on its posts in a median or a verge, as it is mapped; anything else keeps the road clear.
-    if (p.kind !== "board" && [S.STREET, S.HIGHWAY, S.DECK].includes(site.ground.surface[i]! as typeof S.STREET)) { record.status = "road kept clear"; continue; }
+    if (p.kind !== "board" && [S.STREET, S.HIGHWAY, S.CROSSWALK, S.DECK].includes(site.ground.surface[i]! as typeof S.STREET)) { record.status = "road kept clear"; continue; }
     const frame: Frame = { x, z, c: 1, s: 0, yaw: 0, width: 24, depth: 24, rings: [[[-12, -12], [12, -12], [12, 12], [-12, 12], [-12, -12]]] };
     if (p.kind === "board") {
       // Its face toward the compass bearing it is mapped facing: the frame's u runs along the board.
@@ -443,7 +446,8 @@ function makePublicPlaces(site: Site, places: PublicPlace[], accept: (m: Mason) 
 function makeStreetPieces(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, obstacles: ReturnType<typeof obstacleIndex>, roads: ReturnType<typeof roadIndex>): Record<string, number> {
   const out: Record<string, number> = {}; const { nx, x0, z0, x1, z1 } = site.ground.grid; const spacing = v.street.spacing;
   const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
-  const road = (surface: number | undefined): boolean => surface === S.STREET || surface === S.HIGHWAY;
+  // A crossing is the street under its paint: the lane runs on across it.
+  const road = (surface: number | undefined): boolean => surface === S.STREET || surface === S.HIGHWAY || surface === S.CROSSWALK;
   const cars = v.street.cars; const pick = carPicker(cars, v.seed);
   const rule: Rule = { recipe: "street", height: 0, finish: "rust", feature: "", holes: 0, wall: 0, bay: 8, matched: [], provisional: false, assemblies: v.assemblies };
   const frameAt = (x: number, z: number, yaw: number, width: number, depth: number): Frame => { const a = yaw * Math.PI / 180; return { x, z, yaw, c: Math.cos(a), s: Math.sin(a), width, depth, rings: [] }; };

@@ -17,7 +17,8 @@ import { carPicker } from "./street-cars.ts";
 import { CityStatics, boxPart, cellPart } from "../../shared/world/city.ts";
 import { chunkAt } from "../../shared/coords.ts";
 
-const source = process.env.MAPWORLD_TEST_SOURCE ?? readdirSync("assets/source/maps").sort().map((name) => `assets/source/maps/${name}`).find((path) => existsSync(`${path}/ruins/vocabulary.json`))!;
+// A city made on this machine (tools/maps/city.ts), the first by name: its work folder holds the vocabulary and survey.
+const source = process.env.MAPWORLD_TEST_SOURCE ?? (existsSync("var/mapdata") ? readdirSync("var/mapdata").sort() : []).map((name) => `var/mapdata/${name}/current`).find((path) => existsSync(`${path}/ruins/vocabulary.json`))!;
 const rule: Rule = { recipe: "tower", height: 24, finish: "concrete", feature: "frame", holes: .35, wall: .35, bay: 8, matched: [], provisional: true };
 const frame = (degrees: number): Frame => ({ x: 128, z: 128, yaw: degrees, c: Math.cos(degrees * Math.PI / 180), s: Math.sin(degrees * Math.PI / 180), width: 40, depth: 40, rings: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]] });
 

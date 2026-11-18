@@ -1,0 +1,128 @@
+[
+  {
+    "id": "freedom-tower",
+    "name": "Freedom Tower",
+    "layout": "belfry",
+    "recipe": "civic",
+    "finish": "limestone",
+    "note": "Authored interpretation: two-storey base, slender shaft, open belfry and stepped cupola. Coordinate-to-footprint match manually checked; preserve its silhouette.",
+    "source": "https://commons.wikimedia.org/wiki/Category:Freedom_Tower_(Miami)",
+    "retain": 0.95,
+    "at": [
+      -80.189708,
+      25.780286
+    ]
+  },
+  {
+    "id": "waterfront-arena",
+    "name": "Kaseya Center",
+    "layout": "arena",
+    "recipe": "arena",
+    "finish": "limestone",
+    "note": "Authored interpretation: pale oval outer rim, exposed bowl and tiered seating. Roof largely lost. Coordinates matched to the large waterfront footprint.",
+    "source": "https://commons.wikimedia.org/wiki/File:Kaseya_Center_Downtown_Miami_FL,_5_April_2024.jpg",
+    "retain": 0.6,
+    "at": [
+      -80.187724,
+      25.781366
+    ]
+  },
+  {
+    "id": "convention-centre",
+    "name": "Miami Beach Convention Center",
+    "layout": "exhibition",
+    "recipe": "hall",
+    "finish": "limestone",
+    "note": "Long exhibition halls with public-edge fins, open columns and surviving upper gallery. Bay rhythm abstracts the reference facade.",
+    "source": "blocks/out/r09c28.json",
+    "retain": 0.9,
+    "at": [
+      -80.133483,
+      25.794946
+    ]
+  },
+  {
+    "id": "dupont",
+    "name": "Alfred I. duPont Building",
+    "layout": "ribbed-bar",
+    "recipe": "tower",
+    "finish": "limestone",
+    "note": "Survey A includes a broader block. Narrow the upper masonry bar, keep vertical ribs, a heavy cornice and a broken corner.",
+    "source": "blocks/out/r18c06.json",
+    "retain": 0.85,
+    "at": [
+      -80.191127,
+      25.774725
+    ]
+  },
+  {
+    "id": "ritz-plaza",
+    "name": "SLS South Beach (former Ritz Plaza)",
+    "layout": "stepped-hotel",
+    "recipe": "hotel",
+    "finish": "limestone",
+    "note": "Direct footprint label, corrected to 62.2 m from the City of Miami Beach height exhibit and 12 storeys from the renovation architect. The historic photograph confirms the tall shaft and stepped crown.",
+    "source": "blocks/height-corrections.json",
+    "retain": 1,
+    "at": [
+      -80.129116,
+      25.792552
+    ]
+  },
+  {
+    "id": "panorama-tower",
+    "name": "Panorama Tower",
+    "layout": "spire",
+    "recipe": "tower",
+    "retain": 0.78,
+    "finish": "blue",
+    "note": "OSM 265 m anchors the Brickell skyline. Narrow shaft and broad podium; lower eight floors climbable.",
+    "source": "blocks/labels.json",
+    "at": [
+      -80.190544,
+      25.763059
+    ]
+  },
+  {
+    "id": "loft-2",
+    "name": "The Loft 2",
+    "layout": "transit-portal",
+    "recipe": "tower",
+    "retain": 0.72,
+    "finish": "concrete",
+    "note": "The direct use label is a transit station; its 132 m measured height and name identify the tower above the transit passage.",
+    "source": "blocks/labels.json",
+    "at": [
+      -80.190117,
+      25.775804
+    ]
+  },
+  {
+    "id": "gesu",
+    "name": "Gesu Church",
+    "layout": "gesu",
+    "recipe": "hall",
+    "retain": 1,
+    "finish": "limestone",
+    "note": "Reference-led church nave, raised central bell tower and clay roof courses. Box abstraction of the three-part front, without invented arches.",
+    "source": "https://commons.wikimedia.org/wiki/File:Miami_FL_Downtown_HD_Gesu_Church_sq_pano01.jpg",
+    "at": [
+      -80.191601,
+      25.775889
+    ]
+  },
+  {
+    "id": "lyric",
+    "name": "Historic Lyric Theater",
+    "layout": "lyric",
+    "recipe": "theatre",
+    "retain": 1,
+    "finish": "limestone",
+    "note": "Reference-led narrow stage house, twin front piers, raised centre parapet and broad balcony. No lettering or ornament copied.",
+    "source": "https://commons.wikimedia.org/wiki/File:Miami_FL_Historic_Overtown_Lyric_Theatre.jpg",
+    "at": [
+      -80.19768,
+      25.78223
+    ]
+  }
+]

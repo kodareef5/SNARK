@@ -143,6 +143,10 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
           break;
         case S.STREET:
         case S.HIGHWAY:
+        case S.CROSSWALK:
+        case S.SIDEWALK:
+        case S.PLAZA:
+        case S.LOT:
           if (growth && (Math.floor((col + noiseWest / cell) / 3) + Math.floor((row + noiseNorth / cell) / 3)) % 4 === 0) plant = P("street garden");
           stone = T("street blocks");
           break;

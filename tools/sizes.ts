@@ -139,12 +139,12 @@ export function weighLandmarks(dist: string, maps: ReadonlyMap<string, readonly 
   return ok;
 }
 
-/** The landmarks each map's source places (assets/source/maps/<map>/world/world.json), by map. */
+/** The landmarks each city places (its city.json's world.landmarks, tools/maps/README.md), by map. */
 export function mapLandmarks(source: string): Map<string, string[]> {
   const maps = join(source, "maps"), out = new Map<string, string[]>();
   for (const map of existsSync(maps) ? readdirSync(maps).sort() : []) {
-    const world = join(maps, map, "world/world.json");
-    if (existsSync(world)) out.set(map, ((JSON.parse(readFileSync(world, "utf8")) as { landmarks?: { name: string }[] }).landmarks ?? []).map((l) => l.name));
+    const city = join(maps, map, "city.json");
+    if (existsSync(city)) out.set(map, ((JSON.parse(readFileSync(city, "utf8")) as { world?: { landmarks?: { name: string }[] } }).world?.landmarks ?? []).map((l) => l.name));
   }
   return out;
 }

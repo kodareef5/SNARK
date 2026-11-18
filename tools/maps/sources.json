@@ -1,0 +1,32 @@
+{
+  "_about": "Every public source a city map is made from, once. A city names a source in its city.json only to differ: its elevation project and coastal model, and the split settings of its footprints. Counties are found from the cut.",
+  "nlcd": {
+    "url": "https://www.mrlc.gov/geoserver/mrlc_display/NLCD_2021_Land_Cover_L48/ows",
+    "coverage": "NLCD_2021_Land_Cover_L48",
+    "file": "nlcd2021.tif",
+    "source": "USGS / MRLC NLCD 2021 Land Cover (CONUS)",
+    "licence": "Public domain (USGS)"
+  },
+  "osm": {
+    "servers": [
+      "https://overpass-api.de/api/interpreter",
+      "https://overpass.private.coffee/api/interpreter",
+      "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+    ],
+    "source": "OpenStreetMap contributors, through the Overpass API",
+    "licence": "Open Database License (ODbL) 1.0, (c) OpenStreetMap contributors"
+  },
+  "footprints": {
+    "service": "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/USA_Structures_View/FeatureServer/0",
+    "source": "FEMA / ORNL USA Structures",
+    "licence": "CC BY 4.0, as the Esri-hosted delivery item declares; a U.S. government work per catalog.data.gov. Attribution: Oak Ridge National Laboratory (ORNL); Federal Emergency Management Agency (FEMA) Geospatial Response Office."
+  },
+  "tiger": {
+    "year": 2025,
+    "layers": [
+      "roads",
+      "areawater"
+    ],
+    "licence": "https://creativecommons.org/publicdomain/zero/1.0/ (catalog.data.gov); \"These products are free to use in a product or publication, however acknowledgement must be given to the U.S. Census Bureau as the source.\""
+  }
+}

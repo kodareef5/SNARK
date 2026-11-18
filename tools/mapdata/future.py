@@ -12,6 +12,7 @@ from shapely.ops import unary_union
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import folder_arg, save  # noqa: E402
+from tunnels import tunnels  # noqa: E402
 
 
 def main():
@@ -23,7 +24,8 @@ def main():
     for s in f['spans']:
         choices = []
         for g, p in roads:
-            if p['name'] != s['road']:
+            # Spans are named as TIGER names roads; an OpenStreetMap road keeps the TIGER name it runs along (streets.py).
+            if s['road'] not in (p['name'], p.get('tiger_name')):
                 continue
             wet = g.intersection(water)
             choices.extend(h for h in (wet.geoms if hasattr(wet, 'geoms') else [wet]) if h.geom_type == 'LineString')
@@ -66,7 +68,9 @@ def main():
     save(m.burn([(g, 1) for g, p in wrecks], m.shape, m.grid), m.base / 'wrecks.png')
     rd = np.array(Image.open(m.base / 'roads.png'))
     tunnel_name = m.city['roads']['tunnel_name']
-    tunnel = m.burn([(g.buffer(p['width_m'] / 2, cap_style=2), 1) for g, p in roads if tunnel_name in (p['name'] or '').lower()], m.shape, m.grid) > 0
+    # A tunnel by common.tunnels: named one, or tagged one under water.
+    hidden = tunnels(roads, m.vectors('areawater'), tunnel_name)
+    tunnel = m.burn([(g.buffer(p['width_m'] / 2, cap_style=2), 1) for i, (g, p) in enumerate(roads) if i in hidden], m.shape, m.grid) > 0
     rd[tunnel] = 4
     gap = np.array(Image.open(m.base / 'bridge_gaps.png')) > 0
     rd[gap & (rd == 3)] = 5

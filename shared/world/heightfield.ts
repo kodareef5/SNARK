@@ -25,6 +25,13 @@ export class Heightfield {
   readonly heights: Uint16Array;
   /** Palette index per sample, used only for drawing. Empty for a server's ground, which draws nothing. */
   readonly tint: Uint8Array;
+  /**
+   * What the ground is to a wheel, a class each two samples a side (4 m, vehicle-surface.ts GROUND_CLASS): the cell of
+   * sample (i, j) is (i >> 1, j >> 1), `groundX` a row. Unlike the tint it is what the ground does, so the server keeps it.
+   * Empty where a map gives none: every place is then plain ground.
+   */
+  readonly ground: Uint8Array;
+  readonly groundX: number;
   /** Height of the sea's surface, set by the code that builds the map. -Infinity for a map with no sea. */
   seaLevel = -Infinity;
   /** Water standing on its own surfaces, apart from the sea (water.ts), or null for a map with none. */
@@ -41,7 +48,7 @@ export class Heightfield {
   readonly changes: number[] = [];
 
   /** Use a power-of-two fraction such as 1/256 for `stepY`, so round heights (sea level, floors) are exact. */
-  constructor(dims: MapDims, cell: number, minY: number, stepY: number, heights?: Uint16Array, tint?: Uint8Array) {
+  constructor(dims: MapDims, cell: number, minY: number, stepY: number, heights?: Uint16Array, tint?: Uint8Array, ground?: Uint8Array) {
     this.dims = framed(dims);
     this.cell = cell;
     this.sizeX = dims.chunksX * CHUNK_SIZE;
@@ -52,10 +59,22 @@ export class Heightfield {
     this.stepY = stepY;
     this.heights = heights ?? new Uint16Array(this.nx * this.nz);
     this.tint = tint ?? new Uint8Array(this.nx * this.nz);
-    if (this.heights.length !== this.nx * this.nz || (this.tint.length !== 0 && this.tint.length !== this.nx * this.nz)) {
+    this.groundX = (this.nx + 1) >> 1;
+    this.ground = ground ?? new Uint8Array(0);
+    if (this.heights.length !== this.nx * this.nz || (this.tint.length !== 0 && this.tint.length !== this.nx * this.nz) ||
+      (this.ground.length !== 0 && this.ground.length !== this.groundX * ((this.nz + 1) >> 1))) {
       throw new Error("heightfield data does not match map dimensions");
     }
     this.exact = new Uint8Array(chunkCount(dims)).fill(1);
+  }
+
+  /** The ground's class where (x, z) stands (GROUND_CLASS); 0, plain ground, off the map or where it has none. */
+  groundClassAt(x: number, z: number): number {
+    if (this.ground.length === 0) return 0;
+    const i = Math.round(x / this.cell);
+    const j = Math.round(z / this.cell);
+    if (i < 0 || j < 0 || i >= this.nx || j >= this.nz) return 0;
+    return this.ground[(j >> 1) * this.groundX + (i >> 1)]!;
   }
 
   /** From now on no chunk holds its own samples until it is held: a client's ground, which comes a part at a time. */

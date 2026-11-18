@@ -13,6 +13,7 @@ from scipy import ndimage as nd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import folder_arg, save  # noqa: E402
+from tunnels import tunnels  # noqa: E402
 
 HIGHWAY = ('S1100', 'S1200')
 
@@ -42,15 +43,16 @@ def main():
     save(b_fine, m.base / 'buildings_fine.png')
     # An airfield's paving (prepare.py's paved layer, value 6) lies under the roads.
     paved = [(g, 6) for g, p in m.vectors('paved')] if (m.base / 'paved.geojson').exists() else []
+    hidden = tunnels(roads, water, tunnel_name)
     surface = paved + [(g.buffer(p['width_m'] / 2, cap_style=2, join_style=2), 2 if p['mtfcc'] in HIGHWAY else 1)
-                       for g, p in sorted(roads, key=lambda gp: gp[1]['width_m']) if tunnel_name not in (p['name'] or '').lower()]
-    tunnels = [(g.buffer(p['width_m'] / 2, cap_style=2, join_style=2), 1) for g, p in roads if tunnel_name in (p['name'] or '').lower()]
+                       for _, g, p in sorted(((i, g, p) for i, (g, p) in enumerate(roads) if i not in hidden), key=lambda igp: igp[2]['width_m'])]
+    below = [(g.buffer(p['width_m'] / 2, cap_style=2, join_style=2), 1) for i, (g, p) in enumerate(roads) if i in hidden]
     report = {}
     for size, t, suffix in [(fine_grid, tx, '_fine'), (m.shape, m.grid, '')]:
         wet = np.asarray(Image.open(m.base / f'water{suffix}.png')) > 0
         r = m.burn(surface, size, t)
         r[(r > 0) & wet] = 3
-        r[(m.burn(tunnels, size, t) > 0) & (r == 0)] = 4
+        r[(m.burn(below, size, t) > 0) & (r == 0)] = 4
         r[(m.burn(gaps, size, t) > 0) & (r == 3)] = 5
         path = m.base / f'roads{suffix}.png'
         if path.exists():

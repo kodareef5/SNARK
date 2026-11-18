@@ -1,0 +1,207 @@
+{
+  "v": 2,
+  "name": "miami",
+  "label": "Miami",
+  "centre": [
+    -80.166,
+    25.78
+  ],
+  "bounds": [
+    -11488,
+    -5792,
+    4832,
+    10528
+  ],
+  "osm": {
+    "extract": "north-america/us/florida"
+  },
+  "dem": {
+    "kind": "noaa-vrt",
+    "base": "https://noaa-nos-coastal-lidar-pds.s3.amazonaws.com/dem/FL_Miami_Dade_DEM_2021_10339/",
+    "vrt": "FL_Miami_Dade_DEM_2021_m10339_EPSG-6438.vrt",
+    "epsg": 6438,
+    "z_to_m": 0.30480060960121924,
+    "source": "NOAA DEM 2021 CC0: 2021 Miami-Dade ITD LiDAR DEM, NOAA dataset 10339 (InPort 76039), 2 US-foot bare-earth tiles, EPSG:6438, NAVD88 US survey feet",
+    "licence": "CC0 1.0 (NOAA InPort 76039)"
+  },
+  "bathymetry": {
+    "url": "https://www.ngdc.noaa.gov/thredds/ncss/grid/regional/miami_13_navd88_2015.nc",
+    "file": "miami-coast-navd88.tif",
+    "margin_deg": 0.006,
+    "source": "NOAA NCEI Miami 1/3 arc-second NAVD 88 Coastal Digital Elevation Model (gov.noaa.ngdc.mgg.dem:5166, published 2015-01-21)",
+    "licence": "\"Produced by the NOAA National Centers for Environmental Information. Not subject to copyright protection within the United States.\" \"Not to be used for navigation.\""
+  },
+  "succession": {
+    "sand_ribbon": {
+      "east_of_m": 4200,
+      "coast_m": 150,
+      "below_m": 3
+    },
+    "flood_below_navd88_m": 0.55,
+    "flood_within_m": 300
+  },
+  "canopy": {
+    "rule": "succession",
+    "share_of_vegetation": 0.59,
+    "share_of_open": 0.15,
+    "seed": 7
+  },
+  "future": {
+    "spans": [],
+    "wrecks": []
+  },
+  "world": {
+    "places": [
+      {
+        "name": "Surfside",
+        "at": [
+          -80.1225,
+          25.8705
+        ]
+      },
+      {
+        "name": "North Bay Village",
+        "at": [
+          -80.1555,
+          25.8495
+        ]
+      },
+      {
+        "name": "Normandy Isles",
+        "at": [
+          -80.1385,
+          25.8545
+        ]
+      }
+    ],
+    "drop": [
+      "Treasure Island",
+      "Harbor Island",
+      "North Bay Island",
+      "Normandy Isle"
+    ],
+    "spawns": [
+      {
+        "name": "Surfside",
+        "at": [
+          -80.1199,
+          25.8705
+        ],
+        "face": [
+          -80.124,
+          25.8705
+        ],
+        "ground": "sand"
+      },
+      {
+        "name": "North Beach",
+        "at": [
+          -80.1192,
+          25.8608
+        ],
+        "face": [
+          -80.1235,
+          25.8608
+        ],
+        "ground": "sand"
+      },
+      {
+        "name": "Normandy Isles",
+        "at": [
+          -80.1387,
+          25.8519
+        ],
+        "face": [
+          -80.1387,
+          25.8555
+        ],
+        "ground": "open"
+      },
+      {
+        "name": "Virginia Key Beach",
+        "at": [
+          -80.1554,
+          25.7365
+        ],
+        "face": [
+          -80.152,
+          25.7365
+        ],
+        "ground": "open"
+      },
+      {
+        "name": "Miami Shores",
+        "at": [
+          -80.1937,
+          25.861
+        ],
+        "face": [
+          -80.1937,
+          25.8575
+        ],
+        "ground": "open"
+      }
+    ],
+    "obelisks": [
+      {
+        "name": "Wynwood",
+        "at": [
+          -80.199,
+          25.804
+        ],
+        "face": [
+          -80.2,
+          25.8015
+        ]
+      },
+      {
+        "name": "Miami Beach Golf Club",
+        "at": [
+          -80.135,
+          25.803
+        ],
+        "face": [
+          -80.134,
+          25.79
+        ]
+      },
+      {
+        "name": "Virginia Key",
+        "at": [
+          -80.1502,
+          25.7549
+        ],
+        "face": [
+          -80.144,
+          25.75
+        ]
+      }
+    ],
+    "container_district": "The Port",
+    "easy_around_spawns_m": 180,
+    "landmarks": [
+      {
+        "name": "koru",
+        "at": [
+          -80.184722,
+          25.773861
+        ],
+        "yaw": 0
+      },
+      {
+        "name": "cruise",
+        "at": [
+          -80.1585,
+          25.77335
+        ],
+        "yaw": 64
+      }
+    ],
+    "room": {
+      "north": 2
+    },
+    "yard_districts": [
+      "The Port"
+    ]
+  }
+}

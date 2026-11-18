@@ -1,0 +1,19 @@
+{
+  "_about": "What every city's settings are unless its city.json says otherwise: tools/maps/city.ts lays a city's own settings over these, key by key, before any stage reads them.",
+  "chunk_m": 64,
+  "spacing_m": 2,
+  "roads": {
+    "widths_m": {
+      "S1100": 22,
+      "S1200": 14,
+      "S1400": 8,
+      "S1630": 7,
+      "S1640": 5,
+      "S1710": 3,
+      "S1720": 3,
+      "S1740": 4
+    },
+    "other_width_m": 6,
+    "tunnel_name": "tunl"
+  }
+}
