@@ -46,8 +46,22 @@ test("a facade module's parts are known by their colour and the size of their fa
     }
   }
   expect(stray).toEqual([]);
-  const jambs = Object.entries(RUIN_FACADES).flatMap(([name, s]) => s.look!.boxes!.filter((b) => b.color === undefined).flatMap((b) => faces(b.half).filter(([w, h, up]) => facadeKind(0, w, h, up) === KIND.jamb).map(() => name)));
-  expect([...new Set(jambs)]).toEqual(["zstore"]);
+  const reveal = (kind: number): string[] => [...new Set(Object.entries(RUIN_FACADES).flatMap(([name, s]) => s.look!.boxes!.filter((b) => b.color === undefined).flatMap((b) => faces(b.half).filter(([w, h, up]) => facadeKind(0, w, h, up) === kind).map(() => name))))];
+  expect(reveal(KIND.jamb)).toEqual(["zstore"]);
+  expect(reveal(KIND.pier)).toEqual(["zdeck", "zdecktop", "zgate"]);
+});
+
+test("no room is shown where a player may pass: every glazed part stands before a wall its module is walked as", () => {
+  for (const [name, shape] of Object.entries(RUIN_FACADES)) {
+    for (const b of shape.look!.boxes!) {
+      const colour = b.color === undefined ? undefined : FACADE_COLOURS[b.color];
+      const kind = colour === undefined ? 0 : facadeKind(colour, b.half[0] * 2, b.half[1] * 2, 0);
+      if (!KINDS[kind]!.room) continue;
+      // The glass's face, a little inside each edge, is within a walked box from the face back.
+      const held = shape.boxes.some((w) => [0, 1].every((a) => w.at[a]! - w.half[a]! <= b.at[a]! - b.half[a]! + 0.01 && w.at[a]! + w.half[a]! >= b.at[a]! + b.half[a]! - 0.01) && w.at[2] - w.half[2] <= b.at[2] + b.half[2] && w.at[2] + w.half[2] >= b.at[2] - b.half[2]);
+      expect(`${name} ${held}`).toBe(`${name} true`);
+    }
+  }
 });
 
 test("a balcony's door and window look into one room, which seeds them alike", () => {

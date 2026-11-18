@@ -21,6 +21,8 @@ export interface Device {
 /** What a check gets back: the pixels of a frame of a shot that was read, top row first, and the device. */
 export interface Readback {
   pixels(key: string, frame: number): Uint8Array | null;
+  /** Milliseconds a timed RawShot took to be drawn its `repeat` times more, as the page saw them; null if not timed. */
+  time(key: string): number | null;
   device: Device;
 }
 
@@ -154,7 +156,8 @@ export interface RawTexture { name: string; size: number; channels: 2 | 4; srgb:
 /**
  * A program a check draws by itself (tools/probe-lit.ts reads it back as frame 0 of its key): triangles of the named
  * float attributes, interleaved, drawn with depth onto a canvas `width` by `height` cleared to black, with uniforms of 1
- * to 4 floats or a matrix of 16, and textures on units in order.
+ * to 4 floats or a matrix of 16, and textures on units in order. With `repeat` the page then draws it that many times
+ * more and tells how long they took (Readback `time`).
  */
 export class RawShot {
   readonly read = [0];
@@ -164,11 +167,11 @@ export class RawShot {
   private readonly out = new Bytes();
   private readonly shape: object;
 
-  constructor(key: string, width: number, height: number, vertex: string, fragment: string, attributes: readonly (readonly [string, number])[], data: Float32Array, uniforms: Readonly<Record<string, readonly number[]>>, textures: readonly RawTexture[]) {
+  constructor(key: string, width: number, height: number, vertex: string, fragment: string, attributes: readonly (readonly [string, number])[], data: Float32Array, uniforms: Readonly<Record<string, readonly number[]>>, textures: readonly RawTexture[], repeat = 0) {
     [this.key, this.width, this.height] = [key, width, height];
     const vertices = [this.out.add(data), data.byteLength];
     const texts = textures.map((t) => ({ name: t.name, size: t.size, channels: t.channels, srgb: t.srgb, levels: t.levels.map((l) => [this.out.add(l), l.length]) }));
-    this.shape = { width, height, vertex, fragment, attributes, uniforms, vertices, textures: texts };
+    this.shape = { width, height, vertex, fragment, attributes, uniforms, vertices, textures: texts, repeat };
   }
 
   spec(): object {

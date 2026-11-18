@@ -47,6 +47,8 @@ for (const x of [-28, -20, -12]) {
   put("zbalctop", "rose", x, 16);
 }
 mass([-32, 0, -14], [-8, 20.8, -0.4], 97);
+// A door the lobby has not yet: a dark box a door's size, which the facade draws as one.
+mass([-20.5, 0, 0.25], [-19.5, 2.2, 0.28], 83);
 // Shops, x -8 to 24: shop fronts, one shuttered, two storeys of windows and a parapet.
 for (const [i, x] of [-4, 4, 12, 20].entries()) {
   put(i === 2 ? "zshutter" : "zstore", "limestone", x, 0);
@@ -54,6 +56,7 @@ for (const [i, x] of [-4, 4, 12, 20].entries()) {
   put("zwintop", "limestone", x, 8);
 }
 mass([-8, 0, -14], [24, 12, -1.3], 101);
+mass([-8, -0.2, -14], [24, 0, 0], 2);
 // An office tower, x 24 to 48: five storeys of curtain wall and a crown.
 for (const x of [28, 36, 44]) {
   for (const y of [0, 4, 8, 12, 16]) put("zcurt", "concrete", x, y);
@@ -152,12 +155,21 @@ function draw(view: View, w: number, h: number, tier: FacadeTier, tex: Texture[]
         o.room.fill(0);
         o.farShare = 0;
         const fw = b.hi[0]! - b.lo[0]!, fh = b.hi[1]! - b.lo[1]!;
-        const kind = axis === 2 && n[2]! > 0 ? facadeKind(FACADE_COLOURS[b.colour] ?? 0, fw, fh, 0) : 0;
+        // A part's face to the street, or a jamb's across the bay.
+        const across = axis === 0 ? b.hi[2]! - b.lo[2]! : fw;
+        const kind = axis !== 1 ? facadeKind(FACADE_COLOURS[b.colour] ?? 0, across, fh, 0) : 0;
         if (kind > 0) {
           const m = modules[b.module]!;
-          const corner = [b.lo[0]! - m.origin[0]!, b.lo[1]! - m.origin[1]!, b.hi[2]! - m.origin[2]!];
-          const footprint = (t * pixel) / Math.max(Math.abs(d[2]!), 0.05);
-          facadeSurface(o, kind, point[0]! - b.lo[0]!, point[1]! - b.lo[1]!, fw, fh, nw, v, corner, toWorld([1, 0, 0]), Math.round(m.origin[0]! * 4), Math.round(m.origin[2]! * 4), point[1]!, point[1]!, footprint, t, tier, sample3);
+          // The face's left foot and its right, as a reader facing it sees them, and where the point is across it.
+          const right = axis === 2 ? [n[2]!, 0, 0] : [0, 0, -n[0]!];
+          const left = [0, 1, 2].map((a) => (a === axis ? (n[a]! > 0 ? b.hi[a]! : b.lo[a]!) : right[a]! < 0 ? b.hi[a]! : b.lo[a]!));
+          const corner = left.map((q, a) => q - m.origin[a]!);
+          const ax = (point[0]! - left[0]!) * right[0]! + (point[2]! - left[2]!) * right[2]!;
+          const footprint = (t * pixel) / Math.max(Math.abs(d[axis]!), 0.05);
+          o.albedo.set(albedo);
+          o.orm.set(orm);
+          o.normal.set(nw);
+          facadeSurface(o, kind, ax, point[1]! - b.lo[1]!, across, fh, nw, v, corner, toWorld(right), Math.round(m.origin[0]! * 4), Math.round(m.origin[2]! * 4), point[1]!, point[1]!, footprint, t, tier, sample3);
           albedo.splice(0, 3, ...o.albedo);
           orm.splice(0, 3, ...o.orm);
           normal = [...o.normal];
@@ -192,7 +204,11 @@ const VIEWS: View[] = [
   { name: "street-15m-shade", eye: [6, 1.7, 15], at: [4, 5, 0], hour: 13, shade: true },
   { name: "street-60m", eye: [10, 1.7, 60], at: [12, 8, 0], hour: 13, shade: false },
   { name: "street-60m-shade", eye: [10, 1.7, 60], at: [12, 8, 0], hour: 13, shade: true },
-  ...[0, 1, 2].map((k): View => ({ name: `walk-${k}`, eye: [-24 + k * 1.5, 5.7, 4], at: [-24 + k * 1.5, 5.6, 0], hour: 13, shade: false })),
+  { name: "flats-street", eye: [-20, 1.7, 8], at: [-20, 6, 0], hour: 13, shade: false },
+  { name: "lobby-3m", eye: [-18, 1.7, 3], at: [-20, 1.5, 0], hour: 13, shade: false },
+  { name: "office-5m", eye: [36, 1.7, 5], at: [36, 2.3, 0], hour: 13, shade: false },
+  { name: "office-5m-shade", eye: [36, 1.7, 5], at: [36, 2.3, 0], hour: 13, shade: true },
+  ...[0, 1, 2].map((k): View => ({ name: `walk-${k}`, eye: [-2 + k * 1.5, 1.7, 4], at: [-3 + k * 1.5, 1.6, 0], hour: 13, shade: false })),
 ];
 
 if (import.meta.main) {

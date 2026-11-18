@@ -21,19 +21,25 @@ const FACES: readonly (readonly [number, number, number, number, number, boolean
 const ORIGIN = [413.25, 0, 1207.5];
 const VIEWS = [{ eye: [5, EYE_Y, 4], at: [5.5, 2.2, 0] }, { eye: [9, EYE_Y, 15], at: [8, 2.5, 0] }];
 const PASSES = 4;
-/** Levels of 255 the GPU may be from the twin: every point's 3 by 3 mean, and 99 points' pixels in 100. */
-const TOLERANCE = { mean: 4, p99: 6 };
+/** A display window filling a canvas of 1280 by 720 from 2 m, drawn this many times more to time it with the facade on high, on medium and without it. */
+const TIMED = { eye: [8.5, EYE_Y, 2], at: [8.5, EYE_Y, 0], repeat: 60, width: 1280, height: 720 };
+const timed: { key: string; label: string }[] = [];
+/**
+ * Levels of 255 the GPU may be from the twin at points with one face 3 pixels round: the mean of every pixel's worst
+ * channel, 95 pixels in 100, and 99 points' 3 by 3 means in 100. The painted detail is judged too, so a pixel by an
+ * edge inside a face (a frame's, a room's corner) may fall either side of it on either.
+ */
+const TOLERANCE = { mean: 1, p95: 4, means: 4 };
 const NEAR = 3;
-const SMOOTH = 6;
 
 /** The view's matrix, from the eye's place (the eye at the origin of what is drawn), a 60 degree lens. */
-function viewProj(eye: readonly number[], at: readonly number[]): { m: number[]; f: number[]; r: number[]; u: number[]; tan: number } {
+function viewProj(eye: readonly number[], at: readonly number[], aspect = W / H): { m: number[]; f: number[]; r: number[]; u: number[]; tan: number } {
   const f = [0, 1, 2].map((a) => at[a]! - eye[a]!), fl = Math.hypot(...f);
   for (let a = 0; a < 3; a++) f[a]! /= fl;
   const r = [-f[2]!, 0, f[0]!], rl = Math.hypot(...r);
   for (let a = 0; a < 3; a++) r[a]! /= rl;
   const u = [r[1]! * f[2]! - r[2]! * f[1]!, r[2]! * f[0]! - r[0]! * f[2]!, r[0]! * f[1]! - r[1]! * f[0]!];
-  const tan = Math.tan(Math.PI / 6), near = 0.1, far = 500, aspect = W / H;
+  const tan = Math.tan(Math.PI / 6), near = 0.1, far = 500;
   const sx = 1 / (tan * aspect), sy = 1 / tan, a = (far + near) / (near - far), b = (2 * far * near) / (near - far);
   // Column-major: rows of the view are r, u, -f; then the projection.
   const view = [r[0]!, u[0]!, -f[0]!, 0, r[1]!, u[1]!, -f[1]!, 0, r[2]!, u[2]!, -f[2]!, 0, 0, 0, 0, 1];
@@ -76,8 +82,8 @@ void main() {
   gl_Position = uViewProj * vec4(aRel, 1.0);
 }`;
 
-const fragment = (rooms: boolean): string => `#version 300 es
-${rooms ? "#define FACADE_ROOMS\n" : ""}precision highp float;
+const fragment = (rooms: boolean, facade = true): string => `#version 300 es
+${facade ? "#define FACADE\n" : ""}${rooms ? "#define FACADE_ROOMS\n" : ""}precision highp float;
 precision highp int;
 in vec3 vRel, vOwn;
 in vec2 vFace;
@@ -90,7 +96,13 @@ ${FACADE_GLSL.replaceAll("FACADE_NORMAL", "rg")}void main() {
   vec3 geometric = normalize(cross(dx, dy));
   vec3 albedo = vec3(0.5), orm = vec3(1.0), n = geometric, room;
   vec4 far;
+#ifdef FACADE
   int k = facade(albedo, orm, n, room, far, vClass, vFace, dFdx(vFace), dFdy(vFace), vOwn, dFdx(vOwn), dFdy(vOwn), vPlace, vRel, dx, dy, geometric, vRel.y + uEyeY, vRel.y + uEyeY);
+#else
+  int k = 1;
+  room = vec3(0.0);
+  far = vec4(0.0);
+#endif
   vec3 c = uPass < 0.5 ? sqrt(albedo) : uPass < 1.5 ? sqrt(room) : uPass < 2.5 ? n * 0.5 + 0.5 : vec3(orm.r, orm.g, far.a);
   o = vec4(k == 0 ? vec3(1.0, 0.0, 1.0) : c, 1.0);
 }`;
@@ -130,6 +142,9 @@ function twin(view: (typeof VIEWS)[number], tier: FacadeTier, sampleAt: FacadeSa
     const rel = [0, 1, 2].map((k) => p[k]! - view.eye[k]!), dist = Math.hypot(...rel);
     const footprint = Math.max(Math.hypot(a[0]! - p[0]!, a[1]! - p[1]!), Math.hypot(b[0]! - p[0]!, b[1]! - p[1]!));
     const origin = [x + w / 2, y + h / 2, -0.2 - i * 0.01];
+    o.albedo.fill(0.5);
+    o.orm.fill(1);
+    o.normal.set([0, 0, 1]);
     facadeSurface(o, kind, p[0]! - x, p[1]! - y, w, h, [0, 0, 1], rel.map((q) => -q / dist), [x - origin[0]!, y - origin[1]!, -origin[2]!], [1, 0, 0], Math.round((origin[0]! + ORIGIN[0]!) * 4), Math.round((origin[2]! + ORIGIN[2]!) * 4), p[1]!, p[1]!, footprint, dist, tier, sampleAt);
     const outs = [o.albedo.map(Math.sqrt), o.room.map(Math.sqrt), o.normal.map((q) => q * 0.5 + 0.5), [o.orm[0]!, o.orm[1]!, o.farShare]];
     outs.forEach((v, k) => colors[k]!.set([...[0, 1, 2].map((c) => Math.round(Math.min(1, Math.max(0, v[c]!)) * 255)), 255], at * 4));
@@ -148,6 +163,12 @@ export const facadeCheck: LitCheck = {
       const { levels, textures } = facadeMaps(tier);
       const sampleAt: FacadeSample = (t, u, v, lod, out) => sample(textures[t]!, u, v, lod - (textures[t]!.pictures.length - 1), out);
       const maps = levels.map((l, k) => ({ name: ["uFacadeBase", "uFacadeNormal", "uFacadeOrm", "uFacadeRooms"][k]!, size: Math.max(k < 3 ? tier.elements : tier.rooms, 64), channels: (k === 1 ? 2 : 4) as 2 | 4, srgb: k === 0 || k === 3, levels: l }));
+      const { width: tw, height: th, repeat } = TIMED;
+      const timedData = triangles(TIMED.eye);
+      for (const [key, label, text] of [[`facade-time-${name}`, `facade on ${name}`, fragment(tier.reflect)], ...(name === "high" ? [["facade-time-none", "no facade", fragment(false, false)]] : [])] as const) {
+        shots.push(new RawShot(key, tw, th, VERTEX, text, [["aRel", 3], ["aFace", 2], ["aOwn", 3], ["aPlace", 2], ["aClass", 1]], timedData, { uViewProj: viewProj(TIMED.eye, TIMED.at, tw / th).m, uPass: [0], uEyeY: [EYE_Y] }, maps, repeat));
+        timed.push({ key, label });
+      }
       VIEWS.forEach((view, v) => {
         const drawn = twin(view, tier, sampleAt);
         const data = triangles(view.eye);
@@ -162,7 +183,7 @@ export const facadeCheck: LitCheck = {
   },
 
   judge(back: Readback): { ok: boolean; lines: string[] } {
-    const lines = [`every kind of part on high and medium, near and across a street, against facadeSurface at points with one face and no edge of its output within ${NEAR} pixels: 3 by 3 means within ${TOLERANCE.mean}, pixels within ${TOLERANCE.p99} at 99 in 100`];
+    const lines = [`every kind of part on high and medium, near and across a street, against facadeSurface at points with one face ${NEAR} pixels round: pixels' mean within ${TOLERANCE.mean} and 95 in 100 within ${TOLERANCE.p95}, 3 by 3 means 99 in 100 within ${TOLERANCE.means}`];
     let ok = true;
     for (const pic of pictures) {
       const gpu = back.pixels(pic.key, 0);
@@ -175,13 +196,9 @@ export const facadeCheck: LitCheck = {
       for (let y = NEAR + 1; y < H - NEAR - 1; y += 2) for (let x = NEAR + 1; x < W - NEAR - 1; x += 2) {
         const i = y * W + x;
         if (pic.face[i]! < 0) continue;
-        let flat = true;
-        for (let dy = -NEAR; dy <= NEAR && flat; dy++) for (let dx = -NEAR; dx <= NEAR && flat; dx++) {
-          const j = i + dy * W + dx;
-          if (pic.face[j] !== pic.face[i]) flat = false;
-          for (let c = 0; c < 3 && flat; c++) if (Math.abs(pic.color[j * 4 + c]! - pic.color[(j + 1) * 4 + c]!) > SMOOTH || Math.abs(pic.color[j * 4 + c]! - pic.color[(j + W) * 4 + c]!) > SMOOTH) flat = false;
-        }
-        if (!flat) continue;
+        let one = true;
+        for (let dy = -NEAR; dy <= NEAR && one; dy++) for (let dx = -NEAR; dx <= NEAR && one; dx++) one = pic.face[i + dy * W + dx] === pic.face[i];
+        if (!one) continue;
         let most = 0, mostMean = 0;
         for (let c = 0; c < 3; c++) {
           most = Math.max(most, Math.abs(gpu[i * 4 + c]! - pic.color[i * 4 + c]!));
@@ -193,9 +210,18 @@ export const facadeCheck: LitCheck = {
         mean.push(mostMean);
       }
       const [p, m] = [spread(pixel), spread(mean)];
-      const good = p.points >= 300 && m.worst <= TOLERANCE.mean && p.p99 <= TOLERANCE.p99;
+      const good = p.points >= 300 && p.mean <= TOLERANCE.mean && p.p95 <= TOLERANCE.p95 && m.p99 <= TOLERANCE.means;
       ok &&= good;
-      lines.push(`${pic.key}: ${p.points} points: pixels mean ${p.mean.toFixed(2)}, 99 in 100 within ${p.p99}, worst ${p.worst}; means worst ${m.worst.toFixed(2)}  ${good ? "ok" : "FAIL"}`);
+      lines.push(`${pic.key}: ${p.points} points: pixels mean ${p.mean.toFixed(2)}, 95 in 100 within ${p.p95}, worst ${p.worst}; means 99 in 100 within ${m.p99.toFixed(2)}  ${good ? "ok" : "FAIL"}`);
+    }
+    // Told, not judged: a pixel's time on this machine's GPU, of a window filling the canvas.
+    const ms = (key: string): number | null => back.time(key);
+    const none = ms("facade-time-none");
+    for (const t of timed) {
+      const took = ms(t.key);
+      if (took === null || none === null) continue;
+      const each = (x: number): number => x / TIMED.repeat / ((TIMED.width * TIMED.height) / 1e6);
+      lines.push(`${t.label}: ${each(took).toFixed(3)} ms a megapixel${t.key === "facade-time-none" ? "" : `, ${(each(took) - each(none)).toFixed(3)} more than without it`}`);
     }
     return { ok, lines };
   },

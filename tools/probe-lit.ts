@@ -183,6 +183,15 @@ try {
     const px = new Uint8Array(spec.width * spec.height * 4);
     gl.readPixels(0, 0, spec.width, spec.height, gl.RGBA, gl.UNSIGNED_BYTE, px);
     await post("/pixels/" + s.key + "/0", px);
+    // A shot that asks to be timed is drawn that many times more, and the time until a pixel of the last can be read is told.
+    if (spec.repeat > 0) {
+      // Without depth, so no draw is passed over as hidden by the one before.
+      gl.disable(gl.DEPTH_TEST);
+      const t0 = performance.now();
+      for (let k = 0; k < spec.repeat; k++) gl.drawArrays(gl.TRIANGLES, 0, spec.vertices[1] / stride);
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+      await post("/time/" + s.key, JSON.stringify(performance.now() - t0));
+    }
     if (gl.getError() !== 0) errors.push(s.key + ": error " + gl.getError());
     gl.getExtension("WEBGL_lose_context").loseContext();
   }
@@ -217,6 +226,7 @@ export async function litProbe(chrome: string, checks: readonly LitCheck[] = CHE
   if (!modules.success) throw new Error(modules.logs.map(String).join("\n"));
   const served = new Map<string, Blob>(modules.outputs.map((o) => [`/m/${o.path.slice(2)}`, o]));
   const pixels = new Map<string, Uint8Array>();
+  const times = new Map<string, number>();
   let device: Device | null = null;
   let finish: (r: { errors: string[] }) => void = () => {};
   const finished = new Promise<{ errors: string[] }>((r) => (finish = r));
@@ -242,6 +252,7 @@ export async function litProbe(chrome: string, checks: readonly LitCheck[] = CHE
       if (kind === "shot" && shot instanceof Shot) return name.endsWith(".bin") ? new Response(shot.bytes()) : Response.json(shot.frames);
       if (kind === "manifest" && shot instanceof Shot) return Response.json(shot.manifest);
       if (kind === "pixels" && shot) pixels.set(`${shot.key}/${frame}`, topFirst(body!, shot.width, shot.height));
+      else if (kind === "time" && raw) times.set(raw.key, JSON.parse(new TextDecoder().decode(body!)) as number);
       else if (kind === "device") device = JSON.parse(new TextDecoder().decode(body!)) as Device;
       else if (kind === "report") finish(JSON.parse(new TextDecoder().decode(body!)) as { errors: string[] });
       else return new Response("not found", { status: 404 });
@@ -264,7 +275,7 @@ export async function litProbe(chrome: string, checks: readonly LitCheck[] = CHE
   console.log(`renderer: ${d.renderer}; a depth buffer of ${d.depthBits} bits (its attachment says ${d.depthSize}); antialias ${d.antialias}, ${d.samples} samples; compared lookups ${d.shadowLookup}`);
   for (const e of report.errors) console.log(`page error: ${e}`);
   let ok = report.errors.length === 0;
-  const back: Readback = { pixels: (key, frame) => pixels.get(`${key}/${frame}`) ?? null, device: d };
+  const back: Readback = { pixels: (key, frame) => pixels.get(`${key}/${frame}`) ?? null, time: (key) => times.get(key) ?? null, device: d };
   for (const check of checks) {
     const j = check.judge(back);
     console.log(`\n${check.name}: ${j.ok ? "ok" : "FAIL"}`);

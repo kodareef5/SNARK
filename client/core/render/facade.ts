@@ -58,7 +58,7 @@ export const ROOM_FACES = ["back", "side", "floor", "ceiling"] as const;
  */
 export const FACADE_COLOURS: Readonly<Record<number, number>> = { 83: 1, 92: 2, 5: 3, 135: 4, 6: 5 };
 
-export const KIND = { none: 0, window: 1, slider: 2, casement: 3, strip: 4, display: 5, curtain: 6, shutter: 7, sign: 8, bar: 9, door: 10, jamb: 11 } as const;
+export const KIND = { none: 0, window: 1, slider: 2, casement: 3, strip: 4, display: 5, curtain: 6, shutter: 7, sign: 8, bar: 9, door: 10, jamb: 11, pier: 12 } as const;
 /**
  * A kind of part: its colour class, its face's width and height in metres (0 for any width), its element, and where it
  * is glass the room behind it, in metres from the face: how far it runs past the face's left and right edges, below its
@@ -79,6 +79,7 @@ export const KINDS: readonly Kind[] = [
   { colour: 5, w: 6.8, h: 0.25, element: "bar" },
   { colour: 1, w: 1, h: 2.2, element: "door", room: { left: 1.5, right: 1.5, below: 0, above: 0.7, depth: 6, rooms: [13, 14] } },
   { colour: 0, w: 1.25, h: 2.9, element: "door" },
+  { colour: 0, w: 0.7, h: 3.6, element: "" },
 ];
 /** How near a face's size must be to a kind's, in metres. */
 const NEAR = 0.04;
@@ -104,11 +105,15 @@ export const FACADE_TIERS: Readonly<Record<string, FacadeTier | null>> = {
  * its cover (base alpha), its roughness. Then each room's mean, linear red, green and blue. tools/facade/build.ts
  * measures both from the atlases it makes and a test holds them to it.
  */
-export const ELEMENT_MEANS: readonly number[] = [0.5726, 0.567, 0.477, 0.2566, 0.2086, 0.1426, 0.109, 0.07729, 0.2566, 0.2077, 0.5379, 0.5212, 0.4229, 0.2566, 0.2651, 0.5907, 0.5848, 0.4916, 0.2535, 0.2024, 0.1575, 0.1224, 0.08767, 0.2535, 0.2031, 0.5515, 0.5461, 0.4589, 0.2158, 0.1882, 0.1449, 0.1119, 0.08002, 0.211, 0.1837, 0.5499, 0.5438, 0.4577, 0.207, 0.1753, 0.09125, 0.1097, 0.09978, 0.3799, 0.1182, 0.07765, 0.05798, 0.04474, 0.3799, 0.1171, 0.3531, 0.3658, 0.3331, 0.1306, 0.1647, 0.1463, 0.1145, 0.08198, 0.1332, 0.1667, 0.1593, 0.2302, 0.2597, 1, 0.7903, 0.3906, 0.4051, 0.3727, 0.9989, 0.6864, 0.4837, 0.4335, 0.299, 1, 0.7931, 0.3176, 0.404, 0.2948, 1, 0.7554, 0.5774, 0.4986, 0.4119, 1, 0.7516, 0.5707, 0.4681, 0.2915, 1, 0.7575, 0.3017, 0.4015, 0.426, 1, 0.755, 0.2482, 0.2648, 0.248, 1, 0.7481, 0.5, 0.2863, 0.2288, 1, 0.756, 0.3321, 0.2574, 0.0921, 1, 0.7832, 0.4679, 0.3507, 0.1155, 1, 0.7789, 0.3135, 0.3356, 0.2979, 0.5187, 0.4151, 0.1143, 0.2159, 0.1813, 0.9577, 0.7783, 0.2457, 0.1304, 0.09312, 1, 0.8017, 0.5906, 0.5515, 0.4119, 0.8226, 0.5917, 0.6317, 0.5342, 0.3811, 0.9643, 0.8439, 0.2425, 0.3051, 0.3276, 0.9623, 0.8438, 0.3105, 0.2664, 0.217, 0.9925, 0.8496, 0.2983, 0.2633, 0.2175, 0.5663, 0.8514, 0.4215, 0.4536, 0.3792, 0.1455, 0.07263, 0.4171, 0.4514, 0.3785, 0.1464, 0.07176];
-export const ROOM_MEANS: readonly number[] = [0.2518, 0.2313, 0.1813, 0.2092, 0.2171, 0.2358, 0.2364, 0.2313, 0.2063, 0.1973, 0.1922, 0.1755, 0.2518, 0.2313, 0.1813, 0.2092, 0.2171, 0.2358, 0.2364, 0.2313, 0.2063, 0.1973, 0.1922, 0.1755, 0.2518, 0.2313, 0.1813, 0.2092, 0.2171, 0.2358, 0.2364, 0.2313, 0.2063, 0.1973, 0.1922, 0.1755, 0.2518, 0.2313, 0.1813, 0.2092, 0.2171, 0.2358, 0.2364, 0.2313, 0.2063, 0.1973, 0.1922, 0.1755];
+export const ELEMENT_MEANS: readonly number[] = [0.5726, 0.567, 0.477, 0.2566, 0.2086, 0.1426, 0.109, 0.07729, 0.2566, 0.2077, 0.5379, 0.5212, 0.4229, 0.2566, 0.2651, 0.5907, 0.5848, 0.4916, 0.2535, 0.2024, 0.1575, 0.1224, 0.08767, 0.2535, 0.2031, 0.5515, 0.5461, 0.4589, 0.2158, 0.1882, 0.1449, 0.1119, 0.08002, 0.211, 0.1837, 0.5499, 0.5438, 0.4577, 0.207, 0.1753, 0.09125, 0.1097, 0.09978, 0.3799, 0.1182, 0.07765, 0.05798, 0.04474, 0.3799, 0.1171, 0.3531, 0.3658, 0.3331, 0.1306, 0.1647, 0.1463, 0.1145, 0.08198, 0.1332, 0.1667, 0.1593, 0.2302, 0.2598, 1, 0.7903, 0.3903, 0.4049, 0.3726, 0.9989, 0.6862, 0.4834, 0.4333, 0.2989, 1, 0.793, 0.3176, 0.404, 0.2948, 1, 0.7554, 0.5774, 0.4986, 0.4119, 1, 0.7516, 0.5707, 0.4681, 0.2915, 1, 0.7575, 0.3017, 0.4015, 0.426, 1, 0.755, 0.2482, 0.2648, 0.248, 1, 0.7481, 0.5, 0.2863, 0.2288, 1, 0.756, 0.3321, 0.2574, 0.0921, 1, 0.7832, 0.4679, 0.3507, 0.1155, 1, 0.7789, 0.3135, 0.3356, 0.2979, 0.5187, 0.4151, 0.1143, 0.2159, 0.1813, 0.9577, 0.7783, 0.2457, 0.1304, 0.09312, 1, 0.8017, 0.5906, 0.5515, 0.4119, 0.8226, 0.5917, 0.5793, 0.4899, 0.3497, 0.9647, 0.8438, 0.2261, 0.2843, 0.3053, 0.9627, 0.8438, 0.3105, 0.2664, 0.217, 0.9925, 0.8496, 0.2983, 0.2633, 0.2175, 0.5663, 0.8514, 0.4215, 0.4536, 0.3792, 0.1455, 0.07263, 0.4171, 0.4514, 0.3785, 0.1464, 0.07176];
+export const ROOM_MEANS: readonly number[] = [0.2983, 0.2752, 0.192, 0.2211, 0.2479, 0.233, 0.2763, 0.2707, 0.2117, 0.2314, 0.2265, 0.1938, 0.2664, 0.2406, 0.1757, 0.3243, 0.3099, 0.2531, 0.1549, 0.1495, 0.1317, 0.2371, 0.2168, 0.1959, 0.2354, 0.2187, 0.1953, 0.1742, 0.1609, 0.132, 0.2351, 0.2149, 0.1754, 0.2418, 0.2283, 0.1915, 0.2559, 0.2261, 0.2009, 0.247, 0.2757, 0.2113, 0.2402, 0.2221, 0.1803, 0.09239, 0.08356, 0.07712];
 
 const fract = (x: number): number => x - Math.floor(x);
 const clamp = (x: number, a = 0, b = 1): number => (x < a ? a : x > b ? b : x);
+const smooth = (a: number, b: number, x: number): number => {
+  const t = clamp((x - a) / (b - a));
+  return t * t * (3 - 2 * t);
+};
 
 /** A number from 0 to 1 from three integers. */
 export function facadeHash(x: number, y: number, z: number): number {
@@ -274,7 +279,8 @@ const glassRoom = new Float64Array(3), far = new Float64Array(3), frame = new Fl
  * from its foot, as a reader facing it sees it, on a face `w` by `h`; `n` the face's normal and `v` the way to the eye
  * in the world; `corner` the face's left foot in its instance's own frame and `right` the face's right there (length 1);
  * (px, pz) the instance's place in quarter metres; `height` the point's height in the world and `over` over the ground;
- * `footprint` metres a pixel at `dist` metres from the eye; `tier` what the tier draws.
+ * `footprint` metres a pixel at `dist` metres from the eye; `tier` what the tier draws. `o` holds the world finish's
+ * albedo, occlusion, roughness and metal, and normal as it comes, which a part keeps where its element does not reach.
  */
 export function facadeSurface(o: FacadeOut, kind: number, x: number, y: number, w: number, h: number, n: Numbers, v: Numbers, corner: Numbers, right: Numbers, px: number, pz: number, height: number, over: number, footprint: number, dist: number, tier: FacadeTier, sample: FacadeSample): void {
   const d = KINDS[kind]!, r = d.room;
@@ -286,11 +292,23 @@ export function facadeSurface(o: FacadeOut, kind: number, x: number, y: number, 
   const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
   const seed = facadeSeed(px, pz, corner[0]! + right[0]! * cx, height - y + cy, corner[2]! + right[2]! * cx);
   const family = facadeFamily(px, pz);
-  const count = ELEMENTS.find((q) => q[0] === d.element)![3];
+  const count = ELEMENTS.find((q) => q[0] === d.element)?.[3] ?? 1;
   const pick = kind === KIND.jamb ? 0 : Math.min(Math.floor((d.element === "sign" || d.element === "shutter" || d.element === "door" ? seed : family) * count), count - 1);
-  const across = d.w === 0 ? 2 : w;
-  element(first(d.element) + pick, d.w === 0 ? fract(x / 2) : x / w, y / h, across, footprint, tier.elements, sample, true);
-  const a = r ? base[3]! : 1;
+  o.room.fill(0);
+  far.fill(0);
+  o.far.fill(0);
+  o.farShare = 0;
+  o.sharp = false;
+  // A shop door's jamb: the door swung open flat against it, 1 m wide in its middle and 2.2 m high; round it, and on a
+  // garage's pier at its way in, the reveal keeps its finish, darker toward the head and the foot.
+  const ex = kind === KIND.jamb ? x - (w - 1) / 2 : 0;
+  if (kind === KIND.pier || (kind === KIND.jamb && (ex < 0 || ex > 1 || y > 2.2))) {
+    o.orm[0]! *= (0.55 + 0.45 * smooth(0, 0.5, h - y)) * (0.7 + 0.3 * smooth(0, 0.3, y));
+    return;
+  }
+  if (kind === KIND.jamb) element(first(d.element), ex, y / 2.2, 1, footprint, tier.elements, sample, true);
+  else element(first(d.element) + pick, d.w === 0 ? fract(x / 2) : x / w, y / h, d.w === 0 ? 2 : w, footprint, tier.elements, sample, true);
+  const a = base[3]!;
   for (let c = 0; c < 3; c++) frame[c] = base[c]!;
   frame[3] = packed[0]!;
   frame[4] = packed[1]!;
@@ -300,10 +318,8 @@ export function facadeSurface(o: FacadeOut, kind: number, x: number, y: number, 
   o.normal[1] = n[1]! * bz + bump[1]!;
   o.normal[2] = n[2]! * bz + rz * bump[0]!;
   const film = [base[0]!, base[1]!, base[2]!], rough = packed[1]!;
-  o.room.fill(0);
-  far.fill(0);
-  o.sharp = false;
-  let ga = 0.02, gr = 0.5, share = 0, filmed = 0, shard = 1;
+  // Glass with no room behind it, or on a tier without rooms, and a hole through a shutter, are a dark recess.
+  let ga = 0.02, gr = r ? 0.5 : rough, share = 0, filmed = 0, shard = 1;
   const dressed = facadeDress(kind, seed);
   const broken = dressed === "broken", boards = dressed === "boards", blind = dressed === "blind", drape = dressed === "drape";
   if (r && a < 1 && tier.reflect) {
@@ -371,7 +387,7 @@ const fl = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n
 const vecs = (type: string, rows: readonly (readonly number[])[]): string => `${type}[${rows.length}](${rows.map((r) => `${type}(${r.map(fl).join(",")})`).join(",")})`;
 const ROOM_LIST = KINDS.flatMap((k) => k.room?.rooms ?? []);
 const roomFirst = (k: number): number => KINDS.slice(0, k).reduce((sum, q) => sum + (q.room?.rooms.length ?? 0), 0);
-const pickOf = (k: Kind, i: number): number => (i === KIND.jamb ? 2 : k.element === "sign" || k.element === "shutter" || k.element === "door" ? 1 : 0);
+const pickOf = (k: Kind, i: number): number => (i === KIND.jamb || i === KIND.pier ? 2 : k.element === "sign" || k.element === "shutter" || k.element === "door" ? 1 : 0);
 
 /**
  * facadeSurface's twin, with how a pixel finds its face: `facade` reads a fragment of a static of colour class `colour`
@@ -381,9 +397,11 @@ const pickOf = (k: Kind, i: number): number => (i === KIND.jamb ? 2 : k.element 
  * metres. Where the face is a part it
  * writes albedo, orm and n, the room's light to add (as an albedo the face's daylight lights) and the far side mirrored
  * (its albedo and share), and returns 1, or 2 where the pixel mirrors the sky as a picture; else 0. FACADE_NORMAL is the
- * normal map's channels in the texture's variant. Without FACADE_ROOMS glass is a dark recess.
+ * normal map's channels in the texture's variant. It is in a text only where FACADE is defined, and without
+ * FACADE_ROOMS glass is a dark recess.
  */
-export const FACADE_GLSL = `uniform highp sampler2D uFacadeBase, uFacadeNormal, uFacadeOrm, uFacadeRooms;
+export const FACADE_GLSL = `#ifdef FACADE
+uniform highp sampler2D uFacadeBase, uFacadeNormal, uFacadeOrm, uFacadeRooms;
 const vec4 FP[${PLACED.length}] = ${vecs("vec4", PLACED.map((p) => [p.x, p.y, p.w, p.h]))};
 const vec4 FM[${PLACED.length}] = ${vecs("vec4", PLACED.map((_, e) => ELEMENT_MEANS.slice(e * 5, e * 5 + 4)))};
 const float FR[${PLACED.length}] = float[${PLACED.length}](${PLACED.map((_, e) => fl(ELEMENT_MEANS[e * 5 + 4]!)).join(",")});
@@ -493,13 +511,19 @@ int facade(inout vec3 albedo, inout vec3 orm, inout vec3 n, out vec3 room, out v
   float seed = facadeSeed(place, vec3(middle.x, height - y + mid.y, middle.z));
   float family = facadeHash(ivec3(floor(place / 192.0), 7));
   int pick = ke.z > 1.5 ? 0 : min(int(floor((ke.z > 0.5 ? seed : family) * ke.y)), int(ke.y) - 1);
-  facadeElement(int(ke.x) + pick, vec2(ks.y == 0.0 ? fract(x / 2.0) : x / w, y / h), ks.y == 0.0 ? 2.0 : w, footprint, true);
-  float a = glassy ? fBase.a : 1.0;
+  float ex = kind == ${KIND.jamb} ? x - (w - 1.0) * 0.5 : 0.0;
+  if (kind == ${KIND.pier} || (kind == ${KIND.jamb} && (ex < 0.0 || ex > 1.0 || y > 2.2))) {
+    orm.r *= (0.55 + 0.45 * smoothstep(0.0, 0.5, h - y)) * (0.7 + 0.3 * smoothstep(0.0, 0.3, y));
+    return 1;
+  }
+  if (kind == ${KIND.jamb}) facadeElement(int(ke.x), vec2(ex, y / 2.2), 1.0, footprint, true);
+  else facadeElement(int(ke.x) + pick, vec2(ks.y == 0.0 ? fract(x / 2.0) : x / w, y / h), ks.y == 0.0 ? 2.0 : w, footprint, true);
+  float a = fBase.a;
   vec3 frame = fBase.rgb, framePacked = fPacked, film = fBase.rgb;
   float rough = fPacked.g;
   float bz = sqrt(max(0.0, 1.0 - dot(fBump, fBump)));
   vec3 bent = nn * bz + side * fBump.x + vec3(0.0, fBump.y, 0.0);
-  float ga = 0.02, gr = 0.5, share = 0.0, shard = 1.0;
+  float ga = 0.02, gr = glassy ? 0.5 : rough, share = 0.0, shard = 1.0;
   int sharp = 1;
   vec4 dress = KW[kind];
   float state = fract(seed * 5.77);
@@ -559,6 +583,7 @@ int facade(inout vec3 albedo, inout vec3 orm, inout vec3 n, out vec3 room, out v
   n = normalize(n);
   return sharp;
 }
+#endif
 `;
 
 /** The class each palette colour gives a vertex, by FACADE_COLOURS, put into FLAT's mesh vertex text as vFacade. */
