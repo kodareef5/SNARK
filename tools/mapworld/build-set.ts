@@ -6,7 +6,7 @@ import { partsFolder, partsOf, readHead } from "../../shared/world/mapfile.ts";
 import { buildMap } from "./build.ts";
 import type { EntranceReport } from "./bridge-entrances.ts";
 
-export const MAP_PRODUCER_REVISION = "road-deck-3";
+export const MAP_PRODUCER_REVISION = "road-deck-4";
 
 /** Verify the exact raw and compressed bytes that normal /map routes serve beside the map. */
 export function verifyMapPackage(file: string) {
@@ -32,6 +32,10 @@ export function verifyMapPackage(file: string) {
     sha256: new Bun.CryptoHasher("sha256").update(bytes).digest("hex"), parts: parts.length, ...(entrances ? { entrances } : {}) };
 }
 
+export function mapReleaseManifest(maps: readonly ReturnType<typeof verifyMapPackage>[], release: boolean) {
+  return { producer: MAP_PRODUCER_REVISION, release, maps };
+}
+
 export async function buildMapSet(directory: string, names: readonly string[], release = false): Promise<void> {
   if (!names.length || new Set(names).size !== names.length || names.some(name => !/^[a-z0-9][a-z0-9-]*$/.test(name))) {
     throw new Error("Supply distinct map source names (letters, digits and hyphens)");
@@ -45,7 +49,7 @@ export async function buildMapSet(directory: string, names: readonly string[], r
     maps.push(verifyMapPackage(file));
     Bun.gc(true);
   }
-  writeFileSync(join(output, "release.json"), JSON.stringify({ producer: MAP_PRODUCER_REVISION, release, maps }, null, 2) + "\n");
+  writeFileSync(join(output, "release.json"), JSON.stringify(mapReleaseManifest(maps, release), null, 2) + "\n");
   console.log(`Verified ${maps.length} map packages in ${output}. Start a fresh world with --map <file> and a new --db path.`);
 }
 
