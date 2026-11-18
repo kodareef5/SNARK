@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from "node:f
 import { join } from "node:path";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BitReader } from "../../shared/net/codec.ts";
+import { sqliteCode, sqliteIs } from "../persist/store.ts";
 import { Cursor, SEGMENT_NAME, conditionOf, keyBlueprint, keyItem, keyQuality, packPairs, seatOf, segmentName, unpackPairs } from "./format.ts";
 import { EV_HELD, EV_START, EV_STOP, EV_TEAM, type Batch, type LogEvent } from "./recorder.ts";
 
@@ -313,8 +314,13 @@ export class LogStore {
         }
         this.segments.push({ file, startWall: Number(meta.get("start_wall")), startTick: Number(meta.get("start_tick")), endWall: Number(meta.get("end_wall")), endTick: Number(meta.get("end_tick")), bytes: sizeOf(file), sql: null, dict: null });
       } catch (err) {
-        unlink(file);
-        say(`survivor log: deleted ${name}, which could not be read (${err instanceof Error ? err.message : String(err)})`);
+        const why = err instanceof Error ? err.message : String(err);
+        // A damaged file, or one of another format, is of no use; one another program holds is left as it is.
+        const code = sqliteCode(err);
+        if (code === "" || sqliteIs(code, "SQLITE_CORRUPT") || sqliteIs(code, "SQLITE_NOTADB")) {
+          unlink(file);
+          say(`survivor log: deleted ${name}, which could not be read (${why})`);
+        } else say(`survivor log: left out ${name}, which could not be opened (${why})`);
       }
     }
     this.prune();

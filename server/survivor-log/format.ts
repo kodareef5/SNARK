@@ -121,7 +121,7 @@ export class Cursor {
   constructor(buf: Uint8Array, pos = 0, end = buf.length) {
     this.buf = buf;
     this.pos = pos;
-    this.end = end;
+    this.end = Math.min(end, buf.length);
   }
 
   u(): number {
