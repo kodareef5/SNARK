@@ -76,6 +76,12 @@ picture("face", "idle", 0, 65, 5, [0, 3.62, 3.96], .88);
 pose("call", 25);
 const mouth = socket("mouth");
 picture("roar", "call", 25, 64, 7, [0, mouth[1]! + .46, mouth[2]! - .65], 1.28);
+for (const [phase, frame] of [["open", 0], ["blink", 69]] as const) {
+  pose("idle", frame);
+  const eye = rig.names.indexOf("eye_l") * 3;
+  const centre: Vec3 = [rig.solved.pos[eye]!, rig.solved.pos[eye + 1]!, rig.solved.pos[eye + 2]!];
+  picture(`eye-${phase}`, "idle", frame, 85, 2, centre, .155);
+}
 picture("stride", "run", 4, 83, 5, [0, 1.9, -1.05], 4.23);
 picture("saddle", "idle", 0, 71, 21, [0, 3.48, .54], 1.16, true);
 picture("paddle", "swim", 13, 64, 9, [0, 2.4, -.75], 4.16);
