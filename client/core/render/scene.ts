@@ -1,5 +1,5 @@
-import { CROWN_ORIGIN, DECK_RADIUS, EYE_COLLIDERS, EYE_DYE, LENS_HEIGHT, SEXTANT_PIVOT, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
-import { aperture, eyePhase, eyePower, writeEyeSky } from "./tide-eye.ts";
+import { CROWN_ORIGIN, DECK_RADIUS, EYE_COLLIDERS, EYE_DYE, LANTERN_BANKS, LENS_HEIGHT, SEXTANT_PIVOT, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
+import { aperture, eyePhase, eyePower, shutterOpening, writeEyeSky } from "./tide-eye.ts";
 import { TreeFalls } from "../tree-fall.ts";
 import type { TreePresentationEvent } from "../vehicle-trees.ts";
 import { IMPALE_SLOT, MAX_SEATS } from "../../../shared/sim/seats.ts";
@@ -347,6 +347,7 @@ export class Scene {
   /** Seconds on the shared server clock, independent of the local frame clock. */
   eyeSeconds = 0;
   private readonly eyeMesh: { crown: number; deck: number; iris: number; glow: number };
+  private readonly lanternMesh: { frame: number; shutter: number; lip: number; light: number };
   private readonly sextantMesh: { frame: number; needle: number; indexLight: number; keelLight: number };
   /** On a lit tier, the dome is drawn as the table alone and nothing is hazed, as the rasterizer draws: for checks that hold a GPU to it. */
   plainSky = false;
@@ -596,6 +597,7 @@ export class Scene {
     const { table, bind } = this.assets;
     const eye = (part: string) => table.find("core:tide_eye/" + part);
     this.eyeMesh = { crown: eye("crown"), deck: eye("deck"), iris: eye("iris"), glow: eye("glow") };
+    this.lanternMesh = { frame: eye("lantern"), shutter: eye("shutter"), lip: eye("shutter_light"), light: eye("well_light") };
     this.sextantMesh = { frame: eye("sextant"), needle: eye("needle"), indexLight: eye("index_light"), keelLight: eye("keel_light") };
     this.motionReg = reg.motion.some((t) => t !== null) ? reg : null;
     const missing = Math.max(0, table.find(MISSING_MESH));
@@ -1590,32 +1592,45 @@ export class Scene {
       const x = site.x - cam.x, y = site.y - cam.y, z = site.z - cam.z;
       const yaw = site.yaw * Math.PI / 32768, cs = Math.cos(yaw), sn = Math.sin(yaw);
       const phase = eyePhase(this.eyeSeconds, site), open = aperture(phase);
-      const dye = EYE_DYE[site.color];
-      // The rigid geometry can use the normal instance path. The leaves rotate about their individual rim
-      // bearings in the vertical lens plane and telescope into their pockets as the pupil opens.
-      const draw = (mesh: number, h: number, r: number, scale: number, roll = 0, hinge = -1, glow = false) => {
+      const dye = site.form === "lantern" && site.color === "green" ? 51 : EYE_DYE[site.color];
+      const draw = (mesh: number, h: number, r: number, scale: number, motion?: {
+        roll?: number; hinge?: number; glow?: boolean; shutter?: { depth: number; width: number }; tilt?: number;
+      }) => {
         if (mesh < 0) return;
-        const cx = x + (hinge < 0 ? 0 : 33 * Math.cos(hinge) * cs);
+        const { roll = 0, hinge = -1, glow = false, shutter } = motion ?? {};
+        const depth = shutter?.depth ?? 0;
+        const radial = hinge < 0 ? 0 : 33 * Math.cos(hinge);
+        const cx = x + radial * cs + depth * sn;
         const cy = y + h + (hinge < 0 ? 0 : 33 * Math.sin(hinge));
-        const cz = z - (hinge < 0 ? 0 : 33 * Math.cos(hinge) * sn);
+        const cz = z - radial * sn + depth * cs;
         if (!cam.boxVisible(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r)) return;
         if (p.transientCount >= p.transientIds.length || p.drawCount + this.doubled >= MAX_DRAWS) return;
-        const articulated = hinge >= 0 || roll !== 0;
+        const articulated = hinge >= 0 || roll !== 0 || shutter !== undefined || scale > 255 / SIZE_UNITS;
         if (articulated && p.boneCount >= MAX_BONES) return;
         const first = p.transientCount++;
         const distance = Math.max(1, Math.hypot(cx, cy, cz) - r);
         const errors = this.assets.table.error[mesh]!;
-        const skyline = distance >= 2100 && (mesh === this.eyeMesh.crown || mesh === this.eyeMesh.iris || mesh === this.sextantMesh.frame || mesh === this.sextantMesh.needle);
+        const skyline = distance >= 2100 && (mesh === this.eyeMesh.crown || mesh === this.eyeMesh.iris || mesh === this.sextantMesh.frame || mesh === this.sextantMesh.needle || mesh === this.lanternMesh.frame || mesh === this.lanternMesh.shutter);
         const level = skyline ? Math.max(0, errors.length - 1) : this.assets.choose(errors, distance / Math.max(0.03, scale), -1);
         this.assets.wantTextured(mesh, level, distance);
         let flags = DRAW_PLAIN | (glow ? DRAW_EMISSIVE : 0) | (skyline ? DRAW_SKYLINE : 0);
         if (articulated) {
           const bone = p.boneCount++;
-          const a = Math.cos(roll) * scale, b = Math.sin(roll) * scale;
           const pose = p.bones, row = bone * BONE_FLOATS;
-          pose[row] = cs * a; pose[row + 1] = -cs * b; pose[row + 2] = sn; pose[row + 3] = cx;
-          pose[row + 4] = b; pose[row + 5] = a; pose[row + 6] = 0; pose[row + 7] = cy;
-          pose[row + 8] = -sn * a; pose[row + 9] = sn * b; pose[row + 10] = cs; pose[row + 11] = cz;
+          if (shutter) {
+            // Turn about the spanwise axle, then turn the whole tower to its map heading.
+            const pitch = motion?.tilt ?? 0, c = Math.cos(pitch), s = Math.sin(pitch);
+            pose[row] = cs * shutter.width; pose[row + 1] = sn * s; pose[row + 2] = sn * c;
+            pose[row + 4] = 0; pose[row + 5] = c; pose[row + 6] = -s;
+            pose[row + 8] = -sn * shutter.width; pose[row + 9] = cs * s; pose[row + 10] = cs * c;
+          } else {
+            const a = Math.cos(roll) * scale, b = Math.sin(roll) * scale;
+            const depthScale = hinge >= 0 ? 1 : scale;
+            pose[row] = cs * a; pose[row + 1] = -cs * b; pose[row + 2] = sn * depthScale;
+            pose[row + 4] = b; pose[row + 5] = a; pose[row + 6] = 0;
+            pose[row + 8] = -sn * a; pose[row + 9] = sn * b; pose[row + 10] = cs * depthScale;
+          }
+          pose[row + 3] = cx; pose[row + 7] = cy; pose[row + 11] = cz;
           this.transient.setSkinned(first, bone, dye);
           flags |= DRAW_SKINNED;
         } else {
@@ -1630,14 +1645,30 @@ export class Scene {
         this.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, flags, passes);
       };
       draw(this.eyeMesh.deck, 0, site.radius + 1, site.radius / DECK_RADIUS);
+      if (site.form === "lantern") {
+        draw(this.lanternMesh.frame, CROWN_ORIGIN, 235, 1);
+        for (let i = 0; i < LANTERN_BANKS.length; i++) {
+          const bank = LANTERN_BANKS[i]!, opened = shutterOpening(phase, i);
+          for (let j = 0; j < bank.slats.length; j++) {
+            const shutter = bank.slats[j]!, reach = 52 * shutter.width + 15, tilt = -1.34 * opened;
+            draw(this.lanternMesh.shutter, shutter.h, reach, 1, { shutter, tilt });
+            if (opened > 0.2 && j % 2 === 0) draw(this.lanternMesh.lip, shutter.h, reach, 1, { shutter, tilt, glow: true });
+          }
+          if (opened > 0.10) {
+            const size = (bank.radius + 4) / 10 * opened;
+            draw(this.lanternMesh.light, bank.well, 12 * size, size, { glow: true });
+          }
+        }
+        continue;
+      }
       if (site.form === "sextant") {
         // The index is authored hanging down. After lifting it sweeps the bow and locks on the upper mark.
         const angle = -open * (1.82 + 0.13 * eyePower(phase) * Math.sin((phase - 9) * 0.64));
         draw(this.sextantMesh.frame, CROWN_ORIGIN, 221, 1);
-        draw(this.sextantMesh.needle, SEXTANT_PIVOT, 157, 1, angle);
+        draw(this.sextantMesh.needle, SEXTANT_PIVOT, 157, 1, { roll: angle });
         if (open > 0.3) {
-          draw(this.sextantMesh.keelLight, CROWN_ORIGIN, 202, 1, 0, -1, true);
-          draw(this.sextantMesh.indexLight, SEXTANT_PIVOT, 157, 1, angle, -1, true);
+          draw(this.sextantMesh.keelLight, CROWN_ORIGIN, 202, 1, { glow: true });
+          draw(this.sextantMesh.indexLight, SEXTANT_PIVOT, 157, 1, { roll: angle, glow: true });
         }
         continue;
       }
@@ -1645,10 +1676,10 @@ export class Scene {
       if (open < 0.998) {
         for (let i = 0; i < 12; i++) {
           const bearing = i * Math.PI / 6;
-          draw(this.eyeMesh.iris, LENS_HEIGHT, 36, 1 - 0.94 * open, bearing + open * 0.88, bearing);
+          draw(this.eyeMesh.iris, LENS_HEIGHT, 36, 1 - 0.94 * open, { roll: bearing + open * 0.88, hinge: bearing });
         }
       }
-      if (open > 0.3) draw(this.eyeMesh.glow, LENS_HEIGHT, 46, 1, phase * 0.045 + eyePower(phase) * 0.7, -1, true);
+      if (open > 0.3) draw(this.eyeMesh.glow, LENS_HEIGHT, 46, 1, { roll: phase * 0.045 + eyePower(phase) * 0.7, glow: true });
     }
   }
 

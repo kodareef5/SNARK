@@ -1,12 +1,13 @@
 // World-space sky optics. Each ray samples three high-altitude sheets; their broken rims separate spectrally
 // as they twist. Positions are relative to the actual observer, including a rider above the crown.
-import { EYE_COLORS, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
+import { EYE_COLORS, EYE_FORMS, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
 import { FRAME, FRAME_BLOCK } from "./packet.ts";
 
 export const EYE_PERIOD = 120;
 export const EYE_SLOTS = 3;
 
 const pigments = { blue: [0.055, 0.40, 1], red: [1, 0.095, 0.055], green: [0.05, 0.90, 0.34] } as const;
+const emerald = [0.015, 0.85, 0.20] as const;
 const clamp = (v: number): number => Math.max(0, Math.min(1, v));
 const smooth = (v: number): number => { const a = clamp(v); return a * a * (3 - 2 * a); };
 
@@ -21,6 +22,11 @@ export function eyePower(phase: number): number {
   return smooth((phase - 9) / 4) * smooth((25 - phase) / 8);
 }
 
+/** Lower shutters rise first. Each bank takes three seconds to turn its blades, then closes in reverse order. */
+export function shutterOpening(phase: number, bank: number): number {
+  return smooth((phase - 5 - bank * 1.65) / 3.1) * smooth((120 - phase - bank * 1.65) / 3.1);
+}
+
 export function writeEyeSky(frame: Float32Array, sites: readonly TideEyeSite[], seconds: number, x: number, y: number, z: number): void {
   frame.fill(0, FRAME.eyes, FRAME.eyes + 8 * EYE_SLOTS);
   let count = 0;
@@ -28,14 +34,14 @@ export function writeEyeSky(frame: Float32Array, sites: readonly TideEyeSite[], 
     const phase = eyePhase(seconds, site), power = eyePower(phase), open = aperture(phase);
     if (!open || count === EYE_SLOTS) continue;
     const at = FRAME.eyes + 8 * count++;
-    // The phase column's second period identifies the Sextant without a larger uniform block.
+    // Pack the instrument alongside its phase in the existing sky uniform.
     const sextant = site.form === "sextant";
     const yaw = site.yaw * Math.PI / 32768;
     frame[at] = site.x - x + (sextant ? 19 * Math.cos(yaw) : 0);
     frame[at + 1] = 3450 - y;
     frame[at + 2] = site.z - z - (sextant ? 19 * Math.sin(yaw) : 0);
-    frame[at + 3] = phase + (sextant ? EYE_PERIOD : 0);
-    frame.set(pigments[site.color], at + 4); frame[at + 7] = power;
+    frame[at + 3] = Math.min(phase, EYE_PERIOD - 0.0001) + EYE_FORMS.indexOf(site.form) * EYE_PERIOD;
+    frame.set(site.form === "lantern" && site.color === "green" ? emerald : pigments[site.color], at + 4); frame[at + 7] = power;
   }
 }
 
@@ -46,7 +52,7 @@ export function eyeRadiance(frame: Float32Array, ray: ArrayLike<number>, out: Fl
   const dx = ray[0]!, dy = ray[1]!, dz = ray[2]!;
   for (let i = 0; i < EYE_SLOTS; i++) {
     const at = FRAME.eyes + i * 8, stamp = frame[at + 3]!;
-    const sextant = stamp >= EYE_PERIOD, phase = sextant ? stamp - EYE_PERIOD : stamp;
+    const form = Math.floor(stamp / EYE_PERIOD), phase = stamp - form * EYE_PERIOD;
     if (!phase || dy <= 0.002) continue;
     const x = frame[at]!, sky = frame[at + 1]!, z = frame[at + 2]!, power = frame[at + 7]!;
     const den = Math.max(0.00001, dx*dx + dz*dz);
@@ -61,7 +67,24 @@ export function eyeRadiance(frame: Float32Array, ray: ArrayLike<number>, out: Fl
       if (dist <= 0) continue;
       const u = (dx*dist-x)/1000, v = (dz*dist-z)/1000;
       if (Math.abs(u)>2.8 || Math.abs(v)>2.8) continue;
-      if (sextant) {
+      if (form === 2) {
+        // Three pleated curtains turn around a dark throat. Their folds drift through one another in depth.
+        const r = Math.hypot(u,v), theta = Math.atan2(v,u);
+        if (layer === 0) transmission *= 1 - 0.82 * power * (1 - smooth((r - 0.17) / 0.37));
+        const twist = theta + 1.76 * Math.log(0.22+r) - 0.17*(phase-9) - 0.27*layer + 0.12*Math.sin(3*theta + 0.8*r) + 0.21*Math.sin(2*theta - 0.28*layer + 0.11*phase);
+        const pleat = Math.abs(Math.sin(1.5*twist)) * Math.max(0.18,r);
+        const outer = (0.65 + power*1.43) * (1 + 0.11*Math.sin(3*theta + 0.23*phase));
+        const reach = smooth((r-0.17-layer*0.045)/0.32) * (1-smooth((r-outer+0.63)/0.63));
+        const rail = pleat - (0.045+0.024*layer) * r;
+        const veil = Math.exp(-pleat/(0.105+0.105*r));
+        const flutes = 0.5 + 0.5*Math.cos(25*pleat + 1.6*Math.sin(5*theta + 3.2*r - 0.21*phase));
+        const strength = power*reach;
+        transmission *= 1 - 0.24*strength*veil;
+        glow += strength*(veil*(0.83+1.48*flutes*flutes) + 0.95*Math.exp(-Math.abs(rail)/0.027));
+        white += strength*(0.40*Math.exp(-Math.abs(rail)/0.016) + 0.085*veil*flutes);
+        continue;
+      }
+      if (form === 1) {
         const px = u - 0.10 * layer, pz = (v + 0.07 * layer) * 1.16;
         const theta = Math.atan2(pz, px), head = 0.54 * (phase - 9) - layer * 0.68;
         const lag = ((head - theta) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
@@ -102,8 +125,8 @@ vec4 eyeOptics(vec3 d) {
   for (int i=0; i<3; i++) {
     vec4 s = fEyes[i*2], tint = fEyes[i*2+1];
     if (s.w <= 0.) continue;
-    bool sextant = s.w >= 120.;
-    if (sextant) s.w -= 120.;
+    float form = floor(s.w / 120.);
+    s.w -= 120. * form;
     float power = tint.w, glow=0., white=0.;
     float t=dot(d.xz,s.xz)/max(.00001,dot(d.xz,d.xz)), h=t*d.y-s.y;
     if (t>0. && h> -2800. && h<0.) {
@@ -114,7 +137,21 @@ vec4 eyeOptics(vec3 d) {
       float k=float(j), dist=(s.y+k*185.)/d.y;
       vec2 p=(d.xz*dist-s.xz)*.001;
       if (dist<=0. || max(abs(p.x),abs(p.y))>2.8) continue;
-      if (sextant) {
+      if (form == 2.) {
+        float r=length(p), theta=atan(p.y,p.x+1.e-10);
+        if (j==0) transmission*=1.-.82*power*(1.-smoothstep(.17,.54,r));
+        float twist=theta+1.76*log(.22+r)-.17*(s.w-9.)-.27*k+.12*sin(3.*theta+.8*r)+.21*sin(2.*theta-.28*k+.11*s.w);
+        float pleat=abs(sin(1.5*twist))*max(.18,r);
+        float outer=(.65+power*1.43)*(1.+.11*sin(3.*theta+.23*s.w));
+        float reach=smoothstep(.17+k*.045,.49+k*.045,r)*(1.-smoothstep(outer-.63,outer,r));
+        float rail=pleat-(.045+.024*k)*r, veil=exp(-pleat/(.105+.105*r));
+        float flutes=.5+.5*cos(25.*pleat+1.6*sin(5.*theta+3.2*r-.21*s.w));
+        transmission*=1.-.24*power*reach*veil;
+        glow+=power*reach*(veil*(.83+1.48*flutes*flutes)+.95*exp(-abs(rail)/.027));
+        white+=power*reach*(.40*exp(-abs(rail)/.016)+.085*veil*flutes);
+        continue;
+      }
+      if (form == 1.) {
         vec2 q=vec2(p.x-.10*k,(p.y+.07*k)*1.16);
         float theta=atan(q.y,q.x+1.e-10), head=.54*(s.w-9.)-k*.68;
         float lag=mod(head-theta,6.2831853);

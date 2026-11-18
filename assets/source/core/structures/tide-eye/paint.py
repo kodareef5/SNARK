@@ -118,3 +118,26 @@ base[:, -1] = base[:, 0]
 orm[:, -1] = orm[:, 0]
 save("sextant-base", base)
 save("sextant-orm", orm * 255)
+
+# Salt collects under the rolled edge. Exposed spots polish back to copper, with an irregular
+# transition through dark oxide to turquoise. Narrow rain tracks start at each panel fastener.
+verdigris = noise(7, 33) + 0.52 * noise(22, 85) + 0.25 * noise(58, 230)
+wash = np.clip(0.55 + 1.25 * verdigris + 0.18 * np.cos(v / strip * np.pi), 0, 1)
+polish = np.clip(0.96 - np.minimum(v, strip - 1 - v) / 13 + verdigris * 0.6, 0, 1)
+fastener = np.hypot((u + 64) % 128 - 64, v - 23)
+drip = np.exp(-((((u + 64) % 128 - 64) / (1.2 + 0.08 * v)) ** 2)) * np.clip(
+    (v - 22) / 20, 0, 1
+)
+oxide = np.array([40, 66, 56]) + wash[..., None] * np.array([32, 75, 49])
+metal = np.array([159, 106, 60]) + verdigris[..., None] * 22
+base[sl] = (
+    oxide * (1 - polish[..., None]) + metal * polish[..., None] - drip[..., None] * 18
+)
+base[sl] += (np.exp(-((fastener - 2.8) ** 2)) * 27)[..., None]
+orm[sl, :, 0] = np.clip(0.91 - 0.14 * drip, 0, 1)
+orm[sl, :, 1] = np.clip(0.58 + 0.23 * wash - 0.35 * polish, 0.19, 0.88)
+orm[sl, :, 2] = np.clip(0.45 - 0.31 * wash + 0.45 * polish, 0.10, 0.93)
+base[:, -1] = base[:, 0]
+orm[:, -1] = orm[:, 0]
+save("lantern-base", base)
+save("lantern-orm", orm * 255)

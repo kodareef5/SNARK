@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import { OBELISK, OBELISK_PIECES, TRAVEL_TERMINAL, obeliskStatics } from "../../shared/world/obelisks.ts";
 import { FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
-import { aperture, eyePhase, eyePower, eyeRadiance, writeEyeSky } from "../../client/core/render/tide-eye.ts";
+import { aperture, eyePhase, eyePower, eyeRadiance, shutterOpening, writeEyeSky } from "../../client/core/render/tide-eye.ts";
 import { parseMap, readHead, writeMap } from "../../shared/world/mapfile.ts";
 import { LENS_HEIGHT, type TideEyeSite } from "../../shared/world/tide-eye.ts";
 import { flatMap } from "../fixtures/map.ts";
@@ -92,4 +92,41 @@ test("the Sextant's moving white index leads an open red arc above the player's 
   expect(light[2]!).toBeGreaterThan(2);
   writeEyeSky(frame, [site], 85, site.x, 0, site.z);
   expect(frame.slice(FRAME.eyes).every(v => v === 0)).toBe(true);
+});
+
+test("the Lantern streams on rebuilt maps with three banks of shutters, solid uprights and an open deck", () => {
+  const old = { name: "Golf Club", color: "green", x: 192, z: 192, y: 2.1, yaw: 0, radius: 64 } as const;
+  const site = { ...old, form: "lantern" } as const;
+  const eyes = [site, { ...old, name: "Wynwood", form: "sextant", color: "red" }, old] as const;
+  const bytes = writeMap(flatMap(8, { tideEyes: [...eyes] }));
+  expect(readHead(bytes).tideEyes).toEqual([...eyes]);
+  expect(parseMap(bytes).tideEyes).toEqual([...eyes]);
+  const pieces = obeliskStatics(reg, site, () => site.y);
+  expect(pieces.pop()).toEqual(obeliskStatics(reg, old, () => old.y).at(-1));
+  const across = pieces.filter(p => Math.abs(p.y - site.y - 270 - 168) < 12);
+  expect(across).toHaveLength(3);
+  expect(across.every(p => Math.hypot(p.x-site.x,p.z-site.z) > 45)).toBe(true);
+  const openness = (t: number) => [0,1,2].map(bank => shutterOpening(t,bank));
+  expect(openness(2)).toEqual([0,0,0]);
+  expect(openness(8)[0]!).toBeGreaterThan(openness(8)[1]!);
+  expect(openness(8)[1]!).toBeGreaterThan(openness(8)[2]!);
+  expect(openness(16)).toEqual([1,1,1]);
+  expect(openness(119)[0]!).toBeGreaterThan(openness(119)[2]!);
+});
+
+test("the Lantern curtains surround a dark centre, with green folds above the flight ceiling", () => {
+  const site = { name: "Golf", color: "green", form: "lantern", x: 0, y: 3, z: 0, radius: 64, yaw: 0 } as const;
+  const frame = new Float32Array(FRAME_FLOATS);
+  writeEyeSky(frame, [site], 55.5, 0, 3000, 0);
+  expect([...frame.slice(FRAME.eyes,FRAME.eyes+4)]).toEqual([0,450,0,255.5]);
+  const middle = new Float64Array(3);
+  expect(eyeRadiance(frame,[0,1,0],middle)).toBeCloseTo(.18,3);
+  expect(middle[1]).toBe(0);
+  const ring = Array.from({length: 90}, (_, i) => {
+    const a = i * Math.PI / 45, length = Math.hypot(1000,450), light = new Float64Array(3);
+    eyeRadiance(frame,[1000*Math.cos(a)/length,450/length,1000*Math.sin(a)/length],light);
+    return light[1]! - light[0]!;
+  });
+  expect(Math.max(...ring)).toBeGreaterThan(1);
+  expect(Math.min(...ring)).toBeLessThan(.3);
 });

@@ -4,12 +4,15 @@ import { detCos, detSin } from "../math/scalar.ts";
 import type { MapStatic } from "./mapfile.ts";
 import profile from "./tide-eye-profile.json" with { type: "json" };
 import sextant from "./sextant-profile.json" with { type: "json" };
+import lantern from "./lantern-profile.json" with { type: "json" };
 
+// These indices are stored in the optional map-header form column. Zero is the original Tide Eye.
+export const EYE_FORMS = [undefined, "sextant", "lantern"] as const;
 export const EYE_COLORS = ["blue", "red", "green"] as const;
 export type EyeColor = typeof EYE_COLORS[number];
 export interface TideEyeSite {
   readonly name: string;
-  readonly form?: "sextant";
+  readonly form?: typeof EYE_FORMS[number];
   readonly x: number;
   readonly y: number;
   readonly z: number;
@@ -23,6 +26,18 @@ export const KEEL = 270;
 export const CROWN_ORIGIN = KEEL + 190;
 export const LENS_HEIGHT = KEEL + 269;
 export const SEXTANT_PIVOT = KEEL + sextant.pivot;
+// Slats pivot around their upper axles. The same three uprights locate the axles in Blender and on the server.
+export const LANTERN_BANKS = lantern.banks.map(({ first, pitch, count }) => {
+  const lower = first - 8, upper = first + (count - 1) * pitch + 6;
+  const middle = (lower + upper) / 2;
+  return {
+    well: KEEL + middle + 2, radius: middle * 0.127,
+    slats: Array.from({ length: count }, (_, i) => {
+      const h = first + i * pitch;
+      return { h: KEEL + h, depth: lantern.corners[0]![1]! * h, width: lantern.corners[1]![0]! * h / 50 };
+    }),
+  };
+});
 export const HULLS = { spar: [7, 12, 9], tip: [2.5, 8, 3], bearing: [4.2, 4.2, 4.4] } as const;
 
 export const EYE_COLLIDERS = new Set(Object.keys(HULLS).map(name => "core:zztide_eye_" + name));
@@ -30,9 +45,27 @@ export const EYE_COLLIDERS = new Set(Object.keys(HULLS).map(name => "core:zztide
 export function eyeCollision(site: TideEyeSite): MapStatic[] {
   const a = site.yaw * Math.PI / 32768, c = detCos(a), s = detSin(a);
   const pieces: MapStatic[] = [];
-  const put = (kind: keyof typeof HULLS, x: number, h: number) => {
-    pieces.push({ kind: "core:zztide_eye_" + kind, x: site.x + x * c, y: site.y + KEEL + h, z: site.z - x * s, yaw: site.yaw });
+  const put = (kind: keyof typeof HULLS, x: number, h: number, z = 0) => {
+    pieces.push({ kind: "core:zztide_eye_" + kind, x: site.x + x * c + z * s, y: site.y + KEEL + h, z: site.z - x * s + z * c, yaw: site.yaw });
   };
+  if (site.form === "lantern") {
+    for (const [x, z] of lantern.corners) {
+      for (let h = 8; h <= 376; h += 16) put(h < 70 || h > 356 ? "tip" : "spar", x! * h, h, z! * h);
+    }
+    // Solid lamp housings sit behind the moving blades. Keep the windows between banks open to riders.
+    for (const { first, pitch, count } of lantern.banks) {
+      const top = first + (count - 1) * pitch;
+      for (let h = first; h <= top; h += 13) {
+        const radius = h * 0.112;
+        put("spar", 0, h);
+        for (let i = 0; i < 8; i++) {
+          const a = i * Math.PI / 4;
+          put("spar", (radius - 4) * detCos(a), h, (radius - 4) * detSin(a));
+        }
+      }
+    }
+    return pieces;
+  }
   if (site.form === "sextant") {
     // These fixed steel and stone members are solid. The slender animated index moves across the open dial.
     for (let h = 8; h < 380; h += 16) {

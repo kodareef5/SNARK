@@ -80,7 +80,7 @@
 // A part's file is `<kind>.<column>-<row>.<hash>.part` (partName); the land's and the head's have no square.
 // A string is a varint byte length and UTF-8, as on the wire. A yaw is in 1/65,536 turns.
 
-import { EYE_COLORS, type TideEyeSite } from "./tide-eye.ts";
+import { EYE_COLORS, EYE_FORMS, type TideEyeSite } from "./tide-eye.ts";
 import type { Def, MapZone } from "../content/defs.ts";
 import type { Registry } from "../content/registry.ts";
 import { CHUNK_SIZE, FRAME_CHUNKS, MAX_CHUNKS_PER_AXIS, SECTOR_CHUNKS, STRUCT_UNITS, WORLD_MAX_Y, WORLD_MIN_Y, chunkAt, chunkCount, chunkCx, chunkCz, frameKey, framed, type FramedDims, type MapDims } from "../coords.ts";
@@ -402,7 +402,7 @@ function slotsOf(layer: NodeLayer, chunks: number): number {
 
 function validateEyes(eyes: readonly TideEyeSite[], dims: MapDims): void {
   if (eyes.length > 255 || eyes.some(e => !e.name || e.name.length > 64 || !EYE_COLORS.includes(e.color)
-    || (e.form !== undefined && e.form !== "sextant") || !Number.isFinite(e.y) || !(e.x >= 0 && e.x <= dims.chunksX * CHUNK_SIZE && e.z >= 0 && e.z <= dims.chunksZ * CHUNK_SIZE)
+    || !EYE_FORMS.includes(e.form) || !Number.isFinite(e.y) || !(e.x >= 0 && e.x <= dims.chunksX * CHUNK_SIZE && e.z >= 0 && e.z <= dims.chunksZ * CHUNK_SIZE)
     || !(e.radius > 0 && e.radius <= 70) || !Number.isInteger(e.yaw) || e.yaw < 0 || e.yaw > 65535)) throw new Error("map: invalid Tide Eye site");
 }
 
@@ -1025,7 +1025,7 @@ function headPart(m: MapData, dims: FramedDims, layers: readonly NodeLayer[], st
       o.u16(eye.yaw); o.u8(EYE_COLORS.indexOf(eye.color)); o.f64(eye.radius);
     }
     // Older headers end after the radii. Only maps with a distinct instrument need the form column.
-    if (m.tideEyes!.some(eye => eye.form)) for (const eye of m.tideEyes!) o.u8(eye.form === "sextant" ? 1 : 0);
+    if (m.tideEyes!.some(eye => eye.form)) for (const eye of m.tideEyes!) o.u8(EYE_FORMS.indexOf(eye.form));
   });
   o.section("SPWN", () => {
     o.u8(m.spawns.length);
@@ -1297,8 +1297,8 @@ function readHeadSections(r: In, hash: number): MapHead {
         if (s.bytes.length - s.at !== tideEyes.length) throw new Error("map: invalid obelisk form column");
         tideEyes = tideEyes.map(eye => {
           const form = s.u8();
-          if (form > 1) throw new Error("map: unknown obelisk form");
-          return form === 1 ? { ...eye, form: "sextant" } : eye;
+          if (form >= EYE_FORMS.length) throw new Error("map: unknown obelisk form");
+          return form ? { ...eye, form: EYE_FORMS[form]! } : eye;
         });
       }
       validateEyes(tideEyes, dims);

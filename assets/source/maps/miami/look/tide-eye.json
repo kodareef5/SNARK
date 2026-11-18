@@ -13,6 +13,11 @@
     { "name": "red-ignition", "hour": 18.25, "x": 6090, "z": 3422, "y": 54, "look": [6910, 6848, 2060], "eyeSeconds": 95.5, "replayEyeSeconds": 85 },
     { "name": "red-deck", "onFoot": true, "x": 6908.2, "z": 6849.6, "up": 1.7, "look": [6910, 6848, 0.95], "eyeSeconds": 112 },
     { "name": "red-crown", "x": 7280, "z": 6590, "y": 72, "look": [6910, 6848, 318], "eyeSeconds": 112 },
+    { "name": "green-lantern", "hour": 16.75, "x": 954, "z": 5880, "y": 456, "look": [1162, 6198, 459], "eyeSeconds": 72, "holdPhase": true },
+    { "name": "green-dormant", "hour": 16.75, "x": 954, "z": 5880, "y": 456, "look": [1162, 6198, 459], "eyeSeconds": 42, "holdPhase": true },
+    { "name": "green-shutters", "hour": 17.25, "x": 1226, "z": 5932, "y": 433, "look": [1162, 6198, 522], "eyeSeconds": 48.5, "replayEyeSeconds": 44, "replayDuration": 10 },
+    { "name": "green-ignition", "hour": 18.35, "x": 6100, "z": 3420, "y": 52, "look": [1162, 6198, 1930], "eyeSeconds": 55.5, "replayEyeSeconds": 44 },
+    { "name": "green-deck", "onFoot": true, "x": 1161.2, "z": 6195.6, "up": 1.7, "look": [1162, 6198, 0.95], "eyeSeconds": 72 },
     { "name": "green-crown", "x": 1050, "z": 5740, "y": 72, "look": [1162, 6198, 318], "eyeSeconds": 72 }
   ]
 }

@@ -34,6 +34,6 @@ const server = startServer({
     });
   },
 });
-for (const view of ["blue-instrument", "red-sextant", "red-ignition", "red-deck"]) {
+for (const view of ["blue-instrument", "red-sextant", "red-ignition", "red-deck", "green-lantern", "green-shutters", "green-ignition", "green-deck"]) {
   console.log(`http://127.0.0.1:${server.port}/?quick&look=${view}`);
 }
