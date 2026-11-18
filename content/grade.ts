@@ -1,5 +1,5 @@
-// The look of a lit frame by the time of day, on a tier that finishes its frame in one pass (client/core/render/post.ts),
-// which the software rasterizer applies too. Keys run from the sun lowest to highest; between two keys each number is
+// The look of a lit frame by the time of day, which every lit tier's shaders, a light target's finishing pass
+// (client/core/render/post.ts) and the software rasterizer apply alike. Keys run from the sun lowest to highest; between two keys each number is
 // blended by the sun's height, morning and evening alike.
 
 export interface GradeKey {
