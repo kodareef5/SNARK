@@ -7,10 +7,11 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { Hiding, KindPlates } from "../../client/core/render/hide.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import type { Scene } from "../../client/core/render/scene.ts";
-import { CHUNK_SIZE } from "../../shared/coords.ts";
+import { CHUNK_SIZE, YAW_UNITS } from "../../shared/coords.ts";
 import { SETUPS, SLICE_VIEWS, censusWorld, placeOf } from "../../tools/bench/census.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
 import { miamiSlice } from "../fixtures/cityslice.ts";
+import { building, cityWorld, slopes } from "../fixtures/cityworld.ts";
 import { farPack } from "../fixtures/farworld.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -192,4 +193,34 @@ test("the Miami slice's views and a flight through it on high draw the same pict
   }
   // Less drawn: about a fifth of the draws and a sixth of the triangles over the views and the flight; and some casters left out.
   expect([frames, draws[0]! < draws[1]! * 0.9, triangles[0]! < triangles[1]! * 0.9, casters > 0]).toEqual([19, true, true, true]);
+});
+
+test("on flat ground a street of buildings draws the same picture with what is hidden left out: the ground hides nothing level with it", () => {
+  const street = (): ReturnType<typeof building> => {
+    const out: ReturnType<typeof building> = [];
+    for (let z = 296; z <= 456; z += 16) out.push(...building(360, z, 0, 10), ...building(392, z, 0, 10));
+    out.push(...slopes(376, 340, 0, 16384).all);
+    out.push(...building(380, 500, 0, 6, 2, YAW_UNITS / 12));
+    return out;
+  };
+  const worlds = [true, false].map((hide) => {
+    const w = cityWorld({ chunks: 16, statics: street(), tier: HIGH.tier, width: W, height: H });
+    w.scene.hide = hide;
+    for (let z = 256; z < 560; z += CHUNK_SIZE) for (let x = 320; x < 448; x += CHUNK_SIZE) w.rows(w.chunkOf(x, z));
+    return w;
+  });
+  let hidden = 0;
+  // Down in the street, from 150 m up over it, and at the foot of a building.
+  for (const [x, y, z, lx, ly, lz] of [[376, 1.7, 300, 376, 6, 460], [376, 150, 230, 376, 0, 380], [376, 1.7, 330, 360, 3, 340]] as const) {
+    for (const w of worlds) {
+      [w.cam.x, w.cam.y, w.cam.z] = [x, y, z];
+      [w.cam.yaw, w.cam.pitch] = [Math.atan2(lx - x, lz - z), Math.atan2(ly - y, Math.hypot(lx - x, lz - z))];
+      for (let f = 0; f < 8; f++) w.frame(true);
+    }
+    let differ = 0;
+    for (let i = 0; i < worlds[0]!.raster.color.length; i++) if (worlds[0]!.raster.color[i] !== worlds[1]!.raster.color[i]) differ++;
+    expect(differ).toBe(0);
+    hidden += worlds[0]!.scene.hiding.stats.hidden;
+  }
+  expect(hidden).toBeGreaterThan(0);
 });

@@ -397,15 +397,15 @@ export class Hiding {
   }
 
   /**
-   * Whether the picture hides all of a camera-relative box: every pixel its corners span holds an occluder nearer than
-   * its nearest corner. A box reaching the near plane, or off the screen, is not hidden.
+   * As `hides`, what of the box lies under the ground drawn, by the depth slack, hidden by it. A face level with the
+   * ground is not under it: which of the two is drawn there is the order's to say.
    */
-  /** As `hides`, what of the box lies under the ground drawn hidden by it. */
   hidesOver(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): boolean {
     if (!this.on) return false;
-    if (this.under && Math.hypot(Math.max(-minX, maxX), Math.max(-minY, maxY), Math.max(-minZ, maxZ)) <= this.underReach) {
-      const ground = this.under(minX, minZ, maxX, maxZ);
-      if (ground >= maxY) {
+    const far = Math.hypot(Math.max(-minX, maxX), Math.max(-minY, maxY), Math.max(-minZ, maxZ));
+    if (this.under && far <= this.underReach) {
+      const ground = this.under(minX, minZ, maxX, maxZ) - SLACK - MARGIN * far;
+      if (ground > maxY) {
         this.stats.tested++;
         this.stats.hidden++;
         return true;
@@ -415,6 +415,10 @@ export class Hiding {
     return this.hides(minX, minY, minZ, maxX, maxY, maxZ);
   }
 
+  /**
+   * Whether the picture hides all of a camera-relative box: every pixel its corners span holds an occluder nearer than
+   * its nearest corner. A box reaching the near plane, or off the screen, is not hidden.
+   */
   hides(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): boolean {
     if (!this.on) return false;
     this.stats.tested++;
