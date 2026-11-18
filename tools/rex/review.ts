@@ -21,10 +21,13 @@ if (format !== "rgba" && format !== "bc" && format !== "astc") throw new Error("
 const asset = (await findAssets()).find(a => a.id === "core:rex")!;
 if (asset.spec.kind !== "creature") throw new Error("Expected Rex creature");
 const middle = process.argv.includes("--medium-mip");
-const output = resolve("var/rex/review", middle ? format + "-128" : format);
+const hip = process.argv.includes("--hip");
+const geometry = process.argv.find(option => option.startsWith("--geometry="))?.slice("--geometry=".length);
+if (geometry && !hip) throw new Error("Alternate geometry is supported for matched hip captures");
+const output = resolve("var/rex/review", (middle ? format + "-128" : format) + (geometry ? "-earlier" : ""));
 function ceiling(pictures: Uint8Array[]): Uint8Array[] { return middle ? pictures.slice(0, 8) : pictures; }
 mkdirSync(output, { recursive: true });
-const bytes = readFileSync(asset.file), pack = parsePack(bytes);
+const bytes = readFileSync(geometry ?? asset.file), pack = parsePack(bytes);
 const rig = buildRig(pack.header.rigs[0]!, pack.clips)!;
 const view = new ModelView(pack, 1220, 780, [.80, .83, .85]);
 const palette = asset.spec.regions!.map(r => r.sample);
@@ -71,6 +74,24 @@ function picture(name: string, clip: string, frame: number, around: number, abov
   pose(clip, frame);
   view.draw({ mesh: body, ...(saddle ? { also: [tack] } : {}), level, around, above, centre, radius, rig, colors: palette, textured: true, layer });
   writeFileSync(resolve(output, name + ".png"), encodePng(view.raster.width, view.raster.height, view.raster.color));
+}
+if (hip) {
+  const centre: Vec3 = [.38, 2.88, -1.05];
+  for (const surface of ["paint", "clay"]) {
+    if (surface === "clay") {
+      for (const [i, texture] of textures.entries()) {
+        const pixel = texture.role === "base" ? [185, 185, 185, 255] : texture.role === "normal" ? [128, 128] :
+          texture.role === "mro" ? [255, 211, 0, 255] : [0, 0, 0, 0];
+        view.texture(i, texture.role, [Uint8Array.from(pixel)]);
+      }
+    }
+    picture("hip-" + surface, "idle", 0, 80, 3, centre, 1.76, false, 0, 2);
+  }
+  writeFileSync(resolve(output, "hip-receipt.json"), JSON.stringify({
+    packSha256: createHash("sha256").update(bytes).digest("hex"), textureVariant: format, maximumMip: middle ? 128 : null,
+    frame: 0, clip: "idle", lod: 2, centre, around: 80, above: 3, radius: 1.76, textureHashes: hashes,
+  }, null, 2) + "\n");
+  process.exit(0);
 }
 picture("profile", "idle", 0, 90, 4, [0, 2.15, -1], 4.15);
 picture("quarter", "idle", 0, 56, 12, [0, 2.10, -.65], 3.90);
