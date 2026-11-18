@@ -136,6 +136,15 @@ test("a street the data draws twice, under two names, is furnished once", () => 
   expect(place(fixture(twice)).pieces).toEqual(place(fixture(GRID)).pieces);
 });
 
+test("a way onto a bridge is kept clear as a reserved route is: nothing stands within its width", () => {
+  // A way 16 m wide down the avenue at x 500, from z 120 to 380, wider than the avenue's own 14.
+  const way = { points: [{ x: 500, y: GROUND, z: 120 }, { x: 500, y: GROUND, z: 380 }], width: 16 };
+  const open = placeFurniture(fixture(GRID), [], RULES, 2000).pieces, kept = placeFurniture(fixture(GRID), [], RULES, 2000, new Map(), [way]).pieces;
+  const on = (p: StaticPiece): boolean => Math.abs(p.x - 500) < 8.4 && p.z > 120 && p.z < 380;
+  expect(open.some(on)).toBe(true);
+  expect(kept.some(on)).toBe(false);
+});
+
 test("a rule that names a piece the set lacks stops the build", () => {
   const rules = { ...RULES, forms: { ...RULES.forms, lamp: [["lamp_post", 1]] as [string, number][] } };
   expect(() => place(fixture(GRID.slice(0, 2)), [], rules)).toThrow("furniture.forms names lamp_post, which is no street piece");

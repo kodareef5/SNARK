@@ -112,7 +112,10 @@ const footprint = (b: Box): [number, number][] => {
 /** Ground no piece of these stands on: water, a building's floor and walls, heaps, containers and decks. */
 const BARRED = new Set<number>([S.CHANNEL, S.DEEP, S.FLAT, S.SHALLOW, S.POOL, S.HEAP, S.SPILL, S.WALL, S.FLOOR, S.DECK, S.CONTAINER]);
 
-export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules: Furniture, maxChunk: number, uses: ReadonlyMap<number, string> = new Map()): { pieces: StaticPiece[]; summary: FurnitureSummary } {
+/** A way kept clear besides the site's reserved routes: its points and its width. */
+export type Reserved = Site["growthRoutes"][number];
+
+export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules: Furniture, maxChunk: number, uses: ReadonlyMap<number, string> = new Map(), reserved: readonly Reserved[] = []): { pieces: StaticPiece[]; summary: FurnitureSummary } {
   const { ground } = site; const { nx, nz, x0, z0, x1, z1 } = ground.grid; const chunksX = ground.grid.sizeX / 64;
   const sample = (x: number, z: number): number => Math.max(0, Math.min(nz - 1, Math.round((z1 - z) / 2))) * nx + Math.max(0, Math.min(nx - 1, Math.round((x1 - x) / 2)));
   const { clear } = rules; const seed = rules.seed;
@@ -135,7 +138,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     return false;
   };
   // Reserved routes in 64 m bins, as street-cars.ts keeps a parked car off them.
-  const routes = site.growthRoutes.flatMap((r) => r.points.slice(1).map((b, i) => ({ a: r.points[i]!, b, width: r.width })));
+  const routes = [...site.growthRoutes, ...reserved].flatMap((r) => r.points.slice(1).map((b, i) => ({ a: r.points[i]!, b, width: r.width })));
   const routeBins = new Map<number, typeof routes>();
   for (const r of routes) for (let z = Math.floor((Math.min(r.a.z, r.b.z) - r.width) / 64); z <= Math.floor((Math.max(r.a.z, r.b.z) + r.width) / 64); z++) for (let x = Math.floor((Math.min(r.a.x, r.b.x) - r.width) / 64); x <= Math.floor((Math.max(r.a.x, r.b.x) + r.width) / 64); x++) {
     const k = binKey(x, z); if (!routeBins.has(k)) routeBins.set(k, []); routeBins.get(k)!.push(r);
@@ -438,6 +441,19 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   return { pieces, summary };
 }
 
+/**
+ * The ways onto the bridges the ruins built (their reports' bridges.json, written earlier in the same build): each
+ * entrance's first twelve metres and the road it runs on into, at the entrance's own width and a metre more.
+ */
+function bridgeWays(folder: string): Reserved[] {
+  const file = join(folder, "bridges.json"); if (!existsSync(file)) return [];
+  const records = JSON.parse(readFileSync(file, "utf8")) as { entrances?: { x: number; y: number; z: number; dx: number; dz: number; width: number; runout?: { x: number; y: number; z: number }[] }[] }[];
+  return records.flatMap((r) => (r.entrances ?? []).flatMap((e) => [
+    { points: [{ x: e.x, y: e.y, z: e.z }, { x: e.x - e.dx * 12, y: e.y, z: e.z - e.dz * 12 }, { x: e.x + e.dx * 12, y: e.y, z: e.z + e.dz * 12 }], width: e.width + 1 },
+    ...(e.runout && e.runout.length > 1 ? [{ points: e.runout, width: e.width + 1 }] : []),
+  ]));
+}
+
 /** The buildings' uses by footprint (base/buildings_attributes.json): OCC_CLS by OBJECTID. */
 function readUses(source: string): Map<number, string> {
   const file = join(source, "base/buildings_attributes.json"); if (!existsSync(file)) return new Map();
@@ -451,8 +467,8 @@ export function makeFurniture(site: Site, placed: readonly StaticPiece[]): Stati
   const v = vocabulary(site.source) as ReturnType<typeof vocabulary> & { furniture?: Furniture };
   if (!v.furniture) return [];
   // Room is left in each chunk for the obelisks and the harbours' wrecks, which come after.
-  const { pieces, summary } = placeFurniture(site, placed, v.furniture, v.budgets.maxChunk - 8, readUses(site.source));
   const folder = join(site.source, "reports", site.world.ruins?.report ?? "ruins"); mkdirSync(folder, { recursive: true });
+  const { pieces, summary } = placeFurniture(site, placed, v.furniture, v.budgets.maxChunk - 8, readUses(site.source), bridgeWays(folder));
   writeFileSync(join(folder, "furniture.json"), `${JSON.stringify({ pieces: pieces.length, ...summary }, null, 2)}\n`);
   console.log(`furniture: ${pieces.length} pieces, ${Object.entries(summary.byRule).map(([r, n]) => `${n} ${r}`).join(", ")}`);
   return pieces;
