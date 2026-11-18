@@ -7,6 +7,7 @@ import type { TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "./atmosphere.ts";
 import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_VERTEX } from "./detailtext.ts";
+import { FACADE_GLSL, FACADE_TIERS, facadeVertex } from "./facade.ts";
 import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, type FramePacket } from "./packet.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
@@ -23,7 +24,7 @@ import { WATER_FRAGMENT } from "./water.ts";
  * bind something else there. 16, the first past the sixteen a program may read at most, holds the sky's openness
  * (skyopen.ts); WebGL2 has 32 units at the least, and no program reads more than twelve.
  */
-export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16 } as const;
+export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17 } as const;
 
 export interface ProgramText {
   readonly vertex: string;
@@ -50,7 +51,11 @@ const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };
 function flatOr(tier: Tier, format: TextureFormat, hard: boolean, vertex: string, flat: string, lit: string, samplers: Record<string, number>, litVertex?: string, weather = false): ProgramText {
   if (!tier.lit) return { vertex, fragment: flat, defines: "", samplers };
   const weathers = weather && tier.finish === "full";
-  return { vertex: litVertex ?? (weathers ? ownVertex(worldVertex(vertex)) : worldVertex(vertex)), fragment: lit.replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), defines: (tier.finish === "light" ? "#define WORLD_LIGHT\n" : tier.relief ? "#define WORLD_RELIEF\n" : "") + (weathers ? `#define WORLD_WEATHER\n#define ${tier.finishes >= 1024 ? "WORLD_EDGES" : "WORLD_EDGE_LINE"}\n` : "") + shadowDefines(tier.shadows, hard), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, ...(litVertex ? {} : { uGroundHeight: UNIT.heights }) } };
+  // A static's facade parts and marks where it weathers and the tier draws them (facade.ts), on five units of their own.
+  const facades = weathers ? FACADE_TIERS[tier.name] : null;
+  const own = weathers ? ownVertex(worldVertex(vertex)) : worldVertex(vertex);
+  const facadeUnits: Record<string, number> = facades ? { uFacadeBase: UNIT.facade, uFacadeNormal: UNIT.facade + 1, uFacadeOrm: UNIT.facade + 2, uFacadeRooms: UNIT.facade + 3, uFacadeMarks: UNIT.facade + 4 } : {};
+  return { vertex: litVertex ?? (facades ? facadeVertex(own) : own), fragment: (facades ? lit.replaceAll("FACADE_NORMAL", format === "astc" ? "ra" : "rg") : lit.replace(FACADE_GLSL, "")).replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), defines: (tier.finish === "light" ? "#define WORLD_LIGHT\n" : tier.relief ? "#define WORLD_RELIEF\n" : "") + (weathers ? `#define WORLD_WEATHER\n#define ${tier.finishes >= 1024 ? "WORLD_EDGES" : "WORLD_EDGE_LINE"}\n` : "") + (facades ? `#define FACADE\n${facades.reflect ? "#define FACADE_ROOMS\n" : ""}` : "") + shadowDefines(tier.shadows, hard), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, ...(litVertex ? {} : { uGroundHeight: UNIT.heights }), ...facadeUnits } };
 }
 
 /** A SURFACE program of a variant: a material's maps on their units, and the masks and palette only where it is dyed. */

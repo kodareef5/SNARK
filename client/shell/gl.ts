@@ -1,7 +1,7 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { SURFACE_NAMES, SURFACE_PREFIX, WEATHER_LAYER, WEATHER_MATERIAL } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
@@ -645,6 +645,13 @@ export class GlRenderer {
       gl.bindTexture(gl.TEXTURE_2D, this.windows[drawn * 2 + k] ?? null);
     }
     gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+    // The facades' atlases on their units while the frame names them; none is read until each it names has come (facade.ts).
+    for (let k = 0; k < p.facadeSlots.length; k++) {
+      const t = p.facadeSlots[k]!, texture = t >= 0 ? this.textures.get(t) : undefined;
+      if (t >= 0 && !texture) p.frame[FRAME.facade + 1] = 0;
+      gl.activeTexture(gl.TEXTURE0 + UNIT.facade + k);
+      gl.bindTexture(gl.TEXTURE_2D, texture ?? null);
+    }
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.frame);
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, p.frame);
 

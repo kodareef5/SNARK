@@ -47,6 +47,7 @@ import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { WEAR_KEY } from "./wear.ts";
 import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndexCount } from "./packet.ts";
 import { WorldFinishes, citySurface } from "./world-surfaces.ts";
+import { FacadeAtlases } from "./facade.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
 import { FarShadow } from "./farshadow.ts";
@@ -457,6 +458,7 @@ export class Scene {
   /** The materials whose pictures the dome and the sea draw, or -1 where the pack has none. */
   private readonly skyMaterial: number;
   private readonly finishes: WorldFinishes;
+  private readonly facades: FacadeAtlases;
   private readonly waterMaterial: number;
   private readonly beamMesh: number;
   /** Places to mark with a beam, x, y, z each. The app sets them before build(). */
@@ -682,6 +684,7 @@ export class Scene {
     this.waterMesh = table.find(WATER_MESH);
     this.beamMesh = table.find(BEAM_MESH);
     this.finishes = new WorldFinishes(table.materials, this.assets.manifest.textures ?? []);
+    this.facades = new FacadeAtlases(table.materials, world.mapId ?? "default");
     citySurface(this.packet.surfaceCity, world.mapId ?? "default");
     this.skyMaterial = table.materials.findIndex((m) => m.id === SKY_MATERIAL);
     this.waterMaterial = table.materials.findIndex((m) => m.id === WATER_MATERIAL);
@@ -770,6 +773,7 @@ export class Scene {
     [p.frame[FRAME.handFrom], p.frame[FRAME.handTo]] = this.assets.tier.nodes.band;
     // Lit tiers take their light from the sky table, and the air and the dome's pictures from atmosphere.ts.
     this.finishes.frame(p, this.assets.residency, p.tier);
+    this.facades.frame(p, this.assets.residency, p.tier);
     if (p.tier.lit) {
       skyFrame(this.hour, theSky(), p.frame);
       airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky);

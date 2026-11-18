@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { decodeTexture, type Texture } from "../../client/core/render/cpu-texture.ts";
-import { ELEMENTS, FACADE_TOP, MARKS_PLACED, PLACED, ROOMS, ROOM_FACES, type FacadeTier } from "../../client/core/render/facade.ts";
+import { ELEMENTS, FACADE_MATERIALS, FACADE_TOP, MARKS_PLACED, PLACED, ROOMS, ROOM_FACES, type FacadeTier } from "../../client/core/render/facade.ts";
 import type { Material } from "../art/materials.ts";
 import { baseMips, encodePng, normalMips, packedMips, readPicture, unpack, type Picture } from "../pack/image.ts";
 import type { SourceMesh } from "../pack/write.ts";
@@ -171,8 +171,10 @@ export function buildFacadeArt(source = FACADE_SOURCE, out = FACADE_ART): { elem
   return result;
 }
 
-/** The pack's materials of the atlases: the elements' base colour, normal and packed map, and the rooms' and the marks' base colours. */
-export const FACADE_MATERIALS = ["core:facade_elements", "core:facade_rooms", "core:facade_marks"] as const;
+/** Whether the facades' painted sources are in the checkout, as the world finishes' are (HAS_SURFACES). */
+export const HAS_FACADES = existsSync(join(FACADE_SOURCE, "elements")) && existsSync(join(FACADE_SOURCE, "rooms"));
+
+/** The pack's materials of the atlases (facade.ts FACADE_MATERIALS). */
 export function facadeMaterials(): Material[] {
   buildFacadeArt();
   return [
@@ -182,12 +184,12 @@ export function facadeMaterials(): Material[] {
   ];
 }
 
-/** Carriers of the two materials, as the world finishes' is: a triangle never drawn, last by name, renumbering no mesh. */
+/** Carriers of the materials, as the world finishes' are: a triangle never drawn, named after theirs, renumbering no mesh. */
 export function facadeMeshes(): SourceMesh[] {
   return FACADE_MATERIALS.map((id, k) => {
     const roles = k === 0 ? (["base", "normal", "mro"] as const) : (["base"] as const);
-    const material = { id, base: 0, normal: k === 0 ? 1 : -1, mro: k === 0 ? 2 : -1, mask: -1, mask2: -1, tint: [1, 1, 1] as [number, number, number], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 3 };
-    return { id: `core:zz_${id.slice(5)}`, flat: 1, materials: [material], textures: roles.map((role) => ({ id: `${id}/${role}`, role, top: FACADE_TOP })),
+    const material = { id, base: 0, normal: k === 0 ? 1 : -1, mro: k === 0 ? 2 : -1, mask: -1, mask2: -1, tint: [1, 1, 1] as [number, number, number], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 0 };
+    return { id: `core:zzz_${id.slice(5)}`, flat: 1, materials: [material], textures: roles.map((role) => ({ id: `${id}/${role}`, role, top: FACADE_TOP })),
       lods: [{ positions: Float32Array.from([0, 0, 0, 1, 0, 0, 0, 0, 1]), colors: new Uint8Array(3), indices: Uint32Array.from([0, 2, 1]), uvs: Float32Array.from([0, 0, 1, 0, 0, 1]), normals: Float32Array.from([0, 1, 0, 0, 1, 0, 0, 1, 0]) }] };
   });
 }

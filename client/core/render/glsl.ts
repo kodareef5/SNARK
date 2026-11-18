@@ -11,6 +11,7 @@ import { AIR } from "./atmosphere.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { LIGHT, THROUGH } from "./surface.ts";
+import { FACADE_GLSL } from "./facade.ts";
 import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
 
 const f = (n: number): string => n.toFixed(4);
@@ -64,9 +65,12 @@ flat in vec2 vPlace;
 in vec2 vFace;
 flat in uint vEdges;
 #endif
+#ifdef FACADE
+flat in int vFacade;
+#endif
 uniform float uSolid, uAlpha, uSkin;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}void main() {
+${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${FACADE_GLSL}void main() {
   vec3 dx = dFdx(vRel), dy = dFdy(vRel);
   vec3 geometric = normalize(cross(dx, dy));
   vec3 n = geometric;
@@ -82,11 +86,18 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.repl
 #if defined(WORLD_EDGES) || defined(WORLD_EDGE_LINE)
   if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5) edged(albedo, orm, n, vSurface, vFace, vEdges, painted, vRel, dx, dy);
 #endif
+  // A facade's part and the marks on a wall (facade.ts): the room behind glass lit by the face's daylight, and the street's far side it mirrors.
+  vec3 room = vec3(0.0);
+  vec4 far = vec4(0.0);
+#ifdef FACADE
+  if (uSolid < 1.5 && uSkin < 0.5 && fFacade.y > 0.5 && facade(albedo, orm, n, room, far, vFacade, vFace, dFdx(vFace), dFdy(vFace), vOwn, dFdx(vOwn), dFdy(vOwn), vPlace, vEdges, vRel, dx, dy, geometric, vRel.y + uWorldEye.y, over) == 2) worldSharp = true;
+#endif
   vec3 v = -normalize(vRel);
   // A rough finish mirrors the sky's light, which is a colour; only a smooth one shows the sky's picture.
   vec3 r = reflect(-v,n);
   vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : worldSharp ? skyFrom(r) : skyLight(r);
-  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)), vRel), uAlpha);
+  mirrored = mix(mirrored, far.rgb * skyLight(-geometric), far.a);
+  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)) + room * skyLight(geometric) * open, vRel), uAlpha);
 }`;
 
 /** `text` with `from` put as `to`, which it must hold. */
@@ -107,7 +118,7 @@ export const LIT_MESH_FRAGMENT = [
   ["  vec3 orm = vec3(1.0, 1.0, 0.0);\n", "  vec3 orm = vFinish.xyz;\n"],
   ["  vec3 v = -normalize(vRel);\n", "  vec3 v = -normalize(vRel);\n  if (vShare < 1.0) n = v;\n"],
   ["worldSharp ? skyFrom(r)", "worldSharp || vFinish.y < 1.0 ? skyFrom(r)"],
-  ["  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)), vRel), uAlpha);", "  float shade = sunShadow(vRel, sunward(geometric, vFinish.w));\n  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, shade) + through(albedo, orm, n, vFinish.w, shade), vRel), uAlpha * vShare);"],
+  ["  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)) + room * skyLight(geometric) * open, vRel), uAlpha);", "  float shade = sunShadow(vRel, sunward(geometric, vFinish.w));\n  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, shade) + through(albedo, orm, n, vFinish.w, shade) + room * skyLight(geometric) * open, vRel), uAlpha * vShare);"],
 ].reduce((text, [from, to]) => swap(text, from!, to!), LIT_FRAGMENT);
 
 /**

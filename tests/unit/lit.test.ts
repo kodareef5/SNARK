@@ -52,7 +52,8 @@ test("the tone curve keeps what is under its knee, meets the line there with slo
 
 test("the lit tiers draw flat meshes with LIT and their finishes and the ground with its own lit text, the dome from the table and SURFACE mirroring it; low poly keeps FLAT", () => {
   for (const tier of TIERS) {
-    expect([PROGRAMS.flat!(tier, "rgba").fragment, PROGRAMS.terrain!(tier, "rgba").fragment]).toEqual(tier.lit ? [LIT_MESH_FRAGMENT, LIT_TERRAIN_FRAGMENT] : [FLAT_FRAGMENT, FLAT_FRAGMENT]);
+    // A flat mesh's text reads the facades' normal map in its variant's channels (facade.ts).
+    expect([PROGRAMS.flat!(tier, "rgba").fragment, PROGRAMS.terrain!(tier, "rgba").fragment]).toEqual(tier.lit ? [LIT_MESH_FRAGMENT.replaceAll("FACADE_NORMAL", "rg"), LIT_TERRAIN_FRAGMENT] : [FLAT_FRAGMENT, FLAT_FRAGMENT]);
     expect(PROGRAMS.flat!(tier, "rgba").vertex.includes("vFinish")).toBe(tier.lit);
   }
   const medium = tierOf("medium");

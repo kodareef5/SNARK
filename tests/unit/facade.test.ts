@@ -170,7 +170,8 @@ test("cracks start only at a face's corners on an outer edge, and only some of t
 test("the flood's line lies at one height across every face, with silt below it and nothing above", () => {
   for (const place of [0, 36, 1000]) {
     const at = (dh: number): number => marked(0.5, 1, 1, 1, 0, place, 2.4, 2.4 + dh);
-    expect(at(0)).toBeLessThan(0.3);
+    // The line wanders 2 cm either way along the wall.
+    expect(Math.min(...Array.from({ length: 61 }, (_, k) => at((k - 30) / 1000)))).toBeLessThan(0.3);
     expect(at(-0.3)).toBeLessThan(0.5);
     expect(at(-0.3)).toBeGreaterThan(at(0));
     expect(at(0.05)).toBe(0.5);

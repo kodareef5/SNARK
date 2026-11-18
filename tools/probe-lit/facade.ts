@@ -101,6 +101,7 @@ flat in vec2 vPlace;
 flat in int vClass;
 flat in uint vEdges;
 uniform float uPass, uEyeY;
+uniform vec4 fFacade;
 out vec4 o;
 ${FACADE_GLSL.replaceAll("FACADE_NORMAL", "rg")}void main() {
   vec3 dx = dFdx(vRel), dy = dFdy(vRel);
@@ -173,11 +174,11 @@ export const facadeCheck: LitCheck = {
       const tier = FACADE_TIERS[name]!;
       const { levels, textures } = facadeMaps(tier);
       const sampleAt: FacadeSample = (t, u, v, lod, out) => sample(textures[t]!, u, v, lod - (textures[t]!.pictures.length - 1), out);
-      const maps = levels.map((l, k) => ({ name: ["uFacadeBase", "uFacadeNormal", "uFacadeOrm", "uFacadeRooms", "uFacadeMarks"][k]!, size: Math.max(k < 3 ? tier.elements : k === 3 ? tier.rooms : tier.marks, 64), channels: (k === 1 ? 2 : 4) as 2 | 4, srgb: k === 0 || k === 3, levels: l }));
+      const maps = levels.map((l, k) => ({ name: ["uFacadeBase", "uFacadeNormal", "uFacadeOrm", "uFacadeRooms", "uFacadeMarks"][k]!, size: Math.max(k < 3 ? tier.elements : k === 3 ? tier.rooms : tier.marks, 64), channels: (k === 1 ? 2 : 4) as 2 | 4, srgb: k === 0 || k >= 3, levels: l }));
       const { width: tw, height: th, repeat } = TIMED;
       const timedData = triangles(TIMED.eye);
       for (const [key, label, text] of [[`facade-time-${name}`, `facade on ${name}`, fragment(tier.reflect)], ...(name === "high" ? [["facade-time-none", "no facade", fragment(false, false)]] : [])] as const) {
-        shots.push(new RawShot(key, tw, th, VERTEX, text, [["aRel", 3], ["aFace", 2], ["aOwn", 3], ["aPlace", 2], ["aClass", 1], ["aEdges", 1]], timedData, { uViewProj: viewProj(TIMED.eye, TIMED.at, tw / th).m, uPass: [0], uEyeY: [EYE_Y], uFacadeFlood: [FLOOD] }, maps, repeat));
+        shots.push(new RawShot(key, tw, th, VERTEX, text, [["aRel", 3], ["aFace", 2], ["aOwn", 3], ["aPlace", 2], ["aClass", 1], ["aEdges", 1]], timedData, { uViewProj: viewProj(TIMED.eye, TIMED.at, tw / th).m, uPass: [0], uEyeY: [EYE_Y], fFacade: [FLOOD, 1, 0, 0] }, maps, repeat));
         timed.push({ key, label });
       }
       VIEWS.forEach((view, v) => {
@@ -185,7 +186,7 @@ export const facadeCheck: LitCheck = {
         const data = triangles(view.eye);
         for (let pass = 0; pass < PASSES; pass++) {
           const key = `facade-${name}-${v}-${pass}`;
-          shots.push(new RawShot(key, W, H, VERTEX, fragment(tier.reflect), [["aRel", 3], ["aFace", 2], ["aOwn", 3], ["aPlace", 2], ["aClass", 1], ["aEdges", 1]], data, { uViewProj: viewProj(view.eye, view.at).m, uPass: [pass], uEyeY: [EYE_Y], uFacadeFlood: [FLOOD] }, maps));
+          shots.push(new RawShot(key, W, H, VERTEX, fragment(tier.reflect), [["aRel", 3], ["aFace", 2], ["aOwn", 3], ["aPlace", 2], ["aClass", 1], ["aEdges", 1]], data, { uViewProj: viewProj(view.eye, view.at).m, uPass: [pass], uEyeY: [EYE_Y], fFacade: [FLOOD, 1, 0, 0] }, maps));
           pictures.push({ key, color: drawn.colors[pass]!, face: drawn.face });
         }
       });

@@ -5,6 +5,10 @@
 // far side. The maths is here twice, as functions on numbers for the software rasterizer and as GLSL, from the same
 // constants. Directions are in the world; a face's own frame is x to the right of a reader facing it, y up, z out.
 
+import type { PackMaterial } from "../../../shared/pack/pack.ts";
+import type { Tier } from "../assets/tiers.ts";
+import { FRAME, type FramePacket } from "./packet.ts";
+
 type Numbers = ArrayLike<number>;
 type Out = Float64Array | number[];
 
@@ -91,6 +95,12 @@ export const KINDS: readonly Kind[] = [
 ];
 /** How near a face's size must be to a kind's, in metres. */
 const NEAR = 0.04;
+/**
+ * A room's light behind glass as a share of the daylight on the face it looks out of, and how much of that is gone at
+ * its back wall: a room lit by its window is darker than the street, and darker deeper in.
+ */
+const ROOM_LIGHT = 0.4;
+const ROOM_DEPTH = 0.7;
 /** How far the glass stands behind the face of its frame, and a blind and a curtain behind the glass, in metres. */
 const SET_BACK = 0.04;
 const BLIND_BACK = 0.08;
@@ -107,6 +117,9 @@ export const FACADE_TIERS: Readonly<Record<string, FacadeTier | null>> = {
   high: { elements: 2048, rooms: 2048, marks: 2048, reflect: true },
   ultra: { elements: 2048, rooms: 2048, marks: 2048, reflect: true },
 };
+/** The pack's materials of the atlases (tools/facade/build.ts): the elements' base colour, normal and packed map, and the rooms' and the marks' base colours. */
+export const FACADE_MATERIALS = ["core:facade_elements", "core:facade_rooms", "core:facade_marks"] as const;
+
 /** The height in the world, in metres, of the line the last flood left on every wall, by city; none where a city has none. */
 export const FACADE_FLOOD: Readonly<Record<string, number>> = { miami: 1.6 };
 export const NO_FLOOD = -1e4;
@@ -117,7 +130,7 @@ export const NO_FLOOD = -1e4;
  * room's, linear red, green and blue. tools/facade/build.ts measures them from the atlases it makes.
  */
 export const ELEMENT_MEANS: readonly number[] = [0.5726, 0.567, 0.477, 0.2566, 0.2086, 0.1426, 0.109, 0.07729, 0.2566, 0.2077, 0.5379, 0.5212, 0.4229, 0.2566, 0.2651, 0.5907, 0.5848, 0.4916, 0.2535, 0.2024, 0.1575, 0.1224, 0.08767, 0.2535, 0.2031, 0.5515, 0.5461, 0.4589, 0.2158, 0.1882, 0.1449, 0.1119, 0.08002, 0.211, 0.1837, 0.5499, 0.5438, 0.4577, 0.207, 0.1753, 0.09125, 0.1097, 0.09978, 0.3799, 0.1182, 0.07765, 0.05798, 0.04474, 0.3799, 0.1171, 0.3531, 0.3658, 0.3331, 0.1306, 0.1647, 0.1463, 0.1145, 0.08198, 0.1332, 0.1667, 0.1593, 0.2302, 0.2598, 1, 0.7903, 0.3903, 0.4049, 0.3726, 0.9989, 0.6862, 0.4834, 0.4333, 0.2989, 1, 0.793, 0.3176, 0.404, 0.2948, 1, 0.7554, 0.5774, 0.4986, 0.4119, 1, 0.7516, 0.5707, 0.4681, 0.2915, 1, 0.7575, 0.3017, 0.4015, 0.426, 1, 0.755, 0.2482, 0.2648, 0.248, 1, 0.7481, 0.5, 0.2863, 0.2288, 1, 0.756, 0.3321, 0.2574, 0.0921, 1, 0.7832, 0.4679, 0.3507, 0.1155, 1, 0.7789, 0.3135, 0.3356, 0.2979, 0.5187, 0.4151, 0.1143, 0.2159, 0.1813, 0.9577, 0.7783, 0.2457, 0.1304, 0.09312, 1, 0.8017, 0.5906, 0.5515, 0.4119, 0.8226, 0.5917, 0.5793, 0.4899, 0.3497, 0.9647, 0.8438, 0.2261, 0.2843, 0.3053, 0.9627, 0.8438, 0.3105, 0.2664, 0.217, 0.9925, 0.8496, 0.2983, 0.2633, 0.2175, 0.5663, 0.8514, 0.4215, 0.4536, 0.3792, 0.1455, 0.07263, 0.4171, 0.4514, 0.3785, 0.1464, 0.07176];
-export const MARK_MEANS: readonly number[] = MARKS_PLACED.flatMap(() => [0.3, 0.3, 0.3, 0.5]);
+export const MARK_MEANS: readonly number[] = [0.4116, 0.3295, 0.1334, 0.8442, 0.5495, 0.459, 0.3242, 0.85, 0.5145, 0.4908, 0.4103, 0.7845, 0.4971, 0.3622, 0.2594, 0.8477, 0.5358, 0.5078, 0.418, 0.8251, 0.4526, 0.478, 0.4487, 0.8134, 0.04228, 0.04228, 0.03818, 0.1901, 0.4903, 0.2012, 0.2083, 0.2458, 0.1945, 0.3323, 0.4339, 0.1386, 0.3714, 0.3754, 0.3375, 0.3122, 0.6942, 0.687, 0.5909, 0.1893, 0.3055, 0.387, 0.2709, 0.1758, 0.5148, 0.2541, 0.1195, 0.2146, 0.3717, 0.2965, 0.4183, 0.1753, 0.3228, 0.3694, 0.33, 0.574, 0.3067, 0.3124, 0.2731, 0.5021, 0.4099, 0.4037, 0.3459, 0.2263, 0.3384, 0.2746, 0.1084, 0.2344, 0.7258, 0.7111, 0.6067, 0.1991, 0.304, 0.2488, 0.1025, 0.2356];
 export const ROOM_MEANS: readonly number[] = [0.2983, 0.2752, 0.192, 0.2211, 0.2479, 0.233, 0.2763, 0.2707, 0.2117, 0.2314, 0.2265, 0.1938, 0.2664, 0.2406, 0.1757, 0.3243, 0.3099, 0.2531, 0.1549, 0.1495, 0.1317, 0.2371, 0.2168, 0.1959, 0.2354, 0.2187, 0.1953, 0.1742, 0.1609, 0.132, 0.2351, 0.2149, 0.1754, 0.2418, 0.2283, 0.1915, 0.2559, 0.2261, 0.2009, 0.247, 0.2757, 0.2113, 0.2402, 0.2221, 0.1803, 0.09239, 0.08356, 0.07712];
 
 const fract = (x: number): number => x - Math.floor(x);
@@ -237,7 +250,7 @@ function room(out: Out, k: number, gx: number, gy: number, dx: number, dy: numbe
   const ox = (k % 4) * 0.25 + (face & 1) * 0.125, oy = Math.floor(k / 4) * 0.25 + (face >> 1) * 0.125;
   seen.fill(0);
   if (fade < 1) sample(3, clamp(ox + s * 0.125, ox + inset, ox + 0.125 - inset), clamp(oy + r * 0.125, oy + inset, oy + 0.125 - inset), l, seen);
-  const light = (1 - 0.55 * f) * (face === 3 ? 0.7 : face === 1 ? 0.85 : 1);
+  const light = ROOM_LIGHT * (1 - ROOM_DEPTH * f) * (face === 3 ? 0.7 : face === 1 ? 0.85 : 1);
   for (let c = 0; c < 3; c++) out[c] = (seen[c]! * (1 - fade) + ROOM_MEANS[k * 3 + c]! * fade) * light;
 }
 
@@ -395,6 +408,49 @@ export function facadeSurface(o: FacadeOut, kind: number, x: number, y: number, 
   for (let c = 0; c < 3; c++) o.normal[c]! /= nl;
 }
 
+/** What the facades need of the textures' residency (assets/residency.ts). */
+export interface FacadeResidency {
+  material(m: number, pixels: number, distance: number, roles?: number): void;
+  holds(t: number): number;
+}
+
+/**
+ * The facades' atlases a frame at a time, on a tier that draws them with its finishes in full: each is asked for as wide
+ * as the tier draws it, and the frame names the textures for the card's facade units (FramePacket `facadeSlots`) and
+ * says in fFacade the city's flood line and whether every atlas the tier reads has come.
+ */
+export class FacadeAtlases {
+  private readonly materials: readonly number[];
+  private readonly textures: readonly number[];
+  private readonly flood: number;
+
+  constructor(materials: readonly PackMaterial[], city: string) {
+    this.materials = FACADE_MATERIALS.map((id) => materials.findIndex((m) => m.id === id));
+    const [e, r, k] = this.materials.map((m) => materials[m]);
+    this.textures = e && r && k ? [e.base, e.normal, e.mro, r.base, k.base] : [];
+    this.flood = FACADE_FLOOD[city.split(":").pop()!] ?? NO_FLOOD;
+  }
+
+  frame(p: FramePacket, residency: FacadeResidency, tier: Tier): void {
+    const t = FACADE_TIERS[tier.name];
+    p.facadeSlots.fill(-1);
+    p.frame[FRAME.facade] = this.flood;
+    p.frame[FRAME.facade + 1] = 0;
+    if (!t || !tier.lit || tier.finish !== "full" || this.textures.length === 0) return;
+    const [elements, rooms, marks] = this.materials;
+    residency.material(elements!, t.elements, 1, 3);
+    if (t.rooms > 0) residency.material(rooms!, t.rooms, 1, 1);
+    residency.material(marks!, t.marks, 1, 1);
+    let ready = 1;
+    this.textures.forEach((slot, k) => {
+      if (k === 3 && t.rooms === 0) return;
+      p.facadeSlots[k] = slot;
+      if (residency.holds(slot) < 0) ready = 0;
+    });
+    p.frame[FRAME.facade + 1] = ready;
+  }
+}
+
 /** A smooth noise along a line, 0 to 1, a value a metre where t is in metres. */
 function noise1(t: number, seed: number): number {
   const i = Math.floor(t), f = t - i, s = f * f * (3 - 2 * f);
@@ -441,11 +497,13 @@ export function facadeMarks(o: FacadeOut, kind: number, x: number, y: number, w:
   let tx = 0, ty = 0;
   // The flood's line, wandering a centimetre, and silt fading over the 0.7 m below it.
   if (flood > NO_FLOOD) {
-    const dh = height - flood + 0.012 * (noise1(x * 2.3, Math.floor(seed * 4096)) - 0.5);
+    const dh = height - flood + 0.03 * (noise1(x * 1.7, 5) - 0.5) + 0.01 * (noise1(x * 9, 6) - 0.5);
     if (dh < 0.02 && dh > -0.7) {
-      const line = 1 - smooth(0.004, 0.012 + fp * 0.5, Math.abs(dh));
-      const silt = dh < 0 ? (1 + dh / 0.7) * (1 + dh / 0.7) * 0.4 : 0;
-      for (let c = 0; c < 3; c++) o.albedo[c] = o.albedo[c]! * (1 - silt + silt * [0.82, 0.74, 0.6][c]!) * (1 - 0.5 * line);
+      // A dark crisp top edge, a band of brown silt 5 cm under it, and a stain fading over 0.7 m.
+      const line = 1 - smooth(0.003, 0.008 + fp * 0.5, Math.abs(dh));
+      const band = dh < 0 ? 1 - smooth(0.035, 0.06 + fp * 0.5, -dh) : 0;
+      const silt = Math.min(1, (dh < 0 ? (1 + dh / 0.7) * (1 + dh / 0.7) * 0.35 : 0) + 0.5 * band);
+      for (let c = 0; c < 3; c++) o.albedo[c] = o.albedo[c]! * (1 - silt + silt * [0.78, 0.68, 0.52][c]!) * (1 - 0.45 * line);
       o.orm[1] = o.orm[1]! + (1 - o.orm[1]!) * Math.max(line, silt);
     }
   }
@@ -484,17 +542,17 @@ export function facadeMarks(o: FacadeOut, kind: number, x: number, y: number, w:
   const foot = over - y + sy0;
   // A patch of repair: a rectangle of cement with a wandering edge, standing a little proud.
   let patch = 0, px2 = 0, py2 = 0;
-  if (kind === KIND.none && fract(slot * 3.1) < 0.18 && sx1 - sx0 >= 1.2 && sy1 - sy0 >= 0.8) {
+  if (kind === KIND.none && fract(slot * 3.1) < 0.1 && sx1 - sx0 >= 1.2 && sy1 - sy0 >= 0.8) {
     const pw = Math.min(0.6 + fract(slot * 5.3), sx1 - sx0 - 0.2), ph = Math.min(0.4 + 0.6 * fract(slot * 7.9), sy1 - sy0 - 0.2);
     const cx = sx0 + 0.1 + pw / 2 + fract(slot * 9.7) * (sx1 - sx0 - pw - 0.2), cy = sy0 + 0.1 + ph / 2 + fract(slot * 2.9) * (sy1 - sy0 - ph - 0.2);
     const ex = Math.abs(x - cx) - pw / 2, ey = Math.abs(y - cy) - ph / 2;
-    const sd = Math.max(ex, ey) + 0.03 * (noise1((x + y) * 6, Math.floor(slot * 4096)) - 0.5);
+    const sd = Math.max(ex, ey) + 0.12 * (noise1((x + y) * 2.5, Math.floor(slot * 4096)) - 0.5) + 0.03 * (noise1((x - y) * 11, 3) - 0.5);
     patch = clamp(0.5 - sd / fp);
     const lip = (1 - smooth(0, 0.012, Math.abs(sd))) * Math.min(1, 0.012 / fp);
     px2 = ex > ey ? Math.sign(x - cx) * lip : 0;
     py2 = ex > ey ? 0 : Math.sign(y - cy) * lip;
     const tone = 0.85 + 0.3 * fract(slot * 13.3);
-    for (let c = 0; c < 3; c++) o.albedo[c] = o.albedo[c]! + ([0.36, 0.35, 0.33][c]! * tone - o.albedo[c]!) * 0.7 * patch;
+    for (let c = 0; c < 3; c++) o.albedo[c] = o.albedo[c]! + ([0.36, 0.35, 0.33][c]! * tone - o.albedo[c]!) * 0.45 * patch;
     o.orm[1] = o.orm[1]! + (0.95 - o.orm[1]!) * patch;
   }
   // A burst of bullet scars, a dark hole in a pale broken ring, low enough to have been aimed at someone.
@@ -585,7 +643,6 @@ const pickOf = (k: Kind, i: number): number => (i === KIND.jamb || i === KIND.pi
  */
 export const FACADE_GLSL = `#ifdef FACADE
 uniform highp sampler2D uFacadeBase, uFacadeNormal, uFacadeOrm, uFacadeRooms, uFacadeMarks;
-uniform float uFacadeFlood;
 const vec4 MP[${MARKS_PLACED.length}] = ${vecs("vec4", MARKS_PLACED.map((p) => [p.x, p.y, p.w, p.h]))};
 const vec4 MM[${MARKS_PLACED.length}] = ${vecs("vec4", MARKS_PLACED.map((_, m) => MARK_MEANS.slice(m * 4, m * 4 + 4)))};
 const vec4 FP[${PLACED.length}] = ${vecs("vec4", PLACED.map((p) => [p.x, p.y, p.w, p.h]))};
@@ -651,7 +708,7 @@ vec3 facadeRoom(int k, vec2 g, vec3 d, vec4 box, float depth, float footprint, f
   float l = clamp(lod, 0.0, most), inset = 0.5 * exp2(ceil(l)) / size;
   vec2 o = vec2(float(k % 4) * 0.25 + float(face & 1) * 0.125, float(k / 4) * 0.25 + float(face >> 1) * 0.125);
   vec3 seen = fade < 1.0 ? textureLod(uFacadeRooms, clamp(o + vec2(s, r) * 0.125, o + inset, o + 0.125 - inset), l).rgb : vec3(0.0);
-  return mix(seen, RM[k], fade) * (1.0 - 0.55 * f) * (face == 3 ? 0.7 : face == 1 ? 0.85 : 1.0);
+  return mix(seen, RM[k], fade) * ${fl(ROOM_LIGHT)} * (1.0 - ${fl(ROOM_DEPTH)} * f) * (face == 3 ? 0.7 : face == 1 ? 0.85 : 1.0);
 }
 float facadeFar(out vec3 albedo, float gx, vec3 r, float over, float seed) {
   albedo = vec3(0.0);
@@ -776,12 +833,13 @@ void facadeMarks(inout vec3 albedo, inout vec3 orm, inout vec3 n, int kind, floa
   if (w < 0.3 || h < 0.3) return;
   float seed = facadeSeed(place, vec3(corner.x + right.x * w * 0.5, height - y + h * 0.5, corner.z + right.z * w * 0.5));
   float fp = max(footprint, 1e-4), tx = 0.0, ty = 0.0;
-  if (uFacadeFlood > ${fl(NO_FLOOD)}) {
-    float dh = height - uFacadeFlood + 0.012 * (facadeNoise(x * 2.3, int(floor(seed * 4096.0))) - 0.5);
+  if (fFacade.x > ${fl(NO_FLOOD)}) {
+    float dh = height - fFacade.x + 0.03 * (facadeNoise(x * 1.7, 5) - 0.5) + 0.01 * (facadeNoise(x * 9.0, 6) - 0.5);
     if (dh < 0.02 && dh > -0.7) {
-      float line = 1.0 - smoothstep(0.004, 0.012 + fp * 0.5, abs(dh));
-      float silt = dh < 0.0 ? (1.0 + dh / 0.7) * (1.0 + dh / 0.7) * 0.4 : 0.0;
-      albedo *= (1.0 - silt + silt * vec3(0.82, 0.74, 0.6)) * (1.0 - 0.5 * line);
+      float line = 1.0 - smoothstep(0.003, 0.008 + fp * 0.5, abs(dh));
+      float band = dh < 0.0 ? 1.0 - smoothstep(0.035, 0.06 + fp * 0.5, -dh) : 0.0;
+      float silt = min(1.0, (dh < 0.0 ? (1.0 + dh / 0.7) * (1.0 + dh / 0.7) * 0.35 : 0.0) + 0.5 * band);
+      albedo *= (1.0 - silt + silt * vec3(0.78, 0.68, 0.52)) * (1.0 - 0.45 * line);
       orm.y += (1.0 - orm.y) * max(line, silt);
     }
   }
@@ -820,17 +878,17 @@ void facadeMarks(inout vec3 albedo, inout vec3 orm, inout vec3 n, int kind, floa
   float slot = facadeHash(ivec3(int(seed * 16777216.0), int(slotX), int(slotY)));
   float foot = over - y + sy0;
   float px2 = 0.0, py2 = 0.0;
-  if (kind == 0 && fract(slot * 3.1) < 0.18 && sx1 - sx0 >= 1.2 && sy1 - sy0 >= 0.8) {
+  if (kind == 0 && fract(slot * 3.1) < 0.1 && sx1 - sx0 >= 1.2 && sy1 - sy0 >= 0.8) {
     float pw = min(0.6 + fract(slot * 5.3), sx1 - sx0 - 0.2), ph = min(0.4 + 0.6 * fract(slot * 7.9), sy1 - sy0 - 0.2);
     float cx = sx0 + 0.1 + pw / 2.0 + fract(slot * 9.7) * (sx1 - sx0 - pw - 0.2), cy = sy0 + 0.1 + ph / 2.0 + fract(slot * 2.9) * (sy1 - sy0 - ph - 0.2);
     float ex = abs(x - cx) - pw / 2.0, ey = abs(y - cy) - ph / 2.0;
-    float sd = max(ex, ey) + 0.03 * (facadeNoise((x + y) * 6.0, int(floor(slot * 4096.0))) - 0.5);
-    float patch = clamp(0.5 - sd / fp, 0.0, 1.0);
+    float sd = max(ex, ey) + 0.12 * (facadeNoise((x + y) * 2.5, int(floor(slot * 4096.0))) - 0.5) + 0.03 * (facadeNoise((x - y) * 11.0, 3) - 0.5);
+    float mended = clamp(0.5 - sd / fp, 0.0, 1.0);
     float lip = (1.0 - smoothstep(0.0, 0.012, abs(sd))) * min(1.0, 0.012 / fp);
     px2 = ex > ey ? sign(x - cx) * lip : 0.0;
     py2 = ex > ey ? 0.0 : sign(y - cy) * lip;
-    albedo += (vec3(0.36, 0.35, 0.33) * (0.85 + 0.3 * fract(slot * 13.3)) - albedo) * 0.7 * patch;
-    orm.y += (0.95 - orm.y) * patch;
+    albedo += (vec3(0.36, 0.35, 0.33) * (0.85 + 0.3 * fract(slot * 13.3)) - albedo) * 0.45 * mended;
+    orm.y += (0.95 - orm.y) * mended;
   }
   int scar = 0;
   float sxn = 0.0, syn = 0.0;
