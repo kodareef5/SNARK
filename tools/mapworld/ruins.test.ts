@@ -364,3 +364,25 @@ test("a failed corner is traced: slab ends at each floor beside it, and one colu
   const across = (shape: { look?: { hulls?: readonly { corners: readonly (readonly number[])[] }[] } }, from: number): number[] => shape.look!.hulls!.slice(from).map((h) => Math.max(...h.corners.map((c) => c[0]!)) - Math.min(...h.corners.map((c) => c[0]!)));
   expect(across(RUIN_BREAKS.zfallen, 1).map((w) => Math.round(w * 100))).toEqual(across(RUIN_BREAKS.zstub, 0).map((w) => Math.round(w * 400)));
 });
+
+test("a survivor and the heaviest walkers go up and down a garage's ramp and a fallen slab, and back", () => {
+  for (const [shape, finish, rise] of [["zdeckramp", "concrete", 2], ["zfallen", "concrete", 1.5]] as const) {
+    for (const walker of ["core:survivor", "core:trike", "core:stego"]) {
+      const f = frame(157); const m = new Mason(f, 0); const size = RUIN_SHAPES[shape];
+      m.put(shape, 0, size[1] / 2, 0, finish);
+      const w = flatWorld(4); const p = m.pieces[0]!;
+      w.structs.add(w.kind(p.kind), p.x, p.y, p.z, Math.round(p.yaw * 65536 / 360) & 65535, 0, 1);
+      const params = w.reg.move[w.kind(walker)]!; const b = new Body();
+      [b.x, b.z] = m.point(0, -size[2] / 2 - 2); b.y = 0; b.grounded = true;
+      const go = (v: number): void => {
+        const [x, z] = m.point(0, v);
+        for (let tick = 0; tick < 400 && Math.hypot(b.x - x, b.z - z) > .3; tick++) stepBody(w, b, 0, 90, Math.round(Math.atan2(x - b.x, z - b.z) * 65536 / (2 * Math.PI)) & 65535, 0, 0, params, TICK_DT);
+        for (let tick = 0; tick < 30; tick++) stepBody(w, b, 0, 0, 0, 0, 0, params, TICK_DT);
+      };
+      go(size[2] / 2 - 1.2);
+      expect([walker, shape, b.y > rise - .6]).toEqual([walker, shape, true]);
+      go(-size[2] / 2 - 2);
+      expect([walker, shape, Math.abs(b.y) < .1]).toEqual([walker, shape, true]);
+    }
+  }
+});
