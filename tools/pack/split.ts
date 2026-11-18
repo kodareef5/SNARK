@@ -192,6 +192,15 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
   return { files, manifest, blobs: pageBlobs };
 }
 
+/**
+ * A landmark's pack split as the build writes it: every mesh in a page but its far mesh, whose row the manifest holds
+ * and whose levels stream from the mesh file, so its boot file holds the palette alone and a client waits for none of
+ * its pieces before its first frame.
+ */
+export function splitLandmark(whole: Uint8Array, name: string): { files: SplitFile[]; manifest: Manifest; blobs: Uint8Array[] } {
+  return splitPack(whole, name, { boot: (id) => id === farMeshId(name) });
+}
+
 /** A blob's bytes as one array. */
 function joined(b: PackBlob): Uint8Array {
   const out = new Uint8Array(b.size);

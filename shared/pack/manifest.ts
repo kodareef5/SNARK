@@ -13,6 +13,7 @@
 
 import type { ClipSet } from "../anim/clip.ts";
 import type { LandmarkFarRow } from "./far.ts";
+import { joinedRows, type JoinedAt } from "./join.ts";
 import { checkIcons, type ManifestIcons } from "./icons.ts";
 import { CLIP_ROOT_BYTES, MOST_SECTIONS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, decodeClips, decodeUtf8, lodVertices, type Pack, type PackClip, type PackMaterial } from "./pack.ts";
 import { soundFault, type ManifestSound } from "./sound.ts";
@@ -20,7 +21,7 @@ import { unfilterPart } from "./stored.ts";
 import { ASTC_BLOCKS, STEP0_SIZE, TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_ROLES, blockOf, stepBytes, stepOf, topIn, type TextureFormat, type TextureRole } from "./texture.ts";
 
 /** Raised whenever the form changes: a build reads only its own. */
-export const MANIFEST_VERSION = 7;
+export const MANIFEST_VERSION = 8;
 
 export interface ManifestFile {
   name: string;
@@ -132,6 +133,8 @@ export interface ManifestPage {
   file: number;
   at: number;
   part: ManifestPart;
+  /** On a landmark's page joined after the core's, where its rows go (shared/pack/join.ts). Never in a file. */
+  joined?: JoinedAt;
 }
 
 /** The rows a page holds, each with its index in the manifest. */
@@ -344,7 +347,7 @@ export function parseManifest(text: string): Manifest {
 export function readPage(m: Manifest, p: number, bytes: Uint8Array): { blob: Uint8Array; meshes: number[]; materials: number[]; textures: number[] } {
   const length = bytes.length >= 4 ? new DataView(bytes.buffer, bytes.byteOffset, 4).getUint32(0, true) : -1;
   if (!(length >= 0 && 4 + length <= bytes.length)) throw new Error(`manifest: page ${p} is not a page`);
-  const rows = JSON.parse(decodeUtf8(bytes.subarray(4, 4 + length))) as PageRows;
+  const rows = joinedRows(JSON.parse(decodeUtf8(bytes.subarray(4, 4 + length))) as PageRows, m.pages?.[p]?.joined);
   const out = { blob: bytes.subarray(4 + pad4(length)), meshes: [] as number[], materials: [] as number[], textures: [] as number[] };
   const textures = m.textures ?? [];
   const materials = m.materials ?? [];

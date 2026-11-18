@@ -9,7 +9,7 @@ import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { TAU, detCos, detSin } from "../../shared/math/scalar.ts";
 import { farMeshId, landmarkFars } from "../../shared/pack/far.ts";
 import { joinLandmark, joinPacks } from "../../shared/pack/join.ts";
-import { describePack, type Manifest } from "../../shared/pack/manifest.ts";
+import { describePack, parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
 import { lodVertices, parsePack, readIndices, VERTEX_BYTES, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE, defaultPalette } from "../../shared/pack/palette.ts";
 import { HALF_SIDE } from "../../shared/world/frame.ts";
@@ -18,7 +18,7 @@ import { parseMap, writeMap } from "../../shared/world/mapfile.ts";
 import { landmarksOf, placeLandmarks } from "../../tools/mapworld/landmarks.ts";
 import { hilbert, landmarkArt, landmarkPack, mergeFar } from "../../tools/pack/far.ts";
 import { orderPack } from "../../tools/pack/order.ts";
-import { splitPack } from "../../tools/pack/split.ts";
+import { bootManifest, splitLandmark, splitPack } from "../../tools/pack/split.ts";
 import { boxMesh, buildPack, type SourceLod, type SourceMesh } from "../../tools/pack/write.ts";
 import { FakeNet } from "../fixtures/assetnet.ts";
 import { flatMap } from "../fixtures/map.ts";
@@ -67,13 +67,13 @@ const LANDMARK: Landmark = {
   ground: [],
 };
 
-/** The landmark's files as a build makes them: its pack ordered and split, and its manifest. */
+/** The landmark's files as a build makes them: its pack ordered and split, and its manifest as a client reads it. */
 function built(l: Landmark = LANDMARK, meshes: SourceMesh[] = MESHES): { bytes: Uint8Array; ordered: Uint8Array; manifest: Manifest; boot: Pack; files: Uint8Array[] } {
   const far = mergeFar(l, meshes)!;
   const bytes = buildPack([...meshes, far.mesh], defaultPalette(), [], [], null, [far.row]);
   const ordered = orderPack(bytes);
-  const split = splitPack(ordered, l.name);
-  return { bytes, ordered, manifest: split.manifest, boot: parsePack(split.files[split.manifest.boot]!.bytes), files: split.files.map((f) => f.bytes) };
+  const split = splitLandmark(ordered, l.name);
+  return { bytes, ordered, manifest: parseManifest(JSON.stringify(bootManifest(split.manifest))), boot: parsePack(split.files[split.manifest.boot]!.bytes), files: split.files.map((f) => f.bytes) };
 }
 
 /** Each triangle of a level of a pack's mesh, its corners' places to the centimetre, by the piece whose run holds it. */
