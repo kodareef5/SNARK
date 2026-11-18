@@ -32,6 +32,7 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import { buildClientApart } from "../build-client.ts";
 import { placeOf, type Place } from "./census.ts";
 import { benchHills } from "./terrain.ts";
+import { findChrome } from "../chrome.ts";
 
 type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
@@ -49,7 +50,7 @@ interface Run {
 }
 const BASE_PIECES = 1024;
 
-const CHROME = [process.env.CHROME, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium", "/usr/bin/google-chrome", "/usr/bin/chromium"].find((p) => p && existsSync(p));
+const CHROME = findChrome();
 const CITY_MAP = process.env.CITY_MAP ?? fileURLToPath(new URL("../../var/maps/miami.snmap", import.meta.url));
 /** The far city, far trees, rocks and bushes, and far bases. */
 const FAR: readonly Effect[] = ["farcity", "farnodes", "farblocks"];

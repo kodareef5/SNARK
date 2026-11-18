@@ -13,7 +13,7 @@
 // Run by itself, with the folder: bun tools/probe-lit/water.ts [folder]; with WATER_TIME it instead measures WATER full
 // screen, calm and with its waves, and LIT beside it, in ms a megapixel.
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
@@ -41,6 +41,7 @@ import { encodePng } from "../snap/png.ts";
 import { provingView } from "../snap.ts";
 import { Shot, type LitCheck, type Readback } from "./shot.ts";
 import { hazedShown, sendPictures } from "./sky.ts";
+import { findChrome } from "../chrome.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const [W, H] = [640, 360];
@@ -564,7 +565,7 @@ async function timeWater(chrome: string): Promise<Record<string, number | string
 }
 
 if (import.meta.main) {
-  const chrome = [process.env.CHROME, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"].find((p) => p && existsSync(p));
+  const chrome = findChrome();
   if (!chrome) throw new Error("no Chrome found. Set CHROME to its path.");
   if (process.env.WATER_TIME) {
     const t = await timeWater(chrome);
