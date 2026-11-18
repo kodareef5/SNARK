@@ -16,7 +16,7 @@ export function survivorsOf(host: Host, start: RunStart, now = Date.now()): Surv
   const { world, records, game } = host;
   const ents = world.ents;
   const tick = world.tick;
-  const sessions = new Map<number, (typeof game.clients)[number]>();
+  const sessions = new Map<number, NonNullable<(typeof game.clients)[number]>>();
   for (const c of game.clients) if (c?.active && c.pid !== 0) sessions.set(c.pid, c);
   const wallOf = (t: number): number | null => (t >= start.tick ? Math.round(now - ((tick - t) / TICK_RATE) * 1000) : null);
   const out: SurvivorRow[] = [];
@@ -27,7 +27,7 @@ export function survivorsOf(host: Host, start: RunStart, now = Date.now()): Surv
     let x = rec.x;
     let z = rec.z;
     let riding = "";
-    const e = c && c.ent >= 0 ? c.ent : -1;
+    const e = c !== undefined && c.ent >= 0 ? c.ent : -1;
     if (e >= 0) {
       // A seated survivor is where what it sits on is, which moves it.
       const seat = ents.seat[e]! - 1;

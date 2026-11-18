@@ -74,7 +74,7 @@ may change a setting without a restart.
 | `globalVoiceChat` | False | A voice is heard by everyone, wherever they are. | yes |
 | `ProximityChat` | False | What is written reaches only those near. | yes; clients are told |
 | `ServerPassword` | none | Asked of everyone who joins. *A browser gives it in the address it opens: `?password=...`.* | no |
-| `ServerAdminPassword` | none | Asked of whoever would use cheats. | no |
+| `ServerAdminPassword` | none | Asked of whoever would use cheats, and of a browser that opens the admin pages. | no |
 | `KickIdlePlayersPeriod` | 3600 | Seconds without doing anything before a survivor is put off the server. Needs -EnableIdlePlayerKick. | yes |
 | `AutoSavePeriodMinutes` | 15 | Minutes between saves. Here the world is saved continuously; this is how often the live file is read again. | no |
 
