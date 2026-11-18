@@ -40,7 +40,9 @@ export function growRuins(map: MapData, reg: Registry, site: Site, growth: Vocab
       const k = x + z * 1024; if (!grid.has(k)) grid.set(k, []); grid.get(k)!.push(i);
     }
   }
-  const routes = corridorIndex(site.growthRoutes.flatMap((r) => r.points.slice(1).map((b, i) => ({ a: [r.points[i]!.x, r.points[i]!.z] as const, b: [b.x, b.z] as const, width: r.width, low: Math.min(r.points[i]!.y, b.y) - .1, high: Math.max(r.points[i]!.y, b.y) + 2.3 }))));
+  // The site's routes are in lattice metres (Grid, base.ts), the map's in its own.
+  const { x0, z0 } = site.ground.grid;
+  const routes = corridorIndex(site.growthRoutes.flatMap((r) => r.points.slice(1).map((b, i) => ({ a: [r.points[i]!.x - x0, r.points[i]!.z - z0] as const, b: [b.x - x0, b.z - z0] as const, width: r.width, low: Math.min(r.points[i]!.y, b.y) - .1, high: Math.max(r.points[i]!.y, b.y) + 2.3 }))));
   const spot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
   const rejected = { structure: 0, route: 0, sight: 0, canopyStructure: 0, spawn: 0 }; const byDistrict: Record<string, number> = {}; const bySurface: Record<string, number> = {};
   const woodChunks = new Set<number>(); let candidates = 0; let admitted = 0;

@@ -130,11 +130,12 @@ export async function buildMap(named: string, release = false, output = join(ROO
   put("stones.png", writeGrey(nodes.across, nodes.down, nodes.stones));
   put("sea.png", writeGrey(nodes.across, nodes.down, nodes.sea));
   put("nodes.json", `${JSON.stringify(nodes.layers, null, 2)}\n`);
-  const lines = (rows: readonly unknown[]): string => `[\n${rows.map((r) => `  ${JSON.stringify(r)}`).join(",\n")}\n]\n`;
-  put("spawns.json", lines(spawns.map(engine)));
-  put("regions.json", lines(regions.map(engine)));
-  if (statics.length > 0) put("statics.json", lines(statics.map(engine)));
-  if (vehicles.length > 0) put("vehicles.json", lines(vehicles.map(engine)));
+  // One record a line, each turned into the map's metres as it is written.
+  const lines = <T,>(rows: readonly T[], turn: (row: T) => unknown = (row) => row): string => `[\n${rows.map((r) => `  ${JSON.stringify(turn(r))}`).join(",\n")}\n]\n`;
+  put("spawns.json", lines(spawns, engine));
+  put("regions.json", lines(regions, engine));
+  if (statics.length > 0) put("statics.json", lines(statics, engine));
+  if (vehicles.length > 0) put("vehicles.json", lines(vehicles, engine));
   // Lakes above the sea as bodies of water, in squares of a sample.
   if (ground.lakes) {
     const water = waterLayer({ chunksX, chunksZ }, world.minY, world.stepY, 2, ground.lakes.bodies, lakeSquares(ground.lakes, grid, 2));
@@ -151,7 +152,7 @@ export async function buildMap(named: string, release = false, output = join(ROO
   map = resolveNodes(map, reg, taken);
   lap(`nodes resolved: ${taken.water} slots empty for water, ${taken.slope} for slope, ${taken.footing} for a footing; ${taken.other} stand as their footing's other kind`);
   if (growth) {
-    const grown = growRuins(map, compiled.registry, { ...site, growthRoutes: site.growthRoutes.map((r) => ({ ...r, points: r.points.map(engine) })) }, growth);
+    const grown = growRuins(map, compiled.registry, site, growth);
     map = { ...map, nodes: grown.layers };
     writeFileSync(join(source, "reports", world.ruins?.report ?? "ruins", "growth.json"), JSON.stringify(grown.summary, null, 2) + "\n");
     lap("growth placed around structures and routes");
