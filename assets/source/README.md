@@ -14,14 +14,13 @@ core/creatures/raptor/        core:raptor
   tex/                        source pictures at full size
   sound/                      sounds.json, the cue sheet `bun run build` reads (planning/architecture/sound.md);
                               takes/, the accepted takes as made; how each was made and its licence beside them
-core/creatures/dino.ts        shared by the two sample dinosaurs' specs
 core/humans/human-bodies/     core:human-bodies, the two modelled bodies with hair, beards and armor
 core/humans/human-clips/      core:human-clips, the humanoid's clips
 ```
 
-The raptor and the parasaur are converted from files kept unchanged in
-[raw](../raw/README.md), so they have no scripts of their own. They are
-stand-ins. A folder is an asset once it has an `asset.ts`: until then it may
+The raptor and parasaur each have an original model, skeleton, clips and fitted
+saddle in their own folder. The early Quaternius FBX files remain in [raw](../raw/README.md) for reference.
+A folder is an asset once it has an `asset.ts`. Until then it may
 hold a study in `ref/` and nothing else, and the command passes it by. An
 `asset.ts` may be committed before its pack: the asset is listed as not built
 yet, and neither the game nor a test reads it until the pack is there.

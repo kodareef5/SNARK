@@ -41,9 +41,9 @@ What was kept from each archive:
   T. rex, triceratops, velociraptor; about 37 bones and 660 to 1,150 faces
   each; clips idle, walk, run, jump, attack, death) and the licence. The
   archive also holds Blender and OBJ copies and a preview image, which were not
-  kept. These are stand-ins: better models are expected, so nothing in the game
-  may depend on these rigs (see D70 in
-  [decisions](../../planning/decisions.md)).
+  kept. These files supplied the early stand-ins. The raptor and parasaur use
+  original production meshes and rigs in `assets/source/core/creatures/`.
+  The original licence stays with these FBX files.
 - Outfits: the twenty modular parts (peasant and ranger; arms, body, legs,
   feet, hood and pauldrons; male and female) with the two outfit base color
   textures and the two body base color textures they reference.
