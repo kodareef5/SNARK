@@ -177,3 +177,73 @@ test("nothing runs between a place's checks: one deadline each, each looked at o
     expect(r.checks).toBe(2);
   } finally { host.shutdown(); }
 });
+
+// Open water four metres deep, a jon boat berthed in chunk (1, 1) and a yacht across the map.
+const MOORED: MapVehicle[] = [
+  { id: "boat/place/marina/Test@1,1", kind: "core:jon_boat", x: 100, z: 100, yaw: 0, condition: [.5, .64], fuel: [.06, .2] },
+  { id: "boat/place/marina/Test@1,1#1", kind: "core:meridian", x: 600, z: 600, yaw: 16384, condition: [.65, .9], fuel: [.2, .5] },
+];
+const HARBOUR = writeMap(flatMap(12, { seaLevel: 4, vehicles: MOORED }));
+const harbour = (seed = 5): Host => createHost(reg, { map: HARBOUR, seed, clips: NO_CLIPS, rigs: [], dev: true });
+
+test("a berth whose vessel sailed off or sank gets another of its kind, afloat and rolled again, FoundBoatReturnDays later", () => {
+  const host = harbour();
+  try {
+    const r = host.carReturn!, place = r.places[0]!, ents = host.world.ents;
+    expect(r.places.map((p) => p.at.kind)).toEqual(["core:jon_boat", "core:meridian"]);
+    expect(host.rules.num("FoundBoatReturnDays")).toBe(3);
+    // The vessels' days are their own: the cars' setting at 0 keeps none of them away.
+    host.setSetting("FoundCarReturnDays", "0");
+    const [first] = carsOf(host);
+    driveOff(host, first!);
+    check(host);
+    const went = host.world.tick;
+    host.world.tick = went + days(host, 3) - 1; check(host);
+    expect(r.returned).toBe(0);
+    host.world.tick = went + days(host, 3); check(host);
+    expect(r.returned).toBe(1);
+    const back = carsOf(host)[1]!, spec = reg.vehicle[reg.index.get("core:jon_boat")!]!.spec;
+    expect([back.team, Math.round(back.x), Math.round(back.z)]).toEqual([0, 100, 100]);
+    // Afloat on its own waterline, rolled anew in the berth's ranges.
+    expect(ents.y[back.e]!).toBeCloseTo(4 - (spec as { draft: number }).draft, 1);
+    const roll = foundVehicle(host.world.mapId, place.at, 6);
+    expect(ents.vehicleHullCondition[ents.vrow[back.e]!]).toBeCloseTo(roll.hull!, 6);
+    expect(ents.vehicleHullCondition[ents.vrow[back.e]!]).toBeGreaterThanOrEqual(.5);
+    expect(back.fuel).toBeCloseTo(roll.fuel! * spec.fuelCapacity, 4);
+    // It sinks: its wreck in the berth keeps another away until the wreck has gone, and then one comes, unless the vessels'
+    // setting is 0.
+    for (const setting of ["3", "0"]) {
+      host.setSetting("FoundBoatReturnDays", setting);
+      const before = r.returned, last = carsOf(host).at(-1)!;
+      host.survival.hurt(host.records.byPid.get(last.pid)!, 1e6, 0);
+      host.game.tick(); check(host);
+      host.world.tick += days(host, 3) + 1; check(host);
+      expect(r.returned - before).toBe(0);
+      for (let t = 0; t < 30; t++) host.game.tick();
+      check(host);
+      expect(r.returned - before).toBe(setting === "0" ? 0 : 1);
+    }
+  } finally { host.shutdown(); }
+});
+
+test("no vessel comes back to a berth that no longer has the water to float it, nor onto a swimmer", () => {
+  const host = harbour();
+  try {
+    const r = host.carReturn!, ents = host.world.ents, hf = host.world.hf;
+    driveOff(host, carsOf(host)[0]!);
+    check(host); host.world.tick += days(host, 3);
+    // The berth silted up to a metre deep: deeper than the jon boat's draught, so it comes; the yacht's would not.
+    const shallow = (depth: number) => { for (let j = 45; j <= 55; j++) for (let i = 45; i <= 55; i++) hf.setSample(i, j, 4 - depth); };
+    shallow(.3);
+    check(host);
+    expect(r.returned).toBe(0);
+    shallow(4);
+    const swimmer = host.spawnCreature("core:survivor", 100.5, 100, 1);
+    expect(swimmer).toBeGreaterThanOrEqual(0);
+    check(host);
+    expect(r.returned).toBe(0);
+    ents.setPosition(swimmer, 140, ents.y[swimmer]!, 100);
+    check(host);
+    expect(r.returned).toBe(1);
+  } finally { host.shutdown(); }
+});

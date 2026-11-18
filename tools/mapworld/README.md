@@ -25,8 +25,10 @@ bun run check
 To refresh several maps without changing an existing world, build a new directory:
 
 ```sh
-bun tools/mapworld/build-set.ts var/maps/road-deck-2 <map-name> <another-map-name>
-bun server/main.ts --map var/maps/road-deck-2/<map-name>.snmap --db var/worlds/<new-world>.db
+bun tools/mapworld/build-set.ts var/maps/road-deck-3 <map-name> <another-map-name>
+bun tools/mapworld/bridge-entrances.ts var/maps/road-deck-3/<map-name>.snmap
+bun tools/mapworld/bridge-drive.ts var/maps/road-deck-3/san-francisco.snmap 1489.6 1155
+bun server/main.ts --map var/maps/road-deck-3/<map-name>.snmap --db var/worlds/<new-world>.db
 ```
 
 `build-set.ts` builds each map serially and refuses an existing output directory.
@@ -298,3 +300,54 @@ by `street.cars.parked`:
 The kinds and their sizes come from the compiled content: a vehicle's
 `spec` (half width, half length, height, wheelbase, track, ground limit) and its
 `seats`, so a truck or a bus needs no new code.
+
+## Boats: found ones and wrecks
+
+Vessels a survivor can take go in `vehicles.json` beside the cars, after the found
+aircraft and clear of both. `boatSites` in `tools/boat/sites.ts` chooses them by
+`harbours` in the rules file, at the marinas, piers and beaches of
+`blocks/places.json` and the police, fire and Coast Guard stations of
+`blocks/labels.json`:
+
+- A beach or a fire or Coast Guard station holds one rescue launch, a police
+  station one police launch, up to four of each, before any civilian site.
+- A marina holds `marina.least` to `marina.most` vessels within 120 m of its point;
+  then a share `pier.share` of piers hold one, of `pier.longest` metres or less,
+  within 48 m. Which vessel each berth gets is drawn by a hash from the weights of
+  `kinds.marina` or `kinds.pier`, changed by the style of the district its water
+  looks onto (the nearest within 200 m) in `styles` (launches and jon boats by the
+  port, yachts and offshore boats by the beaches and the towers, day boats and
+  catamarans among homes) and then by its name in `districts`; a weight of 0 takes
+  a kind out. A kind that finds no berth gives way to the civilian launch.
+- A berth is tested for its own vessel where it lies, nearest the place's point
+  first: water deeper than its draught by 0.2 m, a bank a swimmer can reach within
+  64 m, its hull clear of every static at one of four headings, its hull and
+  `room` metres round it clear of every other found vessel's hull, `apart` metres
+  from any other site's vessels and 16 m from any car or aircraft.
+- Every berth gives the ranges its condition and its fuel are rolled in, one band
+  each of `condition` and `fuel` by their weights and a hash of the berth: a share
+  hurt (a hull of 0.5 or more takes no water, so it floats and makes way), a share
+  nearly whole, the rest between, and fuel mostly low. The server rolls both once a
+  world (`foundVehicle`). A berth whose vessel has gone, sunk or sailed off, gets
+  another of its kind, rolled again, `FoundBoatReturnDays` later, as a car's place
+  does (`server/car-return.ts`), once its wreck has gone and only while the berth
+  still has water 0.2 m deeper than the vessel's draught.
+- `reports/<ruins>/harbours.json` lists each vessel with its site, district and
+  ranges.
+
+A harbour's wrecks are statics of `content/vehicles/harbour-wrecks.ts`, set down
+before the found vessels, which keep clear of them (`tools/boat/wrecks.ts`, by
+`harbours.wrecks`). `marina` and `pier` give for each the share of such sites with a
+wreck among their berths and the share with one in the water `out` metres off.
+Its vessel is drawn from the site's own weights (of the ten, the launch's wreck
+being its corpse's), and it is sunk at the share `sunk` and otherwise damaged.
+A damaged one rides low, its keel 1.25 times its draught under the water, where
+the water is deeper than its draught by 0.2 m; a sunk one sits with its keel on
+the bottom where the water is deeper than its draught by 0.3 m and no deeper than
+0.7 of its height, so its upperworks show. Each is clear of every piece by a metre
+round its hull, `apart` metres from any other wreck, in a chunk with room. Its
+static is its form's, `core:hulk_<vessel>_damaged` or `_sunk`, which draws the
+vessel's form `core:<vessel>_damaged` or `core:<vessel>_sunk`, where the art under
+`assets/source/core/vehicles` has that mesh; until then it is `core:hulk_<vessel>`,
+the intact hull. A destroyed vessel's corpse draws its `wreck`, its sunk form, and
+its intact hull until the pack has that. `harbours.json` lists the wrecks too.

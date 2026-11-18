@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { RUIN_SHAPES, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import { readLabels, resolveLabels, type Facts, type PublicPlace } from "./labels.ts";
 import { bridgeHoles, corridorIndex, makeBridges } from "./bridges.ts";
+import { gradeRoadEntrances } from "./bridge-earthwork.ts";
 import { accessPlanner, gradeApproaches, type Approach } from "./ruin-access.ts";
 import { clearCirculation, reconcileRubble } from "./ruin-clearance.ts";
 import { contextualize } from "./ruin-context.ts";
@@ -198,7 +199,10 @@ export function makeRuins(site: Site): StaticPiece[] {
   counts.fill(0); for (const key of Object.keys(usedKinds)) delete usedKinds[key];
   for (const p of pieces) { counts[ckey(p)]!++; usedKinds[p.kind] = (usedKinds[p.kind] ?? 0) + 1; }
   for (const r of bridges.records) for (const d of r.deck) if (!d.gap) {
-    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) lower(Math.round((z1 - d.z) / 2) + dz, Math.round((x1 - d.x) / 2) + dx, d.y - .4);
+    // The road approach was already fitted to the ground. Cutting a slab thickness out of its
+    // earthwork here would excavate a kerb after placement, including just outside the first slab.
+    const ceiling = d.y - (r.kind === "road_bridge" ? .02 : .4);
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) lower(Math.round((z1 - d.z) / 2) + dz, Math.round((x1 - d.x) / 2) + dx, ceiling);
   }
   for (const r of bridges.records) for (const d of r.swim) {
     for (let s = -d.distance - 2; s <= d.distance + 2; s++) for (let side = -3; side <= 3; side++) {
@@ -207,6 +211,8 @@ export function makeRuins(site: Site): StaticPiece[] {
       if (i >= 0) site.ground.water[i] = 1;
     }
   }
+  // Run after room cuts and bridge excavation, using only accepted road terminals and their actual slabs.
+  gradeRoadEntrances(site, bridges.records.flatMap(r => r.entrances));
   for (const r of records) {
     for (const a of r.approaches) site.growthRoutes.push({ points: [a.street, a.door, a.core], width: 2 });
     for (const route of [...r.rooms, ...r.escapes]) site.growthRoutes.push({ points: route.points, width: 2 });

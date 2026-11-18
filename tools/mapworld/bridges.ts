@@ -1,9 +1,11 @@
+import { frame as packedFrame, frameOf as packedFrameOf } from "../../shared/world/frame.ts";
 import { RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Grid } from "./base.ts";
 import { Mason, type Frame, type Point } from "./ruin-geometry.ts";
-import type { Site } from "./statics.ts";
+import type { Site, StaticPiece } from "./statics.ts";
+import { roadEntrances, type RoadEntrance } from "./bridge-earthwork.ts";
 import { pathsOf, readWays, type Path } from "./ways.ts";
 import { makeSuspension, SUSPENDED } from "./suspension.ts";
 
@@ -14,6 +16,7 @@ export interface BridgeRecord {
   deck: DeckPoint[]; swim: { x: number; z: number; dx: number; dz: number; distance: number }[];
   access: { name: string; points: DeckPoint[] }[];
   approaches: number;
+  entrances: RoadEntrance[];
 }
 export interface Corridor { a: Point; b: Point; width: number; low: number; high: number; }
 export const worldFrame = (grid: Pick<Grid, "sizeX" | "sizeZ">): Frame => ({ x: 0, z: 0, yaw: 0, c: 1, s: 0, width: grid.sizeX, depth: grid.sizeZ, rings: [] });
@@ -248,15 +251,25 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
       const end = a.points.at(-1)!; const turn = end.yaw * Math.PI / 180;
       m.put("floor4", end.x + Math.sin(turn) * 2, end.y - .2, end.z + Math.cos(turn) * 2, "concrete", end.yaw);
     }
+    const rows: StaticPiece[][] = deck.map(() => []);
     for (let i = 0; i < deck.length; i++) {
       const d = deck[i]!; if (d.gap) continue;
       const a = d.yaw * Math.PI / 180; const dx = Math.cos(a); const dz = -Math.sin(a);
+      packedFrameOf(Math.round(d.yaw * 65536 / 360) & 65535);
+      // Share collision's lattice axes. A few millimetres of overlap close coordinate rounding cracks between lanes;
+      // otherwise a centre ray can see an underpass through an apparent continuous deck.
+      const lateralX = p.way.kind === "road_bridge" ? packedFrame.sin * packedFrame.stretch : -dz;
+      const lateralZ = p.way.kind === "road_bridge" ? packedFrame.cos * packedFrame.stretch : dx;
+      const end = i === 0 ? -2 : i === deck.length - 1 ? 2 : 0;
+      const foot: Point = [d.x + dx * end, d.z + dz * end];
+      // One cross-road profile: fitting each lane separately makes a transverse stair at the road's centre.
+      const ground = end && !wet(foot) ? site.groundAt(...foot) : undefined;
       for (let side = -p.width / 2 + 2; side < p.width / 2; side += 4) {
-        const x = d.x - dz * side, z = d.z + dx * side, end = i === 0 ? -2 : i === deck.length - 1 ? 2 : 0;
-        const foot: Point = [x + dx * end, z + dz * end];
-        const ground = end && !wet(foot) ? site.groundAt(...foot) : undefined;
+        const overlap = p.way.kind === "road_bridge" ? .998 : 1;
+        const x = d.x + lateralX * side * overlap, z = d.z + lateralZ * side * overlap;
         const slab = p.way.kind === "road_bridge" ? roadDeckSlab(deck, i, ground) : { shape: "floor4" as const, yaw: d.yaw, y: d.y - .2 };
         m.put(slab.shape, x, slab.y, z, "concrete", slab.yaw);
+        rows[i]!.push(m.pieces.at(-1)!);
       }
       m.cover(d.x, d.z, p.width / 2 + 10);
       if (p.way.kind === "breakwater") {
@@ -290,13 +303,20 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
     }
     const record: BridgeRecord = { id: p.way.id, name: p.way.name, kind: p.way.kind, class: p.way.class, layer: p.way.layer, width: p.width,
       length: Number(length.toFixed(1)), blocks: m.pieces.length, status: "built", heightRule: "class clearance, layer +5 m; shared vertices; dry terminal at ground; target grade 10% before 1/16 m quantization; deck steps <=0.3125 m; close overlapping levels joined",
-      low: Math.min(...deck.map((d) => d.y)), high: Math.max(...deck.map((d) => d.y)), deck, swim: [], access: [], approaches: approaches.get(p) ?? 0 };
+      low: Math.min(...deck.map((d) => d.y)), high: Math.max(...deck.map((d) => d.y)), deck, swim: [], access: [], approaches: approaches.get(p) ?? 0, entrances: [] };
     if (!m.pieces.length) record.status = "no pieces";
     else if (!accept(m)) record.status = "budget rejected";
     else {
       for (let k = 1; k < deck.length; k++) {
         const a = deck[k - 1]!; const b = deck[k]!; if (a.gap || b.gap) continue;
         corridors.push({ a: [a.x, a.z], b: [b.x, b.z], width: p.width + 2, low: Math.min(a.y, b.y) - .5, high: Math.max(a.y, b.y) + 3.5 });
+      }
+      if (p.way.kind === "road_bridge" && !/^(footway|cycleway|pedestrian|path|steps|bridleway)$/.test(p.way.class ?? "")) {
+        record.entrances = roadEntrances(site, deck, rows, p.width);
+        // Buildings are laid out and their ground levelled after bridges. Reserve each real dry abutment too:
+        // protecting only the deck centre lets a neighbouring floor excavate the last metre below its outer edge.
+        for (const e of record.entrances) corridors.push({ a: [e.x - e.dx * 8, e.z - e.dz * 8], b: [e.x + e.dx * 2, e.z + e.dz * 2],
+          width: e.width + 4, low: e.y - .5, high: e.y + 3.5 });
       }
       record.swim = swims.get(p) ?? [];
       record.access = access.get(p) ?? [];
