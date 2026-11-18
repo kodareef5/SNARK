@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { Assets } from "../../client/core/assets/assets.ts";
 import { Characters } from "../../client/core/render/characters.ts";
 import { FramePacket, InstanceWriter } from "../../client/core/render/packet.ts";
-import { LAYER_LEVELS, LAYER_STAGES } from "../../client/core/render/surface.ts";
+import { LAYER_LEVELS, LAYER_STAGES, SURFACE_ANY, surfaceFragment, surfaceVertex } from "../../client/core/render/surface.ts";
 import { WEAR, WEAR_KEY, WEAR_STORIES, wearAlpha, wearLate, wearOf } from "../../client/core/render/wear.ts";
 import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
 import { COMPACT_ART } from "../../content/vehicles/compact-art.ts";
@@ -73,6 +73,16 @@ test("a story holds its value about each point of its grid and runs straight bet
   expect((1 - 1 + wearAlpha(0.6, 9, LAYER_STAGES)) * 26).toBeGreaterThanOrEqual(1 - 1e-9);
   expect(((LAYER_STAGES - 1) / LAYER_STAGES - 1 + wearAlpha(0.6, 9, LAYER_STAGES)) * 26).toBeLessThanOrEqual(0);
   expect(wearAlpha(0.3, 9, LAYER_STAGES)).toBeCloseTo(0.3 - 2 / 6, 9);
+});
+
+test("the layered program reads the same table of stories as the rasterizer, from the vertex's place in its bounds", () => {
+  const fragment = surfaceFragment("bc", "", { ...SURFACE_ANY, layered: true }), vertex = surfaceVertex({ ...SURFACE_ANY, layered: true });
+  const table = /const float WEAR\[(\d+)\] = float\[\d+\]\(([^)]*)\);/.exec(fragment)!;
+  expect(Number(table[1])).toBe(WEAR.length);
+  expect(table[2]!.split(",").map(Number)).toEqual([...WEAR]);
+  expect(fragment).toContain("wearAlpha(layer.a, wearLate(),");
+  expect(vertex).toContain("vBox = aPos;");
+  expect(surfaceVertex(SURFACE_ANY)).not.toContain("vBox");
 });
 
 // The tube of the scene fixture as the compact: one level, one material with a hurt and decay layer, on the compact's rig.
