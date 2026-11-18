@@ -80,6 +80,9 @@ test("a city's streets get their furniture by its rules, the same each time it i
     // The arm's tip is over the avenue's lanes.
     const a = p.yaw * Math.PI / 180, tx = p.x + Math.sin(a) * 6, tz = p.z + Math.cos(a) * 6;
     expect(Math.min(Math.abs(tx - 500), Math.abs(tz - 500))).toBeLessThan(7);
+    // Its heads look along its +x, at the traffic coming in: the pole stands across the junction from that traffic.
+    const fx = Math.cos(a), fz = -Math.sin(a);
+    expect((p.x - jx) * fx + (p.z - jz) * fz).toBeLessThan(0);
   }
   // Streets that cross stop one of the two ways, each sign on the right of the traffic it faces, before the crossing.
   const stops = pieces.filter((p) => p.kind.startsWith(streetKind("stop")));

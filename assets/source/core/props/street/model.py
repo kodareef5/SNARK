@@ -112,10 +112,13 @@ def signal_head(m, z, top, move=None):
     box(m, lo, hi, "yellow", decals={"+x": ("street", "signal")}, move=move)
     if not fine():
         return m
-    box(m, (-0.17, top - 1.18, z - 0.31), (-0.15, top + 0.12, z + 0.31), "rust", move=move)
+    # The backplate behind it, aluminium; a hood over each lens, open below; the bracket to the arm.
+    box(m, (-0.17, top - 1.18, z - 0.31), (-0.15, top + 0.12, z + 0.31), "galvanised", move=move)
     for k in range(3):
-        y = top - 0.12 - k * 0.35
-        box(m, (0.14, y - 0.02, z - 0.15), (0.32, y + 0.02, z + 0.15), "yellow", move=move)
+        y = top - 0.04 - k * 0.35
+        box(m, (0.14, y - 0.025, z - 0.15), (0.36, y, z + 0.15), "yellow", move=move)
+        for side in (-1, 1):
+            box(m, (0.14, y - 0.22, z + side * 0.15 - 0.012), (0.36, y, z + side * 0.15 + 0.012), "yellow", move=move)
     box(m, (-0.04, top, z - 0.04), (0.04, top + 0.12, z + 0.04), "galvanised", move=move)
     return m
 
@@ -184,14 +187,13 @@ def stop_bent():
 
 @piece("street_name")
 def street_name():
+    # Two blades crossed on a cap at the post's top, each lettered on both faces, nothing in front of their names.
     m = Mesh()
-    post(m, 3.18, 0.032, square=False)
-    # Two blades crossed, each lettered on both faces.
+    post(m, 2.7, 0.032, square=False)
+    box(m, (-0.045, 2.7, -0.045), (0.045, 2.75, 0.045), "galvanised")
     box(m, (-0.45, 2.75, -0.006), (0.45, 2.95, 0.006), "galvanised", decals={"+z": ("street", "name1"), "-z": ("street", "name1")})
-    box(m, (-0.006, 2.97, -0.45), (0.006, 3.17, 0.45), "galvanised", decals={"+x": ("street", "name2"), "-x": ("street", "name2")})
-    if fine():
-        box(m, (-0.05, 3.17, -0.05), (0.05, 3.2, 0.05), "galvanised")
-    return m
+    box(m, (-0.03, 2.95, -0.03), (0.03, 2.97, 0.03), "galvanised")
+    return box(m, (-0.006, 2.97, -0.45), (0.006, 3.17, 0.45), "galvanised", decals={"+x": ("street", "name2"), "-x": ("street", "name2")})
 
 
 @piece("speed")
@@ -605,13 +607,13 @@ def newsbox():
     return m
 
 
-# Each piece's levels, each with fewer triangles than the one before: a level that saves none is left out.
+# Each piece's levels, each with at most four fifths of the triangles of the one before: a level that saves less is left out.
 for name, fn in PIECES.items():
     counts = []
     for level in range(4):
         kit.LEVEL = level
         mesh = fn()
-        if counts and mesh.triangles() >= counts[-1]:
+        if counts and mesh.triangles() > counts[-1] * 0.8:
             continue
         mesh.build(name if not counts else f"{name}_LOD{len(counts)}")
         counts.append(mesh.triangles())

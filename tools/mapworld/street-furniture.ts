@@ -300,8 +300,14 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
       j.arms.forEach((a, i) => {
         // A mast arm spans the larger ways only; a lesser street's way in has none.
         if (!isMajor(a) || !chance(hash3(h, 10 + i, seed), J.standing)) return;
-        // Its arm reaches across the approach's lanes, its heads facing the traffic that comes in along it.
-        putOut("signals", form("signal", hash3(h, 20 + i, seed)), J.signal, (set) => { const p = corner(j, prev(i), a, set); return p && [p[0], p[1], yawOf(-a.dz, a.dx)]; });
+        // Its heads face the traffic that comes in along it, from across the junction: the pole at the far corner on that
+        // traffic's right, its arm over the lanes it goes on into. Where nothing goes on (a T's stem), at the near corner.
+        const o = j.arms.findIndex((b) => b.dx * a.dx + b.dz * a.dz < -0.8);
+        const far = o >= 0 ? j.arms[o]! : null; const next = o >= 0 ? j.arms[(o + 1) % n]! : null;
+        putOut("signals", form("signal", hash3(h, 20 + i, seed)), J.signal, (set) => {
+          if (far && next) { const p = corner(j, far, next, set); return p && [p[0], p[1], yawOf(far.dz, -far.dx)]; }
+          const p = corner(j, prev(i), a, set); return p && [p[0], p[1], yawOf(-a.dz, a.dx)];
+        });
       });
     } else if (n >= 3 && minor > 0 && major + minor === n) {
       // The lesser street stops: a T's stem, or of two streets crossing the one with fewer ways in, by a hash.
