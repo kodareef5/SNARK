@@ -90,12 +90,13 @@ try {
   if (victim < 0) throw new Error("Target placement failed.");
   host.creatures.mind.stay(victim, 0xffffffff);
   const record = host.records.byPid.get(ents.pid[victim]!)!, health = host.survival.value(record, V_HEALTH);
+  const targetYaw = ents.yaw[victim]! * 360 / 65536;
   const requested = world.tick;
   await mouse(true);
   try { await until(() => world.tick >= requested + 25, "Attack interval"); }
   finally { await mouse(false); }
   const damage = health - host.survival.value(record, V_HEALTH);
-  const result = { species, travel: ents.z[mount]! - startZ, elapsedTicks: world.tick - begin, climbTicks, groundedTicks: grounded, sampledTicks: ticks,
+  const result = { species, targetYaw, travel: ents.z[mount]! - startZ, elapsedTicks: world.tick - begin, climbTicks, groundedTicks: grounded, sampledTicks: ticks,
     peakHeight, lateralDrift: largestLateral, seatHeightOnHill: seatHeight, damage, credited: host.combat.last.by === animal.pid && host.combat.last.victim === record.pid, seated: client.drive === mount, observer: w.active && !w.closed };
   console.log(JSON.stringify(result));
   if (!result.seated || !result.observer || result.travel < 41 || peakHeight < 11 || largestLateral > 2 || grounded < ticks * .9 || !damage || !result.credited) throw new Error("Mounted hillside course failed.");
