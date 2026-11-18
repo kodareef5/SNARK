@@ -32,6 +32,13 @@ const GROUND: Record<number, readonly number[]> = {
   [S.DESERT]: [123, 122, 167, 124, 100],
   // An airfield: asphalt and concrete.
   [S.PAVED]: [85, 99, 84, 100],
+  // Where people walk and park (tools/mapdata/streets.py), from the indices the client reads as paving and asphalt
+  // (content/surfaces.ts): a sidewalk paved and pale against its street, a crossing the palest, a lot asphalt.
+  [S.SIDEWALK]: [98, 99, 88],
+  [S.CROSSWALK]: [2, 1, 98],
+  [S.WALKWAY]: [99, 101, 98, 100],
+  [S.PLAZA]: [88, 98, 1, 99],
+  [S.LOT]: [84, 85, 86],
 };
 
 /** A dry city's open ground and courts are gravel, dust and paving, not grass; its weeds are dry. */

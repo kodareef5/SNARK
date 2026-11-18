@@ -10,6 +10,11 @@ const cars = new WeakMap<VehicleSpec, readonly Shape[]>();
 /** A rigid underbody bevel beyond each axle keeps the authored approach/departure clearance on built ramps too. */
 export function carShapes(p: VehicleSpec): readonly Shape[] {
   const known = cars.get(p); if (known) return known;
+  if (p.bodyBoxes) {
+    const parts = p.bodyBoxes.map(b => box(b.at, b.half));
+    cars.set(p, parts);
+    return parts;
+  }
   const solid = makeSolid(), axle = Math.min(p.halfLength, p.wheelbase / 2), track = Math.min(p.halfWidth, p.track / 2);
   const rise = Math.min(p.height - p.clearance, (p.halfLength - axle) * .3);
   const sideRise = Math.min(rise, (p.halfWidth - track) * .8), shoulder = axle + sideRise / .3;

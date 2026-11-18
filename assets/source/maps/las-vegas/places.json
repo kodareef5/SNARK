@@ -1,0 +1,100 @@
+[
+  {
+    "id": "strat-tower",
+    "name": "The Strat Tower",
+    "osm_way": 135457469,
+    "layout": "pod-tower",
+    "recipe": "monument",
+    "finish": "limestone",
+    "note": "The tower at the north end of the Strip, 350 m to its mast: a shaft on three legs, the pod of twelve storeys from 234 to 270 m with its glazed observation band, and the mast the rides climb.",
+    "source": "OpenStreetMap way 135457469 'Stratosphere Tower', man_made=tower, height 350, 51 m across at its legs; the thrill rides' deck is way 503324066 (building:part), 25 m across at the top of the pod",
+    "retain": 1,
+    "footprint": 500000954
+  },
+  {
+    "id": "sphere",
+    "name": "Sphere",
+    "osm_way": 976405284,
+    "layout": "sphere",
+    "recipe": "theatre",
+    "finish": "steel",
+    "note": "The sphere east of the Venetian, 157 m across and 112 m high, its middle 34 m above the ground.",
+    "source": "OpenStreetMap way 976405284 'Sphere', height 112, shape=spherical_cutted, roof:shape=dome, opened 2023 (not in USA Structures: added from OpenStreetMap)",
+    "retain": 1,
+    "footprint": 500001505
+  },
+  {
+    "id": "allegiant-stadium",
+    "name": "Allegiant Stadium",
+    "osm_way": 691478555,
+    "layout": "covered-stadium",
+    "recipe": "arena",
+    "finish": "steel",
+    "note": "The closed stadium west of the Strip across Interstate 15: dark glass walls 69 m high round the bowl, open at the north-east where its doors look toward the Strip, under a light roof.",
+    "source": "OpenStreetMap way 691478555 'Allegiant Stadium', leisure=stadium, height 69, building:colour black, roof:shape dome, capacity 65000; cut to USA Structures footprint 89367004 (Assembly, Indoor Arena)",
+    "retain": 1,
+    "footprint": 500000573
+  },
+  {
+    "id": "convention-center",
+    "name": "Las Vegas Convention Center",
+    "osm_way": 27925846,
+    "layout": "exhibition-hall",
+    "recipe": "hall",
+    "finish": "limestone",
+    "note": "The North, Central and South Halls as the one footprint USA Structures traces, 20 ha under a roof.",
+    "source": "OpenStreetMap way 27925846 'Las Vegas Convention Center', amenity=conference_centre; USA Structures footprint 88997892, height 17.4",
+    "retain": 1,
+    "footprint": 500000130
+  },
+  {
+    "id": "convention-center-west-hall",
+    "name": "Las Vegas Convention Center West Hall",
+    "layout": "exhibition-hall",
+    "recipe": "hall",
+    "finish": "limestone",
+    "note": "The West Hall of 2021, 494 m along the north side of the convention district.",
+    "source": "USA Structures footprint 89391797, 51,068 m2, height 16.6, under OpenStreetMap relation 19515850 'Las Vegas Convention Center West Hall Expansion'",
+    "retain": 1,
+    "at": [
+      -115.160671,
+      36.135414
+    ]
+  },
+  {
+    "id": "luxor",
+    "name": "Luxor Las Vegas",
+    "osm_way": 27858544,
+    "layout": "pyramid",
+    "recipe": "hotel",
+    "finish": "steel",
+    "note": "The pyramid of dark glass at the south of the Strip, 182 m on a side and 108 m high, hollow round its atrium.",
+    "source": "OpenStreetMap way 27858544 'Luxor Las Vegas', height 111, roof:shape pyramidal, building:colour black, building:material glass",
+    "retain": 1,
+    "footprint": 500000251
+  },
+  {
+    "id": "high-roller",
+    "name": "High Roller",
+    "osm_way": 1424252908,
+    "layout": "observation-wheel",
+    "recipe": "civic",
+    "finish": "limestone",
+    "note": "The observation wheel at the east end of the LINQ Promenade, 158 m across and 167 m high, standing north and south, over its boarding building.",
+    "source": "OpenStreetMap way 402543930 'High Roller', attraction=big_wheel, height 167, its plan 131 by 30 m running north and south; the boarding building is way 1424252908",
+    "retain": 1,
+    "footprint": 500001030
+  },
+  {
+    "id": "eiffel-tower",
+    "name": "Eiffel Tower",
+    "osm_way": 27831699,
+    "layout": "lattice-tower",
+    "recipe": "monument",
+    "finish": "rust",
+    "note": "The half-scale Eiffel Tower over Paris Las Vegas, 165 m, its restaurant deck at 30 m and its observation deck at 140 m.",
+    "source": "OpenStreetMap way 27831699 'Eiffel Tower', man_made=tower, tower:construction lattice, height 165, building:levels 54",
+    "retain": 1,
+    "footprint": 500000060
+  }
+]

@@ -4,6 +4,7 @@
 // the page asks by (client/core/mapload.ts).
 
 import { mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { brotliCompress, constants, gzip } from "node:zlib";
@@ -16,6 +17,8 @@ import { partsFolder, partsOf, readHead, type MapHead, type MapPart, type PartKi
  * tightest a map ships with and take about 25 s on Miami, made side by side, its landmarks' definitions the longest.
  */
 export const LEVELS = { everyday: { brotli: 9, gzip: 6 }, release: { brotli: 11, gzip: 9 } } as const;
+/** Parts compressed at once: each lane's encoders hold their state while it works, and no more lanes than cores help. */
+export const PACK_LANES = Math.max(2, Math.min(8, availableParallelism()));
 
 /**
  * Brotli bytes a part may be, by its kind: there to catch a mistake, with room over the most the cities measure (release
@@ -30,9 +33,13 @@ export const PART_BUDGETS: Readonly<Record<PartKind | "head", number>> = { head:
  * waits longest (client/core/mapload.ts firstFrameParts): the landmarks' definitions, every overview and the ground of the
  * sectors within reach of the body, four where they meet. A player waits for no more wherever it stands: 3.69 MB on Miami
  * and 3.36 on Los Angeles, everyday builds of 2026-11-17 at version 8 (1.5 and 1.3 s at 20 Mbit/s, the phone link the
- * asset bench takes).
+ * asset bench takes). A map of 255 chunks a side (D810) has four times the overviews of those 8 km squares, and they are
+ * most of what it waits for: everyday builds of 2026-11-18 wait for 8.00 MB at most on San Francisco, 8.45 on Las Vegas,
+ * 8.79 on Tampa, 9.80 on Miami and 11.33 on Los Angeles, whose hills' overviews pack worst. 12 MiB holds every one of
+ * them, Los Angeles in about 4.5 s at 20 Mbit/s as a release (D812). Past it, the first frame should wait for the
+ * overviews near the body alone, not every one.
  */
-export const FIRST_FRAME_BUDGET = 8 << 20;
+export const FIRST_FRAME_BUDGET = 12 << 20;
 
 /** A part, or the head, as written beside the map, and its copies. */
 export interface PackedPart {
@@ -72,13 +79,20 @@ export const wireBytes = (packed: Packed, encoding: "br" | "gz"): number => pack
 export async function packMap(file: Uint8Array, release = false): Promise<Packed> {
   const level = release ? LEVELS.release : LEVELS.everyday;
   const [br, gz] = [promisify(brotliCompress), promisify(gzip)];
-  const parts = await Promise.all(
-    partsOf(file).map(async ({ name, part, bytes }): Promise<PackedPart> => {
-      const params = { [constants.BROTLI_PARAM_QUALITY]: level.brotli, [constants.BROTLI_PARAM_LGWIN]: 24, [constants.BROTLI_PARAM_SIZE_HINT]: bytes.length };
-      const [b, z] = await Promise.all([br(bytes, { params }), gz(bytes, { level: level.gzip })]);
-      return { name, kind: part?.kind ?? "head", col: part?.col ?? 0, row: part?.row ?? 0, bytes, br: b, gz: z };
-    }),
-  );
+  const pack = async ({ name, part, bytes }: ReturnType<typeof partsOf>[number]): Promise<PackedPart> => {
+    const params = { [constants.BROTLI_PARAM_QUALITY]: level.brotli, [constants.BROTLI_PARAM_LGWIN]: 24, [constants.BROTLI_PARAM_SIZE_HINT]: bytes.length };
+    const [b, z] = await Promise.all([br(bytes, { params }), gz(bytes, { level: level.gzip })]);
+    return { name, kind: part?.kind ?? "head", col: part?.col ?? 0, row: part?.row ?? 0, bytes, br: b, gz: z };
+  };
+  // A few parts at a time, each its own encoders' memory: asked for all at once, a big map's 500 to 630 parts each
+  // held a Brotli encoder's state together. The parts keep the map's order, so the copies are the same bytes.
+  const list = partsOf(file);
+  const parts: PackedPart[] = new Array(list.length);
+  let next = 0;
+  const lane = async (): Promise<void> => {
+    for (let k = next++; k < list.length; k = next++) parts[k] = await pack(list[k]!);
+  };
+  await Promise.all(Array.from({ length: Math.min(PACK_LANES, list.length) }, lane));
   return { parts, first: firstFrame(parts, readHead(file, false)), release };
 }
 

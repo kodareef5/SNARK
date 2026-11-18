@@ -1,15 +1,18 @@
+import { flatMap } from "../fixtures/map.ts";
+import { writeMap } from "../../shared/world/mapfile.ts";
 import { expect, test } from "bun:test";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { makeHandle } from "../../shared/ids.ts";
 import { CMD_VEHICLE, RESULT_OK, VEHICLE_INSPECT } from "../../shared/net/protocol.ts";
 import { vehicleDoor } from "../../shared/sim/vehicle-body.ts";
+import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
 import { seedRoadFleet } from "../../tools/urban/fixtures.ts";
 import { Harness } from "../fixtures/net.ts";
 
-test("the test-drive lot parks the nine vehicles once and the family van boards at its rear sliding doors", () => {
+test("the test-drive lot parks the road fleet once and the family van boards at its rear sliding doors", () => {
   const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [] });
   try {
-    expect(seedRoadFleet(h.host)).toBe(9);
+    expect(seedRoadFleet(h.host)).toBe(ROAD_FLEET.length);
     expect(seedRoadFleet(h.host)).toBe(0);
     const player = h.join("rider"); h.run(350);
     h.say(player, "enablecheats");
@@ -51,5 +54,26 @@ test("inspecting and closing the panel van's cargo moves its curbside door throu
     inspect(); h.run(800);
     expect(client.open).toBe(0);
     expect(ents.vehicleDoors[row]).toBe(0);
+  } finally { h.host.shutdown(); }
+});
+
+test("a found bus starts pitched to its off-centre axles on a curved road", () => {
+  const map = flatMap(2, { vehicles: [{kind: "core:bus", x: 64, z: 64, yaw: 0}] });
+  const side = Math.sqrt(map.heights.length);
+  for (let row = 0; row < side; row++) {
+    const fromCentre = Math.min(16, Math.abs(2 * row - 64));
+    const height = 1 + .003 * fromCentre ** 2;
+    map.heights.fill(Math.round((height - map.minY) / map.stepY), row * side, (row + 1) * side);
+  }
+  const h = new Harness({}, 1, 60, { map: writeMap(map), clips: NO_CLIPS, rigs: [] });
+  try {
+    const { ents, hf } = h.world;
+    const rec = [...h.host.records.byPid.values()].find(r => r.kind === h.reg.index.get("core:bus"))!;
+    const e = h.host.records.entOf.get(rec.pid)!;
+    const front = hf.heightAt(64, 64 + 4.275), rear = hf.heightAt(64, 64 - 2.225);
+    const grade = (front - rear) / 6.5;
+    expect(grade).toBeGreaterThan(.004);
+    expect(ents.vehiclePitch[ents.vrow[e]!]).toBeCloseTo(Math.atan(grade), 5);
+    expect(ents.y[e]).toBeCloseTo(front - 4.275 * grade, 4);
   } finally { h.host.shutdown(); }
 });

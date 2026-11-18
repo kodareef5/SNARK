@@ -8,7 +8,8 @@
 //   than `least` left out it is a lighter one with the same frames, floors and broken tops. Sloped parts are never merged.
 // - Cells (cellPart): the pieces set into cells in each building's own frame (a chunk's pieces grouped by their turn short
 //   of a quarter), the air outside flooded in, and the faces between a filled cell and that air merged into rectangles
-//   of one colour: a building's mass, for where its storeys are a pixel or two.
+//   of one colour: a building's mass, for where its storeys are a pixel or two. A cell under the air is cut down to what
+//   its pieces reach, so a roof, a parapet or an overrun keeps its own height and a top its outline.
 //
 // Most pieces are one box of their kind's half extents. A kind with a shape is its boxes and convex parts (convex.ts), as
 // it is walked; nearest, where it looks otherwise (a flight's treads over its ramp), as it looks, since that is how the
@@ -45,6 +46,8 @@ export class CityStatics {
   readonly under?: Uint8Array;
   /** Per content index: 1 for a kind that is one box of its half extents, 0 for one with a shape, drawn by `walked` and `look`. */
   readonly plain: Uint8Array;
+  /** 1 for a kind drawn near only: left out of the far city's lattice and mass (`StructureDef.near`). */
+  readonly near: Uint8Array;
   /** Every kind's boxes and convex parts as walked (the registry's parts), and as drawn near. */
   readonly walked: CityForm;
   readonly look: CityForm;
@@ -96,6 +99,7 @@ export class CityStatics {
     this.color = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.color : 0));
     this.under = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.under ?? d.color : 0));
     this.plain = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" && d.shape !== undefined ? 0 : 1));
+    this.near = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" && d.near ? 1 : 0));
     this.walked = { start: reg.parts.start, box: reg.parts.box, color: null, hulls: reg.parts.hulls ?? null };
     this.look = lookForm(reg, this.walked);
   }
@@ -446,7 +450,7 @@ const ring = new Float64Array(3 * MAX_CORNERS);
  * Puts the standing pieces of the chunks round `chunk` that reach within MARGIN of it in `boxes` and `hulls`, as `form`
  * has them, and with `own` its own.
  */
-function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone, own: boolean, form: CityForm): void {
+function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone, own: boolean, form: CityForm, far = false): void {
   const { dims, first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, plain } = city;
   const under = city.under ?? color;
   const cx = chunkCx(dims, chunk);
@@ -462,6 +466,7 @@ function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone,
       for (let i = first[c]!; i < first[c + 1]!; i++) {
         if (g && g[i - first[c]!] === 1) continue;
         const k = kind[i]!;
+        if (far && city.near[k] === 1) continue;
         const r = Math.max(halfX[k]!, halfZ[k]!) * 1.5;
         if (x[i]! + r < x0 - MARGIN || x[i]! - r > x0 + CHUNK_SIZE + MARGIN || z[i]! + r < z0 - MARGIN || z[i]! - r > z0 + CHUNK_SIZE + MARGIN) continue;
         const a = (yaw[i]! / YAW_UNITS) * TAU;
@@ -701,13 +706,14 @@ function framesOf(city: CityStatics, chunk: number, g: Gone): number[] {
  * Puts the standing pieces of `chunk` turned by `f` short of a quarter in `framed`, in the frame turned by (c, s), by their
  * boxes as `form` has them; with `parts`, their convex parts in `hulls` too, placed in the frame. Returns how many boxes.
  */
-function frameBoxes(city: CityStatics, chunk: number, g: Gone, f: number, c: number, s: number, form: CityForm, parts: boolean): number {
+function frameBoxes(city: CityStatics, chunk: number, g: Gone, f: number, c: number, s: number, form: CityForm, parts: boolean, far = false): number {
   const { first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, plain } = city;
   const from = first[chunk]!;
   let nb = 0;
   for (let i = from; i < first[chunk + 1]!; i++) {
     if ((g && g[i - from] === 1) || yaw[i]! % QUARTER !== f) continue;
     const k = kind[i]!;
+    if (far && city.near[k] === 1) continue;
     const quarter = Math.floor(yaw[i]! / QUARTER) % 4;
     const odd = quarter % 2 === 1;
     // The world to the frame: the inverse of the turn a piece's vertices are given.
@@ -758,14 +764,14 @@ export function mergedPart(city: CityStatics, chunk: number, hf: Ground, gone: (
   const form = least > 0 ? city.walked : city.look;
   boxes.n = 0;
   hulls.n = 0;
-  gather(city, chunk, gone, gap < 0 && least <= 0, form);
+  gather(city, chunk, gone, gap < 0 && least <= 0, form, least > 0);
   if (gap >= 0 || least > 0) {
     const g = gone(chunk);
     for (const f of framesOf(city, chunk, g)) {
       const a = (f / YAW_UNITS) * TAU;
       const c = detCos(a);
       const s = detSin(a);
-      let nb = frameBoxes(city, chunk, g, f, c, s, form, false);
+      let nb = frameBoxes(city, chunk, g, f, c, s, form, false, least > 0);
       if (gap >= 0) nb = merge(nb, gap);
       for (let b = 0; b < nb; b++) {
         const o = b * 7;
@@ -1235,7 +1241,9 @@ export function cellPart(city: CityStatics, chunk: number, hf: Ground, gone: Gon
     const c = detCos(a);
     const s = detSin(a);
     hulls.n = 0;
-    const nb = frameBoxes(city, chunk, gone, f, c, s, city.walked, true);
+    const nb = frameBoxes(city, chunk, gone, f, c, s, city.walked, true, true);
+    // A turn whose pieces are all drawn near only has no mass.
+    if (nb === 0 && hulls.n === 0) continue;
     const lo = [Infinity, Infinity, Infinity];
     const hi = [-Infinity, -Infinity, -Infinity];
     for (let b = 0; b < nb; b++) {
@@ -1377,8 +1385,25 @@ export function cellPart(city: CityStatics, chunk: number, hf: Ground, gone: Gon
       if (k > 0) visit(cell - nxy);
       if (k < nz - 1) visit(cell + nxy);
     }
-    // Faces between a filled cell and the air outside, a slice at a time along each axis, merged greedily.
+    // A filled cell under the air outside is a cap, its top cut to the highest its pieces reach, in CUT steps: so a parapet,
+    // an overrun or a stepped top keeps its own height and not its cell's. A cap beside air shut inside is not cut.
     const stride = [1, nx, nxy];
+    const whole = Math.round(tall / CUT);
+    if (capQ.length < N) capQ = new Uint8Array(N * 2);
+    capQ.fill(0, 0, N);
+    for (let cell = 0; cell < N; cell++) {
+      if (cellColour[cell] === 0 || outside[cell + nx] !== 1) continue;
+      const i = cell % nx;
+      const k = Math.floor(cell / nxy);
+      const shut = (m: number): boolean => cellColour[m] === 0 && outside[m] === 0;
+      const sealed = (i > 0 && shut(cell - 1)) || (i < nx - 1 && shut(cell + 1)) || (k > 0 && shut(cell - nxy)) || (k < nz - 1 && shut(cell + nxy));
+      const bottom = o[1]! + (Math.floor(cell / nx) % ny) * tall;
+      // A piece reaches less than TAKES into the row above, or it would fill it. A cap cut to its row's top is a whole cell.
+      const q = sealed ? whole : Math.max(1, Math.min(Math.ceil(whole * (1 + TAKES)), Math.ceil((faceReach[cell * 6 + 2]! - bottom) / CUT - 0.05)));
+      capQ[cell] = q === whole ? 0 : q;
+    }
+    // Faces between a filled cell and the air outside, a slice at a time along each axis, merged greedily; a cap's sides
+    // are made row by row after.
     for (let ax = 0; ax < 3; ax++) {
       for (const sign of [1, -1]) {
         const u = sign > 0 ? (ax + 1) % 3 : (ax + 2) % 3;
@@ -1389,6 +1414,7 @@ export function cellPart(city: CityStatics, chunk: number, hf: Ground, gone: Gon
         const [sa, su, sv] = [stride[ax]!, stride[u]!, stride[v]!];
         const across = sign * sa;
         const way = ax * 2 + (sign > 0 ? 0 : 1);
+        const roof = ax === 1 && sign > 0;
         if (mask.length < nu * nv) mask = new Int16Array(nu * nv * 2);
         for (let d = 0; d < na; d++) {
           const e = d + sign;
@@ -1398,14 +1424,14 @@ export function cellPart(city: CityStatics, chunk: number, hf: Ground, gone: Gon
             let cell = d * sa + jv * sv;
             const row = jv * nu;
             for (let iu = 0; iu < nu; iu++, cell += su) {
-              if (cellColour[cell] !== 0 && outside[cell + across] === 1) {
-                mask[row + iu] = faceColour[cell * 6 + way]! + 1;
+              if (cellColour[cell] !== 0 && outside[cell + across] === 1 && (ax === 1 || capQ[cell] === 0)) {
+                // A roof's key holds its cut too, so only roofs of one height merge.
+                mask[row + iu] = faceColour[cell * 6 + way]! + 1 + (roof ? 257 * capQ[cell]! : 0);
                 any = true;
               } else mask[row + iu] = 0;
             }
           }
           if (!any) continue;
-          const plane = o[ax]! + (sign > 0 ? d + 1 : d) * step[ax]!;
           for (let jv = 0; jv < nv; jv++) {
             for (let iu = 0; iu < nu; ) {
               const m = mask[jv * nu + iu]!;
@@ -1421,25 +1447,44 @@ export function cellPart(city: CityStatics, chunk: number, hf: Ground, gone: Gon
                 h++;
               }
               for (let q = 0; q < h; q++) mask.fill(0, (jv + q) * nu + iu, (jv + q) * nu + iu + w);
-              // The rectangle's corners in the frame, round it from its least corner, then into the world.
-              const u0 = o[u]! + iu * step[u]!;
-              const u1 = u0 + w * step[u]!;
-              const v0 = o[v]! + jv * step[v]!;
-              const v1 = v0 + h * step[v]!;
+              const cut = roof ? Math.floor(m / 257) : 0;
+              const plane = cut > 0 ? o[1]! + d * tall + cut * CUT : o[ax]! + (sign > 0 ? d + 1 : d) * step[ax]!;
+              span[u] = o[u]! + iu * step[u]!;
+              span[3 + u] = span[u]! + w * step[u]!;
+              span[v] = o[v]! + jv * step[v]!;
+              span[3 + v] = span[v]! + h * step[v]!;
               iu += w;
-              const p = [0, 0, 0];
-              p[ax] = plane;
-              const us = [u0, u1, u1, u0];
-              const vs = [v0, v0, v1, v1];
-              for (let k = 0; k < 4; k++) {
-                p[u] = us[k]!;
-                p[v] = vs[k]!;
-                rect[k * 3] = c * p[0]! + s * p[2]!;
-                rect[k * 3 + 1] = p[1]!;
-                rect[k * 3 + 2] = c * p[2]! - s * p[0]!;
+              if (ax === 1 && sign < 0 && plane <= hf.heightAt(...groundAt(c, s, span, u, v)) + tall / 2) continue;
+              cellFace(ax, u, v, plane, c, s, (m % 257) - 1);
+            }
+          }
+        }
+        if (ax === 1) continue;
+        // A cap's side, row by row along the level axis it `runs`: from its row's floor to its cut where the air outside is
+        // beside it, and from a lower cap's cut beside it to its own; a whole cell's side from a lower cap's cut beside it to
+        // its row's top.
+        const runs = ax === 0 ? 2 : 0;
+        for (let d = 0; d < na; d++) {
+          const e = d + sign;
+          if (e < 0 || e >= na) continue;
+          for (let j = 0; j < ny; j++) {
+            for (let ih = 0; ih < n[runs]!; ) {
+              const cell = d * sa + j * nx + ih * stride[runs]!;
+              const side = capSide(cell, cell + across, whole, nx);
+              if (side === 0) {
+                ih++;
+                continue;
               }
-              if (ax === 1 && sign < 0 && plane <= hf.heightAt((rect[0]! + rect[6]!) / 2, (rect[2]! + rect[8]!) / 2) + tall / 2) continue;
-              out.quad(rect, 0, m - 1);
+              const colour = faceColour[cell * 6 + way]!;
+              let w = 1;
+              while (ih + w < n[runs]! && capSide(cell + w * stride[runs]!, cell + w * stride[runs]! + across, whole, nx) === side && faceColour[(cell + w * stride[runs]!) * 6 + way] === colour) w++;
+              const [from, to] = [side >> 8, side & 255];
+              span[runs] = o[runs]! + ih * step[runs]!;
+              span[3 + runs] = span[runs]! + w * step[runs]!;
+              span[1] = o[1]! + j * tall + from * CUT;
+              span[4] = o[1]! + j * tall + to * CUT;
+              ih += w;
+              cellFace(ax, u, v, o[ax]! + (sign > 0 ? d + 1 : d) * step[ax]!, c, s, colour);
             }
           }
         }
@@ -1447,4 +1492,49 @@ export function cellPart(city: CityStatics, chunk: number, hf: Ground, gone: Gon
     }
   }
   return out.part();
+}
+
+/** Metres a cap's cut is made in. */
+const CUT = 0.5;
+let capQ = new Uint8Array(1 << 16);
+
+/**
+ * The CUT steps up its row between which a side of filled `cell` shows toward `beside`, a cell `up` cells below the one
+ * over it, as from * 256 + to: a cut cap's side from the air or a lower top beside it to its cut, and a cell's side from
+ * a cut cap's top beside it to its row's top. 0 for none, and for any side the greedy merge makes.
+ */
+function capSide(cell: number, beside: number, whole: number, up: number): number {
+  if (cellColour[cell] === 0) return 0;
+  const own = capQ[cell]!;
+  const filled = cellColour[beside] !== 0;
+  if (own > 0) {
+    if (!filled && outside[beside] === 1) return own;
+    const other = !filled ? 255 : capQ[beside] || (outside[beside + up] === 1 ? whole : 255);
+    return other < own ? other * 256 + own : 0;
+  }
+  return filled && capQ[beside]! > 0 && capQ[beside]! < whole ? capQ[beside]! * 256 + whole : 0;
+}
+
+/** The middle of the face in `span` across axes u and v, in the world, for the ground under it. */
+function groundAt(c: number, s: number, sp: Float64Array, u: number, v: number): [number, number] {
+  const p = [0, 0, 0];
+  p[u] = (sp[u]! + sp[3 + u]!) / 2;
+  p[v] = (sp[v]! + sp[3 + v]!) / 2;
+  return [c * p[0]! + s * p[2]!, c * p[2]! - s * p[0]!];
+}
+
+/** Puts out the face on the plane across `ax` at `plane` spanning `span` along u and v, round it from its least corner. */
+function cellFace(ax: number, u: number, v: number, plane: number, c: number, s: number, colour: number): void {
+  const p = [0, 0, 0];
+  p[ax] = plane;
+  const us = [span[u]!, span[3 + u]!, span[3 + u]!, span[u]!];
+  const vs = [span[v]!, span[v]!, span[3 + v]!, span[3 + v]!];
+  for (let k = 0; k < 4; k++) {
+    p[u] = us[k]!;
+    p[v] = vs[k]!;
+    rect[k * 3] = c * p[0]! + s * p[2]!;
+    rect[k * 3 + 1] = p[1]!;
+    rect[k * 3 + 2] = c * p[2]! - s * p[0]!;
+  }
+  out.quad(rect, 0, colour);
 }

@@ -1,0 +1,67 @@
+{
+  "street": {
+    "cars": {
+      "parked": {
+        "districts": {
+          "The Port": { "core:semi": 180 }
+        }
+      }
+    }
+  },
+  "choices": [
+    {
+      "id": "beach brows",
+      "when": {
+        "district": [
+          "South Beach",
+          "Mid-Beach",
+          "Collins Shore"
+        ],
+        "recipe": [
+          "hotel",
+          "apartment"
+        ],
+        "heightBelow": 28
+      },
+      "form": "hotel"
+    }
+  ],
+  "sightlines": [
+    {
+      "place": "freedom-tower",
+      "from": [
+        -1,
+        0
+      ],
+      "length": 160,
+      "width": 8
+    },
+    {
+      "place": "waterfront-arena",
+      "from": [
+        -1,
+        0
+      ],
+      "length": 180,
+      "width": 8
+    },
+    {
+      "place": "gesu",
+      "from": [
+        0.3,
+        -1
+      ],
+      "length": 100,
+      "width": 8
+    },
+    {
+      "place": "lyric",
+      "from": [
+        0.2,
+        -1
+      ],
+      "length": 100,
+      "width": 8
+    }
+  ]
+}

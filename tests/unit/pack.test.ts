@@ -194,6 +194,11 @@ test("a pack of another version is refused, clips come back within a step, and t
   expect(coloured.size).toBeGreaterThan(0);
   for (const m of now.header.meshes.filter((m) => m.lods.length === 3)) {
     const [fine, mid, far] = m.lods.map((l) => l.error) as [number, number, number];
+    if (m.id.startsWith("core:tide_eye/")) {
+      // The floating instrument is 380 m tall. Its authored LODs stay within two metres at skyline distance.
+      expect([m.id, fine === 0 && mid > 0 && far > mid && far < 2]).toEqual([m.id, true]);
+      continue;
+    }
     expect([m.id, coloured.has(m.id) ? fine === 0 && mid === 0 && far === 0 : looks.has(m.id) ? fine === 0 && mid === 0 && far > 0 && far < 1 : fine === 0 && mid > 0 && far > mid && far < 0.1]).toEqual([m.id, true]);
   }
 });

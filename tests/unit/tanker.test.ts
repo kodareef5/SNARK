@@ -1,15 +1,17 @@
+import { BUS, SEMI } from "../../content/vehicles/heavy-road.ts";
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { TANKER_VEHICLE } from "../../content/vehicles/tanker.ts";
 import { ASPHALT } from "../../content/vehicles/compact.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
-import { createVehicle, stepVehicle, type VehicleWorld } from "../../shared/sim/vehicle.ts";
+import { isWheelVehicle, createVehicle, stepVehicle, type VehicleWorld } from "../../shared/sim/vehicle.ts";
 import { vehiclePlane } from "../fixtures/vehicle-plane.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { unpackMeshes } from "../../tools/pack/write.ts";
 
-test("the tandem bears load at the three actual axle stations and drives, corners, stops and reverses", () => {
-  const p = TANKER_VEHICLE.spec,
+for (const vehicle of [TANKER_VEHICLE, BUS.species.vehicle!, SEMI.species.vehicle!]) test(vehicle.id + " drives on its authored axles, corners, stops and reverses", () => {
+  if (!isWheelVehicle(vehicle)) throw new Error("expected wheel vehicle");
+  const p = vehicle.spec,
     state = createVehicle(p, 0, 0, 0),
     plane = vehiclePlane(ASPHALT);
   const probes = new Set<string>();

@@ -1,16 +1,19 @@
 {
+  "v": 2,
   "name": "san-francisco",
   "label": "San Francisco",
-  "centre": [-122.436, 37.7985],
-  "size_m": 8128,
-  "chunk_m": 64,
-  "spacing_m": 2,
-  "tiger": {
-    "year": 2025,
-    "counties": ["06075", "06041"],
-    "layers": ["roads", "areawater"],
-    "source": "Census TIGER/Line 2025, San Francisco County and Marin County, CA",
-    "licence": "https://creativecommons.org/publicdomain/zero/1.0/ (catalog.data.gov); \"These products are free to use in a product or publication, however acknowledgement must be given to the U.S. Census Bureau as the source.\""
+  "centre": [
+    -122.436,
+    37.7985
+  ],
+  "bounds": [
+    -7904,
+    -11936,
+    8416,
+    4384
+  ],
+  "osm": {
+    "extract": "north-america/us/california/norcal"
   },
   "dem": {
     "kind": "tnm",
@@ -20,21 +23,19 @@
     "source": "USGS 3DEP Original Product Resolution DEM, CA_SanFrancisco_B23 (published 2024-08-21)",
     "licence": "USGS public domain. Access constraints: \"None.\" Credit: \"Acknowledgement of the USGS 3D Elevation Program would be appreciated in products derived from these data.\"",
     "fill": [
-      {"project": "CA_NoCal_Wildfires_B5b_QL1_2018", "z_to_m": 1, "source": "USGS 3DEP Original Product Resolution DEM, CA_NoCal_Wildfires_B5b_QL1_2018 (published 2020-01-14), where the 2023 survey stops at the Marin County line"},
-      {"project": "CA_NoCAL_Wildfires_B5b_2018", "z_to_m": 1, "source": "USGS 3DEP Original Product Resolution DEM, CA_NoCAL_Wildfires_B5b_2018 (published 2020-03-18), where neither newer survey reaches"}
+      {
+        "project": "CA_NoCal_Wildfires_B5b_QL1_2018",
+        "z_to_m": 1,
+        "source": "USGS 3DEP Original Product Resolution DEM, CA_NoCal_Wildfires_B5b_QL1_2018 (published 2020-01-14), where the 2023 survey stops at the Marin County line"
+      },
+      {
+        "project": "CA_NoCAL_Wildfires_B5b_2018",
+        "z_to_m": 1,
+        "source": "USGS 3DEP Original Product Resolution DEM, CA_NoCAL_Wildfires_B5b_2018 (published 2020-03-18), where neither newer survey reaches"
+      }
     ]
   },
-  "nlcd": {
-    "url": "https://www.mrlc.gov/geoserver/mrlc_display/NLCD_2021_Land_Cover_L48/ows",
-    "coverage": "NLCD_2021_Land_Cover_L48",
-    "file": "nlcd2021.tif",
-    "source": "USGS / MRLC NLCD 2021 Land Cover (CONUS)",
-    "licence": "Public domain (USGS)"
-  },
   "footprints": {
-    "service": "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/USA_Structures_View/FeatureServer/0",
-    "source": "FEMA / ORNL USA Structures",
-    "licence": "CC BY 4.0, as the Esri-hosted delivery item declares; a U.S. government work per catalog.data.gov. Attribution: Oak Ridge National Laboratory (ORNL); Federal Emergency Management Agency (FEMA) Geospatial Response Office.",
     "split_by_osm": true,
     "split_cover": 0.6
   },
@@ -44,16 +45,6 @@
     "margin_deg": 0.006,
     "source": "NOAA NCEI San Francisco Bay, California 1/3 arc-second NAVD 88 Coastal Digital Elevation Model (gov.noaa.ngdc.mgg.dem:741, 2010)",
     "licence": "\"Produced by the NOAA National Centers for Environmental Information. Not subject to copyright protection within the United States.\" \"Not to be used for navigation.\""
-  },
-  "osm": {
-    "servers": ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"],
-    "source": "OpenStreetMap contributors, through the Overpass API",
-    "licence": "Open Database License (ODbL) 1.0, (c) OpenStreetMap contributors"
-  },
-  "roads": {
-    "widths_m": {"S1100": 22, "S1200": 14, "S1400": 8, "S1630": 7, "S1640": 5, "S1710": 3, "S1720": 3, "S1740": 4},
-    "other_width_m": 6,
-    "tunnel_name": "tunl"
   },
   "succession": {
     "sand_ribbon": null,
@@ -73,39 +64,94 @@
     "report": "ruins5",
     "easy_around_spawns_m": 180,
     "places": [
-      {"name": "Presidio", "at": [-122.4662, 37.7989], "why": "a national park of 6 km2 with its own posts and barracks, mapped as a park, not a neighbourhood"}
+      {
+        "name": "Presidio",
+        "at": [
+          -122.4662,
+          37.7989
+        ],
+        "why": "a national park of 6 km2 with its own posts and barracks, mapped as a park, not a neighbourhood"
+      }
     ],
-    "styles": {"Alcatraz Island": "concrete", "Presidio": "terracotta"},
+    "styles": {
+      "Alcatraz Island": "concrete",
+      "Presidio": "terracotta"
+    },
     "obelisks": [
-      {"name": "Marina Green", "at": [-122.4372, 37.8061], "face": [-122.4391, 37.8066]},
-      {"name": "Embarcadero", "at": [-122.3962, 37.7942], "face": [-122.3946, 37.7949]},
-      {"name": "Panhandle", "at": [-122.4455, 37.7726], "face": [-122.4474, 37.7723]}
-    ],
-    "spawn_places": [
-      {"name": "Golden Gate Bridge Vista Point", "face": [-122.4776, 37.8141]},
-      {"name": "Presidio Tunnel Tops", "face": [-122.4780, 37.8190]},
-      {"name": "Marina Green", "face": [-122.4780, 37.8180]},
-      {"name": "Alcatraz Island", "face": [-122.4100, 37.8000]},
-      {"name": "Washington Square Park", "face": [-122.4058, 37.8024]},
-      {"name": "Union Square", "face": [-122.4028, 37.7952]},
-      {"name": "Embarcadero Plaza", "face": [-122.3935, 37.7955]},
-      {"name": "Alamo Square", "face": [-122.4328, 37.7762]},
-      {"name": "Lafayette Park", "face": [-122.4270, 37.8000]},
-      {"name": "Panhandle", "face": [-122.4600, 37.7710]}
+      {
+        "name": "Marina Green",
+        "at": [
+          -122.4372,
+          37.8061
+        ],
+        "face": [
+          -122.4391,
+          37.8066
+        ]
+      },
+      {
+        "name": "Embarcadero",
+        "at": [
+          -122.3962,
+          37.7942
+        ],
+        "face": [
+          -122.3946,
+          37.7949
+        ]
+      },
+      {
+        "name": "Panhandle",
+        "at": [
+          -122.4455,
+          37.7726
+        ],
+        "face": [
+          -122.4474,
+          37.7723
+        ]
+      }
     ]
   },
   "ruins": {
-    "rules_from": "miami",
     "blocks_per_footprint": 130
   },
   "future": {
     "spans_why": "None: the bridges over water in the frame are the Golden Gate, kept whole as the map's landmark, and the Bay Bridge's west approach, whose spans lie past the east edge",
     "spans": [],
     "wrecks": [
-      {"e": 1541, "n": 2442, "length_m": 72, "width_m": 12, "angle_degrees": 25, "why": "A freighter down in the channel south of Alcatraz"},
-      {"e": 2200, "n": 1700, "length_m": 40, "width_m": 10, "angle_degrees": -10, "why": "A ferry sunk off Pier 39 on its way to the island"},
-      {"e": -200, "n": 1250, "length_m": 20, "width_m": 6, "angle_degrees": 70, "why": "A yacht off Marina Green"},
-      {"e": -1800, "n": 1100, "length_m": 26, "width_m": 8, "angle_degrees": 160, "why": "A tug off Crissy Field, under the bridge's eye"}
+      {
+        "e": 1541,
+        "n": 2442,
+        "length_m": 72,
+        "width_m": 12,
+        "angle_degrees": 25,
+        "why": "A freighter down in the channel south of Alcatraz"
+      },
+      {
+        "e": 2200,
+        "n": 1700,
+        "length_m": 40,
+        "width_m": 10,
+        "angle_degrees": -10,
+        "why": "A ferry sunk off Pier 39 on its way to the island"
+      },
+      {
+        "e": -200,
+        "n": 1250,
+        "length_m": 20,
+        "width_m": 6,
+        "angle_degrees": 70,
+        "why": "A yacht off Marina Green"
+      },
+      {
+        "e": -1800,
+        "n": 1100,
+        "length_m": 26,
+        "width_m": 8,
+        "angle_degrees": 160,
+        "why": "A tug off Crissy Field, under the bridge's eye"
+      }
     ]
   }
 }

@@ -1,0 +1,242 @@
+{
+  "seed": 36115,
+  "categories": {
+    "tower_office": "tower",
+    "tower_residential": "tower",
+    "hotel": "hotel",
+    "apartment_block": "apartment",
+    "office": "apartment",
+    "bank": "apartment",
+    "house": "house",
+    "shopping_mall": "mall",
+    "market": "mall",
+    "shopping_street": "shop",
+    "nightlife": "hall",
+    "restaurant": "shop",
+    "warehouse": "shed",
+    "factory": "shed",
+    "port": "shed",
+    "parking_garage": "garage",
+    "marina": "marina",
+    "pier": "marina",
+    "rail_station": "station",
+    "transit_station": "station",
+    "bridge": "bridge",
+    "causeway": "bridge",
+    "parkway": "bridge",
+    "tunnel": "bridge",
+    "park": "park",
+    "plaza": "park",
+    "beach": "park",
+    "island": "park",
+    "golf_course": "park",
+    "cemetery": "park",
+    "monument": "monument",
+    "sculpture": "monument",
+    "fountain": "monument",
+    "lighthouse": "monument",
+    "museum": "civic",
+    "attraction": "civic",
+    "library": "civic",
+    "city_hall": "civic",
+    "courthouse": "civic",
+    "post_office": "civic",
+    "government": "civic",
+    "theatre": "theatre",
+    "place_of_worship": "theatre",
+    "stadium": "arena",
+    "arena": "arena",
+    "convention_center": "hall",
+    "school": "school",
+    "university": "school",
+    "hospital": "hospital",
+    "fire_station": "service",
+    "police_station": "service",
+    "military": "service",
+    "prison": "service",
+    "utility": "utility",
+    "other": "fabric",
+    "tower": "tower",
+    "station": "station",
+    "artwork": "monument",
+    "garden": "park",
+    "dog_park": "park",
+    "islet": "park",
+    "neighbourhood": "park",
+    "viewpoint": "monument",
+    "crane": "utility",
+    "storage_tank": "utility",
+    "wastewater_plant": "utility"
+  },
+  "growth": {
+    "meaning": "Las Vegas from the plants the content has: the Mojave's creosote and bursage as sparse bushes on the desert and the open lots, planted palms along the boulevards and in the resorts' plazas, shade trees and palms on the watered parks and golf courses, almost no canopy, and weeds and scrub in the ruins; none of Miami's subtropical kinds (banyan, fig, mangrove, palmetto, sea grape, fern). The fountains, ponds and pools, drawn as marsh until water stands above the sea, take low scrub at their edges. An ask for the art team names what is missing.",
+    "zones": {
+      "open ground": {
+        "bare": 60,
+        "kinds": {
+          "core:bush": 4,
+          "core:creeper": 0,
+          "core:tree": 0,
+          "core:palm": 0,
+          "core:fern": 0
+        }
+      },
+      "park": {
+        "bare": 18,
+        "kinds": {
+          "core:palm": 4,
+          "core:tree": 3,
+          "core:bush": 2,
+          "core:oak": 0,
+          "core:fig": 0,
+          "core:banyan": 0,
+          "core:fern": 0
+        }
+      },
+      "old garden": {
+        "bare": 16,
+        "kinds": {
+          "core:palm": 3,
+          "core:tree": 2,
+          "core:bush": 3,
+          "core:oak": 0,
+          "core:fig": 0,
+          "core:palmetto": 0,
+          "core:fern": 0
+        }
+      },
+      "hammock": {
+        "bare": 8,
+        "kinds": {
+          "core:tree": 5,
+          "core:palm": 3,
+          "core:bush": 2,
+          "core:oak": 0,
+          "core:fig": 0,
+          "core:banyan": 0,
+          "core:fern": 0,
+          "core:creeper": 0
+        }
+      },
+      "street garden": {
+        "bare": 30,
+        "kinds": {
+          "core:palm": 5,
+          "core:bush": 1,
+          "core:tree": 0,
+          "core:fern": 0
+        }
+      },
+      "plaza": {
+        "bare": 30,
+        "kinds": {
+          "core:palm": 4,
+          "core:bush": 1,
+          "core:tree": 0,
+          "core:creeper": 0
+        }
+      },
+      "ruin": {
+        "bare": 30,
+        "kinds": {
+          "core:bush": 2,
+          "core:creeper": 1,
+          "core:fig": 0,
+          "core:banyan": 0,
+          "core:tree": 0,
+          "core:fern": 0
+        }
+      },
+      "tower ruin": {
+        "bare": 40,
+        "kinds": {
+          "core:bush": 1,
+          "core:creeper": 1,
+          "core:fig": 0,
+          "core:fern": 0
+        }
+      },
+      "spill": {
+        "bare": 25,
+        "kinds": {
+          "core:bush": 2,
+          "core:creeper": 1,
+          "core:fern": 0,
+          "core:tree": 0
+        }
+      },
+      "yard": {
+        "bare": 40,
+        "kinds": {
+          "core:bush": 1,
+          "core:creeper": 0
+        }
+      },
+      "marsh": {
+        "bare": 40,
+        "kinds": {
+          "core:bush": 1,
+          "core:mangrove": 0,
+          "core:fern": 0,
+          "core:palmetto": 0
+        }
+      }
+    }
+  },
+  "sightlines": [
+    {
+      "place": "strat-tower",
+      "from": [
+        0,
+        -1
+      ],
+      "length": 300,
+      "width": 12
+    },
+    {
+      "place": "sphere",
+      "from": [
+        1,
+        0
+      ],
+      "length": 260,
+      "width": 12
+    },
+    {
+      "place": "allegiant-stadium",
+      "from": [
+        -1,
+        0
+      ],
+      "length": 260,
+      "width": 12
+    },
+    {
+      "place": "luxor",
+      "from": [
+        -1,
+        0
+      ],
+      "length": 200,
+      "width": 10
+    },
+    {
+      "place": "high-roller",
+      "from": [
+        1,
+        0
+      ],
+      "length": 250,
+      "width": 10
+    },
+    {
+      "place": "eiffel-tower",
+      "from": [
+        1,
+        0
+      ],
+      "length": 160,
+      "width": 8
+    }
+  ]
+}
