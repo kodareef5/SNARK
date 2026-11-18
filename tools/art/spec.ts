@@ -5,6 +5,8 @@ import type { SourceLod } from "../pack/write.ts";
 
 import { ZONE_ARM_L, ZONE_ARM_R, ZONE_FOOT_L, ZONE_FOOT_R, ZONE_HAND_L, ZONE_HAND_R, ZONE_HEAD, ZONE_LEG_L, ZONE_LEG_R, ZONE_TAIL, ZONE_TORSO } from "../../shared/anim/human.ts";
 import type { TextureRole } from "../../shared/pack/texture.ts";
+import type { PackRig } from "../../shared/pack/pack.ts";
+import type { SourceMesh } from "../pack/write.ts";
 import type { ClipSpec } from "../pack/anim.ts";
 
 export type AssetSpec = CreatureAsset | PiecesAsset | HumanClipsAsset | HumanBodiesAsset | SkyAsset | WaterAsset | DetailsAsset;
@@ -126,11 +128,10 @@ export interface MaterialSpec {
   readonly tiles?: number;
   /** A thin sheet's: how much of the light on one face its other face shows, 0 to 1 (shared/pack/finish.ts). */
   readonly sheet?: number;
-  /**
-   * How much the base colour glows, as light, where its alpha says so (a lamp's lens that still works): its alpha is then
-   * that share and not coverage. Nothing glows where not given.
-   */
+  /** How much the base colour glows, as light. Nothing glows where not given. */
   readonly emissive?: number;
+  /** Whether it glows only from dusk to dawn, as a lamp's lens that still works (shared/pack/pack.ts `MATERIAL_NIGHT`). */
+  readonly night?: boolean;
   /** Multiplied over the base colour: linear, 0 to 1. Nothing is, where not given. */
   readonly tint?: readonly [number, number, number];
   /**
@@ -438,6 +439,14 @@ export interface HumanClipsAsset {
 
 /** The modelled bodies cut by body slot, with hair, beards and armor sets fitted to each (tools/art/human.ts). */
 export interface HumanBodiesAsset {
+  /** Tailored outfits use the converted body's actual surface and rest joints. */
+  readonly tailored?: {
+    readonly material: string;
+    /** Optional second material section for self-lit indicator lenses, in linear light. */
+    readonly indicatorEmission?: number;
+    readonly make: (body: readonly SourceMesh[], rig: PackRig) => SourceMesh[];
+  };
+  readonly materials?: Readonly<Record<string, MaterialSpec>>;
   readonly kind: "human-bodies";
   /** A folder under assets/raw that the paths below are in. */
   readonly raw: string;

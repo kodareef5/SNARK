@@ -63,8 +63,15 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 29: ground creature ability mode, cooldowns, charge power and attack side in the owner body.
  * 31 combines ground creature prediction counters with the parked-car brake in contact snapshots.
  * The earlier road-only 29 and ground-mount 30 clients cannot read the combined contract.
+ * 32: a hello that makes a new survivor carries its create request (HELLO_NEW, HELLO_RESUME), and a driver cycles a patrol
+ * vehicle's warning lights (VEHICLE_LIGHTS).
+ * 33 adds equipped flight armor, remaining reserve accounting and active thrust to the owner body. It was written as 32
+ * on its branch while main took 32 for the above; the two merged without a conflict and would have let a client of one
+ * read the other's bodies wrong.
  */
-export const PROTOCOL_VERSION = 32;
+export const PROTOCOL_VERSION = 33;
+/** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
+export const JET_SPENT_BITS = 9;
 
 // Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
@@ -671,6 +678,9 @@ export function writeBody(w: BitWriter, b: Body): void {
   const creature = b.creatureMode !== 0 || b.creatureCooldown !== 0 || b.creaturePower !== 0 || b.creatureSide !== 0 || b.creaturePrimaryCooldown !== 0;
   w.bool(creature);
   if (creature) { w.bits(b.creatureMode, 2); w.bits(b.creatureCooldown, 10); w.u8(b.creaturePower); w.bits(b.creatureSide, 1); w.bits(b.creaturePrimaryCooldown, 10); }
+  const suit = b.jetGear !== 0 || b.jetSpent !== 0;
+  w.bool(suit);
+  if (suit) { w.bits(b.jetGear, 5); w.bits(b.jetSpent, JET_SPENT_BITS); w.bits(b.jetThrust, 2); }
   writeFlight(w, b);
   writeVehicle(w, b);
 }
@@ -701,6 +711,8 @@ export function readBody(r: BitReader, b: Body): void {
   b.kick = r.u8();
   if (r.bool()) { b.creatureMode = r.bits(2); b.creatureCooldown = r.bits(10); b.creaturePower = r.u8(); b.creatureSide = r.bits(1); b.creaturePrimaryCooldown = r.bits(10); }
   else b.creatureMode = b.creatureCooldown = b.creaturePower = b.creatureSide = b.creaturePrimaryCooldown = 0;
+  if (r.bool()) { b.jetGear = r.bits(5); b.jetSpent = r.bits(JET_SPENT_BITS); b.jetThrust = r.bits(2); }
+  else b.jetGear = b.jetSpent = b.jetThrust = 0;
   readFlight(r, b);
   readVehicle(r, b);
 }

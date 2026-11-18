@@ -76,6 +76,8 @@ export interface PackLod {
 /** PackMaterial.flags. A cut-out material shows nothing where the base colour's alpha is under `cutoff`. */
 export const MATERIAL_TWO_SIDED = 1;
 export const MATERIAL_CUTOUT = 2;
+/** A material whose glow (`emissive`) is on only from dusk to dawn, as a working street lamp's lens (client/core/render/surface.ts `lampsOn`). */
+export const MATERIAL_NIGHT = 4;
 
 export interface PackMaterial {
   id: string;

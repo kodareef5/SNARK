@@ -12,14 +12,14 @@ import { comparedLookup } from "../core/render/shadowfilter.ts";
 import { BLOOM_FORMAT, LIGHT_FORMATS, LIGHT_SAMPLES, bloomLevels, drawsLight, levelShift, tapShift } from "../core/render/post.ts";
 import { POLYGON_OFFSET } from "../core/render/shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, theSky } from "../core/render/sky.ts";
-import { LAYER_LEVELS, NEUTRAL, skinMode } from "../core/render/surface.ts";
+import { LAYER_LEVELS, NEUTRAL, lampsOn, skinMode } from "../core/render/surface.ts";
 import { SKIRT_BEHIND, coarseGround, groundSize, tileMesh, type GroundSize } from "../core/render/terrain.ts";
 import type { AssetUpload } from "../core/assets/residency.ts";
 import type { Tier } from "../core/assets/tiers.ts";
 import type { Manifest, ManifestMesh } from "../../shared/pack/manifest.ts";
 import { finishTable, type FinishTable } from "../../shared/pack/finish.ts";
 import { CELL, mipOffset } from "../../shared/pack/details.ts";
-import { INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, detailsAtlas, textureOf, type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
+import { INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, MATERIAL_NIGHT, detailsAtlas, textureOf, type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
 import { MAP_ROLES, TEXTURE_ROLES, type TextureFormat } from "../../shared/pack/texture.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 
@@ -140,6 +140,8 @@ export class GlRenderer {
   private mappedRoles = 0;
   /** 1 once every world finish's maps are on the card, this frame. */
   private worldReady = 0;
+  /** How much a material that glows only by night glows in this frame (surface.ts `lampsOn`). */
+  private night = 0;
   /** The world finishes' maps by role, each an array of a layer a finish, its side and the finest level drawn; and each world texture's role * 32 + layer. */
   private world: (WebGLTexture | null)[] = [];
   private worldSide = [0, 0, 0];
@@ -186,8 +188,10 @@ export class GlRenderer {
   private readonly sky: PackMaterial | undefined;
   private readonly forced: string | null;
 
-  constructor(canvas: HTMLCanvasElement, pack: Pack, hf: Heightfield, manifest: Manifest, forced: string | null = null) {
-    const gl = canvas.getContext("webgl2", { alpha: false, antialias: true, powerPreference: "high-performance" });
+  private readonly transparentStage: boolean;
+  constructor(canvas: HTMLCanvasElement, pack: Pack, hf: Heightfield, manifest: Manifest, forced: string | null = null, transparentStage = false) {
+    this.transparentStage = transparentStage;
+    const gl = canvas.getContext("webgl2", { alpha: transparentStage, antialias: true, powerPreference: "high-performance" });
     if (!gl) throw new Error("WebGL2 is not available in this browser");
     this.gl = gl;
     this.pack = pack;
@@ -572,7 +576,7 @@ export class GlRenderer {
     this.uniform(prog, U.grey, mat.grey);
     this.uniform(prog, U.cutoff, cutout ? mat.cutoff : 0);
     this.uniform(prog, U.sheet, mat.sheet ?? 0);
-    this.uniform(prog, U.emissive, mat.emissive);
+    this.uniform(prog, U.emissive, (mat.flags & MATERIAL_NIGHT) !== 0 ? mat.emissive * this.night : mat.emissive);
     if (last[U.uv] !== mesh) {
       last[U.uv] = mesh;
       gl.uniform4fv(at[U.uv]!, this.meshes[mesh]!.uv ?? WHOLE_UV);
@@ -677,6 +681,7 @@ export class GlRenderer {
     }
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.frame);
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, p.frame);
+    this.night = lampsOn(p.frame);
 
     // Resource changes first, in order.
     for (const u of p.uploads) {
@@ -735,7 +740,7 @@ export class GlRenderer {
     this.shadows(p, finish ? this.post.fbs[0]! : null);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     const sky = finish ? p.sky : p.skyShown;
-    gl.clearColor(sky[0]!, sky[1]!, sky[2]!, 1);
+    gl.clearColor(sky[0]!, sky[1]!, sky[2]!, this.transparentStage ? 0 : 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     let step = -1;
     for (let d = 0; d < p.drawCount; d++) {
@@ -989,7 +994,7 @@ export class GlRenderer {
       gl.clear(gl.DEPTH_BUFFER_BIT);
     }
     // A lit frame's dome goes at the far end of the view, where the opaque steps left it.
-    if (s === STEP_FAR_SEE && (p.lit || p.frame[FRAME.eyes + 3]! > 0)) {
+    if (s === STEP_FAR_SEE && !this.transparentStage && (p.lit || p.frame[FRAME.eyes + 3]! > 0)) {
       this.use(PROGRAM.sky, p);
       if (p.lit) this.maps(this.sky, MAP_ROLES.length);
       this.set(false, false, false);

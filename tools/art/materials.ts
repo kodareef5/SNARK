@@ -6,7 +6,7 @@ import { HAS_FACADES, facadeMaterials, facadeMeshes } from "../facade/build.ts";
 import { resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type PackMaterial, type PackTexture } from "../../shared/pack/pack.ts";
+import { MATERIAL_CUTOUT, MATERIAL_NIGHT, MATERIAL_TWO_SIDED, parsePack, type PackMaterial, type PackTexture } from "../../shared/pack/pack.ts";
 import { REGION_BASE, nearestColour } from "../../shared/pack/palette.ts";
 import { LAST_STEP, STEP0_SIZE, stepOf, stepSize, type TextureRole } from "../../shared/pack/texture.ts";
 import type { TextureSource } from "../pack/encode.ts";
@@ -31,7 +31,7 @@ export function materialsOf(asset: Asset): Material[] {
   const spec = asset.spec;
   if (spec.kind === "sky") return [{ name: "sky", id: `${asset.id}/sky`, spec: { base: spec.moon, regions: { mask: spec.low, mask2: spec.high }, data: true }, dir: asset.dir }];
   if (spec.kind === "water") return [{ name: "waves", id: `${asset.id}/waves`, spec: { regions: { mask: spec.long, mask2: spec.short }, data: true }, dir: asset.dir }];
-  if (spec.kind !== "creature" && spec.kind !== "pieces") return [];
+  if (spec.kind !== "creature" && spec.kind !== "pieces" && spec.kind !== "human-bodies") return [];
   // A creature's worn saddles and its saddled model name their materials as its body does, in the one list.
   const named: Readonly<Record<string, MaterialSpec>> = spec.kind === "creature" ? Object.assign({}, spec.materials, ...(spec.worn ?? []).map((w) => w.materials ?? {}), spec.saddled?.materials) : (spec.materials ?? {});
   return Object.entries(named).map(([name, m]) => ({ name, id: m.id ?? `${asset.id}/${name}`, spec: m, dir: m.dir ?? asset.dir }));
@@ -147,7 +147,7 @@ export function describe(m: Material, top: number, palette: Uint8Array, layer = 
   }
   const material: PackMaterial = {
     id: m.id, base: place("base"), normal: place("normal"), mro: place("mro"), mask: place("mask"), mask2: place("mask2"), tint, grey, emissive: m.spec.emissive ?? 0,
-    flags: (m.spec.twoSided ? MATERIAL_TWO_SIDED : 0) | (cutout ? MATERIAL_CUTOUT : 0), cutoff: cutout ? (m.spec.cutout === true ? 0.5 : (m.spec.cutout as number)) : 0, span: m.spec.tiles ?? 0,
+    flags: (m.spec.twoSided ? MATERIAL_TWO_SIDED : 0) | (cutout ? MATERIAL_CUTOUT : 0) | (m.spec.night ? MATERIAL_NIGHT : 0), cutoff: cutout ? (m.spec.cutout === true ? 0.5 : (m.spec.cutout as number)) : 0, span: m.spec.tiles ?? 0,
   };
   if (layered) material.layer = place("layer");
   if (m.spec.sheet) material.sheet = m.spec.sheet;

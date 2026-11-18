@@ -407,7 +407,12 @@ test("on S2's fabricator: off with no gasoline the button is greyed; turned on f
       return -1;
     };
     build();
+    while (rowOf(polymer) < 0 && f.find(KEY_STATION_PAGE + 2)?.interactive) {
+      screen.pointer(0, KEY_STATION_PAGE + 2, 0, s);
+      build();
+    }
     const p = rowOf(polymer);
+    expect(p).toBeGreaterThanOrEqual(0);
     expect([code, text(f, KEY_STATION_FIRE), text(f, KEY_STATION_LIGHT), f.find(KEY_STATION_LIGHT)!.interactive, text(f, row(p, RECIPE_STATUS))]).toEqual([P.RESULT_OK, "off: no gasoline in it", "Turn on", false, "must be on, with fuel"]);
     h.host.items.mint(rec, id(core, "gasoline"), 1);
     h.run(300);

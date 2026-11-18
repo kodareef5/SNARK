@@ -99,7 +99,7 @@ test("a textured draw is drawn undyed where its material has no masks, and by a 
   const [any, undyed, whole] = [PROGRAMS.surface!(tier, "astc"), PROGRAMS.surfaceUndyed!(tier, "astc"), PROGRAMS.surfaceUndyedWhole!(tier, "astc")];
   expect([any, PROGRAMS.surfaceWhole!(tier, "astc"), undyed, whole].map((t) => outputs(t.vertex))).toEqual([35, 34, 17, 16]);
   expect([any, undyed, whole].map((t) => [t.fragment.split("discard").length - 1, t.fragment.split("texture(uMask").length - 1])).toEqual([[2, 2], [2, 0], [0, 0]]);
-  expect(whole.fragment).toContain("vec3 albedo = base.rgb * uTint;\n  o = vec4(shown(lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, skyFrom(reflect(-v, n)), shade) + through(albedo, mro, n, uSheet, shade) + glow(base), vRel), cover);");
+  expect(whole.fragment).toContain("vec3 albedo = base.rgb * uTint;\n  o = vec4(shown(lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, skyFrom(reflect(-v, n)), shade) + through(albedo, mro, n, uSheet, shade) + albedo * uEmissive, vRel), cover);");
 });
 
 test("a tier's programs are every one its frames may draw with, each once, the same down the governor's steps", () => {

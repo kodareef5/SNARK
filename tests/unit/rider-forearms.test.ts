@@ -64,7 +64,7 @@ test("native full outfits clear upright bars with bounded forearm alignment and 
  let minimum=Infinity,residual=0,jointError=0,handError=0,oldCuff=Infinity,count=0,limbTwist=0;
  for(const rig of source.header.rigs){
   const rest=Float32Array.from(rig.rest),prefix=`core:${rig.id}/`;
-  const outfits=["","armor/cloth/","armor/hide/"].map(gear=>["head","torso","legs","feet"].map(slot=>meshes.find(m=>m.id===`${prefix}${gear}${slot}`)!));
+  const outfits=["","armor/cloth/","armor/hide/","armor/meridian/"].map(gear=>["head","torso","legs","feet"].map(slot=>meshes.find(m=>m.id===`${prefix}${gear}${slot}`)!));
   outfits[1]!.push(outfits[0]![0]!);outfits[2]!.push(outfits[0]![0]!);
   for(const profile of rig.grips!)for(const look of looks())for(const t of [targets(),targets(true)]){
    const scale=new Float32Array(HUMAN_BONES*3);lookScales(look,scale);
@@ -79,7 +79,7 @@ test("native full outfits clear upright bars with bounded forearm alignment and 
    for(const outfit of outfits){for(const mesh of [...outfit,glove])minimum=Math.min(minimum,clearance(mesh,after.rows,t));count++;}
   }
  }
- expect(count).toBe(144);expect(oldCuff).toBeLessThan(-.01);expect(minimum).toBeGreaterThanOrEqual(0);
+ expect(count).toBe(256);expect(oldCuff).toBeLessThan(-.01);expect(minimum).toBeGreaterThanOrEqual(0);
  expect(residual).toBeLessThan(.000001);expect(jointError).toBeLessThan(.000001);expect(handError).toBeLessThan(.000002);
  expect(limbTwist).toBeLessThan(75*Math.PI/180+.00001);expect(limbTwist).toBeGreaterThan(Math.PI/4);
 });

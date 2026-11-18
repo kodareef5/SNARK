@@ -71,26 +71,16 @@ type Out = number[] | Float32Array | Float64Array;
 
 /**
  * Street lamps that still work light at dusk and go out at dawn: wholly on with the true sun (sky.ts `trueSun`) at the
- * horizon or under it, wholly off from LAMPS_OFF up, between the two by smoothstep.
+ * horizon or under it, wholly off from LAMPS_OFF up, between the two by smoothstep. So does a material that glows only
+ * by night (shared/pack/pack.ts `MATERIAL_NIGHT`), its emissive scaled by this for the frame.
  */
 export const LAMPS_OFF = 0.12;
 
-/** How much the lamps are on in this frame, 0 to 1. The twin of the GLSL `lampsOn`. */
+/** How much the lamps are on in this frame, 0 to 1. */
 export function lampsOn(frame: Numbers): number {
   // The true sun is the moon's direction turned round.
   const t = Math.min(1, Math.max(0, (LAMPS_OFF + frame[FRAME.moon + 1]!) / LAMPS_OFF));
   return t * t * (3 - 2 * t);
-}
-
-/**
- * The light a material's base colour gives out where its alpha marks it to glow, as the lamps are on: `emissive` the
- * material's (shared/pack/pack.ts), `base` linear with its alpha. The twin of the textured text's `glow`.
- */
-export function glow(out: Out, base: Numbers, emissive: number, on: number): void {
-  const k = emissive * on * base[3]!;
-  out[0] = base[0]! * k;
-  out[1] = base[1]! * k;
-  out[2] = base[2]! * k;
 }
 
 /** A display value as light, and light as a display value: the sRGB curve. */
@@ -597,12 +587,6 @@ ${LIGHT}${THROUGH}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
 }
-float lampsOn() {
-  return smoothstep(${f(LAMPS_OFF)}, 0.0, fTrueSun.y);
-}
-vec3 glow(vec4 base) {
-  return uEmissive > 0.0 ? base.rgb * (uEmissive * lampsOn() * base.a) : vec3(0.0);
-}
 void main() {
 ${drops ? "  if (handDrops()) discard;\n" : ""}  vec4 base = texture(uBase, vUv);
 ${dyed ? "  vec3 mask = texture(uMask, vUv).rgb;\n  vec3 mask2 = texture(uMask2, vUv).rgb;\n" : ""}  vec3 mro = texture(uMro, vUv).rgb;
@@ -612,7 +596,7 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   float shade = sunShadow(vRel, sunward(normalize(gl_FrontFacing ? vNormal : -vNormal), uSheet));
   float open = skyOpen(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), overGround(vRel), uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), uSkin > 0.5 ? 0.0 : 1.0);
   vec3 albedo = ${layered ? `wounded(${albedo}, mro)` : albedo};
-  o = vec4(shown(lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, skyFrom(reflect(-v, n)), shade) + through(albedo, mro, n, uSheet, shade) + glow(base), vRel), cover);
+  o = vec4(shown(lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, skyFrom(reflect(-v, n)), shade) + through(albedo, mro, n, uSheet, shade) + albedo * uEmissive, vRel), cover);
 }`;
 }
 
