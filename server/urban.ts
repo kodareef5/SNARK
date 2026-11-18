@@ -459,6 +459,12 @@ export class Urban {
     return !!push && !!host && world.tick < push.until && ents.vx[e]! * push.x + ents.vz[e]! * push.z > .12 && !this.occupied(pid, host);
   }
 
+  /** Public automatic parking brake. A driven car's held controls never enter a contact snapshot. */
+  parkingBrake(e: number): boolean {
+    const def = this.ctx.world.reg.vehicle[this.ctx.world.ents.kind[e]!];
+    return !!def && isWheelVehicle(def) && !this.drivers.has(e) && !this.recoveryCoasting(e);
+  }
+
   /** Empty parked vehicles keep their place when a protected foreign tribe hits them. */
   parked(e: number): boolean {
     const { world } = this.ctx, a = world.ents, v = a.vrow[e]!;
@@ -622,7 +628,10 @@ export class Urban {
     return this.begin(c.pid, pid, nearest.id, occupant ? 'carjack' : 'enter');
   }
 
-  dismount(c: Client): void {
+  dismount(c: Client, fromUse = false): void {
+    // E is both board and exit. An input sent while the driver or passenger still saw an
+    // empty local seat cannot start or cancel an exit after the server commits boarding.
+    if (fromUse && (c.vehicleSeatSnapshot <= 0 || c.inputAcks[c.inputAt & c.inputs.mask]! < c.vehicleSeatSnapshot)) return;
     for (const effect of this.occupancy.cancel(c.pid, this.ctx.world.tick)) this.apply(effect);
     const seat = this.occupancy.seatOf(c.pid);
     if (!seat) return;
@@ -750,9 +759,8 @@ export class Urban {
       // A car nobody drives stops on its handbrake, and once at rest is looked at again only once a REST_TICKS, each on
       // its own tick of them, to see whether the ground under it went.
       const driven = this.drivers.has(e);
-      const push = this.pushes.get(pid);
       // Catch the car on its brake as the shove dies out, before gravity rolls it back downhill.
-      const pushed = push && world.tick < push.until && ents.vx[e]! * push.x + ents.vz[e]! * push.z > .12 && !this.occupied(pid, host);
+      const pushed = this.recoveryCoasting(e);
       if (!pushed) this.pushes.delete(pid);
       if (!driven && (!this.resting(e) || (world.tick + e) % REST_TICKS === 0)) {
         ents.loadBody(e, this.body);
@@ -1027,7 +1035,7 @@ export class Urban {
     }
     if (effect.type === 'detach') {
       const c = this.client(effect.actor);
-      if (c) game.release(c);
+      if (c) { c.vehicleSeatSnapshot = 0; game.release(c); }
       const e = this.entity(effect.actor);
       if (e >= 0 && makeHandle(e, ents.gen[e]!) === effect.actorHandle) { ents.setSeat(e, -1); ents.driven[e] = 0; }
       const host = this.hosts.get(effect.host), rec = records.byPid.get(effect.host);
@@ -1038,7 +1046,7 @@ export class Urban {
     const removed = action.kind === 'exit' ? action.actor : action.victim;
     if (removed) {
       const c = this.client(removed);
-      if (c) { game.release(c); c.ownDirty = true; }
+      if (c) { c.vehicleSeatSnapshot = 0; game.release(c); c.ownDirty = true; }
       const e = this.entity(removed), expected = action.kind === 'exit' ? action.actorHandle : action.victimHandle;
       if (e >= 0 && makeHandle(e, ents.gen[e]!) === expected && effect.landing) {
         ents.setSeat(e, -1); ents.driven[e] = 0; ents.stance[e] = STANCE_STAND;
@@ -1065,7 +1073,7 @@ export class Urban {
       ents.setSeat(e, host.entity, slot + 1); ents.stance[e] = STANCE_CROUCH;
       ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
       if (!c) ents.driven[e] = 3;
-      if (c) { c.open = 0; c.ownDirty = true; }
+      if (c) { c.vehicleSeatSnapshot = -1; c.open = 0; c.ownDirty = true; }
       this.pin(e, host.entity, seat.anchor, !!seat.driver);
     }
     if (action.kind === 'carjack') {
