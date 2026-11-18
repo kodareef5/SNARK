@@ -36,6 +36,7 @@ export interface VehicleContactsContext {
   records: Records;
   combat: Combat;
   driverOf(vehicle: number): EntityRecord | null;
+  parkingBrake?(vehicle: number): boolean;
   /** Native occupancy may approve an entrant's path through only its own host during enter/carjack. */
   boarding?(actor: number, vehicle: number): boolean;
   /** Only an empty, parked protected foreign vehicle is anchored against an unauthorized opposing actor. */
@@ -114,6 +115,7 @@ export class VehicleContacts {
       const victim = records.byPid.get(ents.pid[e]!)!, definition = world.reg.defs[kind];
       const scale = ents.grown[e] ? youngScale(world.reg.birthScale[kind]!, ents.span[e]!, ents.grown[e]!, world.tick) : 1;
       row.handle = makeHandle(e, ents.gen[e]!); row.epoch = world.history.motionEpoch(e); row.kind = kind;
+      row.parkingBrake = !!other && (this.ctx.parkingBrake?.(e) ?? false);
       row.vehicle = !!other; row.grounded = (ents.flags[e]! & F_GROUNDED) !== 0;
       ents.loadBody(e, this.publicBody);
       publicContactBody(this.publicBody, row.body);

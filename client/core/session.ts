@@ -91,6 +91,7 @@ import {
   readBody,
   writeCommand,
   writeHello,
+  PASSENGER_VIEW_DELAY,
   writeInputs,
 } from "../../shared/net/protocol.ts";
 import { LOOK_BYTES } from "../../shared/anim/look.ts";
@@ -794,7 +795,8 @@ export class ClientSession {
   sampleRemote(out: RemoteSample, delayTicks = this.remoteDelay): void {
     out.count = 0;
     out.died = this.died;
-    const at = this.renderClock - delayTicks;
+    const renderAt = this.renderClock - delayTicks;
+    const at = this.own.seat && this.driving < 0 ? Math.max(renderAt, this.latestSnapshot - PASSENGER_VIEW_DELAY) : renderAt;
     out.tick = at;
     this.shown = at;
     let a: EntityView | null = null;

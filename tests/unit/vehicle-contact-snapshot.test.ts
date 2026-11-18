@@ -17,7 +17,7 @@ function snapshot() {
     b.kind = world.kind('core:compact'); b.vehicle = true; b.fuel = 40; b.vehiclePayloadMass = 280;
     b.x = 40; b.z = 40;
     for (let t = 0; t < 20; t++) stepVehicleBody(world, b, -45, 127, 0, COMPACT_VEHICLE);
-    p.kind = b.kind; p.vehicle = true; p.grounded = b.grounded;
+    p.kind = b.kind; p.vehicle = true; p.parkingBrake = i % 2 === 0; p.grounded = b.grounded;
     contactBody(b, p.state);
   }
   return out;
@@ -33,6 +33,7 @@ test('contact snapshot carries only public motion with exact capsule shapes and 
     const a = src.rows[i]!, b = dst.rows[i]!;
     for (const key of [...CONTACT_LINEAR, ...CONTACT_MECHANICAL]) expect(b.body[key]).toBe(Math.fround(a.body[key]));
     expect([b.handle, b.epoch, b.response, b.mass, b.radius, b.height]).toEqual([a.handle, a.epoch, a.response, 1100, a.radius, a.height]);
+    expect(b.parkingBrake).toBe(a.parkingBrake);
     expect(b.body.vehiclePayloadMass).toBe(0); expect(b.body.fuel).toBe(0);
   }
 });
@@ -102,4 +103,16 @@ test('bounded decoder rejects out-of-map motion, unreasonable shapes and duplica
   const handle = p.handle;
   invalid(() => { p.handle = src.owner; }, () => { p.handle = handle; });
   invalid(() => { src.count = 2; src.rows[1]!.handle = handle; }, () => { src.count = 1; });
+});
+
+
+test('a reused decoder row clears the vehicle-only parking bit before reading the next actor and packet tail', () => {
+  const src = snapshot(), dst = new ContactSnapshot(), w = new BitWriter(1024), r = new BitReader(); src.count = 1;
+  const row = src.rows[0]!; row.parkingBrake = true;
+  writeContacts(w, src, 8000); r.reset(w.bytes()); expect(readContacts(r, dst, 100)).toBe(true);
+  expect(dst.rows[0]!.parkingBrake).toBe(true);
+  row.vehicle = false; row.body.vehicle = false;
+  w.reset(); writeContacts(w, src, 8000); w.u32(0xcafef00d); r.reset(w.bytes());
+  expect(readContacts(r, dst, 101)).toBe(true); expect(dst.rows[0]!.parkingBrake).toBe(false);
+  expect(r.u32()).toBe(0xcafef00d); expect(r.overflow).toBe(false);
 });

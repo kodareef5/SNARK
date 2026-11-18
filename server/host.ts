@@ -587,6 +587,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   game.onVehicleStep = e => urban.impact(e);
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
+    parkingBrake: e => urban.parkingBrake(e),
     boarding: (actor, vehicle) => urban.boarding(actor, vehicle),
     anchored: (e, opposing) => {
       const vehicle = records.byPid.get(world.ents.pid[e]!);
@@ -596,7 +597,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   });
   // The use button gets off a mount, and sets down what is in the arms.
   death.riding = (c) => impale.held(c.pid) || urban.riding(c) || riding.riding(c) || carry.holding(c) >= 0;
-  death.offMount = (c) => (impale.held(c.pid) ? undefined : urban.riding(c) ? urban.dismount(c) : riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
+  death.offMount = (c) => (impale.held(c.pid) ? undefined : urban.riding(c) ? urban.dismount(c, true) : riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
   const breeding = new Breeding({ world, game, records, rules, lists, deadlines, creatures, persistence, full: (team) => taming.full(team), notice: (pid, text) => notice(pid, text), place: (rec) => death.place(rec), refresh: (rec) => refreshBody(rec), meal: (rec) => taming.meal(rec) }, (opts.seed ?? 1) + 89);
   taming.onMate = (rec, what) => breeding.order(rec, what);
   const corpses = new Corpses({ world, game, records, items, deadlines, rules, lists, progression, death }, (opts.seed ?? 1) + 103);
