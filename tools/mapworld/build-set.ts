@@ -4,8 +4,9 @@ import { basename, join, resolve } from "node:path";
 import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { partsFolder, partsOf, readHead } from "../../shared/world/mapfile.ts";
 import { buildMap } from "./build.ts";
+import type { EntranceReport } from "./bridge-entrances.ts";
 
-export const MAP_PRODUCER_REVISION = "road-deck-2";
+export const MAP_PRODUCER_REVISION = "road-deck-3";
 
 /** Verify the exact raw and compressed bytes that normal /map routes serve beside the map. */
 export function verifyMapPackage(file: string) {
@@ -20,8 +21,15 @@ export function verifyMapPackage(file: string) {
       if (!decoded.equals(raw)) throw new Error(`Map ${encoding} mismatch: ${part.name}`);
     }
   }
+  const entranceFile = file.replace(/\.snmap$/, ".entrances.json");
+  let entrances: { file: string; count: number; sha256: string } | undefined;
+  if (existsSync(entranceFile)) {
+    const data = readFileSync(entranceFile), report = JSON.parse(data.toString()) as EntranceReport;
+    if (report.mapHash !== head.hash) throw new Error(`Entrance metadata belongs to another map: ${entranceFile}`);
+    entrances = { file: basename(entranceFile), count: report.entrances.length, sha256: new Bun.CryptoHasher("sha256").update(data).digest("hex") };
+  }
   return { file: basename(file), id: head.id, hash: head.hash, bytes: bytes.length,
-    sha256: new Bun.CryptoHasher("sha256").update(bytes).digest("hex"), parts: parts.length };
+    sha256: new Bun.CryptoHasher("sha256").update(bytes).digest("hex"), parts: parts.length, ...(entrances ? { entrances } : {}) };
 }
 
 export async function buildMapSet(directory: string, names: readonly string[], release = false): Promise<void> {

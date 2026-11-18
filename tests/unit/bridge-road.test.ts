@@ -11,10 +11,11 @@ import { compileContent } from "../../shared/content/registry.ts";
 import { castWorld, HIT_NONE, rayHit } from "../../shared/world/ray.ts";
 import { flatWorld } from "../fixtures/world.ts";
 import { gridAt } from "../../tools/mapworld/base.ts";
-import { makeBridges, roadDeckSlab, worldFrame, type DeckPoint } from "../../tools/mapworld/bridges.ts";
-import { Mason } from "../../tools/mapworld/ruin-geometry.ts";
+import { bridgeHoles, makeBridges, roadDeckSlab, worldFrame, type DeckPoint } from "../../tools/mapworld/bridges.ts";
+import { inRing, Mason } from "../../tools/mapworld/ruin-geometry.ts";
 import type { Site } from "../../tools/mapworld/statics.ts";
 import type { Way } from "../../tools/mapworld/ways.ts";
+import { gradeRoadEntrances, type RoadEntrance } from "../../tools/mapworld/bridge-earthwork.ts";
 
 test("road slab definitions append without renumbering existing kinds and use the drawn convex surface", () => {
   const old = compileContent(CORE_CONTENT.filter(d => !d.id.startsWith("core:zzruin"))).registry!;
@@ -116,4 +117,73 @@ test("road bridge feet meet dry ground and clear at driving speed in both direct
     expect(up).toBeGreaterThan(.8); expect(crash).toBe(0); expect(landing).toBeLessThan(12);
     expect(Math.abs(car.z - 128)).toBeLessThan(.1);
   }
+});
+
+test("final dry earthwork removes cross-width entrance lips after excavation without filling water, gaps or underpasses", () => {
+  for (const yaw of [0, 17, 90, 157]) {
+    const w = flatWorld(4), grid = gridAt([-128, -128, 128, 128]), height = new Float32Array(grid.nx * grid.nz);
+    const water = new Uint8Array(height.length), gaps = new Uint8Array(height.length);
+    // The final building/bridge cuts have left a shallow depression over the driving width, not just its centre.
+    height.fill(-.35);
+    const angle = yaw * Math.PI / 180, dx = Math.cos(angle), dz = -Math.sin(angle);
+    const deck: DeckPoint[] = Array.from({ length: 6 }, (_, i) => ({ x: 128 + dx * i * 3, z: 128 + dz * i * 3, y: .25 + i * .25, yaw, gap: false }));
+    const mason = new Mason(worldFrame(grid), 0);
+    deck.forEach((d, i) => {
+      const slab = roadDeckSlab(deck, i, i === 0 ? 0 : undefined);
+      for (const side of [-6, -2, 2, 6]) mason.put(slab.shape, d.x - dz * side, slab.y, d.z + dx * side, "concrete", slab.yaw);
+    });
+    const entrance: RoadEntrance = { ...deck[0]!, dx, dz, width: 16, slabs: mason.pieces };
+    const at = (x: number, z: number) => Math.round((grid.z1 - z) / 2) * grid.nx + Math.round((grid.x1 - x) / 2);
+    const wet = at(128 - dz * 5, 128 + dx * 5), gap = at(128 + dz * 5, 128 - dx * 5), below = at(128 + dx * 8, 128 + dz * 8);
+    water[wet] = 1; gaps[gap] = 1; height[below] = -5;
+    const site = { ground: { grid, height, water, gaps } } as unknown as Site;
+    expect(gradeRoadEntrances(site, [entrance])).toBeGreaterThan(30);
+    expect(height[wet]).toBeCloseTo(-.35); expect(height[gap]).toBeCloseTo(-.35); expect(height[below]).toBe(-5);
+    // Excluded samples sit outside these wheel tracks or beyond the first seam.
+    for (let j = 0; j < grid.nz; j++) for (let i = 0; i < grid.nx; i++) w.hf.setSample(i, j, height[(grid.nz - 1 - j) * grid.nx + grid.nx - 1 - i]!);
+    for (const p of mason.pieces) w.structs.add(w.kind(p.kind), p.x, p.y, p.z, Math.round(p.yaw * 65536 / 360) & 65535, 0, 1e4);
+    for (const side of [-1.5, 0, 1.5]) {
+      let previous = NaN, largest = 0;
+      for (let step = 0; step <= 800; step++) {
+        const along = -4 + step / 100, x = 128 + dx * along - dz * side, z = 128 + dz * along + dx * side;
+        expect(castWorld(w, x, 5, z, 0, -1, 0, 10)).not.toBe(HIT_NONE);
+        const top = 5 - rayHit.t;
+        if (Number.isFinite(previous)) largest = Math.max(largest, Math.abs(top - previous));
+        previous = top;
+      }
+      expect(largest).toBeLessThan(.05);
+    }
+  }
+});
+
+test("emitted driving lanes meet on native lattice geometry and share one terminal profile across a crossfall", () => {
+  const source = mkdtempSync(join(tmpdir(), "snark-road-lanes-"));
+  try {
+    mkdirSync(join(source, "blocks")); writeFileSync(join(source, "blocks/places.json"), "[]");
+    for (const yaw of [17, 35, 157]) {
+      const a = yaw * Math.PI / 180, dx = Math.cos(a), dz = -Math.sin(a), grid = gridAt([-256, -256, 256, 256]);
+      const points: [number, number][] = [0, 35, 70].map(d => [256 - (240 + dx * d), 240 + dz * d - 256]);
+      const way: Way = { id: 1, kind: "road_bridge", name: "fixture", class: "primary", lanes: 4, layer: 1, width_m: 16, closed: false, length_m: 70, points };
+      writeFileSync(join(source, "blocks/ways.json"), JSON.stringify([way]));
+      const n = grid.nx * grid.nz;
+      const site = { source, ground: { grid, gaps: new Uint8Array(n), water: new Uint8Array(n), height: new Float32Array(n), heaps: { owner: new Int32Array(n).fill(-1) } },
+        groundAt: (x: number, z: number) => 5 + ((z - 240) * dx - (x - 240) * dz) * .08,
+        waterAt: () => 0, toLattice: (e: number, no: number) => [256 - e, 256 + no] } as unknown as Site;
+      const pieces: Mason[] = [], made = makeBridges(site, m => { pieces.push(m); return true; }), w = flatWorld(8);
+      const road = made.records[0]!; expect(road.entrances).toHaveLength(2);
+      for (const e of road.entrances) {
+        expect(new Set(e.slabs.slice(0, 4).map(p => p.y)).size).toBe(1);
+        // The same holes used by levelFloor must protect the actual dry wheel approach from later building cuts.
+        const frame = { ...worldFrame(grid), x: e.x, z: e.z, width: 40, depth: 40, rings: [[[-20, -20], [20, -20], [20, 20], [-20, 20]]] as [number, number][][] };
+        const protectedFrame = bridgeHoles(frame, made.corridors, 1, 12);
+        for (const side of [-1.5, 0, 1.5]) expect(protectedFrame.rings.slice(1).some(r => inRing(-e.dx * 4 - e.dz * side, -e.dz * 4 + e.dx * side, r))).toBe(true);
+      }
+      for (const p of pieces[0]!.pieces) w.structs.add(w.kind(p.kind), p.x, p.y, p.z, Math.round(p.yaw * 65536 / 360) & 65535, 0, 1e4);
+      for (const side of [-1.5, 0, 1.5]) for (let sample = 0; sample <= 350; sample++) {
+        const d = sample / 5, x = 240 + dx * d - dz * side, z = 240 + dz * d + dx * side;
+        expect(castWorld(w, x, 20, z, 0, -1, 0, 25)).not.toBe(HIT_NONE);
+        expect(20 - rayHit.t).toBeGreaterThan(4.8);
+      }
+    }
+  } finally { rmSync(source, { recursive: true, force: true }); }
 });

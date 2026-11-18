@@ -25,8 +25,10 @@ bun run check
 To refresh several maps without changing an existing world, build a new directory:
 
 ```sh
-bun tools/mapworld/build-set.ts var/maps/road-deck-2 <map-name> <another-map-name>
-bun server/main.ts --map var/maps/road-deck-2/<map-name>.snmap --db var/worlds/<new-world>.db
+bun tools/mapworld/build-set.ts var/maps/road-deck-3 <map-name> <another-map-name>
+bun tools/mapworld/bridge-entrances.ts var/maps/road-deck-3/<map-name>.snmap
+bun tools/mapworld/bridge-drive.ts var/maps/road-deck-3/san-francisco.snmap 1489.6 1155
+bun server/main.ts --map var/maps/road-deck-3/<map-name>.snmap --db var/worlds/<new-world>.db
 ```
 
 `build-set.ts` builds each map serially and refuses an existing output directory.
