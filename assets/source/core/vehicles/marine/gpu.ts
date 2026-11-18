@@ -4,8 +4,9 @@
 //
 //   bun assets/source/core/vehicles/marine/gpu.ts --out DIR core:thunderbolt ... [--shots dock,low,helm] [--size 1280x720]
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { findChrome } from "../../../../../tools/chrome.ts";
 import { litProbe } from "../../../../../tools/probe-lit.ts";
 import { Shot } from "../../../../../tools/probe-lit/shot.ts";
 import { encodePng } from "../../../../../tools/snap/png.ts";
@@ -18,7 +19,7 @@ if (!out) throw new Error("--out DIR");
 const [W, H] = (value("size") ?? "1280x720").split("x").map(Number) as [number, number];
 const SHOTS = (value("shots") ?? "dock,low,helm").split(",");
 const ids = args.filter((a, i) => a.startsWith("core:") && !["out", "size", "shots"].includes(args[i - 1]?.slice(2) ?? ""));
-const chrome = [process.env.CHROME, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium"].find((p) => p && existsSync(p));
+const chrome = findChrome();
 if (!chrome) throw new Error("no Chrome: set CHROME");
 
 const { pack, files } = await gameOf(value("source"));

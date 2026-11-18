@@ -70,7 +70,7 @@ above, the same bytes every run; any new generated originals with their prompts 
 
 ## Looking at it
 
-`zsh tex/paint/look.sh <a folder of yours> --maps` (from the pteranodon's folder, about a minute) composes every
+`bash tex/paint/look.sh <a folder of yours> --maps` (from the pteranodon's folder, about a minute) composes every
 painter's current layers, puts them on the built animal outside the repository, and draws it with the game's own
 renderer: from below against the sky at the four distances it is seen (`sizes_*.png`), from above, three quarters,
 the side, the head close, from the rider's seat, the inner wing from above and below, the feet; in the design's dyes

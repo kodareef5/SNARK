@@ -36,7 +36,7 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import { buildClientApart } from "../build-client.ts";
 import { placeOf, type Place } from "./census.ts";
 import { benchHills } from "./terrain.ts";
-import { findChrome } from "../chrome.ts";
+import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 
 type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
@@ -255,7 +255,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
         const pixels = r.view ? ["--window-size=1920,1080", `--force-device-scale-factor=${r.scale}`] : ["--window-size=390,669", "--force-device-scale-factor=3"];
         const hold = r.view ? holdAt(server, CITY_PLACES[r.view]) : null;
         rmSync(join(profile, "DevToolsActivePort"), { force: true });
-        const browser = Bun.spawn([CHROME!, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...pixels, "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
+        const browser = Bun.spawn([CHROME!, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...pixels, "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
         const page = await devtools(profile);
         if (r.cpu) await page.send("Emulation.setCPUThrottlingRate", { rate: r.cpu });
         await page.send("Page.navigate", { url: link });

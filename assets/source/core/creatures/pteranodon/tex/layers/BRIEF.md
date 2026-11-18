@@ -58,7 +58,7 @@ Four pictures on the two materials' layouts, RGBA, 8 bits a channel, sRGB colour
 
 - **It reads.** At 20 m overhead a player can tell step 1 from step 2 from step 3 at a glance; from below at 60 m
   step 3 still says "nearly dead" (the torn and bloodied membrane against the sky); a corpse at decay 3 says "picked
-  over and rotting". `zsh tex/paint/look.sh <a folder of yours> --maps --stages` (from the pteranodon's folder, about a
+  over and rotting". `bash tex/paint/look.sh <a folder of yours> --maps --stages` (from the pteranodon's folder, about a
   minute, no Blender) draws it in the game's own renderer at every stage from several sides, close and far, in three
   dyes; judge it there.
 - **It belongs on this animal.** Wounds where a flyer is struck: the neck, the chest and flanks, the leading edge of

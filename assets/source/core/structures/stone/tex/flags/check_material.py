@@ -9,7 +9,7 @@ from scipy.ndimage import gaussian_filter, label, map_coordinates, binary_fill_h
 from geometry import ROOT,N,MM,load_geometry
 
 OUT=ROOT/'checks';OUT.mkdir(exist_ok=True)
-FONT=ImageFont.truetype('/System/Library/Fonts/Helvetica.ttc',18)
+FONT=ImageFont.truetype(next(p for p in ('/System/Library/Fonts/Helvetica.ttc','/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf') if Path(p).exists()),18)
 
 
 def rgb(a):
