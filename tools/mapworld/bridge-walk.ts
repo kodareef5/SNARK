@@ -1,4 +1,4 @@
-import { reportPaths } from "./report-path.ts";
+import { readReport, reportPaths } from "./report-path.ts";
 const paths = reportPaths();
 import { readFileSync, writeFileSync } from "node:fs";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -18,7 +18,7 @@ const reg = compileContent(CORE_CONTENT).registry!; const hf = mapHeightfield(ma
 const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts); placeStatics(map, structs, reg);
 const source = mapNodes(map, hf, reg); const nodes = source ? new NodeField(map.dims, reg, source) : null;
 const world = { hf, structs, ...(nodes ? { nodes: nodes.store } : {}) }; const params = reg.move[reg.index.get("core:survivor")!]!;
-const records = JSON.parse(readFileSync(`${folder}/bridges.json`, "utf8")) as BridgeRecord[];
+const records = readReport<BridgeRecord[]>(folder, "bridges.json", map.dims);
 const results: { id: number; name: string | null; type: string; ok: boolean; message: string }[] = [];
 let steps = 0;
 const move = (b: Body, x: number, z: number, limit = 150): boolean => {
@@ -53,9 +53,9 @@ for (const r of records.filter((r) => r.status === "built" && r.kind !== "breakw
     results.push({ id: r.id, name: r.name, type: `swim ${index + 1}`, ok, message: ok ? "" : `stopped ${b.x.toFixed(2)},${b.y.toFixed(2)},${b.z.toFixed(2)} under ${s.x.toFixed(2)},${s.z.toFixed(2)}` });
   }
 }
-const base = new Base(paths.source); const gaps = paths.world.bridgeGapLayer ? base.bytes(paths.world.bridgeGapLayer) : new Uint8Array(base.n * base.n);
-const broken = regions((i) => gaps[i] === 1, base.n, base.n);
-const gapAt = (x: number, z: number): number => broken.label[Math.round((base.info.size_m - z) / 2) * base.n + Math.round((base.info.size_m - x) / 2)] ?? 0;
+const base = new Base(paths.source); const { nx, nz, sizeX, sizeZ } = base.grid; const gaps = paths.world.bridgeGapLayer ? base.bytes(paths.world.bridgeGapLayer) : new Uint8Array(nx * nz);
+const broken = regions((i) => gaps[i] === 1, nx, nz);
+const gapAt = (x: number, z: number): number => broken.label[Math.round((sizeZ - z) / 2) * nx + Math.round((sizeX - x) / 2)] ?? 0;
 const touched = new Set(records.flatMap((r) => r.deck.filter((d) => d.gap).map((d) => gapAt(d.x, d.z))).filter(Boolean));
 const filled = map.statics.filter((p) => p.kind.includes("zruin_floor") && gapAt(p.x, p.z));
 const gapAudit = { authored: broken.count, intersectedByWays: touched.size, floorCentresInGap: filled.length };

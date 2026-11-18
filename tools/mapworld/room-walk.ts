@@ -6,7 +6,7 @@ import { Body, stepBody } from "../../shared/sim/character.ts";
 import { mapHeightfield, mapNodes, parseMap, placeStatics } from "../../shared/world/mapfile.ts";
 import { NodeField } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
-import { reportPaths } from "./report-path.ts";
+import { readReport, reportPaths } from "./report-path.ts";
 import type { RuinRecord } from "./ruins.ts";
 
 const paths = reportPaths();
@@ -16,10 +16,10 @@ const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, nu
 const source = mapNodes(map, hf, reg); const nodes = source ? new NodeField(map.dims, reg, source) : null;
 const world = { hf, structs, ...(nodes ? { nodes: nodes.store } : {}) };
 const params = reg.move[reg.index.get("core:survivor")!]!;
-const buildings = JSON.parse(readFileSync(`${paths.folder}/buildings.json`, "utf8")) as RuinRecord[];
+const buildings = readReport<RuinRecord[]>(paths.folder, "buildings.json", map.dims);
 const circuits: { part: number; rooms: RuinRecord["rooms"] }[] = [...buildings];
 if (existsSync(`${paths.folder}/street-clusters.json`)) {
-  const streets = JSON.parse(readFileSync(`${paths.folder}/street-clusters.json`, "utf8")) as { points?: RuinRecord["rooms"][number]["points"] }[];
+  const streets = readReport<{ points?: RuinRecord["rooms"][number]["points"] }[]>(paths.folder, "street-clusters.json", map.dims);
   for (const [i, r] of streets.entries()) if (r.points?.length) circuits.push({ part: -i - 1, rooms: [{ kind: "street-gap", points: r.points }] });
 }
 const failures: { part: number; route: number; kind: string; message: string }[] = []; let routes = 0;

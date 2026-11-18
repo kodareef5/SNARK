@@ -25,14 +25,13 @@ export function readSigns(source: string): Sign[] {
 }
 
 export function makeSigns(site: Site, accept: (m: Mason) => boolean): SignRecord[] {
-  const size = (site.ground.n - 1) * 2;
   const out: SignRecord[] = [];
   for (const sign of readSigns(site.source)) {
     const record: SignRecord = { id: sign.id, inscription: sign.inscription, status: "", letters: [] };
     out.push(record);
     const letters = [...sign.inscription.replace(/ /g, "")];
     if (Math.abs(sign.height_m / LETTER_HEIGHT - 1) > SCALE_SLACK) { record.status = `mapped ${sign.height_m} m tall; the letters stand ${LETTER_HEIGHT} m`; continue; }
-    const line = sign.points.map(([e, n]) => site.toEngine(e, n) as Point);
+    const line = sign.points.map(([e, n]) => site.toLattice(e, n) as Point);
     let [a, b] = [line[0]!, line.at(-1)!];
     const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
     if (length < 0.5) { record.status = "a line too short to read along"; continue; }
@@ -49,7 +48,7 @@ export function makeSigns(site: Site, accept: (m: Mason) => boolean): SignRecord
     const total = widths.reduce((s, w) => s + w, 0);
     const gap = letters.length > 1 ? Math.max(0.6, (length - total) / (letters.length - 1)) : 0;
     let s = length / 2 - (total + gap * (letters.length - 1)) / 2;
-    const m = new Mason(worldFrame(size), 0);
+    const m = new Mason(worldFrame(site.ground.grid), 0);
     for (const [k, letter] of letters.entries()) {
       const w = widths[k]!;
       const mid = s + w / 2;
@@ -70,6 +69,6 @@ export function makeSigns(site: Site, accept: (m: Mason) => boolean): SignRecord
 
 /** Whether engine x and z lie within `reach` metres of a sign's line, for the places a sign stands in for. */
 export function nearSign(site: Site, reach: number): (x: number, z: number) => boolean {
-  const lines = readSigns(site.source).map((s) => s.points.map(([e, n]) => site.toEngine(e, n) as Point));
+  const lines = readSigns(site.source).map((s) => s.points.map(([e, n]) => site.toLattice(e, n) as Point));
   return (x, z) => lines.some((line) => line.some(([px, pz]) => Math.hypot(px - x, pz - z) < reach));
 }

@@ -250,11 +250,10 @@ export function buildAtlases(reg: Registry, palette: Uint8Array, maps: string, o
     const worldFile = join(source, "world/world.json");
     const world: WorldPlaces = existsSync(worldFile) ? JSON.parse(readFileSync(worldFile, "utf8")) : {};
     const base = new Base(source);
-    // The build lays its square of the earth with the map's south-east corner at the square's: x = 0 is its east edge and z = 0 its south.
-    const half = base.info.size_m / 2;
+    // The build lays its rectangle of the earth with the map's south-east corner at the square's: x = 0 is its east edge and z = 0 its south.
     const fromLonLat = (lon: number, lat: number): [number, number] => {
       const [e, n] = base.tm.forward(lon, lat);
-      const [bx, by] = toBox(half - e, half + n);
+      const [bx, by] = toBox(base.grid.east - e, n - base.grid.south);
       return [at1(bx), at1(by)];
     };
     const districts = (world.districts ?? []).map((d) => {

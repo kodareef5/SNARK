@@ -20,13 +20,13 @@ install and give byte-identical layers on 3.12. Run every Python tool with `-I`:
 
 | Step | Tool | Writes |
 | --- | --- | --- |
-| frame | `frame.py` | `map.json`: the local Transverse Mercator square round `city.json`'s centre, its corners, grid and coastal model |
+| frame | `frame.py` | `map.json`: the local Transverse Mercator rectangle round `city.json`'s centre, its size, bounds, corner on the lattice, corners, grid and coastal model |
 | fetch | `fetch.py [tiger dem nlcd fema bathymetry osm]` | `raw/` (ignored), `downloads.json` (request, source, licence line, bytes, SHA-256, time per file), `dem_selection.json`, `blocks/*.overpassql` (`features`: building parts, water, pools, fountains, runways, wheels, with their shapes) |
 | prepare | `prepare.py` | `base/` vectors, 2 m layers, land cover, succession (`biome.png`, desert 10 where `dry_classes` lie), drowned streets, lakes above the sea (`perched_water.*`, with OpenStreetMap's water on the ground and each one's kind), an airfield's paving (`paved.geojson`, roads.png 6), `stats.json` |
 | attributes | `bun tools/mapworld/fetch-attributes.ts <name>` | `base/buildings_attributes.json`; `city.ts` records the download |
 | split | `split.py` | With `footprints.split_by_osm`: USA Structures footprints holding rows of attached buildings cut into OpenStreetMap's outlines, and the buildings it lacks added |
 | future | `future.py` | `base/future_changes.geojson`, `bridge_gaps.png` (a span takes every carriageway of its road), `wrecks.png`, tunnels in `roads.png` |
-| fine | `fine.py` | `*_fine.png` at 8,192 pixels, endpoint corrections, `painted_canopy*` by rule, `reports/canonical-layers.json` |
+| fine | `fine.py` | `*_fine.png` at 8,192 pixels across 8,128 m, endpoint corrections, `painted_canopy*` by rule, `reports/canonical-layers.json` |
 | bathymetry | `bathy.py` | `base/bathymetry/<file>.tif` and `source.json` |
 | labels | `labels.py` | `blocks/labels.json`, `blocks/places.json`, `blocks/height-units.json` (OpenStreetMap's bare heights read as feet where a city's run near 3.28 times USA Structures') |
 | ways | `ways.py` | `blocks/ways.json` (with `bridge:structure`), `blocks/supports.json` (bridge towers mapped in three dimensions), `blocks/stairs.json`, `blocks/signs.json` (lines with an inscription of capitals and a height: letters standing on the ground) |
@@ -34,7 +34,9 @@ install and give byte-identical layers on 3.12. Run every Python tool with `-I`:
 | vocabulary | `vocabulary.py` | `ruins/vocabulary.json`, extending `tools/mapworld/rules/default.json`: the city's districts, recipes, label tables and compositions, and budgets scaled to its footprints |
 | build | `bun tools/mapworld/build.ts <name>` | `var/maps/<name>.snmap` |
 
-The settings `city.json` holds, beyond the sources: `height_zero_m` (the height height.png's zero stands for, -100 m
+The settings `city.json` holds, beyond the sources: `size_m` (a square round `centre`, 8,128 m unless given) or `bounds`
+(west, south, east and north in metres from `centre`, whole chunks: a rectangle, which need not be centred on it), `frame`
+(the lattice column and row of its south-east corner, 2048 and 2048 unless given), `height_zero_m` (the height height.png's zero stands for, -100 m
 unless the ground stands over 555 m), `tiger.counties` (a frame may span counties), `dem.fill` (older lidar projects
 used only where the newest has no ground), `footprints.split_by_osm`, `split_cover` and `split_remainder_m2` (a
 footprint this large that OpenStreetMap only partly draws is cut into its buildings and the remainder),

@@ -3,6 +3,7 @@
 // building stood, flooded rings where tanks stood, courtyards left hollow, and a skirt of spill that stops at the kerb.
 // Every shape is drawn from hashes of the building's id and of places, so a rebuild gives the same heights.
 
+import type { Grid } from "./base.ts";
 import { distanceField, fbm, fillPolygon, hash3, rand3 } from "./raster.ts";
 
 /** What kind of ruin a footprint left. */
@@ -39,13 +40,6 @@ export interface Ruin {
   readonly storeys: number;
   readonly crest: number;
   readonly district: number;
-}
-
-export interface Grid {
-  /** Samples a side, 2 m apart, row 0 at the north. */
-  readonly n: number;
-  readonly half: number;
-  readonly cell: number;
 }
 
 export interface HeapInput {
@@ -111,14 +105,14 @@ function storeysOf(b: Building, tall: number): number {
 
 export function makeHeaps(input: HeapInput): Heaps {
   const { grid, buildings, ground, road, water } = input;
-  const { n, half, cell } = grid;
-  const lift = new Float32Array(n * n);
-  const part = new Uint8Array(n * n);
-  const owner = new Int32Array(n * n).fill(-1);
-  const court = new Uint8Array(n * n);
+  const { nx, nz, cell, west, north } = grid;
+  const lift = new Float32Array(nx * nz);
+  const part = new Uint8Array(nx * nz);
+  const owner = new Int32Array(nx * nz).fill(-1);
+  const court = new Uint8Array(nx * nz);
   const ruins: Ruin[] = [];
-  const toCol = (e: number): number => (e + half) / cell;
-  const toRow = (no: number): number => (half - no) / cell;
+  const toCol = (e: number): number => (e - west) / cell;
+  const toRow = (no: number): number => (north - no) / cell;
   // Spill reaches this far round each ruin, and stands this high at its foot.
   const reach: number[] = [];
   const foot: number[] = [];
@@ -147,15 +141,15 @@ export function makeHeaps(input: HeapInput): Heaps {
     }
     const wc0 = Math.max(0, Math.floor(c0) - 1);
     const wr0 = Math.max(0, Math.floor(r0) - 1);
-    const ww = Math.min(n - 1, Math.ceil(c1) + 1) - wc0 + 1;
-    const wh = Math.min(n - 1, Math.ceil(r1) + 1) - wr0 + 1;
+    const ww = Math.min(nx - 1, Math.ceil(c1) + 1) - wc0 + 1;
+    const wh = Math.min(nz - 1, Math.ceil(r1) + 1) - wr0 + 1;
     if (ww <= 0 || wh <= 0) continue;
     const inside = new Uint8Array(ww * wh);
-    fillPolygon(b.rings, toCol, toRow, n, n, (col, row) => (inside[(row - wr0) * ww + col - wc0] = 1));
+    fillPolygon(b.rings, toCol, toRow, nx, nz, (col, row) => (inside[(row - wr0) * ww + col - wc0] = 1));
     // A courtyard is inside the outer ring and outside the footprint.
     if (b.rings.length > 1) {
-      fillPolygon([b.rings[0]!], toCol, toRow, n, n, (col, row) => {
-        if (inside[(row - wr0) * ww + col - wc0] === 0) court[row * n + col] = 1;
+      fillPolygon([b.rings[0]!], toCol, toRow, nx, nz, (col, row) => {
+        if (inside[(row - wr0) * ww + col - wc0] === 0) court[row * nx + col] = 1;
       });
     }
     const depth = distanceField((i) => inside[i] === 0, ww, wh);
@@ -189,11 +183,11 @@ export function makeHeaps(input: HeapInput): Heaps {
         if (!inside[k]) continue;
         const col = wc0 + i;
         const row = wr0 + j;
-        const at = row * n + col;
+        const at = row * nx + col;
         if (water[at]) continue;
         const dIn = Math.sqrt(depth[k]!) * cell;
-        const x = col * cell;
-        const z = row * cell;
+        const x = col * cell + grid.noiseWest;
+        const z = row * cell + grid.noiseNorth;
         let h: number;
         let p = PART_HEAP;
         if (kind === RUIN_TANK) {
@@ -250,9 +244,9 @@ export function makeHeaps(input: HeapInput): Heaps {
   }
 
   // Spill round each ruin from its nearest footprint sample, low on streets and in courtyards, none in the water.
-  const nearest = new Int32Array(n * n);
-  const d2 = distanceField((i) => part[i] !== PART_NONE, n, n, nearest);
-  for (let at = 0; at < n * n; at++) {
+  const nearest = new Int32Array(nx * nz);
+  const d2 = distanceField((i) => part[i] !== PART_NONE, nx, nz, nearest);
+  for (let at = 0; at < nx * nz; at++) {
     if (part[at] !== PART_NONE || water[at]) continue;
     const from = nearest[at]!;
     if (from < 0) continue;
@@ -268,9 +262,9 @@ export function makeHeaps(input: HeapInput): Heaps {
       }
       continue;
     }
-    const col = at % n;
-    const row = (at - col) / n;
-    let h = foot[r]! * (1 - d / w) ** 1.6 * (0.6 + 0.8 * fbm(col * cell, row * cell, 5, 913));
+    const col = at % nx;
+    const row = (at - col) / nx;
+    let h = foot[r]! * (1 - d / w) ** 1.6 * (0.6 + 0.8 * fbm(col * cell + grid.noiseWest, row * cell + grid.noiseNorth, 5, 913));
     if (road[at]) h = d > 3 ? 0 : h * 0.35;
     if (h < 0.05) continue;
     lift[at] = h;

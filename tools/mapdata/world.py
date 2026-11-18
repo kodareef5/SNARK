@@ -27,6 +27,8 @@ def main():
     to_lonlat = Transformer.from_crs(m.crs, 4326, always_xy=True)
     to_map = Transformer.from_crs(4326, m.crs, always_xy=True)
     frame = box(*m.b)
+    # Spawn points are first chosen near, and face toward, the frame's middle.
+    mx, my = (m.b[0] + m.b[2]) / 2, (m.b[1] + m.b[3]) / 2
     seeds = collections.defaultdict(list)
     for el in json.loads((m.raw / 'osm/all.json').read_text())['elements']:
         t = el.get('tags', {})
@@ -97,7 +99,7 @@ def main():
     for _ in range(10 - len(chosen)):
         best, score = None, -1
         for rank, p in candidates:
-            gap = min((math.hypot(p['e'] - c['e'], p['n'] - c['n']) for c in chosen), default=4000 - math.hypot(p['e'], p['n']))
+            gap = min((math.hypot(p['e'] - c['e'], p['n'] - c['n']) for c in chosen), default=4000 - math.hypot(p['e'] - mx, p['n'] - my))
             if p in chosen or any(c['name'] == p['name'] for c in chosen):
                 continue
             if gap * (1 + .25 * rank) > score:
@@ -111,8 +113,8 @@ def main():
     if long:
         raise ValueError(f'spawn point names over 48 bytes: {long}; name them shorter in spawn_places with "at"')
     for p in chosen:
-        d = math.hypot(p['e'], p['n']) or 1
-        face = faces.get(p['name']) or (p['e'] - p['e'] / d * 300, p['n'] - p['n'] / d * 300)
+        d = math.hypot(p['e'] - mx, p['n'] - my) or 1
+        face = faces.get(p['name']) or (p['e'] - (p['e'] - mx) / d * 300, p['n'] - (p['n'] - my) / d * 300)
         spawns.append({'name': p['name'], 'at': [round(c, 4) for c in to_lonlat.transform(p['e'], p['n'])],
                        'face': [round(c, 4) for c in to_lonlat.transform(*face)], 'ground': 'sand' if p['kind'] == 'beach' else 'open'})
     proposal = {'districts': districts, 'spawns': spawns,

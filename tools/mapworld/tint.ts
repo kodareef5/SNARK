@@ -55,17 +55,17 @@ const RUIN: Record<string, readonly number[]> = {
 const CONTAINERS = [179, 181, 41, 89, 205, 196, 53];
 
 export function makeTint(ground: Ground, world: World): Uint8Array {
-  const { n, surface, heaps } = ground;
-  const tint = new Uint8Array(n * n);
-  const cell = 2;
+  const { surface, heaps } = ground;
+  const { nx, nz, cell, noiseWest, noiseNorth } = ground.grid;
+  const tint = new Uint8Array(nx * nz);
   const table = world.dryGround ? { ...GROUND, ...DRY } : GROUND;
   const weeds = world.dryGround ? 158 : 150;
-  for (let i = 0; i < n * n; i++) {
-    const c = i % n;
-    const r = (i - c) / n;
+  for (let i = 0; i < nx * nz; i++) {
+    const c = i % nx;
+    const r = (i - c) / nx;
     const s = surface[i]!;
-    const x = c * cell;
-    const z = r * cell;
+    const x = c * cell + noiseWest;
+    const z = r * cell + noiseNorth;
     const owner = heaps.owner[i]!;
     if (owner >= 0 && (s === S.HEAP || s === S.SPILL || s === S.WALL || s === S.FLOOR)) {
       const ruin = heaps.ruins[owner]!;

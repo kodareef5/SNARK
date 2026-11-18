@@ -38,7 +38,7 @@ function towersOf(site: Site): Tower[] {
   const file = join(site.source, "blocks/supports.json");
   if (!existsSync(file)) return [];
   const parts = (JSON.parse(readFileSync(file, "utf8")) as Part[]).filter((p) => p.kind === "bridge_tower" && p.height_m && p.ring.length >= 4)
-    .map((p) => { const engine = p.ring.map(([e, n]) => site.toEngine(e, n) as Point); return { ...p, engine, ...centroid(engine) }; });
+    .map((p) => { const engine = p.ring.map(([e, n]) => site.toLattice(e, n) as Point); return { ...p, engine, ...centroid(engine) }; });
   // Parts within 40 m of each other are one tower.
   const group = parts.map((_, i) => i);
   const root = (i: number): number => (group[i] === i ? i : (group[i] = root(group[i]!)));
@@ -93,7 +93,7 @@ function fill(m: Mason, ring: readonly Point[], bottom: number, top: number, fin
 export interface SuspensionRecord { id: number; status: string; }
 
 export function makeSuspension(site: Site, planned: readonly { p: Path; deck: DeckPoint[] }[], accept: (m: Mason) => boolean): SuspensionRecord[] {
-  const size = (site.ground.n - 1) * 2;
+  const { x0, z0, x1, z1 } = site.ground.grid;
   const towers = towersOf(site);
   const decks = planned.filter(({ p }) => SUSPENDED.has(p.way.structure ?? ""));
   const out: SuspensionRecord[] = [];
@@ -106,7 +106,7 @@ export function makeSuspension(site: Site, planned: readonly { p: Path; deck: De
   };
   const standing = towers.filter((t) => deckNear(...t.centre).distance < 40);
   for (const t of standing) {
-    const m = new Mason(worldFrame(size), 0);
+    const m = new Mason(worldFrame(site.ground.grid), 0);
     const water = Math.max(0, site.groundAt(...t.centre));
     const lowest = Math.min(...t.parts.map((p) => p.min_height_m));
     for (const p of t.parts) {
@@ -147,16 +147,16 @@ export function makeSuspension(site: Site, planned: readonly { p: Path; deck: De
     spans.push({ from: Math.min(s0, s1), to: Math.max(s0, s1), name: "side", y: (s) => { const t = Math.abs(s - s0) / reach; return y0 + (y1 - y0) * t - .05 * reach * 4 * t * (1 - t); } });
   }
   for (const span of spans) for (const side of sides) {
-    const m = new Mason(worldFrame(size), 0);
+    const m = new Mason(worldFrame(site.ground.grid), 0);
     const point = (s: number): Point => [a0[0] + ax * s - az * side, a0[1] + az * s + ax * side];
     for (let s = span.from + 2; s < span.to; s += 4) {
       const [x, z] = point(s);
-      if (x < 8 || z < 8 || x > size - 8 || z > size - 8) continue;
+      if (x < x0 + 8 || z < z0 + 8 || x > x1 - 8 || z > z1 - 8) continue;
       m.put("trim4", x, span.y(s), z, order[0]!.finish, yaw);
     }
     for (let s = span.from + 16; s < span.to - 8; s += 16) {
       const [x, z] = point(s);
-      if (x < 8 || z < 8 || x > size - 8 || z > size - 8) continue;
+      if (x < x0 + 8 || z < z0 + 8 || x > x1 - 8 || z > z1 - 8) continue;
       // A hanger standing on a walked deck starts above head height.
       const onDeck = lanes.some((l) => Math.abs(l.s - s) < 3 && Math.abs(l.o - side) < l.half + .8);
       let y = deckAt(s) + (onDeck ? 2.6 : .3); const cable = span.y(s) - .3;

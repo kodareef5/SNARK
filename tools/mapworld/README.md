@@ -45,6 +45,23 @@ above before choosing a release for a new world.
 tightly as they go, as a map that ships has: about 25 s on Miami where an
 everyday build takes a few (`tools/map/pack.ts`).
 
+A map is any rectangle of whole chunks, up to 256 a side. Its `map.json` says
+how wide and deep it is (`size_m`, `chunks` and `grid_samples`, west to east then
+south to north), its `bounds` in metres from its projection's centre, and the
+lattice column and row of its south-east corner (`frame`, `shared/coords.ts`).
+The build works in lattice metres, x west and z north of the lattice's middle
+corner (`Grid` in `base.ts`), so a map cut from another or widened grows the same
+city where the two overlap, worked out with the same numbers; it turns places
+into the map's own metres as it writes the layers. Its reports stay in lattice
+metres, and the walks read them into the map's (`readReport`). A rectangle of a
+source can be cut out and built from its folder, the walks given `--source`:
+
+```sh
+bun tools/mapworld/cut.ts miami var/cuts/miami-west 2080 2048 95 127   # its corner's column and row, chunks west and north
+bun tools/mapworld/build.ts var/cuts/miami-west
+bun tools/mapworld/walk.ts var/maps/miami-west.snmap
+```
+
 `world.ruins.report` chooses the report folder. `world.ruins.yardDistricts`
 chooses working container yards. `world.bridgeGapLayer` names the authored
 break mask, and `map.bathymetry` names the coastal raster relative to `base/`

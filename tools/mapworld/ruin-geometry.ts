@@ -18,7 +18,7 @@ export function inRing(u: number, v: number, ring: readonly Point[]): boolean {
 export const inside = (f: Frame, u: number, v: number): boolean => inRing(u, v, f.rings[0]!) && !f.rings.slice(1).some((r) => inRing(u, v, r));
 
 export function frameOf(f: Footprint, site: Site): Frame {
-  const rings = f.building.rings.map((r) => r.map(([e, n]) => site.toEngine(e!, n!)));
+  const rings = f.building.rings.map((r) => r.map(([e, n]) => site.toLattice(e!, n!)));
   const ring = rings[0]!;
   let yaw = 0; let longest = 0;
   for (let i = 1; i < ring.length; i++) {
