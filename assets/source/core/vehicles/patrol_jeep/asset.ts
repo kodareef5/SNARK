@@ -11,6 +11,6 @@ export default {
       height: "tex/height.png", tops: { normal: 512 }, regions: { mask: "tex/regions.png" },
       hurt: "tex/hurt.png", decay: "tex/decay.png" },
   },
-  clips: [], feet: [], gaits: {}, flat: 2, preserveBones: ["steering_wheel"],
+  clips: [], feet: [], gaits: {}, flat: 2, preserveBones: ["steering_wheel"], holdParts: true,
   budgets: { triangles: [45000, 24500, 6400, 2600, 1200, 760], texture: { top: 1024, megabytes: 11, layer: 512 } },
 } satisfies CreatureAsset;
