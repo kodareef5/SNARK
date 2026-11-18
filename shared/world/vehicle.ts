@@ -9,7 +9,7 @@ import { type PartTable } from "./structures.ts";
 import { capsuleKind } from "./collide.ts";
 import { vehicleSurfaceAt } from "./vehicle-surface.ts";
 import { vehicleRotation, type VehicleFrame } from "../sim/vehicle-frame.ts";
-import { boatOutboardFrame, boatShapes, carShapes, helicopterShapes } from "./vehicle-shapes.ts";
+import { boatMounts, boatShapes, carShapes, helicopterShapes } from "./vehicle-shapes.ts";
 import { StaticVehicleSolids, bounds, makeSolid, solidContact, sweep, tube, type ContactGeometry, type SolidFrame, type Swept } from "./vehicle-solid.ts";
 import { boxSolid, partSolid, type Solid } from "./convex.ts";
 import { frame, frameOf } from "./frame.ts";
@@ -65,9 +65,9 @@ export function carMeetsCapsule(p: VehicleSpec, at: VehicleFrame, x: number, y: 
 export function carMeetsVehicle(p: VehicleSpec, at: VehicleFrame, other: VehicleDefinition, otherFrame: VehicleFrame): CarContact | null {
   solidFrame(otherFrame, otherContactFrame);
   const target = otherContactFrame, parts = other.movement === "boat" ? boatShapes(other) : other.movement === "rotor" ? helicopterShapes(other) : carShapes(other.spec);
-  const mount = other.movement === "boat" ? boatOutboardFrame(otherFrame, other.spec) : target;
+  const mounts = other.movement === "boat" ? boatMounts(otherFrame, other.spec) : null;
   for (const part of parts) {
-    const pose = part.joint === undefined ? target : mount; sweep(part, pose, pose, targetSweep);
+    const pose = part.joint === undefined || !mounts ? target : mounts[part.joint]!; sweep(part, pose, pose, targetSweep);
     const hit = carContact(p, at, targetSweep.solid);
     if (hit) { hit.otherRotor = other.movement === "rotor" && part.hazard; hit.otherPropeller = other.movement === "boat" && part.hazard; return hit; }
   }

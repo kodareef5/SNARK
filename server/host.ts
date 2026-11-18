@@ -575,6 +575,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const actor = records.byPid.get(c.pid);
     return !!actor && (reg.vehicle[rec.kind] ? urbanMay(actor, rec, null) : rec.team !== 0 && tribes.may(actor, rec.team));
   };
+  death.keepsBoatCargo = (c, e) => vehicles.keepsBoatCargo(c, e);
   game.onVehicleStep = e => urban.impact(e);
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),

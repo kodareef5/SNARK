@@ -9,7 +9,7 @@ import { frame, frameOf } from "./frame.ts";
 import { castWorld, HIT_NONE, rayHit } from "./ray.ts";
 import type { PartTable } from "./structures.ts";
 import { StaticVehicleSolids, bounds, makeSolid, solidContact, sweep, tube, type ContactGeometry, type Shape, type Swept } from "./vehicle-solid.ts";
-import { boatOutboardFrame, boatShapes, carShapes, helicopterShapes as localShapes, type BoatFrame } from "./vehicle-shapes.ts";
+import { boatMounts, boatShapes, carShapes, helicopterShapes as localShapes, type BoatFrame } from "./vehicle-shapes.ts";
 const q = new Float64Array(4);
 export class StaticHelicopterWorld implements HelicopterWorld {
   private readonly supportWorld: CollisionWorld;
@@ -118,9 +118,9 @@ export function helicopterMeetsVehicle(def: RotorVehicleDefinition, frame: Helic
     const rotorParts = interactionShapes.get(other) ?? localShapes(other); interactionShapes.set(other, rotorParts); parts = rotorParts;
   } else if (other.movement === "boat") parts = boatShapes(other);
   else parts = carShapes(other.spec);
-  const mount = other.movement === "boat" ? boatOutboardFrame(otherFrame, other.spec) : target;
+  const mounts = other.movement === "boat" ? boatMounts(otherFrame, other.spec) : null;
   for (const part of parts) {
-    const pose = part.joint === undefined ? target : mount;
+    const pose = part.joint === undefined || !mounts ? target : mounts[part.joint]!;
     sweep(part, pose, pose, otherSweep);
     const hit = interaction(def, source, otherSweep.solid, 0);
     if (hit) { hit.otherRotor = other.movement === "rotor" && part.hazard; hit.otherPropeller = other.movement === "boat" && part.hazard; return hit; }

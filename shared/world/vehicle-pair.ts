@@ -1,18 +1,27 @@
 // Native moving-pair geometry and world constraints, shared by authority and driver prediction.
 import { quatNlerp } from '../math/quat.ts';
-import { detAtan2, len3 } from '../math/scalar.ts';
+import { detCos, len3 } from '../math/scalar.ts';
 import { dynamicState, type DynamicBody, type DynamicContact, type DynamicQueries, type DynamicState } from '../sim/vehicle-dynamic.ts';
-import { isBoatVehicle, isWheelVehicle, isRotorVehicle, type VehicleDefinition } from '../sim/vehicle.ts';
+import { isBoatVehicle, isWheelVehicle, type VehicleDefinition } from '../sim/vehicle.ts';
 import { carMeetsCapsule, carMeetsVehicle } from './vehicle.ts';
 import { boatMeetsCapsule, boatMeetsVehicle } from './boat.ts';
 import { helicopterMeetsCapsule, helicopterMeetsVehicle } from './helicopter.ts';
 import { capsuleFree, ground, groundUnder, push, SKIN, type CollisionWorld } from './collide.ts';
-import { boatOutboardFrame, boatShapes, carShapes, helicopterShapes } from './vehicle-shapes.ts';
+import { rayBox } from './ray.ts';
+import { boatJoints, boatShapes, carShapes, helicopterShapes, vehicleSolidRadius } from './vehicle-shapes.ts';
 import { StaticVehicleSolids } from './vehicle-solid.ts';
-/** Twice the shortest quaternion half-angle, with the deterministic atan approximation's error allowed in the sweep. */
-function rotationBound(a: DynamicState, b: DynamicState): number {
+
+/** Interaction meshes circumscribe an actor's capsule with a twelve-sided tube. */
+export const CAPSULE_EXTENT = 1 / detCos(Math.PI / 12);
+
+/** Bound the point speeds of both the rigid hull and its steered propulsion during one interpolated sweep. */
+function rotationTravel(a: DynamicState, b: DynamicState, radius: number, def: VehicleDefinition): number {
   const dot = Math.min(1, Math.abs(a.qx * b.qx + a.qy * b.qy + a.qz * b.qz + a.qw * b.qw));
-  return dot === 1 ? 0 : 2 * detAtan2(Math.sqrt(1 - dot * dot), dot) + .00004;
+  // The fastest part of a normalized quaternion lerp is its midpoint. Its angular rate there is 4*tan(angle/4).
+  const rigid = 4 * Math.sqrt((1 - dot) / (1 + dot));
+  const steering = isBoatVehicle(def) && (def.spec.outboard || def.spec.secondDrive?.outboard)
+    ? Math.abs((b.steering ?? 0) - (a.steering ?? 0)) : 0;
+  return radius * (rigid + steering);
 }
 
 export interface PairContact extends DynamicContact { rotor: boolean; propeller: boolean; otherRotor: boolean; otherPropeller: boolean }
@@ -41,24 +50,28 @@ export class VehiclePairQueries implements DynamicQueries {
     rotation(b.prior, this.otherA); rotation(b.state, this.otherB);
     Object.assign(this.pose, a.state); Object.assign(this.otherPose, b.state);
   }
-  /** Relative translation and both rotations bound samples; a root-finding pass refines the first actual contact. */
+  /**
+   * Relative translation and both rotations bound samples, only over the part of the tick in which the two solids'
+   * reaches overlap; a root-finding pass refines the first actual contact.
+   */
   sweep(): PairContact | null {
     const a = this.a.prior, b = this.a.state, c = this.b.prior, d = this.b.state;
-    const radius = this.defB
-      ? Math.max(len3(this.defB.spec.halfWidth, 0, this.defB.spec.halfLength), isRotorVehicle(this.defB) ? 6 : 0)
-      : this.radiusB;
-    const dx = b.x - a.x - (d.x - c.x), dy = b.y - a.y - (d.y - c.y), dz = b.z - a.z - (d.z - c.z);
-    if (len3(c.x - a.x, 0, c.z - a.z) > 7 + radius + len3(dx, 0, dz)) return null;
-    if (Math.max(a.y, b.y) + 7 < Math.min(c.y, d.y) || Math.min(a.y, b.y) - 7 > Math.max(c.y, d.y) + this.heightB) return null;
-    const angle = rotationBound(a, b);
-    const otherAngle = this.defB
-      ? rotationBound(c, d) : 0;
-    const n = Math.min(128, Math.max(1, Math.ceil((len3(dx, dy, dz) + angle * 7 + otherAngle * radius) / Math.min(.12, radius / 2))));
+    const source = vehicleSolidRadius(this.defA), target = this.defB ? vehicleSolidRadius(this.defB) : this.radiusB * CAPSULE_EXTENT;
+    const x = c.x - a.x, y = c.y - a.y, z = c.z - a.z;
+    const dx = d.x - c.x - (b.x - a.x), dy = d.y - c.y - (b.y - a.y), dz = d.z - c.z - (b.z - a.z);
+    // Relative origin positions that could overlap. A vehicle can tilt in any direction. Actors stand above their origin.
+    const reach = source + target, lowY = -source - (this.defB ? target : Math.max(this.heightB, this.radiusB * 2)), highY = source + (this.defB ? target : 0);
+    const start = rayBox(x, y, z, dx, dy, dz, -reach, lowY, -reach, reach, highY, reach);
+    if (start > 1) return null;
+    const end = 1 - rayBox(d.x - b.x, d.y - b.y, d.z - b.z, -dx, -dy, -dz, -reach, lowY, -reach, reach, highY, reach);
+    const span = Math.max(0, end - start);
+    const travel = len3(dx, dy, dz) + rotationTravel(a, b, source, this.defA) + (this.defB ? rotationTravel(c, d, target, this.defB) : 0);
+    const n = Math.max(1, Math.ceil(travel * span / Math.min(.12, target / 2)));
     for (let i = 0; i <= n; i++) {
-      let t = i / n, hit = this.sample(t);
+      let t = start + span * i / n, hit = this.sample(t);
       if (!hit) continue;
       if (i > 0) {
-        let lo = (i - 1) / n, hi = t;
+        let lo = start + span * (i - 1) / n, hi = t;
         for (let j = 0; j < 8; j++) {
           const mid = (lo + hi) / 2;
           if (this.sample(mid)) hi = mid;
@@ -114,7 +127,7 @@ export class VehiclePairQueries implements DynamicQueries {
     if (def) {
       this.checking = body;
       const shapes = isWheelVehicle(def) ? carShapes(def.spec) : isBoatVehicle(def) ? boatShapes(def) : helicopterShapes(def);
-      const hit = this.solids.blocked(from, to, shapes, isBoatVehicle(def) ? [{ from: boatOutboardFrame(from, def.spec), to: boatOutboardFrame(to, def.spec) }] : undefined, true);
+      const hit = this.solids.blocked(from, to, shapes, isBoatVehicle(def) ? boatJoints(from, to, def.spec) : undefined, true);
       if (!hit) return true;
       blocker[0] = hit.nx; blocker[1] = hit.ny; blocker[2] = hit.nz; blocker[3] = hit.x; blocker[4] = hit.y; blocker[5] = hit.z;
       return false;

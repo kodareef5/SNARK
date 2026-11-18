@@ -10,11 +10,12 @@ import { youngScale } from '../shared/sim/breeding.ts';
 import { Body, MODE_GHOST, MODE_NONE, stanceHeight } from '../shared/sim/character.ts';
 import { DMG_MELEE } from '../shared/sim/damage.ts';
 import { F_ALIVE, F_GROUNDED, F_HELD, F_PROP } from '../shared/sim/entities.ts';
-import { isBoatVehicle, isRotorVehicle, type VehicleDefinition, type VehicleHullSpec } from '../shared/sim/vehicle.ts';
+import { isBoatVehicle, isRotorVehicle, type VehicleDefinition } from '../shared/sim/vehicle.ts';
 import { vehicleMassProperties } from '../shared/sim/vehicle-rigid.ts';
 import { dynamicState, DynamicScratch, resolveDynamicContact, type DynamicBody, type DynamicContact, type DynamicResult, type DynamicState } from '../shared/sim/vehicle-dynamic.ts';
+import { vehicleSolidRadius } from '../shared/world/vehicle-shapes.ts';
 import type { Combat, Source } from './combat.ts';
-import { VehiclePairQueries } from '../shared/world/vehicle-pair.ts';
+import { CAPSULE_EXTENT, VehiclePairQueries } from '../shared/world/vehicle-pair.ts';
 import { Past } from './history.ts';
 import type { EntityRecord, Records } from './records.ts';
 import type { ServerWorld } from './world.ts';
@@ -48,8 +49,6 @@ const MIN_HARM_SPEED = 2.5;
 const REARM_TICKS = 15;
 const contact = (): Contact => ({ entity: -1, handle: 0, pid: 0, t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, depth: 0, rotor: false, propeller: false, otherRotor: false, otherPropeller: false, hazardSpeed: 0, mass: 1 });
 
-function length(x: number, z: number): number { return Math.sqrt(x * x + z * z); }
-
 export class VehicleContacts {
   private readonly ctx: VehicleContactsContext;
   private readonly frames = new Map<number, Frame>();
@@ -72,7 +71,8 @@ export class VehicleContacts {
   private defB: VehicleDefinition | undefined;
   private radiusB = 0;
   private heightB = 0;
-  private readonly padding: number;
+  private readonly restingPadding: number;
+  private targetPadding = 0;
   /** Diagnostics, not replicated gameplay state. */
   contacts = 0;
 
@@ -82,8 +82,11 @@ export class VehicleContacts {
     // stepBody splits motion into at most 16 half-radius pieces. This includes a
     // body's previous chunk even when it crosses the whole vehicle in one tick.
     let reach = 0;
-    for (const p of ctx.world.reg.move) if (p) reach = Math.max(reach, p.radius * 9);
-    this.padding = reach;
+    for (const [kind, p] of ctx.world.reg.move.entries()) if (p) {
+      const def = ctx.world.reg.vehicle[kind];
+      reach = Math.max(reach, def ? vehicleSolidRadius(def) : p.radius * (8 + CAPSULE_EXTENT) + .05);
+    }
+    this.restingPadding = this.targetPadding = reach;
   }
 
   /** Current authority facts for a driver's nearby contact candidates; view clocks and damage do not enter prediction. */
@@ -95,7 +98,7 @@ export class VehicleContacts {
     out.owner = makeHandle(car, ents.gen[car]!); out.epoch = world.history.motionEpoch(car);
     ents.loadBody(car, this.snapshotBody);
     const by = this.ctx.driverOf(car);
-    this.gather(car, this.snapshotBody, def.spec, 14 + Math.min(60, len3(ents.vx[car]!, 0, ents.vz[car]!) * 1.5));
+    this.gather(car, this.snapshotBody, def, 14 + Math.min(60, len3(ents.vx[car]!, 0, ents.vz[car]!) * 1.5));
     // The nearest predicted approach gets the limited wire budget first, including bodies crossing the road.
     const distance = (e: number): number => {
       const x = ents.x[e]! - ents.x[car]!, z = ents.z[e]! - ents.z[car]!;
@@ -153,15 +156,19 @@ export class VehicleContacts {
     const { world } = this.ctx, ents = world.ents;
     this.changed.length = 0;
     this.ordered.length = 0;
+    this.targetPadding = this.restingPadding;
     // Validate every capture before any pair can borrow it as its target's prior pose. Powered cruise speed is
     // not a physical limit; the distance guard follows actual velocity, while explicit teleports change the epoch.
     for (const [e, frame] of this.frames) {
-      const from = frame.body, speed = Math.max(length(from.vx, from.vz), length(ents.vx[e]!, ents.vz[e]!));
+      const from = frame.body, speed = Math.max(len3(from.vx, from.vy, from.vz), len3(ents.vx[e]!, ents.vy[e]!, ents.vz[e]!));
+      const dx = ents.x[e]! - from.x, dy = ents.y[e]! - from.y, dz = ents.z[e]! - from.z;
       if (frame.tick !== world.tick || ents.resolve(frame.handle) !== e || ents.pid[e] !== frame.pid ||
           frame.motionEpoch !== world.history.motionEpoch(e) ||
-          length(ents.x[e]! - from.x, ents.z[e]! - from.z) > Math.max(4, speed * TICK_DT * 2)) {
+          len3(dx, dy, dz) > Math.max(4, speed * TICK_DT * 2)) {
         this.frames.delete(e); continue;
       }
+      // Chunk lists hold final positions. A qualified vehicle may have started in a different chunk.
+      this.includeTravel(world.reg.vehicle[ents.kind[e]!]!, dx, dz);
       this.ordered.push(e);
     }
     this.ordered.sort((a, b) => this.frames.get(a)!.handle - this.frames.get(b)!.handle);
@@ -173,10 +180,10 @@ export class VehicleContacts {
       // Consume once while retaining its qualified tick for another vehicle's relative sweep.
       if (frame.consumed) continue;
       frame.consumed = true;
-      const def = world.reg.vehicle[ents.kind[e]!]!, spec = def.spec, from = frame.body;
+      const def = world.reg.vehicle[ents.kind[e]!]!, from = frame.body;
       for (let iteration = 0; iteration < 4; iteration++) {
         if (ents.resolve(frame.handle) !== e || ents.pid[e] !== frame.pid || frame.motionEpoch !== world.history.motionEpoch(e)) break;
-        this.gather(e, from, spec, isRotorVehicle(def) ? Math.max(6, ...def.rotors.map(r => r.radius)) : 0);
+        this.gather(e, from, def);
         this.first.entity = -1;
         for (const target of this.candidates) {
           const handle = makeHandle(target, ents.gen[target]!);
@@ -197,9 +204,13 @@ export class VehicleContacts {
     return this.changed;
   }
 
+  private includeTravel(def: VehicleDefinition, dx: number, dz: number): void {
+    this.targetPadding = Math.max(this.targetPadding, vehicleSolidRadius(def) + Math.max(Math.abs(dx), Math.abs(dz)));
+  }
+
   /** Every body near the car's path, however many: a herd beside a road is met, never a reason to stop the car. */
-  private gather(e: number, from: Body, spec: VehicleHullSpec, reach = 0): void {
-    const { world } = this.ctx, ents = world.ents, pad = this.padding + Math.max(reach, length(spec.halfWidth, spec.halfLength));
+  private gather(e: number, from: Body, def: VehicleDefinition, reach = 0): void {
+    const { world } = this.ctx, ents = world.ents, pad = this.targetPadding + Math.max(reach, vehicleSolidRadius(def));
     const x0 = Math.max(0, Math.floor((Math.min(from.x, ents.x[e]!) - pad) / CHUNK_SIZE));
     const x1 = Math.min(world.dims.chunksX - 1, Math.floor((Math.max(from.x, ents.x[e]!) + pad) / CHUNK_SIZE));
     const z0 = Math.max(0, Math.floor((Math.min(from.z, ents.z[e]!) - pad) / CHUNK_SIZE));
@@ -251,14 +262,14 @@ export class VehicleContacts {
 
   private upright(s: DynamicState): void { s.qx = s.qy = s.qz = 0; s.qw = 1; s.pitchRate = s.yawRate = s.rollRate = 0; }
   /** Geometry bounds choose samples; they are never used as damage speed. */
-  private rigidContact(car: number, frame: Frame, e: number, _def: VehicleDefinition): Contact | null {
+  private rigidContact(car: number, frame: Frame, e: number, def: VehicleDefinition): Contact | null {
     this.prepare(car, frame, e);
     const { world } = this.ctx, ents = world.ents, c = this.b.prior, d = this.b.state;
-    const ax = d.x - c.x, ay = d.y - c.y, az = d.z - c.z;
-    if (len3(ax, ay, az) > world.reg.move[ents.kind[e]!]!.radius * 8 + .05) return null;
+    // Actors use history and a capped character step. Vehicle captures have already passed their own velocity and epoch checks.
+    if (!this.defB && len3(d.x - c.x, d.y - c.y, d.z - c.z) > world.reg.move[ents.kind[e]!]!.radius * 8 + .05) return null;
     const hit = this.queries.sweep();
     if (hit) {
-      const cv = ents.vrow[car]!, def = this.defA;
+      const cv = ents.vrow[car]!;
       const rpm = isRotorVehicle(def) ? Math.max(frame.body.vehicleRotorRpm, ents.vehicleRotorRpm[cv]!) : Math.max(frame.body.vehicleRpm, ents.vehicleRpm[cv]!);
       const propeller = 'propeller' in hit && hit.propeller === true && rpm > 30 && (frame.body.vehicleEngineOn || ents.vehicleEngineOn[cv] !== 0) && (frame.body.vehicleGear !== 0 || ents.vehicleGear[cv] !== 0);
       const rotor = 'rotor' in hit && hit.rotor === true && rpm > 30;
@@ -347,6 +358,9 @@ export class VehicleContacts {
     world.history.track(c.entity);
     resolveDynamicContact(a, b, c, this.queries, this.scratch, result);
     this.store(car, a.state, true); this.store(c.entity, b.state, !!other);
+    // The impulse can move either vehicle again, including across a chunk boundary, before the next gather.
+    this.includeTravel(this.defA, a.state.x - a.prior.x, a.state.z - a.prior.z);
+    if (other) this.includeTravel(other, b.state.x - b.prior.x, b.state.z - b.prior.z);
     let impact: CorpseImpact | undefined;
     if (!other && movable && !fixed) {
       const mass = b.mass, radius = this.radiusB, height = this.heightB;

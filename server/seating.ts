@@ -7,6 +7,7 @@ import { STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceHeight } from "../shar
 import { F_ALIVE } from "../shared/sim/entities.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
 import { isWheelVehicle } from "../shared/sim/vehicle.ts";
+import { boatMeetsCapsule } from "../shared/world/boat.ts";
 import { carMeetsCapsule } from "../shared/world/vehicle.ts";
 import type { Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
@@ -55,7 +56,8 @@ export class Seating {
       if (pid === 0 || records.entOf.get(pid) !== e || ignored.includes(pid) || pid === ignoredHost || (ents.flags[e]! & F_ALIVE) === 0) continue;
       const vehicle = world.reg.vehicle[ents.kind[e]!];
       const dx = p.x - ents.x[e]!, dz = p.z - ents.z[e]!;
-      if (vehicle && !isWheelVehicle(vehicle)) {
+      if (vehicle?.movement === "boat" && vehicle.boarding && dx * dx + dz * dz > pad * pad) continue;
+      if (vehicle && !isWheelVehicle(vehicle) && !(vehicle.movement === "boat" && vehicle.boarding)) {
         // Boarding corridors intentionally permit stepping over skids/through the stern ladder.
         // Aircraft/boat interaction queries include those parts (and rotor hazards), so retain their boarding proxy.
         if (p.y >= ents.y[e]! + world.reg.bodyHeight[ents.kind[e]!]! || p.y + (height ?? move.height) <= ents.y[e]!) continue;
@@ -67,7 +69,8 @@ export class Seating {
         const v = ents.vrow[e]!;
         const frame = { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[v]!, pitch: ents.vehiclePitch[v]!, roll: ents.vehicleRoll[v]!,
           qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!, steering: ents.steering[v]! };
-        const hit = carMeetsCapsule(vehicle.spec, frame, p.x, p.y, p.z, move.radius, height ?? move.height);
+        const hit = vehicle.movement === "boat" ? boatMeetsCapsule(vehicle, frame, p.x, p.y, p.z, move.radius, height ?? move.height)
+          : carMeetsCapsule(vehicle.spec, frame, p.x, p.y, p.z, move.radius, height ?? move.height);
         if (hit) return false;
       } else {
         if (p.y >= ents.y[e]! + world.reg.bodyHeight[ents.kind[e]!]! || p.y + (height ?? move.height) <= ents.y[e]!) continue;
@@ -77,10 +80,10 @@ export class Seating {
     return true;
   }
 
-  /** Whether `actor`'s body fits at every point from `a` to `b`, a tenth of a metre apart, and the way is at most 6.4 m. */
-  corridor(a: Point, b: Point, actor: number, ignored: readonly number[], ignoredHost = 0, height?: number): boolean {
+  /** Whether `actor`'s body fits at every point from `a` to `b`, a tenth of a metre apart, up to the allowed route length (6.4 m for ordinary seats). */
+  corridor(a: Point, b: Point, actor: number, ignored: readonly number[], ignoredHost = 0, height?: number, maxDistance = 6.4): boolean {
     const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) / 0.1));
-    if (n > 64) return false;
+    if (n > Math.ceil(maxDistance * 10)) return false;
     for (let i = 0; i <= n; i++) if (!this.free({ x: a.x + (b.x - a.x) * i / n,
       y: a.y + (b.y - a.y) * i / n, z: a.z + (b.z - a.z) * i / n }, actor, ignored, ignoredHost, height)) return false;
     return true;

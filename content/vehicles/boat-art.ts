@@ -50,3 +50,5 @@ export const BOAT_ART = {
     tow: [0, 1.42, -2.96],
   },
 } as const;
+
+export const LAUNCH_BOARDING = { water: BOAT_ART.anchors.boarding_water, ladder: BOAT_ART.anchors.boarding_ladder, deck: BOAT_ART.anchors.boarding_deck };
