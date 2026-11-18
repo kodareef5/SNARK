@@ -15,10 +15,13 @@ import { bridgeHoles, makeBridges, roadDeckSlab, worldFrame, type DeckPoint } fr
 import { inRing, Mason } from "../../tools/mapworld/ruin-geometry.ts";
 import type { Site } from "../../tools/mapworld/statics.ts";
 import type { Way } from "../../tools/mapworld/ways.ts";
-import { gradeRoadEntrances, roadGroundSamples, roadRunout, type RoadEntrance } from "../../tools/mapworld/bridge-earthwork.ts";
+import { gradeRoadEntrances, roadGroundSamples, roadRunout, surveyRoadShoulder, type RoadEntrance } from "../../tools/mapworld/bridge-earthwork.ts";
 import { gradeApproaches } from "../../tools/mapworld/ruin-access.ts";
-import type { roadIndex } from "../../tools/mapworld/street-cars.ts";
+import { S } from "../../tools/mapworld/ground.ts";
+import { roadIndex } from "../../tools/mapworld/street-cars.ts";
 import { clearCirculation } from "../../tools/mapworld/ruin-clearance.ts";
+import { Body, stepBody } from "../../shared/sim/character.ts";
+import { TICK_DT } from "../../shared/coords.ts";
 
 test("road slab definitions append without renumbering existing kinds and use the drawn convex surface", () => {
   const old = compileContent(CORE_CONTENT.filter(d => !d.id.startsWith("core:zzruin"))).registry!;
@@ -217,6 +220,35 @@ test("dry road runout follows its source bend, stops at water, and survives late
   expect(roadGroundSamples(site, [e]).has(index(116, 124))).toBe(false);
 });
 
+test("deeper shoulder grading follows its surveyed road and preserves lower crossings and later cuts", () => {
+  const source = mkdtempSync(join(tmpdir(), "snark-road-shoulder-"));
+  try {
+    mkdirSync(join(source, "base"));
+    const roadsFile = { features: [[[100, 128], [156, 128]], [[134, 100], [134, 156]]].map(coordinates => ({
+      properties: { width_m: 8 }, geometry: { type: "LineString", coordinates },
+    })) };
+    writeFileSync(join(source, "base/roads.geojson"), JSON.stringify(roadsFile));
+    const grid = gridAt([-128, -128, 128, 128]), n = grid.nx * grid.nz;
+    const height = new Float32Array(n).fill(8), water = new Uint8Array(n), gaps = new Uint8Array(n), surface = new Uint8Array(n).fill(S.STREET);
+    const site = { source, ground: { grid, height, water, gaps, surface }, toLattice: (x: number, z: number) => [x, z], groundAt: () => 10 } as unknown as Site;
+    const index = (x: number, z: number) => (grid.z1 - z) / 2 * grid.nx + (grid.x1 - x) / 2;
+    const e: RoadEntrance = { x: 128, y: 10, z: 128, dx: 1, dz: 0, width: 8,
+      slabs: [{ kind: "core:zruin_floor4_concrete", x: 128, y: 9.8, z: 128, yaw: 0 }] };
+    const roads = roadIndex(site), line = roadRunout(site, e, roads);
+    expect(line).toBe(0);
+    water[index(128, 126)] = 1;
+    gaps[index(130, 126)] = 1;
+    surveyRoadShoulder(site, e, roads, line!);
+    height[index(128, 130)] = 7.5;
+    gradeRoadEntrances(site, [e]);
+    expect(height[index(128, 128)]).toBeCloseTo(9.98, 2);
+    expect(height[index(134, 130)]).toBe(8);
+    expect(height[index(128, 130)]).toBe(7.5);
+    expect(height[index(128, 126)]).toBe(8);
+    expect(height[index(130, 126)]).toBe(8);
+  } finally { rmSync(source, { recursive: true, force: true }); }
+});
+
 test("a dry uphill outer foot above the former half-metre gate still anchors the terminal slab", () => {
   const deck: DeckPoint[] = [0, 1, 2].map(i => ({ x: 100 + i * 3, y: 10 - i / 16, z: 128, yaw: 0, gap: false }));
   const slab = roadDeckSlab(deck, 0, 10.558);
@@ -236,4 +268,54 @@ test("dry runout clearance removes a facade pier in the road while preserving it
   const pieces = [blocking, support, outside, floor];
   clearCirculation(pieces, [], pieces.length, [], [{ deck: [], entrances: [e] }]);
   expect(pieces).toEqual([support, outside, floor]);
+});
+
+test("station access replans around a continuing road and remains walkable in both directions", () => {
+  const source = mkdtempSync(join(tmpdir(), "snark-station-road-"));
+  try {
+    mkdirSync(join(source, "blocks")); mkdirSync(join(source, "base"));
+    writeFileSync(join(source, "blocks/places.json"), JSON.stringify([{ kind: "station", name: "Station", e: -4, n: 0 }]));
+    writeFileSync(join(source, "blocks/ways.json"), JSON.stringify([
+      { id: 1, kind: "road_bridge", class: "primary", width_m: 8, name: null, lanes: 2, layer: 1, closed: false, length_m: 80, points: [[76, 0], [-4, 0]] },
+      { id: 2, kind: "rail_bridge", class: "monorail", width_m: 4, name: null, lanes: 1, layer: 1, closed: false, length_m: 300, points: [[-4, -156], [-4, 144]] },
+    ]));
+    writeFileSync(join(source, "base/roads.geojson"), JSON.stringify({ features: [{ geometry: { type: "LineString", coordinates: [[156, 0], [-144, 0]] }, properties: { width_m: 8, mtfcc: "S1200" } }] }));
+    const grid = gridAt([-256, -256, 256, 256]), n = grid.nx * grid.nz;
+    const site = { source, ground: { grid, gaps: new Uint8Array(n), water: new Uint8Array(n), height: new Float32Array(n).fill(3), heaps: { owner: new Int32Array(n).fill(-1) } },
+      groundAt: () => 3, waterAt: () => 0, toLattice: (e: number, north: number) => [256 - e, 256 + north] } as unknown as Site;
+    const pieces: Mason["pieces"] = [];
+    const made = makeBridges(site, m => { pieces.push(...m.pieces); return true; });
+    const station = made.records.find(r => r.id === 2)!.access;
+    expect(station).toHaveLength(1);
+    clearCirculation(pieces, [], pieces.length, [], made.records);
+    const w = flatWorld(8);
+    for (let z = 0; z < w.hf.nz; z++) for (let x = 0; x < w.hf.nx; x++) w.hf.setSample(x, z, 3);
+    for (const p of pieces) w.structs.add(w.kind(p.kind), p.x, p.y, p.z, Math.round(p.yaw * 65536 / 360) & 65535, 0, 1e4);
+    const environment = new StaticVehicleWorld(w, () => ASPHALT);
+    for (const direction of [-1, 1]) for (const speed of [0, 15, 25]) {
+      const car = createVehicle(COMPACT, direction > 0 ? 250 : 280, 3, 256, direction * Math.PI / 2);
+      car.vx = speed * direction;
+      const end = direction > 0 ? 280 : 250;
+      let impact = 0;
+      for (let tick = 0; tick < 180 && direction * (end - car.x) > 0; tick++) {
+        impact = Math.max(impact, stepVehicle(car, { throttle: 1, steer: 0, brake: 0, handbrake: false }, COMPACT, environment).impactSpeed);
+      }
+      expect(direction * (car.x - end)).toBeGreaterThanOrEqual(0);
+      expect(impact).toBe(0);
+    }
+    const params = w.reg.move[w.kind("core:survivor")]!, points = station[0]!.points;
+    for (const route of [points, [...points].reverse()]) {
+      const b = new Body(); Object.assign(b, route[0]); b.y += .2;
+      for (let tick = 0; tick < 30; tick++) stepBody(w, b, 0, 0, 0, 0, 0, params, TICK_DT);
+      for (const p of route.filter((_, i) => i % 10 === 0 || i === route.length - 1).slice(1)) {
+        for (let tick = 0; tick < 180 && Math.hypot(b.x - p.x, b.z - p.z) > .15; tick++) {
+          const yaw = Math.round(Math.atan2(p.x - b.x, p.z - b.z) * 65536 / (Math.PI * 2)) & 65535;
+          stepBody(w, b, 0, 90, yaw, 0, 0, params, TICK_DT);
+        }
+        for (let tick = 0; tick < 12; tick++) stepBody(w, b, 0, 0, 0, 0, 0, params, TICK_DT);
+        expect(Math.hypot(b.x - p.x, b.z - p.z)).toBeLessThan(.25);
+        expect(Math.abs(b.y - p.y)).toBeLessThan(.15);
+      }
+    }
+  } finally { rmSync(source, { recursive: true, force: true }); }
 });

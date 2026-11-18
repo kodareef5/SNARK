@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { Grid } from "./base.ts";
 import { Mason, type Frame, type Point } from "./ruin-geometry.ts";
 import type { Site, StaticPiece } from "./statics.ts";
-import { roadEntrances, roadRunout, type RoadEntrance } from "./bridge-earthwork.ts";
+import { roadEntrances, roadRunout, roadRunoutClearance, surveyRoadShoulder, type RoadEntrance } from "./bridge-earthwork.ts";
 import { roadIndex } from "./street-cars.ts";
 import { pathsOf, readWays, type Path } from "./ways.ts";
 import { makeSuspension, SUSPENDED } from "./suspension.ts";
@@ -174,6 +174,10 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
       }
     }
   }
+  const drivingEnds = planned.filter(({ p }) => p.way.kind === "road_bridge" && !/^(footway|cycleway|pedestrian|path|steps|bridleway)$/.test(p.way.class ?? ""))
+    .flatMap(({ p, deck }) => roadEntrances(site, deck, undefined, p.width));
+  for (const e of drivingEnds) roadRunout(site, e, roads);
+  const obstructsDriving = roadRunoutClearance(drivingEnds);
   const access = new Map<Path, BridgeRecord["access"]>();
   const stations = JSON.parse(readFileSync(join(site.source, "blocks/places.json"), "utf8")) as { kind: string; name: string; e: number; n: number }[];
   const rail = planned.filter(({ p }) => p.way.kind === "rail_bridge");
@@ -205,11 +209,15 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
           if (px < x0 + 8 || pz < z0 + 8 || px > x1 - 8 || pz > z1 - 8 || site.groundAt(px, pz) > y + .08 || [-1, 0, 1].some((s) => site.ground.heaps.owner[at(px + nz * s, pz - nx * s)]! >= 0 || wetAt(at(px + nz * s, pz - nx * s)))) break;
           let overhead = false;
           for (let bx = Math.floor(px / 16) - 2; bx <= Math.floor(px / 16) + 2; bx++) for (let bz = Math.floor(pz / 16) - 2; bz <= Math.floor(pz / 16) + 2; bz++) for (const other of deckBins.get(`${bx},${bz}`) ?? []) {
-            const q = other.d; if (q.y <= y + .35 || q.y - .4 >= y + 2.1) continue;
+            const q = other.d;
             const turn = q.yaw * Math.PI / 180; const dx = px - q.x; const dz = pz - q.z;
-            if (Math.abs(dx * Math.cos(turn) - dz * Math.sin(turn)) < 2.45 && Math.abs(dx * Math.sin(turn) + dz * Math.cos(turn)) < other.width / 2 + .45) overhead = true;
+            const alongRoad = Math.abs(dx * Math.cos(turn) - dz * Math.sin(turn));
+            const acrossRoad = Math.abs(dx * Math.sin(turn) + dz * Math.cos(turn));
+            if (q.y > y + .35 && q.y - .4 < y + 2.1 && alongRoad < 2.45 && acrossRoad < other.width / 2 + .45) overhead = true;
+            if (other.path.way.kind === "road_bridge" && !/^(footway|cycleway|pedestrian|path|steps|bridleway)$/.test(other.path.way.class ?? "") &&
+              y > q.y + .35 && y < q.y + 3.8 && alongRoad < 4.5 && acrossRoad < other.width / 2 + 2.5) overhead = true;
           }
-          if (overhead) break;
+          if (overhead || obstructsDriving(px, y, pz)) break;
           points.push({ x: px, y, z: pz, yaw: Math.atan2(-nx, -nz) * 180 / Math.PI, gap: false });
         }
         if (points.length !== count + 1) continue;
@@ -320,7 +328,8 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
         // Buildings are laid out and their ground levelled after bridges. Reserve each real dry abutment too:
         // protecting only the deck centre lets a neighbouring floor excavate the last metre below its outer edge.
         for (const e of record.entrances) {
-          roadRunout(site, e, roads);
+          const line = roadRunout(site, e, roads);
+          if (line !== undefined) surveyRoadShoulder(site, e, roads, line);
           corridors.push({ a: [e.x - e.dx * 4, e.z - e.dz * 4], b: [e.x + e.dx * 2, e.z + e.dz * 2],
             width: e.width + 4, low: e.y - .5, high: e.y + 3.5 });
           for (let i = 1; i < (e.runout?.length ?? 0); i++) {
