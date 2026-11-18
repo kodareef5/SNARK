@@ -496,6 +496,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (d.damage !== undefined && !DAMAGE_TYPES.includes(d.damage)) errors.push(`${d.id}: damage must name a kind of damage`);
     } else if (d.type === "structure") {
       if (d.under !== undefined && !(Number.isInteger(d.under) && d.under > 0 && d.under < REGION_BASE)) errors.push(`${d.id}: under must be a fixed palette colour`);
+      if (d.near !== undefined && d.near !== true) errors.push(`${d.id}: near is true or left out`);
       if (d.motion !== undefined) errors.push(...motionFaults(d));
       if (d.vehicleSurface !== undefined && !validVehicleSurface(d.vehicleSurface)) errors.push(`${d.id}: invalid vehicleSurface grip/resistance`);
       positive(d, "half[0]", d.half[0], MAX_STRUCTURE_HALF);

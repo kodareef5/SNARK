@@ -112,5 +112,7 @@ const SHAPES: readonly ShapeDef[] = STREET_PIECES.map((p) => ({ type: "shape", i
 const STATICS: readonly StructureDef[] = STREET_PIECES.map((p) => ({
   type: "structure", class: "static", id: streetKind(p.name), mesh: streetKind(p.name), shape: shapeId(p.name), half: shapeHalf(p.boxes, p.hulls),
   color: p.color, hp: p.hp, material: p.material,
+  // Drawn near only: left out of the far city's lattice and mass, where a lamp would take a whole cell. A billboard is seen from afar.
+  ...(p.name.startsWith("billboard") ? {} : { near: true as const }),
 }));
 export const STREET: readonly Def[] = [...SHAPES, ...STATICS];
