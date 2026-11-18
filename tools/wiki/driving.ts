@@ -6,7 +6,7 @@ import type { Cell, Entry, Table } from "./catalogue.ts";
 import { CIRCLE, CRAWL, KMH, NEAR, type BoatHandling, type Handling, type RoadHandling, type RotorHandling } from "./handling.ts";
 
 const kmh = (v: number): string => `${num(v / KMH, 0)} km/h`;
-const knots = (v: number): string => `${num((v * 3600) / 1852, 0)} knots`;
+const knots = (v: number, short = false): string => `${num((v * 3600) / 1852, 0)} ${short ? "kn" : "knots"}`;
 const metres = (m: number): string => `${num(m, m < 10 ? 1 : 0)} m`;
 const km = (m: number): string => `${num(m / 1000, 0)} km`;
 const secs = (s: number): string => (s < 60 ? `${num(s, 1)} s` : time(s));
@@ -17,16 +17,17 @@ const wheels = (h: RoadHandling, short: boolean): string =>
   : h.front === 0 ? (short ? "Rear" : "The rear")
   : h.front === 1 ? (short ? "Front" : "The front")
   : short ? `All, ${num(h.front * 100, 0)}% front` : `All four, ${num(h.front * 100, 0)}% of the drive to the front`;
-const drives = (h: BoatHandling): string => `${h.drives === 1 ? "One" : h.drives === 2 ? "Twin" : String(h.drives)} ${h.drive}${h.drives > 1 ? "s" : ""}`;
+const drives = (h: BoatHandling, short = false): string =>
+  `${short ? h.drives : h.drives === 1 ? "One" : h.drives === 2 ? "Twin" : String(h.drives)} ${h.drive}${h.drives > 1 ? "s" : ""}`;
 const farthest = (h: BoatHandling): string => (h.cruise === h.top ? `${km(h.rangeCruise)}, flat out` : `${km(h.rangeCruise)} at ${kmh(h.cruise)}`);
 
 /** How the figures were measured, said of one vehicle or of each in a table. */
 const roadNote = (of: string): string => `Measured when this wiki was built, by driving the game's own model of ${of} with one survivor aboard on level open ground, which is what every street of a city is to a wheel. Full throttle from rest; braking is the reverse key held, as a driver brakes; the turning circle is the one its body sweeps at full lock at walking pace; round the circle ${CIRCLE} m across, the fastest it keeps within a metre of the line for a lap.`;
-const boatNote = (of: string): string => `Measured when this wiki was built, by running the game's own model of ${of} on open water with its pilot aboard. Full throttle from rest, its top speed where it stops gaining and "to its top speed" to within ${num(NEAR * 100)}% of it; turning is full helm at full throttle; it has run on once it is down to ${kmh(CRAWL)}; its farthest is at the throttle, tried in tenths, that takes it farthest.`;
+const boatNote = (of: string): string => `Measured when this wiki was built, by running the game's own model of ${of} on open water with its pilot aboard. Full throttle from rest: its top speed is where it stops gaining, and "to its top speed" to within ${num(NEAR * 100)}% of it. Turning is full helm at full throttle, the circle at its top speed and turning about from rest. It has run on, the throttle cut, once it is down to ${kmh(CRAWL)}; its farthest is at the throttle, tried in tenths, that takes it farthest.`;
 const rotorNote = (of: string): string => `Measured when this wiki was built, by flying the game's own model of ${of} with its pilot aboard over level ground, the stick fully forward with the height held; holding Shift tips it further. It stops with the brake, X, held.`;
 
-export function topSpeed(h: Handling): string {
-  return h.movement === "boat" ? `${kmh(h.top)}, ${knots(h.top)}` : kmh(h.top);
+export function topSpeed(h: Handling, short = false): string {
+  return h.movement === "boat" ? `${kmh(h.top)}, ${knots(h.top, short)}` : kmh(h.top);
 }
 
 /** A vehicle's own page: how it drives, in a row a figure. */
@@ -111,8 +112,8 @@ export function fleetTables(entries: readonly Entry[]): Table[] {
   });
   if (boats.length) tables.push({
     title: "On the water",
-    head: ["", "Top speed", "To half speed", "To top speed", "Turning circle flat out", "Turning about from rest", "Runs on, throttle cut", "Draught", "Drive", "Range flat out", "Farthest on a tank"],
-    rows: boats.map(({ names, h }) => [names, topSpeed(h), secs(h.toHalf), secs(h.toTop), metres(h.turnFast), metres(h.turnAbout), metres(h.runOn), `${num(h.draught, 2)} m`, drives(h), km(h.rangeTop), farthest(h)]),
+    head: ["", "Top speed", "To half speed", "To top speed", "Turning circle", "Turns about in", "Runs on", "Draught", "Drive", "Farthest on a tank"],
+    rows: boats.map(({ names, h }) => [names, topSpeed(h, true), secs(h.toHalf), secs(h.toTop), metres(h.turnFast), metres(h.turnAbout), metres(h.runOn), `${num(h.draught, 2)} m`, drives(h, true), farthest(h)]),
     note: [boatNote("each")],
   });
   if (rotors.length) tables.push({
