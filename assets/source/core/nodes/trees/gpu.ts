@@ -5,7 +5,7 @@
 //   bun assets/source/core/nodes/trees/gpu.ts --out artifacts/trees/gpu [--tier medium] [--size 1280x720]
 //     [--hours 10,17] [--views oak] [--front]   (views: the keys of VIEWS below, comma separated)
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tierOf } from "../../../../../client/core/assets/tiers.ts";
 import { Camera } from "../../../../../client/core/render/camera.ts";
@@ -20,6 +20,7 @@ import { NodeField, formOf, nodeForms, type NodeSource } from "../../../../../sh
 import { StructureStore } from "../../../../../shared/world/structures.ts";
 import { FakeNet } from "../../../../../tests/fixtures/assetnet.ts";
 import { SOURCE } from "../../../../../tools/art/source.ts";
+import { findChrome } from "../../../../../tools/chrome.ts";
 import { litProbe } from "../../../../../tools/probe-lit.ts";
 import { Shot, type LitCheck } from "../../../../../tools/probe-lit/shot.ts";
 import { gameFiles } from "../../../../../tools/snap/files.ts";
@@ -162,8 +163,7 @@ const check: LitCheck = {
   },
 };
 
-const CANDIDATES = [process.env.CHROME, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome"];
-const chrome = CANDIDATES.find((p) => p && existsSync(p));
+const chrome = findChrome();
 if (!chrome) throw new Error("no Chrome found: set CHROME to its path");
 await litProbe(chrome, [check]);
 // The probe can leave its browser's pipes open; the pictures are written by now.

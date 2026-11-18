@@ -8,7 +8,7 @@ import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../../tests/fixtures/map.ts";
 import { devtools } from "../map/trip.ts";
-import { findChrome } from "../chrome.ts";
+import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 
 const course = process.argv[2];
 if (course !== "bridge" && course !== "tree") throw new Error("Choose tree or bridge followed by a built San Francisco map path.");
@@ -50,7 +50,7 @@ try {
   }
   if (car < 0) throw new Error("Car placement failed.");
   const graphics = process.argv.includes("--software") ? ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : process.platform === "darwin" ? ["--use-angle=metal"] : [];
-  browser = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...graphics, "--window-size=800,600", "--remote-debugging-port=0", "--user-data-dir="+profile, "about:blank"], { stdout: "ignore", stderr: "ignore" });
+  browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...graphics, "--window-size=800,600", "--remote-debugging-port=0", "--user-data-dir="+profile, "about:blank"], { stdout: "ignore", stderr: "ignore" });
   const tab = page = await devtools(profile);
   await tab.send("Runtime.enable");
   await tab.send("Page.enable");

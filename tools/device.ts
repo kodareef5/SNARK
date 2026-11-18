@@ -46,7 +46,7 @@ import type { ServerWorld } from "../server/world.ts";
 import { flock } from "./bench/gpu.ts";
 import { benchHills } from "./bench/terrain.ts";
 import { buildClientApart } from "./build-client.ts";
-import { findChrome } from "./chrome.ts";
+import { CHROME_FLAGS, findChrome } from "./chrome.ts";
 
 /** A report larger than this is refused, and so is any post past these counts. A ladder posts after each of a hundred or so rungs. */
 export const REPORT_BYTES = 64 * 1024;
@@ -564,7 +564,7 @@ if (import.meta.main) {
     const profile = mkdtempSync(join(tmpdir(), "snark-device-"));
     // A phone's shape: a narrow window three device pixels to the CSS pixel. The test starts without a tap.
     const link = `${base0}/?device=${token}&password=${password}${tests}&mode=${mode}&minutes=${soakMinutes}${texfmt ? `&texfmt=${texfmt}` : ""}${assetnet ? `&assetnet=${assetnet}` : ""}`;
-    const browser = Bun.spawn([chrome!, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=430,932", "--force-device-scale-factor=3", `--user-data-dir=${profile}`, link], { stdout: "ignore", stderr: "ignore" });
+    const browser = Bun.spawn([chrome!, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=430,932", "--force-device-scale-factor=3", `--user-data-dir=${profile}`, link], { stdout: "ignore", stderr: "ignore" });
     const limit = (mode === "soak" || mode === "governed" ? soakMinutes + 5 : mode === "ladder" ? 20 : mode === "terrain" ? 8 : mode === "trees" ? 12 : 6) * 60000;
     const got = await Promise.race([whole, new Promise<null>((r) => setTimeout(() => r(null), limit))]);
     browser.kill();

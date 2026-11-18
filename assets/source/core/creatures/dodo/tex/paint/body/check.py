@@ -175,7 +175,7 @@ def rebuild():
  expected={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in OUT.iterdir() if p.is_file()}
  old_out,old_qa=paint.OUT,paint.QA
  try:
-  with tempfile.TemporaryDirectory(prefix='body-rebuild-',dir='/private/tmp/dodo-look') as temp:
+  with tempfile.TemporaryDirectory(prefix='body-rebuild-',dir='/tmp/dodo-look') as temp:
    paint.OUT=Path(temp)/'layers';paint.QA=Path(temp)/'checks';paint.build()
    actual={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in paint.OUT.iterdir() if p.is_file()}
  finally:paint.OUT,paint.QA=old_out,old_qa
