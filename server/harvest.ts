@@ -141,19 +141,19 @@ export class Harvest {
 
   /** A swing landed on this node (server/combat.ts found it). Returns true if that did anything. */
   struck(c: Client, chunk: number, index: number): boolean {
-    return this.hit(c, chunk, index, false);
+    return this.hit(this.records.byPid.get(c.pid), chunk, index, false);
   }
 
   /** The use key picks the bush the body looks at. Returns true if one was picked. */
   pick(c: Client): boolean {
     const at = this.target(c);
-    return at >= 0 && this.hit(c, at >> 8, at & 255, true);
+    return at >= 0 && this.hit(this.records.byPid.get(c.pid), at >> 8, at & 255, true);
   }
 
   /** For load tests. Strikes or picks the node, whichever it takes. Play goes through a swing and `pick`. */
   strike(c: Client, chunk: number, index: number): boolean {
     const kind = this.field.standing(chunk, index);
-    return kind !== 0 && this.hit(c, chunk, index, (this.world.reg.defs[kind] as NodeDef).material === undefined);
+    return kind !== 0 && this.hit(this.records.byPid.get(c.pid), chunk, index, (this.world.reg.defs[kind] as NodeDef).material === undefined);
   }
 
   /** Physical destruction uses the same depletion/save/regrowth feed, without items, XP or harvesting callbacks.
@@ -191,11 +191,15 @@ export class Harvest {
     return this.gather(rec, chunk, index, profile.power, force, -1, profile);
   }
 
-  private hit(c: Client, chunk: number, index: number, byHand: boolean): boolean {
+  /** A mounted browser shares the same node, loot and regrowth state as a survivor picking the bush. */
+  browse(mount: EntityRecord, chunk: number, index: number): boolean {
+    return this.hit(mount, chunk, index, true);
+  }
+
+  private hit(rec: EntityRecord | undefined, chunk: number, index: number, byHand: boolean): boolean {
     const world = this.world;
     const reg = world.reg;
     const table = this.field.store.chunks[chunk];
-    const rec = this.records.byPid.get(c.pid);
     // What is left of a used-up node stands in its slot, and gives nothing.
     const kind = this.field.standing(chunk, index);
     if (!table || kind === 0 || !rec) return false;

@@ -4,7 +4,7 @@ import { expect, test } from "bun:test";
 import { TIERS, forTouch } from "../../client/core/assets/tiers.ts";
 import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
 import { HAND_FAR, HAND_NEAR } from "../../client/core/render/hand.ts";
-import { DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { PROGRAMS, UNIT, drawProgram, tierPrograms } from "../../client/core/render/programs.ts";
 import type { PackMaterial } from "../../shared/pack/pack.ts";
 import { TEXTURE_FORMATS } from "../../shared/pack/texture.ts";
@@ -29,13 +29,14 @@ test("low poly's programs are the pinned flat texts, and every sampler a program
     }
   }
   // The material's five maps and the rest each have a unit, the layer and the details atlas after them, which only the
-  // details program reads and which is free outside its draws, and the sky's openness and the facades' five past the
-  // sixteen: no program reads more than fourteen, the flat program on a tier that draws facades, two of them in its
-  // vertex text and twelve in its fragment's, within the sixteen a fragment text may read.
+  // details program reads and which is free outside its draws, where the finish's passes, after every draw, read their
+  // sources (post.ts); and the sky's openness and the facades' five past the sixteen: no program reads more than
+  // fourteen, the flat program on a tier that draws facades, two of them in its vertex text and twelve in its
+  // fragment's, within the sixteen a fragment text may read.
   const units = [UNIT.palette, UNIT.heights, UNIT.tint, UNIT.bones, ...[0, 1, 2, 3, 4].map((r) => UNIT.maps + r), UNIT.shadow, UNIT.sky, UNIT.windowHeights, UNIT.windowTint, UNIT.atlas, UNIT.layer, UNIT.details, UNIT.open];
   expect([new Set(units).size, Math.max(...units)]).toEqual([17, 16]);
   expect(Math.max(...TIERS.flatMap((tier) => Object.values(PROGRAMS).map((make) => Object.keys(make(tier, "bc").samplers).length)))).toBe(14);
-  expect(Object.entries(PROGRAMS).filter(([, make]) => Object.values(make(TIERS[1]!, "bc").samplers).includes(UNIT.details)).map(([name]) => name)).toEqual(["details"]);
+  expect(Object.entries(PROGRAMS).filter(([, make]) => Object.values(make(TIERS[1]!, "bc").samplers).includes(UNIT.details)).map(([name]) => name)).toEqual(["details", "bloomDown", "bloomUp", "finish"]);
 });
 
 test("the frame block: each value inside its slot, a GLSL slot for every four floats, and the packet's views of it", () => {
@@ -45,7 +46,9 @@ test("the frame block: each value inside its slot, a GLSL slot for every four fl
   const [slots, spheres, cascades, after] = [/highp vec4 (f[^;]+);/, /highp vec4 fSpheres\[(\d+)\]/, /highp mat4 fCascades\[(\d+)\]/, /fCascades\[\d+\];\s+highp vec4 (f[^;]+);/].map((re) => FRAME_BLOCK.match(re)![1]!);
   expect(slots.split(",").length * 4).toBe(FRAME.spheres);
   expect([Number(spheres), Number(cascades)]).toEqual([MAX_CASCADES, MAX_CASCADES]);
-  expect([FRAME.spheres + MAX_CASCADES * 4, FRAME.cascades + MAX_CASCADES * 16, FRAME.skySide + after.split(",").length * 4]).toEqual([FRAME.cascades, FRAME.skySide, FRAME_FLOATS]);
+  expect([FRAME.spheres + MAX_CASCADES * 4, FRAME.cascades + MAX_CASCADES * 16, FRAME.skySide + after.split(",").length * 4]).toEqual([FRAME.cascades, FRAME.skySide, FRAME.contact]);
+  // The bodies' contact last, two slots a body (contact.ts).
+  expect([Number(FRAME_BLOCK.match(/highp vec4 fContact\[(\d+)\]/)![1]), FRAME.contact + MAX_CONTACTS * 8]).toEqual([MAX_CONTACTS * 2, FRAME_FLOATS]);
   expect(Math.max(...Object.values(FRAME))).toBeLessThan(FRAME_FLOATS);
 
   const p = new FramePacket();
@@ -104,7 +107,7 @@ test("a tier's programs are every one its frames may draw with, each once, the s
       const names = tierPrograms(tier).map(named);
       expect(new Set(names).size).toBe(names.length);
       if (!tier.lit) expect(names).toEqual(["flat", "terrain", "terrainWindow", "far", "pulled", "details"]);
-      else expect(names).toEqual(Object.keys(PROGRAMS));
+      else expect(names).toEqual(Object.keys(PROGRAMS).filter((n) => tier.post !== null || !["bloomDown", "bloomUp", "finish"].includes(n)));
       const texts = new Set(names.map((n) => JSON.stringify(PROGRAMS[n]!(tier, "astc"))));
       expect(texts.size).toBe(names.length);
     }

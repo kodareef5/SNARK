@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { bodySeed } from "../client/core/render/scene.ts";
 import { CreatureAnim, rayCreature } from "../shared/anim/creature.ts";
-import { B_FOOT_L, B_HAND_L, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_LEG_L, B_NECK, B_SHOULDER_L, B_TOE_L, B_UPPER_ARM_L, B_UPPER_LEG_L, HUMAN, ZONE_COUNT, ZONE_NAMES } from "../shared/anim/human.ts";
+import { B_FOOT_L, B_HAND_L, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_LEG_L, B_NECK, B_SHOULDER_L, B_TOE_L, B_UPPER_ARM_L, B_UPPER_LEG_L, HUMAN, HUMAN_ZONE_COUNT, ZONE_NAMES } from "../shared/anim/human.ts";
 import { LOOK_BYTES, LOOK_SEX, SEX_LABELS, defaultLook } from "../shared/anim/look.ts";
 import { AnimState } from "../shared/anim/pose.ts";
 import { buildRigs } from "../shared/anim/rigs.ts";
@@ -113,7 +113,7 @@ function measure(sex: number): void {
   remote.look.set(look.subarray(0, LOOK_BYTES), 0);
   const id = remote.id[0]!;
   const bx = remote.x[0]!, by = remote.y[0]!, bz = remote.z[0]!;
-  const table = Array.from({ length: ZONE_COUNT }, () => new Uint32Array(ZONE_COUNT));
+  const table = Array.from({ length: HUMAN_ZONE_COUNT }, () => new Uint32Array(HUMAN_ZONE_COUNT));
   let phantom = 0;
   let body = 0;
   const st = new AnimState();
@@ -163,7 +163,7 @@ function measure(sex: number): void {
   console.log(`\n${SEX_LABELS[sex]} body: zone drawn (rows) against zone hit (columns)`);
   console.log("".padEnd(12), ZONE_NAMES.map((name) => name.replace("left ", "L ").replace("right ", "R ").padStart(7)).join(""), "   same");
   let same = 0;
-  for (let z = 1; z < ZONE_COUNT; z++) {
+  for (let z = 1; z < HUMAN_ZONE_COUNT; z++) {
     const row = table[z]!;
     const total = row.reduce((a, b) => a + b, 0);
     same += row[z]!;
@@ -201,7 +201,7 @@ async function measureCreature(id: string): Promise<void> {
   remote.colors.fill(0, 0, 6);
   const rid = remote.id[0]!;
   const bx = remote.x[0]!, by = remote.y[0]!, bz = remote.z[0]!;
-  const table = Array.from({ length: ZONE_COUNT }, () => new Uint32Array(ZONE_COUNT));
+  const table = Array.from({ length: HUMAN_ZONE_COUNT }, () => new Uint32Array(HUMAN_ZONE_COUNT));
   let phantom = 0;
   let body = 0;
   const st = new AnimState();
@@ -245,7 +245,7 @@ async function measureCreature(id: string): Promise<void> {
   console.log(`\n${id}: zone drawn (rows) against zone hit (columns), standing and attacking, from ten sides`);
   console.log("".padEnd(12), ZONE_NAMES.map((name) => name.replace("left ", "L ").replace("right ", "R ").padStart(7)).join(""), "   same");
   let same = 0;
-  for (let z = 1; z < ZONE_COUNT; z++) {
+  for (let z = 1; z < HUMAN_ZONE_COUNT; z++) {
     const row = table[z]!;
     const total = row.reduce((a, b) => a + b, 0);
     if (total === 0) continue;

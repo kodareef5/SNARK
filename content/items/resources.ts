@@ -7,8 +7,9 @@ import { crafting } from "../craft.ts";
 // crystal, obsidian and silica pearls are gathered from the nodes of content/items/nodes.ts. The colours are chosen.
 
 export const RESOURCES: readonly Def[] = [
+  { type: "item", class: "resource", id: "core:keratin", stack: 100, weight: 0.01, label: "keratin", color: 15 },
   // Cementing paste, moved here from content/building.ts (S0) and to the mortar and pestle by S6 (ark.wiki.gg, Cementing
-  // Paste, infobox, 2026-11-15): 4 chitin (or keratin or shell fragments, which we do not have; chitin alone is a whole
+  // Paste, infobox, 2026-11-15): 4 chitin (keratin and shell fragments are alternative ingredients in ARK; chitin alone is a whole
   // recipe) and 8 stone at the mortar and pestle, one a grind in 1 s, craftingxp 1.2 (our 4.8, D465's four times); level
   // 13, 3 engram points. The chemistry bench's recipe waits for the bench.
   { type: "item", class: "resource", id: "core:paste", stack: 100, weight: 0.01, label: "cementing paste", color: 15 },

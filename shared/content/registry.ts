@@ -12,7 +12,7 @@ import { hashString } from "../hash.ts";
 import { FLIGHT_TICKS_MAX, STAMINA_UNITS, type MoveParams } from "../sim/character.ts";
 import { COLOR_REGIONS, STAT_NAMES, type ColorSet } from "../sim/genome.ts";
 import { GAME_HOUR_TICKS } from "../sim/lazy.ts";
-import { ZONE_COUNT } from "../anim/human.ts";
+import { ZONE_COUNT, ZONE_TAIL } from "../anim/human.ts";
 import { DAMAGE_TYPES } from "../sim/damage.ts";
 import { lootFaults } from "../sim/loot.ts";
 import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../sim/weapon.ts";
@@ -396,6 +396,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         positive(d, "food.max", d.food.max, 1e6);
         positive(d, "food.perHour", d.food.perHour, 1e6);
       }
+      if (d.bite?.harvest !== undefined && d.bite.harvest !== "berries" && d.bite.harvest !== "carrion") errors.push(`${d.id}: bite.harvest must be berries or carrion`);
       for (const [type, v] of Object.entries(d.takes ?? {})) {
         if (!(DAMAGE_TYPES as readonly string[]).includes(type) || !(v >= 0)) errors.push(`${d.id}: takes.${type} must name a kind of damage and not be negative`);
       }
@@ -414,6 +415,12 @@ export function compileContent(all: readonly Def[]): CompileResult {
         }
       }
       if (Array.isArray(d.mutations) && !(d.mutations.length > 0 && d.mutations.every(paletteIndex))) errors.push(`${d.id}: mutations must be palette indices, and at least one`);
+      if (d.roar) {
+        for (const [name, max] of [["range", 100], ["maxDrag", 1e6], ["cooldown", 600], ["immunity", 600], ["interrupt", 30]] as const) {
+          positive(d, `roar.${name}`, d.roar[name], max);
+        }
+        if (d.roar.immunity <= d.roar.interrupt) errors.push(`${d.id}: roar immunity must outlast its interrupt`);
+      }
       if (d.alarm !== undefined) positive(d, "alarm", d.alarm, 1000);
       if (d.tamedWalkSpeed !== undefined) positive(d, "tamedWalkSpeed", d.tamedWalkSpeed, 100);
       if (d.tamedSwimSpeed !== undefined) positive(d, "tamedSwimSpeed", d.tamedSwimSpeed, 100);
@@ -1049,7 +1056,7 @@ function compileColors(regions: readonly (readonly (readonly [palette: number, w
 const WILD_SET = compileColors(new Array(COLOR_REGIONS).fill(WILD_COLORS.map((c) => [c, 1] as const)));
 
 /** The ZONE_* ids (shared/anim/human.ts) each body part named in content covers. */
-const ZONE_GROUPS: Readonly<Record<string, readonly number[]>> = { head: [1], torso: [2], arms: [3, 4], hands: [5, 6], legs: [7, 8], feet: [9, 10] };
+const ZONE_GROUPS: Readonly<Record<string, readonly number[]>> = { head: [1], torso: [2], arms: [3, 4], hands: [5, 6], legs: [7, 8], feet: [9, 10], tail: [ZONE_TAIL] };
 
 /**
  * The rays a shot of `ammo` from `weapon` sends, each tested and landed alone (W3): the gun's own count if it gives one, as

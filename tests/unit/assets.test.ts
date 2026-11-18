@@ -1,7 +1,7 @@
 // The asset library's table, binding and tiers.
 import { expect, test } from "bun:test";
 import { Assets, HYSTERESIS } from "../../client/core/assets/assets.ts";
-import { DEFAULT_TIER, TIERS, forTouch, offeredTiers, tierOf } from "../../client/core/assets/tiers.ts";
+import { DEFAULT_TIER, TIERS, forTouch, offeredTiers, startingTier, tierOf } from "../../client/core/assets/tiers.ts";
 import { SETTING_ROWS, Settings, keptLine } from "../../client/core/settings.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
@@ -129,6 +129,28 @@ test("the graphics setting steps through the tiers and stops at either end", () 
   expect(steady.value(s)).toBe("automatic");
   steady.step(s, 1);
   expect([steady.value(s), s.steady]).toEqual(["off", false]);
+});
+
+test("a desktop with a GPU and a light target starts on high; a phone, the CPU drawing, a small memory or no light target start on medium, and a tier chosen is kept", () => {
+  const gpu = "ANGLE (Apple, ANGLE Metal Renderer: Apple M5, Unspecified Version)";
+  const desk = { touchFirst: false, renderer: gpu, light: true };
+  expect(startingTier(desk)).toBe("high");
+  expect([startingTier({ ...desk, memory: 8 }), startingTier({ ...desk, memory: 4 }), startingTier({ ...desk, memory: 2 })]).toEqual(["high", "high", DEFAULT_TIER]);
+  expect([startingTier({ ...desk, touchFirst: true }), startingTier({ ...desk, light: false })]).toEqual([DEFAULT_TIER, DEFAULT_TIER]);
+  expect(startingTier({ ...desk, renderer: "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)" })).toBe(DEFAULT_TIER);
+  const s = new Settings();
+  s.start({ renderer: gpu, light: true });
+  expect([s.tier, s.chosen]).toEqual(["high", false]);
+  s.touchFirst = true;
+  s.start({ renderer: gpu, light: true });
+  expect(s.tier).toBe(DEFAULT_TIER);
+  SETTING_ROWS.find((r) => r.label === "Graphics")!.step(s, 1);
+  s.touchFirst = false;
+  s.start({ renderer: gpu, light: true });
+  expect([s.tier, s.chosen]).toEqual(["high", true]);
+  s.tier = "lowpoly";
+  s.start({ renderer: gpu, light: true });
+  expect(s.tier).toBe("lowpoly");
 });
 
 test("the settings screen says what is kept of the assets between visits, and asks for all of them when told", () => {

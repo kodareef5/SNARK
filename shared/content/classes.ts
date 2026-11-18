@@ -143,6 +143,7 @@ const SPECIES = {
   bite: f("facet", "AttackInfos"),
   combat: f("facet", "ground attacks, charge and plate modes"),
   camera: f("facet", "the mounted view measured against the saddle"),
+  roar: f("facet", "mounted roar range and interruption"),
   taming: f("facet", "RequiredTameAffinity"),
   eats: f("list", "DinoSettings food effectiveness", { refs: { "[].item": "item" }, open: true }),
   torporDrain: f("number"),
@@ -432,7 +433,7 @@ row("species/creature", "species", SPECIES, {
   ark: "a creature's character, its status component and its entry",
   shelf: "creatures",
   must: [...BODY, "stats"],
-  may: ["skeleton", "turn", "strafe", "swimSpeed", "swimDepth", "swimEyeHeight", "stamina", "food", "slots", "keeps", "fists", "bite", "combat", "camera", "drops", "corpse", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "alarm", "tamedWalkSpeed", "tamedSwimSpeed", "tamedSprintMul", "drag", "mass", "carriable", "feces", "eggChance", "fistsTorpor", "fly", "grab", "defendsEgg", "riderWeight", "missiles", "structures", "tameBonus", "tamedHealth", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
+  may: ["skeleton", "turn", "strafe", "swimSpeed", "swimDepth", "swimEyeHeight", "stamina", "food", "slots", "keeps", "fists", "bite", "roar", "combat", "camera", "drops", "corpse", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "alarm", "tamedWalkSpeed", "tamedSwimSpeed", "tamedSprintMul", "drag", "mass", "carriable", "feces", "eggChance", "fistsTorpor", "fly", "grab", "defendsEgg", "riderWeight", "missiles", "structures", "tameBonus", "tamedHealth", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
   slots: {
     body: mesh("must", "{mesh}", "box"),
     rig: { asset: "rig", need: "must", when: "skeleton", from: "{mesh}", fallback: ["rigid"] },

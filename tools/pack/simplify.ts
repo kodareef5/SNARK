@@ -537,6 +537,7 @@ export interface LevelPlan {
   palette: Uint8Array;
   /** Rigid bones whose small closed parts must retain their axis extremes at every level. */
   preserveBones?: readonly number[];
+  distanceLods?: readonly SourceLod[];
 }
 
 /**
@@ -561,9 +562,21 @@ export function withSurfaceLevels(mesh: SourceMesh, plan: LevelPlan): SourceMesh
   }
   const flat = surface.map(colours);
   const lods = surface.map((lod, level) => painted(lod, flat[level]!));
-  for (const made of simplify(flatOf(surface[surface.length - 1]!, flat[flat.length - 1]!), plan.budgets.slice(plan.flat - 1), plan.preserveBones)) {
-    if (!worth(made.lod, lods[lods.length - 1]!)) break;
-    lods.push(made.lod);
+  const budgets = plan.budgets.slice(plan.flat - 1);
+  const authored = plan.distanceLods ?? [];
+  const generated = budgets.length - authored.length;
+  if (generated < 0) throw new Error(`${mesh.id}: more authored flat levels than distance budgets`);
+  if (generated > 0) {
+    for (const made of simplify(flatOf(surface[surface.length - 1]!, flat[flat.length - 1]!), budgets.slice(0, generated), plan.preserveBones)) {
+      if (!worth(made.lod, lods[lods.length - 1]!)) break;
+      lods.push(made.lod);
+    }
+  }
+  for (const [i, lod] of authored.entries()) {
+    if (!lod.indices.length || lod.indices.length / 3 > budgets[generated + i]! || !worth(lod, lods[lods.length - 1]!)) {
+      throw new Error(`${mesh.id}: authored distance level ${i} is empty or exceeds its triangle budget or reduction target`);
+    }
+    lods.push(lod);
   }
   return { ...mesh, flat: surface.length, lods: lods.map((lod, level) => (level === 0 ? lod : { ...lod, error: surfaceError(fine, lod) })) };
 }
