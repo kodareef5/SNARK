@@ -154,23 +154,29 @@ export function censusWorld(map: MapData, centre: readonly [number, number], reg
       }
     }
   };
+  /** A scene of the world on `setup`, `height` pixels high, that makes what it is asked for in the frame it is asked. */
+  const scene = (setup: Setup, height = setup.size[1]): Scene => {
+    const s = new Scene({ mapId: map.id, dims, hf, structs, far: { cells: new FarStore(), complete }, city: { statics, complete } }, reg, pack);
+    asTextured(s);
+    [s.assets.tier, s.viewHeight] = [setup.tier, height];
+    s.city!.makeMs = Infinity;
+    s.near!.pieces = Infinity;
+    return s;
+  };
   return {
-    map, hf, statics, centre,
-    /** What `view` draws on `setup`, in a scene of its own, once nothing is left to make or put on the card. */
-    count(view: CensusView, setup: Setup): Counted {
+    map, hf, statics, centre, hold, scene, pack,
+    /** What `view` draws on `setup`, in a scene of its own that `set` may change, once nothing is left to make or put on the card. */
+    count(view: CensusView, setup: Setup, set?: (scene: Scene) => void): Counted {
       [cam.x, cam.y, cam.z] = placeOf(centre, hf, view);
       [cam.yaw, cam.pitch, cam.aspect] = [view.yaw, view.pitch, setup.size[0] / setup.size[1]];
       hold(cam.x, cam.z);
-      const scene = new Scene({ mapId: map.id, dims, hf, structs, far: { cells: new FarStore(), complete }, city: { statics, complete } }, reg, pack);
-      asTextured(scene);
-      [scene.assets.tier, scene.viewHeight] = [setup.tier, setup.size[1]];
-      const city = scene.city!;
-      city.makeMs = Infinity;
-      scene.near!.pieces = Infinity;
+      const s = scene(setup);
+      const city = s.city!;
+      set?.(s);
       for (let f = 0; f < SETTLE; f++) {
-        scene.now += 1000 / 60;
-        const p = scene.build(cam, null);
-        if (f > 3 && p.uploads.length + p.assetUploads.length + p.texUploads.length === 0 && city.stats.behind === 0 && city.stats.made === 0 && scene.near!.stats.waiting === 0) return counted(scene, p);
+        s.now += 1000 / 60;
+        const p = s.build(cam, null);
+        if (f > 3 && p.uploads.length + p.assetUploads.length + p.texUploads.length === 0 && city.stats.behind === 0 && city.stats.made === 0 && s.near!.stats.waiting === 0) return counted(s, p);
       }
       throw new Error(`${view.name} on ${setup.name}: still making after ${SETTLE} frames`);
     },
@@ -179,15 +185,16 @@ export function censusWorld(map: MapData, centre: readonly [number, number], reg
 
 export type CensusWorld = ReturnType<typeof censusWorld>;
 
-/** Each view on each setup, a section a view. */
+/** Each view on each setup, a section a view; and what the frame leaves out as hidden (render/hide.ts), counted again without. */
 export function census(section: Section, record: Row, w: CensusWorld, views: readonly CensusView[], what: string): void {
   const k = (n: number): string => (n / 1000).toFixed(1);
   for (const view of views) {
     const [x, y, z] = placeOf(w.centre, w.hf, view);
-    section(`What ${view.name} draws on ${what}, at (${x.toFixed(0)}, ${y.toFixed(1)}, ${z.toFixed(0)}): near city draws, cast, triangles; far city draws, triangles; the frame's`);
+    section(`What ${view.name} draws on ${what}, at (${x.toFixed(0)}, ${y.toFixed(1)}, ${z.toFixed(0)}): near city draws, cast, triangles; far city draws, triangles; the frame's; what was hidden`);
     for (const setup of SETUPS) {
       const c = w.count(view, setup);
-      record(setup.name, c.near, `draws, ${c.cast} cast, ${k(c.nearTriangles)} k; far ${c.far}, ${k(c.farTriangles)} k; frame ${c.draws}, ${k(c.triangles)} k`);
+      const all = w.count(view, setup, (scene) => void (scene.hide = false));
+      record(setup.name, c.near, `draws, ${c.cast} cast, ${k(c.nearTriangles)} k; far ${c.far}, ${k(c.farTriangles)} k; frame ${c.draws}, ${k(c.triangles)} k; hidden ${all.draws - c.draws} draws, ${k(all.triangles - c.triangles)} k`);
     }
   }
 }

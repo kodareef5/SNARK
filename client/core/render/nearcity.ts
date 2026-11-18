@@ -14,6 +14,7 @@ import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../../..
 import { VERTEX_BYTES } from "../../../shared/pack/pack.ts";
 import { mergedPart, type CityPart, type CityStatics, type Gone, type Ground } from "../../../shared/world/city.ts";
 import type { ChunkTable } from "../../../shared/world/structures.ts";
+import { KindPlates, chunkOccluders } from "./hide.ts";
 import { LAKE_SLOTS, LAKE_SLOT_SPAN } from "./lakes.ts";
 import { quadBytes, type FramePacket } from "./packet.ts";
 
@@ -293,6 +294,8 @@ export interface NearMesh extends Omit<NearMade, "data"> {
   readonly version: number;
   readonly around: Uint32Array;
   readonly side: number;
+  /** Boxes wholly inside what it draws, which hide what is behind them where it is drawn (hide.ts OCCLUDER floats each). */
+  readonly occluders: Float32Array;
 }
 
 /** A chunk of the near store as the near city follows it. */
@@ -332,6 +335,7 @@ export class NearCity {
   readonly mesh: number;
   private readonly chunks = new Map<number, NearChunk>();
   private making: { m: NearMaking; version: number; around: Uint32Array } | null = null;
+  private plates: KindPlates | null = null;
   private frame = 0;
   private next = 0;
 
@@ -430,7 +434,10 @@ export class NearCity {
         p.assetUploads.push({ slot, mesh: this.mesh, level: 0, data: done.data, indexCount: done.faces * 6, indexBytes: done.indexBytes, quads: true, bounds: done.bounds });
         budget.spend(done.data.length);
       }
-      c.mesh = { faces: done.faces, indexBytes: done.indexBytes, bounds: done.bounds, cellFirst: done.cellFirst, cellBox: done.cellBox, slot, bytes: done.data.length, version: mk.version, around: mk.around, side };
+      if (this.plates?.city !== city) this.plates = new KindPlates(city);
+      const step = done.bounds.half.map((h) => h / 32767);
+      const occluders = chunkOccluders(city, mk.m.chunk, c.mine, this.plates, { x0: chunkCx(city.dims, mk.m.chunk) * CHUNK_SIZE, z0: chunkCz(city.dims, mk.m.chunk) * CHUNK_SIZE, center: done.bounds.center, step });
+      c.mesh = { faces: done.faces, indexBytes: done.indexBytes, bounds: done.bounds, cellFirst: done.cellFirst, cellBox: done.cellBox, slot, bytes: done.data.length, version: mk.version, around: mk.around, side, occluders };
       bytes += done.data.length;
       stats.taken++;
       stats.waiting--;

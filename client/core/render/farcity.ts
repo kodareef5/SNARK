@@ -207,6 +207,7 @@ export class FarCity {
   private readonly from = new Float64Array(CITY_TILE * CITY_TILE * 6);
   private readonly kept = new Uint8Array(CITY_TILE * CITY_TILE);
   private readonly band = new Uint8Array(CITY_TILE * CITY_TILE);
+  private readonly nearest = new Float64Array(CITY_TILE * CITY_TILE);
 
   /** `bounds` is FAR_MESH's centre and half extent, as the pack has them. `landmark` is 1 by content index for a kind a landmark brings. */
   constructor(source: CitySource, dims: MapDims, hf: Heightfield, mesh: number, bounds: { center: readonly number[]; half: readonly number[] }, landmark: Uint8Array = new Uint8Array(0)) {
@@ -385,12 +386,12 @@ export class FarCity {
 
   /**
    * Calls `put` for each run of a tile's chunks drawn far, at each level of the tile drawn, where the tile is on the
-   * card, within `reach` of the camera and in its view: the level's slot, its first index and how many, where its stored
-   * origin is from the camera, the depth ranges its faces are in, and where it is gone (`drawFade`, below 0 to fade in,
-   * and 0 for a run wholly short of where the reach fades and of any fade between levels, so its draw may take the
-   * program that never discards).
+   * card, within `reach` of the camera and in its view and not wholly behind what `hides` says hides a camera-relative
+   * box: the level's slot, its first index and how many, where its stored origin is from the camera, the depth ranges its
+   * faces are in, where it is gone (`drawFade`, below 0 to fade in, and 0 for a run wholly short of where the reach fades
+   * and of any fade between levels, so its draw may take the program that never discards), and how far off its nearest is.
    */
-  draw(cam: Camera, reach: number, put: (slot: number, firstIndex: number, indexCount: number, ox: number, oy: number, oz: number, passes: number, fade: number) => void): void {
+  draw(cam: Camera, reach: number, put: (slot: number, firstIndex: number, indexCount: number, ox: number, oy: number, oz: number, passes: number, fade: number, near: number) => void, hides?: (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) => boolean): void {
     const levels = this.levels;
     const stats = this.stats;
     this.drawn.fill(0);
@@ -399,7 +400,7 @@ export class FarCity {
     stats.unseenFrames = 0;
     stats.coarse = 0;
     const whole = reach * (1 - this.share);
-    const { chunkBox: cb, far, from, kept, band } = this;
+    const { chunkBox: cb, far, from, kept, band, nearest: nears } = this;
     for (const n of this.around) {
       const tile = this.tiles[n]!;
       const b = tile.box;
@@ -422,19 +423,8 @@ export class FarCity {
         continue;
       }
       tile.unseen = 0;
-      // The levels wanted that are on the card; or, if none is yet, the one on the card nearest the first wanted; or, if
-      // none of this tier's is, a form of another's on the card.
-      const needed = this.needed(tile, cam, near, this.share);
-      let drawn = 0;
-      for (let l = 0; l < levels.length; l++) if ((needed & (1 << l)) !== 0 && tile.held[this.formOf[l]!]) drawn |= 1 << l;
-      let other = -1;
-      if (drawn === 0) {
-        let best = -1;
-        for (let l = 0; l < levels.length; l++) if (tile.held[this.formOf[l]!] && (best < 0 || Math.abs(l - tile.primary) < Math.abs(best - tile.primary))) best = l;
-        if (best >= 0) drawn = 1 << best;
-        else other = tile.held.findIndex((h) => h !== null);
-        if (best > tile.primary || other >= 0) stats.coarse++;
-      }
+      const drawn = this.chosen(tile, cam, near), other = this.other;
+      if (this.coarser) stats.coarse++;
       // Each chunk drawn far, and its pieces' box from the camera.
       for (let r = 0; r < tile.chunks.length; r++) {
         const c = tile.chunks[r]!;
@@ -471,29 +461,78 @@ export class FarCity {
           const x1 = from[o + 3]! + across, y1 = from[o + 4]! + up, z1 = from[o + 5]! + across;
           const nearest = Math.hypot(Math.max(x0, -x1, 0), Math.max(y0, -y1, 0), Math.max(z0, -z1, 0));
           const farthest = Math.hypot(Math.max(-x0, x1), Math.max(-y0, y1), Math.max(-z0, z1));
-          const left = far[r] === 0 || (out && nearest >= end) || (into && farthest < start) || !cam.boxVisible(x0, y0, z0, x1, y1, z1);
+          const left = far[r] === 0 || (out && nearest >= end) || (into && farthest < start) || !cam.boxVisible(x0, y0, z0, x1, y1, z1) || (hides !== undefined && hides(x0, y0, z0, x1, y1, z1));
           kept[r] = left ? 0 : cam.passes(x0, y0, z0, x1, y1, z1);
+          nears[r] = nearest;
           band[r] = (out || into) && farthest >= start && nearest < end ? 1 : 0;
         }
         const size = tile.chunks.length;
         let run = 0;
-        let fading = band[0]!;
+        let fading = band[0]!, near = nears[0]!;
         for (let r = 1; r <= size; r++) {
           if (r < size && kept[r] === kept[run]) {
             fading |= band[r]!;
+            near = Math.min(near, nears[r]!);
             continue;
           }
           const first = h.first[run]!;
           const count = h.first[r - 1]! + h.count[r - 1]! - first;
           if (kept[run] !== 0 && count > 0) {
-            put(h.slot, first, count, ox, oy, oz, kept[run]!, fading === 0 ? plain : out ? end : -end);
+            put(h.slot, first, count, ox, oy, oz, kept[run]!, fading === 0 ? plain : out ? end : -end, near);
             if (l >= 0) this.drawn[l]! += count / 3;
           }
           run = r;
           fading = r < size ? band[r]! : 0;
+          near = r < size ? nears[r]! : 0;
         }
       }
     }
+  }
+
+  /** The form drawn in place of this tier's levels by the last `chosen`, or -1; and whether it chose coarser than wanted. */
+  private other = -1;
+  private coarser = false;
+
+  /**
+   * The levels `tile`, `near` metres off, is drawn at, a bit each: those wanted that are on the card; or, if none is yet,
+   * the one on the card nearest the first wanted; or, if none of this tier's is, none, and `other` a form of another's.
+   */
+  private chosen(tile: Tile, cam: Camera, near: number): number {
+    const levels = this.levels;
+    const needed = this.needed(tile, cam, near, this.share);
+    let drawn = 0;
+    for (let l = 0; l < levels.length; l++) if ((needed & (1 << l)) !== 0 && tile.held[this.formOf[l]!]) drawn |= 1 << l;
+    this.other = -1;
+    this.coarser = false;
+    if (drawn === 0) {
+      let best = -1;
+      for (let l = 0; l < levels.length; l++) if (tile.held[this.formOf[l]!] && (best < 0 || Math.abs(l - tile.primary) < Math.abs(best - tile.primary))) best = l;
+      if (best >= 0) drawn = 1 << best;
+      else this.other = tile.held.findIndex((h) => h !== null);
+      this.coarser = best > tile.primary || this.other >= 0;
+    }
+    return drawn;
+  }
+
+  /**
+   * Whether `chunk`, drawn here, is drawn this frame by `draw` with this camera and reach at a form that holds each of
+   * its standing pieces whole as the near store's meshes do (every box, nothing left out or bridged past a centimetre),
+   * and wholly short of where the reach fades; or has nothing on the card at such a form to draw.
+   */
+  exactly(chunk: number, cam: Camera, reach: number): boolean {
+    const n = this.tileOfChunk[chunk]!;
+    if (!this.on || n < 0 || this.listed[n] !== 1 || this.source.complete(chunk)) return false;
+    const tile = this.tiles[n]!, b = tile.box;
+    const ax = b[0]! - cam.x, ay = b[1]! - cam.y, az = b[2]! - cam.z, bx = b[3]! - cam.x, by = b[4]! - cam.y, bz = b[5]! - cam.z;
+    const near = Math.hypot(Math.max(ax, -bx, 0), Math.max(ay, -by, 0), Math.max(az, -bz, 0));
+    if (near >= reach || Math.hypot(Math.max(-ax, bx), Math.max(-ay, by), Math.max(-az, bz)) >= reach * (1 - this.share) || !tile.held.some((h) => h !== null)) return false;
+    const drawn = this.chosen(tile, cam, near);
+    const exact = (f: number): boolean => {
+      const { gap, least, cell, thin = 0 } = this.forms[f]!;
+      return gap <= 0.01 && least === 0 && cell === 0 && thin === 0 && tile.held[f] !== null && tile.held[f] !== undefined;
+    };
+    for (let l = 0; l < this.levels.length; l++) if ((drawn & (1 << l)) !== 0 && exact(this.formOf[l]!)) return true;
+    return this.other >= 0 && exact(this.other);
   }
 
   /** Whether level `l` fades in as the one before it fades out: cells after boxes, or after cells of another size. */

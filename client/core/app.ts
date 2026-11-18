@@ -8,7 +8,7 @@ import { GamepadInput, type PadSample, type PadTarget } from "./gamepad.ts";
 import type { AssetPort } from "./assets/port.ts";
 import { forTouch, tierOf } from "./assets/tiers.ts";
 import { Governor, PHONE_MS, workMs } from "./governor.ts";
-import { BENCH_TURN_MS, effectsOff, packetWithout, tierWithout, type Effect } from "./passes.ts";
+import { BENCH_TURN_MS, effectsOff, packetWithout, sceneWithout, tierWithout, type Effect } from "./passes.ts";
 import { VOLUME_MAX, keptLine } from "./settings.ts";
 import { stressThings, type Mark } from "./stress.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
@@ -1314,6 +1314,7 @@ export class App {
     session.askFar(this.scene.assets.tier.reach.bases);
     session.holdNodes(this.scene.assets.tier.nodes.chunks);
     this.scene.characters.corpseMotions = session.corpseMotions;
+    sceneWithout(this.scene, this.off);
     const packet = this.scene.build(cam, this.remote);
     session.requestCorpseMotions(this.scene.characters.corpseCheckpointRequests);
     packetWithout(packet, this.off);

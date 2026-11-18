@@ -182,9 +182,12 @@ test("a real city's downtown at its three views on each tier: the near city's dr
   // are fewer runs, and the touch rule's every box ends short of more tiles' nearest points. Cut again on 2026-11-18 when
   // a building's bays came to wear their kind's facade modules (content/ruins.ts): the street on high was 41, 51 and
   // 67,608 near and 15 and 57,036 far, the roof 37, 46, 66,988, 19 and 77,014, the air 51, 45, 77,364, 13 and 73,184.
+  // With what the near meshes and the ground wholly hide left out (render/hide.ts): the street on high was 44, 51 and
+  // 126,242 near and 15 and 112,772 far, the roof 40, 48, 131,204, 19 and 145,914; the air, which looks down on all of
+  // it, is as it was. Each is that again with `hide` off.
   expect(got).toEqual({
-    "street-300": { lowpoly: [44, 0, 126242, 12, 78928], "medium, touch": [17, 9, 62778, 10, 37804], medium: [44, 21, 126242, 15, 112772], high: [44, 51, 126242, 15, 112772], ultra: [44, 57, 126242, 15, 112772] },
-    "roof-300": { lowpoly: [40, 0, 131204, 12, 94536], "medium, touch": [24, 7, 78598, 14, 55476], medium: [40, 23, 131204, 19, 144226], high: [40, 48, 131204, 19, 145914], ultra: [40, 59, 131204, 19, 145914] },
+    "street-300": { lowpoly: [25, 0, 109040, 10, 74790], "medium, touch": [16, 9, 59790, 9, 35880], medium: [25, 20, 109040, 13, 108514], high: [25, 48, 109040, 13, 108514], ultra: [25, 50, 109040, 13, 108514] },
+    "roof-300": { lowpoly: [33, 0, 122898, 11, 94312], "medium, touch": [21, 7, 72940, 14, 55476], medium: [33, 23, 122898, 18, 144002], high: [33, 48, 122898, 18, 145690], ultra: [33, 59, 122898, 18, 145690] },
     "air-300": { lowpoly: [54, 0, 145540, 11, 92988], "medium, touch": [25, 2, 86920, 9, 41328], medium: [54, 7, 145540, 13, 141406], high: [54, 49, 145540, 13, 141406], ultra: [54, 57, 145540, 13, 141406] },
   });
 });

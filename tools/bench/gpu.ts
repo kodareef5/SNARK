@@ -71,6 +71,8 @@ export function plan(): Run[] {
   for (const view of ["street", "air"] as View[]) {
     for (const tier of ["medium", "high", "ultra"]) for (const scale of [1, 2]) runs.push({ scene: "city", view, tier, scale });
     for (const [tier, scale] of [["medium", 1], ["ultra", 2]] as const) for (const off of ["shadows", "far"] as const) runs.push({ scene: "city", view, tier, scale, off });
+    // What is hidden left out, and the opaque draws nearest first (render/hide.ts, render/scene.ts order).
+    for (const [tier, scale] of view === "street" ? ([["high", 2], ["medium", 1]] as const) : ([["high", 2]] as const)) for (const off of ["hide", "order"] as const) runs.push({ scene: "city", view, tier, scale, off });
   }
   return runs;
 }
@@ -214,7 +216,12 @@ export function rows(section: Section, record: Row, reports: Map<string, Record<
         record("the frame, timed whole, median", gpu(all), "ms");
         record("GL draws, triangles", draws, `draws, ${(median(all.map((r) => r.triangles)) / 1e6).toFixed(2)} M triangles`);
         record("our code's time a frame, median", median(all.map((r) => r.buildAndSubmitMs.median)), "ms");
-        for (const [name, list] of reports) if (name.startsWith(`${key}, `) && name.endsWith(" off")) record(`${name.slice(key.length + 2)}: what it costs`, gpu(all) - gpu(list), `ms, ${draws - median(list.map((r) => r.drawCalls))} GL draws`);
+        for (const [name, list] of reports) {
+          if (!name.startsWith(`${key}, `) || !name.endsWith(" off")) continue;
+          const tris = (median(all.map((r) => r.triangles)) - median(list.map((r) => r.triangles))) / 1e6;
+          const ours = median(all.map((r) => r.buildAndSubmitMs.median)) - median(list.map((r) => r.buildAndSubmitMs.median));
+          record(`${name.slice(key.length + 2)}: what it costs`, gpu(all) - gpu(list), `ms, ${draws - median(list.map((r) => r.drawCalls))} GL draws, ${tris.toFixed(2)} M triangles, ${ours.toFixed(2)} ms of our code`);
+        }
       }
     }
   }

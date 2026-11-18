@@ -128,7 +128,7 @@ export interface NodeLooks {
  * to name, where the tile's corner is from the camera, its depth ranges, its hand-over (hand.ts) and the farthest reach
  * of its rows.
  */
-export type PutDraw = (slot: number, mesh: number, indices: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, passes: number, hand: number, reach: number) => void;
+export type PutDraw = (slot: number, mesh: number, indices: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, passes: number, hand: number, reach: number, near: number) => void;
 
 /** The nodes of a tile's chunks as the map places them. */
 interface Spots {
@@ -439,10 +439,11 @@ export class FarNodes {
    * Calls `put` for the nodes on the card in each tile in view whose nearest is within reach, a draw for each run of
    * neighbouring chunks of rows of one size with the same hand-over, in every depth range one of them is in: a range
    * clips what is not in it, and a draw saved is worth more than the vertices. A chunk the near field holds is drawn
-   * faded in over the band, and left out where all of it is short of the band. A chunk out of view or reach is left out,
-   * or drawn with its neighbours where it weighs less than a draw does.
+   * faded in over the band, and left out where all of it is short of the band. A chunk out of view or reach, or whose box
+   * `hides` says is hidden, is left out, or drawn with its neighbours where it weighs less than a draw does. A run is told
+   * how far off its nearest is.
    */
-  draw(cam: Camera, put: PutDraw): void {
+  draw(cam: Camera, put: PutDraw, hides?: (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) => boolean): void {
     const [from, to] = this.band;
     for (const t of this.tiles.keys()) {
       const tile = this.tiles.get(t)!;
@@ -474,18 +475,20 @@ export class FarNodes {
             bridge = -1;
             continue;
           }
-          if (seen >= this.reach[tile.farthest[q * (CELLS + 1) + c + 1]!]! || (!seenAll && !visible(b, k, cam))) {
+          if (seen >= this.reach[tile.farthest[q * (CELLS + 1) + c + 1]!]! || (!seenAll && !visible(b, k, cam)) || (hides !== undefined && hides(b[k]! - cam.x, b[k + 1]! - cam.y, b[k + 2]! - cam.z, b[k + 3]! - cam.x, b[k + 4]! - cam.y, b[k + 5]! - cam.z))) {
             bridge = bridge === first && (end - first) * (PULL_VERTICES << size) <= RUN_TRIANGLES * 3 ? end : -1;
             continue;
           }
           const hand = held || seen >= to ? HAND_FAR : 0;
           const cp = passes(b, k, cam);
-          const last = runs.length - 4;
-          if (last >= 0 && bridge === first && runs[last + 2] === cp && runs[last + 3] === hand) runs[last + 1] = end;
-          else runs.push(first, end, cp, hand);
+          const last = runs.length - 5;
+          if (last >= 0 && bridge === first && runs[last + 2] === cp && runs[last + 3] === hand) {
+            runs[last + 1] = end;
+            runs[last + 4] = Math.min(runs[last + 4]!, seen);
+          } else runs.push(first, end, cp, hand, seen);
           bridge = end;
         }
-        for (let k = 0; k < runs.length; k += 4) put(PULL_SLOTS + size, this.rowMesh[0]!, PULL_VERTICES << size, buffer, runs[k]!, runs[k + 1]! - runs[k]!, ox, oy, oz, runs[k + 2]!, runs[k + 3]!, reach);
+        for (let k = 0; k < runs.length; k += 5) put(PULL_SLOTS + size, this.rowMesh[0]!, PULL_VERTICES << size, buffer, runs[k]!, runs[k + 1]! - runs[k]!, ox, oy, oz, runs[k + 2]!, runs[k + 3]!, reach, runs[k + 4]!);
       }
     }
   }

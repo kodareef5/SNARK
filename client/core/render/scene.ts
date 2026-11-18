@@ -7,7 +7,7 @@ import { remoteVehiclePose } from "../vehicle-view.ts";
 // the same way, each as the mesh of its form (shared/world/nodes.ts) at its size.
 
 import { MAX_MOVING_REACH, type Registry } from "../../../shared/content/registry.ts";
-import { CHUNK_SIZE, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
+import { CHUNK_SIZE, YAW_UNITS, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { Assets } from "../assets/assets.ts";
 import type { AssetPort } from "../assets/port.ts";
 import type { Manifest } from "../../../shared/pack/manifest.ts";
@@ -30,7 +30,7 @@ import type { ShotEnd } from "../occasions.ts";
 import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { CameraBody } from "../camera-body.ts";
-import type { Camera } from "./camera.ts";
+import { FAR_FROM, type Camera } from "./camera.ts";
 import { Characters, riderFitScratch, seatScratch, type RiderFit, showMaterials, type BodyShadows, type CastFn, type VehicleRenderPose, type VehicleSeatPose } from "./characters.ts";
 import { Clouds } from "./clouds.ts";
 import { Dropped } from "./dropped.ts";
@@ -40,12 +40,13 @@ import { CITY_BUFFER, FarCity, type CitySource } from "./farcity.ts";
 import { FarLandmarks, LANDMARK_BUFFER } from "./farlandmarks.ts";
 import { FarNodes, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
+import { HIDE_PIXELS, Hiding, OCCLUDER } from "./hide.ts";
 import { PROGRAM, drawProgram } from "./programs.ts";
 import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { WEAR_KEY } from "./wear.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndexCount } from "./packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndexCount } from "./packet.ts";
 import { SURFACE_MATERIAL } from "../../../content/surfaces.ts";
 import { citySurface, WORLD_ASKED } from "./world-surfaces.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
@@ -173,9 +174,27 @@ function placeOf(flags: number, range: number, cutAt: number, restAt: number): n
   return s < 0 || at < 0 ? -1 : s <= STEP_FAR ? s * 2 + at : s + 2;
 }
 
-/** A draw's key for `sortRuns`, whole in a double: its program, its material, the low 16 bits of its level's slot, and its place as made. */
-function stateKey(program: number, material: number, slot: number, made: number): number {
-  return ((program * 65536 + material) * 65536 + (slot & 0xffff)) * MAX_DRAWS + made;
+/**
+ * The edges, in metres from the camera to a draw's nearest point, of the buckets an opaque step's draws go in nearest
+ * first: few, so that the draws of one program and material in a bucket still run together.
+ */
+export const NEAR_BUCKETS = [24, 64, 160, 400, 1000, 2500];
+
+function bucketOf(near: number): number {
+  let b = 0;
+  while (b < NEAR_BUCKETS.length && near >= NEAR_BUCKETS[b]!) b++;
+  return b;
+}
+
+/** Programs a key holds room for. */
+const KEY_PROGRAMS = 32;
+
+/**
+ * A draw's key for `sortRuns`, whole in a double: its bucket by distance, its program, its material, the low 16 bits of
+ * its level's slot, and its place as made.
+ */
+function stateKey(bucket: number, program: number, material: number, slot: number, made: number): number {
+  return (((bucket * KEY_PROGRAMS + program) * 65536 + material) * 65536 + (slot & 0xffff)) * MAX_DRAWS + made;
 }
 
 /**
@@ -236,6 +255,9 @@ function reorder32(a: Uint32Array, w: number, rows: number, count: number, order
   for (let k = 0; k < rows * w; k++) copy[k] = a[k]!;
   for (let k = 0; k < count; k++) for (let j = 0; j < w; j++) a[k * w + j] = copy[order[k]! * w + j]!;
 }
+
+/** Metres round the camera within which Scene.nearPiece finds the nearest piece. */
+const CLEAR = 8;
 
 /** Where an opaque step's cut-out draws go among its others (Scene.cutouts). */
 export type Cutouts = "last" | "made" | "first" | "none";
@@ -315,6 +337,8 @@ interface ChunkBatch {
   /** The mesh its statics of kinds drawn flat as their form are drawn with in place of their instances (nearcity.ts), or null; and its one instance, after the pieces', which is every instance's count. */
   mesh: NearMesh | null;
   meshAt: number;
+  /** Per cell, 1 where its mesh has faces in view this frame (Scene.meshCells). */
+  inView: Uint8Array;
 }
 
 export class Scene {
@@ -353,6 +377,14 @@ export class Scene {
    * side, and prices the cut-outs by the last two.
    */
   cutouts: Cutouts = "last";
+  /**
+   * Whether a frame leaves out what something drawn in it wholly hides (hide.ts), and whether an opaque step's draws go
+   * nearest first, the ground after them. A page turns either off for a before and after (passes.ts).
+   */
+  hide = true;
+  nearFirst = true;
+  /** What hides what this frame. */
+  readonly hiding = new Hiding();
 
   /** Pack mesh index per content index. */
   readonly meshOfKind: Uint16Array;
@@ -449,6 +481,21 @@ export class Scene {
   private readonly source = new Uint16Array(MAX_DRAWS);
   private readonly sourcePass = new Uint8Array(MAX_DRAWS);
   private readonly keys = new Float64Array(MAX_DRAWS);
+  /**
+   * Per draw made this frame: how far off its nearest point is, in metres, by which its step draws it; and where `boxed` is
+   * 1, the camera-relative box round all it draws, by which it is left out where hidden. `nearAt` is what `draw` gives.
+   */
+  private readonly nearOf = new Float32Array(MAX_DRAWS);
+  private readonly boxed = new Uint8Array(MAX_DRAWS);
+  private readonly boxOf = new Float32Array(MAX_DRAWS * 6);
+  private nearAt = 0;
+  /** Chunks of the near store whose mesh has a draw this frame; per chunk that casts, its casters from and to and its shadow's box. */
+  private readonly meshDrawn = new Set<number>();
+  private readonly chunkCasts: number[] = [];
+  /** The chunks whose meshes are drawn once the frame knows what hides what: each its id, corner from the camera and depth ranges. */
+  private readonly later: number[] = [];
+  /** The shadow's reach `zones` found for the chunk it was last given. */
+  private zoneStretch = 0;
   /** The farthest any body's posed vertex gets from where its first bone puts its origin, short of its own mesh and offset. */
   private readonly bodySlack: number;
   private readonly transient: InstanceWriter;
@@ -534,6 +581,8 @@ export class Scene {
   private fitted = 0;
   /** The lowest a receiver in any cascade's sphere can be. A caster's shadow reaches as far as its top stands over this. */
   private floor = 0;
+  /** Metres past where a caster's shadow falls that a lookup of it may reach (Scene.shadeHidden). */
+  private shadeSlack = 0;
   /** Metres from the camera past which nothing casts into a cascade: as far as a cascade's cube reaches, and MAX_REACH on. */
   private castRange = 0;
   private readonly sunAt = new Float64Array(3);
@@ -753,6 +802,12 @@ export class Scene {
     for (const chunk of this.hiddenChanged) { const batch = this.batches.get(NODE_BUFFERS + chunk); if (batch) batch.shape = -1; }
     this.hiddenChanged.clear();
     this.doubled = 0;
+    this.boxed.fill(0);
+    this.hiding.on = false;
+    this.meshDrawn.clear();
+    this.chunkCasts.length = 0;
+    this.later.length = 0;
+    this.nearAt = 0;
     cam.split = p.split = this.assets.tier.split;
     cam.update();
     this.assets.begin(this.now, this.viewHeight, cam.fovY);
@@ -797,14 +852,13 @@ export class Scene {
     this.terrain.select(cam, p, this.viewDistance, this.assets.residency, this.casting ? this.castBox : undefined);
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
+    const tier = this.assets.tier;
     if (this.city ?? this.startCity()) this.farCity(cam);
     this.farShadow?.update(p, this.assets.residency, cam.x, cam.y, cam.z, p.cascadeCount > 0 ? this.sunAt : null, this.now);
-    if (this.far) this.farBlocks(cam);
-    if (this.nodesFar) this.farNodes(cam);
-    if (this.casting) {
-      if (!this.terrain.casters(cam, p, this.viewDistance, this.castBox)) p.casterDropped++;
-      this.groundCast();
-    }
+    p.frame[FRAME.fade] = tier.fade;
+    this.far?.update(p, this.assets.residency, cam.x, cam.z, tier.reach.bases);
+    this.nodesFar?.update(p, this.assets.residency, cam.x, cam.z, tier);
+    if (this.casting && !this.terrain.casters(cam, p, this.viewDistance, this.castBox)) p.casterDropped++;
     // Water seen from above on a lit tier is drawn with its waves and its depth (water.ts), from the frame block's sea part.
     // See-through draws go as made, and the sea is made first of them, so that a yacht's wires show over it.
     const lit = p.lit && !this.plainSky && !under;
@@ -819,6 +873,17 @@ export class Scene {
     this.structures(cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);
     if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS, this.meshOfForm, this.colorOfForm, this.sizeOfForm);
     if (this.instanceBytes !== this.instancesReserved) this.assets.residency.reserve(INSTANCES, (this.instancesReserved = this.instanceBytes));
+    // What the near store's meshes and the ground hide, of what is drawn so far and from here on: the meshes themselves first.
+    if (this.hide) this.hideDrawn(cam);
+    for (let k = 0; k < this.later.length; k += 5) {
+      const id = this.later[k]!;
+      this.meshRuns(this.batches.get(id)!, id, this.later[k + 1]!, this.later[k + 2]!, this.later[k + 3]!, this.later[k + 4]!);
+    }
+    const hides = this.hiding.on ? this.hides : undefined;
+    this.city?.draw(cam, tier.reach.city, this.drawCity, hides);
+    this.far?.draw(cam, tier.reach.bases, tier.fade, this.drawFar, hides);
+    this.nodesFar?.draw(cam, this.drawFarNodes, hides);
+    if (this.casting) this.groundCast();
     if (remote) this.entities(cam, remote);
     this.bodies(cam, remote);
     if (this.beams.length > 0 && this.beamMesh >= 0) this.markBeams(cam);
@@ -869,6 +934,9 @@ export class Scene {
     }
     this.floor = floor;
     this.castRange = range + MAX_REACH;
+    let texel = 0;
+    for (let i = 0; i < c.count; i++) texel = Math.max(texel, c.texel[i]!);
+    this.shadeSlack = texel * (c.blur + 1);
     this.sunY = this.sunAt[1]!;
     this.casting = true;
     this.characters.shadows = this.bodyShadows;
@@ -894,10 +962,25 @@ export class Scene {
     return this.inView(minX, minY, minZ, maxX, maxY, maxZ, stretch) ? this.cascades.mask(minX, minY, minZ, maxX, maxY, maxZ, Infinity, stretch) : 0;
   }
 
-  /** Whether the shadow of a camera-relative box, swept `stretch` metres away from the sun, can fall in view. */
+  /**
+   * Whether the shadow of a camera-relative box, swept `stretch` metres away from the sun, can fall in view: on what is
+   * in the view, and once the frame knows what hides what, on what is not wholly hidden.
+   */
   private inView(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, stretch: number): boolean {
     const sx = -this.sunAt[0]! * stretch, sy = -this.sunAt[1]! * stretch, sz = -this.sunAt[2]! * stretch;
-    return this.camera!.boxVisible(Math.min(minX, minX + sx), Math.min(minY, minY + sy), Math.min(minZ, minZ + sz), Math.max(maxX, maxX + sx), Math.max(maxY, maxY + sy), Math.max(maxZ, maxZ + sz));
+    const x0 = Math.min(minX, minX + sx), y0 = Math.min(minY, minY + sy), z0 = Math.min(minZ, minZ + sz);
+    const x1 = Math.max(maxX, maxX + sx), y1 = Math.max(maxY, maxY + sy), z1 = Math.max(maxZ, maxZ + sz);
+    return this.camera!.boxVisible(x0, y0, z0, x1, y1, z1) && !this.shadeHidden(x0, y0, z0, x1, y1, z1);
+  }
+
+  /**
+   * Whether the picture of what hides what hides all a caster's shadow can fall on, a camera-relative box swept from the
+   * sun as far as it reaches, and round that as far as a lookup reaches past where its shadow falls: the filter's taps and
+   * the half texel it is moved along a receiver's normal, in the coarsest cascade's texels.
+   */
+  private shadeHidden(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): boolean {
+    const e = this.shadeSlack;
+    return this.hiding.hides(x0 - e, y0 - e, z0 - e, x1 + e, y1 + e, z1 + e);
   }
 
   /**
@@ -1022,6 +1105,248 @@ export class Scene {
     p.castTriangles += ((flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 ? indexCount / 3 : this.trisOfMesh[mesh]![level]!) * count * maps;
   }
 
+  /** Whether the picture of what hides what (hide.ts) hides a camera-relative box; nothing while there is none. */
+  private readonly hides = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): boolean => this.hiding.hides(x0, y0, z0, x1, y1, z1);
+
+  /**
+   * Makes the picture of what hides what from what is sure to be drawn whole this frame, and leaves out what it hides of
+   * the frame so far: the ground's tiles from the view, and from the sun's maps those whose shadow it hides; the near
+   * store's draws; and its chunks' casters where it hides all their shadows can fall on. Nothing is hidden on a frame
+   * that has left anything out, nor while the near plane may cut into the ground or into a piece of the near store's
+   * meshes, which would open them. What is in the picture:
+   * - the ground: under each tile drawn whose farthest point is within the view, a box up to its lowest sample. A line of
+   *   sight from the camera, over the ground, that reaches such a box has met the ground drawn on its way.
+   * - the near store's meshes: the occluders of a chunk whose mesh is drawn (nearcity.ts), where each chunk round it whose
+   *   pieces may hold its faces has its mesh drawn too, or none of its pieces in view, or none at all. A face the mesh
+   *   leaves out is held by another piece drawn, or lies under the ground.
+   */
+  private hideDrawn(cam: Camera): void {
+    const p = this.packet, h = this.hiding, hf = this.world.hf;
+    // The meshes are drawn after: room for each cell of them in view a draw in each range, or no picture.
+    let cells = 0;
+    for (let k = 0; k < this.later.length; k += 5) for (const v of this.batches.get(this.later[k]!)!.inView) cells += v;
+    if (p.dropped > 0 || p.drawCount + this.doubled + 2 * cells > MAX_DRAWS) return;
+    const slope = Math.tan(cam.fovY / 2);
+    const reach = cam.near * Math.sqrt(1 + slope * slope * (1 + cam.aspect * cam.aspect));
+    // The highest the ground stands round the camera, as the tile under it draws it: the samples of its quad and those round it.
+    let stride = 1;
+    for (let t = 0; t < p.tileCount; t++) {
+      const size = p.tiles[t * 4 + 2]! * TILE_QUADS;
+      if (p.tiles[t * 4]! <= 0 && p.tiles[t * 4]! + size > 0 && p.tiles[t * 4 + 1]! <= 0 && p.tiles[t * 4 + 1]! + size > 0) stride = p.tiles[t * 4 + 3]!;
+    }
+    const cell = hf.cell;
+    if (cam.x < 0 || cam.z < 0 || cam.x >= hf.sizeX || cam.z >= hf.sizeZ) return;
+    const ci = Math.floor(cam.x / cell / stride) * stride, cj = Math.floor(cam.z / cell / stride) * stride;
+    let ground = -Infinity;
+    for (let j = cj - stride; j <= cj + 2 * stride; j += stride) for (let i = ci - stride; i <= ci + 2 * stride; i += stride) ground = Math.max(ground, hf.sample(Math.min(Math.max(i, 0), hf.nx - 1), Math.min(Math.max(j, 0), hf.nz - 1)));
+    if (cam.y - ground <= reach) return;
+    h.begin(cam);
+    // Under each tile drawn wholly within the view, a box from far under the ground up to its lowest sample.
+    const floor = hf.minY - 1 - cam.y, low = this.terrain.low, up = this.terrain.farthestFrom(cam.y);
+    for (let t = 0; t < p.tileCount; t++) {
+      if ((p.tilePass[t]! & (NEAR | FAR)) === 0) continue;
+      const x0 = p.tiles[t * 4]!, z0 = p.tiles[t * 4 + 1]!, size = p.tiles[t * 4 + 2]! * TILE_QUADS;
+      if (Math.hypot(Math.max(-x0, x0 + size), Math.max(-z0, z0 + size), up) > this.viewDistance || low[t]! <= floor) continue;
+      h.box(x0 + size / 2, (floor + low[t]!) / 2, z0 + size / 2, size / 2, (low[t]! - floor) / 2, size / 2, 1, 0);
+    }
+    if (this.near && !this.nearPiece(cam, reach)) {
+      // An occluder whose face is too small on the picture to cover a pixel or two whole is left out: it would add little.
+      const across = h.height / (2 * Math.tan(cam.fovY / 2)) / HIDE_PIXELS;
+      for (const chunk of this.meshDrawn) {
+        if (!this.sealed(cam, chunk)) continue;
+        const o = this.batches.get(chunk)!.mesh!.occluders;
+        for (let k = 0; k < o.length; k += OCCLUDER) {
+          const x = o[k]! - cam.x, y = o[k + 1]! - cam.y, z = o[k + 2]! - cam.z, r = o[k + 8]!;
+          const d = Math.sqrt(x * x + y * y + z * z) - r;
+          if ((d > 0 && o[k + 9]! * across < d) || !cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
+          h.box(x, y, z, o[k + 3]!, o[k + 4]!, o[k + 5]!, o[k + 6]!, o[k + 7]!);
+        }
+      }
+    }
+    if (!h.on) return;
+    h.end();
+    // The ground's tiles, in view and cast.
+    const high = this.terrain.high;
+    for (let t = 0; t < p.tileCount; t++) {
+      const x0 = p.tiles[t * 4]!, z0 = p.tiles[t * 4 + 1]!, quad = p.tiles[t * 4 + 2]!, size = quad * TILE_QUADS;
+      const skirt = low[t]! - 2 * quad;
+      if ((p.tilePass[t]! & (NEAR | FAR)) !== 0 && h.hides(x0, skirt, z0, x0 + size, high[t]!, z0 + size)) {
+        p.tilePass[t] = p.tilePass[t]! & ~(NEAR | FAR);
+        p.triangles -= TILE_QUADS * TILE_QUADS * 2;
+      }
+      if (p.tilePass[t]! < TILE_CASTS) continue;
+      const s = this.stretch(x0, z0, x0 + size, z0 + size, high[t]!);
+      const sx = -this.sunAt[0]! * s, sy = -this.sunAt[1]! * s, sz = -this.sunAt[2]! * s;
+      if (this.shadeHidden(Math.min(x0, x0 + sx), Math.min(skirt, skirt + sy), Math.min(z0, z0 + sz), Math.max(x0 + size, x0 + size + sx), Math.max(high[t]!, high[t]! + sy), Math.max(z0 + size, z0 + size + sz))) p.tilePass[t] = p.tilePass[t]! & (NEAR | FAR);
+    }
+    // A tile neither drawn nor cast leaves the list.
+    let tiles = 0;
+    for (let t = 0; t < p.tileCount; t++) {
+      if (p.tilePass[t] === 0) continue;
+      if (tiles !== t) {
+        p.tiles.copyWithin(tiles * 4, t * 4, t * 4 + 4);
+        p.tileOrigin.copyWithin(tiles * 2, t * 2, t * 2 + 2);
+        p.tileSource.copyWithin(tiles * 4, t * 4, t * 4 + 4);
+        p.tilePass[tiles] = p.tilePass[t]!;
+      }
+      tiles++;
+    }
+    p.tileCount = tiles;
+    // The near store's draws, and its chunks' casters.
+    const tris = this.trisOfMesh, box = this.boxOf;
+    let kept = 0;
+    for (let d = 0; d < p.drawCount; d++) {
+      const o = d * 6;
+      if (this.boxed[d] === 0 || !h.hides(box[o]!, box[o + 1]!, box[o + 2]!, box[o + 3]!, box[o + 4]!, box[o + 5]!)) {
+        if (kept !== d) this.moveRow(d, kept);
+        kept++;
+        continue;
+      }
+      const copies = this.passOf[d] === (NEAR | FAR) ? 2 : 1;
+      p.triangles -= ((p.drawFlags[d]! & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 ? p.drawIndexCount[d]! / 3 : tris[p.drawMesh[d]!]![p.drawLod[d]!]!) * p.drawInstances[d]! * copies;
+      this.doubled -= copies - 1;
+    }
+    // The rows let go take what beginFrame gives every row, which draws that leave them alone count on.
+    for (const a of [p.drawFade, p.drawHand, p.drawLayer, p.drawWear]) a.fill(0, kept, p.drawCount);
+    p.drawCount = kept;
+    const casts = this.chunkCasts;
+    let at = 0, next = 0;
+    for (let k = 0; k < casts.length; k += 8) {
+      const e0 = casts[k]!, e1 = casts[k + 1]!;
+      for (; next < e0; next++) this.moveCaster(next, at++);
+      if (!this.shadeHidden(casts[k + 2]!, casts[k + 3]!, casts[k + 4]!, casts[k + 5]!, casts[k + 6]!, casts[k + 7]!)) for (; next < e1; next++) this.moveCaster(next, at++);
+      for (; next < e1; next++) {
+        const maps = this.maps(p.casterCascades[next]!);
+        p.castDraws -= maps;
+        p.castTriangles -= ((p.casterFlags[next]! & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 ? p.casterIndexCount[next]! / 3 : tris[p.casterMesh[next]!]![p.casterLod[next]!]!) * p.casterInstances[next]! * maps;
+      }
+    }
+    for (; next < p.casterCount; next++) this.moveCaster(next, at++);
+    p.casterCount = at;
+  }
+
+  /** The cascades of a caster's bits, counted. */
+  private maps(cascades: number): number {
+    return (cascades & 1) + ((cascades >> 1) & 1) + ((cascades >> 2) & 1) + ((cascades >> 3) & 1);
+  }
+
+  /** Moves draw `from` of the frame to `to`, an earlier row. */
+  private moveRow(from: number, to: number): void {
+    for (const a of this.columns) {
+      const w = a.length / MAX_DRAWS;
+      for (let j = 0; j < w; j++) a[to * w + j] = a[from * w + j]!;
+    }
+    this.passOf[to] = this.passOf[from]!;
+    this.nearOf[to] = this.nearOf[from]!;
+  }
+
+  /** Moves caster `from` of the frame to `to`, an earlier one or the same. */
+  private moveCaster(from: number, to: number): void {
+    if (from === to) return;
+    const p = this.packet;
+    p.casterMesh[to] = p.casterMesh[from]!;
+    p.casterLod[to] = p.casterLod[from]!;
+    p.casterSlot[to] = p.casterSlot[from]!;
+    p.casterBuffer[to] = p.casterBuffer[from]!;
+    p.casterFirst[to] = p.casterFirst[from]!;
+    p.casterInstances[to] = p.casterInstances[from]!;
+    p.casterOffset.copyWithin(to * 3, from * 3, from * 3 + 3);
+    p.casterFlags[to] = p.casterFlags[from]!;
+    p.casterMaterial[to] = p.casterMaterial[from]!;
+    p.casterFirstIndex[to] = p.casterFirstIndex[from]!;
+    p.casterIndexCount[to] = p.casterIndexCount[from]!;
+    p.casterCascades[to] = p.casterCascades[from]!;
+  }
+
+  /**
+   * Whether the pieces chunk `chunk` of the near store draws in its mesh are closed this frame: whether each chunk round
+   * it, whose pieces may hold its faces, has its mesh drawn, or is drawn by the far city at a form that holds every piece
+   * whole, or has none of its pieces in view, or none at all; so that no face of the chunk's another holds is open.
+   */
+  private sealed(cam: Camera, chunk: number): boolean {
+    const dims = this.world.dims, city = this.world.city!.statics, reach = this.assets.tier.reach.city;
+    const cx = chunkCx(dims, chunk), cz = chunkCz(dims, chunk);
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const x = cx + dx, z = cz + dz;
+        if ((dx === 0 && dz === 0) || x < 0 || z < 0 || x >= dims.chunksX || z >= dims.chunksZ) continue;
+        const n = z * dims.chunksX + x;
+        if (this.meshDrawn.has(n) || city.in(n) === 0 || this.unseen(cam, n) || (this.city?.isFar(n) && this.city.exactly(n, cam, reach))) continue;
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** Per chunk of the map's statics, found when first asked for: per cell of 16 m, the box round the pieces whose middles are in it. */
+  private readonly boxes = new Map<number, Float64Array>();
+
+  /** Whether no piece of chunk `chunk` of the map's statics is in view: each its turned box of its kind's half extents. */
+  private unseen(cam: Camera, chunk: number): boolean {
+    let b = this.boxes.get(chunk);
+    if (!b) {
+      const { first, kind, yaw, x, y, z, halfX, halfY, halfZ } = this.world.city!.statics;
+      b = new Float64Array(CHUNK_CELLS * CHUNK_CELLS * 6);
+      for (let k = 0; k < b.length; k += 6) b.fill(Infinity, k, k + 3).fill(-Infinity, k + 3, k + 6);
+      const x0 = chunkCx(this.world.dims, chunk) * CHUNK_SIZE, z0 = chunkCz(this.world.dims, chunk) * CHUNK_SIZE;
+      for (let i = first[chunk]!; i < first[chunk + 1]!; i++) {
+        const k = kind[i]!, a = (yaw[i]! / YAW_UNITS) * Math.PI * 2;
+        const c = Math.abs(Math.cos(a)), s = Math.abs(Math.sin(a));
+        const rx = c * halfX[k]! + s * halfZ[k]! + 0.01, rz = s * halfX[k]! + c * halfZ[k]! + 0.01;
+        const ci = Math.min(CHUNK_CELLS - 1, Math.max(0, Math.floor(((x[i]! - x0) * CHUNK_CELLS) / CHUNK_SIZE)));
+        const cj = Math.min(CHUNK_CELLS - 1, Math.max(0, Math.floor(((z[i]! - z0) * CHUNK_CELLS) / CHUNK_SIZE)));
+        const o = (cj * CHUNK_CELLS + ci) * 6;
+        b[o] = Math.min(b[o]!, x[i]! - rx);
+        b[o + 1] = Math.min(b[o + 1]!, y[i]! - halfY[k]!);
+        b[o + 2] = Math.min(b[o + 2]!, z[i]! - rz);
+        b[o + 3] = Math.max(b[o + 3]!, x[i]! + rx);
+        b[o + 4] = Math.max(b[o + 4]!, y[i]! + halfY[k]!);
+        b[o + 5] = Math.max(b[o + 5]!, z[i]! + rz);
+      }
+      this.boxes.set(chunk, b);
+    }
+    for (let o = 0; o < b.length; o += 6) if (b[o]! <= b[o + 3]! && cam.boxVisible(b[o]! - cam.x, b[o + 1]! - cam.y, b[o + 2]! - cam.z, b[o + 3]! - cam.x, b[o + 4]! - cam.y, b[o + 5]! - cam.z)) return false;
+    return true;
+  }
+
+  /**
+   * Whether a piece the near store's meshes draw may come within `reach` of the camera, where the near plane would cut
+   * it open: any of the map's pieces whose turned box of its kind's half extents (which hold all of its form) comes that
+   * near. Those of the chunks round the camera's are looked at for the nearest within CLEAR, which holds while the
+   * camera moves less than the difference; a piece of a chunk farther reaches no nearer than 48 m.
+   */
+  private nearPiece(cam: Camera, reach: number): boolean {
+    const dims = this.world.dims, city = this.world.city;
+    if (!city) return false;
+    // No piece came nearer than `clear` from where it was last looked for: none can be within reach until the camera has moved the difference.
+    const at = this.clearAt;
+    if (Math.hypot(cam.x - at[0]!, cam.y - at[1]!, cam.z - at[2]!) < at[3]! - reach * 1.1) return false;
+    let clear = CLEAR;
+    const { first, kind, yaw, x, y, z, halfX, halfY, halfZ } = city.statics;
+    const cx = Math.floor(cam.x / CHUNK_SIZE), cz = Math.floor(cam.z / CHUNK_SIZE);
+    for (let j = Math.max(0, cz - 1); j <= Math.min(dims.chunksZ - 1, cz + 1); j++) {
+      for (let i = Math.max(0, cx - 1); i <= Math.min(dims.chunksX - 1, cx + 1); i++) {
+        const c = j * dims.chunksX + i;
+        for (let s = first[c]!; s < first[c + 1]!; s++) {
+          const k = kind[s]!;
+          const dx = cam.x - x[s]!, dy = cam.y - y[s]!, dz = cam.z - z[s]!, r = halfX[k]! + halfY[k]! + halfZ[k]! + CLEAR;
+          if (this.near!.kinds[k] !== 1 || Math.abs(dx) > r || Math.abs(dy) > r || Math.abs(dz) > r) continue;
+          const a = (yaw[s]! / YAW_UNITS) * Math.PI * 2, co = Math.cos(a), si = Math.sin(a);
+          const lx = Math.max(Math.abs(co * dx - si * dz) - halfX[k]!, 0), ly = Math.max(Math.abs(dy) - halfY[k]!, 0), lz = Math.max(Math.abs(si * dx + co * dz) - halfZ[k]!, 0);
+          clear = Math.min(clear, Math.sqrt(lx * lx + ly * ly + lz * lz));
+        }
+      }
+    }
+    at[0] = cam.x;
+    at[1] = cam.y;
+    at[2] = cam.z;
+    at[3] = clear;
+    return clear < reach * 1.1;
+  }
+
+  /** Where the camera was when `nearPiece` last looked, and how far the nearest piece was then. */
+  private readonly clearAt = Float64Array.of(NaN, NaN, NaN, 0);
+
   /** Counts what the ground casts: its tiles into each cascade, a draw for each pair of tiles it reads from a cascade casts from. */
   private groundCast(): void {
     const p = this.packet;
@@ -1037,10 +1362,11 @@ export class Scene {
 
   /**
    * Puts the draws in the order of the steps they are drawn in (packet.ts), each in the ranges `passOf` gives it, so a
-   * draw in both is listed twice, and an opaque step's cut-out draws where `cutouts` says, each part of it by what its
-   * draws bind (`byState`) unless they are to stay as made. With one range they are all in the near range, and stay as
-   * they were made unless a cut-out is to move: drawn flat, as low poly draws, sorting would save less than it costs.
-   * A see-through draw made ahead of an opaque one still goes after it, the rest staying as made.
+   * draw in both is listed twice, and an opaque step's cut-out draws where `cutouts` says, each part of it nearest first by
+   * NEAR_BUCKETS and in a bucket by what its draws bind (`byState`), unless they are to stay as made; and says where each
+   * opaque step's ground goes: after its draws but the cut-outs, which a tiled GPU may then reject more of. A see-through
+   * draw made ahead of an opaque one still goes after it, the rest staying as made. With `nearFirst` off the parts go by
+   * what they bind alone and the ground first, and with one range as well they stay as made unless a cut-out is to move.
    */
   private order(): void {
     const p = this.packet;
@@ -1051,9 +1377,12 @@ export class Scene {
     const cutAt = this.cutouts === "last" ? 1 : this.cutouts === "none" ? -1 : 0;
     const restAt = this.cutouts === "first" ? 1 : 0;
     let sort = !made;
+    p.groundAt.fill(0);
     if (one) {
       p.drawPass.fill(PASS_NEAR, 0, n);
       p.skyAt = n;
+    }
+    if (one && !this.nearFirst) {
       let cut = false, late = false;
       for (let d = 0, last = 0; d < n && !cut; d++) {
         const flags = p.drawFlags[d]!, place = placeOf(flags, PASS_NEAR, cutAt, restAt);
@@ -1079,6 +1408,7 @@ export class Scene {
     for (let s = 1; s < starts.length; s++) starts[s]! += starts[s - 1]!;
     const total = starts[STEP_BODY + 3]!;
     p.skyAt = one ? total : starts[STEP_FAR_SEE + 2]!;
+    for (let s = STEP_NEAR; s <= STEP_FAR; s++) p.groundAt[s] = this.nearFirst ? starts[s * 2 + restAt + 1]! : starts[s * 2]!;
     const source = this.source;
     const pass = this.sourcePass;
     let moved = total !== n;
@@ -1093,27 +1423,29 @@ export class Scene {
       }
     }
     // The opaque steps' places, near then far, two a step.
-    if (sort) for (let s = 0, turns = 0; s < STEP_FAR * 2 + 2; s++) turns = this.byState(s === 0 ? 0 : starts[s - 1]!, starts[s]!, s % 2 === 0 ? 0 : turns);
+    if (sort) for (let s = 0, turns = 0; s < STEP_FAR * 2 + 2; s++) turns = this.byState(s === 0 ? 0 : starts[s - 1]!, starts[s]!, s % 2 === 0 ? 0 : turns, s >> 1);
     if (moved || sort) reorder(this.columns, MAX_DRAWS, n, total, source, this.copy);
     for (let k = 0; k < total; k++) p.drawPass[k] = pass[k]!;
     p.drawCount = total;
   }
 
   /**
-   * Sorts places `from` to `to` of the order by what their draws bind, so that each changes as little as it can of what
-   * the one before it bound: by program, material and level, and then as made, which keeps a level's instances in the
-   * same order in each of its runs. Every other run of a program and material, counted on from `turns`, is turned
-   * round, so that a level ends a run on the instances it begins the next with. The runs counted so far.
+   * Sorts places `from` to `to` of the order, in range `range`, nearest first by NEAR_BUCKETS where `nearFirst` is on, and
+   * in a bucket by what their draws bind, so that each changes as little as it can of what the one before it bound: by
+   * program, material and level, and then as made, which keeps a level's instances in the same order in each of its runs.
+   * Every other run of a bucket's program and material, counted on from `turns`, is turned round, so that a level ends a
+   * run on the instances it begins the next with. The runs counted so far.
    */
-  private byState(from: number, to: number, turns: number): number {
+  private byState(from: number, to: number, turns: number, range: number): number {
     const p = this.packet;
     const keys = this.keys, source = this.source;
     const materials = this.assets.table.materials;
+    const least = range === PASS_FAR ? p.split * FAR_FROM : 0;
     for (let k = from; k < to; k++) {
       const d = source[k]!;
       const flags = p.drawFlags[d]!;
       const program = (flags & DRAW_DETAILS) !== 0 ? PROGRAM.details : drawProgram(p, d, materials[p.drawMaterial[d]!]);
-      keys[k] = stateKey(program, (flags & DRAW_TEXTURED) !== 0 ? p.drawMaterial[d]! : 0, p.drawSlot[d]!, d);
+      keys[k] = stateKey(this.nearFirst ? bucketOf(Math.max(least, this.nearOf[d]!)) : 0, program, (flags & DRAW_TEXTURED) !== 0 ? p.drawMaterial[d]! : 0, p.drawSlot[d]!, d);
     }
     return sortRuns(keys, from, to, turns, source);
   }
@@ -1146,6 +1478,7 @@ export class Scene {
       p.dropped++;
       return;
     }
+    this.nearOf[d] = 0;
     p.drawMesh[d] = 0;
     p.drawLod[d] = 0;
     p.drawSlot[d] = 0;
@@ -1160,17 +1493,8 @@ export class Scene {
     p.triangles += count * 2 * copies;
   }
 
-  /** Bases as blocks to the tier's reach, faded over the last of it, in place of chunks the near store does not hold whole. */
-  private farBlocks(cam: Camera): void {
-    const p = this.packet;
-    const tier = this.assets.tier;
-    p.frame[FRAME.fade] = tier.fade;
-    this.far!.update(p, this.assets.residency, cam.x, cam.z, tier.reach.bases);
-    this.far!.draw(cam, tier.reach.bases, tier.fade, this.drawFar);
-  }
-
-  /** A tile of far blocks: one instance of its own level, gone at the tier's reach where it reaches into the fade (far.ts). */
-  private readonly drawFar = (slot: number, triangles: number, ox: number, oy: number, oz: number, passes: number, fade: number): void => {
+  /** A tile of far blocks, `near` metres off: one instance of its own level, gone at the tier's reach where it reaches into the fade (far.ts). */
+  private readonly drawFar = (slot: number, triangles: number, ox: number, oy: number, oz: number, passes: number, fade: number, near: number): void => {
     const p = this.packet;
     const d = p.drawCount;
     const copies = passes === (NEAR | FAR) ? 2 : 1;
@@ -1178,6 +1502,7 @@ export class Scene {
       p.dropped++;
       return;
     }
+    this.nearOf[d] = near;
     p.drawMesh[d] = this.far!.mesh;
     p.drawLod[d] = 0;
     p.drawSlot[d] = slot;
@@ -1207,18 +1532,20 @@ export class Scene {
     return this.city;
   }
 
-  /** The map's buildings to the tier's reach, in place of chunks the near store does not hold whole, faded over the last of it. */
+  /**
+   * The map's buildings to the tier's reach, in place of chunks the near store does not hold whole, faded over the last
+   * of it: what is on the card, and the landmarks' far meshes. The buildings are drawn once the near store is.
+   */
   private farCity(cam: Camera): void {
     const p = this.packet;
     const tier = this.assets.tier;
     p.frame[FRAME.fade] = tier.fade;
     this.city!.update(p, this.assets.residency, cam, tier.city.levels, tier.reach.city, tier.fade, this.world.structs, this.world.far?.cells ?? null);
-    this.city!.draw(cam, tier.reach.city, this.drawCity);
     this.landmarks?.draw(p, cam, this.assets, tier.reach.city, tier.fade, this.drawLandmark);
   }
 
-  /** A run of a far city tile's chunks at one of its levels: one instance, gone or come at `fade` (farcity.ts). */
-  private readonly drawCity = (slot: number, firstIndex: number, indexCount: number, ox: number, oy: number, oz: number, passes: number, fade: number): void => {
+  /** A run of a far city tile's chunks at one of its levels, `near` metres off: one instance, gone or come at `fade` (farcity.ts). */
+  private readonly drawCity = (slot: number, firstIndex: number, indexCount: number, ox: number, oy: number, oz: number, passes: number, fade: number, near: number): void => {
     const p = this.packet;
     const d = p.drawCount;
     const copies = passes === (NEAR | FAR) ? 2 : 1;
@@ -1226,6 +1553,7 @@ export class Scene {
       p.dropped++;
       return;
     }
+    this.nearOf[d] = near;
     p.drawMesh[d] = this.city!.mesh;
     p.drawLod[d] = 0;
     p.drawSlot[d] = slot;
@@ -1254,6 +1582,7 @@ export class Scene {
       p.dropped++;
       return;
     }
+    this.nearOf[d] = Math.hypot(ox, oy, oz);
     p.drawMesh[d] = mesh;
     p.drawLod[d] = level;
     p.drawSlot[d] = this.assets.residency.slot(mesh, level);
@@ -1273,16 +1602,8 @@ export class Scene {
     p.triangles += (indexCount / 3) * copies;
   };
 
-  /** Trees, rocks and bushes past the near node field, each kind to its reach at its last level, faded over the last of it. */
-  private farNodes(cam: Camera): void {
-    const p = this.packet;
-    p.frame[FRAME.fade] = this.assets.tier.fade;
-    this.nodesFar!.update(p, this.assets.residency, cam.x, cam.z, this.assets.tier);
-    this.nodesFar!.draw(cam, this.drawFarNodes);
-  }
-
-  /** A run of far nodes of every mesh, each its mesh's row of the atlas (farnodes.ts), gone at its row's reach. */
-  private readonly drawFarNodes = (slot: number, mesh: number, indices: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, passes: number, hand: number, reach: number): void => {
+  /** A run of far nodes of every mesh, `near` metres off, each its mesh's row of the atlas (farnodes.ts), gone at its row's reach. */
+  private readonly drawFarNodes = (slot: number, mesh: number, indices: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, passes: number, hand: number, reach: number, near: number): void => {
     const p = this.packet;
     const d = p.drawCount;
     const copies = passes === (NEAR | FAR) ? 2 : 1;
@@ -1290,6 +1611,7 @@ export class Scene {
       p.dropped++;
       return;
     }
+    this.nearOf[d] = near;
     p.drawMesh[d] = mesh;
     p.drawLod[d] = 0;
     p.drawSlot[d] = slot;
@@ -1360,7 +1682,8 @@ export class Scene {
           z = (mount === MOUNT_OWN ? own!.z : remote.z[mount]!) - cam.z;
           r += ch.reach(mount === MOUNT_OWN ? own!.kind : remote.kind[mount]!);
         }
-        if (!cam.boxVisible(x - r, y - 0.3, z - r, x + r, y + (r > 2.2 ? r : 2.2), z + r)) {
+        const top = y + (r > 2.2 ? r : 2.2);
+        if (!cam.boxVisible(x - r, y - 0.3, z - r, x + r, top, z + r) || this.hiding.hides(x - r, y - 0.3, z - r, x + r, top, z + r)) {
           // Out of view, a body whose shadow may fall in it is posed after those in view, while bones are left.
           if (this.casting && this.bodyShadows.body(x, y, z, r) !== 0) {
             this.unseenFrom[unseen] = i;
@@ -1670,6 +1993,7 @@ export class Scene {
         if (seen) {
           const d = p.drawCount;
           this.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_SKINNED, cam.passes(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r));
+          this.boxRows(d, p.drawCount, cx - r, cy - r, cz - r, cx + r, cy + r, cz + r);
           for (let k = d; k < p.drawCount; k++) p.drawFade[k] = reach;
           p.frame[FRAME.fade] = tier.fade;
         }
@@ -1768,6 +2092,7 @@ export class Scene {
       p.dropped++;
       return;
     }
+    this.nearOf[d] = 0;
     p.drawMesh[d] = this.lakes!.mesh;
     p.drawLod[d] = 0;
     p.drawSlot[d] = slot;
@@ -1862,9 +2187,18 @@ export class Scene {
       const all = batch.blocks === batch.cells || batch.exposing > 0 || batch.rooms!.near(cam.x, cam.y, cam.z, reach);
       const ox = x0 - cam.x, oy = -cam.y, oz = z0 - cam.z;
       if (seen) this.ranges(cam, batch, id, dist, ox, oy, oz, cam.passes(ax, ay, az, bx, by, bz), all);
-      if (seen && batch.mesh) this.meshRuns(cam, batch, id, ox, oy, oz, cam.passes(ax, ay, az, bx, by, bz));
+      // A chunk's mesh is drawn once the frame knows what hides what, by its cells in view that are not hidden.
+      if (seen && batch.mesh && this.meshCells(cam, batch, ox, oy, oz) > 0) {
+        this.meshDrawn.add(id);
+        this.later.push(id, ox, oy, oz, cam.passes(ax, ay, az, bx, by, bz));
+      }
+      const castFrom = p.casterCount;
       if (casts !== 0) this.castChunk(batch, id, ox, oy, oz, casts, all);
       if (casts !== 0 && batch.mesh) this.castMesh(batch, id, ox, oy, oz);
+      if (p.casterCount === castFrom) continue;
+      // What the chunk's casters shade lies in its box swept from the sun as far as its shadow reaches.
+      const sx = -this.sunAt[0]! * this.zoneStretch, sy = -this.sunAt[1]! * this.zoneStretch, sz = -this.sunAt[2]! * this.zoneStretch;
+      this.chunkCasts.push(castFrom, p.casterCount, Math.min(ax, ax + sx), Math.min(ay, ay + sy), Math.min(az, az + sz), Math.max(bx, bx + sx), Math.max(by, by + sy), Math.max(bz, bz + sz));
     }
     near?.end(p, this.assets.residency, statics!, this.city!, world.hf, this.chunkCells, laid);
   }
@@ -1885,7 +2219,7 @@ export class Scene {
   private zones(cam: Camera, b: ChunkBatch, seen: boolean, casts: number): void {
     const z = b.zone;
     this.wholeView = seen && cam.boxInside(b.minX - cam.x, b.minY - cam.y, b.minZ - cam.z, b.maxX - cam.x, b.maxY - cam.y, b.maxZ - cam.z);
-    const stretch = casts !== 0 ? this.stretch(b.minX - cam.x, b.minZ - cam.z, b.maxX - cam.x, b.maxZ - cam.z, b.maxY - cam.y) : 0;
+    const stretch = (this.zoneStretch = casts !== 0 ? this.stretch(b.minX - cam.x, b.minZ - cam.z, b.maxX - cam.x, b.maxZ - cam.z, b.maxY - cam.y) : 0);
     for (let c = 0, k = 0; c < b.cells; c++, k += 6) {
       const ax = z[k]! - cam.x, ay = z[k + 1]! - cam.y, az = z[k + 2]! - cam.z;
       const bx = z[k + 3]! - cam.x, by = z[k + 4]! - cam.y, bz = z[k + 5]! - cam.z;
@@ -1944,7 +2278,9 @@ export class Scene {
         if (whole) {
           this.assets.wantTextured(mesh, near, dist / reach);
           if (crown !== near) this.assets.wantTextured(mesh, crown, dist / reach);
+          const d0 = this.packet.drawCount;
           for (let s = 0, n = this.spansOf(b, at0, 0, cells, all); s < n; s++) this.draw(mesh, near, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, 0, 0, crown, leavesAt(b.thin[q]!));
+          this.boxRun(d0, b, q, mesh, 0, cells, cam);
         }
         if (whole || light) continue;
       } else {
@@ -2024,40 +2360,59 @@ export class Scene {
       for (let k = 0; k < runs.length; k += RUN) {
         this.assets.wantTextured(mesh, runs[k + 2]!, runs[k + 4]!);
         if (runs[k + 6] !== runs[k + 2]) this.assets.wantTextured(mesh, runs[k + 6]!, runs[k + 4]!);
+        const d0 = this.packet.drawCount;
         for (let s = 0, n = this.spansOf(b, at0, runs[k + 9]!, runs[k + 10]!, all); s < n; s++) this.draw(mesh, runs[k + 2]!, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, runs[k + 5]!, 0, runs[k + 6]!, leavesAt(runs[k + 8]!));
+        this.boxRun(d0, b, q, mesh, runs[k + 9]!, runs[k + 10]!, cam);
       }
     }
   }
 
-  /**
-   * Draws a chunk's mesh by its cells in view (`zones`), each run of neighbouring cells one draw in the depth ranges
-   * `passes`, a run going on over cells out of view between where they weigh less than a draw.
-   */
-  private meshRuns(cam: Camera, b: ChunkBatch, id: number, ox: number, oy: number, oz: number, passes: number): void {
+  /** Marks in `b.inView` the cells of a chunk's mesh with faces in view (`zones`), its corner (ox, oy, oz) from the camera; how many. */
+  private meshCells(cam: Camera, b: ChunkBatch, ox: number, oy: number, oz: number): number {
     const m = b.mesh!, first = m.cellFirst, box = m.cellBox;
-    if (m.slot < 0) return;
-    let from = -1, to = 0, gap = 0;
+    if (m.slot < 0) return 0;
+    let n = 0;
+    for (let c = 0; c < b.cells; c++) {
+      const k = c * 6, seen = this.cellSeen[c]!;
+      b.inView[c] = first[c + 1]! > first[c]! && (seen === 2 || (seen === 1 && cam.boxVisible(box[k]! + ox, box[k + 1]! + oy, box[k + 2]! + oz, box[k + 3]! + ox, box[k + 4]! + oy, box[k + 5]! + oz))) ? 1 : 0;
+      n += b.inView[c]!;
+    }
+    return n;
+  }
+
+  /**
+   * Draws a chunk's mesh by its cells `meshCells` marked, less those the picture of what hides what hides, each run of
+   * neighbouring cells one draw in the depth ranges `passes`, a run going on over cells left out between where they weigh
+   * less than a draw.
+   */
+  private meshRuns(b: ChunkBatch, id: number, ox: number, oy: number, oz: number, passes: number): void {
+    const m = b.mesh!, first = m.cellFirst, box = m.cellBox;
+    let from = -1, to = 0, gap = 0, c0 = 0, c1 = 0;
     for (let c = 0; c < b.cells; c++) {
       const n = first[c + 1]! - first[c]!;
       if (n === 0) continue;
-      const k = c * 6, seen = this.cellSeen[c]!;
-      if (seen === 0 || (seen === 1 && !cam.boxVisible(box[k]! + ox, box[k + 1]! + oy, box[k + 2]! + oz, box[k + 3]! + ox, box[k + 4]! + oy, box[k + 5]! + oz))) {
+      const k = c * 6;
+      if (b.inView[c] === 0 || this.hiding.hides(box[k]! + ox, box[k + 1]! + oy, box[k + 2]! + oz, box[k + 3]! + ox, box[k + 4]! + oy, box[k + 5]! + oz)) {
         gap += n;
         continue;
       }
       if (from >= 0 && gap * 2 > RUN_TRIANGLES) {
-        this.drawMesh(b, id, from, to, ox, oy, oz, passes);
+        this.drawMesh(b, id, from, to, ox, oy, oz, passes, c0, c1);
         from = -1;
       }
-      if (from < 0) from = first[c]!;
+      if (from < 0) {
+        from = first[c]!;
+        c0 = c;
+      }
       to = first[c + 1]!;
+      c1 = c + 1;
       gap = 0;
     }
-    if (from >= 0) this.drawMesh(b, id, from, to, ox, oy, oz, passes);
+    if (from >= 0) this.drawMesh(b, id, from, to, ox, oy, oz, passes, c0, c1);
   }
 
-  /** Faces `from` up to `to` of a chunk's mesh: one instance of its level, at the chunk's corner. */
-  private drawMesh(b: ChunkBatch, id: number, from: number, to: number, ox: number, oy: number, oz: number, passes: number): void {
+  /** Faces `from` up to `to` of a chunk's mesh, which lie in cells `c0` up to `c1`: one instance of its level, at the chunk's corner. */
+  private drawMesh(b: ChunkBatch, id: number, from: number, to: number, ox: number, oy: number, oz: number, passes: number, c0: number, c1: number): void {
     const p = this.packet;
     const d = p.drawCount;
     const copies = passes === (NEAR | FAR) ? 2 : 1;
@@ -2065,6 +2420,7 @@ export class Scene {
       p.dropped++;
       return;
     }
+    this.boxCells(d, d + 1, b.mesh!.cellBox, c0, c1, ox, oy, oz);
     p.drawMesh[d] = this.near!.mesh;
     p.drawLod[d] = 0;
     p.drawSlot[d] = b.mesh!.slot;
@@ -2119,6 +2475,58 @@ export class Scene {
       }
       this.caster(this.near!.mesh, 0, m.slot, id, b.meshAt, 1, ox, oy, oz, DRAW_RANGED, 0, runs[k]! * 6, (runs[k + 1]! - runs[k]!) * 6, runs[k + 2]!);
     }
+  }
+
+  /** Gives draws `from` up to `to` the camera-relative box from (x0, y0, z0) to (x1, y1, z1), and how far off its nearest point is. */
+  private boxRows(from: number, to: number, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): void {
+    const near = Math.hypot(Math.max(x0, -x1, 0), Math.max(y0, -y1, 0), Math.max(z0, -z1, 0));
+    const b = this.boxOf;
+    for (let d = from; d < to; d++) {
+      this.boxed[d] = 1;
+      b[d * 6] = x0;
+      b[d * 6 + 1] = y0;
+      b[d * 6 + 2] = z0;
+      b[d * 6 + 3] = x1;
+      b[d * 6 + 4] = y1;
+      b[d * 6 + 5] = z1;
+      this.nearOf[d] = near;
+    }
+  }
+
+  /**
+   * Gives the draws from `from` on the box round range `q`'s instances in cells `c0` up to `c1` of a chunk: a piece's
+   * whole, a node's to its mesh's reach sideways from its trunk at the largest size in the cell.
+   */
+  private boxRun(from: number, b: ChunkBatch, q: number, mesh: number, c0: number, c1: number, cam: Camera): void {
+    const box = b.cellBox, cells = b.cells;
+    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+    for (let c = c0; c < c1; c++) {
+      const k = (q * cells + c) * 6;
+      if (box[k]! > box[k + 3]!) continue;
+      const spread = b.sized ? this.assets.table.side[mesh]! * b.cellReach[q * cells + c]! : 0;
+      x0 = Math.min(x0, box[k]! - spread);
+      y0 = Math.min(y0, box[k + 1]!);
+      z0 = Math.min(z0, box[k + 2]! - spread);
+      x1 = Math.max(x1, box[k + 3]! + spread);
+      y1 = Math.max(y1, box[k + 4]!);
+      z1 = Math.max(z1, box[k + 5]! + spread);
+    }
+    if (x0 <= x1) this.boxRows(from, this.packet.drawCount, x0 - cam.x, y0 - cam.y, z0 - cam.z, x1 - cam.x, y1 - cam.y, z1 - cam.z);
+  }
+
+  /** Gives draws `from` up to `to` the box round cells `c0` up to `c1` of `boxes` (six numbers a cell), each moved by (ox, oy, oz). */
+  private boxCells(from: number, to: number, boxes: Float32Array, c0: number, c1: number, ox: number, oy: number, oz: number): void {
+    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+    for (let k = c0 * 6; k < c1 * 6; k += 6) {
+      if (boxes[k]! > boxes[k + 3]!) continue;
+      x0 = Math.min(x0, boxes[k]!);
+      y0 = Math.min(y0, boxes[k + 1]!);
+      z0 = Math.min(z0, boxes[k + 2]!);
+      x1 = Math.max(x1, boxes[k + 3]!);
+      y1 = Math.max(y1, boxes[k + 4]!);
+      z1 = Math.max(z1, boxes[k + 5]!);
+    }
+    if (x0 <= x1) this.boxRows(from, to, x0 + ox, y0 + oy, z0 + oz, x1 + ox, y1 + oy, z1 + oz);
   }
 
   /** The first instance of cell `c` of the range whose blocks begin at `at0` in `cellFirst`, as if each cell's shell and interior lay together. */
@@ -2341,6 +2749,7 @@ export class Scene {
       onCard: old?.onCard ?? 0,
       mesh,
       meshAt: total,
+      inView: new Uint8Array(cells),
     };
     emptyBoxes(b.cellBox);
     emptyBoxes(b.zone);
@@ -2445,7 +2854,7 @@ export class Scene {
       const y = (mine ? this.own!.y : remote.y[i]!) - cam.y;
       const z = (mine ? this.own!.z : remote.z[i]!) - cam.z;
       // Culled entries are left out of the counts. The second pass repeats the test.
-      if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
+      if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r) || this.hiding.hides(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
       this.tally(cam, mesh, x, y, z);
       visible++;
     }
@@ -2462,7 +2871,7 @@ export class Scene {
       const x = (mine ? this.own!.x : remote.x[i]!) - cam.x;
       const y = (mine ? this.own!.y : remote.y[i]!) - cam.y;
       const z = (mine ? this.own!.z : remote.z[i]!) - cam.z;
-      if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
+      if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r) || this.hiding.hides(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
       const at = this.cursor[mesh]!++;
       const yaw = Math.round(((mine ? this.own!.yaw : remote.yaw[i]!) / (2 * Math.PI)) * 65536) & 0xffff;
       if (lies !== 0) this.transient.set(at, x, y, z, this.dropped.yaw(remote.id[i]!, yaw), this.dropped.colorOf(lies));
@@ -2501,10 +2910,12 @@ export class Scene {
         const level = levels ? (levels[m] = this.assets.choose(this.assets.table.error[m]!, near, levels[m]!)) : 0;
         if (levels) this.assets.wantTextured(m, level, near);
         else showMaterials(this.assets, m, near);
+        this.nearAt = near;
         this.draw(m, level, TRANSIENT_BUFFER, total, counts[m]!, 0, 0, 0, flags, cam.passesOf(this.from[m]!, this.to[m]!));
       }
       total += counts[m]!;
     }
+    this.nearAt = 0;
     return total;
   }
 
@@ -2558,6 +2969,7 @@ export class Scene {
       const d = n + k;
       const material = parts[k * 4]!, trunk = parts[k * 4 + 1] === 1, from = parts[k * 4 + 2]!, indices = parts[k * 4 + 3]!;
       this.passOf[d] = passes;
+      this.nearOf[d] = this.nearAt;
       p.drawMesh[d] = mesh;
       p.drawLod[d] = trunk ? lod : top;
       p.drawSlot[d] = trunk ? slot : topSlot;
@@ -2649,6 +3061,7 @@ export class Scene {
       // The sections of a level are drawn from the same instances.
       if (d > from && first === p.drawFirst[d - 1] && p.drawMesh[d] === p.drawMesh[d - 1]) {
         this.passOf[d] = this.passOf[d - 1]!;
+        this.nearOf[d] = this.nearOf[d - 1]!;
         continue;
       }
       const r = this.radiusOfMesh[p.drawMesh[d]!]! + this.bodySlack;
@@ -2665,6 +3078,7 @@ export class Scene {
         if (w + reach > hi) hi = w + reach;
       }
       let passes = cam.passesOf(lo, hi);
+      this.nearOf[d] = Math.max(0, lo);
       if (passes === (NEAR | FAR)) {
         let sections = 1;
         while (d + sections < p.drawCount && p.drawFirst[d + sections] === first && p.drawMesh[d + sections] === p.drawMesh[d]) sections++;

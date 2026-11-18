@@ -441,20 +441,21 @@ export class FarBlocks {
 
   /**
    * Calls `put` for each tile on the card whose nearest point is within `reach` of the camera and in its view: the
-   * tile's slot and triangles, where its corner is from the camera, the depth ranges its box is in, and where it is gone:
-   * the reach, or 0 for a tile wholly short of the last `share` of it, where nothing fades.
+   * tile's slot and triangles, where its corner is from the camera, the depth ranges its box is in, where it is gone (the
+   * reach, or 0 for a tile wholly short of the last `share` of it, where nothing fades) and how far off its nearest is.
+   * A tile whose box `hides` says is hidden is left out.
    */
-  draw(cam: Camera, reach: number, share: number, put: (slot: number, triangles: number, ox: number, oy: number, oz: number, passes: number, fade: number) => void): void {
+  draw(cam: Camera, reach: number, share: number, put: (slot: number, triangles: number, ox: number, oy: number, oz: number, passes: number, fade: number, near: number) => void, hides?: (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) => boolean): void {
     for (const t of this.tiles.keys()) {
       const tile = this.tiles.get(t)!;
       if (tile.slot < 0) continue;
       const b = tile.box;
       const ax = b[0]! - cam.x, ay = b[1]! - cam.y, az = b[2]! - cam.z, bx = b[3]! - cam.x, by = b[4]! - cam.y, bz = b[5]! - cam.z;
       const near = Math.hypot(Math.max(ax, -bx, 0), Math.max(ay, -by, 0), Math.max(az, -bz, 0));
-      if (near >= reach || !cam.boxVisible(ax, ay, az, bx, by, bz)) continue;
+      if (near >= reach || !cam.boxVisible(ax, ay, az, bx, by, bz) || (hides !== undefined && hides(ax, ay, az, bx, by, bz))) continue;
       const ox = this.cornerX(t), oz = this.cornerZ(t);
       const most = Math.hypot(Math.max(-ax, bx), Math.max(-ay, by), Math.max(-az, bz));
-      put(tile.slot, tile.indexCount / 3, ox - cam.x, tile.base - cam.y, oz - cam.z, cam.passes(ax, ay, az, bx, by, bz), most < reach * (1 - share) ? 0 : reach);
+      put(tile.slot, tile.indexCount / 3, ox - cam.x, tile.base - cam.y, oz - cam.z, cam.passes(ax, ay, az, bx, by, bz), most < reach * (1 - share) ? 0 : reach, near);
     }
   }
 
