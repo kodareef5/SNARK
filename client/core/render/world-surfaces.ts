@@ -171,7 +171,7 @@ function relief(id: number, u: number, v: number, spread: number, view: Numbers,
   met[0] = u + au * along;
   met[1] = v + av * along;
 }
-const maps = { base: new Float64Array(4), mro: new Float64Array(4), lean: new Float64Array(2) };
+const maps = { base: new Float64Array(4), mro: new Float64Array(4), lean: new Float64Array(2), patch: 0 };
 
 /**
  * A finish's maps at tile point (u, v), its second copy shown over the first where secondShare says, the higher
@@ -180,7 +180,7 @@ const maps = { base: new Float64Array(4), mro: new Float64Array(4), lean: new Fl
  */
 function finishMaps(id: number, u: number, v: number, spread: number, sample: WorldSample, light: boolean, view: Numbers, depth: number): void {
   const f = finishes[id]!, turned = f.module[0] === 0;
-  const t = light ? 0 : secondShare(u, v);
+  const second = secondShare(u, v), t = light ? 0 : second;
   if (depth > 0) {
     relief(id, u, v, spread, view, depth, t >= 0.5, sample);
     u = met[0]!;
@@ -201,6 +201,7 @@ function finishMaps(id: number, u: number, v: number, spread: number, sample: Wo
     sample(1, id, bu, bv, spread, read[5]!);
   }
   const s = t <= 0 ? 0 : t >= 1 ? 1 : higher(read[1]![3]!, read[4]![3]!, t);
+  maps.patch = light ? second : s;
   for (let c = 0; c < 4; c++) {
     maps.base[c] = read[0]![c]! * (1 - s) + read[3]![c]! * s;
     maps.mro[c] = read[1]![c]! * (1 - s) + read[4]![c]! * s;
@@ -243,14 +244,14 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
   }
   finishMaps(index, u, v, spread, sample, light, tangent, depth);
   const macro = surfaceNoise(x / 37 + y / 53, z / 37);
-  const stain = light ? 0 : surfaceNoise(x / 8 + z / 19, y / 17 + z / 11);
+  const stain = light ? 0 : 0.6 * surfaceNoise(x / 8 + z / 19, y / 17 + z / 11) + 0.4 * surfaceNoise(x / 2.9 + z / 7.3, y / 4.1 + z / 3.7);
   const weather = f.weather * city[4]!;
   const wet = clamp(f.wetness + city[5]!);
   const growth = clamp((f.growth + city[6]!) * clamp((macro - 0.42) * 3) * (ny > 0.2 ? 1 : 0.4));
   for (let c = 0; c < 3; c++) {
     const dye = 1 + (clamp(palette[c]! / 0.3, 0.18, 2.2) - 1) * f.palette * maps.base[3]!;
     const green = c === 1 ? 0.75 : c === 0 ? 0.55 : 0.35;
-    albedo[c] = maps.base[c]! * dye * f.tint[c]! * city[c]! * (1 + (macro - 0.5) * 0.5 - stain * weather * 0.5) * (1 - wet * 0.28) * (1 - growth + growth * green);
+    albedo[c] = maps.base[c]! * dye * f.tint[c]! * city[c]! * (1 + (macro - 0.5) * 0.5 - stain * weather * 0.5) * (1 + (maps.patch - 0.5) * f.patch) * (1 - wet * 0.28) * (1 - growth + growth * green);
   }
   // The normal map's lean across and up the tile, in the tile's frame: across is +u, up is -v.
   const k = f.bump * city[8]!, lx = light ? 0 : maps.lean[0]!, ly = light ? 0 : maps.lean[1]!;
@@ -379,7 +380,8 @@ uniform highp sampler2DArray uWorldBase, uWorldNormal, uWorldOrm;
 ${vectors("WF", finishes.map((f) => [f.metres, f.bump, f.rough, f.metal]))}
 ${vectors("WT", finishes.map((f) => [...f.tint, f.palette]))}
 ${vectors("WW", finishes.map((f) => [f.weather, f.wetness, f.growth, f.mean]))}
-${vectors("WM", finishes.map((f) => [...f.module, f.height, f.lift]))}
+${vectors("WM", finishes.map((f) => [...f.module, f.height, f.lift]))}const float WS[16] = float[16](${finishes.map((f) => fl(f.patch)).join(",")});
+
 float surfaceHash(ivec2 p) {
   uint h = uint(p.x) * 1597334677u ^ uint(p.y) * 3812015801u;
   h = (h ^ (h >> 16u)) * 2246822519u;
@@ -420,13 +422,14 @@ vec2 worldRelief(int id, vec2 q, vec2 dx, vec2 dy, vec3 view, float depth, bool 
 #endif
 // A finish's maps at tile point q, its second copy shown over the first where the noise says, the higher showing; read
 // where the ray to the eye meets the painted height where depth is more than 0.
-void finishMaps(int id, vec2 q, vec2 dx, vec2 dy, vec3 view, float depth, out vec4 base, out vec4 mro, out vec2 bump) {
+void finishMaps(int id, vec2 q, vec2 dx, vec2 dy, vec3 view, float depth, out vec4 base, out vec4 mro, out vec2 bump, out float tone) {
   bool turned = WM[id].x == 0.0;
+  float second = clamp((surfaceNoise(q * ${fl(WORLD_PATCH)} + vec2(5.3, 1.7)) - 0.35) / 0.3, 0.0, 1.0);
+  second = second * second * (3.0 - 2.0 * second);
 #ifdef WORLD_LIGHT
   float t = 0.0;
 #else
-  float t = clamp((surfaceNoise(q * ${fl(WORLD_PATCH)} + vec2(5.3, 1.7)) - 0.35) / 0.3, 0.0, 1.0);
-  t = t * t * (3.0 - 2.0 * t);
+  float t = second;
 #endif
 #ifdef WORLD_RELIEF
   if (depth > 0.0) q = worldRelief(id, q, dx, dy, view, depth, t >= 0.5);
@@ -450,6 +453,11 @@ void finishMaps(int id, vec2 q, vec2 dx, vec2 dy, vec3 view, float depth, out ve
     if (turned) n1 = vec2(-n1.y, n1.x);
   }
   float s = t <= 0.0 ? 0.0 : t >= 1.0 ? 1.0 : higher(r0.a, r1.a, t, 1.0, ${fl(WORLD_BAND)});
+#ifdef WORLD_LIGHT
+  tone = second;
+#else
+  tone = s;
+#endif
   base = mix(b0, b1, s);
   mro = mix(r0, r1, s);
   bump = mix(n0, n1, s);
@@ -469,7 +477,7 @@ float worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n, vec3 face, int
   vec2 q = axis == 1 ? rel.xz / metres + phase.xz : axis == 0 ? vec2(rel.z / metres + phase.z, -rel.y / metres - phase.y) : vec2(rel.x / metres + phase.x, -rel.y / metres - phase.y);
   vec2 dx = (axis == 1 ? dpx.xz : axis == 0 ? vec2(dpx.z, -dpx.y) : vec2(dpx.x, -dpx.y)) / metres;
   vec2 dy = (axis == 1 ? dpy.xz : axis == 0 ? vec2(dpy.z, -dpy.y) : vec2(dpy.x, -dpy.y)) / metres;
-  vec4 base, mro; vec2 bump;
+  vec4 base, mro; vec2 bump; float tone;
   vec3 view = vec3(0.0, 0.0, 1.0);
   float depth = 0.0;
 #ifdef WORLD_RELIEF
@@ -477,20 +485,20 @@ float worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n, vec3 face, int
   view = vec3(axis == 0 ? e.z : e.x, axis == 1 ? e.z : -e.y, axis == 1 ? e.y * sign(face.y) : axis == 0 ? e.x * sign(face.x) : e.z * sign(face.z));
   if (view.z > 0.1) depth = WM[id].z * 0.001 / metres * clamp(2.0 - max(length(dx), length(dy)) * ${fl(RELIEF_TEXELS)}, 0.0, 1.0);
 #endif
-  finishMaps(id, q, dx, dy, view, depth, base, mro, bump);
+  finishMaps(id, q, dx, dy, view, depth, base, mro, bump, tone);
   vec3 p = rel + uWorldEye;
   float macro = surfaceNoise(vec2(p.x/37.0+p.y/53.0,p.z/37.0));
 #ifdef WORLD_LIGHT
   float stain = 0.0;
   bump = vec2(0.0);
 #else
-  float stain = surfaceNoise(vec2(p.x/8.0+p.z/19.0,p.y/17.0+p.z/11.0));
+  float stain = 0.6*surfaceNoise(vec2(p.x/8.0+p.z/19.0,p.y/17.0+p.z/11.0))+0.4*surfaceNoise(vec2(p.x/2.9+p.z/7.3,p.y/4.1+p.z/3.7));
 #endif
   float weather = w.x*uSurfaceCity[1].x;
   float wet = clamp(w.y+uSurfaceCity[1].y,0.0,1.0);
   float growth = clamp((w.z+uSurfaceCity[1].z)*clamp((macro-0.42)*3.0,0.0,1.0)*(face.y>0.2?1.0:0.4),0.0,1.0);
   albedo = base.rgb*(1.0+(clamp(albedo/0.3,0.18,2.2)-1.0)*tint.w*base.a)*tint.rgb*uSurfaceCity[0].rgb;
-  albedo *= (1.0+(macro-0.5)*0.5-stain*weather*0.5)*(1.0-wet*0.28)*mix(vec3(1.0),vec3(0.55,0.75,0.35),growth);
+  albedo *= (1.0+(macro-0.5)*0.5-stain*weather*0.5)*(1.0+(tone-0.5)*WS[id])*(1.0-wet*0.28)*mix(vec3(1.0),vec3(0.55,0.75,0.35),growth);
   float z = sqrt(max(0.0, 1.0 - dot(bump, bump)));
   bump *= f.y*uSurfaceCity[2].x;
   n = normalize(n * z + (axis==1 ? vec3(bump.x,0.0,-bump.y) : axis==0 ? vec3(0.0,bump.y,bump.x) : vec3(bump.x,bump.y,0.0)));

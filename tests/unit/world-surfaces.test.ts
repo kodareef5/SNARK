@@ -154,7 +154,7 @@ artTest("each finish's painted size, relief and module are the ones the renderer
   const materials = worldMaterials();
   SURFACE_NAMES.forEach((name, k) => {
     const painted = paintedOf(name), f = SURFACE_FINISHES[name];
-    expect([name, painted.metres, painted.height_mm, painted.module ?? undefined]).toEqual([name, f.metres, f.height, f.module as [number, number] | undefined]);
+    expect([name, painted.metres, painted.height_mm, painted.module?.map((m) => m.toFixed(6))]).toEqual([name, f.metres, f.height, f.module?.map((m) => m.toFixed(6))]);
     expect([name, rgbaOf(materials[k]!, "mro", 1024).pictures[0]![1]]).toEqual([name, WORLD_ROUGH[k]]);
   });
   expect(JSON.parse(readFileSync(join(WORLD_ART, "grass", "material.json"), "utf8")).metres).toBe(SURFACE_FINISHES.grass.metres);

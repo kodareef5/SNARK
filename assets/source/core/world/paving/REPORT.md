@@ -25,7 +25,7 @@ All six maps share a 2048 × 2048 grid. One texel spans 0.977 mm. Five generated
 | [12 × 12 repeat](checks/tiled12.png) and [40 × 40 repeat](checks/tiled40.png) | Each 2048-pixel sheet averages the full corresponding footprint in linear light. I redistributed slab pigment after an early sheet showed a horizontal band. In the final fields, mild slab-to-slab differences persist while the aggregate resolves to a continuous tone. |
 | [Relighting](checks/relit.png) | The same colour and height receive two opposing 15° suns and a 70° sun. At the junction in the native crop, the bright bevel moves to the opposite lip when the low sun reverses. Pale sand fragments remain pale in all three views. |
 | [Aligned layers](checks/layers.png) | All six panels use the same 300-pixel crop. The clipped corner in the lower right of the junction has the same footprint in the tint, fill, roughness and geometry. The surrounding deposit appears in base colour without a trench in height. |
-| [Photograph comparison](checks/photo-comparison.png) | The left crop is at native resolution. The right crop covers the same 47.7 × 31.1 cm of photographed precast concrete. The upper pair shows original base colours. The lower pair uses the same diffuse light and each material’s own normals. [Comparison scan (CC0)](https://polyhaven.com/a/concrete_pavement) |
+| [Photograph comparison](checks/photo-comparison.png) | The left crop is at native resolution. The right crop covers the same 47.7 × 31.1 cm of photographed precast concrete. The upper pair shows original base colours. The lower pair uses the same diffuse light and each material’s own normals. |
 
 ## Remaining limitations
 

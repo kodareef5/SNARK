@@ -31,29 +31,34 @@ export interface SurfaceFinish {
    * themselves. A second copy that hides the repeat is shifted by it and keeps its direction; without one, it is turned.
    */
   module?: readonly [number, number];
+  /**
+   * How much lighter the patches where a finish's second copy shows are than those of its first, as a share: a
+   * resurfaced stretch, a repainted bay, a lusher or drier patch, every few metres. Half of it darkens the first.
+   */
+  patch: number;
   /** Millimetres from the lowest to the highest of the painted height, and where the lowest sits where two finishes of the ground meet: the higher shows. */
   height: number;
   lift: number;
 }
-const finish = (group: SurfaceGroup, metres: number, palette: number, weather: number, height: number, lift: number, module?: readonly [number, number]): SurfaceFinish =>
-  ({ group, metres, bump: 1, rough: 1, metal: 1, palette, weather, height, lift, ...(module ? { module } : {}) });
+const finish = (group: SurfaceGroup, metres: number, palette: number, weather: number, patch: number, height: number, lift: number, module?: readonly [number, number]): SurfaceFinish =>
+  ({ group, metres, bump: 1, rough: 1, metal: 1, palette, weather, patch, height, lift, ...(module ? { module } : {}) });
 export const SURFACE_FINISHES: Record<SurfaceName, SurfaceFinish> = {
-  grass: finish("living", 2, 0.18, 0.2, 40, 6),
-  sand: finish("dry", 2.5, 0.12, 0.12, 6, 6),
-  dirt: finish("dry", 2, 0.2, 0.24, 12, 0),
-  mud: finish("wet", 2, 0.14, 0.3, 15, -6),
-  rock: finish("mineral", 3, 0.3, 0.23, 30, 0),
-  gravel: finish("dry", 1.5, 0.2, 0.2, 30, 0),
-  asphalt: finish("mineral", 2.5, 0.1, 0.4, 8, 0),
-  paving: finish("masonry", 2, 0.25, 0.32, 20, 0, [0.25, 0.25]),
-  concrete: finish("masonry", 2.5, 0.46, 0.45, 5, 2),
-  brick: finish("masonry", 1.92, 0.14, 0.4, 12, 0, [0.125, 1 / 12]),
-  clay: finish("masonry", 2, 0.2, 0.28, 60, 0, [0.25, 1 / 6]),
-  rust: finish("metal", 2, 0.18, 0.4, 5, 0),
-  steel: finish("metal", 2, 0.4, 0.28, 2, 0),
-  plaster: finish("paint", 2.5, 0.7, 0.35, 3, 0),
-  wood: finish("timber", 2, 0.25, 0.26, 10, 0, [0.5, 1 / 13]),
-  glass: finish("glass", 2, 0.35, 0.2, 1, 0),
+  grass: finish("living", 2, 0.18, 0.2, 0.3, 40, 6),
+  sand: finish("dry", 2.5, 0.12, 0.12, 0.12, 6, 6),
+  dirt: finish("dry", 2, 0.2, 0.24, 0.24, 12, 0),
+  mud: finish("wet", 2, 0.14, 0.3, 0.2, 15, -6),
+  rock: finish("mineral", 3, 0.3, 0.23, 0.2, 30, 0),
+  gravel: finish("dry", 1.5, 0.2, 0.2, 0.2, 30, 0),
+  asphalt: finish("mineral", 2.5, 0.1, 0.4, 0.3, 8, 0),
+  paving: finish("masonry", 2, 0.25, 0.32, 0.14, 20, 0, [0.25, 0.25]),
+  concrete: finish("masonry", 2.5, 0.46, 0.45, 0.22, 5, 2),
+  brick: finish("masonry", 1.92, 0.14, 0.4, 0.14, 12, 0, [0.125, 1 / 12]),
+  clay: finish("masonry", 2, 0.2, 0.28, 0.18, 60, 0, [0.25, 1 / 6]),
+  rust: finish("metal", 2, 0.18, 0.4, 0.2, 5, 0),
+  steel: finish("metal", 2, 0.4, 0.28, 0.12, 2, 0),
+  plaster: finish("paint", 2.5, 0.7, 0.35, 0.16, 3, 0),
+  wood: finish("timber", 2, 0.25, 0.26, 0.18, 10, 0, [0.5, 1 / 13]),
+  glass: finish("glass", 2, 0.35, 0.2, 0.06, 1, 0),
 };
 
 /** City-wide art direction. The key is the map id's last component; unknown maps use default. */

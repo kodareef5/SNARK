@@ -3,7 +3,7 @@
 // occlusion, roughness, metal and height packed at half the side. Kept under var/surfaces/art/<finish>/ by a hash of
 // what made them. bun tools/surfaces/build.ts builds them.
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { SURFACE_NAMES, surfaceMaterial, type SurfaceName } from "../../content/surfaces.ts";
 import type { Material } from "../art/materials.ts";
@@ -87,10 +87,15 @@ export function buildFinish(name: SurfaceName): void {
     mro[o + 2] = byte(four(metal));
     mro[o + 3] = byte(four(height));
   }
-  writeFileSync(join(dir, "base.png"), encodePng({ width: n, height: n, channels: 4, depth: 8, data: base }));
-  writeFileSync(join(dir, "normal.png"), encodePng({ width: n, height: n, channels: 3, depth: 8, data: normal }));
-  writeFileSync(join(dir, "mro.png"), encodePng({ width: h, height: h, channels: 4, depth: 8, data: mro }));
-  writeFileSync(stamp, key);
+  // Each written whole and renamed into place, since test workers may make the same finish at once.
+  const put = (name: string, bytes: Uint8Array): void => {
+    writeFileSync(join(dir, `${name}.${process.pid}.tmp`), bytes);
+    renameSync(join(dir, `${name}.${process.pid}.tmp`), join(dir, name));
+  };
+  put("base.png", encodePng({ width: n, height: n, channels: 4, depth: 8, data: base }));
+  put("normal.png", encodePng({ width: n, height: n, channels: 3, depth: 8, data: normal }));
+  put("mro.png", encodePng({ width: h, height: h, channels: 4, depth: 8, data: mro }));
+  put("key", new TextEncoder().encode(key));
 }
 
 /** A finish's material carrier: like the sky's, this triangle is never drawn. Named last, it renumbers no other mesh. */
