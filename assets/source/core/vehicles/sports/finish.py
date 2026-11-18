@@ -1,4 +1,4 @@
-"""Shared swatch atlas. Rectangles count eighths from the upper left of the picture."""
+"""Shared swatch atlas. Rectangles count eighths from the upper left of the picture. Its hurt and decay pictures are wear.py's."""
 
 SWATCH = {
     "paint": (0, 0, 4, 4),
@@ -139,6 +139,7 @@ def paint_maps():
                 pixels[x0 + x, y0 + y] = (*rgb, alpha)
                 pbr[x0 + x, y0 + y] = (255, min(255, max(0, int(rough + n * 7))), metal)
                 mask[x0 + x, y0 + y] = dye
+        # Old marks, drawn and not kept, so that the random stream the other pictures were painted with is as it was.
         if tag in ("paint", "alloy", "glass", "carbon"):
             for layer, count, color in [(hurt, 18, (99, 87, 72)), (decay, 24, (112, 61, 40))]:
                 d = ImageDraw.Draw(layer)
@@ -174,11 +175,6 @@ def paint_maps():
     draw.polygon([(437, 353), (441, 343), (445, 353)], fill=(212, 229, 226))
     draw.rounded_rectangle((197, 453, 314, 506), 8, outline=(73, 81, 86), width=3)
     draw.text((222, 474), "S N A R K", fill=(37, 47, 52), stroke_width=0)
-    # A livery texel can show impact damage or decay. Reserve the hurt pixels.
-    for yy in range(512):
-        for xx in range(512):
-            if hurt.getpixel((xx, yy))[3]:
-                decay.putpixel((xx, yy), (0, 0, 0, 0))
     normal = Image.new("RGB", base.size)
     for yy in range(512):
         for xx in range(512):
@@ -192,8 +188,6 @@ def paint_maps():
         ("base", base),
         ("finish", finish),
         ("regions", regions),
-        ("hurt", hurt),
-        ("decay", decay),
     ]:
         img.save(folder / (name + ".png"), optimize=True)
 
