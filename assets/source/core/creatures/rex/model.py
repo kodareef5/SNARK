@@ -699,6 +699,60 @@ def commissure(side, sign):
     return obj
 
 
+def fair_hip(mesh):
+    """Carry the flanks across the iliac crest with a longitudinal surface fairing."""
+    # The union of the leg and the trunk leaves a tight return on each side
+    # of the thigh. Extend and fair the connected skin to spread that turn
+    # along the length of the caudofemoral mass. Both the paint and the
+    # original joint weights travel with these same vertices.
+    original = np.asarray([to_animal(v.co) for v in mesh.vertices], dtype=float)
+    x, y, z = original.T
+    side = np.abs(x)
+
+    def ease(low, high, values):
+        t = np.clip((values - low) / (high - low), 0, 1)
+        return t * t * (3 - 2 * t)
+
+    def bell(offset, width):
+        return np.exp(-((offset / width) ** 2))
+
+    extent = (
+        ease(-3.45, -2.35, z)
+        * (1 - ease(0.20, 0.85, z))
+        * ease(1.99, 2.45, y)
+        * (1 - ease(3.85, 4.12, y))
+        * ease(0.10, 0.47, side)
+    )
+    points = original.copy()
+    # Stretch the rear thigh across the sacrum. At the lower edge the change
+    # extends into the underside of the tail root, leaving room for the knee.
+    points[:, 2] -= extent * 0.38 * bell(z + 1.03, 0.82) * bell(y - 2.90, 0.94)
+    points[:, 1] -= extent * (
+        0.125 * bell(z + 1.30, 0.85) * bell(y - 2.49, 0.37) + 0.053 * bell(z + 0.79, 0.73) * bell(y - 3.69, 0.28)
+    )
+    aft = 0.140 * bell(z + 1.90, 0.89) * bell(y - (2.97 + 0.16 * (z + 1.55)), 0.59)
+    crest = 0.092 * bell(z + 0.63, 0.65) * bell(y - 3.16, 0.68)
+    points[:, 0] += np.sign(x) * extent * (aft - crest)
+
+    # Fair along connected skin edges. Distance weighting prevents large
+    # triangles from pulling the crest or knee out of shape.
+    edges = np.asarray([e.vertices[:] for e in mesh.edges], dtype=int)
+    to = np.concatenate((edges[:, 0], edges[:, 1]))
+    source = np.concatenate((edges[:, 1], edges[:, 0]))
+    weight = 1 / np.maximum(0.002, np.linalg.norm(points[to] - points[source], axis=1))
+    total = np.bincount(to, weights=weight, minlength=len(points))
+    strength = 0.54 * extent
+    for _ in range(32):
+        for axis in range(3):
+            neighbours = np.bincount(to, weights=weight * points[source, axis], minlength=len(points))
+            average = np.divide(neighbours, total, out=points[:, axis].copy(), where=total > 0)
+            points[:, axis] += strength * (average - points[:, axis])
+
+    for i in np.flatnonzero(extent):
+        mesh.vertices[int(i)].co = to_blender(points[i])
+    mesh.update()
+
+
 def build():
     body = hide()
     obj = join(
@@ -756,6 +810,8 @@ def build():
         )
         + "\n"
     )
+    # The anatomical paint layout precedes the local elastic fairing.
+    fair_hip(mesh)
 
 
 if __name__ == "__main__":
