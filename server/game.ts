@@ -63,6 +63,7 @@ import {
   writeBody,
 } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
+import { PassengerView } from "./passenger-view.ts";
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { ContactSnapshot, writeContacts } from "../shared/net/contact.ts";
 import { BTN_JUMP, Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
@@ -254,6 +255,10 @@ export class Client {
   /** Centre of this session's interest. */
   chunk = 0;
   readonly inputs = new InputBuffer(INPUT_WINDOW);
+  /** First snapshot actually sent with the current urban seat. -1 from the authoritative board until send. */
+  vehicleSeatSnapshot = 0;
+  /** The snapshot acknowledged by the first packet accepted for each input. */
+  readonly inputAcks = new Uint32Array(INPUT_WINDOW);
   /** The tick on which each buffered input arrived, by its own tick: how far ahead the client really sent it. */
   readonly arrived = new Uint32Array(INPUT_WINDOW);
   heldX = 0;
@@ -272,8 +277,10 @@ export class Client {
   newestInput = 0;
   /** Newest snapshot the client says it decoded. */
   ackTick = 0;
+  /** High-water mark even while an ACK of zero requests a fresh full snapshot. */
+  highestAck = 0;
   lastSnapshot = 0;
-  readonly views = new ViewRing(() => new SentView());
+  readonly views = new ViewRing(() => new PassengerView());
   /** Structure table version the client holds, per chunk. */
   readonly known: Uint32Array;
   /** Version of each chunk's used-up nodes the client holds. */
@@ -356,8 +363,9 @@ export class Client {
     this.conn = conn;
     this.closed = false;
     this.inputs.tick.fill(0);
+    this.vehicleSeatSnapshot = this.vehicleSeatSnapshot === 0 ? 0 : -1;
     this.heldX = this.heldZ = this.heldButtons = 0;
-    this.newestInput = this.ackTick = this.lastSnapshot = 0;
+    this.newestInput = this.highestAck = this.ackTick = this.lastSnapshot = 0;
     this.views.clear();
     this.known.fill(0);
     this.nodesKnown.fill(0);
@@ -1013,7 +1021,8 @@ export class GameServer {
   private input(c: Client, r: BitReader): boolean {
     const ack = r.u32();
     const behind = r.u8() / VIEW_STEPS;
-    const newest = readInputs(r, c.inputs, this.world.tick, ack, behind);
+    const validAck = ack >= c.highestAck && ack <= c.lastSnapshot && c.views.find(ack) ? ack : 0;
+    const newest = readInputs(r, c.inputs, this.world.tick, validAck, behind, c.inputAcks);
     if (newest === 0) return false;
     if (newest <= this.world.tick) this.stats.lateInputs++;
     // Track the newest tick even when it is too far ahead to buffer, because the margin sent back tells a
@@ -1028,7 +1037,7 @@ export class GameServer {
     // the view it acknowledged, so the next snapshot is whole. An input that arrives out of order may not say that.
     if (ack === 0) {
       if (fresh) c.ackTick = 0;
-    } else if (ack > c.ackTick && ack <= c.lastSnapshot) c.ackTick = ack;
+    } else if (validAck > c.ackTick) c.highestAck = c.ackTick = validAck;
     return true;
   }
 
@@ -1407,7 +1416,9 @@ export class GameServer {
       next.tick = 0;
       return;
     }
+    next.recordSeat(this.world, c.ent, c.drive >= 0);
     c.lastSnapshot = T;
+    if (c.vehicleSeatSnapshot === -1) c.vehicleSeatSnapshot = T;
     c.conn.send(CH_UNRELIABLE, w.bytes());
     this.onSnapshot?.(c, next);
   }

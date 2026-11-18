@@ -60,8 +60,10 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * replicated fatal-impact corpse checkpoints (S_CORPSE/CMD_CORPSE). 26: local car push/pull and manual flip commands.
  * 27: driver contact bodies and held controls precede each snapshot view; depleted node rows distinguish crushed trees.
  * 29: ground creature ability mode, cooldowns, charge power and attack side in the owner body.
+ * 31 combines ground creature prediction counters with the parked-car brake in contact snapshots.
+ * The earlier road-only 29 and ground-mount 30 clients cannot read the combined contract.
  */
-export const PROTOCOL_VERSION = 29;
+export const PROTOCOL_VERSION = 31;
 
 // Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
@@ -726,6 +728,8 @@ export function writeCommand(w: BitWriter, seq: number, op: number): void {
 
 /** INPUT's "behind" byte counts 1/VIEW_STEPS of a tick. */
 export const VIEW_STEPS = 16;
+/** Maximum interpolation behind a passenger’s acknowledged snapshot when presenting and resolving a shot. */
+export const PASSENGER_VIEW_DELAY = 4;
 
 /** `ack` is the newest snapshot decoded. `behind` is how many ticks behind it the client draws everyone else, and is clamped to 255 sixteenths. */
 export function writeInputs(w: BitWriter, inputs: InputBuffer, ack: number, newest: number, count: number, behind = 0): void {
@@ -761,7 +765,7 @@ export function writeInputs(w: BitWriter, inputs: InputBuffer, ack: number, newe
  * Call after reading `ack` and `behind` (in ticks). Keeps only ticks in (serverTick, serverTick + INPUT_WINDOW) not already
  * present. Returns the newest tick named, or 0 if the message was malformed.
  */
-export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number, ack = 0, behind = 0): number {
+export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number, ack = 0, behind = 0, ackHistory?: Uint32Array): number {
   const newest = r.u32();
   const count = r.bits(3) + 1;
   let moveX = 0;
@@ -782,6 +786,9 @@ export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number
       inputs.set(tick, moveX, moveZ, yaw, pitch, buttons);
       // `ack - behind` is when the newest input was sampled. Each older input was sampled one tick earlier.
       inputs.view[tick & inputs.mask] = ack - behind - k;
+      // Preserve the packet acknowledgement separately from the interpolated view. Redundant
+      // copies received later cannot replace the acknowledgement of the first accepted copy.
+      if (ackHistory) ackHistory[tick & inputs.mask] = ack;
     }
   }
   return r.overflow ? 0 : newest;

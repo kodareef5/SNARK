@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { VehicleSelfcheck } from "../../client/core/vehicle-selfcheck.ts";
+import { S_SNAPSHOT } from "../../shared/net/protocol.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../../shared/world/proving.ts";
 import { prepareDriveProbe } from "../../tools/probe-drive.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -69,5 +70,40 @@ for (const joinDelay of [0, 2000]) test(`the prepared drive probe carjacks and d
     expect(ents.seatSlot[driver]).toBe(0);
     expect(h.host.records.byPid.get(ents.pid[car]!)!.team).toBe(owner);
     expect(h.host.items.audit()).toEqual([]);
+  } finally { h.host.shutdown(); }
+});
+
+test("a delayed boarding snapshot keeps a carjack retry from exiting, and the first informed E exits", async () => {
+  const h = probeScene();
+  try {
+    const { car } = await prepareDriveProbe(h.host, async ms => { h.run(ms); });
+    const { app, drive, frame } = browser(h);
+    const end = h.ends[0]!, receive = end.onMessage!;
+    const held: { channel: number; data: Uint8Array }[] = [];
+    end.onMessage = (channel, data) => {
+      if (drive.data.attempts > 0 && data[0] === S_SNAPSHOT) held.push({ channel, data });
+      else receive(channel, data);
+    };
+    // Keep only the server's snapshots back. The two press/release gestures and all other messages travel normally.
+    for (let ms = 0; ms < 3000 && drive.data.attempts < 2; ms += 20) h.run(20, frame);
+    const c = h.client(app.session)!;
+    expect(drive.data.attempts).toBe(2);
+    expect(app.session.driving).toBe(-1);
+    expect(c.drive).toBe(car);
+    h.run(150, frame);
+    expect(h.host.urban.occupancy.pending(c.pid)).toBeNull();
+    expect(c.drive).toBe(car);
+
+    end.onMessage = receive;
+    for (const p of held) receive(p.channel, p.data);
+    expect(app.session.driving).toBe(car);
+    app.controls.key("KeyE", true);
+    const draw = (now: number) => app.frame(now, 800, 457);
+    h.run(100, draw);
+    app.controls.key("KeyE", false);
+    expect(h.host.urban.occupancy.pending(c.pid)?.kind).toBe("exit");
+    h.run(800, draw);
+    expect(c.drive).toBe(-1);
+    expect(app.session.driving).toBe(-1);
   } finally { h.host.shutdown(); }
 });

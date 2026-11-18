@@ -27,7 +27,7 @@ W,H=2600,2700
 BG='#EEEBDD'; FRAME='#62432D'; BOARD='#C6A578'; OUTLINE='#43372C'
 im=Image.new('RGB',(W,H),BG);d=ImageDraw.Draw(im)
 def font(size,bold=False):
-    path='/System/Library/Fonts/Supplemental/Arial Bold.ttf' if bold else '/System/Library/Fonts/Supplemental/Arial.ttf'
+    path=next(p for p in (('/System/Library/Fonts/Supplemental/Arial Bold.ttf','/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf') if bold else ('/System/Library/Fonts/Supplemental/Arial.ttf','/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf')) if Path(p).exists())
     return ImageFont.truetype(path,size)
 f=font(27);small=font(24);heading=font(34,True);title=font(46,True)
 d.text((60,35),'WOOD TIER / EXACT ENVELOPES',font=title,fill=OUTLINE)

@@ -10,8 +10,8 @@ PAPER = '#ede7dc'
 INK = '#302d28'
 MUTED = '#665e51'
 ACCENT = '#8b5c37'
-FONT = '/System/Library/Fonts/Supplemental/Arial.ttf'
-BOLD = '/System/Library/Fonts/Supplemental/Arial Bold.ttf'
+FONT = next(p for p in ('/System/Library/Fonts/Supplemental/Arial.ttf', '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf') if Path(p).exists())
+BOLD = next(p for p in ('/System/Library/Fonts/Supplemental/Arial Bold.ttf', '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf') if Path(p).exists())
 def font(size, bold=False):
     return ImageFont.truetype(BOLD if bold else FONT, size)
 

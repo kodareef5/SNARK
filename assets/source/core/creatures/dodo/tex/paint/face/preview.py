@@ -14,7 +14,7 @@ ROOT=Path(__file__).resolve().parent
 spec=importlib.util.spec_from_file_location('face_paint',ROOT/'paint.py')
 paint=importlib.util.module_from_spec(spec);spec.loader.exec_module(paint)
 QA=ROOT/'checks'
-COMPOSED=Path('/private/tmp/dodo-look/tree/core/creatures/dodo/tex')
+COMPOSED=Path('/tmp/dodo-look/tree/core/creatures/dodo/tex')
 PALETTE=['6B737A','D1A292','8B9166','C29533','312D2A','E6E2D6']
 REGIONS=[(255,0,0),(0,255,0),(0,0,255),(0,255,255),(255,0,255),(255,255,0)]
 

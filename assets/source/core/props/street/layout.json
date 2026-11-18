@@ -1,0 +1,227 @@
+{
+  "about": "Where each thing lies in the two atlases, in pixels from the top left: [x, y, width, height]. A strip runs the whole width and repeats across it, `tiles` metres a width; its picture is its rows less `gutter` at top and bottom. model.py lays texture coordinates by it and paint.py puts the painted parts together by it. `metres` is how wide in the world each part's picture is, by which its relief is made a normal.",
+  "street": {
+    "side": 2048,
+    "tiles": 4,
+    "gutter": 8,
+    "strips": [
+      "galvanised",
+      "green",
+      "yellow",
+      "red",
+      "blue",
+      "rust",
+      "wood",
+      "concrete"
+    ],
+    "strip": 160,
+    "parts": {
+      "stop": [
+        0,
+        1280,
+        256,
+        256
+      ],
+      "speed": [
+        256,
+        1280,
+        224,
+        288
+      ],
+      "evacuation": [
+        480,
+        1280,
+        256,
+        256
+      ],
+      "arrow": [
+        480,
+        1536,
+        256,
+        64
+      ],
+      "busstop": [
+        736,
+        1280,
+        128,
+        192
+      ],
+      "walk": [
+        736,
+        1472,
+        128,
+        128
+      ],
+      "signal": [
+        864,
+        1280,
+        128,
+        320
+      ],
+      "mailbox": [
+        992,
+        1280,
+        192,
+        320
+      ],
+      "newsbox": [
+        1184,
+        1280,
+        192,
+        320
+      ],
+      "meter": [
+        1376,
+        1280,
+        128,
+        224
+      ],
+      "lens": [
+        1504,
+        1280,
+        256,
+        128
+      ],
+      "name0": [
+        0,
+        1600,
+        512,
+        80
+      ],
+      "name1": [
+        0,
+        1680,
+        512,
+        80
+      ],
+      "name2": [
+        0,
+        1760,
+        512,
+        80
+      ],
+      "name3": [
+        0,
+        1840,
+        512,
+        80
+      ],
+      "bin": [
+        0,
+        1920,
+        512,
+        128
+      ],
+      "poster": [
+        512,
+        1600,
+        256,
+        448
+      ],
+      "louvre": [
+        768,
+        1600,
+        512,
+        224
+      ],
+      "tank": [
+        1280,
+        1600,
+        512,
+        224
+      ],
+      "solar": [
+        768,
+        1824,
+        512,
+        224
+      ],
+      "duct": [
+        1280,
+        1824,
+        512,
+        224
+      ],
+      "door": [
+        1792,
+        1600,
+        256,
+        448
+      ],
+      "spare": [
+        1760,
+        1280,
+        288,
+        320
+      ]
+    },
+    "metres": {
+      "stop": 0.76,
+      "speed": 0.61,
+      "evacuation": 0.61,
+      "arrow": 0.76,
+      "busstop": 0.3,
+      "walk": 0.27,
+      "signal": 0.34,
+      "mailbox": 0.51,
+      "newsbox": 0.5,
+      "meter": 0.2,
+      "lens": 0.38,
+      "name0": 0.9,
+      "name1": 0.9,
+      "name2": 0.9,
+      "name3": 0.9,
+      "bin": 1.88,
+      "poster": 1.25,
+      "louvre": 1.5,
+      "tank": 2.0,
+      "solar": 1.6,
+      "duct": 1.0,
+      "door": 0.9,
+      "spare": 0.3
+    }
+  },
+  "cut": {
+    "side": 1024,
+    "tiles": 2,
+    "parts": {
+      "fence": [
+        0,
+        0,
+        1024,
+        384
+      ],
+      "billboard": [
+        0,
+        384,
+        1024,
+        304
+      ],
+      "glass": [
+        0,
+        688,
+        512,
+        336
+      ],
+      "torn": [
+        512,
+        688,
+        256,
+        336
+      ],
+      "spare": [
+        768,
+        688,
+        256,
+        336
+      ]
+    },
+    "metres": {
+      "fence": 2.0,
+      "billboard": 14.6,
+      "glass": 3.84,
+      "torn": 1.25,
+      "spare": 1.0
+    }
+  }
+}

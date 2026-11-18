@@ -9,8 +9,8 @@ from scipy import ndimage as ndi
 from build import ROOT, N, F, linear, srgb
 
 OUT=ROOT/'checks'
-FONT=ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial.ttf',20)
-SMALL=ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial.ttf',16)
+FONT=ImageFont.truetype(next(p for p in ('/System/Library/Fonts/Supplemental/Arial.ttf','/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf') if Path(p).exists()),20)
+SMALL=ImageFont.truetype(next(p for p in ('/System/Library/Fonts/Supplemental/Arial.ttf','/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf') if Path(p).exists()),16)
 COLORS={0:np.array([46,49,52],F)/255,2:np.array([200,102,46],F)/255}
 VALID={(0,0,0),(255,0,0),(0,255,0),(0,0,255),(0,255,255),(255,0,255),(255,255,0)}
 

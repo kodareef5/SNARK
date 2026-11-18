@@ -7,7 +7,7 @@ from PIL import Image,ImageDraw,ImageFont
 
 ROOT=Path(__file__).resolve().parent
 QA=ROOT/'checks'
-FONT='/System/Library/Fonts/Helvetica.ttc'
+FONT=next(p for p in ('/System/Library/Fonts/Helvetica.ttc','/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf') if Path(p).exists())
 
 def fit(out,im,box):
     im=im.convert('RGB');im.thumbnail((box[2]-box[0],box[3]-box[1]),Image.Resampling.LANCZOS)
@@ -34,7 +34,7 @@ def main():
         fit(im,Image.open(final/f'{name}.png'),(728,y+45,1432,y+545))
     im.save(QA/'concept_comparison.png')
     hashes={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT/'layers').iterdir() if p.is_file()}
-    record=dict(command='zsh tex/paint/look.sh '+str(final),face_layers_sha256=hashes,
+    record=dict(command='bash tex/paint/look.sh '+str(final),face_layers_sha256=hashes,
         render_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(final.glob('*.png'))})
     (QA/'margin_render_receipt.json').write_text(json.dumps(record,indent=2)+'\n')
 

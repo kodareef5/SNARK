@@ -67,7 +67,7 @@ test("the lit tiers look the sun's shadow up as their tier says, with the same t
       // The finishes' relief is read on the tiers that keep it, by every program that wears the finishes.
       const relief = tier.relief && name !== "surface" ? "#define WORLD_RELIEF\n" : "";
       // A near static's walls are weathered where the finishes are read in full.
-      const weather = name === "flat" || name === "seeThrough" ? `#define WORLD_WEATHER\n#define ${tier.finishes >= 1024 ? "WORLD_EDGES" : "WORLD_EDGE_LINE"}\n` : "";
+      const weather = name === "flat" || name === "seeThrough" ? `#define WORLD_WEATHER\n${tier.finishes > 1024 ? "" : tier.finishes === 1024 ? "#define WORLD_EDGES\n" : "#define WORLD_EDGE_LINE\n"}` : "";
       // Its facades' parts and marks where it weathers, with rooms behind glass where the tier draws them (facade.ts).
       const facades = weather && FACADE_TIERS[tier.name] ? `#define FACADE\n${FACADE_TIERS[tier.name]!.reflect ? "#define FACADE_ROOMS\n" : ""}` : "";
       expect(p.defines).toBe(`${relief}${weather}${facades}#define SHADOW_CASCADES ${MAX_CASCADES}\n#define SHADOW_TAPS ${Math.sqrt(taps)}\n#define SHADOW_SIZE ${size}.0\n`);

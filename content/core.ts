@@ -15,6 +15,7 @@ import { SLOPE_BLOCKS } from "./slopes.ts";
 import { LETTER_BLOCKS } from "./lettering.ts";
 import { TERMINALS } from "./terminals.ts";
 import { SPAWNS } from "./spawns.ts";
+import { STREET } from "./street.ts";
 import { ROADS } from "./vehicles/roads.ts";
 import { ROAD_FLEET } from "./vehicles/road-fleet.ts";
 import { WRECKS } from "./vehicles/wrecks.ts";
@@ -393,6 +394,7 @@ const ALL: readonly Def[] = [
   ...ROADS,
   ...WRECKS,
   ...HARBOUR_WRECKS,
+  ...STREET,
   CIVILIAN,
   ...SPAWNS,
   ...KNOCKOUT,

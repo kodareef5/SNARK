@@ -10,8 +10,8 @@ from build import linear, srgb, normal_from_height
 ROOT=Path(__file__).resolve().parent
 OUT=ROOT/'checks'
 OUT.mkdir(exist_ok=True)
-FONT=ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial.ttf',17)
-SMALL=ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial.ttf',14)
+FONT=ImageFont.truetype(next(p for p in ('/System/Library/Fonts/Supplemental/Arial.ttf','/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf') if Path(p).exists()),17)
+SMALL=ImageFont.truetype(next(p for p in ('/System/Library/Fonts/Supplemental/Arial.ttf','/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf') if Path(p).exists()),14)
 DYES={
  'design':{5:'E9E4D8',0:'2E3134'},
  'hot_pink':{5:'FF3EA5',0:'9FE01F'},
