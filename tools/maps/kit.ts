@@ -2,7 +2,8 @@
 //
 //   bun tools/maps/kit.ts pack <city|all>  writes var/kits/<city>-<cut>.tar.gz from var/mapdata/<city>/current
 //   bun tools/maps/kit.ts unpack <file>    puts it in var/mapdata/<city>/<cut>/ and points `current` at it
-//   bun tools/maps/kit.ts fetch <host>     takes the kits from a machine that keeps them, over ssh, and unpacks each
+//   bun tools/maps/kit.ts serve [port]     gives var/kits read-only over http (a free Cloudflare quick tunnel shows it)
+//   bun tools/maps/kit.ts fetch <url>      takes every kit that serves lists, each held to its hash, and unpacks it
 //
 // A kit is the cut's work folder as its stages left it, less the downloads (raw/, 8 to 10 GB a city) and the build's
 // reports, with raw/osm/all.json kept so the world stage can propose again, and the stages' keys. A stage's key is its
@@ -82,16 +83,62 @@ function builtThrough(city: string): boolean {
   return existsSync(keys) && !existsSync(join(MAPDATA, city, "run.lock")) && Boolean((JSON.parse(readFileSync(keys, "utf8")) as Record<string, string>).build);
 }
 
+/** One kit as the index lists it: its file, its size and its SHA-256, which a download is held to. */
+interface Listed { file: string; bytes: number; sha256: string; city: string; cut: string; commit: string }
+
+const sha256 = async (path: string): Promise<string> => {
+  const h = new Bun.CryptoHasher("sha256");
+  for await (const chunk of Bun.file(path).stream()) h.update(chunk);
+  return h.digest("hex");
+};
+
+/** var/kits/index.json: every kit there, newest of each city, with its size and hash. Written by pack. */
+async function writeIndex(): Promise<Listed[]> {
+  const kits: Listed[] = [];
+  for (const f of readdirSync(KITS).filter((f) => f.endsWith(".tar.gz")).sort()) {
+    const about = JSON.parse(readFileSync(join(KITS, `${f.slice(0, -".tar.gz".length)}.json`), "utf8")) as Kit;
+    kits.push({ file: f, bytes: Bun.file(join(KITS, f)).size, sha256: await sha256(join(KITS, f)), city: about.city, cut: about.cut, commit: about.commit });
+  }
+  writeFileSync(join(KITS, "index.json"), `${JSON.stringify({ made: new Date().toISOString(), kits }, null, 2)}\n`);
+  return kits;
+}
+
 /**
- * Takes the kits from a machine that keeps them, over ssh (`host` as ssh names it, its kits at var/kits of its tree, or
- * the folder a read-only rrsync key gives), into var/kits, and unpacks each. Kits stay out of git: a branch of them
- * would come with every clone and fetch of the repository, 1.4 GB again each time they are made.
+ * Gives var/kits read-only over http on 127.0.0.1:`port`: index.json and the kits it lists, nothing else. A tunnel
+ * puts it where other machines reach it (tools/maps/README.md, "kits"). Kits stay out of git: on a branch they would
+ * come with every clone and fetch of the repository, 1.4 GB again each time they are made.
  */
-function fetchKits(host: string, folder: string): void {
+function serve(port: number): void {
+  Bun.serve({
+    hostname: "127.0.0.1", port,
+    fetch(req) {
+      const name = decodeURIComponent(new URL(req.url).pathname.replace(/^\/+/, "")) || "index.json";
+      if (!/^[a-z0-9-]+(-[0-9a-f]{10}\.tar\.gz|\.json)$/.test(name) && name !== "index.json") return new Response("not found\n", { status: 404 });
+      const file = Bun.file(join(KITS, name));
+      return file.size > 0 ? new Response(file) : new Response("not found\n", { status: 404 });
+    },
+  });
+  console.log(`kits on http://127.0.0.1:${port}/ from ${KITS}`);
+}
+
+/** Takes every kit an index at `url` lists into var/kits, held to its hash, and unpacks each. */
+async function fetchKits(url: string): Promise<void> {
+  const base = url.endsWith("/") ? url : `${url}/`;
+  const index = (await (await fetch(`${base}index.json`)).json()) as { kits: Listed[] };
   mkdirSync(KITS, { recursive: true });
-  const r = Bun.spawnSync(["rsync", "-a", "--partial", "--info=progress2", "--include=*.tar.gz", "--include=*.json", "--exclude=*", `${host}:${folder}`, `${KITS}/`], { cwd: ROOT, stdout: "inherit", stderr: "inherit" });
-  if (r.exitCode !== 0) throw new Error(`rsync from ${host}:${folder} failed with ${r.exitCode}`);
-  for (const f of readdirSync(KITS).filter((f) => f.endsWith(".tar.gz")).sort()) console.log(unpack(join(KITS, f)));
+  for (const k of index.kits) {
+    const path = join(KITS, k.file);
+    if (!(existsSync(path) && Bun.file(path).size === k.bytes && (await sha256(path)) === k.sha256)) {
+      console.log(`${k.file}: ${(k.bytes / 1e6).toFixed(0)} MB`);
+      const res = await fetch(`${base}${k.file}`);
+      if (!res.ok || !res.body) throw new Error(`${k.file}: the server answered ${res.status}`);
+      await Bun.write(`${path}.part`, res);
+      if ((await sha256(`${path}.part`)) !== k.sha256) throw new Error(`${k.file}: its bytes are not those the index names; fetch again`);
+      renameSync(`${path}.part`, path);
+    }
+    writeFileSync(join(KITS, `${k.file.slice(0, -".tar.gz".length)}.json`), await (await fetch(`${base}${k.file.slice(0, -".tar.gz".length)}.json`)).text());
+    console.log(unpack(path));
+  }
 }
 
 if (import.meta.main) {
@@ -101,7 +148,9 @@ if (import.meta.main) {
       if (what === "all" && !builtThrough(city)) console.log(`${city}: not built through, or a run of it is going; not packed`);
       else console.log(pack(city));
     }
+    await writeIndex();
   } else if (verb === "unpack" && what) console.log(unpack(what));
-  else if (verb === "fetch" && what) fetchKits(what, process.env.KIT_FOLDER ?? "./");
-  else { console.error("bun tools/maps/kit.ts pack <city | all> | unpack <file> | fetch <ssh host>   (KIT_FOLDER: the folder there, ./ under an rrsync key)"); process.exit(2); }
+  else if (verb === "serve") serve(Number(what ?? 8455));
+  else if (verb === "fetch" && (what ?? process.env.KIT_URL)) await fetchKits((what ?? process.env.KIT_URL)!);
+  else { console.error("bun tools/maps/kit.ts pack <city | all> | unpack <file> | serve [port] | fetch [url]"); process.exit(2); }
 }
