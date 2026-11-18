@@ -12,7 +12,7 @@ const ids = findSheets().flatMap((s) => Object.keys(s.sheet.sounds).map((name) =
 const heard = soundsHeard(ids, coreRegistry());
 
 test("what the game fires reaches a creature's own sounds, the shared ones, the interface, the world, a rotor's, a boat's and a car's engine", () => {
-  for (const id of ["core:dodo/sound/call", "core:dodo/sound/peck", "core:surface/sound/step/grass", "core:body/sound/eat", "core:structure/sound/fire/out", "core:weapon/sound/fire/pistol", "core:ui/sound/click", "core:world/sound/bed/jungle/day", "core:helicopter/sound/engine/idle", "core:helicopter/sound/wash", "core:boat/sound/hull/slow", "core:survivor/sound/voice/male/hurt", "core:vehicle/sound/engine/idle", "core:vehicle/sound/engine/start"]) {
+  for (const id of ["core:rex/sound/roar", "core:dodo/sound/call", "core:dodo/sound/peck", "core:surface/sound/step/grass", "core:body/sound/eat", "core:structure/sound/fire/out", "core:weapon/sound/fire/pistol", "core:ui/sound/click", "core:world/sound/bed/jungle/day", "core:helicopter/sound/engine/idle", "core:helicopter/sound/wash", "core:boat/sound/hull/slow", "core:survivor/sound/voice/male/hurt", "core:vehicle/sound/engine/idle", "core:vehicle/sound/engine/start"]) {
     expect(ids).toContain(id);
     expect(heard.has(id)).toBe(true);
   }
@@ -24,7 +24,8 @@ test("nothing reaches a sound whose cue waits, such as a car's tyres or horn, a 
     expect(ids).toContain(id);
     expect(heard.has(id)).toBe(false);
   }
-  expect([...heard].some((id) => id.startsWith("core:rex/") || id.startsWith("core:voices/"))).toBe(false);
+  expect([...heard].some((id) => id.startsWith("core:spino/"))).toBe(true);
+  expect([...heard].some((id) => id.startsWith("core:allosaur/") || id.startsWith("core:voices/"))).toBe(false);
   expect(heard.size).toBeLessThan(ids.length / 4);
 });
 

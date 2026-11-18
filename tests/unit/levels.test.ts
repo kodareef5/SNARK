@@ -139,6 +139,23 @@ function bent(lod: SourceLod): SourceLod {
   return { ...lod, positions };
 }
 
+test("an authored far silhouette follows generated levels and retains its bone bindings", () => {
+  const source = tubeMesh();
+  const coarse = block(1);
+  const authored: SourceLod = {
+    positions: coarse.positions, indices: coarse.indices, colors: coarse.colors,
+    bones: new Uint8Array(coarse.colors.length).fill(1),
+  };
+  const plan = { budgets: [256, 64, 12], flat: 2, maps: [], palette, distanceLods: [authored] };
+  const made = withSurfaceLevels(source, plan);
+  expect(made.lods).toHaveLength(4);
+  expect(tris(made.lods[2]!)).toBeLessThanOrEqual(64);
+  expect(tris(made.lods[3]!)).toBe(12);
+  expect(made.lods[3]!.bones).toEqual(authored.bones);
+  expect(made.lods[3]!.error).toBe(surfaceError(source.lods[0]!, authored));
+  expect(() => withSurfaceLevels(source, { ...plan, budgets: [256, 64, 8] })).toThrow("budget");
+});
+
 test("the tube gets two more levels with its surface and two flat ones, with no seam crossed, no joint cracked and its dyes kept", () => {
   const source = tubeMesh();
   const fine = source.lods[0]!;

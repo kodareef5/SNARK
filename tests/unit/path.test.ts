@@ -234,23 +234,28 @@ test("on the proving ground a body walks every way found, round water, steep gro
 
 test("the ground the way finder may walk ends where a body walking up to a block too high to step onto stops, and runs on over one it steps onto", () => {
   const wrong: string[] = [];
-  for (const id of ["core:survivor", "core:dodo", "core:raptor", "core:parasaur"]) {
+  for (const id of ["core:survivor", "core:dodo", "core:raptor", "core:parasaur", "core:carbonemys", "core:rex"]) {
     const w = flatWorld();
     const p = w.reg.move[w.kind(id)]!;
-    for (const top of [p.stepUp - 0.05, p.stepUp + 0.05]) {
+    for (const [floor, rise] of [[0, p.stepUp - 0.05], [0, p.stepUp + 0.05], [0.25, p.stepUp + 0.05]] as const) {
+      // The last approach is over a flat slab above the terrain. Its support, too, lets a rounded belly stand nearer a high rim.
+      const slab = w.kind("core:slab");
+      const deck = floor > 0 ? w.structs.add(slab, 64, floor - w.reg.halfY[slab]!, 62, 0, 0, 1) : -1;
       // A 2 m block sunk to its top, its south face at z = 63, walked at head on from the south.
-      const block = w.structs.add(w.kind("core:block"), 64, top - 1, 64, 0, 0, 1);
+      const block = w.structs.add(w.kind("core:block"), 64, floor + rise - 1, 64, 0, 0, 1);
       const b = new Body();
-      [b.x, b.z, b.grounded] = [64, 61 - p.radius, true];
-      for (let tick = 0; tick < 150; tick++) stepBody(w, b, 0, 127, 0, 0, 0, p, TICK_DT);
-      const stop = top > p.stepUp ? b.z : Infinity;
-      if ((stop < 63) !== top > p.stepUp) wrong.push(`${id} at a block ${top.toFixed(2)} m up ended at ${b.z.toFixed(3)}`);
+      [b.x, b.y, b.z, b.grounded] = [64, floor, 61 - p.radius, true];
+      for (let tick = 0; tick < 210; tick++) stepBody(w, b, 0, 127, 0, 0, 0, p, TICK_DT);
+      const stop = rise > p.stepUp ? b.z : Infinity;
+      const setup = `${id}, floor ${floor} m, rise ${rise.toFixed(2)} m`;
+      if (rise > p.stepUp ? b.z >= 63 : b.z < 64) wrong.push(`${setup}: body stopped at ${b.z.toFixed(3)}`);
       for (let z = 62 - p.radius; z < 64; z += 0.01) {
         const free = groundAt(w, p, 64, z) === GROUND_FREE;
-        if (z < stop - 0.02 && !free) wrong.push(`${id}, ${top.toFixed(2)} m: ${z.toFixed(2)} is not free short of where the body stops, ${stop.toFixed(3)}`);
-        if (z > stop + 0.02 && free) wrong.push(`${id}, ${top.toFixed(2)} m: ${z.toFixed(2)} is free past where the body stops, ${stop.toFixed(3)}`);
+        if (z < stop - 0.02 && !free) wrong.push(`${setup}: ${z.toFixed(2)} is not free short of where the body stops, ${stop.toFixed(3)}`);
+        if (z > stop + 0.02 && free) wrong.push(`${setup}: ${z.toFixed(2)} is free past where the body stops, ${stop.toFixed(3)}`);
       }
       w.structs.remove(block);
+      if (deck >= 0) w.structs.remove(deck);
     }
   }
   expect(wrong).toEqual([]);

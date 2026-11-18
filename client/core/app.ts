@@ -8,7 +8,7 @@ import { GamepadInput, type PadSample, type PadTarget } from "./gamepad.ts";
 import type { AssetPort } from "./assets/port.ts";
 import { canvasRatio, forTouch, ownRatio, tierOf } from "./assets/tiers.ts";
 import { Governor, PHONE_MS, workMs } from "./governor.ts";
-import { BENCH_TURN_MS, effectsOff, packetWithout, tierWithout, type Effect } from "./passes.ts";
+import { BENCH_TURN_MS, effectsOff, packetWithout, sceneWithout, tierWithout, type Effect } from "./passes.ts";
 import { VOLUME_MAX, keptLine } from "./settings.ts";
 import { stressThings, type Mark } from "./stress.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
@@ -768,7 +768,9 @@ export class App {
     if (s.driving >= 0) {
       const combat = this.reg.combat[s.bodyKind];
       if (combat) return `LMB attack   ${combat.charge ? "hold RMB charge" : combat.secondary ? "RMB impale" : ""}   E get off`;
-      return this.reg.vehicle[s.bodyKind] ? "E  exit vehicle" : "E  get off";
+      if (this.reg.vehicle[s.bodyKind]) return "E  exit vehicle";
+      const mount = this.reg.defs[s.bodyKind];
+      return mount?.type === "species" && mount.roar ? "RMB  roar    E  get off" : "E  get off";
     }
     // Seats in cars and saddles have a slot; a carried body has none. Who steers is handled above.
     if (s.own.seatSlot !== 0 && s.own.seat > 0) {
@@ -1324,6 +1326,7 @@ export class App {
     session.askFar(this.scene.assets.tier.reach.bases);
     session.holdNodes(this.scene.assets.tier.nodes.chunks);
     this.scene.characters.corpseMotions = session.corpseMotions;
+    sceneWithout(this.scene, this.off);
     const packet = this.scene.build(cam, this.remote);
     session.requestCorpseMotions(this.scene.characters.corpseCheckpointRequests);
     packetWithout(packet, off);

@@ -1,15 +1,16 @@
+import type { SourceLod } from "../pack/write.ts";
 // What an asset says of itself. One folder is one asset: assets/source/<pack>/<group>/<name>/ is "<pack>:<name>", and its
 // asset.ts exports one of these as its default. `bun run art -- <pack>:<name>` builds the folder's <name>.snpk from it.
 // See assets/source/README.md.
 
-import { ZONE_ARM_L, ZONE_ARM_R, ZONE_FOOT_L, ZONE_FOOT_R, ZONE_HAND_L, ZONE_HAND_R, ZONE_HEAD, ZONE_LEG_L, ZONE_LEG_R, ZONE_TORSO } from "../../shared/anim/human.ts";
+import { ZONE_ARM_L, ZONE_ARM_R, ZONE_FOOT_L, ZONE_FOOT_R, ZONE_HAND_L, ZONE_HAND_R, ZONE_HEAD, ZONE_LEG_L, ZONE_LEG_R, ZONE_TAIL, ZONE_TORSO } from "../../shared/anim/human.ts";
 import type { TextureRole } from "../../shared/pack/texture.ts";
 import type { ClipSpec } from "../pack/anim.ts";
 
 export type AssetSpec = CreatureAsset | PiecesAsset | HumanClipsAsset | HumanBodiesAsset | SkyAsset | WaterAsset | DetailsAsset;
 
 /** The zones a hit can land in. Content multiplies damage by zone (SpeciesDef.zones). */
-export const ZONES = { head: ZONE_HEAD, torso: ZONE_TORSO, armL: ZONE_ARM_L, armR: ZONE_ARM_R, handL: ZONE_HAND_L, handR: ZONE_HAND_R, legL: ZONE_LEG_L, legR: ZONE_LEG_R, footL: ZONE_FOOT_L, footR: ZONE_FOOT_R } as const;
+export const ZONES = { head: ZONE_HEAD, torso: ZONE_TORSO, armL: ZONE_ARM_L, armR: ZONE_ARM_R, handL: ZONE_HAND_L, handR: ZONE_HAND_R, legL: ZONE_LEG_L, legR: ZONE_LEG_R, footL: ZONE_FOOT_L, footR: ZONE_FOOT_R, tail: ZONE_TAIL } as const;
 export type ZoneName = keyof typeof ZONES;
 
 /** Metres, x, y, z. +Y is up and the creature faces +Z, so its left is +X. */
@@ -214,6 +215,8 @@ export interface RagdollSpec {
 }
 
 export interface CreatureAsset {
+  /** Credit displayed in the creature’s game wiki entry for an adapted model. */
+  readonly modelCredit?: string;
   readonly kind: "creature";
   readonly source: ModelSource;
   /** Metres to one of the model's units. */
@@ -280,6 +283,8 @@ export interface CreatureAsset {
   readonly flat?: number;
   /** Rigid bones whose thin parts define the silhouette, such as rotors. Their axis extremes survive every LOD. */
   readonly preserveBones?: readonly string[];
+  /** Artist-built final texture-free body levels, in decreasing detail. Earlier flat levels use the simplifier. */
+  readonly distanceLods?: (bones: readonly string[], palette: Uint8Array) => readonly SourceLod[];
   /** What goes limp when it dies. Without it the death clip plays and its last frame stays. */
   readonly ragdoll?: RagdollSpec;
   /**

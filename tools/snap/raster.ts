@@ -328,6 +328,13 @@ export class Rasterizer {
    */
   readonly cover: Float32Array;
   trianglesDrawn = 0;
+  /**
+   * Fragments of opaque draws and of the ground that passed the depth test as they came and were kept, which a GPU that
+   * tests depth before it shades shades: over the pixels covered, how many times a pixel is shaded.
+   */
+  fragments = 0;
+  /** The opaque step begun last has yet to draw its terrain tiles (packet.ts groundAt). */
+  private groundLeft = false;
   /** The sky table a lit frame reads, as the renderer holds it on its unit: the game's, or one a test sets. */
   skyTable: Uint8Array = theSky().table;
   /** The sky table's lookup, as `skyFrom` takes it. */
@@ -542,6 +549,8 @@ export class Rasterizer {
     this.pickDraw.fill(-1);
     this.cover.fill(1);
     this.trianglesDrawn = 0;
+    this.fragments = 0;
+    this.groundLeft = false;
 
     this.depthSteps = (2 ** this.depthBits - 1) / 2;
     this.plain = false;
@@ -551,6 +560,7 @@ export class Rasterizer {
     for (let d = 0; d < packet.drawCount; d++) {
       const s = stepOf(packet, d);
       while (step < s) this.step(packet, ++step);
+      if (this.groundLeft && d >= packet.groundAt[step]!) this.step(packet, step, true);
       this.draw(packet, d);
     }
     while (step < STEP_FAR_SEE) this.step(packet, ++step);
@@ -721,10 +731,14 @@ export class Rasterizer {
 
   /**
    * Begins a step of the frame as the shell does: its matrix, the view depths it clips to (from 0.05 m on the near side,
-   * nearer than the camera's own plane, as the rasterizer always has), its part of the depth buffer, and in an opaque
-   * step the terrain tiles in its range. The viewer's own body draws over everything so far, with its own near plane.
+   * nearer than the camera's own plane, as the rasterizer always has) and its part of the depth buffer, after the terrain
+   * tiles of the step before where it had not drawn them. The viewer's own body draws over everything so far, with its
+   * own near plane. With `tiles`, draws the step's terrain tiles in its range where `groundAt` puts them.
    */
-  private step(p: FramePacket, s: number): void {
+  private step(p: FramePacket, s: number, tiles = false): void {
+    if (this.groundLeft) this.terrain(p, tiles ? s : s - 1);
+    this.groundLeft = false;
+    if (tiles) return;
     const split = p.split > 0 && s !== STEP_BODY;
     const far = s === STEP_FAR || s === STEP_FAR_SEE;
     this.matrix = s === STEP_BODY ? p.nearViewProj : far ? p.farViewProj : p.viewProj;
@@ -739,7 +753,7 @@ export class Rasterizer {
       this.dome(p);
     }
     if (s === STEP_BODY) this.depth.fill(Infinity);
-    if (s <= STEP_FAR) this.terrain(p, s);
+    this.groundLeft = s <= STEP_FAR;
   }
 
   /** What a pixel at depth `z` after the projection keeps (`depth`). */
@@ -1045,6 +1059,7 @@ export class Rasterizer {
             if (blend) for (let c = 0; c < 3; c++) this.color[o4 + c] = this.color[o4 + c]! + (rgb[c]! - this.color[o4 + c]!) * alpha;
             else {
               for (let c = 0; c < 3; c++) this.color[o4 + c] = rgb[c]!;
+              this.fragments++;
               this.depth[at] = z;
               this.deferred[at] = 0;
               this.pickKind[at] = PICK_ENTITY;
@@ -1370,6 +1385,7 @@ export class Rasterizer {
           if (this.fade !== 0 && !fadeKeeps(dist, this.fade, this.fadeShare, px, H - 1 - py)) continue;
           if (this.hand !== 0 && nearKeeps(this.handAt, this.handFrom, this.handTo, px, H - 1 - py) !== this.hand > 0) continue;
           if (!blend) {
+            this.fragments++;
             this.depth[at] = z;
             this.pickKind[at] = pickKind;
             this.pickId[at] = pickId;
@@ -1559,6 +1575,7 @@ export class Rasterizer {
           const spread = Math.log2(Math.max(Math.hypot(ux, vx), Math.hypot(uy, vy)));
           sample(s.maps[0]!, u, v, spread, base);
           if (base[3]! < s.cutoff) continue;
+          this.fragments++;
           this.depth[at] = z;
           this.deferred[at] = 0;
           this.pickKind[at] = pickKind;
