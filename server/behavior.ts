@@ -936,12 +936,18 @@ export class Behavior {
       // One ordered to the hunt keeps on wherever it leads until its time is up.
       if ((this.ordered[e] === 0 && (hx * hx + hz * hz > leash * leash || flat > reg.sight[kind]! * KEEP)) || tick >= this.until[e]!) return this.rest(e, tick, REST_TICKS);
       if (flyer) return this.stoop(e, tick, act, prey);
-      // Within reach it stops and bites, else it runs at the prey. Reach counts from its eye to half a radius inside the prey.
+      // Close within the species' attack reach, including half the target's body radius.
       const reach = reg.reach[kind]! + reg.bodyRadius[ents.kind[prey]!]! * 0.5;
+      const p = (ents.team[e] ? reg.tamedMove[kind] : reg.move[kind])!;
+      const grounded = ents.mode[e] === MODE_WALK && (ents.flags[e]! & F_GROUNDED) !== 0;
+      const dx = flat > 1e-6 ? (ents.x[prey]! - ents.x[e]!) / flat : 0, dz = flat > 1e-6 ? (ents.z[prey]! - ents.z[e]!) / flat : 0;
+      const escaping = grounded ? Math.max(0, ents.vx[prey]! * dx + ents.vz[prey]! * dz) : 0;
+      const sprint = Math.max(.001, p.walkSpeed * p.sprintMul * ents.speedQ[e]! / 1000);
       if (flat <= reach) {
         this.way[e] = WAY_STRAIGHT;
-        this.move[e] = 0;
-        this.buttons[e] = 0;
+        // Keep pace through the wind-up when prey is fleeing. A stationary target still brings it to a stop.
+        this.move[e] = Math.min(127, Math.round(127 * escaping / sprint));
+        this.buttons[e] = escaping > 0 ? BTN_SPRINT : 0;
         if (act === ACT_NONE) {
           // A piece its bite cannot harm stands between them: it cannot reach its prey.
           if (this.walled(e, prey)) return this.giveUp(e, tick);
@@ -950,7 +956,13 @@ export class Behavior {
         }
         return;
       }
-      this.move[e] = 127;
+      // Brake before entering bite range. At a sprint, waiting until the next steering tick inside reach carries the
+      // jaws past a stationary target before the body's normal deceleration stops it. Match a fleeing prey's public
+      // motion, aiming .2 m inside the range, so this does not turn a chase into repeated braking behind it.
+      const closing = Math.max(0, ents.vx[e]! * dx + ents.vz[e]! * dz - escaping);
+      const gap = Math.max(0, flat - (reach - .2) - closing * STEER_TICKS / TICK_RATE);
+      const speed = escaping + Math.sqrt(2 * p.accelGround * gap);
+      this.move[e] = grounded ? Math.min(127, Math.max(1, Math.round(127 * speed / sprint))) : 127;
       this.buttons[e] = BTN_SPRINT;
       if (!this.head(e, tick, ents.x[prey]!, ents.z[prey]!, turn && this.blocked(e, prey, tick))) this.giveUp(e, tick);
       return;
