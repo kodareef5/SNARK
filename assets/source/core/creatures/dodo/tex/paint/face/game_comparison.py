@@ -9,7 +9,7 @@ QA=ROOT/'checks'
 DODO=ROOT.parents[2]
 
 def font(size):
-    return ImageFont.truetype('/System/Library/Fonts/Helvetica.ttc',size)
+    return ImageFont.truetype(next(p for p in ('/System/Library/Fonts/Helvetica.ttc','/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf') if Path(p).exists()),size)
 
 def fit(board,path,box):
     im=Image.open(path).convert('RGB');im.thumbnail((box[2]-box[0],box[3]-box[1]),Image.Resampling.LANCZOS)

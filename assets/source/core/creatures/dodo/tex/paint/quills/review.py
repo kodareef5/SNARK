@@ -22,7 +22,7 @@ VIEWS={'front':(np.array([1.,0,0]),np.array([0.,0,1.])),
        'back':(np.array([-1.,0,0]),np.array([0.,0,-1.]))}
 
 
-def font(n):return ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial.ttf',n)
+def font(n):return ImageFont.truetype(next(p for p in ('/System/Library/Fonts/Supplemental/Arial.ttf','/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf') if Path(p).exists()),n)
 def rgbimage(v):return Image.fromarray(np.rint(np.clip(v,0,1)*255).astype(np.uint8))
 def array(path):
     im=Image.open(path);a=np.asarray(im)

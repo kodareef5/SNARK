@@ -7,7 +7,7 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { FRAME_PIECES, LAID_SHARE, MESH_SLOT, pieceWeight } from "../../client/core/render/nearcity.ts";
-import { DRAW_RANGED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_CUTOUT, DRAW_RANGED, DRAW_TEXTURED, MAX_CASTERS, MAX_DRAWS, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS, Scene } from "../../client/core/render/scene.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { CityStatics } from "../../shared/world/city.ts";
@@ -231,4 +231,44 @@ test("crossing a chunk border at the slice's densest place makes no more in a fr
   // Each frame makes what is left of its pieces past what it laid out, or one band where it laid nothing out.
   const over = frames.filter((f) => f.made > 0 && f.made + f.laid * LAID_SHARE > FRAME_PIECES && !(f.laid === 0 && f.steps === 1));
   expect(over).toEqual([]);
+});
+
+/** Whether rows `a` and `b` agree in every column of the packet named for `kind` but their runs of indices, the marks, a caster's cascades, and the material a row does not read. */
+function alike(p: FramePacket, kind: "draw" | "caster", a: number, b: number): boolean {
+  const flags = kind === "draw" ? p.drawFlags : p.casterFlags;
+  const unread = kind === "draw" ? (flags[a]! & DRAW_TEXTURED) === 0 : (flags[a]! & DRAW_CUTOUT) === 0;
+  for (const [name, column] of Object.entries(p)) {
+    if (!name.startsWith(kind) || !ArrayBuffer.isView(column) || /FirstIndex|IndexCount|Joined|Cascades/.test(name) || (unread && name.endsWith("Material"))) continue;
+    const values = column as unknown as ArrayLike<number>, width = values.length / (kind === "draw" ? MAX_DRAWS : MAX_CASTERS);
+    for (let k = 0; k < width; k++) if (values[a * width + k] !== values[b * width + k]) return false;
+  }
+  return true;
+}
+
+test("on foot and over the slice, a draw or caster is marked as the one before it exactly where it differs from it only in its run of indices", () => {
+  const w = client();
+  const { cam, hf } = w;
+  let joined = 0, cast = 0;
+  const wrong: string[] = [];
+  for (const [x, z, up, yaw] of [[290, 290, 1.7, 0], [290, 290, 1.7, Math.PI], [200, 380, 1.7, Math.PI / 2], [300, 300, 150, 0.7], [150, 300, 20, 4]] as const) {
+    [cam.x, cam.z, cam.y, cam.yaw, cam.pitch] = [x, z, hf.heightAt(x, z) + up, yaw, up > 10 ? -0.6 : 0];
+    w.follow(x, z);
+    for (let f = 0; f < 120 && (f < 2 || w.scene.near!.stats.waiting > 0); f++) w.frame();
+    const p = w.frame();
+    for (let d = 0; d < p.drawCount; d++) {
+      const run = (p.drawFlags[d]! & (DRAW_TEXTURED | DRAW_RANGED)) !== 0;
+      if (p.drawJoined[d] !== (d > 0 && run && alike(p, "draw", d, d - 1) ? 1 : 0)) wrong.push(`draw ${d}`);
+      joined += p.drawJoined[d]!;
+    }
+    for (let e = 0; e < p.casterCount; e++) {
+      const run = (p.casterFlags[e]! & (DRAW_TEXTURED | DRAW_RANGED)) !== 0;
+      if (p.casterJoined[e] !== (e > 0 && run && alike(p, "caster", e, e - 1) ? 1 : 0)) wrong.push(`caster ${e}`);
+      cast += p.casterJoined[e]!;
+    }
+  }
+  expect(wrong.slice(0, 5)).toEqual([]);
+  // A chunk's mesh casts a run of its cells into each cascade, and a view that leaves out cells within a chunk draws it
+  // in runs: here 3 draws and 24 casters could go in the call before them. They were 7 and 25 until what the near meshes
+  // hide was left out (render/hide.ts), and are that again with `hide` off; the nearest-first order alone moves neither.
+  expect([joined, cast]).toEqual([3, 24]);
 });

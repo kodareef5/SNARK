@@ -17,7 +17,7 @@ import { parseArgs } from "node:util";
 import { DEV_CONFIG, startServer } from "../../server/main.ts";
 import { MODE_GHOST } from "../../shared/sim/character.ts";
 import { loadConfigFolder } from "../../server/settings/config.ts";
-import { findChrome } from "../chrome.ts";
+import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 
 interface Camera { name: string; x: number; z: number; up?: number; y?: number; look?: [number, number, number?]; yaw?: number; pitch?: number }
 
@@ -69,7 +69,7 @@ const hold = setInterval(() => {
 
 const profile = join(work, "profile");
 const port = 9300 + Math.floor(Math.random() * 500);
-const browser = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1920,1080", "--force-device-scale-factor=1", "--enable-gpu", "--ignore-gpu-blocklist", `--user-data-dir=${profile}`, `--remote-debugging-port=${port}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
+const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1920,1080", "--force-device-scale-factor=1", "--enable-gpu", "--ignore-gpu-blocklist", `--user-data-dir=${profile}`, `--remote-debugging-port=${port}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
 // Ended early, it takes its browser with it.
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => { browser.kill(); server.stop(); process.exit(1); });
 const report: Record<string, unknown>[] = [];

@@ -1,5 +1,5 @@
 // Body round 2: exact-scale profile inspection through the game renderer.
-// Run after: zsh tex/paint/look.sh tex/paint/body/checks/look --maps
+// Run after: bash tex/paint/look.sh tex/paint/body/checks/look --maps
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { buildRig } from '../../../../../../../../shared/anim/rigs.ts';
@@ -12,7 +12,7 @@ import { ModelView } from '../../../../../../../../tools/snap.ts';
 import { rgbaOf } from '../../../../../../../../tools/snap/files.ts';
 import { encodePng } from '../../../../../../../../tools/snap/png.ts';
 const here=import.meta.dir;
-const source='/private/tmp/ptera-look/'+resolve(here,'checks/look').replaceAll('/','_').slice(1);
+const source='/tmp/ptera-look/'+resolve(here,'checks/look').replaceAll('/','_').slice(1);
 const out=join(here,'checks/round2_details');mkdirSync(out,{recursive:true});
 const asset=(await findAssets(source)).find(a=>a.id==='core:pteranodon')!;
 const pack=parsePack(new Uint8Array(readFileSync(asset.file)));
