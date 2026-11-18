@@ -21,6 +21,7 @@ export interface CityKinds {
   readonly halfZ: Float32Array;
   readonly middle: Float32Array;
   readonly color: Uint8Array;
+  readonly under?: Uint8Array;
   readonly plain: Uint8Array;
   readonly walked: CityForm;
   readonly look: CityForm;
@@ -90,9 +91,9 @@ export interface CityMaker {
 }
 
 export function cityKinds(city: CityStatics, hf: Heightfield, bounds: { center: readonly number[]; half: readonly number[] }): CityKinds {
-  const { dims, halfX, halfY, halfZ, color, plain, walked, look } = city;
+  const { dims, halfX, halfY, halfZ, color, under, plain, walked, look } = city;
   const middle = Float32Array.from(halfX, (hx, k) => 2 * (hx + halfY[k]! + halfZ[k]! - Math.max(hx, halfY[k]!, halfZ[k]!) - Math.min(hx, halfY[k]!, halfZ[k]!)));
-  return { dims, halfX, halfY, halfZ, middle, color, plain, walked, look, ground: { cell: hf.cell, nx: hf.nx, nz: hf.nz, minY: hf.minY, stepY: hf.stepY }, center: bounds.center, half: bounds.half };
+  return { dims, halfX, halfY, halfZ, middle, color, under, plain, walked, look, ground: { cell: hf.cell, nx: hf.nx, nz: hf.nz, minY: hf.minY, stepY: hf.stepY }, center: bounds.center, half: bounds.half };
 }
 
 /**
@@ -176,7 +177,7 @@ export class LevelMaking {
     }
     first.fill(at, c);
     const { kind, yaw, x, y, z } = job;
-    this.city = { dims: k.dims, first, kind, yaw, x, y, z, halfX: k.halfX, halfY: k.halfY, halfZ: k.halfZ, color: k.color, plain: k.plain, walked: k.walked, look: k.look, count: kind.length, in: (chunk: number) => first[chunk + 1]! - first[chunk]! };
+    this.city = { dims: k.dims, first, kind, yaw, x, y, z, halfX: k.halfX, halfY: k.halfY, halfZ: k.halfZ, color: k.color, under: k.under, plain: k.plain, walked: k.walked, look: k.look, count: kind.length, in: (chunk: number) => first[chunk + 1]! - first[chunk]! };
     this.ground = new HeightWindow({ ...k.ground, i0: job.i0, j0: job.j0, w: job.w, heights: job.heights });
     const gone = (chunk: number): Gone => (job.gone ? job.gone.subarray(first[chunk]!, first[chunk + 1]!) : null);
     // Pieces thinner across than the level's `thin` are left out as gone ones are: neither drawn nor hiding a face.

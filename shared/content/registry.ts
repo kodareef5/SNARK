@@ -17,6 +17,7 @@ import { DAMAGE_TYPES } from "../sim/damage.ts";
 import { lootFaults } from "../sim/loot.ts";
 import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../sim/weapon.ts";
 import { hullFault, hullTable, type HullDef } from "../world/convex.ts";
+import { REGION_BASE } from "../pack/palette.ts";
 import type { PartTable } from "../world/structures.ts";
 import { defFaults, refFaults } from "./classes.ts";
 import { creatureCombatFaults } from "./creature-combat.ts";
@@ -494,6 +495,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (!(Number.isInteger(d.color) && d.color >= 0 && d.color < 256)) errors.push(`${d.id}: color must be a palette index`);
       if (d.damage !== undefined && !DAMAGE_TYPES.includes(d.damage)) errors.push(`${d.id}: damage must name a kind of damage`);
     } else if (d.type === "structure") {
+      if (d.under !== undefined && !(Number.isInteger(d.under) && d.under > 0 && d.under < REGION_BASE)) errors.push(`${d.id}: under must be a fixed palette colour`);
       if (d.motion !== undefined) errors.push(...motionFaults(d));
       if (d.vehicleSurface !== undefined && !validVehicleSurface(d.vehicleSurface)) errors.push(`${d.id}: invalid vehicleSurface grip/resistance`);
       positive(d, "half[0]", d.half[0], MAX_STRUCTURE_HALF);
@@ -516,6 +518,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (parts < 1 || parts > MAX_SHAPE_BOXES) errors.push(`${d.id}: a shape has 1 to ${MAX_SHAPE_BOXES} boxes and convex parts`);
       const drawn = (d.look?.boxes?.length ?? 0) + (d.look?.hulls?.length ?? 0);
       if (d.look !== undefined && (drawn < 1 || drawn > MAX_LOOK_PARTS)) errors.push(`${d.id}: a look has 1 to ${MAX_LOOK_PARTS} boxes and convex parts`);
+      if (d.boxes.some((b) => b.color !== undefined)) errors.push(`${d.id}: only a look's boxes have colours of their own`);
+      for (const b of d.look?.boxes ?? []) if (b.color !== undefined && !(Number.isInteger(b.color) && b.color > 0 && b.color < REGION_BASE)) errors.push(`${d.id}: a box's colour is a fixed palette colour`);
       for (const b of [...d.boxes, ...(d.look?.boxes ?? [])]) {
         for (let a = 0; a < 3; a++) {
           positive(d, `a box's half[${a}]`, b.half[a]!, MAX_STRUCTURE_HALF);

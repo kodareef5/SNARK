@@ -186,12 +186,15 @@ test("a pack of another version is refused, clips come back within a step, and t
   expect(parsePack(buildPack([], defaultPalette(), coreClips())).clips.hash).toBe(now.clips.hash);
   // Every body's levels lie further from the finest as they get coarser, and none by more than a hand's width. A shape
   // drawn otherwise than it is walked repeats its look at the second level, for low poly, and is drawn as walked at the third,
-  // within a tread of its look.
-  const looks = new Set(CORE_CONTENT.flatMap((d) => (d.type === "structure" && CORE_CONTENT.some((s) => s.type === "shape" && s.id === d.shape && s.look) ? [d.id] : [])));
-  expect(looks.size).toBeGreaterThan(0);
+  // within a tread of its look; one whose look has parts of their own colours, a facade module, is its look at every level.
+  const shapeOf = (d: (typeof CORE_CONTENT)[number]) => (d.type === "structure" ? CORE_CONTENT.find((s) => s.type === "shape" && s.id === d.shape && s.look) : undefined);
+  const looks = new Set(CORE_CONTENT.flatMap((d) => (shapeOf(d) ? [d.id] : [])));
+  const coloured = new Set(CORE_CONTENT.flatMap((d) => { const s = shapeOf(d); return s?.type === "shape" && s.look?.boxes?.some((b) => b.color) ? [d.id] : []; }));
+  expect(looks.size).toBeGreaterThan(coloured.size);
+  expect(coloured.size).toBeGreaterThan(0);
   for (const m of now.header.meshes.filter((m) => m.lods.length === 3)) {
     const [fine, mid, far] = m.lods.map((l) => l.error) as [number, number, number];
-    expect([m.id, looks.has(m.id) ? fine === 0 && mid === 0 && far > 0 && far < 1 : fine === 0 && mid > 0 && far > mid && far < 0.1]).toEqual([m.id, true]);
+    expect([m.id, coloured.has(m.id) ? fine === 0 && mid === 0 && far === 0 : looks.has(m.id) ? fine === 0 && mid === 0 && far > 0 && far < 1 : fine === 0 && mid > 0 && far > mid && far < 0.1]).toEqual([m.id, true]);
   }
 });
 
