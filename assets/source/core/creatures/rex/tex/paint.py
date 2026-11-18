@@ -128,65 +128,133 @@ def maps(p, head):
         plate, variation = scales((z + 0.09 * ax + 0.036 * macro) / 0.069, (arc + 0.13 * y + 0.024 * macro) / 0.044)
         dome = dome * (1 - feature) + plate * feature
         tone = tone * (1 - feature) + variation * feature
+    # Macrostructure is shared across both UV sets at the head/neck seam.
+    # Broad bands follow the nuchal muscles, rib angles and tail taper before
+    # the individual scales are shaded. The jaw and maxillary break turn the
+    # direction of the compressed folds around the mouth corner.
+    cranial = smooth(2.70, 3.30, z)
+    extent = np.interp(
+        z,
+        [-7.12, -4.6, -2.7, -1, 0.45, 1.55, 2.35, 3.20, 4.4, 5.15],
+        [0.07, 0.34, 0.58, 0.92, 1.0, 0.85, 0.74, 0.78, 0.48, 0.28],
+    )
+    skyward = (y - centre) / extent
+    nape = smooth(0.15, 0.88, skyward)
+    belly = (1 - smooth(-0.86, -0.30, skyward)) * (1 - 0.40 * smooth(2.70, 3.25, z))
+    # The dark dorsal strip breaks into long rearward or forward brushing
+    # fingers. Each stroke has its own angle, reach, width and interruption.
+    bars = np.zeros_like(x)
+    for anchor, tilt, width, depth in [
+        (-6.2, 0.30, 0.105, 0.16),
+        (-5.1, 0.37, 0.153, 0.10),
+        (-4.14, 0.39, 0.210, -0.01),
+        (-3.32, 0.39, 0.243, -0.22),
+        (-2.54, 0.66, 0.220, -0.27),
+        (-1.78, 0.80, 0.242, -0.29),
+        (-1.12, 0.74, 0.207, -0.45),
+        (-0.60, 0.68, 0.180, -0.33),
+        (0.14, -0.49, 0.207, -0.40),
+        (0.85, -0.51, 0.168, -0.26),
+        (1.47, -0.47, 0.173, -0.30),
+        (2.07, -0.44, 0.14, -0.11),
+        (2.50, -0.27, 0.12, 0.02),
+    ]:
+        descending = np.clip(0.86 - skyward, 0, 1.5)
+        spine = anchor + tilt * descending + 0.12 * np.sin(descending * 3.25 + anchor * 2.2) + 0.075 * macro
+        thick = width * (0.42 + 0.58 * smooth(-0.18, 0.82, skyward))
+        stroke = np.exp(-(((z - spine) / thick) ** 2)) * smooth(depth, depth + 0.46, skyward)
+        bars = np.maximum(bars, stroke)
+    bars *= 0.76 + 0.24 * smooth(-0.2, 0.46, noise(z * 4.4, arc * 6, 88))
+    flank = np.exp(-(((skyward + 0.14) / 0.48) ** 2)) * smooth(-2.7, -1.30, z) * (1 - smooth(1.60, 2.46, z))
+    loin = np.exp(-(((z + 1.23 - 0.58 * (y - 2.9)) / 0.27) ** 2) - ((y - 2.87) / 0.65) ** 2)
+    shoulder = np.exp(-(((z - (1.18 - 0.62 * (y - 3.14))) / 0.149) ** 2) - ((y - 3.15) / 0.52) ** 2)
     fold = np.zeros_like(x)
-    lip = np.zeros_like(x)
-    if head:
-        for anchor, rise, reach in [(3.23, 0.40, 1.0), (3.29, 0.24, 0.76), (3.34, 0.11, 0.72)]:
-            cy = 3.38 + rise * np.exp(-(((z - anchor) / 0.42) ** 2)) + 0.025 * (z - 3.5)
-            fold += np.exp(-(((y - cy) / 0.017) ** 2) - ((z - 3.43) / reach) ** 4)
-        lip = np.exp(-(((y - (3.465 + 0.025 * np.sin((z - 3.85) * 4))) / 0.033) ** 2)) * smooth(3.15, 3.56, z)
-    else:
-        throat = np.exp(-(((z - 2.28) / 0.77) ** 2) - ((y - 2.99) / 0.33) ** 2)
-        fold += throat * np.maximum(0, np.sin(z * 33 + y * 15 + 0.8 * macro)) ** 5
-        fold += np.exp(-(((y - 0.94) / 0.30) ** 2)) * np.maximum(0, np.cos(y * 39 + z * 5 + 0.5 * macro)) ** 3
-    nape = smooth(0.05, 0.78, theta)
-    band = smooth(0.00, 0.68, np.cos(z * 3.85 + y * 2.5 + 1.65 * macro + 0.20 * np.sin(z * 7))) * smooth(
-        -0.38, 0.48, theta
+    for z0, arc0, strength in [
+        (1.52, 0.28, 0.37),
+        (1.68, 0.30, 0.62),
+        (1.87, 0.32, 0.83),
+        (2.09, 0.34, 0.81),
+        (2.33, 0.31, 0.59),
+        (2.58, 0.26, 0.38),
+    ]:
+        line = z0 + arc0 * (y - 3.0) - 0.22 * (y - 3.02) ** 2 + 0.018 * macro
+        fold += strength * np.exp(-(((z - line) / 0.023) ** 2) - ((y - (3.10 + 0.19 * (z0 - 1.6))) / 0.41) ** 2)
+    fold += 0.47 * np.exp(-(((y - 0.97) / 0.28) ** 2)) * np.maximum(0, np.cos(y * 39 + z * 4 + macro)) ** 3
+    fold += (
+        0.43
+        * np.exp(-(((z - (-0.33 - 0.45 * (y - 2.19))) / 0.040) ** 2) - ((y - 2.28) / 0.31) ** 2)
+        * smooth(0.49, 0.72, ax)
     )
-    band *= 0.42 + 0.56 * smooth(-0.44, 0.40, noise(z * 2.8, arc * 3.8, 60))
-    belly = (1 - smooth(-1.18, -0.17, theta)) * 0.85
-    limb = (1 - smooth(1.36, 2.66, y)) * smooth(-1.73, -0.9, z) * (1 - smooth(0.42, 0.95, z))
-    if head:
-        eye = np.exp(-(((z - 3.493) / 0.140) ** 2) - ((y - 4.015) / 0.084) ** 2)
-        naris = np.exp(-(((z - 4.49) / 0.082) ** 2) - ((y - 3.858) / 0.044) ** 2) * (1 - smooth(0.29, 0.365, ax))
-        brow = np.exp(-(((y - 4.105) / 0.093) ** 2) - ((z - 3.49) / 0.43) ** 2)
-        # The cheek strap, nasal bridge and long maxillary margin carry visibly
-        # different pigment. The orbital margins darken into the temple.
-        cheek = (
-            np.exp(-(((y - (3.78 + 0.13 * np.cos((z - 3.3) * 3))) / 0.13) ** 2))
-            * smooth(3.10, 3.32, z)
-            * (1 - smooth(3.89, 4.15, z))
-        )
-        ginger = 0.34 + 0.44 * smooth(-0.09, 0.78, theta) + 0.21 * macro - 0.17 * cheek
-        band += 0.62 * cheek + 0.29 * feature * smooth(0.14, 0.50, tone + 0.21)
-        belly += 0.29 * (1 - smooth(3.24, 3.55, y)) * smooth(3.03, 3.41, z)
-    else:
-        eye = naris = brow = np.zeros_like(x)
-        ginger = smooth(1.85, 3.18, z) * 0.52
-    ww = np.stack(
-        [
-            np.ones_like(x),
-            belly,
-            nape * 0.37 + band,
-            ginger,
-            limb + 0.26 * band * (1 - smooth(-3, -1.5, z)),
-            brow * 0.40,
-        ],
-        axis=-1,
+    for z0, rise, reach in [(3.05, 0.29, 0.34), (3.16, 0.23, 0.40), (3.25, 0.13, 0.45)]:
+        cy = 3.38 + rise * np.exp(-(((z - z0) / 0.31) ** 2)) + 0.065 * (z - 3.4)
+        fold += 0.68 * np.exp(-(((y - cy) / 0.016) ** 2) - ((z - 3.37) / reach) ** 4) * cranial
+    mouthline = np.interp(
+        z,
+        [2.85, 3.05, 3.34, 3.49, 3.75, 4.1, 4.27, 4.55, 4.86, 5.14],
+        [3.38, 3.37, 3.55, 3.555, 3.451, 3.37, 3.36, 3.39, 3.45, 3.52],
     )
-    ww[..., 0] = np.maximum(0.03, 1 - np.maximum.reduce([belly, band, limb, ginger * np.ones_like(x)]))
+    lip = np.exp(-(((y - mouthline) / 0.028) ** 2)) * smooth(3.23, 3.54, z)
+    liplight = np.exp(-(((y - mouthline - 0.068) / 0.051) ** 2)) * smooth(3.49, 3.92, z)
+    # The orbital patch is smaller than the jugal field beneath it. A lighter
+    # stripe on the bony cheek carries visually from the mouth to the neck.
+    eye = np.exp(-(((z - 3.448) / 0.210) ** 2) - ((y - 4.189) / 0.107) ** 2)
+    naris = np.exp(-(((z - 4.685) / 0.11) ** 2) - ((y - 3.918) / 0.071) ** 2) * (1 - smooth(0.34, 0.44, ax))
+    temporal = np.exp(-(((z - 3.115) / 0.18) ** 2) - ((y - 4.005) / 0.20) ** 2)
+    hollow = np.exp(-(((z - 3.941) / 0.32) ** 2) - ((y - (3.967 - 0.15 * (z - 3.88))) / 0.150) ** 2)
+    brow = np.exp(-(((y - (4.34 - 0.30 * (z - 3.38))) / 0.094) ** 2) - ((z - 3.40) / 0.39) ** 2)
+    jugal = np.exp(-(((y - (3.725 + 0.19 * (z - 3.39))) / 0.111) ** 2) - ((z - 3.40) / 0.46) ** 2)
+    cheekband = np.exp(-(((y - (3.635 + 0.32 * (z - 3.18))) / 0.151) ** 2) - ((z - 3.09) / 0.52) ** 2)
+    throatlight = np.exp(-(((y - (3.21 + 0.22 * (z - 2.5))) / 0.32) ** 2) - ((z - 2.48) / 0.67) ** 2)
+    facewash = smooth(1.25, 3.72, z)
+    ginger = facewash * (0.23 + 0.47 * smooth(-0.15, 0.56, skyward) + 0.25 * cheekband + 0.22 * macro)
+    band = np.clip(0.50 * nape + 1.20 * bars + 0.72 * hollow + 0.55 * eye + 0.30 * temporal, 0, 1)
+    belly = np.clip(
+        belly + 0.26 * throatlight + 0.46 * jugal + 0.36 * liplight + 0.32 * (1 - smooth(3.19, 3.48, y)) * cranial, 0, 1
+    )
+    limb = (1 - smooth(1.26, 2.90, y)) * smooth(-1.70, -0.90, z) * (1 - smooth(0.41, 0.94, z))
+    keratin = np.clip(0.69 * brow + 0.30 * np.exp(-(((y - 4.195) / 0.065) ** 2) - ((z - 4.11) / 0.42) ** 2), 0, 0.76)
+    ww = np.stack([np.ones_like(x), belly, band, ginger, limb + 0.22 * bars * (1 - smooth(-3, -1.5, z)), keratin], -1)
+    ww[..., 0] = np.maximum(0.035, 1 - np.maximum.reduce([belly, band, limb, ginger]))
     ww /= ww.sum(-1)[..., None]
-    hazy = smooth(0.02, 0.62, noise(z * 13, y * 12, 91)) * smooth(0.05, 0.66, noise(z * 4, arc * 5, 72))
-    lum = 157 + 29 * dome + 22 * tone + 23 * macro - 26 * hazy - 20 * fold - 19 * band - 24 * lip - 38 * eye
-    lum = np.maximum(24, lum * (1 - 0.79 * naris))
-    color = np.repeat(np.clip(lum, 0, 255)[..., None], 3, axis=-1)
-    height = np.clip(
-        0.39 + 0.12 * dome + 0.036 * tone + 0.025 * macro + 0.052 * feature * dome - 0.07 * fold - 0.05 * lip,
-        0.14,
-        0.79,
+    fleck = smooth(0.10, 0.57, noise(z * 11, y * 12, 91)) * smooth(0.09, 0.58, noise(z * 3, arc * 5, 72))
+    lum = (
+        166
+        + 23 * dome
+        + 17 * tone
+        + 15 * macro
+        - 15 * fleck
+        - 35 * bars
+        - 18 * nape
+        + 23 * belly
+        + 8 * flank
+        - 16 * loin
+        + 12 * shoulder
+        - 27 * fold
+        - 35 * lip
+        + 18 * liplight
+        - 41 * eye
+        - 22 * hollow
+        - 19 * temporal
+        + 17 * jugal
+        + 15 * brow
     )
-    rough = np.clip(0.78 - 0.11 * dome + 0.043 * macro - 0.1 * lip - 0.07 * brow, 0.52, 0.94)
-    ao = np.clip(185 + 58 * dome - 27 * fold - 25 * eye - 100 * naris, 65, 249)
+    lum = np.maximum(22, lum * (1 - 0.86 * naris))
+    color = np.stack([lum * (1 + 0.035 * facewash), lum, lum * (0.974 - 0.020 * facewash)], -1)
+    height = np.clip(
+        0.43
+        + 0.089 * dome
+        + 0.03 * tone
+        + 0.027 * macro
+        + 0.048 * feature * dome
+        - 0.083 * fold
+        - 0.055 * lip
+        + 0.057 * brow
+        + 0.019 * shoulder,
+        0.12,
+        0.84,
+    )
+    rough = np.clip(0.75 - 0.095 * dome + 0.05 * macro - 0.095 * lip - 0.115 * brow, 0.47, 0.94)
+    ao = np.clip(193 + 48 * dome - 32 * fold - 30 * eye - 97 * naris - 8 * hollow, 58, 249)
     wound = np.zeros_like(x)
     for cz, cy, length, slope in [
         (0.56, 3.38, 0.49, -0.35),
