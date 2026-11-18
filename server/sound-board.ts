@@ -73,7 +73,7 @@ export function boardOwners(reg: Registry, families: readonly string[], root = S
     const sheet = dir ? (json(join(dir, "sounds.json")).sounds as Record<string, { takes?: { file: string }[] }> | undefined) ?? {} : {};
     const slots = dir ? (json(join(dir, "brief.json")).slots as Record<string, { want?: string }> | undefined) ?? {} : {};
     const recipes = dir ? (json(join(dir, "recipes.json")).takes as Record<string, { model?: string; seed?: number; prompt?: string }> | undefined) ?? {} : {};
-    const files = dir ? [...readdirSync(dir).filter((f) => SHOWN.has(f)).map((f) => join(relative(root, dir), f)), ...(existsSync(join(dirname(dir), "cues.json")) ? [join(relative(root, dirname(dir)), "cues.json")] : [])] : [];
+    const files = dir ? [...readdirSync(dir).filter((f) => SHOWN.has(f)).sort().map((f) => join(relative(root, dir), f)), ...(existsSync(join(dirname(dir), "cues.json")) ? [join(relative(root, dirname(dir)), "cues.json")] : [])] : [];
     return {
       id,
       cls,
