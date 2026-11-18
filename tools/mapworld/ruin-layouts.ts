@@ -1,5 +1,6 @@
 import { hash3 } from "./raster.ts";
 import { BREAK_AT, FACADE_AT, RUIN_SHAPES, type FacadeModule, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
+import { crownOf } from "./ruin-crowns.ts";
 import { inside, Mason, SIDES, tileKey, tilesOf, type Tile } from "./ruin-geometry.ts";
 import type { Composition, Round, Rule, Vocabulary } from "./ruin-vocabulary.ts";
 
@@ -49,12 +50,17 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
     if (mode === "lost-top" && !safe(t)) top = Math.min(top, Math.max(playable, Math.floor(floors * .7)));
     tops.set(tileKey(t.i, t.j), top); m.cover(t.u, t.v, bay * .75);
   }
-  // A tall building's top by its kind: a storey or two set back from its edges, a lift overrun and stair head over its
-  // cores, or a cornice at its roof's edge; where it failed, a bite out of its top storeys at the failure's corner, its
-  // tops broken and its slabs sagging into the gap.
+  // A tower's top, to read from a kilometre (ruin-crowns.ts): torn, ragged round a core left standing, a third of it set
+  // back, a plant floor, or a screen with a notch broken out of it. Above the refuge's storey nothing is walked.
+  const crown = floors >= 12 && bay === 8 && opts.detail < 2 ? crownOf({ tiles, bay, floors, playable, cores, escape, safe, damaged, tops, lost: mode === "lost-top", seed: opts.seed, corner: [cornerU, cornerV], shell: form.shell }) : null;
+  const torn = crown?.torn ?? new Set<Tile>();
+  const broke = crown?.kind === "torn" || crown?.kind === "ragged";
+  // A lower tall building's top by its kind: a storey or two set back from its edges, a lift overrun and stair head over
+  // its cores, or a cornice at its roof's edge; where it failed, a bite out of its top storeys at the failure's corner,
+  // its tops broken and its slabs sagging into the gap.
   // The cores keep their full height, and a tile by a core or on the way in keeps its playable storeys, so no route inside
   // is touched.
-  const tall = floors >= 8 && bay === 8 && opts.detail < 2 && mode !== "lost-top";
+  const tall = !crown && floors >= 8 && bay === 8 && opts.detail < 2 && mode !== "lost-top";
   const shaft = (t: Tile): boolean => cores.includes(t) || escape.includes(t);
   const lowest = (t: Tile, want: number): number => Math.max(safe(t) ? playable + 1 : 1, want);
   const crowning = tall ? hash3(opts.seed + 131, floors, tiles.length) % 3 : -1;
@@ -92,6 +98,10 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   }
   for (const [level, row] of plates) mergeFloors(m, row, bay, base + level * 4);
   const posts = new Map<string, { u: number; v: number; top: number }>();
+  // Where a tower's top was torn, the storeys standing over the gap are open: their slabs, broken at the edge, and the
+  // columns at the bay's ends, each once.
+  const opened = new Set<string>();
+  const once = (key: string): boolean => !opened.has(key) && !!opened.add(key);
   for (const t of tiles) {
     const top = tops.get(tileKey(t.i, t.j))!; if (!top) continue;
     const burnt = damaged.has(t) && mode === "burnt";
@@ -109,8 +119,14 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       // A slab of flats has blank short ends; a tower has flats on every side.
       const end = grammar?.ends && dx !== 0 && m.frame.width >= 1.5 * m.frame.depth && rule.recipe !== "tower";
       // A whole top loses a stretch of its parapet, or a plain wall's top what stood on it, in one bay of four.
-      const chipped = !damaged.has(t) && mode !== "lost-top" && bay === 8 && opts.detail < 2 && hash3(opts.seed + 113, t.i * 4 + side, t.j) % 4 === 0;
-      const capped = !damaged.has(t) && !bitten.has(t) && mode !== "lost-top" && !chipped;
+      // A screen's notch is a stretch of the parapet lost; elsewhere a screen stands whole.
+      const notched = crown?.notch?.side === side && crown.notch.tiles.has(t);
+      const chipped = notched || !damaged.has(t) && mode !== "lost-top" && bay === 8 && opts.detail < 2 && crown?.kind !== "screen" && hash3(opts.seed + 113, t.i * 4 + side, t.j) % 4 === 0;
+      const capped = !damaged.has(t) && !bitten.has(t) && !torn.has(t) && mode !== "lost-top" && !chipped;
+      // Over a torn neighbour the storeys above the refuge stand open.
+      const open = broke && !!beside && !damaged.has(beside) && (torn.has(beside) || torn.has(t));
+      const openFrom = Math.max(adjacent, playable + 1);
+      const plant = crown?.kind === "plant" && capped && top === floors;
       const nearFall = SIDES.some(([a, b]) => { const n = byKey.get(tileKey(t.i + a, t.j + b)); return !!n && damaged.has(n); });
       // Where the bay beside fell, this bay's slabs end at the break, whole, spalled or snapped, open to the gap; walls
       // stand only above the playable floors.
@@ -130,25 +146,38 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       if (broken && adjacent === 0 && !damaged.has(t) && bay === 8 && opts.detail < 2 && mode !== "burnt") facade(m, "zwedge", u, base, v, side, "concrete");
       for (let level = from; level < top;) {
         const h = base + level * 4;
+        if (open && level >= openFrom) {
+          // The storey's dark inside, set back from the edge.
+          if (once(`${t.i},${t.j},${level}`)) m.floor([t.u, t.v], h, 8);
+          facade(m, "zgloom", u, h, v, side, "concrete", -3);
+          if (level > adjacent) facade(m, edgeOf(hash3(opts.seed + 197, t.i * 4 + side, t.j * 64 + level)), u, h, v, side, "fracture");
+          for (const end of [-1, 1]) {
+            const [cu, cv] = [u - dx * 0.35 + dz * end * (bay / 2 - 0.35), v - dz * 0.35 + dx * end * (bay / 2 - 0.35)];
+            if (once(`${cu.toFixed(1)},${cv.toFixed(1)},${level}`)) m.put("pier4", cu, h + 2, cv, "concrete");
+          }
+          level++; continue;
+        }
+        // A plant room's walls are blank; a plant floor's top storey is louvres under a parapet.
+        if (crown?.raised.has(t) && level >= floors) { facade(m, "zpaneltop", u, h, v, side, rule.finish); level++; continue; }
         const entry = level === 0 && (entryLane(t) || ["loading", "shopfront", "clock"].includes(form.front) && (t.i + t.j) % 2 === 0);
         const upper = level >= playable; const lookout = top > playable && level === playable;
         const party = rule.party?.includes(side) && adjacent === 0;
         // Onto a fallen bay the playable floors' walls are its broken inside; the storeys above wear the facade's.
         if (grammar && !party && !lookout && !(broken && level < playable)) {
           const last = capped && level === top - 1;
-          if (upper && top - level >= 4) {
+          if (upper && top - level >= 4 && !(plant && level + 4 === top)) {
             const lid = capped && level + 4 === top;
             facade(m, end ? (lid ? "zshafttop" : "zshaft8") : lid ? grammar.stackTop : grammar.stack, u, h, v, side, rule.finish);
             level += 4; continue;
           }
           // A shop's front has its own door; any other ground floor keeps an open bay where the way in is.
-          const open = grammar.ground === "zstore";
+          const shop = grammar.ground === "zstore";
           const shut = grammar.shutter && !entry && hash3(opts.seed + 57, t.i * 4 + side, t.j) % 4 === 0 ? grammar.shutter : grammar.ground;
           // Beside a failure, a balcony's solid front may have fallen to its rail.
           const railed = grammar.floor === "zbalc" && nearFall && hash3(opts.seed + 83, t.i * 4 + side, t.j * 64 + level) % 3 === 0;
           const name = end ? (level === 0 && entry ? null : last ? "zpaneltop" : "zpanel8")
-            : level === 0 ? (entry && !open ? grammar.gate ?? null : last ? grammar.groundTop ?? shut : shut)
-            : last ? grammar.top : railed ? "zbalcrail" : grammar.floor;
+            : level === 0 ? (entry && !shop ? grammar.gate ?? null : last ? grammar.groundTop ?? shut : shut)
+            : last ? (plant ? "zplanttop" : grammar.top) : railed ? "zbalcrail" : grammar.floor;
           if (name) {
             facade(m, name, u, h, v, side, rule.finish);
             // Beside a failure a vine hangs from one balcony in three.
@@ -186,12 +215,21 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       }
       const party = rule.party?.includes(side) && adjacent === 0;
       if (bay !== 8 || opts.detail >= 2 || burnt || party || top === 0) continue;
+      if (open && top > openFrom) {
+        // The roof's edge over the gap breaks too; one slab in two hangs from it, and a column's stump stands on it.
+        facade(m, edgeOf(hash3(opts.seed + 197, t.i * 4 + side, t.j * 64 + top)), u, base + top * 4, v, side, "fracture");
+        const pick = hash3(opts.seed + 199, t.i * 4 + side, t.j);
+        if (top - adjacent >= 2 && pick % 2 === 0) facade(m, "zdrape", u, base + top * 4, v, side, "concrete");
+        if (pick % 3 === 0) m.put("zstub", u - dx * 0.4 + dz * (bay / 2 - 0.4), base + top * 4 + RUIN_SHAPES.zstub[1] / 2, v - dz * 0.4 + dx * (bay / 2 - 0.4), "fracture", turn);
+        continue;
+      }
       // Where the storey above broke away the wall's top is broken too, stepping, sloping or notched.
       // Where the bite took the storeys beside, the slab over its broken top sags into the gap.
       if (beside && bitten.has(beside) && !bitten.has(t) && hash3(opts.seed + 139, t.i * 4 + side, t.j) % 2 === 0) facade(m, "zendsag", u, base + (adjacent + 1) * 4, v, side, "fracture");
       if (crowning === 2 && capped && !chipped && adjacent === 0) facade(m, "zcornice", u, base + top * 4, v, side, rule.finish);
+      if (crown?.kind === "screen" && capped && adjacent === 0 && top === floors) facade(m, "zscreen", u, base + top * 4, v, side, rule.finish);
       if (chipped) facade(m, `zcrown${5 + hash3(opts.seed + 97, t.i * 4 + side, t.j) % 2}` as RuinShape, u, base + top * 4, v, side, rule.finish);
-      else if (!capped && (!safe(t) || bitten.has(t)) && mode !== "hanging") facade(m, `zcrown${1 + hash3(opts.seed + 97, t.i * 4 + side, t.j) % 4}` as RuinShape, u, base + top * 4, v, side, rule.finish);
+      else if (!capped && (!safe(t) || bitten.has(t) || broke) && mode !== "hanging") facade(m, `zcrown${1 + hash3(opts.seed + 97, t.i * 4 + side, t.j) % 4}` as RuinShape, u, base + top * 4, v, side, rule.finish);
       // What fell from a wall lies along its foot: one bay in four, one in two beside a failure; never at a way in.
       const doorway = entryLane(t) || ["loading", "shopfront", "clock"].includes(form.front) && (t.i + t.j) % 2 === 0 || grammar?.ground === "zstore" && !nearFall;
       const fell = hash3(opts.seed + 101, t.i * 4 + side, t.j) % 8;
@@ -262,6 +300,8 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       assembly(m, rule, form.marker, front.u, base + height, front.v);
     }
     if (form.roof === "service") m.put("zcore", t.u, base + height + 2, t.v, "steel");
+    // A plant floor's lift overrun stands over its room.
+    for (const c of crown?.kind === "plant" ? cores.slice(0, 1) : []) m.put("zcore", c.u, base + (tops.get(tileKey(c.i, c.j)) ?? floors) * 4 + 2, c.v, rule.finish);
     // A lift overrun over the first core and a stair head over its escape.
     if (crowning === 1) {
       for (const c of cores.slice(0, 1)) if ((tops.get(tileKey(c.i, c.j)) ?? 0) === floors) m.put("zcore", c.u, base + height + 2, c.v, rule.finish);
@@ -316,6 +356,9 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
     }
   }
 }
+
+/** A slab's edge where the storeys round it were torn away: snapped five in ten, spalled three, whole two. */
+const edgeOf = (pick: number): RuinShape => (pick % 10 < 5 ? "zendsnap" : pick % 10 < 8 ? "zendspall" : "zendwhole");
 
 /**
  * A storey's module of the wall on side `side` of a tile, whose line's middle is (u, v), its floor at h: a facade module

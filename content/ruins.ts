@@ -82,6 +82,12 @@ const PARAPET: Part[] = [[-4, 4, 4, 4.8, -0.25, 0.25], bevelX([-4, 4, 4.8, 4.95,
 /** Spandrel over the slab's edge, a pane a storey and mullions at 2 m. */
 const CURTAIN: Part[] = [[-4, 4, -0.4, 1, -0.15, 0.25], [-4, 4, 1, 3.6, -0.2, -0.05, PANE], ...[-4, -2, 0, 2, 4].map((x): Part => [Math.max(-4, x - 0.05), Math.min(4, x + 0.05), 1, 3.6, -0.05, 0.15, METAL])];
 const CROWN: Part[] = [bevelX([-4, 4, 3.6, 5.2, -0.15, 0.25], 0.1, "uo")];
+/** A tower's plant floor: louvres in a dark recess between piers, under a band and a parapet. */
+const LOUVRE = 84;
+const PLANT: Part[] = [[-4, -3.6, 0, 4, -0.25, 0.25], [3.6, 4, 0, 4, -0.25, 0.25], [-3.6, 3.6, 0, 0.4, -0.25, 0.25], [-3.6, 3.6, 3.25, 4, -0.25, 0.25], [-3.6, 3.6, 0.4, 3.25, -0.35, -0.25, LOUVRE],
+  ...[0.7, 1.15, 1.6, 2.05, 2.5, 2.95].map((y): Part => [-3.6, 3.6, y, y + 0.12, -0.25, 0.08, METAL])];
+/** A screen standing on a tower's roof at its edge, a storey tall, hiding its plant, with a coping. */
+const SCREEN: Part[] = [[-4, 4, 0, 3.6, -0.3, 0.3], bevelX([-4, 4, 3.6, 3.75, -0.35, 0.4], 0.06, "uoui")];
 /** A shop's front: half piers, a sign band standing proud of them, a dark display on a low riser and a 2 m door set back. */
 const SHOP: Part[] = [bevelY([-4, -3.6, 0, 4, -0.3, 0.3], 0.1, "+"), bevelY([3.6, 4, 0, 4, -0.3, 0.3], 0.1, "-"), [-3.6, 3.6, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 3.6, 3.8, 4, -0.25, 0.25], [-3.6, 1.4, 0, 0.5, -0.25, 0.05], [-3.6, 1.4, 0.5, 2.9, -0.25, -0.15, DARK], [1.4, 1.6, 0, 2.9, -1.2, 0.05]];
 const SHOP_WALKED: Part[] = [[-4, -3.6, 0, 4, -0.3, 0.3], [3.6, 4, 0, 4, -0.3, 0.3], [-3.6, 3.6, 2.9, 4, -0.25, 0.4], [-3.6, 1.6, 0, 2.9, -0.25, 0.05]];
@@ -128,6 +134,10 @@ const MODULES = {
   zcurttop: { look: [...CURTAIN, ...CROWN], walked: [[-4, 4, -0.4, 5.2, -0.2, 0.25]] },
   zcurt4: { look: [0, 4, 8, 12].flatMap((y) => up(y, CURTAIN)), walked: [[-4, 4, -0.4, 15.6, -0.4, 0.4]] },
   zcurt4top: { look: [...[0, 4, 8, 12].flatMap((y) => up(y, CURTAIN)), ...up(12, CROWN)], walked: [[-4, 4, -0.4, 17.2, -0.4, 0.4]] },
+  zplanttop: { look: [...PLANT, ...PARAPET], walked: [wall(4), ...PARAPET] },
+  zscreen: { look: SCREEN, walked: [[-4, 4, 0, 3.75, -0.3, 0.3]] },
+  /** The shade of an open storey's inside, set back from a torn edge: what is seen between its slabs from afar. */
+  zgloom: { look: [[-3.6, 3.6, 0.05, 3.55, -0.1, 0.1, LOUVRE]], walked: [[-3.6, 3.6, 0.05, 3.55, -0.1, 0.1]] },
   // Walked, its spandrel stands a little thicker than drawn, so its coarsest level is its look's within a hand.
   zdeck: { look: [...DECK, DECK_LIP], walked: [DECK[0]!, DECK[1]!, [-3.65, 3.65, -0.4, 1.05, 0, 0.3], DECK_LIP] },
   zdecktop: { look: [...DECK, DECK_LIP, ...DECK_CAP], walked: [DECK[0]!, DECK[1]!, [-3.65, 3.65, -0.4, 1.05, 0, 0.3], DECK_LIP, DECK_CAP[0]!, DECK_CAP[1]!] },
@@ -232,6 +242,8 @@ const skirt = (name: string, lumps: readonly (readonly [number, number, number, 
 /** A wall panel 3.8 m by 2.8 m hanging from one fixing at a slab's edge, its far end dropped 16 degrees, standing off the edge. */
 const HANG = 16 * Math.PI / 180;
 const hanging = (): Corner[] => [0.35, 0.55].flatMap((z) => ([[0, 0], [3.8, 0], [3.8, -2.8], [0, -2.8]] as const).map(([x, y]): Corner => [x * Math.cos(HANG) + y * Math.sin(HANG) - 1.45, -x * Math.sin(HANG) + y * Math.cos(HANG) - 0.45, z]));
+/** A slab 8 m by 7 m hinged at its top edge on the slab line (z = 0, y = 0) and hanging out and down. */
+const DRAPE: Corner[] = leaning([4, 0.175, 3.5], -62).corners.map(([x, y, z]) => [x, y - 3.5 * Math.sin(62 * Math.PI / 180) - 0.175, z + 3.5 * Math.cos(62 * Math.PI / 180)] as const);
 /** A column out of plumb by 8 degrees, its head broken on a slant. */
 const LEAN_COLUMN: Corner[] = [[-0.3, 0, -0.3], [0.3, 0, -0.3], [-0.3, 0, 0.3], [0.3, 0, 0.3], [-0.3, 3.2, 0.15], [0.3, 2.9, 0.12], [-0.3, 3.05, 0.73], [0.3, 2.75, 0.69]];
 /** Strands of a vine hanging from a slab's edge, each its place along it, its length and colour, over a line of moss. */
@@ -283,6 +295,8 @@ export const RUIN_BREAKS = {
   // A slab-edge cornice round a whole tall building's roof, two corbelled steps standing 1.1 m out from its wall line.
   zcornice: centred(shaped("zcornice"), { boxes: [{ at: [0, -0.275, 0.675], half: [4, 0.275, 0.425] }] }, { boxes: [{ at: [0, -0.15, 0.675], half: [4, 0.15, 0.425] }, { at: [0, -0.425, 0.5], half: [4, 0.125, 0.25] }] }),
   zcrown1: crown("zcrown1", CROWNS[0]!), zcrown2: crown("zcrown2", CROWNS[1]!), zcrown3: crown("zcrown3", CROWNS[2]!), zcrown4: crown("zcrown4", CROWNS[3]!), zcrown5: crown("zcrown5", CROWNS[4]!), zcrown6: crown("zcrown6", CROWNS[5]!),
+  // A floor slab torn from a tower's top, hanging from its edge 62 degrees down over the gap, 7 m long, bars at the hinge.
+  zdrape: centred(shaped("zdrape"), { hulls: [{ corners: DRAPE }] }, { hulls: [{ corners: DRAPE }], boxes: bars([[-2.9, -0.2, 0.5, 0.6], [-0.6, -0.15, 0.35, 0], [1.7, -0.25, 0.6, 0.8], [3.4, -0.2, 0.4, 0.3]]) }),
   zhang: centred(shaped("zhang"), { hulls: [{ corners: hanging() }] }, { hulls: [{ corners: hanging() }], boxes: [{ at: [-1.45, -0.3, 0.45], half: [0.04, 0.2, 0.04], color: RUST }] }),
   zleancol: centred(shaped("zleancol"), { hulls: [{ corners: LEAN_COLUMN }] }, { hulls: [{ corners: LEAN_COLUMN }], boxes: [{ at: [-0.18, 3.25, 0.55], half: [0.025, 0.3, 0.025], color: RUST }, { at: [0.15, 3.0, 0.3], half: [0.025, 0.25, 0.025], color: RUST }] }),
   zvine: centred(shaped("zvine"), { boxes: [{ at: [0, -0.05, 0.03], half: [0.05, 0.05, 0.03] }] }, {
@@ -345,7 +359,7 @@ export const ruinKind = (shape: RuinShape, finish: RuinFinish = "concrete"): str
 const PAINTED = new Set<RuinShape>(["wall4", "wall8", "sill4", "sill8", "fin4", "fin8", "fin16", "trim4", "trim8", "container", "crown"]);
 const ONLY_FINISHES: Partial<Record<RuinShape, readonly RuinFinish[]>> = {
   zpitch4: ["clay"], zpitch8: ["clay", "rust"], zpitch16: ["clay"], zdeckramp: ["concrete"],
-  zwedge: ["concrete"], zskirt1: ["concrete"], zskirt2: ["concrete"], zendsag: ["fracture"], zleancol: ["concrete"], zvine: ["concrete"], zpipe4: ["concrete"], zpipefoot: ["concrete"], zpipetop: ["concrete"], zwalk8: ["concrete"], zwalk8g: ["concrete"], zcurbramp: ["concrete"], zcurbrampl: ["concrete"], zdrain: ["concrete"], zutility: ["concrete"], zendwhole: ["fracture"], zendspall: ["fracture"], zendsnap: ["fracture"], zstub: ["fracture"], zfallen: ["concrete"],
+  zwedge: ["concrete"], zskirt1: ["concrete"], zskirt2: ["concrete"], zendsag: ["fracture"], zdrape: ["concrete"], zleancol: ["concrete"], zvine: ["concrete"], zpipe4: ["concrete"], zpipefoot: ["concrete"], zpipetop: ["concrete"], zwalk8: ["concrete"], zwalk8g: ["concrete"], zcurbramp: ["concrete"], zcurbrampl: ["concrete"], zdrain: ["concrete"], zutility: ["concrete"], zendwhole: ["fracture"], zendspall: ["fracture"], zendsnap: ["fracture"], zstub: ["fracture"], zfallen: ["concrete"],
 };
 /** Whether a shape comes in that finish: a pitched roof in its own few; otherwise concrete always, the facade pieces and the z kit in every finish. */
 export const finished = (name: RuinShape, finish: RuinFinish): boolean => ONLY_FINISHES[name]?.includes(finish) ?? (finish === "concrete" || (finish !== "fracture" && name !== "zshrub" && name !== "zrooftree" && (PAINTED.has(name) || name.startsWith("z"))));
