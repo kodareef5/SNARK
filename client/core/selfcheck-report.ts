@@ -8,6 +8,7 @@ import type { App } from "./app.ts";
 import type { AssetPort } from "./assets/port.ts";
 import type { FramePacket } from "./render/packet.ts";
 import { NO_REFERENCE, type SelfcheckSurfaces } from "./selfcheck-surfaces.ts";
+import type { DinosaurSelfcheck } from "./activity-selfcheck.ts";
 import type { VehicleSelfcheck } from "./vehicle-selfcheck.ts";
 import { probeProgress } from "./diagnostics.ts";
 import { heldTo, probePasses, provingProbes, type Probe } from "./selfcheck.ts";
@@ -36,6 +37,7 @@ export interface SelfcheckObservations {
   voice: { played: number; odd: number; errors: number; heard: readonly string[] };
   driveCheck: boolean;
   drive: VehicleSelfcheck["data"] | undefined;
+  dinosaur?: DinosaurSelfcheck["data"];
   restored: number;
   misplaced: number;
   /** The loudest the world's sound got, when the page has sound. */
@@ -79,10 +81,17 @@ export function selfcheckReport(app: App, pack: Pack, manifest: Manifest, hf: He
     const driving = drive ? { ...drive, ownKind: reg.ids[session.own.kind], ok: !drive.timedOut && drive.maxSpeed > 3 && drive.hud && session.driving >= 0 } : null;
     return { vehicles, humans, seats, ownKind: reg.ids[session.own.kind], ...(driving ? { driving } : {}), ok: vehicles.length > 0 && humans.length > 0 && seats.length > 0 && renderer.errors === 0 && (!driving || driving.ok) };
   })() : null;
+  const dinosaur = o.dinosaur ? (() => {
+    const d = o.dinosaur!, drawn = Array.from(packet.drawMesh.subarray(0, packet.drawCount), index => manifest.meshes[index]?.id ?? "");
+    const body = drawn.includes(d.species), rider = drawn.some(id => id.startsWith("core:human"));
+    const combat = reg.combat[session.own.kind], modes = combat?.modes;
+    return { ...d, body, rider, ownKind: reg.ids[session.own.kind], ok: d.finished && !d.timedOut && !d.lostMount && d.mounted && d.primary && d.secondary && (!combat?.charge || d.chargeRan && d.recovered) && (!modes || d.switched) && d.maxSpeed > 1 && d.distance > 3 && d.cameraFinite && body && rider && reg.ids[session.own.kind] === d.species && renderer.errors === 0 };
+  })() : null;
   return {
     // A listening page has the talking page's body in view, so its picture is not the fixed one and the probes do not count.
-    ok: (!packet.lit || paletteOnly || !!o.surfaces?.sample) && (driveCheck || voiceListen || probes.every((p) => p.ok)) && (!urban || urban.ok) && misplaced === 0 && heard && restored === (o.has("lose") ? 1 : 0) && packet.skipped === 0 && packet.dropped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level) && (!app.sounds?.library.index.has("core:dodo/sound/call") || (o.sound?.peak ?? 0) > 0.001),
+    ok: (!packet.lit || paletteOnly || !!o.surfaces?.sample) && (driveCheck || dinosaur !== null || voiceListen || probes.every((p) => p.ok)) && (!urban || urban.ok) && (!dinosaur || dinosaur.ok) && misplaced === 0 && heard && restored === (o.has("lose") ? 1 : 0) && packet.skipped === 0 && packet.dropped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level) && (!app.sounds?.library.index.has("core:dodo/sound/call") || (o.sound?.peak ?? 0) > 0.001),
     ...(urban ? { urban } : {}),
+    ...(dinosaur ? { dinosaur } : {}),
     rocks: rocks.map((m) => [m.level, m.drawn]),
     restored,
     assets: { ...app.scene?.assets.residency.stats, kept: o.cache },

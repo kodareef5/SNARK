@@ -9,6 +9,25 @@ import { picture, plainMaterial, plate } from "../fixtures/shapes.ts";
 
 const palette = defaultPalette();
 
+test("flat dye selection follows total native mask coverage without turning undyed eyes or metal into dye", () => {
+  const whole = plate(2), material = plainMaterial("mixed-skin");
+  const baked = (mask: number[], mask2: number[], base: number[]): number[] => [...new Set(baker(whole, [material], [{
+    base: picture(16, () => base), mask: picture(16, () => mask), mask2: picture(16, () => mask2),
+  }], palette)(whole))];
+  // All coverage is dyed but no individual region reaches half. Native
+  // rendering has zero undyed contribution; flat fallback must retain dye.
+  expect(baked([80, 60, 0], [0, 0, 115], [230, 230, 230])).toEqual([REGION_BASE + 5]);
+  expect(baked([80, 85, 90], [0, 0, 0], [230, 230, 230])).toEqual([REGION_BASE + 2]);
+  // A genuinely partial surface chooses by the dyed/undyed majority, then
+  // the most represented dye. Quantized values straddle the half threshold.
+  expect(baked([60, 70, 20], [0, 0, 0], [150, 152, 156])).toEqual([REGION_BASE + 1]);
+  expect(baked([40, 42, 45], [0, 0, 0], [150, 152, 156])).toEqual([2]);
+  expect(baked([40, 42, 46], [0, 0, 0], [150, 152, 156])).toEqual([REGION_BASE + 2]);
+  // Dark eye pigment and plain metal have no dye contribution at any LOD.
+  expect(baked([0, 0, 0], [0, 0, 0], [20, 20, 24])).toEqual([11]);
+  expect(baked([0, 0, 0], [0, 0, 0], [150, 152, 156])).toEqual([2]);
+});
+
 test("a mesh's flat colours are its regions and a few palette colours, a dozen at most, with no triangle alone in its colour", () => {
   // Three materials, each a rainbow of its own, and six regions across the top quarter: more colours than a flat mesh may have.
   const rainbow = (dark: number, light: number): Picture => picture(64, (x) => [0, 1, 2].map((k) => Math.round(dark + ((light - dark) / 2) * (1 + Math.cos((x / 64 - k / 3) * Math.PI * 2)))));

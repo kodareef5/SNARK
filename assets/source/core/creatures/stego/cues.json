@@ -1,0 +1,23 @@
+{
+  "pictures": {
+    "scute": { "file": "details/scute.png", "regions": "details/scute_regions.png", "flat": "grain" }
+  },
+  "effects": {
+    "scute_flakes": {
+      "pictures": ["scute"], "count": [1, 3], "speed": [0.8, 1.7], "up": 0.4,
+      "size": [0.025, 0.045], "aspect": 0.75, "life": [1.2, 2], "fade": 0.3,
+      "drag": 0.7, "gravity": 1, "wind": 0.1,
+      "flutter": { "sway": 0.015, "hz": 2, "rock": 0.6, "turn": 2.2 },
+      "settle": 1, "colour": "body", "vary": 0.08, "face": "free", "pass": "cutout", "reach": 25
+    }
+  },
+  "cues": {
+    "struck": { "sounds": ["hurt"], "effects": [{ "effect": "scute_flakes", "from": "hit" }] },
+    "down": { "sounds": ["hurt", { "sound": "step", "at": "down" }], "effects": [{ "effect": "dust_ring", "from": "ground", "at": "down", "count": [14, 18], "on": ["grass", "sand", "stone", "built"] }] },
+    "death": { "sounds": ["death", { "sound": "step", "at": "down" }], "effects": [{ "effect": "dust_ring", "from": "ground", "at": "down", "count": [14, 18], "on": ["grass", "sand", "stone", "built"] }] },
+    "up": { "effects": [{ "effect": "scuff", "from": "ground", "at": "down", "count": [3, 5], "on": ["grass", "sand", "stone", "built"] }] },
+    "land": { "sounds": ["step"], "effects": [{ "effect": "dust_ring", "from": "ground", "count": [10, 14], "on": ["grass", "sand", "stone", "built"] }, { "effect": "splash_drops", "from": "body", "count": [10, 14], "on": ["water"] }] },
+    "step": { "sounds": ["step"], "effects": [{ "effect": "sand_kick", "from": "foot", "count": [2, 3], "on": ["sand"] }, { "effect": "scuff", "from": "foot", "count": [1, 2], "on": ["grass", "stone", "built"] }] },
+    "splash": { "effects": [{ "effect": "splash_drops", "from": "body", "count": [14, 18] }, { "effect": "splash_ring", "from": "ground" }] }
+  }
+}

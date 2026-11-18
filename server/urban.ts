@@ -2,7 +2,7 @@
 // team and connection stay the same; only the body its inputs drive changes.
 import { LAUNCH_BOARDING } from '../content/vehicles/boat-art.ts';
 import { Pose } from '../shared/anim/clip.ts';
-import { HUMAN, HUMAN_BONES, SOCKET_EYE } from '../shared/anim/human.ts';
+import { HUMAN, HUMAN_BONES, LEGACY_HUMAN_BONES, SOCKET_EYE, humanRest } from '../shared/anim/human.ts';
 import type { PackRig } from '../shared/pack/pack.ts';
 import { createMountMotion, mountOrigin } from '../shared/anim/mount.ts';
 import { occupantPose, occupantSeat, createOccupantSeat } from '../shared/anim/occupant.ts';
@@ -119,7 +119,7 @@ export class Urban {
   constructor(ctx: UrbanContext) {
     this.ctx = ctx;
     this.seating = new Seating(ctx.world, ctx.records);
-    for (const rig of ctx.rigs) if (rig.rest.length === HUMAN_BONES * 3) this.rests.set(rig.id, Float32Array.from(rig.rest));
+    for (const rig of ctx.rigs) if (rig.skeleton === HUMAN.id && (rig.rest.length === HUMAN_BONES * 3 || rig.rest.length === LEGACY_HUMAN_BONES * 3)) this.rests.set(rig.id, humanRest(rig.rest));
     this.occupancy = new Occupancy({
       actor: pid => {
         const e = this.entity(pid), rec = ctx.records.byPid.get(pid);

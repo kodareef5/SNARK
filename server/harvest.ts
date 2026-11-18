@@ -1,8 +1,9 @@
 // The server keeps only the nodes that were touched: the hits each has left and, once it is used up, the tick it grows back.
 // That is saved per chunk, and clients are sent the used-up slots. Everything else about nodes comes from the map on both sides.
 
-import type { ItemDef, NodeDef } from "../shared/content/defs.ts";
+import type { CreatureHarvestFacet, ItemDef, NodeDef } from "../shared/content/defs.ts";
 import { stanceEye } from "../shared/sim/character.ts";
+import { F_ALIVE } from "../shared/sim/entities.ts";
 import { BitReader, BitWriter } from "../shared/net/codec.ts";
 import { S_NODES } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
@@ -19,7 +20,8 @@ import type { Items } from "./items.ts";
 import { XP_HARVEST, type Progression } from "./progression.ts";
 import type { Lists } from "./settings/lists.ts";
 import type { Rules } from "./settings/rules.ts";
-import type { Records } from "./records.ts";
+import type { EntityRecord, Records } from "./records.ts";
+import { STAT_MELEE, statOf } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 import { event } from "./events/bus.ts";
 import { TreeClearance } from "./tree-clearance.ts";
@@ -67,6 +69,8 @@ export class Harvest {
   told = 0;
   /** A node whose boxes reach `reach` from (x, z) grew back in a chunk that is loaded, so a body may now be inside it. */
   onGrown: ((x: number, z: number, reach: number) => void) | null = null;
+  /** The steering rider receives half the raw harvest XP, through the same XP rules as its mount. */
+  riderOf: ((mount: EntityRecord) => EntityRecord | null) | null = null;
 
   private readonly world: ServerWorld;
   private readonly game: GameServer;
@@ -168,6 +172,25 @@ export class Harvest {
     this.deplete(chunk, index, def, true); return true;
   }
 
+  /**
+   * An authoritative creature attack met this node. Combat owns reach, obstruction and once-per-action node dedup;
+   * this method owns eligibility, yields and depletion. "plant" is a node with no material (picked by humans).
+   * Damage is depletion units at 100% melee, not combat health points; power multiplies non-flat resource rolls.
+   */
+  creature(rec: EntityRecord, chunk: number, index: number, profile: CreatureHarvestFacet): boolean {
+    const { reg, ents } = this.world;
+    const def = reg.defs[rec.kind];
+    const e = this.records.entOf.get(rec.pid);
+    if (rec.dead || rec.out || rec.team === 0 || this.records.byPid.get(rec.pid) !== rec || e === undefined || (ents.flags[e]! & F_ALIVE) === 0 || def?.type !== "species" || def.class !== "creature") return false;
+    if (!Number.isInteger(chunk) || chunk < 0 || chunk >= this.version.length || !Number.isInteger(index) || index < 0 || index >= this.per) return false;
+    const kind = this.field.standing(chunk, index);
+    if (kind === 0 || !this.field.store.chunks[chunk]) return false;
+    const node = reg.defs[kind] as NodeDef;
+    if (!profile.materials.includes(node.material ?? "plant") || !(profile.damage > 0) || !Number.isFinite(profile.damage) || !(profile.power >= 0) || !Number.isFinite(profile.power)) return false;
+    const force = profile.damage * statOf(def, rec.genome, STAT_MELEE, 1) * (this.rules?.num("DinoHarvestingDamageMultiplier") ?? 1);
+    return this.gather(rec, chunk, index, profile.power, force, -1, profile);
+  }
+
   private hit(c: Client, chunk: number, index: number, byHand: boolean): boolean {
     const world = this.world;
     const reg = world.reg;
@@ -191,9 +214,17 @@ export class Harvest {
         toolSlot = held;
       }
     }
-    // A fractional multiplier lands its extra blow by chance, so 0.5 is one blow in two swings.
     const rules = this.rules;
     const force = byHand || !rules ? 1 : rules.num("PlayerHarvestingDamageMultiplier");
+    return this.gather(rec, chunk, index, power, force, toolSlot);
+  }
+
+  /** Shared human/creature yield, XP, depletion and respawn accounting. A creature has no held tool to wear. */
+  private gather(rec: EntityRecord, chunk: number, index: number, power: number, force: number, toolSlot: number, profile?: CreatureHarvestFacet): boolean {
+    const world = this.world, reg = world.reg, rules = this.rules;
+    const table = this.field.store.chunks[chunk]!;
+    const def = reg.defs[this.field.standing(chunk, index)] as NodeDef;
+    // A fractional multiplier lands its extra blow by chance, so 0.5 is one blow in two swings.
     const part = force - Math.floor(force);
     let blows = Math.floor(force) + (part > 0 && this.rng.float() < part ? 1 : 0);
     if (blows > table.hp[index]!) blows = table.hp[index]!;
@@ -202,15 +233,17 @@ export class Harvest {
     const amount = rules ? rules.num("HarvestAmountMultiplier") : 1;
     const each = this.lists?.multipliers("HarvestResourceItemAmountClassMultipliers");
     for (const y of def.yields) {
-      if (y.tool && toolSlot < 0) continue;
+      if (y.tool && toolSlot < 0 && !profile) continue;
       const item = reg.index.get(y.item)!;
       let n = 0;
       for (let b = 0; b < blows; b++) n += (y.min + this.rng.int(y.max - y.min + 1)) * (y.flat ? 1 : power);
-      n = Math.round(n * amount * (each?.get(item) ?? 1));
+      n = Math.round(n * amount * (each?.get(item) ?? 1) * (profile?.yields?.find((entry) => entry.item === y.item)?.mult ?? 1));
       const got = n > 0 ? this.items.mint(rec, item, n, 0, 0, -1, "harvest") : 0;
       if (got > 0) this.items.bus.after(HARVEST, { pid: rec.pid, node: def.id, item: y.item, n: got });
     }
     this.progression.addXp(rec, def.xp * blows, XP_HARVEST);
+    const rider = profile ? this.riderOf?.(rec) : null;
+    if (rider && rider !== rec && !rider.dead && !rider.out) this.progression.addXp(rider, def.xp * blows / 2, XP_HARVEST);
     this.hits++;
 
     const left = table.hp[index]! - blows;

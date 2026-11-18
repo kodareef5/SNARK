@@ -58,7 +58,7 @@ const SLACK = 1e-6;
  * The triangles of a level in a grid of cells about as large as they are. The triangle nearest a point is found by
  * trying the point's own cell and then the cells around it, a layer at a time, until nothing further out can be nearer.
  */
-class Grid {
+export class TriangleGrid {
   private readonly t: Float32Array;
   private readonly indices: Uint32Array;
   private readonly min = [0, 0, 0];
@@ -168,10 +168,18 @@ class Grid {
 /** How far each corner and each triangle's middle of `from` lies from the surface of `to`, least first. */
 function distances(from: SourceLod, to: SourceLod): Float64Array {
   const p = from.positions;
-  const grid = new Grid(to);
+  const grid = new TriangleGrid(to);
   const out = new Float64Array(p.length / 3 + from.indices.length / 3);
+  // Hard normals and UV seams repeat the same geometric corner. Keep every sample's weight in the percentile,
+  // but find its distance only once; appearance attributes cannot change distance to the target surface.
+  const corners = new Map<string, number>();
   let n = 0;
-  for (let v = 0; v < p.length; v += 3) out[n++] = grid.nearest(p[v]!, p[v + 1]!, p[v + 2]!);
+  for (let v = 0; v < p.length; v += 3) {
+    const key = `${p[v]!},${p[v + 1]!},${p[v + 2]!}`;
+    let distance = corners.get(key);
+    if (distance === undefined) { distance = grid.nearest(p[v]!, p[v + 1]!, p[v + 2]!); corners.set(key, distance); }
+    out[n++] = distance;
+  }
   for (let i = 0; i < from.indices.length; i += 3) {
     const [a, b, c] = [from.indices[i]! * 3, from.indices[i + 1]! * 3, from.indices[i + 2]! * 3];
     out[n++] = grid.nearest((p[a]! + p[b]! + p[c]!) / 3, (p[a + 1]! + p[b + 1]! + p[c + 1]!) / 3, (p[a + 2]! + p[b + 2]! + p[c + 2]!) / 3);

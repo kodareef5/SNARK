@@ -14,6 +14,7 @@ const scope = self as unknown as Scope;
 /** One request: parts of one file, which follow one another in it, to be answered as one run of bytes. */
 export interface Ask {
   slot: number;
+  generation?: number;
   url: string;
   parts: AssetPart[];
   fresh: boolean;
@@ -361,8 +362,8 @@ async function answer(a: Ask): Promise<void> {
   // Cancelled: the page no longer wants it and must not be told of it.
   if (under.get(a.slot) !== stop) return;
   under.delete(a.slot);
-  if (fail !== 0) scope.postMessage({ slot: a.slot, data: null, fail, fetched, cached, status });
-  else scope.postMessage({ slot: a.slot, data, fail: 0, fetched, cached }, [data.buffer]);
+  if (fail !== 0) scope.postMessage({ slot: a.slot, generation: a.generation, data: null, fail, fetched, cached, status });
+  else scope.postMessage({ slot: a.slot, generation: a.generation, data, fail: 0, fetched, cached }, [data.buffer]);
 }
 
 scope.onmessage = (e) => {

@@ -53,9 +53,12 @@ test("the pack carries each creature as its asset describes it: a rig that is a 
     expect(Array.from(rig.zone).filter((z) => z !== 0).sort()).toEqual(spec.zones.map((z) => ZONES[z.zone]).sort());
     for (const z of spec.zones) expect([z.on, rig.zone[rig.names.indexOf(z.on)], rig.capR[rig.names.indexOf(z.on)]! > 0]).toEqual([z.on, ZONES[z.zone], true]);
     expect([...rig.sockets.keys()].sort()).toEqual(spec.sockets.map((s) => s.name).sort());
+    const kind = reg.index.get(id)!;
+    const staticPoses = new Set(reg.combat[kind]?.modes?.map(mode => mode.clip) ?? []);
     for (const c of spec.clips) {
       const clip = pack.clips.clips[pack.clips.index.get(`${id}/${c.name}`)!]!;
-      expect([c.name, clip.bones, clip.loop, clip.frames > 1]).toEqual([c.name, rig.bones, c.loop, true]);
+      // Mode overlays are sampled at frame zero; authored motion clips still need at least two frames.
+      expect([c.name, clip.bones, clip.loop, clip.frames > (staticPoses.has(c.name) ? 0 : 1)]).toEqual([c.name, rig.bones, c.loop, true]);
     }
 
     const mesh = pack.header.meshes[pack.meshIndex.get(id)!]!;

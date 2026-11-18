@@ -1,6 +1,7 @@
 // Builds pack files from meshes in authoring form.
 
 import type { Clip } from "../../shared/anim/clip.ts";
+import { B_FOOT_L, B_FOOT_R, B_TOE_L, B_TOE_R, B_LOWER_LEG_L, B_LOWER_LEG_R, HUMAN } from "../../shared/anim/human.ts";
 import {
   CLIP_ROOT_BYTES, CLIP_ROOT_STEPS, CLIP_ROT_STEPS, MATERIAL_CUTOUT, MOST_SECTIONS, PACK_MAGIC, PACK_VERSION, SKIN_BYTES, VERTEX_BYTES, clipRotBytes, lodSkin, lodSurface, lodVertices, readIndices,
   setTexture, textureOf, type Pack, type PackHeader, type PackLod, type PackMaterial, type PackMesh, type PackRig, type PackTexture,
@@ -178,7 +179,7 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
   const blob = new PackBlob();
   const append = (bytes: Uint8Array): number => blob.append(bytes);
 
-  const header: PackHeader = { paletteOffset: append(palette), meshes: [], rigs: [...rigs].sort(byId), clips: [] };
+  const header: PackHeader = { paletteOffset: append(palette), meshes: [], rigs: rigs.map(r => ({ ...r, ...(r.soles ? { soles: [...r.soles] } : {}) })).sort(byId), clips: [] };
   if (landmarks.length > 0) header.landmarks = [...landmarks];
   if (finishes.length > 0) header.finishes = [...finishes];
   if (details) header.details = { ...details.header, atlas: { ...details.header.atlas, offset: append(details.atlas) } };
@@ -224,6 +225,28 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
         }
         verts[v * VERTEX_BYTES + 6] = lod.colors[v]!;
         if (lod.bones) verts[v * VERTEX_BYTES + 7] = lod.bones[v]!;
+      }
+      if (level === 0 && mesh.skeleton === HUMAN.id && out.rig !== undefined) {
+        const rig = header.rigs[out.rig]!;
+        // Repacking replaces a mesh's calibration, including removing stale metadata if its skin ceases to be rigid.
+        if (rig.soles) rig.soles = rig.soles.filter(s => s.mesh !== mesh.id);
+        const feet = [B_FOOT_L, B_TOE_L, B_FOOT_R, B_TOE_R];
+        const allowed = [...feet, B_LOWER_LEG_L, B_LOWER_LEG_R];
+        const rigid = lod.bones && [...lod.bones].every(b => allowed.includes(b)) &&
+          (!lod.joints || !lod.weights || [...lod.weights].every((w, k) => w === 0 || lod.joints![k] === lod.bones![(k / 4) | 0]));
+        if (rigid) {
+          const points: number[] = [];
+          for (const bone of feet) {
+            let lowest = -1;
+            for (let v = 0; v < n; v++) if (lod.bones![v] === bone && (lowest < 0 || view.getInt16(v * VERTEX_BYTES + 2, true) < view.getInt16(lowest * VERTEX_BYTES + 2, true))) lowest = v;
+            if (lowest < 0) break;
+            for (let axis = 0; axis < 3; axis++) points.push(center[axis]! + view.getInt16(lowest * VERTEX_BYTES + axis * 2, true) / 32767 * half[axis]!);
+          }
+          if (points.length === 12) (rig.soles ??= []).push({ mesh: mesh.id, points });
+        }
+        // Preserve knowledge of an uncalibrated foot mesh too: the server must use ordinary ankles for that
+        // actual footwear, rather than mistake unavailable calibration for a missing mesh and select bare feet.
+        if (mesh.id.endsWith("/feet") && !rig.soles?.some(s => s.mesh === mesh.id)) (rig.soles ??= []).push({ mesh: mesh.id, points: [] });
       }
       if (mesh.skeleton && !lod.bones) throw new Error(`${mesh.id}: a mesh with a skeleton needs a bone for every vertex`);
       // A level drawn with materials has its triangles sorted by material, a cut-out material's best seen first (sprays.ts).

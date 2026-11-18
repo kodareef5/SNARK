@@ -55,6 +55,8 @@ export function textureParts(tex: ManifestTexture, format: TextureFormat, last: 
 export interface AssetRequest {
   /** The level of a mesh, its surface, the step of a texture, a skeleton's clips or a page, the bytes are for. */
   slot: number;
+  /** Identifies this use of the slot when the caller can cancel and reissue it. */
+  generation?: number;
   /** Index of the pack file in the manifest. */
   file: number;
   parts: readonly AssetPart[];
@@ -66,6 +68,8 @@ export interface AssetRequest {
 
 export interface AssetArrival {
   slot: number;
+  /** Echoed from the request, including when the request failed. */
+  generation?: number;
   /** Every part of the request, one after another in the order asked. Null when any failed, and `fail` says how: a FAIL_ code. */
   data: Uint8Array | null;
   fail: number;

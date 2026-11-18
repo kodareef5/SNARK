@@ -24,8 +24,12 @@ export interface RagdollDef {
   /** For each body: its bone, its share of the mass, and how far it may swing from its rest direction against its parent body and twist about it, in radians. */
   readonly bone: Int16Array;
   readonly mass: Float64Array;
+  /** Explicit centres in the bone frame. An omitted entry uses the primary capsule midpoint. */
+  readonly massCentres?: readonly (readonly [number, number, number] | undefined)[];
   readonly swing: Float64Array;
   readonly twist: Float64Array;
+  /** Additional capsule bones rigidly attached to their nearest articulated ancestor. */
+  readonly contacts?: Int16Array;
 }
 
 const GRAVITY = 9.81;
@@ -95,6 +99,8 @@ export class Ragdoll {
   private readonly rad: Float64Array;
   /** In the bone's frame: half the capsule's segment, the joint from the centre, the limits' axis and a line square to it. */
   private readonly seg: Float64Array;
+  /** Primary capsule midpoint relative to the centre of mass, scaled to world metres. */
+  private readonly primaryOffset: Float64Array | null;
   private readonly jc: Float64Array;
   private readonly dir: Float64Array;
   private readonly perp: Float64Array;
@@ -105,6 +111,12 @@ export class Ragdoll {
   readonly twistNow: Float64Array;
   /** Per bone: the body it follows, and its turn from that body as it went limp. */
   private readonly owner: Int16Array;
+  /** Extra capsule centres and half segments, in the owning body's frame at handover. */
+  private readonly contactBone: Int16Array;
+  private readonly contactOwner: Int16Array;
+  private readonly contactCentre: Float64Array;
+  private readonly contactSegment: Float64Array;
+  private readonly contactRadius: Float64Array;
   private readonly rel: Float64Array;
   /** Scratch for a pose, in full precision. */
   private readonly boneRot: Float64Array;
@@ -120,6 +132,8 @@ export class Ragdoll {
   awake = false;
   /** An upward face or opposed steep faces supported the last step. Water and map limits cannot support a body. */
   supported = false;
+  /** An observer may request the world-space face that first supports the body. Consumed once, outside solver state. */
+  firstSupport: Float64Array | null = null;
   /** Seconds no body has moved far from where stillX and stillQ hold, and how far is far. */
   private still = 0;
   private stillMove = 0;
@@ -158,6 +172,7 @@ export class Ragdoll {
     this.invI = new Float64Array(n);
     this.rad = new Float64Array(n);
     this.seg = new Float64Array(n * 3);
+    this.primaryOffset = def.massCentres ? new Float64Array(n * 3) : null;
     this.jc = new Float64Array(n * 3);
     this.dir = new Float64Array(n * 3);
     this.perp = new Float64Array(n * 3);
@@ -182,6 +197,18 @@ export class Ragdoll {
       for (let a = skel.parent[b]!; a >= 0 && up < 0; a = skel.parent[a]!) up = bodyOf[a]!;
       this.parent[bodyOf[b]!] = up;
     }
+    const contacts: number[] = [];
+    for (const b of def.contacts ?? []) {
+      if (!(b >= 0 && b < skel.bones && skel.capR[b]! > 0) || bodyOf[b]! >= 0 || contacts.includes(b)) continue;
+      let parent = skel.parent[b]!;
+      while (parent >= 0 && bodyOf[parent]! < 0) parent = skel.parent[parent]!;
+      if (parent >= 0 && contacts.length < 16) contacts.push(b);
+    }
+    this.contactBone = Int16Array.from(contacts);
+    this.contactOwner = Int16Array.from(contacts, b => this.owner[b]!);
+    this.contactCentre = new Float64Array(contacts.length * 3);
+    this.contactSegment = new Float64Array(contacts.length * 3);
+    this.contactRadius = new Float64Array(contacts.length);
   }
 
   /** Where the joint of bone `b` of a pose of the model is in the world, into t3. */
@@ -218,7 +245,11 @@ export class Ragdoll {
       if (r > widest) widest = r;
       this.rad[i] = r;
       set3(this.seg, i, sx, sy, sz);
-      set3(this.jc, i, -mx * size, -my * size, -mz * size);
+      const centre = def.massCentres?.[i];
+      const cx = centre?.[0] ?? mx, cy = centre?.[1] ?? my, cz = centre?.[2] ?? mz;
+      const offsetX = (mx - cx) * size, offsetY = (my - cy) * size, offsetZ = (mz - cz) * size;
+      if (this.primaryOffset) set3(this.primaryOffset, i, offsetX, offsetY, offsetZ);
+      set3(this.jc, i, -cx * size, -cy * size, -cz * size);
       // The limits' axis runs from the joint through the capsule's middle, or along it where the middle is at the joint.
       let dx = mx, dy = my, dz = mz;
       if (Math.sqrt(dx * dx + dy * dy + dz * dz) < 1e-3) [dx, dy, dz] = [sx, sy, sz];
@@ -236,7 +267,8 @@ export class Ragdoll {
       const half = Math.sqrt(sx * sx + sy * sy + sz * sz);
       const mass = def.mass[i]! > 0 ? def.mass[i]! : 0.01;
       this.invM[i] = 1 / mass;
-      this.invI[i] = 1 / (mass * (0.4 * r * r + (half * half) / 3));
+      const offset2 = offsetX * offsetX + offsetY * offsetY + offsetZ * offsetZ;
+      this.invI[i] = 1 / (mass * (0.4 * r * r + (half * half) / 3 + offset2));
       // Where it is now and a tick before, which says how it moves.
       for (let k = 0; k < 2; k++) {
         const pose = k === 0 ? before : now;
@@ -245,11 +277,47 @@ export class Ragdoll {
         this.place(pose, b);
         const jx = t3[0]!, jy = t3[1]!, jz = t3[2]!;
         mulInto(qs, i * 4, this.yawQ, 0, pose.rot, b * 4);
-        quatRotate(qs, i * 4, mx * size, my * size, mz * size, t3, 0);
+        quatRotate(qs, i * 4, cx * size, cy * size, cz * size, t3, 0);
         set3(xs, i, jx + t3[0]!, jy + t3[1]!, jz + t3[2]!);
       }
     }
     this.stillMove = widest * SLEEP_MOVE;
+    for (let c = 0; c < this.contactBone.length; c++) {
+      const b = this.contactBone[c]!, i = this.contactOwner[c]!;
+      const ax = skel.capA[b * 3]!, ay = skel.capA[b * 3 + 1]!, az = skel.capA[b * 3 + 2]!;
+      const bx = skel.capB[b * 3]!, by = skel.capB[b * 3 + 1]!, bz = skel.capB[b * 3 + 2]!;
+      this.place(now, b);
+      const jx = t3[0]!, jy = t3[1]!, jz = t3[2]!;
+      mulInto(g4, 0, this.yawQ, 0, now.rot, b * 4);
+      quatRotate(g4, 0, (ax + bx) * size / 2, (ay + by) * size / 2, (az + bz) * size / 2, t3, 0);
+      quatUnrotate(this.q, i * 4, jx + t3[0]! - this.x[i * 3]!, jy + t3[1]! - this.x[i * 3 + 1]!, jz + t3[2]! - this.x[i * 3 + 2]!, this.contactCentre, c * 3);
+      quatRotate(g4, 0, (bx - ax) * size / 2, (by - ay) * size / 2, (bz - az) * size / 2, t3, 0);
+      quatUnrotate(this.q, i * 4, t3[0]!, t3[1]!, t3[2]!, this.contactSegment, c * 3);
+      this.contactRadius[c] = skel.capR[b]! * size;
+    }
+    if (this.contactBone.length) {
+      // Retain each authored mass and centre, but estimate its scalar moment
+      // from the full compound rather than only its narrow central capsule.
+      // Capsule volume weights and the parallel-axis term make rigid horns or
+      // spikes resist rotation at their real lever arms. The legacy estimate
+      // remains bit-identical for owners with no additional contact geometry.
+      const volume = new Float64Array(n), moment = new Float64Array(n), changed = new Uint8Array(n);
+      for (let i = 0; i < n; i++) {
+        const o = i * 3, half2 = this.seg[o]! * this.seg[o]! + this.seg[o + 1]! * this.seg[o + 1]! + this.seg[o + 2]! * this.seg[o + 2]!, r = this.rad[i]!;
+        volume[i] = r * r * (2 * Math.sqrt(half2) + 4 * r / 3);
+        const centre = this.primaryOffset;
+        const offset2 = centre ? centre[o]! * centre[o]! + centre[o + 1]! * centre[o + 1]! + centre[o + 2]! * centre[o + 2]! : 0;
+        moment[i] = volume[i]! * (.4 * r * r + half2 / 3 + offset2);
+      }
+      for (let c = 0; c < this.contactBone.length; c++) {
+        const i = this.contactOwner[c]!, o = c * 3, segment = this.contactSegment, centre = this.contactCentre, r = this.contactRadius[c]!;
+        const half2 = segment[o]! * segment[o]! + segment[o + 1]! * segment[o + 1]! + segment[o + 2]! * segment[o + 2]!;
+        const offset2 = centre[o]! * centre[o]! + centre[o + 1]! * centre[o + 1]! + centre[o + 2]! * centre[o + 2]!;
+        const v = r * r * (2 * Math.sqrt(half2) + 4 * r / 3);
+        volume[i]! += v; moment[i]! += v * (.4 * r * r + half2 / 3 + offset2); changed[i] = 1;
+      }
+      for (let i = 0; i < n; i++) if (changed[i] && moment[i]! > 0) this.invI[i] = this.invM[i]! * volume[i]! / moment[i]!;
+    }
     this.velocities(1 / 30);
     // Each bone's turn from its body, the root's joint in its body, and each joint in its parent body.
     for (let b = 0; b < skel.bones; b++) conjMulInto(this.rel, b * 4, now.rot, def.bone[this.owner[b]!]! * 4, now.rot, b * 4);
@@ -507,8 +575,17 @@ export class Ragdoll {
     box[0] = box[1] = Infinity;
     box[2] = box[3] = -Infinity;
     for (let i = 0; i < this.n; i++) {
-      const s = this.seg;
-      const r = Math.sqrt(s[i * 3]! * s[i * 3]! + s[i * 3 + 1]! * s[i * 3 + 1]! + s[i * 3 + 2]! * s[i * 3 + 2]!) + this.rad[i]! + pad;
+      const s = this.seg, offset = this.primaryOffset, o = i * 3;
+      const extra = offset ? Math.sqrt(offset[o]! * offset[o]! + offset[o + 1]! * offset[o + 1]! + offset[o + 2]! * offset[o + 2]!) : 0;
+      const r = extra + Math.sqrt(s[i * 3]! * s[i * 3]! + s[i * 3 + 1]! * s[i * 3 + 1]! + s[i * 3 + 2]! * s[i * 3 + 2]!) + this.rad[i]! + pad;
+      box[0] = Math.min(box[0]!, this.x[i * 3]! - r);
+      box[1] = Math.min(box[1]!, this.x[i * 3 + 2]! - r);
+      box[2] = Math.max(box[2]!, this.x[i * 3]! + r);
+      box[3] = Math.max(box[3]!, this.x[i * 3 + 2]! + r);
+    }
+    for (let c = 0; c < this.contactBone.length; c++) {
+      const i = this.contactOwner[c]!, o = c * 3, centre = this.contactCentre, segment = this.contactSegment;
+      const r = Math.sqrt(centre[o]! * centre[o]! + centre[o + 1]! * centre[o + 1]! + centre[o + 2]! * centre[o + 2]!) + Math.sqrt(segment[o]! * segment[o]! + segment[o + 1]! * segment[o + 1]! + segment[o + 2]! * segment[o + 2]!) + this.contactRadius[c]! + pad;
       box[0] = Math.min(box[0]!, this.x[i * 3]! - r);
       box[1] = Math.min(box[1]!, this.x[i * 3 + 2]! - r);
       box[2] = Math.max(box[2]!, this.x[i * 3]! + r);
@@ -566,14 +643,8 @@ export class Ragdoll {
     }
     for (let i = 0; i < n; i++) if (this.parent[i]! >= 0) this.joint(i);
     this.nc = 0;
-    for (let i = 0; i < n; i++) {
-      this.terrain(world.hf, i);
-      for (let k = 0; k < this.nRefs; k++) {
-        const store = this.refStore[k]!;
-        this.boxes(store === 1 ? world.nodes! : world.structs, this.refs[k]!, i);
-        if (store === 2) this.parts(world.structs, this.refs[k]!, i);
-      }
-    }
+    for (let i = 0; i < n; i++) this.collide(world, i);
+    for (let c = 0; c < this.contactBone.length; c++) this.collide(world, this.contactOwner[c]!, c);
     this.velocities(h);
     for (let c = 0; c < this.nc; c++) this.slide(c, h);
     // Each joint's spin against its parent damped, and stopped when slow.
@@ -734,27 +805,50 @@ export class Ragdoll {
     this.spin(i, -mx * turn * invI[i]!, -my * turn * invI[i]!, -mz * turn * invI[i]!);
   }
 
-  /** Pushes body `i` out of the ground at points along its capsule. */
-  private terrain(hf: Heightfield, i: number): void {
-    const x = this.x;
-    quatRotate(this.q, i * 4, this.seg[i * 3]!, this.seg[i * 3 + 1]!, this.seg[i * 3 + 2]!, u3, 0);
+  /** World-space centre offset in t3, half segment in u3, and radius. Legacy bodies keep the original arithmetic. */
+  private shape(i: number, extra: number): number {
+    if (extra < 0) {
+      const centre = this.primaryOffset;
+      if (this.def.massCentres?.[i] && centre) quatRotate(this.q, i * 4, centre[i * 3]!, centre[i * 3 + 1]!, centre[i * 3 + 2]!, t3, 0);
+      else t3[0] = t3[1] = t3[2] = 0;
+      quatRotate(this.q, i * 4, this.seg[i * 3]!, this.seg[i * 3 + 1]!, this.seg[i * 3 + 2]!, u3, 0);
+      return this.rad[i]!;
+    }
+    const c = extra * 3, centre = this.contactCentre, segment = this.contactSegment;
+    quatRotate(this.q, i * 4, centre[c]!, centre[c + 1]!, centre[c + 2]!, t3, 0);
+    quatRotate(this.q, i * 4, segment[c]!, segment[c + 1]!, segment[c + 2]!, u3, 0);
+    return this.contactRadius[extra]!;
+  }
+
+  private collide(world: CollisionWorld, i: number, extra = -1): void {
+    this.terrain(world.hf, i, extra);
+    for (let k = 0; k < this.nRefs; k++) {
+      const store = this.refStore[k]!;
+      this.boxes(store === 1 ? world.nodes! : world.structs, this.refs[k]!, i, extra);
+      if (store === 2) this.parts(world.structs, this.refs[k]!, i, extra);
+    }
+  }
+
+  /** Pushes body `i` out of the ground at points along its own or an attached capsule. */
+  private terrain(hf: Heightfield, i: number, extra = -1): void {
+    const x = this.x, r = this.shape(i, extra);
+    const ox = t3[0]!, oy = t3[1]!, oz = t3[2]!;
     const sx = u3[0]!, sy = u3[1]!, sz = u3[2]!;
-    const r = this.rad[i]!;
     const half = Math.sqrt(sx * sx + sy * sy + sz * sz);
     const points = half < 0.25 * r ? 1 : 2 + Math.floor((2 * half) / SPACING);
     for (let k = 0; k < points; k++) {
       const t = points === 1 ? 0 : -1 + (2 * k) / (points - 1);
-      const cx = x[i * 3]! + sx * t;
-      const cy = x[i * 3 + 1]! + sy * t;
-      const cz = x[i * 3 + 2]! + sz * t;
+      const cx = x[i * 3]! + ox + sx * t;
+      const cy = x[i * 3 + 1]! + oy + sy * t;
+      const cz = x[i * 3 + 2]! + oz + sz * t;
       groundAt(hf, cx, cz, g4);
       const deep = r - (cy - g4[0]!) * g4[2]!;
-      if (deep > 0) this.contact(i, sx * t - g4[1]! * r, sy * t - g4[2]! * r, sz * t - g4[3]! * r, g4[1]!, g4[2]!, g4[3]!, deep);
+      if (deep > 0) this.contact(i, ox + sx * t - g4[1]! * r, oy + sy * t - g4[2]! * r, oz + sz * t - g4[3]! * r, g4[1]!, g4[2]!, g4[3]!, deep);
     }
   }
 
   /** Pushes body `i` out of the boxes of one structure: at each end of its capsule, and at the point of it nearest a box. */
-  private boxes(structs: StructureStore, ref: number, i: number): void {
+  private boxes(structs: StructureStore, ref: number, i: number, extra = -1): void {
     const t = structs.chunks[Math.floor(ref / 65536)];
     if (!t) return;
     const slot = ref & 0xffff;
@@ -763,11 +857,10 @@ export class Ragdoll {
     frameOf(t.yaw[slot]!);
     const s = frame.sin, c = frame.cos, wide = frame.stretch;
     const x = this.x;
-    const r = this.rad[i]!;
-    quatRotate(this.q, i * 4, this.seg[i * 3]!, this.seg[i * 3 + 1]!, this.seg[i * 3 + 2]!, u3, 0);
+    const r = this.shape(i, extra), ox = t3[0]!, oy = t3[1]!, oz = t3[2]!;
     const wx = u3[0]!, wy = u3[1]!, wz = u3[2]!;
     // The capsule's centre and half segment in the structure's frame: x' = c x - s z, z' = s x + c z.
-    const ex = x[i * 3]! - t.x[slot]!, ey = x[i * 3 + 1]! - t.y[slot]!, ez = x[i * 3 + 2]! - t.z[slot]!;
+    const ex = x[i * 3]! + ox - t.x[slot]!, ey = x[i * 3 + 1]! + oy - t.y[slot]!, ez = x[i * 3 + 2]! + oz - t.z[slot]!;
     const fx = c * ex - s * ez, fz = s * ex + c * ez;
     const gx = c * wx - s * wz, gy = wy, gz = s * wx + c * wz;
     const reach = Math.sqrt(gx * gx + gy * gy + gz * gz) + r;
@@ -778,7 +871,9 @@ export class Ragdoll {
       // From the box's centre.
       const lx = fx - box6[b]! * wide, ly = ey - box6[b + 1]!, lz = fz - box6[b + 2]! * wide;
       if (Math.abs(lx) > hx + reach || Math.abs(ly) > hy + reach || Math.abs(lz) > hz + reach) continue;
-      for (let k = 0; k < 3; k++) {
+      // An attached sphere has one point, not three coincident constraints.
+      // Keep the legacy body path unchanged when this contract is absent.
+      for (let k = 0, points = extra >= 0 && len < 1e-12 ? 1 : 3; k < points; k++) {
         let tt = k === 0 ? -1 : 1;
         if (k === 2) {
           // The point of the segment nearest the box, by turns of nearest point on each.
@@ -810,7 +905,7 @@ export class Ragdoll {
         }
         // The normal back in the world: x = c x' + s z', z = c z' - s x'.
         const mx = c * nx + s * nz, mz = c * nz - s * nx;
-        this.contact(i, wx * tt - mx * r, wy * tt - ny * r, wz * tt - mz * r, mx, ny, mz, deep);
+        this.contact(i, ox + wx * tt - mx * r, oy + wy * tt - ny * r, oz + wz * tt - mz * r, mx, ny, mz, deep);
       }
     }
   }
@@ -820,22 +915,23 @@ export class Ragdoll {
    * the point of it nearest each part. A part is placed in the world's axes about the structure's middle, so the capsule is
    * measured from there unturned.
    */
-  private parts(structs: StructureStore, ref: number, i: number): void {
+  private parts(structs: StructureStore, ref: number, i: number, extra = -1): void {
     const t = structs.chunks[Math.floor(ref / 65536)];
     const hulls = structs.parts.hulls;
     if (!t || !hulls) return;
     const slot = ref & 0xffff;
     const kind = t.kind[slot]!;
     const yaw = t.yaw[slot]!;
-    const r = this.rad[i]!;
-    quatRotate(this.q, i * 4, this.seg[i * 3]!, this.seg[i * 3 + 1]!, this.seg[i * 3 + 2]!, u3, 0);
+    const r = this.shape(i, extra), ox = t3[0]!, oy = t3[1]!, oz = t3[2]!;
     const wx = u3[0]!, wy = u3[1]!, wz = u3[2]!;
-    const ex = this.x[i * 3]! - t.x[slot]!, ey = this.x[i * 3 + 1]! - t.y[slot]!, ez = this.x[i * 3 + 2]! - t.z[slot]!;
+    const ex = this.x[i * 3]! + ox - t.x[slot]!, ey = this.x[i * 3 + 1]! + oy - t.y[slot]!, ez = this.x[i * 3 + 2]! + oz - t.z[slot]!;
     const len = wx * wx + wy * wy + wz * wz;
     const reach = Math.sqrt(len) + r;
     for (let p = hulls.start[kind]!, end = hulls.start[kind + 1]!; p < end; p++) {
       if (!capsuleHull(hulls, p, yaw, ex, ez, ey, ey, reach, reach)) continue;
-      for (let k = 0; k < 3; k++) {
+      // An attached sphere has one point, not three coincident constraints.
+      // Keep the legacy body path unchanged when this contract is absent.
+      for (let k = 0, points = extra >= 0 && len < 1e-12 ? 1 : 3; k < points; k++) {
         let tt = k === 0 ? -1 : 1;
         if (k === 2) {
           tt = 0;
@@ -853,7 +949,7 @@ export class Ragdoll {
         if (!capsuleHull(hulls, p, yaw, ex + wx * tt, ez + wz * tt, ay, ay, r, r)) continue;
         const deep = hullPush.depth;
         const nx = hullPush.x / deep, ny = hullPush.y / deep, nz = hullPush.z / deep;
-        this.contact(i, wx * tt - nx * r, wy * tt - ny * r, wz * tt - nz * r, nx, ny, nz, deep);
+        this.contact(i, ox + wx * tt - nx * r, oy + wy * tt - ny * r, oz + wz * tt - nz * r, nx, ny, nz, deep);
       }
     }
   }
@@ -877,6 +973,13 @@ export class Ragdoll {
         const sx = nx / horizontal + px / other, sz = nz / horizontal + pz / other, sy = ny / horizontal + py / other;
         if (sx * sx + sz * sz < sy * sy) { this.supported = true; break; }
       }
+    }
+    if (this.firstSupport && this.supported) {
+      const point = this.firstSupport, k = i * 3;
+      point[0] = this.x[k]! + rx + nx * deep;
+      point[1] = this.x[k + 1]! + ry + ny * deep;
+      point[2] = this.x[k + 2]! + rz + nz * deep;
+      this.firstSupport = null;
     }
     if (deep > PUSH_OUT * this.h) deep = PUSH_OUT * this.h;
     // The point in the body's frame, so that where it was at the start of the substep can be found after it is pushed out.
@@ -998,14 +1101,8 @@ export class Ragdoll {
     this.probing = true;
     this.worst = 0;
     this.gather(world, 0);
-    for (let i = 0; i < this.n; i++) {
-      this.terrain(world.hf, i);
-      for (let k = 0; k < this.nRefs; k++) {
-        const store = this.refStore[k]!;
-        this.boxes(store === 1 ? world.nodes! : world.structs, this.refs[k]!, i);
-        if (store === 2) this.parts(world.structs, this.refs[k]!, i);
-      }
-    }
+    for (let i = 0; i < this.n; i++) this.collide(world, i);
+    for (let c = 0; c < this.contactBone.length; c++) this.collide(world, this.contactOwner[c]!, c);
     this.probing = false;
     return this.worst;
   }

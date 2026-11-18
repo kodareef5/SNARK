@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { writeBones } from "../../client/core/render/characters.ts";
 import { HELICOPTER_ART as H } from "../../content/vehicles/helicopter-art.ts";
 import { Pose } from "../../shared/anim/clip.ts";
-import { B_HEAD, B_NECK, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
+import { B_HEAD, B_NECK, B_UPPER_ARM_L, B_UPPER_ARM_R, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { defaultLook, LOOK_SEX, REGION_COUNT, lookScales, setRegion } from "../../shared/anim/look.ts";
 import { fitPilotControls } from "../../shared/anim/mount-controls.ts";
 import { createMountMotion, mountPose } from "../../shared/anim/mount.ts";
@@ -41,7 +41,8 @@ const lowScale=new Float32Array(HUMAN_BONES*3),highScale=new Float32Array(HUMAN_
 for(const [to,value] of [[lowScale,-1],[highScale,1]] as const){const look=defaultLook();for(let r=0;r<REGION_COUNT;r++)setRegion(look,r,value);lookScales(look,to);}
 const rotation=new Float64Array(4),unit=[0,0,0];
 let headMotionAllowance=0,gripResidual=0,pilotProfiles=0;
-const armBones=new Set([7,8,9,11,12,13,22,23,24,25,26,27]);
+// The control fit turns each upper arm and so moves every bone below it, the fingertips among them.
+const armBones=new Set(Array.from({length:HUMAN_BONES},(_,bone)=>bone).filter(bone=>{for(let b=bone;b>=0;b=HUMAN.parent[b]!)if(b===B_UPPER_ARM_L||b===B_UPPER_ARM_R)return true;return false;}));
 const controlRegions=[6,7,8,9,10,11,16,17,18,19,20,21];
 const controls=[...(exhaustiveControls?Array.from({length:1<<controlRegions.length},(_,i)=>`controls_${i}`):['controls_plain','controls_small','controls_large',...Array.from({length:REGION_COUNT*2},(_,i)=>`controls_mixed_${i}`)]),...Array.from({length:exhaustiveControls?512:32},(_,i)=>`controls_sample_${i}`)];
 /** Minimum clearance of an entire axis-aligned interval box, including every interpolated loft section between rings.

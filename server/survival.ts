@@ -149,6 +149,9 @@ export class Survival {
   onOut: ((rec: EntityRecord, out: boolean) => void) | null = null;
   /** Called when health crosses INJURED in either direction. */
   onInjured: ((rec: EntityRecord, injured: boolean) => void) | null = null;
+  /** Temporary maximum-health factor. Changes preserve the current health fraction, never refill the body. */
+  healthMultiplier: ((rec: EntityRecord) => number) | null = null;
+  private readonly healthApplied = new WeakMap<EntityRecord, number>();
   /** Extra rates on a body, in millionths of a point per tick, and the record id to blame if the harm kills. */
   private readonly extra = new Map<number, { health: number; torpor: number; by: number }>();
   private readonly injured = new Set<number>();
@@ -185,10 +188,15 @@ export class Survival {
   }
 
   /** The maximum of each vital, or 0 for one the body does not have. A young body has a share of a grown one's health and food. */
-  private maxima(def: SpeciesDef, rec: EntityRecord): number[] {
+  private maxima(def: SpeciesDef, rec: EntityRecord, health = 1): number[] {
     const g = rec.genome;
     const share = youngShare(growthStep(rec.span, rec.grown, this.world.tick));
-    return [statOf(def, g, STAT_HEALTH, 0) * share, statOf(def, g, STAT_FOOD, def.food?.max ?? 0) * share, def.waterPerHour ? statOf(def, g, STAT_WATER, 100) : 0, statOf(def, g, STAT_OXYGEN, 0), torporMax(def, g)];
+    return [statOf(def, g, STAT_HEALTH, 0) * share * health, statOf(def, g, STAT_FOOD, def.food?.max ?? 0) * share, def.waterPerHour ? statOf(def, g, STAT_WATER, 100) : 0, statOf(def, g, STAT_OXYGEN, 0), torporMax(def, g)];
+  }
+
+  private healthScale(rec: EntityRecord): number {
+    const scale = this.healthMultiplier?.(rec) ?? 1;
+    return Number.isFinite(scale) && scale > 0 ? scale : 1;
   }
 
   /** `health` and `torpor` are points per second added to the body's rates (negative health harms). `by` is blamed if that kills it. */
@@ -202,12 +210,17 @@ export class Survival {
   init(rec: EntityRecord): void {
     const def = this.world.reg.defs[rec.kind];
     if (def?.type !== "species") return;
-    const max = this.maxima(def, rec);
+    const health = this.healthScale(rec), previousHealth = this.healthApplied.get(rec) ?? 1;
+    const max = this.maxima(def, rec, health);
     if (max.every((m) => m <= 0)) return;
     const fresh = !rec.vitals;
     const v = (rec.vitals ??= new Vitals());
     if (!fresh) v.rebase(this.world.tick);
     else v.tick = this.world.tick;
+    // Detect the factor here as well as in the trait's notification: another refresh can happen between a creature
+    // sleeping/being knocked out and the next trait tick. Ordinary stat gains retain their existing absolute-health rule.
+    if (!fresh && health !== previousHealth && v.max[V_HEALTH]! > 0) v.value[V_HEALTH] = Math.round(v.value[V_HEALTH]! / v.max[V_HEALTH]! * Math.round(max[V_HEALTH]! * MICRO));
+    this.healthApplied.set(rec, health);
     for (let i = 0; i < V_COUNT; i++) {
       v.max[i] = Math.round(max[i]! * MICRO);
       if (fresh) v.value[i] = i === V_TORPOR ? 0 : v.max[i]!;
@@ -221,7 +234,17 @@ export class Survival {
     const v = rec.vitals;
     const def = this.world.reg.defs[rec.kind];
     if (!v || def?.type !== "species") return;
-    const max = this.maxima(def, rec);
+    const health = this.healthScale(rec), max = this.maxima(def, rec, health);
+    // Rivalry itself is temporary, but the saved vital maximum contains it. Preserve the saved fraction before replacing
+    // that maximum, even though a fresh server has no prior-factor cache. This also handles transferring a boosted tame.
+    const healthMax = Math.round(max[V_HEALTH]! * MICRO);
+    const healthChanged = !!def.combat?.rivalry && v.max[V_HEALTH]! > 0 && healthMax !== v.max[V_HEALTH];
+    if (healthChanged) {
+      v.rebase(this.world.tick);
+      v.value[V_HEALTH] = Math.round(v.value[V_HEALTH]! / v.max[V_HEALTH]! * healthMax);
+      this.records.dirty.add(rec.pid);
+    }
+    this.healthApplied.set(rec, health);
     for (let i = 0; i < V_COUNT; i++) v.max[i] = Math.round(max[i]! * MICRO);
     if (!inWorld) {
       // The server stopped while it was in the world, so its clock was saved running. Stop it and save that.
@@ -233,7 +256,7 @@ export class Survival {
       }
       return;
     }
-    if (this.rerate) {
+    if (this.rerate || healthChanged) {
       this.update(rec);
       return;
     }

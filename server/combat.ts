@@ -3,12 +3,16 @@
 
 import type { CorpseImpact } from "../shared/anim/corpse.ts";
 import { HUMAN } from "../shared/anim/human.ts";
+import type { PackRig } from "../shared/pack/pack.ts";
+import { SeatedSoles } from "./rider-soles.ts";
+import { SeatedGrips } from "./rider-grips.ts";
 import { SLOT_OF_ZONE, ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { AnimState, bodySeed } from "../shared/anim/pose.ts";
+import { IMPALE_SLOT } from "../shared/sim/seats.ts";
+import { RIDER_TARGET_FLOATS } from "../shared/anim/rider-controls.ts";
 import { BODY_REACH, BODY_REACH_Y, rayBody } from "../shared/anim/zones.ts";
 import { OccupantBody, clipSeatEye, createOccupantSeat, occupantSeat } from "../shared/anim/occupant.ts";
-import type { PackRig } from "../shared/pack/pack.ts";
-import { SEAT_FLOATS, saddleSeat, seatOn } from "../shared/anim/seat.ts";
+import { SEAT_FLOATS, riderTargets, saddleSeat, seatOn } from "../shared/anim/seat.ts";
 import { rayCreature, type CreatureAnim } from "../shared/anim/creature.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
 import { boatDrives } from "../shared/sim/vehicle.ts";
@@ -16,10 +20,10 @@ import { rayVehicle, rayVehicleCover } from "../shared/sim/vehicle-frame.ts";
 import { quatRotate } from "../shared/math/quat.ts";
 import { TAU } from "../shared/math/scalar.ts";
 import { zoneHit } from "../shared/anim/skeleton.ts";
-import type { SpeciesDef } from "../shared/content/defs.ts";
+import type { CreatureAttackDef, CreatureModeDef, SpeciesDef } from "../shared/content/defs.ts";
 import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, S_EVENT } from "../shared/net/protocol.ts";
 import { BTN_MOD, stanceEye } from "../shared/sim/character.ts";
-import { DMG_EXPLOSIVE, DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
+import { DAMAGE_TYPES, DMG_EXPLOSIVE, DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
 import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON, QUALITY_MUL } from "../shared/sim/items.ts";
 import { TICK_DT, TICK_RATE } from "../shared/coords.ts";
@@ -41,6 +45,7 @@ import type { Lists } from "./settings/lists.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import { STAT_MELEE, statOf, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
+import { creatureSize } from "./young-move.ts";
 import type { EventData } from "./api/module.ts";
 import { event, type Bus } from "./events/bus.ts";
 
@@ -160,10 +165,17 @@ export class Combat {
   readonly last: Blow = { by: 0, victim: 0, zone: 0, damage: 0, blocked: 0, wear: 0, killed: false };
 
   private readonly ctx: CombatContext;
+  private readonly soles: SeatedSoles;
+  private readonly grips: SeatedGrips;
   private readonly survivor: number;
   /** A second entity the cast in progress skips: the rider of the creature that is biting. -1 for none. */
   private spare = -1;
   private biting = false;
+  private contactPadding = 0;
+  /** After a successful creature contact, for its slow, impulse and temporary attachment. */
+  onCreatureHit: ((by: EntityRecord, target: number, attack: CreatureAttackDef, mode: CreatureModeDef | undefined) => void) | null = null;
+  damageModifier: ((rec: EntityRecord) => number) | null = null;
+  resistanceModifier: ((rec: EntityRecord) => number) | null = null;
   private readonly human: Uint8Array;
   /** Vehicle origins can be in an adjacent chunk even when their hull touches a ray. */
   private readonly vehicleReach: Float32Array;
@@ -185,6 +197,7 @@ export class Combat {
   private readonly eyeAt = new Float64Array(3);
   private readonly eyePast = new Past();
   private readonly eyeNow = new Past();
+  private readonly riderFit = new Float64Array(RIDER_TARGET_FLOATS);
   private readonly rolls: Roll[] = [];
   private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, silenced: false };
   /** Content index of the tranquilized buff. Each hit with torpor over time gives one, carrying its strength. */
@@ -224,6 +237,8 @@ export class Combat {
   private readonly lagConn: (Client["conn"] | undefined)[] = [];
 
   constructor(ctx: CombatContext, seed: number) {
+    this.soles = new SeatedSoles(ctx.world.reg, ctx.rigs ?? []);
+    this.grips = new SeatedGrips(ctx.world.reg, ctx.rigs ?? []);
     this.ctx = ctx;
     this.occupant = new OccupantBody(ctx.rigs);
     const reg = ctx.world.reg;
@@ -379,6 +394,38 @@ export class Combat {
     if (wear && !toggle && (inv.flags[slot]! & FLAG_ON) !== 0 && items.attachmentOf(inv, slot) === "light" && this.ctx.world.reg.uses[inv.item[slot]!]! > 0) items.wear(rec, slot, 1);
   }
 
+  /** A sphere swept against one body's current posed hit zones. */
+  creatureTest(target: number, from: readonly [number, number, number], to: readonly [number, number, number], radius: number): { zone: number; distance: number } | null {
+    const dx = to[0] - from[0], dy = to[1] - from[1], dz = to[2] - from[2], length = Math.hypot(dx, dy, dz);
+    this.near[0] = target; this.t = Math.max(0.00001, length); this.zone = ZONE_NONE;
+    this.at = -1; this.sweep = 0; this.span = this.t; this.contactPadding = radius;
+    const found = this.castNear(1, from[0], from[1], from[2], length > 0 ? dx / length : 1, length > 0 ? dy / length : 0, length > 0 ? dz / length : 0);
+    this.contactPadding = 0;
+    return found < 0 ? null : { zone: this.zone, distance: this.t };
+  }
+
+  creatureContact(by: EntityRecord, target: number, attack: CreatureAttackDef, mode: CreatureModeDef | undefined, point: readonly [number, number, number], zone: number, power: number, ongoing = false, base = attack.damage * power): void {
+    const world = this.ctx.world, ents = world.ents;
+    const src: Source = { by, x: by.x, z: by.z, item: 0, base, type: DAMAGE_TYPES.indexOf(attack.type), quality: 1, draw: 1,
+      attack: statOf(world.reg.defs[by.kind] as SpeciesDef, by.genome, STAT_MELEE, 1), torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, pierce: mode?.pierce ?? attack.pierce ?? 0 };
+    const e = this.ctx.records.entOf.get(by.pid);
+    if (e === undefined) return;
+    src.x = ents.x[e]!; src.z = ents.z[e]!;
+    const hits = this.hits;
+    this.land(src, target, zone, point[0], point[1], point[2], 0, undefined, !ongoing);
+    if (!ongoing && this.hits > hits && this.last.damage > 0 && !this.last.killed) this.onCreatureHit?.(by, target, attack, mode);
+  }
+
+  creatureStructure(by: EntityRecord, ref: number, attack: CreatureAttackDef, mode: CreatureModeDef | undefined, point: readonly [number, number, number], power: number): void {
+    const world = this.ctx.world, e = this.ctx.records.entOf.get(by.pid);
+    if (e === undefined) return;
+    this.hitStructure({ by, x: world.ents.x[e]!, z: world.ents.z[e]!, item: 0, base: attack.damage * power,
+      type: DAMAGE_TYPES.indexOf(attack.type), quality: 1, draw: 1,
+      attack: statOf(world.reg.defs[by.kind] as SpeciesDef, by.genome, STAT_MELEE, 1),
+      torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, pierce: mode?.pierce ?? attack.pierce ?? 0,
+    }, ref, point[0], point[1], point[2]);
+  }
+
   bite(e: number): void {
     const rec = this.ctx.records.byPid.get(this.ctx.world.ents.pid[e]!);
     if (rec) this.strikeBy(e, rec, null);
@@ -405,10 +452,12 @@ export class Combat {
     const blow = (held === W_BOW || held === W_GUN) && reg.blowDamage[item]! > 0;
     if (inv && item !== 0 && ((held !== W_MELEE && !blow) || (reg.uses[item]! > 0 && inv.dur[slot]! === 0))) item = 0;
     const butt = blow && item !== 0;
-    const reach = butt ? reg.blowReach[item]! : reg.reach[item !== 0 ? item : kind]!;
+    const size = c === null ? creatureSize(world, e) : 1;
+    const reach = (butt ? reg.blowReach[item]! : reg.reach[item !== 0 ? item : kind]!) * size;
     const d = this.dir;
     lookDirection(ents.yaw[e]!, ents.pitch[e]!, d);
-    this.eye(e, this.eyeAt);
+    // A young creature's eye height scales with its size.
+    if (!this.eye(e, this.eyeAt) && size !== 1) this.eyeAt[1] = ents.y[e]! + stanceEye(reg.move[kind]!, ents.stance[e]!) * size;
     const ox = this.eyeAt[0]!, oy = this.eyeAt[1]!, oz = this.eyeAt[2]!;
     const what = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach);
     const ref = rayHit.ref;
@@ -417,7 +466,7 @@ export class Combat {
     const rider = c === null ? (this.riderOf?.(rec) ?? null) : null;
     this.spare = rider ? (this.ctx.records.entOf.get(rider.pid) ?? -1) : -1;
     this.biting = c === null;
-    const target = this.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, what === HIT_NONE ? reach : worldT, SWING_WIDTH);
+    const target = this.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, what === HIT_NONE ? reach : worldT, SWING_WIDTH * size);
     this.biting = false;
     this.spare = -1;
     // A dead creature's body nearer than any living one and anything built. Only a survivor's swing harvests one yet.
@@ -771,8 +820,17 @@ export class Combat {
       const seat = saddleSeat(world.reg, was.saddle, was.seatSlot);
       if (!seat) return false;
       const st = this.mountSt; st.unpack(was.hostAnim, was.hostCue); st.seed = bodySeed(host);
-      seatOn(this.anims[was.hostKind] ?? null, seat, st, tick, was.hostX, was.hostY, was.hostZ, was.hostYaw * TAU / 65536, this.seatAt);
-      this.occupant.saddle(world.anim, this.st, poseTick, this.seatAt, seat.driver === true, yaw, rest);
+      const anim = this.anims[was.hostKind] ?? null;
+      seatOn(anim, seat, st, tick, was.hostX, was.hostY, was.hostZ, was.hostYaw * TAU / 65536, this.seatAt, world);
+      let soles: Float64Array | null = null, grips: Float64Array | null = null;
+      const fitted = anim !== null && riderTargets(anim.rig, anim.rig.solved, seat, this.riderFit);
+      const rec = fitted ? this.ctx.records.byPid.get(world.ents.pid[i]!) : undefined;
+      if (rec) {
+        const gear = world.ents.gears.get(i);
+        soles = this.soles.of(rec, gear);
+        grips = this.grips.of(rec, gear, this.riderFit);
+      }
+      this.occupant.saddle(world.anim, this.st, poseTick, this.seatAt, seat.driver === true, yaw, rest, fitted ? this.riderFit : null, soles, grips);
     }
     return true;
   }
@@ -841,7 +899,8 @@ export class Combat {
         st.unpack(past.anim, past.cue);
         st.seed = bodySeed(i);
         const seated = this.seated(i, past, tick);
-        const zone = seated ? this.occupant.ray(rx, ry, rz, ux, uy, uz, reach) : rayBody(world.anim, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach);
+        const zone = seated ? this.occupant.ray(rx, ry, rz, ux, uy, uz, reach, this.contactPadding)
+          : rayBody(world.anim, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach, this.contactPadding, past.seatSlot === IMPALE_SLOT);
         if (zone !== ZONE_NONE && zoneHit.t < reach) {
           this.t = zoneHit.t * scale;
           this.zone = zone;
@@ -855,8 +914,8 @@ export class Combat {
         const size = world.ents.grown[i] !== 0 ? youngScale(reg.birthScale[kind]!, world.ents.span[i]!, world.ents.grown[i]!, tick) : 1;
         const zone =
           size === 1
-            ? rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach)
-            : rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, past.x + (rx - past.x) / size, past.y + (ry - past.y) / size, past.z + (rz - past.z) / size, ux, uy, uz, reach / size);
+            ? rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach, this.contactPadding, world)
+            : rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, past.x + (rx - past.x) / size, past.y + (ry - past.y) / size, past.z + (rz - past.z) / size, ux, uy, uz, reach / size, this.contactPadding / size, world, size);
         if (zone !== ZONE_NONE && zoneHit.t * size < reach) {
           this.t = zoneHit.t * size * scale;
           this.zone = zone;
@@ -914,6 +973,10 @@ export class Combat {
    * survivors, tames or structures. A team's own side is spared everything but explosions, unless a rule spares those
    * too or spares nothing. The wild, and what a record does to itself, are never spared.
    */
+  creatureHostile(by: EntityRecord, victim: EntityRecord): boolean {
+    return by !== victim && (by.team === 0 || victim.team !== by.team) && !this.spared(by, victim.team, DMG_MELEE, false);
+  }
+
   private spared(by: EntityRecord | null, team: number, type: number, self: boolean): boolean {
     if (!by || self || by.team === 0 || team === 0) return false;
     const rules = this.ctx.rules;
@@ -945,7 +1008,7 @@ export class Combat {
   }
 
   /** `far` is metres from where `src` came. The harm applies to the body as it is now, even when the hit was judged at an earlier tick. */
-  land(src: Source, target: number, zone: number, x: number, y: number, z: number, far: number, impact?: CorpseImpact): void {
+  land(src: Source, target: number, zone: number, x: number, y: number, z: number, far: number, impact?: CorpseImpact, present = true): void {
     const { world, records, items, survival, creatures, buffs } = this.ctx;
     const ents = world.ents;
     const reg = world.reg;
@@ -960,8 +1023,8 @@ export class Combat {
     hit.quality = src.quality;
     hit.draw = src.draw;
     hit.far = src.far ?? 1;
-    hit.attack = src.attack * (by ? buffs.dealtOf(by) : 1);
-    hit.resist = buffs.takenOf(victim);
+    hit.attack = src.attack * (by ? buffs.dealtOf(by) * (this.damageModifier?.(by) ?? 1) : 1);
+    hit.resist = buffs.takenOf(victim) * (this.resistanceModifier?.(victim) ?? 1) * (reg.combat[vkind]?.modes?.[ents.creatureMode[target]!] ?.damageTaken ?? 1);
     hit.torporInstant = src.torporInstant;
     hit.torporOver = src.torporOver;
     hit.pierce = src.pierce ?? 0;
@@ -1035,6 +1098,7 @@ export class Combat {
       }
     }
 
+    if (!present && !killed) return;
     const game = this.ctx.game;
     const shown = Math.min(65535, Math.max(taken > 0 ? 1 : 0, Math.round(taken)));
     const ac = by ? this.clientOf(by.pid) : null;
@@ -1084,7 +1148,7 @@ export class Combat {
     hit.quality = src.quality;
     hit.draw = src.draw;
     hit.far = src.far ?? 1;
-    hit.attack = src.attack * (src.by ? buffs.dealtOf(src.by) : 1);
+    hit.attack = src.attack * (src.by ? buffs.dealtOf(src.by) * (this.damageModifier?.(src.by) ?? 1) : 1);
     hit.takes = takes[src.type]!;
     // The weapon's own factor against what is built (D435): the grenade's 175 to a body is the Table of explosives' 788 to wood.
     hit.structures = world.reg.structureMul[src.item] ?? 1;

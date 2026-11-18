@@ -5,7 +5,7 @@
 import { REGION_BASE, EYE_BASE, EYE_COLORS, HAIR_BASE, HAIR_COLORS, SKIN_BASE, SKIN_TONES } from "../pack/palette.ts";
 import type { Rng } from "../rng.ts";
 import {
-  B_CHEST, B_FINGERS_L, B_FINGERS_R, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_LOWER_LEG_L, B_LOWER_LEG_R,
+  B_CHEST, B_FINGERS_L, B_FINGERS_R, B_FINGERTIPS_L, B_FINGERTIPS_R, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_LOWER_LEG_L, B_LOWER_LEG_R,
   B_NECK, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_THUMB_L, B_THUMB_R, B_TOE_L, B_TOE_R, B_UPPER_ARM_L, B_UPPER_ARM_R,
   B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN_BONES,
 } from "./human.ts";
@@ -85,7 +85,7 @@ export const REGIONS: readonly Region[] = [
   { label: "Lower arm", bones: pair(B_LOWER_ARM_L, B_LOWER_ARM_R, Y | Z, 0.2) },
   {
     label: "Hands",
-    bones: [...pair(B_HAND_L, B_HAND_R, X | Y | Z, 0.15), ...pair(B_FINGERS_L, B_FINGERS_R, X | Y | Z, 0.15), ...pair(B_THUMB_L, B_THUMB_R, X | Y | Z, 0.15), ...pair(B_PROP_L, B_PROP_R, X | Y | Z, 0.15)],
+    bones: [...pair(B_HAND_L, B_HAND_R, X | Y | Z, 0.15), ...pair(B_FINGERS_L, B_FINGERS_R, X | Y | Z, 0.15), ...pair(B_FINGERTIPS_L, B_FINGERTIPS_R, X | Y | Z, 0.15), ...pair(B_THUMB_L, B_THUMB_R, X | Y | Z, 0.15), ...pair(B_PROP_L, B_PROP_R, X | Y | Z, 0.15)],
   },
   { label: "Leg length", bones: [...pair(B_UPPER_LEG_L, B_UPPER_LEG_R, Y, 0.08), ...pair(B_LOWER_LEG_L, B_LOWER_LEG_R, Y, 0.08)] },
   { label: "Upper leg", bones: pair(B_UPPER_LEG_L, B_UPPER_LEG_R, X | Z, 0.18) },
