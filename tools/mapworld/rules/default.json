@@ -1669,7 +1669,7 @@
       "pile-up"
     ],
     "cars": {
-      "about": "A car part's family picks a look by these weights, and a painted look a paint by its weight (1 where unlisted). Cells of `cell` metres where a fire went through, a share `fires` of them, take `fire` in place of any family. A share `slewed` of kerbside cars stand out of line. `parked`: drivable cars per kilometre of street of the classes, at least and at most so many a district, `apart` metres from each other, `junction` metres from one, `clear` metres of margin round body and doors, and `fromSpawn` metres from a spawn point or an obelisk. `lots`: a district first takes up to `perDistrict` car parks, a road of the lot classes each, holding `least` to `most` cars `apart` metres from each other. Each place's kind is drawn by the weights of `kinds`, changed by the district's style in `styles` and then by its name in `districts` (0 takes a kind out). A share `hurt.share` of the cars have their condition rolled in `hurt.condition`, the rest are whole; each car's fuel is rolled in a band of `fuel`, [from, to, weight], as fractions of its tank.",
+      "about": "A car part's family picks a look by these weights, and a painted look a paint by its weight (1 where unlisted). Cells of `cell` metres where a fire went through, a share `fires` of them, take `fire` in place of any family. A share `slewed` of kerbside cars stand out of line. `parked`: drivable cars per kilometre of street of the classes, at least and at most so many a district, `apart` metres from each other, `junction` metres from one, `clear` metres of margin round body and doors, and `fromSpawn` metres from a spawn point or an obelisk. `lots`: a district first takes up to `perDistrict` car parks, a road of the lot classes each, holding `least` to `most` cars `apart` metres from each other; a stall takes a kind no longer than `stall` metres. Each place's kind is drawn by the weights of `kinds`, changed by the district's style in `styles` and then by its name in `districts` (0 takes a kind out). A share `hurt.share` of the cars have their condition rolled in `hurt.condition`, the rest are whole; each car's fuel is rolled in a band of `fuel`, [from, to, weight], as fractions of its tank.",
       "cell": 160,
       "fires": 0.18,
       "slewed": 0.15,
@@ -1682,7 +1682,7 @@
       "paints": { "white": 4, "silver": 4, "black": 3, "red": 2, "blue": 2 },
       "parked": {
         "perKm": 0.4, "least": 2, "most": 4, "apart": 150, "junction": 15, "clear": 1, "fromSpawn": 40, "classes": ["S1400", "S1200"],
-        "lots": { "classes": ["S1780"], "least": 2, "most": 4, "apart": 9, "perDistrict": 2 },
+        "lots": { "classes": ["S1780"], "least": 2, "most": 4, "apart": 9, "perDistrict": 2, "stall": 6 },
         "kinds": { "core:compact": 40, "core:caravan": 24, "core:fastback": 18, "core:panel_van": 12, "core:veloce": 3, "core:berlinetta": 3, "core:patrol_sedan": 3, "core:patrol_jeep": 2, "core:taxi": 6, "core:muscle_car": 3 },
         "styles": {
           "industrial": { "core:tanker": 5, "core:semi": 5, "core:monster_truck": 3, "core:bus": 2, "core:panel_van": 45, "core:caravan": 10, "core:fastback": 6, "core:veloce": 0, "core:berlinetta": 0 },

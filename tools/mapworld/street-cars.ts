@@ -20,7 +20,8 @@ export interface Cars {
   looks: Record<string, [string, number][]>; paints: Record<string, number>;
   parked: {
     perKm: number; least: number; most: number; apart: number; junction: number; clear: number; fromSpawn: number; classes: string[];
-    lots: { classes: string[]; least: number; most: number; apart: number; perDistrict: number };
+    /** `stall`: metres a body may be long to stand in a stall, which is 5 m deep before its aisle (tools/mapdata/streets.py). */
+    lots: { classes: string[]; least: number; most: number; apart: number; perDistrict: number; stall: number };
     kinds: Mix; styles: Record<string, Mix>; districts: Record<string, Mix>;
     hurt: { share: number; condition: [number, number] };
     /** Bands of a tank's fraction as [from, to, weight]. */
@@ -168,11 +169,11 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
   const STREETS = new Set<number>([S.STREET, S.HIGHWAY]);
   // A lot's car stands in its stall, on the lot's ground or its aisle's.
   const LOT_GROUND = new Set<number>([S.LOT, S.STREET]);
-  /** A car of a kind drawn for its district at (x, z), nose along (dx, dz), if every test passes there. */
-  const tryPlace = (x: number, z: number, dx: number, dz: number, lot: boolean, line: number, under: ReadonlySet<number>, chosen?: string): void => {
+  /** A car of a kind drawn for its district at (x, z), nose along (dx, dz), among those no longer than `longest`, if every test passes there. */
+  const tryPlace = (x: number, z: number, dx: number, dz: number, lot: boolean, line: number, under: ReadonlySet<number>, chosen?: string, longest = Infinity): void => {
     const index = ground.district[at(x, z)]!; const district = site.world.districts[index - 1]?.name ?? "";
     if (!district) return;
-    const mix = mixOf(index); if (mix.length === 0) return;
+    const mix = mixOf(index).filter(([v]) => v.def.spec.halfLength * 2 <= longest); if (mix.length === 0) return;
     const id = chosen ?? pick(mix, hash3(Math.round(z), Math.round(x), seed + 1207)).id; const room = rooms.get(id)!; const { spec } = room;
     if (Math.min(x - x0, z - z0, x1 - x, z1 - z) < room.reach) return;
     const yaw = Math.atan2(dx, dz); const c = Math.cos(yaw); const sn = Math.sin(yaw);
@@ -199,7 +200,7 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
     const x = x1 - (st.e - west); const z = z1 - (north - st.n);
     const fx = x1 - (st.fe - west); const fz = z1 - (north - st.fn);
     const span = Math.hypot(fx - x, fz - z) || 1;
-    tryPlace(x, z, (fx - x) / span, (fz - z) / span, true, lotLine.get(st.lot)!, LOT_GROUND);
+    tryPlace(x, z, (fx - x) / span, (fz - z) / span, true, lotLine.get(st.lot)!, LOT_GROUND, undefined, rules.lots.stall);
   }
   for (const s of roads.segments) {
     const lot = rules.lots.classes.includes(s.mtfcc);

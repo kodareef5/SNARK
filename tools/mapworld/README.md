@@ -276,7 +276,10 @@ by `street.cars.parked`:
   kind out. The place is then tested for that kind alone.
 - At the kerb on the right of travel of a centreline of the listed classes (local
   and secondary streets), or of a car park's road (`lots.classes`), turned along
-  it, on street ground, its room inside the map.
+  it, on street ground, its room inside the map. Where the streets stage drew a
+  car park's stalls (`base/stalls.json`), its cars stand in them instead, nose to
+  the aisle, each drawn among the kinds no longer than `lots.stall` (6 m): a bus
+  or a truck parks at a kerb, never in a stall.
 - At least 15 m from a junction (a point two lines share, or a line's end).
 - Clear of every static's boxes, the wrecks' too, and of every reserved route, by
   the kind's envelope plus 1 m and plus the door room its seats need (the
