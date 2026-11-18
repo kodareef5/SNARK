@@ -11,7 +11,14 @@ export interface Recipe {
   bay: number; height: number; retain: number; holes: number; wall: number; accent: RuinFinish; feature: string; play: string;
 }
 interface Modifier { match: string; accent?: RuinFinish; finish?: RuinFinish; feature?: string; retain?: number; holes?: number; meaning: string; }
-export interface Form { plan?: string; marker?: string; terrace?: number; setbacks?: number; shell: string; inside: string; roof: string; front: string; windowEvery: number; }
+export interface Form { plan?: string; marker?: string; terrace?: number; setbacks?: number; shell: string; inside: string; roof: string; front: string; windowEvery: number; facade?: Facade; }
+/**
+ * The modules of an 8 m bay's outer walls, the same in every bay of a storey: the ground floor's (`gate` at a way in, else
+ * an open way in as before, and `shutter` in one bay of four), the floors' and the top storey's (`groundTop` where the
+ * ground floor is the top, else the ground floor's under a parapet), four storeys at once above the playable floors
+ * (`stack`, `stackTop`). With `ends`, a long block's short ends are blank walls.
+ */
+export interface Facade { ground: RuinShape; floor: RuinShape; top: RuinShape; groundTop?: RuinShape; gate?: RuinShape; shutter?: RuinShape; stack: RuinShape; stackTop: RuinShape; ends?: boolean; }
 /**
  * A part is a box of the kit in a finish ("finish" for the building's), or "car" and the family of cars it is one of. A
  * street assembly with `kerb` is set that far in from the kerb along the street (ruins.ts makeStreetPieces).

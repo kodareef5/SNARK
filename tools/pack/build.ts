@@ -79,8 +79,9 @@ function eggMesh(): SourceMesh {
  * corner is in one of the other parts is left out, as a flight's treads hide each other's backs.
  */
 function partsMesh(boxes: readonly ShapeBox[], hulls: readonly HullDef[], cull = false): SourceLod {
-  // Each part as its faces, each face its corners round it seen from outside.
+  // Each part as its faces, each face its corners round it seen from outside; and its colour, the instance's where it has none.
   const parts: number[][][][] = [];
+  const colour = [...boxes.map((b) => b.color ?? REGION_BASE), ...hulls.map(() => REGION_BASE)];
   for (const b of boxes) {
     const one = boxMesh(b.half, REGION_BASE);
     const at = (v: number): number[] => [0, 1, 2].map((a) => one.positions[v * 3 + a]! + b.at[a]!);
@@ -103,16 +104,17 @@ function partsMesh(boxes: readonly ShapeBox[], hulls: readonly HullDef[], cull =
       return n[0]! * (q[0]! - a[0]!) + n[1]! * (q[1]! - a[1]!) + n[2]! * (q[2]! - a[2]!) <= 1e-6 * Math.hypot(n[0]!, n[1]!, n[2]!);
     });
   const positions: number[] = [];
+  const colors: number[] = [];
   const indices: number[] = [];
   parts.forEach((faces, i) => {
     for (const face of faces) {
       if (cull && parts.some((other, j) => j !== i && face.every((q) => inside(other, q)))) continue;
       const first = positions.length / 3;
-      for (const q of face) positions.push(q[0]!, q[1]!, q[2]!);
+      for (const q of face) positions.push(q[0]!, q[1]!, q[2]!), colors.push(colour[i]!);
       for (let k = 2; k < face.length; k++) indices.push(first, first + k - 1, first + k);
     }
   });
-  return { positions: Float32Array.from(positions), colors: new Uint8Array(positions.length / 3).fill(REGION_BASE), indices: Uint32Array.from(indices) };
+  return { positions: Float32Array.from(positions), colors: Uint8Array.from(colors), indices: Uint32Array.from(indices) };
 }
 
 /** A palette box standing on the entity's origin. */
@@ -135,9 +137,10 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
       if (shape?.type !== "shape") continue;
       const walked = partsMesh(shape.boxes, shape.hulls ?? []);
       // A shape drawn otherwise than it is walked, a flight's treads over its ramp, is drawn as walked at its coarsest level.
-      // Its look is the first two, since low poly draws from the second.
+      // Its look is the first two, since low poly draws from the second. One whose look has parts of their own colours, a
+      // facade module, is its look at every level, as the near city's mesh draws it: walked, its recesses are a flat wall.
       const look = shape.look ? partsMesh(shape.look.boxes ?? [], shape.look.hulls ?? [], true) : null;
-      meshes.push({ id: d.id, lods: look ? [look, look, walked] : [walked] });
+      meshes.push({ id: d.id, lods: look ? [look, look, shape.look!.boxes?.some((b) => b.color) ? look : walked] : [walked] });
       continue;
     }
     if ((d.type !== "species" && d.type !== "structure" && d.type !== "prop" && d.type !== "node") || d.mesh !== "box") continue;

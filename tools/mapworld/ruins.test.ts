@@ -7,14 +7,15 @@ import { Body, stepBody } from "../../shared/sim/character.ts";
 import { flatWorld } from "../../tests/fixtures/world.ts";
 import { gridAt } from "./base.ts";
 import { Mason, tilesOf, worldPoint, type Frame } from "./ruin-geometry.ts";
-import { stack, tower } from "./ruin-layouts.ts";
+import { layout, stack, tower } from "./ruin-layouts.ts";
 import { extendRules, vocabulary, type Rule } from "./ruin-vocabulary.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
-import { RUIN_SHAPES } from "../../content/ruins.ts";
+import { RUIN_BREAKS, RUIN_SHAPES } from "../../content/ruins.ts";
 import { WRECK_KINDS } from "../../content/vehicles/wrecks.ts";
 import { extentOf, meets, type Box } from "./ruin-obstacles.ts";
 import { carPicker } from "./street-cars.ts";
-import { CityStatics, cellPart } from "../../shared/world/city.ts";
+import { CityStatics, boxPart, cellPart } from "../../shared/world/city.ts";
+import { chunkAt } from "../../shared/coords.ts";
 
 const source = process.env.MAPWORLD_TEST_SOURCE ?? readdirSync("assets/source/maps").map((name) => `assets/source/maps/${name}`).find((path) => existsSync(`${path}/ruins/vocabulary.json`))!;
 const rule: Rule = { recipe: "tower", height: 24, finish: "concrete", feature: "frame", holes: .35, wall: .35, bay: 8, matched: [], provisional: true };
@@ -311,4 +312,78 @@ test("a crowded tower fallback keeps a reachable stump when its footprint centre
   expect(m.entries.length).toBe(2);
   expect(m.pieces.length).toBeLessThan(150);
   expect(m.routes[0]!.x).toBeLessThan(104);
+});
+
+test("a facade module is walked as its few boxes and drawn with its parts in their own colours", () => {
+  const w = flatWorld(4);
+  const kind = w.kind("core:zruin_zbalc_limestone");
+  // Its balcony's slab, front and two end returns, and the wall behind.
+  expect(w.reg.parts.start[kind + 1]! - w.reg.parts.start[kind]!).toBe(5);
+  const city = new CityStatics(w.dims, [{ kind: "core:zruin_zbalc_limestone", x: 96, y: 4, z: 96, yaw: 0 }], w.reg);
+  const colours = new Set(boxPart(city, chunkAt(w.dims, 96, 96), w.hf, () => null).color);
+  // The building's limestone and its darker soffits, the coral wall behind the balconies and its dark openings.
+  expect([...colours].sort((a, b) => a - b)).toEqual([10, 83, 101, 113]);
+});
+
+test("a block of flats repeats its balcony bay on every whole floor, with a different ground floor, blank ends and a capped top", () => {
+  const v = vocabulary(source);
+  const f: Frame = { ...frame(0), width: 48, depth: 24, rings: [[[-24, -12], [24, -12], [24, 12], [-24, 12], [-24, -12]]] };
+  const shape = (p: { kind: string }): string => p.kind.split("_")[1]!;
+  for (const seed of [3, 41]) {
+    const m = new Mason(f, 0);
+    layout(m, { ...rule, recipe: "apartment", height: 24, finish: "limestone", form: v.forms.apartment, formName: "apartment", collapse: "shear", damage: v.damage.shear, assemblies: v.assemblies, interiors: v.interiors }, { seed, playable: 8, detail: 0 });
+    const on = (name: string): { y: number }[] => m.pieces.filter((p) => shape(p) === name);
+    // Six storeys, the front and back six bays long, a corner failed: the same bay on the four floors between ground and
+    // top, all but the bay beside the failure whole on each.
+    const floors = new Map<number, number>();
+    for (const p of on("zbalc")) floors.set(Math.floor(p.y / 4), (floors.get(Math.floor(p.y / 4)) ?? 0) + 1);
+    expect([...floors.keys()].sort()).toEqual([1, 2, 3, 4]);
+    expect([...floors.values()].every((n) => n === 11)).toBe(true);
+    expect(on("zlobby").length).toBeGreaterThanOrEqual(8);
+    expect(on("zbalctop").length).toBe(11);
+    expect(on("zbalctop").every((p) => p.y > 20)).toBe(true);
+    // The short ends are blank, their top storey under a parapet; no loose balcony of the old kit is left.
+    expect(on("zpaneltop").length).toBeGreaterThanOrEqual(4);
+    expect(on("zbalcony")).toEqual([]);
+  }
+});
+
+test("a failed corner is traced: slab ends at each floor beside it, and one column's broken head over the slab it held", () => {
+  const v = vocabulary(source);
+  const reg = flatWorld().reg;
+  const f: Frame = { ...frame(0), width: 48, depth: 24, rings: [[[-24, -12], [24, -12], [24, 12], [-24, 12], [-24, -12]]] };
+  for (const collapse of ["shear", "pancake", "facade"]) {
+    const m = new Mason(f, 0);
+    layout(m, { ...rule, recipe: "apartment", height: 24, finish: "limestone", form: v.forms.apartment, formName: "apartment", collapse, damage: v.damage[collapse], assemblies: v.assemblies, interiors: v.interiors }, { seed: 3, playable: 8, detail: 0 });
+    const shapes = m.pieces.map((p) => p.kind.split("_")[1]!);
+    expect(m.pieces.filter((p) => !reg.index.has(p.kind))).toEqual([]);
+    expect(shapes.filter((s) => s.startsWith("zend")).length).toBeGreaterThan(2);
+    expect(shapes.filter((s) => s === "zstub").length).toBe(1);
+    expect(shapes.filter((s) => s === "zfallen").length).toBe(1);
+  }
+  // The head's teeth and the fallen slab's are one break: the same widths in the same order, the slab four times as wide.
+  const across = (shape: { look?: { hulls?: readonly { corners: readonly (readonly number[])[] }[] } }, from: number): number[] => shape.look!.hulls!.slice(from).map((h) => Math.max(...h.corners.map((c) => c[0]!)) - Math.min(...h.corners.map((c) => c[0]!)));
+  expect(across(RUIN_BREAKS.zfallen, 1).map((w) => Math.round(w * 100))).toEqual(across(RUIN_BREAKS.zstub, 0).map((w) => Math.round(w * 400)));
+});
+
+test("a survivor and the heaviest walkers go up and down a garage's ramp and a fallen slab, and back", () => {
+  for (const [shape, finish, rise] of [["zdeckramp", "concrete", 2], ["zfallen", "concrete", 1.5]] as const) {
+    for (const walker of ["core:survivor", "core:trike", "core:stego"]) {
+      const f = frame(157); const m = new Mason(f, 0); const size = RUIN_SHAPES[shape];
+      m.put(shape, 0, size[1] / 2, 0, finish);
+      const w = flatWorld(4); const p = m.pieces[0]!;
+      w.structs.add(w.kind(p.kind), p.x, p.y, p.z, Math.round(p.yaw * 65536 / 360) & 65535, 0, 1);
+      const params = w.reg.move[w.kind(walker)]!; const b = new Body();
+      [b.x, b.z] = m.point(0, -size[2] / 2 - 2); b.y = 0; b.grounded = true;
+      const go = (v: number): void => {
+        const [x, z] = m.point(0, v);
+        for (let tick = 0; tick < 400 && Math.hypot(b.x - x, b.z - z) > .3; tick++) stepBody(w, b, 0, 90, Math.round(Math.atan2(x - b.x, z - b.z) * 65536 / (2 * Math.PI)) & 65535, 0, 0, params, TICK_DT);
+        for (let tick = 0; tick < 30; tick++) stepBody(w, b, 0, 0, 0, 0, 0, params, TICK_DT);
+      };
+      go(size[2] / 2 - 1.2);
+      expect([walker, shape, b.y > rise - .6]).toEqual([walker, shape, true]);
+      go(-size[2] / 2 - 2);
+      expect([walker, shape, Math.abs(b.y) < .1]).toEqual([walker, shape, true]);
+    }
+  }
 });

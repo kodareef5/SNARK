@@ -178,11 +178,13 @@ test("a real city's downtown at its three views on each tier: the near city's dr
   // and 78,520 triangles on the lit tiers while a chunk was in view by its pieces' box and 8 m round it at every level; by
   // the box its level's faces may reach, a box's their pieces' own, chunks at the view's edge drop out. Then they were
   // 22, 17 and 27 draws on the lit tiers and 13, 14 and 18 for touch in tiles of 3 by 3 chunks; in tiles of 4 by 4 there
-  // are fewer runs, and the touch rule's every box ends short of more tiles' nearest points.
+  // are fewer runs, and the touch rule's every box ends short of more tiles' nearest points. Cut again on 2026-11-18 when
+  // a building's bays came to wear their kind's facade modules (content/ruins.ts): the street on high was 41, 51 and
+  // 67,608 near and 15 and 57,036 far, the roof 37, 46, 66,988, 19 and 77,014, the air 51, 45, 77,364, 13 and 73,184.
   expect(got).toEqual({
-    "street-300": { lowpoly: [41, 0, 67608, 12, 41888], "medium, touch": [16, 10, 30454, 10, 32764], medium: [41, 22, 67608, 15, 57036], high: [41, 51, 67608, 15, 57036], ultra: [41, 58, 67608, 15, 57036] },
-    "roof-300": { lowpoly: [37, 0, 66988, 12, 51778], "medium, touch": [21, 7, 40724, 14, 48830], medium: [37, 24, 66988, 19, 76816], high: [37, 46, 66988, 19, 77014], ultra: [37, 57, 66988, 19, 77014] },
-    "air-300": { lowpoly: [51, 0, 77364, 11, 51268], "medium, touch": [22, 2, 47074, 10, 39132], medium: [51, 7, 77364, 13, 73184], high: [51, 45, 77364, 13, 73184], ultra: [51, 53, 77364, 13, 73184] },
+    "street-300": { lowpoly: [44, 0, 126242, 12, 78928], "medium, touch": [17, 9, 62778, 10, 37804], medium: [44, 21, 126242, 15, 112772], high: [44, 51, 126242, 15, 112772], ultra: [44, 57, 126242, 15, 112772] },
+    "roof-300": { lowpoly: [40, 0, 131204, 12, 94536], "medium, touch": [24, 7, 78598, 14, 55476], medium: [40, 23, 131204, 19, 144226], high: [40, 48, 131204, 19, 145914], ultra: [40, 59, 131204, 19, 145914] },
+    "air-300": { lowpoly: [54, 0, 145540, 11, 92988], "medium, touch": [25, 2, 86920, 9, 41328], medium: [54, 7, 145540, 13, 141406], high: [54, 49, 145540, 13, 141406], ultra: [54, 57, 145540, 13, 141406] },
   });
 });
 

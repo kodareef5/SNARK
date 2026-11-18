@@ -301,6 +301,8 @@ export interface FlyFacet {
 export interface ShapeBox {
   readonly at: readonly [number, number, number];
   readonly half: readonly [number, number, number];
+  /** In a look only: a palette colour of its own in place of its piece's, such as a pane's or a rail's. */
+  readonly color?: number;
 }
 
 /** The role decides what a piece may join and what may join it. */
@@ -372,6 +374,8 @@ export interface StructureDef extends Named {
    */
   readonly mesh: string;
   readonly color: number;
+  /** A fixed palette colour for its faces that look down, drawn as its form (shared/world/city.ts): a slab's darker soffit. */
+  readonly under?: number;
   /** Half extents in metres of the box that holds all of it, centred on the structure's position. Without a shape, this box is its collider. */
   readonly half: readonly [number, number, number];
   /** A shape id, if it is more than one box or not centred on its origin. `half` must equal the box that holds the shape. */
