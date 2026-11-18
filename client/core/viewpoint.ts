@@ -58,7 +58,7 @@ export class CockpitLook {
 const BACK = 3.4;
 const SIDE = 0.55;
 const RISE = 0.25;
-/** Metres from the eye the orbit sits before the wheel moves it: third person's, so a start from there only centres it. */
+/** Metres from the eye the orbit sits before the wheel moves it: third person's. */
 export const ORBIT_BACK = BACK;
 /** Metres a chase camera's boom holds it back at rest where the caller gives no length. */
 export const CHASE_BOOM = 6;

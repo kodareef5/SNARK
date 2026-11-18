@@ -1,6 +1,6 @@
-// ARK's orbit camera (K): looking swings the camera round the body or its mount without turning it, and the wheel moves it
-// nearer or further. It is the client's alone: the look the input carries stays where the body faced, so the server
-// never learns of it.
+// ARK's orbit camera (K): the camera swings round to face the body or its mount, looking moves it round them without
+// turning them, and the wheel moves it nearer or further. It is the client's alone: the look the input carries stays
+// where the body faced, so the server never learns of it.
 
 import { CHASE_DOWN, CHASE_UP, EASE_MS } from "./viewpoint.ts";
 
@@ -40,7 +40,7 @@ export class Orbit {
   /** The orbit places the camera: on, or easing back. */
   get inUse(): boolean { return this.on || this.left > 0; }
 
-  /** Starts or ends the orbit. Its start takes the camera's bearing and distance, so neither changes at once. */
+  /** Starts or ends the orbit. It eases from where the camera is, so nothing changes at once. */
   set(on: boolean): void {
     if (on === this.on) return;
     if (!this.fresh) this.fromShown = this.inUse;
@@ -85,12 +85,13 @@ export class Orbit {
     if (this.fresh) {
       const from = this.fromShown ? this.shown : view;
       if (this.on) {
-        this.yaw = from.yaw;
+        // ARK's orbit begins as "an inverted third-person view" (Controls): the camera swings round to face the body.
+        this.yaw = from.yaw + Math.PI;
         this.pitch = Math.max(CHASE_DOWN, Math.min(CHASE_UP, from.pitch));
         this.zoom = this.shownZoom = 1;
       }
       const to = this.target(view, natural);
-      this.gap.yaw = angle(from.yaw - to.yaw);
+      this.gap.yaw = this.on ? -Math.PI : angle(from.yaw - to.yaw);
       this.gap.pitch = from.pitch - to.pitch;
       this.gap.back = from.back - to.back;
       this.gap.side = from.side - to.side;

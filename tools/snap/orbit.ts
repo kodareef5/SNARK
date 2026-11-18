@@ -1,12 +1,12 @@
-// `--orbit ROUND[,DOWN[,NOTCHES]]`, once a scene is set: K, the camera swung ROUND degrees round the body or its mount
-// and DOWN degrees lower, the wheel NOTCHES out (in where negative), and the ease run out, so the picture is the orbit
-// camera's (client/core/orbit.ts). The body keeps its facing.
+// `--orbit ROUND[,DOWN[,NOTCHES]]`, once a scene is set: K, which swings the camera round to face the body or its mount,
+// then ROUND degrees further round and DOWN degrees lower, the wheel NOTCHES out (in where negative), and the ease run
+// out, so the picture is the orbit camera's (client/core/orbit.ts). The body keeps its facing.
 
 import type { App } from "../../client/core/app.ts";
 import { LOOK_SPEED } from "../../client/core/controls.ts";
 
 export function orbitScene(app: App, run: (ms: number) => void, spec: string): void {
-  const [round = 150, down = 15, notches = 0] = spec.split(",").filter((v) => v !== "").map(Number);
+  const [round = 30, down = 15, notches = 0] = spec.split(",").filter((v) => v !== "").map(Number);
   if (![round, down, notches].every(Number.isFinite)) throw new Error(`--orbit takes ROUND[,DOWN[,NOTCHES]] in degrees and notches, not "${spec}"`);
   app.key("KeyK", true);
   app.key("KeyK", false);

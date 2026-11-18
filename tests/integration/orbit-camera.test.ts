@@ -60,13 +60,16 @@ test("K on foot swings the camera round the body without turning it, the wheel m
     tap(app, run, "KeyK");
     expect(app.orbit.on).toBe(true);
     run(400);
-    expect(gap(camAt(app), eye)).toBeCloseTo(ORBIT_BACK, 3);
+    // K swings the camera round to face her, at third person's distance.
+    const front = [eye[0]! + Math.sin(.4) * Math.cos(-.1) * ORBIT_BACK, eye[1]! - Math.sin(-.1) * ORBIT_BACK, eye[2]! + Math.cos(.4) * Math.cos(-.1) * ORBIT_BACK];
+    expect(gap(camAt(app), front)).toBeLessThan(1e-3);
+    expect(app.cam.yaw).toBeCloseTo(.4 + Math.PI, 9);
     // The mouse swings the camera; the body's facing, and the look the input carries, stay.
     app.look(-1000, 200);
     run(200);
     expect([c.yaw, c.pitch]).toEqual([.4, -.1]);
     expect(app.scene!.own!.yaw).toBe(.4);
-    const yaw = .4 + 1000 * LOOK_SPEED * c.zoom, pitch = -.1 - 200 * LOOK_SPEED * c.zoom;
+    const yaw = .4 + Math.PI + 1000 * LOOK_SPEED * c.zoom, pitch = -.1 - 200 * LOOK_SPEED * c.zoom;
     expect(app.orbit.yaw).toBeCloseTo(yaw, 9);
     expect(app.cam.yaw).toBeCloseTo(yaw, 9);
     expect(app.cam.pitch).toBeCloseTo(pitch, 9);
@@ -95,9 +98,9 @@ test("K on foot swings the camera round the body without turning it, the wheel m
     expect(app.wheel(100)).toBe(false);
     expect(s.sessionState).toBe(SESSION_ALIVE);
     // The picture tool's --orbit sets the same view up by degrees and notches.
-    orbitScene(app, run, "180,20,2");
+    orbitScene(app, run, "30,20,2");
     expect(app.orbit.on).toBe(true);
-    expect(app.cam.yaw).toBeCloseTo(.4 + Math.PI, 6);
+    expect(app.cam.yaw).toBeCloseTo(.4 + Math.PI + Math.PI / 6, 6);
     expect(app.cam.pitch).toBeCloseTo(-.1 - 20 * Math.PI / 180, 6);
     expect(gap(camAt(app), eye)).toBeCloseTo(ORBIT_BACK * ORBIT_NOTCH ** 2, 1);
     expect([c.yaw, c.pitch]).toEqual([.4, -.1]);
@@ -245,14 +248,18 @@ test("dying ends the orbit; getting on a mount cuts it, the camera easing from w
     const behind = camAt(app), pivot = [s.own.x, 0, s.own.z];
     tap(app, run, "KeyK");
     expect(app.orbit.on).toBe(true);
-    app.look(-Math.PI / (LOOK_SPEED * c.zoom), 0);
+    run(600);
+    // K swings the camera round in front of the mount, about as far from it.
+    expect(Math.abs(app.cam.yaw - Math.PI)).toBeLessThan(.02);
+    expect(app.cam.z - pivot[2]!).toBeGreaterThan(2);
+    expect(behind[2]! - pivot[2]!).toBeLessThan(-2);
+    // A quarter turn of the mouse takes it to the mount's side; the mount and the look keep their facing.
+    app.look(-Math.PI / 2 / (LOOK_SPEED * c.zoom), 0);
     run(600);
     expect([c.yaw, c.pitch]).toEqual([0, -.1]);
     expect(ents.yaw[e]).toBe(heading);
-    expect(Math.abs(app.cam.yaw - Math.PI)).toBeLessThan(.02);
-    // The camera has gone round in front of the mount, about as far from it.
-    expect(app.cam.z - pivot[2]!).toBeGreaterThan(2);
-    expect(behind[2]! - pivot[2]!).toBeLessThan(-2);
+    expect(Math.abs(app.cam.yaw - 1.5 * Math.PI)).toBeLessThan(.02);
+    expect(app.cam.x - pivot[0]!).toBeGreaterThan(2);
     const boom = Math.hypot(app.cam.x - s.own.x, app.cam.z - s.own.z);
     for (let i = 0; i < 4; i++) app.wheel(100);
     run(1500);
@@ -305,14 +312,14 @@ test("at a patrol car's wheel K is the lights and no orbit; another car's driver
     expect(lights()).toBe(1);
     expect(app.orbit.inUse).toBe(false);
     // The passenger's K orbits the car: her look stays, her camera goes round, and the lights are not hers to change.
-    const look = [rider.controls.yaw, rider.controls.pitch];
+    const look = [rider.controls.yaw, rider.controls.pitch], before = rider.cam.yaw;
     tap(rider, run, "KeyK");
     expect(rider.orbit.on).toBe(true);
-    const before = rider.cam.yaw;
     rider.look(-2 / (LOOK_SPEED * rider.controls.zoom), 0);
     run(500);
     expect([rider.controls.yaw, rider.controls.pitch]).toEqual(look);
-    expect(Math.abs(Math.atan2(Math.sin(rider.cam.yaw - before - 2), Math.cos(rider.cam.yaw - before - 2)))).toBeLessThan(.05);
+    const turned = rider.cam.yaw - before - Math.PI - 2;
+    expect(Math.abs(Math.atan2(Math.sin(turned), Math.cos(turned)))).toBeLessThan(.05);
     expect(lights()).toBe(1);
     // A driver's chase camera already swings freely: in a car without lights K does nothing at all.
     h.host.urban.dismount(h.client(s)!);

@@ -6,6 +6,9 @@ import { HIT_NONE, castWorld } from "../../shared/world/ray.ts";
 import { flatWorld } from "../fixtures/world.ts";
 
 const at = (yaw: number, pitch: number, back = 0, side = 0, rise = 0): OrbitRig => ({ yaw, pitch, back, side, rise });
+const same = (a: OrbitRig, b: OrbitRig): void => {
+  for (const k of ["yaw", "pitch", "back", "side", "rise"] as const) expect(a[k]).toBeCloseTo(b[k], 12);
+};
 
 test("the orbit's camera sits on its bearing at its distance from the pivot and looks at it", () => {
   const vp = new Viewpoint(), cam = new Camera(), out = [0, 0, 0];
@@ -39,10 +42,15 @@ test("the orbit keeps its pitch to the chase camera's limits and its distance to
   expect([o.yaw, o.pitch, o.zoom]).toEqual([0, 0, 1]);
   o.set(true);
   const first = o.place(view, ORBIT_BACK, 16)!;
-  // Its first frame is the view it came from, then it pulls back along the same bearing.
-  expect([first.yaw, first.pitch, first.back, first.side, first.rise]).toEqual([.3, -.2, 0, 0, 0]);
+  // Its first frame is the view it came from; it then swings round to face the body as it pulls back.
+  same(first, view);
+  expect(o.yaw).toBeCloseTo(.3 + Math.PI, 12);
+  // Looking during the swing is one to one: a twin that is not looked with differs by the look alone.
+  const twin = new Orbit();
+  twin.set(true);
+  twin.place(view, ORBIT_BACK, 16);
   o.look(.25, 0);
-  expect(o.place(view, ORBIT_BACK, 16)!.yaw).toBeCloseTo(.55, 12);
+  expect(o.place(view, ORBIT_BACK, 16)!.yaw - twin.place(view, ORBIT_BACK, 16)!.yaw).toBeCloseTo(.25, 12);
   o.look(0, 10);
   expect(o.pitch).toBe(CHASE_UP);
   o.look(0, -10);
@@ -76,19 +84,22 @@ test("the orbit starts and ends without a jump, ends on the view the player has,
   o.set(true);
   const step = (view: OrbitRig): OrbitRig => ({ ...o.place(view, ORBIT_BACK, 16)! });
   let prev = step(third);
-  expect(prev).toEqual(third);
+  same(prev, third);
   const jump = (a: OrbitRig, b: OrbitRig): number => Math.max(Math.abs(Math.atan2(Math.sin(a.yaw - b.yaw), Math.cos(a.yaw - b.yaw))), Math.abs(a.pitch - b.pitch), Math.abs(a.back - b.back), Math.abs(a.side - b.side), Math.abs(a.rise - b.rise));
+  // Half a turn round within the ease, at most a quarter radian a frame at 60 frames a second.
   for (let i = 0; i < 30; i++) {
     const now = step(third);
-    expect(jump(now, prev)).toBeLessThan(.1);
+    expect(jump(now, prev)).toBeLessThan(.25);
     prev = now;
   }
-  // Settled: centred on the body, at third person's distance.
+  // Settled: facing the body, centred on it, at third person's distance.
+  expect(prev.yaw).toBeCloseTo(1 + Math.PI, 9);
   expect(prev.side).toBeCloseTo(0, 9);
   expect(prev.rise).toBeCloseTo(0, 9);
   expect(prev.back).toBeCloseTo(3.4, 9);
-  // Swung round to look at the body's face, then let go: the camera swings back the short way, and lands on the view.
-  o.look(Math.PI - .2, -.4);
+  // Swung a little further round and down, then let go: the camera swings back the short way, nearly half a turn,
+  // and lands on the view.
+  o.look(-.2, -.4);
   prev = step(third);
   o.set(false);
   let frames = 0;
@@ -112,7 +123,7 @@ test("the orbit starts and ends without a jump, ends on the view the player has,
   o.set(true);
   const again = step(third);
   expect(jump(again, prev)).toBeLessThan(1e-9);
-  expect(o.yaw).toBe(prev.yaw);
+  expect(o.yaw).toBeCloseTo(prev.yaw + Math.PI, 12);
   // Cut by a forced view, the orbit is done at once.
   o.cut();
   expect([o.on, o.inUse, o.place(third, ORBIT_BACK, 16)]).toEqual([false, false, null]);
@@ -150,7 +161,7 @@ test("the orbit is pulled in by a wall and by the ground as third person is, and
     const dx = cam.x - 64, dy = cam.y - 1.62, dz = cam.z - 64, d = Math.hypot(dx, dy, dz);
     if (d > 1e-6) expect(castWorld(w, 64, 1.62, 64, dx / d, dy / d, dz / d, d)).toBe(HIT_NONE);
     if (cam.z < 62.9) behind++;
-    o.look(.02, 0);
+    o.look(.03, 0);
   }
   expect(behind).toBeGreaterThan(0);
 });
