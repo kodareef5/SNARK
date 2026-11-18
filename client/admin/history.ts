@@ -36,6 +36,7 @@ export function syncLog(): void {
   $("timeline").classList.toggle("empty", !has);
   if (!has) {
     note.textContent = log.on ? "The survivor log is on and holds nothing yet: it begins as survivors play." : `No survivor log: ${log.why}.`;
+    refresh();
     return;
   }
   const end = log.on ? Math.max(log.to!, S.stats!.at) : log.to!;
@@ -93,7 +94,8 @@ function showPast(): void {
   drawTimeline();
   showChosen();
   showFigures();
-  showHolders();
+  if (!S.recall.window && $<HTMLSelectElement>("itempick").options.length === 0) showItems();
+  else showHolders();
   const g = $<HTMLInputElement>("goto");
   if (document.activeElement !== g) g.value = localText(t.at, offset);
   $("live").classList.toggle("on", t.live);
@@ -233,7 +235,7 @@ function showChosen(): void {
     `<p class="dim pad">${on ? "online" : "offline"} at ${clockText(t.at, offset, true)}${s ? `, ${spanText(playIn(s, t.start, t.end, t.to))} played in the window` : ""}</p>` +
     `<h3>Held at the playhead</h3>${!c ? '<p class="dim pad">Reading its log.</p>' : held.length === 0 ? '<p class="dim pad">Nothing the log holds.</p>' : `<ul class="held">${held.map((h) => `<li>${esc(heldText(h, S.labels))}</li>`).join("")}</ul>`}` +
     (c?.changes.more ? '<p class="dim pad">More changes than one read lists: narrow the window for every one.</p>' : "") +
-    `<h3>Gained and lost${c ? ` <span class="dim">in the window: ${esc(changeText(c.changes, S.labels)) || "nothing"}</span>` : ""}</h3>` +
+    `<h3>Gained and lost${c ? ` <span class="dim">${clockText(c.from, offset)} to ${clockText(c.to, offset)}: ${esc(changeText(c.changes, S.labels)) || "nothing"}</span>` : ""}</h3>` +
     `<ol class="goes">${entries.map((e, i) => goes(e.wall, `<time>${clockText(e.wall, offset, true)}</time> ${esc(changeText(e, S.labels))}`, i + Math.max(0, near - 20) === near ? "near" : "")).join("")}</ol>` +
     `<h3>Sessions</h3><ol class="goes">${(s?.sessions ?? []).map((x) => goes(x.from, `<time>${dayText(x.from, offset)} ${clockText(x.from, offset)}</time> to ${x.to === null ? "now" : clockText(x.to, offset)}, ${spanText((x.to ?? t.to) - x.from)}${x.why ? `, ${esc(x.why)}` : ""}`)).join("") || '<li class="dim">none in the window</li>'}</ol>` +
     `<h3>Deaths</h3><ol class="goes">${deaths.map((m) => goes(m.wall, `<time>${clockText(m.wall, offset, true)}</time> ${esc(m.text || "died")}`)).join("") || '<li class="dim">none in the window</li>'}</ol>`;
@@ -379,7 +381,6 @@ canvas.addEventListener(
 
 $("live").addEventListener("click", () => {
   t.goLive();
-  S.recall.forget();
   hooks.showPeople();
   refresh();
   ensure();

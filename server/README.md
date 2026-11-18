@@ -6,7 +6,7 @@ The Bun process that owns a world. Headless; no rendering or DOM code.
 | --- | --- |
 | `main.ts` | Process entry: static files, WebSocket adapter for the game and for voice, wall-clock tick loop |
 | `sound-board.ts` | The sound board, an admin's page, and the sound folders' briefs and recipes behind it |
-| `admin/` | The admin pages' gate (`gate.ts`), the loop's own timing (`meter.ts`), and `/admin/` (`routes.ts`): the server's stats (`stats.ts`), its survivors (`survivors.ts`) and the tribes' bases (`bases.ts`), as `shared/admin.ts` shapes them |
+| `admin/` | The admin pages' gate (`gate.ts`), the loop's own timing (`meter.ts`), and `/admin/` (`routes.ts`): the server's stats (`stats.ts`), its survivors (`survivors.ts`), the tribes' bases (`bases.ts`) and the survivor log's reads (`log-routes.ts`), as `shared/admin.ts` and `shared/survivor-log.ts` shape them |
 | `site.ts`, `front.ts` | Worlds at paths of one host: the site around them (the start screen, `links.json`, the source link's page), and the program that sends each path to its world |
 | `host.ts` | Assembles world, records, every system below, persistence, and the game loop |
 | `game.ts` | Connections, input buffering and validation, the body each session drives, snapshots by class, structure sync |

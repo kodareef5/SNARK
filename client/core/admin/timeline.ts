@@ -123,7 +123,7 @@ export function localText(t: number, offset: number): string {
   return new Date(t - offset * 60_000).toISOString().slice(0, 16);
 }
 
-/** Points a read of everyone's places aims at: about half a megabyte of answer, which a tick's thread copies in half a millisecond. */
+/** Points a read of everyone's places aims at: some 650 KB of answer at about 55 bytes a point, which the tick's thread only copies. */
 export const POINTS = 12_000;
 /** Points a read of one survivor's track aims at. */
 export const TRACK_POINTS = 2000;

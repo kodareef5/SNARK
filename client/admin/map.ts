@@ -76,8 +76,8 @@ function paint(): void {
       ctx.fillRect(v.sx(q.x + q.size), v.sy(q.z + q.size), s, s);
     }
   }
-  if (!frame.live) track();
-  const holding = !frame.live && S.recall.holders ? holdingAt(S.recall.holders.holders, frame.at, S.timeline.to) : null;
+  track();
+  const holding = S.item && S.recall.holders ? holdingAt(S.recall.holders.holders, frame.live ? S.timeline.to : frame.at, S.timeline.to) : null;
   const seen = frame.dots.filter((d) => onMap(d));
   const names = $<HTMLInputElement>("names").checked;
   const crowded = seen.filter((d) => d.state !== DOT_OFFLINE).length > 60;
@@ -122,7 +122,7 @@ function track(): void {
   const tr = c?.pid === S.chosen ? c.track.tracks[0] : undefined;
   if (!tr || !S.view) return;
   const gap = c!.track.step * 2.5;
-  const at = S.frame.at;
+  const at = S.frame.live ? Infinity : S.frame.at;
   for (const [upTo, colour] of [[Infinity, "rgba(143,217,196,0.35)"], [at, "rgba(143,217,196,0.95)"]] as const) {
     ctx.beginPath();
     for (let k = 0; k < tr.wall.length && tr.wall[k]! <= upTo; k++) {
