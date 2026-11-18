@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { RUIN_SHAPES, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
+import { BREAK_AT, RUIN_SHAPES, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import { readLabels, resolveLabels, type Facts, type PublicPlace } from "./labels.ts";
 import { bridgeHoles, corridorIndex, makeBridges } from "./bridges.ts";
 import { gradeRoadEntrances, roadGroundSamples } from "./bridge-earthwork.ts";
@@ -290,6 +290,10 @@ export function makeRuins(site: Site): StaticPiece[] {
   const infrastructure = makeInfrastructure(site, acceptProp);
   const joinedFrontages = joinFrontages(records, v, acceptProp);
   const roads = roadIndex(site);
+  // The walks first, so the street's wrecks and furniture stand clear of them.
+  // A walk is cut where a way in to a building crosses it, and nowhere else for the routes inside buildings.
+  const ways = corridorIndex(records.flatMap((r) => r.approaches.map((a) => ({ a: [a.street.x, a.street.z] as const, b: [a.door.x, a.door.z] as const, width: 3, low: a.door.y - .5, high: a.door.y + 2.5 }))));
+  const walks = makeWalks(site, v, (m) => { if (!accept(m)) return false; for (const p of m.pieces) obstacles.add(p); return true; }, (m) => m.pieces.some((p) => crosses(p, ways)), obstacles, roads, roadGround, entrances);
   const streets = makeStreetPieces(site, v, acceptProp, obstacles, roads, roadGround);
   // Lettered signs come after the passes that read every piece as a box of the ruin kit.
   const signs = makeSigns(site, accept);
@@ -345,7 +349,7 @@ export function makeRuins(site: Site): StaticPiece[] {
   }));
   put("generation.json", { version: v.version, seed: v.seed, labelsFingerprint: data.fingerprint, staticFingerprint: digest(pieces),
     blocks: pieces.length, buildings: records.length, footprints: site.footprints.length, rejected, keptAsGround, kinds: usedKinds, topChunks,
-    clearance, streets, cars: { pieces: wrecks.length, byLook: tally(wrecks.map((p) => wreckLook(p.kind)!.mesh)), byKind: tally(wrecks.map((p) => p.kind)), parked: parked.length }, event: { ...v.event, sheltered: records.filter((r) => (r.shelter ?? 0) > .1).length, exposure: tally(records.map((r) => (Math.floor((r.exposure ?? 0) * 10) / 10).toFixed(1))) }, frontage: { joined: joinedFrontages, buildings: records.filter((r) => r.party?.length).length, partyEdges: records.reduce((n, r) => n + (r.party?.length ?? 0), 0) }, byForm: tally(records.map((r) => r.form)), byCollapse: tally(records.map((r) => r.collapse)), roomRoutes: records.reduce((n, r) => n + r.rooms.length, 0),
+    clearance, streets, walks, cars: { pieces: wrecks.length, byLook: tally(wrecks.map((p) => wreckLook(p.kind)!.mesh)), byKind: tally(wrecks.map((p) => p.kind)), parked: parked.length }, event: { ...v.event, sheltered: records.filter((r) => (r.shelter ?? 0) > .1).length, exposure: tally(records.map((r) => (Math.floor((r.exposure ?? 0) * 10) / 10).toFixed(1))) }, frontage: { joined: joinedFrontages, buildings: records.filter((r) => r.party?.length).length, partyEdges: records.reduce((n, r) => n + (r.party?.length ?? 0), 0) }, byForm: tally(records.map((r) => r.form)), byCollapse: tally(records.map((r) => r.collapse)), roomRoutes: records.reduce((n, r) => n + r.rooms.length, 0),
     piecesByKind: Object.fromEntries([...new Set(records.map((r) => r.kind))].sort().map((kind) => { const rows = records.filter((r) => r.kind === kind); return [kind, { buildings: rows.length, pieces: rows.reduce((n, r) => n + r.blocks, 0), max: Math.max(...rows.map((r) => r.blocks)) }]; })),
     byRecipe: tally(records.map((r) => r.recipe)), byDistrict: tally(records.map((r) => r.district)),
     reduced: records.filter((r) => r.detail > 0).map((r) => ({ part: r.part, name: r.name, detail: r.detail })),
@@ -450,6 +454,102 @@ function makePublicPlaces(site: Site, places: PublicPlace[], accept: (m: Mason) 
     m.cover(0, 0, 6);
     if (accept(m)) { record.status = "built"; record.blocks = m.pieces.length; }
     else record.status = "budget or bounds";
+  }
+  return out;
+}
+
+/** Whether piece `p`'s box, seen from above, meets a corridor of `index` widened by its width. */
+function crosses(p: StaticPiece, index: ReturnType<typeof corridorIndex>): boolean {
+  const [w, , d] = extentOf(p.kind).size; const mid = middleOf(p);
+  const a = p.yaw * Math.PI / 180; const co = Math.cos(a); const si = Math.sin(a);
+  return index({ x: mid.x, z: mid.z, yaw: p.yaw, c: co, s: si, width: w, depth: d, rings: [] }).some((c) => {
+    const local = (q: readonly number[]): number[] => [(q[0]! - mid.x) * co - (q[1]! - mid.z) * si, (q[0]! - mid.x) * si + (q[1]! - mid.z) * co];
+    const [qa, qb] = [local(c.a), local(c.b)]; const half = [w / 2 + c.width / 2, d / 2 + c.width / 2];
+    let enter = 0; let leave = 1;
+    for (let axis = 0; axis < 2; axis++) {
+      const delta = qb[axis]! - qa[axis]!;
+      if (Math.abs(delta) < 1e-8) { if (Math.abs(qa[axis]!) >= half[axis]!) return false; }
+      else { const t0 = (-half[axis]! - qa[axis]!) / delta; const t1 = (half[axis]! - qa[axis]!) / delta; enter = Math.max(enter, Math.min(t0, t1)); leave = Math.min(leave, Math.max(t0, t1)); }
+    }
+    return enter <= leave;
+  });
+}
+
+/**
+ * A street's edges: along each road of the listed classes, on each side, an 8 m walk with its curb on the road's edge every
+ * 8 m, where the ground beside the road is open and level and nothing of the city stands, clear of junctions; a gutter on
+ * a run of them here and there. Where a way in to a building crosses (`way`) the curb is cut, and a run ends in a curb ramp
+ * there and at a junction; elsewhere its curb stays full height. No walk, ramp or drain stands on the road ground graded
+ * to a bridge's way on (`graded`), which is driven.
+ */
+function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way: (m: Mason) => boolean, obstacles: ReturnType<typeof obstacleIndex>, roads: ReturnType<typeof roadIndex>, graded: ReadonlySet<number>, entrances: readonly { x: number; z: number; dx: number; dz: number; width: number }[]): Record<string, number> {
+  const rules = v.street.walks; const out: Record<string, number> = { placed: 0, cut: 0, blocked: 0, gutters: 0, ramps: 0, drains: 0, boxes: 0 };
+  if (!rules) return out;
+  const { nx, x1, z1 } = site.ground.grid;
+  const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
+  const open = new Set<number>([S.OPEN, S.GREEN, S.CANOPY, S.YARD, S.DESERT]);
+  const rubble = (p: StaticPiece): boolean => /_z(skirt1|skirt2|wedge)_/.test(p.kind);
+  /** Whether (x, z) is on a bridge's way on: its lanes and a metre beside them, 24 m out onto the approach and 12 m onto the deck. */
+  const onWay = (x: number, z: number): boolean => entrances.some((e) => {
+    const along = (x - e.x) * e.dx + (z - e.z) * e.dz;
+    return along > -24 && along < 12 && Math.abs((z - e.z) * e.dx - (x - e.x) * e.dz) < e.width / 2 + 1;
+  });
+  for (const [index, s] of roads.segments.entries()) {
+    if (!rules.classes.includes(s.mtfcc)) continue;
+    const ex = s.bx - s.ax; const ez = s.bz - s.az; const length = Math.hypot(ex, ez);
+    const [ux, uz] = [ex / length, ez / length];
+    for (const side of [1, -1]) {
+      // Away from the road on this side, the piece's turn that points its z there, and where its curb's face runs.
+      const [nxw, nzw] = [-uz * side, ux * side];
+      const yaw = Math.atan2(nxw, nzw) * 180 / Math.PI; const c = Math.cos(yaw * Math.PI / 180); const sn = Math.sin(yaw * Math.PI / 180);
+      const curb = (d: number, out: number): [number, number] => [s.ax + ux * d + nxw * (s.half + out), s.az + uz * d + nzw * (s.half + out)];
+      // A walk meets its neighbours end to end, so it is tested against the city's pieces a little smaller, and not against
+      // the rubble along a wall's foot, which spills onto it; a ramp is not tested against the ways in it leads to, nor what
+      // stands on a walk just laid against anything.
+      const put = (shape: RuinShape, d: number, out: number, y: number, test: "all" | "pieces" | "none" = "all"): boolean | "way" => {
+        const mid = BREAK_AT[shape]!; const [x, z] = curb(d, out);
+        // Its middle stands that far along its x, which runs with the road one way or the other, from where it is put.
+        const m = new Mason({ x: x + c * mid[0]!, z: z - sn * mid[0]!, yaw, c, s: sn, width: 8, depth: 3, rings: [] }, y);
+        m.put(shape, 0, mid[1]!, 0, "concrete");
+        if (test === "all" && way(m)) return "way";
+        return !(test !== "none" && obstacles.hits(boxOf(m.pieces[0]!), -0.1, rubble)) && accept(m);
+      };
+      // Each slot of 8 m: walked, kept clear for a junction or a way in, or left bare.
+      const slots: ("walk" | "junction" | "way" | "bare")[] = []; const ground: number[] = [];
+      for (let d = 4; d + 4 <= length; d += 8) {
+        const [fx, fz] = [s.ax + ux * d, s.az + uz * d];
+        const y = site.groundAt(...curb(d, 0.3)); ground.push(y);
+        if (roads.junction(fx, fz, s.half + rules.fromJunction)) { slots.push("junction"); continue; }
+        // The road's raster runs a sample or so past its edge, so the curb's corners may stand on street.
+        const corners = [-4, 4].flatMap((a) => [0.3, rules.width].map((b) => [...curb(d + a, b), b] as const));
+        if (y < 0.1 || corners.some(([x, z, b]) => !(open.has(site.ground.surface[at(x, z)]!) || b < 1 && site.ground.surface[at(x, z)] === S.STREET) || site.ground.water[at(x, z)] || Math.abs(site.groundAt(x, z) - y) > rules.flat)) { slots.push("bare"); continue; }
+        // Nor within a sample of the road ground graded to a bridge.
+        if ([-4, 0, 4].some((a) => [-1.5, 0.3, 1.5, rules.width + 1.5].some((b) => { const [x, z] = curb(d + a, b); return graded.has(at(x, z)) || onWay(x, z); }))) { slots.push("bare"); continue; }
+        const gutter = hash3(index, Math.floor(d / 32), v.seed + side) % rules.gutterEvery === 0;
+        const mid = BREAK_AT[gutter ? "zwalk8g" : "zwalk8"]!;
+        const laid = put(gutter ? "zwalk8g" : "zwalk8", d, mid[2]!, y);
+        if (laid === "way") { slots.push("way"); out.cut!++; continue; }
+        if (!laid) { slots.push("bare"); out.blocked!++; continue; }
+        slots.push("walk"); out.placed!++; if (gutter) out.gutters!++;
+        // A storm drain where the gutter runs lowest, and now and then a utility box at the walk's back.
+        const before = ground[ground.length - 2] ?? Infinity;
+        const after = d + 12 <= length ? site.groundAt(...curb(d + 8, 0.3)) : Infinity;
+        if (gutter && y <= before && y <= after && put("zdrain", d, BREAK_AT.zdrain![2]!, y, "none")) out.drains!++;
+        if (hash3(index, Math.round(d), v.seed + 7 * side) % rules.boxEvery === 0 && put("zutility", d + 2, rules.width - 0.4, y, "none")) out.boxes!++;
+      }
+      // A walk's run ends in a curb ramp down to the road at a junction or a way in.
+      const ends = (slot: string | undefined): boolean => slot === "junction" || slot === "way";
+      for (let k = 0; k < slots.length; k++) {
+        if (slots[k] !== "walk") continue;
+        const d = 4 + k * 8; const y = ground[k]!;
+        // The ramp rises toward the walk it leads onto; a piece's +x runs with the road on one side and against it on the other.
+        const rising = (toward: number): RuinShape => (toward * side > 0 ? "zcurbramp" : "zcurbrampl");
+        // A ramp stands on no graded way onto a bridge, nor out on the road it meets.
+        const clear = (along: number): boolean => [-0.9, 0.9].every((a) => [0, 0.8, 2.4].every((b) => { const i = at(...curb(along + a, b)); return !graded.has(i) && !onWay(...curb(along + a, b)) && (b < 0.5 || (site.ground.surface[i] !== S.STREET && site.ground.surface[i] !== S.HIGHWAY)); }));
+        if (ends(slots[k - 1]) && clear(d - 4.9) && put(rising(1), d - 4 - 0.9, 1.2, y, "pieces") === true) out.ramps!++;
+        if (ends(slots[k + 1]) && clear(d + 4.9) && put(rising(-1), d + 4 + 0.9, 1.2, y, "pieces") === true) out.ramps!++;
+      }
+    }
   }
   return out;
 }

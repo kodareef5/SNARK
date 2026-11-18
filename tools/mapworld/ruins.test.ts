@@ -10,7 +10,10 @@ import { Mason, tilesOf, worldPoint, type Frame } from "./ruin-geometry.ts";
 import { layout, stack, tower } from "./ruin-layouts.ts";
 import { extendRules, vocabulary, type Rule } from "./ruin-vocabulary.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
-import { RUIN_BREAKS, RUIN_SHAPES } from "../../content/ruins.ts";
+import { BREAK_AT, RUIN_BREAKS, RUIN_SHAPES } from "../../content/ruins.ts";
+import { ASPHALT, COMPACT } from "../../content/vehicles/compact.ts";
+import { createVehicle, stepVehicle } from "../../shared/sim/vehicle.ts";
+import { StaticVehicleWorld } from "../../shared/world/vehicle.ts";
 import { WRECK_KINDS } from "../../content/vehicles/wrecks.ts";
 import { extentOf, meets, type Box } from "./ruin-obstacles.ts";
 import { carPicker } from "./street-cars.ts";
@@ -202,7 +205,8 @@ test("a Deco treatment cannot turn a labelled low hotel into a speculative tower
     const m = new Mason(frame(0), 0);
     layout(m, { ...rule, recipe: "hotel", feature: "deco", height }, { seed: 45, playable: 3, detail: 0 });
     const top = Math.max(...m.pieces.map((p) => p.y + RUIN_SHAPES[p.kind.split("_")[1] as keyof typeof RUIN_SHAPES][1] / 2));
-    expect(top).toBeLessThanOrEqual(height + .2);
+    // What is left of a broken parapet, its bars, may stand over the roof; no storey does.
+    expect(top).toBeLessThanOrEqual(height + 1.5);
   }
 });
 
@@ -321,8 +325,9 @@ test("a facade module is walked as its few boxes and drawn with its parts in the
   expect(w.reg.parts.start[kind + 1]! - w.reg.parts.start[kind]!).toBe(5);
   const city = new CityStatics(w.dims, [{ kind: "core:zruin_zbalc_limestone", x: 96, y: 4, z: 96, yaw: 0 }], w.reg);
   const colours = new Set(boxPart(city, chunkAt(w.dims, 96, 96), w.hf, () => null).color);
-  // The building's limestone and its darker soffits, the coral wall behind the balconies and its dark openings.
-  expect([...colours].sort((a, b) => a - b)).toEqual([10, 83, 101, 113]);
+  // The building's limestone and its darker soffits, the coral wall behind the balconies, its dark openings and the
+  // balconies' pale fronts.
+  expect([...colours].sort((a, b) => a - b)).toEqual([10, 83, 101, 104, 113]);
 });
 
 test("a block of flats repeats its balcony bay on every whole floor, with a different ground floor, blank ends and a capped top", () => {
@@ -336,14 +341,17 @@ test("a block of flats repeats its balcony bay on every whole floor, with a diff
     // Six storeys, the front and back six bays long, a corner failed: the same bay on the four floors between ground and
     // top, all but the bay beside the failure whole on each.
     const floors = new Map<number, number>();
-    for (const p of on("zbalc")) floors.set(Math.floor(p.y / 4), (floors.get(Math.floor(p.y / 4)) ?? 0) + 1);
+    for (const p of [...on("zbalc"), ...on("zbalcrail")].filter((p) => p.y < 20)) floors.set(Math.floor(p.y / 4), (floors.get(Math.floor(p.y / 4)) ?? 0) + 1);
     expect([...floors.keys()].sort()).toEqual([1, 2, 3, 4]);
     expect([...floors.values()].every((n) => n === 11)).toBe(true);
     expect(on("zlobby").length).toBeGreaterThanOrEqual(8);
-    expect(on("zbalctop").length).toBe(11);
+    // The top floor's balconies are roofed, but where a stretch of the parapet fell, which leaves its broken stub.
+    const chipped = on("zbalc").filter((p) => p.y > 20).length;
+    expect(on("zbalctop").length + chipped).toBe(11);
     expect(on("zbalctop").every((p) => p.y > 20)).toBe(true);
+    expect(on("zcrown5").length + on("zcrown6").length).toBeGreaterThanOrEqual(chipped);
     // The short ends are blank, their top storey under a parapet; no loose balcony of the old kit is left.
-    expect(on("zpaneltop").length).toBeGreaterThanOrEqual(4);
+    expect(on("zpaneltop").length + on("zcrown5").length + on("zcrown6").length).toBeGreaterThanOrEqual(4);
     expect(on("zbalcony")).toEqual([]);
   }
 });
@@ -385,5 +393,29 @@ test("a survivor and the heaviest walkers go up and down a garage's ramp and a f
       go(-size[2] / 2 - 2);
       expect([walker, shape, Math.abs(b.y) < .1]).toEqual([walker, shape, true]);
     }
+  }
+});
+
+test("a street's walk is a step a body and a mount climb, and a car crosses its curb straight and slantwise", () => {
+  // A walk with its gutter across the way at z = 100, its curb's face on the line and the walk beyond it.
+  const lay = (): ReturnType<typeof flatWorld> => {
+    const w = flatWorld(4); const at = BREAK_AT.zwalk8g!;
+    for (const x of [96, 104, 112]) w.structs.add(w.kind("core:zruin_zwalk8g_concrete"), x, at[1]!, 100 + at[2]!, 0, 0, 1);
+    return w;
+  };
+  for (const walker of ["core:survivor", "core:trike", "core:raptor"]) {
+    const w = lay(); const params = w.reg.move[w.kind(walker)]!; const b = new Body();
+    [b.x, b.z, b.y, b.grounded] = [104, 96, 0, true];
+    for (let tick = 0; tick < 200 && b.z < 101.5; tick++) stepBody(w, b, 0, 90, 0, 0, 0, params, TICK_DT);
+    expect([walker, b.z > 101.5, Math.abs(b.y - .15) < .02]).toEqual([walker, true, true]);
+    for (let tick = 0; tick < 200 && b.z < 106; tick++) stepBody(w, b, 0, 90, 0, 0, 0, params, TICK_DT);
+    expect([walker, b.z >= 106, Math.abs(b.y) < .02]).toEqual([walker, true, true]);
+  }
+  const coast = { throttle: .3, steer: 0, brake: 0, handbrake: false, neutral: false };
+  for (const yaw of [0, Math.PI / 6]) {
+    const w = lay(); const world = new StaticVehicleWorld({ hf: w.hf, structs: w.structs }, () => ASPHALT);
+    const car = createVehicle(COMPACT, 104 - 12 * Math.sin(yaw), 0, 88, yaw); car.vx = 8 * Math.sin(yaw); car.vz = 8 * Math.cos(yaw);
+    for (let tick = 0; tick < 120; tick++) stepVehicle(car, coast, COMPACT, world);
+    expect(car.z).toBeGreaterThan(103);
   }
 });
