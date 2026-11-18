@@ -25,7 +25,6 @@ export function readSigns(source: string): Sign[] {
 }
 
 export function makeSigns(site: Site, accept: (m: Mason) => boolean): SignRecord[] {
-  const size = (site.ground.n - 1) * 2;
   const out: SignRecord[] = [];
   for (const sign of readSigns(site.source)) {
     const record: SignRecord = { id: sign.id, inscription: sign.inscription, status: "", letters: [] };
@@ -49,7 +48,7 @@ export function makeSigns(site: Site, accept: (m: Mason) => boolean): SignRecord
     const total = widths.reduce((s, w) => s + w, 0);
     const gap = letters.length > 1 ? Math.max(0.6, (length - total) / (letters.length - 1)) : 0;
     let s = length / 2 - (total + gap * (letters.length - 1)) / 2;
-    const m = new Mason(worldFrame(size), 0);
+    const m = new Mason(worldFrame(site.ground.grid), 0);
     for (const [k, letter] of letters.entries()) {
       const w = widths[k]!;
       const mid = s + w / 2;

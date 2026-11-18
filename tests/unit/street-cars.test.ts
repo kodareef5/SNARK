@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
 import type { WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
+import { gridAt } from "../../tools/mapworld/base.ts";
 import { S } from "../../tools/mapworld/ground.ts";
 import { boxOf, meets, type Box } from "../../tools/mapworld/ruin-obstacles.ts";
 import type { Site, StaticPiece } from "../../tools/mapworld/statics.ts";
@@ -34,7 +35,7 @@ function fixture(roads: readonly Road[], routes: Site["growthRoutes"] = []): Sit
     }
   }
   return { source, world: { districts: [{ name: "Works", style: "industrial", tall: 0, ring: [] }, { name: "Homes", style: "residential", tall: 0, ring: [] }] },
-    ground: { n: N, surface, district }, growthRoutes: routes, vehicles: [], toEngine: (e: number, n: number) => [e, n], groundAt: () => GROUND } as unknown as Site;
+    ground: { grid: gridAt([-SIZE / 2, -SIZE / 2, SIZE / 2, SIZE / 2]), surface, district }, growthRoutes: routes, vehicles: [], toEngine: (e: number, n: number) => [e, n], groundAt: () => GROUND } as unknown as Site;
 }
 const streets = (from: number, to: number, every: number): Road[] => {
   const out: Road[] = [];

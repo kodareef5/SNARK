@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Grid } from "./base.ts";
 import { inRing, type Point } from "./ruin-geometry.ts";
 
 export interface Way {
@@ -19,7 +20,7 @@ export function widthOf(w: Way): number {
   if (w.kind === "rail_bridge" || w.kind === "pier" || w.kind === "breakwater" || /footway|cycleway|pedestrian|path/.test(w.class ?? "")) return 4;
   return Math.max(8, Math.min(24, Math.ceil(((w.lanes ?? (/motorway|trunk/.test(w.class ?? "") ? 3 : 2)) * 3.3 + 1) / 4) * 4));
 }
-export function pathsOf(ways: Way[], half: number): { paths: Path[]; outlines: { id: number; status: string }[] } {
+export function pathsOf(ways: Way[], grid: Grid): { paths: Path[]; outlines: { id: number; status: string }[] } {
   const paths: Path[] = []; const outlines: { id: number; status: string }[] = [];
   const lines = ways.filter((w) => !w.closed);
   for (const way of [...ways].sort((a, b) => a.id - b.id)) {
@@ -37,15 +38,16 @@ export function pathsOf(ways: Way[], half: number): { paths: Path[]; outlines: {
       points = [[u0 * dx - v * dz, u0 * dz + v * dx], [u1 * dx - v * dz, u1 * dz + v * dx]];
       outlines.push({ id: way.id, status: "long-axis deck within polygon envelope" });
     }
-    const engine = points.map(([e, n]) => [half - e, half + n] as Point);
+    const engine = points.map(([e, n]) => [grid.east - e, n - grid.south] as Point);
+    const size = [grid.sizeX, grid.sizeZ];
     // Clip each segment to the map with an inset for the box extents.
     let run: Point[] = [];
     for (let i = 1; i < engine.length; i++) {
       const a = engine[i - 1]!; const b = engine[i]!; const d = [b[0] - a[0], b[1] - a[1]];
       let lo = 0; let hi = 1; const edge = Math.max(10, width);
       for (let axis = 0; axis < 2; axis++) {
-        if (Math.abs(d[axis]!) < 1e-8) { if (a[axis]! < edge || a[axis]! > half * 2 - edge) hi = -1; }
-        else { const t0 = (edge - a[axis]!) / d[axis]!; const t1 = (half * 2 - edge - a[axis]!) / d[axis]!; lo = Math.max(lo, Math.min(t0, t1)); hi = Math.min(hi, Math.max(t0, t1)); }
+        if (Math.abs(d[axis]!) < 1e-8) { if (a[axis]! < edge || a[axis]! > size[axis]! - edge) hi = -1; }
+        else { const t0 = (edge - a[axis]!) / d[axis]!; const t1 = (size[axis]! - edge - a[axis]!) / d[axis]!; lo = Math.max(lo, Math.min(t0, t1)); hi = Math.min(hi, Math.max(t0, t1)); }
       }
       if (hi <= lo) { if (run.length > 1) paths.push({ way, points: run, width, outline: way.closed }); run = []; continue; }
       const start: Point = [a[0] + d[0]! * lo, a[1] + d[1]! * lo]; const end: Point = [a[0] + d[0]! * hi, a[1] + d[1]! * hi];
@@ -57,10 +59,10 @@ export function pathsOf(ways: Way[], half: number): { paths: Path[]; outlines: {
   return { paths, outlines };
 }
 
-export function cutBridgeWater(paths: Path[], height: Float32Array, water: Uint8Array, n: number): number {
-  const size = (n - 1) * 2; let cut = 0;
+export function cutBridgeWater(paths: Path[], height: Float32Array, water: Uint8Array, grid: Grid): number {
+  const { nx, sizeX, sizeZ } = grid; let cut = 0;
   const shore = water.slice();
-  const at = (x: number, z: number): number => Math.round((size - z) / 2) * n + Math.round((size - x) / 2);
+  const at = (x: number, z: number): number => Math.round((sizeZ - z) / 2) * nx + Math.round((sizeX - x) / 2);
   for (const p of paths) {
     if (!/bridge/.test(p.way.kind)) continue;
     for (let k = 1; k < p.points.length; k++) {
@@ -71,7 +73,7 @@ export function cutBridgeWater(paths: Path[], height: Float32Array, water: Uint8
         const reach = (side: number): number => {
           for (let distance = radius + 4; distance <= 80; distance += 4) {
             const px = x - dz * distance * side; const pz = z + dx * distance * side;
-            if (px < 0 || pz < 0 || px > size || pz > size) break;
+            if (px < 0 || pz < 0 || px > sizeX || pz > sizeZ) break;
             if (shore[at(px, pz)]) return distance;
           }
           return 0;

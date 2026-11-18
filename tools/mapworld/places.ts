@@ -5,6 +5,7 @@
 
 import type { Registry } from "../../shared/content/registry.ts";
 import type { ObeliskPlace } from "../../shared/world/obelisks.ts";
+import type { Grid } from "./base.ts";
 import { S, type Ground, type World } from "./ground.ts";
 import type { StaticPiece } from "./statics.ts";
 
@@ -30,17 +31,18 @@ const OPEN = new Set<number>([S.OPEN, S.GREEN, S.COURT, S.STREET, S.YARD, S.DUNE
 // The beds of the sea and of lakes are under water, and a spawn point by a lake keeps clear of its shallows.
 const BLOCKING = new Set<number>([S.HEAP, S.WALL, S.POOL, S.FORD, S.DECK, S.MARSH, S.MANGROVE, S.SHALLOW, S.FLAT, S.DEEP, S.CHANNEL]);
 
-export function placeSpawns(ground: Ground, world: World, toSample: (lon: number, lat: number) => [number, number], size: number): Spawn[] {
-  const { n, height, surface } = ground;
+export function placeSpawns(ground: Ground, world: World, toSample: (lon: number, lat: number) => [number, number]): Spawn[] {
+  const { height, surface } = ground;
+  const { nx, nz, sizeX, sizeZ } = ground.grid;
   const fits = (col: number, row: number, kinds: ReadonlySet<number>): boolean => {
-    const i = row * n + col;
+    const i = row * nx + col;
     if (!kinds.has(surface[i]!) || height[i]! < 0.4) return false;
     for (let dr = -3; dr <= 3; dr++) {
       for (let dc = -3; dc <= 3; dc++) {
         const r = row + dr;
         const c = col + dc;
-        if (r < 0 || c < 0 || r >= n || c >= n) return false;
-        const j = r * n + c;
+        if (r < 0 || c < 0 || r >= nz || c >= nx) return false;
+        const j = r * nx + c;
         if (Math.abs(height[j]! - height[i]!) > 0.5 || BLOCKING.has(surface[j]!) || height[j]! < 0.1) return false;
       }
     }
@@ -57,7 +59,7 @@ export function placeSpawns(ground: Ground, world: World, toSample: (lon: number
           if (Math.max(Math.abs(dr), Math.abs(dc)) !== ring) continue;
           const c = c0 + dc;
           const r = r0 + dr;
-          if (c < 3 || r < 3 || c >= n - 3 || r >= n - 3 || !fits(c, r, kinds)) continue;
+          if (c < 3 || r < 3 || c >= nx - 3 || r >= nz - 3 || !fits(c, r, kinds)) continue;
           const d = dr * dr + dc * dc;
           if (d < near) {
             near = d;
@@ -72,24 +74,25 @@ export function placeSpawns(ground: Ground, world: World, toSample: (lon: number
       const dx = -(fc - c);
       const dz = -(fr - r);
       const yaw = ((Math.atan2(dx, dz) * 180) / Math.PI + 360) % 360;
-      return { name: s.name, x: size - c * 2, z: size - r * 2, yaw: Math.round(yaw) };
+      return { name: s.name, x: sizeX - c * 2, z: sizeZ - r * 2, yaw: Math.round(yaw) };
     }
     throw new Error(`no ground fit for the spawn point "${s.name}" within 300 m of where it is named`);
   });
 }
 
 /** Per sample, 1 where a static piece stands over it at any height: a square round its middle as wide as its turned box. */
-export function staticCover(pieces: readonly StaticPiece[], reg: Registry, n: number, size: number): Uint8Array {
-  const cover = new Uint8Array(n * n);
+export function staticCover(pieces: readonly StaticPiece[], reg: Registry, grid: Grid): Uint8Array {
+  const { nx, nz, sizeX, sizeZ } = grid;
+  const cover = new Uint8Array(nx * nz);
   for (const p of pieces) {
     const k = reg.index.get(p.kind);
     if (k === undefined) continue;
     // In samples, and half a sample more so that a piece smaller than a sample still covers the one nearest it.
     const r = Math.hypot(reg.halfX[k]!, reg.halfZ[k]!) / 2 + 0.5;
-    const c = (size - p.x) / 2;
-    const w = (size - p.z) / 2;
-    for (let row = Math.max(0, Math.ceil(w - r)); row <= Math.min(n - 1, Math.floor(w + r)); row++) {
-      for (let col = Math.max(0, Math.ceil(c - r)); col <= Math.min(n - 1, Math.floor(c + r)); col++) cover[row * n + col] = 1;
+    const c = (sizeX - p.x) / 2;
+    const w = (sizeZ - p.z) / 2;
+    for (let row = Math.max(0, Math.ceil(w - r)); row <= Math.min(nz - 1, Math.floor(w + r)); row++) {
+      for (let col = Math.max(0, Math.ceil(c - r)); col <= Math.min(nx - 1, Math.floor(c + r)); col++) cover[row * nx + col] = 1;
     }
   }
   return cover;
@@ -103,8 +106,9 @@ const STAND = 3.5;
  * level to a quarter metre under the obelisk turned any way, and to half a metre round the terminal and before it, with no
  * static piece within 10 m of its middle or 6 m of where its user stands. The terminal turns toward the place named.
  */
-export function placeObelisks(ground: Ground, world: World, toSample: (lon: number, lat: number) => [number, number], size: number, cover: Uint8Array): ObeliskPlace[] {
-  const { n, height, surface } = ground;
+export function placeObelisks(ground: Ground, world: World, toSample: (lon: number, lat: number) => [number, number], cover: Uint8Array): ObeliskPlace[] {
+  const { height, surface } = ground;
+  const { nx, nz, sizeX, sizeZ } = ground.grid;
   // Every sample within `reach` of (c, r) is open dry ground within `level` of `h`, and none within `room` has a piece.
   const clear = (c: number, r: number, h: number, reach: number, level: number, room: number): boolean => {
     const [c0, r0] = [Math.round(c), Math.round(r)];
@@ -114,8 +118,8 @@ export function placeObelisks(ground: Ground, world: World, toSample: (lon: numb
         if (d2 > room * room) continue;
         const col = c0 + dc;
         const row = r0 + dr;
-        if (col < 0 || row < 0 || col >= n || row >= n) return false;
-        const i = row * n + col;
+        if (col < 0 || row < 0 || col >= nx || row >= nz) return false;
+        const i = row * nx + col;
         if (cover[i]) return false;
         if (d2 <= reach * reach && (!OPEN.has(surface[i]!) || height[i]! < 0.4 || Math.abs(height[i]! - h) > level)) return false;
       }
@@ -134,11 +138,11 @@ export function placeObelisks(ground: Ground, world: World, toSample: (lon: numb
           const c = c0 + dc;
           const r = r0 + dr;
           const d = dr * dr + dc * dc;
-          if (d >= near || c < 8 || r < 8 || c >= n - 8 || r >= n - 8) continue;
+          if (d >= near || c < 8 || r < 8 || c >= nx - 8 || r >= nz - 8) continue;
           // Toward the place it faces, in whole degrees as a spawn point turns: east is -x on the map.
           const degrees = Math.round((Math.atan2(-(fc - c), -(fr - r)) * 180) / Math.PI);
           const a = (degrees * Math.PI) / 180;
-          const h = height[r * n + c]!;
+          const h = height[r * nx + c]!;
           if (!clear(c, r, h, 3, 0.25, 5) || !clear(c - Math.sin(a) * STAND, r - Math.cos(a) * STAND, h, 2, 0.5, 3)) continue;
           near = d;
           best = [c, r, degrees];
@@ -146,24 +150,26 @@ export function placeObelisks(ground: Ground, world: World, toSample: (lon: numb
       }
       if (!best) continue;
       const [c, r, degrees] = best;
-      return { name: o.name, x: size - c * 2, z: size - r * 2, yaw: Math.round((((degrees + 360) % 360) / 360) * 65536) & 0xffff };
+      return { name: o.name, x: sizeX - c * 2, z: sizeZ - r * 2, yaw: Math.round((((degrees + 360) % 360) / 360) * 65536) & 0xffff };
     }
     throw new Error(`no ground fit for the obelisk "${o.name}" within 300 m of where it is named`);
   });
 }
 
-export function placeRegions(ground: Ground, size: number, spawns: readonly Spawn[] = [], easyWithin = 0): Region[] {
-  const { n, surface, height } = ground;
+export function placeRegions(ground: Ground, spawns: readonly Spawn[] = [], easyWithin = 0): Region[] {
+  const { surface, height } = ground;
+  const { nx, nz, sizeX, sizeZ, cell, noiseWest, noiseNorth } = ground.grid;
   const out: Region[] = [];
+  // Cells of `span` samples on the lattice, from the corner north-west noise is read from.
   const cells = (span: number, take: (s: number) => boolean, minArea: number, emit: (x: number, z: number, area: number) => void): void => {
-    for (let r0 = 0; r0 < n; r0 += span) {
-      for (let c0 = 0; c0 < n; c0 += span) {
+    for (let r0 = -((noiseNorth / cell) % span + span) % span; r0 < nz; r0 += span) {
+      for (let c0 = -((noiseWest / cell) % span + span) % span; c0 < nx; c0 += span) {
         let m = 0;
         let sc = 0;
         let sr = 0;
-        for (let r = r0; r < Math.min(n, r0 + span); r++) {
-          for (let c = c0; c < Math.min(n, c0 + span); c++) {
-            const i = r * n + c;
+        for (let r = Math.max(0, r0); r < Math.min(nz, r0 + span); r++) {
+          for (let c = Math.max(0, c0); c < Math.min(nx, c0 + span); c++) {
+            const i = r * nx + c;
             if (!take(surface[i]!) || height[i]! < 0.3) continue;
             m++;
             sc += c;
@@ -171,7 +177,7 @@ export function placeRegions(ground: Ground, size: number, spawns: readonly Spaw
           }
         }
         if (m * 4 < minArea) continue;
-        emit(size - (sc / m) * 2, size - (sr / m) * 2, m * 4);
+        emit(sizeX - (sc / m) * 2, sizeZ - (sr / m) * 2, m * 4);
       }
     }
   };

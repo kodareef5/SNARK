@@ -4,8 +4,11 @@ import type { Rule, Vocabulary } from "./ruin-vocabulary.ts";
 
 export interface Neighbour { frame: Frame; height: number; }
 
-/** Exposure and party edges follow geometry, independent of the order in which budgets admit buildings. */
-export function contextualize(rule: Rule, frame: Frame, others: Neighbour[], water: number, built: number | null | undefined, v: Vocabulary): Rule {
+/**
+ * Exposure and party edges follow geometry, independent of the order in which budgets admit buildings. `lattice` is what
+ * turns engine metres into lattice metres (Grid in base.ts), on which the collapse's cells lie.
+ */
+export function contextualize(rule: Rule, frame: Frame, others: Neighbour[], water: number, built: number | null | undefined, v: Vocabulary, lattice: readonly [number, number]): Rule {
   const length = Math.hypot(...v.event.travel); const travel = v.event.travel.map((n) => n / length) as [number, number];
   let shelter = 0;
   const party: number[] = [];
@@ -27,7 +30,7 @@ export function contextualize(rule: Rule, frame: Frame, others: Neighbour[], wat
   const age = built && built < 1940 ? .12 : built && built >= 2000 ? -.08 : 0;
   const exposure = Math.max(.05, Math.min(1, .18 + .82 * Math.exp(-water / v.event.reach) + age - shelter));
   const band = v.event.bands.find((b) => exposure < b.below) ?? v.event.bands.at(-1)!;
-  const field = hash3(Math.floor(frame.x / v.event.cell), Math.floor(frame.z / v.event.cell), v.seed + 233);
+  const field = hash3(Math.floor((frame.x + lattice[0]) / v.event.cell), Math.floor((frame.z + lattice[1]) / v.event.cell), v.seed + 233);
   const collapse = rule.height > 60 ? (exposure > .48 ? "lost-top" : "hanging") : band.modes[field % band.modes.length]!;
   const damage = v.damage[collapse]!;
   return { ...rule, collapse, damage: { ...damage, radius: damage.radius * (.65 + exposure * .6) }, event: { travel, exposure, shelter }, party, roofGrowth: v.growth.roofChance, matched: [...rule.matched, `surge ${exposure.toFixed(2)}`, ...(shelter ? ["sheltered"] : []), ...(party.length ? ["party frontage"] : [])] };

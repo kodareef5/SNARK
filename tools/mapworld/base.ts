@@ -1,37 +1,95 @@
 // The registered layers a map is made from (assets/source/maps/<name>/base, described by its VALUES.md), read north up as
-// the pictures hold them: index row * side + column, row 0 at the north and column 0 at the west.
+// the pictures hold them: index row * nx + column, row 0 at the north and column 0 at the west.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { CHUNK_SIZE, FRAME_MIDDLE } from "../../shared/coords.ts";
 import { readGrey } from "../map/png.ts";
 import { TransverseMercator } from "./geo.ts";
 import { readFloatTiff, type FloatRaster } from "./tiff.ts";
 
+/** A map's source frame, map.json: a rectangle of whole chunks in the local Transverse Mercator round its centre. */
 export interface MapInfo {
   readonly bathymetry?: string;
   /** The NAVD88 height height.png's zero stands for: -100 m unless a city's ground stands higher than 555 m. */
   readonly height_zero_m?: number;
-  readonly size_m: number;
-  readonly chunks: number;
-  readonly grid_samples: number;
+  /** West to east, then south to north. */
+  readonly size_m: readonly [number, number];
+  readonly chunks: readonly [number, number];
+  readonly grid_samples: readonly [number, number];
   readonly spacing_m: number;
+  /** West, south, east and north edges in metres east and north of the projection's centre. */
   readonly bounds: readonly [number, number, number, number];
+  /** The lattice column and row of its south-east corner (shared/coords.ts). */
+  readonly frame: readonly [number, number];
   readonly center_lon_lat: readonly [number, number];
+}
+
+/**
+ * Where a map's samples lie: nx columns west to east and nz rows north to south, `cell` metres apart, index row * nx +
+ * column. Engine x = sizeX - cell * column runs west from the east edge and z = sizeZ - cell * row north from the south.
+ * What must not move when a map is widened or cut is read on the lattice: a place's lattice metres are x + latticeX and
+ * z + latticeZ west and north of the lattice's middle corner, and a sample's column and row from the corner the
+ * build's north-west noise is read from are column + noiseWest / cell and row + noiseNorth / cell.
+ */
+export interface Grid {
+  readonly nx: number;
+  readonly nz: number;
+  readonly cell: number;
+  readonly sizeX: number;
+  readonly sizeZ: number;
+  /** Edges in metres east and north of the projection's centre. */
+  readonly west: number;
+  readonly south: number;
+  readonly east: number;
+  readonly north: number;
+  readonly latticeX: number;
+  readonly latticeZ: number;
+  readonly noiseWest: number;
+  readonly noiseNorth: number;
+}
+
+/**
+ * The corner north-west noise is read from, in lattice metres west and north of the lattice's middle corner: the north-west
+ * corner of a map 127 chunks a side at the middle, as the five cities were built, so that their ground keeps its bytes.
+ */
+const NOISE_CORNER = 127 * CHUNK_SIZE;
+
+/** The grid of a rectangle given by its west, south, east and north edges, `cell` metres a sample, its corner at `frame`. */
+export function gridAt(bounds: readonly [number, number, number, number], cell = 2, frame: readonly [number, number] = [FRAME_MIDDLE, FRAME_MIDDLE]): Grid {
+  const [west, south, east, north] = bounds;
+  const sizeX = east - west;
+  const sizeZ = north - south;
+  const latticeX = (frame[0] - FRAME_MIDDLE) * CHUNK_SIZE;
+  const latticeZ = (frame[1] - FRAME_MIDDLE) * CHUNK_SIZE;
+  return { nx: sizeX / cell + 1, nz: sizeZ / cell + 1, cell, sizeX, sizeZ, west, south, east, north, latticeX, latticeZ, noiseWest: NOISE_CORNER - sizeX - latticeX, noiseNorth: NOISE_CORNER - sizeZ - latticeZ };
+}
+
+/** A map.json's grid, which must say the same in its bounds, its sizes, its chunks and its samples. */
+export function gridOf(info: MapInfo): Grid {
+  const g = gridAt(info.bounds, info.spacing_m, info.frame);
+  const agrees = [info.size_m[0] === g.sizeX, info.size_m[1] === g.sizeZ, info.chunks[0] * CHUNK_SIZE === g.sizeX, info.chunks[1] * CHUNK_SIZE === g.sizeZ, info.grid_samples[0] === g.nx, info.grid_samples[1] === g.nz];
+  if (agrees.includes(false)) throw new Error(`map.json's bounds ${info.bounds.join(", ")} are not its size_m, chunks of ${CHUNK_SIZE} m and grid_samples`);
+  return g;
 }
 
 export class Base {
   readonly folder: string;
   readonly info: MapInfo;
-  /** Samples a side. */
-  readonly n: number;
+  readonly grid: Grid;
   readonly tm: TransverseMercator;
   private readonly cache = new Map<string, Uint8Array | Uint16Array>();
 
   constructor(folder: string) {
     this.folder = folder;
     this.info = JSON.parse(readFileSync(join(folder, "map.json"), "utf8")) as MapInfo;
-    this.n = this.info.grid_samples;
+    this.grid = gridOf(this.info);
     this.tm = new TransverseMercator(this.info.center_lon_lat[1], this.info.center_lon_lat[0]);
+  }
+
+  /** Samples in all. */
+  get samples(): number {
+    return this.grid.nx * this.grid.nz;
   }
 
   /** An 8-bit layer of base/, at its own size. */
@@ -54,28 +112,29 @@ export class Base {
     const named = this.info.bathymetry;
     if (!named) return null;
     const tif = readFloatTiff(new Uint8Array(readFileSync(join(this.folder, "base", named))));
-    const n = this.n;
-    const out = new Float32Array(n * n);
+    const { nx, nz } = this.grid;
+    const out = new Float32Array(nx * nz);
     // Longitude and latitude are found every 64 m and taken between: the projection bends far less than a sample over that.
     const step = 32;
-    const knots = Math.ceil((n - 1) / step) + 1;
-    const lon = new Float64Array(knots * knots);
-    const lat = new Float64Array(knots * knots);
-    for (let r = 0; r < knots; r++) {
-      for (let c = 0; c < knots; c++) {
-        const [e, no] = this.metres(Math.min(n - 1, c * step), Math.min(n - 1, r * step));
-        [lon[r * knots + c], lat[r * knots + c]] = this.tm.inverse(e, no);
+    const across = Math.ceil((nx - 1) / step) + 1;
+    const down = Math.ceil((nz - 1) / step) + 1;
+    const lon = new Float64Array(across * down);
+    const lat = new Float64Array(across * down);
+    for (let r = 0; r < down; r++) {
+      for (let c = 0; c < across; c++) {
+        const [e, no] = this.metres(Math.min(nx - 1, c * step), Math.min(nz - 1, r * step));
+        [lon[r * across + c], lat[r * across + c]] = this.tm.inverse(e, no);
       }
     }
-    for (let row = 0; row < n; row++) {
-      const r0 = Math.min(knots - 2, Math.floor(row / step));
+    for (let row = 0; row < nz; row++) {
+      const r0 = Math.min(down - 2, Math.floor(row / step));
       const fr = (row - r0 * step) / step;
-      for (let col = 0; col < n; col++) {
-        const c0 = Math.min(knots - 2, Math.floor(col / step));
+      for (let col = 0; col < nx; col++) {
+        const c0 = Math.min(across - 2, Math.floor(col / step));
         const fc = (col - c0 * step) / step;
-        const k = r0 * knots + c0;
-        const mixAt = (g: Float64Array): number => (g[k]! * (1 - fc) + g[k + 1]! * fc) * (1 - fr) + (g[k + knots]! * (1 - fc) + g[k + knots + 1]! * fc) * fr;
-        out[row * n + col] = sample(tif, mixAt(lon), mixAt(lat));
+        const k = r0 * across + c0;
+        const mixAt = (g: Float64Array): number => (g[k]! * (1 - fc) + g[k + 1]! * fc) * (1 - fr) + (g[k + across]! * (1 - fc) + g[k + across + 1]! * fc) * fr;
+        out[row * nx + col] = sample(tif, mixAt(lon), mixAt(lat));
       }
     }
     return out;
@@ -83,8 +142,13 @@ export class Base {
 
   /** Metres east and north of the centre of sample (column, row). */
   metres(col: number, row: number): [number, number] {
-    const half = this.info.size_m / 2;
-    return [-half + col * this.info.spacing_m, half - row * this.info.spacing_m];
+    return [this.grid.west + col * this.grid.cell, this.grid.north - row * this.grid.cell];
+  }
+
+  /** The sample a longitude and latitude falls on, as a fractional column and row. */
+  toSample(lon: number, lat: number): [number, number] {
+    const [e, no] = this.tm.forward(lon, lat);
+    return [(e - this.grid.west) / this.grid.cell, (this.grid.north - no) / this.grid.cell];
   }
 
   private read(name: string): Uint8Array | Uint16Array {

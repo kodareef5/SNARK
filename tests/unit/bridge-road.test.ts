@@ -7,6 +7,7 @@ import { RUIN_SLOPES } from "../../content/ruins.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { castWorld, HIT_NONE, rayHit } from "../../shared/world/ray.ts";
 import { flatWorld } from "../fixtures/world.ts";
+import { gridAt } from "../../tools/mapworld/base.ts";
 import { makeBridges, roadDeckSlab, worldFrame, type DeckPoint } from "../../tools/mapworld/bridges.ts";
 import { Mason } from "../../tools/mapworld/ruin-geometry.ts";
 import type { Site } from "../../tools/mapworld/statics.ts";
@@ -23,7 +24,7 @@ test("road slab definitions append without renumbering existing kinds and use th
 });
 
 function laid(deck: DeckPoint[]) {
-  const w = flatWorld(4), mason = new Mason(worldFrame(256), 0);
+  const w = flatWorld(4), mason = new Mason(worldFrame({ sizeX: 256, sizeZ: 256 }), 0);
   deck.forEach((d, i) => { if (!d.gap) {
     const slab = roadDeckSlab(deck, i), a = d.yaw * Math.PI / 180;
     for (const side of [-6, -2, 2, 6]) mason.put(slab.shape, d.x + Math.sin(a) * side, slab.y, d.z + Math.cos(a) * side, "concrete", slab.yaw);
@@ -71,7 +72,7 @@ test("a producer retains gaps, per-row slab counts, flat rails and piers, and su
       points: [[176, -192 + i * 96], [76, -192 + i * 96]] }));
     writeFileSync(join(source, "blocks/ways.json"), JSON.stringify(ways));
     const n = 257, gaps = new Uint8Array(n * n); gaps[Math.round((512 - 64) / 2) * n + Math.round((512 - 130) / 2)] = 1;
-    const site = { source, ground: { n, gaps, water: new Uint8Array(n * n), height: new Float32Array(n * n), heaps: { owner: new Int32Array(n * n).fill(-1) } },
+    const site = { source, ground: { grid: gridAt([-256, -256, 256, 256]), gaps, water: new Uint8Array(n * n), height: new Float32Array(n * n), heaps: { owner: new Int32Array(n * n).fill(-1) } },
       groundAt: (x: number) => 1 + x * .1, waterAt: () => 0, toEngine: (e: number, no: number) => [256 - e, 256 + no] } as unknown as Site;
     const built: Mason[] = [], result = makeBridges(site, m => { built.push(m); return true; });
     expect(result.records).toHaveLength(4);

@@ -53,9 +53,9 @@ for (const r of records.filter((r) => r.status === "built" && r.kind !== "breakw
     results.push({ id: r.id, name: r.name, type: `swim ${index + 1}`, ok, message: ok ? "" : `stopped ${b.x.toFixed(2)},${b.y.toFixed(2)},${b.z.toFixed(2)} under ${s.x.toFixed(2)},${s.z.toFixed(2)}` });
   }
 }
-const base = new Base(paths.source); const gaps = paths.world.bridgeGapLayer ? base.bytes(paths.world.bridgeGapLayer) : new Uint8Array(base.n * base.n);
-const broken = regions((i) => gaps[i] === 1, base.n, base.n);
-const gapAt = (x: number, z: number): number => broken.label[Math.round((base.info.size_m - z) / 2) * base.n + Math.round((base.info.size_m - x) / 2)] ?? 0;
+const base = new Base(paths.source); const { nx, nz, sizeX, sizeZ } = base.grid; const gaps = paths.world.bridgeGapLayer ? base.bytes(paths.world.bridgeGapLayer) : new Uint8Array(nx * nz);
+const broken = regions((i) => gaps[i] === 1, nx, nz);
+const gapAt = (x: number, z: number): number => broken.label[Math.round((sizeZ - z) / 2) * nx + Math.round((sizeX - x) / 2)] ?? 0;
 const touched = new Set(records.flatMap((r) => r.deck.filter((d) => d.gap).map((d) => gapAt(d.x, d.z))).filter(Boolean));
 const filled = map.statics.filter((p) => p.kind.includes("zruin_floor") && gapAt(p.x, p.z));
 const gapAudit = { authored: broken.count, intersectedByWays: touched.size, floorCentresInGap: filled.length };

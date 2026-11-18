@@ -7,7 +7,7 @@ const streetLevel = (ground: number, base: number): number => Math.abs(ground - 
 
 export interface Approach { street: { x: number; y: number; z: number }; door: { x: number; y: number; z: number }; core: { x: number; y: number; z: number }; ramp: number; }
 export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]): ((m: Mason, owner: number) => Approach[]) & { reserve: (routes: Approach[]) => void } {
-  const { n, surface, heaps } = site.ground; const size = (n - 1) * 2;
+  const { surface, heaps } = site.ground; const { nx, nz, sizeX, sizeZ } = site.ground.grid;
   const bins = new Map<string, { x: number; z: number }[]>();
   // A solid is in every 4 m bin within w + d of its middle, past which no point it holds can lie, so a point's own bin
   // holds every solid that can stand in its way.
@@ -24,10 +24,10 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
     return out;
   };
   const solids = index(infrastructure);
-  const at = (x: number, z: number): number => Math.round((size - z) / 2) * n + Math.round((size - x) / 2);
-  for (let row = 2; row < n - 2; row += 4) for (let col = 2; col < n - 2; col += 4) {
-    const i = row * n + col; if (surface[i] !== S.STREET && surface[i] !== S.HIGHWAY) continue;
-    const x = size - col * 2; const z = size - row * 2; const k = `${Math.floor(x / 64)},${Math.floor(z / 64)}`;
+  const at = (x: number, z: number): number => Math.round((sizeZ - z) / 2) * nx + Math.round((sizeX - x) / 2);
+  for (let row = 2; row < nz - 2; row += 4) for (let col = 2; col < nx - 2; col += 4) {
+    const i = row * nx + col; if (surface[i] !== S.STREET && surface[i] !== S.HIGHWAY) continue;
+    const x = sizeX - col * 2; const z = sizeZ - row * 2; const k = `${Math.floor(x / 64)},${Math.floor(z / 64)}`;
     if (!bins.has(k)) bins.set(k, []); bins.get(k)!.push({ x, z });
   }
   const reserved = new Map<number, Approach[]>();
@@ -139,12 +139,12 @@ function clashes(a: Approach, x: number, z: number, level: number): boolean {
 }
 
 export function gradeApproaches(site: Site, approaches: readonly Approach[], owner: number): void {
-  const { n, height, water, heaps } = site.ground; const size = (n - 1) * 2;
+  const { height, water, heaps } = site.ground; const { nx, nz, sizeX, sizeZ } = site.ground.grid;
   for (const a of approaches) {
     const dx = a.door.x - a.street.x; const dz = a.door.z - a.street.z; const length = Math.hypot(dx, dz);
-    for (let row = Math.max(0, Math.floor((size - Math.max(a.street.z, a.door.z) - 5) / 2)); row <= Math.min(n - 1, Math.ceil((size - Math.min(a.street.z, a.door.z) + 5) / 2)); row++) for (let col = Math.max(0, Math.floor((size - Math.max(a.street.x, a.door.x) - 5) / 2)); col <= Math.min(n - 1, Math.ceil((size - Math.min(a.street.x, a.door.x) + 5) / 2)); col++) {
-      const i = row * n + col; if (water[i] || (owner >= 0 && heaps.owner[i]! >= 0 && heaps.owner[i] !== owner)) continue;
-      const x = size - col * 2; const z = size - row * 2;
+    for (let row = Math.max(0, Math.floor((sizeZ - Math.max(a.street.z, a.door.z) - 5) / 2)); row <= Math.min(nz - 1, Math.ceil((sizeZ - Math.min(a.street.z, a.door.z) + 5) / 2)); row++) for (let col = Math.max(0, Math.floor((sizeX - Math.max(a.street.x, a.door.x) - 5) / 2)); col <= Math.min(nx - 1, Math.ceil((sizeX - Math.min(a.street.x, a.door.x) + 5) / 2)); col++) {
+      const i = row * nx + col; if (water[i] || (owner >= 0 && heaps.owner[i]! >= 0 && heaps.owner[i] !== owner)) continue;
+      const x = sizeX - col * 2; const z = sizeZ - row * 2;
       const t = Math.max(0, Math.min(1, ((x - a.street.x) * dx + (z - a.street.z) * dz) / (length * length)));
       const distance = Math.hypot(x - a.street.x - dx * t, z - a.street.z - dz * t); if (distance >= 5) continue;
       const y = Math.abs(a.street.y - a.door.y) < .4 ? a.door.y : a.street.y + (a.door.y - a.street.y) * Math.min(1, t / a.ramp); const weight = Math.min(1, (5 - distance) / 2);

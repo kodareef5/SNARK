@@ -87,7 +87,7 @@ export function growRuins(map: MapData, reg: Registry, site: Site, growth: Vocab
         })) { rejected.sight++; takeOut(chunk, slot); continue; }
       }
       admitted++;
-      const groundIndex = Math.round((map.dims.chunksZ * 64 - pz) / 2) * site.ground.n + Math.round((map.dims.chunksX * 64 - px) / 2);
+      const groundIndex = Math.round((map.dims.chunksZ * 64 - pz) / 2) * site.ground.grid.nx + Math.round((map.dims.chunksX * 64 - px) / 2);
       const district = site.world.districts[site.ground.district[groundIndex]! - 1]?.name ?? "Unzoned";
       const surface = Object.entries(S).find(([, v]) => v === site.ground.surface[groundIndex])?.[0] ?? "unknown";
       byDistrict[district] = (byDistrict[district] ?? 0) + 1; bySurface[surface] = (bySurface[surface] ?? 0) + 1;
