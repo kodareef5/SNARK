@@ -5,6 +5,7 @@
 // None is named for its mesh, so a destroyed vessel draws its intact hull until the pack has its sunk form.
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../../shared/content/defs.ts";
 import { MAX_SHAPE_BOXES, MAX_STRUCTURE_HALF } from "../../shared/content/registry.ts";
+import { ROUTE_MARGIN } from "../../shared/world/path.ts";
 import { MARINE_MODELS } from "./marine-fleet.ts";
 
 export const HARBOUR_WRECK_FORMS = ["damaged", "sunk"] as const;
@@ -19,9 +20,18 @@ const boxOf = (lo: number[], hi: number[]): ShapeBox => ({ at: [(lo[0]! + hi[0]!
 const union = (a: ShapeBox, b: ShapeBox): ShapeBox => boxOf([0, 1, 2].map((k) => Math.min(span(a, k)[0], span(b, k)[0])), [0, 1, 2].map((k) => Math.max(span(a, k)[1], span(b, k)[1])));
 const volume = (b: ShapeBox): number => b.half[0]! * b.half[1]! * b.half[2]! * 8;
 
-/** A hull's boxes as a static's shape takes them: within its reach of the origin, and joined two at a time where they grow least till few enough. */
+/**
+ * Metres a hulk's boxes reach across from its origin at most, so a creature's way past one is found again within
+ * ROUTE_MARGIN of it, the widest walker's radius and a margin with it: the 32 m yacht's ends lie outside its shape.
+ */
+const REACH = ROUTE_MARGIN - 1.5;
+
+/** A hull's boxes as a static's shape takes them: within REACH of the origin, and joined two at a time where they grow least till few enough. */
 export function hulkBoxes(boxes: readonly ShapeBox[]): ShapeBox[] {
-  const out = boxes.map((b) => boxOf([0, 1, 2].map((k) => Math.max(-MAX_STRUCTURE_HALF, span(b, k)[0])), [0, 1, 2].map((k) => Math.min(MAX_STRUCTURE_HALF, span(b, k)[1]))));
+  const out = boxes.map((b) => {
+    const across = Math.min(MAX_STRUCTURE_HALF, Math.max(...span(b, 0).map(Math.abs))), along = Math.sqrt(REACH * REACH - across * across);
+    return boxOf([Math.max(-across, span(b, 0)[0]), span(b, 1)[0], Math.max(-along, span(b, 2)[0])], [Math.min(across, span(b, 0)[1]), span(b, 1)[1], Math.min(along, span(b, 2)[1])]);
+  });
   while (out.length > MAX_SHAPE_BOXES) {
     let [a, b, gain] = [0, 1, Infinity];
     for (let i = 0; i < out.length; i++) for (let j = i + 1; j < out.length; j++) {

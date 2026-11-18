@@ -156,8 +156,10 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // They were c10a0609 and 1ef8d869 until the sea was made ahead of the statics, the first of the see-through draws,
   // which go as made (scene.ts): its tiles take the first of each frame's transient instances, and the draws and
   // triangles are as they were.
-  expect(beforePlain).toBe("6566450d");
-  expect(hash).toBe("bc950e8d");
+  // They were 6566450d and bc950e8d until the harbours' wrecks (content/vehicles/harbour-wrecks.ts) put thirty stand-in meshes in the
+  // pack ahead of the test's: only the draws' mesh indices moved, and the draws, triangles and bytes are as they were.
+  expect(beforePlain).toBe("5efd151d");
+  expect(hash).toBe("212123bd");
   // What the hash cannot say: the 300 frames' draws, triangles and bytes put on the card. A change that moves the hash
   // and leaves the frames as they were leaves these.
   expect(counts).toEqual([34500, 32934000, 0]);
@@ -177,8 +179,9 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // 38,100 draws and 34,590,000 triangles, until chunks were drawn by cell, as above, and 9343af55 and 6a13306d until the
   // draws came by what they bind, as above, each frame's picture as it was, and afc06c85 and 6dd7b425, with 33,000
   // draws and 34,003,200 triangles, until nodes were scattered by their chunks' frame keys, as above, and 1536293d and
-  // 706f11fd until the sea was made ahead of the statics, as above.
-  expect(saddled.beforePlain).toBe("d44c5109");
-  expect(saddled.hash).toBe("90b43a9");
+  // 706f11fd until the sea was made ahead of the statics, as above, and d44c5109 and 90b43a9 until the harbours' wrecks,
+  // as above.
+  expect(saddled.beforePlain).toBe("d14ab735");
+  expect(saddled.hash).toBe("dd8fdb95");
   expect(saddled.counts).toEqual([34800, 32952000, 0]);
 });
