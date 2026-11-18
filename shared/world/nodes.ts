@@ -371,9 +371,9 @@ export class NodeField {
   /**
    * Retains (delta +1) or releases (delta -1) the square of chunks within `radius` of `center`. A chunk fills when its count leaves
    * zero, with every node of the map: those `gone` reports as what is left of them, the rest at the hit count `left` gives or else
-   * the kind's full count.
+   * the kind's full count. A source override must return the same immutable map spots; vehicles use it to memoize cold fills.
    */
-  retain(center: number, radius: number, delta: number, gone: (chunk: number, index: number) => boolean, left?: (chunk: number, index: number) => number, crushed?: (chunk: number, index: number) => boolean): void {
+  retain(center: number, radius: number, delta: number, gone: (chunk: number, index: number) => boolean, left?: (chunk: number, index: number) => number, crushed?: (chunk: number, index: number) => boolean, source = this.source): void {
     const dims = this.dims;
     const cx = chunkCx(dims, center);
     const cz = chunkCz(dims, center);
@@ -382,16 +382,16 @@ export class NodeField {
         const chunk = z * dims.chunksX + x;
         const before = this.refs[chunk]!;
         this.refs[chunk] = before + delta;
-        if (before === 0 && delta > 0) this.fill(chunk, gone, left, crushed);
+        if (before === 0 && delta > 0) this.fill(chunk, gone, left, crushed, source);
         else if (before === 1 && delta < 0) this.store.dropChunk(chunk);
       }
     }
   }
 
-  private fill(chunk: number, gone: (chunk: number, index: number) => boolean, left?: (chunk: number, index: number) => number, crushed?: (chunk: number, index: number) => boolean): void {
+  private fill(chunk: number, gone: (chunk: number, index: number) => boolean, left: ((chunk: number, index: number) => number) | undefined, crushed: ((chunk: number, index: number) => boolean) | undefined, source: NodeSource): void {
     const spot = this.spot;
-    for (let i = 0; i < this.source.perChunk; i++) {
-      this.source.at(chunk, i, spot);
+    for (let i = 0; i < source.perChunk; i++) {
+      source.at(chunk, i, spot);
       if (spot.kind === 0) continue;
       if (gone(chunk, i)) {
         if (crushed?.(chunk, i)) continue;

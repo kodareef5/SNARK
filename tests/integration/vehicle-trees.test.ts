@@ -332,3 +332,23 @@ test("an actual falling car's successful upward tree fracture reports landing sp
     expect(fractured).toBe(true); expect(landing).toBeGreaterThan(6); expect(wall).toBe(0);
   } finally { h.host.shutdown(); }
 });
+
+test("nearby cold cars reuse immutable node spots within a tick while immediate depletion and chunk release remain native", () => {
+  const h = new Harness({}, 19, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: mapOf() }, registry);
+  try {
+    const harvest = h.host.harvest!, tree = nodesOf(h, "core:tree", 0, 0)[0]!, trees = new VehicleTrees(h.world, harvest), original = new Body(), body = new Body();
+    original.kind = h.reg.index.get("core:compact")!; original.vehicle = true; original.x = tree.x; original.z = tree.z - 4; original.y = 30; original.vz = 20;
+    const at = harvest.field.source.at.bind(harvest.field.source); let reads = 0;
+    harvest.field.source.at = (chunk, index, out) => { reads++; at(chunk, index, out); };
+    const step = () => { body.copy(original); trees.step(h.world, body, 0, 0, 0, COMPACT_VEHICLE); expect(harvest.field.isLoaded(tree.chunk)).toBe(false); };
+    step(); const first = reads; expect(first).toBeGreaterThan(0);
+    for (let i = 0; i < 16; i++) step(); expect(reads).toBe(first);
+    h.world.tick++; step(); expect(reads).toBe(first * 2);
+    h.world.hf.changes.push(0, 0, 4, 4); step(); expect(reads).toBe(first * 3);
+    // The memo never records whether the tree is standing: a break between two vehicle steps is seen immediately.
+    expect(harvest.breakTree(tree.chunk, tree.index)).toBe(true);
+    original.y = 0; original.z = tree.z - 2.3; original.fuel = 40; step();
+    expect(body.z).toBeGreaterThan(tree.z - 2); expect(body.vz).toBeGreaterThan(19);
+    expect(harvest.crushed(tree.chunk, tree.index)).toBe(true); expect(harvest.field.isLoaded(tree.chunk)).toBe(false);
+  } finally { h.host.shutdown(); }
+});

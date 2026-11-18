@@ -10,7 +10,7 @@ import { GAME_HOUR_TICKS } from "../shared/sim/lazy.ts";
 import { leftAtPeriod } from "../shared/sim/breeding.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { chunkCount, chunkCx, chunkCz, TICK_RATE } from "../shared/coords.ts";
-import type { NodeField, NodeSpot } from "../shared/world/nodes.ts";
+import type { NodeField, NodeSpot, NodeSource } from "../shared/world/nodes.ts";
 import { HIT_NODE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { ROLE_FOUNDATION, ROLE_PILLAR } from "../shared/world/snap.ts";
 import { Found } from "../shared/world/structures.ts";
@@ -106,7 +106,7 @@ export class Harvest {
   }
 
   /** A focus entered (delta 1) or left (delta -1) the chunks within `radius` of `center`. */
-  retain(center: number, radius: number, delta: number): void {
+  retain(center: number, radius: number, delta: number, source?: NodeSource): void {
     this.field.retain(
       center,
       radius,
@@ -114,6 +114,7 @@ export class Harvest {
       (chunk, index) => (this.touched.get(this.key(chunk, index))?.respawnAt ?? 0) > 0,
       (chunk, index) => this.touched.get(this.key(chunk, index))?.hits ?? -1,
       (chunk, index) => this.crushed(chunk, index),
+      source,
     );
   }
 

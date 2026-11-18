@@ -5,6 +5,7 @@ import { stepVehicleBody } from "../shared/sim/vehicle-body.ts";
 import { TreeFracture } from "../shared/sim/vehicle-tree.ts";
 import { isWheelVehicle, type VehicleContact, type VehicleSpec, type VehicleState } from "../shared/sim/vehicle.ts";
 import { StaticVehicleWorld } from "../shared/world/vehicle.ts";
+import { VehicleNodeCache } from "./vehicle-node-cache.ts";
 import type { Harvest } from "./harvest.ts";
 import type { ServerWorld } from "./world.ts";
 
@@ -13,8 +14,10 @@ export class VehicleTrees extends StaticVehicleWorld {
   private readonly authority: ServerWorld;
   private readonly harvest: Harvest;
   private readonly sleeping = new Body();
+  private readonly nodes: VehicleNodeCache;
   constructor(authority: ServerWorld, harvest: Harvest) {
     super(authority); this.authority = authority; this.harvest = harvest; this.fracture = new TreeFracture(authority.reg, harvest.field.forms);
+    this.nodes = new VehicleNodeCache(harvest.field.source);
   }
 
   /** Cold nodes are retained only for the swept neighbourhood of this wheel step, then released symmetrically. */
@@ -30,13 +33,14 @@ export class VehicleTrees extends StaticVehicleWorld {
       // A removed support or a car perched on cold wood may wake. Re-run that heartbeat with the native node view.
       body.copy(this.sleeping);
     }
+    this.nodes.begin(this.authority.tick, this.authority.hf.changes.length);
     const dims = this.authority.dims, reach = Math.hypot(definition.spec.halfWidth, definition.spec.halfLength, definition.spec.height) + this.fracture.reach + 1;
     const endX = body.x + body.vx * dt, endZ = body.z + body.vz * dt;
     const minX = Math.max(0, Math.floor((Math.min(body.x, endX) - reach) / CHUNK_SIZE));
     const maxX = Math.min(dims.chunksX - 1, Math.floor((Math.max(body.x, endX) + reach) / CHUNK_SIZE));
     const minZ = Math.max(0, Math.floor((Math.min(body.z, endZ) - reach) / CHUNK_SIZE));
     const maxZ = Math.min(dims.chunksZ - 1, Math.floor((Math.max(body.z, endZ) + reach) / CHUNK_SIZE));
-    for (let z = minZ; z <= maxZ; z++) for (let x = minX; x <= maxX; x++) this.harvest.retain(z * dims.chunksX + x, 0, 1);
+    for (let z = minZ; z <= maxZ; z++) for (let x = minX; x <= maxX; x++) this.harvest.retain(z * dims.chunksX + x, 0, 1, this.nodes);
     try { stepVehicleBody(world, body, moveX, moveZ, buttons, definition, dt, yaw, pilot, this); }
     finally { for (let z = minZ; z <= maxZ; z++) for (let x = minX; x <= maxX; x++) this.harvest.retain(z * dims.chunksX + x, 0, -1); }
   };
