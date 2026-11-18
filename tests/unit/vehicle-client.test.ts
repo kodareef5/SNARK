@@ -1,9 +1,16 @@
 import { expect, test } from "bun:test";
 import { CARAVAN_ART } from "../../content/vehicles/van-art.ts";
-import { withVehicleDoor } from "../../shared/sim/vehicle-body.ts";
+import { packVehicleDrive, packVehiclePose, packVehicleRide, quantVehicleWheel, stepVehicleBody, withVehicleDoor } from "../../shared/sim/vehicle-body.ts";
+import { packVehicleQuaternionPair } from "../../shared/sim/vehicle-presentation.ts";
+import { ClientSession, RemoteSample } from "../../client/core/session.ts";
+import { predictedVehiclePose, remoteVehiclePose } from "../../client/core/vehicle-view.ts";
+import { EntityView, quantX, quantY, type ViewRing } from "../../shared/net/view.ts";
+import type { Connection } from "../../shared/net/transport.ts";
+import { Heightfield } from "../../shared/world/heightfield.ts";
+import { StructureStore } from "../../shared/world/structures.ts";
 import { Assets } from "../../client/core/assets/assets.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { Characters, type VehicleSeatPose } from "../../client/core/render/characters.ts";
+import { Characters, type VehicleRenderPose, type VehicleSeatPose } from "../../client/core/render/characters.ts";
 import { BONE_FLOATS, FramePacket, InstanceWriter } from "../../client/core/render/packet.ts";
 import { Viewpoint } from "../../client/core/viewpoint.ts";
 import { HudModel, VehicleTelemetry } from "../../client/core/hud.ts";
@@ -17,7 +24,7 @@ import { parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { defaultPalette, SKIN_BASE } from "../../shared/pack/palette.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { vehiclePoint, vehicleRotation } from "../../shared/sim/vehicle-frame.ts";
-import { Body } from "../../shared/sim/character.ts";
+import { Body, BTN_JUMP } from "../../shared/sim/character.ts";
 import { boxMesh, buildPack, type SourceMesh } from "../../tools/pack/write.ts";
 import { coreRegistry, flatWorld } from "../fixtures/world.ts";
 import { corePack } from "../fixtures/pack.ts";
@@ -146,6 +153,70 @@ test("suspension holds all wheel hubs on the support plane while chassis, occupa
   closed.characters.add(closed.packet, compact, frame.x, frame.y, frame.z, frame.yaw, state, 2, null, 0, colors, 0, null, 0, 9, false, false, 1, false, false, null, 0, { ...frame, doors: 0, steering: 0 });
   expect(transform(packet, 5, [.84, .76, -.35])).not.toEqual(transform(closed.packet, 5, [.84, .76, -.35]));
   expect(transform(packet, 7, [.42, 1.05, .55])).not.toEqual(transform(closed.packet, 7, [.42, 1.05, .55]));
+});
+
+test("a rolled car's wheels hang still at the end of their travel while its hull touches and leaves the ground, own and observed", () => {
+  const def = reg.vehicle[compact]!;
+  if (def.movement === "rotor" || def.movement === "boat") throw new Error("compact must be wheeled");
+  const travel = def.spec.suspensionTravel!, dims = { chunksX: 4, chunksZ: 4 }, hf = new Heightfield(dims, 1, -64, 1 / 256);
+  for (let z = 0; z < hf.nz; z++) for (let x = 0; x < hf.nx; x++) hf.setSample(x, z, Math.tan(12 * Math.PI / 180) * (z - 64));
+  const world = { hf, structs: new StructureStore(dims, new Float32Array([0]), new Float32Array([0]), new Float32Array([0])) };
+  // The real chassis dropped on its side on a slope rocks to rest. Its grounded bit is its hull's contact as well as its
+  // wheels', so it comes and goes as the hull rocks; then the rest is reported with that bit changing every tick.
+  const car = new Body(), q = new Float64Array(4);
+  car.vehicle = true; car.x = car.z = 64; car.y = 1.5; car.fuel = def.spec.fuelCapacity;
+  vehicleRotation({ x: 64, y: 1.5, z: 64, yaw: .3, pitch: 0, roll: Math.PI / 2 }, q);
+  [car.vehicleQx, car.vehicleQy, car.vehicleQz, car.vehicleQw] = [q[0]!, q[1]!, q[2]!, q[3]!];
+  const ticks: Body[] = [];
+  for (let t = 0; t < 120; t++) { stepVehicleBody(world, car, 0, 0, BTN_JUMP, def, undefined, undefined, false); ticks.push(Object.assign(new Body(), car)); }
+  for (let t = 0; t < 30; t++) ticks.push(Object.assign(new Body(), car, { grounded: t % 2 === 0 }));
+  expect(car.vehicleRideOffset).toBe(Math.fround(travel));
+  // The watcher receives each tick as the server packs it.
+  const conn: Connection = { send() {}, close() {}, open: true, onMessage: null, onClose: null };
+  const session = new ClientSession(conn, { registry: reg, name: "watcher", key: new Uint8Array(32), spectate: true, resolveMap: () => null });
+  const views = (session as unknown as { drawn: ViewRing<EntityView> }).drawn, remote = new RemoteSample();
+  const send = (tick: number, b: Body): void => {
+    views.alloc(tick).push(4, 1, compact, quantX(b.x), quantY(b.y), quantX(b.z), 0, 0, 0, 0, 0,
+      packVehiclePose(b.vehiclePitch, b.vehicleRoll, b.steering), quantVehicleWheel(b.wheelAngle),
+      packVehicleRide(b.vehicleGroundPitch, b.vehicleGroundRoll, b.vehicleRideOffset, b.grounded), 0, packVehicleDrive(0, 0, false), 0, 0,
+      packVehicleQuaternionPair(b.vehicleQx, b.vehicleQy), packVehicleQuaternionPair(b.vehicleQz, b.vehicleQw), 0);
+  };
+  // Each wheel hub as drawn, in the chassis frame, and whether the chassis is where the last frame drew it.
+  const drawn = { own: fixture(), seen: fixture() }, state = new AnimState();
+  const last: Record<string, { chassis: number[]; hubs: number[][] }> = {};
+  let still = 0;
+  const draw = (who: "own" | "seen", frame: VehicleRenderPose & { x: number; y: number; z: number; yaw: number }): void => {
+    const { characters, packet } = drawn[who];
+    packet.boneCount = 0; characters.begin(packet);
+    characters.add(packet, compact, frame.x, frame.y, frame.z, frame.yaw, state, 2, null, 0, colors, 0, null, 0, 9, false, false, 1, false, false, null, 0, frame);
+    const chassis = [...packet.bones.subarray(0, 12)], hubs: number[][] = [];
+    for (const wheel of [1, 2, 3, 4]) {
+      const at = transform(packet, wheel, carRig.rest.slice(wheel * 3, wheel * 3 + 3)), d = [0, 1, 2].map(i => at[i]! - chassis[i * 4 + 3]!);
+      hubs.push([0, 1, 2].map(j => chassis[j]! * d[0]! + chassis[4 + j]! * d[1]! + chassis[8 + j]! * d[2]!));
+    }
+    const before = last[who];
+    if (before && chassis.every((n, i) => Math.abs(n - before.chassis[i]!) < .005)) {
+      still++;
+      for (let w = 0; w < 4; w++) expect(Math.hypot(...hubs[w]!.map((n, i) => n - before.hubs[w]![i]!))).toBeLessThan(.01);
+    }
+    last[who] = { chassis, hubs };
+  };
+  send(100, ticks[0]!);
+  for (let i = 1; i < ticks.length; i++) {
+    const a = ticks[i - 1]!, b = ticks[i]!;
+    send(100 + i, b);
+    for (const t of [.5, 1]) {
+      draw("own", { ...predictedVehiclePose(a, b, t, false), x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t, yaw: b.vehicleYaw });
+      session.renderClock = 99 + i + t; session.sampleRemote(remote, 0);
+      draw("seen", { ...remoteVehiclePose(remote, 0), x: remote.x[0]!, y: remote.y[0]!, z: remote.z[0]!, yaw: remote.yaw[0]! });
+    }
+  }
+  expect(still).toBeGreaterThan(100);
+  // With no wheel on the ground they hang along the chassis' own spring axis at the end of their travel.
+  for (const who of ["own", "seen"]) for (const [w, hub] of last[who]!.hubs.entries()) {
+    const pivot = carRig.rest.slice((w + 1) * 3, (w + 2) * 3);
+    for (let i = 0; i < 3; i++) expect(hub[i]!).toBeCloseTo(pivot[i]! - (i === 1 ? travel : 0), 2);
+  }
 });
 
 test("camera target damping is frame-rate independent and snaps safely across a teleport", () => {

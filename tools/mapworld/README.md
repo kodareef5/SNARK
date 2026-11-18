@@ -220,21 +220,42 @@ Cars a survivor can drive away go in `vehicles.json`
 (`[{ "kind": "core:compact", "x": 240, "z": 270, "yaw": 90 }]`, through the
 layers folder into the file's `VHCL`). The server parks each, owned by nobody,
 once in a new world; the save keeps it from then on. `parkCars` in
-`street-cars.ts` chooses them by `street.cars.parked`:
+`street-cars.ts` chooses them from the road fleet (`content/vehicles/road-fleet.ts`)
+by `street.cars.parked`:
 
+- Each place's kind is drawn by a hash from the weights of `kinds`, changed by the
+  district's style in `styles` (vans where there are shops and works, caravans
+  among homes, sports cars few, most by the beaches) and then by the district's
+  name in `districts`, which a city's vocabulary may add; a weight of 0 takes a
+  kind out. The place is then tested for that kind alone.
 - At the kerb on the right of travel of a centreline of the listed classes (local
-  and secondary streets and car parks' roads), turned along it, on street ground,
-  its room inside the map.
+  and secondary streets), or of a car park's road (`lots.classes`), turned along
+  it, on street ground, its room inside the map.
 - At least 15 m from a junction (a point two lines share, or a line's end).
 - Clear of every static's boxes, the wrecks' too, and of every reserved route, by
-  the car's envelope, X ±0.9, Y 0 to 1.5, Z ±2.0, plus 1 m, and plus the door room
-  its seats need (entries at X ±1.25); nothing grows on it.
+  the kind's envelope plus 1 m and plus the door room its seats need (the
+  compact's X ±0.9, Y 0 to 1.5, Z ±2.0 with entries at X ±1.25; the panel van's
+  X ±1.08, Y 0 to 2.52, Z ±2.82 with entries at X ±1.42); nothing grows on it.
+  Neither of two parked cars' rooms meets the other's body.
 - On dry ground, its four wheels' heights giving a ground normal no steeper than
-  the kind's `minGroundNormal` (0.85 for the compact), with margin enough to
+  the kind's `minGroundNormal` (0.85 for the road fleet), with margin enough to
   drive off.
-- A density per kilometre of such street in each district, clamped to a few per
-  district, the quietest streets first and then by a hash of the map's seed, and
-  spread apart. The build drops one within 40 m of a spawn point or an obelisk.
+- A district takes its car parks first: up to `lots.perDistrict` of its car
+  parks' roads, in an order by a hash, each holding `lots.least` to `lots.most`
+  cars together along it, `lots.apart` metres from each other and `apart`
+  metres from any car outside it. Then its streets: a density per
+  kilometre of such street, clamped to a few per district, the quietest streets
+  first and then by a hash of the map's seed, and spread apart. The build drops
+  one within 40 m of a spawn point or an obelisk.
+- A share `hurt.share` of them, by a hash of where each stands, are hurt: its row
+  in `vehicles.json` gives `hurt.condition` as the range its condition is rolled
+  in, one that leaves it able to drive (an engine stops at 0.08). The rest are
+  whole. Every row gives the range its fuel is rolled in, one of the bands of
+  `fuel` by their weights, most of them low. The server rolls both once, when it
+  parks the car in a new world, from the world's seed and where the car stands
+  (`foundVehicle`, `server/vehicle-service.ts`), as it does for found aircraft
+  and boats; the save keeps what was rolled. Which cars are hurt is the map's;
+  how hurt each is, and how much fuel each has, is the world's.
 
 The kinds and their sizes come from the compiled content: a vehicle's
 `spec` (half width, half length, height, wheelbase, track, ground limit) and its

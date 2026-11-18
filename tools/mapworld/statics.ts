@@ -32,7 +32,7 @@ export interface Footprint {
 export interface Site {
   readonly growthRoutes: { points: { x: number; y: number; z: number }[]; width: number }[];
   /** Drivable vehicles a new world parks, as the layers folder's vehicles.json takes them: yaw in degrees as a piece's. */
-  readonly vehicles: { kind: string; x: number; z: number; yaw: number }[];
+  readonly vehicles: { kind: string; x: number; z: number; yaw: number; condition?: readonly [number, number]; fuel?: readonly [number, number] }[];
   readonly source: string;
   readonly world: World;
   readonly ground: Ground;
