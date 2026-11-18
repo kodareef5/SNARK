@@ -162,6 +162,9 @@ artTest("Koru's pieces stream from its own pages and files joined after the core
   const cells = manifest.meshes.flatMap((m, i) => (m.id.startsWith("koru:cell_") ? [i] : []));
   expect(cells.length).toBe(8);
   expect(cells.map((mesh) => meshKnown(manifest.meshes[mesh]!))).toEqual(cells.map(() => false));
+  // A scene that starts draws its see-through rig as see-through before any page has come.
+  const through = more.manifest.meshes.filter((m) => m.seeThrough).map((m) => m.id);
+  expect([through.length > 0, manifest.meshes.filter((m) => m.seeThrough).map((m) => m.id)]).toEqual([true, through]);
   stream(assets, port, cells, (mesh) => manifest.meshes[mesh]!.levels.length);
   expect(cells.map((mesh) => assets.level(mesh, 0))).toEqual(cells.map(() => 0));
   const page = manifest.files.findIndex((f) => f.name === "landmarks/koru.page.snpt");

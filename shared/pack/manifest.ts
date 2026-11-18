@@ -117,7 +117,7 @@ export interface ManifestMesh {
   page?: number;
 }
 
-/** How what a client reads first names a mesh whose row is in a page: what binds content to it and what it hangs on. */
+/** How what a client reads first names a mesh whose row is in a page: what binds content to it, what it hangs on and how a scene that starts draws it. */
 export interface MeshStub {
   id: string;
   page: number;
@@ -126,6 +126,7 @@ export interface MeshStub {
   skeleton?: string;
   rig?: number;
   bone?: number;
+  seeThrough?: boolean;
 }
 
 /** One part of the page file (see the top of this file). */
@@ -197,6 +198,7 @@ export function placeholderMesh(s: MeshStub): ManifestMesh {
   if (s.skeleton !== undefined) out.skeleton = s.skeleton;
   if (s.rig !== undefined) out.rig = s.rig;
   if (s.bone !== undefined) out.bone = s.bone;
+  if (s.seeThrough) out.seeThrough = true;
   return out;
 }
 

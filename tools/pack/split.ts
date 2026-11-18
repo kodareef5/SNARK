@@ -274,6 +274,7 @@ export function bootManifest(m: Manifest, named: (material: string) => boolean =
     if (mesh.skeleton !== undefined) stub.skeleton = mesh.skeleton;
     if (mesh.rig !== undefined) stub.rig = mesh.rig;
     if (mesh.bone !== undefined) stub.bone = mesh.bone;
+    if (mesh.seeThrough) stub.seeThrough = true;
     return stub;
   });
   const out: Record<string, unknown> = { ...m, meshes };

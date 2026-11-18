@@ -2,7 +2,8 @@
 // file, a mesh file, a page file, a texture file for each variant and a manifest. An asset file is named after its own
 // hash, so a browser keeps it for good. What is fetched whole has a Brotli copy beside it. What is fetched by range is
 // stored a part at a time, deflated where that is smaller, and every level is ordered for the vertex cache first, a
-// flat one welded. What the first frame waits for holds the survivor and nothing else that grows with the catalogue.
+// flat one welded. What the first frame waits for holds the survivor's art and, of the rest of the catalogue, what the
+// session starts with alone: the definitions, the rigs and a line naming each mesh and clip.
 
 import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
