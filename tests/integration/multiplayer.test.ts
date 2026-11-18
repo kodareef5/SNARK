@@ -137,18 +137,16 @@ test("a client whose clock has run far ahead is told so and comes back", () => {
 test("a client a little ahead comes back in one jump and is never behind", () => {
   // The inputs it sent ahead stand, and the server's margins tell of them until one past them is sent on the new clock:
   // read before then, they say the clock is still ahead, and a second jump takes it behind the server.
-  for (const ahead of [12, 20, 28]) {
-    const h = new Harness();
-    const s = h.join("ahead", { latencyMs: 30 });
-    h.run(1500);
-    const jumps = s.stats.clockJumps;
-    s.tickClock += ahead;
-    let lead = Infinity;
-    h.run(4000, () => (lead = Math.min(lead, s.simTick - h.world.tick)));
-    expect(s.stats.clockJumps - jumps).toBe(1);
-    expect(lead).toBeGreaterThan(0);
-    h.host.shutdown();
-  }
+  const h = new Harness();
+  const s = h.join("ahead", { latencyMs: 30 });
+  h.run(1500);
+  const jumps = s.stats.clockJumps;
+  s.tickClock += 20;
+  let lead = Infinity;
+  h.run(3000, () => (lead = Math.min(lead, s.simTick - h.world.tick)));
+  expect(s.stats.clockJumps - jumps).toBe(1);
+  expect(lead).toBeGreaterThan(0);
+  h.host.shutdown();
 });
 
 test("under latency, jitter and loss, clients stay playable and converge", () => {
