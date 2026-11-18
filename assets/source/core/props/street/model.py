@@ -52,8 +52,12 @@ def lamp_head(m, back, lens="lens"):
     """The cobra head, its back on the arm's end, reaching on toward the road, its lens below: `lens_lit` for one that
     still works, whose picture the atlas marks to glow."""
     x, y, z = back
+    lit = lens == "lens_lit"
+    face_uv = (lambda fx, fy: (fx, 1 - fy)) if lit else (lambda fx, fy: part_uv("street", "lens", fx, fy))
+    face_mat = "street_glow" if lit else "street"
     if not fine():
-        return box(m, (-0.2, y - 0.06, z), (0.2, y + 0.1, z + 0.92), "galvanised", decals={"-y": ("street", lens)})
+        # Far off a level is flat, without pictures or glow: the lit lamp's light is its cards' there.
+        return box(m, (-0.2, y - 0.06, z), (0.2, y + 0.1, z + 0.92), "galvanised", decals={"-y": ("street", "lens")})
     sections = [(0.0, 0.13, 0.1), (0.14, 0.2, 0.15), (0.55, 0.22, 0.16), (0.82, 0.14, 0.12), (0.92, 0.06, 0.07)]
     outline = []
     for d, half, tall in sections:
@@ -68,7 +72,7 @@ def lamp_head(m, back, lens="lens"):
         m.quad([a[0], b[0], b[1], a[1]], [uv(0.1, 0.1), uv(0.1, 0.3), uv(0.3, 0.3), uv(0.3, 0.1)], "street")
         m.quad([a[1], b[1], b[2], a[2]], [uv(0.1, 0.1), uv(0.1, 0.3), uv(0.3, 0.3), uv(0.3, 0.1)], "street")
         m.quad([a[3], b[3], b[0], a[0]], [uv(0.1, 0.3), uv(0.3, 0.3), uv(0.3, 0.1), uv(0.1, 0.1)], "street")
-        m.quad([a[2], b[2], b[3], a[3]], [part_uv("street", lens, 1, (z0 - z) / 0.92), part_uv("street", lens, 1, (z1 - z) / 0.92), part_uv("street", lens, 0, (z1 - z) / 0.92), part_uv("street", lens, 0, (z0 - z) / 0.92)], "street")
+        m.quad([a[2], b[2], b[3], a[3]], [face_uv(1, (z0 - z) / 0.92), face_uv(1, (z1 - z) / 0.92), face_uv(0, (z1 - z) / 0.92), face_uv(0, (z0 - z) / 0.92)], face_mat)
     for (zz, h, t), rev in ((outline[0], True), (outline[-1], False)):
         q = [(-h, y + t * 0.65, zz), (-h, y - t * 0.35, zz), (h, y - t * 0.35, zz), (h, y + t * 0.65, zz)]
         uv = [part_uv("street", "spare", u, v) for u, v in ((0.1, 0.1), (0.1, 0.3), (0.3, 0.3), (0.3, 0.1))]

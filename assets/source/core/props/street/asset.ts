@@ -60,8 +60,9 @@ export default {
   source: { scripts: ["model.py"] },
   pieces: Object.entries(PIECES).map(([name, triangles]) => ({ id: `core:zzstreet_${name}`, object: name, triangles })),
   materials: {
-    // Its base colour's alpha marks the lit lamp's lens (paint.py GLOW), which glows from dusk to dawn.
-    street: { base: "tex/street_base.png", normal: "tex/street_normal.png", packed: "tex/street_packed.png", height: "tex/street_height.png", emissive: 6 },
+    street: { base: "tex/street_base.png", normal: "tex/street_normal.png", packed: "tex/street_packed.png", height: "tex/street_height.png" },
+    // A working lamp's lens, which gives out light from dusk to dawn (paint.py; client/core/render/surface.ts `glow`).
+    street_glow: { base: "tex/glow_base.png", emissive: 6 },
     street_cut: { base: "tex/cut_base.png", normal: "tex/cut_normal.png", packed: "tex/cut_packed.png", height: "tex/cut_height.png", cutout: true },
   },
   budgets: { triangles: [432, 320, 120, 72], texture: { top: 2048, megabytes: 40 } },

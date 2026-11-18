@@ -52,6 +52,8 @@ def material(name, colour=None):
 
 def key_of(uv, mat):
     """What a texture coordinate lies on: a strip's or a part's name."""
+    if mat == "street_glow":
+        return "lens_lit"
     a = STREET if mat == "street" else CUT
     px, py = (uv[0] % 1.0) * a["side"], (1 - uv[1]) * a["side"]
     if mat == "street" and py < len(STREET["strips"]) * STREET["strip"]:

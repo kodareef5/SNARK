@@ -62,12 +62,13 @@ export class StreetLamps extends VehicleCards {
       const x = lamps[i]! - cam.x, y = lamps[i + 1]! - cam.y, z = lamps[i + 2]! - cam.z, yaw = lamps[i + 3]!;
       // The lens over the road: local +z is (sin yaw, cos yaw).
       const lx = x + Math.sin(yaw) * LENS[2], lz = z + Math.cos(yaw) * LENS[2], ly = y + LENS[1];
-      this.card(lx, y + 0.04, lz, POOL, 0, 0, 0, 0, POOL, POOL_COLOUR, Math.round(POOL_SHOWS * fade));
+      // Lying flat, its face up: across along z and along x, so that across x along is up.
+      this.card(lx, y + 0.04, lz, 0, 0, POOL, POOL, 0, 0, POOL_COLOUR, Math.round(POOL_SHOWS * fade));
       this.card(lx, ly - 0.25, lz, rx * GLOW, 0, rz * GLOW, ux * GLOW, uy * GLOW, uz * GLOW, GLOW_COLOUR, Math.round(GLOW_SHOWS * fade));
     }
   }
 
-  /** A card at (x, y, z) from the camera with half axes across and along it; one lying flat where `along` is given as 0, 0, `az`. */
+  /** A card at (x, y, z) from the camera with half axes across and along it, its face where across x along points. */
   private card(x: number, y: number, z: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number, colour: number, shows: number): void {
     if (shows <= 0) return;
     const i = this.next(), card = this.cards;
