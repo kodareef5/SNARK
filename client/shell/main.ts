@@ -105,6 +105,7 @@ async function boot(): Promise<void> {
   app.steer = driveCheck || !selfcheck && !device;
   app.plainSky = selfcheck;
   app.ui.settings.touchFirst = matchMedia("(pointer: coarse)").matches;
+  if (!measured) app.ui.settings.start({ renderer: renderer.rendererName, light: renderer.light > 0, memory: (navigator as { deviceMemory?: number }).deviceMemory });
   app.dpr = devicePixelRatio;
   app.address((name) => params.get(name), measured, orders);
   app.page = {

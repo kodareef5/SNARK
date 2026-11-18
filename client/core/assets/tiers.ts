@@ -167,8 +167,33 @@ export function canvasRatio(tier: Tier, dpr: number, width: number, height: numb
   return Math.max(own, Math.min(own * Math.ceil(tier.fewest / own), Math.sqrt(tier.canvas / Math.max(1, width * height))));
 }
 
-/** What a new player gets. */
+/** What a new player gets where nothing is known of the device, and on any device `startingTier` does not start on high. */
 export const DEFAULT_TIER: Tier["name"] = "medium";
+
+/**
+ * What a device says of itself before its first frame: whether it is touch-first, its GPU's name as the browser gives
+ * it, whether it can draw high's light target (render/post.ts), and its memory in GB where the browser says.
+ */
+export interface Start {
+  readonly touchFirst: boolean;
+  readonly renderer: string;
+  readonly light: boolean;
+  readonly memory?: number;
+}
+
+/** A GPU that is the CPU drawing, which holds a frame of high's at a few a second. */
+const SOFTWARE = /swiftshader|llvmpipe|softpipe|software|basic render/i;
+/** The least memory, in GB, a device may say it has and start on high, whose card takes up to 1.5 GB. */
+const HIGH_MEMORY = 4;
+
+/**
+ * The tier a player who has chosen none starts on: high on a device that is not touch-first, draws with a GPU and not
+ * the CPU, can draw high's light target, and has HIGH_MEMORY or more where the browser says; DEFAULT_TIER on any other.
+ * The governor still steps a device down that cannot hold the frame.
+ */
+export function startingTier(d: Start): Tier["name"] {
+  return !d.touchFirst && d.light && !SOFTWARE.test(d.renderer) && (d.memory === undefined || d.memory >= HIGH_MEMORY) ? "high" : DEFAULT_TIER;
+}
 
 export function tierOf(name: string): Tier {
   for (const t of TIERS) if (t.name === name) return t;

@@ -80,11 +80,18 @@ test("saved preferences bound numeric values and never restore transient actions
   const settings = new Settings();
   for (const bad of [null, "{", "null", "[]", '{"version":99,"minimap":false}', '{"minimap":"false","diagnostics":3}']) settings.restoreInterface(bad);
   expect([settings.minimap,settings.diagnostics]).toEqual([true,false]);
-  settings.restoreInterface('{"version":1,"minimap":false,"vitalLabels":true,"diagnostics":true}');
-  settings.restoreInterface('{"version":1,"sensitivity":99,"fov":-1,"masterVolume":0,"minimapZoom":30,"snapshotBytes":999999,"tier":"bogus","download":true,"tab":3}');
+  settings.restoreInterface('{"version":1,"minimap":false,"tier":"ultra"}');
+  expect([settings.minimap, settings.tier, settings.chosen]).toEqual([true, "medium", false]);
+  settings.restoreInterface('{"version":2,"minimap":false,"vitalLabels":true,"diagnostics":true}');
+  settings.restoreInterface('{"version":2,"sensitivity":99,"fov":-1,"masterVolume":0,"minimapZoom":30,"snapshotBytes":999999,"tier":"bogus","download":true,"tab":3}');
   const copy = new Settings(); copy.restoreInterface(settings.interfacePreferences());
   expect([copy.minimap,copy.vitalLabels,copy.diagnostics,copy.sensitivity,copy.fov,copy.masterVolume,copy.minimapZoom]).toEqual([false,true,true,3,50,0,3]);
-  expect([copy.snapshotBytes,copy.tier,copy.download,copy.tab]).toEqual([1100,"medium",false,0]);
+  expect([copy.snapshotBytes,copy.tier,copy.chosen,copy.download,copy.tab]).toEqual([1100,"medium",false,false,0]);
+  // A tier is saved only once chosen, and a chosen tier is kept over the device's start.
+  expect(JSON.parse(copy.interfacePreferences()).tier).toBeUndefined();
+  copy.restoreInterface('{"version":2,"tier":"lowpoly"}');
+  copy.start({ renderer: "ANGLE (Apple, ANGLE Metal Renderer: Apple M5)", light: true });
+  expect([copy.tier, copy.chosen, JSON.parse(copy.interfacePreferences()).tier]).toEqual(["lowpoly", true, "lowpoly"]);
 });
 
 test("every vital value crops one bounded shared sheet, preserves capacity and never stretches an empty fill", () => {

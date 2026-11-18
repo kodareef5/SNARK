@@ -919,7 +919,7 @@ export class App {
     // What follows is the uploads of all that was lost, or of what failed, which are no reason to step.
     this.governor.pause(this.nowMs);
     if (!this.scene?.assets.pressure()) return;
-    this.ui.settings.tier = this.scene.assets.tier.name;
+    [this.ui.settings.tier, this.ui.settings.chosen] = [this.scene.assets.tier.name, true];
     this.ui.chat.print(TEXT_NOTICE, `The graphics card keeps running out of memory, so the graphics setting is now ${this.ui.settings.tier}.`, this.session.serverTick);
   }
 

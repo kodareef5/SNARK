@@ -9,6 +9,7 @@ import { PROGRAM, PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } 
 import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
+import { LIGHT_FORMATS } from "../core/render/post.ts";
 import { POLYGON_OFFSET } from "../core/render/shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, theSky } from "../core/render/sky.ts";
 import { LAYER_LEVELS, NEUTRAL, skinMode } from "../core/render/surface.ts";
@@ -83,6 +84,8 @@ export class GlRenderer {
   errors = 0;
   /** What compared lookups give on this device (shadowfilter.ts). Where they come back "hard" the shadow lookup filters for itself. */
   shadowLookup = "";
+  /** The light target's format (post.ts), or 0 where the device has none. */
+  light = 0;
   /** The sun's shadow maps: a 16-bit depth layer a cascade and the far map's after them, a target on each cascade's, and their side. */
   private shadow = { texture: null as WebGLTexture | null, targets: [] as WebGLFramebuffer[], size: 0 };
   private boneRows = 0;
@@ -191,6 +194,8 @@ export class GlRenderer {
     this.formats = [...(has("EXT_texture_compression_bptc", "EXT_texture_compression_rgtc") ? ["bc" as const] : []), ...(has("WEBGL_compressed_texture_astc") ? ["astc" as const] : []), "rgba"];
     this.format = this.formats.find((f) => f === this.forced) ?? this.formats[0]!;
     this.shadowLookup = comparedLookup(gl);
+    const most = (f: number): number => (gl.getExtension("EXT_color_buffer_float") ? ((gl.getInternalformatParameter(gl.RENDERBUFFER, f, gl.SAMPLES) as Int32Array | null)?.[0] ?? 0) : 0);
+    this.light = LIGHT_FORMATS.find((f) => most(f) > 0) ?? 0;
     this.shadow = { texture: null, targets: [], size: 0 };
     this.programs.clear();
     this.linked.clear();
