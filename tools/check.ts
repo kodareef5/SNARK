@@ -358,9 +358,9 @@ function stopHung(dir: string, workers: number, most: Map<string, number>, stopp
 async function checkTests(tier: Tier, dir: string, env: Record<string, string>): Promise<void> {
   const files = testFiles.filter((f) => SLOW_TEST.test(f) === (tier === "slow")).length;
   if (files === 0) return;
-  // Each test file in a worker of its own: about half the time, and one file cannot lean on what another left behind.
-  // More JS heaps than sixteen contend for cache and memory on a machine of many threads, and time out files fast alone.
-  const workers = Math.min(16, cpus().length, files);
+  // The native art and simulation fixtures are large. Two isolated workers keep their heaps and asset data in cache.
+  // On the 32-thread reference host the same 2,011 tests took 406 CPU-seconds with two workers and 743 with sixteen.
+  const workers = Math.min(2, cpus().length, files);
   const report = join(dir, `${tier}.xml`);
   const watch = join(dir, `${tier}-watch`);
   mkdirSync(watch);
