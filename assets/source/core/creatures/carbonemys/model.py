@@ -12,7 +12,7 @@ def blend(a,b,t):return {a:1-t,b:t}
 def rings(s,seq,box,weights,mat=1,sides=24,power=1,space='z'):
     tube(s,seq,weights,mat,box,sides,space,power)
 def body(s):
-    oval(s,(0,.76,-.04),(1.005,.31,1.46),'shell',1,SHELL_SKIN,44,20)
+    oval(s,(0,.837,-.04),(1.025,.252,1.46),'shell',1,SHELL_SKIN,44,20)
     # A supple, upward-curving neck with a blunt lower fold under the head.
     sections=[((0,.89,.96),.245,.235),((0,.95,1.12),.29,.25),((0,1.00,1.24),.275,.235),
               ((0,1.055,1.39),.235,.205),((0,1.126,1.54),.203,.176),((0,1.18,1.68),.190,.171),
@@ -46,8 +46,10 @@ def legs(s):
         upper=kind+'_upper_'+side;lower=kind+'_lower_'+side;foot=kind+'_foot_'+side
         limb=[(lerp(hip,knee,-.12),.17,.20),(hip,.205,.221),(lerp(hip,knee,.36),.205,.192),
               (lerp(hip,knee,.74),.175,.143),(knee,.177,.155),(lerp(knee,ankle,.32),.165,.144),
-              (lerp(knee,ankle,.69),.137,.114),(ankle,.138,.086)]
-        rings(s,limb,SKIN,[blend('shell',upper,.4),upper,upper,blend(upper,lower,.20),blend(upper,lower,.52),lower,lower,blend(lower,foot,.66)],sides=24,space='along')
+              (lerp(knee,ankle,.69),.139,.117),(ankle,.122,.083),
+              ((ankle[0]+sign*.031,.092,ankle[2]+.066),.110,.061),
+              ((ankle[0]+sign*.052,.070,ankle[2]+.125),.068,.040)]
+        rings(s,limb,SKIN,[blend('shell',upper,.4),upper,upper,blend(upper,lower,.20),blend(upper,lower,.52),lower,lower,blend(lower,foot,.72),foot,foot],sides=24,space='along')
         # A single low web fans across the digits; individual toe walls and
         # recurved dark nails extend just past it, increasing the swimming area.
         x,y,z=ankle

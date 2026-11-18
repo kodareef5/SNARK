@@ -57,12 +57,19 @@ def carapace():
             if abs(den)>.000001:share=np.maximum(share,(ex*(z-cz)-ez*(x-cx))/den)
         choose=share<best;identity=np.where(choose,i,identity);best=np.minimum(best,share)
     grain=noise(U,V,130);broad=noise(U,V,19)
-    r=best+.015*(broad-.5);seam=ease(.89,.997,r);growth=.5+.5*np.sin(r*54+1.7*np.sin(r*11+identity*.37)+3*(broad-.5))
-    ridge=ease(.61,.92,growth);age=ease(.09,.62,r);outer=ease(.65,.94,r)
-    shade=.49+.19*(broad-.5)+.105*(grain-.5)+.069*(ridge-.40)*age-.15*seam+.049*np.sin(identity*2.399)
+    centers=np.array([cell[0] for cell in CELLS]);idx=identity.astype(int)
+    angle=np.arctan2(z-centers[idx,1],x-centers[idx,0]);slip=noise(U,V,42)
+    r=best+.012*(broad-.5);seam=ease(.89,.997,r)
+    # Individual growth episodes split, abrade and disappear toward the high
+    # exposed face; they never form a uniform stack of contour lines.
+    phase=r*(32+8*np.sin(identity*2.37))+.96*np.sin(2*angle+r*6+identity)+.83*np.sin(r*12+identity*.85)+2.6*(broad-.5)
+    growth=.5+.5*np.sin(phase)
+    abrasion=ease(.44,.72,slip+.12*np.cos(angle+identity))*ease(.12,.48,r)
+    ridge=ease(.65,.95,growth)*(.91-.62*abrasion);age=ease(.09,.62,r);outer=ease(.65,.94,r)
+    shade=.49+.19*(broad-.5)+.105*(grain-.5)+.075*(ridge-.30)*age+.052*abrasion-.14*seam+.049*np.sin(identity*2.399)
     h=.0028*(ridge-.4)*age+.0036*(1-seam)+.0007*(grain-.5)
     w=np.zeros((*U.shape,6),np.float32);rim=ease(.46,.70,broad+.13*np.sin(r*17+identity))*.37*age
-    accent=.09+.23*ridge*age+.11*outer+.09*np.sin(identity*.9)**2;dark=.08+.70*seam+.17*rim
+    accent=.060+.17*ridge*age+.09*outer+.10*np.sin(identity*.9)**2+.078*abrasion;dark=.08+.70*seam+.17*rim
     accent=np.minimum(accent,1-dark);w[...,2]=1-accent-dark;w[...,3]=accent;w[...,4]=dark
     belly=V<.411;px=(U-.02)/.48-1;pz=(V-.015)/.19-1
     mid=np.abs(px+.018*np.sin(4*pz));cross=np.ones_like(U)

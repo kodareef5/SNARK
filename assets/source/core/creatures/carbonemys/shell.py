@@ -32,8 +32,8 @@ CELLS=make_cells()
 
 def scute_raise(kind,j,t,x,z):
     # Concentrate the oldest growth off centre, with a worn bevel around the foot.
-    peak=({'spinal':.154,'costal':.126,'marginal':.075}[kind])*(1+.18*math.sin(2.7*j+x*3))
-    if kind=='spinal' and j==2:peak*=.49
+    peak=({'spinal':.211,'costal':.176,'marginal':.071}[kind])*(1+.18*math.sin(2.7*j+x*3))
+    if kind=='spinal' and j in [2,3]:peak*=.58 if j==2 else .81
     return peak*(1-t)**1.18+.025*math.sin(math.pi*t)**.85
 
 def top_uv(x,z):return (.02+.48*(x+1),.52+.232*(z+1))
