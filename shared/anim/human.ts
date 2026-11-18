@@ -45,8 +45,10 @@ export const ZONE_LEG_L = 7;
 export const ZONE_LEG_R = 8;
 export const ZONE_FOOT_L = 9;
 export const ZONE_FOOT_R = 10;
-export const ZONE_COUNT = 11;
-export const ZONE_NAMES: readonly string[] = ["none", "head", "torso", "left arm", "right arm", "left hand", "right hand", "left leg", "right leg", "left foot", "right foot"];
+export const HUMAN_ZONE_COUNT = ZONE_FOOT_R + 1;
+export const ZONE_TAIL = HUMAN_ZONE_COUNT;
+export const ZONE_COUNT = ZONE_TAIL + 1;
+export const ZONE_NAMES: readonly string[] = ["none", "head", "torso", "left arm", "right arm", "left hand", "right hand", "left leg", "right leg", "left foot", "right foot", "tail"];
 
 /** The parts a body mesh is cut into. One armor piece covers each. */
 export const SLOT_HEAD = 0;
@@ -56,7 +58,7 @@ export const SLOT_LEGS = 3;
 export const SLOT_FEET = 4;
 export const SLOT_COUNT = 5;
 export const SLOT_NAMES: readonly string[] = ["head", "torso", "hands", "legs", "feet"];
-export const SLOT_OF_ZONE: readonly number[] = [SLOT_TORSO, SLOT_HEAD, SLOT_TORSO, SLOT_TORSO, SLOT_TORSO, SLOT_HANDS, SLOT_HANDS, SLOT_LEGS, SLOT_LEGS, SLOT_FEET, SLOT_FEET];
+export const SLOT_OF_ZONE: readonly number[] = [SLOT_TORSO, SLOT_HEAD, SLOT_TORSO, SLOT_TORSO, SLOT_TORSO, SLOT_HANDS, SLOT_HANDS, SLOT_LEGS, SLOT_LEGS, SLOT_FEET, SLOT_FEET, SLOT_TORSO];
 
 type Row = readonly [name: string, parent: number, x: number, y: number, z: number, zone: number, slot: number, capsule: readonly [ax: number, ay: number, az: number, bx: number, by: number, bz: number, r: number] | null];
 

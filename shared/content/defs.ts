@@ -75,7 +75,7 @@ export interface SpeciesDef extends Named {
   /** Multiplier on each type of damage it takes. 1 where not given. */
   readonly takes?: { readonly [T in DamageType]?: number };
   /** Multiplier on a hit to each part of its body. 1 where not given. Arms, hands, legs and feet each cover both sides. */
-  readonly zones?: { readonly head?: number; readonly torso?: number; readonly arms?: number; readonly hands?: number; readonly legs?: number; readonly feet?: number };
+  readonly zones?: { readonly head?: number; readonly torso?: number; readonly arms?: number; readonly hands?: number; readonly legs?: number; readonly feet?: number; readonly tail?: number };
   /** Experience for killing one at level 1. Each level above that adds a tenth. Defaults to none. */
   readonly killXp?: number;
   /** It stands where it is put and does nothing, as a practice target. */
@@ -116,6 +116,8 @@ export interface SpeciesDef extends Named {
   readonly mutations?: readonly number[];
   /** When it is hurt, others of its species within this many metres take fright with it. Omitted, none do. */
   readonly alarm?: number;
+  /** Mounted secondary roar. Range is metres, maxDrag is exclusive, and the three durations are seconds. */
+  readonly roar?: { readonly range: number; readonly maxDrag: number; readonly cooldown: number; readonly immunity: number; readonly interrupt: number };
   /** Its sprintMul once tamed. Defaults to its sprintMul. */
   readonly tamedSprintMul?: number;
   /** What it weighs to a creature that carries or drags it (the reference's drag weight), and its mass. */

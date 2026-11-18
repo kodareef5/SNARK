@@ -1,7 +1,7 @@
 import { parseNumber } from "../../shared/console.ts";
 import type { ItemDef, StructureDef } from "../../shared/content/defs.ts";
 import { V_TORPOR } from "../../shared/sim/vitals.ts";
-import { SLOT_OF_ZONE, ZONE_COUNT, ZONE_NAMES } from "../../shared/anim/human.ts";
+import { SLOT_OF_ZONE, HUMAN_ZONE_COUNT, ZONE_NAMES } from "../../shared/anim/human.ts";
 import { PIECE_SCALE } from "../../shared/sim/damage.ts";
 import { QUALITY_MUL } from "../../shared/sim/items.ts";
 import { named, type Console, type ConsoleCommand } from "../console.ts";
@@ -123,7 +123,7 @@ export function addCombatCommands(con: Console): void {
         if (!zones) return "your body has no zones";
         const inv = ctx.host.items.inv(rec);
         const lines: string[] = [];
-        for (let z = 1; z < ZONE_COUNT; z++) {
+        for (let z = 1; z < HUMAN_ZONE_COUNT; z++) {
           const at = inv.armor >= 0 ? inv.armor + SLOT_OF_ZONE[z]! : -1;
           const rating = at >= 0 && inv.item[at] !== 0 && inv.dur[at]! > 0 ? reg.armor[inv.item[at]!]! * (QUALITY_MUL[inv.quality[at]!] ?? 1) * PIECE_SCALE : 0;
           lines.push(`${ZONE_NAMES[z]!.padEnd(11)} x${zones[z]}  armor ${Math.round(rating)}  takes ${Math.round((100 / (100 + rating)) * zones[z]! * 100)}%`);
