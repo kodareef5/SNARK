@@ -151,7 +151,8 @@ export const PASS_FAR = 1;
 /**
  * The steps a frame is drawn in, in this order, which is the order of its draws: near opaque, far opaque, then the
  * dome (at `skyAt`), far see-through, near see-through, and the viewer's body over a depth clear. The opaque steps are
- * numbered as their ranges are. In an opaque step the draws with DRAW_CUTOUT come after the rest (scene.ts `cutouts`).
+ * numbered as their ranges are. In an opaque step the draws with DRAW_CUTOUT come after the rest (scene.ts `cutouts`),
+ * and the ground's tiles go where `groundAt` says.
  */
 export const STEP_NEAR = PASS_NEAR;
 export const STEP_FAR = PASS_FAR;
@@ -425,6 +426,11 @@ export class FramePacket {
    * and after: the shell keeps what the frames between need, and the card's reservations stand as they set them.
    */
   alternate = false;
+  /**
+   * Per opaque step, near then far: its terrain tiles are drawn before the first of its draws numbered this or more, or
+   * after its last where it has none such. 0, before its first, where nothing says otherwise.
+   */
+  readonly groundAt = new Int32Array(STEP_FAR + 1);
 
   readonly uploads: BufferUpload[] = [];
   readonly drops: number[] = [];
@@ -565,6 +571,7 @@ export class FramePacket {
     this.drawLayer.fill(0);
     this.drawWear.fill(0);
     this.drawCount = 0;
+    this.groundAt.fill(0);
     this.atlasRows = 0;
     this.tileCount = 0;
     this.groundWindow[3] = -1;

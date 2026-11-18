@@ -214,9 +214,11 @@ export class BenchRun {
  * its discard, "layers" draws hurt and dead bodies with the plain surface program, in the draws they have, "light"
  * draws a tier with a light target without it, each shader toning and grading onto the canvas, "bloom" finishes it with
  * no bloom (render/post.ts), "contact" holds no body's contact (render/contact.ts), and "facades" draws no facade's part
- * or mark, as before their atlases come (facade.ts).
+ * or mark, as before their atlases come (facade.ts). "hide"
+ * draws what the frame finds wholly hidden (render/hide.ts), and "order" draws an opaque step's draws by what they bind
+ * alone and its ground first, as they went before they went nearest first (render/scene.ts order).
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -243,6 +245,12 @@ export function tierWithout(tier: Tier, off: ReadonlySet<Effect>): Tier {
     mine.set(key, copy);
   }
   return copy;
+}
+
+/** The effects that live in how the scene builds a frame: what is hidden left out, and the opaque draws nearest first. */
+export function sceneWithout(scene: { hide: boolean; nearFirst: boolean }, off: ReadonlySet<Effect>): void {
+  scene.hide = !off.has("hide");
+  scene.nearFirst = !off.has("order");
 }
 
 /** The effects that live in a built frame: the haze, bodies' contact and the facades in its block, the sea's detail, the hand-over's discard and bodies' layers in its draws. */

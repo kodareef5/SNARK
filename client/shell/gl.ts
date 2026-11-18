@@ -119,6 +119,8 @@ export class GlRenderer {
   private matrix = new Float32Array(16);
   private matrixAt = 0;
   private from = 0;
+  /** The opaque step begun last has yet to draw its terrain tiles (packet.ts groundAt). */
+  private groundLeft = false;
   /** The vertex array and the array buffer bound. */
   private vao: WebGLVertexArrayObject | null = null;
   private arrayBuffer: WebGLBuffer | null = null;
@@ -738,6 +740,7 @@ export class GlRenderer {
     for (let d = 0; d < p.drawCount; d++) {
       const s = stepOf(p, d);
       while (step < s) this.step(p, ++step);
+      if (this.groundLeft && d >= p.groundAt[step]!) this.step(p, step, true);
       const flags = p.drawFlags[d]!;
       if ((flags & DRAW_DETAILS) !== 0) {
         this.details(p, d);
@@ -963,10 +966,14 @@ export class GlRenderer {
   }
 
   /**
-   * Begins a step of the frame (packet.ts): its view-projection and part of the depth buffer, and in an opaque step the
-   * terrain tiles in its range. The viewer's body goes over a depth clear, with its own near plane.
+   * Begins a step of the frame (packet.ts): its view-projection and part of the depth buffer, after the terrain tiles of
+   * the step before where it had not drawn them. The viewer's body goes over a depth clear, with its own near plane. With
+   * `tiles`, draws the step's terrain tiles in its range where `groundAt` puts them.
    */
-  private step(p: FramePacket, s: number): void {
+  private step(p: FramePacket, s: number, tiles = false): void {
+    if (this.groundLeft) this.tiles(p, 1 << (tiles ? s : s - 1), PROGRAM.terrain, PROGRAM.terrainWindow);
+    this.groundLeft = false;
+    if (tiles) return;
     const gl = this.gl;
     const far = s === STEP_FAR || s === STEP_FAR_SEE;
     const half = p.split > 0 && s !== STEP_BODY;
@@ -992,7 +999,7 @@ export class GlRenderer {
       this.drawCalls++;
       this.passes?.mark(PASS_FAR_SEE);
     }
-    if (s <= STEP_FAR) this.tiles(p, 1 << s, PROGRAM.terrain, PROGRAM.terrainWindow);
+    this.groundLeft = s <= STEP_FAR;
   }
 
   /**
