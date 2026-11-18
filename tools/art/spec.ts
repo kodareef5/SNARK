@@ -3,14 +3,14 @@ import type { SourceLod } from "../pack/write.ts";
 // asset.ts exports one of these as its default. `bun run art -- <pack>:<name>` builds the folder's <name>.snpk from it.
 // See assets/source/README.md.
 
-import { ZONE_ARM_L, ZONE_ARM_R, ZONE_FOOT_L, ZONE_FOOT_R, ZONE_HAND_L, ZONE_HAND_R, ZONE_HEAD, ZONE_LEG_L, ZONE_LEG_R, ZONE_TORSO } from "../../shared/anim/human.ts";
+import { ZONE_ARM_L, ZONE_ARM_R, ZONE_FOOT_L, ZONE_FOOT_R, ZONE_HAND_L, ZONE_HAND_R, ZONE_HEAD, ZONE_LEG_L, ZONE_LEG_R, ZONE_TAIL, ZONE_TORSO } from "../../shared/anim/human.ts";
 import type { TextureRole } from "../../shared/pack/texture.ts";
 import type { ClipSpec } from "../pack/anim.ts";
 
 export type AssetSpec = CreatureAsset | PiecesAsset | HumanClipsAsset | HumanBodiesAsset | SkyAsset | WaterAsset | DetailsAsset;
 
 /** The zones a hit can land in. Content multiplies damage by zone (SpeciesDef.zones). */
-export const ZONES = { head: ZONE_HEAD, torso: ZONE_TORSO, armL: ZONE_ARM_L, armR: ZONE_ARM_R, handL: ZONE_HAND_L, handR: ZONE_HAND_R, legL: ZONE_LEG_L, legR: ZONE_LEG_R, footL: ZONE_FOOT_L, footR: ZONE_FOOT_R } as const;
+export const ZONES = { head: ZONE_HEAD, torso: ZONE_TORSO, armL: ZONE_ARM_L, armR: ZONE_ARM_R, handL: ZONE_HAND_L, handR: ZONE_HAND_R, legL: ZONE_LEG_L, legR: ZONE_LEG_R, footL: ZONE_FOOT_L, footR: ZONE_FOOT_R, tail: ZONE_TAIL } as const;
 export type ZoneName = keyof typeof ZONES;
 
 /** Metres, x, y, z. +Y is up and the creature faces +Z, so its left is +X. */

@@ -69,6 +69,14 @@ zone starts a separate region. The original capsules continue to support
 ragdolls and mounted camera clearance. Trike's head and adjoining neck show
 how to author both sides of an armour boundary.
 
+### Reviewing the sculpt at playing distance
+
+A useful first comparison is an unpainted side and three-quarter view with the animal about 300 pixels wide. Choose one reference that shows the underlying skeleton and one living or reconstructed animal showing how the skin crosses the same landmarks. Follow the outline from the skull into the neck and down through a weight-bearing limb. A jaw hinge shifts the outline as the mouth opens. A planted thigh changes the contour from the pelvis to the knee. Those shapes should read in a single colour.
+
+Take a second look in mid-stride or swimming. Watch the shoulder enter the rib cage and the wrist carry weight into the foot. A circular seam across a moving joint is often easier to spot here than in the resting pose. Check the same outline on the LOD the player sees when approaching.
+
+For a revision, capture the old and new packs with the same camera, lighting, size, colours and saddle state. Inspect a normal browser frame after the requested geometry and material maps have arrived. The clay view shows where the form changed, and the game frame shows how much of that change survives on screen.
+
 ### Rest a chain with slack
 
 A chain a solver places by its end (a neck to a head, a leg to a foot) must not rest straight at full length. Straight, the end cannot move away at all, and moving it 2 mm closer bends the joints 8 to 9 degrees in a direction nothing decides. The dodo's neck rests that way (0.1817 m of reach on 0.1818 m of bone), and its animators each worked round it in their own file. Changing the rest pose afterwards was measured and refused: it moved the neck's surface about a centimetre in clips already approved and the head up to 6 cm in others. So give a new rig's chains a bent rest with about 5% of slack before anyone animates on it.

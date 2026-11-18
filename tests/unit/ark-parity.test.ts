@@ -19,7 +19,7 @@ const keeps = (name: string): number => reg.spoilTicks[at(name)]! / TICK_RATE;
 test("every creature takes 70% from guns, and a survivor all of it (Longneck Rifle)", () => {
   const bullet = DAMAGE_TYPES.indexOf("bullet");
   const creatures = reg.defs.filter((d) => d?.type === "species" && d.class === "creature").map((d) => d!.id.slice(5));
-  expect(creatures.sort()).toEqual(["dodo", "grazer", "parasaur", "pteranodon", "raptor", "stego", "trike"]);
+  expect(creatures.sort()).toEqual(["carbonemys", "dodo", "grazer", "parasaur", "pteranodon", "raptor", "rex", "stego", "trike"]);
   for (const name of creatures) expect([name, reg.takes[at(name)]![bullet]]).toEqual([name, Math.fround(0.7)]);
   expect(reg.takes[at("survivor")]![bullet]).toBe(1);
 });

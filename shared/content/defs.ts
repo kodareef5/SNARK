@@ -79,7 +79,7 @@ export interface SpeciesDef extends Named {
   /** Multiplier on each type of damage it takes. 1 where not given. */
   readonly takes?: { readonly [T in DamageType]?: number };
   /** Multiplier on a hit to each part of its body. 1 where not given. Arms, hands, legs and feet each cover both sides. */
-  readonly zones?: { readonly head?: number; readonly torso?: number; readonly arms?: number; readonly hands?: number; readonly legs?: number; readonly feet?: number };
+  readonly zones?: { readonly head?: number; readonly torso?: number; readonly arms?: number; readonly hands?: number; readonly legs?: number; readonly feet?: number; readonly tail?: number };
   /** Experience for killing one at level 1. Each level above that adds a tenth. Defaults to none. */
   readonly killXp?: number;
   /** It stands where it is put and does nothing, as a practice target. */
@@ -95,7 +95,7 @@ export interface SpeciesDef extends Named {
    * how long one bite takes and `lands` is the tick it lands on. They default to 27 and 11. `stamina` is the points one
    * costs, none where not given: a stub until a ridden creature's bite spends it (FL2 of planning/reference/flyers-plan.md).
    */
-  readonly bite?: { readonly reach: number; readonly ticks?: number; readonly lands?: number; readonly stamina?: number };
+  readonly bite?: { readonly harvest?: "berries" | "carrion"; readonly reach: number; readonly ticks?: number; readonly lands?: number; readonly stamina?: number };
   /** Ground combat, with a primary attack and a secondary attack or a held charge. */
   readonly combat?: CreatureCombatFacet;
   /** Riding view measured against the body and saddle, independently of a long tail or horn. */
@@ -127,6 +127,8 @@ export interface SpeciesDef extends Named {
   /** Base metres per second once tamed, before its speed stat; omitted, the wild value is retained. */
   readonly tamedWalkSpeed?: number;
   readonly tamedSwimSpeed?: number;
+  /** Mounted secondary roar. Range is metres, maxDrag is exclusive, and the three durations are seconds. */
+  readonly roar?: { readonly range: number; readonly maxDrag: number; readonly cooldown: number; readonly immunity: number; readonly interrupt: number };
   /** Its sprintMul once tamed. Defaults to its sprintMul. */
   readonly tamedSprintMul?: number;
   /** What it weighs to a creature that carries or drags it (the reference's drag weight), and its mass. */
