@@ -9,10 +9,12 @@
 // `keeps: 4` is the reference game's: food keeps four times as long in a creature as in a survivor's hands.
 
 import type { Def } from "../../shared/content/defs.ts";
+import { CARBONEMYS } from "./carbonemys.ts";
+import { REX } from "./rex.ts";
 import { DODO } from "./dodo.ts";
 import { GRAZER } from "./grazer.ts";
 import { PARASAUR } from "./parasaur.ts";
 import { PTERANODON } from "./pteranodon.ts";
 import { RAPTOR } from "./raptor.ts";
 
-export const CREATURES: readonly Def[] = [...DODO, ...GRAZER, ...PARASAUR, ...PTERANODON, ...RAPTOR];
+export const CREATURES: readonly Def[] = [...DODO, ...GRAZER, ...PARASAUR, ...PTERANODON, ...RAPTOR, ...CARBONEMYS, ...REX];

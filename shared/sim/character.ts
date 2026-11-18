@@ -495,7 +495,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   /** Fastest downward speed stopped by something this tick. */
   let fall = 0;
   if (wasGrounded) {
-    if ((buttons & BTN_JUMP) !== 0 && standing && (flags & (MF_NO_JUMP | MF_ROOTED)) === 0 && stamina >= p.staminaJump) {
+    if (p.jumpSpeed > 0 && (buttons & BTN_JUMP) !== 0 && standing && (flags & (MF_NO_JUMP | MF_ROOTED)) === 0 && stamina >= p.staminaJump) {
       vy = p.jumpSpeed;
       jumped = true;
       stamina -= p.staminaJump;

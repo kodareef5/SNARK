@@ -5,8 +5,8 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 526 of them: 150 take effect,
-181 wait for a feature that is not built yet, and 195 have no meaning in this
+is listed here, 526 of them: 151 take effect,
+180 wait for a feature that is not built yet, and 195 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
 
@@ -142,6 +142,7 @@ may change a setting without a restart.
 | `HarvestResourceItemAmountClassMultipliers` | none | Yield of one resource: `(ClassName="core:thatch",Multiplier=2.0)`. | yes |
 | `ResourceNoReplenishRadiusPlayers` | 1 | How far from a survivor nodes will not grow back. Higher is further. | yes |
 | `ResourceNoReplenishRadiusStructures` | 1 | How far from a foundation or pillar nodes will not grow back. Higher is further. | yes |
+| `DinoHarvestingDamageMultiplier` | 3.2 | Scales harvest damage when a ridden creature feeds on a carcass. | yes |
 | `GlobalSpoilingTimeMultiplier` | 1 | How long things keep before they spoil. Higher is longer. *ARK Evolved can change this while running; here it is read at start. How it combines with what a container adds is not documented; they are multiplied.* | no |
 | `GlobalItemDecompositionTimeMultiplier` | 1 | How long a dropped bag lies. Higher is longer. | yes |
 | `GlobalCorpseDecompositionTimeMultiplier` | 1 | How long a creature's body and what a dead survivor leaves lie. Higher is longer. | yes |
@@ -322,7 +323,6 @@ what is built next.
 | `RaidDinoCharacterFoodDrainMultiplier` | 1 | How fast raid creatures hunger. | GameUserSettings.ini |
 | `ClampResourceHarvestDamage` | False | A creature's harvesting blow counts for no more than the health the node has left. | GameUserSettings.ini |
 | `AllowRaidDinoFeeding` | False | Raid creatures may be fed, and so kept. | GameUserSettings.ini |
-| `DinoHarvestingDamageMultiplier` | 3.2 | What a tamed creature's blow does to a tree or a rock. | Game.ini |
 
 ### Farming, irrigation, and upkeep of the body
 

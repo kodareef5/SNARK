@@ -91,7 +91,7 @@ export interface SpeciesDef extends Named {
    * how long one bite takes and `lands` is the tick it lands on. They default to 27 and 11. `stamina` is the points one
    * costs, none where not given: a stub until a ridden creature's bite spends it (FL2 of planning/reference/flyers-plan.md).
    */
-  readonly bite?: { readonly reach: number; readonly ticks?: number; readonly lands?: number; readonly stamina?: number };
+  readonly bite?: { readonly harvest?: "berries" | "carrion"; readonly reach: number; readonly ticks?: number; readonly lands?: number; readonly stamina?: number };
   /** It can be tamed by knocking it out and feeding it. These are the reference's five numbers for its species (shared/sim/taming.ts). */
   readonly taming?: { readonly a0: number; readonly a1: number; readonly foodBase: number; readonly proneMult: number; readonly k: number };
   /** What it eats, best liked first. Each entry is an item, the food one piece is worth to it, and its affinity. */

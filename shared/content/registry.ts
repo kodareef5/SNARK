@@ -374,7 +374,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       positive(d, "height", d.height, 32);
       positive(d, "walkSpeed", d.walkSpeed, 40);
       positive(d, "sprintMul", d.sprintMul, 4);
-      positive(d, "jumpSpeed", d.jumpSpeed, 30);
+      if (!(d.jumpSpeed >= 0 && d.jumpSpeed <= 30)) errors.push(`${d.id}: jumpSpeed must be in [0, 30], got ${d.jumpSpeed}`);
       if (d.swimSpeed !== undefined) positive(d, "swimSpeed", d.swimSpeed, 40);
       if (d.keeps !== undefined) positive(d, "keeps", d.keeps, 1000);
       if (d.turn !== undefined) positive(d, "turn", d.turn, 3600);
@@ -390,6 +390,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         positive(d, "food.max", d.food.max, 1e6);
         positive(d, "food.perHour", d.food.perHour, 1e6);
       }
+      if (d.bite?.harvest !== undefined && d.bite.harvest !== "berries" && d.bite.harvest !== "carrion") errors.push(`${d.id}: bite.harvest must be berries or carrion`);
       for (const [type, v] of Object.entries(d.takes ?? {})) {
         if (!(DAMAGE_TYPES as readonly string[]).includes(type) || !(v >= 0)) errors.push(`${d.id}: takes.${type} must name a kind of damage and not be negative`);
       }

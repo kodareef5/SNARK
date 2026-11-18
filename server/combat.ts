@@ -405,9 +405,10 @@ export class Combat {
     this.spare = rider ? (this.ctx.records.entOf.get(rider.pid) ?? -1) : -1;
     const target = this.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, what === HIT_NONE ? reach : worldT, SWING_WIDTH);
     this.spare = -1;
-    // A dead creature's body nearer than any living one and anything built. Only a survivor's swing harvests one yet.
+    // Only the nearest unobstructed body can receive the blow. Mounts gather into their own inventories.
+    const gathers = rider ? (reg.defs[kind] as SpeciesDef).bite?.harvest : undefined;
     const corpses = this.corpses;
-    const body = corpses && c ? corpses.cast(ox, oy, oz, d[0]!, d[1]!, d[2]!, target >= 0 ? this.t : what === HIT_NONE ? reach : worldT) : -1;
+    const body = corpses && (c || gathers === "carrion") ? corpses.cast(ox, oy, oz, d[0]!, d[1]!, d[2]!, target >= 0 ? this.t : what === HIT_NONE ? reach : worldT) : -1;
     const src = this.src;
     src.by = rec;
     src.x = ox;
@@ -425,14 +426,16 @@ export class Combat {
     const wears = item !== 0 && reg.uses[item]! > 0;
     if (body >= 0) {
       // Harvest damage is the blow's damage as the attacker's melee and the weapon's quality make it, times the server's rule.
-      corpses!.struck(rec, body, src.base * src.quality * src.attack * this.ctx.rules.num("PlayerHarvestingDamageMultiplier"), item);
+      corpses!.struck(rec, body, src.base * src.quality * src.attack * this.ctx.rules.num(c ? "PlayerHarvestingDamageMultiplier" : "DinoHarvestingDamageMultiplier"), item);
       if (wears) items.wear(rec, slot, 1);
     } else if (target >= 0) {
       const t = this.t;
       this.land(src, target, this.zone, ox + d[0]! * t, oy + d[1]! * t, oz + d[2]! * t, t);
       if (wears) items.wear(rec, slot, 1);
-    } else if (what === HIT_NODE && harvest && c) harvest.struck(c, Math.floor(ref / 65536), ref & 0xffff);
-    else if (what === HIT_STRUCTURE && this.hitStructure(src, ref, ox + d[0]! * worldT, oy + d[1]! * worldT, oz + d[2]! * worldT) > 0 && wears) items.wear(rec, slot, 1);
+    } else if (what === HIT_NODE && harvest) {
+      if (c) harvest.struck(c, Math.floor(ref / 65536), ref & 0xffff);
+      else if (gathers === "berries") harvest.browse(rec, Math.floor(ref / 65536), ref & 0xffff);
+    } else if (what === HIT_STRUCTURE && this.hitStructure(src, ref, ox + d[0]! * worldT, oy + d[1]! * worldT, oz + d[2]! * worldT) > 0 && wears) items.wear(rec, slot, 1);
   }
 
   private reload(c: Client): void {

@@ -145,13 +145,13 @@ test("its beach entry is ARK's Ptero (1-2), weight 0.15, one certain and one at 
   expect(beach.limits!.find((l) => l.species === "core:pteranodon")).toEqual({ species: "core:pteranodon", share: 0.25 });
   const { rules } = loadConfig({});
   const drawn = spawnTables(reg, rules, new Lists(rules, reg)).tables.get(reg.index.get("core:spawns_beach")!)!;
-  expect([drawn.entries.length, drawn.entries[2]!.weight, drawn.limits.get(kind)]).toEqual([3, 0.15, 0.25]);
+  expect([drawn.entries.length, drawn.entries[2]!.weight, drawn.limits.get(kind)]).toEqual([4, 0.15, 0.25]);
   // An entry or limit that waits for a feature is left out of the table until its package takes the wait away, as this one
   // waited for flight until FL3 of planning/reference/flyers-plan.md.
   const waiting = (w: { group?: readonly string[]; species?: string }) => w.group?.includes("core:pteranodon") || w.species === "core:pteranodon";
   const held = compileContent(CORE_CONTENT.map((d): Def => (d === beach ? { ...beach, entries: beach.entries.map((e) => (waiting(e) ? { ...e, waits: "flyers" as const } : e)), limits: beach.limits!.map((l) => (waiting(l) ? { ...l, waits: "flyers" as const } : l)) } : d))).registry!;
   const left = spawnTables(held, rules, new Lists(rules, held)).tables.get(held.index.get("core:spawns_beach")!)!;
-  expect([left.entries.some((e) => e.kinds.includes(kind)), left.limits.has(kind), left.entries.length]).toEqual([false, false, 2]);
+  expect([left.entries.some((e) => e.kinds.includes(kind)), left.limits.has(kind), left.entries.length]).toEqual([false, false, 3]);
   // A wait names a feature.
   expect(compileContent(CORE_CONTENT.map((d): Def => (d === beach ? ({ ...beach, entries: [{ ...beach.entries[0]!, waits: "wings" }] } as unknown as Def) : d))).errors).toEqual(['core:spawns_beach: "wings" is not a feature an entry or limit may wait for']);
 });
