@@ -1,4 +1,4 @@
-"""Paint the original Rex into its actual unwrapped triangles. No photographic input."""
+"""Bake the Rex materials into the articulated skin’s own UV triangles."""
 
 from pathlib import Path
 import json
@@ -12,7 +12,8 @@ sys.path.insert(0, str(HERE.parent))
 from facial import cheek_folds, labials
 
 OUT = HERE.parents[5] / "var/rex"
-MESH = np.load(OUT / "layout.npz")
+with np.load(OUT / "layout.npz") as layout:
+    MESH = dict(layout)
 MATS = json.loads((OUT / "layout.json").read_text())["materials"]
 REGIONS = np.array(
     [[255, 0, 0], [0, 255, 0], [0, 0, 255], [0, 255, 255], [255, 0, 255], [255, 255, 0], [0, 0, 0]], np.uint8
@@ -349,13 +350,14 @@ def save(name, base, height, rough, ao, weights, wound, macro):
         put("decay", decay, 256)
 
 
-def material(name, size):
+def material(name, size, sculpt):
     pts, ix = raster(MATS.index(name), size)
     # Read the same physical fields at all seams. Only the comparison masks and
     # interpolation buffers are per strip; memory use stays bounded at 2K.
     images = []
     for start in range(0, size, 96):
         fields = maps(pts[start : start + 96], name == "rex_head")
+        fields = sculpt.paint(pts[start : start + 96], fields)
         if not images:
             images = [[] for _ in fields]
         for a, b in zip(images, fields):
@@ -415,7 +417,7 @@ def atlas(name, n):
         iris = 1 - smooth(0.63, 0.77, radial)
         pupil = 1 - smooth(0.205, 0.275, radial)
         lines = np.sin(np.arctan2(ev - 0.5, np.sin(a)) * 34)
-        ec = rgb(42 + iris * (129 + 19 * lines), 36 + iris * (78 + 12 * lines), 30 + iris * (20 + 5 * lines))
+        ec = rgb(42 + iris * (168 + 26 * lines), 36 + iris * (103 + 18 * lines), 30 + iris * (20 + 5 * lines))
         ec = ec * (1 - pupil[..., None]) + np.array([18, 16, 13]) * pupil[..., None]
         # The overhanging corneal margin breaks the uniform lit marble.
         ec *= (0.86 - 0.22 * smooth(0.52, 0.92, ev))[..., None]
@@ -440,7 +442,10 @@ def atlas(name, n):
 
 math_tau = 2 * np.pi
 if __name__ == "__main__":
-    material("rex_hide", 2048)
-    material("rex_head", 2048)
+    sys.path.insert(0, str(HERE.parent / "ref"))
+    from sculpt import Sculpt
+
+    sculpt = Sculpt(sys.argv[1])
+    material("rex_hide", 2048, sculpt)
+    material("rex_head", 2048, sculpt)
     atlas("rex_detail", 512)
-    atlas("rex_saddle", 1024)

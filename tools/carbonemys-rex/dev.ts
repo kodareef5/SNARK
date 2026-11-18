@@ -38,7 +38,7 @@ export function requireDinosaurReviewArt(dist: string, species: readonly string[
 }
 
 /** Reserve room for the visible head and tail as well as the locomotion capsule. */
-function placePreviewCreature(host: Host, id: string, kind: number, pad: typeof DINOSAUR_COURSE.pads[number]): number {
+function placePreviewCreature(host: Host, id: string, kind: number, pad: { x: number; z: number }, frontRow = false): number {
   const { world, records } = host;
   const reach = world.anims[kind]?.rig.reach ?? world.reg.bodyRadius[kind]!;
   // Try the team nearest the entrance first, then rows along the open ground. Occupants may have been ridden away.
@@ -52,14 +52,15 @@ function placePreviewCreature(host: Host, id: string, kind: number, pad: typeof 
       reach: reach + (world.anims[other.kind]?.rig.reach ?? world.reg.bodyRadius[other.kind]!),
     });
   }
-  for (const dx of [0, -36, 36, -72, 72, -108]) {
-    for (const dz of [0, 24, -24, 48, -48, 72, -72, 96, -96]) {
-      const x = pad.x + dx, z = pad.z + dz;
-      if (world.hf.heightAt(x, z) <= world.hf.waterAt(x, z)) continue;
-      if (neighbours.some(other => Math.hypot(x - other.x, z - other.z) < other.reach)) continue;
-      const e = host.spawnCreature(id, x, z, 40, "admin");
-      if (e >= 0) return e;
-    }
+  const offsets = frontRow
+    ? [0, 6, 12, 24, 48].flatMap(dz => [0, -6, 6, -12, 12, -24, 24, -36, 36].map(dx => [dx, dz] as const))
+    : [0, -36, 36, -72, 72, -108].flatMap(dx => [0, 24, -24, 48, -48, 72, -72, 96, -96].map(dz => [dx, dz] as const));
+  for (const [dx, dz] of offsets) {
+    const x = pad.x + dx, z = pad.z + dz;
+    if (world.hf.heightAt(x, z) <= world.hf.waterAt(x, z)) continue;
+    if (neighbours.some(other => Math.hypot(x - other.x, z - other.z) < other.reach)) continue;
+    const e = host.spawnCreature(id, x, z, 40, "admin");
+    if (e >= 0) return e;
   }
   return -1;
 }
@@ -75,8 +76,11 @@ export function seedDinosaurPreview(host: Host, owner: EntityRecord, species: re
     let owned = false;
     for (const rec of records.byPid.values()) if (rec.kind === kind && rec.team === owner.team && !rec.dead && rec.corpse === null) { owned = true; break; }
     if (owned) continue;
-    const pad = DINOSAUR_COURSE.pads[index % DINOSAUR_COURSE.pads.length]!;
-    const e = placePreviewCreature(host, id, kind, pad);
+    const frontRow = species.length === 1 && id === "core:rex";
+    const pad = frontRow
+      ? { x: DINOSAUR_COURSE.spawn.x, z: DINOSAUR_COURSE.spawn.z + 13, yaw: 45056 }
+      : DINOSAUR_COURSE.pads[index % DINOSAUR_COURSE.pads.length]!;
+    const e = placePreviewCreature(host, id, kind, pad, frontRow);
     if (e < 0) continue;
     const rec = records.byPid.get(world.ents.pid[e]!)!;
     if (!host.taming.give(rec, owner, 0, "forced")) throw new Error(`Preview tame refused for ${id}`);
@@ -108,13 +112,14 @@ if (import.meta.main) {
   if (args.includes("--built")) {
     if (!existsSync(resolve(dist, "assets/manifest.json")) || !existsSync(resolve(dist, "main.js"))) throw new Error("No prepared client build. Run without --built first.");
   } else await buildDinosaurReviewClient({ quick: true, dist });
-  requireDinosaurReviewArt(dist);
+  const species = args.includes("--rex-only") ? ["core:rex"] : REVIEW_SPECIES;
+  requireDinosaurReviewArt(dist, species);
   const folder = value("--config") ?? DEV_CONFIG, { rules, report } = loadConfigFolder(folder, args);
   for (const line of formatReport(report, rules)) console.log(line);
   const dbPath = resolve(value("--db") ?? resolve(root, "var/carbonemys-rex/world.db")); mkdirSync(dirname(dbPath), { recursive: true });
   const live = liveFileOf(folder), map = value("--map") ? resolve(value("--map")!) : writeDinosaurCourse(resolve(root, "var/carbonemys-rex/course.snmp"));
   const server = startServer({ dev: true, clientDir: dist, hostname: value("--host") ?? "127.0.0.1", port: Number(value("--port") ?? 8796), dbPath, config: rules, map, ...(live ? { live } : {}) });
-  installDinosaurPreview(server.host);
+  installDinosaurPreview(server.host, species);
   stopOnSignals(() => server.stop());
   console.log(`Dinosaur preview: http://localhost:${server.port}\nIsolated save: ${dbPath}`);
   console.log("E mount/dismount · W/A/S/D travel · Shift run · LMB bite · Rex RMB roar · aim down to dive with Carbonemys · F inventory");

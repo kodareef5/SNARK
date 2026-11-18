@@ -502,7 +502,7 @@ def soft_parts():
         ex, ey, ez = mirror(EYE, sg)
         eye = (
             Part("recessed_eye_" + side, "rex_detail", "eye_" + side)
-            .ellipsoid((ex, ey, ez), (0.045, 0.048, 0.070), EYES, 24, 12)
+            .eye((ex, ey, ez), (0.045, 0.048, 0.070), EYES, 24, 12)
             .object()
         )
         out.append(eye)
@@ -812,6 +812,14 @@ def build():
     )
     # The anatomical paint layout precedes the local elastic fairing.
     fair_hip(mesh)
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent / "ref"))
+    from fit import fit
+
+    fitted = fit(np.asarray([to_animal(v.co) for v in mesh.vertices]))
+    for vertex, point in zip(mesh.vertices, fitted):
+        vertex.co = to_blender(point)
+    mesh.update()
 
 
 if __name__ == "__main__":

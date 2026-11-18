@@ -97,6 +97,10 @@ picture("profile", "idle", 0, 90, 4, [0, 2.15, -1], 4.15);
 picture("quarter", "idle", 0, 56, 12, [0, 2.10, -.65], 3.90);
 picture("profile-lod2", "idle", 0, 90, 4, [0, 2.15, -1], 4.15, false, 0, 2);
 picture("quarter-lod2", "idle", 0, 56, 12, [0, 2.10, -.65], 3.90, false, 0, 2);
+// Matched views give the distance silhouettes the same pose, light and framing.
+for (let level = 0; level < pack.header.meshes[body]!.lods.length; level++) {
+  picture(`distance-${level}`, "walk", 12, 70, 7, [0, 2.15, -.90], 4.15, false, 0, level);
+}
 picture("face", "idle", 0, 65, 5, [0, 3.74, 3.95], 1.13, false, 0, middle ? 2 : 0);
 picture("front", "idle", 0, 8, 6, [0, 3.71, 3.96], 1.20, false, 0, middle ? 2 : 0);
 pose("call", 25);

@@ -1,5 +1,15 @@
 # Tyrannosaurus rex
 
+[Striped adult, face and saddle](striped-rex.jpg) · [All seven game LODs](striped-rex-lods.jpg) · [Donor and rebuild instructions](SOURCES.md)
+
+The playable adult measures 12.25 m long and 4.56 m tall. Its first four levels retain textured skin at 33,936, 14,500, 6,200 and 2,600 triangles. At 1,000 triangles the engine switches to one palette draw. The authored 288- and 112-triangle silhouettes also use one draw and follow the bite and gait bones. All seven packed meshes close with zero open edges. The head and hide retain 2K base and normal maps. Broad dye and roughness masks stream to 512 px. The checker measures 38.7 MB for the largest complete texture variant, including the saddle.
+
+The articulated death and torpor poses stay within 6 mm of the floor. Across eight fall directions per surface, the deepest settled skin point is 5.1 cm below level ground, 4.9 cm below a 12% grade and 9.5 cm below a 35% grade. All 24 falls settled within 2.12 seconds. The pack measured for this refit is `cf5563db724566c3e1460c8143a7f2ab2086dc538e14f9974877cf0812a90355`.
+
+## Original sculpt and development studies
+
+The review images and measurements below record the earlier coastal adult on the Carbonemys and Rex branch.
+
 [Native model and saddle review sheet](native-review.png) · [Matched LOD2 profile, quarter and 128 px texture review](resculpt-comparison.png) · [Matched hip in neutral material and production colour](hip-comparison.png)
 
 The adult stands 4.56 m tall in the neutral rig. Its 12.25 m outline balances a broad temporal table and roughly 2.45 m cranial region against the long tapering tail. The outer thigh descends from a low iliac crest. Its rear edge slopes back to meet the caudofemoral mass under the tail root. The belly has space for the gastral basket, with the ribcage narrowing into the neck ahead of the shoulders. The Field Museum’s SUE mount and its documented gastralia informed those proportions. [SUE, FMNH PR 2081](https://www.fieldmuseum.org/collection-item-iconic/sue) · [The Field Museum on SUE’s remount](https://www.fieldmuseum.org/blog/fresh-science-makeover-sue)

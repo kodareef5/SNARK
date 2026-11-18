@@ -1,3 +1,4 @@
+import { distanceLods } from "./distance.ts";
 import { defaultPalette, nearestColour } from "../../../../../shared/pack/palette.ts";
 import type { CreatureAsset, MaterialSpec, SocketSpec, Vec3, ZoneName, ZoneSpec } from "../../../../../tools/art/spec.ts";
 
@@ -11,6 +12,7 @@ function material(name: string, living = true): MaterialSpec {
   const picture = (role: string) => `tex/${name}_${role}.png`;
   return {
     base: picture("base"), normal: picture("normal"), packed: picture("packed"), height: picture("height"),
+    ...(name === "rex_hide" || name === "rex_head" ? { tops: { mask: 512, mask2: 512, mro: 512 } } : {}),
     regions: { mask: picture("mask"), mask2: picture("mask2") },
     ...(living ? { hurt: picture("hurt"), decay: picture("decay") } : {}),
   };
@@ -25,12 +27,12 @@ function limbs(): ZoneSpec[] {
   for (const [suffix, region, sign] of [["l", "L", 1], ["r", "R", -1]] as const) {
     result.push(
       capsule(`leg${region}`, `thigh_${suffix}`, [.040 * sign, -.02, -.10], [.136 * sign, -.91, .67], .455),
-      capsule(`leg${region}`, `shank_${suffix}`, [0, -.12, -.11], [-.08 * sign, -.90, -.81], .228),
-      capsule(`leg${region}`, `metatarsus_${suffix}`, [0, -.06, .03], [0, -.69, .37], .147),
+      capsule(`leg${region}`, `shank_${suffix}`, [0, -.12, -.11], [-.08 * sign, -.90, -.81], .280),
+      capsule(`leg${region}`, `metatarsus_${suffix}`, [0, -.06, .03], [0, -.69, .37], .167),
       capsule(`foot${region}`, `toes_${suffix}`, [0, .015, -.04], [.003 * sign, -.022, .81], .30),
       capsule(`arm${region}`, `humerus_${suffix}`, [0, 0, 0], [.12 * sign, -.34, -.18], .104),
       capsule(`arm${region}`, `forearm_${suffix}`, [0, 0, 0], [.075 * sign, -.055, .52], .09),
-      capsule(`hand${region}`, `manus_${suffix}`, [0, 0, 0], [.02 * sign, -.124, .221], .075),
+      capsule(`hand${region}`, `manus_${suffix}`, [0, 0, 0], [.02 * sign, -.124, .221], .103),
     );
   }
   return result;
@@ -48,14 +50,14 @@ export default {
   skeleton: { id: "rex", root: "pelvis", bones: 30 },
   zones: [
     // The ilia support the fallen hip across its width. Neighbouring tail and chest cover its longitudinal axis.
-    capsule("torso", "pelvis", [-.45, -.01, .26], [.45, -.01, .26], .72),
-    capsule("torso", "chest", [0, -.06, -.04], [0, .015, .89], .76),
+    capsule("torso", "pelvis", [-.45, -.01, .26], [.45, -.01, .26], .77),
+    capsule("torso", "chest", [0, -.06, -.04], [0, .015, .89], .82),
     capsule("torso", "neck_1", [0, .10, -.03], [0, .31, .70], .55),
     capsule("torso", "neck_2", [0, .10, -.08], [0, .30, .56], .53),
     // The wide temporal table and the narrower tooth arcade require separate fitted sections.
     capsule("head", "skull", [0, .22, .161], [0, .102, .93], .75),
     capsule("head", "maxilla", [0, .07, .16], [0, -.10, 1.02], .38),
-    capsule("head", "jaw", [0, -.19, .073], [0, -.084, 1.65], .345),
+    capsule("head", "jaw", [0, -.19, .073], [0, -.084, 1.65], .375),
     capsule("torso", "tail_1", [0, .08, -.49], [0, -.09, -1.22], .61),
     capsule("torso", "tail_2", [0, .01, 0], [0, -.32, -1.17], .422),
     capsule("torso", "tail_3", [0, -.005, -.03], [0, -.39, -1.17], .30),
@@ -84,8 +86,9 @@ export default {
   materials: { rex_hide: material("rex_hide"), rex_head: material("rex_head"), rex_detail: material("rex_detail") },
   feet: ["toes_l", "toes_r"],
   gaits: { walk: { stride: 3.36 }, run: { stride: 6.16 }, swim: { stride: 3.8, stated: "Alternating hindlimb strokes at three metres per second." } },
-  budgets: { triangles: [36000, 14500, 6200, 2600, 880, 260, 100], texture: { top: 2048, megabytes: 68, layer: 256 } },
+  budgets: { triangles: [36000, 14500, 6200, 2600, 1000, 288, 112], texture: { top: 2048, megabytes: 40, layer: 256 } },
   flat: 4,
+  distanceLods,
   ragdoll: { limp: 50, bodies: [
     { bone: "pelvis", mass: .4 }, { bone: "skull", mass: .08, swing: 45, twist: 40 },
     { bone: "tail_3", mass: .05, swing: 50, twist: 32 }, { bone: "tail_5", mass: .032, swing: 40, twist: 25 },
