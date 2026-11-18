@@ -13,7 +13,8 @@
 //   ways; guard rails where a highway's edge drops or meets water; chain-link fence along the street line of open lots
 //   and yards; billboards set back from the largest roads.
 //
-// None stands where a lane runs, on a reserved route (a way to a door, a room's walk, a stair, a car's door room), in a
+// Where the ruins laid a walk along the street (ruins.ts, makeWalks), a piece stands on the walk's top at its setback from
+// the curb's face; the walk's ramps, drains and boxes it keeps clear of as of any piece. None stands where a lane runs, on a reserved route (a way to a door, a room's walk, a stair, a car's door room), in a
 // ruin's piece or another of these, over water or a building's floor, or past a chunk's budget. Trees come after the
 // statics and are taken out where they would stand in one (ruin-growth.ts).
 
@@ -23,7 +24,7 @@ import { STREET_PIECES, streetKind } from "../../content/street.ts";
 import { hullPoint } from "../../shared/world/convex.ts";
 import { S } from "./ground.ts";
 import { binKey, hash3 } from "./raster.ts";
-import { meets, obstacleIndex, type Box } from "./ruin-obstacles.ts";
+import { boxOf, meets, obstacleIndex, type Box } from "./ruin-obstacles.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
 import type { Site, StaticLayer, StaticPiece } from "./statics.ts";
 import { roadIndex } from "./street-cars.ts";
@@ -112,6 +113,9 @@ const footprint = (b: Box): [number, number][] => {
 /** Ground no piece of these stands on: water, a building's floor and walls, heaps, containers and decks. */
 const BARRED = new Set<number>([S.CHANNEL, S.DEEP, S.FLAT, S.SHALLOW, S.POOL, S.HEAP, S.SPILL, S.WALL, S.FLOOR, S.DECK, S.CONTAINER]);
 
+/** A walk's slab, with or without its gutter (not its ramps, drains or boxes). */
+const isWalk = (p: StaticPiece): boolean => /^core:zruin_zwalk8g?_/.test(p.kind);
+
 /** A way kept clear besides the site's reserved routes: its points and its width. */
 export type Reserved = Site["growthRoutes"][number];
 
@@ -163,6 +167,24 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     return false;
   };
   const obstacles = obstacleIndex(placed);
+  // The walks, which a piece stands on rather than keeps clear of: by 16 m bins, as boxes.
+  const walkBins = new Map<number, Box[]>();
+  for (const p of placed) {
+    if (!isWalk(p)) continue;
+    const b = boxOf(p); const k = binKey(Math.floor(b.x / 16), Math.floor(b.z / 16));
+    if (!walkBins.has(k)) walkBins.set(k, []); walkBins.get(k)!.push(b);
+  }
+  /** The top of a walk at (x, z), or -Infinity where none is. */
+  const walkTop = (x: number, z: number): number => {
+    let top = -Infinity;
+    for (let bz = Math.floor(z / 16) - 1; bz <= Math.floor(z / 16) + 1; bz++) for (let bx = Math.floor(x / 16) - 1; bx <= Math.floor(x / 16) + 1; bx++) {
+      for (const b of walkBins.get(binKey(bx, bz)) ?? []) {
+        const a = b.yaw / DEG; const c = Math.cos(a); const sn = Math.sin(a); const dx = x - b.x; const dz = z - b.z;
+        if (Math.abs(dx * c - dz * sn) <= b.size[0] / 2 && Math.abs(dx * sn + dz * c) <= b.size[2] / 2) top = Math.max(top, b.y + b.size[1] / 2);
+      }
+    }
+    return top;
+  };
   const counts = new Uint32Array(chunksX * (ground.grid.sizeZ / 64));
   const chunkOf = (x: number, z: number): number => Math.floor((z - z0) / 64) * chunksX + Math.floor((x - x0) / 64);
   for (const p of placed) counts[chunkOf(p.x, p.z)]!++;
@@ -181,12 +203,14 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     const foot = worldBox(shape.foot, x, 0, z, yaw); const corners = footprint(foot);
     if (corners.some(([px, pz]) => Math.min(px - x0, pz - z0, x1 - px, z1 - pz) < clear.edge)) return refuse(rule, "edge");
     if (corners.some(([px, pz]) => inLane(px, pz, road))) return refuse(rule, "lane");
-    const heights = corners.map(([px, pz]) => site.groundAt(px, pz));
+    // On a walk wherever it touches one, on the lowest ground under it elsewhere.
+    const tops = corners.map(([px, pz]) => walkTop(px, pz)); const walk = Math.max(...tops);
+    const heights = corners.map(([px, pz], i) => Math.max(site.groundAt(px, pz), tops[i]!));
     if (corners.some(([px, pz]) => BARRED.has(ground.surface[sample(px, pz)]!)) || Math.min(...heights) < 0.3) return refuse(rule, "ground");
     if (Math.max(...heights) - Math.min(...heights) > clear.rise) return refuse(rule, "slope");
-    const y = Math.min(...heights);
+    const y = walk > -Infinity ? Math.max(walk, Math.min(...heights)) : Math.min(...heights);
     const boxes = shape.parts.map((q) => worldBox(q, x, y, z, yaw));
-    if (boxes.some((b) => obstacles.hits(b, clear.piece))) return refuse(rule, "piece");
+    if (boxes.some((b) => obstacles.hits(b, clear.piece, isWalk))) return refuse(rule, "piece");
     if (onRoute({ ...foot, y: y + foot.size[1] / 2 })) return refuse(rule, "route");
     const near = new Set<Box>();
     for (const b of boxes) for (let bz = Math.floor((b.z - 12) / 16); bz <= Math.floor((b.z + 12) / 16); bz++) for (let bx = Math.floor((b.x - 12) / 16); bx <= Math.floor((b.x + 12) / 16); bx++) for (const o of mine.get(binKey(bx, bz)) ?? []) near.add(o);

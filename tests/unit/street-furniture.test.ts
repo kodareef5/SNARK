@@ -144,6 +144,24 @@ test("a way onto a bridge is kept clear as a reserved route is: nothing stands w
   expect(kept.some(on)).toBe(false);
 });
 
+test("where the ruins laid a walk, a piece stands on the walk's top, not in it or refused by it", () => {
+  // A walk 2.4 m deep along each side of the avenue at x 500 (14 m wide), its slabs 8 m long, their tops 0.15 m up.
+  const walks: StaticPiece[] = [];
+  for (let z = 124; z <= 876; z += 8) for (const side of [1, -1]) {
+    if (Math.abs(z - 500) < 16 || [100, 200, 300, 400, 600, 700, 800, 900].some((c) => Math.abs(z - c) < 12)) continue;
+    walks.push({ kind: "core:zruin_zwalk8_concrete", x: 500 + side * (7 + 1.2), y: GROUND + 0.075, z, yaw: side > 0 ? 90 : 270 });
+  }
+  const bare = place(fixture(GRID)).pieces, walked = place(fixture(GRID), walks).pieces;
+  const onWalk = (p: StaticPiece): boolean => Math.abs(Math.abs(p.x - 500) - 8.2) < 1.1 && walks.some((w) => Math.abs(w.z - p.z) <= 4 && Math.sign(w.x - 500) === Math.sign(p.x - 500));
+  const lamps = (ps: StaticPiece[]): StaticPiece[] => ps.filter((p) => p.kind.startsWith(streetKind("lamp")) && onWalk(p));
+  expect(lamps(walked).length).toBeGreaterThan(0);
+  expect(lamps(walked).length).toBeGreaterThanOrEqual(lamps(bare).length * 0.9);
+  // A post standing on the walk stands on its top; a piece that lies over its edge, as a fallen lamp, does too.
+  const posts = walked.filter((p) => onWalk(p) && /zzstreet_(lamp|lamp_leaning|lamp_fallen|pole|pole_leaning|hydrant|meter|stop|speed|street_name|signal|evacuation)$/.test(p.kind));
+  expect(posts.length).toBeGreaterThan(10);
+  for (const p of posts) expect([p.kind, p.y]).toEqual([p.kind, GROUND + 0.15]);
+});
+
 test("a rule that names a piece the set lacks stops the build", () => {
   const rules = { ...RULES, forms: { ...RULES.forms, lamp: [["lamp_post", 1]] as [string, number][] } };
   expect(() => place(fixture(GRID.slice(0, 2)), [], rules)).toThrow("furniture.forms names lamp_post, which is no street piece");
