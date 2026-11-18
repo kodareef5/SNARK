@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><link rel="icon" href="data:," /><title>
+    Meridian · SNARK armory
+  </title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    html {
+      color-scheme: dark;
+      background: #0a1621;
+      color: #f1f6fc;
+      font:
+        16px/1.45 system-ui,
+        sans-serif;
+    }
+    body {
+      margin: 0;
+    }
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(250px, 315px);
+      min-height: 100svh;
+    }
+    section {
+      min-width: 0;
+      position: relative;
+      display: grid;
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      min-height: 560px;
+      position: absolute;
+      inset: 0;
+      touch-action: none;
+      cursor: grab;
+    }
+    aside {
+      background: #112333;
+      padding: clamp(20px, 3vw, 44px);
+      border-left: 1px solid #344e64;
+    }
+    header {
+      letter-spacing: 0.17em;
+      color: #8cc9ee;
+      font-size: 12px;
+    }
+    h1 {
+      font-size: clamp(32px, 4vw, 54px);
+      line-height: 1;
+      margin: 22px 0 10px;
+      font-weight: 560;
+    }
+    p {
+      color: #b7c7d4;
+      margin: 0 0 24px;
+    }
+    label,
+    legend {
+      font-size: 13px;
+      color: #bfd1df;
+    }
+    select {
+      display: block;
+      width: 100%;
+      padding: 8px;
+      margin: 6px 0 16px;
+      background: #20394c;
+      border: 1px solid #436278;
+      color: white;
+      border-radius: 4px;
+    }
+    fieldset {
+      padding: 0;
+      margin: 19px 0;
+      border: 0;
+    }
+    fieldset label {
+      display: block;
+      padding: 4px 0;
+      font-size: 15px;
+      color: #eef5ff;
+    }
+    input {
+      accent-color: #62b4ee;
+    }
+    #status {
+      font-size: 12px;
+      color: #99bad1;
+    }
+    output {
+      position: absolute;
+      bottom: 20px;
+      left: 24px;
+      pointer-events: none;
+      font-size: 12px;
+      color: #b8cadd;
+    }
+    .capture main {
+      grid-template-columns: 1fr;
+    }
+    .capture aside,
+    .capture output {
+      display: none;
+    }
+    @media (max-width: 680px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+      section {
+        height: 67svh;
+      }
+      canvas {
+        min-height: 0;
+      }
+      aside {
+        border-left: 0;
+        padding: 24px;
+      }
+    }
+    section {
+      overflow: hidden;
+      background:
+        radial-gradient(ellipse at 47% 32%, #344c5c, transparent 67%), linear-gradient(#132430 0%, #182c39 68%, #1d3240 84%, #233948 100%);
+    }
+    section::before {
+      content: "";
+      position: absolute;
+      width: min(63%, 55vh);
+      height: 6%;
+      left: 50%;
+      top: 91%;
+      transform: translate(-50%, -45%);
+      border-radius: 50%;
+      background: radial-gradient(ellipse, #081824b0 0%, #13263395 34%, transparent 72%);
+    }
+    section[data-floor="hidden"]::before,
+    section[data-floor="mounted"]::before {
+      display: none;
+    }
+    fieldset label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 2px 0;
+    }
+    fieldset img {
+      width: 36px;
+      height: 36px;
+      object-fit: contain;
+    }
+    canvas {
+      z-index: 1;
+    }
+    output {
+      z-index: 2;
+    }
+  </style>
+  <main>
+    <section>
+      <canvas aria-label="Rotatable equipped survivor" tabindex="0"></canvas><output>Drag to orbit · Arrow keys to rotate</output>
+    </section>
+    <aside>
+      <header>SNARK / ARMORY</header>
+      <h1>Meridian</h1>
+      <p>Survivor flight armor</p>
+      <label
+        >Survivor fit<select id="fit">
+          <option value="m">Male</option>
+          <option value="f">Female</option>
+        </select></label
+      ><label
+        >Body shape<select id="build">
+          <option value="standard">Standard</option><option value="slight">Slight</option><option value="broad">Broad</option>
+        </select></label><label>Pose<select id="pose">
+          <option value="idle">Standing</option>
+          <option value="run">Running</option>
+          <option value="crouch">Crouched</option>
+          <option value="mount">Mounted Pteranodon</option>
+          <option value="air">Airborne · vents deployed</option>
+        </select></label
+      ><label
+        >Framing<select id="view">
+          <option value="whole">Full suit</option>
+          <option value="portrait">Helmet and chest</option>
+          <option value="back">Rear vanes</option>
+        </select></label
+      >
+      <fieldset><legend>Equipment</legend></fieldset>
+      <label>Under unequipped pieces<select id="mix">
+        <option value="bare">Bare survivor</option><option value="cloth">Cloth armor</option><option value="hide">Hide armor</option>
+      </select></label>
+      <label><input id="tool" type="checkbox" /> Hold stone pick</label><br /><label
+        ><input id="shade" type="checkbox" /> Dusk lighting</label
+      >
+      <p id="status" role="status">Loading survivor models…</p>
+    </aside>
+  </main>
+  <script type="module" src="stage.js"></script>
+</html>

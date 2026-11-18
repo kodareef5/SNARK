@@ -11,6 +11,7 @@ import { readPng } from "../pack/png-read.ts";
 import { convertBody, type ColorRule, type MaterialRule } from "../pack/skin.ts";
 import { buildPack, unpackMeshes, type SourceMesh } from "../pack/write.ts";
 import { calibrateHand } from "../pack/grips.ts";
+import type { Described } from "./materials.ts";
 import { RAW, blender } from "./blender.ts";
 import type { HumanBodiesAsset, HumanClipsAsset } from "./spec.ts";
 
@@ -51,7 +52,7 @@ export function convertClipLibraries(spec: HumanClipsAsset): { clips: Clip[]; wa
 }
 
 /** `dir` is a folder for what Blender writes. */
-export function convertBodies(spec: HumanBodiesAsset, dir: string): { meshes: SourceMesh[]; rigs: PackRig[]; warnings: string[] } {
+export function convertBodies(spec: HumanBodiesAsset, dir: string, finish?: Described): { meshes: SourceMesh[]; rigs: PackRig[]; warnings: string[] } {
   const raw = join(RAW, spec.raw);
   const meshes: SourceMesh[] = [];
   const rigs: PackRig[] = [];
@@ -82,6 +83,14 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string): { meshes: So
     warn(id, body.warnings);
     meshes.push(...body.meshes);
     rigs.push(body.rig);
+    if (spec.tailored && finish) {
+      for (const mesh of spec.tailored.make(body.meshes, body.rig)) {
+        mesh.materials = [finish.material];
+        if (spec.tailored.indicatorEmission) mesh.materials.push({ ...finish.material, id: finish.material.id + "/indicators", emissive: spec.tailored.indicatorEmission });
+        mesh.textures = finish.textures;
+        meshes.push(mesh);
+      }
+    }
     // Each hair and beard was modelled on one of the two heads and is fitted to this body.
     for (const [kind, styles] of [["hair", HAIR_STYLES], ["beard", BEARD_STYLES]] as const) {
       for (const style of styles) {

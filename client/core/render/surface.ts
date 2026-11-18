@@ -566,7 +566,7 @@ in vec4 vTangent;
 in vec2 vUv;
 ${dyed ? "flat in mat3 vDye, vDye2;\n" : ""}uniform sampler2D uBase, uNormal, uMro${dyed ? ", uMask, uMask2" : ""};
 uniform vec3 uTint;
-uniform float uCutoff, uSheet, uSkin;
+uniform float uCutoff, uSheet, uSkin, uEmissive;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
 ${LIGHT}${THROUGH}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
@@ -582,7 +582,7 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   float shade = sunShadow(vRel, sunward(normalize(gl_FrontFacing ? vNormal : -vNormal), uSheet));
   float open = skyOpen(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), overGround(vRel), uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), uSkin > 0.5 ? 0.0 : 1.0);
   vec3 albedo = ${layered ? `wounded(${albedo}, mro)` : albedo};
-  o = vec4(shown(lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, skyFrom(reflect(-v, n)), shade) + through(albedo, mro, n, uSheet, shade), vRel), cover);
+  o = vec4(shown(lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, skyFrom(reflect(-v, n)), shade) + through(albedo, mro, n, uSheet, shade) + albedo * uEmissive, vRel), cover);
 }`;
 }
 

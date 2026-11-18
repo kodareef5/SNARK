@@ -5,7 +5,7 @@ const b=(group:number,title:string,detail=""):Binding=>({group,title,detail});
 const KEYS: Readonly<Record<string,Binding>>={
   KeyK:b(2,"Patrol lights","In the driver’s seat, cycle off, patrol, response and pursuit."),
   KeyW:b(0,"Forward"),KeyA:b(0,"Strafe left"),KeyS:b(0,"Back"),KeyD:b(0,"Strafe right"),ShiftLeft:b(0,"Sprint","Hold while moving. Sprint stands up from crouch."),
-  Space:b(0,"Jump","From a crouch or prone stance, the first press stands up."),KeyC:b(0,"Crouch","Press again to stand."),KeyX:b(0,"Prone","Press again to stand."),
+  Space:b(0,"Jump","From crouch or prone, press to stand. With a Meridian cuirass, hold to climb and add Sprint for level flight."),KeyC:b(0,"Crouch","Press again to stand."),KeyX:b(0,"Prone","Press again to stand."),
   Mouse0:b(1,"Attack","Hold to use the equipped weapon. While building, place the preview."),Mouse2:b(1,"Aim / alternate attack"),MouseMove:b(0,"Look","Move the mouse to aim and steer the camera."),
   KeyR:b(1,"Reload"),KeyG:b(1,"Melee / lower bow"),KeyN:b(0,"Movement modifier","Used by movement and mount abilities."),
   KeyE:b(2,"Use / ride","Tap to interact, or to get in or out of a seat or saddle. Hold on a structure to open its actions."),KeyF:b(2,"Creature inventory","Opens the owned creature you are riding or looking at."),
