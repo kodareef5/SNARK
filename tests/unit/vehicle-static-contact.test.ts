@@ -173,3 +173,13 @@ test('splitting a coplanar deck across the bumper preserves its contact centre a
   contacts[0]!.forEach((value, i) => expect(contacts[1]![i]).toBeCloseTo(value, 3));
   outcomes[0]!.forEach((value, i) => expect(outcomes[1]![i]).toBeCloseTo(value, 1));
 });
+
+test('separate coplanar support islands do not create a contact in the empty space between them', () => {
+  const { world: w } = world(() => 0), dims = w.world.hf.dims;
+  const structs = new StructureStore(dims, new Float32Array([0, .1, .8]), new Float32Array([0, .075, .075]), new Float32Array([0, .2, .2]));
+  structs.add(1, 63.2, .075, 70.5, 0, 0, 100); structs.add(2, 64.1, .075, 69.5, 0, 0, 100);
+  const environment = new StaticVehicleWorld({ hf: w.world.hf, structs }), car = createVehicle(COMPACT, 64, 0, 70);
+  const hit = environment.contact(car, car, COMPACT);
+  expect(hit).not.toBeNull(); expect(hit!.ny).toBeGreaterThan(.99);
+  expect(hit!.x!).toBeLessThan(63.31); expect(hit!.z!).toBeGreaterThan(70.29);
+});

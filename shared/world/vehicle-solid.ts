@@ -403,6 +403,12 @@ export class StaticVehicleSolids {
         retained = true;
       } else if (saved.nx * hit.nx + saved.ny * hit.ny + saved.nz * hit.nz < .999 ||
         Math.abs((hit.x - saved.x) * saved.nx + (hit.y - saved.y) * saved.ny + (hit.z - saved.z) * saved.nz) > .02) return true;
+      // The lateral intervals must also share the transverse contact line. Two floor islands at the same
+      // height but different fore/aft positions do not support the empty rectangle between them.
+      const dx = hit.x - saved.x, dy = hit.y - saved.y, dz = hit.z - saved.z;
+      const horizontal = Math.sqrt(saved.nx * saved.nx + saved.nz * saved.nz);
+      const transverse = horizontal > 1e-8 ? horizontal * dy - saved.ny * (saved.nx * dx + saved.nz * dz) / horizontal : dz;
+      if (Math.abs(transverse) > .02) return true;
       // Only join contiguous portions of the same supporting feature. Gaps and unrelated ledges stay separate.
       if (this.patch[0]! <= high + .02 && this.patch[1]! >= low - .02) {
         low = Math.min(low, this.patch[0]!); high = Math.max(high, this.patch[1]!);
