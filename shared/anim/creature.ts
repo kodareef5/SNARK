@@ -14,6 +14,9 @@
 // over, it bites with its neck and head, and its feet take hold of what it carries.
 
 import type { SpeciesDef } from "../content/defs.ts";
+import type { MoveParams } from "../sim/character.ts";
+import type { CollisionWorld } from "../world/collide.ts";
+import { groundMountPose } from "./ground-mount.ts";
 import type { Registry } from "../content/registry.ts";
 import { TICK_RATE } from "../coords.ts";
 import { PI, TAU, detCos, detSin } from "../math/scalar.ts";
@@ -805,7 +808,7 @@ function gettingUp(a: CreatureAnim, st: AnimState, tick: number, out: Pose): voi
  * Returns the zone a ray hits, or 0. The creature stands at (bx, by, bz) facing `yaw` (1/65536 turns). The ray starts at
  * (ox, oy, oz) and runs along the unit direction (dx, dy, dz) no farther than `maxT`. `zoneHit` holds the bone and the distance.
  */
-export function rayCreature(a: CreatureAnim, st: AnimState, tick: number, bx: number, by: number, bz: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
+export function rayCreature(a: CreatureAnim, st: AnimState, tick: number, bx: number, by: number, bz: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, world?: CollisionWorld, move?: MoveParams | null): number {
   const rig = a.rig;
   // Most rays miss the bounding sphere, so test that first.
   const cx = bx - ox;
@@ -823,6 +826,7 @@ export function rayCreature(a: CreatureAnim, st: AnimState, tick: number, bx: nu
   solve(rig, rig.a, rig.solved);
   // Move the ray into the body's space by undoing its position, then its yaw. Yaw is x' = c x + s z, z' = c z - s x.
   const r = (yaw * TAU) / 65536;
+  if (world && move) groundMountPose(rig.solved, st, world, move, bx, by, bz, r);
   const s = detSin(r);
   const c = detCos(r);
   const rx = ox - bx;

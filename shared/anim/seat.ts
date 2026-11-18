@@ -5,10 +5,13 @@
 import type { Registry } from "../content/registry.ts";
 import { detCos, detSin } from "../math/scalar.ts";
 import type { Seat } from "../sim/seats.ts";
+import type { MoveParams } from "../sim/character.ts";
+import type { CollisionWorld } from "../world/collide.ts";
+import { groundMountPose } from "./ground-mount.ts";
 import { creaturePose, type CreatureAnim } from "./creature.ts";
 import type { Socket } from "./human.ts";
 import type { AnimState } from "./pose.ts";
-import { boneToModel, solve, type Solved } from "./skeleton.ts";
+import { boneToModel, solve, Solved } from "./skeleton.ts";
 
 /** Metres a rider's origin hangs below its seat, along the seat's up. */
 export const SEAT_DROP = 0.55;
@@ -16,6 +19,8 @@ export const SEAT_DROP = 0.55;
 export const SEAT_FLOATS = 12;
 
 const socketAt = new Float64Array(3);
+const anchorSolved = new Solved(1);
+const anchorSocket = { bone: 0, x: 0, y: 0, z: 0 };
 
 /**
  * Writes where a rider sits on a creature posed as `solved`, whose origin is at (x, y, z) and which faces `yaw` radians:
@@ -78,11 +83,17 @@ export function saddleSeat(reg: Registry, saddle: number, slot: number): Seat | 
  * seatFrame for `seat` on a creature of `anim` (null for one with no rig) posed by `st` at `tick`: on the seat's socket
  * where the rig has it, else at its anchor (anchorFrame).
  */
-export function seatOn(anim: CreatureAnim | null, seat: Seat, st: AnimState, tick: number, x: number, y: number, z: number, yaw: number, out: Float64Array): void {
+export function seatOn(anim: CreatureAnim | null, seat: Seat, st: AnimState, tick: number, x: number, y: number, z: number, yaw: number, out: Float64Array, world?: CollisionWorld, move?: MoveParams | null): void {
   const rig = anim?.rig;
   const socket = seat.socket !== undefined ? rig?.sockets.get(seat.socket) : undefined;
-  if (!anim || !rig || !socket) return anchorFrame(seat.anchor, x, y, z, yaw, out);
+  if (!anim || !rig || !socket) {
+    if (!world || !move) return anchorFrame(seat.anchor, x, y, z, yaw, out);
+    anchorSolved.pos.set(seat.anchor); anchorSolved.rot.set([0, 0, 0, 1]);
+    groundMountPose(anchorSolved, st, world, move, x, y, z, yaw);
+    return seatFrame(anchorSolved, anchorSocket, x, y, z, yaw, out);
+  }
   creaturePose(anim, st, tick, rig.a);
   solve(rig, rig.a, rig.solved);
+  if (world && move) groundMountPose(rig.solved, st, world, move, x, y, z, yaw);
   seatFrame(rig.solved, socket, x, y, z, yaw, out);
 }
