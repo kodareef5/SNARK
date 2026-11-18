@@ -7,26 +7,14 @@ import { startServer } from "../../server/main.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../../tests/fixtures/map.ts";
-import { devtools } from "../map/trip.ts";
+import { drivingBrowser, until } from "./driving-browser.ts";
 
 const course = process.argv[2];
 if (course !== "bridge" && course !== "tree") throw new Error("Choose tree or bridge followed by a built San Francisco map path.");
 const city = course === "bridge";
-const chrome = [process.env.CHROME, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"].find(p => p && existsSync(p));
-if (!chrome) throw new Error("Set CHROME to an installed Chromium executable.");
 const profile = mkdtempSync(join(tmpdir(), "snark-collision-"));
-let browser: ReturnType<typeof Bun.spawn> | undefined, server: ReturnType<typeof startServer> | undefined;
-let page: Awaited<ReturnType<typeof devtools>> | undefined;
-
-async function until<T>(read: () => T | undefined | false, description: string, timeout = 45000): Promise<T> {
-  const end = Date.now() + timeout;
-  do {
-    const value = read();
-    if (value) return value;
-    await Bun.sleep(40);
-  } while (Date.now() < end);
-  throw new Error(description + " timed out");
-}
+let server: ReturnType<typeof startServer> | undefined;
+let browser: Awaited<ReturnType<typeof drivingBrowser>> | undefined;
 
 try {
   let path = process.argv[3];
@@ -48,16 +36,8 @@ try {
     if (car >= 0) break;
   }
   if (car < 0) throw new Error("Car placement failed.");
-  const graphics = process.argv.includes("--software") ? ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : process.platform === "darwin" ? ["--use-angle=metal"] : [];
-  browser = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...graphics, "--window-size=800,600", "--remote-debugging-port=0", "--user-data-dir="+profile, "about:blank"], { stdout: "ignore", stderr: "ignore" });
-  const tab = page = await devtools(profile);
-  await tab.send("Runtime.enable");
-  await tab.send("Page.enable");
-  await tab.send("Page.navigate", { url: "http://127.0.0.1:"+server.port+"/?quick=1&tier=lowpoly&name=course" });
-  await tab.send("Page.bringToFront");
-  const client = await until(() => host.game.clients.find(c => c?.active && c.ent >= 0) ?? undefined, "Join", 90000);
-  const input = client.newestInput;
-  await until(() => client.newestInput > input && world.tick - client.inputAt < 12, "Input sampling", 90000);
+  browser = await drivingBrowser(server, "course");
+  const { tab, client } = browser;
   const seat = world.reg.vehicle[ents.kind[car]!]!.seats[0]!, at = [0,0,0];
   host.urban.door(car, seat, world.reg.move[ents.kind[client.ent]!]!.radius, at);
   ents.setPosition(client.ent, at[0]!, at[1]!, at[2]!); world.history.discontinuity(client.ent);
@@ -88,9 +68,9 @@ try {
   console.log(JSON.stringify(result));
   if (!result.seated || result.occupantDamage || (city ? minUp < .85 || maxSide > 3 : !broke || speedAfter >= speedBefore || !result.hullDamage || result.xp)) throw new Error("Course outcome failed");
 } catch (error) {
-  if (page) console.error(await page.value<string>("document.body.innerText.slice(-1400)").catch(() => "Browser closed"));
+  if (browser) console.error(await browser.tab.value<string>("document.body.innerText.slice(-1400)").catch(() => "Browser closed"));
   throw error;
 } finally {
-  page?.close(); browser?.kill(); if (browser) await browser.exited;
+  await browser?.close();
   server?.stop(); rmSync(profile, { recursive: true, force: true });
 }
