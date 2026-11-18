@@ -31,8 +31,8 @@ type Part = readonly [number, number, number, number, number, number, number?];
 const DARK = 83, PANE = 92, METAL = 89, STEEL = 5, CORAL = 113, SIGN = 135, SPANDREL = 87, BASE = 88, MARK = 6;
 /** A balcony's front in pale render whatever the building's finish, so the coral wall behind it shows. */
 const FRONT = 104;
-// A curb's pale top, a walk's paving, a gutter's dark, a grate, a utility box's grey green, a downpipe's stain.
-const CURB = 102, WALK = 1, GUTTER = 84, GRATE = 11, BOX = 140, STAIN = 96;
+// A curb's pale top, a walk's paving, a gutter's dark, a grate, a utility box's grey green, a downpipe's stain, rust.
+const CURB = 102, WALK = 1, GUTTER = 84, GRATE = 11, BOX = 140, STAIN = 96, RUST = 179;
 const up = (y: number, parts: readonly Part[]): Part[] => parts.map(([a, b, c, d, e, f, g]) => [a, b, c + y, d + y, e, f, g]);
 const wall = (top: number, out = 0.25): Part => [-4, 4, 0, top, -0.25, out];
 /**
@@ -66,24 +66,25 @@ const DECK: Part[] = [[-4, -3.65, 0, 3.6, -0.35, 0.35], [3.65, 4, 0, 3.6, -0.35,
 /** The deck above's edge beam, a lip under its slab. */
 const DECK_LIP: Part = [-3.65, 3.65, 3.4, 3.6, -0.1, 0.25];
 const DECK_CAP: Part[] = [[-4, 4, 3.6, 4.6, -0.1, 0.25, SPANDREL], [-0.08, 0.08, 4.6, 9.4, 0.05, 0.2, STEEL], [-0.7, 0.1, 9.25, 9.45, 0.05, 0.4, STEEL]];
-/** Where a balcony's solid front fell beside a failure: steel posts at 1.33 m and a top rail, some posts gone. */
-const RAIL: Part[] = [[-4, 4, 0.98, 1.05, 1.92, 2, METAL], ...[-3.33, -2, 0.67, 2, 3.33].map((x): Part => [x - 0.03, x + 0.03, 0, 0.98, 1.94, 2, METAL])];
+/** Where a balcony's solid front fell beside a failure: steel posts at 1.93 m and a top rail, the middle post a rusted stub. */
+const RAIL: Part[] = [[-4, 4, 0.96, 1.05, 1.85, 2, METAL], [-0.05, 0.05, 0, 0.45, 1.88, 1.97, RUST], ...[-3.86, -1.93, 1.93, 3.86].map((x): Part => [x - 0.045, x + 0.045, 0, 0.96, 1.88, 1.97, METAL])];
 const RAIL_ENDS: Part[] = [[-4, -3.94, 0, 1.05, 0.25, 1.94, METAL], [3.94, 4, 0, 1.05, 0.25, 1.94, METAL]];
 const RAILED: Part[] = [...BALCONY.filter((p) => p !== BALCONY[1] && !RETURNS.includes(p)), ...RAIL, ...RAIL_ENDS];
 /**
- * A lobby's way in: a steel frame round a 5.6 m opening, a step before it and a concrete canopy over it, standing on the
- * open bay's wall line.
+ * A lobby's way in: a steel head across the open bay from column to column and a concrete canopy over it. Nothing of it
+ * stands below the head, so it is no obstacle to the way through the door.
  */
-const ENTRY: Part[] = [[-3.08, -2.9, 0, 2.82, -0.09, 0.09, METAL], [2.9, 3.08, 0, 2.82, -0.09, 0.09, METAL], [-3.08, 3.08, 2.82, 3, -0.09, 0.09, METAL], [-3, 3, 0, 0.15, 0.09, 0.87, CURB], [-3.2, 3.2, 3, 3.25, 0.09, 2.1], [-3.2, 3.2, 3.25, 3.45, 1.95, 2.1]];
+const ENTRY: Part[] = [[-4, 4, 2.82, 3, -0.09, 0.09, METAL], [-3.2, 3.2, 3, 3.25, 0.09, 2.1], [-3.2, 3.2, 3.25, 3.45, 1.95, 2.1]];
 const MODULES = {
   zbalc: { look: BALCONY, walked: BALCONY_WALKED },
   zbalctop: { look: [...BALCONY, ...BALCONY_CAP], walked: [...BALCONY_WALKED, ...BALCONY_CAP] },
-  zbalcrail: { look: RAILED, walked: [BALCONY_WALKED[0]!, [-4, 4, 0, 1.05, 1.94, 2], ...RAIL_ENDS, wall(4)] },
-  // Its step is drawn only: a foot stands 15 cm low on it, where walked it would be a ledge onto the canopy's frame.
-  zentry: { look: ENTRY, walked: [ENTRY[0]!, ENTRY[1]!, ENTRY[2]!, ENTRY[4]!] },
+  zbalcrail: { look: RAILED, walked: [BALCONY_WALKED[0]!, [-4, 4, 0, 1.05, 1.85, 2], ...RAIL_ENDS, wall(4)] },
+  zentry: { look: ENTRY, walked: [[-4, 4, 2.82, 3.45, -0.09, 2.1]] },
   /** A downpipe a storey long on a wall's face, with its clips, and its foot: a shoe and the stain the water left. */
-  zpipe4: { look: [[-0.06, 0.06, 0, 4, 0.25, 0.37, METAL], [-0.1, 0.1, 1, 1.08, 0.25, 0.39, METAL], [-0.1, 0.1, 3, 3.08, 0.25, 0.39, METAL]], walked: [[-0.06, 0.06, 0, 4, 0.25, 0.37]] },
-  zpipefoot: { look: [[-0.06, 0.06, 0.25, 4, 0.25, 0.37, METAL], [-0.12, 0.12, 0, 0.25, 0.25, 0.55, METAL], [-0.35, 0.35, 0, 1.9, 0.25, 0.28, STAIN]], walked: [[-0.12, 0.12, 0, 4, 0.25, 0.55]] },
+  zpipe4: { look: [[-0.075, 0.075, 0, 4, 0.25, 0.4, METAL], [-0.11, 0.11, 1, 1.12, 0.25, 0.43, METAL], [-0.11, 0.11, 3, 3.12, 0.25, 0.43, METAL]], walked: [[-0.075, 0.075, 0, 4, 0.25, 0.4]] },
+  zpipefoot: { look: [[-0.075, 0.075, 0.25, 4, 0.25, 0.4, METAL], [-0.075, 0.075, 0, 0.25, 0.25, 0.6, RUST], [-0.35, 0.35, 0, 1.9, 0.25, 0.28, STAIN]], walked: [[-0.075, 0.075, 0, 4, 0.25, 0.6]] },
+  /** Its head under the roof's edge, the hopper the roof drains into. */
+  zpipetop: { look: [[-0.075, 0.075, 0, 3.45, 0.25, 0.4, METAL], [-0.11, 0.11, 1, 1.12, 0.25, 0.43, METAL], [-0.2, 0.2, 3.45, 3.96, 0.25, 0.55, METAL]], walked: [[-0.075, 0.075, 0, 3.45, 0.25, 0.4], [-0.2, 0.2, 3.45, 3.96, 0.25, 0.55]] },
   zbalc4: { look: [0, 4, 8, 12].flatMap((y) => up(y, BALCONY)), walked: [[-4, 4, -0.25, 16, -0.25, 0.25], ...BALCONY_WALKED.slice(0, 4), ...[4, 8, 12].flatMap((y) => up(y, BALCONY_WALKED.slice(0, 2)))] },
   zbalc4top: { look: [...[0, 4, 8, 12].flatMap((y) => up(y, BALCONY)), ...up(12, BALCONY_CAP)], walked: [[-4, 4, -0.25, 16, -0.25, 0.25], ...BALCONY_WALKED.slice(0, 4), ...[4, 8, 12].flatMap((y) => up(y, BALCONY_WALKED.slice(0, 2))), ...up(12, BALCONY_CAP)] },
   /** A ground floor of flats: a solid darker base, a high window, the head band in the building's finish. */
@@ -121,9 +122,8 @@ export const RUIN_FACADES = Object.fromEntries(Object.entries(MODULES).map(([nam
   return [name, shape];
 })) as Record<FacadeModule, ShapeDef>;
 type Corner = readonly [number, number, number];
-// A break's bars, and a spalled face's darker pockets of aggregate.
-const RUST = 179, POCKET = 97;
-// A curb's pale top, a walk's paving, a gutter's dark.
+// A spalled face's darker pockets of aggregate.
+const POCKET = 97;
 /** A prism along x from x0 to x1 of the profile `yz`, corners round it in (y, z). */
 const prism = (x0: number, x1: number, yz: readonly (readonly [number, number])[]): Corner[] => [x0, x1].flatMap((x) => yz.map(([y, z]): Corner => [x, y, z]));
 /** Teeth of a break across a width: each its from and to along x and how far its point stands out, with its point's height. */
@@ -157,13 +157,13 @@ function centred(id: string, walked: { boxes?: ShapeBox[]; hulls?: HullDef[] }, 
 function street(): Record<"zwalk8" | "zwalk8g" | "zcurbramp" | "zcurbrampl" | "zdrain" | "zutility", ShapeDef> {
   const walked = { boxes: [{ at: [0, 0.075, 1.2], half: [4, 0.075, 1.2] }] as ShapeBox[] };
   const walk: ShapeBox[] = [{ at: [0, 0.075, 0.15], half: [4, 0.075, 0.15], color: CURB }, { at: [0, 0.075, 1.35], half: [4, 0.075, 1.05], color: WALK }];
-  // A curb ramp 1.2 m along the curb, down from the walk to the road toward a junction: rising to +x, or with `l` to -x.
-  const ramp = (l: boolean): HullDef => ({ corners: [0, 2.4].flatMap((z): Corner[] => [[-0.6, 0, z], [0.6, 0, z], [l ? -0.6 : 0.6, 0.15, z]]) });
+  // A curb ramp 1.8 m along the curb (1 in 12), down from the walk to the road where it stops: rising to +x, or with `l` to -x.
+  const ramp = (l: boolean): HullDef => ({ corners: [0, 2.4].flatMap((z): Corner[] => [[-0.9, 0, z], [0.9, 0, z], [l ? -0.9 : 0.9, 0.15, z]]) });
   return {
     zwalk8: centred(shaped("zwalk8"), walked, { boxes: walk }),
     zwalk8g: centred(shaped("zwalk8g"), walked, { boxes: [...walk, { at: [0, 0.015, -0.225], half: [4, 0.015, 0.225], color: GUTTER }] }),
-    zcurbramp: centred(shaped("zcurbramp"), { hulls: [ramp(false)] }, { hulls: [ramp(false)] , boxes: [{ at: [0.55, 0.07, 1.2], half: [0.05, 0.07, 1.2], color: CURB }] }),
-    zcurbrampl: centred(shaped("zcurbrampl"), { hulls: [ramp(true)] }, { hulls: [ramp(true)], boxes: [{ at: [-0.55, 0.07, 1.2], half: [0.05, 0.07, 1.2], color: CURB }] }),
+    zcurbramp: centred(shaped("zcurbramp"), { hulls: [ramp(false)] }, { hulls: [ramp(false)], boxes: [{ at: [0.85, 0.07, 1.2], half: [0.05, 0.07, 1.2], color: CURB }] }),
+    zcurbrampl: centred(shaped("zcurbrampl"), { hulls: [ramp(true)] }, { hulls: [ramp(true)], boxes: [{ at: [-0.85, 0.07, 1.2], half: [0.05, 0.07, 1.2], color: CURB }] }),
     // A storm drain at a gutter's low point: its grate in the gutter and its inlet a dark mouth in the curb's face.
     zdrain: centred(shaped("zdrain"), { boxes: [{ at: [0, 0.055, -0.25], half: [0.6, 0.055, 0.25] }] }, { boxes: [{ at: [0, 0.035, -0.225], half: [0.45, 0.005, 0.225], color: GRATE }, { at: [0, 0.07, -0.01], half: [0.6, 0.04, 0.01], color: GRATE }, { at: [0, 0.02, -0.225], half: [0.5, 0.015, 0.25], color: GUTTER }] }),
     // A utility box at the back of a walk, on its plinth.
@@ -263,7 +263,7 @@ export const ruinKind = (shape: RuinShape, finish: RuinFinish = "concrete"): str
 const PAINTED = new Set<RuinShape>(["wall4", "wall8", "sill4", "sill8", "fin4", "fin8", "fin16", "trim4", "trim8", "container", "crown"]);
 const ONLY_FINISHES: Partial<Record<RuinShape, readonly RuinFinish[]>> = {
   zpitch4: ["clay"], zpitch8: ["clay", "rust"], zpitch16: ["clay"], zdeckramp: ["concrete"],
-  zwedge: ["fracture"], zpipe4: ["concrete"], zpipefoot: ["concrete"], zwalk8: ["concrete"], zwalk8g: ["concrete"], zcurbramp: ["concrete"], zcurbrampl: ["concrete"], zdrain: ["concrete"], zutility: ["concrete"], zendwhole: ["fracture"], zendspall: ["fracture"], zendsnap: ["fracture"], zstub: ["fracture"], zfallen: ["concrete"],
+  zwedge: ["fracture"], zpipe4: ["concrete"], zpipefoot: ["concrete"], zpipetop: ["concrete"], zwalk8: ["concrete"], zwalk8g: ["concrete"], zcurbramp: ["concrete"], zcurbrampl: ["concrete"], zdrain: ["concrete"], zutility: ["concrete"], zendwhole: ["fracture"], zendspall: ["fracture"], zendsnap: ["fracture"], zstub: ["fracture"], zfallen: ["concrete"],
 };
 /** Whether a shape comes in that finish: a pitched roof in its own few; otherwise concrete always, the facade pieces and the z kit in every finish. */
 export const finished = (name: RuinShape, finish: RuinFinish): boolean => ONLY_FINISHES[name]?.includes(finish) ?? (finish === "concrete" || (finish !== "fracture" && name !== "zshrub" && name !== "zrooftree" && (PAINTED.has(name) || name.startsWith("z"))));

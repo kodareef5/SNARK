@@ -117,7 +117,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
           const open = grammar.ground === "zstore";
           const shut = grammar.shutter && !entry && hash3(opts.seed + 57, t.i * 4 + side, t.j) % 4 === 0 ? grammar.shutter : grammar.ground;
           // Beside a failure, a balcony's solid front may have fallen to its rail.
-          const railed = grammar.floor === "zbalc" && nearFall && hash3(opts.seed + 83, t.i * 4 + side, t.j * 64 + level) % 2 === 0;
+          const railed = grammar.floor === "zbalc" && nearFall && hash3(opts.seed + 83, t.i * 4 + side, t.j * 64 + level) % 3 === 0;
           const name = end ? (level === 0 && entry ? null : last ? "zpaneltop" : "zpanel8")
             : level === 0 ? (entry && !open ? grammar.gate ?? null : last ? grammar.groundTop ?? shut : shut)
             : last ? grammar.top : railed ? "zbalcrail" : grammar.floor;
@@ -239,7 +239,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   const corner = [...tiles].sort((a, b) => a.j - b.j || a.i - b.i)[0];
   if (corner && form.facade && bay === 8 && base === 0 && opts.detail < 2 && !has(keys, corner, -1, 0) && !damaged.has(corner) && hash3(opts.seed + 19, 3, 5) % 2 === 0) {
     const top = Math.min(tops.get(tileKey(corner.i, corner.j)) ?? 0, 6);
-    for (let level = 0; level < top; level++) facade(m, level === 0 ? "zpipefoot" : "zpipe4", corner.u - bay / 2, level * 4, corner.v - bay / 2 + 0.7, 3, "concrete");
+    for (let level = 0; level < top; level++) facade(m, level === 0 ? "zpipefoot" : level === top - 1 ? "zpipetop" : "zpipe4", corner.u - bay / 2, level * 4, corner.v - bay / 2 + 0.7, 3, "concrete");
   }
   // One column of the failure stands at its edge with its broken head, the slab it held fallen at its foot.
   if (bay === 8 && base === 0 && opts.detail < 2 && mode !== "burnt") {
