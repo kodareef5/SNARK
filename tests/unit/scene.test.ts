@@ -501,11 +501,11 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1616556435 until the frozen human packs had the fingertips' two bones: a posed survivor's rows are 30, not 28,
   // and the frame's 70 bones pose and stand in the bodies its 66 did. The draws, triangles and uploads are as they were.
   // It was 3788414068 until the ruins' facade modules and breaks (content/ruins.ts) added their grey meshes ahead of the
-  // test meshes; without them it is that again.
-  // It was 1115872953 until the door-to-curb kit and the street's walks, curbs and drains (content/ruins.ts) added their
-  // grey meshes ahead of the test meshes, and 2659223847 until the ruins' broken wall tops, rubble, leaning pieces and
-  // vines did, and 2165263720 until the broken parapets of whole tops did; without them it is each of those again.
-  expect(hash).toBe(1420728490);
+  // test meshes; without them it is that again. It was 1115872953 until the street furniture (content/street.ts) added
+  // its grey meshes ahead of them, and 374367094 until the door-to-curb kit and the street's walks, curbs and drains, the
+  // ruins' broken wall tops, rubble, leaning pieces and vines and the broken parapets of whole tops (content/ruins.ts)
+  // did; without them it is each of those again.
+  expect(hash).toBe(2418953000);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -530,10 +530,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // their chunks' frame keys, as above.
   // It was 2005316451 until the road bridge meshes changed those same indices, as above, and 207021915 until the sea was
   // made ahead of the statics, as above, and 3258779310 until the harbours' wrecks' meshes, as above, and 3199521479
-  // until a survivor had 30 bones, as above, and 3920878120 until the ruins' facade modules and breaks, as above, and
-  // 2430603422 until the door-to-curb kit and the street's pieces, 2360872237 until the broken tops, rubble, leaning
-  // pieces and vines, and 3665213025 until the broken parapets, as above.
-  expect(saddled.hash).toBe(3463566396);
+  // until a survivor had 30 bones, as above, and 3920878120 until the ruins' facade modules and breaks, as above.
+  // It was 2430603422 until the street furniture's grey meshes, and 3628556772 until the ruins' kit, street pieces,
+  // broken tops, rubble, leaning pieces, vines and broken parapets, as above.
+  expect(saddled.hash).toBe(3923149635);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
