@@ -34,7 +34,9 @@ def foot(side,dz=0,lift=0,ankle_pitch=0,toe_pitch=0):
  toe_target=toe+to_blender((0,lift,dz));ankle_target=toe_target-q@(toe-ankle)
  d=ankle_target-origin;length=d.length;axis=d.normalized();l1=(knee-hip).length;l2=(ankle-knee).length
  if length>l1+l2-.0001:raise RuntimeError(f'overextension {side} {length-l1-l2:.3f} m')
- pole=(knee-hip)-axis*(knee-hip).dot(axis);pole.normalize()
+ # The hock can cross the rest thigh direction during a fast recovery. Keep
+ # the knee forward in its sagittal plane through this bend.
+ forward=to_blender((0,0,1));pole=forward-axis*forward.dot(axis);pole.normalize()
  along=(l1*l1-l2*l2+length*length)/(2*length)
  knee_target=origin+axis*along+pole*math.sqrt(max(0,l1*l1-along*along))
  for n,start,end,original in [('thigh',origin,knee_target,knee-hip),('shank',knee_target,ankle_target,ankle-knee)]:
@@ -48,7 +50,7 @@ def head(pitch=0,yaw=0,jaw=0):
  turn('chest');turn('neck_1',pitch*.39,yaw*.25);turn('neck_2',pitch*.38,yaw*.39);turn('skull',pitch*.23,yaw*.36);turn('jaw',jaw)
 def blink(t,closed=0):
  a=max(closed,pulse(t,.65,.69,.73))
- for side,sg in [('l',1),('r',-1)]:turn('lid_'+side,r=-sg*68*a)
+ for side,sg in [('l',1),('r',-1)]:turn('lid_'+side,r=-sg*87*a)
 
 def idle(t):
  root(.012+.008*math.sin(t*TAU));head(.62*math.sin(t*TAU),.44*math.sin(t*TAU+.3));tail(t,.53);blink(t);planted()
