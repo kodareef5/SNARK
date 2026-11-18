@@ -10,7 +10,7 @@ export interface StaticTyre {
 }
 interface Constraint { wheel: StaticTyre; fx: number; fy: number; fz: number; sx: number; sy: number; sz: number; limit: number; longLimit: number; long: number; side: number }
 const q = new Float64Array(4), v = new Float64Array(3), direction = new Float64Array(3), com = new Float64Array(3);
-const constraints: Constraint[] = [], footprint = [0, 1, 3, 2];
+const constraints: Constraint[] = [];
 
 /** Returns whether the contact footprint and available static friction can support a quiet chassis. */
 export function holdParkedTyres(s: VehicleState, p: VehicleSpec, wheels: readonly StaticTyre[], allBraked: boolean, parking: boolean, dt: number): boolean {
@@ -42,7 +42,7 @@ export function holdParkedTyres(s: VehicleState, p: VehicleSpec, wheels: readonl
     const dl = along - c.long, ds = side - c.side; c.long = along; c.side = side;
     applyVehicleImpulse(s, p, w.x, w.y, w.z, c.fx * dl + c.sx * ds, c.fy * dl + c.sy * ds, c.fz * dl + c.sz * ds);
   }
-  if (count !== 4) return false;
+  if (count !== 2 * (p.axles?.length ?? 2)) return false;
   let saturated = 0;
   for (let i = 0; i < count; i++) {
     const c = constraints[i]!;
@@ -50,12 +50,13 @@ export function holdParkedTyres(s: VehicleState, p: VehicleSpec, wheels: readonl
     if (Math.abs(c.long) >= c.longLimit * .99) saturated++;
   }
   if (!parking && !allBraked && saturated === count) return false;
-  // Gravity's line through the COM must lie inside the actual four-wheel footprint, including on a cross slope.
+  // Gravity's line through the COM must lie inside the outer axle footprint, including on a cross slope.
   const { comX, comY, comZ } = vehicleMassProperties(p, s);
   quatRotate(q, 0, comX, comY, comZ, com, 0);
   const x = s.x + com[0]!, z = s.z + com[2]!; let sign = 0;
+  const outer = (corner: number) => wheels[corner < 2 ? corner : count + 1 - corner]!;
   for (let i = 0; i < 4; i++) {
-    const a = wheels[footprint[i]!]!, b = wheels[footprint[(i + 1) % 4]!]!;
+    const a = outer(i), b = outer((i + 1) % 4);
     const cross = (b.x - a.x) * (z - a.z) - (b.z - a.z) * (x - a.x);
     if (Math.abs(cross) < 1e-5) continue;
     if (sign && cross * sign < 0) return false; sign = cross;

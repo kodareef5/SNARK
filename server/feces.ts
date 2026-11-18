@@ -87,7 +87,7 @@ export class Feces {
   }
 
   /** It goes now: an egg if she lays one, else its feces. Returns the record left, or null. */
-  go(rec: EntityRecord, e: number): EntityRecord | null {
+  go(rec: EntityRecord, e: number, allowEgg = true): EntityRecord | null {
     const { world, eggs } = this.ctx;
     const reg = world.reg;
     const kind = rec.kind;
@@ -96,7 +96,7 @@ export class Feces {
     const ents = world.ents;
     const [x, , z] = this.vent as [number, number, number];
     const chance = reg.eggChance[kind]!;
-    if (chance > 0 && rec.genome?.female && rec.grown === 0 && this.rng.float() < chance) {
+    if (allowEgg && chance > 0 && rec.genome?.female && rec.grown === 0 && this.rng.float() < chance) {
       const egg = eggs.lay(kind, rec.team, x, ents.y[e]!, z, this.rng.int(65536), ents.x[e]!, ents.z[e]!);
       if (egg) {
         this.laid++;

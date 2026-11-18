@@ -87,6 +87,8 @@ export function plan(): Run[] {
     for (const [tier, scale] of [["medium", 1], ["ultra", 2]] as const) for (const off of ["shadows", "far"] as const) runs.push({ scene: "city", view, tier, scale, off });
     // The finish (post.ts): the light target and its pass, bloom, and bodies' contact, each off every other frame.
     for (const tier of ["high", "ultra"]) for (const ab of ["light", "bloom", "contact"] as const) runs.push({ scene: "city", view, tier, scale: 1, ab });
+    // What is hidden left out, and the opaque draws nearest first (render/hide.ts, render/scene.ts order).
+    for (const [tier, scale] of view === "street" ? ([["high", 2], ["medium", 1]] as const) : ([["high", 2]] as const)) for (const off of ["hide", "order"] as const) runs.push({ scene: "city", view, tier, scale, off });
   }
   runs.push({ scene: "city", view: "street", tier: "high", scale: 1, off: "facades" });
   for (const cpu of [4, 6]) runs.push({ scene: "city", view: "street", tier: "high", scale: 1, cpu });
@@ -349,7 +351,12 @@ export function rows(section: Section, record: Row, reports: Map<string, Record<
           record("draws listed a frame, in draw calls", counted.draws.listed!, `draws in ${counted.calls.draws} calls`);
           record("draw calls that could go in the one before", counted.draws.runs!, `calls, but for their indices; ${counted.draws.levels} more but for their level and offset`);
         }
-        for (const [name, list] of reports) if (name.startsWith(`${key}, `) && name.endsWith(" off")) record(`${name.slice(key.length + 2)}: what it costs`, gpu(all) - gpu(list), `ms, ${draws - median(list.map((r) => r.drawCalls))} GL draws`);
+        for (const [name, list] of reports) {
+          if (!name.startsWith(`${key}, `) || !name.endsWith(" off")) continue;
+          const tris = (median(all.map((r) => r.triangles)) - median(list.map((r) => r.triangles))) / 1e6;
+          const ours = median(all.map((r) => r.buildAndSubmitMs.median)) - median(list.map((r) => r.buildAndSubmitMs.median));
+          record(`${name.slice(key.length + 2)}: what it costs`, gpu(all) - gpu(list), `ms, ${draws - median(list.map((r) => r.drawCalls))} GL draws, ${tris.toFixed(2)} M triangles, ${ours.toFixed(2)} ms of our code`);
+        }
         for (const [name, list] of reports) if (name.startsWith(`${key}, processor`)) record(`our code's time a frame, ${name.slice(key.length + 2)}, median`, median(list.map((r) => r.buildAndSubmitMs.median)), "ms");
       }
       const head = `city ${view} ${tier} x1, `;

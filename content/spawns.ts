@@ -7,6 +7,8 @@ import type { Def } from "../shared/content/defs.ts";
 const dodo = "core:dodo";
 const para = "core:parasaur";
 const raptor = "core:raptor";
+const carbonemys = "core:carbonemys";
+const rex = "core:rex";
 const ptera = "core:pteranodon";
 const trike = "core:trike";
 const stego = "core:stego";
@@ -21,8 +23,9 @@ export const SPAWNS: readonly Def[] = [
       { name: "Para (1-2)", weight: 0.125, group: [para, para], chances: [1, 0.5], offsets: [[0, 6.8], [0, -6.8]] },
       { name: "Ptero (1-2)", weight: 0.15, group: [ptera, ptera], chances: [1, 0.5], offsets: [[0, 2.5], [0, -2.5]] },
       { name: "Trike (1-2)", weight: 0.1, group: [trike, trike], chances: [1, 0.5], offsets: [[0, 6.8], [0, -6.8]] },
+      { name: "Shore turtles", weight: 0.14, group: [carbonemys, carbonemys], chances: [1, 0.45], offsets: [[0, 0], [5, -3]] },
     ],
-    limits: [{ species: dodo, share: 0.6 }, { species: para, share: 0.2 }, { species: ptera, share: 0.25 }, { species: trike, share: 0.2 }],
+    limits: [{ species: dodo, share: 0.6 }, { species: para, share: 0.2 }, { species: ptera, share: 0.25 }, { species: trike, share: 0.2 }, { species: carbonemys, share: 0.20 }],
   },
   // The jungle species inhabit Miami's hammocks, gardens and ruins.
   {
@@ -34,8 +37,9 @@ export const SPAWNS: readonly Def[] = [
       // The original group label says 1–3, while its data defines two members.
       { name: "Trike (1-3)", weight: 0.075, group: [trike, trike], chances: [1, 0.6], offsets: [[0, 0], [0, 6.8]] },
       { name: "Stego (1-2)", weight: 0.025, group: [stego, stego], chances: [1, 0.5], offsets: [[0, 6.8], [0, -6.8]] },
+      { name: "Solitary Rex", weight: 0.018, group: [rex] },
     ],
-    limits: [{ species: trike, share: 0.15 }, { species: stego, share: 0.1 }],
+    limits: [{ species: trike, share: 0.15 }, { species: stego, share: 0.1 }, { species: rex, share: 0.06 }],
   },
   // The proving ground's herd and hunters, each one species, in the groups ARK's jungle gives them.
   { type: "spawns", id: "core:spawns_proving_herd", entries: [{ name: "Para (1-3)", weight: 0.2, group: [para, para, para], chances: [1, 0.6, 0.3], offsets: [[0, 0], [0, 6.8], [0, -6.8]] }] },

@@ -167,7 +167,7 @@ test("a creature is hit where it is: its head from in front, every zone from som
     const h = middle(rig.names.indexOf(headZone.on));
     expect(ray(h[0]!, h[1]!, 40, 0, 0, -1)).toBe(ZONE_HEAD);
     expect(zoneHit.t).toBeLessThan(40 - h[2]!);
-    expect(ray(-30, h[1]!, h[2]! + rig.mid * 2, 1, 0, 0)).toBe(ZONE_NONE);
+    expect(ray(-30, h[1]!, rig.reach + 1, 1, 0, 0)).toBe(ZONE_NONE);
     // Turned a quarter and moved, it is hit by the same ray turned and moved with it, and not by the old ray.
     expect(ray(100 + 40, h[1]!, 50 - h[0]!, -1, 0, 0, 16384, 100, 50)).toBe(ZONE_HEAD);
     expect(ray(h[0]!, h[1]!, 40, 0, 0, -1, 16384, 100, 50)).toBe(ZONE_NONE);
