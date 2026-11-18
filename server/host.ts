@@ -1,3 +1,4 @@
+import { SurvivorActivity } from "./survivor-activity.ts";
 import { CREATE_REQUEST,ownsSurvivor } from "./survivor-access.ts";
 import { ZONE_TORSO } from "../shared/anim/human.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
@@ -165,6 +166,7 @@ export interface Host {
    */
   readonly mapFile: Uint8Array<ArrayBuffer> | null;
   readonly records: Records;
+  readonly activity: SurvivorActivity;
   readonly game: GameServer;
   readonly creatures: Creatures;
   readonly impale: CreatureImpale;
@@ -345,6 +347,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const member = store?.meta("cluster") ?? null;
   if (!cluster && member !== null) throw new Error(`this save is in the cluster ${member}: start it with -clusterid=${member} and the folder it used, so that what left it can come back`);
   const records = new Records(opts.worldId ?? cluster?.world ?? (store && !store.fresh ? Number(store.meta("world_id") ?? 1) : 1));
+  const activity = new SurvivorActivity(records);
   const say = opts.log ?? ((line: string) => console.log(line));
   // Carries events to modules. Made before the systems, so that each can raise its own.
   const bus = new Bus();
@@ -368,6 +371,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const joined = (c: Client): void => {
     if (c.joined) return;
     c.joined = true;
+    activity.login(c.pid);
     bus.after(SESSION_JOIN, { pid: c.pid, name: c.name, isNew: made.delete(c.pid) });
   };
   let started = false;
@@ -523,7 +527,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       game,
       bus,
       mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first: it stays here" : urban.riding(c) ? "get out of the vehicle first: it stays here" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
-      suspend: (rec, off) => survival.suspend(rec, off),
+      suspend: (rec, off) => { if (off) activity.checkpoint(rec.pid); survival.suspend(rec, off); },
       adopt: (rec) => {
         survival.restore(rec, false);
         progression.resume(rec);
@@ -1052,12 +1056,15 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     for (const line of rules.text("Message").split("\\n")) if (line.trim() !== "") game.sendText(c, TEXT_MOTD, line.trim());
   };
   game.onPresence = (c) => {
+    if (c.closed) activity.leave(c.pid);
+    else activity.login(c.pid);
     bus.after(SESSION_PRESENCE, { pid: c.pid, connected: !c.closed });
     tribes.version++;
     // The voice socket belonged to the old connection.
     voice.revoke(c);
   };
   game.onExit = (c) => {
+    activity.leave(c.pid);
     bus.after(SESSION_LEAVE, { pid: c.pid, why: c.left });
     tribes.version++;
     voice.revoke(c);
@@ -1157,6 +1164,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (!started) bus.after(SERVER_START, { tick, map: world.mapId, fresh: loaded ? loaded.fresh : true });
     started = true;
     if (bus.n[SERVER_TICK] !== 0) bus.after(SERVER_TICK, { tick });
+    if (tick % (30 * TICK_RATE) === 0) activity.checkpointAll();
     if (tick % TICK_RATE === 0) bus.after(SERVER_SECOND, { tick });
     if (settingsToldAt !== rules.version) {
       // The first is the settings as they stood at start, which is not a change.
@@ -1405,7 +1413,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     loadedUnder,
     projectiles,
     clouds,
-    progression,
+    progression, activity,
     harvest,
     deadlines,
     persistence,
@@ -1423,6 +1431,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     exec: (line, client) => con.exec({ host, client: client ?? null }, line),
     idle: () => persistence?.idle(),
     shutdown() {
+      activity.checkpointAll();
       // Told at once: there is no later tick to tell it in.
       bus.after(SERVER_STOP, { why: "stopped" });
       bus.flush();

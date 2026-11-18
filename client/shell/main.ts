@@ -123,7 +123,13 @@ async function boot(): Promise<void> {
   const measured = selfcheck || bench !== null || device !== null || orders !== null;
   const save = (): void => { if (!measured) try { localStorage.setItem("snark.interface", app.ui.settings.interfacePreferences()); } catch {} };
   if (!measured) try { app.ui.settings.restoreInterface(localStorage.getItem("snark.interface")); } catch {}
-  addEventListener("pagehide", save);
+  addEventListener("pagehide", () => {
+    save();
+    session.close();
+  });
+  addEventListener("pageshow", event => {
+    if (event.persisted) location.reload();
+  });
   app.stress = params.has("stress");
   app.debug = app.stress || params.has("debug");
   app.steer = driveCheck || selfcheck && params.has("dinosaur") || !selfcheck && !device;

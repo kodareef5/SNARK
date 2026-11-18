@@ -1,25 +1,16 @@
+import { imageTile, loadGallery, mapArt, mapChoices, regionTiles, serverCard, survivorStats, type WorldCard as World } from "./gallery.ts";
 import { worldUrl } from "./address.ts";
 import { defaultLook, LOOK_SEX, LOOK_BEARD, randomLook, setRegion } from "../../shared/anim/look.ts";
 import { Rng } from "../../shared/rng.ts";
 import { loadIdentity } from "../core/identity.ts";
 import { readLaunch, launchKey, savedName, validName, type EntrySurvivor, type Launch, type Remembered } from "../core/entry-state.ts";
-import { appearanceFields, button, esc, field } from "./forms.ts";
+import { appearanceFields, bodyFields, identityFields, stepper, button, esc, field } from "./forms.ts";
 import { preloadWorld } from "./preload.ts";
 import { sceneFor } from "./scenery.ts";
 import { directoryView, directoryAction, directoryRows, type Listing } from "./registration.ts";
 
 type Screen =
   "title" | "servers" | "roster" | "create" | "spawn" | "link" | "approve" | "backup" | "recover" | "direct" | "register" | "password";
-interface World {
-  name: string;
-  map: string;
-  mapId: string;
-  address: string;
-  players: number;
-  max: number;
-  password?: boolean;
-  online?: boolean;
-}
 interface Details extends World {
   spawns: { name: string; x: number; z: number }[];
   width: number;
@@ -76,7 +67,9 @@ let screen: Screen = "title",
   accessFilter = "";
 let draft = "",
   look = defaultLook(),
-  body = false,
+  step = 0,
+  group = 0,
+  chart = false,
   spawn = 0,
   turn = 0.25,
   code = "",
@@ -93,8 +86,8 @@ let prep: AbortController | null = null,
 let pending: Launch | null = null;
 let afterWorld: Screen = "roster";
 let directoryOffline = false;
+let mapsOpen = matchMedia("(min-width:761px)").matches;
 const base = () => selected?.address || home;
-const human = () => screen === "create" || screen === "spawn";
 const selectedRow = () => known.find((r) => r.name === pick);
 const getInput = (id: string) => document.querySelector<HTMLInputElement>("#" + id)?.value ?? "";
 async function json(url: string, opts?: RequestInit) {
@@ -144,10 +137,10 @@ function warm() {
       : data?.spawns[spawn];
   if (!p) return;
   status.textContent = "Preparing " + p.name;
-  const slug = selected?.mapId.split(":").pop();
-  if (slug && /^[\w-]+$/.test(slug)) {
+  const overview = mapArt(selected?.mapId, selected?.map)?.overview;
+  if (overview) {
     const map = new Image();
-    map.src = "title/map-" + slug + ".png";
+    map.src = overview;
     void map.decode().catch(() => {});
   }
   preloadWorld(base(), p.x, p.z, job.signal, (s) => {
@@ -192,6 +185,7 @@ async function selectWorld(w: World, to: Screen = "roster", wanted = "") {
   notice = "";
   screen = to;
   render();
+  topOfPage();
   try {
     const [info, roster] = await Promise.all([json(new URL("entry-world.json", address).href), owner("roster")]);
     if (v !== version) return;
@@ -226,7 +220,7 @@ async function worldsRefresh() {
       directoryOffline = true;
       refreshFilters();
     });
-  if (screen === "servers") renderList();
+  if (screen === "servers") refreshFilters();
 }
 function nav(next: Screen) {
   if (screen === "link" && code && next !== "link") void owner("cancel", { code }).catch(() => {});
@@ -244,11 +238,12 @@ function nav(next: Screen) {
   clearTimeout(clock);
   screen = next;
   render();
+  topOfPage();
 }
 function syncScene() {
   const miami = worlds.find((w) => w.mapId === "core:miami" && new URL(w.address).origin === location.origin);
   const saved = screen === "roster" && fromWorld ? selectedRow()?.look : null;
-  const portrait = human() || !!saved;
+  const portrait = screen === "create" || !!saved;
   const w = portrait ? selected : miami;
   sceneFor(w?.address ?? "", w?.mapId ?? "", portrait, saved ? Uint8Array.from(saved) : look, spawn, turn, screen === "create");
 }
@@ -259,8 +254,8 @@ function panel(title: string, inside: string, style = "", back = "back") {
     '"><div class="topline">' +
     button(back, "← Back", "quiet") +
     "<span>" +
-    esc(human() || fromWorld ? (selected?.name ?? "") : "") +
-    "</span></div><h1>" +
+    esc(fromWorld ? (selected?.name ?? "") : "") +
+    '</span></div><h1 tabindex="-1">' +
     esc(title) +
     "</h1>" +
     inside +
@@ -279,76 +274,102 @@ function visibleWorlds() {
       (!accessFilter || (accessFilter === "locked" ? w.password === true : w.password === false)),
   );
 }
+function topOfPage() {
+  window.scrollTo({ top: 0, behavior: "instant" });
+  root.querySelector<HTMLElement>("h1")?.focus({ preventScroll: true });
+}
+function goStep(next: number) {
+  step = next;
+  notice = "";
+  render();
+  topOfPage();
+}
+const previousCards = new WeakMap<Element, string>();
+function updateCards(parent: Element, markup: string) {
+  if (previousCards.get(parent) === markup) return;
+  const active = parent.contains(document.activeElement) ? (document.activeElement as HTMLElement) : null;
+  const key = active?.dataset.world ?? active?.dataset.map;
+  parent.innerHTML = markup;
+  previousCards.set(parent, markup);
+  if (key)
+    parent
+      .querySelector<HTMLElement>('[data-world="' + CSS.escape(key) + '"],[data-map="' + CSS.escape(key) + '"]')
+      ?.focus({ preventScroll: true });
+}
 function refreshFilters() {
-  const maps = document.querySelector<HTMLSelectElement>("#map-filter");
-  if (!maps) return;
-  maps.innerHTML =
-    '<option value="">All maps</option>' +
-    [...new Set([...worlds, ...listed].map((w) => w.map))].map((m) => "<option>" + esc(m) + "</option>").join("");
-  maps.value = mapFilter;
-  const note = document.querySelector<HTMLElement>("#directory-offline");
+  const strip = root.querySelector("#map-filter");
+  if (!strip) return;
+  const tiles = mapChoices([...worlds, ...listed], mapFilter);
+  updateCards(strip, tiles);
+  const note = root.querySelector<HTMLElement>("#directory-offline");
   if (note) note.hidden = !directoryOffline;
   renderList();
 }
 function renderList() {
-  const list = document.querySelector("#results");
+  const list = root.querySelector("#results");
   if (!list) return;
-  list.innerHTML =
-    visibleWorlds()
-      .map(
-        (w) =>
-          '<button class="row" data-action="world" data-world="' +
-          esc(w.address) +
-          '"><span><strong>' +
-          esc(w.name) +
-          "</strong><small>" +
-          esc(w.map) +
-          (w.password ? " · Password required" : "") +
-          "</small></span><span>" +
-          (w.online === false ? "Offline" : esc(w.players) + " / " + esc(w.max)) +
-          "　›</span></button>",
-      )
-      .join("") || "<p>No matching servers.</p>";
+  const rows = visibleWorlds();
+  updateCards(list, rows.map(serverCard).join("") || "<p>No matching servers.</p>");
+  const n = root.querySelector("#result-count");
+  if (n) n.textContent = rows.length + " " + (rows.length === 1 ? "server" : "servers");
 }
 function survivors() {
   const local = fromWorld ? known : remembered();
-  const rows = local
+  const cards = local
     .map((r) => {
-      const address = "world" in r ? String(r.world) : base();
+      const saved = "world" in r ? (r as Remembered) : undefined;
+      const address = saved?.world ?? base(),
+        server = saved?.server ?? selected?.name,
+        map = saved?.map ?? selected?.map;
+      const art = mapArt(saved ? undefined : selected?.mapId, map);
       return (
-        '<button class="row" data-action="pick" data-world="' +
+        '<article class="survivor-card" data-selected="' +
+        (fromWorld && r.name === pick) +
+        '"><button class="pick" type="button" data-action="pick" data-world="' +
         esc(address) +
         '" data-name="' +
         esc(r.name) +
         '" aria-pressed="' +
-        (r.name === pick && address === base()) +
-        '"><span><strong>' +
+        (fromWorld && r.name === pick) +
+        '">' +
+        imageTile(art?.cover) +
+        "<span><small>" +
+        esc([...new Set([server, map].filter(Boolean))].join(" · ")) +
+        "</small><strong>" +
         esc(r.name) +
-        "</strong><small>" +
-        esc("server" in r ? r.server : selected?.name) +
-        " · Level " +
-        r.level +
-        (r.dead ? " · Awaiting respawn" : "") +
-        "</small></span><span>›</span></button>"
+        '</strong></span><span class="pick-mark" aria-hidden="true">' +
+        (fromWorld && r.name === pick ? "✓" : "›") +
+        "</span></button>" +
+        survivorStats(r) +
+        (r.dead ? '<span class="respawn-note">Awaiting respawn</span>' : "") +
+        "</article>"
       );
     })
     .join("");
+  const chosen = fromWorld && selectedRow();
   return (
-    "<p>" +
-    esc(fromWorld ? (selected?.map ?? "") + " · This world" : "On this browser") +
-    '</p><div class="list">' +
-    (loadingWorld ? "<p>Finding survivors…</p>" : rows || "<p>No survivors remembered here yet.</p>") +
-    '</div><div class="stack">' +
-    (fromWorld && selectedRow() ? button("continue", "Continue as " + pick, "primary") : "") +
-    button("new", "New survivor", pick ? "secondary" : "primary", fromWorld && (loadingWorld || loadError) ? "disabled" : "") +
-    (fromWorld ? button("link", "Link this browser", "quiet") : button("link-world", "Link this browser", "quiet")) +
-    (fromWorld && selectedRow() ? button("approve", "Link another browser", "quiet") + button("backup", "Save a recovery code", "quiet") : "") +
+    '<p class="context">' +
+    esc(fromWorld ? selected?.map : "On this browser") +
+    '</p><div class="roster-grid">' +
+    (loadingWorld ? "<p>Finding survivors…</p>" : cards || "<p>No survivors here yet.</p>") +
+    '</div><div class="actions">' +
+    (chosen ? button("continue", "Continue as " + pick, "primary") : "") +
+    button("new", "New survivor", chosen ? "secondary" : "primary", fromWorld && (loadingWorld || loadError) ? "disabled" : "") +
     (loadError ? button("retry-world", "Retry world") : "") +
+    '</div><div class="support">' +
+    button(fromWorld ? "link" : "link-world", "Link this browser", "quiet") +
+    (chosen ? button("approve", "Link another browser", "quiet") + button("backup", "Save recovery code", "quiet") : "") +
     "</div>"
   );
 }
 function render() {
-  const old = root.querySelector(".appearance-fields")?.scrollTop ?? 0;
+  const focused = document.activeElement instanceof HTMLElement && root.contains(document.activeElement) ? document.activeElement : null;
+  const focusKey = focused?.dataset.action;
+  const focusAttr = focused
+    ? Object.entries(focused.dataset)
+        .map(([k, v]) => "[data-" + k + '="' + CSS.escape(v ?? "") + '"]')
+        .join("")
+    : "";
   const last = remembered().find((r) => r.played > 0);
   let html = "";
   if (screen === "title") {
@@ -361,49 +382,64 @@ function render() {
       (last ? "<p>" + esc(last.server) + " · " + esc(last.map) + "</p>" : "") +
       "</section>";
   } else if (screen === "servers") {
-    const maps = [...new Set([...worlds, ...listed].map((w) => w.map))];
+    const filters = [
+      ["", "Any access"],
+      ["open", "Open"],
+      ["locked", "Password"],
+    ];
     html = panel(
       "Find a server",
-      '<div class="filters"><input aria-label="Search servers or cities" id="query" placeholder="Search servers or cities" value="' +
+      '<div class="filters"><label class="search"><span>Search servers or cities</span><input type="search" id="query" value="' +
         esc(query) +
-        '"><select id="map-filter" aria-label="Map"><option value="">All maps</option>' +
-        maps.map((m) => "<option " + (mapFilter === m ? "selected" : "") + ">" + esc(m) + "</option>").join("") +
-        '</select><select id="access-filter" aria-label="Access"><option value="">Any access</option><option value="open">Open</option><option value="locked">Password</option></select></div><div id="results" class="list"></div><p id="directory-offline" ' +
+        '" placeholder="Search servers or cities"></label><div class="chips" role="group" aria-label="Server access">' +
+        filters
+          .map(([id, name]) => button("access", name!, "chip", 'data-filter="' + id + '" aria-pressed="' + (accessFilter === id) + '"'))
+          .join("") +
+        '</div></div><details id="map-shelf" ' +
+        (mapsOpen ? "open" : "") +
+        "><summary>Browse maps" +
+        (mapFilter ? " · " + esc(mapFilter) : "") +
+        '</summary><div id="map-filter" class="map-options"></div></details><div class="results-heading"><p class="context" id="result-count"></p>' +
+        (mapFilter ? button("choose-map", "Clear map filter", "quiet", 'data-map=""') : "") +
+        '</div><div id="results" class="server-grid"></div><p id="directory-offline" ' +
         (directoryOffline ? "" : "hidden") +
-        '>Public directory unavailable. Cluster worlds and direct joins are available.</p><div class="actions">' +
+        '>Public directory unavailable. Cluster worlds and direct joins are available.</p><div class="support">' +
         button("direct", "Join by address", "quiet") +
         button("register", "Register your server", "quiet") +
         "</div>",
       "wide",
     );
-  } else if (screen === "roster") html = panel("My survivors", survivors());
+  } else if (screen === "roster") html = panel("My survivors", survivors(), "roster");
   else if (screen === "create") {
+    const title = ["New survivor", "Appearance", "Body proportions"][step]!;
+    const edit = step === 0 ? identityFields(look, draft) : step === 1 ? appearanceFields(look) : bodyFields(look, group);
+    const toolbar = step
+      ? '<div class="support">' +
+        button("rotate", "Rotate preview", "quiet") +
+        button("random", "Randomize", "quiet") +
+        button("reset", "Reset", "quiet") +
+        "</div>"
+      : "";
     html = panel(
-      "New survivor",
-      field("name", "Survivor name", draft, 'maxlength="24" autocomplete="off" placeholder="Choose a name"') +
-        '<div class="tabs">' +
-        button("look", "Look", body ? "" : "selected") +
-        button("body", "Body", body ? "selected" : "") +
-        "</div>" +
-        '<div class="appearance-fields">' +
-        appearanceFields(look, body) +
+      title,
+      stepper(step) +
+        edit +
+        toolbar +
         '<div class="actions">' +
-        button("rotate", "Rotate") +
-        button("random", "Randomize") +
-        button("reset", "Reset") +
-        '</div></div><div class="actions next">' +
-        button("spawn", "Choose spawn", "primary") +
+        button(step === 2 ? "spawn" : "next-step", ["Choose appearance", "Continue to build", "Choose spawn"][step]!, "primary") +
         "</div>",
       "creator",
     );
   } else if (screen === "spawn") {
     const points = data?.spawns ?? [],
-      map = selected?.mapId.split(":").pop() || "",
-      image = /^[\w-]+$/.test(map) ? "background-image:url(title/map-" + map + ".png);background-size:cover;" : "";
+      point = points[spawn],
+      art = mapArt(selected?.mapId, selected?.map);
     const pins = points
       .map(
         (p, i) =>
-          '<button class="pin" aria-label="' +
+          '<button type="button" class="pin" aria-label="' +
+          esc(p.name) +
+          '" title="' +
           esc(p.name) +
           '" data-action="place" data-index="' +
           i +
@@ -416,23 +452,29 @@ function render() {
           '%"></button>',
       )
       .join("");
+    const content = chart
+      ? '<div class="chart" ' + (art?.overview ? 'style="background-image:url(' + esc(art.overview) + ')"' : "") + ">" + pins + "</div>"
+      : regionTiles(points, art, spawn, data?.width ?? 1, data?.height ?? 1);
     html = panel(
       "Choose spawn",
-      "<p>" +
+      stepper(3) +
+        '<div class="spawn-flow"><div class="spawn-choice"><span><small>' +
         esc(draft) +
         " · " +
         esc(selected?.map) +
-        '</p><div class="spawn-grid"><div class="chart" style="' +
-        image +
-        '">' +
-        pins +
-        '</div><div class="list">' +
-        points.map((p, i) => button("place", p.name, i === spawn ? "selected" : "", 'data-index="' + i + '"')).join("") +
-        '</div></div><div class="actions">' +
-        button("commit", "Create and spawn", "primary", preloaded ? "" : "disabled") +
-        (preloaded ? "" : button("warm", "Retry preload", "quiet")) +
+        "</small><strong>" +
+        esc(point?.name ?? "Loading world…") +
+        "</strong></span>" +
+        '</div><div class="place-tools"><div class="chips" role="group" aria-label="Spawn view">' +
+        button("places", "Places", "chip", 'aria-pressed="' + !chart + '"') +
+        button("chart", "Map", "chip", 'aria-pressed="' + chart + '"') +
+        "</div>" +
+        (notice && !preloaded ? button("warm", "Retry preload", "quiet") : "") +
+        "</div>" +
+        content +
+        button("commit", preloaded && point ? "Create at " + point.name : notice ? "Preload interrupted" : "Preparing spawn…", "primary", preloaded ? "" : "disabled") +
         "</div>",
-      "wide",
+      "wide spawn-page",
     );
   } else if (screen === "direct")
     html = panel(
@@ -486,10 +528,14 @@ function render() {
     );
   root.innerHTML = html;
   if (screen === "servers") {
-    (document.querySelector("#access-filter") as HTMLSelectElement).value = accessFilter;
-    renderList();
+    refreshFilters();
+    const shelf = root.querySelector<HTMLDetailsElement>("#map-shelf");
+    if (shelf)
+      shelf.ontoggle = () => {
+        if (shelf.isConnected) mapsOpen = shelf.open;
+      };
   }
-  if (screen === "create" && body) root.querySelector(".appearance-fields")!.scrollTop = old;
+  if (focusKey && focusAttr) root.querySelector<HTMLElement>(focusAttr)?.focus({ preventScroll: true });
   document.querySelector("#world-label")!.textContent = selected && screen !== "title" ? selected.name : "";
   syncScene();
 }
@@ -537,7 +583,12 @@ async function poll(world: string, token: string) {
 }
 async function action(a: string, b: HTMLElement) {
   if (a === "back") {
+    if (screen === "create" && step > 0) {
+      goStep(step - 1);
+      return;
+    }
     if (screen === "spawn") nav("create");
+    else if (screen === "password" && pending?.intent === "create") nav("spawn");
     else if (["create", "link", "approve", "backup", "password", "recover"].includes(screen)) nav("roster");
     else if (["register", "direct"].includes(screen) || (screen === "roster" && fromWorld)) nav("servers");
     else nav("title");
@@ -570,7 +621,8 @@ async function action(a: string, b: HTMLElement) {
       if (afterWorld === "create") {
         draft = "";
         look = defaultLook();
-        body = false;
+        step = group = 0;
+        chart = false;
       }
       await selectWorld(w, afterWorld);
       afterWorld = "roster";
@@ -597,7 +649,8 @@ async function action(a: string, b: HTMLElement) {
     }
     draft = "";
     look = defaultLook();
-    body = false;
+    step = group = 0;
+    chart = false;
     turn = 0.25;
     nav("create");
     return;
@@ -606,8 +659,32 @@ async function action(a: string, b: HTMLElement) {
     enter({ intent: "resume", name: pick, password: "" });
     return;
   }
-  if (a === "look" || a === "body") {
-    body = a === "body";
+  if (a === "access" || a === "choose-map") {
+    if (a === "access") accessFilter = b.dataset.filter ?? "";
+    else mapFilter = b.dataset.map === mapFilter ? "" : (b.dataset.map ?? "");
+    render();
+    return;
+  }
+  if (a === "next-step") {
+    if (step === 0) {
+      if (!data) throw Error("Wait for the selected world.");
+      if (!validName(draft)) throw Error("Use 1–24 letters, numbers, spaces, hyphens or underscores.");
+      const checking = draft,
+        selectedVersion = version;
+      const { available } = await owner("available", { name: checking });
+      if (screen !== "create" || step !== 0 || checking !== draft || selectedVersion !== version) return;
+      if (!available) throw Error("That name is already in use on this world.");
+    }
+    goStep(Math.min(2, step + 1));
+    return;
+  }
+  if (a === "group") {
+    group = Number(b.dataset.index);
+    render();
+    return;
+  }
+  if (a === "places" || a === "chart") {
+    chart = a === "chart";
     render();
     return;
   }
@@ -621,15 +698,22 @@ async function action(a: string, b: HTMLElement) {
     render();
     return;
   }
-  if (a === "swatch") {
+  if (a === "swatch" || a === "style") {
     look[Number(b.dataset.field)] = Number(b.dataset.value);
+    if (Number(b.dataset.field) === LOOK_SEX && look[LOOK_SEX]) look[LOOK_BEARD] = 0;
     render();
     return;
   }
   if (a === "spawn") {
     if (!validName(draft)) throw Error("Use 1–24 letters, numbers, spaces, hyphens or underscores.");
-    const answer = await owner("available", { name: draft });
-    if (!answer.available) throw Error("That name is already in use on this world.");
+    const checking = draft,
+      selectedVersion = version;
+    const answer = await owner("available", { name: checking });
+    if (screen !== "create" || step !== 2 || checking !== draft || selectedVersion !== version) return;
+    if (!answer.available) {
+      goStep(0);
+      throw Error("That name is already in use on this world.");
+    }
     if (!data?.spawns.length) throw Error("This world has no public spawn points.");
     warm();
     nav("spawn");
@@ -713,7 +797,14 @@ root.addEventListener("click", async (e) => {
 });
 root.addEventListener("input", (e) => {
   const input = e.target as HTMLInputElement;
-  if (input.id === "name") draft = input.value;
+  if (input.id === "name") {
+    draft = input.value;
+    if (notice && validName(draft)) {
+      notice = "";
+      const message = root.querySelector(".message");
+      if (message) message.textContent = "";
+    }
+  }
   if (input.id === "query") {
     query = input.value;
     renderList();
@@ -723,16 +814,11 @@ root.addEventListener("input", (e) => {
     syncScene();
   }
 });
-root.addEventListener("change", (e) => {
-  const input = e.target as HTMLSelectElement;
-  if (input.id === "map-filter") mapFilter = input.value;
-  if (input.id === "access-filter") accessFilter = input.value;
-  if (input.dataset.look !== undefined) {
-    const i = Number(input.dataset.look);
-    look[i] = Number(input.value);
-    if (i === LOOK_SEX && look[i]) look[LOOK_BEARD] = 0;
-    render();
-  } else renderList();
+root.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.target as HTMLInputElement).id === "name") {
+    e.preventDefault();
+    root.querySelector<HTMLButtonElement>('[data-action="next-step"]')?.click();
+  }
 });
 document.querySelector(".brand")?.addEventListener("click", (e) => {
   e.preventDefault();
@@ -746,7 +832,9 @@ async function start() {
     location.replace("play.html" + location.search + location.hash);
     return;
   }
-  await worldsRefresh();
+  await Promise.all([worldsRefresh(), loadGallery().catch(() => {})]);
+  if (screen === "servers") refreshFilters();
+  if (screen === "spawn" || screen === "roster") render();
   if (screen === "title" && !root.querySelector(".opening")) render();
   const cur =
     worlds.find((w) => w.address === home) ?? (direct ? { address: home, name: "World", map: "", mapId: "", players: 0, max: 0 } : null);

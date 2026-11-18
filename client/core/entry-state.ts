@@ -3,6 +3,9 @@ export interface EntrySurvivor {
   id: number;
   name: string;
   level: number;
+  xp?: number;
+  lastLogin?: number | null;
+  playMs?: number | null;
   dead: boolean;
   x?: number;
   z?: number;

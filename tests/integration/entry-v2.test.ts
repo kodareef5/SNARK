@@ -1,6 +1,7 @@
 import { Harness, testKey } from "../fixtures/net.ts";
 import { SESSION_CREATING, SESSION_ALIVE, REJECT_NAME, REJECT_PASSWORD } from "../../shared/net/protocol.ts";
 import { expect, test } from "bun:test";
+import { SurvivorActivity } from "../../server/survivor-activity.ts";
 import { ServerDirectory } from "../../server/directory.ts";
 import { EntityRecord, hashKey } from "../../server/records.ts";
 import { SurvivorAccess, ownsSurvivor } from "../../server/survivor-access.ts";
@@ -67,6 +68,7 @@ test("browser approval is scoped to a survivor, survives a new access service an
       ]),
       dirty: new Set<number>(),
     },
+    activity: { summary: () => ({ lastLogin: null, playMs: null }) },
     game: { clients: [] },
     progression: { levelOf: () => 1 },
     survivorRecord: (name: string) => [a, b].find((r) => r.name === name),
@@ -133,4 +135,65 @@ test("a protected world commits one named draft, accepts its interrupted retry a
   h.run(300);
   expect(stranger.state).toBe("closed");
   h.host.shutdown();
+});
+
+test("survivor play time follows the connection through checkpoints, repeated exits and returns", () => {
+  const h = new Harness(),
+    rec = h.host.records.create(h.reg.index.get("core:survivor")!, "Kai");
+  let now = 2000;
+  const meter = () =>
+    new SurvivorActivity(
+      h.host.records,
+      () => 100000 + now,
+      () => now,
+    );
+  const activity = meter();
+  expect(activity.summary(rec)).toEqual({ lastLogin: null, playMs: null });
+  activity.login(rec.pid);
+  now += 1500;
+  activity.checkpointAll();
+  activity.login(rec.pid);
+  now += 500;
+  activity.leave(rec.pid);
+  now += 30000;
+  activity.leave(rec.pid);
+  const again = meter();
+  expect(again.summary(rec)).toEqual({ lastLogin: 102000, playMs: 2000 });
+  again.login(rec.pid);
+  now += 4000;
+  expect(again.summary(rec)).toEqual({ lastLogin: 134000, playMs: 6000 });
+  h.host.shutdown();
+});
+
+test("a survivor stops accruing time on disconnect and restores its activity from the world save", () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-activity-"));
+  const opts = { dbPath: join(dir, "world.sqlite"), dev: true, startingCreatures: 0 };
+  let h: Harness | undefined;
+  try {
+    h = new Harness({ lingerTicks: 300 }, 1, 60, opts);
+    const c = h.join("Piper");
+    h.run(650);
+    expect(c.sessionState).toBe(SESSION_ALIVE);
+    const rec = h.host.survivorRecord("Piper")!;
+    h.ends[0]!.close();
+    h.run(120);
+    const left = h.host.activity.summary(rec);
+    expect(left.lastLogin!).toBeGreaterThan(0);
+    expect(left.playMs!).toBeGreaterThan(0);
+    h.run(700);
+    expect(h.host.activity.summary(rec)).toEqual(left);
+    h.host.shutdown();
+    h = undefined;
+    h = new Harness({}, 1, 60, opts);
+    const restored = h.host.survivorRecord("Piper")!;
+    expect(h.host.activity.summary(restored)).toEqual(left);
+    h.join("Piper", {}, { intent: "resume" });
+    h.run(500);
+    const resumed = h.host.activity.summary(restored);
+    expect(resumed.lastLogin!).toBeGreaterThan(left.lastLogin!);
+    expect(resumed.playMs!).toBeGreaterThan(left.playMs!);
+  } finally {
+    h?.host.shutdown();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

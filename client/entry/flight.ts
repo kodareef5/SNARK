@@ -106,7 +106,7 @@ async function start() {
     cam.aspect = w / h;
     cam.fovY = 0.88;
     const flying = (shot === "flight" || shot === "splash") && head.id === route.map;
-    actors.count = flying ? 2 : 1;
+    actors.count = shot === "region" ? 0 : flying ? 2 : 1;
     actors.tick = seconds * 30;
     const i = flying ? 1 : 0;
     actors.id[i] = 2;
@@ -140,8 +140,17 @@ async function start() {
       cam.y = y + height;
       cam.yaw = angle + 0.13;
       cam.pitch = -0.135 - pitch * 0.5;
+    } else if (shot === "region") {
+      const p = head.spawns[focused] ?? first;
+      const angle = Math.atan2(hf.sizeX * 0.54 - p.x, hf.sizeZ * 0.54 - p.z);
+      cam.x = p.x - Math.sin(angle) * 185;
+      cam.z = p.z - Math.cos(angle) * 185;
+      cam.y = Math.max(hf.heightAt(p.x, p.z), hf.heightAt(cam.x, cam.z)) + 92;
+      cam.yaw = angle;
+      cam.pitch = -0.36;
+      cam.fovY = 0.78;
     } else {
-      actors.gear[GEAR_WORN]=0;
+      actors.gear[GEAR_WORN] = 0;
       const p = head.spawns[focused] ?? first;
       actors.x[0] = p.x;
       actors.z[0] = p.z;
@@ -188,7 +197,8 @@ async function start() {
   }
   if (capture)
     Object.assign(window, {
-      snarkShot: (time: number, view: string) => {
+      snarkShot: (time: number, view: string, region = 0) => {
+        focused = region;
         seconds = time;
         shot = view;
         update();

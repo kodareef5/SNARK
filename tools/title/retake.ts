@@ -1,9 +1,10 @@
-// bun tools/title/retake.ts --world http://localhost:8799/miami/ [--video] [--software]
+// bun tools/title/retake.ts --world http://localhost:8799/miami/ [--video] [--regions] [--software]
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { findChrome, CHROME_FLAGS } from "../chrome.ts";
 import { devtools } from "../map/trip.ts";
+import { spawnPhotoName } from "./maps.ts";
 import { MIAMI_FLIGHT } from "../../client/core/title-route.ts";
 
 const arg = (k: string, f: string) => (process.argv.includes(k) ? process.argv[process.argv.indexOf(k) + 1]! : f);
@@ -45,15 +46,15 @@ try {
     page!.send("Emulation.setDeviceMetricsOverride", { width, height, mobile: false, deviceScaleFactor: 1 });
   await metrics(1440, 810);
   await page.send("Page.navigate", { url: new URL("flight.html?retake", base).href });
-  async function pose(t: number, view: string, settle: boolean) {
-    const expr = "window.snarkShot?.(" + t + "," + JSON.stringify(view) + ")",
+  async function pose(t: number, view: string, settle: boolean, region = 0) {
+    const expr = "window.snarkShot?.(" + t + "," + JSON.stringify(view) + "," + region + ")",
       deadline = Date.now() + 180000;
     let stable = 0,
       last;
     while (Date.now() < deadline) {
       last = await page!.value<{ map: string; ready: boolean; pending: number; frames: number; city: number } | null>(expr);
-      if (last?.map && last.map !== MIAMI_FLIGHT.map) throw Error("Retakes need a built Miami world.");
-      if (last?.ready && (!settle || (last.pending === 0 && (last.city > 0 || view.startsWith("portrait"))))) {
+      if (view !== "region" && last?.map && last.map !== MIAMI_FLIGHT.map) throw Error("Retakes need a built Miami world.");
+      if (last?.ready && (!settle || (last.pending === 0 && (last.city > 0 || view === "region" || view.startsWith("portrait"))))) {
         if (!settle || ++stable >= 6) return;
       } else stable = 0;
       const error = await page!.value<string>("document.body.dataset.error");
@@ -62,19 +63,34 @@ try {
     }
     throw Error("Scene did not settle: " + JSON.stringify(last));
   }
-  for (const [name, time, view] of [
-    ["miami-flight", MIAMI_FLIGHT.poster, "flight"],
-    ["miami-splash", MIAMI_FLIGHT.splash, "splash"],
-    ["survivor", 0, "portrait"],
-    ["survivor-create", 0, "portrait-left"],
-  ] as const) {
-    if(process.argv.includes("--portraits") && !view.startsWith("portrait"))continue;
-    await pose(time, view, true);
-    const path = join(temp, name + ".png");
-    await page.shot(path);
-    encode(["-i", path, "-frames:v", "1", "-quality", "91", join(out, name + ".webp")]);
-    console.log("Retook " + name);
-  }
+  if (process.argv.includes("--regions")) {
+    const info = (await (await fetch(new URL("entry-world.json", base))).json()) as { mapId: string; spawns: { name: string }[] };
+    const city = info.mapId.replace(/^core:/, "");
+    if (!/^[a-z0-9-]+$/.test(city)) throw Error("Unsupported map id");
+    const folder = join(out, "atlas", city);
+    mkdirSync(folder, { recursive: true });
+    await metrics(512, 288);
+    for (const [i, point] of info.spawns.entries()) {
+      await pose(18, "region", true, i);
+      const png = join(temp, "region.png");
+      await page.shot(png);
+      encode(["-i", png, "-frames:v", "1", "-quality", "86", join(folder, spawnPhotoName(point.name) + ".webp")]);
+      console.log("Retook " + point.name);
+    }
+  } else
+    for (const [name, time, view] of [
+      ["miami-flight", MIAMI_FLIGHT.poster, "flight"],
+      ["miami-splash", MIAMI_FLIGHT.splash, "splash"],
+      ["survivor", 0, "portrait"],
+      ["survivor-create", 0, "portrait-left"],
+    ] as const) {
+      if (process.argv.includes("--portraits") && !view.startsWith("portrait")) continue;
+      await pose(time, view, true);
+      const path = join(temp, name + ".png");
+      await page.shot(path);
+      encode(["-i", path, "-frames:v", "1", "-quality", "91", join(out, name + ".webp")]);
+      console.log("Retook " + name);
+    }
   if (process.argv.includes("--video")) {
     // A short native sequence dissolves into its opening, while the live route covers the entire bay.
     const fps = 12,

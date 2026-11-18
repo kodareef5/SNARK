@@ -1,3 +1,4 @@
+import { buildMapGallery } from "./title/maps.ts";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { brotliCompressSync } from "node:zlib";
@@ -34,6 +35,7 @@ export async function buildEntry(dist: string): Promise<void> {
     const tile = join(maps, name, "tiles/z0/0_0.png");
     if (existsSync(tile)) cpSync(tile, join(titles, "map-" + name + ".png"));
   }
+  buildMapGallery(maps, titles, media);
   const data = {
     content: named("content."),
     sky: named("sky."),

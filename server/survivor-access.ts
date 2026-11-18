@@ -76,6 +76,8 @@ export class SurvivorAccess {
     return {
       id: rec.pid,
       name: rec.name,
+      xp: rec.xp,
+      ...this.host.activity.summary(rec),
       level: this.host.progression.levelOf(rec.xp),
       dead: rec.dead,
       x: rec.x,

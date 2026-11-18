@@ -8,10 +8,17 @@ Build the client after changing a model. Start a server using the built Miami ma
 
 ```sh
 bun run title:retake --world http://localhost:8799/miami/ --video
+bun run title:retake --world http://localhost:8799/miami/ --regions
 bun tools/build-entry.ts client/dist
 ```
 
 Chrome renders the live map, Pteranodon, saddle and rider from the built asset packs. FFmpeg encodes the stills and fallback loop in `client/entry/media`. Omit `--video` to retake only the stills. Use `--out` to review replacements in another directory first. The normal client build also packages this media. The route coordinates, light and shot times live in `client/core/title-route.ts`. The camera and native actor arrangement live in `client/entry/flight.ts`.
+
+The region pass takes a native aerial picture at each public spawn. The card gallery also uses the map teams’ saved camera views in each city’s `reports/world1` directory. The build sizes those images for the browser.
+
+## Survivor activity
+
+The roster shows the world’s level, XP, last login in the viewer’s local time, and cumulative connected play time. Tracking starts on the survivor’s first session with this version. Earlier activity appears as unrecorded. The record travels with the survivor and is shared by its authorized browsers.
 
 ## Registering a private server
 
