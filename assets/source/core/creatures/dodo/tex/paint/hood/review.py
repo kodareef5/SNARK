@@ -8,12 +8,12 @@ import hashlib,json,re,subprocess,shutil
 from PIL import Image,ImageDraw,ImageFont
 ROOT=Path(__file__).resolve().parent
 LOOK=ROOT.parent/'look.ts'
-TREE=Path('/private/tmp/dodo-hood-round7/tree')
+TREE=Path('/tmp/dodo-hood-round7/tree')
 OUT=ROOT/'checks/look_round7_dyes'
 
 
 def board():
-    font=ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial.ttf',20)
+    font=ImageFont.truetype(next(p for p in ('/System/Library/Fonts/Supplemental/Arial.ttf','/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf') if Path(p).exists()),20)
     sheet=Image.new('RGB',(1800,1960),(27,30,33));draw=ImageDraw.Draw(sheet)
     dyes=[('concept_umber','#3B302A'),('warm_umber','#6A4532'),('near_white','#F3F1EA')]
     shots=['head_side','nape','hood_edge','bird_back_right']
@@ -31,7 +31,7 @@ def main():
     # Freeze the current model with our composed maps, outside asset discovery.
     bird=TREE/'core/creatures/dodo';bird.mkdir(parents=True,exist_ok=True)
     for name in ['dodo.snpk','asset.ts']:
-        shutil.copy2(Path('/private/tmp/dodo-look/tree/core/creatures/dodo')/name,bird/name)
+        shutil.copy2(Path('/tmp/dodo-look/tree/core/creatures/dodo')/name,bird/name)
     shutil.copytree(ROOT/'checks/composed',bird/'tex',dirs_exist_ok=True)
     code=LOOK.read_text()
     code=re.sub(r'from "(\.[^"]+)"',lambda m:'from '+json.dumps(str((LOOK.parent/m.group(1)).resolve())),code)

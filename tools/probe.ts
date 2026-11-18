@@ -26,7 +26,7 @@ import { dinosaurCourse } from "./dinosaurs/course.ts";
 import { buildDinosaurReviewClient, installDinosaurPreview, requireDinosaurReviewArt } from "./dinosaurs/dev.ts";
 import { writeMap } from "../shared/world/mapfile.ts";
 import { prepareDriveProbe } from "./probe-drive.ts";
-import { findChrome } from "./chrome.ts";
+import { CHROME_FLAGS, findChrome } from "./chrome.ts";
 
 // --drive puts a car with a seated civilian by the spawn and has the page drive it with the real player controls, on
 // the ordinary build: the car is in the core pack. --medium draws it on the medium tier rather than low poly.
@@ -87,7 +87,7 @@ const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
 const url = `http://localhost:${server.port}/?selfcheck=1&creature=1&name=probe${dinosaur ? `&dinosaur=${dinosaur}&tier=${driveTier}` : ""}${drive ? `&urban=1&tier=${driveTier}&urbanDrive=1` : ""}${format ? `&texfmt=${format}` : ""}${process.argv.includes("--no-voice") ? "" : "&voice=1"}${process.argv.includes("--lose") ? "&lose=1" : ""}${process.argv.includes("--slow") ? "&assetnet=300,1500,2" : ""}${process.argv.includes("--stress") ? "&stress=1" : ""}`;
 const GRAPHICS_FLAGS = hardware ? ["--enable-gpu"] : software ? ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : [];
 const VOICE_FLAGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"];
-const browser = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", drive || dinosaur ? "--window-size=800,600" : "--window-size=1280,720", ...GRAPHICS_FLAGS, ...(diagnostics ? ["--remote-debugging-port=0"] : []), ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: diagnostics ? Bun.file(join(profile, "chrome.log")) : "ignore" });
+const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", drive || dinosaur ? "--window-size=800,600" : "--window-size=1280,720", ...GRAPHICS_FLAGS, ...(diagnostics ? ["--remote-debugging-port=0"] : []), ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: diagnostics ? Bun.file(join(profile, "chrome.log")) : "ignore" });
 
 async function pageTarget(): Promise<string | null> {
   if (!existsSync(join(profile, "DevToolsActivePort"))) return null;
@@ -148,7 +148,7 @@ let second: { ok?: boolean } | null | undefined;
 if (report && process.argv.includes("--voice")) {
   // The first page keeps talking. A second page with its own profile joins and must hear it.
   const profile2 = mkdtempSync(join(tmpdir(), "snark-probe-"));
-  const listener = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...GRAPHICS_FLAGS, ...VOICE_FLAGS, `--user-data-dir=${profile2}`, `http://localhost:${server.port}/?selfcheck=1&voice=listen&name=listener`], { stdout: "ignore", stderr: "ignore" });
+  const listener = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...GRAPHICS_FLAGS, ...VOICE_FLAGS, `--user-data-dir=${profile2}`, `http://localhost:${server.port}/?selfcheck=1&voice=listen&name=listener`], { stdout: "ignore", stderr: "ignore" });
   second = (await Promise.race([server.nextSelfcheck(), new Promise<null>((r) => setTimeout(() => r(null), 30000))])) as { ok?: boolean } | null;
   listener.kill();
   await listener.exited;
@@ -175,7 +175,7 @@ browser.kill();
 await browser.exited;
 let again: { ok?: boolean; assets?: { fetched: number; cached: number } } | null | undefined;
 if (report && process.argv.includes("--twice")) {
-  const revisit = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...GRAPHICS_FLAGS, ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: "ignore" });
+  const revisit = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...GRAPHICS_FLAGS, ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: "ignore" });
   again = (await Promise.race([server.nextSelfcheck(), new Promise<null>((r) => setTimeout(() => r(null), 30000))])) as typeof again;
   revisit.kill();
   await revisit.exited;
@@ -183,7 +183,7 @@ if (report && process.argv.includes("--twice")) {
 if (report && process.argv.includes("--bench")) {
   // A second page load flies the camera through the same fixed scene. Headless frame times say little about a player's.
   // For a real number, run `bun run dev` and open http://localhost:8787/?bench=1 on the device in question.
-  const flying = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...GRAPHICS_FLAGS, `--user-data-dir=${profile}`, `http://localhost:${server.port}/?bench=1&name=bench`], { stdout: "ignore", stderr: "ignore" });
+  const flying = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...GRAPHICS_FLAGS, `--user-data-dir=${profile}`, `http://localhost:${server.port}/?bench=1&name=bench`], { stdout: "ignore", stderr: "ignore" });
   await Promise.race([server.bench, new Promise((r) => setTimeout(r, 40000))]);
   flying.kill();
   await flying.exited;

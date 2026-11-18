@@ -2,14 +2,14 @@
 
 Run look.sh first. This Python review changes only its camera list, keeping the
 game's materials, mip selection, dyes and draw code. Its temporary executable
-stays in /private/tmp/dodo-look, never in the repository's asset tree.
+stays in /tmp/dodo-look, never in the repository's asset tree.
 """
 from pathlib import Path
 import hashlib,json,re,subprocess,tempfile
 
 ROOT=Path(__file__).resolve().parent
 LOOK=ROOT.parent/'look.ts'
-TREE=Path('/private/tmp/dodo-look/tree')
+TREE=Path('/tmp/dodo-look/tree')
 OUT=ROOT/'checks/concept_views'
 
 def main():
@@ -31,7 +31,7 @@ def main():
     OUT.mkdir(parents=True,exist_ok=True)
     files=[TREE/'core/creatures/dodo/dodo.snpk',LOOK,ROOT/'layers/layers.json',*sorted((TREE/'core/creatures/dodo/tex').glob('*.png'))]
     receipt={str(f):hashlib.sha256(f.read_bytes()).hexdigest() for f in files}
-    with tempfile.TemporaryDirectory(prefix='body-review-',dir='/private/tmp/dodo-look') as temp:
+    with tempfile.TemporaryDirectory(prefix='body-review-',dir='/tmp/dodo-look') as temp:
         script=Path(temp)/'camera.mts';script.write_text(source)
         subprocess.run(['bun',str(script),'--source',str(TREE),'--out',str(OUT)],check=True)
     if any(hashlib.sha256(f.read_bytes()).hexdigest()!=receipt[str(f)] for f in files):
