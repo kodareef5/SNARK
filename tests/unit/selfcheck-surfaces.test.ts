@@ -35,7 +35,7 @@ artTest("surface twins hit the same pixels, planes and mips as the software scen
   }
 });
 
-artTest("a rigid species keeps its palette light with or without the atlas; removing DRAW_PLAIN reproduces the regression", () => {
+artTest("a rigid species keeps its palette light with or without the finishes; removing DRAW_PLAIN reproduces the regression", () => {
   const v = surfaceProbeView(320, 180), maps = worldMaps(v.pack);
   const p = v.scene.build(v.cam, v.remote);
   p.texUploads.push(...maps.uploads); v.raster.render(p);
@@ -49,7 +49,8 @@ artTest("a rigid species keeps its palette light with or without the atlas; remo
   p.texUploads.length = 0; v.raster.render(p);
   const surfaced = probeRgb(v, creature);
   expect(surfaced).not.toEqual(plain);
-  expect(probePasses(creature, ...surfaced)).toBe(false);
+  // Drawn with a finish its colour moves by far more than the plain twin allows; a finish this close to it in hue may still pass the lit probe's tolerance.
+  expect(Math.max(...surfaced.map((c, k) => Math.abs(c - plain[k]!)))).toBeGreaterThan(30);
   // This is still the creature's pixel, not terrain appearing through or in front of it.
   expect(v.raster.pickKind[at]).toBe(PICK_ENTITY);
   expect(v.raster.pickId[at]).toBe(v.remote.id[1]!);
@@ -87,32 +88,33 @@ test("fully rough palette light is identical when its unused reflected-sky looku
 });
 
 test("self-check fetches independent RGBA maps, keeps GPU arrivals separate and reports a missing reference", () => {
-  const { manifest, material } = referenceManifest(corePack());
+  const { manifest, materials } = referenceManifest(corePack());
   const roles = ["base", "normal", "mro"] as const;
   const encoded = writeTextureFile("rgba", roles.map((role) => ({ role, block: 1, pictures: Array.from({ length: 7 }, (_, k) => new Uint8Array(4 ** k * (role === "normal" ? 2 : 4)).fill(128)) })));
   manifest.files.push({ name: "reference", bytes: encoded.bytes.length, role: "tex", format: "rgba" });
-  roles.forEach((role, k) => { manifest.textures![material[role]] = { id: `reference/${role}`, role, top: 64, in: { rgba: { file: 1, ...encoded.placed[k]! } } }; });
+  for (const material of materials) roles.forEach((role, k) => { manifest.textures![material[role]] = { id: `${material.id}/${role}`, role, top: 64, in: { rgba: { file: 1, ...encoded.placed[k]! } } }; });
   const port = new FakeNet([new Uint8Array(0), encoded.bytes], { keep: true });
   const reference = new SelfcheckSurfaces(manifest, port);
   expect(port.log).toHaveLength(0); // Creating it for a low-poly check fetches nothing.
   reference.start(); reference.start();
-  expect(port.log).toHaveLength(3);
+  // Each finish's three maps, and the weathering masks' packed map.
+  expect(port.log).toHaveLength(49);
   reference.request({ slot: 42, file: 1, parts: [{ offset: 0, length: 16, hash: "" }], priority: 1, fresh: false });
   port.advance(1);
   const arrivals: Parameters<SelfcheckSurfaces["take"]>[0] = [];
   expect(reference.take(arrivals)).toBe(1); expect(arrivals[0]!.slot).toBe(42);
   expect(reference.done).toBe(true); expect(reference.error).toBeNull();
   const value = new Float64Array(4);
-  reference.sample!(0, 0.12, 0.12, -5, value);
+  reference.sample!(0, 15, 0.12, 0.12, -5, value);
   expect(value[0]).toBeCloseTo(srgbToLinear(128 / 255), 6);
-  reference.sample!(1, 0.12, 0.12, -5, value);
+  reference.sample!(1, 15, 0.12, 0.12, -5, value);
   expect(value[1]).toBeCloseTo(128 / 255, 6);
   const brokenPort = new FakeNet([new Uint8Array(0), new Uint8Array(0)]);
   const broken = new SelfcheckSurfaces(manifest, brokenPort);
   broken.start(); brokenPort.advance(1); broken.take([]);
   expect(broken.done).toBe(true); expect(broken.error).toContain("failed");
   const missing = new SelfcheckSurfaces({ ...manifest, materials: [] }, port);
-  missing.start(); expect(missing.done).toBe(true); expect(missing.error).toContain("no RGBA atlas"); expect(missing.sample).toBeNull();
+  missing.start(); expect(missing.done).toBe(true); expect(missing.error).toContain("no RGBA maps"); expect(missing.sample).toBeNull();
   // No reference is ever inferred from a GPU pixel or silently replaced with palette lighting.
   expect(broken.sample).toBeNull();
 });

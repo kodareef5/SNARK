@@ -1,7 +1,6 @@
 // CPU texture filtering shared by the software rasterizer and the browser self-check twins.
 import type { TextureRole } from "../../../shared/pack/texture.ts";
 import { srgbToLinear } from "./surface.ts";
-import { WORLD_MIN_MIP } from "./world-surfaces.ts";
 
 /** A texture on the card: its pictures as numbers from 0 to 1, smallest first, picture k being 1 << k pixels across. A base colour is held as light. */
 export interface Texture {
@@ -49,13 +48,4 @@ export function sample(t: Texture, u: number, v: number, spread: number, out: Fl
   out.fill(0);
   bilinear(t, top - whole, u, v, 1 - (level - whole), out);
   if (level > whole) bilinear(t, top - whole - 1, u, v, level - whole, out);
-}
-
-/** Atlas filtering matching worldRead: no finer than the top, no coarser than eight texels a cell, and within the finish. */
-export function sampleWorldTexture(t: Texture, u: number, v: number, spread: number, out: Float64Array): void {
-  const top = t.pictures.length - 1;
-  const lod = Math.max(0, Math.min(top + spread, Math.max(0, top - WORLD_MIN_MIP)));
-  const x = Math.floor(u * 4) / 4, y = Math.floor(v * 4) / 4;
-  const margin = 0.5 * 2 ** (Math.ceil(lod) - top);
-  sample(t, Math.max(x + margin, Math.min(x + 0.25 - margin, u)), Math.max(y + margin, Math.min(y + 0.25 - margin, v)), lod - top, out);
 }

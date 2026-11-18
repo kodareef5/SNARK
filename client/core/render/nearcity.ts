@@ -12,7 +12,7 @@
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { VERTEX_BYTES } from "../../../shared/pack/pack.ts";
-import { mergedPart, type CityPart, type CityStatics, type Gone, type Ground } from "../../../shared/world/city.ts";
+import { cornerByte, mergedPart, type CityPart, type CityStatics, type Gone, type Ground } from "../../../shared/world/city.ts";
 import type { ChunkTable } from "../../../shared/world/structures.ts";
 import { LAKE_SLOTS, LAKE_SLOT_SPAN } from "./lakes.ts";
 import { quadBytes, type FramePacket } from "./packet.ts";
@@ -145,11 +145,12 @@ export class NearMaking {
     let faces = 0;
     for (const part of this.parts) faces += part.faces;
     // Every band's faces in one list, then each axis's box.
-    const pos = new Float32Array(faces * 12), colour = new Uint8Array(faces);
+    const pos = new Float32Array(faces * 12), colour = new Uint8Array(faces), edges = new Uint8Array(faces);
     let n = 0;
     for (const part of this.parts) {
       pos.set(part.pos.subarray(0, part.faces * 12), n * 12);
       colour.set(part.color.subarray(0, part.faces), n);
+      edges.set(part.edges.subarray(0, part.faces), n);
       n += part.faces;
     }
     const box = boxOf(pos, faces * 4);
@@ -168,7 +169,7 @@ export class NearMaking {
     const cellFirst = cellsOf(pos, faces, this.side, cellOf);
     const cellBox = new Float32Array(cells * 6);
     for (let c = 0; c < cells; c++) cellBox.fill(Infinity, c * 6, c * 6 + 3).fill(-Infinity, c * 6 + 3, c * 6 + 6);
-    const data = store(pos, colour, faces, cellOf, cellFirst, center, step, cellBox);
+    const data = store(pos, colour, edges, faces, cellOf, cellFirst, center, step, cellBox);
     return { data, faces, indexBytes: quadBytes(faces), bounds: { center, half }, cellFirst, cellBox };
   }
 }
@@ -207,7 +208,7 @@ function cellsOf(pos: Float32Array, faces: number, side: number, cellOf: Uint8Ar
  * Faces `pos` of `colour`, stored on the lattice of `step` from `center` in the order of their cells `cellOf`, which begin
  * at `cellFirst`, each cell's box of what is stored grown in `cellBox`. Its own function, short, for the compiler's sake.
  */
-function store(pos: Float32Array, colour: Uint8Array, faces: number, cellOf: Uint8Array, cellFirst: Uint32Array, center: readonly number[], step: readonly number[], cellBox: Float32Array): Uint8Array {
+function store(pos: Float32Array, colour: Uint8Array, edges: Uint8Array, faces: number, cellOf: Uint8Array, cellFirst: Uint32Array, center: readonly number[], step: readonly number[], cellBox: Float32Array): Uint8Array {
   const data = new Uint8Array(faces * 4 * VERTEX_BYTES);
   const view = new DataView(data.buffer);
   const at = cellFirst.slice(0, cellFirst.length - 1);
@@ -221,6 +222,7 @@ function store(pos: Float32Array, colour: Uint8Array, faces: number, cellOf: Uin
       view.setInt16(o + 2, qy, true);
       view.setInt16(o + 4, qz, true);
       data[o + 6] = colour[f]!;
+      data[o + 7] = cornerByte(e, edges[f]!);
       // The box of what is stored, which is what is drawn.
       const x = c0 + qx * s0, y = c1 + qy * s1, z = c2 + qz * s2;
       if (x < cellBox[b]!) cellBox[b] = x;

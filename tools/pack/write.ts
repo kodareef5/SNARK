@@ -9,6 +9,7 @@ import {
 import type { PackDetails } from "../../shared/pack/details.ts";
 import type { LandmarkFarRow } from "../../shared/pack/far.ts";
 import { TEXTURE_ROLES, stepOf } from "../../shared/pack/texture.ts";
+import { cornerByte } from "../../shared/world/city.ts";
 import { surfaceError } from "./error.ts";
 import { rankSprays } from "./sprays.ts";
 import { decodeSkin, decodeSurface, encodeSkin, encodeSurface, tangentsOf, uvRange } from "./surface.ts";
@@ -371,7 +372,12 @@ export function unpackMeshes(pack: Pack): SourceMesh[] {
 }
 
 /** One colour, outward-facing triangles. */
-export function boxMesh(half: readonly [number, number, number], color: number): SourceLod {
+/**
+ * A box of `half` extents about its origin. With `edges`, each vertex's bone byte says its corner of its face and the
+ * face's outer borders, as a static's carries them (shared/world/city.ts `cornerByte`): every border but a wall's foot,
+ * where the box stands on what is under it.
+ */
+export function boxMesh(half: readonly [number, number, number], color: number, edges = false): SourceLod {
   const [hx, hy, hz] = half;
   const positions: number[] = [];
   const indices: number[] = [];
@@ -392,5 +398,13 @@ export function boxMesh(half: readonly [number, number, number], color: number):
     positions.push(o[0]! + v[0]!, o[1]! + v[1]!, o[2]! + v[2]!);
     indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
-  return { positions: Float32Array.from(positions), colors: new Uint8Array(24).fill(color), indices: Uint32Array.from(indices) };
+  const lod: SourceLod = { positions: Float32Array.from(positions), colors: new Uint8Array(24).fill(color), indices: Uint32Array.from(indices) };
+  if (edges) {
+    lod.bones = new Uint8Array(24);
+    // A face that looks across runs up its first edge, so its foot is the border where that edge begins.
+    faces.forEach(([, u], f) => {
+      for (let k = 0; k < 4; k++) lod.bones![f * 4 + k] = cornerByte(k, u[1] !== 0 ? 14 : 15);
+    });
+  }
+  return lod;
 }
