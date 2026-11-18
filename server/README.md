@@ -34,6 +34,7 @@ The Bun process that owns a world. Headless; no rendering or DOM code.
 | `console.ts`, `commands/` | The console and its commands: session, admin, combat, social, creatures, settings |
 | `persist/store.ts`, `persist/codec.ts` | SQLite schema, and a record as bytes, the form a save keeps it in and a transfer carries it in |
 | `persist/persistence.ts` | What each commit contains |
+| `survivor-log/` | Where each survivor was and what it held, over time, beside the save: the tick thread's recorder (`recorder.ts`, `log.ts`), the segments on disk and every read of them (`store.ts`), and the thread they run on (`worker.ts`) |
 | `cluster/` | The servers of a cluster: the shared folder (`folder.ts`), a transfer's sealed file (`parcel.ts`), travel, recovery and the travel list (`cluster.ts`), and whether the cluster balances (`audit.ts`) |
 
 Nothing but `main.ts`, and `front.ts`, a program of its own, takes a socket or

@@ -229,7 +229,8 @@ record("structures placed", world.structs.count, "");
 
 const dbPath = join(dir, "world.db");
 // More seats than ARK's 70, because the sizing target is 100 players.
-const host: Host = createHost(reg, { dbPath, world, config: benchRules, commitEvery: 6, game: { maxClients: 128 } });
+// The survivor log has its thread, as on a running server, so the ticks below hold only what it costs the tick thread.
+const host: Host = createHost(reg, { dbPath, world, config: benchRules, commitEvery: 6, game: { maxClients: 128 }, survivorLog: { mode: "worker" } });
 const persistence = host.persistence!;
 t0 = performance.now();
 persistence.commit();

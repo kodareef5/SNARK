@@ -197,6 +197,21 @@ export function addCoreCommands(con: Console): void {
       },
     },
     {
+      name: "survivorlog",
+      usage: "",
+      help: "Say what span the survivor log holds, how much disk it takes and its cap.",
+      admin: true,
+      run(ctx) {
+        const s = ctx.host.survivorLog.span();
+        const mb = (n: number): string => `${(n / (1 << 20)).toFixed(1)} MB`;
+        const at = (wall: number): string => `${new Date(wall).toISOString().slice(0, 19).replace("T", " ")} UTC`;
+        const state = s.on ? "on" : `off: ${s.why}`;
+        if (s.from === null || s.to === null) return `survivor log ${state}; it holds nothing yet${s.folder ? ` (${s.folder}, cap ${mb(s.cap)})` : ""}`;
+        const minutes = Math.round((s.to - s.from) / 60000);
+        return `survivor log ${state}: ${at(s.from)} (tick ${s.fromTick}) to ${at(s.to)} (tick ${s.toTick}), ${Math.floor(minutes / 60)} h ${minutes % 60} min, in ${s.segments} segments; ${mb(s.bytes)} of ${mb(s.cap)} in ${s.folder}`;
+      },
+    },
+    {
       name: "saveas",
       usage: "<file>",
       help: "Write the whole world to a new file and carry on saving there. For the server's own console.",
