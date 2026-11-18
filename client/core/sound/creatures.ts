@@ -8,7 +8,7 @@
 
 import { CreatureAnim, advanceCreature, idleOf } from "../../../shared/anim/creature.ts";
 import { Gait } from "../../../shared/anim/gait.ts";
-import { AnimState, CUE_DEAD, CUE_LAND, CUE_NONE, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, FLY_SPEED_STEP, LAYER_EAT, LAYER_FLINCH, SPEED_STEP, bodySeed } from "../../../shared/anim/pose.ts";
+import { AnimState, CUE_DEAD, CUE_LAND, CUE_NONE, CUE_ROAR, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, FLY_SPEED_STEP, LAYER_EAT, LAYER_FLINCH, SPEED_STEP, bodySeed } from "../../../shared/anim/pose.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
@@ -41,6 +41,7 @@ export const O_CHASE = 9;
 export const O_GROWL = 10;
 /** A flyer's wingbeat, and its take-off. */
 export const O_FLAP = 11;
+export const O_ROAR = 12;
 /** The occasions of a creature's sheet (shared/pack/details.ts) and the sound occasion each names. */
 const SHEET: readonly (readonly [Occasion, number])[] = [["struck", O_HURT], ["peck", O_ATTACK], ["land", O_LAND], ["death", O_DEATH], ["down", O_TORPOR_IN], ["up", O_TORPOR_OUT]];
 /** Seconds between a running body's calls, and a stalking hunter's growls, at random within these. */
@@ -51,13 +52,13 @@ const GROWL_NEAR = 15;
 /** The registry's temper of a hunter (shared/content/registry.ts: 0 flees, 1 defends, 2 hunts). */
 const TEMPER_HUNTS = 2;
 /** The cue of each occasion; what stands in for a species without it is the catalogue's to say. */
-const OCCASIONS: readonly string[] = ["startled", "hurt", "attack", "land", "death", "torpor_in", "torpor_out", "eat", "thump", "chase", "growl", "flap"];
+const OCCASIONS: readonly string[] = ["startled", "hurt", "attack", "land", "death", "torpor_in", "torpor_out", "eat", "thump", "chase", "growl", "flap", "roar"];
 /**
  * How each occasion is heard: from its mouth, its feet or its body, and how much it weighs when voices are short. A
  * startle outweighs the pain of the blow that startled it, which comes in the same snapshot, so the alarm is heard.
  */
-const KIND: readonly number[] = [KIND_VOCAL, KIND_VOCAL, KIND_HIT, KIND_HIT, KIND_VOCAL, KIND_VOCAL, KIND_VOCAL, KIND_HIT, KIND_HIT, KIND_VOCAL, KIND_VOCAL, KIND_STEP];
-const WEIGHT: readonly number[] = [0.95, 0.9, 0.5, 0.6, 1, 0.8, 0.5, 0.3, 0.6, 0.7, 0.55, 0.35];
+const KIND: readonly number[] = [KIND_VOCAL, KIND_VOCAL, KIND_HIT, KIND_HIT, KIND_VOCAL, KIND_VOCAL, KIND_VOCAL, KIND_HIT, KIND_HIT, KIND_VOCAL, KIND_VOCAL, KIND_STEP, KIND_VOCAL];
+const WEIGHT: readonly number[] = [0.95, 0.9, 0.5, 0.6, 1, 0.8, 0.5, 0.3, 0.6, 0.7, 0.55, 0.35, 1];
 /** Flying at least this fast it strokes twice a beat, as its fly_fast does (shared/anim/creature.ts). */
 const FAST_STROKES = 12;
 /** Looking this many steps of the pose's pitch below level or further, it glides or dives on still wings. */
@@ -93,13 +94,14 @@ export class Book {
    * `on` is its owner class (`species/creature`): an occasion the catalogue gives another class has no sound in its book.
    * `lands` is the tick of its bite at which the blow lands, where its content says, else it is read from the clip.
    */
-  constructor(owner: string, on: string, anim: CreatureAnim | null, height: number, lib: SoundLibrary, res: Resolver, lands: number | null = null, sheet: DetailSheet | null = null) {
+  constructor(owner: string, on: string, anim: CreatureAnim | null, height: number, lib: SoundLibrary, res: Resolver, lands: number | null = null, sheet: DetailSheet | null = null, roar = false) {
     this.anim = anim;
     this.height = height;
     const o = res.owner(owner);
     const find = (name: string): number => lib.index.get(`${owner}/sound/${name}`) ?? -1;
     const peek = (name: string): number => (KEYS[cueKey(name)]!.cue.on.includes(on) ? res.peek(o, cueKey(name)) : -1);
     OCCASIONS.forEach((name, i) => {
+      if (i === O_ROAR && !roar) return;
       this.sound[i] = peek(name);
       this.rate[i] = res.rate(o, cueKey(name));
     });
@@ -207,7 +209,7 @@ export class CreatureSounds {
   private bookOf(kind: number): Book | null {
     const d = this.reg.defs[kind];
     if (d?.type !== "species") return null;
-    const book = new Book(d.id, `species/${d.class}`, this.made[kind] ?? null, this.reg.bodyHeight[kind]!, this.lib, this.res, d.bite ? (this.reg.weapon[kind]?.strikeTick ?? null) : null, this.sheets.find((s) => s.owner === d.id) ?? null);
+    const book = new Book(d.id, `species/${d.class}`, this.made[kind] ?? null, this.reg.bodyHeight[kind]!, this.lib, this.res, d.bite ? (this.reg.weapon[kind]?.strikeTick ?? null) : null, this.sheets.find((s) => s.owner === d.id) ?? null, !!d.roar);
     return book.reach > 0 ? book : null;
   }
 
@@ -266,7 +268,8 @@ export class CreatureSounds {
       };
       if (!first) {
         if (cue !== b.cue && st.cue !== CUE_NONE) {
-          if (st.cue === CUE_STARTLE) play(O_STARTLED);
+          if (st.cue === CUE_ROAR) play(O_ROAR);
+          else if (st.cue === CUE_STARTLE) play(O_STARTLED);
           else if (st.cue === CUE_LAND) play(O_LAND);
           else if (st.cue === CUE_TAKEOFF) play(O_FLAP);
           else if (st.cue === CUE_TORPOR && st.out) {

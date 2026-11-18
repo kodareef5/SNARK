@@ -707,7 +707,11 @@ export class App {
     const ox = s.own.x;
     const oy = s.own.y + eye;
     const oz = s.own.z;
-    if (s.driving >= 0) return this.reg.vehicle[s.bodyKind] ? "E  exit vehicle" : "E  get off";
+    if (s.driving >= 0) {
+      if (this.reg.vehicle[s.bodyKind]) return "E  exit vehicle";
+      const mount = this.reg.defs[s.bodyKind];
+      return mount?.type === "species" && mount.roar ? "RMB  roar    E  get off" : "E  get off";
+    }
     // Seats in cars and saddles have a slot; a carried body has none. Who steers is handled above.
     if (s.own.seatSlot !== 0 && s.own.seat > 0) {
       for (let i = 0; i < r.count; i++) if (r.id[i] === s.own.seat - 1) return this.reg.vehicle[r.kind[i]!] ? "E  exit passenger seat" : "E  get off";

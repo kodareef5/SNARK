@@ -23,7 +23,7 @@ import { ACT_EQUIP, ACT_SWING, HOLD_CARRY } from "../sim/weapon.ts";
 import { blendPose, sampleClip, type Clip, type Pose } from "./clip.ts";
 import { footStart, gaitClip, gaitShares, playGaits, tickPhase, type Gait, type GaitClip } from "./gait.ts";
 import { HUMAN } from "./human.ts";
-import { AnimState, BANK_STEPS, CLIMB_DIVE, CLIMB_DOWN, CUE_LAND, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, DIR_STEPS, FLY_SPEED_STEP, LAYER_EAT, LAYER_FLINCH, LAYER_NONE, PITCH_STEPS, SPEED_STEP } from "./pose.ts";
+import { AnimState, BANK_STEPS, CLIMB_DIVE, CLIMB_DOWN, CUE_LAND, CUE_ROLL, CUE_ROAR, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, DIR_STEPS, FLY_SPEED_STEP, LAYER_EAT, LAYER_FLINCH, LAYER_NONE, PITCH_STEPS, SPEED_STEP } from "./pose.ts";
 import type { Rig, RigClip } from "./rigs.ts";
 import { boneToModel, rayZones, solve, zoneHit } from "./skeleton.ts";
 
@@ -81,6 +81,7 @@ export class CreatureAnim {
   /** The turn mirrored, to turn to its right. */
   readonly turnRight: Clip | null;
   readonly startled: Clip | null;
+  readonly call: Clip | null;
   readonly flinch: Clip | null;
   readonly torporIn: Clip | null;
   readonly torporIdle: Clip | null;
@@ -167,8 +168,8 @@ export class CreatureAnim {
     this.held = named("held");
     this.carried = named("carried");
     const idles = [...rig.clips.keys()].filter((n) => /^idle_\w+$/.test(n)).sort().map((n) => rig.clips.get(n)!);
-    const call = named("call");
-    if (call) idles.push(call);
+    this.call = named("call");
+    if (this.call) idles.push(this.call);
     this.idles = this.idle ? idles : [];
     const longest = Math.max(0, ...this.idles.map((c) => c.frames - 1 + FADE));
     this.slot = this.idle ? this.idle.frames * Math.max(1, Math.ceil(longest / this.idle.frames)) : 1;
@@ -703,6 +704,17 @@ export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: 
       biteAloft(a, st, tick, out);
     } else if (!strike(a, st, tick, out)) {
       if (st.cue === CUE_TORPOR) gettingUp(a, st, tick, out);
+      else if (st.cue === CUE_ROAR && a.call) {
+        const elapsed = since(tick, st.cueStart);
+        if (elapsed < a.call.frames - 1 + FADE) {
+          // The moving body keeps its planted feet. As it stops, its torso joins the neck and jaw in the call.
+          const body = 1 - Math.min(1, (gait?.speed ?? st.speed * SPEED_STEP) / EASE_IN);
+          blendPose(rig.e, out, out, 0);
+          oneShot(rig, a.call, elapsed, rig.e, null);
+          blendPose(out, out, rig.e, body);
+          for (const bone of a.neck) blendPose(out, out, rig.e, 1, bone, bone + 1);
+        }
+      }
       else if (st.cue === CUE_LAND && a.flies && st.mode === MODE_SWIM) {
         // Set down on the water, from the air into floating.
         const s = since(tick, st.cueStart);

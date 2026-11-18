@@ -150,7 +150,7 @@ export class Creatures {
   }
 
   /** Sets a CUE_ of `e`'s whole body, or with `layer` a LAYER_ over it, beginning now. */
-  private cue(e: number, kind: number, layer: boolean): void {
+  cue(e: number, kind: number, layer: boolean): void {
     const st = this.cues;
     const ents = this.world.ents;
     st.unpack(0, ents.cue[e]!);

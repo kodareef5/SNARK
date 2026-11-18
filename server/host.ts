@@ -26,6 +26,7 @@ import { Corpses, DEADLINE_CORPSE } from "./corpses.ts";
 import { CorpseReplication } from "./corpse-motion.ts";
 import { CMD_CORPSE } from "../shared/net/protocol.ts";
 import { Eggs } from "./eggs.ts";
+import { MountedRoars } from "./creature-roar.ts";
 import { DEADLINE_FECES, Feces } from "./feces.ts";
 import { Hurt } from "./hurt.ts";
 import { Overhead } from "./overhead.ts";
@@ -588,6 +589,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const carry = new Carry({ world, game, records, items, survival, creatures, tribes, refresh: (rec) => refreshBody(rec) });
   const eggs = new Eggs({ world, game, records, items, rules, deadlines, creatures, breeding, place: (rec) => death.place(rec) });
   const feces = new Feces({ world, records, items, deadlines, rules, eggs, place: (rec) => death.place(rec) }, (opts.seed ?? 1) + 107);
+  const roars = new MountedRoars({ world, records, creatures, feces });
+  game.onMountSecondary = e => roars.use(e);
   const overhead = new Overhead({ world, records, breeding, game, survival, tribes });
   const hurt = new Hurt({ world, records, survival });
   taming.bred = (rec) => breeding.subject(rec);
