@@ -134,11 +134,12 @@ export function boatSites(map: MapData, reg: Registry, sites: readonly BoatSite[
       if (!shore.get(key)) continue;
       const chunk = chunkAt(map.dims, x, z); nodes?.retain(chunk, 1, 1, () => false);
       try {
-        const y = boatRestY(def.spec, water);
+        const y = boatRestY(def.spec, water), move = reg.move[reg.index.get(def.id)!]!;
         for (const yaw of [heading, heading + Math.PI / 2, heading + Math.PI, heading - Math.PI / 2]) {
           // Neither's room meets the other's hull.
           if (found.some(v => meets(hull(def, x, z, yaw, rules.room), hull(v.def, v.x, v.z, v.heading, 0)) || meets(hull(v.def, v.x, v.z, v.heading, rules.room), hull(def, x, z, yaw, 0)))) continue;
-          if (vehicleFitsWorld(world, x, y, z, yaw, def)) return [x, y, z, yaw];
+          // And the upright capsule of its body a server sets any creature down in (server/creatures.ts, spawn).
+          if (vehicleFitsWorld(world, x, y, z, yaw, def) && capsuleFree(world, x, y, z, move.radius, move.height)) return [x, y, z, yaw];
         }
       } finally { nodes?.retain(chunk, 1, -1, () => false); }
     }
@@ -154,10 +155,10 @@ export function boatSites(map: MapData, reg: Registry, sites: readonly BoatSite[
     const want = site.kind !== "civilian" || !site.waterfront ? 1 : site.waterfront === "pier" ? Number(hashString(site.id, 211) / 4294967296 < rules.pier.share)
       : rules.marina.least + hashString(site.id, 223) % Math.max(1, rules.marina.most - rules.marina.least + 1);
     for (let k = 0; k < want; k++) {
-      const drawn = site.kind === "civilian" && site.waterfront && mix.length ? pick(mix, hashString(`${site.id}#${k}`, 193)) : TYPES[site.kind];
-      // A kind that finds no water deep and clear enough gives way to the site's own launch.
+      // A kind that finds no water deep and clear enough is drawn again, twice, and then gives way to the site's own launch.
+      const drawn = site.kind === "civilian" && site.waterfront && mix.length ? [0, 1, 2].map(n => pick(mix, hashString(`${site.id}#${k}${n ? `/${n}` : ""}`, 193))) : [];
       let placed: [string, [number, number, number, number]] | null = null;
-      for (const kind of drawn === TYPES[site.kind] ? [drawn] : [drawn, TYPES[site.kind]]) {
+      for (const kind of new Set([...drawn, TYPES[site.kind]])) {
         const at = berth(site, defOf(kind));
         if (at) { placed = [kind, at]; break; }
       }
