@@ -119,7 +119,7 @@ artTest("the content hangs together: every engram can be reached, every thing th
   const worn = items.filter((d) => d.wear);
   expect(worn.length).toBe(25);
   const rating = (tier: string): number => worn.find((d) => d.id === `core:${tier}_shirt`)!.wear!.armor;
-  expect([rating("cloth"), rating("hide"), rating("chitin"), rating("flak"), rating("meridian")]).toEqual([10, 20, 50, 100, 100]);
+  expect([rating("cloth"), rating("hide"), rating("chitin"), rating("flak"), rating("meridian")]).toEqual([10, 20, 50, 100, 180]);
   for (const d of worn) {
     for (const sex of ["m", "f"]) expect(pack.meshIndex.has(`core:human_${sex}/armor/${d.wear!.set}/${d.wear!.slot}`), `${d.id} on ${sex}`).toBe(true);
     expect(d.craft !== undefined, d.id).toBe(true);

@@ -500,8 +500,9 @@ export class RecordCodec {
         }
         for (const j of jobs) if (j.item !== 0) rec.jobs.push(j);
       } else if (component === COMP_JET_SPENT) {
-        rec.jetSpent = c.u16();
-        if (rec.jetSpent > JET_CAPACITY) return null;
+        // Held to today's capacity, never refused: the capacity is a number to tune, and a save made when it was larger
+        // would otherwise lose the survivor's whole record over a spent reserve.
+        rec.jetSpent = Math.min(JET_CAPACITY, c.u16());
       } else if (component === COMP_CREATURE_MODE) {
         rec.creatureMode = c.u8();
         if (rec.creatureMode > 2) return null;

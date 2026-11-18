@@ -70,6 +70,8 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * read the other's bodies wrong.
  */
 export const PROTOCOL_VERSION = 33;
+/** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
+export const JET_SPENT_BITS = 9;
 
 // Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
@@ -678,7 +680,7 @@ export function writeBody(w: BitWriter, b: Body): void {
   if (creature) { w.bits(b.creatureMode, 2); w.bits(b.creatureCooldown, 10); w.u8(b.creaturePower); w.bits(b.creatureSide, 1); w.bits(b.creaturePrimaryCooldown, 10); }
   const suit = b.jetGear !== 0 || b.jetSpent !== 0;
   w.bool(suit);
-  if (suit) { w.bits(b.jetGear, 5); w.bits(b.jetSpent, 9); w.bits(b.jetThrust, 2); }
+  if (suit) { w.bits(b.jetGear, 5); w.bits(b.jetSpent, JET_SPENT_BITS); w.bits(b.jetThrust, 2); }
   writeFlight(w, b);
   writeVehicle(w, b);
 }
@@ -709,7 +711,7 @@ export function readBody(r: BitReader, b: Body): void {
   b.kick = r.u8();
   if (r.bool()) { b.creatureMode = r.bits(2); b.creatureCooldown = r.bits(10); b.creaturePower = r.u8(); b.creatureSide = r.bits(1); b.creaturePrimaryCooldown = r.bits(10); }
   else b.creatureMode = b.creatureCooldown = b.creaturePower = b.creatureSide = b.creaturePrimaryCooldown = 0;
-  if (r.bool()) { b.jetGear = r.bits(5); b.jetSpent = r.bits(9); b.jetThrust = r.bits(2); }
+  if (r.bool()) { b.jetGear = r.bits(5); b.jetSpent = r.bits(JET_SPENT_BITS); b.jetThrust = r.bits(2); }
   else b.jetGear = b.jetSpent = b.jetThrust = 0;
   readFlight(r, b);
   readVehicle(r, b);

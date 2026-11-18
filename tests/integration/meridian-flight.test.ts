@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { CUE_JET } from "../../shared/anim/pose.ts";
-import { BTN_JUMP, BTN_SPRINT, JET_CAPACITY, JET_FULL_SUIT, JET_HOVER, JET_LIFT } from "../../shared/sim/character.ts";
-import { V_HEALTH } from "../../shared/sim/vitals.ts";
+import { BTN_JUMP, BTN_SPRINT, JET_CAPACITY, JET_FULL_SUIT, JET_HOVER, JET_LIFT, JET_STRIDE } from "../../shared/sim/character.ts";
+import { JET_SPENT_BITS } from "../../shared/net/protocol.ts";
+import { V_HEALTH, V_OXYGEN } from "../../shared/sim/vitals.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { Harness } from "../fixtures/net.ts";
 import { HudModel, updateHud } from "../../client/core/hud.ts";
@@ -131,4 +132,43 @@ test("the boots alone absorb a hard landing only while serviceable", () => {
   h.host.items.wear(rec, inv.armor + 4, 999);
   drop();
   expect(health()).toBeLessThan(start);
+});
+
+test("the spent reserve fits the bits it travels in", () => {
+  // Raising JET_CAPACITY past them would wrap the owner's reserve on the wire and nothing else would say so.
+  expect(JET_CAPACITY).toBeLessThan(1 << JET_SPENT_BITS);
+});
+
+test("the greaves lengthen a sprint on the ground by JET_STRIDE, only while serviceable", () => {
+  const { h, wearer, rec, input } = fitted();
+  const inv = h.host.items.inv(rec);
+  const sprintSpeed = () => {
+    input.buttons = BTN_SPRINT;
+    input.moveZ = 1;
+    h.run(1500);
+    const v = Math.hypot(wearer.own.vx, wearer.own.vz);
+    expect(wearer.own.grounded).toBe(true);
+    input.buttons = 0;
+    input.moveZ = 0;
+    h.run(1500);
+    return v;
+  };
+  const powered = sprintSpeed();
+  h.host.items.wear(rec, inv.armor + 3, 999);
+  h.run(200);
+  const plain = sprintSpeed();
+  expect(plain).toBeGreaterThan(1);
+  expect(powered / plain).toBeCloseTo(JET_STRIDE, 2);
+});
+
+test("a sealed helmet keeps its wearer's air under water, and a broken one does not", () => {
+  const { h, rec } = fitted();
+  const inv = h.host.items.inv(rec);
+  h.host.survival.setSubmerged(rec, true);
+  expect(rec.vitals!.rate[V_OXYGEN]).toBeGreaterThanOrEqual(0);
+  h.host.survival.setSubmerged(rec, false);
+  h.host.items.wear(rec, inv.armor, 999);
+  h.run(200);
+  h.host.survival.setSubmerged(rec, true);
+  expect(rec.vitals!.rate[V_OXYGEN]).toBeLessThan(0);
 });

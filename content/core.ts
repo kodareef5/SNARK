@@ -74,10 +74,12 @@ const GEAR: Def[] = [
   ...ARMOR_PIECES.flatMap((piece, i): Def[] => {
     const item = id(`meridian_${piece.name}`);
     const label = ["Meridian helmet", "Meridian flight cuirass", "Meridian gloves", "Meridian greaves", "Meridian boots"][i]!;
-    // A cosmetic refit of the corresponding flak piece. Protection, durability and mass stay at that tier.
+    // The tier above flak, at the figures of ARK's Tek pieces: armor 180 and durability 300 each, and weights of 4, 6, 3,
+    // 6 and 3 for helmet, chestpiece, gauntlets, leggings and boots (ark.wiki.gg, Tek Armor, infobox, 2026-11-18). It
+    // was first a refit of flak at flak's own 100 and 120.
     return [
-      { type: "item", class: "armor", id: item, label, stack: 1, color: 93, weight: [4, 10, 2, 10, 4][i]!,
-        wear: { slot: piece.slot, set: "meridian", armor: 100, uses: 120, colors: [93, 82, 41], ...(piece.slot === "head" ? { sealed: true } : {}), ...(piece.slot === "torso" ? { vents: "vents" } : {}) },
+      { type: "item", class: "armor", id: item, label, stack: 1, color: 93, weight: [4, 6, 3, 6, 3][i]!,
+        wear: { slot: piece.slot, set: "meridian", armor: 180, uses: 300, colors: [93, 82, 41], ...(piece.slot === "head" ? { sealed: true } : {}), ...(piece.slot === "torso" ? { vents: "vents" } : {}) },
         craft: { at: id("fabricator"), seconds: 5, xp: 0, needs: [
           { item: id(`flak_${piece.name}`), count: 1 }, { item: id("crystal"), count: 2 }, { item: id("electronics"), count: 1 },
         ] } },

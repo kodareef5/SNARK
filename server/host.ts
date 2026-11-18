@@ -58,7 +58,7 @@ import { DEADLINE_DESPAWN, Death } from "./death.ts";
 import { DEADLINE_NODE, Harvest } from "./harvest.ts";
 import { VehicleTrees } from "./vehicle-trees.ts";
 import { DEADLINE_CRAFT, Progression } from "./progression.ts";
-import { JET_BOOTS, JET_CUIRASS, stanceEye } from "../shared/sim/character.ts";
+import { JET_BOOTS, JET_CUIRASS, JET_HELMET, stanceEye } from "../shared/sim/character.ts";
 import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { ACT_EQUIP, ACT_NONE, FISTS, HOLD_CARRY } from "../shared/sim/weapon.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
@@ -1319,8 +1319,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
         const piece = reg.defs[id];
         if (piece?.type === "item" && piece.wear?.set === "meridian" && inv.dur[slot]! > 0) suit |= 1 << k;
       }
+      const helmetChanged = ((ents.jetGear[e]! ^ suit) & JET_HELMET) !== 0;
       ents.jetGear[e] = suit;
       if (!(suit & JET_CUIRASS)) ents.jetThrust[e] = 0;
+      // Its air under water follows the helmet at once, not at the vitals' next deadline.
+      if (helmetChanged) survival.touch(rec);
       ents.setGear(e, gear);
       // Only the thing in hand has its attachment on, and taking another in hand switches it off: "it does require you to
       // press N each time you switch" (Flashlight Attachment). Others see a laser on (weapons-plan.md, M10).
