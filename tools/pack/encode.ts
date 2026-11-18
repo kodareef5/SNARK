@@ -7,6 +7,7 @@ import { closeSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync
 import { availableParallelism } from "node:os";
 import { join, resolve } from "node:path";
 import { Worker } from "node:worker_threads";
+import { SURFACE_PREFIX } from "../../content/surfaces.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { MATERIAL_CUTOUT, setTexture, textureOf } from "../../shared/pack/pack.ts";
 import { STORED_TEXTURE_VERSION } from "../../shared/pack/stored.ts";
@@ -37,17 +38,17 @@ export type Encoding = { with: "bc5" } | { with: "bc7"; channels: 3 | 4 } | { wi
  * The side of a role's ASTC blocks: the coarsest at which the rasterizer's close views of real assets move no more
  * than about a thousandth of the pixels by over 8 levels from 4 by 4 (planning/quality/encoders.md). Base colour 6,
  * normals 5, the packed map 8, and the masks 4, which must stay exact (D149). Where its alpha is read a base colour is
- * 5, as is the layer: a cut-out's edge moves with its alpha.
+ * 5, as is the layer: a cut-out's edge moves with its alpha. A world finish's packed map, whose alpha is its height, is 6.
  */
 export function astcBlock(role: TextureRole, alpha: boolean): number {
   if (role === "base") return alpha ? 5 : 6;
-  return role === "normal" || role === "layer" ? 5 : role === "mro" ? 8 : 4;
+  return role === "normal" || role === "layer" ? 5 : role === "mro" ? (alpha ? 6 : 8) : 4;
 }
 
-/** How a role is stored in a block variant. `alpha` is whether anything reads the alpha of a base colour. A layer is a base colour whose alpha is always read. */
+/** How a role is stored in a block variant. `alpha` is whether anything reads the alpha of a base colour or a packed map. A layer is a base colour whose alpha is always read. */
 export function encodingOf(format: BlockFormat, role: TextureRole, alpha: boolean): Encoding {
   if (format === "astc") return { with: "astc", kind: role === "base" || role === "layer" ? "srgb" : role === "normal" ? "normal" : "linear", block: astcBlock(role, alpha) };
-  return role === "normal" ? { with: "bc5" } : { with: "bc7", channels: (role === "base" && alpha) || role === "layer" ? 4 : 3 };
+  return role === "normal" ? { with: "bc5" } : { with: "bc7", channels: alpha || role === "layer" ? 4 : 3 };
 }
 
 /** What a thread is sent: blocks `from` up to `to` of a picture `size` pixels across. The picture and its blocks are shared memory. */
@@ -133,7 +134,7 @@ export interface EncodeOptions {
   cut?: number;
   /** The folder encoded pictures are kept in, or null to keep none. The repo's .cache/textures where not given. */
   cache?: string | null;
-  /** The ids of the base colours whose alpha something reads. */
+  /** The ids of the base colours and packed maps whose alpha something reads. */
   alpha?: ReadonlySet<string>;
   /** The text of an encoder, which is part of what a picture is kept under. The encoder's own file where not given. */
   encoders?: Readonly<Partial<Record<BlockFormat, string>>>;
@@ -200,7 +201,7 @@ export async function eachTexture(sources: readonly TextureSource[], opts: Encod
       Bun.gc(true);
       const mips = s.mips();
       if (mips.length !== Math.log2(s.top) + 1 || mips.some((m, i) => m.length !== 4 ** i * 4)) throw new Error(`texture ${s.id}: its pictures are not the sizes from 1 to ${s.top} pixels across`);
-      const alpha = (s.role === "base" && (opts.alpha?.has(s.id) ?? false)) || s.role === "layer";
+      const alpha = ((s.role === "base" || s.role === "mro") && (opts.alpha?.has(s.id) ?? false)) || s.role === "layer";
       if (opts.share) {
         if (isNeutral(s.role, alpha, mips)) {
           places.push(-1);
@@ -260,7 +261,8 @@ export interface TextureFile extends SplitFile {
 
 /**
  * The sources of a build in the order they are written: one for each texture the manifest names, in its order, then
- * those it does not name. And the ids of the base colours whose alpha something reads.
+ * those it does not name. And the ids of the base colours and packed maps whose alpha something reads: a cut-out's or
+ * a glowing material's base colour, and a world finish's base colour (its tint mask) and packed map (its height).
  */
 function buildOrder(manifest: Manifest, sources: readonly TextureSource[]): { all: TextureSource[]; alpha: Set<string> } {
   const named = manifest.textures ?? [];
@@ -275,7 +277,10 @@ function buildOrder(manifest: Manifest, sources: readonly TextureSource[]): { al
   });
   all.push(...byId.values());
   const alpha = new Set<string>();
-  for (const m of manifest.materials ?? []) if (m.base >= 0 && ((m.flags & MATERIAL_CUTOUT) !== 0 || m.emissive > 0)) alpha.add(named[m.base]!.id);
+  for (const m of manifest.materials ?? []) {
+    if (m.base >= 0 && ((m.flags & MATERIAL_CUTOUT) !== 0 || m.emissive > 0)) alpha.add(named[m.base]!.id);
+    if (m.id.startsWith(SURFACE_PREFIX)) for (const t of [m.base, m.mro]) if (t >= 0) alpha.add(named[t]!.id);
+  }
   return { all, alpha };
 }
 

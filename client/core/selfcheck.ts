@@ -91,7 +91,7 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
       worldSurface(albedo, orm, normal, albedo, finish, point[0]!, point[1]!, point[2]!, n[0]!, n[1]!, n[2]!, footprint, p.surfaceCity, surfaces.sample, p.tier.finish === "light");
       const twice = 2 * normal.reduce((sum, c, k) => sum + c * v[k]!, 0);
       const reflected = normal.map((c, k) => twice * c - v[k]!);
-      if (worldSharp(finish, p.surfaceCity)) skyFrom(mirrored, p.frame, reflected, look);
+      if (worldSharp(orm[1]!)) skyFrom(mirrored, p.frame, reflected, look);
       else skyLight(mirrored, p.frame, reflected);
     }
     lit(out, albedo, orm, normal, v, p.frame, mirrored);

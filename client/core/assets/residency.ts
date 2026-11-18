@@ -641,6 +641,17 @@ export class Residency {
     return t >= 0 && this.has[t]! >= 0;
   }
 
+  /** The last step of texture `t` (its index in the manifest) the card holds, or -1 for none. */
+  holds(t: number): number {
+    return this.has[t]!;
+  }
+
+  /** The card is to let go of texture `t` whole, as of this frame, and take it again from its first step. */
+  again(t: number): void {
+    if (this.has[t]! >= 0 || this.gone[t]! > 0) this.late.push(t);
+    this.letGo(t);
+  }
+
   /** A texture shown `px` pixels across. Its next step is as urgent as the pixels it adds, times `weight`. */
   private texture(t: number, px: number, weight: number, first: boolean): void {
     const slot = this.texBase + t;

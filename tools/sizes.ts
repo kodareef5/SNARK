@@ -5,11 +5,10 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { inflateRawSync } from "node:zlib";
-import { SURFACE_MATERIAL } from "../content/surfaces.ts";
+import { SURFACE_PREFIX } from "../content/surfaces.ts";
 import { parseManifest, readPages, storedStep, type Manifest } from "../shared/pack/manifest.ts";
-import { textureOf } from "../shared/pack/pack.ts";
 import type { ManifestSound } from "../shared/pack/sound.ts";
-import { STEP0_SIZE, TEXTURE_ROLES, stepOf, topIn, type TextureFormat } from "../shared/pack/texture.ts";
+import { STEP0_SIZE, stepOf, topIn, type TextureFormat } from "../shared/pack/texture.ts";
 
 const KB = 1024;
 const MB = 1024 * KB;
@@ -44,9 +43,10 @@ export function weigh(dist: string): boolean {
   const boot = `assets/${m.files[m.boot]!.name}`;
   const { script, fetched, first } = firstFrame(dist);
   const textures = (format: TextureFormat, widest: number, only?: readonly number[]): number => texturesOf(m, format, widest, only);
-  // The world's finishes, which the ground and every piece without art of its own wear, are asked for once the world is drawn.
-  const world = m.materials?.find((x) => x.id === SURFACE_MATERIAL);
-  const finishes = world ? TEXTURE_ROLES.map((role) => textureOf(world, role)).filter((t) => t >= 0) : [];
+  // The world's finishes, which the ground and every piece without art of its own wear, are asked for once the world is
+  // drawn: base colour and normal at a tier's side, the packed map at half of it (client/core/assets/tiers.ts `finishes`).
+  const world = (m.materials ?? []).filter((x) => x.id.startsWith(SURFACE_PREFIX));
+  const finishes = (format: TextureFormat, side: number): number => textures(format, side, world.flatMap((x) => [x.base, x.normal])) + textures(format, side / 2, world.map((x) => x.mro));
   const sounds = m.sounds ?? [];
   const seconds = sounds.reduce((s, x) => s + x.takes.reduce((a, t) => a + t.samples, 0) / x.rate, 0);
   const music = join(dist, "assets/music");
@@ -57,8 +57,12 @@ export function weigh(dist: string): boolean {
     ["manifest", size("assets/manifest.json")],
     ["boot pack, Brotli", size(`${boot}.br`)],
     ["everything before the first frame, Brotli", first],
-    ["the world's finishes to 1,024, astc", textures("astc", 1024, finishes)],
-    ["the world's finishes to 1,024, bc", textures("bc", 1024, finishes)],
+    ["the world's finishes on medium (512), astc", finishes("astc", 512)],
+    ["the world's finishes on medium (512), bc", finishes("bc", 512)],
+    ["the world's finishes on high (1,024), astc", finishes("astc", 1024)],
+    ["the world's finishes on high (1,024), bc", finishes("bc", 1024)],
+    ["the world's finishes on ultra (2,048), astc", finishes("astc", 2048)],
+    ["the world's finishes on ultra (2,048), bc", finishes("bc", 2048)],
     ["page file", fileOf("page")],
     ["mesh file", fileOf("mesh")],
     ["clip file", fileOf("clip")],

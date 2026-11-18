@@ -1,9 +1,9 @@
 // Diagnostic-only RGBA reference maps. The GPU still fetches and draws its selected variant independently.
-import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
+import { SURFACE_NAMES, surfaceMaterial } from "../../content/surfaces.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { pictureBytes, stepOf, topIn } from "../../shared/pack/texture.ts";
 import { textureParts, type AssetArrival, type AssetPort, type AssetRequest, type AssetPart } from "./assets/port.ts";
-import { decodeTexture, sampleWorldTexture, type Texture } from "./render/cpu-texture.ts";
+import { decodeTexture, sample, type Texture } from "./render/cpu-texture.ts";
 import type { WorldSample } from "./render/world-surfaces.ts";
 
 /** What a report says of the reference: whether its maps are in, why not, and its bytes from the network and from disk. */
@@ -19,6 +19,7 @@ export class SelfcheckSurfaces implements AssetPort {
   private started = false;
   private left = 0;
   private readonly arrivals: AssetArrival[] = [];
+  /** Each finish's base colour, normal and packed map, by finish * 3 + role. */
   private readonly maps: Texture[] = [];
   private readonly roles = ["base", "normal", "mro"] as const;
   private readonly tops: number[] = [];
@@ -39,13 +40,15 @@ export class SelfcheckSurfaces implements AssetPort {
   start(): void {
     if (this.started) return;
     this.started = true;
-    const material = this.manifest.materials?.find((m) => m.id === SURFACE_MATERIAL);
-    const textures = this.roles.map((role) => this.manifest.textures?.[material?.[role] ?? -1]);
-    if (textures.some((t) => !t?.in.rgba)) { this.error = "world-surface reference has no RGBA atlas"; return; }
-    this.left = this.roles.length;
-    textures.forEach((t, role) => {
-      const top = this.tops[role] = topIn("rgba", t!.top);
-      this.port.request({ slot: -1 - role, file: t!.in.rgba!.file, parts: textureParts(t!, "rgba", stepOf(top)), priority: 0, fresh: false });
+    const textures = SURFACE_NAMES.flatMap((name) => {
+      const material = this.manifest.materials?.find((m) => m.id === surfaceMaterial(name));
+      return this.roles.map((role) => this.manifest.textures?.[material?.[role] ?? -1]);
+    });
+    if (textures.some((t) => !t?.in.rgba)) { this.error = "world-surface reference has no RGBA maps"; return; }
+    this.left = textures.length;
+    textures.forEach((t, k) => {
+      const top = this.tops[k] = topIn("rgba", t!.top);
+      this.port.request({ slot: -1 - k, file: t!.in.rgba!.file, parts: textureParts(t!, "rgba", stepOf(top)), priority: 0, fresh: false });
     });
   }
 
@@ -55,21 +58,21 @@ export class SelfcheckSurfaces implements AssetPort {
     for (let i = 0; i < count; i++) {
       const a = this.arrivals[i]!;
       if (a.slot >= 0) { out[kept++] = a; continue; }
-      const role = -1 - a.slot, name = this.roles[role]!;
+      const k = -1 - a.slot, name = this.roles[k % 3]!;
       this.fetched += a.fetched;
       this.cached += a.cached;
       if (!a.data) this.error = `world-surface reference ${name} failed (${a.fail}, HTTP ${a.status ?? 0})`;
       else {
         let at = 0;
         const pictures: Uint8Array[] = [];
-        for (let size = 1; size <= this.tops[role]!; size *= 2) {
+        for (let size = 1; size <= this.tops[k]!; size *= 2) {
           const bytes = pictureBytes("rgba", name, size, 1);
           pictures.push(a.data.subarray(at, at += bytes));
         }
         if (at !== a.data.length) this.error = `world-surface reference ${name} has ${a.data.length} bytes, expected ${at}`;
-        else this.maps[role] = decodeTexture(name, pictures);
+        else this.maps[k] = decodeTexture(name, pictures);
       }
-      if (--this.left === 0 && !this.error) this.sample = (role, u, v, spread, out) => sampleWorldTexture(this.maps[role]!, u, v, spread, out);
+      if (--this.left === 0 && !this.error) this.sample = (role, layer, u, v, spread, out) => sample(this.maps[layer * 3 + role]!, u, v, spread, out);
     }
     this.arrivals.length = 0;
     return kept;

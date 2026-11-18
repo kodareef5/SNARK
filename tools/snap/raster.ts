@@ -1,15 +1,15 @@
 // Software rasterizer that executes a frame packet on the CPU, so rendering can be looked at and tested without a browser.
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
-import { decodeTexture, sample, sampleWorldTexture, type Texture } from "../../client/core/render/cpu-texture.ts";
-import { SURFACE_MATERIAL, surfaceIndex } from "../../content/surfaces.ts";
-import { worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
+import { SURFACE_NAMES, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
+import { GROUND_BAND, GROUND_SCALE, groundCover, groundMeet, groundWander, higher, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
 import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { LANDMARK_BUFFER } from "../../client/core/render/farlandmarks.ts";
 import { nearKeeps } from "../../client/core/render/hand.ts";
-import { groundNormal, groundSize, groundTint, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
+import { groundNormal, groundSize, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
 import { MOST_LOD, detailKeeps, rotorOf, shapeOf } from "../../client/core/render/detailtext.ts";
 import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
@@ -141,16 +141,40 @@ const rgb = new Float64Array(3);
 const reflected = new Float64Array(3);
 const mirrored = new Float64Array(3);
 const smoothed = new Float64Array(3);
+const albedo2 = new Float64Array(3);
+const orm2 = new Float64Array(3);
+const normal2 = new Float64Array(3);
+const meet = new Float64Array(2);
+const wander = new Float64Array(2);
+
+/**
+ * The tint the lit tiers' ground takes at ground point (x, z) of a tile that reads picture `pic`, a pixel `footprint`
+ * metres wide, as LIT_TERRAIN_FRAGMENT chooses it from the picture's own samples (world-surfaces.ts `groundCover`), and
+ * into `out` the other finish's tint it meets there and how much of it is wanted (`groundMeet`).
+ */
+function groundPair(hf: Heightfield, pic: GroundPicture, x: number, z: number, footprint: number, desert: boolean, out: Float64Array): number {
+  groundWander(x, z, footprint, wander);
+  const metres = hf.cell * pic.step;
+  const s = Math.min(Math.max((x + wander[0]!) / metres - pic.i / pic.step, 0), pic.lastI);
+  const t = Math.min(Math.max((z + wander[1]!) / metres - pic.j / pic.step, 0), pic.lastJ);
+  const i = Math.min(Math.floor(s), pic.lastI - 1), j = Math.min(Math.floor(t), pic.lastJ - 1);
+  const at = (pic.j + j * pic.step) * hf.nx + pic.i + i * pic.step, down = pic.step * hf.nx;
+  const a = hf.tint[at]!, b = hf.tint[at + pic.step]!, c = hf.tint[at + down]!, d = hf.tint[at + down + pic.step]!;
+  const cover = groundCover(a, b, c, d, s - i, t - j);
+  groundMeet(cover, a, b, c, d, s - i, t - j, (tint) => surfaceIndex(tint, true, desert ? "las-vegas" : "default"), out);
+  return cover;
+}
 /** What LIT lights a flat draw as: no occlusion, fully rough, not metal. Its highlight mirrors nothing. */
 const ROUGH = [1, 1, 0];
 const NOTHING = [0, 0, 0];
 
 /**
  * A palette draw on a lit frame into `rgb`, with world-projected finishes and SURFACE lighting. (rx, ry, rz) is where it
- * is from the camera, and (nx, ny, nz) its face's normal. The ground is lit by its own normal, `smooth` (LIT_TERRAIN_FRAGMENT).
+ * is from the camera, and (nx, ny, nz) its face's normal. The ground is lit by its own normal, `smooth`, and where its
+ * finish meets another, `other` is that one's tint and `share` how much of it is wanted (LIT_TERRAIN_FRAGMENT).
  * A landmark's draw names its row of `finish` (shared/pack/finish.ts): a colour it states is lit as that finish, as LIT_MESH_FRAGMENT has it.
  */
-function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, smooth: Float64Array | null = null, finish?: FinishTable, row = 0): void {
+function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, smooth: Float64Array | null = null, finish?: FinishTable, row = 0, other = -1, share = 0): void {
   const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
   for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear(pal[colorIndex * 4 + c]! / 255);
   normal[0] = smooth ? smooth[0]! : nx;
@@ -173,11 +197,22 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     lit(light, albedo, worldOrm, normal, eye, p.frame, worldOrm[1]! < 1 && look ? mirrored : NOTHING);
     through(light, albedo, worldOrm, normal, p.frame, finish.pixels[own + 1027]! / 255);
   } else if (sample) {
-    const index = surfaceIndex(colorIndex, ground, p.surfaceCity[7] ? "las-vegas" : "default");
-    worldSurface(albedo, worldOrm, normal, albedo, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, p.tier.finish === "light", smooth);
+    const city = p.surfaceCity[7] ? "las-vegas" : "default", touch = p.tier.finish === "light";
+    const h = worldSurface(albedo, worldOrm, normal, albedo, surfaceIndex(colorIndex, ground, city), rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null);
+    if (other >= 0 && share > 0) {
+      for (let c = 0; c < 3; c++) albedo2[c] = srgbToLinear(pal[other * 4 + c]! / 255);
+      const b = higher(h, worldSurface(albedo2, orm2, normal2, albedo2, surfaceIndex(other, true, city), rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null), share, GROUND_SCALE, GROUND_BAND);
+      for (let c = 0; c < 3; c++) {
+        albedo[c] = albedo[c]! * (1 - b) + albedo2[c]! * b;
+        worldOrm[c] = worldOrm[c]! * (1 - b) + orm2[c]! * b;
+        normal[c] = normal[c]! * (1 - b) + normal2[c]! * b;
+      }
+      const l = Math.hypot(normal[0]!, normal[1]!, normal[2]!);
+      for (let c = 0; c < 3; c++) normal[c]! /= l;
+    }
     const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
     for (let c = 0; c < 3; c++) reflected[c] = twice * normal[c]! - eye[c]!;
-    const sharp = worldSharp(index, p.surfaceCity);
+    const sharp = worldSharp(worldOrm[1]!);
     if (!sharp) skyLight(mirrored, p.frame, reflected);
     else if (look) skyFrom(mirrored, p.frame, reflected, look);
     lit(light, albedo, worldOrm, normal, eye, p.frame, sharp && !look ? NOTHING : mirrored);
@@ -282,8 +317,9 @@ export class Rasterizer {
   private readonly cutScratch = new Float64Array(5 * (CARRIED + 4));
   private readonly textures = new Map<number, Texture>();
   /** Textures being made: their pictures as bytes, and how many bytes are still to come. */
-  private worldMaps: Texture[] | null = null;
-  private readonly worldSample: WorldSample = (role, u, v, spread, out) => sampleWorldTexture(this.worldMaps![role]!, u, v, spread, out);
+  /** Each world finish's base colour, normal and packed map, once all of them have come. */
+  private worldMaps: Texture[][] | null = null;
+  private readonly worldSample: WorldSample = (role, layer, u, v, spread, out) => sample(this.worldMaps![layer]![role]!, u, v, spread, out);
   private readonly making = new Map<number, { role: TextureRole; top: number; pictures: Uint8Array[]; left: number }>();
   /** For a textured draw: each vertex's normal and tangent after its bones, a vertex's bones blended, and the instance's dyes. */
   private frames = new Float32Array(6 * 1024);
@@ -303,6 +339,9 @@ export class Rasterizer {
   private readonly deferredShade: Float64Array;
   private readonly deferredAt: Float64Array;
   private readonly deferredNormal: Float64Array;
+  /** On the ground, the other finish's tint where two meet, or -1, and how much of it is wanted. */
+  private readonly deferredOther: Int16Array;
+  private readonly deferredShare: Float32Array;
   /** On a lit frame, the tile being drawn: its vertices' normals (terrain.ts groundNormal), or null for any other draw. */
   private groundNormals: Float64Array | null = null;
   private readonly picture: GroundPicture = { i: 0, j: 0, step: 1, lastI: 0, lastJ: 0 };
@@ -330,6 +369,8 @@ export class Rasterizer {
     this.deferredShade = new Float64Array(width * height);
     this.deferredAt = new Float64Array(width * height * 6);
     this.deferredNormal = new Float64Array(width * height * 3);
+    this.deferredOther = new Int16Array(width * height);
+    this.deferredShare = new Float32Array(width * height);
   }
 
   render(packet: FramePacket): void {
@@ -367,8 +408,10 @@ export class Rasterizer {
       this.making.delete(slot);
     }
     for (const u of packet.texUploads) this.texture(u);
-    const world = (this.manifest ?? this.pack.header)?.materials?.find((m) => m.id === SURFACE_MATERIAL);
-    this.worldMaps = packet.lit && world && this.textures.has(world.base) ? [this.textures.get(world.base)!, this.textures.get(world.normal) ?? NEUTRALS[1]!, this.textures.get(world.mro) ?? NEUTRALS[2]!] : null;
+    const materials = (this.manifest ?? this.pack.header)?.materials ?? [];
+    const finishes = SURFACE_NAMES.map((name) => materials.find((m) => m.id === surfaceMaterial(name)));
+    const maps = finishes.map((m) => (m ? [m.base, m.normal, m.mro].map((t) => this.textures.get(t)) : []));
+    this.worldMaps = packet.lit && maps.every((roles) => roles.length === 3 && roles.every((t) => t)) ? (maps as Texture[][]) : null;
     if (packet.atlasRows > 0) {
       const rows = packet.atlas.subarray(0, packet.atlasRows * ATLAS_WIDTH * 4);
       if (this.atlas.length < rows.length) this.atlas = new Float32Array(rows.length);
@@ -413,7 +456,7 @@ export class Rasterizer {
       const g6 = at * 6;
       const ground = (this.deferred[at]! & DEFERRED_GROUND) !== 0;
       if (ground) smoothed.set(this.deferredNormal.subarray(at * 3, at * 3 + 3));
-      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && this.worldMaps ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, ground ? smoothed : null, this.finish, this.deferred[at]! >> DEFERRED_FINISH);
+      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && this.worldMaps ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, ground ? smoothed : null, this.finish, this.deferred[at]! >> DEFERRED_FINISH, ground ? this.deferredOther[at]! : -1, this.deferredShare[at]!);
       for (let c = 0; c < 3; c++) this.color[at * 4 + c] = rgb[c]! * 255;
       this.deferred[at] = 0;
     }
@@ -1147,7 +1190,9 @@ export class Rasterizer {
             // Only what ends in front is shaded, once the opaque draws are done (`resolve`). The ground's cover is chosen here.
             const s = this.deferredAt;
             const g6 = at * 6;
-            const tint = ground ? groundTint(this.hf, this.picture, rx + p.camX, rz + p.camZ, reach) : colorIndex;
+            const tint = ground ? groundPair(this.hf, this.picture, rx + p.camX, rz + p.camZ, reach, p.surfaceCity[7] !== 0, meet) : colorIndex;
+            this.deferredOther[at] = ground ? meet[0]! : -1;
+            this.deferredShare[at] = ground ? meet[1]! : 0;
             this.deferred[at] = (tint + 1) | (solid ? 512 : 0) | (this.plain ? 1024 : 0) | (ground ? DEFERRED_GROUND : 0) | (this.finishRow << DEFERRED_FINISH);
             this.deferredShade[at] = footprint;
             s[g6] = rx;

@@ -1,7 +1,7 @@
 // Builds the core asset pack: grayboxes made from the content, every pack found under assets/source, and every .glb
 // under assets/source as "<folder>:<file name>". `bun run build` splits it into the files a client fetches.
 
-import { HAS_SURFACES, worldSurfaceMesh } from "../surfaces/build.ts";
+import { HAS_SURFACES, worldSurfaceMeshes } from "../surfaces/build.ts";
 import { readFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -203,7 +203,7 @@ export function buildCorePack(extra: SourceMesh[] = [], landmarks: readonly Land
     made.push(mesh);
     available.add(d.mesh);
   }
-  return buildPack([...withArt(made, art.meshes), ...(HAS_SURFACES ? [worldSurfaceMesh()] : []), ...extra], defaultPalette(), coreClips(), [...rigs.values()], art.details, landmarks);
+  return buildPack([...withArt(made, art.meshes), ...(HAS_SURFACES ? worldSurfaceMeshes() : []), ...extra], defaultPalette(), coreClips(), [...rigs.values()], art.details, landmarks);
 }
 
 /** Every .glb under assets/source, imported. What the import had to say of each is printed. */

@@ -1,39 +1,45 @@
-// Only the three world maps, without building or fetching every authored material in the game.
+// Only the world finishes' maps, without building or fetching every authored material in the game.
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import type { Probe } from "../../client/core/selfcheck.ts";
 import { Rng } from "../../shared/rng.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../../shared/world/proving.ts";
 import { provingView, type ProvingView } from "../../tools/snap.ts";
-import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
-import { decodeTexture, sampleWorldTexture } from "../../client/core/render/cpu-texture.ts";
+import { SURFACE_NAMES, surfaceMaterial } from "../../content/surfaces.ts";
+import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
 import type { WorldSample } from "../../client/core/render/world-surfaces.ts";
 import type { TextureUpload } from "../../client/core/render/packet.ts";
 import { describePack } from "../../shared/pack/manifest.ts";
-import type { Pack } from "../../shared/pack/pack.ts";
+import type { Pack, PackMaterial } from "../../shared/pack/pack.ts";
 import { rgbaOf } from "../../tools/snap/files.ts";
-import { worldMaterial, worldSurfaceMesh } from "../../tools/surfaces/build.ts";
+import { worldMaterials, worldSurfaceMeshes } from "../../tools/surfaces/build.ts";
 
-/** The probe tests supply their own texture bytes, including on a checkout with no surface atlas. */
-export function referenceManifest(pack: Pack) {
+const ROLES = ["base", "normal", "mro"] as const;
+
+/** The probe tests supply their own texture bytes, including on a checkout with no finishes: each finish's material, in the order of SURFACE_NAMES. */
+export function referenceManifest(pack: Pack): { manifest: ReturnType<typeof describePack>; materials: PackMaterial[] } {
   const manifest = describePack(pack, { name: "boot", bytes: pack.blobAt + pack.blob.length });
-  const present = manifest.materials?.find((m) => m.id === SURFACE_MATERIAL);
-  if (present) return { manifest, material: present };
+  const present = SURFACE_NAMES.map((name) => manifest.materials?.find((m) => m.id === surfaceMaterial(name)));
+  if (present.every((m) => m)) return { manifest, materials: present as PackMaterial[] };
   const first = (manifest.textures ??= []).length;
-  const material = { ...worldSurfaceMesh().materials![0]!, base: first, normal: first + 1, mro: first + 2 };
-  manifest.materials = [...(manifest.materials ?? []), material];
-  return { manifest, material };
+  const materials = worldSurfaceMeshes().map((mesh, k) => ({ ...mesh.materials![0]!, base: first + 3 * k, normal: first + 3 * k + 1, mro: first + 3 * k + 2 }));
+  manifest.materials = [...(manifest.materials ?? []), ...materials];
+  return { manifest, materials };
 }
 
+/** The finishes' maps as the rgba variant has them: uploads for a frame, and the twin's sampler. */
 export function worldMaps(pack: Pack): { sample: WorldSample; uploads: TextureUpload[] } {
-  const material = pack.header.materials!.find((m) => m.id === SURFACE_MATERIAL)!;
-  const source = worldMaterial();
+  const sources = worldMaterials();
   const uploads: TextureUpload[] = [];
-  const maps = (["base", "normal", "mro"] as const).map((role) => {
-    const t = rgbaOf(source, role, 2048);
-    t.pictures.forEach((data, k) => uploads.push({ slot: material[role], role, format: "rgba", top: t.top, size: 1 << k, row: 0, rows: 1 << k, data, last: k === t.pictures.length - 1 }));
-    return decodeTexture(role, t.pictures);
+  const maps: Texture[][] = SURFACE_NAMES.map((name, k) => {
+    const material = pack.header.materials!.find((m) => m.id === surfaceMaterial(name))!;
+    return ROLES.map((role) => {
+      const top = pack.header.textures![material[role]]!.top;
+      const t = rgbaOf(sources[k]!, role, top);
+      t.pictures.forEach((data, i) => uploads.push({ slot: material[role], role, format: "rgba", top: t.top, size: 1 << i, row: 0, rows: 1 << i, data, last: i === t.pictures.length - 1 }));
+      return decodeTexture(role, t.pictures);
+    });
   });
-  return { sample: (role, u, v, spread, out) => sampleWorldTexture(maps[role]!, u, v, spread, out), uploads };
+  return { sample: (role, layer, u, v, spread, out) => sample(maps[layer]![role]!, u, v, spread, out), uploads };
 }
 
 export function surfaceProbeView(width: number, height: number): ProvingView {

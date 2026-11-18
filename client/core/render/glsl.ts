@@ -10,7 +10,7 @@ import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE
 import { AIR } from "./atmosphere.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { LIGHT, THROUGH } from "./surface.ts";
-import { GROUND_GLSL, WORLD_GLSL } from "./world-surfaces.ts";
+import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
 
 const f = (n: number): string => n.toFixed(4);
 
@@ -56,11 +56,12 @@ flat in int vSurface;
 uniform float uSolid, uAlpha;
 out vec4 o;
 ${LIGHT}${SHADOW_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}void main() {
-  vec3 geometric = normalize(cross(dFdx(vRel), dFdy(vRel)));
+  vec3 dx = dFdx(vRel), dy = dFdy(vRel);
+  vec3 geometric = normalize(cross(dx, dy));
   vec3 n = geometric;
   vec3 albedo = vColor;
   vec3 orm = vec3(1.0, 1.0, 0.0);
-  if (uSolid < 1.5 && uWorldReady > 0.5) worldSurface(albedo, orm, n, geometric, vSurface);
+  if (uSolid < 1.5 && uWorldReady > 0.5) worldSurface(albedo, orm, n, geometric, vSurface, vRel, dx, dy);
   vec3 v = -normalize(vRel);
   // A rough finish mirrors the sky's light, which is a colour; only a smooth one shows the sky's picture.
   vec3 r = reflect(-v,n);
@@ -206,8 +207,9 @@ void main() {
  * The lit tiers' ground: LIT lit by the ground's own normal, the face's still choosing the finish's projection and where
  * growth takes, and putting the sun's shadow off the surface. Its cover is the tint of the four samples round the pixel
  * with most of their weight at a place moved by a wander of a fraction of a metre (world-surfaces.ts `groundCover`), so
- * an edge between two covers curves and wanders across a cell. It reads the picture its tile reads at that picture's
- * own samples, however coarse the tile, so it does not change as a tile splits.
+ * an edge between two covers curves and wanders across a cell; where its finish meets another's, the higher of their
+ * painted heights shows through (`groundMeet`). It reads the picture its tile reads at that picture's own samples,
+ * however coarse the tile, so it does not change as a tile splits.
  */
 export const LIT_TERRAIN_FRAGMENT = `#version 300 es
 precision highp float;
@@ -219,17 +221,33 @@ uniform highp sampler2D uPalette;
 uniform vec4 uField;
 uniform vec2 uLast;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}void main() {
+${LIGHT}${SHADOW_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}vec3 groundColour(int tint) {
+  vec3 c = texelFetch(uPalette, ivec2(tint, 0), 0).rgb;
+  return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
+}
+void main() {
   vec3 dx = dFdx(vRel), dy = dFdy(vRel);
   vec3 geometric = normalize(cross(dx, dy));
   vec2 s = clamp(vAt + groundWander(vRel.xz + uWorldEye.xz, max(length(dx.xz), length(dy.xz))) / uField.z, vec2(0.0), uLast);
   ivec2 i = min(ivec2(s), ivec2(uLast) - 1);
-  int tint = groundCover(ivec4(texelFetch(uTint, i, 0).r, texelFetch(uTint, i + ivec2(1, 0), 0).r, texelFetch(uTint, i + ivec2(0, 1), 0).r, texelFetch(uTint, i + 1, 0).r), s - vec2(i));
-  vec3 c = texelFetch(uPalette, ivec2(tint, 0), 0).rgb;
-  vec3 albedo = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
-  vec3 n = normalize(vNormal);
+  ivec4 tints = ivec4(texelFetch(uTint, i, 0).r, texelFetch(uTint, i + ivec2(1, 0), 0).r, texelFetch(uTint, i + ivec2(0, 1), 0).r, texelFetch(uTint, i + 1, 0).r);
+  int tint = groundCover(tints, s - vec2(i));
+  vec3 albedo = groundColour(tint);
+  vec3 n = normalize(vNormal), level = n;
   vec3 orm = vec3(1.0, 1.0, 0.0);
-  if (uWorldReady > 0.5) worldSurface(albedo, orm, n, geometric, groundSurface(tint));
+  if (uWorldReady > 0.5) {
+    float h = worldSurface(albedo, orm, n, geometric, groundSurface(tint), vRel, dx, dy), share;
+    // Where it meets another finish, the higher of the two shows through the other.
+    int other = groundMeet(tint, tints, s - vec2(i), share);
+    if (share > 0.0) {
+      vec3 albedo2 = groundColour(other), orm2, n2 = level;
+      float b = higher(h, worldSurface(albedo2, orm2, n2, geometric, groundSurface(other), vRel, dx, dy), share, ${f(GROUND_SCALE)}, ${f(GROUND_BAND)});
+      albedo = mix(albedo, albedo2, b);
+      orm = mix(orm, orm2, b);
+      n = normalize(mix(n, n2, b));
+      worldSharp = orm.y < ${f(WORLD_SHARP)};
+    }
+  }
   vec3 v = -normalize(vRel);
   vec3 r = reflect(-v,n);
   vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : worldSharp ? skyFrom(r) : skyLight(r);
