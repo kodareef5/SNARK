@@ -65,13 +65,17 @@ holds several gigabytes of them; `du -sh var/mapdata/*` says what each city keep
 ## Building a city without its downloads: kits
 
 A machine that works on what the build makes of a city (buildings, furniture, the look) needs the prepared layers, not
-the downloads. The machine that holds the downloads packs each city; another unpacks it and builds:
+the downloads. The machine that holds the downloads publishes the cities' kits to the repository's `mapdata` branch,
+which holds the latest kits and no history (it is made again whole each time, so the repository does not grow with
+them); another machine fetches them and builds:
 
 ```sh
-bun tools/maps/kit.ts pack all                         # var/kits/<city>-<cut>.tar.gz and its .json, 0.2 to 0.4 GB each
-bun tools/maps/kit.ts unpack var/kits/miami-<cut>.tar.gz
-bun tools/maps/city.ts miami                           # every stage but the build unchanged; the build makes the map
+bun tools/maps/kit.ts publish      # on the machine with the downloads: every city packed onto the remote's mapdata branch
+bun tools/maps/kit.ts fetch        # elsewhere: the kits into var/kits, each unpacked into var/mapdata
+bun tools/maps/city.ts miami       # every stage but the build unchanged; the build makes var/maps/miami.snmap
 ```
+
+`pack <city|all>` and `unpack <file>` do one kit by hand (var/kits/<city>-<cut>.tar.gz and its .json, 0.2 to 0.4 GB).
 
 A kit is the cut's work folder less `raw/` and `reports/`, with `raw/osm/all.json` kept for the world stage, and the
 stages' keys. Keys are inputs and code, never paths, so at the kit's commit every stage but the build is done; an edit
