@@ -6,8 +6,9 @@ import levels from "./ref/distance.json";
 export function distanceLods(names: readonly string[], palette: Uint8Array): SourceLod[] {
   // The outer bars, wing base and bill keep each animal's own dyes even when textures drop out.
   const pigments = [
-    REGION_BASE, REGION_BASE + 1, nearestColour(palette, 155, 120, 96), REGION_BASE + 2,
-    nearestColour(palette, 109, 68, 50), nearestColour(palette, 94, 81, 71), nearestColour(palette, 177, 155, 116),
+    REGION_BASE, REGION_BASE + 4, REGION_BASE + 5, REGION_BASE + 2,
+    nearestColour(palette, 222, 138, 66), nearestColour(palette, 79, 103, 118),
+    nearestColour(palette, 148, 170, 174), REGION_BASE + 1,
   ];
   return levels.map(level => {
     const positions: number[] = [], bones: number[] = [], colors: number[] = [], indices: number[] = [];

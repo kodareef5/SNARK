@@ -101,12 +101,12 @@ for far in [False, True]:
             (1.50, 1.30, 0, 0, "skull"),
         ],
         4 if far else 6,
-        lambda i, k: (2 if k < 2 else 1) if i < 5 else (4 if k < 2 else 3),
+        lambda i, k: (5 if i < 3 and k < (2 if far else 3) else 2) if i < 7 else 3,
     )
     axial(
         [(0.14, 1.71, 0, 0, "skull"), (0.43, 1.49, 0.055, 0.085, "skull"), (0.65, 1.385, 0.093, 0.08, "skull")],
         3 if far else 4,
-        lambda i, k: 4 if i else 0,
+        lambda i, k: 4 if i else 3,
     )
     if not far:
         axial(
@@ -141,7 +141,17 @@ for far in [False, True]:
         rings.append([vertex(tip, "wing_4" + suffix)])
         tube(
             rings,
-            lambda i, k: 0 if i >= len(stations) - 2 else 5 if (i % 3 == 1 and k == 0) else 1 if k < 2 else 6,
+            lambda i, k: (
+                0
+                if i >= len(stations) - 2
+                else 5
+                if (i % 3 == 1 and k == 0)
+                else 7
+                if i == 0 and k < 2
+                else 1
+                if k < 2
+                else 6
+            ),
         )
         if not far:
             rows = []

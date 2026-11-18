@@ -256,11 +256,7 @@ spec = mat["extensions"]["KHR_materials_pbrSpecularGlossiness"]
 base = picture(spec["diffuseTexture"]["index"]).convert("RGB")
 normal = np.asarray(picture(mat["normalTexture"]["index"]).convert("RGB"), dtype=float) / 127.5 - 1
 normal /= np.maximum(np.linalg.norm(normal, axis=2, keepdims=True), 1e-7)
-put(Image.fromarray(np.uint8(np.clip(normal * 127.5 + 127.5, 0, 255))), "normal")
 occlusion = np.asarray(picture(mat["occlusionTexture"]["index"]).convert("RGB"))[:, :, 0]
-gloss = np.asarray(picture(spec["specularGlossinessTexture"]["index"]))[:, :, 3]
-rough = np.clip(255 - gloss, 83, 236)
-put(Image.fromarray(np.stack((occlusion, rough, np.zeros_like(rough)), -1)), "packed", 512)
 
 # Rasterize anatomical coordinates in the donor's UV charts. A shared folded
 # wing always takes the same dyes, both in flight and standing under its rider.
@@ -291,44 +287,31 @@ def raster(vertex_values):
     return out[tuple(idx)]
 
 
-# Subtle natural colour remains beneath each dye, with a separate root wash,
-# outer finger band, and undyed eyes and tongue.
-membrane = dyes[:, 0].copy()
-x, y, z = fitted.T
-span = abs(x)
-# Pale inner sail, darker trailing-edge bars and dark crown tip. Motion
-# carries the pattern in UV space; the six dye fields follow their exact
-# creature-content order (pattern, wing base, horn, inner crest, sail, body).
-sweep = z + 0.18 * span
-bars = np.exp(-(((span - 2.10 + 0.38 * sweep) / 0.105) ** 2)) + 0.85 * np.exp(
-    -(((span - 2.64 + 0.46 * sweep) / 0.12) ** 2)
+# Project the individual tissues as well as their positions into the original UV charts.
+def tissue(predicate):
+    return np.sum(w * np.asarray([predicate(b) for b in bones])[j], axis=1)
+
+
+from seabird import paint
+
+fields = raster(
+    np.column_stack(
+        (
+            fitted,
+            dyes[:, 0],
+            dyes[:, 2],
+            tissue(
+                lambda b: any(
+                    part in b for part in ("ankle", "thumb", "index", "middle", "pinky", "ring", "finger")
+                )
+            ),
+            tissue(lambda b: b in ("L_eye", "R_eye")),
+            tissue(lambda b: "tongue" in b),
+        )
+    )
 )
-rim = ease(2.94, 3.43, span)
-pattern = np.clip(0.66 * bars + 0.72 * rim, 0, 1)
-dyes[:, 0] = membrane * pattern
-dyes[:, 1] = membrane * (1 - pattern) * (0.15 + 0.57 * ease(-0.45, 0.05, sweep))
-dyes[:, 4] = membrane - dyes[:, 1] - dyes[:, 0]
-crest = dyes[:, 2] * ease(1.46, 1.65, y) * (1 - ease(0.48, 0.72, z))
-dyes[:, 2] -= crest
-dyes[:, 3] = crest
-fields = raster(np.column_stack((dyes, fitted)))
-dye = np.uint8(np.clip(fields[:, :, :6] * 0.55 * 255, 0, 255))
-put(Image.fromarray(dye[:, :, :3]), "mask", 512)
-put(Image.fromarray(dye[:, :, 3:]), "mask2", 512)
-
-
-def field(i):
-    return np.asarray(Image.fromarray(fields[:, :, i]).resize(base.size, Image.Resampling.BILINEAR))
-
-
-bars, sail, crown = field(0), field(4), field(3)
-rgb = np.asarray(base, dtype=np.float32)
-# Cool the dark outer bars, retain ochre light in the translucent-looking
-# sail and pick out the swept crest tip against a bright sky.
-rgb *= 1 - bars[:, :, None] * [0.34, 0.20, 0.10] - crown[:, :, None] * [0.25, 0.18, 0.12]
-rgb += sail[:, :, None] * [4, 6, 7]
-put(Image.fromarray(np.uint8(np.clip(rgb, 0, 255))), "base")
-x, y, z = fields[:, :, 6:].transpose(2, 0, 1)
+paint(fields, base, normal, occlusion, put)
+x, y, z = fields[:, :, :3].transpose(2, 0, 1)
 wound = np.exp(-(((abs(x) - 1.15) / 0.26) ** 2) - ((z + 0.28 - 0.17 * (abs(x) - 1.15)) / 0.026) ** 2)
 wound += np.exp(-(((z + 0.22) / 0.16) ** 2) - ((y - 0.80 - 0.12 * z) / 0.018) ** 2) * (abs(x) < 0.32)
 wound = np.uint8(np.clip(wound * 255, 0, 245))
