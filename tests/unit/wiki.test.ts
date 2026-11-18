@@ -231,6 +231,12 @@ test("every page is whole HTML, names only what it has, and writes what the cont
     expect(pages.get("settings/")).toContain('<td data-setting="TamingSpeedMultiplier">1</td>');
     expect(pages.get("")).toContain("Not in the wiki: maps still being made: Tampa.");
     expect(pages.get("controls/")).toContain("get in or out of a seat");
+    // The vehicles' page sets them side by side under their cards, each name of a row a link to its page.
+    const fleet = pages.get("vehicles/")!;
+    expect([...fleet.matchAll(/<h2>([^<]+)<\/h2>/g)].map((m) => m[1])).toEqual(["On the road", "On the water", "In the air"]);
+    expect(fleet.indexOf('<div class="cards">')).toBeLessThan(fleet.indexOf("<h2>On the road</h2>"));
+    expect(fleet).toContain('<th><a href="/wiki/vehicles/helicopter/">Helicopter</a>, <a href="/wiki/vehicles/helicopter_police/">Helicopter police</a>, <a href="/wiki/vehicles/helicopter_rescue/">Helicopter rescue</a></th>');
+    expect(pages.get("vehicles/needle/")).toContain("<h2>How it handles</h2>");
     expect(() => checkLinks(new Map([["a/", '<a href="/wiki/b/">b</a>']]), dist)).toThrow("names /wiki/b/");
     // The site's own pages are answered by the server; any other page outside the wiki is not there.
     expect(pages.get("")).toContain('<a href="/source/">');

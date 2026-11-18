@@ -1,6 +1,6 @@
 // How each vehicle drives, measured when the wiki is built by running its own step with one survivor aboard: a road
 // vehicle on a flat plane of the ground every city street is to a wheel, a vessel on open water, a helicopter over flat
-// ground. Only its gears, which wheels it drives and its engine's power are read from its definition, as its step reads them.
+// ground. Only what drives it (its gears, driven wheels and engine power, a vessel's drives) is read from its definition.
 // Speeds are in metres a second, distances in metres, times in seconds, fuel in the tank's own units.
 
 import { TICK_DT } from "../../shared/coords.ts";
@@ -8,7 +8,7 @@ import { clamp, TAU } from "../../shared/math/scalar.ts";
 import { boatRestY, createBoat, stepBoat, type BoatState, type BoatWorld } from "../../shared/sim/boat.ts";
 import { createHelicopter, stepHelicopter, type HelicopterInput, type HelicopterState, type HelicopterWorld } from "../../shared/sim/helicopter.ts";
 import { createVehicle, stepVehicle, boatDrives, type BoatVehicleDefinition, type CarState, type RotorVehicleDefinition, type VehicleDefinition, type VehicleSpec, type VehicleWorld, type WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
-import { DEFAULT_DRIVETRAIN, engineTorqueAt } from "../../shared/sim/vehicle-drivetrain.ts";
+import { DEFAULT_DRIVETRAIN, engineTorqueAt, vehicleMass } from "../../shared/sim/vehicle-drivetrain.ts";
 import { OFFROAD } from "../../shared/world/vehicle-surface.ts";
 
 export const KMH = 1 / 3.6;
@@ -106,10 +106,10 @@ function holder(target: number): (speed: number) => number {
   };
 }
 
-/** Steps until `done` or `seconds` pass; returns the seconds stepped. */
-function run(seconds: number, step: (t: number) => boolean | void): number {
+/** Steps a tick at a time until `step` says it is done or `seconds` pass; returns the seconds stepped. */
+function run(seconds: number, step: () => boolean | void): number {
   const ticks = Math.round(seconds / TICK_DT);
-  for (let k = 0; k < ticks; k++) if (step(k * TICK_DT)) return (k + 1) * TICK_DT;
+  for (let k = 0; k < ticks; k++) if (step()) return (k + 1) * TICK_DT;
   return seconds;
 }
 
@@ -224,7 +224,7 @@ export function roadHandling(def: WheelVehicleDefinition, driver: number): RoadH
   return {
     movement: "wheeled", to100, reaches100, top: flat.top, toTop, topGear: flat.end.gear, gears: train.forwardRatios.length,
     reverse, braking, turning, circle: circleSpeed(p, car, flat.top), front: p.frontDriveShare ?? null, power, powerRpm,
-    mass: p.mass ?? 1100, range60: p.fuelCapacity / per60, rangeTop: p.fuelCapacity / flat.fuelPerMetre,
+    mass: vehicleMass(p, { payloadMass: 0 }), range60: p.fuelCapacity / per60, rangeTop: p.fuelCapacity / flat.fuelPerMetre,
   };
 }
 
@@ -351,9 +351,9 @@ export function rotorHandling(def: RotorVehicleDefinition, driver: number): Roto
 
 const measured = new Map<string, Handling>();
 
-/** How a vehicle drives, measured once a build for each distinct definition of its movement and specification. */
+/** How a vehicle drives, measured once a build for each definition; one that differs from another by its id alone shares its figures. */
 export function handlingOf(def: VehicleDefinition, driver: number): Handling {
-  const key = JSON.stringify([def.movement ?? "wheeled", def.spec, driver]);
+  const key = JSON.stringify([{ ...def, id: "" }, driver]);
   let h = measured.get(key);
   if (!h) {
     h = def.movement === "rotor" ? rotorHandling(def, driver) : def.movement === "boat" ? boatHandling(def, driver) : roadHandling(def, driver);
