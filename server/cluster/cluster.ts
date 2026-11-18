@@ -1,3 +1,4 @@
+import { addBrowserHash,hasBrowserHash,ownsSurvivor } from "../survivor-access.ts";
 // The servers of a cluster as one of them sees them, and the survivors that leave it for another and come from one. The
 // design, its durable states and how each is recovered are in planning/architecture/transfers.md.
 
@@ -239,6 +240,7 @@ export class Cluster {
       port: this.port,
       url: this.url,
       players: game.playerCount,
+      password:!!game.opts.password,
       max: game.opts.maxClients,
       content: reg.coreHash,
       survivors: !rules.on("PreventDownloadSurvivors") && !rules.on("noTributeDownloads"),
@@ -440,7 +442,9 @@ export class Cluster {
     if (place.by !== 0) return `${name} is on ${this.serverName(place.by)}: travel back from there`;
     const parcel = this.read(place);
     if (!parcel) return `${name}'s file in the cluster's folder is damaged: ask an operator`;
-    if (parcel.head.key === "" || hex(hashKey(key)) !== parcel.head.key) return `${name} is travelling to ${this.serverName(a.to)}`;
+    let owner=parcel.head.key!=="" && hex(hashKey(key))===parcel.head.key;
+    if(!owner){try{owner=ownsSurvivor(parcelRecords(this.ctx!.reg,parcel)[0]!,key);}catch{}}
+    if (!owner) return `${name} is travelling to ${this.serverName(a.to)}`;
     return this.takeBack(parcel, false) ? "" : `${name} is on ${this.serverName(a.to)}: travel back from there`;
   }
 
@@ -499,7 +503,10 @@ export class Cluster {
     const delta = world.tick - head.tick - transit;
     for (const r of recs) rebaseTicks(r, delta);
     const rec = recs[0]!;
-    if (key.length > 0) rec.keyHash = key.slice();
+    if (key.length > 0) {
+      if(rec.keyHash && hasBrowserHash(rec,key) && hex(rec.keyHash)!==hex(key))addBrowserHash(rec,rec.keyHash);
+      rec.keyHash = key.slice();
+    }
     // Every arrival, home included, chooses where it rises, at a spawn point or a bed of its tribe's, as on ARK's spawn screen,
     // and never where it last stood: that would let one leave from inside a base it broke into and come back inside it. Until
     // it chooses it is kept at the spawn point. One taken back from a ticket never used never left, as one that logs out and

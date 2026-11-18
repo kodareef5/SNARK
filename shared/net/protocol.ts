@@ -4,11 +4,12 @@
 //   client -> server
 //     HELLO     reliable     version u16, content hash u32 (of the definitions as written, untuned), clip hash u32,
 //                            name string, flags u8, device key (16 bytes), with HELLO_LOOK a look (28 bytes),
-//                            with HELLO_TICKET a travel ticket (32 bytes), password string ("" for none)
+//                            with HELLO_TICKET a travel ticket (32 bytes), password string ("" for none), with HELLO_NEW a 16-byte create request id
 //     INPUT     unreliable   ack tick u32, ticks behind it that others are drawn u8 (sixteenths), newest tick u32,
 //                            count-1 (3 bits), then inputs newest first. Each after the first is preceded by
 //                            one bit: 1 = same as the one before.
 //     COMMAND   reliable     sequence u16 (1 to 65,535, then 1 again), op u8, arguments by op
+//               CMD_CREATE carries the look and an optional public spawn index (u8).
 //   server -> client
 //     WELCOME   reliable     version u16, tick u32, own handle u32, species u16, session state 2 bits, admin 1 bit,
 //                            day offset u32, map id string, map hash u32, chunksX-1 u8, chunksZ-1 u8, own body,
@@ -63,7 +64,7 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 31 combines ground creature prediction counters with the parked-car brake in contact snapshots.
  * The earlier road-only 29 and ground-mount 30 clients cannot read the combined contract.
  */
-export const PROTOCOL_VERSION = 31;
+export const PROTOCOL_VERSION = 32;
 
 // Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
@@ -239,6 +240,9 @@ export const HELLO_LOOK = 2;
 export const HELLO_TICKET = 4;
 /** Protocol 21. The client holds the map's statics (shared/world/mapfile.ts) and takes a chunk's from them, all but the slots CHUNK sends. */
 export const HELLO_STATICS = 8;
+/** Explicit title actions distinguish making a new survivor from resuming an existing one. */
+export const HELLO_NEW = 16;
+export const HELLO_RESUME = 32;
 export const KEY_BYTES = 16;
 /** A transfer's id (16 bytes), then the secret that lets one browser take it (16 bytes). */
 export const TICKET_BYTES = 32;
@@ -700,7 +704,7 @@ export function readBody(r: BitReader, b: Body): void {
 }
 
 /** `key` must be KEY_BYTES long, and a `ticket` TICKET_BYTES. */
-export function writeHello(w: BitWriter, version: number, contentHash: number, clipHash: number, name: string, flags: number, key: Uint8Array, look: Uint8Array | null = null, password = "", ticket: Uint8Array | null = null): void {
+export function writeHello(w: BitWriter, version: number, contentHash: number, clipHash: number, name: string, flags: number, key: Uint8Array, look: Uint8Array | null = null, password = "", ticket: Uint8Array | null = null, createRequest?: Uint8Array): void {
   w.bits(C_HELLO, 4);
   w.u16(version);
   w.u32(contentHash);
@@ -712,6 +716,7 @@ export function writeHello(w: BitWriter, version: number, contentHash: number, c
   if (look) for (let i = 0; i < LOOK_BYTES; i++) w.u8(look[i] ?? 0);
   if (ticket) for (let i = 0; i < TICKET_BYTES; i++) w.u8(ticket[i] ?? 0);
   w.string(password);
+  if ((flags & HELLO_NEW) && createRequest?.length===KEY_BYTES) for(const b of createRequest)w.u8(b);
 }
 
 /** A connection's commands are numbered from 1 without gaps. After 65,535 comes 1, since 0 names no command. */
