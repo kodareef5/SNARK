@@ -1,7 +1,10 @@
 // Native vehicle impacts spend kinetic energy to fracture wood nodes. The resource lifecycle owns every disappearance.
+// A street lamp or pole hit as hard falls the same way: the same account, then its fallen kind swapped in where it stood.
+import { STREET_TOPPLES } from "../content/street.ts";
 import { CHUNK_SIZE, TICK_DT } from "../shared/coords.ts";
 import { Body } from "../shared/sim/character.ts";
 import { stepVehicleBody } from "../shared/sim/vehicle-body.ts";
+import { applyVehicleImpulse, vehicleMassProperties, vehiclePointInverseMass, vehiclePointVelocity } from "../shared/sim/vehicle-rigid.ts";
 import { TreeFracture } from "../shared/sim/vehicle-tree.ts";
 import { isWheelVehicle, type VehicleContact, type VehicleSpec, type VehicleState } from "../shared/sim/vehicle.ts";
 import { StaticVehicleWorld } from "../shared/world/vehicle.ts";
@@ -9,15 +12,26 @@ import { VehicleNodeCache } from "./vehicle-node-cache.ts";
 import type { Harvest } from "./harvest.ts";
 import type { ServerWorld } from "./world.ts";
 
+/** As a trunk's fracture: the slowest closing speed that fells, the share of a payload a chassis puts into a post, and the
+ * share of the speed left that the crumpled front keeps. */
+const TOPPLE_CLOSING = 3, TOPPLE_PAYLOAD = .5, TOPPLE_DEFORMATION = .12;
+
 export class VehicleTrees extends StaticVehicleWorld {
   private readonly fracture: TreeFracture;
   private readonly authority: ServerWorld;
   private readonly harvest: Harvest;
   private readonly sleeping = new Body();
   private readonly nodes: VehicleNodeCache;
+  /** A street piece a car can knock down, by its kind: the kind it falls as and the work its foot takes. */
+  private readonly topples = new Map<number, { into: number; work: number }>();
+  private readonly point = new Float64Array(3);
   constructor(authority: ServerWorld, harvest: Harvest) {
     super(authority); this.authority = authority; this.harvest = harvest; this.fracture = new TreeFracture(authority.reg, harvest.field.forms);
     this.nodes = new VehicleNodeCache(harvest.field.source);
+    for (const [from, t] of Object.entries(STREET_TOPPLES)) {
+      const a = authority.reg.index.get(from), b = authority.reg.index.get(t.into);
+      if (a !== undefined && b !== undefined) this.topples.set(a, { into: b, work: t.work });
+    }
   }
 
   /** Cold nodes are retained only for the swept neighbourhood of this wheel step, then released symmetrically. */
@@ -46,6 +60,7 @@ export class VehicleTrees extends StaticVehicleWorld {
   };
 
   breakContact(state: VehicleState, spec: VehicleSpec, hit: VehicleContact): number | null {
+    if (hit.reason.startsWith("structure:")) return this.topple(state, spec, hit);
     if (!hit.reason.startsWith("node:") || hit.x === undefined || hit.y === undefined || hit.z === undefined) return null;
     const ref = Number(hit.reason.slice(5)), chunk = Math.floor(ref / 65536), index = ref & 65535;
     const field = this.harvest.field, row = field.store.chunks[chunk], form = row?.kind[index] ?? 0;
@@ -53,5 +68,25 @@ export class VehicleTrees extends StaticVehicleWorld {
     const impulse = this.fracture.impulse(state, spec, hit, form);
     if (!Number.isFinite(impulse) || !this.harvest.breakTree(chunk, index)) return null;
     return this.fracture.apply(state, spec, hit, form, impulse);
+  }
+
+  /** A lamp or a pole hit hard enough falls: its foot's work out of the impact as a trunk's, then its fallen kind in its place. */
+  private topple(state: VehicleState, spec: VehicleSpec, hit: VehicleContact): number | null {
+    if (hit.x === undefined || hit.y === undefined || hit.z === undefined) return null;
+    const ref = Number(hit.reason.slice(10)), structs = this.authority.structs;
+    const t = this.topples.get(structs.chunks[Math.floor(ref / 65536)]?.kind[ref & 65535] ?? 0);
+    if (!t) return null;
+    vehiclePointVelocity(state, spec, hit.x, hit.y, hit.z, this.point);
+    const closing = -(this.point[0]! * hit.nx + this.point[1]! * hit.ny + this.point[2]! * hit.nz);
+    if (!(closing >= TOPPLE_CLOSING)) return null;
+    const inverseMass = vehiclePointInverseMass(state, spec, hit.x, hit.y, hit.z, hit.nx, hit.ny, hit.nz);
+    const mass = vehicleMassProperties(spec, state).mass, curb = mass - Math.max(0, state.payloadMass);
+    const usable = curb + Math.min(Math.max(0, state.payloadMass), curb * TOPPLE_PAYLOAD);
+    const fraction = t.work / (.5 * closing * closing / (inverseMass * mass / usable));
+    if (!(fraction <= 1) || !structs.swap(ref, t.into)) return null;
+    const after = closing * Math.sqrt(Math.max(0, (1 - fraction) * (1 - TOPPLE_DEFORMATION)));
+    const impulse = (closing - after) / inverseMass;
+    applyVehicleImpulse(state, spec, hit.x, hit.y, hit.z, hit.nx * impulse, hit.ny * impulse, hit.nz * impulse);
+    return Math.sqrt(Math.max(0, closing * closing - after * after));
   }
 }
