@@ -79,7 +79,9 @@ test('qualified target teleports, omitted targets and recycled slots cannot repl
   s.snapshot.count = 0; s.snapshot.tick++;
   s.prediction.accept(s.snapshot); expect(s.prediction.stats.proxies).toBe(0);
   s.draw.gen[0]--; s.prediction.draw(s.draw, 0, 1, 11); expect(s.draw.z[0]).toBe(42);
-  s.prediction.update(900); s.draw.z[0] = 75; s.prediction.draw(s.draw, 0, 1, 11); expect(s.draw.z[0]).toBe(75);
+  s.prediction.update(900); s.draw.z[0] = 75; s.prediction.draw(s.draw, 0, 1, 11); expect(s.draw.z[0]).toBeCloseTo(49.2, 4);
+  for (let i = 0; i < 60; i++) { s.prediction.update(100); s.draw.z[0] = 75; s.prediction.draw(s.draw, 0, 1, 11); }
+  expect(s.draw.z[0]).toBe(75);
 });
 
 test('stale and fixed target facts cannot keep driving speculative bodies', () => {
@@ -91,7 +93,9 @@ test('stale and fixed target facts cannot keep driving speculative bodies', () =
   s.prediction.draw(s.draw, 0, 1, 11); expect(s.draw.z[0]).toBe(40);
   s.draw.z[0] = 70;
   s.prediction.draw(s.draw, 0, 1, 23); expect(s.draw.z[0]).toBe(40);
-  s.prediction.update(900); s.draw.tick = 23; s.draw.z[0] = 70; s.prediction.draw(s.draw, 0, 1, 23); expect(s.draw.z[0]).toBe(70);
+  s.prediction.update(900); s.draw.tick = 23; s.draw.z[0] = 70; s.prediction.draw(s.draw, 0, 1, 23); expect(s.draw.z[0]).toBeCloseTo(47.2, 4);
+  for (let i = 0; i < 60; i++) { s.prediction.update(100); s.draw.z[0] = 70; s.prediction.draw(s.draw, 0, 1, 23); }
+  expect(s.draw.z[0]).toBe(70);
   s.snapshot.epoch++;
   expect(s.prediction.accept(s.snapshot)).toBe(true);
   expect(s.prediction.accept(s.snapshot)).toBe(false);
@@ -188,20 +192,49 @@ test('approaching vehicles converge visually before becoming physical candidates
   expect(Math.abs(s.draw.z[0]! - (s.target.z + .5 - 15 * 8 / 30))).toBeLessThan(.35);
 });
 
-test('expired vehicle motion holds its last display until the older ordinary view catches up', () => {
+test('expired physical motion hands over to the moving ordinary view without freezing or extending simulation', () => {
   const s = setup(), before = new Body();
   s.target.vz = 10; s.target.fuel = 0; contactBody(s.target, s.p.state);
   s.prediction.accept(s.snapshot); s.prediction.beginReplay(); s.prediction.finishReplay();
   s.prediction.draw(s.draw, 0, 1, 10);
   for (let t = 11; t <= 22; t++) { s.prediction.step(t, before, s.own, COMPACT_VEHICLE); s.prediction.draw(s.draw, 0, 1, t); }
   const shown = s.draw.z[0]!, steps = s.prediction.stats.steps;
-  for (let t = 23; t <= 29; t++) {
-    s.prediction.update(1000 / 30); s.prediction.step(t, before, s.own, COMPACT_VEHICLE);
-    s.draw.tick = 10; s.draw.z[0] = 40; s.prediction.draw(s.draw, 0, 1, t);
-    expect(s.draw.z[0]).toBe(shown);
+  s.draw.z[0] = 40; s.prediction.draw(s.draw, 0, 1, 23); expect(s.draw.z[0]).toBe(shown);
+  let previous = shown;
+  for (let i = 1; i <= 120; i++) {
+    s.prediction.update(1000 / 30); s.prediction.step(23 + i, before, s.own, COMPACT_VEHICLE);
+    s.draw.tick = 10 + i; s.draw.z[0] = 40 + i / 3; s.prediction.draw(s.draw, 0, 1, 23 + i);
+    expect(s.draw.z[0]! - previous).toBeGreaterThan(.06); expect(s.draw.z[0]! - previous).toBeLessThan(.334); previous = s.draw.z[0]!;
   }
-  expect(s.prediction.stats.steps).toBe(steps);
-  s.draw.tick = 30; s.draw.z[0] = 50; s.prediction.draw(s.draw, 0, 1, 30);
-  expect(s.draw.z[0]).toBe(shown);
-  s.prediction.update(900); s.draw.z[0] = 50; s.prediction.draw(s.draw, 0, 1, 30); expect(s.draw.z[0]).toBe(50);
+  expect(s.prediction.stats.steps).toBe(steps); expect(s.draw.z[0]).toBeCloseTo(80, 5);
+});
+
+test('active withdrawal survives repeated packets/replay and rebases once when a faster link returns', () => {
+  const s = setup(); s.prediction.draw(s.draw, 0, .25, 10);
+  const q = new Float64Array(4);
+  let previous = s.draw.z[0]!;
+  for (let frame = 0; frame < 60; frame++) {
+    s.snapshot.tick = 11 + frame; s.target.z = 40 + frame * .4;
+    s.target.vehicleQy = Math.sin(frame * .005); s.target.vehicleQw = Math.cos(frame * .005);
+    contactBody(s.target, s.p.state);
+    s.prediction.accept(s.snapshot, undefined, s.snapshot.tick + 10, .25);
+    s.prediction.beginReplay(.25); s.prediction.finishReplay(.25); s.prediction.update(1000 / 60);
+    s.draw.z[0] = 35 + frame * .4; s.draw.vehicleQy[0] = 0; s.draw.vehicleQw[0] = 1;
+    s.prediction.draw(s.draw, 0, .25, s.snapshot.tick + 10);
+    if (frame > 0) expect(s.draw.z[0]! - previous).toBeGreaterThan(.25);
+    previous = s.draw.z[0]!;
+  }
+  const beforeQ = [s.draw.vehicleQx[0]!, s.draw.vehicleQy[0]!, s.draw.vehicleQz[0]!, s.draw.vehicleQw[0]!];
+  // New facts and multiple replays may arrive before the next render; none may add the old offset twice.
+  for (let repeat = 0; repeat < 3; repeat++) {
+    s.prediction.accept(s.snapshot, undefined, s.snapshot.tick + 6, .25);
+    s.prediction.beginReplay(.25); s.prediction.finishReplay(.25);
+  }
+  s.draw.z[0] = 58.6; s.prediction.draw(s.draw, 0, .25, s.snapshot.tick + 6);
+  expect(s.draw.z[0]).toBeCloseTo(previous, 5);
+  q.set([s.draw.vehicleQx[0]!, s.draw.vehicleQy[0]!, s.draw.vehicleQz[0]!, s.draw.vehicleQw[0]!]);
+  expect(Math.abs(q.reduce((sum, n, i) => sum + n * beforeQ[i]!, 0))).toBeCloseTo(1, 6);
+  s.draw.z[0] = 58.6; s.prediction.draw(s.draw, 0, .25, s.snapshot.tick + 6);
+  expect(s.draw.z[0]).toBeCloseTo(previous, 5);
+  expect([s.draw.vehicleQx[0], s.draw.vehicleQy[0], s.draw.vehicleQz[0], s.draw.vehicleQw[0]]).toEqual(Array.from(q));
 });

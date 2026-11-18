@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { BREAK_AT, RUIN_SHAPES, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import { readLabels, resolveLabels, type Facts, type PublicPlace } from "./labels.ts";
 import { bridgeHoles, corridorIndex, makeBridges } from "./bridges.ts";
+import { gradeRoadEntrances, roadGroundSamples } from "./bridge-earthwork.ts";
 import { accessPlanner, gradeApproaches, type Approach } from "./ruin-access.ts";
 import { clearCirculation, reconcileRubble } from "./ruin-clearance.ts";
 import { contextualize } from "./ruin-context.ts";
@@ -96,6 +97,19 @@ export function makeRuins(site: Site): StaticPiece[] {
   const infrastructureCount = pieces.length;
   const corridors = corridorIndex(bridges.corridors);
   const planAccess = accessPlanner(site, pieces);
+  const entrances = bridges.records.flatMap(r => r.entrances);
+  const roadGround = roadGroundSamples(site, entrances);
+  // Reserve the real dry road, including its width, before choosing pedestrian door approaches. Unlike the
+  // bridge deck this is solid earth: a route several metres below it must be replanned, not cut through it.
+  for (const e of entrances) for (let k = 1; k < (e.runout?.length ?? 0); k++) {
+    const a = e.runout![k - 1]!, b = e.runout![k]!, length = Math.hypot(b.x - a.x, b.z - a.z);
+    for (let side = -e.width / 2; side <= e.width / 2; side += 4) {
+      const x = -(b.z - a.z) / length * side, z = (b.x - a.x) / length * side;
+      const street = { x: a.x + x, y: site.groundAt(a.x + x, a.z + z), z: a.z + z };
+      const door = { x: b.x + x, y: site.groundAt(b.x + x, b.z + z), z: b.z + z };
+      planAccess.reserve([{ street, door, core: door, ramp: 1 }]);
+    }
+  }
   const keptAsGround: { part: number; name: string }[] = [];
   for (const p of planned) {
     const { f, rule } = p;
@@ -145,8 +159,8 @@ export function makeRuins(site: Site): StaticPiece[] {
     if (!built) { rejected.push({ part: f.building.id, reason: samples.length === 0 ? "no 4 m tile fits" : "budget or bounds" }); continue; }
     assemblies.push(...built.assemblies);
     planAccess.reserve(approaches);
-    levelFloor(site, frame, ownerIndex.get(f.building.id)!, base);
-    gradeApproaches(site, approaches, ownerIndex.get(f.building.id)!);
+    levelFloor(site, frame, ownerIndex.get(f.building.id)!, base, roadGround);
+    gradeApproaches(site, approaches, ownerIndex.get(f.building.id)!, roadGround);
     records.push({ firstPiece: pieces.length - built.pieces.length, footprint: Math.floor(f.building.id / 4), part: f.building.id, name: p.named?.name ?? p.facts.label.name ?? null,
       district: f.district?.name ?? "Unzoned", square: p.square, recipe: rule.recipe, special: p.named?.layout ?? null,
       x: frame.x, y: base, z: frame.z, yaw: frame.yaw, width: frame.width, depth: frame.depth,
@@ -162,10 +176,12 @@ export function makeRuins(site: Site): StaticPiece[] {
   // Ground at a sample lowered to `y`, or -1 for a sample past the map's edge, which is none: not its row's neighbour.
   const lower = (row: number, col: number, y: number): number => {
     if (row < 0 || col < 0 || row >= nz || col >= nx) return -1;
-    const i = row * nx + col; site.ground.height[i] = Math.min(y, site.ground.height[i]!); return i;
+    const i = row * nx + col;
+    if (!roadGround.has(i)) site.ground.height[i] = Math.min(y, site.ground.height[i]!);
+    return i;
   };
-  for (const r of records) gradeApproaches(site, r.approaches, -1);
-  for (const r of records) gradeApproaches(site, r.approaches.map((a) => ({ street: a.door, door: a.core, core: a.core, ramp: 1 })), -1);
+  for (const r of records) gradeApproaches(site, r.approaches, -1, roadGround);
+  for (const r of records) gradeApproaches(site, r.approaches.map((a) => ({ street: a.door, door: a.core, core: a.core, ramp: 1 })), -1, roadGround);
   for (const r of records) for (const a of r.approaches) {
     const length = Math.hypot(a.core.x - a.door.x, a.core.z - a.door.z);
     for (let d = 0; d <= Math.ceil(length); d++) {
@@ -198,7 +214,10 @@ export function makeRuins(site: Site): StaticPiece[] {
   counts.fill(0); for (const key of Object.keys(usedKinds)) delete usedKinds[key];
   for (const p of pieces) { counts[ckey(p)]!++; usedKinds[p.kind] = (usedKinds[p.kind] ?? 0) + 1; }
   for (const r of bridges.records) for (const d of r.deck) if (!d.gap) {
-    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) lower(Math.round((z1 - d.z) / 2) + dz, Math.round((x1 - d.x) / 2) + dx, d.y - .4);
+    // The road approach was already fitted to the ground. Cutting a slab thickness out of its
+    // earthwork here would excavate a kerb after placement, including just outside the first slab.
+    const ceiling = d.y - (r.kind === "road_bridge" ? .02 : .4);
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) lower(Math.round((z1 - d.z) / 2) + dz, Math.round((x1 - d.x) / 2) + dx, ceiling);
   }
   for (const r of bridges.records) for (const d of r.swim) {
     for (let s = -d.distance - 2; s <= d.distance + 2; s++) for (let side = -3; side <= 3; side++) {
@@ -207,6 +226,8 @@ export function makeRuins(site: Site): StaticPiece[] {
       if (i >= 0) site.ground.water[i] = 1;
     }
   }
+  // Run after room cuts and bridge excavation, using only accepted road terminals and their actual slabs.
+  gradeRoadEntrances(site, bridges.records.flatMap(r => r.entrances));
   for (const r of records) {
     for (const a of r.approaches) site.growthRoutes.push({ points: [a.street, a.door, a.core], width: 2 });
     for (const route of [...r.rooms, ...r.escapes]) site.growthRoutes.push({ points: route.points, width: 2 });
@@ -272,8 +293,8 @@ export function makeRuins(site: Site): StaticPiece[] {
   // The walks first, so the street's wrecks and furniture stand clear of them.
   // A walk is cut where a way in to a building crosses it, and nowhere else for the routes inside buildings.
   const ways = corridorIndex(records.flatMap((r) => r.approaches.map((a) => ({ a: [a.street.x, a.street.z] as const, b: [a.door.x, a.door.z] as const, width: 3, low: a.door.y - .5, high: a.door.y + 2.5 }))));
-  const walks = makeWalks(site, v, (m) => { if (!accept(m)) return false; for (const p of m.pieces) obstacles.add(p); return true; }, (m) => m.pieces.some((p) => crosses(p, ways)), obstacles, roads);
-  const streets = makeStreetPieces(site, v, acceptProp, obstacles, roads);
+  const walks = makeWalks(site, v, (m) => { if (!accept(m)) return false; for (const p of m.pieces) obstacles.add(p); return true; }, (m) => m.pieces.some((p) => crosses(p, ways)), obstacles, roads, roadGround);
+  const streets = makeStreetPieces(site, v, acceptProp, obstacles, roads, roadGround);
   // Lettered signs come after the passes that read every piece as a box of the ruin kit.
   const signs = makeSigns(site, accept);
   const publicPlaces = makePublicPlaces(site, data.places, acceptProp, nearSign(site, 60));
@@ -373,7 +394,7 @@ function makeInfrastructure(site: Site, accept: (m: Mason) => boolean): Record<s
 
 export const RUINS: StaticLayer = { name: "ruins", make: makeRuins };
 
-function levelFloor(site: Site, frame: Frame, owner: number, base: number): void {
+function levelFloor(site: Site, frame: Frame, owner: number, base: number, protectedGround: ReadonlySet<number>): void {
   const { height, heaps } = site.ground; const { nx, nz, x1, z1 } = site.ground.grid;
   const pts = frame.rings[0]!.map(([u, v]) => worldPoint(frame, u, v));
   const minX = Math.min(...pts.map((p) => p[0])); const maxX = Math.max(...pts.map((p) => p[0]));
@@ -381,7 +402,7 @@ function levelFloor(site: Site, frame: Frame, owner: number, base: number): void
   for (let row = Math.max(0, Math.floor((z1 - maxZ) / 2)); row <= Math.min(nz - 1, Math.ceil((z1 - minZ) / 2)); row++) {
     for (let col = Math.max(0, Math.floor((x1 - maxX) / 2)); col <= Math.min(nx - 1, Math.ceil((x1 - minX) / 2)); col++) {
       const i = row * nx + col;
-      if (heaps.owner[i] !== owner || site.ground.surface[i] !== S.FLOOR) continue;
+      if (protectedGround.has(i) || heaps.owner[i] !== owner || site.ground.surface[i] !== S.FLOOR) continue;
       const dx = x1 - col * 2 - frame.x; const dz = z1 - row * 2 - frame.z;
       const u = dx * frame.c - dz * frame.s; const v = dx * frame.s + dz * frame.c;
       if (frame.rings.slice(1).some((r) => inRing(u, v, r))) continue;
@@ -458,9 +479,10 @@ function crosses(p: StaticPiece, index: ReturnType<typeof corridorIndex>): boole
  * A street's edges: along each road of the listed classes, on each side, an 8 m walk with its curb on the road's edge every
  * 8 m, where the ground beside the road is open and level and nothing of the city stands, clear of junctions; a gutter on
  * a run of them here and there. Where a way in to a building crosses (`way`) the curb is cut, and a run ends in a curb ramp
- * there and at a junction; elsewhere its curb stays full height.
+ * there and at a junction; elsewhere its curb stays full height. No walk, ramp or drain stands on the road ground graded
+ * to a bridge's way on (`graded`), which is driven.
  */
-function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way: (m: Mason) => boolean, obstacles: ReturnType<typeof obstacleIndex>, roads: ReturnType<typeof roadIndex>): Record<string, number> {
+function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way: (m: Mason) => boolean, obstacles: ReturnType<typeof obstacleIndex>, roads: ReturnType<typeof roadIndex>, graded: ReadonlySet<number>): Record<string, number> {
   const rules = v.street.walks; const out: Record<string, number> = { placed: 0, cut: 0, blocked: 0, gutters: 0, ramps: 0, drains: 0, boxes: 0 };
   if (!rules) return out;
   const { nx, x1, z1 } = site.ground.grid;
@@ -496,6 +518,8 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way
         // The road's raster runs a sample or so past its edge, so the curb's corners may stand on street.
         const corners = [-4, 4].flatMap((a) => [0.3, rules.width].map((b) => [...curb(d + a, b), b] as const));
         if (y < 0.1 || corners.some(([x, z, b]) => !(open.has(site.ground.surface[at(x, z)]!) || b < 1 && site.ground.surface[at(x, z)] === S.STREET) || site.ground.water[at(x, z)] || Math.abs(site.groundAt(x, z) - y) > rules.flat)) { slots.push("bare"); continue; }
+        // Nor within a sample of the road ground graded to a bridge.
+        if ([-4, 0, 4].some((a) => [-1.5, 0.3, 1.5, rules.width + 1.5].some((b) => { const [x, z] = curb(d + a, b); return graded.has(at(x, z)); }))) { slots.push("bare"); continue; }
         const gutter = hash3(index, Math.floor(d / 32), v.seed + side) % rules.gutterEvery === 0;
         const mid = BREAK_AT[gutter ? "zwalk8g" : "zwalk8"]!;
         const laid = put(gutter ? "zwalk8g" : "zwalk8", d, mid[2]!, y);
@@ -515,8 +539,9 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way
         const d = 4 + k * 8; const y = ground[k]!;
         // The ramp rises toward the walk it leads onto; a piece's +x runs with the road on one side and against it on the other.
         const rising = (toward: number): RuinShape => (toward * side > 0 ? "zcurbramp" : "zcurbrampl");
-        if (ends(slots[k - 1]) && put(rising(1), d - 4 - 0.9, 1.2, y, "pieces") === true) out.ramps!++;
-        if (ends(slots[k + 1]) && put(rising(-1), d + 4 + 0.9, 1.2, y, "pieces") === true) out.ramps!++;
+        const clear = (along: number): boolean => [-0.9, 0.9].every((a) => [0, 2.4].every((b) => !graded.has(at(...curb(along + a, b)))));
+        if (ends(slots[k - 1]) && clear(d - 4.9) && put(rising(1), d - 4 - 0.9, 1.2, y, "pieces") === true) out.ramps!++;
+        if (ends(slots[k + 1]) && clear(d + 4.9) && put(rising(-1), d + 4 + 0.9, 1.2, y, "pieces") === true) out.ramps!++;
       }
     }
   }
@@ -530,7 +555,7 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way
  * of line. On a verge a car has run off the road; in a yard it is parked in a row or left at any angle. Each car's kind is
  * chosen where it stands (street-cars.ts); every piece stands clear of the pieces already set down.
  */
-function makeStreetPieces(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, obstacles: ReturnType<typeof obstacleIndex>, roads: ReturnType<typeof roadIndex>): Record<string, number> {
+function makeStreetPieces(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, obstacles: ReturnType<typeof obstacleIndex>, roads: ReturnType<typeof roadIndex>, protectedGround: ReadonlySet<number>): Record<string, number> {
   const out: Record<string, number> = {}; const { nx, x0, z0, x1, z1 } = site.ground.grid; const spacing = v.street.spacing;
   const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
   const road = (surface: number | undefined): boolean => surface === S.STREET || surface === S.HIGHWAY;
@@ -572,7 +597,7 @@ function makeStreetPieces(site: Site, v: Vocabulary, accept: (m: Mason) => boole
     if (!settle(m, .4) || !clear(m)) continue;
     if (accept(m)) {
       out[name] = (out[name] ?? 0) + 1; clusters.push({ id: `cluster:${x}:${z}`, x, y: m.base, z, yaw, name, points });
-      gradeApproaches(site, points.slice(1).map((p, i) => ({ street: points[i]!, door: p, core: p, ramp: 1 })), -1);
+      gradeApproaches(site, points.slice(1).map((p, i) => ({ street: points[i]!, door: p, core: p, ramp: 1 })), -1, protectedGround);
       remnants.push({ id: `cluster:${x}:${z}`, assembly: name, origin: [x, m.base, z], facing: yaw });
       const k = binKey(Math.floor(x / 32), Math.floor(z / 32));
       if (!clusterBins.has(k)) clusterBins.set(k, []); clusterBins.get(k)!.push({ x, z });

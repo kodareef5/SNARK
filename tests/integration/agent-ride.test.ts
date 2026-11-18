@@ -32,13 +32,22 @@ test("a raptor knocked out with a club, fed raw meat, named, saddled and ridden,
   expect((fed.box as { slots: unknown[][] }).slots).toEqual([[0, "meat", 2]]);
   // It eats when it is a piece's worth short of full, and at sixty times one piece tames it.
   expect(until(p, () => p.h.world.ents.team[e] === p.rec.team, 90)).toBe(true);
-  const told = await p.call("status");
-  expect((told.news as string[]).some((l) => l.includes(`tamed: a level`) && l.includes(id))).toBe(true);
+  // Ownership changes on a server tick, after this frame's network delivery. The reliable naming event and the
+  // interpolated observe view arrive later, with a separate half-second delivery budget on this zero-lag 60 Hz link.
+  const news: string[] = [];
+  const isTame = (line: string): boolean => line.includes("tamed: a level") && line.includes(`(${id})`);
+  for (const end = p.h.now + 500; p.h.now < end; p.run(50)) {
+    news.push(...(((await p.call("status")).news as string[] | undefined) ?? []));
+    const yours = (await rows(p, "creature")).find((r) => r[0] === id)?.[7] === "yours";
+    if (news.some(isTame) && yours) break;
+  }
+  expect(news.filter(isTame)).toHaveLength(1);
   expect((await rows(p, "creature")).find((r) => r[0] === id)!.slice(6, 8)).toEqual(["level 1", "yours"]);
 
   expect(await p.call("order", { id, order: "name", name: "Blue" })).toMatchObject({ state: "done", named: "Blue" });
   expect(await p.call("use_item", { item: "saddle_raptor", on: id })).toMatchObject({ state: "done", used: "saddle_raptor", creature: { saddled: true, yours: true } });
   p.run(300);
+  expect((((await p.call("status")).news as string[] | undefined) ?? []).some(isTame)).toBe(false);
   expect((await rows(p, "creature")).find((r) => r[0] === id)!.slice(8)).toEqual(["saddled", "named Blue"]);
 
   expect(await p.call("mount", { id })).toMatchObject({ state: "done", riding: `Blue (${id})`, steering: true });

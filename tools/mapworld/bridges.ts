@@ -1,9 +1,12 @@
+import { frame as packedFrame, frameOf as packedFrameOf } from "../../shared/world/frame.ts";
 import { RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Grid } from "./base.ts";
 import { Mason, type Frame, type Point } from "./ruin-geometry.ts";
-import type { Site } from "./statics.ts";
+import type { Site, StaticPiece } from "./statics.ts";
+import { roadEntrances, roadRunout, roadRunoutClearance, surveyRoadShoulder, type RoadEntrance } from "./bridge-earthwork.ts";
+import { roadIndex } from "./street-cars.ts";
 import { pathsOf, readWays, type Path } from "./ways.ts";
 import { makeSuspension, SUSPENDED } from "./suspension.ts";
 
@@ -14,6 +17,7 @@ export interface BridgeRecord {
   deck: DeckPoint[]; swim: { x: number; z: number; dx: number; dz: number; distance: number }[];
   access: { name: string; points: DeckPoint[] }[];
   approaches: number;
+  entrances: RoadEntrance[];
 }
 export interface Corridor { a: Point; b: Point; width: number; low: number; high: number; }
 export const worldFrame = (grid: Pick<Grid, "sizeX" | "sizeZ">): Frame => ({ x: 0, z: 0, yaw: 0, c: 1, s: 0, width: grid.sizeX, depth: grid.sizeZ, rings: [] });
@@ -34,7 +38,9 @@ export function roadDeckSlab(deck: readonly DeckPoint[], index: number, terminal
   }
   // The outer end of a dry approach meets actual ground, not the terminal centre's clearance.
   // Otherwise a nominal quarter-metre deck leaves a square bumper-height lip before its first slope.
-  const groundedEnd = terminalGround !== undefined && Math.abs(d.y - terminalGround) <= .5 && (index === 0 || index === deck.length - 1);
+  // The outer foot can be farther from the centre on an ordinary uphill exit (Hollywood Freeway: .558 m).
+  // Include that grade rather than leaving a flat plate followed by the rising terrain; the slab rise stays capped.
+  const groundedEnd = terminalGround !== undefined && Math.abs(d.y - terminalGround) <= .75 && (index === 0 || index === deck.length - 1);
   if (groundedEnd) {
     if (index === 0) low = terminalGround;
     else high = terminalGround;
@@ -49,6 +55,7 @@ export function roadDeckSlab(deck: readonly DeckPoint[], index: number, terminal
 export function makeBridges(site: Site, accept: (m: Mason) => boolean): { records: BridgeRecord[]; corridors: Corridor[]; outlines: { id: number; status: string }[] } {
   const grid = site.ground.grid; const { nx, nz, x0, z0, x1, z1 } = grid;
   const { paths, outlines } = pathsOf(readWays(site.source), grid);
+  const roads = roadIndex(site);
   const at = (x: number, z: number): number => Math.max(0, Math.min(nz - 1, Math.round((z1 - z) / 2))) * nx + Math.max(0, Math.min(nx - 1, Math.round((x1 - x) / 2)));
   // The sea's water or a lake's, which an approach or a ramp does not go down into.
   const wetAt = (i: number): boolean => site.ground.water[i] !== 0 || (site.ground.lakes?.body[i] ?? 0) !== 0;
@@ -167,6 +174,10 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
       }
     }
   }
+  const drivingEnds = planned.filter(({ p }) => p.way.kind === "road_bridge" && !/^(footway|cycleway|pedestrian|path|steps|bridleway)$/.test(p.way.class ?? ""))
+    .flatMap(({ p, deck }) => roadEntrances(site, deck, undefined, p.width));
+  for (const e of drivingEnds) roadRunout(site, e, roads);
+  const obstructsDriving = roadRunoutClearance(drivingEnds);
   const access = new Map<Path, BridgeRecord["access"]>();
   const stations = JSON.parse(readFileSync(join(site.source, "blocks/places.json"), "utf8")) as { kind: string; name: string; e: number; n: number }[];
   const rail = planned.filter(({ p }) => p.way.kind === "rail_bridge");
@@ -198,11 +209,15 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
           if (px < x0 + 8 || pz < z0 + 8 || px > x1 - 8 || pz > z1 - 8 || site.groundAt(px, pz) > y + .08 || [-1, 0, 1].some((s) => site.ground.heaps.owner[at(px + nz * s, pz - nx * s)]! >= 0 || wetAt(at(px + nz * s, pz - nx * s)))) break;
           let overhead = false;
           for (let bx = Math.floor(px / 16) - 2; bx <= Math.floor(px / 16) + 2; bx++) for (let bz = Math.floor(pz / 16) - 2; bz <= Math.floor(pz / 16) + 2; bz++) for (const other of deckBins.get(`${bx},${bz}`) ?? []) {
-            const q = other.d; if (q.y <= y + .35 || q.y - .4 >= y + 2.1) continue;
+            const q = other.d;
             const turn = q.yaw * Math.PI / 180; const dx = px - q.x; const dz = pz - q.z;
-            if (Math.abs(dx * Math.cos(turn) - dz * Math.sin(turn)) < 2.45 && Math.abs(dx * Math.sin(turn) + dz * Math.cos(turn)) < other.width / 2 + .45) overhead = true;
+            const alongRoad = Math.abs(dx * Math.cos(turn) - dz * Math.sin(turn));
+            const acrossRoad = Math.abs(dx * Math.sin(turn) + dz * Math.cos(turn));
+            if (q.y > y + .35 && q.y - .4 < y + 2.1 && alongRoad < 2.45 && acrossRoad < other.width / 2 + .45) overhead = true;
+            if (other.path.way.kind === "road_bridge" && !/^(footway|cycleway|pedestrian|path|steps|bridleway)$/.test(other.path.way.class ?? "") &&
+              y > q.y + .35 && y < q.y + 3.8 && alongRoad < 4.5 && acrossRoad < other.width / 2 + 2.5) overhead = true;
           }
-          if (overhead) break;
+          if (overhead || obstructsDriving(px, y, pz)) break;
           points.push({ x: px, y, z: pz, yaw: Math.atan2(-nx, -nz) * 180 / Math.PI, gap: false });
         }
         if (points.length !== count + 1) continue;
@@ -248,15 +263,25 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
       const end = a.points.at(-1)!; const turn = end.yaw * Math.PI / 180;
       m.put("floor4", end.x + Math.sin(turn) * 2, end.y - .2, end.z + Math.cos(turn) * 2, "concrete", end.yaw);
     }
+    const rows: StaticPiece[][] = deck.map(() => []);
     for (let i = 0; i < deck.length; i++) {
       const d = deck[i]!; if (d.gap) continue;
       const a = d.yaw * Math.PI / 180; const dx = Math.cos(a); const dz = -Math.sin(a);
+      packedFrameOf(Math.round(d.yaw * 65536 / 360) & 65535);
+      // Share collision's lattice axes. A few millimetres of overlap close coordinate rounding cracks between lanes;
+      // otherwise a centre ray can see an underpass through an apparent continuous deck.
+      const lateralX = p.way.kind === "road_bridge" ? packedFrame.sin * packedFrame.stretch : -dz;
+      const lateralZ = p.way.kind === "road_bridge" ? packedFrame.cos * packedFrame.stretch : dx;
+      const end = i === 0 ? -2 : i === deck.length - 1 ? 2 : 0;
+      const foot: Point = [d.x + dx * end, d.z + dz * end];
+      // One cross-road profile: fitting each lane separately makes a transverse stair at the road's centre.
+      const ground = end && !wet(foot) ? site.groundAt(...foot) : undefined;
       for (let side = -p.width / 2 + 2; side < p.width / 2; side += 4) {
-        const x = d.x - dz * side, z = d.z + dx * side, end = i === 0 ? -2 : i === deck.length - 1 ? 2 : 0;
-        const foot: Point = [x + dx * end, z + dz * end];
-        const ground = end && !wet(foot) ? site.groundAt(...foot) : undefined;
+        const overlap = p.way.kind === "road_bridge" ? .998 : 1;
+        const x = d.x + lateralX * side * overlap, z = d.z + lateralZ * side * overlap;
         const slab = p.way.kind === "road_bridge" ? roadDeckSlab(deck, i, ground) : { shape: "floor4" as const, yaw: d.yaw, y: d.y - .2 };
         m.put(slab.shape, x, slab.y, z, "concrete", slab.yaw);
+        rows[i]!.push(m.pieces.at(-1)!);
       }
       m.cover(d.x, d.z, p.width / 2 + 10);
       if (p.way.kind === "breakwater") {
@@ -290,13 +315,29 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
     }
     const record: BridgeRecord = { id: p.way.id, name: p.way.name, kind: p.way.kind, class: p.way.class, layer: p.way.layer, width: p.width,
       length: Number(length.toFixed(1)), blocks: m.pieces.length, status: "built", heightRule: "class clearance, layer +5 m; shared vertices; dry terminal at ground; target grade 10% before 1/16 m quantization; deck steps <=0.3125 m; close overlapping levels joined",
-      low: Math.min(...deck.map((d) => d.y)), high: Math.max(...deck.map((d) => d.y)), deck, swim: [], access: [], approaches: approaches.get(p) ?? 0 };
+      low: Math.min(...deck.map((d) => d.y)), high: Math.max(...deck.map((d) => d.y)), deck, swim: [], access: [], approaches: approaches.get(p) ?? 0, entrances: [] };
     if (!m.pieces.length) record.status = "no pieces";
     else if (!accept(m)) record.status = "budget rejected";
     else {
       for (let k = 1; k < deck.length; k++) {
         const a = deck[k - 1]!; const b = deck[k]!; if (a.gap || b.gap) continue;
         corridors.push({ a: [a.x, a.z], b: [b.x, b.z], width: p.width + 2, low: Math.min(a.y, b.y) - .5, high: Math.max(a.y, b.y) + 3.5 });
+      }
+      if (p.way.kind === "road_bridge" && !/^(footway|cycleway|pedestrian|path|steps|bridleway)$/.test(p.way.class ?? "")) {
+        record.entrances = roadEntrances(site, deck, rows, p.width);
+        // Buildings are laid out and their ground levelled after bridges. Reserve each real dry abutment too:
+        // protecting only the deck centre lets a neighbouring floor excavate the last metre below its outer edge.
+        for (const e of record.entrances) {
+          const line = roadRunout(site, e, roads);
+          if (line !== undefined) surveyRoadShoulder(site, e, roads, line);
+          corridors.push({ a: [e.x - e.dx * 4, e.z - e.dz * 4], b: [e.x + e.dx * 2, e.z + e.dz * 2],
+            width: e.width + 4, low: e.y - .5, high: e.y + 3.5 });
+          for (let i = 1; i < (e.runout?.length ?? 0); i++) {
+            const a = e.runout![i - 1]!, b = e.runout![i]!;
+            corridors.push({ a: [a.x, a.z], b: [b.x, b.z], width: e.width + 4,
+              low: Math.min(a.y, b.y) - .5, high: Math.max(a.y, b.y) + 3.5 });
+          }
+        }
       }
       record.swim = swims.get(p) ?? [];
       record.access = access.get(p) ?? [];
