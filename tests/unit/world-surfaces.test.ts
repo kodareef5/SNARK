@@ -258,14 +258,18 @@ test("a wall weathers by the masks: runoff more under open sky, a damp foot near
   expect(foot[0]!).toBeLessThan(wall[0]!);
   expect(foot[3]!).toBeLessThan(wall[3]!);
   // Salt runs lighten brick; plaster lets go to the concrete under it, which is darker here, and concrete does not.
+  masks.splice(0, 4, 0, 0.5, 0, 0);
+  const dry = at("brick")[0]!;
   masks.splice(0, 4, 1, 0.5, 0, 0);
-  expect(at("brick")[0]!).toBeGreaterThan(at("brick", { wall: 0 })[0]!);
+  expect(at("brick")[0]!).toBeGreaterThan(dry);
   const kept = at("plaster");
   masks[2] = 1;
   expect(at("plaster")[0]!).toBeLessThan(kept[0]!);
   expect(at("concrete")[0]!).toBe(at("concrete")[0]!);
   masks.splice(0, 4, 0, 0, 1, 0);
-  expect(at("concrete")[0]!).toBeCloseTo(at("concrete", { open: 0 })[0]!, 12);
+  // Without runs the open sky matters only to the band under the slab line, which is gone at the foot of a storey.
+  expect(at("concrete", { over: 4.001 })[0]!).toBeCloseTo(at("concrete", { open: 0, over: 4.001 })[0]!, 6);
+  expect(at("concrete", { over: 3.6 })[0]!).toBeLessThan(at("concrete", { over: 0.6 })[0]!);
 });
 
 test("with the weathering masks in the pack, a frame asks for them as wide as the packed array keeps, and the array is not drawn until they are in", () => {
