@@ -54,7 +54,7 @@ import { FarShadow } from "./farshadow.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowBytes } from "./shadowtext.ts";
 import { contactFrame } from "./contact.ts";
-import { lightBytes, postFrame } from "./post.ts";
+import { lightBytes, lightSamples, postFrame } from "./post.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
 import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
@@ -342,9 +342,10 @@ export class Scene {
   hour = 12;
   /** The height of the view in pixels. With the field of view, it says how large a level's error is on screen. */
   viewHeight = 720;
-  /** The canvas in its own pixels, which the light target takes and bloom's levels are counted from (post.ts). */
+  /** The canvas in its own pixels, which the light target takes and bloom's levels are counted from, and whether it draws more than the screen's own (post.ts). */
   canvasWidth = 1280;
   canvasHeight = 720;
+  supersampled = false;
   /** The time of this frame, in milliseconds, for what the asset library waits on and how far the clouds have blown. */
   now = 0;
   /** On a lit tier, the dome is drawn as the table alone and nothing is hazed, as the rasterizer draws: for checks that hold a GPU to it. */
@@ -788,6 +789,7 @@ export class Scene {
       skyFrame(this.hour, theSky(), p.frame);
       airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky);
       postFrame(p.frame, p.tier, this.hour, this.canvasHeight);
+      p.lightSamples = lightSamples(this.supersampled);
       contactFrame(p.frame, p.tier.post !== null, this.sizes, remote, this.own, cam, this.halfLength);
       if (!this.plainSky && this.skyMaterial >= 0) this.assets.residency.material(this.skyMaterial, SKY_ASKED.pixels, SKY_ASKED.distance);
     }
@@ -861,7 +863,7 @@ export class Scene {
     const c = this.cascades;
     const setup = p.tier.shadows;
     this.assets.residency.reserve("shadow maps", p.lit ? shadowBytes(setup) : 0);
-    this.assets.residency.reserve("light target", p.tier.post ? lightBytes(this.canvasWidth, this.canvasHeight) : 0);
+    this.assets.residency.reserve("light target", p.tier.post ? lightBytes(this.canvasWidth, this.canvasHeight, lightSamples(this.supersampled)) : 0);
     this.casting = false;
     this.characters.shadows = null;
     if (!p.lit || setup.cascades <= 0 || p.frame[FRAME.casting]! <= 0) {

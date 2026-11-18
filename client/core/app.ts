@@ -6,7 +6,7 @@ import { creatureHold } from "../../shared/sim/creature-actions.ts";
 import { Icons } from "./assets/icons.ts";
 import { GamepadInput, type PadSample, type PadTarget } from "./gamepad.ts";
 import type { AssetPort } from "./assets/port.ts";
-import { canvasRatio, forTouch, tierOf } from "./assets/tiers.ts";
+import { canvasRatio, forTouch, ownRatio, tierOf } from "./assets/tiers.ts";
 import { Governor, PHONE_MS, workMs } from "./governor.ts";
 import { BENCH_TURN_MS, effectsOff, packetWithout, tierWithout, type Effect } from "./passes.ts";
 import { VOLUME_MAX, keptLine } from "./settings.ts";
@@ -1312,6 +1312,7 @@ export class App {
     this.scene.assets.tier = tierWithout(this.governor.tier(forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst), this.ui.settings.steady, this.dpr, nowMs), this.off);
     const ratio = canvasRatio(this.scene.assets.tier, this.dpr, width, height);
     [this.scene.canvasWidth, this.scene.canvasHeight] = [Math.floor(width * ratio), Math.floor(height * ratio)];
+    this.scene.supersampled = ratio > ownRatio(this.scene.assets.tier, this.dpr);
     session.view(this.scene.assets.tier.view, this.ui.settings.snapshotBytes);
     session.askFar(this.scene.assets.tier.reach.bases);
     session.holdNodes(this.scene.assets.tier.nodes.chunks);

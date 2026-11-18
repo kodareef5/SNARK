@@ -9,7 +9,7 @@ import { PROGRAM, PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } 
 import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_FINISH, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
-import { LIGHT_FORMATS, LIGHT_SAMPLES, drawsLight } from "../core/render/post.ts";
+import { BLOOM_FORMAT, LIGHT_FORMATS, LIGHT_SAMPLES, drawsLight, levelShift, tapShift } from "../core/render/post.ts";
 import { POLYGON_OFFSET } from "../core/render/shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, theSky } from "../core/render/sky.ts";
 import { LAYER_LEVELS, NEUTRAL, skinMode } from "../core/render/surface.ts";
@@ -666,7 +666,8 @@ export class GlRenderer {
     this.mapped = null;
     this.worldReady = this.worldMaterial && this.textures.has(this.worldMaterial.base) ? 1 : 0;
     const finish = drawsLight(p.tier, this.light);
-    if (this.post.size !== (finish ? `${gl.drawingBufferWidth} ${gl.drawingBufferHeight} ${p.frame[FRAME.levels]}` : "")) this.targets(finish ? gl.drawingBufferWidth : 0, gl.drawingBufferHeight, p.frame[FRAME.levels]!);
+    const samples = Math.min(this.samples, p.lightSamples);
+    if (this.post.size !== (finish ? `${gl.drawingBufferWidth} ${gl.drawingBufferHeight} ${p.frame[FRAME.levels]} ${samples}` : "")) this.targets(finish ? gl.drawingBufferWidth : 0, gl.drawingBufferHeight, p.frame[FRAME.levels]!, samples);
     this.shadows(p, finish ? this.post.fbs[0]! : null);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.clearColor(p.sky[0]!, p.sky[1]!, p.sky[2]!, 1);
@@ -815,29 +816,31 @@ export class GlRenderer {
     gl.bindFramebuffer(gl.FRAMEBUFFER, into);
   }
 
-  /** The light target for a canvas `w` by `h` and bloom's `levels` (post.ts), made again from nothing; none for `w` 0. */
-  private targets(w: number, h: number, levels: number): void {
+  /**
+   * The light target for a canvas `w` by `h`, bloom's `levels` and `samples` (post.ts), made again from nothing; none for
+   * `w` 0. With no samples the scene is drawn into its texture, `fbs[0]` and `fbs[1]` alike.
+   */
+  private targets(w: number, h: number, levels: number, samples: number): void {
     const gl = this.gl, t = this.post;
-    for (const f of t.fbs.splice(0)) gl.deleteFramebuffer(f);
+    for (const f of new Set(t.fbs.splice(0))) gl.deleteFramebuffer(f);
     for (const x of t.tex.splice(0)) gl.deleteTexture(x);
     for (const b of t.bufs.splice(0)) gl.deleteRenderbuffer(b);
-    t.size = w > 0 ? `${w} ${h} ${levels}` : "";
-    for (let k = -1; k <= levels && w > 0; k++) {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbs[t.fbs.length] = gl.createFramebuffer()!);
-      if (k < 0) {
-        for (const [format, at] of [[this.light, gl.COLOR_ATTACHMENT0], [gl.DEPTH_COMPONENT24, gl.DEPTH_ATTACHMENT]] as const) {
-          gl.bindRenderbuffer(gl.RENDERBUFFER, t.bufs[t.bufs.length] = gl.createRenderbuffer()!);
-          gl.renderbufferStorageMultisample(gl.RENDERBUFFER, this.samples, format, w, h);
-          gl.framebufferRenderbuffer(gl.FRAMEBUFFER, at, gl.RENDERBUFFER, t.bufs.at(-1)!);
-        }
-        continue;
+    t.size = w > 0 ? `${w} ${h} ${levels} ${samples}` : "";
+    for (let k = samples > 0 ? -1 : 0; k <= levels && w > 0; k++) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, (t.fbs[k + 1] = gl.createFramebuffer()!));
+      for (const [format, at] of k > 0 ? [] : ([[this.light, gl.COLOR_ATTACHMENT0], [gl.DEPTH_COMPONENT24, gl.DEPTH_ATTACHMENT]] as const).slice(k < 0 ? 0 : samples > 0 ? 2 : 1)) {
+        gl.bindRenderbuffer(gl.RENDERBUFFER, t.bufs[t.bufs.length] = gl.createRenderbuffer()!);
+        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, k < 0 ? samples : 0, format, w, h);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, at, gl.RENDERBUFFER, t.bufs.at(-1)!);
       }
+      if (k < 0) continue;
       gl.activeTexture(gl.TEXTURE0 + UNIT.details);
       gl.bindTexture(gl.TEXTURE_2D, t.tex[k] = gl.createTexture()!);
-      gl.texStorage2D(gl.TEXTURE_2D, 1, this.light, Math.max(1, w >> k), Math.max(1, h >> k));
+      gl.texStorage2D(gl.TEXTURE_2D, 1, k > 0 ? BLOOM_FORMAT : this.light, Math.max(1, w >> levelShift(k)), Math.max(1, h >> levelShift(k)));
       for (const [name, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_2D, name, v);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t.tex[k]!, 0);
     }
+    t.fbs[0] ??= t.fbs[1]!;
   }
 
   /** The finish (post.ts): the scene resolved, bloom's chain down and then up, adding, and the finish into the canvas. */
@@ -846,8 +849,8 @@ export class GlRenderer {
     this.passes?.mark(PASS_FINISH);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, t.fbs[0]!);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, t.fbs[1]!);
-    gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
-    gl.invalidateFramebuffer(gl.READ_FRAMEBUFFER, [gl.COLOR_ATTACHMENT0, gl.DEPTH_ATTACHMENT]);
+    if (t.fbs[0] !== t.fbs[1]) gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.invalidateFramebuffer(gl.READ_FRAMEBUFFER, t.fbs[0] !== t.fbs[1] ? [gl.COLOR_ATTACHMENT0, gl.DEPTH_ATTACHMENT] : [gl.DEPTH_ATTACHMENT]);
     this.set(false, false, false);
     gl.disable(gl.DEPTH_TEST);
     this.vertexArray(null);
@@ -868,10 +871,10 @@ export class GlRenderer {
     const gl = this.gl, t = this.post;
     const prog = this.use(n, p);
     gl.bindFramebuffer(gl.FRAMEBUFFER, to < 0 ? null : t.fbs[to + 1]!);
-    gl.viewport(0, 0, Math.max(1, gl.drawingBufferWidth >> Math.max(to, 0)), Math.max(1, gl.drawingBufferHeight >> Math.max(to, 0)));
+    gl.viewport(0, 0, Math.max(1, gl.drawingBufferWidth >> levelShift(to)), Math.max(1, gl.drawingBufferHeight >> levelShift(to)));
     gl.activeTexture(gl.TEXTURE0 + UNIT.details);
     gl.bindTexture(gl.TEXTURE_2D, t.tex[from]!);
-    gl.uniform4f(prog.at[U.pass]!, 1 / Math.max(1, gl.drawingBufferWidth >> from), 1 / Math.max(1, gl.drawingBufferHeight >> from), from === 0 ? 1 : 0, 0);
+    gl.uniform4f(prog.at[U.pass]!, 1 / Math.max(1, gl.drawingBufferWidth >> tapShift(from, to)), 1 / Math.max(1, gl.drawingBufferHeight >> tapShift(from, to)), from === 0 ? 1 : 0, 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.drawCalls++;
   }

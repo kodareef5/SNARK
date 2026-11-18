@@ -10,7 +10,7 @@ import { FRAME, FRAME_FLOATS, FramePacket } from "../../client/core/render/packe
 import { RemoteSample } from "../../client/core/session.ts";
 import { CUE_DEAD } from "../../shared/anim/pose.ts";
 import { coreRegistry } from "../fixtures/world.ts";
-import { BLOOM, SHARPEN, bloomLevels, drawsLight, gradeAt, postFrame } from "../../client/core/render/post.ts";
+import { BLOOM, SHARPEN, bloomLevels, drawsLight, gradeAt, levelShift, lightBytes, lightSamples, postFrame, tapShift } from "../../client/core/render/post.ts";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
 import { skyFrame, sunHeight, theSky } from "../../client/core/render/sky.ts";
 import { shown } from "../../client/core/render/surface.ts";
@@ -39,9 +39,14 @@ test("high and ultra draw as light where the device has a light target, with the
   expect(drawsLight(tierWithout(tierOf("high"), new Set(["light" as const])), true)).toBe(false);
 });
 
-test("bloom's levels run down to a level no fewer than 16 pixels tall, eight at most, and the governor keeps the narrowest", () => {
-  expect([720, 1080, 1440, 2160, 2880, 100000].map((h) => bloomLevels(h, 1))).toEqual([5, 6, 6, 7, 7, 8]);
-  expect([bloomLevels(1080, 0.5), bloomLevels(1080, 0), bloomLevels(10, 1)]).toEqual([3, 0, 1]);
+test("bloom's levels run from a quarter of the canvas down to a level no fewer than 16 pixels tall; the target takes no samples on a supersampled canvas, and its bytes", () => {
+  expect([720, 1080, 1440, 2160, 2880, 100000].map((h) => bloomLevels(h, 1))).toEqual([4, 5, 5, 6, 6, 7]);
+  expect([bloomLevels(1080, 0), bloomLevels(10, 1)]).toEqual([0, 1]);
+  // The scene, then each level two halvings and more down; the first level's taps at a half-size picture's texels, the finish's at the scene's.
+  expect([0, 1, 2, 5].map(levelShift)).toEqual([0, 2, 3, 6]);
+  expect([tapShift(0, 1), tapShift(1, 2), tapShift(2, 1), tapShift(0, -1)]).toEqual([1, 2, 3, 0]);
+  expect([lightSamples(false), lightSamples(true)]).toEqual([4, 0]);
+  expect([lightBytes(2560, 1440, 4), lightBytes(5120, 2880, 0), lightBytes(3840, 1986, 0)].map((b) => Math.round(b / 1e6))).toEqual([207, 181, 94]);
 });
 
 test("the grade is content's keys, blended by the sun's height, filled in on a tier with a light target and nowhere else", () => {
@@ -58,7 +63,7 @@ test("the grade is content's keys, blended by the sun's height, filled in on a t
   expect([...frame.subarray(FRAME.grade)]).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
   const noon = gradeAt(sunHeight(12));
   postFrame(frame, tierOf("high"), 12, 1080);
-  expect([...frame.subarray(FRAME.grade)].map((v) => Math.round(v * 1e4) / 1e4)).toEqual([...noon.gain, noon.saturation, noon.gamma, BLOOM, SHARPEN, 6].map((v) => Math.round(Math.fround(v) * 1e4) / 1e4));
+  expect([...frame.subarray(FRAME.grade)].map((v) => Math.round(v * 1e4) / 1e4)).toEqual([...noon.gain, noon.saturation, noon.gamma, BLOOM, SHARPEN, 5].map((v) => Math.round(Math.fround(v) * 1e4) / 1e4));
 });
 
 test("the rasterizer shows a tier with a light target as medium where its grade is none, and takes the grade where it is one", () => {

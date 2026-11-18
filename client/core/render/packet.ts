@@ -382,6 +382,8 @@ export class FramePacket {
   openRows = 0;
   /** The draw before which the dome goes, on a lit frame. */
   skyAt = 0;
+  /** The samples the light target is drawn with (post.ts lightSamples), on a frame drawn into one. */
+  lightSamples = 0;
 
   readonly uploads: BufferUpload[] = [];
   readonly drops: number[] = [];

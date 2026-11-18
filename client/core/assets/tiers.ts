@@ -172,10 +172,13 @@ export const TIERS: readonly Tier[] = [
  * `fewest`, fewer where that passes its `canvas` pixels, and never under the screen's own.
  */
 export function canvasRatio(tier: Tier, dpr: number, width: number, height: number): number {
-  const own = tier.pixelRatio > 0 ? Math.min(dpr, tier.pixelRatio) : dpr;
+  const own = ownRatio(tier, dpr);
   if (tier.fewest <= own) return own;
   return Math.max(own, Math.min(own * Math.ceil(tier.fewest / own), Math.sqrt(tier.canvas / Math.max(1, width * height))));
 }
+
+/** The screen's own canvas pixels a side for one CSS pixel, as far as the tier's `pixelRatio`: what a canvas drawn past them supersamples. */
+export const ownRatio = (tier: Tier, dpr: number): number => (tier.pixelRatio > 0 ? Math.min(dpr, tier.pixelRatio) : dpr);
 
 /** What a new player gets where nothing is known of the device, and on any device `startingTier` does not start on high. */
 export const DEFAULT_TIER: Tier["name"] = "medium";
