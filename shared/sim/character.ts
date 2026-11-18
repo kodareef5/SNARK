@@ -1,6 +1,7 @@
 // One fixed step for one upright capsule. Server and client run this same code, and the same state and input give the same bits.
 // A position is committed only if capsuleFree accepts it, and a substep moves at most a radius sideways, so no input crosses a wall.
 
+import type { GroundBodies } from "./body-contact.ts";
 import { WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
@@ -402,7 +403,7 @@ const footing = new GroundMountFrame();
  * `moveX` (strafe right) and `moveZ` (forward) are -127 to 127. `yaw` and `pitch` are in 1/65536 turns, and pitch 16384 is
  * straight up. These are the quantized values sent on the wire.
  */
-export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
+export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number, bodies?: GroundBodies): void {
   stepOut.landSpeed = 0;
   stepOut.tookOff = false;
   stepOut.setDown = false;
@@ -729,6 +730,13 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
           clear = false;
         }
       }
+    }
+
+    // Clip our own path against living ground bodies after static resolution, then validate the clipped pose normally.
+    // In particular a tangent around a creature beside a wall cannot grant a position inside that wall.
+    if (bodies) {
+      bodies.clip(x, y, z, nx, ny, nz, r, height, vx, vz);
+      if (bodies.result.hit) { nx = bodies.result.x; nz = bodies.result.z; vx = bodies.result.vx; vz = bodies.result.vz; clear = false; }
     }
 
     // Commit only a legal position reached by a bounded move. A body the last round found clear of every structure is

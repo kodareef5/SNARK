@@ -837,6 +837,9 @@ export class Behavior {
     return far > 0.5 ? castWorld(this.world, ex, eye, ez, dx / far, dy / far, dz / far, far) : HIT_NONE;
   }
 
+  /** Ground contacts need only claimed neighbours for a wild mover; ordinary wild-to-wild movement stays unchanged. */
+  contactBodies(): BodyGrid { return this.claimedNow(); }
+
   /** Survivors and the awake creatures that are somebody's, by where they stood when first wanted this tick. */
   private claimedNow(): BodyGrid {
     const grid = this.claimed;

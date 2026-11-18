@@ -1,6 +1,7 @@
 // The authoritative game loop. It owns no socket or clock. The transport and the calls to
 // tick() come from outside, so tests run a whole server in memory.
 
+import { BodyContacts } from "./body-contacts.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, TICK_RATE, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { TAU, detCos, detSin } from "../shared/math/scalar.ts";
 import { BitReader, BitWriter, Named } from "../shared/net/codec.ts";
@@ -396,6 +397,7 @@ const NAME_SET = event("name.set");
 
 export class GameServer {
   readonly world: ServerWorld;
+  readonly bodyContacts: BodyContacts;
   readonly opts: GameOptions;
   bus: Bus = NO_BUS;
   readonly clients: (Client | null)[];
@@ -498,6 +500,7 @@ export class GameServer {
 
   constructor(world: ServerWorld, opts: Partial<GameOptions> = {}) {
     this.world = world;
+    this.bodyContacts = new BodyContacts(world);
     this.opts = { ...DEFAULTS, ...opts };
     this.clients = new Array(this.opts.maxClients).fill(null);
     this.cap = Math.max(1, Math.min(MAX_VIEW, Math.floor(this.opts.viewCap)));
@@ -583,7 +586,7 @@ export class GameServer {
           this.vehicleStep(world, b, quiet ? 0 : c.heldX, quiet ? 0 : c.heldZ, quiet ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : c.heldButtons, vehicle, TICK_DT, c.heldYaw, !quiet);
         } else if (!passenger) {
           // A survivor's tamed numbers are its own. A body that is driven is a tame's.
-          stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.tamedMove[b.kind]!, TICK_DT);
+          stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.tamedMove[b.kind]!, TICK_DT, this.bodyContacts.prepare(e, b, world.reg.tamedMove[b.kind]!));
         } else { b.yaw = c.heldYaw; stepOut.landSpeed = 0; }
         if (!driving) {
           // Enclosed cabins stow weapons while preserving the held inventory slot for exit.

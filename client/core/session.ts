@@ -1,6 +1,7 @@
 // One client's connection, with no DOM, clock or socket. The shell or a test supplies a Connection and calls update().
 // It runs ahead of the server so input T arrives before tick T, and steers its tick clock to keep the reported margin small and positive.
 
+import { BodyContactView } from "./body-contacts.ts";
 import { PredictedTrees } from "./vehicle-trees.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { deriveRegistry, parseTuning } from "../../shared/content/tuning.ts";
@@ -500,6 +501,7 @@ export class ClientSession {
   /** Resource nodes around the body, filled from the map minus those the server reports used up. */
   nodeField: NodeField | null = null;
   private vehicleTrees: PredictedTrees | null = null;
+  private bodyContacts: BodyContactView | null = null;
   get predictedTrees(): PredictedTrees | null { return this.vehicleTrees; }
   private treeDriver = 0;
   private nodeChunk = -1;
@@ -987,7 +989,11 @@ export class ClientSession {
       this.vehicleContacts?.step(t, this.contactBefore, this.own, vehicle);
     }
     // Any vehicle seat slot other than 0 holds the body still, as the server does (server/game.ts).
-    else if (this.own.seatSlot === 0) stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.tamedMove[this.own.kind] ?? this.move!, TICK_DT);
+    else if (this.own.seatSlot === 0) {
+      const params = this.registry.tamedMove[this.own.kind] ?? this.move!;
+      stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, params, TICK_DT,
+        this.bodyContacts?.prepare(this.drawn.find(this.latestSnapshot), this.ownHandle, this.driving, this.own, params));
+    }
     else this.own.yaw = inp.yaw[i]!;
     if (this.driving >= 0) {
       // A mount's bite is stepped here as the server steps it, so both agree on the body's action.
@@ -1487,6 +1493,7 @@ export class ClientSession {
     // The file's dims, which say where the map sits on the lattice as the welcome's do not.
     this.world = { mapId, dims: hf.dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...(reg.motion.some((t) => t !== null) ? { motion: this.motionSource } : {}), ...(this.opts.landmarks?.length ? { landmarks: this.opts.landmarks } : {}) };
     this.vehicleTrees = field ? new PredictedTrees(this.world, reg, field) : null;
+    this.bodyContacts = new BodyContactView(reg);
     this.startCity(this.arrived);
     this.vehicleContacts = new VehiclePrediction(this.world, reg, field ? () => new PredictedTrees(this.world!, reg, field) : undefined, this.vehicleTrees ?? undefined);
     this.recenterNodes();
