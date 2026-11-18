@@ -55,7 +55,7 @@ try {
   await tab.send("Page.enable");
   await tab.send("Page.navigate", { url: "http://127.0.0.1:"+server.port+"/?quick=1&tier=lowpoly&name=course" });
   await tab.send("Page.bringToFront");
-  const client = await until(() => host.game.clients.find(c => c?.active && c.ent >= 0), "Join", 90000);
+  const client = await until(() => host.game.clients.find(c => c?.active && c.ent >= 0) ?? undefined, "Join", 90000);
   const input = client.newestInput;
   await until(() => client.newestInput > input && world.tick - client.inputAt < 12, "Input sampling", 90000);
   const seat = world.reg.vehicle[ents.kind[car]!]!.seats[0]!, at = [0,0,0];

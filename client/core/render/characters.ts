@@ -226,7 +226,6 @@ export class Characters {
   private readonly steer = new Float64Array(4);
   private readonly seatState = new AnimState();
   private readonly origin = new Float64Array(3);
-  private readonly scales = new Float32Array(HUMAN_BONES * 3);
   private readonly lookColor = new Uint8Array(6);
   /** Scratch: a body's look, a vehicle's frame for its turn, a seat's place and what a seated body is posed from. */
   private readonly lookView = new Uint8Array(LOOK_BYTES);
