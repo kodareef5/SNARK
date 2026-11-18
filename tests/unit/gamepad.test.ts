@@ -7,7 +7,7 @@ function rig() {
   const controls = new Controls(), driver = new GamepadInput(), actions: string[] = [];
   const pad = { connected: true, mapping: "standard", axes: [0,0,0,0], buttons: Array.from({length:17},()=>({ pressed:false, value:0 })) };
   const target: PadTarget = {
-    inMenu:false, inspecting:false, get flying() { return controls.onFlyer; },
+    inMenu:false, inspecting:false, patrol:false, get flying() { return controls.onFlyer; },
     key(code,down) { actions.push(`${code}:${down}`); controls.key(code,down,1); if (code === "KeyH") Object.assign(target, { inMenu:down, inspecting:down }); },
     mouse(button,down) { controls.mouseButton(button,down,1); },
     move(x,z) { controls.padMove(x,z); }, look(x,y) { controls.look(x,y); },
@@ -134,4 +134,16 @@ test("changing between foot and flyer cancels a pending stance or held flight ab
   r.pad.buttons[11]!.pressed=true;r.step();expect(r.controls.buttons & BTN_ROLL).toBe(BTN_ROLL);
   r.controls.fly(false,false);r.step();expect(r.actions).toEqual(["KeyC:true","KeyC:false"]);
   r.step(400);expect(r.actions).toHaveLength(2);
+});
+
+test("pressing the right stick cycles patrol lights once and leaves crouch available on foot", () => {
+  const r = rig();
+  Object.assign(r.target, { patrol: true });
+  r.pad.buttons[11]!.pressed = true; r.step(); r.step(500);
+  r.pad.buttons[11]!.pressed = false; r.step();
+  expect(r.actions).toEqual(["KeyK:true", "KeyK:false"]);
+  Object.assign(r.target, { patrol: false });
+  r.pad.buttons[11]!.pressed = true; r.step();
+  r.pad.buttons[11]!.pressed = false; r.step();
+  expect(r.actions.slice(-2)).toEqual(["KeyC:true", "KeyC:false"]);
 });

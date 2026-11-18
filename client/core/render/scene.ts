@@ -1148,17 +1148,20 @@ export class Scene {
   /** Small details (client/core/details/): the cut-out ones with the near opaque, the see-through ones after the sea. */
   private showDetails(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, this.characters.rotorBlur.count);
+    const { rotorBlur, patrolLights } = this.characters;
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, rotorBlur.count + patrolLights.count);
     const particles = p.detailCount;
-    this.characters.rotorBlur.write(p);
-    const rotorPasses = this.characters.rotorBlur.passes(cam);
+    rotorBlur.write(p);
+    const lamps = p.detailCount;
+    patrolLights.write(p);
     // The clouds' puffs after them, in the depth ranges they reach, as they may be seen from far off (clouds.ts).
     const seen = p.detailCount;
     const solid = this.clouds.write(p, cam, remote, this.cloudRange);
     const far = seen < p.detailCount ? cam.passesOf(this.cloudRange[0]!, this.cloudRange[1]!) : NEAR;
     this.drawDetails(0, cut, DRAW_CUTOUT, NEAR);
     this.drawDetails(cut, particles - cut, DRAW_BLEND, NEAR);
-    this.drawDetails(particles, seen - particles, DRAW_BLEND, rotorPasses);
+    this.drawDetails(particles, lamps - particles, DRAW_BLEND, rotorBlur.passes(cam));
+    this.drawDetails(lamps, seen - lamps, DRAW_BLEND, patrolLights.passes(cam));
     this.drawDetails(seen, solid, DRAW_CUTOUT, far);
     this.drawDetails(seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far);
   }
