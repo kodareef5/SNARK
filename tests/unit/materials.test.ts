@@ -229,7 +229,7 @@ test("pieces take their materials by name: one of the asset's own, one that seve
 test("every texture the game's packs name has its pictures listed for the texture build, and listing them reads no picture", async () => {
   const named = corePack().header.textures ?? [];
   const read = spyOn(image, "readPicture");
-  const bake = spyOn(surfaces, "worldMaterial");
+  const bake = spyOn(surfaces, "worldMaterials");
   let sources: Awaited<ReturnType<typeof gameTextures>>;
   try {
     sources = await gameTextures();

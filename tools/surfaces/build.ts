@@ -1,88 +1,159 @@
-// Deterministic processing of the accepted photographic studies. Encoded variants stay in the build cache.
-// bun tools/surfaces/build.ts writes the three maps under var/surfaces/art.
+// The world finishes' material sets, from each finish's painted sources under assets/source/core/world/<finish>/ to the
+// three pictures a material takes: base colour with the tint mask in alpha, a normal made from the height, and
+// occlusion, roughness, metal and height packed at half the side; and the walls' weathering masks, packed as runoff,
+// damp, peel and joints in one picture as wide as a finish's packed map. Kept under var/surfaces/art/<name>/ by a hash
+// of what made them. bun tools/surfaces/build.ts builds them.
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { SURFACE_NAMES, WEATHER_MATERIAL, surfaceMaterial, type SurfaceName } from "../../content/surfaces.ts";
 import type { Material } from "../art/materials.ts";
-import { encodePng, readPicture } from "../pack/image.ts";
+import { encodePng, readPicture, type Picture } from "../pack/image.ts";
 import type { SourceMesh } from "../pack/write.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
+export const WORLD_ART = resolve(ROOT, "assets/source/core/world");
 export const SURFACE_ART = resolve(ROOT, "var/surfaces/art");
+/** The side of a finish's base colour and normal; the packed map is half. */
 export const SURFACE_TOP = 2048;
-const STUDIES = ["ground-organic", "ground-mineral", "ruins-masonry", "ruins-finishes"].map((name) => resolve(ROOT, `assets/source/surfaces/source/${name}.png`));
-export const HAS_SURFACES = STUDIES.every((file) => existsSync(file));
-export function worldMaterial(): Material {
-  buildSurfaceArt();
-  return { name: "atlas", id: SURFACE_MATERIAL, dir: SURFACE_ART, spec: { base: "base.png", normal: "normal.png", packed: "orm.png", tiles: 3 } };
+
+/** What a finish's painter says of it (material.json). */
+export interface Painted {
+  /** Metres the tile spans. */
+  metres: number;
+  /** Millimetres from black to white in its height. */
+  height_mm: number;
+  /** The shift, in tiles across and down, that maps a laid pattern onto itself, or null for a natural finish. */
+  module: [number, number] | null;
+  mean_srgb: [number, number, number];
 }
 
-/** Crops away neighbouring cells, makes each scan periodic, derives conservative relief, and adds wrap gutters. */
-export function buildSurfaceArt(): void {
+export const paintedOf = (name: SurfaceName): Painted => JSON.parse(readFileSync(join(WORLD_ART, name, "material.json"), "utf8")) as Painted;
+const sources = (name: SurfaceName): string[] => ["base", "height", "roughness", "occlusion", "tint", "metal"].map((m) => join(WORLD_ART, name, `${m}.png`));
+const WEATHER = ["runs", "damp", "peel", "joints"] as const;
+/** The weathering masks' painted width and height, and the side of a placeholder base colour and normal. */
+const WEATHER_WIDE = 2048, WEATHER_TALL = 1024, WEATHER_STUB = 64;
+export const HAS_SURFACES = [...SURFACE_NAMES, "weather"].every((name) => existsSync(join(WORLD_ART, name, "material.json")));
+
+/** The finishes as materials, and the weathering masks' after them, their pictures made first where they are not. */
+export function worldMaterials(): Material[] {
+  const finishes: Material[] = SURFACE_NAMES.map((name) => {
+    buildFinish(name);
+    return { name, id: surfaceMaterial(name), dir: join(SURFACE_ART, name), spec: { base: "base.png", normal: "normal.png", packed: "mro.png", tiles: paintedOf(name).metres } };
+  });
+  buildWeather();
+  return [...finishes, { name: "weather", id: WEATHER_MATERIAL, dir: join(SURFACE_ART, "weather"), spec: { base: "base.png", normal: "normal.png", packed: "mro.png", tiles: 8 } }];
+}
+
+const grey = (p: Picture, side: number, what: string): Float32Array => {
+  if (p.width !== side || p.height !== side) throw new Error(`world finish: its ${what} is ${p.width} by ${p.height}, not ${side}`);
+  const max = p.depth === 8 ? 255 : 65535, out = new Float32Array(side * side);
+  for (let i = 0; i < out.length; i++) out[i] = p.data[i * p.channels]! / max;
+  return out;
+};
+const byte = (v: number): number => Math.max(0, Math.min(255, Math.round(v * 255)));
+
+/** Makes one finish's three pictures from its sources, unless those under var/ were made from these. */
+export function buildFinish(name: SurfaceName): void {
   const hash = createHash("sha256").update(readFileSync(import.meta.filename));
-  for (const source of STUDIES) hash.update(readFileSync(source));
-  const key = hash.digest("hex");
-  const stamp = resolve(SURFACE_ART, "key");
+  for (const file of [join(WORLD_ART, name, "material.json"), ...sources(name)]) if (existsSync(file)) hash.update(file).update(readFileSync(file));
+  const key = hash.digest("hex"), dir = join(SURFACE_ART, name), stamp = join(dir, "key");
   if (existsSync(stamp) && readFileSync(stamp, "utf8") === key) return;
-  mkdirSync(SURFACE_ART, { recursive: true });
-  const pictures = STUDIES.map(readPicture);
-  const side = SURFACE_TOP, cell = side / 4, pad = 16, core = cell - pad * 2;
-  const base = new Uint8Array(side * side * 4), normal = new Uint8Array(base.length), orm = new Uint8Array(base.length);
-  const byte = (x: number): number => Math.max(0, Math.min(255, Math.round(x)));
-  for (let tile = 0; tile < 16; tile++) {
-    const tx = tile % 4, ty = tile >> 2;
-    const p = pictures[ty]!, sx = tx % 2, sy = tx >> 1;
-    const scan = new Float32Array(core * core * 3), periodic = new Float32Array(scan.length);
-    // Bilinear resampling. A 3-pixel crop prevents the study's neighbouring materials entering a cell.
-    for (let y = 0; y < core; y++) for (let x = 0; x < core; x++) {
-      const px = sx * p.width / 2 + 3 + x / (core - 1) * (p.width / 2 - 7);
-      const py = sy * p.height / 2 + 3 + y / (core - 1) * (p.height / 2 - 7);
-      const ix = Math.floor(px), iy = Math.floor(py), fx = px - ix, fy = py - iy;
-      for (let c = 0; c < 3; c++) {
-        const at = (xx: number, yy: number): number => p.data[(yy * p.width + xx) * p.channels + c]!;
-        scan[(y * core + x) * 3 + c] = (at(ix, iy) * (1 - fx) + at(ix + 1, iy) * fx) * (1 - fy) + (at(ix, iy + 1) * (1 - fx) + at(ix + 1, iy + 1) * fx) * fy;
-      }
-    }
-    // Blend just the seam neighbourhood with its opposite. The two sides meet at precisely the same value.
-    const edge = 32;
-    for (let y = 0; y < core; y++) for (let x = 0; x < core; x++) {
-      const wx = Math.max(0, 1 - Math.min(x, core - 1 - x) / edge) * 0.5;
-      const wy = Math.max(0, 1 - Math.min(y, core - 1 - y) / edge) * 0.5;
-      for (let c = 0; c < 3; c++) {
-        const v = (xx: number, yy: number): number => scan[(yy * core + xx) * 3 + c]!;
-        periodic[(y * core + x) * 3 + c] = (v(x, y) * (1 - wx) + v(core - 1 - x, y) * wx) * (1 - wy) + (v(x, core - 1 - y) * (1 - wx) + v(core - 1 - x, core - 1 - y) * wx) * wy;
-      }
-    }
-    const wrap = (n: number): number => (n + core) % core;
-    const height = (x: number, y: number): number => {
-      const a = (wrap(y) * core + wrap(x)) * 3;
-      return (periodic[a]! * 0.25 + periodic[a + 1]! * 0.6 + periodic[a + 2]! * 0.15) / 255;
-    };
-    for (let y = 0; y < cell; y++) for (let x = 0; x < cell; x++) {
-      const u = wrap(x - pad), v = wrap(y - pad), from = (v * core + u) * 3;
-      const to = ((ty * cell + y) * side + tx * cell + x) * 4;
-      for (let c = 0; c < 3; c++) base[to + c] = byte(periodic[from + c]!);
-      base[to + 3] = 255;
-      // Shape is inferred from local luminance, not assumed to be scanned geometry; low strength avoids baked-light relief.
-      const dx = (height(u - 2, v) - height(u + 2, v)) * 1.8;
-      const dy = (height(u, v - 2) - height(u, v + 2)) * 1.8;
-      const scale = 1 / Math.sqrt(1 + dx * dx + dy * dy);
-      normal[to] = byte(128 + 127 * dx * scale); normal[to + 1] = byte(128 + 127 * dy * scale); normal[to + 2] = byte(128 + 127 * scale); normal[to + 3] = 255;
-      const h = height(u, v);
-      orm[to] = byte(225 + 30 * h); orm[to + 1] = byte(220 + 30 * h); orm[to + 2] = 0; orm[to + 3] = 255;
-    }
+  mkdirSync(dir, { recursive: true });
+  const n = SURFACE_TOP, painted = paintedOf(name);
+  const [baseFile, heightFile, roughFile, occlusionFile, tintFile, metalFile] = sources(name);
+  const colour = readPicture(baseFile!);
+  if (colour.width !== n || colour.height !== n || colour.depth !== 8 || colour.channels < 3) throw new Error(`world finish ${name}: its base colour is not ${n} by ${n} RGB`);
+  const height = grey(readPicture(heightFile!), n, "height");
+  const rough = grey(readPicture(roughFile!), n, "roughness");
+  const occlusion = grey(readPicture(occlusionFile!), n, "occlusion");
+  const tint = existsSync(tintFile!) ? grey(readPicture(tintFile!), n, "tint") : new Float32Array(n * n).fill(1);
+  const metal = existsSync(metalFile!) ? grey(readPicture(metalFile!), n, "metal") : new Float32Array(n * n);
+  const base = new Uint8Array(n * n * 4), normal = new Uint8Array(n * n * 3);
+  // Slope of the height in metres a metre, across and down, from its neighbours either side, the tile wrapping.
+  const rise = (painted.height_mm / 1000) / (2 * painted.metres / n);
+  const at = (x: number, y: number): number => height[((y + n) % n) * n + ((x + n) % n)]!;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const i = y * n + x;
+    for (let c = 0; c < 3; c++) base[i * 4 + c] = colour.data[i * colour.channels + c]!;
+    base[i * 4 + 3] = byte(tint[i]!);
+    // x right and y up the picture, as a material's normal map has them: a rise down the picture leans it up.
+    const sx = -(at(x + 1, y) - at(x - 1, y)) * rise, sy = (at(x, y + 1) - at(x, y - 1)) * rise, l = Math.hypot(sx, sy, 1);
+    normal[i * 3] = byte(sx / l * 0.5 + 0.5);
+    normal[i * 3 + 1] = byte(sy / l * 0.5 + 0.5);
+    normal[i * 3 + 2] = byte(1 / l * 0.5 + 0.5);
   }
-  for (const [name, data] of [["base", base], ["normal", normal], ["orm", orm]] as const) writeFileSync(resolve(SURFACE_ART, `${name}.png`), encodePng({ width: side, height: side, channels: 4, depth: 8, data }));
-  writeFileSync(stamp, key);
+  // The packed map at half the side, each texel the mean of the four under it.
+  const h = n >> 1, mro = new Uint8Array(h * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < h; x++) {
+    const four = (m: Float32Array): number => (m[2 * y * n + 2 * x]! + m[2 * y * n + 2 * x + 1]! + m[(2 * y + 1) * n + 2 * x]! + m[(2 * y + 1) * n + 2 * x + 1]!) / 4;
+    const o = (y * h + x) * 4;
+    mro[o] = byte(four(occlusion));
+    mro[o + 1] = byte(four(rough));
+    mro[o + 2] = byte(four(metal));
+    mro[o + 3] = byte(four(height));
+  }
+  // Each written whole and renamed into place, since test workers may make the same finish at once.
+  const put = (name: string, bytes: Uint8Array): void => {
+    writeFileSync(join(dir, `${name}.${process.pid}.tmp`), bytes);
+    renameSync(join(dir, `${name}.${process.pid}.tmp`), join(dir, name));
+  };
+  put("base.png", encodePng({ width: n, height: n, channels: 4, depth: 8, data: base }));
+  put("normal.png", encodePng({ width: n, height: n, channels: 3, depth: 8, data: normal }));
+  put("mro.png", encodePng({ width: h, height: h, channels: 4, depth: 8, data: mro }));
+  put("key", new TextEncoder().encode(key));
 }
 
-/** Like the sky's material carrier, this triangle is never drawn. Last by name, it renumbers no existing meshes. */
-export function worldSurfaceMesh(): SourceMesh {
-  const textures = (["base", "normal", "mro"] as const).map((role) => ({ id: `${SURFACE_MATERIAL}/${role}`, role, top: role === "mro" ? SURFACE_TOP / 2 : SURFACE_TOP }));
-  const material = { id: SURFACE_MATERIAL, base: 0, normal: 1, mro: 2, mask: -1, mask2: -1, tint: [1, 1, 1] as [number, number, number], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 3 };
-  return { id: "core:zz_world_surfaces", flat: 1, materials: [material], textures,
-    lods: [{ positions: Float32Array.from([0, 0, 0, 1, 0, 0, 0, 0, 1]), colors: new Uint8Array(3), indices: Uint32Array.from([0, 2, 1]),
-      uvs: Float32Array.from([0, 0, 1, 0, 0, 1]), normals: Float32Array.from([0, 1, 0, 0, 1, 0, 0, 1, 0]) }] };
+/**
+ * The weathering masks' pictures (content/surfaces.ts WEATHER_MATERIAL), unless those under var/ were made from these:
+ * the four masks in one picture, runoff in red, damp in green, peel in blue and joints in alpha, as wide as a finish's
+ * packed map and a pixel high for each two the painter made, so the 8 m by 4 m tile is square; and a grey base colour
+ * and a flat normal, which nothing draws.
+ */
+export function buildWeather(): void {
+  const files = WEATHER.map((m) => join(WORLD_ART, "weather", `${m}.png`));
+  const hash = createHash("sha256").update(readFileSync(import.meta.filename));
+  for (const file of [join(WORLD_ART, "weather", "material.json"), ...files]) hash.update(file).update(readFileSync(file));
+  const key = hash.digest("hex"), dir = join(SURFACE_ART, "weather"), stamp = join(dir, "key");
+  if (existsSync(stamp) && readFileSync(stamp, "utf8") === key) return;
+  mkdirSync(dir, { recursive: true });
+  const n = SURFACE_TOP / 2, masks = files.map((file) => {
+    const p = readPicture(file);
+    if (p.width !== WEATHER_WIDE || p.height !== WEATHER_TALL) throw new Error(`weathering: ${file} is ${p.width} by ${p.height}, not ${WEATHER_WIDE} by ${WEATHER_TALL}`);
+    return p;
+  });
+  const mro = new Uint8Array(n * n * 4), sx = WEATHER_WIDE / n, sy = WEATHER_TALL / n;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) masks.forEach((p, c) => {
+    let sum = 0;
+    for (let j = 0; j < sy; j++) for (let i = 0; i < sx; i++) sum += p.data[((y * sy + j) * p.width + x * sx + i) * p.channels]! / (p.depth === 8 ? 255 : 65535);
+    mro[(y * n + x) * 4 + c] = byte(sum / (sx * sy));
+  });
+  const s = WEATHER_STUB, base = new Uint8Array(s * s * 4).fill(128), normal = new Uint8Array(s * s * 3);
+  for (let i = 0; i < s * s; i++) normal.set([128, 128, 255], i * 3);
+  const put = (name: string, bytes: Uint8Array): void => {
+    writeFileSync(join(dir, `${name}.${process.pid}.tmp`), bytes);
+    renameSync(join(dir, `${name}.${process.pid}.tmp`), join(dir, name));
+  };
+  put("base.png", encodePng({ width: s, height: s, channels: 4, depth: 8, data: base }));
+  put("normal.png", encodePng({ width: s, height: s, channels: 3, depth: 8, data: normal }));
+  put("mro.png", encodePng({ width: n, height: n, channels: 4, depth: 8, data: mro }));
+  put("key", new TextEncoder().encode(key));
 }
-if (import.meta.main) { buildSurfaceArt(); console.log(SURFACE_ART); }
+
+/** A finish's material carrier, and the weathering masks' last: like the sky's, this triangle is never drawn. Named last, it renumbers no other mesh. */
+export function worldSurfaceMeshes(): SourceMesh[] {
+  return [...SURFACE_NAMES, "weather" as const].map((name) => {
+    const id = name === "weather" ? WEATHER_MATERIAL : surfaceMaterial(name);
+    const textures = (["base", "normal", "mro"] as const).map((role) => ({ id: `${id}/${role}`, role, top: role === "mro" ? SURFACE_TOP / 2 : name === "weather" ? WEATHER_STUB : SURFACE_TOP }));
+    const material = { id, base: 0, normal: 1, mro: 2, mask: -1, mask2: -1, tint: [1, 1, 1] as [number, number, number], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 0 };
+    return { id: `core:zz_world_${name}`, flat: 1, materials: [material], textures,
+      lods: [{ positions: Float32Array.from([0, 0, 0, 1, 0, 0, 0, 0, 1]), colors: new Uint8Array(3), indices: Uint32Array.from([0, 2, 1]),
+        uvs: Float32Array.from([0, 0, 1, 0, 0, 1]), normals: Float32Array.from([0, 1, 0, 0, 1, 0, 0, 1, 0]) }] };
+  });
+}
+
+if (import.meta.main) {
+  for (const name of SURFACE_NAMES) if (existsSync(join(WORLD_ART, name, "material.json"))) buildFinish(name);
+  if (existsSync(join(WORLD_ART, "weather", "material.json"))) buildWeather();
+  console.log(SURFACE_ART);
+}
