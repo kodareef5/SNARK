@@ -26,6 +26,7 @@ import { makeTint } from "./tint.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
 import { helicopterSites, type HelicopterSite } from "../helicopter/sites.ts";
 import { boatSites, HARBOURS, mappedBoatSites } from "../boat/sites.ts";
+import { harbourWrecks, vehicleMeshes } from "../boat/wrecks.ts";
 import type { BuildingLabel, PublicPlace } from "./labels.ts";
 import { growRuins } from "./ruin-growth.ts";
 import { landmarkDefs, landmarksOf, layLandmarkGround, placeLandmarks } from "./landmarks.ts";
@@ -86,6 +87,27 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const statics = [...layered, ...obelisks.flatMap((o) => obeliskStatics(reg, o, site.groundAt).map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 }))), ...brought.statics.map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 }))];
   pieceCounts.fill(0);
   for (const p of statics) pieceCounts[Math.floor((p.z - z0) / 64) * chunksX + Math.floor((p.x - x0) / 64)]!++;
+  // The harbours' wrecks, in the water by their marinas and piers, before the found vessels, which keep clear of them.
+  const harbours = world.heaps === false ? vocabulary(source).harbours : HARBOURS;
+  const waterfrontPlaces = JSON.parse(readFileSync(join(source, "blocks/places.json"), "utf8")) as PublicPlace[];
+  const waterfrontLabels = JSON.parse(readFileSync(join(source, "blocks/labels.json"), "utf8")) as Record<string, BuildingLabel>;
+  // A harbour's district is the one its water looks onto: the nearest district within 200 m of the place.
+  const districtAt = (x: number, z: number): { name: string; style: string } | null => {
+    for (let r = 0; r <= 200; r += 10) for (let a = 0; a < (r ? 16 : 1); a++) {
+      const col = Math.round((x1 - x - Math.sin(a * Math.PI / 8) * r) / 2), row = Math.round((z1 - z - Math.cos(a * Math.PI / 8) * r) / 2);
+      const d = col >= 0 && row >= 0 && col < nx && row < nz ? world.districts[ground.district[row * nx + col]! - 1] : undefined;
+      if (d) return { name: d.name, style: d.style };
+    }
+    return null;
+  };
+  const chunkOf = (x: number, z: number): number => Math.floor((z - z0) / 64) * chunksX + Math.floor((x - x0) / 64);
+  const meshes = vehicleMeshes();
+  const wrecks = harbourWrecks(mappedBoatSites(waterfrontPlaces, waterfrontLabels, site.toLattice), harbours, reg, statics, {
+    waterAt: site.waterAt, groundAt: site.groundAt, inside: (x, z, reach) => Math.min(x - x0, z - z0, x1 - x, z1 - z) > reach,
+    room: (x, z) => pieceCounts[chunkOf(x, z)]! < budget - 1,
+  }, districtAt, (mesh) => meshes.has(mesh));
+  for (const w of wrecks) { statics.push({ kind: w.kind, x: w.x, y: w.y, z: w.z, yaw: w.yaw }); pieceCounts[chunkOf(w.x, w.z)]!++; }
+  lap(`${wrecks.length} wrecks in the harbours`);
   const maxChunk = Math.max(...pieceCounts);
   if (maxChunk > budget) throw new Error(`Static chunk budget ${budget} exceeded after obelisks: ${maxChunk}`);
   lap(`${obelisks.length} obelisks`);
@@ -173,20 +195,12 @@ export async function buildMap(named: string, release = false, output = join(ROO
   // After the parked cars, which keep their places in the list, and clear of them; the boats clear of both.
   const parked = map.vehicles ?? [];
   const aircraft = helicopterSites(map, reg, aircraftSites);
-  const waterfrontPlaces = JSON.parse(readFileSync(join(source, "blocks/places.json"), "utf8")) as PublicPlace[];
-  const waterfrontLabels = JSON.parse(readFileSync(join(source, "blocks/labels.json"), "utf8")) as Record<string, BuildingLabel>;
-  // A harbour's district is the one its water looks onto: the nearest district within 200 m of the place.
-  const districtAt = (x: number, z: number): { name: string; style: string } | null => {
-    for (let r = 0; r <= 200; r += 10) for (let a = 0; a < (r ? 16 : 1); a++) {
-      const col = Math.round((x1 - x - x0 - Math.sin(a * Math.PI / 8) * r) / 2), row = Math.round((z1 - z - z0 - Math.cos(a * Math.PI / 8) * r) / 2);
-      const d = col >= 0 && row >= 0 && col < nx && row < nz ? world.districts[ground.district[row * nx + col]! - 1] : undefined;
-      if (d) return { name: d.name, style: d.style };
-    }
-    return null;
-  };
-  const berthed = boatSites({ ...map, vehicles: [...parked, ...aircraft] }, reg, mappedBoatSites(waterfrontPlaces, waterfrontLabels, (e, n) => { const [x, z] = site.toLattice(e, n); return [x - x0, z - z0]; }), world.heaps === false ? vocabulary(source).harbours : HARBOURS, districtAt);
+  const berthed = boatSites({ ...map, vehicles: [...parked, ...aircraft] }, reg, mappedBoatSites(waterfrontPlaces, waterfrontLabels, (e, n) => { const [x, z] = site.toLattice(e, n); return [x - x0, z - z0]; }), harbours, (x, z) => districtAt(x + x0, z + z0));
   const boats = berthed.map(({ site: _site, district: _district, ...v }) => v);
-  if (world.heaps === false) writeFileSync(join(source, "reports", world.ruins?.report ?? "ruins", "harbours.json"), JSON.stringify(berthed.map(({ id, kind, site: at, district, x, z, condition, fuel }) => ({ id, kind, site: at, district, x: Math.round(x), z: Math.round(z), condition, fuel })), null, 1) + "\n");
+  if (world.heaps === false) writeFileSync(join(source, "reports", world.ruins?.report ?? "ruins", "harbours.json"), JSON.stringify({
+    vessels: berthed.map(({ id, kind, site: at, district, x, z, condition, fuel }) => ({ id, kind, site: at, district, x: Math.round(x), z: Math.round(z), condition, fuel })),
+    wrecks: wrecks.map(({ kind, vessel, form, site: at, district, offshore, x, z }) => ({ kind, vessel, form, site: at, district, offshore, x: Math.round(x - x0), z: Math.round(z - z0) })),
+  }, null, 1) + "\n");
   if (aircraft.length + boats.length > 0) {
     const all = [...parked, ...aircraft, ...boats];
     map = { ...map, vehicles: all };

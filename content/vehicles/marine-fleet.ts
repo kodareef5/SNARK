@@ -87,7 +87,7 @@ function vessel(model: MarineModel): SpeciesDef {
   const helmAxis = model.helmAxis ?? (jet ? [0, 1, 0] : [0, 0, 1]), ratio = jet ? -1 : .69 / spec.maxSteer;
   const [hx, hy, hz] = model.helm;
   const vehicle: BoatVehicleDefinition = {
-    id: model.id, movement: "boat", family: model.family, spec, boarding: model.boarding, wreck: model.id,
+    id: model.id, movement: "boat", family: model.family, spec, boarding: model.boarding, wreck: `${model.id}_sunk`,
     seats: model.seats.map((anchor, i) => ({
       id: i ? "passenger_" + i : "pilot", anchor, entry: model.boarding.water, weapons: false,
       ...(i ? { pose: jet ? "pwc" as const : "cabin" as const } : { driver: true, pose: jet ? "pwc" as const : "pilot" as const, controls: {

@@ -13,6 +13,7 @@ import { NodeField } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import type { BuildingLabel, PublicPlace } from "../mapworld/labels.ts";
 import { meets, type Box } from "../mapworld/ruin-obstacles.ts";
+import type { HarbourWreckRules } from "./wrecks.ts";
 
 export interface BoatSite { id: string; kind: "civilian" | "rescue" | "police"; x: number; z: number; radius: number; waterfront?: "marina" | "pier" }
 const TYPES = { civilian: "core:boat", rescue: "core:boat_rescue", police: "core:boat_police" } as const;
@@ -32,13 +33,14 @@ export interface Harbours {
   room: number; apart: number;
   kinds: { marina: Mix; pier: Mix }; styles: Record<string, Mix>; districts: Record<string, Mix>;
   condition: Band[]; fuel: Band[];
+  wrecks: HarbourWreckRules;
 }
 export const HARBOURS: Harbours = JSON.parse(readFileSync(join(import.meta.dir, "../mapworld/rules/default.json"), "utf8")).harbours;
 /** The district a point of the map stands in or looks onto, or null. */
 export type DistrictAt = (x: number, z: number) => { name: string; style: string } | null;
 
 /** The row of `rows` a hash `h` of 32 bits lands on, by their weights. */
-const pick = <T,>(rows: readonly (readonly [T, number])[], h: number): T => {
+export const pick = <T,>(rows: readonly (readonly [T, number])[], h: number): T => {
   let at = (h / 4294967296) * rows.reduce((n, r) => n + r[1], 0);
   for (const [value, weight] of rows) { if (at < weight) return value; at -= weight; }
   return rows.at(-1)![0];
@@ -82,6 +84,13 @@ function shoreAccess(world: CollisionWorld, x: number, z: number): boolean {
     }
   }
   return false;
+}
+
+/** A civilian site's weights: its waterfront's, changed by its district's style and then its name; at a pier, only craft short enough. */
+export function siteMix(site: BoatSite, rules: Harbours, district: ReturnType<DistrictAt>, lengthOf: (id: string) => number): [string, number][] {
+  const pool = site.waterfront === "pier" ? rules.kinds.pier : rules.kinds.marina;
+  return Object.entries({ ...pool, ...(district ? rules.styles[district.style] : {}), ...(district ? rules.districts[district.name] : {}) })
+    .filter(([id, w]) => w > 0 && id in pool && (site.waterfront !== "pier" || lengthOf(id) <= rules.pier.longest));
 }
 
 /** A found vessel as placed, with the site it belongs to and the district whose weights drew it. */
@@ -141,10 +150,7 @@ export function boatSites(map: MapData, reg: Registry, sites: readonly BoatSite[
   const order = [...sites].sort((a, b) => rank(a) - rank(b) || hashString(a.id) - hashString(b.id) || a.id.localeCompare(b.id));
   for (const site of order) {
     if (site.kind !== "civilian" && counts[site.kind] >= 4) continue;
-    const district = districtAt(site.x, site.z);
-    const pool = site.waterfront === "pier" ? rules.kinds.pier : rules.kinds.marina;
-    const mix = Object.entries({ ...pool, ...(district ? rules.styles[district.style] : {}), ...(district ? rules.districts[district.name] : {}) })
-      .filter(([id, w]) => w > 0 && id in pool && (site.waterfront !== "pier" || defOf(id).spec.halfLength * 2 <= rules.pier.longest));
+    const district = districtAt(site.x, site.z), mix = siteMix(site, rules, district, (id) => defOf(id).spec.halfLength * 2);
     const want = site.kind !== "civilian" || !site.waterfront ? 1 : site.waterfront === "pier" ? Number(hashString(site.id, 211) / 4294967296 < rules.pier.share)
       : rules.marina.least + hashString(site.id, 223) % Math.max(1, rules.marina.most - rules.marina.least + 1);
     for (let k = 0; k < want; k++) {

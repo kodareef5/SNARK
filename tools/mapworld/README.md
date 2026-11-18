@@ -299,7 +299,7 @@ The kinds and their sizes come from the compiled content: a vehicle's
 `spec` (half width, half length, height, wheelbase, track, ground limit) and its
 `seats`, so a truck or a bus needs no new code.
 
-## Boats: found ones
+## Boats: found ones and wrecks
 
 Vessels a survivor can take go in `vehicles.json` beside the cars, after the found
 aircraft and clear of both. `boatSites` in `tools/boat/sites.ts` chooses them by
@@ -332,3 +332,20 @@ aircraft and clear of both. `boatSites` in `tools/boat/sites.ts` chooses them by
   still has water 0.2 m deeper than the vessel's draught.
 - `reports/<ruins>/harbours.json` lists each vessel with its site, district and
   ranges.
+
+A harbour's wrecks are statics of `content/vehicles/harbour-wrecks.ts`, set down
+before the found vessels, which keep clear of them (`tools/boat/wrecks.ts`, by
+`harbours.wrecks`). `marina` and `pier` give for each the share of such sites with a
+wreck among their berths and the share with one in the water `out` metres off.
+Its vessel is drawn from the site's own weights (of the ten, the launch's wreck
+being its corpse's), and it is sunk at the share `sunk` and otherwise damaged.
+A damaged one rides low, its keel 1.25 times its draught under the water, where
+the water is deeper than its draught by 0.2 m; a sunk one sits with its keel on
+the bottom where the water is deeper than its draught by 0.3 m and no deeper than
+0.7 of its height, so its upperworks show. Each is clear of every piece by a metre
+round its hull, `apart` metres from any other wreck, in a chunk with room. Its
+static is its form's, `core:hulk_<vessel>_damaged` or `_sunk`, which draws the
+vessel's form `core:<vessel>_damaged` or `core:<vessel>_sunk`, where the art under
+`assets/source/core/vehicles` has that mesh; until then it is `core:hulk_<vessel>`,
+the intact hull. A destroyed vessel's corpse draws its `wreck`, its sunk form, and
+its intact hull until the pack has that. `harbours.json` lists the wrecks too.
