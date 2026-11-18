@@ -828,16 +828,17 @@ export class GlRenderer {
     t.size = w > 0 ? `${w} ${h} ${levels} ${samples}` : "";
     for (let k = samples > 0 ? -1 : 0; k <= levels && w > 0; k++) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, (t.fbs[k + 1] = gl.createFramebuffer()!));
-      for (const [format, at] of k > 0 ? [] : ([[this.light, gl.COLOR_ATTACHMENT0], [gl.DEPTH_COMPONENT24, gl.DEPTH_ATTACHMENT]] as const).slice(k < 0 ? 0 : samples > 0 ? 2 : 1)) {
+      // The scene's colour and depth where it has samples, its depth alone where it is drawn into its texture.
+      for (let r = k < 0 ? 0 : k === 0 && samples === 0 ? 1 : 2; r < 2; r++) {
         gl.bindRenderbuffer(gl.RENDERBUFFER, t.bufs[t.bufs.length] = gl.createRenderbuffer()!);
-        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, k < 0 ? samples : 0, format, w, h);
-        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, at, gl.RENDERBUFFER, t.bufs.at(-1)!);
+        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, k < 0 ? samples : 0, r ? gl.DEPTH_COMPONENT24 : this.light, w, h);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, r ? gl.DEPTH_ATTACHMENT : gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, t.bufs.at(-1)!);
       }
       if (k < 0) continue;
       gl.activeTexture(gl.TEXTURE0 + UNIT.details);
       gl.bindTexture(gl.TEXTURE_2D, t.tex[k] = gl.createTexture()!);
       gl.texStorage2D(gl.TEXTURE_2D, 1, k > 0 ? BLOOM_FORMAT : this.light, Math.max(1, w >> levelShift(k)), Math.max(1, h >> levelShift(k)));
-      for (const [name, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_2D, name, v);
+      for (const p of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_2D, p[0], p[1]);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t.tex[k]!, 0);
     }
     t.fbs[0] ??= t.fbs[1]!;

@@ -17,8 +17,9 @@ export const CONTACT_MOST = 0.8;
 /** Metres from the camera past which a body is left out: its contact is under a pixel or two. */
 const CONTACT_REACH = 60;
 
-const near: number[] = [];
-const at = new Float64Array(MAX_CONTACTS * 8);
+/** The bodies taken this frame, nearest first, by their place in the remote sample (its count for the viewer's own), and how far each is. */
+const pick = new Int32Array(MAX_CONTACTS);
+const far = new Float64Array(MAX_CONTACTS);
 
 /**
  * Fills the frame block's contact (packet.ts fContact) with the MAX_CONTACTS bodies of `remote` nearest the camera
@@ -31,30 +32,41 @@ const at = new Float64Array(MAX_CONTACTS * 8);
 export function contactFrame(frame: Float32Array, on: boolean, reg: Pick<Registry, "bodyRadius" | "bodyHeight" | "vehicle">, remote: RemoteSample | null, own: { kind: number; x: number; y: number; z: number; yaw: number } | null, cam: { x: number; y: number; z: number }, long: (kind: number) => number = () => 0): void {
   frame.fill(0, FRAME.contact, FRAME.contact + MAX_CONTACTS * 8);
   if (!on) return;
-  near.length = 0;
   const n = remote?.count ?? 0;
+  let count = 0;
   for (let i = 0; i <= n; i++) {
-    const body = i < n ? { kind: remote!.kind[i]!, x: remote!.x[i]!, y: remote!.y[i]!, z: remote!.z[i]!, yaw: remote!.yaw[i]! } : own;
-    if (!body || (i < n && (remote!.cue[i]! & CUE_DEAD) !== 0)) continue;
-    const d = Math.hypot(body.x - cam.x, body.y - cam.y, body.z - cam.z);
-    if (d > CONTACT_REACH || reg.bodyRadius[body.kind]! <= 0) continue;
-    near.push(d, i);
+    if (i === n ? !own : (remote!.cue[i]! & CUE_DEAD) !== 0) continue;
+    const kind = i < n ? remote!.kind[i]! : own!.kind;
+    const d = i < n ? Math.hypot(remote!.x[i]! - cam.x, remote!.y[i]! - cam.y, remote!.z[i]! - cam.z) : Math.hypot(own!.x - cam.x, own!.y - cam.y, own!.z - cam.z);
+    if (d > CONTACT_REACH || reg.bodyRadius[kind]! <= 0 || (count === MAX_CONTACTS && d >= far[count - 1]!)) continue;
+    // Into the list kept nearest first.
+    let j = Math.min(count, MAX_CONTACTS - 1);
+    for (; j > 0 && far[j - 1]! > d; j--) {
+      far[j] = far[j - 1]!;
+      pick[j] = pick[j - 1]!;
+    }
+    far[j] = d;
+    pick[j] = i;
+    if (count < MAX_CONTACTS) count++;
   }
-  // Nearest first, by insertion: the list is short.
-  const count = near.length / 2;
-  const order = Array.from({ length: count }, (_, k) => k).sort((a, b) => near[a * 2]! - near[b * 2]!);
-  for (let k = 0; k < Math.min(count, MAX_CONTACTS); k++) {
-    const i = near[order[k]! * 2 + 1]!;
-    const body = i < n ? { kind: remote!.kind[i]!, x: remote!.x[i]!, y: remote!.y[i]!, z: remote!.z[i]!, yaw: remote!.yaw[i]! } : own!;
+  for (let k = 0; k < count; k++) {
+    const i = pick[k]!;
+    const kind = i < n ? remote!.kind[i]! : own!.kind;
+    const yaw = i < n ? remote!.yaw[i]! : own!.yaw;
     // A vehicle is the box its driving numbers give, a creature or a player its upright body as long as its mesh.
-    const spec = reg.vehicle[body.kind]?.spec;
-    const r = reg.bodyRadius[body.kind]!;
-    const [across, up, along] = spec ? [spec.halfWidth, spec.height / 2, spec.halfLength] : [r, reg.bodyHeight[body.kind]! / 2, Math.max(r, long(body.kind))];
-    const o = k * 8;
-    [at[o], at[o + 1], at[o + 2], at[o + 3]] = [body.x - cam.x, body.y + up - cam.y, body.z - cam.z, Math.cos(body.yaw)];
-    [at[o + 4], at[o + 5], at[o + 6], at[o + 7]] = [across, up, along, Math.sin(body.yaw)];
+    const spec = reg.vehicle[kind]?.spec;
+    const r = reg.bodyRadius[kind]!;
+    const up = spec ? spec.height / 2 : reg.bodyHeight[kind]! / 2;
+    const o = FRAME.contact + k * 8;
+    frame[o] = (i < n ? remote!.x[i]! : own!.x) - cam.x;
+    frame[o + 1] = (i < n ? remote!.y[i]! : own!.y) + up - cam.y;
+    frame[o + 2] = (i < n ? remote!.z[i]! : own!.z) - cam.z;
+    frame[o + 3] = Math.cos(yaw);
+    frame[o + 4] = spec ? spec.halfWidth : r;
+    frame[o + 5] = up;
+    frame[o + 6] = spec ? spec.halfLength : Math.max(r, long(kind));
+    frame[o + 7] = Math.sin(yaw);
   }
-  frame.set(at.subarray(0, Math.min(count, MAX_CONTACTS) * 8), FRAME.contact);
 }
 
 /** The share of the sky's light left to a surface at `rel`, camera-relative, facing `n`, by the bodies in `frame`: the twin of the GLSL. */
@@ -62,13 +74,13 @@ export function contactShare(frame: ArrayLike<number>, rel: ArrayLike<number>, n
   let keep = 1;
   for (let k = 0; k < MAX_CONTACTS; k++) {
     const o = FRAME.contact + k * 8;
-    const [c, s, ax, ay, az, bx, by, bz] = [frame[o + 3]!, frame[o + 7]!, frame[o]!, frame[o + 1]!, frame[o + 2]!, frame[o + 4]!, frame[o + 5]!, frame[o + 6]!];
+    const c = frame[o + 3]!, s = frame[o + 7]!, bx = frame[o + 4]!, by = frame[o + 5]!, bz = frame[o + 6]!;
     if (bx <= 0) break;
-    const [dx, dy, dz] = [rel[0]! - ax, rel[1]! - ay, rel[2]! - az];
-    const [qx, qy, qz] = [(c * dx - s * dz) / bx, dy / by, (s * dx + c * dz) / bz];
+    const dx = rel[0]! - frame[o]!, dy = rel[1]! - frame[o + 1]!, dz = rel[2]! - frame[o + 2]!;
+    const qx = (c * dx - s * dz) / bx, qy = dy / by, qz = (s * dx + c * dz) / bz;
     const l2 = qx * qx + qy * qy + qz * qz;
     if (l2 > 25) continue;
-    const [mx, my, mz] = [(c * n[0]! - s * n[2]!) * bx, n[1]! * by, (s * n[0]! + c * n[2]!) * bz];
+    const mx = (c * n[0]! - s * n[2]!) * bx, my = n[1]! * by, mz = (s * n[0]! + c * n[2]!) * bz;
     const cos = -(mx * qx + my * qy + mz * qz) / (Math.hypot(mx, my, mz) * Math.sqrt(l2));
     keep *= 1 - (CONTACT_MOST * Math.min(Math.max(cos, 0), 1)) / Math.max(l2, 1);
   }

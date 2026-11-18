@@ -71,7 +71,7 @@ export function bloomLevels(height: number, share: number): number {
 export function gradeAt(height: number): GradeKey {
   const at = GRADE.findIndex((k) => k.sun >= height);
   if (at <= 0) return GRADE[at < 0 ? GRADE.length - 1 : 0]!;
-  const [a, b] = [GRADE[at - 1]!, GRADE[at]!];
+  const a = GRADE[at - 1]!, b = GRADE[at]!;
   const t = (height - a.sun) / (b.sun - a.sun);
   const mix = (x: number, y: number): number => x + (y - x) * t;
   return { sun: height, gain: [mix(a.gain[0], b.gain[0]), mix(a.gain[1], b.gain[1]), mix(a.gain[2], b.gain[2])], saturation: mix(a.saturation, b.saturation), gamma: mix(a.gamma, b.gamma) };
