@@ -2,6 +2,7 @@ import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { frame, frameOf } from "../../shared/world/frame.ts";
 import type { DeckPoint } from "./bridges.ts";
 import type { Site, StaticPiece } from "./statics.ts";
+import { S } from "./ground.ts";
 import type { roadIndex } from "./street-cars.ts";
 
 /** An emitted road end close enough to dry ground to have an earth approach. Coordinates are in the source lattice. */
@@ -15,7 +16,7 @@ export interface RoadEntrance {
 
 /** Follow one aligned source polyline away from a real abutment, including its bends. The bridge/source offset
  * blends out over twelve metres. Stop at water, a mapped gap, an abrupt natural grade, or the source line's end. */
-export function roadRunout(site: Site, e: RoadEntrance, roads: ReturnType<typeof roadIndex>): void {
+export function roadRunout(site: Site, e: RoadEntrance, roads: ReturnType<typeof roadIndex>): number | undefined {
   let best: typeof roads.segments[number] | undefined, distance = Infinity, foot = 0, direction = 1;
   for (const s of roads.segments) {
     const dx = s.bx - s.ax, dz = s.bz - s.az, length = Math.hypot(dx, dz);
@@ -46,13 +47,14 @@ export function roadRunout(site: Site, e: RoadEntrance, roads: ReturnType<typeof
       const y = site.groundAt(x, z), dx = (b.x - a.x) / length, dz = (b.z - a.z) / length;
       // Preserve ordinary hillside roads too: this guard rejects a cliff, not a twenty-degree natural grade.
       if (Math.abs(y - points.at(-1)!.y) > 1 || [-e.width / 2, 0, e.width / 2].some(side => !dry(site, x - dz * side, z + dx * side))) {
-        e.runout = points; return;
+        e.runout = points; return best.line;
       }
       points.push({ x, y, z }); next += 2;
     }
     travelled += length;
   }
   e.runout = points;
+  return best.line;
 }
 
 /** Soil already supporting a dry road must not be excavated later by a nearby room/door. This mask preserves
@@ -76,7 +78,7 @@ export function roadGroundSamples(site: Site, entrances: readonly RoadEntrance[]
   return kept;
 }
 
-export function roadEntrances(site: Site, deck: readonly DeckPoint[], rows: readonly StaticPiece[][], width: number): RoadEntrance[] {
+export function roadEntrances(site: Site, deck: readonly DeckPoint[], rows: readonly StaticPiece[][] | undefined, width: number): RoadEntrance[] {
   const result: RoadEntrance[] = [];
   for (const end of [0, deck.length - 1]) {
     const direction = end === 0 ? 1 : -1, d = deck[end], next = deck[end + direction];
@@ -87,11 +89,38 @@ export function roadEntrances(site: Site, deck: readonly DeckPoint[], rows: read
     for (let i = end; i >= 0 && i < deck.length; i += direction) {
       const row = deck[i]!;
       if (row.gap || Math.hypot(row.x - d.x, row.z - d.z) > 12) break;
-      entrance.slabs.push(...rows[i]!);
+      if (rows) entrance.slabs.push(...rows[i]!);
     }
-    if (entrance.slabs.length) result.push(entrance);
+    if (!rows || entrance.slabs.length) result.push(entrance);
   }
   return result;
+}
+
+/** A station ramp can cross the road at ground level or above vehicle clearance, but cannot hang in the driving
+ * volume. Plan another complete station connection rather than removing one of its ramp modules afterward. */
+export function roadRunoutClearance(entrances: readonly RoadEntrance[]): (x: number, y: number, z: number) => boolean {
+  type Point = { x: number; y: number; z: number };
+  const bins = new Map<string, { a: Point; b: Point; radius: number }[]>();
+  for (const e of entrances) for (let i = 1; i < (e.runout?.length ?? 0); i++) {
+    const a = e.runout![i - 1]!, b = e.runout![i]!, radius = e.width / 2 + 2.5;
+    const segment = { a, b, radius };
+    for (let x = Math.floor((Math.min(a.x, b.x) - radius) / 32); x <= Math.floor((Math.max(a.x, b.x) + radius) / 32); x++) {
+      for (let z = Math.floor((Math.min(a.z, b.z) - radius) / 32); z <= Math.floor((Math.max(a.z, b.z) + radius) / 32); z++) {
+        const key = `${x},${z}`, bin = bins.get(key);
+        if (bin) bin.push(segment); else bins.set(key, [segment]);
+      }
+    }
+  }
+  return (x, y, z) => {
+    for (const { a, b, radius } of bins.get(`${Math.floor(x / 32)},${Math.floor(z / 32)}`) ?? []) {
+      const dx = b.x - a.x, dz = b.z - a.z;
+      const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz)));
+      if (Math.hypot(x - a.x - dx * t, z - a.z - dz * t) >= radius) continue;
+      const ground = a.y + (b.y - a.y) * t;
+      if (y > ground + .35 && y < ground + 3.8) return true;
+    }
+    return false;
+  };
 }
 
 function sample(site: Site, x: number, z: number): number {
@@ -103,8 +132,28 @@ function dry(site: Site, x: number, z: number): boolean {
   return i >= 0 && !site.ground.water[i] && !site.ground.lakes?.body[i] && !site.ground.gaps[i];
 }
 
-/** Restore shallow dry earth below the real road surface, across its width and small seams. Never fill a water/gap
- * sample or a usable underpass: at most 1.25 m of fill is permitted. A four-metre shoulder blends into untouched soil. */
+// Transient planning data. Keep original road heights so later cuts for a lower passage remain intact.
+const shoulderHeights = new WeakMap<RoadEntrance, Map<number, number>>();
+
+export function surveyRoadShoulder(site: Site, e: RoadEntrance, roads: ReturnType<typeof roadIndex>, line: number): void {
+  const g = site.ground.grid, radius = e.width / 2 + 16, heights = new Map<number, number>();
+  for (let row = Math.max(0, Math.floor((g.z1 - e.z - radius) / g.cell)); row <= Math.min(g.nz - 1, Math.ceil((g.z1 - e.z + radius) / g.cell)); row++) {
+    for (let col = Math.max(0, Math.floor((g.x1 - e.x - radius) / g.cell)); col <= Math.min(g.nx - 1, Math.ceil((g.x1 - e.x + radius) / g.cell)); col++) {
+      const x = g.x1 - col * g.cell, z = g.z1 - row * g.cell, i = row * g.nx + col;
+      const along = (x - e.x) * e.dx + (z - e.z) * e.dz, side = Math.abs((z - e.z) * e.dx - (x - e.x) * e.dz);
+      if (along < -6 || along > 14 || side > e.width / 2 + g.cell || !dry(site, x, z)) continue;
+      const surface = site.ground.surface?.[i];
+      if (surface !== S.HIGHWAY && surface !== S.STREET && surface !== S.DECK) continue;
+      const road = roads.near(x, z, e.width / 2 + 2 * g.cell);
+      if (road?.segment.line === line && road.distance <= road.segment.half + g.cell &&
+        Math.abs(road.dx * e.dx + road.dz * e.dz) >= .9) heights.set(i, site.ground.height[i]!);
+    }
+  }
+  shoulderHeights.set(e, heights);
+}
+
+/** Restore shallow dry ground below the actual slabs. A deeper shoulder needs a surveyed matching street
+ * at its original elevation. The four-metre feather blends the approach into adjacent soil. */
 export function gradeRoadEntrances(site: Site, entrances: readonly RoadEntrance[]): number {
   const g = site.ground.grid;
   let changed = 0;
@@ -138,7 +187,11 @@ export function gradeRoadEntrances(site: Site, entrances: readonly RoadEntrance[
       }
       top = Math.max(top, nearTop);
       const old = site.ground.height[index]!, rise = top - .02 - old;
-      if (rise <= 0 || rise > 1.25) continue;
+      if (rise <= 0) continue;
+      if (rise > 1.25) {
+        const surveyed = shoulderHeights.get(e)?.get(index);
+        if (rise > 3.25 || surveyed === undefined || old < surveyed - .05) continue;
+      }
       site.ground.height[index] = old + rise * fade;
       changed++;
     }
