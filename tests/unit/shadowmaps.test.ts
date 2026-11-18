@@ -63,7 +63,11 @@ test("the lit tiers look the sun's shadow up as their tier says, with the same t
         continue;
       }
       const { taps, size } = tier.shadows;
-      expect(p.defines).toBe(`#define SHADOW_CASCADES ${MAX_CASCADES}\n#define SHADOW_TAPS ${Math.sqrt(taps)}\n#define SHADOW_SIZE ${size}.0\n`);
+      // The finishes' relief is read on the tiers that keep it, by every program that wears the finishes.
+      const relief = tier.relief && name !== "surface" ? "#define WORLD_RELIEF\n" : "";
+      // A near static's walls are weathered where the finishes are read in full.
+      const weather = name === "flat" || name === "seeThrough" ? `#define WORLD_WEATHER\n${tier.finishes > 1024 ? "" : tier.finishes === 1024 ? "#define WORLD_EDGES\n" : "#define WORLD_EDGE_LINE\n"}` : "";
+      expect(p.defines).toBe(`${relief}${weather}#define SHADOW_CASCADES ${MAX_CASCADES}\n#define SHADOW_TAPS ${Math.sqrt(taps)}\n#define SHADOW_SIZE ${size}.0\n`);
       expect(p.samplers.uShadow).toBe(UNIT.shadow);
       expect(PROGRAMS[name]!(tier, "rgba", true).defines).toEndWith("#define SHADOW_HARD\n");
       // One cascade fewer, none, or shadows turned off: the lookup stops at the frame's cascades, and nothing is compiled again.

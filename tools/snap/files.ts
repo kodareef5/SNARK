@@ -2,7 +2,7 @@
 // textures in the rgba variant, the one variant the rasterizer reads. The textures are made from the pictures in the
 // asset folders. That takes seconds, so each texture is kept under .cache/snap by the bytes it was made from.
 
-import { HAS_SURFACES, worldMaterial, worldSurfaceMesh } from "../surfaces/build.ts";
+import { HAS_SURFACES, worldMaterials, worldSurfaceMeshes } from "../surfaces/build.ts";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -91,8 +91,10 @@ export async function namedTextures(source: string = SOURCE): Promise<Map<string
     }
   }
   if (HAS_SURFACES && resolve(source) === resolve(SOURCE)) {
-    const material = worldMaterial();
-    for (const t of worldSurfaceMesh().textures!) out.set(t.id, { material, role: t.role, top: t.top });
+    const materials = worldMaterials();
+    worldSurfaceMeshes().forEach((mesh, k) => {
+      for (const t of mesh.textures!) out.set(t.id, { material: materials[k]!, role: t.role, top: t.top });
+    });
   }
   return out;
 }

@@ -2,7 +2,7 @@
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
 import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
-import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
+import { SURFACE_NAMES, SURFACE_PREFIX, WEATHER_LAYER, WEATHER_MATERIAL } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
 import { PROGRAM, PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../core/render/programs.ts";
@@ -38,7 +38,7 @@ interface Program {
 
 /** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers end `last`. */
 const WHOLE_UV = [0, 0, 1, 1];
-const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, offset: 29 } as const;
+const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, offset: 30 } as const;
 
 interface MeshLod {
   vao: WebGLVertexArrayObject;
@@ -132,8 +132,13 @@ export class GlRenderer {
   private readonly bound: (WebGLTexture | null)[] = [];
   private mapped: PackMaterial | undefined | null = null;
   private mappedRoles = 0;
-  /** 1 once the world material's base colour is on the card, this frame. */
+  /** 1 once every world finish's maps are on the card, this frame. */
   private worldReady = 0;
+  /** The world finishes' maps by role, each an array of a layer a finish, its side and the finest level drawn; and each world texture's role * 32 + layer. */
+  private world: (WebGLTexture | null)[] = [];
+  private worldSide = [0, 0, 0];
+  private worldBase = [-1, -1, -1];
+  private readonly worldLayer = new Map<number, number>();
   private blending = false;
   private culling = false;
   private covering = false;
@@ -173,7 +178,6 @@ export class GlRenderer {
   private readonly finish: FinishTable;
   /** The material whose pictures the dome draws over the sky, if the pack has it. */
   private readonly sky: PackMaterial | undefined;
-  private readonly worldMaterial: PackMaterial | undefined;
   private readonly forced: string | null;
 
   constructor(canvas: HTMLCanvasElement, pack: Pack, hf: Heightfield, manifest: Manifest, forced: string | null = null) {
@@ -184,7 +188,8 @@ export class GlRenderer {
     this.hf = hf;
     this.ground = groundSize(hf);
     this.materials = manifest.materials ?? [];
-    this.worldMaterial = this.materials.find((m) => m.id === SURFACE_MATERIAL);
+    // The weathering masks are the packed array's last layer; their base colour and normal are never drawn.
+    for (const m of this.materials) if (m.id.startsWith(SURFACE_PREFIX)) [m.base, m.normal, m.mro].forEach((t, r) => (m.id !== WEATHER_MATERIAL || r === 2) && this.worldLayer.set(t, r * 32 + (m.id === WEATHER_MATERIAL ? WEATHER_LAYER : (SURFACE_NAMES as readonly string[]).indexOf(m.id.slice(SURFACE_PREFIX.length)))));
     this.sky = this.materials.find((m) => m.id === SKY_MATERIAL);
     this.meshes = manifest.meshes;
     this.finish = finishTable(pack.palette, manifest);
@@ -206,6 +211,8 @@ export class GlRenderer {
     this.programs.clear();
     this.linked.clear();
     this.neutral = [];
+    this.world = [null, null, null];
+    this.worldSide = [0, 0, 0];
     this.current = this.warmed = this.mapped = this.vao = this.arrayBuffer = null;
     // Where the browser can, programs compile and link away from the page, which asks after one only to draw with it.
     gl.getExtension("KHR_parallel_shader_compile");
@@ -400,6 +407,8 @@ export class GlRenderer {
   private fill(u: TextureUpload): void {
     const gl = this.gl;
     const internal = FORMATS[u.format === "astc" ? u.block! : u.format]![u.role === "base" || u.role === "layer" ? 0 : u.role === "normal" ? 1 : 2]!;
+    const w = this.worldLayer.get(u.slot);
+    if (w !== undefined) return this.fillWorld(u, w >> 5, w & 31, internal);
     let copy = this.making.get(u.slot);
     gl.activeTexture(gl.TEXTURE0 + UNIT.maps);
     if (u.size === 1 && u.row === 0) {
@@ -408,8 +417,7 @@ export class GlRenderer {
       gl.bindTexture(gl.TEXTURE_2D, copy);
       gl.texStorage2D(gl.TEXTURE_2D, 32 - Math.clz32(u.top), internal, u.top, u.top);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-      // Read for the angle it is seen at, as far as the frame's tier asks and the card offers; but the world's finish, which picks its own level.
-      if (this.warmed!.anisotropy > 1 && gl.getExtension("EXT_texture_filter_anisotropic") && !MAP_ROLES.some((r) => this.worldMaterial && textureOf(this.worldMaterial, r) === u.slot)) gl.texParameterf(gl.TEXTURE_2D, 0x84fe, Math.min(this.warmed!.anisotropy, gl.getParameter(0x84ff) as number));
+      this.anisotropy(gl.TEXTURE_2D);
     } else if (copy) gl.bindTexture(gl.TEXTURE_2D, copy);
     else return;
     // The picture `size` across is as many halvings below the top as `size` is below `top`.
@@ -420,6 +428,27 @@ export class GlRenderer {
     gl.deleteTexture(this.textures.get(u.slot) ?? null);
     this.textures.set(u.slot, copy);
     this.making.delete(u.slot);
+  }
+
+  /** Reads the texture bound to `target` for the angle it is seen at, as far as the frame's tier asks and the card offers. */
+  private anisotropy(target: number): void {
+    if (this.gl.getExtension("EXT_texture_filter_anisotropic")) this.gl.texParameterf(target, 0x84fe, Math.max(1, Math.min(this.warmed!.anisotropy, this.gl.getParameter(0x84ff) as number)));
+  }
+
+  /** Rows of a world finish's picture into its layer of its role's array, which is made at the side the frame asks when first written. */
+  private fillWorld(u: TextureUpload, role: number, layer: number, internal: number): void {
+    const gl = this.gl, side = this.worldSide[role]!, level = Math.clz32(u.size) - Math.clz32(side);
+    if (side === 0 || level < 0) return;
+    gl.activeTexture(gl.TEXTURE0 + UNIT.maps + role);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.world[role] ?? (this.world[role] = gl.createTexture()));
+    if (this.worldBase[role] === -2) {
+      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 32 - Math.clz32(side), internal, side, side, role === 2 ? WEATHER_LAYER + 1 : SURFACE_NAMES.length);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      this.anisotropy(gl.TEXTURE_2D_ARRAY);
+      this.worldBase[role] = -1;
+    }
+    if (u.format === "rgba") gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, level, 0, u.row, layer, u.size, u.rows, 1, u.role === "normal" ? gl.RG : gl.RGBA, gl.UNSIGNED_BYTE, u.data);
+    else gl.compressedTexSubImage3D(gl.TEXTURE_2D_ARRAY, level, 0, u.row, layer, u.size, u.rows, 1, internal, u.data);
   }
 
   /** A texture leaves the card whole: the copy drawn with and a copy being filled. */
@@ -496,10 +525,7 @@ export class GlRenderer {
       prog.text = null;
     }
     if (this.current !== prog) gl.useProgram((this.current = prog).program);
-    if (p.lit && at[U.worldReady]) {
-      this.maps(this.worldMaterial, MAP_ROLES.length);
-      this.uniform(prog, U.worldReady, this.worldReady);
-    }
+    if (p.lit) this.uniform(prog, U.worldReady, this.worldReady);
     if (last[U.viewProj] === this.view) return prog;
     last[U.viewProj] = this.view;
     gl.uniformMatrix4fv(at[U.viewProj]!, false, this.matrix, this.matrixAt, 16);
@@ -513,6 +539,7 @@ export class GlRenderer {
     if (at[U.camMod]) gl.uniform3f(at[U.camMod], p.camX % 16, p.camY % 16, p.camZ % 16);
     this.uniform(prog, U.light, p.light);
     if (at[U.worldEye]) gl.uniform3f(at[U.worldEye], p.camX, p.camY, p.camZ);
+    if (at[U.worldPhase]) gl.uniform3fv(at[U.worldPhase], p.worldPhase);
     if (at[U.field]) gl.uniform4f(at[U.field], this.hf.minY, this.hf.stepY, this.ground.cell[SOURCE_MAP]!, p.camY);
     if (at[U.surfaceCity]) gl.uniform4fv(at[U.surfaceCity], p.surfaceCity);
     if (at[U.cascades] && last[U.cascades] !== p.cascadeCount) gl.uniform1i(at[U.cascades], (last[U.cascades] = p.cascadeCount));
@@ -581,6 +608,13 @@ export class GlRenderer {
       this.made = this.programs.get(p.tier) ?? [];
       this.programs.set((this.warmed = p.tier), this.made);
       for (const n of tierPrograms(p.tier)) if (!this.made[n]) this.program(n);
+      this.world.forEach((t, r) => t && (gl.activeTexture(gl.TEXTURE0 + UNIT.maps + r), gl.bindTexture(gl.TEXTURE_2D_ARRAY, t), this.anisotropy(gl.TEXTURE_2D_ARRAY)));
+    }
+    for (let r = 0; r < 3; r++) if (p.worldSide[r] !== this.worldSide[r]) {
+      gl.deleteTexture(this.world[r] ?? null);
+      this.world[r] = null;
+      this.worldSide[r] = p.worldSide[r]!;
+      this.worldBase[r] = -2;
     }
     this.passes?.mark(PASS_UPLOADS);
     for (const slot of p.assetDrops) this.drop(slot);
@@ -663,7 +697,16 @@ export class GlRenderer {
 
     this.bound.length = 0;
     this.mapped = null;
-    this.worldReady = this.worldMaterial && this.textures.has(this.worldMaterial.base) ? 1 : 0;
+    this.worldReady = 1;
+    for (let r = 0; r < 3; r++) {
+      if (r > 0 && p.worldSide[r] === 0) continue;
+      if (p.worldLevel[r]! < 0 || this.worldBase[r]! < -1) this.worldReady = 0;
+      else if (p.worldLevel[r] !== this.worldBase[r]) {
+        gl.activeTexture(gl.TEXTURE0 + UNIT.maps + r);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.world[r]!);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_BASE_LEVEL, (this.worldBase[r] = p.worldLevel[r]!));
+      }
+    }
     this.shadows(p);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.clearColor(p.sky[0]!, p.sky[1]!, p.sky[2]!, 1);

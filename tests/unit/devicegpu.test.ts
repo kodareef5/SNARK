@@ -201,7 +201,7 @@ test("every question is answered, a pass's cost is the slope of time against pas
   expect(per("flat")).toMatchObject({ slope: 0.03, timer: 0.03, k: 512 });
   expect(per("9 taps").slope).toBe(0.03);
   // The game's lit programs read noon's frame block: every draw of theirs had its buffer, or the fake would have drawn nothing.
-  expect(["lit", "lit world near", "lit world fade", "lit haze 3.5 km", "far", "surface undyed whole", "surface undyed", "surface whole", "surface", "surface layered", "sky table", "sky 2 layers", "water waves", "lit on the sea", "lit shadowed"].map((n) => per(n).slope)).toEqual(Array(15).fill(0.03));
+  expect(["lit", "lit world near", "lit world far", "lit haze 3.5 km", "far", "surface undyed whole", "surface undyed", "surface whole", "surface", "surface layered", "sky table", "sky 2 layers", "water waves", "lit on the sea", "lit shadowed"].map((n) => per(n).slope)).toEqual(Array(15).fill(0.03));
   expect(card.gl.invalid).toEqual([]);
   // A draw's cost is timed only through a renderer's executor, which this context has none of.
   expect(r.passes.some((p) => p.per === "draw")).toBe(false);

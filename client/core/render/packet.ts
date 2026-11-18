@@ -343,6 +343,14 @@ export class FramePacket {
   camZ = 0;
   /** World-surface city dials: tint/scale, weather/wetness/growth/desert. */
   readonly surfaceCity = Float32Array.from([1, 1, 1, 1, 1, 0, 0.08, 0, 1, 0, 0, 0]);
+  /**
+   * The world finishes' maps (world-surfaces.ts `WorldFinishes`), by role, base colour, normal and packed: the side of
+   * the array the card keeps each in, a layer a finish, 0 for none; the finest level of it every layer holds, -1 until
+   * every layer holds one; and where the eye is in each finish's tiles, less whole tiles, along x, y and z.
+   */
+  readonly worldSide = new Int32Array(3);
+  readonly worldLevel = new Int32Array(3).fill(-1);
+  readonly worldPhase = new Float32Array(48);
   /** Linear 0..1 RGB. */
   readonly sky = new Float32Array(3);
   /** Unit vector toward the sun. */
