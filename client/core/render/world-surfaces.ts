@@ -360,9 +360,12 @@ export function weathered(albedo: Out, orm: Out, index: number, along: number, w
   if (wall === 0 || fade <= 0) return;
   const k = Math.floor(seed * 8), u = ((k & 1) !== 0 ? -along : along) / WEATHER_BAY + (k >> 1) * 0.25, v = -over / WEATHER_STOREY;
   sample(2, WEATHER_LAYER, u, v, Math.log2(Math.max(footprint / WEATHER_STOREY, 1e-9)), mask);
-  const leak = (0.3 + 0.7 * fract(seed * 7.13)) * (0.55 + 0.9 * surfaceNoise(x / 41 + 3.1, z / 41 + 7.7));
+  // Buildings are much dirtier than their neighbours where a 31 m noise is high, and some bays of plaster are gone whole.
+  const dirty = smooth(0.5, 0.75, surfaceNoise(x / 31 + 11.3, z / 31 + 5.7));
+  const leak = (0.3 + 0.7 * fract(seed * 7.13)) * (0.55 + 0.9 * surfaceNoise(x / 41 + 3.1, z / 41 + 7.7)) * (1 + dirty);
   if (w.peel > 0) {
-    const t = 1 - w.peel * leak * 0.4 * fade, lost = smooth(t, t + 0.02, mask[2]!), rim = smooth(t - 0.04, t, mask[2]!) - lost;
+    const gone = surfaceHash(Math.floor(along / WEATHER_BAY) + 31 * Math.floor(over / WEATHER_STOREY), Math.floor(seed * 4093)) < 0.1 + 0.25 * dirty;
+    const t = gone ? 1 - 0.88 * fade : 1 - w.peel * leak * 0.4 * fade, lost = smooth(t, t + 0.02, mask[2]!), rim = smooth(t - 0.04, t, mask[2]!) - lost;
     const chalk = 0.3 * w.peel * fade * smooth(0.2, 0.8, mask[1]!), grey = (albedo[0]! + albedo[1]! + albedo[2]!) / 3;
     const metres = finishMetres(CONCRETE, city);
     // The concrete is projected as worldSurface projects a wall: along z where the face looks along x.
@@ -372,14 +375,16 @@ export function weathered(albedo: Out, orm: Out, index: number, along: number, w
       albedo[c] = (faded * (1 - lost) + bare[c]! * city[c]! * 0.85 * lost) * (1 - 0.3 * rim);
     }
   }
-  const runs = mask[0]! * w.runs * leak * (0.5 + 0.5 * open) * fade, left = LEFT[w.left], wash = 0.15 * w.runs * leak * fade;
-  const edge = (0.35 + 0.65 * fract(seed * 5.31)) * (0.55 + 0.9 * mask[1]!), foot = (1 - smooth(edge - 0.06, edge, over)) * w.damp * fade;
+  const runs = mask[0]! * w.runs * leak * (0.7 + 0.3 * open) * fade, left = LEFT[w.left], wash = (0.12 * w.runs * leak + 0.4 * dirty) * fade;
+  // Under every slab line the wall is darker, fading down the storey, which a street sees from far off.
+  const below = (over - Math.floor(over / WEATHER_STOREY) * WEATHER_STOREY) / WEATHER_STOREY, band = below * below * below * 0.35 * w.runs * (0.6 + 0.4 * leak) * (0.7 + 0.3 * open) * fade;
+  const edge = (0.35 + 0.65 * fract(seed * 5.31)) * (0.55 + 0.9 * mask[1]!) * (1.3 + 0.6 * dirty), foot = (1 - smooth(edge - 0.06, edge, over)) * w.damp * fade;
   const growth = (1 - smooth(0.1, 0.45 * (0.6 + mask[1]!), over)) * foot * clamp(city[6]! * 2.5 + 0.2);
   const joints = mask[3]! * w.joints * fade;
   const floor = over - Math.floor(over / WEATHER_STOREY) * WEATHER_STOREY, dirt = (1 - smooth(0, EDGE_DIRT, floor)) * fade;
   const green = [0.55, 0.7, 0.42];
   for (let c = 0; c < 3; c++) {
-    albedo[c] = albedo[c]! * (1 + (left[c]! - 1) * runs) * (1 - 0.38 * foot) * (1 - 0.4 * joints) * (1 - 0.3 * dirt) * (1 - wash);
+    albedo[c] = albedo[c]! * (1 + (left[c]! - 1) * runs) * (1 - 0.5 * foot) * (1 - 0.4 * joints) * (1 - 0.3 * dirt) * (1 - wash) * (1 - band);
     albedo[c] = albedo[c]! * (1 - growth + growth * green[c]!);
   }
   orm[1] = orm[1]! * (1 - 0.3 * foot);
@@ -729,10 +734,12 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, vec3 own, vec2 place, 
   vec2 gx = vec2((facesZ ? ox.x : ox.z) * flip / ${fl(WEATHER_BAY)}, -dpx.y / ${fl(WEATHER_STOREY)});
   vec2 gy = vec2((facesZ ? oy.x : oy.z) * flip / ${fl(WEATHER_BAY)}, -dpy.y / ${fl(WEATHER_STOREY)});
   vec4 m = textureGrad(uWorldOrm, vec3(q, ${fl(WEATHER_LAYER)}), gx, gy);
-  float leak = (0.3 + 0.7 * fract(seed * 7.13)) * (0.55 + 0.9 * surfaceNoise(vec2(p.x / 41.0 + 3.1, p.z / 41.0 + 7.7)));
+  float dirty = smoothstep(0.5, 0.75, surfaceNoise(vec2(p.x / 31.0 + 11.3, p.z / 31.0 + 5.7)));
+  float leak = (0.3 + 0.7 * fract(seed * 7.13)) * (0.55 + 0.9 * surfaceNoise(vec2(p.x / 41.0 + 3.1, p.z / 41.0 + 7.7))) * (1.0 + dirty);
   vec4 x = WX[id];
   if (x.z > 0.0) {
-    float t = 1.0 - x.z * leak * 0.4 * fade, lost = smoothstep(t, t + 0.02, m.b), rim = smoothstep(t - 0.04, t, m.b) - lost;
+    bool gone = surfaceHash(ivec2(bay + 31 * storey, int(floor(seed * 4093.0)))) < 0.1 + 0.25 * dirty;
+    float t = gone ? 1.0 - 0.88 * fade : 1.0 - x.z * leak * 0.4 * fade, lost = smoothstep(t, t + 0.02, m.b), rim = smoothstep(t - 0.04, t, m.b) - lost;
     float chalk = 0.3 * x.z * fade * smoothstep(0.2, 0.8, m.g), grey = (albedo.r + albedo.g + albedo.b) / 3.0;
     vec3 bare = vec3(0.0);
     if (lost > 0.0) {
@@ -745,11 +752,13 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, vec3 own, vec2 place, 
     }
     albedo = (mix(albedo, vec3(grey * 1.1), chalk) * (1.0 - lost) + bare * uSurfaceCity[0].rgb * 0.85 * lost) * (1.0 - 0.3 * rim);
   }
-  float runs = m.r * x.x * leak * (0.5 + 0.5 * open) * fade;
-  float edge = (0.35 + 0.65 * fract(seed * 5.31)) * (0.55 + 0.9 * m.g), foot = (1.0 - smoothstep(edge - 0.06, edge, over)) * x.y * fade;
+  float runs = m.r * x.x * leak * (0.7 + 0.3 * open) * fade;
+  float below = (over - floor(over / ${fl(WEATHER_STOREY)}) * ${fl(WEATHER_STOREY)}) / ${fl(WEATHER_STOREY)};
+  float band = below * below * below * 0.35 * x.x * (0.6 + 0.4 * leak) * (0.7 + 0.3 * open) * fade;
+  float edge = (0.35 + 0.65 * fract(seed * 5.31)) * (0.55 + 0.9 * m.g) * (1.3 + 0.6 * dirty), foot = (1.0 - smoothstep(edge - 0.06, edge, over)) * x.y * fade;
   float growth = (1.0 - smoothstep(0.1, 0.45 * (0.6 + m.g), over)) * foot * clamp(uSurfaceCity[1].z * 2.5 + 0.2, 0.0, 1.0);
   float dirt = (1.0 - smoothstep(0.0, ${fl(EDGE_DIRT)}, over - floor(over / ${fl(WEATHER_STOREY)}) * ${fl(WEATHER_STOREY)})) * fade;
-  albedo *= (1.0 + (WL[id] - 1.0) * runs) * (1.0 - 0.38 * foot) * (1.0 - 0.4 * m.a * x.w * fade) * (1.0 - 0.3 * dirt) * (1.0 - 0.15 * x.x * leak * fade);
+  albedo *= (1.0 + (WL[id] - 1.0) * runs) * (1.0 - 0.5 * foot) * (1.0 - 0.4 * m.a * x.w * fade) * (1.0 - 0.3 * dirt) * (1.0 - (0.12 * x.x * leak + 0.4 * dirty) * fade) * (1.0 - band);
   albedo *= mix(vec3(1.0), vec3(0.55, 0.7, 0.42), growth);
   orm.y *= 1.0 - 0.3 * foot;
   worldSharp = orm.y < ${fl(WORLD_SHARP)};
