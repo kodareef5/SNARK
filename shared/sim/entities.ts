@@ -148,6 +148,11 @@ export class EntityStore {
   /** Flight state (Body.regenWait, Body.rollWait): 0 until FL1 of planning/reference/flyers-plan.md steps them. */
   regenWait: Uint16Array;
   rollWait: Uint16Array;
+  creatureMode: Uint8Array;
+  creatureCooldown: Uint16Array;
+  creaturePrimaryCooldown: Uint16Array;
+  creaturePower: Uint8Array;
+  creatureSide: Uint8Array;
   /** HOLD_*, for the pose. Set with its gear. */
   hold: Uint8Array;
   /** 1 while a session's inputs drive it (a mount). */
@@ -264,6 +269,11 @@ export class EntityStore {
     this.kick = new Uint8Array(cap);
     this.regenWait = new Uint16Array(cap);
     this.rollWait = new Uint16Array(cap);
+    this.creatureMode = new Uint8Array(cap);
+    this.creatureCooldown = new Uint16Array(cap);
+    this.creaturePrimaryCooldown = new Uint16Array(cap);
+    this.creaturePower = new Uint8Array(cap);
+    this.creatureSide = new Uint8Array(cap);
     this.hold = new Uint8Array(cap);
     this.driven = new Uint8Array(cap);
     this.team = new Uint32Array(cap);
@@ -337,6 +347,11 @@ export class EntityStore {
     this.kick[i] = 0;
     this.regenWait[i] = 0;
     this.rollWait[i] = 0;
+    this.creatureMode[i] = 0;
+    this.creatureCooldown[i] = 0;
+    this.creaturePrimaryCooldown[i] = 0;
+    this.creaturePower[i] = 0;
+    this.creatureSide[i] = 0;
     this.hold[i] = 0;
     this.driven[i] = 0;
     this.team[i] = 0;
@@ -392,6 +407,11 @@ export class EntityStore {
     this.kick = wider(this.kick, cap);
     this.regenWait = wider(this.regenWait, cap);
     this.rollWait = wider(this.rollWait, cap);
+    this.creatureMode = wider(this.creatureMode, cap);
+    this.creatureCooldown = wider(this.creatureCooldown, cap);
+    this.creaturePrimaryCooldown = wider(this.creaturePrimaryCooldown, cap);
+    this.creaturePower = wider(this.creaturePower, cap);
+    this.creatureSide = wider(this.creatureSide, cap);
     this.hold = wider(this.hold, cap);
     this.driven = wider(this.driven, cap);
     this.team = wider(this.team, cap);
@@ -628,6 +648,11 @@ export class EntityStore {
     b.kick = this.kick[i]!;
     b.regenWait = this.regenWait[i]!;
     b.rollWait = this.rollWait[i]!;
+    b.creatureMode = this.creatureMode[i]!;
+    b.creatureCooldown = this.creatureCooldown[i]!;
+    b.creaturePrimaryCooldown = this.creaturePrimaryCooldown[i]!;
+    b.creaturePower = this.creaturePower[i]!;
+    b.creatureSide = this.creatureSide[i]!;
   }
 
   /** Returns true if the entity changed chunk. */
@@ -654,6 +679,11 @@ export class EntityStore {
     this.kick[i] = b.kick;
     this.regenWait[i] = b.regenWait;
     this.rollWait[i] = b.rollWait;
+    this.creatureMode[i] = b.creatureMode;
+    this.creatureCooldown[i] = b.creatureCooldown;
+    this.creaturePrimaryCooldown[i] = b.creaturePrimaryCooldown;
+    this.creaturePower[i] = b.creaturePower;
+    this.creatureSide[i] = b.creatureSide;
     return this.setPosition(i, b.x, b.y, b.z);
   }
 

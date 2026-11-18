@@ -335,7 +335,8 @@ test("what a body is doing with what it holds travels with the body", () => {
   const w = new BitWriter(64);
   writeBody(w, a);
   // With the flyers' two counters and the vehicles' two bits (tests/unit/contracts.test.ts); 380 without the vehicles'.
-  expect(w.pos).toBe(382);
+  // Protocol 27 adds one presence bit for ground creature counters.
+  expect(w.pos).toBe(383);
   const b = new Body();
   readBody(new BitReader(w.bytes()), b);
   expect(b.equals(a)).toBe(true);

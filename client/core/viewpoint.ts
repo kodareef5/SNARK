@@ -1,9 +1,12 @@
 // Places the camera at the eye, or over the right shoulder in third person, pulled in when something solid is in the way.
 // The body always aims from its own eye, so the view cannot move a shot and the server never learns which view is used.
 
-import type { CollisionWorld } from "../../shared/world/collide.ts";
+import { capsuleFree, type CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NONE, castWorld, rayHit } from "../../shared/world/ray.ts";
 import type { Camera } from "./render/camera.ts";
+import type { CameraBody } from "./camera-body.ts";
+import { CompactSaddleView } from "./camera-saddle.ts";
+import { clearCameraContact, roofEnvelope } from "./camera-roof.ts";
 import { quatRotate } from "../../shared/math/quat.ts";
 import { vehicleRotation, type VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
 import { mountCameraHeight } from "./mount-camera.ts";
@@ -55,6 +58,8 @@ const SIDE = 0.55;
 const RISE = 0.25;
 /** Gap kept between the camera and the obstacle, so the near plane does not cut into a wall. */
 const CLEAR = 0.3;
+/** Preserve useful world depth precision in a squeezed orbit, even at maximum FOV on an ultrawide screen. */
+const MIN_MOUNT_NEAR = .05;
 /** Milliseconds the camera takes to go from one view to the next, and the furthest (metres) it eases rather than cuts. */
 const EASE_MS = 350;
 const EASE_REACH = 15;
@@ -70,8 +75,11 @@ export class Viewpoint {
   private vehicleId = -1;
   private readonly target = new Float64Array(3);
   private readonly targetVelocity = new Float64Array(3);
+  private readonly lead = new Float64Array(3);
   private boom = 6;
   private clearReach = 0;
+  private returningFromCrest = false;
+  private readonly shoulder = new CompactSaddleView();
   /** Where the camera was last placed, and while easing, where the ease began and the milliseconds it has left. */
   private placed = false;
   private readonly last = new Float64Array(3);
@@ -79,18 +87,31 @@ export class Viewpoint {
   private easing = 0;
 
   /** A centred chase view. Mouse look wins; only a moving driver's idle view gently follows the car. Returns look yaw. */
-  placeVehicle(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number, heading: number, speed: number, dt: number, follow = true, motion?: VehicleCameraMotion): number {
+  placeVehicle(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number, heading: number, speed: number, dt: number, follow = true, motion?: VehicleCameraMotion, body?: CameraBody | null): number {
+    if (!body?.rig || !body.solved) body = null;
+    // The sphere contains the entire near rectangle, including wide aspect ratios and FOV changes.
+    cam.nearLimit = Infinity;
+    const half = body ? cam.near * Math.tan(cam.fovY / 2) : 0;
+    let padding = body ? Math.hypot(cam.near, half, half * cam.aspect) + .02 : 0;
+    // Keep the authored focus as the minimum when an attacking head lowers.
+    const floor = body ? Math.max(ey, body.top(padding)) : -Infinity;
+    if (body) ey = Math.max(ey, floor);
+    let lowRoof = false, highEdge = false, pinched = false;
     const elapsed = Math.max(0, Math.min(100, dt));
     const switched = !this.vehicleLook || (motion?.id ?? -1) !== this.vehicleId;
     const reset = switched || Math.hypot(ex - this.target[0]!, ey - this.target[1]!, ez - this.target[2]!) > 10;
     if (reset || Math.abs(angle(yaw - this.lastYaw)) > 0.00001 || Math.abs(pitch - this.lastPitch) > 0.00001) this.lookIdle = 0;
     else this.lookIdle += elapsed;
     if (follow && speed > 1 && this.lookIdle > 1200) yaw += angle(heading - yaw) * (1 - Math.exp(-elapsed / 1800));
+    const orbit = Math.abs(angle(yaw - this.lastYaw)) + Math.abs(pitch - this.lastPitch);
     this.lastYaw = yaw;
     this.lastPitch = pitch;
     this.vehicleLook = true;
     this.vehicleId = motion?.id ?? -1;
-    const wanted = [ex + Math.max(-1.8, Math.min(1.8, (motion?.vx ?? 0) * .1)), ey + Math.max(-.25, Math.min(.25, (motion?.vy ?? 0) * .035)), ez + Math.max(-1.8, Math.min(1.8, (motion?.vz ?? 0) * .1))];
+    const wanted = this.lead;
+    wanted[0] = ex + Math.max(-1.8, Math.min(1.8, (motion?.vx ?? 0) * .1));
+    wanted[1] = ey + Math.max(-.25, Math.min(.25, (motion?.vy ?? 0) * .035));
+    wanted[2] = ez + Math.max(-1.8, Math.min(1.8, (motion?.vz ?? 0) * .1));
     const seconds = elapsed / 1000;
     for (let i = 0; i < 3; i++) {
       if (reset) { this.target[i] = wanted[i]!; this.targetVelocity[i] = 0; continue; }
@@ -106,13 +127,92 @@ export class Viewpoint {
     cam.yaw = yaw;
     cam.pitch = viewPitch;
     cam.roll = 0;
-    const dx = this.target[0]! - ex - Math.sin(yaw) * Math.cos(viewPitch) * this.boom;
-    const dy = this.target[1]! - ey - Math.sin(viewPitch) * this.boom + 0.65;
-    const dz = this.target[2]! - ez - Math.cos(yaw) * Math.cos(viewPitch) * this.boom;
+    let wantedX = this.target[0]! - Math.sin(yaw) * Math.cos(viewPitch) * this.boom;
+    let wantedZ = this.target[2]! - Math.cos(yaw) * Math.cos(viewPitch) * this.boom;
+    let wantedY = this.target[1]! - Math.sin(viewPitch) * this.boom + .65;
+    if (body) wantedY = aboveFloor(wantedY, floor, .4 * body.size);
+    if (body && world) {
+      const baseY = body.y + .25 * body.size, band = .4 * body.size;
+      // Low ramps and tables cannot choose an under-roof route. The mount needs standing headroom along its route. A sloped
+      // underside can guide the orbit when its low edge leaves room for the camera sphere.
+      const minimum = Math.max(body.y + body.standingHeight, baseY + 2 * padding + .02);
+      const backX = -Math.sin(yaw), backZ = -Math.cos(yaw);
+      const rear = (wantedX - body.x) * backX + (wantedZ - body.z) * backZ;
+      const extend = Math.max(0, body.horizontalExtent + padding + .02 - rear);
+      const farX = wantedX + extend * backX, farZ = wantedZ + extend * backZ;
+      const swingBand = Math.max(band, 1.5 * extend);
+      const routeHeight = Math.max(ey, wantedY, floor + 1.5 * extend);
+      const near = cam.near, radiusPerMetre = (padding - .02) / near;
+      const minimumPadding = Math.min(padding, MIN_MOUNT_NEAR * radiusPerMetre + .02);
+      const route = roofEnvelope(world, body.x, body.z, farX, farZ, baseY, routeHeight, padding, minimum, band,
+        minimumPadding, baseY - body.y, ex, ez);
+      let crest = route.crest, roof = route.ceiling;
+      let clearance = route.padding;
+      if (Number.isFinite(crest) && roof < crest + band) {
+        // A second ceiling may leave a narrow passage over the crest. Share the available headroom between both sides.
+        const saved = Math.min(padding - minimumPadding, (crest + band - roof) / 2);
+        clearance = Math.min(clearance, padding - saved);
+        crest -= saved; roof += route.padding - clearance;
+      }
+      if (clearance < padding) {
+        padding = clearance;
+        cam.nearLimit = (padding - .02) / radiusPerMetre;
+      }
+      pinched = Number.isFinite(crest);
+      if (pinched) {
+        const px = ex + route.shiftX, pz = ez + route.shiftZ, py = Math.min(roof, aboveFloor(ey, crest, band));
+        // The pitched part may meet another wall or a ceiling. The route must actually exit sideways and then rise.
+        const exitY = baseY + world.hf.heightAt(px, pz) - world.hf.heightAt(body.x, body.z);
+        const dx = px - body.x, dy = exitY - baseY, dz = pz - body.z, length = Math.hypot(dx, dy, dz);
+        if ((length < 1e-6 || castWorld(world, body.x, baseY, body.z, dx / length, dy / length, dz / length, length) === HIT_NONE) &&
+          castWorld(world, px, exitY, pz, 0, 1, 0, py - exitY + padding) === HIT_NONE && roof >= crest) {
+          ex = px; ez = pz; ey = py;
+          wantedY = aboveFloor(wantedY, crest, band);
+          highEdge = true;
+        }
+      }
+      if (extend > 0 && roof < floor + swingBand) {
+        const t = Math.min(1, (floor + swingBand - roof) / swingBand);
+        const out = extend * t * t * (3 - 2 * t);
+        wantedX += out * backX; wantedZ += out * backZ;
+      }
+      // Enable the roof route throughout the soft-min band, before its anchor can enter the padded animal.
+      lowRoof = roof < Math.max(ey, wantedY) + band;
+      if (Number.isFinite(roof)) {
+        const lower = highEdge ? crest : -Infinity;
+        ey = Math.max(lower, -aboveFloor(-ey, -roof, band));
+        wantedY = Math.max(lower, -aboveFloor(-wantedY, -roof, band));
+      }
+    }
+    if (body && world && !highEdge) {
+      // A tall authored focus can already be beyond a ceiling before pose avoidance adds any lift. Start inside the
+      // mount's ordinary collision body, just above its grounded origin, and retain the world-valid part of that path.
+      const baseY = body.y + .25 * body.size, dx = ex - body.x, dy = ey - baseY, dz = ez - body.z;
+      const length = Math.hypot(dx, dy, dz);
+      if (length > 1e-6 && castWorld(world, body.x, baseY, body.z, dx / length, dy / length, dz / length, length + padding) !== HIT_NONE) {
+        const k = Math.min(1, Math.max(0, rayHit.t - padding) / length);
+        ex = body.x + dx * k; ey = baseY + dy * k; ez = body.z + dz * k;
+        // Partly low sloping faces retain the old horizontal fallback when their safe high-side passage cannot
+        // use the complete-face anticipation above. Raising the far endpoint again would cut through that roof.
+        if (k < 1 && !lowRoof) wantedY = ey;
+        lowRoof ||= k < 1;
+      }
+    }
+    // Preserve the legacy arithmetic for mounts and vehicles which do not opt into the posed-body route.
+    const dx = body ? wantedX - ex : this.target[0]! - ex - Math.sin(yaw) * Math.cos(viewPitch) * this.boom;
+    const dy = body ? wantedY - ey : this.target[1]! - ey - Math.sin(viewPitch) * this.boom + .65;
+    const dz = body ? wantedZ - ez : this.target[2]! - ez - Math.cos(yaw) * Math.cos(viewPitch) * this.boom;
     const length = Math.hypot(dx, dy, dz);
     let reach = length;
     if (world && castWorld(world, ex, ey, ez, dx / length, dy / length, dz / length, length + CLEAR) !== HIT_NONE) reach = Math.max(0, rayHit.t - CLEAR);
-    if (motion?.anticipate) {
+    if (body && length > 1e-6) {
+      const hit = body.cast(ex, ey, ez, dx / length, dy / length, dz / length, length, padding);
+      // The roof fallback may begin inside the padded envelope, though outside the skin. Its endpoint must still be
+      // outside the whole padded body. It cuts there: an interpolated path through the plate is not a valid camera.
+      const k = reach / length;
+      const outside = lowRoof && body.cast(ex + dx * k, ey + dy * k, ez + dz * k, 0, 1, 0, .001, padding) > 0;
+      if (!outside) reach = Math.min(reach, Math.max(0, hit - .001));
+    } else if (!body && motion?.anticipate) {
       let wantedReach = reach;
       // Retract before the pivot starts descending: sharing its shorter horizon makes both moves start
       // together and a reversing rider's camera can reach the roof before the boom has shortened.
@@ -140,8 +240,97 @@ export class Viewpoint {
     cam.x = ex + dx * k;
     cam.y = ey + dy * k;
     cam.z = ez + dz * k;
-    this.ease(cam, world, ex, ey, ez, switched, elapsed);
+    if (lowRoof || highEdge) this.easing = 0;
+    const previousX = this.last[0]!, previousY = this.last[1]!, previousZ = this.last[2]!;
+    this.ease(cam, world, ex, ey, ez, switched && !lowRoof && !highEdge, elapsed, body, padding);
+    if (body && world) {
+      clearCameraContact(world, cam, body, ex, ey, ez, wantedX, wantedY, wantedZ, padding);
+      const compact = highEdge && this.shoulder.place(cam, world, body, padding, reset);
+      if (!compact) this.shoulder.clear();
+      if (pinched || this.returningFromCrest && !reset) {
+        const travel = reset ? Infinity : (6 + Math.abs(speed)) * seconds + Math.min(2 * seconds, (2 + this.boom) * orbit);
+        this.returningFromCrest = this.clearCrest(cam, world, body, previousX, previousY, previousZ, padding, travel, highEdge && !compact, ex, ey, ez, compact);
+      } else this.returningFromCrest = false;
+      this.last[0] = cam.x; this.last[1] = cam.y; this.last[2] = cam.z;
+    } else this.returningFromCrest = false;
     return yaw;
+  }
+
+  /** When the edge is enclosed, move toward the requested orbit through available space. The survivor still controls look. */
+  private clearCrest(cam: Camera, world: CollisionWorld, body: CameraBody, x: number, y: number, z: number, radius: number, travel: number, highEdge: boolean, ex: number, ey: number, ez: number, compact: boolean): boolean {
+    const tx = cam.x, ty = cam.y, tz = cam.z, dx = tx - x, dy = ty - y, dz = tz - z;
+    const distance = Math.hypot(dx, dy, dz), t = distance <= travel ? 1 : travel / distance;
+    const ratio = (radius - .02) / cam.near, smallest = Math.min(radius, MIN_MOUNT_NEAR * ratio + .02);
+    const fits = (cx: number, cy: number, cz: number, r: number) =>
+      body.cast(cx, cy, cz, 0, 1, 0, .001, r + .25 * body.size) > 0 && capsuleFree(world, cx, cy - r, cz, r, 2 * r);
+    const place = (cx: number, cy: number, cz: number, reserve = .05 * body.size): boolean => {
+      const ox = Number.isFinite(travel) ? x : tx, oy = Number.isFinite(travel) ? y : ty, oz = Number.isFinite(travel) ? z : tz;
+      const sx = cx - ox, sy = cy - oy, sz = cz - oz, step = Math.hypot(sx, sy, sz);
+      if (step > smallest && castWorld(world, ox, oy, oz, sx / step, sy / step, sz / step, step) !== HIT_NONE) return false;
+      if (!fits(cx, cy, cz, radius)) {
+        if (!fits(cx, cy, cz, smallest + reserve)) return false;
+        let lo = smallest, hi = radius;
+        for (let i = 0; i < 5; i++) {
+          const mid = (lo + hi) / 2;
+          if (fits(cx, cy, cz, mid)) lo = mid;
+          else hi = mid;
+        }
+        cam.nearLimit = (lo - .02) / ratio;
+      }
+      cam.x = cx; cam.y = cy; cam.z = cz;
+      return true;
+    };
+    // When streaming geometry or entering from below, go through the same open edge as the boom rather than
+    // stopping on the underside between the preceding camera and its requested position.
+    if (highEdge && distance > travel && castWorld(world, x, y, z, dx / distance, dy / distance, dz / distance, distance) !== HIT_NONE) {
+      const px = ex - x, py = ey - y, pz = ez - z, diagonal = Math.hypot(px, py, pz), horizontal = Math.hypot(px, pz);
+      if (diagonal > 1e-6) {
+        const k = Math.min(1, travel / diagonal);
+        if (place(x + k * px, y + k * py, z + k * pz)) return true;
+      }
+      if (horizontal > 1e-6) {
+        const k = Math.min(1, travel / horizontal);
+        if (place(x + k * px, y, z + k * pz)) return true;
+      }
+    }
+    // Convex obstacles can admit the vertical or tangential part of a step even when the diagonal is blocked.
+    if (place(x + t * dx, y + t * dy, z + t * dz)) return t < 1;
+    if (Number.isFinite(travel)) {
+      if (compact && distance > travel) {
+        const sideX = Math.cos(cam.yaw), sideZ = -Math.sin(cam.yaw);
+        const side = (tx - body.x) * sideX + (tz - body.z) * sideZ < 0 ? -1 : 1;
+        const turnX = tx + side * sideX * (radius + 1.1 * body.size), turnZ = tz + side * sideZ * (radius + 1.1 * body.size);
+        const hx = turnX - x, hz = turnZ - z, run = Math.hypot(hx, hz);
+        if (run > .05) {
+          const k = Math.min(1, travel / run);
+          if (place(x + k * hx, y, z + k * hz)) return true;
+          if (place(x + side * sideX * travel, y, z + side * sideZ * travel)) return true;
+        }
+      }
+      if (place(x + t * dx, y, z + t * dz) || place(x, y + t * dy, z) || fits(x, y, z, radius) && place(x, y, z)) return true;
+      // An advancing plate or horn may overtake the previous camera. Try the nearest free direction first.
+      for (let ring = 0; ring < 5; ring++) {
+        const step = Math.max(.02, Math.min(travel, .1 * body.size)) * (1 << Math.max(0, ring - 1));
+        const reserve = ring === 1 ? 0 : .05 * body.size;
+        if (place(x, y + step, z, reserve) || place(x, y - step, z, reserve)) return true;
+        for (let i = 0; i < 8; i++) {
+          const angle = cam.yaw + i * Math.PI / 4, sx = Math.sin(angle) * step, sz = Math.cos(angle) * step;
+          if (place(x + sx, y, z + sz, reserve) ||
+            place(x + sx * Math.SQRT1_2, y + step * Math.SQRT1_2, z + sz * Math.SQRT1_2, reserve) ||
+            place(x + sx * Math.SQRT1_2, y - step * Math.SQRT1_2, z + sz * Math.SQRT1_2, reserve)) return true;
+        }
+      }
+    }
+    // On entry, or if the moving animal overtakes the last camera, look for a clear point near this orbit.
+    for (let i = 1; i <= 8; i++) {
+      const shift = i * smallest;
+      if (place(tx, ty + shift, tz) || place(tx, ty - shift, tz)) return true;
+    }
+    cam.nearLimit = (smallest - .02) / ratio;
+    if (Number.isFinite(travel) && fits(x, y, z, smallest)) {
+      cam.x = x; cam.y = y; cam.z = z;
+    }
+    return true;
   }
 
   /**
@@ -149,6 +338,7 @@ export class Viewpoint {
    * eases over `dt` ms from where it was.
    */
   place(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number, dt = 0): void {
+    cam.nearLimit = Infinity;
     const switched = this.vehicleLook;
     this.vehicleLook = false;
     this.put(cam, world, ex, ey, ez, yaw, pitch);
@@ -157,6 +347,7 @@ export class Viewpoint {
 
   /** An enclosed eye stays in its seat even during a loop; it never eases through the cabin wall from chase view. */
   placeCockpit(cam: Camera, ex: number, ey: number, ez: number, frame: VehicleFrame, yaw: number, pitch: number): void {
+    cam.nearLimit = Infinity;
     this.vehicleLook = false;
     this.easing = 0;
     cam.x = ex; cam.y = ey; cam.z = ez;
@@ -168,7 +359,7 @@ export class Viewpoint {
    * After a change between the eye's view and a chase view, or between hosts, the camera goes from where it was to where
    * it is placed over EASE_MS rather than at once, and is kept on the near side of anything solid on the way.
    */
-  private ease(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, switched: boolean, dt: number): void {
+  private ease(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, switched: boolean, dt: number, body?: CameraBody | null, padding = 0): void {
     const from = this.easeFrom;
     if (switched && this.placed && Math.hypot(cam.x - this.last[0]!, cam.y - this.last[1]!, cam.z - this.last[2]!) < EASE_REACH) {
       this.easing = EASE_MS;
@@ -179,10 +370,12 @@ export class Viewpoint {
       const t = 1 - this.easing / EASE_MS, s = t * t * (3 - 2 * t);
       let dx = from[0]! + (cam.x - from[0]!) * s - ex, dy = from[1]! + (cam.y - from[1]!) * s - ey, dz = from[2]! + (cam.z - from[2]!) * s - ez;
       const length = Math.hypot(dx, dy, dz);
+      let reach = length;
       if (world && length > 1e-6 && castWorld(world, ex, ey, ez, dx / length, dy / length, dz / length, length + CLEAR) !== HIT_NONE) {
-        const k = Math.max(0, rayHit.t - CLEAR) / length;
-        dx *= k; dy *= k; dz *= k;
+        reach = Math.max(0, rayHit.t - CLEAR);
       }
+      if (body && length > 1e-6) reach = Math.min(reach, Math.max(0, body.cast(ex, ey, ez, dx / length, dy / length, dz / length, length, padding) - .001));
+      if (length > 1e-6 && reach < length) { const k = reach / length; dx *= k; dy *= k; dz *= k; }
       cam.x = ex + dx;
       cam.y = ey + dy;
       cam.z = ez + dz;
@@ -220,3 +413,11 @@ export class Viewpoint {
 }
 
 function angle(n: number): number { return Math.atan2(Math.sin(n), Math.cos(n)); }
+
+/** C1 transition to a lower bound; unlike a spring it never spends a frame below the collision envelope. */
+function aboveFloor(y: number, floor: number, band: number): number {
+  if (y >= floor + band) return y;
+  if (y <= floor - band) return floor;
+  const t = (y - floor + band) / (2 * band);
+  return floor + band * t * t;
+}

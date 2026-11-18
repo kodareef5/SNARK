@@ -1,0 +1,123 @@
+{
+  "packSha256": "3af77be1967bf8c2fd2ffb84b8930ad9add7c479751e578c5a7a1371b2e516e3",
+  "sourceSha256": {
+    "rig.py": "4cbfecab24e7cdbc144fb5e183901ae3d87627a242a0d08baaff3513ebc403ab",
+    "model.py": "e3df1f2d4d68b353ea98c3a96ca6dd514db7b6d35e0857ff338b3263bd7b335d",
+    "clips.py": "15cf2b1423ed6b27d9fa73725d03b54cd239b6f82092df08b059487dee581f38"
+  },
+  "scope": "Actual native finest weighted skin. Each point is the first nasal surface reached from lateral air in the skull frame; cyan markers are4mm radius. This proves an exposed conservative point within the nasal recess, not that the whole opening is dry.",
+  "report": [
+    {
+      "clip": "torpor_in",
+      "frame": 0,
+      "openings": [
+        {
+          "name": "breath_l",
+          "point": [
+            0.10119128,
+            1.2380000095367432,
+            2.7395000076293945
+          ],
+          "triangle": 29502,
+          "surfaceError": 1.1185424969251123e-05,
+          "minimumSkullWeight": 1
+        },
+        {
+          "name": "breath_r",
+          "point": [
+            -0.10119128,
+            1.2380000095367432,
+            2.7395000076293945
+          ],
+          "triangle": 29157,
+          "surfaceError": 1.2280660316554837e-05,
+          "minimumSkullWeight": 1
+        }
+      ]
+    },
+    {
+      "clip": "torpor_in",
+      "frame": 32.5,
+      "openings": [
+        {
+          "name": "breath_l",
+          "point": [
+            0.5064736693934574,
+            1.2547225388958139,
+            2.7277838642937295
+          ],
+          "triangle": 29502,
+          "surfaceError": 1.1230651604565677e-05,
+          "minimumSkullWeight": 1
+        },
+        {
+          "name": "breath_r",
+          "point": [
+            0.3601405393691731,
+            1.1149234835456967,
+            2.7290232634557077
+          ],
+          "triangle": 29157,
+          "surfaceError": 1.241249753431687e-05,
+          "minimumSkullWeight": 1
+        }
+      ]
+    },
+    {
+      "clip": "torpor_idle",
+      "frame": 92,
+      "openings": [
+        {
+          "name": "breath_l",
+          "point": [
+            0.7539107059460513,
+            1.3438883809106266,
+            2.696168303457519
+          ],
+          "triangle": 29502,
+          "surfaceError": 1.1066404490311256e-05,
+          "minimumSkullWeight": 1
+        },
+        {
+          "name": "breath_r",
+          "point": [
+            0.7427097387295809,
+            1.1418472861203366,
+            2.699722501112123
+          ],
+          "triangle": 29157,
+          "surfaceError": 1.216398645276653e-05,
+          "minimumSkullWeight": 1
+        }
+      ]
+    },
+    {
+      "clip": "torpor_out",
+      "frame": 40,
+      "openings": [
+        {
+          "name": "breath_l",
+          "point": [
+            0.505399718692891,
+            1.2563182600677574,
+            2.727795770793623
+          ],
+          "triangle": 29502,
+          "surfaceError": 1.1247428039513511e-05,
+          "minimumSkullWeight": 1
+        },
+        {
+          "name": "breath_r",
+          "point": [
+            0.35867433506119356,
+            1.1169307729181484,
+            2.729016014981575
+          ],
+          "triangle": 29157,
+          "surfaceError": 1.2138081259269346e-05,
+          "minimumSkullWeight": 1
+        }
+      ]
+    }
+  ]
+}

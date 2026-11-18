@@ -1,0 +1,25 @@
+{
+  "scope": "Native rider and complete-outfit vertex/solid-angle audit against the posed animal and saddle. Two sexes, two extreme proportions, three equipment states and nine poses per group. Reports intersections deeper than four millimetres.",
+  "sha256": {
+    "assets/source/core/creatures/stego/stego.snpk": "bb4a73bdba6fa6cadf65049b2994adbf9127eea8e2c44022e9f0aa5d9856712f",
+    "assets/source/core/humans/human-bodies/human-bodies.snpk": "bf2e10fa6d5ff0b158cafbff0c45dec3f5d1f84dde80953df7bf5a51fe99e526",
+    "content/creatures/stego.ts": "40806f529c90240e3562c2075f830e7b1cac07e9809a3d4ba6f1d262226b258a",
+    "tools/stego/fit.ts": "8c9c7c0f88ba280c8466e449ca6b256b163753d2f7658fd1ab62191706f3636e"
+  },
+  "groups": [
+    {
+      "kind": "rider",
+      "samples": 108,
+      "deepestReportedPenetration": 0.0,
+      "maximumControlResidual": 2.752609218014592e-07,
+      "failures": []
+    },
+    {
+      "kind": "rider-outfit",
+      "samples": 108,
+      "deepestReportedPenetration": 0.0,
+      "maximumControlResidual": 2.752609218014592e-07,
+      "failures": []
+    }
+  ]
+}

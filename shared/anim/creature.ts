@@ -13,19 +13,21 @@
 // its hit zones follow its wings. A take-off and a landing hand it between the ground and the air, a barrel roll turns it
 // over, it bites with its neck and head, and its feet take hold of what it carries.
 
-import type { SpeciesDef } from "../content/defs.ts";
+import type { CreatureCombatFacet, SpeciesDef } from "../content/defs.ts";
 import type { Registry } from "../content/registry.ts";
 import { TICK_RATE } from "../coords.ts";
 import { PI, TAU, detCos, detSin } from "../math/scalar.ts";
 import { quatAxis, quatMul, quatNlerp, quatRotate } from "../math/quat.ts";
 import { MODE_FLYER, MODE_SWIM } from "../sim/character.ts";
-import { ACT_EQUIP, ACT_SWING, HOLD_CARRY } from "../sim/weapon.ts";
+import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_RELOAD, ACT_SWING, HOLD_CARRY } from "../sim/weapon.ts";
 import { blendPose, sampleClip, type Clip, type Pose } from "./clip.ts";
 import { footStart, gaitClip, gaitShares, playGaits, tickPhase, type Gait, type GaitClip } from "./gait.ts";
 import { HUMAN } from "./human.ts";
 import { AnimState, BANK_STEPS, CLIMB_DIVE, CLIMB_DOWN, CUE_LAND, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, DIR_STEPS, FLY_SPEED_STEP, LAYER_EAT, LAYER_FLINCH, LAYER_NONE, PITCH_STEPS, SPEED_STEP } from "./pose.ts";
 import type { Rig, RigClip } from "./rigs.ts";
-import { boneToModel, rayZones, solve, zoneHit } from "./skeleton.ts";
+import { boneToModel, rayZones, solve, zoneHit, type Solved } from "./skeleton.ts";
+import { conformCreature, groundSpeedScale } from "./ground-conform.ts";
+import type { CollisionWorld } from "../world/collide.ts";
 
 /** Below this speed, in metres per second, a walk with no stride is blended with the idle so that starting off is not a jump. */
 const EASE_IN = 1.2;
@@ -59,6 +61,10 @@ const ROLL_TICKS = 30;
 const LAND_FADE = 2 * FADE;
 /** Seconds over which a client's drawing of a flyer comes most of the way to the shares and roll its state says. */
 const SHARE_EASE = 0.15;
+/** Which contact map actually drives the submitted feet. Zero also suppresses legacy cadence. */
+export const FOOTFALL_NONE = 0;
+const FOOTFALL_FORWARD = 1, FOOTFALL_REVERSE = 2, FOOTFALL_CHARGE = 3;
+export interface FootfallGait { readonly phase: number; readonly speed: number; readonly domain: number; }
 const single: GaitClip[] = [];
 const q = new Float64Array(4);
 const r = new Float64Array(4);
@@ -75,6 +81,10 @@ export class CreatureAnim {
   readonly attack: Clip | null;
   readonly swim: Clip | null;
   readonly swimIdle: Clip | null;
+  /** Awake water reactions preserve the breathing pose; ground reactions never replace the swimming neck. */
+  readonly startledSwim: Clip | null;
+  readonly landSwim: Clip | null;
+  readonly torporOutSwim: Clip | null;
   readonly fall: Clip | null;
   readonly land: Clip | null;
   readonly turn: Clip | null;
@@ -143,7 +153,20 @@ export class CreatureAnim {
   /** Its neck and head: that bone, those below it, and those above it up to where the body branches. */
   readonly neck: Uint8Array;
 
-  constructor(rig: Rig, runAt: number, swimSpeed: number) {
+  readonly combat: CreatureCombatFacet | null;
+  readonly modeBones: Uint8Array;
+  readonly primaryBones: Uint8Array | null;
+  readonly secondaryBones: Uint8Array | null;
+  readonly chargeGait: GaitClip | null;
+  /** Nonidentity layer rotations on a foot or its ancestors/descendants, compiled once. */
+  readonly footLayers: ReadonlyMap<Clip, Uint8Array>;
+
+  constructor(rig: Rig, runAt: number, swimSpeed: number, combat: CreatureCombatFacet | null = null) {
+    this.combat = combat;
+    this.modeBones = Uint8Array.from({ length: rig.bones }, (_, i) => i);
+    const mask = (names: readonly string[] | undefined): Uint8Array | null => names ? Uint8Array.from(names.map(n => rig.names.indexOf(n)).filter(n => n >= 0)) : null;
+    this.primaryBones = mask(combat?.primary.bones);
+    this.secondaryBones = mask(combat?.secondary?.bones);
     this.rig = rig;
     this.runAt = runAt;
     const named = (name: RigClip): Clip | null => rig.clips.get(name) ?? null;
@@ -153,6 +176,9 @@ export class CreatureAnim {
     this.attack = named("attack");
     this.swim = named("swim");
     this.swimIdle = named("swim_idle");
+    this.startledSwim = named("startled_swim");
+    this.landSwim = named("land_swim");
+    this.torporOutSwim = named("torpor_out_swim");
     this.fall = named("fall");
     this.land = named("land");
     this.turn = named("turn");
@@ -174,15 +200,30 @@ export class CreatureAnim {
     this.slot = this.idle ? this.idle.frames * Math.max(1, Math.ceil(longest / this.idle.frames)) : 1;
     const gait = (clip: Clip | null, name: RigClip): GaitClip | null => {
       const stride = rig.strides.get(name);
-      return clip && clip.loop && stride !== undefined ? gaitClip(clip, stride, rig.feet.length > 0 ? footStart(rig, clip, rig.feet[0]!, rig.a, rig.solved) : 0) : null;
+      return clip && clip.loop && stride !== undefined ? gaitClip(clip, stride, rig.feet.length > 0 ? footStart(rig, clip, rig.feet[0]!, rig.a, rig.solved) : 0, rig.footfalls.get(name) ?? null) : null;
     };
     this.walkGait = gait(this.walk, "walk");
     this.runGait = gait(this.run, "run");
+    this.chargeGait = gait(named("charge"), "charge");
     const moving = [this.walk ? this.walkGait : undefined, this.run ? this.runGait : undefined].filter((g) => g !== undefined);
     this.gaits = moving.length > 0 && moving.every((g) => g !== null) ? (moving as GaitClip[]).sort((p, r) => p.speed - r.speed) : [];
     const swum = this.swim && this.swim.loop ? (rig.strides.get("swim") ?? (swimSpeed * this.swim.frames) / TICK_RATE) : 0;
     this.swimGait = swum > 0 ? gaitClip(this.swim!, swum, 0) : null;
     const legs = legBones(rig);
+    const chains = new Uint8Array(rig.bones);
+    for (const foot of rig.feet) for (let b = foot; b >= 0; b = rig.parent[b]!) chains[b] = 1;
+    for (let b = 1; b < rig.bones; b++) if (legs[b]) chains[b] = 1;
+    const excluded = Uint8Array.from(chains, on => 1 - on);
+    const layers = new Map<Clip, Uint8Array>();
+    const inspectLayer = (name: string | undefined) => {
+      const clip = name ? rig.clips.get(name) : null;
+      if (clip && !layers.has(clip)) layers.set(clip, turnedBones(clip, excluded));
+    };
+    inspectLayer("flinch"); inspectLayer("torpor_eat");
+    if (this.primaryBones) { inspectLayer(combat?.primary.clip); inspectLayer(combat?.primary.alternateClip); }
+    if (this.secondaryBones) { inspectLayer(combat?.secondary?.clip); inspectLayer("impale_hold"); inspectLayer("impale_out"); }
+    for (const mode of combat?.modes ?? []) inspectLayer(mode.clip);
+    this.footLayers = layers;
     this.flinchBones = this.flinch ? turnedBones(this.flinch, legs) : new Uint8Array(0);
     this.eatBones = this.torporEat ? turnedBones(this.torporEat, legs) : new Uint8Array(0);
     this.biteBones = this.attack ? turnedBones(this.attack, legs) : new Uint8Array(0);
@@ -404,6 +445,7 @@ function aloft(a: CreatureAnim, st: AnimState): boolean {
 
 /** The stride of its legs at `speed`, 0 where they are not played by distance. Fills rig.w with the gaits' shares. */
 export function creatureStride(a: CreatureAnim, st: AnimState, speed: number): number {
+  if (a.combat?.charge && (st.action & 7) === ACT_HOLD && a.chargeGait) return a.chargeGait.stride;
   if (aloft(a, st)) {
     a.rig.w.fill(0);
     return 0;
@@ -417,14 +459,96 @@ export function creatureStride(a: CreatureAnim, st: AnimState, speed: number): n
   return moves ? gaitShares(moves, speed, moves !== single || moves[0] === a.walkGait, a.rig.w) : 0;
 }
 
+/** Whether a layer changes a leg chain, including a body ancestor above its branch. */
+function movesFeet(a: CreatureAnim, clip: Clip | null | undefined, bones: Uint8Array): boolean {
+  if (!clip) return false;
+  const turns = a.footLayers.get(clip);
+  if (turns) for (const b of turns) if (bones.includes(b)) return true;
+  return false;
+}
+
+/** Contact domain of this exact pose, captured only when its skeleton is sampled. */
+export function creatureFootfallDomain(a: CreatureAnim, st: AnimState, tick: number): number {
+  if (!st.grounded || st.mode === MODE_SWIM || st.mode === MODE_FLYER || st.out || st.dead || st.held) return FOOTFALL_NONE;
+  const act = st.action & 7, s = since(tick, st.actionStart), c = a.combat;
+  // Legacy strike intentionally uses its original unsigned elapsed tick, including just-before-start snapshots.
+  const strikeAge = (((Math.floor(tick) & 255) - st.actionStart) & 255) + (tick - Math.floor(tick));
+  const clip = c ? groundClip(a, st) : act === ACT_SWING && a.attack && strikeAge < a.attack.frames - 1 ? a.attack : null;
+  let charge = false;
+  if (clip) {
+    const bones = c ? groundMask(a, act) : null;
+    charge = !!(c?.charge && act === ACT_HOLD && a.chargeGait);
+    if (!charge && (bones ? movesFeet(a, clip, bones) : !c || act === ACT_HOLD || s < clip.frames - 1 + FADE)) return FOOTFALL_NONE;
+  } else {
+    const elapsed = since(tick, st.cueStart);
+    if (st.cue === CUE_TORPOR) {
+      if (a.torporOut ? elapsed < a.torporOut.frames - 1 + FADE : elapsed < GET_UP && (a.torporIdle || a.death)) return FOOTFALL_NONE;
+    } else {
+      const reaction = st.cue === CUE_STARTLE ? a.startled : st.cue === CUE_LAND ? a.land : null;
+      if (reaction && elapsed < reaction.frames - 1 + FADE) return FOOTFALL_NONE;
+    }
+  }
+  const modes = c?.modes;
+  if (modes?.length) {
+    const mode = ((st.action >> 4) & 3) % modes.length;
+    const old = act === ACT_EQUIP && s >= Math.floor((c!.switchTicks ?? 30) / 2) ? (mode + modes.length - 1) % modes.length : mode;
+    if (movesFeet(a, a.rig.clips.get(modes[old]!.clip), a.modeBones) || act === ACT_EQUIP && movesFeet(a, a.rig.clips.get(modes[(old + 1) % modes.length]!.clip), a.modeBones)) return FOOTFALL_NONE;
+  }
+  const layerClip = st.layer === LAYER_FLINCH ? a.flinch : st.layer === LAYER_EAT ? a.torporEat : null;
+  if (layerClip && since(tick, st.layerStart) < layerClip.frames - 1 && movesFeet(a, layerClip, st.layer === LAYER_FLINCH ? a.flinchBones : a.eatBones)) return FOOTFALL_NONE;
+  // A carried load replaces the legs' gait; release may retain that replacement while it fades.
+  if ((st.action >>> 3) === HOLD_CARRY && a.carry || act === ACT_EQUIP && s < (a.release ? a.release.frames - 1 : FADE) && (a.carry || a.release)) return FOOTFALL_NONE;
+  if (charge) return FOOTFALL_CHARGE;
+  const turn = st.dir <= DIR_STEPS / 2 ? st.dir : DIR_STEPS - st.dir;
+  return turn > DIR_STEPS / 4 ? FOOTFALL_REVERSE : FOOTFALL_FORWARD;
+}
+
+/** Actual authored contact moments in the captured domain, as bone/phase pairs. No metadata retains legacy cadence. */
+export function creatureFootfalls(a: CreatureAnim, domain: number, speed: number, out: Float64Array): number {
+  if (domain === FOOTFALL_NONE) return 0;
+  const charge = domain === FOOTFALL_CHARGE && a.chargeGait;
+  if (charge) single[0] = charge;
+  const moves = charge ? single : movesAt(a, speed), feet = a.rig.feet;
+  if (!moves || feet.length * 2 > out.length || !(speed > 0)) return 0;
+  const w = a.rig.w;
+  if (charge) w[0] = 1;
+  else gaitShares(moves, speed, moves !== single || moves[0] === a.walkGait, w);
+  const backward = domain === FOOTFALL_REVERSE;
+  for (let f = 0; f < feet.length; f++) {
+    const bone = feet[f]!;
+    let first = -1, sum = 0, total = 0;
+    for (let i = 0; i < moves.length; i++) {
+      const weight = w[i]!;
+      if (!(weight > 0)) continue;
+      const g = moves[i]!, rows = g.footfalls;
+      if (!rows) return 0;
+      let at = -1;
+      for (let j = 0; j < rows.length; j++) if (rows[j]!.bone === bone) { at = j; break; }
+      if (at < 0) return 0;
+      const row = rows[at]!;
+      let phase = backward ? g.start - row.lift : row.plant - g.start;
+      phase -= Math.floor(phase);
+      if (first < 0) first = phase;
+      // Blend contact phase across the shorter part of the circle, just as aligned clips blend their poses.
+      const delta = phase - first;
+      sum += (first + delta - Math.floor(delta + .5)) * weight;
+      total += weight;
+    }
+    if (!(total > 0)) return 0;
+    const phase = sum / total;
+    out[f * 2] = bone; out[f * 2 + 1] = phase - Math.floor(phase);
+  }
+  return feet.length;
+}
+
 /**
  * Moves a body's gait on to where it is drawn at `tick`, (x, z) facing `yaw` radians, `size` times as large as it was
  * made. A body seen for the first time starts at the phase the server poses it at. One with a clip to turn on the spot
  * does not step round with its walk.
  */
-export function advanceCreature(a: CreatureAnim, g: Gait, st: AnimState, tick: number, x: number, z: number, yaw: number, size: number): void {
+export function advanceCreature(a: CreatureAnim, g: Gait, st: AnimState, tick: number, x: number, z: number, yaw: number, size: number, distanceScale = 1): void {
   const before = g.tick;
-  const metres = g.track(x, z, yaw, tick, st.speed * (st.mode === MODE_FLYER ? FLY_SPEED_STEP : SPEED_STEP), a.turn ? 0 : a.rig.turn, size);
+  const metres = g.track(x, z, yaw, tick, st.speed * (st.mode === MODE_FLYER ? FLY_SPEED_STEP : SPEED_STEP), a.turn ? 0 : a.rig.turn, size, distanceScale);
   if (metres < 0) g.phase = tickPhase(tick + st.seed, g.speed, creatureStride(a, st, g.speed));
   else g.step(metres, creatureStride(a, st, g.speed));
   // Out of the air they are kept as it last flew, for a landing to come in from.
@@ -479,9 +603,9 @@ function idleAt(a: CreatureAnim, seed: number, t: number, out: Pose): void {
 }
 
 /** Standing and moving on its gaits, by the tick `t` (seed added) or by `gait`, which also turns it on the spot. */
-function onFoot(a: CreatureAnim, st: AnimState, t: number, out: Pose, gait: Gait | null): void {
+function onFoot(a: CreatureAnim, st: AnimState, t: number, out: Pose, gait: Gait | null, distanceScale = 1): void {
   const rig = a.rig;
-  const speed = gait ? gait.speed : st.speed * SPEED_STEP;
+  const speed = gait ? gait.speed : st.speed * SPEED_STEP * distanceScale;
   const moves = speed > 0 ? movesAt(a, speed) : null;
   const clip = speed > 0 && !moves ? (speed >= a.runAt && a.run ? a.run : (a.walk ?? a.run)) : null;
   const stride = moves ? creatureStride(a, st, speed) : 0;
@@ -623,7 +747,7 @@ function airborne(a: CreatureAnim, st: AnimState, tick: number, out: Pose, gait:
 }
 
 /** What it does throughout, by the tick: lies knocked out when `lying` (limp while it falls), else flies, floats, falls, or stands and moves. */
-function steady(a: CreatureAnim, st: AnimState, tick: number, out: Pose, gait: Gait | null, lying: boolean): void {
+function steady(a: CreatureAnim, st: AnimState, tick: number, out: Pose, gait: Gait | null, lying: boolean, distanceScale = 1): void {
   const t = tick + st.seed;
   if (lying && a.torporFall && !st.grounded && st.mode !== MODE_SWIM) sampleClip(a.torporFall, t, out);
   else if (lying && a.torporIdle) sampleClip(a.torporIdle, t, out);
@@ -640,7 +764,7 @@ function steady(a: CreatureAnim, st: AnimState, tick: number, out: Pose, gait: G
     single[0] = a.swimGait!;
     playGaits(single, a.rig.w, gait ? gait.phase : tickPhase(t, speed, stride), false, out, a.rig.b, a.rig.c);
   } else if (!st.grounded && a.fall) sampleClip(a.fall, t, out);
-  else onFoot(a, st, t, out, gait);
+  else onFoot(a, st, t, out, gait, distanceScale);
 }
 
 /** Its bite, from the tick it began, for the length of its clip. False when none is under way. */
@@ -652,15 +776,62 @@ function strike(a: CreatureAnim, st: AnimState, tick: number, out: Pose): boolea
   return true;
 }
 
+/** Ground action selection shared by posing and contact eligibility. */
+function groundClip(a: CreatureAnim, st: AnimState): Clip | null {
+  const c = a.combat!, act = st.action & 7, side = (st.action >> 3) & 1;
+  const name = act === ACT_SWING ? (side && c.primary.alternateClip ? c.primary.alternateClip : c.primary.clip)
+    : act === ACT_RELOAD ? c.secondary?.clip : act === ACT_DRAW ? "charge_windup"
+    : act === ACT_HOLD ? (c.charge ? "charge" : "impale_hold")
+    : act === ACT_COOL ? (c.charge ? "charge_stop" : "impale_out") : act === ACT_EQUIP ? "plate_switch" : undefined;
+  return name ? a.rig.clips.get(name) ?? null : null;
+}
+function groundMask(a: CreatureAnim, act: number): Uint8Array | null {
+  return act === ACT_SWING ? a.primaryBones : !a.combat!.charge && (act === ACT_RELOAD || act === ACT_HOLD || act === ACT_COOL) ? a.secondaryBones : null;
+}
+
+/** Ground action names are content; action/hold/start are the same words on authority and observers. */
+function groundAction(a: CreatureAnim, st: AnimState, tick: number, out: Pose, gait: Gait | null, distanceScale = 1): boolean {
+  const c = a.combat!, act = st.action & 7, s = since(tick, st.actionStart), clip = groundClip(a, st);
+  if (!clip) return false;
+  const bones = groundMask(a, act);
+  if (act === ACT_HOLD && c.charge && a.chargeGait) {
+    const phase = gait ? gait.phase : tickPhase(tick + st.seed, st.speed * SPEED_STEP * distanceScale, a.chargeGait.stride);
+    single[0] = a.chargeGait;
+    a.rig.w.fill(0); a.rig.w[0] = 1;
+    playGaits(single, a.rig.w, phase, false, out, a.rig.b, a.rig.c);
+  } else if (bones) layer(out, clip, s, bones);
+  else if (act === ACT_HOLD) sampleClip(clip, s, out);
+  else oneShot(a.rig, clip, s, out, null);
+  return true;
+}
+
+function plateMode(a: CreatureAnim, st: AnimState, tick: number, out: Pose): void {
+  const c = a.combat!, modes = c.modes;
+  if (!modes?.length) return;
+  const mode = ((st.action >> 4) & 3) % modes.length;
+  const act = st.action & 7;
+  if (act === ACT_EQUIP) {
+    const s = since(tick, st.actionStart), total = c.switchTicks ?? 30;
+    const old = s < Math.floor(total / 2) ? mode : (mode + modes.length - 1) % modes.length;
+    const next = (old + 1) % modes.length, k = smooth(Math.min(1, s / total));
+    const before = a.rig.clips.get(modes[old]!.clip), after = a.rig.clips.get(modes[next]!.clip);
+    if (before) layer(out, before, 0, a.modeBones, 1 - k);
+    if (after) layer(out, after, 0, a.modeBones, k);
+  } else {
+    const clip = a.rig.clips.get(modes[mode]!.clip);
+    if (clip) layer(out, clip, 0, a.modeBones);
+  }
+}
+
 /**
  * Fills `out` with its pose at `tick`, which may fall between ticks. With `gait` its legs are where that says, and without
  * it where the tick puts them.
  */
-export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: Pose, gait: Gait | null = null): void {
+export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: Pose, gait: Gait | null = null, distanceScale = 1): void {
   const rig = a.rig;
   // Held, nothing that plays on its feet plays, unless it is knocked out.
   if (st.held && !st.out) inArms(a, st, tick, out);
-  else steady(a, st, tick, out, gait, st.out);
+  else steady(a, st, tick, out, gait, st.out, distanceScale);
   if (st.out) {
     const s = since(tick, st.cueStart);
     if (st.cue === CUE_LAND) {
@@ -675,14 +846,14 @@ export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: 
       // Knocked out off the ground it goes limp from what it was doing there.
       if (s < FADE) {
         if (a.flies) airborne(a, st, tick, rig.e, gait);
-        else steady(a, st, tick, rig.e, gait, false);
+        else steady(a, st, tick, rig.e, gait, false, distanceScale);
         blendPose(out, rig.e, out, smooth(s / FADE));
       }
     } else {
       // Going down, from what it was doing into lying. Without its own clip it falls as it dies.
       const clip = a.torporIn ?? a.death;
       if (clip) {
-        if (s < FADE) steady(a, st, tick, rig.e, gait, false);
+        if (s < FADE) steady(a, st, tick, rig.e, gait, false, distanceScale);
         oneShot(rig, clip, s, out, rig.e);
       }
     }
@@ -701,7 +872,7 @@ export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: 
         }
       }
       biteAloft(a, st, tick, out);
-    } else if (!strike(a, st, tick, out)) {
+    } else if (!(a.combat ? groundAction(a, st, tick, out, gait, distanceScale) : strike(a, st, tick, out))) {
       if (st.cue === CUE_TORPOR) gettingUp(a, st, tick, out);
       else if (st.cue === CUE_LAND && a.flies && st.mode === MODE_SWIM) {
         // Set down on the water, from the air into floating.
@@ -711,12 +882,13 @@ export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: 
           blendPose(out, rig.e, out, smooth(s / FADE));
         }
       } else if (st.cue === CUE_STARTLE || st.cue === CUE_LAND) {
-        const clip = st.cue === CUE_STARTLE ? a.startled : a.land;
+        const water = st.mode === MODE_SWIM;
+        const clip = st.cue === CUE_STARTLE ? water ? a.startledSwim : a.startled : water ? a.landSwim : a.land;
         const s = since(tick, st.cueStart);
         // A landing comes in from the air, or from the fall.
         const fade = st.cue === CUE_LAND && a.flies ? LAND_FADE : FADE;
         let from: Pose | null = null;
-        if (st.cue === CUE_LAND && s < fade) {
+        if (!water && st.cue === CUE_LAND && s < fade) {
           if (a.flies) airborne(a, st, tick, (from = rig.e), gait);
           else if (a.fall) sampleClip(a.fall, tick + st.seed, (from = rig.e));
         }
@@ -725,6 +897,7 @@ export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: 
     }
     talons(a, st, tick, out);
   }
+  if (a.combat && !st.out && !st.held) plateMode(a, st, tick, out);
   if (st.layer === LAYER_NONE) return;
   // A flinch or a gulp, over whatever the rest of it does.
   const clip = st.layer === LAYER_FLINCH ? a.flinch : st.layer === LAYER_EAT ? a.torporEat : null;
@@ -792,6 +965,12 @@ function holding(a: CreatureAnim, t: number, out: Pose, w: number): void {
 function gettingUp(a: CreatureAnim, st: AnimState, tick: number, out: Pose): void {
   const rig = a.rig;
   const s = since(tick, st.cueStart);
+  if (st.mode === MODE_SWIM) {
+    // A ground get-up rolls onto planted feet and can submerge a swimming animal's nose. A water recovery is
+    // authored around its awake float pose; without one, retain that pose instead of blending from ground lying.
+    if (a.torporOutSwim) oneShot(rig, a.torporOutSwim, s, out, null);
+    return;
+  }
   if (a.torporOut) {
     if (s < FADE) steady(a, st, tick, rig.e, null, true);
     oneShot(rig, a.torporOut, s, out, rig.e);
@@ -805,7 +984,7 @@ function gettingUp(a: CreatureAnim, st: AnimState, tick: number, out: Pose): voi
  * Returns the zone a ray hits, or 0. The creature stands at (bx, by, bz) facing `yaw` (1/65536 turns). The ray starts at
  * (ox, oy, oz) and runs along the unit direction (dx, dy, dz) no farther than `maxT`. `zoneHit` holds the bone and the distance.
  */
-export function rayCreature(a: CreatureAnim, st: AnimState, tick: number, bx: number, by: number, bz: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
+export function rayCreature(a: CreatureAnim, st: AnimState, tick: number, bx: number, by: number, bz: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, padding = 0, world?: CollisionWorld, size = 1): number {
   const rig = a.rig;
   // Most rays miss the bounding sphere, so test that first.
   const cx = bx - ox;
@@ -813,21 +992,28 @@ export function rayCreature(a: CreatureAnim, st: AnimState, tick: number, bx: nu
   const cz = bz - oz;
   const along = cx * dx + cy * dy + cz * dz;
   const off2 = cx * cx + cy * cy + cz * cz - along * along;
-  if (off2 > rig.reach * rig.reach || along < -rig.reach || along > maxT + rig.reach) {
+  if (off2 > (rig.reach + padding) * (rig.reach + padding) || along < -rig.reach - padding || along > maxT + rig.reach + padding) {
     zoneHit.zone = 0;
     zoneHit.bone = -1;
     zoneHit.t = maxT;
     return 0;
   }
-  creaturePose(a, st, tick, rig.a);
-  solve(rig, rig.a, rig.solved);
   // Move the ray into the body's space by undoing its position, then its yaw. Yaw is x' = c x + s z, z' = c z - s x.
   const r = (yaw * TAU) / 65536;
+  poseCreatureOn(a, st, tick, world, bx, by, bz, r, size);
   const s = detSin(r);
   const c = detCos(r);
   const rx = ox - bx;
   const rz = oz - bz;
-  return rayZones(rig, rig.solved, c * rx - s * rz, oy - by, s * rx + c * rz, c * dx - s * dz, dy, s * dx + c * dz, maxT);
+  return rayZones(rig, rig.solved, c * rx - s * rz, oy - by, s * rx + c * rz, c * dx - s * dz, dy, s * dx + c * dz, maxT, padding);
+}
+
+/** Authored pose, slope-aware stride rate and spatial support shared by drawing, seats and authoritative contacts. */
+export function poseCreatureOn(a: CreatureAnim, st: AnimState, tick: number, world: CollisionWorld | null | undefined, x: number, y: number, z: number, yaw: number, size = 1, gait: Gait | null = null, solved: Solved = a.rig.solved): void {
+  const rig = a.rig;
+  creaturePose(a, st, tick, rig.a, gait, groundSpeedScale(rig, st, world, x, y, z, yaw, size) / size);
+  solve(rig, rig.a, solved);
+  conformCreature(rig, st, rig.a, solved, world, x, y, z, yaw, size);
 }
 
 /** What each species of `reg` drawn on a rig of its own plays, by content index. `rigOf` finds a species' rig. */
@@ -835,6 +1021,6 @@ export function creatureAnims(reg: Registry, rigOf: (d: SpeciesDef) => Rig | nul
   return reg.defs.map((d, i) => {
     if (d?.type !== "species" || d.skeleton === undefined || d.skeleton === HUMAN.id) return null;
     const rig = rigOf(d);
-    return rig ? new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0) : null;
+    return rig ? new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0, reg.combat[i]) : null;
   });
 }

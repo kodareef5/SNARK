@@ -8,12 +8,12 @@ import { Pose, blendPose, sampleClip, type Clip } from "./clip.ts";
 import {
   B_CHEST, B_FINGERS_L, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R,
   B_LOWER_LEG_L, B_LOWER_LEG_R, B_NECK, B_SPINE, B_UPPER_ARM_L, B_UPPER_ARM_R,
-  B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES,
+  B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES, LEGACY_HUMAN_BONES,
 } from "./human.ts";
 import type { Solved } from "./skeleton.ts";
 
 /** `ride` sits astride a saddle (shared/anim/seat.ts): its rider's hands on the grips, a passenger's upper body its own. */
-export const MOUNT_MOTION_ROLES = ["drive", "passenger", "enter", "exit", "carjack", "displaced", "ride", "pilot", "cabin", "pwc"] as const;
+export const MOUNT_MOTION_ROLES = ["drive", "passenger", "enter", "exit", "carjack", "displaced", "ride", "pilot", "cabin", "pwc", "impaled"] as const;
 export type MountMotionRole = typeof MOUNT_MOTION_ROLES[number];
 
 export interface MountMotionProfile {
@@ -49,15 +49,15 @@ export function createMountMotion(clips: Partial<Record<MountMotionRole, Clip>> 
     }
     const rot = c.rot.slice();
     for (let i = 0; i < rot.length; i += 4) quatNormalize(rot, i);
-    accepted[role] = { id: c.id, bones: HUMAN_BONES, frames: c.frames, loop: false, rot, root: c.root.slice() };
+    accepted[role] = { id: c.id, bones: c.bones, frames: c.frames, loop: false, rot, root: c.root.slice() };
   }
   return { clips: accepted, rejected };
 }
 
 function validClip(c: Clip): boolean {
-  if (c.bones !== HUMAN_BONES || !Number.isSafeInteger(c.frames) || c.frames < 1) return false;
+  if ((c.bones !== HUMAN_BONES && c.bones !== LEGACY_HUMAN_BONES) || !Number.isSafeInteger(c.frames) || c.frames < 1) return false;
   if (!(c.rot instanceof Float32Array) || !(c.root instanceof Float32Array)) return false;
-  if (c.rot.length !== c.frames * HUMAN_BONES * 4 || c.root.length !== c.frames * 3) return false;
+  if (c.rot.length !== c.frames * c.bones * 4 || c.root.length !== c.frames * 3) return false;
   for (const n of c.root) if (!Number.isFinite(n)) return false;
   for (let i = 0; i < c.rot.length; i += 4) {
     const x = c.rot[i]!, y = c.rot[i + 1]!, z = c.rot[i + 2]!, w = c.rot[i + 3]!;
@@ -154,6 +154,16 @@ function seated(driver: boolean, steering = 0): Pose {
   return b.pose;
 }
 
+/** Abdominal contact at capsule centre: knees and elbows fold away from the tail. */
+function impaled(): Pose {
+  return new PoseBuilder().hips(0, .9, 0)
+    .turn(B_HIPS, -12).turn(B_SPINE, 24).turn(B_CHEST, 12).turn(B_NECK, -16).turn(B_HEAD, -8)
+    .aim(B_UPPER_LEG_L, .25, -.9, .35).aim(B_LOWER_LEG_L, .05, -.65, -.75).level(B_FOOT_L)
+    .aim(B_UPPER_LEG_R, -.2, -.75, .5).aim(B_LOWER_LEG_R, -.1, -.8, -.6).level(B_FOOT_R)
+    .aim(B_UPPER_ARM_L, .55, -.4, .7).aim(B_LOWER_ARM_L, -.6, -.3, -.4).level(B_HAND_L)
+    .aim(B_UPPER_ARM_R, -.55, -.3, .7).aim(B_LOWER_ARM_R, .6, -.4, -.4).level(B_HAND_R).pose;
+}
+
 /** Compact enclosed-cabin pose. Elbows stay beside the torso, hands on the lap or helicopter controls. */
 function cabinSeat(pilot: boolean): Pose {
   const b = new PoseBuilder();
@@ -232,6 +242,7 @@ function fallbacks(): Fallbacks {
       carjack: keyframes("carjack", [stand, touch, grab, grab]),
       displaced: keyframes("displaced", [sit, recoil, duck, stand]),
       ride: keyframes("ride", [astride()]), pwc: keyframes("pwc", [astride(true)]),
+      impaled: keyframes("impaled", [impaled()]),
       pilot: keyframes("pilot", [cabinSeat(true)]), cabin: keyframes("cabin", [cabinSeat(false)]),
     },
     left: seated(true, -1), right: seated(true, 1),

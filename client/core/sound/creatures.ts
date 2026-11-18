@@ -6,6 +6,7 @@
 // the catalogue says, so a second creature needs only its sounds and is heard through shared ones until it has them.
 // A body is followed from when it comes within hearing; what it was doing when first heard makes no sound.
 
+import { corpseDownAt, type Corpse } from "../ragdoll.ts";
 import { CreatureAnim, advanceCreature, idleOf } from "../../../shared/anim/creature.ts";
 import { Gait } from "../../../shared/anim/gait.ts";
 import { AnimState, CUE_DEAD, CUE_LAND, CUE_NONE, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, FLY_SPEED_STEP, LAYER_EAT, LAYER_FLINCH, SPEED_STEP, bodySeed } from "../../../shared/anim/pose.ts";
@@ -13,7 +14,7 @@ import type { Registry } from "../../../shared/content/registry.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
 import { MODE_FLYER, MODE_SWIM } from "../../../shared/sim/character.ts";
-import { ACT_NONE } from "../../../shared/sim/weapon.ts";
+import { ACT_SWING, ACT_RELOAD, ACT_HOLD, ACT_NONE } from "../../../shared/sim/weapon.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { RemoteSample } from "../session.ts";
 import { GROUND_NAMES, groundAt } from "./ground.ts";
@@ -141,8 +142,12 @@ export class Book {
   }
 }
 
+function voicePitch(size: number): number { return 1 / Math.sqrt(Math.max(0.35, size)); }
+function voiceLevel(size: number): number { return 0.5 + 0.5 * size; }
+
 /** What is kept of a body heard, between frames. */
 class Heard {
+  size = 1;
   kind = 0;
   seen = 0;
   cue = 0;
@@ -193,6 +198,7 @@ export class CreatureSounds {
   private readonly rng = new Rng(5);
   /** Ids whose death has been heard, kept while the session still tells of them. */
   private readonly mourned = new Set<number>();
+  private readonly landed = new WeakSet<Corpse>();
 
   constructor(reg: Registry, lib: SoundLibrary, res: Resolver, animOf: (kind: number) => CreatureAnim | null, sheets: readonly DetailSheet[] = []) {
     this.reg = reg;
@@ -215,7 +221,7 @@ export class CreatureSounds {
    * Finds what the bodies of `remote` did since the last frame that is heard from (ex, ey, ez), and hands each to `emit`.
    * `want` is told of each sound a body within its range may make, and how near it is.
    */
-  update(remote: RemoteSample, hf: Heightfield, ex: number, ey: number, ez: number, emit: Emit, want: (sound: number, metres: number) => void): void {
+  update(remote: RemoteSample, hf: Heightfield, ex: number, ey: number, ez: number, emit: Emit, want: (sound: number, metres: number) => void, corpses?: readonly Corpse[]): void {
     const frame = ++this.frame;
     this.hunters = 0;
     this.chasers = 0;
@@ -254,8 +260,8 @@ export class CreatureSounds {
       b.z = z;
       const size = remote.grown[i] !== 0 ? youngScale(this.reg.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
       // A young one is higher and quieter.
-      const pitch = 1 / Math.sqrt(Math.max(0.35, size));
-      const quiet = 0.5 + 0.5 * size;
+      b.size = size;
+      const pitch = voicePitch(size), quiet = voiceLevel(size);
       // The cue and its start, and the layer and its start; whether it lies knocked out is read from the state.
       const cue = remote.cue[i]! & 0xffe;
       const layer = (remote.cue[i]! >>> 12) & 0x3ff;
@@ -277,7 +283,9 @@ export class CreatureSounds {
         }
         if (layer !== b.layer && st.layer === LAYER_FLINCH) play(O_HURT);
         else if (layer !== b.layer && st.layer === LAYER_EAT) play(O_EAT);
-        if (act !== ACT_NONE && (b.act === ACT_NONE || st.actionStart !== b.actStart)) play(O_ATTACK, book.strike);
+        const combat = this.reg.combat[kind];
+        const attacking = combat ? act === ACT_SWING || act === ACT_RELOAD || (act === ACT_HOLD && !!combat.charge) : act !== ACT_NONE;
+        if (attacking && (b.act !== act || st.actionStart !== b.actStart)) play(O_ATTACK, book.strike);
       }
       b.cue = cue;
       b.layer = layer;
@@ -305,13 +313,23 @@ export class CreatureSounds {
         this.mourned.add(id);
         // A body knocked out dies where it lies, with no cry and no fall.
         if (!b.out) {
-          if (book.sound[O_DEATH]! >= 0) emit(book.sound[O_DEATH]!, KIND_VOCAL, WEIGHT[O_DEATH]!, id, b.x, b.y, b.z, book.height * 0.6, 1, book.rate[O_DEATH]!, 0);
-          if (book.sound[O_THUMP]! >= 0) emit(book.sound[O_THUMP]!, KIND_HIT, WEIGHT[O_THUMP]!, id, b.x, b.y, b.z, 0.1, 0.9, book.rate[O_THUMP]!, book.dies);
+          const pitch = voicePitch(b.size), quiet = voiceLevel(b.size);
+          if (book.sound[O_DEATH]! >= 0) emit(book.sound[O_DEATH]!, KIND_VOCAL, WEIGHT[O_DEATH]!, id, b.x, b.y, b.z, book.height * b.size * 0.6, quiet, book.rate[O_DEATH]! * pitch, 0);
+          if ((!corpses || !book.anim) && book.sound[O_THUMP]! >= 0) emit(book.sound[O_THUMP]!, KIND_HIT, WEIGHT[O_THUMP]!, id, b.x, b.y, b.z, 0.1 * b.size, 0.9 * quiet, book.rate[O_THUMP]! * pitch, book.dies);
         }
       }
       this.bodies.delete(id);
     }
     for (const id of this.mourned) if (!remote.died.has(id)) this.mourned.delete(id);
+    if (corpses) for (const c of corpses) {
+      if (!c.watched || c.lying || this.landed.has(c)) continue;
+      const book = this.books[c.kind];
+      if (!book?.anim || book.sound[O_THUMP]! < 0 || remote.tick < corpseDownAt(c, book.dies)) continue;
+      this.landed.add(c);
+      const point = c.impact && Number.isFinite(c.impact[0]) ? c.impact : null;
+      emit(book.sound[O_THUMP]!, KIND_HIT, WEIGHT[O_THUMP]!, -1, point?.[0] ?? c.x, point?.[1] ?? c.y, point?.[2] ?? c.z, .1 * c.size,
+        .9 * voiceLevel(c.size), book.rate[O_THUMP]! * voicePitch(c.size), 0);
+    }
   }
 
   /** A running body calls now and then, each on its own time; a hunter walking near the ear growls now and then. */

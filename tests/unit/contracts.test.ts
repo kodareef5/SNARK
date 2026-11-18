@@ -10,7 +10,8 @@ import type { Def, SpeciesDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { slotsOf } from "../../shared/content/slots.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
-import { Body, FLIGHT_TICKS_MAX, MODE_FLY, MODE_FLYER, MODE_GHOST, MODE_NONE, MODE_SWIM, MODE_WALK, STANCE_STAND } from "../../shared/sim/character.ts";
+import { BTN_SPRINT, Body, FLIGHT_TICKS_MAX, MODE_FLY, MODE_FLYER, MODE_GHOST, MODE_NONE, MODE_SWIM, MODE_WALK, STANCE_STAND, stepBody } from "../../shared/sim/character.ts";
+import { TICK_DT } from "../../shared/coords.ts";
 import { EntityStore } from "../../shared/sim/entities.ts";
 import { GAME_HOUR_TICKS } from "../../shared/sim/lazy.ts";
 import { HOLD_CARRY } from "../../shared/sim/weapon.ts";
@@ -27,7 +28,7 @@ import { DEADLINE_SPAWN } from "../../server/spawner.ts";
 import { DEADLINE_FIRE } from "../../server/stations.ts";
 import { DEADLINE_VITALS } from "../../server/survival.ts";
 import { DEADLINE_TAME } from "../../server/taming.ts";
-import { coreRegistry } from "../fixtures/world.ts";
+import { coreRegistry, flatWorld } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
 const at = (id: string): number => reg.index.get(id)!;
@@ -60,7 +61,7 @@ test("the new codes are each one of their kind, and deadlines have kinds of thei
   expect(new Set(ops).size).toBe(ops.length);
   // 14 is the cluster's, 15 the beds', 16 the flyers' (below), 17 the stations wave's (tests/unit/stations-contracts.test.ts),
   // 18 the vehicles' (tests/integration/vehicle-contracts.test.ts).
-  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 28]);
+  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 29]);
   const orders = [P.ORDER_STAY, P.ORDER_FOLLOW, P.ORDER_STANCE, P.ORDER_STANCE + 1, P.ORDER_STANCE + 2, P.ORDER_UNSADDLE, P.ORDER_MATE, P.ORDER_UNMATE, P.ORDER_WANDER, P.ORDER_ATTACK, P.ORDER_YOURS, P.ORDER_LAND];
   expect(new Set(orders).size).toBe(orders.length);
   expect(Math.max(...orders)).toBeLessThan(P.ORDER_LEVEL);
@@ -74,11 +75,11 @@ test("the new columns change nothing for content that does not use them", () => 
     const d = reg.defs[i]!;
     // A tame stands on steeper ground than a wild one; past that, its numbers are its species' but for a tamed sprint, on
     // the ground and in the air.
-    const sprints = d.type === "species" ? { ...(d.tamedSprintMul === undefined ? {} : { sprintMul: d.tamedSprintMul }), ...(d.fly?.tamedSprintMul === undefined ? {} : { flySprintMul: d.fly.tamedSprintMul }) } : {};
+    const sprints = d.type === "species" ? { ...(d.tamedWalkSpeed === undefined ? {} : { walkSpeed: d.tamedWalkSpeed }), ...(d.tamedSwimSpeed === undefined ? {} : { swimSpeed: d.tamedSwimSpeed }), ...(d.tamedSprintMul === undefined ? {} : { sprintMul: d.tamedSprintMul }), ...(d.fly?.tamedSprintMul === undefined ? {} : { flySprintMul: d.fly.tamedSprintMul }) } : {};
     if (d.type === "species") expect({ ...reg.tamedMove[i]!, slopeCos: 0 }).toEqual({ ...reg.move[i]!, slopeCos: 0, ...sprints });
     // The pteranodon is carried as 149 of drag weight by what can lift it, its mass is 190, and its kind takes fright with
     // it within 15 m. A vehicle's mass is its curb mass.
-    const dragged = d.type === "species" && d.vehicle ? [0, 0, d.vehicle.spec.mass ?? 1100, 0, 0] : ({ "core:pteranodon": [15, 149, 190, 0, 0], "core:raptor": [0, 0, 150, 0, 0], "core:parasaur": [0, 0, 900, 0, 0], "core:grazer": [0, 0, 220, 0, 0] } as Record<string, number[]>)[d.id];
+    const dragged = d.type === "species" && d.vehicle ? [0, 0, d.vehicle.spec.mass ?? 1100, 0, 0] : ({ "core:pteranodon": [15, 149, 190, 0, 0], "core:trike": [22, 300, 6000, 0, 0], "core:stego": [15, 250, 5000, 0, 0], "core:raptor": [0, 0, 150, 0, 0], "core:parasaur": [0, 0, 900, 0, 0], "core:grazer": [0, 0, 220, 0, 0] } as Record<string, number[]>)[d.id];
     if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual(dragged ?? [0, 0, 0, 0, 0]);
     expect(reg.drawSize[i]).toBe(1);
     if (!["core:survivor", "core:club", "core:pick"].includes(d.id)) expect(reg.meleeTorpor[i]).toBe(0);
@@ -93,14 +94,16 @@ test("the new columns change nothing for content that does not use them", () => 
 
 test("every species that lays an egg leaves feces, and its egg is an item, fertilised or not", () => {
   const layers = reg.defs.filter((d) => d?.type === "species" && d.breeds?.egg !== undefined).map((d) => d!.id);
-  expect(layers.sort()).toEqual(["core:dodo", "core:parasaur", "core:pteranodon", "core:raptor"]);
+  expect(layers.sort()).toEqual(["core:dodo", "core:parasaur", "core:pteranodon", "core:raptor", "core:stego", "core:trike"]);
   const ids = (col: Uint16Array, i: number): string => (col[i] === 0 ? "" : reg.ids[col[i]!]!);
-  expect(layers.map((id) => ids(reg.feces, at(id)))).toEqual(["core:feces_small", "core:feces_medium", "core:feces_small", "core:feces_small"]);
+  expect(layers.map((id) => ids(reg.feces, at(id)))).toEqual(["core:feces_small", "core:feces_medium", "core:feces_small", "core:feces_small", "core:feces_large", "core:feces_medium"]);
   expect(layers.map((id) => [ids(reg.propItem, reg.breedEgg[at(id)]!), ids(reg.propFertile, reg.breedEgg[at(id)]!)])).toEqual([
     ["core:dodo_egg", "core:dodo_egg_fertile"],
     ["core:parasaur_egg", "core:parasaur_egg_fertile"],
     ["core:pteranodon_egg", "core:pteranodon_egg_fertile"],
     ["core:raptor_egg", "core:raptor_egg_fertile"],
+    ["core:stego_egg", "core:stego_egg_fertile"],
+    ["core:trike_egg", "core:trike_egg_fertile"],
   ]);
   // Only an egg prop names items, and only a species leaves feces.
   for (let i = 1; i < reg.defs.length; i++) {
@@ -194,7 +197,8 @@ test("a body's flight counters travel with it, 20 bits after the rest, and every
   const w = new BitWriter(64);
   P.writeBody(w, a);
   // And after them the vehicles' bit for no vehicle and their bit for no seat: 380 without those.
-  expect(w.pos).toBe(382);
+  // Protocol 27 adds one presence bit for ground creature counters.
+  expect(w.pos).toBe(383);
   const b = new Body();
   const r = new BitReader(w.bytes());
   P.readBody(r, b);
@@ -272,11 +276,11 @@ test("a flyer's clips are named among a rig's, each once, and asked for of a spe
   const uses = slotsOf(CORE_CONTENT);
   expect(uses.filter((u) => u.slot === "flight").map((u) => u.owner).every((o) => o === "core:pteranodon")).toBe(true);
   expect(uses.filter((u) => u.slot === "flight").length).toBe(flight.length);
-  expect(uses.filter((u) => u.slot === "saddled").map((u) => [u.owner, u.id]).sort()).toEqual([["core:dodo", "core:dodo/saddled"], ["core:parasaur", "core:parasaur/saddled"], ["core:pteranodon", "core:pteranodon/saddled"], ["core:raptor", "core:raptor/saddled"]]);
+  expect(uses.filter((u) => u.slot === "saddled").map((u) => [u.owner, u.id]).sort()).toEqual([["core:dodo", "core:dodo/saddled"], ["core:parasaur", "core:parasaur/saddled"], ["core:pteranodon", "core:pteranodon/saddled"], ["core:raptor", "core:raptor/saddled"], ["core:stego", "core:stego/saddled"], ["core:trike", "core:trike/saddled"]]);
   expect(classRow("item/saddle")!.slots.worn!.from).toBe("{id}/worn");
 });
 
-test("a flyer's numbers compile into its moves in whole units a tick and its tame's sprint into its tamed moves, and no other species flies, grabs or turns on an egg thief", () => {
+test("flight remains exclusive to the pteranodon while the Stego also defends eggs and has a stamina-priced bite", () => {
   const ptera = at("core:pteranodon");
   const m = reg.move[ptera]!;
   expect([m.flies, m.flySpeed, m.flySprintMul, reg.tamedMove[ptera]!.flySprintMul, m.accelFly, m.flyTurnRate, m.staminaFly, m.staminaFlySprint, m.staminaRoll, m.staminaGrab, m.regenWaitTicks, m.rollBurst, m.rollTicks]).toEqual([true, 6, 2.75, 3.1625, 12, 728, 11, 200, 90000, 40000, 300, 10, 210]);
@@ -284,7 +288,7 @@ test("a flyer's numbers compile into its moves in whole units a tick and its tam
   for (let i = 1; i < reg.defs.length; i++) {
     if (i === ptera) continue;
     if (reg.move[i]) expect([reg.ids[i], reg.move[i]!]).toMatchObject([reg.ids[i], none]);
-    expect([reg.ids[i], reg.flies[i], reg.grabDrag[i], reg.grabReach[i], reg.defendsEgg[i], reg.riderWeight[i], reg.biteStamina[i], reg.rollDamage[i], reg.missileMul[i], reg.biteStructureMul[i]]).toEqual([reg.ids[i], 0, 0, 0, 0, 1, 0, 0, 1, 1]);
+    expect([reg.ids[i], reg.flies[i], reg.grabDrag[i], reg.grabReach[i], reg.defendsEgg[i], reg.riderWeight[i], reg.biteStamina[i], reg.rollDamage[i], reg.missileMul[i], reg.biteStructureMul[i]]).toEqual([reg.ids[i], 0, 0, 0, reg.ids[i] === "core:stego" ? 1 : 0, 1, reg.ids[i] === "core:stego" ? 12000 : 0, 0, 1, 1]);
   }
   // ARK's roll does 50 to what it passes, and a rider weighs 0.85 on it (FL2).
   expect([reg.rollDamage[ptera], reg.riderWeight[ptera]]).toEqual([50, Math.fround(0.85)]);
@@ -315,4 +319,37 @@ test("the class table holds the flyers' fields as stubs, each waiting for its fe
   expect(s.bite!.stubs).toBeUndefined();
   const survivor = CORE_CONTENT.find((d) => d.id === "core:survivor")!;
   expect(defFaults({ ...survivor, fly: { speed: 1 } } as Def)).toEqual(['core:survivor: class species/survivor may not declare "fly"']);
+});
+
+
+test("tamed ground and water bases compile independently from wild locomotion and reject invalid authored speeds", () => {
+  const base = CORE_CONTENT.find(d => d.id === "core:parasaur") as SpeciesDef;
+  const make = (more: Partial<SpeciesDef>) => compileContent(CORE_CONTENT.map(d => d.id === base.id ? { ...base, ...more } : d));
+  const changed = make({ tamedWalkSpeed: .765, tamedSwimSpeed: 1.35, tamedSprintMul: 2.104 / .765 });
+  expect(changed.errors).toEqual([]);
+  const kind = changed.registry!.index.get(base.id)!;
+  const wild = changed.registry!.move[kind]!, tame = changed.registry!.tamedMove[kind]!;
+  expect(wild).toEqual(reg.move[at(base.id)]!);
+  expect([tame.walkSpeed, tame.swimSpeed, tame.walkSpeed * tame.sprintMul]).toEqual([.765, 1.35, 2.104]);
+  for (const value of [0, -1, NaN, Infinity, 101]) for (const field of ["tamedWalkSpeed", "tamedSwimSpeed"] as const) {
+    expect(make({ [field]: value }).errors.some(e => e.includes(field))).toBe(true);
+  }
+});
+
+test("a slow walker can sprint above four times its base speed, with bounded finite wild and tame ratios", () => {
+  const base = CORE_CONTENT.find(d => d.id === "core:parasaur") as SpeciesDef;
+  const make = (more: Partial<SpeciesDef>) => compileContent(CORE_CONTENT.map(d => d.id === base.id ? { ...base, ...more } : d));
+  const built = make({ walkSpeed: 1.5, sprintMul: 4.05, tamedWalkSpeed: 1.2, tamedSprintMul: 5.0625 });
+  expect(built.errors).toEqual([]);
+  const kind = built.registry!.index.get(base.id)!, w = flatWorld(4);
+  for (const p of [built.registry!.move[kind]!, built.registry!.tamedMove[kind]!]) {
+    const b = new Body(); b.x = b.z = 40; b.grounded = true;
+    for (let i = 0; i < 90; i++) stepBody(w, b, 0, 127, 0, 0, BTN_SPRINT, p, TICK_DT);
+    expect(b.vz).toBeCloseTo(6.075, 5);
+    expect(b.grounded).toBe(true);
+  }
+  expect(make({ sprintMul: 8, tamedSprintMul: 8 }).errors).toEqual([]);
+  for (const field of ["sprintMul", "tamedSprintMul"] as const) for (const value of [0, -.1, 8.001, NaN, Infinity]) {
+    expect(make({ [field]: value }).errors.some(e => e.includes(field))).toBe(true);
+  }
 });

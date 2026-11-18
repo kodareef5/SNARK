@@ -1,8 +1,8 @@
 // Turns a skinned, textured glTF body from tools/blender/reduce.py into meshes cut by body slot. Every vertex
-// follows one bone of the 28-bone skeleton, and every triangle has one palette colour or colour region.
+// follows one bone of the human skeleton, and every triangle has one palette colour or colour region.
 
 import {
-  B_FINGERS_L, B_FINGERS_R, B_HAND_L, B_HAND_R, B_PROP_L, B_PROP_R, B_THUMB_L, B_THUMB_R, B_TOE_L, B_TOE_R, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_NAMES,
+  B_FINGERS_L, B_FINGERS_R, B_FINGERTIPS_L, B_FINGERTIPS_R, B_HAND_L, B_HAND_R, B_PROP_L, B_PROP_R, B_THUMB_L, B_THUMB_R, B_TOE_L, B_TOE_R, HUMAN, HUMAN_BONES, LEGACY_HUMAN_BONES, SLOT_COUNT, SLOT_NAMES,
 } from "../../shared/anim/human.ts";
 import type { PackRig } from "../../shared/pack/pack.ts";
 import { HUMAN_SOURCE_JOINTS } from "./anim.ts";
@@ -66,8 +66,8 @@ function boneOfJoints(g: Gltf): Map<number, number> {
   nodes.forEach((node, i) => {
     const name = node.name ?? "";
     const side = /_l$/.test(name) ? 0 : 1;
-    // Every finger joint folds into its hand's one fingers bone, and every thumb joint into the thumb.
-    if (/^(index|middle|ring|pinky)_/.test(name)) out.set(i, side === 0 ? B_FINGERS_L : B_FINGERS_R);
+    // Keep the original proximal/distal source articulation, grouped across the four fingers of each hand.
+    if (/^(index|middle|ring|pinky)_/.test(name)) out.set(i, /_0[234](?:_leaf)?_/.test(name) ? side === 0 ? B_FINGERTIPS_L : B_FINGERTIPS_R : side === 0 ? B_FINGERS_L : B_FINGERS_R);
     else if (/^thumb_/.test(name)) out.set(i, side === 0 ? B_THUMB_L : B_THUMB_R);
     else if (/^ball_/.test(name)) out.set(i, side === 0 ? B_TOE_L : B_TOE_R);
     else {
@@ -84,7 +84,7 @@ function boneOfJoints(g: Gltf): Map<number, number> {
   return out;
 }
 
-/** The source's joint rest positions, scaled, as positions of the 28 human bones. */
+/** The source's joint rest positions, scaled, including the appended distal-finger pivots. */
 export function rigOf(g: Gltf, id: string, scale: number): PackRig {
   const nodes = g.json.nodes ?? [];
   const world = restMatrices(g);
@@ -168,14 +168,21 @@ export function convertBody(sources: Gltf | readonly Gltf[], opts: BodyOptions):
           if (b !== undefined) sum[b]! += w;
           if (w > weights[v * 4 + top]!) top = k;
         }
+        // First choose the historical branch with its original total weight. Splitting the finger must not let a
+        // weaker hand/forearm branch win and change ordinary deformation or slot classification.
+        const tipL = sum[B_FINGERTIPS_L]!, tipR = sum[B_FINGERTIPS_R]!;
+        sum[B_FINGERS_L]! += tipL; sum[B_FINGERS_R]! += tipR;
         let best = 0;
-        for (let b = 1; b < HUMAN_BONES; b++) if (sum[b]! > sum[best]!) best = b;
+        for (let b = 1; b < LEGACY_HUMAN_BONES; b++) if (sum[b]! > sum[best]!) best = b;
+        const legacy = best;
+        if (best === B_FINGERS_L && tipL > sum[B_FINGERS_L]! - tipL) best = B_FINGERTIPS_L;
+        if (best === B_FINGERS_R && tipR > sum[B_FINGERS_R]! - tipR) best = B_FINGERTIPS_R;
         bone[v] = best;
         const m = bind[joints[v * 4 + top]!]!;
         const x = pos[v * 3]!, y = pos[v * 3 + 1]!, z = pos[v * 3 + 2]!;
         for (let k = 0; k < 3; k++) {
           let p = (m[k]! * x + m[4 + k]! * y + m[8 + k]! * z + m[12 + k]!) * opts.scale;
-          if (opts.onto) p += opts.onto[best * 3 + k]! - rig.rest[best * 3 + k]!;
+          if (opts.onto) p += opts.onto[legacy * 3 + k]! - rig.rest[legacy * 3 + k]!;
           model[v * 3 + k] = p;
         }
       }

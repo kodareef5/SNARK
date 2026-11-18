@@ -1,8 +1,9 @@
 // Every skeleton rests with all bone rotations at identity, so a bone's rest axes are the model's (+Y up, facing +Z).
-// A hit shape is a capsule fixed in its bone's space. The server hits the same capsules the mannequin mesh draws.
+// Physical capsules and optional skin-fitted weapon contacts are carried in bone space.
 
 import { quatMul, quatRotate, quatUnrotate } from "../math/quat.ts";
 import type { Pose } from "./clip.ts";
+import { rayHulls, type HitSurfaces } from "./hit-hulls.ts";
 
 export interface Skeleton {
   readonly id: string;
@@ -14,6 +15,7 @@ export interface Skeleton {
   readonly rest: Float32Array;
   /** Bones 0 .. zoneBones-1 carry a hit capsule. */
   readonly zoneBones: number;
+  readonly hitSurfaces?: HitSurfaces;
   /** Zone id of each bone's capsule, or 0 for none. */
   readonly zone: Uint8Array;
   /** The two ends of each bone's capsule in the bone's space, relative to its joint, and its radius. */
@@ -128,23 +130,25 @@ export function rayCapsule(ox: number, oy: number, oz: number, dx: number, dy: n
 
 /**
  * Tests a model-space ray from (ox, oy, oz) along the unit direction (dx, dy, dz), no farther than `maxT`. Returns the
- * zone id of the first capsule hit, or 0 for a miss, and fills `zoneHit`. A ray starting inside a capsule hits it at 0.
+ * zone id of the first contact, or 0 for a miss, and fills `zoneHit`. A ray starting inside a volume hits it at 0. Camera clearance and physics diagnostics can request the original capsules.
  */
-export function rayZones(skel: Skeleton, pose: Solved, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
+export function rayZones(skel: Skeleton, pose: Solved, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, padding = 0, shape: "skin" | "capsules" = "skin"): number {
   let best = maxT;
   let zone = 0;
   let bone = -1;
   const A = skel.capA;
   const B = skel.capB;
+  const surfaces = shape === "skin" ? skel.hitSurfaces : undefined;
   for (let b = 0; b < skel.zoneBones; b++) {
-    if (skel.zone[b] === 0) continue;
+    const hull = surfaces?.bone[b];
+    if (!hull && (!skel.zone[b] || surfaces?.replace[b])) continue;
     // Move the ray into the bone's space, where its capsule is fixed.
     quatUnrotate(pose.rot, b * 4, ox - pose.pos[b * 3]!, oy - pose.pos[b * 3 + 1]!, oz - pose.pos[b * 3 + 2]!, o, 0);
     quatUnrotate(pose.rot, b * 4, dx, dy, dz, d, 0);
-    const t = rayCapsule(o[0]!, o[1]!, o[2]!, d[0]!, d[1]!, d[2]!, A[b * 3]!, A[b * 3 + 1]!, A[b * 3 + 2]!, B[b * 3]!, B[b * 3 + 1]!, B[b * 3 + 2]!, skel.capR[b]!);
-    if (t >= 0 && t < best) {
+    const t = hull ? rayHulls(hull, o, d, best, padding) : rayCapsule(o[0]!, o[1]!, o[2]!, d[0]!, d[1]!, d[2]!, A[b * 3]!, A[b * 3 + 1]!, A[b * 3 + 2]!, B[b * 3]!, B[b * 3 + 1]!, B[b * 3 + 2]!, skel.capR[b]! + padding);
+    if (t >= 0 && (t < best || (t === best && zone === 0))) {
       best = t;
-      zone = skel.zone[b]!;
+      zone = hull?.zone ?? skel.zone[b]!;
       bone = b;
     }
   }

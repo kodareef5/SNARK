@@ -3,6 +3,7 @@
 // a roof or an obstacle. Costs are integers and ties are broken by cell, so the same world gives the same way on every engine.
 
 import { CHUNK_SIZE } from "../coords.ts";
+import { swimDepth } from "../sim/character.ts";
 import { capsuleFree, groundStands, groundUnder, nothingBuilt, stepOnto, type CollisionWorld } from "./collide.ts";
 import { frame, frameOf } from "./frame.ts";
 import { Found, type StructureStore } from "./structures.ts";
@@ -11,6 +12,7 @@ import { Found, type StructureStore } from "./structures.ts";
 export interface Walker {
   readonly radius: number;
   readonly height: number;
+  readonly swimDepth?: number;
   /** Steepest walkable slope, as the cosine of its angle. */
   readonly slopeCos: number;
   /** Tallest rise taken in a stride. */
@@ -38,7 +40,7 @@ export function groundAt(w: CollisionWorld, p: Walker, x: number, z: number, r =
   const hf = w.hf;
   if (x < r || z < r || x > hf.sizeX - r || z > hf.sizeZ - r) return GROUND_OFF;
   const y = groundUnder(hf, x, z, r);
-  if (hf.waterAt(x, z) - y > p.height * SWIM_SHARE) return GROUND_WATER;
+  if (hf.waterAt(x, z) - y > swimDepth(p, SWIM_SHARE)) return GROUND_WATER;
   if (!groundStands(p.slopeCos)) return GROUND_STEEP;
   const top = y + p.stepUp;
   // Where nothing is built, the ground is all there is.

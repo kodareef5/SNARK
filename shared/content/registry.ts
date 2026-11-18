@@ -19,7 +19,8 @@ import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, 
 import { hullFault, hullTable, type HullDef } from "../world/convex.ts";
 import type { PartTable } from "../world/structures.ts";
 import { defFaults, refFaults } from "./classes.ts";
-import { PIECE_ROLES, shapeHalf, type Def, type NodeShape, type PartPlacement, type RenameDef, type SpeciesDef, type StructureDef, type MotionFacet, type WeaponFacet } from "./defs.ts";
+import { creatureCombatFaults } from "./creature-combat.ts";
+import { PIECE_ROLES, shapeHalf, type Def, type NodeShape, type PartPlacement, type RenameDef, type SpeciesDef, type StructureDef, type MotionFacet, type WeaponFacet, type CreatureCombatFacet } from "./defs.ts";
 
 export const MISSING = 0;
 export const MAX_STRUCTURE_HALF = 16;
@@ -199,6 +200,7 @@ export interface Registry {
    * pick it up, the item it leaves when it defecates (0 for none), and the chance a female lays an egg in its place.
    */
   readonly alarm: Float32Array;
+  readonly combat: readonly (CreatureCombatFacet | null)[];
   readonly tamedMove: readonly (MoveParams | null)[];
   readonly drag: Float32Array;
   readonly mass: Float32Array;
@@ -373,9 +375,12 @@ export function compileContent(all: readonly Def[]): CompileResult {
       positive(d, "radius", d.radius, 8);
       positive(d, "height", d.height, 32);
       positive(d, "walkSpeed", d.walkSpeed, 40);
-      positive(d, "sprintMul", d.sprintMul, 4);
-      positive(d, "jumpSpeed", d.jumpSpeed, 30);
+      // A slow walk may have a much faster sprint (Trike: 1.5 -> 6.075 m/s). This is a ratio, not an absolute speed cap.
+      positive(d, "sprintMul", d.sprintMul, 8);
+      if (!Number.isFinite(d.jumpSpeed) || d.jumpSpeed < 0 || d.jumpSpeed > 30) errors.push(`${d.id}: jumpSpeed must be between 0 and 30`);
       if (d.swimSpeed !== undefined) positive(d, "swimSpeed", d.swimSpeed, 40);
+      if (d.swimDepth !== undefined && !(Number.isFinite(d.swimDepth) && d.swimDepth > 0 && d.swimDepth <= d.height)) errors.push(`${d.id}: swimDepth must be positive and within the body height`);
+      if (d.swimEyeHeight !== undefined && !(Number.isFinite(d.swimEyeHeight) && d.swimEyeHeight > 0 && d.swimEyeHeight <= d.height)) errors.push(`${d.id}: swimEyeHeight must be positive and within the body height`);
       if (d.keeps !== undefined) positive(d, "keeps", d.keeps, 1000);
       if (d.turn !== undefined) positive(d, "turn", d.turn, 3600);
       // The pack decides which skeletons exist, so only an empty name is an error here.
@@ -409,12 +414,14 @@ export function compileContent(all: readonly Def[]): CompileResult {
       }
       if (Array.isArray(d.mutations) && !(d.mutations.length > 0 && d.mutations.every(paletteIndex))) errors.push(`${d.id}: mutations must be palette indices, and at least one`);
       if (d.alarm !== undefined) positive(d, "alarm", d.alarm, 1000);
-      if (d.tamedSprintMul !== undefined) positive(d, "tamedSprintMul", d.tamedSprintMul, 4);
+      if (d.tamedWalkSpeed !== undefined) positive(d, "tamedWalkSpeed", d.tamedWalkSpeed, 100);
+      if (d.tamedSwimSpeed !== undefined) positive(d, "tamedSwimSpeed", d.tamedSwimSpeed, 100);
+      if (d.tamedSprintMul !== undefined) positive(d, "tamedSprintMul", d.tamedSprintMul, 8);
       if (d.drag !== undefined) positive(d, "drag", d.drag, 1e6);
       if (d.mass !== undefined) positive(d, "mass", d.mass, 1e6);
       if (d.eggChance !== undefined && !(d.eggChance >= 0 && d.eggChance <= 1)) errors.push(`${d.id}: eggChance must be from 0 to 1`);
       if (d.fistsTorpor !== undefined && !(d.fistsTorpor >= 0)) errors.push(`${d.id}: fistsTorpor must not be negative`);
-      errors.push(...flyerFaults(d));
+      errors.push(...flyerFaults(d), ...creatureCombatFaults(d, input));
     } else if (d.type === "prop") {
       // A cloud's radius is its reach, not a body's (server/clouds.ts).
       positive(d, "radius", d.radius, d.class === "cloud" ? 32 : 8);
@@ -740,6 +747,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const blast = new Float32Array(n);
   const meleeTorpor = new Float32Array(n);
   const alarm = new Float32Array(n);
+  const combat: (CreatureCombatFacet | null)[] = new Array(n).fill(null);
   const tamedMove: (MoveParams | null)[] = new Array(n).fill(null);
   const drag = new Float32Array(n);
   const mass = new Float32Array(n);
@@ -828,11 +836,12 @@ export function compileContent(all: readonly Def[]): CompileResult {
     } else if (d.type === "species" || d.type === "prop") {
       if (d.type === "species") {
         move[i] = moveParams(d);
+        combat[i] = d.combat ?? null;
         vehicle[i] = d.vehicle ?? null;
         // A survivor's tamed numbers are its own. A creature once tamed stands on steeper ground, and may run at another
         // speed, on the ground and in the air.
         const m = move[i]!;
-        tamedMove[i] = d.class === "creature" ? { ...m, sprintMul: d.tamedSprintMul ?? m.sprintMul, flySprintMul: d.fly?.tamedSprintMul ?? m.flySprintMul, slopeCos: TAMED_SLOPE_COS } : m;
+        tamedMove[i] = d.class === "creature" ? { ...m, walkSpeed: d.tamedWalkSpeed ?? m.walkSpeed, swimSpeed: d.tamedSwimSpeed ?? m.swimSpeed, sprintMul: d.tamedSprintMul ?? m.sprintMul, flySprintMul: d.fly?.tamedSprintMul ?? m.flySprintMul, slopeCos: TAMED_SLOPE_COS } : m;
         if (d.fly) flies[i] = 1;
         grabDrag[i] = d.grab?.drag ?? 0;
         grabReach[i] = d.grab?.reach ?? 0;
@@ -1010,7 +1019,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
   const motion = defs.map((d) => (d?.type === "structure" && d.motion ? d.motion : null));
-  return { registry: { defs, ids, index, hash, motion, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, coreHash: hash, own: NONE, halfX, halfY, halfZ, parts, role, doorway, places, vehicleDeploy, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, vehicle, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry }, errors };
+  return { registry: { defs, ids, index, hash, motion, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, coreHash: hash, own: NONE, halfX, halfY, halfZ, parts, role, doorway, places, vehicleDeploy, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, combat, vehicle, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;
@@ -1107,6 +1116,8 @@ function moveParams(d: SpeciesDef): MoveParams {
     stepUp: 0.5,
     stepDown: 0.4,
     swimSpeed: d.swimSpeed ?? d.walkSpeed * 0.6,
+    swimDepth: d.swimDepth,
+    swimEyeHeight: d.swimEyeHeight,
     swimSprintMul: 1.5,
     accelSwim: d.walkSpeed * 3,
     // Whole stamina units per tick, so both sides count the same integers.

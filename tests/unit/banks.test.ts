@@ -171,7 +171,7 @@ test("a body standing still on ground it can stand on, or turning on the spot th
 });
 
 /**
- * Drops a body of every species into a crease at (x, z) from `from` m above it, holds it there twenty seconds, has it jump, and
+ * Drops a body of every species into a crease at (x, z) from `from` m above it, holds it there twenty seconds, tries jump, and
  * walks it out along the crease the way `deg` faces to where `out` says it is out. Lists what it should not have done: be off its
  * feet in the crease or land there faster than a tick's fall once in, jump, or land out of it faster than the drop takes it.
  */
@@ -190,8 +190,11 @@ function creased(w: TestWorld, x: number, z: number, from: number, deg: number, 
     }
     const held = b.y;
     if (!b.grounded || b.vy !== 0 || land > G * TICK_DT + 1e-6 || !(held > low)) wrong.push(`${id} in the crease: grounded ${b.grounded}, vy ${b.vy}, landed at ${land} once in, ${held} up`);
+    const stamina = b.stamina;
     stepBody(w, b, 0, 0, 0, 0, BTN_JUMP, p, TICK_DT);
-    if (!(b.vy > 0)) wrong.push(`${id} could not jump from the crease`);
+    if (p.jumpSpeed > 0) {
+      if (!(b.vy > 0)) wrong.push(`${id} could not jump from the crease`);
+    } else if (!b.grounded || b.vy !== 0 || b.y !== held || b.stamina !== stamina) wrong.push(`${id} jumped or spent stamina despite having no ground jump`);
     land = 0;
     for (let t = 0; t < 90; t++) {
       stepBody(w, b, 0, 0, 0, 0, 0, p, TICK_DT);
@@ -212,7 +215,7 @@ function creased(w: TestWorld, x: number, z: number, from: number, deg: number, 
   return wrong;
 }
 
-test("a body dropped into a gully of two banks too steep to stand on is held there: it banks no speed, stands, jumps, and walks out along it", () => {
+test("a body dropped into a gully of two banks too steep to stand on is held there: it banks no speed, keeps its authored jump ability, and walks out along it", () => {
   // Banks of 60 degrees each side of x = 128, 10 m high, along Z to z = 160, where the gully opens on level ground.
   const w = terrain((x, z) => (z < 160 ? Math.min(10, Math.abs(x - 128) * tan(60)) : 0));
   expect(creased(w, 128, 150, 6, 0, (b) => b.z > 163, 0.05)).toEqual([]);
