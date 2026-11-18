@@ -665,6 +665,13 @@ export class GlRenderer {
       gl.bindTexture(gl.TEXTURE_2D, this.windows[drawn * 2 + k] ?? null);
     }
     gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+    // The facades' atlases on their units while the frame names them; none is read until each it names has come (facade.ts).
+    for (let k = 0; k < p.facadeSlots.length; k++) {
+      const t = p.facadeSlots[k]!, texture = t >= 0 ? this.textures.get(t) : undefined;
+      if (t >= 0 && !texture) p.frame[FRAME.facade + 1] = 0;
+      gl.activeTexture(gl.TEXTURE0 + UNIT.facade + k);
+      gl.bindTexture(gl.TEXTURE_2D, texture ?? null);
+    }
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.frame);
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, p.frame);
 

@@ -21,6 +21,8 @@ const MB = 1024 * KB;
 export const FIRST_FRAME_BUDGET = 1024 * KB;
 const BUDGETS: Record<string, number> = {
   "everything before the first frame, Brotli": FIRST_FRAME_BUDGET,
+  "title script, style, font, catalogue and poster": 512 * KB,
+  "game loading poster": 224 * KB,
   "sound, kbit/s": 42,
   "sound takes stored twice": 0,
   "texture steps stored twice, astc": 0,
@@ -51,6 +53,9 @@ export function weigh(dist: string): boolean {
   const seconds = sounds.reduce((s, x) => s + x.takes.reduce((a, t) => a + t.samples, 0) / x.rate, 0);
   const music = join(dist, "assets/music");
   const rows: [string, number][] = [
+    ["title script, style, font, catalogue and poster", ["entry.js.br", "entry.css.br", "title/barlow.ttf", "title/maps.json", "title/miami-flight.webp"]
+      .filter(n => existsSync(join(dist, n))).reduce((total, n) => total + size(n), 0)],
+    ["game loading poster", existsSync(join(dist, "title/miami-splash.webp")) ? size("title/miami-splash.webp") : 0],
     ["the page's script, Brotli", script.reduce((s, n) => s + size(n), 0)],
     ["the content, Brotli", fetched.filter((n) => n.includes("/content.")).reduce((s, n) => s + size(n), 0)],
     ["manifest, Brotli", size("assets/manifest.json.br")],

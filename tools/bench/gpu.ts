@@ -88,6 +88,7 @@ export function plan(): Run[] {
     // The finish (post.ts): the light target and its pass, bloom, and bodies' contact, each off every other frame.
     for (const tier of ["high", "ultra"]) for (const ab of ["light", "bloom", "contact"] as const) runs.push({ scene: "city", view, tier, scale: 1, ab });
   }
+  runs.push({ scene: "city", view: "street", tier: "high", scale: 1, off: "facades" });
   for (const cpu of [4, 6]) runs.push({ scene: "city", view: "street", tier: "high", scale: 1, cpu });
   return runs;
 }

@@ -30,11 +30,12 @@ test("low poly's programs are the pinned flat texts, and every sampler a program
   }
   // The material's five maps and the rest each have a unit, the layer and the details atlas after them, which only the
   // details program reads and which is free outside its draws, where the finish's passes, after every draw, read their
-  // sources there (post.ts); and the sky's openness past the sixteen a program may read at most: no program reads more
-  // than twelve.
+  // sources (post.ts); and the sky's openness and the facades' five past the sixteen: no program reads more than
+  // fourteen, the flat program on a tier that draws facades, two of them in its vertex text and twelve in its
+  // fragment's, within the sixteen a fragment text may read.
   const units = [UNIT.palette, UNIT.heights, UNIT.tint, UNIT.bones, ...[0, 1, 2, 3, 4].map((r) => UNIT.maps + r), UNIT.shadow, UNIT.sky, UNIT.windowHeights, UNIT.windowTint, UNIT.atlas, UNIT.layer, UNIT.details, UNIT.open];
   expect([new Set(units).size, Math.max(...units)]).toEqual([17, 16]);
-  expect(Math.max(...TIERS.flatMap((tier) => Object.values(PROGRAMS).map((make) => Object.keys(make(tier, "bc").samplers).length)))).toBe(12);
+  expect(Math.max(...TIERS.flatMap((tier) => Object.values(PROGRAMS).map((make) => Object.keys(make(tier, "bc").samplers).length)))).toBe(14);
   expect(Object.entries(PROGRAMS).filter(([, make]) => Object.values(make(TIERS[1]!, "bc").samplers).includes(UNIT.details)).map(([name]) => name)).toEqual(["details", "bloomDown", "bloomUp", "finish"]);
 });
 

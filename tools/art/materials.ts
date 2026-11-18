@@ -2,6 +2,7 @@
 // drawn flat in, and the mips of each of their textures for the texture build.
 
 import { HAS_SURFACES, worldMaterials, worldSurfaceMeshes } from "../surfaces/build.ts";
+import { HAS_FACADES, facadeMaterials, facadeMeshes } from "../facade/build.ts";
 import { resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -211,6 +212,12 @@ export async function gameTextures(source: string = SOURCE, landmark: string | n
     let materials: Material[] | undefined;
     worldSurfaceMeshes().forEach((mesh, k) => {
       for (const t of mesh.textures!) out.set(t.id, { id: t.id, role: t.role, top: t.top, mips: () => mipsOf((materials ??= worldMaterials())[k]!, t.role, t.top) });
+    });
+  }
+  if (HAS_FACADES && resolve(source) === resolve(SOURCE) && landmark === null) {
+    let materials: Material[] | undefined;
+    facadeMeshes().forEach((mesh, k) => {
+      for (const t of mesh.textures!) out.set(t.id, { id: t.id, role: t.role, top: t.top, mips: () => mipsOf((materials ??= facadeMaterials())[k]!, t.role, t.top) });
     });
   }
   return [...out.values()];

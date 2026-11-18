@@ -1,3 +1,5 @@
+import { ServerDirectory } from "./directory.ts";
+import { SurvivorAccess, entryReply } from "./survivor-access.ts";
 // bun server/main.ts [--dev] [--config dir] [--port 8787] [--host address] [--public-url https://name.example | /path] [--map file.snmap] [--db var/world.db] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
 // SNARK_ADMIN_PASSWORD sets the `enablecheats` password. In a terminal, typed lines run as console commands with full rights.
 
@@ -240,6 +242,15 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   for (const m of host.lists.unclear) console.log(`settings: ${m.setting} names ${m.name}, which could be ${m.could.join(" or ")}, so write the one meant in full`);
   for (const line of host.passed) console.log(`settings: passed over: ${line}`);
   if (!opts.probeScene && host.spawner === null && host.world.zones.every((z) => z.spawns === undefined)) console.log(`map: neither the content nor the map file gives ${host.world.mapId} a spawn region, so no wild creature lives on it`);
+  const access = new SurvivorAccess(host);
+  const entryBuilt = existsSync(join(clientDir,"entry.js"));
+  const directory = process.env.SNARK_DIRECTORY_URL ?? "";
+  const listings = new ServerDirectory(host.cluster ? join(host.cluster.folder.root,"directory.sqlite") : opts.dbPath ? opts.dbPath+".directory.sqlite" : ":memory:");
+  const announce = () => {
+    if (!directory || !process.env.SNARK_LISTING_TOKEN || !opts.publicUrl) return;
+    void fetch(directory,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"heartbeat",address:opts.publicUrl,token:process.env.SNARK_LISTING_TOKEN,players:host.game.playerCount,max:host.game.opts.maxClients}),signal:AbortSignal.timeout(8000)}).catch(()=>{});
+  };
+  const heartbeat = setInterval(announce,60000); announce();
   const mapRoute = mapRoutes(opts.map ?? host.mapFile!, host.world.mapId, host.world.mapHash);
   // The shared families of sounds are the owners the catalogue's fallbacks name.
   const families = [...new Set(CUES.flatMap((c) => c.falls.map((f) => f.slice(0, f.indexOf("/")))).filter((o) => o !== "{owner}"))];
@@ -293,12 +304,16 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   /** Where the game's links go, read at each request, so the live file changes them. */
   const links = (): SiteLinks => ({ wiki: linkOf(host.rules.text("WikiUrl")), repository: linkOf(host.rules.text("RepositoryUrl")) });
   /** The worlds the start screen and the wiki's maps list: the cluster's running, this one among them, or this one alone outside a cluster. */
-  const worlds = (requestHost: string): SiteWorld[] => {
+  const worlds = (requestHost: string, access=false): SiteWorld[] => {
     const c = host.cluster;
     const map = mapLabel(registry, host.world.mapId);
     const all: Omit<Destination, "world" | "why">[] = c ? [c.here(), ...c.destinations()].sort((a, b) => a.world - b.world) : [{ name: host.rules.text("SessionName") || map, map, mapId: host.world.mapId, port: server.port ?? 0, url: base, players: host.game.playerCount, max: host.game.opts.maxClients }];
     const straight = Number(/:(\d+)$/.exec(requestHost)?.[1] ?? 0) === server.port;
-    return all.map((w) => ({ name: w.name, map: w.map, mapId: w.mapId, address: worldAddress(w, requestHost, straight), players: w.players, max: w.max }));
+    const locks=new Map(access&&c ? c.folder.announcements().map(a=>[a.port,a.password]) : []);
+    return all.map(w=>{
+      const password=w.port===server.port ? !!host.game.opts.password : locks.get(w.port);
+      return {name:w.name,map:w.map,mapId:w.mapId,address:c ? worldAddress(w,requestHost,straight) : base + "/",players:w.players,max:w.max,...(access && password!==undefined ? {password}: {})};
+    });
   };
   /**
    * What every server answers alike, under its world's path and on the site around it: where the game's links go, what the
@@ -308,7 +323,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const alike = (path: string, requestHost: string): Response | null => {
     if (path === "/links.json") return new Response(JSON.stringify(links()), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
     if (path === "/settings.json") return new Response(JSON.stringify(worldSettings(host)), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
-    if (path === "/worlds.json") return new Response(JSON.stringify(worlds(requestHost)), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
+    if (path === "/worlds.json" || path === "/entry-worlds.json") return new Response(JSON.stringify(worlds(requestHost,path==="/entry-worlds.json")), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
     if (path === "/source" || path === "/source/") return htmlResponse(comingSoonPage());
     return null;
   };
@@ -328,16 +343,23 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       if (answered) return answered;
       const { at, path } = placeOf(base, url.pathname);
       if (at === "slash") return new Response(null, { status: 308, headers: { location: `${base}/${url.search}` } });
+      const who = clientAddress(srv.requestIP(req)?.address ?? "", req.headers.get("x-forwarded-for"));
+      if (path === "/directory") return listings.answer(req, who);
       const same = alike(path, req.headers.get("host") ?? "");
       if (same) return same;
       if (at === "site") {
-        if (path === "/" || path === "/index.html") return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""), links()));
+        if (path === "/" || path === "/index.html") return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""), links(), entryBuilt ? {world:false,directory} : undefined));
         // The sound board is a world's, behind its admin password (soundBoard), and not the site's to hand out.
         return boardAsked(path) ? new Response("not found", { status: 404 }) : serveFile(clientDir, req, path);
       }
-      const who = clientAddress(srv.requestIP(req)?.address ?? "", req.headers.get("x-forwarded-for"));
       // A development server's own routes and its sockets are for a browser that asked for this machine (namesThisMachine).
       const local = !opts.dev || namesThisMachine(req.headers.get("host"), named);
+      if (path === "/survivors") {
+        if (!local || !originAllowed(req.headers.get("origin"),req.headers.get("host"),"")) return entryReply({error:"Use this world’s own address"},403);
+        return access.answer(req,who);
+      }
+      if (path === "/entry-world.json") return entryReply({ name:host.rules.text("SessionName") || mapLabel(registry,host.world.mapId), map:mapLabel(registry,host.world.mapId), mapId:host.world.mapId, password:!!host.game.opts.password, players:host.game.playerCount, max:host.game.opts.maxClients, spawns:host.world.spawns.map(p=>({name:p.name,x:p.x,z:p.z})), width:host.world.hf.sizeX,height:host.world.hf.sizeZ });
+      if (entryBuilt && (path === "/" || path === "/index.html") && [...url.searchParams.keys()].every(k => ["screen","invite"].includes(k))) return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""),links(),{world:true,directory}));
       if (path === "/ws" || path === "/voice") {
         if (!local) {
           const asked = (req.headers.get("host") ?? "").slice(0, 100);
@@ -374,9 +396,9 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       if (sounds) return sounds;
       const map = mapRoute(path, req);
       if (map) return map;
-      const file = await serveFile(clientDir, req, path);
+      const file = await serveFile(clientDir, req, path === "/play.html" ? "/index.html" : path);
       // A device probe measures the link quiet before the game's files come, as index.html leaves its own preloads.
-      if ((path === "/" || path === "/index.html") && file.ok && !url.searchParams.has("device")) file.headers.set("link", mapRoute.link);
+      if ((path === "/" || path === "/index.html" || path === "/play.html") && file.ok && !url.searchParams.has("device")) file.headers.set("link", mapRoute.link);
       return file;
     },
     websocket: {
@@ -480,6 +502,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       return skipped;
     },
     stop() {
+      clearInterval(heartbeat); listings.close();
       clearTimeout(timer);
       server.stop(true);
       host.shutdown();

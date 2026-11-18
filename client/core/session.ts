@@ -19,7 +19,7 @@ import {
   CMD_VIEW,
   BUTTON_MASK,
   HELLO_SPECTATE,
-  HELLO_STATICS,
+  HELLO_STATICS, HELLO_NEW, HELLO_RESUME,
   INPUT_HOLD_TICKS,
   VEHICLE_HOLD_TICKS,
   INPUT_KEPT,
@@ -127,6 +127,8 @@ import { NodeChanges, type FarNodeSource } from "./render/farnodes.ts";
 import { MapStore } from "./tactical.ts";
 
 export interface SessionOptions {
+  intent?: "create" | "resume";
+  createRequest?: Uint8Array;
   name: string;
   /** The device key that owns the name, 16 random bytes kept by this client. */
   key: Uint8Array;
@@ -630,7 +632,7 @@ export class ClientSession {
       this.welcomedNow();
     };
     const w = this.w;
-    writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, (opts.spectate ? HELLO_SPECTATE : 0) | (opts.statics ? HELLO_STATICS : 0), opts.key, opts.look ?? null, opts.password ?? "", opts.ticket ?? null);
+    writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, (opts.intent === "create" ? HELLO_NEW : opts.intent === "resume" ? HELLO_RESUME : 0) | (opts.spectate ? HELLO_SPECTATE : 0) | (opts.statics ? HELLO_STATICS : 0), opts.key, opts.look ?? null, opts.password ?? "", opts.ticket ?? null,opts.createRequest);
     conn.send(CH_RELIABLE, w.bytes());
   }
 
@@ -684,9 +686,10 @@ export class ClientSession {
     this.farSeq = seq;
   }
 
-  create(look: Uint8Array): number {
+  create(look: Uint8Array, spawn?: number): number {
     return this.command(CMD_CREATE, (w) => {
       for (let i = 0; i < LOOK_BYTES; i++) w.u8(look[i] ?? 0);
+      if (spawn !== undefined) w.u8(spawn);
     });
   }
 

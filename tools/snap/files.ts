@@ -3,6 +3,7 @@
 // asset folders. That takes seconds, so each texture is kept under .cache/snap by the bytes it was made from.
 
 import { HAS_SURFACES, worldMaterials, worldSurfaceMeshes } from "../surfaces/build.ts";
+import { HAS_FACADES, facadeMaterials, facadeMeshes } from "../facade/build.ts";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -93,6 +94,12 @@ export async function namedTextures(source: string = SOURCE): Promise<Map<string
   if (HAS_SURFACES && resolve(source) === resolve(SOURCE)) {
     const materials = worldMaterials();
     worldSurfaceMeshes().forEach((mesh, k) => {
+      for (const t of mesh.textures!) out.set(t.id, { material: materials[k]!, role: t.role, top: t.top });
+    });
+  }
+  if (HAS_FACADES && resolve(source) === resolve(SOURCE)) {
+    const materials = facadeMaterials();
+    facadeMeshes().forEach((mesh, k) => {
       for (const t of mesh.textures!) out.set(t.id, { material: materials[k]!, role: t.role, top: t.top });
     });
   }
