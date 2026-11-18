@@ -6,7 +6,8 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps
 
-FINAL = "d929bc98e24c1f7297e30b1377dd3d9fc871797a1db2b63b79cb1f60b4076515"
+FINAL = "36891e64d2bc61a11b77a9a2174aae35e738b332604ec7775ea5eb92ba1566ba"
+BEFORE_HIP = "d929bc98e24c1f7297e30b1377dd3d9fc871797a1db2b63b79cb1f60b4076515"
 BEFORE = "5a990153f6c87427f4b6e9e6eab70d6518693f532af0cc044dacc5394da7cb97"
 LABEL = "#334036"
 PAPER = "#f4f4ef"
@@ -46,6 +47,29 @@ def trimmed(picture):
     return picture.crop((max(0, x - 15), max(0, y - 15), min(r + 15, picture.width), min(b + 15, picture.height)))
 
 
+def hip_sheet(before, revised, output):
+    receipts = []
+    for folder, digest in ((before, BEFORE_HIP), (revised, FINAL)):
+        rec = json.loads((folder / "hip-receipt.json").read_text())
+        pack = rec.pop("packSha256")
+        if pack != digest or rec["textureVariant"] != "bc" or rec["maximumMip"] != 128 or rec["lod"] != 2:
+            raise ValueError(f"Wrong hip capture in {folder}")
+        receipts.append(rec)
+    if receipts[0] != receipts[1] or not receipts[0].get("textureHashes"):
+        raise ValueError("Hip captures must use identical cameras, native poses and encoded materials")
+
+    board = Image.new("RGB", (1024, 640), PAPER)
+    draw = ImageDraw.Draw(board)
+    draw.text((14, 11), "Tyrannosaurus rex  /  upper hindlimb and tail root", font=font(22, True), fill="#24362c")
+    draw.text((14, 44), "Idle frame 0  ·  6,200 triangles  ·  128 px BC texture ceiling", font=font(15), fill=LABEL)
+    for y, folder, phase in [(79, before, "Before"), (363, revised, "Revised")]:
+        for x, filename, material in [(14, "hip-clay", "Neutral surface"), (516, "hip-paint", "Production colour")]:
+            picture = read(folder, filename).crop((70, 75, 1130, 615))
+            place(board, picture, (x, y, 496, 253))
+            draw.text((x, y + 257), f"{phase}   /   {material}", font=font(15), fill=LABEL)
+    board.save(output / "hip-comparison.png", optimize=True)
+
+
 def main():
     args = argparse.ArgumentParser()
     args.add_argument(
@@ -66,6 +90,7 @@ def main():
         verify(folder, digest, variant)
     if json.loads((medium / "receipt.json").read_text())["maximumMip"] != 128:
         raise ValueError("Expected the 128 px capture")
+    hip_sheet(a.views / "bc-128-earlier", medium, a.out)
     board = Image.new("RGB", (1500, 1098), PAPER)
     d = ImageDraw.Draw(board)
     d.text((26, 20), "Tyrannosaurus rex", font=font(37, True), fill="#20261f")
