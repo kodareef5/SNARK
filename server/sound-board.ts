@@ -1,27 +1,17 @@
-// The sound board (client/sound/sounds.html) is an admin's page. A development server opens it to anyone it lets in, which
-// is this machine only unless asked otherwise; any other server only to a browser that gives the admin password, the one
-// `enablecheats` takes, as the password of HTTP's basic sign-in, with wrong guesses counted as that command counts them.
+// The sound board (client/sound/sounds.html) is an admin's page, behind the admin pages' gate (server/admin/gate.ts).
 // Besides the page it serves what the build does not ship: which owners there are and the folder of each, the takes'
 // files and what made them, and the briefs, recipes and sheets themselves, for whoever makes more sounds.
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, dirname, join, normalize, posix, relative, resolve, sep } from "node:path";
 import type { Registry } from "../shared/content/registry.ts";
-import { sameSecret } from "./commands/core.ts";
-import type { Guesses } from "./guesses.ts";
+import { adminPath, refused, type AdminGate } from "./admin/gate.ts";
 
 export const SOURCE_DIR = resolve(import.meta.dir, "../assets/source");
 /** Files of a sound folder, and the cue sheet beside an asset's art, that the board links to. */
 const SHOWN = new Set(["brief.json", "recipes.json", "sounds.json", "make.sh", "cues.json"]);
 /** Where an owner's folder lies says its class, for one whose definition is not in the content yet. */
 const FOLDER_CLASS: Readonly<Record<string, string>> = { creatures: "species/creature", humans: "species/survivor", structures: "structure", items: "item", nodes: "node", sfx: "family", world: "family", music: "family" };
-
-export interface BoardGate {
-  dev: boolean;
-  password: string | null;
-  guesses: Guesses;
-  tick: () => number;
-}
 
 /** What the board is told of an owner of sounds. */
 export interface BoardOwner {
@@ -86,40 +76,10 @@ export function boardOwners(reg: Registry, families: readonly string[], root = S
   });
 }
 
-/** Null where the board may be shown, else the answer that says why not. */
-function refused(req: Request, who: string, gate: BoardGate): Response | null {
-  if (gate.dev) return null;
-  if (gate.password === null) return new Response("the sound board opens on a development server, or where ServerAdminPassword is set", { status: 404 });
-  const wait = gate.guesses.wait(who, gate.tick());
-  if (wait > 0) return new Response("too many wrong passwords: wait a while", { status: 429 });
-  const auth = /^Basic (.+)$/.exec(req.headers.get("authorization") ?? "");
-  const given = auth ? atob(auth[1]!) : null;
-  const ask = new Response("the sound board asks for the server's admin password (any name will do)", { status: 401, headers: { "www-authenticate": 'Basic realm="SNARK admin", charset="UTF-8"' } });
-  if (given === null) return ask;
-  if (!sameSecret(given.slice(given.indexOf(":") + 1), gate.password)) {
-    gate.guesses.wrong(who, gate.tick());
-    return ask;
-  }
-  gate.guesses.right(who);
-  return null;
-}
-
-/**
- * A request's path as the board is matched by: decoded, dots and doubled slashes resolved, and in lower case, since a file
- * system that ignores case would serve /Sounds.html as the page. Null for one that cannot be decoded.
- */
-function boardPath(pathname: string): string | null {
-  try {
-    return posix.normalize(decodeURIComponent(pathname)).toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
-/** Whether a request's path is the board's page or under its /admin/, in any case. */
+/** Whether a request's path is the board's: its page, its list of owners, or a file of theirs, in any spelling. */
 export function boardAsked(pathname: string): boolean {
-  const at = boardPath(pathname);
-  return at === "/sounds.html" || (at?.startsWith("/admin/") ?? false);
+  const at = adminPath(pathname);
+  return at === "/sounds.html" || at === "/admin/sounds.json" || (at?.startsWith("/admin/source/") ?? false);
 }
 
 /**
@@ -127,7 +87,7 @@ export function boardAsked(pathname: string): boolean {
  * `owners` makes the list of owners when it is asked for. `pathname` is the request's path, or for a server reached at a
  * path of its host the part of it under that path (server/site.ts placeOf).
  */
-export function soundBoard(req: Request, who: string, gate: BoardGate, page: string, owners: () => BoardOwner[], root = SOURCE_DIR, pathname = new URL(req.url).pathname): Response | null {
+export function soundBoard(req: Request, who: string, gate: AdminGate, page: string, owners: () => BoardOwner[], root = SOURCE_DIR, pathname = new URL(req.url).pathname): Response | null {
   if (!boardAsked(pathname)) return null;
   const no = refused(req, who, gate);
   if (no) return no;

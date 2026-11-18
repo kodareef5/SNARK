@@ -42,6 +42,8 @@ const SOUND_MAX_LINES = 300;
 const ASSETS_MAX_LINES = 500;
 /** The wiki's script: sounds, the map, search. Its decisions are in client/core/wiki. */
 const WIKI_MAX_LINES = 160;
+/** The admin page's script: polling, the map's canvas, the table and charts. Its decisions are in client/core/admin. */
+const ADMIN_MAX_LINES = 600;
 const ALLOWED_DEV_PACKAGES = new Set(["typescript", "@types/bun"]);
 
 interface Zone {
@@ -63,6 +65,7 @@ const ZONES: Zone[] = [
   { dir: "client/shell", may: ["shared", "content", "client/core", "client/voice", "client/assets", "client/sound", "client/city", "client/shell"], builtins: false },
   { dir: "client/entry", may: ["shared", "client/core", "client/entry", "client/assets", "client/city", "client/shell"], builtins: false },
   { dir: "client/wiki", may: ["shared", "client/core", "client/wiki"], builtins: false },
+  { dir: "client/admin", may: ["shared", "client/core", "client/admin"], builtins: false },
   { dir: "server", may: ["shared", "content", "server", "server/api"], builtins: true },
   // What a module is written against. It names nothing of the server's own.
   { dir: "server/api", may: ["shared", "server/api"], builtins: false },
@@ -149,6 +152,7 @@ function checkPolicy(): void {
   let assetLines = 0;
   let soundLines = 0;
   let wikiLines = 0;
+  let adminLines = 0;
 
   for (const file of files) {
     const rel = repoPath(file);
@@ -178,6 +182,10 @@ function checkPolicy(): void {
     if (zone.dir === "client/wiki") {
       if (rel.endsWith(".test.ts")) fail(`${rel}: client/wiki has no tests; move logic into client/core/wiki`);
       wikiLines += src.split("\n").filter((l) => l.trim().length > 0).length;
+    }
+    if (zone.dir === "client/admin") {
+      if (rel.endsWith(".test.ts")) fail(`${rel}: client/admin has no tests; move logic into client/core/admin`);
+      adminLines += src.split("\n").filter((l) => l.trim().length > 0).length;
     }
 
     // An import the rules below cannot read the name of is an import they cannot judge.
@@ -225,6 +233,8 @@ function checkPolicy(): void {
   console.log(`  sound size   ${soundLines}/${SOUND_MAX_LINES} lines`);
   if (wikiLines > WIKI_MAX_LINES) fail(`client/wiki is ${wikiLines} lines (budget ${WIKI_MAX_LINES}); move logic into client/core/wiki`);
   console.log(`  wiki size    ${wikiLines}/${WIKI_MAX_LINES} lines`);
+  if (adminLines > ADMIN_MAX_LINES) fail(`client/admin is ${adminLines} lines (budget ${ADMIN_MAX_LINES}); move logic into client/core/admin`);
+  console.log(`  admin size   ${adminLines}/${ADMIN_MAX_LINES} lines`);
 }
 
 /** `cpu` is the CPU-seconds of the process and of the processes it waited for. */

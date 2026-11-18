@@ -1,6 +1,7 @@
 // The value each catalogue setting has now, and the source it came from. A stronger source wins (D88). Rules are read where they are
 // used and nothing caches one. They are factors and switches, never a branch at a call site (D66).
 
+import type { ChangedSetting } from "../../shared/admin.ts";
 import { CATALOG, rowOf } from "./catalog.ts";
 import { isList, toNumber, toSwitch, unquote, writeNode, type IniNode } from "./ini.ts";
 import type { Row } from "./row.ts";
@@ -165,6 +166,19 @@ export function publicValues(rules: Rules): Record<string, number | boolean | st
     if (!row.public || row.status !== "live") continue;
     const v = rules.valueOf(row);
     if ((typeof v === "number" || typeof v === "boolean" || typeof v === "string") && v !== row.def) out[row.name] = v;
+  }
+  return out;
+}
+
+/** Every setting not at its default, for an admin: what it is, where it came from and whether it takes effect. No secret's value leaves. */
+export function changedSettings(rules: Rules): ChangedSetting[] {
+  const out: ChangedSetting[] = [];
+  for (const row of CATALOG) {
+    const v = rules.valueOf(row);
+    if (same(v, defaultOf(row))) continue;
+    const words = (x: number | boolean | string | IniNode): string => (typeof x === "boolean" ? (x ? "True" : "False") : typeof x === "object" ? writeNode(x) : String(x));
+    const value = row.secret ? "set" : Array.isArray(v) ? (v as readonly (number | IniNode)[]).map(words) : words(v as number | boolean | string);
+    out.push({ name: (row.kind === "flag" ? "-" : "") + row.name, value, source: rules.sourceOf(row), status: row.status });
   }
   return out;
 }
