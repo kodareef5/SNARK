@@ -433,6 +433,7 @@ export class Persistence {
     rec.y = ents.y[ent]!;
     rec.z = ents.z[ent]!;
     rec.yaw = ents.yaw[ent]!;
+    rec.jetSpent = ents.jetSpent[ent]!;
     rec.flying = ents.mode[ent] === MODE_FLYER;
     rec.creatureMode = ents.creatureMode[ent]!;
   }

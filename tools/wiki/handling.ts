@@ -1,7 +1,8 @@
 // How each vehicle drives, measured when the wiki is built by running its own step with one survivor aboard: a road
-// vehicle on a flat plane of the ground every city street is to a wheel, a vessel on open water, a helicopter over flat
-// ground. Only what drives it (its gears, driven wheels and engine power, a vessel's drives) is read from its definition.
-// Speeds are in metres a second, distances in metres, times in seconds, fuel in the tank's own units.
+// vehicle on a flat plane of plain ground (the off-road surface, not the asphalt a city's streets are to a wheel), a
+// vessel on open water, a helicopter over flat ground. Only what drives it (its gears, driven wheels and engine power,
+// a vessel's drives) is read from its definition. Speeds are in metres a second, distances in metres, times in seconds,
+// fuel in the tank's own units.
 
 import { TICK_DT } from "../../shared/coords.ts";
 import { clamp, TAU } from "../../shared/math/scalar.ts";

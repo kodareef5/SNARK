@@ -1,11 +1,17 @@
-// The two modelled bodies, with hair, beards and two armor sets fitted to each. The hair and beard styles are in
+// The two modelled bodies, with hair, beards and armor sets fitted to each. The hair and beard styles are in
 // shared/anim/look.ts, since the character creator offers them.
 
+import { meridian } from "./meridian/model.ts";
 import type { HumanBodiesAsset } from "../../../../../tools/art/spec.ts";
 
 export default {
   kind: "human-bodies",
   raw: "quaternius",
+  tailored: { material: "meridian", indicatorEmission: 0.72, make: meridian },
+  materials: { meridian: {
+    base: "meridian/finish.png", normal: "meridian/normal.png", packed: "meridian/orm.png",
+    regions: "meridian/dye.png", tiles: 0.65,
+  } },
   triangles: { body: [4400, 1500, 420], hair: [420, 150, 48], armor: [900, 320, 100] },
   bodies: [
     { file: "base-characters/Superhero_Male_FullBody.gltf", material: "MI_Superhero_Male", texture: "base-characters/T_Superhero_Male_Ligh.png", outfits: "Male" },

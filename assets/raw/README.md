@@ -55,3 +55,6 @@ What was kept from each archive:
 | Cozy Cars Kit, tanker-truck.glb | CC0-1.0, recorded in the GLB root node | Tideline rigid water tanker and its eight salvage scenery meshes |
 | [School Bus](https://grab3d.com/models/vehicles/school-bus/), school-bus.glb | CC0-1.0 | District bus |
 | [Semi Truck](https://grab3d.com/models/vehicles/semi-truck/), semi-truck.glb | CC0-1.0 | Freight tractor and detached box trailer |
+| [Monster Truck](https://grab3d.com/models/vehicles/monster-truck/), monster-truck.glb | CC0-1.0 | Monster pickup |
+| [Muscle Car](https://grab3d.com/models/vehicles/muscle-car/), muscle-car.glb | CC0-1.0 | Muscle coupe |
+| [Taxi](https://grab3d.com/models/vehicles/taxi/), taxi.glb | CC0-1.0 | City taxi |
