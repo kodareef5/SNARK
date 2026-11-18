@@ -503,8 +503,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 3788414068 until the ruins' facade modules and breaks (content/ruins.ts) added their grey meshes ahead of the
   // test meshes; without them it is that again.
   // It was 1115872953 until the door-to-curb kit and the street's walks, curbs and drains (content/ruins.ts) added their
-  // grey meshes ahead of the test meshes; without them it is that again.
-  expect(hash).toBe(2659223847);
+  // grey meshes ahead of the test meshes, and 2659223847 until the ruins' broken wall tops, rubble, leaning pieces and
+  // vines did; without them it is each of those again.
+  expect(hash).toBe(2165263720);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -530,8 +531,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 2005316451 until the road bridge meshes changed those same indices, as above, and 207021915 until the sea was
   // made ahead of the statics, as above, and 3258779310 until the harbours' wrecks' meshes, as above, and 3199521479
   // until a survivor had 30 bones, as above, and 3920878120 until the ruins' facade modules and breaks, as above, and
-  // 2430603422 until the door-to-curb kit and the street's pieces, as above.
-  expect(saddled.hash).toBe(2360872237);
+  // 2430603422 until the door-to-curb kit and the street's pieces, and 2360872237 until the broken tops, rubble, leaning
+  // pieces and vines, as above.
+  expect(saddled.hash).toBe(3665213025);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

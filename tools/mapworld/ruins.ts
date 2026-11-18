@@ -466,6 +466,7 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way
   const { nx, x1, z1 } = site.ground.grid;
   const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
   const open = new Set<number>([S.OPEN, S.GREEN, S.CANOPY, S.YARD, S.DESERT]);
+  const rubble = (p: StaticPiece): boolean => /_z(skirt1|skirt2|wedge)_/.test(p.kind);
   for (const [index, s] of roads.segments.entries()) {
     if (!rules.classes.includes(s.mtfcc)) continue;
     const ex = s.bx - s.ax; const ez = s.bz - s.az; const length = Math.hypot(ex, ez);
@@ -475,15 +476,16 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way
       const [nxw, nzw] = [-uz * side, ux * side];
       const yaw = Math.atan2(nxw, nzw) * 180 / Math.PI; const c = Math.cos(yaw * Math.PI / 180); const sn = Math.sin(yaw * Math.PI / 180);
       const curb = (d: number, out: number): [number, number] => [s.ax + ux * d + nxw * (s.half + out), s.az + uz * d + nzw * (s.half + out)];
-      // A walk meets its neighbours end to end, so it is tested against the city's pieces a little smaller; a ramp is not
-      // tested against the ways in it leads to, nor what stands on a walk just laid against anything.
+      // A walk meets its neighbours end to end, so it is tested against the city's pieces a little smaller, and not against
+      // the rubble along a wall's foot, which spills onto it; a ramp is not tested against the ways in it leads to, nor what
+      // stands on a walk just laid against anything.
       const put = (shape: RuinShape, d: number, out: number, y: number, test: "all" | "pieces" | "none" = "all"): boolean | "way" => {
         const mid = BREAK_AT[shape]!; const [x, z] = curb(d, out);
         // Its middle stands that far along its x, which runs with the road one way or the other, from where it is put.
         const m = new Mason({ x: x + c * mid[0]!, z: z - sn * mid[0]!, yaw, c, s: sn, width: 8, depth: 3, rings: [] }, y);
         m.put(shape, 0, mid[1]!, 0, "concrete");
         if (test === "all" && way(m)) return "way";
-        return !(test !== "none" && obstacles.hits(boxOf(m.pieces[0]!), -0.1)) && accept(m);
+        return !(test !== "none" && obstacles.hits(boxOf(m.pieces[0]!), -0.1, rubble)) && accept(m);
       };
       // Each slot of 8 m: walked, kept clear for a junction or a way in, or left bare.
       const slots: ("walk" | "junction" | "way" | "bare")[] = []; const ground: number[] = [];
