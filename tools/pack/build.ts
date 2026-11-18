@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def, ShapeBox } from "../../shared/content/defs.ts";
+import { cornerByte } from "../../shared/world/city.ts";
 import { hullOf, hullPoint, type HullDef } from "../../shared/world/convex.ts";
 import { FAR_HEIGHT, FAR_MESH, FAR_TILE_METRES } from "../../client/core/render/far.ts";
 import { WATER_TILE } from "../../client/core/render/shading.ts";
@@ -106,15 +107,35 @@ function partsMesh(boxes: readonly ShapeBox[], hulls: readonly HullDef[], cull =
   const positions: number[] = [];
   const colors: number[] = [];
   const indices: number[] = [];
+  const bones: number[] = [];
+  const lowest = Math.min(...parts.flat(2).map((q) => q[1]!));
+  // A box's border is an outer edge unless a point 2 cm past its middle, across the face's plane, is in another part,
+  // as a join or an inside corner is, or it is a wall's foot on the piece's lowest level, where it stands on what is under it.
+  const outer = (i: number, face: number[][]): number => {
+    const middle = [0, 1, 2].map((a) => face.reduce((sum, q) => sum + q[a]!, 0) / 4);
+    let edges = 0;
+    [[0, 3], [1, 2], [0, 1], [3, 2]].forEach(([a, b], k) => {
+      const mid = [0, 1, 2].map((c) => (face[a!]![c]! + face[b!]![c]!) / 2), away = mid.map((c, e) => c - middle[e]!), l = Math.hypot(...away);
+      if (Math.abs(away[1]!) > 0.5 * l && Math.max(face[a!]![1]!, face[b!]![1]!) <= lowest + 1e-6) return;
+      const past = mid.map((c, e) => c + (away[e]! / l) * 0.02);
+      if (!parts.some((other, j) => j !== i && inside(other, past))) edges |= 1 << k;
+    });
+    return edges;
+  };
   parts.forEach((faces, i) => {
     for (const face of faces) {
       if (cull && parts.some((other, j) => j !== i && face.every((q) => inside(other, q)))) continue;
       const first = positions.length / 3;
-      for (const q of face) positions.push(q[0]!, q[1]!, q[2]!), colors.push(colour[i]!);
+      const edges = i < boxes.length ? outer(i, face) : 0;
+      face.forEach((q, k) => {
+        positions.push(q[0]!, q[1]!, q[2]!);
+        colors.push(colour[i]!);
+        bones.push(i < boxes.length ? cornerByte(k, edges) : 0);
+      });
       for (let k = 2; k < face.length; k++) indices.push(first, first + k - 1, first + k);
     }
   });
-  return { positions: Float32Array.from(positions), colors: Uint8Array.from(colors), indices: Uint32Array.from(indices) };
+  return { positions: Float32Array.from(positions), colors: Uint8Array.from(colors), indices: Uint32Array.from(indices), bones: Uint8Array.from(bones) };
 }
 
 /** A palette box standing on the entity's origin. */
@@ -144,7 +165,7 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
       continue;
     }
     if ((d.type !== "species" && d.type !== "structure" && d.type !== "prop" && d.type !== "node") || d.mesh !== "box") continue;
-    if (d.type === "structure") meshes.push({ id: d.id, lods: [boxMesh(d.half, REGION_BASE)] });
+    if (d.type === "structure") meshes.push({ id: d.id, lods: [boxMesh(d.half, REGION_BASE, true)] });
     else if (d.type === "node") {
       const lod = boxMesh(d.half, REGION_BASE);
       if (d.top) {

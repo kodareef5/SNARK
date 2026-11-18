@@ -97,7 +97,8 @@ test("self-check fetches independent RGBA maps, keeps GPU arrivals separate and 
   const reference = new SelfcheckSurfaces(manifest, port);
   expect(port.log).toHaveLength(0); // Creating it for a low-poly check fetches nothing.
   reference.start(); reference.start();
-  expect(port.log).toHaveLength(48);
+  // Each finish's three maps, and the weathering masks' packed map.
+  expect(port.log).toHaveLength(49);
   reference.request({ slot: 42, file: 1, parts: [{ offset: 0, length: 16, hash: "" }], priority: 1, fresh: false });
   port.advance(1);
   const arrivals: Parameters<SelfcheckSurfaces["take"]>[0] = [];

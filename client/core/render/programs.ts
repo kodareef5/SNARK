@@ -11,7 +11,7 @@ import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FL
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, type FramePacket } from "./packet.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
 import { SURFACE_ANY, surfaceFragment, surfaceVertex, type SurfaceVariant } from "./surface.ts";
-import { worldVertex } from "./world-surfaces.ts";
+import { ownVertex, worldVertex } from "./world-surfaces.ts";
 import { WATER_FRAGMENT } from "./water.ts";
 
 /**
@@ -43,11 +43,14 @@ const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };
 
 /**
  * A program of FLAT's vertex text: FLAT's fragment on low poly, and on a lit tier `lit`, which reads the sky table for
- * the haze and looks the sun's shadow up. The ground has a vertex text of its own on a lit tier, `litVertex`.
+ * the haze and looks the sun's shadow up. The ground has a vertex text of its own on a lit tier, `litVertex`. A near
+ * static's program (`weather`) weathers its walls where the tier reads the finishes in full (world-surfaces.ts
+ * `ownVertex`, `weathered`).
  */
-function flatOr(tier: Tier, format: TextureFormat, hard: boolean, vertex: string, flat: string, lit: string, samplers: Record<string, number>, litVertex?: string): ProgramText {
+function flatOr(tier: Tier, format: TextureFormat, hard: boolean, vertex: string, flat: string, lit: string, samplers: Record<string, number>, litVertex?: string, weather = false): ProgramText {
   if (!tier.lit) return { vertex, fragment: flat, defines: "", samplers };
-  return { vertex: litVertex ?? worldVertex(vertex), fragment: lit.replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), defines: (tier.finish === "light" ? "#define WORLD_LIGHT\n" : tier.relief ? "#define WORLD_RELIEF\n" : "") + shadowDefines(tier.shadows, hard), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, ...(litVertex ? {} : { uGroundHeight: UNIT.heights }) } };
+  const weathers = weather && tier.finish === "full";
+  return { vertex: litVertex ?? (weathers ? ownVertex(worldVertex(vertex)) : worldVertex(vertex)), fragment: lit.replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), defines: (tier.finish === "light" ? "#define WORLD_LIGHT\n" : tier.relief ? "#define WORLD_RELIEF\n" : "") + (weathers ? `#define WORLD_WEATHER\n#define ${tier.finishes >= 1024 ? "WORLD_EDGES" : "WORLD_EDGE_LINE"}\n` : "") + shadowDefines(tier.shadows, hard), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, ...(litVertex ? {} : { uGroundHeight: UNIT.heights }) } };
 }
 
 /** A SURFACE program of a variant: a material's maps on their units, and the masks and palette only where it is dyed. */
@@ -64,7 +67,7 @@ type Make = (tier: Tier, format: TextureFormat, hard?: boolean) => ProgramText;
 const mesh = (tier: Tier, made: ProgramText): ProgramText => (tier.lit ? { ...made, vertex: finishVertex(made.vertex) } : made);
 
 const MAKE = {
-  flat: (tier, format, hard = false) => mesh(tier, flatOr(tier, format, hard, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH)),
+  flat: (tier, format, hard = false) => mesh(tier, flatOr(tier, format, hard, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH, undefined, true)),
   terrain: (tier, format, hard = false) => flatOr(tier, format, hard, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_TERRAIN_FRAGMENT, GROUND, LIT_TERRAIN_VERTEX),
   // The same, for the tiles that read the window round the camera (terrain.ts).
   terrainWindow: (tier, format, hard): ProgramText => {
@@ -73,7 +76,7 @@ const MAKE = {
   },
   // See-through flat draws where the view is split in two depth ranges. A program of their own keeps the discard out of
   // the opaque draws, which some GPUs would then test for depth only after shading.
-  seeThrough: (tier, format, hard = false) => mesh(tier, flatOr(tier, format, hard, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, LIT_SPLIT_FRAGMENT, MESH)),
+  seeThrough: (tier, format, hard = false) => mesh(tier, flatOr(tier, format, hard, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, LIT_SPLIT_FRAGMENT, MESH, undefined, true)),
   // Far blocks (far.ts), which fade out over the last of their reach, and nodes in the hand-over between the near store
   // and the far one (hand.ts). A program of their own keeps the discard out of the rest.
   far: (tier, format, hard = false) => mesh(tier, flatOr(tier, format, hard, FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, MESH)),

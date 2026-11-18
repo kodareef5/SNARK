@@ -2,7 +2,9 @@
 // A probe that fails in the browser but passes here points at the shell: a shader, a buffer layout, a missing upload.
 
 import { surfaceIndex } from "../../content/surfaces.ts";
-import { worldSharp, worldSurface, type WorldSample } from "./render/world-surfaces.ts";
+import { staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "./render/world-surfaces.ts";
+import { overGround } from "./render/skyopen.ts";
+import { COARSE } from "./render/terrain.ts";
 import { B_CHEST, HUMAN } from "../../shared/anim/human.ts";
 import { LOOK_SKIN, defaultLook } from "../../shared/anim/look.ts";
 import { SKIN_BASE } from "../../shared/pack/palette.ts";
@@ -65,7 +67,7 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
   trueSun(p.frame, sun);
   const look = (view: ArrayLike<number>, light: Float64Array | Float32Array | number[]): void => domeLight(theSky().table, sun, view, light);
   /** Palette lighting, or a world finish on a known plane. The two species intentionally have no plane finish. */
-  const color = (index: number, n?: readonly number[], plane?: { point: readonly number[]; ground: boolean }): [number, number, number] => {
+  const color = (index: number, n?: readonly number[], plane?: { point: readonly number[]; ground: boolean; at?: readonly number[] }): [number, number, number] => {
     const raw: [number, number, number] = [palette[index * 4]!, palette[index * 4 + 1]!, palette[index * 4 + 2]!];
     if (!p.lit) return raw;
     const [sx, sy] = screen();
@@ -89,6 +91,13 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
       distance = Math.hypot(...point.map((c, k) => c - eye[k]!));
       const finish = surfaceIndex(index, plane.ground, p.surfaceCity[7] ? "las-vegas" : "default");
       worldSurface(albedo, orm, normal, albedo, finish, point[0]!, point[1]!, point[2]!, n[0]!, n[1]!, n[2]!, footprint, p.surfaceCity, surfaces.sample, p.tier.finish === "light");
+      // A static at `at`, unturned, is weathered as the flat program weathers it, in the open sky the probes stand in.
+      if (plane.at && p.tier.finish === "full") {
+        const frame = new Float64Array(3), at = plane.at;
+        weatherFrame(point[0]! - at[0]!, point[1]! - at[1]!, point[2]! - at[2]!, n[0]!, n[1]!, n[2]!, frame);
+        const over = overGround(hf, COARSE, p.frame, p.camY, point[0]! - p.camX, point[1]! - p.camY, point[2]! - p.camZ);
+        weathered(albedo, orm, finish, frame[0]!, frame[2]!, staticSeed(staticPlace(at[0]!, at[2]!)), over, 1, point[0]!, point[1]!, point[2]!, Math.abs(n[0]!) > Math.abs(n[2]!), distance, footprint, p.surfaceCity, surfaces.sample);
+      }
       const twice = 2 * normal.reduce((sum, c, k) => sum + c * v[k]!, 0);
       const reflected = normal.map((c, k) => twice * c - v[k]!);
       if (worldSharp(orm[1]!)) skyFrom(mirrored, p.frame, reflected, look);
@@ -129,7 +138,7 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
   const block = reg.defs[reg.index.get("core:block") ?? 0];
   // South face of the block at (253, 1, 262).
   if (finished && block && block.type === "structure" && cam.project(253, 1, 260.99, at)) {
-    probes.push({ name: "block", sx: at[0]!, sy: at[1]!, rgb: color(block.color, [0, 0, -1], { point: [253, 1, 261], ground: false }), mode: hue });
+    probes.push({ name: "block", sx: at[0]!, sy: at[1]!, rgb: color(block.color, [0, 0, -1], { point: [253, 1, 261], ground: false, at: [253, 1, 262] }), mode: hue });
   }
   if (finished && cam.project(232, hf.heightAt(232, 296), 296, at)) {
     // The slope is one plane there: its normal from the heights a sample either side.

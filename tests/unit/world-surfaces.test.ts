@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { SURFACE_FINISHES, SURFACE_NAMES, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
-import { GROUND_GRAIN, GROUND_WANDER, WORLD_ROUGH, WorldFinishes, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_FAR, WORLD_MRO, WorldFinishes, edgeOf, edged, ownVertex, staticPlace, staticSeed, weatherFrame, weathered, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
 import { FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX } from "../../client/core/render/glsl.ts";
@@ -37,23 +37,26 @@ test("every finish reads its own layer, has bounded reflectance and unit normals
     };
     worldSurface(a, o, n, [0.4, 0.4, 0.4], id, -1.32, 150, 8191.9, normal[0]!, normal[1]!, normal[2]!, footprint, city, sample);
     expect(Math.hypot(...n)).toBeCloseTo(1, 9);
-    for (const v of [...a, ...o]) expect(v).toBeWithin(0, 1);
+    for (const v of [...a, ...o]) expect([v >= 0, v <= 1]).toEqual([true, true]);
   }
 });
 
-test("a finish reads its three maps once where its second copy does not show, both copies' where it shows through, and the second's alone where it is whole; the touch rule's reads one base colour", () => {
+test("a finish reads its three maps once where its second copy does not show, both copies' where it shows through, and the second's alone where it is whole; from afar and on the touch rule it reads one base colour", () => {
   const city = new Float32Array(12); citySurface(city, "core:default");
   const a = new Float64Array(3), o = new Float64Array(3), n = new Float64Array(3);
   const metres = SURFACE_FINISHES.asphalt.metres;
   // Points along x a tile apart where the second copy's share is 0, between, and 1.
   const shares = Array.from({ length: 400 }, (_, k) => ({ x: k * 0.37 * metres, t: secondShare(k * 0.37, 2 / metres) }));
   const none = shares.find((s) => s.t === 0)!, some = shares.find((s) => s.t > 0.2 && s.t < 0.8)!, whole = shares.find((s) => s.t === 1)!;
-  const reads = (x: number, light = false): number[] => {
+  const reads = (x: number, light = false, footprint = 0.01): number[] => {
     const count = [0, 0, 0];
-    worldSurface(a, o, n, [0.4, 0.4, 0.4], 6, x, 0, 2, 0, 1, 0, 0.01, city, (role, _layer, _u, _v, _spread, out) => { count[role]!++; out.fill(0.5); }, light);
+    worldSurface(a, o, n, [0.4, 0.4, 0.4], 6, x, 0, 2, 0, 1, 0, footprint, city, (role, _layer, _u, _v, _spread, out) => { count[role]!++; out.fill(0.5); }, light);
     return count;
   };
   expect([reads(none.x), reads(some.x), reads(whole.x), reads(some.x, true)]).toEqual([[1, 1, 1], [2, 2, 2], [1, 1, 1], [1, 0, 0]]);
+  // A pixel past a sixteenth of a tile begins to read it as from afar, and past an eighth reads one base colour.
+  const tile = metres * 2 ** WORLD_FAR;
+  expect([reads(some.x, false, tile * 0.9), reads(some.x, false, tile * 1.4), reads(some.x, false, tile * 2.1), reads(whole.x, false, 40)]).toEqual([[2, 2, 2], [2, 2, 2], [1, 0, 0], [1, 0, 0]]);
 });
 
 test("on a tier that reads the relief, a finish near the eye is read where the ray to the eye meets its painted height, and not far off or seen head on", () => {
@@ -150,12 +153,12 @@ test("the cover's edge wanders by at most GROUND_WANDER, smoothly, and not once 
   expect([...out]).toEqual([0, 0]);
 });
 
-artTest("each finish's painted size, relief and module are the ones the renderers draw it at, and the touch rule's roughness is its packed map's mean", () => {
+artTest("each finish's painted size, relief and module are the ones the renderers draw it at, and what a finish from afar and the touch rule's are lit with is its packed map's mean", () => {
   const materials = worldMaterials();
   SURFACE_NAMES.forEach((name, k) => {
     const painted = paintedOf(name), f = SURFACE_FINISHES[name];
     expect([name, painted.metres, painted.height_mm, painted.module?.map((m) => m.toFixed(6))]).toEqual([name, f.metres, f.height, f.module?.map((m) => m.toFixed(6))]);
-    expect([name, rgbaOf(materials[k]!, "mro", 1024).pictures[0]![1]]).toEqual([name, WORLD_ROUGH[k]]);
+    expect([name, [...rgbaOf(materials[k]!, "mro", 1024).pictures[0]!].slice(0, 3)]).toEqual([name, [...WORLD_MRO[k]!]]);
   });
   expect(JSON.parse(readFileSync(join(WORLD_ART, "grass", "material.json"), "utf8")).metres).toBe(SURFACE_FINISHES.grass.metres);
 });
@@ -214,4 +217,100 @@ test("city bump tuning changes relief without changing albedo or finish selectio
   const draw = (): void => void worldSurface(a, o, n, [0.4, 0.4, 0.4], 9, 31, 2, 17, 0, 1, 0, 0.001, city, sample);
   draw(); const colour = a.slice(); expect(n[0]).not.toBe(0);
   city[8] = 0; draw(); expect(n[0]).toBe(0); expect(n[2]).toBe(0); expect(a).toEqual(colour);
+});
+
+test("a static's frame reads along a wall the way its face looks and up from its origin; a roof is no wall; storeys on one bay share a seed and neighbours do not", () => {
+  const out = new Float64Array(3);
+  weatherFrame(3, 5, -1, 0, 0, -1, out);
+  expect([...out]).toEqual([-3, 5, 1]);
+  weatherFrame(3, 5, -1, 0, 0, 1, out);
+  expect([...out]).toEqual([3, 5, 1]);
+  weatherFrame(1, 2, 4, 1, 0, 0, out);
+  expect([...out]).toEqual([-4, 2, 1]);
+  weatherFrame(1, 2, 4, 0, 1, 0, out);
+  expect(out[2]).toBe(0);
+  expect(staticSeed(staticPlace(812, -36))).toBe(staticSeed(staticPlace(812.001, -35.999)));
+  expect(staticSeed(staticPlace(812, -36))).not.toBe(staticSeed(staticPlace(820, -36)));
+  const text = ownVertex(worldVertex(FLAT_MESH_VERTEX));
+  for (const line of ["out vec3 vOwn;", "flat out vec2 vPlace;", "  vOwn = l;"]) expect(text).toContain(line);
+  expect(() => ownVertex("void main() {}")).toThrow();
+});
+
+test("a wall weathers by the masks: runoff more under open sky, a damp foot near the ground, paint let go to concrete on plaster alone, joints on concrete, salt on brick, all gone far off; a roof keeps only its value from bay to bay", () => {
+  const city = new Float32Array(12); citySurface(city, "core:miami");
+  const id = (name: string): number => (SURFACE_NAMES as readonly string[]).indexOf(name);
+  const masks = [1, 0.5, 1, 1];
+  const sample: WorldSample = (role, layer, _u, _v, _spread, out) => out.set(layer === 16 && role === 2 ? masks : [0.05, 0.05, 0.05, 1]);
+  const at = (finish: string, o: { wall?: number; seed?: number; over?: number; open?: number; dist?: number } = {}): number[] => {
+    const albedo = Float64Array.of(0.5, 0.5, 0.5), orm = Float64Array.of(1, 0.8, 0);
+    weathered(albedo, orm, id(finish), 2, o.wall ?? 1, o.seed ?? 0.61, o.over ?? 3, o.open ?? 1, 10, 3, 30, false, o.dist ?? 10, 0.01, city, sample);
+    return [...albedo, orm[1]!];
+  };
+  const roof = at("concrete", { wall: 0 }), far = at("concrete", { dist: WEATHER_GONE + 1 });
+  expect(far).toEqual(roof);
+  expect(roof[3]).toBe(0.8);
+  expect(at("concrete", { wall: 0, seed: 0.12 })[0]).not.toBe(roof[0]);
+  // Runoff and joints darken a concrete wall, more under the open sky; a foot darker still and less rough.
+  const wall = at("concrete");
+  expect(wall[0]!).toBeLessThan(roof[0]!);
+  expect(at("concrete", { open: 0 })[0]!).toBeGreaterThan(wall[0]!);
+  const foot = at("concrete", { over: 0.05 });
+  expect(foot[0]!).toBeLessThan(wall[0]!);
+  expect(foot[3]!).toBeLessThan(wall[3]!);
+  // Salt runs lighten brick; plaster lets go to the concrete under it, which is darker here, and concrete does not.
+  masks.splice(0, 4, 1, 0.5, 0, 0);
+  expect(at("brick")[0]!).toBeGreaterThan(at("brick", { wall: 0 })[0]!);
+  const kept = at("plaster");
+  masks[2] = 1;
+  expect(at("plaster")[0]!).toBeLessThan(kept[0]!);
+  expect(at("concrete")[0]!).toBe(at("concrete")[0]!);
+  masks.splice(0, 4, 0, 0, 1, 0);
+  expect(at("concrete")[0]!).toBeCloseTo(at("concrete", { open: 0 })[0]!, 12);
+});
+
+test("with the weathering masks in the pack, a frame asks for them as wide as the packed array keeps, and the array is not drawn until they are in", () => {
+  const roles = ["base", "normal", "mro"] as const;
+  const ids = [...SURFACE_NAMES.map(surfaceMaterial), "core:zz_world/weather"];
+  const materials: PackMaterial[] = ids.map((id, k) => ({ id, base: 3 * k, normal: 3 * k + 1, mro: 3 * k + 2, mask: -1, mask2: -1, tint: [1, 1, 1], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 0 }));
+  const textures: PackTexture[] = materials.flatMap((m, k) => roles.map((role) => ({ id: `${m.id}/${role}`, role, top: role === "mro" ? 1024 : k === 16 ? 64 : 2048 })));
+  const held = new Int8Array(51).fill(4), asked: number[] = [];
+  const residency = { format: "bc" as const, material: (m: number, pixels: number) => asked.push(m * 10000 + pixels), holds: (t: number) => held[t]!, again: (t: number) => { held[t] = -1; } };
+  const finishes = new WorldFinishes(materials, textures), p = new FramePacket();
+  finishes.frame(p, residency, tierOf("high"));
+  expect([asked.length, asked[16]]).toEqual([17, 16 * 10000 + 512]);
+  held.fill(4); held[50] = -1;
+  finishes.frame(p, residency, tierOf("high"));
+  expect([...p.worldLevel]).toEqual([0, 0, -1]);
+  held[50] = 3;
+  finishes.frame(p, residency, tierOf("high"));
+  expect([...p.worldLevel]).toEqual([0, 0, 0]);
+});
+
+test("a static's face finds its nearest outer border from its corners, and its edge turns, wears and chips there, less as a pixel grows and not at all on a border that is a join", () => {
+  const out = new Float64Array(4), pu = [0, 2, 0], pv = [0, 0, 1];
+  edgeOf(0.01, 0.5, 0b0001, pu, pv, out);
+  expect([out[0]!, ...out.slice(1)].map((c) => +c.toFixed(9))).toEqual([0.02, 0, -1, 0]);
+  edgeOf(0.01, 0.97, 0b1010, pu, pv, out);
+  expect([out[0]!, ...out.slice(1)].map((c) => +c.toFixed(9))).toEqual([0.03, 0, 0, 1]);
+  edgeOf(0.5, 0.5, 0, pu, pv, out);
+  expect(out[0]).toBe(-1);
+  const city = new Float32Array(12); citySurface(city, "core:miami");
+  const concrete = (SURFACE_NAMES as readonly string[]).indexOf("concrete"), steel = (SURFACE_NAMES as readonly string[]).indexOf("steel");
+  const at = (index: number, dist: number, footprint = 0.002, line = false, painted = 7): number[] => {
+    const albedo = Float64Array.of(0.4, 0.4, 0.4), orm = Float64Array.of(1, 0.8, 0), normal = Float64Array.of(1, 0, 0);
+    edged(albedo, orm, normal, index, dist, 0, 1, 0, painted, 4, 5, 6, footprint, city, line);
+    return [...albedo, ...orm, ...normal];
+  };
+  const inside = at(concrete, 1), edge = at(concrete, 0.001);
+  expect(inside).toEqual([0.4, 0.4, 0.4, 1, 0.8, 0, 1, 0, 0]);
+  // On the arris the normal leans out across the edge and the edge is lighter; a pixel wider than it sees neither.
+  expect(edge[7]!).toBeGreaterThan(0.3);
+  expect(edge[0]!).toBeGreaterThan(0.4);
+  expect(at(concrete, 0.001, EDGE_ROUND * 10)).toEqual(inside);
+  expect(at(concrete, 0.001, 0.002, true)[7]).toBe(0);
+  // Where the painted height is low by the edge it is chipped: concrete to darker, rougher aggregate, steel to bare metal.
+  const chipped = at(concrete, 0.005, 0.002, false, 0), sound = at(concrete, 0.005);
+  expect(chipped[0]!).toBeLessThan(sound[0]!);
+  expect(chipped[4]!).toBeGreaterThan(sound[4]!);
+  expect(at(steel, 0.005, 0.002, false, 0)[5]!).toBeGreaterThan(0.5);
 });

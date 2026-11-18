@@ -5,6 +5,13 @@ export type SurfaceName = typeof SURFACE_NAMES[number];
 /** The material of a finish in the pack, whose textures are "<material>/<role>". */
 export const SURFACE_PREFIX = "core:zz_world/";
 export const surfaceMaterial = (name: SurfaceName): string => SURFACE_PREFIX + name;
+/**
+ * The walls' weathering masks (assets/source/core/world/weather/): runoff, damp, peel and formwork joints, one bay of 8 m
+ * along a wall by one storey of 4 m up it. They are the packed array's layer after the finishes'; the material keeps a
+ * base colour and a normal only as every material does, and the card never holds them in the arrays.
+ */
+export const WEATHER_MATERIAL = SURFACE_PREFIX + "weather";
+export const WEATHER_LAYER = 16;
 export type SurfaceGroup = "living" | "dry" | "wet" | "mineral" | "masonry" | "metal" | "paint" | "timber" | "glass";
 
 /** Multipliers except wetness and growth, which are added. Tint multiplies linear reflectance. */
@@ -59,6 +66,20 @@ export const SURFACE_FINISHES: Record<SurfaceName, SurfaceFinish> = {
   plaster: finish("paint", 2.5, 0.7, 0.35, 0.05, 3, 0),
   wood: finish("timber", 2, 0.25, 0.26, 0.08, 10, 0, [0.5, 1 / 13]),
   glass: finish("glass", 2, 0.35, 0.2, 0.02, 1, 0),
+};
+
+/**
+ * How each finish weathers on a wall (world-surfaces.ts `weathered`), each a share of the most: runoff below each slab
+ * edge, a damp foot, paint letting go to the concrete under it, the formwork's joints, and its value from bay to bay
+ * and across 10 m, which roofs keep too; and what its runoff leaves.
+ */
+export interface SurfaceWeathering { runs: number; damp: number; peel: number; joints: number; value: number; left: "grime" | "rust" | "salt" }
+const weathers = (runs: number, damp: number, peel: number, joints: number, value: number, left: SurfaceWeathering["left"] = "grime"): SurfaceWeathering => ({ runs, damp, peel, joints, value, left });
+export const SURFACE_WEATHERING: Record<SurfaceName, SurfaceWeathering> = {
+  grass: weathers(0, 0, 0, 0, 0.3), sand: weathers(0.3, 0.4, 0, 0, 0.4), dirt: weathers(0.4, 0.5, 0, 0, 0.5), mud: weathers(0.3, 0.3, 0, 0, 0.4),
+  rock: weathers(0.8, 0.8, 0, 0, 0.8), gravel: weathers(0.4, 0.5, 0, 0, 0.5), asphalt: weathers(0.5, 0.5, 0, 0, 0.6), paving: weathers(0.6, 0.7, 0, 0, 0.7),
+  concrete: weathers(1, 1, 0, 1, 1), brick: weathers(0.8, 1, 0, 0, 0.8, "salt"), clay: weathers(0.6, 0.6, 0, 0, 0.7), rust: weathers(0.8, 0.3, 0, 0, 0.7, "rust"),
+  steel: weathers(0.8, 0.3, 0, 0, 0.6, "rust"), plaster: weathers(1, 1, 1, 0, 0.9), wood: weathers(0.7, 0.8, 0, 0, 0.8), glass: weathers(0.4, 0, 0, 0, 0.2),
 };
 
 /** City-wide art direction. The key is the map id's last component; unknown maps use default. */

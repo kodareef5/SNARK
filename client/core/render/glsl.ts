@@ -58,6 +58,12 @@ precision highp int;
 in vec3 vRel;
 flat in vec3 vColor;
 flat in int vSurface;
+#ifdef WORLD_WEATHER
+in vec3 vOwn;
+flat in vec2 vPlace;
+in vec2 vFace;
+flat in uint vEdges;
+#endif
 uniform float uSolid, uAlpha, uSkin;
 out vec4 o;
 ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}void main() {
@@ -66,8 +72,16 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.repl
   vec3 n = geometric;
   vec3 albedo = vColor;
   vec3 orm = vec3(1.0, 1.0, 0.0);
-  if (uSolid < 1.5 && uWorldReady > 0.5) worldSurface(albedo, orm, n, geometric, vSurface, vRel, dx, dy);
-  float open = skyOpen(vRel, geometric, overGround(vRel), uSkin > 0.5 ? 0.0 : 1.0);
+  float painted = 0.0;
+  if (uSolid < 1.5 && uWorldReady > 0.5) painted = worldSurface(albedo, orm, n, geometric, vSurface, vRel, dx, dy);
+  float over = overGround(vRel);
+  float open = skyOpen(vRel, geometric, over, uSkin > 0.5 ? 0.0 : 1.0);
+#ifdef WORLD_WEATHER
+  if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5) weathered(albedo, orm, vSurface, vOwn, vPlace, over, open, vRel, geometric, dx, dy);
+#endif
+#if defined(WORLD_EDGES) || defined(WORLD_EDGE_LINE)
+  if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5) edged(albedo, orm, n, vSurface, vFace, vEdges, painted, vRel, dx, dy);
+#endif
   vec3 v = -normalize(vRel);
   // A rough finish mirrors the sky's light, which is a colour; only a smooth one shows the sky's picture.
   vec3 r = reflect(-v,n);

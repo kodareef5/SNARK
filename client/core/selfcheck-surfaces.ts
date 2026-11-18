@@ -1,5 +1,5 @@
 // Diagnostic-only RGBA reference maps. The GPU still fetches and draws its selected variant independently.
-import { SURFACE_NAMES, surfaceMaterial } from "../../content/surfaces.ts";
+import { SURFACE_NAMES, WEATHER_LAYER, WEATHER_MATERIAL, surfaceMaterial } from "../../content/surfaces.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { pictureBytes, stepOf, topIn } from "../../shared/pack/texture.ts";
 import { textureParts, type AssetArrival, type AssetPort, type AssetRequest, type AssetPart } from "./assets/port.ts";
@@ -19,7 +19,7 @@ export class SelfcheckSurfaces implements AssetPort {
   private started = false;
   private left = 0;
   private readonly arrivals: AssetArrival[] = [];
-  /** Each finish's base colour, normal and packed map, by finish * 3 + role. */
+  /** Each finish's base colour, normal and packed map, by finish * 3 + role, and the weathering masks' packed map as the layer after them. */
   private readonly maps: Texture[] = [];
   private readonly roles = ["base", "normal", "mro"] as const;
   private readonly tops: number[] = [];
@@ -44,12 +44,14 @@ export class SelfcheckSurfaces implements AssetPort {
       const material = this.manifest.materials?.find((m) => m.id === surfaceMaterial(name));
       return this.roles.map((role) => this.manifest.textures?.[material?.[role] ?? -1]);
     });
-    if (textures.some((t) => !t?.in.rgba)) { this.error = "world-surface reference has no RGBA maps"; return; }
-    this.left = textures.length;
-    textures.forEach((t, k) => {
+    const weather = this.manifest.materials?.find((m) => m.id === WEATHER_MATERIAL);
+    const wanted: [number, (typeof textures)[number]][] = [...textures.entries(), ...(weather ? [[WEATHER_LAYER * 3 + 2, this.manifest.textures?.[weather.mro]] as [number, (typeof textures)[number]]] : [])];
+    if (wanted.some(([, t]) => !t?.in.rgba)) { this.error = "world-surface reference has no RGBA maps"; return; }
+    this.left = wanted.length;
+    for (const [k, t] of wanted) {
       const top = this.tops[k] = topIn("rgba", t!.top);
       this.port.request({ slot: -1 - k, file: t!.in.rgba!.file, parts: textureParts(t!, "rgba", stepOf(top)), priority: 0, fresh: false });
-    });
+    }
   }
 
   take(out: AssetArrival[]): number {
@@ -72,7 +74,11 @@ export class SelfcheckSurfaces implements AssetPort {
         if (at !== a.data.length) this.error = `world-surface reference ${name} has ${a.data.length} bytes, expected ${at}`;
         else this.maps[k] = decodeTexture(name, pictures);
       }
-      if (--this.left === 0 && !this.error) this.sample = (role, layer, u, v, spread, out) => sample(this.maps[layer * 3 + role]!, u, v, spread, out);
+      if (--this.left === 0 && !this.error) this.sample = (role, layer, u, v, spread, out) => {
+        const map = this.maps[layer * 3 + role];
+        if (map) sample(map, u, v, spread, out);
+        else out.fill(0);
+      };
     }
     this.arrivals.length = 0;
     return kept;

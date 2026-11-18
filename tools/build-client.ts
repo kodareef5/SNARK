@@ -15,7 +15,7 @@ import { FAR_MESH, farColours } from "../client/core/render/far.ts";
 import { skyFile, theSky } from "../client/core/render/sky.ts";
 import { WATER_MATERIAL } from "../client/core/render/water.ts";
 import { CORE_CONTENT } from "../content/core.ts";
-import { SURFACE_NAMES, surfaceMaterial } from "../content/surfaces.ts";
+import { SURFACE_NAMES, WEATHER_MATERIAL, surfaceMaterial } from "../content/surfaces.ts";
 import { HUMAN } from "../shared/anim/human.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
 import { fillSlot, slotsOf } from "../shared/content/slots.ts";
@@ -102,7 +102,7 @@ export function paging(reg: Registry, pack: Pack): { boot: (id: string) => boole
 }
 
 /** The materials the client finds by name, whose rows what it reads first holds: the world's finishes, the sky's and the water's. */
-export const NAMED_MATERIALS: ReadonlySet<string> = new Set([...SURFACE_NAMES.map(surfaceMaterial), SKY_MATERIAL, WATER_MATERIAL]);
+export const NAMED_MATERIALS: ReadonlySet<string> = new Set([...SURFACE_NAMES.map(surfaceMaterial), WEATHER_MATERIAL, SKY_MATERIAL, WATER_MATERIAL]);
 
 /** The colour far blocks draw each palette colour in, from every piece's coarsest level in the whole pack, bound as a scene binds it. */
 function wholeFarColours(reg: Registry, pack: Pack): number[] {
