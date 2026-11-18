@@ -37,6 +37,7 @@ import { BONE_FLOATS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BO
 import { Layers, corpseWanted, layerWanted } from "./layers.ts";
 import { WEAR_KEY, wearOf } from "./wear.ts";
 import { RotorBlur } from "./rotor-blur.ts";
+import { PatrolLights } from "./patrol-lights.ts";
 
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
 export const BODY_RADIUS = BODY_REACH;
@@ -91,6 +92,7 @@ export interface VehicleRenderPose {
   groundPitch?: number; groundRoll?: number; rideOffset?: number; grounded?: boolean;
   /** Each door's open share, 8 bits a door (shared/sim/vehicle-body.ts vehicleDoor). */
   doors?: number;
+  lightMode?: number;
 }
 /** The pelvis target in camera-relative world space; the character's own rest proportions determine its origin. */
 export interface VehicleSeatPose extends VehicleRenderPose, OccupantSeat {
@@ -200,6 +202,7 @@ const POSE_EVERY = 8;
 
 export class Characters {
   readonly rotorBlur = new RotorBlur();
+  readonly patrolLights = new PatrolLights();
   readonly anim: HumanAnim;
   /** Bodies drawn on bones of their own this frame, and those of them whose pose was worked out anew. */
   posed = 0;
@@ -786,6 +789,10 @@ export class Characters {
       this.posed++;
       if (!unseen) this.keepHead(c, solved, id, p.camX + x, p.camY + y, p.camZ + z, yaw, size);
     }
+    const def = c.vehicle?.def;
+    if (!unseen && vehicle?.lightMode && def && isWheelVehicle(def) && def.emergencyLights) {
+      this.patrolLights.add(p, first, def.emergencyLights, vehicle.lightMode, tick, id, size);
+    }
     const carrier = st.held ? this.carriedBy.get(id) : undefined;
     if (carrier !== undefined) this.inArms.push(first, rigid ? 1 : rig.bones, x, y, z, yaw, size, carrier, kind, id);
     const layer = unseen || !this.assets.tier.lit ? 0 : this.layers.level(id, layerWanted(st), tick, this.last.has(id));
@@ -966,6 +973,7 @@ export class Characters {
     this.packet = p ?? this.packet;
     this.count = 0;
     this.rotorBlur.begin();
+    this.patrolLights.begin();
     this.posed = 0;
     this.fresh = 0;
     for (const at of this.palms.values()) this.palmPool.push(at);

@@ -1325,7 +1325,7 @@ export class GameServer {
         vehicle ? packVehiclePose(ents.vehiclePitch[v]!, ents.vehicleRoll[v]!, ents.steering[v]!) : 0,
         vehicle ? quantVehicleWheel(ents.wheelAngle[v]!) : 0,
         vehicle ? packVehicleRide(ents.vehicleGroundPitch[v]!, ents.vehicleGroundRoll[v]!, ents.vehicleRideOffset[v]!, (ents.flags[i]! & F_GROUNDED) !== 0) : 0,
-        ents.vehicleDoors[v]!, vehicle && !rotor ? packVehicleDrive(ents.vehicleGear[v]!, ents.vehicleRpm[v]!, vehicle.movement === "boat" ? ents.vehicleShiftTime[v]! > 0 : drivetrainShifting(ents.vehicleShiftTime[v]!, vehicle.spec.drivetrain)) : 0,
+        ents.vehicleDoors[v]!, vehicle && !rotor ? packVehicleDrive(ents.vehicleGear[v]!, ents.vehicleRpm[v]!, vehicle.movement === "boat" ? ents.vehicleShiftTime[v]! > 0 : drivetrainShifting(ents.vehicleShiftTime[v]!, vehicle.spec.drivetrain), (ents.flags[i]! & F_PROP) === 0 ? ents.vehicleLightMode[v]! : 0) : 0,
         rotor ? packVehicleRotor(ents.vehicleRotorRpm[v]!, ents.vehicleRotorPhase[v]!) : 0,
         vehicle ? packVehicleSystems(ents.fuel[v]!, vehicle.spec.fuelCapacity, ents.vehicleEngineCondition[v]!, ents.vehicleRotorCondition[v]!, ents.vehicleEngineOn[v] !== 0) : 0,
         vehicle ? packVehicleQuaternionPair(ents.vehicleQx[v]!, ents.vehicleQy[v]!) : 0,

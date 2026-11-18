@@ -19,11 +19,11 @@ An ARK-style browser survival parody with GTA vehicles and persistent multiplaye
 
 **GTA**
 
-- **Playable.** Drive a Compact or Fastback coupe, a Veloce or Berlinetta sports car, a Panel Van or a Caravan. You can also pilot a motorboat or fly a helicopter. Vehicles carry passengers and cargo, burn fuel and persist across restarts.
+- **Playable.** Drive a Compact or Fastback coupe, a Veloce or Berlinetta sports car, a Panel Van, a Caravan, a patrol sedan or an off-road patrol Jeep. You can also pilot a motorboat or fly a helicopter. Vehicles carry passengers and cargo, burn fuel and persist across restarts.
 - **Partial.** Civilians can take seats and be carjacked. Ambient traffic and civilian routes are missing.
 - **Missing.** Wanted levels, police pursuits, missions and heists.
 
-For a test drive, run `bun tools/urban/dev.ts --fleet` and join the local server. All six road models park facing the plaza spawn. In an existing world, use an admin console command such as `gmsummon fastback`, `gmsummon veloce`, `gmsummon berlinetta`, `gmsummon panel_van`, or `gmsummon caravan` to park a fuelled vehicle ahead of you. The sports cars also answer to `lambo` and `ferrari`, and the Fastback to `porsche`. [View the fleet](planning/reference/road-fleet.png)
+For a test drive, run `bun tools/urban/dev.ts --fleet` and join the local server. All eight road models park facing the plaza spawn. The patrol sedan and long-travel 4×4 have four working doors. At the wheel, press **K** or click the right stick to cycle the warning lights through patrol, response, pursuit and off. Use `gmsummon copcar` or `gmsummon copjeep` to bring one into an existing world. [See the patrol lights in action](planning/reference/patrol-lights.gif). For the civilian models, use an admin console command such as `gmsummon fastback`, `gmsummon veloce`, `gmsummon berlinetta`, `gmsummon panel_van`, or `gmsummon caravan` to park a fuelled vehicle ahead of you. The sports cars also answer to `lambo` and `ferrari`, and the Fastback to `porsche`. [View the fleet](planning/reference/road-fleet.png)
 
 ## Run it
 

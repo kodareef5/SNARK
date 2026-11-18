@@ -1,7 +1,9 @@
-// All three road frames use the compact's wheel solver and rig conventions. Body-specific measurements come from art.
+// The road frames use the compact's wheel solver and rig conventions. Body-specific measurements come from art.
 import type { SpeciesDef } from "../../shared/content/defs.ts";
-import type { VehicleDoor, VehicleSeat, VehicleSpec, WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
+import type { EmergencyLamp, VehicleDoor, VehicleSeat, VehicleSpec, WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { COMPACT, COMPACT_SPECIES, COMPACT_VEHICLE } from "./compact.ts";
+import { PATROL_JEEP_ART } from "./patrol-jeep-art.ts";
+import { PATROL_SEDAN_ART } from "./patrol-sedan-art.ts";
 import { FASTBACK_ART } from "./fastback-art.ts";
 import { BERLINETTA_ART, VELOCE_ART } from "./sports-art.ts";
 import { CARAVAN_ART, PANEL_VAN_ART } from "./van-art.ts";
@@ -60,6 +62,8 @@ interface Trim {
   readonly extraSeats?: readonly VehicleSeat[];
   readonly extraDoors?: readonly VehicleDoor[];
   readonly cargoDoor?: number;
+  readonly shotPanels?: WheelVehicleDefinition["shotPanels"];
+  readonly emergencyLights?: readonly EmergencyLamp[];
 }
 
 function roadCar(art: RoadModel, frame: NonNullable<WheelVehicleDefinition["frame"]>, tuning: VehicleSpec, trim: Trim): SpeciesDef {
@@ -78,6 +82,8 @@ function roadCar(art: RoadModel, frame: NonNullable<WheelVehicleDefinition["fram
       ...(trim.extraSeats ?? []),
     ],
     doors: [...COMPACT_VEHICLE.doors, ...(trim.extraDoors ?? [])],
+    ...(trim.shotPanels ? { shotPanels: trim.shotPanels } : {}),
+    ...(trim.emergencyLights ? { emergencyLights: trim.emergencyLights } : {}),
     ...(trim.cargoDoor !== undefined ? { cargoDoor: trim.cargoDoor } : {}),
   };
   return {
@@ -123,4 +129,44 @@ const caravan = roadCar(CARAVAN_ART, "van", {
   extraDoors: [slider("left", CARAVAN_ART.slideTravel), slider("right", CARAVAN_ART.slideTravel)],
 });
 
-export const ROAD_FLEET = [COMPACT_SPECIES, fastback, veloce, berlinetta, panelVan, caravan] as const;
+function patrolCar(art: typeof PATROL_JEEP_ART | typeof PATROL_SEDAN_ART, frame: "off_road" | "car", spec: VehicleSpec,
+  trim: Trim, emergencyLights: readonly EmergencyLamp[]): SpeciesDef {
+  const at = art.anchors;
+  return roadCar(art, frame, spec, { ...trim, emergencyLights, shotPanels: art.shotPanels,
+    extraSeats: [
+      { id: "rear_left", anchor: at.seat_rear_left, entry: at.approach_rear_left, door: 2 },
+      { id: "rear_right", anchor: at.seat_rear_right, entry: at.approach_rear_right, door: 3 },
+    ],
+    extraDoors: [
+      { bone: "door_rear_left", axis: [0, 1, 0], open: -1.09, openTicks: 7, closeTicks: 11 },
+      { bone: "door_rear_right", axis: [0, 1, 0], open: 1.09, openTicks: 7, closeTicks: 11 },
+    ],
+  });
+}
+const sedanLamps = PATROL_SEDAN_ART.anchors, jeepLamps = PATROL_JEEP_ART.anchors;
+const patrolSedan = patrolCar(PATROL_SEDAN_ART, "car", {
+  ...COMPACT, mass: 1760, clearance: .16, maxForward: 52, brake: 17, fuelCapacity: 68,
+  suspensionFrequency: 10.6, suspensionDamping: .76, suspensionTravel: .22, frontDriveShare: .23,
+  frontGrip: 1.43, rearGrip: 1.53, steerSpeed: 28, yawDamping: 1.23, dragScale: .19,
+  drivetrain: { ...COMPACT.drivetrain!, torqueCurve: [[800, 240], [2000, 380], [4000, 462], [5400, 438], [6800, 340]],
+    forwardRatios: [4.15, 2.56, 1.74, 1.31, 1, .79], finalDrive: 3.56, engineBrakeNm: 34 },
+}, { aliases: ["copcar", "police_car", "cruiser", "patrol_sedan"], paints: [10], health: 1080, slots: 32, payload: 560, beltline: PATROL_SEDAN_ART.beltline }, [
+  { at: sedanLamps.light_red_front, color: "red", facing: "front" }, { at: sedanLamps.light_blue_front, color: "blue", facing: "front" },
+  { at: sedanLamps.light_red_side, width: .13, color: "red" }, { at: sedanLamps.light_blue_side, width: .13, color: "blue" },
+  { at: sedanLamps.light_red_rear, color: "red", facing: "rear" }, { at: sedanLamps.light_blue_rear, color: "blue", facing: "rear" },
+]);
+
+const patrolJeep = patrolCar(PATROL_JEEP_ART, "off_road", {
+  ...COMPACT, mass: 2080, clearance: .315, maxForward: 38, brake: 14.5, fuelCapacity: 79, maxRise: .42, maxDrop: .64,
+  suspensionFrequency: 7.65, suspensionDamping: .38, suspensionTravel: .37, frontDriveShare: .48,
+  frontGrip: 1.3, rearGrip: 1.4, maxSteer: .64, steerSpeed: 20, yawDamping: 1.34, dragScale: .31,
+  drivetrain: { ...COMPACT.drivetrain!, torqueCurve: [[800, 245], [1600, 365], [3200, 415], [4600, 390], [6100, 285]],
+    redlineRpm: 6100, upshiftRpm: 5500, forwardRatios: [4.55, 2.83, 1.83, 1.35, 1, .78], finalDrive: 4.14, engineBrakeNm: 39 },
+}, { aliases: ["copjeep", "police_jeep", "patrol_jeep"], paints: [19], health: 1280, slots: 40, payload: 720, beltline: PATROL_JEEP_ART.beltline }, [
+  { at: jeepLamps.lightbar_red_front, color: "red", facing: "front" }, { at: jeepLamps.lightbar_blue_front, color: "blue", facing: "front" },
+  { at: jeepLamps.lightbar_red_side, width: .047, color: "red" }, { at: jeepLamps.lightbar_blue_side, width: .047, color: "blue" },
+  { at: jeepLamps.lightbar_red_rear, color: "red", facing: "rear" }, { at: jeepLamps.lightbar_blue_rear, color: "blue", facing: "rear" },
+  { at: jeepLamps.grille_red, width: .14, color: "red", facing: "front" }, { at: jeepLamps.grille_blue, width: .14, color: "blue", facing: "front" },
+]);
+
+export const ROAD_FLEET = [COMPACT_SPECIES, fastback, veloce, berlinetta, panelVan, caravan, patrolSedan, patrolJeep] as const;

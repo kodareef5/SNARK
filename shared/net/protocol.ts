@@ -382,6 +382,8 @@ export const VEHICLE_RECOVER = 4;
 export const VEHICLE_FLIP = 5;
 /** Pull a stopped unoccupied car toward the nearby survivor. */
 export const VEHICLE_PULL = 6;
+/** Cycle the warning lights of the currently driven patrol vehicle. Followed by its handle. */
+export const VEHICLE_LIGHTS = 7;
 
 /** The only boxes a slot command can address. No ids travel. */
 export const BOX_SELF = 0;

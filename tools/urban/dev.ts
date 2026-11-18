@@ -1,4 +1,4 @@
-// The ordinary game with a local test drive near spawn. --fleet parks the six road models in their own save.
+// The ordinary game with a local test drive near spawn. --fleet parks the road fleet in their own save.
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DEV_CONFIG, liveFileOf, startServer } from "../../server/main.ts";

@@ -57,7 +57,7 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     "species/survivor": 1,
     "species/target": 1,
     // The car, and the civilian who may drive one (content/vehicles, content/civilians.ts).
-    "species/vehicle": 12,
+    "species/vehicle": ROAD_FLEET.length + 6,
     "species/civilian": 1,
     // And three road surfaces to drive on, on a paving shape of their own.
     "structure/piece": 36,

@@ -109,6 +109,7 @@ export class EntityStore {
   vehicleRideVelocity: Float32Array;
   /** Four doors, 8 bits each of how far open (shared/sim/vehicle-body.ts). */
   vehicleDoors: Uint32Array;
+  vehicleLightMode: Uint8Array;
   vehiclePitch: Float32Array;
   vehicleRoll: Float32Array;
   steering: Float32Array;
@@ -239,6 +240,7 @@ export class EntityStore {
     this.vehicleRideOffset = new Float32Array(VEHICLE_START);
     this.vehicleRideVelocity = new Float32Array(VEHICLE_START);
     this.vehicleDoors = new Uint32Array(VEHICLE_START);
+    this.vehicleLightMode = new Uint8Array(VEHICLE_START);
     this.vehiclePitch = new Float32Array(VEHICLE_START);
     this.vehicleRoll = new Float32Array(VEHICLE_START);
     this.steering = new Float32Array(VEHICLE_START);
@@ -451,6 +453,7 @@ export class EntityStore {
     this.vehicleRideOffset = wider(this.vehicleRideOffset, cap);
     this.vehicleRideVelocity = wider(this.vehicleRideVelocity, cap);
     this.vehicleDoors = wider(this.vehicleDoors, cap);
+    this.vehicleLightMode = wider(this.vehicleLightMode, cap);
     this.vehiclePitch = wider(this.vehiclePitch, cap);
     this.vehicleRoll = wider(this.vehicleRoll, cap);
     this.steering = wider(this.steering, cap);
@@ -486,6 +489,7 @@ export class EntityStore {
     this.vehicleRideOffset[v] = 0;
     this.vehicleRideVelocity[v] = 0;
     this.vehicleDoors[v] = 0;
+    this.vehicleLightMode[v] = 0;
     this.vehiclePitch[v] = 0;
     this.vehicleRoll[v] = 0;
     this.steering[v] = 0;

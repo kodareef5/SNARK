@@ -63,6 +63,8 @@ const MAX_HOSTS = 1 << 16;
 const MAX_ACTORS = 1 << 16;
 /** Namespaced extension, preserved by the normal record codec even in builds without vehicles. */
 const VEHICLE_COMPONENT = 0x757262;
+/** A single optional byte for a parked vehicle’s warning lights, independent of the saved chassis layout. */
+const PATROL_LAMPS = 0x6c616d;
 /**
  * The saved component, little-endian: a version u8 (8 wheeled, 5 rotor, 9 boat), these fields as f32 in this order and
  * whether it stands on its wheels u8, then its mechanical/attitude fields as f32 and whether its engine runs u8.
@@ -175,12 +177,22 @@ export class Urban {
       }
       ents.storeBody(e, this.body);
     }
+    if (isWheelVehicle(definition) && definition.emergencyLights) ents.vehicleLightMode[ents.vrow[e]!] = (this.ctx.records.byPid.get(pid)?.extra.get(PATROL_LAMPS)?.[0] ?? 0) & 3;
     ents.vehiclePayloadMass[ents.vrow[e]!] = Math.fround(this.payloadMass(e));
     this.health.set(pid, this.ctx.records.byPid.get(pid)?.vitals?.at(V_HEALTH, world.tick) ?? 0);
     this.note(this.hosts.get(pid)!);
     world.history.track(e);
     this.save(e);
     return true;
+  }
+
+  setLightMode(e: number, mode: number): void {
+    const { world, records } = this.ctx, ents = world.ents, row = ents.vrow[e]!;
+    const rec = records.byPid.get(ents.pid[e]!)!;
+    ents.vehicleLightMode[row] = mode;
+    if (mode) rec.extra.set(PATROL_LAMPS, Uint8Array.of(mode));
+    else rec.extra.delete(PATROL_LAMPS);
+    records.dirty.add(rec.pid);
   }
 
   /** Reads a saved component into `this.body`, clamped to the current definition, which settings may have retuned. */

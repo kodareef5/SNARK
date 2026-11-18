@@ -14,9 +14,10 @@ import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { MountCameraPivot } from "./mount-camera.ts";
 import { motionProgress, motionTicks } from "../../shared/sim/motion.ts";
+import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
 import { MODE_FLYER, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, VEHICLE_LIGHTS, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
@@ -225,6 +226,7 @@ export class App {
       get inMenu() { return !app.ui.wantsPointerLock; },
       get inspecting() { return app.ui.inspect; },
       get flying() { return app.controls.onFlyer; },
+      get patrol() { return app.session.driving >= 0 && app.vehicleTelemetry.lightMode >= 0; },
       adjust: by => this.ui.adjustFocused(by),
       key: (code, down) => { this.key(code, down, false, 1); }, mouse: (button, down) => this.mouseButton(button, down, 1),
       move: (x, z) => this.controls.padMove(x, z), look: (x, y) => this.look(x,y), used: () => { this.ui.inputDevice = 1; },
@@ -402,6 +404,14 @@ export class App {
       }
       if (this.useKept) {
         if (!down) this.useKept = false;
+        return true;
+      }
+    }
+    if (code === "KeyK" && this.session.driving >= 0) {
+      const def = this.reg.vehicle[this.session.bodyKind];
+      if (def && isWheelVehicle(def) && def.emergencyLights) {
+        const r = this.remote, i = r.id.subarray(0, r.count).indexOf(this.session.driving);
+        if (down && !repeat && i >= 0) this.session.command(CMD_VEHICLE, w => { w.u8(VEHICLE_LIGHTS); w.u32(makeHandle(this.session.driving, r.gen[i]!)); });
         return true;
       }
     }
@@ -1052,6 +1062,7 @@ export class App {
         this.vehicleTelemetry.updateRotor(session.driving, session.own, car.spec, altitude, c.directFlight, this.steer && (c.buttons & BTN_PRONE) !== 0);
       } else if (car.movement === "boat") this.vehicleTelemetry.updateBoat(session.driving, session.own, car.spec, this.steer && (c.buttons & BTN_SPRINT) !== 0);
       else this.vehicleTelemetry.update(session.driving, session.own, this.steer ? c.moveZ : 0, this.steer && (c.buttons & BTN_JUMP) !== 0, car.spec, dt);
+      this.vehicleTelemetry.lightMode = isWheelVehicle(car) && car.emergencyLights ? 0 : -1;
       hud.vehicle = this.vehicleTelemetry;
     } else this.vehicleTelemetry.stop();
     const carYaw = vehiclePose?.qw !== undefined ? Math.atan2(2 * (vehiclePose.qw * vehiclePose.qy! + vehiclePose.qx! * vehiclePose.qz!), 1 - 2 * (vehiclePose.qx! ** 2 + vehiclePose.qy! ** 2))
@@ -1238,7 +1249,11 @@ export class App {
       const r = this.remote;
       for (let i = 0; i < r.count; i++) {
         if (r.id[i] !== session.driving) continue;
-        if (body.vehicle) body.vehicle.doors = r.vehicleDoors[i]!;
+        if (body.vehicle) {
+          body.vehicle.doors = r.vehicleDoors[i]!;
+          body.vehicle.lightMode = r.vehicleLightMode[i]!;
+          if (this.vehicleTelemetry.lightMode >= 0) this.vehicleTelemetry.lightMode = body.vehicle.lightMode;
+        }
         body.generation = r.gen[i]!;
         body.colors.set(r.colors.subarray(i * 6, i * 6 + 6));
         for (let k = 0; k < GEAR_COUNT; k++) body.gear[k] = r.gear[i * GEAR_COUNT + k]!;

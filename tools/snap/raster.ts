@@ -10,8 +10,8 @@ import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { LANDMARK_BUFFER } from "../../client/core/render/farlandmarks.ts";
 import { nearKeeps } from "../../client/core/render/hand.ts";
 import { groundNormal, groundSize, groundTint, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
-import { MOST_LOD, detailKeeps, rotorOf, shapeOf } from "../../client/core/render/detailtext.ts";
-import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
+import { MOST_LOD, detailKeeps, lampOf, rotorOf, shapeOf } from "../../client/core/render/detailtext.ts";
+import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LAMP, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { wearLate } from "../../client/core/render/wear.ts";
@@ -723,7 +723,7 @@ export class Rasterizer {
             if (z >= this.depth[at]!) continue;
             const [q0, q1, q2] = [e0 * poly[v0 + 7]!, e1 * poly[v1 + 7]!, e2 * poly[v2 + 7]!];
             const qs = 1 / (q0 + q1 + q2);
-            if (blend && (flags & DETAIL_ROTOR) !== 0 && qs < this.from) continue;
+            if (blend && (flags & (DETAIL_ROTOR | DETAIL_LAMP)) !== 0 && qs < this.from) continue;
             const carry = (j: number): number => (q0 * poly[v0 + j]! + q1 * poly[v1 + j]! + q2 * poly[v2 + j]!) * qs;
             const [rx, ry, rz, cx, cy] = [carry(0), carry(1), carry(2), carry(3), carry(4)];
             // The level the pixel's footprint in the picture asks for, from the corner a pixel right and a pixel down, as derivatives give it.
@@ -739,8 +739,9 @@ export class Rasterizer {
             corner(fx, fy + 1, below);
             const footprint = (Math.max(Math.hypot(right[0]! - cx, right[1]! - cy), Math.hypot(below[0]! - cx, below[1]! - cy)) * CELL) / 2;
             const level = Math.min(MOST_LOD, Math.max(0, Math.log2(Math.max(footprint, 1e-6))));
-            if ((flags & DETAIL_ROTOR) !== 0) {
-              rotorOf(cx, cy, grey, shape);
+            if ((flags & (DETAIL_ROTOR | DETAIL_LAMP)) !== 0) {
+              if ((flags & DETAIL_LAMP) !== 0) lampOf(cx, cy, shape);
+              else rotorOf(cx, cy, grey, shape);
               [texel[0], texel[1], texel[2], texel[3]] = [shape[2]!, shape[1]!, 0, shape[0]!];
             }
             else if (p.lit) this.detailTexel(atlas, side, cells, cell, cx, cy, level, texel);
