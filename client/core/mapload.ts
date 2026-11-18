@@ -21,6 +21,12 @@ import { PREDICTED_REACH } from "./session.ts";
 export const PARTS_AT_ONCE = 6;
 /** Seconds of the body's way ahead of it whose ground is asked for as if the body were there. */
 export const LEAD = 2;
+/**
+ * Metres round the body within which `follow`'s `whole` brings all the ground before the first frame; the rest comes one
+ * part at a time, nearest first, while the game is played. All a map's ground was 9.8 MB on an 8 km city and would be
+ * about 40 MB on one of 16 km; this much is some 6 MB at most, wherever the body stands, and ahead of any car.
+ */
+export const WHOLE_REACH = 2500;
 /** Milliseconds before a part that failed is asked for again: RETRY_FIRST, doubled at each failure in a row, to RETRY_MOST. */
 export const RETRY_FIRST = 500;
 export const RETRY_MOST = 8000;
@@ -89,7 +95,11 @@ export class StagedMap {
 
   constructor(head: MapHead) {
     this.head = head;
-    this.hf = new Heightfield(head.dims, TERRAIN_CELL, head.minY, head.stepY);
+    // The ground's classes a wheel feels, a cell each two samples, filled as each sector's ground comes: the page's own
+    // car steps on this heightfield, and without them it drove every street off-road where the server's grips (D811).
+    // Before a sector comes its cells read as plain ground, where no body is predicted (D756).
+    const cells = (chunks: number): number => (chunks * CHUNK_SIZE) / TERRAIN_CELL / 2 + 1;
+    this.hf = new Heightfield(head.dims, TERRAIN_CELL, head.minY, head.stepY, undefined, undefined, new Uint8Array(cells(head.dims.chunksX) * cells(head.dims.chunksZ)));
     this.hf.seaLevel = head.seaLevel;
     this.hf.holdNone();
     this.nodes = blankLayers(head);
@@ -107,10 +117,10 @@ export class StagedMap {
       setNodes(dims, this.nodes, piece);
       if (piece.water) this.water.push(piece.water);
     } else if (piece.kind === "ground") {
-      setGround(dims, this.hf.heights, this.hf.tint, piece);
+      setGround(dims, this.hf.heights, this.hf.tint, piece, this.hf.ground);
       this.hf.hold(piece.sq.cx0, piece.sq.cz0, piece.sq.cx1, piece.sq.cz1);
       if (piece.listed.every((rows) => rows === null)) return;
-      this.listed.push({ kind: "ground", sq: piece.sq, heights: NO_HEIGHTS, tint: NO_TINT, listed: piece.listed });
+      this.listed.push({ kind: "ground", sq: piece.sq, heights: NO_HEIGHTS, tint: NO_TINT, ground: NO_TINT, listed: piece.listed });
       // Listed layer k's rows from the sectors come so far, set in the layer the node source reads.
       this.head.layers.forEach((rule, k) => rule.type === 1 && piece.listed[k]!.count.some((n) => n > 0) && Object.assign(this.nodes[k]!, listedRows(dims, rule.kinds, k, this.listed)));
     }
@@ -251,8 +261,9 @@ export class MapLoader {
    * From now on the rest of the map comes, the ground nearest first to where `where` has the body, else to the map's first
    * spawn point. Resolves once the ground the first frame waits for where it has the body now has come, alone. From then
    * on `then.say` is told what the player is, and once every part has come `then.arrived` is handed the map's statics,
-   * read a step at a time. With `then.whole` it resolves only once all the ground has come, and the statics then come one
-   * at a time: what the page asks for, until parts can come while the game is played without holding its packets back.
+   * read a step at a time. With `then.whole` it resolves only once all the ground within WHOLE_REACH has come, and the rest
+   * of the ground then the statics come one at a time: what the page asks for, until parts can come while the game is
+   * played without holding its packets back.
    */
   async follow(where: () => Place | null, then: { readonly say?: (line: string) => void; readonly arrived?: (statics: MapStatics) => void; readonly whole?: boolean } = {}): Promise<void> {
     this.where = where;
@@ -264,9 +275,14 @@ export class MapLoader {
     // With `whole` the rest of the ground comes before the first frame too, so that nothing of it is fetched while the
     // game is played: parts coming six at once held the game's own packets back by seconds on a slow link, and a body
     // is not predicted on ground that has not come.
+    // On a big map only the ground within WHOLE_REACH: the rest comes after, one part at a time and nearest first, on the
+    // one lane the statics take, which holds no packet back.
     if (then.whole) {
+      const within = this.grounds.filter((p) => offOf(head, p, x, z) <= WHOLE_REACH);
+      for (const p of within) this.grounds.splice(this.grounds.indexOf(p), 1);
+      let k = 0;
       const rest = async (): Promise<void> => {
-        for (let p = this.grounds.length > 0 ? this.next() : null; p; p = this.grounds.length > 0 ? this.next() : null) await this.must(p);
+        for (let p = within[k++]; p; p = within[k++]) await this.must(p);
       };
       await Promise.all(Array.from({ length: PARTS_AT_ONCE }, rest));
     }

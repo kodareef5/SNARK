@@ -3,7 +3,7 @@
 //
 // The head:
 //   0   "SNMP"
-//   4   u16 version 8, u16 reserved
+//   4   u16 version 9, u16 reserved
 //   8   u32 hash        FNV-1a of every byte of the head after it: the map's hash, which names each part by its own
 //   12  u32 bytes of the head. Its parts follow it in the order of its table, each where the one before ends.
 //   16  u16 chunksX, u16 chunksZ
@@ -27,6 +27,8 @@
 //               a u8 count of kinds and each a u8 weight and a content id, then u8 metres a square, a u8 count of codes and
 //               that many bytes, and u8 1 to take the picture of the zoned layer before or 0 for its own. With codes, the
 //               picture is one the zoned layers share, and a value's zone in this layer is its code.
+//   TEYE  Optional. u8 count, then each a name, f64 x/y/z, u16 yaw, u8 colour and f64 deck radius.
+//         An optional trailing u8 form per site distinguishes the newer instruments.
 //   SPWN  u8 count, then each a string name, i32 x, i32 z in 1/512 m, u16 yaw. The first is where a new survivor arrives.
 //   WILD  where wild creatures live: u16 count, then each a string spawns id, u16 count it holds at 1x, u8 shape (0 a circle,
 //         1 a box), i32 x, i32 z, u32 radius or half width, u32 half depth, in 1/512 m.
@@ -63,7 +65,9 @@
 //               need no ground; only its height does. A layer's bits start on a byte. Then, where the head has WATR, a u16
 //               count of its chunks holding water, each a u16 index among its chunks row by row, ascending, and its squares
 //               as u16s row by row: the number of its body counting from 1, or 0 for the sea's.
-//   3 ground    a sector's ground at every sample (2 m), its edges among them, as a grid, then a u8 tint each. Then for each
+//   3 ground    a sector's ground at every sample (2 m), its edges among them, as a grid, then a u8 tint each, then a u8
+//               ground class (shared/world/vehicle-surface.ts GROUND_CLASS) each two samples a side, its far edge's cells
+//               among them: sample (i, j)'s cell is (i >> 1, j >> 1), 257 a side of a whole sector. Then for each
 //               listed layer, for each of its chunks row by row, a u16 count and 7-byte rows: u8 kind, u16 x, u16 z in
 //               1/1024 m from the chunk's corner, u16 yaw.
 //   4 statics   a sector's statics, where it has some: u32 count n, then columns of n in the map's order, each as byte
@@ -80,6 +84,7 @@
 // A part's file is `<kind>.<column>-<row>.<hash>.part` (partName); the land's and the head's have no square.
 // A string is a varint byte length and UTF-8, as on the wire. A yaw is in 1/65,536 turns.
 
+import { EYE_COLORS, EYE_FORMS, type TideEyeSite } from "./tide-eye.ts";
 import type { Def, MapZone } from "../content/defs.ts";
 import type { Registry } from "../content/registry.ts";
 import { CHUNK_SIZE, FRAME_CHUNKS, MAX_CHUNKS_PER_AXIS, SECTOR_CHUNKS, STRUCT_UNITS, WORLD_MAX_Y, WORLD_MIN_Y, chunkAt, chunkCount, chunkCx, chunkCz, frameKey, framed, type FramedDims, type MapDims } from "../coords.ts";
@@ -92,7 +97,7 @@ import { MAX_SLOTS_PER_CHUNK, StructureStore } from "./structures.ts";
 import { FarCells, Summary, TACTICAL_CELL, bakeChunk, pieceShapes } from "./tactical.ts";
 import { MAX_WATER_BODIES, MapWater, type WaterBody } from "./water.ts";
 
-export const MAP_VERSION = 8;
+export const MAP_VERSION = 9;
 const MAGIC = 0x504d4e53;
 const HEADER_BYTES = 56;
 /** Chunks a side of an overview's square, 4,096 m. */
@@ -340,11 +345,17 @@ export interface MapData {
   /** Row by row from z = 0, as a Heightfield holds them. */
   readonly heights: Uint16Array;
   readonly tint: Uint8Array;
+  /**
+   * What the ground is to a wheel, a class each two samples a side (Heightfield.ground); left out, every place is plain
+   * ground. The build sets it from the surface it made each sample (tools/mapworld/ground.ts).
+   */
+  readonly ground?: Uint8Array;
   /** As a file gives them back, or a list in the map's order, which every reader takes alike. */
   readonly statics: MapStatics | readonly MapStatic[];
   readonly nodes: readonly NodeLayer[];
   /** At least one. The first is where a new survivor arrives. */
   readonly spawns: readonly MapSpawn[];
+  readonly tideEyes?: readonly TideEyeSite[];
   /** Spawn regions, each naming a `spawns` definition and the creatures it holds. They are added to those of the map's definition. */
   readonly regions?: readonly MapZone[];
   readonly vehicles?: readonly MapVehicle[];
@@ -398,6 +409,12 @@ function slotsOf(layer: NodeLayer, chunks: number): number {
   return most;
 }
 
+function validateEyes(eyes: readonly TideEyeSite[], dims: MapDims): void {
+  if (eyes.length > 255 || eyes.some(e => !e.name || e.name.length > 64 || !EYE_COLORS.includes(e.color)
+    || !EYE_FORMS.includes(e.form) || !Number.isFinite(e.y) || !(e.x >= 0 && e.x <= dims.chunksX * CHUNK_SIZE && e.z >= 0 && e.z <= dims.chunksZ * CHUNK_SIZE)
+    || !(e.radius > 0 && e.radius <= 70) || !Number.isInteger(e.yaw) || e.yaw < 0 || e.yaw > 65535)) throw new Error("map: invalid Tide Eye site");
+}
+
 function checkStatics(dims: MapDims, statics: MapStatics | readonly MapStatic[]): void {
   const [sizeX, sizeZ] = [dims.chunksX * CHUNK_SIZE, dims.chunksZ * CHUNK_SIZE];
   eachStatic(statics, (kind, x, y, z) => {
@@ -424,6 +441,7 @@ function check(m: MapData): void {
     return top;
   };
   if (!/^[\x21-\x7e]{1,64}$/.test(m.id)) fail("its id must be 1 to 64 characters of plain text with no space");
+  if (m.tideEyes) validateEyes(m.tideEyes, m.dims);
   const landmarks = (m.content?.landmarks ?? []).map((l) => l.name);
   if (landmarks.length > 255 || landmarks.some((n) => !/^[a-z][a-z0-9-]{0,31}$/.test(n)) || new Set(landmarks).size !== landmarks.length) fail("its landmarks are each named once, in lower case, at most 255 of them");
   if (m.content?.landmarks.some((l) => ![l.x, l.y, l.z].every(Number.isFinite) || !whole(l.yaw, 0, 65535))) fail("a landmark of it is not set down at a place and a yaw");
@@ -435,6 +453,7 @@ function check(m: MapData): void {
   const sizeX = chunksX * CHUNK_SIZE;
   const sizeZ = chunksZ * CHUNK_SIZE;
   const samples = (sizeX / TERRAIN_CELL + 1) * (sizeZ / TERRAIN_CELL + 1);
+  if (m.ground && m.ground.length !== (sizeX / TERRAIN_CELL / 2 + 1) * (sizeZ / TERRAIN_CELL / 2 + 1)) fail(`its ground classes are ${m.ground.length}, and its size takes a cell each two samples a side`);
   if (m.heights.length !== samples || m.tint.length !== samples) fail(`it has ${m.heights.length} heights and ${m.tint.length} tints, and its size takes ${samples} of each`);
   const inside = (x: number, z: number): boolean => x >= 0 && x <= sizeX && z >= 0 && z <= sizeZ;
   if (!whole(m.spawns.length, 1, MAX_SPAWNS)) fail(`it has ${m.spawns.length} spawn points, and a map has 1 to ${MAX_SPAWNS}`);
@@ -858,6 +877,9 @@ function groundPart(m: MapData, dims: FramedDims, layers: readonly NodeLayer[], 
   const [i0, j0] = [sq.cx0 * CHUNK_SAMPLES, sq.cz0 * CHUNK_SAMPLES];
   putGrid(o, samplesOf(m.heights, nx, i0, j0, w, d, 1), w);
   o.put(samplesOf(m.tint, nx, i0, j0, w, d, 1));
+  // The ground's classes, a cell each two samples: plain ground where the map gives none.
+  const [gw, gd] = [((w - 1) >> 1) + 1, ((d - 1) >> 1) + 1];
+  o.put(m.ground ? samplesOf(m.ground, (nx + 1) >> 1, i0 >> 1, j0 >> 1, gw, gd, 1) : new Uint8Array(gw * gd));
   for (const layer of layers) {
     if (!("first" in layer)) continue;
     for (const c of chunksOf(dims, sq)) {
@@ -1009,6 +1031,15 @@ function headPart(m: MapData, dims: FramedDims, layers: readonly NodeLayer[], st
       o.u8(layer.allowCell);
     });
   }
+  if (m.tideEyes?.length) o.section("TEYE", () => {
+    o.u8(m.tideEyes!.length);
+    for (const eye of m.tideEyes!) {
+      o.text(eye.name); o.f64(eye.x); o.f64(eye.y); o.f64(eye.z);
+      o.u16(eye.yaw); o.u8(EYE_COLORS.indexOf(eye.color)); o.f64(eye.radius);
+    }
+    // Older headers end after the radii. Only maps with a distinct instrument need the form column.
+    if (m.tideEyes!.some(eye => eye.form)) for (const eye of m.tideEyes!) o.u8(EYE_FORMS.indexOf(eye.form));
+  });
   o.section("SPWN", () => {
     o.u8(m.spawns.length);
     for (const s of m.spawns) {
@@ -1185,6 +1216,7 @@ export interface MapHead {
   readonly stepY: number;
   readonly seaLevel: number;
   readonly spawns: readonly MapSpawn[];
+  readonly tideEyes?: readonly TideEyeSite[];
   readonly regions: readonly MapZone[];
   readonly vehicles: readonly MapVehicle[];
   /** Null where it has no LAND. */
@@ -1257,6 +1289,7 @@ function readHeadSections(r: In, hash: number): MapHead {
   const vehicles: MapVehicle[] = [];
   const vehicleExtras = new Map<number, Partial<MapVehicle>>();
   let water: MapHead["water"] = null;
+  let tideEyes: TideEyeSite[] | undefined;
   let landmarks: MapLandmark[] | null = null;
   let kinds: string[] = [];
   let counts: Uint16Array = new Uint16Array(chunkCount(dims));
@@ -1265,7 +1298,24 @@ function readHeadSections(r: In, hash: number): MapHead {
     const tag = String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8());
     const s = new In(r.take(r.u32()));
     if (tag === "NODE") layers.push(readRule(s));
-    else if (tag === "SPWN") {
+    else if (tag === "TEYE") {
+      if (tideEyes) throw new Error("map: duplicate Tide Eye section");
+      tideEyes = Array.from({ length: s.u8() }, () => {
+        const name = s.text(), x = s.f64(), y = s.f64(), z = s.f64(), yaw = s.u16();
+        const color = EYE_COLORS[s.u8()], radius = s.f64();
+        if (!color) throw new Error("map: invalid Tide Eye color");
+        return { name, x, y, z, yaw, color, radius };
+      });
+      if (s.at < s.bytes.length) {
+        if (s.bytes.length - s.at !== tideEyes.length) throw new Error("map: invalid obelisk form column");
+        tideEyes = tideEyes.map(eye => {
+          const form = s.u8();
+          if (form >= EYE_FORMS.length) throw new Error("map: unknown obelisk form");
+          return form ? { ...eye, form: EYE_FORMS[form]! } : eye;
+        });
+      }
+      validateEyes(tideEyes, dims);
+    } else if (tag === "SPWN") {
       for (let n = s.u8(); n > 0; n--) spawns.push({ name: s.text(), x: s.i32() / STRUCT_UNITS, z: s.i32() / STRUCT_UNITS, yaw: s.u16() });
     } else if (tag === "WILD") {
       for (let n = s.u16(); n > 0; n--) {
@@ -1326,7 +1376,7 @@ function readHeadSections(r: In, hash: number): MapHead {
     if (!vehicles[index]) throw new Error("map: parked vehicle extension names a missing vehicle");
     vehicles[index] = { ...vehicles[index]!, ...extra };
   }
-  const head = { hash, bytes: r.bytes.length, name: partName("head", 0, 0, partHash(r.bytes)), id, dims, minY, stepY, seaLevel, spawns, regions, vehicles, landmarks, layers, water, kinds, counts, parts: parts ?? [] };
+  const head = { hash, bytes: r.bytes.length, name: partName("head", 0, 0, partHash(r.bytes)), id, dims, minY, stepY, seaLevel, spawns, regions, vehicles, landmarks, ...(tideEyes ? { tideEyes } : {}), layers, water, kinds, counts, parts: parts ?? [] };
   checkParts(head);
   return head;
 }
@@ -1379,6 +1429,8 @@ export interface GroundPiece {
   /** Row by row, (cx1 - cx0) * 32 + 1 a row. */
   readonly heights: Uint16Array;
   readonly tint: Uint8Array;
+  /** Row by row, (cx1 - cx0) * 16 + 1 a row: the ground's class each two samples a side. */
+  readonly ground: Uint8Array;
   /** By node layer, a listed one's rows chunk by chunk and each of its chunks' count, row by row; null for another layer. */
   readonly listed: readonly ({ readonly count: Uint16Array; readonly kind: Uint8Array; readonly x: Uint16Array; readonly z: Uint16Array; readonly yaw: Uint16Array } | null)[];
 }
@@ -1485,6 +1537,7 @@ function readGround(head: MapHead, sq: Square, s: In): GroundPiece {
   const [w, d] = [(sq.cx1 - sq.cx0) * CHUNK_SAMPLES + 1, (sq.cz1 - sq.cz0) * CHUNK_SAMPLES + 1];
   const heights = getGrid(s, w, d);
   const tint = s.take(w * d).slice();
+  const ground = s.take((((w - 1) >> 1) + 1) * (((d - 1) >> 1) + 1)).slice();
   const chunks = (sq.cx1 - sq.cx0) * (sq.cz1 - sq.cz0);
   const listed = head.layers.map((rule) => {
     if (rule.type !== 1) return null;
@@ -1499,7 +1552,7 @@ function readGround(head: MapHead, sq: Square, s: In): GroundPiece {
     }
     return { count, kind: Uint8Array.from(rows[0]!), x: Uint16Array.from(rows[1]!), z: Uint16Array.from(rows[2]!), yaw: Uint16Array.from(rows[3]!) };
   });
-  return { kind: "ground", sq, heights, tint, listed };
+  return { kind: "ground", sq, heights, tint, ground, listed };
 }
 
 function readTops(head: MapHead, sq: Square, s: In): TopsPiece {
@@ -1546,8 +1599,11 @@ function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, Statics
   return { kind: "statics", sq, id, yaw, x: xs, y: ys, z: zs, chunk };
 }
 
-/** Sets a sector's ground into the map's heights and tint, row by row from z = 0. An empty tint, as a server's, is left so. */
-export function setGround(dims: MapDims, heights: Uint16Array, tint: Uint8Array, piece: GroundPiece): void {
+/**
+ * Sets a sector's ground into the map's heights, tint and ground classes, row by row from z = 0. An empty tint, as a
+ * server's, is left so; and so is an empty ground, as a client's that has no use for it.
+ */
+export function setGround(dims: MapDims, heights: Uint16Array, tint: Uint8Array, piece: GroundPiece, ground: Uint8Array = NO_GROUND): void {
   const { sq } = piece;
   const nx = dims.chunksX * CHUNK_SAMPLES + 1;
   const w = (sq.cx1 - sq.cx0) * CHUNK_SAMPLES + 1;
@@ -1556,7 +1612,13 @@ export function setGround(dims: MapDims, heights: Uint16Array, tint: Uint8Array,
     heights.set(piece.heights.subarray(j * w, j * w + w), at);
     if (tint.length > 0) tint.set(piece.tint.subarray(j * w, j * w + w), at);
   }
+  if (ground.length === 0) return;
+  const [gx, gw] = [(nx + 1) >> 1, ((w - 1) >> 1) + 1];
+  for (let j = 0; j < piece.ground.length / gw; j++) {
+    ground.set(piece.ground.subarray(j * gw, j * gw + gw), ((sq.cz0 * CHUNK_SAMPLES) / 2 + j) * gx + (sq.cx0 * CHUNK_SAMPLES) / 2);
+  }
 }
+const NO_GROUND = new Uint8Array(0);
 
 /** Sets an overview's pictures and its slots' bits of where nodes stand into the map's node layers, as `blankLayers` made them. */
 export function setNodes(dims: MapDims, layers: readonly NodeLayer[], piece: OverviewPiece): void {
@@ -1702,6 +1764,7 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
   const { dims } = head;
   const n = (dims.chunksX * CHUNK_SAMPLES + 1) * (dims.chunksZ * CHUNK_SAMPLES + 1);
   const [heights, tint] = [new Uint16Array(n), new Uint8Array(n)];
+  const ground = new Uint8Array(((dims.chunksX * CHUNK_SAMPLES) / 2 + 1) * ((dims.chunksZ * CHUNK_SAMPLES) / 2 + 1));
   const nodes = blankLayers(head);
   const grounds: GroundPiece[] = [];
   const statics: StaticsPiece[] = [];
@@ -1714,7 +1777,7 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
       setNodes(dims, nodes, p);
       if (p.water) water.push(p.water);
     } else if (p.kind === "ground") {
-      setGround(dims, heights, tint, p);
+      setGround(dims, heights, tint, p, ground);
       grounds.push(p);
     } else if (p.kind === "tops") tops.push(p);
     else statics.push(p);
@@ -1723,7 +1786,8 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
   const mapWater = joinWater(head, water);
   const content = head.landmarks ? { content: { landmarks: head.landmarks, defs } } : {};
   const { id, minY, stepY, seaLevel, spawns, regions, vehicles, hash } = head;
-  return { id, dims, minY, stepY, seaLevel, heights, tint, statics: finish(joinStatics(head, statics, order)), nodes, spawns, ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(mapWater ? { water: mapWater } : {}), ...content, ...(tops.length > 0 ? { tops: joinTops(tops) } : {}), hash };
+  // A map whose ground is plain everywhere reads back with no classes, as it was written: the same map, and no grid held.
+  return { id, dims, minY, stepY, seaLevel, heights, tint, ...(ground.some((v) => v !== 0) ? { ground } : {}), statics: finish(joinStatics(head, statics, order)), nodes, spawns, ...(head.tideEyes ? { tideEyes: head.tideEyes } : {}), ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(mapWater ? { water: mapWater } : {}), ...content, ...(tops.length > 0 ? { tops: joinTops(tops) } : {}), hash };
 }
 
 /** The water of a map's overviews (OverviewPiece.water) as the map's, every overview's given, or null where its head has no WATR. */
@@ -1818,7 +1882,7 @@ export function partsOf<B extends ArrayBufferLike>(file: Uint8Array<B>): { name:
   return [{ name: head.name, part: null, bytes: file.subarray(0, head.bytes) }, ...head.parts.map((p) => ({ name: p.name, part: p, bytes: file.subarray(p.at, p.at + p.length) }))];
 }
 export function mapHeightfield(map: MapData): Heightfield {
-  const hf = new Heightfield(map.dims, TERRAIN_CELL, map.minY, map.stepY, map.heights, map.tint);
+  const hf = new Heightfield(map.dims, TERRAIN_CELL, map.minY, map.stepY, map.heights, map.tint, map.ground);
   hf.seaLevel = map.seaLevel;
   hf.water = map.water ?? null;
   return hf;

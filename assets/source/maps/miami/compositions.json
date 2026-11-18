@@ -1,0 +1,647 @@
+{
+  "belfry": {
+    "operations": [
+      {
+        "op": "stack",
+        "height": 8,
+        "offset": 0,
+        "hall": false,
+        "exclude": [
+          -8,
+          -12,
+          8,
+          12
+        ],
+        "playable": 2
+      },
+      {
+        "op": "stack",
+        "height": null,
+        "offset": -20,
+        "hall": false,
+        "rect": [
+          -8,
+          -12,
+          8,
+          12
+        ],
+        "playable": 8
+      },
+      {
+        "op": "parts",
+        "fromTop": true,
+        "parts": [
+          [
+            "crown",
+            -6,
+            -18,
+            -6,
+            "limestone"
+          ],
+          [
+            "crown",
+            -6,
+            -18,
+            6,
+            "limestone"
+          ],
+          [
+            "crown",
+            6,
+            -18,
+            -6,
+            "limestone"
+          ],
+          [
+            "crown",
+            6,
+            -18,
+            6,
+            "limestone"
+          ],
+          [
+            "trim8",
+            -4,
+            -16,
+            -6,
+            "limestone"
+          ],
+          [
+            "trim8",
+            4,
+            -16,
+            -6,
+            "limestone"
+          ],
+          [
+            "trim8",
+            -4,
+            -16,
+            6,
+            "limestone"
+          ],
+          [
+            "trim8",
+            4,
+            -16,
+            6,
+            "limestone"
+          ],
+          [
+            "crown",
+            -4,
+            -14,
+            -4,
+            "limestone"
+          ],
+          [
+            "crown",
+            -4,
+            -14,
+            4,
+            "limestone"
+          ],
+          [
+            "crown",
+            4,
+            -14,
+            -4,
+            "limestone"
+          ],
+          [
+            "crown",
+            4,
+            -14,
+            4,
+            "limestone"
+          ],
+          [
+            "crown",
+            -2,
+            -10,
+            -2,
+            "limestone"
+          ],
+          [
+            "crown",
+            -2,
+            -10,
+            2,
+            "limestone"
+          ],
+          [
+            "crown",
+            2,
+            -10,
+            -2,
+            "limestone"
+          ],
+          [
+            "crown",
+            2,
+            -10,
+            2,
+            "limestone"
+          ],
+          [
+            "crown",
+            0,
+            -6,
+            0,
+            "mint"
+          ],
+          [
+            "fin4",
+            0,
+            -2,
+            0,
+            "limestone"
+          ]
+        ]
+      }
+    ]
+  },
+  "ribbed-bar": {
+    "operations": [
+      {
+        "op": "stack",
+        "height": 8,
+        "offset": 0,
+        "hall": false,
+        "exclude": [
+          -32,
+          -16,
+          32,
+          16
+        ],
+        "playable": 2
+      },
+      {
+        "op": "stack",
+        "height": null,
+        "offset": 0,
+        "hall": false,
+        "rect": [
+          -32,
+          -16,
+          32,
+          16
+        ]
+      },
+      {
+        "op": "ribs",
+        "rect": [
+          -32,
+          -16,
+          32,
+          16
+        ],
+        "finish": "limestone"
+      }
+    ]
+  },
+  "stepped-hotel": {
+    "operations": [
+      {
+        "op": "stack",
+        "height": 8,
+        "offset": 0,
+        "hall": false,
+        "exclude": [
+          -12,
+          -12,
+          12,
+          12
+        ],
+        "playable": 2
+      },
+      {
+        "op": "stack",
+        "height": null,
+        "offset": -4,
+        "hall": false,
+        "rect": [
+          -12,
+          -12,
+          12,
+          12
+        ],
+        "feature": "deco"
+      },
+      {
+        "op": "parts",
+        "fromTop": true,
+        "parts": [
+          [
+            "crown",
+            0,
+            -2,
+            -8,
+            "rose"
+          ],
+          [
+            "fin4",
+            0,
+            -2,
+            -10,
+            "limestone"
+          ]
+        ]
+      }
+    ]
+  },
+  "exhibition": {
+    "operations": [
+      {
+        "op": "stack",
+        "height": null,
+        "offset": 0,
+        "hall": true
+      },
+      {
+        "op": "ribs",
+        "finish": "limestone",
+        "rear": true
+      }
+    ]
+  },
+  "spire": {
+    "operations": [
+      {
+        "op": "tower"
+      }
+    ]
+  },
+  "arena": {
+    "operations": [
+      {
+        "op": "arena"
+      }
+    ]
+  },
+  "transit-portal": {
+    "operations": [
+      {
+        "op": "stack",
+        "height": null,
+        "offset": 0,
+        "hall": false,
+        "rect": [
+          -20,
+          -20,
+          20,
+          20
+        ],
+        "feature": "balconies",
+        "coreU": -16
+      },
+      {
+        "op": "portal",
+        "width": 12,
+        "height": 16
+      },
+      {
+        "op": "parts",
+        "parts": [
+          [
+            "fin16",
+            -8,
+            8,
+            -20,
+            "clay"
+          ],
+          [
+            "fin16",
+            8,
+            8,
+            -20,
+            "clay"
+          ],
+          [
+            "trim8",
+            -4,
+            16,
+            -20,
+            "clay"
+          ],
+          [
+            "trim8",
+            4,
+            16,
+            -20,
+            "clay"
+          ]
+        ]
+      }
+    ]
+  },
+  "gesu": {
+    "operations": [
+      {
+        "op": "stack",
+        "height": 12,
+        "hall": true,
+        "form": {
+          "shell": "masonry",
+          "inside": "nave",
+          "roof": "bare",
+          "front": "none",
+          "windowEvery": 4
+        }
+      },
+      {
+        "op": "parts",
+        "parts": [
+          [
+            "zcore",
+            24,
+            14,
+            0,
+            "limestone"
+          ],
+          [
+            "zcore",
+            24,
+            18,
+            0,
+            "limestone"
+          ],
+          [
+            "zcore",
+            24,
+            22,
+            0,
+            "limestone"
+          ],
+          [
+            "fin8",
+            24,
+            28,
+            0,
+            "limestone"
+          ],
+          [
+            "trim4",
+            24,
+            29,
+            0,
+            "limestone",
+            90
+          ],
+          [
+            "zcore",
+            24,
+            14,
+            -8,
+            "limestone"
+          ],
+          [
+            "zroof8",
+            24,
+            16.5,
+            -8,
+            "clay",
+            90
+          ],
+          [
+            "zcore",
+            24,
+            14,
+            8,
+            "limestone"
+          ],
+          [
+            "zroof8",
+            24,
+            16.5,
+            8,
+            "clay",
+            90
+          ],
+          [
+            "fin8",
+            29,
+            4,
+            -12,
+            "limestone"
+          ],
+          [
+            "fin8",
+            29,
+            4,
+            -4,
+            "limestone"
+          ],
+          [
+            "fin8",
+            29,
+            4,
+            4,
+            "limestone"
+          ],
+          [
+            "fin8",
+            29,
+            4,
+            12,
+            "limestone"
+          ],
+          [
+            "zheader",
+            29,
+            8,
+            -8,
+            "limestone",
+            90
+          ],
+          [
+            "zbalcony",
+            30,
+            8.5,
+            -8,
+            "limestone",
+            90
+          ],
+          [
+            "zheader",
+            29,
+            8,
+            0,
+            "limestone",
+            90
+          ],
+          [
+            "zbalcony",
+            30,
+            8.5,
+            0,
+            "limestone",
+            90
+          ],
+          [
+            "zheader",
+            29,
+            8,
+            8,
+            "limestone",
+            90
+          ],
+          [
+            "zbalcony",
+            30,
+            8.5,
+            8,
+            "limestone",
+            90
+          ],
+          [
+            "zroof16",
+            -16,
+            12.5,
+            0,
+            "clay"
+          ],
+          [
+            "zroof16",
+            0,
+            12.5,
+            0,
+            "clay"
+          ],
+          [
+            "zroof16",
+            16,
+            12.5,
+            0,
+            "clay"
+          ],
+          [
+            "zroof8",
+            0,
+            13.5,
+            0,
+            "clay"
+          ]
+        ]
+      }
+    ]
+  },
+  "lyric": {
+    "operations": [
+      {
+        "op": "stack",
+        "height": 12,
+        "rect": [
+          -12,
+          -100,
+          12,
+          100
+        ],
+        "hall": true,
+        "form": {
+          "shell": "masonry",
+          "inside": "concourse",
+          "roof": "bare",
+          "front": "none",
+          "windowEvery": 3
+        }
+      },
+      {
+        "op": "front",
+        "parts": [
+          [
+            "zcore",
+            -9,
+            2,
+            0,
+            "limestone"
+          ],
+          [
+            "zcore",
+            -9,
+            6,
+            0,
+            "limestone"
+          ],
+          [
+            "zcore",
+            -9,
+            10,
+            0,
+            "limestone"
+          ],
+          [
+            "zcore",
+            9,
+            2,
+            0,
+            "limestone"
+          ],
+          [
+            "zcore",
+            9,
+            6,
+            0,
+            "limestone"
+          ],
+          [
+            "zcore",
+            9,
+            10,
+            0,
+            "limestone"
+          ],
+          [
+            "zpanel8",
+            -4,
+            10,
+            0,
+            "limestone"
+          ],
+          [
+            "zpanel8",
+            4,
+            10,
+            0,
+            "limestone"
+          ],
+          [
+            "crown",
+            0,
+            14,
+            0,
+            "limestone"
+          ],
+          [
+            "zbalcony",
+            -4,
+            6,
+            -1,
+            "limestone"
+          ],
+          [
+            "zbalcony",
+            4,
+            6,
+            -1,
+            "limestone"
+          ],
+          [
+            "sill8",
+            -4,
+            6.7,
+            -2,
+            "limestone"
+          ],
+          [
+            "sill8",
+            4,
+            6.7,
+            -2,
+            "limestone"
+          ]
+        ]
+      }
+    ]
+  }
+}

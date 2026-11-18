@@ -21,7 +21,7 @@ for (const [check, packed] of [[test, frozenPack], [artTest, corePack]] as const
           const c = h.client(s)!, p = [0, 0, 0];
           h.host.urban.door(car, seat, h.reg.move[a.kind[c.ent]!]!.radius, p);
           a.setPosition(c.ent, p[0]!, p[1]! + .05, p[2]!); h.world.history.discontinuity(c.ent);
-          expect(h.host.urban.mount(c, car)).toBe(RESULT_OK); h.run(800);
+          expect(h.host.urban.mount(c, car), species.id + "/" + seat.id).toBe(RESULT_OK); h.run(800);
           expect(a.seat[c.ent]).toBe(car + 1); expect(a.seatSlot[c.ent]).toBe(slot + 1);
           h.host.survival.gods.delete(c.pid);
           const rec = h.host.records.byPid.get(c.pid)!;
@@ -52,6 +52,17 @@ for (const [check, packed] of [[test, frozenPack], [artTest, corePack]] as const
           // This coupe's forward-leaning passenger lies behind its swept A-pillar from the side.
           const front = species.id === "core:berlinetta" && a.seatSlot[c.ent] === 2;
           expect(h.host.combat.castBodies(-1, eye[0]! + (front ? 0 : sign * 3), eye[1]!, eye[2]! + (front ? 3 : 0), front ? 0 : -sign, 0, front ? -1 : 0, 3.1), `${species.id} ${a.seatSlot[c.ent]} window`).toBe(c.ent);
+        }
+        if ("passengerAisle" in def) {
+          const last = occupants.at(-1)!.c, bench = def.seats.at(-1)!;
+          h.host.urban.dismount(last); h.run(1250);
+          expect(a.seat[last.ent], "rear bench exits past the seated crew").toBe(0);
+          const door = [0,0,0];
+          h.host.urban.door(car, bench, h.reg.move[a.kind[last.ent]!]!.radius, door);
+          a.setPosition(last.ent, door[0]!, door[1]! + .05, door[2]!);
+          expect(h.host.urban.mount(last,car), "freed bench can board again").toBe(RESULT_OK);
+          h.run(800);
+          expect(a.seatSlot[last.ent]).toBe(def.seats.length);
         }
       } finally { h.host.shutdown(); }
     }

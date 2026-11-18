@@ -2,9 +2,10 @@
 import { createHash } from "node:crypto";
 import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { workFolder } from "../maps/work.ts";
 
 const name = process.argv[2]; if (!name || !/^[a-z0-9-]+$/.test(name)) throw new Error("A map name is required");
-const source = join("assets/source/maps", name);
+const source = workFolder(name);
 const world = JSON.parse(readFileSync(join(source, "world/world.json"), "utf8"));
 const folder = join(source, "reports", world.ruins?.report ?? "ruins"); mkdirSync(folder, { recursive: true });
 const runs: Record<string, unknown>[] = [];

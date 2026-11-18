@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { BREAK_AT, RUIN_SHAPES, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import { readLabels, resolveLabels, type Facts, type PublicPlace } from "./labels.ts";
@@ -9,6 +9,7 @@ import { clearCirculation, reconcileRubble } from "./ruin-clearance.ts";
 import { contextualize } from "./ruin-context.ts";
 import { joinFrontages } from "./ruin-frontage.ts";
 import { boxOf, extentOf, middleOf, obstacleIndex, obstructs } from "./ruin-obstacles.ts";
+import { parkFreightTrailers } from "./freight.ts";
 import { carPicker, frameYaw, parkCars, roadIndex } from "./street-cars.ts";
 import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
 import type { WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
@@ -52,6 +53,9 @@ export function makeRuins(site: Site): StaticPiece[] {
     const id = Math.floor(f.building.id / 4);
     if ((primary.get(id)?.building.area ?? 0) < f.building.area) primary.set(id, f);
   }
+  // A named place is the city's own: one that stands on no footprint of this map is a broken anchor, never a quiet loss.
+  const unplaced = named.filter((p) => !primary.has(p.footprint));
+  if (unplaced.length > 0) throw new Error(`named places on no footprint of this map (ruins/places.json): ${unplaced.map((p) => p.name).join(", ")}`);
   const facts = resolveLabels(primary, data, v);
   const neighbours = new Map<string, Footprint[]>();
   for (const f of site.footprints) { const k = `${Math.floor(f.building.e / 64)},${Math.floor(f.building.n / 64)}`; if (!neighbours.has(k)) neighbours.set(k, []); neighbours.get(k)!.push(f); }
@@ -298,6 +302,7 @@ export function makeRuins(site: Site): StaticPiece[] {
   // Lettered signs come after the passes that read every piece as a box of the ruin kit.
   const signs = makeSigns(site, accept);
   const publicPlaces = makePublicPlaces(site, data.places, acceptProp, nearSign(site, 60));
+  parkFreightTrailers(site, roads, v.street.cars.parked.trailers, obstacles.hits, acceptProp);
   const fleet = ROAD_FLEET.map((s) => ({ id: s.id, def: s.vehicle as WheelVehicleDefinition }));
   const parked = parkCars(site, pieces, roads, v.street.cars, v.seed, fleet);
   for (const p of parked) {
@@ -314,6 +319,18 @@ export function makeRuins(site: Site): StaticPiece[] {
   }
   const folder = join(site.source, "reports", site.world.ruins?.report ?? "ruins"); mkdirSync(folder, { recursive: true });
   const put = (name: string, value: unknown): void => writeFileSync(join(folder, name), `${JSON.stringify(value, null, 2)}\n`);
+  // A long list written a row at a time, the same bytes as put's: as one string a big city's buildings were 0.3 to 0.55 GB.
+  const putRows = (name: string, rows: readonly unknown[]): void => {
+    if (rows.length === 0) return put(name, rows);
+    const fd = openSync(join(folder, name), "w");
+    let chunk = "[\n  ";
+    rows.forEach((row, i) => {
+      chunk += `${i > 0 ? ",\n  " : ""}${JSON.stringify(row, null, 2).replace(/\n/g, "\n  ")}`;
+      if (chunk.length > 1 << 20) { writeSync(fd, chunk); chunk = ""; }
+    });
+    writeSync(fd, `${chunk}\n]\n`);
+    closeSync(fd);
+  };
   put("bridges.json", bridges.records);
   put("bridge-summary.json", { roadApproaches: bridges.records.reduce((n, r) => n + r.approaches, 0), railAccess: bridges.records.reduce((n, r) => n + r.access.length, 0), byKind: tally(bridges.records.map((r) => r.kind)), brokenWays: bridges.records.filter((r) => r.deck.some((d) => d.gap)).map((r) => ({ id: r.id, name: r.name, skippedDecks: r.deck.filter((d) => d.gap).length })), ways: bridges.records.length, built: bridges.records.filter((r) => r.status === "built").length, blocks: bridges.records.filter((r) => r.status === "built").reduce((n, r) => n + r.blocks, 0), outlines: bridges.outlines });
   const topChunks = [...counts.keys()].filter((i) => counts[i]! > 0).sort((a, b) => counts[b]! - counts[a]! || a - b).slice(0, 30).map((i) => ({ x: i % chunksX, z: Math.floor(i / chunksX), blocks: counts[i] }));
@@ -342,7 +359,7 @@ export function makeRuins(site: Site): StaticPiece[] {
   put("parked.json", parked);
   const wrecks = pieces.filter((p) => wreckLook(p.kind));
   put("sightlines.json", sightlines);
-  put("buildings.json", records);
+  putRows("buildings.json", records);
   put("roof-gardens.json", records.flatMap((r) => {
     const p = pieces.slice(r.firstPiece, r.firstPiece + r.blocks).find((p) => p.kind.includes("_zshrub_"));
     return p ? [{ part: r.part, x: p.x, y: p.y, z: p.z, yaw: r.yaw, name: r.name }] : [];
@@ -425,7 +442,7 @@ function makePublicPlaces(site: Site, places: PublicPlace[], accept: (m: Mason) 
     if (p.kind === "pier") { record.status = "full way geometry built by bridge layer"; continue; }
     if (y < 0) { record.status = "submerged context"; continue; }
     // A board stands on its posts in a median or a verge, as it is mapped; anything else keeps the road clear.
-    if (p.kind !== "board" && [S.STREET, S.HIGHWAY, S.DECK].includes(site.ground.surface[i]! as typeof S.STREET)) { record.status = "road kept clear"; continue; }
+    if (p.kind !== "board" && [S.STREET, S.HIGHWAY, S.CROSSWALK, S.DECK].includes(site.ground.surface[i]! as typeof S.STREET)) { record.status = "road kept clear"; continue; }
     const frame: Frame = { x, z, c: 1, s: 0, yaw: 0, width: 24, depth: 24, rings: [[[-12, -12], [12, -12], [12, 12], [-12, 12], [-12, -12]]] };
     if (p.kind === "board") {
       // Its face toward the compass bearing it is mapped facing: the frame's u runs along the board.
@@ -487,7 +504,9 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way
   if (!rules) return out;
   const { nx, x1, z1 } = site.ground.grid;
   const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
-  const open = new Set<number>([S.OPEN, S.GREEN, S.CANOPY, S.YARD, S.DESERT]);
+  // A city's sidewalks are where its walk network says (tools/mapdata/streets.py, painted SIDEWALK, 0.5 to 3 m from the
+  // road's edge) and look like these slabs: left out, a walk was refused on nearly every painted sidewalk.
+  const open = new Set<number>([S.OPEN, S.GREEN, S.CANOPY, S.YARD, S.DESERT, S.SIDEWALK]);
   const rubble = (p: StaticPiece): boolean => /_z(skirt1|skirt2|wedge)_/.test(p.kind);
   /** Whether (x, z) is on a bridge's way on: its lanes and a metre beside them, 24 m out onto the approach and 12 m onto the deck. */
   const onWay = (x: number, z: number): boolean => entrances.some((e) => {
@@ -564,7 +583,8 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way
 function makeStreetPieces(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, obstacles: ReturnType<typeof obstacleIndex>, roads: ReturnType<typeof roadIndex>, protectedGround: ReadonlySet<number>): Record<string, number> {
   const out: Record<string, number> = {}; const { nx, x0, z0, x1, z1 } = site.ground.grid; const spacing = v.street.spacing;
   const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
-  const road = (surface: number | undefined): boolean => surface === S.STREET || surface === S.HIGHWAY;
+  // A crossing is the street under its paint: the lane runs on across it.
+  const road = (surface: number | undefined): boolean => surface === S.STREET || surface === S.HIGHWAY || surface === S.CROSSWALK;
   const cars = v.street.cars; const pick = carPicker(cars, v.seed);
   const rule: Rule = { recipe: "street", height: 0, finish: "rust", feature: "", holes: 0, wall: 0, bay: 8, matched: [], provisional: false, assemblies: v.assemblies };
   const frameAt = (x: number, z: number, yaw: number, width: number, depth: number): Frame => { const a = yaw * Math.PI / 180; return { x, z, yaw, c: Math.cos(a), s: Math.sin(a), width, depth, rings: [] }; };

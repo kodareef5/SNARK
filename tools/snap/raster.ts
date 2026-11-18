@@ -11,9 +11,10 @@ import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { LANDMARK_BUFFER } from "../../client/core/render/farlandmarks.ts";
 import { nearKeeps } from "../../client/core/render/hand.ts";
 import { COARSE, groundNormal, groundSize, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
+import { eyeRadiance } from "../../client/core/render/tide-eye.ts";
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { MOST_LOD, detailKeeps, lampOf, rotorOf, shapeOf } from "../../client/core/render/detailtext.ts";
-import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LAMP, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
+import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LAMP, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { wearLate } from "../../client/core/render/wear.ts";
@@ -414,7 +415,7 @@ export class Rasterizer {
   private domeColor = new Uint8ClampedArray(0);
   private domeDone = new Uint8Array(0);
   private domeTable: Uint8Array | null = null;
-  private readonly domeKey = new Float64Array(16 + FRAME.ends + 5);
+  private readonly domeKey = new Float64Array(16 + FRAME.ends + 5 + 24);
   private readonly domeInverse = new Float64Array(9);
   /**
    * Per pixel, a lit palette draw's colour and flags, projection footprint, position and geometric normal, and on the
@@ -702,6 +703,7 @@ export class Rasterizer {
     for (let i = 0; i < 16; i++) take(i, p.viewProj[i]!);
     for (let i = 0; i < FRAME.ends; i++) take(16 + i, p.frame[i]!);
     [p.sky[0]!, p.sky[1]!, p.sky[2]!, p.fogStart, p.fogEnd].forEach((v, i) => take(16 + FRAME.ends + i, v));
+    for (let i = 0; i < 24; i++) take(16 + FRAME.ends + 5 + i, p.frame[FRAME.eyes + i]!);
     if (!same) {
       if (this.domeColor.length !== this.color.length) this.domeColor = new Uint8ClampedArray(this.color.length);
       this.domeDone = new Uint8Array(this.width * this.height);
@@ -727,7 +729,19 @@ export class Rasterizer {
           const l = Math.hypot(reflected[0]!, reflected[1]!, reflected[2]!);
           for (let i = 0; i < 3; i++) reflected[i]! /= l;
           skyFrom(mirrored, p.frame, reflected, this.look);
-          shown(rgb, mirrored, 0, p);
+          if (p.lit) {
+            const exposure = p.frame[FRAME.exposure]!;
+            if (p.frame[FRAME.eyes + 3]! > 0 && exposure > 0) {
+              albedo2.fill(0);
+              const transmission = eyeRadiance(p.frame, reflected, albedo2);
+              for (let i = 0; i < 3; i++) mirrored[i] = mirrored[i]! * transmission + albedo2[i]! / exposure;
+            }
+            shown(rgb, mirrored, 0, p);
+          } else {
+            albedo2.fill(0);
+            const transmission = eyeRadiance(p.frame, reflected, albedo2);
+            for (let i = 0; i < 3; i++) rgb[i] = 1 - (1 - p.sky[i]! * transmission) * Math.exp(-albedo2[i]!);
+          }
           for (let i = 0; i < 3; i++) this.domeColor[o + i] = rgb[i]! * 255;
         }
       }
@@ -754,8 +768,8 @@ export class Rasterizer {
     this.depthShift = split ? (far ? 0.5 : -0.5) : 0;
     this.from = s === STEP_FAR_SEE ? p.split : 0;
     // On a lit frame what is opaque is shaded, and the dome goes where it left the sky, before anything is seen through.
-    if (s === STEP_FAR_SEE && p.lit) {
-      this.resolve();
+    if (s === STEP_FAR_SEE && (p.lit || p.frame[FRAME.eyes+3]! > 0)) {
+      if (p.lit) this.resolve();
       this.dome(p);
     }
     if (s === STEP_BODY) this.depth.fill(Infinity);
@@ -1426,6 +1440,18 @@ export class Rasterizer {
               const xy = (d0 * poly[v0]! + d1 * poly[v1]! + d2 * poly[v2]!) / (d0 + d1 + d2) - rx, zy = (d0 * poly[v0 + 2]! + d1 * poly[v1 + 2]! + d2 * poly[v2 + 2]!) / (d0 + d1 + d2) - rz;
               reach = Math.max(Math.hypot(xx, zx), Math.hypot(xy, zy));
             }
+          }
+          if (this.drawing >= 0 && (p.drawFlags[this.drawing]! & DRAW_SKYLINE)) {
+            this.deferred[at] = 0;
+            const fog = Math.max(0, Math.min(1, (dist - p.fogStart) / fogSpan));
+            const veil = Math.min(SKYLINE_MAX_FOG, fog * fog);
+            for (let k = 0; k < 3; k++) this.color[at * 4 + k] = pal[colorIndex * 4 + k]! * light * (1 - veil) + 255 * p.sky[k]! * veil;
+            continue;
+          }
+          if (this.drawing >= 0 && (p.drawFlags[this.drawing]! & DRAW_EMISSIVE)) {
+            this.deferred[at] = 0;
+            for (let k=0;k<3;k++) this.color[at*4+k] = Math.min(255,pal[colorIndex*4+k]!*1.18+30.6);
+            continue;
           }
           if (p.lit && !blend) {
             // Only what ends in front is shaded, once the opaque draws are done (`resolve`). The ground's cover is chosen here.

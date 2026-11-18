@@ -35,7 +35,7 @@ interface View {
   size?: [number, number];
 }
 
-const DEFAULT_VIEWS = new URL("../../assets/source/maps/miami/reports/farcity/views.json", import.meta.url).pathname;
+const DEFAULT_VIEWS = new URL("../../assets/source/maps/miami/look/farcity-views.json", import.meta.url).pathname;
 const percentile = (a: number[], q: number): number => [...a].sort((x, y) => x - y)[Math.min(a.length - 1, Math.floor(a.length * q))] ?? 0;
 const median = (a: number[]): number => percentile(a, 0.5);
 

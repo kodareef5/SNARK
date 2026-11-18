@@ -454,15 +454,21 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     ents.vehicleYaw[v] = Math.fround(yaw);
     ents.vehicleQy[v] = Math.fround(Math.sin(yaw / 2)); ents.vehicleQw[v] = Math.fround(Math.cos(yaw / 2));
     if (isWheelVehicle(def) && start.y === undefined) {
-      // Fit the four tyre heights at the spawn heading. An authored deck/air placement keeps its supplied height.
+      // Fit the ground under the authored axles. The chassis origin can be off-centre between them.
       const sn = Math.sin(yaw), cs = Math.cos(yaw);
       const height = (side: number, along: number) => world.hf.heightAt(x + cs * side + sn * along, z - sn * side + cs * along);
-      const w = def.spec.track / 2, l = def.spec.wheelbase / 2;
-      const fl = height(-w, l), fr = height(w, l), rl = height(-w, -l), rr = height(w, -l);
-      const cross = (fr + rr - fl - rl) / (4 * w), along = (fl + fr - rl - rr) / (4 * l);
-      const normal = 1 / Math.hypot(cross, along, 1);
-      const placedY = (fl + fr + rl + rr) / 4, travel = def.spec.suspensionTravel ?? .18;
-      if (normal < 1 && normal >= def.spec.minGroundNormal && Math.abs(fl + rr - fr - rl) < travel && Math.abs(placedY - y) < travel) {
+      const spec = def.spec, axles = spec.axles ?? [{ z: spec.wheelbase / 2, track: spec.track }, { z: -spec.wheelbase / 2, track: spec.track }];
+      const tyres = axles.map(a => ({ ...a, left: height(-a.track / 2, a.z), right: height(a.track / 2, a.z) }));
+      const front = tyres[0]!, rear = tyres.at(-1)!;
+      const along = (front.left + front.right - rear.left - rear.right) / (2 * (front.z - rear.z));
+      const cross = tyres.reduce((sum, a) => sum + (a.right - a.left) / a.track, 0) / tyres.length;
+      const placedY = (front.left + front.right) / 2 - front.z * along;
+      const normal = 1 / Math.hypot(cross, along, 1), travel = spec.suspensionTravel ?? .18;
+      const onPlane = tyres.every(a => {
+        const centre = placedY + a.z * along, rise = cross * a.track / 2;
+        return Math.max(Math.abs(a.left - centre + rise), Math.abs(a.right - centre - rise)) * 4 < travel;
+      });
+      if (normal < 1 && normal >= spec.minGroundNormal && onPlane && Math.abs(placedY - y) < travel) {
         const roll = Math.atan(cross), pitch = Math.asin(along * normal);
         const q = new Float64Array(4);
         vehicleRotation({ x, y, z, yaw, pitch, roll }, q);

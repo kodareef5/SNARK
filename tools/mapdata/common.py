@@ -9,6 +9,11 @@ import numpy as np
 from affine import Affine
 from PIL import Image
 
+# The layers a stage reads are pictures an earlier stage wrote, about a metre a pixel: a 16 km cut's fine layers are
+# 16,320 pixels a side, 270 million, past Pillow's guard against a picture that unpacks to more than it says, which is
+# for pictures from elsewhere. The downloads are read by rasterio and the guard stays on their side.
+Image.MAX_IMAGE_PIXELS = None
+
 CLIENT = 'mapdata/1.0'
 # The lattice's middle (shared/coords.ts), and the corner the map build's north-west noise is read from: the north-west
 # corner of a map 127 chunks a side there, in metres west and north of the middle's corner.

@@ -16,11 +16,12 @@ import { StructureStore } from "../../shared/world/structures.ts";
 import { Base } from "../mapworld/base.ts";
 import { landmarksOf, placeLandmarks } from "../mapworld/landmarks.ts";
 import type { World } from "../mapworld/ground.ts";
+import { workFolder } from "../maps/work.ts";
 
 const root = resolve(import.meta.dir, "../.."), file = resolve(root, process.argv[2] ?? "var/maps/miami.snmap");
 const out = resolve(root, process.argv[3] ?? "var/cruise-miami/placement.json");
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
-const bytes = readFileSync(file), map = parseMap(bytes), source = resolve(root, "assets/source/maps/miami");
+const bytes = readFileSync(file), map = parseMap(bytes), source = workFolder("miami");
 const configBytes = readFileSync(resolve(source, "world/world.json")), config = JSON.parse(configBytes.toString()) as World;
 const base = new Base(source);
 const placed = landmarksOf(config.landmarks ?? [], (lon, lat) => base.toSample(lon, lat), base.grid);

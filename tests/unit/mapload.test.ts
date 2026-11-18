@@ -7,7 +7,7 @@ import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import type { Get } from "../../client/core/fetched.ts";
-import { DAMAGED_MOST, MapLoader, PARTS_AT_ONCE, RETRY_FIRST, RETRY_MOST, StagedMap, firstFrameParts, type Place } from "../../client/core/mapload.ts";
+import { DAMAGED_MOST, MapLoader, PARTS_AT_ONCE, RETRY_FIRST, RETRY_MOST, StagedMap, WHOLE_REACH, firstFrameParts, type Place } from "../../client/core/mapload.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { Scene } from "../../client/core/render/scene.ts";
@@ -79,7 +79,7 @@ const off = (p: MapPart, x: number, z: number): number => {
   return Math.hypot(Math.max(sq.cx0 * CHUNK_SIZE - x, x - sq.cx1 * CHUNK_SIZE, 0), Math.max(sq.cz0 * CHUNK_SIZE - z, z - sq.cz1 * CHUNK_SIZE, 0));
 };
 
-test("told to bring the whole ground first, the page draws nothing until every ground part has come, and then asks for the statics one at a time", async () => {
+test("told to bring the whole ground first, the page draws nothing until every ground part within reach has come, and then asks for the rest of the ground nearest first and the statics, one at a time", async () => {
   const s = heldServer(file);
   let loader: MapLoader | null = null;
   void MapLoader.start(s.get, `map/${head.name}`, NOW).then((l) => (loader = l));
@@ -90,27 +90,31 @@ test("told to bring the whole ground first, the page draws nothing until every g
   let handed: MapStatics | null = null;
   void loader!.follow(() => body, { arrived: (t) => (handed = t), whole: true }).then(() => (drawn = true));
   await settle();
-  const grounds = head.parts.filter((p) => p.kind === "ground").map(nameOf);
+  const ground = head.parts.filter((p) => p.kind === "ground");
+  const near = ground.filter((p) => off(p, body.x, body.z) <= WHOLE_REACH).map(nameOf);
+  const far = ground.filter((p) => off(p, body.x, body.z) > WHOLE_REACH).sort((a, b) => off(a, body.x, body.z) - off(b, body.x, body.z)).map(nameOf);
   const statics = head.parts.filter((p) => p.kind === "statics").map(nameOf);
-  // Every ground part is answered before anything is drawn, and no statics part is asked for meanwhile.
-  while (s.asked.length - before < grounds.length || s.waiting.some((w) => grounds.includes(w.url))) {
+  // This map reaches past it, so both kinds are tested.
+  expect([near.length > 0, far.length > 0]).toEqual([true, true]);
+  // Every ground part within reach is answered before anything is drawn, and nothing else is asked for meanwhile.
+  while (s.asked.length - before < near.length || s.waiting.some((w) => near.includes(w.url))) {
     expect(drawn).toBe(false);
-    expect(s.waiting.every((w) => grounds.includes(w.url))).toBe(true);
+    expect(s.waiting.every((w) => near.includes(w.url))).toBe(true);
     await s.answer();
   }
   await settle();
-  expect([drawn, loader!.staged.hf.exactIn(0, 0, head.dims.chunksX * CHUNK_SIZE, head.dims.chunksZ * CHUNK_SIZE)]).toEqual([true, true]);
-  expect(s.asked.slice(before, before + grounds.length).sort()).toEqual([...grounds].sort());
-  // Then the statics, never two at once.
+  expect(drawn).toBe(true);
+  expect(s.asked.slice(before, before + near.length).sort()).toEqual([...near].sort());
+  // Then the rest of the ground nearest first, and the statics, never two at once.
   let most = 0;
   while (s.waiting.length > 0) {
     most = Math.max(most, s.waiting.length);
-    expect(statics.includes(s.waiting[0]!.url)).toBe(true);
     await s.answer();
   }
   await settle();
   expect(most).toBe(1);
-  expect(s.asked.slice(before + grounds.length)).toEqual(statics);
+  expect(s.asked.slice(before + near.length)).toEqual([...far, ...statics]);
+  expect(loader!.staged.hf.exactIn(0, 0, head.dims.chunksX * CHUNK_SIZE, head.dims.chunksZ * CHUNK_SIZE)).toBe(true);
   expect(handed).not.toBeNull();
   expect(handed!.length).toBe(whole.statics.length);
 });
@@ -183,10 +187,11 @@ test("the first frame on this map waits for its head, its land, its two overview
     return [s.answered, s.bytes];
   };
   const size = (kinds: string[]): number => head.bytes + head.parts.filter((p) => kinds.includes(p.kind)).reduce((n, p) => n + p.length, 0);
-  // In a sector's middle, one sector's ground; at the corner of four, four. The page fetched 4.71 MB before its first frame here.
-  expect(await count({ x: 1056, z: 448, vx: 0, vz: 0 })).toEqual([5, 1072143]);
-  expect(await count({ x: 1536, z: 896, vx: 0, vz: 0 })).toEqual([8, 2357208]);
-  expect([size(["land", "overview"]), size(["land", "overview", "ground"])]).toEqual([381132, 4705002]);
+  // In a sector's middle, one sector's ground; at the corner of four, four. The page fetched 5.07 MB before its first frame
+  // here, a ground part holding its classes for a wheel as well (MapData.ground).
+  expect(await count({ x: 1056, z: 448, vx: 0, vz: 0 })).toEqual([5, 1129968]);
+  expect(await count({ x: 1536, z: 896, vx: 0, vz: 0 })).toEqual([8, 2522716]);
+  expect([size(["land", "overview"]), size(["land", "overview", "ground"])]).toEqual([381132, 5067252]);
   // Off the map's sectors' corners: two sectors along an edge, one in a middle; and every corner, at most four.
   for (const [x, z] of [[1024, 448], [100, 100], [0, 0], [2048, 1024], [3200, 1280]] as const) await count({ x, z, vx: 0, vz: 0 });
 });

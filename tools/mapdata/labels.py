@@ -186,12 +186,15 @@ for fid, L in labels.items():
     out[str(fid)] = {"name": names[0] if names else None, "also": names[1:], "kind": kind, "height_m": h, "height_from": ("osm_feet" if fid in in_feet else "osm") if L["heights"] else ("usa_structures" if survey_h else None), "use": use, "primary_use": a.get("PRIM_OCC"),
                      "levels": max(L["levels"]) if L["levels"] else None, "address": L["address"], "uses": dict(L["uses"].most_common(6)), "area_m2": round(feet[fid]["area"]),
                      "e": round(feet[fid]["e"], 1), "n": round(feet[fid]["n"], 1)}
-# Reviewed corrections survive a fresh geographic join; evidence and previous values stay beside the labels.
-corrections_path = os.path.join(HERE, "height-corrections.json")
+# Reviewed corrections survive a fresh geographic join, a new download and a new cut: each names its building by a point
+# in it (the city's heights.json, which tools/maps/city.ts copies here), never a footprint id, which a download renumbers.
+corrections_path = os.path.join(HERE, "heights.authored.json")
 if os.path.exists(corrections_path):
-    for fid, correction in json.load(open(corrections_path)).items():
-        if fid not in out: raise ValueError("Correction has no footprint: " + fid)
-        out[fid].update(correction["set"])
+    for correction in json.load(open(corrections_path)):
+        fid = footprint_at(*local(correction["at"][1], correction["at"][0]), reach=30.0)
+        if fid is None or str(fid) not in out: raise ValueError(f"heights.json: no footprint at or within 30 m of {correction['name']} {correction['at']}")
+        out[str(fid)].update(correction["set"])
+    print(f"heights: {len(json.load(open(corrections_path)))} reviewed corrections set")
 json.dump(out, open(os.path.join(HERE, "labels.json"), "w"), indent=0, ensure_ascii=False)
 json.dump(places, open(os.path.join(HERE, "places.json"), "w"), indent=0, ensure_ascii=False)
 

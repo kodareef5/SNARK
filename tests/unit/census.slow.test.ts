@@ -36,10 +36,11 @@ test("a real city's downtown at its three views on each tier: the near city's dr
   // Cut again on 2026-11-18 when the street's furniture came to stand on its walks (twice as many pieces in the slice:
   // each kind of them is a draw of its own), its signals to face their traffic and tall buildings to have tops: with
   // hiding the street on high was 24, 45, 129,666, 12 and 125,040, the roof 28, 41, 155,370, 19 and 183,432, the air 42,
-  // 42, 181,608, 14 and 177,982.
+  // 42, 181,608, 14 and 177,982. Since a mass's cells under the air are cut to their pieces' tops (shared/world/city.ts)
+  // the roof on low poly, which draws the mass past 600 m, has 62 far triangles more.
   expect(got).toEqual({
     "street-300": { lowpoly: [52, 0, 130970, 10, 91182], "medium, touch": [38, 18, 77114, 10, 45888], medium: [52, 52, 130970, 13, 130032], high: [52, 98, 130970, 13, 130032], ultra: [52, 116, 130970, 13, 130032] },
-    "roof-300": { lowpoly: [77, 0, 163572, 13, 121934], "medium, touch": [47, 10, 97390, 14, 69482], medium: [77, 48, 163572, 19, 183360], high: [77, 94, 163572, 19, 186210], ultra: [77, 108, 163572, 19, 186210] },
+    "roof-300": { lowpoly: [77, 0, 163572, 13, 121996], "medium, touch": [47, 10, 97390, 14, 69482], medium: [77, 48, 163572, 19, 183360], high: [77, 94, 163572, 19, 186210], ultra: [77, 108, 163572, 19, 186210] },
     "air-300": { lowpoly: [115, 0, 183856, 11, 116606], "medium, touch": [47, 3, 113956, 9, 50048], medium: [115, 15, 183856, 14, 180302], high: [115, 107, 183856, 14, 180302], ultra: [115, 122, 183856, 14, 180302] },
   });
 });
