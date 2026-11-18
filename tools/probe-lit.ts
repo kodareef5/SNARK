@@ -26,6 +26,7 @@ import { skyOpenCheck } from "./probe-lit/skyopen.ts";
 import { standCheck } from "./probe-lit/stand.ts";
 import { terrainCheck } from "./probe-lit/terrain.ts";
 import { waterCheck } from "./probe-lit/water.ts";
+import { CHROME_FLAGS } from "./chrome.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 
@@ -181,7 +182,7 @@ export async function litProbe(chrome: string, checks: readonly LitCheck[] = CHE
   });
 
   const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
-  const browser = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", `--user-data-dir=${profile}`, `http://localhost:${server.port}/`], { stdout: "ignore", stderr: "ignore" });
+  const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", `--user-data-dir=${profile}`, `http://localhost:${server.port}/`], { stdout: "ignore", stderr: "ignore" });
   const report = await Promise.race([finished, new Promise<null>((r) => setTimeout(() => r(null), 600000))]);
   browser.kill();
   await browser.exited;
