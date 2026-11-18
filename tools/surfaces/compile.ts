@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { TIERS } from "../../client/core/assets/tiers.ts";
 import { PROGRAMS, withDefines } from "../../client/core/render/programs.ts";
-import { findChrome } from "../chrome.ts";
+import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 
 const folder = resolve("var/surfaces");
 mkdirSync(folder, { recursive: true });
@@ -34,7 +34,7 @@ writeFileSync(html, page);
 const profile = mkdtempSync(join(tmpdir(), "snark-surfaces-chrome-"));
 const chrome = findChrome();
 if (!chrome) throw new Error("no Chrome found. Set CHROME to its path.");
-const child = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--disable-background-networking", `--user-data-dir=${profile}`, "--dump-dom", `file://${html}`], { stdout: Bun.file(join(folder, "compile-dom.txt")), stderr: Bun.file(join(folder, "compile-browser.log")) });
+const child = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--disable-background-networking", `--user-data-dir=${profile}`, "--dump-dom", `file://${html}`], { stdout: Bun.file(join(folder, "compile-dom.txt")), stderr: Bun.file(join(folder, "compile-browser.log")) });
 const timer = setTimeout(() => child.kill(), 55000);
 const code = await child.exited;
 clearTimeout(timer);

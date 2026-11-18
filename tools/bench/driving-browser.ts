@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RunningServer } from "../../server/main.ts";
-import { findChrome } from "../chrome.ts";
+import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 import { devtools } from "../map/trip.ts";
 
 export async function until<T>(read: () => T | undefined | false, description: string, timeout = 45000): Promise<T> {
@@ -30,7 +30,7 @@ export async function drivingBrowser(server: RunningServer, name: string, view?:
     rmSync(profile, { recursive: true, force: true });
   };
   try {
-    browser = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...graphics,
+    browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...graphics,
       "--window-size=800,600", "--remote-debugging-port=0", "--user-data-dir="+profile, "about:blank"], { stdout: "ignore", stderr: "ignore" });
     tab = await devtools(profile);
     await tab.send("Runtime.enable");

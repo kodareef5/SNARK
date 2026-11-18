@@ -1,7 +1,7 @@
 """Paint original continuous anatomical fields into the final unwrapped UVs.
 
-No photographs, library textures, or ARK pixels are sampled. All color,
-scale relief, horn growth and damage originate in world-space procedural fields.
+The body albedo combines procedural pigment with the projected Grab3D flank.
+Scale relief, horn growth and damage use the authored world-space fields.
 """
 from pathlib import Path
 import numpy as np
@@ -451,6 +451,11 @@ def paint(folder,name):
         spike = valid & ~plate & (p[..., 2] < -4.9)
         base[spike], weights[spike], rough[spike], occ[spike] = spike_sheath(p[spike], n[spike])
     save(name+'_base.png',srgb(base))
+    if name == 'stego_skin':
+        import sys
+        sys.path.insert(0, str(OUT.parents[1]))
+        from flank import flank_base
+        save(name+'_flank.png',flank_base(OUT.parent,p,srgb(base)))
     save(name+'_normal.png',normal_from_height(fields,height,valid)*.5+.5)
     save(name+'_height.png',(height-height.min())/max(.00001,float(height.max()-height.min())))
     save(name+'_packed.png',np.stack([occ,rough,np.zeros_like(rough)],-1))

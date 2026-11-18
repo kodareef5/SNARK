@@ -110,7 +110,8 @@ artTest("native cervical capsules do not mask the visible face during idle and t
     expect(["skull", "jaw"]).toContain(rig.names[zoneHit.bone]!);
   }
   state.setAction(ACT_NONE, 0, 0); creaturePose(anim, state, 0, rig.a); solve(rig, rig.a, rig.solved);
-  expect(rayZones(rig, rig.solved, 10, 1.45, -4.2, -1, 0, 0, 20)).toBe(2);
+  expect(rayZones(rig, rig.solved, 10, 1.40, -4.2, -1, 0, 0, 20)).toBe(2);
+  expect(rayZones(rig, rig.solved, 10, 1.45, -4.2, -1, 0, 0, 20)).toBe(0);
 });
 
 artTest("the native dorsal hide, outer plate and hock have damage contacts at their measured silhouettes", () => {
@@ -135,8 +136,9 @@ artTest("the posed forefoot bearing edge and swept plate shoulders have native d
   const anim = new CreatureAnim(rig, reg.runAt[kind]!, 3, stego.combat);
   state.grounded = true; state.seed = 0;
   for (const [action, tick, y, z, zone] of [
-    [ACT_NONE, 0, .05, 1.5, 3], [ACT_NONE, 0, 1.95, -2.90, 2],
-    [ACT_SWING, 17, 2.60, -2.00, 2], [ACT_RELOAD, 26, 2.55, -2.00, 2],
+    [ACT_NONE, 0, .05, 1.5, 3], [ACT_NONE, 0, 1.78, -2.90, 2], [ACT_NONE, 0, 1.95, -2.90, 0],
+    [ACT_SWING, 17, 2.60, -1.92, 2], [ACT_SWING, 17, 2.60, -2.00, 0],
+    [ACT_RELOAD, 26, 2.55, -1.76, 2], [ACT_RELOAD, 26, 2.55, -2.00, 0],
   ] as const) {
     state.setAction(action, 0, 0);
     creaturePose(anim, state, tick, rig.a);
@@ -325,7 +327,7 @@ artTest("walking retains the small neighboring skin edges at the shoulder and hi
   const matrix = new Float32Array(rig.bones * 12);
   // The source18 skin expanded 19 mm to 457 mm at the armpit and 10 mm
   // to 202 mm at the hip. Look for a local tear independent of vertex order.
-  for (const [frame, x, y, z] of [[45, .581, .866, .483], [35, 1.030, 1.455, -.232]] as const) {
+  for (const [frame, x, y, z] of [[45, .580, .885, .478], [35, .991, 1.453, -.239]] as const) {
     sampleClip(rig.clips.get("walk")!, frame, rig.a);
     solve(rig, rig.a, rig.solved);
     writeBones(matrix, 0, rig.solved, rig.rest, null, 0, 0, 0, 0);

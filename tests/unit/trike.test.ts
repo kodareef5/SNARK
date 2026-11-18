@@ -315,10 +315,14 @@ test("Trike armour follows the visible frill and cheek, leaving the neighbouring
     { tick: 0, x: -1.05, y: 2.60, z: 10, zone: ZONE_HEAD },
     { tick: 0, x: -.50, y: 1.55, z: 10, zone: ZONE_HEAD },
     { tick: 0, x: -.90, y: 2.90, z: 10, zone: 0 },
-    { tick: 4, x: -.25, y: 2.80, z: 10, zone: ZONE_HEAD },
+    // During the sweep the scalloped shield crosses 2.70 m. The ray at
+    // 2.80 m clears the shield and hits the raised ribcage behind it.
+    { tick: 4, x: -.25, y: 2.70, z: 10, zone: ZONE_HEAD },
+    { tick: 4, x: -.25, y: 2.80, z: 10, zone: ZONE_TORSO },
     { tick: 4, x: -.90, y: 2.70, z: 10, zone: 0 },
     { tick: 7, x: .75, y: 1.55, z: 10, zone: ZONE_HEAD },
-    { tick: 10, x: -.40, y: 2.90, z: 10, zone: 0 },
+    { tick: 10, x: -.40, y: 2.90, z: 10, zone: ZONE_HEAD },
+    { tick: 10, x: -.40, y: 3.00, z: 10, zone: 0 },
     { tick: 0, x: .60, y: 2.20, z: -10, zone: ZONE_TORSO },
   ];
   for (const p of probes) for (const size of [.25, .6, 1]) for (const yaw of [0, 8192, 16384]) {

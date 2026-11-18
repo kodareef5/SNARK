@@ -33,7 +33,7 @@ const WORKER_HEAP_RAM = 500_000_000;
  * hold the executor's mirror of the card's state, which sends a frame's changes alone; the last 100 are for the maps
  * round's far shadow, filtering and map loader (D748).
  */
-const SHELL_MAX_LINES = 1300;
+const SHELL_MAX_LINES = 1600;
 /** And in client/voice, which also has no tests. */
 const VOICE_MAX_LINES = 600;
 /** And in client/sound: the world's sounds and the listening page, carrying out what client/core/sound decides. */

@@ -9,19 +9,22 @@ import math
 import json
 from pathlib import Path
 from mathutils import Vector
+from mathutils.bvhtree import BVHTree
 
 import bpy
 import numpy as np
 
 import rig
 from parts import Part, activate, join, smooth_rows
-from plan import BODY, GROUND, to_blender
+from plan import GROUND, to_blender
 
 HERE=Path(__file__).resolve().parent
 MATERIAL='trike_saddle'
 LEATHER=(.02,.02,.48,.98)
 WOOD=(.52,.02,.75,.98)
 ROPE=(.79,.02,.98,.98)
+# The rigid seat, grips and stirrups share this lift with the chest sockets.
+SEAT_RISE=.60
 
 
 def part(name,rect=LEATHER):
@@ -62,7 +65,14 @@ def platform(sign):
     return p.object()
 
 
-def blanket():
+def back_height(hide, x, z):
+    point, _, _, _ = hide.ray_cast((x, -z, 5), (0, 0, -1))
+    if point is None:
+        raise ValueError(f"Saddle pad missed the back at {x}, {z}")
+    return point.z + GROUND
+
+
+def blanket(hide):
     p=part('fitted_hide_blanket');grids=[]
     # Coordinates describe the unshifted anatomical plan. The complete worn
     # mesh receives exactly the same ground shift as the skin at the end.
@@ -70,13 +80,10 @@ def blanket():
         grid=[]
         for j in range(9):
             z=-.96+1.34*j/8
-            cy=np.interp(z,[s[0] for s in BODY],[s[1] for s in BODY])
-            w=np.interp(z,[s[0] for s in BODY],[s[2] for s in BODY])
-            h=np.interp(z,[s[0] for s in BODY],[s[3] for s in BODY])
             row=[]
             for i in range(11):
                 x=(i/10-.5)*1.66
-                y=cy+h*math.sqrt(max(.01,1-(x/w)**2))+.035+(.025 if upper else 0)
+                y=back_height(hide,x,z)+.032+(.025 if upper else 0)
                 row.append(p.point((x,y,z)))
             grid.append(row)
         grids.append(grid)
@@ -92,7 +99,9 @@ def blanket():
 
 
 def build():
-    objects=[blanket()]
+    body=bpy.data.objects['Triceratops'].data
+    hide=BVHTree.FromPolygons([v.co for v in body.vertices],[p.vertices[:] for p in body.polygons])
+    objects=[blanket(hide)]
     # Two curved wooden tree rails, a padded cantle and low pommel. Their
     # broad feet distribute weight rather than mounting a floating chair.
     for sign in (-1,1):
@@ -102,6 +111,10 @@ def build():
               (sign*.20,2.73,-.64,.062,.050),(sign*.15,2.74,-.15,.062,.050),
               (sign*.18,2.71,.05,.062,.035),(sign*.40,2.62,.23,.065,.020),
               (sign*.68,2.46,.37,.11,.045)]
+        # Seat-end joints retain the rigid frame. Each rail foot bears on
+        # the local blanket surface at its own longitudinal station.
+        rail=[(x,back_height(hide,x,z)+.09 if i in (0,1,6) else y+SEAT_RISE,z,w,d)
+              for i,(x,y,z,w,d) in enumerate(rail)]
         objects.append(flat_beam(f'tree_rail_{sign}',rail))
         # One upright, hand-sized grip. The former narrow arch put both of
         # its stems through one grasp volume and its foot through the thigh.
@@ -115,17 +128,33 @@ def build():
         (0,2.97,-.35,.24,.040),(0,2.94,-.12,.17,.025),(0,2.93,.02,.10,.025),(0,2.93,.16,.06,.015)],16,LEATHER,2).object())
     objects.append(tube('cantle',[(-.28,2.98,-.62),(-.23,3.13,-.69),(0,3.17,-.72),(.23,3.13,-.69),(.28,2.98,-.62)],.046,.065,LEATHER,10,2))
     for z in (-.74,.20):
-        cy=np.interp(z,[s[0] for s in BODY],[s[1] for s in BODY]);w=np.interp(z,[s[0] for s in BODY],[s[2] for s in BODY])
-        up=np.interp(z,[s[0] for s in BODY],[s[3] for s in BODY]);down=np.interp(z,[s[0] for s in BODY],[s[4] for s in BODY])
         path=[]
-        for i in range(17):
-            a=i*math.tau/16;s=math.sin(a)
-            path.append(((w+.025)*math.cos(a),cy+((up if s>0 else down)+.025)*s,z))
-        objects.append(tube(f'girth_{z}',path,.024,.045,LEATHER))
+        for i in range(21):
+            a=i*math.tau/20
+            direction=Vector((math.cos(a),0,math.sin(a)))
+            point,_,_,_=hide.ray_cast((0,-z,1.92),direction)
+            if point is None:
+                raise ValueError(f"Girth missed the ribcage at {z}, {a}")
+            point+=direction*.032
+            path.append((point.x,point.z+GROUND,z))
+        objects.append(tube(f'girth_{z}',path,.024,.045,LEATHER,sides=6))
     # Paired breast tethers avoid the movable neck/frill. No ornamental strap
     # crosses the jaw or an eye; the rider's grips are fixed to the tree.
     for sign in (-1,1):
-        objects.append(tube(f'breast_tether_{sign}',[(sign*.68,2.46,.37),(sign*.80,2.20,.70),(sign*.68,1.80,1.05),(sign*.43,1.44,1.12),(0,1.35,1.12)],.027,.018,LEATHER,6,1))
+        path=[]
+        for x,y,z in [(sign*.68,2.46,.37),(sign*.80,2.20,.70),(sign*.68,1.80,1.05),(sign*.43,1.44,1.12),(0,1.35,1.12)]:
+            centre=Vector((0,-z,1.85))
+            direction=(to_blender((x,y-GROUND,z))-centre).normalized()
+            point,_,_,_=hide.ray_cast(centre,direction)
+            if point is None:
+                raise ValueError(f"Breast tether missed the shoulder at {z}")
+            point+=direction*.03
+            path.append((point.x,point.z+GROUND,z))
+        objects.append(tube(f'breast_tether_{sign}',path,.027,.018,LEATHER,6,1))
+    for obj in objects:
+        if not obj.name.startswith(('fitted_hide_blanket','tree_rail_', 'girth_', 'breast_tether_')):
+            for vertex in obj.data.vertices:
+                vertex.co.z+=SEAT_RISE
     # Retain source-part provenance for native triangle contact diagnostics.
     # This ignored file is never a runtime input.
     out=HERE.parents[4]/'var/trike-art';out.mkdir(parents=True,exist_ok=True)
