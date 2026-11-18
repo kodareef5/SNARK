@@ -1,10 +1,21 @@
-# Original coastal Trike — production checkpoint
+# Playable Triceratops
 
-This is an original model, skeleton, saddle, skin and animation set. It imports
-no third-party mesh, texture, rig or animation. The Quaternius CC0 FBX was
-audited for comparison only; the reproducible audit and full reference dossier
-are in this folder and `planning/workstreams/trike.md`. ARK artwork is visual
-reference only. Nothing was extracted from ARK or repainted from its images.
+The Grab3D Triceratops supplies the full body, tail, four legs and scalloped frill. The original rig supplies 48 bones, 22 actions, the charge contacts and the saddle. The articulated face is joined below the shield. It retains recessed airways, independently moving lids and a hinged jaw with an oral cavity. The finished skin has 21,846 triangles up close and five lower levels. [Before and after](../../../../../../planning/reference/trike-refit.jpg)
+
+At the middle ribs, the fitted torso measures 2.14 m from belly to back, up from 1.50 m in the first fit. The downloaded sculpt measures 2.12 m at that section when scaled to the playable body length. The revised saddle follows the new back, and the tail pivots follow its raised centreline. Repacking the skin UVs increased occupied atlas pixels from 1.43 million to 2.15 million at the same map resolution. [Compare the sculpt and both fits](../../../../../../planning/reference/trike-body.jpg)
+
+The full 469,058-triangle GLB is the source for the remesh and PBR bake. The preparation script checks its SHA-256, fits the staggered feet and curved tail, transfers skin weights, joins the muzzle, and bakes the hide, normals, roughness, six dye regions and damage maps. The original eye, beak and mouth charts stay on the articulated facial pieces. [Grab3D model](https://grab3d.com/models/creatures/triceratops/) · [CC0 licence](https://grab3d.com/license/)
+
+The regular art build uses the checked-in `triceratops.blend` and `tex/sculpt` maps. Run `bun tools/art.ts core:trike` to rebuild the native pack. To redo the fit and texture bake first, use Blender and a `python3` with NumPy, SciPy and Pillow on its path, from the repository root.
+
+```sh
+blender -b --factory-startup --disable-autoexec --python-exit-code 1 \
+  -P assets/source/core/creatures/trike/ref/prepare.py -- /path/to/triceratops.glb
+```
+
+## Original coastal Trike production checkpoint
+
+The following notes record the original geometry used to build the deformation reference, facial articulation, contacts and saddle. Measurements and acceptance notes below refer to that earlier native pack.
 
 **Status: technical asset checks pass; visual and ridden gameplay acceptance
 remain open.** A clean pack check does not establish AAA or ARK visual parity.

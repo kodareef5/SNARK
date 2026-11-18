@@ -16,7 +16,7 @@ GROUND = .065
 TRIANGLES = [22000, 9000, 4000, 1400, 400, 96]
 SADDLE_TRIANGLES = [2400, 1000, 400, 120]
 STRIDES = {"walk": 2.4, "run": 4.8, "charge": 4.8}
-SEAT = (0, 3.04, -0.25)
+SEAT = (0, 3.64, -0.25)
 
 # z, centre height, half width, height above centre, height below centre.
 # Tail and trunk are continuous, with substantial shoulder and hip masses.

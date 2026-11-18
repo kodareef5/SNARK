@@ -21,29 +21,29 @@ function leg(side: "l" | "r"): ZoneSpec[] {
     // The metatarsal has its own anatomical capsule. Two small transverse
     // contacts bound the broad, flat pad without an inflated round ankle.
     { zone: `foot${suffix}` as const, on: `${end}_foot_${side}`,
-      a: [0, -.02, -.01] as const,
-      b: [0, end === "front" ? -.175 : -.185, end === "front" ? .20 : .12] as const, radius: .18 },
+      a: [end === "back" ? -sign * .07 : 0, -.02, -.025] as const,
+      b: [end === "back" ? -sign * .07 : 0, end === "front" ? -.175 : -.15, end === "front" ? .20 : .12] as const, radius: end === "front" ? .18 : .235 },
     { zone: `foot${suffix}` as const, on: `${end}_toes_${side}`,
-      a: [-.24, .005, -.21] as const, b: [.24, .005, -.21] as const, radius: .10 },
+      a: [end === "back" ? -.35 : -.24, .005, -.21] as const, b: [end === "back" ? .35 : .24, .005, -.21] as const, radius: .10 },
     { zone: `foot${suffix}` as const, on: `${end}_pad_${side}`,
       a: [end === "front" ? -.27 : -.30, -.015, end === "front" ? .39 : .36] as const,
       b: [end === "front" ? .27 : .30, -.015, end === "front" ? .39 : .36] as const, radius: .08 },
   ]);
 }
 
-/** Original anatomy, skin, rig, saddle and performances; provenance in ref/DESIGN.md. */
+/** Grab3D Triceratops on the original rig, facial articulation and saddle. See ref/DESIGN.md. */
 export default {
   kind: "creature",
-  source: { scripts: ["rig.py", "clips.py", "model.py", "saddle.py"] },
+  source: { scripts: ["rig.py", "refit.py", "clips.py", "saddle.py"] },
   scale: 1,
   skeleton: { id: "trike", root: "body", bones: 48 },
   zones: [
     { zone: "torso", on: "body", a: [0, -.06, -.70], b: [0, -.03, .85], radius: .74 },
-    { zone: "torso", on: "pelvis", a: [0, .58, -.90], b: [0, .58, .95], radius: .30 },
+    { zone: "torso", on: "pelvis", a: [0, .77, -.90], b: [0, .84, .95], radius: .50 },
     ...(["l", "r"] as const).map(side => ({ zone: "torso" as const, on: `flank_support_${side}`, a: [0, -.10, -.60] as const, b: [0, -.10, .90] as const, radius: .61 })),
     // The trunk is oval in section. These bounded upper lobes cover the
     // visible back without making the entire round belly capsule larger.
-    ...(["l", "r"] as const).map(side => ({ zone: "torso" as const, on: `back_support_${side}`, a: [0, .10, -.55] as const, b: [0, .10, 1.30] as const, radius: .25 })),
+    ...(["l", "r"] as const).map(side => ({ zone: "torso" as const, on: `back_support_${side}`, a: [0, .52, -.55] as const, b: [0, .31, 1.15] as const, radius: .30 })),
     { zone: "torso", on: "chest", a: [0, -.08, 1.25], b: [0, .30, 1.25], radius: .52 },
     { zone: "torso", on: "neck", a: [0, -.02, -.10], b: [0, -.02, .68], radius: .50 },
     { zone: "head", on: "skull", a: [0, .15, .18], b: [0, -.40, 1.35], radius: .39 },
@@ -60,9 +60,9 @@ export default {
     { zone: "head", on: "horn_l", from: "horn_l", covers: ["horn_l"] },
     { zone: "head", on: "horn_r", from: "horn_r", covers: ["horn_r"] },
     { zone: "head", on: "horn_nose", from: "horn_nose", covers: ["horn_nose"] },
-    { zone: "torso", on: "tail_1", a: [0, .10, -.10], b: [0, -.24, -.70], radius: .44 },
-    { zone: "torso", on: "tail_2", a: [0, 0, -.10], b: [0, -.40, -.68], radius: .23 },
-    { zone: "torso", on: "tail_3", a: [0, -.01, -.05], b: [0, -.24, -.82], radius: .12 },
+    { zone: "torso", on: "tail_1", a: [0, 0, -.10], b: [0, -.16, -.70], radius: .48 },
+    { zone: "torso", on: "tail_2", a: [0, -.02, -.10], b: [0, -.37, -.68], radius: .28 },
+    { zone: "torso", on: "tail_3", a: [0, -.01, -.05], b: [0, -.16, -.82], radius: .15 },
     ...leg("l"), ...leg("r"),
   ],
   // The vaulted shield and tapering horn section follow the actual skull skin.
@@ -82,17 +82,17 @@ export default {
     { name: "horn_l", bone: "horn_l", offset: [-.01, .55, 1.39] },
     { name: "horn_r", bone: "horn_r", offset: [.01, .55, 1.39] },
     { name: "horn_contact", bone: "skull", offset: [0, .79, 1.94] },
-    { name: "seat", bone: "chest", offset: [0, 1.32, .37] },
-    { name: "grip_l", bone: "chest", offset: [.19, 1.63, .64] },
-    { name: "grip_r", bone: "chest", offset: [-.19, 1.63, .64] },
+    { name: "seat", bone: "chest", offset: [0, 1.92, .37] },
+    { name: "grip_l", bone: "chest", offset: [.19, 2.23, .64] },
+    { name: "grip_r", bone: "chest", offset: [-.19, 2.23, .64] },
     // Shared saddle fitter targets the ankle joint. Separate sole sockets
     // witness the actual flat support plane for native foot-shape fitting.
-    { name: "rest_l", bone: "chest", offset: [.42, 1.06, .75] },
-    { name: "rest_r", bone: "chest", offset: [-.42, 1.06, .75] },
-    { name: "sole_l", bone: "chest", offset: [.42, .947, .88] },
-    { name: "sole_r", bone: "chest", offset: [-.42, .947, .88] },
-    { name: "knee_l", bone: "chest", offset: [.48, 1.24, .64] },
-    { name: "knee_r", bone: "chest", offset: [-.48, 1.24, .64] },
+    { name: "rest_l", bone: "chest", offset: [.42, 1.66, .75] },
+    { name: "rest_r", bone: "chest", offset: [-.42, 1.66, .75] },
+    { name: "sole_l", bone: "chest", offset: [.42, 1.547, .88] },
+    { name: "sole_r", bone: "chest", offset: [-.42, 1.547, .88] },
+    { name: "knee_l", bone: "chest", offset: [.48, 1.84, .64] },
+    { name: "knee_r", bone: "chest", offset: [-.48, 1.84, .64] },
     // Toe heads are .095m above the actual flattened source sole after the
     // common ground shift. These sockets witness that plane, not below it.
     { name: "foot_l", bone: "front_toes_l", offset: [0, -.095, .10] },
@@ -105,8 +105,11 @@ export default {
     ...["Flank", "Throat and belly", "Back markings", "Frill", "Limbs", "Keratin"].map((name, i) => ({ name, sample: TRIKE_DYES[i]! })),
   ],
   materials: {
-    trike_skin: { ...maps("trike_skin"), regions: { mask: "tex/trike_skin_mask.png", mask2: "tex/trike_skin_mask2.png" } },
-    trike_frill: { ...maps("trike_frill"), regions: { mask: "tex/trike_frill_mask.png", mask2: "tex/trike_frill_mask2.png" } },
+    trike_sculpt: {
+      base: "tex/sculpt/base.png", normal: "tex/sculpt/normal.png", packed: "tex/sculpt/packed.png",
+      regions: { mask: "tex/sculpt/mask.png", mask2: "tex/sculpt/mask2.png" },
+      hurt: "tex/sculpt/hurt.png", decay: "tex/sculpt/decay.png",
+    },
     // Keratin has no wound overlay; its broad decay mottling needs less
     // layer resolution than facial grain and the independently unwrapped roots.
     trike_horn: { ...maps("trike_horn"), regions: { mask: "tex/trike_horn_mask.png", mask2: "tex/trike_horn_mask2.png" }, tops: { normal: 512, layer: 256 } },
