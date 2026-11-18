@@ -17,6 +17,7 @@ import { HOLD_CARRY } from "../../shared/sim/weapon.ts";
 import * as P from "../../shared/net/protocol.ts";
 import { DEADLINE_BREED } from "../../server/breeding.ts";
 import { DEADLINE_BUFF } from "../../server/buffs.ts";
+import { DEADLINE_CAR } from "../../server/car-return.ts";
 import { DEADLINE_CORPSE } from "../../server/corpses.ts";
 import { DEADLINE_DESPAWN } from "../../server/death.ts";
 import { DEADLINE_FECES } from "../../server/feces.ts";
@@ -64,7 +65,7 @@ test("the new codes are each one of their kind, and deadlines have kinds of thei
   expect(new Set(orders).size).toBe(orders.length);
   expect(Math.max(...orders)).toBeLessThan(P.ORDER_LEVEL);
   expect(new Set([P.CARRY_PICK_UP, P.CARRY_DROP, P.CARRY_THROW, P.CARRY_GRAB, P.CARRY_RELEASE]).size).toBe(5);
-  const kinds = [DEADLINE_VITALS, DEADLINE_DESPAWN, DEADLINE_NODE, DEADLINE_CRAFT, DEADLINE_BUFF, DEADLINE_FIRE, DEADLINE_TAME, DEADLINE_BREED, DEADLINE_SPAWN, DEADLINE_CORPSE, DEADLINE_FECES];
+  const kinds = [DEADLINE_VITALS, DEADLINE_DESPAWN, DEADLINE_NODE, DEADLINE_CRAFT, DEADLINE_BUFF, DEADLINE_FIRE, DEADLINE_TAME, DEADLINE_BREED, DEADLINE_SPAWN, DEADLINE_CORPSE, DEADLINE_FECES, DEADLINE_CAR];
   expect(new Set(kinds).size).toBe(kinds.length);
 });
 
