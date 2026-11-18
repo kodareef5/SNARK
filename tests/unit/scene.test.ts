@@ -506,8 +506,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // their corner of their face and its outer borders in the byte a body's bone has (world-surfaces.ts ownVertex): only
   // the uploads' vertex bytes moved, and low poly reads none of them. It was 1589639950 until the door-to-curb kit and
   // the street's walks, curbs and drains, the ruins' broken wall tops, rubble, leaning pieces and vines and the broken
-  // parapets of whole tops (content/ruins.ts) added their grey meshes; without them it is that again.
-  expect(hash).toBe(3316382992);
+  // parapets of whole tops (content/ruins.ts) added their grey meshes; without them it is that again. It was 3316382992
+  // until a tall building's cornice did; without it it is that again.
+  expect(hash).toBe(867042432);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -536,7 +537,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 2430603422 until the street furniture's grey meshes; without them it is that again. It was 3628556772 until
   // a static's vertices said their faces' corners and outer borders, as the hash above, and 2281949996 until the ruins'
   // kit, street pieces, broken tops, rubble, leaning pieces, vines and broken parapets, as above.
-  expect(saddled.hash).toBe(1004296491);
+  // It was 1004296491 until a tall building's cornice, as above.
+  expect(saddled.hash).toBe(3905011579);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

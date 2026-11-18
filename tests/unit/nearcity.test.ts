@@ -268,7 +268,7 @@ test("on foot and over the slice, a draw or caster is marked as the one before i
   }
   expect(wrong.slice(0, 5)).toEqual([]);
   // A chunk's mesh casts a run of its cells into each cascade, and a view that leaves out cells within a chunk draws it
-  // in runs: here 8 draws and 24 casters could go in the call before them (7 and 25 on the slice before the ruins' broken
-  // tops, rubble and growth).
-  expect([joined, cast]).toEqual([8, 24]);
+  // in runs: here 9 draws and 24 casters could go in the call before them (7 and 25 on the slice before the ruins' broken
+  // tops, rubble and growth, 8 and 24 before the street furniture and the tall buildings' tops).
+  expect([joined, cast]).toEqual([9, 24]);
 });
