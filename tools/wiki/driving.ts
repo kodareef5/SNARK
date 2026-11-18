@@ -21,7 +21,7 @@ const drives = (h: BoatHandling): string => `${h.drives === 1 ? "One" : h.drives
 const farthest = (h: BoatHandling): string => (h.cruise === h.top ? `${km(h.rangeCruise)}, flat out` : `${km(h.rangeCruise)} at ${kmh(h.cruise)}`);
 
 const ROAD_NOTE = `Measured when this wiki was built, by driving the game's own model of it with one survivor aboard on level open ground, which is what every street of a city is to a wheel. Full throttle from rest; braking is the reverse key held, as a driver brakes; the turning circle is the one its body sweeps at full lock at walking pace; round the circle ${CIRCLE} m across, the fastest it keeps within a metre of the line for a lap.`;
-const BOAT_NOTE = `Measured when this wiki was built, by running the game's own model of it on open water with its pilot aboard. Full throttle from rest, its top speed where it stops gaining and "to its top speed" to within ${num(NEAR * 100)}% of it; turning is full helm at full throttle; it has run on once it is down to ${kmh(CRAWL)}; its farthest is at the throttle, in tenths, that a tank takes farthest.`;
+const BOAT_NOTE = `Measured when this wiki was built, by running the game's own model of it on open water with its pilot aboard. Full throttle from rest, its top speed where it stops gaining and "to its top speed" to within ${num(NEAR * 100)}% of it; turning is full helm at full throttle; it has run on once it is down to ${kmh(CRAWL)}; its farthest is at the throttle, tried in tenths, that takes it farthest.`;
 const ROTOR_NOTE = "Measured when this wiki was built, by flying the game's own model of it with its pilot aboard over level ground, the stick fully forward with the height held; holding Shift tips it further. It stops with the brake, X, held.";
 
 export function topSpeed(h: Handling): string {
@@ -103,14 +103,14 @@ export function fleetTables(entries: readonly Entry[]): Table[] {
   const tables: Table[] = [];
   if (road.length) tables.push({
     title: "On the road",
-    head: ["", "Top speed", "0 to 100 km/h", "Braking from 100 km/h", "Turning circle", `Round ${CIRCLE} m`, "Driven wheels", "Power to weight", "Range at 60 km/h"],
+    head: ["", "Top speed", "0 to 100 km/h", "Braking from 100 km/h", "Turning circle", `Round a ${CIRCLE} m circle`, "Driven wheels", "Power to weight", "Range at 60 km/h"],
     rows: road.map(({ names, h }) => [names, kmh(h.top), h.reaches100 ? secs(h.to100) : "Not reached", h.reaches100 ? metres(h.braking) : `${metres(h.braking)} from ${kmh(h.top)}`,
       metres(h.turning), kmh(h.circle), wheels(h, true), `${num(h.power / h.mass, 0)} kW a tonne`, km(h.range60)]),
     note: [ROAD_NOTE],
   });
   if (boats.length) tables.push({
     title: "On the water",
-    head: ["", "Top speed", "To half of it", "To it", "Turning circle", "Turning about from rest", "Runs on", "Draught", "Drive", "Range flat out", "Farthest on a tank"],
+    head: ["", "Top speed", "To half speed", "To top speed", "Turning circle flat out", "Turning about from rest", "Runs on, throttle cut", "Draught", "Drive", "Range flat out", "Farthest on a tank"],
     rows: boats.map(({ names, h }) => [names, topSpeed(h), secs(h.toHalf), secs(h.toTop), metres(h.turnFast), metres(h.turnAbout), metres(h.runOn), `${num(h.draught, 2)} m`, drives(h), km(h.rangeTop), farthest(h)]),
     note: [BOAT_NOTE],
   });
