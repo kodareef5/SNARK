@@ -936,7 +936,8 @@ export class Scene {
     this.castRange = range + MAX_REACH;
     let texel = 0;
     for (let i = 0; i < c.count; i++) texel = Math.max(texel, c.texel[i]!);
-    this.shadeSlack = texel * (c.blur + 1);
+    // A cascade drawn every other frame is looked up a frame later from another place: no caster of it is left out.
+    this.shadeSlack = setup.everyOther ? Infinity : texel * (c.blur + 1);
     this.sunY = this.sunAt[1]!;
     this.casting = true;
     this.characters.shadows = this.bodyShadows;
@@ -980,7 +981,7 @@ export class Scene {
    */
   private shadeHidden(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): boolean {
     const e = this.shadeSlack;
-    return this.hiding.hides(x0 - e, y0 - e, z0 - e, x1 + e, y1 + e, z1 + e);
+    return e < Infinity && this.hiding.hides(x0 - e, y0 - e, z0 - e, x1 + e, y1 + e, z1 + e);
   }
 
   /**
