@@ -9,7 +9,7 @@ import numpy as np
 from affine import Affine
 from PIL import Image
 
-CLIENT = 'snark-mapdata/1.0'
+CLIENT = 'mapdata/1.0'
 # The lattice's middle (shared/coords.ts), and the corner the map build's north-west noise is read from: the north-west
 # corner of a map 127 chunks a side there, in metres west and north of the middle's corner.
 FRAME_MIDDLE = 2048
