@@ -117,6 +117,7 @@ test("a world with no save keeps no log, and nothing fails", async () => {
   expect([span.on, span.folder, span.why]).toEqual([false, null, "this world is not saved to disk, so it keeps no survivor log"]);
   expect(await h.host.survivorLog.survivors(0, Date.now())).toEqual([]);
   expect(await h.host.survivorLog.heldAt(1, Date.now())).toBeNull();
+  expect(await h.host.survivorLog.json("survivors", 0, Date.now())).toBe("[]");
   expect(h.host.exec("survivorlog")).toBe("survivor log off: this world is not saved to disk, so it keeps no survivor log; it holds nothing yet");
   h.host.shutdown();
 });
@@ -171,6 +172,9 @@ test("on its own thread the log writes and answers in turn, and closes with the 
   const pid = h.client(ana)!.pid;
   const holding = await log.heldAt(pid, W0 + h.now);
   expect(holding!.items.find((i) => i.item === "core:stone")!.count).toBe(4);
+  // The same answer as text made on the log's thread, for a route to send as it is.
+  expect(JSON.parse(await log.json("heldAt", pid, W0 + h.now))).toEqual(holding);
+  expect(JSON.parse(await log.json("marks", W0, W0 + h.now)).marks.some((m: { text: string }) => m.text === "give stone 4")).toBe(true);
   // The span came back before the answer did.
   expect(log.span().segments).toBe(1);
   expect((await log.positions(W0 + h.now - 2000, W0 + h.now, 1000)).tracks[0]!.pid).toBe(pid);

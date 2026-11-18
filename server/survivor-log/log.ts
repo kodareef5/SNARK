@@ -53,7 +53,7 @@ export type ToLog =
   | { op: "batch"; batch: Batch }
   | { op: "cap"; bytes: number }
   | { op: "end" }
-  | { op: "read"; id: number; fn: ReadName; args: unknown[] }
+  | { op: "read"; id: number; fn: ReadName; args: unknown[]; json: boolean }
   | { op: "close" };
 
 export type FromLog = { op: "span"; span: LogSpan } | { op: "say"; line: string } | { op: "read"; id: number; value?: unknown; error?: string };
@@ -64,7 +64,8 @@ interface Backend {
   end(): void;
   close(): void;
   span(): LogSpan;
-  read(fn: ReadName, args: unknown[]): Promise<unknown>;
+  /** With `json`, the answer comes as its JSON text, made where the read ran. */
+  read(fn: ReadName, args: unknown[], json?: boolean): Promise<unknown>;
 }
 
 function inlineBackend(folder: string, cap: number, world: LogWorld, say: (line: string) => void): Backend {
@@ -75,9 +76,10 @@ function inlineBackend(folder: string, cap: number, world: LogWorld, say: (line:
     end: () => store.end(),
     close: () => store.close(),
     span: () => store.span(),
-    read(fn, args) {
+    read(fn, args, json = false) {
       try {
-        return Promise.resolve((store[fn] as (...a: unknown[]) => unknown).apply(store, args));
+        const value = (store[fn] as (...a: unknown[]) => unknown).apply(store, args);
+        return Promise.resolve(json ? JSON.stringify(value) : value);
       } catch (err) {
         return Promise.reject(err);
       }
@@ -122,11 +124,11 @@ function workerBackend(folder: string, cap: number, world: LogWorld, say: (line:
       worker.terminate();
     },
     span: () => span,
-    read: (fn, args) =>
+    read: (fn, args, json = false) =>
       new Promise((resolve, reject) => {
         const id = next++;
         waiting.set(id, { resolve, reject });
-        send({ op: "read", id, fn, args });
+        send({ op: "read", id, fn, args, json });
       }),
   };
 }
@@ -389,5 +391,14 @@ export class SurvivorLog {
   /** The tick at a wall time; while the server was down, the tick it stopped at. Null before the log begins. */
   tickAt(wall: number): Promise<number | null> {
     return this.read("tickAt", [wall], null);
+  }
+
+  /**
+   * The answer of the read `fn` with `args` as JSON text, made on the log's thread, for a route to send as it is: the tick's
+   * thread then only takes a string, where a large answer as objects would cost it the time to copy and encode them.
+   */
+  json(fn: ReadName, ...args: unknown[]): Promise<string> {
+    if (!this.backend) return ((this[fn] as (...a: unknown[]) => Promise<unknown>).apply(this, args)).then((v) => JSON.stringify(v));
+    return this.backend.read(fn, fn === "marks" ? [args[0], args[1], this.ctx.persistence?.store.path ?? ""] : args, true) as Promise<string>;
   }
 }

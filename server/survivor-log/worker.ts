@@ -34,7 +34,8 @@ self.onmessage = (e) => {
     try {
       if (!store) throw new Error("the survivor log is not open");
       const fn = store[m.fn] as (...args: unknown[]) => unknown;
-      self.postMessage({ op: "read", id: m.id, value: fn.apply(store, m.args) });
+      const value = fn.apply(store, m.args);
+      self.postMessage({ op: "read", id: m.id, value: m.json ? JSON.stringify(value) : value });
     } catch (err) {
       self.postMessage({ op: "read", id: m.id, error: err instanceof Error ? err.message : String(err) });
     }

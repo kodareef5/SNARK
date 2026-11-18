@@ -9,7 +9,7 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { STATE_ALIVE, STATE_DEAD, aggregate, itemKey, stateOf } from "../../server/survivor-log/format.ts";
 import { LogRecorder } from "../../server/survivor-log/recorder.ts";
-import { LogStore, MAX_STEPS, type LogWorld } from "../../server/survivor-log/store.ts";
+import { LogStore, MAX_POINTS, MAX_STEPS, type LogWorld } from "../../server/survivor-log/store.ts";
 
 const IDS = ["", "core:survivor", "core:stone", "core:rifle", "core:helicopter", "core:metal_ingot", "core:round"];
 const STONE = 2;
@@ -294,6 +294,10 @@ test("an hour of survivors on disk, per survivor, at the default cadence", () =>
     }
     if (t > 0 && t % 150 === 0) store.write(rec.flush(wallOf(t), t));
   }
+  // Everyone's places over the hour at a second's step would be 180,000 points: the step is lengthened to hold MAX_POINTS.
+  const all = store.positions(wallOf(0), wallOf(hour), 1000);
+  expect(all.step).toBe(Math.ceil(3_600_000 / (MAX_POINTS / n - 1)));
+  expect(all.tracks.reduce((sum, tr) => sum + tr.wall.length, 0)).toBeLessThanOrEqual(MAX_POINTS);
   store.close();
   const bytes = readdirSync(dir).reduce((sum, f) => sum + statSync(join(dir, f)).size, 0);
   const perHour = bytes / n;

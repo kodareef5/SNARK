@@ -19,6 +19,11 @@ export const SEGMENT_FORMAT = 1;
 export const FULL_EVERY = 64;
 /** The most step times one read of positions answers. A longer window is given a longer step. */
 export const MAX_STEPS = 4000;
+/**
+ * The most points one read of everyone's positions answers: the steps times the survivors online in the window. It bounds
+ * what the answer costs the thread that receives it, the tick's.
+ */
+export const MAX_POINTS = 100_000;
 /** The most changes or journal entries one read lists. */
 export const MAX_ENTRIES = 10000;
 /** Milliseconds: the shortest step a read of positions takes. */
@@ -106,7 +111,7 @@ export interface LogTrack {
   seat: number[];
 }
 
-/** `step` is the one used, which is the one asked for unless the window held more than MAX_STEPS of them. */
+/** `step` is the one used: the one asked for, unless the window held more than MAX_STEPS of them or more than MAX_POINTS points. */
 export interface LogPositions {
   from: number;
   to: number;
@@ -727,7 +732,8 @@ export class LogStore {
   /** Every survivor's place at each step from `from` to `to`, `only` one survivor's if given. Each point is a real sample: the last at or before the step's moment, else the first after it in the same frame. */
   private sampled(from: number, to: number, step: number, only: number | null): LogPositions {
     if (!(to >= from)) to = from;
-    step = Math.max(MIN_STEP, Number.isFinite(step) ? step : 0, Math.ceil((to - from) / (MAX_STEPS - 1)));
+    const steps = only === null ? Math.max(2, Math.min(MAX_STEPS, Math.floor(MAX_POINTS / Math.max(1, this.survivors(from, to).length)))) : MAX_STEPS;
+    step = Math.max(MIN_STEP, Number.isFinite(step) ? step : 0, Math.ceil((to - from) / (steps - 1)));
     const seats = [""];
     const seatOfIdx = new Map<string, number>();
     const tracks = new Map<number, LogTrack>();
