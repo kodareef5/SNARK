@@ -58,9 +58,9 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * travelling static's state. 24: S_MOTION's states are added to those told before: all of them after a welcome, in as many
  * messages as they take, and then each static as it is thrown. 25: wheeled full-attitude/flooding state and
  * replicated fatal-impact corpse checkpoints (S_CORPSE/CMD_CORPSE). 26: local car push/pull and manual flip commands.
- * 27: driver contact bodies and held controls precede each snapshot view; depleted node rows distinguish crushed trees.
+ * 27: driver contact bodies and held controls precede the view, and depleted nodes distinguish crushed trees.
+ * 28: contact rows carry public motion and policy only. 29: unoccupied cars report the automatic parking brake.
  */
-// 29 adds the public automatic parking-brake bit to vehicle contact rows.
 export const PROTOCOL_VERSION = 29;
 
 // Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
