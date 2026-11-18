@@ -61,7 +61,6 @@ const kerb = (roads: readonly Road[], x: number, z: number): number => Math.min(
   const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez)));
   return Math.hypot(x - ax - ex * t, z - az - ez * t) - r.width / 2;
 }));
-const of = (pieces: readonly StaticPiece[], name: string): StaticPiece[] => pieces.filter((p) => p.kind === streetKind(name));
 
 test("a city's streets get their furniture by its rules, the same each time it is built", () => {
   const site = fixture(GRID), { pieces, summary } = place(site);

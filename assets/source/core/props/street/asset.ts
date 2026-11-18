@@ -25,8 +25,8 @@ const PIECES: Readonly<Record<string, readonly number[]>> = {
   pole: [232, 176, 36, 28],
   pole_leaning: [232, 176, 36, 28],
   hydrant: [348, 204, 72, 12],
-  bench: [168, 48, 24],
-  bench_broken: [132, 48, 24],
+  bench: [168, 24],
+  bench_broken: [132, 24],
   bin: [200, 132, 12, 8],
   bin_tipped: [244, 156, 24, 16],
   shelter: [236, 232, 120, 72],
@@ -38,11 +38,11 @@ const PIECES: Readonly<Record<string, readonly number[]>> = {
   fence: [112, 92, 36, 24],
   fence_sagging: [220, 200, 36, 24],
   fence_down: [208, 188, 36, 24],
-  rail: [100, 60, 36],
-  rail_bent: [296, 68, 36],
+  rail: [100, 36],
+  rail_bent: [296, 36],
   billboard: [320, 300, 48, 32],
   billboard_bare: [308, 288, 120, 68],
-  newsbox: [48, 24, 12],
+  newsbox: [48, 12],
 };
 
 export default {

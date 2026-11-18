@@ -8,6 +8,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bpy  # noqa: E402
 import kit  # noqa: E402
 from kit import Mesh, box, cylinder, fence_uv, fine, octagon, panel, part_uv, prism, sheet, tube, turn  # noqa: E402
 
@@ -615,4 +616,10 @@ for name, fn in PIECES.items():
         mesh.build(name if not counts else f"{name}_LOD{len(counts)}")
         counts.append(mesh.triangles())
     kit.LEVEL = 0
+    # A piece built of boxes has no level with fewer sides: it goes from its finest to its masses, without the flat level
+    # between that would save little.
+    if len(counts) == 3:
+        bpy.data.objects.remove(bpy.data.objects[f"{name}_LOD1"])
+        bpy.data.objects[f"{name}_LOD2"].name = f"{name}_LOD1"
+        counts = [counts[0], counts[2]]
     print(f"street: {name} {counts} triangles")
