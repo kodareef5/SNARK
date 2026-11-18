@@ -11,7 +11,7 @@ const ROW_BYTES = 20;
 const VEHICLE_FIELDS = ["pitch", "roll", "qx", "qy", "qz", "qw", "steering"] as const;
 // Kept only while an entity has occupied a seat in the retained window. Host pose and saddle belong to that
 // instant: a dismount, changed saddle or recycled host slot must not rewrite an earlier seated hitbox.
-const SEAT_FIELDS = ["seat", "seatGen", "seatSlot", "saddle", "hostKind", "hostX", "hostY", "hostZ", "hostYaw", "hostAnim", "hostCue"] as const;
+const SEAT_FIELDS = ["seat", "seatGen", "seatSlot", "saddle", "hostKind", "hostX", "hostY", "hostZ", "hostYaw", "hostAnim", "hostCue", "hostQx", "hostQy", "hostQz", "hostQw", "hostSteering", "hostEpoch"] as const;
 
 export class Past {
   x = 0;
@@ -26,8 +26,10 @@ export class Past {
   pitch = 0; roll = 0; qx = 0; qy = 0; qz = 0; qw = 1; steering = 0;
   seat = 0; seatGen = 0; seatSlot = 0; saddle = 0; hostKind = 0;
   hostX = 0; hostY = 0; hostZ = 0; hostYaw = 0; hostAnim = 0; hostCue = 0;
+  hostQx = 0; hostQy = 0; hostQz = 0; hostQw = 1; hostSteering = 0; hostEpoch = 0;
 
   seatFrom(ents: EntityStore, e: number): void {
+    this.hostEpoch = 0;
     const host = ents.seat[e]! - 1;
     this.seat = host >= 0 && ents.seatSlot[e] !== 0 && ents.seatGen[e] === ents.gen[host] && (ents.flags[host]! & F_ALIVE) !== 0 ? host + 1 : 0;
     this.seatGen = this.seat ? ents.seatGen[e]! : 0;
@@ -37,6 +39,9 @@ export class Past {
     this.hostKind = ents.kind[host]!;
     this.hostX = ents.x[host]!; this.hostY = ents.y[host]!; this.hostZ = ents.z[host]!;
     this.hostYaw = ents.yaw[host]!; this.hostAnim = ents.anim[host]!; this.hostCue = ents.cue[host]!;
+    const v = ents.vrow[host]!;
+    this.hostQx = ents.vehicleQx[v]!; this.hostQy = ents.vehicleQy[v]!; this.hostQz = ents.vehicleQz[v]!; this.hostQw = ents.vehicleQw[v]!;
+    this.hostSteering = ents.steering[v]!;
   }
 
   blendSeat(other: Past, k: number): void {
@@ -50,11 +55,18 @@ export class Past {
     this.hostZ += (other.hostZ - this.hostZ) * k;
     const turn = ((other.hostYaw - this.hostYaw + 32768) & 0xffff) - 32768;
     this.hostYaw = (this.hostYaw + Math.round(turn * k)) & 0xffff;
+    const sign = this.hostQx * other.hostQx + this.hostQy * other.hostQy + this.hostQz * other.hostQz + this.hostQw * other.hostQw < 0 ? -1 : 1;
+    this.hostQx += (other.hostQx * sign - this.hostQx) * k; this.hostQy += (other.hostQy * sign - this.hostQy) * k;
+    this.hostQz += (other.hostQz * sign - this.hostQz) * k; this.hostQw += (other.hostQw * sign - this.hostQw) * k;
+    const norm = Math.hypot(this.hostQx, this.hostQy, this.hostQz, this.hostQw);
+    if (norm > 1e-6) { this.hostQx /= norm; this.hostQy /= norm; this.hostQz /= norm; this.hostQw /= norm; }
+    else { this.hostQx = this.hostQy = this.hostQz = 0; this.hostQw = 1; }
+    this.hostSteering += (other.hostSteering - this.hostSteering) * k;
     if (k >= 0.5) { this.hostAnim = other.hostAnim; this.hostCue = other.hostCue; }
   }
 
   sameSeat(other: Past): boolean {
-    return this.seat === other.seat && this.seatGen === other.seatGen && this.seatSlot === other.seatSlot && this.saddle === other.saddle;
+    return this.seat === other.seat && this.seatGen === other.seatGen && this.seatSlot === other.seatSlot && this.saddle === other.saddle && this.hostEpoch === other.hostEpoch;
   }
 
   /** Seat attachment changes are discrete, never a travelled segment between two different seat origins. */
@@ -241,6 +253,13 @@ export class History {
     return distance;
   }
 
+  /** An exit crosses the cabin without sweeping a body through it. Keep the previous seat and its
+   * travel bound for shots already in flight. Past.blend selects one side of the attachment change. */
+  seatExit(e: number): void {
+    if (this.rowOf[e]! < 0) this.track(e);
+    this.motionEpochs.set(e, ++this.motionVersion);
+  }
+
   /** Immediately after an explicit teleport. Do not interpolate or sweep through the space it skipped. */
   discontinuity(e: number): void {
     if ((this.ents.flags[e]! & F_ALIVE) === 0) return;
@@ -297,6 +316,7 @@ export class History {
       out.cue = ents.cue[e]!;
       out.vehicleFrom(ents, e);
       out.seatFrom(ents, e);
+      if (out.seat) out.hostEpoch = this.motionEpoch(out.seat - 1);
       return true;
     }
     const i = r * HISTORY_TICKS + (tick & MASK);
@@ -312,7 +332,7 @@ export class History {
     else out.vehicleFrom(ents, e);
     const seat = this.seats.get(e);
     if (seat) for (let field = 0; field < SEAT_FIELDS.length; field++) out[SEAT_FIELDS[field]!] = seat[(tick & MASK) * SEAT_FIELDS.length + field]!;
-    else { out.seat = out.seatGen = out.seatSlot = out.saddle = 0; }
+    else { out.seat = out.seatGen = out.seatSlot = out.saddle = out.hostEpoch = 0; }
     return true;
   }
 
@@ -337,6 +357,7 @@ export class History {
     let seat = this.seats.get(e);
     if (seat || ents.seatSlot[e] !== 0) {
       current.seatFrom(ents, e);
+      if (current.seat) current.hostEpoch = this.motionEpoch(current.seat - 1);
       if (!seat) { seat = new Float64Array(HISTORY_TICKS * SEAT_FIELDS.length); this.seats.set(e, seat); }
       for (let field = 0; field < SEAT_FIELDS.length; field++) seat[(i & MASK) * SEAT_FIELDS.length + field] = current[SEAT_FIELDS[field]!]!;
     }

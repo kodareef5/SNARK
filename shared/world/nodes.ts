@@ -371,9 +371,9 @@ export class NodeField {
   /**
    * Retains (delta +1) or releases (delta -1) the square of chunks within `radius` of `center`. A chunk fills when its count leaves
    * zero, with every node of the map: those `gone` reports as what is left of them, the rest at the hit count `left` gives or else
-   * the kind's full count.
+   * the kind's full count. A source override must return the same immutable map spots; vehicles use it to memoize cold fills.
    */
-  retain(center: number, radius: number, delta: number, gone: (chunk: number, index: number) => boolean, left?: (chunk: number, index: number) => number): void {
+  retain(center: number, radius: number, delta: number, gone: (chunk: number, index: number) => boolean, left?: (chunk: number, index: number) => number, crushed?: (chunk: number, index: number) => boolean, source = this.source): void {
     const dims = this.dims;
     const cx = chunkCx(dims, center);
     const cz = chunkCz(dims, center);
@@ -382,18 +382,19 @@ export class NodeField {
         const chunk = z * dims.chunksX + x;
         const before = this.refs[chunk]!;
         this.refs[chunk] = before + delta;
-        if (before === 0 && delta > 0) this.fill(chunk, gone, left);
+        if (before === 0 && delta > 0) this.fill(chunk, gone, left, crushed, source);
         else if (before === 1 && delta < 0) this.store.dropChunk(chunk);
       }
     }
   }
 
-  private fill(chunk: number, gone: (chunk: number, index: number) => boolean, left?: (chunk: number, index: number) => number): void {
+  private fill(chunk: number, gone: (chunk: number, index: number) => boolean, left: ((chunk: number, index: number) => number) | undefined, crushed: ((chunk: number, index: number) => boolean) | undefined, source: NodeSource): void {
     const spot = this.spot;
-    for (let i = 0; i < this.source.perChunk; i++) {
-      this.source.at(chunk, i, spot);
+    for (let i = 0; i < source.perChunk; i++) {
+      source.at(chunk, i, spot);
       if (spot.kind === 0) continue;
       if (gone(chunk, i)) {
+        if (crushed?.(chunk, i)) continue;
         const rest = this.forms.left[spot.form]!;
         if (rest !== 0) this.store.put(chunk, i, rest, spot.x, spot.y, spot.z, spot.yaw, 0, 0, 1);
         continue;
@@ -404,11 +405,11 @@ export class NodeField {
   }
 
   /** `present` false marks the node used up, true grown back. Does nothing if its chunk is not filled. */
-  set(chunk: number, index: number, present: boolean): void {
+  set(chunk: number, index: number, present: boolean, crushed = false): void {
     if (!this.isLoaded(chunk)) return;
     const spot = this.spot;
     this.source.at(chunk, index, spot);
-    const form = spot.kind === 0 ? 0 : present ? spot.form : this.forms.left[spot.form]!;
+    const form = spot.kind === 0 || !present && crushed ? 0 : present ? spot.form : this.forms.left[spot.form]!;
     if (form === 0) this.store.put(chunk, index, 0, 0, 0, 0, 0, 0, 0, 1);
     else this.store.put(chunk, index, form, spot.x, spot.y, spot.z, spot.yaw, 0, present ? this.hits[spot.kind]! : 0, 1);
   }

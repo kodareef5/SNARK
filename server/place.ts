@@ -17,6 +17,8 @@ const NODE_CHUNKS = 256;
 export class UnloadedNodes {
   /** Whether the node in a slot is used up. Harvest sets it; without it every node stands. */
   usedUp: ((chunk: number, index: number) => boolean) | null = null;
+  /** A collision crushed the remaining stump too; the slot has no placement solid until regrowth. */
+  crushed: ((chunk: number, index: number) => boolean) | null = null;
   private readonly field: NodeField;
   private readonly dims: MapDims;
   /**
@@ -55,6 +57,7 @@ export class UnloadedNodes {
         const row = this.rowOf(chunk);
         const at = this.mapped!;
         for (let k = row * per, end = k + this.mappedCount[row]! * 6; k < end; k += 6) {
+          if (this.crushed?.(chunk, at[k + 5]!)) continue;
           const dx = x - at[k]!;
           const dz = z - at[k + 2]!;
           if (dx * dx + dz * dz >= reach * reach) continue;

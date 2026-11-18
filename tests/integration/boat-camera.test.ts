@@ -36,7 +36,8 @@ test("all four native boat cameras follow the real helm and passenger eye positi
       ents.vehicleYaw[ents.vrow[e]!] = attitude.yaw; ents.vehiclePitch[ents.vrow[e]!] = attitude.pitch; ents.vehicleRoll[ents.vrow[e]!] = attitude.roll;
       ents.vx[e] = ents.vy[e] = ents.vz[e] = ents.vehicleYawRate[ents.vrow[e]!] = ents.vehiclePitchRate[ents.vrow[e]!] = ents.vehicleRollRate[ents.vrow[e]!] = 0;
       ents.vehicleEngineOn[ents.vrow[e]!] = 0; ents.vehicleFlooding[ents.vrow[e]!] = 0;
-      h.host.urban.syncAfterContact(e); run(250);
+      // This fixture teleports the carrier between fixed attitudes. Retire its former prediction just as the host does on a teleport.
+      h.world.history.discontinuity(e); h.host.urban.syncAfterContact(e); run(250);
       for (let i = 0; i < crew.length; i++) {
         const app = crew[i]!, s = app.session, r = app.remote;
         let frame: VehicleFrame;

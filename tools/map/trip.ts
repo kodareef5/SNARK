@@ -174,7 +174,7 @@ interface Page {
   shot(path: string): Promise<void>;
 }
 
-async function devtools(profile: string): Promise<Page & { close(): void }> {
+export async function devtools(profile: string): Promise<Page & { close(): void }> {
   const active = join(profile, "DevToolsActivePort");
   for (let k = 0; k < 300 && !existsSync(active); k++) await Bun.sleep(100);
   const port = Number(readFileSync(active, "utf8").split("\n")[0]);

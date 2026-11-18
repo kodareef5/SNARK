@@ -84,8 +84,8 @@ function checkSeats(def: WheelVehicleDefinition, sockets: readonly { name: strin
   }
 }
 
-artTest("the five new cockpits retain a forward sightline when glass textures are unavailable", () => {
-  for (const def of defs.slice(1)) {
+artTest("all six cockpits retain a forward sightline when glass textures are unavailable", () => {
+  for (const def of defs) {
     const name = def.id.split(":")[1]!;
     const file = join(import.meta.dir, "../../assets/source/core/vehicles", name, name + ".snpk");
     const pack = parsePack(readFileSync(file)), record = pack.header.rigs.find(r => r.id === def.id)!;

@@ -3,9 +3,10 @@
 import { BOAT_ART } from '../content/vehicles/boat-art.ts';
 import { Pose } from '../shared/anim/clip.ts';
 import { HUMAN, HUMAN_BONES, SOCKET_EYE } from '../shared/anim/human.ts';
-import { defaultLook, lookScales, LOOK_SEX, SEX_IDS } from '../shared/anim/look.ts';
 import type { PackRig } from '../shared/pack/pack.ts';
-import { createMountMotion, mountOrigin, mountPose } from '../shared/anim/mount.ts';
+import { createMountMotion, mountOrigin } from '../shared/anim/mount.ts';
+import { occupantPose, occupantSeat, createOccupantSeat } from '../shared/anim/occupant.ts';
+import { AnimState, bodySeed } from '../shared/anim/pose.ts';
 import { fitSeatControls } from '../shared/anim/seat-controls.ts';
 import { boneToModel, Solved, solve } from '../shared/anim/skeleton.ts';
 import { CHUNK_SIZE, TICK_DT, TICK_RATE } from '../shared/coords.ts';
@@ -19,7 +20,8 @@ import { stepVehicleBody, vehicleDoor, withVehicleDoor, vehicleStep } from '../s
 import { vehiclePoint, vehicleRotation } from '../shared/sim/vehicle-frame.ts';
 import { isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition, type VehicleSeat, type VehicleState } from '../shared/sim/vehicle.ts';
 import { V_HEALTH } from '../shared/sim/vitals.ts';
-import { capsuleFree, groundUnder, stepOnto } from '../shared/world/collide.ts';
+import { Found } from '../shared/world/structures.ts';
+import { capsuleBox, capsuleFree, groundUnder, push, stepOnto } from '../shared/world/collide.ts';
 import { boatMeetsCapsule } from '../shared/world/boat.ts';
 import { helicopterMeetsCapsule } from '../shared/world/helicopter.ts';
 import { carMeetsCapsule } from '../shared/world/vehicle.ts';
@@ -50,6 +52,8 @@ interface UrbanContext {
   damage?(record: EntityRecord, points: number, by: number): number;
   /** Physical collision harm uses the opposing qualified body/driver and ordinary PvE rules. */
   collisionDamage?(record: EntityRecord, points: number, by: EntityRecord): number;
+  /** The same authoritative resource-aware step as driven vehicles use. */
+  vehicleStep?: typeof stepVehicleBody;
 }
 interface HostSeat { entity: number; handle: number; definition: VehicleDefinition; last: Point & { vx: number; vy: number; vz: number } }
 interface Scope { epoch: number; request: number; connection: Connection | null }
@@ -69,7 +73,6 @@ const HULL_FIELDS = ["vehicleEngineCondition", "vehicleQx", "vehicleQy", "vehicl
 const BASE_BYTES = 2 + VEHICLE_FIELDS.length * 4;
 const formOf = (movement: VehicleDefinition['movement']): { version: number; extra: readonly (typeof ROTOR_FIELDS[number] | typeof HULL_FIELDS[number])[] } =>
   movement === 'rotor' ? { version: 5, extra: ROTOR_FIELDS } : movement === 'boat' ? { version: 9, extra: HULL_FIELDS } : { version: 8, extra: HULL_FIELDS };
-const PLAIN = defaultLook();
 /** How often a car at rest that nobody drives is stepped, to find the ground gone from under it. */
 const REST_TICKS = 30;
 
@@ -94,11 +97,13 @@ export class Urban {
   private readonly saved = new Body();
   private readonly pose = new Pose(HUMAN_BONES);
   private readonly solved = new Solved(HUMAN_BONES);
+  private readonly exitFound = new Found();
   private readonly seatAt = new Float64Array(3);
   private readonly seatRotation = new Float64Array(4);
   private readonly seatOrigin = new Float64Array(3);
   private readonly motion = createMountMotion();
-  private readonly scales = new Float32Array(HUMAN_BONES * 3);
+  private readonly occupantState = new AnimState();
+  private readonly occupantSeat = createOccupantSeat();
   private readonly rests = new Map<string, Float32Array>();
   private readonly seating: Seating;
   private readonly impacts = new Map<number, { speed: number; rotor: boolean; prop: boolean; water: boolean; landing: number }>();
@@ -440,6 +445,12 @@ export class Urban {
     this.pushes.set(this.ctx.world.ents.pid[e]!, { until: this.ctx.world.tick + TICK_RATE, x, z });
   }
 
+  /** Replication uses the same temporary parking-brake release as the native undriven controller. */
+  recoveryCoasting(e: number): boolean {
+    const { world } = this.ctx, ents = world.ents, pid = ents.pid[e]!, push = this.pushes.get(pid), host = this.hosts.get(pid);
+    return !!push && !!host && world.tick < push.until && ents.vx[e]! * push.x + ents.vz[e]! * push.z > .12 && !this.occupied(pid, host);
+  }
+
   /** Empty parked vehicles keep their place when a protected foreign tribe hits them. */
   parked(e: number): boolean {
     const { world } = this.ctx, a = world.ents, v = a.vrow[e]!;
@@ -737,7 +748,7 @@ export class Urban {
       if (!pushed) this.pushes.delete(pid);
       if (!driven && (!this.resting(e) || (world.tick + e) % REST_TICKS === 0)) {
         ents.loadBody(e, this.body);
-        stepVehicleBody(world, this.body, 0, 0, isWheelVehicle(host.definition) && !pushed ? BTN_JUMP : 0, host.definition, TICK_DT, this.body.yaw, false);
+        (this.ctx.vehicleStep ?? stepVehicleBody)(world, this.body, 0, 0, isWheelVehicle(host.definition) && !pushed ? BTN_JUMP : 0, host.definition, TICK_DT, this.body.yaw, false);
         ents.storeBody(e, this.body);
         this.impact(e);
         ents.pose(e, world.tick);
@@ -934,9 +945,33 @@ export class Urban {
     // Seated animation origins may sit just below the ground when the hull rests on its belly.
     // Begin the exit at local standing support; every horizontal sample still checks terrain and overhead solids.
     const start = { x: ents.x[ae]!, y: Math.max(ents.y[ae]!, groundUnder(world.hf, ents.x[ae]!, ents.z[ae]!, move.radius) + .05), z: ents.z[ae]! }, out = [0, 0, 0];
+    if (!capsuleFree(world, start.x, start.y, start.z, move.radius, move.height)) {
+      // A clipped seated body can straddle a deck's side. Existing horizontal ceiling/floor penetration is not
+      // permission to pass through that surface: only side contacts may raise the start to their nearby top.
+      let side = false, vertical = false;
+      for (const store of [world.structs, world.nodes]) {
+        if (!store) continue;
+        const count = store.query(start.x - move.radius, start.z - move.radius, start.x + move.radius, start.z + move.radius,
+          this.exitFound, start.y, start.y + move.height);
+        for (let i = 0; i < count; i++) if (capsuleBox(store, this.exitFound.refs[i]!, start.x, start.y, start.z, move.radius, move.height, .002)) {
+          side = true; vertical ||= Math.abs(push.y) > push.depth * .2;
+        }
+      }
+      if (side && !vertical) {
+        const floor = stepOnto(world, start.x, start.z, start.y, start.y + move.height - .1, move.radius, move.height, move.slopeCos);
+        if (!Number.isNaN(floor)) start.y = floor + .05;
+      }
+    }
     const w = spec.halfWidth + move.radius + .3, l = spec.halfLength + move.radius + .3;
-    for (const local of [[w, 0, seat.anchor[2]], [-w, 0, seat.anchor[2]], [w, 0, 0], [-w, 0, 0], [w, 0, l], [-w, 0, l], [w, 0, -l], [-w, 0, -l]]) {
-      vehiclePoint(state, local, out);
+    const locals = [[w, 0, seat.anchor[2]], [-w, 0, seat.anchor[2]], [w, 0, 0], [-w, 0, 0], [w, 0, l], [-w, 0, l], [w, 0, -l], [-w, 0, -l]];
+    for (let i = 0; i < locals.length + 8; i++) {
+      if (i < locals.length) vehiclePoint(state, locals[i]!, out);
+      else {
+        // A near-vertical chassis collapses its local door plane. Ground-plane candidates still leave through
+        // a checked local corridor, and cannot cross another vehicle, wall or the opposite side of a sealed room.
+        const angle = (i - locals.length) * Math.PI / 4;
+        out[0] = state.x + Math.cos(angle) * l; out[1] = start.y; out[2] = state.z + Math.sin(angle) * l;
+      }
       const ground = groundUnder(world.hf, out[0]!, out[2]!, move.radius), water = world.hf.waterAt(out[0]!, out[2]!);
       // Never lift a deeply submerged crew to the surface. The corridor also bounds distance and checks overhead solids.
       const wet = Number.isFinite(water) && state.y + spec.clearance < water;
@@ -998,7 +1033,7 @@ export class Urban {
       if (e >= 0 && makeHandle(e, ents.gen[e]!) === expected && effect.landing) {
         ents.setSeat(e, -1); ents.driven[e] = 0; ents.stance[e] = STANCE_STAND;
         ents.setPosition(e, effect.landing.x, effect.landing.y, effect.landing.z);
-        world.history.discontinuity(e);
+        world.history.seatExit(e);
         ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
         if (isBoatVehicle(host.definition) || effect.landing.y + world.reg.move[ents.kind[e]!]!.height * .75 < world.hf.waterAt(effect.landing.x, effect.landing.z) + .01) {
           const inherit = (v: number): number => Number.isFinite(v) ? v : 0;
@@ -1080,20 +1115,20 @@ export class Urban {
     return true;
   }
 
-  /** Same role, controls, body proportions, pelvis alignment and chassis attitude as the drawn occupant. */
+  /** Physical seat pose uses the common survivor proportions (D54). */
   private poseOn(actor: number, vehicle: number, anchor: readonly [number, number, number], driver: boolean): VehicleState & { qx?: number; qy?: number; qz?: number; qw?: number } {
     const { world } = this.ctx, ents = world.ents;
     const state = this.state(vehicle), seat = this.seatAt, rotation = this.seatRotation, origin = this.seatOrigin;
     vehiclePoint(state, anchor, seat); vehicleRotation(state, rotation);
-    const def = world.reg.vehicle[ents.kind[vehicle]!]!, seatDefinition = def.seats.find(s => s.anchor === anchor), profile = seatDefinition?.pose;
-    mountPose(this.motion, { role: profile ?? (driver ? 'drive' : 'passenger'), tick: world.tick, startTick: 0, durationTicks: 1, steering: isRotorVehicle(def) ? 0 : state.steering / def.spec.maxSteer }, this.pose);
-    const look = ents.looks.get(actor) ?? this.ctx.records.byPid.get(ents.pid[actor]!)?.look ?? PLAIN;
+    const def = world.reg.vehicle[ents.kind[vehicle]!]!, seatDefinition = def.seats.find(s => s.anchor === anchor)!;
+    const st = this.occupantState; st.unpack(ents.anim[actor]!, ents.cue[actor]!); st.seed = bodySeed(actor);
+    occupantSeat(def, seatDefinition, state, ents.yaw[actor]! * TAU / 65536, this.occupantSeat);
+    occupantPose(world.anim, st, world.tick, this.pose, this.occupantSeat, null, 0, this.occupantSeat.aimYaw!, driver, this.motion);
     const definition = world.reg.defs[ents.kind[actor]!];
     const mesh = definition?.type === 'species' ? definition.mesh.replace(/^[^:]*:/, '') : 'human';
-    const rest = this.rests.get(mesh + '_' + SEX_IDS[look[LOOK_SEX]!]) ?? HUMAN.rest;
-    lookScales(look, this.scales);
-    solve(HUMAN, this.pose, this.solved, rest, this.scales);
-    if (seatDefinition) fitSeatControls(this.pose, this.solved, rest, this.scales, seatDefinition, state.steering);
+    const rest = this.rests.get(mesh + '_m') ?? HUMAN.rest;
+    solve(HUMAN, this.pose, this.solved, rest);
+    if (seatDefinition) fitSeatControls(this.pose, this.solved, rest, null, seatDefinition, state.steering);
     mountOrigin(this.solved, seat, rotation, origin);
     return state;
   }

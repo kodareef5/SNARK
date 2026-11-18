@@ -91,6 +91,7 @@ export interface VehicleWheel {
 export const MAX_VEHICLE_DOORS = 4;
 
 /** One kind of vehicle: its mechanics, its seats and the parts of its rig that move. Content, never code, says each. */
+type VehiclePoint3 = readonly [number, number, number];
 interface VehicleDefinitionBase {
   readonly id: string;
   /** Mesh used by the native persistent corpse for an opted-in mechanical wreck. */
@@ -106,6 +107,8 @@ interface VehicleDefinitionBase {
   readonly actionTicks: number;
   /** Metres up from the ground to where the body shell ends and the open cabin begins: a shot above it reaches whoever sits inside. */
   readonly beltline: number;
+  /** Solid cabin panels above the belt in vehicle-local metres. Openings between them admit shots. */
+  readonly shotPanels?: readonly (readonly [VehiclePoint3, VehiclePoint3, VehiclePoint3, VehiclePoint3])[];
 }
 
 /** Existing packs omit movement; their controller remains the wheeled one. */
@@ -299,6 +302,9 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   const s = d.steeringWheel;
   if (s !== undefined && (!bone(s.bone) || !vec(s.axis) || !Number.isFinite(s.ratio) || Math.abs(s.ratio) > 50)) throw new Error("invalid steering wheel");
   if (!Number.isInteger(d.actionTicks) || d.actionTicks < 1 || d.actionTicks > 300) throw new Error("invalid vehicle action ticks");
+  for (const panel of d.shotPanels ?? []) {
+    if (panel.length !== 4 || panel.some(point => point.length !== 3 || !point.every(Number.isFinite))) throw new Error("invalid vehicle cabin panel");
+  }
   if (!Number.isFinite(d.beltline) || d.beltline <= d.spec.clearance || d.beltline > d.spec.height) throw new Error("invalid vehicle belt line");
   validateSeats(d.seats, d.doors.length, "vehicle");
 }
@@ -353,6 +359,8 @@ export interface VehicleInput {
 }
 
 export interface VehicleWorld {
+  /** Authority may fracture a contacted obstacle after paying its work through a point impulse. Null keeps the solid response. */
+  breakContact?(state: VehicleState, spec: VehicleSpec, hit: VehicleContact): number | null;
   /** Surface normal points out of the obstacle, toward the chassis. Scratch result: consume before another query. */
   contact(from: Readonly<VehicleState>, to: Readonly<VehicleState>, spec: VehicleSpec): VehicleContact | null;
   /** Actual current overlap, without the moving-contact skin; use only for bounded position recovery. */
@@ -362,7 +370,7 @@ export interface VehicleWorld {
 }
 
 export interface WheelRayContact { distance: number; nx: number; ny: number; nz: number; surface: VehicleSurface }
-export interface VehicleContact { reason: string; nx: number; ny: number; nz: number; x?: number; y?: number; z?: number; depth?: number; balanced?: boolean; geometryNx?: number; geometryNy?: number; geometryNz?: number; points?: readonly { x: number; y: number; z: number }[] }
+export interface VehicleContact { restitution?: number; reason: string; nx: number; ny: number; nz: number; x?: number; y?: number; z?: number; depth?: number; balanced?: boolean; geometryNx?: number; geometryNy?: number; geometryNz?: number; points?: readonly { x: number; y: number; z: number }[] }
 
 export interface VehicleStep {
   blocked: string | null;

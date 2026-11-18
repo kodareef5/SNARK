@@ -93,9 +93,9 @@ export class StaticVehicleWorld implements VehicleWorld {
   private readonly center = new Float64Array(3);
   private readonly supportWorld: CollisionWorld;
 
-  constructor(world: CollisionWorld, surfaceAt: VehicleSurfaceAt = (hit, ref) => vehicleSurfaceAt(world, hit, ref)) {
+  constructor(world: CollisionWorld, surfaceAt: VehicleSurfaceAt = (hit, ref) => vehicleSurfaceAt(world, hit, ref), ignoreNode?: (ref: number) => boolean) {
     this.world = world;
-    this.solids = new StaticVehicleSolids(world);
+    this.solids = new StaticVehicleSolids(world, ignoreNode);
     this.surfaceAt = surfaceAt;
     // Resource nodes obstruct the chassis but are not road support. Soft vegetation never becomes an elevated road.
     this.supportWorld = { hf: world.hf, structs: world.structs };
@@ -118,7 +118,7 @@ export class StaticVehicleWorld implements VehicleWorld {
     const a = this.frame(from), b = this.frame(to), { comX, comY, comZ } = vehicleMassProperties(p, to);
     quatRotate(this.q, 0, comX, comY, comZ, this.center, 0);
     this.center[0] += to.x; this.center[1] += to.y; this.center[2] += to.z;
-    const rest = 1 - 2 * (b.qx * b.qx + b.qz * b.qz) < .5 && Math.abs(2 * (b.qy * b.qz - b.qw * b.qx)) < .65 && to.vx * to.vx + to.vy * to.vy + to.vz * to.vz < 4;
+    const rest = 1 - 2 * (b.qx * b.qx + b.qz * b.qz) < .5 && to.vx * to.vx + to.vy * to.vy + to.vz * to.vz < 4;
     return this.solids.blocked(a, b, carShapes(p), undefined, true, .008, rest ? this.center : undefined, rest);
   }
   penetration(at: Readonly<VehicleState>, p: VehicleSpec): VehicleContact | null {
