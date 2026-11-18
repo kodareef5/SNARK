@@ -37,6 +37,33 @@ export function requireDinosaurReviewArt(dist: string, species: readonly string[
   }
 }
 
+/** Reserve room for the visible head and tail as well as the locomotion capsule. */
+function placePreviewCreature(host: Host, id: string, kind: number, pad: typeof DINOSAUR_COURSE.pads[number]): number {
+  const { world, records } = host;
+  const reach = world.anims[kind]?.rig.reach ?? world.reg.bodyRadius[kind]!;
+  // Try the team nearest the entrance first, then rows along the open ground. Occupants may have been ridden away.
+  const neighbours = [];
+  for (const other of records.byPid.values()) {
+    if (other.dead || other.corpse || world.reg.defs[other.kind]?.type !== "species") continue;
+    const ent = records.entOf.get(other.pid);
+    neighbours.push({
+      x: ent === undefined ? other.x : world.ents.x[ent]!,
+      z: ent === undefined ? other.z : world.ents.z[ent]!,
+      reach: reach + (world.anims[other.kind]?.rig.reach ?? world.reg.bodyRadius[other.kind]!),
+    });
+  }
+  for (const dx of [0, -36, 36, -72, 72, -108]) {
+    for (const dz of [0, 24, -24, 48, -48, 72, -72, 96, -96]) {
+      const x = pad.x + dx, z = pad.z + dz;
+      if (world.hf.heightAt(x, z) <= world.hf.waterAt(x, z)) continue;
+      if (neighbours.some(other => Math.hypot(x - other.x, z - other.z) < other.reach)) continue;
+      const e = host.spawnCreature(id, x, z, 40, "admin");
+      if (e >= 0) return e;
+    }
+  }
+  return -1;
+}
+
 /** Normal creature, tame, saddle and inventory paths; existing owned creatures survive reconnects without duplication. */
 export function seedDinosaurPreview(host: Host, owner: EntityRecord, species: readonly string[] = REVIEW_SPECIES): number {
   if (!host.dev || !owner.team) throw new Error("Dinosaur review seeding requires a local development host and a real survivor team");
@@ -49,13 +76,12 @@ export function seedDinosaurPreview(host: Host, owner: EntityRecord, species: re
     for (const rec of records.byPid.values()) if (rec.kind === kind && rec.team === owner.team && !rec.dead && rec.corpse === null) { owned = true; break; }
     if (owned) continue;
     const pad = DINOSAUR_COURSE.pads[index % DINOSAUR_COURSE.pads.length]!;
-    let e = -1;
-    for (const offset of [0, 24, 48]) { e = host.spawnCreature(id, pad.x, pad.z + offset, 40, "admin"); if (e >= 0) break; }
-    if (e < 0) throw new Error(`No clear review pad for ${id}`);
+    const e = placePreviewCreature(host, id, kind, pad);
+    if (e < 0) continue;
     const rec = records.byPid.get(world.ents.pid[e]!)!;
     if (!host.taming.give(rec, owner, 0, "forced")) throw new Error(`Preview tame refused for ${id}`);
     rec.name = `${id === "core:rex" ? "T. rex" : "Carbonemys"} review`;
-    rec.yaw = 0; world.ents.yaw[e] = 0;
+    rec.yaw = world.ents.yaw[e] = host.creatures.mind.look[e] = pad.yaw;
     const saddle = reg.saddleFits.indexOf(kind);
     if (saddle > 0) rec.saddle = saddle; // Same out-of-ledger worn gear path as gmsummon.
     host.items.mint(rec, reg.index.get(id === "core:rex" ? "core:meat" : "core:berry")!, 100);

@@ -8,7 +8,7 @@ import { made } from "../map.ts";
 
 export const DINOSAUR_COURSE = {
   id: "preview:carbonemys-rex", spawn: { x: 149, z: 112, yaw: 0 },
-  pads: [{ x: 158, z: 124 }, { x: 140, z: 128 }],
+  pads: [{ x: 158, z: 124, yaw: 49152 }, { x: 140, z: 128, yaw: 16384 }],
   slope: { x: 64, z: 168 }, pool: { x: 208, z: 192 },
 } as const;
 
