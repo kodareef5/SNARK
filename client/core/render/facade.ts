@@ -102,8 +102,12 @@ const NEAR = 0.04;
  */
 const ROOM_LIGHT = 0.55;
 const ROOM_DEPTH = 0.7;
-/** The least share of the sky's light a room behind glass has, where the top of its opening sees little sky (under a canopy or a balcony). */
-export const ROOM_OPEN_LEAST = 0.3;
+/**
+ * A room behind glass is lit by the sky's share at the top of its opening, ROOM_OUT metres out over the street, so a
+ * canopy or a balcony over the front shades it only as far as it reaches, and never less than ROOM_OPEN_LEAST of it.
+ */
+export const ROOM_OUT = 2;
+export const ROOM_OPEN_LEAST = 0.35;
 /** Dirty glass: the film's own albedo at its thickest, and how much of the room it hides there. */
 const FILM_ALBEDO = 0.35;
 const FILM_HIDES = 0.45;
@@ -432,19 +436,20 @@ export function facadeSurface(o: FacadeOut, kind: number, x: number, y: number, 
 }
 
 /**
- * The sign band a shop wears, of `count`: by its street and its 8 m bay along it, so a band split over faces agrees and
- * the next shops along a street wear others. `corner` and `right` are the face's left foot and its way across in the
- * instance's own frame, (rx, rz) that way in the world, and (px, pz) the instance's place in quarter metres.
+ * The sign band a shop wears, of `count` (16): by the middle of its module, half a bay in from the band's middle, on an
+ * 8 m grid turned with the building, so a band split over faces and a corner shop's two bands agree and the next shops
+ * along a street, a cell apart, wear others (5 or 7 apart). `corner` and `right` are the face's left foot and its way
+ * across in the instance's own frame, (rx, rz) that way in the world, and (px, pz) the instance's place in quarter metres.
  */
 export function facadeSign(corner: Numbers, right: Numbers, rx: number, rz: number, w: number, px: number, pz: number, count: number): number {
   const ol = Math.hypot(right[0]!, right[2]!) || 1, ox = right[0]! / ol, oz = right[2]! / ol;
   const cs = ox * rx + oz * rz, sn = ox * rz - oz * rx;
   const cx = corner[0]! + ox * w * 0.5, cz = corner[2]! + oz * w * 0.5;
-  const ax = px * 0.25 + cs * cx - sn * cz, az = pz * 0.25 + sn * cx + cs * cz;
-  const along = ax * rx + az * rz, across = ax * rz - az * rx;
-  const dir = Math.floor(Math.atan2(rz, rx) / 0.7853982 + 0.5) & 7;
-  const start = Math.floor(facadeHash(Math.floor(across / 6 + 0.37), dir, 23) * count);
-  const k = start + Math.floor(along / 8 + 0.37) * 5;
+  const kx = px * 0.25 + cs * cx - sn * cz + rz * 4, kz = pz * 0.25 + sn * cx + cs * cz - rx * 4;
+  // The building's way, the same for its four sides: a quarter turn kept between -37 and 53 degrees.
+  const turn = Math.atan2(rz, rx), t = turn - 1.5707963 * Math.floor((turn + 0.6457718) / 1.5707963);
+  const ex = Math.cos(t), ez = Math.sin(t);
+  const k = 5 * Math.floor((kx * ex + kz * ez) / 8 + 0.37) + 7 * Math.floor((kz * ex - kx * ez) / 8 + 0.37) + 3;
   return k - count * Math.floor(k / count);
 }
 
@@ -797,11 +802,11 @@ int facadeSign(vec3 corner, vec3 right, vec3 side, float w, vec2 place, int coun
   vec2 o = normalize(right.xz), r = normalize(side.xz);
   float cs = dot(o, r), sn = o.x * r.y - o.y * r.x;
   vec2 c = corner.xz + o * (w * 0.5);
-  vec2 at = place * 0.25 + vec2(cs * c.x - sn * c.y, sn * c.x + cs * c.y);
-  float along = dot(at, r), across = at.x * r.y - at.y * r.x;
-  int dir = int(floor(atan(r.y, r.x) / 0.7853982 + 0.5)) & 7;
-  int k = int(floor(facadeHash(ivec3(int(floor(across / 6.0 + 0.37)), dir, 23)) * float(count))) + int(floor(along / 8.0 + 0.37)) * 5;
-  return k - count * int(floor(float(k) / float(count)));
+  vec2 k = place * 0.25 + vec2(cs * c.x - sn * c.y, sn * c.x + cs * c.y) + vec2(r.y, -r.x) * 4.0;
+  float turn = atan(r.y, r.x), t = turn - 1.5707963 * floor((turn + 0.6457718) / 1.5707963);
+  vec2 e = vec2(cos(t), sin(t));
+  int n = 5 * int(floor(dot(k, e) / 8.0 + 0.37)) + 7 * int(floor((k.y * e.x - k.x * e.y) / 8.0 + 0.37)) + 3;
+  return n - count * int(floor(float(n) / float(count)));
 }
 vec4 fDecal;
 float facadeMark(int m, float x, float y, float x0, float y0, float dw, float dh, float footprint);
@@ -1082,7 +1087,7 @@ int facade(inout vec3 albedo, inout vec3 orm, inout vec3 n, out vec3 room, out v
   float w = length(pu), h = length(pv);
   int kind = facadeKind(colour, w, h, nn.y);
   float x = face.x * w, y = face.y * h, footprint = max(length(dpx), length(dpy));
-  roomAt = vec4(rel + vec3(0.0, h - y, 0.0), over + h - y);
+  roomAt = vec4(rel + vec3(0.0, h - y, 0.0) + vec3(nn.x, 0.0, nn.z) * ${fl(ROOM_OUT)}, over + h - y);
   vec3 corner = own - qu * face.x - qv * face.y, right = qu / max(length(qu), 1e-6);
   int part = kind == 0 ? 0 : facadePart(albedo, orm, n, room, far, kind, x, y, w, h, corner, right, nn, side, place, rel, footprint, height, over);
   if (kind == 0 || kind == ${KIND.shutter} || kind == ${KIND.door} || kind == ${KIND.pier}) facadeMarks(albedo, orm, n, kind, x, y, w, h, edges, nn, side, corner, right, place, height, over, footprint);

@@ -192,19 +192,28 @@ test("far off, where no part is drawn, a window and a curtain wall are their bay
   expect(PROGRAMS.flat!(TIERS[2]!, "bc").vertex).not.toContain("if (i == 83u)");
 });
 
-test("a shop's sign is its street's and its bay's: the next shops along a street wear others, and a band turned in its instance agrees", () => {
+test("a shop's sign is its module's: the next shops along a street wear others, a corner shop's two bands agree, and a band turned in its instance agrees", () => {
   const count = ELEMENTS.find((e) => e[0] === "sign")![3];
-  for (const [rx, rz] of [[1, 0], [0, -1], [-0.6, 0.8]] as const) {
-    const at = (k: number): number => facadeSign([8 * k * rx + 0.4 * rx, 0, 8 * k * rz + 0.4 * rz + 3], [rx, 0, rz], rx, rz, 7.2, 0, 0, count);
+  // A band 7.2 m long in the middle of its 8 m bay at (x, z) on a front read along (rx, rz), in a frame with no turn.
+  const band = (x: number, z: number, rx: number, rz: number): number => facadeSign([x - 3.6 * rx, 0, z - 3.6 * rz], [rx, 0, rz], rx, rz, 7.2, 0, 0, count);
+  for (const turn of [0, 0.3, 0.6, 1.1, 2.5, -2]) {
+    const [rx, rz] = [Math.cos(turn), Math.sin(turn)];
+    const at = (k: number): number => band(13.1 + 8 * k * rx, 7.3 + 8 * k * rz, rx, rz);
     for (let k = -40; k < 40; k++) {
-      for (let j = 1; j <= 3; j++) expect(at(k + j)).not.toBe(at(k));
+      expect(at(k + 1)).not.toBe(at(k));
       // The same band in an instance turned a quarter, its place where the frame's origin was: one sign.
-      const c = [8 * k * rx + 0.4 * rx - 100, 0, 8 * k * rz + 0.4 * rz + 3 - 60];
+      const c = [13.1 + 8 * k * rx - 3.6 * rx - 100, 0, 7.3 + 8 * k * rz - 3.6 * rz - 60];
       expect(facadeSign([c[2]!, 0, -c[0]!], [rz, 0, -rx], rx, rz, 7.2, 400, 240, count)).toBe(at(k));
+    }
+    // A corner shop: its front's band and its side's, each in the middle of its bay, the module 8 m square.
+    for (let k = -5; k < 5; k++) {
+      const [mx, mz] = [40 + 8 * k * rx, 20 + 8 * k * rz];
+      const [ix, iz] = [rz, -rx];
+      expect(band(mx - 4 * ix, mz - 4 * iz, rx, rz)).toBe(band(mx - 4 * rx, mz - 4 * rz, -rz, rx));
     }
   }
   // Every sign is worn somewhere along a long street.
-  expect(new Set(Array.from({ length: 64 }, (_, k) => facadeSign([8 * k, 0, 0], [1, 0, 0], 1, 0, 7.2, 0, 0, count))).size).toBe(count);
+  expect(new Set(Array.from({ length: 64 }, (_, k) => band(8 * k + 4, 0, 1, 0))).size).toBe(count);
 });
 
 test("what is left on a display's glass is at a place of its own on each: a vinyl on about half, posters on some", () => {

@@ -3,7 +3,7 @@
 
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
 import { SURFACE_NAMES, WEATHER_LAYER, WEATHER_MATERIAL, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
-import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
+import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
 import { GROUND_BAND, GROUND_SCALE, edgeOf, edged, groundCover, groundMeet, groundWander, higher, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
 import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
@@ -252,8 +252,8 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     if (facadeIO.room[0]! + facadeIO.room[1]! + facadeIO.room[2]! > 0) {
       facadeSky[0] = nx; facadeSky[1] = ny; facadeSky[2] = nz;
       skyLight(facadeLight, p.frame, facadeSky);
-      // A room is lit by the sky the top of its opening sees, and a little where that is under a canopy or a balcony.
-      const lights = roomOpen ? Math.max(roomOpen(rx, rz, nx, ny, nz, over + facadeIO.roomUp), ROOM_OPEN_LEAST) : open;
+      // A room is lit by the sky's share over the street at the top of its opening (facade.ts ROOM_OUT).
+      const lights = roomOpen ? Math.max(roomOpen(rx + nx * ROOM_OUT, rz + nz * ROOM_OUT, nx, ny, nz, over + facadeIO.roomUp), ROOM_OPEN_LEAST) : open;
       for (let c = 0; c < 3; c++) light[c]! += facadeIO.room[c]! * facadeLight[c]! * lights;
     }
   } else {

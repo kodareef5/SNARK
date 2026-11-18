@@ -92,7 +92,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.repl
   float roomOpen = 0.0;
 #ifdef FACADE
   if (uSolid < 1.5 && uSkin < 0.5 && fFacade.y > 0.5 && facade(albedo, orm, n, room, far, roomAt, vFacade, vFace, dFdx(vFace), dFdy(vFace), vOwn, dFdx(vOwn), dFdy(vOwn), vPlace, vEdges, vRel, dx, dy, geometric, vRel.y + uWorldEye.y, over) == 2) worldSharp = true;
-  // A room is lit by the sky the top of its opening sees, and a little where that is under a canopy or a balcony.
+  // A room is lit by the sky's share over the street at the top of its opening (facade.ts ROOM_OUT).
   roomOpen = max(skyOpen(roomAt.xyz, geometric, roomAt.w, 0.0), ${ROOM_OPEN_LEAST.toFixed(2)});
 #endif
   vec3 v = -normalize(vRel);
