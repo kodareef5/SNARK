@@ -152,7 +152,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
           const end = pick < 8 ? "zendsnap" : pick < 13 ? "zendspall" : pick < 16 ? "zendwhole" : "zendsag";
           facade(m, end, u, base + level * 4, v, side, "fracture");
           // A vine hangs from one whole or spalled end in three.
-          if ((end === "zendwhole" || end === "zendspall") && pick % 3 === 0) facade(m, "zvine", u, base + level * 4 - 0.1, v, side, "concrete", end === "zendwhole" ? 0.2 : 0.1);
+          if ((end === "zendwhole" || end === "zendspall") && pick % 3 === 0) grow(m, pick, u, base + level * 4 - 0.1, v, side, end === "zendwhole" ? 0.2 : 0.1);
         }
         from = Math.max(adjacent, playable);
       }
@@ -199,7 +199,8 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
             facade(m, name, u, h, v, side, rule.finish);
             if (name === "zbalcbare") facade(m, "zendsag", u, h, v, side, "fracture");
             // Beside a failure a vine hangs from one balcony in three.
-            if (nearFall && (name === "zbalc" || name === "zbalcrail") && hash3(opts.seed + 89, t.i * 4 + side, t.j * 64 + level) % 3 === 0) facade(m, "zvine", u, h, v, side, "concrete", 2);
+            const grows = hash3(opts.seed + 89, t.i * 4 + side, t.j * 64 + level);
+            if (nearFall && (name === "zbalc" || name === "zbalcrail") && grows % 3 === 0) grow(m, grows >>> 4, u, h, v, side, 2);
             if (level === 0 && last && !end && !grammar.groundTop) facade(m, "zparapet8", u, h + 4, v, side, rule.finish);
             level++; continue;
           }
@@ -255,6 +256,8 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
         else if (front && hash3(opts.seed + 229, side, run) % 3 === 0) facade(m, "zstepup", u, base + top * 4, v, side, rule.finish);
       }
       if (crown?.kind === "screen" && capped && adjacent === 0 && top === floors) facade(m, "zscreen", u, base + top * 4, v, side, rule.finish);
+      // Moss along one whole parapet's coping in four.
+      if (capped && adjacent === 0 && top === floors && grammar?.top === "zwintop" && hash3(opts.seed + 233, t.i * 4 + side, t.j) % 4 === 0) facade(m, "zmoss", u, base + top * 4 + 0.95, v, side, "concrete");
       if (chipped) facade(m, `zcrown${5 + hash3(opts.seed + 97, t.i * 4 + side, t.j) % 2}` as RuinShape, u, base + top * 4, v, side, rule.finish);
       else if (!capped && (!safe(t) || bitten.has(t) || broke) && mode !== "hanging") facade(m, `zcrown${1 + hash3(opts.seed + 97, t.i * 4 + side, t.j) % 4}` as RuinShape, u, base + top * 4, v, side, rule.finish);
       // What fell from a wall lies along its foot: one bay in four, one in two beside a failure; never at a way in.
@@ -384,6 +387,18 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       m.put("zleancol", t.u + (a & 1 ? 3.3 : -3.3), base + RUIN_SHAPES.zleancol[1] / 2, t.v + (a & 2 ? 3.3 : -3.3), "concrete", a * 90 + 45);
     }
   }
+}
+
+/**
+ * What hangs from a broken edge whose line's middle is (u, v) at height h, `out` from the line: leafy ivy two times in
+ * three, hung by its top from the edge and facing out, and a vine of strands the third.
+ */
+function grow(m: Mason, pick: number, u: number, h: number, v: number, side: number, out: number): void {
+  if (pick % 3 === 2) { facade(m, (["zvine", "zvine2", "zvine3"] as const)[(pick >>> 2) % 3]!, u, h, v, side, "concrete", out); return; }
+  const name = (["zivy1", "zivy2", "zivy3"] as const)[(pick >>> 2) % 3]!;
+  const [dx, dz] = SIDES[side]!;
+  const [, tall, deep] = RUIN_SHAPES[name];
+  m.put(name, u + dx * (out + deep / 2), h - tall / 2, v + dz * (out + deep / 2), "concrete", [180, 90, 0, 270][side]!);
 }
 
 /** A slab's edge where the storeys round it were torn away: snapped five in ten, spalled three, whole two. */

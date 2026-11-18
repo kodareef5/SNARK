@@ -1,5 +1,5 @@
-// The low plants: berry bushes, saw palmetto, ferns, sea grape and creeper, several individuals of each and what is
-// left of each when it is used up. Built by model.py from the cards and stems in kit.py, each kind's frame in its own
+// The low plants: berry bushes, saw palmetto, ferns, sea grape, creeper and the vine that hangs from a ruin's broken
+// edges, several individuals of each and what is left of each when it is used up. Built by model.py from the cards and stems in kit.py, each kind's frame in its own
 // script, and the numbers of every individual in variants.py.
 //
 // Level 0 is cut-out cards with the kind's atlas. Level 1 is the same cards in flat colours, berries as small solids:
@@ -34,6 +34,7 @@ const KINDS: readonly [kind: string, count: number, tall: number][] = [
   ["fern", 4, 0.75],
   ["seagrape", 3, 1.4],
   ["creeper", 3, 1.1],
+  ["vine", 3, 2.6],
 ];
 
 const pieces = KINDS.flatMap(([kind, count, tall]) => [

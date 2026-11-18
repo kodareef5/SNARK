@@ -274,7 +274,27 @@ const DRAPE: Corner[] = [[-3, 0, 0], [3, 0, 0], [-2.3, -6.6, 1.3], [3.3, -5.6, 2
 /** A column out of plumb by 8 degrees, its head broken on a slant. */
 const LEAN_COLUMN: Corner[] = [[-0.3, 0, -0.3], [0.3, 0, -0.3], [-0.3, 0, 0.3], [0.3, 0, 0.3], [-0.3, 3.2, 0.15], [0.3, 2.9, 0.12], [-0.3, 3.05, 0.73], [0.3, 2.75, 0.69]];
 /** Strands of a vine hanging from a slab's edge, each its place along it, its length and colour, over a line of moss. */
-const STRANDS: readonly (readonly [number, number, number])[] = [[-1.2, 1.4, LEAF], [-0.75, 2.6, MOSS], [-0.3, 1.9, WEED], [0.2, 3.1, LEAF], [0.7, 1.2, MOSS], [1.15, 2.2, WEED]];
+/**
+ * Strands of three vines, each its place along the edge, its length, its stem's thickness and its colour: unevenly spaced,
+ * long and short, a thick old stem among thin ones, so a row of them is not a comb.
+ */
+type Strand = readonly [number, number, number, number];
+const STRANDS: readonly (readonly Strand[])[] = [
+  [[-1.35, 0.7, 0.05, MOSS], [-1.05, 2.9, 0.11, LEAF], [-0.4, 1.6, 0.06, WEED], [0.05, 3.5, 0.09, LEAF], [0.95, 1.1, 0.05, MOSS], [1.3, 2.2, 0.13, LEAF]],
+  [[-1.4, 2.4, 0.12, LEAF], [-0.6, 0.8, 0.05, WEED], [-0.35, 1.9, 0.07, MOSS], [0.6, 3.2, 0.1, LEAF], [1.4, 1.3, 0.06, WEED]],
+  [[-1.2, 1.2, 0.06, MOSS], [-0.9, 3.4, 0.12, LEAF], [-0.1, 2.1, 0.08, WEED], [0.25, 0.9, 0.05, MOSS], [1.1, 2.7, 0.1, LEAF], [1.45, 1.6, 0.07, WEED]],
+];
+/** A vine from a slab's edge: moss in runs along the edge, each strand's stem and leaves clumped along it, the most at its tip. */
+const vine = (strands: readonly Strand[]): ShapeBox[] => [
+  ...[[-1.5, -0.5, 0.05], [-0.2, 0.9, 0.04], [1.1, 1.55, 0.06]].map(([a, b, h]): ShapeBox => ({ at: [(a! + b!) / 2, -h!, 0.03], half: [(b! - a!) / 2, h!, 0.03], color: MOSS })),
+  ...strands.flatMap(([x, length, thick, colour], k): ShapeBox[] => [
+    { at: [x, -length / 2, 0.04], half: [thick / 2, length / 2, thick / 2], color: colour },
+    ...[0.35, 0.65, 1].filter((f) => f * length > 0.5 || f === 1).map((f, n): ShapeBox => {
+      const r = (0.08 + thick) * (f === 1 ? 1.4 : 1);
+      return { at: [x + ((k + n) % 2 ? r * 0.6 : -r * 0.6), -f * length + r, 0.05], half: [r, r, 0.04], color: colour };
+    }),
+  ]),
+];
 // The column's broken head and the slab that fell from it break along the same teeth, so the one is seen to be the other's.
 const BREAK: readonly Tooth[] = [[-0.4, -0.1, 0.45, -0.1], [-0.1, 0.15, 0.2, -0.25], [0.15, 0.4, 0.55, -0.05]];
 const FALL = 25;
@@ -327,9 +347,11 @@ export const RUIN_BREAKS = {
   zdrape: centred(shaped("zdrape"), { hulls: [{ corners: DRAPE }] }, { hulls: [{ corners: DRAPE }], boxes: bars([[-3.4, -0.2, 0.5, 0.6], [-0.6, -0.15, 0.35, 0], [1.7, -0.25, 0.6, 0.8], [3.6, -0.2, 0.4, 0.3]]) }),
   zhang: centred(shaped("zhang"), { hulls: [{ corners: hanging() }] }, { hulls: [{ corners: hanging() }], boxes: [{ at: [-1.45, -0.3, 0.45], half: [0.04, 0.2, 0.04], color: RUST }] }),
   zleancol: centred(shaped("zleancol"), { hulls: [{ corners: LEAN_COLUMN }] }, { hulls: [{ corners: LEAN_COLUMN }], boxes: [{ at: [-0.18, 3.25, 0.55], half: [0.025, 0.3, 0.025], color: RUST }, { at: [0.15, 3.0, 0.3], half: [0.025, 0.25, 0.025], color: RUST }] }),
-  zvine: centred(shaped("zvine"), { boxes: [{ at: [0, -0.05, 0.03], half: [0.05, 0.05, 0.03] }] }, {
-    boxes: [{ at: [0, -0.04, 0.03], half: [1.5, 0.04, 0.03], color: MOSS }, ...STRANDS.flatMap(([x, length, colour]): ShapeBox[] => [{ at: [x, -length / 2, 0.04], half: [0.04, length / 2, 0.02], color: colour }, { at: [x, -length + 0.12, 0.05], half: [0.14, 0.14, 0.04], color: colour }])],
-  }),
+  // Moss and weeds along a ledge's top, 8 m of it in runs and clumps.
+  zmoss: centred(shaped("zmoss"), { boxes: [{ at: [0, 0.07, 0], half: [3.9, 0.07, 0.28] }] }, { boxes: ([[-3.9, -2.6, 0.05, MOSS], [-2.3, -1.9, 0.12, WEED], [-1.2, 0.7, 0.04, MOSS], [0.9, 1.3, 0.1, LEAF], [1.8, 3.3, 0.06, MOSS], [3.4, 3.9, 0.14, WEED]] as const).map(([a, b, h, c]): ShapeBox => ({ at: [(a + b) / 2, h / 2, 0], half: [(b - a) / 2, h / 2, 0.14 + h], color: c })) }),
+  zvine: centred(shaped("zvine"), { boxes: [{ at: [0, -0.05, 0.03], half: [0.05, 0.05, 0.03] }] }, { boxes: vine(STRANDS[0]!) }),
+  zvine2: centred(shaped("zvine2"), { boxes: [{ at: [0, -0.05, 0.03], half: [0.05, 0.05, 0.03] }] }, { boxes: vine(STRANDS[1]!) }),
+  zvine3: centred(shaped("zvine3"), { boxes: [{ at: [0, -0.05, 0.03], half: [0.05, 0.05, 0.03] }] }, { boxes: vine(STRANDS[2]!) }),
   ...street(),
 } satisfies Record<string, ShapeDef>;
 export type BreakPiece = keyof typeof RUIN_BREAKS;
@@ -341,6 +363,8 @@ const slopeSizes = Object.fromEntries(Object.entries({ ...RUIN_SLOPES, ...RUIN_F
 export const RUIN_SHAPES = {
   ...slopeSizes,
   zshrub: [2.2, 1.24, 1.22], zrooftree: [.8, 3.4, .8],
+  // Ivy hanging from a broken edge, the plants' leafy vines (assets/source/core/nodes/plants/vine.py), drawn about their box's middle.
+  zivy1: [3.2, 2.7, 0.5], zivy2: [2.6, 1.7, 0.4], zivy3: [3.2, 4, 0.6],
   zbalcony: [8, .4, 2],
   zpanel8: [8, 4, .6], zpanel16: [16, 4, .6], zshaft8: [8, 16, .8], zshaft16: [16, 16, .8],
   // A blank end wall's top storey and its parapet, four such storeys, and a parapet by itself.
@@ -387,14 +411,16 @@ export const ruinKind = (shape: RuinShape, finish: RuinFinish = "concrete"): str
 const PAINTED = new Set<RuinShape>(["wall4", "wall8", "sill4", "sill8", "fin4", "fin8", "fin16", "trim4", "trim8", "container", "crown"]);
 const ONLY_FINISHES: Partial<Record<RuinShape, readonly RuinFinish[]>> = {
   zpitch4: ["clay"], zpitch8: ["clay", "rust"], zpitch16: ["clay"], zdeckramp: ["concrete"],
-  zwedge: ["concrete"], zskirt1: ["concrete"], zskirt2: ["concrete"], zendsag: ["fracture"], zdrape: ["concrete"], zleancol: ["concrete"], zvine: ["concrete"], zpipe4: ["concrete"], zpipefoot: ["concrete"], zpipetop: ["concrete"], zwalk8: ["concrete"], zwalk8g: ["concrete"], zcurbramp: ["concrete"], zcurbrampl: ["concrete"], zdrain: ["concrete"], zutility: ["concrete"], zendwhole: ["fracture"], zendspall: ["fracture"], zendsnap: ["fracture"], zstub: ["fracture"], zfallen: ["concrete"],
+  zwedge: ["concrete"], zskirt1: ["concrete"], zskirt2: ["concrete"], zendsag: ["fracture"], zdrape: ["concrete"], zleancol: ["concrete"], zmoss: ["concrete"], zvine: ["concrete"], zvine2: ["concrete"], zvine3: ["concrete"], zpipe4: ["concrete"], zpipefoot: ["concrete"], zpipetop: ["concrete"], zwalk8: ["concrete"], zwalk8g: ["concrete"], zcurbramp: ["concrete"], zcurbrampl: ["concrete"], zdrain: ["concrete"], zutility: ["concrete"], zendwhole: ["fracture"], zendspall: ["fracture"], zendsnap: ["fracture"], zstub: ["fracture"], zfallen: ["concrete"],
 };
 /** Whether a shape comes in that finish: a pitched roof in its own few; otherwise concrete always, the facade pieces and the z kit in every finish. */
-export const finished = (name: RuinShape, finish: RuinFinish): boolean => ONLY_FINISHES[name]?.includes(finish) ?? (finish === "concrete" || (finish !== "fracture" && name !== "zshrub" && name !== "zrooftree" && (PAINTED.has(name) || name.startsWith("z"))));
-const NEAR_ONLY = new Set<string>(["zwalk8", "zwalk8g", "zcurbramp", "zcurbrampl", "zdrain", "zutility", "zskirt1", "zskirt2", "zvine", "zpipe4", "zpipefoot", "zpipetop", "zleancol", "zshrub"]);
+/** The plants' meshes the ruins grow: a tuft on a roof, a tree in it, ivy from a broken edge. */
+const GROWN: Partial<Record<string, string>> = { zshrub: "core:creeper_3", zrooftree: "core:tree_1", zivy1: "core:vine_1", zivy2: "core:vine_2", zivy3: "core:vine_3" };
+export const finished = (name: RuinShape, finish: RuinFinish): boolean => ONLY_FINISHES[name]?.includes(finish) ?? (finish === "concrete" || (finish !== "fracture" && !GROWN[name] && (PAINTED.has(name) || name.startsWith("z"))));
+const NEAR_ONLY = new Set<string>(["zwalk8", "zwalk8g", "zcurbramp", "zcurbrampl", "zdrain", "zutility", "zskirt1", "zskirt2", "zvine", "zvine2", "zvine3", "zpipe4", "zpipefoot", "zpipetop", "zleancol", "zshrub", "zivy1", "zivy2", "zivy3", "zmoss"]);
 const BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([name, size]) =>
   (Object.keys(RUIN_FINISHES) as RuinFinish[]).filter((finish) => finished(name as RuinShape, finish)).map((finish) => ({
-    type: "structure", class: "static", id: ruinKind(name as RuinShape, finish), mesh: name === "zshrub" ? "core:creeper_3" : name === "zrooftree" ? "core:tree_1" : "box",
+    type: "structure", class: "static", id: ruinKind(name as RuinShape, finish), mesh: GROWN[name] ?? "box",
     half: [size[0] / 2, size[1] / 2, size[2] / 2] as const,
     ...RUIN_FINISHES[finish],
     ...(name in RUIN_SLOPES ? staticOf(ruinKind(name as RuinShape, finish), RUIN_SLOPES[name as keyof typeof RUIN_SLOPES], RUIN_FINISHES[finish]) : {}),
@@ -403,7 +429,7 @@ const BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([na
     // The street's pieces and a building's small kit are drawn near only, left out of the far city's lattice and mass.
     ...(NEAR_ONLY.has(name) ? { near: true as const } : {}),
     // Far-feed colours average every static sharing a palette entry. Keep foliage separate from built wood.
-    ...(name === "zshrub" || name === "zrooftree" ? { color: 196, material: "core:mat_wood", hp: 500 } : {}),
+    ...(GROWN[name] ? { color: 196, material: "core:mat_wood", hp: 500 } : {}),
   })),
 );
 export const RUIN_BLOCKS: readonly Def[] = [...BLOCKS, ...Object.values(RUIN_SLOPES), ...Object.values(RUIN_FACADES), ...Object.values(RUIN_BREAKS)];

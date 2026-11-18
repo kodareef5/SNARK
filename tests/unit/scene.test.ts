@@ -528,9 +528,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1469328006 before the parked trailer moved the mesh indices.
   // The obelisk meshes move the handles again. It was 1341014316 until a tower's plant floor, screen, open storey's shade
   // and hanging slab added their grey meshes, 848872228 until a low roofline's attic and raised parapet added theirs, and
-  // 3783097454 until the street list's bare balcony bay and cut shop fronts added theirs; without them it is each of
-  // those again.
-  expect(hash).toBe(245114356);
+  // 3783097454 until the street list's bare balcony bay and cut shop fronts added theirs, and 245114356 until the ruins'
+  // ivy, moss and vines of uneven strands and the plants' vine meshes; without them it is each of those again.
+  expect(hash).toBe(3581030638);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -562,8 +562,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // the far wood was drawn after the near store and opaque draws went nearest first, as above, 3205222107 until the
   // street's new signs, as above, and 1872585659 until a tall building's cornice, as above.
   // It was 1672489163 before the trailer, as above, 815892822 until a tower's tops, as above, 376146727 until a low
-  // roofline's, as above, and 2128915143 until the street list's, as above.
-  expect(saddled.hash).toBe(3701843595);
+  // roofline's, as above, 2128915143 until the street list's, as above, and 3701843595 until the ivy, as above.
+  expect(saddled.hash).toBe(1350817323);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
