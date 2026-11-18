@@ -608,11 +608,24 @@ export class Rasterizer {
   private facadeAt(rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, colour: number, footprint: number, out: Float32Array): void {
     out[0] = this.ownSeed < 0 && this.farProgram ? FACADE_FAR : -1;
     if (!this.faceKnown || this.ownSeed < 0 || Math.abs(ny) > 0.5) return;
-    const pu = this.edgeU, pv = this.edgeV, dx = rx - this.edgeAt[0]!, dy = ry - this.edgeAt[1]!, dz = rz - this.edgeAt[2]!;
-    const a = pu[0]! * pu[0]! + pu[1]! * pu[1]! + pu[2]! * pu[2]!, b = pu[0]! * pv[0]! + pu[1]! * pv[1]! + pu[2]! * pv[2]!, c = pv[0]! * pv[0]! + pv[1]! * pv[1]! + pv[2]! * pv[2]!;
+    let pu = this.edgeU, pv = this.edgeV;
+    const dx = rx - this.edgeAt[0]!, dy = ry - this.edgeAt[1]!, dz = rz - this.edgeAt[2]!;
+    let a = pu[0]! * pu[0]! + pu[1]! * pu[1]! + pu[2]! * pu[2]!, c = pv[0]! * pv[0]! + pv[1]! * pv[1]! + pv[2]! * pv[2]!;
+    const b = pu[0]! * pv[0]! + pu[1]! * pv[1]! + pu[2]! * pv[2]!;
     const e = pu[0]! * dx + pu[1]! * dy + pu[2]! * dz, f = pv[0]! * dx + pv[1]! * dy + pv[2]! * dz, det = a * c - b * b;
     if (det <= 0) return;
     let u = this.edgeAt[3]! + (c * e - b * f) / det, v = this.edgeAt[4]! + (a * f - b * e) / det, edges = this.faceEdges;
+    // A face whose corners run up before across is read the other way round, as the shader reads it.
+    if (Math.abs(pu[1]!) > Math.abs(pv[1]!)) {
+      const t = pu, s = u, q = a;
+      pu = pv;
+      pv = t;
+      u = v;
+      v = s;
+      a = c;
+      c = q;
+      edges = ((edges & 3) << 2) | ((edges & 12) >> 2);
+    }
     const sl = Math.hypot(nz, nx) || 1, flipU = (pu[0]! * nz - pu[2]! * nx) / sl < 0, flipV = pv[1]! < 0;
     if (flipU) {
       u = 1 - u;

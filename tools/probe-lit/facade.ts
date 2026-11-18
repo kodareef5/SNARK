@@ -17,10 +17,11 @@ const EYE_Y = 1.7;
  * are given right to left, and its outer edges' bits (left, right, foot, head as a reader facing it sees them). The last
  * are plain walls, which carry marks, and a garage's pier.
  */
-const FACES: readonly (readonly [number, number, number, number, number, boolean?, number?])[] = [
+/** Each face: its colour class, its foot's x and y, width and height, given right to left, its outer borders, and whether its corners run up before across. */
+const FACES: readonly (readonly [number, number, number, number, number, boolean?, number?, boolean?])[] = [
   [1, 0, 1, 1.4, 2], [1, 2, 0, 0.9, 2.2, true], [1, 3.5, 0.9, 1.4, 1.4], [1, 6, 0.5, 5, 2.4], [2, 12, 1, 16, 2.6], [3, -8, 0, 7.2, 2.9],
-  [4, -8, 3, 7.2, 0.9], [5, -8, 4.2, 6.8, 0.25], [1, 29, 0, 1, 2.2], [0, 31, 0, 1.25, 2.9], [1, 0, 5, 1.4, 2], [1, 2, 5, 0.9, 2.2], [1, 6, 4.5, 5, 2.4],
-  [0, -20, 0, 11.5, 4.1, false, 11], [0, -20, 4.3, 7.9, 3.4, true, 15], [0, 33, 0, 0.7, 3.6, false, 3], [0, 34, 0, 9, 2.6, false, 6],
+  [4, -8, 3, 7.2, 0.9], [5, -8, 4.2, 6.8, 0.25], [1, 29, 0, 1, 2.2], [0, 31, 0, 1.25, 2.9], [1, 0, 5, 1.4, 2, false, 15, true], [1, 2, 5, 0.9, 2.2, true, 15, true], [1, 6, 4.5, 5, 2.4],
+  [0, -20, 0, 11.5, 4.1, false, 11, true], [0, -20, 4.3, 7.9, 3.4, true, 15], [0, 33, 0, 0.7, 3.6, false, 3, true], [0, 34, 0, 9, 2.6, false, 6],
 ];
 const FLOOD = FACADE_FLOOD.miami!;
 /** Where the world is from the eye's origin, and each view: the eye and the point it looks at, in the wall's metres. */
@@ -58,14 +59,16 @@ function viewProj(eye: readonly number[], at: readonly number[], aspect = W / H)
 /** The faces as triangles: where each vertex is from the eye, its corner of its face, its own frame and its instance's place, its class. */
 function triangles(eye: readonly number[]): Float32Array {
   const out: number[] = [];
-  FACES.forEach(([cls, x, y, w, h, reversed, edges = 15], i) => {
+  FACES.forEach(([cls, x, y, w, h, reversed, edges = 15, turned], i) => {
     const origin = [x + w / 2, y + h / 2, -0.2 - i * 0.01];
     const corners = [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]];
-    // The vertex's bits are its face's as stored: given right to left, its left and right borders change places.
-    const stored = reversed ? (edges & 12) | ((edges & 1) << 1) | ((edges & 2) >> 1) : edges;
+    // The vertex's bits are its face's as stored: given right to left, its left and right borders change places, and
+    // with its corners running up first, its sides and its foot and top do.
+    const across = reversed ? (edges & 12) | ((edges & 1) << 1) | ((edges & 2) >> 1) : edges;
+    const stored = turned ? ((across & 3) << 2) | ((across & 12) >> 2) : across;
     for (const [cu, cv] of corners) {
       const p = [x + cu! * w, y + cv! * h, 0];
-      const face = [reversed ? 1 - cu! : cu!, cv!];
+      const face = turned ? [cv!, reversed ? 1 - cu! : cu!] : [reversed ? 1 - cu! : cu!, cv!];
       out.push(p[0]! - eye[0]!, p[1]! - eye[1]!, p[2]! - eye[2]!, ...face, p[0]! - origin[0]!, p[1]! - origin[1]!, p[2]! - origin[2]!, Math.round((origin[0]! + ORIGIN[0]!) * 4), Math.round((origin[2]! + ORIGIN[2]!) * 4), cls, stored);
     }
   });

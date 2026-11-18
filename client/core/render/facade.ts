@@ -952,6 +952,17 @@ int facade(inout vec3 albedo, inout vec3 orm, inout vec3 n, out vec3 room, out v
   if (abs(det) < 1e-12 || abs(geometric.y) > 0.5) return 0;
   vec3 pu = (dpx * fy.y - dpy * fx.y) / det, pv = (dpy * fx.x - dpx * fy.x) / det;
   vec3 qu = (ox * fy.y - oy * fx.y) / det, qv = (oy * fx.x - ox * fy.x) / det;
+  // A face whose corners run up before across is read the other way round, so neither way is near level by chance.
+  if (abs(pu.y) > abs(pv.y)) {
+    vec3 t = pu;
+    pu = pv;
+    pv = t;
+    t = qu;
+    qu = qv;
+    qv = t;
+    face = face.yx;
+    edges = ((edges & 3u) << 2) | ((edges & 12u) >> 2);
+  }
   vec3 nn = geometric, side = normalize(vec3(nn.z, 0.0, -nn.x) + 1e-9);
   // Across the face as a reader facing it reads, and up; its outer edges' bits follow.
   if (dot(pu, side) < 0.0) { face.x = 1.0 - face.x; pu = -pu; qu = -qu; edges = (edges & 12u) | ((edges & 1u) << 1) | ((edges & 2u) >> 1); }
