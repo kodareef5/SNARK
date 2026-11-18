@@ -1,7 +1,7 @@
-// A road vehicle's hurt and decay layer as the game's own rasterizer draws it, from its pack and pictures as they are
-// now: from the front on the driver's side and from the rear on the passenger's, a row of its seven stages (unhurt,
-// hurt 1 to 3, decay 1 to 3) in each wear story (client/core/render/wear.ts), a row a story, story 0 being every mark
-// the layer has. No build; nothing is written outside --out.
+// A road vehicle's or a vessel's hurt and decay layer as the game's own rasterizer draws it, from its pack and pictures
+// as they are now: from the front on the driver's (port) side and from the rear on the other, a row of its seven stages
+// (unhurt, hurt 1 to 3, decay 1 to 3) in each wear story of its kind (client/core/render/wear.ts), a row a story, story
+// 0 being every mark the layer has. No build; nothing is written outside --out.
 //
 //   bun tools/art/wear.ts --out DIR core:compact core:veloce ...   [--side PIXELS] [--stories 0,1,2,3,4,5] [--paint COLOUR]
 //
@@ -10,7 +10,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { LAYER_LEVELS, LAYER_STAGES } from "../../client/core/render/surface.ts";
-import { WEAR_STORIES } from "../../client/core/render/wear.ts";
+import { MARINE_STORIES, ROAD_STORIES, WEAR_STORIES } from "../../client/core/render/wear.ts";
+import { CORE_CONTENT } from "../../content/core.ts";
 import { buildRig } from "../../shared/anim/rigs.ts";
 import { solve } from "../../shared/anim/skeleton.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -25,7 +26,12 @@ const value = (name: string): string | undefined => (args.includes(`--${name}`) 
 const out = value("out");
 if (!out) throw new Error("--out DIR");
 const side = Number(value("side") ?? 260);
-const stories = (value("stories") ?? Array.from({ length: WEAR_STORIES + 1 }, (_, s) => s).join(",")).split(",").map(Number);
+const given = value("stories")?.split(",").map(Number);
+/** Story 0 and the stories of the body's kind: a vessel's where its species moves as a boat. */
+const storiesOf = (id: string): number[] => {
+  const first = CORE_CONTENT.some((d) => d.id === id && d.type === "species" && d.vehicle?.movement === "boat") ? MARINE_STORIES : ROAD_STORIES;
+  return given ?? [0, ...Array.from({ length: WEAR_STORIES }, (_, s) => first + s)];
+};
 const ids = args.filter((a, i) => !a.startsWith("--") && !args[i - 1]?.startsWith("--"));
 const STAGES = Array.from({ length: LAYER_STAGES + 1 }, (_, s) => (s * LAYER_LEVELS) / LAYER_STAGES);
 const BACKGROUND = [0.84, 0.83, 0.81] as const;
@@ -49,6 +55,7 @@ for (const id of ids) {
   const view = new ModelView(pack, side * SS, side * SS, BACKGROUND);
   (pack.header.textures ?? []).forEach((t, slot) => view.texture(slot, t.role, rgbaOf(materials.find((m) => t.id === `${m.id}/${t.role}`)!, t.role, t.top).pictures));
   const radius = Math.hypot(half[0], half[1], half[2]) * 0.76;
+  const stories = storiesOf(id);
   const dir = join(out, id.split(":")[1]!);
   mkdirSync(dir, { recursive: true });
   for (const [name, [around, above]] of Object.entries(VIEWS)) {

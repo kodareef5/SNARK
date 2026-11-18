@@ -325,7 +325,7 @@ function notch(up: number): { w: TestWorld; z: number } {
   return { w, z: 64 - reg.halfZ[k]! + gap / 2 };
 }
 
-test("a body dropped into a notch between two faces too steep to stand on is held there: it banks no speed, stands, jumps, and walks out along it", () => {
+test("a body dropped into a notch between two faces too steep to stand on is held there: it banks no speed, keeps its authored jump ability, and walks out along it", () => {
   const wrong: string[] = [];
   for (const id of WALKERS) {
     const p = move(id);
@@ -341,9 +341,12 @@ test("a body dropped into a notch between two faces too steep to stand on is hel
     }
     const held = b.y;
     if (!b.grounded || b.vy !== 0 || land > G * TICK_DT + 1e-6 || !(held > 3)) wrong.push(`${id} in the notch: grounded ${b.grounded}, vy ${b.vy}, landed at ${land}, ${held} up`);
-    // It may jump, and comes back down into the notch no faster than the jump took it up.
+    // Jump-capable bodies come back no faster than they took off; grounded species stay put without spending stamina.
+    const stamina = b.stamina;
     stepBody(w, b, 0, 0, 0, 0, BTN_JUMP, p, TICK_DT);
-    if (!(b.vy > 0)) wrong.push(`${id} could not jump from the notch`);
+    if (p.jumpSpeed > 0) {
+      if (!(b.vy > 0)) wrong.push(`${id} could not jump from the notch`);
+    } else if (!b.grounded || b.vy !== 0 || b.y !== held || b.stamina !== stamina) wrong.push(`${id} jumped or spent stamina despite having no ground jump`);
     land = 0;
     for (let t = 0; t < 90; t++) {
       stepBody(w, b, 0, 0, 0, 0, 0, p, TICK_DT);

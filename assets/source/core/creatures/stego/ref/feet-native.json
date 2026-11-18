@@ -1,0 +1,118 @@
+{
+  "packSha256": "3af77be1967bf8c2fd2ffb84b8930ad9add7c479751e578c5a7a1371b2e516e3",
+  "scope": "Rest-space actual finest packed skin, stored socket distance to the closest fully foot-weighted planar triangle and minimum foot height.",
+  "rows": [
+    {
+      "name": "hind_foot_l",
+      "vertex": 4349,
+      "candidates": 361,
+      "surfacePoint": [
+        0.8899443745613098,
+        0,
+        -0.5044712424278259
+      ],
+      "offset": [
+        0.11994439363479614,
+        -0.2750000059604645,
+        0.17552876472473145
+      ],
+      "storedOffset": [
+        0,
+        -0.27500001,
+        0.13999999
+      ],
+      "heightError": -4.0395355394018395e-09,
+      "storedPoint": [
+        0.7699999809265137,
+        -4.0395355394018395e-09,
+        -0.5400000171525574
+      ],
+      "soleTriangle": 15900,
+      "distanceToPlanarSole": 4.0395355394018395e-09
+    },
+    {
+      "name": "hind_foot_r",
+      "vertex": 5814,
+      "candidates": 369,
+      "surfacePoint": [
+        -0.6568682193756104,
+        0,
+        -0.4972115159034729
+      ],
+      "offset": [
+        0.11313176155090332,
+        -0.2750000059604645,
+        0.18278849124908447
+      ],
+      "storedOffset": [
+        0,
+        -0.27500001,
+        0.13999999
+      ],
+      "heightError": -4.0395355394018395e-09,
+      "storedPoint": [
+        -0.7699999809265137,
+        -4.0395355394018395e-09,
+        -0.5400000171525574
+      ],
+      "soleTriangle": 17112,
+      "distanceToPlanarSole": 4.0395355394018395e-09
+    },
+    {
+      "name": "fore_foot_l",
+      "vertex": 8905,
+      "candidates": 294,
+      "surfacePoint": [
+        0.7786727547645569,
+        0,
+        1.2836487293243408
+      ],
+      "offset": [
+        0.068672776222229,
+        -0.23999999463558197,
+        0.20364868640899658
+      ],
+      "storedOffset": [
+        0.00038487,
+        -0.23999999,
+        0.13951063
+      ],
+      "heightError": 4.6355819738330695e-09,
+      "storedPoint": [
+        0.7103848485423279,
+        4.6355819738330695e-09,
+        1.2195106729153442
+      ],
+      "soleTriangle": 19871,
+      "distanceToPlanarSole": 4.6355819738330695e-09
+    },
+    {
+      "name": "fore_foot_r",
+      "vertex": 9584,
+      "candidates": 283,
+      "surfacePoint": [
+        -0.8177846074104309,
+        0,
+        1.1247729063034058
+      ],
+      "offset": [
+        -0.10778462886810303,
+        -0.23999999463558197,
+        0.04477286338806152
+      ],
+      "storedOffset": [
+        0,
+        -0.23999999,
+        0.13499999
+      ],
+      "heightError": 4.6355819738330695e-09,
+      "storedPoint": [
+        -0.7099999785423279,
+        4.6355819738330695e-09,
+        1.2150000329153443
+      ],
+      "soleTriangle": 20360,
+      "distanceToPlanarSole": 4.6355819738330695e-09
+    }
+  ]
+}

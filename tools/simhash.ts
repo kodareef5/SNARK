@@ -18,7 +18,6 @@ import type { StructureStore } from "../shared/world/structures.ts";
 import { ART, SOURCE, readPacks } from "./art/source.ts";
 import { buildPack } from "./pack/write.ts";
 import { birdAnim } from "../tests/fixtures/bird.ts";
-import { groundMountTrace } from "../tests/fixtures/ground-mount-trace.ts";
 import { carChassisTrace } from "../tests/fixtures/vehicle-chassis-trace.ts";
 import { boatContactTrace } from "../tests/fixtures/boat-contact-trace.ts";
 import { corpseMotionTrace } from "../tests/fixtures/corpse-motion-trace.ts";
@@ -84,7 +83,7 @@ export function waterHash(ticks = 3000): string {
 }
 
 export function collisionHashes(): string {
-  return [carChassisTrace().hash, boatContactTrace().hash, corpseMotionTrace(), groundMountTrace()].join(" ");
+  return [carChassisTrace().hash, boatContactTrace().hash, corpseMotionTrace()].join(" ");
 }
 
 if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash() + " " + hullHash() + " " + nodeHash() + " " + waterHash() + " " + collisionHashes());

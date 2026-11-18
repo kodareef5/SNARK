@@ -9,7 +9,7 @@ import type { Registry } from "../shared/content/registry.ts";
 import { CHUNK_SIZE, TICK_RATE, chunkCount } from "../shared/coords.ts";
 import { Rng } from "../shared/rng.ts";
 import { DMG_MELEE } from "../shared/sim/damage.ts";
-import { BTN_BRAKE, BTN_JUMP, BTN_PRIMARY, BTN_SPRINT, MF_OUT, MODE_FLY, MODE_FLYER, MODE_SWIM, MODE_WALK, stanceEye, type MoveParams } from "../shared/sim/character.ts";
+import { BTN_BRAKE, BTN_JUMP, BTN_PRIMARY, BTN_SPRINT, MF_OUT, MODE_FLY, MODE_FLYER, MODE_SWIM, MODE_WALK, stanceEye, swimDepth, type MoveParams } from "../shared/sim/character.ts";
 import { F_ALIVE, F_AWAKE, F_GROUNDED, F_HELD, F_PLAYER, wider } from "../shared/sim/entities.ts";
 import { ACT_NONE } from "../shared/sim/weapon.ts";
 import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
@@ -18,6 +18,7 @@ import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, rayHit } from "../shared/
 import { BodyGrid } from "./bodies.ts";
 import type { GameServer } from "./game.ts";
 import type { ServerWorld } from "./world.ts";
+import { creatureSize, youngMove } from "./young-move.ts";
 
 export const TEMPER_FLEES = 0;
 export const TEMPER_DEFENDS = 1;
@@ -276,6 +277,10 @@ class Flight {
 
 /** A way a creature follows. */
 class Route {
+  /** Conservative growth envelope used by the accepted search, including overhead step clearance. */
+  growing = false;
+  radius = 0;
+  top = 0;
   readonly x = new Float32Array(ROUTE_POINTS);
   readonly z = new Float32Array(ROUTE_POINTS);
   count = 0;
@@ -377,6 +382,7 @@ export class Behavior {
   private readonly urgent = new Queue();
   private readonly later = new Queue();
   private readonly finder: PathFinder;
+  private searchGrowing = false;
   /** The creature whose search is under way, or -1, and the shape stamp of the search's grid when it began. */
   private searching = -1;
   private window = 0;
@@ -632,7 +638,10 @@ export class Behavior {
 
   /** The entity index `e` hunts, or -1. */
   targetOf(e: number): number {
-    return this.mind[e] === MIND_HUNT ? this.target[e]! : -1;
+    if (this.mind[e] !== MIND_HUNT) return -1;
+    const prey = this.target[e]!, ents = this.world.ents;
+    return prey >= 0 && (ents.flags[prey]! & F_ALIVE) !== 0 && ents.gen[prey] === this.targetGen[e]
+      && (ents.team[e] === 0 || ents.team[prey] !== ents.team[e]) ? prey : -1;
   }
 
   /** How many points of a way `e` has left to follow, 0 if it heads straight. */
@@ -766,7 +775,7 @@ export class Behavior {
     this.buttons[e] = hold !== 0 ? 0 : BTN_SPRINT | (flyer ? BTN_JUMP : 0);
     const ticks = flyer ? FLEE_AIR_TICKS : FLEE_TICKS;
     this.until[e] = Math.max(tick, hold) + ticks;
-    const p = this.reg.move[ents.kind[e]!]!;
+    const p = youngMove(this.world, e, this.reg.move[ents.kind[e]!]!);
     const run = ((flyer ? p.flySpeed * p.flySprintMul : p.walkSpeed * p.sprintMul) * ticks) / TICK_RATE;
     this.homeX[e] = ents.x[e]! + Math.sin(a) * run;
     this.homeZ[e] = ents.z[e]! + Math.cos(a) * run;
@@ -811,8 +820,8 @@ export class Behavior {
     const dx = ents.x[prey]! - ents.x[e]!;
     const dz = ents.z[prey]! - ents.z[e]!;
     const flat = Math.sqrt(dx * dx + dz * dz);
-    const eye = ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, 0);
-    const dy = ents.y[prey]! + reg.bodyHeight[ents.kind[prey]!]! * 0.55 - eye;
+    const eye = ents.y[e]! + stanceEye(youngMove(this.world, e, reg.move[ents.kind[e]!]!), 0);
+    const dy = ents.y[prey]! + reg.bodyHeight[ents.kind[prey]!]! * creatureSize(this.world, prey) * 0.55 - eye;
     this.look[e] = Math.round((Math.atan2(dx, dz) / (Math.PI * 2)) * 65536) & 0xffff;
     this.pitch[e] = Math.round((Math.atan2(dy, flat) / (Math.PI / 2)) * 16384);
     return flat;
@@ -821,7 +830,7 @@ export class Behavior {
   /** What castWorld meets first on the line from the eye of `e` to the middle of `o`. rayHit says where. */
   private between(e: number, o: number): number {
     const ents = this.world.ents;
-    return this.line(e, ents.x[o]!, ents.y[o]! + this.reg.bodyHeight[ents.kind[o]!]! * 0.55, ents.z[o]!);
+    return this.line(e, ents.x[o]!, ents.y[o]! + this.reg.bodyHeight[ents.kind[o]!]! * creatureSize(this.world, o) * 0.55, ents.z[o]!);
   }
 
   /** What castWorld meets first on the line from the eye of `e` to (x, y, z), or at eye height when `y` is NaN. */
@@ -829,7 +838,7 @@ export class Behavior {
     const ents = this.world.ents;
     const ex = ents.x[e]!;
     const ez = ents.z[e]!;
-    const eye = ents.y[e]! + stanceEye(this.reg.move[ents.kind[e]!]!, 0);
+    const eye = ents.y[e]! + stanceEye(youngMove(this.world, e, this.reg.move[ents.kind[e]!]!), 0);
     const dx = x - ex;
     const dy = Number.isNaN(y) ? 0 : y - eye;
     const dz = z - ez;
@@ -934,7 +943,7 @@ export class Behavior {
       if ((this.ordered[e] === 0 && (hx * hx + hz * hz > leash * leash || flat > reg.sight[kind]! * KEEP)) || tick >= this.until[e]!) return this.rest(e, tick, REST_TICKS);
       if (flyer) return this.stoop(e, tick, act, prey);
       // Within reach it stops and bites, else it runs at the prey. Reach counts from its eye to half a radius inside the prey.
-      const reach = reg.reach[kind]! + reg.bodyRadius[ents.kind[prey]!]! * 0.5;
+      const reach = reg.reach[kind]! * creatureSize(this.world, e) + reg.bodyRadius[ents.kind[prey]!]! * creatureSize(this.world, prey) * 0.5;
       if (flat <= reach) {
         this.way[e] = WAY_STRAIGHT;
         this.move[e] = 0;
@@ -1096,7 +1105,7 @@ export class Behavior {
     if (mode === MODE_FLYER && (this.buttons[e]! & BTN_JUMP) !== 0) {
       if (Math.hypot(ents.vx[e]!, ents.vz[e]!) > 0.3) return;
       // Stopped, it lets its jump go if what is under it is still open ground, all the way down, and otherwise chooses again.
-      const p = this.reg.move[ents.kind[e]!]!;
+      const p = youngMove(this.world, e, this.reg.move[ents.kind[e]!]!);
       if (!this.landable(p, ents.x[e]!, ents.z[e]!) || !this.clearBelow(p, ents.x[e]!, ents.y[e]!, ents.z[e]!)) {
         if (!this.landing(e, f, tick)) this.cruise(f, tick);
         return;
@@ -1131,7 +1140,7 @@ export class Behavior {
     const look = this.rng.int(65536);
     const ticks = 30 + this.rng.int(150);
     const a = (look / 65536) * Math.PI * 2;
-    const p = this.reg.move[ents.kind[e]!]!;
+    const p = youngMove(this.world, e, this.reg.move[ents.kind[e]!]!);
     const far = (p.walkSpeed * ticks) / TICK_RATE;
     const [x, z] = [ents.x[e]!, ents.z[e]!];
     const [s, c] = [Math.sin(a), Math.cos(a)];
@@ -1174,7 +1183,7 @@ export class Behavior {
   private landing(e: number, f: Flight, tick: number): boolean {
     const ents = this.world.ents;
     const hf = this.world.hf;
-    const p = this.reg.move[ents.kind[e]!]!;
+    const p = youngMove(this.world, e, this.reg.move[ents.kind[e]!]!);
     const wet = hf.heightAt(f.homeX, f.homeZ) <= hf.waterAt(f.homeX, f.homeZ) + DRY;
     if (!(!wet && this.spot(p, f, f.homeX, f.homeZ, LAND_RANGE)) && !this.spot(p, f, ents.x[e]!, ents.z[e]!, LAND_RANGE) && !(wet && this.shore(e, f) && this.spot(p, f, f.homeX, f.homeZ, LAND_RANGE / 2))) return false;
     f.phase = PHASE_APPROACH;
@@ -1240,7 +1249,7 @@ export class Behavior {
     const mode = ents.mode[m]!;
     if (mode === MODE_FLYER || mode === MODE_FLY) return true;
     if ((ents.flags[m]! & F_GROUNDED) !== 0 || mode === MODE_SWIM) return false;
-    return ents.y[m]! - groundUnder(this.world.hf, ents.x[m]!, ents.z[m]!, this.reg.bodyRadius[ents.kind[m]!]!) > LEADER_UP;
+    return ents.y[m]! - groundUnder(this.world.hf, ents.x[m]!, ents.z[m]!, this.reg.bodyRadius[ents.kind[m]!]! * creatureSize(this.world, m)) > LEADER_UP;
   }
 
   /**
@@ -1270,7 +1279,7 @@ export class Behavior {
     const flat = Math.hypot(ents.x[whom]! - ents.x[e]!, ents.z[whom]! - ents.z[e]!);
     if (!f.down && this.aloft(whom)) {
       const a = (ents.yaw[whom]! / 65536) * Math.PI * 2;
-      const back = FOLLOW_AIR + this.reg.bodyRadius[ents.kind[e]!]! + this.reg.bodyRadius[ents.kind[whom]!]!;
+      const back = FOLLOW_AIR + this.reg.bodyRadius[ents.kind[e]!]! * creatureSize(this.world, e) + this.reg.bodyRadius[ents.kind[whom]!]! * creatureSize(this.world, whom);
       const bx = ents.x[whom]! - Math.sin(a) * back;
       const by = ents.y[whom]! + 1.5;
       const bz = ents.z[whom]! - Math.cos(a) * back;
@@ -1310,9 +1319,9 @@ export class Behavior {
     const reg = this.reg;
     const kind = ents.kind[e]!;
     const f = this.flight(e);
-    const my = ents.y[prey]! + reg.bodyHeight[ents.kind[prey]!]! * 0.55;
-    const d = Math.hypot(ents.x[prey]! - ents.x[e]!, my - ents.y[e]! - stanceEye(reg.move[kind]!, 0), ents.z[prey]! - ents.z[e]!);
-    const reach = reg.reach[kind]! + reg.bodyRadius[ents.kind[prey]!]! * 0.5;
+    const my = ents.y[prey]! + reg.bodyHeight[ents.kind[prey]!]! * creatureSize(this.world, prey) * 0.55;
+    const d = Math.hypot(ents.x[prey]! - ents.x[e]!, my - ents.y[e]! - stanceEye(youngMove(this.world, e, reg.move[kind]!), 0), ents.z[prey]! - ents.z[e]!);
+    const reach = reg.reach[kind]! * creatureSize(this.world, e) + reg.bodyRadius[ents.kind[prey]!]! * creatureSize(this.world, prey) * 0.5;
     if (d <= reach) {
       this.move[e] = 0;
       this.buttons[e] = ents.mode[e] === MODE_FLYER ? BTN_JUMP : 0;
@@ -1338,7 +1347,7 @@ export class Behavior {
   private pilot(e: number, f: Flight, tick: number, gx: number, gy: number, gz: number, sprint: boolean, over: number, direct = false, slow = false): void {
     const ents = this.world.ents;
     const hf = this.world.hf;
-    const p = this.reg.move[ents.kind[e]!]!;
+    const p = youngMove(this.world, e, this.reg.move[ents.kind[e]!]!);
     const x = ents.x[e]!;
     const y = ents.y[e]!;
     const z = ents.z[e]!;
@@ -1517,7 +1526,7 @@ export class Behavior {
     }
     const flat = this.aim(e, whom);
     this.pitch[e] = 0;
-    const near = FOLLOW_NEAR + this.reg.bodyRadius[ents.kind[e]!]! + this.reg.bodyRadius[ents.kind[whom]!]!;
+    const near = FOLLOW_NEAR + this.reg.bodyRadius[ents.kind[e]!]! * creatureSize(this.world, e) + this.reg.bodyRadius[ents.kind[whom]!]! * creatureSize(this.world, whom);
     if (flat <= near) this.way[e] = WAY_STRAIGHT;
     this.move[e] = flat <= near ? 0 : flat > FOLLOW_RUN ? 127 : 90;
     this.buttons[e] = flat > FOLLOW_RUN ? BTN_SPRINT : 0;
@@ -1584,6 +1593,11 @@ export class Behavior {
     const z = ents.z[e]!;
     if (this.way[e] === WAY_ON) {
       const r = this.route(e);
+      if (r.growing && this.outgrown(e, r.radius, r.top)) {
+        this.way[e] = WAY_STRAIGHT; this.askAfter[e] = 0; this.ask(e, tick, ASK_NOW);
+        this.move[e] = 0; this.buttons[e] = 0;
+        return true;
+      }
       // A point is reached when near it, or once past it along the leg that leads to it.
       while (r.next < r.count) {
         const px = r.x[r.next]!;
@@ -1644,7 +1658,13 @@ export class Behavior {
   /** What `e` moves by, as Creatures steps it: a tame by its tamed numbers, which stand on steeper slopes. */
   private walker(e: number): MoveParams | null {
     const ents = this.world.ents;
-    return (ents.team[e] !== 0 ? this.reg.tamedMove : this.reg.move)[ents.kind[e]!] ?? null;
+    const base = (ents.team[e] !== 0 ? this.reg.tamedMove : this.reg.move)[ents.kind[e]!];
+    return base ? youngMove(this.world, e, base) : null;
+  }
+
+  private outgrown(e: number, radius: number, top: number): boolean {
+    const p = this.walker(e);
+    return p === null || p.radius > radius + 1e-6 || p.height + p.stepUp > top + 1e-6;
   }
 
   /** Starts the search `e` asked for: 1 if it began, 0 if it cannot (no way, then), -1 if `e` no longer wants one. */
@@ -1665,7 +1685,11 @@ export class Behavior {
       gz = this.homeZ[e]!;
     } else return -1;
     const f = this.finder;
-    f.body = p;
+    // The search freezes a slightly wider/taller footprint, capped at adult size. Its step capability and water
+    // tolerance remain the young's actual ones: padding must not invent a climb or make deep water walkable.
+    this.searchGrowing = ents.grown[e]! > this.world.tick;
+    const margin = this.searchGrowing ? Math.min(1.02, 1 / creatureSize(this.world, e)) : 1;
+    f.body = this.searchGrowing ? { ...p, radius: p.radius * margin, height: p.height * margin, swimDepth: swimDepth(p) } : p;
     const x = ents.x[e]!;
     const z = ents.z[e]!;
     this.windowX = x;
@@ -1703,6 +1727,12 @@ export class Behavior {
     this.searches++;
     const f = this.finder;
     const r = this.route(e);
+    // Tiny continuous growth fits the conservative search envelope. Larger growth during an incremental search
+    // invalidates its result before it is followed, without mutating A*'s in-progress cell classifications.
+    if (this.searchGrowing && this.outgrown(e, f.body.radius, f.body.height + f.body.stepUp)) {
+      this.way[e] = WAY_STRAIGHT; this.askAfter[e] = 0; this.ask(e, tick, ASK_NOW);
+      return;
+    }
     // The ground changed under a search spread over ticks: it is done again.
     const w = this.world;
     if (status !== PATH_NONE && shapeStamp(w, this.windowX - PATH_REACH, this.windowZ - PATH_REACH, this.windowX + PATH_REACH + 1, this.windowZ + PATH_REACH + 1) !== this.window) {
@@ -1712,6 +1742,7 @@ export class Behavior {
     }
     const follows = this.mind[e] !== MIND_HUNT && this.mind[e] !== MIND_FLEE;
     if (f.count >= 2 && (status === PATH_FOUND || status === PATH_LEG || (status === PATH_SHORT && follows))) {
+      r.growing = this.searchGrowing; r.radius = f.body.radius; r.top = f.body.height + f.body.stepUp;
       this.askAfter[e] = tick + ASK_TICKS;
       const n = Math.min(ROUTE_POINTS, f.count);
       let minX = f.x[0]!;

@@ -50,8 +50,8 @@ export function passengerOriginTrial(rtt: number, seconds = 30, pack: Pack = cor
     const combat = h.host.combat, projectiles = h.host.projectiles;
     const eye = combat.eye.bind(combat), launch = projectiles.launch.bind(projectiles);
     let capture: Float64Array | null = null, captured = 0;
-    combat.eye = (e, out, at, clip) => {
-      const result = eye(e, out, at, clip);
+    combat.eye = (e, out, at, clip, viewer) => {
+      const result = eye(e, out, at, clip, viewer);
       if (capture && e === b.ent) {
         if (!result) throw new Error("passenger launch fell back to a standing eye");
         capture.set(out); captured++;

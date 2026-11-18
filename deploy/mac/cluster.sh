@@ -1,6 +1,6 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 # A SNARK cluster on one Mac or Linux machine, every world at a path of one address, as deploy/windows/cluster.ps1
-# runs one on Windows:
+# runs one on Windows. Plain bash, down to the 3.2 a Mac ships: it was zsh, which a Linux machine seldom has.
 #
 #   deploy/mac/cluster.sh miami los-angeles            the worlds, the front on 127.0.0.1:8787
 #   TUNNEL=quick deploy/mac/cluster.sh miami tampa     and a quick tunnel, whose address it prints
@@ -18,7 +18,7 @@
 # CONFIG names the folder of settings every world starts from (config/official). Logs go to var/logs/<cluster>/.
 # Ctrl+C stops the tunnel and the front, then every world the way that lets it save.
 set -u
-cd "${0:A:h}/../.."
+cd "$(cd "$(dirname "$0")" && pwd)/../.."
 [ $# -ge 1 ] || { echo "usage: deploy/mac/cluster.sh <map> [<map>...]"; exit 2; }
 [ -f client/dist/index.html ] || { echo "the client is not built: bun run build"; exit 1; }
 [ -f client/dist/wiki/index.html ] || echo "/wiki/ is not found until bun run wiki builds it"
@@ -45,9 +45,9 @@ dev=()
 port=8798
 for map in "$@"; do
   [ -f "var/maps/$map.snmap" ] || { echo "$map left out: var/maps/$map.snmap does not exist (bun tools/mapworld/build.ts $map)"; continue; }
-  name=${(C)map//-/ }
+  name=$(printf '%s\n' "$map" | tr - ' ' | awk '{ for (i = 1; i <= NF; i++) $i = toupper(substr($i, 1, 1)) substr($i, 2) } 1')
   # A development world is told the tunnel's host, since it takes a page at no other name but this machine's.
-  bun server/main.ts --map "var/maps/$map.snmap" --db "var/cluster/$map.db" --host 127.0.0.1 --port $port --public-url "${DEV:+$address}/$map" "-clusterid=$id" "?SessionName=$name" --config "${CONFIG:-config/official}" $dev > "$logs/$map.log" 2>&1 &
+  bun server/main.ts --map "var/maps/$map.snmap" --db "var/cluster/$map.db" --host 127.0.0.1 --port $port --public-url "${DEV:+$address}/$map" "-clusterid=$id" "?SessionName=$name" --config "${CONFIG:-config/official}" ${dev[@]+"${dev[@]}"} >"$logs/$map.log" 2>&1 &
   worlds+=($!)
   echo "$name at /$map/ on port $port, log $logs/$map.log"
   port=$((port + 1))
@@ -57,8 +57,9 @@ others+=($!)
 echo "the front at http://127.0.0.1:8787/"
 [ "${TUNNEL:-}" = quick ] && echo "the tunnel at ${address:-no address yet: see $logs/tunnel.log}"
 stop() {
-  kill $others 2>/dev/null
-  kill -INT $worlds 2>/dev/null
+  # Every pid of each: an array's bare name in bash is its first element alone.
+  kill "${others[@]}" 2>/dev/null
+  kill -INT ${worlds[@]+"${worlds[@]}"} 2>/dev/null
   wait
   exit 0
 }

@@ -11,8 +11,10 @@ from mathutils import Vector
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "compact"))
+sys.path.insert(0, str(HERE.parent / "marine"))
 from parts import E2B, Part, rbox, cylinder
-from finish import SWATCH, CHARTS
+from layout import check, lay_out, mark, on_first_sheet, sheets_of
+from palette import HULL, OWN, SCREENS, own
 
 TAU = math.tau
 
@@ -473,7 +475,10 @@ class Yard:
             if parent:
                 b.parent=arm.edit_bones[parent]
         bpy.ops.object.mode_set(mode="OBJECT")
-        material=bpy.data.materials.new("yacht")
+        sizes=OWN[self.name]
+        mats=[bpy.data.materials.new(m) for m in (*sizes,"teak")]
+        order=[m.name for m in mats]
+        items,names,parts,reach=[],[],[],1
         for bone,objects in self.groups.items():
             for obj in objects:
                 mesh=obj.data
@@ -484,39 +489,39 @@ class Yard:
                 bm.to_mesh(mesh)
                 bm.free()
                 mesh.update()
-                tags=[m.name.removeprefix("t_") for m in mesh.materials]
+                slots=[m.name.removeprefix("t_") for m in mesh.materials]
+                tags=[slots[f.material_index] for f in mesh.polygons]
                 uv=mesh.uv_layers.new(name="marine finish").data
-                coords=[[v.co[k] for v in mesh.vertices] for k in range(3)]
-                low=[min(c) for c in coords]
-                span=[max(c)-min(c) for c in coords]
-                for f in mesh.polygons:
-                    tag=tags[f.material_index]
-                    col,row=SWATCH["screen" if tag in CHARTS else tag]
-                    x0,y0,xsize,ysize=CHARTS.get(tag,(.045,.045,.91,.91))
-                    d=max(range(3),key=lambda i:abs(f.normal[i]))
-                    # A chart on a side panel runs fore-and-aft and upright. On deck the teak runs the length of the vessel.
-                    a,b=[(2,1),(0,2),(0,1)][d]
-                    uvs=[]
-                    for i in f.loop_indices:
-                        co=mesh.vertices[mesh.loops[i].vertex_index].co
-                        u=(co[a]-low[a])/max(.0001,span[a])
-                        v=(co[b]-low[b])/max(.0001,span[b])
-                        if f.normal[d] < 0:
-                            u=1-u
-                        uvs.append(((col+x0+xsize*u)/4,1-(row+y0+ysize*(1-v))/4))
-                    (u0,v0),(u1,v1),(u2,v2)=[(round(u*65535),round(v*65535)) for u,v in uvs]
-                    if abs((u1-u0)*(v2-v0)-(v1-v0)*(u2-u0)) < 12:
-                        u,v=uvs[0]
-                        uvs=[(u,v),(u+.00045,v),(u,v+.00045)]
-                    for i,st in zip(f.loop_indices,uvs):
-                        uv[i].uv=st
+                mine=[own(self.name,tag,f.center.y) for f,tag in zip(mesh.polygons,tags)]
+                for f,tag,picture in zip(mesh.polygons,tags,mine):
                     f.use_smooth=True
+                    if picture:
+                        continue
+                    # The planks run the length of the vessel, a sheet every 2.4 m.
+                    d=max(range(3),key=lambda i:abs(f.normal[i]))
+                    a,b=[(2,1),(0,2),(0,1)][d]
+                    flip=(d==0 and f.normal.x>0) or (d==1 and f.normal.y>0) or (d==2 and f.normal.z<0)
+                    sheet=[((-mesh.vertices[mesh.loops[i].vertex_index].co[a] if flip else mesh.vertices[mesh.loops[i].vertex_index].co[a])/2.4,
+                            mesh.vertices[mesh.loops[i].vertex_index].co[b]/2.4) for i in f.loop_indices]
+                    sheet=on_first_sheet(sheet)
+                    reach=max(reach,sheets_of(sheet))
+                    for i,st in zip(f.loop_indices,sheet):
+                        uv[i].uv=st
                 mesh.set_sharp_from_angle(angle=math.radians(36))
                 mesh.materials.clear()
-                mesh.materials.append(material)
-                for f in mesh.polygons:
-                    f.material_index=0
-                mesh.transform(E2B)
+                for m in mats:
+                    mesh.materials.append(m)
+                for f,tag,picture in zip(mesh.polygons,tags,mine):
+                    f.material_index=order.index(picture or "teak")
+                mark(obj,tags,names,len(parts),parts)
+                items.append((obj,mine,tags))
+        # The bottoms are seen afloat only through the water, and the undersides of the decks in their own shade.
+        # The helm's displays are read from a seat, at six times the texels of the rest.
+        lay_out(items,sizes,lambda tag,axis: 6.0 if tag in SCREENS else (.35 if tag in HULL else .5) if axis==3 else 1.0,sheets=reach)
+        joined=[]
+        for bone,objects in self.groups.items():
+            for obj in objects:
+                obj.data.transform(E2B)
             bpy.ops.object.select_all(action="DESELECT")
             for obj in objects:
                 obj.select_set(True)
@@ -527,6 +532,8 @@ class Yard:
             obj.vertex_groups.new(name=bone).add(list(range(len(obj.data.vertices))),1,"REPLACE")
             obj.parent=rig
             obj.modifiers.new("Rigid joint","ARMATURE").object=rig
+            joined.append(obj)
+        check(str(HERE.parent/self.name),joined,names,parts,sizes)
 
 
 def build(name):

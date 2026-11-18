@@ -4,6 +4,21 @@ import { slowSurfaceError, surfaceError, toTriangle } from "../../tools/pack/err
 import { simplify } from "../../tools/pack/simplify.ts";
 import { boxMesh, type SourceLod } from "../../tools/pack/write.ts";
 
+test("coincident corners retain their sample weight when measuring a distant small part", () => {
+  const near = boxMesh([.5, .5, .5], 1), positions: number[] = [], indices: number[] = [];
+  // Three coincident geometric copies represent repeated seam/normal corners. They still count separately in
+  // the defined 95th percentile; dropping duplicate samples would let the small distant triangle dominate it.
+  for (let copy = 0; copy < 3; copy++) {
+    const offset = positions.length / 3;
+    positions.push(...near.positions); for (const vertex of near.indices) indices.push(vertex + offset);
+  }
+  const offset = positions.length / 3;
+  positions.push(10, 0, 0, 10, 1, 0, 10, 0, 1); indices.push(offset, offset + 1, offset + 2);
+  const fine: SourceLod = { positions: Float32Array.from(positions), indices: Uint32Array.from(indices), colors: new Uint8Array(positions.length / 3) };
+  expect(surfaceError(fine, near)).toBe(0);
+  expect(surfaceError(fine, near)).toBe(slowSurfaceError(fine, near));
+});
+
 test("packed triangles collapsed to segments or points have finite, order-independent distances", () => {
   // Actual packed cruise cell 0183: the first two corners coincide after quantization.
   const collapsed = Float32Array.from([8, 4.799951076507568, 4.884670734405518, 8, 4.799951076507568, 4.884670734405518, 8, 6.699911594390869, 2.3267312049865723]);

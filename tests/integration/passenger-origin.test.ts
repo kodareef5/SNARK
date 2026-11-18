@@ -12,7 +12,7 @@ for (const rtt of [50, 150, 300]) test(`ordinary moving App passenger shot cover
   expect(r.paired + r.unmatchedLocal).toBe(r.localShots);
   expect(r.paired + r.unmatchedServer).toBe(r.serverShots);
   expect(r.speedMps.median).toBeGreaterThan(20);
-  // This preserves the measured course envelope, not a claim of sub-metre aim agreement or a general delay bound.
-  expect(r.errorM.max).toBeLessThan(5);
+  // At these RTTs the server must reconstruct the muzzle within 12 cm for every paired shot.
+  expect(r.errorM.max).toBeLessThan(.12);
   expect(r.rewindFromCurrentEyeM.median).toBeGreaterThan(3);
 });

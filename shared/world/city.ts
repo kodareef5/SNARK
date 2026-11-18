@@ -41,6 +41,8 @@ export class CityStatics {
   readonly halfY: Float32Array;
   readonly halfZ: Float32Array;
   readonly color: Uint8Array;
+  /** Per content index: the colour of its faces that look down, its soffit's; its colour where none is given. */
+  readonly under?: Uint8Array;
   /** Per content index: 1 for a kind that is one box of its half extents, 0 for one with a shape, drawn by `walked` and `look`. */
   readonly plain: Uint8Array;
   /** Every kind's boxes and convex parts as walked (the registry's parts), and as drawn near. */
@@ -92,8 +94,9 @@ export class CityStatics {
     this.halfY = reg.halfY;
     this.halfZ = reg.halfZ;
     this.color = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.color : 0));
+    this.under = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.under ?? d.color : 0));
     this.plain = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" && d.shape !== undefined ? 0 : 1));
-    this.walked = { start: reg.parts.start, box: reg.parts.box, hulls: reg.parts.hulls ?? null };
+    this.walked = { start: reg.parts.start, box: reg.parts.box, color: null, hulls: reg.parts.hulls ?? null };
     this.look = lookForm(reg, this.walked);
   }
 
@@ -114,6 +117,8 @@ export class CityStatics {
 export interface CityForm {
   readonly start: Uint32Array;
   readonly box: Float32Array;
+  /** A colour a box, 0 for its piece's; null where every box is its piece's colour. */
+  readonly color: Uint8Array | null;
   readonly hulls: HullTable | null;
 }
 
@@ -128,18 +133,19 @@ function lookForm(reg: Registry, walked: CityForm): CityForm {
   if (!reg.defs.some((_, k) => shapeOf(k)?.look)) return walked;
   const start = new Uint32Array(n + 1);
   const box: number[] = [];
+  const color: number[] = [];
   for (let k = 0; k < n; k++) {
     start[k] = box.length / 6;
     const look = shapeOf(k)?.look;
-    if (look) for (const b of look.boxes ?? []) box.push(...b.at, ...b.half);
-    else box.push(...walked.box.subarray(walked.start[k]! * 6, walked.start[k + 1]! * 6));
+    if (look) for (const b of look.boxes ?? []) box.push(...b.at, ...b.half), color.push(b.color ?? 0);
+    else for (let b = walked.start[k]! * 6; b < walked.start[k + 1]! * 6; b += 6) box.push(...walked.box.subarray(b, b + 6)), color.push(0);
   }
   start[n] = box.length / 6;
   const hullsOf = (k: number): readonly HullDef[] => {
     const s = shapeOf(k);
     return (s?.look ? s.look.hulls : s?.hulls) ?? [];
   };
-  return { start, box: Float32Array.from(box), hulls: hullTable(n, hullsOf) };
+  return { start, box: Float32Array.from(box), color: color.some((c) => c !== 0) ? Uint8Array.from(color) : null, hulls: hullTable(n, hullsOf) };
 }
 
 /**
@@ -262,9 +268,10 @@ class Boxes {
   n = 0;
   f = new Float64Array(8 * 1024);
   color = new Uint8Array(1024);
+  under = new Uint8Array(1024);
   own = new Uint8Array(1024);
 
-  push(cx: number, cy: number, cz: number, hx: number, hy: number, hz: number, c: number, s: number, color: number, own: boolean): void {
+  push(cx: number, cy: number, cz: number, hx: number, hy: number, hz: number, c: number, s: number, color: number, own: boolean, under = color): void {
     if (this.n === this.color.length) {
       const f = new Float64Array(this.f.length * 2);
       f.set(this.f);
@@ -272,6 +279,9 @@ class Boxes {
       const col = new Uint8Array(this.color.length * 2);
       col.set(this.color);
       this.color = col;
+      const below = new Uint8Array(this.under.length * 2);
+      below.set(this.under);
+      this.under = below;
       const o = new Uint8Array(this.own.length * 2);
       o.set(this.own);
       this.own = o;
@@ -287,6 +297,7 @@ class Boxes {
     f[o + 6] = c;
     f[o + 7] = s;
     this.color[this.n] = color;
+    this.under[this.n] = under;
     this.own[this.n] = own ? 1 : 0;
     this.n++;
   }
@@ -313,10 +324,11 @@ class Hulls {
   table: HullTable[] = [];
   part = new Uint32Array(64);
   color = new Uint8Array(64);
+  under = new Uint8Array(64);
   own = new Uint8Array(64);
 
   /** Part `p` of `t` on a piece whose middle is at (cx, cy, cz), turned by the cosine and sine (c, s) as a box is. */
-  push(t: HullTable, p: number, cx: number, cy: number, cz: number, c: number, s: number, color: number, own: boolean): void {
+  push(t: HullTable, p: number, cx: number, cy: number, cz: number, c: number, s: number, color: number, own: boolean, under = color): void {
     if (this.n === this.part.length) {
       const grow = <T extends Float64Array | Uint32Array | Uint8Array>(a: T): T => {
         const b = new (a.constructor as new (n: number) => T)(a.length * 2);
@@ -324,12 +336,13 @@ class Hulls {
         return b;
       };
       [this.at, this.planes, this.box] = [grow(this.at), grow(this.planes), grow(this.box)];
-      [this.part, this.color, this.own] = [grow(this.part), grow(this.color), grow(this.own)];
+      [this.part, this.color, this.under, this.own] = [grow(this.part), grow(this.color), grow(this.under), grow(this.own)];
     }
     const h = this.n++;
     this.table[h] = t;
     this.part[h] = p;
     this.color[h] = color;
+    this.under[h] = under;
     this.own[h] = own ? 1 : 0;
     const at = this.at;
     const b = this.box;
@@ -401,10 +414,10 @@ function partLength(t: HullTable, p: number): number {
 }
 
 /** Puts kind `k`'s convex parts in `form` longer than `least` on a piece at (cx, cy, cz) turned by (c, s) in `hulls`. */
-function pushHulls(form: CityForm, k: number, cx: number, cy: number, cz: number, c: number, s: number, color: number, own: boolean, least: number): void {
+function pushHulls(form: CityForm, k: number, cx: number, cy: number, cz: number, c: number, s: number, color: number, own: boolean, least: number, under = color): void {
   const t = form.hulls;
   if (!t) return;
-  for (let p = t.start[k]!; p < t.start[k + 1]!; p++) if (least <= 0 || partLength(t, p) > least) hulls.push(t, p, cx, cy, cz, c, s, color, own);
+  for (let p = t.start[k]!; p < t.start[k + 1]!; p++) if (least <= 0 || partLength(t, p) > least) hulls.push(t, p, cx, cy, cz, c, s, color, own, under);
 }
 
 const gridCount = new Uint32Array(GRID_SIDE * GRID_SIDE + 1);
@@ -421,6 +434,7 @@ const ring = new Float64Array(3 * MAX_CORNERS);
  */
 function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone, own: boolean, form: CityForm): void {
   const { dims, first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, plain } = city;
+  const under = city.under ?? color;
   const cx = chunkCx(dims, chunk);
   const cz = chunkCz(dims, chunk);
   const [x0, z0] = [cx * CHUNK_SIZE, cz * CHUNK_SIZE];
@@ -437,14 +451,15 @@ function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone,
         const r = Math.max(halfX[k]!, halfZ[k]!) * 1.5;
         if (x[i]! + r < x0 - MARGIN || x[i]! - r > x0 + CHUNK_SIZE + MARGIN || z[i]! + r < z0 - MARGIN || z[i]! - r > z0 + CHUNK_SIZE + MARGIN) continue;
         const a = (yaw[i]! / YAW_UNITS) * TAU;
-        if (plain[k] === 1) boxes.push(x[i]!, y[i]!, z[i]!, halfX[k]!, halfY[k]!, halfZ[k]!, detCos(a), detSin(a), color[k]!, c === chunk);
+        if (plain[k] === 1) boxes.push(x[i]!, y[i]!, z[i]!, halfX[k]!, halfY[k]!, halfZ[k]!, detCos(a), detSin(a), color[k]!, c === chunk, under[k]!);
         else {
           const [cs, sn] = [detCos(a), detSin(a)];
           const B = form.box;
           for (let b = form.start[k]! * 6; b < form.start[k + 1]! * 6; b += 6) {
-            boxes.push(x[i]! + cs * B[b]! + sn * B[b + 2]!, y[i]! + B[b + 1]!, z[i]! + cs * B[b + 2]! - sn * B[b]!, B[b + 3]!, B[b + 4]!, B[b + 5]!, cs, sn, color[k]!, c === chunk);
+            const own = form.color?.[b / 6] ?? 0;
+            boxes.push(x[i]! + cs * B[b]! + sn * B[b + 2]!, y[i]! + B[b + 1]!, z[i]! + cs * B[b + 2]! - sn * B[b]!, B[b + 3]!, B[b + 4]!, B[b + 5]!, cs, sn, own || color[k]!, c === chunk, own || under[k]!);
           }
-          pushHulls(form, k, x[i]!, y[i]!, z[i]!, cs, sn, color[k]!, c === chunk, 0);
+          pushHulls(form, k, x[i]!, y[i]!, z[i]!, cs, sn, color[k]!, c === chunk, 0, under[k]!);
         }
       }
     }
@@ -554,7 +569,7 @@ function faces(dims: MapDims, chunk: number, hf: Ground): CityPart {
           held = h !== q && (h < n ? holds(h, face[0]!, face[1]!, face[2]!) && holds(h, face[3]!, face[4]!, face[5]!) && holds(h, face[6]!, face[7]!, face[8]!) && holds(h, face[9]!, face[10]!, face[11]!) : hulls.holdsAll(h - n, face, 4));
         }
       }
-      if (!held) out.quad(face, 0, boxes.color[q]!);
+      if (!held) out.quad(face, 0, f === 3 ? boxes.under[q]! : boxes.color[q]!);
     }
   }
   for (let q = 0; q < hulls.n; q++) {
@@ -586,7 +601,8 @@ function faces(dims: MapDims, chunk: number, hf: Ground): CityPart {
       }
       // Under the ground, as a box's: a face looking straight down onto it, or every corner below it.
       if (!above || (hulls.planes[o + 1]! < -0.9999 && top <= hf.heightAt(mx, mz) + 0.1)) continue;
-      if (!heldWhole(n + q, ring, count, mx, mz, gx0, gz0)) out.ring(ring, count, hulls.color[q]!);
+      // A face looking more down than across is a soffit.
+      if (!heldWhole(n + q, ring, count, mx, mz, gx0, gz0)) out.ring(ring, count, hulls.planes[o + 1]! < -0.7 ? hulls.under[q]! : hulls.color[q]!);
     }
   }
   return out.part();
@@ -658,7 +674,7 @@ function frameBoxes(city: CityStatics, chunk: number, g: Gone, f: number, c: num
     const [qc, qs] = [QUARTER_COS[quarter]!, QUARTER_SIN[quarter]!];
     const B = form.box;
     for (let b = form.start[k]! * 6; b < form.start[k + 1]! * 6; b += 6) {
-      nb = frameBox(nb, lx + qc * B[b]! + qs * B[b + 2]!, y[i]! + B[b + 1]!, lz + qc * B[b + 2]! - qs * B[b]!, odd ? B[b + 5]! : B[b + 3]!, B[b + 4]!, odd ? B[b + 3]! : B[b + 5]!, color[k]!);
+      nb = frameBox(nb, lx + qc * B[b]! + qs * B[b + 2]!, y[i]! + B[b + 1]!, lz + qc * B[b + 2]! - qs * B[b]!, odd ? B[b + 5]! : B[b + 3]!, B[b + 4]!, odd ? B[b + 3]! : B[b + 5]!, form.color?.[b / 6] || color[k]!);
     }
     if (parts) pushHulls(form, k, lx, y[i]!, lz, qc, qs, color[k]!, true, 0);
   }

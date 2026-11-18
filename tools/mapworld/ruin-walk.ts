@@ -3,7 +3,7 @@ const paths = reportPaths();
 // Authoritative capsule movement through stairs from the actual packed city, including rotated and damaged shells.
 import { readFileSync, writeFileSync } from "node:fs";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { compileContent } from "../../shared/content/registry.ts";
+import { compileContent, withContent } from "../../shared/content/registry.ts";
 import { chunkAt, TICK_DT } from "../../shared/coords.ts";
 import { Body, stepBody } from "../../shared/sim/character.ts";
 import { mapHeightfield, mapNodes, parseMap, placeStatics } from "../../shared/world/mapfile.ts";
@@ -15,7 +15,7 @@ const folder = paths.folder;
 const map = parseMap(new Uint8Array(readFileSync(paths.mapFile)));
 const compiled = compileContent(CORE_CONTENT);
 if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
-const reg = compiled.registry;
+const reg = withContent(compiled.registry, map.content?.defs ?? []);
 const hf = mapHeightfield(map);
 const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
 placeStatics(map, structs, reg);

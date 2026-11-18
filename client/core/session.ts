@@ -1,7 +1,7 @@
+import { IMPALE_SLOT } from "../../shared/sim/seats.ts";
 // One client's connection, with no DOM, clock or socket. The shell or a test supplies a Connection and calls update().
 // It runs ahead of the server so input T arrives before tick T, and steers its tick clock to keep the reported margin small and positive.
 
-import { BodyContactView } from "./body-contacts.ts";
 import { PredictedTrees } from "./vehicle-trees.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { deriveRegistry, parseTuning } from "../../shared/content/tuning.ts";
@@ -35,7 +35,6 @@ import {
   OWN_BUFFS,
   OWN_RULES,
   RULE_CORPSE_LOCATOR,
-  RULE_PVE,
   RULE_CROSSHAIR,
   RULE_DAMAGE_NUMBERS,
   RULE_GLOBAL_CHAT,
@@ -92,6 +91,7 @@ import {
   readBody,
   writeCommand,
   writeHello,
+  PASSENGER_VIEW_DELAY,
   writeInputs,
 } from "../../shared/net/protocol.ts";
 import { LOOK_BYTES } from "../../shared/anim/look.ts";
@@ -106,6 +106,7 @@ import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unp
 import { MAX_VEHICLE_DOORS } from "../../shared/sim/vehicle.ts";
 import { PredictionTrace } from "./diagnostics.ts";
 import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, vehicleDoor, withVehicleDoor, unpackVehicleGear, unpackVehicleRpm, vehicleShifting } from "../../shared/sim/vehicle-body.ts";
+import { stepCreature } from "../../shared/sim/creature-actions.ts";
 import { ACT_NONE, FISTS, actionOut, biteCost, stepAction } from "../../shared/sim/weapon.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
@@ -399,6 +400,7 @@ export class ClientSession {
     if (this.driving >= 0) return !this.registry.vehicle[this.own.kind];
     const b = this.own;
     if (!b.seat || !b.seatSlot) return true;
+    if (b.seatSlot === IMPALE_SLOT) return false;
     const view = this.views.find(this.latestSnapshot);
     if (!view) return false;
     const parent = b.seat - 1;
@@ -437,7 +439,6 @@ export class ClientSession {
   crosshair = true;
   mapLocation = true;
   corpseLocator = true;
-  pve = false;
   motdSeconds = 20;
   /** The server's clock scales: the whole cycle, and the day and the night within it. */
   readonly clock = { cycle: 1, day: 1, night: 1 };
@@ -503,7 +504,6 @@ export class ClientSession {
   /** Resource nodes around the body, filled from the map minus those the server reports used up. */
   nodeField: NodeField | null = null;
   private vehicleTrees: PredictedTrees | null = null;
-  private bodyContacts: BodyContactView | null = null;
   get predictedTrees(): PredictedTrees | null { return this.vehicleTrees; }
   private treeDriver = 0;
   private nodeChunk = -1;
@@ -795,7 +795,8 @@ export class ClientSession {
   sampleRemote(out: RemoteSample, delayTicks = this.remoteDelay): void {
     out.count = 0;
     out.died = this.died;
-    const at = this.renderClock - delayTicks;
+    const renderAt = this.renderClock - delayTicks;
+    const at = this.own.seat && this.driving < 0 ? Math.max(renderAt, this.latestSnapshot - PASSENGER_VIEW_DELAY) : renderAt;
     out.tick = at;
     this.shown = at;
     let a: EntityView | null = null;
@@ -984,6 +985,8 @@ export class ClientSession {
     const buttons = inp.buttons[i]!;
     // The body steps with the move parameters of the kind the server last sent: its own species, or its mount's once tamed.
     const vehicle = this.registry.vehicle[this.own.kind];
+    const combat = this.registry.combat[this.own.kind];
+    const was = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
     if (vehicle) {
       this.contactBefore.copy(this.own);
       this.vehicleTrees?.begin(t, this.treeDriver);
@@ -991,16 +994,13 @@ export class ClientSession {
       this.vehicleContacts?.step(t, this.contactBefore, this.own, vehicle);
     }
     // Any vehicle seat slot other than 0 holds the body still, as the server does (server/game.ts).
-    else if (this.own.seatSlot === 0) {
-      const params = this.registry.tamedMove[this.own.kind] ?? this.move!;
-      stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, params, TICK_DT,
-        this.bodyContacts?.prepare(this.drawn.find(this.latestSnapshot), this.ownHandle, this.driving, this.own, params, this.world!, this.tribe.team, this.pve, inp.moveX[i]!, inp.moveZ[i]!, buttons, this.drawn));
-    }
+    else if (combat && this.driving >= 0) stepCreature(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, buttons & ~was, this.registry.tamedMove[this.own.kind] ?? this.move!, combat, TICK_DT, true, !pilot);
+    else if (this.own.seatSlot === 0) stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.tamedMove[this.own.kind] ?? this.move!, TICK_DT);
     else this.own.yaw = inp.yaw[i]!;
     if (this.driving >= 0) {
       // A mount's bite is stepped here as the server steps it, so both agree on the body's action.
       const jaws = this.registry.weapon[this.own.kind];
-      if (jaws && !vehicle) {
+      if (jaws && !vehicle && !combat) {
         const was = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
         stepAction(this.own, buttons, buttons & ~was, jaws);
         biteCost(this.own, this.registry.biteStamina[this.own.kind]!);
@@ -1302,7 +1302,6 @@ export class ClientSession {
       this.crosshair = (flags & RULE_CROSSHAIR) !== 0;
       this.mapLocation = (flags & RULE_MAP_LOCATION) !== 0;
       this.corpseLocator = (flags & RULE_CORPSE_LOCATOR) !== 0;
-      this.pve = (flags & RULE_PVE) !== 0;
     } else if (component === OWN_VOICE) {
       const slot = r.u16();
       const token = new Uint8Array(TOKEN_BYTES);
@@ -1496,7 +1495,6 @@ export class ClientSession {
     // The file's dims, which say where the map sits on the lattice as the welcome's do not.
     this.world = { mapId, dims: hf.dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...(reg.motion.some((t) => t !== null) ? { motion: this.motionSource } : {}), ...(this.opts.landmarks?.length ? { landmarks: this.opts.landmarks } : {}) };
     this.vehicleTrees = field ? new PredictedTrees(this.world, reg, field) : null;
-    this.bodyContacts = new BodyContactView(reg);
     this.startCity(this.arrived);
     this.vehicleContacts = new VehiclePrediction(this.world, reg, field ? () => new PredictedTrees(this.world!, reg, field) : undefined, this.vehicleTrees ?? undefined);
     this.recenterNodes();

@@ -47,6 +47,10 @@ export interface SpeciesDef extends Named {
   readonly strafe?: boolean;
   /** Metres per second in water. Defaults to 60% of the walk speed. */
   readonly swimSpeed?: number;
+  /** Metres the origin rests below the surface while swimming. Omitted, 75% of the full collision height. */
+  readonly swimDepth?: number;
+  /** Measured breathing height in the conscious swimming pose. Omitted, ordinary stance eye height is retained. */
+  readonly swimEyeHeight?: number;
   /** Stamina points: per second of sprinting, per second of rest, per jump, and per second of walking. Defaults to 5, 8, 6 and none. */
   readonly stamina?: { readonly sprint: number; readonly regen: number; readonly jump: number; readonly walk?: number };
   /** Food capacity and loss per in-game hour. Omitted for species that do not eat. */
@@ -92,6 +96,10 @@ export interface SpeciesDef extends Named {
    * costs, none where not given: a stub until a ridden creature's bite spends it (FL2 of planning/reference/flyers-plan.md).
    */
   readonly bite?: { readonly reach: number; readonly ticks?: number; readonly lands?: number; readonly stamina?: number };
+  /** Ground combat, with a primary attack and a secondary attack or a held charge. */
+  readonly combat?: CreatureCombatFacet;
+  /** Riding view measured against the body and saddle, independently of a long tail or horn. */
+  readonly camera?: { readonly height: number; readonly distance: number; readonly forward?: number; readonly avoidBody?: boolean };
   /** It can be tamed by knocking it out and feeding it. These are the reference's five numbers for its species (shared/sim/taming.ts). */
   readonly taming?: { readonly a0: number; readonly a1: number; readonly foodBase: number; readonly proneMult: number; readonly k: number };
   /** What it eats, best liked first. Each entry is an item, the food one piece is worth to it, and its affinity. */
@@ -116,6 +124,9 @@ export interface SpeciesDef extends Named {
   readonly mutations?: readonly number[];
   /** When it is hurt, others of its species within this many metres take fright with it. Omitted, none do. */
   readonly alarm?: number;
+  /** Base metres per second once tamed, before its speed stat; omitted, the wild value is retained. */
+  readonly tamedWalkSpeed?: number;
+  readonly tamedSwimSpeed?: number;
   /** Its sprintMul once tamed. Defaults to its sprintMul. */
   readonly tamedSprintMul?: number;
   /** What it weighs to a creature that carries or drags it (the reference's drag weight), and its mass. */
@@ -173,6 +184,97 @@ export interface SpeciesDef extends Named {
   readonly boss?: boolean;
 }
 
+/** What a tamed creature's contact gathers. "plant" names nodes without a material. */
+export interface CreatureHarvestFacet {
+  readonly materials: readonly string[];
+  readonly power: number;
+  /** Node depletion units at 100% melee, before the server's harvesting multiplier. */
+  readonly damage: number;
+  readonly yields?: readonly { readonly item: string; readonly mult: number }[];
+}
+
+/** A timed blow from an authored socket. It can meet each victim only once per action. */
+export interface CreatureAttackDef {
+  readonly name: string;
+  readonly clip: string;
+  readonly alternateClip?: string;
+  /** Additive action layer on these bones, leaving the planted locomotion below it intact. Omitted, a whole-body clip. */
+  readonly bones?: readonly string[];
+  readonly socket: string;
+  /** Radius of the socket's swept contact, in metres. */
+  readonly radius: number;
+  /** Broad-phase extent from the body origin; must enclose the socket throughout its clip. */
+  readonly reach: number;
+  readonly damage: number;
+  readonly type: DamageType;
+  /** Whole action, first and last contact tick, at 30 Hz. */
+  readonly ticks: number;
+  readonly lands: number;
+  readonly through: number;
+  readonly stamina: number;
+  readonly cooldown?: number;
+  readonly knockback?: number;
+  readonly slow?: { readonly multiplier: number; readonly seconds: number };
+  readonly pierce?: number;
+  readonly harvest?: CreatureHarvestFacet;
+  readonly impale?: {
+    readonly socket: string;
+    readonly maxDrag: number;
+    readonly maxHealthFraction: number;
+    readonly seconds: number;
+    readonly staminaPerSecond: number;
+    readonly damagePerSecond: number;
+  };
+}
+
+export interface CreatureChargeDef {
+  /** Hold secondary to wind up; release after minWindup, or charge automatically at windup. */
+  readonly minWindup: number;
+  readonly windup: number;
+  readonly duration: number;
+  readonly recovery: number;
+  readonly cooldown: number;
+  readonly speed: number;
+  readonly turn: number;
+  readonly stamina: number;
+  readonly staminaPerSecond: number;
+  readonly attack: CreatureAttackDef;
+}
+
+export interface CreatureModeDef {
+  readonly name: string;
+  /** A static additive pose of the mode's plates. */
+  readonly clip: string;
+  readonly damageTaken: number;
+  readonly pierce?: number;
+  readonly slow?: { readonly multiplier: number; readonly seconds: number };
+  readonly harvest?: CreatureHarvestFacet;
+}
+
+export interface CreatureCombatFacet {
+  /** Tactical input layered onto the existing hunt/order/path state; all distances are world metres. */
+  readonly ai?: {
+    /** Unsigned bearing from forward: primary turns toward the left/negative side, an alternate toward right/positive. */
+    readonly primary?: { readonly bearing: number; readonly distance: number; readonly arc: number };
+    /** Only attempt a charge within this band and along a clear, supported ground corridor. */
+    readonly charge?: { readonly minDistance: number; readonly maxDistance: number };
+  };
+  readonly primary: CreatureAttackDef;
+  readonly secondary?: CreatureAttackDef;
+  readonly charge?: CreatureChargeDef;
+  /** Reload cycles these modes, switching midway through switchTicks. At most three. */
+  readonly modes?: readonly CreatureModeDef[];
+  readonly switchTicks?: number;
+  /** Effective inventory weight by item; the amount and transferred stack never change. */
+  readonly weight?: readonly { readonly item: string; readonly mult: number }[];
+  readonly protectsRider?: boolean;
+  readonly rivalry?: {
+    readonly distance: number; readonly minThreatDrag: number; readonly damage: number; readonly resistance: number; readonly health: number;
+    /** Optional dye region that flushes on a living animal when a qualifying threat is near. */
+    readonly signalRegion?: number;
+  };
+}
+
 /** A species' own flight (SpeciesDef.fly), compiled into the flight fields of its MoveParams (shared/sim/character.ts). */
 export interface FlyFacet {
   /** Metres per second flying. Hovering is flying with no way given. */
@@ -199,6 +301,8 @@ export interface FlyFacet {
 export interface ShapeBox {
   readonly at: readonly [number, number, number];
   readonly half: readonly [number, number, number];
+  /** In a look only: a palette colour of its own in place of its piece's, such as a pane's or a rail's. */
+  readonly color?: number;
 }
 
 /** The role decides what a piece may join and what may join it. */
@@ -270,6 +374,8 @@ export interface StructureDef extends Named {
    */
   readonly mesh: string;
   readonly color: number;
+  /** A fixed palette colour for its faces that look down, drawn as its form (shared/world/city.ts): a slab's darker soffit. */
+  readonly under?: number;
   /** Half extents in metres of the box that holds all of it, centred on the structure's position. Without a shape, this box is its collider. */
   readonly half: readonly [number, number, number];
   /** A shape id, if it is more than one box or not centred on its origin. `half` must equal the box that holds the shape. */

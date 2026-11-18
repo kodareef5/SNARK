@@ -3,7 +3,7 @@
 // the body, the occasion and its tick, so every client that saw the occasion makes the same ones. They are pictures:
 // nothing here is read by the simulation. planning/reference/round9-details-design.md is the design.
 
-import { creaturePose, type CreatureAnim } from "../../../shared/anim/creature.ts";
+import { poseCreatureOn, type CreatureAnim } from "../../../shared/anim/creature.ts";
 import { bodyDown, bodyUp } from "../../../shared/anim/moments.ts";
 import { AnimState, CUE_DEAD, bodySeed } from "../../../shared/anim/pose.ts";
 import { boneToModel, solve, type Solved } from "../../../shared/anim/skeleton.ts";
@@ -13,6 +13,7 @@ import { hashString } from "../../../shared/hash.ts";
 import { OCCASIONS, type DetailEffect, type DetailEntry, type DetailPicture, type DetailSheet, type Occasion, type PackDetails } from "../../../shared/pack/details.ts";
 import { Rng } from "../../../shared/rng.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
+import { MODE_WALK } from "../../../shared/sim/character.ts";
 import { sortU32 } from "../../../shared/sort.ts";
 import { rayVehicle, vehiclePoint, vehicleRotation } from "../../../shared/sim/vehicle-frame.ts";
 import type { VehicleDefinition } from "../../../shared/sim/vehicle.ts";
@@ -22,8 +23,8 @@ import { castWorld, HIT_NONE, rayHit } from "../../../shared/world/ray.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import type { Tier } from "../assets/tiers.ts";
-import { Occasions, type Happening, type ShotEnd, type Viewer } from "../occasions.ts";
-import type { Corpse } from "../ragdoll.ts";
+import { Occasions, type DrawnGait, type Happening, type ShotEnd, type Viewer } from "../occasions.ts";
+import { corpseDownAt, type Corpse } from "../ragdoll.ts";
 import { LOW } from "../render/atmosphere.ts";
 import type { Camera } from "../render/camera.ts";
 import { DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, MAX_DETAILS, type FramePacket } from "../render/packet.ts";
@@ -91,6 +92,7 @@ export class Details {
   private readonly booked: readonly number[];
   private readonly sheets: readonly (DetailSheet | null)[];
   private readonly animOf: (kind: number) => CreatureAnim | null;
+  private readonly drawnPose: ((id: number, kind: number, tick: number) => Solved | null) | null;
   private readonly reg: Registry;
   private readonly waiting: Waiting[] = [];
   private readonly palette: Uint8Array;
@@ -120,7 +122,7 @@ export class Details {
   private readonly nodeColours = new Uint8Array(6);
 
   /** `animOf` gives what a species of a kind plays, or null for one not drawn on a rig of its own. */
-  constructor(reg: Registry, details: PackDetails | undefined, palette: Uint8Array, animOf: (kind: number) => CreatureAnim | null) {
+  constructor(reg: Registry, details: PackDetails | undefined, palette: Uint8Array, animOf: (kind: number) => CreatureAnim | null, drawnGait: DrawnGait | null = null, drawnPose: ((id: number, kind: number, tick: number) => Solved | null) | null = null) {
     this.palette = palette;
     this.birth = reg.birthScale;
     this.boatKinds = Uint8Array.from(reg.vehicle, v => v?.movement === "boat" ? 1 : 0);
@@ -131,6 +133,7 @@ export class Details {
     this.pool = new Pool(MAX_DETAILS);
     this.reg = reg;
     this.animOf = animOf;
+    this.drawnPose = drawnPose;
     const listens = new Uint16Array(reg.defs.length);
     const boatEffects = details?.sheets.find(s => s.owner === "core:boat");
     this.sheets = reg.defs.map((d, kind) => d?.type === "species"
@@ -145,6 +148,8 @@ export class Details {
       this.books.map((b) => b?.anim ?? null),
       listens,
       (o) => 1 << OCCASIONS.indexOf(o),
+      reg.birthScale,
+      drawnGait,
     );
   }
 
@@ -190,7 +195,7 @@ export class Details {
     const ey = cam.y;
     const ez = cam.z;
     if (remote) {
-      this.occasions.update(remote, corpses, shots, viewer, ex, ey, ez, nowMs);
+      this.occasions.update(remote, corpses, shots, viewer, ex, ey, ez, nowMs, world);
       this.sustained(remote, hf, world, cam);
       for (const h of this.occasions.happened) {
         const book = this.books[h.kind];
@@ -213,6 +218,14 @@ export class Details {
     due.length = 0;
     let kept = 0;
     for (const w of this.waiting) {
+      if (w.h.occasion === "death" && w.h.corpse && w.answer.entry.at === "down") {
+        if (!corpses.includes(w.h.corpse)) continue;
+        w.due = corpseDownAt(w.h.corpse, w.answer.delay);
+        const point = w.h.corpse.impact;
+        if (tick >= w.due && point && Number.isFinite(point[0]) && w.answer.entry.from === "ground") {
+          w.origin = { x: point[0]!, y: point[1]!, z: point[2]!, floor: point[1]! };
+        }
+      }
       if (w.due > tick) this.waiting[kept++] = w;
       else due.push(w);
     }
@@ -224,7 +237,7 @@ export class Details {
     }
     let fill = this.fill;
     this.posed = -1;
-    for (const w of due) fill += this.burst(w, remote, hf, tier, cam, tick, fill);
+    for (const w of due) fill += this.burst(w, remote, hf, tier, cam, tick, fill, world);
     return this.write(p, cam, hf, reserve);
   }
 
@@ -336,7 +349,7 @@ export class Details {
   }
 
   /** Makes one burst. Returns the share of the screen it is expected to cover, if it is see-through. */
-  private burst(w: Waiting, remote: RemoteSample | null, hf: Heightfield, tier: Tier, cam: Camera, tick: number, fill: number): number {
+  private burst(w: Waiting, remote: RemoteSample | null, hf: Heightfield, tier: Tier, cam: Camera, tick: number, fill: number, collision?: CollisionWorld): number {
     const { h, answer } = w;
     const e = answer.effect;
     const book = this.books[h.kind]!;
@@ -354,6 +367,7 @@ export class Details {
     else {
     let solved: Solved | null = null;
     let rotated = false;
+    let fitted = false;
     const rig = book.anim.rig;
     if (h.corpse) {
       const c = h.corpse;
@@ -384,14 +398,17 @@ export class Details {
         if (r.grown[i] !== 0) size = youngScale(this.birth[h.kind]!, r.span[i]!, r.grown[i]!, r.tick);
       } else st.unpack(h.anim, h.cue);
       st.seed = bodySeed(h.id);
+      fitted = !!rig.ground && !!collision && st.mode === MODE_WALK && st.grounded && !st.out && !st.dead && !st.held;
       // The answers of one occasion at one moment share a pose.
-      if (this.posed !== h.id || this.posedAt !== w.due) {
-        creaturePose(book.anim, st, w.due, rig.a);
-        solve(rig, rig.a, rig.solved);
-        this.posed = h.id;
-        this.posedAt = w.due;
+      solved = i !== undefined ? this.drawnPose?.(h.id, h.kind, remote!.tick) ?? null : null;
+      if (!solved) {
+        if (this.posed !== h.id || this.posedAt !== w.due) {
+          poseCreatureOn(book.anim, st, w.due, collision, x, y, z, yaw, size);
+          this.posed = h.id;
+          this.posedAt = w.due;
+        }
+        solved = rig.solved;
       }
-      solved = rig.solved;
     }
     const s = Math.sin(yaw), c = Math.cos(yaw);
     const world = (mx: number, my: number, mz: number): void => {
@@ -443,14 +460,26 @@ export class Details {
       }
     } else if (from === "foot") {
       if (h.foot < 0) return 0;
-      world(solved.pos[h.foot * 3]!, 0, solved.pos[h.foot * 3 + 2]!);
+      world(solved.pos[h.foot * 3]!, solved.pos[h.foot * 3 + 1]!, solved.pos[h.foot * 3 + 2]!);
+      if (fitted) for (const leg of rig.ground!.legs) if (leg.end === h.foot || leg.foot.bone === h.foot) {
+        boneToModel(solved, leg.foot.bone, leg.foot.x, leg.foot.y, leg.foot.z, at);
+        world(at[0]!, at[1]!, at[2]!);
+        break;
+      }
     } else {
       const socket = rig.sockets.get(from);
       if (!socket) return 0;
       boneToModel(solved, socket.bone, socket.x, socket.y, socket.z, at);
       world(at[0]!, at[1]!, at[2]!);
     }
-    if (from === "ground" || from === "foot") at[1] = y;
+    if (from === "ground" || from === "foot") {
+      if (fitted) {
+        const top = (from === "foot" ? at[1]! : y) + .04 * size;
+        // Dust follows the real supporting face; an unsupported foot throws no dust from a lower ledge.
+        if (castWorld(collision!, at[0]!, top, at[2]!, 0, -1, 0, (rig.ground!.maxStep + .04) * size) === HIT_NONE || rayHit.ny < .65) return 0;
+        at[1] = top - rayHit.t;
+      } else at[1] = y;
+    }
     }
     // A floating hull's origin is its submerged keel. Surface splashes belong on the visible water, not below it.
     const surface = hf.waterAt(at[0]!, at[2]!);

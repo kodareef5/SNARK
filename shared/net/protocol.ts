@@ -58,11 +58,12 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * travelling static's state. 24: S_MOTION's states are added to those told before: all of them after a welcome, in as many
  * messages as they take, and then each static as it is thrown. 25: wheeled full-attitude/flooding state and
  * replicated fatal-impact corpse checkpoints (S_CORPSE/CMD_CORPSE). 26: local car push/pull and manual flip commands.
- * 27: driver contact bodies and held controls precede the view, and depleted nodes distinguish crushed trees.
- * 28: contact rows carry public motion and policy only. 29: unoccupied cars report the automatic parking brake.
- * 30: ground body prediction uses stationary sent views and the public PvE rule, and ground AI uses authored bite pitch.
+ * 27: driver contact bodies and held controls precede each snapshot view; depleted node rows distinguish crushed trees.
+ * 29: ground creature ability mode, cooldowns, charge power and attack side in the owner body.
+ * 31 combines ground creature prediction counters with the parked-car brake in contact snapshots.
+ * The earlier road-only 29 and ground-mount 30 clients cannot read the combined contract.
  */
-export const PROTOCOL_VERSION = 30;
+export const PROTOCOL_VERSION = 31;
 
 // Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
@@ -476,8 +477,6 @@ export const RULE_THIRD_PERSON = 8;
 export const RULE_CROSSHAIR = 16;
 export const RULE_MAP_LOCATION = 32;
 export const RULE_CORPSE_LOCATOR = 64;
-/** Protected tame bodies yield to controlled movement under PvE. */
-export const RULE_PVE = 128;
 /**
  * team varint, tribe name string (empty for a survivor alone, and then rank and members are absent), rank u8, members (count
  * u8, then per member: name string, online 1 bit, owner 1 bit). Then a pending invitation: tribe name string (empty for
@@ -662,6 +661,10 @@ export function writeBody(w: BitWriter, b: Body): void {
   w.u8(b.reloadTo);
   w.u8(b.bloom);
   w.u8(b.kick);
+  // Ground ability prediction counters; ordinary bodies pay only the presence bit.
+  const creature = b.creatureMode !== 0 || b.creatureCooldown !== 0 || b.creaturePower !== 0 || b.creatureSide !== 0 || b.creaturePrimaryCooldown !== 0;
+  w.bool(creature);
+  if (creature) { w.bits(b.creatureMode, 2); w.bits(b.creatureCooldown, 10); w.u8(b.creaturePower); w.bits(b.creatureSide, 1); w.bits(b.creaturePrimaryCooldown, 10); }
   writeFlight(w, b);
   writeVehicle(w, b);
 }
@@ -690,6 +693,8 @@ export function readBody(r: BitReader, b: Body): void {
   b.reloadTo = r.u8();
   b.bloom = r.u8();
   b.kick = r.u8();
+  if (r.bool()) { b.creatureMode = r.bits(2); b.creatureCooldown = r.bits(10); b.creaturePower = r.u8(); b.creatureSide = r.bits(1); b.creaturePrimaryCooldown = r.bits(10); }
+  else b.creatureMode = b.creatureCooldown = b.creaturePower = b.creatureSide = b.creaturePrimaryCooldown = 0;
   readFlight(r, b);
   readVehicle(r, b);
 }
@@ -723,6 +728,8 @@ export function writeCommand(w: BitWriter, seq: number, op: number): void {
 
 /** INPUT's "behind" byte counts 1/VIEW_STEPS of a tick. */
 export const VIEW_STEPS = 16;
+/** Maximum interpolation behind a passenger’s acknowledged snapshot when presenting and resolving a shot. */
+export const PASSENGER_VIEW_DELAY = 4;
 
 /** `ack` is the newest snapshot decoded. `behind` is how many ticks behind it the client draws everyone else, and is clamped to 255 sixteenths. */
 export function writeInputs(w: BitWriter, inputs: InputBuffer, ack: number, newest: number, count: number, behind = 0): void {

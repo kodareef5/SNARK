@@ -2,7 +2,8 @@
 // pack, to what the scene draws, on the sample raptor with saddles made in code (tests/fixtures/saddles.ts); and a rider
 // drawn in its seat's whole frame.
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { artTest } from "../fixtures/needs-art.ts";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
@@ -11,12 +12,15 @@ import { DRAW_ONE_BONE, DRAW_SKINNED, TRANSIENT_BUFFER, type FramePacket } from 
 import { Scene, bodySeed } from "../../client/core/render/scene.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { creaturePose } from "../../shared/anim/creature.ts";
-import { B_HIPS } from "../../shared/anim/human.ts";
+import { B_HIPS, B_PROP_L, B_PROP_R, HUMAN_BONES, SLOT_FEET, SLOT_HANDS, type Socket } from "../../shared/anim/human.ts";
+import { defaultLook, LOOK_BYTES, setRegion } from "../../shared/anim/look.ts";
+import { RiderGrips } from "../../shared/anim/rider-grips.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { SEAT_FLOATS, seatFrame } from "../../shared/anim/seat.ts";
 import { solve } from "../../shared/anim/skeleton.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
+import type { Seat } from "../../shared/sim/seats.ts";
 import { STANCE_CROUCH } from "../../shared/sim/character.ts";
 import { GEAR_COUNT, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ACT_SWING, HOLD_HANDS } from "../../shared/sim/weapon.ts";
@@ -27,7 +31,7 @@ import { checkAsset } from "../../tools/art/check.ts";
 import type { CreatureAsset } from "../../tools/art/spec.ts";
 import { encodePng } from "../../tools/pack/image.ts";
 import { splitPack } from "../../tools/pack/split.ts";
-import { unpackMeshes } from "../../tools/pack/write.ts";
+import { buildPack, unpackMeshes } from "../../tools/pack/write.ts";
 import { frozenPack } from "../fixtures/pack.ts";
 import { RAPTOR, SADDLE, SADDLED, SADDLE_OBJECT, WORN, saddleAsset, saddleGlb, saddledFrozenPack, type Ways } from "../fixtures/saddles.ts";
 import { tubeGlb, tubePictures, writeGlb } from "../fixtures/textured.ts";
@@ -166,9 +170,14 @@ function parseGlb(bytes: Uint8Array): { json: Record<string, unknown>; data: [Fl
 }
 
 /** A flat world with the raptor's saddles of `ways` in the pack, seen on `tier` from (32, 1.6, 20) along +z. */
-function stage(ways: Ways, tier = "medium") {
+function stage(ways: Ways, tier = "medium", nativeHands = false) {
   const reg = coreRegistry();
-  const pack = saddledFrozenPack(ways);
+  let pack = saddledFrozenPack(ways);
+  if (nativeHands) {
+    const bodies = parsePack(new Uint8Array(readFileSync(new URL("../../assets/source/core/humans/human-bodies/human-bodies.snpk",import.meta.url))));
+    const ids = new Set(bodies.header.meshes.map(m => m.id)), rigs = new Set(bodies.header.rigs.map(r => r.id));
+    pack = parsePack(buildPack([...unpackMeshes(pack).filter(m => !ids.has(m.id)),...unpackMeshes(bodies)],pack.palette,pack.clips.clips,[...pack.header.rigs.filter(r => !rigs.has(r.id)),...bodies.header.rigs]));
+  }
   const dims = { chunksX: 2, chunksZ: 2 };
   const hf = new Heightfield(dims, TERRAIN_CELL, -32, 1 / 256);
   for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) hf.setSample(i, j, 0);
@@ -341,5 +350,138 @@ test("a rider is drawn in its seat's whole frame: it leans as the raptor's back 
     }
     // The raptor's back pitches through its bite, and the rider with it.
     expect((leant * 180) / Math.PI).toBeGreaterThan(3);
+  }
+});
+
+
+test("thinning reserves each fitted rider profile and shares only identical profiles before final host posing", () => {
+  const w = stage("worn"), ch = w.scene.characters;
+  const rig = ch.creature(w.kind(RAPTOR))!.rig, saddle = w.kind(SADDLE);
+  const on = rig.sockets.get("seat")!;
+  for (const [name, x, y, z] of [["palm_l", -.19, .31, .27], ["palm_r", .19, .31, .27], ["ankle_l", -.42, -.4, .38], ["ankle_r", .42, -.4, .38]] as const) {
+    (rig.sockets as Map<string, Socket>).set(name, { bone: on.bone, x: on.x + x, y: on.y + y, z: on.z + z });
+  }
+  const contacts = { hands: ["palm_l", "palm_r"], feet: ["ankle_l", "ankle_r"] } as const;
+  const seat = w.reg.saddleSeats[saddle]![0]!;
+  (w.reg.saddleSeats as (readonly Seat[] | null)[])[saddle] = [{ ...seat, rider: contacts }, { ...seat, rider: contacts }];
+  const hosts: number[] = [];
+  for (let k = 0; k < 2; k++) hosts.push(w.place(RAPTOR, 30 + k * 4, 32, SADDLE));
+  for (let k = 0; k < 4; k++) {
+    const i = w.place("core:survivor", 30, 32);
+    w.remote.seat[i] = w.remote.id[hosts[k % 2]!]! + 1;
+    w.remote.seatSlot[i] = k % 2 + 1;
+  }
+  // Each of two fitted seat profiles needs a HUMAN stand-in, plus the two still-posed hosts and four rigid instances.
+  // A generic seated cache undercounted the second profile and stopped thinning too soon, dropping a rider on submission.
+  const budget = 2 * HUMAN_BONES + 2 * ch.bones(w.kind(RAPTOR)) + 4;
+  w.scene.assets.tier = { ...w.scene.assets.tier, bones: budget };
+  for (let frame = 0; frame < 2; frame++) {
+    const p = w.frame(), bodies = drawn(p, w.pack);
+    expect(p.dropped).toBe(0);
+    expect(p.boneCount).toBeLessThanOrEqual(budget);
+    for (let k = 2; k < 6; k++) expect(bodies.has(w.remote.id[k]!)).toBe(true);
+    expect([...bodies.values()].filter(parts => parts[0]!.rigid).length).toBeGreaterThan(1);
+  }
+});
+
+test("seated footwear and look changes refit the actual native sole, including distant footwear cache reservations", () => {
+  const w = stage("worn"), ch = w.scene.characters, saddle = w.kind(SADDLE), rig = ch.creature(w.kind(RAPTOR))!.rig;
+  const on = rig.sockets.get("seat")!;
+  for (const [name,x,y,z] of [["palm_l",.19,.31,.27],["palm_r",-.19,.31,.27],["ankle_l",.42,-.26,.38],["ankle_r",-.42,-.26,.38],["knee_l",.48,-.08,.27],["knee_r",-.48,-.08,.27],["sole_l",.42,-.373,.51],["sole_r",-.42,-.373,.51]] as const) {
+    (rig.sockets as Map<string,Socket>).set(name,{bone:on.bone,x:on.x+x,y:on.y+y,z:on.z+z});
+  }
+  const seat = w.reg.saddleSeats[saddle]![0]!;
+  (w.reg.saddleSeats as (readonly Seat[]|null)[])[saddle] = [{...seat,rider:{hands:["palm_l","palm_r"],feet:["ankle_l","ankle_r"],knees:["knee_l","knee_r"],soles:{sockets:["sole_l","sole_r"],half:[.15,.13]}}}];
+  const host = w.place(RAPTOR,32,26,SADDLE), rider = w.place("core:survivor",32,26), meshList = unpackMeshes(w.pack);
+  w.remote.seat[rider] = w.remote.id[host]!+1; w.remote.seatSlot[rider] = 1;
+  w.remote.hasLook[rider] = 1; const look = defaultLook(); w.remote.look.set(look,rider*LOOK_BYTES);
+  for (const [boots,footSize] of [["",0],["core:hide_boots",1],["core:cloth_boots",-1],["",1]] as const) {
+    setRegion(look,15,footSize); w.remote.look.set(look,rider*LOOK_BYTES);
+    w.remote.gear[rider*GEAR_COUNT+GEAR_WORN+SLOT_FEET] = boots ? w.kind(boots) : 0;
+    // Test the very next frame: the pose-rate scheduler must not reuse an old fit when equipment/look changes.
+    const p = w.frame(), visible = drawn(p,w.pack), body = visible.get(w.remote.id[host]!)![0]!, feet = visible.get(w.remote.id[rider]!)!.find(m => m.mesh.endsWith("/feet"))!;
+    expect(feet.rigid).toBe(false);
+    expect(feet.mesh.includes(boots ? boots.includes("hide") ? "/hide/" : "/cloth/" : "/armor/")).toBe(!!boots);
+    const support = rig.sockets.get("sole_l")!, b = (body.bone+support.bone)*12, joint = support.bone*3;
+    const sx = rig.rest[joint]!+support.x, sy = rig.rest[joint+1]!+support.y, sz = rig.rest[joint+2]!+support.z;
+    // The host's own submitted bones define the physical platform, so this also catches stale host-relative fitting.
+    const platform = [0,1,2].map(axis => p.bones[b+axis*4]!*sx+p.bones[b+axis*4+1]!*sy+p.bones[b+axis*4+2]!*sz+p.bones[b+axis*4+3]!);
+    const up = [p.bones[b+1]!,p.bones[b+5]!,p.bones[b+9]!];
+    const lod = meshList.find(m => m.id === feet.mesh)!.lods[0]!;
+    let lowest = Infinity;
+    for (let v = 0; v < lod.positions.length/3; v++) {
+      const k = (feet.bone+lod.bones![v]!)*12, x=lod.positions[v*3]!, y=lod.positions[v*3+1]!, z=lod.positions[v*3+2]!;
+      const point = [0,1,2].map(axis => p.bones[k+axis*4]!*x+p.bones[k+axis*4+1]!*y+p.bones[k+axis*4+2]!*z+p.bones[k+axis*4+3]!);
+      lowest = Math.min(lowest,point.reduce((sum,value,axis) => sum+(value-platform[axis]!)*up[axis]!,0));
+    }
+    expect(Math.abs(lowest)).toBeLessThan(.00001);
+  }
+  const profile = saddle*17+1, st = new AnimState(), bare = new Uint16Array(GEAR_COUNT), hide = new Uint16Array(GEAR_COUNT);
+  hide[GEAR_WORN+SLOT_FEET] = w.kind("core:hide_boots");
+  expect(ch.standInBones(w.kind("core:survivor"),null,0,st,true,false,profile,bare)).toBe(HUMAN_BONES);
+  expect(ch.standInBones(w.kind("core:survivor"),null,0,st,true,false,profile,hide)).toBe(HUMAN_BONES);
+  expect(ch.standInBones(w.kind("core:survivor"),null,0,st,true,false,profile,hide)).toBe(0);
+  const riders = [rider];
+  for (const boots of ["core:hide_boots","core:cloth_boots",""]) {
+    const mount = w.place(RAPTOR,30+riders.length,28,SADDLE), seated = w.place("core:survivor",30,28);
+    w.remote.seat[seated] = w.remote.id[mount]!+1; w.remote.seatSlot[seated] = 1;
+    w.remote.gear[seated*GEAR_COUNT+GEAR_WORN+SLOT_FEET] = boots ? w.kind(boots) : 0; riders.push(seated);
+  }
+  // Shared rigid mount pose, three footwear-specific HUMAN poses, four host roots and four rider roots.
+  const budget = ch.bones(w.kind(RAPTOR))+3*HUMAN_BONES+8;
+  w.scene.assets.tier = {...w.scene.assets.tier,bones:budget};
+  for (let frame = 0; frame < 2; frame++) {
+    const p = w.frame(), visible = drawn(p,w.pack);
+    expect(p.dropped).toBe(0); expect(p.boneCount).toBeLessThanOrEqual(budget);
+    for (const seated of riders) expect(visible.has(w.remote.id[seated]!)).toBe(true);
+    expect(riders.filter(i => visible.get(w.remote.id[i]!)![0]!.rigid).length).toBeGreaterThan(1);
+  }
+});
+
+
+artTest("actual glove, look and forearm alignment changes update seated draws and reserve every rigid footwear/glove pair", () => {
+  const w=stage("worn","medium",true),ch=w.scene.characters,saddle=w.kind(SADDLE),rig=ch.creature(w.kind(RAPTOR))!.rig,on=rig.sockets.get("seat")!;
+  for(const [name,x,y,z]of [["palm_l",.19,.31,.27],["palm_r",-.19,.31,.27],["ankle_l",.42,-.26,.38],["ankle_r",-.42,-.26,.38],["sole_l",.42,-.373,.51],["sole_r",-.42,-.373,.51]]as const)
+    (rig.sockets as Map<string,Socket>).set(name,{bone:on.bone,x:on.x+x,y:on.y+y,z:on.z+z});
+  const seat=w.reg.saddleSeats[saddle]![0]!;
+  (w.reg.saddleSeats as (readonly Seat[]|null)[])[saddle]=[{...seat,rider:{hands:["palm_l","palm_r"],feet:["ankle_l","ankle_r"],soles:{sockets:["sole_l","sole_r"],half:[.15,.13]},grips:{radius:.017,span:[-.12,.13]}}}];
+  const host=w.place(RAPTOR,32,26,SADDLE),rider=w.place("core:survivor",32,26),look=defaultLook(),native=w.pack.header.rigs.find(r=>r.id==="human_m")!,cache=new RiderGrips();
+  w.remote.seat[rider]=w.remote.id[host]!+1;w.remote.seatSlot[rider]=1;w.remote.hasLook[rider]=1;
+  const point=(p:FramePacket,bone:number,x:number,y:number,z:number)=>[0,1,2].map(a=>{const k=bone*12+a*4;return p.bones[k]!*x+p.bones[k+1]!*y+p.bones[k+2]!*z+p.bones[k+3]!;});
+  let originalArm:Float32Array<ArrayBuffer>|null=null,alignedArm:Float32Array<ArrayBuffer>|null=null;
+  for(const [glove,size,alignment]of [["",0,0],["",0,75],["",0,0],["core:cloth_gloves",1,75],["core:hide_gloves",-1,75],["",1,75]]as const){
+    const current=w.reg.saddleSeats[saddle]![0]!;
+    (w.reg.saddleSeats as (readonly Seat[]|null)[])[saddle]=[{...current,rider:{...current.rider!,grips:{...current.rider!.grips!,forearmAlignment:alignment}}}];
+    setRegion(look,11,size);w.remote.look.set(look,rider*LOOK_BYTES);w.remote.gear[rider*GEAR_COUNT+GEAR_WORN+SLOT_HANDS]=glove?w.kind(glove):0;
+    const p=w.frame(),visible=drawn(p,w.pack),hostPart=visible.get(w.remote.id[host]!)![0]!,hand=visible.get(w.remote.id[rider]!)!.find(m=>m.mesh.endsWith("/hands"))!;
+    if(!glove&&size===0){
+      const arm=p.bones.slice((hand.bone+8)*12,(hand.bone+9)*12);
+      if(!originalArm)originalArm=arm;else if(alignment){expect(arm).not.toEqual(originalArm);alignedArm=arm;}else{expect(alignedArm).not.toBeNull();expect(arm).toEqual(originalArm);}
+    }
+    expect(hand.rigid).toBe(false);expect(hand.mesh.includes(glove?glove.includes("hide")?"/hide/":"/cloth/":"/armor/")).toBe(!!glove);
+    const fit=cache.update(native.grips!.find(g=>g.mesh===hand.mesh)!,look,.017,-.12,.13)!;expect(fit).not.toBeNull();
+    for(const side of [0,1]){
+      const socket=rig.sockets.get(side?"palm_r":"palm_l")!,bone=hostPart.bone+socket.bone,j=socket.bone*3;
+      const bar=point(p,bone,rig.rest[j]!+socket.x,rig.rest[j+1]!+socket.y,rig.rest[j+2]!+socket.z),prop=side?B_PROP_R:B_PROP_L;
+      const grasp=point(p,hand.bone+prop,native.rest[prop*3]!,native.rest[prop*3+1]!,native.rest[prop*3+2]!);
+      for(let axis=0;axis<3;axis++){
+        let relative=0;for(let a=0;a<3;a++)relative+=(grasp[a]!-bar[a]!)*p.bones[bone*12+a*4+axis]!;
+        expect(relative).toBeCloseTo(axis===0?(side?-1:1)*fit[side*6]!:axis===2?fit[side*6+1]!:0,5);
+      }
+    }
+  }
+  // The same seat with all real footwear/glove combinations must reserve nine distinct neutral fits before thinning.
+  const riders=[rider];w.remote.gear[rider*GEAR_COUNT+GEAR_WORN+SLOT_HANDS]=0;
+  for(let duplicate=0;duplicate<2;duplicate++)for(const boots of ["","core:cloth_boots","core:hide_boots"])for(const glove of ["","core:cloth_gloves","core:hide_gloves"]){
+    if(!duplicate&&!boots&&!glove)continue;
+    const mount=w.place(RAPTOR,30+riders.length*.3,28,SADDLE),seated=w.place("core:survivor",30,28);
+    w.remote.seat[seated]=w.remote.id[mount]!+1;w.remote.seatSlot[seated]=1;
+    w.remote.gear[seated*GEAR_COUNT+GEAR_WORN+SLOT_FEET]=boots?w.kind(boots):0;w.remote.gear[seated*GEAR_COUNT+GEAR_WORN+SLOT_HANDS]=glove?w.kind(glove):0;riders.push(seated);
+  }
+  const budget=ch.bones(w.kind(RAPTOR))+9*HUMAN_BONES+36;w.scene.assets.tier={...w.scene.assets.tier,bones:budget};
+  for(let frame=0;frame<2;frame++){
+    const p=w.frame(),visible=drawn(p,w.pack);expect(p.dropped).toBe(0);expect(p.boneCount).toBeLessThanOrEqual(budget);
+    for(const seated of riders)expect(visible.has(w.remote.id[seated]!)).toBe(true);
+    expect(riders.filter(i=>visible.get(w.remote.id[i]!)![0]!.rigid).length).toBeGreaterThan(1);
   }
 });

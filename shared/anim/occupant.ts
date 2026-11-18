@@ -11,6 +11,7 @@ import { Pose } from "./clip.ts";
 import { B_HEAD, B_NECK, B_SPINE, HUMAN, HUMAN_BONES, SOCKET_EYE } from "./human.ts";
 import { createMountMotion, mountOrigin, mountPose, type MountMotionProfile } from "./mount.ts";
 import { AnimState, humanPose, PITCH_STEPS, type HumanAnim } from "./pose.ts";
+import { fitRiderControls } from "./rider-controls.ts";
 import { fitSeatControls } from "./seat-controls.ts";
 import { SEAT_DROP, SEAT_FLOATS } from "./seat.ts";
 import { boneToModel, rayZones, Solved, solve } from "./skeleton.ts";
@@ -130,10 +131,13 @@ export class OccupantBody {
     }
   }
 
-  saddle(anim: HumanAnim, st: AnimState, tick: number, frame: Float64Array, driver: boolean, yaw: number, rest: Float32Array): void {
+  /** `targets` are riderTargets' saddle contacts, with `soles` and `grips` the rider's own corrections, or null. */
+  saddle(anim: HumanAnim, st: AnimState, tick: number, frame: Float64Array, driver: boolean, yaw: number, rest: Float32Array,
+    targets: Float64Array | null = null, soles: Float64Array | null = null, grips: Float64Array | null = null): void {
     this.frame.set(frame);
     occupantPose(anim, st, tick, this.pose, undefined, frame, 3, yaw, driver);
     solve(HUMAN, this.pose, this.solved, rest);
+    if (targets && targets[0]) fitRiderControls(this.pose, this.solved, rest, null, targets, driver, undefined, soles, grips);
     for (let axis = 0; axis < 3; axis++) this.anchor[axis] = frame[axis]! + frame[4 + axis * 3]! * SEAT_DROP;
   }
 
@@ -145,9 +149,9 @@ export class OccupantBody {
     }
   }
 
-  ray(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
+  ray(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, padding = 0): number {
     const f = this.frame, x = ox - f[0]!, y = oy - f[1]!, z = oz - f[2]!;
     return rayZones(HUMAN, this.solved, f[3]! * x + f[6]! * y + f[9]! * z, f[4]! * x + f[7]! * y + f[10]! * z, f[5]! * x + f[8]! * y + f[11]! * z,
-      f[3]! * dx + f[6]! * dy + f[9]! * dz, f[4]! * dx + f[7]! * dy + f[10]! * dz, f[5]! * dx + f[8]! * dy + f[11]! * dz, maxT);
+      f[3]! * dx + f[6]! * dy + f[9]! * dz, f[4]! * dx + f[7]! * dy + f[10]! * dz, f[5]! * dx + f[8]! * dy + f[11]! * dz, maxT, padding);
   }
 }

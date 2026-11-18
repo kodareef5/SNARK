@@ -54,7 +54,7 @@ m.under("Harvesting")
   .s("HarvestResourceItemAmountClassMultipliers", "Yield of one resource: `(ClassName=\"core:thatch\",Multiplier=2.0)`.", live({ live: true }))
   .f("ResourceNoReplenishRadiusPlayers", 1, "How far from a survivor nodes will not grow back. Higher is further.", live({ live: true }))
   .f("ResourceNoReplenishRadiusStructures", 1, "How far from a foundation or pillar nodes will not grow back. Higher is further.", live({ live: true }))
-  .f("DinoHarvestingDamageMultiplier", 3.2, "What a tamed creature's blow does to a tree or a rock.", plan("dinoHarvest"));
+  .f("DinoHarvestingDamageMultiplier", 3.2, "What a tamed creature's blow does to a tree, rock or plant.", live({ live: true }));
 
 m.under("Items")
   .f("GlobalSpoilingTimeMultiplier", 1, "How long things keep before they spoil. Higher is longer.", live({ public: true, retime: "period", min: 0.001, note: "ARK Evolved can change this while running; here it is read at start. How it combines with what a container adds is not documented; they are multiplied." }))

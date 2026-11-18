@@ -107,6 +107,8 @@ export class EntityRecord {
   mealDue = 0;
   /** Content index of its saddle, or 0. */
   saddle = 0;
+  /** Selected ground-combat plate mode; transient attacks are never saved. */
+  creatureMode = 0;
   /**
    * A creature in its own flight (MODE_FLYER) when last saved, so that it loads in the air and does not fall
    * (planning/reference/flyers-plan.md, FL0). Refreshed from the simulation when saved, as the position is.

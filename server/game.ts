@@ -1,7 +1,7 @@
+import { IMPALE_SLOT } from "../shared/sim/seats.ts";
 // The authoritative game loop. It owns no socket or clock. The transport and the calls to
 // tick() come from outside, so tests run a whole server in memory.
 
-import { BodyContacts } from "./body-contacts.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, TICK_RATE, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { TAU, detCos, detSin } from "../shared/math/scalar.ts";
 import { BitReader, BitWriter, Named } from "../shared/net/codec.ts";
@@ -63,12 +63,14 @@ import {
   writeBody,
 } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
+import { PassengerView } from "./passenger-view.ts";
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { ContactSnapshot, writeContacts } from "../shared/net/contact.ts";
 import { BTN_JUMP, Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
 import { stepVehicleBody, packVehicleDrive, packVehiclePose, quantVehicleWheel, packVehicleRide } from "../shared/sim/vehicle-body.ts";
 import { packVehicleRotor, packVehicleSystems, packVehicleQuaternionPair, packBoatWater } from "../shared/sim/vehicle-presentation.ts";
 import { drivetrainShifting } from "../shared/sim/vehicle-drivetrain.ts";
+import { cancelCreatureAction, creatureHold, stepCreature } from "../shared/sim/creature-actions.ts";
 import { ACT_NONE, FISTS, actionOut, biteCost, stepAction } from "../shared/sim/weapon.ts";
 import { stepAim } from "../shared/sim/aim.ts";
 import { F_AWAKE, F_PLAYER, F_ALIVE, F_PROP, F_GROUNDED } from "../shared/sim/entities.ts";
@@ -275,8 +277,10 @@ export class Client {
   newestInput = 0;
   /** Newest snapshot the client says it decoded. */
   ackTick = 0;
+  /** High-water mark even while an ACK of zero requests a fresh full snapshot. */
+  highestAck = 0;
   lastSnapshot = 0;
-  readonly views = new ViewRing(() => new SentView());
+  readonly views = new ViewRing(() => new PassengerView());
   /** Structure table version the client holds, per chunk. */
   readonly known: Uint32Array;
   /** Version of each chunk's used-up nodes the client holds. */
@@ -361,7 +365,7 @@ export class Client {
     this.inputs.tick.fill(0);
     this.vehicleSeatSnapshot = this.vehicleSeatSnapshot === 0 ? 0 : -1;
     this.heldX = this.heldZ = this.heldButtons = 0;
-    this.newestInput = this.ackTick = this.lastSnapshot = 0;
+    this.newestInput = this.highestAck = this.ackTick = this.lastSnapshot = 0;
     this.views.clear();
     this.known.fill(0);
     this.nodesKnown.fill(0);
@@ -402,7 +406,6 @@ const NAME_SET = event("name.set");
 
 export class GameServer {
   readonly world: ServerWorld;
-  readonly bodyContacts: BodyContacts;
   readonly opts: GameOptions;
   bus: Bus = NO_BUS;
   readonly clients: (Client | null)[];
@@ -505,7 +508,6 @@ export class GameServer {
 
   constructor(world: ServerWorld, opts: Partial<GameOptions> = {}) {
     this.world = world;
-    this.bodyContacts = new BodyContacts(world);
     this.opts = { ...DEFAULTS, ...opts };
     this.clients = new Array(this.opts.maxClients).fill(null);
     this.cap = Math.max(1, Math.min(MAX_VIEW, Math.floor(this.opts.viewCap)));
@@ -574,6 +576,10 @@ export class GameServer {
         }
       }
       c.edges();
+      if (c.ent >= 0 && ents.seatSlot[c.ent] === IMPALE_SLOT && ents.seat[c.ent] !== 0) {
+        c.heldButtons = c.pressed = 0;
+        c.heldX = c.heldZ = 0;
+      }
       c.did = 0;
       const b = c.body;
       // Let go of a mount that died or was replaced.
@@ -583,6 +589,7 @@ export class GameServer {
       if (e >= 0) {
         ents.loadBody(e, b);
         const vehicle = world.reg.vehicle[b.kind];
+        const combat = world.reg.combat[b.kind];
         const parent = ents.seat[e]! - 1;
         // Who sits in a seat of a car or a saddle and does not steer it is held there; a carried body has no seat slot.
         const passenger = !driving && parent >= 0 && ents.seatSlot[e] !== 0 && ents.gen[parent] === ents.seatGen[e];
@@ -591,12 +598,12 @@ export class GameServer {
           this.vehicleStep(world, b, quiet ? 0 : c.heldX, quiet ? 0 : c.heldZ, quiet ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : c.heldButtons, vehicle, TICK_DT, c.heldYaw, !quiet);
         } else if (!passenger) {
           // A survivor's tamed numbers are its own. A body that is driven is a tame's.
-          stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.tamedMove[b.kind]!, TICK_DT,
-            c.closed ? undefined : this.bodyContacts.prepare(e, b, world.reg.tamedMove[b.kind]!, c.views.find(c.lastSnapshot), ents.team[c.ent]!, c.heldX, c.heldZ, c.heldButtons, c.views));
+          if (combat && driving) stepCreature(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, c.pressed, world.reg.tamedMove[b.kind]!, combat, TICK_DT, true, c.closed || T - c.inputAt > INPUT_HOLD_TICKS);
+          else stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.tamedMove[b.kind]!, TICK_DT);
         } else { b.yaw = c.heldYaw; stepOut.landSpeed = 0; }
         if (!driving) {
           // Enclosed cabins stow weapons while preserving the held inventory slot for exit.
-          const stowed = passenger && world.reg.vehicle[ents.kind[parent]!]?.seats[ents.seatSlot[e]! - 1]?.weapons === false;
+          const stowed = passenger && (ents.seatSlot[e] === IMPALE_SLOT || world.reg.vehicle[ents.kind[parent]!]?.seats[ents.seatSlot[e]! - 1]?.weapons === false);
           if (stowed) { b.act = ACT_NONE; b.actTicks = 0; }
           // Hits are resolved later, once every body has moved.
           stepAction(b, stowed ? 0 : c.heldButtons, stowed ? 0 : c.pressed, stowed ? FISTS : world.reg.weapon[b.held] ?? FISTS);
@@ -606,7 +613,7 @@ export class GameServer {
         } else {
           // A mount's bite goes through the same action step as any blow.
           const jaws = world.reg.weapon[b.kind];
-          if (jaws) {
+          if (jaws && !combat) {
             stepAction(b, c.heldButtons, c.pressed, jaws);
             if (actionOut.strike) c.did = DID_BITE;
             biteCost(b, world.reg.biteStamina[b.kind]!);
@@ -614,6 +621,7 @@ export class GameServer {
           if (stepOut.rolled) c.did |= DID_ROLL;
         }
         ents.storeBody(e, b);
+        if (combat) ents.hold[e] = creatureHold(b);
         if (vehicle) this.onVehicleStep?.(e);
         ents.pitch[e] = c.heldPitch;
         ents.pose(e, T);
@@ -777,7 +785,18 @@ export class GameServer {
   release(c: Client): void {
     const ents = this.world.ents;
     if (c.drive < 0) return;
-    if ((ents.flags[c.drive]! & F_ALIVE) !== 0 && ents.gen[c.drive] === c.driveGen) ents.driven[c.drive] = 0;
+    if ((ents.flags[c.drive]! & F_ALIVE) !== 0 && ents.gen[c.drive] === c.driveGen) {
+      ents.driven[c.drive] = 0;
+      const combat = this.world.reg.combat[ents.kind[c.drive]!];
+      if (combat) {
+        const body = new Body();
+        ents.loadBody(c.drive, body);
+        cancelCreatureAction(body, combat);
+        ents.storeBody(c.drive, body);
+        ents.hold[c.drive] = creatureHold(body);
+        ents.pose(c.drive, this.world.tick);
+      }
+    }
     c.drive = -1;
   }
 
@@ -1002,7 +1021,7 @@ export class GameServer {
   private input(c: Client, r: BitReader): boolean {
     const ack = r.u32();
     const behind = r.u8() / VIEW_STEPS;
-    const validAck = ack <= c.lastSnapshot ? ack : 0;
+    const validAck = ack >= c.highestAck && ack <= c.lastSnapshot && c.views.find(ack) ? ack : 0;
     const newest = readInputs(r, c.inputs, this.world.tick, validAck, behind, c.inputAcks);
     if (newest === 0) return false;
     if (newest <= this.world.tick) this.stats.lateInputs++;
@@ -1018,7 +1037,7 @@ export class GameServer {
     // the view it acknowledged, so the next snapshot is whole. An input that arrives out of order may not say that.
     if (ack === 0) {
       if (fresh) c.ackTick = 0;
-    } else if (ack > c.ackTick && ack <= c.lastSnapshot) c.ackTick = ack;
+    } else if (validAck > c.ackTick) c.highestAck = c.ackTick = validAck;
     return true;
   }
 
@@ -1397,6 +1416,7 @@ export class GameServer {
       next.tick = 0;
       return;
     }
+    next.recordSeat(this.world, c.ent, c.drive >= 0);
     c.lastSnapshot = T;
     if (c.vehicleSeatSnapshot === -1) c.vehicleSeatSnapshot = T;
     c.conn.send(CH_UNRELIABLE, w.bytes());

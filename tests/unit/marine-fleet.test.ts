@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { MARINE_FLEET, MARINE_MODELS } from "../../content/vehicles/marine-fleet.ts";
+import { HARBOUR_WRECK_FORMS, formMesh } from "../../content/vehicles/harbour-wrecks.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { boatRestY, createBoat, stepBoat, type BoatState, type BoatWorld } from "../../shared/sim/boat.ts";
 import { boatDrives, isBoatVehicle, type BoatVehicleDefinition } from "../../shared/sim/vehicle.ts";
@@ -167,5 +168,21 @@ artTest("every new boat ships six native LODs, damage layers, a working helm and
       [s.x, s.y, s.z].forEach((n, axis) => expect(n).toBeCloseTo(at[axis]!, 4));
     }
     for (const effect of ["wake_left", "wake_right", "spray_left", "spray_right", "engine"]) expect(sockets.has(effect)).toBe(true);
+  }
+});
+
+artTest("every wreck form is built on its vessel's rig and layout, with its own pictures, and a burnt one has lost what burns", async () => {
+  const read = async (name: string) => parsePack(await Bun.file(new URL(`../../assets/source/core/vehicles/${name}/${name}.snpk`, import.meta.url)).bytes());
+  const forms: Record<string, Record<string, { burnt?: boolean }>> = await Bun.file(new URL("../../assets/source/core/vehicles/marine/forms.json", import.meta.url)).json();
+  for (const model of MARINE_MODELS) {
+    const name = model.id.slice(5), vessel = await read(name);
+    for (const form of HARBOUR_WRECK_FORMS) {
+      const id = formMesh(model.id, form), pack = await read(id.slice(5)), mesh = pack.header.meshes[0]!, rig = pack.header.rigs[0]!;
+      expect([mesh.id, rig.skeleton]).toEqual([id, model.id]);
+      expect(rig.names).toEqual(vessel.header.rigs[0]!.names);
+      expect(mesh.lods).toHaveLength(6);
+      expect(pack.header.materials!.map(m => m.id.split("/").at(-1)!.replace(/_(worn|wrecked)$/, ""))).toEqual(vessel.header.materials!.map(m => m.id.split("/").at(-1)!));
+      if (forms[name]![form]!.burnt) expect(mesh.lods[0]!.indexCount).toBeLessThan(vessel.header.meshes[0]!.lods[0]!.indexCount);
+    }
   }
 });

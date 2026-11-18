@@ -29,8 +29,6 @@ export const SPEED_MAX = 15;
 export const DIR_STEPS = 16;
 /** Steps of `AnimState.pitch` from level to straight up. */
 export const PITCH_STEPS = 31;
-/** Unused signed six-bit look value: an unmounted ground attack keeps its authored neck pose, without camera aim. */
-export const PITCH_AUTHORED = -32;
 
 /**
  * A creature in its own flight (MODE_FLYER), with the flyers' contracts (planning/reference/flyers-plan.md, FL0), has
@@ -61,7 +59,7 @@ const SIN_45 = 0.7071067811865476;
  * for what its whole body goes through and the low byte of its first tick, then a LAYER_ for what plays over that and
  * the low byte of its first tick. The server clears a cue before its start can be counted twice. Then states that last
  * (protocol 11): held in bit 22 (CUE_HELD), a corpse in bit 23 (CUE_DEAD), its hurt stage in two bits from bit 24, a
- * corpse's decay stage in two from bit 26, and its pair's mating in three from bit 28.
+ * corpse's decay stage in bits 26–27 (a living creature uses bit 26 for rivalry), and its pair's mating in three from bit 28.
  */
 export const CUE_BITS = 31;
 export const CUE_NONE = 0;
@@ -89,6 +87,8 @@ export const CUE_HELD = 1 << 22;
 export const CUE_DEAD = 1 << 23;
 export const CUE_HURT_SHIFT = 24;
 export const CUE_DECAY_SHIFT = 26;
+/** On a living creature only. A corpse uses these bits for its decay stage. */
+export const CUE_RIVALRY = 1 << CUE_DECAY_SHIFT;
 export const CUE_MATING_SHIFT = 28;
 /** The worst hurt and decay stage. 0 is unhurt, or fresh. */
 export const STAGE_WORST = 3;
@@ -104,18 +104,12 @@ export function hurtStage(health: number, max: number): number {
   return health >= max * 0.5 ? 1 : health >= max * 0.25 ? 2 : 3;
 }
 
-/** Packed pose state uses whole numbers; surfaceSpeed is derived locally from the support at that pose. */
+/** Everything a pose depends on besides the tick, as whole numbers. */
 export class AnimState {
-  /** Derived local bite direction after footing; never packed. NaN asks a flat pose to derive it from pitch. */
-  biteX = NaN;
-  biteY = 0;
-  biteZ = 1;
   mode = MODE_WALK;
   grounded = true;
   /** Horizontal speed in SPEED_STEP units, 0..SPEED_MAX. */
   speed = 0;
-  /** Derived from current real footing, never packed: surface metres per horizontal metre for ground-creature gaits. */
-  surfaceSpeed = 1;
   /** Direction of travel relative to facing, in sixteenths of a turn toward the body's left. */
   dir = 0;
   /** -PITCH_STEPS (down) to PITCH_STEPS (up). */
@@ -140,6 +134,7 @@ export class AnimState {
   /** 0 to STAGE_WORST. */
   hurt = 0;
   decay = 0;
+  rivalry = false;
   /** 0, or 1 to MATING_STEPS. */
   mating = 0;
 
@@ -156,7 +151,8 @@ export class AnimState {
   packCue(): number {
     const cue = this.cue === CUE_NONE ? 0 : (this.cue << 1) | ((this.cueStart & 255) << 4);
     const layer = this.layer === LAYER_NONE ? 0 : (this.layer << 12) | ((this.layerStart & 255) << 14);
-    const lasting = (this.held ? CUE_HELD : 0) | (this.dead ? CUE_DEAD : 0) | ((this.hurt & 3) << CUE_HURT_SHIFT) | ((this.decay & 3) << CUE_DECAY_SHIFT) | ((this.mating & 7) << CUE_MATING_SHIFT);
+    const condition = this.dead ? (this.decay & 3) << CUE_DECAY_SHIFT : this.rivalry ? CUE_RIVALRY : 0;
+    const lasting = (this.held ? CUE_HELD : 0) | (this.dead ? CUE_DEAD : 0) | ((this.hurt & 3) << CUE_HURT_SHIFT) | condition | ((this.mating & 7) << CUE_MATING_SHIFT);
     return ((this.out ? CUE_OUT : 0) | cue | layer | lasting) >>> 0;
   }
 
@@ -175,13 +171,12 @@ export class AnimState {
     this.held = (cue & CUE_HELD) !== 0;
     this.dead = (cue & CUE_DEAD) !== 0;
     this.hurt = (cue >>> CUE_HURT_SHIFT) & 3;
-    this.decay = (cue >>> CUE_DECAY_SHIFT) & 3;
+    this.decay = this.dead ? (cue >>> CUE_DECAY_SHIFT) & 3 : 0;
+    this.rivalry = !this.dead && (cue & CUE_RIVALRY) !== 0;
     this.mating = (cue >>> CUE_MATING_SHIFT) & 7;
   }
 
   unpack(word: number, cue = 0): void {
-    this.biteX = NaN;
-    this.surfaceSpeed = 1;
     this.unpackCue(cue);
     this.speed = word & 15;
     if (((word >>> 8) & 3) === ANIM_FLYING) {
@@ -207,8 +202,6 @@ export class AnimState {
 
   /** `yaw` and `pitch` are in radians. Set `mode` first: a flyer's speed counts `vy` too, which no other body's does. */
   setMotion(vx: number, vz: number, yaw: number, pitch: number, vy = 0): void {
-    this.biteX = NaN;
-    this.surfaceSpeed = 1;
     const s = detSin(yaw);
     const c = detCos(yaw);
     const forward = vx * s + vz * c;

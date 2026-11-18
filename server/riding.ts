@@ -508,7 +508,7 @@ export class Riding {
     const world = this.ctx.world, ents = world.ents, e = host.entity, st = this.st;
     st.unpack(ents.anim[e]!, ents.cue[e]!);
     st.seed = bodySeed(e);
-    seatOn(world.anims[ents.kind[e]!] ?? null, seat, st, world.tick, ents.x[e]!, ents.y[e]!, ents.z[e]!, (ents.yaw[e]! / 65536) * TAU, this.frame, world, world.reg.tamedMove[ents.kind[e]!]);
+    seatOn(world.anims[ents.kind[e]!] ?? null, seat, st, world.tick, ents.x[e]!, ents.y[e]!, ents.z[e]!, (ents.yaw[e]! / 65536) * TAU, this.frame, world);
   }
 
   /** Whether `e`, if it flies, touches water: swimming, or in flight with its feet at or under the surface over water. */

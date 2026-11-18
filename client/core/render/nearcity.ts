@@ -21,10 +21,17 @@ import { quadBytes, type FramePacket } from "./packet.ts";
 const STRIPS = 16;
 /**
  * A band holds at most this many of the pieces of its chunk's mesh, but where one strip holds more. A piece of a shape
- * counts as SHAPE_PIECES, as a ruin's flight or pitched roof took about that many boxes' making in the Miami slice.
+ * counts as its look's boxes and HULL_PIECES a convex part (pieceWeight): a ruin's flight, ten treads and a part, or its
+ * pitched roof, two parts, took about 24 boxes' making in the Miami slice.
  */
 export const BAND_PIECES = 400;
-export const SHAPE_PIECES = 24;
+export const HULL_PIECES = 12;
+/** What making kind k's faces counts as among a band's pieces. */
+export function pieceWeight(city: Pick<CityStatics, "plain" | "look">, k: number): number {
+  if (city.plain[k] === 1) return 1;
+  const { start, hulls } = city.look;
+  return Math.max(1, start[k + 1]! - start[k]! + HULL_PIECES * (hulls ? hulls.start[k + 1]! - hulls.start[k]! : 0));
+}
 /** The finest step a vertex is stored to, in metres. */
 const FINEST = 2 ** -12;
 /**
@@ -85,7 +92,7 @@ export class NearMaking {
     const from = city.first[chunk]!;
     const strip = (i: number): number => Math.min(STRIPS - 1, Math.max(0, Math.floor(((city.z[from + i]! - z0) * STRIPS) / CHUNK_SIZE)));
     const counts = new Uint32Array(STRIPS);
-    const weight = (i: number): number => (city.plain[city.kind[from + i]!] === 1 ? 1 : SHAPE_PIECES);
+    const weight = (i: number): number => pieceWeight(city, city.kind[from + i]!);
     for (let i = 0; i < mine.length; i++) if (mine[i] === 1) counts[strip(i)]! += weight(i);
     this.beside = cx + 1 < dims.chunksX ? chunk + 1 : cx > 0 ? chunk - 1 : cz + 1 < dims.chunksZ ? chunk + dims.chunksX : cz > 0 ? chunk - dims.chunksX : -1;
     // The fewest bands of which none holds more than BAND_PIECES.
@@ -120,7 +127,7 @@ export class NearMaking {
     return this.parts.length === this.bands;
   }
 
-  /** Pieces the next step makes the faces of, a shape's counted as SHAPE_PIECES. */
+  /** Pieces the next step makes the faces of, a shape's counted by pieceWeight. */
   get next(): number {
     return this.weights[this.parts.length] ?? 0;
   }
@@ -253,8 +260,8 @@ function view(city: CityStatics, chunk: number, own: readonly number[], beside: 
     }
   }
   first.fill(at, c);
-  const { halfX, halfY, halfZ, color, plain, walked, look } = city;
-  return { dims, first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, plain, walked, look, count: n, in: (k: number) => first[k + 1]! - first[k]! } as CityStatics;
+  const { halfX, halfY, halfZ, color, under, plain, walked, look } = city;
+  return { dims, first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, under, plain, walked, look, count: n, in: (k: number) => first[k + 1]! - first[k]! } as CityStatics;
 }
 
 /** Slots of meshes on the card start here, past the lakes' (lakes.ts). */

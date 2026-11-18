@@ -1,0 +1,144 @@
+{
+  "source": "assets/raw/quaternius/dinosaurs/Triceratops.fbx",
+  "sha256": "ad66b51cc5fc44c9a3429a5b1b98a61621af08d58d102d8a817499bd6a7f5b5a",
+  "blender": "5.3.0",
+  "fps_after_import": 24,
+  "meshes": [
+    {
+      "name": "Triceratops",
+      "vertices": 669,
+      "polygons": 666,
+      "triangles": 1334,
+      "rest_world_dimensions": [
+        5.844102,
+        20.340579,
+        9.432513
+      ],
+      "rest_world_bounds": [
+        [
+          -2.922051,
+          -9.009093,
+          -0.093459
+        ],
+        [
+          2.922051,
+          11.331486,
+          9.339054
+        ]
+      ],
+      "uv_layers": [],
+      "weight_count_histogram": {
+        "1": 93,
+        "2": 373,
+        "3": 83,
+        "4": 60,
+        "5": 41,
+        "6": 12,
+        "7": 6,
+        "8": 1
+      },
+      "material_names": [
+        "Purple",
+        "LightBrown",
+        "Brown"
+      ],
+      "image_nodes": []
+    }
+  ],
+  "armatures": [
+    {
+      "name": "Armature",
+      "bones": {
+        "root": null,
+        "Body": "root",
+        "BackLeg.R": "Body",
+        "BackUpLeg.R": "BackLeg.R",
+        "BackLowLeg.R": "BackUpLeg.R",
+        "BackLowLeg.R_end": "BackLowLeg.R",
+        "BackLeg.L": "Body",
+        "BackUpLeg.L": "BackLeg.L",
+        "BackLowLeg.L": "BackUpLeg.L",
+        "BackLowLeg.L_end": "BackLowLeg.L",
+        "Back": "Body",
+        "Tail1": "Back",
+        "Tail2": "Tail1",
+        "Tail3": "Tail2",
+        "Tail4": "Tail3",
+        "Tail5": "Tail4",
+        "Tail5_end": "Tail5",
+        "Hips": "Body",
+        "Torso": "Hips",
+        "Shoulders": "Torso",
+        "Neck": "Shoulders",
+        "Head": "Neck",
+        "Head_end": "Head",
+        "FrontLeg.R": "Body",
+        "FrontUpLeg.R": "FrontLeg.R",
+        "FrontLowLeg.R": "FrontUpLeg.R",
+        "FrontLowLeg.R_end": "FrontLowLeg.R",
+        "FrontLeg.L": "Body",
+        "FrontUpLeg.L": "FrontLeg.L",
+        "FrontLowLeg.L": "FrontUpLeg.L",
+        "FrontLowLeg.L_end": "FrontLowLeg.L",
+        "BackFoot.R": "root",
+        "BackFoot.R_end": "BackFoot.R",
+        "BackFoot.L": "root",
+        "BackFoot.L_end": "BackFoot.L",
+        "FrontFoot.R": "root",
+        "FrontFoot.R_end": "FrontFoot.R",
+        "FrontFoot.L": "root",
+        "FrontFoot.L_end": "FrontFoot.L"
+      }
+    }
+  ],
+  "actions": [
+    {
+      "name": "Armature|Armature|Triceratops_Attack",
+      "frames": [
+        1.0,
+        19.0
+      ],
+      "duration_seconds": 0.75
+    },
+    {
+      "name": "Armature|Armature|Triceratops_Death",
+      "frames": [
+        1.0,
+        44.0
+      ],
+      "duration_seconds": 1.791667
+    },
+    {
+      "name": "Armature|Armature|Triceratops_Idle",
+      "frames": [
+        1.0,
+        62.0
+      ],
+      "duration_seconds": 2.541667
+    },
+    {
+      "name": "Armature|Armature|Triceratops_Jump",
+      "frames": [
+        1.0,
+        41.0
+      ],
+      "duration_seconds": 1.666667
+    },
+    {
+      "name": "Armature|Armature|Triceratops_Run",
+      "frames": [
+        1.0,
+        20.0
+      ],
+      "duration_seconds": 0.791667
+    },
+    {
+      "name": "Armature|Armature|Triceratops_Walk",
+      "frames": [
+        1.0,
+        71.0
+      ],
+      "duration_seconds": 2.916667
+    }
+  ]
+}

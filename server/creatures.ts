@@ -1,10 +1,14 @@
+import { IMPALE_SLOT } from "../shared/sim/seats.ts";
+import { creatureHold, stepCreature } from "../shared/sim/creature-actions.ts";
+import type { CreatureCombatFacet } from "../shared/content/defs.ts";
 // Spawns creatures, wakes and sleeps them, and steps the awake ones. A chunk is awake while a player is within wakeRadius chunks of it.
 // Creatures in sleeping chunks are not stepped or iterated. Slow quantities such as hunger are lazy and belong to server/survival.ts.
 
-import { AnimState, ANIM_LOOK_BITS, ANIM_LOOK_SHIFT, PITCH_AUTHORED, CUE_LAND, CUE_NONE, CUE_OUT, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH, LAYER_NONE } from "../shared/anim/pose.ts";
+import { AnimState, bodySeed, CUE_LAND, CUE_NONE, CUE_OUT, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH, LAYER_NONE } from "../shared/anim/pose.ts";
+import { posedSubmerged } from "../shared/anim/breath.ts";
 import { TICK_DT, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
-import { BTN_JUMP, BTN_SPRINT, Body, MF_NO_JUMP, MF_OUT, MF_ROOTED, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK, STAMINA_UNITS, stanceEye, stepBody, stepOut, type MoveParams } from "../shared/sim/character.ts";
-import { ACT_NONE, ACT_SWING, actionOut, stepAction } from "../shared/sim/weapon.ts";
+import { BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_SECONDARY, BTN_SPRINT, Body, MF_NO_JUMP, MF_OUT, MF_ROOTED, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK, STAMINA_UNITS, stanceEye, stepBody, stepOut, swimDepth, type MoveParams } from "../shared/sim/character.ts";
+import { ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_SWING, actionOut, stepAction } from "../shared/sim/weapon.ts";
 import { Behavior } from "./behavior.ts";
 import type { GameServer } from "./game.ts";
 import { F_ALIVE, F_AWAKE, F_GROUNDED, F_HELD, F_PLAYER, F_PROP, wider } from "../shared/sim/entities.ts";
@@ -18,14 +22,16 @@ import type { EntityRecord, Records } from "./records.ts";
 import { refreshMods, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
+import { creatureSize, forgetYoungMove, youngMove } from "./young-move.ts";
 
 const CREATURE_SPAWN = event("creature.spawn");
 /** Ticks a cue stays in a creature's state: past any clip it starts and the fade after, and short of the 256 its start counts. */
 export const CUE_TICKS = 240;
 /** Metres a second at which a creature falling lands for its landing to show: a drop of about half a metre. Chosen. */
 const LAND_SPEED = 3;
-/** The share of its height a body floats with under water, as SWIM_FLOAT in shared/sim/character.ts. */
-const FLOAT_SHARE = 0.75;
+const RAD_YAW = 65536 / (Math.PI * 2);
+function angleDelta(a: number, b: number): number { return ((a - b + 32768) & 65535) - 32768; }
+interface Tactic { gen: number; target: number; targetGen: number; retreat: boolean; check: number; safe: boolean }
 
 /**
  * What a flyer nobody rides moves by: its numbers with flight costing no stamina, since ARK's wild creatures spend none and
@@ -75,8 +81,12 @@ export class Creatures {
   /** Creatures with a cue still to clear (EntityStore.cue). */
   private readonly cued = new Set<number>();
   private readonly cues = new AnimState();
+  private readonly breathState = new AnimState();
   /** By entity index: 1 while its eyes are under water, as Survival was last told. */
   private wet: Uint8Array;
+  /** Only awake hunters using a tactical facet need state; never inherited by a recycled entity slot. */
+  private readonly tactics = new Map<number, Tactic>();
+  private readonly input = { move: 0, buttons: 0, pressed: 0, yaw: 0, pitch: 0, side: -1 };
 
   constructor(world: ServerWorld, game: GameServer, records: Records, survival: Survival, seed: number, wakeRadius = 3) {
     this.world = world;
@@ -232,6 +242,8 @@ export class Creatures {
     if (e < 0) return -1;
     ents.yaw[e] = rec.yaw;
     ents.pid[e] = rec.pid;
+    ents.creatureMode[e] = rec.creatureMode % (this.world.reg.combat[rec.kind]?.modes?.length ?? 1);
+    if (this.world.reg.combat[rec.kind]) ents.hold[e] = ents.creatureMode[e]! << 1;
     this.wet[e] = 0;
     refreshMods(this.world.reg, ents, e, rec.genome, 0, 1, false, false, this.swimGain);
     ents.setLook(e, rec.genome ? rec.genome.level : 1, rec.genome ? rec.genome.colors : null, rec.name);
@@ -260,6 +272,7 @@ export class Creatures {
     // Its record goes with it, and may be dying: Survival is not told it left the water.
     this.wet[e] = 0;
     this.sleep(e);
+    forgetYoungMove(this.world, e);
     this.records.entOf.delete(this.world.ents.pid[e]!);
     this.world.ents.destroy(e);
   }
@@ -296,11 +309,13 @@ export class Creatures {
       // A vehicle's wheels move it (server/urban.ts), and nothing breathes in it.
       if (world.reg.vehicle[ents.kind[e]!]) continue;
       // A driven creature is stepped with its session's body, and breathes as it goes. A held one moves with whoever holds it.
-      if (ents.driven[e] !== 0 || (ents.flags[e]! & F_HELD) !== 0) {
+      if (ents.driven[e] !== 0 || (ents.flags[e]! & F_HELD) !== 0 || ents.seatSlot[e] === IMPALE_SLOT) {
+        this.tactics.delete(e);
         if (ents.driven[e] !== 0) this.breathe(e, world.reg.tamedMove[ents.kind[e]!]!);
         continue;
       }
       const kind = ents.kind[e]!;
+      const combat = world.reg.combat[kind];
       // Once a second, an owned creature with no leader checks whether the entity its record says to follow is back in the world.
       if (ents.team[e] !== 0 && mind.leader[e]! < 0 && (tick + e) % 30 === 0) this.relink(e);
       if (this.still[kind]) {
@@ -308,21 +323,28 @@ export class Creatures {
         if ((ents.flags[e]! & F_GROUNDED) !== 0) continue;
       } else mind.steer(e, tick, ents.act[e]!);
       const flags = ents.flags[e]!;
-      const move = mind.move[e]!;
-      const pressed = mind.pressed[e]!;
       // A tame runs at its tamed speed. A flyer nobody rides spends no stamina in the air.
-      const p = (ents.team[e] !== 0 ? (this.tameFlight[kind] ?? world.reg.tamedMove[kind]) : (this.wildFlight[kind] ?? world.reg.move[kind]))!;
+      const p = youngMove(world, e, (ents.team[e] !== 0 ? (this.tameFlight[kind] ?? world.reg.tamedMove[kind]) : (this.wildFlight[kind] ?? world.reg.move[kind]))!);
+      const input = this.input;
+      input.move = mind.move[e]!; input.buttons = mind.buttons[e]!; input.pressed = mind.pressed[e]!;
+      input.yaw = this.still[kind] ? ents.yaw[e]! : mind.look[e]!; input.pitch = mind.pitch[e]!; input.side = -1;
+      if (combat?.ai && !this.still[kind]) this.tactical(e, tick, p, combat);
+      const move = input.move, pressed = input.pressed;
       const swims = ents.mode[e] === MODE_SWIM;
       const cold = (ents.mflags[e]! & MF_OUT) !== 0;
+      // KO/recovery and the final return to legacy breathing can change submersion without moving. The helper
+      // poses only during those cues; an opted-in resting awake body otherwise pays only the ordinary eye test.
+      if (swims || cold || world.anims[kind]?.rig.breath) this.breathe(e, p);
+      const growingFloat = swims && ents.grown[e] !== 0 && ents.y[e]! > world.hf.waterAt(ents.x[e]!, ents.z[e]!) - swimDepth(p) + 1e-5;
       // Hovering still, with flight costing it nothing, its step would change only its flight counters.
-      if (ents.mode[e] === MODE_FLYER && mind.buttons[e] === BTN_JUMP && move === 0 && pressed === 0 && ents.act[e] === ACT_NONE && ents.vx[e] === 0 && ents.vy[e] === 0 && ents.vz[e] === 0 && ents.yaw[e] === mind.look[e] && p.staminaFly === 0 && (ents.mflags[e]! & (MF_OUT | MF_ROOTED | MF_NO_JUMP | MF_WINDED)) === 0 && ents.stamina[e]! > 0 && ents.stamina[e]! <= ents.staminaMax[e]! * STAMINA_UNITS && this.wet[e] === 0) {
+      if (ents.mode[e] === MODE_FLYER && input.buttons === BTN_JUMP && move === 0 && pressed === 0 && ents.act[e] === ACT_NONE && ents.vx[e] === 0 && ents.vy[e] === 0 && ents.vz[e] === 0 && ents.yaw[e] === input.yaw && p.staminaFly === 0 && (ents.mflags[e]! & (MF_OUT | MF_ROOTED | MF_NO_JUMP | MF_WINDED)) === 0 && ents.stamina[e]! > 0 && ents.stamina[e]! <= ents.staminaMax[e]! * STAMINA_UNITS && this.wet[e] === 0) {
         if (ents.rollWait[e]! > 0) ents.rollWait[e] = ents.rollWait[e]! - 1;
         ents.regenWait[e] = p.regenWaitTicks;
         continue;
       }
       // At rest on the ground or afloat with no input, with its head above water or out cold, nothing would change but its
       // stamina, so the step is skipped and the stamina got back as the step would give it. A flyer holding its jump takes off.
-      if (move === 0 && pressed === 0 && (mind.buttons[e]! & BTN_JUMP) === 0 && ents.act[e] === ACT_NONE && ents.vx[e] === 0 && ents.vz[e] === 0 && ents.yaw[e] === mind.look[e] && ((flags & F_GROUNDED) !== 0 || (swims && ents.vy[e] === 0)) && (this.wet[e] === 0 || cold)) {
+      if (!growingFloat && ents.creaturePrimaryCooldown[e] === 0 && ents.creatureCooldown[e] === 0 && move === 0 && pressed === 0 && (input.buttons & (BTN_JUMP | BTN_PRIMARY | BTN_SECONDARY)) === 0 && ents.act[e] === ACT_NONE && ents.vx[e] === 0 && ents.vz[e] === 0 && ents.yaw[e] === input.yaw && ((flags & F_GROUNDED) !== 0 || (swims && ents.vy[e] === 0)) && (this.wet[e] === 0 || cold)) {
         const cap = ents.staminaMax[e]! * STAMINA_UNITS;
         const had = ents.stamina[e]!;
         // As the step counts them: a flyer's roll, and its wait after flying before any stamina comes back.
@@ -336,33 +358,36 @@ export class Creatures {
         continue;
       }
       ents.loadBody(e, b);
-      let buttons = mind.buttons[e]! | pressed;
+      let buttons = input.buttons | pressed;
       // In water it swims at its swim speed and comes up for air. A flyer floats up by itself, and its jump would take it off.
       if (swims) buttons = (buttons & ~BTN_SPRINT) | (!p.flies && this.under(e, p) ? BTN_JUMP : 0);
       const x0 = b.x;
       const z0 = b.z;
-      stepBody(world, b, 0, move, this.still[kind] ? ents.yaw[e]! : mind.look[e]!, mind.pitch[e]!, buttons, p, TICK_DT);
+      const previousAct = b.act;
+      if (combat) stepCreature(world, b, 0, move, input.yaw, input.pitch, buttons, pressed, p, combat, TICK_DT, false);
+      else stepBody(world, b, 0, move, input.yaw, input.pitch, buttons, p, TICK_DT);
+      // The tactic chose a mirrored strike from the actual target bearing before the shared action began.
+      if (previousAct === ACT_NONE && b.act === ACT_SWING && input.side >= 0) b.creatureSide = input.side;
       const landing = stepOut.landSpeed;
       if (landing >= LAND_SPEED && (b.mflags & MF_OUT) === 0 && world.anims[kind]?.land) this.cue(e, CUE_LAND, false);
       // Knocked out, it lies down from its limp fall as it comes to the ground.
       else if (landing > 0 && (b.mflags & MF_OUT) !== 0 && world.anims[kind]?.torporFall) this.cue(e, CUE_LAND, false);
       if (p.flies) this.flew(e);
-      mind.moved(e, b.x - x0, b.z - z0, p.walkSpeed * (b.speedQ / 1000) * TICK_DT);
+      // Tactical braking/turning is deliberate, not a failed path step. Keep Behavior's cached path input intact.
+      if (!combat?.ai || move !== 0) mind.moved(e, b.x - x0, b.z - z0, p.walkSpeed * (b.speedQ / 1000) * TICK_DT);
       // A bite goes through the same action step as any blow.
       const jaws = world.reg.weapon[kind];
       let struck = false;
-      if (jaws) {
+      if (jaws && !combat) {
         stepAction(b, buttons, pressed, jaws);
         struck = actionOut.strike;
       }
       stepped++;
       // Walking into a sleeping chunk puts the creature to sleep there.
       const crossed = ents.storeBody(e, b);
-      ents.pitch[e] = mind.pitch[e]!;
+      if (combat) ents.hold[e] = creatureHold(b);
+      ents.pitch[e] = input.pitch;
       ents.pose(e, tick);
-      // Unridden ground bites keep their authored clip and existing world-space AI eye ray. Only the mounted Game
-      // controller poses an aimed neck; preserve the AI's pitch column for its ordinary hit query.
-      if (!p.flies && ents.act[e] === ACT_SWING) ents.anim[e] = ((ents.anim[e]! & ~(((1 << ANIM_LOOK_BITS) - 1) << ANIM_LOOK_SHIFT)) | ((PITCH_AUTHORED & 63) << ANIM_LOOK_SHIFT)) >>> 0;
       if (struck) this.onStrike?.(e);
       this.breathe(e, p);
       // The landing may kill it, which takes it out of the world.
@@ -372,10 +397,140 @@ export class Creatures {
     this.stepped = stepped;
   }
 
-  /** Whether the eyes of `e`, stepped with `p`, are under water. */
+  /** Changes only AI input: action timing, turning limits and movement remain in the ridden/shared controller. */
+  private tactical(e: number, tick: number, p: MoveParams, combat: CreatureCombatFacet): void {
+    const ents = this.world.ents, input = this.input, ai = combat.ai!;
+    const target = this.mind.targetOf(e), act = ents.act[e]!;
+    const charging = !!combat.charge && (act === ACT_DRAW || act === ACT_HOLD);
+    let state = this.tactics.get(e);
+    const same = state && state.gen === ents.gen[e] && state.target === target && state.targetGen === ents.gen[target];
+    if (target < 0 || (charging && !same) || ents.mode[e] !== MODE_WALK || (ents.mflags[e]! & (MF_OUT | MF_ROOTED)) !== 0) {
+      this.tactics.delete(e);
+      if (target < 0) { input.buttons &= ~BTN_PRIMARY; input.pressed &= ~BTN_PRIMARY; }
+      if (charging) { input.move = 0; input.buttons = 0; input.pressed = BTN_MELEE; input.yaw = ents.yaw[e]!; }
+      return;
+    }
+    if (!same) {
+      state = { gen: ents.gen[e]!, target, targetGen: ents.gen[target]!, retreat: false, check: 0, safe: false };
+      this.tactics.set(e, state);
+    }
+    state = state!;
+    const x = ents.x[e]!, z = ents.z[e]!, dx = ents.x[target]! - x, dz = ents.z[target]! - z;
+    const distance = Math.hypot(dx, dz), aim = Math.round(Math.atan2(dx, dz) * RAD_YAW) & 65535;
+    const headingError = Math.abs(angleDelta(aim, ents.yaw[e]!));
+    const grounded = (ents.flags[e]! & F_GROUNDED) !== 0, size = creatureSize(this.world, e);
+
+    if (charging && ai.charge) {
+      input.move = 0; input.buttons = BTN_SECONDARY; input.pressed = 0; input.yaw = aim; input.pitch = 0;
+      // A charge keeps its target and looks ahead through the real capsule's whole footprint, not just a centre ray.
+      // Each check has at most 64 samples. Six-tick refreshes bound cost while including stopping distance.
+      if (tick >= state.check) {
+        const lookAhead = Math.min(ai.charge.maxDistance * size, Math.max(distance, combat.charge!.speed * .4));
+        const yaw = ents.yaw[e]! / RAD_YAW;
+        const tx = act === ACT_DRAW ? ents.x[target]! : x + Math.sin(yaw) * lookAhead;
+        const tz = act === ACT_DRAW ? ents.z[target]! : z + Math.cos(yaw) * lookAhead;
+        state.safe = this.corridor(e, p, tx, tz) && this.visible(e, target, p);
+        state.check = tick + 6;
+      }
+      // Passing the target ends the run; turning back into it would make a prolonged circular damage volume.
+      if (!grounded || !state.safe || headingError > 16384 || distance > ai.charge.maxDistance * size * 1.25) {
+        input.buttons = 0; input.pressed = BTN_MELEE; input.yaw = ents.yaw[e]!;
+      }
+      return;
+    }
+    if (act !== ACT_NONE) {
+      // Once a sweep begins, the torso stays planted. Its authored tail supplies the contact motion.
+      input.move = 0; input.buttons = 0; input.pressed = 0; input.yaw = ents.yaw[e]!; input.pitch = 0;
+      return;
+    }
+    if (ai.charge && combat.charge && grounded && ents.creatureCooldown[e] === 0 && (tick + e) % 15 === 0
+      && distance >= ai.charge.minDistance * size && distance <= ai.charge.maxDistance * size && headingError <= 2731
+      && Math.abs(ents.y[target]! - ents.y[e]!) <= p.height * .5
+      && this.visible(e, target, p) && this.corridor(e, p, ents.x[target]!, ents.z[target]!)) {
+      state.safe = true; state.check = tick + 6;
+      input.move = 0; input.buttons = BTN_SECONDARY; input.pressed = BTN_SECONDARY; input.yaw = aim; input.pitch = 0;
+      return;
+    }
+    const primary = ai.primary;
+    if (!primary) return;
+    // Generic pursuit can choose a legacy front attack; this species must reach its authored strike position first.
+    input.buttons &= ~BTN_PRIMARY; input.pressed &= ~BTN_PRIMARY;
+    const desired = primary.distance * size;
+    const tolerance = Math.max(.35 * size, combat.primary.radius * size + this.world.reg.bodyRadius[ents.kind[target]!]! * creatureSize(this.world, target) * .5);
+    if (distance > Math.max(combat.primary.reach * size + 2, desired + 2 * tolerance)) { state.retreat = false; return; }
+    if (!this.visible(e, target, p)) return;
+    input.buttons = 0; input.pressed = 0; input.pitch = 0;
+    if (distance < desired - tolerance) state.retreat = true;
+    else if (distance >= desired) state.retreat = false;
+    if (state.retreat) {
+      // Hysteresis carries a close retreat back to the nominal band instead of jittering across its near edge.
+      input.yaw = aim;
+      const away = Math.max(1, p.radius);
+      const ux = distance < .001 ? 0 : dx / distance, uz = distance < .001 ? 1 : dz / distance;
+      input.move = headingError < 4096 && this.corridor(e, p, x - ux * away, z - uz * away) ? -80 : 0;
+      return;
+    }
+    if (distance > desired + tolerance) {
+      input.yaw = aim;
+      const step = Math.min(distance, Math.max(1, p.radius));
+      input.move = headingError < 4096 && this.corridor(e, p, x + dx / distance * step, z + dz / distance * step) ? 80 : 0;
+      return;
+    }
+    input.move = 0;
+    const bearing = Math.round(primary.bearing / 360 * 65536);
+    // The primary clip strikes to negative (left) bearing; alternateClip mirrors to positive (right).
+    const left = (aim + bearing) & 65535, right = (aim - bearing) & 65535;
+    const mirrored = !!combat.primary.alternateClip && Math.abs(angleDelta(right, ents.yaw[e]!)) < Math.abs(angleDelta(left, ents.yaw[e]!));
+    input.yaw = mirrored ? right : left; input.side = mirrored ? 1 : 0;
+    if (grounded && Math.abs(angleDelta(input.yaw, ents.yaw[e]!)) <= primary.arc / 360 * 65536
+      && Math.hypot(ents.vx[e]!, ents.vz[e]!) <= .35 && Math.abs(ents.y[target]! - ents.y[e]!) <= p.height) {
+      input.buttons = input.pressed = BTN_PRIMARY;
+    }
+  }
+
+  private visible(e: number, target: number, p: MoveParams): boolean {
+    const ents = this.world.ents;
+    const x = ents.x[e]!, y = ents.y[e]! + p.height * .55, z = ents.z[e]!;
+    const dx = ents.x[target]! - x, dy = ents.y[target]! + this.world.reg.bodyHeight[ents.kind[target]!]! * creatureSize(this.world, target) * .55 - y, dz = ents.z[target]! - z;
+    const length = Math.hypot(dx, dy, dz);
+    return length < .001 || castWorld(this.world, x, y, z, dx / length, dy / length, dz / length, length) === HIT_NONE;
+  }
+
+  /** A bounded, supported lane. Tall ledges, swimming water, narrow gaps and unsupported footprints all fail closed. */
+  private corridor(e: number, p: MoveParams, tx: number, tz: number): boolean {
+    const world = this.world, ents = world.ents, x = ents.x[e]!, z = ents.z[e]!;
+    const distance = Math.hypot(tx - x, tz - z);
+    const count = Math.ceil(distance / Math.max(.35, Math.min(1, p.radius)));
+    if (count < 1 || count > 64) return false;
+    let previous = ents.y[e]!;
+    for (let n = 1; n <= count; n++) {
+      const px = x + (tx - x) * n / count, pz = z + (tz - z) * n / count;
+      if (groundAt(world, p, px, pz) !== GROUND_FREE) return false;
+      const y = groundUnder(world.hf, px, pz, p.radius);
+      if (!Number.isFinite(y) || Math.abs(y - previous) > Math.max(.35, p.stepUp)) return false;
+      // groundUnder uses the supporting sphere. Also reject a footprint straddling a drop that its centre ray misses.
+      for (let side = 0; side < 4; side++) {
+        const ex = px + (side === 0 ? p.radius : side === 1 ? -p.radius : 0), ez = pz + (side === 2 ? p.radius : side === 3 ? -p.radius : 0);
+        const edge = world.hf.heightAt(ex, ez);
+        if (y - edge > Math.max(.5, p.stepUp + .15) || world.hf.waterAt(ex, ez) - edge > swimDepth(p, .7)) return false;
+      }
+      previous = y;
+    }
+    return true;
+  }
+
+  /** Authored KO/recovery airways, or the legacy stance/swimming eye when no pair applies. */
   private under(e: number, p: MoveParams): boolean {
     const ents = this.world.ents;
-    return ents.y[e]! + stanceEye(p, ents.stance[e]!) < this.world.hf.waterAt(ents.x[e]!, ents.z[e]!);
+    const a = this.world.anims[ents.kind[e]!];
+    if (a?.rig.breath) {
+      const st = this.breathState;
+      st.unpack(ents.anim[e]!, ents.cue[e]!); st.seed = bodySeed(e);
+      const posed = posedSubmerged(a, st, this.world.tick, this.world, ents.x[e]!, ents.y[e]!, ents.z[e]!, ents.yaw[e]! / RAD_YAW, creatureSize(this.world, e));
+      if (posed !== null) return posed;
+    }
+    const raised = ents.mode[e] === MODE_SWIM && (ents.mflags[e]! & MF_OUT) === 0 ? p.swimEyeHeight : undefined;
+    return ents.y[e]! + (raised ?? stanceEye(p, ents.stance[e]!)) < this.world.hf.waterAt(ents.x[e]!, ents.z[e]!);
   }
 
   /** Tells Survival when the head of `e` goes under water or comes up, so it loses its oxygen and then drowns as a survivor does. */
@@ -447,7 +602,7 @@ export class Creatures {
     this.world.history.track(e);
     // One that wakes under water loses its breath from now.
     const p = this.world.reg.move[ents.kind[e]!];
-    if (p) this.breathe(e, p);
+    if (p) this.breathe(e, youngMove(this.world, e, p));
   }
 
   /**
@@ -459,7 +614,7 @@ export class Creatures {
   private setDownUnder(e: number): void {
     const world = this.world;
     const ents = world.ents;
-    const p = world.reg.move[ents.kind[e]!]!;
+    const p = youngMove(world, e, world.reg.move[ents.kind[e]!]!);
     const x = ents.x[e]!;
     const y = ents.y[e]!;
     const z = ents.z[e]!;
@@ -469,7 +624,7 @@ export class Creatures {
     const under = Number.isNaN(top) ? groundAt(world, p, x, z) : GROUND_FREE;
     if (under !== GROUND_FREE && under !== GROUND_WATER) return;
     const mode = under === GROUND_WATER ? MODE_SWIM : MODE_WALK;
-    let to = !Number.isNaN(top) ? top : mode === MODE_SWIM ? world.hf.waterAt(x, z) - p.height * FLOAT_SHARE : ground;
+    let to = !Number.isNaN(top) ? top : mode === MODE_SWIM ? world.hf.waterAt(x, z) - swimDepth(p) : ground;
     let tx = x;
     let tz = z;
     if (!placeFree(world, x, to, z, p.radius, p.height)) {
@@ -485,6 +640,7 @@ export class Creatures {
   }
 
   private sleep(e: number): void {
+    this.tactics.delete(e);
     let slot = this.awakeSlot[e]!;
     if (slot < 0) return;
     this.mind.owned.delete(e);

@@ -1,8 +1,9 @@
 // Browser and keyboard setup shared by the live driving courses.
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RunningServer } from "../../server/main.ts";
+import { findChrome } from "../chrome.ts";
 import { devtools } from "../map/trip.ts";
 
 export async function until<T>(read: () => T | undefined | false, description: string, timeout = 45000): Promise<T> {
@@ -17,7 +18,7 @@ export async function until<T>(read: () => T | undefined | false, description: s
 
 /** Opens a separate browser profile and waits for this player's real input packets. */
 export async function drivingBrowser(server: RunningServer, name: string, view?: string) {
-  const chrome = [process.env.CHROME, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"].find(p => p && existsSync(p));
+  const chrome = findChrome();
   if (!chrome) throw new Error("Set CHROME to an installed Chromium executable.");
   const profile = mkdtempSync(join(tmpdir(), "snark-driving-browser-"));
   const graphics = process.argv.includes("--software") ? ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : process.platform === "darwin" ? ["--use-angle=metal"] : [];

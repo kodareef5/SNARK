@@ -1,7 +1,6 @@
 // One fixed step for one upright capsule. Server and client run this same code, and the same state and input give the same bits.
 // A position is committed only if capsuleFree accepts it, and a substep moves at most a radius sideways, so no input crosses a wall.
 
-import type { GroundBodies } from "./body-contact.ts";
 import { WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
@@ -109,6 +108,10 @@ export interface MoveParams {
   /** Largest drop a grounded body follows without leaving the ground. */
   readonly stepDown: number;
   readonly swimSpeed: number;
+  /** Authored float depth below the water; absent retains the exact height-based thresholds. */
+  readonly swimDepth?: number;
+  /** Breathing only: measured head elevation of a conscious swimmer, independent of its standing view. */
+  readonly swimEyeHeight?: number;
   readonly swimSprintMul: number;
   readonly accelSwim: number;
   /**
@@ -236,6 +239,12 @@ export class Body {
    */
   regenWait = 0;
   rollWait = 0;
+  /** Ground creature mode, secondary cooldown, and charge strength, predicted with its action. */
+  creatureMode = 0;
+  creatureCooldown = 0;
+  creaturePrimaryCooldown = 0;
+  creaturePower = 0;
+  creatureSide = 0;
 
   copy(o: Body): void {
     this.x = o.x;
@@ -298,6 +307,11 @@ export class Body {
     this.kick = o.kick;
     this.regenWait = o.regenWait;
     this.rollWait = o.rollWait;
+    this.creatureMode = o.creatureMode;
+    this.creatureCooldown = o.creatureCooldown;
+    this.creaturePrimaryCooldown = o.creaturePrimaryCooldown;
+    this.creaturePower = o.creaturePower;
+    this.creatureSide = o.creatureSide;
   }
 
   /** Position, velocity and grounded. */
@@ -360,9 +374,19 @@ export class Body {
       this.bloom === o.bloom &&
       this.kick === o.kick &&
       this.regenWait === o.regenWait &&
+      this.creatureMode === o.creatureMode &&
+      this.creatureCooldown === o.creatureCooldown &&
+      this.creaturePrimaryCooldown === o.creaturePrimaryCooldown &&
+      this.creaturePower === o.creaturePower &&
+      this.creatureSide === o.creatureSide &&
       this.rollWait === o.rollWait
     );
   }
+}
+
+/** Float depth, or an entry/exit threshold scaled about it. The omitted-field path keeps the original arithmetic. */
+export function swimDepth(p: { readonly height: number; readonly swimDepth?: number }, fraction = SWIM_FLOAT): number {
+  return p.swimDepth === undefined ? p.height * fraction : p.swimDepth * (fraction / SWIM_FLOAT);
 }
 
 export function stanceHeight(p: MoveParams, stance: number): number {
@@ -401,7 +425,7 @@ const found = new Found();
  * `moveX` (strafe right) and `moveZ` (forward) are -127 to 127. `yaw` and `pitch` are in 1/65536 turns, and pitch 16384 is
  * straight up. These are the quantized values sent on the wire.
  */
-export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number, bodies?: GroundBodies): void {
+export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
   stepOut.landSpeed = 0;
   stepOut.tookOff = false;
   stepOut.setDown = false;
@@ -478,9 +502,8 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   const sprint = m2 > 0 && standing && canSprint(b, buttons);
   let stamina = spendStamina(b, p, sprint, m2 > 0 ? p.staminaWalk : 0);
   const speed = p.walkSpeed * (b.speedQ / 1000) * (sprint ? p.sprintMul : standing ? 1 : stance === STANCE_CROUCH ? p.crouchMul : p.proneMul);
-  const wishedX = (s * mz - c * mx) * speed, wishedZ = (c * mz + s * mx) * speed;
-  let dvx = wishedX - b.vx;
-  let dvz = wishedZ - b.vz;
+  let dvx = (s * mz - c * mx) * speed - b.vx;
+  let dvz = (c * mz + s * mx) * speed - b.vz;
   const maxDv = (b.grounded ? p.accelGround : p.accelAir) * dt;
   const dv2 = dvx * dvx + dvz * dvz;
   if (dv2 > maxDv * maxDv) {
@@ -497,7 +520,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   /** Fastest downward speed stopped by something this tick. */
   let fall = 0;
   if (wasGrounded) {
-    if ((buttons & BTN_JUMP) !== 0 && standing && (flags & (MF_NO_JUMP | MF_ROOTED)) === 0 && stamina >= p.staminaJump) {
+    if (p.jumpSpeed > 0 && (buttons & BTN_JUMP) !== 0 && standing && (flags & (MF_NO_JUMP | MF_ROOTED)) === 0 && stamina >= p.staminaJump) {
       vy = p.jumpSpeed;
       jumped = true;
       stamina -= p.staminaJump;
@@ -721,13 +744,6 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
       }
     }
 
-    // Clip our own path against living ground bodies after static resolution, then validate the clipped pose normally.
-    // In particular a tangent around a creature beside a wall cannot grant a position inside that wall.
-    if (bodies) {
-      bodies.clip(x, y, z, nx, ny, nz, r, height, vx, vz);
-      if (bodies.result.hit) { nx = bodies.result.x; nz = bodies.result.z; vx = bodies.result.vx; vz = bodies.result.vz; clear = false; }
-    }
-
     // Commit only a legal position reached by a bounded move. A body the last round found clear of every structure is
     // clear of them at capsuleFree's smaller reach too, so only the ground is asked again.
     const ddx = nx - x;
@@ -784,7 +800,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
 
   // Deep enough to float, the body swims from the next tick, and a swimmer has no stance.
   // A swimmer is as tall as a standing body, so one held low by a ceiling stays as it is.
-  if (hf.waterAt(x, z) - y > p.height * SWIM_ENTER && (standing || capsuleFree(w, x, y, z, r, p.height))) {
+  if (hf.waterAt(x, z) - y > swimDepth(p, SWIM_ENTER) && (standing || capsuleFree(w, x, y, z, r, p.height))) {
     b.mode = MODE_SWIM;
     stance = STANCE_STAND;
     grounded = false;
@@ -902,7 +918,7 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
   const maxZ = hf.sizeZ - r;
   const maxSide2 = r * r;
   const maxRise = (p.stepUp > r ? p.stepUp : r) + maxStep;
-  const sink = p.height * SWIM_FLOAT;
+  const sink = swimDepth(p);
 
   let x = b.x;
   let y = b.y;
@@ -990,7 +1006,7 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
 
   // Too shallow to float, so it stands if there is support and falls if there is none.
   let grounded = false;
-  if (hf.waterAt(x, z) - y < p.height * SWIM_EXIT) {
+  if (hf.waterAt(x, z) - y < swimDepth(p, SWIM_EXIT)) {
     b.mode = MODE_WALK;
     if ((y - groundUnder(hf, x, z, r) <= GROUND_PROBE && groundStands(p.slopeCos)) || !Number.isNaN(restingAt(w, x, y, z, r, p.height, GROUND_PROBE, p.slopeCos))) {
       grounded = true;
@@ -1151,7 +1167,7 @@ function stepFlyer(w: CollisionWorld, b: Body, moveZ: number, yaw: number, pitch
   }
   // Flyers do not go under water (ARK's Flying page): it skims the surface, and going down it settles to its float line.
   const hf = w.hf;
-  const sink = p.height * SWIM_FLOAT;
+  const sink = swimDepth(p);
   flyThrough(w, b, vx, vy, vz, p, dt, down ? sink : 0);
   b.grounded = false;
   b.stance = STANCE_STAND;
@@ -1169,7 +1185,7 @@ function stepFlyer(w: CollisionWorld, b: Body, moveZ: number, yaw: number, pitch
     return;
   }
   const sea = hf.waterAt(b.x, b.z);
-  if (b.y <= sea - sink + GROUND_PROBE && sea - under > p.height * SWIM_ENTER) {
+  if (b.y <= sea - sink + GROUND_PROBE && sea - under > swimDepth(p, SWIM_ENTER)) {
     b.mode = MODE_SWIM;
     stepOut.setDown = true;
   }
@@ -1196,7 +1212,7 @@ function flyThrough(w: CollisionWorld, b: Body, vx: number, vy: number, vz: numb
   const maxZ = hf.sizeZ - r;
   const maxSide2 = r * r;
   const maxRise = (p.stepUp > r ? p.stepUp : r) + maxStep;
-  const deep = height * SWIM_ENTER;
+  const deep = swimDepth(p, SWIM_ENTER);
   let x = b.x;
   let y = b.y;
   let z = b.z;

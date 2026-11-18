@@ -3,7 +3,7 @@
 
 import type { Clip } from "../../shared/anim/clip.ts";
 import { Pose } from "../../shared/anim/clip.ts";
-import { B_FOOT_L, B_FOOT_R, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
+import { B_FINGERTIPS_L, B_FOOT_L, B_FOOT_R, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { quatMul, quatMulConj, quatNlerp, quatNormalize, quatRotate } from "../../shared/math/quat.ts";
@@ -18,6 +18,7 @@ export const HUMAN_SOURCE_JOINTS: readonly (string | null)[] = [
   "thigh_r", "calf_r", "foot_r",
   "ball_l", "ball_r", "middle_01_l", "thumb_01_l", "middle_01_r", "thumb_01_r",
   null, null,
+  "middle_02_l", "middle_02_r",
 ];
 
 export interface ClipSpec {
@@ -66,8 +67,18 @@ function sample(track: Track, time: number, out: Float64Array): void {
 
 /** Throws if the file lacks a joint. A missing animation is skipped with a warning. */
 export function convertHumanClips(g: Gltf, specs: readonly ClipSpec[]): { clips: Clip[]; warnings: string[] } {
-  const made = convertClips(g, HUMAN_SOURCE_JOINTS, HUMAN.parent, specs);
-  const clips = made.clips.map((clip, i) => (made.specs[i]!.gait && clip.loop ? rotated(clip, leftFootForward(clip)) : clip));
+  // Clips move each finger whole, from the bones before the fingertips; the fingertips stay straight. Distal bending
+  // is an explicit runtime grip pose.
+  const made = convertClips(g, HUMAN_SOURCE_JOINTS.slice(0, B_FINGERTIPS_L), HUMAN.parent, specs);
+  const tipped = made.clips.map((clip): Clip => {
+    const rot = new Float32Array(clip.frames * HUMAN_BONES * 4);
+    for (let f = 0; f < clip.frames; f++) {
+      rot.set(clip.rot.subarray(f * B_FINGERTIPS_L * 4, (f + 1) * B_FINGERTIPS_L * 4), f * HUMAN_BONES * 4);
+      for (let b = B_FINGERTIPS_L; b < HUMAN_BONES; b++) rot[(f * HUMAN_BONES + b) * 4 + 3] = 1;
+    }
+    return { ...clip, rot, bones: HUMAN_BONES };
+  });
+  const clips = tipped.map((clip, i) => (made.specs[i]!.gait && clip.loop ? rotated(clip, leftFootForward(clip)) : clip));
   return { clips, warnings: made.warnings };
 }
 

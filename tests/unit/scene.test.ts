@@ -406,7 +406,7 @@ function lowPoly(saddled: boolean) {
     own.firstPerson = f >= 150;
     // A piece is added, and later the frame has bones for few of the bodies and the poses the rest stand in.
     if (f === 100) structs.add(kind(PANEL), 42, 0, 34, 0, 0, 1);
-    if (f === 200) scene.assets.tier = { ...tierOf("lowpoly"), bones: 66 };
+    if (f === 200) scene.assets.tier = { ...tierOf("lowpoly"), bones: 70 };
     const p = w.frame(1000 / 60, false);
     hash = hashPacket(p, hash);
     draws += p.drawCount;
@@ -488,7 +488,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // and the dead take their bones before the living (the order of the rows); a body left on one bone stands in a pose,
   // whose bones the frame keeps for it and whose first bone its draw's offset names, in a draw after the rest (the order
   // of draws); and from frame 200 the frame has 66 bones, not 40, as few as leaves bones for those poses and drops
-  // nothing. Every body here is near enough to be posed every frame: posing all of them every frame gives this hash too.
+  // nothing. It has 70 since a survivor has 30 bones, not 28: the same bodies are posed and the same stand in. Every body here is near enough to be posed every frame: posing all of them every frame gives this hash too.
   // It was 4216232697 until a see-through draw made ahead of opaque ones went after them, the rest as made: in each of the
   // 300 frames the sea's draw stood ahead of two opaque ones. It was 1980140685 until nodes were scattered by their chunks'
   // frame keys (shared/coords.ts), which moves every tree, rock and bush; with the chunk's number in the key's place it is
@@ -498,7 +498,11 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 4205793695 until the sea was made ahead of the statics, the first of the see-through draws, which go as made:
   // its tiles take the first of the frame's transient instances and its draw goes after the opaque ones all the same.
   // It was 366790760 until the harbours' wrecks added thirty stand-in meshes ahead of the test meshes, as the bridge slabs did.
-  expect(hash).toBe(1616556435);
+  // It was 1616556435 until the frozen human packs had the fingertips' two bones: a posed survivor's rows are 30, not 28,
+  // and the frame's 70 bones pose and stand in the bodies its 66 did. The draws, triangles and uploads are as they were.
+  // It was 3788414068 until the ruins' facade modules and breaks (content/ruins.ts) added their grey meshes ahead of the
+  // test meshes; without them it is that again.
+  expect(hash).toBe(1115872953);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -522,8 +526,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // 2400700468 until the sea's draw went after the opaque ones, as above, and 3112331256 until nodes were scattered by
   // their chunks' frame keys, as above.
   // It was 2005316451 until the road bridge meshes changed those same indices, as above, and 207021915 until the sea was
-  // made ahead of the statics, as above, and 3258779310 until the harbours' wrecks' meshes, as above.
-  expect(saddled.hash).toBe(3199521479);
+  // made ahead of the statics, as above, and 3258779310 until the harbours' wrecks' meshes, as above, and 3199521479
+  // until a survivor had 30 bones, as above, and 3920878120 until the ruins' facade modules and breaks, as above.
+  expect(saddled.hash).toBe(2430603422);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

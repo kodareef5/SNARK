@@ -77,7 +77,7 @@ export function mountNetworkTrial(species: Species, latency = 150) {
           const { x: cx, y: cy, z: cz } = app.cam, pose = new AnimState();
           pose.unpack(state.pack(), state.packCue()); pose.seed = state.seed;
           expected.fill(NaN);
-          seatOn(anim, seat, pose, tick, bx + cx, by + cy, bz + cz, yaw, expected, world, move);
+          seatOn(anim, seat, pose, tick, bx + cx, by + cy, bz + cz, yaw, expected, world);
           if (![bx, by, bz, yaw, tick, cx, cy, cz, ...expected, ...out].every(Number.isFinite)) throw new Error(`${species}: nonfinite saddle frame`);
           errors[i]!.push(Math.hypot(expected[0]! - out[0]! - cx, expected[1]! - out[1]! - cy, expected[2]! - out[2]! - cz));
         }

@@ -443,7 +443,7 @@ test("a young tree or an elder stops a body at its trunk alone, which a survivor
 test("on level ground every young tree and elder, at its least and largest size, holds a survivor and the tallest mount at its trunk alone, and a survivor against it looking level meets it, from every side", () => {
   const mounts = [...reg.saddleFits].filter((k) => k !== 0).map((k) => reg.ids[k]!);
   const tallest = mounts.reduce((a, b) => (reg.move[kind(b)]!.height > reg.move[kind(a)]!.height ? b : a));
-  expect([tallest, reg.move[kind(tallest)]!.height]).toEqual(["core:parasaur", 2.6]);
+  expect([tallest, reg.move[kind(tallest)]!.height]).toEqual(["core:stego", 4.13]);
   const w = flatWorld(2);
   for (const id of ["core:tree", "core:oak"]) {
     const k = kind(id);
