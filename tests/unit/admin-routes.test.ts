@@ -87,6 +87,55 @@ test("every admin route answers only past the gate, in any spelling of its path,
   }
 });
 
+test("a password is read from the sign-in as the UTF-8 the browser sends, so one beyond ASCII opens the pages and its bytes read one to a letter do not", async () => {
+  const h = new Harness();
+  const dir = pageDir();
+  try {
+    const pages = new AdminPages({ host: h.host, meter: new TickMeter(() => gaugesOf(h.host)), dir, start: { tick: 0, wall: Date.now() } });
+    const gate: AdminGate = { dev: false, password: "über-kiwi", guesses: new Guesses(), tick: () => 0 };
+    const sign = (bytes: Uint8Array, g = gate): Promise<Response | null> => Promise.resolve(pages.answer(new Request("http://localhost/admin/stats.json", { headers: { authorization: `Basic ${Buffer.from(bytes).toString("base64")}` } }), "1.2.3.4", g, "/admin/stats.json"));
+    const utf8 = new TextEncoder().encode("admin:über-kiwi");
+    expect((await sign(utf8))!.status).toBe(200);
+    // The same letters a byte each, which is not what a browser asked for UTF-8 sends: wrong, and counted as wrong.
+    expect((await sign(Uint8Array.from("admin:über-kiwi", (c) => c.charCodeAt(0))))!.status).toBe(401);
+    // Bytes that are not UTF-8 at all are a wrong guess too, never a fault.
+    expect((await sign(Uint8Array.from([0x61, 0x3a, 0xff, 0xfe, 0x80])))!.status).toBe(401);
+    expect((await sign(utf8))!.status).toBe(200);
+    // Letters no single byte holds.
+    const far: AdminGate = { ...gate, password: "kīwi 鳥 🥝", guesses: new Guesses() };
+    expect((await sign(new TextEncoder().encode("x:kīwi 鳥 🥝"), far))!.status).toBe(200);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    h.host.shutdown();
+  }
+});
+
+test("a list of survivors that fails is not the second's answer: the next request in the same second makes it again", async () => {
+  const h = new Harness();
+  const dir = pageDir();
+  try {
+    h.join("ana");
+    h.run(500);
+    const pages = new AdminPages({ host: h.host, meter: new TickMeter(() => gaugesOf(h.host)), dir, start: { tick: 0, wall: 0 }, now: () => 5000 });
+    const dev: AdminGate = { dev: true, password: null, guesses: new Guesses(), tick: () => 0 };
+    const activity = h.host.activity;
+    const summary = activity.summary.bind(activity);
+    let fail = true;
+    activity.summary = (rec) => {
+      if (fail) throw new Error("the records could not be read");
+      return summary(rec);
+    };
+    const ask = (): Promise<Response> => Promise.resolve(pages.answer(new Request("http://localhost/admin/survivors.json"), "1.2.3.4", dev, "/admin/survivors.json")!);
+    expect(await ask().then(() => "answered", (e: unknown) => String(e))).toBe("Error: the records could not be read");
+    fail = false;
+    const got = (await (await ask()).json()) as Survivors;
+    expect(got.survivors.map((s) => s.name)).toEqual(["ana"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    h.host.shutdown();
+  }
+});
+
 test("no password leaves in any answer: a password setting says only that it is set", async () => {
   const rules = new Rules();
   for (const [name, value] of [["ServerPassword", "hunter2"], ["ServerAdminPassword", "kiwi-in-the-file"], ["SpectatorPassword", "only-watching"], ["XPMultiplier", "3"], ["SessionName", "Isla Admin"]]) expect(rules.assign(name!, value!, "file")).toBe("");
