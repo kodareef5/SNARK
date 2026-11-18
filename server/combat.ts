@@ -10,6 +10,7 @@ import { OccupantBody, clipSeatEye, createOccupantSeat, occupantSeat } from "../
 import type { PackRig } from "../shared/pack/pack.ts";
 import { SEAT_FLOATS, saddleSeat, seatOn } from "../shared/anim/seat.ts";
 import { rayCreature, type CreatureAnim } from "../shared/anim/creature.ts";
+import { CreatureBite, creatureBite } from "../shared/anim/creature-attack.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
 import { rayVehicle, rayVehicleCover } from "../shared/sim/vehicle-frame.ts";
 import { quatRotate } from "../shared/math/quat.ts";
@@ -184,6 +185,8 @@ export class Combat {
   private readonly eyeAt = new Float64Array(3);
   private readonly eyePast = new Past();
   private readonly eyeNow = new Past();
+  private readonly jaws = new CreatureBite();
+  private readonly biteHit = { target: -1, zone: ZONE_NONE, what: HIT_NONE, ref: 0, t: 0, x: 0, y: 0, z: 0 };
   private readonly rolls: Roll[] = [];
   private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, silenced: false };
   /** Content index of the tranquilized buff. Each hit with torpor over time gives one, carrying its strength. */
@@ -407,15 +410,17 @@ export class Combat {
     const d = this.dir;
     lookDirection(ents.yaw[e]!, ents.pitch[e]!, d);
     this.eye(e, this.eyeAt);
-    const ox = this.eyeAt[0]!, oy = this.eyeAt[1]!, oz = this.eyeAt[2]!;
-    const what = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach);
-    const ref = rayHit.ref;
-    const worldT = rayHit.t;
     // A mount does not bite its rider, who sits where its jaws begin.
     const rider = c === null ? (this.riderOf?.(rec) ?? null) : null;
     this.spare = rider ? (this.ctx.records.entOf.get(rider.pid) ?? -1) : -1;
     this.biting = c === null;
-    const target = this.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, what === HIT_NONE ? reach : worldT, SWING_WIDTH);
+    this.st.unpack(ents.anim[e]!, ents.cue[e]!); this.st.seed = bodySeed(e);
+    const mouth = c === null && !this.anims[kind]?.flies && creatureBite(this.anims[kind] ?? null, this.st, world.tick, ents.x[e]!, ents.y[e]!, ents.z[e]!, ents.yaw[e]! * TAU / 65536, reach, this.jaws, world, reg.tamedMove[kind] ?? undefined);
+    const ox = mouth ? this.jaws.mouth[0]! : this.eyeAt[0]!, oy = mouth ? this.jaws.mouth[1]! : this.eyeAt[1]!, oz = mouth ? this.jaws.mouth[2]! : this.eyeAt[2]!;
+    const what = mouth ? (this.castMouth(e), this.biteHit.what) : castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach);
+    const ref = mouth ? this.biteHit.ref : rayHit.ref;
+    const worldT = mouth ? this.biteHit.t : rayHit.t;
+    const target = mouth ? this.biteHit.target : this.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, what === HIT_NONE ? reach : worldT, SWING_WIDTH);
     this.biting = false;
     this.spare = -1;
     // A dead creature's body nearer than any living one and anything built. Only a survivor's swing harvests one yet.
@@ -441,11 +446,42 @@ export class Combat {
       corpses!.struck(rec, body, src.base * src.quality * src.attack * this.ctx.rules.num("PlayerHarvestingDamageMultiplier"), item);
       if (wears) items.wear(rec, slot, 1);
     } else if (target >= 0) {
-      const t = this.t;
-      this.land(src, target, this.zone, ox + d[0]! * t, oy + d[1]! * t, oz + d[2]! * t, t);
+      const t = mouth ? this.biteHit.t : this.t;
+      this.land(src, target, mouth ? this.biteHit.zone : this.zone, mouth ? this.biteHit.x : ox + d[0]! * t, mouth ? this.biteHit.y : oy + d[1]! * t, mouth ? this.biteHit.z : oz + d[2]! * t, t);
       if (wears) items.wear(rec, slot, 1);
     } else if (what === HIT_NODE && harvest && c) harvest.struck(c, Math.floor(ref / 65536), ref & 0xffff);
-    else if (what === HIT_STRUCTURE && this.hitStructure(src, ref, ox + d[0]! * worldT, oy + d[1]! * worldT, oz + d[2]! * worldT) > 0 && wears) items.wear(rec, slot, 1);
+    else if (what === HIT_STRUCTURE && this.hitStructure(src, ref, mouth ? this.biteHit.x : ox + d[0]! * worldT, mouth ? this.biteHit.y : oy + d[1]! * worldT, mouth ? this.biteHit.z : oz + d[2]! * worldT) > 0 && wears) items.wear(rec, slot, 1);
+  }
+
+  /** Nine jaw-width rays, each with its own body-to-jaw and forward obstruction check. One bite lands once. */
+  private castMouth(e: number): void {
+    const { world } = this.ctx, jaws = this.jaws, hit = this.biteHit, m = jaws.origin, d = jaws.direction, a = jaws.anchor;
+    hit.target = -1; hit.zone = ZONE_NONE; hit.what = HIT_NONE; hit.ref = 0; hit.t = jaws.reach;
+    let best = Infinity, worldBest = Infinity;
+    const flat = Math.hypot(d[0]!, d[2]!);
+    const rx = flat > 1e-6 ? d[2]! / flat : 1, rz = flat > 1e-6 ? -d[0]! / flat : 0;
+    const ux = -rz * d[1]!, uy = rz * d[0]! - rx * d[2]!, uz = rx * d[1]!;
+    for (let k = 0; k < 9; k++) {
+      const side = k === 1 ? jaws.radius : k === 2 ? -jaws.radius : k >= 5 ? jaws.radius * Math.SQRT1_2 * (k & 1 ? 1 : -1) : 0;
+      const up = k === 3 ? jaws.radius : k === 4 ? -jaws.radius : k >= 5 ? jaws.radius * Math.SQRT1_2 * (k < 7 ? 1 : -1) : 0;
+      const ox = m[0]! + rx * side + ux * up, oy = m[1]! + uy * up, oz = m[2]! + rz * side + uz * up;
+      const ax = ox - a[0]!, ay = oy - a[1]!, az = oz - a[2]!, length = Math.hypot(ax, ay, az);
+      const blocked = length > 1e-6 && castWorld(world, a[0]!, a[1]!, a[2]!, ax / length, ay / length, az / length, length) !== HIT_NONE;
+      const what = blocked ? rayHit.kind : castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, jaws.reach);
+      const ref = rayHit.ref, t = rayHit.t;
+      if (what !== HIT_NONE && hit.target < 0 && (blocked ? t : length + t) < worldBest) {
+        worldBest = blocked ? t : length + t;
+        hit.what = what; hit.ref = ref; hit.t = t;
+        hit.x = blocked ? a[0]! + ax * t / length : ox + d[0]! * t;
+        hit.y = blocked ? a[1]! + ay * t / length : oy + d[1]! * t;
+        hit.z = blocked ? a[2]! + az * t / length : oz + d[2]! * t;
+      }
+      if (blocked) continue;
+      const target = this.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, Math.min(best, what === HIT_NONE ? jaws.reach : t));
+      if (target < 0 || this.t >= best) continue;
+      best = this.t; hit.target = target; hit.zone = this.zone; hit.t = best; hit.what = HIT_NONE;
+      hit.x = ox + d[0]! * best; hit.y = oy + d[1]! * best; hit.z = oz + d[2]! * best;
+    }
   }
 
   private reload(c: Client): void {
@@ -769,7 +805,7 @@ export class Combat {
       const seat = saddleSeat(world.reg, was.saddle, was.seatSlot);
       if (!seat) return false;
       const st = this.mountSt; st.unpack(was.hostAnim, was.hostCue); st.seed = bodySeed(host);
-      seatOn(this.anims[was.hostKind] ?? null, seat, st, tick, was.hostX, was.hostY, was.hostZ, was.hostYaw * TAU / 65536, this.seatAt);
+      seatOn(this.anims[was.hostKind] ?? null, seat, st, tick, was.hostX, was.hostY, was.hostZ, was.hostYaw * TAU / 65536, this.seatAt, world, world.reg.tamedMove[was.hostKind]);
       this.occupant.saddle(world.anim, this.st, poseTick, this.seatAt, seat.driver === true, yaw, rest);
     }
     return true;
@@ -853,8 +889,8 @@ export class Combat {
         const size = world.ents.grown[i] !== 0 ? youngScale(reg.birthScale[kind]!, world.ents.span[i]!, world.ents.grown[i]!, tick) : 1;
         const zone =
           size === 1
-            ? rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach)
-            : rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, past.x + (rx - past.x) / size, past.y + (ry - past.y) / size, past.z + (rz - past.z) / size, ux, uy, uz, reach / size);
+            ? rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach, world, reg.tamedMove[kind] ?? undefined)
+            : rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, past.x + (rx - past.x) / size, past.y + (ry - past.y) / size, past.z + (rz - past.z) / size, ux, uy, uz, reach / size, world, reg.tamedMove[kind] ?? undefined);
         if (zone !== ZONE_NONE && zoneHit.t * size < reach) {
           this.t = zoneHit.t * size * scale;
           this.zone = zone;
@@ -1035,7 +1071,7 @@ export class Combat {
 
     const game = this.ctx.game;
     const shown = Math.min(65535, Math.max(taken > 0 ? 1 : 0, Math.round(taken)));
-    const ac = by ? this.clientOf(by.pid) : null;
+    const ac = by ? this.clientOf(by.pid) ?? this.clientOf(this.riderOf?.(by)?.pid ?? 0) : null;
     if (ac) {
       const w = game.begin(S_EVENT);
       w.u8(EVENT_HIT);
@@ -1104,7 +1140,7 @@ export class Combat {
     this.lastStructure.ref = ref;
     this.lastStructure.damage = done;
     this.lastStructure.left = left;
-    const ac = src.by ? this.clientOf(src.by.pid) : null;
+    const ac = src.by ? this.clientOf(src.by.pid) ?? this.clientOf(this.riderOf?.(src.by)?.pid ?? 0) : null;
     if (ac) {
       const w = game.begin(S_EVENT);
       w.u8(EVENT_HIT);

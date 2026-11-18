@@ -37,6 +37,8 @@ const EASE_IN = 1.2;
 export const FADE = 6;
 /** Ticks a species with no clip to get up by takes to rise from lying. */
 const GET_UP = 30;
+/** The jaws can aim within a quarter turn in all, relative to their supported body. */
+export const BITE_AIM = PI / 4;
 /** A turn on the spot is a quarter turn to its left, its body turning as a smooth step over the clip. */
 const QUARTER = PI / 2;
 /** Metres a second at which its fly and its fly_fast play alone, where its asset gives neither a stride. */
@@ -113,6 +115,8 @@ export class CreatureAnim {
   readonly flinchBones: Uint8Array;
   readonly eatBones: Uint8Array;
   readonly biteBones: Uint8Array;
+  /** First neck joint above the mouth's branch, so aiming a bite leaves the saddle and legs in their authored pose. */
+  readonly biteAimBone: number;
   /** Radians a second at which its turn plays at its own rate. */
   readonly spinAt: number;
   /** Its flight's: taking off, hovering, flying, flying fast, gliding, diving, the barrel roll, limp in the air when knocked out, and dying in the air. */
@@ -191,6 +195,13 @@ export class CreatureAnim {
     this.flinchBones = this.flinch ? turnedBones(this.flinch, legs) : new Uint8Array(0);
     this.eatBones = this.torporEat ? turnedBones(this.torporEat, legs) : new Uint8Array(0);
     this.biteBones = this.attack ? turnedBones(this.attack, legs) : new Uint8Array(0);
+    let aim = rig.sockets.get("mouth")?.bone ?? -1;
+    while (aim > 0) {
+      const parent = rig.parent[aim]!;
+      if (parent <= 0 || rig.parent.filter(p => p === parent).length !== 1) break;
+      aim = parent;
+    }
+    this.biteAimBone = aim;
     const socket = rig.sockets.get("hold_point");
     const held = this.held ?? this.idle;
     if (socket) {
@@ -654,6 +665,14 @@ function strike(a: CreatureAnim, st: AnimState, tick: number, out: Pose): boolea
   const s = (((Math.floor(tick) & 255) - st.actionStart) & 255) + (tick - Math.floor(tick));
   if (s >= a.attack.frames - 1) return false;
   sampleClip(a.attack, s, out);
+  // The same bounded look turns the visible jaws and their authoritative attack, never just an invisible eye ray.
+  // Flyers already aim their whole body. Fade over the clip ends to avoid a neck snap when the button changes.
+  if (!a.flies && a.biteAimBone > 0 && st.pitch !== 0) {
+    const pitch = Math.max(-BITE_AIM, Math.min(BITE_AIM, st.pitch * (PI / 2) / PITCH_STEPS));
+    const weight = Math.min(1, s / 3, (a.attack.frames - 1 - s) / 3);
+    quatAxis(q, 0, 1, 0, 0, -pitch * weight);
+    quatMul(out.rot, a.biteAimBone * 4, q, 0, out.rot, a.biteAimBone * 4);
+  }
   return true;
 }
 
