@@ -66,36 +66,21 @@ def take_off_lift(f):
     return TAKE_OFF["speed"] * t - 0.5 * a * t * t
 
 
-# Triangles at each level, finest first, for the bare animal. Level 0 is model.py's: the membrane is a closed thin slab
-# whose two faces are textured apart, gridded finely enough to bend smoothly at the knuckle and along the battens
-# (about 5,200 of it), and the head, the crest, the hands and feet are looked at from the saddle (about 4,000). The
-# build makes the rest. Level 6 is the flat M: span, swept tips, the head's arrow and the crest, seen from below.
-TRIANGLES = [16000, 7000, 3200, 1400, 600, 240, 64]
+# Triangle budgets for the refitted animal. The last two levels come from ref/distance.py.
+TRIANGLES = [14000, 7000, 3200, 1400, 600, 250, 112]
 # The saddle's own levels when it is drawn as a second mesh (ref/DESIGN.md, "The saddle"): pad, cantle, harness,
 # grips, rests, halter and reins.
 SADDLE_TRIANGLES = [2400, 1000, 400, 120]
-# An estimate. A flyer is 7 m wide and 1.5 m tall, so judge `flat` by the span seen from below (the first level drawn
-# under about 48 px across), not by the height `bun run art -- core:pteranodon --check` prints.
-FLAT_FROM = 3
+# Keep the full wing skin through level 4, including the grounded wrist fold.
+FLAT_FROM = 5
 
-# Materials: the Blender material names the model uses, which asset.ts gives pictures. Base and normal at `size`;
-# packed map and region masks one size under. Measured with shared/pack/texture.ts textureBytes: the animal's two take
-# 48.0 MB in the rgba variant and 29.3 in bc and astc; the saddle's 12.0 and 3.7.
-MATERIALS = {
-    # Opaque, one-sided: the closed surface of the body. Fuzz of head, neck, torso and upper limbs; the horn of the
-    # beak, skull cap and crest with its band; eyes; the inside of the mouth; arms, hands, legs, feet and claws. A
-    # mirrored half is fine: the design is symmetric.
-    "pteranodon": {"size": 2048, "two_sided": False, "cutout": False},
-    # Opaque, one-sided: both faces of each wing's membrane, a thin closed slab, the upper and the under face laid out
-    # apart (the under face is paler and is what is seen most). Left and right mirrored.
-    "pteranodon_wing": {"size": 2048, "two_sided": False, "cutout": False},
-}
+MATERIALS = {"pteranodon_coastal": {"size": 2048, "two_sided": False, "cutout": False}}
 SADDLE_MATERIALS = {
     # The saddle's hide, plaited fibre, bent wood and chitin, on one layout.
     "pteranodon_saddle": {"size": 1024, "two_sided": False, "cutout": False},
 }
-# The animal's 48 and the worn saddle's 12: a worn mesh's maps count in the body's budget (tools/art/spec.ts: WornSpec).
-TEXTURE_MEGABYTES = 60
+# Combined ceiling for the coastal skin and fitted saddle.
+TEXTURE_MEGABYTES = 26
 
 # The six colour regions, by index, under ARK's names and in its order. Where each lies is in ref/DESIGN.md. They are
 # painted in each material's region map in these colours (tools/art/spec.ts); black is never dyed: eyes, claws, the
