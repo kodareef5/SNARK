@@ -50,12 +50,12 @@ import { TICK_RATE } from "../shared/coords.ts";
 import { Chat } from "./chat.ts";
 import { Tribes } from "./tribes.ts";
 import { Voice } from "./voice.ts";
-import { Console } from "./console.ts";
+import { Console, OP_ADMIN } from "./console.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { Buffs, DEADLINE_BUFF } from "./buffs.ts";
 import { Combat } from "./combat.ts";
 import { Creatures } from "./creatures.ts";
-import { DEADLINE_DESPAWN, Death } from "./death.ts";
+import { DEADLINE_DESPAWN, Death, OP_DEATH } from "./death.ts";
 import { DEADLINE_NODE, Harvest } from "./harvest.ts";
 import { VehicleTrees } from "./vehicle-trees.ts";
 import { DEADLINE_CRAFT, Progression } from "./progression.ts";
@@ -97,6 +97,7 @@ import { F_ALIVE, GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entitie
 import { ARMOR_SLOTS, FLAG_ON } from "../shared/sim/items.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
 import { Cluster } from "./cluster/cluster.ts";
+import { SurvivorLog, type SurvivorLogOptions } from "./survivor-log/log.ts";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
@@ -154,6 +155,8 @@ export interface HostOptions {
    * AutoSavePeriodMinutes and on the forceupdatedynamicconfig command.
    */
   live?: () => string | null;
+  /** How the survivor log beside the save is written and read (server/survivor-log/log.ts). */
+  survivorLog?: SurvivorLogOptions;
 }
 
 /** Ticks between console lines accepted from one session. */
@@ -170,6 +173,8 @@ export interface Host {
   readonly mapFile: Uint8Array<ArrayBuffer> | null;
   readonly records: Records;
   readonly activity: SurvivorActivity;
+  /** Where each survivor was and what it held, over time, and the functions that read it back. */
+  readonly survivorLog: SurvivorLog;
   readonly game: GameServer;
   readonly creatures: Creatures;
   readonly impale: CreatureImpale;
@@ -375,6 +380,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (c.joined) return;
     c.joined = true;
     activity.login(c.pid);
+    survivorLog.enter(c);
     bus.after(SESSION_JOIN, { pid: c.pid, name: c.name, isNew: made.delete(c.pid) });
   };
   let started = false;
@@ -523,6 +529,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   tribes.rules = rules;
   tribes.bus = bus;
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
+  const survivorLog = new SurvivorLog({ world, records, tribes, rules, persistence, opAdmin: OP_ADMIN, opDeath: OP_DEATH, causes: CAUSE_WORDS, say }, opts.survivorLog);
+  opened.push({ close: () => survivorLog.stop() });
   // What the cluster's folder says came and went that the save does not know is done again now, before anything resumes.
   cluster?.start(
     {
@@ -1079,6 +1087,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   };
   game.onExit = (c) => {
     activity.leave(c.pid);
+    survivorLog.leave(c, c.left);
     bus.after(SESSION_LEAVE, { pid: c.pid, why: c.left });
     tribes.version++;
     voice.revoke(c);
@@ -1191,6 +1200,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     modules.step(tick);
     bus.flush();
     refreshInventories();
+    survivorLog.step(tick);
     if (persistence && opts.backups && tick % liveEvery === 0) persistence.keeper.backup();
     if (persistence && !persistence.tryCommit(commitEvery)) {
       const late = tick - persistence.failing!.since;
@@ -1429,7 +1439,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     loadedUnder,
     projectiles,
     clouds,
-    progression, activity,
+    progression, activity, survivorLog,
     harvest,
     deadlines,
     persistence,
@@ -1448,6 +1458,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     idle: () => persistence?.idle(),
     shutdown() {
       activity.checkpointAll();
+      survivorLog.stop();
       // Told at once: there is no later tick to tell it in.
       bus.after(SERVER_STOP, { why: "stopped" });
       bus.flush();

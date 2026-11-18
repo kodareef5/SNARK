@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 529 of them: 155 take effect,
+is listed here, 532 of them: 158 take effect,
 179 wait for a feature that is not built yet, and 195 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -109,6 +109,9 @@ may change a setting without a restart.
 | `AllowedOrigins` | none | The web sites whose pages may connect besides the server's own, as origins such as https://play.example.com, separated by commas or spaces. * is any site. A server whose page is served from elsewhere, or behind a proxy that does not pass the Host on, names that site here. A program that is not a browser is not asked. *Ours. ARK has no key.* | yes |
 | `WikiUrl` | `/wiki/` | Where the wiki link of the game's menu and of the start screen goes: an http or https address, or a path of the site the page came from. /wiki/ is the wiki `bun run wiki` builds, which the server serves. Empty hides the link. *Ours. ARK has no key.* | yes |
 | `RepositoryUrl` | `/source/` | Where the source code link of the game's menu and of the start screen goes: an http or https address, or a path of the site the page came from. /source/ is a page the server writes, saying the code is coming. Empty hides the link. *Ours. ARK has no key.* | yes |
+| `SurvivorLogMegabytes` | 1024 | The most disk the survivor log may take, in megabytes: where each survivor in the world was, what it held and when it played, kept in a folder beside the save for admins to look back over, the oldest dropped first. At the other two settings' defaults a gigabyte holds about 9 days of 200 survivors, 5 weeks of 50 and half a year of 10. 0 keeps none. Lowered while the server runs, the oldest goes at once; set to 0, the log stops and what it holds stays. *Ours. ARK has no such log. A server with no save keeps none.* | yes |
+| `SurvivorLogPositionSeconds` | 1 | Seconds between two notes of where each survivor is, and what it rides or sits in. *Ours. ARK has no key.* | yes |
+| `SurvivorLogInventorySeconds` | 5 | Seconds the survivor log waits once a survivor's inventory changes before it notes what it holds, so a burst of changes is one entry. *Ours. ARK has no key.* | yes |
 | `CreativeForAll` | False | While bShowCreativeMode is on, every survivor who joins has the admin role without the password, as enablecheats gives it: for a server of friends. Switched on while the server runs, those already in get it too; switched off, nobody loses it before leaving. *Ours. ARK has no key; off is its behaviour. Each grant is told to modules as session.admin, and who shows it.* | yes |
 | `HeadMultipliers` | True | Where a hit lands matters: a head counts for more. Off, every part counts once. *Ours. ARK has no key; this is its behaviour.* | yes |
 | `SelfDamageMultiplier` | 1 | What a survivor's own blast does to them. *Ours. ARK has no key; 1 is its behaviour.* | yes |
