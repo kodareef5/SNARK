@@ -12,7 +12,7 @@ import { DRAW_ONE_BONE, DRAW_SKINNED, TRANSIENT_BUFFER, type FramePacket } from 
 import { Scene, bodySeed } from "../../client/core/render/scene.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { creaturePose } from "../../shared/anim/creature.ts";
-import { B_HIPS, B_PROP_L, B_PROP_R, HUMAN_BONES, LEGACY_HUMAN_BONES, SLOT_FEET, SLOT_HANDS, type Socket } from "../../shared/anim/human.ts";
+import { B_HIPS, B_PROP_L, B_PROP_R, HUMAN_BONES, SLOT_FEET, SLOT_HANDS, type Socket } from "../../shared/anim/human.ts";
 import { defaultLook, LOOK_BYTES, setRegion } from "../../shared/anim/look.ts";
 import { RiderGrips } from "../../shared/anim/rider-grips.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
@@ -373,7 +373,7 @@ test("thinning reserves each fitted rider profile and shares only identical prof
   }
   // Each of two fitted seat profiles needs a HUMAN stand-in, plus the two still-posed hosts and four rigid instances.
   // A generic seated cache undercounted the second profile and stopped thinning too soon, dropping a rider on submission.
-  const budget = 2 * LEGACY_HUMAN_BONES + 2 * ch.bones(w.kind(RAPTOR)) + 4;
+  const budget = 2 * HUMAN_BONES + 2 * ch.bones(w.kind(RAPTOR)) + 4;
   w.scene.assets.tier = { ...w.scene.assets.tier, bones: budget };
   for (let frame = 0; frame < 2; frame++) {
     const p = w.frame(), bodies = drawn(p, w.pack);
@@ -418,8 +418,8 @@ test("seated footwear and look changes refit the actual native sole, including d
   }
   const profile = saddle*17+1, st = new AnimState(), bare = new Uint16Array(GEAR_COUNT), hide = new Uint16Array(GEAR_COUNT);
   hide[GEAR_WORN+SLOT_FEET] = w.kind("core:hide_boots");
-  expect(ch.standInBones(w.kind("core:survivor"),null,0,st,true,false,profile,bare)).toBe(LEGACY_HUMAN_BONES);
-  expect(ch.standInBones(w.kind("core:survivor"),null,0,st,true,false,profile,hide)).toBe(LEGACY_HUMAN_BONES);
+  expect(ch.standInBones(w.kind("core:survivor"),null,0,st,true,false,profile,bare)).toBe(HUMAN_BONES);
+  expect(ch.standInBones(w.kind("core:survivor"),null,0,st,true,false,profile,hide)).toBe(HUMAN_BONES);
   expect(ch.standInBones(w.kind("core:survivor"),null,0,st,true,false,profile,hide)).toBe(0);
   const riders = [rider];
   for (const boots of ["core:hide_boots","core:cloth_boots",""]) {
@@ -428,7 +428,7 @@ test("seated footwear and look changes refit the actual native sole, including d
     w.remote.gear[seated*GEAR_COUNT+GEAR_WORN+SLOT_FEET] = boots ? w.kind(boots) : 0; riders.push(seated);
   }
   // Shared rigid mount pose, three footwear-specific HUMAN poses, four host roots and four rider roots.
-  const budget = ch.bones(w.kind(RAPTOR))+3*LEGACY_HUMAN_BONES+8;
+  const budget = ch.bones(w.kind(RAPTOR))+3*HUMAN_BONES+8;
   w.scene.assets.tier = {...w.scene.assets.tier,bones:budget};
   for (let frame = 0; frame < 2; frame++) {
     const p = w.frame(), visible = drawn(p,w.pack);

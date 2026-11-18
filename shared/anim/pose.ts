@@ -6,7 +6,7 @@ import { PI, TAU, clamp, detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { quatAxis, quatMul, quatRotate } from "../math/quat.ts";
 import { Pose, blendPose, sampleClip, type Clip, type ClipSet } from "./clip.ts";
 import { footStart, gaitClip, gaitShares, playGaits, tickPhase, type Gait, type GaitClip } from "./gait.ts";
-import { B_CHEST, B_FINGERS_L, B_FOOT_L, B_HEAD, B_HIPS, B_NECK, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_UPPER_CHEST, B_UPPER_LEG_L, HUMAN, HUMAN_BONES, LEGACY_HUMAN_BONES } from "./human.ts";
+import { B_CHEST, B_FINGERS_L, B_FOOT_L, B_HEAD, B_HIPS, B_NECK, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_UPPER_CHEST, B_UPPER_LEG_L, HUMAN, HUMAN_BONES } from "./human.ts";
 import { Solved } from "./skeleton.ts";
 
 import { TICK_RATE } from "../coords.ts";
@@ -274,7 +274,7 @@ export class HumanAnim {
     const find = (id: string): Clip | null => {
       const i = set.index.get(id);
       const clip = i === undefined ? null : set.clips[i]!;
-      return clip && (clip.bones === HUMAN_BONES || clip.bones === LEGACY_HUMAN_BONES) ? clip : null;
+      return clip && clip.bones === HUMAN_BONES ? clip : null;
     };
     this.idle = find("human/idle");
     this.walk = find("human/walk");

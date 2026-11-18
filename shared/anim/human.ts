@@ -32,7 +32,6 @@ export const B_THUMB_R = 25;
 /** A held item hangs on the hand's prop bone, so a clip can move it within the hand. */
 export const B_PROP_L = 26;
 export const B_PROP_R = 27;
-export const LEGACY_HUMAN_BONES = 28;
 export const B_FINGERTIPS_L = 28;
 export const B_FINGERTIPS_R = 29;
 export const HUMAN_BONES = 30;
@@ -152,16 +151,6 @@ function build(): Skeleton & { readonly slot: Uint8Array } {
 
 /** `slot` is the body slot each bone's geometry belongs to. */
 export const HUMAN: Skeleton & { readonly slot: Uint8Array } = build();
-
-/** Normalize old native rest arrays once at load, anchoring appended tips to that body's own finger joint. */
-export function humanRest(rest: ArrayLike<number>): Float32Array {
-  const out = Float32Array.from(rest);
-  if (rest.length !== LEGACY_HUMAN_BONES * 3) return out;
-  const extended = new Float32Array(HUMAN_BONES * 3); extended.set(out);
-  for (const [tip, parent] of [[B_FINGERTIPS_L, B_FINGERS_L], [B_FINGERTIPS_R, B_FINGERS_R]])
-    for (let k = 0; k < 3; k++) extended[tip! * 3 + k] = rest[parent! * 3 + k]! + HUMAN.rest[tip! * 3 + k]! - HUMAN.rest[parent! * 3 + k]!;
-  return extended;
-}
 
 /** A point on the body, as a bone and a position in that bone's space. */
 export interface Socket {
