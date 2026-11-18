@@ -92,9 +92,33 @@ def skin_weights(obj):
     lower_arm=(abs(x)>.218)&(z>.24)&(z<.76)&(y<.955)
     for j,n in enumerate(names):
         if not n.startswith(("humerus","forearm","manus")): scores[lower_arm,j]-=7
-    selected=np.argsort(scores,axis=1)[:,-4:]
-    chosen=np.take_along_axis(scores,selected,axis=1)
-    weights=np.exp(chosen-chosen.max(axis=1)[:,None])
+    def smooth(value):
+        v=np.clip(value,0,1)
+        return v*v*(3-2*v)
+
+    # Bone distance alone lets a forward-swinging thigh pull the skin of
+    # the stationary ilium round the outside of the ribs. Apportion this
+    # joint by the actual height of the muscular insertion. Keep the axial
+    # weight as a separate share so there is slack around the trochanter.
+    probability=np.exp(scores-scores.max(axis=1)[:,None])
+    leg_indices=[j for j,n in enumerate(names) if n.startswith(("thigh","shank","metatarsus","toes"))]
+    trunk_indices=[j for j in range(len(names)) if j not in leg_indices]
+    leg_weights=probability[:,leg_indices]
+    axial_weights=probability[:,trunk_indices]
+    front=smooth((.36-z)/.20)
+    back=smooth((z+.61)/.24)
+    side=smooth((abs(x)-.054)/.125)
+    muscle=smooth((1.125-y)/.39)*front*back*side
+    # Below the belly, the metatarsus and splayed digits are the entire
+    # skin, including the medial surfaces of the shank.
+    free=smooth((.792-y)/.12)*front*back
+    muscle=np.maximum(muscle,free)
+    arm=(abs(x)>.215)&(z>.25)&(y>.71)
+    muscle[arm]=0
+    probability[:,leg_indices]=leg_weights/np.maximum(leg_weights.sum(axis=1)[:,None],1e-50)*muscle[:,None]
+    probability[:,trunk_indices]=axial_weights/np.maximum(axial_weights.sum(axis=1)[:,None],1e-50)*(1-muscle[:,None])
+    selected=np.argsort(probability,axis=1)[:,-4:]
+    weights=np.take_along_axis(probability,selected,axis=1)
     weights/=weights.sum(axis=1)[:,None]
     groups=[obj.vertex_groups.new(name=n) for n in names]
     for i,(bones,values) in enumerate(zip(selected,weights)):

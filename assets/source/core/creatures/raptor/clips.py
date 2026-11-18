@@ -71,7 +71,7 @@ def gait(t,run):
     stride=3.33 if run else 1.92
     ground=.31 if run else .54
     osc=math.cos(2*TAU*t)
-    root((.092 if run else .040)+(.047 if run else .018)*osc,
+    root((.050+.034*math.sin(2*TAU*t-.36)) if run else (.040+.018*osc),
          4.7 if run else 1.1,1.8*math.sin(TAU*t),.014*math.sin(TAU*t))
     neck((4.5 if run else .3)+1.65*osc,-1.5*math.sin(TAU*t),2.8 if run else .65,
          (7 if run else 2)+2*osc)
@@ -79,12 +79,12 @@ def gait(t,run):
     for side,offset in (("l",0),("r",.5)):
         a=(t+offset)%1
         if a<=ground:
-            foot(side,stride*(ground/2-a))
+            foot(side,stride*(ground/2-a),ankle_angle=(-28+52*ease(a/ground)) if run else 0)
         else:
             t1=(a-ground)/(1-ground); wave=math.sin(math.pi*t1)
             span=stride*(ground*(ease(t1)-.5)-(1-ground)*t1*(1-t1)*(1-2*t1))
-            foot(side,span,(.275 if run else .135)*wave**1.25,
-                 (28 if run else 16)*math.sin(TAU*t1)*wave,(27 if run else 14)*math.sin(TAU*t1)*wave)
+            foot(side,span,(.224 if run else .135)*wave**1.25,
+                 (24-52*ease(t1) if run else 0)+(14 if run else 16)*math.sin(TAU*t1)*wave,(27 if run else 14)*math.sin(TAU*t1)*wave)
         arms(side,9*math.sin(TAU*a+.3),5 if run else 1.5,-4 if run else 1)
 def settle(t,amount,breath):
     root(.68*amount,3*amount,76*amount,sway=.046*amount)
