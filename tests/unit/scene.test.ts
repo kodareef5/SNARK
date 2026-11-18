@@ -523,8 +523,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // 2400700468 until the sea's draw went after the opaque ones, as above, and 3112331256 until nodes were scattered by
   // their chunks' frame keys, as above.
   // It was 2005316451 until the road bridge meshes changed those same indices, as above, and 207021915 until the sea was
-  // made ahead of the statics, as above, and 3258779310 until the harbours' wrecks' meshes, as above.
-  expect(saddled.hash).toBe(3199521479);
+  // made ahead of the statics, as above, and 3258779310 until the harbours' wrecks' meshes, as above, and 3199521479 until
+  // the ruins' facade modules and breaks, as above.
+  expect(saddled.hash).toBe(2368388545);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

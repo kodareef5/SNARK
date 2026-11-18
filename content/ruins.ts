@@ -138,9 +138,10 @@ const headTeeth = (): HullDef[] => BREAK.map(([a, b, h]) => ({ corners: [[a, 2.6
  */
 export const RUIN_BREAKS = {
   zendwhole: centred(shaped("zendwhole"), { boxes: [{ at: [0, -0.2, 0.03], half: [4, 0.2, 0.03] }] }, { hulls: [{ corners: prism(-4, 4, [[-0.4, 0], [-0.4, 0.07], [-0.05, 0.07], [0, 0.02], [0, 0]]) }] }),
-  zendspall: centred(shaped("zendspall"), { boxes: [{ at: [0, -0.2, 0.015], half: [4, 0.2, 0.015] }] }, {
-    boxes: [[-3.1, 1.4, -0.22, 0.14], [-0.2, 1.1, -0.27, 0.11], [2.4, 1.6, -0.18, 0.16]].map(([x, w, y, h]): ShapeBox => ({ at: [x!, y!, 0.015], half: [w! / 2, h!, 0.015], color: AGGREGATE })),
-    hulls: [{ corners: prism(-4, 4, [[-0.4, 0], [-0.4, 0.01], [0, 0.01], [0, 0]]) }],
+  // Its broken face stands 6 cm off the slab's edge and its aggregate 4 cm off that, so neither fights the edge for depth.
+  zendspall: centred(shaped("zendspall"), { boxes: [{ at: [0, -0.2, 0.03], half: [4, 0.2, 0.03] }] }, {
+    boxes: [[-3.1, 1.4, -0.22, 0.14], [-0.2, 1.1, -0.27, 0.11], [2.4, 1.6, -0.18, 0.16]].map(([x, w, y, h]): ShapeBox => ({ at: [x!, y!, 0.08], half: [w! / 2, h!, 0.02], color: AGGREGATE })),
+    hulls: [{ corners: prism(-4, 4, [[-0.4, 0], [-0.4, 0.06], [0, 0.06], [0, 0]]) }],
   }),
   zendsnap: centred(shaped("zendsnap"), { boxes: [{ at: [0, -0.2, 0.15], half: [4, 0.2, 0.15] }] }, {
     hulls: slabTeeth([[-4, -2.7, 0.55, -0.15], [-2.7, -0.9, 0.25, -0.3], [-0.9, 1.4, 0.85, -0.1], [1.4, 4, 0.4, -0.25]]),

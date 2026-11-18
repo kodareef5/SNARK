@@ -6,7 +6,7 @@ import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { FRAME_PIECES, LAID_SHARE, MESH_SLOT, SHAPE_PIECES } from "../../client/core/render/nearcity.ts";
+import { FRAME_PIECES, LAID_SHARE, MESH_SLOT, pieceWeight } from "../../client/core/render/nearcity.ts";
 import { DRAW_RANGED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS, Scene } from "../../client/core/render/scene.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz } from "../../shared/coords.ts";
@@ -224,7 +224,7 @@ test("crossing a chunk border at the slice's densest place makes no more in a fr
   }
   // The border was crossed, the column of chunks it brought laid out as instances and then made as meshes.
   expect(Math.floor(x / CHUNK_SIZE)).toBe(4);
-  const weight = (c: number, s: number): number => (w.city.plain[w.city.kind[w.city.first[c]! + s]!] === 1 ? 1 : SHAPE_PIECES);
+  const weight = (c: number, s: number): number => pieceWeight(w.city, w.city.kind[w.city.first[c]! + s]!);
   const brought = Array.from({ length: 7 }, (_, j) => j * w.dims.chunksX + 7).reduce((n, c) => n + scene.near!.chunk(c)!.mine.reduce((m, v, s) => m + v * weight(c, s), 0), 0);
   expect(frames.reduce((n, f) => n + f.made, 0)).toBe(brought);
   expect(scene.near!.stats.waiting).toBe(0);

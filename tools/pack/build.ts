@@ -137,9 +137,10 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
       if (shape?.type !== "shape") continue;
       const walked = partsMesh(shape.boxes, shape.hulls ?? []);
       // A shape drawn otherwise than it is walked, a flight's treads over its ramp, is drawn as walked at its coarsest level.
-      // Its look is the first two, since low poly draws from the second.
+      // Its look is the first two, since low poly draws from the second. One whose look has parts of their own colours, a
+      // facade module, is its look at every level, as the near city's mesh draws it: walked, its recesses are a flat wall.
       const look = shape.look ? partsMesh(shape.look.boxes ?? [], shape.look.hulls ?? [], true) : null;
-      meshes.push({ id: d.id, lods: look ? [look, look, walked] : [walked] });
+      meshes.push({ id: d.id, lods: look ? [look, look, shape.look!.boxes?.some((b) => b.color) ? look : walked] : [walked] });
       continue;
     }
     if ((d.type !== "species" && d.type !== "structure" && d.type !== "prop" && d.type !== "node") || d.mesh !== "box") continue;
