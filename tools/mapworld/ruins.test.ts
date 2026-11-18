@@ -340,14 +340,17 @@ test("a block of flats repeats its balcony bay on every whole floor, with a diff
     // Six storeys, the front and back six bays long, a corner failed: the same bay on the four floors between ground and
     // top, all but the bay beside the failure whole on each.
     const floors = new Map<number, number>();
-    for (const p of [...on("zbalc"), ...on("zbalcrail")]) floors.set(Math.floor(p.y / 4), (floors.get(Math.floor(p.y / 4)) ?? 0) + 1);
+    for (const p of [...on("zbalc"), ...on("zbalcrail")].filter((p) => p.y < 20)) floors.set(Math.floor(p.y / 4), (floors.get(Math.floor(p.y / 4)) ?? 0) + 1);
     expect([...floors.keys()].sort()).toEqual([1, 2, 3, 4]);
     expect([...floors.values()].every((n) => n === 11)).toBe(true);
     expect(on("zlobby").length).toBeGreaterThanOrEqual(8);
-    expect(on("zbalctop").length).toBe(11);
+    // The top floor's balconies are roofed, but where a stretch of the parapet fell, which leaves its broken stub.
+    const chipped = on("zbalc").filter((p) => p.y > 20).length;
+    expect(on("zbalctop").length + chipped).toBe(11);
     expect(on("zbalctop").every((p) => p.y > 20)).toBe(true);
+    expect(on("zcrown5").length + on("zcrown6").length).toBeGreaterThanOrEqual(chipped);
     // The short ends are blank, their top storey under a parapet; no loose balcony of the old kit is left.
-    expect(on("zpaneltop").length).toBeGreaterThanOrEqual(4);
+    expect(on("zpaneltop").length + on("zcrown5").length + on("zcrown6").length).toBeGreaterThanOrEqual(4);
     expect(on("zbalcony")).toEqual([]);
   }
 });

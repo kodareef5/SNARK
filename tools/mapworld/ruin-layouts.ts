@@ -85,7 +85,9 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       const grammar = bay === 8 && !burnt ? form.facade : undefined;
       // A slab of flats has blank short ends; a tower has flats on every side.
       const end = grammar?.ends && dx !== 0 && m.frame.width >= 1.5 * m.frame.depth && rule.recipe !== "tower";
-      const capped = !damaged.has(t) && mode !== "lost-top";
+      // A whole top loses a stretch of its parapet in one bay of four.
+      const chipped = !!grammar && !damaged.has(t) && mode !== "lost-top" && bay === 8 && opts.detail < 2 && hash3(opts.seed + 113, t.i * 4 + side, t.j) % 4 === 0;
+      const capped = !damaged.has(t) && mode !== "lost-top" && !chipped;
       const nearFall = SIDES.some(([a, b]) => { const n = byKey.get(tileKey(t.i + a, t.j + b)); return !!n && damaged.has(n); });
       // Where the bay beside fell, this bay's slabs end at the break, whole, spalled or snapped, open to the gap; walls
       // stand only above the playable floors.
@@ -162,7 +164,8 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       const party = rule.party?.includes(side) && adjacent === 0;
       if (bay !== 8 || opts.detail >= 2 || burnt || party || top === 0) continue;
       // Where the storey above broke away the wall's top is broken too, stepping, sloping or notched.
-      if (!capped && !safe(t) && mode !== "hanging") facade(m, `zcrown${1 + hash3(opts.seed + 97, t.i * 4 + side, t.j) % 4}` as RuinShape, u, base + top * 4, v, side, rule.finish);
+      if (chipped) facade(m, `zcrown${5 + hash3(opts.seed + 97, t.i * 4 + side, t.j) % 2}` as RuinShape, u, base + top * 4, v, side, rule.finish);
+      else if (!capped && !safe(t) && mode !== "hanging") facade(m, `zcrown${1 + hash3(opts.seed + 97, t.i * 4 + side, t.j) % 4}` as RuinShape, u, base + top * 4, v, side, rule.finish);
       // What fell from a wall lies along its foot: one bay in four, one in two beside a failure; never at a way in.
       const doorway = entryLane(t) || ["loading", "shopfront", "clock"].includes(form.front) || grammar?.ground === "zstore" && !nearFall;
       const fell = hash3(opts.seed + 101, t.i * 4 + side, t.j) % 8;

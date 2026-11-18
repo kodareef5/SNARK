@@ -207,6 +207,9 @@ const CROWNS: readonly (readonly (readonly [number, number, number, number])[])[
   [[-4, -1.8, 1.5, 1.05], [-1.8, 1.2, 0.95, 0.3], [1.2, 4, 0.15, 0.15]],
   [[-4, -2.3, 1, 1], [-2.3, -0.6, 0.25, 0.25], [-0.6, 1.9, 1.35, 0.95], [1.9, 4, 0.55, 0.55]],
   [[-4, -0.2, 0.45, 0.45], [-0.2, 2.2, 0.6, 0.18], [3, 4, 0.25, 0.25]],
+  // A parapet's height, where a whole building's parapet lost a stretch.
+  [[-4, -2.2, 0.95, 0.95], [-2.2, -0.8, 0.6, 0.6], [0.6, 4, 0.95, 0.95]],
+  [[-4, 0.9, 0.95, 0.95], [0.9, 2.6, 0.6, 0.6], [3.1, 4, 0.95, 0.95]],
 ];
 const crown = (name: string, runs: readonly (readonly [number, number, number, number])[]): ShapeDef => {
   // A level run is a box; a sloping one a convex part.
@@ -274,7 +277,7 @@ export const RUIN_BREAKS = {
   // What fell from a standing wall along its foot, two runs of it.
   zskirt1: skirt("zskirt1", [[-3.7, -0.4, 0.5, 1.0], [-0.8, 3.6, 0.38, 1.1]], [[-2.6, 0.75, 0.2, 101], [1.6, 0.95, 0.24, 99], [-0.4, 0.7, 0.16, 102]], 1.15),
   zskirt2: skirt("zskirt2", [[-3.8, 0.2, 0.36, 0.95], [-0.2, 3.8, 0.55, 1.15]], [[-2.2, 0.8, 0.18, 99], [0.4, 1.0, 0.22, 101], [2.6, 0.7, 0.15, 102]], 1.2),
-  zcrown1: crown("zcrown1", CROWNS[0]!), zcrown2: crown("zcrown2", CROWNS[1]!), zcrown3: crown("zcrown3", CROWNS[2]!), zcrown4: crown("zcrown4", CROWNS[3]!),
+  zcrown1: crown("zcrown1", CROWNS[0]!), zcrown2: crown("zcrown2", CROWNS[1]!), zcrown3: crown("zcrown3", CROWNS[2]!), zcrown4: crown("zcrown4", CROWNS[3]!), zcrown5: crown("zcrown5", CROWNS[4]!), zcrown6: crown("zcrown6", CROWNS[5]!),
   zhang: centred(shaped("zhang"), { hulls: [{ corners: hanging() }] }, { hulls: [{ corners: hanging() }], boxes: [{ at: [-1.45, -0.3, 0.45], half: [0.04, 0.2, 0.04], color: RUST }] }),
   zleancol: centred(shaped("zleancol"), { hulls: [{ corners: LEAN_COLUMN }] }, { hulls: [{ corners: LEAN_COLUMN }], boxes: [{ at: [-0.18, 3.25, 0.55], half: [0.025, 0.3, 0.025], color: RUST }, { at: [0.15, 3.0, 0.3], half: [0.025, 0.25, 0.025], color: RUST }] }),
   zvine: centred(shaped("zvine"), { boxes: [{ at: [0, -0.05, 0.03], half: [0.05, 0.05, 0.03] }] }, {
