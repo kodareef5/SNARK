@@ -2017,7 +2017,7 @@
       "billboard": [["billboard", 2], ["billboard_bare", 1]]
     },
     "lamps": { "spacing": { "highway": 44, "avenue": 35, "street": 30, "ramp": 44, "lot": 40 }, "both": ["highway", "avenue"], "set": 0.9 },
-    "junctions": { "major": ["avenue"], "minor": ["street"], "signalCross": 0.5, "signal": 1.2, "stop": 0.75, "name": 1.4, "stopBack": 2, "standing": 0.9 },
+    "junctions": { "major": ["avenue"], "minor": ["street"], "signalCross": 0.5, "signal": 1.2, "stop": 0.75, "name": 1.4, "stopBack": 2, "standing": 0.9, "past": 2.6 },
     "poles": { "classes": ["street"], "styles": ["residential", "terracotta", "mural"], "spacing": 40, "set": 1.2 },
     "hydrants": { "classes": ["avenue", "street"], "spacing": 110, "first": 9, "set": 0.65 },
     "meters": { "classes": ["avenue", "street"], "uses": ["Commercial", "Government", "Assembly"], "tall": 0.5, "block": 60, "chance": 0.45, "every": 6.5, "run": [3, 6], "set": 0.6 },

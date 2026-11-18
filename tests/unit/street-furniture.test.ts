@@ -144,6 +144,38 @@ test("a way onto a bridge is kept clear as a reserved route is: nothing stands w
   expect(kept.some(on)).toBe(false);
 });
 
+test("where the ruins laid a walk, a piece stands on the walk's top, not in it or refused by it", () => {
+  // A walk 2.4 m deep along each side of the avenue at x 500 (14 m wide), its slabs 8 m long, their tops 0.15 m up.
+  const walks: StaticPiece[] = [];
+  for (let z = 124; z <= 876; z += 8) for (const side of [1, -1]) {
+    if (Math.abs(z - 500) < 16 || [100, 200, 300, 400, 600, 700, 800, 900].some((c) => Math.abs(z - c) < 12)) continue;
+    walks.push({ kind: "core:zruin_zwalk8_concrete", x: 500 + side * (7 + 1.2), y: GROUND + 0.075, z, yaw: side > 0 ? 90 : 270 });
+  }
+  const bare = place(fixture(GRID)).pieces, walked = place(fixture(GRID), walks).pieces;
+  const onWalk = (p: StaticPiece): boolean => Math.abs(Math.abs(p.x - 500) - 8.2) < 1.1 && walks.some((w) => Math.abs(w.z - p.z) <= 4 && Math.sign(w.x - 500) === Math.sign(p.x - 500));
+  const lamps = (ps: StaticPiece[]): StaticPiece[] => ps.filter((p) => p.kind.startsWith(streetKind("lamp")) && onWalk(p));
+  expect(lamps(walked).length).toBeGreaterThan(0);
+  expect(lamps(walked).length).toBeGreaterThanOrEqual(lamps(bare).length * 0.9);
+  // A post standing on the walk stands on its top; a piece that lies over its edge, as a fallen lamp, does too.
+  const posts = walked.filter((p) => onWalk(p) && /zzstreet_(lamp|lamp_leaning|lamp_fallen|pole|pole_leaning|hydrant|meter|stop|speed|street_name|signal|evacuation)$/.test(p.kind));
+  expect(posts.length).toBeGreaterThan(10);
+  for (const p of posts) expect([p.kind, p.y]).toEqual([p.kind, GROUND + 0.15]);
+});
+
+test("a stop sign whose place a walk's curb ramp takes stands further back along its street, not out in the road", () => {
+  const open = place(fixture(GRID)).pieces.filter((p) => p.kind.startsWith(streetKind("stop")));
+  // A curb ramp where each of the first ten stands.
+  const ramps: StaticPiece[] = open.slice(0, 10).map((p) => ({ kind: "core:zruin_zcurbramp_concrete", x: p.x, y: GROUND + 0.075, z: p.z, yaw: p.yaw }));
+  const moved = place(fixture(GRID), ramps).pieces.filter((p) => p.kind.startsWith(streetKind("stop")));
+  for (const [i, r] of ramps.entries()) {
+    const was = open[i]!; const now = moved.find((p) => Math.hypot(p.x - was.x, p.z - was.z) < 4 && p.yaw === was.yaw);
+    expect(now).toBeDefined();
+    // As far from its kerb as before, 2.6 m further along the street, away from the junction.
+    expect(Math.abs(kerb(GRID, now!.x, now!.z) - kerb(GRID, was.x, was.z))).toBeLessThan(0.05);
+    expect(Math.hypot(now!.x - r.x, now!.z - r.z)).toBeCloseTo(RULES.junctions.past, 1);
+  }
+});
+
 test("a rule that names a piece the set lacks stops the build", () => {
   const rules = { ...RULES, forms: { ...RULES.forms, lamp: [["lamp_post", 1]] as [string, number][] } };
   expect(() => place(fixture(GRID.slice(0, 2)), [], rules)).toThrow("furniture.forms names lamp_post, which is no street piece");
