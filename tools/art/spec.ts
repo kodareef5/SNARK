@@ -1,3 +1,4 @@
+import type { SourceLod } from "../pack/write.ts";
 // What an asset says of itself. One folder is one asset: assets/source/<pack>/<group>/<name>/ is "<pack>:<name>", and its
 // asset.ts exports one of these as its default. `bun run art -- <pack>:<name>` builds the folder's <name>.snpk from it.
 // See assets/source/README.md.
@@ -214,6 +215,8 @@ export interface RagdollSpec {
 }
 
 export interface CreatureAsset {
+  /** Credit displayed in the creature’s game wiki entry for an adapted model. */
+  readonly modelCredit?: string;
   readonly kind: "creature";
   readonly source: ModelSource;
   /** Metres to one of the model's units. */
@@ -280,6 +283,8 @@ export interface CreatureAsset {
   readonly flat?: number;
   /** Rigid bones whose thin parts define the silhouette, such as rotors. Their axis extremes survive every LOD. */
   readonly preserveBones?: readonly string[];
+  /** Artist-built final texture-free body levels, in decreasing detail. Earlier flat levels use the simplifier. */
+  readonly distanceLods?: (bones: readonly string[], palette: Uint8Array) => readonly SourceLod[];
   /** What goes limp when it dies. Without it the death clip plays and its last frame stays. */
   readonly ragdoll?: RagdollSpec;
   /**

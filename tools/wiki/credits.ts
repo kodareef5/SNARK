@@ -53,7 +53,7 @@ export async function fromAssets(): Promise<{ credits: Map<string, string>; colo
     if (a.spec.kind === "human-clips") credits.set("human", credit);
     const samples = a.spec.kind === "creature" ? a.spec.regions.map((r) => r.sample) : null;
     for (const id of headerMeshes(a.file)) {
-      credits.set(id, credit);
+      credits.set(id, id === a.id && a.spec.kind === "creature" ? a.spec.modelCredit ?? credit : credit);
       if (samples) colours.set(id, samples);
     }
   }
