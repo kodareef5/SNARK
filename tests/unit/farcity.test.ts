@@ -648,7 +648,7 @@ function volumeOf(p: CityPart, chunk: number, o: readonly number[]): number {
   return v;
 }
 
-test("each sloped kind alone and turned shows its faces at every level: as drawn near in every box, as walked in the lattice, and whole cells in the mass", () => {
+test("each sloped kind alone and turned shows its faces at every level: as drawn near in every box, as walked in the lattice, and cells cut to its top in the mass", () => {
   const reg = farRegistry();
   const { hf, dims } = cityWorld({ chunks: 4, statics: [] });
   // Quads of each kind in the air: as the near store draws it and as it is walked. A face of a part is fanned, a triangle
@@ -671,15 +671,19 @@ test("each sloped kind alone and turned shows its faces at every level: as drawn
         expect(got.on).toBe(true);
         expect(got.area).toBeCloseTo(want.area, 3);
       }
-      // The mass is whole cells in the frame, closed, of the kind's colour.
+      // The mass is cells in the frame, its tops cut to the kind's own within half a metre, closed, of the kind's colour.
       const colour = (reg.defs[reg.index.get(slopeKind(name))!] as { color: number }).color;
       const a = ((yaw % 16384) / YAW_UNITS) * TAU;
       const axes: V3[] = [[detCos(a), 0, -detSin(a)], [0, 1, 0], [detSin(a), 0, detCos(a)]];
+      const top = Math.max(...shown(reg, statics, false).faces.flatMap((f) => f.face.map((v) => v[1])));
       for (const size of [4, 8]) {
         const mass = cellPart(city, chunk, hf, null, size, 4);
-        const cells = volumeOf(mass, chunk, [96, 20, 96]) / (size * size * 4);
-        expect(cells).toBeGreaterThan(0.999);
-        expect(Math.abs(cells - Math.round(cells))).toBeLessThan(1e-3);
+        const quads = quadsOf(mass, chunk);
+        const rise = Math.max(...quads.flatMap((q) => q.map((v) => v[1]))) - top;
+        expect([name, size, rise >= -1e-3 && rise <= 0.5]).toEqual([name, size, true]);
+        const sum = quads.reduce((s, q) => s.map((v, k) => v + areaOf(q)[k]!), [0, 0, 0]);
+        expect(sum.every((v) => Math.abs(v) < 1e-6)).toBe(true);
+        expect(volumeOf(mass, chunk, [96, 20, 96])).toBeGreaterThan(0);
         expect(quadsOf(mass, chunk).every((q) => axes.some((x) => Math.abs(dot(unit(areaOf(q)), x)) > 0.9999))).toBe(true);
         expect(mass.color.every((c) => c === colour)).toBe(true);
       }
@@ -844,6 +848,30 @@ test("a static of several boxes is drawn by its boxes, not by the one box that h
     expect(part.faces).toBe(11);
     expect(onFaces(part, 5, shown(reg, statics, true).faces).on).toBe(true);
   }
-  expect(volumeOf(cellPart(city, 5, w.hf, null, 4, 4), 5, [96, 20, 96]) / 64).toBeCloseTo(3, 3);
+  // In 4 m cells the taller takes one and the lower two, cut to its top, 2 m up its row: two cells' worth.
+  expect(volumeOf(cellPart(city, 5, w.hf, null, 4, 4), 5, [96, 20, 96]) / 64).toBeCloseTo(2, 3);
 });
 
+test("the mass keeps a building's top at its own heights, not its cells': a parapet, a lift overrun and a storey set back, its sides closed", () => {
+  // A tower 40 m square of 8 m blocks on a 1.5 m plinth of ground, five blocks high but for its west row, four; a parapet
+  // along its north edge and a lift overrun 4 m tall in its middle; and a step on the ground beside it, which starts its
+  // cells' layers at 0, so its roof at 41.5 m falls 1.5 m into a layer and its overrun 1.5 m into the next.
+  const [x, z] = mid(1, 1);
+  const statics: MapStatic[] = [{ kind: "core:zruin_step_concrete", x: x + 23, y: 0.2, z, yaw: 0 }];
+  for (let i = 0; i < 5; i++) {
+    for (let j = 0; j < 5; j++) for (let k = 0; k < (i === 0 ? 4 : 5); k++) statics.push({ kind: "core:zruin_zmass8_concrete", x: x - 16 + i * 8, y: 5.5 + k * 8, z: z - 16 + j * 8, yaw: 0 });
+    if (i > 0) statics.push({ kind: "core:zruin_zparapet8_concrete", x: x - 16 + i * 8, y: 41.975, z: z + 19.75, yaw: 0 });
+  }
+  statics.push({ kind: "core:zruin_zcore_concrete", x, y: 43.5, z, yaw: 0 });
+  const w = cityWorld({ chunks: 4, statics });
+  const city = new CityStatics(w.dims, asWritten(statics), farRegistry());
+  const chunk = w.chunkOf(x, z);
+  for (const size of [4, 8]) {
+    const quads = quadsOf(cellPart(city, chunk, w.hf, null, size, 4), chunk);
+    // The highest face looking up over a point, and the faces' areas summed: a closed shell's sides sum to nothing.
+    const roof = (dx: number, dz: number): number => Math.max(...quads.filter((q) => unit(areaOf(q))[1] > 0.99 && q.some((v) => v[0] <= x + dx) && q.some((v) => v[0] >= x + dx) && q.some((v) => v[2] <= z + dz) && q.some((v) => v[2] >= z + dz)).map((q) => Math.round(q[0]![1] * 100) / 100));
+    expect({ size, overrun: roof(0, 0), roof: roof(8, 0), parapet: roof(8, 18), setback: roof(-16, 0) }).toEqual({ size, overrun: 45.5, roof: 41.5, parapet: 42.5, setback: 33.5 });
+    const sum = quads.reduce((s, q) => s.map((v, a) => v + areaOf(q)[a]!), [0, 0, 0]);
+    expect([Math.abs(sum[0]!) < 1e-6, Math.abs(sum[2]!) < 1e-6]).toEqual([true, true]);
+  }
+});
