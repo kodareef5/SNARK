@@ -38,7 +38,7 @@ function towersOf(site: Site): Tower[] {
   const file = join(site.source, "blocks/supports.json");
   if (!existsSync(file)) return [];
   const parts = (JSON.parse(readFileSync(file, "utf8")) as Part[]).filter((p) => p.kind === "bridge_tower" && p.height_m && p.ring.length >= 4)
-    .map((p) => { const engine = p.ring.map(([e, n]) => site.toEngine(e, n) as Point); return { ...p, engine, ...centroid(engine) }; });
+    .map((p) => { const engine = p.ring.map(([e, n]) => site.toLattice(e, n) as Point); return { ...p, engine, ...centroid(engine) }; });
   // Parts within 40 m of each other are one tower.
   const group = parts.map((_, i) => i);
   const root = (i: number): number => (group[i] === i ? i : (group[i] = root(group[i]!)));
@@ -93,7 +93,7 @@ function fill(m: Mason, ring: readonly Point[], bottom: number, top: number, fin
 export interface SuspensionRecord { id: number; status: string; }
 
 export function makeSuspension(site: Site, planned: readonly { p: Path; deck: DeckPoint[] }[], accept: (m: Mason) => boolean): SuspensionRecord[] {
-  const { sizeX, sizeZ } = site.ground.grid;
+  const { x0, z0, x1, z1 } = site.ground.grid;
   const towers = towersOf(site);
   const decks = planned.filter(({ p }) => SUSPENDED.has(p.way.structure ?? ""));
   const out: SuspensionRecord[] = [];
@@ -151,12 +151,12 @@ export function makeSuspension(site: Site, planned: readonly { p: Path; deck: De
     const point = (s: number): Point => [a0[0] + ax * s - az * side, a0[1] + az * s + ax * side];
     for (let s = span.from + 2; s < span.to; s += 4) {
       const [x, z] = point(s);
-      if (x < 8 || z < 8 || x > sizeX - 8 || z > sizeZ - 8) continue;
+      if (x < x0 + 8 || z < z0 + 8 || x > x1 - 8 || z > z1 - 8) continue;
       m.put("trim4", x, span.y(s), z, order[0]!.finish, yaw);
     }
     for (let s = span.from + 16; s < span.to - 8; s += 16) {
       const [x, z] = point(s);
-      if (x < 8 || z < 8 || x > sizeX - 8 || z > sizeZ - 8) continue;
+      if (x < x0 + 8 || z < z0 + 8 || x > x1 - 8 || z > z1 - 8) continue;
       // A hanger standing on a walked deck starts above head height.
       const onDeck = lanes.some((l) => Math.abs(l.s - s) < 3 && Math.abs(l.o - side) < l.half + .8);
       let y = deckAt(s) + (onDeck ? 2.6 : .3); const cable = span.y(s) - .3;

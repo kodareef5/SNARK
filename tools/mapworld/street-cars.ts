@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { WRECK_KINDS, WRECK_PAINTS } from "../../content/vehicles/wrecks.ts";
 import type { WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { S } from "./ground.ts";
-import { hash3 } from "./raster.ts";
+import { binKey, hash3 } from "./raster.ts";
 import { meets, obstacleIndex, type Box } from "./ruin-obstacles.ts";
 import type { Site, StaticPiece } from "./statics.ts";
 
@@ -38,13 +38,13 @@ const pick = <T,>(rows: readonly (readonly [T, number])[], h: number): T => {
 export function roadIndex(site: Site): { near: (x: number, z: number, reach: number) => Near | null; segments: Segment[]; junction: (x: number, z: number, reach: number) => boolean } {
   const file = join(site.source, "base/roads.geojson"); const segments: Segment[] = [];
   const bins = new Map<number, Segment[]>(); const ends = new Map<number, Set<number>>();
-  const key = (x: number, z: number): number => Math.floor(x / 32) + Math.floor(z / 32) * 4096;
+  const key = (x: number, z: number): number => binKey(Math.floor(x / 32), Math.floor(z / 32));
   if (existsSync(file)) {
     const lines = (JSON.parse(readFileSync(file, "utf8")) as { features: { geometry: { type: string; coordinates: number[][] | number[][][] }; properties: { mtfcc?: string; width_m?: number } }[] }).features;
     lines.forEach((f, line) => {
       const runs = f.geometry.type === "MultiLineString" ? f.geometry.coordinates as number[][][] : [f.geometry.coordinates as number[][]];
       for (const run of runs) {
-        const points = run.map(([e, n]) => site.toEngine(e!, n!));
+        const points = run.map(([e, n]) => site.toLattice(e!, n!));
         // A junction is a point two lines share, or a line's end (README, "Cars"). Keyed by its half metres, kept
         // positive, so that a point of a line past the map's edge keeps a key of its own.
         for (const [i, [x, z]] of points.entries()) {
@@ -71,7 +71,7 @@ export function roadIndex(site: Site): { near: (x: number, z: number, reach: num
   for (const j of junctions) { const k = key(j[0], j[1]); if (!junctionBins.has(k)) junctionBins.set(k, []); junctionBins.get(k)!.push(j); }
   const near = (x: number, z: number, reach: number): Near | null => {
     let best: Near | null = null;
-    for (let bz = Math.floor((z - reach) / 32); bz <= Math.floor((z + reach) / 32); bz++) for (let bx = Math.floor((x - reach) / 32); bx <= Math.floor((x + reach) / 32); bx++) for (const s of bins.get(bx + bz * 4096) ?? []) {
+    for (let bz = Math.floor((z - reach) / 32); bz <= Math.floor((z + reach) / 32); bz++) for (let bx = Math.floor((x - reach) / 32); bx <= Math.floor((x + reach) / 32); bx++) for (const s of bins.get(binKey(bx, bz)) ?? []) {
       const ex = s.bx - s.ax; const ez = s.bz - s.az; const length = Math.hypot(ex, ez);
       const t = Math.max(0, Math.min(1, ((x - s.ax) * ex + (z - s.az) * ez) / (length * length)));
       const fx = s.ax + ex * t; const fz = s.az + ez * t; const distance = Math.hypot(x - fx, z - fz);
@@ -81,7 +81,7 @@ export function roadIndex(site: Site): { near: (x: number, z: number, reach: num
     return best;
   };
   const junction = (x: number, z: number, reach: number): boolean => {
-    for (let bz = Math.floor((z - reach) / 32); bz <= Math.floor((z + reach) / 32); bz++) for (let bx = Math.floor((x - reach) / 32); bx <= Math.floor((x + reach) / 32); bx++) for (const [jx, jz] of junctionBins.get(bx + bz * 4096) ?? []) if (Math.hypot(jx - x, jz - z) < reach) return true;
+    for (let bz = Math.floor((z - reach) / 32); bz <= Math.floor((z + reach) / 32); bz++) for (let bx = Math.floor((x - reach) / 32); bx <= Math.floor((x + reach) / 32); bx++) for (const [jx, jz] of junctionBins.get(binKey(bx, bz)) ?? []) if (Math.hypot(jx - x, jz - z) < reach) return true;
     return false;
   };
   return { near, segments, junction };
@@ -120,8 +120,8 @@ export interface Fleet { id: string; def: WheelVehicleDefinition; }
  * fewest pieces near, first. A share of them are hurt, and each one's fuel is drawn from a band.
  */
 export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: ReturnType<typeof roadIndex>, cars: Cars, seed: number, fleet: readonly Fleet[]): Parked[] {
-  const rules = cars.parked; const { ground } = site; const { nx, nz, sizeX, sizeZ, latticeX: lx, latticeZ: lz } = ground.grid;
-  const at = (x: number, z: number): number => Math.max(0, Math.min(nz - 1, Math.round((sizeZ - z) / 2))) * nx + Math.max(0, Math.min(nx - 1, Math.round((sizeX - x) / 2)));
+  const rules = cars.parked; const { ground } = site; const { nx, nz, x0, z0, x1, z1 } = ground.grid;
+  const at = (x: number, z: number): number => Math.max(0, Math.min(nz - 1, Math.round((z1 - z) / 2))) * nx + Math.max(0, Math.min(nx - 1, Math.round((x1 - x) / 2)));
   const named = new Map(fleet.map((v) => [v.id, v]));
   for (const id of new Set([rules.kinds, ...Object.values(rules.styles), ...Object.values(rules.districts)].flatMap(Object.keys))) if (!named.has(id)) throw new Error(`street.cars.parked weighs ${id}, which is not a car of the fleet`);
   if (rules.fuel.length === 0) throw new Error("street.cars.parked.fuel has no bands");
@@ -143,11 +143,11 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
   const routes = site.growthRoutes.flatMap((r) => r.points.slice(1).map((b, i) => ({ a: r.points[i]!, b, width: r.width })));
   const routeBins = new Map<number, typeof routes>();
   for (const r of routes) for (let z = Math.floor((Math.min(r.a.z, r.b.z) - r.width) / 64); z <= Math.floor((Math.max(r.a.z, r.b.z) + r.width) / 64); z++) for (let x = Math.floor((Math.min(r.a.x, r.b.x) - r.width) / 64); x <= Math.floor((Math.max(r.a.x, r.b.x) + r.width) / 64); x++) {
-    const k = x + z * 1024; if (!routeBins.has(k)) routeBins.set(k, []); routeBins.get(k)!.push(r);
+    const k = binKey(x, z); if (!routeBins.has(k)) routeBins.set(k, []); routeBins.get(k)!.push(r);
   }
   const crossesRoute = (x: number, z: number, c: number, s: number, y: number, room: Room): boolean => {
     const near = new Set<(typeof routes)[number]>(); const { reach } = room;
-    for (let bz = Math.floor((z - reach) / 64); bz <= Math.floor((z + reach) / 64); bz++) for (let bx = Math.floor((x - reach) / 64); bx <= Math.floor((x + reach) / 64); bx++) for (const r of routeBins.get(bx + bz * 1024) ?? []) near.add(r);
+    for (let bz = Math.floor((z - reach) / 64); bz <= Math.floor((z + reach) / 64); bz++) for (let bx = Math.floor((x - reach) / 64); bx <= Math.floor((x + reach) / 64); bx++) for (const r of routeBins.get(binKey(bx, bz)) ?? []) near.add(r);
     for (const r of near) {
       if (Math.min(r.a.y, r.b.y) - .5 > y + room.spec.height + 1 || Math.max(r.a.y, r.b.y) + 2.5 < y) continue;
       // The route's stretch in the car's frame, grown by its half width: does it cross the car's room?
@@ -175,13 +175,12 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
       if (!district) continue;
       if (!lot) length[district] = (length[district] ?? 0) + 4;
       // A car park's road may take a car at every step, a street one step in six.
-      // Hashes are of places on the lattice, so a cut or widened map parks the same cars inside.
-      if ((!lot && hash3(Math.round(cx) + lx, Math.round(cz) + lz, seed + 1201) % 6 !== 0) || roads.junction(cx, cz, rules.junction)) continue;
+      if ((!lot && hash3(Math.round(cx), Math.round(cz), seed + 1201) % 6 !== 0) || roads.junction(cx, cz, rules.junction)) continue;
       const mix = mixOf(index); if (mix.length === 0) continue;
-      const { id } = pick(mix, hash3(Math.round(cz) + lz, Math.round(cx) + lx, seed + 1207)); const room = rooms.get(id)!; const { spec } = room;
+      const { id } = pick(mix, hash3(Math.round(cz), Math.round(cx), seed + 1207)); const room = rooms.get(id)!; const { spec } = room;
       // At the right kerb of the way it was drawn, nose along it.
       const off = s.half - spec.halfWidth - .3; const x = cx - dz * off; const z = cz + dx * off;
-      if (Math.min(x, z, sizeX - x, sizeZ - z) < room.reach) continue;
+      if (Math.min(x - x0, z - z0, x1 - x, z1 - z) < room.reach) continue;
       const yaw = Math.atan2(dx, dz); const c = Math.cos(yaw); const sn = Math.sin(yaw);
       const corner = (u: number, v: number): [number, number] => [x + u * c + v * sn, z - u * sn + v * c];
       const wheels = [[spec.track / 2, spec.wheelbase / 2], [-spec.track / 2, spec.wheelbase / 2], [spec.track / 2, -spec.wheelbase / 2], [-spec.track / 2, -spec.wheelbase / 2]].map(([u, v]) => corner(u!, v!));
@@ -193,7 +192,7 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
       if (1 / Math.hypot(1, along, across) < spec.minGroundNormal + .1 || Math.max(...h) - Math.min(...h) > spec.maxRise) continue;
       const degrees = yaw * 180 / Math.PI;
       if (obstacles.hits({ x, y: y + (spec.height + 1) / 2, z, yaw: degrees, size: [room.side * 2, spec.height + 1, room.end * 2] }) || crossesRoute(x, z, c, sn, y, room)) continue;
-      candidates.push({ kind: id, x, z, yaw: degrees, district, lot, rank: hash3(Math.round(x) + lx, Math.round(z) + lz, seed + 1213), clutter: obstacles.count(x, z, 12), line: s.line, room });
+      candidates.push({ kind: id, x, z, yaw: degrees, district, lot, rank: hash3(Math.round(x), Math.round(z), seed + 1213), clutter: obstacles.count(x, z, 12), line: s.line, room });
     }
   }
   // Neither one's room meets the other's body: each may open its doors, and they stand clear of each other.
@@ -226,8 +225,8 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
   }
   const bands = rules.fuel.map((b) => [b, b[2]] as const);
   return out.map((p) => {
-    const hurt = hash3(Math.round(p.x * 4) + lx * 4, Math.round(p.z * 4) + lz * 4, seed + 1231) / 4294967296 < rules.hurt.share;
-    const [from, to] = pick(bands, hash3(Math.round(p.z * 4) + lz * 4, Math.round(p.x * 4) + lx * 4, seed + 1237));
+    const hurt = hash3(Math.round(p.x * 4), Math.round(p.z * 4), seed + 1231) / 4294967296 < rules.hurt.share;
+    const [from, to] = pick(bands, hash3(Math.round(p.z * 4), Math.round(p.x * 4), seed + 1237));
     return { kind: p.kind, x: p.x, z: p.z, yaw: p.yaw, district: p.district, lot: p.lot, ...(hurt ? { condition: [rules.hurt.condition[0], rules.hurt.condition[1]] as [number, number] } : {}), fuel: [from, to] };
   });
 }

@@ -27,10 +27,11 @@ export interface MapInfo {
 
 /**
  * Where a map's samples lie: nx columns west to east and nz rows north to south, `cell` metres apart, index row * nx +
- * column. Engine x = sizeX - cell * column runs west from the east edge and z = sizeZ - cell * row north from the south.
- * What must not move when a map is widened or cut is read on the lattice: a place's lattice metres are x + latticeX and
- * z + latticeZ west and north of the lattice's middle corner, and a sample's column and row from the corner the
- * build's north-west noise is read from are column + noiseWest / cell and row + noiseNorth / cell.
+ * column. The build places things in lattice metres, x west and z north of the lattice's middle corner (shared/coords.ts),
+ * so that a map cut from another, or widened, works every place out with the same numbers where the two overlap: a
+ * sample's x is x1 - cell * column and z is z1 - cell * row. The map's own engine metres are x - x0 and z - z0, which the
+ * build turns places into as it writes the layers. A sample's column and row from the corner the north-west noise is read
+ * from are column + noiseWest / cell and row + noiseNorth / cell.
  */
 export interface Grid {
   readonly nx: number;
@@ -43,8 +44,11 @@ export interface Grid {
   readonly south: number;
   readonly east: number;
   readonly north: number;
-  readonly latticeX: number;
-  readonly latticeZ: number;
+  /** The east and south edges in lattice metres, and the west and north. */
+  readonly x0: number;
+  readonly z0: number;
+  readonly x1: number;
+  readonly z1: number;
   readonly noiseWest: number;
   readonly noiseNorth: number;
 }
@@ -60,9 +64,9 @@ export function gridAt(bounds: readonly [number, number, number, number], cell =
   const [west, south, east, north] = bounds;
   const sizeX = east - west;
   const sizeZ = north - south;
-  const latticeX = (frame[0] - FRAME_MIDDLE) * CHUNK_SIZE;
-  const latticeZ = (frame[1] - FRAME_MIDDLE) * CHUNK_SIZE;
-  return { nx: sizeX / cell + 1, nz: sizeZ / cell + 1, cell, sizeX, sizeZ, west, south, east, north, latticeX, latticeZ, noiseWest: NOISE_CORNER - sizeX - latticeX, noiseNorth: NOISE_CORNER - sizeZ - latticeZ };
+  const x0 = (frame[0] - FRAME_MIDDLE) * CHUNK_SIZE;
+  const z0 = (frame[1] - FRAME_MIDDLE) * CHUNK_SIZE;
+  return { nx: sizeX / cell + 1, nz: sizeZ / cell + 1, cell, sizeX, sizeZ, west, south, east, north, x0, z0, x1: x0 + sizeX, z1: z0 + sizeZ, noiseWest: NOISE_CORNER - sizeX - x0, noiseNorth: NOISE_CORNER - sizeZ - z0 };
 }
 
 /** A map.json's grid, which must say the same in its bounds, its sizes, its chunks and its samples. */

@@ -1,4 +1,5 @@
 import { RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
+import { binKey } from "./raster.ts";
 import type { RuinRecord } from "./ruins.ts";
 import type { StaticPiece } from "./statics.ts";
 
@@ -11,7 +12,7 @@ export function clearCirculation(pieces: StaticPiece[], records: RuinRecord[], i
   const add = (a: Point, b: Point, street: boolean): void => {
     const segment = { a, b, street };
     for (let z = Math.floor((Math.min(a.z, b.z) - 1) / 32); z <= Math.floor((Math.max(a.z, b.z) + 1) / 32); z++) for (let x = Math.floor((Math.min(a.x, b.x) - 1) / 32); x <= Math.floor((Math.max(a.x, b.x) + 1) / 32); x++) {
-      const k = x + z * 1024; if (!grid.has(k)) grid.set(k, []); grid.get(k)!.push(segment);
+      const k = binKey(x, z); if (!grid.has(k)) grid.set(k, []); grid.get(k)!.push(segment);
     }
   };
   for (const r of decks) for (let i = 1; i < r.deck.length; i++) if (!r.deck[i - 1]!.gap && !r.deck[i]!.gap) add(r.deck[i - 1]!, r.deck[i]!, false);
@@ -39,7 +40,7 @@ export function clearCirculation(pieces: StaticPiece[], records: RuinRecord[], i
   const blocked = (p: StaticPiece): boolean => {
     const shape = p.kind.split("_")[1] as RuinShape; const [w, h, d] = RUIN_SHAPES[shape];
     const a = p.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a); const radius = Math.hypot(w, d) / 2;
-    for (let z = Math.floor((p.z - radius) / 32); z <= Math.floor((p.z + radius) / 32); z++) for (let x = Math.floor((p.x - radius) / 32); x <= Math.floor((p.x + radius) / 32); x++) for (const route of grid.get(x + z * 1024) ?? []) {
+    for (let z = Math.floor((p.z - radius) / 32); z <= Math.floor((p.z + radius) / 32); z++) for (let x = Math.floor((p.x - radius) / 32); x <= Math.floor((p.x + radius) / 32); x++) for (const route of grid.get(binKey(x, z)) ?? []) {
       if (!route.street && route.a.y === route.b.y && shape.startsWith("floor") && Math.abs(p.y + h / 2 - route.a.y) < .12) continue;
       const point = (q: Point): number[] => { const dx = q.x - p.x; const dz = q.z - p.z; return [dx * c - dz * s, q.y - p.y, dx * s + dz * c]; };
       const from = point(route.a); const to = point(route.b); const low = [-w / 2 - .46, -h / 2 - 2.05, -d / 2 - .46]; const high = [w / 2 + .46, h / 2 - (route.street ? .38 : .12), d / 2 + .46];
@@ -93,13 +94,13 @@ export function reconcileRubble(pieces: readonly StaticPiece[], records: RuinRec
   for (const p of pieces) {
     const [w, , d] = RUIN_SHAPES[p.kind.split("_")[1] as RuinShape]; const radius = Math.hypot(w, d) / 2;
     for (let z = Math.floor((p.z - radius - 1) / 64); z <= Math.floor((p.z + radius + 1) / 64); z++) for (let x = Math.floor((p.x - radius - 1) / 64); x <= Math.floor((p.x + radius + 1) / 64); x++) {
-      const k = x + z * 1024; if (!grid.has(k)) grid.set(k, []); grid.get(k)!.push(p);
+      const k = binKey(x, z); if (!grid.has(k)) grid.set(k, []); grid.get(k)!.push(p);
     }
   }
   for (const r of records) for (const route of r.rooms) if (route.kind === "rubble") {
     const fits = route.points.every((point) => {
       let support = point.y === r.y; let blocked = false;
-      for (const p of grid.get(Math.floor(point.x / 64) + Math.floor(point.z / 64) * 1024) ?? []) {
+      for (const p of grid.get(binKey(Math.floor(point.x / 64), Math.floor(point.z / 64))) ?? []) {
         const [w, h, d] = RUIN_SHAPES[p.kind.split("_")[1] as RuinShape];
         const a = p.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
         const dx = point.x - p.x; const dz = point.z - p.z;

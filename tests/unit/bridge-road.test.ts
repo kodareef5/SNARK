@@ -73,7 +73,7 @@ test("a producer retains gaps, per-row slab counts, flat rails and piers, and su
     writeFileSync(join(source, "blocks/ways.json"), JSON.stringify(ways));
     const n = 257, gaps = new Uint8Array(n * n); gaps[Math.round((512 - 64) / 2) * n + Math.round((512 - 130) / 2)] = 1;
     const site = { source, ground: { grid: gridAt([-256, -256, 256, 256]), gaps, water: new Uint8Array(n * n), height: new Float32Array(n * n), heaps: { owner: new Int32Array(n * n).fill(-1) } },
-      groundAt: (x: number) => 1 + x * .1, waterAt: () => 0, toEngine: (e: number, no: number) => [256 - e, 256 + no] } as unknown as Site;
+      groundAt: (x: number) => 1 + x * .1, waterAt: () => 0, toLattice: (e: number, no: number) => [256 - e, 256 + no] } as unknown as Site;
     const built: Mason[] = [], result = makeBridges(site, m => { built.push(m); return true; });
     expect(result.records).toHaveLength(4);
     result.records.forEach((r, i) => {

@@ -1,4 +1,4 @@
-import { reportPaths } from "./report-path.ts";
+import { readReport, reportPaths } from "./report-path.ts";
 const paths = reportPaths();
 import { readFileSync, writeFileSync } from "node:fs";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -16,7 +16,7 @@ const reg = compileContent(CORE_CONTENT).registry!; const hf = mapHeightfield(ma
 const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts); placeStatics(map, structs, reg);
 const source = mapNodes(map, hf, reg); const nodes = source ? new NodeField(map.dims, reg, source) : null;
 const world = { hf, structs, ...(nodes ? { nodes: nodes.store } : {}) }; const params = reg.move[reg.index.get("core:survivor")!]!;
-const records = JSON.parse(readFileSync(`${folder}/buildings.json`, "utf8")) as RuinRecord[];
+const records = readReport<RuinRecord[]>(folder, "buildings.json", map.dims);
 const results: { part: number; name: string | null; route: number; ok: boolean; message: string }[] = [];
 for (const r of records) for (let i = 0; i < r.approaches.length; i++) {
   const a = r.approaches[i]!; const b = new Body(); b.x = a.street.x; b.z = a.street.z; b.y = hf.heightAt(b.x, b.z) + 1;

@@ -37,9 +37,9 @@ export function roadDeckSlab(deck: readonly DeckPoint[], index: number): { shape
 }
 
 export function makeBridges(site: Site, accept: (m: Mason) => boolean): { records: BridgeRecord[]; corridors: Corridor[]; outlines: { id: number; status: string }[] } {
-  const grid = site.ground.grid; const { nx, nz, sizeX, sizeZ } = grid;
+  const grid = site.ground.grid; const { nx, nz, x0, z0, x1, z1 } = grid;
   const { paths, outlines } = pathsOf(readWays(site.source), grid);
-  const at = (x: number, z: number): number => Math.max(0, Math.min(nz - 1, Math.round((sizeZ - z) / 2))) * nx + Math.max(0, Math.min(nx - 1, Math.round((sizeX - x) / 2)));
+  const at = (x: number, z: number): number => Math.max(0, Math.min(nz - 1, Math.round((z1 - z) / 2))) * nx + Math.max(0, Math.min(nx - 1, Math.round((x1 - x) / 2)));
   // The sea's water or a lake's, which an approach or a ramp does not go down into.
   const wetAt = (i: number): boolean => site.ground.water[i] !== 0 || (site.ground.lakes?.body[i] ?? 0) !== 0;
   const wet = (p: Point): boolean => site.ground.water[at(p[0], p[1])] === 1 || (site.ground.lakes?.body[at(p[0], p[1])] ?? 0) !== 0;
@@ -138,7 +138,7 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
         const count = Math.max(Math.ceil(reach / 3), Math.ceil((d.y - y) / .25)); const ramp: DeckPoint[] = [];
         for (let i = 1; i <= count; i++) {
           const t = i / count; const px = d.x + dx * reach * t; const pz = d.z + dz * reach * t; const top = Math.round((d.y + (y - d.y) * t) * 16) / 16;
-          if (px < p.width || pz < p.width || px > sizeX - p.width || pz > sizeZ - p.width || site.groundAt(px, pz) > top + .1 || [-p.width / 2 - 3, 0, p.width / 2 + 3].some((s) => site.ground.heaps.owner[at(px - dz * s, pz + dx * s)]! >= 0 || wetAt(at(px - dz * s, pz + dx * s)))) break;
+          if (px < x0 + p.width || pz < z0 + p.width || px > x1 - p.width || pz > z1 - p.width || site.groundAt(px, pz) > top + .1 || [-p.width / 2 - 3, 0, p.width / 2 + 3].some((s) => site.ground.heaps.owner[at(px - dz * s, pz + dx * s)]! >= 0 || wetAt(at(px - dz * s, pz + dx * s)))) break;
           let crosses = false;
           for (let bx = Math.floor(px / 16) - 2; bx <= Math.floor(px / 16) + 2; bx++) for (let bz = Math.floor(pz / 16) - 2; bz <= Math.floor(pz / 16) + 2; bz++) for (const other of deckBins.get(`${bx},${bz}`) ?? []) {
             const difference = Math.abs(other.d.y - top);
@@ -162,7 +162,7 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
   const rail = planned.filter(({ p }) => p.way.kind === "rail_bridge");
   const accessFeet: Point[] = [];
   for (const station of stations.filter((s) => s.kind === "station").sort((a, b) => a.name.localeCompare(b.name))) {
-    const [sx, sz] = site.toEngine(station.e, station.n);
+    const [sx, sz] = site.toLattice(station.e, station.n);
     const candidates = rail.flatMap(({ p, deck }) => deck.filter((d, i) => i % 3 === 0 && !d.gap && Math.hypot(d.x - sx, d.z - sz) < 100).map((d) => ({ p, d })));
     candidates.sort((a, b) => Math.hypot(a.d.x - sx, a.d.z - sz) - Math.hypot(b.d.x - sx, b.d.z - sz));
     let found = false;
@@ -185,7 +185,7 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
           const t = i / count; const px = x - nx * length * t; const pz = z - nz * length * t;
           const module = Math.min(modules - 1, Math.floor(i / 10)); const along = (i - module * 10) / 10;
           const y = heights[module]! + (heights[module + 1]! - heights[module]!) * along;
-          if (px < 8 || pz < 8 || px > sizeX - 8 || pz > sizeZ - 8 || site.groundAt(px, pz) > y + .08 || [-1, 0, 1].some((s) => site.ground.heaps.owner[at(px + nz * s, pz - nx * s)]! >= 0 || wetAt(at(px + nz * s, pz - nx * s)))) break;
+          if (px < x0 + 8 || pz < z0 + 8 || px > x1 - 8 || pz > z1 - 8 || site.groundAt(px, pz) > y + .08 || [-1, 0, 1].some((s) => site.ground.heaps.owner[at(px + nz * s, pz - nx * s)]! >= 0 || wetAt(at(px + nz * s, pz - nx * s)))) break;
           let overhead = false;
           for (let bx = Math.floor(px / 16) - 2; bx <= Math.floor(px / 16) + 2; bx++) for (let bz = Math.floor(pz / 16) - 2; bz <= Math.floor(pz / 16) + 2; bz++) for (const other of deckBins.get(`${bx},${bz}`) ?? []) {
             const q = other.d; if (q.y <= y + .35 || q.y - .4 >= y + 2.1) continue;

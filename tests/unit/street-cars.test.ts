@@ -35,7 +35,7 @@ function fixture(roads: readonly Road[], routes: Site["growthRoutes"] = []): Sit
     }
   }
   return { source, world: { districts: [{ name: "Works", style: "industrial", tall: 0, ring: [] }, { name: "Homes", style: "residential", tall: 0, ring: [] }] },
-    ground: { grid: gridAt([-SIZE / 2, -SIZE / 2, SIZE / 2, SIZE / 2]), surface, district }, growthRoutes: routes, vehicles: [], toEngine: (e: number, n: number) => [e, n], groundAt: () => GROUND } as unknown as Site;
+    ground: { grid: gridAt([-SIZE / 2, -SIZE / 2, SIZE / 2, SIZE / 2]), surface, district }, growthRoutes: routes, vehicles: [], toLattice: (e: number, n: number) => [e, n], groundAt: () => GROUND } as unknown as Site;
 }
 const streets = (from: number, to: number, every: number): Road[] => {
   const out: Road[] = [];

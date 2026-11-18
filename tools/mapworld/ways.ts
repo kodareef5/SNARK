@@ -38,16 +38,16 @@ export function pathsOf(ways: Way[], grid: Grid): { paths: Path[]; outlines: { i
       points = [[u0 * dx - v * dz, u0 * dz + v * dx], [u1 * dx - v * dz, u1 * dz + v * dx]];
       outlines.push({ id: way.id, status: "long-axis deck within polygon envelope" });
     }
-    const engine = points.map(([e, n]) => [grid.east - e, n - grid.south] as Point);
-    const size = [grid.sizeX, grid.sizeZ];
+    const engine = points.map(([e, n]) => [grid.east + grid.x0 - e, n - (grid.south - grid.z0)] as Point);
+    const low = [grid.x0, grid.z0]; const high = [grid.x1, grid.z1];
     // Clip each segment to the map with an inset for the box extents.
     let run: Point[] = [];
     for (let i = 1; i < engine.length; i++) {
       const a = engine[i - 1]!; const b = engine[i]!; const d = [b[0] - a[0], b[1] - a[1]];
       let lo = 0; let hi = 1; const edge = Math.max(10, width);
       for (let axis = 0; axis < 2; axis++) {
-        if (Math.abs(d[axis]!) < 1e-8) { if (a[axis]! < edge || a[axis]! > size[axis]! - edge) hi = -1; }
-        else { const t0 = (edge - a[axis]!) / d[axis]!; const t1 = (size[axis]! - edge - a[axis]!) / d[axis]!; lo = Math.max(lo, Math.min(t0, t1)); hi = Math.min(hi, Math.max(t0, t1)); }
+        if (Math.abs(d[axis]!) < 1e-8) { if (a[axis]! < low[axis]! + edge || a[axis]! > high[axis]! - edge) hi = -1; }
+        else { const t0 = (low[axis]! + edge - a[axis]!) / d[axis]!; const t1 = (high[axis]! - edge - a[axis]!) / d[axis]!; lo = Math.max(lo, Math.min(t0, t1)); hi = Math.min(hi, Math.max(t0, t1)); }
       }
       if (hi <= lo) { if (run.length > 1) paths.push({ way, points: run, width, outline: way.closed }); run = []; continue; }
       const start: Point = [a[0] + d[0]! * lo, a[1] + d[1]! * lo]; const end: Point = [a[0] + d[0]! * hi, a[1] + d[1]! * hi];
@@ -60,9 +60,9 @@ export function pathsOf(ways: Way[], grid: Grid): { paths: Path[]; outlines: { i
 }
 
 export function cutBridgeWater(paths: Path[], height: Float32Array, water: Uint8Array, grid: Grid): number {
-  const { nx, sizeX, sizeZ } = grid; let cut = 0;
+  const { nx, x0, z0, x1, z1 } = grid; let cut = 0;
   const shore = water.slice();
-  const at = (x: number, z: number): number => Math.round((sizeZ - z) / 2) * nx + Math.round((sizeX - x) / 2);
+  const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
   for (const p of paths) {
     if (!/bridge/.test(p.way.kind)) continue;
     for (let k = 1; k < p.points.length; k++) {
@@ -73,7 +73,7 @@ export function cutBridgeWater(paths: Path[], height: Float32Array, water: Uint8
         const reach = (side: number): number => {
           for (let distance = radius + 4; distance <= 80; distance += 4) {
             const px = x - dz * distance * side; const pz = z + dx * distance * side;
-            if (px < 0 || pz < 0 || px > sizeX || pz > sizeZ) break;
+            if (px < x0 || pz < z0 || px > x1 || pz > z1) break;
             if (shore[at(px, pz)]) return distance;
           }
           return 0;

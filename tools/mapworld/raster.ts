@@ -167,6 +167,9 @@ export function fillPolygon(rings: readonly (readonly (readonly number[])[])[], 
   }
 }
 
+/** A bin's key from its column and row on a grid of bins, each within 32,768 bins either side of the lattice's middle. */
+export const binKey = (column: number, row: number): number => (column + 32768) * 65536 + row + 32768;
+
 /** 32 well-mixed bits from three numbers. */
 export function hash3(a: number, b: number, c: number): number {
   let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x7f4a7c15, 0xc2b2ae35) ^ Math.imul(c + 0x165667b1, 0x27d4eb2d);

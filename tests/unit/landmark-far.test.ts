@@ -195,7 +195,7 @@ test("a map records each landmark's origin and yaw as it was placed, so a client
   expect(placed.sort()).toEqual(Array.from(s.x, (x, i) => [x, s.y[i], s.z[i], s.yaw[i]].join(",")).sort());
   for (const bad of [{ yaw: 65536 }, { yaw: 1.5 }, { x: NaN }]) expect(() => writeMap(flatMap(4, { content: { landmarks: [{ ...one.placed, ...bad }], defs: [] } }))).toThrow("set down");
   // A map build records each where its world.json sets it, as it placed it.
-  const sited = landmarksOf([{ name: KORU.name, at: [10.25, 20.5], yaw: 30 }, { name: CRUISE.name, at: [100, 200], y: 1.5, yaw: 271.3 }], (lon, lat) => [lon, lat], { sizeX: 4096, sizeZ: 4096 });
+  const sited = landmarksOf([{ name: KORU.name, at: [10.25, 20.5], yaw: 30 }, { name: CRUISE.name, at: [100, 200], y: 1.5, yaw: 271.3 }], (lon, lat) => [lon, lat], { x1: 4096, z1: 4096 });
   const map2 = placeLandmarks(sited, compileContent([]).registry!, 0.25);
   expect(map2.content.landmarks).toEqual([placeLandmark(KORU, 4075.5, 0.25, 4055, 5461).placed, placeLandmark(CRUISE, 3896, 1.5, 3696, 49389).placed]);
 });

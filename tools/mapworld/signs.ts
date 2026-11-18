@@ -31,7 +31,7 @@ export function makeSigns(site: Site, accept: (m: Mason) => boolean): SignRecord
     out.push(record);
     const letters = [...sign.inscription.replace(/ /g, "")];
     if (Math.abs(sign.height_m / LETTER_HEIGHT - 1) > SCALE_SLACK) { record.status = `mapped ${sign.height_m} m tall; the letters stand ${LETTER_HEIGHT} m`; continue; }
-    const line = sign.points.map(([e, n]) => site.toEngine(e, n) as Point);
+    const line = sign.points.map(([e, n]) => site.toLattice(e, n) as Point);
     let [a, b] = [line[0]!, line.at(-1)!];
     const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
     if (length < 0.5) { record.status = "a line too short to read along"; continue; }
@@ -69,6 +69,6 @@ export function makeSigns(site: Site, accept: (m: Mason) => boolean): SignRecord
 
 /** Whether engine x and z lie within `reach` metres of a sign's line, for the places a sign stands in for. */
 export function nearSign(site: Site, reach: number): (x: number, z: number) => boolean {
-  const lines = readSigns(site.source).map((s) => s.points.map(([e, n]) => site.toEngine(e, n) as Point));
+  const lines = readSigns(site.source).map((s) => s.points.map(([e, n]) => site.toLattice(e, n) as Point));
   return (x, z) => lines.some((line) => line.some(([px, pz]) => Math.hypot(px - x, pz - z) < reach));
 }

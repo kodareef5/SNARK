@@ -40,8 +40,10 @@ export async function buildMap(named: string, release = false): Promise<{ file: 
   const base = new Base(source);
   const world = JSON.parse(readFileSync(join(source, "world/world.json"), "utf8")) as World;
   const { grid } = base;
-  const { nx, nz, sizeX, sizeZ } = grid;
+  const { nx, nz, sizeX, sizeZ, x0, z0, x1, z1 } = grid;
   const [chunksX, chunksZ] = [sizeX / 64, sizeZ / 64];
+  // The build places things in lattice metres (Grid, base.ts); the layers hold the map's own.
+  const engine = <T extends { x: number; z: number }>(p: T): T => ({ ...p, x: p.x - x0, z: p.z - z0 });
   const toSample = (lon: number, lat: number): [number, number] => base.toSample(lon, lat);
   // The core's content and what the map's landmarks bring.
   const sited = landmarksOf(world.landmarks ?? [], toSample, grid);
@@ -64,7 +66,7 @@ export async function buildMap(named: string, release = false): Promise<{ file: 
   const occupied = staticCover(layered, reg, grid);
   const budget = world.heaps === false ? vocabulary(source).budgets.maxChunk : Infinity;
   const pieceCounts = new Uint32Array(chunksX * chunksZ);
-  for (const p of layered) pieceCounts[Math.floor(p.z / 64) * chunksX + Math.floor(p.x / 64)]!++;
+  for (const p of layered) pieceCounts[Math.floor((p.z - z0) / 64) * chunksX + Math.floor((p.x - x0) / 64)]!++;
   for (let k = 0; k < pieceCounts.length; k++) if (pieceCounts[k]! > budget - 4) {
     const x = k % chunksX; const z = Math.floor(k / chunksX);
     for (let row = Math.max(0, nz - 1 - (z + 1) * 32); row <= Math.min(nz - 1, nz - 1 - z * 32); row++) for (let col = Math.max(0, nx - 1 - (x + 1) * 32); col <= Math.min(nx - 1, nx - 1 - x * 32); col++) occupied[row * nx + col] = 1;
@@ -73,7 +75,7 @@ export async function buildMap(named: string, release = false): Promise<{ file: 
     const a = route.points[i - 1]!; const b = route.points[i]!; const length = Math.hypot(b.x - a.x, b.z - a.z);
     for (let d = 0; d <= length; d += 1) {
       const t = length ? d / length : 0; const x = a.x + (b.x - a.x) * t; const z = a.z + (b.z - a.z) * t;
-      const row = Math.round((sizeZ - z) / 2); const col = Math.round((sizeX - x) / 2);
+      const row = Math.round((z1 - z) / 2); const col = Math.round((x1 - x) / 2);
       if (row >= 0 && col >= 0 && row < nz && col < nx) occupied[row * nx + col] = 1;
     }
   }
@@ -83,7 +85,7 @@ export async function buildMap(named: string, release = false): Promise<{ file: 
   const brought = placeLandmarks(sited, reg, 0);
   const statics = [...layered, ...obelisks.flatMap((o) => obeliskStatics(reg, o, site.groundAt).map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 }))), ...brought.statics.map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 }))];
   pieceCounts.fill(0);
-  for (const p of statics) pieceCounts[Math.floor(p.z / 64) * chunksX + Math.floor(p.x / 64)]!++;
+  for (const p of statics) pieceCounts[Math.floor((p.z - z0) / 64) * chunksX + Math.floor((p.x - x0) / 64)]!++;
   const maxChunk = Math.max(...pieceCounts);
   if (maxChunk > budget) throw new Error(`Static chunk budget ${budget} exceeded after obelisks: ${maxChunk}`);
   lap(`${obelisks.length} obelisks`);
@@ -98,7 +100,7 @@ export async function buildMap(named: string, release = false): Promise<{ file: 
   lap(`${vehicles.length} parked vehicles`);
   // Nothing grows within 8 m of a spawn point, so nobody arrives inside a tree, nor within 14 m of an obelisk's middle,
   // so none stands in it or before its terminal, nor within 6 m of a parked car.
-  const clearings = [...spawns.map((s) => [(sizeX - s.x) / 2, (sizeZ - s.z) / 2, 16] as const), ...obelisks.map((o) => [(sizeX - o.x) / 2, (sizeZ - o.z) / 2, 49] as const), ...vehicles.map((c) => [(sizeX - c.x) / 2, (sizeZ - c.z) / 2, 9] as const)];
+  const clearings = [...spawns.map((s) => [(x1 - s.x) / 2, (z1 - s.z) / 2, 16] as const), ...obelisks.map((o) => [(x1 - o.x) / 2, (z1 - o.z) / 2, 49] as const), ...vehicles.map((c) => [(x1 - c.x) / 2, (z1 - c.z) / 2, 9] as const)];
   const growth = world.heaps === false ? vocabulary(source).growth : undefined;
   const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1) || berths[row * nx + col] === 1 || clearings.some(([c, r, d2]) => (c - col) ** 2 + (r - row) ** 2 < d2), (col, row) => site.lowPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1, growth);
   lap("nodes");
@@ -129,10 +131,10 @@ export async function buildMap(named: string, release = false): Promise<{ file: 
   put("sea.png", writeGrey(nodes.across, nodes.down, nodes.sea));
   put("nodes.json", `${JSON.stringify(nodes.layers, null, 2)}\n`);
   const lines = (rows: readonly unknown[]): string => `[\n${rows.map((r) => `  ${JSON.stringify(r)}`).join(",\n")}\n]\n`;
-  put("spawns.json", lines(spawns));
-  put("regions.json", lines(regions));
-  if (statics.length > 0) put("statics.json", lines(statics));
-  if (vehicles.length > 0) put("vehicles.json", lines(vehicles));
+  put("spawns.json", lines(spawns.map(engine)));
+  put("regions.json", lines(regions.map(engine)));
+  if (statics.length > 0) put("statics.json", lines(statics.map(engine)));
+  if (vehicles.length > 0) put("vehicles.json", lines(vehicles.map(engine)));
   // Lakes above the sea as bodies of water, in squares of a sample.
   if (ground.lakes) {
     const water = waterLayer({ chunksX, chunksZ }, world.minY, world.stepY, 2, ground.lakes.bodies, lakeSquares(ground.lakes, grid, 2));
@@ -142,14 +144,14 @@ export async function buildMap(named: string, release = false): Promise<{ file: 
   lap(`layers in ${layers}`);
 
   let map = readLayers(layers);
-  map = { ...map, statics: MapStatics.of(map.dims, map.statics), ...(sited.length > 0 ? { content: brought.content } : {}) };
+  map = { ...map, statics: MapStatics.of(map.dims, map.statics), ...(sited.length > 0 ? { content: { ...brought.content, landmarks: brought.content.landmarks.map(engine) } } : {}) };
   Bun.gc(true);
   // Whether each slot's node stands, and as what, is decided here once, and the file says so.
   const taken = { water: 0, slope: 0, footing: 0, other: 0 };
   map = resolveNodes(map, reg, taken);
   lap(`nodes resolved: ${taken.water} slots empty for water, ${taken.slope} for slope, ${taken.footing} for a footing; ${taken.other} stand as their footing's other kind`);
   if (growth) {
-    const grown = growRuins(map, compiled.registry, site, growth);
+    const grown = growRuins(map, compiled.registry, { ...site, growthRoutes: site.growthRoutes.map((r) => ({ ...r, points: r.points.map(engine) })) }, growth);
     map = { ...map, nodes: grown.layers };
     writeFileSync(join(source, "reports", world.ruins?.report ?? "ruins", "growth.json"), JSON.stringify(grown.summary, null, 2) + "\n");
     lap("growth placed around structures and routes");
@@ -163,7 +165,7 @@ export async function buildMap(named: string, release = false): Promise<{ file: 
     const use = uses.get(Math.floor(building.id / 4)) ?? "";
     const kind = /hospital/.test(use) ? "hospital" : /police|emergency response/.test(use) ? "police" : /industrial/.test(use) && building.area > 1200 ? "civilian" : null;
     if (!kind) continue;
-    const [x, z] = site.toEngine(building.e, building.n);
+    const [lx, lz] = site.toLattice(building.e, building.n); const [x, z] = [lx - x0, lz - z0];
     const radius = Math.max(...building.rings[0]!.map(point => Math.hypot(point[0]! - building.e, point[1]! - building.n)));
     aircraftSites.push({ id: `building-${building.id}`, kind, x, z, radius });
   }
@@ -172,7 +174,7 @@ export async function buildMap(named: string, release = false): Promise<{ file: 
   const aircraft = helicopterSites(map, reg, aircraftSites);
   const waterfrontPlaces = JSON.parse(readFileSync(join(source, "blocks/places.json"), "utf8")) as PublicPlace[];
   const waterfrontLabels = JSON.parse(readFileSync(join(source, "blocks/labels.json"), "utf8")) as Record<string, BuildingLabel>;
-  const boats = boatSites({ ...map, vehicles: [...parked, ...aircraft] }, reg, mappedBoatSites(waterfrontPlaces, waterfrontLabels, site.toEngine));
+  const boats = boatSites({ ...map, vehicles: [...parked, ...aircraft] }, reg, mappedBoatSites(waterfrontPlaces, waterfrontLabels, (e, n) => { const [x, z] = site.toLattice(e, n); return [x - x0, z - z0]; }));
   if (aircraft.length + boats.length > 0) {
     const all = [...parked, ...aircraft, ...boats];
     map = { ...map, vehicles: all };
@@ -274,8 +276,8 @@ export async function buildMap(named: string, release = false): Promise<{ file: 
     nodeTotal: [...byKind.values()].reduce((a, b) => a + b, 0),
     nodeSlotsTaken: taken,
     zoneCell: ZONE_CELL,
-    spawns,
-    obelisks: obelisks.map((o) => ({ ...o, yaw: Math.round((o.yaw * 360) / 65536), ground: Number(site.groundAt(o.x, o.z).toFixed(2)) })),
+    spawns: spawns.map(engine),
+    obelisks: obelisks.map((o) => ({ ...engine(o), yaw: Math.round((o.yaw * 360) / 65536), ground: Number(site.groundAt(o.x, o.z).toFixed(2)) })),
     regions: { count: regions.length, creaturesAt1x: regions.reduce((a, r) => a + r.count, 0), beach: regions.filter((r) => r.spawns === "core:spawns_beach").reduce((a, r) => a + r.count, 0) },
     surfaceSquareMetres: surfaces,
   };
