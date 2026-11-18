@@ -107,6 +107,8 @@ const ROOM_DEPTH = 0.7;
  * canopy or a balcony over the front shades it only as far as it reaches, and never less than ROOM_OPEN_LEAST of it.
  */
 export const ROOM_OUT = 3;
+/** A shop's room is lit through a front that is all glass: this much more than a room behind a window. */
+const SHOP_LIGHT = 1.8;
 export const ROOM_OPEN_LEAST = 0.55;
 /** Dirty glass: the film's own albedo at its thickest, and how much of the room it hides there. */
 const FILM_ALBEDO = 0.35;
@@ -364,6 +366,7 @@ export function facadeSurface(o: FacadeOut, kind: number, x: number, y: number, 
     const flip = fract(seed * 11.3) < 0.5;
     const k = r.rooms[Math.min(Math.floor(fract(seed * 3.31) * r.rooms.length), r.rooms.length - 1)]!;
     room(glassRoom, k, flip ? x0 + x1 - gx : gx, gy, flip ? vx : -vx, -vy, vz, x0, x1, y0, y1, r.depth, footprint, dist, tier.rooms, sample);
+    if (kind === KIND.display) for (let c = 0; c < 3; c++) glassRoom[c]! *= SHOP_LIGHT;
     if (broken) {
       element(first("shards") + (fract(seed * 17.9) < 0.5 ? 0 : 1), gx / w, gy / h, w, footprint, tier.elements, sample, false);
       shard = base[3]!;
@@ -868,7 +871,7 @@ int facadePart(inout vec3 albedo, inout vec3 orm, inout vec3 n, inout vec3 room,
   if (glassy && a < 1.0) {
     bool flip = fract(seed * 11.3) < 0.5;
     int k = KROOMS[int(kd.z) + min(int(floor(fract(seed * 3.31) * kd.w)), int(kd.w) - 1)];
-    vec3 seen = facadeRoom(k, vec2(flip ? box.x + box.y - g.x : g.x, g.y), vec3(flip ? view.x : -view.x, -view.y, view.z), box, kd.x, footprint, dist);
+    vec3 seen = facadeRoom(k, vec2(flip ? box.x + box.y - g.x : g.x, g.y), vec3(flip ? view.x : -view.x, -view.y, view.z), box, kd.x, footprint, dist) * (kind == ${KIND.display} ? ${fl(SHOP_LIGHT)} : 1.0);
     if (broken) {
       facadeElement(${first("shards")} + (fract(seed * 17.9) < 0.5 ? 0 : 1), g / vec2(w, h), w, footprint, false);
       shard = fBase.a;
