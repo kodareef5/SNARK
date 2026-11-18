@@ -1616,6 +1616,7 @@
     }
   },
   "street": {
+    "walks": { "classes": ["S1200", "S1400"], "width": 2.4, "gutterEvery": 3, "flat": 0.12, "fromJunction": 4, "boxEvery": 23 },
     "spacing": 8,
     "chance": 0.2,
     "assemblies": [
