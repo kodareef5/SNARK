@@ -43,16 +43,15 @@ const near = (r: { x: number; z: number }, x: number, z: number): number => Math
 const kill = (host: Host, pid: number): void => host.survival.add(host.records.byPid.get(pid)!, V_HEALTH, -1e9);
 
 test("a new proving ground fills at once: the herd north of the plaza, raptors beyond it, and dodos round the pool on dry ground", () => {
-  const host = createHost(reg, { wild: true });
+  const host = createHost(reg, { wild: true, seed: 4 });
   ticks(host, 60);
   const sp = host.spawner!;
   const [herd, beach, hunters] = sp.regions;
   expect([herd!.desired, beach!.desired, hunters!.desired]).toEqual([24, 12, 4]);
   expect(herd!.count).toBeGreaterThanOrEqual(24);
   expect(hunters!.count).toBeGreaterThanOrEqual(4);
-  // The beach holds dodos up to 60% of its twelve, parasaurs up to 20% and pteranodons up to a quarter: eight, and the rest
-  // pteranodons and parasaurs, as ARK's limits allow. A pteranodon is put down on the ground, walking, and takes off from there.
-  expect([of(host, "core:dodo").length, of(host, "core:pteranodon").length, beach!.count]).toEqual([8, 3, 12]);
+  // This seed draws all four beach species. Each flyer starts on dry ground.
+  expect([of(host, "core:dodo").length, of(host, "core:pteranodon").length, of(host, "core:carbonemys").length, beach!.count]).toEqual([7, 1, 2, 12]);
   for (const r of of(host, "core:pteranodon")) {
     const e = host.records.entOf.get(r.pid)!;
     expect([host.world.ents.mode[e], (host.world.ents.flags[e]! & F_GROUNDED) !== 0, r.y >= PROVING_SEA_LEVEL]).toEqual([MODE_WALK, true, true]);
@@ -67,7 +66,7 @@ test("a new proving ground fills at once: the herd north of the plaza, raptors b
   expect(wild(host).every((r) => r.genome!.level % 5 === 0 && r.genome!.level >= 5 && r.genome!.level <= 150)).toBe(true);
   // The same seed makes the same world; another makes another.
   const look = (h: Host) => wild(h).map((r) => [h.world.reg.ids[r.kind], Math.round(r.x * 100), Math.round(r.z * 100), r.genome!.level]);
-  const again = createHost(reg, { wild: true });
+  const again = createHost(reg, { wild: true, seed: 4 });
   ticks(again, 60);
   expect(look(again)).toEqual(look(host));
   const other = createHost(reg, { wild: true, seed: 2 });

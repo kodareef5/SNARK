@@ -31,6 +31,7 @@ export function dinosaurCourse(): MapData {
   return made({ id: DINOSAUR_COURSE.id, dims: hf.dims, minY: hf.minY, stepY: hf.stepY, seaLevel: 0,
     heights: hf.heights, tint: hf.tint, statics,
     nodes: [{ seed: 411, perChunk: 80, kinds: [["core:bush", 5], ["core:tree", 2], ["core:palm", 1]], allowCell: 8, allow }],
+    regions: [{ kind: "spawn", spawns: "core:spawns_beach", at: [138, 141], radius: 9, count: 5 }],
     spawns: [{ name: "Dinosaur review paddock", ...DINOSAUR_COURSE.spawn }] });
 }
 

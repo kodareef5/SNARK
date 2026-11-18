@@ -1,5 +1,5 @@
-import type { Def, ItemDef } from "../../shared/content/defs.ts";
-import { defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
+import type { Def, ItemDef } from "../shared/content/defs.ts";
+import { defaultPalette, nearestColour } from "../shared/pack/palette.ts";
 
 const palette = defaultPalette();
 

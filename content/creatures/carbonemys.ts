@@ -1,14 +1,14 @@
 import type { Def } from "../../shared/content/defs.ts";
 import { crafting } from "../craft.ts";
-import { eggs, region } from "./traits.ts";
+import { eggs, region } from "../creature-traits.ts";
 
 const regions = [
-  region("Shell field", 0x586345, 0x6d684e, 0x485f53),
-  region("Scute rings", 0x8e713e, 0x86815a, 0x6f6144),
-  region("Shell margin", 0x6f482e, 0x564639, 0x795943),
-  region("Skin", 0xa28c51, 0x887c55, 0x71846b),
-  region("Skin markings", 0x453a31, 0x524b42, 0x544838),
-  region("Plastron", 0xbcaa7b, 0xb2a285, 0x938a72),
+  region("Body", 0x586345, 0x6d684e, 0x485f53),
+  region("Hide markings", 0x8e713e, 0x86815a, 0x6f6144),
+  region("Shell base", 0x6f482e, 0x564639, 0x795943),
+  region("Shell growth", 0xa28c51, 0x887c55, 0x71846b),
+  region("Shell margins", 0x453a31, 0x524b42, 0x544838),
+  region("Underside", 0xbcaa7b, 0xb2a285, 0x938a72),
 ];
 const color = regions[0]!.colors[0][0];
 

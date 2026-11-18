@@ -1,6 +1,6 @@
 import type { Def } from "../../shared/content/defs.ts";
 import { crafting } from "../craft.ts";
-import { eggs, region } from "./traits.ts";
+import { eggs, region } from "../creature-traits.ts";
 
 const regions = [
   region("Flanks", 0x777348, 0x6d6354, 0x697863),

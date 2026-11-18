@@ -37,8 +37,8 @@ test("the wiki is of what a player meets: no scenery, no target, no creature wit
     if (d.type === "structure" || d.type === "engram") expect(ids.has(d.id)).toBe(false);
   }
   expect(entries.filter((e) => ["creatures", "vehicles", "characters"].includes(e.kind)).map((e) => e.id).sort()).toEqual([
-    "core:berlinetta", "core:boat", "core:boat_police", "core:boat_rescue", "core:caravan", "core:civilian", "core:compact", "core:dodo", "core:fastback", "core:helicopter",
-    "core:helicopter_police", "core:helicopter_rescue", "core:panel_van", "core:parasaur", "core:pteranodon", "core:raptor", "core:survivor", "core:veloce",
+    "core:berlinetta", "core:boat", "core:boat_police", "core:boat_rescue", "core:caravan", "core:carbonemys", "core:civilian", "core:compact", "core:dodo", "core:fastback", "core:helicopter",
+    "core:helicopter_police", "core:helicopter_rescue", "core:panel_van", "core:parasaur", "core:pteranodon", "core:raptor", "core:rex", "core:survivor", "core:veloce",
   ]);
   expect(entries.filter((e) => e.kind === "landmarks").map((e) => e.id).sort()).toEqual(LANDMARKS.map((l) => l.name).sort());
   const foundation = byId("core:piece_foundation_wood");
