@@ -1,3 +1,4 @@
+import { writeTankerYard } from "./tanker-yard.ts";
 // The ordinary game with a local test drive near spawn. --fleet parks the road fleet in their own save.
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -36,16 +37,20 @@ if(import.meta.main){
   const args=process.argv.slice(2);
   const value=(key:string):string|undefined=>{const at=args.indexOf(key);return at>=0?args[at+1]:undefined;};
   const root=resolve(import.meta.dir,"../..");
-  const fleet = args.includes("--fleet");
+  const fleet = args.includes("--fleet"), tanker=args.includes("--tanker");
   if (!args.includes("--built")) console.log(JSON.stringify(await buildClient({quick:true})));
   else if (!existsSync(resolve(root, "client/dist/assets/manifest.json"))) throw new Error("Run without --built to prepare the client.");
   const folder=value("--config")??DEV_CONFIG,{rules,report}=loadConfigFolder(folder,args);
   for(const line of formatReport(report,rules))console.log(line);
-  const dbPath=resolve(value("--db")??resolve(root,fleet?"var/road-fleet/world.db":"var/urban-v1/world.db"));mkdirSync(dirname(dbPath),{recursive:true});
-  const live=liveFileOf(folder),map=value("--map");
+  const dbPath=resolve(value("--db")??resolve(root,tanker?"var/tanker-yard/world.db":fleet?"var/road-fleet/world.db":"var/urban-v1/world.db"));mkdirSync(dirname(dbPath),{recursive:true});
+  const live=liveFileOf(folder),map=value("--map")??(tanker?writeTankerYard(resolve(root,"var/tanker-yard/course.snmp")):undefined);
   const server=startServer({dev:true,hostname:value("--host")??"127.0.0.1",port:Number(value("--port")??process.env.PORT??8787),dbPath,config:rules,...(live?{live}:{}),...(map?{map:resolve(map)}:{})});
   try {
-    if (fleet) console.log(`Parked ${seedRoadFleet(server.host)} fleet models near spawn.`);
+    if (tanker) {
+      const {world,records}=server.host, kind=world.reg.index.get("core:tanker");
+      if(![...records.byPid.values()].some(r=>r.kind===kind) && server.host.spawnVehicle("core:tanker",world.spawn.x-2.8,world.spawn.z+3,0,0)<0)
+        throw new Error("Could not park the tanker beside the yard entrance");
+    } else if (fleet) console.log(`Parked ${seedRoadFleet(server.host)} fleet models near spawn.`);
     else seedUrbanVehicles(server.host);
     const roads = seedUrbanRoads(server.host);
     if (roads) console.log(`Added ${roads} native paving pieces southeast of spawn.`);

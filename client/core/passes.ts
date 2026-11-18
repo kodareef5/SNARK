@@ -216,9 +216,10 @@ export class BenchRun {
  * no bloom (render/post.ts), "contact" holds no body's contact (render/contact.ts), and "facades" draws no facade's part
  * or mark, as before their atlases come (facade.ts). "hide"
  * draws what the frame finds wholly hidden (render/hide.ts), and "order" draws an opaque step's draws by what they bind
- * alone and its ground first, as they went before they went nearest first (render/scene.ts order).
+ * alone and its ground first, as they went before they went nearest first (render/scene.ts order). "edges" draws walls
+ * with no worn edges (world-surfaces.ts).
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -253,11 +254,12 @@ export function sceneWithout(scene: { hide: boolean; nearFirst: boolean }, off: 
   scene.nearFirst = !off.has("order");
 }
 
-/** The effects that live in a built frame: the haze, bodies' contact and the facades in its block, the sea's detail, the hand-over's discard and bodies' layers in its draws. */
+/** The effects that live in a built frame: the haze, bodies' contact, the facades and the edges in its block, the sea's detail, the hand-over's discard and bodies' layers in its draws. */
 export function packetWithout(p: FramePacket, off: ReadonlySet<Effect>): void {
   if (off.has("haze")) p.frame[FRAME.haze] = 0;
   if (off.has("contact")) p.frame.fill(0, FRAME.contact);
   if (off.has("facades")) p.frame[FRAME.facade + 1] = 0;
+  if (off.has("edges")) p.frame[FRAME.edgesOff] = 1;
   for (let d = 0; d < p.drawCount; d++) {
     if (off.has("water")) p.drawFlags[d] = p.drawFlags[d]! & ~DRAW_WATER;
     if (off.has("band") && p.drawHand[d] === HAND_NEAR) p.drawHand[d] = 0;

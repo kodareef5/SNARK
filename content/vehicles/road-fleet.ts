@@ -1,3 +1,4 @@
+import { TANKER } from "./tanker.ts";
 // The road frames use the compact's wheel solver and rig conventions. Body-specific measurements come from art.
 import type { SpeciesDef } from "../../shared/content/defs.ts";
 import type { EmergencyLamp, VehicleDoor, VehicleSeat, VehicleSpec, WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
@@ -170,4 +171,4 @@ const patrolJeep = patrolCar(PATROL_JEEP_ART, "off_road", {
   { at: jeepLamps.grille_red, width: .14, color: "red", facing: "front" }, { at: jeepLamps.grille_blue, width: .14, color: "blue", facing: "front" },
 ]);
 
-export const ROAD_FLEET = [COMPACT_SPECIES, fastback, veloce, berlinetta, panelVan, caravan, patrolSedan, patrolJeep] as const;
+export const ROAD_FLEET = [COMPACT_SPECIES, fastback, veloce, berlinetta, panelVan, caravan, patrolSedan, patrolJeep, TANKER] as const;

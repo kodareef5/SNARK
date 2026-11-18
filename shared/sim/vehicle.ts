@@ -24,6 +24,8 @@ export interface VehicleSpec extends VehicleHullSpec {
   readonly height: number;
   readonly clearance: number;
   readonly wheelbase: number;
+  /** Front axle first, followed by the rear bogie. Fractions are for the entire axle at rest. */
+  readonly axles?: readonly { z: number; track: number; loadShare: number }[];
   readonly track: number;
   readonly wheelRadius: number;
   /** Legacy nominal acceleration, used only by definitions without a drivetrain component. */
@@ -437,8 +439,12 @@ export function validateVehicleSpec(s: VehicleSpec): void {
     if (!Number.isFinite(s[key]) || s[key] <= 0) throw new Error(`missing or invalid vehicle ${key}`);
   }
   const zero = new Set(["yawDamping", "airDrag", "dragScale", "frontDriveShare", "downforce"]);
-  for (const [key, value] of Object.entries(s)) if (key !== "drivetrain" && value !== undefined &&
+  for (const [key, value] of Object.entries(s)) if (key !== "drivetrain" && key !== "axles" && value !== undefined &&
     (!Number.isFinite(value) || (zero.has(key) ? value < 0 : value <= 0))) throw new Error("invalid vehicle specification");
+  if (s.axles && (s.axles.length < 2 || s.axles.length > 8 ||
+    s.axles.some((a,i) => !Number.isFinite(a.z) || Math.abs(a.z) >= s.halfLength || (i > 0 && a.z >= s.axles![i-1]!.z) ||
+      !(a.track > 0 && a.track <= 2*s.halfWidth && a.loadShare > 0 && a.loadShare < 1)) ||
+    Math.abs(s.axles.reduce((sum,a) => sum+a.loadShare, 0)-1) > .0001)) throw new Error("invalid vehicle axle geometry or load");
   if (s.mass !== undefined && (s.mass < 50 || s.mass > 1000000)) throw new Error("invalid vehicle mass");
   if ((s.frontDriveShare ?? 0) > 1 || (s.downforce ?? 0) > 10) throw new Error("invalid vehicle axle split or downforce");
   if (s.drivetrain !== undefined) validateDrivetrainSpec(s.drivetrain);

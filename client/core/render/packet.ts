@@ -289,6 +289,8 @@ export const FRAME = {
   nearToZ: 39,
   /** fFacade: the height in the world of the city's flood line (facade.ts FACADE_FLOOD), and 1 where every facade atlas the tier reads has come. */
   facade: 152,
+  /** fFacade's third lane: 1 on a frame drawn without the walls' worn edges (`?off=edges`, world-surfaces.ts `edged`). */
+  edgesOff: 154,
   /**
    * fGrade and fFinish, the frame's finish (post.ts): what light is multiplied by before the tone curve, red, green and
    * blue, and the saturation after it; then the power the toned light is raised to, bloom's share, the sharpen's

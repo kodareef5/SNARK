@@ -47,3 +47,9 @@ What was kept from each archive:
 - Outfits: the twenty modular parts (peasant and ranger; arms, body, legs,
   feet, hood and pauldrons; male and female) with the two outfit base color
   textures and the two body base color textures they reference.
+
+## Grab3D
+
+| Source | License | Used for |
+| --- | --- | --- |
+| Cozy Cars Kit, tanker-truck.glb | CC0-1.0, recorded in the GLB root node | Tideline rigid water tanker and its eight salvage scenery meshes |

@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { decodeTexture, type Texture } from "../../client/core/render/cpu-texture.ts";
-import { ELEMENTS, FACADE_MATERIALS, FACADE_TOP, MARKS_PLACED, PLACED, ROOMS, ROOM_FACES, type FacadeTier } from "../../client/core/render/facade.ts";
+import { DENSITY, ELEMENTS, FACADE_MATERIALS, FACADE_TOP, MARKS_PLACED, PLACED, ROOMS, ROOM_FACES, type FacadeTier } from "../../client/core/render/facade.ts";
 import type { Material } from "../art/materials.ts";
 import { baseMips, encodePng, normalMips, packedMips, readPicture, unpack, type Picture } from "../pack/image.ts";
 import type { SourceMesh } from "../pack/write.ts";
@@ -64,6 +64,97 @@ function lay(atlas: Float32Array, px: Float32Array, x: number, y: number, w: num
   }
 }
 
+/** A value from 0 to 1 for whole numbers x, y and a seed. */
+function hash(x: number, y: number, seed: number): number {
+  let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(seed, 1442695041)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/** Smooth value noise from 0 to 1, and three octaves of it. */
+function noise(x: number, y: number, seed: number): number {
+  const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+  const top = hash(xi, yi, seed) + (hash(xi + 1, yi, seed) - hash(xi, yi, seed)) * sx;
+  const foot = hash(xi, yi + 1, seed) + (hash(xi + 1, yi + 1, seed) - hash(xi, yi + 1, seed)) * sx;
+  return top + (foot - top) * sy;
+}
+const fbm = (x: number, y: number, seed: number): number => 0.5 * noise(x, y, seed) + 0.3 * noise(2 * x, 2 * y, seed + 1) + 0.2 * noise(4 * x, 4 * y, seed + 2);
+const smooth = (a: number, b: number, t: number): number => {
+  const k = Math.min(1, Math.max(0, (t - a) / (b - a)));
+  return k * k * (3 - 2 * k);
+};
+
+/** `field`, w by h, through a box `r` pixels each way, across then down. */
+function boxed(field: Float32Array, w: number, h: number, r: number): Float32Array {
+  const across = new Float32Array(field.length), out = new Float32Array(field.length);
+  for (let y = 0; y < h; y++) {
+    let sum = 0;
+    for (let x = -r; x <= r; x++) sum += field[y * w + Math.min(w - 1, Math.max(0, x))]!;
+    for (let x = 0; x < w; x++) {
+      across[y * w + x] = sum / (2 * r + 1);
+      sum += field[y * w + Math.min(w - 1, x + r + 1)]! - field[y * w + Math.max(0, x - r)]!;
+    }
+  }
+  for (let x = 0; x < w; x++) {
+    let sum = 0;
+    for (let y = -r; y <= r; y++) sum += across[Math.min(h - 1, Math.max(0, y)) * w + x]!;
+    for (let y = 0; y < h; y++) {
+      out[y * w + x] = sum / (2 * r + 1);
+      sum += across[Math.min(h - 1, y + r + 1) * w + x]! - across[Math.max(0, y - r) * w + x]!;
+    }
+  }
+  return out;
+}
+
+/**
+ * The film on an element's glass, its colour and roughness, softened over about 3 cm, so dust on a shop's glass reads as
+ * a film and not as grain from a few metres. Only glass is read and written: a frame keeps its own.
+ */
+function softGlass(colour: Float32Array, rough: Float32Array, w: number, h: number): void {
+  const n = w * h, mask = Float32Array.from({ length: n }, (_, i) => (colour[i * 4 + 3]! < 0.1 ? 1 : 0));
+  const blur = (f: Float32Array): Float32Array => boxed(boxed(f, w, h, 2), w, h, 2);
+  const weight = blur(mask);
+  const fields = [0, 1, 2].map((c) => blur(Float32Array.from({ length: n }, (_, i) => colour[i * 4 + c]! * mask[i]!)));
+  const r = blur(Float32Array.from({ length: n }, (_, i) => rough[i * 4]! * mask[i]!));
+  for (let i = 0; i < n; i++) {
+    if (mask[i] === 0 || weight[i]! <= 0) continue;
+    for (let c = 0; c < 3; c++) colour[i * 4 + c] = fields[c]![i]! / weight[i]!;
+    rough.fill(r[i]! / weight[i]!, i * 4, i * 4 + 3);
+  }
+}
+
+/**
+ * A sign band left to the weather, in its linear colour and roughness: its paint bleached in patches, run-off streaks
+ * from its top edge, grime along its foot, and flakes gone to the render beneath. Lettering still reads at 15 m.
+ */
+function weatherSign(colour: Float32Array, rough: Float32Array, w: number, h: number, seed: number): void {
+  const metres = h / DENSITY;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4, u = x / DENSITY, v = y / DENSITY;
+      const rgb = [colour[i]!, colour[i + 1]!, colour[i + 2]!];
+      const lum = 0.2126 * rgb[0]! + 0.7152 * rgb[1]! + 0.0722 * rgb[2]!;
+      // Sun bleaching, in broad patches.
+      const bleach = 0.18 + 0.3 * fbm(u * 1.2, v * 1.2, seed);
+      for (let c = 0; c < 3; c++) rgb[c] = rgb[c]! * (1 - bleach) + (0.25 + 0.5 * lum) * bleach;
+      // Run-off from the top edge: narrow streaks of uneven length, darkest where they start.
+      const streak = smooth(0.55, 0.85, noise(u * 30, 0.5, seed + 3)) * smooth(0.3, 0.6, noise(u * 4, 1.5, seed + 4));
+      const reach = metres * (0.35 + 0.65 * noise(u * 9, 2.5, seed + 5));
+      const run = streak * Math.max(0, 1 - v / reach) * (0.8 + 0.2 * noise(u * 30, v * 6, seed + 6));
+      // Grime settling along the foot.
+      const grime = smooth(0.5, 1, v / metres) * (0.12 + 0.18 * fbm(u * 3, v * 3, seed + 7));
+      for (let c = 0; c < 3; c++) rgb[c] = rgb[c]! * (1 - 0.4 * run - grime) * (c === 2 ? 1 - 0.25 * run : 1);
+      // Flakes of paint gone to the grey render beneath, with a darker rim.
+      const f = fbm(u * 7, v * 7, seed + 8);
+      const lost = smooth(0.7, 0.73, f), rim = smooth(0.66, 0.7, f) - lost;
+      const render = 0.24 + 0.06 * noise(u * 40, v * 40, seed + 9);
+      for (let c = 0; c < 3; c++) rgb[c] = (rgb[c]! * (1 - lost) + render * [1, 0.97, 0.9][c]! * lost) * (1 - 0.3 * rim);
+      for (let c = 0; c < 3; c++) colour[i + c] = Math.max(0, rgb[c]!);
+      rough.fill(Math.min(1, Math.max(rough[i]! + 0.1, 0.9 * lost, rough[i]! + 0.2 * run)), i, i + 3);
+    }
+  }
+}
+
 const bytes = (data: Float32Array, srgb: boolean, channels = 4): Picture => {
   const out = new Uint8Array((data.length / 4) * channels);
   for (let i = 0, k = 0; i < data.length; i += 4) for (let c = 0; c < channels; c++) out[k++] = Math.round(Math.min(1, Math.max(0, srgb && c < 3 ? toSrgb(data[i + c]!) : data[i + c]!)) * 255);
@@ -113,6 +204,8 @@ export function buildFacadeArt(source = FACADE_SOURCE, out = FACADE_ART): { elem
       return q ? fitted(q, p.w, p.h) : new Float32Array(p.w * p.h * 4).fill(MISSING[name]!);
     };
     const [occ, rough, metal] = [grey("occlusion"), grey("roughness"), grey("metal")];
+    if (p.name === "sign") weatherSign(colour, rough, p.w, p.h, 11 + p.variant);
+    softGlass(colour, rough, p.w, p.h);
     const packed = new Float32Array(p.w * p.h * 4);
     for (let i = 0; i < packed.length; i += 4) packed.set([occ[i]!, rough[i]!, metal[i]!, 1], i);
     lay(base, colour, p.x, p.y, p.w, p.h, 16);

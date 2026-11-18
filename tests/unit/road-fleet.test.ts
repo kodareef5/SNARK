@@ -26,7 +26,7 @@ function drive(spec: VehicleSpec, seconds: number, throttle = 1, initialSpeed = 
 }
 
 test("the sports frame loads its tyres with speed and both bodies outrun the compact and vans", () => {
-  expect(defs.map(d => d.frame)).toEqual(["car", "car", "sports_car", "sports_car", "van", "van", "car", "off_road"]);
+  expect(defs.map(d => d.frame)).toEqual(["car", "car", "sports_car", "sports_car", "van", "van", "car", "off_road", "van"]);
   const speeds = defs.map(d => drive(d.spec, 4).vz);
   expect(speeds[0]).toBe(speeds[1]!);
   for (const i of [2, 3]) {
@@ -77,9 +77,10 @@ artTest("every selectable body ships its own native geometry, rigid moving parts
     const joint = (i: number) => rig.rest.slice(i * 3, i * 3 + 3);
     for (const [i, w] of def.wheels.entries()) {
       const [x, y, z] = joint(rig.names!.indexOf(w.bone));
-      expect(x).toBeCloseTo((i % 2 ? -1 : 1) * def.spec.track / 2, 4);
+      const axle=def.spec.axles?.[i >> 1];
+      expect(x).toBeCloseTo((i % 2 ? -1 : 1) * (axle?.track ?? def.spec.track) / 2, 4);
       expect(y).toBeCloseTo(def.spec.wheelRadius, 4);
-      expect(z).toBeCloseTo((i < 2 ? 1 : -1) * def.spec.wheelbase / 2, 4);
+      expect(z).toBeCloseTo(axle?.z ?? (i < 2 ? 1 : -1) * def.spec.wheelbase / 2, 4);
     }
     checkSeats(def, rig.sockets ?? []);
     const p = fine.positions, limits = [def.spec.halfWidth, def.spec.height, def.spec.halfLength];

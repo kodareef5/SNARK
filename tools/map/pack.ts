@@ -30,10 +30,10 @@ export const PART_BUDGETS: Readonly<Record<PartKind | "head", number>> = { head:
  * waits longest (client/core/mapload.ts firstFrameParts): the landmarks' definitions, every overview and the ground of the
  * sectors within reach of the body, four where they meet. A player waits for no more wherever it stands: 3.69 MB on Miami
  * and 3.36 on Los Angeles, everyday builds of 2026-11-17 at version 8 (1.5 and 1.3 s at 20 Mbit/s, the phone link the
- * asset bench takes). A map of 255 chunks a side (D806) has four times the overviews of those 8 km squares, and they are
+ * asset bench takes). A map of 255 chunks a side (D809) has four times the overviews of those 8 km squares, and they are
  * most of what it waits for: everyday builds of 2026-11-18 wait for 8.00 MB at most on San Francisco, 8.45 on Las Vegas,
  * 8.79 on Tampa, 9.80 on Miami and 11.33 on Los Angeles, whose hills' overviews pack worst. 12 MiB holds every one of
- * them, Los Angeles in about 4.5 s at 20 Mbit/s as a release (D808). Past it, the first frame should wait for the
+ * them, Los Angeles in about 4.5 s at 20 Mbit/s as a release (D811). Past it, the first frame should wait for the
  * overviews near the body alone, not every one.
  */
 export const FIRST_FRAME_BUDGET = 12 << 20;

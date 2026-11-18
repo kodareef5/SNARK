@@ -42,9 +42,11 @@ export function seedRoadFleet(host: Host): number {
     const origin = `fleet/${model.id}`;
     if (placed.has(origin)) continue;
     const definition = world.reg.vehicle[world.reg.index.get(model.id)!]!;
-    // Keep the original six bays stable in existing saves. The patrol pair park in front.
-    const x = world.spawn.x + (i < 6 ? i - 2.5 : i - 6.5) * 4.5;
-    const z = world.spawn.z + (i < 6 ? 9 : 3.1), y = world.hf.heightAt(x, z), yaw = Math.PI;
+    // Keep the original six bays stable in existing saves. The patrol pair park in front. The tanker, longer than a car,
+    // keeps the bay east of the six where it was first parked.
+    const tanker = model.id === "core:tanker", front = i >= 6 && !tanker;
+    const x = world.spawn.x + (tanker ? 3.5 : front ? i - 6.5 : i - 2.5) * 4.5;
+    const z = world.spawn.z + (front ? 3.1 : 9), y = world.hf.heightAt(x, z), yaw = Math.PI;
     const e = vehiclePlaceFree(world, x, y, z, yaw, definition) ? host.spawnVehicle(model.id, x, z, 0, yaw, { origin }) : -1;
     if (e < 0)
       throw new Error(`The fleet bay for ${model.id} is obstructed at (${x}, ${z})`);
