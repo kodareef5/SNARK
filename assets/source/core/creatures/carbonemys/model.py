@@ -58,9 +58,9 @@ def limb(s,key,opening):
         (distal(.029,.103,.075),.155,.075,foot),
         (distal(.058,.078,.142),.193 if fore else .211,.060,foot),
         (distal(.084,.057,.198),.202 if fore else .221,.043,foot),
-        (distal(.105,.044,.228),.189 if fore else .203,.035,foot),
-        (distal(.119,.041,.254),.172 if fore else .186,.020,foot),
-        (distal(.121,.038,.266),.169 if fore else .182,.009,foot)]
+        (distal(.105,.053,.228),.189 if fore else .203,.035,foot),
+        (distal(.119,.049,.254),.172 if fore else .186,.020,foot),
+        (distal(.121,.044,.266),.169 if fore else .182,.009,foot)]
     frames=[None]*len(rings);axis=Vector((1,0,0))
     for i in reversed(range(len(rings))):
         direction=(Vector(rings[min(i+1,len(rings)-1)][0])-Vector(rings[max(0,i-1)][0])).normalized()
@@ -75,12 +75,12 @@ def limb(s,key,opening):
             muscle=1+.17*math.cos(2*a+.5)*peak(i,2.4,2)+.11*math.cos(3*a-.8)*peak(i,7,1.9)
             joint=.032*peak(i,5,.74)*max(0,cy)**3
             fold=.015*(peak(i,1.2,.43)-.72*peak(i,2,.47))*(.40+.6*math.cos(a+.74)**2)
-            toes=sum(peak(cx,q,.115 if fore else .13) for q in [-.79,-.26,.27,.79])
+            toes=sum(peak(cx,q,.172 if fore else .182) for q in [-.79,-.26,.27,.79])
             tip=smooth(11,16,i)
             point=Vector(p)+axis*(w*signed_power(cx,.94)*muscle)+up*(h*signed_power(cy,.83)+joint+fold)
             # The web advances between the digits but falls back from each free
             # ray. One mesh runs from the shoulder to each terminal nail.
-            point.z+=tip*(.121*toes-.053*(1-toes)) + .018*cx*sign*tip
+            point.z+=tip*(.091*toes-.031*(1-toes)) + .018*cx*sign*tip
             point.y+=smooth(10,14,i)*(.024*toes*max(cy,0)-.007*(1-toes))
             ids.append(s.v(point,weight))
         if prev is None:
@@ -92,7 +92,7 @@ def limb(s,key,opening):
                 return CLAW if i>=15 and min(abs(x-q) for q in [-.79,-.26,.27,.79])<.18 else chart
             stitch(s,prev,ids,chart,(i-1)/(len(rings)-1),i/(len(rings)-1),choose=end_chart)
         prev=ids
-    close(s,prev,distal(.121,.040,.241),foot,PAD)
+    close(s,prev,distal(.121,.046,.241),foot,PAD)
 
 def axial(s):
     # Stations run from the tail through both girdles, then along the pleated
@@ -154,8 +154,7 @@ def axial(s):
                     for lo,hi in bounds.values():holes.update(j%N for j in range(lo,hi))
             if z<1.17: chart=SHELL_SKIN; u0=(i-1)/18;u1=i/18
             elif z<1.94: chart=NECK; u0=(i-18)/10;u1=(i-17)/10
-            else: chart=HEAD;u0=(i-28)/15;u1=(i-27)/15
-            if z>2.411: chart=BEAK;u0=(i-36)/8;u1=(i-35)/8
+            else: chart=HEAD;u0=(stations[i-1][0]-1.90)/.68;u1=(z-1.90)/.68
             stitch(s,rows[-1],ids,chart,max(.008,u0),min(.992,u1),holes)
         rows.append(ids)
     close(s,rows[0],(0,.49,-2.14),'tail_2',SKIN)
@@ -184,7 +183,7 @@ def jaw_and_orbit(s):
             ids.append(s.v((w*signed_power(cx,.73),y+h*signed_power(cy,.66)-pinch+.012*cy*cx,
                             z-.051*abs(cx)**2*peak(z,2.036,.07)),'jaw'))
         if prev is None:close(s,ids,(0,y,z-.002),'jaw',SKIN)
-        else:stitch(s,prev,ids,HEAD if z<2.36 else BEAK,(i-1)/len(stations),i/len(stations))
+        else:stitch(s,prev,ids,HEAD,(stations[i-1][0]-1.90)/.68,(z-1.90)/.68)
         prev=ids
     close(s,prev,(0,1.131,2.548),'jaw',BEAK)
     oval(s,(0,1.128,2.302),(.171,.022,.202),'jaw',1,ORAL,28,9)
@@ -200,7 +199,8 @@ def jaw_and_orbit(s):
         oval(s,(sign*.320,1.269,z),(.027,.032,.061),'skull',1,EYE,24,10)
         oval(s,(sign*.343,1.270,z+.004),(.008,.022,.024),'skull',1,IRIS,16,8)
         oval(s,(sign*.349,1.269,z+.006),(.003,.016,.012),'skull',1,PUPIL,12,8)
-        oval(s,(sign*.117,1.230,2.489),(.022,.009,.019),'skull',1,PUPIL,12,7)
+        # Naris inset into the sloping rostrum near its lateral upper edge.
+        oval(s,(sign*.113,1.238,2.498),(.020,.010,.015),'skull',1,PUPIL,14,7)
 
 def build():
     s=Surface('carbonemys_body',['carapace','turtle_hide'])

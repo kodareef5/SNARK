@@ -47,7 +47,7 @@ export default {
     .map(name=>({name,source:name,loop:looped.has(name)})),
   feet:["fore_foot_l","fore_foot_r","hind_foot_l","hind_foot_r"],
   gaits:{walk:{stride:1.26},run:{stride:1.26},swim:{stride:3.20,stated:"Webbed feet paddle freely in water at 3.2 metres per second."}},
-  budgets:{triangles:[21500,7200,3000,1250,500,320],texture:{top:1024,megabytes:45,layer:256}},flat:3,
+  budgets:{triangles:[21500,7200,3000,1250,500,400],texture:{top:1024,megabytes:45,layer:256}},flat:3,
   ragdoll:{limp:43,bodies:[{bone:"shell",mass:.86},{bone:"skull",mass:.1,swing:105,twist:69},{bone:"tail_1",mass:.04,swing:65,twist:40}]},
   worn:[{item:"core:saddle_carbonemys",object:"saddle",materials:{turtle_saddle:material("turtle_saddle",false)},budgets:{triangles:[4800,1500,600,170]}}],
 } satisfies CreatureAsset;

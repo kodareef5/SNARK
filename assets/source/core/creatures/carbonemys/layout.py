@@ -29,15 +29,19 @@ def carapace(x,z):
     # Irregular, swept posterior marginals. Scallops lift and flare with the
     # keratin shields; the front rim remains rounded above the retracted neck.
     scallop=(.5+.5*cos(24*ang+.66*sin(5*ang)+.33*sin(3*ang)))**2.2
-    skirt=boundary*(.018+.105*rear)*scallop
+    skirt=boundary*(.013+.106*rear)*scallop*(.50+.50*(.5+.5*sin(5*ang-.73)))
     X=x*(width_at(z)+skirt)
     Z=-.075+1.70*z-notch+z*skirt*(1+.46*rear)
     arc=.14*exp(-((abs(x)-.69)/.25)**2-((z-.66)/.30)**2)
     arc+=.075*exp(-((abs(x)-.82)/.28)**2-((z+.56)/.28)**2)
-    rim=.790+.065*z-.034*z*z+boundary*(arc-.13*rear*scallop)+.06*notch
+    rim=.790+.065*z-.034*z*z+boundary*(arc-.081*rear*scallop)+.46*notch
     oblong=max(0,1-r*r)
     vault=(.848+.051*exp(-((z+.36)/.43)**2))*oblong**.66
-    return X,rim+vault,Z
+    # A long vertebral buttress flows continuously under successive scutes,
+    # steep on the rear quarter and worn low towards the riding position.
+    crest=(.047+.191*exp(-((z+.34)/.64)**2))*exp(-((x-.026*sin(4*z))/.265)**2)*oblong
+    flank=.088*exp(-((abs(x)-.53-.065*z-.018*sin(5*z))/.17)**2)*oblong*(1-.34*z)
+    return X,rim+vault+crest+flank,Z
 
 def shell_parameters(x,z):
     nz=(z+.075)/1.7

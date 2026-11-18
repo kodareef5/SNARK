@@ -63,20 +63,31 @@ def carapace():
             ex=b[0]-a[0];ez=b[1]-a[1];den=ex*(a[1]-cz)-ez*(a[0]-cx)
             if abs(den)>.000001:share=np.maximum(share,(ex*(z-cz)-ez*(x-cx))/den)
         choose=share<best;identity=np.where(choose,i,identity);best=np.minimum(best,share)
-    grain=noise(U,V,130);broad=noise(U,V,19)
-    centers=np.array([cell[0] for cell in CELLS]);idx=identity.astype(int)
-    angle=np.arctan2(z-centers[idx,1],x-centers[idx,0]);slip=noise(U,V,42)
-    r=best+.012*(broad-.5);seam=ease(.89,.997,r)
-    # Individual growth episodes split, abrade and disappear toward the high
-    # exposed face; they never form a uniform stack of contour lines.
-    phase=r*(32+8*np.sin(identity*2.37))+.96*np.sin(2*angle+r*6+identity)+.83*np.sin(r*12+identity*.85)+2.6*(broad-.5)
-    growth=.5+.5*np.sin(phase)
-    abrasion=ease(.44,.72,slip+.12*np.cos(angle+identity))*ease(.12,.48,r)
-    ridge=ease(.65,.95,growth)*(.91-.62*abrasion);age=ease(.09,.62,r);outer=ease(.65,.94,r)
-    shade=.49+.19*(broad-.5)+.105*(grain-.5)+.075*(ridge-.30)*age+.052*abrasion-.14*seam+.049*np.sin(identity*2.399)
-    h=.0028*(ridge-.4)*age+.0036*(1-seam)+.0007*(grain-.5)
-    w=np.zeros((*U.shape,6),np.float32);rim=ease(.46,.70,broad+.13*np.sin(r*17+identity))*.37*age
-    accent=.060+.17*ridge*age+.09*outer+.10*np.sin(identity*.9)**2+.078*abrasion;dark=.08+.70*seam+.17*rim
+    idx=identity.astype(int); centers=np.array([cell[0] for cell in CELLS])
+    cx=centers[idx,0];cz=centers[idx,1];side=np.sign(cx)
+    grain=noise(U,V,166);broad=noise(x,z,5.3);slip=noise(x,z,18.6)
+    r=best+.008*(slip-.5);seam=ease(.922,1.003,r)
+    spinal=np.abs(cx)<.24;costal=(np.abs(cx)>.24)&(np.abs(cx)<.84)
+    dx=x-cx;dz=z-cz
+    axis=np.where(spinal,.19,-side*.68)
+    across=dx-axis*dz+.013*np.sin(z*21+x*5+identity)
+    core=np.exp(-(across/(.072+.023*np.sin(identity*2.6)**2))**2)*(1-ease(.38,.98,r))
+    # Scrapes run down individual sloping faces. A few arrest lines terminate at
+    # worn sectors; they do not encircle all 37 shields.
+    slant=x*(.61+.23*np.sin(identity*1.9))+z+.17*dx*dz
+    scratch=noise(across*8+slant*.28,slant*.69,24)
+    fiber=noise(across*4.8+slant*.32+.013*broad,slant*.63,43)
+    wear=ease(.48,.76,slip*.63+broad*.37+.11*core)
+    streak=ease(.65,.88,scratch)*ease(.35,.75,slip)*(.42+.58*wear)
+    arrest=np.exp(-((r-(.67+.11*np.sin(identity*1.46+z*8)+.038*(slip-.5)))/.033)**2)
+    arrest*=ease(.54,.76,noise(x,z,7.2))*(.3+.7*(np.sin(identity*1.37)>.15))
+    sweep=np.exp(-((x-side*(.44+.15*z+.036*np.sin(z*11)))/.16)**2)*costal
+    patina=ease(.31,.72,broad+.14*np.sin(z*5+dx*2))*(1-.40*wear)
+    shade=.43+.064*(broad-.5)+.071*(fiber-.5)+.031*streak+.034*wear-.116*seam+.031*core-.026*arrest
+    h=.0011*(fiber-.5)+.0020*core-.0033*seam+.0008*streak-.0015*arrest
+    w=np.zeros((*U.shape,6),np.float32)
+    accent=.105+.068*wear+.089*core+.062*streak+.050*sweep
+    dark=.135+.55*seam+.075*patina+.036*(1-broad)
     accent=np.minimum(accent,1-dark);w[...,2]=1-accent-dark;w[...,3]=accent;w[...,4]=dark
     belly=V<.411;px=(U-.02)/.48-1;pz=(V-.015)/.19-1
     mid=np.abs(px+.018*np.sin(4*pz));cross=np.ones_like(U)
@@ -85,8 +96,8 @@ def carapace():
     shade[belly]=(.50+.16*(broad-.5)+.09*(grain-.5)-.13*cut)[belly];h[belly]=(.0015*(broad-.5)-.0036*cut)[belly]
     w[belly]=0;w[...,5][belly]=1-.45*cut[belly];w[...,4][belly]=.45*cut[belly]
     edge=(V>=.411)&(V<.51);seg=(1-ease(.012,.084,np.abs(np.sin(U*24*np.pi))))*edge
-    shade[edge]=(.46+.10*grain-.13*seg)[edge];h[edge]=(.0018*grain-.004*seg)[edge];w[edge]=0;w[...,3][edge]=.71;w[...,4][edge]=.29
-    save('carapace',shade,h,.60+.12*grain-.07*ridge,.97-.11*seam,np.zeros_like(U),w,4.)
+    shade[edge]=(.36+.11*broad+.08*grain-.14*seg)[edge];h[edge]=(.0018*grain-.004*seg)[edge];w[edge]=0;w[...,3][edge]=(.30+.23*broad)[edge];w[...,4][edge]=1-w[...,3][edge]
+    save('carapace',shade,h,.63+.09*grain-.11*wear,.97-.11*seam,np.zeros_like(U),w,4.)
     layers('carapace',[(.66,.72,.111,-.22,.009),(.25,.83,.073,.31,.008),(.81,.62,.052,-.34,.008),(.45,.21,.07,.13,.007)],True)
 def hide():
     s=U;t=V;skin=(U<.5);eye=(U>.786)&(V>.205)&(V<.568);beak=(U>.5)&(V>.577)&(V<.792)
@@ -99,14 +110,43 @@ def hide():
     h=(.0026*pebble+.0017*dome*shields+.00045*grain)
     wrinkle=neck*(1-ease(.045,.45,np.abs(np.sin(t*187+.8*np.sin(19*s)+1.5*np.sin(6*t+17*s)))))
     h-=.0029*wrinkle
-    grey=.48+.15*(mark2-.5)*(1-shields)+.15*(mark-.5)*shields+.19*(broad-.5)+.09*pebble-.11*wrinkle
+    # Maps follow the three native charts. Wide, broken temporal stripes sweep
+    # through the side of the head; narrow longitudinal folds take over on the neck.
+    au=np.clip((s-.008)/.48,0,1);ang=2*np.pi*au
+    side=np.cos(ang);alt=np.sin(ang);hv=np.clip((t-.646)/.337,0,1);nv=np.clip((t-.337)/.28,0,1)
+    midnoise=noise(s,t,29);angle=alt+.11*np.sin(nv*6+side*.6)+.075*(midnoise-.5)
+    fold=neck*np.exp(-((angle+.24*np.sin(nv*3+.9))/.20)**2)*np.abs(side)
+    brow=head*np.exp(-((alt-.38-.22*hv+.085*np.sin(hv*9+side))/.17)**2)
+    cheek=head*np.exp(-((alt+.30-.12*np.sin(hv*7+.7*side))/.16)**2)*np.abs(side)
+    crown=head*ease(-.1,.81,alt);jaw=head*ease(.06,.76,-alt)
+    foremarks=fore*ease(.42,.74,noise(au*1.4,t,19)+.19*np.sin(au*20+22*t))
+    honey=cheek*(.55+.45*midnoise)+.39*fold
+    grey=.455+.22*(mark2-.5)*(1-shields)+.19*(mark-.5)*shields+.32*(broad-.5)+.10*pebble-.12*wrinkle
+    # Overlapping transverse shields follow the forearm's extensor surface.
+    # Their valleys taper at the sides and break into fine granular skin.
+    legpos=np.clip((t-.018)/.30,0,1)
+    ext=fore*np.clip(.11+.89*np.maximum(0,np.sin(ang-.45)),0,1)*ease(.13,.43,legpos)
+    course=legpos*12.0+.58*np.cos(ang*2-.77)+.33*np.sin(ang*5+legpos*9)+.43*midnoise
+    creases=ext*(1-ease(.025,.117,np.abs(np.sin(course*np.pi))))
+    grey-=.11*creases;h-=.0019*creases
+    grey+=.095*honey-.090*brow-.064*crown+.035*jaw-.06*foremarks
     w=np.zeros((*s.shape,6),dtype=np.float32)
-    dorsal=.17+.37*ease(.30,.69,broad+.15*np.cos(s*31))
-    pale=.08+.26*ease(.45,.78,np.sin(s*13.4+1.1*t)*.32+.50) +.13*(mark>.82)*shields
+    dorsal=.13+.32*ease(.34,.72,broad+.12*np.cos(s*31))+.25*foremarks+.19*crown
+    pale=.065+.16*ease(.45,.78,np.sin(s*13.4+1.1*t)*.32+.50)+.38*honey+.25*jaw
+    pale=np.minimum(pale,1-dorsal)
     w[...,0]=1-dorsal-pale;w[...,1]=dorsal;w[...,5]=pale
-    pigment=np.repeat(grey[...,None],3,-1);rough=.68+.13*(1-pebble);occ=.97-.08*(1-pebble)
-    for mask,color,r in [(beak,[.33,.29,.17],.51),((U>.786)&(V<.204),[.26,.237,.17],.52),((U>.50)&(U<.785)&(V>.309)&(V<.576),[.29,.105,.092],.39), (eye,[.076,.060,.039],.28),((U>.786)&(V>.337)&(V<.456),[.65,.42,.12],.28),((U>.786)&(V>.456)&(V<.568),[.024,.019,.016],.20)]:
+    pigment=np.repeat(grey[...,None],3,-1);rough=.69+.12*(1-pebble);occ=.97-.09*(1-pebble)
+    for mask,color,r in [(beak,[.33,.29,.17],.51),((U>.786)&(V<.204),[.31,.286,.208],.49),((U>.50)&(U<.785)&(V>.309)&(V<.576),[.29,.105,.092],.39), (eye,[.076,.060,.039],.28),((U>.786)&(V>.337)&(V<.456),[.65,.42,.12],.28),((U>.786)&(V>.456)&(V<.568),[.024,.019,.016],.20)]:
         w[mask]=0;pigment[mask]=lin(np.array(color))*(.88+.22*grain[mask,None]);rough[mask]=r;h[mask]*=.13;occ[mask]=.98
+    # The keratin cutting edge feathers rearward along the mouth. The nasal
+    # bridge grades into irregular cranial shields rather than a transverse cap.
+    border=.67+.165*np.maximum(0,alt)-.12*np.maximum(0,-alt)+.026*np.sin(ang*5+.7)+.058*(midnoise-.5)
+    horn=head*ease(border-.064,border+.067,hv)
+    stria=(.5+.5*np.sin(hv*147+4.2*np.sin(ang*2)+2.3*midnoise))
+    horn_col=lin(np.array([.356,.313,.224]))*(.68+.38*grain+.17*stria+.15*broad)[...,None]
+    pigment=pigment*(1-horn[...,None])+horn_col*horn[...,None]
+    w*=1-horn[...,None];h=h*(1-.77*horn)+horn*.0009*stria
+    rough=rough*(1-horn)+horn*(.46+.09*grain)
     save('turtle_hide',pigment,h,rough,occ,np.zeros_like(U),w,2.5)
     layers('turtle_hide',[(.24,.14,.108,.34,.008),(.32,.78,.064,-.34,.006),(.18,.49,.055,-.2,.008),(.63,.22,.048,.3,.009)])
 def saddle():
