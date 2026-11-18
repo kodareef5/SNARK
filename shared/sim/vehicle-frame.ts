@@ -1,7 +1,7 @@
 import { quatAxis, quatMul, quatNormalize, quatRotate, quatUnrotate, type Numbers } from "../math/quat.ts";
 import { detCos, detSin } from "../math/scalar.ts";
 import { rayBox } from "../world/ray.ts";
-import { boatDrives, type VehicleDefinition } from "./vehicle.ts";
+import { boatDrives, isWheelVehicle, type VehicleDefinition } from "./vehicle.ts";
 
 /**
  * Distance along a ray (unit direction) to a vehicle's hull at (x, y, z) turned `yaw` radians, or Infinity. The hull is the
@@ -10,18 +10,19 @@ import { boatDrives, type VehicleDefinition } from "./vehicle.ts";
  */
 export function rayVehicle(def: VehicleDefinition, x: number, y: number, z: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, top: number, attitude?: Pick<VehicleFrame, "pitch" | "roll" | "qx" | "qy" | "qz" | "qw" | "steering">): number {
   const s = def.spec, sn = detSin(yaw), cs = detCos(yaw), rx = ox - x, rz = oz - z;
-  if (def.movement === "boat") {
+  const boxes = def.movement === "boat" ? def.spec.hullBoxes : isWheelVehicle(def) ? def.spec.bodyBoxes : undefined;
+  if (boxes) {
     vehicleRotation({ x, y, z, yaw, pitch: 0, roll: 0, ...attitude }, rayRotation);
     quatUnrotate(rayRotation, 0, rx, oy - y, rz, rayOrigin, 0);
     quatUnrotate(rayRotation, 0, dx, dy, dz, rayDirection, 0);
     let near = Infinity;
-    for (const box of def.spec.hullBoxes) {
+    for (const box of boxes) {
       const low = box.at[1] - box.half[1], high = Math.min(top, box.at[1] + box.half[1]);
       if (low >= high) continue;
       near = Math.min(near, rayBox(rayOrigin[0]!, rayOrigin[1]!, rayOrigin[2]!, rayDirection[0]!, rayDirection[1]!, rayDirection[2]!,
         box.at[0] - box.half[0], low, box.at[2] - box.half[2], box.at[0] + box.half[0], high, box.at[2] + box.half[2]));
     }
-    for (const drive of boatDrives(def.spec)) {
+    if (def.movement === "boat") for (const drive of boatDrives(def.spec)) {
       const motor = drive.outboard;
       if (!motor) continue;
       // The articulated motor yaws by -steering around its authored pivot. Keep rays in that same joint frame.

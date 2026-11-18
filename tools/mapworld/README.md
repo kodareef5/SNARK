@@ -281,9 +281,10 @@ by `street.cars.parked`:
   compact's X ±0.9, Y 0 to 1.5, Z ±2.0 with entries at X ±1.25; the panel van's
   X ±1.08, Y 0 to 2.52, Z ±2.82 with entries at X ±1.42); nothing grows on it.
   Neither of two parked cars' rooms meets the other's body.
-- On dry ground, its four wheels' heights giving a ground normal no steeper than
+- On dry ground, the heights across all its axles giving a ground normal no steeper than
   the kind's `minGroundNormal` (0.85 for the road fleet), with margin enough to
   drive off.
+- A marked stall draws only from vehicles whose bumpers can fit within half a metre of its ends. The full body and door clearances still apply. Buses and freight tractors use long kerbs. Detached trailers may stand on level industrial lots and yards.
 - A district takes its car parks first: up to `lots.perDistrict` of its car
   parks' roads, in an order by a hash, each holding `lots.least` to `lots.most`
   cars together along it, `lots.apart` metres from each other and `apart`

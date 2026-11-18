@@ -1,4 +1,13 @@
 {
+  "street": {
+    "cars": {
+      "parked": {
+        "districts": {
+          "The Port": { "core:semi": 180 }
+        }
+      }
+    }
+  },
   "choices": [
     {
       "id": "beach brows",

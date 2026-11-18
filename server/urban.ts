@@ -634,7 +634,18 @@ export class Urban {
     }
     if (best > 2) return RESULT_FAR;
     const occupant = this.occupancy.occupant(pid, nearest.id);
-    if (occupant && !nearest.driver) return RESULT_BUSY;
+    if (!nearest.driver) {
+      if (!this.allowed(c.pid, pid, 0)) return RESULT_NOT_YOURS;
+      // Passenger benches may share one boarding door. Try the available seats at
+      // that entrance in cabin order, including when another rider is boarding.
+      for (const seat of host.definition.seats) {
+        if (seat.driver || seat.door !== nearest.door || !seat.entry.every((n, i) => n === nearest.entry[i])) continue;
+        if (this.occupancy.occupant(pid, seat.id)) continue;
+        const result = this.begin(c.pid, pid, seat.id, 'enter');
+        if (result !== RESULT_BUSY) return result;
+      }
+      return RESULT_BUSY;
+    }
     // Refused before the door/landing sweeps, so a press on someone else's car costs nothing.
     if (!this.allowed(c.pid, pid, occupant)) return RESULT_NOT_YOURS;
     return this.begin(c.pid, pid, nearest.id, occupant ? 'carjack' : 'enter');
@@ -885,21 +896,35 @@ export class Urban {
     // Within reach of the door: 2 m across the ground, and no more than a step above or below it.
     if (action.kind !== 'exit' && (Math.hypot(start.x - entry.x, start.z - entry.z) > 2 || Math.abs(start.y - entry.y) > 1.2)) return { ok: false, reason: 'too-far' };
     const seating = this.seating;
-    const corridor = (from: Point, to: Point, actor: number, ignoredHost = 0): boolean => {
+    const corridor = (from: Point, to: Point, actor: number, ignoredHost = 0, ignoreBodies = ignored, maxLength = 6.4): boolean => {
       const n = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z) / .1));
-      if (n > 64) return false;
+      if (n > Math.ceil(maxLength * 10)) return false;
       let previous = from;
       for (let i = 1; i <= n; i++) {
         const next = supported({ x: from.x + (to.x - from.x) * i / n, y: from.y + (to.y - from.y) * i / n, z: from.z + (to.z - from.z) * i / n });
-        if (!next || !seating.corridor(previous, next, actor, ignored, ignoredHost)) return false;
+        if (!next || !seating.corridor(previous, next, actor, ignoreBodies, ignoredHost)) return false;
         previous = next;
       }
       return true;
     };
     if (!seating.free(entry, action.actor, ignored)) return { ok: false, reason: 'door-blocked' };
-    if (!corridor(start, entry, action.actor, action.kind === 'exit' ? action.host : 0)) return { ok: false, reason: 'corridor-blocked' };
-    vehiclePoint(state, [seat.anchor[0], 0, seat.anchor[2]], out);
-    if (!corridor(entry, { x: out[0]!, y: out[1]!, z: out[2]! }, action.actor, action.host)) return { ok: false, reason: 'seat-blocked' };
+    const aisle = isWheelVehicle(host.definition) && !seat.driver ? host.definition.passengerAisle : undefined;
+    // Exit checks the same interior route in reverse. The door and exterior landing
+    // still check every live body. Inside the cabin the seated crew occupy benches.
+    if ((action.kind !== 'exit' || aisle === undefined) && !corridor(start, entry, action.actor, action.kind === 'exit' ? action.host : 0))
+      return { ok: false, reason: 'corridor-blocked' };
+    const floorAt = (x: number, z: number): Point => {
+      vehiclePoint(state, [x, 0, z], out);
+      return { x: out[0]!, y: out[1]!, z: out[2]! };
+    };
+    const foot = floorAt(seat.anchor[0], seat.anchor[2]);
+    if (aisle !== undefined) {
+      const front = floorAt(aisle, seat.entry[2]), row = floorAt(aisle, seat.anchor[2]);
+      const inside = [...ignored, ...host.definition.seats.map(s => this.occupancy.occupant(action.host, s.id))];
+      if (!corridor(entry, front, action.actor, action.host, inside) ||
+          !corridor(front, row, action.actor, action.host, inside, host.definition.spec.halfLength * 2) ||
+          !corridor(row, foot, action.actor, action.host, inside)) return { ok: false, reason: 'seat-blocked' };
+    } else if (!corridor(entry, foot, action.actor, action.host)) return { ok: false, reason: 'seat-blocked' };
     if (action.kind === 'enter') return { ok: true };
     const landed = action.victim || action.actor;
     for (const offset of [0, 0.8, -0.8, 1.4, -1.4]) {

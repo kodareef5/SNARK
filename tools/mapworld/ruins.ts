@@ -9,6 +9,7 @@ import { clearCirculation, reconcileRubble } from "./ruin-clearance.ts";
 import { contextualize } from "./ruin-context.ts";
 import { joinFrontages } from "./ruin-frontage.ts";
 import { boxOf, extentOf, middleOf, obstacleIndex, obstructs } from "./ruin-obstacles.ts";
+import { parkFreightTrailers } from "./freight.ts";
 import { carPicker, frameYaw, parkCars, roadIndex } from "./street-cars.ts";
 import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
 import type { WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
@@ -301,6 +302,7 @@ export function makeRuins(site: Site): StaticPiece[] {
   // Lettered signs come after the passes that read every piece as a box of the ruin kit.
   const signs = makeSigns(site, accept);
   const publicPlaces = makePublicPlaces(site, data.places, acceptProp, nearSign(site, 60));
+  parkFreightTrailers(site, roads, v.street.cars.parked.trailers, obstacles.hits, acceptProp);
   const fleet = ROAD_FLEET.map((s) => ({ id: s.id, def: s.vehicle as WheelVehicleDefinition }));
   const parked = parkCars(site, pieces, roads, v.street.cars, v.seed, fleet);
   for (const p of parked) {

@@ -127,6 +127,10 @@ export async function buildMap(named: string, release = false, output = join(ROO
   lap(`${spawns.length} spawn points, ${regions.length} spawn regions`);
   // A parked car stands well off where survivors arrive and where they leave, so neither's walk meets it.
   const apart = world.heaps === false ? vocabulary(source).street.cars.parked.fromSpawn : 0;
+  for (let i = statics.length - 1; i >= 0; i--) {
+    const p = statics[i]!;
+    if (p.kind === "core:box_trailer" && [...spawns, ...obelisks].some(s => Math.hypot(s.x - p.x, s.z - p.z) < apart)) statics.splice(i, 1);
+  }
   const vehicles = [...site.vehicles.filter((c) => ![...spawns, ...obelisks].some((s) => Math.hypot(s.x - c.x, s.z - c.z) < apart)), ...brought.vehicles.map((v) => ({ ...v, yaw: (v.yaw * 360) / 65536 }))];
   lap(`${vehicles.length} parked vehicles`);
   // Nothing grows within 8 m of a spawn point, so nobody arrives inside a tree, nor within 14 m of an obelisk's middle,
