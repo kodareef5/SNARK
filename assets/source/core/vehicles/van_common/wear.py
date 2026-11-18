@@ -249,7 +249,7 @@ def paint_body(b, tag):
         d += .43 * (b.scale - .5)
         t = start + .67 * (1 - crown) + .17 * (1 - b.grain)
         if kind == "dent":
-            # The deep side is 1–2 texels across. The light on the other
+            # The deep side is 1 to 2 texels across. The light on the other
             # bank breaks before the shadow does, especially at the tips.
             half = .22 + .86 * crown
             shade = mix((39, 46, 50), (94, 99, 97), .54 * b.scale + .46 * b.grain)
