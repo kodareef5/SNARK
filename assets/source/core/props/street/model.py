@@ -10,7 +10,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bpy  # noqa: E402
 import kit  # noqa: E402
-from kit import Mesh, box, cylinder, fence_uv, fine, octagon, panel, part_uv, prism, sheet, tube, turn  # noqa: E402
+from kit import Mesh, box, cylinder, fence_uv, fine, octagon, panel, part_uv, polygon, prism, sheet, tube, turn  # noqa: E402
 
 PIECES = {}
 
@@ -201,6 +201,72 @@ def speed():
     m = Mesh()
     post(m, 2.82)
     panel(m, (0, 2.48, 0.045), 0.61, 0.76, 0.012, "+z", ("street", "speed"))
+    return m
+
+
+@piece("speed40")
+def speed40():
+    m = Mesh()
+    post(m, 2.82)
+    return panel(m, (0, 2.48, 0.045), 0.61, 0.76, 0.012, "+z", ("street", "speed40"))
+
+
+@piece("speed30")
+def speed30():
+    m = Mesh()
+    post(m, 2.82)
+    return panel(m, (0, 2.48, 0.045), 0.61, 0.76, 0.012, "+z", ("street", "speed30"))
+
+
+@piece("noentry")
+def noentry():
+    # R5-1, a 30-inch disc, its foot at 2.1 m.
+    m = Mesh()
+    post(m, 2.8)
+    return polygon(m, (0, 2.5, 0.045), 0.76, 0.012, ("street", "noentry"), 16 if fine() else 8, math.pi / 16 if fine() else math.pi / 8)
+
+
+@piece("oneway")
+def oneway():
+    # R6-1, parallel to the one-way street: its arrow points along +x from either side, R on the front and L on the back.
+    m = Mesh()
+    post(m, 2.42)
+    return box(m, (-0.46, 2.12, 0.036), (0.46, 2.39, 0.048), "galvanised", decals={"+z": ("street", "oneway"), "-z": ("street", "oneway_left")})
+
+
+@piece("noparking")
+def noparking():
+    # R7-1, 12 by 18 inches.
+    m = Mesh()
+    post(m, 2.62)
+    return panel(m, (0, 2.36, 0.045), 0.3, 0.46, 0.01, "+z", ("street", "noparking"))
+
+
+def diamond(face):
+    # A 30-inch warning diamond, its foot at 2.1 m.
+    m = Mesh()
+    post(m, 3.05)
+    return polygon(m, (0, 2.64, 0.045), 1.08, 0.012, ("street", face), 4, 0)
+
+
+@piece("crossing")
+def crossing():
+    return diamond("crossing")
+
+
+@piece("deadend")
+def deadend():
+    return diamond("deadend")
+
+
+@piece("post_bare")
+def post_bare():
+    # A sign's post whose plate is gone, its two bolts left.
+    m = Mesh()
+    post(m, 2.7)
+    if fine():
+        for y in (2.2, 2.62):
+            box(m, (-0.012, y - 0.012, 0.032), (0.012, y + 0.012, 0.05), "rust")
     return m
 
 

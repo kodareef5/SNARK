@@ -3,14 +3,19 @@
 // roads' centre lines and classes (base/roads.geojson, as street-cars.ts reads them), the buildings' uses and the ground.
 // Every choice is a hash of where it is and the rules' seed, so a build repeats.
 //
-// - Junctions: where three ways meet, or two streets at a corner. Where the larger streets meet, a signal at the corner on
-//   the right of each approach, its arm over that approach's lanes; elsewhere a stop sign on the right of each approach of
-//   the lesser street, and a street-name sign at a corner. Corners of shops and offices get bins, mailboxes, newspaper boxes
-//   and bollards; others fewer.
+// - Junctions: where three ways meet, or two streets at a corner. Where the larger streets meet, a signal for each of
+//   their approaches, across the junction from the traffic it faces, its arm over the lanes that traffic goes on into;
+//   elsewhere a stop sign on the right of each approach of the lesser street, a street-name sign at a corner, and now and
+//   then a pedestrian crossing sign on the larger street's approaches. Corners of shops and offices get bins, mailboxes,
+//   newspaper boxes and bollards; others fewer.
+// - One-way roads: the two ways of a street the data draws twice 6 to 35 m apart (its traffic keeps the other on its
+//   left), and the ramps, which run off a carriageway ahead of its traffic or onto it with it. Where one meets a two-way
+//   street, ONE WAY at the corners beside the way it leaves by, DO NOT ENTER on each way it comes in by.
+// - A DEAD END sign at the mouth of a street that ends without meeting another; NO PARKING signs short of some corners.
 // - Along each street, on the verge side of the kerb line: lamps at a spacing by its class, on both sides or staggered;
 //   wooden utility poles down one side of the lesser streets of residential districts; hydrants; parking meters in runs
-//   before shops; bus shelters, or a bench and a bin, along the avenues; speed and evacuation route signs on the larger
-//   ways; guard rails where a highway's edge drops or meets water; chain-link fence along the street line of open lots
+//   before shops; bus shelters, or a bench and a bin, along the avenues; speed limit signs at the limit each class posts,
+//   and evacuation route signs on the larger ways; guard rails where a highway's edge drops or meets water; chain-link fence along the street line of open lots
 //   and yards; billboards set back from the largest roads.
 //
 // Where the ruins laid a walk along the street (ruins.ts, makeWalks), a piece stands on the walk's top at its setback from
@@ -50,7 +55,18 @@ export interface Furniture {
   shelters: { classes: string[]; spacing: number; set: number; bench: number; shelter: number };
   /** Chances a corner gets each, before buildings of `uses`, and as many times them before any other. */
   corners: { uses: string[]; other: number; bin: number; mailbox: number; news: number; bollards: number; set: number };
-  signs: { classes: string[]; spacing: number; set: number };
+  /** Metres between speed limit signs along each class, which limit's sign each posts, and the share of the larger ways'
+   * that are evacuation route signs instead. */
+  signs: { spacing: Record<string, number>; limits: Record<string, string>; evacuation: Record<string, number>; set: number };
+  /** The one-way roads and the signs the network's shape calls for (the header). `apart`: metres between a street's two
+   * carriageways; `share`: how much of a line's length runs beside its other. `back`s are metres past a junction's ways. */
+  regulations: {
+    divided: { classes: string[]; apart: [number, number]; share: number };
+    oneway: { chance: number; set: number }; noentry: { set: number; back: number };
+    crossing: { chance: number; set: number; back: number };
+    deadend: { classes: string[]; least: number; reach: number; set: number; back: number };
+    noparking: { chance: Record<string, number>; set: number; back: number; angle: number };
+  };
   rails: { classes: string[]; set: number; drop: number; water: number };
   /** Fence along the street line of an open lot or a yard at least `least` metres long, a 3 m run at a time. */
   fences: { classes: string[]; set: number; depth: number; least: number; yard: number; open: number; gap: number };
@@ -65,7 +81,8 @@ export interface FurnitureSummary { placed: Record<string, number>; byRule: Reco
 
 interface Segment { ax: number; az: number; bx: number; bz: number; half: number; mtfcc: string; line: number }
 interface Part { lo: [number, number, number]; hi: [number, number, number] }
-interface Arm { dx: number; dz: number; half: number; cls: string; line: number }
+/** A way out of a junction: which way it leaves, the key of the point it leads to, and +1 where that is the way its line is drawn. */
+interface Arm { dx: number; dz: number; half: number; cls: string; line: number; to: number; sense: number }
 interface Junction { x: number; z: number; arms: Arm[]; reach: number }
 
 const DEG = 180 / Math.PI;
@@ -259,17 +276,20 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   const keyOf = (x: number, z: number): number => (Math.round(x * 2) + 65536) * 131072 + Math.round(z * 2) + 65536;
   for (const s of segments) {
     const length = Math.hypot(s.bx - s.ax, s.bz - s.az); const cls = classOf(s) ?? "";
-    for (const [x, z, dx, dz] of [[s.ax, s.az, (s.bx - s.ax) / length, (s.bz - s.az) / length], [s.bx, s.bz, (s.ax - s.bx) / length, (s.az - s.bz) / length]] as const) {
+    for (const [x, z, dx, dz, to, sense] of [[s.ax, s.az, (s.bx - s.ax) / length, (s.bz - s.az) / length, keyOf(s.bx, s.bz), 1], [s.bx, s.bz, (s.ax - s.bx) / length, (s.az - s.bz) / length, keyOf(s.ax, s.az), -1]] as const) {
       const k = keyOf(x, z); if (!ends.has(k)) ends.set(k, { x, z, arms: [] });
-      ends.get(k)!.arms.push({ dx, dz, half: s.half, cls, line: s.line });
+      ends.get(k)!.arms.push({ dx, dz, half: s.half, cls, line: s.line, to, sense });
     }
   }
   const junctions: Junction[] = [];
-  for (const e of ends.values()) {
-    // A street the data draws twice (two names for one way) is one arm, the wider.
+  // A street the data draws twice (two names for one way) is one arm, the wider.
+  const armsAt = (e: { arms: Arm[] }): Arm[] => {
     const arms: Arm[] = [];
     for (const a of e.arms.filter((q) => q.cls !== "").sort((p, q) => q.half - p.half || p.line - q.line)) if (!arms.some((b) => a.dx * b.dx + a.dz * b.dz > 0.97)) arms.push(a);
-    arms.sort((a, b) => Math.atan2(a.dz, a.dx) - Math.atan2(b.dz, b.dx));
+    return arms.sort((a, b) => Math.atan2(a.dz, a.dx) - Math.atan2(b.dz, b.dx));
+  };
+  for (const e of ends.values()) {
+    const arms = armsAt(e);
     if (arms.length < 2) continue;
     if (arms.length === 2 && (arms[0]!.line === arms[1]!.line || arms[0]!.dx * arms[1]!.dx + arms[0]!.dz * arms[1]!.dz < -0.87)) continue;
     junctions.push({ x: e.x, z: e.z, arms, reach: Math.max(...arms.map((a) => a.half)) + clear.junction });
@@ -320,6 +340,13 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
         // On the right of traffic coming in, facing it.
         const at = (d: number) => (set: number): [number, number, number] => [j.x + a.dx * d + a.dz * (a.half + set), j.z + a.dz * d - a.dx * (a.half + set), yawOf(a.dx, a.dz)];
         putOut("stops", form("stop", hash3(h, 30 + i, seed)), J.stop, at(back), at(back + J.past));
+      }
+      // Where the larger street's traffic goes on through, a pedestrian crossing sign on the right of some of its ways in.
+      const X = rules.regulations.crossing;
+      for (const [i, a] of j.arms.entries()) {
+        if (stopped.includes(a) || !isMajor(a) || !chance(hash3(h, 40 + i, seed), X.chance)) continue;
+        const back = Math.max(...j.arms.filter((b) => b !== a).map((b) => b.half)) + X.back;
+        putOut("crossings", form("crossing", hash3(h, 50 + i, seed)), X.set, (set) => [j.x + a.dx * back + a.dz * (a.half + set), j.z + a.dz * back - a.dx * (a.half + set), yawOf(a.dx, a.dz)]);
       }
       const first = j.arms.findIndex((a) => stopped.includes(a));
       if (first >= 0) putOut("names", "street_name", J.name, (set) => { const p = corner(j, prev(first), j.arms[first]!, set); return p && [p[0], p[1], yawOf(j.arms[first]!.dx, j.arms[first]!.dz)]; });
@@ -427,12 +454,16 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
       }
     }
   });
-  // Speed and evacuation route signs on the right, facing the traffic.
+  // Speed limit signs at the limit each class posts, or now and then on the larger ways an evacuation route sign, on the
+  // right, facing the traffic.
   const G = rules.signs;
-  along(G.classes, () => G.spacing, 5, (x, z, dx, dz, half, k, line) => {
+  along(Object.keys(G.spacing), (cls) => G.spacing[cls]!, 5, (x, z, dx, dz, half, k, line, cls) => {
     if (nearJunction(x, z)) return;
-    putOut("signs", form("sign", hash3(line, k, seed + 5)), G.set, (set) => { const [px, pz] = side(x, z, dx, dz, half + set, 1); return [px, pz, yawOf(-dx, -dz)]; });
+    const h = hash3(line, k, seed + 5); const rule = chance(hash3(h, 1, seed), G.evacuation[cls] ?? 0) ? "evacuation" : G.limits[cls];
+    if (!rule) return;
+    putOut("signs", form(rule, h), G.set, (set) => { const [px, pz] = side(x, z, dx, dz, half + set, 1); return [px, pz, yawOf(-dx, -dz)]; });
   });
+  regulate();
   // Guard rail where a highway's edge drops or the water is near, a 4 m run at a time.
   const R = rules.rails;
   along(R.classes, () => 4, 6, (x, z, dx, dz, half, k, line) => {
@@ -474,6 +505,116 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     const [px, pz, yaw] = side(x, z, dx, dz, half + back, h % 2 === 0 ? 1 : -1); put("billboards", form("billboard", hash3(h, 2, seed)), px, pz, yaw);
   });
   return { pieces, summary };
+
+  function regulate(): void {
+    const R = rules.regulations; const D = R.divided;
+    // Which way each one-way line runs: +1 as it is drawn, -1 against.
+    const flow = new Map<number, number>();
+    const names = lineNames(site);
+    for (const [line, run] of lines) {
+      const name = names[line]; if (!name || !D.classes.includes(classOf(run[0]!)!)) continue;
+      let votes = 0; let beside = 0; let all = 0;
+      for (const s of run) {
+        const length = Math.hypot(s.bx - s.ax, s.bz - s.az); const dx = (s.bx - s.ax) / length; const dz = (s.bz - s.az) / length;
+        for (let d = length / 2 % 10; d < length; d += 10) {
+          const x = s.ax + dx * d; const z = s.az + dz * d; all++;
+          let best = Infinity; let left = 0;
+          for (let bz = Math.floor((z - D.apart[1]) / 16); bz <= Math.floor((z + D.apart[1]) / 16); bz++) for (let bx = Math.floor((x - D.apart[1]) / 16); bx <= Math.floor((x + D.apart[1]) / 16); bx++) {
+            for (const o of laneBins.get(binKey(bx, bz)) ?? []) {
+              if (o.line === line || names[o.line] !== name) continue;
+              const ex = o.bx - o.ax; const ez = o.bz - o.az; const el = Math.hypot(ex, ez);
+              if (Math.abs((ex * dx + ez * dz) / el) < 0.9) continue;
+              const t = Math.max(0, Math.min(1, ((x - o.ax) * ex + (z - o.az) * ez) / (el * el)));
+              const qx = o.ax + ex * t - x; const qz = o.az + ez * t - z; const q = Math.hypot(qx, qz);
+              // Left of travel along (dx, dz) is (dz, -dx).
+              if (q >= D.apart[0] && q <= D.apart[1] && q < best) { best = q; left = qx * dz - qz * dx; }
+            }
+          }
+          if (best < Infinity) { beside++; votes += left > 0 ? 1 : -1; }
+        }
+      }
+      if (all > 0 && beside / all >= D.share && votes !== 0) flow.set(line, Math.sign(votes));
+    }
+    // A ramp runs off a carriageway ahead of its traffic, or onto it with it; a ramp that goes on from another goes its way.
+    const ramp = (line: number): boolean => { const run = lines.get(line); return run !== undefined && classOf(run[0]!) === "ramp"; };
+    for (let pass = 0; pass < 8; pass++) {
+      let changed = false;
+      for (const e of ends.values()) {
+        const arms = armsAt(e);
+        for (const r of arms) {
+          if (!ramp(r.line) || flow.has(r.line)) continue;
+          const known = arms.filter((b) => b.line !== r.line && flow.has(b.line));
+          const leaving = known.filter((b) => !ramp(b.line) && b.sense * flow.get(b.line)! > 0);
+          let out = 0;
+          if (leaving.length > 0) out = r.dx * leaving[0]!.dx + r.dz * leaving[0]!.dz > 0 ? 1 : -1;
+          else if (arms.length === 2 && known.length === 1) out = known[0]!.sense * flow.get(known[0]!.line)! < 0 ? 1 : -1;
+          if (out !== 0) { flow.set(r.line, out * r.sense); changed = true; }
+        }
+      }
+      if (!changed) break;
+    }
+    const O = R.oneway; const N = R.noentry;
+    const twoWay = (a: Arm): boolean => !flow.has(a.line) && (J.major.includes(a.cls) || J.minor.includes(a.cls));
+    for (const j of junctions) {
+      if (!j.arms.some(twoWay)) continue;
+      const h = hash3(Math.round(j.x * 4), Math.round(j.z * 4), seed + 11); const n = j.arms.length;
+      j.arms.forEach((a, i) => {
+        if (!flow.has(a.line)) return;
+        const across = Math.max(...j.arms.filter((b) => b !== a).map((b) => b.half));
+        if (a.sense * flow.get(a.line)! < 0) {
+          // Traffic comes in along it: DO NOT ENTER on the right of whoever would go out along it, facing them.
+          const back = across + N.back;
+          putOut("oneway", form("noentry", hash3(h, i, seed)), N.set, (set) => [j.x + a.dx * back - a.dz * (a.half + set), j.z + a.dz * back + a.dx * (a.half + set), yawOf(-a.dx, -a.dz)]);
+        } else if (!ramp(a.line)) {
+          // Traffic leaves along it: ONE WAY at the corners either side, along it, its arrow the way it goes.
+          for (const [c, b0, b1] of [[0, j.arms[(i + n - 1) % n]!, a], [1, a, j.arms[(i + 1) % n]!]] as const) {
+            if (!chance(hash3(h, 20 + i * 2 + c, seed), O.chance)) continue;
+            putOut("oneway", form("oneway", hash3(h, 40 + i * 2 + c, seed)), O.set, (set) => { const p = corner(j, b0, b1, set); return p && [p[0], p[1], yawOf(-a.dz, a.dx)]; });
+          }
+        }
+      });
+    }
+    // DEAD END where a street leaves a junction and ends, going on through no other, short of the map's edge.
+    const E = R.deadend;
+    const endsIn = (j: Junction, a: Arm): boolean => {
+      let at = a; let from = keyOf(j.x, j.z); let walked = 0;
+      for (let step = 0; step < 400; step++) {
+        const e = ends.get(at.to); const f = ends.get(from); if (!e || !f) return false;
+        walked += Math.hypot(e.x - f.x, e.z - f.z); if (walked > E.reach) return false;
+        const arms = armsAt(e).filter((b) => b.to !== from);
+        if (arms.length === 0) return walked >= E.least && Math.min(e.x - x0, e.z - z0, x1 - e.x, z1 - e.z) > clear.edge + 40;
+        if (arms.length > 1) return false;
+        from = at.to; at = arms[0]!;
+      }
+      return false;
+    };
+    for (const j of junctions) {
+      const h = hash3(Math.round(j.x * 4), Math.round(j.z * 4), seed + 12);
+      j.arms.forEach((a, i) => {
+        if (!E.classes.includes(a.cls) || flow.has(a.line) || !endsIn(j, a)) return;
+        // On the right of traffic turning in, facing it.
+        const back = Math.max(...j.arms.filter((b) => b !== a).map((b) => b.half)) + E.back;
+        putOut("deadends", form("deadend", hash3(h, i, seed)), E.set, (set) => [j.x + a.dx * back - a.dz * (a.half + set), j.z + a.dz * back + a.dx * (a.half + set), yawOf(-a.dx, -a.dz)]);
+      });
+    }
+    // NO PARKING short of some corners, on the right of the traffic coming in, turned toward it, its arrow to the corner.
+    const P = R.noparking; const turn = P.angle / DEG;
+    for (const j of junctions) {
+      const h = hash3(Math.round(j.x * 4), Math.round(j.z * 4), seed + 13);
+      j.arms.forEach((a, i) => {
+        if (flow.has(a.line) || !chance(hash3(h, i, seed), P.chance[a.cls] ?? 0)) return;
+        const back = Math.max(...j.arms.filter((b) => b !== a).map((b) => b.half)) + P.back;
+        const zx = -a.dz * Math.cos(turn) + a.dx * Math.sin(turn); const zz = a.dx * Math.cos(turn) + a.dz * Math.sin(turn);
+        putOut("noparking", form("noparking", hash3(h, 20 + i, seed)), P.set, (set) => [j.x + a.dx * back + a.dz * (a.half + set), j.z + a.dz * back - a.dx * (a.half + set), yawOf(zx, zz)]);
+      });
+    }
+  }
+}
+
+/** Each road line's name (base/roads.geojson), by its place in the file, as roadIndex numbers the lines. */
+function lineNames(site: Site): string[] {
+  const file = join(site.source, "base/roads.geojson"); if (!existsSync(file)) return [];
+  return (JSON.parse(readFileSync(file, "utf8")) as { features: { properties: { name?: string | null } }[] }).features.map((f) => f.properties.name ?? "");
 }
 
 /**
