@@ -1,3 +1,4 @@
+import { BUS, SEMI } from "./heavy-road.ts";
 import { TANKER } from "./tanker.ts";
 // All three road frames use the compact's wheel solver and rig conventions. Body-specific measurements come from art.
 import type { SpeciesDef } from "../../shared/content/defs.ts";
@@ -125,4 +126,4 @@ const caravan = roadCar(CARAVAN_ART, "van", {
   extraDoors: [slider("left", CARAVAN_ART.slideTravel), slider("right", CARAVAN_ART.slideTravel)],
 });
 
-export const ROAD_FLEET = [COMPACT_SPECIES, fastback, veloce, berlinetta, panelVan, caravan, TANKER] as const;
+export const ROAD_FLEET = [COMPACT_SPECIES, fastback, veloce, berlinetta, panelVan, caravan, TANKER, BUS.species, SEMI.species] as const;

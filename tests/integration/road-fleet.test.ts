@@ -3,13 +3,14 @@ import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { makeHandle } from "../../shared/ids.ts";
 import { CMD_VEHICLE, RESULT_OK, VEHICLE_INSPECT } from "../../shared/net/protocol.ts";
 import { vehicleDoor } from "../../shared/sim/vehicle-body.ts";
+import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
 import { seedRoadFleet } from "../../tools/urban/fixtures.ts";
 import { Harness } from "../fixtures/net.ts";
 
 test("the test-drive lot parks each vehicle once and the family van boards at its rear sliding doors", () => {
   const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [] });
   try {
-    expect(seedRoadFleet(h.host)).toBe(7);
+    expect(seedRoadFleet(h.host)).toBe(ROAD_FLEET.length);
     expect(seedRoadFleet(h.host)).toBe(0);
     const player = h.join("rider"); h.run(350);
     h.say(player, "enablecheats");
