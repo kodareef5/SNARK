@@ -1,0 +1,86 @@
+[
+  {
+    "id": "transamerica-pyramid",
+    "name": "Transamerica Pyramid",
+    "layout": "pyramid",
+    "recipe": "tower",
+    "finish": "limestone",
+    "note": "Its 260 m (OpenStreetMap, roof:shape=pyramidal) at four fifths: a body narrowing in three steps to 208 m and a spire above it, white like its quartz cladding.",
+    "source": "OpenStreetMap way 24222973 'Transamerica Pyramid', height 260, building:levels 48, roof:shape pyramidal (blocks/labels.json)",
+    "retain": 0.8,
+    "at": [
+      -122.402765,
+      37.795216
+    ]
+  },
+  {
+    "id": "coit-tower",
+    "name": "Coit Tower",
+    "layout": "column",
+    "recipe": "civic",
+    "finish": "limestone",
+    "note": "The fluted concrete column on Telegraph Hill at its full 64 m, with its arcaded gallery and cap.",
+    "source": "OpenStreetMap way 28824850 'Coit Tower', man_made=tower, tower:type=observation, height 64",
+    "retain": 1,
+    "at": [
+      -122.405632,
+      37.802435
+    ]
+  },
+  {
+    "id": "ferry-building",
+    "name": "San Francisco Ferry Building",
+    "layout": "clocktower",
+    "recipe": "hall",
+    "finish": "limestone",
+    "note": "The long two-storey terminal on the Embarcadero with its clock tower rising to 75 m from the middle of the hall.",
+    "source": "OpenStreetMap outline 'San Francisco Ferry Building' (split from its USA Structures footprint); the tower's 75 m from its published height, which OpenStreetMap does not carry",
+    "retain": 1,
+    "at": [
+      -122.393471,
+      37.795538
+    ]
+  },
+  {
+    "id": "palace-of-fine-arts",
+    "name": "Palace of Fine Arts",
+    "layout": "rotunda",
+    "recipe": "civic",
+    "finish": "clay",
+    "note": "The rotunda by its lagoon: eight piers carrying a stepped dome to 48 m over an open floor, in the ochre and rose of its plaster.",
+    "source": "OpenStreetMap 'Palace of Fine Arts', height 48 (blocks/labels.json)",
+    "retain": 1,
+    "at": [
+      -122.448421,
+      37.802761
+    ]
+  },
+  {
+    "id": "alcatraz-cellhouse",
+    "name": "Alcatraz Main Prison",
+    "layout": "cellhouse",
+    "recipe": "service",
+    "finish": "concrete",
+    "note": "The island's cellhouse as a long three-storey hall of tiers; OpenStreetMap names it and gives it no height.",
+    "source": "OpenStreetMap outline 'Main Prison' on Alcatraz Island (split from its USA Structures footprint)",
+    "retain": 1,
+    "at": [
+      -122.422888,
+      37.826679
+    ]
+  },
+  {
+    "id": "alcatraz-lighthouse",
+    "name": "Alcatraz Island Lighthouse",
+    "layout": "lighthouse",
+    "recipe": "monument",
+    "finish": "limestone",
+    "note": "The 26 m lighthouse beside the cellhouse, as a square tower with a gallery and lantern; labelled a utility by its tags, which would have made it a ring of tanks.",
+    "source": "OpenStreetMap way 99202294 'Alcatraz Island Lighthouse', man_made=lighthouse, height 26",
+    "retain": 1,
+    "at": [
+      -122.422394,
+      37.826318
+    ]
+  }
+]

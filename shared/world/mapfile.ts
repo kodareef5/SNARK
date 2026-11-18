@@ -3,7 +3,7 @@
 //
 // The head:
 //   0   "SNMP"
-//   4   u16 version 8, u16 reserved
+//   4   u16 version 9, u16 reserved
 //   8   u32 hash        FNV-1a of every byte of the head after it: the map's hash, which names each part by its own
 //   12  u32 bytes of the head. Its parts follow it in the order of its table, each where the one before ends.
 //   16  u16 chunksX, u16 chunksZ
@@ -63,7 +63,9 @@
 //               need no ground; only its height does. A layer's bits start on a byte. Then, where the head has WATR, a u16
 //               count of its chunks holding water, each a u16 index among its chunks row by row, ascending, and its squares
 //               as u16s row by row: the number of its body counting from 1, or 0 for the sea's.
-//   3 ground    a sector's ground at every sample (2 m), its edges among them, as a grid, then a u8 tint each. Then for each
+//   3 ground    a sector's ground at every sample (2 m), its edges among them, as a grid, then a u8 tint each, then a u8
+//               ground class (shared/world/vehicle-surface.ts GROUND_CLASS) each two samples a side, its far edge's cells
+//               among them: sample (i, j)'s cell is (i >> 1, j >> 1), 257 a side of a whole sector. Then for each
 //               listed layer, for each of its chunks row by row, a u16 count and 7-byte rows: u8 kind, u16 x, u16 z in
 //               1/1024 m from the chunk's corner, u16 yaw.
 //   4 statics   a sector's statics, where it has some: u32 count n, then columns of n in the map's order, each as byte
@@ -92,7 +94,7 @@ import { MAX_SLOTS_PER_CHUNK, StructureStore } from "./structures.ts";
 import { FarCells, Summary, TACTICAL_CELL, bakeChunk, pieceShapes } from "./tactical.ts";
 import { MAX_WATER_BODIES, MapWater, type WaterBody } from "./water.ts";
 
-export const MAP_VERSION = 8;
+export const MAP_VERSION = 9;
 const MAGIC = 0x504d4e53;
 const HEADER_BYTES = 56;
 /** Chunks a side of an overview's square, 4,096 m. */
@@ -340,6 +342,11 @@ export interface MapData {
   /** Row by row from z = 0, as a Heightfield holds them. */
   readonly heights: Uint16Array;
   readonly tint: Uint8Array;
+  /**
+   * What the ground is to a wheel, a class each two samples a side (Heightfield.ground); left out, every place is plain
+   * ground. The build sets it from the surface it made each sample (tools/mapworld/ground.ts).
+   */
+  readonly ground?: Uint8Array;
   /** As a file gives them back, or a list in the map's order, which every reader takes alike. */
   readonly statics: MapStatics | readonly MapStatic[];
   readonly nodes: readonly NodeLayer[];
@@ -435,6 +442,7 @@ function check(m: MapData): void {
   const sizeX = chunksX * CHUNK_SIZE;
   const sizeZ = chunksZ * CHUNK_SIZE;
   const samples = (sizeX / TERRAIN_CELL + 1) * (sizeZ / TERRAIN_CELL + 1);
+  if (m.ground && m.ground.length !== (sizeX / TERRAIN_CELL / 2 + 1) * (sizeZ / TERRAIN_CELL / 2 + 1)) fail(`its ground classes are ${m.ground.length}, and its size takes a cell each two samples a side`);
   if (m.heights.length !== samples || m.tint.length !== samples) fail(`it has ${m.heights.length} heights and ${m.tint.length} tints, and its size takes ${samples} of each`);
   const inside = (x: number, z: number): boolean => x >= 0 && x <= sizeX && z >= 0 && z <= sizeZ;
   if (!whole(m.spawns.length, 1, MAX_SPAWNS)) fail(`it has ${m.spawns.length} spawn points, and a map has 1 to ${MAX_SPAWNS}`);
@@ -858,6 +866,9 @@ function groundPart(m: MapData, dims: FramedDims, layers: readonly NodeLayer[], 
   const [i0, j0] = [sq.cx0 * CHUNK_SAMPLES, sq.cz0 * CHUNK_SAMPLES];
   putGrid(o, samplesOf(m.heights, nx, i0, j0, w, d, 1), w);
   o.put(samplesOf(m.tint, nx, i0, j0, w, d, 1));
+  // The ground's classes, a cell each two samples: plain ground where the map gives none.
+  const [gw, gd] = [((w - 1) >> 1) + 1, ((d - 1) >> 1) + 1];
+  o.put(m.ground ? samplesOf(m.ground, (nx + 1) >> 1, i0 >> 1, j0 >> 1, gw, gd, 1) : new Uint8Array(gw * gd));
   for (const layer of layers) {
     if (!("first" in layer)) continue;
     for (const c of chunksOf(dims, sq)) {
@@ -1379,6 +1390,8 @@ export interface GroundPiece {
   /** Row by row, (cx1 - cx0) * 32 + 1 a row. */
   readonly heights: Uint16Array;
   readonly tint: Uint8Array;
+  /** Row by row, (cx1 - cx0) * 16 + 1 a row: the ground's class each two samples a side. */
+  readonly ground: Uint8Array;
   /** By node layer, a listed one's rows chunk by chunk and each of its chunks' count, row by row; null for another layer. */
   readonly listed: readonly ({ readonly count: Uint16Array; readonly kind: Uint8Array; readonly x: Uint16Array; readonly z: Uint16Array; readonly yaw: Uint16Array } | null)[];
 }
@@ -1485,6 +1498,7 @@ function readGround(head: MapHead, sq: Square, s: In): GroundPiece {
   const [w, d] = [(sq.cx1 - sq.cx0) * CHUNK_SAMPLES + 1, (sq.cz1 - sq.cz0) * CHUNK_SAMPLES + 1];
   const heights = getGrid(s, w, d);
   const tint = s.take(w * d).slice();
+  const ground = s.take((((w - 1) >> 1) + 1) * (((d - 1) >> 1) + 1)).slice();
   const chunks = (sq.cx1 - sq.cx0) * (sq.cz1 - sq.cz0);
   const listed = head.layers.map((rule) => {
     if (rule.type !== 1) return null;
@@ -1499,7 +1513,7 @@ function readGround(head: MapHead, sq: Square, s: In): GroundPiece {
     }
     return { count, kind: Uint8Array.from(rows[0]!), x: Uint16Array.from(rows[1]!), z: Uint16Array.from(rows[2]!), yaw: Uint16Array.from(rows[3]!) };
   });
-  return { kind: "ground", sq, heights, tint, listed };
+  return { kind: "ground", sq, heights, tint, ground, listed };
 }
 
 function readTops(head: MapHead, sq: Square, s: In): TopsPiece {
@@ -1546,8 +1560,11 @@ function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, Statics
   return { kind: "statics", sq, id, yaw, x: xs, y: ys, z: zs, chunk };
 }
 
-/** Sets a sector's ground into the map's heights and tint, row by row from z = 0. An empty tint, as a server's, is left so. */
-export function setGround(dims: MapDims, heights: Uint16Array, tint: Uint8Array, piece: GroundPiece): void {
+/**
+ * Sets a sector's ground into the map's heights, tint and ground classes, row by row from z = 0. An empty tint, as a
+ * server's, is left so; and so is an empty ground, as a client's that has no use for it.
+ */
+export function setGround(dims: MapDims, heights: Uint16Array, tint: Uint8Array, piece: GroundPiece, ground: Uint8Array = NO_GROUND): void {
   const { sq } = piece;
   const nx = dims.chunksX * CHUNK_SAMPLES + 1;
   const w = (sq.cx1 - sq.cx0) * CHUNK_SAMPLES + 1;
@@ -1556,7 +1573,13 @@ export function setGround(dims: MapDims, heights: Uint16Array, tint: Uint8Array,
     heights.set(piece.heights.subarray(j * w, j * w + w), at);
     if (tint.length > 0) tint.set(piece.tint.subarray(j * w, j * w + w), at);
   }
+  if (ground.length === 0) return;
+  const [gx, gw] = [(nx + 1) >> 1, ((w - 1) >> 1) + 1];
+  for (let j = 0; j < piece.ground.length / gw; j++) {
+    ground.set(piece.ground.subarray(j * gw, j * gw + gw), ((sq.cz0 * CHUNK_SAMPLES) / 2 + j) * gx + (sq.cx0 * CHUNK_SAMPLES) / 2);
+  }
 }
+const NO_GROUND = new Uint8Array(0);
 
 /** Sets an overview's pictures and its slots' bits of where nodes stand into the map's node layers, as `blankLayers` made them. */
 export function setNodes(dims: MapDims, layers: readonly NodeLayer[], piece: OverviewPiece): void {
@@ -1702,6 +1725,7 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
   const { dims } = head;
   const n = (dims.chunksX * CHUNK_SAMPLES + 1) * (dims.chunksZ * CHUNK_SAMPLES + 1);
   const [heights, tint] = [new Uint16Array(n), new Uint8Array(n)];
+  const ground = new Uint8Array(((dims.chunksX * CHUNK_SAMPLES) / 2 + 1) * ((dims.chunksZ * CHUNK_SAMPLES) / 2 + 1));
   const nodes = blankLayers(head);
   const grounds: GroundPiece[] = [];
   const statics: StaticsPiece[] = [];
@@ -1714,7 +1738,7 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
       setNodes(dims, nodes, p);
       if (p.water) water.push(p.water);
     } else if (p.kind === "ground") {
-      setGround(dims, heights, tint, p);
+      setGround(dims, heights, tint, p, ground);
       grounds.push(p);
     } else if (p.kind === "tops") tops.push(p);
     else statics.push(p);
@@ -1723,7 +1747,8 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
   const mapWater = joinWater(head, water);
   const content = head.landmarks ? { content: { landmarks: head.landmarks, defs } } : {};
   const { id, minY, stepY, seaLevel, spawns, regions, vehicles, hash } = head;
-  return { id, dims, minY, stepY, seaLevel, heights, tint, statics: finish(joinStatics(head, statics, order)), nodes, spawns, ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(mapWater ? { water: mapWater } : {}), ...content, ...(tops.length > 0 ? { tops: joinTops(tops) } : {}), hash };
+  // A map whose ground is plain everywhere reads back with no classes, as it was written: the same map, and no grid held.
+  return { id, dims, minY, stepY, seaLevel, heights, tint, ...(ground.some((v) => v !== 0) ? { ground } : {}), statics: finish(joinStatics(head, statics, order)), nodes, spawns, ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(mapWater ? { water: mapWater } : {}), ...content, ...(tops.length > 0 ? { tops: joinTops(tops) } : {}), hash };
 }
 
 /** The water of a map's overviews (OverviewPiece.water) as the map's, every overview's given, or null where its head has no WATR. */
@@ -1818,7 +1843,7 @@ export function partsOf<B extends ArrayBufferLike>(file: Uint8Array<B>): { name:
   return [{ name: head.name, part: null, bytes: file.subarray(0, head.bytes) }, ...head.parts.map((p) => ({ name: p.name, part: p, bytes: file.subarray(p.at, p.at + p.length) }))];
 }
 export function mapHeightfield(map: MapData): Heightfield {
-  const hf = new Heightfield(map.dims, TERRAIN_CELL, map.minY, map.stepY, map.heights, map.tint);
+  const hf = new Heightfield(map.dims, TERRAIN_CELL, map.minY, map.stepY, map.heights, map.tint, map.ground);
   hf.seaLevel = map.seaLevel;
   hf.water = map.water ?? null;
   return hf;

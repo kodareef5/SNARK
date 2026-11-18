@@ -2,7 +2,8 @@
 // the shoreline survey marks, water passages under mapped bridges, authored broken spans and drowned streets.
 // Footprints reserve the city floor; statics supply its ruins. Heights are metres above the sea.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { GROUND_CLASS } from "../../shared/world/vehicle-surface.ts";
 import { join } from "node:path";
 import { cutBridgeWater, pathsOf, readWays } from "./ways.ts";
 import type { Base, Grid } from "./base.ts";
@@ -43,7 +44,20 @@ export const S = {
   DESERT: 26,
   /** An airfield's runways, taxiways and aprons (roads.png value 6): paved, and no street. */
   PAVED: 27,
+  /** Where people walk beside a street (use.png, tools/mapdata/streets.py): kerb to the building line. */
+  SIDEWALK: 28,
+  /** A street where people cross it: still a street to anything driven. */
+  CROSSWALK: 29,
+  /** A footway, path, cycleway or steps away from a street. */
+  WALKWAY: 30,
+  /** A square or a pedestrian street drawn as an area. */
+  PLAZA: 31,
+  /** A parking lot's ground off its aisles, where its stalls are. */
+  LOT: 32,
 } as const;
+
+/** What use.png's values say the ground is used for (tools/mapdata/streets.py, USE). */
+const USE = { SIDEWALK: 1, CROSSING: 2, PATH: 3, PLAZA: 4, LOT: 5, PARK: 6, PITCH: 7 } as const;
 
 export interface District {
   readonly name: string;
@@ -87,7 +101,7 @@ export interface Ground {
   readonly height: Float32Array;
   readonly surface: Uint8Array;
   /** Per sample, its district counting from 1 in the world's list, or 0. */
-  readonly district: Uint8Array;
+  readonly district: Uint16Array;
   readonly heaps: Heaps;
   /** Metres from each land sample to the water, and from each water sample to the land. */
   readonly shore: Float32Array;
@@ -103,6 +117,28 @@ export interface Ground {
   readonly lakes: Lakes | null;
 }
 
+/** What each surface is to a wheel (shared/world/vehicle-surface.ts GROUND_CLASS); a surface not named is plain ground. */
+const CLASS_OF: Readonly<Record<number, number>> = {
+  [S.STREET]: GROUND_CLASS.ASPHALT, [S.HIGHWAY]: GROUND_CLASS.ASPHALT, [S.CROSSWALK]: GROUND_CLASS.ASPHALT, [S.LOT]: GROUND_CLASS.ASPHALT, [S.PAVED]: GROUND_CLASS.ASPHALT,
+  [S.SIDEWALK]: GROUND_CLASS.PAVING, [S.PLAZA]: GROUND_CLASS.PAVING, [S.DECK]: GROUND_CLASS.PAVING, [S.COURT]: GROUND_CLASS.PAVING, [S.FLOOR]: GROUND_CLASS.PAVING,
+  [S.WALKWAY]: GROUND_CLASS.GRAVEL, [S.YARD]: GROUND_CLASS.GRAVEL, [S.DESERT]: GROUND_CLASS.GRAVEL, [S.SPILL]: GROUND_CLASS.GRAVEL,
+  [S.BEACH]: GROUND_CLASS.SAND, [S.DUNE]: GROUND_CLASS.SAND, [S.WET_SAND]: GROUND_CLASS.SAND,
+  [S.POOL]: GROUND_CLASS.MUD, [S.MARSH]: GROUND_CLASS.MUD, [S.MANGROVE]: GROUND_CLASS.MUD, [S.FORD]: GROUND_CLASS.MUD, [S.FLAT]: GROUND_CLASS.MUD,
+};
+
+/**
+ * The ground's class each two samples a side, from every even sample's surface, in the samples' own order: what the
+ * map file's ground parts carry for a wheel (MapData.ground). A street is two samples wide or more, so a cell of 4 m
+ * holds its class where it lies.
+ */
+export function groundClasses(g: Ground): Uint8Array {
+  const { nx, nz } = g.grid;
+  const gx = (nx + 1) >> 1;
+  const out = new Uint8Array(gx * ((nz + 1) >> 1));
+  for (let r = 0; r < nz; r += 2) for (let c = 0; c < nx; c += 2) out[(r >> 1) * gx + (c >> 1)] = CLASS_OF[g.surface[r * nx + c]!] ?? GROUND_CLASS.GROUND;
+  return out;
+}
+
 export function makeGround(base: Base, world: World, log: (line: string) => void): Ground {
   const { grid } = base;
   const { nx, nz, cell, west, north } = grid;
@@ -115,6 +151,8 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   const flooded = base.bytes("flooded_streets");
   const gaps = world.bridgeGapLayer ? base.bytes(world.bridgeGapLayer) : new Uint8Array(N);
   const wrecks = base.bytes("wrecks");
+  // A folder made before the streets stage has no use.png: its ground is as it was.
+  const use = existsSync(join(base.folder, "base", "use.png")) ? base.bytes("use") : new Uint8Array(N);
   const dem = base.elevation();
   const model = base.bathymetry();
   const bathy = model ? blur(model, nx, nz, 2, 3) : null;
@@ -288,7 +326,8 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   }
 
   // Districts, by their rings, a later one over an earlier.
-  const district = new Uint8Array(N);
+  // Two bytes a sample: a big map's districts run past 255 (Tampa's 16 km has 233), and the 256th was district 0.
+  const district = new Uint16Array(N);
   const toCol = (e: number): number => (e - west) / cell;
   const toRow = (no: number): number => (north - no) / cell;
   world.districts.forEach((d, k) => {
@@ -382,10 +421,20 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     }
     const b = biome[i]!;
     const rd = roads[i]!;
-    if (rd === 2) surface[i] = S.HIGHWAY;
-    else if (rd === 1) surface[i] = S.STREET;
+    const u = use[i]!;
+    if (rd === 2 || rd === 1) surface[i] = u === USE.CROSSING ? S.CROSSWALK : rd === 2 ? S.HIGHWAY : S.STREET;
     else if (rd === 6) surface[i] = S.PAVED;
+    // Off the roads, what a person walks on before what grows there.
+    else if (u === USE.SIDEWALK || u === USE.CROSSING) surface[i] = S.SIDEWALK;
+    else if (u === USE.PATH) surface[i] = S.WALKWAY;
+    else if (u === USE.PLAZA) surface[i] = S.PLAZA;
+    else if (u === USE.LOT) surface[i] = S.LOT;
+    // A beach is sand though it lies in a park (Virginia Key Beach Park): OpenStreetMap draws both, and with the park
+    // first a beach park was lawn and a spawn point on its sand found none. Mangrove and marsh are not drawn but made by
+    // a rule (prepare.py: growth near the coast), so a park drawn over them stands: put first they took 12% of Tampa's
+    // park ground and 21% of Miami's. What is paved (above) stands over all of it.
     else if (b === 6) surface[i] = shore[i]! < 7 ? S.WET_SAND : canopy[i] ? S.DUNE : S.BEACH;
+    else if (u === USE.PARK || u === USE.PITCH) surface[i] = canopy[i] && u === USE.PARK ? S.CANOPY : S.GREEN;
     else if (b === 4) surface[i] = S.MANGROVE;
     else if (b === 5) surface[i] = S.MARSH;
     else if (canopy[i]) surface[i] = S.CANOPY;

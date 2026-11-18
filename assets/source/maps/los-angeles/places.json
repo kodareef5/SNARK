@@ -1,0 +1,72 @@
+[
+  {
+    "id": "griffith-observatory",
+    "name": "Griffith Observatory",
+    "layout": "observatory",
+    "recipe": "civic",
+    "finish": "limestone",
+    "note": "The white body on Mount Hollywood's south shoulder with its planetarium dome rising to 36 m and a telescope dome at each end of the front that faces the lawn.",
+    "source": "OpenStreetMap way 422130705 'Griffith Observatory', man_made=observatory, height 35.9; its three domes are ways 1360680899, 1360680900 and 1360680901 (roof:shape=dome), radii 5.1, 5.1 and 12.9 m",
+    "retain": 1,
+    "at": [
+      -118.300376,
+      34.118191
+    ]
+  },
+  {
+    "id": "capitol-records",
+    "name": "Capitol Records Building",
+    "layout": "records",
+    "recipe": "tower",
+    "finish": "limestone",
+    "note": "The round tower north of Hollywood and Vine at its 47 m, a sunshade ringing each of its floors, and its spire.",
+    "source": "OpenStreetMap way 422141102 'Capitol Records Building', height 46.8, building:levels 13 (blocks/labels.json); the round plan is its USA Structures outline",
+    "retain": 1,
+    "at": [
+      -118.326347,
+      34.103104
+    ]
+  },
+  {
+    "id": "hollywood-bowl-shell",
+    "name": "Hollywood Bowl",
+    "layout": "bandshell",
+    "recipe": "theatre",
+    "finish": "limestone",
+    "note": "The shell at the low end of the bowl, a quarter-sphere 30 m across opening south-west toward the seats.",
+    "source": "OpenStreetMap way 427527131, height 24.2, inside the Hollywood Bowl's amenity=theatre area (way 133701914), with its ring parts 297126803 to 297126808",
+    "retain": 1,
+    "at": [
+      -118.338908,
+      34.112768
+    ]
+  },
+  {
+    "id": "hollywood-bowl-seats",
+    "name": "Hollywood Bowl seating",
+    "layout": "ground",
+    "recipe": "theatre",
+    "finish": "concrete",
+    "note": "The seats are the hillside, rising 45 m from the shell: the survey's slope is kept, not levelled into one floor.",
+    "source": "USA Structures footprint 10116115, 7,604 m2, under OpenStreetMap's Hollywood Bowl area; the lidar falls from 215 m at its back to 170 m at the shell",
+    "retain": 1,
+    "at": [
+      -118.33941,
+      34.111811
+    ]
+  },
+  {
+    "id": "cinerama-dome",
+    "name": "Pacific Theatres Cinerama Dome",
+    "layout": "geodesic",
+    "recipe": "theatre",
+    "finish": "limestone",
+    "note": "The geodesic dome on Sunset Boulevard, 38 m across and 21 m high.",
+    "source": "OpenStreetMap way 423247168 'Pacific Theatres Cinerama Dome', roof:shape=dome, height 21 (blocks/labels.json)",
+    "retain": 1,
+    "at": [
+      -118.328084,
+      34.097624
+    ]
+  }
+]

@@ -12,6 +12,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { mapSizeX, mapSizeZ } from "../../shared/coords.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
 import { Base } from "../mapworld/base.ts";
+import { workFolder } from "../maps/work.ts";
 import { place } from "./files.ts";
 import { indexedPng } from "./quantize.ts";
 import { scaled, type Picture } from "./posters.ts";
@@ -104,8 +105,11 @@ function sides(map: ReturnType<typeof parseMap>, side: number): [number, number]
   return w >= d ? [side, Math.max(1, Math.round((side * d) / w))] : [Math.max(1, Math.round((side * w) / d)), side];
 }
 
-/** The ground as the game colours it, each pixel the mean of the samples under it, shaded by its slope; water by its depth. */
-function ground(palette: Uint8Array, map: ReturnType<typeof parseMap>, side: number): { rgba: Uint8Array; width: number; height: number } {
+/**
+ * The ground as the game colours it, each pixel the mean of the samples under it, shaded by its slope; water by its
+ * depth. Also the reference a map's painted picture is made over (tools/maps/art.ts).
+ */
+export function ground(palette: Uint8Array, map: ReturnType<typeof parseMap>, side: number): { rgba: Uint8Array; width: number; height: number } {
   const hf = mapHeightfield(map);
   const [W, H] = sides(map, side);
   const out = new Uint8Array(W * H * 4);
@@ -246,7 +250,12 @@ export function buildAtlases(reg: Registry, palette: Uint8Array, maps: string, o
       return n ? [{ of: name, ...mark(name, x / n, z / n) }] : [];
     });
 
-    const source = join(ROOT, "assets/source/maps", slug);
+    let source: string;
+    try {
+      source = workFolder(slug);
+    } catch {
+      continue;
+    }
     const worldFile = join(source, "world/world.json");
     const world: WorldPlaces = existsSync(worldFile) ? JSON.parse(readFileSync(worldFile, "utf8")) : {};
     const base = new Base(source);

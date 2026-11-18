@@ -1,0 +1,59 @@
+{
+  "pod-tower": {
+    "note": "An observation tower: a round concrete shaft on three tapering legs, a pod of twelve storeys at its top with a glazed band, a shallow dome over it and a bowl under it, and a mast above",
+    "operations": [
+      {"op": "parts", "parts": [
+        ["zshaft8", 0, 8, 14, "limestone", -90], ["zshaft8", 0, 24, 14, "limestone", -90], ["zshaft8", 0, 40, 14, "limestone", -90], ["zshaft8", 0, 56, 14, "limestone", -90],
+        ["zshaft8", 0, 8, 22, "limestone", -90], ["zshaft8", 0, 24, 22, "limestone", -90],
+        ["zshaft8", -12.1, 8, -7, "limestone", 150], ["zshaft8", -12.1, 24, -7, "limestone", 150], ["zshaft8", -12.1, 40, -7, "limestone", 150], ["zshaft8", -12.1, 56, -7, "limestone", 150],
+        ["zshaft8", -19.1, 8, -11, "limestone", 150], ["zshaft8", -19.1, 24, -11, "limestone", 150],
+        ["zshaft8", 12.1, 8, -7, "limestone", 30], ["zshaft8", 12.1, 24, -7, "limestone", 30], ["zshaft8", 12.1, 40, -7, "limestone", 30], ["zshaft8", 12.1, 56, -7, "limestone", 30],
+        ["zshaft8", 19.1, 8, -11, "limestone", 30], ["zshaft8", 19.1, 24, -11, "limestone", 30]
+      ]},
+      {"op": "ring", "radius": 9.5, "shape": "zshaft8", "finish": "limestone", "heights": [8, 24, 40, 56, 72, 88, 104, 120, 136, 152, 168, 184, 200, 216, 232]},
+      {"op": "dome", "radius": 22, "y": 262, "drum": 18, "rise": 8, "below": 10, "shape": "crown", "finish": "limestone"},
+      {"op": "ring", "radius": 22.6, "shape": "zpanel8", "finish": "blue", "heights": [250, 256]},
+      {"op": "parts", "parts": [["fin16", 0, 278, 0, "steel"], ["fin16", 0, 294, 0, "steel"], ["fin16", 0, 310, 0, "steel"], ["fin16", 0, 326, 0, "steel"], ["fin16", 0, 342, 0, "steel"], ["trim4", 0, 350, 0, "steel"]]}
+    ]
+  },
+  "sphere": {
+    "note": "A sphere standing on the ground: courses of solid blocks round its middle, a hemisphere above it closed from above and its lower part carried down into the ground",
+    "operations": [
+      {"op": "dome", "at": [-2.9, 0.6], "radius": 78, "y": 34, "drum": 0, "below": 40, "shape": "zmass8", "finish": "steel"}
+    ]
+  },
+  "covered-stadium": {
+    "note": "A closed stadium: the bowl of seats, a glazed wall round it open on one side to the doors that look out from the field, and a shallow roof of plates over all",
+    "operations": [
+      {"op": "arena"},
+      {"op": "ring", "radii": [125, 121], "shape": "zshaft8", "finish": "steel", "heights": [8, 24, 40], "arc": [250, 560]},
+      {"op": "vault", "y": 56, "rise": 10, "shape": "floor16", "finish": "limestone"}
+    ]
+  },
+  "exhibition-hall": {
+    "note": "Exhibition halls: one open floor under one roof as far as the footprint reaches, columns and the halls' walls only",
+    "operations": [
+      {"op": "stack", "hall": true, "playable": 1}
+    ]
+  },
+  "pyramid": {
+    "note": "A stepped pyramid of solid courses round a hollow atrium, with a passage through its foot on its front and back",
+    "operations": [
+      {"op": "pyramid", "half": [90.9, 92], "shape": "zmass8", "finish": "steel"},
+      {"op": "portal", "width": 12, "height": 12}
+    ]
+  },
+  "observation-wheel": {
+    "note": "An observation wheel in a vertical plane over its boarding building: a rim of blocks, cabins outside it and a leg each side of the hub",
+    "operations": [
+      {"op": "stack", "height": 8, "playable": 2},
+      {"op": "wheel", "at": [-12.9, -18.3], "radius": 79, "y": 88, "turn": 0, "cabins": 28, "shape": "crown", "finish": "limestone"}
+    ]
+  },
+  "lattice-tower": {
+    "note": "A lattice tower narrowing up a curve to its top, with a ring of beams every 8 m, a leg at each corner, two decks and a spire",
+    "operations": [
+      {"op": "lattice", "half": [29, 29], "tip": 1.5, "profile": 2, "every": 8, "decks": [30, 140], "finish": "rust"}
+    ]
+  }
+}

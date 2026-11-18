@@ -523,9 +523,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // went nearest first.
   // The eight tanker salvage meshes shift the mesh indices used by this fixture. It was 1887476422 until the street's
   // new signs (one way, do not enter, no parking, the speed limits, crossing, dead end and a bare post, content/street.ts)
-  // added their grey meshes; without those it is that again. It was 2381528838 until the parked box trailer added one
-  // static mesh to the fixture pack (2392182870 with the trailer and without the signs).
-  expect(hash).toBe(2758595286);
+  // added their grey meshes; without those it is that again. It was 2381528838 until a tall building's cornice added its
+  // grey mesh; without it it is that again. It was 1469328006 until the parked box trailer added one static mesh to the
+  // fixture pack (2758595286 with the trailer and without the cornice, 2392182870 with it and without the signs).
+  expect(hash).toBe(3919525142);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -554,9 +555,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 2430603422 until the street furniture's grey meshes; without them it is that again. It was 3628556772 until
   // a static's vertices said their faces' corners and outer borders, as the hash above, and 2281949996 until the ruins'
   // kit, street pieces, broken tops, rubble, leaning pieces, vines and broken parapets, as above, and 1004296491 until
-  // the far wood was drawn after the near store and opaque draws went nearest first, as above, and 3205222107 until the
-  // street's new signs, as above, and 1872585659 until the box trailer, as above (2334868635 without the signs).
-  expect(saddled.hash).toBe(111632907);
+  // the far wood was drawn after the near store and opaque draws went nearest first, as above, 3205222107 until the
+  // street's new signs, as above, 1872585659 until a tall building's cornice, as above, and 1672489163 until the box
+  // trailer, as above (111632907 with the trailer and without the cornice, 2334868635 with it and without the signs).
+  expect(saddled.hash).toBe(1881681739);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

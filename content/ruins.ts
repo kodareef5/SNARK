@@ -280,6 +280,8 @@ export const RUIN_BREAKS = {
   // What fell from a standing wall along its foot, two runs of it.
   zskirt1: skirt("zskirt1", [[-3.7, -0.4, 0.5, 1.0], [-0.8, 3.6, 0.38, 1.1]], [[-2.6, 0.75, 0.2, 101], [1.6, 0.95, 0.24, 99], [-0.4, 0.7, 0.16, 102]], 1.15),
   zskirt2: skirt("zskirt2", [[-3.8, 0.2, 0.36, 0.95], [-0.2, 3.8, 0.55, 1.15]], [[-2.2, 0.8, 0.18, 99], [0.4, 1.0, 0.22, 101], [2.6, 0.7, 0.15, 102]], 1.2),
+  // A slab-edge cornice round a whole tall building's roof, two corbelled steps standing 1.1 m out from its wall line.
+  zcornice: centred(shaped("zcornice"), { boxes: [{ at: [0, -0.275, 0.675], half: [4, 0.275, 0.425] }] }, { boxes: [{ at: [0, -0.15, 0.675], half: [4, 0.15, 0.425] }, { at: [0, -0.425, 0.5], half: [4, 0.125, 0.25] }] }),
   zcrown1: crown("zcrown1", CROWNS[0]!), zcrown2: crown("zcrown2", CROWNS[1]!), zcrown3: crown("zcrown3", CROWNS[2]!), zcrown4: crown("zcrown4", CROWNS[3]!), zcrown5: crown("zcrown5", CROWNS[4]!), zcrown6: crown("zcrown6", CROWNS[5]!),
   zhang: centred(shaped("zhang"), { hulls: [{ corners: hanging() }] }, { hulls: [{ corners: hanging() }], boxes: [{ at: [-1.45, -0.3, 0.45], half: [0.04, 0.2, 0.04], color: RUST }] }),
   zleancol: centred(shaped("zleancol"), { hulls: [{ corners: LEAN_COLUMN }] }, { hulls: [{ corners: LEAN_COLUMN }], boxes: [{ at: [-0.18, 3.25, 0.55], half: [0.025, 0.3, 0.025], color: RUST }, { at: [0.15, 3.0, 0.3], half: [0.025, 0.25, 0.025], color: RUST }] }),
@@ -347,6 +349,7 @@ const ONLY_FINISHES: Partial<Record<RuinShape, readonly RuinFinish[]>> = {
 };
 /** Whether a shape comes in that finish: a pitched roof in its own few; otherwise concrete always, the facade pieces and the z kit in every finish. */
 export const finished = (name: RuinShape, finish: RuinFinish): boolean => ONLY_FINISHES[name]?.includes(finish) ?? (finish === "concrete" || (finish !== "fracture" && name !== "zshrub" && name !== "zrooftree" && (PAINTED.has(name) || name.startsWith("z"))));
+const NEAR_ONLY = new Set<string>(["zwalk8", "zwalk8g", "zcurbramp", "zcurbrampl", "zdrain", "zutility", "zskirt1", "zskirt2", "zvine", "zpipe4", "zpipefoot", "zpipetop", "zleancol", "zshrub"]);
 const BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([name, size]) =>
   (Object.keys(RUIN_FINISHES) as RuinFinish[]).filter((finish) => finished(name as RuinShape, finish)).map((finish) => ({
     type: "structure", class: "static", id: ruinKind(name as RuinShape, finish), mesh: name === "zshrub" ? "core:creeper_3" : name === "zrooftree" ? "core:tree_1" : "box",
@@ -355,6 +358,8 @@ const BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([na
     ...(name in RUIN_SLOPES ? staticOf(ruinKind(name as RuinShape, finish), RUIN_SLOPES[name as keyof typeof RUIN_SLOPES], RUIN_FINISHES[finish]) : {}),
     ...(name in RUIN_FACADES ? staticOf(ruinKind(name as RuinShape, finish), RUIN_FACADES[name as FacadeModule], RUIN_FINISHES[finish]) : {}),
     ...(name in RUIN_BREAKS ? staticOf(ruinKind(name as RuinShape, finish), RUIN_BREAKS[name as BreakPiece], RUIN_FINISHES[finish]) : {}),
+    // The street's pieces and a building's small kit are drawn near only, left out of the far city's lattice and mass.
+    ...(NEAR_ONLY.has(name) ? { near: true as const } : {}),
     // Far-feed colours average every static sharing a palette entry. Keep foliage separate from built wood.
     ...(name === "zshrub" || name === "zrooftree" ? { color: 196, material: "core:mat_wood", hp: 500 } : {}),
   })),

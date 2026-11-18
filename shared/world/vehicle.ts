@@ -93,7 +93,7 @@ export class StaticVehicleWorld implements VehicleWorld {
   private readonly center = new Float64Array(3);
   private readonly supportWorld: CollisionWorld;
 
-  constructor(world: CollisionWorld, surfaceAt: VehicleSurfaceAt = (hit, ref) => vehicleSurfaceAt(world, hit, ref), ignoreNode?: (ref: number) => boolean) {
+  constructor(world: CollisionWorld, surfaceAt: VehicleSurfaceAt = (hit, ref, x, z) => vehicleSurfaceAt(world, hit, ref, x, z), ignoreNode?: (ref: number)=> boolean) {
     this.world = world;
     this.solids = new StaticVehicleSolids(world, ignoreNode);
     this.surfaceAt = surfaceAt;

@@ -165,9 +165,45 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
   };
   type Candidate = Omit<Parked, "condition" | "fuel"> & { rank: number; clutter: number; line: number; room: Room };
   const candidates: Candidate[] = []; const length: Record<string, number> = {};
+  const STREETS = new Set<number>([S.STREET, S.HIGHWAY]);
+  // A lot's car stands in its stall, on the lot's ground or its aisle's.
+  const LOT_GROUND = new Set<number>([S.LOT, S.STREET]);
+  /** A car of a kind drawn for its district at (x, z), nose along (dx, dz), if every test passes there. */
+  const tryPlace = (x: number, z: number, dx: number, dz: number, lot: boolean, line: number, under: ReadonlySet<number>, chosen?: string): void => {
+    const index = ground.district[at(x, z)]!; const district = site.world.districts[index - 1]?.name ?? "";
+    if (!district) return;
+    const mix = mixOf(index); if (mix.length === 0) return;
+    const id = chosen ?? pick(mix, hash3(Math.round(z), Math.round(x), seed + 1207)).id; const room = rooms.get(id)!; const { spec } = room;
+    if (Math.min(x - x0, z - z0, x1 - x, z1 - z) < room.reach) return;
+    const yaw = Math.atan2(dx, dz); const c = Math.cos(yaw); const sn = Math.sin(yaw);
+    const corner = (u: number, v: number): [number, number] => [x + u * c + v * sn, z - u * sn + v * c];
+    const wheels = [[spec.track / 2, spec.wheelbase / 2], [-spec.track / 2, spec.wheelbase / 2], [spec.track / 2, -spec.wheelbase / 2], [-spec.track / 2, -spec.wheelbase / 2]].map(([u, v]) => corner(u!, v!));
+    const body = [[-spec.halfWidth, -spec.halfLength], [spec.halfWidth, -spec.halfLength], [spec.halfWidth, spec.halfLength], [-spec.halfWidth, spec.halfLength], [0, 0]].map(([u, v]) => corner(u!, v!));
+    if (body.some(([px, pz]) => !under.has(ground.surface[at(px, pz)]!) || site.groundAt(px, pz) < .3)) return;
+    const h = wheels.map(([px, pz]) => site.groundAt(px, pz)); const y = site.groundAt(x, z);
+    // The ground's normal under the four wheels, from its slope along and across.
+    const along = ((h[0]! + h[1]!) - (h[2]! + h[3]!)) / 2 / spec.wheelbase; const across = ((h[0]! + h[2]!) - (h[1]! + h[3]!)) / 2 / spec.track;
+    if (1 / Math.hypot(1, along, across) < spec.minGroundNormal + .1 || Math.max(...h) - Math.min(...h) > spec.maxRise) return;
+    const degrees = yaw * 180 / Math.PI;
+    if (obstacles.hits({ x, y: y + (spec.height + 1) / 2, z, yaw: degrees, size: [room.side * 2, spec.height + 1, room.end * 2] }) || crossesRoute(x, z, c, sn, y, room)) return;
+    candidates.push({ kind: id, x, z, yaw: degrees, district, lot, rank: hash3(Math.round(x), Math.round(z), seed + 1213), clutter: obstacles.count(x, z, 12), line, room });
+  };
+  // A lot's stalls where the streets stage drew them (tools/mapdata/streets.py), in the map's projection metres: a car
+  // in a stall, nose to the aisle it drives out by. Where there are none, a lot's cars stand along its road's kerb.
+  const stallsFile = join(site.source, "base", "stalls.json");
+  const stalls = existsSync(stallsFile) ? JSON.parse(readFileSync(stallsFile, "utf8")) as { lot: string; e: number; n: number; fe: number; fn: number }[] : [];
+  const { west, north } = ground.grid;
+  const lotLine = new Map<string, number>();
+  for (const st of stalls) {
+    if (!lotLine.has(st.lot)) lotLine.set(st.lot, -1 - lotLine.size);
+    const x = x1 - (st.e - west); const z = z1 - (north - st.n);
+    const fx = x1 - (st.fe - west); const fz = z1 - (north - st.fn);
+    const span = Math.hypot(fx - x, fz - z) || 1;
+    tryPlace(x, z, (fx - x) / span, (fz - z) / span, true, lotLine.get(st.lot)!, LOT_GROUND);
+  }
   for (const s of roads.segments) {
     const lot = rules.lots.classes.includes(s.mtfcc);
-    if (!lot && !rules.classes.includes(s.mtfcc)) continue;
+    if (lot ? stalls.length > 0 : !rules.classes.includes(s.mtfcc)) continue;
     const ex = s.bx - s.ax; const ez = s.bz - s.az; const span = Math.hypot(ex, ez); const dx = ex / span; const dz = ez / span;
     for (let d = 0; d < span; d += 4) {
       const cx = s.ax + dx * d; const cz = s.az + dz * d;
@@ -176,23 +212,11 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
       if (!lot) length[district] = (length[district] ?? 0) + 4;
       // A car park's road may take a car at every step, a street one step in six.
       if ((!lot && hash3(Math.round(cx), Math.round(cz), seed + 1201) % 6 !== 0) || roads.junction(cx, cz, rules.junction)) continue;
+      // At the right kerb of the way it was drawn, nose along it: the kind's half width in from the kerb.
       const mix = mixOf(index); if (mix.length === 0) continue;
-      const { id } = pick(mix, hash3(Math.round(cz), Math.round(cx), seed + 1207)); const room = rooms.get(id)!; const { spec } = room;
-      // At the right kerb of the way it was drawn, nose along it.
-      const off = s.half - spec.halfWidth - .3; const x = cx - dz * off; const z = cz + dx * off;
-      if (Math.min(x - x0, z - z0, x1 - x, z1 - z) < room.reach) continue;
-      const yaw = Math.atan2(dx, dz); const c = Math.cos(yaw); const sn = Math.sin(yaw);
-      const corner = (u: number, v: number): [number, number] => [x + u * c + v * sn, z - u * sn + v * c];
-      const wheels = [[spec.track / 2, spec.wheelbase / 2], [-spec.track / 2, spec.wheelbase / 2], [spec.track / 2, -spec.wheelbase / 2], [-spec.track / 2, -spec.wheelbase / 2]].map(([u, v]) => corner(u!, v!));
-      const under = [[-spec.halfWidth, -spec.halfLength], [spec.halfWidth, -spec.halfLength], [spec.halfWidth, spec.halfLength], [-spec.halfWidth, spec.halfLength], [0, 0]].map(([u, v]) => corner(u!, v!));
-      if (under.some(([px, pz]) => (ground.surface[at(px, pz)] !== S.STREET && ground.surface[at(px, pz)] !== S.HIGHWAY) || site.groundAt(px, pz) < .3)) continue;
-      const h = wheels.map(([px, pz]) => site.groundAt(px, pz)); const y = site.groundAt(x, z);
-      // The ground's normal under the four wheels, from its slope along and across.
-      const along = ((h[0]! + h[1]!) - (h[2]! + h[3]!)) / 2 / spec.wheelbase; const across = ((h[0]! + h[2]!) - (h[1]! + h[3]!)) / 2 / spec.track;
-      if (1 / Math.hypot(1, along, across) < spec.minGroundNormal + .1 || Math.max(...h) - Math.min(...h) > spec.maxRise) continue;
-      const degrees = yaw * 180 / Math.PI;
-      if (obstacles.hits({ x, y: y + (spec.height + 1) / 2, z, yaw: degrees, size: [room.side * 2, spec.height + 1, room.end * 2] }) || crossesRoute(x, z, c, sn, y, room)) continue;
-      candidates.push({ kind: id, x, z, yaw: degrees, district, lot, rank: hash3(Math.round(x), Math.round(z), seed + 1213), clutter: obstacles.count(x, z, 12), line: s.line, room });
+      const { id } = pick(mix, hash3(Math.round(cz), Math.round(cx), seed + 1207)); const { spec } = rooms.get(id)!;
+      const off = s.half - spec.halfWidth - .3;
+      tryPlace(cx - dz * off, cz + dx * off, dx, dz, lot, s.line, STREETS, id);
     }
   }
   // Neither one's room meets the other's body: each may open its doors, and they stand clear of each other.

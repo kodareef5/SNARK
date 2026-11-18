@@ -27,7 +27,7 @@ export interface Region {
 }
 
 const SAND = new Set<number>([S.BEACH, S.DUNE]);
-const OPEN = new Set<number>([S.OPEN, S.GREEN, S.COURT, S.STREET, S.YARD, S.DUNE, S.BEACH, S.CANOPY, S.DESERT, S.PAVED]);
+const OPEN = new Set<number>([S.OPEN, S.GREEN, S.COURT, S.STREET, S.YARD, S.DUNE, S.BEACH, S.CANOPY, S.DESERT, S.PAVED, S.SIDEWALK, S.WALKWAY, S.PLAZA, S.LOT]);
 // The beds of the sea and of lakes are under water, and a spawn point by a lake keeps clear of its shallows.
 const BLOCKING = new Set<number>([S.HEAP, S.WALL, S.POOL, S.FORD, S.DECK, S.MARSH, S.MANGROVE, S.SHALLOW, S.FLAT, S.DEEP, S.CHANNEL]);
 

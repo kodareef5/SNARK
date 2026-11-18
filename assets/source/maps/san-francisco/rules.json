@@ -1,0 +1,224 @@
+{
+  "recipes": {
+    "tower": {
+      "bay": 8,
+      "height": 48,
+      "retain": 0.72,
+      "holes": 0.15,
+      "wall": 0.18,
+      "accent": "blue",
+      "feature": "podium",
+      "play": "Two open ground approaches, stair refuge, broken upper decks and an exposed roof."
+    },
+    "hotel": {
+      "bay": 8,
+      "height": 12,
+      "retain": 0.85,
+      "holes": 0.12,
+      "wall": 0.4,
+      "accent": "rose",
+      "feature": "balconies",
+      "play": "Room partitions beside a common corridor, balconies and roof shelter."
+    },
+    "apartment": {
+      "bay": 8,
+      "height": 12,
+      "retain": 0.8,
+      "holes": 0.16,
+      "wall": 0.4,
+      "accent": "limestone",
+      "feature": "rooms",
+      "play": "Small defensible rooms open to a traversable common stair."
+    },
+    "house": {
+      "bay": 4,
+      "height": 4,
+      "retain": 1,
+      "holes": 0.12,
+      "wall": 0.6,
+      "accent": "clay",
+      "feature": "porch",
+      "play": "A small room, front porch, breached rear and a broken stepped roof."
+    },
+    "mall": {
+      "bay": 8,
+      "height": 12,
+      "retain": 0.8,
+      "holes": 0.18,
+      "wall": 0.28,
+      "accent": "limestone",
+      "feature": "atrium",
+      "play": "Shops flank an open central court; upper galleries expose crossing survivors."
+    },
+    "shop": {
+      "bay": 4,
+      "height": 4,
+      "retain": 1,
+      "holes": 0.16,
+      "wall": 0.4,
+      "accent": "rose",
+      "feature": "arcade",
+      "play": "Open storefronts and a repeating canopy along the public edge."
+    },
+    "shed": {
+      "bay": 8,
+      "height": 8,
+      "retain": 1,
+      "holes": 0.38,
+      "wall": 0.3,
+      "accent": "rust",
+      "feature": "trusses",
+      "play": "Long clear aisles, loading doors and roof fragments on structural frames."
+    },
+    "garage": {
+      "bay": 8,
+      "height": 16,
+      "retain": 0.75,
+      "holes": 0.12,
+      "wall": 0.05,
+      "accent": "concrete",
+      "feature": "decks",
+      "play": "Open decks with low cover and a stair in place of a tilted vehicle ramp."
+    },
+    "marina": {
+      "bay": 8,
+      "height": 4,
+      "retain": 1,
+      "holes": 0.1,
+      "wall": 0,
+      "accent": "rust",
+      "feature": "jetty",
+      "play": "A low quay shelter and exposed walkways; no invented seawall through open water."
+    },
+    "station": {
+      "bay": 8,
+      "height": 8,
+      "retain": 1,
+      "holes": 0.15,
+      "wall": 0.1,
+      "accent": "steel",
+      "feature": "platform",
+      "play": "An open lower passage and elevated waiting deck."
+    },
+    "bridge": {
+      "bay": 8,
+      "height": 4,
+      "retain": 1,
+      "holes": 0.1,
+      "wall": 0,
+      "accent": "concrete",
+      "feature": "infrastructure",
+      "play": "Existing causeway alignment gets parapet remnants. Authored water gaps stay open."
+    },
+    "park": {
+      "bay": 8,
+      "height": 0,
+      "retain": 1,
+      "holes": 0,
+      "wall": 0,
+      "accent": "limestone",
+      "feature": "garden",
+      "play": "Sparse benches and a low gathering plinth, leaving paths and vegetation open."
+    },
+    "monument": {
+      "bay": 4,
+      "height": 12,
+      "retain": 1,
+      "holes": 0,
+      "wall": 0.1,
+      "accent": "limestone",
+      "feature": "marker",
+      "play": "A visible stepped marker with cover at its foot."
+    },
+    "civic": {
+      "bay": 8,
+      "height": 12,
+      "retain": 0.9,
+      "holes": 0.12,
+      "wall": 0.45,
+      "accent": "limestone",
+      "feature": "colonnade",
+      "play": "A public colonnade, assembly room and protected upper refuge."
+    },
+    "theatre": {
+      "bay": 8,
+      "height": 16,
+      "retain": 0.85,
+      "holes": 0.3,
+      "wall": 0.5,
+      "accent": "rose",
+      "feature": "stage",
+      "play": "An open auditorium and raised stage watched from upper galleries."
+    },
+    "arena": {
+      "bay": 8,
+      "height": 32,
+      "retain": 0.85,
+      "holes": 0.4,
+      "wall": 0.1,
+      "accent": "limestone",
+      "feature": "bowl",
+      "play": "Open arena floor surrounded by stepped seating, concourse and broken roof rim."
+    },
+    "hall": {
+      "bay": 8,
+      "height": 20,
+      "retain": 0.85,
+      "holes": 0.4,
+      "wall": 0.15,
+      "accent": "limestone",
+      "feature": "trusses",
+      "play": "Very long hall sightlines interrupted by columns and debris islands."
+    },
+    "school": {
+      "bay": 8,
+      "height": 8,
+      "retain": 1,
+      "holes": 0.15,
+      "wall": 0.45,
+      "accent": "clay",
+      "feature": "court",
+      "play": "Classroom wings and an open court with several approaches."
+    },
+    "hospital": {
+      "bay": 8,
+      "height": 24,
+      "retain": 0.8,
+      "holes": 0.1,
+      "wall": 0.5,
+      "accent": "mint",
+      "feature": "rooms",
+      "play": "Wards and a broad entry canopy; corridors connect protected stair landings."
+    },
+    "service": {
+      "bay": 8,
+      "height": 8,
+      "retain": 1,
+      "holes": 0.1,
+      "wall": 0.55,
+      "accent": "clay",
+      "feature": "bays",
+      "play": "Large apparatus bays below a defended office gallery and observation stub."
+    },
+    "utility": {
+      "bay": 8,
+      "height": 8,
+      "retain": 1,
+      "holes": 0.2,
+      "wall": 0.1,
+      "accent": "rust",
+      "feature": "tanks",
+      "play": "Tank remnants and service yards with narrow approaches."
+    },
+    "fabric": {
+      "bay": 8,
+      "height": 8,
+      "retain": 0.8,
+      "holes": 0.2,
+      "wall": 0.35,
+      "accent": "concrete",
+      "feature": "rooms",
+      "play": "Unknown use: modest open shell and one climbable refuge, never a speculative landmark."
+    }
+  }
+}

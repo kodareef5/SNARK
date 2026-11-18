@@ -1,0 +1,142 @@
+[
+  {
+    "name": "SLS South Beach",
+    "at": [
+      -80.128991,
+      25.792622
+    ],
+    "set": {
+      "height_m": 62.2,
+      "height_from": "reviewed_source",
+      "levels": 12
+    },
+    "reason": "City historic-board exhibit gives Ritz Plaza at 1701 Collins Avenue as 204 feet. Renovation architect confirms 12 storeys. The round-one postcard shows the tall central shaft.",
+    "sources": [
+      "https://miamibeach.novusagenda.com/AgendaPublic/AttachmentViewer.ashx?AttachmentID=52657&ItemID=24129",
+      "https://arquitectonica.com/architecture/project/sls-south-beach/"
+    ],
+    "estimate": false
+  },
+  {
+    "name": "Delano South Beach",
+    "at": [
+      -80.129256,
+      25.792132
+    ],
+    "set": {
+      "height_m": 45.7,
+      "height_from": "reviewed_source",
+      "levels": 14
+    },
+    "reason": "City exhibit gives Delano at 1685 Collins Avenue as 150 feet; the tourism bureau property report gives 14 storeys. The joined 50-storey tag conflicts with that identified property record.",
+    "sources": [
+      "https://miamibeach.novusagenda.com/AgendaPublic/AttachmentViewer.ashx?AttachmentID=52657&ItemID=24129",
+      "https://www.miamiandbeaches.com/getmedia/bf6f1d20-d079-46d1-afa2-e36f527bf935/New_Hotels_Pipeline_11-22_2024.pdf"
+    ],
+    "estimate": false
+  },
+  {
+    "name": "Aria on the Bay",
+    "at": [
+      -80.186975,
+      25.793221
+    ],
+    "set": {
+      "height_m": 163,
+      "height_from": "reviewed_source",
+      "levels": 53
+    },
+    "reason": "CVU architectural height and floors for the named tower supersede a low survey roof return.",
+    "sources": [
+      "https://www.skyscrapercenter.com/building/aria-on-the-bay/17497"
+    ],
+    "estimate": false
+  },
+  {
+    "name": "Paraiso Bayviews",
+    "at": [
+      -80.187374,
+      25.80669
+    ],
+    "set": {
+      "height_m": 152.4,
+      "height_from": "reviewed_source",
+      "levels": 44
+    },
+    "reason": "CVU architectural height and floors replace the low survey roof return and inconsistent floor count.",
+    "sources": [
+      "https://www.skyscrapercenter.com/building/paraiso-bayviews/17527"
+    ],
+    "estimate": false
+  },
+  {
+    "name": "Courts Brickell Key",
+    "at": [
+      -80.186673,
+      25.768486
+    ],
+    "set": {
+      "height_m": 102.4,
+      "height_from": "reviewed_source",
+      "levels": 34
+    },
+    "reason": "CVU height; developer independently confirms 34 storeys.",
+    "sources": [
+      "https://www.skyscrapercenter.com/building/courts-brickell-key/20629",
+      "https://www.swireproperties.com/en/portfolio/past-developments/courts-brickell-key/"
+    ],
+    "estimate": false
+  },
+  {
+    "name": "Miami Plaza",
+    "at": [
+      -80.193664,
+      25.789838
+    ],
+    "set": {
+      "height_m": 112.2,
+      "height_from": "reviewed_source",
+      "levels": 35
+    },
+    "reason": "CVU architectural height; keep its 35-floor architectural count rather than mixing the developer marketing count of 36.",
+    "sources": [
+      "https://www.skyscrapercenter.com/building/miami-plaza/35128"
+    ],
+    "estimate": false
+  },
+  {
+    "name": "Art Plaza",
+    "at": [
+      -80.192991,
+      25.788129
+    ],
+    "set": {
+      "height_m": 99.1,
+      "height_from": "reviewed_source",
+      "levels": 34
+    },
+    "reason": "Development document specifies twin 325-foot towers; developer confirms 34 floors. Height is from the published design, not a new survey.",
+    "sources": [
+      "https://images2.loopnet.com/d2/o-HCjfW9_dXUJrsVozn5ARVZ9cqeyLWOVpPZUdI1mxg/document.pdf",
+      "https://melogroup.us/"
+    ],
+    "estimate": false
+  },
+  {
+    "name": "Icon Bay",
+    "at": [
+      -80.18724,
+      25.8037
+    ],
+    "set": {
+      "height_m": 136.5,
+      "height_from": "reviewed_source",
+      "levels": 42
+    },
+    "reason": "Current CVU record gives 136.5 metres and 42 floors. Prefer that record over the 150.6 metre figure repeated in secondary summaries.",
+    "sources": [
+      "https://www.skyscrapercenter.com/building/icon-bay/17094"
+    ],
+    "estimate": false
+  }
+]

@@ -1,6 +1,7 @@
-// A playable map from a painted map's base layers: bun tools/mapworld/build.ts <name or folder> [--release]
+// A playable map from a city's base layers: bun tools/mapworld/build.ts <name or folder> [--release]
 //
-// Reads assets/source/maps/<name>/base, or a folder named by a path (its last part the map's name), (its VALUES.md says what each layer holds) and world/world.json (the sea, the
+// Reads the city's work folder (tools/maps/work.ts; tools/maps/city.ts runs this as its last stage), or a folder named by
+// a path (its last part the map's name): base/ (its VALUES.md says what each layer holds) and world/world.json (the sea, the
 // districts, where survivors arrive and where obelisks stand), writes the folder of layers tools/map.ts builds from to
 // var/maps/<name>/layers, then the map file var/maps/<name>.snmap, and says what it holds. The same inputs give the same
 // bytes. Its copies for the wire take a few seconds; --release writes the tightest, as a map that ships has (tools/map/pack.ts).
@@ -19,7 +20,7 @@ import { lakeSquares } from "./lakes.ts";
 import { writeGrey } from "../map/png.ts";
 import { Base } from "./base.ts";
 import type { BridgeRecord } from "./bridges.ts";
-import { makeGround, S, type World } from "./ground.ts";
+import { groundClasses, makeGround, S, type World } from "./ground.ts";
 import { makeNodes, ZONE_CELL } from "./nodes.ts";
 import { placeObelisks, placeRegions, placeSpawns, staticCover } from "./places.ts";
 import { STATIC_LAYERS, siteOf, type StaticPiece } from "./statics.ts";
@@ -32,13 +33,14 @@ import { harbourWrecks, vehicleMeshes } from "../boat/wrecks.ts";
 import type { BuildingLabel, PublicPlace } from "./labels.ts";
 import { growRuins } from "./ruin-growth.ts";
 import { landmarkDefs, landmarksOf, layLandmarkGround, placeLandmarks } from "./landmarks.ts";
+import { workFolder } from "../maps/work.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 
 export async function buildMap(named: string, release = false, output = join(ROOT, "var/maps")): Promise<{ file: string; stats: Record<string, unknown> }> {
   const t0 = performance.now();
   const lap = (what: string): void => console.log(`${((performance.now() - t0) / 1000).toFixed(1).padStart(5)} s  ${what}`);
-  const source = named.includes("/") ? resolve(named) : join(ROOT, "assets/source/maps", named);
+  const source = named.includes("/") ? resolve(named) : workFolder(named);
   const name = basename(source);
   const base = new Base(source);
   const world = JSON.parse(readFileSync(join(source, "world/world.json"), "utf8")) as World;
@@ -145,8 +147,14 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const view = new DataView(heights.buffer);
   let deepest = Infinity;
   let highest = -Infinity;
+  let below = 0;
   for (let i = 0; i < nx * nz; i++) {
-    const v = Math.max(0, Math.min(65535, Math.round((ground.height[i]! - world.minY) / world.stepY)));
+    const raw = Math.round((ground.height[i]! - world.minY) / world.stepY);
+    // Above the top a hill would be cut flat, silently: the map's minY or stepY is wrong for its ground. Below the
+    // floor is deep water's bed, held at the floor.
+    if (raw > 65535) throw new Error(`ground at ${ground.height[i]!.toFixed(1)} m stands over the ${(world.minY + 65535 * world.stepY).toFixed(0)} m this map's minY and stepY reach`);
+    if (raw < 0) below++;
+    const v = Math.max(0, raw);
     view.setUint16(i * 2, v, true);
     const y = world.minY + v * world.stepY;
     if (y < -20 && process.env.DEBUG_LOW) console.log("low", i % nx, Math.floor(i / nx), ground.height[i], ground.surface[i]);
@@ -155,6 +163,7 @@ export async function buildMap(named: string, release = false, output = join(ROO
   }
   put("heights.u16", heights);
   put("tint.u8", tint);
+  put("ground.u8", groundClasses(ground));
   put("plants.png", writeGrey(nodes.across, nodes.down, nodes.plants));
   put("stones.png", writeGrey(nodes.across, nodes.down, nodes.stones));
   put("sea.png", writeGrey(nodes.across, nodes.down, nodes.sea));
@@ -280,7 +289,8 @@ export async function buildMap(named: string, release = false, output = join(ROO
         const d = Math.hypot(c - c0, r - r0) * 2;
         const i = r * nx + c;
         if (d < 60 || d > 140 || r < 0 || c < 0 || r >= nz || c >= nx) continue;
-        if (ground.surface[i] === S.STREET || ground.surface[i] === S.HIGHWAY) {
+        // Seen from where a person would stand: a sidewalk or a plaza, else the street.
+        if ([S.SIDEWALK, S.PLAZA, S.STREET, S.HIGHWAY].includes(ground.surface[i]! as typeof S.STREET)) {
           best = [sizeX - c * 2, sizeZ - r * 2];
           break;
         }
@@ -303,6 +313,7 @@ export async function buildMap(named: string, release = false, output = join(ROO
     staticMaxChunkBeforePacking: maxChunk,
     vehicles: vehicles.length,
     deepestWater: Number(deepest.toFixed(2)),
+    bedHeldAtFloor: below,
     highestGround: Number(highest.toFixed(2)),
     landmarks: statics.length === 0 ? landmarks : [],
     ruins: ground.heaps.ruins.length,

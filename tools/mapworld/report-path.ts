@@ -2,14 +2,15 @@ import { readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { CHUNK_SIZE, FRAME_MIDDLE, type FramedDims } from "../../shared/coords.ts";
 import type { World } from "./ground.ts";
+import { workFolder } from "../maps/work.ts";
 
-/** A map file named on the command line and its source: assets/source/maps/<name>, or the folder after --source. */
+/** A map file named on the command line and its source: the city's work folder (tools/maps/work.ts), or the folder after --source. */
 export function reportPaths(): { mapFile: string; source: string; folder: string; world: World } {
   const args = process.argv.slice(2);
   const mapFile = args.find((a) => a.endsWith(".snmap"));
   if (!mapFile) throw new Error("A map .snmap argument is required");
   const named = args.indexOf("--source");
-  const source = named >= 0 && args[named + 1] ? resolve(args[named + 1]!) : join("assets/source/maps", basename(mapFile, ".snmap"));
+  const source = named >= 0 && args[named + 1] ? resolve(args[named + 1]!) : workFolder(basename(mapFile, ".snmap"));
   const world = JSON.parse(readFileSync(join(source, "world/world.json"), "utf8")) as World;
   return { mapFile, source, world, folder: join(source, "reports", world.ruins?.report ?? "ruins") };
 }

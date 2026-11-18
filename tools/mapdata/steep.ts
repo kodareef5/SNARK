@@ -13,13 +13,14 @@ import { mapHeightfield, mapNodes, parseMap, placeStatics } from "../../shared/w
 import { NodeField } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { Base } from "../mapworld/base.ts";
+import { workFolder } from "../maps/work.ts";
 
 type P = [number, number];
 const map = parseMap(new Uint8Array(readFileSync(process.argv[2] ?? "")));
 const count = Number(process.argv.slice(3).find((a) => !a.startsWith("--")) ?? 12);
 const ground = process.argv.includes("--ground-only");
 const plants = !ground && !process.argv.includes("--no-plants");
-const city = `assets/source/maps/${map.id.split(":")[1]}`;
+const city = workFolder(map.id.split(":")[1]!);
 const reg = compileContent(CORE_CONTENT).registry!;
 const hf = mapHeightfield(map);
 const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);

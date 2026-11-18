@@ -21,6 +21,7 @@ from shapely.ops import transform as project, unary_union
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import folder_arg, save  # noqa: E402
+import streets  # noqa: E402
 
 HIGHWAY = ('S1100', 'S1200')
 # An airfield's paving in roads.png: no street, and no street's wrecks.
@@ -208,6 +209,12 @@ def main():
     dims = m.shape
     water = tiger(m, 'areawater')
     roads = tiger(m, 'roads')
+    # OpenStreetMap's streets in place of TIGER's where it draws them (streets.py); a folder fetched before them keeps TIGER's.
+    elements = streets.read(m)
+    street_stats = None
+    if elements is not None:
+        roads, street_stats = streets.roads(m, elements, roads)
+        m.write_features('roads', roads)
     bld = buildings(m)
     elev = elevation(m)
     valid = elev != -9999
@@ -218,22 +225,37 @@ def main():
     above = m.city['succession'].get('perched_above_sea_m', 2)
     perched, sea_water = [], []
     features = osm_features(m)
+
+    def window(g, pad=0.0):
+        """A polygon's samples, burnt in its own box of the frame's grid (the same pixels a whole-frame burn gives it), and
+        that box's slices: each burnt the whole 66 M-sample frame, thousands of times over a big cut."""
+        from rasterio.transform import Affine as _A
+        x0, y0, x1, y1 = g.buffer(pad).bounds if pad else g.bounds
+        inv = ~m.grid
+        c0, r0 = inv * (x0, y1)
+        c1, r1 = inv * (x1, y0)
+        rs, cs = slice(max(0, int(math.floor(min(r0, r1))) - 1), min(dims[0], int(math.ceil(max(r0, r1))) + 1)), slice(max(0, int(math.floor(min(c0, c1))) - 1), min(dims[1], int(math.ceil(max(c0, c1))) + 1))
+        if rs.stop <= rs.start or cs.stop <= cs.start:
+            return rs, cs, np.zeros((0, 0), bool)
+        tx = m.grid * _A.translation(cs.start, rs.start)
+        return rs, cs, m.burn([(g.buffer(pad) if pad else g, 1)], (rs.stop - rs.start, cs.stop - cs.start), tx) > 0
+
     for g, p in water:
-        mask = m.burn([(g, 1)], dims, m.grid) > 0
-        surveyed = mask & valid
-        if surveyed.sum() >= .5 * max(1, mask.sum()) and float(np.median(elev[surveyed])) > sea + above:
-            perched.append((g, {**p, 'kind': TIGER_WATER.get(p['mtfcc'], 'water')} if features else p, float(np.median(elev[surveyed]))))
+        rs, cs, mask = window(g)
+        surveyed = mask & valid[rs, cs]
+        if surveyed.sum() >= .5 * max(1, mask.sum()) and float(np.median(elev[rs, cs][surveyed])) > sea + above:
+            perched.append((g, {**p, 'kind': TIGER_WATER.get(p['mtfcc'], 'water')} if features else p, float(np.median(elev[rs, cs][surveyed]))))
         else:
             sea_water.append((g, p))
     for g, p in osm_water(m, features, water):
         # A pool's lidar surface may be interpolated across it; the median of what the survey has there stands for it.
-        mask = m.burn([(g, 1)], dims, m.grid) > 0
-        surveyed = mask & valid
+        rs, cs, mask = window(g)
+        surveyed = mask & valid[rs, cs]
         if not surveyed.any():
-            mask = m.burn([(g.buffer(4), 1)], dims, m.grid) > 0
-            surveyed = mask & valid
-        if surveyed.any() and float(np.median(elev[surveyed])) > sea + above:
-            perched.append((g, {**p, 'area_m2': round(g.area, 1)}, float(np.median(elev[surveyed]))))
+            rs, cs, mask = window(g, 4)
+            surveyed = mask & valid[rs, cs]
+        if surveyed.any() and float(np.median(elev[rs, cs][surveyed])) > sea + above:
+            perched.append((g, {**p, 'area_m2': round(g.area, 1)}, float(np.median(elev[rs, cs][surveyed]))))
     m.write_features('perched_water', [(g, {**p, 'surface_navd88_m': round(h, 2), 'above_sea_m': round(h - sea, 2)}) for g, p, h in perched])
     # Water that is dry most of the year, a detention basin or a wash, is listed and left as the ground it is.
     lake = m.burn([(g, 1) for g, p, h in perched if not p.get('intermittent')], dims, m.grid)
@@ -256,6 +278,9 @@ def main():
     save(w, m.base / 'water.png')
     save(b, m.base / 'buildings.png')
     save(rd, m.base / 'roads.png')
+    street_areas = []
+    if elements is not None:
+        street_areas = streets.ground_use(m, dims, streets.walks(m, elements, roads), *streets.areas(m, elements, roads, [g for g, p in bld]), street_stats)
     lc = np.zeros(dims, np.uint8)
     with rasterio.open(m.raw / m.city['nlcd']['file']) as src:
         reproject(rasterio.band(src, 1), lc, src_transform=src.transform, src_crs=src.crs,
@@ -286,6 +311,11 @@ def main():
         biome[(biome == 2) & (nd.gaussian_filter(np.isin(lc, dry).astype('float32'), 4) > .48)] = 10
     # Barren land is beach by the water; inland it is bare ground (a ridge, a quarry, a lot being built on).
     beach = (lc == 31) & (coast < 500)
+    # And every beach OpenStreetMap draws: NLCD calls a city's beaches developed or water as often as barren (South
+    # Beach is classes 23 and 24 to the waterline), and Miami's sand came from its paintings before.
+    drawn_beach = [g for g, p in street_areas if p['kind'] == 'beach']
+    if drawn_beach:
+        beach |= (m.burn([(g, 1) for g in drawn_beach], dims, m.grid) > 0) & (w == 0)
     ribbon = m.city['succession'].get('sand_ribbon')
     if ribbon:
         # An authored strip of bare sand east of a given easting, as Miami Beach's.
