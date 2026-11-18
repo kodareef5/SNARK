@@ -1,0 +1,106 @@
+{
+  "scope": "Measure actual fully foot-weighted plantar surfaces, not ankle centres.\n\nRun after preview.py saves the current original source, or pass its blend path\nafter --. The resulting witnesses\ncalibrate planted contact sockets; their coordinates are in engine metres.\n",
+  "blendSha256": "a74fe37be069a70462f00a1a3d7bc5e939e306dbec490ceaf96cc7acc3d0bcba",
+  "sourceSha256": {
+    "model.py": "f1cebcfd743215b295cd3652db49a285d04156138cd67e8c762e1153bc99b41f",
+    "rig.py": "e1a4f65236253fe76a7cd6a4c6f4484d6cdaa614b6a90a566d06421011f53dc8"
+  },
+  "landmarks": {
+    "hind_foot_l": {
+      "surfacePoint": [
+        0.7699999809265137,
+        0.0,
+        -0.5400000214576721
+      ],
+      "bone": "hind_foot_l",
+      "offset": [
+        0.0,
+        -0.2750000059604645,
+        0.13999998569488525
+      ],
+      "sourceTriangle": 3459,
+      "triangleVertices": [
+        4164,
+        4266,
+        4267
+      ],
+      "weights": {
+        "hind_foot_l": 1.0
+      },
+      "candidateVertices": 257,
+      "planarTriangles": 2
+    },
+    "hind_foot_r": {
+      "surfacePoint": [
+        -0.7699999809265137,
+        0.0,
+        -0.5400000214576721
+      ],
+      "bone": "hind_foot_r",
+      "offset": [
+        0.0,
+        -0.2750000059604645,
+        0.13999998569488525
+      ],
+      "sourceTriangle": 4781,
+      "triangleVertices": [
+        5527,
+        5529,
+        5528
+      ],
+      "weights": {
+        "hind_foot_r": 1.0
+      },
+      "candidateVertices": 260,
+      "planarTriangles": 5
+    },
+    "fore_foot_l": {
+      "surfacePoint": [
+        0.7103848457336426,
+        0.0,
+        1.2195106744766235
+      ],
+      "bone": "fore_foot_l",
+      "offset": [
+        0.00038486719131469727,
+        -0.23999999463558197,
+        0.1395106315612793
+      ],
+      "sourceTriangle": 7439,
+      "triangleVertices": [
+        8146,
+        8145,
+        8249
+      ],
+      "weights": {
+        "fore_foot_l": 1.0
+      },
+      "candidateVertices": 196,
+      "planarTriangles": 1
+    },
+    "fore_foot_r": {
+      "surfacePoint": [
+        -0.7099999785423279,
+        0.0,
+        1.215000033378601
+      ],
+      "bone": "fore_foot_r",
+      "offset": [
+        0.0,
+        -0.23999999463558197,
+        0.13499999046325684
+      ],
+      "sourceTriangle": 8138,
+      "triangleVertices": [
+        8690,
+        8762,
+        8879
+      ],
+      "weights": {
+        "fore_foot_r": 1.0
+      },
+      "candidateVertices": 196,
+      "planarTriangles": 2
+    }
+  }
+}

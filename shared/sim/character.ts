@@ -108,6 +108,10 @@ export interface MoveParams {
   /** Largest drop a grounded body follows without leaving the ground. */
   readonly stepDown: number;
   readonly swimSpeed: number;
+  /** Authored float depth below the water; absent retains the exact height-based thresholds. */
+  readonly swimDepth?: number;
+  /** Breathing only: measured head elevation of a conscious swimmer, independent of its standing view. */
+  readonly swimEyeHeight?: number;
   readonly swimSprintMul: number;
   readonly accelSwim: number;
   /**
@@ -235,6 +239,12 @@ export class Body {
    */
   regenWait = 0;
   rollWait = 0;
+  /** Ground creature mode, secondary cooldown, and charge strength, predicted with its action. */
+  creatureMode = 0;
+  creatureCooldown = 0;
+  creaturePrimaryCooldown = 0;
+  creaturePower = 0;
+  creatureSide = 0;
 
   copy(o: Body): void {
     this.x = o.x;
@@ -297,6 +307,11 @@ export class Body {
     this.kick = o.kick;
     this.regenWait = o.regenWait;
     this.rollWait = o.rollWait;
+    this.creatureMode = o.creatureMode;
+    this.creatureCooldown = o.creatureCooldown;
+    this.creaturePrimaryCooldown = o.creaturePrimaryCooldown;
+    this.creaturePower = o.creaturePower;
+    this.creatureSide = o.creatureSide;
   }
 
   /** Position, velocity and grounded. */
@@ -359,9 +374,19 @@ export class Body {
       this.bloom === o.bloom &&
       this.kick === o.kick &&
       this.regenWait === o.regenWait &&
+      this.creatureMode === o.creatureMode &&
+      this.creatureCooldown === o.creatureCooldown &&
+      this.creaturePrimaryCooldown === o.creaturePrimaryCooldown &&
+      this.creaturePower === o.creaturePower &&
+      this.creatureSide === o.creatureSide &&
       this.rollWait === o.rollWait
     );
   }
+}
+
+/** Float depth, or an entry/exit threshold scaled about it. The omitted-field path keeps the original arithmetic. */
+export function swimDepth(p: { readonly height: number; readonly swimDepth?: number }, fraction = SWIM_FLOAT): number {
+  return p.swimDepth === undefined ? p.height * fraction : p.swimDepth * (fraction / SWIM_FLOAT);
 }
 
 export function stanceHeight(p: MoveParams, stance: number): number {
@@ -495,7 +520,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   /** Fastest downward speed stopped by something this tick. */
   let fall = 0;
   if (wasGrounded) {
-    if ((buttons & BTN_JUMP) !== 0 && standing && (flags & (MF_NO_JUMP | MF_ROOTED)) === 0 && stamina >= p.staminaJump) {
+    if (p.jumpSpeed > 0 && (buttons & BTN_JUMP) !== 0 && standing && (flags & (MF_NO_JUMP | MF_ROOTED)) === 0 && stamina >= p.staminaJump) {
       vy = p.jumpSpeed;
       jumped = true;
       stamina -= p.staminaJump;
@@ -775,7 +800,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
 
   // Deep enough to float, the body swims from the next tick, and a swimmer has no stance.
   // A swimmer is as tall as a standing body, so one held low by a ceiling stays as it is.
-  if (hf.waterAt(x, z) - y > p.height * SWIM_ENTER && (standing || capsuleFree(w, x, y, z, r, p.height))) {
+  if (hf.waterAt(x, z) - y > swimDepth(p, SWIM_ENTER) && (standing || capsuleFree(w, x, y, z, r, p.height))) {
     b.mode = MODE_SWIM;
     stance = STANCE_STAND;
     grounded = false;
@@ -893,7 +918,7 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
   const maxZ = hf.sizeZ - r;
   const maxSide2 = r * r;
   const maxRise = (p.stepUp > r ? p.stepUp : r) + maxStep;
-  const sink = p.height * SWIM_FLOAT;
+  const sink = swimDepth(p);
 
   let x = b.x;
   let y = b.y;
@@ -981,7 +1006,7 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
 
   // Too shallow to float, so it stands if there is support and falls if there is none.
   let grounded = false;
-  if (hf.waterAt(x, z) - y < p.height * SWIM_EXIT) {
+  if (hf.waterAt(x, z) - y < swimDepth(p, SWIM_EXIT)) {
     b.mode = MODE_WALK;
     if ((y - groundUnder(hf, x, z, r) <= GROUND_PROBE && groundStands(p.slopeCos)) || !Number.isNaN(restingAt(w, x, y, z, r, p.height, GROUND_PROBE, p.slopeCos))) {
       grounded = true;
@@ -1142,7 +1167,7 @@ function stepFlyer(w: CollisionWorld, b: Body, moveZ: number, yaw: number, pitch
   }
   // Flyers do not go under water (ARK's Flying page): it skims the surface, and going down it settles to its float line.
   const hf = w.hf;
-  const sink = p.height * SWIM_FLOAT;
+  const sink = swimDepth(p);
   flyThrough(w, b, vx, vy, vz, p, dt, down ? sink : 0);
   b.grounded = false;
   b.stance = STANCE_STAND;
@@ -1160,7 +1185,7 @@ function stepFlyer(w: CollisionWorld, b: Body, moveZ: number, yaw: number, pitch
     return;
   }
   const sea = hf.waterAt(b.x, b.z);
-  if (b.y <= sea - sink + GROUND_PROBE && sea - under > p.height * SWIM_ENTER) {
+  if (b.y <= sea - sink + GROUND_PROBE && sea - under > swimDepth(p, SWIM_ENTER)) {
     b.mode = MODE_SWIM;
     stepOut.setDown = true;
   }
@@ -1187,7 +1212,7 @@ function flyThrough(w: CollisionWorld, b: Body, vx: number, vy: number, vz: numb
   const maxZ = hf.sizeZ - r;
   const maxSide2 = r * r;
   const maxRise = (p.stepUp > r ? p.stepUp : r) + maxStep;
-  const deep = height * SWIM_ENTER;
+  const deep = swimDepth(p, SWIM_ENTER);
   let x = b.x;
   let y = b.y;
   let z = b.z;

@@ -160,6 +160,7 @@ export class Residency {
   /** The frame each slot was last wanted in, and how urgently in that frame. */
   private readonly seen: Uint32Array;
   private readonly urgency: Float32Array;
+  private readonly generation: Uint32Array;
   private readonly tries: Uint8Array;
   private readonly retryAt: Float64Array;
   private readonly rehashed: Uint8Array;
@@ -277,6 +278,7 @@ export class Residency {
     pages.forEach((blob, p) => blob && (this.state[this.pageBase + p] = RESIDENT));
     this.seen = new Uint32Array(slots);
     this.urgency = new Float32Array(slots);
+    this.generation = new Uint32Array(slots);
     this.tries = new Uint8Array(slots);
     this.retryAt = new Float64Array(slots);
     this.rehashed = new Uint8Array(slots);
@@ -490,8 +492,8 @@ export class Residency {
     for (let i = 0; i < n; i++) {
       const a = this.arrivals[i]!;
       const slot = a.slot;
-      // Given up while it was on its way.
-      if (this.state[slot] !== LOADING) continue;
+      // A previous variant can already be in the worker's outgoing queue when the slot is reused.
+      if (this.state[slot] !== LOADING || a.generation !== this.generation[slot]) continue;
       this.land(slot);
       this.stats.fetched += a.fetched;
       this.stats.cached += a.cached;
@@ -1064,7 +1066,8 @@ export class Residency {
       parts.push(...levelParts(level, slot < this.levels ? 0 : 1, slot >= this.levels || rider >= 0 ? level.parts.length : 1));
       if (rider >= 0) this.state[rider] = RIDING;
     }
-    this.port!.request({ slot, file, parts, priority: this.urgency[slot]!, fresh: this.rehashed[slot] === 1 });
+    this.generation[slot]++;
+    this.port!.request({ slot, generation: this.generation[slot], file, parts, priority: this.urgency[slot]!, fresh: this.rehashed[slot] === 1 });
     this.state[slot] = LOADING;
     this.flying++;
     if (this.asked(slot) > SMALL_PART) this.flyingLarge++;

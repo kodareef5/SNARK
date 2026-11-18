@@ -1,6 +1,7 @@
 // The asset library streaming surfaces and textures: a body is drawn with its materials only when the card holds all
 // that takes, textures climb a step at a time within their share of the card, and low poly asks for none of it.
 import { expect, test } from "bun:test";
+import { FAIL_NET, type AssetArrival } from "../../client/core/assets/port.ts";
 import { FIRST, OVERFLOW } from "../../client/core/assets/residency.ts";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { MANIFEST_VERSION, parseManifest, type Manifest, type ManifestLevel, type ManifestMesh } from "../../shared/pack/manifest.ts";
@@ -336,6 +337,38 @@ test("low poly asks for no surface and no texture: its requests and uploads are 
   const log = flights[0]![0] as string[];
   // Every request was for one part, the flat one, of a level.
   expect([log.length > 4, log.some((line) => line.includes("x") || Number(line.split(" ")[2]) >= LEVELS * 4)]).toEqual([true, false]);
+});
+
+test("an RGBA reply already posted when its slot is reissued for ASTC cannot replace the current reply or its retry", () => {
+  const set = texturedSet(1, 256, ["rgba", "astc"], 400);
+  const w = world([{ mesh: 0, z: 0 }], {}, {}, set, "rgba");
+  const slot = texSlot(set, BASE);
+  const take = w.port.take.bind(w.port);
+  let stale: AssetArrival | undefined;
+  let denied = false;
+  w.port.take = (out) => {
+    const batch: AssetArrival[] = [];
+    take(batch);
+    let n = 0;
+    for (const a of batch) {
+      if (a.slot === slot && !stale) {
+        // The worker finished the RGBA request before the format changed, but the message is still in transit.
+        stale = a;
+      } else if (a.slot === slot && !denied) {
+        denied = true;
+        out[n++] = stale!;
+        out[n++] = { ...a, data: null, fail: FAIL_NET, status: 503 };
+      } else out[n++] = a;
+    }
+    return n;
+  };
+  for (let i = 0; !stale && i < 60; i++) w.frame(-1);
+  expect(stale?.data).toBeInstanceOf(Uint8Array);
+  w.assets.format = "astc";
+  w.run(5, -1);
+  expect(denied).toBe(true);
+  expect([w.r.stats.failed, w.r.stats.failNet, w.r.stats.lastStatus]).toEqual([1, 1, 503]);
+  expect([w.settled(), w.r.flying, w.card.textures.get(BASE)?.format]).toEqual([true, 0, "astc"]);
 });
 
 test("the variant is the one the device takes, the tier caps how wide, and a card that loses or refuses a texture is sent it again", () => {

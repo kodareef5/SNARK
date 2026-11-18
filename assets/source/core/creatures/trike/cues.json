@@ -1,0 +1,20 @@
+{
+  "cues": {
+    "struck": { "sounds": ["hurt"], "effects": [{ "effect": "scute_flecks", "from": "hit" }] },
+    "land": { "effects": [{ "effect": "dust_ring", "from": "ground", "count": [6, 9], "on": ["sand", "grass", "stone", "built"] }] },
+    "down": { "sounds": ["hurt"], "effects": [{ "effect": "dust_ring", "from": "ground", "at": "down", "count": [6, 9] }] },
+    "death": { "sounds": ["death"], "effects": [{ "effect": "dust_ring", "from": "ground", "at": "down", "count": [7, 10] }] },
+    "up": { "effects": [{ "effect": "scuff", "from": "ground", "at": "down", "count": [2, 3] }] },
+    "splash": { "effects": [{ "effect": "splash_drops", "from": "body", "count": [6, 9] }, { "effect": "splash_ring", "from": "ground" }] },
+    "step": { "sounds": ["step"], "effects": [{ "effect": "sand_kick", "from": "foot", "on": ["sand"], "count": [2, 3] }, { "effect": "scuff", "from": "foot", "on": ["grass"], "count": [1, 2] }] }
+  },
+  "effects": {
+    "scute_flecks": {
+      "pictures": ["scute"], "count": [0, 2], "speed": [1.1, 2.3], "up": 0.4,
+      "size": [0.018, 0.036], "life": [0.9, 1.4], "fade": 0.35,
+      "drag": 0.8, "gravity": 1, "wind": 0.15, "settle": 0.5,
+      "colour": "body", "vary": 0.09, "face": "free", "pass": "cutout", "reach": 25
+    }
+  },
+  "pictures": { "scute": { "file": "details/scute.png", "regions": "details/scute_regions.png", "flat": "grain" } }
+}

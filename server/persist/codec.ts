@@ -43,6 +43,8 @@ const COMP_BUFFS = 19;
 const COMP_REFS = 20;
 /** A creature's body (EntityRecord.corpse). A build without bodies has no core:corpse either, so it never passes over one. */
 const COMP_CORPSE = 21;
+/** Persistent ground creature mode; unknown builds preserve this component. */
+const COMP_CREATURE_MODE = 23;
 /** The most bytes of one part that a save holds. */
 const MAX_PART = 1 << 20;
 /** How an operator goes on from a save that uses content the build lacks. */
@@ -165,7 +167,8 @@ export class RecordCodec {
     const hasTame = !!rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 || rec.wander;
     let refs = 0;
     for (let slot = 0; inv?.ref && slot < inv.cap; slot++) if (inv.item[slot] !== 0 && inv.ref[slot] !== 0) refs++;
-    w.varint((refs > 0 ? 1 : 0) + (used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (hasTame ? 1 : 0) + (hasBreed ? 1 : 0) + (rec.buffs.length > 0 ? 1 : 0) + (rec.corpse ? 1 : 0) + rec.extra.size);
+    w.varint((refs > 0 ? 1 : 0) + (used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (hasTame ? 1 : 0) + (hasBreed ? 1 : 0) + (rec.buffs.length > 0 ? 1 : 0) + (rec.corpse ? 1 : 0) + (rec.creatureMode !== 0 ? 1 : 0) + rec.extra.size);
+    if (rec.creatureMode !== 0) { c.reset(); c.u8(rec.creatureMode); this.part(COMP_CREATURE_MODE); }
     if (rec.buffs.length > 0) {
       c.reset();
       c.varint(rec.buffs.length);
@@ -493,6 +496,9 @@ export class RecordCodec {
           }
         }
         for (const j of jobs) if (j.item !== 0) rec.jobs.push(j);
+      } else if (component === COMP_CREATURE_MODE) {
+        rec.creatureMode = c.u8();
+        if (rec.creatureMode > 2) return null;
       } else if (component === COMP_STATE) {
         rec.dead = c.bool();
         rec.expiresAt = c.uint53();

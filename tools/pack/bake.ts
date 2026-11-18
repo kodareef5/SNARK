@@ -1,5 +1,5 @@
 // The colours of a mesh that is drawn with materials, for where it is drawn flat. They are read off its pictures,
-// triangle by triangle. A triangle that is half or more one colour region is that region, so an instance keeps its
+// triangle by triangle. A triangle that is half or more dyed takes its dominant region, so an instance keeps its
 // dyes at any distance. Any other is the palette colour nearest its base colour, of the few its material is given,
 // so the flat creature is the textured one in a dozen colours.
 
@@ -13,7 +13,7 @@ import type { SourceLod } from "./write.ts";
 /** A mesh has no more flat colours than this, its regions among them, and a material no more palette colours than a handful. */
 export const MOST_COLOURS = 12;
 const HANDFUL = 6;
-/** A triangle is a region's where the region has this much of it. */
+/** A triangle keeps its dominant dye where all dye regions together cover this much of it. */
 const DYED = 0.5;
 /** One more palette colour is worth having where it brings the surface this much nearer its own colour: the mean square of the distance, in steps of 255. */
 const WORTH = 25;
@@ -193,14 +193,19 @@ function settle(lod: SourceLod, colours: Uint8Array): void {
  */
 export function baker(fine: SourceLod, materials: readonly PackMaterial[], maps: readonly MaterialMaps[], palette: Uint8Array): (lod: SourceLod) => Uint8Array {
   const from = materials.map((_, k) => pictures(maps[k]));
-  /** The region among `allowed` that triangle `t` has most of, where that is `least` or more. -1 where there is none. */
+  /** Dominant allowed region where total dye coverage reaches `least`; -1 for an undyed majority. */
   const dye = (m: Measured, t: number, allowed: (k: number) => boolean, least: number): number => {
     let best = -1;
+    let dyed = 0;
     for (let k = 0; k < REGION_COUNT; k++) {
       const weight = m.regions[t * REGION_COUNT + k]!;
-      if (allowed(k) && weight >= least && (best < 0 || weight > m.regions[t * REGION_COUNT + best]!)) best = k;
+      dyed += weight;
+      if (allowed(k) && weight > 0 && (best < 0 || weight > m.regions[t * REGION_COUNT + best]!)) best = k;
     }
-    return best;
+    // The surface renderer computes undyed as 1-sum(mask,mask2). Requiring
+    // one region alone to reach half incorrectly calls a fully dyed three-
+    // region transition plain and bakes its neutral albedo as a white band.
+    return dyed >= least ? best : -1;
   };
   const first = measure(fine, materials, from);
   const used = new Set<number>();

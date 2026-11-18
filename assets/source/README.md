@@ -57,6 +57,18 @@ is described in `tools/art/spec.ts`.
 Its small details (feathers knocked loose, dust when it falls) are a sheet in its folder, `cues.json`, and a few
 pictures: [DETAILS.md](DETAILS.md) says how.
 
+### Skin-fitted hit zones
+
+For a broad shield or a tapering horn, `hitSurfaces` can fit convex weapon
+contacts to the finest bare mesh. Each entry names a `root` bone, its `zone`,
+and the model-space cell dimensions in metres for the participating bones.
+Build the source with `bun run art -- <asset-id>` after editing the cells.
+A triangle follows the closest listed ancestor of the bone with the greatest
+total weight across its three vertices. A descendant carrying a different
+zone starts a separate region. The original capsules continue to support
+ragdolls and mounted camera clearance. Trike's head and adjoining neck show
+how to author both sides of an armour boundary.
+
 ### Rest a chain with slack
 
 A chain a solver places by its end (a neck to a head, a leg to a foot) must not rest straight at full length. Straight, the end cannot move away at all, and moving it 2 mm closer bends the joints 8 to 9 degrees in a direction nothing decides. The dodo's neck rests that way (0.1817 m of reach on 0.1818 m of bone), and its animators each worked round it in their own file. Changing the rest pose afterwards was measured and refused: it moved the neck's surface about a centimetre in clips already approved and the head up to 6 cm in others. So give a new rig's chains a bent rest with about 5% of slack before anyone animates on it.

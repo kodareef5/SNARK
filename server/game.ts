@@ -1,3 +1,4 @@
+import { IMPALE_SLOT } from "../shared/sim/seats.ts";
 // The authoritative game loop. It owns no socket or clock. The transport and the calls to
 // tick() come from outside, so tests run a whole server in memory.
 
@@ -68,6 +69,7 @@ import { BTN_JUMP, Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../sha
 import { stepVehicleBody, packVehicleDrive, packVehiclePose, quantVehicleWheel, packVehicleRide } from "../shared/sim/vehicle-body.ts";
 import { packVehicleRotor, packVehicleSystems, packVehicleQuaternionPair, packBoatWater } from "../shared/sim/vehicle-presentation.ts";
 import { drivetrainShifting } from "../shared/sim/vehicle-drivetrain.ts";
+import { cancelCreatureAction, creatureHold, stepCreature } from "../shared/sim/creature-actions.ts";
 import { ACT_NONE, FISTS, actionOut, biteCost, stepAction } from "../shared/sim/weapon.ts";
 import { stepAim } from "../shared/sim/aim.ts";
 import { F_AWAKE, F_PLAYER, F_ALIVE, F_PROP, F_GROUNDED } from "../shared/sim/entities.ts";
@@ -566,6 +568,10 @@ export class GameServer {
         }
       }
       c.edges();
+      if (c.ent >= 0 && ents.seatSlot[c.ent] === IMPALE_SLOT && ents.seat[c.ent] !== 0) {
+        c.heldButtons = c.pressed = 0;
+        c.heldX = c.heldZ = 0;
+      }
       c.did = 0;
       const b = c.body;
       // Let go of a mount that died or was replaced.
@@ -575,6 +581,7 @@ export class GameServer {
       if (e >= 0) {
         ents.loadBody(e, b);
         const vehicle = world.reg.vehicle[b.kind];
+        const combat = world.reg.combat[b.kind];
         const parent = ents.seat[e]! - 1;
         // Who sits in a seat of a car or a saddle and does not steer it is held there; a carried body has no seat slot.
         const passenger = !driving && parent >= 0 && ents.seatSlot[e] !== 0 && ents.gen[parent] === ents.seatGen[e];
@@ -583,11 +590,12 @@ export class GameServer {
           this.vehicleStep(world, b, quiet ? 0 : c.heldX, quiet ? 0 : c.heldZ, quiet ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : c.heldButtons, vehicle, TICK_DT, c.heldYaw, !quiet);
         } else if (!passenger) {
           // A survivor's tamed numbers are its own. A body that is driven is a tame's.
-          stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.tamedMove[b.kind]!, TICK_DT);
+          if (combat && driving) stepCreature(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, c.pressed, world.reg.tamedMove[b.kind]!, combat, TICK_DT, true, c.closed || T - c.inputAt > INPUT_HOLD_TICKS);
+          else stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.tamedMove[b.kind]!, TICK_DT);
         } else { b.yaw = c.heldYaw; stepOut.landSpeed = 0; }
         if (!driving) {
           // Enclosed cabins stow weapons while preserving the held inventory slot for exit.
-          const stowed = passenger && world.reg.vehicle[ents.kind[parent]!]?.seats[ents.seatSlot[e]! - 1]?.weapons === false;
+          const stowed = passenger && (ents.seatSlot[e] === IMPALE_SLOT || world.reg.vehicle[ents.kind[parent]!]?.seats[ents.seatSlot[e]! - 1]?.weapons === false);
           if (stowed) { b.act = ACT_NONE; b.actTicks = 0; }
           // Hits are resolved later, once every body has moved.
           stepAction(b, stowed ? 0 : c.heldButtons, stowed ? 0 : c.pressed, stowed ? FISTS : world.reg.weapon[b.held] ?? FISTS);
@@ -597,7 +605,7 @@ export class GameServer {
         } else {
           // A mount's bite goes through the same action step as any blow.
           const jaws = world.reg.weapon[b.kind];
-          if (jaws) {
+          if (jaws && !combat) {
             stepAction(b, c.heldButtons, c.pressed, jaws);
             if (actionOut.strike) c.did = DID_BITE;
             biteCost(b, world.reg.biteStamina[b.kind]!);
@@ -605,6 +613,7 @@ export class GameServer {
           if (stepOut.rolled) c.did |= DID_ROLL;
         }
         ents.storeBody(e, b);
+        if (combat) ents.hold[e] = creatureHold(b);
         if (vehicle) this.onVehicleStep?.(e);
         ents.pitch[e] = c.heldPitch;
         ents.pose(e, T);
@@ -768,7 +777,18 @@ export class GameServer {
   release(c: Client): void {
     const ents = this.world.ents;
     if (c.drive < 0) return;
-    if ((ents.flags[c.drive]! & F_ALIVE) !== 0 && ents.gen[c.drive] === c.driveGen) ents.driven[c.drive] = 0;
+    if ((ents.flags[c.drive]! & F_ALIVE) !== 0 && ents.gen[c.drive] === c.driveGen) {
+      ents.driven[c.drive] = 0;
+      const combat = this.world.reg.combat[ents.kind[c.drive]!];
+      if (combat) {
+        const body = new Body();
+        ents.loadBody(c.drive, body);
+        cancelCreatureAction(body, combat);
+        ents.storeBody(c.drive, body);
+        ents.hold[c.drive] = creatureHold(body);
+        ents.pose(c.drive, this.world.tick);
+      }
+    }
     c.drive = -1;
   }
 

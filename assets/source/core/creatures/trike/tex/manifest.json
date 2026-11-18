@@ -1,0 +1,242 @@
+{
+  "geometry": {
+    "triangles": 21820,
+    "vertices": 10962,
+    "materials": [
+      "trike_skin",
+      "trike_horn",
+      "trike_frill"
+    ],
+    "geometry_sha256": "bc47e64c925edad979ed78b75e48b012c9555125419242d5f45eef63df538389",
+    "bounds": [
+      [
+        -1.21644127368927,
+        -2.38418573772492e-09,
+        -4.48923397064209
+      ],
+      [
+        1.2483512163162231,
+        3.1577320098876953,
+        3.490274429321289
+      ]
+    ],
+    "ground_shift": 0.065,
+    "body_sections": [
+      [
+        -4.5,
+        0.6,
+        0.012,
+        0.016,
+        0.016
+      ],
+      [
+        -4.28,
+        0.64,
+        0.055,
+        0.065,
+        0.05
+      ],
+      [
+        -3.95,
+        0.73,
+        0.1,
+        0.12,
+        0.09
+      ],
+      [
+        -3.55,
+        0.89,
+        0.15,
+        0.18,
+        0.13
+      ],
+      [
+        -3.1,
+        1.09,
+        0.23,
+        0.25,
+        0.2
+      ],
+      [
+        -2.65,
+        1.31,
+        0.35,
+        0.34,
+        0.28
+      ],
+      [
+        -2.3,
+        1.48,
+        0.5,
+        0.44,
+        0.38
+      ],
+      [
+        -1.98,
+        1.62,
+        0.69,
+        0.57,
+        0.46
+      ],
+      [
+        -1.62,
+        1.71,
+        0.9,
+        0.73,
+        0.56
+      ],
+      [
+        -1.22,
+        1.74,
+        1.01,
+        0.71,
+        0.68
+      ],
+      [
+        -0.7,
+        1.75,
+        1.08,
+        0.7,
+        0.8
+      ],
+      [
+        -0.12,
+        1.77,
+        1.04,
+        0.76,
+        0.75
+      ],
+      [
+        0.38,
+        1.78,
+        0.88,
+        0.84,
+        0.67
+      ],
+      [
+        0.78,
+        1.81,
+        0.71,
+        0.74,
+        0.58
+      ],
+      [
+        1.08,
+        1.85,
+        0.63,
+        0.59,
+        0.46
+      ],
+      [
+        1.36,
+        1.89,
+        0.59,
+        0.51,
+        0.39
+      ],
+      [
+        1.6,
+        1.89,
+        0.63,
+        0.48,
+        0.35
+      ],
+      [
+        1.92,
+        1.86,
+        0.64,
+        0.42,
+        0.32
+      ],
+      [
+        2.22,
+        1.8,
+        0.53,
+        0.37,
+        0.28
+      ],
+      [
+        2.5,
+        1.71,
+        0.39,
+        0.34,
+        0.26
+      ],
+      [
+        2.76,
+        1.67,
+        0.3,
+        0.28,
+        0.2
+      ],
+      [
+        2.98,
+        1.62,
+        0.24,
+        0.25,
+        0.16
+      ],
+      [
+        3.13,
+        1.53,
+        0.16,
+        0.2,
+        0.12
+      ],
+      [
+        3.21,
+        1.44,
+        0.055,
+        0.09,
+        0.045
+      ],
+      [
+        3.24,
+        1.38,
+        0.012,
+        0.025,
+        0.02
+      ]
+    ],
+    "eye_centre": [
+      0.67,
+      2.08,
+      2.07
+    ]
+  },
+  "paint_sha256": "6ce8d2556d747b56bafe16c2ea153e3c86df0ce4f034d0847fd2c20a5dce5081",
+  "images": {
+    "trike_frill_base.png": "e35d5b42fab00625b1342802d2f3ed2e4027bd7e1f526a6d85500dee9ef3398f",
+    "trike_frill_decay.png": "1e974f0d1b4b173d12eada75d09ffad22ac0b87ca3cf0ce2a525ffc47630e716",
+    "trike_frill_height.png": "a9062fad1f66951b2c932be80b8f77cfdaf1c085deccc88b7f7a38ca3a02f26b",
+    "trike_frill_hurt.png": "9b04f10d403456a5dc17495d1e558b3c412862e34be805faae06e263a2668920",
+    "trike_frill_mask.png": "8b70eaa4882ad7587e7f454194e15d2511d50ec397028a6c4d0229f055c0f766",
+    "trike_frill_mask2.png": "72f09283b3e52187cb9c1a89f6eca20ac4f178d297f5db6adeb7dd650ed63c6b",
+    "trike_frill_normal.png": "aaa93018c12de50b523ebb6fb864e5e25a7af1d3326c2348e70183e78f88ff71",
+    "trike_frill_packed.png": "8bde85f06a7239d97c35a1fd88fd549c91108842757b9e1a447341687f107345",
+    "trike_frill_regions.png": "e8f72e42366c1a5d78c4bd89320817c6ae075585877ae86ef3caa828f733f134",
+    "trike_horn_base.png": "c94733ce0fd179771b1c8e940588990ac24c5ee06db09af20741d9ced7ee38cf",
+    "trike_horn_decay.png": "bd8c640549ddc76754a75dc33bdfe6597fb8009a09de64241d3b11ea58082535",
+    "trike_horn_height.png": "b27badfe51c21e5bd6f42a8c466232b2f157ff226170ce54c1aa96d9a6ace186",
+    "trike_horn_hurt.png": "9b04f10d403456a5dc17495d1e558b3c412862e34be805faae06e263a2668920",
+    "trike_horn_mask.png": "3b3c20200bd2003c548a5c2d9e080452825807ce70993308a6643266865ab954",
+    "trike_horn_mask2.png": "67e4dd69567735cb8564bf581e7157571d67a22b6ab08d5fab6ee3204f207cfd",
+    "trike_horn_normal.png": "5dc5e41ed28205755ce4a7ddbb97a9a0c7022e633f8b4c7044d76ffa30284eeb",
+    "trike_horn_packed.png": "75427969b1c6b5b2512dbb8ab35b95d9b7641e4986d496fde01d3fc60b0fddf7",
+    "trike_horn_regions.png": "7a42167a55112f497a145e1f0ea5cc7f830d8c5813bdf77cca02a668b65c4d97",
+    "trike_saddle_base.png": "e441daed876c7f39a10a6d7680ba1e22c130604cdfb64a8a7ea7d7a99e04cd80",
+    "trike_saddle_height.png": "f475394ed6f0c3aa8745449ffc2634e1d8784da15a9e4540fc1ac9d119cf751b",
+    "trike_saddle_normal.png": "67bdb55bdc582a023c4af59b4c4bfc139c86a09b41766105f98f33289a31781e",
+    "trike_saddle_packed.png": "f6d11b4cb4dd39801b14a1840e939f8c4e1441cbc649f11cf578627536f37376",
+    "trike_saddle_regions.png": "57b5e40e68e97c62837b9d0a5a8f7aac22471c1633897f9bcf4fa62864ecc974",
+    "trike_skin_base.png": "25c2b89960371a69e7f735b884d4b48256a3d145e48ab51ca66c650b4ab4ee3c",
+    "trike_skin_decay.png": "aa6e165509243eb77ed209e6a319d85742f459547cf173a44f64caed60451e31",
+    "trike_skin_height.png": "da8f220f0126e7add13e16b0e98d74f9ee20b37d0c9c8edc9a720cbd329f8669",
+    "trike_skin_hurt.png": "c65f22a5c5fa569a6a99184eca11691de50d9590bfe92190fbbb7f839f5793a2",
+    "trike_skin_mask.png": "0a965079fbde66415c575e89abbee460d0553ea05e16927d7cbcf3d2e717d6f7",
+    "trike_skin_mask2.png": "5aca25e7a68cfd00cb2d4e4b57f64b43dbd1adce3536c674420ba4eb922f1cd9",
+    "trike_skin_normal.png": "e17c6448bedb2405283c7fa5bac90f597588f3b5b46c6e13cd47753f76bbacb7",
+    "trike_skin_packed.png": "ec2795700e0c548ec768bc2ab35d06f6ce3fc1fd77a7f3ff5ac0b162ae0a8d86",
+    "trike_skin_regions.png": "8fa3c660f83bc497f5e1f14082377fb66846340602e01f9c1dcf3817c307bf6f"
+  }
+}

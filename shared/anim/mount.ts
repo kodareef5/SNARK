@@ -13,7 +13,7 @@ import {
 import type { Solved } from "./skeleton.ts";
 
 /** `ride` sits astride a saddle (shared/anim/seat.ts): its rider's hands on the grips, a passenger's upper body its own. */
-export const MOUNT_MOTION_ROLES = ["drive", "passenger", "enter", "exit", "carjack", "displaced", "ride", "pilot", "cabin", "pwc"] as const;
+export const MOUNT_MOTION_ROLES = ["drive", "passenger", "enter", "exit", "carjack", "displaced", "ride", "pilot", "cabin", "pwc", "impaled"] as const;
 export type MountMotionRole = typeof MOUNT_MOTION_ROLES[number];
 
 export interface MountMotionProfile {
@@ -154,6 +154,16 @@ function seated(driver: boolean, steering = 0): Pose {
   return b.pose;
 }
 
+/** Abdominal contact at capsule centre: knees and elbows fold away from the tail. */
+function impaled(): Pose {
+  return new PoseBuilder().hips(0, .9, 0)
+    .turn(B_HIPS, -12).turn(B_SPINE, 24).turn(B_CHEST, 12).turn(B_NECK, -16).turn(B_HEAD, -8)
+    .aim(B_UPPER_LEG_L, .25, -.9, .35).aim(B_LOWER_LEG_L, .05, -.65, -.75).level(B_FOOT_L)
+    .aim(B_UPPER_LEG_R, -.2, -.75, .5).aim(B_LOWER_LEG_R, -.1, -.8, -.6).level(B_FOOT_R)
+    .aim(B_UPPER_ARM_L, .55, -.4, .7).aim(B_LOWER_ARM_L, -.6, -.3, -.4).level(B_HAND_L)
+    .aim(B_UPPER_ARM_R, -.55, -.3, .7).aim(B_LOWER_ARM_R, .6, -.4, -.4).level(B_HAND_R).pose;
+}
+
 /** Compact enclosed-cabin pose. Elbows stay beside the torso, hands on the lap or helicopter controls. */
 function cabinSeat(pilot: boolean): Pose {
   const b = new PoseBuilder();
@@ -232,6 +242,7 @@ function fallbacks(): Fallbacks {
       carjack: keyframes("carjack", [stand, touch, grab, grab]),
       displaced: keyframes("displaced", [sit, recoil, duck, stand]),
       ride: keyframes("ride", [astride()]), pwc: keyframes("pwc", [astride(true)]),
+      impaled: keyframes("impaled", [impaled()]),
       pilot: keyframes("pilot", [cabinSeat(true)]), cabin: keyframes("cabin", [cabinSeat(false)]),
     },
     left: seated(true, -1), right: seated(true, 1),

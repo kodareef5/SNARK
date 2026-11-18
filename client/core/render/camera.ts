@@ -29,7 +29,11 @@ export class Camera {
   roll = 0;
   fovY = 1.2217; // 70 degrees
   aspect = 16 / 9;
-  near = 0.25;
+  private requestedNear = 0.25;
+  /** A low overhead passage can bring the world near plane closer while preserving the angular field of view. */
+  nearLimit = Infinity;
+  get near(): number { return Math.min(this.requestedNear, this.nearLimit); }
+  set near(value: number) { this.requestedNear = value; }
   far = 6000;
   /** Metres from the camera at which the far depth range begins, 0 for one range. */
   split = 0;

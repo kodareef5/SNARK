@@ -1,3 +1,8 @@
+import { ZONE_TORSO } from "../shared/anim/human.ts";
+import { IMPALE_SLOT } from "../shared/sim/seats.ts";
+import { CreatureTraits, inventoryEffectiveWeight } from "./creature-traits.ts";
+import { CreatureImpale } from "./creature-impale.ts";
+import { CreatureContacts } from "./creature-combat.ts";
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import { withContent, type Registry } from "../shared/content/registry.ts";
@@ -167,6 +172,7 @@ export interface Host {
   readonly records: Records;
   readonly game: GameServer;
   readonly creatures: Creatures;
+  readonly impale: CreatureImpale;
   readonly items: Items;
   readonly survival: Survival;
   readonly death: Death;
@@ -410,6 +416,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     persistence.open = (path) => new WorldStore(path, reg, storeOptions);
   }
   const creatures = new Creatures(world, game, records, survival, opts.seed ?? 1, opts.wakeRadius ?? 3);
+  const creatureTraits = new CreatureTraits({ world, records, refresh: rec => refreshBody(rec), healthChanged: rec => survival.init(rec) });
+  survival.healthMultiplier = rec => creatureTraits.healthOf(rec);
   creatures.bus = bus;
   creatures.swimGain = rules.num("OxygenSwimSpeedStatMultiplier");
   /** The chunk each session's focus keeps awake. */
@@ -587,8 +595,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     },
   });
   // The use button gets off a mount, and sets down what is in the arms.
-  death.riding = (c) => urban.riding(c) || riding.riding(c) || carry.holding(c) >= 0;
-  death.offMount = (c) => (urban.riding(c) ? urban.dismount(c) : riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
+  death.riding = (c) => impale.held(c.pid) || urban.riding(c) || riding.riding(c) || carry.holding(c) >= 0;
+  death.offMount = (c) => (impale.held(c.pid) ? undefined : urban.riding(c) ? urban.dismount(c) : riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
   const breeding = new Breeding({ world, game, records, rules, lists, deadlines, creatures, persistence, full: (team) => taming.full(team), notice: (pid, text) => notice(pid, text), place: (rec) => death.place(rec), refresh: (rec) => refreshBody(rec), meal: (rec) => taming.meal(rec) }, (opts.seed ?? 1) + 89);
   taming.onMate = (rec, what) => breeding.order(rec, what);
   const corpses = new Corpses({ world, game, records, items, deadlines, rules, lists, progression, death }, (opts.seed ?? 1) + 103);
@@ -600,6 +608,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const hurt = new Hurt({ world, records, survival });
   taming.bred = (rec) => breeding.subject(rec);
   death.onRide = (c, e) => {
+    if (impale.held(c.pid) || world.ents.seatSlot[e] === IMPALE_SLOT) return RESULT_BUSY;
     if (carry.holding(c) < 0) {
       const vehicle = urban.mount(c, e);
       if (vehicle >= 0) return vehicle;
@@ -624,6 +633,43 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const e = records.entOf.get(mount.pid);
     return e === undefined ? null : (urban.riderOf(e) ?? riding.riderOf(e) ?? carry.carrierOf(e));
   };
+  if (harvest) harvest.riderOf = combat.riderOf;
+  combat.damageModifier = rec => creatureTraits.damageOf(rec);
+  combat.resistanceModifier = rec => creatureTraits.takenOf(rec);
+  const impale = new CreatureImpale({ world, records, survival,
+    hostile: (by, victim) => combat.creatureHostile(by, victim),
+    refresh: rec => refreshBody(rec),
+    forceDismount: victim => {
+      const e = records.entOf.get(victim.pid);
+      if (e === undefined) return false;
+      const host = world.ents.seat[e]! - 1;
+      if (host < 0) return true;
+      if (world.ents.gen[host] !== world.ents.seatGen[e] || reg.vehicle[world.ents.kind[host]!] || reg.combat[world.ents.kind[host]!] ?.protectsRider) return false;
+      riding.standDown(victim.pid);
+      return world.ents.seat[e] === 0;
+    },
+    damage: (by, victim, attack, mode, points) => {
+      const e = records.entOf.get(victim.pid);
+      if (e !== undefined) combat.creatureContact(by, e, attack, mode, [world.ents.x[e]!, world.ents.y[e]! + reg.bodyHeight[victim.kind]! * .5, world.ents.z[e]!], ZONE_TORSO, 1, true, points);
+    },
+  });
+  combat.onCreatureHit = (by, target, attack, mode) => {
+    const victim = records.byPid.get(world.ents.pid[target]!);
+    const slow = mode?.slow ?? attack.slow;
+    if (victim && slow) creatureTraits.applySlow(victim, slow.multiplier, slow.seconds);
+    if (attack.impale && impale.tryStart(by, target, attack)) return;
+    const e = records.entOf.get(by.pid), impulse = attack.knockback ?? 0;
+    if (e !== undefined && impulse > 0 && world.ents.seat[target] === 0) {
+      const ents = world.ents, dx = ents.x[target]! - ents.x[e]!, dz = ents.z[target]! - ents.z[e]!, distance = Math.hypot(dx, dz);
+      const force = impulse * Math.min(1, (reg.drag[by.kind]! || 50) / Math.max(1, reg.drag[ents.kind[target]!]! || 50));
+      if (distance > .001) { ents.vx[target] = Math.fround(ents.vx[target]! + dx / distance * force); ents.vz[target] = Math.fround(ents.vz[target]! + dz / distance * force); }
+    }
+  };
+  const creatureContacts = new CreatureContacts({ world, records, harvest,
+    test: (target, from, to, radius) => combat.creatureTest(target, from, to, radius),
+    hit: (by, target, attack, mode, point, zone, power) => combat.creatureContact(by, target, attack, mode, point, zone, power),
+    structure: (by, ref, attack, mode, point, power) => combat.creatureStructure(by, ref, attack, mode, point, power),
+  });
   combat.onHarm = (victim, points) => {
     taming.harmed(victim, points);
     hurt.harmed(victim, points);
@@ -709,6 +755,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       bus.after(DEATH, { victim: rec.pid, kind: reg.ids[rec.kind]!, cause: CAUSE_WORDS[cause] ?? "", killer: killer ? killer.pid : 0, rider: rider ? rider.pid : 0, credit: !killer ? 0 : killer.kind === survivor ? killer.pid : rider ? rider.pid : 0, team: rec.team, item: struck && combat.blow.item !== 0 ? reg.ids[combat.blow.item]! : "", far: struck ? combat.blow.far : 0 });
     }
     // What a carrier held is set down while its body is still there to set it down by, and what dies held is let go.
+    impale.release(rec.pid);
     carry.release(rec.pid);
     combat.killed(rec, by);
     // A creature may eat of what its kill left it.
@@ -728,6 +775,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const fedRate = fedDef?.type === "buff" ? (fedDef.health ?? 0) : 0;
   survival.onOut = (rec, out) => {
     bus.after(BODY_OUT, { pid: rec.pid, out });
+    if (out) impale.release(rec.pid);
     refreshBody(rec);
     taming.out(rec, out);
     const e = records.entOf.get(rec.pid);
@@ -963,6 +1011,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (c.entered) joined(c);
   };
   game.onBodyGone = (c) => {
+    impale.release(c.pid);
     carry.release(c.pid);
     // Seats are not saved: a survivor in a car or on a creature is saved standing beside it.
     urban.standDown(c.pid);
@@ -1050,6 +1099,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     refreshInventories();
     // Struggling, and the grace after a bola, once the buffs that came due have ended.
     entangle.step(tick);
+    creatureTraits.step(creatures.awake, creatures.awakeCount);
     death.step();
     // Riders move with their mounts before combat aims at either.
     urban.step();
@@ -1060,7 +1110,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     projectiles.step();
     clouds.step();
     creatures.step(tick);
-    for (const e of urban.contacts!.step()) { urban.syncAfterContact(e); riding.syncAfterContact(e); }
+    creatureContacts.step(creatures.awake, creatures.awakeCount);
+    for (const e of urban.contacts!.step()) {
+      urban.syncAfterContact(e);
+      riding.syncAfterContact(e);
+    }
+    impale.step();
     spawner?.step(tick);
     build.step();
     taming.step();
@@ -1206,7 +1261,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     let carried = driver?.inv ? items.inv(driver).weight(items.table) : 0;
     for (const rider of riding.riders(e)) if (rider.inv) carried += items.inv(rider).weight(items.table);
     const arms = carry.heldBy(rec.pid);
-    const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + carried * reg.riderWeight[rec.kind]! + (arms >= 0 ? carry.load(rec) : 0);
+    if (rec.inv) items.inv(rec); // Settle spoilage before weighing the remaining stacks.
+    const load = inventoryEffectiveWeight(reg, rec, items.table) + carried * reg.riderWeight[rec.kind]! + (arms >= 0 ? carry.load(rec) : 0);
     if (reg.vehicle[rec.kind]) world.ents.vehiclePayloadMass[world.ents.vrow[e]!] = Math.fround(urban.payloadMass(e));
     // A creature in someone's arms weighs on them.
     const carrier = carry.carrierOf(e);
@@ -1217,7 +1273,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (mount && mount !== rec) refreshBody(mount);
     // A young creature carries a share of a grown one's capacity, so its load is scaled up.
     const strength = youngShare(growthStep(rec.span, rec.grown, world.tick));
-    refreshMods(reg, world.ents, e, rec.genome, load / strength, buffs.speedOf(rec), buffs.rooted(rec), rec.out, creatures.swimGain);
+    refreshMods(reg, world.ents, e, rec.genome, load / strength, buffs.speedOf(rec) * creatureTraits.speedOf(rec), buffs.rooted(rec), rec.out, creatures.swimGain);
     const level = rec.kind === survivor ? progression.levelOf(rec.xp) : rec.genome ? rec.genome.level : 1;
     world.ents.setLook(e, level, rec.genome ? rec.genome.colors : null, rec.name);
     world.ents.setTeam(e, rec.team);
@@ -1302,6 +1358,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     records,
     game,
     creatures,
+    impale,
     items,
     survival,
     death,
@@ -1366,6 +1423,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       // Told at once: there is no later tick to tell it in.
       bus.after(SERVER_STOP, { why: "stopped" });
       bus.flush();
+      impale.stop();
       if (!persistence) return;
       // A creature in someone's arms is saved standing where it is set down, not where the arms had it, and so is whoever
       // sits in a car or on a creature.

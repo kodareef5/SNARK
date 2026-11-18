@@ -49,6 +49,16 @@ export type ZoneSpec =
       readonly radius: number;
     };
 
+/** Fit convex pieces to the finest skin below a skeletal root. Cell dimensions
+ * are in model-space metres. Descendant skin follows its nearest listed bone. */
+export interface HitSurfaceSpec {
+  readonly zone: ZoneName;
+  readonly root: string;
+  readonly cells: Readonly<Record<string, Vec3>>;
+  /** Measured allowance in metres for blended skin moving across a rigid piece, up to 0.10 m per carrier. */
+  readonly padding?: Readonly<Record<string, number>>;
+}
+
 /** A named place on a bone: where a rider sits, where it bites. Found on the mesh, or given outright. */
 export type SocketSpec =
   | {
@@ -170,6 +180,8 @@ export interface GaitSpec {
    * hold best at.
    */
   readonly stride: number;
+  /** Authored clip fractions where each sole plants and lifts; reversing the clip plants at lift. */
+  readonly footfalls?: readonly { readonly foot: string; readonly plant: number; readonly lift: number }[];
   /**
    * Why the stride is stated and not measured, for a clip whose feet slide however it is played or that has no feet on
    * the ground (a swim). `--check` then notes how far they slide and does not count it a fault.
@@ -180,6 +192,8 @@ export interface GaitSpec {
 /** One rigid body of the ragdoll: a bone, with the hit capsule that bone carries. A bone that is not listed stays rigid with its nearest listed parent. */
 export interface RagdollBody {
   readonly bone: string;
+  /** Centre of mass in metres from this bone's joint, in its local axes. Defaults to its capsule midpoint. */
+  readonly massCentre?: readonly [number, number, number];
   /** Its share of the creature's mass. The shares need not sum to 1. */
   readonly mass: number;
   /**
@@ -195,6 +209,8 @@ export interface RagdollSpec {
   readonly limp?: number;
   /** The first is the root of the rest: every other body has a listed body above it. */
   readonly bodies: readonly RagdollBody[];
+  /** Up to 16 additional hit capsules rigidly carried by their nearest body ancestor. No extra articulated mass. */
+  readonly contacts?: readonly string[];
 }
 
 export interface CreatureAsset {
@@ -222,6 +238,7 @@ export interface CreatureAsset {
     readonly order?: readonly string[];
   };
   readonly zones: readonly ZoneSpec[];
+  readonly hitSurfaces?: readonly HitSurfaceSpec[];
   readonly sockets: readonly SocketSpec[];
   /** At most six, in the order of the six region colours an instance carries. */
   readonly regions: readonly RegionSpec[];
@@ -235,8 +252,20 @@ export interface CreatureAsset {
 
   /** The bones that stand on the ground. `--check` watches them in each gait. */
   readonly feet: readonly string[];
+  /** Paired actual airway points; either exposed witness permits breath during KO and recovery. */
+  readonly breath?: readonly [string, string];
   /** By clip name. A clip with a stride is a gait. */
   readonly gaits: Readonly<Record<string, GaitSpec>>;
+  /** Grounded body/leg fitting, using measured plantar sockets and explicit two-segment chains. */
+  readonly ground?: {
+    /** Maximum body tilt in degrees, 0..45. */
+    readonly maxTilt: number;
+    /** Maximum residual step a leg follows after body placement, metres. */
+    readonly maxStep: number;
+    /** Vertical support search above and below the body origin, metres. */
+    readonly probe: number;
+    readonly legs: readonly { readonly upper: string; readonly lower: string; readonly end: string; readonly socket: string }[];
+  };
 
   readonly budgets: {
     /** The most triangles at each level, finest first. A model may have fewer levels than this lists. */

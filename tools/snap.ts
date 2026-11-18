@@ -755,6 +755,8 @@ export interface ModelShot {
   /** The point looked at, and the radius in metres of the ball about it that the picture holds. */
   centre: readonly [number, number, number];
   radius: number;
+  /** Review the geometry at an explicit camera distance and vertical field of view, in metres and radians. */
+  perspective?: { distance: number; fovY: number };
   /** The rig a skinned mesh follows, as it is posed (`rig.solved`). Null for a rigid mesh. */
   rig: Rig | null;
   /** Palette index of each colour region. */
@@ -812,7 +814,7 @@ export class ModelView {
     // Far enough off that the ball fits the narrower way.
     cam.fovY = MODEL_FOV;
     const half = Math.min(cam.fovY / 2, Math.atan(Math.tan(cam.fovY / 2) * cam.aspect));
-    const far = shot.radius / Math.sin(half);
+    const far = shot.perspective?.distance ?? shot.radius / Math.sin(half);
     cam.x = shot.centre[0] + far * Math.sin(a) * Math.cos(e);
     cam.y = shot.centre[1] + far * Math.sin(e);
     cam.z = shot.centre[2] + far * Math.cos(a) * Math.cos(e);
@@ -820,6 +822,7 @@ export class ModelView {
     cam.pitch = -e;
     cam.near = Math.max(0.05, far - shot.radius * 1.5);
     cam.far = far + shot.radius * 1.5;
+    if (shot.perspective) cam.fovY = shot.perspective.fovY;
     if (shot.zoom !== undefined) cam.fovY = 2 * Math.atan(Math.tan(MODEL_FOV / 2) / shot.zoom);
     cam.update();
     p.beginFrame();

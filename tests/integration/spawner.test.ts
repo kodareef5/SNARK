@@ -50,16 +50,16 @@ test("a new proving ground fills at once: the herd north of the plaza, raptors b
   expect([herd!.desired, beach!.desired, hunters!.desired]).toEqual([24, 12, 4]);
   expect(herd!.count).toBeGreaterThanOrEqual(24);
   expect(hunters!.count).toBeGreaterThanOrEqual(4);
-  // The beach holds dodos up to 60% of its twelve, parasaurs up to 20% and pteranodons up to a quarter: eight, and the rest
-  // pteranodons and parasaurs, as ARK's limits allow. A pteranodon is put down on the ground, walking, and takes off from there.
-  expect([of(host, "core:dodo").length, of(host, "core:pteranodon").length, beach!.count]).toEqual([8, 3, 12]);
-  for (const r of of(host, "core:pteranodon")) {
-    const e = host.records.entOf.get(r.pid)!;
-    expect([host.world.ents.mode[e], (host.world.ents.flags[e]! & F_GROUNDED) !== 0, r.y >= PROVING_SEA_LEVEL]).toEqual([MODE_WALK, true, true]);
-  }
-  for (const d of of(host, "core:dodo")) {
-    expect(near(d, PROVING_POOL.x, PROVING_POOL.z)).toBeLessThanOrEqual(50 + 6.8);
-    expect(d.y).toBeGreaterThanOrEqual(PROVING_SEA_LEVEL);
+  // Parasaurs can also belong to the northern herd. Count beach members in their own region.
+  expect(beach!.count).toBe(12);
+  expect(beach!.of).toEqual(new Map([
+    [reg.index.get("core:dodo")!, 8],
+    [reg.index.get("core:parasaur")!, 3],
+    [reg.index.get("core:trike")!, 1],
+  ]));
+  for (const r of [...of(host, "core:dodo"), ...of(host, "core:trike")]) {
+    expect(near(r, PROVING_POOL.x, PROVING_POOL.z)).toBeLessThanOrEqual(50 + 6.8);
+    expect(r.y).toBeGreaterThanOrEqual(PROVING_SEA_LEVEL);
   }
   expect([sp.count, wild(host).length, host.world.ents.count]).toEqual([wild(host).length, herd!.count + beach!.count + hunters!.count, wild(host).length]);
   // Nobody is near, so all of them sleep, and every level is one of ARK's thirty steps at difficulty 5.
@@ -70,8 +70,14 @@ test("a new proving ground fills at once: the herd north of the plaza, raptors b
   const again = createHost(reg, { wild: true });
   ticks(again, 60);
   expect(look(again)).toEqual(look(host));
-  const other = createHost(reg, { wild: true, seed: 2 });
+  const other = createHost(reg, { wild: true, seed: 3 });
   ticks(other, 60);
+  const flyers = of(other, "core:pteranodon");
+  expect(flyers.length).toBe(2);
+  for (const r of flyers) {
+    const e = other.records.entOf.get(r.pid)!;
+    expect([other.world.ents.mode[e], (other.world.ents.flags[e]! & F_GROUNDED) !== 0, r.y >= PROVING_SEA_LEVEL]).toEqual([MODE_WALK, true, true]);
+  }
   expect(look(other)).not.toEqual(look(host));
 });
 

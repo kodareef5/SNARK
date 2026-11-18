@@ -106,6 +106,22 @@ test("backing up plays the gait backward, and the planted foot holds", () => {
   for (const speed of [0.6, 1.5]) expect(slip(stride(rig, [FOOT_L, FOOT_R], 99, 1, 4 * FPS, () => speed, true), true).most).toBeLessThan(0.004);
 });
 
+test("movement below the replicated speed step still plants feet at adult and juvenile sizes", () => {
+  for (const size of [1, .5]) {
+    const rig = strider();
+    expect(slip(stride(rig, [FOOT_L, FOOT_R], 99, size, 6 * FPS, () => .24 * size)).most).toBeLessThan(.004);
+  }
+  const g = new Gait();
+  g.track(0, 0, 0, 0, 0, .2, 1);
+  for (let tick = 1; tick <= 60; tick++) g.track(0, tick * .24 / 30, 0, tick, 0, .2, 1);
+  expect(g.speed).toBeCloseTo(.24, 5);
+  const before = g.speed;
+  expect(g.track(0, 80, 0, 61, 0, .2, 1)).toBe(0);
+  expect(g.speed).toBeLessThanOrEqual(before);
+  for (let tick = 62; tick <= 122; tick++) g.track(0, 80, 0, tick, 0, .2, 1);
+  expect(g.speed).toBeLessThan(.001);
+});
+
 test("speeding up from a walk to a run blends the two in step: the feet hold and no joint jumps between frames", () => {
   const rig = strider();
   const a = species(rig, 99);

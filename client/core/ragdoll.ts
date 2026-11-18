@@ -11,7 +11,7 @@
 
 import { Pose, blendPose, sampleClip } from "../../shared/anim/clip.ts";
 import { Fall, SETTLE_TICKS, bodyFalls, corpseSize, deathOf, diedAloft, layCorpse, limpPose, wireX, wireY, wireYaw } from "../../shared/anim/corpse.ts";
-import { creaturePose, type CreatureAnim } from "../../shared/anim/creature.ts";
+import { poseCreatureOn, type CreatureAnim } from "../../shared/anim/creature.ts";
 import type { Gait } from "../../shared/anim/gait.ts";
 import { AnimState, CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT, FLY_SPEED_STEP, SPEED_STEP, bodySeed } from "../../shared/anim/pose.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
@@ -70,9 +70,11 @@ export interface Corpse {
   readonly lying: boolean;
   /** It died in its own flight, and plays its death in the air. */
   readonly air: boolean;
-  /** The server has it falling or sinking still. Once it lies, the whole tick this client saw it lying. */
+  /** Ordinary descent or sinking, as replicated. Landed is the first observed support tick, including a launched ragdoll. */
   falling: boolean;
   landed: number;
+  /** The supporting face of a watched, launched ragdoll. Its first coordinate is NaN until contact. */
+  impact?: Float64Array;
   /** Its decay stage as sent, 0 fresh to STAGE_WORST. */
   decay: number;
   /** Its last pose alive, for a death this client saw. */
@@ -91,6 +93,13 @@ export interface Corpse {
   seen: number;
   motionRevision: number;
   motionTick: number;
+}
+
+/** The render tick for an authored death impact. A launched ragdoll bypasses the collapse clip. */
+export function corpseDownAt(c: Corpse, clipSeconds: number): number {
+  if (c.falling) return Infinity;
+  if (c.motionRevision) return c.landed || Infinity;
+  return Math.max(c.landed, c.born + clipSeconds * TICK_RATE);
 }
 
 /** A creature the server said died, as it was last drawn, waiting for its body. */
@@ -216,7 +225,7 @@ export class Corpses {
       // First visibility can precede the checkpoint's render tick. Wait those few frames instead of laying
       // a different local body on the ground and then snapping it to the authoritative airborne pose.
       if (!c && motion && motion.tick > Math.floor(tick)) continue;
-      c ??= this.meet(remote, i, tick, gaits);
+      c ??= this.meet(remote, i, tick, gaits, world);
       if (motion && motion.tick <= Math.floor(tick) && (motion.revision > c.motionRevision || (motion.revision === c.motionRevision && motion.tick > c.motionTick))) this.applyMotion(c, motion, tick);
       if (c.falling) this.follow(c, remote, i, tick);
       if (c.rigid) {
@@ -255,7 +264,7 @@ export class Corpses {
   }
 
   /** A body first seen. It is a creature this client saw die if one like it, near it, was said to have died just now. */
-  private meet(r: RemoteSample, i: number, tick: number, gaits: ReadonlyMap<number, Gait>): Corpse {
+  private meet(r: RemoteSample, i: number, tick: number, gaits: ReadonlyMap<number, Gait>, world: CollisionWorld): Corpse {
     const kind = r.kind[i]!;
     const m = this.mortal[kind]!;
     const rig = m.rig;
@@ -283,7 +292,9 @@ export class Corpses {
       st.unpack(f.anim, f.cue);
       st.seed = bodySeed(f.id);
       alive = new Pose(rig.bones);
-      creaturePose(m, st, tick, alive, gaits.get(f.id) ?? null);
+      poseCreatureOn(m, st, tick, world, x, y, z, wireYaw(r.yaw[i]!), corpseSize(r.span[i]!), gaits.get(f.id) ?? null);
+      alive.root.set(rig.a.root);
+      alive.rot.set(rig.a.rot);
     }
     const c: Corpse = {
       kind,
@@ -331,9 +342,14 @@ export class Corpses {
     if (checkpoint.awake && tick - motion.tick > CHECKPOINT_AGE) { this.needsCheckpoint.add(c.handle); return; }
     const r = layCorpse(anim, c.lying, c.air, checkpoint.x, checkpoint.y, checkpoint.z, c.yaw, c.size, c.solved, checkpoint.standing);
     if (!r || !r.restore(checkpoint.state, checkpoint.awake)) return;
+    if (c.watched && checkpoint.awake && !c.landed) {
+      c.impact ??= new Float64Array([NaN, NaN, NaN]);
+      r.firstSupport = c.impact;
+    }
     c.x = checkpoint.x; c.y = checkpoint.y; c.z = checkpoint.z;
     c.fall = new Fall(r); c.fall.ticks = checkpoint.ticks;
     c.limp = true; c.falling = false; c.settling = false;
+    if (!c.landed && !checkpoint.awake) c.landed = motion.tick;
     c.clock = motion.tick; c.motionTick = motion.tick; c.motionRevision = motion.revision;
     this.needsCheckpoint.delete(c.handle);
     r.pose(c.solved);
@@ -461,6 +477,7 @@ export class Corpses {
       }
       c.clock++;
       fall.tick(world);
+      if (c.motionRevision && !c.landed && fall.ragdoll.supported) c.landed = c.clock;
       moved = true;
     }
     if (moved) {

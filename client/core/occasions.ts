@@ -4,14 +4,17 @@
 // (client/core/details/); sound may answer them too. A body is followed from when it is first seen, and what it was
 // doing then is no occasion.
 
-import { CreatureAnim, advanceCreature, idleOf } from "../../shared/anim/creature.ts";
+import { CreatureAnim, advanceCreature, creatureFootfalls, creatureFootfallDomain, FOOTFALL_NONE, type FootfallGait, idleOf } from "../../shared/anim/creature.ts";
 import { Gait } from "../../shared/anim/gait.ts";
+import { groundSpeedScale } from "../../shared/anim/ground-conform.ts";
 import { socketDips } from "../../shared/anim/moments.ts";
 import { AnimState, CUE_DEAD, CUE_LAND, CUE_NONE, CUE_TAKEOFF, CUE_TORPOR, LAYER_FLINCH, SPEED_STEP, bodySeed } from "../../shared/anim/pose.ts";
 import type { Occasion } from "../../shared/pack/details.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { MODE_SWIM } from "../../shared/sim/character.ts";
+import { youngScale } from "../../shared/sim/breeding.ts";
 import { ACT_NONE } from "../../shared/sim/weapon.ts";
+import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Corpse } from "./ragdoll.ts";
 import type { RemoteSample } from "./session.ts";
 
@@ -84,13 +87,19 @@ class Seen {
   /** The turn of its idle it stood in, -1 while it was not standing. */
   slot = -1;
   readonly gait = new Gait();
+  stepPhase = 0;
+  stepTick = Number.NaN;
+  stepDomain = FOOTFALL_NONE;
 }
+
+/** Only a gait actually used to draw this body at this tick, or null when it was not posed. */
+export type DrawnGait = (id: number, kind: number, tick: number) => FootfallGait | null;
 
 export class Occasions {
   /** What happened since the last update. Read it before the next. */
   readonly happened: Happening[] = [];
   private readonly bodies = new Map<number, Seen>();
-  private readonly corpses = new Set<number>();
+  private readonly corpses = new WeakSet<Corpse>();
   private readonly st = new AnimState();
   private readonly was = new AnimState();
   private readonly other = new AnimState();
@@ -101,12 +110,17 @@ export class Occasions {
   /** By kind and idle variant (CreatureAnim.idles), the seconds into it its beak meets the ground. */
   private readonly pecks: (readonly (readonly number[])[] | null)[];
   private readonly bit: (o: Occasion) => number;
+  private readonly birth: Float32Array | null;
+  private readonly drawnGait: DrawnGait | null;
+  private readonly footfalls = new Float64Array(16);
 
   /** `bit` gives an occasion's bit in `listens`. */
-  constructor(anims: readonly (CreatureAnim | null)[], listens: Uint16Array, bit: (o: Occasion) => number) {
+  constructor(anims: readonly (CreatureAnim | null)[], listens: Uint16Array, bit: (o: Occasion) => number, birth: Float32Array | null = null, drawnGait: DrawnGait | null = null) {
     this.anims = [...anims];
     this.listens = listens;
     this.bit = bit;
+    this.birth = birth;
+    this.drawnGait = drawnGait;
     this.pecks = anims.map((a, kind) => this.pecksOf(a, kind));
   }
 
@@ -125,7 +139,7 @@ export class Occasions {
    * Reads what the bodies of `remote` did since the last update, and the deaths among `corpses`, seen from (ex, ey, ez).
    * `shots` are the ends of shots lately flown and `viewer` the viewer's own body, either of which may have struck one.
    */
-  update(remote: RemoteSample, corpses: readonly Corpse[], shots: readonly ShotEnd[], viewer: Viewer | null, ex: number, ey: number, ez: number, nowMs: number): void {
+  update(remote: RemoteSample, corpses: readonly Corpse[], shots: readonly ShotEnd[], viewer: Viewer | null, ex: number, ey: number, ez: number, nowMs: number, world?: CollisionWorld): void {
     const out = this.happened;
     out.length = 0;
     const frame = ++this.frame;
@@ -167,21 +181,17 @@ export class Occasions {
       if (!anim) continue;
       const d = Math.hypot(remote.x[i]! - ex, remote.y[i]! - ey, remote.z[i]! - ez);
       if ((listens & this.bit("peck")) !== 0) this.peck(kind, anim, b, st, tick, first || d > PECK_REACH, remote, i);
-      if ((listens & this.bit("step")) !== 0 && d < STEP_REACH) this.step(anim, b, st, tick, remote, i);
+      if ((listens & this.bit("step")) !== 0 && d < STEP_REACH) this.step(anim, b, st, tick, remote, i, world);
     }
     for (const id of this.bodies.keys()) if (this.bodies.get(id)!.frame !== frame) this.bodies.delete(id);
     for (const c of corpses) {
-      if (this.corpses.has(c.id)) continue;
+      if (this.corpses.has(c)) continue;
       // One that died in its own flight is met where it comes down, as it lands.
       if (c.air && c.falling) continue;
-      this.corpses.add(c.id);
+      this.corpses.add(c);
       const occasion = c.air ? "land" : "death";
       if (!c.watched || c.lying || (this.listens[c.kind]! & this.bit(occasion)) === 0) continue;
       out.push({ occasion, id: c.id, kind: c.kind, tick: c.air ? Math.max(c.landed, c.born) : c.born, x: c.x, y: c.y, z: c.z, yaw: c.yaw, size: c.size, anim: 0, cue: 0, grounded: true, colours: c.colors.slice(), fromX: NaN, fromY: NaN, fromZ: NaN, foot: -1, corpse: c });
-    }
-    if (this.corpses.size > corpses.length * 2 + 64) {
-      const now = new Set(corpses.map((c) => c.id));
-      for (const id of this.corpses) if (!now.has(id)) this.corpses.delete(id);
     }
   }
 
@@ -222,7 +232,7 @@ export class Occasions {
     const kind = remote.kind[i]!;
     if (((this.listens[kind] ?? 0) & this.bit(occasion)) === 0) return null;
     const h: Happening = {
-      occasion, id: remote.id[i]!, kind, tick: at, x: remote.x[i]!, y: remote.y[i]!, z: remote.z[i]!, yaw: remote.yaw[i]!, size: 1, anim: remote.anim[i]!, cue: remote.cue[i]!,
+      occasion, id: remote.id[i]!, kind, tick: at, x: remote.x[i]!, y: remote.y[i]!, z: remote.z[i]!, yaw: remote.yaw[i]!, size: this.sizeOf(remote, i), anim: remote.anim[i]!, cue: remote.cue[i]!,
       grounded: this.st.grounded, colours: remote.colors.slice(i * 6, i * 6 + 6), fromX: NaN, fromY: NaN, fromZ: NaN, foot: -1, corpse: null,
     };
     this.happened.push(h);
@@ -247,15 +257,36 @@ export class Occasions {
     b.slot = slot;
   }
 
-  /** A foot coming down: where the gait, moved on by the ground covered, passes the plant of either foot, running. */
-  private step(a: CreatureAnim, b: Seen, st: AnimState, tick: number, remote: RemoteSample, i: number): void {
-    const g = b.gait;
-    const before = g.phase;
-    const gap = tick - g.tick;
-    advanceCreature(a, g, st, tick, remote.x[i]!, remote.z[i]!, remote.yaw[i]!, 1);
-    if (!(gap > 0 && gap <= 4) || !st.grounded || st.mode === MODE_SWIM || st.speed * SPEED_STEP < a.runAt || a.rig.feet.length < 2) return;
+  /** The visible creature scale, also used by its distance-driven gait. */
+  private sizeOf(remote: RemoteSample, i: number): number {
+    return this.birth && remote.grown[i] !== 0 ? youngScale(this.birth[remote.kind[i]!]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
+  }
+
+  private step(a: CreatureAnim, b: Seen, st: AnimState, tick: number, remote: RemoteSample, i: number, world?: CollisionWorld): void {
+    const drawn = this.drawnGait?.(remote.id[i]!, remote.kind[i]!, tick), g = drawn ?? b.gait;
+    const before = b.stepPhase, gap = tick - b.stepTick, previousDomain = b.stepDomain;
+    if (!drawn) {
+      const size = this.sizeOf(remote, i);
+      const metric = groundSpeedScale(a.rig, st, world, remote.x[i]!, remote.y[i]!, remote.z[i]!, remote.yaw[i]!, size);
+      advanceCreature(a, b.gait, st, tick, remote.x[i]!, remote.z[i]!, remote.yaw[i]!, size, metric);
+    }
+    const domain = drawn ? drawn.domain : creatureFootfallDomain(a, st, tick);
+    b.stepPhase = g.phase; b.stepTick = tick; b.stepDomain = domain;
+    if (!(gap > 0 && gap <= 4) || domain === FOOTFALL_NONE || domain !== previousDomain || !(g.speed > 0) || a.rig.feet.length < 2) return;
     const moved = g.phase - before + (g.phase < before ? 1 : 0);
     if (moved <= 0 || moved >= 0.5) return;
+    const count = creatureFootfalls(a, domain, g.speed, this.footfalls);
+    if (count > 0) {
+      for (let foot = 0; foot < count; foot++) {
+        let distance = this.footfalls[foot * 2 + 1]! - before;
+        if (distance <= 0) distance += 1;
+        if (distance > moved + 1e-9) continue;
+        const h = this.happen("step", tick, remote, i);
+        if (h) h.foot = this.footfalls[foot * 2]!;
+      }
+      return;
+    }
+    if (g.speed < a.runAt) return;
     const second = before < 0.5 && before + moved >= 0.5;
     if (!second && before + moved < 1) return;
     const h = this.happen("step", tick, remote, i);

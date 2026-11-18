@@ -59,8 +59,9 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * messages as they take, and then each static as it is thrown. 25: wheeled full-attitude/flooding state and
  * replicated fatal-impact corpse checkpoints (S_CORPSE/CMD_CORPSE). 26: local car push/pull and manual flip commands.
  * 27: driver contact bodies and held controls precede each snapshot view; depleted node rows distinguish crushed trees.
+ * 29: ground creature ability mode, cooldowns, charge power and attack side in the owner body.
  */
-export const PROTOCOL_VERSION = 28;
+export const PROTOCOL_VERSION = 29;
 
 // Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
@@ -658,6 +659,10 @@ export function writeBody(w: BitWriter, b: Body): void {
   w.u8(b.reloadTo);
   w.u8(b.bloom);
   w.u8(b.kick);
+  // Ground ability prediction counters; ordinary bodies pay only the presence bit.
+  const creature = b.creatureMode !== 0 || b.creatureCooldown !== 0 || b.creaturePower !== 0 || b.creatureSide !== 0 || b.creaturePrimaryCooldown !== 0;
+  w.bool(creature);
+  if (creature) { w.bits(b.creatureMode, 2); w.bits(b.creatureCooldown, 10); w.u8(b.creaturePower); w.bits(b.creatureSide, 1); w.bits(b.creaturePrimaryCooldown, 10); }
   writeFlight(w, b);
   writeVehicle(w, b);
 }
@@ -686,6 +691,8 @@ export function readBody(r: BitReader, b: Body): void {
   b.reloadTo = r.u8();
   b.bloom = r.u8();
   b.kick = r.u8();
+  if (r.bool()) { b.creatureMode = r.bits(2); b.creatureCooldown = r.bits(10); b.creaturePower = r.u8(); b.creatureSide = r.bits(1); b.creaturePrimaryCooldown = r.bits(10); }
+  else b.creatureMode = b.creatureCooldown = b.creaturePower = b.creatureSide = b.creaturePrimaryCooldown = 0;
   readFlight(r, b);
   readVehicle(r, b);
 }

@@ -146,11 +146,37 @@ export interface PackMesh {
   seeThrough?: boolean;
 }
 
-/** A body with its own proportions on a shared skeleton. `rest` is each joint's rest position, x, y, z per bone. */
+/** Native upright-grip calibration at unit hand size. Twelve values per radius, six per hand (left then right): marker X/Z,
+ * finger/distal curl, thumb Z curl/Y opposition. Rows are equally spaced; span bounds the native contact witnesses along the bar. */
+export interface PackGrip { mesh: string; start: number; step: number; poses: number[]; span: [number, number] }
+
+/** Contact boundaries in the source clip's 0..1 turn, before gait phase alignment. */
+export interface PackFootfall { bone: number; plant: number; lift: number }
+
+/** A centre of mass is authored in metres relative to its bone joint. */
+export function validMassCentre(value: unknown): value is readonly [number, number, number] {
+  return Array.isArray(value) && value.length === 3 && Number.isFinite(value[0]) && Number.isFinite(value[1]) && Number.isFinite(value[2]);
+}
+
+/** Skin-fitted convex contacts. Boxes and outward planes are bone-local metres. */
+export interface PackHitSurface {
+  root: number;
+  zone: number;
+  bones: { bone: number; pieces: { box: number[]; planes: number[] }[] }[];
+}
+
+/** Rig proportions and anatomy, with each rest joint in model space. */
 export interface PackRig {
+  hitSurfaces?: PackHitSurface[];
   id: string;
   skeleton: string;
   rest: number[];
+  /** Native rigid foot/toe sole witnesses, model-space xyz after quantization, keyed by the actual foot mesh.
+   * Four samples in HUMAN foot.L, toe.L, foot.R, toe.R order; empty points mean the actual mesh lacks usable calibration.
+   * Boot headers retain these without loading fine geometry. */
+  soles?: { mesh: string; points: number[] }[];
+  /** Optional actual bare/gloved hand profiles; a body without them keeps ordinary marker fitting. */
+  grips?: PackGrip[];
   /**
    * Present for a rig that is a whole skeleton (a creature's), absent for a body on a skeleton written in code (the humanoid's).
    * `names` lists the bones, root first. `parent` is each bone's parent index, -1 for the root. `caps` is nine numbers per hit
@@ -162,9 +188,14 @@ export interface PackRig {
   sockets?: { name: string; bone: number; x: number; y: number; z: number }[];
   /** The bones it stands on, and the metres one turn of each gait clip carries it, by the clip's name. */
   feet?: number[];
+  /** Two distinct named airway witnesses, sampled from the posed head during unconsciousness and recovery. */
+  breath?: [string, string];
   strides?: Record<string, number>;
+  footfalls?: Record<string, PackFootfall[]>;
+  /** Optional grounded pose fitting. Angles are degrees; distances are metres at native size. */
+  ground?: { maxTilt: number; maxStep: number; probe: number; legs: { upper: number; lower: number; end: number; socket: string }[] };
   /** The bones that are bodies of its ragdoll, with their limits in degrees, and the frame of the death clip at which it goes limp. */
-  ragdoll?: { limp: number; bodies: { bone: number; mass: number; swing: number; twist: number }[] };
+  ragdoll?: { limp: number; bodies: { bone: number; mass: number; swing: number; twist: number; massCentre?: readonly [number, number, number] }[]; contacts?: number[] };
 }
 
 export interface PackClip {

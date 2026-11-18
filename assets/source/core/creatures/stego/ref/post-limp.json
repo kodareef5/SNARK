@@ -1,0 +1,1158 @@
+{
+  "packSha256": "3af77be1967bf8c2fd2ffb84b8930ad9add7c479751e578c5a7a1371b2e516e3",
+  "scope": "Finest weighted native skin after settling across 32 yaws and two sizes for each grade. Positive values are air gaps and negative values indicate ground penetration.",
+  "rows": [
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 0,
+      "rested": 0.9,
+      "capsuleDepth": 2.37152411012298e-05,
+      "skinMinimum": -0.0002014139544291502,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 0.19634954084936207,
+      "rested": 0.9,
+      "capsuleDepth": 2.371524282596127e-05,
+      "skinMinimum": -0.00020142272112630877,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 0.39269908169872414,
+      "rested": 0.9,
+      "capsuleDepth": 2.371524558364424e-05,
+      "skinMinimum": -0.00020142170421291739,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 0.5890486225480862,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715249335864996e-05,
+      "skinMinimum": -0.00020142110107643175,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 0.7853981633974483,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715253975042927e-05,
+      "skinMinimum": -0.00020142084666423168,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 0.9817477042468103,
+      "rested": 0.9,
+      "capsuleDepth": 2.371525932165497e-05,
+      "skinMinimum": -0.00020146060478022404,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 1.1780972450961724,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715265182522316e-05,
+      "skinMinimum": -0.00020146023207129825,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 1.3744467859455345,
+      "rested": 0.9,
+      "capsuleDepth": 2.371527133393503e-05,
+      "skinMinimum": -0.00020146053579769884,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 1.5707963267948966,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715277533420398e-05,
+      "skinMinimum": -0.00020146069542865725,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 1.7671458676442586,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715283550940214e-05,
+      "skinMinimum": -0.0002014608095952297,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 1.9634954084936207,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715289146686303e-05,
+      "skinMinimum": -0.0002014609514583176,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 2.1598449493429825,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715294111270602e-05,
+      "skinMinimum": -0.000201461760024851,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 2.356194490192345,
+      "rested": 0.9,
+      "capsuleDepth": 2.371529825806462e-05,
+      "skinMinimum": -0.00020146171232803705,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 2.552544031041707,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715301406546097e-05,
+      "skinMinimum": -0.00020142280493528047,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 2.748893571891069,
+      "rested": 0.9,
+      "capsuleDepth": 2.371530341649386e-05,
+      "skinMinimum": -0.00020142348508248205,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 2.945243112740431,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715304170002227e-05,
+      "skinMinimum": -0.0002014242166382984,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 3.141592653589793,
+      "rested": 0.9,
+      "capsuleDepth": 2.37153035197446e-05,
+      "skinMinimum": -0.00020142448570744948,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 3.3379421944391554,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715302248761283e-05,
+      "skinMinimum": -0.0002014160080797405,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 3.5342917352885173,
+      "rested": 0.9,
+      "capsuleDepth": 2.371529966360697e-05,
+      "skinMinimum": -0.00020141631843482739,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 3.730641276137879,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715295965787142e-05,
+      "skinMinimum": -0.00020141708343462462,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 3.9269908169872414,
+      "rested": 0.9,
+      "capsuleDepth": 2.371529132894068e-05,
+      "skinMinimum": -0.00020141752220919056,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 4.123340357836604,
+      "rested": 0.9,
+      "capsuleDepth": 2.37152859756673e-05,
+      "skinMinimum": -0.00020141769176864688,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 4.319689898685965,
+      "rested": 0.9,
+      "capsuleDepth": 2.371528010403079e-05,
+      "skinMinimum": -0.0002014176335450341,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 4.516039439535327,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715273954394434e-05,
+      "skinMinimum": -0.00020141766718585383,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 4.71238898038469,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715267741586388e-05,
+      "skinMinimum": -0.00020141765252890283,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 4.908738521234052,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715261737389248e-05,
+      "skinMinimum": -0.00020141744460017348,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 5.105088062083414,
+      "rested": 0.9,
+      "capsuleDepth": 2.371525614941472e-05,
+      "skinMinimum": -0.00020141761950305081,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 5.301437602932776,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715251189382336e-05,
+      "skinMinimum": -0.00020141652781137192,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 5.497787143782138,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715247055133837e-05,
+      "skinMinimum": -0.00020141605972297835,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 5.6941366846315,
+      "rested": 0.9,
+      "capsuleDepth": 2.371524390665236e-05,
+      "skinMinimum": -0.00020141560629153492,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 5.890486225480862,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715241842081625e-05,
+      "skinMinimum": -0.00020141492614433334,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 0.5,
+      "yaw": 6.086835766330224,
+      "rested": 0.9,
+      "capsuleDepth": 2.3715240920485492e-05,
+      "skinMinimum": -0.00020141424599720635,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 0,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00033934901494270253,
+      "skinMinimum": 0.000242080111909316,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 0.19634954084936207,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.0003393519280850965,
+      "skinMinimum": 0.0002420811603655532,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 0.39269908169872414,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00033935610330804167,
+      "skinMinimum": 0.00024208300220331363,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 0.5890486225480862,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.0003393615096839997,
+      "skinMinimum": 0.00024208314379666395,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 0.7853981633974483,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.0003393679899490465,
+      "skinMinimum": 0.00024208422036489131,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 0.9817477042468103,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00033937531903605045,
+      "skinMinimum": 0.00024208395352468296,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 1.1780972450961724,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.0003393832173884115,
+      "skinMinimum": 0.00024208395352468296,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 1.3744467859455345,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.0003393913865449294,
+      "skinMinimum": 0.00024208539881749288,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 1.5707963267948966,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.0003393995088502022,
+      "skinMinimum": 0.0002420839257043137,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 1.7671458676442586,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00033940727724229847,
+      "skinMinimum": 0.00024208281888918153,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 1.9634954084936207,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00033941438933371426,
+      "skinMinimum": 0.00024208228075087938,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 2.1598449493429825,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.0003394205724311372,
+      "skinMinimum": 0.0002420806379323597,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 2.356194490192345,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.0003394255925684986,
+      "skinMinimum": 0.00024207990077481506,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 2.552544031041707,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00033942924991925416,
+      "skinMinimum": 0.00024207919293117242,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 2.748893571891069,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.0003394314134005927,
+      "skinMinimum": 0.0002420766139358656,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 2.945243112740431,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.0003394319882514818,
+      "skinMinimum": 0.00024207553736763825,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 3.141592653589793,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.0003394309136116602,
+      "skinMinimum": 0.00024207392266110874,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 3.3379421944391554,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.0003394283377523566,
+      "skinMinimum": 0.00024206799637838247,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 3.5342917352885173,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.0003394242956893945,
+      "skinMinimum": 0.0002420684329239313,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 3.730641276137879,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00033941894029654307,
+      "skinMinimum": 0.00024206644949281882,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 3.9269908169872414,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00033941247840529876,
+      "skinMinimum": 0.00024206537292459146,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 4.123340357836604,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00033940515551511563,
+      "skinMinimum": 0.0002420657694695437,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 4.319689898685965,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.0003393972576789528,
+      "skinMinimum": 0.00024214463325076922,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 4.516039439535327,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00033938908732666917,
+      "skinMinimum": 0.00024214519950106154,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 4.71238898038469,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00033938096466124,
+      "skinMinimum": 0.00024214486009038055,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 4.908738521234052,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00033937319727028736,
+      "skinMinimum": 0.0002421465029088985,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 5.105088062083414,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00033936608251305955,
+      "skinMinimum": 0.00024214674163711668,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 5.301437602932776,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00033935989707173375,
+      "skinMinimum": 0.00024206844410618522,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 5.497787143782138,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.0003393548671818958,
+      "skinMinimum": 0.00024206898224448737,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 5.6941366846315,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00033935119273043046,
+      "skinMinimum": 0.00024207079597025937,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 5.890486225480862,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00033934898367321553,
+      "skinMinimum": 0.000242071503813902,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0,
+      "size": 1,
+      "yaw": 6.086835766330224,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00033934827638004705,
+      "skinMinimum": 0.00024207940406567163,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 0,
+      "rested": 1.0833333333333333,
+      "capsuleDepth": 1.5153509795307052e-05,
+      "skinMinimum": 0.0023371544729258176,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 0.19634954084936207,
+      "rested": 0.9333333333333333,
+      "capsuleDepth": 0.000270527595527037,
+      "skinMinimum": 0.021633982326420664,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 0.39269908169872414,
+      "rested": 1.0666666666666667,
+      "capsuleDepth": 0.00027269602737095555,
+      "skinMinimum": 0.021182892777389384,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 0.5890486225480862,
+      "rested": 1.3,
+      "capsuleDepth": 0.0003805654462624708,
+      "skinMinimum": 0.014910878566880115,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 0.7853981633974483,
+      "rested": 1.2333333333333334,
+      "capsuleDepth": 0.00036184737927244526,
+      "skinMinimum": 0.016815660965008306,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 0.9817477042468103,
+      "rested": 1.2666666666666666,
+      "capsuleDepth": 0.00034802458629315525,
+      "skinMinimum": 0.004721771513334971,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 1.1780972450961724,
+      "rested": 1.4333333333333333,
+      "capsuleDepth": 0.00015855695870610476,
+      "skinMinimum": 0.0022292568065545026,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 1.3744467859455345,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.0002913615016289506,
+      "skinMinimum": 8.671993381881293e-05,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 1.5707963267948966,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.0003273796338857937,
+      "skinMinimum": 0.0033691946851384103,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 1.7671458676442586,
+      "rested": 1.2,
+      "capsuleDepth": 0.00031034078859043523,
+      "skinMinimum": 0.01800935694557637,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 1.9634954084936207,
+      "rested": 1.2,
+      "capsuleDepth": 0.0002858791996552812,
+      "skinMinimum": 0.023109556172414614,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 2.1598449493429825,
+      "rested": 1.1666666666666667,
+      "capsuleDepth": 0.00028711447963189474,
+      "skinMinimum": 0.01215027418498238,
+      "bone": "tail_5"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 2.356194490192345,
+      "rested": 1.15,
+      "capsuleDepth": 0.00038015133562943615,
+      "skinMinimum": 0.010443429494930712,
+      "bone": "tail_5"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 2.552544031041707,
+      "rested": 1.1333333333333333,
+      "capsuleDepth": 0.0003563196506763816,
+      "skinMinimum": 0.012685524959035632,
+      "bone": "tail_5"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 2.748893571891069,
+      "rested": 1.0833333333333333,
+      "capsuleDepth": 0.0002727558618512288,
+      "skinMinimum": 0.012163157844398143,
+      "bone": "plate_14"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 2.945243112740431,
+      "rested": 1.0333333333333334,
+      "capsuleDepth": 0.00017203219137197634,
+      "skinMinimum": 0.009502618261997497,
+      "bone": "plate_14"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 3.141592653589793,
+      "rested": 1,
+      "capsuleDepth": 0.00014751909661728235,
+      "skinMinimum": -0.0005058470671741588,
+      "bone": "plate_14"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 3.3379421944391554,
+      "rested": 0.9333333333333333,
+      "capsuleDepth": 0.00010686769545517616,
+      "skinMinimum": 0.0018954345836945663,
+      "bone": "plate_14"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 3.5342917352885173,
+      "rested": 0.9833333333333333,
+      "capsuleDepth": 0.0001982460488290927,
+      "skinMinimum": 0.004690270426987553,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 3.730641276137879,
+      "rested": 1.0333333333333334,
+      "capsuleDepth": 0.0001595037583876635,
+      "skinMinimum": 0.0003952569365246461,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 3.9269908169872414,
+      "rested": 1.3333333333333333,
+      "capsuleDepth": 0.00021944244831795245,
+      "skinMinimum": -0.0028667668381103795,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 4.123340357836604,
+      "rested": 1.2166666666666666,
+      "capsuleDepth": 0.00018657377835870625,
+      "skinMinimum": -0.0025145129721266812,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 4.319689898685965,
+      "rested": 1.5833333333333333,
+      "capsuleDepth": 3.2925262131500155e-05,
+      "skinMinimum": -0.002956112400305244,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 4.516039439535327,
+      "rested": 1.2833333333333334,
+      "capsuleDepth": 3.415962199604383e-05,
+      "skinMinimum": -0.0020467939102637445,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 4.71238898038469,
+      "rested": 2.0833333333333335,
+      "capsuleDepth": 3.112886402434345e-05,
+      "skinMinimum": -0.0027944798385171055,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 4.908738521234052,
+      "rested": 1.9,
+      "capsuleDepth": 7.29096375362559e-06,
+      "skinMinimum": -0.0007182346730232325,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 5.105088062083414,
+      "rested": 1.65,
+      "capsuleDepth": 8.488207219992105e-06,
+      "skinMinimum": 0.0005469483490756488,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 5.301437602932776,
+      "rested": 1.3,
+      "capsuleDepth": 1.017374782041891e-05,
+      "skinMinimum": 0.0018542714422835616,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 5.497787143782138,
+      "rested": 1.1166666666666667,
+      "capsuleDepth": 1.2204964008999397e-05,
+      "skinMinimum": 0.002788932889263407,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 5.6941366846315,
+      "rested": 1.0166666666666666,
+      "capsuleDepth": 1.4823969343158439e-05,
+      "skinMinimum": 0.0021004288535770854,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 5.890486225480862,
+      "rested": 0.85,
+      "capsuleDepth": 1.6851147272567424e-05,
+      "skinMinimum": 0.005403648592775312,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 0.5,
+      "yaw": 6.086835766330224,
+      "rested": 1.1,
+      "capsuleDepth": 2.1465158243944016e-05,
+      "skinMinimum": 0.0034737859608604538,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 0,
+      "rested": 1.1666666666666667,
+      "capsuleDepth": 0.00023702532697006395,
+      "skinMinimum": 0.024751233921804783,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 0.19634954084936207,
+      "rested": 1.3166666666666667,
+      "capsuleDepth": 0.0002725844726625404,
+      "skinMinimum": 0.026573952904652032,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 0.39269908169872414,
+      "rested": 1.3333333333333333,
+      "capsuleDepth": 0.00032124613963413484,
+      "skinMinimum": 0.03722497814732861,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 0.5890486225480862,
+      "rested": 1.4833333333333334,
+      "capsuleDepth": 0.00036192691276010214,
+      "skinMinimum": 0.027757335653983972,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 0.7853981633974483,
+      "rested": 1.9333333333333333,
+      "capsuleDepth": 0.0001348647760463506,
+      "skinMinimum": 0.012986220879604105,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 0.9817477042468103,
+      "rested": 1.6833333333333333,
+      "capsuleDepth": 3.6883447611657516e-05,
+      "skinMinimum": -0.005290540614193873,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 1.1780972450961724,
+      "rested": 1.7166666666666666,
+      "capsuleDepth": 3.697078261777342e-05,
+      "skinMinimum": -0.005494829362930886,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 1.3744467859455345,
+      "rested": 1.7333333333333334,
+      "capsuleDepth": 3.865137692127263e-05,
+      "skinMinimum": -0.004044594579497129,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 1.5707963267948966,
+      "rested": 1.7,
+      "capsuleDepth": 0.00013220862475471495,
+      "skinMinimum": -0.00089484669129547,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 1.7671458676442586,
+      "rested": 1.65,
+      "capsuleDepth": 3.754140337974832e-05,
+      "skinMinimum": 0.0037951175074439902,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 1.9634954084936207,
+      "rested": 1.6333333333333333,
+      "capsuleDepth": 0.00029318337567035835,
+      "skinMinimum": 0.022770195146350147,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 2.1598449493429825,
+      "rested": 1.6833333333333333,
+      "capsuleDepth": 0.00010828567818660373,
+      "skinMinimum": 0.01891558591487552,
+      "bone": "tail_5"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 2.356194490192345,
+      "rested": 1.7333333333333334,
+      "capsuleDepth": 0.000105685911148512,
+      "skinMinimum": 0.02325376620235886,
+      "bone": "tail_5"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 2.552544031041707,
+      "rested": 1.6,
+      "capsuleDepth": 0.00032584410384492446,
+      "skinMinimum": 0.02559621513463739,
+      "bone": "tail_5"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 2.748893571891069,
+      "rested": 1.4666666666666666,
+      "capsuleDepth": 0.0002519056250594731,
+      "skinMinimum": 0.026762534408298677,
+      "bone": "tail_5"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 2.945243112740431,
+      "rested": 1.3833333333333333,
+      "capsuleDepth": 0.0001779750359914012,
+      "skinMinimum": 0.01824495019692307,
+      "bone": "plate_14"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 3.141592653589793,
+      "rested": 1.3166666666666667,
+      "capsuleDepth": 0.00015710146973155203,
+      "skinMinimum": 0.001223315363549915,
+      "bone": "plate_14"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 3.3379421944391554,
+      "rested": 1.3333333333333333,
+      "capsuleDepth": 0.00013818911686713786,
+      "skinMinimum": 0.005735861045863544,
+      "bone": "plate_14"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 3.5342917352885173,
+      "rested": 1.3,
+      "capsuleDepth": 0.00010433588249197934,
+      "skinMinimum": 0.009532688420087254,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 3.730641276137879,
+      "rested": 1.3,
+      "capsuleDepth": 2.705043358708359e-05,
+      "skinMinimum": -0.002494986269919508,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 3.9269908169872414,
+      "rested": 1.4333333333333333,
+      "capsuleDepth": 1.073060062384279e-05,
+      "skinMinimum": 0.0007252087894933368,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 4.123340357836604,
+      "rested": 1.6,
+      "capsuleDepth": 0.00025316680523176927,
+      "skinMinimum": 0.007830605803917479,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 4.319689898685965,
+      "rested": 1.5333333333333334,
+      "capsuleDepth": 6.911281107191414e-06,
+      "skinMinimum": 0.009710851230892104,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 4.516039439535327,
+      "rested": 1.35,
+      "capsuleDepth": 5.231797005622596e-06,
+      "skinMinimum": 0.025633683647033223,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 4.71238898038469,
+      "rested": 1.6166666666666667,
+      "capsuleDepth": 5.143423703168892e-06,
+      "skinMinimum": 0.017474172470659965,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 4.908738521234052,
+      "rested": 1.2833333333333334,
+      "capsuleDepth": 7.693495415850293e-06,
+      "skinMinimum": 0.019467432266438323,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 5.105088062083414,
+      "rested": 1.2333333333333334,
+      "capsuleDepth": 1.1388499106645966e-05,
+      "skinMinimum": 0.023838269562425296,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 5.301437602932776,
+      "rested": 1.2,
+      "capsuleDepth": 9.833680089998964e-06,
+      "skinMinimum": 0.018495870068409914,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 5.497787143782138,
+      "rested": 1.25,
+      "capsuleDepth": 1.2051907351429136e-05,
+      "skinMinimum": 0.015029362112201738,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 5.6941366846315,
+      "rested": 1.0333333333333334,
+      "capsuleDepth": 1.4816326618927178e-05,
+      "skinMinimum": 0.018582123931722094,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 5.890486225480862,
+      "rested": 0.9666666666666667,
+      "capsuleDepth": 1.7308212525213307e-05,
+      "skinMinimum": 0.008687757206129021,
+      "bone": "pelvis"
+    },
+    {
+      "slope": 0.35,
+      "size": 1,
+      "yaw": 6.086835766330224,
+      "rested": 1.0166666666666666,
+      "capsuleDepth": 1.956646116041405e-05,
+      "skinMinimum": 0.0060694234547291614,
+      "bone": "pelvis"
+    }
+  ]
+}

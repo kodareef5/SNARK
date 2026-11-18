@@ -10,16 +10,21 @@
 // --drive has the page get into a car and drive it, and writes what it saw under artifacts/urban-drive/.
 // --drive-model selects another road body, e.g. --drive --drive-model berlinetta.
 // --software selects Chrome's software WebGL backend on machines without an available headless GPU.
-// --built checks the already prepared client/dist output without rebuilding it.
+// --hardware requests Chrome's local GPU and retains diagnostics; inspect the reported renderer to verify selection.
+// --built checks the already prepared client/dist output. With --dinosaur, --dist selects an isolated prepared build.
+// --texfmt bc|astc|rgba asks the boot or mounted probe to use that texture variant and verifies the one WebGL received.
 
 import { existsSync, mkdtempSync, readFileSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { startServer } from "../server/main.ts";
 import { buildClientApart } from "./build-client.ts";
 import { litProbe } from "./probe-lit.ts";
 import { wikiProbe } from "./probe-wiki.ts";
 import { texturedProbe } from "./probe-textured.ts";
+import { dinosaurCourse } from "./dinosaurs/course.ts";
+import { buildDinosaurReviewClient, installDinosaurPreview, requireDinosaurReviewArt } from "./dinosaurs/dev.ts";
+import { writeMap } from "../shared/world/mapfile.ts";
 import { prepareDriveProbe } from "./probe-drive.ts";
 
 // --drive puts a car with a seated civilian by the spawn and has the page drive it with the real player controls, on
@@ -28,7 +33,21 @@ const drive = process.argv.includes("--drive");
 const modelArg = process.argv.indexOf("--drive-model");
 const driveModel = modelArg < 0 ? "compact" : process.argv[modelArg + 1];
 if (!driveModel || !/^[a-z][a-z0-9_]*$/.test(driveModel)) throw new Error("--drive-model takes a core road vehicle name");
-const software = drive || process.argv.includes("--software");
+const dinosaurAt = process.argv.indexOf("--dinosaur");
+const dinosaur = dinosaurAt >= 0 ? process.argv[dinosaurAt + 1] : undefined;
+if (dinosaurAt >= 0 && dinosaur !== "trike" && dinosaur !== "stego") throw new Error("--dinosaur takes trike or stego");
+const distAt = process.argv.indexOf("--dist");
+const dirArg = process.argv[distAt + 1];
+if (distAt >= 0 && (!dinosaur || !process.argv.includes("--built") || !dirArg || dirArg.startsWith("--"))) throw new Error("--dist requires a dinosaur, --built and a prepared client directory");
+const clientDir = distAt < 0 ? join(import.meta.dir, "../client/dist") : resolve(dirArg!);
+const formatAt = process.argv.indexOf("--texfmt");
+const format = formatAt < 0 ? undefined : process.argv[formatAt + 1];
+if (formatAt >= 0 && format !== "bc" && format !== "astc" && format !== "rgba") throw new Error("--texfmt takes bc, astc or rgba");
+if (format && ["--lit", "--wiki", "--textured"].some(flag => process.argv.includes(flag))) throw new Error("--texfmt applies to the boot, driving and mounted probes");
+const hardware = process.argv.includes("--hardware");
+if (hardware && process.argv.includes("--software")) throw new Error("Choose --hardware or --software, not both");
+const software = !hardware && (drive || !!dinosaur || process.argv.includes("--software"));
+const diagnostics = software || hardware;
 const driveTier = process.argv.includes("--medium") ? "medium" : "lowpoly";
 const CANDIDATES = [
   process.env.CHROME,
@@ -47,9 +66,11 @@ if (!chrome) {
 // The lit probe builds the core pack itself and needs no client. The wiki probe takes the client and the wiki as built.
 if (!process.argv.includes("--lit") && !process.argv.includes("--wiki")) {
   if (process.argv.includes("--built")) {
-    const dist = join(import.meta.dir, "../client/dist");
-    if (!existsSync(join(dist, "main.js")) || !existsSync(join(dist, "assets/manifest.json"))) throw new Error("No prepared client build. Run without --built first.");
-  } else await buildClientApart({ stress: process.argv.includes("--stress") });
+    if (!existsSync(join(clientDir, "main.js")) || !existsSync(join(clientDir, "assets/manifest.json"))) throw new Error("No prepared client build. Run without --built first.");
+  } else {
+    const build = dinosaur ? buildDinosaurReviewClient : buildClientApart;
+    await build({ stress: process.argv.includes("--stress") });
+  }
 }
 for (const [flag, run] of [["--textured", texturedProbe], ["--lit", litProbe], ["--wiki", wikiProbe]] as const) {
   if (!process.argv.includes(flag)) continue;
@@ -57,7 +78,12 @@ for (const [flag, run] of [["--textured", texturedProbe], ["--lit", litProbe], [
   console.log(passed ? "\nprobe: PASS" : "\nprobe: FAIL");
   process.exit(passed ? 0 : 1);
 }
-const server = startServer({ dev: true, port: 0, probeScene: true });
+if (dinosaur) requireDinosaurReviewArt(clientDir, [`core:${dinosaur}`]);
+const review = dinosaur ? dinosaurCourse() : null;
+const courseDir = review ? mkdtempSync(join(tmpdir(), "snark-dinosaur-probe-")) : null;
+if (review && courseDir) writeFileSync(join(courseDir, "course.snmp"), writeMap({ ...review, spawns: [{ name: "Mounted review", x: 110, z: 88, yaw: 0 }] }));
+const server = startServer({ dev: true, port: 0, clientDir, probeScene: !dinosaur, ...(courseDir ? { map: join(courseDir, "course.snmp") } : {}) });
+if (dinosaur) installDinosaurPreview(server.host, [`core:${dinosaur}`]);
 if (drive) {
   try { await prepareDriveProbe(server.host, undefined, `core:${driveModel}`); }
   catch (error) { server.stop(); throw error; }
@@ -65,10 +91,10 @@ if (drive) {
 const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
 // Unless --no-voice is given, the page talks to itself through the server. VOICE_FLAGS give Chrome a fake microphone, grant it
 // without a prompt, and let sound start without a gesture.
-const url = `http://localhost:${server.port}/?selfcheck=1&creature=1&name=probe${drive ? `&urban=1&tier=${driveTier}&urbanDrive=1` : ""}${process.argv.includes("--no-voice") ? "" : "&voice=1"}${process.argv.includes("--lose") ? "&lose=1" : ""}${process.argv.includes("--slow") ? "&assetnet=300,1500,2" : ""}${process.argv.includes("--stress") ? "&stress=1" : ""}`;
-const GRAPHICS_FLAGS = software ? ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : [];
+const url = `http://localhost:${server.port}/?selfcheck=1&creature=1&name=probe${dinosaur ? `&dinosaur=${dinosaur}&tier=${driveTier}` : ""}${drive ? `&urban=1&tier=${driveTier}&urbanDrive=1` : ""}${format ? `&texfmt=${format}` : ""}${process.argv.includes("--no-voice") ? "" : "&voice=1"}${process.argv.includes("--lose") ? "&lose=1" : ""}${process.argv.includes("--slow") ? "&assetnet=300,1500,2" : ""}${process.argv.includes("--stress") ? "&stress=1" : ""}`;
+const GRAPHICS_FLAGS = hardware ? ["--enable-gpu"] : software ? ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : [];
 const VOICE_FLAGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"];
-const browser = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", drive ? "--window-size=800,600" : "--window-size=1280,720", ...GRAPHICS_FLAGS, ...(software ? ["--remote-debugging-port=0"] : []), ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: software ? Bun.file(join(profile, "chrome.log")) : "ignore" });
+const browser = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", drive || dinosaur ? "--window-size=800,600" : "--window-size=1280,720", ...GRAPHICS_FLAGS, ...(diagnostics ? ["--remote-debugging-port=0"] : []), ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: diagnostics ? Bun.file(join(profile, "chrome.log")) : "ignore" });
 
 async function pageTarget(): Promise<string | null> {
   if (!existsSync(join(profile, "DevToolsActivePort"))) return null;
@@ -95,7 +121,7 @@ let finished = false;
 // Preserve progress even when expensive shader compilation or a stalled main thread prevents the final report.
 // This observes the real page. It changes no graphics settings, controls, deadlines or pass criteria.
 const progress: unknown[] = [];
-const observing = software ? (async () => {
+const observing = diagnostics ? (async () => {
   while (!finished) {
     await Bun.sleep(2000);
     if (finished) break;
@@ -110,7 +136,7 @@ const observing = software ? (async () => {
     } catch (error) { progress.push({ at: Date.now(), error: String(error) }); }
   }
 })() : Promise.resolve();
-const gesture = drive ? (async () => {
+const gesture = drive || dinosaur ? (async () => {
   for (let tries = 0; tries < 24 && !finished; tries++) {
     await Bun.sleep(500);
     const target = await pageTarget();
@@ -121,7 +147,7 @@ const gesture = drive ? (async () => {
 })().catch(error => console.error("drive gesture:", error)) : Promise.resolve();
 
 const timeout = new Promise<null>((r) => setTimeout(() => r(null), 30000));
-const report = (await Promise.race([server.nextSelfcheck(), timeout])) as { ok?: boolean; urban?: { vehicles?: string[]; ownKind?: string } } | null;
+const report = (await Promise.race([server.nextSelfcheck(), timeout])) as { ok?: boolean; urban?: { vehicles?: string[]; ownKind?: string }; textures?: { format: string; errors: number } } | null;
 finished = true;
 await gesture;
 await observing;
@@ -135,9 +161,10 @@ if (report && process.argv.includes("--voice")) {
   await listener.exited;
   rmSync(profile2, { recursive: true, force: true });
 }
-if (software) {
-  const dir = join(import.meta.dir, drive ? "../artifacts/urban-drive" : "../artifacts/boot-software"); mkdirSync(dir, { recursive: true });
-  const name = drive ? `driving-${driveModel === "compact" ? "" : driveModel + "-"}${driveTier}` : "boot";
+if (diagnostics) {
+  const dir = join(import.meta.dir, dinosaur ? `../artifacts/dinosaurs/${dinosaur}${hardware ? "/hardware" : ""}` : drive ? `../artifacts/urban-drive${hardware ? "/hardware" : ""}` : `../artifacts/boot-${hardware ? "hardware" : "software"}`, format ?? "");
+  mkdirSync(dir, { recursive: true });
+  const name = dinosaur ? `riding-${driveTier}` : drive ? `driving-${driveModel === "compact" ? "" : driveModel + "-"}${driveTier}` : "boot";
   // Write evidence before a screenshot request, which can itself time out behind a busy renderer.
   writeFileSync(join(dir, `${name}-diagnostics.json`), JSON.stringify({ url, report, progress }, null, 2) + "\n");
   writeFileSync(join(dir, `${name}-chrome.log`), readFileSync(join(profile, "chrome.log")));
@@ -150,7 +177,7 @@ if (software) {
     writeFileSync(join(dir, `${shot}.json`), JSON.stringify(report, null, 2) + "\n");
   } catch (error) { console.error("probe screenshot:", error); }
 }
-if (software && !report) console.error(readFileSync(join(profile, "chrome.log"), "utf8").slice(-6000));
+if (diagnostics && !report) console.error(readFileSync(join(profile, "chrome.log"), "utf8").slice(-6000));
 browser.kill();
 await browser.exited;
 let again: { ok?: boolean; assets?: { fetched: number; cached: number } } | null | undefined;
@@ -169,6 +196,7 @@ if (report && process.argv.includes("--bench")) {
   await flying.exited;
 }
 server.stop();
+if (courseDir) rmSync(courseDir, { recursive: true, force: true });
 rmSync(profile, { recursive: true, force: true });
 
 if (!report) {
@@ -186,6 +214,8 @@ if (again !== undefined) {
 }
 const kept = again === undefined || (again?.ok === true && again.assets?.fetched === 0 && again.assets.cached > 0);
 const droveModel = !drive || report.urban?.ownKind === `core:${driveModel}` && report.urban.vehicles?.includes(`core:${driveModel}`);
-const ok = report.ok === true && droveModel && (second === undefined || second?.ok === true) && kept;
+const selected = !format || (report.textures?.format === format && report.textures.errors === 0);
+if (!selected) console.error(`probe: requested ${format}, rendered ${report.textures?.format ?? "unknown"} with ${report.textures?.errors ?? "unknown"} texture errors`);
+const ok = report.ok === true && droveModel && (second === undefined || second?.ok === true) && kept && selected;
 console.log(ok ? "\nprobe: PASS" : "\nprobe: FAIL");
 process.exit(ok ? 0 : 1);

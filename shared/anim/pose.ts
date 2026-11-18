@@ -59,7 +59,7 @@ const SIN_45 = 0.7071067811865476;
  * for what its whole body goes through and the low byte of its first tick, then a LAYER_ for what plays over that and
  * the low byte of its first tick. The server clears a cue before its start can be counted twice. Then states that last
  * (protocol 11): held in bit 22 (CUE_HELD), a corpse in bit 23 (CUE_DEAD), its hurt stage in two bits from bit 24, a
- * corpse's decay stage in two from bit 26, and its pair's mating in three from bit 28.
+ * corpse's decay stage in bits 26–27 (a living creature uses bit 26 for rivalry), and its pair's mating in three from bit 28.
  */
 export const CUE_BITS = 31;
 export const CUE_NONE = 0;
@@ -87,6 +87,8 @@ export const CUE_HELD = 1 << 22;
 export const CUE_DEAD = 1 << 23;
 export const CUE_HURT_SHIFT = 24;
 export const CUE_DECAY_SHIFT = 26;
+/** On a living creature only. A corpse uses these bits for its decay stage. */
+export const CUE_RIVALRY = 1 << CUE_DECAY_SHIFT;
 export const CUE_MATING_SHIFT = 28;
 /** The worst hurt and decay stage. 0 is unhurt, or fresh. */
 export const STAGE_WORST = 3;
@@ -132,6 +134,7 @@ export class AnimState {
   /** 0 to STAGE_WORST. */
   hurt = 0;
   decay = 0;
+  rivalry = false;
   /** 0, or 1 to MATING_STEPS. */
   mating = 0;
 
@@ -148,7 +151,8 @@ export class AnimState {
   packCue(): number {
     const cue = this.cue === CUE_NONE ? 0 : (this.cue << 1) | ((this.cueStart & 255) << 4);
     const layer = this.layer === LAYER_NONE ? 0 : (this.layer << 12) | ((this.layerStart & 255) << 14);
-    const lasting = (this.held ? CUE_HELD : 0) | (this.dead ? CUE_DEAD : 0) | ((this.hurt & 3) << CUE_HURT_SHIFT) | ((this.decay & 3) << CUE_DECAY_SHIFT) | ((this.mating & 7) << CUE_MATING_SHIFT);
+    const condition = this.dead ? (this.decay & 3) << CUE_DECAY_SHIFT : this.rivalry ? CUE_RIVALRY : 0;
+    const lasting = (this.held ? CUE_HELD : 0) | (this.dead ? CUE_DEAD : 0) | ((this.hurt & 3) << CUE_HURT_SHIFT) | condition | ((this.mating & 7) << CUE_MATING_SHIFT);
     return ((this.out ? CUE_OUT : 0) | cue | layer | lasting) >>> 0;
   }
 
@@ -167,7 +171,8 @@ export class AnimState {
     this.held = (cue & CUE_HELD) !== 0;
     this.dead = (cue & CUE_DEAD) !== 0;
     this.hurt = (cue >>> CUE_HURT_SHIFT) & 3;
-    this.decay = (cue >>> CUE_DECAY_SHIFT) & 3;
+    this.decay = this.dead ? (cue >>> CUE_DECAY_SHIFT) & 3 : 0;
+    this.rivalry = !this.dead && (cue & CUE_RIVALRY) !== 0;
     this.mating = (cue >>> CUE_MATING_SHIFT) & 7;
   }
 

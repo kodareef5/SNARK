@@ -5,6 +5,7 @@
 // enough are held (library.ts), each heard one gets a voice or is dropped (mixer.ts), and what the device must do goes
 // out as a packet (packet.ts). Only an app with a sound sink makes one of these, so a client without audio does none of it.
 
+import type { Corpse } from "../ragdoll.ts";
 import type { CreatureAnim } from "../../../shared/anim/creature.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import type { Manifest } from "../../../shared/pack/manifest.ts";
@@ -230,7 +231,7 @@ export class Sounds {
   }
 
   /** One frame: what everything did is heard by `ear` at `volumes`, and the device is told in one packet. */
-  frame(sink: SoundSink, nowMs: number, remote: RemoteSample, hf: Heightfield, ear: Listener, volumes: Volumes, view: SoundView | null = null): void {
+  frame(sink: SoundSink, nowMs: number, remote: RemoteSample, hf: Heightfield, ear: Listener, volumes: Volumes, view: SoundView | null = null, corpses?: readonly Corpse[]): void {
     const p = this.packet;
     p.clear();
     const dt = this.lastMs < 0 ? 0 : Math.min(0.25, (nowMs - this.lastMs) / 1000);
@@ -260,7 +261,7 @@ export class Sounds {
     p.buses[3] = volumes.interface;
     // What was heard since the last frame (the interface hears between frames) is kept until it is played below.
     for (const l of this.loops.values()) l.target = 0;
-    this.creatures.update(remote, hf, ear.x, ear.y, ear.z, this.emit, this.want);
+    this.creatures.update(remote, hf, ear.x, ear.y, ear.z, this.emit, this.want, corpses);
     this.vehicles.update(remote, hf, ear.x, ear.y, ear.z, view?.vehicle ?? -1, this.hear, (id, owner, key, x, y, z, level, on, flat) => this.loop(id, owner, key, x, y, z, level, on, flat), this.ahead);
     if (view) {
       if (!this.early) this.pinVoice(view.own.female);

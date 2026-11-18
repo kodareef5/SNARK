@@ -107,7 +107,8 @@ artTest("the pack carries bodies cut into slots, each vertex on one bone, and th
   const clips = pack.clips;
   expect(clips.clips.length).toBeGreaterThanOrEqual(30);
   const jog = clips.clips[clips.index.get("human/jog")!]!;
-  expect([jog.bones, jog.frames, jog.loop]).toEqual([HUMAN.bones, 28, true]);
+  expect(jog.bones).toBe(HUMAN.bones);
+  expect([jog.frames, jog.loop]).toEqual([28, true]);
   for (let k = 0; k < jog.rot.length; k += 4) expect(Math.hypot(jog.rot[k]!, jog.rot[k + 1]!, jog.rot[k + 2]!, jog.rot[k + 3]!)).toBeCloseTo(1, 3);
   expect(clips.clips[clips.index.get("human/punch")!]!.loop).toBe(false);
   expect(clips.hash).not.toBe(0);
